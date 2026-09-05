@@ -21,7 +21,7 @@
 | Client Atom RPC runtime and shared app operations | `apps/<app>/src/lib/utils.ts`      |
 | Server entry module and complete Layer graph      | `apps/<app>/src/main.server.ts`    |
 
-The service class owns its public interface and named Layers. Constructors under `internal/*` infer requirements, errors, and output through `Service.of`. Consumers do not define parallel service shapes or assemble implementation Layers.
+Apply engineering's service ownership rules. In this repository, constructors under `internal/*` infer requirements, errors, and output through `Service.of`; the service class exposes the named Layers.
 
 ## Real-Time State
 
@@ -39,4 +39,6 @@ export const notesAtom = Atom.keepAlive(
 )
 ```
 
-RPC callbacks delegate directly when no lookup or sequencing is required. Use `Effect.fnUntraced` and `Stream.unwrap` only when constructing a stream through Effectful lookup. The RPC runtime owns transport spans and infinite stream tracing. Handlers do not add duplicate spans.
+RPC callbacks delegate directly when no lookup or sequencing is required. Use `Effect.fnUntraced` and `Stream.unwrap` when constructing a stream through Effectful lookup. The RPC runtime owns transport spans and infinite stream tracing. Handlers do not add duplicate spans.
+
+When current requirements replace an operation or state shape, update its RPC contract, handler, client consumer, and tests together. Remove the superseded contract and path instead of keeping parallel versions or compatibility branches.

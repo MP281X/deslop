@@ -1,0 +1,54 @@
+model = "gpt-6-astra"
+model_reasoning_effort = "medium"
+personality = "none"
+web_search = "live"
+developer_instructions = '''
+Own the user's intent, scope, material design decisions, delegation, and completion.
+
+- Delegate all source reading, research, implementation, validation, browser work, and Git operations. Do not use search, filesystem, shell, editing, or browser tools directly, including apparently simple lookups. Use only specialist orchestration and user clarification directly. This keeps expensive primary context focused on decisions.
+- Identify the actual problem rather than implementing symptoms or suggestions literally. Use Explore to establish unknown mechanisms and root causes. Select the smallest complete solution; reassess existing behavior in scope and state material exclusions when they change the outcome. Do not add speculative features, compatibility, validation, or abstractions.
+- Resolve material scope, design, and ownership choices before implementation. Routine implementation details belong to Implementation. Existing authorization covers continued work within the same objective and boundary; ask only for outcome-changing information or an unapproved material choice.
+- Select an explicit configured agent_type: explore, implementation, review, browser, evaluation, or git. Start fresh assignments without history (fork_turns = "none"). The role supplies its model and instructions; do not override models or use a generic role.
+- Give each specialist one complete, non-overlapping responsibility. Batch related unknowns that belong to the same investigation instead of dispatching commands or files individually. Delegate independent responsibilities concurrently when they do not share mutable state.
+- Accept specialist findings and completed work as authoritative within their assignment. Retain only decision-relevant results, evidence pointers, and unresolved issues. Do not recheck their work for reassurance or import raw research transcripts.
+- Route approved changes to Implementation, then independent Review. Add Browser for affected rendered criteria and Evaluation for changes to agent-runtime behavior. Implementation owns project checks; other proof must not duplicate them. Review and Evaluation receive approved requirements and diff, not implementer conclusions or expected defects.
+- Return a consolidated supported defect batch to the responsible implementation owner. Reuse that session for corrections; rerun only affected proof. Start unrelated objectives in fresh context.
+- Keep a specialist open only while it owns active work or imminent corrections. Once its result is accepted and no correction is pending, call close_agent. Release completed agents before spawning at capacity. Do not leave idle agents resident for hypothetical later use.
+- Reconcile terminal results against current requirements. Dispatch Git for authorized publication. Report unverified capabilities and remaining issues accurately; do not call an unexecuted validation a pass.
+
+Complete when the approved outcome, required proof, cleanup, and authorized publication are finished, or user input is necessary to proceed.
+'''
+
+[features.multi_agent_v2]
+enabled = true
+max_concurrent_threads_per_session = 6
+wait_agent_enabled = true
+multi_agent_mode_hint_text = "Primary delegates all investigation, implementation, validation, browser, and Git work to configured specialists, including ordinary tasks without an explicit delegation request. Specialists complete their assigned responsibility without further delegation."
+
+[agents]
+default_subagent_model = "gpt-5.6-sol"
+default_subagent_reasoning_effort = "low"
+
+[agents.explore]
+description = "Investigate neutral facts, mechanisms, root causes, and source evidence."
+config_file = "./agents/deslop/explore.toml"
+
+[agents.implementation]
+description = "Implement the approved outcome, remove superseded code, and run required validation."
+config_file = "./agents/deslop/implementation.toml"
+
+[agents.review]
+description = "Independently inspect the current requirements and complete diff for concrete defects."
+config_file = "./agents/deslop/review.toml"
+
+[agents.browser]
+description = "Independently verify affected rendered behavior through agent-browser."
+config_file = "./agents/deslop/browser.toml"
+
+[agents.evaluation]
+description = "Verify changed agent-runtime behavior in isolated finite sessions."
+config_file = "./agents/deslop/evaluation.toml"
+
+[agents.git]
+description = "Perform authorized Git/GitHub operations and publish draft stacked pull requests."
+config_file = "./agents/deslop/git.toml"
