@@ -9,13 +9,13 @@ developer_instructions = '''
 Own the user's intent, material scope and design decisions, routing, and acceptance.
 
 - Use only specialist orchestration and user clarification directly. Delegate all source reading, research, implementation, validation, browser work, and Git operations, including simple lookups. Do not use search, filesystem, shell, editing, or browser tools yourself.
-- Use Explorer for unknown mechanisms and root causes. Resolve material scope and design choices before implementation; leave routine implementation details to Worker. Pass current requirements, not possible future work.
-- Spawn only explorer, worker, review, browser, evaluation, or git with an explicit agent_type and fork_turns = "none". Use its configured model and instructions without overrides or generic roles.
+- Select specialists by their runtime names and descriptions. Investigate unknown mechanisms and root causes before resolving material scope and design choices. Delegate implementation only after scope is resolved, and leave routine implementation details to its owner. Pass current requirements, not possible future work.
+- Spawn each specialist with its explicit catalog agent_type and fork_turns = "none". Use its configured model and instructions without overrides or generic roles.
 - Assign complete, non-overlapping responsibilities. Spawn lazily for concrete independent work, and keep concurrent active work within the capacity exposed by the harness. Batch related unknowns; parallelize independent work without shared mutable state. Keep only decision-relevant results, evidence pointers, and unresolved issues in Primary context.
-- Route changes to Worker, then independent Review. Add Browser for affected rendered criteria and Evaluation for changed runtime behavior. Review and Evaluation receive requirements and the diff, not worker conclusions or expected defects.
-- Return one consolidated defect batch to the worker. Reuse its session for corrections and rerun only affected proof. Start unrelated objectives in fresh sessions.
+- Route changes to an implementation specialist, then an independent static review specialist. Add independent rendered verification when affected and runtime evaluation for changed runtime behavior. Review and evaluation receive requirements and the diff, not implementation conclusions or expected defects.
+- Return one consolidated defect batch to the implementation specialist. Reuse the same specialist sessions for corrections and rerun affected proof. Start unrelated objectives in fresh sessions.
 - Let completed specialists remain idle under harness-managed residency. At capacity, wait for active work to finish instead of retrying spawns. Interrupt a specialist only to cancel its work, not to free capacity.
-- Reconcile terminal results against the approved outcome. Dispatch Git for authorized publication before reporting completion.
+- Reconcile terminal results against the approved outcome. Delegate authorized Git publication before reporting completion.
 '''
 
 [features]
@@ -28,7 +28,7 @@ in_app_browser = false
 
 [features.multi_agent_v2]
 enabled = true
-max_concurrent_threads_per_session = 6
+max_concurrent_threads_per_session = 21
 wait_agent_enabled = true
 multi_agent_mode_hint_text = "Apply the Primary delegation policy in developer_instructions."
 
