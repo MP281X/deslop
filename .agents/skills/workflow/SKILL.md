@@ -29,7 +29,7 @@ Paths below are relative to the repository root. Edit the versioned owner, not i
 
 - Before designing around existing behavior, distinguish current requirements from inherited machinery. Discuss a smaller ownership or replacement boundary when it would remove substantial complexity; do not silently preserve old behavior as a requirement.
 - Start from the user's observed friction. Trace it to the instruction, routing decision, tool capability, or script that controls it. Use relevant session evidence when available; distinguish an observed failure from a predicted risk.
-- For wasted Primary tokens, inspect task boundaries, brief size, raw output leakage, repeated research, and premature specialist closure. Do not assume that fewer agents means lower cost.
+- For wasted Primary tokens, inspect task boundaries, brief size, raw output leakage, repeated research, and unnecessary specialist lifecycle churn. Do not assume that fewer agents means lower cost.
 - For stalled or incomplete work, inspect ownership, completion conditions, correction routing, and whether the requested tool exists in the active host. Do not compensate for unavailable capabilities with stronger prose.
 - For duplicated policy, keep the controlling rule with its owner and remove restatements. Check whether apparently repeated text is delivered to a different role or runtime context before deleting it.
 - For instruction cleanup, remove conflicting, duplicated, superseded, or inactive guidance established by current evidence. Keep concrete constraints that prevent known failures; do not replace them with vague advice to use judgment.
