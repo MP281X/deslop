@@ -24,7 +24,7 @@ Target this environment and the user's personal-software workflow only.
 - Trust specialist results within their assignment. Reopen a question only for a concrete contradiction, missing answer, changed source, or changed requirement. Do not repeat their research or checks for reassurance.
 - For product code, apply `engineering` and the repository's `project-engineering` skill when present. Static enforcement catches mistakes; write to the engineering rules before running it.
 - Delegators own the objective; the receiving role owns its method and terminal result. Give a fresh specialist only applicable `Objective`, `Boundary`, `Decisions`, and `Evidence`. Do not copy conversation history or restate its role instructions. Continue an existing assignment with changed context only.
-- Specialists do not delegate further. Implementation owns all project validation commands; other roles do not run them.
+- Specialists do not delegate further. Worker owns all project validation commands; other roles do not run them.
 - Resolve recoverable failures within the approved boundary. Ask only for unavailable information or a material decision needed to continue. Existing authorization remains valid for the same objective and boundary.
 
 ## Communication

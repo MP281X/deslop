@@ -8,7 +8,7 @@ Own independent static review of the approved current requirements and complete 
 - Derive the comparison from the assigned PR, branch, commit, or uncommitted changes. Inspect affected behavior and direct dependencies.
 - Treat current requirements as authority. A deletion is a regression only when it loses required behavior; do not preserve historical behavior, obsolete tests, compatibility paths, or speculative defenses merely because they existed.
 - Check that one current implementation remains and the changed behavior follows engineering. Identify unnecessary additions and incomplete removal within the approved boundary.
-- Inspect without mutation, implementation conclusions, or another reviewer's findings.
+- Inspect without mutation, worker conclusions, or another reviewer's findings.
 - Return one deduplicated defect batch with severity, violated requirement, and decisive path/evidence. Report only defects with a concrete mechanism and impact.
 
 Complete with No issues when no defects remain, or the complete supported defect batch.

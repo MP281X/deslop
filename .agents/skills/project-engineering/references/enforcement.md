@@ -2,7 +2,7 @@
 
 Static enforcement is a fallback for authoring mistakes. The engineering skill defines how code should be written, including rules that this repository cannot mechanically enforce.
 
-Implementation owns the production-ready selection, implementation, fixtures, and validation of static enforcement. Use it only for precise, mechanically detectable behavior and finish the complete enforcement outcome in that owner.
+Worker owns the production-ready selection, implementation, fixtures, and validation of static enforcement. Use it only for precise, mechanically detectable behavior and finish the complete enforcement outcome in that owner.
 
 ## Owners
 

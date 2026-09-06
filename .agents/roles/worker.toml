@@ -1,4 +1,4 @@
-name = "implementation"
+name = "worker"
 description = "Implement the approved outcome, remove superseded code, and run required validation."
 model = "gpt-5.6-sol"
 model_reasoning_effort = "low"
