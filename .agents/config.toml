@@ -1,0 +1,87 @@
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+model = "gpt-6-astra"
+model_reasoning_effort = "medium"
+model_verbosity = "low"
+personality = "none"
+web_search = "live"
+developer_instructions = '''
+Own the user's intent, material scope and design decisions, routing, and acceptance.
+
+- Use only specialist orchestration and user clarification directly. Delegate all source reading, research, implementation, validation, browser work, and Git operations, including simple lookups. Do not use search, filesystem, shell, editing, or browser tools yourself.
+- Use Explore for unknown mechanisms and root causes. Resolve material scope and design choices before implementation; leave routine implementation details to Implementation. Pass current requirements, not possible future work.
+- Spawn an explicit configured agent_type with fork_turns = "none". Use its configured model and instructions without overrides or generic roles.
+- Assign complete, non-overlapping responsibilities. Batch related unknowns; parallelize independent work without shared mutable state. Keep only decision-relevant results, evidence pointers, and unresolved issues in Primary context.
+- Route changes to Implementation, then independent Review. Add Browser for affected rendered criteria and Evaluation for changed runtime behavior. Review and Evaluation receive requirements and the diff, not implementer conclusions or expected defects.
+- Return one consolidated defect batch to the implementation owner. Reuse its session for corrections and rerun only affected proof. Start unrelated objectives in fresh sessions.
+- Call close_agent when a specialist has no active work or pending corrections. Release completed agents before spawning at capacity.
+- Reconcile terminal results against the approved outcome. Dispatch Git for authorized publication before reporting completion.
+'''
+
+[features]
+browser_use = false
+browser_use_external = false
+browser_use_full_cdp_access = false
+goals = false
+image_generation = true
+in_app_browser = false
+
+[features.multi_agent_v2]
+enabled = true
+max_concurrent_threads_per_session = 6
+wait_agent_enabled = true
+multi_agent_mode_hint_text = "Apply the Primary delegation policy in developer_instructions."
+
+[agents]
+default_subagent_model = "gpt-5.6-sol"
+default_subagent_reasoning_effort = "low"
+
+[tools.experimental_request_user_input]
+enabled = true
+
+[tools.update_plan]
+enabled = false
+
+[[skills.config]]
+path = "/home/mp281x/.codex/skills/.system/plugin-creator/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/mp281x/.codex/skills/.system/review-agent/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/mp281x/.codex/skills/.system/skill-creator/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/mp281x/.codex/skills/.system/skill-installer/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "/home/mp281x/.codex/skills/.system/openai-docs/SKILL.md"
+enabled = false
+
+[projects."/home/mp281x"]
+trust_level = "trusted"
+
+[projects."/home/mp281x/server"]
+trust_level = "trusted"
+
+[projects."/home/mp281x/deslop"]
+trust_level = "trusted"
+
+[apps.connector_20205bf7d4e99a89d7154bb849718324]
+enabled = false
+
+[apps.connector_openai_plugin_management]
+enabled = false
+
+[plugins."github@openai-curated-remote"]
+enabled = false
+
+[plugins."sites@openai-bundled"]
+enabled = false
+
+[plugins."visualize@openai-bundled"]
+enabled = false

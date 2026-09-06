@@ -28,6 +28,9 @@ jobs:
       - name: Check
         run: vp run check
 
+      - name: Test
+        run: vp run test
+
       - name: Build
         if: github.ref == 'refs/heads/main'
         run: vp run build

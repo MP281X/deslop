@@ -1,10 +1,30 @@
+## Environment
+
+Environment: Debian 13.6 (trixie). Use dedicated tools first.
+
+Use `node` for ad hoc scripting; never use Python.
+
+| Use                  | Tool              |
+| -------------------- | ----------------- |
+| Search text          | `rg`              |
+| Process JSON         | `jq`              |
+| Run JavaScript       | `node`            |
+| Install dependencies | `vp install`      |
+| Run scripts          | `vp run <script>` |
+| Run package binaries | `vpx <binary>`    |
+
+Vite Plus only; never invoke another package manager.
+
+Target this environment and the user's personal-software workflow only.
+
 ## Behavior
 
 - Complete the user's approved objective within its mutation boundary. Preserve unrelated work and data.
-- Solve the actual problem with the smallest complete change. Reassess existing code in the affected behavior and its dependencies against current requirements. Remove superseded paths, compatibility layers, redundant validation, unused abstractions, and obsolete tests in the same change. Keep one current implementation; do not retain code for hypothetical future use.
+- Solve the actual problem with the smallest complete change. Reassess existing code in the affected behavior and its dependencies against current requirements. Remove superseded paths, compatibility layers, redundant validation, unused abstractions, and obsolete tests in the same change. Keep one current implementation; do not retain code for hypothetical future use. Treat future directions as context, not requirements. When equally simple designs satisfy the current need, prefer one that leaves a plausible future change straightforward.
 - Trust specialist results within their assignment. Reopen a question only for a concrete contradiction, missing answer, changed source, or changed requirement. Do not repeat their research or checks for reassurance.
 - For product code, apply `engineering` and the repository's `project-engineering` skill when present. Static enforcement catches mistakes; write to the engineering rules before running it.
 - Delegators own the objective; the receiving role owns its method and terminal result. Give a fresh specialist only applicable `Objective`, `Boundary`, `Decisions`, and `Evidence`. Do not copy conversation history or restate its role instructions. Continue an existing assignment with changed context only.
+- Specialists do not delegate further. Implementation owns all project validation commands; other roles do not run them.
 - Resolve recoverable failures within the approved boundary. Ask only for unavailable information or a material decision needed to continue. Existing authorization remains valid for the same objective and boundary.
 
 ## Communication
