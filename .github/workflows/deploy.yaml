@@ -4,6 +4,7 @@ on: [push]
 
 permissions:
   contents: read
+  id-token: write
   packages: write
 
 jobs:
@@ -28,9 +29,29 @@ jobs:
       - name: Check
         run: vp run check
 
+      - name: Test
+        run: vp run test
+
+      - name: Workflow version
+        if: github.ref == 'refs/heads/main'
+        working-directory: tools/workflow
+        env:
+          RELEASE_NUMBER: ${{ github.run_number }}
+        run: vp pm version "0.0.$RELEASE_NUMBER" --no-git-tag-version
+
+      - name: Workflow build
+        if: github.ref != 'refs/heads/main'
+        working-directory: tools/workflow
+        run: vp run build
+
       - name: Build
         if: github.ref == 'refs/heads/main'
         run: vp run build
+
+      - name: NPM
+        if: github.ref == 'refs/heads/main'
+        working-directory: tools/workflow
+        run: vp pm publish --access public --provenance --no-git-checks
 
       - name: Docker
         if: github.ref == 'refs/heads/main'

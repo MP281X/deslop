@@ -245,6 +245,8 @@ importers:
         specifier: latest
         version: 1.80.0
 
+  tools/workflow: {}
+
 packages:
 
   '@antfu/install-pkg@1.1.0':
