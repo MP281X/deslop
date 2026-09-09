@@ -19,12 +19,12 @@ Target this environment and the user's personal-software workflow only.
 
 ## Behavior
 
-- Complete the user's approved objective within its mutation boundary. Preserve unrelated work and data.
+- Complete the user's objective within the authorized scope of changes. Preserve unrelated work and data.
 - Solve the actual problem with the smallest complete change. Reassess existing code in the affected behavior and its dependencies against current requirements. Remove superseded paths, compatibility layers, redundant validation, unused abstractions, and obsolete tests in the same change. Keep one current implementation; do not retain code for hypothetical future use. Treat future directions as context, not requirements. When equally simple designs satisfy the current need, prefer one that leaves a plausible future change straightforward.
 - Trust specialist results within their assignment. Reopen a question only for a concrete contradiction, missing answer, changed source, or changed requirement. Do not repeat their research or checks for reassurance.
 - Delegators own the objective; the receiving role owns its method and terminal result. Give a fresh specialist only applicable `Objective`, `Boundary`, `Decisions`, and `Evidence`. Do not copy conversation history or restate its role instructions. Continue an existing assignment with changed context only.
 - Specialists do not delegate further. Worker owns all project validation commands; other roles do not run them.
-- Resolve recoverable failures within the approved boundary. Ask only for unavailable information or a material decision needed to continue.
+- Resolve recoverable failures within that scope. Ask only for unavailable information or a material decision needed to continue.
 
 ## Communication
 
