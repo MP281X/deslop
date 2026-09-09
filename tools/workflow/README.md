@@ -33,13 +33,13 @@ From a source checkout, run `vp run build` in `tools/workflow`, then `node dist/
 | Neutral investigation and source upkeep         | `assets/codex/agents/explore.toml`        | gpt-5.6-luna low    |
 | Implementation, cleanup, project validation     | `assets/codex/agents/implementation.toml` | gpt-5.6-sol low     |
 | Independent static review                       | `assets/codex/agents/review.toml`         | gpt-5.6-sol medium  |
-| Rendered acceptance with agent-browser          | `assets/codex/agents/browser.toml`        | gpt-5.6-sol low     |
+| Rendered acceptance with host capabilities      | `assets/codex/agents/browser.toml`        | gpt-5.6-sol low     |
 | Agent-runtime behavioral proof                  | `assets/codex/agents/evaluation.toml`     | gpt-5.6-sol low     |
 | Authorized Git/GitHub publication               | `assets/codex/agents/git.toml`            | gpt-5.6-sol low     |
 | Product engineering and source index            | `assets/skills/engineering`               | Working specialists |
 | Reusable workflow changes                       | `assets/skills/workflow`                  | Working specialists |
 
-The primary dispatches configured roles with no inherited conversation history. Role files replace primary developer instructions in the child. Specialists return authoritative terminal results; the primary does not repeat their searches or checks. Reuse a session for its corrections through `followup_task`. Codex V2 releases execution capacity and unloads idle agents. Interrupt only active work that is no longer needed. The configured concurrent-thread limit is six.
+The primary handles initial planning with the user, dispatches configured roles with no inherited conversation history, corrects supported defects autonomously, and returns the completed result for the user's final review. Role files replace primary developer instructions in the child. Specialists return compact authoritative terminal evidence; the primary owns the user-facing report and does not repeat their searches or checks. Reuse a session for its corrections through `followup_task`. The configured concurrent-thread limit is six.
 
 Explore maintains only needed source checkouts under `/tmp/deslop/repos`, using the catalog in `assets/skills/engineering/references/sources.md`. Reference repositories are not auto-cloned at startup. OpenCode can remain a research reference but is no longer a workflow dependency.
 
@@ -49,11 +49,11 @@ The configuration targets Codex CLI `0.153.3` (`rust-v0.153.3`). Its V2 tools su
 
 Codex does not expose a generic built-in tool allowlist for the primary alone. Disabling shell in the parent also prevents children from enabling it. The primary's prohibition on direct research, shell, editing, and browsing is therefore an instruction, not hard tool isolation. No unsupported permission keys or custom runtime are added.
 
-The model identifiers must be available to the signed-in account. A host such as T3 Code or Codex Desktop can override configuration or tool availability; verify its effective settings before treating this workflow as active. No browser integration from those hosts is required: Browser uses agent-browser.
+Install the package separately on each machine that runs Codex: the always-on Linux VPS for T3 Code and the MacBook for Codex Desktop. Phones and browser clients do not each need an installation. Start a fresh session after installation. The model identifiers and configured roles must be available to the signed-in account, and each host can override configuration or tool availability. Verify the effective host binding in that fresh session before treating the workflow or a capability as active. Browser uses agent-browser for web criteria and host-provided native computer interaction for desktop criteria.
 
 Global settings from the user's own machine were not available in the Work VM. This configuration does not copy the VM's account, provider, or runtime-specific settings.
 
-Source contracts: [agent configuration](https://github.com/openai/codex/blob/rust-v0.153.3/codex-rs/config/src/config_toml.rs), [V2 settings](https://github.com/openai/codex/blob/rust-v0.153.3/codex-rs/features/src/feature_configs.rs), [role application](https://github.com/openai/codex/blob/rust-v0.153.3/codex-rs/core/src/agent/role.rs).
+Source contracts: [agent configuration](https://github.com/openai/codex/blob/rust-v0.153.3/codex-rs/config/src/config_toml.rs), [V2 settings](https://github.com/openai/codex/blob/rust-v0.153.3/codex-rs/features/src/feature_configs.rs), [role application](https://github.com/openai/codex/blob/rust-v0.153.3/codex-rs/core/src/agent/role.rs), [AGENTS.md loading](https://developers.openai.com/codex/agent-configuration/agents-md), and [session hooks](https://developers.openai.com/codex/hooks).
 
 ## Installer verification
 
@@ -69,4 +69,4 @@ GitHub Actions builds and tests this package on pushes. On `main`, it assigns ve
 
 ## ChatGPT Work
 
-This CLI installs files for a local Codex runtime. Copying them into a hosted Work session does not register configured roles or add unavailable tools. The root repository `AGENTS.md` points directly to the shared conduct so it can be read from a checkout. Cross-session Work distribution requires a supported plugin; automatic context loading through a plugin hook requires hook trust and scripts available in the execution environment. This package does not claim that Work integration is active.
+ChatGPT Work is the fallback when the primary machines are unavailable, such as on a plane, and may not have repository diff access. This CLI installs files for a local Codex runtime. Copying them into a hosted Work session does not register configured roles or add unavailable tools. Work requires a separate supported host integration, which is not currently active. A session-start context hook is the smallest candidate only if Work exposes plugin installation, hook trust and execution, and the required scripts. The workflow must report unavailable review or runtime evidence instead of claiming that installation supplied it, and it does not require planning or report files in Work.
