@@ -7,7 +7,7 @@ Search the relevant Effect module before using a native prototype, global, or cu
 | Intent                        | Operation                                          |
 | ----------------------------- | -------------------------------------------------- |
 | String or array length        | `String.length` / `Array.length`                   |
-| Known field or projection     | `Struct.get` / `Struct.pick` / `Struct.omit`       |
+| Projection in a composition   | `Struct.get` / `Struct.pick` / `Struct.omit`       |
 | Transform known fields        | `Struct.evolve`                                    |
 | Possibly absent dynamic entry | `Record.get`, preserving its `Option`              |
 | Plain immutable keyed values  | `HashMap` or `Record`                              |
@@ -23,6 +23,8 @@ const normalized = pipe(user, Struct.evolve({name: String.trim}))
 
 const enabled = pipe(flags, Record.get(key))
 ```
+
+Access a known field directly when no composition is needed: `user.name`. Use `Struct.get` when an accessor participates in a composition, such as `Array.map(users, Struct.get('name'))`.
 
 Shape transformations must be required by the current contract. A convenient Effect operation does not justify changing the shape. A dynamic lookup returns `Option` because absence is part of its semantics.
 
