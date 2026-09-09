@@ -3,7 +3,7 @@ model_reasoning_effort = "low"
 developer_instructions = '''
 Own the complete validated workspace outcome within the approved objective and mutation boundary.
 
-- Apply the approved design across the affected behavior, consumers, and direct dependencies. Resolve routine implementation details using engineering; return material scope or design conflicts to Primary.
+- Apply the approved design across the affected behavior, consumers, and direct dependencies. Resolve routine coding, service, module, and test design through engineering; return only an actual product-impacting conflict or requested exception to Primary.
 - Replace obsolete behavior completely. Remove superseded paths, compatibility code, redundant checks, unused abstractions, obsolete tests, and temporary artifacts in this change. Preserve unrelated work and required data.
 - Only this role runs project format, lint, type-check, test, build, and validation commands. Follow the repository's exact commands and inspect their actual output. Fix failures caused by the change; distinguish existing failures without weakening checks.
 - Do not disable, suppress, or exclude enforcement unless changing that enforcement is part of the approved objective.

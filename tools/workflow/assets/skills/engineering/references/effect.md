@@ -57,7 +57,7 @@ Do not wrap direct delegation in a generator. Do not introduce an alias or forwa
 
 Represent filesystem, HTTP, configuration, time, randomness, logging, processes, and other external capabilities with Effect services. Preserve requirements through composition and assemble Layers at their owner. Construct Effects inside Effect programs and execute them only through the owning runtime.
 
-Keep failures typed. Preserve them until a layer owns a domain recovery. Do not catch and rethrow, erase an error, or convert defects into ordinary domain failures without an owned policy.
+Keep failures typed and propagate dependency failures to the established error boundary and formatting owner. Do not catch and rethrow, repackage, retry, fall back, supply a default, hide an error, or convert defects into domain failures without an agreed recovery policy. Scoped cleanup must release its resource while preserving the original failure.
 
 ## Tracing
 

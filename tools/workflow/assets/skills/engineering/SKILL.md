@@ -7,19 +7,19 @@ Write code to these rules before static analysis. Apply the repository's project
 
 ## Decisions
 
-| Decision   | Requirement                                                                                                                                                                                  |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Boundary   | Decode unknown external input once through a Schema at the boundary that admits it. Trust and preserve the resulting typed value internally.                                                 |
-| Shape      | Let one Schema and its inferred type own each public boundary shape, including required validation, defaults, and transformations.                                                           |
-| Effect     | Put application logic, dependencies, failures, concurrency, resources, and external capabilities in Effect. Keep transformations pure and compose the matching Effect modules.               |
-| Capability | Use installed libraries and their public APIs before writing equivalent custom logic. Use Effect services instead of native platform capabilities.                                           |
-| Failure    | Preserve Effect's typed error channel. Recover only where a meaningful recovery policy is owned.                                                                                             |
-| Mutation   | Do not mutate arguments, props, published service values, or returned data. Use owned Effect state for required changes without `readonly` syntax.                                           |
-| Expression | Prefer explicit, idiomatic operations even when they are more verbose than native syntax. Do not hide simple logic, defaults, or signature changes behind wrappers.                          |
-| Ownership  | Give each state value, validation, derived value, resource lifetime, service construction, and recovery policy one owner.                                                                    |
-| Scope      | Implement the smallest complete form of the current requirement. Remove superseded paths, compatibility layers, redundant checks, and obsolete tests in the affected area. Git owns history. |
-| Tests      | Add durable behavior tests when regression cost warrants them. Test the current contract at its narrowest public seam.                                                                       |
-| Evidence   | Resolve uncertain library behavior from its implementation and maintained tests using the source catalog. Examples demonstrate choices; source defines behavior.                             |
+| Decision   | Requirement                                                                                                                                                                                                                         |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Boundary   | Decode unsafe data once through a Schema at the real external boundary that admits it. Normalize there when the contract requires a canonical internal representation, then trust the result.                                       |
+| Shape      | Let one Schema and its inferred type own each public boundary shape. Infer implementation types; do not add parallel interfaces, needless annotations, casts, or internal revalidation.                                             |
+| Effect     | Represent effectful application logic, dependencies, failures, sequencing, concurrency, resources, and external capabilities compositionally in Effect and execute them through the owning runtime. Keep pure transformations pure. |
+| Capability | Fully use installed libraries and idiomatic Effect modules before custom logic. Inspect the installed source, types, and maintained tests for exact API signatures and semantics.                                                   |
+| Failure    | Fail fast through Effect's typed error channel to its established boundary and formatter. Recover, retry, or default only for agreed product behavior.                                                                              |
+| Mutation   | Do not mutate arguments, props, published service values, or returned data. Use owned Effect state for required changes without `readonly` syntax.                                                                                  |
+| Expression | Prefer explicit, composable, locally readable code even when verbose. Add a helper, layer, or file only for genuine complexity or a shared rule needing one owner, never naming or reuse alone.                                     |
+| Ownership  | Give each state value, validation, derived value, resource lifetime, service construction, and recovery policy one owner.                                                                                                           |
+| Scope      | Implement the smallest complete current MVP. Add no speculative behavior, adapter, compatibility path, or broad module refactor. Remove superseded code only in the approved affected behavior.                                     |
+| Tests      | Test only app-owned decisions or logic whose plausible regression cost warrants durable protection, through public inputs and results.                                                                                              |
+| Evidence   | Inspect affected code and direct dependencies before changing them. Examples demonstrate choices; installed source and types define library behavior.                                                                               |
 
 ## References
 
