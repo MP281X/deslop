@@ -10,7 +10,7 @@ Run the npm package with Node.js 26 or newer:
 vpx @deslop/workflow
 ```
 
-The installer copies into `${CODEX_HOME:-$HOME/.codex}`. It replaces `config.toml`, `AGENTS.md`, `agents/deslop`, and the `engineering` and `workflow` skill directories. It saves the prior owned files under `.deslop-backups` before replacement. Other agents, skills, credentials, and session data are preserved. Existing settings inside `config.toml` are replaced by the minimal versioned configuration; recover any required account-specific settings from the backup.
+The installer copies into `${CODEX_HOME:-$HOME/.codex}`. It replaces `config.toml`, `AGENTS.md`, `agents/deslop`, and the `engineering` and `workflow` skill directories. Other agents, skills, credentials, session data, and historical backup directories are preserved. Existing settings inside the owned paths are deleted rather than merged or backed up.
 
 Run the newer package version to install its snapshot. Switching repository branches does not change the installed workflow. Restart Codex sessions after installation. The installer does not install Codex, Vite+, agent-browser, or authenticate accounts.
 
@@ -49,11 +49,9 @@ The configuration targets Codex CLI `0.153.3` (`rust-v0.153.3`). Its V2 tools su
 
 Codex does not expose a generic built-in tool allowlist for the primary alone. Disabling shell in the parent also prevents children from enabling it. The primary's prohibition on direct research, shell, editing, and browsing is therefore an instruction, not hard tool isolation. No unsupported permission keys or custom runtime are added.
 
-Install the package separately on each machine that runs Codex: the always-on Linux VPS for T3 Code and the MacBook for Codex Desktop. Phones and browser clients do not each need an installation. Start a fresh session after installation. The model identifiers and configured roles must be available to the signed-in account, and each host can override configuration or tool availability. Verify the effective host binding in that fresh session before treating the workflow or a capability as active. Browser uses agent-browser for web criteria and host-provided native computer interaction for desktop criteria.
+Install the package on each machine that runs Codex and start a fresh session afterward. The model identifiers and configured roles must be available to the signed-in account, and each host can override configuration or tool availability. Verify the effective host binding in that fresh session before treating the workflow or a capability as active. Browser uses agent-browser for web criteria and host-provided native computer interaction for desktop criteria.
 
-Global settings from the user's own machine were not available in the Work VM. This configuration does not copy the VM's account, provider, or runtime-specific settings.
-
-Source contracts: [agent configuration](https://github.com/openai/codex/blob/rust-v0.153.3/codex-rs/config/src/config_toml.rs), [V2 settings](https://github.com/openai/codex/blob/rust-v0.153.3/codex-rs/features/src/feature_configs.rs), [role application](https://github.com/openai/codex/blob/rust-v0.153.3/codex-rs/core/src/agent/role.rs), [AGENTS.md loading](https://developers.openai.com/codex/agent-configuration/agents-md), and [session hooks](https://developers.openai.com/codex/hooks).
+Source contracts: [agent configuration](https://github.com/openai/codex/blob/rust-v0.153.3/codex-rs/config/src/config_toml.rs), [V2 settings](https://github.com/openai/codex/blob/rust-v0.153.3/codex-rs/features/src/feature_configs.rs), [role application](https://github.com/openai/codex/blob/rust-v0.153.3/codex-rs/core/src/agent/role.rs), and [AGENTS.md loading](https://developers.openai.com/codex/agent-configuration/agents-md).
 
 ## Installer verification
 
@@ -61,12 +59,8 @@ Source contracts: [agent configuration](https://github.com/openai/codex/blob/rus
 vp run test
 ```
 
-The test uses temporary homes. It covers copying, backups, replacement of obsolete owned files, preservation of unrelated files, and refusal to traverse symlinked managed parents. It does not exercise authenticated model sessions or establish behavioral compliance with role instructions.
+The test uses a temporary home. It covers installation, full replacement of owned paths on reinstall, and preservation of unrelated files. It does not exercise authenticated model sessions or establish behavioral compliance with role instructions.
 
 ## Publication
 
 GitHub Actions builds and tests this package on pushes. On `main`, it assigns version `0.0.<run-number>` before building, then publishes publicly to npm with provenance through `vp pm publish`, following the former Workbench release flow. Configure the npm trusted publisher for `MP281X/deslop` and `deploy.yaml` with direct publishing enabled before the first CI release. Package creation and npm account configuration are external prerequisites; the repository does not provision them.
-
-## ChatGPT Work
-
-ChatGPT Work is the fallback when the primary machines are unavailable, such as on a plane, and may not have repository diff access. This CLI installs files for a local Codex runtime. Copying them into a hosted Work session does not register configured roles or add unavailable tools. Work requires a separate supported host integration, which is not currently active. A session-start context hook is the smallest candidate only if Work exposes plugin installation, hook trust and execution, and the required scripts. The workflow must report unavailable review or runtime evidence instead of claiming that installation supplied it, and it does not require planning or report files in Work.

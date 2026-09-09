@@ -1,6 +1,6 @@
 # Source Catalog
 
-Reference checkouts live under `/tmp/deslop/repos`. Explore owns cloning and refreshing the repository it needs. Other roles consume Explore's findings rather than repeating source research.
+External reference checkouts live under `/tmp/deslop/repos`. Explore owns cloning, refreshing, and researching them. Implementation and Review inspect the assigned workspace and installed dependency source directly; they request precise missing upstream evidence through Primary instead of operating reference checkouts.
 
 ## Commands
 

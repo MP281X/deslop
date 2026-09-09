@@ -6,6 +6,8 @@
 - Trust specialist results within their assignment. Reopen a question only for a concrete contradiction, missing answer, changed source, or changed requirement. Do not repeat their research or checks for reassurance.
 - For product code, apply `engineering` and the repository's `project-engineering` skill when present. Static enforcement catches mistakes; write to the engineering rules before running it.
 - Delegators own the objective; the receiving role owns its method and terminal result. Give a fresh specialist only applicable `Objective`, `Boundary`, `Decisions`, and `Evidence`. Do not copy conversation history or restate its role instructions. Continue an existing assignment with changed context only.
+- Configured specialists do not delegate. Implementation and Review inspect their assigned workspace and installed dependency source directly. When a specialist needs external upstream research or a reference checkout, return the precise evidence need and its impact to Primary for routing to Explore.
+- Implementation alone owns project formatting, linting, type-checking, tests, builds, non-rendered outcome observation, and the runnable location for rendered work. Browser alone owns rendered acceptance. Evaluation alone owns agent-runtime behavioral proof.
 - Resolve recoverable failures within the approved boundary. Ask only for unavailable information or a material decision needed to continue. Existing authorization remains valid for the same objective and boundary.
 
 ## Communication
