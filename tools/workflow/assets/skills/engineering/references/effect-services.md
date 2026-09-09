@@ -4,20 +4,18 @@ The service owner defines an explicit public interface and named Layers. Keep th
 
 Expose a useful Effect state primitive such as `SubscriptionRef` as the intentional public interface for both snapshots and subscriptions; do not hide it behind read or stream wrappers. By service convention, consumers use it to observe published state and leave semantic mutations to the owning service. This convention does not make the primitive's mutation API inaccessible.
 
+Here, the state is a plain record and `input` is already boundary-decoded, so the update needs no class, defaults, or invariant construction:
+
 ```ts
 return Workspace.of({
 	state,
 	update: Effect.fn('Workspace.update')(input =>
-		SubscriptionRef.modifySome(state, current => {
-			const next = WorkspaceState.make({...current, name: input.name})
-			if (Schema.toEquivalence(WorkspaceState)(current, next)) return Tuple.make(undefined, Option.none())
-			return Tuple.make(undefined, Option.some(next))
-		})
+		SubscriptionRef.update(state, current => ({...current, name: input.name}))
 	)
 })
 ```
 
-Suppress equivalent state updates when unchanged state must not emit. Preserve repeated equal values when they are meaningful events.
+Use the simplest operation that satisfies the required behavior. Suppress equivalent updates only when current behavior explicitly requires unchanged state not to emit; preserve repeated equal values when they are meaningful events.
 
 ## Lifetime
 
