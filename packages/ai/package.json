@@ -7,7 +7,7 @@
 		"#service": "./src/service.ts"
 	},
 	"exports": {
-		"./lib/utils": "./src/lib/utils.ts",
+		"./utils": "./src/lib/utils.ts",
 		"./schema": "./src/schema.ts",
 		"./service": "./src/service.ts"
 	},

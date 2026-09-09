@@ -12,6 +12,8 @@ Move application logic and state as far into Effect and Atom as their ownership 
 
 Keep one state owner. Put shared derivations in the Atom graph rather than recomputing them in every consumer. A pure local display calculation does not require a shared Atom.
 
+Use the normal Atom lifetime by default. Use `Atom.keepAlive` only when continuity is required while the Atom has no consumers.
+
 ```ts
 const visibleItemsAtom = Atom.mapResult(itemsAtom, Array.filter(Struct.get('visible')))
 ```

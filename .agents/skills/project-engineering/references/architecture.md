@@ -25,16 +25,14 @@ Apply engineering's service ownership rules. In this repository, constructors un
 
 ## Real-Time State
 
-Expose authoritative server state as an Effect RPC stream. Synchronize its latest emission with a kept-alive Atom instead of pull-oriented query batches or component-owned subscriptions.
+Expose authoritative server state as an Effect RPC stream. Synchronize its latest emission with a runtime Atom instead of pull-oriented query batches or component-owned subscriptions. Use the normal Atom lifetime; follow engineering's frontend lifetime policy when continuity is required without consumers.
 
 ```ts
-export const notesAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(
-		pipe(
-			RpcClient,
-			Effect.map(client => client('notes.changes', undefined)),
-			Stream.unwrap
-		)
+export const notesAtom = RpcClient.runtime.atom(
+	pipe(
+		RpcClient,
+		Effect.map(client => client('notes.changes', undefined)),
+		Stream.unwrap
 	)
 )
 ```
