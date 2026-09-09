@@ -30,17 +30,19 @@ Evaluate an effectful fact once within the operation that owns its validity and 
 
 ## Program Shape
 
-| Shape                                    | Form                                           |
-| ---------------------------------------- | ---------------------------------------------- |
-| Direct delegation                        | Arrow; reuse delegated tracing                 |
-| Argument-taking branching or sequencing  | `Effect.fnUntraced`                            |
-| Callback constructing a sequenced Effect | `Effect.fnUntraced`                            |
-| Public service logic owning a checkpoint | Named `Effect.fn`                              |
-| Zero-input branching or sequencing       | `Effect.gen`                                   |
-| Zero-input checkpoint                    | Name-first `Effect.withSpan` around the Effect |
+Use the shortest form that preserves semantics and lets TypeScript infer the implementation. Start with `pipe` for immediate straight-line composition or `flow` when the composition is reused.
+
+| Need                                                    | Form                                                    |
+| ------------------------------------------------------- | ------------------------------------------------------- |
+| Safe delegation with the same signature                 | Reuse the function value                                |
+| Immediate or reusable straight-line composition         | `pipe` or `flow`                                        |
+| Straight-line transformation or sequencing              | The matching Effect combinator in the pipeline          |
+| Dependent sequencing or branching clearer as statements | `Effect.gen`                                            |
+| Argument-taking generator                               | `Effect.fnUntraced`                                     |
+| Intentional named tracing checkpoint                    | Named `Effect.fn` or `Effect.withSpan` around an Effect |
 
 ```ts
-save: input => storage.save(input)
+save: storage.save
 ```
 
 ```ts
@@ -51,7 +53,9 @@ save: Effect.fnUntraced(function* (input) {
 })
 ```
 
-Do not wrap direct delegation in a generator. Do not introduce an alias or forwarding helper merely to change argument order, rename an operation, hide a default, or erase part of its signature. Keep reusable pure composition pure; `flow` does not make effectful operations pure.
+Use a generator when dependent branching or several intermediate values would otherwise require nested callbacks or an artificial state bundle. The number of asynchronous steps alone does not justify one. A zero-input program is an Effect value, not an `Effect.fn` call. Do not wrap direct delegation in a generator, an immediately invoked function, or a forwarding callback.
+
+Reuse a function value only when doing so preserves required arguments, laziness, tracing, receiver binding, and the callback signature. Keep a wrapper when it intentionally adapts any of those semantics. Do not introduce an alias or forwarding helper merely to change argument order, rename an operation, hide a default, or erase part of its signature. Keep reusable pure composition pure; `flow` does not make effectful operations pure.
 
 ## Capabilities And Ownership
 
@@ -69,4 +73,4 @@ Choose traversal from the required failure and ordering contract. Use `Effect.va
 
 ## Source Lookup
 
-Use [the source catalog](sources.md) when an API, type, lifetime, or runtime behavior is uncertain. Search the relevant package for the exported symbol, implementation, and maintained tests. Avoid copying a broad library inventory into project instructions.
+Use [the source catalog](sources.md) when an API, type, lifetime, or runtime behavior is uncertain. Read the installed exported symbol's JSDoc and types first, then its implementation and maintained tests as needed. Avoid copying library mechanics or a broad inventory into project instructions.

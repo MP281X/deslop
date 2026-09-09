@@ -39,6 +39,6 @@ export const notesAtom = Atom.keepAlive(
 )
 ```
 
-RPC callbacks delegate directly when no lookup or sequencing is required. Use `Effect.fnUntraced` and `Stream.unwrap` when constructing a stream through Effectful lookup. The RPC runtime owns transport spans and infinite stream tracing. Handlers do not add duplicate spans.
+RPC callbacks reuse the delegated function when their signature and receiver semantics match. Compose an effectful stream lookup as a flat pipeline and use `Stream.unwrap` when the pipeline produces an `Effect<Stream<...>>`. Use `Effect.fnUntraced` only when an argument-taking generator is needed for actual dependent sequencing or branching. The RPC runtime owns transport spans and infinite stream tracing. Handlers do not add duplicate spans.
 
 When current requirements replace an operation or state shape, update its RPC contract, handler, client consumer, and tests together. Remove the superseded contract and path instead of keeping parallel versions or compatibility branches.

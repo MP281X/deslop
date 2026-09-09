@@ -16,14 +16,11 @@ Keep one state owner. Put shared derivations in the Atom graph rather than recom
 const visibleItemsAtom = Atom.mapResult(itemsAtom, Array.filter(Struct.get('visible')))
 ```
 
-Use immutable structured domain keys for Atom families instead of delimiter-joined strings. A Schema-defined record identifies its fields and Effect supplies structural equality. Do not mutate a key after use.
+Use immutable structured domain keys for Atom families instead of delimiter-joined strings. A Schema-defined record identifies its fields and Effect supplies structural equality. Do not mutate a key after use. In this illustrative case, `query` is an existing typed Atom factory whose single argument is the decoded domain key:
 
 ```ts
-type ItemKey = typeof ItemKey.Type
-const ItemKey = Schema.Struct({itemId: Schema.String, workspaceId: Schema.String})
-
-const itemAtom = Atom.family((key: ItemKey) => query(key))
-const item = itemAtom({itemId, workspaceId})
+const itemAtom = Atom.family(query)
+const item = itemAtom(itemKey)
 ```
 
 Expose mutation pending state and failure beside the initiating control. Render query and stream results through Suspense and error boundaries. Keep DOM-local input in React and use its native null ref form.
