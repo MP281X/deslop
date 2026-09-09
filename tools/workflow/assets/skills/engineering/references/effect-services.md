@@ -2,7 +2,7 @@
 
 The service owner defines its public interface and named Layers. Infer implementation requirements, errors, and values through service construction helpers. Consumers use the interface and exposed Layers instead of duplicating shapes or assembling implementation details.
 
-Expose a useful Effect state primitive such as `SubscriptionRef` instead of wrapping each native operation. Keep semantic mutations at the owning service. Consumers observe published state without mutating it.
+Expose a useful Effect state primitive such as `SubscriptionRef` as the intentional public interface for both snapshots and subscriptions; do not hide it behind read or stream wrappers. By service convention, consumers use it to observe published state and leave semantic mutations to the owning service. This convention does not make the primitive's mutation API inaccessible.
 
 ```ts
 return Workspace.of({

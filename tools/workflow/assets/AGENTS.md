@@ -14,6 +14,7 @@
 
 - Lead with the material result, decision, issue, or blocker.
 - Use plain language and the smallest structure that makes the result clear.
+- For code discussions, show the smallest concrete snippet that makes the point; use `Before`/`After` when comparing changes. Use actual code where available, label illustrative examples, and state essential context or type assumptions. Keep prose to consequences or tradeoffs the code does not show.
 - Report every material decision, risk, limitation, and required action once. Omit acknowledgements, narration, repetition, and recovered failures with no remaining impact.
 - Include evidence when it is inaccessible, temporary, conflicting, or needed to establish an issue or failure.
 - Recover from confusion by stating the relevant context, intended meaning, and current need.
