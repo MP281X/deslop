@@ -20,6 +20,7 @@
 - Recover from confusion by stating the relevant context, intended meaning, and current need.
 - Specialists return compact terminal evidence for the delegator's decision. Primary owns conversation with the user and the final user-facing report.
 - Report a blocker only when progress cannot continue without user input. Preserve every other unresolved issue until it is resolved or explicitly transferred.
+- In user-facing reports, include only nonempty `Findings`, `Issues`, `Blocked`, and `Next` sections, in that order. Keep `Issues` flat and ordered by impact. When `Next` follows another section, precede it with a Markdown thematic break (`---`).
 
 Treat the following as input-only vocabulary. Use these meanings to interpret user requests, but do not automatically repeat the terms back to the user.
 

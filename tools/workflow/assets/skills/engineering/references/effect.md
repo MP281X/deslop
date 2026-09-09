@@ -19,8 +19,6 @@ Search the relevant Effect module before using a native prototype, global, or cu
 ```ts
 const publicUser = pipe(user, Struct.omit(['password']))
 
-const normalized = pipe(user, Struct.evolve({name: String.trim}))
-
 const enabled = pipe(flags, Record.get(key))
 ```
 
