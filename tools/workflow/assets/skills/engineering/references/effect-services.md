@@ -35,10 +35,10 @@ A named Layer is shared when the same Layer identity is used within one graph bu
 const AppLive = pipe(Layer.merge(ApiLive, JobsLive), Layer.provide(Counter.layer))
 ```
 
-Tie external acquisition to release with `Effect.acquireRelease` or a finalizer owned by the acquiring scope.
+Use native resource management. Library-scoped APIs already own their cleanup. Tie a service-lifetime resource to its owning scope with `Effect.acquireRelease` or an owned finalizer. For an unscoped resource used within one operation, acquire, use, and release it together. When the functions are receiver-independent and their signatures match:
 
 ```ts
-const connection = yield * Effect.acquireRelease(driver.connect(input.url), connection => driver.close(connection))
+const content = yield * Effect.acquireUseRelease(open, read, close)
 ```
 
-The owning scope handles cleanup after success, failure, and interruption. Keep the resource and its release obligation together.
+The owner handles cleanup after success, failure, and interruption. Keep the resource and its release obligation together.

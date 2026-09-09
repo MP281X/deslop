@@ -5,7 +5,7 @@ Add a durable test only for an app-owned decision or logic that can plausibly re
 | Include                                              | Exclude                                                |
 | ---------------------------------------------------- | ------------------------------------------------------ |
 | Meaningful app-owned decisions and failure semantics | Types and behavior guaranteed by a library contract    |
-| Contractual boundary decoding and normalization      | Trivial operations, transforms, and helper mechanics   |
+| Meaningful app-owned boundary decisions              | Trivial operations, transforms, and helper mechanics   |
 | Public logic with controlled surrounding Layers      | Impossible, contrived, or post-boundary invalid inputs |
 | Approved tracing or transport behavior               | UI component details and third-party internals         |
 
@@ -13,7 +13,7 @@ Existing behavior is not a requirement by itself. Remove tests for superseded be
 
 Keep rendered interaction acceptance in Browser, where terminal visible output remains observable. Do not replace that acceptance with component tests or disable real output checks.
 
-Use fresh test Layers by default. Share an expensive lifecycle through `it.layer` only intentionally and account for shared harness state. The behavior owner provides reusable test Layers beside its public fixture. Consumers reuse those Layers instead of duplicating assembly. Use `Layer.succeed` for a constructed service and `Layer.effect` for effectful or scoped acquisition.
+Use fresh local test Layers by default. Share an expensive lifecycle through `it.layer` only intentionally and account for shared harness state. Extract a shared fixture only when meaningful setup is duplicated. Use `Layer.succeed` for a constructed service and `Layer.effect` for effectful or scoped acquisition.
 
 | Need                                   | Primitive                                                            |
 | -------------------------------------- | -------------------------------------------------------------------- |
