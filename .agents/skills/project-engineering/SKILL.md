@@ -3,19 +3,9 @@ name: project-engineering
 description: "Use with engineering for this repository's architecture, workspace, testing, components, or visual conventions."
 ---
 
-Extend the generic `engineering` skill with only this repository's selected architecture and conventions.
-
-| Owner       | Responsibility                                                       |
-| ----------- | -------------------------------------------------------------------- |
-| Effect      | Behavior, immutable data, state, resources, concurrency, and failure |
-| Server      | Authoritative application state                                      |
-| Effect RPC  | Frontend/backend operations and streaming boundary                   |
-| Effect Atom | Client synchronization and shared view state                         |
-| React       | Presentation                                                         |
-
 ## References
 
-| Work                                                              | Reference                                  |
+| Condition                                                         | Reference                                  |
 | ----------------------------------------------------------------- | ------------------------------------------ |
 | Application boundaries, RPC, client runtime, and source placement | [Architecture](references/architecture.md) |
 | Repository test placement and acceptance ownership                | [Testing](references/testing.md)           |

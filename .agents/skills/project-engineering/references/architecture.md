@@ -1,12 +1,12 @@
 # Application Architecture
 
-| Owner                         | Responsibility                                                                            | Forbidden duplicate                       |
-| ----------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------- |
-| Server                        | Authoritative application state                                                           | Client-owned canonical state              |
-| Effect RPC                    | Every frontend/backend operation and stream                                               | Parallel HTTP or ad hoc transport         |
-| `apps/<app>/src/lib/utils.ts` | Existing `RpcClient` `AtomRpc.Service` and transport                                      | Feature client service or transport Layer |
-| `ClientRuntime`               | `#root` lookup and global TanStack Router options                                         | Application-owned global option           |
-| Application entrypoint        | Call `ClientRuntime.makeRouter(routeTree)`, register its router type, render its provider | Runtime reconstruction                    |
+| Owner                         | Responsibility                                                                            |
+| ----------------------------- | ----------------------------------------------------------------------------------------- |
+| Server                        | Authoritative application state                                                           |
+| Effect RPC                    | Every frontend/backend operation and stream                                               |
+| `@deslop/runtime/client`      | RPC transport, `#root` lookup, and global TanStack Router options                         |
+| `apps/<app>/src/lib/utils.ts` | Application `RpcClient` `AtomRpc.Service` using the shared runtime transport              |
+| Application entrypoint        | Call `ClientRuntime.makeRouter(routeTree)`, register its router type, render its provider |
 
 ## Placement
 
@@ -21,7 +21,7 @@
 | Client Atom RPC runtime and shared app operations | `apps/<app>/src/lib/utils.ts`      |
 | Server entry module and complete Layer graph      | `apps/<app>/src/main.server.ts`    |
 
-The service class owns its public interface and named Layers. Constructors under `internal/*` infer requirements, errors, and output through `Service.of`; consumers do not define parallel service shapes or assemble implementation Layers.
+The service class owns its public interface and named Layers. Constructors under `internal/*` infer requirements, errors, and output through `Service.of`. Consumers do not define parallel service shapes or assemble implementation Layers.
 
 ## Real-Time State
 
@@ -39,4 +39,4 @@ export const notesAtom = Atom.keepAlive(
 )
 ```
 
-RPC callbacks delegate directly when no lookup or sequencing is required. Use `Effect.fnUntraced` and `Stream.unwrap` only when constructing a stream through Effectful lookup. The RPC runtime owns transport spans and infinite stream tracing; handlers do not add duplicate spans.
+RPC callbacks delegate directly when no lookup or sequencing is required. Use `Effect.fnUntraced` and `Stream.unwrap` only when constructing a stream through Effectful lookup. The RPC runtime owns transport spans and infinite stream tracing. Handlers do not add duplicate spans.

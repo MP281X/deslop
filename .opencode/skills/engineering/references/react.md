@@ -4,10 +4,7 @@
 | --------------------------------------------- | ----------------------------- |
 | Shareable or restorable navigation state      | TanStack Router search params |
 | Cross-component, async, derived, or real-time | Effect Atom                   |
-| External or application operation             | Existing project boundary     |
 | Ephemeral DOM handle or input                 | React                         |
-
-Use the project's existing boundary when one exists; otherwise call the local application or service API. Do not introduce a transport without evidence that the project needs one.
 
 ## Presentation Actions
 
@@ -59,11 +56,3 @@ const inputRef = useRef<HTMLInputElement>(null)
 ```
 
 Keep rendering pure. Compute randomness, time, and external effects outside the component and pass stable values as props or Atom state.
-
-## Source
-
-Resolve configured references, then inspect:
-
-- `effect`: `packages/effect/src/unstable/reactivity` and `packages/atom/react/src/Hooks.ts`
-- `react`: `packages/react/src/ReactHooks.js` and `compiler`
-- `tanstack-router`: `packages/router-core/src`

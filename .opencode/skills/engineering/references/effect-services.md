@@ -1,7 +1,5 @@
 # Effect Services
 
-Apply this reference only when the repository uses Effect services. Follow its existing interface and file ownership; this reference does not prescribe a folder structure or implementation split.
-
 ## Live state
 
 ```ts
@@ -64,7 +62,3 @@ const connection = yield * driver.connect(input.url)
 // GOOD
 const connection = yield * Effect.acquireRelease(driver.connect(input.url), connection => driver.close(connection))
 ```
-
-## Source
-
-Resolve the configured `effect` reference, then inspect `packages/effect/src/{SubscriptionRef,LayerMap,RcMap,Cache,ScopedCache,Duration,Scope}.ts`.

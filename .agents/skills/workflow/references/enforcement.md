@@ -1,29 +1,19 @@
 # Static enforcement
 
-**Boundary:** Put mechanically detectable behavior in static enforcement and semantic behavior in a skill.
+Implementation owns the production-ready selection, implementation, fixtures, and validation of static enforcement. Use it only for precise, mechanically detectable behavior and finish the complete enforcement outcome in that owner.
 
-## Own
+## Owners
 
-| Tool                          | Active owner                              | Available rules or source             |
-| ----------------------------- | ----------------------------------------- | ------------------------------------- |
-| TypeScript                    | `tsconfig.json`                           | `typescript` reference                |
-| Oxlint · Oxfmt                | `vite.config.ts`                          | `oxc` and `vite-plus` references      |
-| Effect diagnostics            | `vite.config.ts`                          | `effect-tsgo` reference               |
-| React Compiler · React Doctor | `vite.config.ts`                          | `react` and `react-doctor` references |
-| Fallow                        | `.fallowrc.json` · root `check` script    | `fallow` reference                    |
-| Custom Oxlint                 | `tools/oxlint-rules/src/oxlint-plugin.ts` | colocated tests                       |
+| Tool                   | Active owner                              | Available rules or source        |
+| ---------------------- | ----------------------------------------- | -------------------------------- |
+| TypeScript             | `tsconfig.json`                           | `typescript` reference           |
+| Generic Oxlint · Oxfmt | `vite.config.ts`                          | `oxc` and `vite-plus` references |
+| Fallow                 | `.fallowrc.json` · root `check` script    | `fallow` reference               |
+| Custom Oxlint          | `tools/oxlint-rules/src/oxlint-plugin.ts` | colocated tests                  |
 
 ## Selection
 
-```mermaid
-flowchart TD
-	S{Configured maintained rule?} -->|Yes| C[Use configured rule]
-	S -->|No| O{Compatible maintained option?}
-	O -->|Yes| M[Use maintained option]
-	O -->|No| X{Custom Oxlint applicable?}
-	X -->|Yes| L[Use custom Oxlint]
-	X -->|No| D[Route to domain skill]
-```
+Prefer a configured maintained rule, then a compatible maintained option. Otherwise use custom Oxlint only when every gate below passes; route nonmechanical behavior to its domain skill.
 
 Add custom Oxlint only when every gate is satisfied:
 
@@ -34,10 +24,6 @@ Add custom Oxlint only when every gate is satisfied:
 | Ownership  | No maintained equivalent      |
 | Correction | Stable canonical construction |
 
-| Evidence    | Requirement                                           |
-| ----------- | ----------------------------------------------------- |
-| Defect      | Exact invalid form and architectural reason           |
-| Proof       | Failing fixtures and valid counterexamples            |
-| Boundary    | Unsupported cases and narrowest syntax and path scope |
-| Correction  | One canonical Construction                            |
-| Suppression | Irreducible, narrow, inline, and reasoned             |
+## Implementation proof
+
+Prove the terminal enforcement behavior for the exact invalid form with failing fixtures and valid counterexamples, including every direct configured integration point. Document unsupported cases and the narrowest syntax and path scope. Provide one canonical correction. Allow suppression only when irreducible, narrow, inline, and reasoned.

@@ -1,11 +1,11 @@
 # Effect Behavior Tests
 
-## Contract
+## Requirements
 
 | Lead        | Requirement                                                 |
 | ----------- | ----------------------------------------------------------- |
 | Seam        | Narrowest public seam                                       |
-| Expectation | Derived independently from the Contract                     |
+| Expectation | Derived independently from approved requirements            |
 | Failure     | Every reachable typed failure                               |
 | Runtime     | Deterministic Effect state, lifetime, concurrency, and time |
 
@@ -29,27 +29,26 @@
 | -------------------------------- | ----------------- | ------------------------------------------ |
 | `it.effect`                      | Fresh per test    | Fresh `TestClock` and `TestConsole`        |
 | Nested `it.effect` in `it.layer` | Fresh child scope | Cached block `TestClock` and `TestConsole` |
-| `it.live`                        | Fresh per test    | Live clock and console                     |
 
-| Operation                             | Contract                                                                                           |
+| Operation                             | Requirements                                                                                       |
 | ------------------------------------- | -------------------------------------------------------------------------------------------------- |
 | `TestClock.adjust`                    | Advance scheduled work from epoch zero                                                             |
 | `TestConsole.logLines` / `errorLines` | Read flattened call parameters                                                                     |
 | `Effect.exit(program)`                | Assert typed failure, defect, or interruption without changing error channel                       |
 | `Effect.addFinalizer`                 | Scope owns cleanup                                                                                 |
-| `Effect.acquireRelease`               | Acquired value and release action form one resource owner; release receives value and scope `Exit` |
+| `Effect.acquireRelease`               | Acquired value and release action form one resource owner. Release receives value and scope `Exit` |
 
 ## Layers and fixtures
 
-| Construction                | Ownership                                                                     |
+| Implementation              | Ownership                                                                     |
 | --------------------------- | ----------------------------------------------------------------------------- |
 | `Layer.succeed(Key, value)` | Already constructed immutable test service                                    |
-| `Layer.effect(Key)(effect)` | Effectful or scoped service acquisition; the Layer owns the acquisition scope |
+| `Layer.effect(Key)(effect)` | Effectful or scoped service acquisition. The Layer owns the acquisition scope |
 | `it.layer(layer)`           | One memoized Layer context shared by all tests in its block, closed afterward |
 
-| Requirement                 | Construction                                                                      |
+| Requirement                 | Implementation                                                                    |
 | --------------------------- | --------------------------------------------------------------------------------- |
-| Scoped Layer acquisition    | `Layer.effect` with `Scope`; use `Effect.acquireRelease` or `Effect.addFinalizer` |
+| Scoped Layer acquisition    | `Layer.effect` with `Scope`. Use `Effect.acquireRelease` or `Effect.addFinalizer` |
 | Default test fixture        | Fresh Layer per test                                                              |
 | Shared expensive lifecycle  | `it.layer`                                                                        |
 | Separate `it.layer` calls   | Distinct memo maps                                                                |
@@ -71,11 +70,11 @@ it.layer(TestService)('shared service lifecycle', it => {
 | Primitive                         | Test contract                                                                                  |
 | --------------------------------- | ---------------------------------------------------------------------------------------------- |
 | `Ref`                             | Atomic mutable test state                                                                      |
-| `Deferred`                        | One-shot readiness or completion; await instead of sleeping                                    |
+| `Deferred`                        | One-shot readiness or completion. Await instead of sleeping                                    |
 | `Effect.forkChild` + `Fiber.join` | Supervised work with propagated result and failure                                             |
 | `Queue`                           | Test capacity, strategy, suspension, terminal failure, and ordering only when public           |
-| `PubSub`                          | Subscribe before publish unless replay is contractual; test configured behavior, not internals |
-| `Semaphore`                       | Use `withPermits`; test contention or bounds only when externally observable                   |
+| `PubSub`                          | Subscribe before publish unless replay is contractual. Test configured behavior, not internals |
+| `Semaphore`                       | Use `withPermits`. Test contention or bounds only when externally observable                   |
 
 1. Subscribe before mutation.
 2. Signal readiness with `Deferred`.
@@ -105,7 +104,7 @@ it.effect(
 
 ## Generative And Schema Behavior
 
-| Requirement                           | Construction                                |
+| Requirement                           | Implementation                              |
 | ------------------------------------- | ------------------------------------------- |
 | Effectful property                    | `it.effect.prop`                            |
 | Input                                 | FastCheck arbitrary, Effect schema, or both |
@@ -121,28 +120,3 @@ it.effect.prop(
 	{fastCheck: {numRuns: 200}}
 )
 ```
-
-## Organization
-
-| Concern                    | Owner or construction                                     |
-| -------------------------- | --------------------------------------------------------- |
-| Test file                  | `name.test.ts` beside `name.ts`                           |
-| Durable behavior tests     | Location selected by repository convention                |
-| Cross-implementation suite | Shared public behavior; implementation supplies its Layer |
-| Application service        | Application test                                          |
-| UI and UX                  | Rendered browser acceptance                               |
-
-| Condition                                           | Requirement                                                        |
-| --------------------------------------------------- | ------------------------------------------------------------------ |
-| Paid, credentialed, or nondeterministic live system | Explicitly skipped real-public-seam test with runtime prerequisite |
-| Deterministic contract coverage                     | Required; live skipped test never replaces it                      |
-| Effect callback branches or sequences               | Pass `Effect.fnUntraced` directly                                  |
-| Test API requires one unused argument               | Name it `_`                                                        |
-
-## Authoritative Sources
-
-Resolve the configured `effect` reference, then inspect:
-
-- `packages/vitest/src/{index.ts,internal/internal.ts}`
-- `packages/effect/src/{Effect,Fiber,Ref,Deferred,Layer,Queue,PubSub,Semaphore,Stream,SubscriptionRef}.ts`
-- `packages/effect/src/testing/{TestClock,TestConsole,TestSchema}.ts`

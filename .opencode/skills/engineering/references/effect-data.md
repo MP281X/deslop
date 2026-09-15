@@ -49,7 +49,3 @@ return pipe(
 	Option.flatMap(item => permissions.read(item.ownerId))
 )
 ```
-
-## Source
-
-Resolve the configured `effect` reference, then inspect `packages/effect/src/{Schema,UndefinedOr,Option}.ts`.

@@ -132,8 +132,6 @@ return Effect.all({audit: audit(permissions), view: render(permissions)})
 | `effect/unstable/socket`     | `Socket` · `SocketServer`                                                                                                                                       |
 | `effect/unstable/cli`        | `Command` · `Argument` · `Flag` · `Param` · `Primitive` · `CliConfig` · `CliError` · `CliOutput`                                                                |
 
-Resolve the configured `effect` reference. Core modules live at `packages/effect/src/<Module>.ts`; unstable APIs live under `packages/effect/src/unstable/<entrypoint>`.
-
 ## Operation shape
 
 | Shape                                | Primitive                                        |
@@ -227,7 +225,3 @@ return yield * Effect.forEach(input.ids, repository.read, {concurrency: input.co
 // GOOD: contract requires every operation
 return yield * Effect.validate(input.ids, repository.read, {concurrency: input.concurrency})
 ```
-
-## Source
-
-Resolve the configured `effect` reference, then inspect `packages/effect/src/{Effect,Stream,String,Array,Struct,Record}.ts`.
