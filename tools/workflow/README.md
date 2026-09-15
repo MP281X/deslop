@@ -35,7 +35,7 @@ From a source checkout, run `vp run build` in `tools/workflow`, then `node dist/
 | Independent static review                       | `assets/codex/agents/review.toml`         | gpt-5.6-sol medium  |
 | Rendered acceptance with host capabilities      | `assets/codex/agents/browser.toml`        | gpt-5.6-sol low     |
 | Agent-runtime behavioral proof                  | `assets/codex/agents/evaluation.toml`     | gpt-5.6-sol low     |
-| Authorized Git/GitHub publication               | `assets/codex/agents/git.toml`            | gpt-5.6-sol low     |
+| Authorized GitHub and GitLab publication        | `assets/codex/agents/git.toml`            | gpt-5.6-sol low     |
 | Product engineering and source index            | `assets/skills/engineering`               | Working specialists |
 | Reusable workflow changes                       | `assets/skills/workflow`                  | Working specialists |
 
