@@ -41,7 +41,7 @@ vp run upgrade
 ```
 
 ```json
-{"exports": {"./schema": "./src/schema.ts", "./service": "./src/service.ts", "./lib/utils": "./src/lib/utils.ts"}}
+{"exports": {"./schema": "./src/schema.ts", "./service": "./src/service.ts", "./utils": "./src/lib/utils.ts"}}
 ```
 
 Current owners are `tools/create-app`, `tools/create-package`, root workspace configuration, and package manifests and exports.

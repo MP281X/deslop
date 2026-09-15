@@ -6,7 +6,7 @@ Decode unknown data at the boundary that admits it. A Schema declaration or Type
 
 ```ts
 // The RPC boundary decoded input with CreateNote.
-create: input => notes.create(input)
+create: notes.create
 ```
 
 Decode external serialized input directly through the owning Schema. Invoke the decoder where the value is consumed instead of storing a decoder wrapper.

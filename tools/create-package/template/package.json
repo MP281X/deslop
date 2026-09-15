@@ -11,6 +11,6 @@
 	"exports": {
 		"./schema": "./src/schema.ts",
 		"./service": "./src/service.ts",
-		"./lib/utils": "./src/lib/utils.ts"
+		"./utils": "./src/lib/utils.ts"
 	}
 }

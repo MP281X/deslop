@@ -33,10 +33,6 @@ export declare namespace Pi {
 }
 
 export class Ai extends Context.Service<Ai, Ai.Agent>()('@deslop/ai/service/Ai') {
-	static override of<const Service extends Ai['Service']>(service: Service) {
-		return service
-	}
-
 	static generateText = generateTextPi
 
 	static layerPi(config: Pi.Config) {

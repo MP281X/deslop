@@ -1,0 +1,30 @@
+{
+	"name": "@deslop/workflow",
+	"version": "0.0.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/MP281X/deslop",
+		"directory": "tools/workflow"
+	},
+	"bin": {
+		"deslop-workflow": "dist/main.js"
+	},
+	"files": [
+		"dist",
+		"assets"
+	],
+	"type": "module",
+	"sideEffects": false,
+	"imports": {
+		"#package": "./package.json"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "vp pack"
+	},
+	"engines": {
+		"node": ">=26"
+	}
+}

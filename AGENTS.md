@@ -30,4 +30,4 @@ For these validation commands, use no flags, paths, partials, underlying tools, 
 - Local data is disposable. Preserve production data only from the immediately previous release; delete obsolete data.
 - Persist only irreducible canonical data and infer the rest. Remove superseded paths and adapters; preserve compatibility only when explicitly required.
 
-Global conduct, communication, and specialist ownership are installed from `workflow/`. Apply the global `engineering` skill with this repository's `project-engineering` skill for product code.
+Read `tools/workflow/assets/AGENTS.md` for shared conduct and communication. The reusable Codex configuration and skills are owned by `tools/workflow`; installation is required to activate its configured agent roles. Apply its `engineering` skill with this repository's `project-engineering` skill for product code.
