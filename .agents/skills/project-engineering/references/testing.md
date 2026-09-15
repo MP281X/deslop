@@ -5,6 +5,8 @@
 | Package service or helper          | Colocated `name.test.ts`     |
 | Application service                | `apps/<app>/src/services/**` |
 | Effect RPC contract and handler    | Application RPC test         |
-| Rendered interaction and visual UX | Browser acceptance           |
+| Rendered interaction and visual UX | `agent-browser` acceptance   |
 
 Test Effect RPC through `RpcTest.makeClient(group)` with the handler Layer and every declared middleware service. Do not replace the in-memory no-serialization seam with a live transport.
+
+Browser acceptance uses `agent-browser`. Remove acceptance coverage for superseded behavior when the implementation removes that behavior.

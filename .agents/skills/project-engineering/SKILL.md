@@ -3,6 +3,8 @@ name: project-engineering
 description: "Use with engineering for this repository's architecture, workspace, testing, components, or visual conventions."
 ---
 
+Apply the global engineering rules first. This skill adds only Deslop's concrete owners, paths, commands, and visual decisions.
+
 ## References
 
 | Condition                                                         | Reference                                  |
@@ -11,3 +13,4 @@ description: "Use with engineering for this repository's architecture, workspace
 | Repository test placement and acceptance ownership                | [Testing](references/testing.md)           |
 | Components, interaction, and visual system                        | [UI design](references/ui-design.md)       |
 | Generators, topology, manifests, scripts, and exports             | [Workspace](references/workspace.md)       |
+| Selecting, changing, or proving repository static enforcement     | [Enforcement](references/enforcement.md)   |
