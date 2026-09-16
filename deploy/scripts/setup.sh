@@ -59,15 +59,15 @@ done | sort -u >"$state_dir/retired-images"
 	docker build --tag ghcr.io/mp281x/deslop-portfolio:latest apps/portfolio
 )
 compose=(docker compose --project-name deslop --file "$state_dir/compose.yaml")
-"${compose[@]}" pull traefik valentine jaeger collector
+"${compose[@]}" pull traefik jaeger collector
 docker stop dokploy-traefik >/dev/null
 trap '"${compose[@]}" down >/dev/null 2>&1 || true; docker start dokploy-traefik >/dev/null 2>&1 || true' ERR
 "${compose[@]}" up -d
-curl -fsS --retry 12 --retry-delay 5 https://portfolio.mp281x.xyz/ >/dev/null
-curl -fsS --retry 12 --retry-delay 5 https://te-amo-muchisimo.mp281x.xyz/ >/dev/null
-curl -fsS --retry 12 --retry-delay 5 https://otel.mp281x.xyz/api/services >/dev/null
-curl -fsS -X OPTIONS https://otel.mp281x.xyz/v1/traces -H 'Origin: https://portfolio.mp281x.xyz' -H 'Access-Control-Request-Method: POST' >/dev/null
-curl -fsS -X OPTIONS https://otel.mp281x.xyz/v1/logs -H 'Origin: https://portfolio.mp281x.xyz' -H 'Access-Control-Request-Method: POST' >/dev/null
+curl -fsS --retry 12 --retry-delay 5 --retry-all-errors https://portfolio.mp281x.xyz/ >/dev/null
+curl -fsS --retry 12 --retry-delay 5 --retry-all-errors https://te-amo-muchisimo.mp281x.xyz/ >/dev/null
+curl -fsS --retry 12 --retry-delay 5 --retry-all-errors https://otel.mp281x.xyz/api/services >/dev/null
+curl -fsS --retry 12 --retry-delay 5 --retry-all-errors -X OPTIONS https://otel.mp281x.xyz/v1/traces -H 'Origin: https://portfolio.mp281x.xyz' -H 'Access-Control-Request-Method: POST' >/dev/null
+curl -fsS --retry 12 --retry-delay 5 --retry-all-errors -X OPTIONS https://otel.mp281x.xyz/v1/logs -H 'Origin: https://portfolio.mp281x.xyz' -H 'Access-Control-Request-Method: POST' >/dev/null
 trap - ERR
 
 for service in aitoolkit-portfolio-triuky deslop-beercounter-qrh1p7 mp281x-saintvalentine-sqa5wx aitoolkit-otel-n4gruq dokploy dokploy-postgres dokploy-redis; do
