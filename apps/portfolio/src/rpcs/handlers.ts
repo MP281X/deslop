@@ -99,6 +99,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 			'portfolio.join': payload =>
 				Stream.unwrap(
 					Effect.gen(function* () {
+						yield* Effect.logInfo('Portfolio client connected')
 						const visitor = PortfolioVisitor.make({
 							color: payload.color,
 							id: payload.id,
