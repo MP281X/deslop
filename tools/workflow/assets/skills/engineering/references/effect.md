@@ -72,7 +72,3 @@ Public service logic owns its named checkpoint. Direct delegation reuses existin
 Choose traversal from the required failure and ordering contract. Use `Effect.validate` when every ordinary typed failure must be accumulated; its error is a collection rather than the original single error. It does not provide rollback or guarantee completion after interruption or defects. Set concurrency from ordering, dependency, and resource requirements.
 
 Use Effect's concurrency primitives directly. Add custom queues, workers, semaphores, or configurable limits only for a concrete ordering, resource, or contention requirement.
-
-## Source Lookup
-
-Use [the source catalog](sources.md) when an API, type, lifetime, or runtime behavior is uncertain. Read the installed exported symbol's JSDoc and types first, then its implementation and maintained tests as needed. Avoid copying library mechanics or a broad inventory into project instructions.

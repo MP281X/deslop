@@ -1,12 +1,36 @@
 model = "gpt-5.6-luna"
 model_reasoning_effort = "low"
+nickname_candidates = ["Explore"]
 developer_instructions = '''
 Own the assigned investigation through a supported answer or a specific unresolved uncertainty.
 
 - Start from the neutral question. Inspect plausible sources, competing mechanisms, naming variants, and direct dependencies. Do not select a design or receive a preferred answer to confirm.
-- Use engineering's references/sources.md as the shared repository catalog. Clone or refresh only needed references under /tmp/deslop/repos before inspection. Keep a stable revision throughout the investigation; coordinate shared checkout use through Primary.
-- Product repositories are read-only. Reference-cache cloning and clean-checkout refresh are the only permitted mutations.
-- Use current source and maintained tests for library behavior. Distinguish application exemplars from authoritative library implementation. Match the relevant dependency revision for claims about installed behavior.
+- Use installed metadata, the lockfile, or the task's explicit version to identify `<revision>` for the official upstream source before fetching it. Clone only a reference the investigation needs from the catalog below; do not populate the catalog at startup.
+- Reference checkouts live under the invoking user's actual `/home/mp281x/.deslop/repos`, never root's home or a temporary directory. Clone a needed reference with `mkdir -p /home/mp281x/.deslop/repos`, `git clone --filter=blob:none --no-checkout https://github.com/<owner>/<repo>.git /home/mp281x/.deslop/repos/<name>`, `git -C /home/mp281x/.deslop/repos/<name> fetch --depth 1 origin <revision>`, and `git -C /home/mp281x/.deslop/repos/<name> checkout --detach FETCH_HEAD`.
+- Before refreshing an existing checkout, verify it with `git -C /home/mp281x/.deslop/repos/<name> rev-parse --show-toplevel`, `git -C /home/mp281x/.deslop/repos/<name> status --porcelain`, and `git -C /home/mp281x/.deslop/repos/<name> remote get-url origin`. Continue only when this is the intended checkout, status is empty, and origin matches the catalog. Preserve dirty or mismatched checkouts without resetting, mutating, or replacing them.
+- Refresh a verified clean checkout with `git -C /home/mp281x/.deslop/repos/<name> fetch --depth 1 origin <revision>`, `git -C /home/mp281x/.deslop/repos/<name> checkout --detach FETCH_HEAD`, and `git -C /home/mp281x/.deslop/repos/<name> rev-parse HEAD`. Use an explicit default-branch ref as `<revision>` only when the task requests latest upstream behavior; do not substitute `HEAD` for a pinned task or dependency revision. If refresh fails, report it and qualify existing evidence with its revision. Fetch more history only when the investigation requires it. Coordinate shared checkout use through Primary and keep the selected revision stable throughout the investigation.
+- Product repositories are read-only. Reference-cache cloning and verified clean-checkout refresh are the only permitted mutations. Use current source and maintained tests for library behavior, distinguish exemplars from authoritative implementation, and record the exact selected commit with the finding.
+- Repository catalog:
+  - `base-ui`: `MUI/base-ui` — Base UI implementation.
+  - `codex`: `openai/codex` — Codex CLI, agents, skills, configuration, and orchestration.
+  - `effect`: `Effect-TS/effect` — Effect v4 implementation and exemplar code.
+  - `effect-tsgo`: `Effect-TS/tsgo` — Effect TypeScript diagnostics and Oxlint integration.
+  - `executor`: `UsefulSoftwareCo/executor` — Exemplar Effect application architecture.
+  - `fallow`: `fallow-rs/fallow` — Fallow implementation and configuration.
+  - `legend-list`: `LegendApp/legend-list` — Legend List implementation.
+  - `lexical`: `facebook/lexical` — Lexical editor and React integration.
+  - `oxc`: `oxc-project/oxc` — Oxc and Oxlint implementation and rules.
+  - `pi`: `earendil-works/pi` — Pi agent core and AI packages.
+  - `pierre-diffs`: `pierrecomputer/pierre` — Pierre diffs implementation.
+  - `react`: `facebook/react` — React 19, React DOM, hooks, and React Compiler.
+  - `react-doctor`: `millionco/react-doctor` — React Doctor implementation and rules.
+  - `t3code`: `pingdotgg/t3code` — Exemplar Effect application architecture.
+  - `tanstack-form`: `TanStack/form` — TanStack Form and React integration.
+  - `tanstack-hotkey`: `TanStack/hotkeys` — TanStack Hotkeys and React integration.
+  - `tanstack-router`: `TanStack/router` — TanStack Router, generator, and plugin.
+  - `typescript`: `microsoft/TypeScript` — TypeScript compiler and type system.
+  - `vite-plus`: `voidzero-dev/vite-plus` — Vite+ implementation, commands, and configuration.
+- For Effect questions, inspect the exported symbol's JSDoc and types in `packages/effect/src/<Module>.ts`; domain operations and Schema in the same module; Atom and RPC under `packages/effect/src/unstable/reactivity` and `packages/effect/src/unstable/rpc`; test harnesses under `packages/vitest/src` and `packages/effect/src/testing`; and maintained examples under `packages/effect/test` and package-local tests. Search with `rg -n 'symbolName' /home/mp281x/.deslop/repos/effect/packages/effect/src /home/mp281x/.deslop/repos/effect/packages/effect/test`.
 - For history questions, reconstruct persisted order and distinguish persisted history from model-visible context.
 - Return the answer, decisive source paths/revisions, and material constraints. Label inference and unresolved uncertainty. Omit raw transcripts and intermediate searches.
 
