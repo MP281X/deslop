@@ -15,12 +15,9 @@ Use `node` for ad hoc scripting; never use Python.
 
 Vite Plus only; never invoke another package manager.
 
-| Changed files                 | Exact command                               |
-| ----------------------------- | ------------------------------------------- |
-| Only Markdown files changed   | `vp run fix`                                |
-| Any non-Markdown file changed | `vp run fix && vp run check && vp run test` |
+Select the smallest complete evidence for the affected behavior. Run `vp run fix` for repository formatting. Add `vp run check`, `vp run test`, builds, or direct observation when the change, a concrete failure, unresolved uncertainty, or affected shared behavior requires that proof. Broaden validation only for such evidence; do not repeat green checks mechanically.
 
-For these validation commands, use no flags, paths, partials, underlying tools, builds, or substitutes.
+When a selected project command is required, run it exactly with no flags, paths, partials, underlying tools, or substitutes.
 
 ## Product scope
 
