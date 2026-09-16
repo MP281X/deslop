@@ -4,13 +4,34 @@ import {homedir} from 'node:os'
 
 import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {Config, Console, Effect, Option, Path, pipe} from 'effect'
+import {Config, Console, Effect, FileSystem, Option, Path, pipe} from 'effect'
 
 import {Argument, Command} from 'effect/unstable/cli'
 
 import packageJson from '#package' with {type: 'json'}
 
-import {install} from './install.ts'
+const install = Effect.fn('Workflow.install')(function* (source: string, destination: string) {
+	const fs = yield* FileSystem.FileSystem
+	const path = yield* Path.Path
+	const targets = [
+		{source: 'codex/config.toml', target: 'config.toml'},
+		{source: 'AGENTS.md', target: 'AGENTS.md'},
+		{source: 'codex/agents', target: 'agents/deslop'},
+		{source: 'skills/engineering', target: 'skills/engineering'},
+		{source: 'skills/workflow', target: 'skills/workflow'}
+	]
+
+	yield* fs.makeDirectory(destination, {recursive: true})
+	yield* fs.makeDirectory(path.join(destination, 'agents'), {recursive: true})
+	yield* fs.makeDirectory(path.join(destination, 'skills'), {recursive: true})
+
+	for (const target of targets) {
+		const installed = path.join(destination, target.target)
+		yield* fs.remove(installed, {force: true, recursive: true})
+		yield* fs.copy(path.join(source, target.source), installed)
+	}
+	return {directory: destination}
+})
 
 const cli = Command.make(
 	'deslop-workflow',
@@ -23,7 +44,9 @@ const cli = Command.make(
 		})
 		const result = yield* install(path.resolve(import.meta.dirname, '../assets'), path.resolve(destination))
 		yield* Console.log(`Installed Deslop workflow in ${result.directory}`)
-		yield* Console.log('Restart Codex to load the installed workflow. Existing config.toml settings were replaced.')
+		yield* Console.log(
+			'Start a fresh Codex session to load the installed workflow. Existing config.toml settings were replaced.'
+		)
 	})
 )
 
