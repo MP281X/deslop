@@ -1,0 +1,127 @@
+name: deslop
+
+x-logging: &bounded-logs
+  driver: local
+  options:
+    max-file: '3'
+    max-size: 10m
+
+services:
+  traefik:
+    image: traefik:latest
+    restart: unless-stopped
+    command:
+      - --accesslog=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=deslop
+    ports: [80:80, 443:443]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /home/mp281x/.deslop/deploy/acme:/acme
+    networks: [deslop]
+    logging: *bounded-logs
+
+  portfolio:
+    image: ghcr.io/mp281x/deslop-portfolio:latest
+    restart: unless-stopped
+    environment:
+      VITE_OTEL_URL: https://otel.mp281x.xyz
+    networks: [deslop]
+    labels:
+      traefik.enable: 'true'
+      traefik.http.routers.portfolio.entrypoints: websecure
+      traefik.http.routers.portfolio.rule: Host(`portfolio.mp281x.xyz`)
+      traefik.http.routers.portfolio.tls.certresolver: letsencrypt
+      traefik.http.services.portfolio.loadbalancer.server.port: '5000'
+    logging: *bounded-logs
+
+  valentine:
+    image: ghcr.io/mp281x/saint-valentine:latest
+    restart: unless-stopped
+    networks: [deslop]
+    labels:
+      traefik.enable: 'true'
+      traefik.http.routers.valentine.entrypoints: websecure
+      traefik.http.routers.valentine.rule: Host(`te-amo-muchisimo.mp281x.xyz`)
+      traefik.http.routers.valentine.tls.certresolver: letsencrypt
+      traefik.http.services.valentine.loadbalancer.server.port: '80'
+    logging: *bounded-logs
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: 'true'
+    ports: [127.0.0.1:16686:16686]
+    networks: [deslop]
+    labels:
+      traefik.enable: 'true'
+      traefik.http.routers.jaeger.entrypoints: websecure
+      traefik.http.routers.jaeger.rule: Host(`otel.mp281x.xyz`)
+      traefik.http.routers.jaeger.tls.certresolver: letsencrypt
+      traefik.http.routers.jaeger.priority: '1'
+      traefik.http.services.jaeger.loadbalancer.server.port: '16686'
+    logging: *bounded-logs
+
+  collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    restart: unless-stopped
+    command: [--config=/etc/otelcol-contrib/config.yaml]
+    configs:
+      - source: collector
+        target: /etc/otelcol-contrib/config.yaml
+    ports: [127.0.0.1:4318:4318]
+    networks: [deslop]
+    depends_on: [jaeger]
+    labels:
+      traefik.enable: 'true'
+      traefik.http.routers.otlp.entrypoints: websecure
+      traefik.http.routers.otlp.rule: Host(`otel.mp281x.xyz`) && (Path(`/v1/traces`) || Path(`/v1/logs`))
+      traefik.http.routers.otlp.tls.certresolver: letsencrypt
+      traefik.http.routers.otlp.priority: '100'
+      traefik.http.services.otlp.loadbalancer.server.port: '4318'
+    logging: *bounded-logs
+
+configs:
+  collector:
+    content: |
+      receivers:
+        otlp:
+          protocols:
+            http:
+              endpoint: 0.0.0.0:4318
+              cors:
+                allowed_origins: [https://portfolio.mp281x.xyz]
+      processors:
+        batch: {}
+        memory_limiter:
+          check_interval: 1s
+          limit_mib: 256
+      exporters:
+        debug:
+          verbosity: basic
+        otlp/jaeger:
+          endpoint: jaeger:4317
+          tls:
+            insecure: true
+      service:
+        pipelines:
+          logs:
+            receivers: [otlp]
+            processors: [memory_limiter, batch]
+            exporters: [debug]
+          traces:
+            receivers: [otlp]
+            processors: [memory_limiter, batch]
+            exporters: [otlp/jaeger]
+
+networks:
+  deslop:
+    name: deslop

@@ -4,7 +4,6 @@ on: [push]
 
 permissions:
   contents: read
-  id-token: write
   packages: write
 
 jobs:
@@ -32,13 +31,6 @@ jobs:
       - name: Test
         run: vp run test
 
-      - name: Workflow version
-        if: github.ref == 'refs/heads/main'
-        working-directory: tools/workflow
-        env:
-          RELEASE_NUMBER: ${{ github.run_number }}
-        run: vp pm version "0.0.$RELEASE_NUMBER" --no-git-tag-version
-
       - name: Workflow build
         if: github.ref != 'refs/heads/main'
         working-directory: tools/workflow
@@ -46,12 +38,9 @@ jobs:
 
       - name: Build
         if: github.ref == 'refs/heads/main'
+        env:
+          VITE_OTEL_URL: https://otel.mp281x.xyz
         run: vp run build
-
-      - name: NPM
-        if: github.ref == 'refs/heads/main'
-        working-directory: tools/workflow
-        run: vp pm publish --access public --provenance --no-git-checks
 
       - name: Docker
         if: github.ref == 'refs/heads/main'
@@ -61,14 +50,4 @@ jobs:
           for app in portfolio; do
             docker build ./apps/$app --tag $image_prefix-$app:latest
             docker push $image_prefix-$app:latest
-          done
-
-      - name: Dokploy
-        if: github.ref == 'refs/heads/main'
-        run: |
-          for application_id in iD8YNp8nSkHVIdmp6kmB0; do
-            curl -X POST https://dev.mp281x.xyz/api/application.deploy \
-              -H "Content-Type: application/json" \
-              -H "x-api-key: ${{ secrets.DOKPLOY_AUTH_TOKEN }}" \
-              -d "{\"applicationId\": \"$application_id\"}"
           done

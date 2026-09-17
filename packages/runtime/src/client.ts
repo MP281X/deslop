@@ -8,6 +8,7 @@ import {BatchLogRecordProcessor} from '@opentelemetry/sdk-logs'
 import {BatchSpanProcessor} from '@opentelemetry/sdk-trace-base'
 import {createRouter} from '@tanstack/react-router'
 import type {AnyContext, AnyRoute} from '@tanstack/react-router'
+import {Atom} from 'effect/unstable/reactivity'
 import * as Rpc from 'effect/unstable/rpc'
 import {Socket} from 'effect/unstable/socket'
 
@@ -33,7 +34,7 @@ export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext:
 }
 
 export function layer(applicationName: string) {
-	return pipe(
+	const protocol = pipe(
 		Rpc.RpcClient.layerProtocolSocket({retryTransientErrors: true}),
 		Layer.provide(
 			pipe(
@@ -41,24 +42,23 @@ export function layer(applicationName: string) {
 				Layer.provide(Socket.layerWebSocketConstructorGlobal)
 			)
 		),
-		Layer.provideMerge(
-			Layer.mergeAll(
-				pipe(
-					Layer.unwrap(
-						Effect.map(pipe(Config.url('VITE_OTEL_URL'), Config.withDefault(new URL('http://localhost:4318'))), url =>
-							WebSdk.layer(() => ({
-								logRecordProcessor: new BatchLogRecordProcessor({
-									exporter: new OTLPLogExporter({url: new URL('/v1/logs', url).href})
-								}),
-								resource: {serviceName: `${applicationName}-client`},
-								spanProcessor: new BatchSpanProcessor(new OTLPTraceExporter({url: new URL('/v1/traces', url).href}))
-							}))
-						)
-					),
-					Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(import.meta.env)))
-				),
-				Rpc.RpcSerialization.layerMsgPack
-			)
-		)
+		Layer.provideMerge(Rpc.RpcSerialization.layerMsgPack)
 	)
+	const telemetry = pipe(
+		Layer.unwrap(
+			Effect.map(pipe(Config.url('VITE_OTEL_URL'), Config.withDefault(new URL('http://localhost:4318'))), url =>
+				WebSdk.layer(() => ({
+					logRecordProcessor: new BatchLogRecordProcessor({
+						exporter: new OTLPLogExporter({url: new URL('/v1/logs', url).href})
+					}),
+					resource: {serviceName: `${applicationName}-client`},
+					spanProcessor: new BatchSpanProcessor(new OTLPTraceExporter({url: new URL('/v1/traces', url).href}))
+				}))
+			)
+		),
+		Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(import.meta.env)))
+	)
+
+	Atom.runtime.addGlobalLayer(telemetry)
+	return protocol
 }
