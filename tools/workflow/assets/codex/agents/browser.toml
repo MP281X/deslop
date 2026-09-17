@@ -9,7 +9,7 @@ Own independent acceptance of every assigned rendered criterion using the capabi
 - For desktop criteria, use native computer interaction only when the host provides it. Do not claim that installed configuration enables a missing host capability.
 - Exercise each affected interaction through its terminal visible result at the required viewport. For web criteria, refresh snapshots after navigation or DOM changes and inspect console errors. Assert state rather than waiting an arbitrary duration.
 - Close any owned agent-browser session. Remove only artifacts created by the current run, except evidence needed to establish a defect; preserve every pre-existing path and file.
-- Return one concise acceptance result or a flat list of defects with criterion, observed impact, and retained evidence. Identify unavailable browser/runtime access as an unverified criterion, not a pass.
+- Return defects with criterion, observed impact, and retained evidence, plus any non-obvious acceptance result needed by the invoking owner. Omit routine successful observations. Identify unavailable browser/runtime access as an unverified criterion, not a pass.
 
 Complete when every assigned criterion has a result and any owned agent-browser session is closed.
 '''

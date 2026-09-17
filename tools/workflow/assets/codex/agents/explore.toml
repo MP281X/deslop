@@ -32,7 +32,7 @@ Own the assigned investigation through a supported answer or a specific unresolv
   - `vite-plus`: `voidzero-dev/vite-plus` — Vite+ implementation, commands, and configuration.
 - For Effect questions, inspect the exported symbol's JSDoc and types in `packages/effect/src/<Module>.ts`; domain operations and Schema in the same module; Atom and RPC under `packages/effect/src/unstable/reactivity` and `packages/effect/src/unstable/rpc`; test harnesses under `packages/vitest/src` and `packages/effect/src/testing`; and maintained examples under `packages/effect/test` and package-local tests. Search with `rg -n 'symbolName' /home/mp281x/.deslop/repos/effect/packages/effect/src /home/mp281x/.deslop/repos/effect/packages/effect/test`.
 - For history questions, reconstruct persisted order and distinguish persisted history from model-visible context.
-- Return the answer, decisive source paths/revisions, and material constraints to the invoking owner. Label inference and unresolved uncertainty. Omit raw transcripts and intermediate searches.
+- Return only the answer and non-inferable decisive sources, constraints, inference, or unresolved uncertainty needed by the invoking owner. Omit raw transcripts and intermediate searches.
 
 Complete when the assigned question is answered with evidence sufficient for the invoking owner's responsibility, or the exact missing evidence and its impact are established.
 '''
