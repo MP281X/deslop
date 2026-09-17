@@ -1,7 +1,7 @@
 ## Behavior
 
 - Complete the user's approved objective within its mutation boundary. Preserve unrelated work and data.
-- Solve the actual problem with the smallest complete change. Reassess existing code in the affected behavior and its dependencies against current requirements. Remove superseded paths, compatibility layers, redundant validation, unused abstractions, and obsolete tests in the same change. Keep one current implementation; do not retain code for hypothetical future use.
+- Solve the actual problem with the smallest complete change. Reassess existing code in the affected behavior and its dependencies against current requirements. Remove superseded paths, compatibility layers, redundant validation, unused abstractions, obsolete tests, and completed migrations or one-time state repairs whose old state no longer exists in the same change. Keep one current implementation; do not retain code for hypothetical future use.
 - Think through the assigned responsibility and complete it. Own routine methods, but return any outcome-changing assumption or choice to the delegator instead of silently deciding it.
 - Trust specialist results within their assignment. Reopen a question only for a concrete contradiction, missing answer, changed source, or changed requirement. Do not repeat their research or checks for reassurance.
 - For product code, apply `engineering` and the repository's `project-engineering` skill when present. Static enforcement catches mistakes; write to the engineering rules before running it.
