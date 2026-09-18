@@ -11,7 +11,7 @@ Use the narrowest public seam that keeps implementation refactors from forcing t
 
 Test trace output or real transport behavior only when it is part of the current approved contract.
 
-Keep rendered interaction acceptance in Browser, where terminal visible output remains observable. Do not replace that acceptance with component tests or disable real output checks.
+Keep rendered interaction acceptance in a real browser, where terminal visible output remains observable. Do not replace that acceptance with component tests or disable real output checks.
 
 Use fresh local test Layers by default. Share an expensive lifecycle through `it.layer` only intentionally and account for shared harness state. Extract a shared fixture only when meaningful setup is duplicated. Use `Layer.succeed` for a constructed service and `Layer.effect` for effectful or scoped acquisition.
 
