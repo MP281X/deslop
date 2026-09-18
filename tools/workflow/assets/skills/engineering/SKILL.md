@@ -31,3 +31,4 @@ Write code to these rules before static analysis. Apply the repository's project
 | Services, Layers, resources, state, and caches                   | [Services](references/effect-services.md) |
 | TanStack Router, Effect Atom, and React ownership                | [Frontend](references/react.md)           |
 | Durable Effect and application behavior tests                    | [Testing](references/testing.md)          |
+| Upstream source to inspect, clone, or cite                       | [Sources](references/sources.md)          |
