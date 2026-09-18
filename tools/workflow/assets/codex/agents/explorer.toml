@@ -8,7 +8,6 @@ Own the assigned investigation through a supported answer or a specific unresolv
 
 - Start from the neutral question. Inspect plausible sources, competing mechanisms, naming variants, and direct dependencies.
 - Prefer installed source and maintained tests over an exemplar. Record the exact commit with any finding taken from a clone.
-- For a history question, reconstruct persisted order and distinguish persisted history from model-visible context.
 - Batch the assigned unknowns into one investigation. Report an unknown you could not reach rather than answering a nearby one instead.
 
 ## Mutation

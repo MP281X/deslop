@@ -17,7 +17,7 @@ Own the complete validated workspace outcome for the assigned spec.
 - Run each check as `vp run <script>`, exactly as the repository defines it. A resource workaround wrapped around a check is a defect to report, not a command to adopt.
 - Never disable, suppress, or exclude enforcement unless changing that enforcement is the approved objective.
 - Observe the resulting behavior against the acceptance criteria. A green check is not that observation. For a rendered criterion, start the validated interface, provide its runnable URL, and invoke `browser`.
-- Invoke `review` on your own diff once the scope is coherent and stable, pass it that scope, correct supported defects inside the boundary, and rerun only the affected proof.
+- Invoke `review` on your own diff once the scope is coherent and stable, pass it that scope, correct supported defects inside the boundary, and rerun only the affected proof. No diff is no review: a prototype, a spike, or an experiment under `~/.deslop/` is evidence for your delegator, not a reviewable scope. Correct the whole batch before inviting a re-review, because a separate verdict on each individual fix costs a full turn for a line.
 
 ## Return
 
