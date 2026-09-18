@@ -1,14 +1,5 @@
 # Effect Data
 
-## Decode Once
-
-Decode unknown data at the boundary that admits it. A Schema declaration or TypeScript annotation does not establish validation. Once RPC or another ingress boundary has decoded a value, handlers and services trust that type and do not repeat the check.
-
-```ts
-// The RPC boundary decoded input with CreateNote.
-create: notes.create
-```
-
 Decode external serialized input directly through the owning Schema. Invoke the decoder where the value is consumed instead of storing a decoder wrapper.
 
 ```ts
@@ -16,7 +7,7 @@ Decode external serialized input directly through the owning Schema. Invoke the 
 const response = yield * Schema.decodeEffect(Schema.fromJsonString(Search))(text)
 ```
 
-Do not reconstruct a decoded value to select its fields, inject defaults, or normalize it again. Change the boundary Schema when those semantics belong to the contract.
+Change the boundary Schema when field selection, defaults, or normalization belong to the contract.
 
 ## Missing Values
 

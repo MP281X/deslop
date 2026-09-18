@@ -17,8 +17,7 @@ const install = Effect.fn('Workflow.install')(function* (source: string, destina
 		{source: 'codex/config.toml', target: 'config.toml'},
 		{source: 'AGENTS.md', target: 'AGENTS.md'},
 		{source: 'codex/agents', target: 'agents/deslop'},
-		{source: 'skills/engineering', target: 'skills/engineering'},
-		{source: 'skills/workflow', target: 'skills/workflow'}
+		{source: 'skills/engineering', target: 'skills/engineering'}
 	]
 
 	yield* fs.makeDirectory(destination, {recursive: true})

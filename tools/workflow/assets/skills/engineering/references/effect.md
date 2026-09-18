@@ -2,8 +2,6 @@
 
 ## Operation Selection
 
-Search the relevant Effect module before using a native prototype, global, or custom helper. Prefer the operation whose type and semantics express the intent, even when it is longer than native syntax. Keep native integration at a concrete interoperability boundary.
-
 | Intent                        | Operation                                          |
 | ----------------------------- | -------------------------------------------------- |
 | String or array length        | `String.length` / `Array.length`                   |
@@ -24,13 +22,11 @@ const enabled = pipe(flags, Record.get(key))
 
 Access a known field directly when no composition is needed: `user.name`. Use `Struct.get` when an accessor participates in a composition, such as `Array.map(users, Struct.get('name'))`.
 
-Shape transformations must be required by the current contract. A convenient Effect operation does not justify changing the shape. A dynamic lookup returns `Option` because absence is part of its semantics.
+A dynamic lookup returns `Option` because absence is part of its semantics.
 
 Evaluate an effectful fact once within the operation that owns its validity and pass the result to dependent work. Do not reuse authorization or mutable state across a boundary where it can become stale.
 
 ## Program Shape
-
-Use the shortest form that preserves semantics and lets TypeScript infer the implementation. Start with `pipe` for immediate straight-line composition or `flow` when the composition is reused.
 
 | Need                                                    | Form                                                    |
 | ------------------------------------------------------- | ------------------------------------------------------- |
@@ -53,15 +49,9 @@ save: Effect.fnUntraced(function* (input) {
 })
 ```
 
-Use a generator when dependent branching or several intermediate values would otherwise require nested callbacks or an artificial state bundle. The number of asynchronous steps alone does not justify one. A zero-input program is an Effect value, not an `Effect.fn` call. Do not wrap direct delegation in a generator, an immediately invoked function, or a forwarding callback.
+Use a generator when dependent branching or several intermediate values would otherwise require nested callbacks or an artificial state bundle. A zero-input program is an Effect value, not an `Effect.fn` call.
 
-Reuse a function value only when doing so preserves required arguments, laziness, tracing, receiver binding, and the callback signature. Keep a wrapper when it intentionally adapts any of those semantics. Do not introduce an alias or forwarding helper merely to change argument order, rename an operation, hide a default, or erase part of its signature. Keep reusable pure composition pure; `flow` does not make effectful operations pure.
-
-## Capabilities And Ownership
-
-Represent filesystem, HTTP, configuration, time, randomness, logging, processes, and other external capabilities with Effect services. Preserve requirements through composition and assemble Layers at their owner. Construct Effects inside Effect programs and execute them only through the owning runtime.
-
-Keep failures typed and propagate dependency failures to the established error boundary and formatting owner. Do not catch and rethrow, repackage, retry, fall back, supply a default, hide an error, or convert defects into domain failures without an agreed recovery policy. Scoped cleanup must release its resource while preserving the original failure.
+Reuse a function value only when doing so preserves required arguments, laziness, tracing, receiver binding, and the callback signature. Keep a wrapper when it intentionally adapts any of those semantics. Keep reusable pure composition pure; `flow` does not make effectful operations pure.
 
 ## Tracing
 

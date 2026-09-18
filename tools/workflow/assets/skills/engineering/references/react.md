@@ -1,7 +1,5 @@
 # React, Effect Atom, And TanStack Router
 
-Move application logic and state as far into Effect and Atom as their ownership allows. React owns rendering, DOM interaction, browser synchronization, and genuinely local input state.
-
 | State or behavior                                            | Owner and placement           |
 | ------------------------------------------------------------ | ----------------------------- |
 | Shareable or restorable navigation                           | TanStack Router search params |
@@ -10,7 +8,7 @@ Move application logic and state as far into Effect and Atom as their ownership 
 | Direct query or mutation                                     | Component consumption site    |
 | Ephemeral input, DOM handle, or browser synchronization      | React component               |
 
-Keep one state owner. Put shared derivations in the Atom graph rather than recomputing them in every consumer. A pure local display calculation does not require a shared Atom.
+Put shared derivations in the Atom graph rather than recomputing them in every consumer. A pure local display calculation does not require a shared Atom.
 
 Use the normal Atom lifetime by default. Use `Atom.keepAlive` only when continuity is required while the Atom has no consumers.
 
@@ -31,4 +29,4 @@ Expose mutation pending state and failure beside the initiating control. Render 
 const inputRef = useRef<HTMLInputElement>(null)
 ```
 
-Keep rendering pure. Produce time, randomness, I/O, and other effects outside render. Provide stable results through props or Atom state. Let React Compiler own memoization.
+Provide time, randomness, I/O, and other effects to rendering through props or Atom state. Let React Compiler own memoization.
