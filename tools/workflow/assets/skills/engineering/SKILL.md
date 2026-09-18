@@ -1,9 +1,9 @@
 ---
 name: engineering
-description: 'Use for product-code architecture, implementation, coding style, testing, or review.'
+description: 'Use for product-code architecture, implementation, coding style, testing, review, or to locate authoritative library source.'
 ---
 
-Write code to these rules before static analysis. Apply the repository's project-engineering skill for its concrete architecture and conventions.
+Write code to these rules before static analysis. Apply the repository's project-engineering skill, where it provides one, for its concrete architecture and conventions.
 
 ## Boundary
 

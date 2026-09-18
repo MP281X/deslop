@@ -44,7 +44,7 @@ const cli = Command.make(
 		const result = yield* install(path.resolve(import.meta.dirname, '../assets'), path.resolve(destination))
 		yield* Console.log(`Installed Deslop workflow in ${result.directory}`)
 		yield* Console.log(
-			'Start a fresh Codex session to load the installed workflow. Existing config.toml settings were replaced.'
+			'Start a fresh Codex session to load the installed workflow. Replaced config.toml, AGENTS.md, agents/deslop, and skills/engineering, discarding local edits to them.'
 		)
 	})
 )

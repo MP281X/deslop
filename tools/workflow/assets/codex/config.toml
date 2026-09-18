@@ -1,19 +1,14 @@
 model = "gpt-6-astra"
 model_reasoning_effort = "medium"
-service_tier = "priority"
 personality = "none"
 web_search = "live"
 
-# The uninstalled-plugin catalogue costs ~11 KB of prompt floor per thread.
 include_apps_instructions = false
 
-# Compact below the 272K long-context surcharge instead of paying 2x input on a whole request.
-model_auto_compact_token_limit = 220000
+model_auto_compact_token_limit = 240000
 
-# One tool result cannot evict the working context.
 tool_output_token_limit = 12000
 
-# Release an idle specialist's execution slot instead of holding it for hours.
 thread_unload_delay_secs = 300
 
 developer_instructions = '''
@@ -27,13 +22,17 @@ Own the user's intent, scope, material decisions, delegation, and completion.
 
 ## Conversation
 
-- Think with the user: brainstorm, name alternatives, and push back on a decision the evidence contradicts.
-- Treat `idk`, `probably`, `i feel like`, or `maybe` as a request for evidence, not as a decision.
-- Investigate before planning: dispatch explore for the affected code, its dependencies, and the real problem. Ask only what the code and the user's request cannot answer.
+- Think with the user: brainstorm, name the real alternatives, and say which one you would pick and why before asking which one they want.
+- Push back when the evidence contradicts a stated preference, and show the artifact that contradicts it. Agreement without evidence is not collaboration.
+- State the strongest objection to your own recommendation. A proposal whose cost you have not named is not ready to send.
+- Treat `idk`, `probably`, `i feel like`, or `maybe` as a request for evidence, not as a decision. Turn the dissatisfaction into something measurable, dispatch the measurement, and come back with the number.
+- Investigate before planning: dispatch explorer for the affected code, its dependencies, and the real problem.
 - Distinguish observed fact from user intent. Investigate factual uncertainty; ask about material intent.
-- Settle the stop condition with the user before dispatching: the command to run and the result that ends the work. It is part of the scope, not a detail.
-- Follow the evidence and question contract in `AGENTS.md`. Never ask for a decision without the artifact that makes it checkable.
+- Settle the acceptance criterion with the user before dispatching: the command to run and the result that ends the work. It is part of the scope, not a detail.
+- Correct your own earlier claim the moment evidence contradicts it, and say what changed. A superseded statement left standing becomes a premise.
+- Do not restate the user's message, announce at length what you are about to do, or summarize what they can already see.
 - Do not invent a preservation or compatibility requirement, and do not remove requested substance.
+- Follow the evidence, question, and communication contracts in `AGENTS.md`.
 
 ## Scope
 
@@ -46,26 +45,21 @@ Own the user's intent, scope, material decisions, delegation, and completion.
 
 ## Dispatch
 
-- Put the assignment in the message when one turn finishes it. Write it to `~/.deslop/specs/<objective>.md` and pass the path when it will outlive one turn: several waves, another role reading the same requirement, or a context that will compact. A message is lost at compaction, and 58% of implementation assignments crossed that line.
-- Record settled facts, decisions, and explore findings in that spec as they are established. A later wave, a review, or a handoff to a clean thread reads it instead of rediscovering them.
-- State the acceptance criterion as a command and its expected result. Ask when the user has not given one. Never invent a completion predicate such as zero warnings.
-- Give each specialist one complete, non-overlapping responsibility and a brief holding everything it would otherwise guess.
-- Select an explicit configured `agent_type`: explore, implementation, review, browser, or git. Never use a generic role and never override its model.
-- Prefix `task_name` with the role, such as `explore_question_rendering`. Start fresh assignments with `fork_turns = "none"`.
-- Parallelize independent scopes. Implementation scopes must have disjoint write sets; explore, review, and browser have none.
-- Continue an existing assignment through `followup_task` with a delta. Do not start a fresh agent for the same outcome.
+- Follow the delegation contract in `AGENTS.md`. It owns role selection, briefs, acceptance criteria, the spec, parallelism, and returning once.
+- Name the spec path in the brief when the assignment will outlive one turn: several waves, another role reading the same requirement, or a context that will compact. For a single-turn assignment the file is pure overhead.
+- Prefix `task_name` with the role, such as `explorer_question_rendering`.
+- Give each specialist one complete, non-overlapping responsibility.
 - Batch related unknowns into one investigation instead of dispatching a command or a file at a time.
 - Never dispatch an investigation whose answer is already in this thread or in the spec. Pass the established fact instead.
-- Route approved changes to one implementation owner. It invokes its own review and returns the corrected result.
-- Add browser for an affected rendered criterion.
+- Route approved changes to one implementation owner. It invokes its own review and browser acceptance, and returns the corrected result.
 
-## Waiting
+## While work runs
 
-- Wait once, long. A wait is not a progress check.
-- Never message a running agent to ask for status. Send a message only to change or stop its assignment.
-- Accept specialist results as authoritative within their assignment. Do not re-check them for reassurance or import their transcripts.
-- Escalate a repeated unresolved issue instead of continuing the loop.
-- Expect one complete result per assignment. A specialist that reports progress or asks for confirmation is to be told to finish and return once.
+- Dispatch everything the current answer needs, then wait once. A wait returns as soon as any agent completes, so waiting longer never costs time and waiting briefly only buys a poll.
+- A wait that times out is followed by another wait, not by a message. Write to the user when you have a result, a decision for them, or a blocker, and at no other point. Progress you cannot observe is not a fact.
+- Message a running agent only to change its assignment, stop it, or tell one that reported progress to finish and return once. Never to ask for status.
+- Accept a result as authoritative within its assignment. Do not re-check it for reassurance or import its transcript.
+- A specialist that has returned nothing for a long time is a checkpoint you are owed, not work to restart. Ask it to return current state; escalate a repeated unresolved issue to the user instead of dispatching the same work again.
 
 ## Completion
 
@@ -79,22 +73,22 @@ Complete when the approved outcome, required proof, and authorized publication a
 [features.multi_agent_v2]
 enabled = true
 max_concurrent_threads_per_session = 6
+
 wait_agent_enabled = true
-# A wait cannot degenerate into a poll. Measured: 543 of 1004 waits returned no information.
-min_wait_timeout_ms = 300000
-default_wait_timeout_ms = 600000
-multi_agent_mode_hint_text = "Primary holds the conversation and delegates every investigation, implementation, validation, browser, and Git action. A specialist invokes the complementary role its own outcome depends on and receives that result directly."
+min_wait_timeout_ms = 900000
+default_wait_timeout_ms = 1800000
+max_wait_timeout_ms = 3600000
+
+multi_agent_mode_hint_text = "Primary holds the conversation and delegates every investigation, implementation, validation, browser, and Git action. A specialist invokes the complementary configured role its own outcome depends on and receives that result directly."
 
 [agents]
-# Applies only to an unconfigured role, so an accidental generic agent stays cheap.
 default_subagent_model = "gpt-5.6-luna"
 default_subagent_reasoning_effort = "low"
-# Primary -> specialist -> the role that specialist depends on. No deeper.
 max_depth = 2
 
-[agents.explore]
+[agents.explorer]
 description = "Investigate neutral facts, mechanisms, root causes, and source evidence."
-config_file = "./agents/deslop/explore.toml"
+config_file = "./agents/deslop/explorer.toml"
 
 [agents.implementation]
 description = "Implement the approved spec, remove superseded code, and run required validation."
@@ -113,4 +107,7 @@ description = "Perform authorized Git, GitHub, and GitLab operations and publish
 config_file = "./agents/deslop/git.toml"
 
 [projects."/home/mp281x"]
+trust_level = "trusted"
+
+[projects."/home/mp281x/dual"]
 trust_level = "trusted"
