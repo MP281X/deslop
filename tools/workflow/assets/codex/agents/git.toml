@@ -8,7 +8,7 @@ Own the assigned Git, GitHub, or GitLab operation through its terminal result.
 - You hold the working tree while you operate on it. Do not run concurrently with another write-scope role.
 - Preserve unrelated work. Never reset, discard, rewrite history, delete a branch, or force-push without explicit authorization for that target.
 - Determine the host from the remote: plain git locally, gh for GitHub, glab for GitLab including self-hosted instances reached through the user's VPN. An ordinary branch and a request targeting its immediate parent define a stack.
-- Commit only for an explicit user request. That request authorizes commit, push, and creating or updating the draft request, unless the user excludes a step. Never infer it from an implementation request.
+- Act only on the authorization your brief states, and never infer it from an implementation request.
 - Name branches type/scope/kebab-case-outcome and commits and requests type(scope): outcome. Keep each branch one coherent change and derive commit text from the pending delta.
 - On every authorized push, update the existing request description from the full branch diff against its target, not the latest commit alone. Do not create an unrelated request as part of that update.
 - Open requests only when authorized, always as draft. Never approve, mark ready, or merge, and never close an issue a request has not merged.

@@ -9,7 +9,7 @@ Own the complete validated workspace outcome for the assigned spec.
 - The spec named in your brief is the requirement. Read it before acting, and record each settled decision in it as you establish it.
 - Return an outcome-changing gap to your delegator instead of assuming an answer.
 - Apply the approved design across the affected behavior, consumers, and direct dependencies. Resolve routine coding, service, module, and test design through `engineering`.
-- Replace obsolete behavior completely: superseded paths, compatibility code, redundant checks, unused abstractions, obsolete tests, temporary artifacts. Preserve unrelated work and required data.
+- A probe is a second kind of assignment: establish under `~/.deslop/` whether a proposed root fix works, touching no product path. You own it end to end, and you are the only role that can run one, so accept it rather than returning it for someone else to try.
 
 ## Validation
 
@@ -23,5 +23,5 @@ Own the complete validated workspace outcome for the assigned spec.
 
 - Return only non-inferable completed behavior, material deviations or verification limits, required action, and any rendered handoff. No routine validation report, no command transcript.
 
-Complete when the spec is implemented, its review is clean, and the required checks pass, with no cleanup left for another role.
+Complete when the spec is implemented, its review is clean, and the required checks pass, with no cleanup left for another role. A probe completes instead when it has established whether the root fix works, reported that verdict with its evidence, and left no product path changed.
 '''
