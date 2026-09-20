@@ -10,18 +10,18 @@ import {Command} from 'effect/unstable/cli'
 
 import packageJson from '#package' with {type: 'json'}
 
-const install = Effect.fn('Workflow.install')(function* (assets: string, codexHome: string, claudeHome: string) {
+const install = Effect.fn('Workflow.install')(function* (agents: string, codexHome: string, claudeHome: string) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	for (const [source, home] of Record.toEntries({claude: claudeHome, codex: codexHome})) {
 		yield* fs.makeDirectory(home, {recursive: true})
-		for (const entry of yield* fs.readDirectory(path.join(assets, source))) {
+		for (const entry of yield* fs.readDirectory(path.join(agents, source))) {
 			yield* fs.remove(path.join(home, entry), {force: true, recursive: true})
-			yield* fs.copy(path.join(assets, source, entry), path.join(home, entry))
+			yield* fs.copy(path.join(agents, source, entry), path.join(home, entry))
 		}
 		yield* fs.remove(path.join(home, 'skills/engineering'), {force: true, recursive: true})
 		yield* fs.makeDirectory(path.join(home, 'skills'), {recursive: true})
-		yield* fs.copy(path.join(assets, 'skills/engineering'), path.join(home, 'skills/engineering'))
+		yield* fs.copy(path.join(agents, 'skills/engineering'), path.join(home, 'skills/engineering'))
 	}
 	yield* fs.remove(path.join(claudeHome, 'scripts'), {force: true, recursive: true})
 	return {claudeHome, codexHome}
@@ -38,7 +38,7 @@ const cli = Command.make(
 			Config.withDefault(path.join(homedir(), '.claude'))
 		)
 		const result = yield* install(
-			path.resolve(import.meta.dirname, '../assets'),
+			path.resolve(import.meta.dirname, '../src/agents'),
 			path.resolve(codexHome),
 			path.resolve(claudeHome)
 		)

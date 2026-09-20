@@ -17,7 +17,7 @@
 		"effect": "^4.0.0-rc"
 	},
 	"devDependencies": {
-		"@deslop/oxlint-rules": "workspace:*",
+		"@deslop/workflow": "workspace:*",
 		"@effect/tsgo": "latest",
 		"@effect/vitest": "^4.0.0-rc",
 		"@types/node": "latest",

@@ -1,1 +1,39 @@
-{"extends": "../../tsconfig.json"}
+{
+	"compilerOptions": {
+		// type checking
+		"strict": true,
+		"noUnusedLocals": true,
+		"noImplicitReturns": true,
+		"noErrorTruncation": true,
+		"allowUnusedLabels": false,
+		"noUnusedParameters": true,
+		"noImplicitOverride": true,
+		"allowUnreachableCode": false,
+		"noUncheckedIndexedAccess": true,
+		"noFallthroughCasesInSwitch": true,
+		"noPropertyAccessFromIndexSignature": true,
+		"forceConsistentCasingInFileNames": true,
+
+		// ts version and module resolution (use the lasted ts/js features and types)
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleDetection": "force",
+		"moduleResolution": "bundler",
+
+		// imports / type checking and parsing / ...
+		"skipLibCheck": true,
+		"esModuleInterop": true,
+		"isolatedModules": true,
+		"resolveJsonModule": true,
+		"erasableSyntaxOnly": true,
+		"verbatimModuleSyntax": true,
+		"useDefineForClassFields": true,
+		"allowImportingTsExtensions": true,
+		"noUncheckedSideEffectImports": true,
+
+		// build config
+		"noEmit": true,
+		"incremental": true,
+		"tsBuildInfoFile": "${configDir}/.tsbuildinfo"
+	}
+}

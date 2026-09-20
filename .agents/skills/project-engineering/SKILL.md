@@ -147,6 +147,17 @@ it.effect('replays compact history and streams later events to existing subscrib
 {"exports": {"./utils": "./src/lib/utils.ts", "./schema": "./src/schema.ts", "./service": "./src/service.ts"}}
 ```
 
+## Dependencies
+
+```json
+// bad — packages/ai/package.json redeclaring a dependency the root already owns
+{"dependencies": {"@earendil-works/pi-agent-core": "latest", "effect": "^4.0.0-rc"}}
+
+// good — the root package.json declares it once, packages/ai/package.json omits it and imports it
+{"dependencies": {"@effect/atom-react": "^4.0.0-rc", "@effect/platform-node": "^4.0.0-rc", "effect": "^4.0.0-rc"}}
+{"dependencies": {"@earendil-works/pi-agent-core": "latest", "@earendil-works/pi-ai": "latest"}}
+```
+
 ## Generators
 
 ```sh
@@ -202,13 +213,13 @@ vp run upgrade
 
 ```
 // bad — a custom rule where a maintained one exists
-tools/oxlint-rules/src/oxlint-plugin.ts   // effecttsgo already ships this rule
+tools/workflow/src/rules/*.ts             // effecttsgo already ships this rule
 
 // good — one owner per enforcement surface
-tsconfig.json                             // types
-vite.config.ts                            // oxlint, oxfmt
+tools/workflow/tsconfig.json              // types; the root tsconfig.json keeps only jsx, lib, types and exclude
+tools/workflow/src/oxlint.ts              // generic oxlint rules and the plugin default export, including the scoped-source import ban; vite.config.ts keeps ignores, overrides, repo plugins, env, the whole fmt config and the @deslop import group
 .fallowrc.json                            // dead code
-tools/oxlint-rules/src/oxlint-plugin.ts   // repo-specific forms, fixtures beside it
+tools/workflow/src/rules/*.ts             // custom Effect and React forms, one file per rule, fixtures in rules.test.ts
 ```
 
 ## Fallow

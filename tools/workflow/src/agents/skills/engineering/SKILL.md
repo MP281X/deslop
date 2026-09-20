@@ -114,6 +114,7 @@ const raw: unknown = JSON.parse(body)
 const payload = Schema.decodeUnknownSync(RequestPayload)(raw)
 const count = parseInt(input.count)
 commits.map(commit => commit.subject) // in tests too
+typeof value === 'string' // Predicate.isString
 
 // good — Schema, Array, String, Number, Predicate over globals
 Schema.decodeEffect(PackageManifest)(text) // PackageManifest is a fromJsonString schema
@@ -394,6 +395,7 @@ it.effect('rejects an empty tag', () => run(ledger.add({tag: ''}))) // Schema.is
 it.effect('fails on a malformed amount', () => run(ledger.load(malformed))) // BigDecimalFromString already does
 it.effect('loads', () => pipe(program, Effect.provide(Ledger.layer))) // the layer, per test
 assert.deepStrictEqual(Array.map(commits, commit => DateTime.formatIso(commit.timestamp)), stamps) // Schema decoded it
+vi.mock('../src/NotionClient.ts', () => ({})) // a Layer is the seam
 
 // good — "test files only for the services/packages public interfaces"; one layer; a test asserts a value the brief specifies, never one a library computes
 it.layer(Layer.provideMerge(Ledger.layer, NodeServices.layer))(test => {

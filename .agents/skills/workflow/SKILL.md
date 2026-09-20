@@ -21,18 +21,22 @@ The user converses with one agent, the pair thread, that turns half-formed ideas
 
 ## Files
 
-`tools/workflow/assets/codex/` and `tools/workflow/assets/claude/` are copied as they are into `~/.codex` and `~/.claude`; `assets/skills/engineering` is copied into both. The pair text and each role body exist twice, once per harness, edited in both places. No rendering.
+`tools/workflow/src/agents/codex/` and `tools/workflow/src/agents/claude/` are copied as they are into `~/.codex` and `~/.claude`; `src/agents/skills/engineering` is copied into both. The pair text and each role body exist twice, once per harness, edited in both places. No rendering.
 
-| Path                   | Holds                                                                      |
-| ---------------------- | -------------------------------------------------------------------------- |
-| `codex/config.toml`    | stripped config, pair text as `developer_instructions`, role registrations |
-| `codex/AGENTS.md`      | the one line that authorizes Codex to spawn the roles                      |
-| `codex/agents/*.toml`  | role bodies with their Codex model                                         |
-| `claude/CLAUDE.md`     | pair text                                                                  |
-| `claude/settings.json` | stripped settings, denied tools and built-in agents                        |
-| `claude/agents/*.md`   | role bodies with their Claude model and tools                              |
+| Path                           | Holds                                                                                                                               |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `codex/config.toml`            | stripped config, pair text as `developer_instructions`, role registrations                                                          |
+| `codex/AGENTS.md`              | the one line that authorizes Codex to spawn the roles                                                                               |
+| `codex/agents/*.toml`          | role bodies with their Codex model                                                                                                  |
+| `claude/CLAUDE.md`             | pair text                                                                                                                           |
+| `claude/settings.json`         | stripped settings, denied tools and built-in agents                                                                                 |
+| `claude/agents/*.md`           | role bodies with their Claude model and tools                                                                                       |
+| `tools/workflow/src/oxlint.ts` | the `.` export: the shared Oxlint rule set and, as its default export, the plugin holding the repo-specific rules from `src/rules/` |
+| `tools/workflow/tsconfig.json` | the `./tsconfig.json` export: the shared compiler options                                                                           |
 
-`vp run build` in `tools/workflow`, then `node dist/main.js`; `CODEX_HOME` and `CLAUDE_CONFIG_DIR` select the homes. Nothing installs on its own; he says when. The installer removes every managed entry before copying, so hand edits to installed files are lost on every install; an asset deleted in a release gets one explicit removal in `main.ts` for that release only, dropped at the next.
+`vp run build` in `tools/workflow`, then `node dist/install.js`; `CODEX_HOME` and `CLAUDE_CONFIG_DIR` select the homes. Nothing installs on its own; he says when. The installer removes every managed entry before copying, so hand edits to installed files are lost on every install; an asset deleted in a release gets one explicit removal in `install.ts` for that release only, dropped at the next.
+
+A release is a `version` bump in `tools/workflow/package.json` merged to `main`: the deploy workflow publishes `@deslop/workflow` to npm whenever that version differs from the published one. Node refuses to strip types under `node_modules` (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), so nothing a consumer's Node loads may be a published `.ts` file: `vp pack` builds `dist/install.js` for the bin and `dist/oxlint.js` for the `.` export, and `publishConfig.exports` points consumers at them while the workspace keeps reading `src/oxlint.ts`.
 
 ## Ownership
 
@@ -93,7 +97,7 @@ Settled from 991 Codex threads, 14 Claude threads, and 15 iterations of the pair
 
 ## The engineering skill
 
-`tools/workflow/assets/skills/engineering/SKILL.md` is one file, no references: 31 `ts` blocks, one per rule, `// bad` from a correction in the thread corpus, a GitHub issue (#44, #57, #64 hold his own bad/good pairs), or a line the repository linter reported in a probe file, `// good` from a repository call site. It also covers what Oxlint, Fallow and tsconfig enforce, so the worker writes the final form first and static analysis only catches regressions. `.agents/skills/project-engineering/SKILL.md` is the same shape, one file, nine sections: layout trees, the `@deslop/<package>/<path>` key, subpath import maps, RPC and Atom, tests beside the public interface, exports, generators, components, enforcement owners, Fallow; its five references are deleted. The layout tree lives there because the engineering skill is shared with the dual repository, which lays packages out differently.
+`tools/workflow/src/agents/skills/engineering/SKILL.md` is one file, no references: 31 `ts` blocks, one per rule, `// bad` from a correction in the thread corpus, a GitHub issue (#44, #57, #64 hold his own bad/good pairs), or a line the repository linter reported in a probe file, `// good` from a repository call site. It also covers what Oxlint, Fallow and tsconfig enforce, so the worker writes the final form first and static analysis only catches regressions. `.agents/skills/project-engineering/SKILL.md` is the same shape, one file, nine sections: layout trees, the `@deslop/<package>/<path>` key, subpath import maps, RPC and Atom, tests beside the public interface, exports, generators, components, enforcement owners, Fallow; its five references are deleted. The layout tree lives there because the engineering skill is shared with the dual repository, which lays packages out differently.
 
 His stance, each point said more than once over two months of corrections:
 

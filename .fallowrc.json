@@ -10,8 +10,7 @@
 	],
 	"ignoreExports": [
 		{"exports": ["*"], "file": "packages/*/src/schema.ts"},
-		{"exports": ["*"], "file": "packages/components/src/components/**"},
-		{"exports": ["default"], "file": "tools/oxlint-rules/src/oxlint-plugin.ts"}
+		{"exports": ["*"], "file": "packages/components/src/components/**"}
 	],
 	"rules": {"require-suppression-reason": "error"}
 }

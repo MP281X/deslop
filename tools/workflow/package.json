@@ -1,25 +1,47 @@
 {
 	"name": "@deslop/workflow",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/MP281X/deslop",
 		"directory": "tools/workflow"
 	},
 	"bin": {
-		"deslop-workflow": "dist/main.js"
+		"deslop-workflow": "dist/install.js"
 	},
 	"files": [
 		"dist",
-		"assets"
+		"src/agents",
+		"tsconfig.json"
 	],
 	"type": "module",
-	"sideEffects": false,
 	"imports": {
 		"#package": "./package.json"
 	},
+	"exports": {
+		".": "./src/oxlint.ts",
+		"./tsconfig.json": "./tsconfig.json"
+	},
+	"publishConfig": {
+		"exports": {
+			".": "./dist/oxlint.js",
+			"./tsconfig.json": "./tsconfig.json"
+		},
+		"access": "public"
+	},
 	"scripts": {
 		"build": "vp pack"
+	},
+	"devDependencies": {
+		"@oxlint/plugins": "latest",
+		"oxlint": "1.79.0"
+	},
+	"peerDependencies": {
+		"@effect/tsgo": "0.38.0",
+		"effect": "^4.0.0-rc",
+		"oxlint": "1.79.0",
+		"oxlint-plugin-react-doctor": "latest",
+		"oxlint-tsgolint": "7.0.2001"
 	},
 	"engines": {
 		"node": ">=26"

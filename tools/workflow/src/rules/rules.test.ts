@@ -1,9 +1,11 @@
 import {NodeServices} from '@effect/platform-node'
 import {describe, expect, it} from '@effect/vitest'
 
-import {Array, Effect, FileSystem, Path, Schema, Stream, String, pipe} from 'effect'
+import {Array, Effect, FileSystem, Path, Record, Schema, Stream, String, pipe} from 'effect'
 
 import {ChildProcess, ChildProcessSpawner} from 'effect/unstable/process'
+
+import plugin from '@deslop/workflow'
 
 type OxlintOutput = typeof OxlintOutput.Type
 const OxlintOutput = Schema.Struct({
@@ -18,7 +20,7 @@ const lintSource = Effect.fnUntraced(function* (input: {name: string; source: st
 	yield* fs.writeFileString(file, String.replace(/^((?:import[^\n]*\n)+)(?!\n)/u, '$1\n')(input.source))
 
 	const handle = yield* ChildProcess.make('vp', ['lint', file, '--format=json'], {
-		cwd: path.resolve(import.meta.dirname, '../../..'),
+		cwd: path.resolve(import.meta.dirname, '../../../..'),
 		stderr: 'pipe',
 		stdout: 'pipe'
 	})
@@ -46,7 +48,11 @@ function customCodes(output: OxlintOutput) {
 }
 
 function customDiagnostics(output: OxlintOutput) {
-	return Array.filter(output.diagnostics, diagnostic => String.startsWith('@deslop/oxlint-rules(')(diagnostic.code))
+	const codes = pipe(
+		Record.keys(plugin.rules),
+		Array.map(rule => `@deslop/workflow(${rule})`)
+	)
+	return Array.filter(output.diagnostics, diagnostic => Array.contains(codes, diagnostic.code))
 }
 
 describe('deslop Oxlint plugin', {concurrent: false}, () => {
@@ -107,37 +113,37 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 						expect(customCodes(result.stdout)).toEqual(
 							pipe(
 								[
-									'@deslop/oxlint-rules(no-fake-ref-state)',
-									'@deslop/oxlint-rules(no-fake-ref-state)',
-									'@deslop/oxlint-rules(no-readonly-type-syntax)',
-									'@deslop/oxlint-rules(no-readonly-type-syntax)',
-									'@deslop/oxlint-rules(no-readonly-type-syntax)',
-									'@deslop/oxlint-rules(no-readonly-type-syntax)',
-									'@deslop/oxlint-rules(no-readonly-type-syntax)',
-									'@deslop/oxlint-rules(no-readonly-type-syntax)',
-									'@deslop/oxlint-rules(no-redundant-use-ref-null-type)',
-									'@deslop/oxlint-rules(no-redundant-use-ref-null-type)',
-									'@deslop/oxlint-rules(no-stored-schema-operation)',
-									'@deslop/oxlint-rules(no-stored-schema-operation)',
-									'@deslop/oxlint-rules(no-stored-schema-operation)',
-									'@deslop/oxlint-rules(no-stored-schema-operation)',
-									'@deslop/oxlint-rules(no-stored-schema-operation)',
-									'@deslop/oxlint-rules(no-stored-schema-operation)',
-									'@deslop/oxlint-rules(no-stored-schema-operation)',
-									'@deslop/oxlint-rules(no-trivial-indirection)',
-									'@deslop/oxlint-rules(no-trivial-indirection)',
-									'@deslop/oxlint-rules(no-trivial-indirection)',
-									'@deslop/oxlint-rules(no-trivial-indirection)',
-									'@deslop/oxlint-rules(no-trivial-indirection)',
-									'@deslop/oxlint-rules(no-undestructured-use-state)',
-									'@deslop/oxlint-rules(no-undestructured-use-state)',
-									'@deslop/oxlint-rules(no-unvalidated-json-decode)',
-									'@deslop/oxlint-rules(no-unvalidated-json-decode)',
-									'@deslop/oxlint-rules(schema-type-pair)',
-									'@deslop/oxlint-rules(schema-type-pair)',
-									'@deslop/oxlint-rules(schema-type-pair)',
-									'@deslop/oxlint-rules(schema-type-pair)',
-									'@deslop/oxlint-rules(schema-type-pair)'
+									'@deslop/workflow(no-fake-ref-state)',
+									'@deslop/workflow(no-fake-ref-state)',
+									'@deslop/workflow(no-readonly-type-syntax)',
+									'@deslop/workflow(no-readonly-type-syntax)',
+									'@deslop/workflow(no-readonly-type-syntax)',
+									'@deslop/workflow(no-readonly-type-syntax)',
+									'@deslop/workflow(no-readonly-type-syntax)',
+									'@deslop/workflow(no-readonly-type-syntax)',
+									'@deslop/workflow(no-redundant-use-ref-null-type)',
+									'@deslop/workflow(no-redundant-use-ref-null-type)',
+									'@deslop/workflow(no-stored-schema-operation)',
+									'@deslop/workflow(no-stored-schema-operation)',
+									'@deslop/workflow(no-stored-schema-operation)',
+									'@deslop/workflow(no-stored-schema-operation)',
+									'@deslop/workflow(no-stored-schema-operation)',
+									'@deslop/workflow(no-stored-schema-operation)',
+									'@deslop/workflow(no-stored-schema-operation)',
+									'@deslop/workflow(no-trivial-indirection)',
+									'@deslop/workflow(no-trivial-indirection)',
+									'@deslop/workflow(no-trivial-indirection)',
+									'@deslop/workflow(no-trivial-indirection)',
+									'@deslop/workflow(no-trivial-indirection)',
+									'@deslop/workflow(no-undestructured-use-state)',
+									'@deslop/workflow(no-undestructured-use-state)',
+									'@deslop/workflow(no-unvalidated-json-decode)',
+									'@deslop/workflow(no-unvalidated-json-decode)',
+									'@deslop/workflow(schema-type-pair)',
+									'@deslop/workflow(schema-type-pair)',
+									'@deslop/workflow(schema-type-pair)',
+									'@deslop/workflow(schema-type-pair)',
+									'@deslop/workflow(schema-type-pair)'
 								],
 								Array.sort(String.Order)
 							)
@@ -145,7 +151,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 						expect(
 							pipe(
 								customDiagnostics(result.stdout),
-								Array.filter(diagnostic => diagnostic.code === '@deslop/oxlint-rules(no-stored-schema-operation)'),
+								Array.filter(diagnostic => diagnostic.code === '@deslop/workflow(no-stored-schema-operation)'),
 								Array.map(diagnostic => diagnostic.message)
 							)
 						).toEqual(
@@ -180,6 +186,8 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const Annotated = Schema.String.annotate({description: "value"})',
 									'export type Public = typeof Public.Type',
 									'const Public = Schema.Struct({name: Schema.String})',
+									'type LinearIssue = typeof LinearIssue.Type',
+									'const LinearIssue = Schema.Struct({id: Schema.String})',
 									'type Exported = typeof Exported.Type',
 									'export const Exported = Schema.Struct({name: Schema.String})',
 									'type Normalized = typeof Normalized.Type',
@@ -199,7 +207,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'function swap(left: string, right: string) { return combine(right, left) }',
 									'function withDefault(value = "ready") { return transform(value) }',
 									'const tuple = ["ready", 1] as const',
-									'export {Annotated, Arbitrary, Decoded, Encoded, Formatter, Normalized, decoded, decodedMany, encoded, isUser, swap, transform, tuple, withDefault}'
+									'export {Annotated, Arbitrary, Decoded, Encoded, Formatter, LinearIssue, Normalized, decoded, decodedMany, encoded, isUser, swap, transform, tuple, withDefault}'
 								],
 								Array.join('\n')
 							)
@@ -214,22 +222,83 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 		)
 
 		testApi.effect(
-			'rejects workspace dependencies already owned by the root',
+			'reports runtime typeof and module mocking',
 			() =>
 				pipe(
 					Effect.gen(function* () {
-						const fs = yield* FileSystem.FileSystem
-						const path = yield* Path.Path
-						const workspace = yield* fs.makeTempDirectoryScoped({
-							directory: path.resolve(import.meta.dirname, '../..'),
-							prefix: 'duplicate-dependency-'
+						const result = yield* lintSource({
+							name: 'mocking.ts',
+							source: pipe(
+								[
+									"import {Predicate} from 'effect'",
+									'',
+									'declare const properties: unknown',
+									'declare const value: unknown',
+									'declare const vi: {mock: (path: string, factory: () => object) => void; spyOn: (target: object, key: string) => void}',
+									"const isText = typeof value === 'string'",
+									"if (typeof properties === 'object') Predicate.isNotNull(properties)",
+									"vi.mock('../src/NotionClient.ts', () => ({}))",
+									"vi.spyOn(console, 'log')",
+									'export {isText}'
+								],
+								Array.join('\n')
+							)
 						})
-						yield* fs.writeFileString(
-							path.join(workspace, 'package.json'),
-							'{"dependencies":{"effect":"latest"},"name":"@deslop/duplicate"}'
+						expect(customCodes(result.stdout)).toEqual(
+							pipe(
+								[
+									'@deslop/workflow(no-module-mocking)',
+									'@deslop/workflow(no-module-mocking)',
+									'@deslop/workflow(no-typeof)',
+									'@deslop/workflow(no-typeof)'
+								],
+								Array.sort(String.Order)
+							)
 						)
-						const result = yield* lintSource({name: 'vite.config.ts', source: 'export default {}'})
-						expect(customCodes(result.stdout)).toEqual(['@deslop/oxlint-rules(no-duplicate-root-dependency)'])
+						expect(
+							pipe(
+								customDiagnostics(result.stdout),
+								Array.filter(diagnostic => diagnostic.code === '@deslop/workflow(no-typeof)'),
+								Array.map(diagnostic => diagnostic.message)
+							)
+						).toEqual(Array.makeBy(2, () => 'Use a Predicate module function.'))
+						expect(
+							pipe(
+								customDiagnostics(result.stdout),
+								Array.filter(diagnostic => diagnostic.code === '@deslop/workflow(no-module-mocking)'),
+								Array.map(diagnostic => diagnostic.message)
+							)
+						).toEqual(Array.makeBy(2, () => 'A Layer is the seam; never mock a module.'))
+					}),
+					Effect.scoped
+				),
+			20_000
+		)
+
+		testApi.effect(
+			'allows a Layer as the test seam',
+			() =>
+				pipe(
+					Effect.gen(function* () {
+						const result = yield* lintSource({
+							name: 'seam.ts',
+							source: pipe(
+								[
+									"import {NodeServices} from '@effect/platform-node'",
+									"import {it} from '@effect/vitest'",
+									"import {Effect, Layer, Predicate} from 'effect'",
+									'',
+									'declare const value: unknown',
+									'const isText = Predicate.isString(value)',
+									'it.layer(Layer.provideMerge(Layer.empty, NodeServices.layer))(test => {',
+									"  test.effect('sums expenses negative per tag', () => Effect.void)",
+									'})',
+									'export {isText}'
+								],
+								Array.join('\n')
+							)
+						})
+						expect(customCodes(result.stdout)).toEqual([])
 					}),
 					Effect.scoped
 				),
