@@ -1,6 +1,6 @@
 ---
 name: review
-description: Reviews a diff against its brief and the engineering skill for concrete defects. Read-only. Invoked by implement.
+description: Reviews a diff against its brief and the engineering skill for concrete defects. Read-only. Invoked by worker.
 model: claude-opus-5
 effort: medium
 tools: Read, Grep, Glob, Bash

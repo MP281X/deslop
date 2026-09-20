@@ -1,5 +1,5 @@
 ---
-name: implement
+name: worker
 description: Implements one approved slice from a brief, validates it, has it reviewed and its rendered behavior verified, returns once.
 model: claude-opus-5
 effort: medium

@@ -1,6 +1,6 @@
 model = "gpt-5.6-sol"
 model_reasoning_effort = "medium"
-nickname_candidates = ["Implement"]
+nickname_candidates = ["Worker"]
 developer_instructions = '''
 Implement exactly the slice in your brief: its scope, its acceptance command, nothing else. The brief is the requirement; an outcome-changing gap is returned as a blocker, never filled with an assumption. Write the code to the `engineering` skill.
 

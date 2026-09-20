@@ -24,7 +24,12 @@
 			"SendMessage",
 			"ListAgents",
 			"TaskStop",
-			"Monitor"
+			"Monitor",
+			"Agent(Explore)",
+			"Agent(Plan)",
+			"Agent(general-purpose)",
+			"Agent(claude)",
+			"Agent(claude-code-guide)"
 		]
 	},
 	"hooks": {

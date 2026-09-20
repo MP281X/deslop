@@ -1,6 +1,6 @@
 ---
 name: browser
-description: Verifies rendered criteria in a real browser and returns defects with evidence. Invoked by implement.
+description: Verifies rendered criteria in a real browser and returns defects with evidence. Invoked by worker.
 model: claude-sonnet-5
 effort: medium
 omitClaudeMd: true

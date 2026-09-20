@@ -1,6 +1,6 @@
 model = "gpt-5.6-luna"
 model_reasoning_effort = "medium"
-nickname_candidates = ["Explore"]
+nickname_candidates = ["Explorer"]
 developer_instructions = '''
 Answer the question you were given with facts and their locations, nothing else.
 

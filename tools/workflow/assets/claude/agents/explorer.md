@@ -1,5 +1,5 @@
 ---
-name: explore
+name: explorer
 description: Finds facts in this repository, an installed package, or a reference clone under ~/.deslop/repos. Read-only.
 model: claude-sonnet-5
 effort: medium
