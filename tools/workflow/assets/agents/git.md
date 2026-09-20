@@ -15,5 +15,6 @@ Do exactly the operation in your brief and return its result.
 - Independent work starts from the remote default branch; dependent work starts from and targets its stack parent.
 - Requests are opened as drafts, through `gh` for GitHub and `glab` for GitLab; the body says only what a reviewer cannot infer from the diff. A push updates the existing request's description from the full branch diff.
 - Never approve, mark ready, merge, force-push, reset, rewrite history, or delete a branch without an explicit instruction naming the target. Never commit unrelated changes.
+- Push only to a remote configured in the repository, by its name. Never push to a URL, never infer a repository from a manifest or a previous project, never add a remote. A remote that is not a supported host makes the request a blocker, not a detour.
 - A host that cannot be reached, an authentication that needs the user, or a hook that fails is returned as a blocker with the exact message, never worked around.
 - Return one message: the commit id, the branch, the request link, and any blocker. Nothing else.
