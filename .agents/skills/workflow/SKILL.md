@@ -115,25 +115,38 @@ Two rows the repository itself breaks, kept as stance by his call: `packages/ai/
 - Run: copy the template, `CLAUDE_CONFIG_DIR=/tmp/eval-home claude --agent worker -p "<brief>" --dangerously-skip-permissions --output-format json`; the scratch home holds `settings.json`, the three role files, the skill under `skills/engineering`, and a symlinked `.credentials.json`. About $5 and 15 minutes per run.
 - Count: copy the generated `src` into `apps/portfolio/src/probe/`, rewrite `#` subpaths to relative, `vp lint apps/portfolio/src/probe`, delete the probe; then `review` in this thread pointed at the prototype file. The worker's own review runs on the installed skill, so the count comes from here.
 
-| Batch | Skill                          | Diagnostics in src per run | Review defects per run |
-| ----- | ------------------------------ | -------------------------- | ---------------------- |
-| 1     | 23 blocks                      | 25, 15, 12                 | 23, 7, 11              |
-| 2     | + nine shared misses as blocks | 4, 2                       | 5, 4                   |
-| 3     | + method input, layer form     | 5, 2                       | 5, 5                   |
+| Batch | Skill                             | Diagnostics in src per run | Review defects per run |
+| ----- | --------------------------------- | -------------------------- | ---------------------- |
+| 1     | 23 blocks                         | 25, 15, 12                 | 23, 7, 11              |
+| 2     | + nine shared misses as blocks    | 4, 2                       | 5, 4                   |
+| 3     | + method input, layer form        | 5, 2                       | 5, 5                   |
+| 4     | same skill, changelog brief added | 5, 1 · 9, 6                | 9, 12 · 9, 9           |
+| 5     | + batch-4 misses                  | 2, 16 · 4, 2               | 21, 27 · 6, 5          |
+| 6     | + domain error, layout tree       | 1, 19 · 1, 1               | 6, 22 · 4, 5           |
+| 7     | same skill, no nested worker      | 2, 1 · 1, 2                | 4, 1 · 4, 4            |
+
+From batch 4 the second brief (`eval-brief-2.md`, a changelog parser: `Match`, `DateTime`, `Clock`, an optional scope, counting) runs beside the ledger; pairs above are ledger · changelog. Every run of batches 1 to 6 had the root, started as `worker`, invoke a second `worker` and let it write; the two ledger regressions (16 and 19 diagnostics) were nested runs. Batch 7 denies `Agent(worker)` in the scratch home and both worker texts now say never to invoke `worker`; it is the first batch where all four runs agree on layout, schema pairs, the domain error and `static layer`.
 
 Every run from batch 2 on returned the two-decimal summary as a decision, because `BigDecimal.format` normalizes and effect ships no fixed-scale formatter; that is the wanted worker behavior.
 
-Still missed after three batches: a test asserting Schema semantics in every run; `readonly` on a `Ref.make` generic in three of four, a block added after batch 3 and unmeasured; one run re-decoded a typed argument. He expects more iterations to raise quality further.
+Still missed after seven batches: a one-call-site helper such as `renderCommit` in every changelog run; the two-decimal summary the ledger brief implies, which every run since batch 2 returns as a decision because `BigDecimal.format` normalizes; blank lines skipped in half the changelog runs against the brief; a redundant `Schema.isLowercased()` after `toLowerCase()`; prototype `join` on array literals in tests. The repo-specific service key (`deterministic-keys`) counts once per run and belongs to project-engineering. He expects more iterations.
 
 Settled:
 
-| Decision                                                                     | Evidence                                                                                                  |
-| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Eval slice is synthetic and outside the repo                                 | A repo slice lets the agent copy existing code instead of applying the rules                              |
-| The brief carries no rule hints                                              | A brief whose comments named the rules was rejected: it coaches what it measures                          |
-| Rules are discussed before runs                                              | Running three evals on a skill about to be deleted measures nothing he wants                              |
-| One skill file, references deleted                                           | 155 of 211 Codex threads opened project-engineering/SKILL.md and no reference; 386 of 791 for engineering |
-| A bad side he never corrected is acceptable when his sentence backs it       | Eleven rules had only his sentence; he kept them and asked for his own explanations from issues           |
-| Autofixable rules stay in the skill                                          | He wants the final form written first, even where `vp run fix` would repair it                            |
-| A block's comment must sit on the line it names                              | The formatter moved `// no readonly` into a generator body and both runs kept the readonly                |
-| `SchemaGetter` and `SchemaTransformation` are Effect module objects for lint | Their `trim()` and `toLowerCase()` were reported in two runs as prototype methods                         |
+| Decision                                                                         | Evidence                                                                                                      |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Eval slice is synthetic and outside the repo                                     | A repo slice lets the agent copy existing code instead of applying the rules                                  |
+| The brief carries no rule hints                                                  | A brief whose comments named the rules was rejected: it coaches what it measures                              |
+| Rules are discussed before runs                                                  | Running three evals on a skill about to be deleted measures nothing he wants                                  |
+| One skill file, references deleted                                               | 155 of 211 Codex threads opened project-engineering/SKILL.md and no reference; 386 of 791 for engineering     |
+| A bad side he never corrected is acceptable when his sentence backs it           | Eleven rules had only his sentence; he kept them and asked for his own explanations from issues               |
+| Autofixable rules stay in the skill                                              | He wants the final form written first, even where `vp run fix` would repair it                                |
+| A block's comment must sit on the line it names                                  | The formatter moved `// no readonly` into a generator body and both runs kept the readonly                    |
+| `SchemaGetter` and `SchemaTransformation` are Effect module objects for lint     | Their `trim()` and `toLowerCase()` were reported in two runs as prototype methods                             |
+| A service method takes the schema's Type as is                                   | Three runs took Type, Encoded, and branded Type; he picked the plain Type                                     |
+| A layer without parameters is `static layer = Layer.effect(...)`, never readonly | Both runs wrote `static readonly layer`; the block's comment had been moved by the formatter                  |
+| One domain error per service in `schema.ts`, cause kept, as `AiError`            | Runs split between library unions and invented wrappers; he chose the wrapper with cause                      |
+| A bad line that reads like a design is dropped, the good line stays              | Run 13 reproduced three bad lines verbatim; consistency is what he wants from this skill                      |
+| The engineering skill carries the service layout tree                            | Runs split files four different ways until the tree; batch 7 agrees on `schema.ts`, `service.ts`, `internal/` |
+| Bare `yield*` lines in a skill block sit inside a generator                      | The formatter rewrote them as `yield * x` and hid a nonexistent `Effect.catchAll` for a whole batch           |
+| The worker never invokes `worker`                                                | 19 of 19 eval runs nested one; the nested runs carried the outliers                                           |

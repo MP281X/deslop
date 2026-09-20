@@ -5,6 +5,21 @@ description: 'Use for product-code architecture, implementation, coding style, t
 
 Write code to these rules; apply the repository's `project-engineering` skill where one exists. Static analysis catches regressions; it never fixes code: every rule below is written correctly the first time, whether or not a linter checks it.
 
+## Layout
+
+```
+// bad — one file holds tag, shape, schemas and implementation
+src/Ledger.ts
+src/Entry.ts
+
+// good — one service, these files, nothing else
+packages/ai/src
+├── schema.ts          // schemas, their types, the domain error
+├── service.ts         // the tag, its shape, static layers
+├── lib/utils.ts       // pure helpers, frontend-safe
+└── internal/pi.ts     // the implementation; pi.test.ts beside it
+```
+
 ## Types
 
 ```ts
@@ -51,6 +66,7 @@ const prompt = Effect.fn('Ai.prompt')(function* (message: Prompt.UserMessage) {
 // bad — "the type ... same name ... the line before"
 export const GitDiffStatus = Schema.Literals(['added', 'deleted', 'modified'])
 export interface GitDiffStatusType {}
+export type EntryDraft = {amount: EntryAmount; id?: EntryId; tag: string} // a hand-written shape beside the schema
 const Tag = pipe(Schema.String, Schema.check(Schema.isNonEmpty())) // every schema, exported or not
 const LedgerFile = Schema.fromJsonString(Schema.Array(LedgerEntry))
 
@@ -59,6 +75,8 @@ export type AiAgent = typeof AiAgent.Type
 export const AiAgent = Schema.Literals(['pi'] as const)
 export type AiSessionId = typeof AiSessionId.Type
 export const AiSessionId = Schema.Struct({agent: AiAgent, id: Schema.String})
+export type LedgerDraft = typeof LedgerDraft.Type
+export const LedgerDraft = Schema.Struct({...LedgerEntry.fields, id: Schema.optionalKey(Schema.NonEmptyString)})
 ```
 
 ```ts
@@ -90,6 +108,7 @@ Schema.decodeSync(PackageManifest)(readFileSync(new URL('package.json', root), '
 
 ```ts
 // bad — "the schema .make method directly without wrapping it"
+new LedgerError({reason: failure.message}) // the schema has make
 function cursorFromBigInt(value: bigint) {
 	return RunEventCursor.make(value.toString())
 }
@@ -109,6 +128,7 @@ return Effect.fail(ServiceAiError.make({message: `Pi does not support ${part.med
 const raw: unknown = JSON.parse(body)
 const payload = Schema.decodeUnknownSync(RequestPayload)(raw)
 const count = parseInt(input.count)
+commits.map(commit => commit.subject) // in tests too
 
 // good — Schema, Array, String, Number, Predicate over globals
 Schema.decodeSync(Schema.fromJsonString(PackageManifest))(text)
@@ -215,11 +235,28 @@ Schema.decode(SchemaTransformation.trim().compose(SchemaTransformation.toLowerCa
 
 ```ts
 // bad — "malformed output fails instead of becoming empty data"
-const content = yield * fs.readFileString(target).pipe(Effect.catchAll(() => Effect.succeed('')))
-const config = yield * loadConfig.pipe(Effect.retry(Schedule.recurs(3)))
+Effect.gen(function* () {
+	const content = yield* pipe(
+		fs.readFileString(target),
+		Effect.catch(() => Effect.succeed(''))
+	)
+	const config = yield* pipe(loadConfig, Effect.retry(Schedule.recurs(3)))
+})
 
-// good — "fail fast instead of retrying"; the error boundary handles it
-const content = yield * fs.readFileString(target)
+export class LedgerError extends Data.TaggedError('LedgerError')<{readonly reason: string}> {}
+Effect.mapError(failure => new LedgerError({message: failure.message})) // cause dropped, new
+load: (path: string) => Effect.Effect<void, PlatformError | Schema.SchemaError> // library failures leak from the service
+
+// good — "fail fast instead of retrying"; one domain error per service in schema.ts, cause kept, no catch
+export class AiError extends Schema.TaggedError<AiError>()('AiError', {
+	cause: Schema.optional(Schema.Defect()),
+	message: Schema.String
+}) {}
+Effect.mapError(cause => AiError.make({cause, message: `Invalid ${name} parameters`}))
+prompt: (message: Prompt.UserMessage) => Effect.Effect<void, AiError>
+Effect.gen(function* () {
+	const content = yield* fs.readFileString(target)
+})
 ```
 
 ```ts
@@ -243,8 +280,10 @@ class State {
 const traced = Effect.withSpan('Notes.create')(notes.create(input)) // rpcs and services already trace
 
 // good — the primitive itself
-const state = yield * SubscriptionRef.make(PortfolioState.make({}))
-const connections = yield * Ref.make(HashMap.empty<string, number>())
+Effect.gen(function* () {
+	const state = yield* SubscriptionRef.make(PortfolioState.make({}))
+	const connections = yield* Ref.make(HashMap.empty<string, number>())
+})
 ```
 
 ```ts
@@ -292,12 +331,14 @@ const runPromise = Effect.runPromiseWith(Context.empty())
 const endpoint = Schema.decodeUnknown(Endpoint)(config.endpoint)
 client(endpoint)
 return Ledger.of({add, balanceByTag, latest, load, summary})
+Ref.set(entries, Array.copy(decoded)) // decoded is already an array
 
 // good
 const run = program
 static generateText = generateTextPi
 pipe(config.endpoint, Schema.decodeUnknown(Endpoint), client)
 return {events: replay.events, prompt, status, stop} satisfies Ai.Agent
+Ref.set(entries, decoded)
 ```
 
 ```ts
@@ -341,14 +382,19 @@ import {NodeRuntime} from '@effect/platform-node'
 // bad — "this test is useless, it doesn't test that the agent is working"
 it.layer(NodeServices.layer)('Pi', test => { // on internal/pi.ts
 "./pi": "./src/internal/pi.ts",
-it.effect('rejects an empty tag', () => // Schema.isNonEmpty already does
-it.effect('loads', () => pipe(program, Effect.provide(Ledger.layer))) // per test
+it.effect('rejects an empty tag', () => run(ledger.add({tag: ''}))) // Schema.isNonEmpty already does
+it.effect('fails on a malformed amount', () => run(ledger.load(malformed))) // BigDecimalFromString already does
+it.effect('loads', () => pipe(program, Effect.provide(Ledger.layer))) // the layer, per test
+assert.deepStrictEqual(Array.map(commits, commit => DateTime.formatIso(commit.timestamp)), stamps) // Schema decoded it
 
-// good — "test files only for the services/packages public interfaces"; one layer
+// good — "test files only for the services/packages public interfaces"; one layer; a test asserts a value the brief specifies, never one a library computes
+it.layer(Layer.provideMerge(Ledger.layer, NodeServices.layer))(test => {
+	test.effect('keeps the previous entries when the file is malformed', () => run(program)) // the no-partial-data decision
+	test.effect('sums expenses negative per tag', () => run(program))
+})
 it.layer(NodeServices.layer)(testApi => {
-	testApi.effect(
-		'reports every project-specific invalid state',
-		() => Effect.gen(function* () {
+	testApi.effect('reports every project-specific invalid state', () =>
+		Effect.gen(function* () {
 			const result = yield* lintSource({
 ```
 
@@ -366,11 +412,14 @@ const timer = setTimeout(() => {}, 10)
 console.log(stamp)
 
 // good — Effect owns the capability
-const fs = yield * FileSystem.FileSystem
-const start = yield * Clock.currentTimeMillis
+Effect.gen(function* () {
+	const fs = yield* FileSystem.FileSystem
+	const start = yield* Clock.currentTimeMillis
+	yield* Effect.logInfo('Portfolio client connected')
+})
 Random.Random.defaultValue().nextDoubleUnsafe()
-host: (pipe(Config.string('HOST'), Config.withDefault('0.0.0.0')), Schedule.spaced(Duration.millis(55)))
-yield * Effect.logInfo('Portfolio client connected')
+Schedule.spaced(Duration.millis(55))
+pipe(Config.string('HOST'), Config.withDefault('0.0.0.0'))
 ```
 
 ## Globals and types
@@ -414,6 +463,8 @@ const empty = null
 export const arrow = () => {
 	return 1
 }
+const render = (commits: Commit[]) => pipe(commits, Array.map(renderCommit)) // a declaration, at module scope
+const commitLine = /^(?<type>\S+): (?<subject>.+)$/ // the u flag
 if (!value) {
 	return 'empty'
 } else {
@@ -429,6 +480,7 @@ const unsorted = {b: 1, a: 2, c: 3}
 // good
 const root = options?.root ?? '.'
 function randomIndex(length: number) {
+String.replaceAll(/[-_]+/gu, ' '),
 export const layerNodeHttpServer = NodeHttpServer.layerConfig(createServer, {
 	gracefulShutdownTimeout: Config.succeed('1500 millis'),
 	host: pipe(Config.string('HOST'), Config.withDefault('0.0.0.0')),
@@ -465,6 +517,7 @@ import {helper} from '../lib/utils.ts' // parent-relative; a sibling ./x.ts is f
 import {Ai} from '@deslop/ai/src/service.ts'
 import {Schema} from 'effect' // used only as a type
 export const Live = Effect.succeed(1)
+export const EntryKind = Schema.Literals(['income', 'expense']) // no importer
 export default helper
 
 // good — subpath imports, import type, layers as static methods, every export has an importer
