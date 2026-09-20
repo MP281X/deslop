@@ -5,21 +5,6 @@ description: 'Use for product-code architecture, implementation, coding style, t
 
 Write code to these rules; apply the repository's `project-engineering` skill where one exists. Static analysis catches regressions; it never fixes code: every rule below is written correctly the first time, whether or not a linter checks it.
 
-## Layout
-
-```
-// bad — one file holds tag, shape, schemas and implementation
-src/Ledger.ts
-src/Entry.ts
-
-// good — one service, these files, nothing else
-packages/ai/src
-├── schema.ts          // schemas, their types, the domain error
-├── service.ts         // the tag, its shape, static layers
-├── lib/utils.ts       // pure helpers, frontend-safe
-└── internal/pi.ts     // the implementation; pi.test.ts beside it
-```
-
 ## Types
 
 ```ts
@@ -28,11 +13,10 @@ fn: RpcClient.runtime.fn<{onSuccess: (message: string) => void}>()(
 const Input = Schema.Struct({value: Schema.String}) satisfies Schema.Schema<Input>
 
 // good — inferred; only a recursive function is annotated
-const rootDependencies = pipe(
-	Schema.decodeSync(PackageManifest)(readFileSync(new URL('package.json', root), 'utf8')),
-	dependencyNames,
-	HashSet.fromIterable
-)
+Effect.gen(function* () {
+	const decoded = yield* Schema.decodeEffect(LedgerFile)(yield* fs.readFileString(path))
+	const balances = Array.reduce(decoded, HashMap.empty<Tag, BigDecimal.BigDecimal>(), sumByTag)
+})
 function visit(node: Node): Result {
 	return visit(node.parent)
 }
@@ -67,7 +51,7 @@ const prompt = Effect.fn('Ai.prompt')(function* (message: Prompt.UserMessage) {
 export const GitDiffStatus = Schema.Literals(['added', 'deleted', 'modified'])
 export interface GitDiffStatusType {}
 export type EntryDraft = {amount: EntryAmount; id?: EntryId; tag: string} // a hand-written shape beside the schema
-const Tag = pipe(Schema.String, Schema.check(Schema.isNonEmpty())) // every schema, exported or not
+const Tag = Schema.NonEmptyString // every schema, exported or not
 const LedgerFile = Schema.fromJsonString(Schema.Array(LedgerEntry))
 
 // good
@@ -102,13 +86,14 @@ type PackageManifest = typeof PackageManifest.Type
 const PackageManifest = Schema.fromJsonString(
 	Schema.Struct({dependencies: Schema.optional(Schema.Record(Schema.String, Schema.String))})
 )
-
-Schema.decodeSync(PackageManifest)(readFileSync(new URL('package.json', root), 'utf8'))
+Effect.gen(function* () {
+	const manifest = yield* Schema.decodeEffect(PackageManifest)(yield* fs.readFileString(path))
+})
 ```
 
 ```ts
 // bad — "the schema .make method directly without wrapping it"
-new LedgerError({reason: failure.message}) // the schema has make
+new AiError({message: 'The model returned no text'}) // the schema has make
 function cursorFromBigInt(value: bigint) {
 	return RunEventCursor.make(value.toString())
 }
@@ -118,7 +103,7 @@ function checked(value: bigint) {
 }
 
 // good — the schema owns validation and defaults
-return Effect.fail(ServiceAiError.make({message: `Pi does not support ${part.mediaType} prompt parts`}))
+return Effect.fail(AiError.make({message: `Pi does not support ${part.mediaType} prompt parts`}))
 ```
 
 ## Effect
@@ -131,7 +116,7 @@ const count = parseInt(input.count)
 commits.map(commit => commit.subject) // in tests too
 
 // good — Schema, Array, String, Number, Predicate over globals
-Schema.decodeSync(Schema.fromJsonString(PackageManifest))(text)
+Schema.decodeEffect(PackageManifest)(text) // PackageManifest is a fromJsonString schema
 Option.map(Number.parse(event.target.value), field.handleChange)
 const isApiUrl = Predicate.compose(
 	String.isString,
@@ -147,7 +132,8 @@ const type = event.type === 'text-delta'
 		? 'reasoning'
 		: 'unknown'
 
-// good
+// good — a one-line ternary, Boolean.match for a boolean, Match for a union
+aria-current={props.selected === true ? 'page' : undefined}
 Boolean.match(event.type === 'text-delta', {
 	onFalse: () => 'reasoning',
 	onTrue: () => 'text'
@@ -228,9 +214,13 @@ const toolkit = yield* pipe(PiToolkit, Effect.provide(handlerContext))
 const digits = BigDecimal.scale(BigDecimal.abs(amount), 2).value.toString().padStart(3, '0')
 Schema.decode({decode: SchemaGetter.transform(String.toLowerCase), encode: SchemaGetter.passthrough()})
 
+Math.floor(Duration.toDays(DateTime.distance(oldest.timestamp, newest.timestamp)))
+
 // good — node_modules/effect/dist is read before writing
 BigDecimal.format(amount)
 Schema.decode(SchemaTransformation.trim().compose(SchemaTransformation.toLowerCase()))
+Duration.parts(DateTime.distance(oldest.timestamp, newest.timestamp)).days
+Array.match(lines, {onEmpty: () => Option.none(), onNonEmpty: lines => Option.some(Array.join(lines, '\n'))})
 ```
 
 ```ts
@@ -244,7 +234,7 @@ Effect.gen(function* () {
 })
 
 export class LedgerError extends Data.TaggedError('LedgerError')<{readonly reason: string}> {}
-Effect.mapError(failure => new LedgerError({message: failure.message})) // cause dropped, new
+Effect.mapError(failure => new LedgerError({reason: failure.message})) // cause dropped, new
 load: (path: string) => Effect.Effect<void, PlatformError | Schema.SchemaError> // library failures leak from the service
 
 // good — "fail fast instead of retrying"; one domain error per service in schema.ts, cause kept, no catch
@@ -252,7 +242,10 @@ export class AiError extends Schema.TaggedError<AiError>()('AiError', {
 	cause: Schema.optional(Schema.Defect()),
 	message: Schema.String
 }) {}
-Effect.mapError(cause => AiError.make({cause, message: `Invalid ${name} parameters`}))
+const load = Effect.fn('Ledger.load')(
+	function* (path: string) {},
+	Effect.mapError(cause => AiError.make({cause, message: 'Cannot load the ledger'})) // the pipeline argument of fn, no .pipe after it
+)
 prompt: (message: Prompt.UserMessage) => Effect.Effect<void, AiError>
 Effect.gen(function* () {
 	const content = yield* fs.readFileString(target)
@@ -287,6 +280,19 @@ Effect.gen(function* () {
 ```
 
 ```ts
+// bad — acquisition and release with different owners
+Effect.gen(function* () {
+	const socket = yield* openSocket
+	yield* Effect.addFinalizer(() => closeSocket(socket))
+})
+
+// good — one scope owns the lifetime
+Effect.gen(function* () {
+	const webSocketServer = yield* Effect.acquireRelease(openSocket, closeSocket)
+})
+```
+
+```ts
 // bad — "as functional and immutable as possible"
 let total = 0
 for (const value of values) total = total + value
@@ -305,12 +311,12 @@ Array.reduce(input.trails, HashMap.empty<string, Cell>(), (previousByVisitor, tr
 const random = Random.Random.defaultValue()
 
 function randomIndex(length: number) {
-	return Math.floor(random.nextDoubleUnsafe() * length)
+	return random.nextIntUnsafe() % length
 }
 
 // good
 function randomIndex(length: number) {
-	return Math.floor(Random.Random.defaultValue().nextDoubleUnsafe() * length)
+	return Random.Random.defaultValue().nextIntUnsafe() % length
 }
 ```
 
@@ -320,8 +326,11 @@ function isBackendRequest(request: IncomingMessage) {
 	return isApiUrl(request.url)
 }
 
-// good — a predicate with two call sites
-const isApiUrl = Predicate.compose(String.isString, Predicate.or(Equal.equals('/api'), String.startsWith('/api/')))
+// good — a predicate, reused
+const isApiUrl = Predicate.compose(
+	String.isString,
+	Predicate.or(Equal.equals('/api'), Predicate.or(String.startsWith('/api/'), String.startsWith('/api?')))
+)
 ```
 
 ```ts
@@ -343,8 +352,7 @@ Ref.set(entries, decoded)
 
 ```ts
 // bad — "the code still keeps the compatibility/legacy code caused by the iterations"
-export const create = createV2
-export const createLegacy = createV1
+export const createLegacy = createV1 // kept for callers nobody has
 
 // good — one construction path
 static layerPi(config: Pi.Config) {
@@ -392,8 +400,8 @@ it.layer(Layer.provideMerge(Ledger.layer, NodeServices.layer))(test => {
 	test.effect('keeps the previous entries when the file is malformed', () => run(program)) // the no-partial-data decision
 	test.effect('sums expenses negative per tag', () => run(program))
 })
-it.layer(NodeServices.layer)(testApi => {
-	testApi.effect('reports every project-specific invalid state', () =>
+it.layer(NodeServices.layer)(test => {
+	test.effect('reports every project-specific invalid state', () =>
 		Effect.gen(function* () {
 			const result = yield* lintSource({
 ```
@@ -420,6 +428,7 @@ Effect.gen(function* () {
 Random.Random.defaultValue().nextDoubleUnsafe()
 Schedule.spaced(Duration.millis(55))
 pipe(Config.string('HOST'), Config.withDefault('0.0.0.0'))
+Config.redacted('SMTP_PASS') // a secret is Redacted, never a string
 ```
 
 ## Globals and types
@@ -450,6 +459,7 @@ const entries = yield* Ref.make(Array.empty<LedgerEntry>())
 Option.flatMap(index => Array.get(input.program.body, index - 1))
 type Holder = {value: string[]; time: DateTime.Utc; error: ToolExecutionError}
 class ToolExecutionError extends Schema.TaggedError<ToolExecutionError>()('ToolExecutionError', {
+type PortfolioVisitor = typeof PortfolioVisitor.Type
 const PortfolioVisitor = Schema.Struct({x: Schema.Finite, y: Schema.Finite})
 ```
 
@@ -531,7 +541,7 @@ static layerPi(config: Pi.Config) {
 ```ts
 // bad — each line is a diagnostic
 const fake = useState(() => ({current: null}))
-const state = useState(0)
+const state = useState(0) // not destructured
 const ref = useRef<HTMLElement | null>(null)
 const memo = React.useMemo(() => 1, [])
 
