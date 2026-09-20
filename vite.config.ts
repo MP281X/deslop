@@ -69,6 +69,8 @@ const effectModuleObjects = [
 	'RpcServer',
 	'Schedule',
 	'Schema',
+	'SchemaGetter',
+	'SchemaTransformation',
 	'Scope',
 	'Semaphore',
 	'Socket',

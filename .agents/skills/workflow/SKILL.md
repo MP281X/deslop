@@ -91,33 +91,49 @@ Settled from 991 Codex threads, 14 Claude threads, and 15 iterations of the pair
 | worker invokes review and browser; the pair thread never does                            | Routing results through the pair thread is the message hub that failed                                                                             |
 | Artifacts take the GFM shape that fits; fences only for code, diffs, trees               | A message of `text` fences on 2026-09-20 was rejected; the client renders tables and lists                                                         |
 
-## Next: the engineering skill
+## The engineering skill
 
-Rewrite `tools/workflow/assets/skills/engineering` and `.agents/skills/project-engineering` from scratch: one minimal `// bad → // good` `ts` block per rule, taken from real code, no prose that a block already shows. Judge by runs, not by reading.
+`tools/workflow/assets/skills/engineering/SKILL.md` is one file, no references: 31 `ts` blocks, one per rule, `// bad` from a correction in the thread corpus, a GitHub issue (#44, #57, #64 hold his own bad/good pairs), or a line the repository linter reported in a probe file, `// good` from a repository call site. It also covers what Oxlint, Fallow and tsconfig enforce, so the worker writes the final form first and static analysis only catches regressions. `project-engineering` is untouched and next.
 
-His code stance, each point said more than once over two months of corrections:
+His stance, each point said more than once over two months of corrections:
 
-| Area      | Rule                                                                                                                                                                                                                                                                                                                                                                              |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Types     | Infer every type; annotations only for recursive functions. Casts only `satisfies` and `as const`. No `any`, `unknown`, `object` outside untrusted input                                                                                                                                                                                                                          |
-| Schema    | Same-named `type X = typeof X.Type` on the line before each Schema; `Schema.Struct`, never `Schema.Class`; definitions at module scope, decode and encode inlined at the call site, never aliased; logic in the schema, `.make` over casts                                                                                                                                        |
-| Effect    | Effect is the language: `String`, `Array`, `Predicate`, `Match`, `Boolean.match` over prototype methods and globals; `Effect.fn` / `fnUntraced` with arguments, `Effect.gen` without; services with interface split from implementation and no default implementation; fail fast, no per-call recovery or fallback; `Option` only where it composes; never wrap Effect primitives |
-| Shape     | No wrapper, alias, access variable, module-level constant, or one-call-site helper; no intermediate parse, result annotation, cast, or wrapper; one way to do each thing; no compatibility layer; dead code deleted, never ignored                                                                                                                                                |
-| Tests, UI | Tests only on service public interfaces; UI verified in a browser; React logic in Effect Atom, components presentation only, React Compiler is the gate                                                                                                                                                                                                                           |
-| Lint      | A diagnostic is an architectural mistake fixed at the root, never suppressed; rules lead, code follows; existing rules over custom ones                                                                                                                                                                                                                                           |
+| Area      | Rule                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Types     | Infer every type; annotations only for recursive functions. Casts only `satisfies` and `as const`. No `any`, `unknown`, `object` outside untrusted input; a service method takes the schema's Type as is                                                                                                                                                                                                                     |
+| Schema    | Same-named `type X = typeof X.Type` on the line before every Schema, exported or not; `Schema.Struct`, never `Schema.Class`; definitions at module scope, decode and encode inlined at the call site, never aliased; logic in the schema, `.make` over casts                                                                                                                                                                 |
+| Effect    | Effect is the language: `String`, `Array`, `Predicate`, `Match`, `Boolean.match` over prototype methods and globals, standalone `pipe`; `Effect.fn` with arguments, `Effect.gen` without; services with the shape in `service.ts`, the implementation in `internal/`, `static layer = Layer.effect(...)` never readonly, no default implementation; fail fast; `Option` only where it composes; never wrap Effect primitives |
+| Shape     | No wrapper, alias, access variable, module-level constant, or one-call-site helper; no forwarding generator, identity `Service.of`, or `readonly` syntax; one way to do each thing; dead code deleted, never ignored; no configuration flag nobody asked for                                                                                                                                                                 |
+| Tests, UI | Tests only on service public interfaces through `it.layer`, never on Schema semantics; UI verified in a browser; React logic in Effect Atom, React Compiler memoizes                                                                                                                                                                                                                                                         |
+| Lint      | A diagnostic is fixed at the root; a file ignore list or a rule off is rejected; one inline reasoned suppression exists in the repo and stays his decision                                                                                                                                                                                                                                                                   |
 
-What the current static floor does not catch, seen in default-harness runs on this repo: `parseInt`, local annotations, `let` counters and `Mutable*` loops, tests and READMEs outside scope, configuration flags nobody asked for.
+Two rows the repository itself breaks, kept as stance by his call: `packages/ai/src/internal/*.test.ts` test internal modules; `main.client.tsx:12` carries a reasoned suppression.
 
-Method:
+### Eval
 
-1. Sonnet explorers read the correction corpus (the Codex and Claude thread histories) for each rule's `bad` side and this repository or `~/deslop` for its `good` side. The pair thread keeps only conclusions.
-2. He reads the rule blocks and cuts or merges before any run.
-3. Eval: a synthetic slice in a fresh Effect project outside this repository, so the agent has no existing code to copy from. The brief is in his voice with no rule hints; the rubric lives in the review checklist, never in the prompt. `worker` implements, `review` reviews, two or three runs, violations counted per run. He discusses the generated code before the skill is judged.
+- Template: `~/.deslop/harness-probe/eval-template`, a fresh Effect 4.0.0-rc.112 project with tsc and vitest only, no linter, `@effect/platform-node-shared` pinned to rc.112 because platform-node resolves a newer one that imports a module rc.112 lacks; the first batch lost turns to that.
+- Brief: `~/.deslop/harness-probe/eval-brief.md`, a ledger service in his voice, no rule hints, exercising every stance row: decimal strings, tag normalization, a literal union, fail-fast on a malformed file, an in-memory service with five operations, tests.
+- Run: copy the template, `CLAUDE_CONFIG_DIR=/tmp/eval-home claude --agent worker -p "<brief>" --dangerously-skip-permissions --output-format json`; the scratch home holds `settings.json`, the three role files, the skill under `skills/engineering`, and a symlinked `.credentials.json`. About $5 and 15 minutes per run.
+- Count: copy the generated `src` into `apps/portfolio/src/probe/`, rewrite `#` subpaths to relative, `vp lint apps/portfolio/src/probe`, delete the probe; then `review` in this thread pointed at the prototype file. The worker's own review runs on the installed skill, so the count comes from here.
 
-Settled today:
+| Batch | Skill                          | Diagnostics in src per run | Review defects per run |
+| ----- | ------------------------------ | -------------------------- | ---------------------- |
+| 1     | 23 blocks                      | 25, 15, 12                 | 23, 7, 11              |
+| 2     | + nine shared misses as blocks | 4, 2                       | 5, 4                   |
+| 3     | + method input, layer form     | 5, 2                       | 5, 5                   |
 
-| Decision                                     | Evidence                                                                         |
-| -------------------------------------------- | -------------------------------------------------------------------------------- |
-| Eval slice is synthetic and outside the repo | A repo slice lets the agent copy existing code instead of applying the rules     |
-| The brief carries no rule hints              | A brief whose comments named the rules was rejected: it coaches what it measures |
-| Rules are discussed before runs              | Running three evals on a skill about to be deleted measures nothing he wants     |
+Every run from batch 2 on returned the two-decimal summary as a decision, because `BigDecimal.format` normalizes and effect ships no fixed-scale formatter; that is the wanted worker behavior.
+
+Still missed after three batches: a test asserting Schema semantics in every run; `readonly` on a `Ref.make` generic in three of four, a block added after batch 3 and unmeasured; one run re-decoded a typed argument. He expects more iterations to raise quality further.
+
+Settled:
+
+| Decision                                                                     | Evidence                                                                                                  |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Eval slice is synthetic and outside the repo                                 | A repo slice lets the agent copy existing code instead of applying the rules                              |
+| The brief carries no rule hints                                              | A brief whose comments named the rules was rejected: it coaches what it measures                          |
+| Rules are discussed before runs                                              | Running three evals on a skill about to be deleted measures nothing he wants                              |
+| One skill file, references deleted                                           | 155 of 211 Codex threads opened project-engineering/SKILL.md and no reference; 386 of 791 for engineering |
+| A bad side he never corrected is acceptable when his sentence backs it       | Eleven rules had only his sentence; he kept them and asked for his own explanations from issues           |
+| Autofixable rules stay in the skill                                          | He wants the final form written first, even where `vp run fix` would repair it                            |
+| A block's comment must sit on the line it names                              | The formatter moved `// no readonly` into a generator body and both runs kept the readonly                |
+| `SchemaGetter` and `SchemaTransformation` are Effect module objects for lint | Their `trim()` and `toLowerCase()` were reported in two runs as prototype methods                         |
