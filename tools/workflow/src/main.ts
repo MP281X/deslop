@@ -4,7 +4,7 @@ import {homedir} from 'node:os'
 
 import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {Config, Console, Effect, FileSystem, Path, pipe} from 'effect'
+import {Config, Console, Effect, FileSystem, Path, Record, pipe} from 'effect'
 
 import {Command} from 'effect/unstable/cli'
 
@@ -13,10 +13,7 @@ import packageJson from '#package' with {type: 'json'}
 const install = Effect.fn('Workflow.install')(function* (assets: string, codexHome: string, claudeHome: string) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
-	for (const [source, home] of [
-		['codex', codexHome],
-		['claude', claudeHome]
-	]) {
+	for (const [source, home] of Record.toEntries({claude: claudeHome, codex: codexHome})) {
 		yield* fs.makeDirectory(home, {recursive: true})
 		for (const entry of yield* fs.readDirectory(path.join(assets, source))) {
 			yield* fs.remove(path.join(home, entry), {force: true, recursive: true})
