@@ -27,5 +27,9 @@
 			"Monitor"
 		]
 	},
-	"hooks": {"PreToolUse": [{"matcher": "AskUserQuestion", "hooks": [{"type": "command", "command": "node ASK_GATE"}]}]}
+	"hooks": {
+		"PreToolUse": [
+			{"matcher": "AskUserQuestion", "hooks": [{"type": "command", "command": "node ~/.claude/scripts/ask-gate.mjs"}]}
+		]
+	}
 }

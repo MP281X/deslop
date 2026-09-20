@@ -9,16 +9,21 @@ The user converses with one agent, the pair thread, that turns half-formed ideas
 
 ## Files
 
-| Path                                         | Installed as                                                           |
-| -------------------------------------------- | ---------------------------------------------------------------------- |
-| `tools/workflow/assets/pair.md`              | `~/.codex/config.toml` `developer_instructions`, `~/.claude/CLAUDE.md` |
-| `tools/workflow/assets/codex.toml`           | rest of `~/.codex/config.toml`                                         |
-| `tools/workflow/assets/claude.json`          | `~/.claude/settings.json`                                              |
-| `tools/workflow/assets/scripts/ask-gate.mjs` | `~/.claude/scripts/ask-gate.mjs`, wired as a `PreToolUse` hook         |
-| `tools/workflow/assets/agents/*.md`          | `~/.claude/agents/`: explore (Sonnet 5), implement and review (Opus 5) |
-| `tools/workflow/assets/skills/engineering`   | `~/.claude/skills/engineering`, preloaded by implement and review      |
+`tools/workflow/assets/codex/` and `tools/workflow/assets/claude/` are copied as they are into `~/.codex` and `~/.claude`; `assets/skills/engineering` is copied into both. The pair text and each role body exist twice, once per harness, edited in both places. No rendering.
 
-`vp run build` in `tools/workflow`, then `node dist/main.js`; `CODEX_HOME` and `CLAUDE_CONFIG_DIR` select the homes. Install replaces the listed files and removes the previous release's `AGENTS.md`, `agents/deslop`, and `skills/engineering` from the Codex home.
+| Path                          | Holds                                                                      |
+| ----------------------------- | -------------------------------------------------------------------------- |
+| `codex/config.toml`           | stripped config, pair text as `developer_instructions`, role registrations |
+| `codex/AGENTS.md`             | the one line that authorizes Codex to spawn the roles                      |
+| `codex/agents/*.toml`         | role bodies with their Codex model                                         |
+| `claude/CLAUDE.md`            | pair text                                                                  |
+| `claude/settings.json`        | stripped settings, ask-gate hook                                           |
+| `claude/agents/*.md`          | role bodies with their Claude model and tools                              |
+| `claude/scripts/ask-gate.mjs` | PreToolUse hook on the question tool                                       |
+
+Ownership: the pair thread owns the conversation, decisions, and throwaway prototypes; `explore` owns reading beyond two files; `implement` owns product changes, validation, and invokes `review` and `browser`; `git` owns commit, push, and the draft request on the branch t3 code created. t3 code owns worktrees and branches.
+
+`vp run build` in `tools/workflow`, then `node dist/main.js`; `CODEX_HOME` and `CLAUDE_CONFIG_DIR` select the homes.
 
 ## Decisions
 

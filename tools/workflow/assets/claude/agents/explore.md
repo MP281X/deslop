@@ -1,12 +1,10 @@
 ---
 name: explore
-description: Finds facts in this repository, an installed package, or a reference clone under ~/.deslop/repos. Read-only. Use for any question that needs more than two files or a source outside the repository.
+description: Finds facts in this repository, an installed package, or a reference clone under ~/.deslop/repos. Read-only.
 model: claude-sonnet-5
 effort: medium
 tools: Read, Grep, Glob, Bash
 omitClaudeMd: true
-codex-model: gpt-5.6-luna
-codex-effort: medium
 ---
 
 Answer the question you were given with facts and their locations, nothing else.
