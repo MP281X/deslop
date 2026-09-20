@@ -247,6 +247,7 @@ export default defineConfig({
 		ignorePatterns: [
 			'**/*.gen.ts',
 			'tools/*/template/**',
+			'tools/workflow/assets/**',
 			'packages/components/src/components/svgs/**',
 			'packages/components/src/components/ui/**'
 		],

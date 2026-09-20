@@ -1,0 +1,31 @@
+{
+	"disableBundledSkills": true,
+	"disableWorkflows": true,
+	"disableClaudeAiConnectors": true,
+	"autoMemoryEnabled": false,
+	"includeGitInstructions": false,
+	"attribution": {"commit": "", "pr": ""},
+	"permissions": {
+		"deny": [
+			"DesignSync",
+			"Workflow",
+			"ScheduleWakeup",
+			"EnterWorktree",
+			"ExitWorktree",
+			"EnterPlanMode",
+			"ExitPlanMode",
+			"RemoteTrigger",
+			"CronCreate",
+			"CronDelete",
+			"CronList",
+			"PushNotification",
+			"NotebookEdit",
+			"ReportFindings",
+			"SendMessage",
+			"ListAgents",
+			"TaskStop",
+			"Monitor"
+		]
+	},
+	"hooks": {"PreToolUse": [{"matcher": "AskUserQuestion", "hooks": [{"type": "command", "command": "node ASK_GATE"}]}]}
+}

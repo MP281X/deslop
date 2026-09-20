@@ -4,47 +4,56 @@ import {homedir} from 'node:os'
 
 import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {Config, Console, Effect, FileSystem, Option, Path, pipe} from 'effect'
+import {Config, Console, Effect, FileSystem, Path, String, pipe} from 'effect'
 
-import {Argument, Command} from 'effect/unstable/cli'
+import {Command} from 'effect/unstable/cli'
 
 import packageJson from '#package' with {type: 'json'}
 
-const install = Effect.fn('Workflow.install')(function* (source: string, destination: string) {
+const install = Effect.fn('Workflow.install')(function* (assets: string, codexHome: string, claudeHome: string) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
-	const targets = [
-		{source: 'codex/config.toml', target: 'config.toml'},
-		{source: 'AGENTS.md', target: 'AGENTS.md'},
-		{source: 'codex/agents', target: 'agents/deslop'},
-		{source: 'skills/engineering', target: 'skills/engineering'}
-	]
+	const pair = yield* fs.readFileString(path.join(assets, 'pair.md'))
+	const codexConfig = yield* fs.readFileString(path.join(assets, 'codex/config.toml'))
+	const claudeSettings = yield* fs.readFileString(path.join(assets, 'claude/settings.json'))
+	const askGate = path.join(claudeHome, 'hooks/ask-gate.mjs')
 
-	yield* fs.makeDirectory(destination, {recursive: true})
-	yield* fs.makeDirectory(path.join(destination, 'agents'), {recursive: true})
-	yield* fs.makeDirectory(path.join(destination, 'skills'), {recursive: true})
-
-	for (const target of targets) {
-		const installed = path.join(destination, target.target)
-		yield* fs.remove(installed, {force: true, recursive: true})
-		yield* fs.copy(path.join(source, target.source), installed)
+	yield* fs.makeDirectory(codexHome, {recursive: true})
+	for (const legacy of ['AGENTS.md', 'agents/deslop', 'skills/engineering']) {
+		yield* fs.remove(path.join(codexHome, legacy), {force: true, recursive: true})
 	}
-	return {directory: destination}
+	yield* fs.writeFileString(
+		path.join(codexHome, 'config.toml'),
+		`developer_instructions = '''\n${pair}'''\n\n${codexConfig}`
+	)
+
+	yield* fs.makeDirectory(path.join(claudeHome, 'hooks'), {recursive: true})
+	yield* fs.writeFileString(path.join(claudeHome, 'CLAUDE.md'), pair)
+	yield* fs.writeFileString(
+		path.join(claudeHome, 'settings.json'),
+		pipe(claudeSettings, String.replace('ASK_GATE', askGate))
+	)
+	yield* fs.copy(path.join(assets, 'hooks/ask-gate.mjs'), askGate, {overwrite: true})
+	return {claudeHome, codexHome}
 })
 
 const cli = Command.make(
 	'deslop-workflow',
-	{codexHome: pipe(Argument.string('codex-home'), Argument.optional)},
-	Effect.fnUntraced(function* ({codexHome}) {
+	{},
+	Effect.fnUntraced(function* () {
 		const path = yield* Path.Path
-		const destination = yield* Option.match(codexHome, {
-			onNone: () => pipe(Config.string('CODEX_HOME'), Config.withDefault(path.join(homedir(), '.codex'))),
-			onSome: Effect.succeed
-		})
-		const result = yield* install(path.resolve(import.meta.dirname, '../assets'), path.resolve(destination))
-		yield* Console.log(`Installed Deslop workflow in ${result.directory}`)
+		const codexHome = yield* pipe(Config.string('CODEX_HOME'), Config.withDefault(path.join(homedir(), '.codex')))
+		const claudeHome = yield* pipe(
+			Config.string('CLAUDE_CONFIG_DIR'),
+			Config.withDefault(path.join(homedir(), '.claude'))
+		)
+		const result = yield* install(
+			path.resolve(import.meta.dirname, '../assets'),
+			path.resolve(codexHome),
+			path.resolve(claudeHome)
+		)
 		yield* Console.log(
-			'Start a fresh Codex session to load the installed workflow. Replaced config.toml, AGENTS.md, agents/deslop, and skills/engineering, discarding local edits to them.'
+			`Installed the pair thread in ${result.codexHome} and ${result.claudeHome}. Start a fresh session to load it.`
 		)
 	})
 )
