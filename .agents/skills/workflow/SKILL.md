@@ -9,13 +9,13 @@ The user converses with one agent, the pair thread, that turns half-formed ideas
 
 ## Files
 
-| Path                                         | Installed as                                                           |
-| -------------------------------------------- | ---------------------------------------------------------------------- |
-| `tools/workflow/assets/pair.md`              | `~/.codex/config.toml` `developer_instructions`, `~/.claude/CLAUDE.md` |
-| `tools/workflow/assets/codex/config.toml`    | rest of `~/.codex/config.toml`                                         |
-| `tools/workflow/assets/claude/settings.json` | `~/.claude/settings.json`                                              |
-| `tools/workflow/assets/hooks/ask-gate.mjs`   | `~/.claude/hooks/ask-gate.mjs`, wired as a `PreToolUse` hook           |
-| `tools/workflow/assets/skills/engineering`   | not installed yet; the code stance for the implementation role         |
+| Path                                       | Installed as                                                           |
+| ------------------------------------------ | ---------------------------------------------------------------------- |
+| `tools/workflow/assets/pair.md`            | `~/.codex/config.toml` `developer_instructions`, `~/.claude/CLAUDE.md` |
+| `tools/workflow/assets/codex.toml`         | rest of `~/.codex/config.toml`                                         |
+| `tools/workflow/assets/claude.json`        | `~/.claude/settings.json`                                              |
+| `tools/workflow/assets/ask-gate.mjs`       | `~/.claude/hooks/ask-gate.mjs`, wired as a `PreToolUse` hook           |
+| `tools/workflow/assets/skills/engineering` | not installed yet; the code stance for the implementation role         |
 
 `vp run build` in `tools/workflow`, then `node dist/main.js`; `CODEX_HOME` and `CLAUDE_CONFIG_DIR` select the homes. Install replaces the listed files and removes the previous release's `AGENTS.md`, `agents/deslop`, and `skills/engineering` from the Codex home.
 

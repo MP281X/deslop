@@ -14,9 +14,9 @@ const install = Effect.fn('Workflow.install')(function* (assets: string, codexHo
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const pair = yield* fs.readFileString(path.join(assets, 'pair.md'))
-	const codexConfig = yield* fs.readFileString(path.join(assets, 'codex/config.toml'))
-	const claudeSettings = yield* fs.readFileString(path.join(assets, 'claude/settings.json'))
-	const askGate = path.join(claudeHome, 'hooks/ask-gate.mjs')
+	const codexConfig = yield* fs.readFileString(path.join(assets, 'codex.toml'))
+	const claudeSettings = yield* fs.readFileString(path.join(assets, 'claude.json'))
+	const askGate = path.join(claudeHome, 'ask-gate.mjs')
 
 	yield* fs.makeDirectory(codexHome, {recursive: true})
 	for (const legacy of ['AGENTS.md', 'agents/deslop', 'skills/engineering']) {
@@ -33,7 +33,7 @@ const install = Effect.fn('Workflow.install')(function* (assets: string, codexHo
 		path.join(claudeHome, 'settings.json'),
 		pipe(claudeSettings, String.replace('ASK_GATE', askGate))
 	)
-	yield* fs.copy(path.join(assets, 'hooks/ask-gate.mjs'), askGate, {overwrite: true})
+	yield* fs.copy(path.join(assets, 'ask-gate.mjs'), askGate, {overwrite: true})
 	return {claudeHome, codexHome}
 })
 
