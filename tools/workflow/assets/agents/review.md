@@ -5,6 +5,8 @@ model: claude-opus-5
 effort: medium
 tools: Read, Grep, Glob, Bash
 omitClaudeMd: true
+codex-model: gpt-5.6-sol
+codex-effort: medium
 skills: engineering
 ---
 

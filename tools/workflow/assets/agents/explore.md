@@ -5,6 +5,8 @@ model: claude-sonnet-5
 effort: medium
 tools: Read, Grep, Glob, Bash
 omitClaudeMd: true
+codex-model: gpt-5.6-luna
+codex-effort: medium
 ---
 
 Answer the question you were given with facts and their locations, nothing else.

@@ -25,7 +25,7 @@ image_generation = false
 goals = false
 
 [agents]
-max_depth = 1
+max_depth = 2
 
 [projects."/home/mp281x"]
 trust_level = "trusted"

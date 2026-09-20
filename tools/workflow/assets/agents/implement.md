@@ -4,6 +4,8 @@ description: Implements one approved slice from a spec, validates it with the re
 model: claude-opus-5
 effort: medium
 omitClaudeMd: true
+codex-model: gpt-5.6-sol
+codex-effort: medium
 skills: engineering
 ---
 
