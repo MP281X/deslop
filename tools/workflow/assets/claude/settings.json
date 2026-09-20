@@ -31,10 +31,5 @@
 			"Agent(claude)",
 			"Agent(claude-code-guide)"
 		]
-	},
-	"hooks": {
-		"PreToolUse": [
-			{"matcher": "AskUserQuestion", "hooks": [{"type": "command", "command": "node ~/.claude/scripts/ask-gate.mjs"}]}
-		]
 	}
 }

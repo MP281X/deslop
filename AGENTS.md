@@ -27,4 +27,4 @@ When a selected project command is required, run it exactly with no flags, paths
 - Local data is disposable. Preserve production data only from the immediately previous release; delete obsolete data.
 - Persist only irreducible canonical data and infer the rest. Remove superseded paths and adapters; preserve compatibility only when explicitly required.
 
-`tools/workflow` owns the reusable agent workflow: `assets/pair.md` is installed as the pair-thread instructions for Codex and Claude Code. Apply its `engineering` skill with this repository's `project-engineering` skill for product code.
+`tools/workflow` owns the reusable agent workflow: `assets/claude/CLAUDE.md` and the `developer_instructions` in `assets/codex/config.toml` are the pair-thread instructions, one copy per harness, edited identically. Apply its `engineering` skill with this repository's `project-engineering` skill for product code.

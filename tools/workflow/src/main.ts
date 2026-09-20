@@ -23,7 +23,7 @@ const install = Effect.fn('Workflow.install')(function* (assets: string, codexHo
 		yield* fs.makeDirectory(path.join(home, 'skills'), {recursive: true})
 		yield* fs.copy(path.join(assets, 'skills/engineering'), path.join(home, 'skills/engineering'))
 	}
-	yield* fs.remove(path.join(codexHome, 'agents/deslop'), {force: true, recursive: true})
+	yield* fs.remove(path.join(claudeHome, 'scripts'), {force: true, recursive: true})
 	return {claudeHome, codexHome}
 })
 
