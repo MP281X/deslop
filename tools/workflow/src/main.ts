@@ -16,7 +16,7 @@ const install = Effect.fn('Workflow.install')(function* (assets: string, codexHo
 	const pair = yield* fs.readFileString(path.join(assets, 'pair.md'))
 	const codexConfig = yield* fs.readFileString(path.join(assets, 'codex.toml'))
 	const claudeSettings = yield* fs.readFileString(path.join(assets, 'claude.json'))
-	const askGate = path.join(claudeHome, 'ask-gate.mjs')
+	const askGate = path.join(claudeHome, 'scripts/ask-gate.mjs')
 
 	yield* fs.makeDirectory(codexHome, {recursive: true})
 	for (const legacy of ['AGENTS.md', 'agents/deslop', 'skills/engineering']) {
@@ -27,13 +27,13 @@ const install = Effect.fn('Workflow.install')(function* (assets: string, codexHo
 		`developer_instructions = '''\n${pair}'''\n\n${codexConfig}`
 	)
 
-	yield* fs.makeDirectory(claudeHome, {recursive: true})
+	yield* fs.makeDirectory(path.join(claudeHome, 'scripts'), {recursive: true})
 	yield* fs.writeFileString(path.join(claudeHome, 'CLAUDE.md'), pair)
 	yield* fs.writeFileString(
 		path.join(claudeHome, 'settings.json'),
 		pipe(claudeSettings, String.replace('ASK_GATE', askGate))
 	)
-	yield* fs.copy(path.join(assets, 'ask-gate.mjs'), askGate, {overwrite: true})
+	yield* fs.copy(path.join(assets, 'scripts/ask-gate.mjs'), askGate, {overwrite: true})
 	return {claudeHome, codexHome}
 })
 
