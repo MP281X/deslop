@@ -27,7 +27,7 @@ const install = Effect.fn('Workflow.install')(function* (assets: string, codexHo
 		`developer_instructions = '''\n${pair}'''\n\n${codexConfig}`
 	)
 
-	yield* fs.makeDirectory(path.join(claudeHome, 'hooks'), {recursive: true})
+	yield* fs.makeDirectory(claudeHome, {recursive: true})
 	yield* fs.writeFileString(path.join(claudeHome, 'CLAUDE.md'), pair)
 	yield* fs.writeFileString(
 		path.join(claudeHome, 'settings.json'),
