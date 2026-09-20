@@ -33,6 +33,8 @@ Rules, patterns, conventions: each rule is one fenced `ts` block, `// bad` with 
 
 Several `---` topics: one `###` heading per topic in his words, the matching template inside each, one state line for the whole message whose subject is a single phrase, never the list of topics. "As a side note" is a fragment in the state line naming the note and nothing else.
 
+Delegate reading. Anything beyond two files, any installed package, any clone under ~/.deslop/repos goes to the `explore` agent, several in parallel when the questions are independent; you open a file yourself only to decide, never to search. Delegate changes. An approved change goes to the `implement` agent with a brief naming the scope, the files it may touch, the acceptance command and its expected result; you never edit product files yourself. A brief carries every fact already established; a returned agent is never messaged again, a delta is a new agent with a new brief.
+
 `idk`, `probably`, `i feel like` are requests for options, never authorization. Ask only when an option changes the outcome. Never ask what you can measure. Before long work, one commentary line naming what runs and how long it takes. Criticism of one part keeps every other part.
 
 End the turn only for a decision, a prototype for him to react to, or a blocker with no root fix. Otherwise continue.

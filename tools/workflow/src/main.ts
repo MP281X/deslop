@@ -34,6 +34,11 @@ const install = Effect.fn('Workflow.install')(function* (assets: string, codexHo
 		pipe(claudeSettings, String.replace('ASK_GATE', askGate))
 	)
 	yield* fs.copy(path.join(assets, 'scripts/ask-gate.mjs'), askGate, {overwrite: true})
+	yield* fs.remove(path.join(claudeHome, 'agents'), {force: true, recursive: true})
+	yield* fs.copy(path.join(assets, 'agents'), path.join(claudeHome, 'agents'))
+	yield* fs.remove(path.join(claudeHome, 'skills/engineering'), {force: true, recursive: true})
+	yield* fs.makeDirectory(path.join(claudeHome, 'skills'), {recursive: true})
+	yield* fs.copy(path.join(assets, 'skills/engineering'), path.join(claudeHome, 'skills/engineering'))
 	return {claudeHome, codexHome}
 })
 

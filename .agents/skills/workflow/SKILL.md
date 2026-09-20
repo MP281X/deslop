@@ -15,7 +15,8 @@ The user converses with one agent, the pair thread, that turns half-formed ideas
 | `tools/workflow/assets/codex.toml`           | rest of `~/.codex/config.toml`                                         |
 | `tools/workflow/assets/claude.json`          | `~/.claude/settings.json`                                              |
 | `tools/workflow/assets/scripts/ask-gate.mjs` | `~/.claude/scripts/ask-gate.mjs`, wired as a `PreToolUse` hook         |
-| `tools/workflow/assets/skills/engineering`   | not installed yet; the code stance for the implementation role         |
+| `tools/workflow/assets/agents/*.md`          | `~/.claude/agents/`: explore (Sonnet 5), implement and review (Opus 5) |
+| `tools/workflow/assets/skills/engineering`   | `~/.claude/skills/engineering`, preloaded by implement and review      |
 
 `vp run build` in `tools/workflow`, then `node dist/main.js`; `CODEX_HOME` and `CLAUDE_CONFIG_DIR` select the homes. Install replaces the listed files and removes the previous release's `AGENTS.md`, `agents/deslop`, and `skills/engineering` from the Codex home.
 
