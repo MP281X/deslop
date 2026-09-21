@@ -1,43 +1,10 @@
 {
-	"compilerOptions": {
-		// type checking
-		"strict": true,
-		"noUnusedLocals": true,
-		"noImplicitReturns": true,
-		"noErrorTruncation": true,
-		"allowUnusedLabels": false,
-		"noUnusedParameters": true,
-		"noImplicitOverride": true,
-		"allowUnreachableCode": false,
-		"noUncheckedIndexedAccess": true,
-		"noFallthroughCasesInSwitch": true,
-		"noPropertyAccessFromIndexSignature": true,
-		"forceConsistentCasingInFileNames": true,
+	"extends": "@deslop/workflow/tsconfig.json",
 
-		// ts version and module resolution (use the lasted ts/js features and types)
+	"compilerOptions": {
 		"jsx": "react-jsx",
 		"lib": ["DOM", "ESNext", "DOM.Iterable"],
-		"types": ["node", "vite-plus/client"],
-		"target": "ESNext",
-		"module": "ESNext",
-		"moduleDetection": "force",
-		"moduleResolution": "bundler",
-
-		// imports / type checking and parsing / ...
-		"skipLibCheck": true,
-		"esModuleInterop": true,
-		"isolatedModules": true,
-		"resolveJsonModule": true,
-		"erasableSyntaxOnly": true,
-		"verbatimModuleSyntax": true,
-		"useDefineForClassFields": true,
-		"allowImportingTsExtensions": true,
-		"noUncheckedSideEffectImports": true,
-
-		// build config
-		"noEmit": true,
-		"incremental": true,
-		"tsBuildInfoFile": ".tsbuildinfo"
+		"types": ["node", "vite-plus/client"]
 	},
 
 	"exclude": [

@@ -27,4 +27,4 @@ When a selected project command is required, run it exactly with no flags, paths
 - Local data is disposable. Preserve production data only from the immediately previous release; delete obsolete data.
 - Persist only irreducible canonical data and infer the rest. Remove superseded paths and adapters; preserve compatibility only when explicitly required.
 
-Read `tools/workflow/assets/AGENTS.md` for shared conduct and communication. The reusable Codex configuration and skills are owned by `tools/workflow`; installation is required to activate its configured agent roles. Apply its `engineering` skill with this repository's `project-engineering` skill for product code.
+`tools/workflow` owns the reusable agent workflow: `src/agents/claude/CLAUDE.md` and the `developer_instructions` in `src/agents/codex/config.toml` are the pair-thread instructions, one copy per harness, edited identically. Apply its `engineering` skill with this repository's `project-engineering` skill for product code.

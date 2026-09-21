@@ -91,7 +91,7 @@ export function serverPlugin(): Plugin {
 						}>('src/main.server.ts')
 					)
 					const address = viteServer.address()
-					if (Predicate.isNull(address) || typeof address === 'string') {
+					if (Predicate.isNull(address) || Predicate.isString(address)) {
 						return yield* Effect.die('Vite HTTP server is not listening on TCP')
 					}
 					const scope = yield* Scope.make()

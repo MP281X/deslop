@@ -27,9 +27,9 @@ importers:
         specifier: ^4.0.0-rc
         version: 4.0.0-rc.112
     devDependencies:
-      '@deslop/oxlint-rules':
+      '@deslop/workflow':
         specifier: workspace:*
-        version: link:tools/oxlint-rules
+        version: link:tools/workflow
       '@effect/tsgo':
         specifier: latest
         version: 0.38.0
@@ -239,13 +239,27 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
 
-  tools/oxlint-rules:
+  tools/workflow:
     dependencies:
+      '@effect/tsgo':
+        specifier: 0.38.0
+        version: 0.38.0
+      effect:
+        specifier: ^4.0.0-rc
+        version: 4.0.0-rc.112
+      oxlint-plugin-react-doctor:
+        specifier: latest
+        version: 0.9.12
+      oxlint-tsgolint:
+        specifier: 7.0.2001
+        version: 7.0.2001
+    devDependencies:
       '@oxlint/plugins':
         specifier: latest
         version: 1.80.0
-
-  tools/workflow: {}
+      oxlint:
+        specifier: 1.79.0
+        version: 1.79.0(oxlint-tsgolint@7.0.2001)(vite-plus@0.3.0(@opentelemetry/api@1.9.1)(@types/node@26.4.0)(@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.4.0)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))
 
 packages:
 
