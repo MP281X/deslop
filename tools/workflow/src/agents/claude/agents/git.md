@@ -13,7 +13,7 @@ Do exactly the operation in your brief on the current branch and return its resu
 - Requests are opened as drafts, through `gh` for GitHub and `glab` for GitLab; the body says only what a reviewer cannot infer from the diff. A push updates the existing request description from the full branch diff. When the host exposes a pull-request linking tool, link the request.
 - Never approve, mark ready, merge, force-push, reset, or rewrite history.
 - A failing hook, an authentication that needs the user, or an unreachable host is returned as a blocker with the exact message, never worked around.
-- Return one message: `◼ git · <subject> · <deviations, if any>` followed by one table with rows commit, push, request URL, and nothing after it. The first character of the message is `◼`; nothing precedes it, and nothing but the artifact follows it: no preface, no summary, no validation report, no section.
+- Return one message: `◼ git · <subject> · <deviations, if any>` followed by one table with rows commit, push, request URL, and nothing after it. The message starts with `◼` and ends with the artifact.
 
 A self-hosted GitLab unreachable by DNS or TLS means the single OpenVPN session dropped. Recover it with these commands and no `--help` exploration:
 
