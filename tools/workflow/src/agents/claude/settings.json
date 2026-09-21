@@ -22,7 +22,6 @@
 			"PushNotification",
 			"NotebookEdit",
 			"ReportFindings",
-			"SendMessage",
 			"ListAgents",
 			"TaskStop",
 			"Monitor",

@@ -9,8 +9,8 @@ The user converses with one agent, the pair thread, that turns half-formed ideas
 
 ## How he works on the workflow
 
-- **Show, never describe.** He reads every message cold, works on several repositories in parallel and does not hold the codebase in his head: a proposal is the text run on a clean clone, pasted verbatim as a tree, a table or a diff, never prose about it.
-- **Measure structure across runs, never length.** Count state line, decision through the question tool, no implicit facts, no diff after an edit, edits only on change prompts, delegation happened.
+- **Make the answer concrete.** He reads every message cold: answer in plain language, using code, a tree, or a table only when it helps. No square markers or mandatory phase labels; implementation results name what changed and meaningful limitations without repeating the client diff.
+- **Evaluate useful outcomes.** Check completion, correct synthesis, redundant calls, relevant context, and recovery after changed inputs; report measured latency and usage without treating shorter output or more agents as proof of quality.
 - **A question is asked about an artifact he can see**, never about an analysis, and one decision per question.
 - **Pros and cons for every choice**, one line each.
 - **Small over clever.** Copied files, no renderer, no generated harness.
@@ -40,14 +40,23 @@ A release is any merge to `main`: CI sets `tools/workflow/package.json` to `0.1.
 
 ## Ownership
 
-| Owner       | Owns                                                                                                                           | Never                                                                                      |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| pair thread | conversation, decisions, one prototype edit per file, Bash limited to `git status`, `git log`, `git diff`, `ls`, one file read | builds, lints, tests, installs, packs, probes, a second edit to a file, spawning `browser` |
-| explore     | reading, returning counts and quoted lines                                                                                     | writing, recommending, running a measurement                                               |
-| implement   | the slice, validation, measurement, evals, probes, `browser`, the structure pass                                               | git, scope beyond the brief                                                                |
-| browser     | rendered criteria, defects with evidence                                                                                       | anything else                                                                              |
-| git         | commit, push, draft request on the current branch                                                                              | branches, merges, URLs, remotes                                                            |
-| t3 code     | worktrees, branches, diff review with inline comments, PR linking                                                              |                                                                                            |
+| Owner       | Owns                                                                                                                        | Never                                                                      |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| pair thread | user outcome through synthesis, decisions, integration plan, direct small tasks, tree-mutating commands, agent coordination | silently transferring completion ownership, spawning `browser`             |
+| explore     | one bounded evidence source, facts with locators, observation separated from inference                                      | writing, recommending, measurement, overlapping another explorer's source  |
+| implement   | one approved slice, its agreed scoped evidence, and `browser` for rendered behavior                                         | git, scope beyond the brief, delegating its implementation                 |
+| browser     | rendered criteria, defects with evidence                                                                                    | anything else                                                              |
+| git         | requested commit, push, draft request on the current branch; mandatory hooks                                                | branches, merges, duplicate validation, overlapping or speculative retries |
+| t3 code     | worktrees, branches, diff review with inline comments, PR linking                                                           |                                                                            |
+
+## Current execution contract
+
+- The pair owns the requested outcome until it is synthesized or a real blocker or user-owned decision remains. A status question is answered without abandoning authorized work.
+- Delegate substantial independent work by evidence ownership or specialist boundary. The pair may finish a small coherent task. Independent reads and disjoint edits launch together; independent tool calls are batched.
+- Every brief names scope, deliverable, ownership, relevant established evidence, and validation responsibilities. Roles do not recursively delegate their assignment; implement may invoke browser.
+- Validation is chosen once for the change. The pair owns integration and tree-mutating commands; implement owns agreed scoped evidence. Evidence is reused until later edits invalidate it. A full-tree check is selected only for affected shared behavior, a concrete failure, or unresolved uncertainty.
+- Returned evidence is grounded, not infallible: retain source locators, inputs or worktree state, distinguish inference, and state unperformed proof. Re-read or re-run only after a source changes, a contradiction appears, or required evidence is missing.
+- Settle consequential design choices before expensive edits. Do not add unrelated cleanup, defensive safeguards, or speculative machinery.
 
 ## Harness facts
 
@@ -70,6 +79,8 @@ What reaches whom, measured 2026-09-21:
 
 **t3 code.** Runs the same `claude` binary as the terminal: `binaryPath` is `claude` on PATH, 2.1.278; the Agent SDK ships no cli. Injects, every turn: Codex a `<collaboration_mode>` block (default mode: "strongly prefer assumptions", "never write a multiple choice question as text"; plan mode: a 3-phase plan prompt he rejects) plus `<runtime_info>` and PR-linking rules; Claude the `claude_code` preset plus the same append, settings from user, project and local scopes, `permissionMode` from the runtime mode. Renders GFM tables, task lists, GitHub alerts, `<details>`, shiki fences including `diff`, file links `[name](/abs/path:line)`. No mermaid, no remote images. Review comments on the diff arrive as `[Review comment …]` context in the next message.
 
+**Agent lifecycle.** The quick CLI evaluation observed Codex native waits and agent follow-up, and Claude completion notifications. Claude's Agent result directs follow-up through `SendMessage`; denying that tool caused unsuccessful discovery, so it is enabled. This does not establish t3's parent-resumption behavior. Use the host's exposed wait or notification lifecycle, never status loops or throwaway agents to consume time.
+
 ## Probing
 
 - One stable directory per purpose under the probe root: `claude-home`, `codex-home`, `project`, `pair-claude`, `pair-codex`, `pair-project`. Reset before each run, never a numbered copy.
@@ -90,36 +101,40 @@ What reaches whom, measured 2026-09-21:
 
 Settled from 991 Codex threads, 14 Claude threads, and 15 pair-text iterations run two to three times on seven prompts.
 
-| Decision                                                                | Fact                                                        |
-| ----------------------------------------------------------------------- | ----------------------------------------------------------- |
-| Pair text carries: delegation, prototypes, questions, tokens, structure | see CLAUDE.md                                               |
-| No orchestrator role; the pair thread has tools and delegates           | Tool-less primary: 2,134 waits, 1,733 relays in four days   |
-| Nothing the base prompt says is restated                                | t3 code injects its own mode text every turn                |
-| The harness is stripped by configuration, not by prose                  | Codex 14.1K to 10.3K, Claude 36.4K to 10.0K tokens          |
-| Memory features off everywhere, web search on                           | 261 web calls in 68 threads, no role-level switch exists    |
-| One fixed template per phase, state line first                          | 63% of his proceed replies followed a stop asking nothing   |
-| Decisions only through the native question tool                         | The panel renders question text with numbered buttons       |
-| Facts the workflow guarantees are never stated                          | Guarantees were the last recurring filler in messages       |
-| Explanations are a file tree plus at most four excerpts                 | He reads code, not prose                                    |
-| The reason for an artifact lives inside it as a comment                 | Prose beside a table is the same thing read twice           |
-| No hook on the question tool                                            | Same-message text is not persisted before the hook          |
-| After an edit no diff in the message, only simplification questions     | The client already shows the diff                           |
-| Delegation is words, not a hook                                         | Judgement calls need leading words, not static enforcement  |
-| `explore` runs Sonnet 5 at medium; Haiku rejected                       | Sonnet $0.066 per call, 0 wrong claims in 97; Haiku wrong   |
-| Codex gets a one-line `AGENTS.md` naming the roles                      | Codex authorizes spawning only from `AGENTS.md` or a skill  |
-| One file per harness, copied, no renderer                               | Duplicated prose beats a script deriving one from the other |
-| The git role never touches branches, pushes to a named remote           | t3 code creates the worktree and branch per thread          |
-| `implement` invokes `browser`, the pair thread never does               | Routing results through the pair thread is the failed hub   |
-| Artifacts take the GFM shape that fits; fences hold code, diffs, trees  | The client renders tables and lists                         |
-| On a package or a tool the tree is proposed before the first slice      | All six structure requests came after the slices landed     |
-| Published TypeScript is built; only the workspace consumes `.ts`        | Node 26 refuses type stripping under `node_modules`         |
-| A consumer restates the `ignorePatterns` and rule options it wants      | oxlint merges `overrides` across `extends`, replaces both   |
-| A `jsPlugins` specifier must resolve from the linted root               | oxlint resolves plugin specifiers from the linted root      |
-| The formatter configuration is duplicated per root                      | oxfmt loads a TypeScript config but has no `extends`        |
-| A consumer's `oxlint.config.ts` is `extends: [config]`                  | oxlint loads `oxlint.config.ts` and merges the import       |
-| The lockfile is edited by hand and installed frozen                     | `vp install` re-resolves `latest` to an unpatchable oxlint  |
-| `@deslop/workflow` publishes through npm trusted publishing on `main`   | Each push to main publishes `0.1.<run number>`              |
-| `~/.deslop/harness-probe/turbo-probe` is the consumer test              | An outside Turborepo consumes the published package         |
+| Decision                                                                | Fact                                                          |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Pair text carries: delegation, prototypes, questions, tokens, structure | see CLAUDE.md                                                 |
+| No orchestrator role; the pair thread has tools and delegates           | Tool-less primary: 2,134 waits, 1,733 relays in four days     |
+| Nothing the base prompt says is restated                                | t3 code injects its own mode text every turn                  |
+| The harness is stripped by configuration, not by prose                  | Codex 14.1K to 10.3K, Claude 36.4K to 10.0K tokens            |
+| Memory features off everywhere, web search on                           | 261 web calls in 68 threads, no role-level switch exists      |
+| Plain answers; artifacts only where useful                              | User rejected square markers and empty completion messages    |
+| Decisions only through the native question tool                         | The panel renders question text with numbered buttons         |
+| Report the useful result and material limitations                       | Process assurances do not explain what changed                |
+| Explanations use the code or structure needed to understand behavior    | Forced trees and excerpt counts add ceremony                  |
+| State each fact once in the clearest format                             | Repeated prose and artifacts duplicate the same information   |
+| No hook on the question tool                                            | Same-message text is not persisted before the hook            |
+| After an edit name the outcome, not the whole diff                      | The client already shows the diff                             |
+| Delegation is words, not a hook                                         | Judgement calls need leading words, not static enforcement    |
+| `explore` runs Sonnet 5 at medium; Haiku rejected                       | Sonnet $0.066 per call, 0 wrong claims in 97; Haiku wrong     |
+| Codex gets a one-line `AGENTS.md` naming the roles                      | Codex authorizes spawning only from `AGENTS.md` or a skill    |
+| One file per harness, copied, no renderer                               | Duplicated prose beats a script deriving one from the other   |
+| The git role never touches branches, pushes to a named remote           | t3 code creates the worktree and branch per thread            |
+| `implement` invokes `browser`, the pair thread never does               | Routing results through the pair thread is the failed hub     |
+| The pair owns synthesis and completion after delegation                 | Recent work required user prompts after agents completed      |
+| Delegate by independent evidence or specialist boundary                 | Overlapping thematic analysis duplicated context              |
+| Validation is planned once and reused until invalidated                 | Repeated full checks and overlapping commit hooks wasted work |
+| Agent returns are grounded evidence, not absolute truth                 | A recent explorer searched the wrong session location         |
+| Artifacts take the GFM shape that fits; fences hold code, diffs, trees  | The client renders tables and lists                           |
+| On a package or a tool the tree is proposed before the first slice      | All six structure requests came after the slices landed       |
+| Published TypeScript is built; only the workspace consumes `.ts`        | Node 26 refuses type stripping under `node_modules`           |
+| A consumer restates the `ignorePatterns` and rule options it wants      | oxlint merges `overrides` across `extends`, replaces both     |
+| A `jsPlugins` specifier must resolve from the linted root               | oxlint resolves plugin specifiers from the linted root        |
+| The formatter configuration is duplicated per root                      | oxfmt loads a TypeScript config but has no `extends`          |
+| A consumer's `oxlint.config.ts` is `extends: [config]`                  | oxlint loads `oxlint.config.ts` and merges the import         |
+| The lockfile is edited by hand and installed frozen                     | `vp install` re-resolves `latest` to an unpatchable oxlint    |
+| `@deslop/workflow` publishes through npm trusted publishing on `main`   | Each push to main publishes `0.1.<run number>`                |
+| `~/.deslop/harness-probe/turbo-probe` is the consumer test              | An outside Turborepo consumes the published package           |
 
 ## The engineering skill
 
@@ -144,6 +159,28 @@ Current state, one row per run:
 | pair text, 2026-09-21, Codex                                                                | pre-final messages · the idk prompt                                            | 1/3/2, one carrying a tree · diagnosis without a decision table                                                                                                                                                                               |
 | pair text and return shape, 2026-09-21, Codex 0.155.1, change prompt, 2 runs                | root edits · change owner · state line first · pre-final root messages         | 0 · implement · root and implement 2 of 2 each · one line, no fence, 2 of 2                                                                                                                                                                   |
 | pair text and return shape, 2026-09-21, Claude Code 2.1.278, change prompt, 2 runs          | root edits · change owner · state line first · prose around it · over-delivery | 0 · implement · root 1 of 2 (the other put its decision table in a second message after the question tool was found absent), implement and explore 2 of 2 · implement validation lines 2 of 2 · explore five artifacts and a file dump 1 of 2 |
+
+### Workflow runtime evaluation
+
+Quick CLI coordination evaluations ran on 2026-09-21; t3 UI visibility, automatic parent resumption, and broader implementation tasks remain unverified. The confirmation exposed a throwaway waiting agent; the subsequent prohibition has not been re-evaluated.
+
+Commands: `node /home/mp281x/.deslop/measure/workflow-quick-eval/run.mjs` for the paired run; `WORKFLOW_EVAL_TARGET=claude WORKFLOW_EVAL_LABEL=confirmation- node /home/mp281x/.deslop/measure/workflow-quick-eval/run.mjs` for confirmation. Evidence below is under `/home/mp281x/.deslop/measure/workflow-quick-eval/`.
+
+| CLI run                     | Elapsed  | Observed result                                                                                               | Evidence                                                                                    |
+| --------------------------- | -------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Codex                       | 57.410 s | 2 spawns, 3 native waits, 1 follow-up; correct updated result, no status polling                              | `codex.jsonl`, `codex-tool-counts.json`, `codex-status.json`                                |
+| Claude, SendMessage denied  | 34.759 s | 2 workers completed; 3 capability searches; final recommendation relaxed the hard budget                      | `claude.jsonl`, `claude-summary.json`, `claude-status.json`                                 |
+| Claude, SendMessage enabled | 28.773 s | Follow-up worked; 1 targeted discovery; hard bounds respected; an unnecessary third waiting agent was spawned | `confirmation-claude.jsonl`, `confirmation-summary.json`, `confirmation-claude-status.json` |
+
+| Representative case                           | Outcome criteria                                                                                      |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Codex and Claude session diagnosis            | primary synthesizes without a user completion prompt; evidence sources do not overlap                 |
+| two independent implementation slices         | disjoint work launches together; completion includes integration; count scope corrections and latency |
+| correction after a worker return              | available agent and valid evidence are reused; only invalidated proof is rerun                        |
+| validated change followed by commit           | git relies on supplied evidence plus mandatory hooks; no overlapping commit or validation process     |
+| half-formed request requiring a design choice | concrete artifact precedes one user-owned decision; accepted work continues to a useful result        |
+
+For every case record completion, scope-correction cycles, redundant work, elapsed latency, and whether the final result is useful. Do not compare against the historical rows as if prompts, harness versions, or tasks were controlled.
 
 Open items:
 
