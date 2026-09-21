@@ -50,7 +50,11 @@ jobs:
 
       - name: Publish
         if: github.ref == 'refs/heads/main'
-        working-directory: tools/workflow
         run: |
-          vp run build
-          npm view "@deslop/workflow@$(npm pkg get version | tr -d '"')" version >/dev/null 2>&1 || npm publish
+          for package in workflow; do
+            (
+              cd tools/$package
+              vp run build
+              npm view "$(npm pkg get name | tr -d '"')@$(npm pkg get version | tr -d '"')" version >/dev/null 2>&1 || npm publish
+            )
+          done

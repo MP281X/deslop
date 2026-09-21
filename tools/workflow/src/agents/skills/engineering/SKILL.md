@@ -538,6 +538,37 @@ import type {Connect, EnvironmentModuleNode, Plugin} from 'vite'
 static layerPi(config: Pi.Config) {
 ```
 
+## Package
+
+```
+// bad — "improve the folder/files structure, I hate it"
+tools/oxlint-rules/                       // rules apart from their config
+  src/oxlint-plugin.ts                    // ten rules in one file
+  src/oxlint-plugin.test.ts
+  package.json
+  tsconfig.json
+tools/workflow/
+  assets/                                 // source beside src
+    claude/CLAUDE.md, settings.json, agents/*.md
+    codex/AGENTS.md, config.toml, agents/*.toml
+    skills/engineering/SKILL.md
+  src/main.ts                             // name says nothing
+  package.json                            // scripts and exports nothing consumes
+
+// good
+tools/workflow/
+  src/
+    agents/
+      claude/CLAUDE.md, settings.json, agents/*.md
+      codex/AGENTS.md, config.toml, agents/*.toml
+      skills/engineering/SKILL.md
+    rules/<rule>.ts, shared.ts, rules.test.ts    // one file per rule, test beside
+    oxlint.ts                                    // config named, plugin default
+    install.ts
+  tsconfig.json                                  // exported base
+  package.json                                   // files, exports, bin, one script
+```
+
 ## React
 
 ```ts
