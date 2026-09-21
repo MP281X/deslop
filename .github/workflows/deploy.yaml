@@ -32,6 +32,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Version
+        if: github.ref == 'refs/heads/main'
+        env:
+          RELEASE_NUMBER: ${{ github.run_number }}
+        run: |
+          for package in workflow; do
+            vp -C tools/$package pm version "0.1.$RELEASE_NUMBER" -- --no-git-tag-version
+          done
+
       - name: Build
         if: github.ref == 'refs/heads/main'
         env:
@@ -52,6 +61,5 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           for package in workflow; do
-            name=$(npm --prefix tools/$package pkg get name version | jq -r '"\(.name)@\(.version)"')
-            npm view "$name" version >/dev/null 2>&1 || vp pm publish ./tools/$package --no-git-checks
+            vp pm publish ./tools/$package --no-git-checks
           done

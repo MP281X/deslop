@@ -36,7 +36,7 @@ The user converses with one agent, the pair thread, that turns half-formed ideas
 
 `vp run build` in `tools/workflow`, then `node dist/install.js`; `CODEX_HOME` and `CLAUDE_CONFIG_DIR` select the homes. Nothing installs on its own; he says when. The installer removes every managed entry before copying, so hand edits to installed files are lost on every install; an asset deleted in a release gets one explicit removal in `install.ts` for that release only, dropped at the next.
 
-A release is a `version` bump in `tools/workflow/package.json` merged to `main`. `vp pack` builds `dist/install.js` for the bin and `dist/oxlint.js` for the `.` export, and `publishConfig.exports` points consumers at them while the workspace keeps reading `src/oxlint.ts`.
+A release is any merge to `main`: CI sets `tools/workflow/package.json` to `0.1.<run number>` before the build and publishes it. `vp pack` builds `dist/install.js` for the bin and `dist/oxlint.js` for the `.` export, and `publishConfig.exports` points consumers at them while the workspace keeps reading `src/oxlint.ts`.
 
 ## Ownership
 
@@ -91,36 +91,36 @@ What reaches whom, measured 2026-09-21:
 
 Settled from 991 Codex threads, 14 Claude threads, and 15 pair-text iterations run two to three times on seven prompts.
 
-| Decision                                                                | Fact                                                           |
-| ----------------------------------------------------------------------- | -------------------------------------------------------------- |
-| Pair text carries: delegation, prototypes, questions, tokens, structure | see CLAUDE.md                                                  |
-| No orchestrator role; the pair thread has tools and delegates           | Tool-less primary: 2,134 waits, 1,733 relays in four days      |
-| Nothing the base prompt says is restated                                | t3 code injects its own mode text every turn                   |
-| The harness is stripped by configuration, not by prose                  | Codex 14.1K to 10.3K, Claude 36.4K to 10.0K tokens             |
-| Memory features off everywhere, web search on                           | 261 web calls in 68 threads, no role-level switch exists       |
-| One fixed template per phase, state line first                          | 63% of his proceed replies followed a stop asking nothing      |
-| Decisions only through the native question tool                         | The panel renders question text with numbered buttons          |
-| Facts the workflow guarantees are never stated                          | Guarantees were the last recurring filler in messages          |
-| Explanations are a file tree plus at most four excerpts                 | He reads code, not prose                                       |
-| The reason for an artifact lives inside it as a comment                 | Prose beside a table is the same thing read twice              |
-| No hook on the question tool                                            | Same-message text is not persisted before the hook             |
-| After an edit no diff in the message, only simplification questions     | The client already shows the diff                              |
-| Delegation is words, not a hook                                         | Judgement calls need leading words, not static enforcement     |
-| `explorer` runs Sonnet 5 at medium; Haiku rejected                      | Sonnet $0.066 per call, 0 wrong claims in 97; Haiku wrong      |
-| Codex gets a one-line `AGENTS.md` naming the roles                      | Codex authorizes spawning only from `AGENTS.md` or a skill     |
-| One file per harness, copied, no renderer                               | Duplicated prose beats a script deriving one from the other    |
-| The git role never touches branches, pushes to a named remote           | t3 code creates the worktree and branch per thread             |
-| `worker` invokes `review` and `browser`, the pair thread never does     | Routing results through the pair thread is the failed hub      |
-| Artifacts take the GFM shape that fits; fences hold code, diffs, trees  | The client renders tables and lists                            |
-| On a package or a tool the tree is proposed before the first slice      | All six structure requests came after the slices landed        |
-| Published TypeScript is built; only the workspace consumes `.ts`        | Node 26 refuses type stripping under `node_modules`            |
-| A consumer restates the `ignorePatterns` and rule options it wants      | oxlint merges `overrides` across `extends`, replaces both      |
-| A `jsPlugins` specifier must resolve from the linted root               | oxlint resolves plugin specifiers from the linted root         |
-| The formatter configuration is duplicated per root                      | oxfmt loads a TypeScript config but has no `extends`           |
-| A consumer's `oxlint.config.ts` is `extends: [config]`                  | oxlint loads `oxlint.config.ts` and merges the import          |
-| The lockfile is edited by hand and installed frozen                     | `vp install` re-resolves `latest` to an unpatchable oxlint     |
-| `@deslop/workflow` publishes through npm trusted publishing on `main`   | The deploy job publishes only when `npm view` finds no version |
-| `~/.deslop/harness-probe/turbo-probe` is the consumer test              | An outside Turborepo consumes the published package            |
+| Decision                                                                | Fact                                                        |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Pair text carries: delegation, prototypes, questions, tokens, structure | see CLAUDE.md                                               |
+| No orchestrator role; the pair thread has tools and delegates           | Tool-less primary: 2,134 waits, 1,733 relays in four days   |
+| Nothing the base prompt says is restated                                | t3 code injects its own mode text every turn                |
+| The harness is stripped by configuration, not by prose                  | Codex 14.1K to 10.3K, Claude 36.4K to 10.0K tokens          |
+| Memory features off everywhere, web search on                           | 261 web calls in 68 threads, no role-level switch exists    |
+| One fixed template per phase, state line first                          | 63% of his proceed replies followed a stop asking nothing   |
+| Decisions only through the native question tool                         | The panel renders question text with numbered buttons       |
+| Facts the workflow guarantees are never stated                          | Guarantees were the last recurring filler in messages       |
+| Explanations are a file tree plus at most four excerpts                 | He reads code, not prose                                    |
+| The reason for an artifact lives inside it as a comment                 | Prose beside a table is the same thing read twice           |
+| No hook on the question tool                                            | Same-message text is not persisted before the hook          |
+| After an edit no diff in the message, only simplification questions     | The client already shows the diff                           |
+| Delegation is words, not a hook                                         | Judgement calls need leading words, not static enforcement  |
+| `explorer` runs Sonnet 5 at medium; Haiku rejected                      | Sonnet $0.066 per call, 0 wrong claims in 97; Haiku wrong   |
+| Codex gets a one-line `AGENTS.md` naming the roles                      | Codex authorizes spawning only from `AGENTS.md` or a skill  |
+| One file per harness, copied, no renderer                               | Duplicated prose beats a script deriving one from the other |
+| The git role never touches branches, pushes to a named remote           | t3 code creates the worktree and branch per thread          |
+| `worker` invokes `review` and `browser`, the pair thread never does     | Routing results through the pair thread is the failed hub   |
+| Artifacts take the GFM shape that fits; fences hold code, diffs, trees  | The client renders tables and lists                         |
+| On a package or a tool the tree is proposed before the first slice      | All six structure requests came after the slices landed     |
+| Published TypeScript is built; only the workspace consumes `.ts`        | Node 26 refuses type stripping under `node_modules`         |
+| A consumer restates the `ignorePatterns` and rule options it wants      | oxlint merges `overrides` across `extends`, replaces both   |
+| A `jsPlugins` specifier must resolve from the linted root               | oxlint resolves plugin specifiers from the linted root      |
+| The formatter configuration is duplicated per root                      | oxfmt loads a TypeScript config but has no `extends`        |
+| A consumer's `oxlint.config.ts` is `extends: [config]`                  | oxlint loads `oxlint.config.ts` and merges the import       |
+| The lockfile is edited by hand and installed frozen                     | `vp install` re-resolves `latest` to an unpatchable oxlint  |
+| `@deslop/workflow` publishes through npm trusted publishing on `main`   | Each push to main publishes `0.1.<run number>`              |
+| `~/.deslop/harness-probe/turbo-probe` is the consumer test              | An outside Turborepo consumes the published package         |
 
 ## The engineering skill
 
