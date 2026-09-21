@@ -33,14 +33,14 @@
 		"build": "vp pack"
 	},
 	"devDependencies": {
-		"@oxlint/plugins": "latest",
-		"oxlint": "1.79.0"
+		"@oxlint/plugins": "1.82.0",
+		"oxlint": "1.82.0"
 	},
 	"peerDependencies": {
-		"@effect/tsgo": "0.38.0",
+		"@effect/tsgo": "0.45.0",
 		"effect": "^4.0.0-rc",
-		"oxlint": "1.79.0",
-		"oxlint-plugin-react-doctor": "latest",
+		"oxlint": "1.82.0",
+		"oxlint-plugin-react-doctor": "*",
 		"oxlint-tsgolint": "7.0.2001"
 	},
 	"engines": {

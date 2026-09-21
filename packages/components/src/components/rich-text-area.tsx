@@ -2,10 +2,10 @@ import {useAtom} from '@effect/atom-react'
 
 import {Array, HashMap, HashSet, Match, Number, Option, Order, Predicate, Record, String, Tuple, pipe} from 'effect'
 
-import {LexicalComposer} from '@lexical/react/LexicalComposer'
 import {useLexicalComposerContext} from '@lexical/react/LexicalComposerContext'
 import {ContentEditable} from '@lexical/react/LexicalContentEditable'
 import {LexicalErrorBoundary} from '@lexical/react/LexicalErrorBoundary'
+import {LexicalExtensionComposer} from '@lexical/react/LexicalExtensionComposer'
 import {HistoryPlugin} from '@lexical/react/LexicalHistoryPlugin'
 import {PlainTextPlugin} from '@lexical/react/LexicalPlainTextPlugin'
 import {LexicalTypeaheadMenuPlugin, MenuOption} from '@lexical/react/LexicalTypeaheadMenuPlugin'
@@ -57,6 +57,8 @@ class TokenNode extends Lexical.TextNode {
 		return false
 	}
 }
+
+const extension = Lexical.defineExtension({name: 'rich-text-area', namespace: 'rich-text-area', nodes: [TokenNode]})
 
 class Item<TValue extends RichTextArea.Value> extends MenuOption {
 	public entry: RichTextArea.Entry<TValue>
@@ -560,16 +562,7 @@ export function RichTextArea<TValue extends RichTextArea.Value = RichTextArea.Va
 
 	return (
 		<div className={cn('relative', input.className)}>
-			<LexicalComposer
-				initialConfig={{
-					namespace: 'rich-text-area',
-					nodes: [TokenNode],
-					onError(error) {
-						throw error
-					},
-					theme: {}
-				}}
-			>
+			<LexicalExtensionComposer extension={extension} contentEditable={null}>
 				<div className="border-input bg-input/30 relative flex w-full flex-col border">
 					<div ref={menuBoxRef} className="absolute inset-x-0 bottom-full z-50" />
 
@@ -617,7 +610,7 @@ export function RichTextArea<TValue extends RichTextArea.Value = RichTextArea.Va
 				>
 					{input.children}
 				</TypeaheadPlugin>
-			</LexicalComposer>
+			</LexicalExtensionComposer>
 		</div>
 	)
 }
