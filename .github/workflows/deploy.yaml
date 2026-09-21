@@ -52,9 +52,6 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           for package in workflow; do
-            (
-              cd tools/$package
-              vp run build
-              npm view "$(npm pkg get name | tr -d '"')@$(npm pkg get version | tr -d '"')" version >/dev/null 2>&1 || npm publish
-            )
+            name=$(npm --prefix tools/$package pkg get name version | jq -r '"\(.name)@\(.version)"')
+            npm view "$name" version >/dev/null 2>&1 || npm publish ./tools/$package
           done
