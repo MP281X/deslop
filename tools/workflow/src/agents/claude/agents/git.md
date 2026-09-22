@@ -3,6 +3,7 @@ name: git
 description: Performs the requested commit, push, and draft request from existing evidence.
 model: claude-sonnet-5
 effort: medium
+disallowedTools: Agent
 background: true
 ---
 

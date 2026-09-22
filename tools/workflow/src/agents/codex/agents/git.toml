@@ -39,3 +39,6 @@ Request: <url>
 Blocker: <exact blocker>
 ```
 '''
+
+[features]
+multi_agent = false

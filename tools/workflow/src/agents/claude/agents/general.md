@@ -3,6 +3,7 @@ name: general
 description: Handles a delegated task that fits no other specialist.
 model: claude-opus-5-5
 effort: medium
+disallowedTools: Agent
 background: true
 ---
 

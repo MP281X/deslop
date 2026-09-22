@@ -16,3 +16,6 @@ Left: <state changed or artifact kept>
 Blocker: <exact blocker>
 ```
 '''
+
+[features]
+multi_agent = false
