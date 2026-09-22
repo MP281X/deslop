@@ -181,16 +181,16 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								Array.filter(diagnostic => diagnostic.code === '@deslop/workflow(schema-type-pair)'),
 								Array.map(diagnostic => diagnostic.message),
 								Array.sort(String.Order)
-							).toEqual([
-								'Annotate the Schema.suspend thunk, not the recursive Schema.',
-								'Place `type MissingDecode = typeof MissingDecode.Type` immediately before this Schema.',
-								'Place `type MissingEncode = typeof MissingEncode.Type` immediately before this Schema.',
-								'Place `type MissingFluent = typeof MissingFluent.Type` immediately before this Schema.',
-								'Place `type MissingTransform = typeof MissingTransform.Type` immediately before this Schema.',
-								'Place `type MissingType = typeof MissingType.Type` immediately before this Schema.',
-								'Write `type Tree = ...` by hand immediately before this recursive Schema; typeof Tree.Type is circular.'
-							])
-						)
+							)
+						).toEqual([
+							'Annotate the Schema.suspend thunk, not the recursive Schema.',
+							'Place `type MissingDecode = typeof MissingDecode.Type` immediately before this Schema.',
+							'Place `type MissingEncode = typeof MissingEncode.Type` immediately before this Schema.',
+							'Place `type MissingFluent = typeof MissingFluent.Type` immediately before this Schema.',
+							'Place `type MissingTransform = typeof MissingTransform.Type` immediately before this Schema.',
+							'Place `type MissingType = typeof MissingType.Type` immediately before this Schema.',
+							'Write `type Tree = ...` by hand immediately before this recursive Schema; typeof Tree.Type is circular.'
+						])
 						expect(result.stderr).toBe('')
 					}),
 					Effect.scoped
