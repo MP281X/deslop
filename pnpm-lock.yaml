@@ -248,7 +248,7 @@ importers:
   tools/workflow:
     dependencies:
       '@effect/tsgo':
-        specifier: 0.45.0
+        specifier: '>=0.45'
         version: 0.45.0
       effect:
         specifier: 4.0.0-rc.112
@@ -257,7 +257,7 @@ importers:
         specifier: '*'
         version: 0.9.14
       oxlint-tsgolint:
-        specifier: 7.0.2001
+        specifier: '^7.0'
         version: 7.0.2001
     devDependencies:
       '@oxlint/plugins':

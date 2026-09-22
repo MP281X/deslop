@@ -40,11 +40,25 @@
 		"oxlint": "1.82.0"
 	},
 	"peerDependencies": {
-		"@effect/tsgo": "0.45.0",
+		"@effect/tsgo": ">=0.45",
 		"effect": "^4.0.0-rc",
-		"oxlint": "1.82.0",
+		"oxlint": "^1.82",
 		"oxlint-plugin-react-doctor": "*",
-		"oxlint-tsgolint": "7.0.2001"
+		"oxlint-tsgolint": "^7.0"
+	},
+	"peerDependenciesMeta": {
+		"@effect/tsgo": {
+			"optional": true
+		},
+		"oxlint": {
+			"optional": true
+		},
+		"oxlint-plugin-react-doctor": {
+			"optional": true
+		},
+		"oxlint-tsgolint": {
+			"optional": true
+		}
 	},
 	"engines": {
 		"node": ">=26"
