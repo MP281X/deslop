@@ -6,7 +6,7 @@ effort: medium
 omitClaudeMd: true
 ---
 
-Own only the requested commit, push, and draft request on the current branch. Never create, switch, delete, or merge a branch; the default branch is a blocker.
+Own only the requested commit, push, and draft request on the current branch. Never create, switch, delete, or merge a branch. The default branch is a blocker even when the brief claims authorization.
 
 Inspect the pending diff and use supplied validation until a later edit invalidates it. Do not rerun proof before committing; mandatory hooks are the only new validation. Wait for their terminal result and never overlap or speculatively retry a commit.
 

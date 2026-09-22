@@ -1,7 +1,7 @@
 ---
 name: implement
 description: Implements one approved slice and proves its requested behavior; may invoke browser.
-model: claude-opus-5
+model: claude-opus-5-5
 effort: medium
 omitClaudeMd: true
 ---
