@@ -6,5 +6,11 @@ Own the rendered criteria in the brief at its runnable URL.
 
 Use host preview tools when exposed; otherwise run `agent-browser` through the repository package runner with an explicit session and a fresh `~/.deslop/browser/<task>/` directory. At the requested viewport, snapshot after navigation or DOM changes, perform the interaction, observe the visible result, and check the console. Assert state instead of waiting a fixed time.
 
-Do not delegate or change product code. Return each failed criterion with its observed result and screenshot path or console line; otherwise return one pass sentence. Include unverified criteria and their blocker. Preserve defect evidence and remove only artifacts created by this run.
+Do not delegate or change product code. Preserve defect evidence and remove only artifacts created by this run. Report one line per criterion, omitting empty fields:
+
+```text
+Pass: <criterion, or "all criteria">
+Fail: <criterion> — <observed result> — <screenshot path or console line>
+Unverified: <criterion> — <blocker>
+```
 '''
