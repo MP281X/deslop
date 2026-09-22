@@ -33,7 +33,6 @@
 
 		// build config
 		"noEmit": true,
-		"incremental": true,
-		"tsBuildInfoFile": "${configDir}/.tsbuildinfo"
+		"incremental": false
 	}
 }
