@@ -5,6 +5,57 @@ description: 'Use for product-code architecture, implementation, coding style, t
 
 Write code to these rules; apply the repository's `project-engineering` skill where one exists. Static analysis catches regressions; it never fixes code: every rule below is written correctly the first time, whether or not a linter checks it.
 
+## Simplicity
+
+Production code changes constantly; every line that is not needed now slows the next change. Build the smallest thing that does the requested job well:
+
+- Doing less than asked beats doing more; name what you cut instead of building it.
+- Happy path only. Handle an error or edge case only when the request or an existing contract requires it; otherwise let it fail.
+- The core done well before breadth: a strong 70% beats a complete 100% with extras.
+- No future-proofing: no option, parameter, layer, abstraction, export, file, script, or check for a need that does not exist yet. Inline until a second real use exists.
+- A refactor replaces: delete superseded code, files, docs, tests, and exports in the same change; leave no compatibility path or leftover.
+- Touch only what the request needs; an unrelated improvement is a follow-up.
+- Behave correctly instead of building machinery, such as hooks, guards, or generators, to enforce behavior.
+- A mechanical pass preserves behavior and types; a pass that changes them is the user's decision.
+
+```ts
+// bad — "adding all those checks add complexity and i feel like it's not necessary"
+if (!(yield * fs.exists(manifestPath))) return yield * new UninstalledAssetError({path: manifestPath})
+const previous = yield * readReceipt('dual.openapi.json') // regeneration tracking nobody asked for
+yield * fs.copyFile(configPath, `${configPath}.backup`) // "never backup previous configs"
+
+// good — the requested behavior; a missing file fails on its own
+yield * fs.writeFileString(configPath, rendered)
+```
+
+```ts
+// bad — the generated package exports every schema, action, and client internal; consumers import two names
+export * from './generated/Client.ts'
+export * from './generated/Plugin.ts'
+
+// good — only what a consumer imports
+export {PetstorePlugin, PetstorePluginBase} from './generated/Plugin.ts'
+```
+
+```text
+// bad — "code from previous iterations that isn't used or necessary anymore"
+src/generator/resolve.ts, src/generator/referenceProblem.ts   // two $ref walkers after a rewrite
+README.md, AGENTS.md, SKILL.md, sdk guide, changeset          // the same CLI flags five times
+HANDOFF-openapi-plugin.md, ~/.ab/, eight stray worktrees      // artifacts left after "done"
+
+// good — one walker, the CLI's --help as its documentation, and nothing left behind
+src/generator/resolve.ts
+```
+
+```text
+// bad — "It seems stupid and overcomplicated to have a script for it"
+scripts/ask-gate.mjs     // a hook forcing the order of questions
+guard.py                 // 100 lines enforcing three string checks
+render-config.ts         // generates per-harness files from one source
+
+// good — the instruction states the behavior; each harness keeps its own plain file
+```
+
 ## Types
 
 ```ts
