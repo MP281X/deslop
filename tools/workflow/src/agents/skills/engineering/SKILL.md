@@ -370,6 +370,16 @@ Ref.set(entries, decoded)
 ```
 
 ```ts
+// bad — a function that reads no argument is a value
+const notFound = () => HttpServerResponse.empty({status: 404})
+return notFound()
+
+// good — the value itself, named once
+const notFound = HttpServerResponse.empty({status: 404})
+return notFound
+```
+
+```ts
 // bad — "the code still keeps the compatibility/legacy code caused by the iterations"
 export const createLegacy = createV1 // kept for callers nobody has
 
@@ -449,6 +459,14 @@ Random.Random.defaultValue().nextDoubleUnsafe()
 Schedule.spaced(Duration.millis(55))
 pipe(Config.string('HOST'), Config.withDefault('0.0.0.0'))
 Config.redacted('SMTP_PASS') // a secret is Redacted, never a string
+```
+
+```ts
+// bad — the ternary restates what Array.ensure already decides
+const recipients = Array.isArray(input) ? input : [input]
+
+// good
+const recipients = Array.ensure(input)
 ```
 
 ## Globals and types

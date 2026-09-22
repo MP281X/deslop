@@ -12,14 +12,14 @@
 		"upgrade": "sh -c 'rm -f pnpm-lock.yaml && find . -name node_modules -type d -prune -exec rm -rf {} + && vp install'"
 	},
 	"dependencies": {
-		"@effect/atom-react": "^4.0.0-rc",
-		"@effect/platform-node": "^4.0.0-rc",
-		"effect": "^4.0.0-rc"
+		"@effect/atom-react": "4.0.0-rc.112",
+		"@effect/platform-node": "4.0.0-rc.112",
+		"effect": "4.0.0-rc.112"
 	},
 	"devDependencies": {
 		"@deslop/workflow": "workspace:*",
 		"@effect/tsgo": "latest",
-		"@effect/vitest": "^4.0.0-rc",
+		"@effect/vitest": "4.0.0-rc.112",
 		"@types/node": "latest",
 		"@types/react": "^19",
 		"@types/react-dom": "^19",
@@ -27,7 +27,8 @@
 		"oxlint-plugin-react-doctor": "latest",
 		"typescript": "latest",
 		"vite": "catalog:",
-		"vite-plus": "catalog:"
+		"vite-plus": "catalog:",
+		"vitest": "4.1.11"
 	},
 	"engines": {
 		"node": ">=26"

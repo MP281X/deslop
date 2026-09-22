@@ -5,15 +5,19 @@ packages:
 
 allowBuilds:
   '@google/genai': false
+  esbuild: false
   msgpackr-extract: true
   protobufjs: false
 
 catalogMode: prefer
 
 catalog:
-  vite-plus: latest
-  vite: npm:@voidzero-dev/vite-plus-core@latest
+  vite-plus: 0.3.2
+  vite: npm:@voidzero-dev/vite-plus-core@0.3.2
 overrides:
+  '@effect/opentelemetry': 4.0.0-rc.112
+  '@effect/platform-node-shared': 4.0.0-rc.112
+  effect: 4.0.0-rc.112
   vite: 'catalog:'
 peerDependencyRules:
   allowAny: [vite, typescript]

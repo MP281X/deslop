@@ -3,6 +3,8 @@ import {Array, pipe} from 'effect'
 import {definePlugin} from '@oxlint/plugins'
 import {defineConfig} from 'oxlint'
 
+import {noArrayWrapTernary} from './rules/no-array-wrap-ternary.ts'
+import {noConstantFunction} from './rules/no-constant-function.ts'
 import {noFakeRefState} from './rules/no-fake-ref-state.ts'
 import {noModuleMocking} from './rules/no-module-mocking.ts'
 import {noReadonlyTypeSyntax} from './rules/no-readonly-type-syntax.ts'
@@ -196,6 +198,8 @@ export const oxlint = defineConfig({
 	plugins: ['effecttsgo', 'eslint', 'typescript', 'oxc', 'import', 'react', 'unicorn'],
 	rules: {
 		// Effect and React forms that maintained rules cannot express.
+		'@deslop/workflow/no-array-wrap-ternary': 'error',
+		'@deslop/workflow/no-constant-function': 'error',
 		'@deslop/workflow/no-fake-ref-state': 'error',
 		'@deslop/workflow/no-module-mocking': 'error',
 		'@deslop/workflow/no-readonly-type-syntax': 'error',
@@ -637,6 +641,8 @@ export const oxlint = defineConfig({
 export default definePlugin({
 	meta: {name: '@deslop/workflow'},
 	rules: {
+		'no-array-wrap-ternary': noArrayWrapTernary,
+		'no-constant-function': noConstantFunction,
 		'no-fake-ref-state': noFakeRefState,
 		'no-module-mocking': noModuleMocking,
 		'no-readonly-type-syntax': noReadonlyTypeSyntax,

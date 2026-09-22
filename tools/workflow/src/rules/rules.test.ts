@@ -66,7 +66,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 							name: 'invalid.tsx',
 							source: pipe(
 								[
-									"import {Schema, SchemaGetter, SchemaTransformation, identity, pipe} from 'effect'",
+									"import {Array, Schema, SchemaGetter, SchemaTransformation, identity, pipe} from 'effect'",
 									"import * as React from 'react'",
 									"import {useRef, useState} from 'react'",
 									'',
@@ -101,11 +101,17 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'function consume(value: string) { return value.length }',
 									'const callbacks = {consume: (value: string) => consume(value)}',
 									'const alias = source',
+									'function Fallback() { return <div className="missing" /> }',
+									'const fallbacks = Array.map([input], Fallback)',
+									'const notFound = () => Array.empty<string>()',
+									'const asyncConstant = async () => "ready"',
+									'const recipients = Array.isArray(input) ? input : [input]',
+									'const wrapped = !Array.isArray(input) ? [input] : input',
 									'const [fake] = useState(() => ({current: null}))',
 									'const state = useState(0)',
 									'const [fakeNamespace] = React.useState(() => ({current: null}))',
 									'const stateNamespace = React.useState(0)',
-									'export {AssertString, Codecs, Input, IsString, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, callbacks, decode, decoded, decoders, directDecoded, fake, fakeNamespace, forward, input, namespaceRef, operations, ready, ref, run, stateNamespace}',
+									'export {AssertString, Codecs, Fallback, Input, IsString, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, asyncConstant, callbacks, decode, decoded, decoders, directDecoded, fake, fakeNamespace, fallbacks, forward, input, namespaceRef, notFound, operations, ready, recipients, ref, run, stateNamespace, wrapped}',
 									'export type {Explicit, Index, Mapped}'
 								],
 								Array.join('\n')
@@ -115,6 +121,9 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 						expect(customCodes(result.stdout)).toEqual(
 							pipe(
 								[
+									'@deslop/workflow(no-array-wrap-ternary)',
+									'@deslop/workflow(no-array-wrap-ternary)',
+									'@deslop/workflow(no-constant-function)',
 									'@deslop/workflow(no-fake-ref-state)',
 									'@deslop/workflow(no-fake-ref-state)',
 									'@deslop/workflow(no-readonly-type-syntax)',
@@ -132,6 +141,8 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'@deslop/workflow(no-stored-schema-operation)',
 									'@deslop/workflow(no-stored-schema-operation)',
 									'@deslop/workflow(no-stored-schema-operation)',
+									'@deslop/workflow(no-trivial-indirection)',
+									'@deslop/workflow(no-trivial-indirection)',
 									'@deslop/workflow(no-trivial-indirection)',
 									'@deslop/workflow(no-trivial-indirection)',
 									'@deslop/workflow(no-trivial-indirection)',
@@ -200,6 +211,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'',
 									'declare const input: unknown',
 									'declare function combine(left: string, right: string): string',
+									'declare const snapshot: {width: number}',
 									'type User = typeof User.Type',
 									'const User = Schema.Struct({name: Schema.String})',
 									'type Annotated = typeof Annotated.Type',
@@ -233,7 +245,19 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'function swap(left: string, right: string) { return combine(right, left) }',
 									'function withDefault(value = "ready") { return transform(value) }',
 									'const tuple = ["ready", 1] as const',
-									'export {Annotated, Arbitrary, CallStep, CodeStep, Decoded, Encoded, Formatter, LinearIssue, Normalized, Step, decoded, decodedMany, encoded, isUser, swap, transform, tuple, withDefault}'
+									'const lengths = Array.isArray(input) ? input.length : 0',
+									'const ensured = Array.ensure(input)',
+									'const constants = Array.map([input], () => input)',
+									'function identify(value: {id: string}) { return value.id }',
+									'let counter = 0',
+									'counter = counter + 1',
+									'function readCounter() { return counter }',
+									'const counters = Array.map([input], readCounter)',
+									'function circle() { return Math.PI }',
+									'const circles = Array.map([input], circle)',
+									'function readSnapshot() { return snapshot.width }',
+									'const snapshots = Array.map([input], readSnapshot)',
+									'export {Annotated, Arbitrary, CallStep, CodeStep, Decoded, Encoded, Formatter, LinearIssue, Normalized, Step, circle, circles, constants, counters, decoded, decodedMany, encoded, ensured, identify, isUser, lengths, readCounter, readSnapshot, snapshots, swap, transform, tuple, withDefault}'
 								],
 								Array.join('\n')
 							)

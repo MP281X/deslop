@@ -1,6 +1,7 @@
 // Vite and NodeHttpServer expose native Node request/response boundary types.
 // @effect-diagnostics-next-line nodeBuiltinImport:off
 import type {IncomingMessage, ServerResponse} from 'node:http'
+// @effect-diagnostics-next-line nodeBuiltinImport:off
 import type {Duplex} from 'node:stream'
 
 import type {NodeServices} from '@effect/platform-node'
