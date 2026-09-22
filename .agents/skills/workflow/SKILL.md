@@ -66,32 +66,36 @@ Harness facts, verified 2026-09-22:
 - t3 launches Claude with `--setting-sources=user,project,local` and no system-prompt override.
 - A user-level output style reaches the Claude main thread only. A subagent without `omitClaudeMd` receives the repository AGENTS.md; with it, nothing. Roles therefore omit it.
 - Claude loads project skills only from `.claude/skills`. `Monitor` is allowed for waits. Deny rules block pushes to main or master and `gh`/`glab` merges by prefix; a bare `git push` with upstream main is not caught.
-- Codex roles' developer instructions replace the root's. `[agents] max_depth` is undocumented and was removed; `goals` is enabled. Codex command rules live in `~/.codex/rules/`, which the installer would replace, so none ship.
+- Codex roles' developer instructions replace the root's. `[agents] max_depth` is undocumented and was removed; `goals` stays off. Leaf roles set `multi_agent = false`; in Claude they deny `Agent`. Codex command rules live in `~/.codex/rules/`, which the installer would replace, so none ship.
 - Models: the user picks the pair per thread (GPT-6 Astra, Fable 5.1, Opus 5.5). Implement is Opus 5.5 / gpt-6-sol at high; general is Opus 5.5 / gpt-6-sol at medium; explore, git, and browser are Sonnet 5 / gpt-6-luna, with browser on gpt-6-sol.
 
 ## Settled decisions
 
 Do not reopen these without contradictory current evidence:
 
-| Decision                                                           | Why                                                                                                        |
-| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| One pair thread, coordinator only                                  | Inline Bash was 70–82% of Fable main-thread spend; the pair ran alone for 61–98% of busy time              |
-| Two phases for substantial work: shape, then execute               | 62% of 240 user prompts were steering; shaping moves decisions first, execution runs without check-ins     |
-| Acceptance checks chosen per task during shaping                   | The user was the only acceptance test: 15 prompts reported defects the agent could have verified           |
-| Simplicity section leads the engineering skill                     | 22 overbuilt incidents: abstractions, options, docs, checks, leftovers, unrelated edits                    |
-| Checks, lint, reviewers, and the user are fallbacks                | Codemods and implement runs iterated through type errors instead of designing first                        |
-| Implement at high effort; hard slices on the strongest model       | Code quality comes from implement; the review role was removed for adding tokens without catching problems |
-| Mechanics automatic; CI watched only for CI or release changes     | "commit", "push", "update the PR" were requested more than 12 times                                        |
-| Never commit, push, or merge into the default branch               | Two direct pushes to main; the only merge brings another branch into the feature branch                    |
-| A decision ledger checks merges and wide changes                   | An align-with-master checkout restored deliberately deleted files                                          |
-| Repository instructions never widen the request                    | Repository-mandated extras become listed follow-ups                                                        |
-| Schematic output; context explained, no assumed codebase knowledge | User rejected prose-heavy and assumption-heavy reports                                                     |
-| No custom hooks or scripts; harness configuration only             | Hook scripts and generators were built and removed three times                                             |
-| Mirrored source files, no generator; project skills by symlink     | Two copied bodies are simpler than rendering; a symlink keeps one skill source for both harnesses          |
-| Launch independent owners together; reuse valid proof              | Serial acquisition and repeated checks were recurring latency costs                                        |
-| Stop a prototype on its first deciding observation                 | Claude expanded a failed cheap mechanism into a scanner and timed out                                      |
-| Facts, possible failures, and runtime claims are distinct          | Reviews conflated prompt intent, hook behavior, and runtime guarantees                                     |
-| Memory stays disabled                                              | User decision                                                                                              |
+| Decision                                                           | Why                                                                                                                                |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| One pair thread, coordinator only                                  | Inline Bash was 70–82% of Fable main-thread spend; the pair ran alone for 61–98% of busy time                                      |
+| Two phases for substantial work: shape, then execute               | 62% of 240 user prompts were steering; shaping moves decisions first, execution runs without check-ins                             |
+| Acceptance checks chosen per task during shaping                   | The user was the only acceptance test: 15 prompts reported defects the agent could have verified                                   |
+| Simplicity section leads the engineering skill                     | 22 overbuilt incidents: abstractions, options, docs, checks, leftovers, unrelated edits                                            |
+| Checks, lint, reviewers, and the user are fallbacks                | Codemods and implement runs iterated through type errors instead of designing first                                                |
+| Implement at high effort; hard slices on the strongest model       | Code quality comes from implement; the review role was removed for adding tokens without catching problems                         |
+| Mechanics automatic; CI watched only for CI or release changes     | "commit", "push", "update the PR" were requested more than 12 times                                                                |
+| Never commit, push, or merge into the default branch               | Two direct pushes to main; the only merge brings another branch into the feature branch                                            |
+| A decision ledger checks merges and wide changes                   | An align-with-master checkout restored deliberately deleted files                                                                  |
+| Repository instructions never widen the request                    | Repository-mandated extras become listed follow-ups                                                                                |
+| Schematic output; context explained, no assumed codebase knowledge | User rejected prose-heavy and assumption-heavy reports                                                                             |
+| No custom hooks or scripts; harness configuration only             | Hook scripts and generators were built and removed three times                                                                     |
+| Mirrored source files, no generator; project skills by symlink     | Two copied bodies are simpler than rendering; a symlink keeps one skill source for both harnesses                                  |
+| Launch independent owners together; reuse valid proof              | Serial acquisition and repeated checks were recurring latency costs                                                                |
+| Stop a prototype on its first deciding observation                 | Claude expanded a failed cheap mechanism into a scanner and timed out                                                              |
+| Facts, possible failures, and runtime claims are distinct          | Reviews conflated prompt intent, hook behavior, and runtime guarantees                                                             |
+| Memory stays disabled                                              | User decision                                                                                                                      |
+| Goals stay off                                                     | Current models finish without them; goals caused loops                                                                             |
+| No per-repository knowledge skills                                 | Grounding reads the nearest AGENTS.md and the code that enforces each contract                                                     |
+| Pair tuned to how the user writes                                  | 249 Claude and 857 Codex prompts: bundled asks, hypotheses marked with idk or probably, why for root causes, top-to-bottom reading |
+| Quotas: Claude 20x, Codex 5x, used in parallel all week            | The scarcest models go only where they remove rework                                                                               |
 
 ## Evidence index
 
