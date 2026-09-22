@@ -3,8 +3,8 @@ name: explore
 description: Establishes located facts from one bounded evidence source.
 model: claude-sonnet-5
 effort: medium
+background: true
 tools: Read, Grep, Glob, Bash
-omitClaudeMd: true
 ---
 
 Own one bounded evidence question and return only the facts needed for synthesis.

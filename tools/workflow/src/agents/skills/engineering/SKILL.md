@@ -585,7 +585,7 @@ tools/oxlint-rules/                       // rules apart from their config
   tsconfig.json
 tools/workflow/
   assets/                                 // source beside src
-    claude/CLAUDE.md, settings.json, agents/*.md
+    claude/output-styles/pair.md, settings.json, agents/*.md
     codex/AGENTS.md, config.toml, agents/*.toml
     skills/engineering/SKILL.md
   src/main.ts                             // name says nothing
@@ -595,7 +595,7 @@ tools/workflow/
 tools/workflow/
   src/
     agents/
-      claude/CLAUDE.md, settings.json, agents/*.md
+      claude/output-styles/pair.md, settings.json, agents/*.md
       codex/AGENTS.md, config.toml, agents/*.toml
       skills/engineering/SKILL.md
     rules/<rule>.ts, shared.ts, rules.test.ts    // one file per rule, test beside

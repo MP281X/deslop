@@ -23,6 +23,8 @@ const install = Effect.fn('Workflow.install')(function* (agents: string, codexHo
 		yield* fs.remove(path.join(home, 'skills', 'engineering'), {force: true, recursive: true})
 		yield* fs.copy(path.join(agents, 'skills', 'engineering'), path.join(home, 'skills', 'engineering'))
 	}
+	// The pair prompt moved to the `pair` output style; drop the prompt file installed by earlier versions.
+	yield* fs.remove(path.join(claudeHome, 'CLAUDE.md'), {force: true})
 	return {claudeHome, codexHome}
 })
 

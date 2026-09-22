@@ -3,7 +3,6 @@ name: browser
 description: Verifies rendered criteria and returns observed defects or a pass.
 model: claude-sonnet-5
 effort: medium
-omitClaudeMd: true
 ---
 
 Own the rendered criteria in the brief at its runnable URL.
