@@ -3,7 +3,17 @@ import {Array, Option, pipe} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
-import {importedMember, isImportBinding, isSchemaOperationName, memberName} from './shared.ts'
+import {
+	importedMember,
+	isImportBinding,
+	isInferredType,
+	isSchemaOperationName,
+	memberName,
+	schemaCycleNames,
+	schemaSchemaType,
+	statementDeclaration,
+	typeAlias
+} from './shared.ts'
 
 function expressionRoot(node: ESTree.Expression): ESTree.Expression {
 	if (node.type === 'MemberExpression') return expressionRoot(node.object)
@@ -60,10 +70,6 @@ function isSchemaDefinition(input: {context: Context; node: ESTree.Expression}):
 	)
 }
 
-function statementDeclaration(statement: ESTree.Statement | ESTree.ModuleDeclaration) {
-	return statement.type === 'ExportNamedDeclaration' ? statement.declaration : statement
-}
-
 function previousStatement(input: {program: ESTree.Program; statement: ESTree.Statement}) {
 	return pipe(
 		input.program.body,
@@ -73,74 +79,94 @@ function previousStatement(input: {program: ESTree.Program; statement: ESTree.St
 	)
 }
 
-function matchingSchemaType(input: {
+function namedTypeAlias(input: {
 	name: string
 	typeStatement: Option.Option<ESTree.Statement | ESTree.ModuleDeclaration>
 }) {
 	return pipe(
 		input.typeStatement,
-		Option.exists(typeStatement => {
-			const declaration = statementDeclaration(typeStatement)
-			return (
-				declaration?.type === 'TSTypeAliasDeclaration' &&
-				declaration.id.name === input.name &&
-				declaration.typeAnnotation.type === 'TSTypeQuery' &&
-				declaration.typeAnnotation.exprName.type === 'TSQualifiedName' &&
-				declaration.typeAnnotation.exprName.left.type === 'Identifier' &&
-				declaration.typeAnnotation.exprName.left.name === input.name &&
-				declaration.typeAnnotation.exprName.right.name === 'Type'
-			)
-		})
+		Option.flatMap(typeAlias),
+		Option.filter(declaration => declaration.id.name === input.name)
 	)
 }
 
-function schemaSchemaType(input: {context: Context; node: ESTree.TSType}) {
-	return (
-		input.node.type === 'TSTypeReference' &&
-		input.node.typeName.type === 'TSQualifiedName' &&
-		input.node.typeName.left.type === 'Identifier' &&
-		input.node.typeName.left.name === 'Schema' &&
-		input.node.typeName.right.name === 'Schema' &&
-		isImportBinding({context: input.context, importedName: 'Schema', node: input.node.typeName.left, source: 'effect'})
+function matchingSchemaType(input: {
+	name: string
+	typeStatement: Option.Option<ESTree.Statement | ESTree.ModuleDeclaration>
+}) {
+	return pipe(
+		namedTypeAlias(input),
+		Option.exists(declaration => isInferredType({name: input.name, node: declaration.typeAnnotation}))
 	)
+}
+
+function handWrittenSchemaType(input: {
+	name: string
+	typeStatement: Option.Option<ESTree.Statement | ESTree.ModuleDeclaration>
+}) {
+	return pipe(
+		namedTypeAlias(input),
+		Option.exists(declaration => !isInferredType({name: input.name, node: declaration.typeAnnotation}))
+	)
+}
+
+function reportSchemaVariable(input: {
+	context: Context
+	cycleNames: string[]
+	program: ESTree.Program
+	statement: ESTree.Statement
+	variable: ESTree.VariableDeclarator
+}) {
+	if (input.variable.id.type !== 'Identifier' || !/^[A-Z]/u.test(input.variable.id.name)) return
+	if (input.variable.init === null || !isSchemaDefinition({context: input.context, node: input.variable.init})) return
+	const name = input.variable.id.name
+	const annotation = input.variable.id.typeAnnotation
+	const typeStatement = previousStatement({program: input.program, statement: input.statement})
+	if (Array.contains(input.cycleNames, name)) {
+		if (!handWrittenSchemaType({name, typeStatement})) {
+			input.context.report({
+				message: `Write \`type ${name} = ...\` by hand immediately before this recursive Schema; typeof ${name}.Type is circular.`,
+				node: input.variable
+			})
+		}
+		if (annotation !== null && annotation !== undefined) {
+			input.context.report({
+				message: 'Annotate the Schema.suspend thunk, not the recursive Schema.',
+				node: input.variable.id
+			})
+		}
+		return
+	}
+	if (!matchingSchemaType({name, typeStatement})) {
+		input.context.report({
+			message: `Place \`type ${name} = typeof ${name}.Type\` immediately before this Schema.`,
+			node: input.variable
+		})
+	}
+	if (
+		input.variable.init.type === 'TSSatisfiesExpression' &&
+		schemaSchemaType({context: input.context, node: input.variable.init.typeAnnotation})
+	) {
+		input.context.report({message: 'Infer this schema instead of restating Schema.Schema.', node: input.variable.init})
+	}
+	if (
+		annotation !== null &&
+		annotation !== undefined &&
+		schemaSchemaType({context: input.context, node: annotation.typeAnnotation})
+	) {
+		input.context.report({message: 'Infer this schema instead of annotating Schema.Schema.', node: input.variable.id})
+	}
 }
 
 export const schemaTypePair = defineRule({
 	createOnce: context => ({
-		Program: program => {
+		'Program:exit': program => {
+			const cycleNames = schemaCycleNames({context, program})
 			for (const statement of program.body) {
 				const declaration = statementDeclaration(statement)
 				if (declaration?.type === 'VariableDeclaration') {
 					for (const variable of declaration.declarations) {
-						if (
-							variable.id.type === 'Identifier' &&
-							/^[A-Z]/u.test(variable.id.name) &&
-							variable.init !== null &&
-							isSchemaDefinition({context, node: variable.init})
-						) {
-							if (
-								!matchingSchemaType({name: variable.id.name, typeStatement: previousStatement({program, statement})})
-							) {
-								context.report({
-									message: `Place \`type ${variable.id.name} = typeof ${variable.id.name}.Type\` immediately before this Schema.`,
-									node: variable
-								})
-							}
-							if (
-								variable.init.type === 'TSSatisfiesExpression' &&
-								schemaSchemaType({context, node: variable.init.typeAnnotation})
-							) {
-								context.report({message: 'Infer this schema instead of restating Schema.Schema.', node: variable.init})
-							}
-							const annotation = variable.id.typeAnnotation
-							if (
-								annotation !== null &&
-								annotation !== undefined &&
-								schemaSchemaType({context, node: annotation.typeAnnotation})
-							) {
-								context.report({message: 'Infer this schema instead of annotating Schema.Schema.', node: variable.id})
-							}
-						}
+						reportSchemaVariable({context, cycleNames, program, statement, variable})
 					}
 				}
 			}

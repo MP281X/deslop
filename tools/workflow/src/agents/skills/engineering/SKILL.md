@@ -64,6 +64,24 @@ export const LedgerDraft = Schema.Struct({...LedgerEntry.fields, id: Schema.opti
 ```
 
 ```ts
+// bad — "typeof X.Type is circular for a schema whose type passes through a Schema.suspend thunk naming X"
+export type Step = typeof Step.Type
+export const Step: Schema.Codec<Step> = Schema.Union([CallStep, CodeStep])
+const StepArray: Schema.Codec<readonly Step[]> = Schema.Array(Schema.suspend((): Schema.Codec<Step> => Step))
+
+// good — every name on the cycle is a hand-written type; names off the cycle stay inferred; only the thunk is annotated; the union is declared after its members
+export type CodeStep = typeof CodeStep.Type
+export const CodeStep = Schema.Struct({code: Schema.String, kind: Schema.Literal('code')})
+export type CallStep = {readonly do: readonly Step[]; readonly kind: 'call'}
+export const CallStep = Schema.Struct({
+	do: Schema.Array(Schema.suspend((): Schema.Codec<Step> => Step)),
+	kind: Schema.Literal('call')
+})
+export type Step = CallStep | CodeStep
+export const Step = Schema.Union([CallStep, CodeStep])
+```
+
+```ts
 // bad — "all the Schema.Class should be replaced with Schema.Struct"
 export class PortfolioVisitor extends Schema.Class<PortfolioVisitor>('PortfolioVisitor')({
 	color: Schema.NonEmptyString,

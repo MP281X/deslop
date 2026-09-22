@@ -85,6 +85,8 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const MissingTransform = Schema.decodeTo(Schema.Number, SchemaTransformation.transform({decode: Number, encode: String}))(Schema.String)',
 									'const MissingDecode = Schema.decode({decode: SchemaGetter.transform(identity), encode: SchemaGetter.transform(identity)})(Schema.String)',
 									'const MissingEncode = Schema.encode({decode: SchemaGetter.transform(identity), encode: SchemaGetter.transform(identity)})(Schema.String)',
+									'type Tree = typeof Tree.Type',
+									'const Tree: Schema.Codec<Tree> = Schema.Struct({children: Schema.Array(Schema.suspend((): Schema.Codec<Tree> => Tree))})',
 									'type Explicit = {readonly values: readonly string[]}',
 									'type Mapped<T> = {readonly [K in keyof T]: T[K]}',
 									'type Index = {readonly [key: string]: string}',
@@ -103,7 +105,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const state = useState(0)',
 									'const [fakeNamespace] = React.useState(() => ({current: null}))',
 									'const stateNamespace = React.useState(0)',
-									'export {AssertString, Codecs, Input, IsString, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, alias, assigned, callbacks, decode, decoded, decoders, directDecoded, fake, fakeNamespace, forward, input, namespaceRef, operations, ready, ref, run, stateNamespace}',
+									'export {AssertString, Codecs, Input, IsString, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, callbacks, decode, decoded, decoders, directDecoded, fake, fakeNamespace, forward, input, namespaceRef, operations, ready, ref, run, stateNamespace}',
 									'export type {Explicit, Index, Mapped}'
 								],
 								Array.join('\n')
@@ -143,6 +145,8 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'@deslop/workflow(schema-type-pair)',
 									'@deslop/workflow(schema-type-pair)',
 									'@deslop/workflow(schema-type-pair)',
+									'@deslop/workflow(schema-type-pair)',
+									'@deslop/workflow(schema-type-pair)',
 									'@deslop/workflow(schema-type-pair)'
 								],
 								Array.sort(String.Order)
@@ -160,6 +164,22 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								() => 'Inline this Schema operation at its consumption site; never store compiled operations.'
 							)
 						)
+						expect(
+							pipe(
+								customDiagnostics(result.stdout),
+								Array.filter(diagnostic => diagnostic.code === '@deslop/workflow(schema-type-pair)'),
+								Array.map(diagnostic => diagnostic.message),
+								Array.sort(String.Order)
+							)
+						).toEqual([
+							'Annotate the Schema.suspend thunk, not the recursive Schema.',
+							'Place `type MissingDecode = typeof MissingDecode.Type` immediately before this Schema.',
+							'Place `type MissingEncode = typeof MissingEncode.Type` immediately before this Schema.',
+							'Place `type MissingFluent = typeof MissingFluent.Type` immediately before this Schema.',
+							'Place `type MissingTransform = typeof MissingTransform.Type` immediately before this Schema.',
+							'Place `type MissingType = typeof MissingType.Type` immediately before this Schema.',
+							'Write `type Tree = ...` by hand immediately before this recursive Schema; typeof Tree.Type is circular.'
+						])
 						expect(result.stderr).toBe('')
 					}),
 					Effect.scoped
@@ -186,6 +206,12 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const Annotated = Schema.String.annotate({description: "value"})',
 									'export type Public = typeof Public.Type',
 									'const Public = Schema.Struct({name: Schema.String})',
+									'type CodeStep = typeof CodeStep.Type',
+									'const CodeStep = Schema.Struct({code: Schema.String, kind: Schema.Literal("code")})',
+									'type CallStep = {readonly do: readonly Step[]; readonly kind: "call"}',
+									'const CallStep = Schema.Struct({do: Schema.Array(Schema.suspend((): Schema.Codec<Step> => Step)), kind: Schema.Literal("call")})',
+									'type Step = CallStep | CodeStep',
+									'const Step = Schema.Union([CallStep, CodeStep])',
 									'type LinearIssue = typeof LinearIssue.Type',
 									'const LinearIssue = Schema.Struct({id: Schema.String})',
 									'type Exported = typeof Exported.Type',
@@ -207,7 +233,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'function swap(left: string, right: string) { return combine(right, left) }',
 									'function withDefault(value = "ready") { return transform(value) }',
 									'const tuple = ["ready", 1] as const',
-									'export {Annotated, Arbitrary, Decoded, Encoded, Formatter, LinearIssue, Normalized, decoded, decodedMany, encoded, isUser, swap, transform, tuple, withDefault}'
+									'export {Annotated, Arbitrary, CallStep, CodeStep, Decoded, Encoded, Formatter, LinearIssue, Normalized, Step, decoded, decodedMany, encoded, isUser, swap, transform, tuple, withDefault}'
 								],
 								Array.join('\n')
 							)
