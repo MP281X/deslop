@@ -25,7 +25,6 @@ const install = Effect.fn('Workflow.install')(function* (agents: string, codexHo
 	}
 	// The pair prompt moved to the `pair` output style; drop the prompt file installed by earlier versions.
 	yield* fs.remove(path.join(claudeHome, 'CLAUDE.md'), {force: true})
-	return {claudeHome, codexHome}
 })
 
 const cli = Command.make(
@@ -33,19 +32,14 @@ const cli = Command.make(
 	{},
 	Effect.fnUntraced(function* () {
 		const path = yield* Path.Path
-		const codexHome = yield* pipe(Config.string('CODEX_HOME'), Config.withDefault(path.join(homedir(), '.codex')))
-		const claudeHome = yield* pipe(
-			Config.string('CLAUDE_CONFIG_DIR'),
-			Config.withDefault(path.join(homedir(), '.claude'))
+		const codexHome = path.resolve(
+			yield* pipe(Config.string('CODEX_HOME'), Config.withDefault(path.join(homedir(), '.codex')))
 		)
-		const result = yield* install(
-			path.resolve(import.meta.dirname, '../src/agents'),
-			path.resolve(codexHome),
-			path.resolve(claudeHome)
+		const claudeHome = path.resolve(
+			yield* pipe(Config.string('CLAUDE_CONFIG_DIR'), Config.withDefault(path.join(homedir(), '.claude')))
 		)
-		yield* Console.log(
-			`Installed the workflow in ${result.codexHome} and ${result.claudeHome}. Start a fresh session to load it.`
-		)
+		yield* install(path.resolve(import.meta.dirname, '../src/agents'), codexHome, claudeHome)
+		yield* Console.log(`Installed the workflow in ${codexHome} and ${claudeHome}. Start a fresh session to load it.`)
 	})
 )
 
