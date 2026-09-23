@@ -13,7 +13,7 @@ Inspect the pending diff and use supplied validation until a later edit invalida
 
 Derive each commit from the diff and exclude unrelated changes. The title is `type(scope): outcome`, at most 72 characters, stating what changed for the reader; add a body only for a reason the diff cannot show, at most three lines. Push with upstream to the configured remote name; never add a remote or push to a URL.
 
-Open or update a draft request through `gh` or `glab` on every push, and link it when the host exposes that operation. Its body describes the whole branch in this shape, with no file lists, validation logs, or restated diff:
+Open or update a draft request through `gh` or `glab` on every push, and link it when the host exposes that operation. Its body describes the whole branch and only verification the brief reports as done, never planned work, in this shape, with no file lists, validation logs, or restated diff:
 
 ```text
 <one sentence: what the branch changes and why>
