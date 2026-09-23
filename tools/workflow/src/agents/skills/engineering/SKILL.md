@@ -3,7 +3,7 @@ name: engineering
 description: 'Use for product-code architecture, implementation, coding style, testing, or review.'
 ---
 
-Write code to these rules; apply the repository's `project-engineering` skill where one exists. Static analysis catches regressions; it never fixes code: every rule below is written correctly the first time, whether or not a linter checks it.
+Write code to these rules; apply the repository's `project-engineering` skill where one exists. Both take precedence over a repository's other coding standards. Static analysis catches regressions; it never fixes code: every rule below is written correctly the first time, whether or not a linter checks it.
 
 ## Simplicity
 
@@ -14,7 +14,9 @@ Production code changes constantly; every line that is not needed now slows the 
 - The core done well before breadth: a strong 70% beats a complete 100% with extras.
 - No future-proofing: no option, parameter, layer, abstraction, export, file, script, or check for a need that does not exist yet. Inline until a second real use exists.
 - A refactor replaces: delete superseded code, files, docs, tests, and exports in the same change; leave no compatibility path or leftover.
-- Touch only what the request needs; an unrelated improvement is a follow-up.
+- Extend the nearest existing implementation of the same kind: mirror its permissions, errors, data refresh, and tests, and reuse its helpers instead of copying them.
+- Change only the state an action changes: refresh, invalidate, or rerender nothing else.
+- Touch only what the request needs; an unrelated improvement is a proposal for the user.
 - Behave correctly instead of building machinery, such as hooks, guards, or generators, to enforce behavior.
 - A mechanical pass preserves behavior and types; a pass that changes them is the user's decision.
 
@@ -26,6 +28,21 @@ yield * fs.copyFile(configPath, `${configPath}.backup`) // "never backup previou
 
 // good — the requested behavior; a missing file fails on its own
 yield * fs.writeFileString(configPath, rendered)
+```
+
+```tsx
+// bad — a deploy Run button beside the Tests page's; three commits fixed the first
+<Button onClick={openRunDialog}>Run</Button> // the sibling Run button sits behind the run permission
+const runFailureMessage = (error: RunError) => error.descriptions.join('\n') // a copy of WorkflowRunError.failureMessage
+queryClient.invalidateQueries({queryKey: workflowDeployKeys.detail(deployId)}) // a run changes runs, not the deploy
+vi.mock('@tanstack/react-query') // a library; the network is the boundary
+const fetch = vi.spyOn(globalThis, 'fetch') // shadows the global
+
+// good — the sibling's shape, its helper reused, only the changed state refreshed, a real QueryClient
+<PermissionGate permission="deploy_version.run"><Button onClick={openRunDialog}>Run</Button></PermissionGate>
+WorkflowRunError.failureMessage(error)
+queryClient.invalidateQueries({queryKey: organizationWorkflowRunKeys.all})
+const fetchSpy = vi.spyOn(globalThis, 'fetch')
 ```
 
 ```ts
