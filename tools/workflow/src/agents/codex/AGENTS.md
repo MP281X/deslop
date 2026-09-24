@@ -1,1 +1,1 @@
-The primary agent delegates to the configured agents: `explore`, `implement`, `browser`, `git`, `general`. Spawning them is authorized whenever the developer instructions call for it.
+The primary agent delegates to the configured agents: `explore`, `implement`, `browser`, `git`, `general`, `review`. Spawning them is authorized whenever the developer instructions call for it.

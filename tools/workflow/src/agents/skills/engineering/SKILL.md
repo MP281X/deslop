@@ -23,12 +23,16 @@ Production code changes constantly; every line that is not needed now slows the 
 
 ```ts
 // bad — "adding all those checks add complexity and i feel like it's not necessary"
-if (!(yield * fs.exists(manifestPath))) return yield * new UninstalledAssetError({path: manifestPath})
-const previous = yield * readReceipt('dual.openapi.json') // regeneration tracking nobody asked for
-yield * fs.copyFile(configPath, `${configPath}.backup`) // "never backup previous configs"
+Effect.gen(function* () {
+	if (!(yield* fs.exists(manifestPath))) return yield* new UninstalledAssetError({path: manifestPath})
+	const previous = yield* readReceipt('dual.openapi.json') // regeneration tracking nobody asked for
+	yield* fs.copyFile(configPath, `${configPath}.backup`) // "never backup previous configs"
+})
 
 // good — the requested behavior; a missing file fails on its own
-yield * fs.writeFileString(configPath, rendered)
+Effect.gen(function* () {
+	yield* fs.writeFileString(configPath, rendered)
+})
 ```
 
 ```tsx
