@@ -22,6 +22,8 @@ services:
       - --providers.docker.exposedbydefault=false
       - --providers.docker.network=deslop
     ports: [80:80, 443:443]
+    extra_hosts:
+      - host.docker.internal:host-gateway
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /home/mp281x/.deslop/deploy/acme:/acme
@@ -35,6 +37,9 @@ services:
     shm_size: 1gb
     tmpfs: [/config]
     environment:
+      CUSTOM_PORT: '18080'
+      CUSTOM_HTTPS_PORT: '18081'
+      CUSTOM_WS_PORT: '18082'
       HARDEN_DESKTOP: 'true'
       HARDEN_OPENBOX: 'true'
       SELKIES_ENABLE_SHARING: 'false'
@@ -42,10 +47,7 @@ services:
       SELKIES_ENCODER: h264enc,h264enc-striped
       SELKIES_WEBRTC_PUBLIC_IP: 77.237.236.132
       SELKIES_WEBRTC_UDP_MUX_PORT: '59000'
-    extra_hosts:
-      - host.docker.internal:host-gateway
-    ports: [59000:59000/udp]
-    networks: [deslop]
+    network_mode: host
     labels:
       traefik.enable: 'true'
       traefik.http.routers.browser.entrypoints: websecure
@@ -54,7 +56,7 @@ services:
       traefik.http.routers.browser.middlewares: browser-auth
       traefik.http.middlewares.browser-auth.basicauth.usersfile: /etc/traefik/browser-users
       traefik.http.middlewares.browser-auth.basicauth.removeheader: 'true'
-      traefik.http.services.browser.loadbalancer.server.port: '3000'
+      traefik.http.services.browser.loadbalancer.server.url: http://host.docker.internal:18080
     logging: *bounded-logs
 
   portfolio:

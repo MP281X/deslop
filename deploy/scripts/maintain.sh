@@ -27,6 +27,8 @@ compose=(docker compose --project-name deslop --file "$state_dir/compose.yaml")
 "${compose[@]}" config --quiet
 "${compose[@]}" pull traefik browser jaeger collector
 "${compose[@]}" up -d --remove-orphans --pull never
+deslop_subnet=$(docker network inspect deslop --format '{{(index .IPAM.Config 0).Subnet}}')
+sudo ufw allow from "$deslop_subnet" to 172.17.0.1 proto tcp
 curl -fsS --retry 12 --retry-delay 5 --retry-all-errors https://portfolio.mp281x.xyz/ >/dev/null
 printf 'user = "browser:%s"\n' "$(< "$state_dir/browser-password")" | curl -fsS --retry 12 --retry-delay 5 --retry-all-errors --config - https://browser.mp281x.xyz/ >/dev/null
 curl -fsS --retry 12 --retry-delay 5 --retry-all-errors https://te-amo-muchisimo.mp281x.xyz/ >/dev/null

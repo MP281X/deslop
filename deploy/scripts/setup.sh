@@ -25,7 +25,6 @@ sudo ufw allow OpenSSH
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
 sudo ufw allow 59000/udp
-sudo ufw allow from 172.20.0.0/16 to 172.17.0.1 proto tcp
 sudo ufw --force enable
 
 install -m 0700 -d "$state_dir" "$state_dir/acme"
