@@ -1,6 +1,5 @@
 {
 	"disableBundledSkills": true,
-	"disableWorkflows": true,
 	"disableClaudeAiConnectors": true,
 	"autoMemoryEnabled": false,
 	"includeGitInstructions": false,
@@ -29,6 +28,7 @@
 			"CronCreate",
 			"CronDelete",
 			"CronList",
+			"ScheduleWakeup",
 			"PushNotification",
 			"NotebookEdit",
 			"ReportFindings",

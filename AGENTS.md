@@ -13,9 +13,7 @@ Environment: Debian 13.6 (trixie). Use dedicated tools first.
 
 Vite Plus only; never invoke another package manager.
 
-Select the smallest complete evidence for the affected behavior. Run `vp run fix` for repository formatting. Add `vp run check`, `vp run test`, builds, or direct observation when the change, a concrete failure, unresolved uncertainty, or affected shared behavior requires that proof. Broaden validation only for such evidence; do not repeat green checks mechanically.
-
-When a selected project command is required, run it exactly with no flags, paths, partials, underlying tools, or substitutes. This applies to the full local check; a slice's own proof may run the touched package's test file or typecheck through `vp run` or `vpx`.
+Slices format their own files with the repository's file-format command from the environment skill and prove with the touched package's test file or typecheck through `vp run` or `vpx`. The final gate runs `vp run fix`, `vp run check`, and `vp run test` exactly, once.
 
 ## Product scope
 

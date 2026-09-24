@@ -11,16 +11,14 @@ Every line not needed now slows the next change. Build the smallest thing that d
 
 - Write the plain, obvious solution, explicit and idiomatic, readable top to bottom: no comments, no abstraction or indirection that one use does not need, no clever tricks.
 - Return early instead of nesting.
-- Doing less than asked beats doing more; name what you cut instead of building it.
-- Write for where the code lives: extend the nearest existing implementation of the same kind, mirroring its permissions, errors, data refresh, and tests, and reuse the feature's helper for a job before writing one; never handle an error or case its callers make impossible; tests follow the same rule.
+- Doing less than asked beats doing more: the core done well beats a complete 100% with extras; name what you cut.
+- Write for where the code lives: extend the nearest existing implementation of the same kind, mirroring its permissions, errors, data refresh, and tests, and reuse the feature's helper for a job before writing one.
 - Happy path only: let failures flow through Effect's error channel, with no catch, retry, fallback, or defensive check unless the request or an existing contract states the requirement.
 - Validate and transform once, at the boundary, with Effect Schema; inside, data is trusted: carry narrowed values forward and never re-check what the schema, the declared type, an earlier filter, or tsc guarantees.
 - Layers depend inward: domain and service code never import HTTP, RPC, or other transport types.
 - Search Effect before writing logic: before hand-writing a traversal, accumulator, check, or config read, search `~/.deslop/repos/effect/packages/effect/src` (Graph, Record, String, Option, Struct, Config.all, Match, Boolean) and call the helper that exists.
-- Never destructure a parameter, callback argument, or loop variable; take the value whole and read or spread its fields where used (`useState` excepted).
-- Pass a value whole or spread it; never re-list its fields one by one.
-- The core done well before breadth: a strong 70% beats a complete 100% with extras.
-- No future-proofing: no option, parameter, layer, abstraction, export, file, script, or check for a need that does not exist yet. Inline until a second real use exists.
+- Never destructure a parameter, callback argument, or loop variable (`useState` excepted), and never re-list a value's fields: pass it whole or spread it.
+- No future-proofing: no option, parameter, layer, abstraction, export, file, script, or check for a need that does not exist yet.
 - A refactor replaces: delete superseded code, files, docs, tests, and exports in the same change; leave no compatibility path or leftover.
 - Change only the state an action changes: refresh, invalidate, or rerender nothing else.
 - Send and store canonical data only; derive the rest where it is used, and surface each state once, where the user acts on it.
@@ -28,7 +26,7 @@ Every line not needed now slows the next change. Build the smallest thing that d
 - Behave correctly instead of building machinery, such as hooks, guards, or generators, to enforce behavior.
 - A mechanical pass preserves behavior and types; a pass that changes them is the user's decision.
 - Implement the definition the domain uses, such as a cycle for recursion, never the nearest syntactic proxy.
-- Before finishing, reread the diff: inline single-use helpers, pass values instead of trackers, use the whole schema instead of picking every field, and delete checks the change made obsolete.
+- Before finishing, reread the diff and delete every line the outcome does not require: inline single-use helpers, pass values instead of trackers, use the whole schema instead of picking every field, and delete checks and fallbacks for cases callers cannot produce, props, options, tests, and docs beyond the minimum, and code an Effect helper replaces.
 
 ```ts
 // good — Effect's helpers, values taken whole, data trusted after the boundary
@@ -41,9 +39,7 @@ String.isNonEmpty(event.delta)
 pipe(Option.fromNullishOr(schema.id.typeAnnotation), Option.exists(annotation => schemaSchemaType({context, node: annotation.typeAnnotation})))
 server => ({server: {...server, forwardConsole: true, warmup}})
 server: {...config, forwardConsole: true, warmup}
-payload: {...identity, color: nextColor, x: currentPointer.x, y: currentPointer.y}
 Array.isReadonlyArrayEmpty(node.arguments)
-for (const schema of schemas) report(schema.name)
 payload: PortfolioVisitor
 recursive: boolean
 
@@ -53,7 +49,6 @@ event.delta !== ''
 annotation !== null && annotation !== undefined && schemaSchemaType({context, node: annotation})
 ({host, port}) => ({server: {forwardConsole: true, host, port, warmup}})
 server: {forwardConsole: true, host: config.host, port: config.port, warmup}
-payload: {color: nextColor, id: identity.id, name: identity.name, x: currentPointer.x, y: currentPointer.y}
 node.arguments.length === 0
 for (const {name, statement, variable} of schemas) report(name)
 variable.init?.type === 'TSSatisfiesExpression' // init was already narrowed to non-null
@@ -128,7 +123,6 @@ function visit(node: Node): Result {
 	return visit(node.parent)
 }
 return Effect.succeed([{text: part.text, type: 'text'} satisfies TextContent])
-export const AiAgent = Schema.Literals(['pi'] as const)
 // bad — "are you sure this doesn't infer everything?"
 fn: RpcClient.runtime.fn<{onSuccess: (message: string) => void}>()(
 const Input = Schema.Struct({value: Schema.String}) satisfies Schema.Schema<Input>
@@ -227,7 +221,7 @@ typeof value === 'string'
 ```ts
 // good — a one-line ternary stays, Boolean.match for a boolean, Match for a union
 aria-current={props.selected === true ? 'page' : undefined}
-Boolean.match(event.type === 'text-delta', {onFalse: () => 'reasoning', onTrue: () => 'text'})
+Boolean.match(ignoreCase === true, {onFalse: () => undefined, onTrue: () => 'i'})
 pipe(Match.value(props.layer), Match.when('claude', () => <ClaudeDark />), Match.when('codex', () => <CodexDark />), Match.exhaustive)
 // bad — "instead of a ternary the Boolean.match would be cleaner"
 const type = event.type === 'text-delta'
@@ -252,11 +246,12 @@ const load = id =>
 ```
 
 ```ts
-// good — service.ts holds the tag and the shape, internal/pi.ts the implementation; shape fields and static layers are never readonly; the implementation returns a plain object
+// good — service.ts holds the tag and the shape, internal/pi.ts the implementation; the implementation returns a plain object
 export declare namespace Ai {
 	export type Agent = {
 		events: Stream.Stream<Event>
 		prompt: (message: Prompt.UserMessage) => Effect.Effect<void, AiError>
+		status: SubscriptionRef.SubscriptionRef<AiStatus>
 		stop: Effect.Effect<void>
 	}
 }
@@ -297,14 +292,14 @@ Math.floor(Duration.toDays(DateTime.distance(oldest.timestamp, newest.timestamp)
 ```
 
 ```ts
-// good — "fail fast instead of retrying"; one domain error per service in schema.ts, the only error its signatures name; the cause kept, mapped in the pipeline argument of Effect.fn with no .pipe after it; nothing caught
+// good — "fail fast instead of retrying"; one domain error per service, the only error its signatures name; the cause kept, mapped in the pipeline argument of Effect.fn with no .pipe after it; nothing caught
 export class AiError extends Schema.TaggedError<AiError>()('AiError', {
 	cause: Schema.optional(Schema.Defect()),
 	message: Schema.String
 }) {}
-const load = Effect.fn('Ledger.load')(
-	function* (path: string) {},
-	Effect.mapError(cause => AiError.make({cause, message: 'Cannot load the ledger'}))
+const prompt = Effect.fn('Ai.prompt')(
+	function* (message: Prompt.UserMessage) {},
+	Effect.mapError(cause => AiError.make({cause, message: 'Cannot prompt the agent'}))
 )
 const content = yield * fs.readFileString(target)
 // bad — "malformed output fails instead of becoming empty data"
@@ -384,25 +379,16 @@ function isBackendRequest(request: IncomingMessage) {
 
 ```ts
 // good — every step inlined; a function that reads no argument is a value, named once
-const run = program
 static generateText = generateTextPi
-pipe(config.endpoint, Schema.decodeUnknown(Endpoint), client)
+pipe(config.endpoint, Schema.decodeUnknownEffect(Endpoint), Effect.flatMap(client))
 Ref.set(entries, decoded)
 const notFound = HttpServerResponse.empty({status: 404})
 // bad — "wrapper function, tmp variable ... that can be inlined"
-const run = () => Effect.gen(function* () { return yield* program })
 const runPromise = Effect.runPromiseWith(Context.empty())
-const endpoint = Schema.decodeUnknown(Endpoint)(config.endpoint)
+const endpoint = yield* Schema.decodeUnknownEffect(Endpoint)(config.endpoint)
 client(endpoint)
 Ref.set(entries, Array.copy(decoded)) // decoded is already an array
 const notFound = () => HttpServerResponse.empty({status: 404})
-```
-
-```ts
-// good — one construction path
-Ai.layerPi(config)
-// bad — "the code still keeps the compatibility/legacy code caused by the iterations"
-export const createLegacy = createV1 // kept for callers nobody has
 ```
 
 ```ts
@@ -424,8 +410,11 @@ files: ['packages/components/src/components/agent-browser.tsx', 'packages/compon
 import {createServer} from 'node:http'
 ```
 
+## Tests
+
 - Keep only tests that add value: each checks logic or behavior a real regression would break, never types, external libraries, wording, or wiring, and none breaks on an unrelated change; add one only when it earns its place, never just in case.
 - Prove a change with one input in the existing case that covers it; add a case only for behavior no case exercises.
+- A bug fix adds its failing case to the existing test that covers the fixed code, when one exists.
 - Fixtures are the inputs the request names, nothing else.
 - Assert which input is flagged or returned, never wording or another tool's output.
 - Spy only at the network boundary.
@@ -444,8 +433,6 @@ it('skips empty deltas when reconstructing Prompt history', () => { /* 21 lines 
 "import {Schema as S} from 'effect'" // not an input the request names
 expect(Array.some(diagnostics, d => d.code === 'typescript(TS2456)')).toBe(true) // another tool's output
 vi.spyOn(RequestAuthHeaders, 'withAuthForwardingHeaders').mockResolvedValue(new Headers())
-const success = vi.spyOn(toast, 'success')
-vi.mock('@tanstack/react-query') // a library; the network is the boundary
 const fetch = vi.spyOn(globalThis, 'fetch') // shadows the global
 additional?: {name: string; source: string}[] // a helper option one case needs
 ```
@@ -457,15 +444,14 @@ it.layer(Layer.provideMerge(Ledger.layer, NodeServices.layer))(test => {
 	test.effect('sums expenses negative per tag', () => run(program))
 })
 // bad — "this test is useless, it doesn't test that the agent is working"
-it.layer(NodeServices.layer)('Pi', test => { // on internal/pi.ts
-"./pi": "./src/internal/pi.ts",
 it.effect('rejects an empty tag', () => run(ledger.add({tag: ''}))) // Schema.isNonEmpty already does
 it.effect('loads', () => pipe(program, Effect.provide(Ledger.layer))) // the layer, per test
-assert.deepStrictEqual(Array.map(commits, commit => DateTime.formatIso(commit.timestamp)), stamps) // Schema decoded it
 vi.mock('../src/NotionClient.ts', () => ({})) // a Layer is the seam
 ```
 
-## Natives
+## Lint-enforced forms
+
+### Natives
 
 ```ts
 // good — Effect owns the capability; a secret is Redacted, never a string
@@ -494,7 +480,9 @@ const recipients = Array.ensure(input)
 const recipients = Array.isArray(input) ? input : [input]
 ```
 
-## Globals and types
+### Globals and types
+
+No readonly, except on a Schema.suspend cycle's hand-written types.
 
 ```ts
 // good
@@ -512,7 +500,6 @@ const set = new Set<string>()
 const biggest = Math.max(1, 2)
 const first = items[0]!
 type Holder = {value: ReadonlyArray<string>; time: Date; error: Error; done: Promise<void>}
-type Wrapped = Readonly<{value: string}>
 const entries = yield * Ref.make<readonly LedgerEntry[]>([])
 interface Shape {
 	readonly value: string
@@ -525,49 +512,52 @@ enum Color {
 const Point = Schema.Struct({x: Schema.Number})
 ```
 
-## Expressions
+### Expressions
 
 ```ts
 // good
 const root = options?.root ?? '.'
-function randomIndex(length: number) {
 String.replaceAll(/[-_]+/gu, ' ')
 const sorted = {a: 2, b: 1, c: 3}
 // bad — each line is a diagnostic
 const loose = '12' == 12
 const orDefault = secret || 'none'
 const empty = null
-export const arrow = () => { return 1 }
+export const arrow = () => {
+	return 1
+}
 const render = (commits: Commit[]) => pipe(commits, Array.map(renderCommit)) // a declaration, at module scope
 const commitLine = /^(?<type>\S+): (?<subject>.+)$/ // the u flag
-if (!value) { return 'empty' } else { return value }
-return value > 1 ? 'many' : value === 1 ? 'one' : 'none'
-for (let index = 0; index < values.length; index++) { if (values[index] === 0) continue }
+if (!value) {
+	return 'empty'
+} else {
+	return value
+}
+for (let index = 0; index < values.length; index++) {
+	if (values[index] === 0) continue
+}
 input.value = 2
 const unsorted = {b: 1, a: 2, c: 3}
 ```
 
-## Programs
+### Programs
 
 ```ts
-// good — the owned runtime runs; pipe composes
+// good — the owned runtime runs
 NodeRuntime.runMain(
-yield* pipe(decodeEvent(part), Effect.flatMap(replay.publish))
 // bad — each line is a diagnostic
 const value = yield Effect.succeed(1)
 try { return yield* Effect.succeed(value) } catch { return 0 }
 const run = Effect.runPromise(program)
 Effect.gen(async function* () {
-const chained = program.pipe(Effect.map(() => undefined))
 ```
 
-## Modules
+### Modules
 
 ```ts
-// good — subpath imports, import type, layers as static methods, every export has an importer
+// good — subpath imports, import type, every export has an importer
 import type {PortfolioState, PortfolioTrail, PortfolioVisitor} from '#rpcs/contracts.ts'
 import type {Connect, EnvironmentModuleNode, Plugin} from 'vite'
-static layerPi(config: Pi.Config) {
 // bad — each line is a diagnostic
 import {useMemo} from 'react'
 import {helper} from '../lib/utils.ts' // parent-relative; a sibling ./x.ts is fine
@@ -578,29 +568,7 @@ export const EntryKind = Schema.Literals(['income', 'expense']) // no importer
 export default helper
 ```
 
-## Package
-
-```text
-// good — every source under src/; one file per rule with its test beside; oxlint.ts names the config and default-exports the plugin; tsconfig.json is the exported base; package.json holds files, exports, bin, and one script
-tools/workflow/
-  src/
-    agents/claude/, agents/codex/, agents/skills/engineering/SKILL.md
-    rules/<rule>.ts, shared.ts, rules.test.ts
-    oxlint.ts
-    install.ts
-  tsconfig.json
-  package.json
-// bad — "improve the folder/files structure, I hate it"
-tools/oxlint-rules/                       // rules apart from their config
-  src/oxlint-plugin.ts                    // ten rules in one file
-  src/oxlint-plugin.test.ts
-tools/workflow/
-  assets/claude/, codex/, skills/         // source beside src
-  src/main.ts                             // name says nothing
-  package.json                            // scripts and exports nothing consumes
-```
-
-## React
+### React
 
 ```ts
 // good — React Compiler memoizes; Atom holds logic
