@@ -57,3 +57,21 @@ git -C <dir> reset --hard FETCH_HEAD
 | `vp run test`        | tests                                              |
 | `vp run verify`      | fmt, lint, check-types, test: the full local check |
 | `vp run build`       | build                                              |
+
+## Preview (how the user tests)
+
+Dev mode over the VPS takes about 90 s and 25 MB per page, so the user tests a production preview of the branch.
+
+- Choose free ports with `ss -ltn`; start each process detached with `setsid nohup … &` and report its process group.
+- The user opens it with `ssh -N -L <port>:[::1]:<port> mp281x@77.237.236.132`, then http://localhost:<port>.
+- Stop it with `kill -- -<pgid>` for each process group.
+
+dual, from the worktree root:
+
+1. Postgres, opensandbox, and migrations with `vp run init`; the API on the port from `SERVER_URL` in packages/app/.env, and the worker, running.
+2. `vpx turbo run build --filter=@dual/core...`, then in packages/app `NODE_ENV=production NITRO_PRESET=bun NODE_OPTIONS=--max-old-space-size=8192 node node_modules/vite/bin/vite.js build` (as packages/app/docker/Dockerfile).
+3. Web, from packages/app: `NODE_ENV=production HOST=127.0.0.1 PORT=<web> SERVER_URL=http://127.0.0.1:<api> bun .output/server/index.mjs`.
+4. The build has no proxy (packages/app/docker/README.md) and the browser calls `window.location.origin` (src/server-url.ts), so a small Bun proxy on `[::1]:<port>` sends `/api*`, `/mcp`, and the OAuth `/.well-known/*` paths to the API, except `/api/docs/search` and `/api/sdk/search`, and everything else to the web port, as packages/playground/docker/Caddyfile does; only the proxy port is tunnelled.
+5. Login: the local account seeded by the `db:reset` script in package.json; read it there and never copy the password.
+
+deslop (not yet run): from the app directory, such as apps/portfolio, `HOST=::1 PORT=<port> vp run preview`, which builds and serves `dist/server.js`.
