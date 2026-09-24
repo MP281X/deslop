@@ -42,6 +42,7 @@ git -C <dir> reset --hard FETCH_HEAD
 - `/home/mp281x/dual`, `git.datapizza.tech/dual/dual`, default branch `master`, behind the VPN.
 - bun 1.3.14 driven by `vp`, turbo.
 - Services: opensandbox 8080, Postgres 55432, test Postgres 55433; worktree copies use other ports.
+- Each worktree runs on its own ports, set in its `.env` files (`packages/app/.env` `SERVER_URL`, `packages/playground/.env`); other worktrees' dev apps and previews keep theirs.
 - Local login: seeded by the `db:reset` script's `bun --filter @dual/core seed:user`; the credentials live in that script in `package.json`.
 - Issues: Jira project DOS through `acli` (`docs/agents/issue-tracker.md`).
 - User-visible or SDK changes update `packages/docs` in the same change.
