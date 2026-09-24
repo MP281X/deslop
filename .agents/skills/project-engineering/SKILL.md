@@ -35,6 +35,25 @@ apps/portfolio/src
 └── main.client.tsx          // makeRouter, Register, createRoot
 ```
 
+```
+// bad — "improve the folder/files structure, I hate it"
+tools/oxlint-rules/                       // rules apart from their config
+  src/oxlint-plugin.ts                    // ten rules in one file
+  src/oxlint-plugin.test.ts
+tools/workflow/
+  assets/claude/, codex/, skills/         // source beside src
+  src/main.ts                             // name says nothing
+  package.json                            // scripts and exports nothing consumes
+
+// good — every source under src/; tsconfig.json is the exported base; package.json holds files, exports, bin, and one script
+tools/workflow/
+  src/
+    agents/claude/, agents/codex/, agents/skills/engineering/SKILL.md
+    install.ts
+  tsconfig.json
+  package.json
+```
+
 ## Keys
 
 ```ts
@@ -50,18 +69,6 @@ export class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/portfolio/R
 
 ## Imports
 
-```ts
-// bad — parent-relative, or reaching into another package's source
-import {portfolioPalette} from '../lib/portfolio.ts'
-import {Ai} from '@deslop/ai/src/service.ts'
-
-// good — the subpath imports map, exports for other packages
-import {portfolioPalette} from '#lib/portfolio.ts'
-import {PortfolioState, RpcContracts} from '#rpcs/contracts.ts'
-import {PiToolkit} from '#schema'
-import * as ClientRuntime from '@deslop/runtime/client'
-```
-
 ```json
 // bad — a glob import map, or a missing subpath
 {"imports": {"#*": "./src/*"}}
@@ -74,9 +81,8 @@ import * as ClientRuntime from '@deslop/runtime/client'
 ## Rpc
 
 ```ts
-// bad — a plain handler shape and a duplicate span
+// bad — a plain handler shape
 export const RpcHandlers = Layer.succeed(RpcContracts, {'portfolio.join': join})
-Effect.withSpan('portfolio.join')(join(payload))
 
 // good — a stream contract, toLayer, of
 export class RpcContracts extends RpcGroup.make(
@@ -105,7 +111,7 @@ const portfolioAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(
 		pipe(
 			RpcClient,
-			Effect.map(client => client('portfolio.join', {color: identity.color, id: identity.id, name: identity.name})),
+			Effect.map(client => client('portfolio.join', identity)),
 			Stream.unwrap
 		)
 	)
@@ -119,22 +125,12 @@ const moveRpc = useAtomSet(RpcClient.mutation('portfolio.move'))
 ```
 // bad — a test away from its subject, or on an internal module
 packages/ai/tests/pi.test.ts
-packages/ai/src/internal/pi.test.ts   // exists today; debt, not the form
 
 // good — beside the public interface it tests
 packages/ai/src/service.test.ts
 packages/ai/src/lib/utils.test.ts
 apps/portfolio/src/services/<name>/service.test.ts
-```
-
-```ts
-// bad — a layer per test, and library behavior asserted
-it.effect('loads', () => pipe(program, Effect.provide(Ai.layerPi(config))))
-it('trims the name', () => expect(Schema.decodeUnknownSync(Name)(' pi ')).toBe('pi'))
-
-// good — one it.layer owns the layer; agent-browser proves rendering
-it.layer(Layer.provideMerge(Ai.layerPi(config), NodeServices.layer))(test => {
-it.effect('replays compact history and streams later events to existing subscribers', Effect.fnUntraced(function* () {
+// agent-browser proves rendering, never a component test
 ```
 
 ## Exports
@@ -151,11 +147,11 @@ it.effect('replays compact history and streams later events to existing subscrib
 
 ```json
 // bad — packages/ai/package.json redeclaring a dependency the root already owns
-{"dependencies": {"@earendil-works/pi-agent-core": "latest", "effect": "^4.0.0-rc"}}
+{"dependencies": {"@earendil-works/pi-agent-core": "0.84.4", "effect": "4.0.0-rc.112"}}
 
 // good — the root package.json declares it once, packages/ai/package.json omits it and imports it
-{"dependencies": {"@effect/atom-react": "^4.0.0-rc", "@effect/platform-node": "^4.0.0-rc", "effect": "^4.0.0-rc"}}
-{"dependencies": {"@earendil-works/pi-agent-core": "latest", "@earendil-works/pi-ai": "latest"}}
+{"dependencies": {"@effect/atom-react": "4.0.0-rc.112", "@effect/platform-node": "4.0.0-rc.112", "effect": "4.0.0-rc.112"}}
+{"dependencies": {"@earendil-works/pi-agent-core": "0.84.4", "@earendil-works/pi-ai": "0.84.4"}}
 ```
 
 ## Generators
@@ -202,10 +198,9 @@ vp run upgrade
 ```tsx
 // bad — a tooltip on a conventional icon
 <Tooltip content="close"><X /></Tooltip>
-<span className="text-[#888]">{props.children}</span>
 
 // good — local classes lay out; a label disambiguates
-<div className={className} style={{paddingLeft: 12, paddingRight: 8}} title={props.title}>
+<div className={cn('pl-3 pr-2', className)} title={props.title}>
 <span className="flex h-full min-w-0 flex-1 items-center gap-1.5">
 ```
 
@@ -225,13 +220,14 @@ tools/workflow/src/rules/*.ts             // custom Effect and React forms, one 
 ## Fallow
 
 ```jsonc
-// bad — an export nobody imports, a suppression
-export const EntryKind = Schema.Literals(['income', 'expense'])
+// bad — a suppression
 // fallow-ignore-file unused-export -- Generated public service retained for its first consumer.
 
 // good — every export has an importer, except these two
-{"ignoreExports": [
-	{"exports": ["*"], "file": "packages/*/src/schema.ts"},
-	{"exports": ["*"], "file": "packages/components/src/components/**"}
-]}
+{
+	"ignoreExports": [
+		{"exports": ["*"], "file": "packages/*/src/schema.ts"},
+		{"exports": ["*"], "file": "packages/components/src/components/**"}
+	]
+}
 ```

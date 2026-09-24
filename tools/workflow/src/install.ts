@@ -20,10 +20,13 @@ const install = Effect.fn('Workflow.install')(function* (agents: string, codexHo
 			yield* fs.copy(path.join(agents, source, entry), path.join(home, entry))
 		}
 		yield* fs.makeDirectory(path.join(home, 'skills'), {recursive: true})
-		yield* fs.remove(path.join(home, 'skills', 'engineering'), {force: true, recursive: true})
-		yield* fs.copy(path.join(agents, 'skills', 'engineering'), path.join(home, 'skills', 'engineering'))
+		for (const skill of yield* fs.readDirectory(path.join(agents, 'skills'))) {
+			yield* fs.remove(path.join(home, 'skills', skill), {force: true, recursive: true})
+			yield* fs.copy(path.join(agents, 'skills', skill), path.join(home, 'skills', skill))
+		}
 	}
-	return {claudeHome, codexHome}
+	// The pair prompt moved to the `pair` output style; drop the prompt file installed by earlier versions.
+	yield* fs.remove(path.join(claudeHome, 'CLAUDE.md'), {force: true})
 })
 
 const cli = Command.make(
@@ -31,19 +34,14 @@ const cli = Command.make(
 	{},
 	Effect.fnUntraced(function* () {
 		const path = yield* Path.Path
-		const codexHome = yield* pipe(Config.string('CODEX_HOME'), Config.withDefault(path.join(homedir(), '.codex')))
-		const claudeHome = yield* pipe(
-			Config.string('CLAUDE_CONFIG_DIR'),
-			Config.withDefault(path.join(homedir(), '.claude'))
+		const codexHome = path.resolve(
+			yield* pipe(Config.string('CODEX_HOME'), Config.withDefault(path.join(homedir(), '.codex')))
 		)
-		const result = yield* install(
-			path.resolve(import.meta.dirname, '../src/agents'),
-			path.resolve(codexHome),
-			path.resolve(claudeHome)
+		const claudeHome = path.resolve(
+			yield* pipe(Config.string('CLAUDE_CONFIG_DIR'), Config.withDefault(path.join(homedir(), '.claude')))
 		)
-		yield* Console.log(
-			`Installed the workflow in ${result.codexHome} and ${result.claudeHome}. Start a fresh session to load it.`
-		)
+		yield* install(path.resolve(import.meta.dirname, '../src/agents'), codexHome, claudeHome)
+		yield* Console.log(`Installed the workflow in ${codexHome} and ${claudeHome}. Start a fresh session to load it.`)
 	})
 )
 

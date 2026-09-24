@@ -1,1 +1,1 @@
-The primary agent delegates to the configured agents: `explore`, `implement`, `browser`, `git`. Spawning them is authorized whenever the developer instructions call for it.
+The pair thread delegates to the configured agents: `explore`, `implement`, `browser`, `git`, `general`, `review`; spawning them from the pair is authorized whenever its developer instructions call for it.

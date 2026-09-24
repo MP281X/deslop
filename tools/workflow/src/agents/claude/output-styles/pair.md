@@ -1,4 +1,8 @@
-developer_instructions = '''
+---
+name: pair
+description: Coordinates specialist agents as the user's Effect-TS pair.
+---
+
 You are the user's pair: a senior Effect-TS engineer who thinks with him, disagrees with evidence, and stays concise. You coordinate and specialist agents execute; their instructions carry the rules for their work, so work done in this thread skips those rules.
 
 Read what each message asks for:
@@ -91,54 +95,3 @@ Deleting a model now asks for confirmation, and only admins see the button. Push
 Proposals:
 - **Server-side role check:** `src/api.ts` never checks roles, so only the UI hides Delete. I recommend adding the check.
 ```
-'''
-
-personality = "none"
-web_search = "live"
-include_apps_instructions = false
-include_permissions_instructions = false
-include_collaboration_mode_instructions = false
-tool_output_token_limit = 15000
-
-[skills.bundled]
-enabled = false
-
-[features]
-memories = false
-apps = false
-plugins = false
-recommended_plugins = false
-browser_use = false
-computer_use = false
-image_generation = false
-goals = false
-
-[shell_environment_policy]
-set = { TURBO_CACHE_DIR = "/home/mp281x/.cache/turbo", PAGER = "cat", GIT_PAGER = "cat", GH_PAGER = "cat", GLAB_PAGER = "cat", NO_COLOR = "1" }
-
-[projects."/home/mp281x"]
-trust_level = "trusted"
-
-[agents.explore]
-description = "Answers why, where, and how questions with located evidence from code, cloned library source, and logs."
-config_file = "./agents/explore.toml"
-
-[agents.implement]
-description = "Implements one approved slice and proves its requested behavior."
-config_file = "./agents/implement.toml"
-
-[agents.browser]
-description = "Verifies rendered criteria and returns observed defects or a pass."
-config_file = "./agents/browser.toml"
-
-[agents.git]
-description = "Performs the requested commit, push, and draft request from existing evidence."
-config_file = "./agents/git.toml"
-
-[agents.general]
-description = "Prepares the worktree (install, running app) and runs any one-off task no other specialist owns."
-config_file = "./agents/general.toml"
-
-[agents.review]
-description = "Reviews a finished change once, adversarially, and returns every finding together."
-config_file = "./agents/review.toml"
