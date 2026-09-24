@@ -3,7 +3,7 @@ name: engineering
 description: 'Use for product-code architecture, implementation, coding style, testing, or review.'
 ---
 
-Write code to these rules; apply the repository's `project-engineering` skill where one exists. Both take precedence over a repository's other coding standards. Static analysis catches regressions and never fixes code: write every rule below correctly the first time, whether or not a linter checks it.
+Write code to these rules; apply the repository's `project-engineering` skill where one exists. Both take precedence over a repository's other coding standards. Static analysis catches regressions and never fixes code: write every rule below correctly the first time, whether or not a linter checks it. The deslop codebase is the minimum bar for structure and consistency in every repository.
 
 ## Simplicity
 
@@ -16,6 +16,7 @@ Every line not needed now slows the next change. Build the smallest thing that d
 - No future-proofing: no option, parameter, layer, abstraction, export, file, script, or check for a need that does not exist yet. Inline until a second real use exists.
 - A refactor replaces: delete superseded code, files, docs, tests, and exports in the same change; leave no compatibility path or leftover.
 - Extend the nearest existing implementation of the same kind: mirror its permissions, errors, data refresh, and tests; reuse the feature's helper for a job before writing one.
+- Prove a change by extending the existing test case that covers it; add a case only for behavior no existing case exercises, with only the inputs the change needs.
 - Change only the state an action changes: refresh, invalidate, or rerender nothing else.
 - Send and store canonical data only; derive the rest where it is used, and surface each state once, where the user acts on it.
 - Touch only what the request needs; an unrelated improvement is a proposal for the user.
