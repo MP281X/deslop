@@ -25,7 +25,36 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /home/mp281x/.deslop/deploy/acme:/acme
+      - /home/mp281x/.deslop/deploy/browser-users:/etc/traefik/browser-users:ro
     networks: [deslop]
+    logging: *bounded-logs
+
+  browser:
+    image: lscr.io/linuxserver/chromium:latest
+    restart: unless-stopped
+    shm_size: 1gb
+    tmpfs: [/config]
+    environment:
+      HARDEN_DESKTOP: 'true'
+      HARDEN_OPENBOX: 'true'
+      SELKIES_ENABLE_SHARING: 'false'
+      SELKIES_MODE: websockets
+      SELKIES_ENCODER: h264enc,h264enc-striped
+      SELKIES_WEBRTC_PUBLIC_IP: 77.237.236.132
+      SELKIES_WEBRTC_UDP_MUX_PORT: '59000'
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports: [59000:59000/udp]
+    networks: [deslop]
+    labels:
+      traefik.enable: 'true'
+      traefik.http.routers.browser.entrypoints: websecure
+      traefik.http.routers.browser.rule: Host(`browser.mp281x.xyz`)
+      traefik.http.routers.browser.tls.certresolver: letsencrypt
+      traefik.http.routers.browser.middlewares: browser-auth
+      traefik.http.middlewares.browser-auth.basicauth.usersfile: /etc/traefik/browser-users
+      traefik.http.middlewares.browser-auth.basicauth.removeheader: 'true'
+      traefik.http.services.browser.loadbalancer.server.port: '3000'
     logging: *bounded-logs
 
   portfolio:

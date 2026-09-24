@@ -25,9 +25,10 @@ fi
 
 compose=(docker compose --project-name deslop --file "$state_dir/compose.yaml")
 "${compose[@]}" config --quiet
-"${compose[@]}" pull traefik jaeger collector
+"${compose[@]}" pull traefik browser jaeger collector
 "${compose[@]}" up -d --remove-orphans --pull never
 curl -fsS --retry 12 --retry-delay 5 --retry-all-errors https://portfolio.mp281x.xyz/ >/dev/null
+printf 'user = "browser:%s"\n' "$(< "$state_dir/browser-password")" | curl -fsS --retry 12 --retry-delay 5 --retry-all-errors --config - https://browser.mp281x.xyz/ >/dev/null
 curl -fsS --retry 12 --retry-delay 5 --retry-all-errors https://te-amo-muchisimo.mp281x.xyz/ >/dev/null
 curl -fsS --retry 12 --retry-delay 5 --retry-all-errors https://otel.mp281x.xyz/api/services >/dev/null
 curl -fsS --retry 12 --retry-delay 5 --retry-all-errors -X OPTIONS https://otel.mp281x.xyz/v1/traces -H 'Origin: https://portfolio.mp281x.xyz' -H 'Access-Control-Request-Method: POST' >/dev/null
