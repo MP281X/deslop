@@ -46,6 +46,7 @@ git -C <dir> reset --hard FETCH_HEAD
 - Issues: Jira project DOS through `acli` (`docs/agents/issue-tracker.md`).
 - User-visible or SDK changes update `packages/docs` in the same change.
 - CI: GitLab pipelines.
+- The user is new to the dual codebase: replies explain the code context they rely on, and questions stay about product behavior.
 
 | Command              | Does                                               |
 | -------------------- | -------------------------------------------------- |
