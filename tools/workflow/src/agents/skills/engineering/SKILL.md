@@ -10,19 +10,49 @@ Write code to these rules; apply the repository's `project-engineering` skill wh
 Every line not needed now slows the next change. Build the smallest thing that does the requested job well:
 
 - Write the plain, obvious solution, explicit and idiomatic, readable top to bottom: no comments, no abstraction or indirection that one use does not need, no clever tricks.
+- Return early instead of nesting.
 - Doing less than asked beats doing more; name what you cut instead of building it.
-- Happy path only: handle an error or edge case only when the request or an existing contract requires it; otherwise let it fail.
+- Write for where the code lives: extend the nearest existing implementation of the same kind, mirroring its permissions, errors, data refresh, and tests, and reuse the feature's helper for a job before writing one; never handle an error or case its callers make impossible; tests follow the same rule.
+- Happy path only: let failures flow through Effect's error channel, with no catch, retry, fallback, or defensive check unless the request or an existing contract states the requirement.
+- Validate and transform once, at the boundary, with Effect Schema; inside, data is trusted: carry narrowed values forward and never re-check what the schema, the declared type, an earlier filter, or tsc guarantees.
+- Search Effect before writing logic: before hand-writing a traversal, accumulator, check, or config read, search `~/.deslop/repos/effect/packages/effect/src` (Graph, Record, String, Option, Struct, Config.all, Match, Boolean) and call the helper that exists.
+- Never destructure a parameter, callback argument, or loop variable; take the value whole and read or spread its fields where used (`useState` excepted).
 - The core done well before breadth: a strong 70% beats a complete 100% with extras.
 - No future-proofing: no option, parameter, layer, abstraction, export, file, script, or check for a need that does not exist yet. Inline until a second real use exists.
 - A refactor replaces: delete superseded code, files, docs, tests, and exports in the same change; leave no compatibility path or leftover.
-- Extend the nearest existing implementation of the same kind: mirror its permissions, errors, data refresh, and tests; reuse the feature's helper for a job before writing one.
-- Prove a change by extending the existing test case that covers it; add a case only for behavior no existing case exercises, with only the inputs the change needs.
+- Test only real logic, at the minimum: prove a change by extending the existing case that covers it; add a case only for behavior no existing case exercises, with only the inputs the change needs; never test impossible cases, wiring, or values a library computes.
 - Change only the state an action changes: refresh, invalidate, or rerender nothing else.
 - Send and store canonical data only; derive the rest where it is used, and surface each state once, where the user acts on it.
 - Touch only what the request needs; an unrelated improvement is a proposal for the user.
 - Behave correctly instead of building machinery, such as hooks, guards, or generators, to enforce behavior.
 - A mechanical pass preserves behavior and types; a pass that changes them is the user's decision.
 - Implement the definition the domain uses, such as a cycle for recursion, never the nearest syntactic proxy.
+- Before finishing, reread the diff: inline single-use helpers, pass values instead of trackers, use the whole schema instead of picking every field, and delete checks the change made obsolete.
+
+```ts
+// good — Effect's helpers, values taken whole, data trusted after the boundary
+const graph = Graph.directed<string, undefined>(mutable => {
+	for (const schema of schemas) Graph.addNode(mutable, schema.name)
+	for (const edge of edges) Graph.addEdge(mutable, edge.from, edge.to, undefined)
+})
+const cycles = Graph.stronglyConnectedComponents(graph)
+String.isNonEmpty(event.delta)
+pipe(Option.fromNullishOr(schema.id.typeAnnotation), Option.exists(annotation => schemaSchemaType({context, node: annotation.typeAnnotation})))
+server => ({server: {...server, forwardConsole: true, warmup}})
+for (const schema of schemas) report(schema.name)
+payload: PortfolioVisitor
+recursive: boolean
+
+// bad — "you deconstructed the args witch is something that i hate"
+function reachesStart(name: string, seen: string[], suspended: boolean): boolean {
+event.delta !== ''
+annotation !== null && annotation !== undefined && schemaSchemaType({context, node: annotation})
+({host, port}) => ({server: {forwardConsole: true, host, port, warmup}})
+for (const {name, statement, variable} of schemas) report(name)
+variable.init?.type === 'TSSatisfiesExpression' // init was already narrowed to non-null
+payload: Schema.Struct(pipe(PortfolioVisitor.fields, Struct.pick(['color', 'id', 'name', 'x', 'y'])))
+recursiveTypes: ReturnType<typeof recursiveTypeAliases>
+```
 
 ```ts
 // good — the requested behavior; a missing file fails on its own
@@ -251,7 +281,7 @@ const toolkit = yield* PiToolkit.pipe(Effect.provide(handlerContext))
 ```
 
 ```ts
-// good — node_modules/effect/dist is read before writing
+// good — the Effect clone is searched before writing
 BigDecimal.format(amount)
 Schema.decode(SchemaTransformation.trim().compose(SchemaTransformation.toLowerCase()))
 Duration.parts(DateTime.distance(oldest.timestamp, newest.timestamp)).days
