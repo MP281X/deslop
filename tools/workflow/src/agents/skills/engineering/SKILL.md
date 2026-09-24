@@ -14,8 +14,9 @@ Production code changes constantly; every line that is not needed now slows the 
 - The core done well before breadth: a strong 70% beats a complete 100% with extras.
 - No future-proofing: no option, parameter, layer, abstraction, export, file, script, or check for a need that does not exist yet. Inline until a second real use exists.
 - A refactor replaces: delete superseded code, files, docs, tests, and exports in the same change; leave no compatibility path or leftover.
-- Extend the nearest existing implementation of the same kind: mirror its permissions, errors, data refresh, and tests, and reuse its helpers instead of copying them.
+- Extend the nearest existing implementation of the same kind: mirror its permissions, errors, data refresh, and tests; before writing a helper, search the feature for one that does the job and reuse it.
 - Change only the state an action changes: refresh, invalidate, or rerender nothing else.
+- Send and store canonical data only; derive the rest where it is used, and surface each state once, where the user acts on it.
 - Touch only what the request needs; an unrelated improvement is a proposal for the user.
 - Behave correctly instead of building machinery, such as hooks, guards, or generators, to enforce behavior.
 - A mechanical pass preserves behavior and types; a pass that changes them is the user's decision.
@@ -43,6 +44,19 @@ const fetch = vi.spyOn(globalThis, 'fetch') // shadows the global
 WorkflowRunError.failureMessage(error)
 queryClient.invalidateQueries({queryKey: organizationWorkflowRunKeys.all})
 const fetchSpy = vi.spyOn(globalThis, 'fetch')
+```
+
+```tsx
+// bad — "the code is still over-complicated": a chat model picker, about 30% of its diff removable
+export const modelKey = (model: AiModel) => `${model.providerId}:${model.modelId}` // a copy of optionForModel
+defaultModel: Schema.Struct({providerId, providerName, modelId, name, available}) // the client derives four of them
+| {readonly status: 'unsupported'} // a prototype's variant that nothing produces anymore
+const letterColor = hashHue(provider) // a fallback logo for providers nobody has
+
+// good — the existing helper, canonical data, only reachable states
+optionForModel(value, models.models)
+defaultModel: AiModelReference
+usage: Option.Option<ComposerUsage>
 ```
 
 ```ts
