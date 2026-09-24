@@ -17,6 +17,7 @@ Every line not needed now slows the next change. Build the smallest thing that d
 - Validate and transform once, at the boundary, with Effect Schema; inside, data is trusted: carry narrowed values forward and never re-check what the schema, the declared type, an earlier filter, or tsc guarantees.
 - Search Effect before writing logic: before hand-writing a traversal, accumulator, check, or config read, search `~/.deslop/repos/effect/packages/effect/src` (Graph, Record, String, Option, Struct, Config.all, Match, Boolean) and call the helper that exists.
 - Never destructure a parameter, callback argument, or loop variable; take the value whole and read or spread its fields where used (`useState` excepted).
+- Pass a value whole or spread it; never re-list its fields one by one.
 - The core done well before breadth: a strong 70% beats a complete 100% with extras.
 - No future-proofing: no option, parameter, layer, abstraction, export, file, script, or check for a need that does not exist yet. Inline until a second real use exists.
 - A refactor replaces: delete superseded code, files, docs, tests, and exports in the same change; leave no compatibility path or leftover.
@@ -39,6 +40,9 @@ const cycles = Graph.stronglyConnectedComponents(graph)
 String.isNonEmpty(event.delta)
 pipe(Option.fromNullishOr(schema.id.typeAnnotation), Option.exists(annotation => schemaSchemaType({context, node: annotation.typeAnnotation})))
 server => ({server: {...server, forwardConsole: true, warmup}})
+server: {...config, forwardConsole: true, warmup}
+payload: {...identity, color: nextColor, x: currentPointer.x, y: currentPointer.y}
+Array.isReadonlyArrayEmpty(node.arguments)
 for (const schema of schemas) report(schema.name)
 payload: PortfolioVisitor
 recursive: boolean
@@ -48,6 +52,9 @@ function reachesStart(name: string, seen: string[], suspended: boolean): boolean
 event.delta !== ''
 annotation !== null && annotation !== undefined && schemaSchemaType({context, node: annotation})
 ({host, port}) => ({server: {forwardConsole: true, host, port, warmup}})
+server: {forwardConsole: true, host: config.host, port: config.port, warmup}
+payload: {color: nextColor, id: identity.id, name: identity.name, x: currentPointer.x, y: currentPointer.y}
+node.arguments.length === 0
 for (const {name, statement, variable} of schemas) report(name)
 variable.init?.type === 'TSSatisfiesExpression' // init was already narrowed to non-null
 payload: Schema.Struct(pipe(PortfolioVisitor.fields, Struct.pick(['color', 'id', 'name', 'x', 'y'])))

@@ -8,7 +8,7 @@ Inspect the pending diff and use supplied validation until a later edit invalida
 
 Derive each commit from the diff and exclude unrelated changes. The title is `type(scope): outcome`, at most 72 characters, stating what changed for the reader; add a body only for a reason the diff cannot show, at most three lines. Push with upstream to the configured remote name; never add a remote or push to a URL.
 
-Open or update a draft request through `gh` or `glab` on every push, and link it when the host exposes that operation. Attach the brief's screenshots in the same command with `--attach '<path>#<criterion>'`, never through API uploads or tokens. Its body describes the whole branch and only verification the brief reports as done, never planned work, follow-ups, or proposals, in this shape, with no file lists, validation logs, or restated diff:
+Open or update a draft request through `gh` or `glab` on every push, refreshing its title, `type(scope): outcome` for the whole branch in at most 72 characters, together with its body, and link it when the host exposes that operation. Attach the brief's screenshots in the same command with `--attach '<path>#<criterion>'`, never through API uploads or tokens. Its body describes the whole branch and only verification the brief reports as done, never planned work, follow-ups, or proposals, in this shape, with no file lists, validation logs, or restated diff:
 
 ```text
 <one sentence: what the branch changes and why>
@@ -17,7 +17,7 @@ Open or update a draft request through `gh` or `glab` on every push, and link it
 - <risk or action required from the reviewer>
 ```
 
-Never delegate, approve, mark ready, force-push, reset, or rewrite history. Return a failing hook, authentication requirement, or unreachable host as the exact blocker.
+Never delegate, approve, or force-push, and never rewrite history that was pushed; amending or squashing commits that were never pushed is allowed. Mark a request ready for review only when the brief quotes the user asking for it. Return a failing hook, authentication requirement, or unreachable host as the exact blocker.
 
 Report one line per item, omitting empty fields:
 
