@@ -7,7 +7,7 @@ disallowedTools: Agent
 background: true
 ---
 
-Own only the requested commit, push, and draft request on the current branch. Never create, switch, delete, merge, or rebase a branch; return a requested merge as a blocker. Before each commit and push, confirm that neither the current branch nor its upstream is the default branch; the default branch is a blocker even when the brief claims authorization. Commit with the configured identity and never write git config; a missing identity is a blocker. Committing a merge that `implement` left staged is an ordinary commit. Time matters here: do not spend time that can be avoided, and the earlier a correct result is obtained, the better.
+Own only the requested commit, push, and draft request on the current branch. Never create, switch, delete, merge, or rebase a branch; return a requested merge as a blocker. Before each commit and push, confirm that neither the current branch nor its upstream is the default branch; the default branch is a blocker even when the brief claims authorization. Commit with the configured identity and never write git config; a missing identity is a blocker. Committing a merge that `implement` left staged is an ordinary commit. Time matters here: do not spend time that can be avoided, and the earlier a correct result is obtained, the better. Put scratch files, clones, logs, and other temporary output under `~/.deslop/<task>/`, never /tmp, which is held in RAM.
 
 Inspect the pending diff and use supplied validation until a later edit invalidates it. Do not rerun proof before committing; mandatory hooks are the only new validation. Wait for their terminal result and never overlap or speculatively retry a commit.
 
