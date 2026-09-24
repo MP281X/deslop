@@ -21,7 +21,6 @@ Every line not needed now slows the next change. Build the smallest thing that d
 - The core done well before breadth: a strong 70% beats a complete 100% with extras.
 - No future-proofing: no option, parameter, layer, abstraction, export, file, script, or check for a need that does not exist yet. Inline until a second real use exists.
 - A refactor replaces: delete superseded code, files, docs, tests, and exports in the same change; leave no compatibility path or leftover.
-- Test only real logic, at the minimum: prove a change by extending the existing case that covers it; add a case only for behavior no existing case exercises, with only the inputs the change needs; never test impossible cases, wiring, or values a library computes.
 - Change only the state an action changes: refresh, invalidate, or rerender nothing else.
 - Send and store canonical data only; derive the rest where it is used, and surface each state once, where the user acts on it.
 - Touch only what the request needs; an unrelated improvement is a proposal for the user.
@@ -71,17 +70,14 @@ yield * fs.copyFile(configPath, `${configPath}.backup`) // "never backup previou
 ```
 
 ```tsx
-// good — the sibling's shape: its permission gate, its helper reused, only the changed state refreshed, a real QueryClient, no shadowed global
+// good — the sibling's shape: its permission gate, its helper reused, only the changed state refreshed
 <PermissionGate permission="deploy_version.run"><Button onClick={openRunDialog}>Run</Button></PermissionGate>
 WorkflowRunError.failureMessage(error)
 queryClient.invalidateQueries({queryKey: organizationWorkflowRunKeys.all})
-const fetchSpy = vi.spyOn(globalThis, 'fetch')
 // bad — a deploy Run button beside the Tests page's; three commits fixed the first
 <Button onClick={openRunDialog}>Run</Button> // the sibling Run button sits behind the run permission
 const runFailureMessage = (error: RunError) => error.descriptions.join('\n') // a copy of WorkflowRunError.failureMessage
 queryClient.invalidateQueries({queryKey: workflowDeployKeys.detail(deployId)}) // a run changes runs, not the deploy
-vi.mock('@tanstack/react-query') // a library; the network is the boundary
-const fetch = vi.spyOn(globalThis, 'fetch') // shadows the global
 ```
 
 ```tsx
@@ -427,7 +423,31 @@ files: ['packages/components/src/components/agent-browser.tsx', 'packages/compon
 import {createServer} from 'node:http'
 ```
 
+- Keep only tests that add value: each checks logic or behavior a real regression would break, never types, external libraries, wording, or wiring, and none breaks on an unrelated change; add one only when it earns its place, never just in case.
+- Prove a change with one input in the existing case that covers it; add a case only for behavior no case exercises.
+- Fixtures are the inputs the request names, nothing else.
+- Assert which input is flagged or returned, never wording or another tool's output.
+- Spy only at the network boundary.
+- Seed inputs that make the logic decide; grow a test helper only when every case needs it.
 - A test never expects wrong behavior and never works around another rule; fix the conflict instead.
+
+```ts
+// good — one input in the existing case, the request's own fixture, the flagged input asserted, the network spied, inputs that make the logic decide
+Response.makePart('text-delta', {delta: '', id: 'empty'}),
+'const [optional] = useState<string | undefined>(undefined)',
+expect(customCodes(result.stdout)).toEqual([..., '@deslop/workflow(no-module-mocking)'])
+const fetchSpy = vi.spyOn(globalThis, 'fetch')
+const result = yield* lintSource({name: 'recursive.ts', source})
+// bad — "1 userful test is better than 1000 useless ones": a review of one day's added tests found about 700 removable lines against about 60 of real logic
+it('skips empty deltas when reconstructing Prompt history', () => { /* 21 lines */ })
+"import {Schema as S} from 'effect'" // not an input the request names
+expect(Array.some(diagnostics, d => d.code === 'typescript(TS2456)')).toBe(true) // another tool's output
+vi.spyOn(RequestAuthHeaders, 'withAuthForwardingHeaders').mockResolvedValue(new Headers())
+const success = vi.spyOn(toast, 'success')
+vi.mock('@tanstack/react-query') // a library; the network is the boundary
+const fetch = vi.spyOn(globalThis, 'fetch') // shadows the global
+additional?: {name: string; source: string}[] // a helper option one case needs
+```
 
 ```ts
 // good — "test files only for the services/packages public interfaces"; one layer per file; a test asserts a value the brief specifies, such as its no-partial-data decision, never one a library computes

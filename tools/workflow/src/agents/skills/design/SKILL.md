@@ -51,44 +51,28 @@ Copy:
 - Be creative and build 3–5 completely different variants, each differing on a named axis: layout, density, hierarchy, or interaction.
 - Never variants that differ only in color.
 - Use real, product-shaped content.
-- Render them in place, on the screen they belong to, switchable with the snippet below.
-- After the user picks, delete the losing variants and the snippet.
+- Render them in place, on the screen they belong to, switchable with the switcher below.
+- After the user picks, delete the losing variants and the switcher.
 
 ## Variant switcher
 
-Wrap the variants in it; ← and → cycle through them. Adjust the `Button` import to the host repository's button primitive.
+A sketch to adapt to the host screen: ← and → cycle through the variants, and `Button` is the repository's shadcn button (deslop: `packages/components`, dual: `packages/ui`).
 
 ```tsx
-import {useEffect, useState} from 'react'
-import {Button} from '#components/ui/button.tsx'
-function Variants(props: {children: React.ReactNode[]}) {
-	const [value, setValue] = useState(0)
-	useEffect(() => {
-		function onKeyDown(event: KeyboardEvent) {
-			if (event.key === 'ArrowLeft') setValue(index => (index + props.children.length - 1) % props.children.length)
-			if (event.key === 'ArrowRight') setValue(index => (index + 1) % props.children.length)
-		}
-		window.addEventListener('keydown', onKeyDown)
-		return () => window.removeEventListener('keydown', onKeyDown)
-	}, [props.children.length])
-	return (
-		<>
-			{props.children[value]}
-			<nav className="border-border bg-background fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 gap-1 border p-1.5">
-				{props.children.map((_child, index) => (
-					<Button
-						key={index}
-						variant={index === value ? 'secondary' : 'ghost'}
-						aria-current={index === value ? 'page' : undefined}
-						onClick={() => setValue(index)}
-					>
-						{index + 1}
-					</Button>
-				))}
-			</nav>
-		</>
-	)
-}
+const [selected, setSelected] = useState(0)
+// a plain window keydown listener: ArrowLeft and ArrowRight move selected by one, wrapping around variants.length
+return (
+	<>
+		{variants[selected]}
+		<nav className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 gap-1">
+			{variants.map((_variant, index) => (
+				<Button key={index} variant={index === selected ? 'secondary' : 'ghost'} onClick={() => setSelected(index)}>
+					{index + 1}
+				</Button>
+			))}
+		</nav>
+	</>
+)
 ```
 
 ## Looking at the result
@@ -98,6 +82,17 @@ When appearance is at stake (prototype variants, new or changed surfaces, not lo
 - Take one browser screenshot per variant or state and read it back.
 - Judge it against these rules and the nearest screens.
 - Apply one batch of fixes, then at most one confirming round.
+
+## Matching a reference UI
+
+- Before styling to a named reference UI, read its component source in `~/.deslop/repos`; never guess from screenshots.
+- Turn "cleaner" or "the spacing is bad" into numeric targets (padding, gap, icon box, popup size), each with the reference's `path:line`.
+- Size icons by a shared box, and scale up an SVG that fills less of its canvas.
+- Use one horizontal inset for search, pinned rows, dividers, and list rows.
+- In dense lists, show state with a background (the selected row, the active tab with an accent bar), never a check column.
+- Keep controls always visible, outlined or filled, never only on hover, and pinned rows outside the scroll area.
+- When rows share a name, the subtitle shows what tells them apart.
+- Finish a design pass with light and dark screenshots next to the reference.
 
 ## deslop
 
