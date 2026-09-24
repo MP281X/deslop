@@ -10,11 +10,12 @@ description: 'Use for facts about this host and the deslop and dual repositories
 - Shared turbo cache: `~/.cache/turbo` (`TURBO_CACHE_DIR` is set for agents).
 - Global tools: agent-browser (with Chrome), acli, gh (github.com, MP281X), glab (default host git.datapizza.tech), python and pip, jq, rg, sqlite3, bc, xxd.
 - Datapizza VPN: openvpn3 config `datapizza`, needed only for git.datapizza.tech; one device at a time and a browser sign-in, so an unreachable GitLab is a blocker.
+- Slice proof: the touched test file or package typecheck through `vp run <script> <path>` or `vpx`; the full local check (`vp run check` in deslop, `vp run verify` in dual) runs exactly as written, once.
 - Ports taken by long-running services: 22, 25, 53, 80, 443 (traefik), 3000, 4318, 8080, 8090, 8110, 16686, 20241, and dual worktree Postgres ports 5543x, 5544x, 5546x.
 
 ## Library clones
 
-`~/.deslop/repos/<name>`: agent-browser, codex, effect, executor, oxc, t3code, turborepo, vite-plus. Shallow at each default branch; refresh before use:
+`~/.deslop/repos/<name>`: agent-browser, codex, effect, executor, oxc, pi (`https://github.com/earendil-works/pi.git`), t3code, turborepo, vite-plus. Library behavior is read only from these clones; never `node_modules`, `node_modules/.bun`, or `vendor/`. Shallow at each default branch; refresh before use:
 
 ```sh
 git -C <dir> fetch --depth 1 origin HEAD

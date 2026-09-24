@@ -15,6 +15,7 @@ Every line not needed now slows the next change. Build the smallest thing that d
 - Write for where the code lives: extend the nearest existing implementation of the same kind, mirroring its permissions, errors, data refresh, and tests, and reuse the feature's helper for a job before writing one; never handle an error or case its callers make impossible; tests follow the same rule.
 - Happy path only: let failures flow through Effect's error channel, with no catch, retry, fallback, or defensive check unless the request or an existing contract states the requirement.
 - Validate and transform once, at the boundary, with Effect Schema; inside, data is trusted: carry narrowed values forward and never re-check what the schema, the declared type, an earlier filter, or tsc guarantees.
+- Layers depend inward: domain and service code never import HTTP, RPC, or other transport types.
 - Search Effect before writing logic: before hand-writing a traversal, accumulator, check, or config read, search `~/.deslop/repos/effect/packages/effect/src` (Graph, Record, String, Option, Struct, Config.all, Match, Boolean) and call the helper that exists.
 - Never destructure a parameter, callback argument, or loop variable; take the value whole and read or spread its fields where used (`useState` excepted).
 - Pass a value whole or spread it; never re-list its fields one by one.
