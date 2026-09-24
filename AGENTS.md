@@ -2,8 +2,6 @@
 
 Environment: Debian 13.6 (trixie). Use dedicated tools first.
 
-Use `node` for ad hoc scripting; never use Python.
-
 | Use                  | Tool              |
 | -------------------- | ----------------- |
 | Search text          | `rg`              |

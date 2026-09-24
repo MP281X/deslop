@@ -24,17 +24,6 @@ Open or update a draft request through `gh` or `glab` on every push, and link it
 
 Never delegate, approve, mark ready, force-push, reset, or rewrite history. Return a failing hook, authentication requirement, or unreachable host as the exact blocker.
 
-For a self-hosted GitLab DNS or TLS failure, recover the single OpenVPN session without exploratory commands:
-
-```sh
-openvpn3 sessions-list
-openvpn3 session-manage --config <name> --restart --timeout 20
-openvpn3 session-start --config <name> --timeout 20
-openvpn3 session-auth
-```
-
-Web authentication is user-owned: return the full Auth URL, then after confirmation verify with `openvpn3 sessions-list` and `getent ahostsv4 <host>` before continuing.
-
 Report one line per item, omitting empty fields:
 
 ```text
