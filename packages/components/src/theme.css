@@ -146,7 +146,6 @@
 
 	html {
 		@apply bg-background text-foreground font-sans antialiased select-none;
-		font-size: 14px;
 		letter-spacing: 0;
 		line-height: 1.25;
 		overscroll-behavior: none;

@@ -17,7 +17,7 @@ export function variableFor(context: Context, node: ESTree.IdentifierReference) 
 
 export function isImportBinding(input: {
 	context: Context
-	importedName: string
+	importedName?: string
 	node: ESTree.IdentifierReference
 	source: string | RegExp
 }) {
@@ -29,9 +29,10 @@ export function isImportBinding(input: {
 				const source = definition.parent.source.value
 				if (Predicate.isString(input.source) ? source !== input.source : !input.source.test(source)) return false
 				return (
-					definition.node.type === 'ImportSpecifier' &&
-					definition.node.imported.type === 'Identifier' &&
-					definition.node.imported.name === input.importedName
+					input.importedName === undefined ||
+					(definition.node.type === 'ImportSpecifier' &&
+						definition.node.imported.type === 'Identifier' &&
+						definition.node.imported.name === input.importedName)
 				)
 			})
 		)
@@ -230,19 +231,6 @@ function memberTypeNames(member: ESTree.TSSignature): string[] {
 	)
 }
 
-function topLevelTypeAliases(program: ESTree.Program) {
-	return pipe(
-		program.body,
-		Array.map(statement =>
-			pipe(
-				typeAlias(statement),
-				Option.filter(declaration => !isInferredType({name: declaration.id.name, node: declaration.typeAnnotation}))
-			)
-		),
-		Array.getSomes
-	)
-}
-
 function closedCycleNames(input: {aliases: ESTree.TSTypeAliasDeclaration[]; names: string[]}): string[] {
 	const added = pipe(
 		input.aliases,
@@ -285,7 +273,16 @@ function suspendSeeds(input: {context: Context; node: ESTree.Node}): string[] {
 
 export function schemaCycleNames(input: {context: Context; program: ESTree.Program}): string[] {
 	return closedCycleNames({
-		aliases: topLevelTypeAliases(input.program),
+		aliases: pipe(
+			input.program.body,
+			Array.map(statement =>
+				pipe(
+					typeAlias(statement),
+					Option.filter(declaration => !isInferredType({name: declaration.id.name, node: declaration.typeAnnotation}))
+				)
+			),
+			Array.getSomes
+		),
 		names: suspendSeeds({context: input.context, node: input.program})
 	})
 }

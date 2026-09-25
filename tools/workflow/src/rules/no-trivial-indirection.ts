@@ -46,7 +46,7 @@ function hasSingleStatementExpression(node: ESTree.Function | ESTree.ArrowFuncti
 function exactForwardingFunction(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
 	const names = pipe(node.params, Array.map(parameterName), Array.getSomes)
 	const returned = returnedExpression(node)
-	if (names.length === 0 || names.length !== node.params.length || returned === null || returned === undefined) {
+	if (Array.isArrayEmpty(names) || names.length !== node.params.length || returned === null || returned === undefined) {
 		return false
 	}
 	if (returned.type === 'Identifier') return names.length === 1 && returned.name === names[0]
@@ -78,19 +78,52 @@ function singleUseThunk(input: {context: Context; node: ESTree.Function | ESTree
 	)
 }
 
-function immutableSource(context: Context, node: ESTree.IdentifierReference) {
+function isExport(node: ESTree.Node | null) {
+	return node?.type === 'ExportNamedDeclaration' || node?.type === 'ExportDefaultDeclaration'
+}
+
+function unexportedBindingName(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+	if (node.type === 'FunctionDeclaration' && node.id !== null && !isExport(node.parent)) {
+		return Option.some(node.id.name)
+	}
+	if (
+		node.parent.type === 'VariableDeclarator' &&
+		node.parent.id.type === 'Identifier' &&
+		node.parent.id.typeAnnotation === null &&
+		!isExport(node.parent.parent.parent)
+	) {
+		return Option.some(node.parent.id.name)
+	}
+	return Option.none()
+}
+
+function singleCallerWrapper(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
+	const names = pipe(input.node.params, Array.map(parameterName), Array.getSomes)
+	const returned = returnedExpression(input.node)
+	if (
+		input.node.async ||
+		input.node.generator ||
+		input.node.returnType?.typeAnnotation.type === 'TSTypePredicate' ||
+		Array.isArrayEmpty(names) ||
+		names.length !== input.node.params.length ||
+		returned?.type !== 'CallExpression'
+	) {
+		return false
+	}
 	return pipe(
-		variableFor(context, node),
+		unexportedBindingName(input.node),
+		Option.flatMap(name => variableFromScope({name, scope: input.context.sourceCode.getScope(input.node)})),
 		Option.exists(variable => {
-			if (Array.some(variable.references, reference => reference.isWrite() && !reference.init)) return false
-			return Array.some(variable.defs, definition => {
-				if (definition.type === 'ImportBinding' || definition.type === 'Parameter') return true
-				return (
-					definition.node.type === 'VariableDeclarator' &&
-					definition.node.parent.type === 'VariableDeclaration' &&
-					definition.node.parent.kind === 'const'
+			const reads = Array.filter(variable.references, reference => reference.isRead())
+			return (
+				reads.length === 1 &&
+				Array.every(
+					reads,
+					reference =>
+						reference.identifier.parent.type === 'CallExpression' &&
+						reference.identifier.parent.callee === reference.identifier
 				)
-			})
+			)
 		})
 	)
 }
@@ -102,7 +135,20 @@ function redundantConstAlias(input: {context: Context; node: ESTree.VariableDecl
 		input.node.id.type !== 'Identifier' ||
 		input.node.id.typeAnnotation !== null ||
 		input.node.init?.type !== 'Identifier' ||
-		!immutableSource(input.context, input.node.init)
+		!pipe(
+			variableFor(input.context, input.node.init),
+			Option.exists(variable => {
+				if (Array.some(variable.references, reference => reference.isWrite() && !reference.init)) return false
+				return Array.some(variable.defs, definition => {
+					if (definition.type === 'ImportBinding' || definition.type === 'Parameter') return true
+					return (
+						definition.node.type === 'VariableDeclarator' &&
+						definition.node.parent.type === 'VariableDeclaration' &&
+						definition.node.parent.kind === 'const'
+					)
+				})
+			})
+		)
 	) {
 		return false
 	}
@@ -117,13 +163,13 @@ export const noTrivialIndirection = defineRule({
 		ArrowFunctionExpression: node => {
 			if (
 				(node.parent.type === 'VariableDeclarator' || node.parent.type === 'Property') &&
-				(exactForwardingFunction(node) || singleUseThunk({context, node}))
+				(exactForwardingFunction(node) || singleUseThunk({context, node}) || singleCallerWrapper({context, node}))
 			) {
 				context.report({message: 'Inline this function at its only use site.', node})
 			}
 		},
 		FunctionDeclaration: node => {
-			if (exactForwardingFunction(node) || singleUseThunk({context, node})) {
+			if (exactForwardingFunction(node) || singleUseThunk({context, node}) || singleCallerWrapper({context, node})) {
 				context.report({message: 'Inline this function at its only use site.', node})
 			}
 		},
@@ -132,7 +178,7 @@ export const noTrivialIndirection = defineRule({
 				(node.parent.type === 'VariableDeclarator' ||
 					node.parent.type === 'Property' ||
 					(node.parent.type === 'MethodDefinition' && node.parent.override !== true)) &&
-				(exactForwardingFunction(node) || singleUseThunk({context, node}))
+				(exactForwardingFunction(node) || singleUseThunk({context, node}) || singleCallerWrapper({context, node}))
 			) {
 				context.report({message: 'Inline this function at its only use site.', node})
 			}

@@ -8,12 +8,13 @@ description: 'Use for any rendered UI work: prototypes, new or changed screens, 
 - Before designing, read the 2–3 nearest screens of the same kind and the shared components they compose.
 - Match their page structure, spacing, type sizes, radius, icons, density, states, and copy.
 - Where the app is inconsistent, follow the majority of the surrounding screens.
+- Apply the repository's `project-engineering` skill's visual conventions where one exists.
 
 ## Rules
 
 Consistency:
 
-- Semantic theme tokens only; never hardcode a value the theme or a shared component provides.
+- The shadcn lint rules reject raw colors, arbitrary values, inline styles, and restyled shared components; move a value lint or review flags to the nearest design-system step, token, or variant: a small visual shift is fine, a new layout or color scheme is not, and a disable stays only where no close step exists.
 - The same action looks the same and has the same name everywhere.
 
 Layout:
@@ -53,21 +54,26 @@ Copy:
 - Never variants that differ only in color.
 - Use real, product-shaped content.
 - Render them in place, on the screen they belong to, switchable with the switcher below.
-- After the user picks, restore every file the prototypes touched and delete the files they added; the chosen variant is implemented fresh.
 
 ## Variant switcher
 
-A sketch to adapt to the host screen: ← and → cycle through the variants, and `Button` is the repository's shadcn button (deslop: `packages/components`, dual: `packages/ui`).
+A sketch to adapt to the host screen: each variant's axis name is its key and label, ← and → cycle through the variants, and `Button` is the repository's shadcn button, from the UI package the environment skill names.
 
 ```tsx
 const [selected, setSelected] = useState(0)
 return (
 	<>
-		{variants[selected]}
+		{variants[selected]?.element}
 		<nav className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 gap-1">
-			{Array.map(variants, (_variant, index) => (
-				<Button key={index} variant={index === selected ? 'secondary' : 'ghost'} onClick={() => setSelected(index)}>
-					{index + 1}
+			{Array.map(variants, (variant, index) => (
+				<Button
+					key={variant.name}
+					variant={index === selected ? 'secondary' : 'ghost'}
+					onClick={() => {
+						setSelected(index)
+					}}
+				>
+					{variant.name}
 				</Button>
 			))}
 		</nav>
@@ -81,9 +87,5 @@ When appearance is at stake (prototype variants, new or changed surfaces, not lo
 
 ## Matching a reference UI
 
-- Read the reference's component source in `~/.deslop/repos` and take numeric targets (padding, gap, icon box, popup size) with its `path:line`; never guess from screenshots.
+- Read the reference's component source in its clone (environment skill) and take numeric targets (padding, gap, icon box, popup size) with its `path:line`; never guess from screenshots.
 - Finish a design pass with light and dark screenshots next to the reference.
-
-## deslop
-
-In deslop, the project-engineering skill's Components rules also apply.

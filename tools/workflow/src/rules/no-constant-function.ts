@@ -35,25 +35,20 @@ function resolvesToImport(reference: Reference) {
 	)
 }
 
-function readsOnlyImports(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
-	return pipe(
-		functionScope({node: input.node, scope: input.context.sourceCode.getScope(input.node)}),
-		Option.exists(scope => Array.every(scopeReferences(scope), resolvesToImport))
-	)
-}
-
-function contains(input: {node: ESTree.Span; spans: ESTree.Span[]}) {
-	return Array.some(input.spans, span => span.start >= input.node.start && span.end <= input.node.end)
-}
-
 function isConstantFunction(input: {
 	context: Context
 	node: ESTree.Function | ESTree.ArrowFunctionExpression
 	spans: ESTree.Span[]
 }) {
 	if (input.node.async || input.node.generator || Predicate.isNotNullish(input.node.typeParameters)) return false
-	if (contains({node: input.node, spans: input.spans})) return false
-	return hasSingleReturnExpression(input.node) && readsOnlyImports(input)
+	if (Array.some(input.spans, span => span.start >= input.node.start && span.end <= input.node.end)) return false
+	return (
+		hasSingleReturnExpression(input.node) &&
+		pipe(
+			functionScope({node: input.node, scope: input.context.sourceCode.getScope(input.node)}),
+			Option.exists(scope => Array.every(scopeReferences(scope), resolvesToImport))
+		)
+	)
 }
 
 function isConstBound(node: ESTree.ArrowFunctionExpression | ESTree.Function) {
@@ -64,7 +59,7 @@ function isConstBound(node: ESTree.ArrowFunctionExpression | ESTree.Function) {
 	)
 }
 
-const message = 'A function that reads no argument is a value: inline it or hold it in a const.'
+const message = 'This function reads nothing but imports, so it is a value: hold its result in a const.'
 
 export const noConstantFunction = defineRule({
 	create: context => {

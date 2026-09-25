@@ -264,13 +264,15 @@ function ComboboxField<TOption extends {id: string}>(props: {
 					render={
 						<Button
 							variant="outline"
+							// oxlint-disable-next-line shadcn/no-restyle -- an empty field shows its name in the placeholder color, and Button has no placeholder variant.
 							className={cn('w-full justify-between', !field.state.value && 'text-muted-foreground')}
 						/>
 					}
 				>
 					{selectedOption ? props.children(selectedOption) : toSentenceCase(field.name)}
 				</PopoverTrigger>
-				<PopoverContent className="w-(--radix-popover-trigger-width) p-0">
+				{/* oxlint-disable-next-line shadcn/no-restyle -- the Command fills the popover edge to edge, and PopoverContent has no unpadded size. */}
+				<PopoverContent className="w-(--anchor-width) p-0">
 					<Command>
 						<CommandInput placeholder={`Search ${toSentenceCase(field.name)}...`} />
 						<CommandList>

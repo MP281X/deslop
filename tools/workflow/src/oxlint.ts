@@ -1,165 +1,33 @@
-import {Array, pipe} from 'effect'
+import {Array} from 'effect'
 
 import {definePlugin} from '@oxlint/plugins'
 import {defineConfig} from 'oxlint'
 
 import {noArrayWrapTernary} from './rules/no-array-wrap-ternary.ts'
 import {noConstantFunction} from './rules/no-constant-function.ts'
+import {noDeepPipe} from './rules/no-deep-pipe.ts'
+import {noErrorMessageAssertion} from './rules/no-error-message-assertion.ts'
 import {noFakeRefState} from './rules/no-fake-ref-state.ts'
-import {noModuleMocking} from './rules/no-module-mocking.ts'
+import {noNativeEmptinessCheck} from './rules/no-native-emptiness-check.ts'
+import {noNativeMethodCall} from './rules/no-native-method-call.ts'
 import {noReadonlyTypeSyntax} from './rules/no-readonly-type-syntax.ts'
 import {noRedundantUseRefNullType} from './rules/no-redundant-use-ref-null-type.ts'
 import {noStoredSchemaOperation} from './rules/no-stored-schema-operation.ts'
 import {noTrivialIndirection} from './rules/no-trivial-indirection.ts'
 import {noTypeof} from './rules/no-typeof.ts'
 import {noUndestructuredUseState} from './rules/no-undestructured-use-state.ts'
+import {noUnexplainedDisable} from './rules/no-unexplained-disable.ts'
 import {noUnvalidatedJsonDecode} from './rules/no-unvalidated-json-decode.ts'
 import {schemaTypePair} from './rules/schema-type-pair.ts'
 
-const effectModuleObjects = [
-	'Array',
-	'AsyncResult',
-	'Atom',
-	'AtomRpc',
-	'BigDecimal',
-	'Boolean',
-	'Cause',
-	'Channel',
-	'ChildProcess',
-	'ChildProcessSpawner',
-	'Chunk',
-	'Clock',
-	'Config',
-	'ConfigProvider',
-	'Context',
-	'DateTime',
-	'Duration',
-	'Effect',
-	'Encoding',
-	'Equal',
-	'Exit',
-	'FetchHttpClient',
-	'Fiber',
-	'FiberMap',
-	'FiberSet',
-	'FileSystem',
-	'Function',
-	'Hash',
-	'HashMap',
-	'HashSet',
-	'HttpClient',
-	'HttpMiddleware',
-	'HttpRouter',
-	'HttpServer',
-	'HttpServerRequest',
-	'HttpServerResponse',
-	'HttpStaticServer',
-	'Iterable',
-	'Layer',
-	'Match',
-	'MutableHashMap',
-	'Number',
-	'Option',
-	'Order',
-	'Path',
-	'Predicate',
-	'Prompt',
-	'PubSub',
-	'Random',
-	'Record',
-	'Redacted',
-	'Ref',
-	'Request',
-	'Response',
-	'RcMap',
-	'Rpc',
-	'RpcGroup',
-	'RpcSerialization',
-	'RpcServer',
-	'Schedule',
-	'Schema',
-	'SchemaGetter',
-	'SchemaTransformation',
-	'Scope',
-	'Semaphore',
-	'Socket',
-	'Stream',
-	'String',
-	'Struct',
-	'SubscriptionRef',
-	'Tool',
-	'Toolkit',
-	'Tuple',
-	'path'
-]
-
-const effectPropertyRestrictions = pipe(
-	[
-		'at',
-		'catch',
-		'charAt',
-		'charCodeAt',
-		'codePointAt',
-		'concat',
-		'endsWith',
-		'entries',
-		'every',
-		'fill',
-		'filter',
-		'finally',
-		'find',
-		'findIndex',
-		'findLast',
-		'findLastIndex',
-		'flat',
-		'flatMap',
-		'forEach',
-		'includes',
-		'indexOf',
-		'join',
-		'keys',
-		'lastIndexOf',
-		'localeCompare',
-		'map',
-		'match',
-		'matchAll',
-		'normalize',
-		'padEnd',
-		'padStart',
-		'pop',
-		'push',
-		'reduce',
-		'reduceRight',
-		'repeat',
-		'replace',
-		'replaceAll',
-		'reverse',
-		'search',
-		'shift',
-		'slice',
-		'some',
-		'sort',
-		'splice',
-		'split',
-		'startsWith',
-		'substring',
-		'then',
-		'toLocaleLowerCase',
-		'toLocaleUpperCase',
-		'toLowerCase',
-		'toReversed',
-		'toSorted',
-		'toSpliced',
-		'toUpperCase',
-		'trim',
-		'trimEnd',
-		'trimStart',
-		'unshift',
-		'values',
-		'with'
-	],
-	Array.map(property => ({allowObjects: effectModuleObjects, message: 'Use an Effect module function.', property}))
-)
+const reactLegacyApis = ['Component', 'PureComponent', 'createRef', 'forwardRef', 'memo', 'useCallback', 'useMemo']
+const reactLegacyMessage = 'Use React 19 function components with refs as props; React Compiler owns memoization.'
+const mapMessage =
+	'Use HashMap, or MutableHashMap for local mutation; for identity keys, wrap objects the code owns in Equal.byReferenceUnsafe, which marks them reference-compared globally.'
+const runMessage =
+	'Run the entry point with NodeRuntime.runMain, or bridge a Promise an external contract demands once, where it is returned, with Effect.runPromiseWith(Context.empty()).'
+const setMessage =
+	'Use HashSet, or MutableHashSet for local mutation; for identity keys, wrap objects the code owns in Equal.byReferenceUnsafe, which marks them reference-compared globally.'
 
 export const oxlint = defineConfig({
 	categories: {
@@ -173,13 +41,15 @@ export const oxlint = defineConfig({
 	},
 	ignorePatterns: ['**/node_modules/**', '**/dist/**', '**/*.gen.ts'],
 	jsPlugins: [
-		{name: '@deslop/workflow', specifier: '@deslop/workflow'},
-		{name: 'react-doctor', specifier: 'oxlint-plugin-react-doctor'}
+		{name: '@deslop/workflow', specifier: import.meta.url},
+		{name: 'react-doctor', specifier: import.meta.resolve('oxlint-plugin-react-doctor')},
+		{name: 'shadcn', specifier: import.meta.resolve('@shadcn/lint')}
 	],
 	options: {denyWarnings: true, reportUnusedDisableDirectives: 'deny', typeAware: true, typeCheck: true},
 	overrides: [
 		{files: ['**/*.config.ts', '**/main.*'], rules: {'import/no-default-export': 'off', 'sort-keys': 'off'}},
 		{files: ['**/src/oxlint.ts'], rules: {'import/no-default-export': 'off'}},
+		{files: ['**/components/ui/**'], rules: {'shadcn/no-restyle': 'off', 'shadcn/require-static-classes': 'off'}},
 		{files: ['**/*.ts'], rules: {'react/rules-of-hooks': 'off'}},
 		{
 			files: ['**/*.tsx'],
@@ -196,18 +66,23 @@ export const oxlint = defineConfig({
 		// Effect and React forms that maintained rules cannot express.
 		'@deslop/workflow/no-array-wrap-ternary': 'error',
 		'@deslop/workflow/no-constant-function': 'error',
+		'@deslop/workflow/no-deep-pipe': 'error',
+		'@deslop/workflow/no-error-message-assertion': 'error',
 		'@deslop/workflow/no-fake-ref-state': 'error',
-		'@deslop/workflow/no-module-mocking': 'error',
+		'@deslop/workflow/no-native-emptiness-check': 'error',
+		'@deslop/workflow/no-native-method-call': 'error',
 		'@deslop/workflow/no-readonly-type-syntax': 'error',
 		'@deslop/workflow/no-redundant-use-ref-null-type': 'error',
 		'@deslop/workflow/no-stored-schema-operation': 'error',
 		'@deslop/workflow/no-trivial-indirection': 'error',
 		'@deslop/workflow/no-typeof': 'error',
 		'@deslop/workflow/no-undestructured-use-state': 'error',
+		'@deslop/workflow/no-unexplained-disable': 'error',
 		'@deslop/workflow/no-unvalidated-json-decode': 'error',
 		'@deslop/workflow/schema-type-pair': 'error',
 
 		// Effect owns native capabilities in and outside generators.
+		'effecttsgo/abort-controller-in-effect': 'error',
 		'effecttsgo/crypto-random-uuid': 'error',
 		'effecttsgo/crypto-random-uuid-in-effect': 'error',
 		'effecttsgo/global-console': 'error',
@@ -226,6 +101,8 @@ export const oxlint = defineConfig({
 		'effecttsgo/process-env-in-effect': 'error',
 
 		// Effect programs retain work, requirements, and one direct composition path.
+		'effecttsgo/acquire-release-disposable': 'error',
+		'effecttsgo/all-of-map-to-for-each': 'error',
 		'effecttsgo/async-function': 'error',
 		'effecttsgo/duplicate-package': 'error',
 		'effecttsgo/effect-do-notation': 'error',
@@ -245,16 +122,24 @@ export const oxlint = defineConfig({
 		'effecttsgo/lazy-effect': 'error',
 		'effecttsgo/lazy-promise-in-effect-sync': 'error',
 		'effecttsgo/leaking-requirements': 'error',
+		'effecttsgo/map-some-to-as-some': 'error',
+		'effecttsgo/match-effect-to-map-both': 'error',
+		'effecttsgo/match-effect-to-match': 'error',
 		'effecttsgo/missing-effect-context': 'error',
 		'effecttsgo/missing-layer-context': 'error',
 		'effecttsgo/missing-return-yield-star': 'error',
 		'effecttsgo/missing-star-in-yield-effect-gen': 'error',
 		'effecttsgo/multiple-effect-provide': 'error',
 		'effecttsgo/nested-effect-gen-yield': 'error',
+		'effecttsgo/option-match-to-from-option': 'error',
 		'effecttsgo/outdated-api': 'error',
+		'effecttsgo/prefer-succeed-some-or-none': 'error',
 		'effecttsgo/promise-in-effect-success': 'error',
+		'effecttsgo/provide-layer-succeed-to-provide-service': 'error',
+		'effecttsgo/race-first-with-sleep-to-timeout': 'error',
 		'effecttsgo/return-effect-in-gen': 'error',
 		'effecttsgo/run-effect-inside-effect': 'error',
+		'effecttsgo/run-of-exit-to-run-exit': 'error',
 		'effecttsgo/strict-effect-provide': 'error',
 		'effecttsgo/sync-to-succeed': 'error',
 		'effecttsgo/try-catch-in-effect-gen': 'error',
@@ -266,16 +151,23 @@ export const oxlint = defineConfig({
 
 		// Failures remain typed and recovery remains direct.
 		'effecttsgo/any-unknown-in-error-context': 'error',
+		'effecttsgo/catch-all-tag-dispatch-to-catch-tag': 'error',
 		'effecttsgo/catch-all-to-map-error': 'error',
 		'effecttsgo/catch-chain-to-first-success-of': 'error',
+		'effecttsgo/catch-conditional-refail-to-catch-if': 'error',
+		'effecttsgo/catch-die-to-or-die': 'error',
 		'effecttsgo/catch-tag-to-catch-reason': 'error',
 		'effecttsgo/catch-to-ignore': 'error',
 		'effecttsgo/catch-to-or-else-succeed': 'error',
 		'effecttsgo/catch-unfailable-effect': 'error',
+		'effecttsgo/flat-map-conditional-to-filter-or-fail': 'error',
+		'effecttsgo/global-error-in-effect-catch': 'error',
+		'effecttsgo/global-error-in-effect-failure': 'error',
 		'effecttsgo/missing-effect-error': 'error',
 		'effecttsgo/multiple-catch-tag': 'error',
 		'effecttsgo/redundant-map-error': 'error',
 		'effecttsgo/redundant-or-die': 'error',
+		'effecttsgo/timeout-catch-tag-to-timeout-or-else': 'error',
 		'effecttsgo/unknown-in-effect-catch': 'error',
 
 		// Services and schemas use current, sound class and identity forms.
@@ -284,83 +176,84 @@ export const oxlint = defineConfig({
 		'effecttsgo/generic-effect-services': 'error',
 		'effecttsgo/instance-of-schema': 'error',
 		'effecttsgo/new-schema-class': 'error',
+		'effecttsgo/obsolete-match-import': 'error',
+		'effecttsgo/obsolete-schema-import': 'error',
 		'effecttsgo/overridden-schema-constructor': 'error',
 		'effecttsgo/prefer-schema-type-property': 'error',
 		'effecttsgo/prefer-typed-schema-decoder': 'error',
+		'effecttsgo/redundant-schema-tag-identifier': 'error',
 		'effecttsgo/schema-literal-non-finite': 'error',
 		'effecttsgo/schema-number': 'error',
 		'effecttsgo/schema-struct-with-tag': 'error',
+		'effecttsgo/schema-sync-in-effect': 'error',
 		'effecttsgo/service-not-as-class': 'error',
 		'effecttsgo/unnecessary-typeof-type': 'error',
 
 		// TypeScript type shape
-		'@typescript-eslint/array-type': ['error', {default: 'array'}],
-		'@typescript-eslint/consistent-generic-constructors': 'error',
-		'@typescript-eslint/consistent-indexed-object-style': 'error',
-		'@typescript-eslint/consistent-type-assertions': [
+		'typescript/array-type': ['error', {default: 'array'}],
+		'typescript/consistent-generic-constructors': 'error',
+		'typescript/consistent-indexed-object-style': 'error',
+		'typescript/consistent-type-assertions': [
 			'error',
 			{arrayLiteralTypeAssertions: 'never', assertionStyle: 'never', objectLiteralTypeAssertions: 'never'}
 		],
-		'@typescript-eslint/consistent-type-definitions': ['error', 'type'],
-		'@typescript-eslint/consistent-type-exports': 'error',
-		'@typescript-eslint/consistent-type-imports': [
-			'error',
-			{fixStyle: 'separate-type-imports', prefer: 'type-imports'}
-		],
-		'@typescript-eslint/method-signature-style': 'error',
-		'@typescript-eslint/prefer-function-type': 'error',
+		'typescript/consistent-type-definitions': ['error', 'type'],
+		'typescript/consistent-type-exports': 'error',
+		'typescript/consistent-type-imports': ['error', {fixStyle: 'separate-type-imports', prefer: 'type-imports'}],
+		'typescript/method-signature-style': 'error',
+		'typescript/prefer-function-type': 'error',
 
 		// TypeScript correctness
-		'@typescript-eslint/no-array-delete': 'error',
-		'@typescript-eslint/no-base-to-string': 'error',
-		'@typescript-eslint/no-confusing-void-expression': 'error',
-		'@typescript-eslint/no-deprecated': 'error',
-		'@typescript-eslint/no-duplicate-type-constituents': 'error',
-		'@typescript-eslint/no-dynamic-delete': 'error',
-		'@typescript-eslint/no-empty-object-type': 'error',
-		'@typescript-eslint/no-explicit-any': 'error',
-		'@typescript-eslint/no-floating-promises': 'error',
-		'@typescript-eslint/no-import-type-side-effects': 'error',
-		'@typescript-eslint/no-inferrable-types': 'error',
-		'@typescript-eslint/no-invalid-void-type': 'error',
-		'@typescript-eslint/no-misused-promises': ['error', {checksVoidReturn: false}],
-		'@typescript-eslint/no-misused-spread': 'error',
-		'@typescript-eslint/no-namespace': ['error', {allowDeclarations: true}],
-		'@typescript-eslint/no-non-null-assertion': 'error',
-		'@typescript-eslint/no-redundant-type-constituents': 'error',
-		'@typescript-eslint/no-require-imports': 'error',
-		'@typescript-eslint/no-this-alias': 'error',
-		'@typescript-eslint/no-unnecessary-boolean-literal-compare': 'error',
-		'@typescript-eslint/no-unnecessary-condition': 'error',
-		'@typescript-eslint/no-unnecessary-template-expression': 'error',
-		'@typescript-eslint/no-unnecessary-type-arguments': 'error',
-		'@typescript-eslint/no-unnecessary-type-constraint': 'error',
-		'@typescript-eslint/no-unnecessary-type-conversion': 'error',
-		'@typescript-eslint/no-unnecessary-type-parameters': 'error',
-		'@typescript-eslint/no-unsafe-argument': 'error',
-		'@typescript-eslint/no-unsafe-assignment': 'error',
-		'@typescript-eslint/no-unsafe-call': 'error',
-		'@typescript-eslint/no-unsafe-declaration-merging': 'error',
-		'@typescript-eslint/no-unsafe-function-type': 'error',
-		'@typescript-eslint/no-unsafe-member-access': 'error',
-		'@typescript-eslint/no-unsafe-return': 'error',
-		'@typescript-eslint/no-useless-empty-export': 'error',
-		'@typescript-eslint/unified-signatures': 'error',
 		'typescript/await-thenable': 'error',
+		'typescript/no-array-delete': 'error',
+		'typescript/no-base-to-string': 'error',
+		'typescript/no-confusing-void-expression': 'error',
+		'typescript/no-deprecated': 'error',
+		'typescript/no-duplicate-type-constituents': 'error',
+		'typescript/no-dynamic-delete': 'error',
+		'typescript/no-empty-object-type': 'error',
+		'typescript/no-explicit-any': 'error',
+		'typescript/no-floating-promises': 'error',
+		'typescript/no-import-type-side-effects': 'error',
+		'typescript/no-inferrable-types': 'error',
+		'typescript/no-invalid-void-type': 'error',
+		'typescript/no-misused-promises': ['error', {checksVoidReturn: false}],
+		'typescript/no-misused-spread': 'error',
+		'typescript/no-namespace': ['error', {allowDeclarations: true}],
+		'typescript/no-non-null-assertion': 'error',
+		'typescript/no-redundant-type-constituents': 'error',
+		'typescript/no-require-imports': 'error',
+		'typescript/no-this-alias': 'error',
+		'typescript/no-unnecessary-boolean-literal-compare': 'error',
+		'typescript/no-unnecessary-condition': 'error',
 		'typescript/no-unnecessary-qualifier': 'error',
+		'typescript/no-unnecessary-template-expression': 'error',
+		'typescript/no-unnecessary-type-arguments': 'error',
+		'typescript/no-unnecessary-type-constraint': 'error',
+		'typescript/no-unnecessary-type-conversion': 'error',
+		'typescript/no-unnecessary-type-parameters': 'error',
+		'typescript/no-unsafe-argument': 'error',
+		'typescript/no-unsafe-assignment': 'error',
+		'typescript/no-unsafe-call': 'error',
+		'typescript/no-unsafe-declaration-merging': 'error',
+		'typescript/no-unsafe-function-type': 'error',
+		'typescript/no-unsafe-member-access': 'error',
+		'typescript/no-unsafe-return': 'error',
+		'typescript/no-useless-empty-export': 'error',
 		'typescript/no-wrapper-object-types': 'error',
 		'typescript/unbound-method': 'error',
+		'typescript/unified-signatures': 'error',
 
 		// TypeScript preferences
-		'@typescript-eslint/prefer-as-const': 'error',
-		'@typescript-eslint/prefer-nullish-coalescing': 'error',
-		'@typescript-eslint/prefer-optional-chain': 'error',
+		'typescript/prefer-as-const': 'error',
+		'typescript/prefer-nullish-coalescing': 'error',
+		'typescript/prefer-optional-chain': 'error',
 
 		// TypeScript expression boundaries
-		'@typescript-eslint/restrict-plus-operands': 'error',
-		'@typescript-eslint/restrict-template-expressions': 'error',
-		'@typescript-eslint/strict-boolean-expressions': 'error',
-		'@typescript-eslint/strict-void-return': 'error',
+		'typescript/restrict-plus-operands': 'error',
+		'typescript/restrict-template-expressions': 'error',
+		'typescript/strict-boolean-expressions': 'error',
+		'typescript/strict-void-return': 'error',
 
 		// JavaScript style
 		'arrow-body-style': ['error', 'as-needed'],
@@ -377,23 +270,33 @@ export const oxlint = defineConfig({
 		'import/no-duplicates': 'error',
 		'import/no-empty-named-blocks': 'error',
 		'import/no-mutable-exports': 'error',
+		'import/no-namespace': ['error', {ignore: ['[!#./]*', '[!#./]*/**']}],
 		'import/no-relative-parent-imports': 'error',
 		'import/no-self-import': 'error',
 		'no-restricted-imports': [
 			'error',
 			{
 				paths: [
-					{
-						importNames: ['Component', 'PureComponent', 'createRef', 'forwardRef', 'memo', 'useCallback', 'useMemo'],
-						message: 'Use React 19 function components and let React Compiler own memoization.',
-						name: 'react'
-					}
+					{importNames: reactLegacyApis, message: reactLegacyMessage, name: 'react'},
+					{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name: 'vitest'},
+					{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name: '@effect/vitest'}
 				],
-				patterns: [{message: 'Use public package exports.', regex: '^@[^/]+/[^/]+/(?:src|lib)(?:/|$)'}]
+				patterns: [
+					{message: 'Use public package exports.', regex: '^@[^/]+/[^/]+/(?:src|lib)(?:/|$)'},
+					{message: 'Use glob from the FileSystem service.', regex: '^glob(?:/|$)'},
+					{message: 'Use effect/unstable/cli.', regex: '^(?:commander|yargs)(?:/|$)'},
+					{message: 'Use randomUUIDv4 from the Crypto service.', regex: '^uuid(?:/|$)'},
+					{message: 'Use HttpClient.', regex: '^(?:axios|node-fetch)(?:/|$)'},
+					{message: 'Use Config.', regex: '^dotenv(?:/|$)'},
+					{message: 'Use ChildProcess from effect/unstable/process.', regex: '^execa(?:/|$)'},
+					{message: 'Use the concurrency option of Effect.all or Effect.forEach.', regex: '^p-limit(?:/|$)'}
+				]
 			}
 		],
 
 		// JavaScript correctness
+		'max-depth': ['error', 3],
+		'max-nested-callbacks': ['error', 6],
 		'no-cond-assign': 'error',
 		'no-continue': 'error',
 		'no-control-regex': 'error',
@@ -423,44 +326,35 @@ export const oxlint = defineConfig({
 			'Array',
 			'Boolean',
 			'Error',
-			'Map',
+			{message: mapMessage, name: 'Map'},
 			'Number',
 			'Object',
 			'Promise',
 			'Reflect',
-			'Set',
+			{message: setMessage, name: 'Set'},
 			'String',
-			'WeakMap',
-			'WeakSet',
 			'global',
 			'globalThis'
 		],
 		'no-restricted-properties': [
 			'error',
 			{message: 'Use standalone pipe.', property: 'pipe'},
-			...effectPropertyRestrictions,
 			{allowObjects: ['Predicate'], message: 'Use Predicate.hasProperty.', property: 'hasOwnProperty'},
-			{message: 'Use an owned runtime.', object: 'Effect', property: 'runFork'},
-			{message: 'Use an owned runtime.', object: 'Effect', property: 'runPromise'},
-			{message: 'Use an owned runtime.', object: 'Effect', property: 'runPromiseExit'},
-			{message: 'Use an owned runtime.', object: 'Effect', property: 'runSync'},
-			{message: 'Use an owned runtime.', object: 'Effect', property: 'runSyncExit'},
+			{message: runMessage, object: 'Effect', property: 'runFork'},
+			{message: runMessage, object: 'Effect', property: 'runPromise'},
+			{message: runMessage, object: 'Effect', property: 'runPromiseExit'},
+			{message: runMessage, object: 'Effect', property: 'runSync'},
+			{message: runMessage, object: 'Effect', property: 'runSyncExit'},
 			{message: 'Use Number.max.', object: 'Math', property: 'max'},
 			{message: 'Use Number.min.', object: 'Math', property: 'min'},
 			{message: 'Use Number.round.', object: 'Math', property: 'round'},
-			{message: 'React Compiler owns memoization.', object: 'React', property: 'memo'},
-			{message: 'React Compiler owns memoization.', object: 'React', property: 'useMemo'},
-			{message: 'React Compiler owns memoization.', object: 'React', property: 'useCallback'},
-			{message: 'Pass refs as props in React 19.', object: 'React', property: 'forwardRef'},
-			{message: 'Use useRef in function components.', object: 'React', property: 'createRef'},
-			{message: 'Use function components.', object: 'React', property: 'Component'},
-			{message: 'Use function components.', object: 'React', property: 'PureComponent'},
+			...Array.map(reactLegacyApis, property => ({message: reactLegacyMessage, object: 'React', property})),
 			{message: 'Use Schema.Struct.', object: 'Schema', property: 'Class'},
 			{message: 'Use a branded schema.', object: 'Schema', property: 'Opaque'},
 			{message: 'Use Schema.Struct.', object: 'Schema', property: 'TaggedClass'},
-			{message: 'Use schema-backed data.', object: 'Data', property: 'Class'},
+			{message: 'Use Schema.Struct.', object: 'Data', property: 'Class'},
 			{message: 'Use Schema.TaggedError.', object: 'Data', property: 'Error'},
-			{message: 'Use schema-backed data.', object: 'Data', property: 'TaggedClass'},
+			{message: 'Use Schema.Struct.', object: 'Data', property: 'TaggedClass'},
 			{message: 'Use Schema.TaggedError.', object: 'Data', property: 'TaggedError'}
 		],
 		'no-self-assign': 'error',
@@ -582,6 +476,14 @@ export const oxlint = defineConfig({
 		'react/void-dom-elements-no-children': 'error',
 		'react/void-use-memo': 'error',
 
+		// shadcn design-system classes
+		'shadcn/no-arbitrary-values': 'error',
+		'shadcn/no-inline-styles': 'error',
+		'shadcn/no-raw-colors': 'error',
+		'shadcn/no-restyle': ['error', {allow: ['layout']}],
+		'shadcn/no-unknown-classes': 'error',
+		'shadcn/require-static-classes': 'error',
+
 		// JavaScript object order
 		'sort-keys': ['error', 'asc', {allowLineSeparatedGroups: true, natural: true}],
 
@@ -595,16 +497,13 @@ export const oxlint = defineConfig({
 					Date: 'Use DateTime.',
 					Error: 'Use Schema.TaggedError.',
 					Iterable: 'Use T[].',
-					Map: 'Use HashMap.',
+					Map: mapMessage,
 					Promise: 'Use Effect.',
-					Readonly: 'Use a mutable type shape.',
 					ReadonlyArray: 'Use T[].',
-					ReadonlyMap: 'Use HashMap.',
-					ReadonlySet: 'Use HashSet.',
-					Set: 'Use HashSet.',
-					WeakMap: 'Use Effect-owned state.',
-					WeakSet: 'Use Effect-owned state.',
-					undefined: 'Use an optional property, optional parameter, inference, or Option.'
+					ReadonlyMap: mapMessage,
+					ReadonlySet: setMessage,
+					Set: setMessage,
+					undefined: 'Use an optional property or parameter, or let inference supply undefined.'
 				}
 			}
 		],
@@ -616,6 +515,7 @@ export const oxlint = defineConfig({
 		],
 
 		// Unicorn
+		'unicorn/filename-case': 'error',
 		'unicorn/no-immediate-mutation': 'error',
 		'unicorn/no-null': 'error',
 		'unicorn/no-object-as-default-parameter': 'error',
@@ -631,7 +531,7 @@ export const oxlint = defineConfig({
 		// JavaScript globals
 		'use-isnan': 'error'
 	},
-	settings: {react: {version: '19.0'}}
+	settings: {react: {version: '19.0'}, shadcn: {ui: ['@deslop/components/ui', '@dual/ui/components']}}
 })
 
 export default definePlugin({
@@ -639,14 +539,18 @@ export default definePlugin({
 	rules: {
 		'no-array-wrap-ternary': noArrayWrapTernary,
 		'no-constant-function': noConstantFunction,
+		'no-deep-pipe': noDeepPipe,
+		'no-error-message-assertion': noErrorMessageAssertion,
 		'no-fake-ref-state': noFakeRefState,
-		'no-module-mocking': noModuleMocking,
+		'no-native-emptiness-check': noNativeEmptinessCheck,
+		'no-native-method-call': noNativeMethodCall,
 		'no-readonly-type-syntax': noReadonlyTypeSyntax,
 		'no-redundant-use-ref-null-type': noRedundantUseRefNullType,
 		'no-stored-schema-operation': noStoredSchemaOperation,
 		'no-trivial-indirection': noTrivialIndirection,
 		'no-typeof': noTypeof,
 		'no-undestructured-use-state': noUndestructuredUseState,
+		'no-unexplained-disable': noUnexplainedDisable,
 		'no-unvalidated-json-decode': noUnvalidatedJsonDecode,
 		'schema-type-pair': schemaTypePair
 	}

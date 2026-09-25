@@ -47,7 +47,7 @@ export const noArrayWrapTernary = defineRule({
 	create: context => ({
 		ConditionalExpression: node => {
 			if (restatesArrayEnsure({context, node})) {
-				context.report({message: 'Array.ensure wraps a value or keeps an array; the ternary restates it.', node})
+				context.report({message: 'Use Array.ensure; the ternary restates it.', node})
 			}
 		}
 	}),

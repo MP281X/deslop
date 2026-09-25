@@ -36,8 +36,7 @@ export function Mermaid(props: {children: string; className?: string}) {
 
 	return (
 		<div
-			// Mermaid output is sanitized immediately before this React HTML boundary.
-			// oxlint-disable-next-line react/no-danger
+			// oxlint-disable-next-line react/no-danger -- Mermaid output is sanitized immediately before this React HTML boundary.
 			dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(result.value.svg)}}
 			className={cn(
 				'bg-muted/30 overflow-hidden p-4 [&_svg]:mx-auto [&_svg]:h-auto [&_svg]:max-w-full',

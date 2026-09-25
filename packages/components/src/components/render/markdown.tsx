@@ -35,8 +35,7 @@ export function Markdown(props: {children: string; className?: string}) {
 					Match.orElse(other => (
 						<div
 							key={`${other.type}:${index}:${other.raw}`}
-							// Marked output is sanitized immediately before this React HTML boundary.
-							// oxlint-disable-next-line react/no-danger
+							// oxlint-disable-next-line react/no-danger -- Marked output is sanitized immediately before this React HTML boundary.
 							dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(marked.parse(other.raw, {async: false}))}}
 						/>
 					))

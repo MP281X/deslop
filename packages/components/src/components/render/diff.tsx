@@ -199,6 +199,7 @@ function CommentAnnotation(props: {
 
 	if (editing) {
 		return (
+			// oxlint-disable-next-line shadcn/no-arbitrary-values -- no grid-cols scale step gives a shrinkable body column between two auto columns.
 			<div className="border-border/70 bg-muted/70 text-foreground box-border grid w-full max-w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 border-y px-2 py-2">
 				<div className="border-border bg-background text-muted-foreground inline-flex shrink-0 border p-1">
 					{props.comment.source === 'github' ? (
@@ -212,7 +213,7 @@ function CommentAnnotation(props: {
 						ref={inputRef}
 						defaultValue={props.comment.body}
 						placeholder="Add comment"
-						className="font-inherit block min-h-16 w-full resize-y border-0 bg-transparent p-0 text-inherit outline-none"
+						className="block min-h-16 w-full resize-y border-0 bg-transparent p-0 text-inherit outline-none"
 						onClick={event => {
 							event.stopPropagation()
 						}}
@@ -237,6 +238,7 @@ function CommentAnnotation(props: {
 	}
 
 	return (
+		// oxlint-disable-next-line shadcn/no-arbitrary-values -- no grid-cols scale step gives a shrinkable body column between two auto columns.
 		<div className="border-border/70 bg-muted/70 text-foreground box-border grid w-full max-w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 border-y px-2 py-2">
 			<div className="border-border bg-background text-muted-foreground inline-flex shrink-0 border p-1">
 				{props.comment.source === 'github' ? (
@@ -453,7 +455,7 @@ export function PatchDiff(props: {
 		),
 		Match.orElse(() => (
 			<div className="text-muted-foreground flex h-full items-center justify-center text-sm">
-				<Spinner className="mr-2 size-3 border opacity-60" />
+				<Spinner variant="subtle" className="mr-2 size-3" />
 				Loading file
 			</div>
 		))

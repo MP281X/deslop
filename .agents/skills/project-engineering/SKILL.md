@@ -35,25 +35,6 @@ apps/portfolio/src
 └── main.client.tsx          // makeRouter, Register, createRoot
 ```
 
-```
-// bad — "improve the folder/files structure, I hate it"
-tools/oxlint-rules/                       // rules apart from their config
-  src/oxlint-plugin.ts                    // ten rules in one file
-  src/oxlint-plugin.test.ts
-tools/workflow/
-  assets/claude/, codex/, skills/         // source beside src
-  src/main.ts                             // name says nothing
-  package.json                            // scripts and exports nothing consumes
-
-// good — every source under src/; tsconfig.json is the exported base; package.json holds files, exports, bin, and one script
-tools/workflow/
-  src/
-    agents/claude/, agents/codex/, agents/skills/engineering/SKILL.md
-    install.ts
-  tsconfig.json
-  package.json
-```
-
 ## Keys
 
 ```ts
@@ -211,10 +192,10 @@ vp run upgrade
 tools/workflow/src/rules/*.ts             // effecttsgo already ships this rule
 
 // good — one owner per enforcement surface
-tools/workflow/tsconfig.json              // types; the root tsconfig.json keeps only jsx, lib, types and exclude
-tools/workflow/src/oxlint.ts              // generic oxlint rules and the plugin default export, including the scoped-source import ban; vite.config.ts keeps ignores, overrides, repo plugins, env, the whole fmt config and the @deslop import group
+tools/workflow                            // types, Oxlint config, and custom rules; the workflow skill maps its files
+tsconfig.json                             // only jsx, lib, types and exclude
+vite.config.ts                            // ignores, overrides, repo plugins, env, the whole fmt config and the @deslop import group
 .fallowrc.json                            // dead code
-tools/workflow/src/rules/*.ts             // custom Effect and React forms, one file per rule, fixtures in rules.test.ts
 ```
 
 ## Fallow

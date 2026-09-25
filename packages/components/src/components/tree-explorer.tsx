@@ -10,6 +10,7 @@ export function TreeExplorerSection(props: {label?: React.ReactNode; className?:
 	return (
 		<section className={cn('flex flex-col gap-1', props.className)}>
 			{Predicate.isNotUndefined(props.label) && (
+				// oxlint-disable-next-line shadcn/no-arbitrary-values -- no grid-cols scale step gives a shrinkable label column beside an auto column.
 				<div className="text-muted-foreground grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 pt-2 font-normal">
 					{props.label}
 				</div>
@@ -28,9 +29,11 @@ export function TreeExplorerRow(props: {
 	children: React.ReactNode
 }) {
 	const className = cn(
-		'text-muted-foreground hover:bg-muted/60 hover:text-foreground grid h-7 w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-left font-normal',
+		// oxlint-disable-next-line shadcn/no-arbitrary-values -- no grid-cols scale step gives a shrinkable label column beside an auto column.
+		'text-muted-foreground hover:bg-muted/60 hover:text-foreground grid h-7 w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 pr-2 pl-3 text-left font-normal',
 		props.selected === true &&
-			'bg-muted text-foreground hover:bg-muted hover:text-foreground shadow-[inset_1px_0_0_hsl(var(--primary))]'
+			// oxlint-disable-next-line shadcn/no-arbitrary-values -- no shadow scale step draws a 1px inset accent bar on the left edge.
+			'bg-muted text-foreground hover:bg-muted shadow-[inset_1px_0_0_var(--color-primary)]'
 	)
 	const label = (
 		<span className="flex h-full min-w-0 flex-1 items-center gap-1.5">
@@ -45,12 +48,7 @@ export function TreeExplorerRow(props: {
 
 	if (Predicate.isNotUndefined(props.onClick) && Predicate.isNotUndefined(props.actions)) {
 		return (
-			<div
-				aria-current={props.selected === true ? 'page' : undefined}
-				className={className}
-				style={{paddingLeft: 12, paddingRight: 8}}
-				title={props.title}
-			>
+			<div aria-current={props.selected === true ? 'page' : undefined} className={className} title={props.title}>
 				<button
 					type="button"
 					onClick={props.onClick}
@@ -70,7 +68,6 @@ export function TreeExplorerRow(props: {
 				aria-current={props.selected === true ? 'page' : undefined}
 				onClick={props.onClick}
 				className={className}
-				style={{paddingLeft: 12, paddingRight: 8}}
 				title={props.title}
 			>
 				{label}
@@ -80,7 +77,7 @@ export function TreeExplorerRow(props: {
 	}
 
 	return (
-		<div className={className} style={{paddingLeft: 12, paddingRight: 8}} title={props.title}>
+		<div className={className} title={props.title}>
 			{label}
 			{props.actions}
 		</div>

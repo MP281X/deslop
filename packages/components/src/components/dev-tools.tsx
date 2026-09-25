@@ -4,7 +4,6 @@ import {useHotkey} from '@tanstack/react-hotkeys'
 import {useState} from 'react'
 
 import {Button} from '#components/ui/button.tsx'
-import {cn} from '#lib/utils.ts'
 
 function Navigation<const Route extends string>(props: {
 	routes: [Route, ...Route[]]
@@ -29,23 +28,19 @@ function Navigation<const Route extends string>(props: {
 	})
 
 	return (
-		<nav className={cn('fixed bottom-4 left-1/2 z-50 -translate-x-1/2')}>
+		<nav className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
 			<div className="border-border bg-background flex items-center gap-1 border px-1.5 py-1.5">
 				{Array.map(props.routes, (route, index) => (
 					<Button
 						key={route}
 						type="button"
-						variant="ghost"
-						size="icon-xs"
+						variant={index === value ? 'secondary' : 'ghost'}
+						size="sm"
 						aria-current={index === value ? 'page' : undefined}
 						onClick={() => {
 							select(index)
 						}}
-						className={cn(
-							'h-7 w-auto min-w-7 px-2',
-							index === value && 'bg-primary/15 text-primary',
-							index !== value && 'text-muted-foreground hover:bg-muted hover:text-foreground'
-						)}
+						className="min-w-7"
 					>
 						{pipe(
 							route,

@@ -24,7 +24,6 @@
 		"@types/react": "^19",
 		"@types/react-dom": "^19",
 		"fallow": "latest",
-		"oxlint-plugin-react-doctor": "latest",
 		"typescript": "latest",
 		"vite": "catalog:",
 		"vite-plus": "catalog:",

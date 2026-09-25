@@ -146,8 +146,6 @@ function getItems<TValue extends RichTextArea.Value>(
 	const noMatchScore = -1_000_000
 
 	return pipe(
-		// `values` is domain data, not a prototype collection operation.
-		// oxlint-disable-next-line eslint/no-restricted-properties
 		group.values,
 		Array.map(value => {
 			const query = String.toLowerCase(search.query)
@@ -338,8 +336,7 @@ function EditorPlugin<TValue extends RichTextArea.Value>(props: {
 						}
 
 						for (const file of files) {
-							// The synchronous Lexical command boundary requires an immediate collision-safe identifier.
-							// @effect-diagnostics-next-line cryptoRandomUUID:off
+							// @effect-diagnostics-next-line cryptoRandomUUID:off -- The synchronous Lexical command boundary requires an immediate collision-safe identifier.
 							const id = crypto.randomUUID()
 							props.setTokensMap(current => HashMap.set(current, id, {color: '#f59e0b', file, id, kind: 'file'}))
 
@@ -375,6 +372,7 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 	) => void
 	options?: Record<string, {color: string; values: TValue[]}>
 }) {
+	const [editor] = useLexicalComposerContext()
 	const [search, setSearch] = useState<{trigger: string; query: string}>()
 	return (
 		<LexicalTypeaheadMenuPlugin<Item<TValue>>
@@ -409,8 +407,7 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 					: null
 			}}
 			onSelectOption={(option, node, close) => {
-				// The synchronous Lexical selection boundary requires an immediate collision-safe identifier.
-				// @effect-diagnostics-next-line cryptoRandomUUID:off
+				// @effect-diagnostics-next-line cryptoRandomUUID:off -- The synchronous Lexical selection boundary requires an immediate collision-safe identifier.
 				const id = crypto.randomUUID()
 				props.setTokensMap(current => HashMap.set(current, id, {id, kind: 'entry', ...option.entry}))
 
@@ -420,8 +417,7 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 					.setMode('token')
 					.setStyle(`color: ${option.entry.color}`)
 
-				// Lexical owns this AST mutation API.
-				// oxlint-disable-next-line eslint/no-restricted-properties
+				// oxlint-disable-next-line @deslop/workflow/no-native-method-call -- Lexical owns this AST mutation API.
 				if (node) node.replace(token)
 
 				if (!node) {
@@ -444,20 +440,27 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 				return createPortal(
 					<Command
 						aria-label="Autocomplete suggestions"
-						className="border-input bg-card text-foreground h-auto w-full border-b"
+						value={pipe(
+							Array.get(menuProps.options, menuProps.selectedIndex ?? 0),
+							Option.match({onNone: () => '', onSome: option => option.key})
+						)}
+						// oxlint-disable-next-line shadcn/no-restyle -- the suggestions sit on the card surface above an input-colored rule, and Command has no variant for it.
+						className="border-input bg-card h-auto border-b"
 					>
 						<CommandList className="max-h-48">
 							{Array.map(menuProps.options, (option, index) => (
 								<CommandItem
 									tabIndex={0}
 									key={option.key}
-									id={`typeahead-item-${index}`}
 									ref={element => {
 										option.setRefElement(element)
+										if (element && index === menuProps.selectedIndex) {
+											editor.getRootElement()?.setAttribute('aria-activedescendant', element.id)
+										}
 									}}
 									value={option.key}
-									aria-selected={menuProps.selectedIndex === index}
-									className={cn('px-3', menuProps.selectedIndex === index && 'bg-muted')}
+									// oxlint-disable-next-line shadcn/no-restyle -- the suggestions inset wider than CommandItem's px-2, and CommandItem has no wider size.
+									className="px-3"
 									onMouseDown={event => {
 										event.preventDefault()
 									}}
@@ -473,7 +476,9 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 											props.children(option.entry)
 										) : (
 											<>
-												<span style={{color: option.entry.color}}>{option.entry.trigger}</span>
+												<span className="text-(--entry-color)" style={{'--entry-color': option.entry.color}}>
+													{option.entry.trigger}
+												</span>
 												<span className="text-foreground">{option.entry.value.label}</span>
 											</>
 										)}

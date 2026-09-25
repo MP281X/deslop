@@ -1,3 +1,4 @@
+/* oxlint-disable shadcn/no-arbitrary-values -- The page's 0.15-0.35em letter-spacing sits beyond tracking-widest, and its 26px trail grid, the grid's line gradient, and the auto/1fr shortcut columns have no scale step. */
 import {useAtomSet, useAtomSuspense} from '@effect/atom-react'
 
 import {Array, Effect, Function, HashMap, Number, Option, Predicate, Random, Stream, String, pipe} from 'effect'
@@ -85,7 +86,7 @@ function getDisplayCursorTarget(
 }
 
 function setCursorTransform(node: HTMLDivElement, x: number, y: number) {
-	node.style.setProperty('transform', `translate3d(${x}px, ${y}px, 0)`)
+	node.style.setProperty('--cursor-transform', `translate3d(${x}px, ${y}px, 0)`)
 }
 
 function createCursorMotion(target: {x: number; y: number}, viewport: {width: number; height: number}) {
@@ -290,15 +291,15 @@ function CursorEl(input: {
 	return (
 		<div
 			ref={nodeRef}
-			className="pointer-events-none fixed top-0 left-0 z-5 will-change-transform"
-			style={{transform: `translate3d(${initialMotion.x}px, ${initialMotion.y}px, 0)`}}
+			className="pointer-events-none fixed top-0 left-0 z-5 transform-(--cursor-transform) will-change-transform"
+			style={{
+				'--cursor-color': input.cursor.color,
+				'--cursor-transform': `translate3d(${initialMotion.x}px, ${initialMotion.y}px, 0)`
+			}}
 		>
 			<div className="flex items-center gap-1">
-				<MousePointer2 className="size-4" style={{color: input.cursor.color}} />
-				<span
-					className="bg-background text-foreground border px-1.5 py-1 font-mono text-[10px] whitespace-nowrap"
-					style={{borderColor: input.cursor.color}}
-				>
+				<MousePointer2 className="size-4 text-(--cursor-color)" />
+				<span className="bg-background text-foreground border border-(--cursor-color) px-1.5 py-1 font-mono text-xs whitespace-nowrap">
 					{input.cursor.name}
 					{input.isMe ? ' (you)' : ''}
 				</span>
@@ -358,7 +359,7 @@ function HeroSection(input: {registerSection: (id: number, node: HTMLElement | n
 					Full-Stack TypeScript Developer
 				</p>
 
-				<div className="text-muted-foreground/60 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-center font-mono text-[10px] sm:text-[11px]">
+				<div className="text-muted-foreground/60 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-center font-mono text-xs">
 					<span>Moimacco (UD), Italy</span>
 					<span className="text-border/60">|</span>
 					<span>React · TypeScript · Effect · Real-time</span>
@@ -366,8 +367,8 @@ function HeroSection(input: {registerSection: (id: number, node: HTMLElement | n
 			</Panel>
 
 			<div className="text-muted-foreground/35 absolute bottom-8 flex flex-col items-center gap-1">
-				<span className="font-mono text-[10px] tracking-[0.3em] uppercase">scroll</span>
-				<span className="text-[12px]">↓</span>
+				<span className="font-mono text-xs tracking-[0.3em] uppercase">scroll</span>
+				<span className="text-sm">↓</span>
 			</div>
 		</Section>
 	)
@@ -436,7 +437,7 @@ function ProjectCard(input: {
 		<Panel className="flex h-full flex-col p-4 sm:p-5">
 			<div className="flex items-start justify-between gap-3">
 				<div>
-					<h3 className="text-foreground font-mono text-sm font-semibold tracking-[0.08em] uppercase">
+					<h3 className="text-foreground font-mono text-sm font-semibold tracking-widest uppercase">
 						{input.project.name}
 					</h3>
 					<p className="text-muted-foreground mt-1 font-mono text-xs">{input.project.role}</p>
@@ -453,11 +454,11 @@ function ProjectCard(input: {
 			</div>
 			<p className="text-foreground/90 mt-4 font-mono text-xs leading-6 sm:text-sm">{input.project.description}</p>
 			{Predicate.isNotUndefined(input.project.currentWork) && (
-				<p className="text-muted-foreground mt-4 font-mono text-[11px] leading-5">
+				<p className="text-muted-foreground mt-4 font-mono text-xs leading-5">
 					<span className="text-foreground/80">Working on:</span> {input.project.currentWork}
 				</p>
 			)}
-			<p className="text-muted-foreground/80 mt-auto pt-4 font-mono text-[10px]">{input.project.stack}</p>
+			<p className="text-muted-foreground/80 mt-auto pt-4 font-mono text-xs">{input.project.stack}</p>
 		</Panel>
 	)
 }
@@ -575,7 +576,7 @@ function ExperienceSection(input: {registerSection: (id: number, node: HTMLEleme
 					<Panel key={job.company} className="px-4 py-4 sm:px-5">
 						<div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
 							<div className="space-y-1">
-								<p className="text-foreground font-mono text-sm font-semibold tracking-[0.08em] uppercase">
+								<p className="text-foreground font-mono text-sm font-semibold tracking-widest uppercase">
 									{job.company}
 								</p>
 								<div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs sm:text-sm">
@@ -583,7 +584,7 @@ function ExperienceSection(input: {registerSection: (id: number, node: HTMLEleme
 									{job.note && <span className="text-muted-foreground/80">· {job.note}</span>}
 								</div>
 							</div>
-							<p className="text-muted-foreground font-mono text-[11px] sm:text-right">
+							<p className="text-muted-foreground font-mono text-xs sm:text-right">
 								{job.period} · {job.location}
 							</p>
 						</div>
@@ -635,9 +636,9 @@ function EducationSection(input: {registerSection: (id: number, node: HTMLElemen
 							<div className="flex flex-wrap items-baseline gap-x-3">
 								<span className="text-foreground font-mono text-sm font-semibold">{entry.school}</span>
 								<span className="text-muted-foreground font-mono text-xs sm:text-sm">{entry.degree}</span>
-								{entry.grade && <span className="text-muted-foreground/80 font-mono text-[10px]">({entry.grade})</span>}
+								{entry.grade && <span className="text-muted-foreground/80 font-mono text-xs">({entry.grade})</span>}
 							</div>
-							<span className="text-muted-foreground/80 font-mono text-[10px]">{entry.period}</span>
+							<span className="text-muted-foreground/80 font-mono text-xs">{entry.period}</span>
 						</div>
 						<p className="text-foreground/85 mt-2 font-mono text-xs leading-6 sm:text-sm">{entry.description}</p>
 					</Panel>
@@ -652,7 +653,7 @@ function EducationSection(input: {registerSection: (id: number, node: HTMLElemen
 						lang => (
 							<Panel key={lang.language} className="px-4 py-3">
 								<span className="text-foreground font-mono text-xs font-semibold">{lang.language}</span>
-								<span className="text-muted-foreground/80 ml-2 font-mono text-[10px]">{lang.level}</span>
+								<span className="text-muted-foreground/80 ml-2 font-mono text-xs">{lang.level}</span>
 							</Panel>
 						)
 					)}
@@ -681,15 +682,13 @@ function ContactSection(input: {registerSection: (id: number, node: HTMLElement 
 							target="_blank"
 							rel="noopener noreferrer"
 						>
-							<span className="text-muted-foreground text-[10px] tracking-[0.15em] uppercase">{item.label}</span>
+							<span className="text-muted-foreground text-xs tracking-[0.15em] uppercase">{item.label}</span>
 							<span className="text-foreground break-all">{item.value}</span>
 						</a>
 					)
 				)}
 			</div>
-			<p className="text-muted-foreground/70 mt-6 font-mono text-[10px]">
-				© 2026 Matteo Paludgnach · Moimacco (UD), Italy
-			</p>
+			<p className="text-muted-foreground/70 mt-6 font-mono text-xs">© 2026 Matteo Paludgnach · Moimacco (UD), Italy</p>
 		</Section>
 	)
 }
@@ -744,14 +743,7 @@ function RealtimeLayer(input: {
 
 	return (
 		<>
-			<div
-				className="pointer-events-none fixed inset-0 z-1"
-				style={{
-					backgroundImage:
-						'linear-gradient(to right, rgb(255 255 255 / 0.03) 1px, transparent 1px), linear-gradient(to bottom, rgb(255 255 255 / 0.03) 1px, transparent 1px)',
-					backgroundSize: '26px 26px'
-				}}
-			/>
+			<div className="pointer-events-none fixed inset-0 z-1 bg-[linear-gradient(to_right,color-mix(in_oklch,var(--color-foreground)_3%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklch,var(--color-foreground)_3%,transparent)_1px,transparent_1px)] bg-size-[26px_26px]" />
 			<TrailCanvas trails={portfolio.value.trails} viewport={input.viewport} />
 
 			{Array.map(portfolio.value.visitors, cursor => (
@@ -764,8 +756,8 @@ function RealtimeLayer(input: {
 				/>
 			))}
 
-			<div className="border-border/70 bg-background/95 pointer-events-none fixed bottom-3 left-3 z-50 flex items-center gap-2 border px-3 py-2 font-mono text-[11px] backdrop-blur-sm sm:bottom-4 sm:left-4">
-				<span className="size-2" style={{backgroundColor: identityColor}} />
+			<div className="border-border/70 bg-background/95 pointer-events-none fixed bottom-3 left-3 z-50 flex items-center gap-2 border px-3 py-2 font-mono text-xs backdrop-blur-sm sm:bottom-4 sm:left-4">
+				<span className="size-2 bg-(--identity-color)" style={{'--identity-color': identityColor}} />
 				<span className="text-primary">{Array.length(portfolio.value.visitors)}</span>
 				<span className="text-muted-foreground">
 					{Array.length(portfolio.value.visitors) === 1 ? 'visitor' : 'visitors'}

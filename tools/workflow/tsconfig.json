@@ -33,6 +33,8 @@
 
 		// build config
 		"noEmit": true,
-		"incremental": false
+		"incremental": false,
+
+		"plugins": [{"name": "@effect/language-service", "effectFn": ["span", "untraced"]}]
 	}
 }

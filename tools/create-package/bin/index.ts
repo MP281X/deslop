@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
-// Generator paths and CLI arguments are native Node boundaries.
-// @effect-diagnostics-next-line nodeBuiltinImport:off
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- Generator paths and CLI arguments are native Node boundaries.
 import {fileURLToPath} from 'node:url'
 import {parseArgs} from 'node:util'
 
@@ -30,23 +29,15 @@ function replaceDirectory(directory: IntakeDirectory, name: string): CreatedDire
 	)
 }
 
-function className(name: string) {
-	return pipe(name, String.split('-'), Array.map(String.capitalize), Array.join(''))
-}
-
-function replaceContent(content: string, name: string) {
-	return pipe(
-		content,
-		String.replaceAll('TemplatePackage', className(name)),
-		String.replaceAll('@deslop/template-package', `@deslop/${name}`),
-		String.replaceAll('../../../tsconfig.json', '../../tsconfig.json')
-	)
-}
-
 function replaceEntry(entry: IntakeEntry, name: string): CreatedEntry {
 	if (Array.isArray(entry)) {
 		const [content, metadata] = entry
-		const replaced = replaceContent(content, name)
+		const replaced = pipe(
+			content,
+			String.replaceAll('TemplatePackage', pipe(name, String.split('-'), Array.map(String.capitalize), Array.join(''))),
+			String.replaceAll('@deslop/template-package', `@deslop/${name}`),
+			String.replaceAll('../../../tsconfig.json', '../../tsconfig.json')
+		)
 		return Predicate.isUndefined(metadata) ? [replaced] : [replaced, metadata]
 	}
 
@@ -69,7 +60,6 @@ const parsedArguments = parseArgs({
 	options: {directory: {type: 'string'}, name: {type: 'string'}},
 	strict: false
 })
-// oxlint-disable-next-line eslint/no-restricted-properties -- node:util owns the external CLI argument boundary.
 const options = z.object({directory: z.string().optional(), name: Name}).parse(parsedArguments.values)
 const directory = options.directory ?? `../packages/${options.name}`
 
@@ -80,8 +70,7 @@ if (Predicate.isUndefined(options.directory)) {
 NodeRuntime.runMain(
 	pipe(
 		Effect.promise(() =>
-			// Bingo's non-generic CLI signature erases the concrete option schema.
-			// oxlint-disable-next-line @typescript-eslint/consistent-type-assertions
+			// oxlint-disable-next-line @typescript-eslint/consistent-type-assertions -- Bingo's non-generic CLI signature erases the concrete option schema.
 			runTemplateCLI(template as unknown as Template)
 		),
 		Effect.tap(status => Effect.sync(() => (process.exitCode = status)))

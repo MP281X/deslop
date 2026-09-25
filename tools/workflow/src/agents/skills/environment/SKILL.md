@@ -6,12 +6,16 @@ description: 'Use for facts about this host and the deslop and dual repositories
 ## Host
 
 - Debian 13, 8 CPUs, 23G RAM.
-- Scratch, clones, logs, and screenshots go under `~/.deslop/<task>/`, where `<task>` is the worktree directory name; never /tmp, a 12G RAM tmpfs.
+- Agents and the user reach it only by its DNS name, as `mp281x@dev.mp281x.xyz`, never by IP.
+- Scratch, clones, logs, and screenshots go under `~/.deslop/<task>/`, where `<task>` is the worktree directory name; never /tmp.
+- When a thread's work is done, everything it created is removed: its scratch under `~/.deslop/<task>/`, extra git worktrees and repository copies, scratch config homes, the process groups it started, previews included, and evaluation runs not kept as evidence. Kept: the shared clones in `~/.deslop/repos`, the thread's own t3 worktree while its request is open, and artifacts a handoff cites as evidence.
 - Shared turbo cache: `~/.cache/turbo` (`TURBO_CACHE_DIR` is set for agents).
-- Global tools: agent-browser (with Chrome), acli, gh (github.com, MP281X), glab (default host git.datapizza.tech), python and pip, jq, rg, sqlite3, bc, xxd.
+- Dedicated tools first: `rg` to search text, `jq` to process JSON, `node` to run JavaScript.
+- Other global tools: agent-browser (with Chrome), acli, gh (github.com, MP281X), glab (default host git.datapizza.tech), python and pip, sqlite3, bc, xxd.
 - `vp` and `vpx` for every package-manager and package-binary command, never npm, npx, pnpm, yarn, or bunx; `bun` runs only as the runtime the preview steps name.
 - Stop only process groups this thread started, with `kill -- -<pgid>`; take another free port instead of stopping another process.
 - Datapizza VPN: openvpn3 config `datapizza`, needed only for git.datapizza.tech; one device at a time and a browser sign-in.
+- A thread id the user gives is a t3 thread id. Its Claude session is the `session_id` in `~/.t3/userdata/logs/provider/events.<id>.log*`, with the transcript at `~/.claude/projects/<cwd-slug>/<session>.jsonl` and its agents under `<session>/subagents/`, where `<cwd-slug>` is the thread's `cwd` with `/` and `.` as `-`; a Codex thread's log names its rollout as `path`, under `~/.codex/sessions/`.
 
 ## Library clones
 
@@ -27,46 +31,50 @@ git -C <dir> reset --hard FETCH_HEAD
 - `/home/mp281x/deslop`, GitHub `MP281X/deslop`, default branch `main`.
 - pnpm 11.22 driven by `vp`.
 - Workspaces: `apps/*` (portfolio), `packages/*` (ai, components, runtime), `tools/*` (create-app, create-package, workflow).
+- shadcn UI components: `packages/components`.
 - CI: GitHub Actions job `build-and-deploy`.
 - Production services run from `~/.deslop/deploy`: traefik, collector, portfolio, jaeger, valentine.
-- Full local check: `vp run check`, then `vp run test`.
+- Full local check: `vp run fix`, `vp run check`, then `vp run test`.
 
-| Command            | Does                          |
-| ------------------ | ----------------------------- |
-| `vp install`       | install dependencies          |
-| `vp run check`     | vp check and fallow dead-code |
-| `vp run test`      | tests                         |
-| `vp run fix`       | format and autofix            |
-| `vp fmt <path>...` | format the given files        |
-| `vp run build`     | build                         |
+| Command                            | Does                                          |
+| ---------------------------------- | --------------------------------------------- |
+| `vp install`                       | install dependencies                          |
+| `vp run check`                     | vp check and fallow dead-code                 |
+| `vp run test`                      | tests                                         |
+| `vp run fix`                       | format and autofix                            |
+| `vp fmt <path>...`                 | format the given files                        |
+| `vp lint --format=agent <path>...` | lint the given files, one line per diagnostic |
+| `vp run build`                     | build                                         |
 
 ## dual
 
 - `/home/mp281x/dual`, `git.datapizza.tech/dual/dual`, default branch `master`, behind the VPN.
-- bun 1.3.14 driven by `vp`, turbo.
-- Services: opensandbox 8080, Postgres 55432, test Postgres 55433.
-- Each worktree runs on its own ports, set in its `.env` files (`packages/app/.env` `SERVER_URL`, `packages/playground/.env`); other worktrees' dev apps and previews keep theirs.
-- Local login: seeded by the `db:reset` script's `bun --filter @dual/core seed:user`; the credentials live in that script in `package.json`.
-- CI: GitLab pipelines.
+- bun 1.4.2 driven by `vp`, turbo.
+- shadcn UI components: `packages/ui`.
+- Services: opensandbox 127.0.0.1:8080, Postgres 55432, test Postgres 55433.
+- Each worktree runs on its own ports, set in its `.env` files: `SERVER_URL` in `packages/app/.env` (default 3825), and `DATABASE_URL`, `BETTER_AUTH_URL`, `SERVER_PUBLIC_URL`, `APP_ORIGIN`, and `DUAL_AGENT_GATEWAY_BASE_URL` in `packages/playground/.env`; the app dev server listens on 3000 from `vite dev --port 3000` in `packages/app/package.json`, so another port is a `--port` argument, not a `.env` value. Other worktrees' dev apps and previews keep theirs.
+- Local login: seeded by the `seed:user` arguments in the root `package.json` `db:reset` script, which hold the credentials.
+- CI: GitLab job `quality` (`.gitlab/quality.yml`).
+- Full local check: `vp run check`, then `vp run test`.
 
-| Command               | Does                                               |
-| --------------------- | -------------------------------------------------- |
-| `vp run init`         | env files, services via docker compose, migrations |
-| `vp run dev`          | app, playground, and worker through turbo          |
-| `vp run check-types`  | type check                                         |
-| `vp run lint`         | lint                                               |
-| `vp run fmt`          | format                                             |
-| `vpx oxfmt <path>...` | format the given files                             |
-| `vp run test`         | tests                                              |
-| `vp run verify`       | fmt, lint, check-types, test: the full local check |
-| `vp run build`        | build                                              |
+| Command                               | Does                                                                                                          |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `vp run init`                         | env files, effect-tsgo patch, opensandbox build, docker compose services, migrations                          |
+| `vp run dev`                          | app, playground, and worker through turbo; `dev:app`, `dev:backend`, `dev:server`, and `dev:worker` run parts |
+| `vp run db:reset`                     | recreate the services and database, migrate, and seed the local login                                         |
+| `vp run check`                        | oxfmt check and each package's oxlint                                                                         |
+| `vp run fix`                          | format and autofix                                                                                            |
+| `vpx oxfmt <path>...`                 | format the given files                                                                                        |
+| `vpx oxlint --format=agent <path>...` | from the package directory, lint the given files, one line per diagnostic                                     |
+| `vp run test`                         | tests                                                                                                         |
+| `vp run build`                        | build                                                                                                         |
 
 ## Preview (how the user tests)
 
-Dev mode over the VPS takes about 90 s and 25 MB per page, so the user tests a production preview of the branch.
+A production preview of the branch is the user's preferred way to test a web app.
 
 - Choose free ports with `ss -ltn`.
-- The user opens it with `ssh -N -L <port>:[::1]:<port> mp281x@77.237.236.132`, then http://localhost:<port>.
+- The user opens it with `ssh -N -L <port>:[::1]:<port> mp281x@dev.mp281x.xyz`, then http://localhost:<port>.
 
 dual, from the worktree root:
 
