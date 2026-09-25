@@ -372,6 +372,7 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 	) => void
 	options?: Record<string, {color: string; values: TValue[]}>
 }) {
+	const [editor] = useLexicalComposerContext()
 	const [search, setSearch] = useState<{trigger: string; query: string}>()
 	return (
 		<LexicalTypeaheadMenuPlugin<Item<TValue>>
@@ -453,6 +454,9 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 									key={option.key}
 									ref={element => {
 										option.setRefElement(element)
+										if (element && index === menuProps.selectedIndex) {
+											editor.getRootElement()?.setAttribute('aria-activedescendant', element.id)
+										}
 									}}
 									value={option.key}
 									// oxlint-disable-next-line shadcn/no-restyle -- the suggestions inset wider than CommandItem's px-2, and CommandItem has no wider size.
