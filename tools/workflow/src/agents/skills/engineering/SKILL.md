@@ -25,8 +25,8 @@ Every line not needed now slows the next change. Build the smallest thing that d
 - Send and store canonical data only; derive the rest where it is used, and surface each state once, where the user acts on it.
 - Touch only what the request needs; an unrelated improvement is a proposal for the user.
 - Behave correctly instead of building machinery, such as hooks, guards, or generators, to enforce behavior.
-- A refactor or mechanical pass keeps logic and behavior, except a difference that matters at no usage point and makes the code simpler: check every usage point, then record the difference, reported with the change. Any other behavior change is the user's decision, except a reachable bug's fix.
-- Fix a reachable bug, one that real input from an actual usage point triggers: check every consumer of the changed output and report it as a fixed bug. Handling for input no caller produces is deleted instead of fixed; anything that looks intentional, or that other code relies on, is a proposal.
+- A refactor or mechanical pass keeps logic and behavior, except two accepted differences: one that matters at no usage point and makes the code simpler, and one that applying a rule in this skill causes, such as an error keeping its cause, sorted keys, or Effect-native formatting, unless a usage point parses it; human-facing diagnostics, such as printed error text, are not a contract. Check every usage point, then record each accepted difference, reported with the change. Any other behavior change is the user's decision, except a reachable bug's fix.
+- Fix a reachable bug, one that real input from an actual usage point triggers: check every consumer of the changed output and report it as a fixed bug, its evidence the failing output line of its test case run before the fix, never a CLI or app run. Handling for input no caller produces is deleted instead of fixed; anything that looks intentional, or that other code relies on, is kept and reported as possibly intentional.
 - Improve performance in the code the change touches where you know how; measure beyond noise on a realistic input only when a change claims speed or keeps a slower-looking form.
 - Implement the definition the domain uses, such as a cycle for recursion, never the nearest syntactic proxy.
 - Before finishing, reread the diff and delete every line the outcome does not require: pass values instead of trackers, use the whole schema instead of picking every field, and delete checks and fallbacks for cases callers cannot produce, props, options, and docs beyond the minimum, tests the Tests section drops, and code an Effect helper replaces.
@@ -127,21 +127,19 @@ render-config.ts         // generates per-harness files from one source
 ## Types
 
 ```ts
-// good — inferred; only a recursive function is annotated; satisfies and as const are the only assertions
+// good — inferred; only a recursive function, or a callback whose branches TypeScript cannot unite, is annotated; satisfies and as const are the only assertions
 const decoded = yield* Schema.decodeEffect(LedgerFile)(yield* fs.readFileString(path))
 const balances = Array.reduce(decoded, HashMap.empty<Tag, BigDecimal.BigDecimal>(), sumByTag)
 function visit(node: Node): Result {
 	return visit(node.parent)
 }
+Array.flatMap(message.content, (part): (TextContent | ThinkingContent)[] => {
 return Effect.succeed([{text: part.text, type: 'text'} satisfies TextContent])
 export type Sandbox = ReturnType<typeof fromSdk>
 // bad — "are you sure this doesn't infer everything?"
 fn: RpcClient.runtime.fn<{onSuccess: (message: string) => void}>()(
 const Input = Schema.Struct({value: Schema.String}) satisfies Schema.Schema<Input>
 export type SandboxLike = {id: string; renew: (seconds: number) => Promise<unknown>} // a copy of an inferred shape
-// bad — "the rest of the assertions should be banned"
-const user = JSON.parse(text) as User
-const parsed = value as Parsed
 ```
 
 ```ts
@@ -165,15 +163,7 @@ export type LedgerDraft = typeof LedgerDraft.Type
 export const LedgerDraft = Schema.Struct({...LedgerEntry.fields, id: Schema.optionalKey(Schema.NonEmptyString)})
 function settle(amount: LedgerEntry['amount']) {
 // bad — "the type ... same name ... the line before"
-export const GitDiffStatus = Schema.Literals(['added', 'deleted', 'modified'])
-export interface GitDiffStatusType {}
 export type EntryDraft = {amount: EntryAmount; id?: EntryId; tag: string} // a hand-written shape beside the schema
-function settle(amount: typeof LedgerEntry.Type['amount']) {
-const Tag = Schema.NonEmptyString // no type pair
-// bad — "all the Schema.Class should be replaced with Schema.Struct"
-export class PortfolioVisitor extends Schema.Class<PortfolioVisitor>('PortfolioVisitor')({
-	color: Schema.NonEmptyString
-}) {}
 ```
 
 ```ts
@@ -187,10 +177,6 @@ export const CallStep = Schema.Struct({
 })
 export type Step = CallStep | CodeStep
 export const Step = Schema.Union([CallStep, CodeStep])
-// bad — "typeof X.Type is circular for a schema whose type passes through a Schema.suspend thunk naming X"
-export type Step = typeof Step.Type
-export const Step: Schema.Codec<Step> = Schema.Union([CallStep, CodeStep])
-const StepArray: Schema.Codec<readonly Step[]> = Schema.Array(Schema.suspend((): Schema.Codec<Step> => Step))
 ```
 
 ```ts
@@ -200,10 +186,6 @@ const PackageManifest = Schema.fromJsonString(
 	Schema.Struct({dependencies: Schema.optional(Schema.Record(Schema.String, Schema.String))})
 )
 const manifest = yield * Schema.decodeEffect(PackageManifest)(yield * fs.readFileString(path))
-// bad — "useless alias, harder to follow the code flow"
-const decode = Schema.decodeUnknownEffect(Input)
-const result = decode(input)
-const ToolFailure = Schema.Defect()
 ```
 
 ```ts
@@ -236,11 +218,8 @@ Schema.decodeEffect(PackageManifest)(text)
 Number.parse(input.count)
 Array.map(commits, commit => commit.subject)
 Predicate.isString(value)
-// bad — "you shouldn't manually decode json without effect schema"
-const payload = Schema.decodeUnknownSync(RequestPayload)(JSON.parse(body))
+// bad — a global where Number has the helper
 const count = parseInt(input.count)
-commits.map(commit => commit.subject) // in tests too
-typeof value === 'string'
 ```
 
 ```ts
@@ -307,9 +286,6 @@ return Ledger.of({add, balanceByTag}) // identity wrapper
 // good — standalone pipe
 trails: pipe(Schema.Array(PortfolioTrail), Schema.withConstructorDefault(Effect.succeed([]))),
 const toolkit = yield* pipe(PiToolkit, Effect.provide(handlerContext))
-// bad — ".pipe" method
-const Tag = Schema.String.pipe(Schema.check(Schema.isNonEmpty()))
-const toolkit = yield* PiToolkit.pipe(Effect.provide(handlerContext))
 ```
 
 ```ts
@@ -343,7 +319,6 @@ const content =
 		Effect.catch(() => Effect.succeed(''))
 	)
 const config = yield * pipe(loadConfig, Effect.retry(Schedule.recurs(3)))
-export class LedgerError extends Data.TaggedError('LedgerError')<{readonly reason: string}> {}
 Effect.mapError(failure => new LedgerError({reason: failure.message})) // cause dropped, new
 load: (path: string) => Effect.Effect<void, PlatformError | Schema.SchemaError> // library failures leak from the service
 ```
@@ -392,7 +367,6 @@ Array.reduce(input.trails, HashMap.empty<string, Cell>(), (previousByVisitor, tr
 // bad — "as functional and immutable as possible"
 let total = 0
 for (const value of values) total = total + value
-items.push(item)
 ```
 
 ## Shape
@@ -429,7 +403,6 @@ const runPromise = Effect.runPromiseWith(Context.empty())
 const endpoint = yield* Schema.decodeUnknownEffect(Endpoint)(config.endpoint)
 client(endpoint)
 Ref.set(entries, Array.copy(decoded)) // decoded is already an array
-const notFound = () => HttpServerResponse.empty({status: 404})
 ```
 
 ```ts
@@ -455,8 +428,6 @@ if (sandbox !== undefined) {
 ```text
 // good — kebab-case files named by role
 src/schema.ts, src/open-sandbox-provider.ts
-// bad — PascalCase, and two files splitting one role
-src/Protocol.ts, src/Client.ts
 ```
 
 ## Quality
@@ -468,9 +439,10 @@ export {oxlint as default} from '@deslop/workflow'
 // oxlint-disable-next-line @typescript-eslint/consistent-type-definitions -- TanStack Router augments this interface by name.
 // bad — "why are we adding the exactOptionalPropertyTypes instead of fixing the code?"
 "exactOptionalPropertyTypes": false
-const warned = ['sort-keys', 'typescript/no-restricted-types'] // a package rule list; a package never turns off an order-pinning rule
+const warned = ['sort-keys', 'typescript/no-restricted-types'] // a package rule list
 "typecheck": "tsc --noEmit" // type-aware lint already checks types; one command per job
 // oxlint-disable-next-line @typescript-eslint/consistent-type-assertions   // no reason
+// oxlint-disable-next-line sort-keys -- keeps the printed order   // an order-pinning rule
 // bad — "why are we not disabling the cases with the ignore comments?"
 files: ['packages/components/src/components/agent-browser.tsx', 'packages/components/src/components/form.tsx'],
 // bad — "keep it enabled so other cases get fixed"
@@ -489,7 +461,7 @@ import {createServer} from 'node:http'
 - Assert which input is flagged or returned, or an error's tag, code, or path; never wording or another tool's output.
 - Doubles are Layers or a dependency the public function takes: no vi, global stub, or module mock, even at the network boundary.
 - Seed inputs that make the logic decide; grow a test helper only when every case needs it.
-- A test never expects wrong behavior and never works around another rule; fix the conflict instead. An expectation changes only together with a recorded behavior change, never to make a check pass.
+- A test never expects wrong behavior and never works around another rule; fix the conflict instead. An expectation changes only together with a recorded behavior change, never to make a check pass, and a changed assertion keeps every value the old one checked, except wording.
 
 ```ts
 // good — one input in the existing case, the request's own fixture, the flagged input or error tag asserted, doubles passed in, inputs that make the logic decide
@@ -504,9 +476,6 @@ const result = yield* lintSource({name: 'recursive.ts', source})
 it('skips empty deltas when reconstructing Prompt history', () => { /* 21 lines */ })
 "import {Schema as S} from 'effect'" // not an input the request names
 expect(Array.some(diagnostics, d => d.code === 'typescript(TS2456)')).toBe(true) // another tool's output
-expect(error.message).toBe('Sandbox is gone') // wording
-vi.spyOn(RequestAuthHeaders, 'withAuthForwardingHeaders').mockResolvedValue(new Headers())
-vi.stubGlobal('fetch', stub) // the client takes fetch
 additional?: {name: string; source: string}[] // a helper option one case needs
 ```
 
@@ -519,12 +488,13 @@ it.layer(Layer.provideMerge(Ledger.layer, NodeServices.layer))(test => {
 // bad — "this test is useless, it doesn't test that the agent is working"
 it.effect('rejects an empty tag', () => run(ledger.add({tag: ''}))) // Schema.isNonEmpty already does
 it.effect('loads', () => pipe(program, Effect.provide(Ledger.layer))) // the layer, per test
-vi.mock('../src/NotionClient.ts', () => ({})) // a Layer is the seam
 ```
 
 ## Lint-enforced forms
 
-When a rule seems to force worse code, write the Effect-correct form, or report the rule defect with a minimal repro; disable a rule inline only where the code has no other correct form, with its reason after `--`, and never silently write the worse form.
+Lint also rejects the mechanical opposite of many forms above, such as an assertion, a schema without its type pair, `Schema.Class`, `.pipe`, `typeof`, a native method, or `vi`, with a message naming the form shown there.
+
+When a rule seems to force worse code, write the Effect-correct form, or report the rule defect with a minimal repro; disable a rule inline only where the code has no other correct form, with its reason after `--`, and never silently write the worse form. An order-pinning rule, such as sort-keys, always has a correct form and is never disabled, inline included.
 
 ### Natives
 
@@ -537,22 +507,11 @@ Random.Random.defaultValue().nextDoubleUnsafe()
 Schedule.spaced(Duration.millis(55))
 pipe(Config.string('HOST'), Config.withDefault('0.0.0.0'))
 Config.redacted('SMTP_PASS')
-// bad — each line is a diagnostic
-import {readFileSync} from 'node:fs'
-const now = new Date()
-const roll = Math.random()
-const id = crypto.randomUUID()
-const secret = process.env['SECRET']
-const promise = fetch('https://example.com')
-const timer = setTimeout(() => {}, 10)
-console.log(stamp)
 ```
 
 ```ts
 // good
 const recipients = Array.ensure(input)
-// bad — the ternary restates what Array.ensure already decides
-const recipients = Array.isArray(input) ? input : [input]
 ```
 
 ### Globals and types
@@ -568,23 +527,6 @@ Array.get(items, 0)
 type Holder = {value: string[]; time: DateTime.Utc; error: ToolExecutionError}
 const entries = yield * Ref.make(Array.empty<LedgerEntry>())
 Schema.Struct({x: Schema.Finite})
-// bad — each line is a diagnostic
-const keys = Object.keys({a: 1})
-const map = new Map<string, number>()
-const set = new Set<string>()
-const biggest = Math.max(1, 2)
-const first = items[0]!
-type Holder = {value: ReadonlyArray<string>; time: Date; error: Error; done: Promise<void>}
-const entries = yield * Ref.make<readonly LedgerEntry[]>([])
-interface Shape {
-	readonly value: string
-}
-const inferrable: number = 1
-const anyValue: any = 1
-enum Color {
-	Red
-}
-const Point = Schema.Struct({x: Schema.Number})
 ```
 
 ### Expressions
@@ -594,25 +536,6 @@ const Point = Schema.Struct({x: Schema.Number})
 const root = options?.root ?? '.'
 String.replaceAll(/[-_]+/gu, ' ')
 const sorted = {a: 2, b: 1, c: 3}
-// bad — each line is a diagnostic
-const loose = '12' == 12
-const orDefault = secret || 'none'
-const empty = null
-export const arrow = () => {
-	return 1
-}
-const render = (commits: Commit[]) => pipe(commits, Array.map(renderCommit)) // a declaration, at module scope
-const commitLine = /^(?<type>\S+): (?<subject>.+)$/ // the u flag
-if (!value) {
-	return 'empty'
-} else {
-	return value
-}
-for (let index = 0; index < values.length; index++) {
-	if (values[index] === 0) continue
-}
-input.value = 2
-const unsorted = {b: 1, a: 2, c: 3}
 ```
 
 ### Programs
@@ -620,11 +543,6 @@ const unsorted = {b: 1, a: 2, c: 3}
 ```ts
 // good — the owned runtime runs
 NodeRuntime.runMain(
-// bad — each line is a diagnostic
-const value = yield Effect.succeed(1)
-try { return yield* Effect.succeed(value) } catch { return 0 }
-const run = Effect.runPromise(program)
-Effect.gen(async function* () {
 ```
 
 ### Modules
@@ -634,13 +552,7 @@ Effect.gen(async function* () {
 import type {PortfolioState, PortfolioTrail, PortfolioVisitor} from '#rpcs/contracts.ts'
 import type {Connect, EnvironmentModuleNode, Plugin} from 'vite'
 // bad — each line is a diagnostic
-import {useMemo} from 'react'
-import {helper} from '../lib/utils.ts' // parent-relative; a sibling ./x.ts is fine
-import {Ai} from '@deslop/ai/src/service.ts'
-import {Schema} from 'effect' // used only as a type
-export const Live = Effect.succeed(1)
 export const EntryKind = Schema.Literals(['income', 'expense']) // no importer
-export default helper
 ```
 
 ### React
@@ -650,9 +562,4 @@ export default helper
 const editorRef = useRef<Lexical.LexicalEditor>(null)
 const [showShortcuts, setShowShortcuts] = useState(false)
 const moveRpc = useAtomSet(RpcClient.mutation('portfolio.move'))
-// bad — each line is a diagnostic
-const fake = useState(() => ({current: null}))
-const state = useState(0) // not destructured
-const ref = useRef<HTMLElement | null>(null)
-const memo = React.useMemo(() => 1, [])
 ```

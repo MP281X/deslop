@@ -35,14 +35,15 @@ git -C <dir> reset --hard FETCH_HEAD
 - Production services run from `~/.deslop/deploy`: traefik, collector, portfolio, jaeger, valentine.
 - Full local check: `vp run fix`, `vp run check`, then `vp run test`.
 
-| Command            | Does                          |
-| ------------------ | ----------------------------- |
-| `vp install`       | install dependencies          |
-| `vp run check`     | vp check and fallow dead-code |
-| `vp run test`      | tests                         |
-| `vp run fix`       | format and autofix            |
-| `vp fmt <path>...` | format the given files        |
-| `vp run build`     | build                         |
+| Command                            | Does                                          |
+| ---------------------------------- | --------------------------------------------- |
+| `vp install`                       | install dependencies                          |
+| `vp run check`                     | vp check and fallow dead-code                 |
+| `vp run test`                      | tests                                         |
+| `vp run fix`                       | format and autofix                            |
+| `vp fmt <path>...`                 | format the given files                        |
+| `vp lint --format=agent <path>...` | lint the given files, one line per diagnostic |
+| `vp run build`                     | build                                         |
 
 ## dual
 
@@ -55,16 +56,17 @@ git -C <dir> reset --hard FETCH_HEAD
 - CI: GitLab job `quality` (`.gitlab/quality.yml`).
 - Full local check: `vp run check`, then `vp run test`.
 
-| Command               | Does                                                                                                          |
-| --------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `vp run init`         | env files, effect-tsgo patch, opensandbox build, docker compose services, migrations                          |
-| `vp run dev`          | app, playground, and worker through turbo; `dev:app`, `dev:backend`, `dev:server`, and `dev:worker` run parts |
-| `vp run db:reset`     | recreate the services and database, migrate, and seed the local login                                         |
-| `vp run check`        | oxfmt check and each package's oxlint                                                                         |
-| `vp run fix`          | format and autofix                                                                                            |
-| `vpx oxfmt <path>...` | format the given files                                                                                        |
-| `vp run test`         | tests                                                                                                         |
-| `vp run build`        | build                                                                                                         |
+| Command                               | Does                                                                                                          |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `vp run init`                         | env files, effect-tsgo patch, opensandbox build, docker compose services, migrations                          |
+| `vp run dev`                          | app, playground, and worker through turbo; `dev:app`, `dev:backend`, `dev:server`, and `dev:worker` run parts |
+| `vp run db:reset`                     | recreate the services and database, migrate, and seed the local login                                         |
+| `vp run check`                        | oxfmt check and each package's oxlint                                                                         |
+| `vp run fix`                          | format and autofix                                                                                            |
+| `vpx oxfmt <path>...`                 | format the given files                                                                                        |
+| `vpx oxlint --format=agent <path>...` | from the package directory, lint the given files, one line per diagnostic                                     |
+| `vp run test`                         | tests                                                                                                         |
+| `vp run build`                        | build                                                                                                         |
 
 ## Preview (how the user tests)
 

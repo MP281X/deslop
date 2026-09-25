@@ -14,7 +14,7 @@ description: 'Use for any rendered UI work: prototypes, new or changed screens, 
 
 Consistency:
 
-- Semantic theme tokens only; never hardcode a value the theme or a shared component provides.
+- The shadcn lint rules reject raw colors, arbitrary values, inline styles, and restyled shared components; move a value lint or review flags to the nearest design-system step, token, or variant: a small visual shift is fine, a new layout or color scheme is not, and a disable stays only where no close step exists.
 - The same action looks the same and has the same name everywhere.
 
 Layout:
@@ -57,17 +57,23 @@ Copy:
 
 ## Variant switcher
 
-A sketch to adapt to the host screen: ← and → cycle through the variants, and `Button` is the repository's shadcn button, from the UI package the environment skill names.
+A sketch to adapt to the host screen: each variant's axis name is its key and label, ← and → cycle through the variants, and `Button` is the repository's shadcn button, from the UI package the environment skill names.
 
 ```tsx
 const [selected, setSelected] = useState(0)
 return (
 	<>
-		{variants[selected]}
+		{variants[selected]?.element}
 		<nav className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 gap-1">
-			{Array.map(variants, (_variant, index) => (
-				<Button key={index} variant={index === selected ? 'secondary' : 'ghost'} onClick={() => setSelected(index)}>
-					{index + 1}
+			{Array.map(variants, (variant, index) => (
+				<Button
+					key={variant.name}
+					variant={index === selected ? 'secondary' : 'ghost'}
+					onClick={() => {
+						setSelected(index)
+					}}
+				>
+					{variant.name}
 				</Button>
 			))}
 		</nav>
