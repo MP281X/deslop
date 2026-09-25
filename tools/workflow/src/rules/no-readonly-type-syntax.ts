@@ -52,6 +52,11 @@ export const noReadonlyTypeSyntax = defineRule({
 				if (node.operator === 'readonly' && !exempt(node)) {
 					context.report({message: 'Use a mutable type shape.', node})
 				}
+			},
+			TSTypeReference: node => {
+				if (node.typeName.type === 'Identifier' && node.typeName.name === 'Readonly' && !exempt(node)) {
+					context.report({message: 'Use a mutable type shape.', node})
+				}
 			}
 		}
 	},

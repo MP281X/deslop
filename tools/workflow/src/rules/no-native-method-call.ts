@@ -72,20 +72,19 @@ export const noNativeMethodCall = defineRule({
 	create: context => ({
 		CallExpression: node => {
 			if (
-				node.callee.type === 'MemberExpression' &&
-				!(
-					node.callee.object.type === 'Identifier' &&
+				node.callee.type !== 'MemberExpression' ||
+				(node.callee.object.type === 'Identifier' &&
 					(node.callee.object.name === 'path' ||
-						isImportBinding({
-							context,
-							importedName: node.callee.object.name,
-							node: node.callee.object,
-							source: /^(?:effect(?:\/|$)|@effect\/)/u
-						}))
-				) &&
-				Option.exists(memberName(node.callee), name => Array.contains(nativeMethods, name))
+						isImportBinding({context, node: node.callee.object, source: /^(?:effect(?:\/|$)|@effect\/)/u})))
 			) {
-				context.report({message: 'Use an Effect module function.', node: node.callee})
+				return
+			}
+			const name = memberName(node.callee)
+			if (Option.isSome(name) && Array.contains(nativeMethods, name.value)) {
+				context.report({
+					message: `Replace .${name.value}() with its function from the Effect Array, String, or Effect module.`,
+					node: node.callee
+				})
 			}
 		}
 	}),

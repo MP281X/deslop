@@ -40,33 +40,18 @@ import type {
 	ImageContent,
 	Message,
 	Model,
-	StopReason,
 	TextContent,
 	ThinkingContent,
 	ToolCall,
 	ToolResultMessage
 } from '@earendil-works/pi-ai'
 import {Type} from '@earendil-works/pi-ai'
-import {Prompt, Response, Tool, type Toolkit} from 'effect/unstable/ai'
+import {Prompt, Response, Tool} from 'effect/unstable/ai'
 
 import {AiError as ServiceAiError, type AiAgentDefinition, type AiSkill, type AiStatus} from '#schema'
 import type {Ai, Pi} from '#service'
 
 import {makeReplay} from './replay.ts'
-
-function finishReason(reason: StopReason) {
-	return pipe(
-		Match.value(reason),
-		Match.when('stop', () => 'stop' as const),
-		Match.when('length', () => 'length' as const),
-		Match.when('toolUse', () => 'tool-calls' as const),
-		Match.when('pending', () => 'error' as const),
-		Match.when('deferred', () => 'pause' as const),
-		Match.when('aborted', () => 'other' as const),
-		Match.when('error', () => 'error' as const),
-		Match.exhaustive
-	)
-}
 
 function imageDataFromFilePart(part: Prompt.FilePart) {
 	if (part.data instanceof URL) return
@@ -109,17 +94,18 @@ const piMessagesFromPrompt = Effect.fnUntraced(function* (prompt: Prompt.Prompt,
 			if (message.role === 'system') return Effect.succeed(Array.empty<Message>())
 			if (message.role === 'user') return pipe(piUserMessage(message), Effect.map(Array.of))
 			if (message.role === 'assistant') {
-				const content: (TextContent | ThinkingContent | ToolCall)[] = []
-				for (const part of message.content) {
-					if (part.type === 'text') content[Array.length(content)] = {text: part.text, type: 'text'}
-					if (part.type === 'reasoning') content[Array.length(content)] = {thinking: part.text, type: 'thinking'}
-					if (part.type === 'tool-call') {
-						const params = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Unknown))(part.params)
-						if (Option.isSome(params)) {
-							content[Array.length(content)] = {arguments: params.value, id: part.id, name: part.name, type: 'toolCall'}
-						}
-					}
-				}
+				const content = Array.flatMap(message.content, (part): (TextContent | ThinkingContent | ToolCall)[] => {
+					if (part.type === 'text') return [{text: part.text, type: 'text'}]
+					if (part.type === 'reasoning') return [{thinking: part.text, type: 'thinking'}]
+					if (part.type !== 'tool-call') return Array.empty()
+					return pipe(
+						Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Unknown))(part.params),
+						Option.map(
+							params => ({arguments: params, id: part.id, name: part.name, type: 'toolCall'}) satisfies ToolCall
+						),
+						Option.toArray
+					)
+				})
 				return Effect.succeed([
 					{
 						api: model.api,
@@ -188,56 +174,6 @@ function toolResult(value: unknown) {
 	return {content: [{text: textFromUnknown(value), type: 'text'}], details: value} satisfies AgentToolResult<unknown>
 }
 
-function effectToolsFromToolkit(
-	toolkit: Toolkit.WithHandler<Ai.Tools>,
-	context: Context.Context<Tool.HandlerServices<Ai.Tools[keyof Ai.Tools]>>,
-	names: (keyof Ai.Tools)[]
-) {
-	return pipe(
-		names,
-		Array.filterMap(name => {
-			const selected = Record.get(toolkit.tools, name)
-			if (Option.isNone(selected) || Tool.isProviderDefined(selected.value)) return Result.failVoid
-			const tool = selected.value
-			let description: string = name
-			if (Predicate.isString(tool.description)) description = tool.description
-			return Result.succeed({
-				description,
-				execute: (toolCallId, params, _signal, onUpdate) =>
-					Effect.runPromiseWith(context)(
-						pipe(
-							Schema.decodeUnknownEffect(tool.parametersSchema)(params),
-							Effect.mapError(cause => ServiceAiError.make({cause, message: `Invalid ${name} parameters`})),
-							Effect.flatMap(input => toolkit.handle(name, input, toolCallId)),
-							Effect.flatMap(stream =>
-								pipe(
-									stream,
-									Stream.mapError(cause => ServiceAiError.make({cause, message: `${name} failed`})),
-									Stream.tap(result => {
-										if (!result.preliminary) return Effect.void
-										return Effect.sync(() => onUpdate?.(toolResult(result.encodedResult)))
-									}),
-									Stream.filter(result => !result.preliminary),
-									Stream.runLast
-								)
-							),
-							Effect.map(Option.map(result => result.encodedResult)),
-							Effect.map(value => toolResult(Option.getOrUndefined(value))),
-							Effect.mapError(cause => ServiceAiError.make({cause, message: `${name} failed`}))
-						)
-					),
-				executionMode: Boolean.match(name === 'write' || name === 'edit', {
-					onFalse: () => 'parallel',
-					onTrue: () => 'sequential'
-				}),
-				label: name,
-				name,
-				parameters: Type.Unsafe<unknown>(Tool.getJsonSchema(tool))
-			} satisfies AgentTool)
-		})
-	)
-}
-
 function formatSkills(skills: AiSkill[]) {
 	if (Array.length(skills) === 0) return ''
 	return Array.join('\n')([
@@ -262,14 +198,6 @@ function formatAgents(agents: AiAgentDefinition[]) {
 		),
 		'</available_agents>'
 	])
-}
-
-function systemPrompt(profile: AiAgentDefinition, agents: AiAgentDefinition[]) {
-	return pipe(
-		[profile.instructions, formatSkills(Array.fromIterable(profile.skills)), formatAgents(agents)],
-		Array.filter(String.isNonEmpty),
-		Array.join('\n\n')
-	)
 }
 
 function skillTool<R>(skills: AiSkill[], context: Context.Context<R>) {
@@ -308,18 +236,6 @@ function assistantText(messages: AgentMessage[]) {
 		}),
 		Array.join('\n')
 	)
-}
-
-function usageFromMessage(message: AssistantMessage) {
-	return Response.Usage.make({
-		inputTokens: {
-			cacheRead: message.usage.cacheRead,
-			cacheWrite: message.usage.cacheWrite,
-			total: message.usage.input,
-			uncached: message.usage.input - message.usage.cacheRead
-		},
-		outputTokens: {reasoning: message.usage.reasoning, text: message.usage.output, total: message.usage.output}
-	})
 }
 
 function knownTool(name: string, tools: Ai.Tools): name is keyof Ai.Tools {
@@ -379,9 +295,27 @@ function partsFromEvent(event: AgentEvent, tools: Ai.Tools): (Prompt.UserMessage
 function finishPart(message: AgentMessage) {
 	if (message.role === 'assistant') {
 		return Response.makePart('finish', {
-			reason: finishReason(message.stopReason),
+			reason: pipe(
+				Match.value(message.stopReason),
+				Match.when('stop', () => 'stop' as const),
+				Match.when('length', () => 'length' as const),
+				Match.when('toolUse', () => 'tool-calls' as const),
+				Match.when('pending', () => 'error' as const),
+				Match.when('deferred', () => 'pause' as const),
+				Match.when('aborted', () => 'other' as const),
+				Match.when('error', () => 'error' as const),
+				Match.exhaustive
+			),
 			response: undefined,
-			usage: usageFromMessage(message)
+			usage: Response.Usage.make({
+				inputTokens: {
+					cacheRead: message.usage.cacheRead,
+					cacheWrite: message.usage.cacheWrite,
+					total: message.usage.input,
+					uncached: message.usage.input - message.usage.cacheRead
+				},
+				outputTokens: {reasoning: message.usage.reasoning, text: message.usage.output, total: message.usage.output}
+			})
 		})
 	}
 	return Response.makePart('finish', {
@@ -392,57 +326,6 @@ function finishPart(message: AgentMessage) {
 			outputTokens: {reasoning: undefined, text: undefined, total: undefined}
 		})
 	})
-}
-
-function eventsFromPrompt(prompt: Prompt.Prompt, tools: Ai.Tools) {
-	const events: (Prompt.UserMessage | Response.AnyPart)[] = []
-	let messageIndex = 0
-	for (const message of prompt.content) {
-		if (message.role === 'user') events[Array.length(events)] = message
-		if (message.role === 'assistant') {
-			let partIndex = 0
-			for (const part of message.content) {
-				if (part.type === 'text') {
-					events[Array.length(events)] = Response.makePart('text-delta', {
-						delta: part.text,
-						id: `history-${messageIndex}-${partIndex}`
-					})
-				}
-				if (part.type === 'reasoning') {
-					events[Array.length(events)] = Response.makePart('reasoning-delta', {
-						delta: part.text,
-						id: `history-${messageIndex}-${partIndex}`
-					})
-				}
-				if (part.type === 'tool-call' && knownTool(part.name, tools)) {
-					events[Array.length(events)] = Response.makePart('tool-call', {
-						id: part.id,
-						name: part.name,
-						params: part.params,
-						providerExecuted: part.providerExecuted
-					})
-				}
-				partIndex += 1
-			}
-		}
-		if (message.role === 'tool') {
-			for (const part of message.content) {
-				if (part.type === 'tool-result' && knownTool(part.name, tools)) {
-					events[Array.length(events)] = Response.makePart('tool-result', {
-						encodedResult: part.result,
-						id: part.id,
-						isFailure: part.isFailure,
-						name: part.name,
-						preliminary: false,
-						providerExecuted: part.providerExecuted,
-						result: part.result
-					})
-				}
-			}
-		}
-		messageIndex += 1
-	}
-	return events
 }
 
 function isUserMessage(event: Ai.Event): event is Prompt.UserMessage {
@@ -467,7 +350,43 @@ export const makePi = Effect.fnUntraced(function* (config: Pi.Config) {
 		)
 	}
 	const initialEvents = yield* Effect.forEach(
-		eventsFromPrompt(config.history ?? Prompt.empty, handledToolkit.tools),
+		Array.flatMap(
+			(config.history ?? Prompt.empty).content,
+			(message, messageIndex): (Prompt.UserMessage | Response.AnyPart)[] => {
+				if (message.role === 'user') return [message]
+				if (message.role === 'system') return []
+				if (message.role === 'tool') {
+					return Array.flatMap(message.content, part => {
+						if (part.type !== 'tool-result' || !knownTool(part.name, handledToolkit.tools)) return []
+						return [
+							Response.makePart('tool-result', {
+								encodedResult: part.result,
+								id: part.id,
+								isFailure: part.isFailure,
+								name: part.name,
+								preliminary: false,
+								providerExecuted: part.providerExecuted,
+								result: part.result
+							})
+						]
+					})
+				}
+				return Array.flatMap(message.content, (part, partIndex): Response.AnyPart[] => {
+					const id = `history-${messageIndex}-${partIndex}`
+					if (part.type === 'text') return [Response.makePart('text-delta', {delta: part.text, id})]
+					if (part.type === 'reasoning') return [Response.makePart('reasoning-delta', {delta: part.text, id})]
+					if (part.type !== 'tool-call' || !knownTool(part.name, handledToolkit.tools)) return []
+					return [
+						Response.makePart('tool-call', {
+							id: part.id,
+							name: part.name,
+							params: part.params,
+							providerExecuted: part.providerExecuted
+						})
+					]
+				})
+			}
+		),
 		decodeEvent
 	)
 	const replay = yield* makeReplay(initialEvents)
@@ -507,8 +426,49 @@ export const makePi = Effect.fnUntraced(function* (config: Pi.Config) {
 		if (Array.length(enabledNames) !== Array.length(profile.tools)) {
 			return yield* ServiceAiError.make({message: `Agent ${profile.name} enables an unknown tool`})
 		}
-		const baseTools = effectToolsFromToolkit(handledToolkit, toolContext, enabledNames)
-		const tools: AgentTool[] = Array.fromIterable(baseTools)
+		const tools: AgentTool[] = pipe(
+			enabledNames,
+			Array.filterMap(name => {
+				const selected = Record.get(handledToolkit.tools, name)
+				if (Option.isNone(selected) || Tool.isProviderDefined(selected.value)) return Result.failVoid
+				const tool = selected.value
+				let description: string = name
+				if (Predicate.isString(tool.description)) description = tool.description
+				return Result.succeed({
+					description,
+					execute: (toolCallId, params, _signal, onUpdate) =>
+						Effect.runPromiseWith(toolContext)(
+							pipe(
+								Schema.decodeUnknownEffect(tool.parametersSchema)(params),
+								Effect.mapError(cause => ServiceAiError.make({cause, message: `Invalid ${name} parameters`})),
+								Effect.flatMap(input => handledToolkit.handle(name, input, toolCallId)),
+								Effect.flatMap(stream =>
+									pipe(
+										stream,
+										Stream.mapError(cause => ServiceAiError.make({cause, message: `${name} failed`})),
+										Stream.tap(result => {
+											if (!result.preliminary) return Effect.void
+											return Effect.sync(() => onUpdate?.(toolResult(result.encodedResult)))
+										}),
+										Stream.filter(result => !result.preliminary),
+										Stream.runLast
+									)
+								),
+								Effect.map(Option.map(result => result.encodedResult)),
+								Effect.map(value => toolResult(Option.getOrUndefined(value))),
+								Effect.mapError(cause => ServiceAiError.make({cause, message: `${name} failed`}))
+							)
+						),
+					executionMode: Boolean.match(name === 'write' || name === 'edit', {
+						onFalse: () => 'parallel',
+						onTrue: () => 'sequential'
+					}),
+					label: name,
+					name,
+					parameters: Type.Unsafe<unknown>(Tool.getJsonSchema(tool))
+				} satisfies AgentTool)
+			})
+		)
 		if (Array.length(profile.skills) > 0) {
 			tools[Array.length(tools)] = skillTool(Array.fromIterable(profile.skills), ownerContext)
 		}
@@ -590,7 +550,11 @@ export const makePi = Effect.fnUntraced(function* (config: Pi.Config) {
 			initialState: {
 				messages: initialMessages,
 				model,
-				systemPrompt: systemPrompt(profile, subagents),
+				systemPrompt: pipe(
+					[profile.instructions, formatSkills(Array.fromIterable(profile.skills)), formatAgents(subagents)],
+					Array.filter(String.isNonEmpty),
+					Array.join('\n\n')
+				),
 				thinkingLevel: config.model.reasoning,
 				tools
 			},

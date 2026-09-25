@@ -20,6 +20,7 @@
 	},
 	"exports": {
 		".": "./src/oxlint.ts",
+		"./css-properties": "./src/css-properties.d.ts",
 		"./tsconfig.json": "./tsconfig.json"
 	},
 	"publishConfig": {
@@ -35,6 +36,10 @@
 	"scripts": {
 		"build": "vp pack"
 	},
+	"dependencies": {
+		"@shadcn/lint": "^0.2.0",
+		"oxlint-plugin-react-doctor": "^0.9.14"
+	},
 	"devDependencies": {
 		"@oxlint/plugins": "1.82.0",
 		"oxlint": "1.82.0"
@@ -43,7 +48,6 @@
 		"@effect/tsgo": ">=0.45",
 		"effect": "^4.0.0-rc",
 		"oxlint": "^1.82",
-		"oxlint-plugin-react-doctor": "*",
 		"oxlint-tsgolint": "^7.0"
 	},
 	"peerDependenciesMeta": {
@@ -51,9 +55,6 @@
 			"optional": true
 		},
 		"oxlint": {
-			"optional": true
-		},
-		"oxlint-plugin-react-doctor": {
 			"optional": true
 		},
 		"oxlint-tsgolint": {

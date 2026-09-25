@@ -78,15 +78,6 @@ function isSchemaDefinition(input: {context: Context; node: ESTree.Expression}):
 	)
 }
 
-function previousStatement(input: {program: ESTree.Program; statement: ESTree.Statement}) {
-	return pipe(
-		input.program.body,
-		Array.findFirstIndex(statement => statement === input.statement),
-		Option.filter(index => index > 0),
-		Option.flatMap(index => Array.get(input.program.body, index - 1))
-	)
-}
-
 function namedTypeAlias(input: {
 	name: string
 	typeStatement: Option.Option<ESTree.Statement | ESTree.ModuleDeclaration>
@@ -95,26 +86,6 @@ function namedTypeAlias(input: {
 		input.typeStatement,
 		Option.flatMap(typeAlias),
 		Option.filter(declaration => declaration.id.name === input.name)
-	)
-}
-
-function matchingSchemaType(input: {
-	name: string
-	typeStatement: Option.Option<ESTree.Statement | ESTree.ModuleDeclaration>
-}) {
-	return pipe(
-		namedTypeAlias(input),
-		Option.exists(declaration => isInferredType({name: input.name, node: declaration.typeAnnotation}))
-	)
-}
-
-function handWrittenSchemaType(input: {
-	name: string
-	typeStatement: Option.Option<ESTree.Statement | ESTree.ModuleDeclaration>
-}) {
-	return pipe(
-		namedTypeAlias(input),
-		Option.exists(declaration => !isInferredType({name: input.name, node: declaration.typeAnnotation}))
 	)
 }
 
@@ -129,9 +100,19 @@ function reportSchemaVariable(input: {
 	if (input.variable.init === null || !isSchemaDefinition({context: input.context, node: input.variable.init})) return
 	const name = input.variable.id.name
 	const annotation = input.variable.id.typeAnnotation
-	const typeStatement = previousStatement({program: input.program, statement: input.statement})
+	const typeStatement = pipe(
+		input.program.body,
+		Array.findFirstIndex(statement => statement === input.statement),
+		Option.filter(index => index > 0),
+		Option.flatMap(index => Array.get(input.program.body, index - 1))
+	)
 	if (Array.contains(input.cycleNames, name)) {
-		if (!handWrittenSchemaType({name, typeStatement})) {
+		if (
+			!pipe(
+				namedTypeAlias({name, typeStatement}),
+				Option.exists(declaration => !isInferredType({name, node: declaration.typeAnnotation}))
+			)
+		) {
 			input.context.report({
 				message: `Write \`type ${name} = ...\` by hand immediately before this recursive Schema; typeof ${name}.Type is circular.`,
 				node: input.variable
@@ -145,7 +126,12 @@ function reportSchemaVariable(input: {
 		}
 		return
 	}
-	if (!matchingSchemaType({name, typeStatement})) {
+	if (
+		!pipe(
+			namedTypeAlias({name, typeStatement}),
+			Option.exists(declaration => isInferredType({name, node: declaration.typeAnnotation}))
+		)
+	) {
 		input.context.report({
 			message: `Place \`type ${name} = typeof ${name}.Type\` immediately before this Schema.`,
 			node: input.variable

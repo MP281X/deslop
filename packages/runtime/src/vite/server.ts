@@ -170,7 +170,7 @@ export function serverPlugin(): Plugin {
 					if (serverModules !== undefined && serverModules.size > 0 && !clientOwnsFile) return []
 					return
 				}
-				if (this.environment.name !== 'server' || options.modules.length === 0) return
+				if (this.environment.name !== 'server' || Array.isReadonlyArrayEmpty(options.modules)) return
 				// oxlint-disable-next-line eslint/no-restricted-globals -- Vite's module-graph API requires a native Set instance.
 				const invalidated = new Set<EnvironmentModuleNode>()
 				for (const module of options.modules) {

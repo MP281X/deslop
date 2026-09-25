@@ -87,6 +87,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const Tree: Schema.Codec<Tree> = Schema.Struct({children: Schema.Array(Schema.suspend((): Schema.Codec<Tree> => Tree))})',
 									'type Explicit = {readonly values: readonly string[]}',
 									'type Mapped<T> = {readonly [K in keyof T]: T[K]}',
+									'type Frozen = Readonly<{value: string}>',
 									'type Index = {readonly [key: string]: string}',
 									'class Input { readonly field = "value"; constructor(readonly value: string) {} }',
 									'const ref = useRef<HTMLElement | null>(null)',
@@ -95,8 +96,11 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const directDecoded = Schema.decodeUnknownSync(Schema.UnknownFromJsonString)(source)',
 									'function forward(value: string) { return consume(value) }',
 									'function ready() { return source.length > 0 }',
+									'const noValues = values.length === 0',
 									'function run() { consume(source) }',
 									'function consume(value: string) { return value.length }',
+									'function sourceLength(value: {text: string}) { return consume(value.text) }',
+									'const measured = sourceLength({text: source})',
 									'const callbacks = {consume: (value: string) => consume(value)}',
 									'const alias = source',
 									'function Fallback() { return <div className="missing" /> }',
@@ -111,9 +115,11 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const stateNamespace = React.useState(0)',
 									'// oxlint-disable-next-line eqeqeq',
 									'const loose = source == "ready"',
+									'// oxlint-disable-next-line sort-keys -- the fixture keeps its order',
+									'const unsortedKeys = {b: 1, a: 2}',
 									'// @effect-diagnostics-next-line floatingEffect:off',
-									'export {AssertString, Codecs, Fallback, Input, IsString, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, asyncConstant, callbacks, decode, decoded, decoders, deepPipe, directDecoded, fake, fakeNamespace, fallbacks, forward, input, loose, mappedValues, namespaceRef, notFound, operations, ready, recipients, ref, run, stateNamespace, wrapped}',
-									'export type {Explicit, Index, Mapped}'
+									'export {AssertString, Codecs, Fallback, Input, IsString, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, asyncConstant, callbacks, decode, decoded, decoders, deepPipe, directDecoded, fake, fakeNamespace, fallbacks, forward, input, loose, mappedValues, measured, namespaceRef, noValues, notFound, operations, ready, recipients, ref, run, stateNamespace, unsortedKeys, wrapped}',
+									'export type {Explicit, Frozen, Index, Mapped}'
 								],
 								Array.join('\n')
 							)
@@ -128,6 +134,8 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'@deslop/workflow(no-deep-pipe)',
 									'@deslop/workflow(no-fake-ref-state)',
 									'@deslop/workflow(no-fake-ref-state)',
+									'@deslop/workflow(no-native-emptiness-check)',
+									'@deslop/workflow(no-native-emptiness-check)',
 									'@deslop/workflow(no-native-method-call)',
 									'@deslop/workflow(no-readonly-type-syntax)',
 									'@deslop/workflow(no-readonly-type-syntax)',
@@ -135,6 +143,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'@deslop/workflow(no-readonly-type-syntax)',
 									'@deslop/workflow(no-readonly-type-syntax)',
 									'@deslop/workflow(no-readonly-type-syntax)',
+									'@deslop/workflow(no-readonly-type-syntax)',
 									'@deslop/workflow(no-redundant-use-ref-null-type)',
 									'@deslop/workflow(no-redundant-use-ref-null-type)',
 									'@deslop/workflow(no-stored-schema-operation)',
@@ -151,8 +160,10 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'@deslop/workflow(no-trivial-indirection)',
 									'@deslop/workflow(no-trivial-indirection)',
 									'@deslop/workflow(no-trivial-indirection)',
+									'@deslop/workflow(no-trivial-indirection)',
 									'@deslop/workflow(no-undestructured-use-state)',
 									'@deslop/workflow(no-undestructured-use-state)',
+									'@deslop/workflow(no-unexplained-disable)',
 									'@deslop/workflow(no-unexplained-disable)',
 									'@deslop/workflow(no-unexplained-disable)',
 									'@deslop/workflow(no-unvalidated-json-decode)',
@@ -185,8 +196,12 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 							source: pipe(
 								[
 									"import {Array, Layer, Result, Schema, SchemaGetter, SchemaTransformation, identity, pipe} from 'effect'",
+									"import * as EffectArray from 'effect/Array'",
 									'',
 									'declare const input: unknown',
+									'declare const names: string[]',
+									'const namespaced = EffectArray.map([input], identity)',
+									'const singleName = names.length === 1',
 									'declare const layer: Layer.Layer<never>',
 									'declare const outcome: Result.Result<number, string>',
 									'const mappedOutcome = Result.map(outcome, value => value + 1)',
@@ -241,7 +256,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const DefaultInput = Schema.JsonObject.make({schema: {type: "object"}})',
 									'// oxlint-disable-next-line eqeqeq -- the fixture keeps a reasoned disable',
 									'const loose = snapshot.width == 1',
-									'export {Annotated, Arbitrary, CallStep, CodeStep, Decoded, DefaultInput, Encoded, Formatter, LinearIssue, Normalized, Step, circle, circles, constants, counters, decoded, decodedMany, encoded, ensured, identify, isUser, layers, lengths, loose, mappedOutcome, readCounter, readSnapshot, snapshots, swap, transform, tuple, withDefault}'
+									'export {Annotated, Arbitrary, CallStep, CodeStep, Decoded, DefaultInput, Encoded, Formatter, LinearIssue, Normalized, Step, circle, circles, constants, counters, decoded, decodedMany, encoded, ensured, identify, isUser, layers, lengths, loose, mappedOutcome, namespaced, readCounter, readSnapshot, singleName, snapshots, swap, transform, tuple, withDefault}'
 								],
 								Array.join('\n')
 							)
@@ -268,10 +283,14 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'',
 									'declare const properties: unknown',
 									'declare const value: unknown',
-									'declare function expect(value: unknown): {toThrow: (expected?: string) => void}',
+									'declare const failure: {message: string}',
+									'declare function expect(value: unknown): {not: {toContain: (expected: string) => void}; toBe: (expected: unknown) => void; toThrow: (expected?: string) => void}',
 									"const isText = typeof value === 'string'",
 									"if (typeof properties === 'object') Predicate.isNotNull(properties)",
 									"expect(() => Predicate.isNotNull(value)).toThrow('negative')",
+									"expect(failure.message).toBe('negative')",
+									"expect(failure.message).not.toContain('negative')",
+									'expect(() => Predicate.isNotNull(value)).toThrow()',
 									'export {isText}'
 								],
 								Array.join('\n')
@@ -280,6 +299,8 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 						expect(customCodes(result.stdout)).toEqual(
 							pipe(
 								[
+									'@deslop/workflow(no-error-message-assertion)',
+									'@deslop/workflow(no-error-message-assertion)',
 									'@deslop/workflow(no-error-message-assertion)',
 									'@deslop/workflow(no-typeof)',
 									'@deslop/workflow(no-typeof)'

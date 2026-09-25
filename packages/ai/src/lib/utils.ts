@@ -1,4 +1,4 @@
-import {Array, Boolean, Chunk, MutableHashMap, Option} from 'effect'
+import {Array, Boolean, Chunk, MutableHashMap, Option, String} from 'effect'
 
 import {Prompt, Response} from 'effect/unstable/ai'
 
@@ -79,7 +79,7 @@ export function makeConversationReducer(): ConversationReducer {
 		const current = turn.value
 
 		if (event.type === 'text-delta' || event.type === 'reasoning-delta') {
-			if (event.delta === '') return value()
+			if (String.isEmpty(event.delta)) return value()
 			const type: 'reasoning' | 'text' = Boolean.match(event.type === 'text-delta', {
 				onFalse: () => 'reasoning',
 				onTrue: () => 'text'

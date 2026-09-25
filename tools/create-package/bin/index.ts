@@ -29,23 +29,15 @@ function replaceDirectory(directory: IntakeDirectory, name: string): CreatedDire
 	)
 }
 
-function className(name: string) {
-	return pipe(name, String.split('-'), Array.map(String.capitalize), Array.join(''))
-}
-
-function replaceContent(content: string, name: string) {
-	return pipe(
-		content,
-		String.replaceAll('TemplatePackage', className(name)),
-		String.replaceAll('@deslop/template-package', `@deslop/${name}`),
-		String.replaceAll('../../../tsconfig.json', '../../tsconfig.json')
-	)
-}
-
 function replaceEntry(entry: IntakeEntry, name: string): CreatedEntry {
 	if (Array.isArray(entry)) {
 		const [content, metadata] = entry
-		const replaced = replaceContent(content, name)
+		const replaced = pipe(
+			content,
+			String.replaceAll('TemplatePackage', pipe(name, String.split('-'), Array.map(String.capitalize), Array.join(''))),
+			String.replaceAll('@deslop/template-package', `@deslop/${name}`),
+			String.replaceAll('../../../tsconfig.json', '../../tsconfig.json')
+		)
 		return Predicate.isUndefined(metadata) ? [replaced] : [replaced, metadata]
 	}
 
