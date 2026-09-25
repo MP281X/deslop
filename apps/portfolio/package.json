@@ -32,6 +32,7 @@
 		"@tanstack/react-hotkeys": "latest",
 		"@tanstack/react-router": "latest",
 		"react": "^19",
-		"react-dom": "^19"
+		"react-dom": "^19",
+		"tailwindcss": "latest"
 	}
 }

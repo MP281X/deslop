@@ -439,20 +439,24 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 				return createPortal(
 					<Command
 						aria-label="Autocomplete suggestions"
-						className="border-input bg-card text-foreground h-auto w-full border-b"
+						value={pipe(
+							Array.get(menuProps.options, menuProps.selectedIndex ?? 0),
+							Option.match({onNone: () => '', onSome: option => option.key})
+						)}
+						// oxlint-disable-next-line shadcn/no-restyle -- the suggestions sit on the card surface above an input-colored rule, and Command has no variant for it.
+						className="border-input bg-card h-auto border-b"
 					>
 						<CommandList className="max-h-48">
 							{Array.map(menuProps.options, (option, index) => (
 								<CommandItem
 									tabIndex={0}
 									key={option.key}
-									id={`typeahead-item-${index}`}
 									ref={element => {
 										option.setRefElement(element)
 									}}
 									value={option.key}
-									aria-selected={menuProps.selectedIndex === index}
-									className={cn('px-3', menuProps.selectedIndex === index && 'bg-muted')}
+									// oxlint-disable-next-line shadcn/no-restyle -- the suggestions inset wider than CommandItem's px-2, and CommandItem has no wider size.
+									className="px-3"
 									onMouseDown={event => {
 										event.preventDefault()
 									}}
@@ -468,7 +472,9 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 											props.children(option.entry)
 										) : (
 											<>
-												<span style={{color: option.entry.color}}>{option.entry.trigger}</span>
+												<span className="text-(--entry-color)" style={{'--entry-color': option.entry.color}}>
+													{option.entry.trigger}
+												</span>
 												<span className="text-foreground">{option.entry.value.label}</span>
 											</>
 										)}

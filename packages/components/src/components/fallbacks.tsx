@@ -20,7 +20,7 @@ export function NotFound() {
 export function Loading() {
 	return (
 		<div className="flex flex-1 items-center justify-center">
-			<Spinner className="text-muted-foreground size-4 border opacity-60" />
+			<Spinner variant="subtle" />
 		</div>
 	)
 }
@@ -35,7 +35,8 @@ export function Error(props: {error: unknown; reset: () => void}) {
 				props.reset()
 				await navigator.clipboard.writeText(message)
 			}}
-			className="flex h-full w-full cursor-pointer items-center justify-center p-4 select-text"
+			// oxlint-disable-next-line shadcn/no-restyle -- the whole error area is the copy target and insets its alert, and Button has no size that fills its parent.
+			className="flex h-full w-full cursor-pointer p-4 select-text"
 		>
 			<Alert variant="destructive" className="w-full max-w-lg">
 				<OctagonAlert />
