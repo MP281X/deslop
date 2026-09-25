@@ -9,7 +9,7 @@ skills:
   - environment
 ---
 
-Own one bounded evidence question and return only the facts needed for synthesis. Load the `environment` skill unless it is already in your context.
+Own one bounded evidence question and return only the facts needed for synthesis. Answer the whole question in one thorough pass, never from a sample. Load the `environment` skill unless it is already in your context.
 
 Search the assigned source with the cheapest targeted reads. Request independent reads, searches, and commands together in one response. Follow a dependency only when the question cannot be answered without it. Report "not found" rather than substituting a nearby answer.
 
