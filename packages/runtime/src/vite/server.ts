@@ -1,7 +1,6 @@
-// Vite and NodeHttpServer expose native Node request/response boundary types.
-// @effect-diagnostics-next-line nodeBuiltinImport:off
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- Vite and NodeHttpServer expose native Node request/response boundary types.
 import type {IncomingMessage, ServerResponse} from 'node:http'
-// @effect-diagnostics-next-line nodeBuiltinImport:off
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- Vite's upgrade event exposes the native Node socket type.
 import type {Duplex} from 'node:stream'
 
 import type {NodeServices} from '@effect/platform-node'
@@ -115,8 +114,7 @@ export function serverPlugin(): Plugin {
 							})
 						}),
 						Scope.provide(scope),
-						// The dynamically loaded server application receives its complete platform layer here.
-						// @effect-diagnostics-next-line strictEffectProvide:off
+						// @effect-diagnostics-next-line strictEffectProvide:off -- The dynamically loaded server application receives its complete platform layer here.
 						Effect.provide(
 							Layer.merge(
 								NodeHttpServer.layerHttpServices,
@@ -173,8 +171,7 @@ export function serverPlugin(): Plugin {
 					return
 				}
 				if (this.environment.name !== 'server' || options.modules.length === 0) return
-				// Vite's module-graph API requires a native Set instance.
-				// oxlint-disable-next-line eslint/no-restricted-globals
+				// oxlint-disable-next-line eslint/no-restricted-globals -- Vite's module-graph API requires a native Set instance.
 				const invalidated = new Set<EnvironmentModuleNode>()
 				for (const module of options.modules) {
 					this.environment.moduleGraph.invalidateModule(module, invalidated, options.timestamp, true)

@@ -1,5 +1,4 @@
-// NodeHttpServer requires the native server constructor at the application boundary.
-// @effect-diagnostics-next-line nodeBuiltinImport:off
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- NodeHttpServer requires the native server constructor at the application boundary.
 import {createServer} from 'node:http'
 import {fileURLToPath} from 'node:url'
 

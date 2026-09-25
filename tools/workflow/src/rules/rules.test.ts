@@ -8,9 +8,7 @@ import {ChildProcess, ChildProcessSpawner} from 'effect/unstable/process'
 import plugin from '@deslop/workflow'
 
 type OxlintOutput = typeof OxlintOutput.Type
-const OxlintOutput = Schema.Struct({
-	diagnostics: Schema.Array(Schema.Struct({code: Schema.String, message: Schema.String}))
-})
+const OxlintOutput = Schema.Struct({diagnostics: Schema.Array(Schema.Struct({code: Schema.String}))})
 
 const lintSource = Effect.fnUntraced(function* (input: {name: string; source: string}) {
 	const fs = yield* FileSystem.FileSystem
@@ -40,19 +38,16 @@ const lintSource = Effect.fnUntraced(function* (input: {name: string; source: st
 })
 
 function customCodes(output: OxlintOutput) {
-	return pipe(
-		customDiagnostics(output),
-		Array.map(diagnostic => diagnostic.code),
-		Array.sort(String.Order)
-	)
-}
-
-function customDiagnostics(output: OxlintOutput) {
 	const codes = pipe(
 		Record.keys(plugin.rules),
 		Array.map(rule => `@deslop/workflow(${rule})`)
 	)
-	return Array.filter(output.diagnostics, diagnostic => Array.contains(codes, diagnostic.code))
+	return pipe(
+		output.diagnostics,
+		Array.map(diagnostic => diagnostic.code),
+		Array.filter(code => Array.contains(codes, code)),
+		Array.sort(String.Order)
+	)
 }
 
 describe('deslop Oxlint plugin', {concurrent: false}, () => {
@@ -72,7 +67,10 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'',
 									'declare const input: unknown',
 									'declare const source: string',
-									'const decode = Schema.decodeUnknownSync(Schema.String)',
+									'declare const values: string[]',
+									'const mappedValues = values.map(value => value.length)',
+									'const deepPipe = pipe(values, Array.appendAll(pipe(values, Array.appendAll(pipe(values, Array.appendAll(pipe(values, Array.take(1))))))))',
+									'const decode =Schema.decodeUnknownSync(Schema.String)',
 									'const operations = {decode: Schema.decodeUnknownSync(Schema.String)}',
 									'class Codecs { decode = Schema.decodeUnknownSync(Schema.String) }',
 									'const decoders = [Schema.decodeUnknownSync(Schema.String)]',
@@ -111,7 +109,10 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const state = useState(0)',
 									'const [fakeNamespace] = React.useState(() => ({current: null}))',
 									'const stateNamespace = React.useState(0)',
-									'export {AssertString, Codecs, Fallback, Input, IsString, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, asyncConstant, callbacks, decode, decoded, decoders, directDecoded, fake, fakeNamespace, fallbacks, forward, input, namespaceRef, notFound, operations, ready, recipients, ref, run, stateNamespace, wrapped}',
+									'// oxlint-disable-next-line eqeqeq',
+									'const loose = source == "ready"',
+									'// @effect-diagnostics-next-line floatingEffect:off',
+									'export {AssertString, Codecs, Fallback, Input, IsString, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, asyncConstant, callbacks, decode, decoded, decoders, deepPipe, directDecoded, fake, fakeNamespace, fallbacks, forward, input, loose, mappedValues, namespaceRef, notFound, operations, ready, recipients, ref, run, stateNamespace, wrapped}',
 									'export type {Explicit, Index, Mapped}'
 								],
 								Array.join('\n')
@@ -124,8 +125,10 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'@deslop/workflow(no-array-wrap-ternary)',
 									'@deslop/workflow(no-array-wrap-ternary)',
 									'@deslop/workflow(no-constant-function)',
+									'@deslop/workflow(no-deep-pipe)',
 									'@deslop/workflow(no-fake-ref-state)',
 									'@deslop/workflow(no-fake-ref-state)',
+									'@deslop/workflow(no-native-method-call)',
 									'@deslop/workflow(no-readonly-type-syntax)',
 									'@deslop/workflow(no-readonly-type-syntax)',
 									'@deslop/workflow(no-readonly-type-syntax)',
@@ -150,6 +153,8 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'@deslop/workflow(no-trivial-indirection)',
 									'@deslop/workflow(no-undestructured-use-state)',
 									'@deslop/workflow(no-undestructured-use-state)',
+									'@deslop/workflow(no-unexplained-disable)',
+									'@deslop/workflow(no-unexplained-disable)',
 									'@deslop/workflow(no-unvalidated-json-decode)',
 									'@deslop/workflow(no-unvalidated-json-decode)',
 									'@deslop/workflow(schema-type-pair)',
@@ -163,34 +168,6 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								Array.sort(String.Order)
 							)
 						)
-						expect(
-							pipe(
-								customDiagnostics(result.stdout),
-								Array.filter(diagnostic => diagnostic.code === '@deslop/workflow(no-stored-schema-operation)'),
-								Array.map(diagnostic => diagnostic.message)
-							)
-						).toEqual(
-							Array.makeBy(
-								7,
-								() => 'Inline this Schema operation at its consumption site; never store compiled operations.'
-							)
-						)
-						expect(
-							pipe(
-								customDiagnostics(result.stdout),
-								Array.filter(diagnostic => diagnostic.code === '@deslop/workflow(schema-type-pair)'),
-								Array.map(diagnostic => diagnostic.message),
-								Array.sort(String.Order)
-							)
-						).toEqual([
-							'Annotate the Schema.suspend thunk, not the recursive Schema.',
-							'Place `type MissingDecode = typeof MissingDecode.Type` immediately before this Schema.',
-							'Place `type MissingEncode = typeof MissingEncode.Type` immediately before this Schema.',
-							'Place `type MissingFluent = typeof MissingFluent.Type` immediately before this Schema.',
-							'Place `type MissingTransform = typeof MissingTransform.Type` immediately before this Schema.',
-							'Place `type MissingType = typeof MissingType.Type` immediately before this Schema.',
-							'Write `type Tree = ...` by hand immediately before this recursive Schema; typeof Tree.Type is circular.'
-						])
 						expect(result.stderr).toBe('')
 					}),
 					Effect.scoped
@@ -207,9 +184,13 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 							name: 'valid.tsx',
 							source: pipe(
 								[
-									"import {Array, Schema, SchemaGetter, SchemaTransformation, identity, pipe} from 'effect'",
+									"import {Array, Layer, Result, Schema, SchemaGetter, SchemaTransformation, identity, pipe} from 'effect'",
 									'',
 									'declare const input: unknown',
+									'declare const layer: Layer.Layer<never>',
+									'declare const outcome: Result.Result<number, string>',
+									'const mappedOutcome = Result.map(outcome, value => value + 1)',
+									'const layers = pipe(layer, Layer.provide(pipe(layer, Layer.provide(pipe(layer, Layer.provide(layer))))))',
 									'declare function combine(left: string, right: string): string',
 									'declare const snapshot: {width: number}',
 									'type User = typeof User.Type',
@@ -257,7 +238,10 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const circles = Array.map([input], circle)',
 									'function readSnapshot() { return snapshot.width }',
 									'const snapshots = Array.map([input], readSnapshot)',
-									'export {Annotated, Arbitrary, CallStep, CodeStep, Decoded, Encoded, Formatter, LinearIssue, Normalized, Step, circle, circles, constants, counters, decoded, decodedMany, encoded, ensured, identify, isUser, lengths, readCounter, readSnapshot, snapshots, swap, transform, tuple, withDefault}'
+									'const DefaultInput = Schema.JsonObject.make({schema: {type: "object"}})',
+									'// oxlint-disable-next-line eqeqeq -- the fixture keeps a reasoned disable',
+									'const loose = snapshot.width == 1',
+									'export {Annotated, Arbitrary, CallStep, CodeStep, Decoded, DefaultInput, Encoded, Formatter, LinearIssue, Normalized, Step, circle, circles, constants, counters, decoded, decodedMany, encoded, ensured, identify, isUser, layers, lengths, loose, mappedOutcome, readCounter, readSnapshot, snapshots, swap, transform, tuple, withDefault}'
 								],
 								Array.join('\n')
 							)
@@ -272,23 +256,22 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 		)
 
 		testApi.effect(
-			'reports runtime typeof and module mocking',
+			'reports runtime typeof and error wording assertions',
 			() =>
 				pipe(
 					Effect.gen(function* () {
 						const result = yield* lintSource({
-							name: 'mocking.ts',
+							name: 'assertions.ts',
 							source: pipe(
 								[
 									"import {Predicate} from 'effect'",
 									'',
 									'declare const properties: unknown',
 									'declare const value: unknown',
-									'declare const vi: {mock: (path: string, factory: () => object) => void; spyOn: (target: object, key: string) => void}',
+									'declare function expect(value: unknown): {toThrow: (expected?: string) => void}',
 									"const isText = typeof value === 'string'",
 									"if (typeof properties === 'object') Predicate.isNotNull(properties)",
-									"vi.mock('../src/NotionClient.ts', () => ({}))",
-									"vi.spyOn(console, 'log')",
+									"expect(() => Predicate.isNotNull(value)).toThrow('negative')",
 									'export {isText}'
 								],
 								Array.join('\n')
@@ -297,58 +280,13 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 						expect(customCodes(result.stdout)).toEqual(
 							pipe(
 								[
-									'@deslop/workflow(no-module-mocking)',
-									'@deslop/workflow(no-module-mocking)',
+									'@deslop/workflow(no-error-message-assertion)',
 									'@deslop/workflow(no-typeof)',
 									'@deslop/workflow(no-typeof)'
 								],
 								Array.sort(String.Order)
 							)
 						)
-						expect(
-							pipe(
-								customDiagnostics(result.stdout),
-								Array.filter(diagnostic => diagnostic.code === '@deslop/workflow(no-typeof)'),
-								Array.map(diagnostic => diagnostic.message)
-							)
-						).toEqual(Array.makeBy(2, () => 'Use a Predicate module function.'))
-						expect(
-							pipe(
-								customDiagnostics(result.stdout),
-								Array.filter(diagnostic => diagnostic.code === '@deslop/workflow(no-module-mocking)'),
-								Array.map(diagnostic => diagnostic.message)
-							)
-						).toEqual(Array.makeBy(2, () => 'A Layer is the seam; never mock a module.'))
-					}),
-					Effect.scoped
-				),
-			20_000
-		)
-
-		testApi.effect(
-			'allows a Layer as the test seam',
-			() =>
-				pipe(
-					Effect.gen(function* () {
-						const result = yield* lintSource({
-							name: 'seam.ts',
-							source: pipe(
-								[
-									"import {NodeServices} from '@effect/platform-node'",
-									"import {it} from '@effect/vitest'",
-									"import {Effect, Layer, Predicate} from 'effect'",
-									'',
-									'declare const value: unknown',
-									'const isText = Predicate.isString(value)',
-									'it.layer(Layer.provideMerge(Layer.empty, NodeServices.layer))(test => {',
-									"  test.effect('sums expenses negative per tag', () => Effect.void)",
-									'})',
-									'export {isText}'
-								],
-								Array.join('\n')
-							)
-						})
-						expect(customCodes(result.stdout)).toEqual([])
 					}),
 					Effect.scoped
 				),

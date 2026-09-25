@@ -60,6 +60,14 @@ function isSchemaDefinition(input: {context: Context; node: ESTree.Expression}):
 	if (input.node.type === 'TSSatisfiesExpression') {
 		return isSchemaDefinition({context: input.context, node: input.node.expression})
 	}
+	if (
+		input.node.type === 'CallExpression' &&
+		input.node.callee.type === 'MemberExpression' &&
+		!importedMember({context: input.context, importedName: 'Schema', node: input.node.callee}) &&
+		Option.contains(memberName(input.node.callee), 'make')
+	) {
+		return false
+	}
 	if (!expressionUsesImport({context: input.context, importedName: 'Schema', node: input.node})) return false
 	return pipe(
 		schemaDefinitionMember(input.node),

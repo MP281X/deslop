@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
-// Generator paths and CLI arguments are native Node boundaries.
-// @effect-diagnostics-next-line nodeBuiltinImport:off
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- Generator paths and CLI arguments are native Node boundaries.
 import {resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {parseArgs} from 'node:util'
@@ -69,7 +68,6 @@ const parsedArguments = parseArgs({
 	options: {directory: {type: 'string'}, name: {type: 'string'}},
 	strict: false
 })
-// oxlint-disable-next-line eslint/no-restricted-properties -- node:util owns the external CLI argument boundary.
 const options = z.object({directory: z.string().optional(), name: Name}).parse(parsedArguments.values)
 const directory = options.directory ?? `../apps/${options.name}`
 
@@ -82,8 +80,7 @@ const icon = fileURLToPath(new URL('../template/src/routes/icon.png', import.met
 NodeRuntime.runMain(
 	pipe(
 		Effect.promise(() =>
-			// Bingo's non-generic CLI signature erases the concrete option schema.
-			// oxlint-disable-next-line @typescript-eslint/consistent-type-assertions
+			// oxlint-disable-next-line @typescript-eslint/consistent-type-assertions -- Bingo's non-generic CLI signature erases the concrete option schema.
 			runTemplateCLI(template as unknown as Template)
 		),
 		Effect.flatMap(status => {
@@ -104,8 +101,7 @@ NodeRuntime.runMain(
 				)
 			})
 		}),
-		// This CLI entrypoint owns the filesystem runtime.
-		// @effect-diagnostics-next-line strictEffectProvide:off
+		// @effect-diagnostics-next-line strictEffectProvide:off -- This CLI entrypoint owns the filesystem runtime.
 		Effect.provide(NodeFileSystem.layer)
 	)
 )

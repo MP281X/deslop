@@ -1,165 +1,21 @@
-import {Array, pipe} from 'effect'
-
 import {definePlugin} from '@oxlint/plugins'
 import {defineConfig} from 'oxlint'
 
 import {noArrayWrapTernary} from './rules/no-array-wrap-ternary.ts'
 import {noConstantFunction} from './rules/no-constant-function.ts'
+import {noDeepPipe} from './rules/no-deep-pipe.ts'
+import {noErrorMessageAssertion} from './rules/no-error-message-assertion.ts'
 import {noFakeRefState} from './rules/no-fake-ref-state.ts'
-import {noModuleMocking} from './rules/no-module-mocking.ts'
+import {noNativeMethodCall} from './rules/no-native-method-call.ts'
 import {noReadonlyTypeSyntax} from './rules/no-readonly-type-syntax.ts'
 import {noRedundantUseRefNullType} from './rules/no-redundant-use-ref-null-type.ts'
 import {noStoredSchemaOperation} from './rules/no-stored-schema-operation.ts'
 import {noTrivialIndirection} from './rules/no-trivial-indirection.ts'
 import {noTypeof} from './rules/no-typeof.ts'
 import {noUndestructuredUseState} from './rules/no-undestructured-use-state.ts'
+import {noUnexplainedDisable} from './rules/no-unexplained-disable.ts'
 import {noUnvalidatedJsonDecode} from './rules/no-unvalidated-json-decode.ts'
 import {schemaTypePair} from './rules/schema-type-pair.ts'
-
-const effectModuleObjects = [
-	'Array',
-	'AsyncResult',
-	'Atom',
-	'AtomRpc',
-	'BigDecimal',
-	'Boolean',
-	'Cause',
-	'Channel',
-	'ChildProcess',
-	'ChildProcessSpawner',
-	'Chunk',
-	'Clock',
-	'Config',
-	'ConfigProvider',
-	'Context',
-	'DateTime',
-	'Duration',
-	'Effect',
-	'Encoding',
-	'Equal',
-	'Exit',
-	'FetchHttpClient',
-	'Fiber',
-	'FiberMap',
-	'FiberSet',
-	'FileSystem',
-	'Function',
-	'Hash',
-	'HashMap',
-	'HashSet',
-	'HttpClient',
-	'HttpMiddleware',
-	'HttpRouter',
-	'HttpServer',
-	'HttpServerRequest',
-	'HttpServerResponse',
-	'HttpStaticServer',
-	'Iterable',
-	'Layer',
-	'Match',
-	'MutableHashMap',
-	'Number',
-	'Option',
-	'Order',
-	'Path',
-	'Predicate',
-	'Prompt',
-	'PubSub',
-	'Random',
-	'Record',
-	'Redacted',
-	'Ref',
-	'Request',
-	'Response',
-	'RcMap',
-	'Rpc',
-	'RpcGroup',
-	'RpcSerialization',
-	'RpcServer',
-	'Schedule',
-	'Schema',
-	'SchemaGetter',
-	'SchemaTransformation',
-	'Scope',
-	'Semaphore',
-	'Socket',
-	'Stream',
-	'String',
-	'Struct',
-	'SubscriptionRef',
-	'Tool',
-	'Toolkit',
-	'Tuple',
-	'path'
-]
-
-const effectPropertyRestrictions = pipe(
-	[
-		'at',
-		'catch',
-		'charAt',
-		'charCodeAt',
-		'codePointAt',
-		'concat',
-		'endsWith',
-		'entries',
-		'every',
-		'fill',
-		'filter',
-		'finally',
-		'find',
-		'findIndex',
-		'findLast',
-		'findLastIndex',
-		'flat',
-		'flatMap',
-		'forEach',
-		'includes',
-		'indexOf',
-		'join',
-		'keys',
-		'lastIndexOf',
-		'localeCompare',
-		'map',
-		'match',
-		'matchAll',
-		'normalize',
-		'padEnd',
-		'padStart',
-		'pop',
-		'push',
-		'reduce',
-		'reduceRight',
-		'repeat',
-		'replace',
-		'replaceAll',
-		'reverse',
-		'search',
-		'shift',
-		'slice',
-		'some',
-		'sort',
-		'splice',
-		'split',
-		'startsWith',
-		'substring',
-		'then',
-		'toLocaleLowerCase',
-		'toLocaleUpperCase',
-		'toLowerCase',
-		'toReversed',
-		'toSorted',
-		'toSpliced',
-		'toUpperCase',
-		'trim',
-		'trimEnd',
-		'trimStart',
-		'unshift',
-		'values',
-		'with'
-	],
-	Array.map(property => ({allowObjects: effectModuleObjects, message: 'Use an Effect module function.', property}))
-)
 
 export const oxlint = defineConfig({
 	categories: {
@@ -196,14 +52,17 @@ export const oxlint = defineConfig({
 		// Effect and React forms that maintained rules cannot express.
 		'@deslop/workflow/no-array-wrap-ternary': 'error',
 		'@deslop/workflow/no-constant-function': 'error',
+		'@deslop/workflow/no-deep-pipe': 'error',
+		'@deslop/workflow/no-error-message-assertion': 'error',
 		'@deslop/workflow/no-fake-ref-state': 'error',
-		'@deslop/workflow/no-module-mocking': 'error',
+		'@deslop/workflow/no-native-method-call': 'error',
 		'@deslop/workflow/no-readonly-type-syntax': 'error',
 		'@deslop/workflow/no-redundant-use-ref-null-type': 'error',
 		'@deslop/workflow/no-stored-schema-operation': 'error',
 		'@deslop/workflow/no-trivial-indirection': 'error',
 		'@deslop/workflow/no-typeof': 'error',
 		'@deslop/workflow/no-undestructured-use-state': 'error',
+		'@deslop/workflow/no-unexplained-disable': 'error',
 		'@deslop/workflow/no-unvalidated-json-decode': 'error',
 		'@deslop/workflow/schema-type-pair': 'error',
 
@@ -377,6 +236,7 @@ export const oxlint = defineConfig({
 		'import/no-duplicates': 'error',
 		'import/no-empty-named-blocks': 'error',
 		'import/no-mutable-exports': 'error',
+		'import/no-namespace': ['error', {ignore: ['[!#./]*', '[!#./]*/**']}],
 		'import/no-relative-parent-imports': 'error',
 		'import/no-self-import': 'error',
 		'no-restricted-imports': [
@@ -387,13 +247,25 @@ export const oxlint = defineConfig({
 						importNames: ['Component', 'PureComponent', 'createRef', 'forwardRef', 'memo', 'useCallback', 'useMemo'],
 						message: 'Use React 19 function components and let React Compiler own memoization.',
 						name: 'react'
-					}
+					},
+					{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name: 'vitest'},
+					{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name: '@effect/vitest'}
 				],
-				patterns: [{message: 'Use public package exports.', regex: '^@[^/]+/[^/]+/(?:src|lib)(?:/|$)'}]
+				patterns: [
+					{message: 'Use public package exports.', regex: '^@[^/]+/[^/]+/(?:src|lib)(?:/|$)'},
+					{message: 'Use glob from the FileSystem service.', regex: '^glob(?:/|$)'},
+					{message: 'Use effect/unstable/cli.', regex: '^(?:commander|yargs)(?:/|$)'},
+					{message: 'Use randomUUIDv4 from the Crypto service.', regex: '^uuid(?:/|$)'},
+					{message: 'Use HttpClient.', regex: '^(?:axios|node-fetch)(?:/|$)'},
+					{message: 'Use Config.', regex: '^dotenv(?:/|$)'},
+					{message: 'Use ChildProcess from effect/unstable/process.', regex: '^execa(?:/|$)'},
+					{message: 'Use the concurrency option of Effect.all or Effect.forEach.', regex: '^p-limit(?:/|$)'}
+				]
 			}
 		],
 
 		// JavaScript correctness
+		'max-nested-callbacks': ['error', 6],
 		'no-cond-assign': 'error',
 		'no-continue': 'error',
 		'no-control-regex': 'error',
@@ -423,22 +295,27 @@ export const oxlint = defineConfig({
 			'Array',
 			'Boolean',
 			'Error',
-			'Map',
+			{
+				message:
+					'Use MutableHashMap; for identity keys, wrap objects the code owns in Equal.byReferenceUnsafe, which marks them reference-compared globally.',
+				name: 'Map'
+			},
 			'Number',
 			'Object',
 			'Promise',
 			'Reflect',
-			'Set',
+			{
+				message:
+					'Use MutableHashSet; for identity keys, wrap objects the code owns in Equal.byReferenceUnsafe, which marks them reference-compared globally.',
+				name: 'Set'
+			},
 			'String',
-			'WeakMap',
-			'WeakSet',
 			'global',
 			'globalThis'
 		],
 		'no-restricted-properties': [
 			'error',
 			{message: 'Use standalone pipe.', property: 'pipe'},
-			...effectPropertyRestrictions,
 			{allowObjects: ['Predicate'], message: 'Use Predicate.hasProperty.', property: 'hasOwnProperty'},
 			{message: 'Use an owned runtime.', object: 'Effect', property: 'runFork'},
 			{message: 'Use an owned runtime.', object: 'Effect', property: 'runPromise'},
@@ -602,8 +479,6 @@ export const oxlint = defineConfig({
 					ReadonlyMap: 'Use HashMap.',
 					ReadonlySet: 'Use HashSet.',
 					Set: 'Use HashSet.',
-					WeakMap: 'Use Effect-owned state.',
-					WeakSet: 'Use Effect-owned state.',
 					undefined: 'Use an optional property, optional parameter, inference, or Option.'
 				}
 			}
@@ -616,7 +491,9 @@ export const oxlint = defineConfig({
 		],
 
 		// Unicorn
+		'unicorn/filename-case': 'error',
 		'unicorn/no-immediate-mutation': 'error',
+		'unicorn/no-lonely-if': 'error',
 		'unicorn/no-null': 'error',
 		'unicorn/no-object-as-default-parameter': 'error',
 		'unicorn/no-process-exit': 'error',
@@ -639,14 +516,17 @@ export default definePlugin({
 	rules: {
 		'no-array-wrap-ternary': noArrayWrapTernary,
 		'no-constant-function': noConstantFunction,
+		'no-deep-pipe': noDeepPipe,
+		'no-error-message-assertion': noErrorMessageAssertion,
 		'no-fake-ref-state': noFakeRefState,
-		'no-module-mocking': noModuleMocking,
+		'no-native-method-call': noNativeMethodCall,
 		'no-readonly-type-syntax': noReadonlyTypeSyntax,
 		'no-redundant-use-ref-null-type': noRedundantUseRefNullType,
 		'no-stored-schema-operation': noStoredSchemaOperation,
 		'no-trivial-indirection': noTrivialIndirection,
 		'no-typeof': noTypeof,
 		'no-undestructured-use-state': noUndestructuredUseState,
+		'no-unexplained-disable': noUnexplainedDisable,
 		'no-unvalidated-json-decode': noUnvalidatedJsonDecode,
 		'schema-type-pair': schemaTypePair
 	}

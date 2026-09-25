@@ -146,8 +146,6 @@ function getItems<TValue extends RichTextArea.Value>(
 	const noMatchScore = -1_000_000
 
 	return pipe(
-		// `values` is domain data, not a prototype collection operation.
-		// oxlint-disable-next-line eslint/no-restricted-properties
 		group.values,
 		Array.map(value => {
 			const query = String.toLowerCase(search.query)
@@ -338,8 +336,7 @@ function EditorPlugin<TValue extends RichTextArea.Value>(props: {
 						}
 
 						for (const file of files) {
-							// The synchronous Lexical command boundary requires an immediate collision-safe identifier.
-							// @effect-diagnostics-next-line cryptoRandomUUID:off
+							// @effect-diagnostics-next-line cryptoRandomUUID:off -- The synchronous Lexical command boundary requires an immediate collision-safe identifier.
 							const id = crypto.randomUUID()
 							props.setTokensMap(current => HashMap.set(current, id, {color: '#f59e0b', file, id, kind: 'file'}))
 
@@ -409,8 +406,7 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 					: null
 			}}
 			onSelectOption={(option, node, close) => {
-				// The synchronous Lexical selection boundary requires an immediate collision-safe identifier.
-				// @effect-diagnostics-next-line cryptoRandomUUID:off
+				// @effect-diagnostics-next-line cryptoRandomUUID:off -- The synchronous Lexical selection boundary requires an immediate collision-safe identifier.
 				const id = crypto.randomUUID()
 				props.setTokensMap(current => HashMap.set(current, id, {id, kind: 'entry', ...option.entry}))
 
@@ -420,8 +416,7 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 					.setMode('token')
 					.setStyle(`color: ${option.entry.color}`)
 
-				// Lexical owns this AST mutation API.
-				// oxlint-disable-next-line eslint/no-restricted-properties
+				// oxlint-disable-next-line @deslop/workflow/no-native-method-call -- Lexical owns this AST mutation API.
 				if (node) node.replace(token)
 
 				if (!node) {

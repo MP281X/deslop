@@ -1,5 +1,4 @@
-// The operating system owns the user's home directory at the CLI boundary.
-// @effect-diagnostics-next-line nodeBuiltinImport:off
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- The operating system owns the user's home directory at the CLI boundary.
 import {homedir} from 'node:os'
 
 import {NodeRuntime, NodeServices} from '@effect/platform-node'
@@ -50,8 +49,7 @@ NodeRuntime.runMain(
 		cli,
 		Command.run({version: packageJson.version}),
 		Effect.scoped,
-		// This CLI entrypoint owns the single platform Layer and its resource lifetime.
-		// @effect-diagnostics-next-line strictEffectProvide:off
+		// @effect-diagnostics-next-line strictEffectProvide:off -- This CLI entrypoint owns the single platform Layer and its resource lifetime.
 		Effect.provide(NodeServices.layer)
 	)
 )
