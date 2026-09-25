@@ -8,6 +8,7 @@ description: 'Use for facts about this host and the deslop and dual repositories
 - Debian 13, 8 CPUs, 23G RAM.
 - Agents and the user reach it only by its DNS name, as `mp281x@dev.mp281x.xyz`, never by IP.
 - Scratch, clones, logs, and screenshots go under `~/.deslop/<task>/`, where `<task>` is the worktree directory name; never /tmp.
+- When a thread's work is done, everything it created is removed: its scratch under `~/.deslop/<task>/`, extra git worktrees and repository copies, scratch config homes, the process groups it started, previews included, and evaluation runs not kept as evidence. Kept: the shared clones in `~/.deslop/repos`, the thread's own t3 worktree while its request is open, and artifacts a handoff cites as evidence.
 - Shared turbo cache: `~/.cache/turbo` (`TURBO_CACHE_DIR` is set for agents).
 - Dedicated tools first: `rg` to search text, `jq` to process JSON, `node` to run JavaScript.
 - Other global tools: agent-browser (with Chrome), acli, gh (github.com, MP281X), glab (default host git.datapizza.tech), python and pip, sqlite3, bc, xxd.
