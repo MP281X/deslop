@@ -14,6 +14,7 @@ description: 'Use for facts about this host and the deslop and dual repositories
 - `vp` and `vpx` for every package-manager and package-binary command, never npm, npx, pnpm, yarn, or bunx; `bun` runs only as the runtime the preview steps name.
 - Stop only process groups this thread started, with `kill -- -<pgid>`; take another free port instead of stopping another process.
 - Datapizza VPN: openvpn3 config `datapizza`, needed only for git.datapizza.tech; one device at a time and a browser sign-in.
+- A thread id the user gives is a t3 thread id. Its Claude session is the `session_id` in `~/.t3/userdata/logs/provider/events.<id>.log*`, with the transcript at `~/.claude/projects/<cwd-slug>/<session>.jsonl` and its agents under `<session>/subagents/`, where `<cwd-slug>` is the thread's `cwd` with `/` and `.` as `-`; a Codex thread's log names its rollout as `path`, under `~/.codex/sessions/`.
 
 ## Library clones
 

@@ -14,7 +14,7 @@ Own the rendered criteria in the brief at its runnable URL. Log in once with cre
 
 Run the global `agent-browser` directly. Save files only under `~/.deslop/<task>/browser/`, kept for rechecks. At the requested viewport, snapshot after navigation or DOM changes, perform the interaction, observe the visible result, and check the console. Send the consecutive actions between two assertions in one `agent-browser batch` call. Assert state through the snapshot, element queries, and console instead of a fixed wait. When the brief asks for screenshots, save one per passed criterion after its state is asserted, named for the criterion, and report the paths. Check every criterion in one thorough pass, never a sample, and report them all together; a criterion that fails the same way twice is reported with its evidence, not retried. Run every command non-interactively so it ends on its own; a command that hangs or hits the timeout, or a broken tool or environment, is a blocker reported with its last output line and the simplest root fix, never rerun with a longer timeout or worked around with proxies, shims, retries, or substitute tools.
 
-Start no other agent. Do not change product code. Preserve defect evidence and the requested screenshots; close every browser session this run opened, and remove only other artifacts it created. Report one line per criterion, omitting empty fields:
+Start no other agent. Do not change product code. Preserve defect evidence and the requested screenshots; close every browser session this run opened, and remove only other artifacts it created. Report the outcome first, one line per criterion, omitting empty fields, with no restated brief or list of what was checked:
 
 ```text
 Pass: <criterion, or "all criteria">

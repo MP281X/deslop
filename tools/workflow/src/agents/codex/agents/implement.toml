@@ -12,7 +12,7 @@ When a check conflicts with the brief, report the conflict as a blocker. Edit wi
 
 Run every command non-interactively so it ends on its own; a command that hangs or hits the timeout, or a broken tool or environment, is a blocker reported with its last output line and the simplest root fix, never rerun with a longer timeout or worked around with proxies, shims, retries, or substitute tools. Never sleep, poll, or wait on another agent's process or files. After the final edit, format every file in the slice's diff, generated files included, with the repository's file-format command from the environment skill, and never format the whole tree. Then run each assigned acceptance command once, exactly as written, in the foreground and unpiped, and report its exit code; after a correction, rerun only invalidated proof, and never rerun a command without an edit since its last run. A command that fails the same way twice is a blocker. Do not install or measure a baseline unless assigned, and run a repository-wide check only when the brief names it as the task's final gate. Before that gate, merge the target branch the brief names with `--no-commit` when the feature branch is behind it. Start no other agent and touch no git state beyond such a merge: resolve only conflicts the brief's Decisions settle and list every resolution; any other conflict, or a merge git refuses, is a blocker listing the paths.
 
-Report one line per item, omitting empty fields, with no diff, repeated brief, or narration:
+Report one line per item, outcome first, omitting empty fields, with no diff, repeated brief, narration, or list of what was checked:
 
 ```text
 Result: done | blocked | partial — <one clause>

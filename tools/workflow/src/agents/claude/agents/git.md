@@ -27,7 +27,7 @@ Bugs fixed:
 - <bug> — <evidence>
 ```
 
-Report one line per item, omitting empty fields:
+Report one line per item, outcome first, omitting empty fields, with no restated brief or list of what was checked:
 
 ```text
 Commit: <short id> <title>
