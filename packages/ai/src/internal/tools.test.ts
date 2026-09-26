@@ -43,54 +43,52 @@ function info(type: FileSystem.File.Type, size = 0): FileSystem.File.Info {
 const makeFileSystem = Effect.fnUntraced(function* () {
 	const files = yield* Ref.make(HashMap.empty<string, string>())
 	return FileSystem.makeNoop({
-		glob: (pattern, options) =>
-			pipe(
-				Ref.get(files),
-				Effect.map(HashMap.keys),
-				Effect.map(Array.fromIterable),
-				Effect.map(
-					Array.filterMap(file => {
-						const root = options?.root ?? '.'
-						const prefix = `${root}/`
-						if (!String.startsWith(prefix)(file)) return Result.failVoid
-						if (pattern === '**/*.txt' && !String.endsWith('.txt')(file)) return Result.failVoid
-						return Result.succeed(String.slice(String.length(prefix))(file))
-					})
-				)
-			),
+		glob: Effect.fnUntraced(function* (pattern, options) {
+			return pipe(
+				yield* Ref.get(files),
+				HashMap.keys,
+				Array.fromIterable,
+				Array.filterMap(file => {
+					const root = options?.root ?? '.'
+					const prefix = `${root}/`
+					if (!String.startsWith(prefix)(file)) return Result.failVoid
+					if (pattern === '**/*.txt' && !String.endsWith('.txt')(file)) return Result.failVoid
+					return Result.succeed(String.slice(String.length(prefix))(file))
+				})
+			)
+		}),
 		makeDirectory: () => Effect.void,
-		readDirectory: directory =>
-			pipe(
-				Ref.get(files),
-				Effect.map(HashMap.keys),
-				Effect.map(Array.fromIterable),
-				Effect.map(
-					Array.filterMap(file => {
-						const prefix = `${directory}/`
-						if (!String.startsWith(prefix)(file)) return Result.failVoid
-						return pipe(
-							String.slice(String.length(prefix))(file),
-							String.split('/'),
-							Array.head,
-							Result.fromOption(() => undefined)
-						)
-					})
-				),
-				Effect.map(HashSet.fromIterable),
-				Effect.map(Array.fromIterable)
-			),
-		readFileString: path => pipe(Ref.get(files), Effect.map(HashMap.get(path)), Effect.map(Option.getOrThrow)),
-		stat: path =>
-			pipe(
-				Ref.get(files),
-				Effect.map(entries =>
-					pipe(
-						HashMap.get(entries, path),
-						Option.match({onNone: () => info('Directory'), onSome: content => info('File', String.length(content))})
+		readDirectory: Effect.fnUntraced(function* (directory) {
+			return pipe(
+				yield* Ref.get(files),
+				HashMap.keys,
+				Array.fromIterable,
+				Array.filterMap(file => {
+					const prefix = `${directory}/`
+					if (!String.startsWith(prefix)(file)) return Result.failVoid
+					return pipe(
+						String.slice(String.length(prefix))(file),
+						String.split('/'),
+						Array.head,
+						Result.fromOption(() => undefined)
 					)
-				)
-			),
-		writeFileString: (path, content) => Ref.update(files, HashMap.set(path, content))
+				}),
+				HashSet.fromIterable,
+				Array.fromIterable
+			)
+		}),
+		readFileString: Effect.fnUntraced(function* (path) {
+			return Option.getOrThrow(HashMap.get(yield* Ref.get(files), path))
+		}),
+		stat: Effect.fnUntraced(function* (path) {
+			return pipe(
+				HashMap.get(yield* Ref.get(files), path),
+				Option.match({onNone: () => info('Directory'), onSome: content => info('File', String.length(content))})
+			)
+		}),
+		writeFileString: Effect.fnUntraced(function* (path, content) {
+			yield* Ref.update(files, HashMap.set(path, content))
+		})
 	})
 })
 
@@ -101,7 +99,6 @@ it.layer(NodeServices.layer)('Pi tools', test => {
 			const path = yield* Path.Path
 			const cwd = path.resolve('.')
 			const fileSystem = yield* makeFileSystem()
-			const replacement = {newText: 'second', oldText: 'first'}
 			const handlerContext = yield* Layer.build(
 				PiToolkit.toLayer(pipe(handlers(cwd), Effect.provideService(FileSystem.FileSystem, fileSystem)))
 			)
@@ -113,9 +110,26 @@ it.layer(NodeServices.layer)('Pi tools', test => {
 				Effect.orDie
 			)
 			yield* pipe(
-				toolkit.handle('edit', {edits: [replacement], path: 'notes/a.txt'}),
+				toolkit.handle('edit', {
+					edits: [
+						{newText: 'draft', oldText: 'first'},
+						{newText: 'second', oldText: 'draft'}
+					],
+					path: 'notes/a.txt'
+				}),
 				Effect.flatMap(Stream.runDrain),
 				Effect.orDie
+			)
+			const failedEdit = yield* pipe(
+				toolkit.handle('edit', {
+					edits: [
+						{newText: 'third', oldText: 'second'},
+						{newText: 'third', oldText: 'missing'}
+					],
+					path: 'notes/a.txt'
+				}),
+				Effect.flatMap(Stream.runDrain),
+				Effect.flip
 			)
 
 			const read = yield* pipe(
@@ -149,6 +163,7 @@ it.layer(NodeServices.layer)('Pi tools', test => {
 				Effect.orDie
 			)
 
+			expect(failedEdit).toMatchObject({_tag: 'ToolExecutionError'})
 			expect(pipe(read, Option.getOrThrow)).toBe('second\nneedle')
 			expect(pipe(grep, Option.getOrThrow)).toContain('notes/a.txt:2:needle')
 			expect(pipe(find, Option.getOrThrow)).toBe('notes/a.txt')

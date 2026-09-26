@@ -1,4 +1,4 @@
-import {Array, Option, Predicate, pipe} from 'effect'
+import {Array, MutableRef, Option, Predicate, pipe} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree, Reference, Scope, Variable} from '@oxlint/plugins'
@@ -59,16 +59,19 @@ function isConstBound(node: ESTree.ArrowFunctionExpression | ESTree.Function) {
 	)
 }
 
-const message = 'This function reads nothing but imports, so it is a value: hold its result in a const.'
-
 export const noConstantFunction = defineRule({
 	create: context => {
-		let spans = Array.empty<ESTree.Span>()
+		const spans = MutableRef.make(Array.empty<ESTree.Span>())
 		function mark(node: ESTree.Span) {
-			spans = Array.append(spans, node)
+			MutableRef.update(spans, Array.append(node))
 		}
 		function report(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
-			if (isConstantFunction({context, node, spans})) context.report({message, node})
+			if (isConstantFunction({context, node, spans: MutableRef.get(spans)})) {
+				context.report({
+					message: 'This function reads nothing but imports, so it is a value: hold its result in a const.',
+					node
+				})
+			}
 		}
 		return {
 			'ArrowFunctionExpression:exit': node => {

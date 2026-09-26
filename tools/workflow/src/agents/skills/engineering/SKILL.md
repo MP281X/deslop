@@ -3,7 +3,7 @@ name: engineering
 description: 'Use for product-code architecture, implementation, coding style, testing, or review.'
 ---
 
-Write code to these rules; apply the repository's `project-engineering` skill where one exists. Both take precedence over a repository's other coding standards. Static analysis catches regressions and never fixes code: write every rule below correctly the first time, whether or not a linter checks it. The deslop codebase is the minimum bar for structure and consistency in every repository.
+Apply the repository's CODING_STANDARDS.md alongside these rules. Both take precedence over a repository's other coding standards. Lint is the fallback that catches what slips through and applies autofixes: write every rule below correctly the first time, whether or not a linter checks it. The deslop codebase is the minimum bar for structure and consistency in every repository.
 
 ## Simplicity
 
@@ -16,7 +16,7 @@ Every line not needed now slows the next change. Build the smallest thing that d
 - Happy path only: let failures flow through Effect's error channel, with no catch, retry, fallback, or defensive check unless the request or an existing contract states the requirement.
 - Validate and transform once, at the boundary, with Effect Schema; inside, data is trusted: carry narrowed values forward and never re-check what the schema, the declared type, an earlier filter, or tsc guarantees.
 - Layers depend inward: domain and service code never import HTTP, RPC, or other transport types.
-- Search Effect before writing logic: before hand-writing a traversal, accumulator, check, or config read, search the Effect clone the environment skill names (Graph, Record, String, Option, Struct, Config.all, Match, Boolean) and call the helper that exists.
+- Search Effect before writing logic: before hand-writing a traversal, accumulator, check, or config read, search the main Effect repository at `~/.deslop/repos/effect` (Graph, Record, String, Option, Struct, Config.all, Match, Boolean) and call the helper that exists; clone a missing library source into `~/.deslop/repos`.
 - Never destructure a parameter, callback argument, or loop variable (`useState` excepted), and never re-list a value's fields: pass it whole or spread it.
 - No future-proofing: no option, parameter, layer, abstraction, export, file, script, or check for a need that does not exist yet.
 - Delete dead code, always: every superseded or unused file, export, type, doc, test, and dependency goes in the same change; keep the type half of a schema pair and leave no compatibility path or leftover.
@@ -26,11 +26,11 @@ Every line not needed now slows the next change. Build the smallest thing that d
 - Touch only what the request needs; an unrelated improvement is a proposal for the user.
 - Behave correctly instead of building machinery, such as hooks, guards, or generators, to enforce behavior.
 - A refactor or mechanical pass keeps logic and behavior, except two accepted differences: one that matters at no usage point and makes the code simpler, and one that applying a rule in this skill causes, such as an error keeping its cause, sorted keys, or Effect-native formatting, unless a usage point parses it; human-facing diagnostics, such as printed error text, are not a contract. Check every usage point, then record each accepted difference, reported with the change. Any other behavior change is the user's decision, except a reachable bug's fix.
-- Fix a reachable bug, one that real input from an actual usage point triggers: check every consumer of the changed output and report it as a fixed bug, its evidence the failing output line of its test case run before the fix, never a CLI or app run. Handling for input no caller produces is deleted instead of fixed; anything that looks intentional, or that other code relies on, is kept and reported as possibly intentional.
+- Fix a reachable bug, one that real input from an actual usage point triggers: check every consumer of the changed output and report it as a fixed bug. Handling for input no caller produces is deleted instead of fixed; anything that looks intentional, or that other code relies on, is kept and reported as possibly intentional.
 - Improve performance in the code the change touches where you know how; measure beyond noise on a realistic input only when a change claims speed or keeps a slower-looking form.
 - A fix never weakens type safety to make a symptom go away, a performance or type-check-speed change included: no widened or erased type, cast, dropped generic, or loosened exported type.
 - Implement the definition the domain uses, such as a cycle for recursion, never the nearest syntactic proxy.
-- Before finishing, reread the diff and delete every line the outcome does not require: pass values instead of trackers, use the whole schema instead of picking every field, and delete checks and fallbacks for cases callers cannot produce, props, options, and docs beyond the minimum, tests the Tests section drops, and code an Effect helper replaces.
+- Before finishing, reread the diff and delete every line the outcome does not require.
 
 ```ts
 // good — Effect's helpers, values taken whole, data trusted after the boundary
@@ -115,14 +115,6 @@ src/generator/resolve.ts
 src/generator/resolve.ts, src/generator/referenceProblem.ts   // two $ref walkers after a rewrite
 README.md, AGENTS.md, SKILL.md, sdk guide, changeset          // the same CLI flags five times
 HANDOFF-openapi-plugin.md, ~/.ab/, stray worktrees            // artifacts left after "done"
-```
-
-```text
-// good — the instruction states the behavior; each harness keeps its own plain file
-// bad — "It seems stupid and overcomplicated to have a script for it"
-scripts/ask-gate.mjs     // a hook forcing the order of questions
-guard.py                 // enforces string checks the instruction already states
-render-config.ts         // generates per-harness files from one source
 ```
 
 ## Types
@@ -214,8 +206,7 @@ function isPathNotFound(error: unknown) {
 ## Effect
 
 ```ts
-// good — Schema, Array, String, Number, Predicate over globals; PackageManifest is a fromJsonString schema
-Schema.decodeEffect(PackageManifest)(text)
+// good — Schema, Array, String, Number, Predicate over globals
 Number.parse(input.count)
 Array.map(commits, commit => commit.subject)
 Predicate.isString(value)
@@ -244,6 +235,7 @@ const stop = Effect.gen(function* () {
 })
 // bad — "if there is an arg you must use the Effect.fn"
 read: input => pipe(storage.read(input.id), Effect.withSpan('Todo.read', {attributes: {id: input.id}}))
+fetch: url => Effect.tryPromise(() => fetch(url))
 const load = id =>
 	Effect.gen(function* () {
 		return yield* read(id)
@@ -251,12 +243,12 @@ const load = id =>
 ```
 
 ```ts
-// good — a service with one implementation builds it inline in its layer; a service with several backends has one named layer per backend, like Ai.layerPi; an implementation returns a plain object
+// good — a service with one implementation builds it inline in its layer; a service with several backends has one named layer per backend, like Ai.layerPi; an implementation is the service's of or a plain object that satisfies its shape
 export class Ledger extends Context.Service<Ledger, Ledger.Shape>()('@deslop/ledger/service/Ledger') {
 	static layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
-			return {add, balanceByTag} satisfies Ledger.Shape
+			return Ledger.of({add, balanceByTag})
 		})
 	)
 }
@@ -280,7 +272,6 @@ export const makePi = Effect.fnUntraced(function* (config: Pi.Config) {
 class Logger extends Context.Service<Logger>()('Logger', {make: Effect.succeed(service)}) {}
 static readonly layer = Layer.effect(Ledger, makeLedger) // a make with one caller
 readonly add: (draft: LedgerDraft) => Effect.Effect<LedgerEntry, Schema.SchemaError>
-return Ledger.of({add, balanceByTag}) // identity wrapper
 ```
 
 ```ts
@@ -548,11 +539,14 @@ NodeRuntime.runMain(
 
 ### Modules
 
+Import a module under its own name; the ui package's aliases for clashing names are the exception.
+
 ```ts
 // good — subpath imports, import type, every export has an importer
 import type {PortfolioState, PortfolioTrail, PortfolioVisitor} from '#rpcs/contracts.ts'
 import type {Connect, EnvironmentModuleNode, Plugin} from 'vite'
 // bad — each line is a diagnostic
+import {Schema as S} from 'effect'
 export const EntryKind = Schema.Literals(['income', 'expense']) // no importer
 ```
 

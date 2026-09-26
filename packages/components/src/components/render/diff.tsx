@@ -169,12 +169,12 @@ function CommentAnnotation(props: {
 	useEffect(() => {
 		if (!editing) return
 
-		const animationFrame = window.requestAnimationFrame(() => {
+		const animationFrame = requestAnimationFrame(() => {
 			inputRef.current?.focus()
 		})
 
 		return () => {
-			window.cancelAnimationFrame(animationFrame)
+			cancelAnimationFrame(animationFrame)
 		}
 	}, [editing])
 

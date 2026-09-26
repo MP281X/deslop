@@ -1,1 +1,1 @@
-The pair thread delegates to the configured agents: `explore`, `implement`, `browser`, `review`; spawning them from the pair is authorized whenever its developer instructions call for it.
+The pair may spawn its roles `explore`, `prototype`, `browser`, and `review` whenever its developer instructions call for them.

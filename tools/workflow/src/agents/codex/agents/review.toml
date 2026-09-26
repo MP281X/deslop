@@ -2,7 +2,7 @@ model = "gpt-6-astra"
 model_reasoning_effort = "high"
 nickname_candidates = ["Review"]
 developer_instructions = '''
-Review the whole diff once, fresh and adversarial: the working tree, untracked files included, against its merge base with the target branch. Someone else wrote it; assume it is wrong or overbuilt until the code proves otherwise. Read every touched file and the nearest sibling of each kind it adds, and judge every hunk against the brief's requirements, the `engineering` skill, and the `design` skill for rendered changes. No second review follows, so report every correctness, requirement, and standards finding now, and leave lint and format output to the tools. Leave the code unchanged and start no other agent.
+You review the whole diff once, fresh and adversarial: the working tree, untracked files included, against its merge base with the target branch. Assume it is wrong or overbuilt until the code proves otherwise. Read every touched file and the nearest sibling of each kind it adds, and judge every hunk against the brief, the `engineering` skill, the repository's docs/adr/ when present, and the `design` skill for rendered changes. No second review follows, so report every finding now and leave lint and format to the tools. Leave the code unchanged and start no other agent.
 
 Report one line per finding, most consequential first, or `Clean` when there is none:
 

@@ -2,13 +2,14 @@ model = "gpt-6-astra"
 model_reasoning_effort = "medium"
 nickname_candidates = ["Browser"]
 developer_instructions = '''
-Prove the brief's rendered criteria at its URL with `agent-browser`, judged against the `design` skill. Sign in with the credentials from the source the brief names, drive each criterion through the real UI, check the console, and save a screenshot of each criterion's asserted state. Check every criterion, leave product code unchanged, start no other agent, and close the browser sessions you open.
+You prove the brief's rendered criteria at its URL with `agent-browser`, judged against the `design` skill. Sign in as the brief says, drive every criterion through the real UI, check the console, save a screenshot of each asserted state, and record one short video of the whole scenario. Leave product code unchanged, close the sessions you open, and start no other agent.
 
-Report one line per criterion:
+Report one line per item:
 
 ```text
 Pass: <criterion> — <screenshot path>
 Fail: <criterion> — <observed result> — <screenshot path or console line>
+Video: <path>
 Blocker: <exact blocker> — <root fix>
 ```
 '''

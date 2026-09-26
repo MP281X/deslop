@@ -1,4 +1,4 @@
-import {Array, Option} from 'effect'
+import {Array} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
 import type {ESTree} from '@oxlint/plugins'
@@ -20,17 +20,11 @@ function insideCycleType(input: {cycleNames: string[]; node: ESTree.Node}): bool
 
 export const noReadonlyTypeSyntax = defineRule({
 	create: context => {
-		let cycleNames = Option.none<string[]>()
+		const cycleNames = schemaCycleNames({context, program: context.sourceCode.ast})
 		function exempt(node: ESTree.Node) {
-			return Option.exists(cycleNames, names => insideCycleType({cycleNames: names, node}))
+			return insideCycleType({cycleNames, node})
 		}
 		return {
-			Program: program => {
-				cycleNames = Option.some(schemaCycleNames({context, program}))
-			},
-			'Program:exit': () => {
-				cycleNames = Option.none()
-			},
 			PropertyDefinition: node => {
 				if (node.readonly === true) context.report({message: 'Remove the readonly type modifier.', node})
 			},

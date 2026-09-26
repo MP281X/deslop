@@ -1,6 +1,6 @@
 {
 	"$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-	"entry": ["**/main.*"],
+	"entry": ["**/main.*", "tools/workflow/src/install.ts"],
 	"includeEntryExports": true,
 	"ignorePatterns": [
 		"**/*.gen.ts",

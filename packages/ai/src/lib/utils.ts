@@ -1,4 +1,4 @@
-import {Array, Boolean, Chunk, MutableHashMap, Option, String} from 'effect'
+import {Array, Boolean, Chunk, MutableHashMap, MutableRef, Option, String} from 'effect'
 
 import {Prompt, Response} from 'effect/unstable/ai'
 
@@ -33,23 +33,20 @@ export type ConversationReducer = {
 	value: () => Conversation
 }
 
-function isUserMessage(event: Ai.Event): event is Prompt.UserMessage {
-	return Prompt.isMessage(event)
-}
-
 export function makeConversationReducer(): ConversationReducer {
-	const turns: ConversationTurn[] = []
+	const turns = Array.empty<ConversationTurn>()
 	const tools = MutableHashMap.empty<string, ToolView>()
-	let turn = Option.none<ConversationTurn>()
-	let content = Option.none<{append: (delta: string) => void; id: string; type: 'reasoning' | 'text'}>()
+	const content = MutableRef.make(
+		Option.none<{append: (delta: string) => void; id: string; type: 'reasoning' | 'text'}>()
+	)
 
 	function makeContentSection(id: string, type: 'reasoning' | 'text', delta: string) {
-		let cached = ''
-		let pending: Chunk.Chunk<string> = Chunk.of(delta)
+		const text = MutableRef.make({cached: delta, pending: Chunk.empty<string>()})
 		const view = {
 			get content() {
-				cached += Chunk.join(pending, '')
-				pending = Chunk.empty()
+				const current = MutableRef.get(text)
+				const cached = `${current.cached}${Chunk.join(current.pending, '')}`
+				MutableRef.set(text, {cached, pending: Chunk.empty()})
 				return cached
 			},
 			id,
@@ -57,7 +54,7 @@ export function makeConversationReducer(): ConversationReducer {
 		} satisfies ConversationSection
 		return {
 			append: (next: string) => {
-				pending = Chunk.append(pending, next)
+				MutableRef.update(text, current => ({...current, pending: Chunk.append(current.pending, next)}))
 			},
 			view
 		}
@@ -68,43 +65,42 @@ export function makeConversationReducer(): ConversationReducer {
 	}
 
 	function push(event: Ai.Event) {
-		if (isUserMessage(event)) {
-			const next = {id: `turn-${Array.length(turns)}`, sections: [], user: event} satisfies ConversationTurn
-			turns[Array.length(turns)] = next
-			turn = Option.some(next)
-			content = Option.none()
+		if (Prompt.isMessage(event)) {
+			turns[Array.length(turns)] = {id: `turn-${Array.length(turns)}`, sections: [], user: event}
+			MutableRef.set(content, Option.none())
 			return value()
 		}
+		const turn = Array.last(turns)
 		if (Option.isNone(turn)) return value()
 		const current = turn.value
 
 		if (event.type === 'text-delta' || event.type === 'reasoning-delta') {
 			if (String.isEmpty(event.delta)) return value()
-			const type: 'reasoning' | 'text' = Boolean.match(event.type === 'text-delta', {
-				onFalse: () => 'reasoning',
-				onTrue: () => 'text'
+			const type = Boolean.match(event.type === 'text-delta', {
+				onFalse: () => 'reasoning' as const,
+				onTrue: () => 'text' as const
 			})
-			if (Option.isSome(content) && content.value.type === type && content.value.id === event.id) {
-				content.value.append(event.delta)
+			const open = MutableRef.get(content)
+			if (Option.isSome(open) && open.value.type === type && open.value.id === event.id) {
+				open.value.append(event.delta)
 				return value()
 			}
 			const section = makeContentSection(event.id, type, event.delta)
 			current.sections[Array.length(current.sections)] = section.view
-			content = Option.some({append: section.append, id: event.id, type})
+			MutableRef.set(content, Option.some({append: section.append, id: event.id, type}))
 			return value()
 		}
 
-		content = Option.none()
+		MutableRef.set(content, Option.none())
 
 		if (event.type === 'tool-call') {
-			const view: ToolView = event
 			const previous = Array.last(current.sections)
 			if (Option.isSome(previous) && previous.value.type === 'tools') {
-				previous.value.tools[Array.length(previous.value.tools)] = view
+				previous.value.tools[Array.length(previous.value.tools)] = event
 			} else {
-				current.sections[Array.length(current.sections)] = {tools: [view], type: 'tools'}
+				current.sections[Array.length(current.sections)] = {tools: [event], type: 'tools'}
 			}
-			MutableHashMap.set(tools, event.id, view)
+			MutableHashMap.set(tools, event.id, event)
 			return value()
 		}
 
@@ -130,48 +126,68 @@ export function makeConversationReducer(): ConversationReducer {
 	return {push, pushAll, value}
 }
 
-export function promptFromEvents(events: Ai.Event[]) {
-	const messages: Prompt.Message[] = []
-	let response: Response.AnyPart[] = []
-	let section = Option.none<{content: Chunk.Chunk<string>; id: string; type: 'reasoning' | 'text'}>()
+type PromptHistory = {
+	messages: Prompt.Message[]
+	response: Response.AnyPart[]
+	section: Option.Option<{content: Chunk.Chunk<string>; id: string; type: 'reasoning' | 'text'}>
+}
 
-	function flushSection() {
-		if (Option.isNone(section)) return
-		const current = section.value
-		if (current.type === 'text') {
-			response[Array.length(response)] = Response.makePart('text', {text: Chunk.join(current.content, '')})
-		} else {
-			response[Array.length(response)] = Response.makePart('reasoning', {text: Chunk.join(current.content, '')})
-		}
-		section = Option.none()
-	}
-
-	function flushResponse() {
-		flushSection()
-		for (const message of Prompt.fromResponseParts(response).content) messages[Array.length(messages)] = message
-		response = []
-	}
-
-	for (const event of events) {
-		if (isUserMessage(event)) {
-			flushResponse()
-			messages[Array.length(messages)] = event
-		} else if (event.type === 'text-delta' || event.type === 'reasoning-delta') {
-			const type: 'reasoning' | 'text' = Boolean.match(event.type === 'text-delta', {
-				onFalse: () => 'reasoning',
-				onTrue: () => 'text'
+function flushSection(history: PromptHistory) {
+	if (Option.isNone(history.section)) return history
+	const section = history.section.value
+	const text = Chunk.join(section.content, '')
+	return {
+		...history,
+		response: Array.append(
+			history.response,
+			Boolean.match(section.type === 'text', {
+				onFalse: () => Response.makePart('reasoning', {text}),
+				onTrue: () => Response.makePart('text', {text})
 			})
-			if (Option.isSome(section) && section.value.type === type && section.value.id === event.id) {
-				section = Option.some({...section.value, content: Chunk.append(section.value.content, event.delta)})
-			} else {
-				flushSection()
-				section = Option.some({content: Chunk.of(event.delta), id: event.id, type})
-			}
-		} else if (event.type === 'tool-call' || (event.type === 'tool-result' && !event.preliminary)) {
-			flushSection()
-			response[Array.length(response)] = event
-		}
+		),
+		section: Option.none()
 	}
-	flushResponse()
-	return Prompt.fromMessages(messages)
+}
+
+function flushResponse(history: PromptHistory) {
+	const flushed = flushSection(history)
+	return {
+		...flushed,
+		messages: Array.appendAll(flushed.messages, Prompt.fromResponseParts(flushed.response).content),
+		response: []
+	}
+}
+
+function appendPromptEvent(history: PromptHistory, event: Ai.Event) {
+	if (Prompt.isMessage(event)) {
+		const flushed = flushResponse(history)
+		return {...flushed, messages: Array.append(flushed.messages, event)}
+	}
+	if (event.type === 'text-delta' || event.type === 'reasoning-delta') {
+		const type = Boolean.match(event.type === 'text-delta', {
+			onFalse: () => 'reasoning' as const,
+			onTrue: () => 'text' as const
+		})
+		if (
+			Option.isSome(history.section) &&
+			history.section.value.type === type &&
+			history.section.value.id === event.id
+		) {
+			const section = history.section.value
+			return {...history, section: Option.some({...section, content: Chunk.append(section.content, event.delta)})}
+		}
+		return {...flushSection(history), section: Option.some({content: Chunk.of(event.delta), id: event.id, type})}
+	}
+	if (event.type === 'tool-call' || (event.type === 'tool-result' && !event.preliminary)) {
+		const flushed = flushSection(history)
+		return {...flushed, response: Array.append(flushed.response, event)}
+	}
+	return history
+}
+
+export function promptFromEvents(events: Ai.Event[]) {
+	return Prompt.fromMessages(
+		flushResponse(Array.reduce(events, {messages: [], response: [], section: Option.none()}, appendPromptEvent))
+			.messages
+	)
 }

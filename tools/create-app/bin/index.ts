@@ -7,56 +7,46 @@ import {parseArgs} from 'node:util'
 
 import {NodeFileSystem, NodeRuntime} from '@effect/platform-node'
 
-import {Array, Context, Effect, FileSystem, Predicate, Record, String, pipe} from 'effect'
+import {Array, Context, Effect, FileSystem, Predicate, String, flow, pipe} from 'effect'
 
 import {Generator, getConfig} from '@tanstack/router-generator'
 import {createTemplate, runTemplateCLI} from 'bingo'
-import type {Template} from 'bingo'
+import type {Template, TemplateContext} from 'bingo'
 import {intakeDirectory} from 'bingo-fs'
-import type {CreatedDirectory, CreatedEntry, IntakeDirectory, IntakeEntry} from 'bingo-fs'
 import {z} from 'zod'
+
+import {replaceDirectory} from '@deslop/create-package'
 
 const Name = z
 	.string()
 	.regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u, 'Use an unscoped kebab-case package name.')
 	.describe('Unscoped application name')
 const TemplateDirectory = fileURLToPath(new URL('../template', import.meta.url))
-const runPromise = Effect.runPromiseWith(Context.empty())
-
-function replaceDirectory(directory: IntakeDirectory, name: string): CreatedDirectory {
-	return pipe(
-		directory,
-		Record.filter(Predicate.isNotUndefined),
-		Record.map(entry => replaceEntry(entry, name))
-	)
-}
-
-function replaceEntry(entry: IntakeEntry, name: string): CreatedEntry {
-	if (Array.isArray(entry)) {
-		const [content, metadata] = entry
-		const replaced = pipe(
-			content,
-			String.replaceAll('@deslop/template-app', `@deslop/${name}`),
-			String.replaceAll('template-app', name),
-			String.replaceAll('../../../tsconfig.json', '../../tsconfig.json')
-		)
-		return Predicate.isUndefined(metadata) ? [replaced] : [replaced, metadata]
-	}
-
-	return replaceDirectory(entry, name)
-}
 
 const template = createTemplate({
 	about: {description: 'Create a full-stack Deslop application.', name: '@deslop/create-app'},
 	options: {name: Name},
-	produce: ({options}) =>
-		pipe(
-			Effect.tryPromise(() =>
+	produce: flow(
+		Effect.fnUntraced(function* (context: TemplateContext<{name: string}, unknown>) {
+			const files = yield* Effect.tryPromise(() =>
 				intakeDirectory(TemplateDirectory, {exclude: /^(?:dist|icon\.png|node_modules|routeTree\.gen\.ts)$/u})
-			),
-			Effect.map(files => ({files: replaceDirectory(files, options.name), requests: [], scripts: [], suggestions: []})),
-			runPromise
-		)
+			)
+			return {
+				files: replaceDirectory(
+					files,
+					flow(
+						String.replaceAll('@deslop/template-app', `@deslop/${context.options.name}`),
+						String.replaceAll('template-app', context.options.name),
+						String.replaceAll('../../../tsconfig.json', '../../tsconfig.json')
+					)
+				),
+				requests: [],
+				scripts: [],
+				suggestions: []
+			}
+		}),
+		Effect.runPromiseWith(Context.empty())
+	)
 })
 
 const parsedArguments = parseArgs({

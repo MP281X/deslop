@@ -1,6 +1,6 @@
 ---
 name: design
-description: 'Use for any rendered UI work: prototypes, new or changed screens, and UI review.'
+description: 'Visual rules, prototype variants, and screenshot review for rendered UI. Use when building, prototyping, or reviewing a screen or component a user sees; not for logic-only changes.'
 ---
 
 ## Consistency first
@@ -8,7 +8,7 @@ description: 'Use for any rendered UI work: prototypes, new or changed screens, 
 - Before designing, read the 2–3 nearest screens of the same kind and the shared components they compose.
 - Match their page structure, spacing, type sizes, radius, icons, density, states, and copy.
 - Where the app is inconsistent, follow the majority of the surrounding screens.
-- Apply the repository's `project-engineering` skill's visual conventions where one exists.
+- Apply the visual conventions in the repository's CODING_STANDARDS.md where one exists.
 
 ## Rules
 
@@ -50,36 +50,10 @@ Copy:
 
 ## Prototypes
 
-- Be creative and build 3–5 completely different variants, each differing on a named axis: layout, density, hierarchy, or interaction.
+- Be creative and build 2–4 completely different variants, each differing on a named axis: layout, density, hierarchy, or interaction.
 - Never variants that differ only in color.
 - Use real, product-shaped content.
-- Render them in place, on the screen they belong to, switchable with the switcher below.
-
-## Variant switcher
-
-A sketch to adapt to the host screen: each variant's axis name is its key and label, ← and → cycle through the variants, and `Button` is the repository's shadcn button, from the UI package the environment skill names.
-
-```tsx
-const [selected, setSelected] = useState(0)
-return (
-	<>
-		{variants[selected]?.element}
-		<nav className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 gap-1">
-			{Array.map(variants, (variant, index) => (
-				<Button
-					key={variant.name}
-					variant={index === selected ? 'secondary' : 'ghost'}
-					onClick={() => {
-						setSelected(index)
-					}}
-				>
-					{variant.name}
-				</Button>
-			))}
-		</nav>
-	</>
-)
-```
+- Render them in place, on the screen they belong to, switchable by buttons labeled with each variant's axis.
 
 ## Looking at the result
 
@@ -87,5 +61,5 @@ When appearance is at stake (prototype variants, new or changed surfaces, not lo
 
 ## Matching a reference UI
 
-- Read the reference's component source in its clone (environment skill) and take numeric targets (padding, gap, icon box, popup size) with its `path:line`; never guess from screenshots.
+- Read the reference's component source in its clone under `~/.deslop/repos` and take numeric targets (padding, gap, icon box, popup size) with its `path:line`; never guess from screenshots.
 - Finish a design pass with light and dark screenshots next to the reference.

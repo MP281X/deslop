@@ -1,30 +1,22 @@
 ---
 name: environment
-description: 'Use for facts about this host and the deslop and dual repositories: commands, services, ports, logins, CI, library clones, and scratch paths.'
+description: 'Facts about this host and the deslop and dual repositories: commands, services, ports, logins, CI, previews, and scratch paths. Use before running, building, previewing, or checking anything on this host, or when locating a scratch path or login.'
 ---
 
 ## Host
 
 - Debian 13, 8 CPUs, 23G RAM.
 - Agents and the user reach it only by its DNS name, as `mp281x@dev.mp281x.xyz`, never by IP.
-- Scratch, clones, logs, and screenshots go under `~/.deslop/<task>/`, where `<task>` is the worktree directory name; never /tmp.
-- When a thread's work is done, everything it created is removed: its scratch under `~/.deslop/<task>/`, extra git worktrees and repository copies, scratch config homes, the process groups it started, previews included, and evaluation runs not kept as evidence. Kept: the shared clones in `~/.deslop/repos`, the thread's own t3 worktree while its request is open, and artifacts a handoff cites as evidence.
-- Shared turbo cache: `~/.cache/turbo` (`TURBO_CACHE_DIR` is set for agents).
+- Scratch, logs, and screenshots go under `~/.deslop/<task>/`, where `<task>` is the worktree directory name; never /tmp.
+- Proof artifacts are captured in one agent-browser `--session`: `record start <path.webm> [url]` … `record stop` records video, and `screenshot <path.png>` takes a screenshot.
+- `gh pr create` or `gh pr edit` with `--attach '<file>#<alt text>'` uploads an artifact into the PR body.
+- When a thread's work is done, everything it created is removed: its scratch under `~/.deslop/<task>/`, extra git worktrees and repository copies, scratch config homes, the process groups it started, previews included. Kept: the shared clones in `~/.deslop/repos`, the thread's own t3 worktree while its request is open, and artifacts a handoff cites as evidence.
 - Dedicated tools first: `rg` to search text, `jq` to process JSON, `node` to run JavaScript.
 - Other global tools: agent-browser (with Chrome), acli, gh (github.com, MP281X), glab (default host git.datapizza.tech), python and pip, sqlite3, bc, xxd.
 - `vp` and `vpx` for every package-manager and package-binary command, never npm, npx, pnpm, yarn, or bunx; `bun` runs only as the runtime the preview steps name.
 - Stop only process groups this thread started, with `kill -- -<pgid>`; take another free port instead of stopping another process.
 - Datapizza VPN: openvpn3 config `datapizza`, needed only for git.datapizza.tech; one device at a time and a browser sign-in.
 - A thread id the user gives is a t3 thread id. Its Claude session is the `session_id` in `~/.t3/userdata/logs/provider/events.<id>.log*`, with the transcript at `~/.claude/projects/<cwd-slug>/<session>.jsonl` and its agents under `<session>/subagents/`, where `<cwd-slug>` is the thread's `cwd` with `/` and `.` as `-`; a Codex thread's log names its rollout as `path`, under `~/.codex/sessions/`.
-
-## Library clones
-
-`~/.deslop/repos/<name>`: agent-browser, base-ui, codex, effect, executor, oxc, pi (`https://github.com/earendil-works/pi.git`), t3code, turborepo, vite-plus. Library source comes only from `~/.deslop/repos`. A library without a clone is first cloned with `git clone --depth 1 --single-branch <url> ~/.deslop/repos/<name>`. Never read `node_modules` or `vendor/`. Shallow at each default branch; refresh before use:
-
-```sh
-git -C <dir> fetch --depth 1 origin HEAD
-git -C <dir> reset --hard FETCH_HEAD
-```
 
 ## deslop
 

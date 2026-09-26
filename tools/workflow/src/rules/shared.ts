@@ -55,6 +55,13 @@ export function isNamespaceImport(input: {context: Context; node: ESTree.Identif
 	)
 }
 
+export function returnedExpression(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+	if (node.body === null) return
+	if (node.body.type !== 'BlockStatement') return node.body
+	if (node.body.body.length !== 1 || node.body.body[0]?.type !== 'ReturnStatement') return
+	return node.body.body[0].argument
+}
+
 export function memberName(node: ESTree.MemberExpression) {
 	if (!node.computed && node.property.type === 'Identifier') return Option.some(node.property.name)
 	if (node.computed && node.property.type === 'Literal' && Predicate.isString(node.property.value)) {
@@ -80,6 +87,14 @@ export function importedMember(input: {
 		}) &&
 		(input.propertyName === undefined || Option.contains(memberName(input.node), input.propertyName))
 	)
+}
+
+export function effectBuilderName(input: {context: Context; node: ESTree.Expression | ESTree.Super}) {
+	const builder = input.node.type === 'CallExpression' ? input.node.callee : input.node
+	return builder.type === 'MemberExpression' &&
+		importedMember({context: input.context, importedName: 'Effect', node: builder})
+		? memberName(builder)
+		: Option.none()
 }
 
 export function isSchemaOperationName(name: string) {
@@ -142,6 +157,12 @@ export function schemaSchemaType(input: {context: Context; node: ESTree.TSType})
 	return schemaQualifiedType({context: input.context, node: input.node, propertyName: 'Schema'})
 }
 
+export function isSchemaCodecType(input: {context: Context; node: ESTree.TSType}) {
+	return (
+		schemaQualifiedType({context: input.context, node: input.node, propertyName: 'Codec'}) || schemaSchemaType(input)
+	)
+}
+
 function typeArgumentName(node: ESTree.TSType) {
 	if (node.type !== 'TSTypeReference' || node.typeArguments === null) return Option.none<string>()
 	return pipe(
@@ -168,11 +189,7 @@ function suspendedTypeName(input: {context: Context; node: ESTree.CallExpression
 				? Option.fromNullishOr(argument.returnType)
 				: Option.none()
 		),
-		Option.filter(
-			returnType =>
-				schemaQualifiedType({context: input.context, node: returnType.typeAnnotation, propertyName: 'Codec'}) ||
-				schemaSchemaType({context: input.context, node: returnType.typeAnnotation})
-		),
+		Option.filter(returnType => isSchemaCodecType({context: input.context, node: returnType.typeAnnotation})),
 		Option.flatMap(returnType => typeArgumentName(returnType.typeAnnotation))
 	)
 }
