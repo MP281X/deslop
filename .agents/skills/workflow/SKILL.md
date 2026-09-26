@@ -56,7 +56,7 @@ The user's decisions as of 2026-09-26, each with its reason; reopen one only on 
 - Two modes: planning adapts to bursty ideas with parallel agents, questions, and visuals; execution is tuned for the agents, unattended, with the main thread doing the work — planning "is probably the only part where it's important to adapt to how i think"; the rest "need to be optimized for the agents since i'm not involved".
 - The user is out of the loop after planning; the agent reaches them only for what is theirs — reading output live made the user "waste time and get frustrated over thing that the agent then self correct"; "staying inside the loop is the most frustrating part".
 - Design against the user's habits, not around them — t3 hiding context usage and subagent activity "made me trust the agent capabilities more".
-- Replies are one line of state plus the question, or the result — walls of text made the user "give up and pick the recommended option".
+- Replies go through the question tool or are the finished result, with no introductions, recaps, or closing summaries — "now I want to use the question tool as mutch as possible and read few/none of your output"; walls of text made the user "give up and pick the recommended option". Codex enables `default_mode_request_user_input` for the same reason. No progress lines: "This shouldn't be necessary anymore based on how the new workflow is structured".
 - Alignment through short questions, 2–4 labeled variants, and screenshots and videos embedded by path — "I just want to read enough to understand if we are aligned"; t3 renders media inline, "one of the thing that we are underutilizing".
 - Image and video proof is mandatory and captured with agent-browser; t3's preview and device tools are denied — "the videos and images proofs are mandatory"; t3 runs on a headless box that refuses those tools.
 - Ideas and decisions stay in the conversation, never in ticket or spec files — "I don't want to need to write tickets/specs to files like the Matt skills".
@@ -79,7 +79,9 @@ The user's decisions as of 2026-09-26, each with its reason; reopen one only on 
 - Schema.Class stays banned and a service's `.of` is allowed; module-level ManagedRuntime, readonly, and expect-vs-assert stay as the engineering skill has them until discussed — schema classes "can introduce footguns" agents keep getting wrong; nobody asked for the `.of` ban, and Effect documents `Service.of`.
 - The workflow changes only for a repeated real-PR failure, fixed in the codebase, then lint, then a written rule, and is measured on real PRs; synthetic evals and the AI judge are retired — "based on what you are saying if something is mergiable or not?"; the judge agreed only by matching the merged diff, the evals "where too mutch", and the user chose "Real PRs only".
 - A user comment names a kind of problem: fix every instance in scope without widening; a one-repository rule goes to that repository's CODING_STANDARDS.md — per-spot fixes drew repeated corrections, and repository rules leaked into the shared workflow (misplaced-rule threads below).
-- The default branch is protected; commit, push, and draft PR are automatic — nothing stands between the agreed plan and a ready PR.
+- The default branch is protected; commit, push, and draft PR are automatic — nothing stands between the agreed plan and a ready PR. The PR stays a draft, and every commit updates its title and body from the whole PR — "each time you commit you need to update both the pr body and title based on the full pr changes". The pipeline is watched and must be green.
+- Before every push the default branch is merged in and the checks rerun; a problem the agent cannot solve or does not know how to solve goes to the user instead of a workaround — "if you can't solve the problem or don't know how don't find workaround and ask the user".
+- Steering keeps what the user did not reject, a side question returns to the interrupted task, and a comment names a kind of problem fixed everywhere in the change — each was repeated across old threads.
 - Memory and goals stay off, and plan mode is denied — goals looped (in Codex, 1.4% of goal sessions used 49% of input tokens); "I hate the harness plan mode".
 - Roles are explore, prototype, browser, and review — "do you really think that implementation is the right name for an agent that just do prototyping?"
 - Prototypes of one idea that touch the same files go to one prototype agent as switchable variants — parallel agents on the same files overwrite each other.
@@ -130,6 +132,7 @@ Clones under `~/.deslop/repos` analyzed in the 2026-09-26 thread, with what the 
 - Matt Pocock alignment: project-engineering became CODING_STANDARDS.md, the texts read CONTEXT.md and docs/adr/, implement became prototype, and the `.of` ban went.
 - Lint-first quality: 15 rule candidates mined from threads were validated on deslop and dual (8 kept, 5 dropped, 2 decided by the user), and deslop's root causes were fixed in code.
 - This file became the workflow's memory: sources, decisions with reasons, and history.
+- 09-26 (after 7938991): mining ~930 old user messages for repeated asks added draft-PR title and body upkeep, align before push, a green pipeline, question-tool-first replies, and no-workaround escalation to both pair texts, plus VPN, sudo, ufw, and install facts to the environment skill.
 
 ## Evidence index
 
