@@ -202,7 +202,6 @@ export const oxlint = defineConfig({
 		'effecttsgo/unnecessary-typeof-type': 'error',
 
 		// TypeScript type shape
-		'typescript/array-type': ['error', {default: 'array'}],
 		'typescript/consistent-generic-constructors': 'error',
 		'typescript/consistent-indexed-object-style': 'error',
 		'typescript/consistent-type-assertions': [
@@ -537,6 +536,7 @@ export const oxlint = defineConfig({
 			{
 				types: {
 					AbortController: 'Use Effect interruption.',
+					Array: 'Use T[].',
 					Date: 'Use DateTime.',
 					Error: 'Use Schema.TaggedError.',
 					Iterable: 'Use T[].',

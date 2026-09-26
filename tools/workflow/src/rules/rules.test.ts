@@ -107,6 +107,9 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'function Fallback() { return <div className="missing" /> }',
 									'const fallbacks = Array.map([input], Fallback)',
 									'const notFound = () => Array.empty<string>()',
+									'const emptyNames = () => Array.empty<string>()',
+									'const namesA = emptyNames()',
+									'const namesB = emptyNames()',
 									'const asyncConstant = async () => "ready"',
 									'const recipients = Array.isArray(input) ? input : [input]',
 									'const wrapped = !Array.isArray(input) ? [input] : input',
@@ -130,7 +133,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'// oxlint-disable-next-line sort-keys -- the fixture keeps its order',
 									'const unsortedKeys = {b: 1, a: 2}',
 									'// @effect-diagnostics-next-line floatingEffect:off',
-									'export {AssertString, Clock, Codecs, Fallback, Input, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, annotated, assigned, asyncConstant, callbacks, decode, decoded, decoders, deepPipe, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, handlers, input, isRecord, isText, labelled, loose, mappedValues, measured, namespaceRef, noValues, notFound, operations, ready, recipients, ref, run, stateNamespace, unsortedKeys, wrapped}',
+									'export {AssertString, Clock, Codecs, Fallback, Input, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, annotated, assigned, asyncConstant, callbacks, decode, decoded, decoders, deepPipe, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, handlers, input, isRecord, isText, labelled, loose, mappedValues, measured, namesA, namesB, namespaceRef, noValues, notFound, operations, ready, recipients, ref, run, stateNamespace, unsortedKeys, wrapped}',
 									'export type {Explicit, Frozen, Index, Mapped}'
 								],
 								Array.join('\n')

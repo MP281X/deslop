@@ -303,3 +303,36 @@ export function schemaCycleNames(input: {context: Context; program: ESTree.Progr
 		names: suspendSeeds({context: input.context, node: input.program})
 	})
 }
+
+function hasSingleStatementExpression(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+	if (node.body === null) return false
+	if (node.body.type !== 'BlockStatement') return true
+	if (node.body.body.length !== 1) return false
+	const statement = node.body.body[0]
+	return (
+		statement?.type === 'ExpressionStatement' || (statement?.type === 'ReturnStatement' && statement.argument !== null)
+	)
+}
+
+function bindingName(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+	if (node.type === 'FunctionDeclaration') return Option.fromNullishOr(node.id?.name)
+	if (node.parent.type === 'VariableDeclarator' && node.parent.id.type === 'Identifier') {
+		return Option.some(node.parent.id.name)
+	}
+	return Option.none()
+}
+
+export function singleUseThunk(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
+	if (
+		input.node.params.length !== 0 ||
+		input.node.typeParameters !== null ||
+		!hasSingleStatementExpression(input.node)
+	) {
+		return false
+	}
+	return pipe(
+		bindingName(input.node),
+		Option.flatMap(name => variableFromScope({name, scope: input.context.sourceCode.getScope(input.node)})),
+		Option.exists(variable => Array.filter(variable.references, reference => reference.isRead()).length === 1)
+	)
+}

@@ -3,7 +3,7 @@ import {Array, MutableRef, Option, Predicate, pipe} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree, Reference, Scope, Variable} from '@oxlint/plugins'
 
-import {variableFromScope} from './shared.ts'
+import {singleUseThunk, variableFromScope} from './shared.ts'
 
 function hasSingleReturnExpression(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
 	if (node.body === null) return false
@@ -66,7 +66,7 @@ export const noConstantFunction = defineRule({
 			MutableRef.update(spans, Array.append(node))
 		}
 		function report(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
-			if (isConstantFunction({context, node, spans: MutableRef.get(spans)})) {
+			if (isConstantFunction({context, node, spans: MutableRef.get(spans)}) && !singleUseThunk({context, node})) {
 				context.report({
 					message: 'This function reads nothing but imports, so it is a value: hold its result in a const.',
 					node
