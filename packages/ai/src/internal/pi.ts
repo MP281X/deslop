@@ -207,15 +207,17 @@ function skillTool<R>(skills: AiSkill[], context: Context.Context<R>) {
 			Effect.runPromiseWith(context)(
 				Effect.gen(function* () {
 					const input = yield* Schema.decodeUnknownEffect(Schema.Struct({name: Schema.String}))(params)
-					const skill = Array.findFirst(skills, candidate => candidate.name === input.name)
-					if (Option.isNone(skill)) return yield* AiError.make({message: `Unknown skill: ${input.name}`})
-					if (Predicate.isUndefined(skill.value.resources)) return toolResult(skill.value.instructions)
+					const skill = yield* Effect.fromOption(
+						Array.findFirst(skills, candidate => candidate.name === input.name),
+						() => AiError.make({message: `Unknown skill: ${input.name}`})
+					)
+					if (Predicate.isUndefined(skill.resources)) return toolResult(skill.instructions)
 					const resources = pipe(
-						Record.toEntries(skill.value.resources),
+						Record.toEntries(skill.resources),
 						Array.map(([name, content]) => `<resource name="${name}">\n${content}\n</resource>`),
 						Array.join('\n')
 					)
-					return toolResult(`${skill.value.instructions}\n\n<resources>\n${resources}\n</resources>`)
+					return toolResult(`${skill.instructions}\n\n<resources>\n${resources}\n</resources>`)
 				})
 			),
 		executionMode: 'parallel',
@@ -223,19 +225,6 @@ function skillTool<R>(skills: AiSkill[], context: Context.Context<R>) {
 		name: 'skill',
 		parameters: Type.Object({name: Type.String({enum: Array.map(skills, skill => skill.name)})})
 	} satisfies AgentTool
-}
-
-function assistantText(messages: AgentMessage[]) {
-	const last = Array.findLast(messages, message => message.role === 'assistant')
-	if (Option.isNone(last)) return ''
-	return pipe(
-		last.value.content,
-		Array.filterMap(part => {
-			if (part.type === 'text') return Result.succeed(part.text)
-			return Result.failVoid
-		}),
-		Array.join('\n')
-	)
 }
 
 function knownTool(name: string, tools: Ai.Tools): name is keyof Ai.Tools {
@@ -385,44 +374,50 @@ export const makePi = Effect.fnUntraced(function* (config: Pi.Config) {
 		}
 		const tools = pipe(
 			enabledNames,
-			Array.filterMap(name => {
-				const selected = Record.get(handledToolkit.tools, name)
-				if (Option.isNone(selected) || Tool.isProviderDefined(selected.value)) return Result.failVoid
-				const tool = selected.value
-				return Result.succeed({
-					description: tool.description ?? name,
-					execute: (toolCallId, params, _signal, onUpdate) =>
-						Effect.runPromiseWith(context)(
-							pipe(
-								Schema.decodeUnknownEffect(tool.parametersSchema)(params),
-								Effect.mapError(cause => AiError.make({cause, message: `Invalid ${name} parameters`})),
-								Effect.flatMap(input => handledToolkit.handle(name, input, toolCallId)),
-								Effect.flatMap(stream =>
-									pipe(
-										stream,
-										Stream.mapError(cause => AiError.make({cause, message: `${name} failed`})),
-										Stream.tap(result => {
-											if (!result.preliminary) return Effect.void
-											return Effect.sync(() => onUpdate?.(toolResult(result.encodedResult)))
-										}),
-										Stream.filter(result => !result.preliminary),
-										Stream.runLast
-									)
-								),
-								Effect.map(Option.map(result => result.encodedResult)),
-								Effect.map(value => toolResult(Option.getOrUndefined(value))),
-								Effect.mapError(cause => AiError.make({cause, message: `${name} failed`}))
-							)
-						),
-					executionMode: Boolean.match(name === 'write' || name === 'edit', {
-						onFalse: () => 'parallel',
-						onTrue: () => 'sequential'
-					}),
-					label: name,
-					name,
-					parameters: Type.Unsafe<unknown>(Tool.getJsonSchema(tool))
-				} satisfies AgentTool)
-			}),
+			Array.filterMap(name =>
+				pipe(
+					Record.get(handledToolkit.tools, name),
+					Option.filter(tool => !Tool.isProviderDefined(tool)),
+					Option.map(tool => ({name, tool})),
+					Result.fromOption(() => undefined)
+				)
+			),
+			Array.map(
+				entry =>
+					({
+						description: entry.tool.description ?? entry.name,
+						execute: (toolCallId, params, _signal, onUpdate) =>
+							Effect.runPromiseWith(context)(
+								pipe(
+									Schema.decodeUnknownEffect(entry.tool.parametersSchema)(params),
+									Effect.mapError(cause => AiError.make({cause, message: `Invalid ${entry.name} parameters`})),
+									Effect.flatMap(input => handledToolkit.handle(entry.name, input, toolCallId)),
+									Effect.flatMap(stream =>
+										pipe(
+											stream,
+											Stream.mapError(cause => AiError.make({cause, message: `${entry.name} failed`})),
+											Stream.tap(result => {
+												if (!result.preliminary) return Effect.void
+												return Effect.sync(() => onUpdate?.(toolResult(result.encodedResult)))
+											}),
+											Stream.filter(result => !result.preliminary),
+											Stream.runLast
+										)
+									),
+									Effect.map(Option.map(result => result.encodedResult)),
+									Effect.map(value => toolResult(Option.getOrUndefined(value))),
+									Effect.mapError(cause => AiError.make({cause, message: `${entry.name} failed`}))
+								)
+							),
+						executionMode: Boolean.match(entry.name === 'write' || entry.name === 'edit', {
+							onFalse: () => 'parallel',
+							onTrue: () => 'sequential'
+						}),
+						label: entry.name,
+						name: entry.name,
+						parameters: Type.Unsafe<unknown>(Tool.getJsonSchema(entry.tool))
+					}) satisfies AgentTool
+			),
 			Array.appendAll(
 				Array.isReadonlyArrayNonEmpty(profile.skills) ? [skillTool(Array.fromIterable(profile.skills), context)] : []
 			),
@@ -437,16 +432,30 @@ export const makePi = Effect.fnUntraced(function* (config: Pi.Config) {
 											const input = yield* Schema.decodeUnknownEffect(
 												Schema.Struct({agent: Schema.String, prompt: Schema.String})
 											)(params)
-											const definition = HashMap.get(definitions, input.agent)
-											if (Option.isNone(definition)) {
-												return yield* AiError.make({message: `Unknown agent: ${input.agent}`})
-											}
-											const child = yield* makeRuntime(definition.value, false, Prompt.empty)
+											const definition = yield* Effect.fromOption(HashMap.get(definitions, input.agent), () =>
+												AiError.make({message: `Unknown agent: ${input.agent}`})
+											)
+											const child = yield* makeRuntime(definition, false, Prompt.empty)
 											yield* Effect.tryPromise({
 												catch: cause => AiError.make({cause, message: `Subagent ${input.agent} failed`}),
 												try: () => child.prompt(input.prompt)
 											})
-											return toolResult(assistantText(child.state.messages))
+											return toolResult(
+												pipe(
+													Array.findLast(child.state.messages, message => message.role === 'assistant'),
+													Option.map(last =>
+														pipe(
+															last.content,
+															Array.filterMap(part => {
+																if (part.type === 'text') return Result.succeed(part.text)
+																return Result.failVoid
+															}),
+															Array.join('\n')
+														)
+													),
+													Option.getOrElse(() => '')
+												)
+											)
 										})
 									),
 								executionMode: 'parallel',

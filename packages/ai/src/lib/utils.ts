@@ -1,4 +1,4 @@
-import {Array, Boolean, Chunk, MutableHashMap, MutableRef, Option, String, pipe} from 'effect'
+import {Array, Boolean, Chunk, MutableHashMap, MutableRef, Option, Predicate, String, pipe} from 'effect'
 
 import {Prompt, Response} from 'effect/unstable/ai'
 
@@ -70,9 +70,8 @@ export function makeConversationReducer(): ConversationReducer {
 			MutableRef.set(content, Option.none())
 			return value()
 		}
-		const turn = Array.last(turns)
-		if (Option.isNone(turn)) return value()
-		const current = turn.value
+		const current = Option.getOrUndefined(Array.last(turns))
+		if (Predicate.isUndefined(current)) return value()
 
 		if (event.type === 'text-delta' || event.type === 'reasoning-delta') {
 			if (String.isEmpty(event.delta)) return value()
@@ -152,20 +151,23 @@ type PromptHistory = {
 }
 
 function flushSection(history: PromptHistory) {
-	if (Option.isNone(history.section)) return history
-	const section = history.section.value
-	const text = Chunk.join(section.content, '')
-	return {
-		...history,
-		response: Array.append(
-			history.response,
-			Boolean.match(section.type === 'text', {
-				onFalse: () => Response.makePart('reasoning', {text}),
-				onTrue: () => Response.makePart('text', {text})
-			})
-		),
-		section: Option.none()
-	}
+	return Option.match(history.section, {
+		onNone: () => history,
+		onSome: section => {
+			const text = Chunk.join(section.content, '')
+			return {
+				...history,
+				response: Array.append(
+					history.response,
+					Boolean.match(section.type === 'text', {
+						onFalse: () => Response.makePart('reasoning', {text}),
+						onTrue: () => Response.makePart('text', {text})
+					})
+				),
+				section: Option.none()
+			}
+		}
+	})
 }
 
 function flushResponse(history: PromptHistory) {
@@ -187,15 +189,20 @@ function appendPromptEvent(history: PromptHistory, event: Ai.Event) {
 			onFalse: () => 'reasoning' as const,
 			onTrue: () => 'text' as const
 		})
-		if (
-			Option.isSome(history.section) &&
-			history.section.value.type === type &&
-			history.section.value.id === event.id
-		) {
-			const section = history.section.value
-			return {...history, section: Option.some({...section, content: Chunk.append(section.content, event.delta)})}
-		}
-		return {...flushSection(history), section: Option.some({content: Chunk.of(event.delta), id: event.id, type})}
+		return pipe(
+			history.section,
+			Option.filter(section => section.type === type && section.id === event.id),
+			Option.match({
+				onNone: () => ({
+					...flushSection(history),
+					section: Option.some({content: Chunk.of(event.delta), id: event.id, type})
+				}),
+				onSome: section => ({
+					...history,
+					section: Option.some({...section, content: Chunk.append(section.content, event.delta)})
+				})
+			})
+		)
 	}
 	if (event.type === 'tool-call' || (event.type === 'tool-result' && !event.preliminary)) {
 		const flushed = flushSection(history)

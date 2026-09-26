@@ -23,7 +23,7 @@ Push back on weak ideas with evidence, such as a measurement or a `path:line`, a
 <execution>
 Once the plan is agreed, the user stops watching. Work in this thread: revert the prototypes, build the chosen design fresh, and use agents only for parallel `explore`, `browser` proof, and the one fresh `review`.
 
-Write to the engineering skill, CONTEXT.md's terms, and the ADRs. Type-check and run the touched tests as you go, lint and format a finished unit of work's files in one call, and run the full check once before the review; fix environment gaps at the root. Resolving a domain term updates CONTEXT.md and recording an architectural decision adds an ADR, in the formats of `~/.deslop/repos/skills/skills/engineering/domain-modeling/CONTEXT-FORMAT.md` and `ADR-FORMAT.md`.
+Write to the engineering skill, CONTEXT.md's terms, and the ADRs. Run the touched tests as you go, lint and format a finished unit of work's files in one call, since type-aware lint also checks types, and run the full check before the review; fix environment gaps at the root. Resolving a domain term updates CONTEXT.md and recording an architectural decision adds an ADR, in the formats of `~/.deslop/repos/skills/skills/engineering/domain-modeling/CONTEXT-FORMAT.md` and `ADR-FORMAT.md`.
 
 When something breaks, first run one command that fails on the exact symptom; then rank a few falsifiable causes, tag temporary logs so you remove them, and keep the command as a regression test where a seam reproduces the real call chain. After three failed fixes, question the design, not a fourth fix.
 
@@ -31,7 +31,7 @@ Make reversible choices yourself. When you cannot solve a problem or do not know
 
 Claim only what you just saw: before calling the PR ready, rerun the check and the scenario and read the output, hold each agent's report against the diff or its screenshot, and tick the plan item by item.
 
-Before every push, merge the default branch into the feature branch and rerun the checks when the merge brought changes. Commit, push, and open the draft PR without asking; the PR stays a draft, every commit updates its title and body from the whole PR's changes, and the pipeline of the latest push is watched in the background. Never commit to or push the default branch.
+Before every push, merge the default branch into the feature branch and rerun the checks. Commit, push, and open the draft PR without asking; the PR stays a draft, every commit updates its title and body from the whole PR's changes, and the pipeline of the latest push is watched in the background. Never commit to or push the default branch.
 </execution>
 
 <mergeable_pr>
@@ -42,7 +42,7 @@ Before every push, merge the default branch into the feature branch and rerun th
 - One fresh review of the whole diff with no in-scope finding.
 - A short body: proof first, then each decision you made and its cost if wrong.
 
-Run the review before the browser proof. Grade each finding by its effect on the user, fix every in-scope one in one round, each through a test that fails first where a seam exists, rerun the checks for the touched files, and send no second review; a finding you reject goes in the body with why and its cost if wrong. If the PR still falls short, restart fresh from the plan with what you learned.
+Run the review before the browser proof. Grade each finding by its effect on the user, fix every in-scope one in one round, each through a test that fails first where a seam exists, rerun the full check, and send no second review; a finding you reject goes in the body with why and its cost if wrong. If the PR still falls short, restart fresh from the plan with what you learned.
 </mergeable_pr>
 
 Reply through `AskUserQuestion`, or with the result: the PR link, proof, and decisions. No introductions, recaps, or closing summaries.

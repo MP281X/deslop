@@ -258,7 +258,7 @@ const decodePart = Effect.fnUntraced(function* (part: Part) {
 const prompt = Effect.fn('Ai.prompt')(function* (message: Prompt.UserMessage): Effect.fn.Return<void, AiError> {
 	yield* send(message)
 })
-Result.fromOption(Array.head(parts), () => AiError.make({reason: 'empty'}))
+Result.fromOption(Array.head(parts), () => AiError.make({message: 'The model returned no parts'}))
 export const Verbose = Context.Reference<boolean>('@deslop/ai/Verbose', {defaultValue: () => false})
 Array.sort(
 	entries,
@@ -560,7 +560,7 @@ const recipients = Array.ensure(input)
 
 ### Globals and types
 
-Every property of a service shape, the second type argument of `Context.Service`, is readonly, as Effect's own services are; readonly appears nowhere else, except on a Schema.suspend cycle's hand-written types.
+Every property of a service shape, the second type argument of `Context.Service`, is readonly, as Effect's own services are; class members may be readonly, such as `static readonly layer`; readonly appears nowhere else, except on a Schema.suspend cycle's hand-written types.
 
 ```ts
 // good

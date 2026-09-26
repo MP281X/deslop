@@ -45,11 +45,12 @@ export function serverPlugin(): Plugin {
 	const reloadBackend = MutableRef.make(Effect.void)
 	const reloadLock = Semaphore.makeUnsafe(1)
 
-	const close = Effect.suspend(() => {
-		const current = MutableRef.getAndSet(active, Option.none())
-		if (Option.isNone(current)) return Effect.void
-		return Scope.close(current.value.scope, Exit.void)
-	})
+	const close = Effect.suspend(() =>
+		Option.match(MutableRef.getAndSet(active, Option.none()), {
+			onNone: () => Effect.void,
+			onSome: current => Scope.close(current.scope, Exit.void)
+		})
+	)
 	return {
 		closeBundle: () => Effect.runPromiseWith(Context.empty())(reloadLock.withPermit(close)),
 		config: () => ({
@@ -151,21 +152,25 @@ export function serverPlugin(): Plugin {
 					next()
 					return
 				}
-				const current = MutableRef.get(active)
-				if (Option.isNone(current)) {
-					response.writeHead(503).end()
-					return
-				}
-				current.value.request(request, response)
+				Option.match(MutableRef.get(active), {
+					onNone: () => {
+						response.writeHead(503).end()
+					},
+					onSome: current => {
+						current.request(request, response)
+					}
+				})
 			})
 			viteServer.on('upgrade', (request: IncomingMessage, socket: Duplex, head: Buffer) => {
 				if (!isApiUrl(request.url)) return
-				const current = MutableRef.get(active)
-				if (Option.isNone(current)) {
-					socket.destroy()
-					return
-				}
-				current.value.upgrade(request, socket, head)
+				Option.match(MutableRef.get(active), {
+					onNone: () => {
+						socket.destroy()
+					},
+					onSome: current => {
+						current.upgrade(request, socket, head)
+					}
+				})
 			})
 		},
 		hotUpdate: {

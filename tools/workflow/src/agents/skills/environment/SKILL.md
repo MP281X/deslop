@@ -33,7 +33,7 @@ Facts an agent cannot read from the repository itself; commands a package.json a
 - CI: GitHub Actions job `build-and-deploy`.
 - Production services run from `~/.deslop/deploy`: traefik, collector, portfolio, jaeger, valentine.
 - Full local check: `vp run check`, then `vp run test`; `vp fmt <path>...` formats the touched files first.
-- Each lint call costs a flat 5–6 s for 1 file or a whole package, with no cache between calls, so lint every changed file in one call.
+- Each lint call costs a flat 5–6 s for 1 file or a whole package, with no cache between calls, so format and lint every changed file in one call: `vp check --fix <path>...`.
 
 | Command                            | Does                                          |
 | ---------------------------------- | --------------------------------------------- |

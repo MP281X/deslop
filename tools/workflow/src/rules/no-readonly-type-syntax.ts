@@ -85,9 +85,6 @@ export const noReadonlyTypeSyntax = defineRule({
 			TSMethodSignature: node => {
 				MutableRef.update(methods, Array.append(node))
 			},
-			TSParameterProperty: node => {
-				if (node.readonly) context.report({message: 'Remove the readonly parameter-property modifier.', node})
-			},
 			TSPropertySignature: node => {
 				MutableRef.update(properties, Array.append(node))
 			},

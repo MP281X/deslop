@@ -29,7 +29,7 @@ function forwardedCall(input: {names: string[]; node: ESTree.CallExpression | ES
 function exactForwardingFunction(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
 	const names = pipe(node.params, Array.map(parameterName), Array.getSomes)
 	const returned = returnedExpression(node)
-	if (Array.isArrayEmpty(names) || names.length !== node.params.length || returned === null || returned === undefined) {
+	if (Array.isArrayEmpty(names) || names.length !== node.params.length || Predicate.isNullish(returned)) {
 		return false
 	}
 	if (returned.type === 'Identifier') return names.length === 1 && returned.name === names[0]

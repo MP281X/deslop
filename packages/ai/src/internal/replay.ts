@@ -30,17 +30,19 @@ function append(state: ReplayState, event: Ai.Event) {
 		return Option.some({history: Chunk.append(flushed(state), event), pending: Option.none()})
 	}
 	if (String.isEmpty(event.delta)) return Option.none()
-	if (
-		Option.isSome(state.pending) &&
-		state.pending.value.event.type === event.type &&
-		state.pending.value.event.id === event.id
-	) {
-		return Option.some({
-			history: state.history,
-			pending: Option.some({...state.pending.value, deltas: Chunk.append(state.pending.value.deltas, event.delta)})
+	return pipe(
+		state.pending,
+		Option.filter(pending => pending.event.type === event.type && pending.event.id === event.id),
+		Option.match({
+			onNone: () =>
+				Option.some({history: flushed(state), pending: Option.some({deltas: Chunk.of(event.delta), event})}),
+			onSome: pending =>
+				Option.some({
+					history: state.history,
+					pending: Option.some({...pending, deltas: Chunk.append(pending.deltas, event.delta)})
+				})
 		})
-	}
-	return Option.some({history: flushed(state), pending: Option.some({deltas: Chunk.of(event.delta), event})})
+	)
 }
 
 export const makeReplay = Effect.fnUntraced(function* (initial: Ai.Event[]) {
@@ -55,10 +57,10 @@ export const makeReplay = Effect.fnUntraced(function* (initial: Ai.Event[]) {
 	const publish = Effect.fnUntraced(function* (event: Ai.Event) {
 		yield* Semaphore.withPermit(gate)(
 			Effect.gen(function* () {
-				const next = append(yield* Ref.get(state), event)
-				if (Option.isNone(next)) return
-				yield* Ref.set(state, next.value)
-				yield* PubSub.publish(pubsub, event)
+				yield* Option.match(append(yield* Ref.get(state), event), {
+					onNone: () => Effect.void,
+					onSome: next => Effect.andThen(Ref.set(state, next), PubSub.publish(pubsub, event))
+				})
 			})
 		)
 	})
