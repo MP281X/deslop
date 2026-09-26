@@ -1,4 +1,4 @@
-import {Array, Option, pipe} from 'effect'
+import {Array, Option, Predicate, pipe} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
@@ -118,7 +118,7 @@ function reportSchemaVariable(input: {
 				node: input.variable
 			})
 		}
-		if (annotation !== null && annotation !== undefined) {
+		if (Predicate.isNotNullish(annotation)) {
 			input.context.report({
 				message: 'Annotate the Schema.suspend thunk, not the recursive Schema.',
 				node: input.variable.id
@@ -144,8 +144,7 @@ function reportSchemaVariable(input: {
 		input.context.report({message: 'Infer this schema instead of restating Schema.Schema.', node: input.variable.init})
 	}
 	if (
-		annotation !== null &&
-		annotation !== undefined &&
+		Predicate.isNotNullish(annotation) &&
 		schemaSchemaType({context: input.context, node: annotation.typeAnnotation})
 	) {
 		input.context.report({message: 'Infer this schema instead of annotating Schema.Schema.', node: input.variable.id})

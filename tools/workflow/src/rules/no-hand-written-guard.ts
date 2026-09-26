@@ -104,12 +104,9 @@ function report(input: {context: Context; node: ESTree.Function | ESTree.ArrowFu
 			)
 		)
 	)
-	if (Option.isSome(name)) {
-		input.context.report({
-			message: `Use Predicate.${name.value} instead of this hand-written type guard.`,
-			node: input.node
-		})
-	}
+	Option.map(name, guard => {
+		input.context.report({message: `Use Predicate.${guard} instead of this hand-written type guard.`, node: input.node})
+	})
 }
 
 export const noHandWrittenGuard = defineRule({

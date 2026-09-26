@@ -1,4 +1,4 @@
-import {Array, Option} from 'effect'
+import {Array, Option, pipe} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
 
@@ -79,13 +79,16 @@ export const noNativeMethodCall = defineRule({
 			) {
 				return
 			}
-			const name = memberName(node.callee)
-			if (Option.isSome(name) && Array.contains(nativeMethods, name.value)) {
-				context.report({
-					message: `Replace .${name.value}() with its function from the Effect Array, String, or Effect module.`,
-					node: node.callee
+			pipe(
+				memberName(node.callee),
+				Option.filter(name => Array.contains(nativeMethods, name)),
+				Option.map(name => {
+					context.report({
+						message: `Replace .${name}() with its function from the Effect Array, String, or Effect module.`,
+						node: node.callee
+					})
 				})
-			}
+			)
 		}
 	}),
 	meta: {type: 'problem'}

@@ -1,7 +1,11 @@
 ---
 name: environment
-description: 'Facts about this host and the deslop and dual repositories: commands, services, ports, logins, CI, previews, and scratch paths. Use before running, building, previewing, or checking anything on this host, or when locating a scratch path or login.'
+description: 'Host and repository facts for this machine, deslop, and dual. Use before running, building, previewing, or checking anything, or when locating a login, port, or scratch path.'
 ---
+
+# Environment
+
+Facts an agent cannot read from the repository itself; commands a package.json already shows are listed only where they carry a gotcha.
 
 ## Host
 
@@ -28,7 +32,8 @@ description: 'Facts about this host and the deslop and dual repositories: comman
 - shadcn UI components: `packages/components`.
 - CI: GitHub Actions job `build-and-deploy`.
 - Production services run from `~/.deslop/deploy`: traefik, collector, portfolio, jaeger, valentine.
-- Full local check: `vp run fix`, `vp run check`, then `vp run test`.
+- Full local check: `vp run check`, then `vp run test`; `vp fmt <path>...` formats the touched files first.
+- Each lint call costs a flat 5–6 s for 1 file or a whole package, with no cache between calls, so lint every changed file in one call.
 
 | Command                            | Does                                          |
 | ---------------------------------- | --------------------------------------------- |

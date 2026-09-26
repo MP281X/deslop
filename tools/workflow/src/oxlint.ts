@@ -6,6 +6,7 @@ import {defineConfig} from 'oxlint'
 import {noArrayWrapTernary} from './rules/no-array-wrap-ternary.ts'
 import {noConstantFunction} from './rules/no-constant-function.ts'
 import {noDeepPipe} from './rules/no-deep-pipe.ts'
+import {noDoubleNullishCheck} from './rules/no-double-nullish-check.ts'
 import {noEffectPropertyArrow} from './rules/no-effect-property-arrow.ts'
 import {noErrorMessageAssertion} from './rules/no-error-message-assertion.ts'
 import {noFailInGenerator} from './rules/no-fail-in-generator.ts'
@@ -14,11 +15,13 @@ import {noHandWrittenGuard} from './rules/no-hand-written-guard.ts'
 import {noLet} from './rules/no-let.ts'
 import {noNativeEmptinessCheck} from './rules/no-native-emptiness-check.ts'
 import {noNativeMethodCall} from './rules/no-native-method-call.ts'
+import {noOptionValueAccess} from './rules/no-option-value-access.ts'
 import {noReadonlyTypeSyntax} from './rules/no-readonly-type-syntax.ts'
 import {noRedundantUseRefNullType} from './rules/no-redundant-use-ref-null-type.ts'
 import {noRedundantVariableAnnotation} from './rules/no-redundant-variable-annotation.ts'
 import {noRenamedImport} from './rules/no-renamed-import.ts'
 import {noStoredSchemaOperation} from './rules/no-stored-schema-operation.ts'
+import {noSwitchStatement} from './rules/no-switch-statement.ts'
 import {noTrivialIndirection} from './rules/no-trivial-indirection.ts'
 import {noTypeof} from './rules/no-typeof.ts'
 import {noUndestructuredUseState} from './rules/no-undestructured-use-state.ts'
@@ -73,6 +76,7 @@ export const oxlint = defineConfig({
 		'@deslop/workflow/no-array-wrap-ternary': 'error',
 		'@deslop/workflow/no-constant-function': 'error',
 		'@deslop/workflow/no-deep-pipe': 'error',
+		'@deslop/workflow/no-double-nullish-check': 'error',
 		'@deslop/workflow/no-effect-property-arrow': 'error',
 		'@deslop/workflow/no-error-message-assertion': 'error',
 		'@deslop/workflow/no-fail-in-generator': 'error',
@@ -81,11 +85,13 @@ export const oxlint = defineConfig({
 		'@deslop/workflow/no-let': 'error',
 		'@deslop/workflow/no-native-emptiness-check': 'error',
 		'@deslop/workflow/no-native-method-call': 'error',
+		'@deslop/workflow/no-option-value-access': 'error',
 		'@deslop/workflow/no-readonly-type-syntax': 'error',
 		'@deslop/workflow/no-redundant-use-ref-null-type': 'error',
 		'@deslop/workflow/no-redundant-variable-annotation': 'error',
 		'@deslop/workflow/no-renamed-import': 'error',
 		'@deslop/workflow/no-stored-schema-operation': 'error',
+		'@deslop/workflow/no-switch-statement': 'error',
 		'@deslop/workflow/no-trivial-indirection': 'error',
 		'@deslop/workflow/no-typeof': 'error',
 		'@deslop/workflow/no-undestructured-use-state': 'error',
@@ -552,10 +558,6 @@ export const oxlint = defineConfig({
 		],
 		'typescript/no-unnecessary-type-assertion': 'error',
 		'typescript/no-useless-default-assignment': 'error',
-		'typescript/switch-exhaustiveness-check': [
-			'error',
-			{considerDefaultExhaustiveForUnions: true, requireDefaultForNonUnion: false}
-		],
 
 		// Unicorn
 		'unicorn/filename-case': 'error',
@@ -567,7 +569,6 @@ export const oxlint = defineConfig({
 		'unicorn/no-useless-fallback-in-spread': 'error',
 		'unicorn/no-useless-length-check': 'error',
 		'unicorn/no-useless-spread': 'error',
-		'unicorn/no-useless-switch-case': 'error',
 		'unicorn/prefer-logical-operator-over-ternary': 'error',
 		'unicorn/prefer-optional-catch-binding': 'error',
 
@@ -584,6 +585,7 @@ export default definePlugin({
 		'no-array-wrap-ternary': noArrayWrapTernary,
 		'no-constant-function': noConstantFunction,
 		'no-deep-pipe': noDeepPipe,
+		'no-double-nullish-check': noDoubleNullishCheck,
 		'no-effect-property-arrow': noEffectPropertyArrow,
 		'no-error-message-assertion': noErrorMessageAssertion,
 		'no-fail-in-generator': noFailInGenerator,
@@ -592,11 +594,13 @@ export default definePlugin({
 		'no-let': noLet,
 		'no-native-emptiness-check': noNativeEmptinessCheck,
 		'no-native-method-call': noNativeMethodCall,
+		'no-option-value-access': noOptionValueAccess,
 		'no-readonly-type-syntax': noReadonlyTypeSyntax,
 		'no-redundant-use-ref-null-type': noRedundantUseRefNullType,
 		'no-redundant-variable-annotation': noRedundantVariableAnnotation,
 		'no-renamed-import': noRenamedImport,
 		'no-stored-schema-operation': noStoredSchemaOperation,
+		'no-switch-statement': noSwitchStatement,
 		'no-trivial-indirection': noTrivialIndirection,
 		'no-typeof': noTypeof,
 		'no-undestructured-use-state': noUndestructuredUseState,

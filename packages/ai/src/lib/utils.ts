@@ -1,4 +1,4 @@
-import {Array, Boolean, Chunk, MutableHashMap, MutableRef, Option, String} from 'effect'
+import {Array, Boolean, Chunk, MutableHashMap, MutableRef, Option, String, pipe} from 'effect'
 
 import {Prompt, Response} from 'effect/unstable/ai'
 
@@ -80,34 +80,53 @@ export function makeConversationReducer(): ConversationReducer {
 				onFalse: () => 'reasoning' as const,
 				onTrue: () => 'text' as const
 			})
-			const open = MutableRef.get(content)
-			if (Option.isSome(open) && open.value.type === type && open.value.id === event.id) {
-				open.value.append(event.delta)
-				return value()
-			}
-			const section = makeContentSection(event.id, type, event.delta)
-			current.sections[Array.length(current.sections)] = section.view
-			MutableRef.set(content, Option.some({append: section.append, id: event.id, type}))
-			return value()
+			return pipe(
+				MutableRef.get(content),
+				Option.filter(open => open.type === type && open.id === event.id),
+				Option.match({
+					onNone: () => {
+						const section = makeContentSection(event.id, type, event.delta)
+						current.sections[Array.length(current.sections)] = section.view
+						MutableRef.set(content, Option.some({append: section.append, id: event.id, type}))
+						return value()
+					},
+					onSome: open => {
+						open.append(event.delta)
+						return value()
+					}
+				})
+			)
 		}
 
 		MutableRef.set(content, Option.none())
 
 		if (event.type === 'tool-call') {
-			const previous = Array.last(current.sections)
-			if (Option.isSome(previous) && previous.value.type === 'tools') {
-				previous.value.tools[Array.length(previous.value.tools)] = event
-			} else {
-				current.sections[Array.length(current.sections)] = {tools: [event], type: 'tools'}
-			}
+			pipe(
+				Array.last(current.sections),
+				Option.filter(previous => previous.type === 'tools'),
+				Option.match({
+					onNone: () => {
+						current.sections[Array.length(current.sections)] = {tools: [event], type: 'tools'}
+					},
+					onSome: previous => {
+						current.sections[Array.length(current.sections) - 1] = {
+							tools: Array.append(previous.tools, event),
+							type: 'tools'
+						}
+					}
+				})
+			)
 			MutableHashMap.set(tools, event.id, event)
 			return value()
 		}
 
 		if (event.type === 'tool-result') {
-			const tool = MutableHashMap.get(tools, event.id)
-			if (Option.isSome(tool) && tool.value.name === event.name) {
-				tool.value.result = event
+			const matched = pipe(
+				MutableHashMap.get(tools, event.id),
+				Option.filter(tool => tool.name === event.name)
+			)
+			for (const tool of Option.toArray(matched)) {
+				tool.result = event
 				if (!event.preliminary) MutableHashMap.remove(tools, event.id)
 			}
 			return value()

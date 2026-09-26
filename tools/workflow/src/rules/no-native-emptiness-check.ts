@@ -23,8 +23,9 @@ function emptinessPredicate(node: ESTree.BinaryExpression) {
 export const noNativeEmptinessCheck = defineRule({
 	create: context => ({
 		BinaryExpression: node => {
-			const predicate = emptinessPredicate(node)
-			if (Option.isSome(predicate)) context.report({message: `Use ${predicate.value}.`, node})
+			Option.map(emptinessPredicate(node), predicate => {
+				context.report({message: `Use ${predicate}.`, node})
+			})
 		}
 	}),
 	meta: {type: 'problem'}

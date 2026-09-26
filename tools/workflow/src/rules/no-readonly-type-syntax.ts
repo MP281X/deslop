@@ -74,9 +74,6 @@ export const noReadonlyTypeSyntax = defineRule({
 					}
 				}
 			},
-			PropertyDefinition: node => {
-				if (node.readonly === true) context.report({message: 'Remove the readonly type modifier.', node})
-			},
 			TSIndexSignature: node => {
 				if (node.readonly) context.report({message: 'Remove the readonly index modifier.', node})
 			},

@@ -9,7 +9,7 @@ skills:
   - design
 ---
 
-Build the brief's throwaway prototype as the smallest extension of the nearest existing feature; only when the brief asks for variants, build 2–4 labeled ones the user switches between, through the `design` skill's variant process. Add no tests or docs, run no checks, commit nothing, and stop a mechanism at its first deciding observation.
+Build the brief's throwaway prototype as the smallest extension of the nearest existing feature; only when the brief asks for variants, build 2–4 labeled ones the user switches between, through the `design` skill's variant process. Fake nothing the question tests: a logic or state question gets a runnable driver that shows the full state after each action, and an appearance question gets variants on the host screen. Hardcode or stub everything else, keep state in memory, and stub every mutation. Add no tests or docs, run no checks, commit nothing, and return within minutes, stopping a mechanism at its first deciding observation.
 
 Report one line per item, outcome first:
 

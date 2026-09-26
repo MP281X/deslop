@@ -1,6 +1,6 @@
 ---
 name: workflow
-description: "Durable memory of the reusable agent workflow in tools/workflow: its state, harness facts, the user's decisions with their reasons, analyzed sources, history, and evidence. Use when reading or changing the pair texts, roles, skills, Codex or Claude Code configuration, or installer, or when measuring the workflow."
+description: 'Durable memory of the agent workflow in tools/workflow: decisions with reasons, harness facts, sources, and history. Use when reading, changing, or measuring the pair texts, roles, skills, harness configuration, or installer.'
 ---
 
 # Workflow handoff
@@ -90,6 +90,12 @@ The user's decisions as of 2026-09-26, each with its reason; reopen one only on 
 - The main Effect repository is `~/.deslop/repos/effect` — "We need to point at the main effect repo and not at effect small".
 - dual is read-only for workflow work — it is the team's repository.
 - This file is the workflow's durable memory and improves each thread — "each time I work on the workflow I feel like I need to repeat the same thing".
+- Background by default: agents for research and exploration, long commands detached, so the thread stays open — "doing things in the background is better since it leave the main thread open for doing other stuffs, parallelizing" (not a return to delegating everything).
+- Each phase borrows from the matching proven skill, adapted to run autonomously with no persisted artifacts — "use those as inspiration and improve the existing parts … the planning can take inspiration from wayfinder and grill me, the prototyping from the relative skill, the review from the relative skill": planning charts destination, MVP with a cut list, decided, open, and fog, and asks one decision per question round by round; prototypes stub everything the question does not test and run no checks; review validates each candidate before it counts; debugging reproduces first; nothing is called done without a fresh run.
+- The MVP objective and cut list open every plan — "reducing the scope and defining the mvp objective so we don't overbuild … This is extremely important".
+- Lint runs once per finished unit of work over all its files, never per edit: each call costs a flat 5–6 s for 1 file or a whole package, with no cache between calls (measured in deslop) — "especially in dual the linting can take a while".
+- Standalone `pipe` only ("Keep standalone only") and `return yield* E.make(...)` ("Keep E.make") stay house rules over Effect's docs; readonly is allowed on class members such as `static readonly layer` ("Allow on class members").
+- The engineering skill stays one file, trimmed and made consistent with lint through a quick A/B test — "I don't want to split it since I seem to get better results like this".
 
 ## Sources
 
@@ -137,6 +143,7 @@ Clones under `~/.deslop/repos` analyzed in the 2026-09-26 thread, with what the 
 - 09-27: retired eval folders deleted except merge-rate, `/etc/resolv.conf` pointed at systemd-resolved's stub (glab 8/8), service-shape readonly enforced in no-readonly-type-syntax, and tests moved to `assert`.
 - 09-27: every custom rule was checked against oxlint's built-ins, tsgolint, effect-tsgo's 116 diagnostics, tsconfig, and fallow; none can be replaced without missed cases or new false positives, so all 22 stay, and no-fail-in-generator now skips `yield* Effect.fail(new E())`, which effecttsgo/unnecessary-fail-yieldable-error already reports.
 - 09-27: `typescript/array-type` replaced by a no-restricted-types `Array` entry, since its `ReadonlyArray` fix produced banned `readonly T[]`; no-constant-function now leaves single-use functions to no-trivial-indirection, so the two never give opposite advice.
+- 09-27: planning, prototyping, review, and debugging rewritten from Matt Pocock's wayfinder, grilling, prototype, diagnosing-bugs, and code-review skills plus superpowers and Factory review; new rules no-switch-statement, no-option-value-access, and no-double-nullish-check; lint batched per unit of work after timing it; dual's lint found not runnable because `@deslop/workflow` is not installed there.
 
 ## Evidence index
 

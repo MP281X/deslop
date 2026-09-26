@@ -1,7 +1,11 @@
 ---
 name: design
-description: 'Visual rules, prototype variants, and screenshot review for rendered UI. Use when building, prototyping, or reviewing a screen or component a user sees; not for logic-only changes.'
+description: 'Visual rules for rendered UI. Use when building, prototyping, or reviewing a screen or component, or matching a reference UI.'
 ---
+
+# Design
+
+Rendered work matches the screens around it first and a reference second; prototypes explore, execution polishes.
 
 ## Consistency first
 
@@ -50,14 +54,15 @@ Copy:
 
 ## Prototypes
 
-- Be creative and build 2–4 completely different variants, each differing on a named axis: layout, density, hierarchy, or interaction.
+- A narrow question gets 2–3 close variants; an open one gets 3–4 completely different mechanisms, each differing on a named axis: layout, density, hierarchy, or interaction.
 - Never variants that differ only in color.
 - Use real, product-shaped content.
 - Render them in place, on the screen they belong to, switchable by buttons labeled with each variant's axis.
+- Stub every mutation, and ignore lint, tokens, and polish except consistency with the nearest screen; a winning variant is rebuilt in execution, never promoted.
 
 ## Looking at the result
 
-When appearance is at stake (prototype variants, new or changed surfaces, not logic-only changes), take one browser screenshot per variant or state, read it back, and judge it against these rules and the nearest screens.
+Prototype variants get one screenshot each, for the user, with no read-back or rule review. In execution, when appearance is at stake, take one browser screenshot per new or changed state, read it back, and judge it against these rules and the nearest screens.
 
 ## Matching a reference UI
 

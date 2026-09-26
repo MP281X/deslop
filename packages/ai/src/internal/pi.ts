@@ -540,37 +540,39 @@ export const makePi = Effect.fnUntraced(function* (config: Pi.Config) {
 				}
 				if (event.type !== 'agent_end') return
 				const last = Array.findLast(event.messages, message => message.role === 'assistant')
-				if (Option.isSome(last)) {
-					yield* replay.publish(
-						Response.makePart('finish', {
-							reason: pipe(
-								Match.value(last.value.stopReason),
-								Match.when('stop', () => 'stop' as const),
-								Match.when('length', () => 'length' as const),
-								Match.when('toolUse', () => 'tool-calls' as const),
-								Match.when('pending', () => 'error' as const),
-								Match.when('deferred', () => 'pause' as const),
-								Match.when('aborted', () => 'other' as const),
-								Match.when('error', () => 'error' as const),
-								Match.exhaustive
-							),
-							response: undefined,
-							usage: Response.Usage.make({
-								inputTokens: {
-									cacheRead: last.value.usage.cacheRead,
-									cacheWrite: last.value.usage.cacheWrite,
-									total: last.value.usage.input,
-									uncached: last.value.usage.input - last.value.usage.cacheRead
-								},
-								outputTokens: {
-									reasoning: last.value.usage.reasoning,
-									text: last.value.usage.output,
-									total: last.value.usage.output
-								}
+				yield* Option.match(last, {
+					onNone: () => Effect.void,
+					onSome: message =>
+						replay.publish(
+							Response.makePart('finish', {
+								reason: pipe(
+									Match.value(message.stopReason),
+									Match.when('stop', () => 'stop' as const),
+									Match.when('length', () => 'length' as const),
+									Match.when('toolUse', () => 'tool-calls' as const),
+									Match.when('pending', () => 'error' as const),
+									Match.when('deferred', () => 'pause' as const),
+									Match.when('aborted', () => 'other' as const),
+									Match.when('error', () => 'error' as const),
+									Match.exhaustive
+								),
+								response: undefined,
+								usage: Response.Usage.make({
+									inputTokens: {
+										cacheRead: message.usage.cacheRead,
+										cacheWrite: message.usage.cacheWrite,
+										total: message.usage.input,
+										uncached: message.usage.input - message.usage.cacheRead
+									},
+									outputTokens: {
+										reasoning: message.usage.reasoning,
+										text: message.usage.output,
+										total: message.usage.output
+									}
+								})
 							})
-						})
-					)
-				}
+						)
+				})
 				yield* setStatus('idle')
 			})
 		)
