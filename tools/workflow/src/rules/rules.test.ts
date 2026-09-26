@@ -148,7 +148,6 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'@deslop/workflow(no-effect-property-arrow)',
 									'@deslop/workflow(no-effect-property-arrow)',
 									'@deslop/workflow(no-fail-in-generator)',
-									'@deslop/workflow(no-fail-in-generator)',
 									'@deslop/workflow(no-fake-ref-state)',
 									'@deslop/workflow(no-fake-ref-state)',
 									'@deslop/workflow(no-hand-written-guard)',

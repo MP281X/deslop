@@ -135,6 +135,7 @@ Clones under `~/.deslop/repos` analyzed in the 2026-09-26 thread, with what the 
 - This file became the workflow's memory: sources, decisions with reasons, and history.
 - 09-26 (after 7938991): mining ~930 old user messages for repeated asks added draft-PR title and body upkeep, align before push, a green pipeline, question-tool-first replies, and no-workaround escalation to both pair texts, plus VPN, sudo, ufw, and install facts to the environment skill.
 - 09-27: retired eval folders deleted except merge-rate, `/etc/resolv.conf` pointed at systemd-resolved's stub (glab 8/8), service-shape readonly enforced in no-readonly-type-syntax, and tests moved to `assert`.
+- 09-27: every custom rule was checked against oxlint's built-ins, tsgolint, effect-tsgo's 116 diagnostics, tsconfig, and fallow; none can be replaced without missed cases or new false positives, so all 22 stay, and no-fail-in-generator now skips `yield* Effect.fail(new E())`, which effecttsgo/unnecessary-fail-yieldable-error already reports.
 
 ## Evidence index
 

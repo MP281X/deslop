@@ -34,7 +34,8 @@ export const noFailInGenerator = defineRule({
 			if (
 				node.callee.type === 'MemberExpression' &&
 				importedMember({context, importedName: 'Effect', node: node.callee, propertyName: 'fail'}) &&
-				insideEffectGenerator({context, node})
+				insideEffectGenerator({context, node}) &&
+				!(node.parent.type === 'YieldExpression' && node.parent.delegate && node.arguments[0]?.type === 'NewExpression')
 			) {
 				context.report({message: 'Yield the error instead: return yield* E.make(...).', node})
 			}
