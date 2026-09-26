@@ -226,6 +226,56 @@ const type = event.type === 'text-delta'
 ```
 
 ```ts
+// good — Match instead of switch; an Option read through its combinators; Predicate for a nullish check
+pipe(
+	Match.value(usage.kind),
+	Match.when('input', () => 'in'),
+	Match.when('output', () => 'out'),
+	Match.exhaustive
+)
+pipe(
+	open,
+	Option.filter(section => section.id === event.id),
+	Option.match({onNone: () => start(event), onSome: section => section.append(event.delta)})
+)
+Predicate.isNotNullish(annotation)
+// bad
+switch (usage.kind) {
+	case 'input':
+		return 'in'
+	case 'output':
+		return 'out'
+}
+if (Option.isSome(open) && open.value.id === event.id) open.value.append(event.delta)
+annotation !== null && annotation !== undefined
+```
+
+```ts
+// good — fnUntraced for an internal helper, fn('Name.method') at a traced boundary, Effect.fn.Return when the return is annotated; Result for a fallible pure value; a service with a default value is a Context.Reference; Order for sorting
+const decodePart = Effect.fnUntraced(function* (part: Part) {
+	return yield* Schema.decodeEffect(Event)(part)
+})
+const prompt = Effect.fn('Ai.prompt')(function* (message: Prompt.UserMessage): Effect.fn.Return<void, AiError> {
+	yield* send(message)
+})
+Result.fromOption(Array.head(parts), () => AiError.make({reason: 'empty'}))
+export const Verbose = Context.Reference<boolean>('@deslop/ai/Verbose', {defaultValue: () => false})
+Array.sort(
+	entries,
+	Order.mapInput(Order.Number, entry => entry.tokens)
+)
+// bad
+const decodePart = Effect.fn('decodePart')(function* (part: Part) {
+	return yield* Schema.decodeEffect(Event)(part)
+}) // a span on an internal helper
+const prompt = (message: Prompt.UserMessage): Effect.Effect<void, AiError> =>
+	Effect.gen(function* () {
+		yield* send(message)
+	})
+entries.sort((left, right) => left.tokens - right.tokens)
+```
+
+```ts
 // good — Effect.fn with arguments, Effect.gen without
 const prompt = Effect.fn('Ai.prompt')(function* (message: Prompt.UserMessage) {
 	const input = yield* piUserMessage(message)
@@ -526,7 +576,7 @@ Schema.Struct({x: Schema.Finite})
 ### Expressions
 
 ```ts
-// good
+// good — no-switch-statement, no-option-value-access, and no-double-nullish-check reject the opposite forms shown under Effect
 const root = options?.root ?? '.'
 String.replaceAll(/[-_]+/gu, ' ')
 const sorted = {a: 2, b: 1, c: 3}

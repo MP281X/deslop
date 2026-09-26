@@ -144,6 +144,7 @@ Clones under `~/.deslop/repos` analyzed in the 2026-09-26 thread, with what the 
 - 09-27: every custom rule was checked against oxlint's built-ins, tsgolint, effect-tsgo's 116 diagnostics, tsconfig, and fallow; none can be replaced without missed cases or new false positives, so all 22 stay, and no-fail-in-generator now skips `yield* Effect.fail(new E())`, which effecttsgo/unnecessary-fail-yieldable-error already reports.
 - 09-27: `typescript/array-type` replaced by a no-restricted-types `Array` entry, since its `ReadonlyArray` fix produced banned `readonly T[]`; no-constant-function now leaves single-use functions to no-trivial-indirection, so the two never give opposite advice.
 - 09-27: planning, prototyping, review, and debugging rewritten from Matt Pocock's wayfinder, grilling, prototype, diagnosing-bugs, and code-review skills plus superpowers and Factory review; new rules no-switch-statement, no-option-value-access, and no-double-nullish-check; lint batched per unit of work after timing it; dual's lint found not runnable because `@deslop/workflow` is not installed there.
+- 09-27: a blind A/B of the engineering skill (current vs a one-rule-per-line rewrite vs a grouped-table rewrite, 3 deslop tasks, one run each, all 0 lint diagnostics) scored 24, 21, and 17 of 30, so the skill kept its structure and gained only the new decisions, the Match, Option, Predicate, fn/fnUntraced, Result, Context.Reference, and Order idioms, and the `yield*` typo fix; the grouped rewrite rebuilt Effect's RateLimiter instead of pushing back.
 
 ## Evidence index
 
