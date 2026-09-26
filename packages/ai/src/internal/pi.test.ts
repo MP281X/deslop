@@ -1,5 +1,5 @@
 import {NodeServices} from '@effect/platform-node'
-import {expect, it} from '@effect/vitest'
+import {assert, it} from '@effect/vitest'
 
 import {Array, Effect, Layer, pipe} from 'effect'
 
@@ -50,7 +50,7 @@ it.layer(NodeServices.layer)('Pi', test => {
 				Effect.provide(handlersContext)
 			)
 
-			expect(output).toBe('skill,subagent')
+			assert.strictEqual(output, 'skill,subagent')
 		})
 	)
 })

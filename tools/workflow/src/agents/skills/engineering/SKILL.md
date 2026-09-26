@@ -254,10 +254,10 @@ export class Ledger extends Context.Service<Ledger, Ledger.Shape>()('@deslop/led
 }
 export declare namespace Ai {
 	export type Agent = {
-		events: Stream.Stream<Event>
-		prompt: (message: Prompt.UserMessage) => Effect.Effect<void, AiError>
-		status: SubscriptionRef.SubscriptionRef<AiStatus>
-		stop: Effect.Effect<void>
+		readonly events: Stream.Stream<Event>
+		readonly prompt: (message: Prompt.UserMessage) => Effect.Effect<void, AiError>
+		readonly status: SubscriptionRef.SubscriptionRef<AiStatus>
+		readonly stop: Effect.Effect<void>
 	}
 }
 export class Ai extends Context.Service<Ai, Ai.Agent>()('@deslop/ai/service/Ai') {
@@ -271,7 +271,7 @@ export const makePi = Effect.fnUntraced(function* (config: Pi.Config) {
 // bad — "in most cases i don't have a default implementation"
 class Logger extends Context.Service<Logger>()('Logger', {make: Effect.succeed(service)}) {}
 static readonly layer = Layer.effect(Ledger, makeLedger) // a make with one caller
-readonly add: (draft: LedgerDraft) => Effect.Effect<LedgerEntry, Schema.SchemaError>
+query(sql: string): Effect.Effect<Rows> // a service method signature instead of a readonly property
 ```
 
 ```ts
@@ -453,21 +453,23 @@ import {createServer} from 'node:http'
 - Assert which input is flagged or returned, or an error's tag, code, or path; never wording or another tool's output.
 - Doubles are Layers or a dependency the public function takes: no vi, global stub, or module mock, even at the network boundary.
 - Seed inputs that make the logic decide; grow a test helper only when every case needs it.
+- Tests assert with `assert` from `@effect/vitest`, never `expect`, as Effect's own tests do.
 - A test never expects wrong behavior and never works around another rule; fix the conflict instead. An expectation changes only together with a recorded behavior change, never to make a check pass, and a changed assertion keeps every value the old one checked, except wording.
 
 ```ts
 // good — one input in the existing case, the request's own fixture, the flagged input or error tag asserted, doubles passed in, inputs that make the logic decide
 Response.makePart('text-delta', {delta: '', id: 'empty'}),
 'const [optional] = useState<string | undefined>(undefined)',
-expect(customCodes(result.stdout)).toEqual([..., '@deslop/workflow(no-typeof)'])
-expect(error).toMatchObject({_tag: 'SandboxUnavailable', cause: killed})
+assert.deepStrictEqual(customCodes(result.stdout), [..., '@deslop/workflow(no-typeof)'])
+assert.containsSubset(error, {_tag: 'SandboxUnavailable', cause: killed})
 const workspace = connect(connection, workspaceFetch)
 Layer.succeed(OpenSandbox, openSandbox)
 const result = yield* lintSource({name: 'recursive.ts', source})
 // bad — "1 userful test is better than 1000 useless ones"
 it('skips empty deltas when reconstructing Prompt history', () => { /* 21 lines */ })
 "import {Schema as S} from 'effect'" // not an input the request names
-expect(Array.some(diagnostics, d => d.code === 'typescript(TS2456)')).toBe(true) // another tool's output
+assert.isTrue(Array.some(diagnostics, d => d.code === 'typescript(TS2456)')) // another tool's output
+expect(error).toMatchObject({_tag: 'SandboxUnavailable'}) // Vitest's expect
 additional?: {name: string; source: string}[] // a helper option one case needs
 ```
 
@@ -508,7 +510,7 @@ const recipients = Array.ensure(input)
 
 ### Globals and types
 
-No readonly, except on a Schema.suspend cycle's hand-written types.
+Every property of a service shape, the second type argument of `Context.Service`, is readonly, as Effect's own services are; readonly appears nowhere else, except on a Schema.suspend cycle's hand-written types.
 
 ```ts
 // good

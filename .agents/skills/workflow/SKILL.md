@@ -76,7 +76,8 @@ The user's decisions as of 2026-09-26, each with its reason; reopen one only on 
 - Type inference first: annotations, casts, and type arguments only where inference cannot produce the type — the user corrected inferable annotations repeatedly and asked for them to be banned.
 - Matt Pocock's documents (CONTEXT.md, docs/adr/, CODING_STANDARDS.md, docs/agents/\*.md) replace special conventions; project-engineering became CODING_STANDARDS.md, and the global engineering skill keeps the cross-repository rules — colleagues use Matt's skills and the user's workflow must not be imposed on them; "take the best of both worlds".
 - dual's lint warnings are intentional incremental adoption — "the rules are weakened on purpose since the repo is big".
-- Schema.Class stays banned and a service's `.of` is allowed; module-level ManagedRuntime, readonly, and expect-vs-assert stay as the engineering skill has them until discussed — schema classes "can introduce footguns" agents keep getting wrong; nobody asked for the `.of` ban, and Effect documents `Service.of`.
+- Schema.Class stays banned, a service's `.of` is allowed, and module-level `ManagedRuntime.make` is banned (rule J). Service-shape properties are readonly and readonly is banned elsewhere — "force the readonly in the service keys and ban it everywhere else. In general I want to align myself more on the idiomatic and documented effect usage and patterns". Tests use `assert` from @effect/vitest, with `expect` imports rejected by lint — "Switch to assert".
+- Idiomatic, documented Effect usage wins over house conventions when they conflict, read from `~/.deslop/repos/effect`.
 - The workflow changes only for a repeated real-PR failure, fixed in the codebase, then lint, then a written rule, and is measured on real PRs; synthetic evals and the AI judge are retired — "based on what you are saying if something is mergiable or not?"; the judge agreed only by matching the merged diff, the evals "where too mutch", and the user chose "Real PRs only".
 - A user comment names a kind of problem: fix every instance in scope without widening; a one-repository rule goes to that repository's CODING_STANDARDS.md — per-spot fixes drew repeated corrections, and repository rules leaked into the shared workflow (misplaced-rule threads below).
 - The default branch is protected; commit, push, and draft PR are automatic — nothing stands between the agreed plan and a ready PR. The PR stays a draft, and every commit updates its title and body from the whole PR — "each time you commit you need to update both the pr body and title based on the full pr changes". The pipeline is watched and must be green.
@@ -133,13 +134,14 @@ Clones under `~/.deslop/repos` analyzed in the 2026-09-26 thread, with what the 
 - Lint-first quality: 15 rule candidates mined from threads were validated on deslop and dual (8 kept, 5 dropped, 2 decided by the user), and deslop's root causes were fixed in code.
 - This file became the workflow's memory: sources, decisions with reasons, and history.
 - 09-26 (after 7938991): mining ~930 old user messages for repeated asks added draft-PR title and body upkeep, align before push, a green pipeline, question-tool-first replies, and no-workaround escalation to both pair texts, plus VPN, sudo, ufw, and install facts to the environment skill.
+- 09-27: retired eval folders deleted except merge-rate, `/etc/resolv.conf` pointed at systemd-resolved's stub (glab 8/8), service-shape readonly enforced in no-readonly-type-syntax, and tests moved to `assert`.
 
 ## Evidence index
 
 Use these artifacts instead of reconstructing prior investigations:
 
 - Merge rate: ~/.deslop/measure/merge-rate/merge-rate.sh — read-only over deslop (GitHub) and dual (GitLab, needs the VPN) `t3code/` requests; as is means merged with no commit authored after opening and no change-request review; baseline 5 of 16 decided t3code requests merged as is (31%).
-- AI judge calibration: ~/.deslop/measure/judge-calibration/ — 14 of the user's PRs and MRs; with the merged reference withheld the judge rejected all 5 as-is merges, and a prompt edit flipped one follow-up case to a wrong yes.
+- AI judge calibration (folder deleted 09-27) — 14 of the user's PRs and MRs; with the merged reference withheld the judge rejected all 5 as-is merges, and a prompt edit flipped one follow-up case to a wrong yes.
 - Research of 2026-09-26, summarized because its notes were deleted; Sources lists the clones it read:
   - PR acceptance: public agent PRs merge 60–85%, and 55–79% of merged ones need no modification; the controllable drivers, strongest first, are a working environment, a self-contained task, task type, CI green before ready, no duplicate work, small diffs, and arriving finished; tests and description length barely matter.
   - Graphs and loops: out-of-band verification beats same-model self-judgment (self-evaluated cycles claimed improvement every time while 56% had none); goal loops, Ralph, and heavy orchestrators are not recommended; restarting beats patching.

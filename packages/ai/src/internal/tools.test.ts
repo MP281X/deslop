@@ -1,5 +1,5 @@
 import {NodeServices} from '@effect/platform-node'
-import {expect, it} from '@effect/vitest'
+import {assert, it} from '@effect/vitest'
 
 import {
 	Array,
@@ -163,12 +163,12 @@ it.layer(NodeServices.layer)('Pi tools', test => {
 				Effect.orDie
 			)
 
-			expect(failedEdit).toMatchObject({_tag: 'ToolExecutionError'})
-			expect(pipe(read, Option.getOrThrow)).toBe('second\nneedle')
-			expect(pipe(grep, Option.getOrThrow)).toContain('notes/a.txt:2:needle')
-			expect(pipe(find, Option.getOrThrow)).toBe('notes/a.txt')
-			expect(pipe(ls, Option.getOrThrow)).toBe('notes/')
-			expect(pipe(bash, Option.getOrThrow)).toContain(cwd)
+			assert.containsSubset(failedEdit, {_tag: 'ToolExecutionError'})
+			assert.strictEqual(pipe(read, Option.getOrThrow), 'second\nneedle')
+			assert.include(pipe(grep, Option.getOrThrow), 'notes/a.txt:2:needle')
+			assert.strictEqual(pipe(find, Option.getOrThrow), 'notes/a.txt')
+			assert.strictEqual(pipe(ls, Option.getOrThrow), 'notes/')
+			assert.include(pipe(bash, Option.getOrThrow), cwd)
 		})
 	)
 })

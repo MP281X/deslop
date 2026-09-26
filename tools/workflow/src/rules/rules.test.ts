@@ -1,5 +1,5 @@
 import {NodeServices} from '@effect/platform-node'
-import {describe, expect, it} from '@effect/vitest'
+import {assert, describe, it} from '@effect/vitest'
 
 import {Array, Effect, FileSystem, Path, Record, Schema, Stream, String, pipe} from 'effect'
 
@@ -61,7 +61,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 							name: 'invalid.tsx',
 							source: pipe(
 								[
-									"import {Array, Effect, Option as Maybe, Schema, SchemaGetter, SchemaTransformation, identity, pipe} from 'effect'",
+									"import {Array, Context, Effect, Option as Maybe, Schema, SchemaGetter, SchemaTransformation, identity, pipe} from 'effect'",
 									"import * as React from 'react'",
 									"import {useRef, useState} from 'react'",
 									'',
@@ -90,6 +90,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'type Frozen = Readonly<{value: string}>',
 									'type Index = {readonly [key: string]: string}',
 									'class Input { readonly field = "value"; constructor(readonly value: string) {} }',
+									'class Clock extends Context.Service<Clock, {now: Effect.Effect<number>; tick(): Effect.Effect<void>}>()("Clock") {}',
 									'const ref = useRef<HTMLElement | null>(null)',
 									'const namespaceRef = React.useRef<HTMLElement | null>(null)',
 									'const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))(source)',
@@ -129,14 +130,15 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'// oxlint-disable-next-line sort-keys -- the fixture keeps its order',
 									'const unsortedKeys = {b: 1, a: 2}',
 									'// @effect-diagnostics-next-line floatingEffect:off',
-									'export {AssertString, Codecs, Fallback, Input, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, annotated, assigned, asyncConstant, callbacks, decode, decoded, decoders, deepPipe, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, handlers, input, isRecord, isText, labelled, loose, mappedValues, measured, namespaceRef, noValues, notFound, operations, ready, recipients, ref, run, stateNamespace, unsortedKeys, wrapped}',
+									'export {AssertString, Clock, Codecs, Fallback, Input, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, annotated, assigned, asyncConstant, callbacks, decode, decoded, decoders, deepPipe, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, handlers, input, isRecord, isText, labelled, loose, mappedValues, measured, namespaceRef, noValues, notFound, operations, ready, recipients, ref, run, stateNamespace, unsortedKeys, wrapped}',
 									'export type {Explicit, Frozen, Index, Mapped}'
 								],
 								Array.join('\n')
 							)
 						})
-						expect(result.exitCode).toBe(ChildProcessSpawner.ExitCode(1))
-						expect(customCodes(result.stdout)).toEqual(
+						assert.strictEqual(result.exitCode, ChildProcessSpawner.ExitCode(1))
+						assert.deepStrictEqual(
+							customCodes(result.stdout),
 							pipe(
 								[
 									'@deslop/workflow(no-array-wrap-ternary)',
@@ -155,6 +157,8 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'@deslop/workflow(no-native-emptiness-check)',
 									'@deslop/workflow(no-native-emptiness-check)',
 									'@deslop/workflow(no-native-method-call)',
+									'@deslop/workflow(no-readonly-type-syntax)',
+									'@deslop/workflow(no-readonly-type-syntax)',
 									'@deslop/workflow(no-readonly-type-syntax)',
 									'@deslop/workflow(no-readonly-type-syntax)',
 									'@deslop/workflow(no-readonly-type-syntax)',
@@ -203,7 +207,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								Array.sort(String.Order)
 							)
 						)
-						expect(result.stderr).toBe('')
+						assert.strictEqual(result.stderr, '')
 					}),
 					Effect.scoped
 				),
@@ -220,7 +224,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 							source: pipe(
 								[
 									"import {it as test} from '@effect/vitest'",
-									"import {Array, Effect, Layer, Result, Schema, SchemaGetter, SchemaTransformation, identity, pipe} from 'effect'",
+									"import {Array, Context, Effect, Layer, Result, Schema, SchemaGetter, SchemaTransformation, identity, pipe} from 'effect'",
 									"import * as EffectArray from 'effect/Array'",
 									'',
 									'declare const input: unknown',
@@ -233,6 +237,9 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const layers = pipe(layer, Layer.provide(pipe(layer, Layer.provide(pipe(layer, Layer.provide(layer))))))',
 									'declare function combine(left: string, right: string): string',
 									'declare const snapshot: {width: number}',
+									'type LedgerShape = {readonly add: (value: number) => Effect.Effect<number>}',
+									'// oxlint-disable-next-line effecttsgo/deterministic-keys -- a fixture in a temporary directory has no stable key',
+									'class Ledger extends Context.Service<Ledger, LedgerShape>()("Ledger") {}',
 									'type User = typeof User.Type',
 									'const User = Schema.Struct({name: Schema.String})',
 									'type Annotated = typeof Annotated.Type',
@@ -295,14 +302,14 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const nestedFailure = Effect.fn("nestedFailure")(function* (id: string) { return yield* pipe(Effect.succeed(id), Effect.flatMap(() => Effect.fail(new Missing()))) })',
 									'// oxlint-disable-next-line eqeqeq -- the fixture keeps a reasoned disable',
 									'const loose = snapshot.width == 1',
-									'export {Annotated, Arbitrary, CallStep, CodeStep, Decoded, DefaultInput, Encoded, Formatter, LinearIssue, Normalized, Step, circle, circles, constants, counts, decoded, decodedMany, encoded, ensured, flags, identify, isCall, isUser, labels, layers, lengths, limits, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, nickname, noUser, payload, readSnapshot, singleName, snapshots, swap, test, thunks, transform, tuple, version, versionPatterns, withDefault}'
+									'export {Annotated, Arbitrary, CallStep, CodeStep, Decoded, DefaultInput, Encoded, Formatter, Ledger, LinearIssue, Normalized, Step, circle, circles, constants, counts, decoded, decodedMany, encoded, ensured, flags, identify, isCall, isUser, labels, layers, lengths, limits, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, nickname, noUser, payload, readSnapshot, singleName, snapshots, swap, test, thunks, transform, tuple, version, versionPatterns, withDefault}'
 								],
 								Array.join('\n')
 							)
 						})
-						expect(customCodes(result.stdout)).toEqual([])
-						expect(result.stderr).toBe('')
-						expect(result.exitCode).toBe(ChildProcessSpawner.ExitCode(0))
+						assert.deepStrictEqual(customCodes(result.stdout), [])
+						assert.strictEqual(result.stderr, '')
+						assert.strictEqual(result.exitCode, ChildProcessSpawner.ExitCode(0))
 					}),
 					Effect.scoped
 				),
@@ -335,7 +342,8 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								Array.join('\n')
 							)
 						})
-						expect(customCodes(result.stdout)).toEqual(
+						assert.deepStrictEqual(
+							customCodes(result.stdout),
 							pipe(
 								[
 									'@deslop/workflow(no-error-message-assertion)',
@@ -374,7 +382,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								Array.join('\n')
 							)
 						})
-						expect(customCodes(result.stdout)).toEqual([])
+						assert.deepStrictEqual(customCodes(result.stdout), [])
 					}),
 					Effect.scoped
 				),

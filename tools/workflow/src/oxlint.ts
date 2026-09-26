@@ -291,7 +291,9 @@ export const oxlint = defineConfig({
 				paths: [
 					{importNames: reactLegacyApis, message: reactLegacyMessage, name: 'react'},
 					{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name: 'vitest'},
-					{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name: '@effect/vitest'}
+					{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name: '@effect/vitest'},
+					{importNames: ['expect'], message: 'Use assert from @effect/vitest.', name: 'vitest'},
+					{importNames: ['expect'], message: 'Use assert from @effect/vitest.', name: '@effect/vitest'}
 				],
 				patterns: [
 					{message: 'Use public package exports.', regex: '^@[^/]+/[^/]+/(?:src|lib)(?:/|$)'},
