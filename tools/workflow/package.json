@@ -6,12 +6,8 @@
 		"url": "https://github.com/MP281X/deslop",
 		"directory": "tools/workflow"
 	},
-	"bin": {
-		"deslop-workflow": "dist/install.js"
-	},
 	"files": [
 		"dist",
-		"src/agents",
 		"tsconfig.json"
 	],
 	"type": "module",
@@ -46,7 +42,6 @@
 	},
 	"peerDependencies": {
 		"@effect/tsgo": ">=0.45",
-		"effect": "^4.0.0-rc",
 		"oxlint": "^1.82",
 		"oxlint-tsgolint": "^7.0"
 	},

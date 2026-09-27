@@ -1,6 +1,3 @@
-// @effect-diagnostics-next-line nodeBuiltinImport:off -- The operating system owns the user's home directory at the CLI boundary.
-import {homedir} from 'node:os'
-
 import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
 import {Config, Console, Effect, FileSystem, Path, Record, pipe} from 'effect'
@@ -9,37 +6,28 @@ import {Command} from 'effect/unstable/cli'
 
 import packageJson from '#package' with {type: 'json'}
 
-const install = Effect.fn('Workflow.install')(function* (agents: string, codexHome: string, claudeHome: string) {
-	const fs = yield* FileSystem.FileSystem
-	const path = yield* Path.Path
-	for (const [source, home] of Record.toEntries({claude: claudeHome, codex: codexHome})) {
-		yield* fs.makeDirectory(home, {recursive: true})
-		for (const entry of yield* fs.readDirectory(path.join(agents, source))) {
-			yield* fs.remove(path.join(home, entry), {force: true, recursive: true})
-			yield* fs.copy(path.join(agents, source, entry), path.join(home, entry))
-		}
-		yield* fs.makeDirectory(path.join(home, 'skills'), {recursive: true})
-		for (const skill of yield* fs.readDirectory(path.join(agents, 'skills'))) {
-			yield* fs.remove(path.join(home, 'skills', skill), {force: true, recursive: true})
-			yield* fs.copy(path.join(agents, 'skills', skill), path.join(home, 'skills', skill))
-		}
-	}
-	// The pair prompt moved to the `pair` output style; drop the prompt file installed by earlier versions.
-	yield* fs.remove(path.join(claudeHome, 'CLAUDE.md'), {force: true})
-})
-
 const cli = Command.make(
 	'deslop-workflow',
 	{},
 	Effect.fnUntraced(function* () {
+		const fs = yield* FileSystem.FileSystem
 		const path = yield* Path.Path
-		const codexHome = path.resolve(
-			yield* pipe(Config.string('CODEX_HOME'), Config.withDefault(path.join(homedir(), '.codex')))
-		)
-		const claudeHome = path.resolve(
-			yield* pipe(Config.string('CLAUDE_CONFIG_DIR'), Config.withDefault(path.join(homedir(), '.claude')))
-		)
-		yield* install(path.resolve(import.meta.dirname, '../src/agents'), codexHome, claudeHome)
+		const home = yield* Config.string('HOME')
+		const codexHome = yield* pipe(Config.string('CODEX_HOME'), Config.withDefault(path.join(home, '.codex')))
+		const claudeHome = yield* pipe(Config.string('CLAUDE_CONFIG_DIR'), Config.withDefault(path.join(home, '.claude')))
+		const agents = path.join(import.meta.dirname, 'agents')
+
+		for (const target of Record.toEntries({claude: claudeHome, codex: codexHome})) {
+			for (const entry of yield* fs.readDirectory(path.join(agents, target[0]))) {
+				yield* fs.remove(path.join(target[1], entry), {force: true, recursive: true})
+				yield* fs.copy(path.join(agents, target[0], entry), path.join(target[1], entry))
+			}
+			for (const skill of yield* fs.readDirectory(path.join(agents, 'skills'))) {
+				yield* fs.remove(path.join(target[1], 'skills', skill), {force: true, recursive: true})
+				yield* fs.copy(path.join(agents, 'skills', skill), path.join(target[1], 'skills', skill))
+			}
+		}
+
 		yield* Console.log(`Installed the workflow in ${codexHome} and ${claudeHome}. Start a fresh session to load it.`)
 	})
 )

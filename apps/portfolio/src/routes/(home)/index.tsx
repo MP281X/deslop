@@ -142,9 +142,9 @@ function getViewportSnapshot() {
 function useViewport() {
 	const snapshot = useSyncExternalStore(
 		onStoreChange => {
-			window.addEventListener('resize', onStoreChange)
+			addEventListener('resize', onStoreChange)
 			return () => {
-				window.removeEventListener('resize', onStoreChange)
+				removeEventListener('resize', onStoreChange)
 			}
 		},
 		getViewportSnapshot,

@@ -45,16 +45,22 @@ export const handlers = Effect.fnUntraced(function* (cwd: string) {
 		}),
 		edit: Effect.fnUntraced(function* ({edits, path: inputPath}) {
 			const target = path.resolve(cwd, inputPath)
-			let content = yield* fs.readFileString(target)
-			for (const replacement of edits) {
-				const occurrences = String.split(replacement.oldText)(content)
-				if (Array.length(occurrences) !== 2) {
-					return yield* ToolExecutionError.make({
-						message: `oldText must occur exactly once, found ${Array.length(occurrences) - 1}`
-					})
+			const original = yield* fs.readFileString(target)
+			const content = yield* Effect.reduce(
+				edits,
+				() => original,
+				(current, replacement) => {
+					const occurrences = String.split(replacement.oldText)(current)
+					if (Array.length(occurrences) !== 2) {
+						return Effect.fail(
+							ToolExecutionError.make({
+								message: `oldText must occur exactly once, found ${Array.length(occurrences) - 1}`
+							})
+						)
+					}
+					return Effect.succeed(`${occurrences[0]}${replacement.newText}${occurrences[1]}`)
 				}
-				content = `${occurrences[0]}${replacement.newText}${occurrences[1]}`
-			}
+			)
 			yield* fs.writeFileString(target, content)
 			return `Edited ${inputPath}`
 		}),

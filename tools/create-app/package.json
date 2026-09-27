@@ -6,6 +6,7 @@
 	"type": "module",
 	"sideEffects": false,
 	"dependencies": {
+		"@deslop/create-package": "workspace:*",
 		"@tanstack/router-generator": "latest",
 		"bingo": "^0.9.3",
 		"bingo-fs": "^0.5.6",

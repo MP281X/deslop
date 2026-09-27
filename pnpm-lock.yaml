@@ -220,6 +220,9 @@ importers:
 
   tools/create-app:
     dependencies:
+      '@deslop/create-package':
+        specifier: workspace:*
+        version: link:../create-package
       '@tanstack/router-generator':
         specifier: latest
         version: 1.167.38
@@ -253,9 +256,6 @@ importers:
       '@shadcn/lint':
         specifier: ^0.2.0
         version: 0.2.0
-      effect:
-        specifier: 4.0.0-rc.112
-        version: 4.0.0-rc.112
       oxlint-plugin-react-doctor:
         specifier: ^0.9.14
         version: 0.9.14

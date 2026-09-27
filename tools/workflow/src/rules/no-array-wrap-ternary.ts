@@ -1,4 +1,4 @@
-import {Option} from 'effect'
+import {Option, Predicate} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
@@ -24,7 +24,7 @@ function testedValue(node: ESTree.Expression) {
 function isSingletonArray(input: {context: Context; node: ESTree.Expression; value: ESTree.Expression}) {
 	if (input.node.type !== 'ArrayExpression' || input.node.elements.length !== 1) return false
 	const element = input.node.elements[0]
-	if (element === null || element === undefined || element.type === 'SpreadElement') return false
+	if (Predicate.isNullish(element) || element.type === 'SpreadElement') return false
 	return input.context.sourceCode.getText(element) === input.context.sourceCode.getText(input.value)
 }
 

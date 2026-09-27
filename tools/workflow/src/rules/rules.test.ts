@@ -1,5 +1,5 @@
 import {NodeServices} from '@effect/platform-node'
-import {describe, expect, it} from '@effect/vitest'
+import {assert, describe, it} from '@effect/vitest'
 
 import {Array, Effect, FileSystem, Path, Record, Schema, Stream, String, pipe} from 'effect'
 
@@ -61,7 +61,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 							name: 'invalid.tsx',
 							source: pipe(
 								[
-									"import {Array, Schema, SchemaGetter, SchemaTransformation, identity, pipe} from 'effect'",
+									"import {Array, Context, Effect, Option as Maybe, Schema, SchemaGetter, SchemaTransformation, identity, pipe} from 'effect'",
 									"import * as React from 'react'",
 									"import {useRef, useState} from 'react'",
 									'',
@@ -90,6 +90,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'type Frozen = Readonly<{value: string}>',
 									'type Index = {readonly [key: string]: string}',
 									'class Input { readonly field = "value"; constructor(readonly value: string) {} }',
+									'class Clock extends Context.Service<Clock, {now: Effect.Effect<number>; tick(): Effect.Effect<void>}>()("Clock") {}',
 									'const ref = useRef<HTMLElement | null>(null)',
 									'const namespaceRef = React.useRef<HTMLElement | null>(null)',
 									'const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))(source)',
@@ -106,6 +107,17 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'function Fallback() { return <div className="missing" /> }',
 									'const fallbacks = Array.map([input], Fallback)',
 									'const notFound = () => Array.empty<string>()',
+									'const emptyNames = () => Array.empty<string>()',
+									'declare const maybe: Maybe.Option<string>',
+									'const unwrapped = Maybe.isSome(maybe) ? maybe.value : ""',
+									'declare const loosely: string | null | undefined',
+									'const present = loosely !== null && loosely !== undefined',
+									'const absent = Array.isArrayEmpty(values) || loosely === null || loosely === undefined',
+									'declare const holder: {slot: Maybe.Option<string>}',
+									'function slotLength() { if (Maybe.isNone(holder.slot)) return 0; return holder.slot.value.length }',
+									'function kind(value: number) { switch (value) { case 1: return "one"; default: return "many" } }',
+									'const namesA = emptyNames()',
+									'const namesB = emptyNames()',
 									'const asyncConstant = async () => "ready"',
 									'const recipients = Array.isArray(input) ? input : [input]',
 									'const wrapped = !Array.isArray(input) ? [input] : input',
@@ -113,30 +125,57 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const state = useState(0)',
 									'const [fakeNamespace] = React.useState(() => ({current: null}))',
 									'const stateNamespace = React.useState(0)',
+									'function isText(value: unknown): value is string { return typeof value === "string" }',
+									'const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)',
+									'const label = "ready"',
+									'const labelled = consume(label)',
+									'declare function download(id: string): Promise<string>',
+									'const handlers = {load: (id: string) => Effect.tryPromise(() => download(id)), size: (id: string) => pipe(id, Effect.succeed)}',
+									'const annotated: string[] = [...values]',
+									'function greet(name: string): string { return `hi ${name}` }',
+									'function logName(name: string): void { consume(name) }',
+									'declare class Box { constructor(size: number) }',
+									'const makeBox = (size: number): Box => new Box(size)',
+									'export const makeBytes = (): Uint8Array => new Uint8Array(4)',
+									'const empties: string[] = []',
+									'class Missing extends Schema.TaggedError<Missing>()("Missing", {}) {}',
+									'const failing = Effect.gen(function* () { yield* Effect.void; return yield* Effect.fail(new Missing()) })',
+									'const failingFn = Effect.fn("failing")(function* (id: string) { yield* Effect.logInfo(id); return yield* Effect.fail(Missing.make({})) })',
 									'// oxlint-disable-next-line eqeqeq',
 									'const loose = source == "ready"',
 									'// oxlint-disable-next-line sort-keys -- the fixture keeps its order',
 									'const unsortedKeys = {b: 1, a: 2}',
 									'// @effect-diagnostics-next-line floatingEffect:off',
-									'export {AssertString, Codecs, Fallback, Input, IsString, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, asyncConstant, callbacks, decode, decoded, decoders, deepPipe, directDecoded, fake, fakeNamespace, fallbacks, forward, input, loose, mappedValues, measured, namespaceRef, noValues, notFound, operations, ready, recipients, ref, run, stateNamespace, unsortedKeys, wrapped}',
+									'export {AssertString, Clock, Codecs, absent, Fallback, Input, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, annotated, assigned, asyncConstant, callbacks, decode, decoded, decoders, deepPipe, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, greet, handlers, input, isRecord, isText, makeBox, labelled, logName, loose, kind, mappedValues, measured, namesA, namesB, namespaceRef, noValues, present, slotLength, notFound, operations, ready, recipients, ref, run, stateNamespace, unsortedKeys, unwrapped, wrapped}',
 									'export type {Explicit, Frozen, Index, Mapped}'
 								],
 								Array.join('\n')
 							)
 						})
-						expect(result.exitCode).toBe(ChildProcessSpawner.ExitCode(1))
-						expect(customCodes(result.stdout)).toEqual(
+						assert.strictEqual(result.exitCode, ChildProcessSpawner.ExitCode(1))
+						assert.deepStrictEqual(
+							customCodes(result.stdout),
 							pipe(
 								[
 									'@deslop/workflow(no-array-wrap-ternary)',
 									'@deslop/workflow(no-array-wrap-ternary)',
 									'@deslop/workflow(no-constant-function)',
 									'@deslop/workflow(no-deep-pipe)',
+									'@deslop/workflow(no-effect-property-arrow)',
+									'@deslop/workflow(no-effect-property-arrow)',
+									'@deslop/workflow(no-double-nullish-check)',
+									'@deslop/workflow(no-double-nullish-check)',
+									'@deslop/workflow(no-fail-in-generator)',
 									'@deslop/workflow(no-fake-ref-state)',
 									'@deslop/workflow(no-fake-ref-state)',
+									'@deslop/workflow(no-hand-written-guard)',
+									'@deslop/workflow(no-hand-written-guard)',
+									'@deslop/workflow(no-let)',
 									'@deslop/workflow(no-native-emptiness-check)',
 									'@deslop/workflow(no-native-emptiness-check)',
 									'@deslop/workflow(no-native-method-call)',
+									'@deslop/workflow(no-option-value-access)',
+									'@deslop/workflow(no-option-value-access)',
 									'@deslop/workflow(no-readonly-type-syntax)',
 									'@deslop/workflow(no-readonly-type-syntax)',
 									'@deslop/workflow(no-readonly-type-syntax)',
@@ -144,8 +183,14 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'@deslop/workflow(no-readonly-type-syntax)',
 									'@deslop/workflow(no-readonly-type-syntax)',
 									'@deslop/workflow(no-readonly-type-syntax)',
+									'@deslop/workflow(no-redundant-return-type)',
+									'@deslop/workflow(no-redundant-return-type)',
+									'@deslop/workflow(no-redundant-return-type)',
 									'@deslop/workflow(no-redundant-use-ref-null-type)',
 									'@deslop/workflow(no-redundant-use-ref-null-type)',
+									'@deslop/workflow(no-redundant-variable-annotation)',
+									'@deslop/workflow(no-redundant-variable-annotation)',
+									'@deslop/workflow(no-renamed-import)',
 									'@deslop/workflow(no-stored-schema-operation)',
 									'@deslop/workflow(no-stored-schema-operation)',
 									'@deslop/workflow(no-stored-schema-operation)',
@@ -153,6 +198,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'@deslop/workflow(no-stored-schema-operation)',
 									'@deslop/workflow(no-stored-schema-operation)',
 									'@deslop/workflow(no-stored-schema-operation)',
+									'@deslop/workflow(no-switch-statement)',
 									'@deslop/workflow(no-trivial-indirection)',
 									'@deslop/workflow(no-trivial-indirection)',
 									'@deslop/workflow(no-trivial-indirection)',
@@ -161,6 +207,10 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'@deslop/workflow(no-trivial-indirection)',
 									'@deslop/workflow(no-trivial-indirection)',
 									'@deslop/workflow(no-trivial-indirection)',
+									'@deslop/workflow(no-trivial-indirection)',
+									'@deslop/workflow(no-trivial-indirection)',
+									'@deslop/workflow(no-typeof)',
+									'@deslop/workflow(no-typeof)',
 									'@deslop/workflow(no-undestructured-use-state)',
 									'@deslop/workflow(no-undestructured-use-state)',
 									'@deslop/workflow(no-unexplained-disable)',
@@ -179,7 +229,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								Array.sort(String.Order)
 							)
 						)
-						expect(result.stderr).toBe('')
+						assert.strictEqual(result.stderr, '')
 					}),
 					Effect.scoped
 				),
@@ -195,7 +245,8 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 							name: 'valid.tsx',
 							source: pipe(
 								[
-									"import {Array, Layer, Result, Schema, SchemaGetter, SchemaTransformation, identity, pipe} from 'effect'",
+									"import {it as test} from '@effect/vitest'",
+									"import {Array, Context, Effect, Layer, Result, Schema, SchemaGetter, SchemaTransformation, identity, pipe} from 'effect'",
 									"import * as EffectArray from 'effect/Array'",
 									'',
 									'declare const input: unknown',
@@ -208,6 +259,9 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const layers = pipe(layer, Layer.provide(pipe(layer, Layer.provide(pipe(layer, Layer.provide(layer))))))',
 									'declare function combine(left: string, right: string): string',
 									'declare const snapshot: {width: number}',
+									'type LedgerShape = {readonly add: (value: number) => Effect.Effect<number>}',
+									'// oxlint-disable-next-line effecttsgo/deterministic-keys -- a fixture in a temporary directory has no stable key',
+									'class Ledger extends Context.Service<Ledger, LedgerShape>()("Ledger") {}',
 									'type User = typeof User.Type',
 									'const User = Schema.Struct({name: Schema.String})',
 									'type Annotated = typeof Annotated.Type',
@@ -245,25 +299,41 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const ensured = Array.ensure(input)',
 									'const constants = Array.map([input], () => input)',
 									'function identify(value: {id: string}) { return value.id }',
-									'let counter = 0',
-									'counter = counter + 1',
-									'function readCounter() { return counter }',
-									'const counters = Array.map([input], readCounter)',
 									'function circle() { return Math.PI }',
 									'const circles = Array.map([input], circle)',
 									'function readSnapshot() { return snapshot.width }',
 									'const snapshots = Array.map([input], readSnapshot)',
 									'const DefaultInput = Schema.JsonObject.make({schema: {type: "object"}})',
+									'function isCall(node: {type: string}): node is {type: "CallExpression"} { return node.type === "CallExpression" }',
+									'const limit = 2',
+									'const limits = [limit, limit]',
+									'const version = "1"',
+									'const versionPattern = /^v/u',
+									'const versionPatterns = [versionPattern]',
+									'const thunks = {size: () => pipe(names, Array.map(identity))}',
+									'const measure = Effect.fn("measure")(function* (value: string) { return yield* Effect.succeed(value.length) }, Effect.map(length => length + 1))',
+									'const payload: unknown = names',
+									'const counts: Record<string, number> = {}',
+									'const flags: Partial<Record<"a" | "b", boolean>> = {}',
+									'const labels: {[Key in "a" | "b"]?: Key} = {}',
+									'type Profile = {nickname?: string}',
+									'const nickname: Profile["nickname"] = undefined',
+									'const noUser: User | null = null',
+									'const annotatedName: string = names[0] ?? ""',
+									'function label(flag: boolean): string { return flag ? "on" : "off" }',
+									'declare class Missing { _tag: "Missing" }',
+									'const missing = Effect.fail(new Missing())',
+									'const nestedFailure = Effect.fn("nestedFailure")(function* (id: string) { return yield* pipe(Effect.succeed(id), Effect.flatMap(() => Effect.fail(new Missing()))) })',
 									'// oxlint-disable-next-line eqeqeq -- the fixture keeps a reasoned disable',
 									'const loose = snapshot.width == 1',
-									'export {Annotated, Arbitrary, CallStep, CodeStep, Decoded, DefaultInput, Encoded, Formatter, LinearIssue, Normalized, Step, circle, circles, constants, counters, decoded, decodedMany, encoded, ensured, identify, isUser, layers, lengths, loose, mappedOutcome, namespaced, readCounter, readSnapshot, singleName, snapshots, swap, transform, tuple, withDefault}'
+									'export {Annotated, Arbitrary, CallStep, CodeStep, Decoded, DefaultInput, Encoded, Formatter, Ledger, LinearIssue, Normalized, Step, circle, circles, constants, counts, decoded, decodedMany, encoded, ensured, flags, identify, isCall, isUser, labels, layers, lengths, limits, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, annotatedName, label, nickname, noUser, payload, readSnapshot, singleName, snapshots, swap, test, thunks, transform, tuple, version, versionPatterns, withDefault}'
 								],
 								Array.join('\n')
 							)
 						})
-						expect(customCodes(result.stdout)).toEqual([])
-						expect(result.stderr).toBe('')
-						expect(result.exitCode).toBe(ChildProcessSpawner.ExitCode(0))
+						assert.deepStrictEqual(customCodes(result.stdout), [])
+						assert.strictEqual(result.stderr, '')
+						assert.strictEqual(result.exitCode, ChildProcessSpawner.ExitCode(0))
 					}),
 					Effect.scoped
 				),
@@ -296,7 +366,8 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								Array.join('\n')
 							)
 						})
-						expect(customCodes(result.stdout)).toEqual(
+						assert.deepStrictEqual(
+							customCodes(result.stdout),
 							pipe(
 								[
 									'@deslop/workflow(no-error-message-assertion)',
@@ -328,12 +399,14 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'}',
 									'function useRef<T>() { return undefined as T | undefined }',
 									'const ref = useRef<string | null>()',
-									'export {compile, ref}'
+									'function pipe(value: string, suffix: string) { return value + suffix }',
+									'const handlers = {size: (value: string) => pipe(value, "!")}',
+									'export {compile, handlers, ref}'
 								],
 								Array.join('\n')
 							)
 						})
-						expect(customCodes(result.stdout)).toEqual([])
+						assert.deepStrictEqual(customCodes(result.stdout), [])
 					}),
 					Effect.scoped
 				),

@@ -5,6 +5,12 @@
 	"bin": "./bin/index.ts",
 	"type": "module",
 	"sideEffects": false,
+	"imports": {
+		"#replace-directory": "./src/replace-directory.ts"
+	},
+	"exports": {
+		".": "./src/replace-directory.ts"
+	},
 	"dependencies": {
 		"bingo": "^0.9.3",
 		"bingo-fs": "^0.5.6",

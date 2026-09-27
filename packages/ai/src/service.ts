@@ -13,10 +13,10 @@ export declare namespace Ai {
 	export type Event = Prompt.UserMessage | Response.StreamPart<Tools>
 
 	export type Agent = {
-		events: Stream.Stream<Event>
-		prompt: (message: Prompt.UserMessage) => Effect.Effect<void, AiError>
-		status: SubscriptionRef.SubscriptionRef<AiStatus>
-		stop: Effect.Effect<void>
+		readonly events: Stream.Stream<Event>
+		readonly prompt: (message: Prompt.UserMessage) => Effect.Effect<void, AiError>
+		readonly status: SubscriptionRef.SubscriptionRef<AiStatus>
+		readonly stop: Effect.Effect<void>
 	}
 }
 

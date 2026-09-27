@@ -187,21 +187,6 @@ function getItems<TValue extends RichTextArea.Value>(
 	)
 }
 
-function match(text: string, triggers: string[]) {
-	for (const trigger of triggers) {
-		const index = pipe(text, String.lastIndexOf(trigger))
-		if (Option.isSome(index)) {
-			const previous = text[index.value - 1] ?? ''
-			const query = String.slice(index.value + String.length(trigger))(text)
-			const validBoundary = index.value === 0 || previous === '(' || /\s/u.test(previous)
-			if (validBoundary && String.length(query) <= 32 && !/\s/u.test(query)) {
-				return {leadOffset: index.value, query, replaceableString: String.slice(index.value)(text), trigger}
-			}
-		}
-	}
-	return null
-}
-
 function currentTextNodeSelection() {
 	const selection = Lexical.$getSelection()
 	if (!Lexical.$isRangeSelection(selection)) return
@@ -380,20 +365,33 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 			onOpen={props.onOpen}
 			onClose={props.onClose}
 			triggerFn={text => {
-				const next = match(
-					text,
-					pipe(
-						props.options ?? {},
-						Record.keys,
-						Array.sortWith(
-							String.length,
-							Order.make((left, right) => {
-								if (left > right) return -1
-								if (left < right) return 1
-								return 0
+				const next = pipe(
+					props.options ?? {},
+					Record.keys,
+					Array.sortWith(
+						String.length,
+						Order.make((left, right) => {
+							if (left > right) return -1
+							if (left < right) return 1
+							return 0
+						})
+					),
+					Array.findFirst(trigger =>
+						pipe(
+							text,
+							String.lastIndexOf(trigger),
+							Option.flatMap(index => {
+								const previous = text[index - 1] ?? ''
+								const query = String.slice(index + String.length(trigger))(text)
+								const validBoundary = index === 0 || previous === '(' || /\s/u.test(previous)
+								return Option.liftPredicate(
+									{leadOffset: index, query, replaceableString: String.slice(index)(text), trigger},
+									() => validBoundary && String.length(query) <= 32 && !/\s/u.test(query)
+								)
 							})
 						)
-					)
+					),
+					Option.getOrNull
 				)
 
 				setSearch(current => {

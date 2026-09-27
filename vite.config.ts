@@ -5,8 +5,8 @@ import {oxlint} from '@deslop/workflow'
 export default defineConfig({
 	create: {
 		templates: [
-			{name: 'app', description: 'Create a full-stack Deslop application', template: './tools/create-app'},
-			{name: 'package', description: 'Create a standard Deslop package', template: './tools/create-package'}
+			{description: 'Create a full-stack Deslop application', name: 'app', template: './tools/create-app'},
+			{description: 'Create a standard Deslop package', name: 'package', template: './tools/create-package'}
 		]
 	},
 	fmt: {

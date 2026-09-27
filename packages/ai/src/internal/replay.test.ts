@@ -1,4 +1,4 @@
-import {expect, it} from '@effect/vitest'
+import {assert, it} from '@effect/vitest'
 
 import {Deferred, Effect, Fiber, Stream, pipe} from 'effect'
 
@@ -29,15 +29,20 @@ it.effect(
 
 		yield* Deferred.await(ready)
 		yield* replay.publish(text('one'))
+		yield* replay.publish(text(''))
 		yield* replay.publish(text(' two'))
+		yield* replay.publish(user)
+		yield* replay.publish(text(' three'))
 
 		const firstEvents = yield* Fiber.join(first)
-		expect(firstEvents).toHaveLength(3)
-		expect(firstEvents[1]).toMatchObject({delta: 'one', type: 'text-delta'})
-		expect(firstEvents[2]).toMatchObject({delta: ' two', type: 'text-delta'})
+		assert.lengthOf(firstEvents, 3)
+		assert.containsSubset(firstEvents[1], {delta: 'one', type: 'text-delta'})
+		assert.containsSubset(firstEvents[2], {delta: ' two', type: 'text-delta'})
 
-		const resumed = yield* pipe(replay.events, Stream.take(2), Stream.runCollect)
-		expect(resumed).toHaveLength(2)
-		expect(resumed[1]).toMatchObject({delta: 'one two', type: 'text-delta'})
+		const resumed = yield* pipe(replay.events, Stream.take(4), Stream.runCollect)
+		assert.lengthOf(resumed, 4)
+		assert.containsSubset(resumed[1], {delta: 'one two', type: 'text-delta'})
+		assert.strictEqual(resumed[2], user)
+		assert.containsSubset(resumed[3], {delta: ' three', type: 'text-delta'})
 	})
 )

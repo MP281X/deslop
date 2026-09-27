@@ -3,33 +3,34 @@ name: engineering
 description: 'Use for product-code architecture, implementation, coding style, testing, or review.'
 ---
 
-Write code to these rules; apply the repository's `project-engineering` skill where one exists. Both take precedence over a repository's other coding standards. Static analysis catches regressions and never fixes code: write every rule below correctly the first time, whether or not a linter checks it. The deslop codebase is the minimum bar for structure and consistency in every repository.
+Apply the repository's CODING_STANDARDS.md alongside these rules. Both take precedence over a repository's other coding standards. Lint is a fallback that applies autofixes: write every rule below correctly the first time, whether or not a linter checks it. The deslop codebase is the minimum bar for structure and consistency in every repository.
 
 ## Simplicity
 
 Every line not needed now slows the next change. Build the smallest thing that does the requested job well:
 
-- Write the plain, obvious solution, explicit and idiomatic, readable top to bottom: no comments, no clever tricks, and no indirection a single use does not need; inline every forwarding wrapper and every single-use helper or top-level const, as Shape shows.
-- Keep code flat: flat pipelines and early returns instead of nesting, with a blank line between logical groups.
-- Doing less than asked beats doing more: the core done well beats a complete 100% with extras; name what you cut. A refactor or cleanup request asks for depth instead: every section applies to every line of the owned files, not only the lines the diff changes.
-- Write for where the code lives: extend the nearest existing implementation of the same kind, mirroring its permissions, errors, data refresh, and tests, and reuse the feature's helper for a job before writing one.
-- Happy path only: let failures flow through Effect's error channel, with no catch, retry, fallback, or defensive check unless the request or an existing contract states the requirement.
+- Write the plain, explicit, idiomatic solution, readable top to bottom: no comments and no clever tricks; inline every forwarding wrapper and every single-use helper or top-level const, as Shape shows.
+- Keep code flat: pipelines and early returns instead of nesting, a blank line between logical groups.
+- Doing less than asked beats doing more: the core done well beats a complete 100% with extras; name what you cut. A refactor or cleanup request asks for depth instead: every section applies to every line of the owned files, not only the changed lines.
+- Extend the nearest existing implementation of the same kind, mirroring its permissions, errors, data refresh, and tests, and reuse the feature's helper for a job before writing one.
+- Happy path only: let failures flow through Effect's error channel, with no catch, retry, fallback, or defensive check unless the request or an existing contract requires it.
 - Validate and transform once, at the boundary, with Effect Schema; inside, data is trusted: carry narrowed values forward and never re-check what the schema, the declared type, an earlier filter, or tsc guarantees.
 - Layers depend inward: domain and service code never import HTTP, RPC, or other transport types.
-- Search Effect before writing logic: before hand-writing a traversal, accumulator, check, or config read, search the Effect clone the environment skill names (Graph, Record, String, Option, Struct, Config.all, Match, Boolean) and call the helper that exists.
+- Before hand-writing a traversal, accumulator, check, or config read, search the Effect repository at `~/.deslop/repos/effect` (Graph, Record, String, Option, Struct, Config.all, Match, Boolean) and call the helper that exists; clone a missing library source into `~/.deslop/repos`.
 - Never destructure a parameter, callback argument, or loop variable (`useState` excepted), and never re-list a value's fields: pass it whole or spread it.
 - No future-proofing: no option, parameter, layer, abstraction, export, file, script, or check for a need that does not exist yet.
-- Delete dead code, always: every superseded or unused file, export, type, doc, test, and dependency goes in the same change; keep the type half of a schema pair and leave no compatibility path or leftover.
+- Delete dead code: every superseded or unused file, export, type, doc, test, and dependency goes in the same change; keep the type half of a schema pair and leave no compatibility path or leftover.
 - Replace every third-party dependency you can with an Effect module, or with a Node built-in reached through Effect's platform packages.
 - Change only the state an action changes: refresh, invalidate, or rerender nothing else.
 - Send and store canonical data only; derive the rest where it is used, and surface each state once, where the user acts on it.
 - Touch only what the request needs; an unrelated improvement is a proposal for the user.
 - Behave correctly instead of building machinery, such as hooks, guards, or generators, to enforce behavior.
-- A refactor or mechanical pass keeps logic and behavior, except two accepted differences: one that matters at no usage point and makes the code simpler, and one that applying a rule in this skill causes, such as an error keeping its cause, sorted keys, or Effect-native formatting, unless a usage point parses it; human-facing diagnostics, such as printed error text, are not a contract. Check every usage point, then record each accepted difference, reported with the change. Any other behavior change is the user's decision, except a reachable bug's fix.
-- Fix a reachable bug, one that real input from an actual usage point triggers: check every consumer of the changed output and report it as a fixed bug, its evidence the failing output line of its test case run before the fix, never a CLI or app run. Handling for input no caller produces is deleted instead of fixed; anything that looks intentional, or that other code relies on, is kept and reported as possibly intentional.
-- Improve performance in the code the change touches where you know how; measure beyond noise on a realistic input only when a change claims speed or keeps a slower-looking form.
+- A refactor or mechanical pass keeps logic and behavior, except two accepted differences: one that matters at no usage point and makes the code simpler, and one a rule in this skill causes, such as an error keeping its cause, sorted keys, or Effect-native formatting, unless a usage point parses it; human-facing diagnostics, such as printed error text, are not a contract. Check every usage point, then record and report each accepted difference with the change. Any other behavior change is the user's decision, except a reachable bug's fix.
+- Fix a reachable bug, one real input from a usage point triggers: check every consumer of the changed output and report it as a fixed bug. Handling for input no caller produces is deleted instead of fixed; anything that looks intentional or that other code relies on is kept and reported as possibly intentional.
+- Improve performance in the touched code where you know how; measure beyond noise on a realistic input only when a change claims speed or keeps a slower-looking form.
+- A fix never weakens type safety to make a symptom go away, a performance or type-check-speed change included: no widened or erased type, cast, dropped generic, or loosened exported type.
 - Implement the definition the domain uses, such as a cycle for recursion, never the nearest syntactic proxy.
-- Before finishing, reread the diff and delete every line the outcome does not require: pass values instead of trackers, use the whole schema instead of picking every field, and delete checks and fallbacks for cases callers cannot produce, props, options, and docs beyond the minimum, tests the Tests section drops, and code an Effect helper replaces.
+- Before finishing, reread the diff and delete every line the outcome does not require.
 
 ```ts
 // good — Effect's helpers, values taken whole, data trusted after the boundary
@@ -69,7 +70,7 @@ yield * fs.copyFile(configPath, `${configPath}.backup`) // "never backup previou
 ```
 
 ```ts
-// good — Effect's glob covers every usage point; the dropped dot-folder match is recorded and reported with the change
+// good — Effect's glob covers every usage point; the dropped dot-folder match is reported with the change
 yield * fs.glob('**/.env*.example', {exclude: ['**/node_modules'], root: config.cwd})
 // bad — "overcomplicated for no reason just to satisfy immaginary requirement that never existed"
 import {glob} from 'glob' // a dependency Effect's FileSystem replaces
@@ -114,14 +115,6 @@ src/generator/resolve.ts
 src/generator/resolve.ts, src/generator/referenceProblem.ts   // two $ref walkers after a rewrite
 README.md, AGENTS.md, SKILL.md, sdk guide, changeset          // the same CLI flags five times
 HANDOFF-openapi-plugin.md, ~/.ab/, stray worktrees            // artifacts left after "done"
-```
-
-```text
-// good — the instruction states the behavior; each harness keeps its own plain file
-// bad — "It seems stupid and overcomplicated to have a script for it"
-scripts/ask-gate.mjs     // a hook forcing the order of questions
-guard.py                 // enforces string checks the instruction already states
-render-config.ts         // generates per-harness files from one source
 ```
 
 ## Types
@@ -213,8 +206,7 @@ function isPathNotFound(error: unknown) {
 ## Effect
 
 ```ts
-// good — Schema, Array, String, Number, Predicate over globals; PackageManifest is a fromJsonString schema
-Schema.decodeEffect(PackageManifest)(text)
+// good — Schema, Array, String, Number, Predicate over globals
 Number.parse(input.count)
 Array.map(commits, commit => commit.subject)
 Predicate.isString(value)
@@ -234,6 +226,56 @@ const type = event.type === 'text-delta'
 ```
 
 ```ts
+// good — Match instead of switch; an Option read through its combinators; Predicate for a nullish check
+pipe(
+	Match.value(usage.kind),
+	Match.when('input', () => 'in'),
+	Match.when('output', () => 'out'),
+	Match.exhaustive
+)
+pipe(
+	open,
+	Option.filter(section => section.id === event.id),
+	Option.match({onNone: () => start(event), onSome: section => section.append(event.delta)})
+)
+Predicate.isNotNullish(annotation)
+// bad
+switch (usage.kind) {
+	case 'input':
+		return 'in'
+	case 'output':
+		return 'out'
+}
+if (Option.isSome(open) && open.value.id === event.id) open.value.append(event.delta)
+annotation !== null && annotation !== undefined
+```
+
+```ts
+// good — fnUntraced for an internal helper, fn('Name.method') at a traced boundary, Effect.fn.Return when the return is annotated; Result for a fallible pure value; a service with a default value is a Context.Reference; Order for sorting
+const decodePart = Effect.fnUntraced(function* (part: Part) {
+	return yield* Schema.decodeEffect(Event)(part)
+})
+const prompt = Effect.fn('Ai.prompt')(function* (message: Prompt.UserMessage): Effect.fn.Return<void, AiError> {
+	yield* send(message)
+})
+Result.fromOption(Array.head(parts), () => AiError.make({message: 'The model returned no parts'}))
+export const Verbose = Context.Reference<boolean>('@deslop/ai/Verbose', {defaultValue: () => false})
+Array.sort(
+	entries,
+	Order.mapInput(Order.Number, entry => entry.tokens)
+)
+// bad
+const decodePart = Effect.fn('decodePart')(function* (part: Part) {
+	return yield* Schema.decodeEffect(Event)(part)
+}) // a span on an internal helper
+const prompt = (message: Prompt.UserMessage): Effect.Effect<void, AiError> =>
+	Effect.gen(function* () {
+		yield* send(message)
+	})
+entries.sort((left, right) => left.tokens - right.tokens)
+```
+
+```ts
 // good — Effect.fn with arguments, Effect.gen without
 const prompt = Effect.fn('Ai.prompt')(function* (message: Prompt.UserMessage) {
 	const input = yield* piUserMessage(message)
@@ -243,6 +285,7 @@ const stop = Effect.gen(function* () {
 })
 // bad — "if there is an arg you must use the Effect.fn"
 read: input => pipe(storage.read(input.id), Effect.withSpan('Todo.read', {attributes: {id: input.id}}))
+fetch: url => Effect.tryPromise(() => fetch(url))
 const load = id =>
 	Effect.gen(function* () {
 		return yield* read(id)
@@ -250,21 +293,21 @@ const load = id =>
 ```
 
 ```ts
-// good — a service with one implementation builds it inline in its layer; a service with several backends has one named layer per backend, like Ai.layerPi; an implementation returns a plain object
+// good — a service with one implementation builds it inline in its layer; a service with several backends has one named layer per backend, like Ai.layerPi; an implementation is the service's of or a plain object that satisfies its shape
 export class Ledger extends Context.Service<Ledger, Ledger.Shape>()('@deslop/ledger/service/Ledger') {
 	static layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
-			return {add, balanceByTag} satisfies Ledger.Shape
+			return Ledger.of({add, balanceByTag})
 		})
 	)
 }
 export declare namespace Ai {
 	export type Agent = {
-		events: Stream.Stream<Event>
-		prompt: (message: Prompt.UserMessage) => Effect.Effect<void, AiError>
-		status: SubscriptionRef.SubscriptionRef<AiStatus>
-		stop: Effect.Effect<void>
+		readonly events: Stream.Stream<Event>
+		readonly prompt: (message: Prompt.UserMessage) => Effect.Effect<void, AiError>
+		readonly status: SubscriptionRef.SubscriptionRef<AiStatus>
+		readonly stop: Effect.Effect<void>
 	}
 }
 export class Ai extends Context.Service<Ai, Ai.Agent>()('@deslop/ai/service/Ai') {
@@ -278,8 +321,7 @@ export const makePi = Effect.fnUntraced(function* (config: Pi.Config) {
 // bad — "in most cases i don't have a default implementation"
 class Logger extends Context.Service<Logger>()('Logger', {make: Effect.succeed(service)}) {}
 static readonly layer = Layer.effect(Ledger, makeLedger) // a make with one caller
-readonly add: (draft: LedgerDraft) => Effect.Effect<LedgerEntry, Schema.SchemaError>
-return Ledger.of({add, balanceByTag}) // identity wrapper
+query(sql: string): Effect.Effect<Rows> // a service method signature instead of a readonly property
 ```
 
 ```ts
@@ -413,7 +455,7 @@ export type Config = {remote: GitRemote; token: Secret.Secret; pollInterval: Dur
 ```
 
 ```ts
-// good — flat: an early return, one level deep, a blank line between logical groups
+// good — an early return, one level deep, a blank line between groups
 if (sandbox?.status !== 'running') return
 
 return yield * sandbox.kill
@@ -455,27 +497,29 @@ import {createServer} from 'node:http'
 - Keep only tests that check logic a real regression would break, none breaking on an unrelated change; delete every test of wiring, types, library behavior, another tool's output, wording, a second input for covered behavior, or input no caller produces.
 - Test through the package's public seam: its exported layer, service, or function.
 - Touched logic no test covers gets a case, added before a refactor rewrites it.
-- One input per behavior: prove a change with one input in the existing case that covers it; add a case only for behavior no case exercises.
-- A bug fix first adds the case that fails without it, to the existing test that covers the fixed code when one exists.
+- One input per behavior: prove a change with one input in the existing case that covers it; add a case only for unexercised behavior.
+- A bug fix first adds the case that fails without it, to the existing test covering the fixed code when one exists.
 - Fixtures are the inputs the request names, nothing else.
 - Assert which input is flagged or returned, or an error's tag, code, or path; never wording or another tool's output.
 - Doubles are Layers or a dependency the public function takes: no vi, global stub, or module mock, even at the network boundary.
 - Seed inputs that make the logic decide; grow a test helper only when every case needs it.
+- Tests assert with `assert` from `@effect/vitest`, never `expect`, as Effect's own tests do.
 - A test never expects wrong behavior and never works around another rule; fix the conflict instead. An expectation changes only together with a recorded behavior change, never to make a check pass, and a changed assertion keeps every value the old one checked, except wording.
 
 ```ts
-// good — one input in the existing case, the request's own fixture, the flagged input or error tag asserted, doubles passed in, inputs that make the logic decide
+// good — one input in the existing case, the request's fixture, the flagged input or error tag asserted, doubles passed in
 Response.makePart('text-delta', {delta: '', id: 'empty'}),
 'const [optional] = useState<string | undefined>(undefined)',
-expect(customCodes(result.stdout)).toEqual([..., '@deslop/workflow(no-typeof)'])
-expect(error).toMatchObject({_tag: 'SandboxUnavailable', cause: killed})
+assert.deepStrictEqual(customCodes(result.stdout), [..., '@deslop/workflow(no-typeof)'])
+assert.containsSubset(error, {_tag: 'SandboxUnavailable', cause: killed})
 const workspace = connect(connection, workspaceFetch)
 Layer.succeed(OpenSandbox, openSandbox)
 const result = yield* lintSource({name: 'recursive.ts', source})
 // bad — "1 userful test is better than 1000 useless ones"
 it('skips empty deltas when reconstructing Prompt history', () => { /* 21 lines */ })
 "import {Schema as S} from 'effect'" // not an input the request names
-expect(Array.some(diagnostics, d => d.code === 'typescript(TS2456)')).toBe(true) // another tool's output
+assert.isTrue(Array.some(diagnostics, d => d.code === 'typescript(TS2456)')) // another tool's output
+expect(error).toMatchObject({_tag: 'SandboxUnavailable'}) // Vitest's expect
 additional?: {name: string; source: string}[] // a helper option one case needs
 ```
 
@@ -516,7 +560,7 @@ const recipients = Array.ensure(input)
 
 ### Globals and types
 
-No readonly, except on a Schema.suspend cycle's hand-written types.
+Every property of a service shape, the second type argument of `Context.Service`, is readonly, as in Effect's services; class members may be readonly, such as `static readonly layer`; readonly appears nowhere else, except on a Schema.suspend cycle's hand-written types.
 
 ```ts
 // good
@@ -547,11 +591,14 @@ NodeRuntime.runMain(
 
 ### Modules
 
+Import a module under its own name; the ui package's aliases for clashing names are the exception.
+
 ```ts
 // good — subpath imports, import type, every export has an importer
 import type {PortfolioState, PortfolioTrail, PortfolioVisitor} from '#rpcs/contracts.ts'
 import type {Connect, EnvironmentModuleNode, Plugin} from 'vite'
 // bad — each line is a diagnostic
+import {Schema as S} from 'effect'
 export const EntryKind = Schema.Literals(['income', 'expense']) // no importer
 ```
 

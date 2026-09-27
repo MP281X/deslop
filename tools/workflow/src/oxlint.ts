@@ -6,13 +6,23 @@ import {defineConfig} from 'oxlint'
 import {noArrayWrapTernary} from './rules/no-array-wrap-ternary.ts'
 import {noConstantFunction} from './rules/no-constant-function.ts'
 import {noDeepPipe} from './rules/no-deep-pipe.ts'
+import {noDoubleNullishCheck} from './rules/no-double-nullish-check.ts'
+import {noEffectPropertyArrow} from './rules/no-effect-property-arrow.ts'
 import {noErrorMessageAssertion} from './rules/no-error-message-assertion.ts'
+import {noFailInGenerator} from './rules/no-fail-in-generator.ts'
 import {noFakeRefState} from './rules/no-fake-ref-state.ts'
+import {noHandWrittenGuard} from './rules/no-hand-written-guard.ts'
+import {noLet} from './rules/no-let.ts'
 import {noNativeEmptinessCheck} from './rules/no-native-emptiness-check.ts'
 import {noNativeMethodCall} from './rules/no-native-method-call.ts'
+import {noOptionValueAccess} from './rules/no-option-value-access.ts'
 import {noReadonlyTypeSyntax} from './rules/no-readonly-type-syntax.ts'
+import {noRedundantReturnType} from './rules/no-redundant-return-type.ts'
 import {noRedundantUseRefNullType} from './rules/no-redundant-use-ref-null-type.ts'
+import {noRedundantVariableAnnotation} from './rules/no-redundant-variable-annotation.ts'
+import {noRenamedImport} from './rules/no-renamed-import.ts'
 import {noStoredSchemaOperation} from './rules/no-stored-schema-operation.ts'
+import {noSwitchStatement} from './rules/no-switch-statement.ts'
 import {noTrivialIndirection} from './rules/no-trivial-indirection.ts'
 import {noTypeof} from './rules/no-typeof.ts'
 import {noUndestructuredUseState} from './rules/no-undestructured-use-state.ts'
@@ -47,9 +57,9 @@ export const oxlint = defineConfig({
 	],
 	options: {denyWarnings: true, reportUnusedDisableDirectives: 'deny', typeAware: true, typeCheck: true},
 	overrides: [
-		{files: ['**/*.config.ts', '**/main.*'], rules: {'import/no-default-export': 'off', 'sort-keys': 'off'}},
-		{files: ['**/src/oxlint.ts'], rules: {'import/no-default-export': 'off'}},
+		{files: ['**/*.config.ts', '**/main.*'], rules: {'import/no-default-export': 'off'}},
 		{files: ['**/components/ui/**'], rules: {'shadcn/no-restyle': 'off', 'shadcn/require-static-classes': 'off'}},
+		{files: ['**/components/ui/**', '**/packages/ui/**'], rules: {'@deslop/workflow/no-renamed-import': 'off'}},
 		{files: ['**/*.ts'], rules: {'react/rules-of-hooks': 'off'}},
 		{
 			files: ['**/*.tsx'],
@@ -67,13 +77,23 @@ export const oxlint = defineConfig({
 		'@deslop/workflow/no-array-wrap-ternary': 'error',
 		'@deslop/workflow/no-constant-function': 'error',
 		'@deslop/workflow/no-deep-pipe': 'error',
+		'@deslop/workflow/no-double-nullish-check': 'error',
+		'@deslop/workflow/no-effect-property-arrow': 'error',
 		'@deslop/workflow/no-error-message-assertion': 'error',
+		'@deslop/workflow/no-fail-in-generator': 'error',
 		'@deslop/workflow/no-fake-ref-state': 'error',
+		'@deslop/workflow/no-hand-written-guard': 'error',
+		'@deslop/workflow/no-let': 'error',
 		'@deslop/workflow/no-native-emptiness-check': 'error',
 		'@deslop/workflow/no-native-method-call': 'error',
+		'@deslop/workflow/no-option-value-access': 'error',
 		'@deslop/workflow/no-readonly-type-syntax': 'error',
+		'@deslop/workflow/no-redundant-return-type': 'error',
 		'@deslop/workflow/no-redundant-use-ref-null-type': 'error',
+		'@deslop/workflow/no-redundant-variable-annotation': 'error',
+		'@deslop/workflow/no-renamed-import': 'error',
 		'@deslop/workflow/no-stored-schema-operation': 'error',
+		'@deslop/workflow/no-switch-statement': 'error',
 		'@deslop/workflow/no-trivial-indirection': 'error',
 		'@deslop/workflow/no-typeof': 'error',
 		'@deslop/workflow/no-undestructured-use-state': 'error',
@@ -190,7 +210,6 @@ export const oxlint = defineConfig({
 		'effecttsgo/unnecessary-typeof-type': 'error',
 
 		// TypeScript type shape
-		'typescript/array-type': ['error', {default: 'array'}],
 		'typescript/consistent-generic-constructors': 'error',
 		'typescript/consistent-indexed-object-style': 'error',
 		'typescript/consistent-type-assertions': [
@@ -279,7 +298,9 @@ export const oxlint = defineConfig({
 				paths: [
 					{importNames: reactLegacyApis, message: reactLegacyMessage, name: 'react'},
 					{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name: 'vitest'},
-					{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name: '@effect/vitest'}
+					{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name: '@effect/vitest'},
+					{importNames: ['expect'], message: 'Use assert from @effect/vitest.', name: 'vitest'},
+					{importNames: ['expect'], message: 'Use assert from @effect/vitest.', name: '@effect/vitest'}
 				],
 				patterns: [
 					{message: 'Use public package exports.', regex: '^@[^/]+/[^/]+/(?:src|lib)(?:/|$)'},
@@ -345,6 +366,7 @@ export const oxlint = defineConfig({
 			{message: runMessage, object: 'Effect', property: 'runPromiseExit'},
 			{message: runMessage, object: 'Effect', property: 'runSync'},
 			{message: runMessage, object: 'Effect', property: 'runSyncExit'},
+			{message: runMessage, object: 'ManagedRuntime', property: 'make'},
 			{message: 'Use Number.max.', object: 'Math', property: 'max'},
 			{message: 'Use Number.min.', object: 'Math', property: 'min'},
 			{message: 'Use Number.round.', object: 'Math', property: 'round'},
@@ -355,7 +377,35 @@ export const oxlint = defineConfig({
 			{message: 'Use Schema.Struct.', object: 'Data', property: 'Class'},
 			{message: 'Use Schema.TaggedError.', object: 'Data', property: 'Error'},
 			{message: 'Use Schema.Struct.', object: 'Data', property: 'TaggedClass'},
-			{message: 'Use Schema.TaggedError.', object: 'Data', property: 'TaggedError'}
+			{message: 'Use Schema.TaggedError.', object: 'Data', property: 'TaggedError'},
+			...Array.map(
+				[
+					'addEventListener',
+					'atob',
+					'btoa',
+					'cancelAnimationFrame',
+					'cancelIdleCallback',
+					'dispatchEvent',
+					'localStorage',
+					'navigator',
+					'queueMicrotask',
+					'removeEventListener',
+					'requestAnimationFrame',
+					'requestIdleCallback',
+					'sessionStorage',
+					'structuredClone'
+				],
+				property => ({message: `Use the bare ${property} global.`, object: 'window', property})
+			),
+			...Array.map(['clearInterval', 'clearTimeout', 'setInterval', 'setTimeout'], property => ({
+				message: 'Use Effect.sleep or Schedule.',
+				object: 'window',
+				property
+			})),
+			{message: 'Use Console.', object: 'window', property: 'console'},
+			{message: 'Use the Crypto service.', object: 'window', property: 'crypto'},
+			{message: 'Use HttpClient.', object: 'window', property: 'fetch'},
+			{message: 'Use Clock.', object: 'window', property: 'performance'}
 		],
 		'no-self-assign': 'error',
 		'no-shadow': [
@@ -494,6 +544,7 @@ export const oxlint = defineConfig({
 			{
 				types: {
 					AbortController: 'Use Effect interruption.',
+					Array: 'Use T[].',
 					Date: 'Use DateTime.',
 					Error: 'Use Schema.TaggedError.',
 					Iterable: 'Use T[].',
@@ -509,10 +560,6 @@ export const oxlint = defineConfig({
 		],
 		'typescript/no-unnecessary-type-assertion': 'error',
 		'typescript/no-useless-default-assignment': 'error',
-		'typescript/switch-exhaustiveness-check': [
-			'error',
-			{considerDefaultExhaustiveForUnions: true, requireDefaultForNonUnion: false}
-		],
 
 		// Unicorn
 		'unicorn/filename-case': 'error',
@@ -524,7 +571,6 @@ export const oxlint = defineConfig({
 		'unicorn/no-useless-fallback-in-spread': 'error',
 		'unicorn/no-useless-length-check': 'error',
 		'unicorn/no-useless-spread': 'error',
-		'unicorn/no-useless-switch-case': 'error',
 		'unicorn/prefer-logical-operator-over-ternary': 'error',
 		'unicorn/prefer-optional-catch-binding': 'error',
 
@@ -534,19 +580,30 @@ export const oxlint = defineConfig({
 	settings: {react: {version: '19.0'}, shadcn: {ui: ['@deslop/components/ui', '@dual/ui/components']}}
 })
 
+// oxlint-disable-next-line import/no-default-export -- oxlint loads a JS plugin from its module's default export.
 export default definePlugin({
 	meta: {name: '@deslop/workflow'},
 	rules: {
 		'no-array-wrap-ternary': noArrayWrapTernary,
 		'no-constant-function': noConstantFunction,
 		'no-deep-pipe': noDeepPipe,
+		'no-double-nullish-check': noDoubleNullishCheck,
+		'no-effect-property-arrow': noEffectPropertyArrow,
 		'no-error-message-assertion': noErrorMessageAssertion,
+		'no-fail-in-generator': noFailInGenerator,
 		'no-fake-ref-state': noFakeRefState,
+		'no-hand-written-guard': noHandWrittenGuard,
+		'no-let': noLet,
 		'no-native-emptiness-check': noNativeEmptinessCheck,
 		'no-native-method-call': noNativeMethodCall,
+		'no-option-value-access': noOptionValueAccess,
 		'no-readonly-type-syntax': noReadonlyTypeSyntax,
+		'no-redundant-return-type': noRedundantReturnType,
 		'no-redundant-use-ref-null-type': noRedundantUseRefNullType,
+		'no-redundant-variable-annotation': noRedundantVariableAnnotation,
+		'no-renamed-import': noRenamedImport,
 		'no-stored-schema-operation': noStoredSchemaOperation,
+		'no-switch-statement': noSwitchStatement,
 		'no-trivial-indirection': noTrivialIndirection,
 		'no-typeof': noTypeof,
 		'no-undestructured-use-state': noUndestructuredUseState,

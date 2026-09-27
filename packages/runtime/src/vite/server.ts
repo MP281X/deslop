@@ -14,6 +14,7 @@ import {
 	Equal,
 	Exit,
 	Layer,
+	MutableRef,
 	Option,
 	Predicate,
 	Record,
@@ -33,39 +34,38 @@ const isApiUrl = Predicate.compose(
 )
 
 export function serverPlugin(): Plugin {
-	let active = Option.none<{
-		request: (request: IncomingMessage, response: ServerResponse) => void
-		scope: Scope.Scope
-		upgrade: (request: IncomingMessage, socket: Duplex, head: Buffer) => void
-	}>()
-	let pendingReplacement = false
-	let reloadBackend = Effect.void
+	const active = MutableRef.make(
+		Option.none<{
+			request: (request: IncomingMessage, response: ServerResponse) => void
+			scope: Scope.Scope
+			upgrade: (request: IncomingMessage, socket: Duplex, head: Buffer) => void
+		}>()
+	)
+	const pendingReplacement = MutableRef.make(false)
+	const reloadBackend = MutableRef.make(Effect.void)
 	const reloadLock = Semaphore.makeUnsafe(1)
-	const runFork = Effect.runForkWith(Context.empty())
-	const runPromise = Effect.runPromiseWith(Context.empty())
 
-	const close = Effect.suspend(() => {
-		if (Option.isNone(active)) return Effect.void
-		const scope = active.value.scope
-		active = Option.none()
-		return Scope.close(scope, Exit.void)
-	})
+	const close = Effect.suspend(() =>
+		Option.match(MutableRef.getAndSet(active, Option.none()), {
+			onNone: () => Effect.void,
+			onSome: current => Scope.close(current.scope, Exit.void)
+		})
+	)
 	return {
-		closeBundle: () => runPromise(reloadLock.withPermit(close)),
+		closeBundle: () => Effect.runPromiseWith(Context.empty())(reloadLock.withPermit(close)),
 		config: () => ({
 			environments: {server: {}},
 			server: {
 				hotUpdateEnvironments(server, hotUpdate) {
-					return runPromise(
+					return Effect.runPromiseWith(Context.empty())(
 						Effect.gen(function* () {
 							yield* Effect.forEach(
 								Record.values(server.environments),
 								environment => Effect.promise(() => hotUpdate(environment)),
 								{concurrency: 'unbounded', discard: true}
 							)
-							if (!pendingReplacement) return
-							pendingReplacement = false
-							yield* reloadLock.withPermit(reloadBackend)
+							if (!MutableRef.getAndSet(pendingReplacement, false)) return
+							yield* reloadLock.withPermit(MutableRef.get(reloadBackend))
 						})
 					)
 				}
@@ -81,82 +81,96 @@ export function serverPlugin(): Plugin {
 			const runnableEnvironment = environment
 			const viteServer = httpServer
 
-			reloadBackend = pipe(
-				Effect.gen(function* () {
-					yield* close
-					runnableEnvironment.runner.clearCache()
-					const application = yield* Effect.tryPromise(() =>
-						runnableEnvironment.runner.import<{
-							default: Layer.Layer<never, never, HttpServer.HttpServer | NodeServices.NodeServices>
-						}>('src/main.server.ts')
-					)
-					const address = viteServer.address()
-					if (Predicate.isNull(address) || Predicate.isString(address)) {
-						return yield* Effect.die('Vite HTTP server is not listening on TCP')
-					}
-					const scope = yield* Scope.make()
-					return yield* pipe(
-						Effect.gen(function* () {
-							const webSocketServer = yield* Effect.acquireRelease(
-								Effect.sync(() => new NodeSocket.NodeWS.WebSocketServer({noServer: true})),
-								socketServer =>
-									Effect.callback<true>(resume => {
-										socketServer.close(() => {
-											resume(Effect.succeed(true))
+			MutableRef.set(
+				reloadBackend,
+				pipe(
+					Effect.gen(function* () {
+						yield* close
+						runnableEnvironment.runner.clearCache()
+						const application = yield* Effect.tryPromise(() =>
+							runnableEnvironment.runner.import<{
+								default: Layer.Layer<never, never, HttpServer.HttpServer | NodeServices.NodeServices>
+							}>('src/main.server.ts')
+						)
+						const address = viteServer.address()
+						if (Predicate.isNull(address) || Predicate.isString(address)) {
+							return yield* Effect.die('Vite HTTP server is not listening on TCP')
+						}
+						const scope = yield* Scope.make()
+						return yield* pipe(
+							Effect.gen(function* () {
+								const webSocketServer = yield* Effect.acquireRelease(
+									Effect.sync(() => new NodeSocket.NodeWS.WebSocketServer({noServer: true})),
+									socketServer =>
+										Effect.callback<true>(resume => {
+											socketServer.close(() => {
+												resume(Effect.succeed(true))
+											})
+										})
+								)
+								const httpEffect = yield* HttpRouter.toHttpEffect(application.default)
+								MutableRef.set(
+									active,
+									Option.some({
+										request: yield* NodeHttpServer.makeHandler(httpEffect, {scope}),
+										scope,
+										upgrade: yield* NodeHttpServer.makeUpgradeHandler(Effect.succeed(webSocketServer), httpEffect, {
+											scope
 										})
 									})
-							)
-							const httpEffect = yield* HttpRouter.toHttpEffect(application.default)
-							active = Option.some({
-								request: yield* NodeHttpServer.makeHandler(httpEffect, {scope}),
-								scope,
-								upgrade: yield* NodeHttpServer.makeUpgradeHandler(Effect.succeed(webSocketServer), httpEffect, {scope})
-							})
-						}),
-						Scope.provide(scope),
-						// @effect-diagnostics-next-line strictEffectProvide:off -- The dynamically loaded server application receives its complete platform layer here.
-						Effect.provide(
-							Layer.merge(
-								NodeHttpServer.layerHttpServices,
-								Layer.succeed(HttpServer.HttpServer)(
-									HttpServer.make({
-										address: {_tag: 'TcpAddress', hostname: '0.0.0.0', port: address.port},
-										serve: () => Effect.void
-									})
 								)
-							)
-						),
-						Effect.onError(() => Scope.close(scope, Exit.void))
+							}),
+							Scope.provide(scope),
+							// @effect-diagnostics-next-line strictEffectProvide:off -- The dynamically loaded server application receives its complete platform layer here.
+							Effect.provide(
+								Layer.merge(
+									NodeHttpServer.layerHttpServices,
+									Layer.succeed(HttpServer.HttpServer)(
+										HttpServer.make({
+											address: {_tag: 'TcpAddress', hostname: '0.0.0.0', port: address.port},
+											serve: () => Effect.void
+										})
+									)
+								)
+							),
+							Effect.onError(() => Scope.close(scope, Exit.void))
+						)
+					}),
+					Effect.catchCause(cause =>
+						Effect.sync(() => {
+							server.config.logger.error(`Backend unavailable\n${Cause.pretty(cause)}`)
+						})
 					)
-				}),
-				Effect.catchCause(cause =>
-					Effect.sync(() => {
-						server.config.logger.error(`Backend unavailable\n${Cause.pretty(cause)}`)
-					})
 				)
 			)
 
 			viteServer.once('listening', () => {
-				runFork(reloadLock.withPermit(reloadBackend))
+				Effect.runForkWith(Context.empty())(reloadLock.withPermit(MutableRef.get(reloadBackend)))
 			})
 			server.middlewares.use((request: Connect.IncomingMessage, response, next) => {
 				if (!isApiUrl(request.url)) {
 					next()
 					return
 				}
-				if (Option.isNone(active)) {
-					response.writeHead(503).end()
-					return
-				}
-				active.value.request(request, response)
+				Option.match(MutableRef.get(active), {
+					onNone: () => {
+						response.writeHead(503).end()
+					},
+					onSome: current => {
+						current.request(request, response)
+					}
+				})
 			})
 			viteServer.on('upgrade', (request: IncomingMessage, socket: Duplex, head: Buffer) => {
 				if (!isApiUrl(request.url)) return
-				if (Option.isNone(active)) {
-					socket.destroy()
-					return
-				}
-				active.value.upgrade(request, socket, head)
+				Option.match(MutableRef.get(active), {
+					onNone: () => {
+						socket.destroy()
+					},
+					onSome: current => {
+						current.upgrade(request, socket, head)
+					}
+				})
 			})
 		},
 		hotUpdate: {
@@ -176,7 +190,7 @@ export function serverPlugin(): Plugin {
 				for (const module of options.modules) {
 					this.environment.moduleGraph.invalidateModule(module, invalidated, options.timestamp, true)
 				}
-				pendingReplacement = true
+				MutableRef.set(pendingReplacement, true)
 				return []
 			},
 			order: 'post'
