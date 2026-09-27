@@ -98,6 +98,7 @@ The user's decisions as of 2026-09-26, each with its reason; reopen one only on 
 - The engineering skill stays one file, trimmed and made consistent with lint through a quick A/B test — "I don't want to split it since I seem to get better results like this".
 - No type-aware inference check for now: the corpus-proven syntax rules stay, and the skill's inference-first rule covers the rest while writing — "Not now"; revisit if real PRs keep shipping redundant types (the check would cost about 20 s per project plus 1.1 s per annotation on changed files).
 - Explore stays on the strongest model at low effort in both harnesses — "I wouldn't use haiku"; a blind A/B on 4 located questions (09-27) scored Claude Opus 5.5 low 8/8 in 106 s and 395k input against Sonnet 5 7/8 in 219 s and 1.29M, and Codex gpt-6-astra low 8/8 in 134 s and 578k against gpt-6-sol low 8/8 in 115 s and 838k and gpt-6-luna medium 6/8 in 133 s and 938k, so a cheaper model saves no quota.
+- A thread's scratch lives in `node_modules/.cache/deslop/` inside its worktree: t3's storage cleanup refuses to remove a worktree holding any ignored file except `node_modules/` (t3code apps/server/src/storageCleanup.ts:226-239), and oxfmt and oxlint read only the repository `.gitignore`, so a `.deslop/` folder would block cleanup and be linted — "The node_modules is always already ignored … I don't think that we really need something that is cross thread". Shared clones stay in `~/.deslop/repos` ("Keep shared").
 
 ## Sources
 
@@ -150,6 +151,7 @@ Clones under `~/.deslop/repos` analyzed in the 2026-09-26 thread, with what the 
 - 09-27: a type-checker corpus of dual's 8,021 annotations, casts, and type arguments (each removed and re-checked in a scratch copy with TS 7.0.2) found only 6% of variable annotations, 49% of return types, 4% of type arguments, and under 1% of casts safe to drop, and the old syntax-only annotation rule 9% precise; it was replaced by patterns 100% safe in the corpus, and no-redundant-return-type was added, 414 safe and 0 unsafe of 430 hits in dual. A type-aware check for the remaining ~1.9k safe return types would cost about 20 s per project load plus 1.1 s per candidate on changed files.
 - 09-27: a live UI check proved images embedded by absolute path render in t3, but a VP8 WebM video would not play on the user's phone (iOS Safari cancelled the stream, per cloudflared logs); agent-browser records H.264 when the path ends in `.mp4`, which played, so proof videos are now recorded as `.mp4`.
 - 09-27: a blind A/B of the Claude pair text (997 words vs a 700-word trim keeping every listed behavior; 3 deslop tasks, one run each, code and reply graded) scored the trim 46 and the original 43 of 60, winning two of three tasks at equal or lower cost, so the trim replaced it; the Codex text was not tested.
+- 09-27: 12 worktrees whose threads were settled or gone were force-removed at the user's request, branches kept; scratch moved from `~/.deslop/<task>/` to `node_modules/.cache/deslop/` in the worktree.
 
 ## Evidence index
 
