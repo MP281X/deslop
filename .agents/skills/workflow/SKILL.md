@@ -152,6 +152,7 @@ Clones under `~/.deslop/repos` analyzed in the 2026-09-26 thread, with what the 
 - 09-27: a live UI check proved images embedded by absolute path render in t3, but a VP8 WebM video would not play on the user's phone (iOS Safari cancelled the stream, per cloudflared logs); agent-browser records H.264 when the path ends in `.mp4`, which played, so proof videos are now recorded as `.mp4`.
 - 09-27: a blind A/B of the Claude pair text (997 words vs a 700-word trim keeping every listed behavior; 3 deslop tasks, one run each, code and reply graded) scored the trim 46 and the original 43 of 60, winning two of three tasks at equal or lower cost, so the trim replaced it; the Codex text was not tested.
 - 09-27: 12 worktrees whose threads were settled or gone were force-removed at the user's request, branches kept; scratch moved from `~/.deslop/<task>/` to `node_modules/.cache/deslop/` in the worktree.
+- 09-27: a conservative trim of the engineering skill, keeping every section, rule, good form, and quoted bad example, found only 1.8% repetition (4,062 to 3,988 words); the wording-only cut was adopted untested because 2% is below what the blind A/B can measure, and further trimming means cutting substance, which the earlier A/B showed lowers quality.
 
 ## Evidence index
 

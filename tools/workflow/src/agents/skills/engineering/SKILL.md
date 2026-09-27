@@ -3,31 +3,31 @@ name: engineering
 description: 'Use for product-code architecture, implementation, coding style, testing, or review.'
 ---
 
-Apply the repository's CODING_STANDARDS.md alongside these rules. Both take precedence over a repository's other coding standards. Lint is the fallback that catches what slips through and applies autofixes: write every rule below correctly the first time, whether or not a linter checks it. The deslop codebase is the minimum bar for structure and consistency in every repository.
+Apply the repository's CODING_STANDARDS.md alongside these rules. Both take precedence over a repository's other coding standards. Lint is a fallback that applies autofixes: write every rule below correctly the first time, whether or not a linter checks it. The deslop codebase is the minimum bar for structure and consistency in every repository.
 
 ## Simplicity
 
 Every line not needed now slows the next change. Build the smallest thing that does the requested job well:
 
-- Write the plain, obvious solution, explicit and idiomatic, readable top to bottom: no comments, no clever tricks, and no indirection a single use does not need; inline every forwarding wrapper and every single-use helper or top-level const, as Shape shows.
-- Keep code flat: flat pipelines and early returns instead of nesting, with a blank line between logical groups.
-- Doing less than asked beats doing more: the core done well beats a complete 100% with extras; name what you cut. A refactor or cleanup request asks for depth instead: every section applies to every line of the owned files, not only the lines the diff changes.
-- Write for where the code lives: extend the nearest existing implementation of the same kind, mirroring its permissions, errors, data refresh, and tests, and reuse the feature's helper for a job before writing one.
-- Happy path only: let failures flow through Effect's error channel, with no catch, retry, fallback, or defensive check unless the request or an existing contract states the requirement.
+- Write the plain, explicit, idiomatic solution, readable top to bottom: no comments and no clever tricks; inline every forwarding wrapper and every single-use helper or top-level const, as Shape shows.
+- Keep code flat: pipelines and early returns instead of nesting, a blank line between logical groups.
+- Doing less than asked beats doing more: the core done well beats a complete 100% with extras; name what you cut. A refactor or cleanup request asks for depth instead: every section applies to every line of the owned files, not only the changed lines.
+- Extend the nearest existing implementation of the same kind, mirroring its permissions, errors, data refresh, and tests, and reuse the feature's helper for a job before writing one.
+- Happy path only: let failures flow through Effect's error channel, with no catch, retry, fallback, or defensive check unless the request or an existing contract requires it.
 - Validate and transform once, at the boundary, with Effect Schema; inside, data is trusted: carry narrowed values forward and never re-check what the schema, the declared type, an earlier filter, or tsc guarantees.
 - Layers depend inward: domain and service code never import HTTP, RPC, or other transport types.
-- Search Effect before writing logic: before hand-writing a traversal, accumulator, check, or config read, search the main Effect repository at `~/.deslop/repos/effect` (Graph, Record, String, Option, Struct, Config.all, Match, Boolean) and call the helper that exists; clone a missing library source into `~/.deslop/repos`.
+- Before hand-writing a traversal, accumulator, check, or config read, search the Effect repository at `~/.deslop/repos/effect` (Graph, Record, String, Option, Struct, Config.all, Match, Boolean) and call the helper that exists; clone a missing library source into `~/.deslop/repos`.
 - Never destructure a parameter, callback argument, or loop variable (`useState` excepted), and never re-list a value's fields: pass it whole or spread it.
 - No future-proofing: no option, parameter, layer, abstraction, export, file, script, or check for a need that does not exist yet.
-- Delete dead code, always: every superseded or unused file, export, type, doc, test, and dependency goes in the same change; keep the type half of a schema pair and leave no compatibility path or leftover.
+- Delete dead code: every superseded or unused file, export, type, doc, test, and dependency goes in the same change; keep the type half of a schema pair and leave no compatibility path or leftover.
 - Replace every third-party dependency you can with an Effect module, or with a Node built-in reached through Effect's platform packages.
 - Change only the state an action changes: refresh, invalidate, or rerender nothing else.
 - Send and store canonical data only; derive the rest where it is used, and surface each state once, where the user acts on it.
 - Touch only what the request needs; an unrelated improvement is a proposal for the user.
 - Behave correctly instead of building machinery, such as hooks, guards, or generators, to enforce behavior.
-- A refactor or mechanical pass keeps logic and behavior, except two accepted differences: one that matters at no usage point and makes the code simpler, and one that applying a rule in this skill causes, such as an error keeping its cause, sorted keys, or Effect-native formatting, unless a usage point parses it; human-facing diagnostics, such as printed error text, are not a contract. Check every usage point, then record each accepted difference, reported with the change. Any other behavior change is the user's decision, except a reachable bug's fix.
-- Fix a reachable bug, one that real input from an actual usage point triggers: check every consumer of the changed output and report it as a fixed bug. Handling for input no caller produces is deleted instead of fixed; anything that looks intentional, or that other code relies on, is kept and reported as possibly intentional.
-- Improve performance in the code the change touches where you know how; measure beyond noise on a realistic input only when a change claims speed or keeps a slower-looking form.
+- A refactor or mechanical pass keeps logic and behavior, except two accepted differences: one that matters at no usage point and makes the code simpler, and one a rule in this skill causes, such as an error keeping its cause, sorted keys, or Effect-native formatting, unless a usage point parses it; human-facing diagnostics, such as printed error text, are not a contract. Check every usage point, then record and report each accepted difference with the change. Any other behavior change is the user's decision, except a reachable bug's fix.
+- Fix a reachable bug, one real input from a usage point triggers: check every consumer of the changed output and report it as a fixed bug. Handling for input no caller produces is deleted instead of fixed; anything that looks intentional or that other code relies on is kept and reported as possibly intentional.
+- Improve performance in the touched code where you know how; measure beyond noise on a realistic input only when a change claims speed or keeps a slower-looking form.
 - A fix never weakens type safety to make a symptom go away, a performance or type-check-speed change included: no widened or erased type, cast, dropped generic, or loosened exported type.
 - Implement the definition the domain uses, such as a cycle for recursion, never the nearest syntactic proxy.
 - Before finishing, reread the diff and delete every line the outcome does not require.
@@ -70,7 +70,7 @@ yield * fs.copyFile(configPath, `${configPath}.backup`) // "never backup previou
 ```
 
 ```ts
-// good — Effect's glob covers every usage point; the dropped dot-folder match is recorded and reported with the change
+// good — Effect's glob covers every usage point; the dropped dot-folder match is reported with the change
 yield * fs.glob('**/.env*.example', {exclude: ['**/node_modules'], root: config.cwd})
 // bad — "overcomplicated for no reason just to satisfy immaginary requirement that never existed"
 import {glob} from 'glob' // a dependency Effect's FileSystem replaces
@@ -455,7 +455,7 @@ export type Config = {remote: GitRemote; token: Secret.Secret; pollInterval: Dur
 ```
 
 ```ts
-// good — flat: an early return, one level deep, a blank line between logical groups
+// good — an early return, one level deep, a blank line between groups
 if (sandbox?.status !== 'running') return
 
 return yield * sandbox.kill
@@ -497,8 +497,8 @@ import {createServer} from 'node:http'
 - Keep only tests that check logic a real regression would break, none breaking on an unrelated change; delete every test of wiring, types, library behavior, another tool's output, wording, a second input for covered behavior, or input no caller produces.
 - Test through the package's public seam: its exported layer, service, or function.
 - Touched logic no test covers gets a case, added before a refactor rewrites it.
-- One input per behavior: prove a change with one input in the existing case that covers it; add a case only for behavior no case exercises.
-- A bug fix first adds the case that fails without it, to the existing test that covers the fixed code when one exists.
+- One input per behavior: prove a change with one input in the existing case that covers it; add a case only for unexercised behavior.
+- A bug fix first adds the case that fails without it, to the existing test covering the fixed code when one exists.
 - Fixtures are the inputs the request names, nothing else.
 - Assert which input is flagged or returned, or an error's tag, code, or path; never wording or another tool's output.
 - Doubles are Layers or a dependency the public function takes: no vi, global stub, or module mock, even at the network boundary.
@@ -507,7 +507,7 @@ import {createServer} from 'node:http'
 - A test never expects wrong behavior and never works around another rule; fix the conflict instead. An expectation changes only together with a recorded behavior change, never to make a check pass, and a changed assertion keeps every value the old one checked, except wording.
 
 ```ts
-// good — one input in the existing case, the request's own fixture, the flagged input or error tag asserted, doubles passed in, inputs that make the logic decide
+// good — one input in the existing case, the request's fixture, the flagged input or error tag asserted, doubles passed in
 Response.makePart('text-delta', {delta: '', id: 'empty'}),
 'const [optional] = useState<string | undefined>(undefined)',
 assert.deepStrictEqual(customCodes(result.stdout), [..., '@deslop/workflow(no-typeof)'])
@@ -560,7 +560,7 @@ const recipients = Array.ensure(input)
 
 ### Globals and types
 
-Every property of a service shape, the second type argument of `Context.Service`, is readonly, as Effect's own services are; class members may be readonly, such as `static readonly layer`; readonly appears nowhere else, except on a Schema.suspend cycle's hand-written types.
+Every property of a service shape, the second type argument of `Context.Service`, is readonly, as in Effect's services; class members may be readonly, such as `static readonly layer`; readonly appears nowhere else, except on a Schema.suspend cycle's hand-written types.
 
 ```ts
 // good
@@ -576,7 +576,7 @@ Schema.Struct({x: Schema.Finite})
 ### Expressions
 
 ```ts
-// good — no-switch-statement, no-option-value-access, and no-double-nullish-check reject the opposite forms shown under Effect; no-redundant-variable-annotation and no-redundant-return-type report the annotations inference provably reproduces
+// good
 const root = options?.root ?? '.'
 String.replaceAll(/[-_]+/gu, ' ')
 const sorted = {a: 2, b: 1, c: 3}
