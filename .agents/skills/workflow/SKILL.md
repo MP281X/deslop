@@ -153,6 +153,7 @@ Clones under `~/.deslop/repos` analyzed in the 2026-09-26 thread, with what the 
 - 09-27: a blind A/B of the Claude pair text (997 words vs a 700-word trim keeping every listed behavior; 3 deslop tasks, one run each, code and reply graded) scored the trim 46 and the original 43 of 60, winning two of three tasks at equal or lower cost, so the trim replaced it; the Codex text was not tested.
 - 09-27: 12 worktrees whose threads were settled or gone were force-removed at the user's request, branches kept; scratch moved from `~/.deslop/<task>/` to `node_modules/.cache/deslop/` in the worktree.
 - 09-27: a conservative trim of the engineering skill, keeping every section, rule, good form, and quoted bad example, found only 1.8% repetition (4,062 to 3,988 words); the wording-only cut was adopted untested because 2% is below what the blind A/B can measure, and further trimming means cutting substance, which the earlier A/B showed lowers quality.
+- 09-27: the same blind A/B on the Codex pair text (1,027 words vs a 768-word trim, gpt-6-astra, 3 deslop tasks) scored the current text 33 and the trim 28 of 60, winning all three tasks although the trim used about 20% fewer tokens, so Codex keeps its text. Across all six runs Codex rebuilt Effect's RateLimiter instead of pushing back, never committed, and never listed its decisions, where Claude pushed back and committed; the full check also failed on portfolio dead code in fresh clones only.
 
 ## Evidence index
 
