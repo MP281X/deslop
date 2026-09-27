@@ -12,7 +12,7 @@ Facts an agent cannot read from the repository itself; commands a package.json a
 - Debian 13, 8 CPUs, 23G RAM.
 - Agents and the user reach it only by its DNS name, as `mp281x@dev.mp281x.xyz`, never by IP.
 - Scratch, logs, and screenshots go under `~/.deslop/<task>/`, where `<task>` is the worktree directory name; never /tmp.
-- Proof artifacts are captured in one agent-browser `--session`: `record start <path.webm> [url]` … `record stop` records video, and `screenshot <path.png>` takes a screenshot.
+- Proof artifacts are captured in one agent-browser `--session`: `record start <path.mp4> [url]` … `record stop` records H.264 video, which plays everywhere including iOS Safari (a `.webm` does not play on the phone), and `screenshot <path.png>` takes a screenshot.
 - `gh pr create` or `gh pr edit` with `--attach '<file>#<alt text>'` uploads an artifact into the PR body.
 - When a thread's work is done, everything it created is removed: its scratch under `~/.deslop/<task>/`, extra git worktrees and repository copies, scratch config homes, the process groups it started, previews included. Kept: the shared clones in `~/.deslop/repos`, the thread's own t3 worktree while its request is open, and artifacts a handoff cites as evidence.
 - Dedicated tools first: `rg` to search text, `jq` to process JSON, `node` to run JavaScript.
