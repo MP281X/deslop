@@ -17,6 +17,7 @@ import {noNativeEmptinessCheck} from './rules/no-native-emptiness-check.ts'
 import {noNativeMethodCall} from './rules/no-native-method-call.ts'
 import {noOptionValueAccess} from './rules/no-option-value-access.ts'
 import {noReadonlyTypeSyntax} from './rules/no-readonly-type-syntax.ts'
+import {noRedundantReturnType} from './rules/no-redundant-return-type.ts'
 import {noRedundantUseRefNullType} from './rules/no-redundant-use-ref-null-type.ts'
 import {noRedundantVariableAnnotation} from './rules/no-redundant-variable-annotation.ts'
 import {noRenamedImport} from './rules/no-renamed-import.ts'
@@ -87,6 +88,7 @@ export const oxlint = defineConfig({
 		'@deslop/workflow/no-native-method-call': 'error',
 		'@deslop/workflow/no-option-value-access': 'error',
 		'@deslop/workflow/no-readonly-type-syntax': 'error',
+		'@deslop/workflow/no-redundant-return-type': 'error',
 		'@deslop/workflow/no-redundant-use-ref-null-type': 'error',
 		'@deslop/workflow/no-redundant-variable-annotation': 'error',
 		'@deslop/workflow/no-renamed-import': 'error',
@@ -596,6 +598,7 @@ export default definePlugin({
 		'no-native-method-call': noNativeMethodCall,
 		'no-option-value-access': noOptionValueAccess,
 		'no-readonly-type-syntax': noReadonlyTypeSyntax,
+		'no-redundant-return-type': noRedundantReturnType,
 		'no-redundant-use-ref-null-type': noRedundantUseRefNullType,
 		'no-redundant-variable-annotation': noRedundantVariableAnnotation,
 		'no-renamed-import': noRenamedImport,

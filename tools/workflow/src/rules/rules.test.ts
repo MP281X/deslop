@@ -131,7 +131,12 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const labelled = consume(label)',
 									'declare function download(id: string): Promise<string>',
 									'const handlers = {load: (id: string) => Effect.tryPromise(() => download(id)), size: (id: string) => pipe(id, Effect.succeed)}',
-									'const annotated: string = source',
+									'const annotated: string[] = [...values]',
+									'function greet(name: string): string { return `hi ${name}` }',
+									'function logName(name: string): void { consume(name) }',
+									'declare class Box { constructor(size: number) }',
+									'const makeBox = (size: number): Box => new Box(size)',
+									'export const makeBytes = (): Uint8Array => new Uint8Array(4)',
 									'const empties: string[] = []',
 									'class Missing extends Schema.TaggedError<Missing>()("Missing", {}) {}',
 									'const failing = Effect.gen(function* () { yield* Effect.void; return yield* Effect.fail(new Missing()) })',
@@ -141,7 +146,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'// oxlint-disable-next-line sort-keys -- the fixture keeps its order',
 									'const unsortedKeys = {b: 1, a: 2}',
 									'// @effect-diagnostics-next-line floatingEffect:off',
-									'export {AssertString, Clock, Codecs, absent, Fallback, Input, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, annotated, assigned, asyncConstant, callbacks, decode, decoded, decoders, deepPipe, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, handlers, input, isRecord, isText, labelled, loose, kind, mappedValues, measured, namesA, namesB, namespaceRef, noValues, present, slotLength, notFound, operations, ready, recipients, ref, run, stateNamespace, unsortedKeys, unwrapped, wrapped}',
+									'export {AssertString, Clock, Codecs, absent, Fallback, Input, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, annotated, assigned, asyncConstant, callbacks, decode, decoded, decoders, deepPipe, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, greet, handlers, input, isRecord, isText, makeBox, labelled, logName, loose, kind, mappedValues, measured, namesA, namesB, namespaceRef, noValues, present, slotLength, notFound, operations, ready, recipients, ref, run, stateNamespace, unsortedKeys, unwrapped, wrapped}',
 									'export type {Explicit, Frozen, Index, Mapped}'
 								],
 								Array.join('\n')
@@ -178,6 +183,9 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'@deslop/workflow(no-readonly-type-syntax)',
 									'@deslop/workflow(no-readonly-type-syntax)',
 									'@deslop/workflow(no-readonly-type-syntax)',
+									'@deslop/workflow(no-redundant-return-type)',
+									'@deslop/workflow(no-redundant-return-type)',
+									'@deslop/workflow(no-redundant-return-type)',
 									'@deslop/workflow(no-redundant-use-ref-null-type)',
 									'@deslop/workflow(no-redundant-use-ref-null-type)',
 									'@deslop/workflow(no-redundant-variable-annotation)',
@@ -191,6 +199,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'@deslop/workflow(no-stored-schema-operation)',
 									'@deslop/workflow(no-stored-schema-operation)',
 									'@deslop/workflow(no-switch-statement)',
+									'@deslop/workflow(no-trivial-indirection)',
 									'@deslop/workflow(no-trivial-indirection)',
 									'@deslop/workflow(no-trivial-indirection)',
 									'@deslop/workflow(no-trivial-indirection)',
@@ -310,12 +319,14 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'type Profile = {nickname?: string}',
 									'const nickname: Profile["nickname"] = undefined',
 									'const noUser: User | null = null',
+									'const annotatedName: string = names[0] ?? ""',
+									'function label(flag: boolean): string { return flag ? "on" : "off" }',
 									'declare class Missing { _tag: "Missing" }',
 									'const missing = Effect.fail(new Missing())',
 									'const nestedFailure = Effect.fn("nestedFailure")(function* (id: string) { return yield* pipe(Effect.succeed(id), Effect.flatMap(() => Effect.fail(new Missing()))) })',
 									'// oxlint-disable-next-line eqeqeq -- the fixture keeps a reasoned disable',
 									'const loose = snapshot.width == 1',
-									'export {Annotated, Arbitrary, CallStep, CodeStep, Decoded, DefaultInput, Encoded, Formatter, Ledger, LinearIssue, Normalized, Step, circle, circles, constants, counts, decoded, decodedMany, encoded, ensured, flags, identify, isCall, isUser, labels, layers, lengths, limits, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, nickname, noUser, payload, readSnapshot, singleName, snapshots, swap, test, thunks, transform, tuple, version, versionPatterns, withDefault}'
+									'export {Annotated, Arbitrary, CallStep, CodeStep, Decoded, DefaultInput, Encoded, Formatter, Ledger, LinearIssue, Normalized, Step, circle, circles, constants, counts, decoded, decodedMany, encoded, ensured, flags, identify, isCall, isUser, labels, layers, lengths, limits, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, annotatedName, label, nickname, noUser, payload, readSnapshot, singleName, snapshots, swap, test, thunks, transform, tuple, version, versionPatterns, withDefault}'
 								],
 								Array.join('\n')
 							)

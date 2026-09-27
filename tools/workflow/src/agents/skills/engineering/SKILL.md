@@ -576,7 +576,7 @@ Schema.Struct({x: Schema.Finite})
 ### Expressions
 
 ```ts
-// good — no-switch-statement, no-option-value-access, and no-double-nullish-check reject the opposite forms shown under Effect
+// good — no-switch-statement, no-option-value-access, and no-double-nullish-check reject the opposite forms shown under Effect; no-redundant-variable-annotation and no-redundant-return-type report the annotations inference provably reproduces
 const root = options?.root ?? '.'
 String.replaceAll(/[-_]+/gu, ' ')
 const sorted = {a: 2, b: 1, c: 3}

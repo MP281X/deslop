@@ -157,7 +157,7 @@ export function schemaSchemaType(input: {context: Context; node: ESTree.TSType})
 	return schemaQualifiedType({context: input.context, node: input.node, propertyName: 'Schema'})
 }
 
-export function isSchemaCodecType(input: {context: Context; node: ESTree.TSType}) {
+function isSchemaCodecType(input: {context: Context; node: ESTree.TSType}) {
 	return (
 		schemaQualifiedType({context: input.context, node: input.node, propertyName: 'Codec'}) || schemaSchemaType(input)
 	)

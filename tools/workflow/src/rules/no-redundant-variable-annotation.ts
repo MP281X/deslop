@@ -1,21 +1,27 @@
-import {Array, Option, Predicate, pipe} from 'effect'
+import {Array, Predicate} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
-import type {ESTree} from '@oxlint/plugins'
+import type {Context, ESTree} from '@oxlint/plugins'
 
-import {isSchemaCodecType} from './shared.ts'
+function isStringLiteral(node: ESTree.Expression) {
+	return node.type === 'Literal' && Predicate.isString(node.value)
+}
 
-function isMapLikeType(node: ESTree.TSType): boolean {
-	if (node.type === 'TSMappedType') return true
-	if (node.type !== 'TSTypeReference' || node.typeName.type !== 'Identifier') return false
-	if (node.typeName.name === 'Record') return true
-	return (
-		node.typeName.name === 'Partial' &&
-		pipe(
-			Option.fromNullishOr(node.typeArguments),
-			Option.flatMap(typeArguments => Array.get(typeArguments.params, 0)),
-			Option.exists(isMapLikeType)
+function inferredIdentically(input: {context: Context; init: ESTree.Expression; type: ESTree.TSType}) {
+	const text = input.context.sourceCode.getText
+	if (input.init.type === 'TSAsExpression') return text(input.init.typeAnnotation) === text(input.type)
+	if (input.init.type === 'ArrayExpression') {
+		return (
+			input.type.type === 'TSArrayType' &&
+			input.init.elements.length === 1 &&
+			input.init.elements[0]?.type === 'SpreadElement'
 		)
+	}
+	return (
+		input.init.type === 'ConditionalExpression' &&
+		input.type.type === 'TSStringKeyword' &&
+		isStringLiteral(input.init.consequent) &&
+		isStringLiteral(input.init.alternate)
 	)
 }
 
@@ -24,21 +30,13 @@ export const noRedundantVariableAnnotation = defineRule({
 		VariableDeclarator: node => {
 			const annotation = node.id.typeAnnotation
 			if (node.init === null || Predicate.isNullish(annotation)) return
-			const type = annotation.typeAnnotation
-			if (
-				type.type === 'TSUnknownKeyword' ||
-				isSchemaCodecType({context, node: type}) ||
-				(node.init.type === 'Literal' && node.init.raw === 'null') ||
-				(node.init.type === 'Identifier' && node.init.name === 'undefined') ||
-				(node.init.type === 'ObjectExpression' && Array.isArrayEmpty(node.init.properties) && isMapLikeType(type))
-			) {
-				return
-			}
 			if (node.init.type === 'ArrayExpression' && Array.isArrayEmpty(node.init.elements)) {
 				context.report({message: 'Write Array.empty<T>() instead of annotating an empty array.', node: annotation})
 				return
 			}
-			context.report({message: 'Drop this annotation; the initializer already has its type.', node: annotation})
+			if (inferredIdentically({context, init: node.init, type: annotation.typeAnnotation})) {
+				context.report({message: 'Drop this annotation; inference gives the same type.', node: annotation})
+			}
 		}
 	}),
 	meta: {type: 'problem'}
