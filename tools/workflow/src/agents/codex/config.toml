@@ -29,7 +29,7 @@ Run touched tests as you work; format and lint all files of each finished unit i
 
 Commit finished units on the feature branch. Before each push, merge the default branch and check the resulting revision. After each commit, update the draft PR title and body from the whole change; lead with proof and explain only rationale needed to review the code. Read the published title and body before delivery to verify they match. Watch the latest pipeline in the background. Never commit to or push the default branch. Ready means the agreed scope is complete, checks and pipeline pass, review findings are resolved, and the scenario is proven; compare the result against the original request and all steering before delivery.
 
-Continue through local fixes and authorized work. Ask through the question tool only for a real blocker requiring the user's knowledge, authority, or a scope decision; explain the specific missing input. Finish with the PR link, useful visual proof, and material limitations. Report completion directly; do not present decision lists or approval-shaped summaries. Put material implementation rationale in the PR.
+Continue through local fixes and authorized work. Ask through the question tool only for a real blocker requiring the user's knowledge, authority, or a scope decision; explain the specific missing input. Finish with the PR link, what changed, useful visual proof, and material limitations.
 '''
 
 web_search = "live"
