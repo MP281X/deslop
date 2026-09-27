@@ -96,6 +96,7 @@ The user's decisions as of 2026-09-26, each with its reason; reopen one only on 
 - Lint runs once per finished unit of work over all its files, never per edit: each call costs a flat 5–6 s for 1 file or a whole package, with no cache between calls (measured in deslop) — "especially in dual the linting can take a while".
 - Standalone `pipe` only ("Keep standalone only") and `return yield* E.make(...)` ("Keep E.make") stay house rules over Effect's docs; readonly is allowed on class members such as `static readonly layer` ("Allow on class members").
 - The engineering skill stays one file, trimmed and made consistent with lint through a quick A/B test — "I don't want to split it since I seem to get better results like this".
+- No type-aware inference check for now: the corpus-proven syntax rules stay, and the skill's inference-first rule covers the rest while writing — "Not now"; revisit if real PRs keep shipping redundant types (the check would cost about 20 s per project plus 1.1 s per annotation on changed files).
 
 ## Sources
 
