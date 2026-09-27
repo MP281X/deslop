@@ -97,6 +97,7 @@ The user's decisions as of 2026-09-26, each with its reason; reopen one only on 
 - Standalone `pipe` only ("Keep standalone only") and `return yield* E.make(...)` ("Keep E.make") stay house rules over Effect's docs; readonly is allowed on class members such as `static readonly layer` ("Allow on class members").
 - The engineering skill stays one file, trimmed and made consistent with lint through a quick A/B test — "I don't want to split it since I seem to get better results like this".
 - No type-aware inference check for now: the corpus-proven syntax rules stay, and the skill's inference-first rule covers the rest while writing — "Not now"; revisit if real PRs keep shipping redundant types (the check would cost about 20 s per project plus 1.1 s per annotation on changed files).
+- Explore stays on the strongest model at low effort in both harnesses — "I wouldn't use haiku"; a blind A/B on 4 located questions (09-27) scored Claude Opus 5.5 low 8/8 in 106 s and 395k input against Sonnet 5 7/8 in 219 s and 1.29M, and Codex gpt-6-astra low 8/8 in 134 s and 578k against gpt-6-sol low 8/8 in 115 s and 838k and gpt-6-luna medium 6/8 in 133 s and 938k, so a cheaper model saves no quota.
 
 ## Sources
 
