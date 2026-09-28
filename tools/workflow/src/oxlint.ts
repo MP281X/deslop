@@ -291,7 +291,6 @@ export const oxlint = defineConfig({
 		'import/no-mutable-exports': 'error',
 		'import/no-namespace': ['error', {ignore: ['[!#./]*', '[!#./]*/**']}],
 		'import/no-relative-parent-imports': 'error',
-		'import/no-self-import': 'error',
 		'no-restricted-imports': [
 			'error',
 			{

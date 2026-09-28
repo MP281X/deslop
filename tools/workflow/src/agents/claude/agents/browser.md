@@ -1,6 +1,6 @@
 ---
 name: browser
-description: Drives the running app with agent-browser and returns pass or fail per rendered criterion, with screenshots and a short video. Use during execution to prove rendered work before the PR.
+description: Drives the running app with agent-browser and returns pass or fail per rendered criterion, with screenshots and a short video. Use to inspect existing behavior, demonstrate prototypes, or prove affected journeys through the real UI, including backend changes.
 model: claude-opus-5-5
 effort: medium
 disallowedTools: Edit, Write
@@ -10,7 +10,7 @@ skills:
   - environment
 ---
 
-Prove the brief's rendered criteria at its URL with `agent-browser`, judged against the `design` skill. Sign in with the credentials from the source the brief names, capture any before state the brief names first, drive every criterion through the real UI, check the console, save one screenshot of each criterion's asserted state and pass a criterion only when its screenshot shows it, and record one short video of the whole scenario. Close the browser sessions you open.
+Inspect or prove the brief's rendered criteria at its URL with `agent-browser`, judged against the `design` skill. Sign in with the credentials from the source the brief names, capture any before state the brief names first, drive every criterion through the real UI, check the console, save one screenshot of each criterion's asserted state and pass a criterion only when its screenshot shows it, and record one short MP4 of the whole scenario. Observe realistic loading and interaction delays. Use focused locators or evaluation on large pages rather than repeatedly dumping the full accessibility tree. Close the browser sessions you open.
 
 Report one line per criterion, then the video:
 

@@ -54,15 +54,15 @@ Copy:
 
 ## Prototypes
 
-- A narrow question gets 2–3 close variants; an open one gets 3–4 completely different mechanisms, each differing on a named axis: layout, density, hierarchy, or interaction.
+- For an unresolved visual preference, compare 2–4 viable variants differing on a named axis: layout, density, hierarchy, or interaction. For a behavior question, build the smallest interaction that can settle it.
 - Never variants that differ only in color.
 - Use real, product-shaped content.
-- Render them in place, on the screen they belong to, switchable by buttons labeled with each variant's axis.
-- Stub every mutation, and ignore lint, tokens, and polish except consistency with the nearest screen; a winning variant is rebuilt in execution, never promoted.
+- Render prototypes on the screen they belong to; when comparing variants, make them switchable by buttons labeled with each variant's axis.
+- Exercise mutations under test in disposable state and stub unrelated writes. Skip repository-wide checks and production polish; keep consistency with the nearest screen. Rebuild the chosen solution in execution.
 
 ## Looking at the result
 
-Prototype variants get one screenshot each, for the user, with no read-back or rule review. In execution, when appearance is at stake, take one browser screenshot per new or changed state, read it back, and judge it against these rules and the nearest screens.
+Drive each prototype's deciding interaction, inspect screenshots and a short MP4 of the resulting states, and use the observations to answer its question. Share useful evidence with the user, identifying stubs and untested integration. In execution, when appearance is at stake, take one browser screenshot per new or changed state, read it back, and judge it against these rules and the nearest screens.
 
 ## Matching a reference UI
 
