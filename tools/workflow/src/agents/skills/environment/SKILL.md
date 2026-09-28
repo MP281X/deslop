@@ -32,7 +32,7 @@ Facts an agent cannot read from the repository itself; commands a package.json a
 - Workspaces: `apps/*` (portfolio), `packages/*` (ai, components, runtime), `tools/*` (create-app, create-package, workflow).
 - shadcn UI components: `packages/components`.
 - CI: GitHub Actions job `build-and-deploy`.
-- Production services run from `~/.deslop/deploy`: traefik, collector, portfolio, jaeger, valentine. `tools/deploy/setup.sh` bootstraps this host, and `tools/deploy/maintain.sh` updates it, redeploys, and removes resources of removed worktrees.
+- Production services run from `~/.deslop/deploy`: traefik, collector, portfolio, jaeger, valentine. `tools/deploy/setup.sh` bootstraps this host, after which the agent runs each sign-in and shows its link to the user: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude`, `codex login`, `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`, and `t3 connect`; `tools/deploy/maintain.sh` updates it, redeploys, and removes resources of removed worktrees.
 - Full local check: `vp run check`, then `vp run test`; `vp fmt <path>...` formats the touched files first.
 - Each lint call costs a flat 5–6 s for 1 file or a whole package, with no cache between calls, so format and lint every changed file in one call: `vp check --fix <path>...`.
 
