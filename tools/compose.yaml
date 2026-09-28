@@ -58,7 +58,7 @@ configs:
       http:
         routers:
       {{- range until 10 }}
-          p{{ add 4000 . }}: {rule: Host(`p{{ add 4000 . }}.mp281x.xyz`), service: p{{ add 4000 . }}}
+          p{{ add 4000 . }}: {rule: Host(`{{ add 4000 . }}.mp281x.xyz`), service: p{{ add 4000 . }}}
       {{- end }}
         services:
       {{- range until 10 }}

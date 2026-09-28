@@ -74,14 +74,14 @@ Facts an agent cannot read from the repository itself; commands a package.json a
 
 A production preview of the branch is the user's preferred way to test a web app.
 
-- Previews use only ports 4000–4009, the range traefik routes and ufw admits: choose a free one with `ss -ltn` and bind it on `::`. Traefik serves it at `https://p<port>.mp281x.xyz`, the only URL to give the user and the browser agent; a preview bound to `::1` or `127.0.0.1`, or on another port, is unreachable there.
+- Previews use only ports 4000–4009, the range traefik routes and ufw admits: choose a free one with `ss -ltn` and bind it on `::`. Traefik serves it at `https://<port>.mp281x.xyz`, the only URL to give the user and the browser agent; a preview bound to `::1` or `127.0.0.1`, or on another port, is unreachable there.
 - The delivered preview stays running, with its link in the final message, so the user can test it.
-- The `p4000`–`p4009` names are public through certificate transparency and scanners probe them within minutes, so a preview relies on the app's own login.
+- The `4000`–`4009.mp281x.xyz` names are public through certificate transparency and scanners probe them within minutes, so a preview relies on the app's own login.
 - A routed port with nothing listening returns 502. `vp run` starts the server in its own process group, so stop a preview by the group of the pid `ss -ltnp` shows on its port.
 
 dual, from the worktree root:
 
-1. Postgres, opensandbox, and migrations with `vp run init`, then the `seed:user` command from the `db:reset` script; the API on the port from `SERVER_URL` in packages/app/.env, and the worker, running. Start the API with `BETTER_AUTH_URL`, `APP_ORIGIN`, and `SERVER_PUBLIC_URL` set to `https://p<port>.mp281x.xyz`: better-auth trusts only the first two as origins, and the third is the public MCP and OAuth URL (packages/server/src/auth/BetterAuth.ts).
+1. Postgres, opensandbox, and migrations with `vp run init`, then the `seed:user` command from the `db:reset` script; the API on the port from `SERVER_URL` in packages/app/.env, and the worker, running. Start the API with `BETTER_AUTH_URL`, `APP_ORIGIN`, and `SERVER_PUBLIC_URL` set to `https://<port>.mp281x.xyz`: better-auth trusts only the first two as origins, and the third is the public MCP and OAuth URL (packages/server/src/auth/BetterAuth.ts).
 2. `vpx turbo run build --filter=@dual/core...`, then in packages/app `NODE_ENV=production NITRO_PRESET=bun NODE_OPTIONS=--max-old-space-size=8192 node node_modules/vite/bin/vite.js build` (as packages/app/docker/Dockerfile).
 3. Web, from packages/app: `NODE_ENV=production HOST=127.0.0.1 PORT=<web> SERVER_URL=http://127.0.0.1:<api> bun .output/server/index.mjs`.
 4. The build has no proxy (packages/app/docker/README.md) and the browser calls `window.location.origin` (src/server-url.ts), so a small Bun proxy on `[::]:<port>` sends `/api*`, `/mcp`, and the OAuth `/.well-known/*` paths to the API, except `/api/docs/search` and `/api/sdk/search`, and everything else to the web port, as packages/playground/docker/Caddyfile does; only the proxy port is public.
