@@ -19,9 +19,25 @@ function expectsMessage(node: ESTree.MemberExpression) {
 	)
 }
 
+function assertsMessage(node: ESTree.CallExpression) {
+	const [actual, expected] = node.arguments
+	return (
+		node.callee.type === 'MemberExpression' &&
+		node.callee.object.type === 'Identifier' &&
+		node.callee.object.name === 'assert' &&
+		actual?.type === 'MemberExpression' &&
+		Option.contains(memberName(actual), 'message') &&
+		(expected?.type === 'Literal' || expected?.type === 'TemplateLiteral')
+	)
+}
+
 export const noErrorMessageAssertion = defineRule({
 	create: context => ({
 		CallExpression: node => {
+			if (assertsMessage(node)) {
+				context.report({message: 'Assert the failure, never its message wording.', node})
+				return
+			}
 			if (
 				node.callee.type === 'MemberExpression' &&
 				(node.arguments[0]?.type === 'Literal' || node.arguments[0]?.type === 'TemplateLiteral') &&

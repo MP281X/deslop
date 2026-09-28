@@ -79,6 +79,8 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'let assigned = decode',
 									'assigned = Schema.decodeUnknownSync(Schema.String)',
 									'const MissingType = Schema.Struct({value: Schema.String})',
+									'type NonEmpty = typeof NonEmpty.Type',
+									'const NonEmpty = Schema.String.check(Schema.isMinLength(1))',
 									'const MissingFluent = Schema.String.annotate({description: "value"})',
 									'const MissingTransform = Schema.decodeTo(Schema.Number, SchemaTransformation.transform({decode: Number, encode: String}))(Schema.String)',
 									'const MissingDecode = Schema.decode({decode: SchemaGetter.transform(identity), encode: SchemaGetter.transform(identity)})(Schema.String)',
@@ -146,7 +148,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'// oxlint-disable-next-line sort-keys -- the fixture keeps its order',
 									'const unsortedKeys = {b: 1, a: 2}',
 									'// @effect-diagnostics-next-line floatingEffect:off',
-									'export {AssertString, Clock, Codecs, absent, Fallback, Input, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, annotated, assigned, asyncConstant, callbacks, decode, decoded, decoders, deepPipe, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, greet, handlers, input, isRecord, isText, makeBox, labelled, logName, loose, kind, mappedValues, measured, namesA, namesB, namespaceRef, noValues, present, slotLength, notFound, operations, ready, recipients, ref, run, stateNamespace, unsortedKeys, unwrapped, wrapped}',
+									'export {AssertString, Clock, Codecs, NonEmpty, absent, Fallback, Input, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, annotated, assigned, asyncConstant, callbacks, decode, decoded, decoders, deepPipe, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, greet, handlers, input, isRecord, isText, makeBox, labelled, logName, loose, kind, mappedValues, measured, namesA, namesB, namespaceRef, noValues, present, slotLength, notFound, operations, ready, recipients, ref, run, stateNamespace, unsortedKeys, unwrapped, wrapped}',
 									'export type {Explicit, Frozen, Index, Mapped}'
 								],
 								Array.join('\n')
@@ -190,6 +192,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'@deslop/workflow(no-redundant-use-ref-null-type)',
 									'@deslop/workflow(no-redundant-variable-annotation)',
 									'@deslop/workflow(no-redundant-variable-annotation)',
+									'@deslop/workflow(no-reinvented-schema)',
 									'@deslop/workflow(no-renamed-import)',
 									'@deslop/workflow(no-stored-schema-operation)',
 									'@deslop/workflow(no-stored-schema-operation)',
@@ -326,7 +329,12 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const nestedFailure = Effect.fn("nestedFailure")(function* (id: string) { return yield* pipe(Effect.succeed(id), Effect.flatMap(() => Effect.fail(new Missing()))) })',
 									'// oxlint-disable-next-line eqeqeq -- the fixture keeps a reasoned disable',
 									'const loose = snapshot.width == 1',
-									'export {Annotated, Arbitrary, CallStep, CodeStep, Decoded, DefaultInput, Encoded, Formatter, Ledger, LinearIssue, Normalized, Step, circle, circles, constants, counts, decoded, decodedMany, encoded, ensured, flags, identify, isCall, isUser, labels, layers, lengths, limits, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, annotatedName, label, nickname, noUser, payload, readSnapshot, singleName, snapshots, swap, test, thunks, transform, tuple, version, versionPatterns, withDefault}'
+									'declare const db: {insert: (table: string) => {values: (row: {id: number}) => void}}',
+									'db.insert("user").values({id: 1})',
+									'const hasWindow = typeof window !== "undefined"',
+									'function unavailable() { return Effect.die("unused") }',
+									'const stubs = {load: unavailable, save: unavailable}',
+									'export {Annotated, Arbitrary, CallStep, hasWindow, stubs, CodeStep, Decoded, DefaultInput, Encoded, Formatter, Ledger, LinearIssue, Normalized, Step, circle, circles, constants, counts, decoded, decodedMany, encoded, ensured, flags, identify, isCall, isUser, labels, layers, lengths, limits, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, annotatedName, label, nickname, noUser, payload, readSnapshot, singleName, snapshots, swap, test, thunks, transform, tuple, version, versionPatterns, withDefault}'
 								],
 								Array.join('\n')
 							)
@@ -354,12 +362,14 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'declare const properties: unknown',
 									'declare const value: unknown',
 									'declare const failure: {message: string}',
+									'declare const assert: {strictEqual: (actual: unknown, expected: unknown) => void}',
 									'declare function expect(value: unknown): {not: {toContain: (expected: string) => void}; toBe: (expected: unknown) => void; toThrow: (expected?: string) => void}',
 									"const isText = typeof value === 'string'",
 									"if (typeof properties === 'object') Predicate.isNotNull(properties)",
 									"expect(() => Predicate.isNotNull(value)).toThrow('negative')",
 									"expect(failure.message).toBe('negative')",
 									"expect(failure.message).not.toContain('negative')",
+									"assert.strictEqual(failure.message, 'negative')",
 									'expect(() => Predicate.isNotNull(value)).toThrow()',
 									'export {isText}'
 								],
@@ -370,6 +380,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 							customCodes(result.stdout),
 							pipe(
 								[
+									'@deslop/workflow(no-error-message-assertion)',
 									'@deslop/workflow(no-error-message-assertion)',
 									'@deslop/workflow(no-error-message-assertion)',
 									'@deslop/workflow(no-error-message-assertion)',

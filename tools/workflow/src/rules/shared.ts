@@ -314,7 +314,7 @@ function hasSingleStatementExpression(node: ESTree.Function | ESTree.ArrowFuncti
 	)
 }
 
-function bindingName(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+export function bindingName(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
 	if (node.type === 'FunctionDeclaration') return Option.fromNullishOr(node.id?.name)
 	if (node.parent.type === 'VariableDeclarator' && node.parent.id.type === 'Identifier') {
 		return Option.some(node.parent.id.name)

@@ -40,6 +40,23 @@ function exactForwardingFunction(node: ESTree.Function | ESTree.ArrowFunctionExp
 	)
 }
 
+function isIdentity(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+	const [parameter] = node.params
+	const returned = returnedExpression(node)
+	return (
+		node.params.length === 1 &&
+		parameter?.type === 'Identifier' &&
+		returned?.type === 'Identifier' &&
+		returned.name === parameter.name
+	)
+}
+
+function indirectionMessage(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+	return isIdentity(node)
+		? 'Pass identity from effect instead of this function.'
+		: 'Inline this function at its only use site.'
+}
+
 function isExport(node: ESTree.Node | null) {
 	return node?.type === 'ExportNamedDeclaration' || node?.type === 'ExportDefaultDeclaration'
 }
@@ -148,12 +165,12 @@ export const noTrivialIndirection = defineRule({
 				(node.parent.type === 'VariableDeclarator' || node.parent.type === 'Property') &&
 				(exactForwardingFunction(node) || singleUseThunk({context, node}) || singleCallerWrapper({context, node}))
 			) {
-				context.report({message: 'Inline this function at its only use site.', node})
+				context.report({message: indirectionMessage(node), node})
 			}
 		},
 		FunctionDeclaration: node => {
 			if (exactForwardingFunction(node) || singleUseThunk({context, node}) || singleCallerWrapper({context, node})) {
-				context.report({message: 'Inline this function at its only use site.', node})
+				context.report({message: indirectionMessage(node), node})
 			}
 		},
 		FunctionExpression: node => {
@@ -163,7 +180,7 @@ export const noTrivialIndirection = defineRule({
 					(node.parent.type === 'MethodDefinition' && node.parent.override !== true)) &&
 				(exactForwardingFunction(node) || singleUseThunk({context, node}) || singleCallerWrapper({context, node}))
 			) {
-				context.report({message: 'Inline this function at its only use site.', node})
+				context.report({message: indirectionMessage(node), node})
 			}
 		},
 		VariableDeclarator: node => {

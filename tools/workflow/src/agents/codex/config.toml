@@ -30,9 +30,15 @@ Once implementation has begun, a steer that changes the plan itself — its appr
 
 ## Working efficiently
 
-Batch independent reads and searches. Spawn every role with `fork_turns: "none"` and a standalone brief containing the relevant constraints and evidence. Delegate substantial independent investigations to `explore` with a bounded question and the decision its answer informs. Group related questions and reuse the same agent for follow-ups; do not spawn per idea or repeat its search. Use `prototype` for experiments, `browser` for rendered evidence (reusing the same browser agent for later captures), and one fresh `review` for the completed diff. Read the returned evidence and resolve gaps before relying on it; verify a reported problem in the user's systems against their effective state and history before presenting it.
+Batch independent reads and searches. Spawn every role with `fork_turns: "none"` and a standalone brief containing the relevant constraints and evidence. Hand work to the role built for it, each on the cheaper model its file sets: `explore` for investigations, `prototype` for experiments, `browser` for rendered evidence, `runner` for full checks, test suites, builds, pipeline watches, and triage of their failures, and one fresh `review` for the completed diff; design, implementation, and decisions stay in this thread. Cheaper models do well on narrow, well-defined work, so brief each one precisely:
 
-Run long commands in the background and continue independent work. Keep responsibility for pending work: collect agent results with `wait_agent` and resume automatically, rather than ending merely because agents were spawned or requiring the user to wake you. Wait on a long command or pipeline with one blocking watch and a long yield. Scope tool output to relevant lines or summaries and keep large logs in scratch. Spend effort in proportion to what a decision changes: settle reversible details quickly and put effort on unresolved risks, not repeated reports, polling, or rechecking unchanged results.
+- `explore`: one question, or questions whose answers feed each other, with starting paths, known evidence, the decision it settles, a stop condition, and an answer of about ten lines; independent questions go to parallel agents. For a count, define what counts as a member and ask for the list before the number.
+- `browser`: the exact URL, the saved sign-in state file and credential source, the artifacts directory, the steps to the before state, and one criterion per line as exact input → checkable expected result.
+- `runner`: the commands in order, the intent, the base branch, and fixes either none or mechanical only.
+
+Reuse the same agent for follow-ups and the same browser agent for later captures; do not repeat an agent's search. Read the returned evidence and resolve gaps before relying on it; verify a reported problem in the user's systems against their effective state and history before presenting it.
+
+Run anything your next step does not need in the background and continue independent work. A message that arrives mid-task without changing it — an extra question, idea, or request, whether or not the user calls it a side note — runs alongside the current work: answer it or hand it to a background agent and keep going; implementation it asks for follows the current unit. Keep responsibility for pending work: collect agent results with `wait_agent` and resume automatically, rather than ending merely because agents were spawned or requiring the user to wake you. Wait on a command you run yourself in the exec cell that starts it: its first line is `// @exec: {"yield_time_ms": 3600000}`, and it loops `write_stdin` with `yield_time_ms: 3600000` until the command exits, with one `wait` on the cell at the same yield if it returns early; never sleep, tail a log, or poll with short yields. Scope tool output to relevant lines or summaries and keep large logs in scratch. Spend effort in proportion to what a decision changes: settle reversible details quickly and put effort on unresolved risks, not repeated reports, polling, or rechecking unchanged results.
 
 ## Execution
 
@@ -40,9 +46,9 @@ Implement in this thread using the engineering skill and the repository's terms 
 
 Reproduce bugs before fixing them; preserve the failing case as a regression test where a meaningful seam exists. After three failed fixes, revisit the cause and design. Update CONTEXT.md for changed domain terms and docs/adr/ for architectural decisions, using the formats under `~/.deslop/repos/skills/skills/engineering/domain-modeling/`.
 
-Run touched tests as you work; format and lint all files of each finished unit in one call. Batch fixes, then rerun each affected check once; a failure that also occurs on the default branch is reported, not debugged. When implementation is complete, start the full repository check and tests in the background and spawn one fresh `review` of the whole diff alongside them, briefed with the final intent after every steer. Fix validated in-scope findings and failures together and rerun only the affected checks. Then prove the scenario with real input through its existing UI with `browser`, backend-only changes included when the UI is a meaningful consumer, showing changed screens before and after with the before captured during planning: screenshots for meaningful states and a short MP4, embedded in the reply and attached to the PR. Investigate realistic loading and interaction delays. Without a meaningful UI consumer, prove it at the highest public seam. Instructions the change ships for agents, such as a skill or AGENTS.md, are proven by a fresh agent completing a real task with them. Explain rejected findings with supporting evidence in the PR. Carry forward passing evidence for an unchanged revision.
+Run touched tests as you work; format and lint all files of each finished unit in one call. Batch fixes, then rerun each affected check once; a failure that also occurs on the default branch is reported, not debugged. When implementation is complete, hand the full repository check and tests to `runner` with mechanical fixes allowed and spawn one fresh `review` of the whole diff alongside it, briefed with the final intent after every steer. Fix validated in-scope findings and failures together and rerun only the affected checks. Then prove the scenario with real input through its existing UI with `browser`, backend-only changes included when the UI is a meaningful consumer, showing changed screens before and after with the before captured during planning: screenshots for meaningful states and a short MP4, embedded in the reply and attached to the PR. Investigate realistic loading and interaction delays. Without a meaningful UI consumer, prove it at the highest public seam. Instructions the change ships for agents, such as a skill or AGENTS.md, are proven by a fresh agent completing a real task with them. Explain rejected findings with supporting evidence in the PR. Carry forward passing evidence for an unchanged revision.
 
-Commit finished units on the feature branch. Push once the revision is checked, reviewed, and proven, since every push starts a slow pipeline: merge the default branch first and check the result. The draft PR opens at the first push, and every push rewrites its title, body, and changesets to the net change against the default branch for their reader; lead the body with proof and explain only rationale needed to review the code, and read the published title and body back. Wait for the pipeline with one blocking watch. Never commit to or push the default branch.
+Commit finished units on the feature branch. Push once the revision is checked, reviewed, and proven, since every push starts a slow pipeline: merge the default branch first and check the result. The draft PR opens at the first push, and every push rewrites its title, body, and changesets to the net change against the default branch for their reader; lead the body with proof and explain only rationale needed to review the code, and read the published title and body back. Hand the pipeline watch to `runner` and collect its result. Never commit to or push the default branch.
 
 Ready means the agreed scope and all steering are handled, checks and pipeline pass apart from failures reported as also failing on the default branch, review findings are resolved, the scenario is proven, and nothing remains that the user would predictably ask to simplify, clean up, or improve — ask yourself what they would ask next and do it before delivering. Finish with unseen results, embedded visual proof, material limitations, and any preview link.
 '''
@@ -64,7 +70,7 @@ goals = false
 default_mode_request_user_input = true
 
 [features.multi_agent_v2]
-multi_agent_mode_hint_text = "Spawn the explore, prototype, browser, and review roles whenever your developer instructions call for them."
+multi_agent_mode_hint_text = "Spawn the explore, prototype, browser, runner, and review roles whenever your developer instructions call for them."
 default_wait_timeout_ms = 3600000
 
 [shell_environment_policy]
@@ -74,7 +80,7 @@ set = { TURBO_CACHE_DIR = "/home/mp281x/.cache/turbo", GLAB_PAGER = "cat" }
 trust_level = "trusted"
 
 [agents.explore]
-description = "Investigate a bounded group of related questions about code, library source, logs, or the host; returns path:line facts, evidenced hypotheses, and what was searched without result."
+description = "Investigate one bounded question, or questions whose answers feed each other, about code, library source, logs, or the host; returns path:line facts, evidenced hypotheses, and what was searched without result."
 config_file = "./agents/explore.toml"
 
 [agents.prototype]
@@ -84,6 +90,18 @@ config_file = "./agents/prototype.toml"
 [agents.browser]
 description = "Inspect existing behavior during planning or prove rendered work, with its URL, sign-in, and criteria; returns pass or fail per criterion with screenshot paths, and one video path."
 config_file = "./agents/browser.toml"
+
+[agents.runner]
+description = "Run given checks, tests, builds, or a pipeline watch to completion and triage their failures; returns pass or each failure with path:line and verified cause, applying only the mechanical fixes the brief allows. Never implements."
+config_file = "./agents/runner.toml"
+
+[agents.explorer]
+description = "Same as explore."
+config_file = "./agents/explore.toml"
+
+[agents.worker]
+description = "Same as runner; implementation stays in your own thread."
+config_file = "./agents/runner.toml"
 
 [agents.review]
 description = "Spawn once in execution when the diff is finished, alongside the full check and before the browser proof; returns every validated defect, cut, and open question with path:line, or Clean."

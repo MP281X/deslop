@@ -20,6 +20,7 @@ import {noReadonlyTypeSyntax} from './rules/no-readonly-type-syntax.ts'
 import {noRedundantReturnType} from './rules/no-redundant-return-type.ts'
 import {noRedundantUseRefNullType} from './rules/no-redundant-use-ref-null-type.ts'
 import {noRedundantVariableAnnotation} from './rules/no-redundant-variable-annotation.ts'
+import {noReinventedSchema} from './rules/no-reinvented-schema.ts'
 import {noRenamedImport} from './rules/no-renamed-import.ts'
 import {noStoredSchemaOperation} from './rules/no-stored-schema-operation.ts'
 import {noSwitchStatement} from './rules/no-switch-statement.ts'
@@ -91,6 +92,7 @@ export const oxlint = defineConfig({
 		'@deslop/workflow/no-redundant-return-type': 'error',
 		'@deslop/workflow/no-redundant-use-ref-null-type': 'error',
 		'@deslop/workflow/no-redundant-variable-annotation': 'error',
+		'@deslop/workflow/no-reinvented-schema': 'error',
 		'@deslop/workflow/no-renamed-import': 'error',
 		'@deslop/workflow/no-stored-schema-operation': 'error',
 		'@deslop/workflow/no-switch-statement': 'error',
@@ -600,6 +602,7 @@ export default definePlugin({
 		'no-redundant-return-type': noRedundantReturnType,
 		'no-redundant-use-ref-null-type': noRedundantUseRefNullType,
 		'no-redundant-variable-annotation': noRedundantVariableAnnotation,
+		'no-reinvented-schema': noReinventedSchema,
 		'no-renamed-import': noRenamedImport,
 		'no-stored-schema-operation': noStoredSchemaOperation,
 		'no-switch-statement': noSwitchStatement,

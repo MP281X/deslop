@@ -79,12 +79,19 @@ export const noNativeMethodCall = defineRule({
 			) {
 				return
 			}
+			const receiver = node.callee.object
 			pipe(
 				memberName(node.callee),
 				Option.filter(name => Array.contains(nativeMethods, name)),
+				Option.filter(
+					name =>
+						!Array.contains(['entries', 'keys', 'values'], name) ||
+						Array.isArrayEmpty(node.arguments) ||
+						(receiver.type === 'Identifier' && receiver.name === 'Object')
+				),
 				Option.map(name => {
 					context.report({
-						message: `Replace .${name}() with its function from the Effect Array, String, or Effect module.`,
+						message: `Replace .${name}() with its function from the Effect Array, String, Record, or Effect module.`,
 						node: node.callee
 					})
 				})

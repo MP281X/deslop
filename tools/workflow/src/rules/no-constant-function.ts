@@ -3,7 +3,7 @@ import {Array, MutableRef, Option, Predicate, pipe} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree, Reference, Scope, Variable} from '@oxlint/plugins'
 
-import {singleUseThunk, variableFromScope} from './shared.ts'
+import {bindingName, singleUseThunk, variableFromScope} from './shared.ts'
 
 function hasSingleReturnExpression(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
 	if (node.body === null) return false
@@ -47,6 +47,18 @@ function isConstantFunction(input: {
 		pipe(
 			functionScope({node: input.node, scope: input.context.sourceCode.getScope(input.node)}),
 			Option.exists(scope => Array.every(scopeReferences(scope), resolvesToImport))
+		) &&
+		pipe(
+			bindingName(input.node),
+			Option.flatMap(name => variableFromScope({name, scope: input.context.sourceCode.getScope(input.node)})),
+			Option.exists(variable =>
+				Array.every(
+					Array.filter(variable.references, reference => reference.isRead()),
+					reference =>
+						reference.identifier.parent.type === 'CallExpression' &&
+						reference.identifier.parent.callee === reference.identifier
+				)
+			)
 		)
 	)
 }

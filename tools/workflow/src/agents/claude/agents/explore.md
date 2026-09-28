@@ -1,8 +1,8 @@
 ---
 name: explore
-description: Investigates a bounded group of related questions in code, library source, and logs; returns located evidence and unresolved gaps. Resume for related follow-ups.
-model: claude-opus-5-5
-effort: low
+description: Investigates one bounded question, or questions whose answers feed each other, in code, library source, and logs; returns located evidence and unresolved gaps. Resume for related follow-ups.
+model: claude-sonnet-5-5
+effort: medium
 tools: Read, Bash
 background: true
 skills:
