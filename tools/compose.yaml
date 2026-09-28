@@ -18,7 +18,6 @@ services:
       - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
       - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
       - --providers.docker.exposedbydefault=false
-      - --providers.docker.network=deslop
       - --providers.file.filename=/etc/traefik/previews.yaml
     ports: [80:80, 443:443]
     extra_hosts: [host.docker.internal:host-gateway]
@@ -44,7 +43,6 @@ services:
   collector:
     <<: *service
     image: otel/opentelemetry-collector-contrib:latest
-    command: [--config=/etc/otelcol-contrib/config.yaml]
     configs: [{source: collector, target: /etc/otelcol-contrib/config.yaml}]
     ports: [127.0.0.1:4318:4318]
     labels:
