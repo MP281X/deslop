@@ -27,6 +27,7 @@ compose=(docker compose --project-name deslop --file "$state_dir/compose.yaml")
 "${compose[@]}" config --quiet
 "${compose[@]}" pull traefik jaeger collector
 "${compose[@]}" up -d --remove-orphans --pull never
+sudo ufw allow from "$(docker network inspect deslop --format '{{(index .IPAM.Config 0).Subnet}}')" to any port 4000:4009 proto tcp comment 'deslop previews'
 curl -fsS --retry 12 --retry-delay 5 --retry-all-errors https://portfolio.mp281x.xyz/ >/dev/null
 curl -fsS --retry 12 --retry-delay 5 --retry-all-errors https://te-amo-muchisimo.mp281x.xyz/ >/dev/null
 curl -fsS --retry 12 --retry-delay 5 --retry-all-errors https://otel.mp281x.xyz/api/services >/dev/null

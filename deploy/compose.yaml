@@ -21,10 +21,15 @@ services:
       - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
       - --providers.docker.exposedbydefault=false
       - --providers.docker.network=deslop
+      - --providers.file.filename=/etc/traefik/previews.yaml
     ports: [80:80, 443:443]
+    extra_hosts: [host.docker.internal:host-gateway]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /home/mp281x/.deslop/deploy/acme:/acme
+    configs:
+      - source: previews
+        target: /etc/traefik/previews.yaml
     networks: [deslop]
     logging: *bounded-logs
 
@@ -90,6 +95,23 @@ services:
     logging: *bounded-logs
 
 configs:
+  previews:
+    content: |
+      http:
+        routers:
+      {{- range until 10 }}
+          p{{ add 4000 . }}:
+            entryPoints: [websecure]
+            rule: Host(`p{{ add 4000 . }}.mp281x.xyz`)
+            service: p{{ add 4000 . }}
+            tls: { certResolver: letsencrypt }
+      {{- end }}
+        services:
+      {{- range until 10 }}
+          p{{ add 4000 . }}:
+            loadBalancer: { servers: [{ url: 'http://host.docker.internal:{{ add 4000 . }}' }] }
+      {{- end }}
+
   collector:
     content: |
       receivers:

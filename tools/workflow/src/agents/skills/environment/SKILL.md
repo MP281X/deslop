@@ -20,7 +20,8 @@ Facts an agent cannot read from the repository itself; commands a package.json a
 - `vp` and `vpx` for every package-manager and package-binary command, never npm, npx, pnpm, yarn, or bunx; `bun` runs only as the runtime the preview steps name.
 - Stop only process groups this thread started, with `kill -- -<pgid>`; take another free port instead of stopping another process.
 - Datapizza VPN: openvpn3 config `datapizza`, needed only for git.datapizza.tech; one device at a time. Connect with `openvpn3 session-start --config datapizza --background` and show the printed sign-in URL as a clickable Markdown link in a normal message, outside the question tool; an expired link comes back with `openvpn3 session-manage --config datapizza --restart`.
-- `sudo` is passwordless. ufw allows only 22, 80, and 443, so every other port is reached through the SSH tunnel.
+- `sudo` is passwordless. ufw allows 22, 80, and 443 publicly, and 4000–4009 only from the `deslop` Docker network for traefik's preview routes; `deploy/scripts/maintain.sh` keeps that rule on the network's current subnet.
+- Wait for a pipeline with one blocking command: `gh pr checks --watch --fail-fast` on GitHub, `glab ci status --wait --compact` on GitLab; then read only the failed jobs' logs.
 - `~/.claude` and `~/.codex` are installed from `tools/workflow/src/agents` in deslop with `node tools/workflow/src/install.ts`; change the source and reinstall, never the homes.
 - A thread id the user gives is a t3 thread id. Its Claude session is the `session_id` in `~/.t3/userdata/logs/provider/events.<id>.log*`, with the transcript at `~/.claude/projects/<cwd-slug>/<session>.jsonl` and its agents under `<session>/subagents/`, where `<cwd-slug>` is the thread's `cwd` with `/` and `.` as `-`; a Codex thread's log names its rollout as `path`, under `~/.codex/sessions/`.
 
@@ -53,8 +54,8 @@ Facts an agent cannot read from the repository itself; commands a package.json a
 - Services: opensandbox 127.0.0.1:8080, Postgres 55432, test Postgres 55433.
 - Each worktree runs on its own ports, set in its `.env` files: `SERVER_URL` in `packages/app/.env` (default 3825), and `DATABASE_URL`, `BETTER_AUTH_URL`, `SERVER_PUBLIC_URL`, `APP_ORIGIN`, and `DUAL_AGENT_GATEWAY_BASE_URL` in `packages/playground/.env`; the app dev server listens on 3000 from `vite dev --port 3000` in `packages/app/package.json`, so another port is a `--port` argument, not a `.env` value. Other worktrees' dev apps and previews keep theirs.
 - Local login: seeded by the `seed:user` arguments in the root `package.json` `db:reset` script, which hold the credentials.
-- CI: GitLab job `quality` (`.gitlab/quality.yml`).
-- Full local check: `vp run check`, then `vp run test`.
+- CI: GitLab job `quality` (`.gitlab/quality.yml`), median 17 min and pipeline median 24 min, p90 60 min: after `check` it runs `test:consumer` (about 6 min), `test`, and `test:release` in series. Pipelines are interruptible, so each push cancels the running one. A dependency change also needs `vp install --frozen-lockfile` to pass locally, which CI runs first.
+- Full local check: `vp run check` (turbo-cached, about 2 s on an unchanged tree, 141 s cold), then `vpx turbo run test --affected`; turbo.json sets `cache: false` on `test`, so every run costs its full time.
 
 | Command                               | Does                                                                                                          |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
@@ -72,15 +73,15 @@ Facts an agent cannot read from the repository itself; commands a package.json a
 
 A production preview of the branch is the user's preferred way to test a web app.
 
-- Choose free ports with `ss -ltn`.
-- The user opens it with `ssh -N -L <port>:[::1]:<port> mp281x@dev.mp281x.xyz`, then http://localhost:<port>.
+- Choose a free port in 4000–4009 with `ss -ltn` and bind it on `::`; the production traefik serves it at `https://p<port>.mp281x.xyz`, which is the link to give the user and the browser agent. A preview bound to `::1` or `127.0.0.1` gets 502 there.
+- A routed port with nothing listening returns 502.
 
 dual, from the worktree root:
 
-1. Postgres, opensandbox, and migrations with `vp run init`, then the `seed:user` command from the `db:reset` script; the API on the port from `SERVER_URL` in packages/app/.env, and the worker, running.
+1. Postgres, opensandbox, and migrations with `vp run init`, then the `seed:user` command from the `db:reset` script; the API on the port from `SERVER_URL` in packages/app/.env, and the worker, running. Start the API with `BETTER_AUTH_URL`, `APP_ORIGIN`, and `SERVER_PUBLIC_URL` set to `https://p<port>.mp281x.xyz`: better-auth trusts only the first two as origins, and the third is the public MCP and OAuth URL (packages/server/src/auth/BetterAuth.ts).
 2. `vpx turbo run build --filter=@dual/core...`, then in packages/app `NODE_ENV=production NITRO_PRESET=bun NODE_OPTIONS=--max-old-space-size=8192 node node_modules/vite/bin/vite.js build` (as packages/app/docker/Dockerfile).
 3. Web, from packages/app: `NODE_ENV=production HOST=127.0.0.1 PORT=<web> SERVER_URL=http://127.0.0.1:<api> bun .output/server/index.mjs`.
-4. The build has no proxy (packages/app/docker/README.md) and the browser calls `window.location.origin` (src/server-url.ts), so a small Bun proxy on `[::1]:<port>` sends `/api*`, `/mcp`, and the OAuth `/.well-known/*` paths to the API, except `/api/docs/search` and `/api/sdk/search`, and everything else to the web port, as packages/playground/docker/Caddyfile does; only the proxy port is tunnelled.
+4. The build has no proxy (packages/app/docker/README.md) and the browser calls `window.location.origin` (src/server-url.ts), so a small Bun proxy on `[::]:<port>` sends `/api*`, `/mcp`, and the OAuth `/.well-known/*` paths to the API, except `/api/docs/search` and `/api/sdk/search`, and everything else to the web port, as packages/playground/docker/Caddyfile does; only the proxy port is public.
 5. Login: the local login above.
 
-deslop: from the app directory, such as apps/portfolio, `HOST=::1 PORT=<port> vp run preview`, which builds and serves `dist/server.js`.
+deslop: from the app directory, such as apps/portfolio, `HOST=:: PORT=<port> vp run preview`, which builds and serves `dist/server.js`.
