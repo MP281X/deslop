@@ -81,6 +81,10 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const MissingType = Schema.Struct({value: Schema.String})',
 									'type NonEmpty = typeof NonEmpty.Type',
 									'const NonEmpty = Schema.String.check(Schema.isMinLength(1))',
+									'type PipedNonEmpty = typeof PipedNonEmpty.Type',
+									'const PipedNonEmpty = pipe(Schema.String, Schema.check(Schema.isNonEmpty()))',
+									'type PipedTrimmed = typeof PipedTrimmed.Type',
+									'const PipedTrimmed = Schema.String.pipe(Schema.check(Schema.isTrimmed()))',
 									'const MissingFluent = Schema.String.annotate({description: "value"})',
 									'const MissingTransform = Schema.decodeTo(Schema.Number, SchemaTransformation.transform({decode: Number, encode: String}))(Schema.String)',
 									'const MissingDecode = Schema.decode({decode: SchemaGetter.transform(identity), encode: SchemaGetter.transform(identity)})(Schema.String)',
@@ -148,7 +152,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'// oxlint-disable-next-line sort-keys -- the fixture keeps its order',
 									'const unsortedKeys = {b: 1, a: 2}',
 									'// @effect-diagnostics-next-line floatingEffect:off',
-									'export {AssertString, Clock, Codecs, NonEmpty, absent, Fallback, Input, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, annotated, assigned, asyncConstant, callbacks, decode, decoded, decoders, deepPipe, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, greet, handlers, input, isRecord, isText, makeBox, labelled, logName, loose, kind, mappedValues, measured, namesA, namesB, namespaceRef, noValues, present, slotLength, notFound, operations, ready, recipients, ref, run, stateNamespace, unsortedKeys, unwrapped, wrapped}',
+									'export {AssertString, Clock, Codecs, NonEmpty, PipedNonEmpty, PipedTrimmed, absent, Fallback, Input, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, annotated, assigned, asyncConstant, callbacks, decode, decoded, decoders, deepPipe, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, greet, handlers, input, isRecord, isText, makeBox, labelled, logName, loose, kind, mappedValues, measured, namesA, namesB, namespaceRef, noValues, present, slotLength, notFound, operations, ready, recipients, ref, run, stateNamespace, unsortedKeys, unwrapped, wrapped}',
 									'export type {Explicit, Frozen, Index, Mapped}'
 								],
 								Array.join('\n')
@@ -192,6 +196,8 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'@deslop/workflow(no-redundant-use-ref-null-type)',
 									'@deslop/workflow(no-redundant-variable-annotation)',
 									'@deslop/workflow(no-redundant-variable-annotation)',
+									'@deslop/workflow(no-reinvented-schema)',
+									'@deslop/workflow(no-reinvented-schema)',
 									'@deslop/workflow(no-reinvented-schema)',
 									'@deslop/workflow(no-renamed-import)',
 									'@deslop/workflow(no-stored-schema-operation)',

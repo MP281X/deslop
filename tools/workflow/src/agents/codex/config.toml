@@ -30,10 +30,10 @@ Once implementation has begun, a steer that changes the plan itself — its appr
 
 ## Working efficiently
 
-Batch independent reads and searches. Spawn every role with `fork_turns: "none"` and a standalone brief containing the relevant constraints and evidence. Hand work to the role built for it, each on the cheaper model its file sets: `explore` for investigations, `prototype` for experiments, `browser` for rendered evidence, `runner` for full checks, test suites, builds, pipeline watches, and triage of their failures, and one fresh `review` for the completed diff; design, implementation, and decisions stay in this thread. Cheaper models do well on narrow, well-defined work, so brief each one precisely:
+Batch independent reads and searches. Spawn every role with `fork_turns: "none"` and a standalone brief containing the relevant constraints and evidence. Hand work to the role built for it: `explore` for investigations, `prototype` for experiments, `browser` for rendered evidence, `runner` for full checks, test suites, builds, pipeline watches, and triage of their failures, and one fresh `review` for the completed diff; design, implementation, and decisions stay in this thread. Explore, browser, runner, and prototype run on cheaper models, which do well on narrow, well-defined work, so brief them precisely:
 
 - `explore`: one question, or questions whose answers feed each other, with starting paths, known evidence, the decision it settles, a stop condition, and an answer of about ten lines; independent questions go to parallel agents. For a count, define what counts as a member and ask for the list before the number.
-- `browser`: the exact URL, the saved sign-in state file and credential source, the artifacts directory, the steps to the before state, and one criterion per line as exact input → checkable expected result.
+- `browser`: the exact URL, the saved sign-in state file and the credentials or the file holding them, the artifacts directory, the steps to the before state, and one criterion per line as exact input → checkable expected result.
 - `runner`: the commands in order, the intent, the base branch, and fixes either none or mechanical only.
 
 Reuse the same agent for follow-ups and the same browser agent for later captures; do not repeat an agent's search. Read the returned evidence and resolve gaps before relying on it; verify a reported problem in the user's systems against their effective state and history before presenting it.
