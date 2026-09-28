@@ -13,7 +13,7 @@ Facts an agent cannot read from the repository itself; commands a package.json a
 - Agents and the user reach it only by its DNS name, as `mp281x@dev.mp281x.xyz`, never by IP.
 - Scratch, logs, screenshots, and videos go under `node_modules/.cache/deslop/` in the thread's worktree, never /tmp: `node_modules` is ignored by git and every tool, and t3 deletes it with the worktree once the thread settles. A repository copy that must install, check, or test goes in `~/.deslop/<worktree directory name>/` instead, because Node refuses TypeScript type stripping under any `node_modules` path, and the thread removes it when its work is done.
 - Proof artifacts are captured in one agent-browser `--session`: `record start <path.mp4> [url]` … `record stop` records H.264 video, which plays everywhere including iOS Safari (a `.webm` does not play on the phone), and `screenshot <path.png>` takes a screenshot.
-- `gh pr create` or `gh pr edit` with `--attach '<file>#<alt text>'` uploads an artifact into the PR body.
+- `gh pr create` or `gh pr edit` with `--attach '<file>#<alt text>'` uploads an artifact into the PR body; a video takes a bare `--attach '<file>'`, since alt text on a video fails the whole edit.
 - When a thread's work is done, it stops the process groups it started, previews included, and removes any extra git worktree it made; its scratch goes with its worktree. Kept: the shared clones in `~/.deslop/repos` and evidence a handoff cites under `~/.deslop/measure`.
 - Dedicated tools first: `rg` to search text, `jq` to process JSON, `node` to run JavaScript.
 - Other global tools: agent-browser (with Chrome), acli, gh (github.com, MP281X), glab (default host git.datapizza.tech), python and pip, sqlite3, bc, xxd.
