@@ -10,13 +10,13 @@ Apply the repository's CODING_STANDARDS.md alongside these rules. Both take prec
 Every line not needed now slows the next change. Build the smallest thing that does the requested job well:
 
 - Write the plain, explicit, idiomatic solution, readable top to bottom: no comments and no clever tricks; inline every forwarding wrapper and every single-use helper or top-level const, as Shape shows.
-- Keep code flat: pipelines and early returns instead of nesting, a blank line between logical groups.
+- Keep code flat: pipelines and early returns instead of nesting, a blank line between logical groups. Flatness outranks idiom: where `Boolean.match`, `Option.match`, `Option.toArray`, or a `pipe` would nest deeper than plain `if`, `for`, and `yield*` statements in `Effect.fn`, write the statements; the idiom is for a single expression.
 - Doing less than asked beats doing more: the core done well beats a complete 100% with extras; name what you cut. A refactor or cleanup request asks for depth instead: every section applies to every line of the owned files, not only the changed lines.
 - Extend the nearest existing implementation of the same kind, mirroring its permissions, errors, data refresh, and tests, and reuse the feature's helper for a job before writing one.
 - Happy path only: let failures flow through Effect's error channel, with no catch, retry, fallback, or defensive check unless the request or an existing contract requires it.
 - Validate and transform once, at the boundary, with Effect Schema; inside, data is trusted: carry narrowed values forward and never re-check what the schema, the declared type, an earlier filter, or tsc guarantees.
 - Layers depend inward: domain and service code never import HTTP, RPC, or other transport types.
-- Before hand-writing a traversal, accumulator, check, or config read, search the Effect repository at `~/.deslop/repos/effect` (Graph, Record, String, Option, Struct, Config.all, Match, Boolean) and call the helper that exists. Before adding any service, run `rg --files ~/.deslop/repos/effect/packages/*/src` for its name, and when Effect ships it, use it or push back with its path. Clone a missing library source into `~/.deslop/repos`.
+- Before hand-writing a traversal, accumulator, check, or config read, search the Effect repository at `~/.deslop/repos/effect` (Graph, Record, String, Option, Struct, Config.all, Match, Boolean, HttpClient, Path, ChildProcess, Types.Equals) and call the helper that exists. Before adding any service, run `rg --files ~/.deslop/repos/effect/packages/*/src` for its name, and when Effect ships it, use it or push back with its path. Clone a missing library source into `~/.deslop/repos`.
 - Never destructure a parameter, callback argument, or loop variable (`useState` excepted), and never re-list a value's fields: pass it whole or spread it.
 - No future-proofing: no option, parameter, layer, abstraction, export, file, script, or check for a need that does not exist yet.
 - Delete dead code: every superseded or unused file, export, type, doc, test, and dependency goes in the same change; keep the type half of a schema pair and leave no compatibility path or leftover.
@@ -223,6 +223,8 @@ pipe(Match.value(props.layer), Match.when('claude', () => <ClaudeDark />), Match
 const type = event.type === 'text-delta'
 	? 'text'
 	: event.type === 'reasoning-delta' ? 'reasoning' : 'unknown'
+// bad — "use an Effect.fn and don't use pipe, then unnest"; the old if blocks were flat
+const parts = Array.appendAll(base, Boolean.match(hasTools, {onFalse: () => [], onTrue: () => pipe(tools, Array.map(tool => pipe(tool, Option.toArray)))}))
 ```
 
 ```ts
@@ -353,6 +355,12 @@ const prompt = Effect.fn('Ai.prompt')(
 	Effect.mapError(cause => AiError.make({cause, message: 'Cannot prompt the agent'}))
 )
 const content = yield * fs.readFileString(target)
+const pages =
+	yield *
+	Effect.tryPromise({
+		catch: cause => NotionError.make({cause, message: 'Cannot list pages'}),
+		try: () => client.pages.list()
+	}) // an SDK failing with unknown is mapped at the adapter, so no error channel carries unknown or any
 // bad — "malformed output fails instead of becoming empty data"
 const content =
 	yield *
@@ -475,7 +483,7 @@ src/schema.ts, src/open-sandbox-provider.ts
 ## Quality
 
 ```ts
-// good — the root cause removed in code; a package config is the shared preset alone
+// good — the root cause removed in code; a package config is the shared preset alone; code a generator emits meets this skill and is linted like hand-written code
 import {NodeRuntime} from '@effect/platform-node'
 export {oxlint as default} from '@deslop/workflow'
 // oxlint-disable-next-line @typescript-eslint/consistent-type-definitions -- TanStack Router augments this interface by name.
@@ -488,6 +496,7 @@ const warned = ['sort-keys', 'typescript/no-restricted-types'] // a package rule
 // bad — "why are we not disabling the cases with the ignore comments?"
 files: ['packages/components/src/components/agent-browser.tsx', 'packages/components/src/components/form.tsx'],
 // bad — "keep it enabled so other cases get fixed"
+ignorePatterns: ['src/generated/**'] // generated code escapes lint
 // @effect-diagnostics-next-line nodeBuiltinImport:off
 import {createServer} from 'node:http'
 ```
