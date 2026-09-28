@@ -32,7 +32,7 @@ Facts an agent cannot read from the repository itself; commands a package.json a
 - Workspaces: `apps/*` (portfolio), `packages/*` (ai, components, runtime), `tools/*` (create-app, create-package, workflow).
 - shadcn UI components: `packages/components`.
 - CI: GitHub Actions job `build-and-deploy`.
-- Production services are `tools/production.compose.yaml`, compose project `deslop`, with certificates in `~/.deslop/deploy/acme`: traefik, collector, portfolio, jaeger, valentine. [references/setup.md](references/setup.md) bootstraps this host; [references/maintain.md](references/maintain.md) updates, redeploys, and cleans it.
+- Production services are `tools/compose.yaml`, compose project `deslop`, with certificates in `~/.deslop/deploy/acme`: traefik, portfolio, jaeger, collector. Jaeger's UI and API are only at http://127.0.0.1:16686; OTLP ingest is public at https://otel.mp281x.xyz and local at 127.0.0.1:4318. [references/setup.md](references/setup.md) bootstraps this host; [references/maintain.md](references/maintain.md) updates, redeploys, and cleans it.
 - Full local check: `vp run check`, then `vp run test`; `vp fmt <path>...` formats the touched files first.
 - Each lint call costs a flat 5–6 s for 1 file or a whole package, with no cache between calls, so format and lint every changed file in one call: `vp check --fix <path>...`.
 
