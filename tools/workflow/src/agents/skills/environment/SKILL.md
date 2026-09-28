@@ -75,7 +75,7 @@ Facts an agent cannot read from the repository itself; commands a package.json a
 A production preview of the branch is the user's preferred way to test a web app.
 
 - Previews use only ports 4000–4009, the range traefik routes and ufw admits: choose a free one with `ss -ltn` and bind it on `::`. Traefik serves it at `https://<port>.mp281x.xyz`, the only URL to give the user and the browser agent; a preview bound to `::1` or `127.0.0.1`, or on another port, is unreachable there.
-- The delivered preview stays running, with its link in the final message, so the user can test it.
+- A preview stays running once the user could open it, proofs included, with its link in the last message; stop it only when the user asks.
 - The `4000`–`4009.mp281x.xyz` names are public through certificate transparency and scanners probe them within minutes, so a preview relies on the app's own login.
 - A routed port with nothing listening returns 502. `vp run` starts the server in its own process group, so stop a preview by the group of the pid `ss -ltnp` shows on its port.
 
