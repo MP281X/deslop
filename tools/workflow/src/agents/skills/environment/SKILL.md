@@ -74,7 +74,7 @@ Facts an agent cannot read from the repository itself; commands a package.json a
 A production preview of the branch is the user's preferred way to test a web app.
 
 - Choose a free port in 4000–4009 with `ss -ltn` and bind it on `::`; the production traefik serves it at `https://p<port>.mp281x.xyz`, which is the link to give the user and the browser agent. A preview bound to `::1` or `127.0.0.1` gets 502 there.
-- A routed port with nothing listening returns 502.
+- A routed port with nothing listening returns 502. `vp run` starts the server in its own process group, so stop a preview by the group of the pid `ss -ltnp` shows on its port.
 
 dual, from the worktree root:
 
