@@ -4,7 +4,6 @@ description: Runs the given checks, tests, builds, or pipeline watch to completi
 model: claude-sonnet-5-5
 effort: low
 tools: Read, Edit, Bash
-background: true
 skills:
   - environment
 ---

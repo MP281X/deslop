@@ -4,7 +4,6 @@ description: Reviews the whole diff fresh and adversarially and returns every co
 model: claude-opus-5-5
 effort: high
 tools: Read, Bash, Skill
-background: true
 skills:
   - engineering
   - environment
