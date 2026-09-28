@@ -14,11 +14,11 @@ Facts an agent cannot read from the repository itself; commands a package.json a
 - Scratch, logs, screenshots, and videos go under `node_modules/.cache/deslop/` in the thread's worktree, never /tmp: `node_modules` is ignored by git and every tool, and t3 deletes it with the worktree once the thread settles. A repository copy that must install, check, or test goes in `~/.deslop/<worktree directory name>/` instead, because Node refuses TypeScript type stripping under any `node_modules` path, and the thread removes it when its work is done.
 - Proof artifacts are captured in one agent-browser `--session`: `record start <path.mp4> [url]` … `record stop` records H.264 video, which plays everywhere including iOS Safari (a `.webm` does not play on the phone), and `screenshot <path.png>` takes a screenshot.
 - `gh pr create` or `gh pr edit` with `--attach '<file>#<alt text>'` uploads an artifact into the PR body; a video takes a bare `--attach '<file>'`, since alt text on a video fails the whole edit.
-- When a thread's work is done, it stops the process groups it started, previews included, and removes any extra git worktree it made; its scratch goes with its worktree. Kept: the shared clones in `~/.deslop/repos` and evidence a handoff cites under `~/.deslop/measure`.
+- When a thread's work is done, it stops the process groups it started, except the delivered preview the user tests, and removes any extra git worktree it made; its scratch goes with its worktree. Kept: the shared clones in `~/.deslop/repos` and evidence a handoff cites under `~/.deslop/measure`.
 - Dedicated tools first: `rg` to search text, `jq` to process JSON, `node` to run JavaScript.
 - Other global tools: agent-browser (with Chrome), acli, gh (github.com, MP281X), glab (default host git.datapizza.tech), python and pip, sqlite3, bc, xxd.
 - `vp` and `vpx` for every package-manager and package-binary command, never npm, npx, pnpm, yarn, or bunx; `bun` runs only as the runtime the preview steps name.
-- Stop only process groups this thread started, with `kill -- -<pgid>`; take another free port instead of stopping another process.
+- Stop only process groups this thread started, with `kill -- -<pgid>`; take another free port instead of stopping another process. The one exception is a stale preview: a listener on 4000–4009 whose `/proc/<pid>/cwd` ends in `(deleted)` belongs to a removed worktree and may be stopped to free its port.
 - Datapizza VPN: openvpn3 config `datapizza`, needed only for git.datapizza.tech; one device at a time. Connect with `openvpn3 session-start --config datapizza --background` and show the printed sign-in URL as a clickable Markdown link in a normal message, outside the question tool; an expired link comes back with `openvpn3 session-manage --config datapizza --restart`.
 - `sudo` is passwordless. ufw allows 22, 80, and 443 publicly, and 4000–4009 only from the `deslop` Docker network for traefik's preview routes; `deploy/scripts/maintain.sh` keeps that rule on the network's current subnet.
 - Wait for a pipeline with one blocking command: `gh run watch <id> --exit-status --compact` on GitHub, with the id from `gh run list --commit <sha>` once the run appears (`gh pr checks --watch` right after a push reports no checks), `glab ci status --wait --compact` on GitLab; then read only the failed jobs' logs.
@@ -73,7 +73,9 @@ Facts an agent cannot read from the repository itself; commands a package.json a
 
 A production preview of the branch is the user's preferred way to test a web app.
 
-- Choose a free port in 4000–4009 with `ss -ltn` and bind it on `::`; the production traefik serves it at `https://p<port>.mp281x.xyz`, which is the link to give the user and the browser agent. A preview bound to `::1` or `127.0.0.1` gets 502 there.
+- Previews use only ports 4000–4009, the range traefik routes and ufw admits: choose a free one with `ss -ltn` and bind it on `::`. Traefik serves it at `https://p<port>.mp281x.xyz`, the only URL to give the user and the browser agent; a preview bound to `::1` or `127.0.0.1`, or on another port, is unreachable there.
+- The delivered preview stays running, with its link in the final message, so the user can test it.
+- The `p4000`–`p4009` names are public through certificate transparency and scanners probe them within minutes, so a preview relies on the app's own login.
 - A routed port with nothing listening returns 502. `vp run` starts the server in its own process group, so stop a preview by the group of the pid `ss -ltnp` shows on its port.
 
 dual, from the worktree root:
