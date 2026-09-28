@@ -9,7 +9,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
 sudo DEBIAN_FRONTEND=noninteractive apt-get autoremove -y
 sudo apt-get clean
 /home/mp281x/.vite-plus/bin/vp upgrade
-/home/mp281x/.vite-plus/bin/vp update -g @openai/codex agent-browser
+/home/mp281x/.vite-plus/bin/vp update -g
 
 if [[ "$script_dir" != "$state_dir" ]]; then
 	repository_dir=$(cd -- "$script_dir/../.." && pwd)
@@ -19,7 +19,7 @@ if [[ "$script_dir" != "$state_dir" ]]; then
 		VITE_OTEL_URL=https://otel.mp281x.xyz /home/mp281x/.vite-plus/bin/vp run build
 		docker build --tag ghcr.io/mp281x/deslop-portfolio:latest apps/portfolio
 	)
-	install -m 0644 "$script_dir/../compose.yaml" "$state_dir/compose.yaml.next"
+	install -m 0644 "$script_dir/compose.yaml" "$state_dir/compose.yaml.next"
 	mv "$state_dir/compose.yaml.next" "$state_dir/compose.yaml"
 	install -m 0755 "$script_dir/maintain.sh" "$state_dir/maintain.sh.next"
 	mv "$state_dir/maintain.sh.next" "$state_dir/maintain.sh"
