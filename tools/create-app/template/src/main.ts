@@ -11,6 +11,7 @@ import * as ServerRuntime from '@deslop/runtime/server'
 NodeRuntime.runMain(
 	pipe(
 		HttpRouter.serve(Layer.merge(HttpApplication, ServerRuntime.layerStaticFiles), {disableLogger: true}),
+		Layer.provide(ServerRuntime.layer('@deslop/template-app')),
 		Layer.provide(ServerRuntime.layerNodeHttpServer),
 		Layer.launch
 	)

@@ -11,9 +11,6 @@ catalogs:
       version: 1.0.0
 
 overrides:
-  '@effect/opentelemetry': 4.0.0-rc.118
-  '@effect/platform-node-shared': 4.0.0-rc.118
-  effect: 4.0.0-rc.118
   vite: npm:@voidzero-dev/vite-plus-core@1.0.0
 
 importers:
@@ -175,7 +172,7 @@ importers:
         specifier: workspace:*
         version: link:../components
       '@effect/opentelemetry':
-        specifier: 4.0.0-rc.118
+        specifier: ^4.0.0-rc
         version: 4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)
       '@opentelemetry/exporter-logs-otlp-http':
         specifier: latest
@@ -591,7 +588,7 @@ packages:
   '@effect/atom-react@4.0.0-rc.118':
     resolution: {integrity: sha512-H6XBWGOlKIe53yFHdzd9zJE+H1RDoMvqF5OyWBZetbaHJUYlSbZECvDzBw1545fSoHrgH2JmlWePFPsXOgGSqA==}
     peerDependencies:
-      effect: 4.0.0-rc.118
+      effect: ^4.0.0-rc.118
       react: '>=19.0.0 <20.0.0'
       scheduler: '>=0.25.0 <0.28.0'
 
@@ -608,7 +605,7 @@ packages:
       '@opentelemetry/sdk-trace-node': '>=2.0.0 <3.0.0'
       '@opentelemetry/sdk-trace-web': '>=2.0.0 <3.0.0'
       '@opentelemetry/semantic-conventions': '>=1.33.0 <2.0.0'
-      effect: 4.0.0-rc.118
+      effect: ^4.0.0-rc.118
     peerDependenciesMeta:
       '@opentelemetry/api':
         optional: true
@@ -631,13 +628,13 @@ packages:
     resolution: {integrity: sha512-pNbmIlxbAUxAthUNsp2xm1NLG9kxoYecsPkoYl9mNF2oxPcKDxAvkOar7tYnLSUpXJeATm4pxYVipdZjQfqO4Q==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: 4.0.0-rc.118
+      effect: ^4.0.0-rc.118
 
   '@effect/platform-node@4.0.0-rc.118':
     resolution: {integrity: sha512-qdAxPZ+5bKxVnzkwziqcHZTHRHz2hyfFX6NhwEmm75CBpmaIzXIZR2LRqGd1/8eI3J3cOrXcAYzByhln7T1/EA==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: 4.0.0-rc.118
+      effect: ^4.0.0-rc.118
       redis: '>=5.0.0 <7.0.0'
 
   '@effect/tsgo-darwin-arm64@0.47.0':
@@ -682,7 +679,7 @@ packages:
   '@effect/vitest@4.0.0-rc.118':
     resolution: {integrity: sha512-O0CPgtFVhkB+pyFtjP4up2XF4uVWsPgUmlv4hMjq8ARLOPKYix+uu3AUFIUKRHjzzQpx+JPce6KPhD6Flkrfag==}
     peerDependencies:
-      effect: 4.0.0-rc.118
+      effect: ^4.0.0-rc.118
       vitest: '>=5.0.0 <6.0.0'
 
   '@eslint/core@0.17.0':
