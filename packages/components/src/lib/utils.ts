@@ -18,7 +18,7 @@ export const formatError = pipe(
 		pipe(
 			cause,
 			Cause.prettyErrors,
-			Array.map(error => error.message || error.name),
+			Array.map(error => (String.isNonEmpty(error.message) ? error.message : error.name)),
 			Array.join('\n')
 		)
 	),

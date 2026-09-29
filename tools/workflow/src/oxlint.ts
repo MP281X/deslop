@@ -131,6 +131,8 @@ export const oxlint = defineConfig({
 		'effecttsgo/acquire-release-disposable': 'error',
 		'effecttsgo/all-of-map-to-for-each': 'error',
 		'effecttsgo/async-function': 'error',
+		'effecttsgo/catch-if-tag-to-catch-tag': 'error',
+		'effecttsgo/catch-refail-to-tap-error': 'error',
 		'effecttsgo/duplicate-package': 'error',
 		'effecttsgo/effect-do-notation': 'error',
 		'effecttsgo/effect-fn-iife': 'error',
@@ -142,6 +144,7 @@ export const oxlint = defineConfig({
 		'effecttsgo/effect-map-flatten': 'error',
 		'effecttsgo/effect-map-void': 'error',
 		'effecttsgo/effect-succeed-with-void': 'error',
+		'effecttsgo/flat-map-ignored-param-to-and-then': 'error',
 		'effecttsgo/flat-map-to-map': 'error',
 		'effecttsgo/floating-effect': 'error',
 		'effecttsgo/floating-effect-in-vitest': 'error',
@@ -278,7 +281,7 @@ export const oxlint = defineConfig({
 		// TypeScript expression boundaries
 		'typescript/restrict-plus-operands': 'error',
 		'typescript/restrict-template-expressions': 'error',
-		'typescript/strict-boolean-expressions': 'error',
+		'typescript/strict-boolean-expressions': ['error', {allowNumber: false, allowString: false}],
 		'typescript/strict-void-return': 'error',
 
 		// JavaScript style
@@ -422,6 +425,7 @@ export const oxlint = defineConfig({
 		'no-throw-literal': 'error',
 		'no-unmodified-loop-condition': 'error',
 		'no-unneeded-ternary': 'error',
+		'no-unreachable-loop': 'error',
 		'no-unsafe-finally': 'error',
 		'no-unused-expressions': 'error',
 		'no-useless-assignment': 'error',
@@ -458,6 +462,7 @@ export const oxlint = defineConfig({
 		'react-doctor/no-many-boolean-props': 'error',
 		'react-doctor/no-prop-types': 'error',
 		'react-doctor/no-uncontrolled-input': 'error',
+		'react-doctor/shadcn-icon-button-requires-label': 'error',
 
 		// React Doctor effects and state
 		'react-doctor/effect-listener-cleanup-mismatch': 'error',
@@ -467,6 +472,7 @@ export const oxlint = defineConfig({
 		'react-doctor/no-effect-event-in-deps': 'error',
 		'react-doctor/no-effect-with-fresh-deps': 'error',
 		'react-doctor/no-effect-wrapper-discards-callback-cleanup-return': 'error',
+		'react-doctor/no-impure-state-updater': 'error',
 		'react-doctor/no-mutable-in-deps': 'error',
 		'react-doctor/no-mutating-reducer-state': 'error',
 		'react-doctor/no-self-updating-effect': 'error',
@@ -478,6 +484,7 @@ export const oxlint = defineConfig({
 		'react-doctor/rerender-lazy-state-init': 'error',
 
 		// React Doctor browser and legacy APIs
+		'react-doctor/no-enter-submit-without-ime-composition-guard': 'error',
 		'react-doctor/no-event-handler': 'error',
 		'react-doctor/no-flush-sync': 'error',
 
@@ -486,6 +493,8 @@ export const oxlint = defineConfig({
 		'react-doctor/rendering-conditional-render': 'error',
 
 		// React Doctor visual performance and accessibility
+		'react-doctor/design-no-redundant-padding-axes': 'error',
+		'react-doctor/design-no-redundant-size-axes': 'error',
 		'react-doctor/no-global-css-variable-animation': 'error',
 		'react-doctor/no-gray-on-colored-background': 'error',
 		'react-doctor/no-inline-bounce-easing': 'error',

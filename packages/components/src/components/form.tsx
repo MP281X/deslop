@@ -1,4 +1,4 @@
-import {Array, Number, Option, pipe} from 'effect'
+import {Array, Number, Option, String, pipe} from 'effect'
 
 import * as tanstackForm from '@tanstack/react-form'
 import {useState} from 'react'
@@ -19,17 +19,17 @@ const formContexts = tanstackForm.createFormHookContexts()
 export const useFieldContext = formContexts.useFieldContext
 export const useFormContext = formContexts.useFormContext
 
-function FieldWrapper(props: {
-	name: string
-	isInvalid: boolean
-	errors: {message?: string}[]
-	children: React.ReactNode
-}) {
+function FieldWrapper(props: {children: React.ReactNode}) {
+	const field = useFieldContext<unknown>()
+	const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
+
 	return (
-		<Field data-invalid={props.isInvalid}>
-			<FieldLabel htmlFor={props.name}>{toSentenceCase(props.name)}</FieldLabel>
+		<Field data-invalid={isInvalid}>
+			<FieldLabel htmlFor={field.name}>{toSentenceCase(field.name)}</FieldLabel>
 			{props.children}
-			{props.isInvalid && <FieldError errors={[...props.errors]} />}
+			{isInvalid && (
+				<FieldError errors={Array.map(field.state.meta.errors, error => ({message: formatError(error)}))} />
+			)}
 		</Field>
 	)
 }
@@ -75,11 +75,7 @@ function TextField() {
 	const field = useFieldContext<string>()
 
 	return (
-		<FieldWrapper
-			name={field.name}
-			isInvalid={field.state.meta.isTouched && !field.state.meta.isValid}
-			errors={field.state.meta.errors}
-		>
+		<FieldWrapper>
 			<Input
 				type="text"
 				id={field.name}
@@ -100,11 +96,7 @@ function EmailField() {
 	const field = useFieldContext<string>()
 
 	return (
-		<FieldWrapper
-			name={field.name}
-			isInvalid={field.state.meta.isTouched && !field.state.meta.isValid}
-			errors={field.state.meta.errors}
-		>
+		<FieldWrapper>
 			<Input
 				type="email"
 				id={field.name}
@@ -125,11 +117,7 @@ function PasswordField() {
 	const field = useFieldContext<string>()
 
 	return (
-		<FieldWrapper
-			name={field.name}
-			isInvalid={field.state.meta.isTouched && !field.state.meta.isValid}
-			errors={field.state.meta.errors}
-		>
+		<FieldWrapper>
 			<Input
 				type="password"
 				id={field.name}
@@ -150,11 +138,7 @@ function TextAreaField() {
 	const field = useFieldContext<string>()
 
 	return (
-		<FieldWrapper
-			name={field.name}
-			isInvalid={field.state.meta.isTouched && !field.state.meta.isValid}
-			errors={field.state.meta.errors}
-		>
+		<FieldWrapper>
 			<Textarea
 				id={field.name}
 				name={field.name}
@@ -174,11 +158,7 @@ function NumberField() {
 	const field = useFieldContext<number>()
 
 	return (
-		<FieldWrapper
-			name={field.name}
-			isInvalid={field.state.meta.isTouched && !field.state.meta.isValid}
-			errors={field.state.meta.errors}
-		>
+		<FieldWrapper>
 			<Input
 				type="number"
 				id={field.name}
@@ -199,11 +179,7 @@ function CheckboxField() {
 	const field = useFieldContext<boolean>()
 
 	return (
-		<FieldWrapper
-			name={field.name}
-			isInvalid={field.state.meta.isTouched && !field.state.meta.isValid}
-			errors={field.state.meta.errors}
-		>
+		<FieldWrapper>
 			<div>
 				<Checkbox
 					id={field.name}
@@ -223,11 +199,7 @@ function FileField() {
 	const field = useFieldContext<File>()
 
 	return (
-		<FieldWrapper
-			name={field.name}
-			isInvalid={field.state.meta.isTouched && !field.state.meta.isValid}
-			errors={field.state.meta.errors}
-		>
+		<FieldWrapper>
 			<Input
 				type="file"
 				id={field.name}
@@ -254,18 +226,14 @@ function ComboboxField<TOption extends {id: string}>(props: {
 	)
 
 	return (
-		<FieldWrapper
-			name={field.name}
-			isInvalid={field.state.meta.isTouched && !field.state.meta.isValid}
-			errors={field.state.meta.errors}
-		>
+		<FieldWrapper>
 			<Popover open={open} onOpenChange={setOpen}>
 				<PopoverTrigger
 					render={
 						<Button
 							variant="outline"
 							// oxlint-disable-next-line shadcn/no-restyle -- an empty field shows its name in the placeholder color, and Button has no placeholder variant.
-							className={cn('w-full justify-between', !field.state.value && 'text-muted-foreground')}
+							className={cn('w-full justify-between', String.isEmpty(field.state.value) && 'text-muted-foreground')}
 						/>
 					}
 				>

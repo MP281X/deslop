@@ -12,8 +12,8 @@ allowBuilds:
 catalogMode: prefer
 
 catalog:
-  vite-plus: 0.3.2
-  vite: npm:@voidzero-dev/vite-plus-core@0.3.2
+  vite-plus: 0.3.3
+  vite: npm:@voidzero-dev/vite-plus-core@0.3.3
 overrides:
   '@effect/opentelemetry': 4.0.0-rc.112
   '@effect/platform-node-shared': 4.0.0-rc.112
@@ -23,9 +23,11 @@ peerDependencyRules:
   allowAny: [vite, typescript]
   allowedVersions: {vite: '*', typescript: '*'}
 minimumReleaseAgeExclude:
-  - '@effect/atom-react@4.0.0-rc.108'
-  - '@effect/opentelemetry@4.0.0-rc.108'
-  - '@effect/platform-node-shared@4.0.0-rc.108'
-  - '@effect/platform-node@4.0.0-rc.108'
-  - '@effect/vitest@4.0.0-rc.108'
-  - effect@4.0.0-rc.108
+  - '@effect/tsgo@0.47.0'
+  - '@effect/tsgo-darwin-arm64@0.47.0'
+  - '@effect/tsgo-darwin-x64@0.47.0'
+  - '@effect/tsgo-linux-arm64@0.47.0'
+  - '@effect/tsgo-linux-arm@0.47.0'
+  - '@effect/tsgo-linux-x64@0.47.0'
+  - '@effect/tsgo-win32-arm64@0.47.0'
+  - '@effect/tsgo-win32-x64@0.47.0'

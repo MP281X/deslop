@@ -18,7 +18,7 @@ Everything you produce — code, names, files, folders, tests, and the diff a re
 - Layers depend inward: domain and service code never import HTTP, RPC, or other transport types.
 - Offer building blocks the caller composes like any Effect module — services, Layers, and functions provided and combined in the open — never a wrapper that bundles them behind one call such as `serve(app)`.
 - Before hand-writing a traversal, accumulator, check, or config read, search the Effect repository at `~/.deslop/repos/effect` (Graph, Record, String, Option, Struct, Config.all, Match, Boolean, HttpClient, Path, ChildProcess, Types.Equals) and call the helper that exists. Before adding any service, run `rg --files ~/.deslop/repos/effect/packages/*/src` for its name, and when Effect ships it, use it or push back with its path. Clone a missing library source into `~/.deslop/repos`.
-- Never destructure a parameter, callback argument, or loop variable (`useState` and a component's `ref` prop excepted), and never re-list a value's fields: pass it whole or spread it.
+- Never destructure a parameter, callback argument, or loop variable (`useState` and a component's `ref` prop excepted), and never re-list a value's fields: pass it whole or spread it, unless the target must not see the rest.
 - No future-proofing: no option, parameter, layer, abstraction, export, file, script, or check for a need that does not exist yet.
 - Someone scanning the file tree finds everything at first glance: files and folders are simple, well structured, and consistent, with role folders whose files follow one naming scheme, the way a file-based router does, and explicit kebab-case names that say what each file holds. A file exists only for a distinct role: prefer one bigger file to several nearly empty ones, and put anything that can live in an existing file there; no barrel file, and no file that adds no value.
 - A package exposes explicit `package.json` `exports` subpaths and imports its own files through explicit `imports` aliases, which work in Node and Bun and keep dead code traceable. Tests sit beside their subject as `<name>.test.ts`.
@@ -379,6 +379,8 @@ const pages =
 		catch: cause => NotionError.make({cause, message: 'Cannot list pages'}),
 		try: () => client.pages.list()
 	}) // an SDK failing with unknown is mapped at the adapter, so no error channel carries unknown or any
+Effect.mapError(cause => WorkspaceError.make({cause: Redacted.make(cause), operation: 'exec input'})) // a cause that may hold secrets stays redacted
+Effect.tapError(() => cleanup) // work on failure that keeps the original error
 // bad — "malformed output fails instead of becoming empty data"
 const content =
 	yield *
@@ -388,6 +390,7 @@ const content =
 	)
 const config = yield * pipe(loadConfig, Effect.retry(Schedule.recurs(3)))
 Effect.mapError(failure => new LedgerError({reason: failure.message})) // cause dropped, new
+Effect.catch(error => pipe(cleanup, Effect.andThen(Effect.fail(error)))) // fails again with the error it caught
 load: (path: string) => Effect.Effect<void, PlatformError | Schema.SchemaError> // library failures leak from the service
 ```
 
@@ -435,6 +438,21 @@ Array.reduce(input.trails, HashMap.empty<string, Cell>(), (previousByVisitor, tr
 // bad — "as functional and immutable as possible"
 let total = 0
 for (const value of values) total = total + value
+```
+
+```ts
+// good — the collection operation says what it selects
+pipe(teamId, String.split(','), Array.map(String.trim), Array.findFirst(String.isNonEmpty))
+pipe(path, String.split('/'), Array.findLast(String.isNonEmpty))
+Array.filterMap(items, item => (supports(item) ? Result.succeed(item.value) : Result.failVoid))
+yield * Effect.sleep(Duration.millis(delay))
+// bad — a list built to take one element, a filter then a map, a Promise timer
+const [first] = teamId
+	.split(',')
+	.map(value => value.trim())
+	.filter(value => value.length > 0)
+items.filter(item => supports(item)).map(item => item.value)
+Effect.promise(() => new Promise(resolve => setTimeout(resolve, delay)))
 ```
 
 ## Shape
@@ -499,6 +517,20 @@ src/rpcs/contracts.ts, src/rpcs/handlers.ts, src/routes/(home)/index.tsx
 src/rules/no-typeof.ts, src/rules/no-constant-function.ts, src/rules/rules.test.ts
 // bad — a barrel, near-empty files, and names that say nothing
 src/index.ts, src/types.ts (one alias), src/constants.ts (one value), src/helpers/misc.ts
+```
+
+```ts
+// good — a projection only where the target must not see the rest; linked state moves in one pure updater
+upload({scope: input.scope, type: input.type}) // input also holds the bearer token
+setState(current => {
+	const draft = {...current.draft, files}
+	return {draft, owner: ownerAfter(draft)}
+})
+// bad — an updater that calls another setter
+setDraft(current => {
+	setOwner(ownerAfter(current))
+	return {...current, files}
+})
 ```
 
 ## Quality
