@@ -1,6 +1,6 @@
 import {Layer, pipe} from 'effect'
 
-import {RpcServer} from 'effect/unstable/rpc'
+import {RpcServer} from 'effect/rpc'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'

@@ -5,7 +5,7 @@ import {Array, Effect, Function, HashMap, Number, Option, Predicate, Random, Str
 
 import {useHotkey} from '@tanstack/react-hotkeys'
 import {createFileRoute} from '@tanstack/react-router'
-import {Atom} from 'effect/unstable/reactivity'
+import {Atom} from 'effect/reactivity'
 import {Suspense, useEffect, useRef, useState, useSyncExternalStore} from 'react'
 
 import {portfolioPalette} from '#lib/portfolio.ts'

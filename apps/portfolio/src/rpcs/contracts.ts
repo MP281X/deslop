@@ -1,6 +1,6 @@
 import {Effect, Schema, Struct, pipe} from 'effect'
 
-import {Rpc, RpcGroup} from 'effect/unstable/rpc'
+import {Rpc, RpcGroup} from 'effect/rpc'
 
 export type PortfolioVisitor = typeof PortfolioVisitor.Type
 export const PortfolioVisitor = Schema.Struct({

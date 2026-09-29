@@ -1,6 +1,6 @@
 import {Array, Chunk, Effect, Option, PubSub, Ref, Semaphore, Stream, String, pipe} from 'effect'
 
-import {Prompt, Response} from 'effect/unstable/ai'
+import {Prompt, Response} from 'effect/ai'
 
 import type {Ai} from '#service'
 

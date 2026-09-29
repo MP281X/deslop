@@ -314,11 +314,11 @@ export const oxlint = defineConfig({
 				patterns: [
 					{message: 'Use public package exports.', regex: '^@[^/]+/[^/]+/(?:src|lib)(?:/|$)'},
 					{message: 'Use glob from the FileSystem service.', regex: '^glob(?:/|$)'},
-					{message: 'Use effect/unstable/cli.', regex: '^(?:commander|yargs)(?:/|$)'},
+					{message: 'Use effect/cli.', regex: '^(?:commander|yargs)(?:/|$)'},
 					{message: 'Use randomUUIDv4 from the Crypto service.', regex: '^uuid(?:/|$)'},
 					{message: 'Use HttpClient.', regex: '^(?:axios|node-fetch)(?:/|$)'},
 					{message: 'Use Config.', regex: '^dotenv(?:/|$)'},
-					{message: 'Use ChildProcess from effect/unstable/process.', regex: '^execa(?:/|$)'},
+					{message: 'Use ChildProcess from effect/process.', regex: '^execa(?:/|$)'},
 					{message: 'Use the concurrency option of Effect.all or Effect.forEach.', regex: '^p-limit(?:/|$)'}
 				]
 			}

@@ -620,8 +620,8 @@ const start = yield * Clock.currentTimeMillis
 yield * Effect.logInfo('Portfolio client connected')
 Random.Random.defaultValue().nextDoubleUnsafe()
 Schedule.spaced(Duration.millis(55))
-pipe(Config.string('HOST'), Config.withDefault('0.0.0.0'))
-Config.redacted('SMTP_PASS')
+pipe(Config.String('HOST'), Config.withDefault('0.0.0.0'))
+Config.Redacted('SMTP_PASS')
 ```
 
 ```ts

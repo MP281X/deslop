@@ -3,7 +3,7 @@ import {assert, describe, it} from '@effect/vitest'
 
 import {Array, Effect, FileSystem, Path, Record, Schema, Stream, String, pipe} from 'effect'
 
-import {ChildProcess, ChildProcessSpawner} from 'effect/unstable/process'
+import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
 import plugin from '@deslop/workflow'
 
@@ -303,7 +303,6 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const isUser = Schema.is(User)(input)',
 									'Schema.asserts(User, input)',
 									'const Formatter = Schema.toFormatter(User)',
-									'const Arbitrary = Schema.toArbitrary(User)',
 									'function transform(value: string) { return value.length }',
 									'function swap(left: string, right: string) { return combine(right, left) }',
 									'function withDefault(value = "ready") { return transform(value) }',
@@ -344,7 +343,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const hasWindow = typeof window !== "undefined"',
 									'function unavailable() { return Effect.die("unused") }',
 									'const stubs = {load: unavailable, save: unavailable}',
-									'export {Annotated, Arbitrary, CallStep, hasWindow, stubs, CodeStep, Decoded, DefaultInput, Encoded, Formatter, Ledger, LinearIssue, Normalized, Step, circle, circles, constants, counts, decoded, decodedMany, encoded, ensured, flags, identify, isCall, isUser, labels, layers, lengths, limits, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, annotatedName, label, nickname, noUser, payload, readSnapshot, singleName, snapshots, swap, test, thunks, transform, tuple, version, versionPatterns, withDefault}'
+									'export {Annotated, CallStep, hasWindow, stubs, CodeStep, Decoded, DefaultInput, Encoded, Formatter, Ledger, LinearIssue, Normalized, Step, circle, circles, constants, counts, decoded, decodedMany, encoded, ensured, flags, identify, isCall, isUser, labels, layers, lengths, limits, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, annotatedName, label, nickname, noUser, payload, readSnapshot, singleName, snapshots, swap, test, thunks, transform, tuple, version, versionPatterns, withDefault}'
 								],
 								Array.join('\n')
 							)

@@ -5,7 +5,7 @@ import {Array, Effect, Layer, pipe} from 'effect'
 
 import {createModels} from '@earendil-works/pi-ai'
 import {fauxAssistantMessage, fauxProvider} from '@earendil-works/pi-ai/providers/faux'
-import {Prompt} from 'effect/unstable/ai'
+import {Prompt} from 'effect/ai'
 
 import {PiToolkit} from '#schema'
 import {Ai} from '#service'

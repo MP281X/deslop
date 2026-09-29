@@ -4,7 +4,7 @@ import {useAtomSuspense} from '@effect/atom-react'
 import {Cause, Effect, Hash, String} from 'effect'
 
 import DOMPurify from 'dompurify'
-import {AsyncResult, Atom} from 'effect/unstable/reactivity'
+import {AsyncResult, Atom} from 'effect/reactivity'
 import mermaid from 'mermaid'
 
 import {cn} from '#lib/utils.ts'

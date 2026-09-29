@@ -23,7 +23,7 @@
 		"@tanstack/react-router": "latest",
 		"@tanstack/router-plugin": "latest",
 		"@vitejs/plugin-react": "latest",
-		"oxc-transform-react": "latest",
+		"oxc-transform-react": "^0.145.0",
 		"react": "^19",
 		"react-dom": "^19"
 	}

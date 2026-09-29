@@ -2,7 +2,7 @@ import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
 import {Config, Console, Effect, FileSystem, Path, Record, pipe} from 'effect'
 
-import {Command} from 'effect/unstable/cli'
+import {Command} from 'effect/cli'
 
 import packageJson from '#package' with {type: 'json'}
 
@@ -12,9 +12,9 @@ const cli = Command.make(
 	Effect.fnUntraced(function* () {
 		const fs = yield* FileSystem.FileSystem
 		const path = yield* Path.Path
-		const home = yield* Config.string('HOME')
-		const codexHome = yield* pipe(Config.string('CODEX_HOME'), Config.withDefault(path.join(home, '.codex')))
-		const claudeHome = yield* pipe(Config.string('CLAUDE_CONFIG_DIR'), Config.withDefault(path.join(home, '.claude')))
+		const home = yield* Config.String('HOME')
+		const codexHome = yield* pipe(Config.String('CODEX_HOME'), Config.withDefault(path.join(home, '.codex')))
+		const claudeHome = yield* pipe(Config.String('CLAUDE_CONFIG_DIR'), Config.withDefault(path.join(home, '.claude')))
 		const agents = path.join(import.meta.dirname, 'agents')
 
 		for (const target of Record.toEntries({claude: claudeHome, codex: codexHome})) {

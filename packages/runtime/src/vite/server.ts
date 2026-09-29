@@ -24,7 +24,8 @@ import {
 	pipe
 } from 'effect'
 
-import {HttpRouter, HttpServer} from 'effect/unstable/http'
+import {HttpRouter, HttpServer} from 'effect/http'
+import {NetAddress} from 'effect/net'
 import type {Connect, EnvironmentModuleNode, Plugin} from 'vite'
 import {isRunnableDevEnvironment} from 'vite'
 
@@ -37,7 +38,7 @@ export function serverPlugin(): Plugin {
 	const active = MutableRef.make(
 		Option.none<{
 			request: (request: IncomingMessage, response: ServerResponse) => void
-			scope: Scope.Scope
+			scope: Scope.Closeable
 			upgrade: (request: IncomingMessage, socket: Duplex, head: Buffer) => void
 		}>()
 	)
@@ -127,7 +128,7 @@ export function serverPlugin(): Plugin {
 									NodeHttpServer.layerHttpServices,
 									Layer.succeed(HttpServer.HttpServer)(
 										HttpServer.make({
-											address: {_tag: 'TcpAddress', hostname: '0.0.0.0', port: address.port},
+											address: NetAddress.inetAddressUnsafe(NetAddress.ipv4Unspecified, address.port),
 											serve: () => Effect.void
 										})
 									)

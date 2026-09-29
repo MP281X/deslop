@@ -2,7 +2,7 @@ import {NodeRuntime} from '@effect/platform-node'
 
 import {Layer, pipe} from 'effect'
 
-import {HttpRouter} from 'effect/unstable/http'
+import {HttpRouter} from 'effect/http'
 
 import HttpApplication from './main.server.ts'
 

@@ -3,7 +3,7 @@ import type {Effect, Stream, SubscriptionRef} from 'effect'
 
 import type {AgentOptions} from '@earendil-works/pi-agent-core'
 import type {Models} from '@earendil-works/pi-ai'
-import type {Prompt, Response, Toolkit} from 'effect/unstable/ai'
+import type {Prompt, Response, Toolkit} from 'effect/ai'
 
 import {generateTextPi, makePi} from './internal/pi.ts'
 import type {PiToolkit, AiAgentDefinition, AiError, AiModel, AiStatus} from './schema.ts'

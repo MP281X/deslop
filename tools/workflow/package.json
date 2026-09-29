@@ -40,9 +40,9 @@
 		"oxlint-plugin-react-doctor": "^0.9.14"
 	},
 	"devDependencies": {
-		"@oxlint/plugins": "1.83.0",
-		"oxlint": "1.83.0",
-		"oxlint-tsgolint": "7.0.2001"
+		"@oxlint/plugins": "1.85.0",
+		"oxlint": "1.85.0",
+		"oxlint-tsgolint": "7.0.2003"
 	},
 	"peerDependencies": {
 		"@effect/tsgo": ">=0.46",

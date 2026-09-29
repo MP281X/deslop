@@ -10,7 +10,7 @@ import {serverPlugin} from './server.ts'
 export function make() {
 	return Effect.runPromiseWith(Context.empty())(
 		Effect.map(
-			pipe(Config.string('HOST'), Config.withDefault('0.0.0.0')),
+			pipe(Config.String('HOST'), Config.withDefault('0.0.0.0')),
 			host =>
 				({
 					build: {
