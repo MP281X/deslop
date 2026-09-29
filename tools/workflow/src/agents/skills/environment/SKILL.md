@@ -15,10 +15,10 @@ Facts an agent cannot read from the repository itself; commands a package.json a
 - Proof artifacts are captured in one agent-browser `--session`: `record start <path.mp4> [url]` … `record stop` records H.264 video, which plays everywhere including iOS Safari (a `.webm` does not play on the phone), and `screenshot <path.png>` takes a screenshot. Sign in once per preview and `state save <scratch>/auth.json`; later sessions start with `--state <that path>` and skip the login.
 - `gh pr create` or `gh pr edit` with `--attach '<file>#<alt text>'` uploads an artifact into the PR body; a video takes a bare `--attach '<file>'`, since alt text on a video fails the whole edit.
 - When a thread's work is done, it stops the process groups it started, except the delivered preview the user tests, and removes any extra git worktree it made; its scratch goes with its worktree. Kept: the shared clones in `~/.deslop/repos` and evidence a handoff cites under `~/.deslop/measure`.
+- Stop a process by its group, `kill -- -<pgid>`, and only groups this thread started; take another free port instead of stopping another process. The one exception is a stale preview: a listener on 4000–4009 whose `/proc/<pid>/cwd` ends in `(deleted)` belongs to a removed worktree and may be stopped to free its port.
 - Dedicated tools first: `rg` to search text, `jq` to process JSON, `node` to run JavaScript.
 - Other global tools: agent-browser (with Chrome), acli, gh (github.com, MP281X), glab (default host git.datapizza.tech), python and pip, sqlite3, bc, xxd.
 - `vp` and `vpx` for every package-manager and package-binary command, never npm, npx, pnpm, yarn, or bunx; `bun` runs only as the runtime the preview steps name.
-- Stop only process groups this thread started, with `kill -- -<pgid>`; take another free port instead of stopping another process. The one exception is a stale preview: a listener on 4000–4009 whose `/proc/<pid>/cwd` ends in `(deleted)` belongs to a removed worktree and may be stopped to free its port.
 - Datapizza VPN: openvpn3 config `datapizza`, needed only for git.datapizza.tech; one device at a time. Connect with `openvpn3 session-start --config datapizza --background` and show the printed sign-in URL as a clickable Markdown link in a normal message, outside the question tool; when `openvpn3 sessions-list` shows an expired link or failed authentication, restart at once with `openvpn3 session-manage --config datapizza --restart`, without diagnosing.
 - `sudo` is passwordless. ufw allows 22, 80, and 443 publicly, and 4000–4009 only from the `deslop` Docker network for traefik's preview routes; [maintenance](references/maintain.md) keeps that rule on the network's current subnet.
 - Wait for a pipeline with one blocking command: `gh run watch <id> --exit-status --compact` on GitHub, with the id from `gh run list --commit <sha>` once the run appears (`gh pr checks --watch` right after a push reports no checks), `glab ci status --wait --compact` on GitLab; then read only the failed jobs' logs.
@@ -33,18 +33,8 @@ Facts an agent cannot read from the repository itself; commands a package.json a
 - shadcn UI components: `packages/components`.
 - CI: GitHub Actions job `build-and-deploy`.
 - Production services are `tools/compose.yaml`, compose project `deslop`, with certificates in `~/.deslop/deploy/acme`: traefik, portfolio, jaeger, collector. Jaeger's UI and API are only at http://127.0.0.1:16686; OTLP ingest is public at https://otel.mp281x.xyz and local at 127.0.0.1:4318. [references/setup.md](references/setup.md) bootstraps this host; [references/maintain.md](references/maintain.md) updates, redeploys, and cleans it.
-- Full local check: `vp run check`, then `vp run test`; `vp fmt <path>...` formats the touched files first.
-- Each lint call costs a flat 5–6 s for 1 file or a whole package, with no cache between calls, so format and lint every changed file in one call: `vp check --fix <path>...`.
-
-| Command                            | Does                                          |
-| ---------------------------------- | --------------------------------------------- |
-| `vp install`                       | install dependencies                          |
-| `vp run check`                     | vp check and fallow dead-code                 |
-| `vp run test`                      | tests                                         |
-| `vp run fix`                       | format and autofix                            |
-| `vp fmt <path>...`                 | format the given files                        |
-| `vp lint --format=agent <path>...` | lint the given files, one line per diagnostic |
-| `vp run build`                     | build                                         |
+- Full local check: `vp run check`, then `vp run test`.
+- Each lint call costs a flat 5–6 s for 1 file or a whole package, with no cache between calls, so format and lint every changed file in one call: `vp check --fix <path>...`; `vp lint --format=agent <path>...` prints one line per diagnostic.
 
 ## dual
 
@@ -58,17 +48,7 @@ Facts an agent cannot read from the repository itself; commands a package.json a
 - `effecttsgo(duplicate-package)` comes from bun.lock pinning effect 4.0.0-rc.115 for `@dual/workspace-aws` beside rc.112; no edit to the reported file clears it, so leave it.
 - Full local check: `vp run check` (turbo-cached, about 2 s on an unchanged tree, 141 s cold), then `vpx turbo run test --affected`; turbo.json sets `cache: false` on `test`, so every run costs its full time. Run a full suite under `flock ~/.deslop/dual-test.lock` so parallel threads do not overload the host; a timeout while the load average is above 8 is load, so rerun that file alone.
 
-| Command                               | Does                                                                                                          |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `vp run init`                         | env files, effect-tsgo patch, opensandbox build, docker compose services, migrations                          |
-| `vp run dev`                          | app, playground, and worker through turbo; `dev:app`, `dev:backend`, `dev:server`, and `dev:worker` run parts |
-| `vp run db:reset`                     | recreate the services and database, migrate, and seed the local login                                         |
-| `vp run check`                        | oxfmt check and each package's oxlint                                                                         |
-| `vp run fix`                          | format and autofix                                                                                            |
-| `vpx oxfmt <path>...`                 | format the given files                                                                                        |
-| `vpx oxlint --format=agent <path>...` | from the package directory, lint the given files, one line per diagnostic                                     |
-| `vp run test`                         | tests                                                                                                         |
-| `vp run build`                        | build                                                                                                         |
+- Format with `vpx oxfmt <path>...`; lint with `vpx oxlint --format=agent <path>...` from the package directory, one line per diagnostic.
 
 ## Preview (how the user tests)
 

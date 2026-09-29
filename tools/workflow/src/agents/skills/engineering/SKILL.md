@@ -1,9 +1,9 @@
 ---
 name: engineering
-description: 'Use for product-code architecture, implementation, coding style, testing, or review.'
+description: 'Engineering rules for product code. Use before designing or editing code, writing tests, or reviewing a diff.'
 ---
 
-Apply the repository's CODING_STANDARDS.md alongside these rules. Both take precedence over a repository's other coding standards. Lint is a fallback that applies autofixes: write every rule below correctly the first time, whether or not a linter checks it. The deslop codebase is the minimum bar for structure and consistency in every repository.
+Apply the repository's CODING_STANDARDS.md alongside these rules; where the two conflict or leave a case ambiguous, this skill wins, and both take precedence over a repository's other coding standards. Lint is a fallback that applies autofixes: write every rule below correctly the first time, whether or not a linter checks it. The deslop codebase is the minimum bar for structure and consistency in every repository.
 
 ## Simplicity
 
@@ -14,19 +14,21 @@ Every line not needed now slows the next change. Build the smallest thing that d
 - Doing less than asked beats doing more: the core done well beats a complete 100% with extras; name what you cut. A refactor or cleanup request asks for depth instead: every section applies to every line of the owned files, not only the changed lines.
 - Extend the nearest existing implementation of the same kind, mirroring its permissions, errors, data refresh, and tests, and reuse the feature's helper for a job before writing one.
 - Happy path only: let failures flow through Effect's error channel, with no catch, retry, fallback, or defensive check unless the request or an existing contract requires it.
-- Validate and transform once, at the boundary, with Effect Schema; inside, data is trusted: carry narrowed values forward and never re-check what the schema, the declared type, an earlier filter, or tsc guarantees.
+- Validate and transform once, at the boundary, with Effect Schema; inside, data is trusted: carry narrowed values forward and never re-check what the schema, the declared type, an earlier filter, tsc, or every caller's context guarantees.
 - Layers depend inward: domain and service code never import HTTP, RPC, or other transport types.
 - Before hand-writing a traversal, accumulator, check, or config read, search the Effect repository at `~/.deslop/repos/effect` (Graph, Record, String, Option, Struct, Config.all, Match, Boolean, HttpClient, Path, ChildProcess, Types.Equals) and call the helper that exists. Before adding any service, run `rg --files ~/.deslop/repos/effect/packages/*/src` for its name, and when Effect ships it, use it or push back with its path. Clone a missing library source into `~/.deslop/repos`.
 - Never destructure a parameter, callback argument, or loop variable (`useState` excepted), and never re-list a value's fields: pass it whole or spread it.
 - No future-proofing: no option, parameter, layer, abstraction, export, file, script, or check for a need that does not exist yet.
-- Delete dead code: every superseded or unused file, export, type, doc, test, and dependency goes in the same change; keep the type half of a schema pair and leave no compatibility path or leftover.
+- One way to do each thing: a change replaces what it supersedes instead of layering beside it, so no field, method, option, export, or code path duplicates another or is a subset or superset of it.
+- No compatibility, backward or forward: change a name or shape and update every caller in the same change, with no alias, fallback, deprecated path, or flag. Only a contract the repository documents or the user names survives, such as production data from the previous release.
+- Delete dead code: every superseded or unused file, export, type, doc, test, and dependency goes in the same change; keep the type half of a schema pair and leave no leftover.
 - Replace every third-party dependency you can with an Effect module, or with a Node built-in reached through Effect's platform packages.
 - Change only the state an action changes: refresh, invalidate, or rerender nothing else.
 - Send and store canonical data only; derive the rest where it is used, and surface each state once, where the user acts on it.
 - Touch only what the request needs; an unrelated improvement is a proposal for the user.
 - Behave correctly instead of building machinery, such as hooks, guards, or generators, to enforce behavior.
-- A refactor or mechanical pass keeps logic and behavior, except two accepted differences: one that matters at no usage point and makes the code simpler, and one a rule in this skill causes, such as an error keeping its cause, sorted keys, or Effect-native formatting, unless a usage point parses it; human-facing diagnostics, such as printed error text, are not a contract. Check every usage point, then record and report each accepted difference with the change. Any other behavior change is the user's decision, except a reachable bug's fix.
-- Fix a reachable bug, one real input from a usage point triggers: check every consumer of the changed output and report it as a fixed bug. Handling for input no caller produces is deleted instead of fixed; anything that looks intentional or that other code relies on is kept and reported as possibly intentional.
+- A refactor or mechanical pass keeps behavior at every usage point. Two differences are accepted and reported with the change: one no usage point observes that makes the code simpler, and one a rule here causes, such as an error keeping its cause, sorted keys, or Effect-native formatting, unless a usage point parses it; printed diagnostics are not a contract. Any other behavior change is the user's decision, except a reachable bug's fix.
+- A reachable bug, one a real input from a usage point triggers, is fixed and reported, with every consumer of the changed output checked. Handling for input no caller produces is deleted instead; anything that looks intentional or that other code relies on is kept and reported as possibly intentional.
 - Improve performance in the touched code where you know how; measure beyond noise on a realistic input only when a change claims speed or keeps a slower-looking form.
 - A fix never weakens type safety to make a symptom go away, a performance or type-check-speed change included: no widened or erased type, cast, dropped generic, or loosened exported type.
 - Implement the definition the domain uses, such as a cycle for recursion, never the nearest syntactic proxy.
@@ -106,6 +108,19 @@ export {PetstorePlugin, PetstorePluginBase} from './generated/Plugin.ts'
 // bad — the generated package exports every schema, action, and client internal; consumers import two names
 export * from './generated/Client.ts'
 export * from './generated/Plugin.ts'
+```
+
+```ts
+// good — one way: no branch is the detached state; the SubscriptionRef gives the current value and the changes
+export type GitStatus = typeof GitStatus.Type
+export const GitStatus = Schema.Struct({branch: Schema.optionalKey(Schema.NonEmptyString)})
+readonly status: SubscriptionRef.SubscriptionRef<GitStatus>
+// bad — "i don't want to have multiple ways to do the same thing"
+export const GitStatus = Schema.Struct({branch: Schema.optionalKey(Schema.String), detached: Schema.Boolean}) // detached is a missing branch
+readonly current: Effect.Effect<GitStatus>
+readonly changes: Stream.Stream<GitStatus> // two ways to read one state
+// bad — "don't consider backward and forward compatibility since they don't matter"
+const name = input.displayName ?? input.name // the old field kept readable
 ```
 
 ```text
@@ -503,17 +518,22 @@ import {createServer} from 'node:http'
 
 ## Tests
 
-- Keep only tests that check logic a real regression would break, none breaking on an unrelated change; delete every test of wiring, types, library behavior, another tool's output, wording, a second input for covered behavior, or input no caller produces.
-- Test through the package's public seam: its exported layer, service, or function.
-- Touched logic no test covers gets a case, added before a refactor rewrites it.
+A few tests, each guarding logic worth guarding, beat coverage: every test is code to read and maintain, and coverage is never a goal.
+
+- Test logic the repository owns, its branching, computation, parsing, and state transitions, where a plausible regression breaks it and nothing else would catch it.
+- Test at the seam, the exported layer, service, or function of a package or an app's service, as a black box: rewriting the implementation leaves every test green. The browser proves UI components; source tests leave them out.
+- Leave untested what something else guarantees or what is not behavior: types and shapes tsc checks, rules a schema declares, the Effect runtime, a dependency, the platform or native JS, another tool's output, wiring that only shows a call reaching a double, constants and pinned counts, wording, removed or previous behavior, input no caller produces, and a second input for covered behavior. Delete such cases in every test file the change edits.
+- Expected values come from an independent source, a literal the brief or a worked example gives, never a recomputation of what the code does.
+- Touched logic worth a test that none covers gets a case, added before a refactor rewrites it.
 - One input per behavior: prove a change with one input in the existing case that covers it; add a case only for unexercised behavior.
-- A bug fix first adds the case that fails without it, to the existing test covering the fixed code when one exists.
+- Settle a worry about a case with a throwaway test or prototype run and delete it once answered; commit only tests that meet this bar.
+- Reproduce a bug before fixing it; its failing case stays only when the fixed logic meets this section's bar, in the existing test covering the fixed code when there is one.
 - Fixtures are the inputs the request names, nothing else.
 - Assert which input is flagged or returned, or an error's tag, code, or path; never wording or another tool's output.
 - Doubles are Layers or a dependency the public function takes: no vi, global stub, or module mock, even at the network boundary.
 - Seed inputs that make the logic decide; grow a test helper only when every case needs it.
 - Tests assert with `assert` from `@effect/vitest`, never `expect`, as Effect's own tests do.
-- A test never expects wrong behavior and never works around another rule; fix the conflict instead. An expectation changes only together with a recorded behavior change, never to make a check pass, and a changed assertion keeps every value the old one checked, except wording.
+- A test never expects wrong behavior and never works around another rule; fix the conflict instead. An expectation changes only together with a recorded behavior change, never to make a check pass, and a changed assertion keeps every value the old one checked that still meets this section's bar, except wording.
 
 ```ts
 // good — one input in the existing case, the request's fixture, the flagged input or error tag asserted, doubles passed in
@@ -541,6 +561,12 @@ it.layer(Layer.provideMerge(Ledger.layer, NodeServices.layer))(test => {
 // bad — "this test is useless, it doesn't test that the agent is working"
 it.effect('rejects an empty tag', () => run(ledger.add({tag: ''}))) // Schema.isNonEmpty already does
 it.effect('loads', () => pipe(program, Effect.provide(Ledger.layer))) // the layer, per test
+// bad — guaranteed elsewhere: a constant, a pinned count, a schema's own rule, a shape tsc checks, a removed field
+assert.strictEqual(attioProvider.identifier, 'attio')
+assert.strictEqual(Array.flatMap(attioProvider.groups, group => group.actions).length, 75)
+assert.throws(() => Schema.decodeUnknownSync(WorkflowDraftVersion)(0)) // the schema declares positive integers
+assert.property(HomeSummaryResponse.fields, 'alerts')
+assert.notProperty(WorkflowRunDetailResponse.fields, 'nodeAttempts')
 ```
 
 ## Lint-enforced forms

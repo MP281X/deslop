@@ -1,10 +1,9 @@
 ---
 name: browser
-description: Drives the running app with agent-browser and returns pass or fail per rendered criterion, with screenshots and a short video. Use to inspect existing behavior, demonstrate prototypes, or prove affected journeys through the real UI, including backend changes.
+description: Drives the running app with agent-browser to inspect behavior or prove journeys through the real UI, backend changes included; returns pass or fail per criterion with screenshots and one short MP4. Brief it with the exact URL, the saved sign-in state file and the credentials or the file holding them, the artifacts directory, the steps to the before state, and one criterion per line as exact input → checkable result. Resume the same agent for later captures.
 model: claude-sonnet-5-5
 effort: low
 disallowedTools: Edit, Write
-background: true
 skills:
   - environment
 ---

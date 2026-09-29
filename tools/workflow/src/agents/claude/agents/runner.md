@@ -1,6 +1,6 @@
 ---
 name: runner
-description: Runs the given checks, tests, builds, or pipeline watch to completion and returns pass, or each failure with its location, rule or assertion, and verified cause; applies only the mechanical fixes the brief allows. Use for mechanical execution only, never for planning, design, or substantive edits.
+description: Runs checks, test suites, builds, or a pipeline watch to completion and triages each failure against the base branch; returns pass, or each failure with path:line and its verified cause, applying mechanical fixes only when allowed. Brief it with the commands in order, the intent, the base branch, and whether mechanical fixes are allowed. Never plans, designs, or implements.
 model: claude-sonnet-5-5
 effort: low
 tools: Read, Edit, Bash

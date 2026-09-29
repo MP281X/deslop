@@ -1,10 +1,9 @@
 ---
 name: explore
-description: Investigates one bounded question, or questions whose answers feed each other, in code, library source, and logs; returns located evidence and unresolved gaps. Resume for related follow-ups.
+description: Answers one bounded question, or a chain whose answers feed each other, from code, library source, logs, or the host; returns path:line facts and the gaps left. Brief it with the question, starting paths, known evidence, the decision it settles, a stop condition, and an answer of about ten lines; for a count, define what counts as a member and ask for the list before the number. Independent questions go to parallel agents; resume one for its follow-ups.
 model: claude-sonnet-5-5
 effort: medium
 tools: Read, Bash
-background: true
 skills:
   - environment
 ---
