@@ -3,7 +3,7 @@ import {Array, Option, pipe} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
-import {importedMember, memberName} from './shared.ts'
+import {importedMember, memberName} from '#rules/shared.ts'
 
 const shipped = [
 	{base: 'String', check: 'isMinLength', only: 1, schema: 'NonEmptyString'},
@@ -76,7 +76,10 @@ export const noReinventedSchema = defineRule({
 	create: context => ({
 		CallExpression: node => {
 			Option.map(reinventedSchema({context, node}), schema => {
-				context.report({message: `Use Schema.${schema}; Effect ships this refinement.`, node})
+				context.report({
+					message: `Replace this base and its matching refinement with Schema.${schema}, keeping every other check.`,
+					node
+				})
 			})
 		}
 	}),

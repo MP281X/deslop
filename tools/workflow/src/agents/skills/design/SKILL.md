@@ -66,5 +66,5 @@ Drive each prototype's deciding interaction, inspect screenshots and a short MP4
 
 ## Matching a reference UI
 
-- Read the reference's component source in its clone under `~/.deslop/repos` and take numeric targets (padding, gap, icon box, popup size) with its `path:line`; never guess from screenshots.
+- Take numeric targets (padding, gap, icon box, popup size) from the reference's component source in its clone under `~/.deslop/repos`, citing `path:line`; when only an image or a page exists, measure it in the rendered page and label the numbers as measured.
 - Finish a design pass with light and dark screenshots next to the reference.

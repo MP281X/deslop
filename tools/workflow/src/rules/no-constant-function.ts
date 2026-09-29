@@ -3,13 +3,17 @@ import {Array, MutableRef, Option, Predicate, pipe} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree, Reference, Scope, Variable} from '@oxlint/plugins'
 
-import {bindingName, singleUseThunk, variableFromScope} from './shared.ts'
+import {bindingName, returnedExpression, singleUseThunk, variableFromScope} from '#rules/shared.ts'
 
-function hasSingleReturnExpression(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
-	if (node.body === null) return false
-	if (node.body.type !== 'BlockStatement') return true
-	const statement = node.body.body[0]
-	return node.body.body.length === 1 && statement?.type === 'ReturnStatement' && statement.argument !== null
+function returnsConstant(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+	const returned = returnedExpression(node)
+	return (
+		Predicate.isNotNullish(returned) &&
+		(returned.type === 'Literal' ||
+			returned.type === 'Identifier' ||
+			returned.type === 'MemberExpression' ||
+			(returned.type === 'TemplateLiteral' && Array.isArrayEmpty(returned.expressions)))
+	)
 }
 
 function functionScope(input: {node: ESTree.Node; scope: Scope}): Option.Option<Scope> {
@@ -43,7 +47,7 @@ function isConstantFunction(input: {
 	if (input.node.async || input.node.generator || Predicate.isNotNullish(input.node.typeParameters)) return false
 	if (Array.some(input.spans, span => span.start >= input.node.start && span.end <= input.node.end)) return false
 	return (
-		hasSingleReturnExpression(input.node) &&
+		returnsConstant(input.node) &&
 		pipe(
 			functionScope({node: input.node, scope: input.context.sourceCode.getScope(input.node)}),
 			Option.exists(scope => Array.every(scopeReferences(scope), resolvesToImport))

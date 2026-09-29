@@ -3,7 +3,7 @@ import {Array, Option, Predicate, Record, String, pipe} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
-import {memberName, returnedExpression} from './shared.ts'
+import {memberName, returnedExpression} from '#rules/shared.ts'
 
 function isSubject(input: {name: string; node: ESTree.Node}) {
 	return input.node.type === 'Identifier' && input.node.name === input.name

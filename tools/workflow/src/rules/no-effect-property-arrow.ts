@@ -2,7 +2,7 @@ import {Array} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
 
-import {importedMember, isImportBinding} from './shared.ts'
+import {importedMember, isImportBinding} from '#rules/shared.ts'
 
 export const noEffectPropertyArrow = defineRule({
 	create: context => ({
@@ -17,7 +17,15 @@ export const noEffectPropertyArrow = defineRule({
 			const callee = node.value.body.callee
 			if (
 				(callee.type === 'Identifier' &&
-					isImportBinding({context, importedName: 'pipe', node: callee, source: 'effect'})) ||
+					isImportBinding({context, importedName: 'pipe', node: callee, source: 'effect'}) &&
+					Array.some(
+						node.value.body.arguments,
+						argument =>
+							(argument.type !== 'SpreadElement' &&
+								importedMember({context, importedName: 'Effect', node: argument})) ||
+							(argument.type === 'CallExpression' &&
+								importedMember({context, importedName: 'Effect', node: argument.callee}))
+					)) ||
 				(callee.type === 'MemberExpression' &&
 					importedMember({context, importedName: 'Effect', node: callee, propertyName: 'tryPromise'}))
 			) {

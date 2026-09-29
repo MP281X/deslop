@@ -113,7 +113,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'function Fallback() { return <div className="missing" /> }',
 									'const fallbacks = Array.map([input], Fallback)',
 									'const notFound = () => Array.empty<string>()',
-									'const emptyNames = () => Array.empty<string>()',
+									'const emptyNames = () => "none"',
 									'declare const maybe: Maybe.Option<string>',
 									'const unwrapped = Maybe.isSome(maybe) ? maybe.value : ""',
 									'declare const loosely: string | null | undefined',
@@ -137,7 +137,6 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'const labelled = consume(label)',
 									'declare function download(id: string): Promise<string>',
 									'const handlers = {load: (id: string) => Effect.tryPromise(() => download(id)), size: (id: string) => pipe(id, Effect.succeed)}',
-									'const annotated: string[] = [...values]',
 									'function greet(name: string): string { return `hi ${name}` }',
 									'function logName(name: string): void { consume(name) }',
 									'declare class Box { constructor(size: number) }',
@@ -152,7 +151,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'// oxlint-disable-next-line sort-keys -- the fixture keeps its order',
 									'const unsortedKeys = {b: 1, a: 2}',
 									'// @effect-diagnostics-next-line floatingEffect:off',
-									'export {AssertString, Clock, Codecs, NonEmpty, PipedNonEmpty, PipedTrimmed, absent, Fallback, Input, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, annotated, assigned, asyncConstant, callbacks, decode, decoded, decoders, deepPipe, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, greet, handlers, input, isRecord, isText, makeBox, labelled, logName, loose, kind, mappedValues, measured, namesA, namesB, namespaceRef, noValues, present, slotLength, notFound, operations, ready, recipients, ref, run, stateNamespace, unsortedKeys, unwrapped, wrapped}',
+									'export {AssertString, Clock, Codecs, NonEmpty, PipedNonEmpty, PipedTrimmed, absent, Fallback, Input, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, asyncConstant, callbacks, decode, decoded, decoders, deepPipe, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, greet, handlers, input, isRecord, isText, makeBox, labelled, logName, loose, kind, mappedValues, measured, namesA, namesB, namespaceRef, noValues, present, slotLength, notFound, operations, ready, recipients, ref, run, stateNamespace, unsortedKeys, unwrapped, wrapped}',
 									'export type {Explicit, Frozen, Index, Mapped}'
 								],
 								Array.join('\n')
@@ -194,7 +193,6 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 									'@deslop/workflow(no-redundant-return-type)',
 									'@deslop/workflow(no-redundant-use-ref-null-type)',
 									'@deslop/workflow(no-redundant-use-ref-null-type)',
-									'@deslop/workflow(no-redundant-variable-annotation)',
 									'@deslop/workflow(no-redundant-variable-annotation)',
 									'@deslop/workflow(no-reinvented-schema)',
 									'@deslop/workflow(no-reinvented-schema)',
@@ -396,6 +394,78 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								Array.sort(String.Order)
 							)
 						)
+					}),
+					Effect.scoped
+				),
+			20_000
+		)
+
+		testApi.effect(
+			'leaves rewrites that would change behavior alone',
+			() =>
+				pipe(
+					Effect.gen(function* () {
+						const result = yield* lintSource({
+							name: 'behavior.test.ts',
+							source: pipe(
+								[
+									"import {assert, it} from '@effect/vitest'",
+									"import {Array, Effect, MutableRef, pipe} from 'effect'",
+									'',
+									'declare const ticket: {message: string}',
+									'function cell() { return MutableRef.make(0) }',
+									'const cells = [cell(), cell()]',
+									'const operations = {normalize: (items: string[]) => pipe(items, Array.reverse)}',
+									'const recovered = Effect.gen(function* () { return yield* Effect.catch(Effect.fail("missing"), () => Effect.succeed(1)) })',
+									'function Field({ref, ...props}: {ref?: unknown; label: string}) { return [ref, props.label] }',
+									'it("keeps the trimmed message", () => { assert.strictEqual(ticket.message, "hello") })',
+									'export {Field, cells, operations, recovered}'
+								],
+								Array.join('\n')
+							)
+						})
+						assert.deepStrictEqual(customCodes(result.stdout), [])
+					}),
+					Effect.scoped
+				),
+			20_000
+		)
+
+		testApi.effect(
+			'follows cycles, alias chains, and destructured parameters',
+			() =>
+				pipe(
+					Effect.gen(function* () {
+						const result = yield* lintSource({
+							name: 'cycles.ts',
+							source: pipe(
+								[
+									"import {Array, Context, Effect, Schema} from 'effect'",
+									'',
+									'type Tree = {readonly children: readonly Tree[]}',
+									'const Tree = Schema.Struct({Wrapper: Schema.String, children: Schema.Array(Schema.suspend((): Schema.Codec<Tree> => Tree))})',
+									'type Wrapper = {readonly tree: Tree}',
+									'const sizes = Array.map([[1, 2]], ([width]) => width)',
+									'for (const {length} of ["a"]) consume(length)',
+									'const labelOf = ({ref, label}: {ref: string; label: string}) => [ref, label]',
+									'declare function consume(value: number): void',
+									'type BaseShape = {count: Effect.Effect<number>}',
+									'type ServiceShape = BaseShape',
+									'// oxlint-disable-next-line effecttsgo/deterministic-keys -- a fixture in a temporary directory has no stable key',
+									'class Counter extends Context.Service<Counter, ServiceShape>()("Counter") {}',
+									'export {Counter, Tree, labelOf, sizes}',
+									'export type {Wrapper}'
+								],
+								Array.join('\n')
+							)
+						})
+						assert.deepStrictEqual(customCodes(result.stdout), [
+							'@deslop/workflow(no-destructured-parameter)',
+							'@deslop/workflow(no-destructured-parameter)',
+							'@deslop/workflow(no-destructured-parameter)',
+							'@deslop/workflow(no-readonly-type-syntax)',
+							'@deslop/workflow(no-readonly-type-syntax)'
+						])
 					}),
 					Effect.scoped
 				),

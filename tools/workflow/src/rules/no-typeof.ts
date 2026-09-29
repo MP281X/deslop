@@ -2,7 +2,7 @@ import {Array, Option} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
 
-import {variableFor} from './shared.ts'
+import {variableFor} from '#rules/shared.ts'
 
 export const noTypeof = defineRule({
 	create: context => ({

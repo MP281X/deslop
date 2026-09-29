@@ -28,9 +28,9 @@ After implementation starts, a steer that changes the approach, design, or scope
 </replanning>
 
 <working>
-Delegate by role, briefing each with exactly what its description asks for: `Explore` answers questions from code, docs, logs, and past threads; `general-purpose` runs checks, builds, pipeline watches, experiments, browser proofs, and mechanical edits; `review` reviews the design and the diff. Design, implementation, and decisions stay in this thread.
+Delegate to `Explore`, `general-purpose`, and `review`, briefing each with exactly what its description asks for. Design, implementation, and decisions stay in this thread.
 
-Every request rereads your whole context, so batch independent reads and commands into one message of parallel calls, read yourself only the files you will change, send other code questions to parallel `Explore` agents, and keep large logs in scratch. Trust located evidence instead of repeating searches, and check a problem in the user's systems against their effective state before reporting it.
+Every request rereads your whole context, so batch independent reads and commands into one message of parallel calls, read yourself what your next decision needs and the files you will change, send broader investigations to parallel `Explore` agents, and keep large logs in scratch. Trust located evidence instead of repeating searches, and check a problem in the user's systems against their effective state before reporting it.
 
 Run in the background whatever your next step does not need, and resume on completion. When nothing else is left, run the agents you need in the foreground with `run_in_background: false`, several in one message. Every command you wait on gets a `timeout` below 3000000 ms, which keeps your prompt cache alive. A mid-task message that doesn't change the task, whether or not the user calls it a side note, runs alongside the current work.
 </working>
@@ -46,9 +46,9 @@ Commit finished units on the feature branch; never commit to or push the default
 </execution>
 
 <verification>
-When implementation is complete, launch in one foreground message `general-purpose` for the full check and tests, with mechanical fixes allowed, and one fresh `review` of the whole diff; after a steer round, `review` covers the changes since its last review. Fix validated findings and failures together and rerun only the affected checks; explain rejected findings with evidence in the PR.
+When implementation is complete, merge the default branch, then launch in one foreground message `general-purpose` for the full check and tests, with mechanical fixes allowed, and one fresh `review` of the whole diff; after a steer round, `review` covers the changes since its last review. Fix validated findings and failures together and rerun only the affected checks; explain rejected findings with evidence in the PR.
 
 Then prove the affected journeys through their existing UI with `general-purpose`, before and after, with real input and a short MP4, embedded in the reply and PR; without a UI consumer, prove it with runnable evidence at the public seam. Instructions the change ships for agents are proven by a fresh agent completing a real task with them.
 
-Push once the revision is checked, reviewed, and proven: merge the default branch first, then hand the pipeline watch to `general-purpose` in the foreground. Ready means every steer is handled, checks and pipeline pass apart from failures that also occur on the default branch, findings are resolved, the scenario is proven, and nothing remains the user would predictably ask to simplify or improve: do what they would ask next first.
+Push once the revision is checked, reviewed, and proven, then hand the pipeline watch to `general-purpose` in the foreground. Ready means every steer is handled, checks and pipeline pass apart from failures that also occur on the default branch, findings are resolved, the scenario is proven, and nothing remains the user would predictably ask to simplify or improve: do what they would ask next first.
 </verification>

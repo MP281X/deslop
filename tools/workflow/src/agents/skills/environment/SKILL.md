@@ -29,13 +29,12 @@ Facts an agent cannot read from the repository itself; commands a package.json a
 ## deslop
 
 - `/home/mp281x/deslop`, GitHub `MP281X/deslop`, default branch `main`.
-- pnpm 11.22 driven by `vp`.
 - Workspaces: `apps/*` (portfolio), `packages/*` (ai, components, runtime), `tools/*` (create-app, create-package, workflow).
 - shadcn UI components: `packages/components`.
 - CI: GitHub Actions job `build-and-deploy`.
 - Production services are `tools/compose.yaml`, compose project `deslop`, with certificates in `~/.deslop/deploy/acme`: traefik, portfolio, jaeger, collector. Jaeger's UI and API are only at http://127.0.0.1:16686; OTLP ingest is public at https://otel.mp281x.xyz and local at 127.0.0.1:4318. [references/setup.md](references/setup.md) bootstraps this host; [references/maintain.md](references/maintain.md) updates, redeploys, and cleans it.
 - Full local check: `vp run check`, then `vp run test`.
-- Each lint call costs a flat 5–6 s for 1 file or a whole package, with no cache between calls, so format and lint every changed file in one call: `vp check --fix <path>...`; `vp lint --format=agent <path>...` prints one line per diagnostic.
+- Lint has no cache between calls, so format and lint every changed file in one call: `vp check --fix <path>...`; `vp lint --format=agent <path>...` prints one line per diagnostic.
 
 ## dual
 
@@ -45,9 +44,9 @@ Facts an agent cannot read from the repository itself; commands a package.json a
 - Services: docker-compose.yml fixes Postgres 55432, test Postgres 55433, opensandbox 127.0.0.1:8080, and the `dual-opensandbox-runtime` network, so each worktree runs its own compose project with an override in `~/.deslop/<worktree directory name>/`: `!override` moves the three ports by a multiple of 10 that no stack in `docker ps` uses, names the network `dual-opensandbox-runtime-<worktree id>`, and mounts a copy of packages/playground/docker/opensandbox.toml whose `network_mode` names it; the worktree's `.env` files use the same ports. [Maintenance](references/maintain.md) removes compose projects, previews, and `~/.deslop` copies whose worktree no longer exists.
 - Each worktree runs on its own ports, set in its `.env` files: `SERVER_URL` in `packages/app/.env` (default 3825), and `DATABASE_URL`, `BETTER_AUTH_URL`, `SERVER_PUBLIC_URL`, `APP_ORIGIN`, and `DUAL_AGENT_GATEWAY_BASE_URL` in `packages/playground/.env`; the app dev server listens on 3000 from `vite dev --port 3000` in `packages/app/package.json`, so another port is a `--port` argument, not a `.env` value. Other worktrees' dev apps and previews keep theirs.
 - Local login: seeded by the `seed:user` arguments in the root `package.json` `db:reset` script, which hold the credentials.
-- CI: GitLab job `quality` (`.gitlab/quality.yml`), median 17 min, beside release-policy, the playground builds, build-web-image, and release-pair; pipeline median 24 min, p90 60 min. After `check`, `quality` runs `test:consumer` (about 6 min), `test`, and `test:release` in series. Pipelines are interruptible, so each push cancels the running one. A dependency change also needs `vp install --frozen-lockfile` to pass locally, which CI runs first.
+- CI: GitLab job `quality` (`.gitlab/quality.yml`), beside release-policy, the playground builds, build-web-image, and release-pair. After `check`, `quality` runs `test:consumer`, `test`, and `test:release` in series. Pipelines are interruptible, so each push cancels the running one. A dependency change also needs `vp install --frozen-lockfile` to pass locally, which CI runs first.
 - `effecttsgo(duplicate-package)` comes from bun.lock pinning effect 4.0.0-rc.115 for `@dual/workspace-aws` beside rc.112; no edit to the reported file clears it, so leave it.
-- Full local check: `vp run check` (turbo-cached, about 2 s on an unchanged tree, 141 s cold), then `vpx turbo run test --affected`; turbo.json sets `cache: false` on `test`, so every run costs its full time. Run a full suite under `flock ~/.deslop/dual-test.lock` so parallel threads do not overload the host; a timeout while the load average is above 8 is load, so rerun that file alone.
+- Full local check: `vp run check` (turbo-cached), then `vpx turbo run test --affected`; turbo.json sets `cache: false` on `test`, so every run costs its full time. Run a full suite under `flock ~/.deslop/dual-test.lock` so parallel threads do not overload the host; a timeout while the load average is above 8 is load, so rerun that file alone.
 
 - Format with `vpx oxfmt <path>...`; lint with `vpx oxlint --format=agent <path>...` from the package directory, one line per diagnostic.
 

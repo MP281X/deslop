@@ -2,7 +2,7 @@ import {Array, Option, pipe} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
 
-import {isImportBinding, memberName} from './shared.ts'
+import {isImportBinding, memberName} from '#rules/shared.ts'
 
 const nativeMethods = [
 	'at',
@@ -91,7 +91,7 @@ export const noNativeMethodCall = defineRule({
 				),
 				Option.map(name => {
 					context.report({
-						message: `Replace .${name}() with its function from the Effect Array, String, Record, or Effect module.`,
+						message: `Replace .${name}() on a native array, string, record, or Promise with its Effect Array, String, Record, or Effect function; a third-party API's own method stays, with an inline disable and its reason.`,
 						node: node.callee
 					})
 				})

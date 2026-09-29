@@ -8,11 +8,13 @@
 	},
 	"files": [
 		"dist",
+		"src/css-properties.d.ts",
 		"tsconfig.json"
 	],
 	"type": "module",
 	"imports": {
-		"#package": "./package.json"
+		"#package": "./package.json",
+		"#rules/*": "./src/rules/*"
 	},
 	"exports": {
 		".": "./src/oxlint.ts",
@@ -25,6 +27,7 @@
 				"types": "./dist/oxlint.d.ts",
 				"default": "./dist/oxlint.js"
 			},
+			"./css-properties": "./src/css-properties.d.ts",
 			"./tsconfig.json": "./tsconfig.json"
 		},
 		"access": "public"

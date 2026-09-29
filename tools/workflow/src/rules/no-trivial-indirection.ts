@@ -3,7 +3,7 @@ import {Array, Option, Predicate, pipe} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
-import {returnedExpression, singleUseThunk, variableFor, variableFromScope} from './shared.ts'
+import {returnedExpression, singleUseThunk, variableFor, variableFromScope} from '#rules/shared.ts'
 
 function parameterName(parameter: ESTree.ParamPattern) {
 	if (parameter.type === 'Identifier') return Option.some(parameter.name)

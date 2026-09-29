@@ -3,33 +3,34 @@ import {Array} from 'effect'
 import {definePlugin} from '@oxlint/plugins'
 import {defineConfig} from 'oxlint'
 
-import {noArrayWrapTernary} from './rules/no-array-wrap-ternary.ts'
-import {noConstantFunction} from './rules/no-constant-function.ts'
-import {noDeepPipe} from './rules/no-deep-pipe.ts'
-import {noDoubleNullishCheck} from './rules/no-double-nullish-check.ts'
-import {noEffectPropertyArrow} from './rules/no-effect-property-arrow.ts'
-import {noErrorMessageAssertion} from './rules/no-error-message-assertion.ts'
-import {noFailInGenerator} from './rules/no-fail-in-generator.ts'
-import {noFakeRefState} from './rules/no-fake-ref-state.ts'
-import {noHandWrittenGuard} from './rules/no-hand-written-guard.ts'
-import {noLet} from './rules/no-let.ts'
-import {noNativeEmptinessCheck} from './rules/no-native-emptiness-check.ts'
-import {noNativeMethodCall} from './rules/no-native-method-call.ts'
-import {noOptionValueAccess} from './rules/no-option-value-access.ts'
-import {noReadonlyTypeSyntax} from './rules/no-readonly-type-syntax.ts'
-import {noRedundantReturnType} from './rules/no-redundant-return-type.ts'
-import {noRedundantUseRefNullType} from './rules/no-redundant-use-ref-null-type.ts'
-import {noRedundantVariableAnnotation} from './rules/no-redundant-variable-annotation.ts'
-import {noReinventedSchema} from './rules/no-reinvented-schema.ts'
-import {noRenamedImport} from './rules/no-renamed-import.ts'
-import {noStoredSchemaOperation} from './rules/no-stored-schema-operation.ts'
-import {noSwitchStatement} from './rules/no-switch-statement.ts'
-import {noTrivialIndirection} from './rules/no-trivial-indirection.ts'
-import {noTypeof} from './rules/no-typeof.ts'
-import {noUndestructuredUseState} from './rules/no-undestructured-use-state.ts'
-import {noUnexplainedDisable} from './rules/no-unexplained-disable.ts'
-import {noUnvalidatedJsonDecode} from './rules/no-unvalidated-json-decode.ts'
-import {schemaTypePair} from './rules/schema-type-pair.ts'
+import {noArrayWrapTernary} from '#rules/no-array-wrap-ternary.ts'
+import {noConstantFunction} from '#rules/no-constant-function.ts'
+import {noDeepPipe} from '#rules/no-deep-pipe.ts'
+import {noDestructuredParameter} from '#rules/no-destructured-parameter.ts'
+import {noDoubleNullishCheck} from '#rules/no-double-nullish-check.ts'
+import {noEffectPropertyArrow} from '#rules/no-effect-property-arrow.ts'
+import {noErrorMessageAssertion} from '#rules/no-error-message-assertion.ts'
+import {noFailInGenerator} from '#rules/no-fail-in-generator.ts'
+import {noFakeRefState} from '#rules/no-fake-ref-state.ts'
+import {noHandWrittenGuard} from '#rules/no-hand-written-guard.ts'
+import {noLet} from '#rules/no-let.ts'
+import {noNativeEmptinessCheck} from '#rules/no-native-emptiness-check.ts'
+import {noNativeMethodCall} from '#rules/no-native-method-call.ts'
+import {noOptionValueAccess} from '#rules/no-option-value-access.ts'
+import {noReadonlyTypeSyntax} from '#rules/no-readonly-type-syntax.ts'
+import {noRedundantReturnType} from '#rules/no-redundant-return-type.ts'
+import {noRedundantUseRefNullType} from '#rules/no-redundant-use-ref-null-type.ts'
+import {noRedundantVariableAnnotation} from '#rules/no-redundant-variable-annotation.ts'
+import {noReinventedSchema} from '#rules/no-reinvented-schema.ts'
+import {noRenamedImport} from '#rules/no-renamed-import.ts'
+import {noStoredSchemaOperation} from '#rules/no-stored-schema-operation.ts'
+import {noSwitchStatement} from '#rules/no-switch-statement.ts'
+import {noTrivialIndirection} from '#rules/no-trivial-indirection.ts'
+import {noTypeof} from '#rules/no-typeof.ts'
+import {noUndestructuredUseState} from '#rules/no-undestructured-use-state.ts'
+import {noUnexplainedDisable} from '#rules/no-unexplained-disable.ts'
+import {noUnvalidatedJsonDecode} from '#rules/no-unvalidated-json-decode.ts'
+import {schemaTypePair} from '#rules/schema-type-pair.ts'
 
 const reactLegacyApis = ['Component', 'PureComponent', 'createRef', 'forwardRef', 'memo', 'useCallback', 'useMemo']
 const reactLegacyMessage = 'Use React 19 function components with refs as props; React Compiler owns memoization.'
@@ -60,7 +61,10 @@ export const oxlint = defineConfig({
 	overrides: [
 		{files: ['**/*.config.ts', '**/main.*'], rules: {'import/no-default-export': 'off'}},
 		{files: ['**/components/ui/**'], rules: {'shadcn/no-restyle': 'off', 'shadcn/require-static-classes': 'off'}},
-		{files: ['**/components/ui/**', '**/packages/ui/**'], rules: {'@deslop/workflow/no-renamed-import': 'off'}},
+		{
+			files: ['**/components/ui/**', '**/packages/ui/**'],
+			rules: {'@deslop/workflow/no-destructured-parameter': 'off', '@deslop/workflow/no-renamed-import': 'off'}
+		},
 		{files: ['**/*.ts'], rules: {'react/rules-of-hooks': 'off'}},
 		{
 			files: ['**/*.tsx'],
@@ -78,6 +82,7 @@ export const oxlint = defineConfig({
 		'@deslop/workflow/no-array-wrap-ternary': 'error',
 		'@deslop/workflow/no-constant-function': 'error',
 		'@deslop/workflow/no-deep-pipe': 'error',
+		'@deslop/workflow/no-destructured-parameter': 'error',
 		'@deslop/workflow/no-double-nullish-check': 'error',
 		'@deslop/workflow/no-effect-property-arrow': 'error',
 		'@deslop/workflow/no-error-message-assertion': 'error',
@@ -588,6 +593,7 @@ export default definePlugin({
 		'no-array-wrap-ternary': noArrayWrapTernary,
 		'no-constant-function': noConstantFunction,
 		'no-deep-pipe': noDeepPipe,
+		'no-destructured-parameter': noDestructuredParameter,
 		'no-double-nullish-check': noDoubleNullishCheck,
 		'no-effect-property-arrow': noEffectPropertyArrow,
 		'no-error-message-assertion': noErrorMessageAssertion,

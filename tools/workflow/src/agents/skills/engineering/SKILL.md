@@ -11,14 +11,14 @@ Everything you produce — code, names, files, folders, tests, and the diff a re
 
 - Write the plain, explicit, idiomatic solution, readable top to bottom: no comments and no clever tricks; inline every forwarding wrapper and every single-use helper or top-level const, as Shape shows.
 - Keep code flat: pipelines and early returns instead of nesting, a blank line between logical groups. Flatness outranks idiom: where `Boolean.match`, `Option.match`, `Option.toArray`, or a `pipe` would nest deeper than plain `if`, `for`, and `yield*` statements in `Effect.fn`, write the statements; the idiom is for a single expression.
-- Doing less than asked beats doing more: the core done well beats a complete 100% with extras; name what you cut. A refactor or cleanup request asks for depth instead: every section applies to every line of the owned files, not only the changed lines.
+- Do only what is asked, and never add anything unrequested. A refactor or cleanup request asks for depth instead: every section applies to every line of the owned files, not only the changed lines.
 - Extend the nearest existing implementation of the same kind, mirroring its permissions, errors, data refresh, and tests, and reuse the feature's helper for a job before writing one.
 - Happy path only: let failures flow through Effect's error channel, with no catch, retry, fallback, or defensive check unless the request or an existing contract requires it.
 - Validate and transform once, at the boundary, with Effect Schema; inside, data is trusted: carry narrowed values forward and never re-check what the schema, the declared type, an earlier filter, tsc, or every caller's context guarantees.
 - Layers depend inward: domain and service code never import HTTP, RPC, or other transport types.
 - Offer building blocks the caller composes like any Effect module — services, Layers, and functions provided and combined in the open — never a wrapper that bundles them behind one call such as `serve(app)`.
 - Before hand-writing a traversal, accumulator, check, or config read, search the Effect repository at `~/.deslop/repos/effect` (Graph, Record, String, Option, Struct, Config.all, Match, Boolean, HttpClient, Path, ChildProcess, Types.Equals) and call the helper that exists. Before adding any service, run `rg --files ~/.deslop/repos/effect/packages/*/src` for its name, and when Effect ships it, use it or push back with its path. Clone a missing library source into `~/.deslop/repos`.
-- Never destructure a parameter, callback argument, or loop variable (`useState` excepted), and never re-list a value's fields: pass it whole or spread it.
+- Never destructure a parameter, callback argument, or loop variable (`useState` and a component's `ref` prop excepted), and never re-list a value's fields: pass it whole or spread it.
 - No future-proofing: no option, parameter, layer, abstraction, export, file, script, or check for a need that does not exist yet.
 - Someone scanning the file tree finds everything at first glance: files and folders are simple, well structured, and consistent, with role folders whose files follow one naming scheme, the way a file-based router does, and explicit kebab-case names that say what each file holds. A file exists only for a distinct role: prefer one bigger file to several nearly empty ones, and put anything that can live in an existing file there; no barrel file, and no file that adds no value.
 - A package exposes explicit `package.json` `exports` subpaths and imports its own files through explicit `imports` aliases, which work in Node and Bun and keep dead code traceable. Tests sit beside their subject as `<name>.test.ts`.
@@ -106,9 +106,9 @@ const letterColor = hashHue(provider) // a fallback logo for providers nobody ha
 ```
 
 ```ts
-// good — only what a consumer imports
-export {PetstorePlugin, PetstorePluginBase} from './generated/Plugin.ts'
-// bad — the generated package exports every schema, action, and client internal; consumers import two names
+// good — package.json exposes only what a consumer imports, as a subpath
+"exports": {"./plugin": "./src/generated/plugin.ts"}
+// bad — a barrel re-exports every schema, action, and client internal; consumers import two names
 export * from './generated/Client.ts'
 export * from './generated/Plugin.ts'
 ```
@@ -169,7 +169,7 @@ const add = Effect.fn('Ledger.add')(function* (draft: LedgerDraft) {
 ```ts
 // good — every schema, exported or not, has its type pair on the line before; a struct is a Schema.Struct, never a Schema.Class; a derived schema spreads the fields it reuses; a signature names the pair or an indexed part of it
 export type AiAgent = typeof AiAgent.Type
-export const AiAgent = Schema.Literals(['pi'] as const)
+export const AiAgent = Schema.Literals(['pi'])
 export type LedgerDraft = typeof LedgerDraft.Type
 export const LedgerDraft = Schema.Struct({...LedgerEntry.fields, id: Schema.optionalKey(Schema.NonEmptyString)})
 function settle(amount: LedgerEntry['amount']) {
@@ -534,7 +534,7 @@ A few tests, each guarding logic worth guarding, beat coverage: every test is co
 - One input per behavior: prove a change with one input in the existing case that covers it; add a case only for unexercised behavior.
 - Settle a worry about a case with a throwaway test or prototype run and delete it once answered; commit only tests that meet this bar.
 - Reproduce a bug before fixing it; its failing case stays only when the fixed logic meets this section's bar, in the existing test covering the fixed code when there is one.
-- Fixtures are the inputs the request names, nothing else.
+- Fixtures are the inputs the request names; without them, the smallest reachable input that exercises the behavior.
 - Assert which input is flagged or returned, or an error's tag, code, or path; never wording or another tool's output.
 - Doubles are Layers or a dependency the public function takes: no vi, global stub, or module mock, even at the network boundary.
 - Seed inputs that make the logic decide; grow a test helper only when every case needs it.
@@ -576,8 +576,6 @@ assert.notProperty(WorkflowRunDetailResponse.fields, 'nodeAttempts')
 ```
 
 ## Lint-enforced forms
-
-Lint also rejects the mechanical opposite of many forms above, such as an assertion, a schema without its type pair, `Schema.Class`, `.pipe`, `typeof`, a native method, or `vi`, with a message naming the form shown there.
 
 When a rule seems to force worse code, write the Effect-correct form, or report the rule defect with a minimal repro; disable a rule inline only where the code has no other correct form, with its reason after `--`, and never silently write the worse form. An order-pinning rule, such as sort-keys, always has a correct form and is never disabled, inline included.
 

@@ -3,7 +3,7 @@ import {Array, Option} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
-import {isImportBinding, isNamespaceImport, memberName} from './shared.ts'
+import {isImportBinding, isNamespaceImport, memberName} from '#rules/shared.ts'
 
 function isReactUseRef(input: {context: Context; node: ESTree.CallExpression}) {
 	if (input.node.callee.type === 'Identifier') {

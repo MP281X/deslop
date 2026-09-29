@@ -1,7 +1,7 @@
 import {defineRule} from '@oxlint/plugins'
 import type {ESTree} from '@oxlint/plugins'
 
-import {isSchemaOperationCall} from './shared.ts'
+import {isSchemaOperationCall} from '#rules/shared.ts'
 
 function storedSchemaOperation(node: ESTree.CallExpression) {
 	return (

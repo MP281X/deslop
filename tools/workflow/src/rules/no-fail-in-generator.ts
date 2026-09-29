@@ -3,7 +3,7 @@ import {Array, Option} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
-import {effectBuilderName, importedMember} from './shared.ts'
+import {effectBuilderName, importedMember} from '#rules/shared.ts'
 
 function insideEffectGenerator(input: {context: Context; node: ESTree.Node}): boolean {
 	if (input.node.type === 'Program') return false
@@ -34,8 +34,10 @@ export const noFailInGenerator = defineRule({
 			if (
 				node.callee.type === 'MemberExpression' &&
 				importedMember({context, importedName: 'Effect', node: node.callee, propertyName: 'fail'}) &&
-				insideEffectGenerator({context, node}) &&
-				!(node.parent.type === 'YieldExpression' && node.parent.delegate && node.arguments[0]?.type === 'NewExpression')
+				node.parent.type === 'YieldExpression' &&
+				node.parent.delegate &&
+				node.arguments[0]?.type !== 'NewExpression' &&
+				insideEffectGenerator({context, node})
 			) {
 				context.report({message: 'Yield the error instead: return yield* E.make(...).', node})
 			}

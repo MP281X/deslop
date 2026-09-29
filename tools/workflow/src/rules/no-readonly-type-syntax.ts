@@ -3,7 +3,7 @@ import {Array, MutableRef, Option, pipe} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {ESTree} from '@oxlint/plugins'
 
-import {importedMember, schemaCycleNames} from './shared.ts'
+import {importedMember, schemaCycleNames} from '#rules/shared.ts'
 
 function isTopLevelStatement(node: ESTree.TSTypeAliasDeclaration) {
 	if (node.parent.type === 'Program') return true
@@ -22,6 +22,28 @@ function referencedName(node: ESTree.TSType) {
 	if (node.type !== 'TSTypeReference') return Option.none<string>()
 	if (node.typeName.type === 'Identifier') return Option.some(node.typeName.name)
 	return node.typeName.type === 'TSQualifiedName' ? Option.some(node.typeName.right.name) : Option.none<string>()
+}
+
+function shapeLiterals(input: {
+	aliases: ESTree.TSTypeAliasDeclaration[]
+	seen: string[]
+	type: ESTree.TSType
+}): ESTree.TSType[] {
+	if (input.type.type === 'TSTypeLiteral') return [input.type]
+	return pipe(
+		referencedName(input.type),
+		Option.filter(name => !Array.contains(input.seen, name)),
+		Option.map(name =>
+			pipe(
+				input.aliases,
+				Array.filter(alias => alias.id.name === name),
+				Array.flatMap(alias =>
+					shapeLiterals({aliases: input.aliases, seen: Array.append(input.seen, name), type: alias.typeAnnotation})
+				)
+			)
+		),
+		Option.getOrElse(() => Array.empty<ESTree.TSType>())
+	)
 }
 
 export const noReadonlyTypeSyntax = defineRule({
@@ -46,16 +68,7 @@ export const noReadonlyTypeSyntax = defineRule({
 			'Program:exit': () => {
 				const literals = pipe(
 					MutableRef.get(shapes),
-					Array.flatMap(shape => {
-						if (shape.type === 'TSTypeLiteral') return [shape]
-						const name = referencedName(shape)
-						return pipe(
-							MutableRef.get(aliases),
-							Array.filter(alias => Option.contains(name, alias.id.name)),
-							Array.map(alias => alias.typeAnnotation),
-							Array.filter(type => type.type === 'TSTypeLiteral')
-						)
-					})
+					Array.flatMap(shape => shapeLiterals({aliases: MutableRef.get(aliases), seen: [], type: shape}))
 				)
 				function inShape(node: ESTree.Node) {
 					return Array.some(literals, literal => literal === node.parent)

@@ -3,7 +3,7 @@ import {Array, Option, Predicate} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
-import {isReactUseState} from './shared.ts'
+import {isReactUseState} from '#rules/shared.ts'
 
 function propertyName(node: ESTree.ObjectProperty) {
 	if (!node.computed && node.key.type === 'Identifier') return Option.some(node.key.name)

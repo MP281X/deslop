@@ -13,7 +13,7 @@ import {
 	schemaSchemaType,
 	statementDeclaration,
 	typeAlias
-} from './shared.ts'
+} from '#rules/shared.ts'
 
 function expressionRoot(node: ESTree.Expression): ESTree.Expression {
 	if (node.type === 'MemberExpression') return expressionRoot(node.object)

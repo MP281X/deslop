@@ -213,8 +213,7 @@ function skillTool<R>(skills: AiSkill[], context: Context.Context<R>) {
 					)
 					if (Predicate.isUndefined(skill.resources)) return toolResult(skill.instructions)
 					const resources = pipe(
-						Record.toEntries(skill.resources),
-						Array.map(([name, content]) => `<resource name="${name}">\n${content}\n</resource>`),
+						Record.collect(skill.resources, (name, content) => `<resource name="${name}">\n${content}\n</resource>`),
 						Array.join('\n')
 					)
 					return toolResult(`${skill.instructions}\n\n<resources>\n${resources}\n</resources>`)
