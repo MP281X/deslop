@@ -7,7 +7,7 @@ Apply the repository's CODING_STANDARDS.md alongside these rules; where the two 
 
 ## Simplicity
 
-Every line not needed now slows the next change. Build the smallest thing that does the requested job well:
+Everything you produce — code, names, files, folders, tests, and the diff a reviewer reads — is understood at first glance, without having to think: simple and idiomatic, never clever, with no abstraction the reader has to unwrap. Every line not needed now slows the next change. Build the smallest thing that does the requested job well:
 
 - Write the plain, explicit, idiomatic solution, readable top to bottom: no comments and no clever tricks; inline every forwarding wrapper and every single-use helper or top-level const, as Shape shows.
 - Keep code flat: pipelines and early returns instead of nesting, a blank line between logical groups. Flatness outranks idiom: where `Boolean.match`, `Option.match`, `Option.toArray`, or a `pipe` would nest deeper than plain `if`, `for`, and `yield*` statements in `Effect.fn`, write the statements; the idiom is for a single expression.
@@ -16,9 +16,12 @@ Every line not needed now slows the next change. Build the smallest thing that d
 - Happy path only: let failures flow through Effect's error channel, with no catch, retry, fallback, or defensive check unless the request or an existing contract requires it.
 - Validate and transform once, at the boundary, with Effect Schema; inside, data is trusted: carry narrowed values forward and never re-check what the schema, the declared type, an earlier filter, tsc, or every caller's context guarantees.
 - Layers depend inward: domain and service code never import HTTP, RPC, or other transport types.
+- Offer building blocks the caller composes like any Effect module — services, Layers, and functions provided and combined in the open — never a wrapper that bundles them behind one call such as `serve(app)`.
 - Before hand-writing a traversal, accumulator, check, or config read, search the Effect repository at `~/.deslop/repos/effect` (Graph, Record, String, Option, Struct, Config.all, Match, Boolean, HttpClient, Path, ChildProcess, Types.Equals) and call the helper that exists. Before adding any service, run `rg --files ~/.deslop/repos/effect/packages/*/src` for its name, and when Effect ships it, use it or push back with its path. Clone a missing library source into `~/.deslop/repos`.
 - Never destructure a parameter, callback argument, or loop variable (`useState` excepted), and never re-list a value's fields: pass it whole or spread it.
 - No future-proofing: no option, parameter, layer, abstraction, export, file, script, or check for a need that does not exist yet.
+- Someone scanning the file tree finds everything at first glance: files and folders are simple, well structured, and consistent, with role folders whose files follow one naming scheme, the way a file-based router does, and explicit kebab-case names that say what each file holds. A file exists only for a distinct role: prefer one bigger file to several nearly empty ones, and put anything that can live in an existing file there; no barrel file, and no file that adds no value.
+- A package exposes explicit `package.json` `exports` subpaths and imports its own files through explicit `imports` aliases, which work in Node and Bun and keep dead code traceable. Tests sit beside their subject as `<name>.test.ts`.
 - One way to do each thing: a change replaces what it supersedes instead of layering beside it, so no field, method, option, export, or code path duplicates another or is a subset or superset of it.
 - No compatibility, backward or forward: change a name or shape and update every caller in the same change, with no alias, fallback, deprecated path, or flag. Only a contract the repository documents or the user names survives, such as production data from the previous release.
 - Delete dead code: every superseded or unused file, export, type, doc, test, and dependency goes in the same change; keep the type half of a schema pair and leave no leftover.
@@ -491,8 +494,11 @@ if (sandbox !== undefined) {
 ```
 
 ```text
-// good — kebab-case files named by role
-src/schema.ts, src/open-sandbox-provider.ts
+// good — role folders with one naming scheme; each file a distinct role, tests beside their subject
+src/rpcs/contracts.ts, src/rpcs/handlers.ts, src/routes/(home)/index.tsx
+src/rules/no-typeof.ts, src/rules/no-constant-function.ts, src/rules/rules.test.ts
+// bad — a barrel, near-empty files, and names that say nothing
+src/index.ts, src/types.ts (one alias), src/constants.ts (one value), src/helpers/misc.ts
 ```
 
 ## Quality
