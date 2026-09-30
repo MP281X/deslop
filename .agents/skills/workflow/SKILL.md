@@ -262,6 +262,8 @@ Matt Pocock sources verified 2026-09-27: [Full Walkthrough: Workflow for AI Codi
 
 - 09-30: the scratch rule gained one outside folder per thread (subfolders for copies), after `-base`, `-prototype`, and `-review` siblings and escaped eval folders survived cleanup; the host was cleaned with the maintenance reference's steps plus those leftovers (137G to 71G used); all dependencies moved to the latest versions with the root `upgrade` script and the Effect rc.118 migration, proven by check, tests, build, and a browser run of the portfolio preview (the dev server's missing RpcSerialization layer predated it and now comes from the same `layerRpcSerialization` production uses, proven by a browser run under `vp dev`); host maintenance now removes every stray `~/.deslop` folder whose name matches no worktree.
 
+- 09-30 overnight replays on the final texts (full runs, up to 3 simulated steers, `merge-bench/runs/*-final*`): lint rules accepted three times, 53 min and $19.6, then 34 min and $11.4, then 28 min and $9.0 as the texts tightened (Explore counts in one pass, option code shown right before the questions, silent waiting turns); workbench accepted in 19 min and $4.9 against 29–31 min and $11 on the 09-29 texts; generators and lint package reached the user's design only after their real steers. A Codex pair on GPT-6.1 Sol scored far below the Opus pair on the generators planning task (4 of 16 corrections anticipated against 12, clarity 2) and left proof apps behind, so the 6.1 Sol pair stays unproven for planning-heavy work.
+
 ## Evidence index
 
 Use these artifacts instead of reconstructing prior investigations:
