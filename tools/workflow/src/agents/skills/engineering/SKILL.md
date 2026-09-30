@@ -24,7 +24,7 @@ Everything you produce — code, names, files, folders, tests, and the diff a re
 - A package exposes explicit `package.json` `exports` subpaths and imports its own files through explicit `imports` aliases, which work in Node and Bun and keep dead code traceable. Tests sit beside their subject as `<name>.test.ts`.
 - One way to do each thing: a change replaces what it supersedes instead of layering beside it, so no field, method, option, export, or code path duplicates another or is a subset or superset of it.
 - No compatibility, backward or forward: change a name or shape and update every caller in the same change, with no alias, fallback, deprecated path, or flag. Only a contract the repository documents or the user names survives, such as production data from the previous release.
-- Delete dead code: every superseded or unused file, export, type, doc, test, and dependency goes in the same change; keep the type half of a schema pair and leave no leftover.
+- Delete dead code: every superseded or unused file, export, type, branch, config, validation, doc, test, and dependency goes in the same change; keep the type half of a schema pair and leave no leftover.
 - Replace every third-party dependency you can with an Effect module, or with a Node built-in reached through Effect's platform packages.
 - Change only the state an action changes: refresh, invalidate, or rerender nothing else.
 - Send and store canonical data only; derive the rest where it is used, and surface each state once, where the user acts on it.
