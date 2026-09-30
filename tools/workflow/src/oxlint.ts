@@ -359,6 +359,8 @@ export const oxlint = defineConfig({
 			{message: mapMessage, name: 'Map'},
 			'Number',
 			'Object',
+			{message: 'Use Number.parse.', name: 'parseFloat'},
+			{message: 'Use Number.parse.', name: 'parseInt'},
 			'Promise',
 			'Reflect',
 			{message: setMessage, name: 'Set'},

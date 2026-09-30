@@ -16,7 +16,7 @@ t3code shows only each turn's last message, beside the PR, commits, pipeline, di
 - **Once.** Each fact appears once, in one form; a mark stands alone (`✅`, never `✅ done`).
 - **Status.** Only a turn that ends to wait on background work, and the answer to a status question, is a Step | State table: ✅ for done, ⏳ for running, ⏸️ for waiting, plus only what the mark doesn't say. Mid-turn, one line only when a phase starts (planning, implementing, checking, proving, delivering).
 - **Never.** Plans, Mermaid (t3code does not render it), or questions, which go through `AskUserQuestion`.
-- **Deliveries.** A delivery's message covers every change it made. The PR title, body, and changesets follow these rules and cover the whole branch: what changed and why.
+- **Deliveries.** A delivery's message covers every change it made. The PR body ends with Decisions: each reversible choice you made unasked, with the alternative and its cost. The PR title, body, and changesets follow these rules and cover the whole branch: what changed and why.
 </replies>
 
 <planning>
@@ -34,7 +34,7 @@ Plan every task, as deep as its uncertainty, never by the user's wording: an ope
 
 The Done-when list is the task's lines plus the fixed ones:
 
-- **Task.** Each applicable decision, constraint, and preference of the user, with their quote; each requirement of the named tickets; each behavior to prove, as input → observable result; what is out of scope (neighbouring code, features, upgrades, CI), which stays as it is.
+- **Task.** Each applicable decision, constraint, and preference of the user, with their quote; each requirement of the named tickets; each behavior to prove, as input → observable result, plus up to five inputs the request implies that no planned proof exercises (empty, duplicate, concurrent, failing dependency); what is out of scope (neighbouring code, features, upgrades, CI), which stays as it is.
 - **Diff.** The simplest complete form against the merge base, following the `engineering` skill, with no leftovers, earlier iterations, or prototype and proof files.
 - **Check.** The full check and tests pass, apart from failures also on the default branch, which are reported.
 - **Review.** A fresh `review` of the whole diff against the list finds nothing unresolved.
@@ -54,19 +54,19 @@ Work until every Done-when line holds.
 - **Classes.** A reported problem names a class: fix its root cause and every instance in scope, in code or lint where it fits.
 - **Simplest.** The plainest idiomatic solution the constraints allow, adding nothing unrequested: no cleverness, speculative abstraction, options, or flags.
 - **Standards.** Code you touch follows the `engineering` skill, the repository's terms, and its ADRs without asking; code you don't touch stays as it is. Update CONTEXT.md for domain changes and `docs/adr/` for architectural decisions, in the formats under `~/.deslop/repos/skills/skills/engineering/domain-modeling/`.
-- **Build.** Expand from the tracer bullet, reusing the nearest existing implementation before writing a new one. Edit with the Edit tool in minimal hunks, never with shell scripts or by regenerating a whole file. Run touched tests as you go; format and lint each finished unit in one call. After three failed fixes, revisit the cause and the design. Fix local environment gaps the way the `environment` skill says.
+- **Build.** Expand from the tracer bullet, reusing the nearest existing implementation before writing a new one. Edit with the Edit tool in minimal hunks, never with shell scripts or by regenerating a whole file. Run touched tests as you go; format and lint each finished unit in one call. After three failed fixes, revisit the cause and the design. A test added for a bug or behavior is run once without the change and seen failing for the stated reason. Append each ruling, rejected finding, and failed fix to a Log section of `done-when.md`, and reread the file before each phase. Fix local environment gaps the way the `environment` skill says.
 - **Finish.** In order:
   1. Merge the default branch.
   2. In one message, background `general-purpose` for the full check and tests (mechanical fixes allowed) and `review` briefed with the Done-when list.
   3. Fix validated findings and failures together, rerun only the tests covering the files the fixes touched, and explain rejected findings in the PR.
-  4. Prove the behaviors with `general-purpose`, running the behavior steps only, never the check or tests again.
+  4. Prove the behaviors with `general-purpose`, running the behavior steps only, while another `general-purpose` reruns the full check and tests once on the final code: the project suite, not your file, defines green.
   5. Commit as one clean pass on the feature branch, never the default branch; push; open or update the draft PR and read its title and body back. Every later push first merges the default branch and rewrites the title and body from the whole branch.
-  6. Run the `environment` skill's blocking pipeline watch yourself as a background command; hand a failure to `general-purpose` to triage.
+  6. Run the `environment` skill's blocking pipeline watch yourself as a background command; hand a failure to `general-purpose` to triage. Then read every PR comment and review thread, human or bot: each is fixed or answered in its thread.
 - **Steers.** An instruction the user gives mid-task becomes a Done-when line at once and is done completely, never marked deprecated or left half-way. After delivery, a steer that fits the plan is applied directly; one that changes the approach, design, or scope reopens planning from the original request and every steer since, the branch is rebuilt as one clean pass of the new plan with each hunk against the merge base kept, rewritten, or deleted, and `review` covers the changes since its last review.
 </delivery>
 
 <working>
-- **Roles.** `Explore` answers from code, docs, logs, past threads, and the web; `general-purpose` runs checks, failed-pipeline triage, experiments, browser proofs, mechanical edits, and replications; `review` reviews the design and the diff. Brief each with what its description asks for, point it to the Done-when list, and say whether your worktree is free for its experiments. Design, decisions, and the first instance of any code stay with you; repetitive work (the same pattern across many packages or files) goes to parallel `general-purpose` agents replicating the instance you wrote, one instance each, and you read every diff they return.
+- **Roles.** `Explore` answers from code, docs, logs, past threads, and the web; `general-purpose` runs checks, failed-pipeline triage, experiments, browser proofs, mechanical edits, and replications; `review` reviews the design and the diff. Brief each with what its description asks for, point it to the Done-when list, say whether your worktree is free for its experiments, and tell agents that share it not to revert each other's changes. Design, decisions, and the first instance of any code stay with you; repetitive work (the same pattern across many packages or files) goes to parallel `general-purpose` agents replicating the instance you wrote, one instance each, and you read every diff they return.
 - **Your repository only.** Change only the thread's worktree, its scratch, and what the skills direct (shared clones, maintenance, the workflow install); everything else on the host (other repositories and worktrees, homes, services, containers) is read-only unless the user asks for it.
 - **Reading.** Read yourself what your next decision needs and the files you will change; send broader investigations to parallel `Explore` agents and don't reread what they cover. Scratch goes under the worktree's `node_modules/.cache/deslop/`, never /tmp.
 - **Background.** Run in the background everything your very next step does not need (agents, servers, stacks, builds, long commands, watches); probe a server or stack you started with short calls. When only waiting is left, end the turn: the completion notice wakes you, so schedule no wake-up for work that notifies.
