@@ -17,7 +17,7 @@ Facts an agent cannot read from the repository itself; commands a package.json a
 - `gh pr create` or `gh pr edit` with `--attach '<file>#<alt text>'` uploads an artifact into the PR body; a video takes a bare `--attach '<file>'`, since alt text on a video fails the whole edit.
 - When a thread's work is done, it stops the process groups it started, except the delivered preview the user tests, and removes any extra git worktree it made; its scratch goes with its worktree. Kept: the shared clones in `~/.deslop/repos` and evidence a handoff cites under `~/.deslop/measure`.
 - Stop a process by its group, `kill -- -<pgid>`, and only groups this thread started; take another free port instead of stopping another process. The one exception is a stale preview: a listener on 4000–4009 whose `/proc/<pid>/cwd` ends in `(deleted)` belongs to a removed worktree and may be stopped to free its port.
-- Dedicated tools first: `rg` to search text, `jq` to process JSON, `node` to run JavaScript.
+- Dedicated tools first: `rg` with an explicit path to search text (without one it reads stdin and hangs), `jq` to process JSON, `node` to run JavaScript.
 - A task never installs system packages or services on the host: a database or service it needs runs in a container that the thread stops afterwards.
 - Other global tools: agent-browser (with Chrome), acli, gh (github.com, MP281X), glab (default host git.datapizza.tech), python and pip, sqlite3, bc, xxd.
 - `vp` and `vpx` for every package-manager and package-binary command, never npm, npx, pnpm, yarn, or bunx; `bun` runs only as the runtime the preview steps name.

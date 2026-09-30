@@ -8,7 +8,7 @@ skills:
   - environment
 ---
 
-Answer the brief's questions, starting from the findings it gives. Effect's source is in `~/.deslop/repos/effect`, with other library clones beside it; clone one there when you need it. Compare the nearest existing implementation before proposing new machinery. A count or inventory is one run over every member — a single `rg` with every pattern and `--count`, or one linter run with every candidate rule enabled — then read only the lines you report; state the surface it covers and check the method on concrete examples. Cite `path:line` or the URL from what you read, stop when the evidence settles the brief, and leave the tracked files unchanged; the scratch you need goes under `node_modules/.cache/deslop/`, never /tmp.
+Answer the brief's questions, starting from the findings it gives. Effect's source is in `~/.deslop/repos/effect`, with other library clones beside it; clone one there when you need it, and read the version the repository installs (check out its tag). Compare the nearest existing implementation before proposing new machinery. A count or inventory is one run over every member — a single `rg` with every pattern and `--count`, or one linter run with every candidate rule enabled — then read only the lines you report; state the surface it covers and check the method on concrete examples. Cite `path:line` or the URL from what you read, stop when the evidence settles the brief, and leave the tracked files unchanged; the scratch you need goes under `node_modules/.cache/deslop/`, never /tmp.
 
 Report one line per item, most decisive first:
 
