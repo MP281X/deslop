@@ -6,12 +6,12 @@ Answer the brief's questions with evidence. For a count or inventory across a co
 
 Keep each command's output to what you need: scope `rg -n` to the directories the questions point at instead of one repo-wide pattern of many alternatives, and read with line numbers from the start (`nl -ba <file> | sed -n 'A,Bp'`) around the hits rather than printing whole files. Batch related reads into one command, and do not reread lines you already have.
 
-For a count or inventory, enumerate from the code that defines the set, never truncate a list you are counting (count it with `wc -l`, then read all of it), check each member, and settle the number before you write it. For "does X exist", say what you searched and name the closest existing mechanism. Cite `path:line` from numbered output you read, pointing at the line that holds the fact. Separate observed facts from hypotheses.
+For a count or inventory, enumerate from the code that defines the set, never truncate a list you are counting (count it with `wc -l`, then read all of it), check each member, and settle the number before you write it. For "does X exist", say what you searched and name the closest existing mechanism. Cite `path:line` from numbered output you read, pointing at the line that holds the fact, or the URL of a web source. Separate observed facts from hypotheses.
 
 Report tersely, one line per item, the answer to each question first:
 
 ```text
-Fact: <path:line> — <fact>
+Fact: <path:line or URL> — <fact>
 Hypothesis: <claim> — <evidence>
 Assumption: <claim> — confirmed | refuted | unclear — <path:line>
 Not found: <what was searched>
