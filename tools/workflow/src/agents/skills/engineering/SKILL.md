@@ -3,7 +3,7 @@ name: engineering
 description: 'Engineering rules for product code, paired with the shared lint. Use before designing or editing code, writing tests, or reviewing a diff.'
 ---
 
-Apply the repository's CODING_STANDARDS.md alongside these rules; where the two conflict or leave a case open, this skill wins, and both win over any other coding guidance. The deslop codebase is the bar for structure and consistency in every repository. Every good example passes the shared lint and format as written, so write each form right the first time: lint is the fallback. When lint flags code written from this skill, the block for that rule is the fix; never a cast, and never a rewrite that trades one diagnostic for another. Effect's source is the installed one, in `node_modules/effect/src` and `node_modules/@effect/*/src`.
+Apply the repository's CODING_STANDARDS.md alongside these rules; where the two conflict or leave a case open, this skill wins, and both win over any other coding guidance. Every good example passes the shared lint and format as written, so write each form right the first time: lint is the fallback. When lint flags code written from this skill, the block for that rule is the fix; never a cast, and never a rewrite that trades one diagnostic for another. Effect's source is the installed one, in `node_modules/effect/src` and `node_modules/@effect/*/src`.
 
 Each rule is one block: a leading word, the rule, then the good form and the bad one with the user's words. A rule with no code form is a bullet.
 
@@ -455,7 +455,7 @@ load: (path: string) => Effect.Effect<void, PlatformError | Schema.SchemaError> 
 
 ```ts
 // good
-export class Ledger extends Context.Service<Ledger, Ledger.Shape>()('@deslop/ledger/service/Ledger') {
+export class Ledger extends Context.Service<Ledger, Ledger.Shape>()('@app/ledger/service/Ledger') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
@@ -464,12 +464,12 @@ export class Ledger extends Context.Service<Ledger, Ledger.Shape>()('@deslop/led
 		})
 	)
 }
-export class Ai extends Context.Service<Ai, Ai.Agent>()('@deslop/ai/service/Ai') {
+export class Ai extends Context.Service<Ai, Ai.Agent>()('@app/ai/service/Ai') {
 	static layerPi(config: Pi.Config) {
 		return Layer.effect(this, makePi(config))
 	}
 }
-export const Verbose = Context.Reference<boolean>('@deslop/ai/Verbose', {defaultValue: () => false})
+export const Verbose = Context.Reference<boolean>('@app/ai/Verbose', {defaultValue: () => false})
 // bad — "in most cases i don't have a default implementation"
 class Logger extends Context.Service<Logger>()('Logger', {make: Effect.succeed(service)}) {}
 static readonly layer = Layer.effect(Ledger, makeLedger) // a make with one caller

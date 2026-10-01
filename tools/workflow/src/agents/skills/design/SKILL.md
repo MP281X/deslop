@@ -18,7 +18,7 @@ The best UI is the one that looks and behaves like the app around it, shows each
 <div className="flex flex-col items-center gap-2 p-6 text-muted-foreground">No runs yet</div>
 ```
 
-**Consistency.** Read the nearest screens of the same kind and the components they compose first, and match their structure, spacing, type, icons, density, states, copy, and behavior; where the app is inconsistent, follow the majority. Reuse the existing component or renderer for a job before adding one. With no screen of the same kind, t3code's interface (`~/.deslop/repos/t3code`) is the reference.
+**Consistency.** Read the nearest screens of the same kind and the components they compose first, and match their structure, spacing, type, icons, density, states, copy, and behavior; where the app is inconsistent, follow the majority. Reuse the existing component or renderer for a job before adding one. With no screen of the same kind, t3code's interface (github.com/pingdotgg/t3code) is the reference.
 
 ```tsx
 // good — the picker every other model choice uses

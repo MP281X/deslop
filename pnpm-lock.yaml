@@ -18,24 +18,24 @@ importers:
   .:
     dependencies:
       '@effect/atom-react':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(react@19.3.0)(scheduler@0.27.0)
+        specifier: ^4.0.0
+        version: 4.0.0(effect@4.0.0)(react@19.3.0)(scheduler@0.27.0)
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: ^4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: ^4.0.0
+        version: 4.0.0
     devDependencies:
       '@deslop/workflow':
         specifier: workspace:*
         version: link:tools/workflow
       '@effect/tsgo':
         specifier: latest
-        version: 0.47.0
+        version: 0.47.2
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@5.0.1)
+        specifier: ^4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.1)
       '@types/node':
         specifier: latest
         version: 26.6.3
@@ -172,8 +172,8 @@ importers:
         specifier: workspace:*
         version: link:../components
       '@effect/opentelemetry':
-        specifier: ^4.0.0-rc
-        version: 4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)
+        specifier: ^4.0.0
+        version: 4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)
       '@opentelemetry/exporter-logs-otlp-http':
         specifier: latest
         version: 0.222.0(@opentelemetry/api@1.9.1)
@@ -585,15 +585,15 @@ packages:
     resolution: {integrity: sha512-8e2CuxM+ht+hedQXTZmi5JVl6/xDK9RpSDL2+MbITevKYQhMZ/z6lJOTFgox3HQyGxO8mOZEtYGVeQNaD4OzqA==}
     engines: {node: '>=22.19.0'}
 
-  '@effect/atom-react@4.0.0-rc.118':
-    resolution: {integrity: sha512-H6XBWGOlKIe53yFHdzd9zJE+H1RDoMvqF5OyWBZetbaHJUYlSbZECvDzBw1545fSoHrgH2JmlWePFPsXOgGSqA==}
+  '@effect/atom-react@4.0.0':
+    resolution: {integrity: sha512-VPP2oOjj56iwOpL5aIGbu7Qhb4+1sFNdU16aI5of3JqToqWWX9eJPBfeiPyQ1eTYof1hnNX1auyRiTORSfLT6g==}
     peerDependencies:
-      effect: ^4.0.0-rc.118
+      effect: ^4.0.0
       react: '>=19.0.0 <20.0.0'
       scheduler: '>=0.25.0 <0.28.0'
 
-  '@effect/opentelemetry@4.0.0-rc.118':
-    resolution: {integrity: sha512-N5dvEeCj1W/9zgBvyyp/GucOKOEJdV7QNirWp+4g/axFKTB/cfV2gx/ZhMDUb69HzlyRmOelNvKEmB3RA0PdVw==}
+  '@effect/opentelemetry@4.0.0':
+    resolution: {integrity: sha512-vXVhqlcADHtmKlw2gIqRRlXFve4ms4JJ5ykAqzNe37QQ/5N5A5gJ9VOXkMBORHZC5O4gdHZwxhAzGZb0zvFf/Q==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@opentelemetry/api': '>=1.9.0 <2.0.0'
@@ -605,7 +605,7 @@ packages:
       '@opentelemetry/sdk-trace-node': '>=2.0.0 <3.0.0'
       '@opentelemetry/sdk-trace-web': '>=2.0.0 <3.0.0'
       '@opentelemetry/semantic-conventions': '>=1.33.0 <2.0.0'
-      effect: ^4.0.0-rc.118
+      effect: ^4.0.0
     peerDependenciesMeta:
       '@opentelemetry/api':
         optional: true
@@ -624,21 +624,26 @@ packages:
       '@opentelemetry/sdk-trace-web':
         optional: true
 
-  '@effect/platform-node-shared@4.0.0-rc.118':
-    resolution: {integrity: sha512-pNbmIlxbAUxAthUNsp2xm1NLG9kxoYecsPkoYl9mNF2oxPcKDxAvkOar7tYnLSUpXJeATm4pxYVipdZjQfqO4Q==}
+  '@effect/platform-node-shared@4.0.0':
+    resolution: {integrity: sha512-VBXHJU9UXVZPdQGGDRjGXpo+TpOzRwZuMrdKAtIxi1qwcRftmacZ1zTgIrzBa0Z2RA2KVkoOecQUsTlt/nJZhw==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: ^4.0.0-rc.118
+      effect: ^4.0.0
 
-  '@effect/platform-node@4.0.0-rc.118':
-    resolution: {integrity: sha512-qdAxPZ+5bKxVnzkwziqcHZTHRHz2hyfFX6NhwEmm75CBpmaIzXIZR2LRqGd1/8eI3J3cOrXcAYzByhln7T1/EA==}
+  '@effect/platform-node@4.0.0':
+    resolution: {integrity: sha512-/L+4MUbl8FejPKLHLROYSOebvHnfixkP8KiblSD/DE5uH5xENZBHaux4nH6XMnRP+lr8ajpEJFS8sUrmmxFJeQ==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: ^4.0.0-rc.118
+      effect: ^4.0.0
       redis: '>=5.0.0 <7.0.0'
 
   '@effect/tsgo-darwin-arm64@0.47.0':
     resolution: {integrity: sha512-X4MF7+GOiOk0EzcdY2bqSFl8yXYoD3VvzFcDE5ZyEO1oLGa4UGJjRmJBQt/LQFil8MW68uvAmE+Thh/Y2VTyuA==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@effect/tsgo-darwin-arm64@0.47.2':
+    resolution: {integrity: sha512-sLYKt201VdTjSHG3rbyIdpLMNGEMiArm0OgO7kYfnA0yRV0ux0blgcucf97bx90gIvDJFSSL17QCSDPGs9jsKQ==}
     cpu: [arm64]
     os: [darwin]
 
@@ -647,8 +652,18 @@ packages:
     cpu: [x64]
     os: [darwin]
 
+  '@effect/tsgo-darwin-x64@0.47.2':
+    resolution: {integrity: sha512-gW0fdFjSIacCDOjLa+vS/xWmyElbM0jX3cCTlKXGzNCyMKsP/T0MkvT2GZO/njB2jIt/XXG9qEQ5FE/Rcqt7Zg==}
+    cpu: [x64]
+    os: [darwin]
+
   '@effect/tsgo-linux-arm64@0.47.0':
     resolution: {integrity: sha512-44tFG3S9MU6vQCsDIQlV/72NHrAmo4T9Q6adFJDNjaRzv4eIEu9TPHAflIVghCRFWkmvhElnKp6VSh4vJ5jwlw==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@effect/tsgo-linux-arm64@0.47.2':
+    resolution: {integrity: sha512-hA3SoKGuLd0HNqJ34QcYEWwpE6tvit3xpKupwj1TaPtHpLLGdtSF7czBIknp6kR8fOvnuYLjB6aEkxXmJsTVWg==}
     cpu: [arm64]
     os: [linux]
 
@@ -657,8 +672,18 @@ packages:
     cpu: [arm]
     os: [linux]
 
+  '@effect/tsgo-linux-arm@0.47.2':
+    resolution: {integrity: sha512-GT8fgQ3Pnzr0ax/AtYptztVquLAWeWoyLvQTpfI5APrs+Me+/rSwOLSA7//17ZVmNYbcGbKImX8laUYeDqByNQ==}
+    cpu: [arm]
+    os: [linux]
+
   '@effect/tsgo-linux-x64@0.47.0':
     resolution: {integrity: sha512-DL3DiNZNMKnEdVNHpQPtuDSV4DdAtY6owgfQYYgF1uExjqS/5ZWZICEm1ZpdeLMIaCFbRdeSv7uEu1RrTGCuyw==}
+    cpu: [x64]
+    os: [linux]
+
+  '@effect/tsgo-linux-x64@0.47.2':
+    resolution: {integrity: sha512-vELwVsUQ5VlM2jbvv7zaIPOkFsxmaS0nLqq+p0RodtkQiuScg27febnLClzKAv/Tl6GrXTBz4IBh78aBF2CvbQ==}
     cpu: [x64]
     os: [linux]
 
@@ -667,8 +692,18 @@ packages:
     cpu: [arm64]
     os: [win32]
 
+  '@effect/tsgo-win32-arm64@0.47.2':
+    resolution: {integrity: sha512-FSwpJp3XaJK9o7cOXtJcYIsvZWR/mrY4ZZyyTuRgphEZju7FwOzLeVhLr9ziyScfmisOpX2i+8v1H+PlMMZ1TQ==}
+    cpu: [arm64]
+    os: [win32]
+
   '@effect/tsgo-win32-x64@0.47.0':
     resolution: {integrity: sha512-keYrly656yhEdB3pigkCJaT2oI7I7RcB1QcF4akTggBNuLsh1WT5Ksy2xuHD8QkUiNz6pRwFUSW9Qh83zJQX8g==}
+    cpu: [x64]
+    os: [win32]
+
+  '@effect/tsgo-win32-x64@0.47.2':
+    resolution: {integrity: sha512-Lh/N7E2p6E0tBZM+uZ40Hv/AUG81WGtw76H4pLLPAG7wFANwGSx984NwKypXqGtOXBmKqb0R/cYpszDyzbNyYA==}
     cpu: [x64]
     os: [win32]
 
@@ -676,10 +711,14 @@ packages:
     resolution: {integrity: sha512-70L1cp9Lj8rJeKmLseg2RLaQ95IM2CR3BFF6Ytq1fjio3V9cEwMuOzBYSRlIAK2x+dTyxvFdabvbMr+DF7XD7g==}
     hasBin: true
 
-  '@effect/vitest@4.0.0-rc.118':
-    resolution: {integrity: sha512-O0CPgtFVhkB+pyFtjP4up2XF4uVWsPgUmlv4hMjq8ARLOPKYix+uu3AUFIUKRHjzzQpx+JPce6KPhD6Flkrfag==}
+  '@effect/tsgo@0.47.2':
+    resolution: {integrity: sha512-mGIelPZhTJg8g+RgiAe7wrB8NLw/lOzPGntAYBBqEJS0/I8ir1/ULKcpFQyuAfPjwkDYrg93KWv1PDGwgsgBIA==}
+    hasBin: true
+
+  '@effect/vitest@4.0.0':
+    resolution: {integrity: sha512-kGElCPFGtP+CgMCwV/HjJWqtE3zYo6I1+8MSA54l+EI24lPU9p2Efa+TBp1jfkg9j711KKzEqgSAy3VzTsb76Q==}
     peerDependencies:
-      effect: ^4.0.0-rc.118
+      effect: ^4.0.0
       vitest: '>=5.0.0 <6.0.0'
 
   '@eslint/core@0.17.0':
@@ -3490,8 +3529,8 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  effect@4.0.0-rc.118:
-    resolution: {integrity: sha512-hxhpCd+swzrtu9lnyPpEFre2ODQzJ9qxgyL1oHIEY8NKnW4PxTbM1XzplMZXiAsLD62HO+KJc41Nqxr9T791ZQ==}
+  effect@4.0.0:
+    resolution: {integrity: sha512-ooc1TG5t+FfzgYnFz2ff6BBKyZ7EwBRVXC7c4RhQUAD6/TZ2gTXXMeb4WX7a19ozQo4J73/QW+S00YAIresoMQ==}
 
   electron-to-chromium@1.5.439:
     resolution: {integrity: sha512-qu6QIPXhsb+CRcAiTMNjR4A1y/7tCYKkKjr5CZXRVih6qkDf79peZ2BpEU3qoDBNCRrcy3Mra3X9nG5oruuA7Q==}
@@ -5871,16 +5910,16 @@ snapshots:
 
   '@earendil-works/pi-telemetry@0.84.4': {}
 
-  '@effect/atom-react@4.0.0-rc.118(effect@4.0.0-rc.118)(react@19.3.0)(scheduler@0.27.0)':
+  '@effect/atom-react@4.0.0(effect@4.0.0)(react@19.3.0)(scheduler@0.27.0)':
     dependencies:
-      effect: 4.0.0-rc.118
+      effect: 4.0.0
       react: 19.3.0
       scheduler: 0.27.0
 
-  '@effect/opentelemetry@4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)':
+  '@effect/opentelemetry@4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)':
     dependencies:
       '@opentelemetry/semantic-conventions': 1.43.0
-      effect: 4.0.0-rc.118
+      effect: 4.0.0
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/api-logs': 0.222.0
@@ -5891,19 +5930,19 @@ snapshots:
       '@opentelemetry/sdk-trace-node': 2.11.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-trace-web': 2.11.0(@opentelemetry/api@1.9.1)
 
-  '@effect/platform-node-shared@4.0.0-rc.118(effect@4.0.0-rc.118)':
+  '@effect/platform-node-shared@4.0.0(effect@4.0.0)':
     dependencies:
       '@types/ws': 8.18.1
-      effect: 4.0.0-rc.118
+      effect: 4.0.0
       ws: 8.22.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))':
+  '@effect/platform-node@4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))':
     dependencies:
-      '@effect/platform-node-shared': 4.0.0-rc.118(effect@4.0.0-rc.118)
-      effect: 4.0.0-rc.118
+      '@effect/platform-node-shared': 4.0.0(effect@4.0.0)
+      effect: 4.0.0
       redis: 6.2.1(@opentelemetry/api@1.9.1)
       undici: 8.11.2
     transitivePeerDependencies:
@@ -5913,22 +5952,43 @@ snapshots:
   '@effect/tsgo-darwin-arm64@0.47.0':
     optional: true
 
+  '@effect/tsgo-darwin-arm64@0.47.2':
+    optional: true
+
   '@effect/tsgo-darwin-x64@0.47.0':
+    optional: true
+
+  '@effect/tsgo-darwin-x64@0.47.2':
     optional: true
 
   '@effect/tsgo-linux-arm64@0.47.0':
     optional: true
 
+  '@effect/tsgo-linux-arm64@0.47.2':
+    optional: true
+
   '@effect/tsgo-linux-arm@0.47.0':
+    optional: true
+
+  '@effect/tsgo-linux-arm@0.47.2':
     optional: true
 
   '@effect/tsgo-linux-x64@0.47.0':
     optional: true
 
+  '@effect/tsgo-linux-x64@0.47.2':
+    optional: true
+
   '@effect/tsgo-win32-arm64@0.47.0':
     optional: true
 
+  '@effect/tsgo-win32-arm64@0.47.2':
+    optional: true
+
   '@effect/tsgo-win32-x64@0.47.0':
+    optional: true
+
+  '@effect/tsgo-win32-x64@0.47.2':
     optional: true
 
   '@effect/tsgo@0.47.0':
@@ -5941,9 +6001,19 @@ snapshots:
       '@effect/tsgo-win32-arm64': 0.47.0
       '@effect/tsgo-win32-x64': 0.47.0
 
-  '@effect/vitest@4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@5.0.1)':
+  '@effect/tsgo@0.47.2':
+    optionalDependencies:
+      '@effect/tsgo-darwin-arm64': 0.47.2
+      '@effect/tsgo-darwin-x64': 0.47.2
+      '@effect/tsgo-linux-arm': 0.47.2
+      '@effect/tsgo-linux-arm64': 0.47.2
+      '@effect/tsgo-linux-x64': 0.47.2
+      '@effect/tsgo-win32-arm64': 0.47.2
+      '@effect/tsgo-win32-x64': 0.47.2
+
+  '@effect/vitest@4.0.0(effect@4.0.0)(vitest@5.0.1)':
     dependencies:
-      effect: 4.0.0-rc.118
+      effect: 4.0.0
       vitest: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@26.6.3)(@vitest/browser-preview@5.0.1)(@vitest/ui@5.0.1(vitest@5.0.1))(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.3)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))
 
   '@eslint/core@0.17.0':
@@ -8368,7 +8438,7 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  effect@4.0.0-rc.118: {}
+  effect@4.0.0: {}
 
   electron-to-chromium@1.5.439: {}
 
