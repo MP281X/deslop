@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Deferred, Effect, Fiber, Stream, pipe} from 'effect'
 
-import {Prompt, Response} from 'effect/unstable/ai'
+import {Prompt, Response} from 'effect/ai'
 
 import type {Ai} from '#service'
 

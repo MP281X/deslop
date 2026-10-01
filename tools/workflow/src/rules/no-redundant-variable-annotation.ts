@@ -10,13 +10,6 @@ function isStringLiteral(node: ESTree.Expression) {
 function inferredIdentically(input: {context: Context; init: ESTree.Expression; type: ESTree.TSType}) {
 	const text = input.context.sourceCode.getText
 	if (input.init.type === 'TSAsExpression') return text(input.init.typeAnnotation) === text(input.type)
-	if (input.init.type === 'ArrayExpression') {
-		return (
-			input.type.type === 'TSArrayType' &&
-			input.init.elements.length === 1 &&
-			input.init.elements[0]?.type === 'SpreadElement'
-		)
-	}
 	return (
 		input.init.type === 'ConditionalExpression' &&
 		input.type.type === 'TSStringKeyword' &&

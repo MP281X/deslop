@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Predicate} from 'effect'
 
-import {Prompt, Response} from 'effect/unstable/ai'
+import {Prompt, Response} from 'effect/ai'
 
 import {makeConversationReducer, promptFromEvents} from './utils.ts'
 

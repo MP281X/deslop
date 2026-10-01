@@ -3,7 +3,14 @@ import {Array, Option, Predicate, pipe} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
-import {returnedExpression, singleUseThunk, variableFor, variableFromScope} from './shared.ts'
+import {
+	importedMember,
+	memberName,
+	returnedExpression,
+	singleUseThunk,
+	variableFor,
+	variableFromScope
+} from '#rules/shared.ts'
 
 function parameterName(parameter: ESTree.ParamPattern) {
 	if (parameter.type === 'Identifier') return Option.some(parameter.name)
@@ -38,6 +45,23 @@ function exactForwardingFunction(node: ESTree.Function | ESTree.ArrowFunctionExp
 		returned.callee.type === 'Identifier' &&
 		forwardedCall({names, node: returned})
 	)
+}
+
+function isIdentity(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+	const [parameter] = node.params
+	const returned = returnedExpression(node)
+	return (
+		node.params.length === 1 &&
+		parameter?.type === 'Identifier' &&
+		returned?.type === 'Identifier' &&
+		returned.name === parameter.name
+	)
+}
+
+function indirectionMessage(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+	return isIdentity(node)
+		? 'Pass identity from effect instead of this function.'
+		: 'Inline this function at its only use site.'
 }
 
 function isExport(node: ESTree.Node | null) {
@@ -141,6 +165,46 @@ function singleUseLiteral(input: {context: Context; node: ESTree.VariableDeclara
 	)
 }
 
+function singleUseLayerPart(input: {context: Context; node: ESTree.VariableDeclarator}) {
+	const init = input.node.init
+	if (
+		input.node.parent.type !== 'VariableDeclaration' ||
+		input.node.parent.kind !== 'const' ||
+		isExport(input.node.parent.parent) ||
+		input.node.id.type !== 'Identifier' ||
+		input.node.id.typeAnnotation !== null ||
+		init === null
+	) {
+		return false
+	}
+	return pipe(
+		variableFromScope({name: input.node.id.name, scope: input.context.sourceCode.getScope(input.node)}),
+		Option.map(variable => Array.filter(variable.references, reference => reference.isRead())),
+		Option.exists(reads => {
+			const consumer = reads[0]?.identifier.parent
+			if (reads.length !== 1 || consumer?.type !== 'CallExpression') return false
+			if (init.type === 'MemberExpression') {
+				return (
+					Option.contains(memberName(init), 'layer') &&
+					(importedMember({context: input.context, importedName: 'Layer', node: consumer.callee}) ||
+						importedMember({
+							context: input.context,
+							importedName: 'Effect',
+							node: consumer.callee,
+							propertyName: 'provide'
+						}))
+				)
+			}
+			return (
+				init.type === 'CallExpression' &&
+				importedMember({context: input.context, importedName: 'Effect', node: init.callee, propertyName: 'gen'}) &&
+				consumer.arguments[1] === reads[0]?.identifier &&
+				importedMember({context: input.context, importedName: 'Layer', node: consumer.callee, propertyName: 'effect'})
+			)
+		})
+	)
+}
+
 export const noTrivialIndirection = defineRule({
 	create: context => ({
 		ArrowFunctionExpression: node => {
@@ -148,12 +212,12 @@ export const noTrivialIndirection = defineRule({
 				(node.parent.type === 'VariableDeclarator' || node.parent.type === 'Property') &&
 				(exactForwardingFunction(node) || singleUseThunk({context, node}) || singleCallerWrapper({context, node}))
 			) {
-				context.report({message: 'Inline this function at its only use site.', node})
+				context.report({message: indirectionMessage(node), node})
 			}
 		},
 		FunctionDeclaration: node => {
 			if (exactForwardingFunction(node) || singleUseThunk({context, node}) || singleCallerWrapper({context, node})) {
-				context.report({message: 'Inline this function at its only use site.', node})
+				context.report({message: indirectionMessage(node), node})
 			}
 		},
 		FunctionExpression: node => {
@@ -163,7 +227,7 @@ export const noTrivialIndirection = defineRule({
 					(node.parent.type === 'MethodDefinition' && node.parent.override !== true)) &&
 				(exactForwardingFunction(node) || singleUseThunk({context, node}) || singleCallerWrapper({context, node}))
 			) {
-				context.report({message: 'Inline this function at its only use site.', node})
+				context.report({message: indirectionMessage(node), node})
 			}
 		},
 		VariableDeclarator: node => {
@@ -172,6 +236,9 @@ export const noTrivialIndirection = defineRule({
 			}
 			if (singleUseLiteral({context, node})) {
 				context.report({message: 'Inline this literal at its only use site.', node})
+			}
+			if (singleUseLayerPart({context, node})) {
+				context.report({message: 'Write this layer part where its only layer uses it.', node})
 			}
 		}
 	}),

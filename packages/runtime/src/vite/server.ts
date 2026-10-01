@@ -24,9 +24,13 @@ import {
 	pipe
 } from 'effect'
 
-import {HttpRouter, HttpServer} from 'effect/unstable/http'
+import {HttpRouter, HttpServer} from 'effect/http'
+import {NetAddress} from 'effect/net'
+import type {RpcSerialization} from 'effect/rpc'
 import type {Connect, EnvironmentModuleNode, Plugin} from 'vite'
 import {isRunnableDevEnvironment} from 'vite'
+
+import {layerRpcSerialization} from '#server'
 
 const isApiUrl = Predicate.compose(
 	String.isString,
@@ -37,7 +41,7 @@ export function serverPlugin(): Plugin {
 	const active = MutableRef.make(
 		Option.none<{
 			request: (request: IncomingMessage, response: ServerResponse) => void
-			scope: Scope.Scope
+			scope: Scope.Closeable
 			upgrade: (request: IncomingMessage, socket: Duplex, head: Buffer) => void
 		}>()
 	)
@@ -89,7 +93,11 @@ export function serverPlugin(): Plugin {
 						runnableEnvironment.runner.clearCache()
 						const application = yield* Effect.tryPromise(() =>
 							runnableEnvironment.runner.import<{
-								default: Layer.Layer<never, never, HttpServer.HttpServer | NodeServices.NodeServices>
+								default: Layer.Layer<
+									never,
+									never,
+									HttpServer.HttpServer | NodeServices.NodeServices | RpcSerialization.RpcSerialization
+								>
 							}>('src/main.server.ts')
 						)
 						const address = viteServer.address()
@@ -123,11 +131,12 @@ export function serverPlugin(): Plugin {
 							Scope.provide(scope),
 							// @effect-diagnostics-next-line strictEffectProvide:off -- The dynamically loaded server application receives its complete platform layer here.
 							Effect.provide(
-								Layer.merge(
+								Layer.mergeAll(
 									NodeHttpServer.layerHttpServices,
+									layerRpcSerialization,
 									Layer.succeed(HttpServer.HttpServer)(
 										HttpServer.make({
-											address: {_tag: 'TcpAddress', hostname: '0.0.0.0', port: address.port},
+											address: NetAddress.inetAddressUnsafe(NetAddress.ipv4Unspecified, address.port),
 											serve: () => Effect.void
 										})
 									)

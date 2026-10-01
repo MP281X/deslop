@@ -1,90 +1,170 @@
 ---
 name: environment
-description: 'Host and repository facts for this machine, deslop, and dual. Use before running, building, previewing, or checking anything, or when locating a login, port, or scratch path.'
+description: 'Facts and exact commands for this machine, deslop, and dual. Use before running, building, previewing, checking, or watching anything, or when locating a thread, login, port, or scratch path.'
 ---
 
 # Environment
 
-Facts an agent cannot read from the repository itself; commands a package.json already shows are listed only where they carry a gotcha.
+This machine is the only one the user works on. A routine step with a block below runs the block as is; for any other tool, read its `--help` once before the first try and never guess flags.
 
-## Host
+## Machine
 
-- Debian 13, 8 CPUs, 23G RAM.
-- Agents and the user reach it only by its DNS name, as `mp281x@dev.mp281x.xyz`, never by IP.
-- Scratch, logs, screenshots, and videos go under `node_modules/.cache/deslop/` in the thread's worktree, never /tmp: `node_modules` is ignored by git and every tool, and t3 deletes it with the worktree once the thread settles. A repository copy that must install, check, or test goes in `~/.deslop/<worktree directory name>/` instead, because Node refuses TypeScript type stripping under any `node_modules` path, and the thread removes it when its work is done.
-- Proof artifacts are captured in one agent-browser `--session`: `record start <path.mp4> [url]` … `record stop` records H.264 video, which plays everywhere including iOS Safari (a `.webm` does not play on the phone), and `screenshot <path.png>` takes a screenshot. Sign in once per preview and `state save <scratch>/auth.json`; later sessions start with `--state <that path>` and skip the login.
-- `gh pr create` or `gh pr edit` with `--attach '<file>#<alt text>'` uploads an artifact into the PR body; a video takes a bare `--attach '<file>'`, since alt text on a video fails the whole edit.
-- When a thread's work is done, it stops the process groups it started, except the delivered preview the user tests, and removes any extra git worktree it made; its scratch goes with its worktree. Kept: the shared clones in `~/.deslop/repos` and evidence a handoff cites under `~/.deslop/measure`.
-- Dedicated tools first: `rg` to search text, `jq` to process JSON, `node` to run JavaScript.
-- Other global tools: agent-browser (with Chrome), acli, gh (github.com, MP281X), glab (default host git.datapizza.tech), python and pip, sqlite3, bc, xxd.
-- `vp` and `vpx` for every package-manager and package-binary command, never npm, npx, pnpm, yarn, or bunx; `bun` runs only as the runtime the preview steps name.
-- Stop only process groups this thread started, with `kill -- -<pgid>`; take another free port instead of stopping another process. The one exception is a stale preview: a listener on 4000–4009 whose `/proc/<pid>/cwd` ends in `(deleted)` belongs to a removed worktree and may be stopped to free its port.
-- Datapizza VPN: openvpn3 config `datapizza`, needed only for git.datapizza.tech; one device at a time. Connect with `openvpn3 session-start --config datapizza --background` and show the printed sign-in URL as a clickable Markdown link in a normal message, outside the question tool; when `openvpn3 sessions-list` shows an expired link or failed authentication, restart at once with `openvpn3 session-manage --config datapizza --restart`, without diagnosing.
-- `sudo` is passwordless. ufw allows 22, 80, and 443 publicly, and 4000–4009 only from the `deslop` Docker network for traefik's preview routes; [maintenance](references/maintain.md) keeps that rule on the network's current subnet.
-- Wait for a pipeline with one blocking command: `gh run watch <id> --exit-status --compact` on GitHub, with the id from `gh run list --commit <sha>` once the run appears (`gh pr checks --watch` right after a push reports no checks), `glab ci status --wait --compact` on GitLab; then read only the failed jobs' logs.
+- Debian 13, 8 CPUs, 23G RAM, reached as `mp281x@dev.mp281x.xyz`; `sudo` is passwordless.
+- Tools: docker with compose and buildx; agent-browser, with its Chrome under `~/.agent-browser/browsers/`; gh (github.com, MP281X); glab (default host git.datapizza.tech); acli; ffmpeg; python and pip; sqlite3; jq; rg; flock; ss. `~/.vite-plus/bin` holds node and shims for every package manager: run packages with `vp` and binaries with `vpx`, never npm, npx, pnpm, yarn, or bunx; `bun` runs only where a step below names it.
+- Scratch and logs go under the thread's worktree in `node_modules/.cache/deslop/`, which git and every tool ignore, and screenshots and videos a message embeds in its `proof/` subfolder. An extra git worktree that must install or run goes in `~/.deslop/<worktree directory name>/<name>/`, because Node refuses type stripping under `node_modules`. Each agent works in its own subfolder and deletes only what it created, as soon as its question is settled.
+- Search with `rg` and always an explicit path: without one it reads stdin and hangs.
+- A service a task needs runs in a container the thread stops afterwards; nothing is installed on the machine.
 - `~/.claude` and `~/.codex` are installed from `tools/workflow/src/agents` in deslop with `node tools/workflow/src/install.ts`; change the source and reinstall, never the homes.
-- A thread id the user gives is a t3 thread id. Its Claude session is the `session_id` in `~/.t3/userdata/logs/provider/events.<id>.log*`, with the transcript at `~/.claude/projects/<cwd-slug>/<session>.jsonl` and its agents under `<session>/subagents/`, where `<cwd-slug>` is the thread's `cwd` with `/` and `.` as `-`; a Codex thread's log names its rollout as `path`, under `~/.codex/sessions/`.
+
+Find a t3 thread's transcript (Claude session or Codex rollout) from its id:
+
+```bash
+S=$(sqlite3 ~/.t3/userdata/state.sqlite "select coalesce(json_extract(resume_cursor_json,'$.resume'), json_extract(resume_cursor_json,'$.threadId')) from provider_session_runtime where thread_id like '<thread id>%'")
+ls ~/.claude/projects/*/$S.jsonl ~/.codex/sessions/*/*/*/*$S.jsonl 2>/dev/null
+```
+
+A Claude session's agents are in `<session>/subagents/` beside it.
+
+Stop only what you started, by its process group, never with `pkill` or `killall`; when a port is taken by something else, take another free port:
+
+```bash
+P=$(ss -ltnpH 'sport = :<port>' | grep -oP 'pid=\K[0-9]+' | head -1)
+kill -- -$(ps -o pgid= -p $P | tr -d ' ')
+```
+
+An extra worktree, such as the default branch for a before screenshot or a base check:
+
+```bash
+W=~/.deslop/$(basename $PWD)/<name>
+git worktree add --detach $W origin/<default branch> && (cd $W && vp install)
+```
+
+Remove it as soon as its question is settled: `git worktree remove --force $W`.
+
+## Pull requests and pipelines
+
+Wait for a pipeline with one blocking command, run in the background with a `timeout` of 7200000, then read only the failed jobs' logs.
+
+GitHub:
+
+```bash
+until ID=$(gh run list --commit $(git rev-parse HEAD) --json databaseId -q '.[0].databaseId') && [ -n "$ID" ]; do sleep 5; done
+gh run watch $ID --exit-status --compact || gh run view $ID --log-failed
+```
+
+GitLab:
+
+```bash
+glab ci status --wait --compact
+ID=$(glab api "projects/dual%2Fdual/pipelines?ref=$(git branch --show-current)&per_page=1" | jq -r '.[0].id')
+glab api "projects/dual%2Fdual/pipelines/$ID/jobs?scope[]=failed" | jq -r '.[] | "\(.id) \(.name)"'
+glab ci trace <job id>
+```
+
+A PR or MR body goes through a scratch file; an artifact is uploaded into the body (on GitHub, a video takes a bare `--attach '<file>'`, an image `--attach '<file>#<alt text>'`):
+
+```bash
+gh pr edit --body-file <scratch>/body.md --attach '<file>#<alt text>'
+glab mr update <number> --draft --description-file <scratch>/body.md --attach <file>
+```
+
+`glab` takes no `--jq`: pipe `glab api` into `jq`.
+
+## Proof and previews
+
+A production preview of the branch is how the user tests a web app.
+
+- Previews use only ports 4000–4009, which traefik serves at `https://<port>.mp281x.xyz`, the only URL to give the user and the browser agent; pick a free port with `ss -ltn` and bind it on `::`. A preview stays running once the user could open it, with its link in the last message, until the user asks to stop it. Those names are public, so a preview relies on the app's own login.
+- Capture proof in one agent-browser session: `record start <path.mp4> <url>` … `record stop` records H.264 video, which plays on the user's phone, and `screenshot <path.png>` takes a screenshot. Sign in once per preview, then `state save <scratch>/auth.json`; later sessions start with `--state <scratch>/auth.json`.
 
 ## deslop
 
-- `/home/mp281x/deslop`, GitHub `MP281X/deslop`, default branch `main`.
-- pnpm 11.22 driven by `vp`.
-- Workspaces: `apps/*` (portfolio), `packages/*` (ai, components, runtime), `tools/*` (create-app, create-package, workflow).
-- shadcn UI components: `packages/components`.
-- CI: GitHub Actions job `build-and-deploy`.
-- Production services are `tools/compose.yaml`, compose project `deslop`, with certificates in `~/.deslop/deploy/acme`: traefik, portfolio, jaeger, collector. Jaeger's UI and API are only at http://127.0.0.1:16686; OTLP ingest is public at https://otel.mp281x.xyz and local at 127.0.0.1:4318. [references/setup.md](references/setup.md) bootstraps this host; [references/maintain.md](references/maintain.md) updates, redeploys, and cleans it.
-- Full local check: `vp run check`, then `vp run test`; `vp fmt <path>...` formats the touched files first.
-- Each lint call costs a flat 5–6 s for 1 file or a whole package, with no cache between calls, so format and lint every changed file in one call: `vp check --fix <path>...`.
-
-| Command                            | Does                                          |
-| ---------------------------------- | --------------------------------------------- |
-| `vp install`                       | install dependencies                          |
-| `vp run check`                     | vp check and fallow dead-code                 |
-| `vp run test`                      | tests                                         |
-| `vp run fix`                       | format and autofix                            |
-| `vp fmt <path>...`                 | format the given files                        |
-| `vp lint --format=agent <path>...` | lint the given files, one line per diagnostic |
-| `vp run build`                     | build                                         |
+- `/home/mp281x/deslop`, GitHub `MP281X/deslop`, default branch `main`; workspaces `apps/*` (portfolio), `packages/*` (ai, components, runtime), `tools/*` (create-app, create-package, workflow); shadcn components in `packages/components`, a new one added with `vp run shadcn add <component>`.
+- Full check: `vp run check`, then `vp run test`. Format and lint changed files in one call, since lint has no cache: `vp check --fix <path>...`; `vp lint --format=agent <path>...` prints one line per diagnostic.
+- CI: GitHub Actions job `build-and-deploy`. Production runs `tools/compose.yaml` as compose project `deslop`: traefik, portfolio, jaeger (UI and API at http://127.0.0.1:16686), collector (OTLP at https://otel.mp281x.xyz and 127.0.0.1:4318).
+- Preview, from the app directory: `HOST=:: PORT=<port> vp run preview`.
 
 ## dual
 
-- `/home/mp281x/dual`, `git.datapizza.tech/dual/dual`, default branch `master`, behind the VPN.
-- bun 1.4.2 driven by `vp`, turbo.
-- shadcn UI components: `packages/ui`.
-- Services: docker-compose.yml fixes Postgres 55432, test Postgres 55433, opensandbox 127.0.0.1:8080, and the `dual-opensandbox-runtime` network, so each worktree runs its own compose project with an override in `~/.deslop/<worktree directory name>/`: `!override` moves the three ports by a multiple of 10 that no stack in `docker ps` uses, names the network `dual-opensandbox-runtime-<worktree id>`, and mounts a copy of packages/playground/docker/opensandbox.toml whose `network_mode` names it; the worktree's `.env` files use the same ports. [Maintenance](references/maintain.md) removes compose projects, previews, and `~/.deslop` copies whose worktree no longer exists.
-- Each worktree runs on its own ports, set in its `.env` files: `SERVER_URL` in `packages/app/.env` (default 3825), and `DATABASE_URL`, `BETTER_AUTH_URL`, `SERVER_PUBLIC_URL`, `APP_ORIGIN`, and `DUAL_AGENT_GATEWAY_BASE_URL` in `packages/playground/.env`; the app dev server listens on 3000 from `vite dev --port 3000` in `packages/app/package.json`, so another port is a `--port` argument, not a `.env` value. Other worktrees' dev apps and previews keep theirs.
-- Local login: seeded by the `seed:user` arguments in the root `package.json` `db:reset` script, which hold the credentials.
-- CI: GitLab job `quality` (`.gitlab/quality.yml`), median 17 min, beside release-policy, the playground builds, build-web-image, and release-pair; pipeline median 24 min, p90 60 min. After `check`, `quality` runs `test:consumer` (about 6 min), `test`, and `test:release` in series. Pipelines are interruptible, so each push cancels the running one. A dependency change also needs `vp install --frozen-lockfile` to pass locally, which CI runs first.
-- `effecttsgo(duplicate-package)` comes from bun.lock pinning effect 4.0.0-rc.115 for `@dual/workspace-aws` beside rc.112; no edit to the reported file clears it, so leave it.
-- Full local check: `vp run check` (turbo-cached, about 2 s on an unchanged tree, 141 s cold), then `vpx turbo run test --affected`; turbo.json sets `cache: false` on `test`, so every run costs its full time. Run a full suite under `flock ~/.deslop/dual-test.lock` so parallel threads do not overload the host; a timeout while the load average is above 8 is load, so rerun that file alone.
+- `/home/mp281x/dual`, `git.datapizza.tech/dual/dual`, default branch `master`; bun 1.4.2 driven by `vp`, turbo; shadcn components in `packages/ui`, a new one added from there with `vpx shadcn add <component>`. Turbo filters take package names: `@dual/core` is `packages/server`, `@dual/saas` the API and worker host.
+- git.datapizza.tech needs the Datapizza VPN. Connect with exactly these commands, then show the URL at once as a Markdown link in a normal message:
 
-| Command                               | Does                                                                                                          |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `vp run init`                         | env files, effect-tsgo patch, opensandbox build, docker compose services, migrations                          |
-| `vp run dev`                          | app, playground, and worker through turbo; `dev:app`, `dev:backend`, `dev:server`, and `dev:worker` run parts |
-| `vp run db:reset`                     | recreate the services and database, migrate, and seed the local login                                         |
-| `vp run check`                        | oxfmt check and each package's oxlint                                                                         |
-| `vp run fix`                          | format and autofix                                                                                            |
-| `vpx oxfmt <path>...`                 | format the given files                                                                                        |
-| `vpx oxlint --format=agent <path>...` | from the package directory, lint the given files, one line per diagnostic                                     |
-| `vp run test`                         | tests                                                                                                         |
-| `vp run build`                        | build                                                                                                         |
+  ```bash
+  openvpn3 session-manage --config datapizza --disconnect
+  openvpn3 session-start --config datapizza --background
+  until openvpn3 session-auth | grep 'Auth URL'; do sleep 1; done
+  ```
 
-## Preview (how the user tests)
+- Full check: `vp run check` (turbo-cached), then `vpx turbo run test --affected`; `vp run test:workspace` runs every workspace test. Core and SaaS tests start their own Postgres through Testcontainers on the Docker socket. Run a full suite under `flock ~/.deslop/dual-test.lock` so parallel threads take turns.
+- Format with `vpx oxfmt <path>...`; lint with `vpx oxlint --format=agent <path>...` from the package directory. A dependency change also passes `vp install --frozen-lockfile`, which CI runs first.
+- `effecttsgo(duplicate-package)` comes from bun.lock pinning effect rc.115 for `@dual/workspace-aws` beside rc.112; no edit clears it, so leave it.
+- CI: GitLab `quality` (`.gitlab/quality.yml`) runs `check`, `test`, and `bun scripts/Documentation.ts`, beside release-policy and `saas-infrastructure-check`; pipelines are interruptible, so each push cancels the running one.
+- Each worktree runs its own compose project, moved by an offset no other stack uses; the root `.env` holds the project for every compose call, and `packages/saas/.env` the moved ports:
 
-A production preview of the branch is the user's preferred way to test a web app.
+  ```bash
+  I=$(basename $PWD); D=~/.deslop/$I; mkdir -p $D
+  for N in 10 20 30 40 50 60 70 80 90; do ss -ltn | grep -q ":$((55432 + N)) " || break; done
+  sed "s/dual-opensandbox-runtime/dual-opensandbox-runtime-$I/" packages/saas/docker/opensandbox.toml > $D/opensandbox.toml
+  cat > $D/compose.override.yml <<EOF
+  services:
+    opensandbox:
+      ports: !override ["127.0.0.1:$((8080 + N)):8080"]
+      volumes: !override [/var/run/docker.sock:/var/run/docker.sock, $D/opensandbox.toml:/etc/opensandbox/config.toml:ro, opensandbox-data:/root/.opensandbox]
+    postgres:
+      ports: !override ["$((55432 + N)):5432"]
+    postgres-test:
+      ports: !override ["$((55433 + N)):5432"]
+  networks:
+    opensandbox-runtime:
+      name: dual-opensandbox-runtime-$I
+  EOF
+  printf 'COMPOSE_PROJECT_NAME=%s\nCOMPOSE_FILE=%s\n' $I "$PWD/docker-compose.yml:$D/compose.override.yml" >> .env
+  vpx dual-utils init-env
+  sed -i "s/:55432\//:$((55432 + N))\//; s/localhost:8080/localhost:$((8080 + N))/" packages/saas/.env
+  vp run init
+  ```
 
-- Previews use only ports 4000–4009, the range traefik routes and ufw admits: choose a free one with `ss -ltn` and bind it on `::`. Traefik serves it at `https://<port>.mp281x.xyz`, the only URL to give the user and the browser agent; a preview bound to `::1` or `127.0.0.1`, or on another port, is unreachable there.
-- A preview stays running once the user could open it, proofs included, with its link in the last message; stop it only when the user asks.
-- The `4000`–`4009.mp281x.xyz` names are public through certificate transparency and scanners probe them within minutes, so a preview relies on the app's own login.
-- A routed port with nothing listening returns 502. `vp run` starts the server in its own process group, so stop a preview by the group of the pid `ss -ltnp` shows on its port.
+Preview, from the worktree root:
 
-dual, from the worktree root:
+1. The stack above, then the `seed:user` command from the `db:reset` script; then the API and worker from `packages/saas` (`bun --env-file .env src/dev.ts api` and `… worker`), with `BETTER_AUTH_URL`, `APP_ORIGIN`, and `SERVER_PUBLIC_URL` set to `https://<port>.mp281x.xyz`: better-auth trusts only the first two as origins, and the third is the public MCP and OAuth URL. The API listens on 3825, fixed in `packages/saas/src/api.ts`, so the before and after previews run one at a time: capture the before, stop it, then start the branch's.
+2. `vpx turbo run build --filter=@dual/saas...`, then in packages/app `NODE_ENV=production NITRO_PRESET=bun NODE_OPTIONS=--max-old-space-size=8192 node node_modules/vite/bin/vite.js build`.
+3. Web, from packages/app: `NODE_ENV=production HOST=127.0.0.1 PORT=<web> SERVER_URL=http://127.0.0.1:3825 bun .output/server/index.mjs`.
+4. The public port runs this proxy (`bun <scratch>/proxy.ts`), since the build has no proxy and the browser calls its own origin:
 
-1. Postgres, opensandbox, and migrations with `vp run init`, then the `seed:user` command from the `db:reset` script; the API on the port from `SERVER_URL` in packages/app/.env, and the worker, running. Start the API with `BETTER_AUTH_URL`, `APP_ORIGIN`, and `SERVER_PUBLIC_URL` set to `https://<port>.mp281x.xyz`: better-auth trusts only the first two as origins, and the third is the public MCP and OAuth URL (packages/server/src/auth/BetterAuth.ts).
-2. `vpx turbo run build --filter=@dual/core...`, then in packages/app `NODE_ENV=production NITRO_PRESET=bun NODE_OPTIONS=--max-old-space-size=8192 node node_modules/vite/bin/vite.js build` (as packages/app/docker/Dockerfile).
-3. Web, from packages/app: `NODE_ENV=production HOST=127.0.0.1 PORT=<web> SERVER_URL=http://127.0.0.1:<api> bun .output/server/index.mjs`.
-4. The build has no proxy (packages/app/docker/README.md) and the browser calls `window.location.origin` (src/server-url.ts), so a small Bun proxy on `[::]:<port>` sends `/api*`, `/mcp`, and the OAuth `/.well-known/*` paths to the API, except `/api/docs/search` and `/api/sdk/search`, and everything else to the web port, as packages/playground/docker/Caddyfile does; only the proxy port is public.
-5. Login: the local login above.
+   ```ts
+   const api = 'http://127.0.0.1:3825'
+   const web = 'http://127.0.0.1:<web>'
+   const toApi = (path: string) =>
+   	(path.startsWith('/api') && !path.startsWith('/api/docs/search') && !path.startsWith('/api/sdk/search')) ||
+   	path === '/mcp' ||
+   	path.startsWith('/mcp/') ||
+   	path.startsWith('/.well-known/')
+   Bun.serve({
+   	fetch(request) {
+   		const url = new URL(request.url)
+   		const headers = new Headers(request.headers)
+   		headers.set('x-forwarded-host', url.host)
+   		headers.set('x-forwarded-proto', 'https')
+   		return fetch(new URL(url.pathname + url.search, toApi(url.pathname) ? api : web), {
+   			body: request.body,
+   			duplex: 'half',
+   			headers,
+   			method: request.method,
+   			redirect: 'manual'
+   		})
+   	},
+   	hostname: '::',
+   	idleTimeout: 0,
+   	port: <port>
+   })
+   ```
 
-deslop: from the app directory, such as apps/portfolio, `HOST=:: PORT=<port> vp run preview`, which builds and serves `dist/server.js`.
+5. Sign in, from the worktree root, with the `seed:user` credentials:
+
+   ```bash
+   agent-browser --session proof open https://<port>.mp281x.xyz/login
+   agent-browser --session proof fill 'input[type=email]' admin@dual.local
+   agent-browser --session proof fill 'input[type=password]' password
+   agent-browser --session proof click 'button[type=submit]'
+   agent-browser --session proof state save node_modules/.cache/deslop/proof/auth.json
+   ```

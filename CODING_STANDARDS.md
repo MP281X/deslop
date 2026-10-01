@@ -7,7 +7,26 @@ Automated formatting, lint, and type rules live in the tooling and are not repea
 - A service package holds one service in exactly these files: `src/schema.ts` for its schemas, their types, and its domain error; `src/service.ts` for the tag, its shape, and its static layers; `src/lib/utils.ts` for pure helpers; `src/internal/*.ts` for the implementation. Split nothing further, so every package reads the same way.
 - Keep `lib/utils.ts` frontend-safe.
 - An app owns its RPCs, entrypoints, and services: `rpcs/contracts.ts` holds the RpcGroup and its schemas, `rpcs/handlers.ts` its layer, `lib/utils.ts` the AtomRpc client and shared operations, `services/<name>/` each service in the package shape, `main.server.ts` the HTTP layer graph, and `main.client.tsx` the router and root.
+
+## Apps
+
+- Routes never repeat the base styles (`bg-background text-foreground`) the root applies, and add no `main` or `h1` wrapper they don't need.
+- Name by role (`Home`, `utils`), never by kind or app (`AppName`, `web`).
+
+## Runtime
+
+- `packages/runtime` is the single source of truth for what every app shares: server, router, OpenTelemetry, and Vite config.
+- Defaults live in code through `Config.withDefault`, never in `.env.example`: `HOST` is `0.0.0.0`, `PORT` is 5000 (the port traefik routes), and one `VITE_OTEL_URL` base serves both traces and logs.
+
+## Generators
+
 - Create apps and packages with the generators AGENTS.md lists, never by copying one.
+- A template is real files under `tools/create-*/template/` that the generator copies and edits like any other file, never file bodies inlined as strings, and never generated files such as `*.gen.ts`.
+- The app template mirrors the portfolio (its `icon.png`, `__root.tsx`, and entrypoints, with one RPC returning the app name shown on the home page) and always carries the `Dockerfile`, even when an app doesn't deploy.
+
+## Deploy
+
+- Deploy is one `tools/compose.yaml` with configs inlined, direct ports, and unpinned images, driven by commands for this machine; no README, flag-heavy scripts, or nested folders.
 
 ## Keys
 
@@ -42,3 +61,5 @@ Automated formatting, lint, and type rules live in the tooling and are not repea
 ## Tooling
 
 - Enable a maintained rule before writing a custom one in `tools/workflow/src/rules`.
+- A check that needs a script becomes a custom lint rule instead.
+- `tools/workflow` stays flat under `src/`, with no install tests or separate plugin files.

@@ -3,6 +3,7 @@ import {assert, it} from '@effect/vitest'
 
 import {
 	Array,
+	ByteSize,
 	Effect,
 	FileSystem,
 	HashMap,
@@ -34,7 +35,7 @@ function info(type: FileSystem.File.Type, size = 0): FileSystem.File.Info {
 		mtime: Option.none(),
 		nlink: Option.none(),
 		rdev: Option.none(),
-		size: FileSystem.Size(size),
+		size: ByteSize.bytes(size),
 		type,
 		uid: Option.none()
 	}

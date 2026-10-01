@@ -3,32 +3,34 @@ import {Array} from 'effect'
 import {definePlugin} from '@oxlint/plugins'
 import {defineConfig} from 'oxlint'
 
-import {noArrayWrapTernary} from './rules/no-array-wrap-ternary.ts'
-import {noConstantFunction} from './rules/no-constant-function.ts'
-import {noDeepPipe} from './rules/no-deep-pipe.ts'
-import {noDoubleNullishCheck} from './rules/no-double-nullish-check.ts'
-import {noEffectPropertyArrow} from './rules/no-effect-property-arrow.ts'
-import {noErrorMessageAssertion} from './rules/no-error-message-assertion.ts'
-import {noFailInGenerator} from './rules/no-fail-in-generator.ts'
-import {noFakeRefState} from './rules/no-fake-ref-state.ts'
-import {noHandWrittenGuard} from './rules/no-hand-written-guard.ts'
-import {noLet} from './rules/no-let.ts'
-import {noNativeEmptinessCheck} from './rules/no-native-emptiness-check.ts'
-import {noNativeMethodCall} from './rules/no-native-method-call.ts'
-import {noOptionValueAccess} from './rules/no-option-value-access.ts'
-import {noReadonlyTypeSyntax} from './rules/no-readonly-type-syntax.ts'
-import {noRedundantReturnType} from './rules/no-redundant-return-type.ts'
-import {noRedundantUseRefNullType} from './rules/no-redundant-use-ref-null-type.ts'
-import {noRedundantVariableAnnotation} from './rules/no-redundant-variable-annotation.ts'
-import {noRenamedImport} from './rules/no-renamed-import.ts'
-import {noStoredSchemaOperation} from './rules/no-stored-schema-operation.ts'
-import {noSwitchStatement} from './rules/no-switch-statement.ts'
-import {noTrivialIndirection} from './rules/no-trivial-indirection.ts'
-import {noTypeof} from './rules/no-typeof.ts'
-import {noUndestructuredUseState} from './rules/no-undestructured-use-state.ts'
-import {noUnexplainedDisable} from './rules/no-unexplained-disable.ts'
-import {noUnvalidatedJsonDecode} from './rules/no-unvalidated-json-decode.ts'
-import {schemaTypePair} from './rules/schema-type-pair.ts'
+import {noArrayWrapTernary} from '#rules/no-array-wrap-ternary.ts'
+import {noConstantFunction} from '#rules/no-constant-function.ts'
+import {noDeepPipe} from '#rules/no-deep-pipe.ts'
+import {noDestructuredParameter} from '#rules/no-destructured-parameter.ts'
+import {noDoubleNullishCheck} from '#rules/no-double-nullish-check.ts'
+import {noEffectPropertyArrow} from '#rules/no-effect-property-arrow.ts'
+import {noErrorMessageAssertion} from '#rules/no-error-message-assertion.ts'
+import {noFailInGenerator} from '#rules/no-fail-in-generator.ts'
+import {noFakeRefState} from '#rules/no-fake-ref-state.ts'
+import {noHandWrittenGuard} from '#rules/no-hand-written-guard.ts'
+import {noLet} from '#rules/no-let.ts'
+import {noNativeEmptinessCheck} from '#rules/no-native-emptiness-check.ts'
+import {noNativeMethodCall} from '#rules/no-native-method-call.ts'
+import {noOptionValueAccess} from '#rules/no-option-value-access.ts'
+import {noReadonlyTypeSyntax} from '#rules/no-readonly-type-syntax.ts'
+import {noRedundantReturnType} from '#rules/no-redundant-return-type.ts'
+import {noRedundantUseRefNullType} from '#rules/no-redundant-use-ref-null-type.ts'
+import {noRedundantVariableAnnotation} from '#rules/no-redundant-variable-annotation.ts'
+import {noReinventedSchema} from '#rules/no-reinvented-schema.ts'
+import {noRenamedImport} from '#rules/no-renamed-import.ts'
+import {noStoredSchemaOperation} from '#rules/no-stored-schema-operation.ts'
+import {noSwitchStatement} from '#rules/no-switch-statement.ts'
+import {noTrivialIndirection} from '#rules/no-trivial-indirection.ts'
+import {noTypeof} from '#rules/no-typeof.ts'
+import {noUndestructuredUseState} from '#rules/no-undestructured-use-state.ts'
+import {noUnexplainedDisable} from '#rules/no-unexplained-disable.ts'
+import {noUnvalidatedJsonDecode} from '#rules/no-unvalidated-json-decode.ts'
+import {schemaTypePair} from '#rules/schema-type-pair.ts'
 
 const reactLegacyApis = ['Component', 'PureComponent', 'createRef', 'forwardRef', 'memo', 'useCallback', 'useMemo']
 const reactLegacyMessage = 'Use React 19 function components with refs as props; React Compiler owns memoization.'
@@ -59,7 +61,10 @@ export const oxlint = defineConfig({
 	overrides: [
 		{files: ['**/*.config.ts', '**/main.*'], rules: {'import/no-default-export': 'off'}},
 		{files: ['**/components/ui/**'], rules: {'shadcn/no-restyle': 'off', 'shadcn/require-static-classes': 'off'}},
-		{files: ['**/components/ui/**', '**/packages/ui/**'], rules: {'@deslop/workflow/no-renamed-import': 'off'}},
+		{
+			files: ['**/components/ui/**', '**/packages/ui/**'],
+			rules: {'@deslop/workflow/no-destructured-parameter': 'off', '@deslop/workflow/no-renamed-import': 'off'}
+		},
 		{files: ['**/*.ts'], rules: {'react/rules-of-hooks': 'off'}},
 		{
 			files: ['**/*.tsx'],
@@ -77,6 +82,7 @@ export const oxlint = defineConfig({
 		'@deslop/workflow/no-array-wrap-ternary': 'error',
 		'@deslop/workflow/no-constant-function': 'error',
 		'@deslop/workflow/no-deep-pipe': 'error',
+		'@deslop/workflow/no-destructured-parameter': 'error',
 		'@deslop/workflow/no-double-nullish-check': 'error',
 		'@deslop/workflow/no-effect-property-arrow': 'error',
 		'@deslop/workflow/no-error-message-assertion': 'error',
@@ -91,6 +97,7 @@ export const oxlint = defineConfig({
 		'@deslop/workflow/no-redundant-return-type': 'error',
 		'@deslop/workflow/no-redundant-use-ref-null-type': 'error',
 		'@deslop/workflow/no-redundant-variable-annotation': 'error',
+		'@deslop/workflow/no-reinvented-schema': 'error',
 		'@deslop/workflow/no-renamed-import': 'error',
 		'@deslop/workflow/no-stored-schema-operation': 'error',
 		'@deslop/workflow/no-switch-statement': 'error',
@@ -124,6 +131,8 @@ export const oxlint = defineConfig({
 		'effecttsgo/acquire-release-disposable': 'error',
 		'effecttsgo/all-of-map-to-for-each': 'error',
 		'effecttsgo/async-function': 'error',
+		'effecttsgo/catch-if-tag-to-catch-tag': 'error',
+		'effecttsgo/catch-refail-to-tap-error': 'error',
 		'effecttsgo/duplicate-package': 'error',
 		'effecttsgo/effect-do-notation': 'error',
 		'effecttsgo/effect-fn-iife': 'error',
@@ -135,6 +144,7 @@ export const oxlint = defineConfig({
 		'effecttsgo/effect-map-flatten': 'error',
 		'effecttsgo/effect-map-void': 'error',
 		'effecttsgo/effect-succeed-with-void': 'error',
+		'effecttsgo/flat-map-ignored-param-to-and-then': 'error',
 		'effecttsgo/flat-map-to-map': 'error',
 		'effecttsgo/floating-effect': 'error',
 		'effecttsgo/floating-effect-in-vitest': 'error',
@@ -226,7 +236,7 @@ export const oxlint = defineConfig({
 		'typescript/await-thenable': 'error',
 		'typescript/no-array-delete': 'error',
 		'typescript/no-base-to-string': 'error',
-		'typescript/no-confusing-void-expression': 'error',
+		'typescript/no-confusing-void-expression': ['error', {ignoreVoidReturningFunctions: true}],
 		'typescript/no-deprecated': 'error',
 		'typescript/no-duplicate-type-constituents': 'error',
 		'typescript/no-dynamic-delete': 'error',
@@ -271,7 +281,7 @@ export const oxlint = defineConfig({
 		// TypeScript expression boundaries
 		'typescript/restrict-plus-operands': 'error',
 		'typescript/restrict-template-expressions': 'error',
-		'typescript/strict-boolean-expressions': 'error',
+		'typescript/strict-boolean-expressions': ['error', {allowNumber: false, allowString: false}],
 		'typescript/strict-void-return': 'error',
 
 		// JavaScript style
@@ -304,11 +314,11 @@ export const oxlint = defineConfig({
 				patterns: [
 					{message: 'Use public package exports.', regex: '^@[^/]+/[^/]+/(?:src|lib)(?:/|$)'},
 					{message: 'Use glob from the FileSystem service.', regex: '^glob(?:/|$)'},
-					{message: 'Use effect/unstable/cli.', regex: '^(?:commander|yargs)(?:/|$)'},
+					{message: 'Use effect/cli.', regex: '^(?:commander|yargs)(?:/|$)'},
 					{message: 'Use randomUUIDv4 from the Crypto service.', regex: '^uuid(?:/|$)'},
 					{message: 'Use HttpClient.', regex: '^(?:axios|node-fetch)(?:/|$)'},
 					{message: 'Use Config.', regex: '^dotenv(?:/|$)'},
-					{message: 'Use ChildProcess from effect/unstable/process.', regex: '^execa(?:/|$)'},
+					{message: 'Use ChildProcess from effect/process.', regex: '^execa(?:/|$)'},
 					{message: 'Use the concurrency option of Effect.all or Effect.forEach.', regex: '^p-limit(?:/|$)'}
 				]
 			}
@@ -342,19 +352,21 @@ export const oxlint = defineConfig({
 		'no-restricted-exports': ['error', {restrictedNamedExportsPattern: 'Live$'}],
 		'no-restricted-globals': [
 			'error',
-			'AbortController',
-			'Array',
-			'Boolean',
-			'Error',
+			{message: 'Interrupt through Effect: a fiber, Effect.timeout, or a Scope.', name: 'AbortController'},
+			{message: "Import Array from 'effect'.", name: 'Array'},
+			{message: "Import Boolean from 'effect'.", name: 'Boolean'},
+			{message: 'Define a Schema.TaggedError and fail with it.', name: 'Error'},
 			{message: mapMessage, name: 'Map'},
-			'Number',
-			'Object',
-			'Promise',
-			'Reflect',
+			{message: "Import Number from 'effect'.", name: 'Number'},
+			{message: "Use Record or Struct from 'effect'.", name: 'Object'},
+			{message: 'Use Number.parse.', name: 'parseFloat'},
+			{message: 'Use Number.parse.', name: 'parseInt'},
+			{message: 'Use Effect: Effect.tryPromise at the boundary, Effect.all to combine.', name: 'Promise'},
+			{message: "Use Predicate or Record from 'effect'.", name: 'Reflect'},
 			{message: setMessage, name: 'Set'},
-			'String',
-			'global',
-			'globalThis'
+			{message: "Import String from 'effect'.", name: 'String'},
+			{message: 'Read configuration with Config and services from the context.', name: 'global'},
+			{message: 'Read configuration with Config and services from the context.', name: 'globalThis'}
 		],
 		'no-restricted-properties': [
 			'error',
@@ -415,6 +427,7 @@ export const oxlint = defineConfig({
 		'no-throw-literal': 'error',
 		'no-unmodified-loop-condition': 'error',
 		'no-unneeded-ternary': 'error',
+		'no-unreachable-loop': 'error',
 		'no-unsafe-finally': 'error',
 		'no-unused-expressions': 'error',
 		'no-useless-assignment': 'error',
@@ -451,6 +464,7 @@ export const oxlint = defineConfig({
 		'react-doctor/no-many-boolean-props': 'error',
 		'react-doctor/no-prop-types': 'error',
 		'react-doctor/no-uncontrolled-input': 'error',
+		'react-doctor/shadcn-icon-button-requires-label': 'error',
 
 		// React Doctor effects and state
 		'react-doctor/effect-listener-cleanup-mismatch': 'error',
@@ -460,6 +474,7 @@ export const oxlint = defineConfig({
 		'react-doctor/no-effect-event-in-deps': 'error',
 		'react-doctor/no-effect-with-fresh-deps': 'error',
 		'react-doctor/no-effect-wrapper-discards-callback-cleanup-return': 'error',
+		'react-doctor/no-impure-state-updater': 'error',
 		'react-doctor/no-mutable-in-deps': 'error',
 		'react-doctor/no-mutating-reducer-state': 'error',
 		'react-doctor/no-self-updating-effect': 'error',
@@ -471,6 +486,7 @@ export const oxlint = defineConfig({
 		'react-doctor/rerender-lazy-state-init': 'error',
 
 		// React Doctor browser and legacy APIs
+		'react-doctor/no-enter-submit-without-ime-composition-guard': 'error',
 		'react-doctor/no-event-handler': 'error',
 		'react-doctor/no-flush-sync': 'error',
 
@@ -479,6 +495,8 @@ export const oxlint = defineConfig({
 		'react-doctor/rendering-conditional-render': 'error',
 
 		// React Doctor visual performance and accessibility
+		'react-doctor/design-no-redundant-padding-axes': 'error',
+		'react-doctor/design-no-redundant-size-axes': 'error',
 		'react-doctor/no-global-css-variable-animation': 'error',
 		'react-doctor/no-gray-on-colored-background': 'error',
 		'react-doctor/no-inline-bounce-easing': 'error',
@@ -586,6 +604,7 @@ export default definePlugin({
 		'no-array-wrap-ternary': noArrayWrapTernary,
 		'no-constant-function': noConstantFunction,
 		'no-deep-pipe': noDeepPipe,
+		'no-destructured-parameter': noDestructuredParameter,
 		'no-double-nullish-check': noDoubleNullishCheck,
 		'no-effect-property-arrow': noEffectPropertyArrow,
 		'no-error-message-assertion': noErrorMessageAssertion,
@@ -600,6 +619,7 @@ export default definePlugin({
 		'no-redundant-return-type': noRedundantReturnType,
 		'no-redundant-use-ref-null-type': noRedundantUseRefNullType,
 		'no-redundant-variable-annotation': noRedundantVariableAnnotation,
+		'no-reinvented-schema': noReinventedSchema,
 		'no-renamed-import': noRenamedImport,
 		'no-stored-schema-operation': noStoredSchemaOperation,
 		'no-switch-statement': noSwitchStatement,

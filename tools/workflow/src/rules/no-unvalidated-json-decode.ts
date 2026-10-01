@@ -3,7 +3,7 @@ import {Option, String, pipe} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
-import {importedMember, isSchemaOperationCall, memberName} from './shared.ts'
+import {importedMember, isSchemaOperationCall, memberName} from '#rules/shared.ts'
 
 function unknownJsonSchema(input: {context: Context; node: ESTree.CallExpression}) {
 	if (

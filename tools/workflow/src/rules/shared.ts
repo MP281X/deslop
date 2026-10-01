@@ -1,4 +1,4 @@
-import {Array, Option, Predicate, Record, pipe} from 'effect'
+import {Array, Graph, Option, Predicate, Record, pipe} from 'effect'
 
 import type {Context, ESTree, Scope, Variable} from '@oxlint/plugins'
 
@@ -248,19 +248,7 @@ function memberTypeNames(member: ESTree.TSSignature): string[] {
 	)
 }
 
-function closedCycleNames(input: {aliases: ESTree.TSTypeAliasDeclaration[]; names: string[]}): string[] {
-	const added = pipe(
-		input.aliases,
-		Array.filter(
-			alias =>
-				!Array.contains(input.names, alias.id.name) &&
-				Array.some(referencedTypeNames(alias.typeAnnotation), name => Array.contains(input.names, name))
-		),
-		Array.map(alias => alias.id.name)
-	)
-	if (Array.isArrayEmpty(added)) return input.names
-	return closedCycleNames({aliases: input.aliases, names: Array.appendAll(input.names, added)})
-}
+type NameEdges = {name: string; targets: string[]}
 
 function isNode(value: unknown): value is ESTree.Node {
 	return Predicate.hasProperty(value, 'type') && Predicate.isString(value.type)
@@ -268,12 +256,7 @@ function isNode(value: unknown): value is ESTree.Node {
 
 function childNodes(node: unknown): ESTree.Node[] {
 	if (!Predicate.isReadonlyObject(node)) return Array.empty<ESTree.Node>()
-	return pipe(
-		Record.toEntries(node),
-		Array.filter(([key]) => key !== 'parent'),
-		Array.flatMap(([, value]) => Array.ensure(value)),
-		Array.filter(isNode)
-	)
+	return pipe(Record.values(Record.remove(node, 'parent')), Array.flatMap(Array.ensure), Array.filter(isNode))
 }
 
 function suspendSeeds(input: {context: Context; node: ESTree.Node}): string[] {
@@ -288,20 +271,63 @@ function suspendSeeds(input: {context: Context; node: ESTree.Node}): string[] {
 	)
 }
 
-export function schemaCycleNames(input: {context: Context; program: ESTree.Program}): string[] {
-	return closedCycleNames({
-		aliases: pipe(
-			input.program.body,
-			Array.map(statement =>
-				pipe(
-					typeAlias(statement),
-					Option.filter(declaration => !isInferredType({name: declaration.id.name, node: declaration.typeAnnotation}))
-				)
-			),
-			Array.getSomes
+function referenceNames(node: ESTree.Node): string[] {
+	const nested = pipe(
+		childNodes(node),
+		Array.filter(
+			child =>
+				!(node.type === 'Property' && !node.computed && child === node.key) &&
+				!(node.type === 'MemberExpression' && !node.computed && child === node.property)
 		),
-		names: suspendSeeds({context: input.context, node: input.program})
+		Array.flatMap(referenceNames)
+	)
+	return node.type === 'Identifier' ? Array.prepend(nested, node.name) : nested
+}
+
+function schemaEdges(statement: ESTree.Statement | ESTree.ModuleDeclaration): NameEdges[] {
+	const declaration = statementDeclaration(statement)
+	if (declaration?.type === 'TSTypeAliasDeclaration') {
+		return isInferredType({name: declaration.id.name, node: declaration.typeAnnotation})
+			? Array.empty<NameEdges>()
+			: [{name: declaration.id.name, targets: referencedTypeNames(declaration.typeAnnotation)}]
+	}
+	if (declaration?.type !== 'VariableDeclaration' || declaration.kind !== 'const') return Array.empty<NameEdges>()
+	return Array.flatMap(declaration.declarations, declarator => {
+		if (declarator.id.type !== 'Identifier' || declarator.init === null) return Array.empty<NameEdges>()
+		return [{name: declarator.id.name, targets: referenceNames(declarator.init)}]
 	})
+}
+
+export function schemaCycleNames(input: {context: Context; program: ESTree.Program}): string[] {
+	const seeds = suspendSeeds({context: input.context, node: input.program})
+	if (Array.isArrayEmpty(seeds)) return Array.empty<string>()
+	const edges = pipe(input.program.body, Array.flatMap(schemaEdges))
+	const names = pipe(
+		edges,
+		Array.map(edge => edge.name),
+		Array.dedupe
+	)
+	const graph = Graph.directed<string, 'reads'>(mutable => {
+		const indices = Record.fromEntries(Array.map(names, name => [name, Graph.addNode(mutable, name)] as const))
+		for (const edge of edges) {
+			for (const target of edge.targets) {
+				Option.zipWith(Record.get(indices, edge.name), Record.get(indices, target), (source, sink) =>
+					Graph.addEdge(mutable, source, sink, 'reads')
+				)
+			}
+		}
+	})
+	return pipe(
+		Graph.stronglyConnectedComponents(graph),
+		Array.map(component => Array.getSomes(Array.map(component, index => Graph.getNode(graph, index)))),
+		Array.filter(
+			component =>
+				(component.length > 1 ||
+					Array.some(edges, edge => Array.contains(component, edge.name) && Array.contains(edge.targets, edge.name))) &&
+				Array.some(component, name => Array.contains(seeds, name))
+		),
+		Array.flatten
+	)
 }
 
 function hasSingleStatementExpression(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
@@ -314,7 +340,7 @@ function hasSingleStatementExpression(node: ESTree.Function | ESTree.ArrowFuncti
 	)
 }
 
-function bindingName(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+export function bindingName(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
 	if (node.type === 'FunctionDeclaration') return Option.fromNullishOr(node.id?.name)
 	if (node.parent.type === 'VariableDeclarator' && node.parent.id.type === 'Identifier') {
 		return Option.some(node.parent.id.name)

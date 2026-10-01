@@ -3,7 +3,7 @@ import {Option} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {ESTree} from '@oxlint/plugins'
 
-import {memberName} from './shared.ts'
+import {memberName} from '#rules/shared.ts'
 
 function emptinessPredicate(node: ESTree.BinaryExpression) {
 	const comparesLength =

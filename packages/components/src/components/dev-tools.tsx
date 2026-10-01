@@ -29,7 +29,7 @@ function Navigation<const Route extends string>(props: {
 
 	return (
 		<nav className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
-			<div className="border-border bg-background flex items-center gap-1 border px-1.5 py-1.5">
+			<div className="border-border bg-background flex items-center gap-1 border p-1.5">
 				{Array.map(props.routes, (route, index) => (
 					<Button
 						key={route}

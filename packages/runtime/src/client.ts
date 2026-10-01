@@ -8,9 +8,9 @@ import {BatchLogRecordProcessor} from '@opentelemetry/sdk-logs'
 import {BatchSpanProcessor} from '@opentelemetry/sdk-trace-base'
 import {createRouter} from '@tanstack/react-router'
 import type {AnyContext, AnyRoute} from '@tanstack/react-router'
-import {Atom} from 'effect/unstable/reactivity'
-import * as Rpc from 'effect/unstable/rpc'
-import {Socket} from 'effect/unstable/socket'
+import {Atom} from 'effect/reactivity'
+import * as Rpc from 'effect/rpc'
+import {Socket} from 'effect/socket'
 
 import {Error, Loading, NotFound} from '@deslop/components/fallbacks'
 
@@ -42,11 +42,11 @@ export function layer(applicationName: string) {
 				Layer.provide(Socket.layerWebSocketConstructorGlobal)
 			)
 		),
-		Layer.provideMerge(Rpc.RpcSerialization.layerMsgPack)
+		Layer.provideMerge(Rpc.RpcSerialization.layerSchemaBinary())
 	)
 	const telemetry = pipe(
 		Layer.unwrap(
-			Effect.map(pipe(Config.url('VITE_OTEL_URL'), Config.withDefault(new URL('http://localhost:4318'))), url =>
+			Effect.map(pipe(Config.URL('VITE_OTEL_URL'), Config.withDefault(new URL('http://localhost:4318'))), url =>
 				WebSdk.layer(() => ({
 					logRecordProcessor: new BatchLogRecordProcessor({
 						exporter: new OTLPLogExporter({url: new URL('/v1/logs', url).href})

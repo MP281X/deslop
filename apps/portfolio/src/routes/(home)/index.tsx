@@ -5,7 +5,7 @@ import {Array, Effect, Function, HashMap, Number, Option, Predicate, Random, Str
 
 import {useHotkey} from '@tanstack/react-hotkeys'
 import {createFileRoute} from '@tanstack/react-router'
-import {Atom} from 'effect/unstable/reactivity'
+import {Atom} from 'effect/reactivity'
 import {Suspense, useEffect, useRef, useState, useSyncExternalStore} from 'react'
 
 import {portfolioPalette} from '#lib/portfolio.ts'
@@ -173,10 +173,10 @@ function TrailCanvas(input: {trails: PortfolioState['trails']; viewport: {width:
 	const canvasRef = useRef<HTMLCanvasElement>(null)
 
 	useEffect(() => {
-		if (!(canvasRef.current && input.viewport.width && input.viewport.height)) return
+		if (!canvasRef.current || input.viewport.width <= 0 || input.viewport.height <= 0) return
 
-		const canvasWidth = Number.max(1, Number.round(input.viewport.width * (window.devicePixelRatio || 1), 0))
-		const canvasHeight = Number.max(1, Number.round(input.viewport.height * (window.devicePixelRatio || 1), 0))
+		const canvasWidth = Number.max(1, Number.round(input.viewport.width * window.devicePixelRatio, 0))
+		const canvasHeight = Number.max(1, Number.round(input.viewport.height * window.devicePixelRatio, 0))
 
 		if (canvasRef.current.width !== canvasWidth || canvasRef.current.height !== canvasHeight) {
 			canvasRef.current.width = canvasWidth
@@ -188,7 +188,7 @@ function TrailCanvas(input: {trails: PortfolioState['trails']; viewport: {width:
 		const context = canvasRef.current.getContext('2d')
 		if (!context) return
 
-		context.setTransform(window.devicePixelRatio || 1, 0, 0, window.devicePixelRatio || 1, 0, 0)
+		context.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0)
 		context.clearRect(0, 0, input.viewport.width, input.viewport.height)
 		context.globalAlpha = 0.22
 
@@ -581,7 +581,7 @@ function ExperienceSection(input: {registerSection: (id: number, node: HTMLEleme
 								</p>
 								<div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs sm:text-sm">
 									<span>{job.role}</span>
-									{job.note && <span className="text-muted-foreground/80">· {job.note}</span>}
+									{String.isNonEmpty(job.note) && <span className="text-muted-foreground/80">· {job.note}</span>}
 								</div>
 							</div>
 							<p className="text-muted-foreground font-mono text-xs sm:text-right">
@@ -595,7 +595,7 @@ function ExperienceSection(input: {registerSection: (id: number, node: HTMLEleme
 										key={highlight}
 										className="text-foreground/85 flex items-start gap-2 font-mono text-xs leading-6 sm:text-sm"
 									>
-										<span className="bg-foreground/50 mt-2 h-1 w-1 shrink-0 rounded-full" aria-hidden="true" />
+										<span className="bg-foreground/50 mt-2 size-1 shrink-0 rounded-full" aria-hidden="true" />
 										<span>{highlight}</span>
 									</li>
 								))}
@@ -636,7 +636,9 @@ function EducationSection(input: {registerSection: (id: number, node: HTMLElemen
 							<div className="flex flex-wrap items-baseline gap-x-3">
 								<span className="text-foreground font-mono text-sm font-semibold">{entry.school}</span>
 								<span className="text-muted-foreground font-mono text-xs sm:text-sm">{entry.degree}</span>
-								{entry.grade && <span className="text-muted-foreground/80 font-mono text-xs">({entry.grade})</span>}
+								{String.isNonEmpty(entry.grade) && (
+									<span className="text-muted-foreground/80 font-mono text-xs">({entry.grade})</span>
+								)}
 							</div>
 							<span className="text-muted-foreground/80 font-mono text-xs">{entry.period}</span>
 						</div>
@@ -678,7 +680,7 @@ function ContactSection(input: {registerSection: (id: number, node: HTMLElement 
 						<a
 							key={item.label}
 							href={item.href}
-							className="border-border/70 bg-background/90 hover:border-primary/50 hover:text-primary flex flex-col gap-2 border px-4 py-4 font-mono text-xs backdrop-blur-sm transition-colors sm:flex-row sm:items-center sm:justify-between sm:text-sm"
+							className="border-border/70 bg-background/90 hover:border-primary/50 hover:text-primary flex flex-col gap-2 border p-4 font-mono text-xs backdrop-blur-sm transition-colors sm:flex-row sm:items-center sm:justify-between sm:text-sm"
 							target="_blank"
 							rel="noopener noreferrer"
 						>
@@ -789,7 +791,7 @@ function PortfolioRoute() {
 
 	useEffect(
 		() => () => {
-			if (pointerFrameRef.current) cancelAnimationFrame(pointerFrameRef.current)
+			cancelAnimationFrame(pointerFrameRef.current)
 		},
 		[]
 	)

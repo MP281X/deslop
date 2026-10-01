@@ -3,7 +3,7 @@ import {Option, Predicate} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
-import {memberName} from './shared.ts'
+import {memberName} from '#rules/shared.ts'
 
 function testedValue(node: ESTree.Expression) {
 	if (

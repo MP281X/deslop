@@ -1,6 +1,6 @@
 import {defineRule} from '@oxlint/plugins'
 
-import {isReactUseState} from './shared.ts'
+import {isReactUseState} from '#rules/shared.ts'
 
 export const noUndestructuredUseState = defineRule({
 	create: context => ({

@@ -3,7 +3,7 @@ import {Array, Option} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
-import {importedMember, memberName} from './shared.ts'
+import {importedMember, memberName} from '#rules/shared.ts'
 
 type Guard = {context: Context; subject: string}
 

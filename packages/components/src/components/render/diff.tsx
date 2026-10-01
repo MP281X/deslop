@@ -200,7 +200,7 @@ function CommentAnnotation(props: {
 	if (editing) {
 		return (
 			// oxlint-disable-next-line shadcn/no-arbitrary-values -- no grid-cols scale step gives a shrinkable body column between two auto columns.
-			<div className="border-border/70 bg-muted/70 text-foreground box-border grid w-full max-w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 border-y px-2 py-2">
+			<div className="border-border/70 bg-muted/70 text-foreground box-border grid w-full max-w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 border-y p-2">
 				<div className="border-border bg-background text-muted-foreground inline-flex shrink-0 border p-1">
 					{props.comment.source === 'github' ? (
 						<GithubLight className="size-3 shrink-0" />
@@ -218,6 +218,7 @@ function CommentAnnotation(props: {
 							event.stopPropagation()
 						}}
 						onKeyDown={event => {
+							if (event.nativeEvent.isComposing) return
 							if (event.key === 'Escape') {
 								event.preventDefault()
 
@@ -239,7 +240,7 @@ function CommentAnnotation(props: {
 
 	return (
 		// oxlint-disable-next-line shadcn/no-arbitrary-values -- no grid-cols scale step gives a shrinkable body column between two auto columns.
-		<div className="border-border/70 bg-muted/70 text-foreground box-border grid w-full max-w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 border-y px-2 py-2">
+		<div className="border-border/70 bg-muted/70 text-foreground box-border grid w-full max-w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 border-y p-2">
 			<div className="border-border bg-background text-muted-foreground inline-flex shrink-0 border p-1">
 				{props.comment.source === 'github' ? (
 					<GithubLight className="size-3 shrink-0" />

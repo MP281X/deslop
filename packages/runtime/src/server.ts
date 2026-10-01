@@ -11,13 +11,15 @@ import {OTLPLogExporter} from '@opentelemetry/exporter-logs-otlp-http'
 import {OTLPTraceExporter} from '@opentelemetry/exporter-trace-otlp-http'
 import {BatchLogRecordProcessor} from '@opentelemetry/sdk-logs'
 import {BatchSpanProcessor} from '@opentelemetry/sdk-trace-base'
-import {HttpStaticServer} from 'effect/unstable/http'
-import {RpcSerialization} from 'effect/unstable/rpc'
+import {HttpStaticServer} from 'effect/http'
+import {RpcSerialization} from 'effect/rpc'
+
+export const layerRpcSerialization = RpcSerialization.layerSchemaBinary()
 
 export function layer(applicationName: string) {
 	return Layer.mergeAll(
 		Layer.unwrap(
-			Effect.map(pipe(Config.url('VITE_OTEL_URL'), Config.withDefault(new URL('http://localhost:4318'))), url =>
+			Effect.map(pipe(Config.URL('VITE_OTEL_URL'), Config.withDefault(new URL('http://localhost:4318'))), url =>
 				NodeSdk.layer(() => ({
 					logRecordProcessor: new BatchLogRecordProcessor({
 						exporter: new OTLPLogExporter({url: new URL('/v1/logs', url).href})
@@ -27,7 +29,7 @@ export function layer(applicationName: string) {
 				}))
 			)
 		),
-		RpcSerialization.layerMsgPack
+		layerRpcSerialization
 	)
 }
 
@@ -39,6 +41,6 @@ export const layerStaticFiles = HttpStaticServer.layer({
 
 export const layerNodeHttpServer = NodeHttpServer.layerConfig(createServer, {
 	gracefulShutdownTimeout: Config.succeed('1500 millis'),
-	host: pipe(Config.string('HOST'), Config.withDefault('0.0.0.0')),
-	port: pipe(Config.port('PORT'), Config.withDefault(5000))
+	host: pipe(Config.String('HOST'), Config.withDefault('0.0.0.0')),
+	port: pipe(Config.Port('PORT'), Config.withDefault(5000))
 })

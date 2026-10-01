@@ -1,6 +1,6 @@
 import {Array, Boolean, Effect, FileSystem, Number, Path, Predicate, Result, Schema, Stream, String, pipe} from 'effect'
 
-import {ChildProcess, ChildProcessSpawner} from 'effect/unstable/process'
+import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
 import {PiToolkit} from '#schema'
 
@@ -24,10 +24,10 @@ export const handlers = Effect.fnUntraced(function* (cwd: string) {
 	const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
 
 	return PiToolkit.of({
-		bash: Effect.fnUntraced(function* ({command, timeout}) {
+		bash: Effect.fnUntraced(function* (input) {
 			const execute = Effect.scoped(
 				Effect.gen(function* () {
-					const process = yield* spawner.spawn(ChildProcess.make('sh', ['-lc', command], {cwd}))
+					const process = yield* spawner.spawn(ChildProcess.make('sh', ['-lc', input.command], {cwd}))
 					const [output, exitCode] = yield* Effect.all(
 						[pipe(process.all, Stream.decodeText(), Stream.mkString), process.exitCode],
 						{concurrency: 'unbounded'}
@@ -40,14 +40,14 @@ export const handlers = Effect.fnUntraced(function* (cwd: string) {
 					return truncateOutput(output)
 				})
 			)
-			if (Predicate.isUndefined(timeout)) return yield* execute
-			return yield* Effect.timeout(execute, `${timeout} seconds`)
+			if (Predicate.isUndefined(input.timeout)) return yield* execute
+			return yield* Effect.timeout(execute, `${input.timeout} seconds`)
 		}),
-		edit: Effect.fnUntraced(function* ({edits, path: inputPath}) {
-			const target = path.resolve(cwd, inputPath)
+		edit: Effect.fnUntraced(function* (input) {
+			const target = path.resolve(cwd, input.path)
 			const original = yield* fs.readFileString(target)
 			const content = yield* Effect.reduce(
-				edits,
+				input.edits,
 				() => original,
 				(current, replacement) => {
 					const occurrences = String.split(replacement.oldText)(current)
@@ -62,34 +62,37 @@ export const handlers = Effect.fnUntraced(function* (cwd: string) {
 				}
 			)
 			yield* fs.writeFileString(target, content)
-			return `Edited ${inputPath}`
+			return `Edited ${input.path}`
 		}),
-		find: Effect.fnUntraced(function* ({limit, path: inputPath, pattern}) {
-			const root = path.resolve(cwd, inputPath ?? '.')
+		find: Effect.fnUntraced(function* (input) {
+			const root = path.resolve(cwd, input.path ?? '.')
 			return pipe(
-				yield* fs.glob(pattern, {root}),
+				yield* fs.glob(input.pattern, {root}),
 				Array.map(match => path.relative(root, path.resolve(root, match))),
 				Array.sort(String.Order),
-				Array.take(boundedNatural(1_000, limit)),
+				Array.take(boundedNatural(1_000, input.limit)),
 				Array.join('\n')
 			)
 		}),
-		grep: Effect.fnUntraced(function* ({glob, ignoreCase, limit, literal, path: inputPath, pattern}) {
-			const target = path.resolve(cwd, inputPath ?? '.')
+		grep: Effect.fnUntraced(function* (input) {
+			const target = path.resolve(cwd, input.path ?? '.')
 			const info = yield* fs.stat(target)
 			const files = yield* Boolean.match(info.type === 'File', {
 				onFalse: () =>
-					pipe(fs.glob(glob ?? '**/*', {root: target}), Effect.map(Array.map(file => path.resolve(target, file)))),
+					pipe(
+						fs.glob(input.glob ?? '**/*', {root: target}),
+						Effect.map(Array.map(file => path.resolve(target, file)))
+					),
 				onTrue: () => Effect.succeed([target])
 			})
-			const literalMatcher = Boolean.match(ignoreCase === true, {
-				onFalse: () => String.includes(pattern),
-				onTrue: () => (line: string) => String.includes(String.toLowerCase(pattern))(String.toLowerCase(line))
+			const literalMatcher = Boolean.match(input.ignoreCase === true, {
+				onFalse: () => String.includes(input.pattern),
+				onTrue: () => (line: string) => String.includes(String.toLowerCase(input.pattern))(String.toLowerCase(line))
 			})
-			const matcher = Boolean.match(literal === true, {
+			const matcher = Boolean.match(input.literal === true, {
 				onFalse: () => {
-					const flags = Boolean.match(ignoreCase === true, {onFalse: () => undefined, onTrue: () => 'i'})
-					const expression = new RegExp(pattern, flags)
+					const flags = Boolean.match(input.ignoreCase === true, {onFalse: () => undefined, onTrue: () => 'i'})
+					const expression = new RegExp(input.pattern, flags)
 					return (line: string) => expression.test(line)
 				},
 				onTrue: () => literalMatcher
@@ -114,14 +117,14 @@ export const handlers = Effect.fnUntraced(function* (cwd: string) {
 					),
 				{concurrency: 8}
 			)
-			return pipe(groups, Array.flatten, Array.take(boundedNatural(100, limit)), Array.join('\n'))
+			return pipe(groups, Array.flatten, Array.take(boundedNatural(100, input.limit)), Array.join('\n'))
 		}),
-		ls: Effect.fnUntraced(function* ({limit, path: inputPath}) {
-			const target = path.resolve(cwd, inputPath ?? '.')
+		ls: Effect.fnUntraced(function* (input) {
+			const target = path.resolve(cwd, input.path ?? '.')
 			const names = pipe(
 				yield* fs.readDirectory(target),
 				Array.sort(String.Order),
-				Array.take(boundedNatural(500, limit))
+				Array.take(boundedNatural(500, input.limit))
 			)
 			return pipe(
 				yield* Effect.forEach(names, name =>
@@ -135,20 +138,20 @@ export const handlers = Effect.fnUntraced(function* (cwd: string) {
 				Array.join('\n')
 			)
 		}),
-		read: Effect.fnUntraced(function* ({limit, offset, path: inputPath}) {
+		read: Effect.fnUntraced(function* (input) {
 			return pipe(
-				String.split('\n')(yield* fs.readFileString(path.resolve(cwd, inputPath))),
-				Array.drop(Number.max(0, boundedNatural(1, offset) - 1)),
-				Array.take(boundedNatural(2_000, limit)),
+				String.split('\n')(yield* fs.readFileString(path.resolve(cwd, input.path))),
+				Array.drop(Number.max(0, boundedNatural(1, input.offset) - 1)),
+				Array.take(boundedNatural(2_000, input.limit)),
 				Array.join('\n'),
 				truncateOutput
 			)
 		}),
-		write: Effect.fnUntraced(function* ({content, path: inputPath}) {
-			const target = path.resolve(cwd, inputPath)
+		write: Effect.fnUntraced(function* (input) {
+			const target = path.resolve(cwd, input.path)
 			yield* fs.makeDirectory(path.dirname(target), {recursive: true})
-			yield* fs.writeFileString(target, content)
-			return `Wrote ${inputPath}`
+			yield* fs.writeFileString(target, input.content)
+			return `Wrote ${input.path}`
 		})
 	})
 })

@@ -2,12 +2,7 @@
 	"$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
 	"entry": ["**/main.*", "tools/workflow/src/install.ts"],
 	"includeEntryExports": true,
-	"ignorePatterns": [
-		"**/*.gen.ts",
-		"packages/components/src/components/svgs/**",
-		"packages/components/src/components/ui/**",
-		"tools/*/template/**"
-	],
+	"ignorePatterns": ["**/*.gen.ts", "packages/components/src/components/svgs/**", "tools/*/template/**"],
 	"ignoreExports": [
 		{"exports": ["*"], "file": "packages/*/src/schema.ts"},
 		{"exports": ["*"], "file": "packages/components/src/components/**"}

@@ -4,7 +4,6 @@ import {
 	Boolean,
 	DateTime,
 	Effect,
-	Encoding,
 	HashMap,
 	Inspectable,
 	Match,
@@ -46,7 +45,8 @@ import type {
 	ToolResultMessage
 } from '@earendil-works/pi-ai'
 import {Type} from '@earendil-works/pi-ai'
-import {Prompt, Response, Tool} from 'effect/unstable/ai'
+import {Prompt, Response, Tool} from 'effect/ai'
+import {Base64} from 'effect/encoding'
 
 import {AiError, type AiAgentDefinition, type AiSkill, type AiStatus} from '#schema'
 import type {Ai, Pi} from '#service'
@@ -55,7 +55,7 @@ import {makeReplay} from './replay.ts'
 
 function imageDataFromFilePart(part: Prompt.FilePart) {
 	if (part.data instanceof URL) return
-	if (!Predicate.isString(part.data)) return Encoding.encodeBase64(part.data)
+	if (!Predicate.isString(part.data)) return Base64.encode(part.data)
 	const prefix = `data:${part.mediaType};base64,`
 	if (String.startsWith(prefix)(part.data)) return String.slice(String.length(prefix))(part.data)
 	return part.data
@@ -213,8 +213,7 @@ function skillTool<R>(skills: AiSkill[], context: Context.Context<R>) {
 					)
 					if (Predicate.isUndefined(skill.resources)) return toolResult(skill.instructions)
 					const resources = pipe(
-						Record.toEntries(skill.resources),
-						Array.map(([name, content]) => `<resource name="${name}">\n${content}\n</resource>`),
+						Record.collect(skill.resources, (name, content) => `<resource name="${name}">\n${content}\n</resource>`),
 						Array.join('\n')
 					)
 					return toolResult(`${skill.instructions}\n\n<resources>\n${resources}\n</resources>`)

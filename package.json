@@ -6,20 +6,20 @@
 		"build": "vp run -r build",
 		"check": "vp check && fallow dead-code --unused-files --unused-exports --unused-types --duplicate-exports --circular-deps --re-export-cycles --stale-suppressions --format compact --fail-on-issues",
 		"fix": "vp check --fix",
-		"prepare": "effect-tsgo patch --no-typescript --oxlint",
+		"prepare": "effect-tsgo patch --no-typescript --oxlint --force",
 		"shadcn": "cd packages/components && vpx shadcn@latest",
 		"test": "vp test",
 		"upgrade": "sh -c 'rm -f pnpm-lock.yaml && find . -name node_modules -type d -prune -exec rm -rf {} + && vp install'"
 	},
 	"dependencies": {
-		"@effect/atom-react": "4.0.0-rc.112",
-		"@effect/platform-node": "4.0.0-rc.112",
-		"effect": "4.0.0-rc.112"
+		"@effect/atom-react": "^4.0.0",
+		"@effect/platform-node": "^4.0.0",
+		"effect": "^4.0.0"
 	},
 	"devDependencies": {
 		"@deslop/workflow": "workspace:*",
 		"@effect/tsgo": "latest",
-		"@effect/vitest": "4.0.0-rc.112",
+		"@effect/vitest": "^4.0.0",
 		"@types/node": "latest",
 		"@types/react": "^19",
 		"@types/react-dom": "^19",
@@ -27,7 +27,7 @@
 		"typescript": "latest",
 		"vite": "catalog:",
 		"vite-plus": "catalog:",
-		"vitest": "4.1.11"
+		"vitest": "5.0.1"
 	},
 	"engines": {
 		"node": ">=26"
