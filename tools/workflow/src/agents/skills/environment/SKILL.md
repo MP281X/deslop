@@ -15,6 +15,7 @@ This skill describes `mp281x@dev`, the machine the user works on; the user's Lin
 - Search with `rg` and always an explicit path: without one it reads stdin and hangs.
 - A service a task needs runs in a container the thread stops afterwards; nothing is installed on the machine. A container publishes its ports on `127.0.0.1`, since Docker's published ports bypass the firewall.
 - `~/.claude` and `~/.codex` are installed from `tools/workflow/src/agents` in deslop with `node tools/workflow/src/install.ts`; change the source and reinstall, never the homes.
+- Installation does not update an already-running query. A fresh Codex thread reads the new config; an existing thread needs a new provider process and then compaction. Claude's provider uses `--system-prompt-snapshot off` in t3's Settings → Providers → Claude → Launch arguments so newly started or resumed sessions render the current pair file instead of reusing the initial snapshot. This t3 setting is separate from the workflow installer; changing provider configuration replaces the adapter and closes its existing queries, so change it between tasks. Installing pair files alone does not close queries.
 
 Find a t3 thread's transcript (Claude session or Codex rollout) from its id:
 
@@ -23,7 +24,31 @@ S=$(sqlite3 ~/.t3/userdata/state.sqlite "select coalesce(json_extract(resume_cur
 ls ~/.claude/projects/*/$S.jsonl ~/.codex/sessions/*/*/*/*$S.jsonl 2>/dev/null
 ```
 
-A Claude session's agents are in `<session>/subagents/` beside it.
+A Claude session's agents are in `<session>/subagents/` beside it. Its question-card answers are user decisions in `toolUseResult.answers`, not ordinary user-message text. Include them, deduplicated by the result's `tool_use_id`.
+
+Queued user steering can be absent from the native transcript. Read the thread's user messages from t3's database too; a missing transcript quote is not evidence of an invented requirement:
+
+```bash
+sqlite3 -json ~/.t3/userdata/state.sqlite "select message_id, created_at, text from projection_thread_messages where thread_id like '<thread id>%' and role = 'user' order by created_at, message_id"
+```
+
+For isolated native Codex evaluations, prepare `<scratch>/eval` with a disposable no-remote repo, a fake `home/.codex` containing the source config/base/roles/skills snapshot and private auth copy, and `prompt.md`. Point the snapshot's `model_instructions_file` at its copied base. Resolve the installed launcher before changing HOME: Vite+ shims depend on the real home, and login shells need their own Node PATH.
+
+```bash
+R="$PWD/node_modules/.cache/deslop/eval"
+V=/home/mp281x/.vite-plus
+C="$V/packages/@openai/codex"
+I=$(jq -r .installId "$C.json")
+N="$V/js_runtime/node/$(jq -r .platform.node "$C.json")/bin"
+printf 'export PATH="%s:/usr/bin:/bin"\n' "$N" > "$R/home/.bash_profile"
+env -i HOME="$R/home" CODEX_HOME="$R/home/.codex" PATH="$N:/usr/bin:/bin" \
+  GH_TOKEN=invalid GITHUB_TOKEN=invalid GLAB_TOKEN=invalid GITLAB_TOKEN=invalid \
+  "$N/node" "$C/$I/lib/node_modules/@openai/codex/bin/codex.js" \
+  exec --json --sandbox workspace-write -C "$R/repo" \
+  -m gpt-6.1-sol -c model_reasoning_effort=high - < "$R/prompt.md"
+```
+
+Never link the fake home to real auth, forge/SSH config, or agent homes; keep evals local, with no commits, pushes, or remote writes. Remove the copied auth and disposable home/repo when the trial settles; preserve only sanitized evidence. For Claude, use its resolved executable with the same isolated home and an explicit fixture working directory.
 
 Stop only what you started, by its process group, never with `pkill` or `killall`; when a port is taken by something else, take another free port:
 

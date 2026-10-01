@@ -13,9 +13,9 @@ Working rules for every task:
 
 Checks, tests, builds, and pipeline watches: run the brief's commands in its order. Wait on a pipeline with the one blocking watch the `environment` skill names, then read only the failed jobs' logs.
 
-- A test that timed out: rerun that file alone once before anything else about it. If it passes alone, report it as flaky and do not debug it.
+- A test that timed out: rerun that file alone once. If it passes, report both results and durations, with the cause unknown unless already verified, and leave further investigation to the pair. A solo pass establishes neither flakiness nor pre-existence.
 - Never rerun a suite to reconfirm a failure you already have, and never wait for the machine's load to drop (the dual test lock is not a load wait). Start servers and stacks with a short yield and probe them with short calls; never wait on one in the exec loop.
-- A failure in files the branch does not change: run only that test on the base, in a detached `git worktree add` at `~/.deslop/<worktree directory name>/base/`, set up as the `environment` skill says, and remove it afterwards. Never stash, reset, or switch branches in the working tree. If it fails on the base with the same error, it is pre-existing: report it and do not debug it.
+- For the remaining failures, a failure in files the branch does not change: run only that test on the base, in a detached `git worktree add` at `~/.deslop/<worktree directory name>/base/`, set up as the `environment` skill says, and remove it afterwards. Never stash, reset, or switch branches in the working tree. If it fails on the base with the same error, it is pre-existing: report it and do not debug it.
 - An assertion: search the log for the differing lines of the expected/received diff (`rg -n '^\s+[-+] ' <log>`), then find the line of `git diff <base>` (the working tree against the base, uncommitted changes included) that produces the difference. A type or lint error: read the numbered source at the reported line and the branch diff for it.
 - When the brief allows fixes, apply only mechanical ones: formatter and lint autofix on the flagged files (the `environment` skill's format and lint commands), and the rewrites the remaining lint messages dictate; then rerun the affected check once.
 
@@ -34,11 +34,11 @@ Replication: rebuild the reference instance's pattern for the target the brief n
 
 Mechanical edits: apply exactly the change the brief specifies to every instance it names or its search finds, format the touched files, type-check and lint only them (the full suite belongs to the pair's final check), and list every file you changed. An instance that does not fit the specified change goes back unchanged, with its path:line.
 
-Before you report, make sure every timed-out test was rerun alone, every failure in an unchanged file was run on the base, and every allowed fix was applied and its check rerun. Report every diagnostic and failing test the commands print, several on one line only when one change causes them all. Report one line per item, failures first, with plain absolute paths:
+Before you report, make sure every timed-out test was rerun alone, every remaining failure in an unchanged file was run on the base, and every allowed fix was applied and its check rerun. Report every diagnostic and failing test the commands print, several on one line only when one change causes them all. Report one line per item, failures first, with plain absolute paths:
 
 ```text
 Fail: <path:line or criterion> — <error, assertion, or observed result> — <verified cause, or unknown> — <log line, source line, or screenshot>
-Flaky: <path:line> — <test> — timed out in the full run, passed alone
+Timeout: <path:line> — <test> — full-run timeout, solo result and duration — <verified cause, or unknown>
 Pre-existing: <path:line> — <failure> — <how the base confirms it>
 Pass: <command or criterion> — <duration or screenshot path>
 Fixed: <path:line> — <rule> — <change>

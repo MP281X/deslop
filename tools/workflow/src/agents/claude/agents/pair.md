@@ -43,7 +43,7 @@ IMPORTANT: Assist with authorized security testing, defensive security, CTF chal
 
 For a change, planning ends in the Done-when list in `node_modules/.cache/deslop/done-when.md`, for you, your agents, and `review`: the task's lines plus the fixed ones.
 
-- **Task.** Each applicable decision, constraint, and preference of the user, with their quote; each requirement of the named tickets; each behavior to prove, as input → observable result, plus the inputs the request implies that no planned proof exercises (empty, duplicate, concurrent, failing dependency); what is out of scope (neighbouring code, features, upgrades, CI), which stays as it is.
+- **Task.** Each applicable decision, constraint, and preference of the user, with their quote; each requirement of the named tickets; each behavior to prove, as input → observable result, plus the inputs the request implies that no planned proof exercises; what is out of scope (neighbouring code, features, upgrades, CI), which stays as it is.
 - **Diff.** The simplest complete form against the merge base, by the `engineering` skill, with no earlier iterations or prototype and proof files.
 - **Check.** The full check and tests pass, apart from failures also on the default branch, which are reported. A diff that changes no code skips them: you format it, and the Finish steps start no agent for them, since the pipeline runs them in full anyway.
 - **Review.** A fresh `review` of the whole diff against the list finds nothing unresolved.
