@@ -1,70 +1,73 @@
 ---
 name: design
-description: 'Visual rules for rendered UI. Use when building, prototyping, or reviewing a screen or component, or matching a reference UI.'
+description: 'UI and UX rules for rendered screens, built from the shared shadcn components. Use when building, prototyping, or reviewing a screen or component.'
 ---
 
 # Design
 
-Rendered work matches the screens around it first and a reference second; prototypes explore, execution polishes.
+The best UI is the one that looks and behaves like the app around it, shows each thing once, and holds nothing that adds no value. Apply the visual conventions in the repository's CODING_STANDARDS.md; this skill wins where they leave a case open.
 
-## Consistency first
+**Components.** Build every screen from the shared shadcn components in the repository's components package, to the fullest: a missing one is added with the repository's shadcn command (the `environment` skill names it), never hand-built or restyled. A value lint flags moves to the nearest design-system step, token, or variant.
 
-- Before designing, read the 2–3 nearest screens of the same kind and the shared components they compose.
-- Match their page structure, spacing, type sizes, radius, icons, density, states, and copy.
-- Where the app is inconsistent, follow the majority of the surrounding screens.
-- Apply the visual conventions in the repository's CODING_STANDARDS.md where one exists.
+```tsx
+// good
+<Badge variant="secondary">Draft</Badge>
+<Empty><EmptyTitle>No runs yet</EmptyTitle><Button onClick={() => startRun()}>Run</Button></Empty>
+// bad — "without hardcoding those values the desing/ui/ux need to be consistent with the rest of the app"
+<span className="rounded-full bg-[#eef] px-[7px] text-[11px]">Draft</span>
+<div className="flex flex-col items-center gap-2 p-6 text-muted-foreground">No runs yet</div>
+```
 
-## Rules
+**Consistency.** Read the nearest screens of the same kind and the components they compose first, and match their structure, spacing, type, icons, density, states, copy, and behavior; where the app is inconsistent, follow the majority. Reuse the existing component or renderer for a job before adding one. With no screen of the same kind, t3code's interface (`~/.deslop/repos/t3code`) is the reference.
 
-Consistency:
+```tsx
+// good — the picker every other model choice uses
+<ModelPicker value={model} onValueChange={setModel} />
+// bad — "make how the button behave consistent with the rest to not break the user expectations"
+<Select value={model} onValueChange={setModel}>{models.map(...)}</Select> // a second picker that behaves differently
+```
 
-- The shadcn lint rules reject raw colors, arbitrary values, inline styles, and restyled shared components; move a value lint or review flags to the nearest design-system step, token, or variant: a small visual shift is fine, a new layout or color scheme is not, and a disable stays only where no close step exists.
-- The same action looks the same and has the same name everywhere.
+**One way.** One way to see each piece of data or do each action, and the same action has the same look and name everywhere; remove what adds no value: refresh buttons, duplicate badges, an icon and a label that say the same, decorative elements, wrappers.
 
-Layout:
+```tsx
+// good
+<StarIcon aria-label="Default" />
+// bad — "i don't want refresh buttons or stuffs like that in the ui/app"
+<Button onClick={refetch}><RefreshIcon /></Button>
+<Badge><StarIcon /> Default</Badge> // "Don't have icons/emoji and text that say the same thing"
+```
 
-- Group by proximity before adding a card; cards only when elevation means something, never nested.
-- Size icons by a shared box, and scale up an SVG that fills less of its canvas.
-- Use one horizontal inset for search, pinned rows, dividers, and list rows.
-- Keep controls always visible, outlined or filled, never only on hover, and pinned rows outside the scroll area.
-- When rows share a name, the subtitle shows what tells them apart.
+**Compact.** Flat and dense: group by proximity before adding a card, cards only when elevation means something and never nested, and no empty vertical space.
 
-Hierarchy:
+```tsx
+// good
+<section className="flex flex-col gap-2">{rows}</section>
+// bad — "keep the UI flat/brutalist/minimal… don't have nested cards or visually heavy layouts"
+<Card><CardContent><Card className="p-8">{rows}</Card></CardContent></Card>
+```
 
-- Hierarchy by size and weight; `tabular-nums` for numbers.
-- No decorative all-caps labels or 01/02 numbering.
+**Precision.** Exact on the design-system scale: icons sized by one shared box, one horizontal inset for search, pinned rows, dividers, and list rows; pinned rows outside the scroll area; borders that stay put while scrolling.
 
-States:
+```tsx
+// good
+<SearchIcon className="size-4" />
+// bad — "some icons have different sizes", "the spacing is kinda shitty"
+<SearchIcon width={15} height={15} />
+```
 
-- Controls keep the shared component's hover, focus-visible, active, and disabled states; loading and error only where the action produces them.
-- In dense lists, show state with a background (the selected row, the active tab with an accent bar), never a check column.
-- Skeletons are shaped like the final layout.
-- Empty states say what to do and carry the action.
-- Errors sit next to the field and name the fix.
+**Visible.** Controls are always visible, outlined or filled, never only on hover; state shows by background (the selected row, the active tab), never a check column; when rows share a name, the subtitle shows what tells them apart.
 
-Interaction:
+```tsx
+// good
+<TableRow data-state={selected ? 'selected' : undefined}>
+// bad — "i'm not a fan that things like the empty star comes out on hover"
+<Button className="opacity-0 group-hover:opacity-100" variant="ghost">
+```
 
-- Motion only for state changes, 150–250 ms ease-out; none on constant or keyboard actions.
-- Filters, tabs, and pagination live in the URL where the surrounding screens keep them there.
-- Destructive actions confirm or undo.
+**Mobile.** Every screen works fully on a phone, layout and interaction alike; no deep nesting that a small screen cannot reach.
 
-Copy:
-
-- Button labels say what happens; the success message reuses the verb.
+**Feedback.** A mutation shows that it happened with a small, quiet change of the affected element; motion only for state changes; loading and error states only where the action produces them, and an error sits next to its field.
 
 ## Prototypes
 
-- For an unresolved visual preference, compare 2–4 viable variants differing on a named axis: layout, density, hierarchy, or interaction. For a behavior question, build the smallest interaction that can settle it.
-- Never variants that differ only in color.
-- Use real, product-shaped content.
-- Render prototypes on the screen they belong to; when comparing variants, make them switchable by buttons labeled with each variant's axis.
-- Exercise mutations under test in disposable state and stub unrelated writes. Skip repository-wide checks and production polish; keep consistency with the nearest screen. Rebuild the chosen solution in execution.
-
-## Looking at the result
-
-Drive each prototype's deciding interaction, inspect screenshots and a short MP4 of the resulting states, and use the observations to answer its question. Share useful evidence with the user, identifying stubs and untested integration. In execution, when appearance is at stake, take one browser screenshot per new or changed state, read it back, and judge it against these rules and the nearest screens.
-
-## Matching a reference UI
-
-- Take numeric targets (padding, gap, icon box, popup size) from the reference's component source in its clone under `~/.deslop/repos`, citing `path:line`; when only an image or a page exists, measure it in the rendered page and label the numbers as measured.
-- Finish a design pass with light and dark screenshots next to the reference.
+At least three switchable variants that differ in kind (layout, density, hierarchy, or interaction), rendered on the real screen with real, product-shaped content, switched by buttons labeled with each variant's axis; a behavior question gets the smallest interaction that settles it. Once one is picked, the other variants go and the pick is rebuilt as product code.

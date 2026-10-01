@@ -3,7 +3,7 @@
 	"disableClaudeAiConnectors": true,
 	"autoMemoryEnabled": false,
 	"includeGitInstructions": false,
-	"outputStyle": "pair",
+	"agent": "pair",
 	"attribution": {"commit": "", "pr": ""},
 	"bashOutputMaxChars": 60000,
 	"env": {
@@ -36,6 +36,8 @@
 			"Bash(gh pr merge *)",
 			"Bash(glab mr merge *)",
 			"Agent(Plan)",
+			"Agent(pair)",
+			"Agent(statusline-setup)",
 			"Agent(claude)",
 			"Agent(claude-code-guide)",
 			"mcp__t3-code__preview_*",
