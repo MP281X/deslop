@@ -5,15 +5,15 @@ description: 'Facts and exact commands for this machine, deslop, and dual. Use b
 
 # Environment
 
-This machine is the only one the user works on. A routine step with a block below runs the block as is; for any other tool, read its `--help` once before the first try and never guess flags.
+This skill describes `mp281x@dev`, the machine the user works on; the user's Linux devices on the tailnet reach each other over SSH by MagicDNS name, with keys and no password. A routine step with a block below runs the block as is; for any other tool, read its `--help` once before the first try and never guess flags.
 
 ## Machine
 
-- Debian 13, 8 CPUs, 23G RAM, reached as `mp281x@dev.mp281x.xyz`; `sudo` is passwordless.
-- Tools: docker with compose and buildx; agent-browser, with its Chrome under `~/.agent-browser/browsers/`; gh (github.com, MP281X); glab (default host git.datapizza.tech); acli; ffmpeg; python and pip; sqlite3; jq; rg; flock; ss. `~/.vite-plus/bin` holds node and shims for every package manager: run packages with `vp` and binaries with `vpx`, never npm, npx, pnpm, yarn, or bunx; `bun` runs only where a step below names it.
+- Debian 13, 8 CPUs, 23G RAM; `sudo` is passwordless. The firewall admits only 80 and 443 from the internet, for traefik; SSH and everything else listening is reached only through the user's tailnet, as `mp281x@dev`.
+- Tools: docker with compose and buildx; agent-browser, with its Chrome under `~/.agent-browser/browsers/`; gh (github.com, MP281X); glab (default host git.datapizza.tech); acli; tailscale (the user's tailnet); ffmpeg; python and pip; sqlite3; jq; rg; flock; ss. `~/.vite-plus/bin` holds node and shims for every package manager: run packages with `vp` and binaries with `vpx`, never npm, npx, pnpm, yarn, or bunx; `bun` runs only where a step below names it.
 - Scratch and logs go under the thread's worktree in `node_modules/.cache/deslop/`, which git and every tool ignore, and screenshots and videos a message embeds in its `proof/` subfolder. An extra git worktree that must install or run goes in `~/.deslop/<worktree directory name>/<name>/`, because Node refuses type stripping under `node_modules`. Each agent works in its own subfolder and deletes only what it created, as soon as its question is settled.
 - Search with `rg` and always an explicit path: without one it reads stdin and hangs.
-- A service a task needs runs in a container the thread stops afterwards; nothing is installed on the machine.
+- A service a task needs runs in a container the thread stops afterwards; nothing is installed on the machine. A container publishes its ports on `127.0.0.1`, since Docker's published ports bypass the firewall.
 - `~/.claude` and `~/.codex` are installed from `tools/workflow/src/agents` in deslop with `node tools/workflow/src/install.ts`; change the source and reinstall, never the homes.
 
 Find a t3 thread's transcript (Claude session or Codex rollout) from its id:
@@ -74,7 +74,7 @@ glab mr update <number> --draft --description-file <scratch>/body.md --attach <f
 
 A production preview of the branch is how the user tests a web app.
 
-- Previews use only ports 4000–4009, which traefik serves at `https://<port>.mp281x.xyz`, the only URL to give the user and the browser agent; pick a free port with `ss -ltn` and bind it on `::`. A preview stays running once the user could open it, with its link in the last message, until the user asks to stop it. Those names are public, so a preview relies on the app's own login.
+- A preview binds `127.0.0.1` on a free port (`ss -ltn`), and `sudo tailscale serve --bg --https=<port> http://127.0.0.1:<port>` serves it to the user's tailnet at `https://<host>:<port>`, where `<host>` is `tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")'`: the only URL to give the user and the browser agent. The first request waits for the certificate. A preview stays running once the user could open it, with its link in the last message, until the user asks to stop it; then `sudo tailscale serve --https=<port> off` and stop its process group.
 - Capture proof in one agent-browser session: `record start <path.mp4> <url>` … `record stop` records H.264 video, which plays on the user's phone, and `screenshot <path.png>` takes a screenshot. Sign in once per preview, then `state save <scratch>/auth.json`; later sessions start with `--state <scratch>/auth.json`.
 
 ## deslop
@@ -82,17 +82,21 @@ A production preview of the branch is how the user tests a web app.
 - `/home/mp281x/deslop`, GitHub `MP281X/deslop`, default branch `main`; workspaces `apps/*` (portfolio), `packages/*` (ai, components, runtime), `tools/*` (create-app, create-package, workflow); shadcn components in `packages/components`, a new one added with `vp run shadcn add <component>`.
 - Full check: `vp run check`, then `vp run test`. Format and lint changed files in one call, since lint has no cache: `vp check --fix <path>...`; `vp lint --format=agent <path>...` prints one line per diagnostic.
 - CI: GitHub Actions job `build-and-deploy`. Production runs `tools/compose.yaml` as compose project `deslop`: traefik, portfolio, jaeger (UI and API at http://127.0.0.1:16686), collector (OTLP at https://otel.mp281x.xyz and 127.0.0.1:4318).
-- Preview, from the app directory: `HOST=:: PORT=<port> vp run preview`.
+- Preview, from the app directory: `HOST=127.0.0.1 PORT=<port> vp run preview`.
 
 ## dual
 
 - `/home/mp281x/dual`, `git.datapizza.tech/dual/dual`, default branch `master`; bun 1.4.2 driven by `vp`, turbo; shadcn components in `packages/ui`, a new one added from there with `vpx shadcn add <component>`. Turbo filters take package names: `@dual/core` is `packages/server`, `@dual/saas` the API and worker host.
-- git.datapizza.tech needs the Datapizza VPN. Connect with exactly these commands, then show the URL at once as a Markdown link in a normal message:
+- git.datapizza.tech needs the Datapizza VPN, whose session runs on `mp281x@dev` and reaches the user's other devices through Tailscale. The session can still drop: on any machine, run exactly these commands, which check GitLab from `mp281x@dev` and reconnect the session there when it is unreachable, then show the URL at once as a Markdown link in a normal message:
 
   ```bash
-  openvpn3 session-manage --config datapizza --disconnect
-  openvpn3 session-start --config datapizza --background
-  until openvpn3 session-auth | grep 'Auth URL'; do sleep 1; done
+  v() { ssh mp281x@dev "$@"; }
+  openvpn3 configs-list 2>/dev/null | grep -q datapizza && v() { "$@"; }
+  v curl -sfo /dev/null --max-time 5 https://git.datapizza.tech/users/sign_in || {
+    v openvpn3 session-manage --config datapizza --disconnect
+    v openvpn3 session-start --config datapizza --background
+    until v openvpn3 session-auth | grep 'Auth URL'; do sleep 1; done
+  }
   ```
 
 - Full check: `vp run check` (turbo-cached), then `vpx turbo run test --affected`; `vp run test:workspace` runs every workspace test. Core and SaaS tests start their own Postgres through Testcontainers on the Docker socket. Run a full suite under `flock ~/.deslop/dual-test.lock` so parallel threads take turns.
@@ -111,9 +115,9 @@ A production preview of the branch is how the user tests a web app.
       ports: !override ["127.0.0.1:$((8080 + N)):8080"]
       volumes: !override [/var/run/docker.sock:/var/run/docker.sock, $D/opensandbox.toml:/etc/opensandbox/config.toml:ro, opensandbox-data:/root/.opensandbox]
     postgres:
-      ports: !override ["$((55432 + N)):5432"]
+      ports: !override ["127.0.0.1:$((55432 + N)):5432"]
     postgres-test:
-      ports: !override ["$((55433 + N)):5432"]
+      ports: !override ["127.0.0.1:$((55433 + N)):5432"]
   networks:
     opensandbox-runtime:
       name: dual-opensandbox-runtime-$I
@@ -126,10 +130,10 @@ A production preview of the branch is how the user tests a web app.
 
 Preview, from the worktree root:
 
-1. The stack above, then the `seed:user` command from the `db:reset` script; then the API and worker from `packages/saas` (`bun --env-file .env src/dev.ts api` and `… worker`), with `BETTER_AUTH_URL`, `APP_ORIGIN`, and `SERVER_PUBLIC_URL` set to `https://<port>.mp281x.xyz`: better-auth trusts only the first two as origins, and the third is the public MCP and OAuth URL. The API listens on 3825, fixed in `packages/saas/src/api.ts`, so the before and after previews run one at a time: capture the before, stop it, then start the branch's.
+1. The stack above, then the `seed:user` command from the `db:reset` script; then the API and worker from `packages/saas` (`bun --env-file .env src/dev.ts api` and `… worker`), with `BETTER_AUTH_URL`, `APP_ORIGIN`, and `SERVER_PUBLIC_URL` set to the preview URL: better-auth trusts only the first two as origins, and the third is the public MCP and OAuth URL. The API listens on 3825, fixed in `packages/saas/src/api.ts`, so the before and after previews run one at a time: capture the before, stop it, then start the branch's.
 2. `vpx turbo run build --filter=@dual/saas...`, then in packages/app `NODE_ENV=production NITRO_PRESET=bun NODE_OPTIONS=--max-old-space-size=8192 node node_modules/vite/bin/vite.js build`.
 3. Web, from packages/app: `NODE_ENV=production HOST=127.0.0.1 PORT=<web> SERVER_URL=http://127.0.0.1:3825 bun .output/server/index.mjs`.
-4. The public port runs this proxy (`bun <scratch>/proxy.ts`), since the build has no proxy and the browser calls its own origin:
+4. The preview port runs this proxy (`bun <scratch>/proxy.ts`), since the build has no proxy and the browser calls its own origin; `tailscale serve` already sets the forwarded host and protocol:
 
    ```ts
    const api = 'http://127.0.0.1:3825'
@@ -142,18 +146,15 @@ Preview, from the worktree root:
    Bun.serve({
    	fetch(request) {
    		const url = new URL(request.url)
-   		const headers = new Headers(request.headers)
-   		headers.set('x-forwarded-host', url.host)
-   		headers.set('x-forwarded-proto', 'https')
    		return fetch(new URL(url.pathname + url.search, toApi(url.pathname) ? api : web), {
    			body: request.body,
    			duplex: 'half',
-   			headers,
+   			headers: request.headers,
    			method: request.method,
    			redirect: 'manual'
    		})
    	},
-   	hostname: '::',
+   	hostname: '127.0.0.1',
    	idleTimeout: 0,
    	port: <port>
    })
@@ -162,7 +163,7 @@ Preview, from the worktree root:
 5. Sign in, from the worktree root, with the `seed:user` credentials:
 
    ```bash
-   agent-browser --session proof open https://<port>.mp281x.xyz/login
+   agent-browser --session proof open https://<host>:<port>/login
    agent-browser --session proof fill 'input[type=email]' admin@dual.local
    agent-browser --session proof fill 'input[type=password]' password
    agent-browser --session proof click 'button[type=submit]'
