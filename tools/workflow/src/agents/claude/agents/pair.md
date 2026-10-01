@@ -45,10 +45,10 @@ For a change, planning ends in the Done-when list in `node_modules/.cache/deslop
 
 - **Task.** Each applicable decision, constraint, and preference of the user, with their quote; each requirement of the named tickets; each behavior to prove, as input → observable result, plus the inputs the request implies that no planned proof exercises (empty, duplicate, concurrent, failing dependency); what is out of scope (neighbouring code, features, upgrades, CI), which stays as it is.
 - **Diff.** The simplest complete form against the merge base, by the `engineering` skill, with no earlier iterations or prototype and proof files.
-- **Check.** The full check and tests pass, apart from failures also on the default branch, which are reported.
+- **Check.** The full check and tests pass, apart from failures also on the default branch, which are reported. A diff that changes no code skips them: you format it, and the Finish steps start no agent for them, since the pipeline runs them in full anyway.
 - **Review.** A fresh `review` of the whole diff against the list finds nothing unresolved.
 - **Proof.** Each behavior proven through the real journey, with the real services and credentials the user made available: in its existing UI, a before (a preview of the default branch) and after screenshot of every changed screen and a short MP4, every captured state embedded in the delivery, and the preview left running with its link; without a UI, runnable evidence at the public seam; instructions for agents, by a fresh agent completing a real task with them.
-- **PR.** Title, body, and changesets describe the branch's net change, proof first; the pipeline passes apart from failures also on the default branch.
+- **PR.** Title, body, and changesets describe the branch's net change, proof first, the title and commit in the convention of the default branch's history; the pipeline passes apart from failures also on the default branch.
 - **Complete.** Nothing in the touched files the user would predictably ask to simplify, clean up, or improve; improvements found outside the scope are listed in the delivery with their evidence.
 </planning>
 
@@ -64,9 +64,9 @@ Work until every Done-when line holds.
 - **Build.** Expand from the tracer bullet, reusing the nearest existing implementation before writing a new one. Edit in minimal hunks, never by regenerating a whole file. Run touched tests as you go; format and lint each finished unit in one call. When fixes keep failing, revisit the cause and the design. A test added for a bug or behavior is run once without the change and seen failing for the stated reason. Append each ruling, rejected finding, and failed fix to a Log section of `done-when.md`, and reread the file before each phase.
 - **Finish.** In order:
   1. Merge the default branch, then reread every touched file whole against the `engineering` skill and simplify it.
-  2. In one message, `general-purpose` for the full check and tests (mechanical fixes allowed) and `review` briefed with the Done-when list.
+  2. In one message, `general-purpose` for the Check line (mechanical fixes allowed) and `review` briefed with the Done-when list.
   3. Fix validated findings and failures together, rerun only the tests covering the files the fixes touched, and explain rejected findings in the PR.
-  4. Prove the behaviors with `general-purpose`, running the behavior steps only, while another `general-purpose` reruns the full check and tests once on the final code.
+  4. Prove the behaviors with `general-purpose`, running the behavior steps only, while another `general-purpose` reruns the Check line once on the final code.
   5. Commit as one clean pass on the feature branch; push; open or update the draft PR and read its title and body back. Every later push first merges the default branch and rewrites the title and body from the whole branch.
   6. Run the `environment` skill's pipeline watch yourself as a background command; hand a failure to `general-purpose` to triage. Then read every PR comment and review thread, human or bot: each is fixed or answered in its thread.
 - **Steer.** An instruction the user gives mid-task becomes a Done-when line at once and is done completely, never left half-way. After delivery, a steer that fits the plan is applied directly; one that changes the approach, design, or scope reopens planning from the original request and every steer since, the branch is rebuilt as one clean pass of the new plan with each hunk against the merge base kept, rewritten, or deleted, and `review` covers the changes since its last review.

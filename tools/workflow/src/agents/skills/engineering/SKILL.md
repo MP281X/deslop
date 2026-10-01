@@ -390,8 +390,6 @@ type Holder = {readonly error: ToolExecutionError; readonly value: ReadonlyArray
 // oxlint-disable-next-line sort-keys -- keeps the printed order
 // bad — "why are we not disabling the cases with the ignore comments?"
 files: ['packages/components/src/components/agent-browser.tsx', 'packages/components/src/components/form.tsx'],
-// bad — "keep it enabled so other cases get fixed"
-ignorePatterns: ['src/generated/**'] // generated code escapes lint
 ```
 
 ## Effect
@@ -632,7 +630,7 @@ src/rules/no-typeof.ts, src/rules/no-constant-function.ts, src/rules/rules.test.
 src/index.ts, src/types.ts (one alias), src/constants.ts (one value), src/helpers/misc.ts
 ```
 
-**Package surface.** `package.json` `exports` names each subpath a consumer imports, and the package reaches its own files through explicit `imports` aliases; a package's lint config is the shared preset alone, and generated code is linted like hand-written code.
+**Package surface.** `package.json` `exports` names each subpath a consumer imports, and the package reaches its own files through explicit `imports` aliases; a package's lint config is the shared preset alone, plus the ignore pattern for its generated code.
 
 ```ts
 // good
@@ -642,6 +640,15 @@ export {oxlint as default} from '@deslop/workflow'
 export * from './generated/Client.ts'
 const warned = ['sort-keys', 'typescript/no-restricted-types'] // a package rule list
 "typecheck": "tsc --noEmit" // type-aware lint already checks types
+```
+
+**Generated code.** A generator emits code that follows these rules as closely as it can; lint ignores its output.
+
+```ts
+// good
+ignorePatterns: [...oxlint.ignorePatterns, 'src/generated/**']
+// bad — "generated code should follow the same linting rules, it shouldn't"
+// oxlint-disable-next-line sort-keys -- printed by the generator into src/generated/client.ts
 ```
 
 ## React
