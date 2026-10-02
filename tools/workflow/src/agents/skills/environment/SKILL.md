@@ -174,3 +174,17 @@ Proof or requested preview, from the worktree root:
    agent-browser --session proof click 'button[type=submit]'
    agent-browser --session proof state save node_modules/.cache/deslop/proof/auth.json
    ```
+
+### Package lint migration
+
+Whenever you change a dual package, update its `@deslop/workflow` dependency to the latest published version first, from that package directory:
+
+```bash
+vp add -D @deslop/workflow@latest
+```
+
+The pair owns the shared lockfile: batch package dependency updates, then install and validate the resolved versions together; do not upgrade unrelated dependencies.
+
+- A substantial change relative to the package's handwritten code: remove its local rule exclusions and downgrades, including warning acceptance, file overrides and inline suppressions; fix the whole handwritten package to pass the full shared rules. Judge the change by its proportion and structural reach, not generated churn or a fixed percentage.
+- A small change: new and changed code meets the full rules, even when the package weakens them. Run with the local exclusions restored to the shared severity to inventory their actual diagnostics; remove every exclusion with no remaining violation in its scope. Retain only existing exclusions still needed by untouched legacy code, never add one to accommodate new code.
+- Keep legitimate generated/build-output ignores; they are not rule exclusions. Restore the shared rule's full configuration, not just its severity, and verify the resulting package check and frozen-lockfile install.
