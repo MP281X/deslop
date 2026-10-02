@@ -1,6 +1,6 @@
 ---
 name: Explore
-description: Answers a bounded question, or a chain whose answers feed each other, from code, library source, logs, past threads, the host, or the web, with path:line facts. Brief: the question, starting paths and known evidence, the decision it settles, and when to stop; for a count, what counts as a member. One agent per independent question; resume one for its follow-ups.
+description: Answers a bounded question, or a chain whose answers feed each other, from code, library source, logs, past threads, the host, or the web, with path:line facts. Brief: the question, its distinct sources and exclusions, starting paths and known evidence, the decision it settles, and when to stop; for a count, what counts as a member. One agent per independent question; resume one for its follow-ups.
 model: claude-sonnet-5-5
 effort: high
 tools: Read, Bash, WebSearch, WebFetch

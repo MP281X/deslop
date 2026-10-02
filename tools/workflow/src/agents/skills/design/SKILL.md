@@ -70,4 +70,4 @@ The best UI is the one that looks and behaves like the app around it, shows each
 
 ## Prototypes
 
-At least three switchable variants that differ in kind (layout, density, hierarchy, or interaction), rendered on the real screen with real, product-shaped content, switched by buttons labeled with each variant's axis; a behavior question gets the smallest interaction that settles it. Once one is picked, the other variants go and the pick is rebuilt as product code.
+When the direction is open, compare serious variants that differ in kind (layout, density, hierarchy, or interaction), on the real screen with product-shaped content. Build only the slice that settles the question; switchable variants use buttons labeled with their axis. Do not fill a fixed variant quota or rebuild alternatives that the evidence already rules out. A behavior question gets the smallest interaction that settles it. Once one is picked, remove the other variants and finish the pick as product code.

@@ -5,7 +5,7 @@ description: 'Facts and exact commands for this machine, deslop, and dual. Use b
 
 # Environment
 
-This skill describes `mp281x@dev`, the machine the user works on; the user's Linux devices on the tailnet reach each other over SSH by MagicDNS name, with keys and no password. A routine step with a block below runs the block as is; for any other tool, read its `--help` once before the first try and never guess flags.
+This skill describes `mp281x@dev`, the always-on machine the user develops on; the phone and MacBook are clients, not development hosts. The user's Linux devices on the tailnet reach each other over SSH by MagicDNS name, with keys and no password. A routine step with a block below runs the block as is; for an unfamiliar tool without a recipe, read its `--help` once and never guess flags. Initialize a new worktree with `vp install` before probing its project binaries; an existing initialized worktree does not need a fresh install for every investigation.
 
 ## Machine
 
@@ -32,7 +32,7 @@ P=$(ss -ltnpH 'sport = :<port>' | grep -oP 'pid=\K[0-9]+' | head -1)
 kill -- -$(ps -o pgid= -p $P | tr -d ' ')
 ```
 
-An extra worktree, such as the default branch for a before screenshot or a base check:
+An extra worktree, such as the default branch for a base check or a comparison that needs it:
 
 ```bash
 W=~/.deslop/$(basename $PWD)/<name>
@@ -70,11 +70,15 @@ glab mr update <number> --draft --description-file <scratch>/body.md --attach <f
 
 `glab` takes no `--jq`: pipe `glab api` into `jq`.
 
+The user reviews code only in t3's PR tab. On the checked 0.0.45-nightly.20261002.2561 web client, GitLab diffs load 100 files per page; Load more cannot restore files or hunks omitted by GitLab. For a large MR, compare the local merge-base diff inventory with all pages of `/projects/:id/merge_requests/:iid/diffs`, including `collapsed` and `too_large` flags. The endpoint can omit entire files even after pagination; `/raw_diffs` may contain them, but this t3 client does not use it. A successful pipeline does not establish a complete review surface. Native mobile at that tag reviews worktree diffs and opens linked PRs externally; use the web client on a phone for its PR tab. Neither inspected renderer supports Mermaid; use a rendered diagram only when it helps.
+
+GitLab was checked at 18.10.1-ee with glab 1.117.0: ordinary chained MRs and experimental glab stacks work, but GitLab's native detected-stack UI requires 19.1. t3 web derives chains from linked layers' base/head branches in the same repository; link every layer in one thread. Keep one PR by default while the direction is changing. A review-size problem can justify a split once boundaries are stable, but every layer must be independently releasable, and squash merging requires restacking descendants. These are versioned facts, not a reason to rediscover the implementation on every task.
+
 ## Proof and previews
 
-A production preview of the branch is how the user tests a web app.
+Visual proof is automatic for visible changes; an exposed, persistent preview is opt-in. Run temporary local proof services on `127.0.0.1`, capture meaningful states and behavior, then stop only those you own. A static result needs a screenshot, not a video replay; before/after pairs are used only when the comparison proves something.
 
-- A preview binds `127.0.0.1` on a free port (`ss -ltn`), and `sudo tailscale serve --bg --https=<port> http://127.0.0.1:<port>` serves it to the user's tailnet at `https://<host>:<port>`, where `<host>` is `tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")'`: the only URL to give the user and the browser agent. The first request waits for the certificate. A preview stays running once the user could open it, with its link in the last message, until the user asks to stop it; then `sudo tailscale serve --https=<port> off` and stop its process group.
+- When the user requests a preview, bind `127.0.0.1` on a free port (`ss -ltn`), and `sudo tailscale serve --bg --https=<port> http://127.0.0.1:<port>` serves it to their tailnet at `https://<host>:<port>`, where `<host>` is `tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")'`. Give that HTTPS URL, not the loopback URL, to the user. The first request waits for the certificate. A requested preview stays running with its link until the user asks to stop it; then `sudo tailscale serve --https=<port> off` and stop its process group. Existing previews from other threads are not yours to stop.
 - Capture proof in one agent-browser session: `record start <path.mp4> <url>` … `record stop` records H.264 video, which plays on the user's phone, and `screenshot <path.png>` takes a screenshot. Sign in once per preview, then `state save <scratch>/auth.json`; later sessions start with `--state <scratch>/auth.json`.
 
 ## deslop
@@ -99,10 +103,11 @@ A production preview of the branch is how the user tests a web app.
   }
   ```
 
-- Full check: `vp run check` (turbo-cached), then `vpx turbo run test --affected`; `vp run test:workspace` runs every workspace test. Core and SaaS tests start their own Postgres through Testcontainers on the Docker socket. Run a full suite under `flock ~/.deslop/dual-test.lock` so parallel threads take turns.
+- Full check: `vp run check` (turbo-cached), then `flock ~/.deslop/dual-test.lock vpx turbo run test --affected --continue`; `flock ~/.deslop/dual-test.lock vp run test:workspace` runs every workspace test under the same lock. `--continue` collects all task results instead of cancelling unrelated tests at the first failure. Core and SaaS tests start their own Postgres through Testcontainers on the Docker socket. Worktrees share the host and Turbo cache; independent research and previews can continue while a full suite owns the lock.
 - Format with `vpx oxfmt <path>...`; lint with `vpx oxlint --format=agent <path>...` from the package directory. A dependency change also passes `vp install --frozen-lockfile`, which CI runs first.
 - `effecttsgo(duplicate-package)` comes from bun.lock pinning effect rc.115 for `@dual/workspace-aws` beside rc.112; no edit clears it, so leave it.
 - CI: GitLab `quality` (`.gitlab/quality.yml`) runs `check`, `test`, and `bun scripts/Documentation.ts`, beside release-policy and `saas-infrastructure-check`; pipelines are interruptible, so each push cancels the running one.
+- Database inspection uses the worktree's existing container, not a host `psql` installation: `docker compose exec -T postgres psql -U dual -d dual`. Read the table name in `packages/server/src/persistence/schema/`, then inspect it with `-c '\d public.<table>'` before writing a query; generated identifiers are not evidence of database column names.
 - Each worktree runs its own compose project, moved by an offset no other stack uses; the root `.env` holds the project for every compose call, and `packages/saas/.env` the moved ports:
 
   ```bash
@@ -128,15 +133,15 @@ A production preview of the branch is how the user tests a web app.
   vp run init
   ```
 
-Preview, from the worktree root:
+Proof or requested preview, from the worktree root:
 
-1. The stack above, then the `seed:user` command from the `db:reset` script; then the API and worker from `packages/saas` (`bun --env-file .env src/dev.ts api` and `… worker`), with `BETTER_AUTH_URL`, `APP_ORIGIN`, and `SERVER_PUBLIC_URL` set to the preview URL: better-auth trusts only the first two as origins, and the third is the public MCP and OAuth URL. The API listens on 3825, fixed in `packages/saas/src/api.ts`, so the before and after previews run one at a time: capture the before, stop it, then start the branch's.
+1. The stack above, then the `seed:user` command from the `db:reset` script; then the API and worker from `packages/saas` (`bun --env-file .env src/dev.ts api` and `… worker`), with `BETTER_AUTH_URL`, `APP_ORIGIN`, and `SERVER_PUBLIC_URL` set to the proof or requested preview URL: better-auth trusts only the first two as origins, and the third is the public MCP and OAuth URL. Check this worktree’s `packages/saas/src/api.ts`: the audited integration branch supports `DUAL_API_PORT`, default 3825, but master still fixes 3825. Where supported, set a free `<api>` port; otherwise use 3825 only when free and prove fixed-port worktrees sequentially, never stopping another thread’s API.
 2. `vpx turbo run build --filter=@dual/saas...`, then in packages/app `NODE_ENV=production NITRO_PRESET=bun NODE_OPTIONS=--max-old-space-size=8192 node node_modules/vite/bin/vite.js build`.
-3. Web, from packages/app: `NODE_ENV=production HOST=127.0.0.1 PORT=<web> SERVER_URL=http://127.0.0.1:3825 bun .output/server/index.mjs`.
-4. The preview port runs this proxy (`bun <scratch>/proxy.ts`), since the build has no proxy and the browser calls its own origin; `tailscale serve` already sets the forwarded host and protocol:
+3. Web, from packages/app: `NODE_ENV=production HOST=127.0.0.1 PORT=<web> SERVER_URL=http://127.0.0.1:<api> bun .output/server/index.mjs`.
+4. The proof or preview port runs this proxy (`bun <scratch>/proxy.ts`), since the build has no proxy and the browser calls its own origin; for a requested HTTPS preview, `tailscale serve` sets the forwarded host and protocol:
 
    ```ts
-   const api = 'http://127.0.0.1:3825'
+   const api = 'http://127.0.0.1:<api>'
    const web = 'http://127.0.0.1:<web>'
    const toApi = (path: string) =>
    	(path.startsWith('/api') && !path.startsWith('/api/docs/search') && !path.startsWith('/api/sdk/search')) ||
@@ -163,7 +168,7 @@ Preview, from the worktree root:
 5. Sign in, from the worktree root, with the `seed:user` credentials:
 
    ```bash
-   agent-browser --session proof open https://<host>:<port>/login
+   agent-browser --session proof open <proof-or-preview-url>/login
    agent-browser --session proof fill 'input[type=email]' admin@dual.local
    agent-browser --session proof fill 'input[type=password]' password
    agent-browser --session proof click 'button[type=submit]'
