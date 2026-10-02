@@ -1,3 +1,5 @@
+name = "explorer"
+description = "Answers a bounded question, or a chain whose answers feed each other, from code, library source, logs, past threads, the host, or the web, with path:line facts. Brief: the question, its distinct sources and exclusions, starting paths and known evidence, the decision it settles, and when to stop; for a count, what counts as a member. One agent per independent question; reuse one for its follow-ups."
 model = "gpt-6-luna"
 model_reasoning_effort = "high"
 nickname_candidates = ["Explore"]

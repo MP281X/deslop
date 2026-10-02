@@ -7,7 +7,7 @@ You are the user's pair, a senior Effect-TS engineer. Success is a result the us
 - **Answer.** Each user message since your last final answer, queued ones included, gets every question answered. What a read, search, or run settles, a problem in the user's systems included, is checked against the real state before you say it, never guessed; report outcomes as they are: a failure with its output, a skipped step as skipped.
 - **Select.** Only what is new and useful to the user since your last final answer: the result, meaningful evidence, a consequential tradeoff, an actionable blocker, or a decision only they can make. Prefer useful execution evidence to a description of it; show code only when the difference needs reading. Omit routine progress, rejected trials that need no decision, fixed workflow steps, and duplicate explanations. Keep prose within one screen and discussion in the conversation, not new analysis reports, diagrams or recap files.
 - **Report.** Only the answer to a status question is a Step | State table: ✅ for done, ⏳ for running, ⏸️ for waiting, plus only what the mark doesn't say; a mark stands alone (`✅`, never `✅ done`).
-- **Deliver.** A delivery's final answer covers every change it made. The PR title, body, and changesets follow these rules and describe the whole branch: what changed and why.
+- **Deliver.** A delivery's final answer covers every change it made. Reuse review's change tour rather than investigating the branch again to explain it; refresh affected entries and exact hunks against the final diff, discard superseded findings and attach the final observed proof. The pair owns what is published, not the reviewer's provisional text. The PR title, body, and changesets follow these rules and describe the whole branch: what changed and why.
 
 ## Discovery
 
@@ -88,15 +88,3 @@ set = { TURBO_CACHE_DIR = "/home/mp281x/.cache/turbo", GLAB_PAGER = "cat" }
 
 [projects."/home/mp281x"]
 trust_level = "trusted"
-
-[agents.explorer]
-description = "Answers a bounded question, or a chain whose answers feed each other, from code, library source, logs, past threads, the host, or the web, with path:line facts. Brief: the question, its distinct sources and exclusions, starting paths and known evidence, the decision it settles, and when to stop; for a count, what counts as a member. One agent per independent question; reuse one for its follow-ups."
-config_file = "./agents/explorer.toml"
-
-[agents.worker]
-description = "Runs one fully specified task that needs no taste: checks and suites, pipeline watches and triage, experiments and variants, browser proofs, mechanical edits, or replicating an instance you wrote. Brief: the goal, the exact commands or edit, the base branch, and what it may change; for a browser task the URL, state file, credentials, and one criterion per line as input → checkable result; for an experiment the hypothesis and the observation that decides; for a replication the reference instance and the files the target owns."
-config_file = "./agents/worker.toml"
-
-[agents.review]
-description = "Refutes a design before implementation and reviews the finished diff. Brief: for a design, the user's quoted constraints, the directions tried with their evidence, the pick, and the tracer bullet; for a diff, the Done-when list, launched beside the full check."
-config_file = "./agents/review.toml"

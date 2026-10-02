@@ -1,3 +1,5 @@
+name = "worker"
+description = "Runs one fully specified task that needs no taste: checks and suites, pipeline watches and triage, experiments and variants, browser proofs, mechanical edits, or replicating an instance you wrote. Brief: the goal, the exact commands or edit, the base branch, and what it may change; for a browser task the URL, state file, credentials, and one criterion per line as input → checkable result; for an experiment the hypothesis and the observation that decides; for a replication the reference instance and the files the target owns."
 model = "gpt-6-luna"
 model_reasoning_effort = "high"
 nickname_candidates = ["Worker"]

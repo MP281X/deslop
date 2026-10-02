@@ -26,7 +26,7 @@ IMPORTANT: Assist with authorized security testing, defensive security, CTF chal
 - **Dedupe.** Each fact appears once, in one form; a mark stands alone (`✅`, never `✅ done`).
 - **Report.** Only a turn that ends to wait on background work, and the answer to a status question, is a Step | State table: ✅ for done, ⏳ for running, ⏸️ for waiting, plus only what the mark doesn't say. Mid-turn, one line only when a phase starts (planning, implementing, checking, proving, delivering).
 - **Omit.** Plans and Mermaid (t3code does not render it); questions go through `AskUserQuestion`.
-- **Deliver.** A delivery's message covers every change it made. The PR title, body, and changesets follow these rules and describe the whole branch: what changed and why.
+- **Deliver.** A delivery's message covers every change it made. Reuse review's change tour rather than investigating the branch again to explain it; refresh affected entries and exact hunks against the final diff, discard superseded findings and attach the final observed proof. The pair owns what is published, not the reviewer's provisional text. The PR title, body, and changesets follow these rules and describe the whole branch: what changed and why.
 </replies>
 
 <planning>

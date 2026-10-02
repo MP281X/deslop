@@ -19,11 +19,11 @@ This skill describes `mp281x@dev`, the always-on machine the user develops on; t
 Find a t3 thread's transcript (Claude session or Codex rollout) from its id:
 
 ```bash
-S=$(sqlite3 ~/.t3/userdata/state.sqlite "select coalesce(json_extract(resume_cursor_json,'$.resume'), json_extract(resume_cursor_json,'$.threadId')) from provider_session_runtime where thread_id like '<thread id>%'")
+S=$(sqlite3 ~/.t3/userdata/state.sqlite "select coalesce(json_extract(resume_cursor_json,'$.resume'), json_extract(resume_cursor_json,'$.threadId')) from provider_session_runtime where thread_id = '<thread id>'")
 ls ~/.claude/projects/*/$S.jsonl ~/.codex/sessions/*/*/*/*$S.jsonl 2>/dev/null
 ```
 
-A Claude session's agents are in `<session>/subagents/` beside it.
+A Claude session's agents are in `<session>/subagents/` beside it. Codex children also live under `~/.codex/sessions/YYYY/MM/DD/`; their first `session_meta` record's `payload.parent_thread_id` links to the parent provider session, not the t3 thread id. Follow that field recursively for descendants instead of treating forked copies of the parent's messages as new work.
 
 Stop only what you started, by its process group, never with `pkill` or `killall`; when a port is taken by something else, take another free port:
 
@@ -40,6 +40,61 @@ git worktree add --detach $W origin/<default branch> && (cd $W && vp install)
 ```
 
 Remove it as soon as its question is settled: `git worktree remove --force $W`.
+
+## Native CLI calls
+
+Both CLIs use their existing sign-in on this machine; keep auth in its normal home. These are per-call mechanics, not rules about which harness should do a task. Give a bounded brief with the worktree, relevant thread or criteria paths, the permitted changes and the result needed. Do not copy a whole conversation or diff into stdin when the agent can read it locally. Set `repo` to the worktree and `brief` to the task's scratch prompt file.
+
+Codex with the installed workflow, or without its global pair configuration for this call:
+
+```bash
+codex exec --ephemeral --sandbox read-only --cd "$repo" - < "$brief"
+codex exec --ignore-user-config --ephemeral --sandbox read-only --cd "$repo" \
+  --model gpt-6.1-sol -c 'model_reasoning_effort="high"' - < "$brief"
+```
+
+`--ignore-user-config` keeps authentication but skips `~/.codex/config.toml`, including the installed pair text and custom base. Agent-file discovery, project `AGENTS.md`, skills and execution rules are separate; it is not an instruction-free mode. Installed roles are self-contained `name`, `description`, model, effort and developer text in `~/.codex/agents/*.toml`. `-c developer_instructions=...` replaces that configured value, not the built-in base; `-c model_instructions_file=...` replaces the base. An ordinary stdin task replaces neither. Choose the model and sandbox explicitly when the task needs something else.
+
+Codex has no root `--agent` flag. To run an installed role directly as the CLI's root, load its model, effort and developer text without the pair configuration; this is not a t3 subagent:
+
+```bash
+python3 - "$repo" review "$brief" <<'PY'
+import json, pathlib, subprocess, sys, tomllib
+
+role = tomllib.loads((pathlib.Path('/home/mp281x/.codex/agents') / (sys.argv[2] + '.toml')).read_text())
+with open(sys.argv[3]) as prompt:
+    result = subprocess.run([
+        'codex', 'exec', '--ignore-user-config', '--ephemeral', '--sandbox', 'read-only',
+        '--cd', sys.argv[1], '--model', role['model'],
+        '-c', 'model_reasoning_effort=' + json.dumps(role['model_reasoning_effort']),
+        '-c', 'developer_instructions=' + json.dumps(role['developer_instructions']), '-'
+    ], stdin=prompt)
+sys.exit(result.returncode)
+PY
+```
+
+Replace `review` with `explorer` or `worker` for their installed text. This loads the role's three fields, not the whole custom Codex base; the native base and project guidance remain.
+
+Claude can select an installed agent directly, replacing the `agent: pair` setting:
+
+```bash
+(cd "$repo" && claude -p --agent review --no-session-persistence \
+  --permission-prompts none < "$brief")
+```
+
+The other installed task agents are `Explore` and `general-purpose`; their definitions live in `~/.claude/agents/`. `--model` and `--effort` override the selected model and effort. To skip settings files, including the global pair selection, and supply a different system prompt for this call:
+
+```bash
+(cd "$repo" && claude -p --setting-sources '' --system-prompt-file "$instructions" \
+  --model claude-opus-5-5 --effort high --no-session-persistence \
+  --permission-prompts none < "$brief")
+```
+
+`instructions` is a plain prompt file, not an agent file with frontmatter. Omitting `--system-prompt-file` uses the native prompt; `--append-system-prompt-file` adds rather than replaces. Settings filtering is not a sandbox and does not remove project `CLAUDE.md` or agent discovery. Do not use `--bare` to skip this workflow: it also skips normal OAuth discovery and requires API credentials. `--permission-prompts none` denies unavailable approvals rather than waiting for a person; it does not grant tool access. Claude recipes are documented from the official reference, not exercised while its quota is reserved.
+
+Run the CLI through an owned command, not a detached `&` process. In Codex, use the long exec-cell wait loop from the base instructions; independent work can continue while that cell runs. In Claude, use a background Bash task with a sufficient timeout and collect its task result. Inspect the exit status and returned result before using it; a completed process is not proof that its requested criteria passed. `--ephemeral` and `--no-session-persistence` avoid extra resumable sessions. Claude's `--bg` cannot be combined with `-p`; these calls are not registered as t3 child threads. The transcript paths above locate existing t3 sessions, not ephemeral calls.
+
+References: [Codex configuration](https://developers.openai.com/codex/config-reference), [Claude CLI](https://code.claude.com/docs/en/cli-reference), [Claude headless calls](https://code.claude.com/docs/en/headless), [Claude agents](https://code.claude.com/docs/en/sub-agents).
 
 ## Pull requests and pipelines
 
@@ -135,7 +190,7 @@ Visual proof is automatic for visible changes; an exposed, persistent preview is
 
 Proof or requested preview, from the worktree root:
 
-1. The stack above, then the `seed:user` command from the `db:reset` script; then the API and worker from `packages/saas` (`bun --env-file .env src/dev.ts api` and `… worker`), with `BETTER_AUTH_URL`, `APP_ORIGIN`, and `SERVER_PUBLIC_URL` set to the proof or requested preview URL: better-auth trusts only the first two as origins, and the third is the public MCP and OAuth URL. Check this worktree’s `packages/saas/src/api.ts`: the audited integration branch supports `DUAL_API_PORT`, default 3825, but master still fixes 3825. Where supported, set a free `<api>` port; otherwise use 3825 only when free and prove fixed-port worktrees sequentially, never stopping another thread’s API.
+1. The stack above, then the `seed:user` command from the `db:reset` script; then the API and worker from `packages/saas` (`bun --env-file .env src/dev.ts api` and `… worker`), with `BETTER_AUTH_URL`, `APP_ORIGIN`, and `SERVER_PUBLIC_URL` set to the proof or requested preview URL: better-auth trusts only the first two as origins, and the third is the public MCP and OAuth URL. Check this worktree’s `packages/saas/src/api.ts` for `DUAL_API_PORT`, default 3825. Where supported, set a free `<api>` port; older fixed-port revisions use 3825 only when free and need sequential proof, never stopping another thread’s API.
 2. `vpx turbo run build --filter=@dual/saas...`, then in packages/app `NODE_ENV=production NITRO_PRESET=bun NODE_OPTIONS=--max-old-space-size=8192 node node_modules/vite/bin/vite.js build`.
 3. Web, from packages/app: `NODE_ENV=production HOST=127.0.0.1 PORT=<web> SERVER_URL=http://127.0.0.1:<api> bun .output/server/index.mjs`.
 4. The proof or preview port runs this proxy (`bun <scratch>/proxy.ts`), since the build has no proxy and the browser calls its own origin; for a requested HTTPS preview, `tailscale serve` sets the forwarded host and protocol:
