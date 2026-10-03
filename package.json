@@ -17,7 +17,7 @@
 		"effect": "^4.0.0"
 	},
 	"devDependencies": {
-		"@deslop/workflow": "workspace:*",
+		"@deslop/coding-standards": "workspace:*",
 		"@effect/tsgo": "latest",
 		"@effect/vitest": "^4.0.0",
 		"@types/node": "latest",

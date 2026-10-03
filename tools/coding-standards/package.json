@@ -1,0 +1,70 @@
+{
+	"name": "@deslop/coding-standards",
+	"version": "0.1.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/MP281X/deslop",
+		"directory": "tools/coding-standards"
+	},
+	"bin": {
+		"deslop-coding-standards": "./dist/install.js"
+	},
+	"files": [
+		"dist",
+		"skills",
+		"src/css-properties.d.ts",
+		"tsconfig.json"
+	],
+	"type": "module",
+	"imports": {
+		"#package": "./package.json",
+		"#rules/*": "./src/rules/*"
+	},
+	"exports": {
+		".": "./src/oxlint.ts",
+		"./css-properties": "./src/css-properties.d.ts",
+		"./tsconfig.json": "./tsconfig.json"
+	},
+	"publishConfig": {
+		"exports": {
+			".": {
+				"types": "./dist/oxlint.d.ts",
+				"default": "./dist/oxlint.js"
+			},
+			"./css-properties": "./src/css-properties.d.ts",
+			"./tsconfig.json": "./tsconfig.json"
+		},
+		"access": "public"
+	},
+	"scripts": {
+		"build": "vp pack"
+	},
+	"dependencies": {
+		"@shadcn/lint": "^0.2.0",
+		"oxlint-plugin-react-doctor": "^0.9.14"
+	},
+	"devDependencies": {
+		"@oxlint/plugins": "1.85.0",
+		"oxlint": "1.85.0",
+		"oxlint-tsgolint": "7.0.2003"
+	},
+	"peerDependencies": {
+		"@effect/tsgo": ">=0.46",
+		"oxlint": "^1.82",
+		"oxlint-tsgolint": "^7.0"
+	},
+	"peerDependenciesMeta": {
+		"@effect/tsgo": {
+			"optional": true
+		},
+		"oxlint": {
+			"optional": true
+		},
+		"oxlint-tsgolint": {
+			"optional": true
+		}
+	},
+	"engines": {
+		"node": ">=26"
+	}
+}

@@ -1,6 +1,6 @@
 import {defineConfig} from 'vite-plus'
 
-import {oxlint} from '@deslop/workflow'
+import {oxlint} from '@deslop/coding-standards'
 
 export default defineConfig({
 	create: {
@@ -62,7 +62,6 @@ export default defineConfig({
 		ignorePatterns: [
 			'**/*.gen.ts',
 			'tools/*/template/**',
-			'tools/workflow/src/agents/**',
 			'packages/components/src/components/svgs/**',
 			'packages/components/src/components/ui/**'
 		],

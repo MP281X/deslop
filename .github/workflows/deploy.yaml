@@ -37,7 +37,7 @@ jobs:
         env:
           RELEASE_NUMBER: ${{ github.run_number }}
         run: |
-          for package in workflow; do
+          for package in coding-standards; do
             vp -C tools/$package pm version "0.1.$RELEASE_NUMBER" -- --no-git-tag-version
           done
 
@@ -60,6 +60,6 @@ jobs:
       - name: Publish
         if: github.ref == 'refs/heads/main'
         run: |
-          for package in workflow; do
+          for package in coding-standards; do
             vp pm publish ./tools/$package --no-git-checks
           done

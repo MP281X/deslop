@@ -1,7 +1,8 @@
 packages:
   - apps/*
   - packages/*
-  - tools/*
+  - tools/coding-standards
+  - tools/create-*
 
 allowBuilds:
   '@google/genai': false

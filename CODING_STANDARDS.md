@@ -1,6 +1,12 @@
 # Coding Standards
 
-Automated formatting, lint, and type rules live in the tooling and are not repeated here.
+Repository-specific decisions live here. Reusable coding, testing and visual rules live in the installed engineering, design and testing skills; automated enforcement lives in the tooling.
+
+## Product scope
+
+- Target this environment and the user's personal-software workflow only.
+- Releases are linear and squash-merged. Apply data changes at every merged pull request.
+- Local data is disposable. Preserve production data only from the immediately previous release; delete obsolete data.
 
 ## Layout
 
@@ -20,7 +26,7 @@ Automated formatting, lint, and type rules live in the tooling and are not repea
 
 ## Generators
 
-- Create apps and packages with the generators AGENTS.md lists, never by copying one.
+- Create apps with `vp create app -- --name <name>` and packages with `vp create package -- --name <name>`, using an unscoped kebab-case name, then `vp install` before anything else; never copy one. Add shadcn components with `vp run shadcn add <component>`; `vp run upgrade` refreshes dependencies.
 - A template is real files under `tools/create-*/template/` that the generator copies and edits like any other file, never file bodies inlined as strings, and never generated files such as `*.gen.ts`.
 - The app template mirrors the portfolio (its `icon.png`, `__root.tsx`, and entrypoints, with one RPC returning the app name shown on the home page) and always carries the `Dockerfile`, even when an app doesn't deploy.
 
@@ -39,7 +45,7 @@ Automated formatting, lint, and type rules live in the tooling and are not repea
 
 ## Dependencies
 
-- Declare a dependency once, in the root `package.json`; a package imports it without redeclaring it.
+- Internal apps and services use dependencies declared once in the root `package.json`; published tools declare the dependencies their consumers need.
 
 ## RPC
 
@@ -47,19 +53,15 @@ Automated formatting, lint, and type rules live in the tooling and are not repea
 - The client is an `AtomRpc.Service` over `ClientRuntime.layer`.
 - A stream syncs one keep-alive Atom that components read; a component never owns a subscription and never polls.
 
-## Tests
-
-- Put a test beside the public interface it tests, such as `src/service.test.ts` or `src/lib/utils.test.ts`, never in a separate `tests/` folder.
-- Prove rendering with agent-browser, never with a component test.
-
 ## Components
 
-- Keep surfaces flat, compact, and bordered: no cards and no rounded corners.
+- Deslop surfaces use square borders, with no cards or rounded corners.
 - Give each context one icon entrypoint for an action instead of text buttons repeating it.
 - Leave conventional icons without a tooltip; add a label only where it disambiguates.
 
 ## Tooling
 
-- Enable a maintained rule before writing a custom one in `tools/workflow/src/rules`.
+- Enable a maintained rule before writing a custom one in `tools/coding-standards/src/rules`.
 - A check that needs a script becomes a custom lint rule instead.
-- `tools/workflow` stays flat under `src/`, with no install tests or separate plugin files.
+- `tools/coding-standards` stays flat under `src/`, with no install tests or separate plugin files; its reusable skills live beside `src/`. Personal native configuration lives in `.codex` and `.claude`, with global skills in `.claude/skills` and `.codex/skills` containing explicit aliases; the personal install recipe lives in environment’s Deslop reference. The public CLI copies engineering/design/testing into native roots, never global homes; commit generated copies, treat them as read-only and refresh through the CLI.
+- `tsconfig.json` owns jsx, lib, types and exclude only; `vite.config.ts` owns ignores, overrides, repository plugins, env and the entire formatter configuration with the `@deslop` import group; `.fallowrc.json` owns dead-code analysis.

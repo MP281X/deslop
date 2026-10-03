@@ -415,7 +415,7 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 					.setMode('token')
 					.setStyle(`color: ${option.entry.color}`)
 
-				// oxlint-disable-next-line @deslop/workflow/no-native-method-call -- Lexical owns this AST mutation API.
+				// oxlint-disable-next-line @deslop/coding-standards/no-native-method-call -- Lexical owns this AST mutation API.
 				if (node) node.replace(token)
 
 				if (!node) {
