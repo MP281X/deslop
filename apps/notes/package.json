@@ -1,0 +1,37 @@
+{
+	"name": "@deslop/notes",
+	"version": "0.0.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/MP281X/deslop"
+	},
+	"bin": {
+		"notes": "dist/server.js"
+	},
+	"files": [
+		"dist"
+	],
+	"type": "module",
+	"sideEffects": false,
+	"imports": {
+		"#lib/*": "./src/lib/*",
+		"#rpcs/*": "./src/rpcs/*",
+		"#routes/*": "./src/routes/*",
+		"#services/*": "./src/services/*"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "rm -rf dist && vp build && vp pack",
+		"dev": "vp dev --host 0.0.0.0",
+		"preview": "vp run build && node --env-file-if-exists=.env ./dist/server.js"
+	},
+	"devDependencies": {
+		"@deslop/components": "workspace:*",
+		"@deslop/runtime": "workspace:*",
+		"@tanstack/react-router": "1.170.40",
+		"react": "^19",
+		"react-dom": "^19"
+	}
+}

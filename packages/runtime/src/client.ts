@@ -33,7 +33,10 @@ export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext:
 	}
 }
 
-export function layer(applicationName: string) {
+export function layer(
+	applicationName: string,
+	serializationLayer: Layer.Layer<Rpc.RpcSerialization.RpcSerialization> = Rpc.RpcSerialization.layerSchemaBinary()
+) {
 	const protocol = pipe(
 		Rpc.RpcClient.layerProtocolSocket({retryTransientErrors: true}),
 		Layer.provide(
@@ -42,7 +45,7 @@ export function layer(applicationName: string) {
 				Layer.provide(Socket.layerWebSocketConstructorGlobal)
 			)
 		),
-		Layer.provideMerge(Rpc.RpcSerialization.layerSchemaBinary())
+		Layer.provideMerge(serializationLayer)
 	)
 	const telemetry = pipe(
 		Layer.unwrap(

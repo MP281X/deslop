@@ -52,7 +52,7 @@ jobs:
         run: |
           image_prefix=$(echo "ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
 
-          for app in portfolio; do
+          for app in portfolio notes; do
             docker build ./apps/$app --tag $image_prefix-$app:latest
             docker push $image_prefix-$app:latest
           done
