@@ -32,6 +32,16 @@ services:
       traefik.http.routers.portfolio.rule: Host(`portfolio.mp281x.xyz`)
       traefik.http.services.portfolio.loadbalancer.server.port: '5000'
 
+  notes:
+    <<: *service
+    image: ghcr.io/mp281x/deslop-notes:latest
+    env_file: ${HOME}/.deslop/deploy/notes.env
+    environment:
+      {NOTES_DATA_DIR: /data, NOTES_ORIGIN: https://dev.tailnet-8c4c.ts.net:8443, VITE_OTEL_URL: http://collector:4318}
+    user: '1000:1000'
+    ports: [127.0.0.1:5017:5000]
+    volumes: ['${HOME}/.deslop/deploy/notes:/data']
+
   jaeger:
     <<: *service
     image: jaegertracing/all-in-one:latest
