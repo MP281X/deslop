@@ -72,9 +72,13 @@ Wait for a pipeline with one blocking command, run in the background with a `tim
 GitHub:
 
 ```bash
-until ID=$(gh run list --commit $(git rev-parse HEAD) --json databaseId -q '.[0].databaseId') && [ -n "$ID" ]; do sleep 5; done
-gh run watch $ID --exit-status --compact || gh run view $ID --log-failed
+SHA=$(git rev-parse HEAD)
+ID=$(gh run list --commit "$SHA" --json databaseId -q '.[0].databaseId')
+: "${ID:?No workflow run exists for this commit}"
+gh run watch "$ID" --exit-status --compact
 ```
+
+If no run exists, inspect the workflow trigger instead of polling an empty lookup. After a failed watch, read its failed logs with `gh run view "$ID" --log-failed`; keep the watch's failure status.
 
 GitLab:
 
