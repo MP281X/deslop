@@ -45,7 +45,7 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 
 ## Dependencies
 
-- Internal apps and services use dependencies declared once in the root `package.json`; published tools declare the dependencies their consumers need.
+- Keep dependencies in their existing owning packages; shared root dependencies stay at the root. Resolve version drift with normal package-manager updates, not by relocating declarations. Published tools declare the dependencies their consumers need.
 
 ## RPC
 

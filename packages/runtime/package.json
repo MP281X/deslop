@@ -11,18 +11,23 @@
 		"./vite": "./src/vite/config.ts"
 	},
 	"dependencies": {
+		"@deslop/components": "workspace:*",
 		"@effect/opentelemetry": "^4.0.0",
 		"@opentelemetry/exporter-logs-otlp-http": "latest",
 		"@opentelemetry/exporter-trace-otlp-http": "latest",
 		"@opentelemetry/sdk-logs": "latest",
 		"@opentelemetry/sdk-trace-base": "latest",
 		"@opentelemetry/sdk-trace-node": "latest",
-		"@opentelemetry/sdk-trace-web": "latest"
+		"@opentelemetry/sdk-trace-web": "latest",
+		"@tanstack/react-router": "latest"
 	},
 	"devDependencies": {
 		"@tailwindcss/vite": "latest",
+		"@tanstack/react-router": "latest",
 		"@tanstack/router-plugin": "latest",
 		"@vitejs/plugin-react": "latest",
-		"oxc-transform-react": "^0.145.0"
+		"oxc-transform-react": "^0.145.0",
+		"react": "^19",
+		"react-dom": "^19"
 	}
 }

@@ -12,16 +12,9 @@
 		"upgrade": "sh -c 'rm -f pnpm-lock.yaml && find . -name node_modules -type d -prune -exec rm -rf {} + && vp install'"
 	},
 	"dependencies": {
-		"@deslop/components": "workspace:*",
-		"@deslop/runtime": "workspace:*",
 		"@effect/atom-react": "^4.0.0",
 		"@effect/platform-node": "^4.0.0",
-		"@tanstack/react-hotkeys": "latest",
-		"@tanstack/react-router": "latest",
-		"effect": "^4.0.0",
-		"react": "^19",
-		"react-dom": "^19",
-		"tailwindcss": "latest"
+		"effect": "^4.0.0"
 	},
 	"devDependencies": {
 		"@deslop/coding-standards": "workspace:*",
