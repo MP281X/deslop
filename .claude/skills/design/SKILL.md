@@ -82,7 +82,7 @@ description: 'UI and UX rules for screens and visual explanations. Use when buil
 
 **Behavior.** Executable candidates exercise the smallest complete journey plus choice-changing empty, long/duplicate, selection, pending, failure and permission states. Conceptual sketches state unimplemented behavior; judge their idea, not a fictional runtime pass.
 
-**Synthesis.** The user often chooses between directions. Compare transferable strengths/tradeoffs and propose a coherent blend; don't force a winner or concatenate incompatible mechanisms. Test the blend's weakest assumption before expansion.
+**Synthesis.** Apply settled user preferences and concrete references as defaults; do not ask the user to redefine them for each task. Compare transferable strengths/tradeoffs and choose a coherent blend when those preferences and observed behavior support it. Ask only about a genuinely new, consequential tradeoff that the evidence cannot settle. Do not concatenate incompatible mechanisms. Test the blend’s weakest assumption before expansion.
 
 **Show.** Show the rough working example early, before expanding or polishing the direction. Use inspected views at the sizes needed to judge the uncertainty, with short video only for meaningful interaction. If user taste is unresolved, ask a concrete question about the shown result; an agent critique is not user feedback. Do not wait for production-complete behavior or a finished gallery before the user can react. Reuse one host, discard rejected source and expand the chosen synthesis. Final UI proof still covers required desktop/phone behavior; settled verification does not need new design alternatives.
 
