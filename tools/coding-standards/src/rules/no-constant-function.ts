@@ -47,10 +47,7 @@ export const noConstantFunction = defineRule({
 	create: context => {
 		function report(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
 			if (isConstantFunction({context, node}) && !singleUseThunk({context, node})) {
-				context.report({
-					message: 'This argument-free function returns a literal constant; hold its result in a const.',
-					node
-				})
+				context.report({message: 'Inline this argument-free literal return at its call sites.', node})
 			}
 		}
 		return {

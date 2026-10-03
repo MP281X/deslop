@@ -14,7 +14,7 @@ Collect the owned command's terminal result and exit status, not a log footer or
 
 ## Publishing
 
-**Map.** Explain the whole branch: every semantic/config change and its final package/file, not only highlights. Link folders/entry files; separate moves/generated copies from changed logic, omit formatting-only noise. Prefer readable tables/lists to compressed tree art. The description should explain behavior without requiring diff reading.
+**Map.** Explain the whole branch: every semantic/config change and its final package/file, not only highlights. Link folders/entry files; separate moves/generated copies from changed logic, omit formatting-only noise. Prefer readable tables/lists to compressed tree art. Show small before/after code examples when they make a semantic change easier to judge; distinguish recommended patterns from valid edge cases and stress-test fixtures. The description should explain behavior without requiring diff reading or imagining an example.
 
 **Reason.** Briefly state consequential choices and tradeoffs. Keep risks visible; collapse supporting rationale, behavioral evidence and secondary paths in `<details>`. Omit lifecycle/green-check facts and benchmark diaries T3 already supplies. Report failures/unproved contracts; no user testing chore. Publish for review only when owned proof and fixes are complete.
 
