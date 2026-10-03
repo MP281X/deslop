@@ -29,7 +29,9 @@ glab mr update <number> --draft --description-file <scratch>/body.md --attach <f
 
 ## Pipeline watch
 
-Wait for a pipeline with one blocking command, run in the background with a `timeout` of 7200000, then read only the failed jobs' logs.
+If `watch_pull_request` is available, the primary thread registers the PR watch and ends its turn. A delegated checker returns this monitoring requirement to the primary instead of registering a watch on its child thread. T3 wakes the thread that registered the watch for check failures, completed checks, new comments/reviews or conflicts; inspect the event and read only relevant failed-job logs. Do not spawn a blocking child or poll alongside that watch.
+
+Without an app-owned watcher, wait for a pipeline with one blocking command, run in the background with a `timeout` of 7200000, then read only the failed jobs' logs.
 
 GitHub:
 
