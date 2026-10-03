@@ -9,6 +9,8 @@ The best UI is the one that looks and behaves like the app around it, shows each
 
 **Components.** Build every screen from the shared shadcn components in the repository's components package, to the fullest: a missing one is added with the repository's documented shadcn command, never hand-built or restyled. A value lint flags moves to the nearest design-system step, token, or variant.
 
+**Prototype code.** Reuse the initialized app's source host, compiler, theme and checks. Prototype layout uses the same shared components and Tailwind tokens as product code; custom CSS, dynamic classes or weaker scratch configuration are not an escape from the rules. Run the first small component through format, lint/types and its real journey before expanding variants.
+
 ```tsx
 // good
 <Badge variant="secondary">Draft</Badge>
@@ -72,6 +74,14 @@ The best UI is the one that looks and behaves like the app around it, shows each
 
 ## Prototypes
 
+**Task.** Name the person, their next action and the uncertainty each version tests. Use realistic domain content and the same task/data across contenders; a different color or rearranged decoration is not a new mechanism. Match the surface to its job: editing, scanning, comparing, exploring a graph or reviewing a decision need different hierarchies.
+
+**Concept.** Include an ambitious mechanism and a smaller plain one. Explore different information models or interaction metaphors, not five versions of the same dashboard. Borrow a useful pattern from a real product, adapt it to this task and challenge its tradeoff. Typography, rhythm, selective color and spatial structure should express the concept; novelty is valuable only when it improves the user's action or understanding.
+
+**Behavior.** Prototype the smallest complete user journey, not only its populated happy screenshot. Include the states that can change the choice: empty, long/duplicate names, selection, validation/failure, pending action or permission limits. Keep outcomes consistent across versions. A prettier shell that cannot finish the task loses to one that can.
+
+**Interaction.** Use the shared component's semantics and keyboard behavior, with visible focus, accessible names and deliberate focus return. A mobile adaptation must preserve the task, not merely stack desktop panes or hide actions. Test long content and reachable controls at the actual viewport; dense is not tiny text or touch targets.
+
 When prototyping an open UI direction, propose at least five materially different versions of the same small real slice: vary layout, density, hierarchy, or interaction, not just cosmetic details. Let the user's task and product-shaped content shape the composition; preserve the app's palette, typography, and component language. Reuse one initialized host rather than five apps, builds, or worktrees. Inspect and show labeled screenshots of every version at consistent desktop and phone viewports; use short videos where interaction or time matters. No variant switcher or manual journey for the user to compare them. Normal verification of a settled UI is not another five-version exercise. Challenge the strongest candidate's remaining weakness and refine while another small trial can change the choice; a smaller layout alone is not a better one. Respect the user's visual preference, remove losing variants, and expand the pick as product code without a stage-approval callback.
 
 ## Visual explanations
@@ -80,6 +90,16 @@ When prototyping an open UI direction, propose at least five materially differen
 
 **Hierarchy.** Start with the outcome or decision, then its decisive evidence and limits. Group by the reader's question rather than the agent's execution order. Use consistent labels, active verbs, direct sentences and concrete examples. Put annotations beside the thing they explain; a legend, color, animation or decoration must add information. Never shrink a whole desktop canvas into unreadable phone output; simplify or split it into legible views.
 
-**Review.** A review page is a short map to the real diff, not another diff viewer or approval gate. Group net changes by intent; attach observed proof and limits to their claims, with links to the authoritative source. Distinguish facts, hypotheses and unrun steps. Name the revision the evidence covers; discard stale material after changes. Filtering, comparisons or focused expansion must save reading, not hide important risks or require clicking to discover the conclusion. Read-only local controls do not post comments, approve a PR or persist review state.
+**Review.** Review evidence is a short map to the real diff, not another diff viewer or approval gate. Group net changes by intent; attach observed proof and limits to their claims, with links to the authoritative source. Distinguish facts, hypotheses and unrun steps. Name the revision the evidence covers; discard stale material after changes. Filtering, comparisons or focused expansion must save reading, not hide important risks or require clicking to discover the conclusion.
 
-**Delivery.** Keep the essential result readable in the conversation without opening an artifact. Offer an interactive page only when interaction materially helps; exposure and retention follow the user's preview preference. Use the current client's supported link/preview surface, not an assumed browser panel. Prove the actual controls, keyboard access, desktop and phone layout, errors and meaningful screenshots. Capture one short interaction when it adds evidence; inspect it, then stop owned services and remove settled prototype source. No duplicate chat, page and PR recap.
+**Delivery.** Keep planning, comparisons and review in the conversation as readable text and embedded images/video. Disposable HTML or a real app host may render evidence; it is not an external plan or persistence mechanism. An interactive preview is for a requested working app, not a required place to read the decision. Prove actual controls, keyboard access, desktop/phone layout and errors; inspect meaningful screenshots and a short interaction when it adds evidence. Stop owned proof services and remove settled prototype source. No duplicate chat, page and PR recap.
+
+**Theme and scale.** Agent-made explanations use the user's dark theme and the existing design tokens. Set and verify the browser's dark color preference; a dark class alone does not activate a media-query theme. Show the best full-size view, with other variants separately legible; never compress five phone-length walls of prose into a tiny screenshot strip. Use real relationships, structure or changed behavior when an image adds comprehension, not decorated paragraphs. Reject a weak composition even when overflow and clicks pass.
+
+## Image assets
+
+Use image generation for an asset that benefits from synthesis—illustration, atmosphere, texture, an icon exploration—not for ordinary text, an exact diagram or a fake screenshot of functioning software. Use the native generation/editing tool exposed by the assigned harness (Codex image work uses its native image tool); never invent a tool call or substitute an API client when the capability is absent. Missing capability is a reported gap, not a successful generation.
+
+Give the tool the asset's purpose, placement, composition, existing palette, intended dimensions/aspect ratio and output constraints. For edits, supply the real source image and name what must remain unchanged. Generate only assets the chosen direction needs; do not add speculative art or an image dependency to an otherwise complete UI. Use repository icons and CSS where they express the job more precisely.
+
+Inspect the actual returned file at its intended display size: composition, subject, crop, text/edge artifacts, contrast and fit with the surrounding screen. Correct visible defects before integrating. Preserve useful original output and identify it as generated; a generated visual is not runtime or browser evidence. Real UI proof still comes from the rendered app and actual interaction. Store only used assets in product source; remove discarded variants and temporary generation material.

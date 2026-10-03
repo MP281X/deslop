@@ -3,7 +3,7 @@ name: engineering
 description: 'Engineering rules for product code, paired with the shared lint. Use before designing or editing code, writing tests, or reviewing a diff.'
 ---
 
-Apply the repository's CODING_STANDARDS.md alongside these rules; where the two conflict or leave a case open, this skill wins, and both win over any other coding guidance. Every good example passes the shared lint and format as written, so write each form right the first time: lint is the fallback. When lint flags code written from this skill, the block for that rule is the fix; never a cast, and never a rewrite that trades one diagnostic for another. Effect's source is the installed one, in `node_modules/effect/src` and `node_modules/@effect/*/src`.
+Apply the repository's CODING_STANDARDS.md alongside these rules; where the two conflict or leave a case open, this skill wins, and both win over any other coding guidance. Every good example passes the shared lint and format as written, so write each form right the first time: lint is the fallback. When lint flags code written from this skill, the block for that rule is the fix; never a cast, and never a rewrite that trades one diagnostic for another. Match Effect and tooling versions from the changed package's manifest and lockfile, then inspect cloned upstream source and nearest repository usage, not node_modules. Monorepo packages and worktrees may resolve different versions; stable and release-candidate export paths differ. Library examples establish APIs, not our coding or testing policy.
 
 Each rule is one block: a leading word, the rule, then the good form and the bad one with the user's words. A rule with no code form is a bullet.
 
@@ -47,7 +47,7 @@ Schema.decodeEffect(LedgerDraft)(draft) // draft is already a LedgerDraft
 variable.init?.type === 'TSSatisfiesExpression' // init was already narrowed to non-null
 ```
 
-**Effect first.** Before hand-writing a traversal, accumulator, check, config read, or service, search the installed Effect source (Graph, Record, String, Option, Struct, Config.all, Match, Boolean, HttpClient, Path, ChildProcess) and call what exists; replace every third-party dependency Effect or a Node built-in through Effect's platform packages covers.
+**Effect first.** Before hand-writing a traversal, accumulator, check, config read, or service, search the matching cloned Effect source (Graph, Record, String, Option, Struct, Config.all, Match, Boolean, HttpClient, Path, ChildProcess) and call what exists; replace every third-party dependency Effect or a Node built-in through Effect's platform packages covers.
 
 ```ts
 // good
@@ -524,6 +524,8 @@ entries.sort((left, right) => left.tokens - right.tokens)
 ```ts
 // good
 const balances = Array.reduce(decoded, HashMap.empty<Tag, BigDecimal.BigDecimal>(), sumByTag)
+const label = MutableRef.make('') // the initializer infers string, not just ''
+const [status, setStatus] = useState<'idle' | 'running'>('idle') // intentional widening
 function visit(node: Node): Result {
 	return visit(node.parent)
 }
@@ -533,6 +535,7 @@ function settle(amount: LedgerEntry['amount']) {
 export type Sandbox = ReturnType<typeof fromSdk>
 // bad — "are you sure this doesn't infer everything?"
 const Input = Schema.Struct({value: Schema.String}) satisfies Schema.Schema<Input>
+const label = MutableRef.make<string>('') // repeats the inferred type
 export type SandboxLike = {id: string; renew: (seconds: number) => Promise<unknown>} // a copy of an inferred shape
 ```
 
@@ -664,5 +667,8 @@ const moveRpc = useAtomSet(RpcClient.mutation('portfolio.move'))
 const handle = useCallback(() => setOpen(true), [])
 const state = useState(false)
 ```
+
+- **Pure render.** Derive display values from props and subscribed state during render; never mutate them or perform an RPC, write or subscription there. Event handlers own user-triggered actions; Effects synchronize external systems, not copied state or calculations. Reuse the existing router/atom integration rather than fetching in a new Effect.
+- **State identity.** Keep one owner for each value, stable domain keys for list items and deliberate reset boundaries. Compiler memoization is a performance optimization, never a correctness or lifetime guarantee. Do not add manual memoization, compiler escape directives or weakened hook rules to hide an ownership problem.
 
 Testing judgment, fixtures, assertions and verification belong to the testing skill; these engineering rules still apply to test code.

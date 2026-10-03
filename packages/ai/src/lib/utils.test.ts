@@ -108,3 +108,128 @@ it('reconstructs Effect Prompt history from compact events', () => {
 		{content: [{name: 'read', result: 'contents', type: 'tool-result'}], role: 'tool'}
 	])
 })
+
+it('keeps streamed content intact when reading between deltas', () => {
+	const reducer = makeConversationReducer()
+	reducer.pushAll([
+		Prompt.makeMessage('user', {content: [Prompt.makePart('text', {text: 'Read it'})]}),
+		Response.makePart('text-delta', {delta: 'Read', id: 'answer'})
+	])
+	assert.containsSubset(reducer.value().turns, [{sections: [{content: 'Read', id: 'answer', type: 'text'}]}])
+	reducer.pushAll([Response.makePart('text-delta', {delta: 'ing now.', id: 'answer'})])
+	assert.containsSubset(reducer.value().turns, [{sections: [{content: 'Reading now.', id: 'answer', type: 'text'}]}])
+	assert.containsSubset(reducer.value().turns, [{sections: [{content: 'Reading now.', id: 'answer', type: 'text'}]}])
+})
+
+it('starts a fresh streamed-content turn for each user message', () => {
+	const reducer = makeConversationReducer()
+	reducer.pushAll([
+		Response.makePart('text-delta', {delta: 'ignored', id: 'answer'}),
+		Prompt.makeMessage('user', {content: [Prompt.makePart('text', {text: 'First prompt'})]}),
+		Response.makePart('text-delta', {delta: 'Fir', id: 'answer'}),
+		Response.makePart('text-delta', {delta: 'st', id: 'answer'}),
+		Prompt.makeMessage('user', {content: [Prompt.makePart('text', {text: 'Second prompt'})]}),
+		Response.makePart('text-delta', {delta: 'Second', id: 'answer'})
+	])
+
+	assert.deepStrictEqual(
+		Array.map(reducer.value().turns, turn => ({
+			sections: Array.map(turn.sections, section => (section.type === 'text' ? section.content : section.type)),
+			user: Array.map(turn.user.content, part => (part.type === 'text' ? part.text : part.type))
+		})),
+		[
+			{sections: ['First'], user: ['First prompt']},
+			{sections: ['Second'], user: ['Second prompt']}
+		]
+	)
+
+	reducer.pushAll([Response.makePart('text-delta', {delta: ' turn', id: 'answer'})])
+	assert.deepStrictEqual(
+		Array.map(reducer.value().turns, turn => ({
+			sections: Array.map(turn.sections, section => (section.type === 'text' ? section.content : section.type)),
+			user: Array.map(turn.user.content, part => (part.type === 'text' ? part.text : part.type))
+		})),
+		[
+			{sections: ['First'], user: ['First prompt']},
+			{sections: ['Second turn'], user: ['Second prompt']}
+		]
+	)
+})
+
+it('replaces preliminary tool results only with a matching final result and keeps it after completion', () => {
+	const reducer = makeConversationReducer()
+	const preliminary = [
+		{
+			sections: [
+				{
+					tools: [{id: 'read-1', name: 'read', result: {name: 'read', preliminary: true, result: 'partial'}}],
+					type: 'tools'
+				}
+			]
+		}
+	]
+	const final = [
+		{
+			sections: [
+				{
+					tools: [{id: 'read-1', name: 'read', result: {name: 'read', preliminary: false, result: 'contents'}}],
+					type: 'tools'
+				}
+			]
+		}
+	]
+
+	reducer.pushAll([
+		Prompt.makeMessage('user', {content: [Prompt.makePart('text', {text: 'Read it'})]}),
+		Response.makePart('tool-call', {id: 'read-1', name: 'read', params: {path: 'README.md'}, providerExecuted: false}),
+		Response.makePart('tool-result', {
+			encodedResult: 'partial',
+			id: 'read-1',
+			isFailure: false,
+			name: 'read',
+			preliminary: true,
+			providerExecuted: false,
+			result: 'partial'
+		})
+	])
+	assert.containsSubset(reducer.value().turns, preliminary)
+
+	reducer.pushAll([
+		Response.makePart('tool-result', {
+			encodedResult: 'directory listing',
+			id: 'read-1',
+			isFailure: false,
+			name: 'ls',
+			preliminary: false,
+			providerExecuted: false,
+			result: 'directory listing'
+		})
+	])
+	assert.containsSubset(reducer.value().turns, preliminary)
+
+	reducer.pushAll([
+		Response.makePart('tool-result', {
+			encodedResult: 'contents',
+			id: 'read-1',
+			isFailure: false,
+			name: 'read',
+			preliminary: false,
+			providerExecuted: false,
+			result: 'contents'
+		})
+	])
+	assert.containsSubset(reducer.value().turns, final)
+
+	reducer.pushAll([
+		Response.makePart('tool-result', {
+			encodedResult: 'late contents',
+			id: 'read-1',
+			isFailure: false,
+			name: 'read',
+			preliminary: false,
+			providerExecuted: false,
+			result: 'late contents'
+		})
+	])
+	assert.containsSubset(reducer.value().turns, final)
+})

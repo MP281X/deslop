@@ -19,6 +19,7 @@ import {noNativeMethodCall} from '#rules/no-native-method-call.ts'
 import {noOptionValueAccess} from '#rules/no-option-value-access.ts'
 import {noReadonlyTypeSyntax} from '#rules/no-readonly-type-syntax.ts'
 import {noRedundantReturnType} from '#rules/no-redundant-return-type.ts'
+import {noRedundantStateType} from '#rules/no-redundant-state-type.ts'
 import {noRedundantUseRefNullType} from '#rules/no-redundant-use-ref-null-type.ts'
 import {noRedundantVariableAnnotation} from '#rules/no-redundant-variable-annotation.ts'
 import {noReinventedSchema} from '#rules/no-reinvented-schema.ts'
@@ -98,6 +99,7 @@ export const oxlint = defineConfig({
 		'@deslop/coding-standards/no-option-value-access': 'error',
 		'@deslop/coding-standards/no-readonly-type-syntax': 'error',
 		'@deslop/coding-standards/no-redundant-return-type': 'error',
+		'@deslop/coding-standards/no-redundant-state-type': 'error',
 		'@deslop/coding-standards/no-redundant-use-ref-null-type': 'error',
 		'@deslop/coding-standards/no-redundant-variable-annotation': 'error',
 		'@deslop/coding-standards/no-reinvented-schema': 'error',
@@ -620,6 +622,7 @@ export default definePlugin({
 		'no-option-value-access': noOptionValueAccess,
 		'no-readonly-type-syntax': noReadonlyTypeSyntax,
 		'no-redundant-return-type': noRedundantReturnType,
+		'no-redundant-state-type': noRedundantStateType,
 		'no-redundant-use-ref-null-type': noRedundantUseRefNullType,
 		'no-redundant-variable-annotation': noRedundantVariableAnnotation,
 		'no-reinvented-schema': noReinventedSchema,

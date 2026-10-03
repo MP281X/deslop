@@ -7,10 +7,15 @@ include_collaboration_mode_instructions = false
 tool_output_token_limit = 15000
 background_terminal_max_timeout = 1500000
 
+[agents]
+enabled = false
+
 [skills.bundled]
 enabled = false
 
 [features]
+skill_search = false
+skill_mcp_dependency_install = false
 apps = false
 plugins = false
 image_generation = true

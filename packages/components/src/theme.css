@@ -30,7 +30,7 @@
 
 	--border: oklch(0.92 0.004 286.32);
 	--input: oklch(0.92 0.004 286.32);
-	--ring: transparent;
+	--ring: var(--primary);
 
 	--chart-1: oklch(0.837 0.128 66.29);
 	--chart-2: oklch(0.705 0.213 47.604);
@@ -77,7 +77,7 @@
 
 		--border: oklch(1 0 0 / 12%);
 		--input: oklch(1 0 0 / 18%);
-		--ring: transparent;
+		--ring: var(--primary);
 
 		--chart-1: oklch(0.837 0.128 66.29);
 		--chart-2: oklch(0.7214 0.1337 49.9802);

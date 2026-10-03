@@ -15,7 +15,7 @@ A few tests, each guarding logic worth guarding, beat coverage: every test is co
 - **Throwaway.** Settle a worry with a throwaway test or prototype and delete it once answered.
 - **Honest.** A test never expects wrong behavior or works around another rule; an expectation changes only with a recorded behavior change, and a changed assertion keeps every value the old one checked that still meets this bar.
 
-**Assertions.** One input per behavior in the existing case that covers it; a test helper grows only when every case needs it; assert which input is flagged or returned, or an error's tag, code, or path, with `assert` from `@effect/vitest`; doubles are Layers or a dependency the public function takes, never vi, a global stub, or a module mock; one layer per file.
+**Assertions.** One input per behavior in the existing case that covers it; a test helper grows only when every case needs it; assert which input is flagged or returned, or an error's tag, code, or path, with `assert` from `@effect/vitest`; doubles are Layers or a dependency the public function takes, never vi, a global stub, or a module mock. Compose the dependency graph once; isolate case-specific state at its owning fixture.
 
 ```ts
 // good — "test files only for the services/packages public interfaces"
@@ -30,7 +30,7 @@ it.effect('rejects an empty tag', () => run(ledger.add({tag: ''}))) // Schema.is
 // bad — "this test is useless, it doesn't test that the agent is working"
 it.effect('forwards the prompt', () => run(agent.prompt(message))) // wiring that only shows a call reaching a double
 additional?: {name: string; source: string}[] // a helper option one case needs
-it.effect('loads', () => pipe(program, Effect.provide(Ledger.layer))) // the layer, per test
+it.effect('loads', () => pipe(program, Effect.provide(Ledger.layer))) // no owned behavior asserted
 assert.isTrue(Array.some(diagnostics, d => d.code === 'typescript(TS2456)')) // another tool's output
 expect(error).toMatchObject({_tag: 'SandboxUnavailable'}) // Vitest's expect
 assert.strictEqual(Array.flatMap(attioProvider.groups, group => group.actions).length, 75) // a pinned count
@@ -45,12 +45,14 @@ assert.strictEqual(Array.flatMap(attioProvider.groups, group => group.actions).l
 
 ## Effect and fixtures
 
-- **Lifetime.** it.effect and it.live already supply a fresh Scope that closes after the case; never wrap the whole case in Effect.scoped again. Compose service Layers once and acquire temporary files, servers and other resources through their real scoped platform operations. Cleanup belongs to that scope, never a sleep or second runtime.
-- **Isolation.** A shared file-level Layer may hold mutable state: give each case distinct keys/resources or scoped resets through its public boundary. A test passes alone and beside the rest; do not make test order or another case's output its setup. Keep one Layer composition per file rather than rebuilding it in each case.
-- **Clock.** it.effect supplies TestClock/TestConsole. Use TestClock.adjust for behavior driven by Effect time, waiting until the scheduled operation is ready before advancing it. Use it.live only for behavior that needs live Effect services, such as a real external timeout/journey the virtual clock cannot drive. A sleep to make a race likely is not concurrency proof.
-- **Concurrency.** Coordinate real concurrent operations with the public service and Effect primitives, then assert the promised state/result. Prove cancellation or interruption only when owned logic changes its observable result or cleanup. Never test Effect's primitives themselves or require an incidental internal call order.
+- **Entrypoint.** Plain `it` runs synchronous or Promise-returning public functions. `it.effect(name, () => effect)` uses virtual services; `it.live(name, () => effect)` uses real time. Pass a callback returning the Effect, not the Effect itself or a runner wrapper. `it.layer(layer)` caches a shared context for its block; its callback provides `effect`, not a layer-aware `live`. For shared live services use `{excludeTestServices: true}`. Match package/lockfile versions to cloned upstream source before copying an API/import.
+- **Lifetime.** it.effect and it.live supply a fresh case Scope. Resources acquired while building `it.layer` live for its block, not the case. Acquire temporary files/servers through real scoped platform operations; never wrap the whole case in Effect.scoped again. To assert owned cleanup before the case ends, close a smaller operation scope first, then inspect the resource.
+- **Isolation.** Shared Layers also share mutable services, TestClock and TestConsole. Do not assume fresh state, zero time or empty console output per case; `Layer.fresh` does not undo the cached test context. Use distinct keys, a public reset or a case-local fixture when independence requires it. A test passes alone and beside the rest; earlier output is never setup.
+- **Clock.** Import TestClock/TestConsole from `effect/testing`. Advance Effect time only after the operation reaches the relevant dependency; for arbitrary async work, fork, await a Deferred signalled with the actual key/acquired path at that boundary, adjust time and join. Use that typed value, not a void marker. Forking alone is not readiness. Virtual time does not drive JavaScript timers, sockets or external processes; those need the real boundary and live services.
+- **Concurrency.** For owned race behavior, block the first operation at a dependency with an entered/release pair, await entry, start the competing action, then release and assert the promised result. Sequential Effect.all is not overlap; set concurrency when it is required. For cancellation, await acquisition before interrupting and await completion; an unrelated outer Scope does not close with the child. Never test Effect primitives or incidental internal order.
 - **Doubles.** Replace only a dependency outside the behavior under test, through its service Layer or explicit public parameter. A deterministic dependency can produce success/failure without mocking the tested service. If the claim is actual SDK, process, filesystem, HTTP, browser or package integration, use that real boundary: a mocked response or matching spy call does not establish it.
 - **Fixtures.** Keep the smallest reachable input beside the test. A published-tool proof uses a real packed artifact and its real declared dependencies, not source imports or stubbed packages. Generated fixtures come from the real generator after a representative input settles the changed template; do not hand-edit expected output to match a bug.
+- **Platform.** FileSystem.layerNoop is partial/no-op behavior, not an in-memory filesystem; HttpServer.layerServices does not supply a real filesystem. Filesystem integration uses the appropriate platform Layer and scoped temporary paths. RpcTest proves handler/client interaction without serialization; HttpApiTest proves routing/encoding/middleware/decoding without a listening server. Neither proves sockets, deployment or an external service.
 
 ## Run and reconcile
 

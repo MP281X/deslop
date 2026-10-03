@@ -2,6 +2,12 @@
 
 Repository-specific decisions live here. Reusable coding, testing and visual rules live in the installed engineering, design and testing skills; automated enforcement lives in the tooling.
 
+## Product scope
+
+- Target this environment and the user's personal-software workflow only.
+- Releases are linear and squash-merged. Apply data changes at every merged pull request.
+- Local data is disposable. Preserve production data only from the immediately previous release; delete obsolete data.
+
 ## Layout
 
 - A service package holds one service in exactly these files: `src/schema.ts` for its schemas, their types, and its domain error; `src/service.ts` for the tag, its shape, and its static layers; `src/lib/utils.ts` for pure helpers; `src/internal/*.ts` for the implementation. Split nothing further, so every package reads the same way.
@@ -20,7 +26,7 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 
 ## Generators
 
-- Create apps and packages with the generators AGENTS.md lists, never by copying one.
+- Create apps with `vp create app -- --name <name>` and packages with `vp create package -- --name <name>`, using an unscoped kebab-case name, then `vp install` before anything else; never copy one. Add shadcn components with `vp run shadcn add <component>`; `vp run upgrade` refreshes dependencies.
 - A template is real files under `tools/create-*/template/` that the generator copies and edits like any other file, never file bodies inlined as strings, and never generated files such as `*.gen.ts`.
 - The app template mirrors the portfolio (its `icon.png`, `__root.tsx`, and entrypoints, with one RPC returning the app name shown on the home page) and always carries the `Dockerfile`, even when an app doesn't deploy.
 
@@ -57,4 +63,5 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 
 - Enable a maintained rule before writing a custom one in `tools/coding-standards/src/rules`.
 - A check that needs a script becomes a custom lint rule instead.
-- `tools/coding-standards` stays flat under `src/`, with no install tests or separate plugin files; its reusable skills live beside `src/`. Personal native configuration lives in `.codex` and `.claude`, with global skills in `.claude/skills` and `.codex/skills` linked to it; `.agents/skills` contains repository skills only.
+- `tools/coding-standards` stays flat under `src/`, with no install tests or separate plugin files; its reusable skills live beside `src/`. Personal native configuration lives in `.codex` and `.claude`, with global skills in `.claude/skills` and `.codex/skills` containing explicit aliases; workflow-maintenance is repository-only memory and is excluded from global installation. The public CLI copies engineering/design/testing into the native roots this repository uses, never the global homes.
+- `tsconfig.json` owns jsx, lib, types and exclude only; `vite.config.ts` owns ignores, overrides, repository plugins, env and the entire formatter configuration with the `@deslop` import group; `.fallowrc.json` owns dead-code analysis.
