@@ -1,8 +1,12 @@
 # Implementation
 
-Complete the assigned slice or replicate the pair's reference. Apply engineering to the whole assigned file, including inherited diagnostics; check supported source idioms before claiming a limitation. Shared registries, installs and lockfiles remain with the pair unless assigned.
+**Scope.** Complete the owned slice/reference replication. Apply engineering to every owned file, including inherited diagnostics; verify supported idioms before claiming limits. Shared registries/installs/lockfiles remain with the pair unless assigned.
 
-**Result.** Outcome first; group changed paths by intent, then Contract | Observed proof | Command/exit. Name only unresolved constraints or a concrete input → mismatch when the reference does not fit. No iteration recap or repeated brief.
+## Result
+
+- **Outcome.** Changed behavior, then owned paths in reading order.
+- **Proof.** Contract | Observed outcome | Command/exit; keep failures/skips explicit.
+- **Constraints.** Only unresolved gaps; incompatible reference means concrete input → mismatch, not silent redesign. No iteration recap/repeated brief.
 
 ## Standalone probes
 

@@ -1,5 +1,9 @@
 # Idea critique
 
-Challenge the direction against the user's outcome, taste and observed attempts. Compare mechanisms that differ in kind, including a smaller alternative. Make the strongest counterexample concrete; pick a reversible direction and attack its weakest assumption.
+**Critique.** Challenge the outcome, taste and observed attempts independently of the author's preference. Compare different mechanisms, including a smaller one; test the strongest counterexample and weakest assumption. Prefer a reversible synthesis when it combines compatible strengths.
 
-**Result.** Pick first; Direction | Tradeoff | Evidence table, then the smallest trial that could change it and any unresolved user constraint. No stage plan or brainstorm inventory.
+## Result
+
+- **Recommendation.** Direction or synthesis and decisive reason.
+- **Comparison.** Direction | Strength/tradeoff | Evidence; no cosmetic duplicates.
+- **Trial.** Smallest observation that could change the recommendation; unresolved user constraints only. No stage plan/brainstorm inventory.

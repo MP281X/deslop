@@ -1,30 +1,45 @@
 # Deslop
 
-- `/home/mp281x/deslop`, GitHub `MP281X/deslop`, default branch `main`; workspaces `apps/*` (portfolio), `packages/*` (ai, components, runtime), `tools/coding-standards` and `tools/create-*`; shadcn components in `packages/components`, a new one added with `vp run shadcn add <component>`.
-- Full check: `vp run check`, then `vp run test`. Format and lint changed files in one call, since lint has no cache: `vp check --fix <path>...`; `vp lint --format=agent <path>...` prints one line per diagnostic.
-- CI: GitHub Actions `build-and-deploy`. Production uses `tools/compose.yaml`, project `deslop`: traefik, portfolio, jaeger, collector (public OTLP https://otel.mp281x.xyz; loopback diagnostics in workflow's browser procedure).
-- Preview, from the app directory: `HOST=127.0.0.1 PORT=<port> vp run preview`.
-
-### Repository map
-
-Deslop is the reusable app template and portfolio reference, not a workflow package. CODING_STANDARDS.md owns repository/domain decisions; native bases read it directly, with no AGENTS.md.
-
-- apps/portfolio/src/rpcs/{contracts,handlers}.ts owns the live visitor/trail demonstration: portfolio.join streams state and portfolio.move updates position. lib/portfolio.ts holds pure state helpers; routes/(home)/index.tsx renders the experience. The app composes runtime through main.client.tsx/main.server.ts; no app services directory exists yet.
-- packages/runtime/src/{client,server}.ts owns shared client/server layers; src/vite/{config,server}.ts owns app Vite composition and the development source-host seam. packages/components/src/theme.css owns shared tokens and uses prefers-color-scheme for dark mode; components/ui is shadcn-owned.
-- packages/ai owns provider/tool composition and compact conversation state; lib/utils.test.ts is the narrow pure prompt-history/reducer seam. tools/create-app and tools/create-package own actual file templates and creation; tools/coding-standards owns public rules, types and the three skills.
-- Personal configuration is outside workspace packages: `.claude/skills` owns global sources, `.codex/skills` their explicit aliases. Claude's pair is the canonical base; Codex instructions alias it, and the repository-only `workflow-maintenance` Install recipe aliases the installed Codex base to the installed Claude pair. That recipe owns global installation, not edits to installed homes; its memory and public generated skills are excluded. This repository has no `.agents` directory.
-
-### Fast iterations
-
-Use initialized source exports and the existing app/test seam; no production build between unsettled trials.
+**Root commands.** Vite+ tracks task inputs; cache checks, not source-mutating fixes. Use --no-cache when proving a fresh execution.
 
 ```bash
-# Pure Effect/AI transformation, from the root: no provider or service startup
-vp test packages/ai/src/lib/utils.test.ts
-# Generator replacement behavior, before creating full app/package outputs
-vp test tools/create-package/src/replace-directory.test.ts
-# Real React + RPC source host, from apps/portfolio on a free port
-HOST=127.0.0.1 vp dev --host 127.0.0.1 --port <port> --strictPort
+vp run --workspace-root --cache check
+vp run --workspace-root --no-cache fix
+vp run --workspace-root --cache test
 ```
 
-Vite reloads backend source too: verify the affected RPC. Templates are outside normal lint/type/test inputs; prove representative generated output, then all required outputs once settled. Production preview checks built output; final repository checks use stable code.
+**App.** Source host for iteration; built preview for release behavior. Choose a free port; requested remote exposure follows Browser.
+
+```bash
+HOST=127.0.0.1 vp -C apps/portfolio dev --host 127.0.0.1 --port <port> --strictPort
+HOST=127.0.0.1 PORT=<port> vp run --filter @deslop/portfolio preview
+```
+
+**Components.** `vp run --workspace-root shadcn list @shadcn`; inspect with `shadcn view/docs`, add with `vp run --workspace-root shadcn add <component>`. List existing shared components before adding one.
+
+## Install personal configuration
+
+**Ownership.** Apply changed personal sources from this repository; preserve authentication, sessions and unrelated entries. Delete only named owned configs/roles/skills, then install current files. Native discovery invokes skills; these paths are installation targets, not manual invocation instructions. Public skill copies remain repository-only and versioned.
+
+```bash
+set -e
+CODEX_TARGET=${CODEX_HOME:-"$HOME/.codex"}
+CLAUDE_TARGET=${CLAUDE_CONFIG_DIR:-"$HOME/.claude"}
+rm -f "$CODEX_TARGET/config.toml" "$CODEX_TARGET/instructions.md" "$CLAUDE_TARGET/settings.json"
+rm -f "$CODEX_TARGET/agents/"{explorer,review,worker}.toml "$CLAUDE_TARGET/agents/"{Explore,general-purpose,pair,review}.md
+mkdir -p "$CLAUDE_TARGET/agents"
+cp .codex/config.toml "$CODEX_TARGET/"
+cp .claude/settings.json "$CLAUDE_TARGET/"
+cp .claude/agents/pair.md "$CLAUDE_TARGET/agents/"
+ln -s "$CLAUDE_TARGET/agents/pair.md" "$CODEX_TARGET/instructions.md"
+for TARGET in "$CODEX_TARGET" "$CLAUDE_TARGET"; do
+  rm -rf "$TARGET/skills/"{environment,maintenance,workflow,workflow-main,workflow-research,workflow-implementation,workflow-test,workflow-review,workflow-browser,workflow-maintenance,engineering,design,testing}
+  mkdir -p "$TARGET/skills"
+done
+cp -R .claude/skills/{workflow,environment,maintenance} "$CLAUDE_TARGET/skills/"
+for SKILL in workflow environment maintenance; do
+  ln -s "$CLAUDE_TARGET/skills/$SKILL" "$CODEX_TARGET/skills/$SKILL"
+done
+```
+
+**Verify.** Compare installed files/aliases, auth/unrelated preservation. Fresh sessions load changes; no provider restart.

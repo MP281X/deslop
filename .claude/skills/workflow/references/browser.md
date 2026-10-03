@@ -1,8 +1,12 @@
 # Browser and runtime proof
 
-Prove the assigned inputs → outcomes at the supplied URL using saved state. Apply repository design to rendered output; this reference owns capture, interaction and profiling commands. Use the supplied host/state, not a new environment survey. Return observed pass/fail, meaningful media and console errors; stop only owned services.
+**Scope.** Prove supplied inputs → outcomes/URL with saved state. Apply design; reuse the supplied host, not a setup survey. This procedure owns capture, profiling and requested exposure; stop only owned services.
 
-**Result.** Verdict first; Input | Observed outcome | Evidence table. Link meaningful screenshots/MP4 by absolute path and report actual console errors or untested states. Distinguish visual inspection from DOM assertions; no repeated journey narration.
+## Result
+
+- **Verdict.** Observed behavior, accessibility and responsive outcomes.
+- **Evidence.** Input/viewport | Observed outcome | Capture; absolute media paths, meaningful frames only.
+- **Gaps.** Actual console errors, untested states and DOM-only checks. A DOM assertion is not visual inspection; no journey recap.
 
 ## Proof and previews
 

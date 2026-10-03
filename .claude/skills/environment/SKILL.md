@@ -5,32 +5,32 @@ description: 'Machine facts, repository entrypoints and local coding-skill setup
 
 # Environment
 
-`mp281x@dev` is the always-on development host; the phone and MacBook are clients. SSH uses Tailscale and keys. Initialize new worktrees with `vp install`; reuse initialized dependencies.
+**Host.** The development machine serves phone/Mac clients through Tailscale; SSH uses keys. T3 owns worktree setup and managed harness updates.
 
 ## Machine
 
-- Debian 13, 8 CPUs, 23G RAM; passwordless `sudo`. Only traefik's 80/443 are internet-accessible; SSH and other listeners use the tailnet.
-- `~/.vite-plus/bin` supplies Node and package-manager shims: packages use `vp`, binaries `vpx`. Docker, agent-browser, gh (MP281X), glab (git.datapizza.tech) and Tailscale are installed.
-- Scratch/logs/media: `node_modules/.cache/deslop/`; upstream source cache: `~/.deslop/repos/`.
-- Task services use temporary containers, not host installations; publish on `127.0.0.1` because Docker bypasses the firewall.
+- **Tools.** `~/.vite-plus/bin` supplies Node/package-manager shims: `vp` for packages, `vpx` for binaries. Passwordless sudo; gh/glab use existing sign-ins.
+- **Scratch.** `node_modules/.cache/deslop/`; cloned upstream sources: `~/.deslop/repos/`.
+- **Services.** Temporary containers, not host installations. Maintenance owns Docker binding defaults; preserve unrelated workloads.
+- **Exposure.** Requested previews use Tailscale Serve through workflow's Browser procedure. Share the verified tailnet HTTPS URL, not localhost; keep only requested previews running.
 
 ## Repositories
 
-Read only the target repository's reference: [Deslop](references/deslop.md) or [Dual](references/dual.md). Browser, check/publishing, research and upkeep commands live in their corresponding procedures.
+Use [Deslop](references/deslop.md) or [Dual](references/dual.md) from that repository's root. Discover inventories/versions from source when needed, not from cached prose.
 
 ## Repository skills and incremental refactors
 
-Run the latest @deslop/coding-standards CLI transiently to install or refresh engineering/design/testing, without adding a dependency. It finds the Git root even from a nested directory and replaces those names under existing native folders; none present → `.agents` only. No global skills or unrelated changes:
+**Copies.** Commit CLI-generated engineering/design/testing so fresh checkouts have them. Treat them as read-only; change upstream skill source, not copies. Refresh only when installing/updating skills, not every session:
 
 ```bash
 vpx @deslop/coding-standards@latest --help
 vpx @deslop/coding-standards@latest
 ```
 
-Skill refreshes do not change package manifests or the lockfile. Consumer packages can retain different preset versions; upgrade only touched packages from their package directories, not unrelated packages/dependencies. Deslop uses workspace source. The pair owns shared lockfile/install: batch touched-package updates and validate resolved versions together.
+**Versions.** Skill refresh changes no manifests/lock. Upgrade presets only in touched packages; versions may differ. The pair batches shared lock/install changes and verifies frozen installation. Deslop uses workspace source.
 
-- Substantial handwritten-package changes remove local exclusions/downgrades (warnings, overrides, inline suppressions) and bring the whole handwritten package under full shared rules. Judge proportion/structural reach, not generated churn or a fixed percentage.
-- Small changes meet full rules in new/changed code. Restore shared severity to inventory diagnostics; remove exclusions with no remaining scoped violation, retaining only those required by untouched legacy code. Never add exclusions for new code.
-- Keep generated/build-output ignores; restore full shared-rule configuration, not severity alone. Verify package checks and frozen-lockfile install.
+- **Substantial.** Bring the whole handwritten package under full shared rules; remove exclusions/downgrades. Judge structural reach, not generated churn or arbitrary percentages.
+- **Small.** Full rules for changed code; restore severity to inventory diagnostics, remove empty exclusions, retain only untouched legacy violations. No new exclusions.
+- **Generated.** Keep generated/build-output ignores; restore full shared configuration, not severity alone. Run root checks/fixes.
 
-In the changed repository only, remove reusable skill rules duplicated in CODING_STANDARDS.md; keep concrete layout/tooling, stricter local choices and domain contracts. Resolve contradictions at their source, not through another exception.
+**Standards.** Remove overlap from the changed repository's CODING_STANDARDS.md; keep layout/tooling, stricter local choices and domain contracts. Resolve contradictions at their source.

@@ -12,13 +12,11 @@
 		"CLAUDE_CODE_DISABLE_CRON": "1",
 		"BASH_DEFAULT_TIMEOUT_MS": "600000",
 		"BASH_MAX_TIMEOUT_MS": "3000000",
-		"TURBO_CACHE_DIR": "/home/mp281x/.cache/turbo",
 		"CLAUDE_CODE_SILENT_TURN_REMINDER": "0",
 		"NO_COLOR": "1"
 	},
 	"permissions": {
 		"deny": [
-			"Skill",
 			"TaskCreate",
 			"TaskGet",
 			"TaskList",

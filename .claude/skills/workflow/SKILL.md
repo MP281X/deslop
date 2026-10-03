@@ -1,9 +1,11 @@
 ---
 name: workflow
-description: 'Primary-agent iteration, delegation and delivery.'
+description: 'Primary iteration and bounded delegated procedures.'
 ---
 
 # Workflow
+
+**Role.** Primary work uses the loop below. Delegated work uses only its assigned procedure and ownership; no second coordinator.
 
 ## Work
 
@@ -16,26 +18,28 @@ description: 'Primary-agent iteration, delegation and delivery.'
 
 ## Delegate
 
-Delegate substantive independent research, experiments and complete implementation slices directly through Orchestrator V2 while you build the first example. Keep taste, contracts, first instances, shared inputs and integration. Split by independent outcomes and ownership, not tiny operations; one coherent review needs one reviewer, broad risk-bearing contracts may be partitioned.
+**Purpose.** Use Orchestrator V2 when independent work shortens delivery or challenges bias—not to spend/save tokens or satisfy a delegation quota. Optimize quota and user attention per mergeable PR, including repairs/reviews, not per completed task.
+
+**Ownership.** Keep taste, contracts, first instances, shared inputs and integration. Assign complete independent outcomes, not tiny operations. Narrow scope never means shallow analysis: test counterexamples, alternatives and downstream effects. One coherent review needs one reviewer; partition only distinct risk-bearing contracts.
 
 Use the live catalog and high effort. The primary model remains the user's choice; routing defaults are task-specific:
 
-| Task                         | Model             | Procedure         |
-| ---------------------------- | ----------------- | ----------------- |
-| Sources                      | GPT-6 Luna        | research.md       |
-| Mechanical implementation    | Claude Sonnet 5.5 | implementation.md |
-| Substantial implementation   | Claude Opus 5.5   | implementation.md |
-| Ideas / design critique      | Claude Opus 5.5   | ideas.md          |
-| Checks / behavior / pipeline | GPT-6 Luna        | checks.md         |
-| Code review                  | GPT-6.1 Sol       | code-review.md    |
-| Browser / computer proof     | GPT-6.1 Sol       | browser.md        |
-| Image assets                 | GPT-6.1 Sol       | repository design |
+| Task                         | Model             | Procedure                                      |
+| ---------------------------- | ----------------- | ---------------------------------------------- |
+| Sources                      | GPT-6 Luna        | [Research](references/research.md)             |
+| Mechanical implementation    | Claude Sonnet 5.5 | [Implementation](references/implementation.md) |
+| Substantial implementation   | Claude Opus 5.5   | Implementation                                 |
+| Ideas / design critique      | Claude Opus 5.5   | [Ideas](references/ideas.md)                   |
+| Checks / behavior / pipeline | GPT-6 Luna        | [Checks](references/checks.md)                 |
+| Code review                  | GPT-6.1 Sol       | [Code review](references/code-review.md)       |
+| Browser / computer proof     | GPT-6.1 Sol       | [Browser](references/browser.md)               |
+| Image assets                 | GPT-6.1 Sol       | repository design                              |
 
-References live inside this skill. Escalate an unresolved Luna evidence gap to Sol or a Sonnet product-judgment gap to Opus; reuse the decisive evidence. These are practical defaults, not universal model rankings.
+**Escalate.** Luna evidence gaps → Sol; Sonnet product-judgment gaps → Opus. Reuse decisive evidence. Defaults are practical, not universal rankings; change a route when observed repair cost warrants it.
 
-A brief contains only the missing question/contract, exact assigned reference file, ownership, known evidence, observable stop and Done-when path. Use workspace-relative paths; model/options belong to tool fields. Avoid a second coordinator or recursive committee.
+**Brief.** Named procedure, missing question/contract, owned files/resources, write permissions, known evidence, observable stop and Done-when path. Use repository-relative paths; model/options belong to tool fields. No ambiguous scope, repeated cwd, copied workflow or recursive committee.
 
-Retain task identities; continue useful work and join only the result the next decision needs. Cancel invalidated work before replacing it. Collect actual terminal results and reconcile them with criteria; a child's summary or green command cannot hide failed or missing proof. Installed T3's completed-child follow-up defect ([#15004](https://github.com/pingdotgg/t3code/pull/15004)) requires a fresh bounded task for a new assignment; interrupt the current run if a completed child already has active follow-up work.
+**Join.** Retain identities; collect the result needed for the next decision while other work continues. Cancel invalidated tasks. Reconcile actual terminal evidence, including failed/missing criteria. Completed-child follow-up defect [#15004](https://github.com/pingdotgg/t3code/pull/15004) requires a fresh task for a new assignment; interrupt obsolete follow-up work.
 
 ## Finish
 

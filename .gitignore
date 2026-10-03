@@ -5,8 +5,6 @@
 
 # build output & cache
 **/dist
-**/.turbo
-**/.output
 **/*.tsbuildinfo
 
 # packages
@@ -14,14 +12,3 @@
 
 # tools
 .fallow
-.motel-data
-.claude/skills/engineering/
-.claude/skills/design/
-.claude/skills/testing/
-.codex/skills/engineering/
-.codex/skills/design/
-.codex/skills/testing/
-
-# nix
-result
-flake.lock

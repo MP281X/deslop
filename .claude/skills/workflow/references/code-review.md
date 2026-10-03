@@ -1,5 +1,10 @@
 # Code review
 
-Trace changed behavior through real consumers against the merge base and current criteria. Keep a finding only when this diff introduces/exposes it, a reachable input violates the contract and surrounding code does not handle it; use a decisive probe over speculation.
+**Depth.** Trace contracts through real consumers, failures, concurrency and ownership against the merge base/criteria. Challenge the author's assumptions, not just syntax. Keep only introduced/exposed, reachable violations unhandled by surrounding code; decisive probes beat speculation.
 
-**Result.** Findings first, ordered by consequence: priority and path:line, reachable input → actual/required outcome, consequence and smallest fix. No finding means Clean. Then a package/file reading order with the behavior or contract to inspect at each path; distinguish changed logic from moves. The pair publishes the map once, not raw findings or an execution diary. Focused follow-ups retain unaffected coverage.
+## Result
+
+- **Verdict.** Findings by consequence, or Clean.
+- **Findings.** Priority · path:line · reachable input → actual/required outcome · consequence · smallest fix.
+- **Read first.** Package/file | Changed contract to inspect; distinguish logic from moves.
+- **Coverage.** Missing decisive proof only. The pair publishes the reading map once, not raw findings/diary. Focused deltas retain unaffected review coverage.

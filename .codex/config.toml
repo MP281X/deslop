@@ -14,7 +14,6 @@ enabled = false
 enabled = false
 
 [features]
-skill_search = false
 skill_mcp_dependency_install = false
 apps = false
 plugins = false
@@ -26,10 +25,4 @@ multi_agent_v2 = false
 default_mode_request_user_input = true
 
 [shell_environment_policy]
-set = { TURBO_CACHE_DIR = "/home/mp281x/.cache/turbo", GLAB_PAGER = "cat" }
-
-[projects."/home/mp281x/deslop"]
-trust_level = "trusted"
-
-[projects."/home/mp281x/dual"]
-trust_level = "trusted"
+set = { GLAB_PAGER = "cat" }

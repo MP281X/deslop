@@ -1,8 +1,12 @@
 # Checks
 
-Run the assigned commands or behavior steps; use testing for selectors, failure inventory and rerun judgment. Checks and rule-fixture tests run sequentially. Use the supplied repository commands, or its environment reference if missing. Return criterion outcomes, commands/exits and blockers.
+**Scope.** Run assigned commands/behaviors from repository root; testing owns selection and rerun judgment. Checks and rule fixtures run sequentially. Use environment's root commands; no second suite.
 
-**Result.** Verdict first, then Criterion | Observed result | Command/exit. Keep failed and skipped criteria explicit; link relevant logs rather than dumping them. List only unresolved blockers, not routine progress.
+## Result
+
+- **Verdict.** Actual criterion outcomes, not a green log footer.
+- **Evidence.** Criterion | Observed result | Command/exit; identify cache replay versus fresh execution.
+- **Gaps.** Failed/skipped criteria and unresolved cause; links to decisive logs, no dumps/progress diary.
 
 ## Commands
 
@@ -10,7 +14,9 @@ Collect the owned command's terminal result and exit status, not a log footer or
 
 ## Publishing
 
-Lead with a compact package/file reading map: where to open the final source and what changed there. For a substantially reworked package, link its folder and entry files so it can be reviewed as a whole, not only as a diff. Separate moved/removed files from changed logic. Keep risks visible; put optional rationale, behavioral evidence and secondary paths in `<details>`. Omit commit/PR lifecycle, green CI/check counts and benchmark diaries already available in T3. Report failures and unproved contracts explicitly.
+**Map.** Explain the whole branch: every semantic/config change and its final package/file, not only highlights. Link folders/entry files; separate moves/generated copies from changed logic, omit formatting-only noise. Prefer readable tables/lists to compressed tree art. The description should explain behavior without requiring diff reading.
+
+**Reason.** Briefly state consequential choices and tradeoffs. Keep risks visible; collapse supporting rationale, behavioral evidence and secondary paths in `<details>`. Omit lifecycle/green-check facts and benchmark diaries T3 already supplies. Report failures/unproved contracts; no user testing chore. Publish for review only when owned proof and fixes are complete.
 
 Bodies/comments use scratch files and `--body-file` (GitLab: `--description-file`). Attach images with descriptive alt text; GitHub video uses bare `--attach '<file>'`. Read the resulting title/body back.
 
