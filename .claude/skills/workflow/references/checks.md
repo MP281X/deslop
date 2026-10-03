@@ -10,6 +10,8 @@ Collect the owned command's terminal result and exit status, not a log footer or
 
 ## Publishing
 
+Lead with a compact package/file reading map: where to open the final source and what changed there. For a substantially reworked package, link its folder and entry files so it can be reviewed as a whole, not only as a diff. Separate moved/removed files from changed logic. Keep risks visible; put optional rationale, behavioral evidence and secondary paths in `<details>`. Omit commit/PR lifecycle, green CI/check counts and benchmark diaries already available in T3. Report failures and unproved contracts explicitly.
+
 Bodies/comments use scratch files and `--body-file` (GitLab: `--description-file`). Attach images with descriptive alt text; GitHub video uses bare `--attach '<file>'`. Read the resulting title/body back.
 
 ```bash
