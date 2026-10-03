@@ -78,13 +78,13 @@ description: 'UI and UX rules for screens and visual explanations. Use when buil
 
 **Task.** Name the person, next action and uncertainty. Compare the same realistic task/data; hierarchy follows editing, scanning, comparison, graph exploration or review.
 
-**Range.** Show at least five clearly different directions across information model, interaction, layout, density and visual language—not cosmetic variations. Include an ambitious/unexpected concept and a plain smaller direction; adapt useful real-product patterns. Label executable prototypes versus conceptual sketches and what each tests. Concepts may contribute only an interaction, hierarchy or visual idea; never imply they are working software.
+**Range.** Start with the cheapest useful example that tests the current uncertainty. Explore further materially different directions when user feedback or an unresolved question gives a reason, not to meet a fixed variant count. Follow an explicit request for broader exploration. Vary information model, interaction or visual language where it changes the decision, not merely colors. Label executable prototypes versus conceptual sketches and what each tests; never imply sketches are working software.
 
 **Behavior.** Executable candidates exercise the smallest complete journey plus choice-changing empty, long/duplicate, selection, pending, failure and permission states. Conceptual sketches state unimplemented behavior; judge their idea, not a fictional runtime pass.
 
 **Synthesis.** The user often chooses between directions. Compare transferable strengths/tradeoffs and propose a coherent blend; don't force a winner or concatenate incompatible mechanisms. Test the blend's weakest assumption before expansion.
 
-**Show.** Labeled, inspected desktop/phone views at consistent sizes; short video only for meaningful interaction. No manual variant-switcher journey. Reuse one host, discard losing source and expand the synthesis. Settled UI verification does not require five more directions.
+**Show.** Show the rough working example early, before expanding or polishing the direction. Use inspected views at the sizes needed to judge the uncertainty, with short video only for meaningful interaction. If user taste is unresolved, ask a concrete question about the shown result; an agent critique is not user feedback. Do not wait for production-complete behavior or a finished gallery before the user can react. Reuse one host, discard rejected source and expand the chosen synthesis. Final UI proof still covers required desktop/phone behavior; settled verification does not need new design alternatives.
 
 ## Visual explanations
 
