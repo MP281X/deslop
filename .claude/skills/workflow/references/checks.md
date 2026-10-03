@@ -14,9 +14,9 @@ Collect the owned command's terminal result and exit status, not a log footer or
 
 ## Publishing
 
-**Map.** Explain the whole branch: every semantic/config change and its final package/file, not only highlights. Link folders/entry files; separate moves/generated copies from changed logic, omit formatting-only noise. Prefer readable tables/lists to compressed tree art. Show small before/after code examples when they make a semantic change easier to judge; distinguish recommended patterns from valid edge cases and stress-test fixtures. The description should explain behavior without requiring diff reading or imagining an example.
+**Map.** Cover the whole branch once, grouped by changed contract. Put linked files, a small before/after example and its consequence together. The example is the explanation: do not repeat it in a summary, a separate reading-map table and another detail section. A separate inventory is unnecessary when these sections already locate every semantic/config change. Identify moves/generated copies beside their source; omit formatting noise. Distinguish recommended patterns from valid edge cases and stress-test fixtures.
 
-**Reason.** Briefly state consequential choices and tradeoffs. Keep risks visible; collapse supporting rationale, behavioral evidence and secondary paths in `<details>`. Omit lifecycle/green-check facts and benchmark diaries T3 already supplies. Report failures/unproved contracts; no user testing chore. Publish for review only when owned proof and fixes are complete.
+**Reason.** Put a consequential choice or unresolved risk beside the change it qualifies. Keep supporting proof/logs in one collapsed section; do not restate the changes there. Use only sections that carry distinct information. Omit lifecycle/green-check facts T3 supplies. Report failures/unproved contracts; no user testing chore. Publish for review only when owned proof and fixes are complete.
 
 Bodies/comments use scratch files and `--body-file` (GitLab: `--description-file`). Attach images with descriptive alt text; GitHub video uses bare `--attach '<file>'`. Read the resulting title/body back.
 
