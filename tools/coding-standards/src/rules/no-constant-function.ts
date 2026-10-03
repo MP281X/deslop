@@ -1,57 +1,25 @@
-import {Array, MutableRef, Option, Predicate, pipe} from 'effect'
+import {Array, Option, Predicate, pipe} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
-import type {Context, ESTree, Reference, Scope, Variable} from '@oxlint/plugins'
+import type {Context, ESTree} from '@oxlint/plugins'
 
 import {bindingName, returnedExpression, singleUseThunk, variableFromScope} from '#rules/shared.ts'
 
-function returnsConstant(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
-	const returned = returnedExpression(node)
+function isConstantFunction(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
+	if (
+		input.node.async ||
+		input.node.generator ||
+		Array.isArrayNonEmpty(input.node.params) ||
+		Predicate.isNotNullish(input.node.typeParameters)
+	) {
+		return false
+	}
+	const returned = returnedExpression(input.node)
+
 	return (
 		Predicate.isNotNullish(returned) &&
-		(returned.type === 'Literal' ||
-			returned.type === 'Identifier' ||
-			returned.type === 'MemberExpression' ||
-			(returned.type === 'TemplateLiteral' && Array.isArrayEmpty(returned.expressions)))
-	)
-}
-
-function functionScope(input: {node: ESTree.Node; scope: Scope}): Option.Option<Scope> {
-	if (input.scope.block === input.node) return Option.some(input.scope)
-	return Array.findFirst(input.scope.childScopes, child => child.block === input.node)
-}
-
-function scopeReferences(scope: Scope): Reference[] {
-	return Array.appendAll(scope.references, Array.flatMap(scope.childScopes, scopeReferences))
-}
-
-function isImportedVariable(variable: Variable) {
-	return (
-		Array.isArrayNonEmpty(variable.defs) &&
-		Array.every(variable.defs, definition => definition.type === 'ImportBinding')
-	)
-}
-
-function resolvesToImport(reference: Reference) {
-	return pipe(
-		variableFromScope({name: reference.identifier.name, scope: reference.from}),
-		Option.exists(isImportedVariable)
-	)
-}
-
-function isConstantFunction(input: {
-	context: Context
-	node: ESTree.Function | ESTree.ArrowFunctionExpression
-	spans: ESTree.Span[]
-}) {
-	if (input.node.async || input.node.generator || Predicate.isNotNullish(input.node.typeParameters)) return false
-	if (Array.some(input.spans, span => span.start >= input.node.start && span.end <= input.node.end)) return false
-	return (
-		returnsConstant(input.node) &&
-		pipe(
-			functionScope({node: input.node, scope: input.context.sourceCode.getScope(input.node)}),
-			Option.exists(scope => Array.every(scopeReferences(scope), resolvesToImport))
-		) &&
+		((returned.type === 'Literal' && !Predicate.hasProperty(returned, 'regex')) ||
+			(returned.type === 'TemplateLiteral' && Array.isArrayEmpty(returned.expressions))) &&
 		pipe(
 			bindingName(input.node),
 			Option.flatMap(name => variableFromScope({name, scope: input.context.sourceCode.getScope(input.node)})),
@@ -77,14 +45,10 @@ function isConstBound(node: ESTree.ArrowFunctionExpression | ESTree.Function) {
 
 export const noConstantFunction = defineRule({
 	create: context => {
-		const spans = MutableRef.make(Array.empty<ESTree.Span>())
-		function mark(node: ESTree.Span) {
-			MutableRef.update(spans, Array.append(node))
-		}
 		function report(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
-			if (isConstantFunction({context, node, spans: MutableRef.get(spans)}) && !singleUseThunk({context, node})) {
+			if (isConstantFunction({context, node}) && !singleUseThunk({context, node})) {
 				context.report({
-					message: 'This function reads nothing but imports, so it is a value: hold its result in a const.',
+					message: 'This argument-free function returns a literal constant; hold its result in a const.',
 					node
 				})
 			}
@@ -96,10 +60,7 @@ export const noConstantFunction = defineRule({
 			'FunctionDeclaration:exit': report,
 			'FunctionExpression:exit': node => {
 				if (isConstBound(node)) report(node)
-			},
-			JSXElement: mark,
-			JSXFragment: mark,
-			ThisExpression: mark
+			}
 		}
 	},
 	meta: {type: 'problem'}

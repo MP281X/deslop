@@ -1,22 +1,6 @@
 import {Array, Predicate} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
-import type {Context, ESTree} from '@oxlint/plugins'
-
-function isStringLiteral(node: ESTree.Expression) {
-	return node.type === 'Literal' && Predicate.isString(node.value)
-}
-
-function inferredIdentically(input: {context: Context; init: ESTree.Expression; type: ESTree.TSType}) {
-	const text = input.context.sourceCode.getText
-	if (input.init.type === 'TSAsExpression') return text(input.init.typeAnnotation) === text(input.type)
-	return (
-		input.init.type === 'ConditionalExpression' &&
-		input.type.type === 'TSStringKeyword' &&
-		isStringLiteral(input.init.consequent) &&
-		isStringLiteral(input.init.alternate)
-	)
-}
 
 export const noRedundantVariableAnnotation = defineRule({
 	create: context => ({
@@ -27,7 +11,10 @@ export const noRedundantVariableAnnotation = defineRule({
 				context.report({message: 'Write Array.empty<T>() instead of annotating an empty array.', node: annotation})
 				return
 			}
-			if (inferredIdentically({context, init: node.init, type: annotation.typeAnnotation})) {
+			if (
+				node.init.type === 'TSAsExpression' &&
+				context.sourceCode.getText(node.init.typeAnnotation) === context.sourceCode.getText(annotation.typeAnnotation)
+			) {
 				context.report({message: 'Drop this annotation; inference gives the same type.', node: annotation})
 			}
 		}

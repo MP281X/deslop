@@ -17,18 +17,21 @@ const OxlintOutput = Schema.Struct({
 	)
 })
 
-const lintSource = Effect.fnUntraced(function* (input: {name: string; source: string}) {
+const lintSource = Effect.fnUntraced(function* (input: Record<string, string>) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const directory = yield* fs.makeTempDirectoryScoped({directory: import.meta.dirname, prefix: 'fixture-'})
-	const file = path.join(directory, input.name)
-	yield* fs.writeFileString(file, String.replace(/^((?:import[^\n]*\n)+)(?!\n)/u, '$1\n')(input.source))
-
-	const handle = yield* ChildProcess.make('vp', ['lint', file, '--format=json'], {
-		cwd: path.resolve(import.meta.dirname, '../../../..'),
-		stderr: 'pipe',
-		stdout: 'pipe'
-	})
+	yield* Effect.forEach(Record.toEntries(input), entry =>
+		fs.writeFileString(
+			path.join(directory, entry[0]),
+			String.replace(/^((?:import[^\n]*\n)+)(?!\n)/u, '$1\n')(entry[1])
+		)
+	)
+	const handle = yield* ChildProcess.make(
+		'vp',
+		['lint', ...Array.map(Record.keys(input), name => path.join(directory, name)), '--format=json'],
+		{cwd: path.resolve(import.meta.dirname, '../../../..'), stderr: 'pipe', stdout: 'pipe'}
+	)
 	const result = yield* Effect.all(
 		{
 			exitCode: handle.exitCode,
@@ -64,8 +67,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 			() =>
 				Effect.gen(function* () {
 					const result = yield* lintSource({
-						name: 'invalid.tsx',
-						source: pipe(
+						'invalid.tsx': pipe(
 							[
 								"import {Array, Context, Effect, Layer, Option as Maybe, Schema, SchemaGetter, SchemaTransformation, identity, pipe} from 'effect'",
 								"import * as React from 'react'",
@@ -258,11 +260,11 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 			() =>
 				Effect.gen(function* () {
 					const result = yield* lintSource({
-						name: 'valid.tsx',
-						source: pipe(
+						'valid.tsx': pipe(
 							[
 								"import {it as test} from '@effect/vitest'",
 								"import {Array, Context, Effect, Layer, Result, Schema, SchemaGetter, SchemaTransformation, identity, pipe} from 'effect'",
+								"import {useState} from 'react'",
 								"import * as EffectArray from 'effect/Array'",
 								'',
 								'declare const input: unknown',
@@ -275,11 +277,15 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								'const layers = pipe(layer, Layer.provide(pipe(layer, Layer.provide(pipe(layer, Layer.provide(layer))))))',
 								'declare function combine(left: string, right: string): string',
 								'declare const snapshot: {width: number}',
-								'type LedgerShape = {readonly add: (value: number) => Effect.Effect<number>}',
+								'declare namespace Ledger { export type Base = {readonly add: (value: number) => Effect.Effect<number>}; export type Shape = Base & {readonly count: Effect.Effect<number>} }',
 								'// oxlint-disable-next-line effecttsgo/deterministic-keys -- a fixture in a temporary directory has no stable key',
-								'class Ledger extends Context.Service<Ledger, LedgerShape>()("Ledger") {}',
+								'class Ledger extends Context.Service<Ledger, Ledger.Shape>()("Ledger") {}',
 								'type User = typeof User.Type',
 								'const User = Schema.Struct({name: Schema.String})',
+								'const Minimum = Schema.isMinLength(2)',
+								'type CheckedName = typeof CheckedName.Type',
+								'const CheckedName = Schema.String.check(Minimum)',
+								'export const checkedName = Schema.decodeSync(CheckedName)("ab")',
 								'type Annotated = typeof Annotated.Type',
 								'const Annotated = Schema.String.annotate({description: "value"})',
 								'export type Public = typeof Public.Type',
@@ -335,6 +341,11 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								'const nickname: Profile["nickname"] = undefined',
 								'const noUser: User | null = null',
 								'const annotatedName: string = names[0] ?? ""',
+								'declare const enabled: boolean',
+								'export const status: string = enabled ? "idle" : "ready"',
+								'export function transition(value: typeof status) { return value.length }',
+								'export const transitioned = transition("done")',
+								'export function useCounter() { const [state, setState] = useState(() => ({current: 0, previous: 0})); return {increment: () => { setState(value => ({current: value.current + 1, previous: value.current})) }, state} }',
 								'function label(flag: boolean): string { return flag ? "on" : "off" }',
 								'declare class Missing { _tag: "Missing" }',
 								'const missing = Effect.fail(new Missing())',
@@ -363,8 +374,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 			() =>
 				Effect.gen(function* () {
 					const result = yield* lintSource({
-						name: 'assertions.ts',
-						source: pipe(
+						'assertions.ts': pipe(
 							[
 								"import {Predicate} from 'effect'",
 								'',
@@ -408,15 +418,19 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 			() =>
 				Effect.gen(function* () {
 					const result = yield* lintSource({
-						name: 'behavior.test.ts',
-						source: pipe(
+						'behavior.test.ts': pipe(
 							[
 								"import {assert, it} from '@effect/vitest'",
 								"import {Array, Effect, MutableRef, pipe} from 'effect'",
+								"import {owner} from './owner.ts'",
 								'',
 								'declare const ticket: {message: string}',
 								'function cell() { return MutableRef.make(0) }',
 								'const cells = [cell(), cell()]',
+								'function allocate() { return owner.cell }',
+								'export const allocations = [allocate(), allocate()]',
+								'function matcher() { return /token/gu }',
+								'export const patterns = [matcher(), matcher()]',
 								'const operations = {normalize: (items: string[]) => pipe(items, Array.reverse)}',
 								'const recovered = Effect.gen(function* () { return yield* Effect.catch(Effect.fail("missing"), () => Effect.succeed(1)) })',
 								'function Field({ref, ...props}: {ref?: unknown; label: string}) { return [ref, props.label] }',
@@ -424,7 +438,9 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								'export {Field, cells, operations, recovered}'
 							],
 							Array.join('\n')
-						)
+						),
+						'owner.ts':
+							"import {MutableRef} from 'effect'\nexport const owner = {get cell() { return MutableRef.make(0) }}"
 					})
 					assert.deepStrictEqual(customCodes(result.stdout), [])
 				}),
@@ -436,8 +452,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 			() =>
 				Effect.gen(function* () {
 					const result = yield* lintSource({
-						name: 'cycles.ts',
-						source: pipe(
+						'cycles.ts': pipe(
 							[
 								"import {Array, Context, Effect, Schema} from 'effect'",
 								'',
@@ -449,7 +464,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								'const labelOf = ({ref, label}: {ref: string; label: string}) => [ref, label]',
 								'declare function consume(value: number): void',
 								'type BaseShape = {count: Effect.Effect<number>}',
-								'type ServiceShape = BaseShape',
+								'type ServiceShape = BaseShape & {increment: Effect.Effect<void>}',
 								'// oxlint-disable-next-line effecttsgo/deterministic-keys -- a fixture in a temporary directory has no stable key',
 								'class Counter extends Context.Service<Counter, ServiceShape>()("Counter") {}',
 								'export {Counter, Tree, labelOf, sizes}',
@@ -463,6 +478,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 						'@deslop/coding-standards(no-destructured-parameter)',
 						'@deslop/coding-standards(no-destructured-parameter)',
 						'@deslop/coding-standards(no-readonly-type-syntax)',
+						'@deslop/coding-standards(no-readonly-type-syntax)',
 						'@deslop/coding-standards(no-readonly-type-syntax)'
 					])
 				}),
@@ -474,8 +490,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 			() =>
 				Effect.gen(function* () {
 					const result = yield* lintSource({
-						name: 'bindings.ts',
-						source: pipe(
+						'bindings.ts': pipe(
 							[
 								'function compile(Schema: {decode: (value: string) => string}) {',
 								'  return Schema.decode("ok")',
@@ -484,6 +499,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								'const ref = useRef<string | null>()',
 								'function pipe(value: string, suffix: string) { return value + suffix }',
 								'const handlers = {size: (value: string) => pipe(value, "!")}',
+								'export const nested = pipe(pipe(pipe(pipe("value", "!"), "!"), "!"), "!")',
 								'export {compile, handlers, ref}'
 							],
 							Array.join('\n')
@@ -521,7 +537,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 						'  return [MutableRef.make<string>(""), Ref.make<number>(0), SubscriptionRef.make<boolean>(false), useState<string>(""), React.useState<boolean>(true)]',
 						'}'
 					]
-					const invalid = yield* lintSource({name: 'state-invalid.ts', source: Array.join(invalidSource, '\n')})
+					const invalid = yield* lintSource({'state-invalid.ts': Array.join(invalidSource, '\n')})
 					assert.strictEqual(invalid.exitCode, ChildProcessSpawner.ExitCode(1))
 					assert.deepStrictEqual(
 						pipe(
@@ -539,8 +555,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 						]
 					)
 					const valid = yield* lintSource({
-						name: 'state-valid.ts',
-						source: pipe(
+						'state-valid.ts': pipe(
 							[
 								"import {MutableRef, Ref} from 'effect'",
 								"import * as EffectModules from 'effect'",

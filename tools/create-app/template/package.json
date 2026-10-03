@@ -25,12 +25,5 @@
 		"build": "rm -rf dist && vp build && vp pack",
 		"dev": "vp dev --host 0.0.0.0",
 		"preview": "vp run build && node --env-file-if-exists=.env ./dist/server.js"
-	},
-	"devDependencies": {
-		"@deslop/components": "workspace:*",
-		"@deslop/runtime": "workspace:*",
-		"@tanstack/react-router": "latest",
-		"react": "^19",
-		"react-dom": "^19"
 	}
 }
