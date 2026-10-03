@@ -15,6 +15,12 @@
 # tools
 .fallow
 .motel-data
+.agents/skills/engineering/
+.agents/skills/design/
+.agents/skills/testing/
+.claude/skills/engineering/
+.claude/skills/design/
+.claude/skills/testing/
 
 # nix
 result

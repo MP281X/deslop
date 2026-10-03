@@ -1,10 +1,10 @@
 {
-	"extends": "@deslop/workflow/tsconfig.json",
+	"extends": "@deslop/coding-standards/tsconfig.json",
 
 	"compilerOptions": {
 		"jsx": "react-jsx",
 		"lib": ["DOM", "ESNext", "DOM.Iterable"],
-		"types": ["node", "vite-plus/client", "@deslop/workflow/css-properties"]
+		"types": ["node", "vite-plus/client", "@deslop/coding-standards/css-properties"]
 	},
 
 	"exclude": [

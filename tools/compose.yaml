@@ -55,7 +55,7 @@ configs:
           protocols:
             http:
               endpoint: 0.0.0.0:4318
-              cors: {allowed_origins: [https://portfolio.mp281x.xyz]}
+              cors: {allowed_origins: [https://portfolio.mp281x.xyz, 'http://127.0.0.1:*', 'http://localhost:*']}
       processors:
         memory_limiter: {check_interval: 1s, limit_mib: 256}
         batch: {}

@@ -1,0 +1,34 @@
+{
+	"disableBundledSkills": true,
+	"disableClaudeAiConnectors": true,
+	"autoMemoryEnabled": false,
+	"includeGitInstructions": false,
+	"agent": "pair",
+	"attribution": {"commit": "", "pr": ""},
+	"bashOutputMaxChars": 60000,
+	"env": {
+		"BASH_DEFAULT_TIMEOUT_MS": "600000",
+		"BASH_MAX_TIMEOUT_MS": "3000000",
+		"TURBO_CACHE_DIR": "/home/mp281x/.cache/turbo",
+		"CLAUDE_CODE_SILENT_TURN_REMINDER": "0",
+		"NO_COLOR": "1"
+	},
+	"permissions": {
+		"deny": [
+			"EnterWorktree",
+			"ExitWorktree",
+			"EnterPlanMode",
+			"ExitPlanMode",
+			"CronCreate",
+			"CronDelete",
+			"CronList",
+			"Bash(git push * main)",
+			"Bash(git push * master)",
+			"Bash(git push * *:main)",
+			"Bash(git push * *:master)",
+			"Bash(gh pr merge *)",
+			"Bash(glab mr merge *)",
+			"Agent"
+		]
+	}
+}

@@ -1,6 +1,6 @@
 # Coding Standards
 
-Automated formatting, lint, and type rules live in the tooling and are not repeated here.
+Repository-specific decisions live here. Reusable coding, testing and visual rules live in the installed engineering, design and testing skills; automated enforcement lives in the tooling.
 
 ## Layout
 
@@ -39,7 +39,7 @@ Automated formatting, lint, and type rules live in the tooling and are not repea
 
 ## Dependencies
 
-- Declare a dependency once, in the root `package.json`; a package imports it without redeclaring it.
+- Internal apps and services use dependencies declared once in the root `package.json`; published tools declare the dependencies their consumers need.
 
 ## RPC
 
@@ -47,19 +47,14 @@ Automated formatting, lint, and type rules live in the tooling and are not repea
 - The client is an `AtomRpc.Service` over `ClientRuntime.layer`.
 - A stream syncs one keep-alive Atom that components read; a component never owns a subscription and never polls.
 
-## Tests
-
-- Put a test beside the public interface it tests, such as `src/service.test.ts` or `src/lib/utils.test.ts`, never in a separate `tests/` folder.
-- Prove rendering with agent-browser, never with a component test.
-
 ## Components
 
-- Keep surfaces flat, compact, and bordered: no cards and no rounded corners.
+- Deslop surfaces use square borders, with no cards or rounded corners.
 - Give each context one icon entrypoint for an action instead of text buttons repeating it.
 - Leave conventional icons without a tooltip; add a label only where it disambiguates.
 
 ## Tooling
 
-- Enable a maintained rule before writing a custom one in `tools/workflow/src/rules`.
+- Enable a maintained rule before writing a custom one in `tools/coding-standards/src/rules`.
 - A check that needs a script becomes a custom lint rule instead.
-- `tools/workflow` stays flat under `src/`, with no install tests or separate plugin files.
+- `tools/coding-standards` stays flat under `src/`, with no install tests or separate plugin files; its reusable skills live beside `src/`. Personal native configuration lives in `.codex` and `.claude`, with global skills in `.claude/skills` and `.codex/skills` linked to it; `.agents/skills` contains repository skills only.

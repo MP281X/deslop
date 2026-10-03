@@ -1,0 +1,30 @@
+model_instructions_file = "instructions.md"
+model_context_window = 1000000
+
+web_search = "live"
+include_permissions_instructions = false
+include_collaboration_mode_instructions = false
+tool_output_token_limit = 15000
+background_terminal_max_timeout = 1500000
+
+[skills.bundled]
+enabled = false
+
+[features]
+apps = false
+plugins = false
+image_generation = true
+goals = false
+memories = false
+multi_agent = false
+multi_agent_v2 = false
+default_mode_request_user_input = true
+
+[shell_environment_policy]
+set = { TURBO_CACHE_DIR = "/home/mp281x/.cache/turbo", GLAB_PAGER = "cat" }
+
+[projects."/home/mp281x/deslop"]
+trust_level = "trusted"
+
+[projects."/home/mp281x/dual"]
+trust_level = "trusted"
