@@ -11,7 +11,7 @@ This skill describes `mp281x@dev`, the always-on machine the user develops on; t
 
 - Debian 13, 8 CPUs, 23G RAM; `sudo` is passwordless. The firewall admits only 80 and 443 from the internet, for traefik; SSH and everything else listening is reached only through the user's tailnet, as `mp281x@dev`.
 - Tools: docker with compose and buildx; agent-browser, with its Chrome under `~/.agent-browser/browsers/`; gh (github.com, MP281X); glab (default host git.datapizza.tech); acli; tailscale (the user's tailnet); ffmpeg; python and pip; sqlite3; jq; rg; flock; ss. `~/.vite-plus/bin` holds node and shims for every package manager: run packages with `vp` and binaries with `vpx`, never npm, npx, pnpm, yarn, or bunx; `bun` runs only where a step below names it.
-- Scratch and logs go under the thread's worktree in `node_modules/.cache/deslop/`, which git and every tool ignore, and screenshots and videos a message embeds in its `proof/` subfolder. An extra git worktree that must install or run goes in `~/.deslop/<worktree directory name>/<name>/`, because Node refuses type stripping under `node_modules`. Each agent works in its own subfolder and deletes only what it created, as soon as its question is settled.
+- Scratch and logs go in each agent's own subfolder of the thread's `node_modules/.cache/deslop/`, ignored by git and normal repository checks; embedded screenshots and videos go in `proof/`. Reuse initialized dependencies. Delete only what you created when its question is settled; keep embedded media. Extra checkouts live in `~/.deslop/<worktree directory name>/<name>/`, outside `node_modules`.
 - Search with `rg` and always an explicit path: without one it reads stdin and hangs.
 - A service a task needs runs in a container the thread stops afterwards; nothing is installed on the machine. A container publishes its ports on `127.0.0.1`, since Docker's published ports bypass the firewall.
 - `~/.claude` and `~/.codex` are installed from `tools/workflow/src/agents` in deslop with `node tools/workflow/src/install.ts`; change the source and reinstall, never the homes.
@@ -32,69 +32,38 @@ P=$(ss -ltnpH 'sport = :<port>' | grep -oP 'pid=\K[0-9]+' | head -1)
 kill -- -$(ps -o pgid= -p $P | tr -d ' ')
 ```
 
-An extra worktree, such as the default branch for a base check or a comparison that needs it:
+Standalone probes need no extra checkout or install. Use a `.mjs` driver, or run a TypeScript driver from the target worktree root:
 
 ```bash
-W=~/.deslop/$(basename $PWD)/<name>
-git worktree add --detach $W origin/<default branch> && (cd $W && vp install)
+node --input-type=module-typescript - < node_modules/.cache/deslop/<agent>/probe.ts
 ```
 
-Remove it as soon as its question is settled: `git worktree remove --force $W`.
+Imports in stdin resolve from the current directory, not the driver's folder. Node cannot strip imported TypeScript under `node_modules`; repo-integrated code uses its existing app or test entrypoint.
+
+An extra worktree is for a base check or a prototype needing incompatible source, dependency or build inputs—not merely parallel work:
+
+```bash
+W="$HOME/.deslop/$(basename "$PWD")/<name>"
+git worktree add --detach "$W" origin/<default branch> && (cd "$W" && vp install)
+```
+
+Remove it as soon as its question is settled: `git worktree remove --force "$W"`.
 
 ## Native CLI calls
 
-Both CLIs use their existing sign-in on this machine; keep auth in its normal home. These are per-call mechanics, not rules about which harness should do a task. Give a bounded brief with the worktree, relevant thread or criteria paths, the permitted changes and the result needed. Do not copy a whole conversation or diff into stdin when the agent can read it locally. Set `repo` to the worktree and `brief` to the task's scratch prompt file.
-
-Codex with the installed workflow, or without its global pair configuration for this call:
+Run from the target worktree with a bounded task in `$brief`; both CLIs use their existing sign-in.
 
 ```bash
-codex exec --ephemeral --sandbox read-only --cd "$repo" - < "$brief"
-codex exec --ignore-user-config --ephemeral --sandbox read-only --cd "$repo" \
-  --model gpt-6.1-sol -c 'model_reasoning_effort="high"' - < "$brief"
+codex exec --ephemeral --sandbox read-only - < "$brief"
+claude -p --agent review --no-session-persistence --permission-prompts none < "$brief"
 ```
 
-`--ignore-user-config` keeps authentication but skips `~/.codex/config.toml`, including the installed pair text and custom base. Agent-file discovery, project `AGENTS.md`, skills and execution rules are separate; it is not an instruction-free mode. Installed roles are self-contained `name`, `description`, model, effort and developer text in `~/.codex/agents/*.toml`. `-c developer_instructions=...` replaces that configured value, not the built-in base; `-c model_instructions_file=...` replaces the base. An ordinary stdin task replaces neither. Choose the model and sandbox explicitly when the task needs something else.
+- Skip the global workflow for one call: add `--ignore-user-config --model gpt-6.1-sol` to Codex; replace Claude's `--agent review` with `--setting-sources ''`. Authentication and project guidance remain. Use these flags, not a copied auth home or Claude's `--bare`.
+- Installed roles: `~/.claude/agents/{review,Explore,general-purpose}.md` select with `--agent`; `~/.codex/agents/{review,explorer,worker}.toml` have no root `--agent` equivalent. To run a Codex role as the root, skip user config and pass its `model` with `--model`, and its `model_reasoning_effort` and `developer_instructions` with `-c key=value` (TOML-encoded values). This is a root call, not a t3 child.
 
-Codex has no root `--agent` flag. To run an installed role directly as the CLI's root, load its model, effort and developer text without the pair configuration; this is not a t3 subagent:
+Collect the owned command's completion and verify its requested result; use the harness's background execution when independent work can continue, not a detached `&` process. These calls create no resumable session. `--permission-prompts none` denies unanswered approvals; it grants no access. Claude calls remain documentation-only while its quota is reserved.
 
-```bash
-python3 - "$repo" review "$brief" <<'PY'
-import json, pathlib, subprocess, sys, tomllib
-
-role = tomllib.loads((pathlib.Path('/home/mp281x/.codex/agents') / (sys.argv[2] + '.toml')).read_text())
-with open(sys.argv[3]) as prompt:
-    result = subprocess.run([
-        'codex', 'exec', '--ignore-user-config', '--ephemeral', '--sandbox', 'read-only',
-        '--cd', sys.argv[1], '--model', role['model'],
-        '-c', 'model_reasoning_effort=' + json.dumps(role['model_reasoning_effort']),
-        '-c', 'developer_instructions=' + json.dumps(role['developer_instructions']), '-'
-    ], stdin=prompt)
-sys.exit(result.returncode)
-PY
-```
-
-Replace `review` with `explorer` or `worker` for their installed text. This loads the role's three fields, not the whole custom Codex base; the native base and project guidance remain.
-
-Claude can select an installed agent directly, replacing the `agent: pair` setting:
-
-```bash
-(cd "$repo" && claude -p --agent review --no-session-persistence \
-  --permission-prompts none < "$brief")
-```
-
-The other installed task agents are `Explore` and `general-purpose`; their definitions live in `~/.claude/agents/`. `--model` and `--effort` override the selected model and effort. To skip settings files, including the global pair selection, and supply a different system prompt for this call:
-
-```bash
-(cd "$repo" && claude -p --setting-sources '' --system-prompt-file "$instructions" \
-  --model claude-opus-5-5 --effort high --no-session-persistence \
-  --permission-prompts none < "$brief")
-```
-
-`instructions` is a plain prompt file, not an agent file with frontmatter. Omitting `--system-prompt-file` uses the native prompt; `--append-system-prompt-file` adds rather than replaces. Settings filtering is not a sandbox and does not remove project `CLAUDE.md` or agent discovery. Do not use `--bare` to skip this workflow: it also skips normal OAuth discovery and requires API credentials. `--permission-prompts none` denies unavailable approvals rather than waiting for a person; it does not grant tool access. Claude recipes are documented from the official reference, not exercised while its quota is reserved.
-
-Run the CLI through an owned command, not a detached `&` process. In Codex, use the long exec-cell wait loop from the base instructions; independent work can continue while that cell runs. In Claude, use a background Bash task with a sufficient timeout and collect its task result. Inspect the exit status and returned result before using it; a completed process is not proof that its requested criteria passed. `--ephemeral` and `--no-session-persistence` avoid extra resumable sessions. Claude's `--bg` cannot be combined with `-p`; these calls are not registered as t3 child threads. The transcript paths above locate existing t3 sessions, not ephemeral calls.
-
-References: [Codex configuration](https://developers.openai.com/codex/config-reference), [Claude CLI](https://code.claude.com/docs/en/cli-reference), [Claude headless calls](https://code.claude.com/docs/en/headless), [Claude agents](https://code.claude.com/docs/en/sub-agents).
+References: [Codex configuration](https://developers.openai.com/codex/config-reference), [Claude CLI](https://code.claude.com/docs/en/cli-reference).
 
 ## Pull requests and pipelines
 
