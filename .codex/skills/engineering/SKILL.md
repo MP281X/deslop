@@ -3,9 +3,9 @@ name: engineering
 description: 'TypeScript and Effect code conventions paired with shared lint. Use when designing, implementing or reviewing product/test code, including prototypes.'
 ---
 
-**Scope.** Apply these rules and repository-specific CODING_STANDARDS.md. CLI-installed copies are read-only; improve their package source, then refresh through the CLI.
+**Scope.** Apply these rules and repository-specific CODING_STANDARDS.md.
 
-**Sources.** Match manifest/lock versions. Inspect the relevant cloned upstream implementation, types and nearest real usage before inventing an API wrapper or workaround; never node_modules. Follow only the paths needed to settle the question, with no dependency install/build just to read source. Library APIs do not define coding policy.
+**Dependency APIs.** Match manifest/lock versions. Inspect the relevant cloned upstream implementation, types and nearest real usage before inventing an API wrapper or workaround; never node_modules. Follow only the paths needed to settle the question, with no dependency install/build just to read source. Library APIs do not define coding policy.
 
 **Diagnostics.** Use the shown idiom, not casts, weakened rules or a rewrite trading one diagnostic for another.
 
@@ -54,7 +54,7 @@ Math.floor(Duration.toDays(DateTime.distance(oldest.timestamp, newest.timestamp)
 import {glob} from 'glob' // a dependency Effect's FileSystem replaces
 ```
 
-**Whole values.** Pass whole values or spread them. No parameter/callback/loop destructuring except useState and component ref; project fields only to exclude data the recipient must not receive.
+**Whole values.** Pass whole values or spread them. No parameter/callback/loop destructuring except labeled tuple parameters, useState and component ref; project fields only to exclude data the recipient must not receive.
 
 ```ts
 // good
@@ -178,7 +178,7 @@ const parsed = Option.getOrUndefined(Number.parse(event.target.value))
 
 **Handlers.** A handler used once is an arrow in place; a handler used twice is a `function`.
 
-**Pairs.** A tuple stays whole, read by index.
+**Pairs.** Positional tuples stay whole, read by index. Meaningful named bindings such as React state/setter pairs and explicitly labeled tuple parameters are useful exceptions.
 
 **Accumulators.** No `let`: a fold or an Effect collection operation that says what it selects.
 
@@ -225,7 +225,7 @@ process.env.HOST ?? '0.0.0.0'
 
 **Pipe.** A standalone `pipe`, nested at most three deep; never the `.pipe` method.
 
-**Failures.** In a generator a failure is `return yield* E.make(...)`; outside one, `Effect.fail`.
+**Failures.** Yield a yieldable domain error directly in a generator: `return yield* E.make(...)`. Keep `Effect.fail(error)` when the error is not yieldable; outside a generator, use `Effect.fail`. Do not infer yieldability from factory-call syntax.
 
 ```ts
 // good
@@ -242,7 +242,7 @@ const text = Effect.fn('Ai.text')(function* (response: AiResponse) {
 })
 ```
 
-**Casts.** No `as`, `any`, or `unknown` annotation: decode unknown data once with a schema at the boundary; `satisfies` and `as const` are the only assertions.
+**Casts.** No `as`, `any` or erasing a known shape into `unknown`; `satisfies` and `as const` are the only assertions. Genuinely opaque SDK/framework inputs remain `unknown` until narrowed or decoded at their boundary—do not fabricate a shape to avoid that type. Decode incoming protocol data once with Schema before use.
 
 ```ts
 // good
@@ -250,7 +250,7 @@ const params = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Un
 return Effect.succeed([{text: part.text, type: 'text'} satisfies TextContent])
 // bad — a cast satisfies one rule and the next flags it
 const params = part.params as Record<string, unknown>
-create: Effect.fnUntraced(function* (input: unknown) {
+const params: unknown = part.params // erases an already-known shape
 ```
 
 **Decoders.** `Schema.decodeUnknownEffect` only for `unknown` input; typed input uses `Schema.decodeEffect`, and JSON text goes through `Schema.fromJsonString`.
@@ -281,7 +281,7 @@ import {type Plugin, createServer} from 'vite'
 export const EntryKind = Schema.Literals(['income', 'expense']) // no importer
 ```
 
-**Readonly.** Every property of a service shape is readonly, as in Effect's services, and so may class members be; readonly appears nowhere else, except on a `Schema.suspend` cycle's hand-written types.
+**Readonly.** Required on service-shape properties. Allowed on class members and handwritten `Schema.suspend` cycle types; otherwise forbidden.
 
 **Disables.** Fix the idiom or reproduce a rule defect. Inline disables require an unavoidable conflict and -- reason; never disable ordering or weaken file configuration. Report dependency-only diagnostics; rename filename violations.
 

@@ -89,14 +89,6 @@ export function importedMember(input: {
 	)
 }
 
-export function effectBuilderName(input: {context: Context; node: ESTree.Expression | ESTree.Super}) {
-	const builder = input.node.type === 'CallExpression' ? input.node.callee : input.node
-	return builder.type === 'MemberExpression' &&
-		importedMember({context: input.context, importedName: 'Effect', node: builder})
-		? memberName(builder)
-		: Option.none()
-}
-
 export function isSchemaOperationName(name: string) {
 	return /^(?:(?:decode|encode)(?:Unknown)?(?:Effect|Exit|Option|Promise|Result|Sync)|asserts|is)$/u.test(name)
 }

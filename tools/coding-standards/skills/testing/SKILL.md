@@ -5,7 +5,7 @@ description: 'Select and run black-box behavior proof for Effect apps/tools. Use
 
 # Testing
 
-**Scope.** Guard owned behavior, not coverage. CLI-installed skills are read-only; change their source and refresh via CLI.
+**Scope.** Guard owned behavior, not coverage.
 
 **Timing.** An experiment needs trustworthy proof of its question, not comprehensive release coverage. Final acceptance applies to retained delivery; label stubbed/unproved behavior.
 

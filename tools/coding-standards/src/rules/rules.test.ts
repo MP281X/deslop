@@ -182,7 +182,6 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								'@deslop/coding-standards(no-effect-property-arrow)',
 								'@deslop/coding-standards(no-double-nullish-check)',
 								'@deslop/coding-standards(no-double-nullish-check)',
-								'@deslop/coding-standards(no-fail-in-generator)',
 								'@deslop/coding-standards(no-fake-ref-state)',
 								'@deslop/coding-standards(no-fake-ref-state)',
 								'@deslop/coding-standards(no-hand-written-guard)',
@@ -418,10 +417,11 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 			() =>
 				Effect.gen(function* () {
 					const result = yield* lintSource({
-						'behavior.test.ts': pipe(
+						'behavior.test.tsx': pipe(
 							[
 								"import {assert, it} from '@effect/vitest'",
 								"import {Array, Effect, MutableRef, pipe} from 'effect'",
+								"import type {Ref} from 'react'",
 								"import {owner} from './owner.ts'",
 								'',
 								'declare const ticket: {message: string}',
@@ -433,7 +433,8 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								'export const patterns = [matcher(), matcher()]',
 								'const operations = {normalize: (items: string[]) => pipe(items, Array.reverse)}',
 								'const recovered = Effect.gen(function* () { return yield* Effect.catch(Effect.fail("missing"), () => Effect.succeed(1)) })',
-								'function Field({ref, ...props}: {ref?: unknown; label: string}) { return [ref, props.label] }',
+								'function Field({ref, ...props}: {ref?: Ref<HTMLInputElement>; label: string}) { return <input ref={ref} aria-label={props.label} /> }',
+								'export const primitiveFailure = Effect.gen(function* () { return yield* Effect.fail("missing") })',
 								'it("keeps the trimmed message", () => { assert.strictEqual(ticket.message, "hello") })',
 								'export {Field, cells, operations, recovered}'
 							],
@@ -443,6 +444,127 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 							"import {MutableRef} from 'effect'\nexport const owner = {get cell() { return MutableRef.make(0) }}"
 					})
 					assert.deepStrictEqual(customCodes(result.stdout), [])
+				}),
+			20_000
+		)
+
+		testApi.effect(
+			'enforces native correctness rules without rejecting protected cases',
+			() =>
+				Effect.gen(function* () {
+					const invalid = yield* lintSource({
+						'native-invalid.tsx': pipe(
+							[
+								'declare const amount: number',
+								'declare const input: {slot?: {handler: () => void; amount: number}}',
+								'export var mutable = 0',
+								'export const rounded = 9007199254740993',
+								'export const coalesced = amount + 1 ?? 0',
+								'export const optionalArithmetic = input.slot?.amount + 1',
+								'export const optionalInvoke = (input.slot?.handler)()',
+								'export function Frozen() { return <input value="ready" onChange={event => console.info(event.currentTarget.value)} /> }'
+							],
+							Array.join('\n')
+						)
+					})
+					const rules = [
+						'eslint(no-var)',
+						'eslint(no-loss-of-precision)',
+						'eslint(no-constant-binary-expression)',
+						'eslint(no-unsafe-optional-chaining)',
+						'react-doctor(no-controlled-input-value-without-state-update)'
+					]
+					assert.deepStrictEqual(
+						pipe(
+							invalid.stdout.diagnostics,
+							Array.map(diagnostic => diagnostic.code),
+							Array.filter(code => Array.contains(rules, code)),
+							Array.sort(String.Order)
+						),
+						pipe(Array.append(rules, 'eslint(no-unsafe-optional-chaining)'), Array.sort(String.Order))
+					)
+					const valid = yield* lintSource({
+						'native-valid.tsx': pipe(
+							[
+								"import {Schema} from 'effect'",
+								"import {useState} from 'react'",
+								'declare const amount: number',
+								'declare const input: {slot?: {handler: () => void; amount: number}}',
+								'export const fixed = 0',
+								'export const precise = 9007199254740993n',
+								'export const coalesced = amount + (input.slot?.amount ?? 0)',
+								'export const safeInvoke = input.slot?.handler()',
+								'export type Boundary = typeof Schema.Unknown.Type',
+								'export function Editable() { const [value, setValue] = useState(""); return <input value={value} onChange={event => setValue(event.currentTarget.value)} /> }',
+								'export const locked = <input value="ready" readOnly />',
+								'export const token = <input type="radio" value="a" onChange={() => {}} />'
+							],
+							Array.join('\n')
+						)
+					})
+					assert.deepStrictEqual(
+						pipe(
+							valid.stdout.diagnostics,
+							Array.map(diagnostic => diagnostic.code),
+							Array.filter(code => Array.contains(rules, code))
+						),
+						[]
+					)
+					const failures = yield* lintSource({
+						'native-failures.ts': pipe(
+							[
+								"import {Effect, Schema} from 'effect'",
+								'class Missing extends Schema.TaggedError<Missing>()("Missing", {}) {}',
+								'export const wrapped = Effect.gen(function* () { return yield* Effect.fail(Missing.make({})) })',
+								'export const primitive = Effect.gen(function* () { return yield* Effect.fail("missing") })',
+								'export const yielded = Effect.gen(function* () { return yield* Missing.make({}) })'
+							],
+							Array.join('\n')
+						)
+					})
+					assert.deepStrictEqual(
+						pipe(
+							failures.stdout.diagnostics,
+							Array.filter(diagnostic => diagnostic.code === 'effecttsgo(unnecessary-fail-yieldable-error)'),
+							Array.map(diagnostic => diagnostic.labels[0]?.span.line)
+						),
+						[4]
+					)
+				}),
+			20_000
+		)
+
+		testApi.effect(
+			'keeps labeled tuples and component refs without opening object bypasses',
+			() =>
+				Effect.gen(function* () {
+					const result = yield* lintSource({
+						'parameters.tsx': pipe(
+							[
+								"import type {Ref} from 'react'",
+								'export type Named = [label: string, count: number]',
+								'export type Alias = Named',
+								'export function labeled([label, count]: [label: string, count: number]) { return `${label}:${count}` }',
+								'export function aliased([label, count]: Alias) { return `${label}:${count}` }',
+								'export function positional([first]: string[]) { return first }',
+								'export function byRef({ref, ...rest}: {ref: string; name: string}) { return `${ref}:${rest.name}` }',
+								'export function Pretend({ref, ...rest}: {ref: string; name: string}) { return `${ref}:${rest.name}` }',
+								'export function Field({ref, ...rest}: {ref?: Ref<HTMLInputElement>; name: string}) { return <input ref={ref} aria-label={rest.name} /> }',
+								'export const FieldArrow = ({ref, ...rest}: {ref?: Ref<HTMLInputElement>; name: string}) => <input ref={ref} aria-label={rest.name} />',
+								'for (const {ref, ...rest} of [{ref: "x", name: "y"}]) console.info(ref, rest.name)',
+								'export function local(input: {name: string}) { const {name} = input; return name }'
+							],
+							Array.join('\n')
+						)
+					})
+					assert.deepStrictEqual(
+						pipe(
+							result.stdout.diagnostics,
+							Array.filter(diagnostic => diagnostic.code === '@deslop/coding-standards(no-destructured-parameter)'),
+							Array.map(diagnostic => diagnostic.labels[0]?.span.line)
+						),
+						[7, 8, 9, 12]
+					)
 				}),
 			20_000
 		)

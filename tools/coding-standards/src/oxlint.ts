@@ -10,7 +10,6 @@ import {noDestructuredParameter} from '#rules/no-destructured-parameter.ts'
 import {noDoubleNullishCheck} from '#rules/no-double-nullish-check.ts'
 import {noEffectPropertyArrow} from '#rules/no-effect-property-arrow.ts'
 import {noErrorMessageAssertion} from '#rules/no-error-message-assertion.ts'
-import {noFailInGenerator} from '#rules/no-fail-in-generator.ts'
 import {noFakeRefState} from '#rules/no-fake-ref-state.ts'
 import {noHandWrittenGuard} from '#rules/no-hand-written-guard.ts'
 import {noLet} from '#rules/no-let.ts'
@@ -90,7 +89,6 @@ export const oxlint = defineConfig({
 		'@deslop/coding-standards/no-double-nullish-check': 'error',
 		'@deslop/coding-standards/no-effect-property-arrow': 'error',
 		'@deslop/coding-standards/no-error-message-assertion': 'error',
-		'@deslop/coding-standards/no-fail-in-generator': 'error',
 		'@deslop/coding-standards/no-fake-ref-state': 'error',
 		'@deslop/coding-standards/no-hand-written-guard': 'error',
 		'@deslop/coding-standards/no-let': 'error',
@@ -333,6 +331,7 @@ export const oxlint = defineConfig({
 		'max-depth': ['error', 3],
 		'max-nested-callbacks': ['error', 6],
 		'no-cond-assign': 'error',
+		'no-constant-binary-expression': 'error',
 		'no-continue': 'error',
 		'no-control-regex': 'error',
 		'no-debugger': 'error',
@@ -346,6 +345,7 @@ export const oxlint = defineConfig({
 		'no-invalid-regexp': 'error',
 		'no-iterator': 'error',
 		'no-lonely-if': 'error',
+		'no-loss-of-precision': 'error',
 		'no-misleading-character-class': 'error',
 		'no-multi-assign': 'error',
 		'no-negated-condition': 'error',
@@ -434,6 +434,7 @@ export const oxlint = defineConfig({
 		'no-unneeded-ternary': 'error',
 		'no-unreachable-loop': 'error',
 		'no-unsafe-finally': 'error',
+		'no-unsafe-optional-chaining': ['error', {disallowArithmeticOperators: true}],
 		'no-unused-expressions': 'error',
 		'no-useless-assignment': 'error',
 		'no-useless-backreference': 'error',
@@ -445,6 +446,7 @@ export const oxlint = defineConfig({
 		'no-useless-escape': 'error',
 		'no-useless-rename': 'error',
 		'no-useless-return': 'error',
+		'no-var': 'error',
 		'no-void': 'error',
 		'object-shorthand': 'error',
 
@@ -462,6 +464,7 @@ export const oxlint = defineConfig({
 
 		// React Doctor JSX and component contracts
 		'react-doctor/no-call-component-as-function': 'error',
+		'react-doctor/no-controlled-input-value-without-state-update': 'error',
 		'react-doctor/no-create-context-in-render': 'error',
 		'react-doctor/no-default-props': 'error',
 		'react-doctor/no-inline-exhaustive-style': 'error',
@@ -613,7 +616,6 @@ export default definePlugin({
 		'no-double-nullish-check': noDoubleNullishCheck,
 		'no-effect-property-arrow': noEffectPropertyArrow,
 		'no-error-message-assertion': noErrorMessageAssertion,
-		'no-fail-in-generator': noFailInGenerator,
 		'no-fake-ref-state': noFakeRefState,
 		'no-hand-written-guard': noHandWrittenGuard,
 		'no-let': noLet,

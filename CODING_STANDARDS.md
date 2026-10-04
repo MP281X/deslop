@@ -46,6 +46,8 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 ## Dependencies
 
 - Keep dependencies in their existing owning packages; shared root dependencies stay at the root. Resolve version drift with normal package-manager updates, not by relocating declarations. Published tools declare the dependencies their consumers need.
+- Updates stay within declared ranges and supported upstream families; update coupled packages together, then verify their real consumers. Vite+ owns its exact lint/test toolchain versions; do not independently chase their newer tags.
+- Peer checks stay strict. Vite+'s versioned Vite alias is accepted only for explicitly inspected consumer versions in `pnpm-workspace.yaml`, not through blanket `allowAny` or TypeScript peer suppression. Recheck compatibility when either side changes.
 
 ## RPC
 
@@ -61,7 +63,10 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 
 ## Tooling
 
-- Enable a maintained rule before writing a custom one in `tools/coding-standards/src/rules`.
 - A check that needs a script becomes a custom lint rule instead.
-- `tools/coding-standards` stays flat under `src/`, with no install tests or separate plugin files; its reusable skills live beside `src/`. Personal native configuration lives in `.codex` and `.claude`, with global skills in `.claude/skills` and `.codex/skills` containing explicit aliases; the personal install recipe lives in environment’s Deslop reference. The public CLI copies engineering/design/testing into native roots, never global homes; commit generated copies, treat them as read-only and refresh through the CLI.
 - `tsconfig.json` owns jsx, lib, types and exclude only; `vite.config.ts` owns ignores, overrides, repository plugins, env and the entire formatter configuration with the `@deslop` import group; `.fallowrc.json` owns dead-code analysis.
+
+## Local context
+
+- A touched package or meaningful configuration folder (such as `.claude` or `.github`) owns a concise `README.md` for usage and non-obvious decisions, with `AGENTS.md` as a relative symlink to it. Keep it current with the owning changes.
+- No duplicated repository/skill policy, source-code narration, empty templates, briefs inside `src`, or generic folder documents without a semantic owner. Shared procedures remain in skills; package-specific context belongs in its brief.

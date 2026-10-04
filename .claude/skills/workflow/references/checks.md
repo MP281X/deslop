@@ -10,7 +10,9 @@ Collect the owned command's terminal result and exit status, not a log footer or
 
 ## Publishing
 
-Keep the body synchronized with the final branch's changed contracts, not its iteration history. Apply Pair's surface ownership and evidence choices; no chat history should be needed to understand the PR. Curate presentation, not verification: retain consequential risks and blockers even in mechanically changed files. No required summary/map/table template or blanket "proof and limits" bucket.
+Publish only after workflow's local-iteration and completion conditions are met. An unfinished requirement stays local and blocks publication, not in an "unverified claims" section. Remove unsupported claims; do not hide defects or skipped required checks to make the body look complete. A newly discovered defect in an existing PR must remain visible until resolved.
+
+Keep the body synchronized with the final branch's changed contracts, not its iteration history. Apply Pair's surface ownership and evidence choices; no chat history should be needed to understand the PR. Retain consequential risks even in mechanically changed files. No required summary/map/table template or blanket "proof and limits" bucket.
 
 Bodies/comments use scratch files and `--body-file` (GitLab: `--description-file`). Attach images with descriptive alt text; GitHub video uses bare `--attach '<file>'`. Read the resulting title/body back.
 
@@ -25,7 +27,7 @@ glab mr update <number> --draft --description-file <scratch>/body.md --attach <f
 
 If `watch_pull_request` is available, the primary thread registers the PR watch and ends its turn. A delegated checker returns this monitoring requirement to the primary instead of registering a watch on its child thread. T3 wakes the thread that registered the watch for check failures, completed checks, new comments/reviews or conflicts; inspect the event and read only relevant failed-job logs. Do not spawn a blocking child or poll alongside that watch.
 
-Without an app-owned watcher, wait for a pipeline with one blocking command, run in the background with a `timeout` of 7200000, then read only the failed jobs' logs.
+Without an app-owned watcher, wait for a pipeline with one blocking command, run in the background with `timeout 2h`, then read only the failed jobs' logs.
 
 GitHub:
 

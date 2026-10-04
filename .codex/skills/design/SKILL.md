@@ -5,7 +5,7 @@ description: 'UI and UX rules for screens and visual explanations. Use when buil
 
 # Design
 
-**Scope.** Follow repository-specific CODING_STANDARDS.md and engineering. CLI-installed skills are read-only; change the maintained package source and refresh through the CLI.
+**Scope.** Follow repository-specific CODING_STANDARDS.md and engineering.
 
 ## Decide
 
@@ -61,11 +61,42 @@ Do not remove necessary names, status, comfortable hit targets or instructions m
 | `Something went wrong` | `Couldn't save.` beside the existing retry action; keep the draft |
 | `No data`              | `No notes yet` beside the existing create action                  |
 
-**Alignment.** Give related headings, search, pinned rows, dividers and records one owning grid/inset. Headers and row contents share columns; action columns stay fixed when labels wrap or are absent. Use the same component/size variant for equivalent controls: icon box/stroke, hit target, control height, baseline and spacing. Pinned content stays outside the scroll area; borders do not jump while scrolling. Fix the owning layout/component, not per-instance margins or one-pixel offsets. Optical alignment and legibility still need inspection; matching bounding boxes alone is not enough.
+**Alignment.** Give related headings, search, pinned rows, dividers and records one owning grid/inset. Headers and row contents share columns; action columns stay fixed when labels wrap or are absent. Use the same component/size variant for equivalent controls: icon box/stroke, hit target, control height, baseline and spacing. Pinned content stays outside the scroll area; borders do not jump while scrolling. Fix the owning layout/component, not per-instance offsets; matching boxes alone does not establish optical alignment or legibility. Trace the cause before applying these repairs:
 
-**Interaction and state.** Controls remain discoverable, never hover-only. Use the canonical selected-row/active-tab treatment; do not add a second badge or check column that echoes it. Keep pending/error feedback beside its owner and preserve recoverable input. Motion explains change without delaying input, navigation or reading; frequent typing/navigation actions favor instant feedback. Respect reduced motion. No redundant refresh, copied state or polling shortcut around the existing reactive integration.
+| Defect                             | Check                                         | Owning repair                                                                                      |
+| ---------------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Squashed icon/avatar               | Fixed-size flex child shrinks                 | Preserve its canonical box with `shrink-0`                                                         |
+| Trailing action disappears         | Content track refuses to shrink               | `min-w-0` on content; `shrink-0` on the control, or a shrinkable grid track                        |
+| Wrapped rows look adrift           | Center alignment against variable-height text | Consistent, deliberate top/baseline alignment                                                      |
+| Identifiers look identical         | Truncation hides the distinguishing segment   | Preserve that segment; expose the full value through an existing keyboard/touch-accessible surface |
+| Counts shift during updates        | Proportional digits/inconsistent formatting   | `tabular-nums` + consistent locale/units                                                           |
+| Accents/tall scripts clip          | Tight line height or text-box clipping        | Fix the owning type-scale/overflow choice; don't shrink the font to fit                            |
+| Missing metadata leaves separators | Empty optional slots still render             | Omit orphaned separators/lines; reserve space only when the layout needs it                        |
+
+**Interaction and state.** Controls remain discoverable, never hover-only. Use the canonical selected-row/active-tab treatment; do not add a second badge or check column that echoes it. Keep pending/error feedback beside its owner and preserve recoverable input. No redundant refresh, copied state or polling shortcut around the existing reactive integration.
+
+**Motion.** Explain change without delaying input or moving content just for decoration. Reuse existing tokens/components; no new library for a fade or universal curve, duration, bounce or press scale.
+
+| Interaction                            | Treatment                                                                                          |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Typing, shortcuts, frequent navigation | Immediate response; no decorative movement                                                         |
+| Trigger-anchored surface               | Enter/exit from its trigger; a centered unanchored modal keeps a centered origin                   |
+| Rapid toggle/reversal                  | Retarget from the visible state; no input lock, stale-target snap or wait for the prior transition |
+| Drag/gesture                           | Follow the pointer; preserve the existing primitive's capture, cancellation and release behavior   |
+| Reduced motion                         | Preserve feedback through a suitable static or gentle non-spatial equivalent                       |
+
+Use responsive entry easing and brief existing durations. Simple retargetable states suit transitions; gestures may need the existing spring. Prefer transform/opacity where appropriate, but CSS/WAAPI does not guarantee compositor execution. Profile observed performance problems, not every animation. Inspect rapid repetition/reversal and reduced motion, not only the final frame.
 
 **Access and responsiveness.** Preserve the complete task on phones, not merely stacked desktop panes. Keep essential actions reachable with keyboard, touch and zoom. Use semantic structure, accessible names, visible focus, logical order and deliberate focus return. Inspect long/duplicate content, overflow, contrast and relevant failure/permission states. Do not remove an accessible affordance to satisfy visual minimalism.
+
+| Mobile defect                                 | Check                                                                                                |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Hover remains after tap                       | Capability-aware styles; inspect the framework's handling before adding another gate                 |
+| Input zoom/wrong keyboard                     | Readable input sizing + correct input type/mode; never disable browser zoom                          |
+| Bottom controls disappear                     | Real browser chrome, software keyboard and safe areas; appropriate supported viewport sizing/insets  |
+| Drag blocks scrolling/content can't be copied | Scope gesture/selection restrictions to their owner; preserve scrolling, zoom and selectable content |
+
+Touch and mouse can coexist; do not infer capabilities from user-agent strings or viewport width. No blanket suppression of overscroll, selection or native feedback without a demonstrated need and working replacement. Emulation verifies selected layout cases, not every phone behavior: affected device-specific keyboard/viewport/gesture contracts need target-device proof before completion.
 
 ## Prototype
 
@@ -75,7 +106,7 @@ Do not remove necessary names, status, comfortable hit targets or instructions m
 
 ## Verify and show
 
-**Inspect retained UI.** Open actual captures at the sizes needed for the task. Compare related edges, columns, baselines and equivalent controls across rows/screens—not just successful clicks. Include long/wrapped/missing content, selected/focus/error states and scrolling where relevant; a clean default row can hide misalignment. Inspect hierarchy, density, legibility and clipping. Exercise the relevant keyboard/touch, narrow/wide, zoom and focus-return journeys; run axe where applicable. A clean scan does not prove contrast or usability. Inspect meaningful video frames and sequence; a playable file is not proof of a good composition. Batch relevant inspection/repairs; recheck affected views rather than restart a whole audit after each micro-edit. Visible misalignment, inconsistent controls or redundant elements remain defects even when types/tests pass; fix them before claiming acceptance.
+**Inspect retained UI.** Open actual captures at the sizes needed for the task. Compare related edges, columns, baselines and equivalent controls across rows/screens—not just successful clicks. Use realistic long names/URLs, translated labels, Unicode, missing fields and relevant 0/1/many records at the actual container width. Respect schema/API limits; never add a validation limit to make layout pass. Mix cases across rows. Check selected/focus/error states and scrolling; a clean default row can hide misalignment. Inspect hierarchy, density, legibility and clipping. Exercise the relevant keyboard/touch, narrow/wide, zoom and focus-return journeys; run axe where applicable. A clean scan does not prove contrast or usability. Inspect meaningful video frames and sequence; a playable file is not proof of a good composition. Batch relevant inspection/repairs; recheck affected views rather than restart a whole audit after each micro-edit. Visible misalignment, inconsistent controls or redundant elements remain defects even when types/tests pass; fix them before claiming acceptance.
 
 **Show the design.** Use inspected screenshots for layout and short video for behavior. Compare at consistent sizes with states needed for the decision; no variant switcher just to see the options. Prefer the existing app-owned preview/element feedback. A visual must add spatial or interactive information, not reproduce prose, a file list or a fake runtime screenshot. Link useful existing evidence rather than render another explanation page. Use the user's theme and verify the actual browser color preference. Keep temporary source/services in ignored scratch, preserve useful media and retire settled attempts; persistent previews are opt-in.
 

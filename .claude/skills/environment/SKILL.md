@@ -21,7 +21,7 @@ Use [Deslop](references/deslop.md) or [Dual](references/dual.md) from that repos
 
 ## Repository skills and incremental refactors
 
-**Copies.** Commit CLI-generated engineering/design/testing so fresh checkouts have them. Treat them as read-only; change upstream skill source, not copies. Refresh only when installing/updating skills, not every session:
+**Refresh.** Follow the owning package brief for source/copy ownership. Refresh only when installing/updating skills, not every session:
 
 ```bash
 vpx @deslop/coding-standards@latest --help
