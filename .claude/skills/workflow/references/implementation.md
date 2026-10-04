@@ -2,7 +2,7 @@
 
 **Scope.** Complete the owned slice/reference replication. Apply engineering to every owned file, including inherited diagnostics; verify supported idioms before claiming limits. Shared registries/installs/lockfiles remain with the pair unless assigned.
 
-**Return.** State the changed outcome, owned paths and decisive observed proof, including failures/skips and unresolved gaps. No repeated brief, iteration recap or mandatory report template.
+**Return.** Return changed behavior/owned paths, decisive proof and unresolved gaps.
 
 ## Standalone probes
 

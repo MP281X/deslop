@@ -2,7 +2,7 @@
 
 **Scope.** Run assigned commands/behaviors from repository root; testing owns selection and rerun judgment. Serialize checks that compete for resources or mutate shared artifacts; independent stable-input checks may overlap. Use environment's root commands; no second suite.
 
-**Return.** Give actual criterion outcomes and decisive command/exit evidence, distinguishing cached from fresh execution and failed/skipped from passed. Link useful logs; no dumps, progress diary or mandatory report template.
+**Return.** Return criterion outcomes and command/exit evidence, separating cached/fresh and failed/skipped/passed.
 
 ## Commands
 
@@ -10,7 +10,7 @@ Collect the owned command's terminal result and exit status, not a log footer or
 
 ## Publishing
 
-**Describe once.** Explain the final branch's changed contracts with linked owning files and useful before/after examples. Group related changes; identify generated copies without describing their behavior again. Keep risks beside the affected change and collapse supporting proof. No second reading map, prose retelling of examples, formatting inventory or lifecycle facts T3 already shows. Distinguish recommended patterns from valid edge cases and stress-test fixtures.
+Cover the final branch's changed contracts, not the iteration history. Put each owning file, behavior/example and consequential risk together. Identify generated copies without explaining the same change again. Use the pair's communication rules; there is no required summary/map/table template.
 
 Bodies/comments use scratch files and `--body-file` (GitLab: `--description-file`). Attach images with descriptive alt text; GitHub video uses bare `--attach '<file>'`. Read the resulting title/body back.
 

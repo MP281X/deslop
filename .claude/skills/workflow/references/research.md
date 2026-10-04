@@ -2,7 +2,7 @@
 
 **Depth.** Settle the assigned question from code, logs, named threads or primary docs. Trace assumptions and decisive counterexamples; reuse known findings. Dependency research uses cloned sources only, never node_modules. Define/enumerate counted members; stop when settled.
 
-**Return.** Give the checked answer, decisive source/evidence and any unresolved fact. Use a table only when it helps compare; omit search diaries, dumps, empty sections and separate report files.
+**Return.** Answer the assigned question with decisive sources and unresolved facts.
 
 ## Source checkouts
 
