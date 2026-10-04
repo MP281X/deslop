@@ -1,6 +1,6 @@
 ---
 name: testing
-description: 'Curated black-box tests and trustworthy verification for Effect applications and tools. Read before writing, reviewing or running tests; apply engineering to the test code.'
+description: 'Select and run black-box behavior proof for Effect apps/tools. Use when choosing, writing, reviewing or running tests; apply engineering to test code and keep exploratory proof question-sized.'
 ---
 
 # Testing
@@ -40,7 +40,7 @@ assert.strictEqual(Array.flatMap(attioProvider.groups, group => group.actions).l
 
 ## Choose cases
 
-- **Contract.** Reachable input → observable output; a plausible wrong implementation must fail. Use the nearest public seam, not private helpers/new harnesses.
+- **Contract.** Reachable input → observable output; a plausible wrong implementation must fail. Use the nearest public seam, not private helpers/new harnesses. When behavior is uncertain, settle one reachable case with a focused check and minimal implementation, then choose the next case from the findings; do not batch tests for an imagined implementation or require universal TDD.
 - **Branches.** Exercise reachable empty/duplicate/concurrent/dependency-failure distinctions; no Cartesian product or random/repeated happy paths without a hypothesis.
 - **Failure.** Effect.flip for expected failure; Effect.exit for both outcomes. Assert domain identity and preserved state/resources: no partial write, lost value, extra retry or leak. Wording/rejection alone is insufficient; no incidental order assertions.
 - **Control.** Run against the unfixed implementation: the intended assertion fails, not setup/import/compilation. For refactoring, add missing coverage on old behavior first. Keep durable regressions, remove settled probes.

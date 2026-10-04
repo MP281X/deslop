@@ -1,6 +1,6 @@
 ---
 name: workflow
-description: 'Direct primary work and optional bounded delegation.'
+description: 'Coordinate primary engineering work and optional bounded delegation. Use when executing a task; delegated work follows only its assigned procedure, not this coordinator.'
 ---
 
 # Workflow
@@ -9,8 +9,8 @@ description: 'Direct primary work and optional bounded delegation.'
 
 ## Work directly
 
-- Apply settled preferences and queued corrections. Read touched code and nearest consumers; follow engineering for dependency-source inspection. Batch related searches/reads. Investigate further only for a specific blocker or uncertainty that can change the next result.
-- Implement and run routine checks in the primary with existing tools/runtime. Use strict lint and generators for enforceable conventions, not more prompt policing. No alternatives, plans or evaluation rounds for an obvious change.
+- Apply settled preferences and queued corrections. Read touched code and nearest consumers; follow engineering for dependency-source inspection. Read linked references only for the current question; do not preload every procedure or catalogue. Reuse relevant prior findings from named threads through T3 rather than copying history or rebuilding it. Batch related searches/reads and investigate further only when it can change the next result.
+- Implement and run routine checks in the primary with existing tools/runtime. Use strict lint and generators for enforceable conventions, not more prompt policing. No alternatives, plans or evaluation rounds for an obvious change. Honor analysis-only requests without turning them into implementation or an approval stage.
 - Keep experiments disposable. Before the direction is settled, fix only what makes the trial usable, trustworthy and safe for data/resources; show it before merge-readiness review, broad regression proof or aggressive refactoring/cleanup. Keep comparisons only while useful. Retain findings and discard/rebuild wrong approaches regardless of invested effort. A settled task needs no artificial prototype stage; design owns UI trials.
 - Ask through self-contained question cards only for unknowable goals, access, scope changes or consequential unresolved taste. Use the relevant example; continue independent work while awaiting an answer.
 - Give each durable preference/decision one owner: repository contracts in CODING_STANDARDS.md, reusable rules in their skill. Keep only a short responsibility-specific reminder elsewhere when needed for independent use. Use `node_modules/.cache/deslop/done-when.md` only for continuity in a long task, handoff or unresolved decision—not another transcript/status ledger.
@@ -28,7 +28,7 @@ Keep contracts, taste, shared inputs and integration with the primary. Delegate 
 | Verification    | A substantial journey or long check can run independently on stable inputs.        | [Checks](references/checks.md) / [Browser](references/browser.md) |
 | Code review     | A concrete correctness or contract risk warrants independent judgment.             | [Code review](references/code-review.md)                          |
 
-Use T3's live catalog within user provider/model constraints. Brief the outcome, procedure, owned resources/write permissions, decisive context, required proof and stop condition. Link evidence instead of copying procedures/transcripts; model/options belong to tool fields.
+Use T3's live catalog within user provider/model constraints. Brief the outcome, procedure, owned resources/write permissions, decisive context, required proof and stop condition. Link evidence instead of copying procedures/transcripts; model/options belong to tool fields. Independent judgment answers a concrete question, not a compulsory second opinion on every step.
 
 Retain task identities and join completion events. Send only action-changing decisions, blockers, corrections or stopped-writer handoffs. No progress reminders or duplicate bookkeeping. T3 owns coordination; read-only V2 inspection fills only a concrete diagnostic gap.
 

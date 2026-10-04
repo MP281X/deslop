@@ -1,6 +1,6 @@
 ---
 name: engineering
-description: 'Engineering rules for product code, paired with the shared lint. Use before designing or editing code, writing tests, or reviewing a diff.'
+description: 'TypeScript and Effect code conventions paired with shared lint. Use when designing, implementing or reviewing product/test code, including prototypes.'
 ---
 
 **Scope.** Apply these rules and repository-specific CODING_STANDARDS.md. CLI-installed copies are read-only; improve their package source, then refresh through the CLI.
@@ -15,13 +15,13 @@ description: 'Engineering rules for product code, paired with the shared lint. U
 
 **Experiments.** Write with these idioms; reserve the full refactor/cleanup pass for retained delivery. Keep disposable source isolated and shared rules intact.
 
-- **Requested only.** Build the smallest thing that does the requested job well and touch only what the request needs; an unrelated improvement is listed for the user. A refactor or cleanup request asks for depth instead: every rule applies to every line of the owned files.
+- **Requested only.** Check whether existing code, an installed module or a platform capability already satisfies the contract before writing more. Implement only the missing behavior; shorter code never justifies dropping requested behavior, safety or accessibility. Touch only what the request needs; unrelated improvements are reported. A refactor or cleanup request asks for depth instead: every rule applies to every line of the owned files.
 - **Inward layers.** Domain and service code never import HTTP, RPC, or other transport types.
-- **Building blocks.** Offer services, Layers, and functions the caller composes like any Effect module, never a wrapper that bundles them behind one call such as `serve(app)`.
+- **Building blocks.** For a consequential new interface, start with a realistic caller operation and its ordering, failure and lifetime obligations; hide useful complexity, not forwarded names. Offer services, Layers and functions the caller composes like any Effect module, never a bundle such as `serve(app)`. No mandatory architecture document or alternatives round.
 - **No machinery.** Behave correctly instead of building hooks, guards, or generators to enforce behavior.
 - **Behavior kept.** A refactor keeps behavior at every usage point. Two differences are accepted and reported with the change: one no usage point observes that makes the code simpler, and one a rule here causes, such as an error keeping its cause or sorted keys, unless a usage point parses it; printed diagnostics are not a contract. Any other behavior change is the user's decision, except a reachable bug's fix.
-- **Reachable bugs.** A bug a real input from a usage point triggers is fixed and reported, with every consumer of the changed output checked. Handling for input no caller produces is deleted; anything that looks intentional or that other code relies on is kept and reported as possibly intentional.
-- **Performance.** Improve performance in the touched code where you know how; measure on a realistic input only when a change claims speed or keeps a slower-looking form. Diagnose at the layer that owns the symptom: distributed spans for RPC/backend dependencies, React commits for rerenders, a browser performance profile for main-thread work. Correlate one real action before changing code, then repeat it on the fix; neither a screenshot nor a service name proves latency or trace coverage. Use the repository's instrumentation and the tool's help; profiling is not a ritual on every change.
+- **Reachable bugs.** A bug a real input from a usage point triggers is fixed and reported, with every consumer of the changed output checked. For hard bugs, use one symptom-specific replay and a prediction per probe; compare known-good/broken states when useful. Remove edits motivated by disproven hypotheses and check the original scenario after reducing a reproduction. Handling for input no caller produces is deleted; anything that looks intentional or that other code relies on is kept and reported as possibly intentional.
+- **Performance.** Improve performance in the touched code where you know how; measure on a realistic input only when a change claims speed or keeps a slower-looking form. Diagnose at the layer that owns the symptom: distributed spans for RPC/backend dependencies, React commits for rerenders, a browser performance profile for main-thread work. Correlate one real action before changing code, then repeat it on the fix; neither a screenshot nor a service name proves latency or trace coverage. Time correct completed work under equivalent workloads/configuration; distinguish setup/cache/profiling cost and report run count/variation. Differences within noise are unproved, not speedups. Use existing instrumentation; profiling is not a ritual on every change.
 - **Type safety.** A fix never weakens types to make a symptom go away: no widened or erased type, cast, dropped generic, or loosened exported type.
 - **Domain.** Implement the definition the domain uses, such as a cycle for recursion, never the nearest syntactic proxy.
 - **Reread.** Before delivering retained code, reread the diff and delete every line the outcome does not require.
@@ -379,7 +379,7 @@ static readonly layer = Layer.effect(Ledger, makeLedger) // a make with one call
 query(sql: string): Effect.Effect<Rows> // a method signature instead of a readonly property
 ```
 
-**Primitives.** Use Effect's primitives directly; rpcs and services already trace, and one scope owns each lifetime.
+**Primitives.** Use Effect's primitives directly; rpcs and services already trace, and one scope owns each lifetime. Compose established independent I/O with Effect.all and explicit appropriate concurrency; keep order-dependent, transactional or resource-conflicting work sequential.
 
 ```ts
 // good
@@ -444,7 +444,7 @@ const label = MutableRef.make<string>('') // repeats the inferred type
 export type SandboxLike = {id: string; renew: (seconds: number) => Promise<unknown>} // a copy of an inferred shape
 ```
 
-**Schema pairs.** Type pair immediately before every schema. Structs use Schema.Struct, never Schema.Class; reuse fields by spreading. Call schema.make directly for validation/defaults.
+**Schema pairs.** Type pair immediately before every schema. Structs use Schema.Struct, never Schema.Class; reuse fields by spreading. Use Schema.optionalKey for absent fields; Schema.optional allows explicit undefined too, so reserve it for that contract.
 
 ```ts
 // good
@@ -460,6 +460,18 @@ function cursorFromBigInt(value: bigint) {
 	return RunEventCursor.make(value.toString())
 }
 payload: Schema.Struct(pipe(PortfolioVisitor.fields, Struct.pick(['color', 'id', 'name', 'x', 'y']))) // the schema itself fits
+```
+
+**Construction.** `schema.make` applies defaults and validates synchronously, throwing on failure; use it for trusted construction. For reachable fallible construction with defaults, use `schema.makeEffect` and map its `SchemaIssue.Issue` to the owning domain error. Effect decoders report `SchemaError`; use the correct error contract and do not revalidate already-narrowed data.
+
+```ts
+// good — reachable constructor failure stays in the error channel
+pipe(
+	Name.makeEffect(input),
+	Effect.mapError(cause => NameError.make({cause, message: 'Invalid name'}))
+)
+// bad — input can fail a refinement even though its TypeScript type is string
+Name.make(input)
 ```
 
 **Cycles.** Handwrite each recursive-cycle type; annotate only Schema.suspend thunks. Noncycle types stay inferred; unions follow members.
@@ -559,6 +571,6 @@ const state = useState(false)
 ```
 
 - **Pure render.** Derive display values from props and subscribed state during render; never mutate them or perform an RPC, write or subscription there. Event handlers own user-triggered actions; Effects synchronize external systems, not copied state or calculations. Reuse the existing router/atom integration rather than fetching in a new Effect.
-- **State identity.** Keep one owner for each value, stable domain keys for list items and deliberate reset boundaries. Compiler memoization is a performance optimization, never a correctness or lifetime guarantee. Do not add manual memoization, compiler escape directives or weakened hook rules to hide an ownership problem.
+- **State identity.** Keep one owner for each value, stable domain keys for list items and deliberate reset boundaries. For an observed rerender problem, derive the needed value in the existing atom graph instead of subscribing to frequently changing unrelated state. Compiler memoization is a performance optimization, never a correctness or lifetime guarantee. Do not add manual memoization, compiler escape directives or weakened hook rules to hide an ownership problem.
 
 Testing judgment, fixtures, assertions and verification belong to the testing skill; these engineering rules still apply to test code.

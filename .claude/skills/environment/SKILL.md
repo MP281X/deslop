@@ -1,6 +1,6 @@
 ---
 name: environment
-description: 'Machine facts, repository entrypoints and local coding-skill setup.'
+description: 'Machine facts and repository commands. Use for host setup, local entrypoints or skill installation; repository-specific details are in the relevant reference.'
 ---
 
 # Environment

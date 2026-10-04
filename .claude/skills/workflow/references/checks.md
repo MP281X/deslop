@@ -6,7 +6,7 @@
 
 ## Commands
 
-Collect the owned command's terminal result and exit status, not a log footer or process search. Use the harness's returned session/cell identity and supported wait tools for long commands; do not spawn a checking agent merely to wait. Servers/stacks use readiness probes.
+Collect the owned command's terminal result and exit status, not a log footer or process search. Prefer scoped searches and native structured/quiet output; keep bulky logs in scratch and read the decisive region. Preserve raw failure diagnostics and the command's exit status—filtering must not hide a failure. Use returned session/cell identities to wait; do not spawn an agent merely to wait. Servers/stacks use readiness probes.
 
 ## Publishing
 
