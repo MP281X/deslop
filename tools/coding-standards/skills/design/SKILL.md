@@ -9,7 +9,7 @@ description: 'UI and UX rules for screens and visual explanations. Use when buil
 
 ## Decide
 
-**Defaults.** Apply settled user preferences, the task and concrete references before inventing a direction. Ask only about a genuinely new consequential tradeoff that the evidence cannot settle. A critique from another agent does not establish user preference.
+**Defaults.** Apply settled user preferences, the task and concrete references before inventing a direction. Keep durable visual preferences and accepted references in their owning design guidance or repository standards, not repeated task briefs; reuse them on the next screen. Ask only about a genuinely new consequential tradeoff that the evidence cannot settle. A critique from another agent does not establish user preference.
 
 **One meaning.** Each visible element must add information, enable a distinct action or clarify a relationship. Delete repeated headings, summaries, counts, status badges, decorative wrappers and controls that say or do the same thing in the same context. Prefer an obvious icon with an accessible name or a clear text label, not both repeating each other. Keyboard shortcuts, screen-reader labels and responsive placement are not redundant visible controls; preserve their function.
 
@@ -52,7 +52,7 @@ Do not remove necessary names, status or instructions merely to make a screen sm
 
 **Question.** Name the next user action and uncertainty the example should settle. If the task is already specified, implement it; do not manufacture design alternatives or a taste question.
 
-**Smallest useful example.** Build the cheapest rough runnable slice that can answer the question. A labelled conceptual sketch is enough only when execution is not needed to judge the idea; do not call it working software. Use realistic task/data. Do not implement production completeness or polish a gallery before showing the first useful result.
+**Smallest useful example.** Build the cheapest rough runnable slice that can answer the question. A labelled conceptual sketch is enough only when execution is not needed to judge the idea; do not call it working software. Use realistic task/data and one representative screen or interaction in the existing host. Set a short first-preview budget; if blocked, show the partial result and concrete blocker rather than expanding the investigation unseen. Stub an unneeded boundary honestly, not a disposable architecture. Do not implement production completeness or polish a gallery before showing the first useful result.
 
 **Feedback and synthesis.** Show the actual example while the result can still change direction. Add materially different alternatives only when feedback, unresolved uncertainty or an explicit broader request warrants them; no fixed variant count. Apply known preferences autonomously. Compare transferable strengths and choose a coherent blend, not a concatenation of incompatible mechanisms. Test its weakest assumption before expansion. Reuse one host, retire rejected source and expand the chosen slice; settled verification does not need another exploration round.
 

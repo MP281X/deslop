@@ -2,11 +2,7 @@
 
 **Scope.** Complete the owned slice/reference replication. Apply engineering to every owned file, including inherited diagnostics; verify supported idioms before claiming limits. Shared registries/installs/lockfiles remain with the pair unless assigned.
 
-## Result
-
-- **Outcome.** Changed behavior, then owned paths in reading order.
-- **Proof.** Contract | Observed outcome | Command/exit; keep failures/skips explicit.
-- **Constraints.** Only unresolved gaps; incompatible reference means concrete input → mismatch, not silent redesign. No iteration recap/repeated brief.
+**Return.** State the changed outcome, owned paths and decisive observed proof, including failures/skips and unresolved gaps. No repeated brief, iteration recap or mandatory report template.
 
 ## Standalone probes
 

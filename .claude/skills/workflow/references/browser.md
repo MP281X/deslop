@@ -2,11 +2,7 @@
 
 **Scope.** Prove supplied inputs → outcomes/URL with saved state. Apply design; reuse the supplied host, not a setup survey. This procedure owns capture, profiling and requested exposure; stop only owned services.
 
-## Result
-
-- **Verdict.** Observed behavior, accessibility and responsive outcomes.
-- **Evidence.** Input/viewport | Observed outcome | Capture; absolute media paths, meaningful frames only.
-- **Gaps.** Actual console errors, untested states and DOM-only checks. A DOM assertion is not visual inspection; no journey recap.
+**Return.** Show the observed outcome with inspected captures at absolute paths; state actual console errors and unproved behavior/accessibility/responsiveness. DOM assertions are not visual inspection. No journey recap or mandatory report template.
 
 ## Proof and previews
 

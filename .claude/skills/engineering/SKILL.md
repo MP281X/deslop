@@ -5,7 +5,7 @@ description: 'Engineering rules for product code, paired with the shared lint. U
 
 **Scope.** Apply these rules and repository-specific CODING_STANDARDS.md. CLI-installed copies are read-only; improve their package source, then refresh through the CLI.
 
-**Sources.** Match manifest/lock versions; inspect cloned upstream and nearest usage, never node_modules. Library APIs do not define coding policy.
+**Sources.** Match manifest/lock versions. Inspect the relevant cloned upstream implementation, types and nearest real usage before inventing an API wrapper or workaround; never node_modules. Follow only the paths needed to settle the question, with no dependency install/build just to read source. Library APIs do not define coding policy.
 
 **Diagnostics.** Use the shown idiom, not casts, weakened rules or a rewrite trading one diagnostic for another.
 
