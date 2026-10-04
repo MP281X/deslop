@@ -11,7 +11,16 @@ description: 'UI and UX rules for screens and visual explanations. Use when buil
 
 **Direction.** Start from the actual task, audience, content and settled preferences. Make the next user action and its relevant content dominant, not generic "premium" styling. When a reference is useful, inspect the relevant accepted one for transferable hierarchy, density and interaction choices; distinguish observed details from inferred ones. Community brand analyses are inspiration, not verified current tokens. Keep durable visual choices at their owner, not repeated briefs. Ask only about a consequential tradeoff the evidence cannot settle; another agent cannot establish user taste.
 
-**One meaning.** Each visible element must add information, enable a distinct action or clarify a relationship. Delete repeated headings, summaries, counts, status badges, decorative wrappers and controls that say or do the same thing in the same context. Prefer an obvious icon with an accessible name or a clear text label, not both repeating each other. Keyboard shortcuts, screen-reader labels and responsive placement are not redundant visible controls; preserve their function.
+**One meaning.** Each visible element must add information, enable a distinct action or clarify a relationship. Delete repeated headings, summaries, counts, status badges, decorative wrappers and controls that say or do the same thing. Remove explanations that merely restate the visible example/state. Keyboard shortcuts, screen-reader labels and responsive placement are not redundant visible controls; preserve their function.
+
+**Scan-first.** Put the task, relevant content and next action where they can be identified without reading a paragraph. Use stable visual roles, not another card/badge/icon for every fact. Expose needed detail on demand, never hide a consequential warning or essential action.
+
+| Content                    | Preferred treatment                                                       |
+| -------------------------- | ------------------------------------------------------------------------- |
+| Comparable records/options | Aligned rows/columns; consistent order, units and metadata placement      |
+| Familiar action            | Conventional icon-only control with an accessible name; one visible owner |
+| Ambiguous action           | Clear text label, not an invented/guessed icon or redundant icon + text   |
+| Explanation                | Real state/example first; text only for missing context or consequences   |
 
 ```tsx
 // one visible action, named for assistive technology
@@ -20,7 +29,7 @@ description: 'UI and UX rules for screens and visual explanations. Use when buil
 <Button><PencilIcon />Rename</Button>
 ```
 
-Do not remove necessary names, status or instructions merely to make a screen smaller. An unfamiliar icon is not an adequate replacement for a clear label.
+Do not remove necessary names, status, comfortable hit targets or instructions merely to make a screen smaller.
 
 ## Build
 
@@ -52,7 +61,7 @@ Do not remove necessary names, status or instructions merely to make a screen sm
 | `Something went wrong` | `Couldn't save.` beside the existing retry action; keep the draft |
 | `No data`              | `No notes yet` beside the existing create action                  |
 
-**Alignment.** Related headings, search, pinned rows, dividers and list content share deliberate edges. Reuse the owning inset/grid rather than tuning each instance. Match icon boxes, control height, text baseline, spacing and density within the same role. Pinned content stays outside the scroll area; borders do not jump while scrolling. Fix the shared layout cause, not individual one-pixel offsets. Optical alignment and legibility still need inspection; matching bounding boxes alone is not enough.
+**Alignment.** Give related headings, search, pinned rows, dividers and records one owning grid/inset. Headers and row contents share columns; action columns stay fixed when labels wrap or are absent. Use the same component/size variant for equivalent controls: icon box/stroke, hit target, control height, baseline and spacing. Pinned content stays outside the scroll area; borders do not jump while scrolling. Fix the owning layout/component, not per-instance margins or one-pixel offsets. Optical alignment and legibility still need inspection; matching bounding boxes alone is not enough.
 
 **Interaction and state.** Controls remain discoverable, never hover-only. Use the canonical selected-row/active-tab treatment; do not add a second badge or check column that echoes it. Keep pending/error feedback beside its owner and preserve recoverable input. Motion explains change without delaying input, navigation or reading; frequent typing/navigation actions favor instant feedback. Respect reduced motion. No redundant refresh, copied state or polling shortcut around the existing reactive integration.
 
@@ -66,7 +75,7 @@ Do not remove necessary names, status or instructions merely to make a screen sm
 
 ## Verify and show
 
-**Inspect retained UI.** Open actual captures at the sizes needed for the task. Check whether every element earns its place, actions have one visible owner, related controls use the same renderer, and edges/baselines/spacing align. Inspect hierarchy, density, legibility, clipping and visual states—not just successful clicks. Exercise the relevant keyboard/touch, narrow/wide, zoom, error and focus-return journeys; run axe where applicable. A clean scan does not prove contrast or usability. Inspect meaningful video frames and sequence; a playable file is not proof of a good composition. Batch relevant state/viewport inspection and resulting repairs; recheck affected views rather than restart a whole visual audit after each micro-edit. Fix observed defects before claiming acceptance.
+**Inspect retained UI.** Open actual captures at the sizes needed for the task. Compare related edges, columns, baselines and equivalent controls across rows/screens—not just successful clicks. Include long/wrapped/missing content, selected/focus/error states and scrolling where relevant; a clean default row can hide misalignment. Inspect hierarchy, density, legibility and clipping. Exercise the relevant keyboard/touch, narrow/wide, zoom and focus-return journeys; run axe where applicable. A clean scan does not prove contrast or usability. Inspect meaningful video frames and sequence; a playable file is not proof of a good composition. Batch relevant inspection/repairs; recheck affected views rather than restart a whole audit after each micro-edit. Visible misalignment, inconsistent controls or redundant elements remain defects even when types/tests pass; fix them before claiming acceptance.
 
 **Show the design.** Use inspected screenshots for layout and short video for behavior. Compare at consistent sizes with states needed for the decision; no variant switcher just to see the options. Prefer the existing app-owned preview/element feedback. A visual must add spatial or interactive information, not reproduce prose, a file list or a fake runtime screenshot. Link useful existing evidence rather than render another explanation page. Use the user's theme and verify the actual browser color preference. Keep temporary source/services in ignored scratch, preserve useful media and retire settled attempts; persistent previews are opt-in.
 

@@ -11,8 +11,10 @@ Work only on this thread's existing branch. Updating it from the default is allo
 
 ## Communication
 
+Apply the same scan-first, explicit-meaning and deduplication rules to authored docs, READMEs and prompts. Preserve necessary contracts/context; do not turn an unrelated task into a documentation rewrite.
+
 - **Answer first.** Give the useful result, consequential choice or blocker. Answer ready questions without waiting for unrelated work.
-- **Scan-first.** A simple answer needs one line. Otherwise use short labeled bullets, one idea per line and meaningful before → after pairs. Group only when it helps scanning; no paragraph preamble, fixed report template or empty sections. Tables compare; trees show structure; images/video show visible behavior. Do not turn prose into a diagram just for decoration.
+- **Scan-first.** A simple answer needs one line. Prefer compact tables for comparable facts/options, short bullets for independent points and before → after pairs for changes. Keep cells short, one idea per row/line; no prose preamble, fixed report template or empty sections. Trees show structure; images/video show visible behavior. Do not turn prose into a diagram just for decoration.
 - **Explicit meaning.** Name the affected behavior and scope. Distinguish proposed from applied, checked from unverified, required fixes from optional follow-ups when relevant. State what a gap prevents claiming or delivering. Avoid vague labels, unexplained jargon and pronouns that make the user infer the subject.
 - **Surface ownership.** The PR explains the final change, consequential reasons, evidence and risks without requiring chat history. The thread answers the current question or shows only useful iteration deltas, prototypes, captures, actionable links and decisions/blockers needing attention now. T3 owns progress, files/diffs and check/commit lifecycle; do not echo them or repeat the PR. Link a file only when it helps the current action. Routine success needs no message; report a failure when it affects the outcome or needs user action.
 - **Evidence replaces prose.** Each fact appears once per artifact. Delete captions, summaries and explanations that merely restate a clear example/diff/image. Keep only context, scope, caveats or decisions the evidence cannot convey. Preserve self-contained PR context, not copied chat recaps.
