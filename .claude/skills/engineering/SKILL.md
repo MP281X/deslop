@@ -13,6 +13,8 @@ description: 'Engineering rules for product code, paired with the shared lint. U
 
 **Clarity.** Plain, explicit, idiomatic code, names and files; read top to bottom without commentary or cleverness.
 
+**Experiments.** Use these idioms while writing, not as a reason to run a full review/refactor/cleanup before a prototype can be tried. Keep disposable experiments isolated from retained product code and shared configuration; fix what blocks the trial or endangers data/resources. When the direction is settled, retain or rebuild the simplest implementation from the findings, then apply the full delivery quality bar. Do not preserve the wrong approach because it took time to build.
+
 - **Requested only.** Build the smallest thing that does the requested job well and touch only what the request needs; an unrelated improvement is listed for the user. A refactor or cleanup request asks for depth instead: every rule applies to every line of the owned files.
 - **Inward layers.** Domain and service code never import HTTP, RPC, or other transport types.
 - **Building blocks.** Offer services, Layers, and functions the caller composes like any Effect module, never a wrapper that bundles them behind one call such as `serve(app)`.
@@ -22,7 +24,7 @@ description: 'Engineering rules for product code, paired with the shared lint. U
 - **Performance.** Improve performance in the touched code where you know how; measure on a realistic input only when a change claims speed or keeps a slower-looking form. Diagnose at the layer that owns the symptom: distributed spans for RPC/backend dependencies, React commits for rerenders, a browser performance profile for main-thread work. Correlate one real action before changing code, then repeat it on the fix; neither a screenshot nor a service name proves latency or trace coverage. Use the repository's instrumentation and the tool's help; profiling is not a ritual on every change.
 - **Type safety.** A fix never weakens types to make a symptom go away: no widened or erased type, cast, dropped generic, or loosened exported type.
 - **Domain.** Implement the definition the domain uses, such as a cycle for recursion, never the nearest syntactic proxy.
-- **Reread.** Before finishing, reread the diff and delete every line the outcome does not require.
+- **Reread.** Before delivering retained code, reread the diff and delete every line the outcome does not require; not a merge-readiness pass before each exploratory preview.
 
 **Happy path.** Failures flow through the error channel: no catch, retry, fallback, backup, or defensive check unless the request or an existing contract needs it.
 

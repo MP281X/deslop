@@ -24,7 +24,7 @@ Do not remove necessary names, status or instructions merely to make a screen sm
 
 ## Build
 
-**Canonical components.** Find the existing renderer for the same role. Reuse its component, states and interaction model; do not create another picker, row or dialog for the same job. Inspect only the relevant source/props and registry capabilities, not a full catalogue for every task. Add missing primitives through the repository's registry command. If a shared pattern is wrong, fix its owning implementation within scope instead of copying its inconsistency or adding a local workaround. Without a sibling, use the supplied reference and existing component defaults within settled preferences.
+**Canonical components.** Find the existing renderer for the same role. Reuse its component, states and interaction model; do not create another picker, row or dialog for the same job. Inspect only the relevant source/props and registry capabilities, not a full catalogue for every task. Add missing primitives through the repository's registry command. For retained code, fix a wrong shared pattern at its owner within scope rather than copying its inconsistency or adding a local workaround. An exploratory preview does not require refactoring the shared system first. Without a sibling, use the supplied reference and existing component defaults within settled preferences.
 
 ```tsx
 // same model-selection control used elsewhere
@@ -33,7 +33,7 @@ Do not remove necessary names, status or instructions merely to make a screen sm
 <Select value={model} onValueChange={setModel} />
 ```
 
-**Tokens and structure.** Use the existing app host, compiler, theme, shared components and Tailwind tokens. No custom-CSS/dynamic-class escape, hardcoded color/size exception or weaker prototype checks. Keep surfaces flat and dense; group by proximity before adding borders or elevation. No nested cards or wrappers that merely label content again. Whitespace must support hierarchy, separation or comfortable use, not fill the page.
+**Tokens and structure.** Use the existing app host, compiler, theme, shared components and Tailwind tokens. No custom-CSS/dynamic-class escape or hardcoded color/size exception. Do not weaken shared rules/configuration for a throwaway experiment; do not demand a full check suite before showing it either. Keep surfaces flat and dense; group by proximity before adding borders or elevation. No nested cards or wrappers that merely label content again. Whitespace must support hierarchy, separation or comfortable use, not fill the page.
 
 ```tsx
 // existing primitives and semantic tokens
@@ -54,7 +54,7 @@ Do not remove necessary names, status or instructions merely to make a screen sm
 
 **Smallest useful example.** Build the cheapest rough runnable slice that can answer the question. A labelled conceptual sketch is enough only when execution is not needed to judge the idea; do not call it working software. Use realistic task/data and one representative screen or interaction in the existing host. Set a short first-preview budget; if blocked, show the partial result and concrete blocker rather than expanding the investigation unseen. Stub an unneeded boundary honestly, not a disposable architecture. Do not implement production completeness or polish a gallery before showing the first useful result.
 
-**Feedback and synthesis.** Show the actual example while the result can still change direction. Add materially different alternatives only when feedback, unresolved uncertainty or an explicit broader request warrants them; no fixed variant count. Apply known preferences autonomously. Compare transferable strengths and choose a coherent blend, not a concatenation of incompatible mechanisms. Test its weakest assumption before expansion. Reuse one host, retire rejected source and expand the chosen slice; settled verification does not need another exploration round.
+**Feedback and synthesis.** Let the user try the actual example before merge-readiness review, aggressive cleanup or comprehensive regression proof. Inspect enough to ensure it tests the intended question; label stubs and limits. Show it while the result can still change direction. Add materially different alternatives only when feedback, unresolved uncertainty or an explicit broader request warrants them; no fixed variant count. Apply known preferences autonomously. Compare transferable strengths and choose a coherent blend, not a concatenation of incompatible mechanisms. Test its weakest assumption before expansion. Reuse one host and keep only comparisons that still answer an open question. Freely discard attempts and rebuild from their findings when simpler than extending the wrong code; no fixed attempt count or sunk-cost obligation to expand a slice. Apply full review, relevant accessibility/responsive proof and cleanup to the retained implementation; settled verification does not need another exploration round.
 
 ## Verify and explain
 

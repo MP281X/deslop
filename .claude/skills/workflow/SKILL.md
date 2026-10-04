@@ -5,7 +5,7 @@ description: 'Direct primary work and optional bounded delegation.'
 
 # Workflow
 
-**Default.** Read the relevant code and constraints. Make the smallest useful change. Verify its behavior. Remove obsolete work. Show the result. Stop. These are responsibilities, not separate phases, approval gates or agent roles. Delegated work follows only its assigned procedure.
+**Default.** Read the relevant code and constraints. Make the smallest useful change and show it when it can answer the current question. Match verification and cleanup to that question, not hypothetical merge readiness. These are responsibilities, not separate phases, approval gates or agent roles. Delegated work follows only its assigned procedure.
 
 ## Work directly
 
@@ -14,7 +14,7 @@ description: 'Direct primary work and optional bounded delegation.'
 - For UI, follow design for an early representative prototype and unresolved taste. Do not turn its feedback into an approval stage for routine work.
 - Fold queued corrections into the current solution. Ask only for unknowable goals, access, scope changes or unresolved taste; use self-contained question cards with the relevant example. Continue independent work while an answer is pending.
 - Keep durable code/layout decisions in CODING_STANDARDS.md and reusable preferences in their owning skill, with concrete examples or references. Update that owner, not several reminders. Use `node_modules/.cache/deslop/done-when.md` only when a long-running task, handoff or unresolved decision needs continuity; record current constraints and gaps, not another transcript or T3 status ledger.
-- Fix in-scope bugs at their root. Delete superseded code, tests, configuration, dependencies and rejected prototypes in the same change. Remove settled scratch drivers and stop owned temporary services promptly; retain useful evidence and requested previews. Preserve unrelated work and sign-ins.
+- Keep experiments cheap to discard. Before the direction is settled, fix only what blocks a trustworthy trial or threatens data/resources; no aggressive refactor, broad regression suite or merge-readiness review before the user can try it. Keep useful comparisons until their question is settled. Once retaining an implementation, fix in-scope bugs at their root and remove superseded code, tests, configuration and dependencies. Discard/rebuild from findings when simpler; invested effort is not a reason to keep the wrong approach. Stop unused owned services and preserve unrelated work/sign-ins.
 - A repeated equivalent failure needs a new discriminating hypothesis, not another command or agent round. Run the smallest probe that can change the decision, or report the blocker. Preserve testing's one isolated timeout rerun; a genuine pass closes it.
 
 ## Delegate only for a benefit
@@ -37,8 +37,10 @@ Do not write a child's owned files until its writers stop or acknowledge a targe
 
 ## Verify and finish
 
+A preview is evidence for the question it tests, not a release claim. Run only the checks needed to make that experiment usable and trustworthy. For the implementation being delivered, reconcile required behavior, review the retained diff and remove settled trial footprints; do not repeat this work for each disposable attempt. If the direction is already clear, implement directly without a mandatory prototype/approval step.
+
 Keep checked source, dependencies, configuration and imported artifacts stable while checks run; disjoint work may continue. Use real public-seam proof for changed behavior, inspected media for visible outcomes, and independent instruction evaluation only for a consequential unresolved uncertainty. A wording edit does not require fresh agents. Reuse unaffected proof; rerun only affected criteria after repairs. Report failures, skips and unknowns honestly.
 
-Reread the whole diff and remove trial footprints. Stop when the requested outcome is proved, not when every possible improvement is exhausted. Work only in this worktree and assigned machine targets; confirm other irreversible/outward actions.
+Stop when the requested outcome is proved, not when every possible improvement is exhausted. Work only in this worktree and assigned machine targets; confirm other irreversible/outward actions.
 
 Current-branch commits/pushes and draft PR updates are authorized. Before pushing, fetch/update this branch from the default and reconcile conflicts. Describe the final branch once, following [publishing](references/checks.md#publishing), with useful examples and explicit gaps. Link the PR through T3, register its app-owned watch and end the turn; do not poll or duplicate the watcher. Resolve actionable review findings without manufacturing another review loop. Never create/switch branches or merge a PR.
