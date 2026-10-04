@@ -2,11 +2,7 @@
 
 **Depth.** Settle the assigned question from code, logs, named threads or primary docs. Trace assumptions and decisive counterexamples; reuse known findings. Dependency research uses cloned sources only, never node_modules. Define/enumerate counted members; stop when settled.
 
-## Result
-
-- **Answer.** Checked conclusion first, not the search process.
-- **Evidence.** Claim | Observation | Source (path:line or primary URL).
-- **Unknowns.** Unresolved facts separate from hypotheses; give the decisive next observation. Omit empty sections, diaries, dumps and report files.
+**Return.** Answer the assigned question with decisive sources and unresolved facts.
 
 ## Source checkouts
 
@@ -20,11 +16,15 @@ git clone --depth 1 --branch <version-tag-or-required-branch> <official-reposito
 
 ## Local transcript recovery
 
-Find a t3 thread's transcript (Claude session or Codex rollout) from its id:
+Prefer app-owned thread reads. To recover a local transcript, set `T3_DB` to the verified live database from environment and list the named thread's native provider sessions:
 
 ```bash
-S=$(sqlite3 ~/.t3/userdata/state.sqlite "select coalesce(json_extract(resume_cursor_json,'$.resume'), json_extract(resume_cursor_json,'$.threadId')) from provider_session_runtime where thread_id = '<thread id>'")
-ls ~/.claude/projects/*/$S.jsonl ~/.codex/sessions/*/*/*/*$S.jsonl 2>/dev/null
+sqlite3 -readonly -header -column "$T3_DB" "SELECT provider_thread_id, provider, status, json_extract(payload_json, '$.nativeThreadRef.nativeId') AS session_id, updated_at FROM orchestration_v2_projection_provider_threads WHERE thread_id = '<thread id>' ORDER BY updated_at DESC;"
+S='<selected native session id>'
+: "${S:?No native session selected}"
+find "$HOME/.codex/sessions" "$HOME/.claude/projects" -type f -name "*$S.jsonl"
 ```
 
-Claude agents are in `<session>/subagents/` beside the transcript. Codex children live under `~/.codex/sessions/YYYY/MM/DD/`; the first `session_meta` record's `payload.parent_thread_id` links to the parent provider session, not the T3 thread. Follow it recursively; forked parent messages are not new work.
+Select the native session matching the run being investigated; its `orchestration_v2_projection_runs.provider_thread_id` identifies the provider-thread row. The latest session need not cover stopped/replaced runs. Codex rollouts and Claude project transcripts use different roots; the filename lookup covers both. Do not substitute stale legacy projections or search all transcripts when the named session is missing.
+
+Claude agents are in `<session>/subagents/` beside their session transcript. Codex children live under `~/.codex/sessions/YYYY/MM/DD/`; the first `session_meta` record's `payload.parent_thread_id` links to the parent provider session, not the T3 thread. Follow it recursively; forked parent messages are not new work.

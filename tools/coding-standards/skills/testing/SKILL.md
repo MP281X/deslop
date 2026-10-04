@@ -1,11 +1,13 @@
 ---
 name: testing
-description: 'Curated black-box tests and trustworthy verification for Effect applications and tools. Read before writing, reviewing or running tests; apply engineering to the test code.'
+description: 'Select and run black-box behavior proof for Effect apps/tools. Use when choosing, writing, reviewing or running tests; apply engineering to test code and keep exploratory proof question-sized.'
 ---
 
 # Testing
 
-**Scope.** Guard owned behavior, not coverage. CLI-installed skills are read-only; change their source and refresh via CLI.
+**Scope.** Guard owned behavior, not coverage.
+
+**Timing.** An experiment needs trustworthy proof of its question, not comprehensive release coverage. Final acceptance applies to retained delivery; label stubbed/unproved behavior.
 
 - **Worth it.** Test owned branching, computation, parsing/state transitions a plausible regression breaks; add missing valuable coverage before refactoring.
 - **Seam.** Test the exported layer, service, or function of a package or an app's service as a black box, so rewriting the implementation leaves every test green; the browser proves UI components.
@@ -38,7 +40,7 @@ assert.strictEqual(Array.flatMap(attioProvider.groups, group => group.actions).l
 
 ## Choose cases
 
-- **Contract.** Reachable input → observable output; a plausible wrong implementation must fail. Use the nearest public seam, not private helpers/new harnesses.
+- **Contract.** Reachable input → observable output; a plausible wrong implementation must fail. Use the nearest public seam, not private helpers/new harnesses. When behavior is uncertain, settle one reachable case with a focused check and minimal implementation, then choose the next case from the findings; do not batch tests for an imagined implementation or require universal TDD.
 - **Branches.** Exercise reachable empty/duplicate/concurrent/dependency-failure distinctions; no Cartesian product or random/repeated happy paths without a hypothesis.
 - **Failure.** Effect.flip for expected failure; Effect.exit for both outcomes. Assert domain identity and preserved state/resources: no partial write, lost value, extra retry or leak. Wording/rejection alone is insufficient; no incidental order assertions.
 - **Control.** Run against the unfixed implementation: the intended assertion fails, not setup/import/compilation. For refactoring, add missing coverage on old behavior first. Keep durable regressions, remove settled probes.
@@ -60,4 +62,4 @@ assert.strictEqual(Array.flatMap(attioProvider.groups, group => group.actions).l
 - **Inventory.** Collect independent failures once instead of cancelling the suite at the first failure. Distinguish separate cases from repeated observations. A timeout receives one isolated rerun of that same test; after a genuine pass, stop investigating it. Do not call a bypassed selector or a skipped operation flaky.
 - **Evidence.** Preserve the first failure, exact command, execution count and exit status. Separate cause from hypothesis, product defect from setup failure, and a skipped criterion from a passing one. A source read or overall green command never substitutes for a missing behavior check.
 - **Stable inputs.** No writer changes a running check's source, dependencies, configuration or build inputs. A relevant edit invalidates its prior result; rerun affected criteria and reuse unaffected evidence. Independent research or browser journeys may continue without mutating those inputs.
-- **Final proof.** Reconcile every required behavior on the final code. Screenshots/video prove visible outcomes; public-seam execution proves nonvisual behavior; fresh agents prove changed agent instructions. Keep the result and useful evidence, not disposable drivers, fixture installs, reports or preview services.
+- **Final proof.** Reconcile every required behavior on the final code. Screenshots/video prove visible outcomes; public-seam execution proves nonvisual behavior; use fresh agents for changed instructions only when they can settle a consequential unresolved uncertainty, not routine wording edits. Keep the result and useful evidence, not disposable drivers, fixture installs, reports or preview services.

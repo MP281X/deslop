@@ -5,103 +5,115 @@ description: 'UI and UX rules for screens and visual explanations. Use when buil
 
 # Design
 
-**Scope.** Follow repository-specific CODING_STANDARDS.md. CLI-installed skills are read-only; improve their package source and refresh via the CLI.
+**Scope.** Follow repository-specific CODING_STANDARDS.md and engineering.
 
-**Catalog.** List installed components and current shadcn registry capabilities before designing; group the available primitives by purpose. Inspect source/props rather than assuming training-era APIs. Reuse shared components; add missing registry components through the repository command, never hand-build or restyle them. Lint violations use existing tokens/variants.
+## Decide
 
-**Code.** Reuse one app host, compiler, theme, shared components and Tailwind tokens. No custom-CSS/dynamic-class escape or weaker scratch checks. Verify the first real slice before expanding.
+**Direction.** Start from the actual task, audience, content and settled preferences. Make the next user action and its relevant content dominant, not generic "premium" styling. When a reference is useful, inspect the relevant accepted one for transferable hierarchy, density and interaction choices; distinguish observed details from inferred ones. Community brand analyses are inspiration, not verified current tokens. Keep durable visual choices at their owner, not repeated briefs. Ask only about a consequential tradeoff the evidence cannot settle; another agent cannot establish user taste.
+
+**One meaning.** Each visible element must add information, enable a distinct action or clarify a relationship. Delete repeated headings, summaries, counts, status badges, decorative wrappers and controls that say or do the same thing. Remove explanations that merely restate the visible example/state. Keyboard shortcuts, screen-reader labels and responsive placement are not redundant visible controls; preserve their function.
+
+**Scan-first.** Put the task, relevant content and next action where they can be identified without reading a paragraph. Use stable visual roles, not another card/badge/icon for every fact. Expose needed detail on demand, never hide a consequential warning or essential action.
+
+| Content                    | Preferred treatment                                                       |
+| -------------------------- | ------------------------------------------------------------------------- |
+| Comparable records/options | Aligned rows/columns; consistent order, units and metadata placement      |
+| Familiar action            | Conventional icon-only control with an accessible name; one visible owner |
+| Ambiguous action           | Clear text label, not an invented/guessed icon or redundant icon + text   |
+| Explanation                | Real state/example first; text only for missing context or consequences   |
 
 ```tsx
-// good
-<Badge variant="secondary">Draft</Badge>
-<Empty><EmptyTitle>No runs yet</EmptyTitle><Button onClick={() => startRun()}>Run</Button></Empty>
-// bad — "without hardcoding those values the desing/ui/ux need to be consistent with the rest of the app"
-<span className="rounded-full bg-[#eef] px-[7px] text-[11px]">Draft</span>
-<div className="flex flex-col items-center gap-2 p-6 text-muted-foreground">No runs yet</div>
+// one visible action, named for assistive technology
+<Button aria-label="Rename" size="icon"><PencilIcon aria-hidden /></Button>
+// redundant label for an already-obvious action
+<Button><PencilIcon />Rename</Button>
 ```
 
-**Consistency.** Match nearest screens: structure, spacing, type, icons, density, states, copy and behavior. Reuse their renderer; follow the majority where inconsistent. Without a sibling, use T3 Code's interface as reference.
+Do not remove necessary names, status, comfortable hit targets or instructions merely to make a screen smaller.
+
+## Build
+
+**Canonical components.** Reuse the existing renderer, states and interactions for the same role. Inspect its relevant source/API, not a full catalogue; add missing primitives through the repository registry command. Fix wrong shared patterns at their owner when delivering retained code, not before an exploratory preview. Without a sibling, use the supplied reference and component defaults within settled preferences.
 
 ```tsx
-// good — the picker every other model choice uses
+// same model-selection control used elsewhere
 <ModelPicker value={model} onValueChange={setModel} />
-// bad — "make how the button behave consistent with the rest to not break the user expectations"
-<Select value={model} onValueChange={setModel}>{models.map(...)}</Select> // a second picker that behaves differently
+// another representation of the same job
+<Select value={model} onValueChange={setModel} />
 ```
 
-**One way.** One representation/action, one consistent name and appearance. Remove redundant refresh, badges, icon-label pairs, decoration and wrappers.
+**Tokens and structure.** Use the existing app host, compiler, theme, shared components and Tailwind tokens. No custom-CSS/dynamic-class escape, hardcoded color/size exception or weakened shared rules. Keep surfaces flat and dense; group by proximity before adding borders or elevation. No nested cards or wrappers that merely label content again. Whitespace must support hierarchy, separation or comfortable use, not fill the page.
 
 ```tsx
-// good
-<StarIcon aria-label="Default" />
-// bad — "i don't want refresh buttons or stuffs like that in the ui/app"
-<Button onClick={refetch}><RefreshIcon /></Button>
-<Badge><StarIcon /> Default</Badge> // "Don't have icons/emoji and text that say the same thing"
+// existing primitives and semantic tokens
+<Empty><EmptyTitle>No runs yet</EmptyTitle><Button onClick={startRun}>Run</Button></Empty>
+// parallel hand-built appearance
+<div className="rounded-full bg-[#eef] px-[7px] text-[11px]">No runs yet</div>
 ```
 
-**Compact.** Flat and dense: group by proximity before adding a card, cards only when elevation means something and never nested, and no empty vertical space.
+**Typography.** Give headings, navigation, body text and data deliberate roles through the existing type scale, weights, line heights and readable line lengths. Use tabular numerals where values need comparison; let prose wrap without making controls inconsistent. Preserve established fonts and tokens rather than changing them for novelty. Do not substitute tiny labels, gratuitous capitals or isolated accent words for hierarchy.
 
-```tsx
-// good
-<section className="flex flex-col gap-2">{rows}</section>
-// bad — "keep the UI flat/brutalist/minimal… don't have nested cards or visually heavy layouts"
-<Card><CardContent><Card className="p-8">{rows}</Card></CardContent></Card>
-```
+**Copy.** Name actions from the user's task, not implementation internals. Keep the same vocabulary across controls and confirmations. Use plain verbs and sentence case; labels describe outcomes, not decoration. Empty states offer a relevant next action; errors identify the failed action and available recovery. Reuse its existing control rather than repeating the action in text or adding another button; do not invent a recovery that cannot work.
 
-**Precision.** Exact on the design-system scale: icons sized by one shared box, one horizontal inset for search, pinned rows, dividers, and list rows; pinned rows outside the scroll area; borders that stay put while scrolling.
+| Weak                   | Useful                                                            |
+| ---------------------- | ----------------------------------------------------------------- |
+| `Submit`               | `Save changes` → `Changes saved`                                  |
+| `Something went wrong` | `Couldn't save.` beside the existing retry action; keep the draft |
+| `No data`              | `No notes yet` beside the existing create action                  |
 
-```tsx
-// good
-<SearchIcon className="size-4" />
-// bad — "some icons have different sizes", "the spacing is kinda shitty"
-<SearchIcon width={15} height={15} />
-```
+**Alignment.** Give related headings, search, pinned rows, dividers and records one owning grid/inset. Headers and row contents share columns; action columns stay fixed when labels wrap or are absent. Use the same component/size variant for equivalent controls: icon box/stroke, hit target, control height, baseline and spacing. Pinned content stays outside the scroll area; borders do not jump while scrolling. Fix the owning layout/component, not per-instance offsets; matching boxes alone does not establish optical alignment or legibility. Trace the cause before applying these repairs:
 
-**Visible.** Controls are always visible, outlined or filled, never only on hover; state shows by background (the selected row, the active tab), never a check column; when rows share a name, the subtitle shows what tells them apart.
+| Defect                             | Check                                         | Owning repair                                                                                      |
+| ---------------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Squashed icon/avatar               | Fixed-size flex child shrinks                 | Preserve its canonical box with `shrink-0`                                                         |
+| Trailing action disappears         | Content track refuses to shrink               | `min-w-0` on content; `shrink-0` on the control, or a shrinkable grid track                        |
+| Wrapped rows look adrift           | Center alignment against variable-height text | Consistent, deliberate top/baseline alignment                                                      |
+| Identifiers look identical         | Truncation hides the distinguishing segment   | Preserve that segment; expose the full value through an existing keyboard/touch-accessible surface |
+| Counts shift during updates        | Proportional digits/inconsistent formatting   | `tabular-nums` + consistent locale/units                                                           |
+| Accents/tall scripts clip          | Tight line height or text-box clipping        | Fix the owning type-scale/overflow choice; don't shrink the font to fit                            |
+| Missing metadata leaves separators | Empty optional slots still render             | Omit orphaned separators/lines; reserve space only when the layout needs it                        |
 
-```tsx
-// good
-<TableRow data-state={selected ? 'selected' : undefined}>
-// bad — "i'm not a fan that things like the empty star comes out on hover"
-<Button className="opacity-0 group-hover:opacity-100" variant="ghost">
-```
+**Interaction and state.** Controls remain discoverable, never hover-only. Use the canonical selected-row/active-tab treatment; do not add a second badge or check column that echoes it. Keep pending/error feedback beside its owner and preserve recoverable input. No redundant refresh, copied state or polling shortcut around the existing reactive integration.
 
-**Responsive.** Preserve the complete task on phones, not merely stacked desktop panes. Test narrow/wide screens, long/duplicate content, zoom, overflow, touch targets and reachable controls; no hidden essential action or deep nesting.
+**Motion.** Explain change without delaying input or moving content just for decoration. Reuse existing tokens/components; no new library for a fade or universal curve, duration, bounce or press scale.
 
-**Accessible.** Semantic landmarks, headings, labels and status/errors; keyboard navigation, visible focus, logical order and deliberate return, contrast, reduced motion and accessible names. Run axe and real keyboard/touch journeys; automated scans alone do not prove accessibility.
+| Interaction                            | Treatment                                                                                          |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Typing, shortcuts, frequent navigation | Immediate response; no decorative movement                                                         |
+| Trigger-anchored surface               | Enter/exit from its trigger; a centered unanchored modal keeps a centered origin                   |
+| Rapid toggle/reversal                  | Retarget from the visible state; no input lock, stale-target snap or wait for the prior transition |
+| Drag/gesture                           | Follow the pointer; preserve the existing primitive's capture, cancellation and release behavior   |
+| Reduced motion                         | Preserve feedback through a suitable static or gentle non-spatial equivalent                       |
 
-**Feedback.** Quiet local mutation feedback; pending/error state beside its action or field. Motion explains change, never delays input/navigation/reading. Use existing tokens and respect reduced motion; no animation dependency for a CSS state change.
+Use responsive entry easing and brief existing durations. Simple retargetable states suit transitions; gestures may need the existing spring. Prefer transform/opacity where appropriate, but CSS/WAAPI does not guarantee compositor execution. Profile observed performance problems, not every animation. Inspect rapid repetition/reversal and reduced motion, not only the final frame.
 
-**Inspect.** Open actual desktop/phone captures: hierarchy, density, legibility, alignment, clipping, controls. Inspect meaningful video frames and sequence. Fix weak composition even when clicks/axe pass; a playable recording is not inspection.
+**Access and responsiveness.** Preserve the complete task on phones, not merely stacked desktop panes. Keep essential actions reachable with keyboard, touch and zoom. Use semantic structure, accessible names, visible focus, logical order and deliberate focus return. Inspect long/duplicate content, overflow, contrast and relevant failure/permission states. Do not remove an accessible affordance to satisfy visual minimalism.
 
-## Prototypes
+| Mobile defect                                 | Check                                                                                                |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Hover remains after tap                       | Capability-aware styles; inspect the framework's handling before adding another gate                 |
+| Input zoom/wrong keyboard                     | Readable input sizing + correct input type/mode; never disable browser zoom                          |
+| Bottom controls disappear                     | Real browser chrome, software keyboard and safe areas; appropriate supported viewport sizing/insets  |
+| Drag blocks scrolling/content can't be copied | Scope gesture/selection restrictions to their owner; preserve scrolling, zoom and selectable content |
 
-**Task.** Name the person, next action and uncertainty. Compare the same realistic task/data; hierarchy follows editing, scanning, comparison, graph exploration or review.
+Touch and mouse can coexist; do not infer capabilities from user-agent strings or viewport width. No blanket suppression of overscroll, selection or native feedback without a demonstrated need and working replacement. Emulation verifies selected layout cases, not every phone behavior: affected device-specific keyboard/viewport/gesture contracts need target-device proof before completion.
 
-**Range.** Show at least five clearly different directions across information model, interaction, layout, density and visual language—not cosmetic variations. Include an ambitious/unexpected concept and a plain smaller direction; adapt useful real-product patterns. Label executable prototypes versus conceptual sketches and what each tests. Concepts may contribute only an interaction, hierarchy or visual idea; never imply they are working software.
+## Prototype
 
-**Behavior.** Executable candidates exercise the smallest complete journey plus choice-changing empty, long/duplicate, selection, pending, failure and permission states. Conceptual sketches state unimplemented behavior; judge their idea, not a fictional runtime pass.
+**Try the question.** Build one rough representative screen/interaction in the existing host with realistic data. Inspect enough to make the trial trustworthy, then let the user try it before merge-readiness work. Label stubs and limits; a conceptual sketch is sufficient only when execution is unnecessary, never proof of working software. Set a short first-preview budget; show a partial result/blocker rather than expanding unseen. No production completeness or polished gallery first.
 
-**Synthesis.** The user often chooses between directions. Compare transferable strengths/tradeoffs and propose a coherent blend; don't force a winner or concatenate incompatible mechanisms. Test the blend's weakest assumption before expansion.
+**Use the findings.** For layout questions, compare hierarchy or interaction, not color-only variants. Add attempts only for unresolved uncertainty, feedback or an explicit request—no fixed count; a style question can compare style. Keep useful comparisons; discard/rebuild freely and combine compatible strengths, not incompatible mechanisms. Test the weakest assumption while it can change the choice. A settled direction needs no manufactured taste question or exploration round.
 
-**Show.** Labeled, inspected desktop/phone views at consistent sizes; short video only for meaningful interaction. No manual variant-switcher journey. Reuse one host, discard losing source and expand the synthesis. Settled UI verification does not require five more directions.
+## Verify and show
 
-## Visual explanations
+**Inspect retained UI.** Open actual captures at the sizes needed for the task. Compare related edges, columns, baselines and equivalent controls across rows/screens—not just successful clicks. Use realistic long names/URLs, translated labels, Unicode, missing fields and relevant 0/1/many records at the actual container width. Respect schema/API limits; never add a validation limit to make layout pass. Mix cases across rows. Check selected/focus/error states and scrolling; a clean default row can hide misalignment. Inspect hierarchy, density, legibility and clipping. Exercise the relevant keyboard/touch, narrow/wide, zoom and focus-return journeys; run axe where applicable. A clean scan does not prove contrast or usability. Inspect meaningful video frames and sequence; a playable file is not proof of a good composition. Batch relevant inspection/repairs; recheck affected views rather than restart a whole audit after each micro-edit. Visible misalignment, inconsistent controls or redundant elements remain defects even when types/tests pass; fix them before claiming acceptance.
 
-**Form.** Markdown for conclusions, comparisons and file maps; visuals for relationships/layout; interaction for exploration; video for change over time. Use the simplest useful form, not images of prose.
+**Show the design.** Use inspected screenshots for layout and short video for behavior. Compare at consistent sizes with states needed for the decision; no variant switcher just to see the options. Prefer the existing app-owned preview/element feedback. A visual must add spatial or interactive information, not reproduce prose, a file list or a fake runtime screenshot. Link useful existing evidence rather than render another explanation page. Use the user's theme and verify the actual browser color preference. Keep temporary source/services in ignored scratch, preserve useful media and retire settled attempts; persistent previews are opt-in.
 
-**Hierarchy.** Outcome/decision, decisive evidence, limits. Group by reader question, not execution order; consistent labels and annotations beside their subject. Simplify/split for phones, never shrink unreadable canvases.
-
-**Review.** Map every semantic/config change to final packages/files; distinguish moves/generated copies and omit formatting noise. Use readable lists/tables, not compressed tree art. Explain behavior and consequential choices without requiring diff reading. Risks stay visible; supporting detail collapses. No host-status duplication or screenshot file browser.
-
-**Delivery.** Markdown carries the explanation. HTML complements it only where spatial relationships, layout or interaction communicate something Markdown cannot; never screenshot or record a replacement for readable prose, tables or file maps. Embed only the useful visual, beside its claim; keep secondary captures collapsed or linked rather than making a gallery the default reading path. Prove actual controls, keyboard access, desktop/phone layout and errors. Keep temporary hosts, source and media under the repository's ignored scratch path, never a root proof directory. Stop owned services and remove settled source. No duplicate chat, page and PR recap.
-
-**Theme and scale.** Agent-made visuals use the user's dark theme and existing design tokens. Verify browser color preference; a dark class alone does not activate a media-query theme. Align headings, controls and rows to shared insets; use consistent type/spacing and compact grouping, not empty space or tiny text. Show variants separately legible, not as a compressed strip. Inspect hierarchy, density and alignment at desktop/phone sizes; reject a weak composition even when overflow and clicks pass.
+**Review surfaces.** Open on the outcome the user needs to judge, with technical detail available on demand. Group by changed behavior, not files or agent stages. A selected example, diagram or diff must reveal its scope; never make curated evidence look like complete coverage. Do not build a custom review dashboard when existing captures and the PR can answer the question. A design-skill edit is not a product-screen change.
 
 ## Image assets
 
-Use image generation for an asset that benefits from synthesis—illustration, atmosphere, texture, an icon exploration—not for ordinary text, an exact diagram or a fake screenshot of functioning software. Use the native generation/editing tool exposed by the assigned harness (Codex image work uses its native image tool); never invent a tool call or substitute an API client when the capability is absent. Missing capability is a reported gap, not a successful generation.
+Use image generation only for a needed illustrative asset, atmosphere, texture or icon exploration—not ordinary text, exact diagrams or fake working UI. Use the native tool exposed by the harness; no invented invocation or replacement API client when unavailable. Report missing capability honestly.
 
-Give the tool the asset's purpose, placement, composition, existing palette, intended dimensions/aspect ratio and output constraints. For edits, supply the real source image and name what must remain unchanged. Generate only assets the chosen direction needs; do not add speculative art or an image dependency to an otherwise complete UI. Use repository icons and CSS where they express the job more precisely.
-
-Inspect the actual returned file at its intended display size: composition, subject, crop, text/edge artifacts, contrast and fit with the surrounding screen. Correct visible defects before integrating. Preserve useful original output and identify it as generated; a generated visual is not runtime or browser evidence. Real UI proof still comes from the rendered app and actual interaction. Store only used assets in product source; remove discarded variants and temporary generation material.
+Describe purpose, placement, composition, palette and intended size/aspect ratio. For edits, supply the real source and state what remains unchanged. Generate only what the chosen direction needs; prefer existing icons/CSS when they express the job precisely. Inspect the returned asset at its intended size for crop, text/edge artifacts, contrast and fit. Preserve useful originals and identify generated assets as such; they are not runtime/browser proof. Keep only used assets in product source.

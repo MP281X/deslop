@@ -9,7 +9,7 @@
 		"prepare": "effect-tsgo patch --no-typescript --oxlint --force",
 		"shadcn": "cd packages/components && vpx shadcn@latest",
 		"test": "vp test",
-		"upgrade": "sh -c 'rm -f pnpm-lock.yaml && find . -name node_modules -type d -prune -exec rm -rf {} + && vp install'"
+		"upgrade": "vp update -r"
 	},
 	"dependencies": {
 		"@effect/atom-react": "^4.0.0",

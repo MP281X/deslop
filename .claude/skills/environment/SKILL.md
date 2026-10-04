@@ -1,6 +1,6 @@
 ---
 name: environment
-description: 'Machine facts, repository entrypoints and local coding-skill setup.'
+description: 'Machine facts and repository commands. Use for host setup, local entrypoints or skill installation; repository-specific details are in the relevant reference.'
 ---
 
 # Environment
@@ -11,6 +11,7 @@ description: 'Machine facts, repository entrypoints and local coding-skill setup
 
 - **Tools.** `~/.vite-plus/bin` supplies Node/package-manager shims: `vp` for packages, `vpx` for binaries. Passwordless sudo; gh/glab use existing sign-ins.
 - **Scratch.** `node_modules/.cache/deslop/`; cloned upstream sources: `~/.deslop/repos/`.
+- **T3 state.** Prefer app-owned thread tools. For local read-only inspection, verify the database opened by the running `t3 serve` process before setting `T3_DB`; this machine currently uses `~/.t3/userdata/statev2.sqlite`. Live thread/run/session data is in `orchestration_v2_projection_*`. Legacy `projection_*` and `provider_session_runtime` can remain stale even in the live database. Use `sqlite3 -readonly` and select needed fields, not raw payloads or credentials.
 - **Services.** Temporary containers, not host installations. Maintenance owns Docker binding defaults; preserve unrelated workloads.
 - **Exposure.** Requested previews use Tailscale Serve through workflow's Browser procedure. Share the verified tailnet HTTPS URL, not localhost; keep only requested previews running.
 
@@ -20,7 +21,7 @@ Use [Deslop](references/deslop.md) or [Dual](references/dual.md) from that repos
 
 ## Repository skills and incremental refactors
 
-**Copies.** Commit CLI-generated engineering/design/testing so fresh checkouts have them. Treat them as read-only; change upstream skill source, not copies. Refresh only when installing/updating skills, not every session:
+**Refresh.** Follow the owning package brief for source/copy ownership. Refresh only when installing/updating skills, not every session:
 
 ```bash
 vpx @deslop/coding-standards@latest --help

@@ -1,22 +1,18 @@
 # Checks
 
-**Scope.** Run assigned commands/behaviors from repository root; testing owns selection and rerun judgment. Checks and rule fixtures run sequentially. Use environment's root commands; no second suite.
+**Scope.** Run assigned commands/behaviors from repository root; testing owns selection and rerun judgment. Serialize checks that compete for resources or mutate shared artifacts; independent stable-input checks may overlap. Use environment's root commands; no second suite.
 
-## Result
-
-- **Verdict.** Actual criterion outcomes, not a green log footer.
-- **Evidence.** Criterion | Observed result | Command/exit; identify cache replay versus fresh execution.
-- **Gaps.** Failed/skipped criteria and unresolved cause; links to decisive logs, no dumps/progress diary.
+**Return.** Return criterion outcomes and command/exit evidence, separating cached/fresh and failed/skipped/passed.
 
 ## Commands
 
-Collect the owned command's terminal result and exit status, not a log footer or process search. Codex long commands use an exec cell starting with `// @exec: {"yield_time_ms": 1500000}`: await exec_command, then write_stdin at that yield until exit_code exists; wait on the cell if it yields. Servers/stacks use short yields and readiness probes.
+Collect the owned command's terminal result and exit status, not a log footer or process search. Prefer scoped searches and native structured/quiet output; keep bulky logs in scratch and read the decisive region. Preserve raw failure diagnostics and the command's exit status—filtering must not hide a failure. Use returned session/cell identities to wait; do not spawn an agent merely to wait. Servers/stacks use readiness probes.
 
 ## Publishing
 
-**Map.** Explain the whole branch: every semantic/config change and its final package/file, not only highlights. Link folders/entry files; separate moves/generated copies from changed logic, omit formatting-only noise. Prefer readable tables/lists to compressed tree art. The description should explain behavior without requiring diff reading.
+Publish only after workflow's local-iteration and completion conditions are met. An unfinished requirement stays local and blocks publication, not in an "unverified claims" section. Remove unsupported claims; do not hide defects or skipped required checks to make the body look complete. A newly discovered defect in an existing PR must remain visible until resolved.
 
-**Reason.** Briefly state consequential choices and tradeoffs. Keep risks visible; collapse supporting rationale, behavioral evidence and secondary paths in `<details>`. Omit lifecycle/green-check facts and benchmark diaries T3 already supplies. Report failures/unproved contracts; no user testing chore. Publish for review only when owned proof and fixes are complete.
+Keep the body synchronized with the final branch's changed contracts, not its iteration history. Apply Pair's surface ownership and evidence choices; no chat history should be needed to understand the PR. Retain consequential risks even in mechanically changed files. No required summary/map/table template or blanket "proof and limits" bucket.
 
 Bodies/comments use scratch files and `--body-file` (GitLab: `--description-file`). Attach images with descriptive alt text; GitHub video uses bare `--attach '<file>'`. Read the resulting title/body back.
 
@@ -25,11 +21,13 @@ gh pr edit --body-file <scratch>/body.md --attach '<file>#<alt text>'
 glab mr update <number> --draft --description-file <scratch>/body.md --attach <file>
 ```
 
-`glab` takes no `--jq`: pipe its API output into `jq`. Compare every hosted diff page against the local merge-base file inventory; investigate missing patches and GitLab `collapsed`/`too_large` flags. Passing CI or raw diffs do not prove the user's T3 PR tab exposes every changed hunk. Link every PR layer to the thread.
+`glab` takes no `--jq`: pipe its API output into `jq`. Verify the published head, title/body and changed-file inventory against the branch. Investigate full hosted patches only for a concrete rendering/missing-diff problem, not every push. Passing CI does not prove a UI rendered the diff. Link every PR layer to T3. Resolve actionable review findings; use its PR UI/watch instead of another status ledger.
 
 ## Pipeline watch
 
-Wait for a pipeline with one blocking command, run in the background with a `timeout` of 7200000, then read only the failed jobs' logs.
+If `watch_pull_request` is available, the primary thread registers the PR watch and ends its turn. A delegated checker returns this monitoring requirement to the primary instead of registering a watch on its child thread. T3 wakes the thread that registered the watch for check failures, completed checks, new comments/reviews or conflicts; inspect the event and read only relevant failed-job logs. Do not spawn a blocking child or poll alongside that watch.
+
+Without an app-owned watcher, wait for a pipeline with one blocking command, run in the background with `timeout 2h`, then read only the failed jobs' logs.
 
 GitHub:
 

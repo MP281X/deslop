@@ -2,22 +2,13 @@
 
 **Scope.** Prove supplied inputs → outcomes/URL with saved state. Apply design; reuse the supplied host, not a setup survey. This procedure owns capture, profiling and requested exposure; stop only owned services.
 
-## Result
-
-- **Verdict.** Observed behavior, accessibility and responsive outcomes.
-- **Evidence.** Input/viewport | Observed outcome | Capture; absolute media paths, meaningful frames only.
-- **Gaps.** Actual console errors, untested states and DOM-only checks. A DOM assertion is not visual inspection; no journey recap.
+**Return.** Return observed journeys/captures and actual errors or unproved states. Apply design's visual inspection; DOM checks alone are not visual proof.
 
 ## Proof and previews
 
 Proof services are temporary loopback services; persistent exposed previews are opt-in. Static proof uses `screenshot <path.png>`; record behavior, and use before/after only for a meaningful comparison.
 
-Stop only owned services, by process group; use another port rather than stop someone else's listener:
-
-```bash
-P=$(ss -ltnpH 'sport = :<port>' | grep -oP 'pid=\K[0-9]+' | head -1)
-kill -- -$(ps -o pgid= -p $P | tr -d ' ')
-```
+Record owned process/session identities when starting proof services. Stop those identities only after confirming ownership; a listener found by port is not disposal permission. Use a free port instead of stopping another owner's listener.
 
 - Requested preview: choose a free port (`ss -ltn`), bind `127.0.0.1`, then `sudo tailscale serve --bg --https=<port> http://127.0.0.1:<port>`. Share `https://<host>:<port>`, with `<host>` from `tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")'`; the first request waits for a certificate. Keep it running until asked to stop, then `sudo tailscale serve --https=<port> off` and stop its process group. Other threads' previews remain untouched.
 - In one agent-browser session, `record start <path.mp4> --contact-sheet` on the open page before meaningful input, then `record stop`. A URL triggers navigation; supply one only to prove navigation. Default 30 fps/H.264 plays on the phone; inspect the contact sheet. Sign in once, `state save <scratch>/auth.json`, then reuse `--state <scratch>/auth.json`.
@@ -42,11 +33,4 @@ For slow input/scroll/main-thread work, `profiler start` before input and `profi
 
 ### Application tracing
 
-Collector HTTP is `http://127.0.0.1:4318`; Jaeger is `http://127.0.0.1:16686`. CORS allows the production portfolio origin and any loopback dev port. Browser defaults target localhost on the browser machine: VPS agents can use it; remote previews need reachable `VITE_OTEL_URL` and their actual origin allowed. Allowed preflight is not emitted spans. Deslop's Vite source host supplies RPC/platform layers, not `ServerRuntime.layer` telemetry: client export does not prove a correlated dev-server span. Backend tracing needs the instrumented production entrypoint or scoped runtime instrumentation.
-
-```bash
-curl -fsS http://127.0.0.1:16686/api/services
-curl -fsSG http://127.0.0.1:16686/api/traces --data-urlencode 'service=@deslop/portfolio-server' --data-urlencode 'lookback=10m' --data-urlencode 'limit=20' | jq '.data[] | {traceID, spans: [.spans[] | {operationName, duration, startTime}]}'
-```
-
-Inspect the affected service around one real action: hierarchy, errors, durations and client/server trace IDs; compare that action after a fix. Missing spans mean unknown coverage/export, not speed. Logs use collector debug output (`docker compose --project-name deslop --file tools/compose.yaml logs --since 10m collector`), not a queryable store; no metrics pipeline. Dual SaaS optionally exports to PostHog, not Jaeger; inspect its Observability configuration. Extra storage/dashboard containers need a concrete question.
+Use the affected repository's environment reference for endpoints and known instrumentation: [Deslop](../../environment/references/deslop.md#application-tracing) or [Dual](../../environment/references/dual.md). Correlate one real action's client/server spans, errors and durations, then compare after the fix. Missing spans or allowed preflight do not prove tracing coverage or speed. Use existing observability; extra storage/dashboards need a concrete question.

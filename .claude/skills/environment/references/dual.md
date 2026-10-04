@@ -27,3 +27,5 @@ curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
 **Components.** `vpx shadcn@latest list @shadcn --cwd packages/ui`; inspect current view/docs and installed source before adding a component.
 
 **CI.** GitLab quality: frozen install, Effect-tsgo patch, check/test/documentation. Read `docs/ci.md` for failures and `docs/releasing.md` for releases; new pushes cancel interruptible pipelines. Verify consumed Effect versions per package/lock before crossing adapter boundaries.
+
+**Tracing.** Dual SaaS optionally exports to PostHog, not Jaeger; inspect its Observability configuration.

@@ -1,53 +1,49 @@
 ---
 name: workflow
-description: 'Primary iteration and bounded delegated procedures.'
+description: 'Primary task coordination, ownership and delivery. Use for execution decisions or handoffs; delegated work uses only its assigned procedure.'
 ---
 
 # Workflow
 
-**Role.** Primary work uses the loop below. Delegated work uses only its assigned procedure and ownership; no second coordinator.
+Work toward the next observable result, not a process milestone. The primary owns implementation, routine checks, contracts and integration.
 
-## Work
+## Decide the next action
 
-- **Discover.** Read relevant local standards, touched code, nearest implementations and consumers. Reuse previous findings and named threads; investigate only uncertainty that can change the next example.
-- **Try.** Start the smallest real example. Compare materially different directions, including a smaller one; use focused tests to eliminate weak options. Select reversible technical choices and expand the winner without a stage-approval callback. Challenge its weakest assumption while a trial can change the choice; critique consequential designs independently. UI comparisons follow design.
-- **Ask.** Ask only for unknowable goals, unresolved taste, access, scope expansion, feature removal or changing agreed requirements. Show the relevant example first; batch self-contained cards. An unsure answer means clarify, not permission to act.
-- **Steer.** Fold queued corrections into the task. A pivot retires invalidated code, tests, config and claims—not unaffected work. Keep moving on independent work while a user decision is pending.
-- **Criteria.** Keep current requirements, quoted constraints, behavior → proof, exclusions and rulings in `node_modules/.cache/deslop/done-when.md`. Unknowns remain questions, not invented requirements or a frozen specification.
-- **Quality.** Apply engineering to prototypes too. Fix touched bugs at their root and every in-scope instance; remove everything made obsolete. Leave unrelated code alone and report evidenced problems outside scope.
+Apply known preferences and queued corrections. Read touched code/consumers and only references that can change the next action; reuse named-thread findings through T3. Analysis-only requests stay read-only. An obvious task needs no alternatives, spec or evaluation round.
 
-## Delegate
+Keep trials usable, trustworthy and safe for data/resources, then let the user try them before merge-readiness work. Retain findings, not sunk costs. Design owns UI trials; engineering/testing own the retained implementation's quality and proof.
 
-**Purpose.** Use Orchestrator V2 when independent work shortens delivery or challenges bias—not to spend/save tokens or satisfy a delegation quota. Optimize quota and user attention per mergeable PR, including repairs/reviews, not per completed task.
+Ask only for unknowable goals, access, scope changes or consequential unresolved taste. Continue independent work while waiting; do not end a turn at a routine milestone, successful check or review checkpoint. Continue through the remaining authorized work unless the user must decide, provide access or resolve a real blocker. A repeated failure needs a new discriminating hypothesis, not another equivalent attempt; testing owns timeout/rerun judgment.
 
-**Ownership.** Keep taste, contracts, first instances, shared inputs and integration. Assign complete independent outcomes, not tiny operations. Narrow scope never means shallow analysis: test counterexamples, alternatives and downstream effects. One coherent review needs one reviewer; partition only distinct risk-bearing contracts.
+Keep durable decisions at their owner: repository-wide contracts in CODING_STANDARDS.md, package/config-folder decisions and usage in its README.md with AGENTS.md pointing to it, reusable guidance in its skill, machine facts in environment. Read the owning brief when working there; update it with changed decisions/contracts, not a source-code tour or duplicated global instructions. No empty briefs or files inside src merely to repeat policy. Use `node_modules/.cache/deslop/done-when.md` only when continuity needs current constraints/gaps, not another status ledger.
 
-Use the live catalog and high effort. The primary model remains the user's choice; routing defaults are task-specific:
+Preserve reasoning the implementation cannot reveal: consequential rationale, rejected alternatives with reasons, explicit non-goals and relevant attempts with observed outcomes. Record only what changes a future action; include a revisit condition when useful. Replace superseded entries, never append an iteration diary or invent a history/rationale from the current code.
 
-| Task                         | Model             | Procedure                                      |
-| ---------------------------- | ----------------- | ---------------------------------------------- |
-| Sources                      | GPT-6 Luna        | [Research](references/research.md)             |
-| Mechanical implementation    | Claude Sonnet 5.5 | [Implementation](references/implementation.md) |
-| Substantial implementation   | Claude Opus 5.5   | Implementation                                 |
-| Ideas / design critique      | Claude Opus 5.5   | [Ideas](references/ideas.md)                   |
-| Checks / behavior / pipeline | GPT-6 Luna        | [Checks](references/checks.md)                 |
-| Code review                  | GPT-6.1 Sol       | [Code review](references/code-review.md)       |
-| Browser / computer proof     | GPT-6.1 Sol       | [Browser](references/browser.md)               |
-| Image assets                 | GPT-6.1 Sol       | repository design                              |
+## Delegate when it pays
 
-**Escalate.** Luna evidence gaps → Sol; Sonnet product-judgment gaps → Opus. Reuse decisive evidence. Defaults are practical, not universal rankings; change a route when observed repair cost warrants it.
+Delegate only when independent work saves more than briefing, coordination and joining cost. Repetition is not a reason. No mandatory stage or model ladder.
 
-**Brief.** Named procedure, missing question/contract, owned files/resources, write permissions, known evidence, observable stop and Done-when path. Use repository-relative paths; model/options belong to tool fields. No ambiguous scope, repeated cwd, copied workflow or recursive committee.
+| Task            | Benefit required                                                         | Recommended model                                      | Procedure                                      |
+| --------------- | ------------------------------------------------------------------------ | ------------------------------------------------------ | ---------------------------------------------- |
+| Research        | Substantial bounded investigation while the primary continues.           | GPT-6 Luna · medium                                    | [Research](references/research.md)             |
+| Implementation  | Substantial specified work with disjoint ownership and parallel benefit. | Sonnet 5.5 · high; Opus 5.5 for consequential judgment | [Implementation](references/implementation.md) |
+| Design critique | Independent judgment can change the direction.                           | Opus 5.5 · high                                        | [Ideas](references/ideas.md)                   |
+| Verification    | A substantial long check on stable independent inputs.                   | GPT-6 Luna · medium                                    | [Checks](references/checks.md)                 |
+| Browser proof   | A substantial independent consumer journey.                              | GPT-6.1 Sol · high                                     | [Browser](references/browser.md)               |
+| Code review     | A concrete correctness/contract risk needs independent judgment.         | GPT-6.1 Sol · high                                     | [Code review](references/code-review.md)       |
 
-**Join.** Retain identities; collect the result needed for the next decision while other work continues. Cancel invalidated tasks. Reconcile actual terminal evidence, including failed/missing criteria. Completed-child follow-up defect [#15004](https://github.com/pingdotgg/t3code/pull/15004) requires a fresh task for a new assignment; interrupt obsolete follow-up work.
+Recommendations, not mandatory routing or benchmark rankings. Validate IDs/options against T3's live catalog and user provider/budget constraints; inherit the primary model if a recommendation is unavailable. Use standard service tier unless faster service justifies its extra usage. Change a recommendation when observed repair cost warrants it, not through a fixed escalation ladder.
 
-## Finish
+Use T3's live catalog within user constraints. Brief the outcome, procedure, owned resources/write permissions, decisive context, required proof and stop condition. Link evidence; keep model/options in tool fields.
 
-Authorized: current-branch pushes, draft PRs/comments and skill-directed machine actions. Inspect deletion targets; confirm other irreversible/outward actions. Work only in this worktree, its scratch and assigned machine targets.
+Join completion events and reconcile missing/failed criteria. Send only facts that change the receiver's action. Retain native task identities, not duplicate progress records. Read-only V2 inspection fills a concrete diagnostic gap.
 
-1. Merge the fetched default branch into the working branch; reread and simplify touched files against the merge base. The final diff contains the current solution, no trial footprints.
-2. On stable inputs, delegate full Check and independent whole-diff Review in parallel. Format-only changes skip code checks. Fix validated findings together; rerun affected tests. A relevant edit invalidates affected evidence, not everything.
-3. Delegate behavioral proof at the real public seam with available credentials. Use screenshots/short video for visible behavior and fresh agents for instructions; inspect actual media. Reuse unchanged checks. Every criterion needs its own observed pass; cleanup removes settled drivers, fixtures and owned services, preserving embedded media. Persistent previews are opt-in.
-4. Commit once, push and update the draft PR from the whole branch. Publish one package/file reading map, following checks' publishing procedure; keep optional detail collapsed. Upload only media that adds information Markdown cannot convey; verify title/body and the host's complete file inventory against the local diff. Delegate the blocking pipeline watch; resolve every comment/review thread before delivery.
+Do not reclaim a child's files until writers stop or acknowledge a targeted handoff; cancellation alone is insufficient. Cancel invalidated tasks. New assignments/review rounds use fresh tasks with prior findings/responses and unresolved objections, never reopen a completed child.
 
-Before every later push, update the working branch from the default and refresh the whole-branch description. Recheck only the new delta; retain unaffected review coverage. Stop only for a decision genuinely belonging to the user, not a technical problem you can resolve.
+## Finish the requested outcome
+
+Use testing's stable-input/affected-proof rules; disjoint work may continue. Apply engineering's cleanup and design's visual inspection to retained work. Stop unused owned services, remove settled drivers and retired owned files/directories, and retain useful evidence/requested previews. Check for leftover empty source directories; keep tool-required scaffolding only when its purpose is known, never sweep unrelated owners or dependency stores. Do not expand into unrelated improvements.
+
+Keep exploration and iteration local until the user is satisfied with a consequential new direction; a settled/obvious task needs no extra approval gate. Then finish the retained work's cleanup, required behavior checks and warranted review, resolving findings before publication. Missing required proof or known defects block pushing, even to a draft PR; green CI is not permission to publish incomplete work. Do not claim perfection from finite checks or invent claims that require irrelevant proof.
+
+Batch accepted changes into one verification/install/publication pass. Before a current-branch push, fetch/update from the default and reconcile conflicts; rerun affected proof if inputs change. Ready current-branch pushes are authorized; other irreversible/outward actions need confirmation. Follow [publishing](references/checks.md#publishing), then stop when the requested outcome is proved.

@@ -44,7 +44,7 @@ function schemaDefinitionMember(node: ESTree.Expression): Option.Option<ESTree.M
 }
 
 function isSchemaDefinitionName(name: string) {
-	return !isSchemaOperationName(name) && !/^to[A-Z]/u.test(name)
+	return !isSchemaOperationName(name) && !/^(?:is|to)[A-Z]/u.test(name) && !/^makeFilter(?:Group)?$/u.test(name)
 }
 
 function isSchemaDefinition(input: {context: Context; node: ESTree.Expression}): boolean {
