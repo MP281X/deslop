@@ -10,7 +10,7 @@ Collect the owned command's terminal result and exit status, not a log footer or
 
 ## Publishing
 
-Cover the final branch's changed contracts, not the iteration history. Apply the pair's result-first evidence choices; link owning source/full diffs on demand rather than opening with a file inventory. Curate presentation, not verification: retain consequential risks and blockers even in mechanically changed files. No required summary/map/table template or blanket "proof and limits" bucket.
+Keep the body synchronized with the final branch's changed contracts, not its iteration history. Apply Pair's surface ownership and evidence choices; no chat history should be needed to understand the PR. Curate presentation, not verification: retain consequential risks and blockers even in mechanically changed files. No required summary/map/table template or blanket "proof and limits" bucket.
 
 Bodies/comments use scratch files and `--body-file` (GitLab: `--description-file`). Attach images with descriptive alt text; GitHub video uses bare `--attach '<file>'`. Read the resulting title/body back.
 

@@ -14,7 +14,8 @@ Work only on this thread's existing branch. Updating it from the default is allo
 - **Answer first.** Give the useful result, consequential choice or blocker. Answer ready questions without waiting for unrelated work.
 - **Scan-first.** A simple answer needs one line. Otherwise use short labeled bullets, one idea per line and meaningful before → after pairs. Group only when it helps scanning; no paragraph preamble, fixed report template or empty sections. Tables compare; trees show structure; images/video show visible behavior. Do not turn prose into a diagram just for decoration.
 - **Explicit meaning.** Name the affected behavior and scope. Distinguish proposed from applied, checked from unverified, required fixes from optional follow-ups when relevant. State what a gap prevents claiming or delivering. Avoid vague labels, unexplained jargon and pronouns that make the user infer the subject.
-- **One home.** Each fact appears once per artifact. Keep only information that helps the user understand, judge or act. PRs remain self-contained, not copied chat recaps; link technical detail on demand.
+- **Surface ownership.** The PR explains the final change, consequential reasons, evidence and risks without requiring chat history. The thread answers the current question or shows only useful iteration deltas, prototypes, captures, actionable links and decisions/blockers needing attention now. T3 owns progress, files/diffs and check/commit lifecycle; do not echo them or repeat the PR. Link a file only when it helps the current action. Routine success needs no message; report a failure when it affects the outcome or needs user action.
+- **Evidence replaces prose.** Each fact appears once per artifact. Delete captions, summaries and explanations that merely restate a clear example/diff/image. Keep only context, scope, caveats or decisions the evidence cannot convey. Preserve self-contained PR context, not copied chat recaps.
 
 Show what the user needs to judge:
 
@@ -26,4 +27,4 @@ Show what the user needs to judge:
 
 - **Preserve substance.** Omit mechanical lint changes, generated copies and lockfile churn from the narrative unless consequential; still verify them and keep the full patch accessible. Collapse supporting detail, never risks. Types/lint do not prove runtime correctness, UX or useful test coverage. Never imply a check ran or a screen changed when only instructions changed.
 - **No ceremony.** No routine-intent announcements, running narration, status formats, tool-envelope/log dumps or lifecycle facts T3 already shows. Use plain, precise language and absolute local media paths; no Mermaid or HTML plans in T3.
-- **Questions.** Ask through the question tool. Cards stand alone; do not bury answers in another question round.
+- **Questions.** Put the question, necessary context and tradeoffs in the question card, without a duplicate thread preface or recap. Use the thread only for a necessary code block, diff or media the tool cannot display; the card identifies that exhibit and states the decision. Do not bury ready answers in another question round.
