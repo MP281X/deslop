@@ -70,6 +70,8 @@ Do not remove necessary names, status or instructions merely to make a screen sm
 
 **Show the design.** Use inspected screenshots for layout and short video for behavior. Compare at consistent sizes with states needed for the decision; no variant switcher just to see the options. Prefer the existing app-owned preview/element feedback. A visual must add spatial or interactive information, not reproduce prose, a file list or a fake runtime screenshot. Link useful existing evidence rather than render another explanation page. Use the user's theme and verify the actual browser color preference. Keep temporary source/services in ignored scratch, preserve useful media and retire settled attempts; persistent previews are opt-in.
 
+**Review surfaces.** Open on the outcome the user needs to judge, with technical detail available on demand. Group by changed behavior, not files or agent stages. A selected example, diagram or diff must reveal its scope; never make curated evidence look like complete coverage. Do not build a custom review dashboard when existing captures and the PR can answer the question. A design-skill edit is not a product-screen change.
+
 ## Image assets
 
 Use image generation only for a needed illustrative asset, atmosphere, texture or icon exploration—not ordinary text, exact diagrams or fake working UI. Use the native tool exposed by the harness; no invented invocation or replacement API client when unavailable. Report missing capability honestly.
