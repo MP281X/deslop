@@ -11,20 +11,19 @@ Work only on this thread's existing branch. Updating it from the default is allo
 
 ## Communication
 
-Answer the question or give the useful change first. Use plain, precise language. Include consequential choices, failures and missing proof; omit preambles, ceremony, running narration and status formats. Do not announce routine intent; speak when there is a result, consequential decision or blocker. Answer ready questions without waiting for unrelated work.
+- **Answer first.** Give the useful result, consequential choice or blocker. Answer ready questions without waiting for unrelated work.
+- **Scan-first.** A simple answer needs one line. Otherwise use short labeled bullets, one idea per line and meaningful before → after pairs. Group only when it helps scanning; no paragraph preamble, fixed report template or empty sections. Tables compare; trees show structure; images/video show visible behavior. Do not turn prose into a diagram just for decoration.
+- **Explicit meaning.** Name the affected behavior and scope. Distinguish proposed from applied, checked from unverified, required fixes from optional follow-ups when relevant. State what a gap prevents claiming or delivering. Avoid vague labels, unexplained jargon and pronouns that make the user infer the subject.
+- **One home.** Each fact appears once per artifact. Keep only information that helps the user understand, judge or act. PRs remain self-contained, not copied chat recaps; link technical detail on demand.
 
-Give each fact one home per artifact. Keep only what helps the user understand the result, judge a consequential choice or act. Show the evidence instead of describing what the user must imagine:
+Show what the user needs to judge:
 
-- UI: the actual screen/interaction and affected states, not component code.
-- Rules: concise accepted/rejected examples and the observed diagnostic.
-- Config/data: the meaningful before/after diff, without formatting or key-order churn.
-- Code: changed behavior and failure cases; show source only when it explains a contract, tradeoff or risk.
-- Tests: the behavior established and any failure/gap, not a test inventory or routine passing logs.
+- **UI** → actual screen/interaction and affected states, not component code.
+- **Rules** → accepted/rejected examples + observed diagnostic.
+- **Config/data** → meaningful diff, without formatting/key-order churn.
+- **Code** → changed behavior/failure cases; source only for a contract, tradeoff or risk.
+- **Tests** → behavior established + failures/gaps, not inventories or routine passing logs.
 
-Keep PRs self-contained. Omit mechanical lint changes, generated copies and lockfile churn from the narrative unless they change behavior or carry risk; do not omit their verification or hide the full patch. Types/lint do not establish runtime correctness, UX or useful test coverage. Say what an unverified case prevents claiming or delivering; distinguish a required fix from an optional follow-up. Never imply a check ran or a screen changed when only instructions changed.
-
-Do not copy chat recaps into PRs, turn every answer into a table, dump tool envelopes/logs or report lifecycle facts T3 already shows. Group related changes; use headings only when they help scan. Collapse supporting detail, not risks.
-
-Tables compare, trees show structure, images/video show visible behavior. Use absolute local file/media paths; no Mermaid or HTML plans in T3.
-
-Ask through the question tool. Cards stand alone; do not bury answers in a new question round.
+- **Preserve substance.** Omit mechanical lint changes, generated copies and lockfile churn from the narrative unless consequential; still verify them and keep the full patch accessible. Collapse supporting detail, never risks. Types/lint do not prove runtime correctness, UX or useful test coverage. Never imply a check ran or a screen changed when only instructions changed.
+- **No ceremony.** No routine-intent announcements, running narration, status formats, tool-envelope/log dumps or lifecycle facts T3 already shows. Use plain, precise language and absolute local media paths; no Mermaid or HTML plans in T3.
+- **Questions.** Ask through the question tool. Cards stand alone; do not bury answers in another question round.
