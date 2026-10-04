@@ -9,7 +9,7 @@ description: 'UI and UX rules for screens and visual explanations. Use when buil
 
 ## Decide
 
-**Defaults.** Start from the task, settled preferences and accepted visual references. Keep durable visual choices at their owning guidance or repository standards; do not recreate them in task briefs. Ask only about a new consequential tradeoff the evidence cannot settle; another agent cannot establish user taste.
+**Direction.** Start from the actual task, audience, content and settled preferences. Make the next user action and its relevant content dominant, not generic "premium" styling. When a reference is useful, inspect the relevant accepted one for transferable hierarchy, density and interaction choices; distinguish observed details from inferred ones. Community brand analyses are inspiration, not verified current tokens. Keep durable visual choices at their owner, not repeated briefs. Ask only about a consequential tradeoff the evidence cannot settle; another agent cannot establish user taste.
 
 **One meaning.** Each visible element must add information, enable a distinct action or clarify a relationship. Delete repeated headings, summaries, counts, status badges, decorative wrappers and controls that say or do the same thing in the same context. Prefer an obvious icon with an accessible name or a clear text label, not both repeating each other. Keyboard shortcuts, screen-reader labels and responsive placement are not redundant visible controls; preserve their function.
 
@@ -41,6 +41,16 @@ Do not remove necessary names, status or instructions merely to make a screen sm
 // parallel hand-built appearance
 <div className="rounded-full bg-[#eef] px-[7px] text-[11px]">No runs yet</div>
 ```
+
+**Typography.** Give headings, navigation, body text and data deliberate roles through the existing type scale, weights, line heights and readable line lengths. Use tabular numerals where values need comparison; let prose wrap without making controls inconsistent. Preserve established fonts and tokens rather than changing them for novelty. Do not substitute tiny labels, gratuitous capitals or isolated accent words for hierarchy.
+
+**Copy.** Name actions from the user's task, not implementation internals. Keep the same vocabulary across controls and confirmations. Use plain verbs and sentence case; labels describe outcomes, not decoration. Empty states offer a relevant next action; errors identify the failed action and available recovery. Reuse its existing control rather than repeating the action in text or adding another button; do not invent a recovery that cannot work.
+
+| Weak                   | Useful                                                            |
+| ---------------------- | ----------------------------------------------------------------- |
+| `Submit`               | `Save changes` → `Changes saved`                                  |
+| `Something went wrong` | `Couldn't save.` beside the existing retry action; keep the draft |
+| `No data`              | `No notes yet` beside the existing create action                  |
 
 **Alignment.** Related headings, search, pinned rows, dividers and list content share deliberate edges. Reuse the owning inset/grid rather than tuning each instance. Match icon boxes, control height, text baseline, spacing and density within the same role. Pinned content stays outside the scroll area; borders do not jump while scrolling. Fix the shared layout cause, not individual one-pixel offsets. Optical alignment and legibility still need inspection; matching bounding boxes alone is not enough.
 
