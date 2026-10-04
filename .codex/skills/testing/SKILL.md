@@ -7,7 +7,7 @@ description: 'Curated black-box tests and trustworthy verification for Effect ap
 
 **Scope.** Guard owned behavior, not coverage. CLI-installed skills are read-only; change their source and refresh via CLI.
 
-**Timing.** Before the direction is settled, run only what makes the prototype usable, safe and trustworthy for its question. Do not block a trial on comprehensive regression tests, release integration proof or merge-readiness review. Label stubbed/unproved behavior; a preview is not a release pass. Apply the required final proof to the retained implementation, not each disposable attempt. An already-clear task needs no artificial exploration step.
+**Timing.** An experiment needs trustworthy proof of its question, not comprehensive release coverage. Final acceptance applies to retained delivery; label stubbed/unproved behavior.
 
 - **Worth it.** Test owned branching, computation, parsing/state transitions a plausible regression breaks; add missing valuable coverage before refactoring.
 - **Seam.** Test the exported layer, service, or function of a package or an app's service as a black box, so rewriting the implementation leaves every test green; the browser proves UI components.

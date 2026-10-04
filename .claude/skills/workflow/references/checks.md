@@ -19,7 +19,7 @@ gh pr edit --body-file <scratch>/body.md --attach '<file>#<alt text>'
 glab mr update <number> --draft --description-file <scratch>/body.md --attach <file>
 ```
 
-`glab` takes no `--jq`: pipe its API output into `jq`. Verify the published head, title/body and changed-file inventory against the branch. Investigate full hosted patches only for a concrete rendering/missing-diff problem, not every push. Passing CI does not prove a UI rendered the diff. Link every PR layer to T3 and use its PR UI/watch rather than another status ledger.
+`glab` takes no `--jq`: pipe its API output into `jq`. Verify the published head, title/body and changed-file inventory against the branch. Investigate full hosted patches only for a concrete rendering/missing-diff problem, not every push. Passing CI does not prove a UI rendered the diff. Link every PR layer to T3. Resolve actionable review findings; use its PR UI/watch instead of another status ledger.
 
 ## Pipeline watch
 

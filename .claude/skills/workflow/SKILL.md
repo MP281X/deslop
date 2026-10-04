@@ -5,42 +5,39 @@ description: 'Direct primary work and optional bounded delegation.'
 
 # Workflow
 
-**Default.** Read the relevant code and constraints. Make the smallest useful change and show it when it can answer the current question. Match verification and cleanup to that question, not hypothetical merge readiness. These are responsibilities, not separate phases, approval gates or agent roles. Delegated work follows only its assigned procedure.
+**Default.** Work toward the next observable result, not a process milestone. Read relevant constraints/code, make the smallest useful change and show it when it answers the current question. Delegated work follows only its assigned procedure.
 
 ## Work directly
 
-- Apply settled preferences and repository decisions first. Read touched code, nearest implementations and consumers. Inspect version-matched dependency source when it can settle an API or ownership question before inventing a wrapper or workaround; stop once settled.
-- Implement and run routine checks in the primary. Use the existing host, runtime and tools. Do not create alternatives, plans, scratch specifications or evaluation rounds for an obvious change. Compare directions only when a consequential uncertainty could change the implementation.
-- For UI, follow design for an early representative prototype and unresolved taste. Do not turn its feedback into an approval stage for routine work.
-- Fold queued corrections into the current solution. Ask only for unknowable goals, access, scope changes or unresolved taste; use self-contained question cards with the relevant example. Continue independent work while an answer is pending.
-- Keep durable code/layout decisions in CODING_STANDARDS.md and reusable preferences in their owning skill, with concrete examples or references. Update that owner, not several reminders. Use `node_modules/.cache/deslop/done-when.md` only when a long-running task, handoff or unresolved decision needs continuity; record current constraints and gaps, not another transcript or T3 status ledger.
-- Keep experiments cheap to discard. Before the direction is settled, fix only what blocks a trustworthy trial or threatens data/resources; no aggressive refactor, broad regression suite or merge-readiness review before the user can try it. Keep useful comparisons until their question is settled. Once retaining an implementation, fix in-scope bugs at their root and remove superseded code, tests, configuration and dependencies. Discard/rebuild from findings when simpler; invested effort is not a reason to keep the wrong approach. Stop unused owned services and preserve unrelated work/sign-ins.
-- A repeated equivalent failure needs a new discriminating hypothesis, not another command or agent round. Run the smallest probe that can change the decision, or report the blocker. Preserve testing's one isolated timeout rerun; a genuine pass closes it.
+- Apply settled preferences and queued corrections. Read touched code and nearest consumers; follow engineering for dependency-source inspection. Batch related searches/reads. Investigate further only for a specific blocker or uncertainty that can change the next result.
+- Implement and run routine checks in the primary with existing tools/runtime. Use strict lint and generators for enforceable conventions, not more prompt policing. No alternatives, plans or evaluation rounds for an obvious change.
+- Keep experiments disposable. Before the direction is settled, fix only what makes the trial usable, trustworthy and safe for data/resources; show it before merge-readiness review, broad regression proof or aggressive refactoring/cleanup. Keep comparisons only while useful. Retain findings and discard/rebuild wrong approaches regardless of invested effort. A settled task needs no artificial prototype stage; design owns UI trials.
+- Ask through self-contained question cards only for unknowable goals, access, scope changes or consequential unresolved taste. Use the relevant example; continue independent work while awaiting an answer.
+- Give each durable preference/decision one owner: repository contracts in CODING_STANDARDS.md, reusable rules in their skill. Keep only a short responsibility-specific reminder elsewhere when needed for independent use. Use `node_modules/.cache/deslop/done-when.md` only for continuity in a long task, handoff or unresolved decision—not another transcript/status ledger.
+- A repeated failure needs a new discriminating hypothesis and smallest useful probe, not another equivalent attempt. Testing owns timeout/rerun judgment. Stop when the requested outcome is proved, not when every possible improvement is exhausted.
 
 ## Delegate only for a benefit
 
-Keep contracts, taste, shared inputs and integration with the primary. Briefing, coordination and joining must cost less than the independent work they enable. Repetition alone is not a reason to delegate; no mandatory review stage, model ladder or token-spending target.
+Keep contracts, taste, shared inputs and integration with the primary. Delegate only when independent work pays for briefing, coordination and joining. Repetition alone is not a reason; no mandatory stage, model ladder or token-spending target.
 
-| Task            | Delegate when                                                                           | Procedure                                                         |
-| --------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Research        | A substantial bounded uncertainty can be investigated while the primary continues.      | [Research](references/research.md)                                |
-| Implementation  | A substantial, specified slice has disjoint ownership and genuine parallel benefit.     | [Implementation](references/implementation.md)                    |
-| Design critique | Independent judgment can change a consequential direction.                              | [Ideas](references/ideas.md)                                      |
-| Verification    | A substantial journey or long-running check can proceed independently on stable inputs. | [Checks](references/checks.md) / [Browser](references/browser.md) |
-| Code review     | A concrete correctness or contract risk warrants independent judgment.                  | [Code review](references/code-review.md)                          |
+| Task            | Delegate when                                                                      | Procedure                                                         |
+| --------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Research        | A substantial bounded uncertainty can be investigated while the primary continues. | [Research](references/research.md)                                |
+| Implementation  | A substantial specified slice has disjoint ownership and genuine parallel benefit. | [Implementation](references/implementation.md)                    |
+| Design critique | Independent judgment can change a consequential direction.                         | [Ideas](references/ideas.md)                                      |
+| Verification    | A substantial journey or long check can run independently on stable inputs.        | [Checks](references/checks.md) / [Browser](references/browser.md) |
+| Code review     | A concrete correctness or contract risk warrants independent judgment.             | [Code review](references/code-review.md)                          |
 
-Use T3's live catalog within user provider/model constraints. Give a short plain-language brief: outcome, procedure, owned resources/write permissions, decisive context, required proof and stop condition. Link existing evidence; do not copy procedures, transcripts or unrelated exclusions. Use tool fields for model/options.
+Use T3's live catalog within user provider/model constraints. Brief the outcome, procedure, owned resources/write permissions, decisive context, required proof and stop condition. Link evidence instead of copying procedures/transcripts; model/options belong to tool fields.
 
-Retain task identities, join completion events and reconcile actual results. Send only new information that changes the receiver's action: a decision, blocker, correction or stopped-writer handoff. No progress reminders or duplicate status bookkeeping. T3 owns coordination; use read-only V2 inspection only for a concrete diagnostic gap.
+Retain task identities and join completion events. Send only action-changing decisions, blockers, corrections or stopped-writer handoffs. No progress reminders or duplicate bookkeeping. T3 owns coordination; read-only V2 inspection fills only a concrete diagnostic gap.
 
-Do not write a child's owned files until its writers stop or acknowledge a targeted handoff. Cancellation alone is not a handoff. Cancel invalidated work; new assignments/review rounds use fresh tasks, never messages reopening a completed child. Carry the original contract, prior findings/responses and unresolved objections into a necessary follow-up.
+Do not write a child's owned files until its writers stop or acknowledge a targeted handoff; cancellation alone is insufficient. Cancel invalidated work. New assignments/review rounds use fresh tasks, never reopen a completed child. Carry the original contract, prior findings/responses and unresolved objections into a necessary follow-up.
 
-## Verify and finish
+## Deliver retained work
 
-A preview is evidence for the question it tests, not a release claim. Run only the checks needed to make that experiment usable and trustworthy. For the implementation being delivered, reconcile required behavior, review the retained diff and remove settled trial footprints; do not repeat this work for each disposable attempt. If the direction is already clear, implement directly without a mandatory prototype/approval step.
+Apply engineering's cleanup, testing's required proof/stable-input rules and design's inspected visual evidence to the implementation being delivered. Reuse unaffected proof. Report failures, skips and unknowns; a preview is not a release claim. Stop unused owned services, remove settled scratch drivers and preserve useful evidence/requested previews. Leave unrelated work and sign-ins untouched.
 
-Keep checked source, dependencies, configuration and imported artifacts stable while checks run; disjoint work may continue. Use real public-seam proof for changed behavior, inspected media for visible outcomes, and independent instruction evaluation only for a consequential unresolved uncertainty. A wording edit does not require fresh agents. Reuse unaffected proof; rerun only affected criteria after repairs. Report failures, skips and unknowns honestly.
+Group related accepted edits into one affected verification/install/publication pass; do not repeat administration for each wording tweak. Work only in this worktree and assigned machine targets; confirm other irreversible/outward actions.
 
-Stop when the requested outcome is proved, not when every possible improvement is exhausted. Work only in this worktree and assigned machine targets; confirm other irreversible/outward actions.
-
-Current-branch commits/pushes and draft PR updates are authorized. Before pushing, fetch/update this branch from the default and reconcile conflicts. Describe the final branch once, following [publishing](references/checks.md#publishing), with useful examples and explicit gaps. Link the PR through T3, register its app-owned watch and end the turn; do not poll or duplicate the watcher. Resolve actionable review findings without manufacturing another review loop. Never create/switch branches or merge a PR.
+Current-branch commits/pushes and draft PR updates are authorized. Before pushing, fetch/update this branch from the default and reconcile conflicts. Follow [publishing](references/checks.md#publishing). Never create/switch branches or merge a PR.
