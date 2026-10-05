@@ -38,7 +38,7 @@ jobs:
           RELEASE_NUMBER: ${{ github.run_number }}
         run: |
           for package in coding-standards media; do
-            vp -C tools/$package pm version "0.1.$RELEASE_NUMBER" -- --no-git-tag-version
+            vp -C tools/$package pm version "0.1.$RELEASE_NUMBER" -- --no-git-tag-version --no-git-checks
           done
 
       - name: Build
