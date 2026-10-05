@@ -48,14 +48,14 @@ Start when the user is satisfied, or at once for a settled task.
 
 ## Delegate
 
-The primary does every write. Delegate self-contained, read-only work whose result saves more than briefing and joining cost: unbiased analysis, exploration, research, critique, review and browser proof. The primary runs checks, builds and tests itself, because they write shared outputs. Children write nothing to the repository, shared caches or the primary's services; they read, run read-only commands and inline scripts, and keep captures in their own scratch directory outside the repository. Because they cannot collide, run independent children in parallel and in the background while the primary works. Delegation is one level deep.
+The primary does every write. Delegate self-contained, read-only work whose result saves more than briefing and joining cost: unbiased analysis, exploration, research, critique, review and browser proof. The primary runs checks, builds and tests itself, because they write shared outputs. Children write nothing tracked in the repository and never touch the primary's services; they read, run read-only commands, inline scripts and focused existing tests, and keep captures in their own scratch directory outside the repository. A child settles its own questions this way and never asks the primary to write a test, run a check or answer something it can find out. Because they cannot collide, run independent children in parallel and in the background while the primary works. Delegation is one level deep.
 
-| Task            | Worth it when                                                                  | Recommended model   | Procedure                                |
-| --------------- | ------------------------------------------------------------------------------ | ------------------- | ---------------------------------------- |
-| Research        | A substantial, bounded investigation while the primary continues.              | GPT-6.1 Sol · high  | [Research](references/research.md)       |
-| Design critique | Independent judgment that can change the direction.                            | Opus 5.5 · high     | [Ideas](references/ideas.md)             |
-| Browser proof   | A substantial, independent user journey.                                       | GPT-6.1 Sol · high  | [Browser](references/browser.md)         |
-| Code review     | Each production review round, or a concrete risk needing independent judgment. | GPT-6.1 Sol · high  | [Code review](references/code-review.md) |
+| Task            | Worth it when                                                                  | Recommended model  | Procedure                                |
+| --------------- | ------------------------------------------------------------------------------ | ------------------ | ---------------------------------------- |
+| Research        | A substantial, bounded investigation while the primary continues.              | GPT-6.1 Sol · high | [Research](references/research.md)       |
+| Design critique | Independent judgment that can change the direction.                            | Opus 5.5 · high    | [Ideas](references/ideas.md)             |
+| Browser proof   | A substantial, independent user journey.                                       | GPT-6.1 Sol · high | [Browser](references/browser.md)         |
+| Code review     | Each production review round, or a concrete risk needing independent judgment. | GPT-6.1 Sol · high | [Code review](references/code-review.md) |
 
 Models are recommendations: validate them against T3's live catalog and the user's budget, and inherit the primary model when one is unavailable.
 
