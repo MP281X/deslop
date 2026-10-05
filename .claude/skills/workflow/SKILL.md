@@ -42,10 +42,13 @@ Start when the user is satisfied, or at once for a settled task.
 - **Wait, do not poll.** Wait for a long job with one command that exits when the job ends, in the background when other work remains. Do not tail logs or reread status files in a loop.
 - **Phase line.** When Prototype, Production review or Ship starts, post one line that says what remains. Post nothing else about progress; T3 shows it, and native plan or todo tools add nothing.
 - **Own thread.** Never change the calling thread's model or options; doing so interrupts the running turn.
+- **Fix causes.** No workaround, duplicate work, or repeat of an expensive step without a reason the result would differ; fix the cause or ask.
+- **Rerun what a change affects.** After a minor change, run only the focused check it can affect; the full checks run once before the push, and the watched pipeline catches the rest.
+- **Close as you go.** Stop children, services, previews, watches and browser sessions as soon as nothing needs them.
 
 ## Delegate
 
-Delegate a self-contained, read-only task whose result saves more than briefing and joining cost. Children research, critique, verify, review and run browser proof; they never edit source. Delegation is one level deep.
+The primary does every write. Delegate self-contained, read-only work whose result saves more than briefing and joining cost: unbiased analysis, exploration, research, critique, verification, review and browser proof. Run independent children in parallel. Children never edit source, and delegation is one level deep.
 
 | Task            | Worth it when                                                                  | Recommended model   | Procedure                                |
 | --------------- | ------------------------------------------------------------------------------ | ------------------- | ---------------------------------------- |
@@ -57,7 +60,7 @@ Delegate a self-contained, read-only task whose result saves more than briefing 
 
 Models are recommendations: validate them against T3's live catalog and the user's budget, and inherit the primary model when one is unavailable.
 
-- **Brief:** goal, done when, procedure, decisive context with sources, what to return. Pair's language applies; model and options go in tool fields.
+- **Brief:** goal, the complete scope to cover, done when, procedure, decisive context with sources, what to return. Pair's language applies; model and options go in tool fields.
 - **Steer:** message a running child only with a fact that changes its next action.
 - **Join:** reconcile missing or failed criteria; give new rounds to fresh tasks with prior findings.
 

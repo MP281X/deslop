@@ -18,7 +18,7 @@ Machine upkeep remains in maintenance. Update this brief when these ownership de
 | ----------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | Mandatory delegation and model ladders                | Coordination became the work; delegation stays conditional                               |
 | Production polish before prototype feedback           | Unaccepted directions must stay cheap to replace                                         |
-| Progress ledgers or PR recaps in chat                 | T3 and the PR already show them                                                          |
+| Progress ledgers or PR recaps in chat                 | T3 and the PR show them; the closing Status table states only head, pipeline and pending |
 | Repeated instruction-simulation rounds                | They tested decisions, not real-task speed; rerun only for a consequential open question |
 | Rebuilding orchestration or review surfaces           | Out of scope unless T3 and artifacts cannot supply a requested capability                |
 | Importing Emil's whole skill collection               | Its variant picker, audit fan-out and style defaults conflict; keep the targeted craft   |
