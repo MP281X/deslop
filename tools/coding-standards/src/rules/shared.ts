@@ -1,4 +1,4 @@
-import {Array, Graph, Option, Predicate, Record, pipe} from 'effect'
+import {Array, Graph, Option, Predicate, Record, String, pipe} from 'effect'
 
 import type {Context, ESTree, Scope, Variable} from '@oxlint/plugins'
 
@@ -89,8 +89,12 @@ export function importedMember(input: {
 	)
 }
 
+export function matches(regExp: RegExp) {
+	return (text: string) => Option.isSome(pipe(text, String.match(regExp)))
+}
+
 export function isSchemaOperationName(name: string) {
-	return /^(?:(?:decode|encode)(?:Unknown)?(?:Effect|Exit|Option|Promise|Result|Sync)|asserts|is)$/u.test(name)
+	return matches(/^(?:(?:decode|encode)(?:Unknown)?(?:Effect|Exit|Option|Promise|Result|Sync)|asserts|is)$/u)(name)
 }
 
 export function isSchemaOperationCall(input: {context: Context; node: ESTree.CallExpression}) {

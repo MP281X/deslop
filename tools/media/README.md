@@ -22,7 +22,7 @@ The first run downloads the standalone `yt-dlp`, and the first transcription the
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/cli.ts`  | One Effect CLI; `yt-dlp` stays an external binary because no maintained JavaScript extractor covers its sites                                                                                                                                                                             |
 | Transcription | Transformers.js with q8 Whisper, bundled because it imports `onnxruntime-common` without declaring it and `pnpm dlx` (pnpm 11) cannot resolve that. Its runtime dependencies become ours at the versions Transformers.js `4.3.0` and `onnxruntime-node` declare; update all four together |
-| Proof         | Real runs against a captioned post, an uncaptioned video and a blocked YouTube URL through the packed tarball                                                                                                                                                                             |
+| Proof         | `src/transcript.test.ts` covers caption parsing; real runs cover a captioned post, an uncaptioned video and a blocked YouTube URL through the packed tarball                                                                                                                              |
 
 Publishing follows [tools/AGENTS.md](../AGENTS.md).
 

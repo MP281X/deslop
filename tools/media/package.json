@@ -23,7 +23,8 @@
 	],
 	"type": "module",
 	"imports": {
-		"#package": "./package.json"
+		"#package": "./package.json",
+		"#transcript": "./src/transcript.ts"
 	},
 	"publishConfig": {
 		"access": "public"

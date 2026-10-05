@@ -12,7 +12,7 @@ Iterate fast until the user is satisfied, then make the branch merge-ready in on
 - **Read first.** Read the code you touch and its consumers, and reuse findings from named threads. An analysis request stays read-only.
 - **Explore.** Where the direction is open, try the alternatives and surface the open questions now, so that no iteration is needed after the production pass.
 - **Write well.** Engineering applies to prototype code too.
-- **Skip what adds nothing yet.** No root fix or check runs, deep review rounds, pushes, pipeline watching or pull request updates. Run the focused check that answers the current question.
+- **Skip what adds nothing yet.** No root fix or check runs, review rounds, pushes, pipeline watching or pull request updates. Run the focused check that answers the current question.
 - **Show.** Present results as inspected screenshots, short video or the key excerpt in the thread.
 - **Checkpoint.** Commit locally as often as useful, write scratch code in the repository and reset afterwards; reset only your own changes.
 - **Ask little.** Ask only about unknowable goals, access, scope or open taste, and keep working meanwhile. After two failures, test a hypothesis that tells the causes apart.
@@ -25,7 +25,8 @@ Start when the user is satisfied, or at once for a settled task.
 
 - **Clean.** Remove everything iteration left behind: duplication, dead or superseded code and text, layered overrides, abandoned alternatives and no-ops. Recheck every touched file against engineering and design.
 - **Encode.** Turn each recurring mistake into a type, lint rule, test or script; write guidance only for judgment calls.
-- **Review.** Review the whole diff in fresh, aggressive [code review](references/code-review.md) rounds; fix and repeat until a full round is clean.
+- **Cover inputs.** Before review, list the reachable input classes of every parser, boundary and state transition the diff adds or changes, and cover them per testing's Branches rule. Reproduce each confirmed code finding before fixing it, per testing's Bugs rule.
+- **Review.** Run the first [code review](references/code-review.md) round over the whole diff with one reviewer per lens the diff contains (code behavior with probes; instructions and docs against each other), split by area when one reviewer cannot read its share. Fix every finding you confirm, then run fix rounds until one is clean; a fix that rewords prose without changing a rule, claim or link needs no further round.
 - **Prove.** Run the full checks testing selects and the UI journeys design requires.
 - **Ship.** Squash the unpushed checkpoints, update from the default branch, rerun proof whose inputs changed, push and open or update the draft pull request per [publishing](references/checks.md#publishing). Missing proof blocks the push; other irreversible or outward actions need confirmation.
 - **Clean up.** Stop what you started: services, processes, extra worktrees, exit nodes, sign-ins and scratch files; keep requested previews and useful evidence. Formatter and autofix rewrites are trusted, even outside the task; your own edits stay inside it.

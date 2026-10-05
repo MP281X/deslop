@@ -476,8 +476,11 @@ export const makePi = Effect.fnUntraced(function* (config: Pi.Config) {
 					Effect.gen(function* () {
 						const entries = yield* Effect.promise(() => session.findEntriesOnBranch())
 						const current = buildSessionContext(entries).messages
-						const usage = estimateContextTokens(current)
-						if (!shouldCompact(usage.tokens, model.contextWindow, DEFAULT_COMPACTION_SETTINGS)) return current
+						if (
+							!shouldCompact(estimateContextTokens(current).tokens, model.contextWindow, DEFAULT_COMPACTION_SETTINGS)
+						) {
+							return current
+						}
 						const preparation = getOrThrow(prepareCompaction(entries, DEFAULT_COMPACTION_SETTINGS))
 						if (Predicate.isUndefined(preparation)) return current
 						const result = getOrThrow(
@@ -547,40 +550,42 @@ export const makePi = Effect.fnUntraced(function* (config: Pi.Config) {
 					yield* pipe(decodeEvent(part), Effect.flatMap(replay.publish))
 				}
 				if (event.type !== 'agent_end') return
-				const last = Array.findLast(event.messages, message => message.role === 'assistant')
-				yield* Option.match(last, {
-					onNone: () => Effect.void,
-					onSome: message =>
-						replay.publish(
-							Response.makePart('finish', {
-								reason: pipe(
-									Match.value(message.stopReason),
-									Match.when('stop', () => 'stop' as const),
-									Match.when('length', () => 'length' as const),
-									Match.when('toolUse', () => 'tool-calls' as const),
-									Match.when('pending', () => 'error' as const),
-									Match.when('deferred', () => 'pause' as const),
-									Match.when('aborted', () => 'other' as const),
-									Match.when('error', () => 'error' as const),
-									Match.exhaustive
-								),
-								response: undefined,
-								usage: Response.Usage.make({
-									inputTokens: {
-										cacheRead: message.usage.cacheRead,
-										cacheWrite: message.usage.cacheWrite,
-										total: message.usage.input,
-										uncached: message.usage.input - message.usage.cacheRead
-									},
-									outputTokens: {
-										reasoning: message.usage.reasoning,
-										text: message.usage.output,
-										total: message.usage.output
-									}
+				yield* Option.match(
+					Array.findLast(event.messages, message => message.role === 'assistant'),
+					{
+						onNone: () => Effect.void,
+						onSome: message =>
+							replay.publish(
+								Response.makePart('finish', {
+									reason: pipe(
+										Match.value(message.stopReason),
+										Match.when('stop', () => 'stop' as const),
+										Match.when('length', () => 'length' as const),
+										Match.when('toolUse', () => 'tool-calls' as const),
+										Match.when('pending', () => 'error' as const),
+										Match.when('deferred', () => 'pause' as const),
+										Match.when('aborted', () => 'other' as const),
+										Match.when('error', () => 'error' as const),
+										Match.exhaustive
+									),
+									response: undefined,
+									usage: Response.Usage.make({
+										inputTokens: {
+											cacheRead: message.usage.cacheRead,
+											cacheWrite: message.usage.cacheWrite,
+											total: message.usage.input,
+											uncached: message.usage.input - message.usage.cacheRead
+										},
+										outputTokens: {
+											reasoning: message.usage.reasoning,
+											text: message.usage.output,
+											total: message.usage.output
+										}
+									})
 								})
-							})
-						)
-				})
+							)
+					}
+				)
 				yield* setStatus('idle')
 			})
 		)

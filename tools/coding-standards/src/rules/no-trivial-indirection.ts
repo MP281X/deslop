@@ -85,14 +85,13 @@ function unexportedBindingName(node: ESTree.Function | ESTree.ArrowFunctionExpre
 
 function singleCallerWrapper(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
 	const names = pipe(input.node.params, Array.map(parameterName), Array.getSomes)
-	const returned = returnedExpression(input.node)
 	if (
 		input.node.async ||
 		input.node.generator ||
 		input.node.returnType?.typeAnnotation.type === 'TSTypePredicate' ||
 		Array.isArrayEmpty(names) ||
 		names.length !== input.node.params.length ||
-		returned?.type !== 'CallExpression'
+		returnedExpression(input.node)?.type !== 'CallExpression'
 	) {
 		return false
 	}

@@ -33,12 +33,12 @@ The preset needs Effect-tsgo's patched Oxlint, so keep the patch command in the 
 
 ### Decisions
 
-| Owner      | Decision                                                                                                                                                                                       |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/`     | Flat package structure; rules in `src/rules`, no separate plugin or install-test harness                                                                                                       |
-| `skills/`  | Maintained engineering, design and testing sources; refresh repository copies from the TypeScript CLI, no build needed                                                                         |
-| Lint rules | Prefer an equivalent maintained rule before custom enforcement; consumer code conforms to strict standards, not the reverse. Fix broken or imprecise rules, not inconvenient valid diagnostics |
-| Rule proof | Existing public CLI regression cases, with accepted and rejected controls; no severity or exclusion workaround                                                                                 |
+| Owner      | Decision                                                                                                                                                                                                                                                                                                                                                                      |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/`     | Flat package structure; rules in `src/rules`, no separate plugin or install-test harness                                                                                                                                                                                                                                                                                      |
+| `skills/`  | Maintained engineering, design and testing sources; refresh repository copies from the TypeScript CLI, no build needed                                                                                                                                                                                                                                                        |
+| Lint rules | Prefer an equivalent maintained rule before custom enforcement; consumer code conforms to strict standards, not the reverse. Fix broken or imprecise rules, not inconvenient valid diagnostics. A rule targets code the engineering skill and the other rules allow; an edge case that only unusual code reaches takes an inline disable with its reason, never a looser rule |
+| Rule proof | Existing public CLI regression cases, with accepted and rejected controls; no severity or exclusion workaround                                                                                                                                                                                                                                                                |
 
 With workspace dependencies installed, from the repository root:
 

@@ -3,7 +3,7 @@ import {Array, Option} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {ESTree} from '@oxlint/plugins'
 
-import {memberName} from '#rules/shared.ts'
+import {matches, memberName} from '#rules/shared.ts'
 
 function receiverName(node: ESTree.Node) {
 	if (node.type === 'Identifier') return Option.some(node.name)
@@ -14,7 +14,7 @@ function isErrorMessage(node?: ESTree.Node | null) {
 	return (
 		node?.type === 'MemberExpression' &&
 		Option.contains(memberName(node), 'message') &&
-		Option.exists(receiverName(node.object), name => /^(?:e|err|error|failure|cause|exception)$|Error$/iu.test(name))
+		Option.exists(receiverName(node.object), matches(/^(?:e|err|error|failure|cause|exception)$|Error$/iu))
 	)
 }
 

@@ -74,8 +74,7 @@ NodeRuntime.runMain(
 
 			return Effect.gen(function* () {
 				const root = resolve(directory)
-				const fileSystem = yield* FileSystem.FileSystem
-				yield* fileSystem.copyFile(icon, resolve(root, 'src/routes/icon.png'))
+				yield* (yield* FileSystem.FileSystem).copyFile(icon, resolve(root, 'src/routes/icon.png'))
 				yield* Effect.promise(() =>
 					new Generator({
 						config: getConfig(

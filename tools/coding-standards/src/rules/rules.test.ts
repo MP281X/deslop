@@ -449,6 +449,67 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 		)
 
 		testApi.effect(
+			'reports single-use values, native regex checks and nullish ternaries only where the rewrite keeps behavior',
+			() =>
+				Effect.gen(function* () {
+					const result = yield* lintSource({
+						'inline.ts': pipe(
+							[
+								"import {Array, Effect, Predicate, Ref} from 'effect'",
+								'',
+								'declare const text: string',
+								'declare const items: string[]',
+								'declare const maybe: string | undefined',
+								'declare const flag: boolean',
+								'declare const state: Ref.Ref<number>',
+								'declare function consume(...values: number[]): number',
+								'declare function compute(): string[]',
+								'declare const pattern: RegExp',
+								'export function inlined() { const size = text.length; return consume(size) }',
+								'export function interpolated() { const label = `${text}!`; return consume(label.length) }',
+								'export function header() { const listed = compute(); for (const item of listed) consume(item.length) }',
+								'export const enclosed = Effect.gen(function* () { const first = yield* Ref.get(state); return yield* Ref.set(state, first) })',
+								'export function multiline() {',
+								'	const size = Array.reduce(items, 0, (total, item) =>',
+								'		total + item.length)',
+								'	return consume(size)',
+								'}',
+								'export function repeated() { const size = text.length; return Array.map(items, () => consume(size)) }',
+								'export function looped() { const size = text.length; for (const item of items) consume(size + item.length) }',
+								'export function skipped() { const size = text.length; return flag && consume(size) }',
+								'export function later() { const size = text.length; consume(1); return consume(size) }',
+								'export function twice() { const size = text.length; return consume(size) + size }',
+								'export function literal() { const limit = 42; return consume(limit) }',
+								'export const ordered = Effect.gen(function* () { const first = yield* Ref.get(state); return consume((yield* Ref.get(state)) + first) })',
+								'export function nested() { const mode = flag ? 1 : 2; return consume(flag ? mode : 0) }',
+								'export function condition() { const mode = flag ? 1 : 2; return mode > 0 ? 3 : 4 }',
+								'export const literalTest = /x/u.test(text)',
+								'export const calledExec = RegExp("x", "u").exec(text)',
+								'export const globalExec = /(a)(b)/gu.exec(text)',
+								'export const variableTest = pattern.test(text)',
+								'export const fallback = maybe === undefined ? "none" : maybe',
+								'export const predicateFallback = Predicate.isNullish(maybe) ? "none" : maybe',
+								'export const choice = consume(1) > 0 ? "some" : "none"'
+							],
+							Array.join('\n')
+						)
+					})
+					assert.deepStrictEqual(customCodes(result.stdout), [
+						'@deslop/coding-standards(no-native-method-call)',
+						'@deslop/coding-standards(no-native-method-call)',
+						'@deslop/coding-standards(no-nullish-ternary)',
+						'@deslop/coding-standards(no-nullish-ternary)',
+						'@deslop/coding-standards(no-single-use-value)',
+						'@deslop/coding-standards(no-single-use-value)',
+						'@deslop/coding-standards(no-single-use-value)',
+						'@deslop/coding-standards(no-single-use-value)',
+						'@deslop/coding-standards(no-trivial-indirection)'
+					])
+				}),
+			20_000
+		)
+
+		testApi.effect(
 			'enforces native correctness rules without rejecting protected cases',
 			() =>
 				Effect.gen(function* () {

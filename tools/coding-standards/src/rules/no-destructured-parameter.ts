@@ -3,7 +3,7 @@ import {Array, Option, pipe} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
-import {variableFromScope} from '#rules/shared.ts'
+import {matches, variableFromScope} from '#rules/shared.ts'
 
 function namedTuple(input: {context: Context; node: ESTree.TSType; seen: ESTree.TSType[]}): boolean {
 	if (Array.contains(input.seen, input.node)) return false
@@ -38,11 +38,12 @@ function namedTuple(input: {context: Context; node: ESTree.TSType; seen: ESTree.
 }
 
 function component(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
-	const declared = node.type === 'ArrowFunctionExpression' ? undefined : node.id
-	const assigned =
-		node.parent.type === 'VariableDeclarator' && node.parent.id.type === 'Identifier' ? node.parent.id : undefined
-	const name = declared ?? assigned
-	if (name === undefined || !/^[A-Z]/u.test(name.name) || node.params.length !== 1 || node.body === null) return false
+	const name =
+		(node.type === 'ArrowFunctionExpression' ? undefined : node.id) ??
+		(node.parent.type === 'VariableDeclarator' && node.parent.id.type === 'Identifier' ? node.parent.id : undefined)
+	if (name === undefined || !matches(/^[A-Z]/u)(name.name) || node.params.length !== 1 || node.body === null) {
+		return false
+	}
 	if (node.body.type === 'JSXElement' || node.body.type === 'JSXFragment') return true
 	return (
 		node.body.type === 'BlockStatement' &&

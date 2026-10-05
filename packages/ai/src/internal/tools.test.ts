@@ -50,8 +50,7 @@ const makeFileSystem = Effect.fnUntraced(function* () {
 				HashMap.keys,
 				Array.fromIterable,
 				Array.filterMap(file => {
-					const root = options?.root ?? '.'
-					const prefix = `${root}/`
+					const prefix = `${options?.root ?? '.'}/`
 					if (!String.startsWith(prefix)(file)) return Result.failVoid
 					if (pattern === '**/*.txt' && !String.endsWith('.txt')(file)) return Result.failVoid
 					return Result.succeed(String.slice(String.length(prefix))(file))
@@ -97,8 +96,7 @@ it.layer(NodeServices.layer)('Pi tools', test => {
 	test.effect(
 		'execute the normalized filesystem and process tools',
 		Effect.fnUntraced(function* () {
-			const path = yield* Path.Path
-			const cwd = path.resolve('.')
+			const cwd = (yield* Path.Path).resolve('.')
 			const fileSystem = yield* makeFileSystem()
 			const handlerContext = yield* Layer.build(
 				PiToolkit.toLayer(pipe(handlers(cwd), Effect.provideService(FileSystem.FileSystem, fileSystem)))

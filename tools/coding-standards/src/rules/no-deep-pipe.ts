@@ -20,8 +20,10 @@ function enclosingPipes(context: Context, node: ESTree.Node): number {
 	) {
 		return 0
 	}
-	const nested = isPipeCall(context, node.parent) && Array.some(node.parent.arguments, argument => argument === node)
-	return enclosingPipes(context, node.parent) + (nested ? 1 : 0)
+	return (
+		enclosingPipes(context, node.parent) +
+		(isPipeCall(context, node.parent) && Array.some(node.parent.arguments, argument => argument === node) ? 1 : 0)
+	)
 }
 
 export const noDeepPipe = defineRule({

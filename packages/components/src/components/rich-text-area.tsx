@@ -216,22 +216,32 @@ function continueList(event?: KeyboardEvent) {
 	if (!current) return false
 
 	const currentLine = lineBeforeCursor(current.node.getTextContent(), current.selection.anchor.offset)
-	if (/^(\s*)[-*+]\s*$/u.exec(currentLine.line) || /^(\s*)\d+\.\s*$/u.exec(currentLine.line)) {
+	if (Option.isSome(pipe(currentLine.line, String.match(/^\s*(?:[-*+]|\d+\.)\s*$/u)))) {
 		event.preventDefault()
 		current.node.spliceText(currentLine.start, String.length(currentLine.line), '', true)
 		return true
 	}
 
-	const unordered = /^(\s*)([-*+])\s+\S/u.exec(currentLine.line)
-	const ordered = /^(\s*)(\d+)\.\s+\S/u.exec(currentLine.line)
-	if (!(unordered || ordered)) return false
-
-	event.preventDefault()
-	if (unordered) current.selection.insertRawText(`\n${unordered[1]}${unordered[2]} `)
-	if (ordered) {
-		current.selection.insertRawText(`\n${ordered[1] ?? ''}${Option.getOrThrow(Number.parse(ordered[2] ?? '0')) + 1}. `)
-	}
-	return true
+	return pipe(
+		currentLine.line,
+		String.match(/^(\s*)([-*+])\s+\S/u),
+		Option.map(unordered => `\n${unordered[1]}${unordered[2]} `),
+		Option.orElse(() =>
+			pipe(
+				currentLine.line,
+				String.match(/^(\s*)(\d+)\.\s+\S/u),
+				Option.map(ordered => `\n${ordered[1] ?? ''}${Option.getOrThrow(Number.parse(ordered[2] ?? '0')) + 1}. `)
+			)
+		),
+		Option.match({
+			onNone: () => false,
+			onSome: continuation => {
+				event.preventDefault()
+				current.selection.insertRawText(continuation)
+				return true
+			}
+		})
+	)
 }
 
 function closeXmlTag(event: KeyboardEvent) {
@@ -240,19 +250,24 @@ function closeXmlTag(event: KeyboardEvent) {
 	const current = currentTextNodeSelection()
 	if (!current) return false
 
-	const currentLine = lineBeforeCursor(current.node.getTextContent(), current.selection.anchor.offset)
-	const tag = /<([A-Za-z][A-Za-z0-9:_-]*)$/u.exec(currentLine.line)
-	if (!tag) return false
-
-	event.preventDefault()
-	current.node.spliceText(current.selection.anchor.offset, 0, `></${tag[1]}>`, true)
-	current.selection.setTextNodeRange(
-		current.node,
-		current.selection.anchor.offset - String.length(`</${tag[1]}>`),
-		current.node,
-		current.selection.anchor.offset - String.length(`</${tag[1]}>`)
+	return pipe(
+		lineBeforeCursor(current.node.getTextContent(), current.selection.anchor.offset).line,
+		String.match(/<([A-Za-z][A-Za-z0-9:_-]*)$/u),
+		Option.match({
+			onNone: () => false,
+			onSome: tag => {
+				event.preventDefault()
+				current.node.spliceText(current.selection.anchor.offset, 0, `></${tag[1]}>`, true)
+				current.selection.setTextNodeRange(
+					current.node,
+					current.selection.anchor.offset - String.length(`</${tag[1]}>`),
+					current.node,
+					current.selection.anchor.offset - String.length(`</${tag[1]}>`)
+				)
+				return true
+			}
+		})
 	)
-	return true
 }
 
 function EditorPlugin<TValue extends RichTextArea.Value>(props: {
@@ -383,10 +398,11 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 							Option.flatMap(index => {
 								const previous = text[index - 1] ?? ''
 								const query = String.slice(index + String.length(trigger))(text)
-								const validBoundary = index === 0 || previous === '(' || /\s/u.test(previous)
+								const validBoundary =
+									index === 0 || previous === '(' || Option.isSome(pipe(previous, String.match(/\s/u)))
 								return Option.liftPredicate(
 									{leadOffset: index, query, replaceableString: String.slice(index)(text), trigger},
-									() => validBoundary && String.length(query) <= 32 && !/\s/u.test(query)
+									() => validBoundary && String.length(query) <= 32 && Option.isNone(pipe(query, String.match(/\s/u)))
 								)
 							})
 						)

@@ -1,4 +1,4 @@
-import {Array, Predicate, Record, pipe} from 'effect'
+import {Array, Option, Predicate, Record, pipe} from 'effect'
 
 import type {CreatedDirectory, CreatedEntry, IntakeDirectory} from 'bingo-fs'
 
@@ -10,7 +10,10 @@ export function replaceDirectory(directory: IntakeDirectory, replace: (content: 
 			if (!Array.isArray(entry)) return replaceDirectory(entry, replace)
 
 			const replaced = replace(entry[0])
-			return Predicate.isUndefined(entry[1]) ? [replaced] : [replaced, entry[1]]
+			return Option.match(Option.fromUndefinedOr(entry[1]), {
+				onNone: (): CreatedEntry => [replaced],
+				onSome: (options): CreatedEntry => [replaced, options]
+			})
 		})
 	)
 }

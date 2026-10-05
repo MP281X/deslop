@@ -101,8 +101,7 @@ export function formatCopiedComment(comment: {
 	lineNumber: number
 	side?: AnnotationSide
 }) {
-	const linePrefix = comment.side === 'deletions' ? 'deleted' : 'line'
-	return `# Review comments\n\n## ${comment.filePath}\n\n${linePrefix}:${comment.lineNumber}: ${comment.body}`
+	return `# Review comments\n\n## ${comment.filePath}\n\n${comment.side === 'deletions' ? 'deleted' : 'line'}:${comment.lineNumber}: ${comment.body}`
 }
 
 function captureScrollAnchor(container: HTMLElement, clientY: number) {
@@ -337,9 +336,13 @@ export function PatchDiff(props: {
 		if (Predicate.isNull(containerRef.current)) return
 
 		const rect = containerRef.current.getBoundingClientRect()
-		const clientY = Predicate.isNull(pointerClientYRef.current)
-			? rect.top + rect.height / 2
-			: Number.clamp({maximum: rect.bottom, minimum: rect.top})(pointerClientYRef.current)
+		const clientY = pipe(
+			Option.fromNullOr(pointerClientYRef.current),
+			Option.match({
+				onNone: () => rect.top + rect.height / 2,
+				onSome: Number.clamp({maximum: rect.bottom, minimum: rect.top})
+			})
+		)
 		scrollAnchorRef.current = captureScrollAnchor(containerRef.current, clientY) ?? null
 		setModeState(current => ({
 			key: modeKey,

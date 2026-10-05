@@ -8,6 +8,7 @@ import {
 	isImportBinding,
 	isInferredType,
 	isSchemaOperationName,
+	matches,
 	memberName,
 	schemaCycleNames,
 	schemaSchemaType,
@@ -44,7 +45,7 @@ function schemaDefinitionMember(node: ESTree.Expression): Option.Option<ESTree.M
 }
 
 function isSchemaDefinitionName(name: string) {
-	return !isSchemaOperationName(name) && !/^(?:is|to)[A-Z]/u.test(name) && !/^makeFilter(?:Group)?$/u.test(name)
+	return !isSchemaOperationName(name) && !matches(/^(?:is|to)[A-Z]/u)(name) && !matches(/^makeFilter(?:Group)?$/u)(name)
 }
 
 function isSchemaDefinition(input: {context: Context; node: ESTree.Expression}): boolean {
@@ -96,7 +97,7 @@ function reportSchemaVariable(input: {
 	statement: ESTree.Statement
 	variable: ESTree.VariableDeclarator
 }) {
-	if (input.variable.id.type !== 'Identifier' || !/^[A-Z]/u.test(input.variable.id.name)) return
+	if (input.variable.id.type !== 'Identifier' || !matches(/^[A-Z]/u)(input.variable.id.name)) return
 	if (input.variable.init === null || !isSchemaDefinition({context: input.context, node: input.variable.init})) return
 	const name = input.variable.id.name
 	const annotation = input.variable.id.typeAnnotation
