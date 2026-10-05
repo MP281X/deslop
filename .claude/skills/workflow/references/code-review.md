@@ -12,4 +12,4 @@
 
 ## Probes
 
-Run a probe script with the repository's runtime through Vite+: `vp node <file>`, or `vp env exec bun <file>` in Bun repositories such as Dual. Node cannot strip types from TypeScript imported under `node_modules`, so integrated code goes through the app or test entrypoint. Keep probes in scratch and leave source unchanged.
+Run a probe as an inline script with the repository's runtime through Vite+, such as `vp node -e '<script>'` or `vp env exec bun -e '<script>'` in Bun repositories such as Dual, so nothing is written to the repository. Node cannot strip types from TypeScript imported under `node_modules`, so integrated code goes through the app or test entrypoint. Write nothing to the repository, shared caches or running services.

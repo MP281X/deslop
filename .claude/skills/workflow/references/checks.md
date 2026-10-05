@@ -1,6 +1,6 @@
 # Checks
 
-- **Scope.** Run the assigned commands from the repository root with environment's root commands; testing selects checks and reruns. Serialize checks that compete for resources or write shared artifacts. A delegated checker runs commands on the source it is given; the primary alone prepares baselines, fixes and publishes.
+- **Scope.** Run the assigned commands from the repository root with environment's root commands; testing selects checks and reruns. Serialize checks that compete for resources or write shared artifacts.
 - **Results.** Take the exit status from the command you started, not a log footer. Keep bulky logs in scratch and read the deciding part; filtering never hides a failure. Wait on the returned session, never on a spawned agent. Servers need readiness probes.
 - **Return.** Each criterion's command and exit status, cached or fresh, failed, skipped or passed.
 
@@ -8,7 +8,7 @@
 
 - The body follows Pair's Structure and describes what the final branch changes and how to review it, not its iteration history. Keep consequential risks, even in mechanically changed files.
 - **Changed** lists every public contract the branch changes, such as an endpoint, schema, CLI flag, configuration key, migration or exported API, as a before → after row with a link to its lines. The **Review guide** ranks the riskiest places to read first and splits the size into hand-written, generated and moved lines, naming the command that reproduces generated output.
-- Leave out process and activity: reviews or checks that ran, cache replays, services started or stopped, and work in progress or planned. **Proof** shows behavior, not effort.
+- Leave out process and activity: reviews or checks that ran, cache replays, services started or stopped, and work in progress or planned. **Proof** shows behavior, not effort, and embeds the inspected videos of the changed user journeys.
 - Link the words that refer to a file or folder to the file on the branch, like citations, with a line range when the change covers part of the file:
 
   | Host   | Link                                                                     |
@@ -27,7 +27,7 @@ glab mr update <number> --draft --description-file <scratch>/body.md --attach <f
 
 ## Pipeline watch
 
-If `watch_pull_request` is available, the primary thread registers the watch and ends its turn. A delegated checker hands this monitoring back to the primary instead of registering a watch on its own child thread. T3 wakes the thread that registered the watch when a check fails, checks complete, someone comments or reviews, or a conflict appears; inspect the event and read only the logs of the failed jobs. Do not spawn a blocking child or poll alongside that watch.
+If `watch_pull_request` is available, the primary thread registers the watch and ends its turn. T3 wakes the thread that registered the watch when a check fails, checks complete, someone comments or reviews, or a conflict appears; inspect the event and read only the logs of the failed jobs. Do not spawn a blocking child or poll alongside that watch.
 
 Without a watcher from the app, wait for the pipeline with one blocking command run in the background under `timeout 2h`, then read only the logs of the failed jobs.
 
