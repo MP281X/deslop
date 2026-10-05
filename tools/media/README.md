@@ -15,12 +15,15 @@ The output directory defaults to `node_modules/.cache/deslop/media`. The CLI pre
 
 The first run downloads the standalone `yt-dlp` and the Whisper model into `~/.cache/deslop/media`; later runs update `yt-dlp` in place. YouTube asks datacenter addresses to sign in, so on a server only its oEmbed title and channel are available; X, TikTok and most other sites work.
 
-## Working here
+<details>
+<summary>For agents</summary>
 
-| Owner         | Decision                                                                                                        |
-| ------------- | --------------------------------------------------------------------------------------------------------------- |
-| `src/cli.ts`  | One Effect CLI; `yt-dlp` stays an external binary because no maintained JavaScript extractor covers its sites   |
-| Transcription | Transformers.js with q8 Whisper; it stays an installed dependency because it loads native ONNX Runtime binaries |
-| Proof         | Real runs against a captioned post, an uncaptioned video and a blocked YouTube URL through the packed tarball   |
+| Owner         | Decision                                                                                                                                                                                                                                                                  |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/cli.ts`  | One Effect CLI; `yt-dlp` stays an external binary because no maintained JavaScript extractor covers its sites                                                                                                                                                             |
+| Transcription | Transformers.js with q8 Whisper, bundled because it imports `onnxruntime-common` without declaring it and `pnpm dlx` (pnpm 11) cannot resolve that. Its runtime dependencies become ours at the exact versions Transformers.js `4.3.0` declares; update all four together |
+| Proof         | Real runs against a captioned post, an uncaptioned video and a blocked YouTube URL through the packed tarball                                                                                                                                                             |
 
-Publishing follows [tools/README.md](../README.md).
+Publishing follows [tools/AGENTS.md](../AGENTS.md).
+
+</details>

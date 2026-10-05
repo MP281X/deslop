@@ -6,7 +6,7 @@
 
 ## Proof and previews
 
-Proof services are temporary and listen on loopback; a persistent, exposed preview exists only when the user asks for one. Static proof uses `screenshot <path.png>`. Record behavior on video, and show before and after only when the comparison means something.
+Proof services are temporary and listen on loopback. Static proof uses `screenshot <path.png>`. Record behavior on video, and show before and after only when the comparison means something.
 
 Record the process and session identities of the proof services you start. Stop them only after confirming that you own them; finding a listener on a port does not give permission to stop it. Use a free port instead of stopping another owner's listener.
 

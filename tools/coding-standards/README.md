@@ -1,20 +1,16 @@
 # Coding standards
 
-Strict Oxlint preset and repository skill installer. Requires Node 26+; skill installation runs inside a Git repository, including linked worktrees.
+A strict Oxlint preset and an installer for the engineering, design and testing agent skills. Requires Node 26+.
 
-## Install skills
+## Install the skills
+
+Run inside a Git repository, including a linked worktree:
 
 ```bash
 vpx @deslop/coding-standards@latest
 ```
 
-| Result                                 | Scope                                                                                              |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Engineering, design and testing skills | Git root's existing `.agents`, `.claude` and `.codex` directories; creates `.agents` if none exist |
-| Refresh                                | Replaces only those three skill names; preserves other skills and global configuration             |
-| Boundary                               | Rejects destinations escaping the repository or overlapping global configuration                   |
-
-No repository dependency, manifest/lock change or lint configuration change. Treat installed skill copies as read-only; refresh through the CLI.
+It copies the three skills into the repository's existing `.agents`, `.claude` and `.codex` directories, or creates `.agents` when none exists. A refresh replaces only those three skills, and destinations outside the repository or inside global agent configuration are rejected. Nothing is added to the manifest, lockfile or lint configuration.
 
 ## Use the lint preset
 
@@ -30,9 +26,12 @@ import {oxlint} from '@deslop/coding-standards'
 export default defineConfig({lint: {extends: [oxlint]}})
 ```
 
-The preset uses Effect-tsgo's patched Oxlint and compatible tsgolint; keep the patch command in the project's prepare script. Match upstream supported tool versions. The skill installer neither configures lint nor upgrades/patches its toolchain.
+The preset needs Effect-tsgo's patched Oxlint, so keep the patch command in the project's `prepare` script.
 
-## Working here
+<details>
+<summary>For agents</summary>
+
+### Decisions
 
 | Owner      | Decision                                                                                                                                                                                    |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -41,7 +40,7 @@ The preset uses Effect-tsgo's patched Oxlint and compatible tsgolint; keep the p
 | Lint rules | Prefer an equivalent maintained rule before custom enforcement; consumer code conforms to strict standards, not the reverse. Fix broken/imprecise rules, not inconvenient valid diagnostics |
 | Rule proof | Existing public CLI regression cases, with accepted/rejected controls; no severity/exclusion workaround                                                                                     |
 
-## Rejected shortcuts
+### Rejected shortcuts
 
 | Candidate                                                | Reason                                                                                                       |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
@@ -56,7 +55,7 @@ vp test run tools/coding-standards/src/rules/rules.test.ts
 node tools/coding-standards/src/install.ts
 ```
 
-## Skill inspiration
+### Skill sources
 
 | Source                                                                                                                                                                                                                       | Used / boundary                                                                                                                                                                                   |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -70,3 +69,5 @@ node tools/coding-standards/src/install.ts
 | [Awesome DESIGN.md](https://github.com/VoltAgent/awesome-design-md) and [Impeccable](https://github.com/pbakaus/impeccable)                                                                                                  | Reviewed reference collections; community brand analyses are inspiration, not authoritative/current tokens                                                                                        |
 
 These are selectively adapted ideas, not imported frameworks. Concrete behavior, existing stack and settled user decisions govern the maintained skills.
+
+</details>

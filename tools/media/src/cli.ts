@@ -119,6 +119,17 @@ const cli = pipe(
 				)
 				const output = path.resolve(input.output)
 				yield* fs.makeDirectory(output, {recursive: true})
+				// A reused output directory must not mix an earlier URL's captions, audio or transcript into this run.
+				yield* Effect.forEach(
+					Array.filter(
+						yield* fs.readDirectory(output),
+						name =>
+							pipe(name, String.startsWith('captions')) ||
+							pipe(name, String.startsWith('audio.')) ||
+							name === 'transcript.txt'
+					),
+					name => fs.remove(path.join(output, name))
+				)
 				yield* fs.makeDirectory(cache, {recursive: true})
 
 				const ytDlp = path.join(cache, 'yt-dlp')

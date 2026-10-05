@@ -33,7 +33,7 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 ## Deploy
 
 - Deploy is one `tools/compose.yaml` with configs inlined, direct ports, and unpinned images, driven by commands for this machine; no README, flag-heavy scripts, or nested folders.
-- Reusable tooling ships as a TypeScript package `@deslop/<name>` under `tools/`, published by CI. Add and publish one with [tools/README.md](tools/README.md).
+- Reusable tooling ships as a TypeScript package `@deslop/<name>` under `tools/`, published by CI. Add and publish one with [tools/AGENTS.md](tools/AGENTS.md).
 
 ## Keys
 
@@ -46,6 +46,7 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 
 ## Dependencies
 
+- Declare a new dependency as `latest`. Pin a version only when another package requires that exact version, and keep the pinned group together.
 - Keep dependencies in their existing owning packages; shared root dependencies stay at the root. Resolve version drift with normal package-manager updates, not by relocating declarations. Published tools declare the dependencies their consumers need.
 - Updates stay within declared ranges and supported upstream families; update coupled packages together, then verify their real consumers. Vite+ owns its exact lint/test toolchain versions; do not independently chase their newer tags.
 - Peer checks stay strict. Vite+'s versioned Vite alias is accepted only for explicitly inspected consumer versions in `pnpm-workspace.yaml`, not through blanket `allowAny` or TypeScript peer suppression. Recheck compatibility when either side changes.
@@ -69,5 +70,5 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 
 ## Local context
 
-- A touched package or meaningful configuration folder (such as `.claude` or `.github`) owns a concise `README.md` for usage and non-obvious decisions, with `AGENTS.md` as a relative symlink to it. Keep it current with the owning changes.
+- A touched package or meaningful configuration folder (such as `.claude` or `.github`) owns a concise `AGENTS.md` for usage and non-obvious decisions, with `README.md` as a relative symlink to it, because agents load `AGENTS.md` automatically. A published package keeps the real file as `README.md` and links `AGENTS.md` to it, because `pnpm pack` drops a symlinked README. Keep it current with the owning changes.
 - No duplicated repository/skill policy, source-code narration, empty templates, briefs inside `src`, or generic folder documents without a semantic owner. Shared procedures remain in skills; package-specific context belongs in its brief.

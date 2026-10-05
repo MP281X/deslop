@@ -4,12 +4,6 @@
 
 **Return.** Return the changed behavior, the paths you changed, the proof that decides it and any gaps that remain.
 
-## Standalone probes
+## Probes
 
-Standalone probes use the existing runtime: write a `.mjs` driver, or pipe TypeScript through standard input from the target worktree's root:
-
-```bash
-node --input-type=module-typescript - < node_modules/.cache/deslop/<agent>/probe.ts
-```
-
-Imports in standard-input code resolve from the current directory, not from the driver's folder. Node cannot strip types from TypeScript imported under `node_modules`, so integrated code goes through the app or test entrypoint.
+Run a probe script with the repository's runtime through Vite+: `vp node <file>`, or `vp env exec bun <file>` in Bun repositories such as Dual. Node cannot strip types from TypeScript imported under `node_modules`, so integrated code goes through the app or test entrypoint.

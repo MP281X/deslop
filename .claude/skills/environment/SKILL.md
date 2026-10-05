@@ -10,7 +10,7 @@ description: 'Machine facts and repository commands. Use for host setup, local e
 ## Machine
 
 - **Tools.** `~/.vite-plus/bin` supplies Node/package-manager shims: `vp` for packages, `vpx` for binaries. Passwordless sudo; gh/glab use existing sign-ins.
-- **Scratch.** `node_modules/.cache/deslop/`; cloned upstream sources: `~/.deslop/repos/`.
+- **Scratch.** Logs and command output: `node_modules/.cache/deslop/`. Cloned upstream sources: `~/.deslop/repos/`.
 - **T3 state.** Prefer app-owned thread tools. For local read-only inspection, verify the database opened by the running `t3 serve` process before setting `T3_DB`; this machine currently uses `~/.t3/userdata/statev2.sqlite`. Live thread/run/session data is in `orchestration_v2_projection_*`. Legacy `projection_*` and `provider_session_runtime` can remain stale even in the live database. Use `sqlite3 -readonly` and select needed fields, not raw payloads or credentials.
 - **Services.** Temporary containers, not host installations. Maintenance owns Docker binding defaults; preserve unrelated workloads.
 - **Exposure.** Requested previews use Tailscale Serve through workflow's Browser procedure. Share the verified tailnet HTTPS URL, not localhost; keep only requested previews running.
@@ -28,7 +28,7 @@ vpx @deslop/coding-standards@latest --help
 vpx @deslop/coding-standards@latest
 ```
 
-**Missing copies.** If engineering or testing is missing from a worktree, run the installer before code work; never read an older copy under `node_modules`.
+**Missing copies.** If engineering or testing is missing from a worktree, run the installer before code work.
 
 **Versions.** Skill refresh changes no manifests/lock. Upgrade presets only in touched packages; versions may differ. The pair batches shared lock/install changes and verifies frozen installation. Deslop uses workspace source.
 

@@ -2,8 +2,9 @@ import {defineConfig} from 'vite-plus'
 
 export default defineConfig({
 	pack: {
-		// Transformers.js loads native ONNX Runtime binaries, so it stays an installed dependency.
-		deps: {alwaysBundle: [/^(?!@huggingface\/transformers)/u]},
+		// ONNX Runtime and sharp load native binaries, so they stay installed dependencies; Transformers.js is bundled
+		// because it imports onnxruntime-common without declaring it, which strict pnpm installs cannot resolve.
+		deps: {alwaysBundle: [/^(?!onnxruntime-|sharp$)/u]},
 		entry: ['src/cli.ts'],
 		outputOptions: {entryFileNames: '[name].js'}
 	}
