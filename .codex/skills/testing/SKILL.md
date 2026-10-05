@@ -58,7 +58,7 @@ assert.strictEqual(Array.flatMap(attioProvider.groups, group => group.actions).l
 
 ## Run and reconcile
 
-- **Run.** Use root check/fix commands and documented test selectors; confirm intended collection/execution. Zero tests/setup-only/exit0 alone is not proof; no invented final suite.
+- **Run.** Use root check commands, fix commands scoped to the files the change touches, and documented test selectors; confirm intended collection/execution. Zero tests/setup-only/exit0 alone is not proof; no invented final suite.
 - **Inventory.** Collect independent failures once instead of cancelling the suite at the first failure. Distinguish separate cases from repeated observations. A timeout receives one isolated rerun of that same test; after a genuine pass, stop investigating it. Do not call a bypassed selector or a skipped operation flaky.
 - **Evidence.** Preserve the first failure, exact command, execution count and exit status. Separate cause from hypothesis, product defect from setup failure, and a skipped criterion from a passing one. A source read or overall green command never substitutes for a missing behavior check.
 - **Stable inputs.** No writer changes a running check's source, dependencies, configuration or build inputs. A relevant edit invalidates its prior result; rerun affected criteria and reuse unaffected evidence. Independent research or browser journeys may continue without mutating those inputs.

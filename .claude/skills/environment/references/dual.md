@@ -1,6 +1,6 @@
 # Dual
 
-**Root commands.** Turbo owns package check caching; fixes are uncached. The test runner owns fingerprints/cache and continuation. Do not add an outer Vite+ cache around service-dependent tests.
+**Root commands.** Turbo owns package check caching; fixes are uncached. The test runner owns fingerprints/cache and continuation. Do not add an outer Vite+ cache around service-dependent tests. Fix the branch's files with `node_modules/.bin/oxfmt <files>` and `node_modules/.bin/oxlint --fix <files>`; the root fix is for a repository-wide fix the user asked for.
 
 ```bash
 vp run --workspace-root check

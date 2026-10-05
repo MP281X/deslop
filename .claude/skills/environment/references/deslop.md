@@ -1,6 +1,6 @@
 # Deslop
 
-**Root commands.** Vite+ tracks task inputs; cache checks, not source-mutating fixes. Use --no-cache when proving a fresh execution.
+**Root commands.** Vite+ tracks task inputs; cache checks, not source-mutating fixes. Use --no-cache when proving a fresh execution. Fix the branch's files with `vp check --fix <files>`; the root fix is for a repository-wide fix the user asked for.
 
 ```bash
 vp run --workspace-root --cache check

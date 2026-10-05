@@ -523,6 +523,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								'export const coalesced = amount + 1 ?? 0',
 								'export const optionalArithmetic = input.slot?.amount + 1',
 								'export const optionalInvoke = (input.slot?.handler)()',
+								'export const readIgnored = (_input: {value: string}) => _input.value.length',
 								'export function Frozen() { return <input value="ready" onChange={event => console.info(event.currentTarget.value)} /> }'
 							],
 							Array.join('\n')
@@ -533,6 +534,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 						'eslint(no-loss-of-precision)',
 						'eslint(no-constant-binary-expression)',
 						'eslint(no-unsafe-optional-chaining)',
+						'eslint(no-unused-vars)',
 						'react-doctor(no-controlled-input-value-without-state-update)'
 					]
 					assert.deepStrictEqual(
@@ -555,6 +557,8 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								'export const precise = 9007199254740993n',
 								'export const coalesced = amount + (input.slot?.amount ?? 0)',
 								'export const safeInvoke = input.slot?.handler()',
+								'export const ignoreFirst = (_url: string, init: number) => init',
+								'export function omitted(input: {token: string; name: string}) { const {token, ...rest} = input; return rest }',
 								'export type Boundary = typeof Schema.Unknown.Type',
 								'export function Editable() { const [value, setValue] = useState(""); return <input value={value} onChange={event => setValue(event.currentTarget.value)} /> }',
 								'export const locked = <input value="ready" readOnly />',

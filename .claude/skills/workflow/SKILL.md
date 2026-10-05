@@ -5,7 +5,12 @@ description: Primary task coordination, ownership and delivery. Use for executio
 
 # Workflow
 
-Iterate fast until the user is satisfied, then make the branch merge-ready in one production pass. The primary agent owns implementation, checks and integration.
+Iterate fast until the user is satisfied, then make the branch merge-ready in one production pass. The primary agent writes all code and owns checks and integration.
+
+## Scope
+
+- **The request is the scope.** The branch holds what the user asked for. A related improvement, a defect in code the task does not otherwise change, or a capability that only a test needs goes under **Needs you** as a follow-up instead of into the branch.
+- **Size before growth.** A question that would grow the scope states what it adds in files, rough time and children, and the smaller option comes first.
 
 ## Prototype
 
@@ -17,38 +22,44 @@ Iterate fast until the user is satisfied, then make the branch merge-ready in on
 - **Checkpoint.** Commit locally as often as useful, write scratch code in the repository and reset afterwards; reset only your own changes.
 - **Ask little.** Ask only about unknowable goals, access, scope or open taste, and keep working meanwhile. After two failures, test a hypothesis that tells the causes apart.
 
-A change request after a push re-enters this phase.
+A change request after a push, or a new direction during production, re-enters this phase.
 
 ## Production
 
 Start when the user is satisfied, or at once for a settled task.
 
-- **Clean.** Remove everything iteration left behind: duplication, dead or superseded code and text, layered overrides, abandoned alternatives and no-ops. Recheck every touched file against engineering and design.
+- **Clean.** Remove everything iteration left behind: duplication, dead or superseded code and text, layered overrides, abandoned alternatives and no-ops. Run formatters and autofixes only on the files the branch changes, and revert your own edits outside the task before committing. Recheck every touched file against engineering and design.
 - **Encode.** Turn each recurring mistake into a type, lint rule, test or script; write guidance only for judgment calls.
 - **Cover inputs.** Before review, list the reachable input classes of every parser, boundary and state transition the diff adds or changes, and cover them per testing's Branches rule. Reproduce each confirmed code finding before fixing it, per testing's Bugs rule.
-- **Review.** Run the first [code review](references/code-review.md) round over the whole diff with one reviewer per lens the diff contains (code behavior with probes; instructions and docs against each other), split by area when one reviewer cannot read its share. Fix every finding you confirm, then run fix rounds until one is clean; a fix that rewords prose without changing a rule, claim or link needs no further round.
+- **Review.** Run one [code review](references/code-review.md) round over the whole diff with one reviewer per lens the diff contains (code behavior with probes; instructions and docs against each other), split by area when one reviewer cannot read its share. Fix every finding you confirm and verify each fix yourself with a test that fails first. Run a second round over the fixes only when they change behavior beyond the lines the finding named. After two rounds, bring any remaining finding to the user instead of starting a third.
 - **Prove.** Run the full checks testing selects and the UI journeys design requires.
 - **Ship.** Squash the unpushed checkpoints, update from the default branch, rerun proof whose inputs changed, push and open or update the draft pull request per [publishing](references/checks.md#publishing). Missing proof blocks the push; other irreversible or outward actions need confirmation.
-- **Clean up.** Stop what you started: services, processes, extra worktrees, exit nodes, sign-ins and scratch files; keep requested previews and useful evidence. Formatter and autofix rewrites are trusted, even outside the task; your own edits stay inside it.
+- **Clean up.** Stop what you started: services, processes, extra worktrees, exit nodes, sign-ins and scratch files; keep useful evidence. A requested preview follows [Browser](references/browser.md#proof-and-previews): one per branch, stopped when the user is done with it.
+
+## Working
+
+- **Named scripts.** Prefer the repository's named scripts to ad hoc launchers, and fix the script when it keeps failing.
+- **Wait, do not poll.** Wait for a long job with one command that exits when the job ends, in the background when other work remains. Do not tail logs or reread status files in a loop.
+- **Phase line.** When Prototype, Production review or Ship starts, post one line that says what remains. Post nothing else about progress; T3 shows it, and native plan or todo tools add nothing.
+- **Own thread.** Never change the calling thread's model or options; doing so interrupts the running turn.
 
 ## Delegate
 
-Delegate independent work that saves more than briefing and joining cost. Work that would need coordination protocols stays with the primary or waits until its inputs stop changing.
+Delegate a self-contained, read-only task whose result saves more than briefing and joining cost. Children research, critique, verify, review and run browser proof; they never edit source. Delegation is one level deep.
 
-| Task            | Worth it when                                                                  | Recommended model                                      | Procedure                                      |
-| --------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------ | ---------------------------------------------- |
-| Research        | A substantial, bounded investigation while the primary continues.              | GPT-6 Luna · medium                                    | [Research](references/research.md)             |
-| Implementation  | Substantial, specified work with separate files and a real parallel benefit.   | Sonnet 5.5 · high; Opus 5.5 for consequential judgment | [Implementation](references/implementation.md) |
-| Design critique | Independent judgment that can change the direction.                            | Opus 5.5 · high                                        | [Ideas](references/ideas.md)                   |
-| Verification    | A substantial, long check on source that nobody is editing.                    | GPT-6 Luna · medium                                    | [Checks](references/checks.md)                 |
-| Browser proof   | A substantial, independent user journey.                                       | GPT-6.1 Sol · high                                     | [Browser](references/browser.md)               |
-| Code review     | Each production review round, or a concrete risk needing independent judgment. | GPT-6.1 Sol · high                                     | [Code review](references/code-review.md)       |
+| Task            | Worth it when                                                                  | Recommended model   | Procedure                                |
+| --------------- | ------------------------------------------------------------------------------ | ------------------- | ---------------------------------------- |
+| Research        | A substantial, bounded investigation while the primary continues.              | GPT-6 Luna · medium | [Research](references/research.md)       |
+| Design critique | Independent judgment that can change the direction.                            | Opus 5.5 · high     | [Ideas](references/ideas.md)             |
+| Verification    | A substantial, long check on source that nobody is editing.                    | GPT-6 Luna · medium | [Checks](references/checks.md)           |
+| Browser proof   | A substantial, independent user journey.                                       | GPT-6.1 Sol · high  | [Browser](references/browser.md)         |
+| Code review     | Each production review round, or a concrete risk needing independent judgment. | GPT-6.1 Sol · high  | [Code review](references/code-review.md) |
 
 Models are recommendations: validate them against T3's live catalog and the user's budget, and inherit the primary model when one is unavailable.
 
-- **Brief:** goal, done when, procedure, files it may and may not touch, decisive context with sources, what to return. Pair's language applies; model and options go in tool fields.
+- **Brief:** goal, done when, procedure, decisive context with sources, what to return. Pair's language applies; model and options go in tool fields.
 - **Steer:** message a running child only with a fact that changes its next action.
-- **Join:** reconcile missing or failed criteria; reclaim a child's files only after its writers stop; give new rounds to fresh tasks with prior findings.
+- **Join:** reconcile missing or failed criteria; give new rounds to fresh tasks with prior findings.
 
 ## Decisions
 

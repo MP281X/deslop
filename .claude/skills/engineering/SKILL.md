@@ -54,7 +54,7 @@ Math.floor(Duration.toDays(DateTime.distance(oldest.timestamp, newest.timestamp)
 import {glob} from 'glob' // a dependency Effect's FileSystem replaces
 ```
 
-**Whole values.** Pass whole values or spread them. No parameter/callback/loop destructuring except labeled tuple parameters, useState and component ref; project fields only to exclude data the recipient must not receive.
+**Whole values.** Pass whole values or spread them. No parameter/callback/loop destructuring except labeled tuple parameters, useState and component ref; project fields only to exclude data the recipient must not receive. Name the whole value by its role; a leading underscore marks only a parameter the body never reads, and no name gains an underscore or a number to dodge shadowing.
 
 ```ts
 // good
@@ -62,11 +62,13 @@ server => ({server: {...server, forwardConsole: true, warmup}})
 for (const schema of schemas) report(schema.name)
 Record.map(groups, entries => entries.length)
 upload({scope: input.scope, type: input.type}) // input also holds the bearer token
+submission => onSubmit(submission.value)
 // bad
 ({host, port}) => ({server: {forwardConsole: true, host, port, warmup}})
 server: {forwardConsole: true, host: config.host, port: config.port, warmup}
 for (const {name} of schemas) report(name)
 Array.map(Record.toEntries(groups), ([key, entries]) => entries.length)
+_input => onSubmit(_input.value) // or input2: an outer input is shadowed
 ```
 
 **Nearest sibling.** Extend the nearest implementation; match permissions, errors, refresh and tests. Reuse its helpers and change only affected state.
