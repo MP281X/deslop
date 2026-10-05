@@ -32,7 +32,7 @@ Inspect the affected service around one real action: hierarchy, errors, duration
 
 Apply only changed, named owned targets; never reset native roots or delete public/unrelated skills to refresh personal guidance.
 
-- Sources: `.codex/config.toml`, `.claude/settings.json`, `.claude/agents/pair.md`, and `.claude/skills/{workflow,environment,maintenance}/`.
+- Sources: `.codex/config.toml`, `.claude/settings.json`, `.claude/agents/pair.md`, and `.claude/skills/{workflow,environment,maintenance,media}/`.
 - Targets: `${CODEX_HOME:-$HOME/.codex}` and `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`. Keep personal skills as real directories under the Claude target; Codex's matching skill names and `instructions.md` alias those directories and `agents/pair.md`.
 - Before writing, compare each installed target/alias with its recorded managed preimage or the repository baseline. If it differs, inspect/reconcile the newer change instead of overwriting it. Capture unchanged auth/config/unrelated targets for verification.
 - Replace only the approved named files atomically; preserve permissions and valid aliases. Create missing targets for an authorized first install. Delete retired aliases only after ownership is established.

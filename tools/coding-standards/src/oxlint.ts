@@ -15,6 +15,7 @@ import {noHandWrittenGuard} from '#rules/no-hand-written-guard.ts'
 import {noLet} from '#rules/no-let.ts'
 import {noNativeEmptinessCheck} from '#rules/no-native-emptiness-check.ts'
 import {noNativeMethodCall} from '#rules/no-native-method-call.ts'
+import {noNullishTernary} from '#rules/no-nullish-ternary.ts'
 import {noOptionValueAccess} from '#rules/no-option-value-access.ts'
 import {noReadonlyTypeSyntax} from '#rules/no-readonly-type-syntax.ts'
 import {noRedundantReturnType} from '#rules/no-redundant-return-type.ts'
@@ -23,6 +24,7 @@ import {noRedundantUseRefNullType} from '#rules/no-redundant-use-ref-null-type.t
 import {noRedundantVariableAnnotation} from '#rules/no-redundant-variable-annotation.ts'
 import {noReinventedSchema} from '#rules/no-reinvented-schema.ts'
 import {noRenamedImport} from '#rules/no-renamed-import.ts'
+import {noSingleUseValue} from '#rules/no-single-use-value.ts'
 import {noStoredSchemaOperation} from '#rules/no-stored-schema-operation.ts'
 import {noSwitchStatement} from '#rules/no-switch-statement.ts'
 import {noTrivialIndirection} from '#rules/no-trivial-indirection.ts'
@@ -94,6 +96,7 @@ export const oxlint = defineConfig({
 		'@deslop/coding-standards/no-let': 'error',
 		'@deslop/coding-standards/no-native-emptiness-check': 'error',
 		'@deslop/coding-standards/no-native-method-call': 'error',
+		'@deslop/coding-standards/no-nullish-ternary': 'error',
 		'@deslop/coding-standards/no-option-value-access': 'error',
 		'@deslop/coding-standards/no-readonly-type-syntax': 'error',
 		'@deslop/coding-standards/no-redundant-return-type': 'error',
@@ -102,6 +105,7 @@ export const oxlint = defineConfig({
 		'@deslop/coding-standards/no-redundant-variable-annotation': 'error',
 		'@deslop/coding-standards/no-reinvented-schema': 'error',
 		'@deslop/coding-standards/no-renamed-import': 'error',
+		'@deslop/coding-standards/no-single-use-value': 'error',
 		'@deslop/coding-standards/no-stored-schema-operation': 'error',
 		'@deslop/coding-standards/no-switch-statement': 'error',
 		'@deslop/coding-standards/no-trivial-indirection': 'error',
@@ -621,6 +625,7 @@ export default definePlugin({
 		'no-let': noLet,
 		'no-native-emptiness-check': noNativeEmptinessCheck,
 		'no-native-method-call': noNativeMethodCall,
+		'no-nullish-ternary': noNullishTernary,
 		'no-option-value-access': noOptionValueAccess,
 		'no-readonly-type-syntax': noReadonlyTypeSyntax,
 		'no-redundant-return-type': noRedundantReturnType,
@@ -629,6 +634,7 @@ export default definePlugin({
 		'no-redundant-variable-annotation': noRedundantVariableAnnotation,
 		'no-reinvented-schema': noReinventedSchema,
 		'no-renamed-import': noRenamedImport,
+		'no-single-use-value': noSingleUseValue,
 		'no-stored-schema-operation': noStoredSchemaOperation,
 		'no-switch-statement': noSwitchStatement,
 		'no-trivial-indirection': noTrivialIndirection,

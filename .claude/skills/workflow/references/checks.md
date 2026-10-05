@@ -1,33 +1,33 @@
 # Checks
 
-**Scope.** Run assigned commands/behaviors from repository root; testing owns selection and rerun judgment. Serialize checks that compete for resources or mutate shared artifacts; independent stable-input checks may overlap. Use environment's root commands; no second suite.
-
-**Return.** Return criterion outcomes and command/exit evidence, separating cached/fresh and failed/skipped/passed.
-
-## Commands
-
-Collect the owned command's terminal result and exit status, not a log footer or process search. Prefer scoped searches and native structured/quiet output; keep bulky logs in scratch and read the decisive region. Preserve raw failure diagnostics and the command's exit status—filtering must not hide a failure. Use returned session/cell identities to wait; do not spawn an agent merely to wait. Servers/stacks use readiness probes.
+- **Scope.** Run the assigned commands from the repository root with environment's root commands; testing selects checks and reruns. Serialize checks that compete for resources or write shared artifacts.
+- **Results.** Take the exit status from the command you started, not a log footer. Keep bulky logs in scratch and read the deciding part; filtering never hides a failure. Wait on the returned session, never on a spawned agent. Servers need readiness probes.
+- **Return.** Each criterion's command and exit status, cached or fresh, failed, skipped or passed.
 
 ## Publishing
 
-Publish only after workflow's local-iteration and completion conditions are met. An unfinished requirement stays local and blocks publication, not in an "unverified claims" section. Remove unsupported claims; do not hide defects or skipped required checks to make the body look complete. A newly discovered defect in an existing PR must remain visible until resolved.
+- The body follows Pair's Structure and describes the contracts the final branch changes, not its iteration history. Keep consequential risks, even in mechanically changed files.
+- Link the words that refer to a file or folder to the file on the branch, like citations, with a line range when the change covers part of the file:
 
-Keep the body synchronized with the final branch's changed contracts, not its iteration history. Apply Pair's surface ownership and evidence choices; no chat history should be needed to understand the PR. Retain consequential risks even in mechanically changed files. No required summary/map/table template or blanket "proof and limits" bucket.
+  | Host   | Link                                                                     |
+  | ------ | ------------------------------------------------------------------------ |
+  | GitHub | `https://github.com/<owner>/<repo>/blob/<branch>/<path>#L<start>-L<end>` |
+  | GitLab | `https://<host>/<project>/-/blob/<branch>/<path>#L<start>-<end>`         |
 
-Bodies/comments use scratch files and `--body-file` (GitLab: `--description-file`). Attach images with descriptive alt text; GitHub video uses bare `--attach '<file>'`. Read the resulting title/body back.
+Write bodies and comments to scratch files and pass them with `--body-file` (GitLab uses `--description-file`). Attach images with descriptive alt text; a GitHub video uses a bare `--attach '<file>'`.
 
 ```bash
 gh pr edit --body-file <scratch>/body.md --attach '<file>#<alt text>'
 glab mr update <number> --draft --description-file <scratch>/body.md --attach <file>
 ```
 
-`glab` takes no `--jq`: pipe its API output into `jq`. Verify the published head, title/body and changed-file inventory against the branch. Investigate full hosted patches only for a concrete rendering/missing-diff problem, not every push. Passing CI does not prove a UI rendered the diff. Link every PR layer to T3. Resolve actionable review findings; use its PR UI/watch instead of another status ledger.
+`glab` has no `--jq` option, so pipe its API output into `jq`. Check the published head commit, title, body and changed files against the branch. Link every pull request in a stack to T3, and resolve actionable review findings.
 
 ## Pipeline watch
 
-If `watch_pull_request` is available, the primary thread registers the PR watch and ends its turn. A delegated checker returns this monitoring requirement to the primary instead of registering a watch on its child thread. T3 wakes the thread that registered the watch for check failures, completed checks, new comments/reviews or conflicts; inspect the event and read only relevant failed-job logs. Do not spawn a blocking child or poll alongside that watch.
+If `watch_pull_request` is available, the primary thread registers the watch and ends its turn. A delegated checker hands this monitoring back to the primary instead of registering a watch on its own child thread. T3 wakes the thread that registered the watch when a check fails, checks complete, someone comments or reviews, or a conflict appears; inspect the event and read only the logs of the failed jobs. Do not spawn a blocking child or poll alongside that watch.
 
-Without an app-owned watcher, wait for a pipeline with one blocking command, run in the background with `timeout 2h`, then read only the failed jobs' logs.
+Without a watcher from the app, wait for the pipeline with one blocking command run in the background under `timeout 2h`, then read only the logs of the failed jobs.
 
 GitHub:
 
@@ -38,7 +38,7 @@ ID=$(gh run list --commit "$SHA" --json databaseId -q '.[0].databaseId')
 gh run watch "$ID" --exit-status --compact
 ```
 
-If no run exists, inspect the workflow trigger instead of polling an empty lookup. After a failed watch, read its failed logs with `gh run view "$ID" --log-failed`; keep the watch's failure status.
+If no run exists, inspect the workflow trigger instead of polling an empty lookup. After a failed watch, read the failed logs with `gh run view "$ID" --log-failed` and keep the watch's failure status.
 
 GitLab:
 
@@ -49,13 +49,12 @@ glab api "projects/dual%2Fdual/pipelines/$ID/jobs?scope[]=failed" | jq -r '.[] |
 glab ci trace <job id>
 ```
 
-## Isolated baseline check
+## Baseline check
 
-An extra worktree is for a base check or a prototype needing incompatible source, dependency or build inputs—not merely parallel work:
+To compare with the base branch, commit a checkpoint, restore the base version of the files in question, run the check, then reset to the checkpoint:
 
 ```bash
-W="$HOME/.deslop/$(basename "$PWD")/<name>"
-git worktree add --detach "$W" origin/<default branch> && (cd "$W" && vp install)
+git restore --source=origin/<default branch> -- <paths>
 ```
 
-Remove it as soon as its question is settled: `git worktree remove --force "$W"`.
+Reinstall dependencies after both the restore and the reset when a manifest or the lockfile changed. Create an extra worktree only when both versions must run at the same time, and remove it as soon as its question is answered.

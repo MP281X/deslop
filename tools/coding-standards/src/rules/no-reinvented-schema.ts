@@ -32,7 +32,10 @@ function shippedSchema(input: {base: ESTree.Node; context: Context; filter: ESTr
 				Option.contains(base, entry.base) &&
 				Option.contains(check, entry.check) &&
 				Array.isArrayEmpty(rest) &&
-				(entry.only === undefined ? value === undefined : value?.type === 'Literal' && value.value === entry.only)
+				Option.match(Option.fromUndefinedOr(entry.only), {
+					onNone: () => value === undefined,
+					onSome: only => value?.type === 'Literal' && value.value === only
+				})
 		),
 		Option.map(entry => entry.schema)
 	)

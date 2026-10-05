@@ -106,14 +106,18 @@ function stepCursorMotion(motion: ReturnType<typeof createCursorMotion>, now: nu
 	const deltaX = motion.targetX - motion.x
 	const deltaY = motion.targetY - motion.y
 	const catchUp = Number.min(1, (1 - Math.exp(-frameDelta / 130)) * (1 + Math.hypot(deltaX, deltaY) / 220))
-	const nextX = motion.x + deltaX * catchUp
-	const nextY = motion.y + deltaY * catchUp
 
 	return {
 		...motion,
 		lastFrameAt: now,
-		x: Math.abs(deltaX) < 0.3 ? motion.targetX : Number.clamp({maximum: motion.viewportWidth, minimum: 0})(nextX),
-		y: Math.abs(deltaY) < 0.3 ? motion.targetY : Number.clamp({maximum: motion.viewportHeight, minimum: 0})(nextY)
+		x:
+			Math.abs(deltaX) < 0.3
+				? motion.targetX
+				: Number.clamp({maximum: motion.viewportWidth, minimum: 0})(motion.x + deltaX * catchUp),
+		y:
+			Math.abs(deltaY) < 0.3
+				? motion.targetY
+				: Number.clamp({maximum: motion.viewportHeight, minimum: 0})(motion.y + deltaY * catchUp)
 	}
 }
 

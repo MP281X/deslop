@@ -1,22 +1,20 @@
 # Research
 
-**Depth.** Settle the assigned question from code, logs, named threads or primary docs. Trace assumptions and decisive counterexamples; reuse known findings. Dependency research uses cloned sources only, never node_modules. Define/enumerate counted members; stop when settled.
+**Depth.** Answer the question from code, logs, named threads or primary documentation, and look for the counterexample that would decide it. Read dependencies in a cloned checkout, never in `node_modules`, and videos or social posts through the media skill. When you count something, define and list the members. Stop when the question is answered.
 
-**Return.** Answer the assigned question with decisive sources and unresolved facts.
+**Return.** The answer, the sources that decide it and the facts still open.
 
 ## Source checkouts
 
-**Match.** Manifest/lock version → vendored checkout or official versioned clone on demand. Reuse matching source, not speculative catalogues.
+Clone the official repository at the version the manifest or lockfile consumes, or reuse a matching vendored or shared checkout; check its remote and commit before citing it. Shared checkouts are read-only, and reading never needs an install or build.
 
 ```bash
 git clone --depth 1 --branch <version-tag-or-required-branch> <official-repository-url> "$HOME/.deslop/repos/<repository>-<version>"
 ```
 
-**Verify.** Remote/commit before citation. Default branch is not consumed-version proof. Shared checkouts are read-only; clone a separate version when needed. No dependency install/build just to read.
-
 ## Local transcript recovery
 
-Prefer app-owned thread reads. To recover a local transcript, set `T3_DB` to the verified live database from environment and list the named thread's native provider sessions:
+Prefer T3's thread tools. Otherwise set `T3_DB` to the verified live database from environment and find the named thread's native sessions:
 
 ```bash
 sqlite3 -readonly -header -column "$T3_DB" "SELECT provider_thread_id, provider, status, json_extract(payload_json, '$.nativeThreadRef.nativeId') AS session_id, updated_at FROM orchestration_v2_projection_provider_threads WHERE thread_id = '<thread id>' ORDER BY updated_at DESC;"
@@ -25,6 +23,4 @@ S='<selected native session id>'
 find "$HOME/.codex/sessions" "$HOME/.claude/projects" -type f -name "*$S.jsonl"
 ```
 
-Select the native session matching the run being investigated; its `orchestration_v2_projection_runs.provider_thread_id` identifies the provider-thread row. The latest session need not cover stopped/replaced runs. Codex rollouts and Claude project transcripts use different roots; the filename lookup covers both. Do not substitute stale legacy projections or search all transcripts when the named session is missing.
-
-Claude agents are in `<session>/subagents/` beside their session transcript. Codex children live under `~/.codex/sessions/YYYY/MM/DD/`; the first `session_meta` record's `payload.parent_thread_id` links to the parent provider session, not the T3 thread. Follow it recursively; forked parent messages are not new work.
+Pick the session that covers the run under investigation; the latest one may not include stopped or replaced runs, and stale legacy projections are no substitute. Claude subagents sit in `<session>/subagents/`. A Codex child's first `session_meta` record names its parent provider session in `payload.parent_thread_id`; messages forked from the parent are not new work. A `compacted` record marks any compaction, not a task boundary.

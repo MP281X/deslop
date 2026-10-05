@@ -1,0 +1,46 @@
+{
+	"name": "@deslop/media",
+	"version": "0.1.0",
+	"description": "Extract post text, metadata and a timestamped transcript from a video or social post URL.",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/MP281X/deslop",
+		"directory": "tools/media"
+	},
+	"bin": {
+		"deslop-media": "./dist/cli.js"
+	},
+	"files": [
+		"dist"
+	],
+	"os": [
+		"darwin",
+		"linux"
+	],
+	"cpu": [
+		"x64",
+		"arm64"
+	],
+	"type": "module",
+	"imports": {
+		"#package": "./package.json",
+		"#transcript": "./src/transcript.ts"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "vp pack"
+	},
+	"dependencies": {
+		"onnxruntime-common": "1.30.0",
+		"onnxruntime-node": "1.30.0",
+		"sharp": "^0.35.4"
+	},
+	"devDependencies": {
+		"@huggingface/transformers": "4.3.0"
+	},
+	"engines": {
+		"node": ">=26"
+	}
+}

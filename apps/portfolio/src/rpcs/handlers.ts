@@ -62,10 +62,11 @@ function findVisitor(visitors: PortfolioState['visitors'], id: string) {
 }
 
 function moveVisitor(state: PortfolioState, visitor: PortfolioVisitor) {
-	const trail = PortfolioTrail.make({color: visitor.color, visitorId: visitor.id, x: visitor.x, y: visitor.y})
-
 	return PortfolioState.make({
-		trails: appendPortfolioTrail(state.trails, trail),
+		trails: appendPortfolioTrail(
+			state.trails,
+			PortfolioTrail.make({color: visitor.color, visitorId: visitor.id, x: visitor.x, y: visitor.y})
+		),
 		visitors: upsertPortfolioVisitor(state.visitors, visitor)
 	})
 }

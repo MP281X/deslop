@@ -37,7 +37,7 @@ jobs:
         env:
           RELEASE_NUMBER: ${{ github.run_number }}
         run: |
-          for package in coding-standards; do
+          for package in coding-standards media; do
             vp -C tools/$package pm version "0.1.$RELEASE_NUMBER" -- --no-git-tag-version
           done
 
@@ -59,7 +59,9 @@ jobs:
 
       - name: Publish
         if: github.ref == 'refs/heads/main'
+        # pnpm applies publishConfig while packing; npm uploads the README metadata that pnpm 11 omits.
         run: |
-          for package in coding-standards; do
-            vp pm publish ./tools/$package --no-git-checks
+          for package in coding-standards media; do
+            vp -C tools/$package pm pack --pack-destination "$RUNNER_TEMP/$package"
+            npm publish "$RUNNER_TEMP/$package"/*.tgz
           done

@@ -76,8 +76,7 @@ export const handlers = Effect.fnUntraced(function* (cwd: string) {
 		}),
 		grep: Effect.fnUntraced(function* (input) {
 			const target = path.resolve(cwd, input.path ?? '.')
-			const info = yield* fs.stat(target)
-			const files = yield* Boolean.match(info.type === 'File', {
+			const files = yield* Boolean.match((yield* fs.stat(target)).type === 'File', {
 				onFalse: () =>
 					pipe(
 						fs.glob(input.glob ?? '**/*', {root: target}),
@@ -91,8 +90,10 @@ export const handlers = Effect.fnUntraced(function* (cwd: string) {
 			})
 			const matcher = Boolean.match(input.literal === true, {
 				onFalse: () => {
-					const flags = Boolean.match(input.ignoreCase === true, {onFalse: () => undefined, onTrue: () => 'i'})
-					const expression = new RegExp(input.pattern, flags)
+					const expression = new RegExp(
+						input.pattern,
+						Boolean.match(input.ignoreCase === true, {onFalse: () => undefined, onTrue: () => 'i'})
+					)
 					return (line: string) => expression.test(line)
 				},
 				onTrue: () => literalMatcher

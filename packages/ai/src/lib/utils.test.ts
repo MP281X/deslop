@@ -62,9 +62,8 @@ it('reduces deltas and groups consecutive typed tools', () => {
 })
 
 it('reconstructs Effect Prompt history from compact events', () => {
-	const user = Prompt.makeMessage('user', {content: [Prompt.makePart('text', {text: 'Read it'})]})
 	const history = promptFromEvents([
-		user,
+		Prompt.makeMessage('user', {content: [Prompt.makePart('text', {text: 'Read it'})]}),
 		Response.makePart('reasoning-delta', {delta: 'Need the file.', id: 'thought'}),
 		Response.makePart('text-delta', {delta: 'Reading ', id: 'answer'}),
 		Response.makePart('text-delta', {delta: 'now.', id: 'answer'}),

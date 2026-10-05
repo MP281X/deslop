@@ -1,20 +1,16 @@
 # Coding standards
 
-Strict Oxlint preset and repository skill installer. Requires Node 26+; skill installation runs inside a Git repository, including linked worktrees.
+A strict Oxlint preset and an installer for the engineering, design and testing agent skills. Requires Node 26+.
 
-## Install skills
+## Install the skills
+
+Run inside a Git repository, including a linked worktree:
 
 ```bash
 vpx @deslop/coding-standards@latest
 ```
 
-| Result                                 | Scope                                                                                              |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Engineering, design and testing skills | Git root's existing `.agents`, `.claude` and `.codex` directories; creates `.agents` if none exist |
-| Refresh                                | Replaces only those three skill names; preserves other skills and global configuration             |
-| Boundary                               | Rejects destinations escaping the repository or overlapping global configuration                   |
-
-No repository dependency, manifest/lock change or lint configuration change. Treat installed skill copies as read-only; refresh through the CLI.
+It copies the three skills into the repository's existing `.agents`, `.claude` and `.codex` directories, or creates `.agents` when none exists. A refresh replaces only those three skills, and destinations outside the repository or inside global agent configuration are rejected. Nothing is added to the manifest, lockfile or lint configuration. Installed copies are read-only; refresh them with the CLI.
 
 ## Use the lint preset
 
@@ -30,24 +26,19 @@ import {oxlint} from '@deslop/coding-standards'
 export default defineConfig({lint: {extends: [oxlint]}})
 ```
 
-The preset uses Effect-tsgo's patched Oxlint and compatible tsgolint; keep the patch command in the project's prepare script. Match upstream supported tool versions. The skill installer neither configures lint nor upgrades/patches its toolchain.
+The preset needs Effect-tsgo's patched Oxlint, so keep the patch command in the project's `prepare` script.
 
-## Working here
+<details>
+<summary>For agents</summary>
 
-| Owner      | Decision                                                                                                                                                                                    |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/`     | Flat package structure; rules in `src/rules`, no separate plugin or install-test harness                                                                                                    |
-| `skills/`  | Maintained engineering/design/testing sources; refresh repository copies from the TypeScript CLI, no build needed                                                                           |
-| Lint rules | Prefer an equivalent maintained rule before custom enforcement; consumer code conforms to strict standards, not the reverse. Fix broken/imprecise rules, not inconvenient valid diagnostics |
-| Rule proof | Existing public CLI regression cases, with accepted/rejected controls; no severity/exclusion workaround                                                                                     |
+### Decisions
 
-## Rejected shortcuts
-
-| Candidate                                                | Reason                                                                                                       |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Blanket `unknown` type ban                               | Opaque SDK/framework contracts legitimately need it; narrow/decode before use instead of fabricating a shape |
-| Functional preset or dependency just to replace `no-let` | The preset conflicts; a selective plugin adds dependencies for a tiny rule                                   |
-| Syntax-only generator-failure rule                       | Factory-call syntax does not establish yieldability; the existing type-aware Effect rule owns that check     |
+| Owner      | Decision                                                                                                                                                                                                                                                                                                                                                                      |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/`     | Flat package structure; rules in `src/rules`, no separate plugin or install-test harness                                                                                                                                                                                                                                                                                      |
+| `skills/`  | Maintained engineering, design and testing sources; refresh repository copies from the TypeScript CLI, no build needed                                                                                                                                                                                                                                                        |
+| Lint rules | Prefer an equivalent maintained rule before custom enforcement; consumer code conforms to strict standards, not the reverse. Fix broken or imprecise rules, not inconvenient valid diagnostics. A rule targets code the engineering skill and the other rules allow; an edge case that only unusual code reaches takes an inline disable with its reason, never a looser rule |
+| Rule proof | Existing public CLI regression cases, with accepted and rejected controls; no severity or exclusion workaround                                                                                                                                                                                                                                                                |
 
 With workspace dependencies installed, from the repository root:
 
@@ -56,9 +47,17 @@ vp test run tools/coding-standards/src/rules/rules.test.ts
 node tools/coding-standards/src/install.ts
 ```
 
-## Skill inspiration
+### Rejected shortcuts
 
-| Source                                                                                                                                                                                                                       | Used / boundary                                                                                                                                                                                   |
+| Candidate                                                | Reason                                                                                                              |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Blanket `unknown` type ban                               | Opaque SDK and framework contracts legitimately need it; narrow or decode before use instead of fabricating a shape |
+| Functional preset or dependency just to replace `no-let` | The preset conflicts; a selective plugin adds dependencies for a tiny rule                                          |
+| Syntax-only generator-failure rule                       | Factory-call syntax does not establish yieldability; the existing type-aware Effect rule owns that check            |
+
+### Skill sources
+
+| Source                                                                                                                                                                                                                       | Used and boundary                                                                                                                                                                                 |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Matt Pocock's engineering skills](https://github.com/mattpocock/skills/tree/d81f3a183412e71a5b1e84ca21bc1a35eea03a60/skills/engineering)                                                                                    | Caller-first contracts, causal debugging and one uncertain behavior at a time; no universal TDD                                                                                                   |
 | [Cursor / pstack](https://github.com/cursor/plugins/tree/e43c7ee26e0038c6c1fa8380dd34ce86ff94cb2a/pstack)                                                                                                                    | Interface rationale, focused bug replay and defensible benchmarks; no playbook-stage machinery                                                                                                    |
@@ -70,3 +69,5 @@ node tools/coding-standards/src/install.ts
 | [Awesome DESIGN.md](https://github.com/VoltAgent/awesome-design-md) and [Impeccable](https://github.com/pbakaus/impeccable)                                                                                                  | Reviewed reference collections; community brand analyses are inspiration, not authoritative/current tokens                                                                                        |
 
 These are selectively adapted ideas, not imported frameworks. Concrete behavior, existing stack and settled user decisions govern the maintained skills.
+
+</details>

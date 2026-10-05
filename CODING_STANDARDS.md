@@ -26,13 +26,14 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 
 ## Generators
 
-- Create apps with `vp create app -- --name <name>` and packages with `vp create package -- --name <name>`, using an unscoped kebab-case name, then `vp install` before anything else; never copy one. Add shadcn components with `vp run shadcn add <component>`; `vp run upgrade` refreshes dependencies.
+- Create apps under `apps/` with `vp create app -- --name <name>` and packages under `packages/` with `vp create package -- --name <name>`, using an unscoped kebab-case name, then `vp install` before anything else; never copy one. Add shadcn components with `vp run shadcn add <component>`; `vp run upgrade` refreshes dependencies.
 - A template is real files under `tools/create-*/template/` that the generator copies and edits like any other file, never file bodies inlined as strings, and never generated files such as `*.gen.ts`.
 - The app template mirrors the portfolio (its `icon.png`, `__root.tsx`, and entrypoints, with one RPC returning the app name shown on the home page) and always carries the `Dockerfile`, even when an app doesn't deploy.
 
 ## Deploy
 
-- Deploy is one `tools/compose.yaml` with configs inlined, direct ports, and unpinned images, driven by commands for this machine; no README, flag-heavy scripts, or nested folders.
+- Deploy is one `tools/compose.yaml` with configs inlined, direct ports, and unpinned images, driven by commands for this machine; no deploy README, flag-heavy scripts, or nested folders.
+- Reusable tooling ships as a TypeScript package `@deslop/<name>` under `tools/`, published by CI. Add and publish one with [tools/AGENTS.md](tools/AGENTS.md).
 
 ## Keys
 
@@ -45,7 +46,8 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 
 ## Dependencies
 
-- Keep dependencies in their existing owning packages; shared root dependencies stay at the root. Resolve version drift with normal package-manager updates, not by relocating declarations. Published tools declare the dependencies their consumers need.
+- Declare a new dependency as `latest`. When packages must match the versions another package declares, pin that package and those versions.
+- Keep dependencies in their existing owning packages; shared root dependencies stay at the root. Resolve version drift with normal package-manager updates, not by relocating declarations.
 - Updates stay within declared ranges and supported upstream families; update coupled packages together, then verify their real consumers. Vite+ owns its exact lint/test toolchain versions; do not independently chase their newer tags.
 - Peer checks stay strict. Vite+'s versioned Vite alias is accepted only for explicitly inspected consumer versions in `pnpm-workspace.yaml`, not through blanket `allowAny` or TypeScript peer suppression. Recheck compatibility when either side changes.
 
@@ -68,5 +70,5 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 
 ## Local context
 
-- A touched package or meaningful configuration folder (such as `.claude` or `.github`) owns a concise `README.md` for usage and non-obvious decisions, with `AGENTS.md` as a relative symlink to it. Keep it current with the owning changes.
+- A touched package or meaningful configuration folder (such as `.claude`) owns a concise `AGENTS.md` for usage and non-obvious decisions, with `README.md` as a relative symlink to it, because agents load `AGENTS.md` automatically. A published package keeps the real file as `README.md` and links `AGENTS.md` to it, because `pnpm pack` drops a symlinked README, and ends it with a collapsed For agents section. Keep it current with the owning changes.
 - No duplicated repository/skill policy, source-code narration, empty templates, briefs inside `src`, or generic folder documents without a semantic owner. Shared procedures remain in skills; package-specific context belongs in its brief.
