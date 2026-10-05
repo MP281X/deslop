@@ -128,7 +128,7 @@ const cli = pipe(
 				const ytDlp = path.join(cache, 'yt-dlp')
 				if (!(yield* fs.exists(ytDlp))) {
 					yield* Console.error(`Downloading yt-dlp to ${ytDlp}`)
-					const partial = path.join(yield* fs.makeTempDirectoryScoped({directory: cache}), 'yt-dlp')
+					const partial = `${ytDlp}.partial`
 					yield* Stream.run(
 						(yield* client.get(
 							`https://github.com/yt-dlp/yt-dlp/releases/latest/download/${pipe(

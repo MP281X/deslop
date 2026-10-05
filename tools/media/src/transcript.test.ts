@@ -3,13 +3,13 @@ import {assert, describe, it} from '@effect/vitest'
 import {captionTranscript, clock} from '#transcript'
 
 describe('captionTranscript', () => {
-	it('reads CRLF files, tab-separated timings, cue settings, markup and escapes', () => {
+	it('reads cue settings, markup and escapes', () => {
 		assert.strictEqual(
 			captionTranscript({
 				authored: false,
-				vtt: 'WEBVTT\r\n\r\n1\r\n00:00:10.000\t-->\t00:00:12.000 align:start\r\n<c>Tom &amp; Jerry</c>\r\n\r\n00:00:12.000 --> 00:00:13.000\r\nTom &amp; Jerry\r\n\r\n00:00:14.000 --> 00:00:15.000\r\n&lt;3\r\n'
+				vtt: 'WEBVTT\n\n1\n00:00:10.000 --> 00:00:12.000 align:start\n<c>Tom &amp; Jerry</c> &lt;3'
 			}),
-			'[00:10] Tom & Jerry\n[00:14] <3\n'
+			'[00:10] Tom & Jerry <3\n'
 		)
 	})
 

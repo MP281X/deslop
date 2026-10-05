@@ -8,19 +8,17 @@ export function clock(seconds: number) {
 export function captionTranscript(input: {authored: boolean; vtt: string}) {
 	const cues = pipe(
 		input.vtt,
-		String.replace(/\r\n?/gu, '\n'),
 		String.split('\n\n'),
 		Array.flatMap(block => {
 			const lines = String.split(block, '\n')
 			return pipe(
 				Array.findFirstIndex(lines, String.includes('-->')),
 				Option.map(index => {
-					const times = Array.map(pipe(Array.getUnsafe(lines, index), String.split(/[ \t]+-->[ \t]+/u)), time =>
+					const times = Array.map(pipe(Array.getUnsafe(lines, index), String.split(' --> ')), time =>
 						Array.reduce(
 							pipe(
 								time,
-								String.trim,
-								String.split(/[ \t]+/u),
+								String.split(' '),
 								Array.headNonEmpty,
 								String.split(':'),
 								Array.map(Number.parse),
@@ -39,7 +37,6 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 							String.replace(/&nbsp;/gu, ' '),
 							String.replace(/&lt;/gu, '<'),
 							String.replace(/&gt;/gu, '>'),
-							String.replace(/&lrm;|&rlm;/gu, ''),
 							String.replace(/&amp;/gu, '&'),
 							String.trim
 						)
