@@ -1,8 +1,8 @@
 # Research
 
-**Depth.** Answer the question from code, logs, named threads or primary documentation, and look for the counterexample that would decide it. Read dependencies in a cloned checkout, never in `node_modules`. When you count something, define and list the members. Stop when the question is answered.
+**Depth.** Answer the question from code, logs, named threads or primary documentation, and look for the counterexample that would decide it. Read dependencies in a cloned checkout, never in `node_modules`, and videos or social posts through the media skill. When you count something, define and list the members. Stop when the question is answered.
 
-**Return.** The answer, the sources that decide it and the facts still open. Videos and social posts go through the media skill.
+**Return.** The answer, the sources that decide it and the facts still open.
 
 ## Source checkouts
 
@@ -23,4 +23,4 @@ S='<selected native session id>'
 find "$HOME/.codex/sessions" "$HOME/.claude/projects" -type f -name "*$S.jsonl"
 ```
 
-Pick the session that covers the run under investigation; the latest one may not include stopped or replaced runs, and stale legacy projections are no substitute. Claude subagents sit in `<session>/subagents/`. A Codex child's first `session_meta` record names its parent provider session in `payload.parent_thread_id`; messages forked from the parent are not new work. A `compacted` record marks a manual compaction, so recent activity starts after the last one.
+Pick the session that covers the run under investigation; the latest one may not include stopped or replaced runs, and stale legacy projections are no substitute. Claude subagents sit in `<session>/subagents/`. A Codex child's first `session_meta` record names its parent provider session in `payload.parent_thread_id`; messages forked from the parent are not new work. A `compacted` record marks any compaction, not a task boundary.

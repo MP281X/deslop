@@ -1,8 +1,8 @@
 # Browser and runtime proof
 
-**Scope.** Prove that the supplied inputs produce the expected outcomes and URLs, using saved sign-in state. Apply design. Reuse the host you were given instead of surveying the setup. This procedure owns captures, profiling and any requested exposure; stop only the services you started.
+**Scope.** Prove that the supplied inputs produce the expected outcomes and URLs, using saved sign-in state. Reuse the host you were given instead of surveying the setup. This procedure owns captures, profiling and any requested exposure; stop only the services you started.
 
-**Return.** Return the journeys and captures you observed, the actual errors and the states you could not prove. Apply design's visual inspection, because DOM checks alone are not visual proof.
+**Return.** The journeys and captures you observed, after design's visual inspection, plus actual errors and the states you could not prove.
 
 ## Proof and previews
 
@@ -16,9 +16,9 @@ Record the process and session identities of the proof services you start. Stop 
 
 ### Browser debugging
 
-Reuse known locators; refresh `snapshot -i -c` when targets change, batch independent values in one `eval`, and wait for a selector or `wait --fn '<condition>'`, not blind sleeps. Capture screenshots, video and profiles on the same meaningful journey; DOM assertions do not replace image inspection.
+Reuse known locators; refresh `snapshot -i -c` when targets change, batch independent values in one `eval`, and wait for a selector or `wait --fn '<condition>'`, not blind sleeps. Capture screenshots, video and profiles on the same meaningful journey; DOM assertions are not visual proof.
 
-For a suspected React state/rerender issue, enable the hook before page JavaScript (enabling it later relaunches the session):
+For a suspected React state or rerender issue, enable the hook before page JavaScript (enabling it later relaunches the session):
 
 ```bash
 agent-browser --session <name> open --enable react-devtools <url>
@@ -29,8 +29,8 @@ agent-browser --session <name> react renders stop --json
 agent-browser --session <name> react inspect <fiber-id>
 ```
 
-For slow input/scroll/main-thread work, `profiler start` before input and `profiler stop <scratch>/browser-trace.json` after; analyze the events. This is Chrome profiling, not OTLP. `react renders` requires the DevTools hook; detailed timing requires a profiling build, so normal-build commit counts are not CPU timings.
+For slow input, scrolling or main-thread work, `profiler start` before input and `profiler stop <scratch>/browser-trace.json` after; analyze the events. This is Chrome profiling, not OTLP. `react renders` requires the DevTools hook; detailed timing requires a profiling build, so normal-build commit counts are not CPU timings.
 
 ### Application tracing
 
-Use the affected repository's environment reference for endpoints and known instrumentation: [Deslop](../../environment/references/deslop.md#application-tracing) or [Dual](../../environment/references/dual.md). Correlate one real action's client/server spans, errors and durations, then compare after the fix. Missing spans or allowed preflight do not prove tracing coverage or speed. Use existing observability; extra storage/dashboards need a concrete question.
+Use the affected repository's environment reference for endpoints and known instrumentation: [Deslop](../../environment/references/deslop.md#application-tracing) or [Dual](../../environment/references/dual.md). Correlate one real action's client and server spans, errors and durations, then compare after the fix. Missing spans or allowed preflight do not prove tracing coverage or speed. Use existing observability; extra storage or dashboards need a concrete question.

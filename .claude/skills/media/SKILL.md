@@ -13,17 +13,16 @@ Analyze what the speaker said, not a summary of it, then read the sources the sp
 vpx @deslop/media@latest '<url>' node_modules/.cache/deslop/media/<name>
 ```
 
-It writes `info.md` and a timestamped `transcript.txt`; `--language <code>` handles speech that is not English. Run long transcriptions in the background.
+It writes `info.md` and a timestamped `transcript.txt`; `--language <code>` names the spoken language when the video does not declare it, such as an X video that is not in English. Run long transcriptions in the background.
 
 ## When YouTube blocks this host
 
-Route only the download through a Mullvad exit node, trying nodes from `tailscale exit-node list | grep mullvad` until one returns the title (`it-mil-wg-001` worked on 2026-10-05), and always turn it off:
+Use a Mullvad exit node only for this extraction run, because it routes the whole host. Try nodes from `tailscale exit-node list | grep mullvad` while yt-dlp's stderr asks to confirm you are not a bot (`it-mil-wg-001` worked on 2026-10-05); the trap clears it when the shell exits, because the host normally has none:
 
 ```bash
 trap 'sudo tailscale set --exit-node=' EXIT
 sudo tailscale set --exit-node=<node>.mullvad.ts.net --exit-node-allow-lan-access=true
 vpx @deslop/media@latest '<url>' node_modules/.cache/deslop/media/<name>
-sudo tailscale set --exit-node=
 ```
 
 If every node fails, use the speaker's own post of the talk, a published transcript or the repositories discussed, and label secondary sources.
@@ -31,4 +30,4 @@ If every node fails, use the speaker's own post of the talk, a published transcr
 ## Analyze
 
 - Keep apart what the speaker said (with a timestamp), what primary sources show and your inference.
-- Turn each idea into a change to a named file, and test that it changes agent behavior before adopting it.
+- Map each idea to a proposed change in a named file; implement and test it only when the task asks for changes.

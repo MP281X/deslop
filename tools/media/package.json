@@ -13,6 +13,14 @@
 	"files": [
 		"dist"
 	],
+	"os": [
+		"darwin",
+		"linux"
+	],
+	"cpu": [
+		"x64",
+		"arm64"
+	],
 	"type": "module",
 	"imports": {
 		"#package": "./package.json"

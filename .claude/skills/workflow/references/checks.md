@@ -14,7 +14,7 @@
   | GitHub | `https://github.com/<owner>/<repo>/blob/<branch>/<path>#L<start>-L<end>` |
   | GitLab | `https://<host>/<project>/-/blob/<branch>/<path>#L<start>-<end>`         |
 
-Write bodies and comments to scratch files and pass them with `--body-file` (GitLab uses `--description-file`). Attach images with descriptive alt text; a GitHub video uses a bare `--attach '<file>'`. Read the resulting title and body back.
+Write bodies and comments to scratch files and pass them with `--body-file` (GitLab uses `--description-file`). Attach images with descriptive alt text; a GitHub video uses a bare `--attach '<file>'`.
 
 ```bash
 gh pr edit --body-file <scratch>/body.md --attach '<file>#<alt text>'
@@ -57,4 +57,4 @@ To compare with the base branch, commit a checkpoint, restore the base version o
 git restore --source=origin/<default branch> -- <paths>
 ```
 
-Reinstall dependencies when the restored files include a manifest or the lockfile. Create an extra worktree only when both versions must run at the same time, and remove it as soon as its question is answered.
+Reinstall dependencies after both the restore and the reset when a manifest or the lockfile changed. Create an extra worktree only when both versions must run at the same time, and remove it as soon as its question is answered.

@@ -4,14 +4,17 @@ import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
 import {
 	Array,
+	Boolean,
 	Config,
 	Console,
 	Duration,
 	Effect,
 	FileSystem,
+	Match,
 	Number,
 	Option,
 	Path,
+	Record,
 	Schema,
 	Stream,
 	String,
@@ -42,11 +45,15 @@ const FxTwitter = Schema.Struct({tweet: Schema.Struct({...Post.fields, quote: Sc
 
 type Metadata = typeof Metadata.Type
 const Metadata = Schema.Struct({
+	_type: Schema.optionalKey(Schema.String),
+	automatic_captions: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown))),
 	chapters: Schema.optionalKey(
 		Schema.NullOr(Schema.Array(Schema.Struct({start_time: Schema.Finite, title: Schema.String})))
 	),
 	description: Schema.optionalKey(Schema.NullOr(Schema.String)),
 	duration: Schema.optionalKey(Schema.NullOr(Schema.Finite)),
+	language: Schema.optionalKey(Schema.NullOr(Schema.String)),
+	subtitles: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown))),
 	title: Schema.String,
 	upload_date: Schema.optionalKey(Schema.NullOr(Schema.String)),
 	uploader: Schema.optionalKey(Schema.NullOr(Schema.String))
@@ -64,13 +71,7 @@ const Transcription = Schema.Struct({
 
 function clock(seconds: number) {
 	const parts = Duration.parts(Duration.seconds(seconds))
-	return `${pipe(`${parts.hours * 60 + parts.minutes}`, String.padStart(2, '0'))}:${pipe(`${parts.seconds}`, String.padStart(2, '0'))}`
-}
-
-function ytDlpAsset() {
-	if (process.platform === 'darwin') return 'yt-dlp_macos'
-	if (process.arch === 'arm64') return 'yt-dlp_linux_aarch64'
-	return 'yt-dlp_linux'
+	return `${pipe(`${(parts.days * 24 + parts.hours) * 60 + parts.minutes}`, String.padStart(2, '0'))}:${pipe(`${parts.seconds}`, String.padStart(2, '0'))}`
 }
 
 function postText(post: Post) {
@@ -95,7 +96,9 @@ const cli = pipe(
 		{
 			language: pipe(
 				Flag.String('language'),
-				Flag.withDescription('Spoken language code, such as it; switches to the multilingual Whisper model'),
+				Flag.withDescription(
+					'Spoken language code, such as it; defaults to the original caption language, then the declared language, then English'
+				),
 				Flag.optional
 			),
 			// Positional arguments bind in key order, so the URL key sorts before output.
@@ -111,52 +114,67 @@ const cli = pipe(
 				const fs = yield* FileSystem.FileSystem
 				const path = yield* Path.Path
 				const client = pipe(yield* HttpClient.HttpClient, HttpClient.filterStatusOk)
-				const home = yield* Config.String('HOME')
 				const cache = path.join(
-					yield* pipe(Config.String('XDG_CACHE_HOME'), Config.withDefault(path.join(home, '.cache'))),
+					yield* pipe(
+						Config.String('XDG_CACHE_HOME'),
+						Config.withDefault(path.join(yield* Config.String('HOME'), '.cache'))
+					),
 					'deslop',
 					'media'
 				)
 				const output = path.resolve(input.output)
+				const transcript = path.join(output, 'transcript.txt')
+				const infoPath = path.join(output, 'info.md')
+				const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-media-'})
 				yield* fs.makeDirectory(output, {recursive: true})
-				// A reused output directory must not mix an earlier URL's captions, audio or transcript into this run.
-				yield* Effect.forEach(
-					Array.filter(
-						yield* fs.readDirectory(output),
-						name =>
-							pipe(name, String.startsWith('captions')) ||
-							pipe(name, String.startsWith('audio.')) ||
-							name === 'transcript.txt'
-					),
-					name => fs.remove(path.join(output, name))
-				)
+				yield* fs.remove(transcript, {force: true})
+				yield* fs.remove(infoPath, {force: true})
 				yield* fs.makeDirectory(cache, {recursive: true})
 
 				const ytDlp = path.join(cache, 'yt-dlp')
 				if (!(yield* fs.exists(ytDlp))) {
 					yield* Console.error(`Downloading yt-dlp to ${ytDlp}`)
-					const response = yield* client.get(
-						`https://github.com/yt-dlp/yt-dlp/releases/latest/download/${ytDlpAsset()}`
+					const partial = path.join(yield* fs.makeTempDirectoryScoped({directory: cache}), 'yt-dlp')
+					yield* Stream.run(
+						(yield* client.get(
+							`https://github.com/yt-dlp/yt-dlp/releases/latest/download/${pipe(
+								Match.value({arch: process.arch, platform: process.platform}),
+								Match.when({platform: 'darwin'}, () => 'yt-dlp_macos'),
+								Match.when({arch: 'arm64'}, () => 'yt-dlp_linux_aarch64'),
+								Match.orElse(() => 'yt-dlp_linux')
+							)}`
+						)).stream,
+						fs.sink(partial)
 					)
-					yield* Stream.run(response.stream, fs.sink(ytDlp))
-					yield* fs.chmod(ytDlp, 0o755)
+					yield* fs.chmod(partial, 0o755)
+					yield* fs.rename(partial, ytDlp)
 				}
 				yield* run(ytDlp, ['--update'])
-				const ytDlpArgs = ['--js-runtimes', 'node', '--no-progress', '--no-warnings']
+				const ytDlpArgs = ['--js-runtimes', 'node', '--no-progress', '--no-warnings', '--no-playlist']
 
 				const post = yield* pipe(
-					Option.fromNullishOr(/(?:x|twitter)\.com\/([^/]+)\/status\/(\d+)/u.exec(input.link)),
+					input.link,
+					String.match(/(?:x|twitter)\.com\/([^/]+)\/status\/(\d+)/u),
 					Option.map(match =>
 						pipe(
 							client.get(`https://api.fxtwitter.com/${match[1]}/status/${match[2]}`),
 							Effect.flatMap(HttpClientResponse.schemaBodyJson(FxTwitter)),
-							Effect.map(body => body.tweet)
+							Effect.map(body => body.tweet),
+							Effect.tapError(cause => Console.error(`Cannot read the post text: ${cause.message}`)),
+							Effect.option
 						)
 					),
-					Effect.transposeOption
+					Effect.transposeOption,
+					Effect.map(Option.flatten)
 				)
 
-				const dump = yield* run(ytDlp, [...ytDlpArgs, '--dump-single-json', '--skip-download', input.link])
+				const dump = yield* run(ytDlp, [
+					...ytDlpArgs,
+					'--dump-single-json',
+					'--flat-playlist',
+					'--skip-download',
+					input.link
+				])
 				if (dump.exitCode !== 0) yield* Console.error(dump.stderr)
 				const metadata = yield* pipe(
 					Option.liftPredicate(dump, result => result.exitCode === 0),
@@ -165,71 +183,102 @@ const cli = pipe(
 					),
 					Effect.transposeOption
 				)
+				if (Option.exists(metadata, media => media._type === 'playlist')) {
+					return yield* MediaError.make({
+						message: `${input.link} holds several videos; pass the URL of a single video, such as an X post's /video/1 link`
+					})
+				}
 				const oembed = yield* pipe(
-					Option.liftPredicate(input.link, url => Option.isNone(metadata) && pipe(url, String.includes('youtu'))),
+					Option.liftPredicate(
+						input.link,
+						url =>
+							Option.isNone(metadata) &&
+							Option.isSome(pipe(url, String.match(/^https?:\/\/(?:[\w-]+\.)*(?:youtube\.com|youtu\.be)\//u)))
+					),
 					Option.map(url =>
 						pipe(
-							client.get(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(url)}`),
+							client.get('https://www.youtube.com/oembed', {urlParams: {format: 'json', url}}),
 							Effect.flatMap(HttpClientResponse.schemaBodyJson(OEmbed))
 						)
 					),
 					Effect.transposeOption
 				)
+				if (Option.isNone(metadata) && Option.isNone(oembed) && Option.isNone(post)) {
+					return yield* MediaError.make({message: `Nothing could be read from ${input.link}`})
+				}
 
-				const info = Array.join(
-					Array.getSomes([
-						Option.map(
-							metadata,
-							media =>
-								`# ${media.title}\n\n${Array.join(
-									Array.filter(
-										[
-											media.uploader ?? '',
-											pipe(media.upload_date ?? '', String.replace(/^(\d{4})(\d{2})(\d{2})$/u, '$1-$2-$3')),
-											pipe(
-												Option.fromNullishOr(media.duration),
-												Option.map(clock),
-												Option.getOrElse(() => String.empty)
-											)
-										],
-										String.isNonEmpty
-									),
-									', '
-								)}\n${input.link}`
-						),
-						Option.map(
-							oembed,
-							media =>
-								`# ${media.title}\n\n${media.author_name}\n${input.link}\n\nThis host could only read oEmbed metadata; the media skill lists other sources.`
-						),
-						Option.map(
-							post,
-							tweet =>
-								`## Post\n\n${postText(tweet)}${tweet.quote === undefined ? '' : `\n\n## Quoted post\n\n${postText(tweet.quote)}`}`
-						),
-						pipe(
-							metadata,
-							Option.flatMapNullishOr(media => media.description),
-							Option.filter(String.isNonEmpty),
-							Option.map(description => `## Description\n\n${description}`)
-						),
-						pipe(
-							metadata,
-							Option.flatMapNullishOr(media => media.chapters),
+				yield* fs.writeFileString(
+					infoPath,
+					`${Array.join(
+						Array.getSomes([
 							Option.map(
-								chapters =>
-									`## Chapters\n\n${Array.join(
-										Array.map(chapters, chapter => `- [${clock(chapter.start_time)}] ${chapter.title}`),
-										'\n'
-									)}`
+								metadata,
+								media =>
+									`# ${media.title}\n\n${Array.join(
+										Array.filter(
+											[
+												media.uploader ?? '',
+												pipe(media.upload_date ?? '', String.replace(/^(\d{4})(\d{2})(\d{2})$/u, '$1-$2-$3')),
+												pipe(
+													Option.fromNullishOr(media.duration),
+													Option.map(clock),
+													Option.getOrElse(() => String.empty)
+												)
+											],
+											String.isNonEmpty
+										),
+										', '
+									)}\n${input.link}`
+							),
+							Option.map(
+								oembed,
+								media =>
+									`# ${media.title}\n\n${media.author_name}\n${input.link}\n\nyt-dlp could not read this video (its error is on stderr), so only oEmbed metadata is available.`
+							),
+							Option.map(post, tweet => `## Post\n\n${postText(tweet)}`),
+							pipe(
+								post,
+								Option.flatMapNullishOr(tweet => tweet.quote),
+								Option.map(quote => `## Quoted post\n\n${postText(quote)}`)
+							),
+							pipe(
+								metadata,
+								Option.flatMapNullishOr(media => media.description),
+								Option.filter(String.isNonEmpty),
+								Option.map(description => `## Description\n\n${description}`)
+							),
+							pipe(
+								metadata,
+								Option.flatMapNullishOr(media => media.chapters),
+								Option.map(
+									chapters =>
+										`## Chapters\n\n${Array.join(
+											Array.map(chapters, chapter => `- [${clock(chapter.start_time)}] ${chapter.title}`),
+											'\n'
+										)}`
+								)
 							)
-						)
-					]),
-					'\n\n'
+						]),
+						'\n\n'
+					)}\n`
 				)
-				yield* fs.writeFileString(path.join(output, 'info.md'), `${info}\n`)
-				yield* Console.log(`Wrote ${path.join(output, 'info.md')}`)
+				yield* Console.log(`Wrote ${infoPath}`)
 				if (Option.isNone(metadata)) return
+
+				// The `-orig` automatic track names the spoken language; its plain key is the untranslated track or uploaded captions.
+				const language = pipe(
+					input.language,
+					Option.orElse(() =>
+						pipe(
+							metadata,
+							Option.flatMapNullishOr(media => media.automatic_captions),
+							Option.flatMap(captions => Array.findFirst(Record.keys(captions), String.endsWith('-orig'))),
+							Option.map(String.replace(/-orig$/u, ''))
+						)
+					),
+					Option.orElse(() => Option.flatMapNullishOr(metadata, media => media.language)),
+					Option.getOrElse(() => 'en')
+				)
 
 				yield* run(ytDlp, [
 					...ytDlpArgs,
@@ -237,74 +286,111 @@ const cli = pipe(
 					'--write-subs',
 					'--write-auto-subs',
 					'--sub-langs',
-					'en.*,en',
+					language,
 					'--sub-format',
 					'vtt',
+					'--convert-subs',
+					'vtt',
 					'-o',
-					path.join(output, 'captions'),
+					path.join(work, 'captions'),
 					input.link
 				])
-				const transcript = path.join(output, 'transcript.txt')
-				const writeCaptions = Effect.fnUntraced(function* (vtt: string) {
+				const captions = `captions.${language}.vtt`
+				if (Array.contains(yield* fs.readDirectory(work), captions)) {
 					const cues = pipe(
-						vtt,
+						yield* fs.readFileString(path.join(work, captions)),
+						String.replace(/\r\n?/gu, '\n'),
 						String.split('\n\n'),
 						Array.flatMap(block => {
 							const lines = String.split(block, '\n')
 							return pipe(
 								Array.findFirstIndex(lines, String.includes('-->')),
 								Option.map(index => {
-									const start = pipe(
-										Array.getUnsafe(lines, index),
-										String.split(' --> '),
-										Array.headNonEmpty,
-										String.split(':'),
-										Array.map(Number.parse),
-										Array.getSomes
+									const times = Array.map(pipe(Array.getUnsafe(lines, index), String.split(/[ \t]+-->[ \t]+/u)), time =>
+										Array.reduce(
+											pipe(
+												time,
+												String.trim,
+												String.split(/[ \t]+/u),
+												Array.headNonEmpty,
+												String.split(':'),
+												Array.map(Number.parse),
+												Array.getSomes
+											),
+											0,
+											(total, part) => total * 60 + part
+										)
 									)
-									const seconds = Array.reduce(start, 0, (total, part) => total * 60 + part)
 									return Array.map(Array.drop(lines, index + 1), line => ({
-										seconds,
-										text: String.trim(String.replace(/<[^>]+>/gu, '')(line))
+										end: Array.lastNonEmpty(times),
+										start: Array.headNonEmpty(times),
+										text: pipe(
+											line,
+											String.replace(/<[^>]+>/gu, ''),
+											String.replace(/&nbsp;/gu, ' '),
+											String.replace(/&lt;/gu, '<'),
+											String.replace(/&gt;/gu, '>'),
+											String.replace(/&lrm;|&rlm;/gu, ''),
+											String.replace(/&amp;/gu, '&'),
+											String.trim
+										)
 									}))
 								}),
 								Option.getOrElse(Array.empty)
 							)
 						}),
-						Array.filter(cue => String.isNonEmpty(cue.text)),
-						Array.dedupeAdjacentWith((left, right) => left.text === right.text)
+						Array.filter(cue => String.isNonEmpty(cue.text))
+					)
+					// Automatic rolling captions repeat a line in the cue that starts as the previous one ends; uploaded captions
+					// and later repeats stay.
+					const authored = Option.exists(
+						Option.flatMapNullishOr(metadata, media => media.subtitles),
+						subtitles => Record.has(subtitles, language)
 					)
 					yield* fs.writeFileString(
 						transcript,
 						Array.join(
-							Array.map(cues, cue => `[${clock(cue.seconds)}] ${cue.text}\n`),
+							Array.map(
+								Array.filter(cues, (cue, index) =>
+									pipe(
+										Array.get(cues, index - 1),
+										Option.match({
+											onNone: () => true,
+											onSome: previous => authored || previous.text !== cue.text || previous.end < cue.start
+										})
+									)
+								),
+								cue => `[${clock(cue.start)}] ${cue.text}\n`
+							),
 							''
 						)
 					)
-					yield* Console.log(`Wrote ${transcript} from published captions`)
-				})
-				const captions = Array.findFirst(
-					yield* fs.readDirectory(output),
-					name => pipe(name, String.startsWith('captions')) && pipe(name, String.endsWith('.vtt'))
-				)
-				const captioned = yield* pipe(
-					captions,
-					Option.map(name => pipe(fs.readFileString(path.join(output, name)), Effect.flatMap(writeCaptions))),
-					Effect.transposeOption
-				)
-				if (Option.isSome(captioned)) return
+					return yield* Console.log(`Wrote ${transcript} from published captions`)
+				}
 
-				yield* run(ytDlp, [...ytDlpArgs, '-f', 'bestaudio/best', '-o', path.join(output, 'audio.%(ext)s'), input.link])
-				const audio = yield* pipe(
-					Array.findFirst(yield* fs.readDirectory(output), String.startsWith('audio.')),
-					Effect.fromOption,
-					Effect.mapError(cause => MediaError.make({cause, message: 'yt-dlp downloaded no audio'}))
-				)
+				const download = yield* run(ytDlp, [
+					...ytDlpArgs,
+					'-f',
+					'bestaudio/best',
+					'-o',
+					path.join(work, 'audio.%(ext)s'),
+					input.link
+				])
+				if (download.exitCode !== 0) {
+					return yield* MediaError.make({message: `yt-dlp cannot download the audio: ${download.stderr}`})
+				}
 				const pcm = yield* run('ffmpeg', [
 					'-v',
 					'error',
 					'-i',
-					path.join(output, audio),
+					path.join(
+						work,
+						yield* pipe(
+							Array.findFirst(yield* fs.readDirectory(work), String.startsWith('audio.')),
+							Effect.fromOption,
+							Effect.mapError(cause => MediaError.make({cause, message: 'yt-dlp downloaded no audio'}))
+						)
+					),
 					'-f',
 					's16le',
 					'-ac',
@@ -313,32 +399,41 @@ const cli = pipe(
 					'16000',
 					'-'
 				])
+				if (pcm.exitCode !== 0) {
+					return yield* MediaError.make({message: `ffmpeg cannot decode the audio: ${pcm.stderr}`})
+				}
 				const samples = Float32Array.from(
 					new Int16Array(pcm.stdout.buffer, pcm.stdout.byteOffset, pcm.stdout.byteLength / 2),
 					sample => sample / 32768
 				)
 				env.cacheDir = path.join(cache, 'models')
-				const model = Option.match(input.language, {
-					onNone: () => 'onnx-community/whisper-small.en',
-					onSome: () => 'onnx-community/whisper-small'
+				// Whisper names languages without a region, such as en for en-US.
+				const spoken = pipe(language, String.split('-'), Array.headNonEmpty)
+				const english = spoken === 'en'
+				const model = Boolean.match(english, {
+					onFalse: () => 'onnx-community/whisper-small',
+					onTrue: () => 'onnx-community/whisper-small.en'
 				})
 				yield* Console.error(`Transcribing ${clock(samples.length / 16000)} of audio with ${model}`)
 				const recognize = yield* Effect.tryPromise(() =>
 					pipeline('automatic-speech-recognition', model, {device: 'cpu', dtype: 'q8'})
 				)
-				const result = yield* Effect.tryPromise(() =>
-					recognize(samples, {
-						chunk_length_s: 30,
-						language: Option.getOrUndefined(input.language),
-						return_timestamps: true,
-						stride_length_s: 5
-					})
-				)
-				const chunks = (yield* Schema.decodeUnknownEffect(Transcription)(result)).chunks
 				yield* fs.writeFileString(
 					transcript,
 					Array.join(
-						Array.map(chunks, chunk => `[${clock(chunk.timestamp[0])}] ${String.trim(chunk.text)}\n`),
+						Array.map(
+							(yield* Schema.decodeUnknownEffect(Transcription)(
+								yield* Effect.tryPromise(() =>
+									recognize(samples, {
+										chunk_length_s: 30,
+										language: Boolean.match(english, {onFalse: () => spoken, onTrue: () => undefined}),
+										return_timestamps: true,
+										stride_length_s: 5
+									})
+								)
+							)).chunks,
+							chunk => `[${clock(chunk.timestamp[0])}] ${String.trim(chunk.text)}\n`
+						),
 						''
 					)
 				)
@@ -348,7 +443,7 @@ const cli = pipe(
 		)
 	),
 	Command.withDescription(
-		'Write info.md (title, author, date, description, chapters and X post text) and transcript.txt with [mm:ss] timestamps for a video or social post URL. Uses published captions when they exist, otherwise downloads the audio and transcribes it locally with Whisper. Needs ffmpeg on PATH; caches yt-dlp and the model in ~/.cache/deslop/media.'
+		'Write info.md (title, author, date, description, chapters and X post text) and transcript.txt with [mm:ss] timestamps for a video or social post URL. Uses published captions when they exist, otherwise downloads the audio and transcribes it locally with Whisper. Needs ffmpeg on PATH; caches yt-dlp and the model in $XDG_CACHE_HOME/deslop/media, ~/.cache by default.'
 	),
 	Command.withExamples([
 		{

@@ -63,5 +63,5 @@ jobs:
         run: |
           for package in coding-standards media; do
             vp -C tools/$package pm pack --pack-destination "$RUNNER_TEMP/$package"
-            npm publish "$RUNNER_TEMP/$package"/*.tgz --access public --provenance
+            npm publish "$RUNNER_TEMP/$package"/*.tgz
           done
