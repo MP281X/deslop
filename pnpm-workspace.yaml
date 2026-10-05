@@ -2,11 +2,13 @@ packages:
   - apps/*
   - packages/*
   - tools/coding-standards
+  - tools/media
   - tools/create-*
 
 allowBuilds:
   '@google/genai': false
   esbuild: false
+  onnxruntime-node: false
   protobufjs: false
 
 catalogMode: prefer

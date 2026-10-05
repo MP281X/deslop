@@ -21,12 +21,14 @@ Use [Deslop](references/deslop.md) or [Dual](references/dual.md) from that repos
 
 ## Repository skills and incremental refactors
 
-**Refresh.** Follow the owning package brief for source/copy ownership. Refresh only when installing/updating skills, not every session:
+**Refresh.** Follow the owning package brief for which files are sources and which are copies. Refresh only when installing or updating skills, not every session:
 
 ```bash
 vpx @deslop/coding-standards@latest --help
 vpx @deslop/coding-standards@latest
 ```
+
+**Missing copies.** If engineering or testing is missing from a worktree, run the installer before code work; never read an older copy under `node_modules`.
 
 **Versions.** Skill refresh changes no manifests/lock. Upgrade presets only in touched packages; versions may differ. The pair batches shared lock/install changes and verifies frozen installation. Deslop uses workspace source.
 

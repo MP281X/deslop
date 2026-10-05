@@ -1,15 +1,15 @@
 # Implementation
 
-**Scope.** Complete the owned slice/reference replication. Apply engineering to every owned file, including inherited diagnostics; verify supported idioms before claiming limits. Shared registries/installs/lockfiles remain with the pair unless assigned.
+**Scope.** Complete the assigned part of the work, or replicate the given reference. Apply engineering to every file you own, including diagnostics you inherited, and check which idioms the code already supports before you claim a limit. Shared registries, installs and lockfiles stay with the primary agent unless the brief assigns them.
 
-**Return.** Return changed behavior/owned paths, decisive proof and unresolved gaps.
+**Return.** Return the changed behavior, the paths you changed, the proof that decides it and any gaps that remain.
 
 ## Standalone probes
 
-Standalone probes use the existing runtime: a `.mjs` driver, or TypeScript stdin from the target worktree root:
+Standalone probes use the existing runtime: write a `.mjs` driver, or pipe TypeScript through standard input from the target worktree's root:
 
 ```bash
 node --input-type=module-typescript - < node_modules/.cache/deslop/<agent>/probe.ts
 ```
 
-Stdin imports resolve from the current directory, not the driver folder. Node cannot strip imported TypeScript under `node_modules`; integrated code uses the app/test entrypoint.
+Imports in standard-input code resolve from the current directory, not from the driver's folder. Node cannot strip types from TypeScript imported under `node_modules`, so integrated code goes through the app or test entrypoint.

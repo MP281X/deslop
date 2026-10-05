@@ -8,6 +8,8 @@ vp run --workspace-root --no-cache fix
 flock "$HOME/.deslop/dual-test.lock" vp run --workspace-root test
 ```
 
+The root `fix` rewrites formatting in files outside the change (31 files on 2026-10-04). Stage only the files your change touches, and restore the other rewrites with `git restore` unless that file had edits before the fix.
+
 **VPN.** GitLab requires Datapizza VPN on the development host. Verify reachability; reconnect when it expires. Present the returned authentication URL through the question tool, then verify again.
 
 ```bash

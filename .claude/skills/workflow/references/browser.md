@@ -1,14 +1,14 @@
 # Browser and runtime proof
 
-**Scope.** Prove supplied inputs → outcomes/URL with saved state. Apply design; reuse the supplied host, not a setup survey. This procedure owns capture, profiling and requested exposure; stop only owned services.
+**Scope.** Prove that the supplied inputs produce the expected outcomes and URLs, using saved sign-in state. Apply design. Reuse the host you were given instead of surveying the setup. This procedure owns captures, profiling and any requested exposure; stop only the services you started.
 
-**Return.** Return observed journeys/captures and actual errors or unproved states. Apply design's visual inspection; DOM checks alone are not visual proof.
+**Return.** Return the journeys and captures you observed, the actual errors and the states you could not prove. Apply design's visual inspection, because DOM checks alone are not visual proof.
 
 ## Proof and previews
 
-Proof services are temporary loopback services; persistent exposed previews are opt-in. Static proof uses `screenshot <path.png>`; record behavior, and use before/after only for a meaningful comparison.
+Proof services are temporary and listen on loopback; a persistent, exposed preview exists only when the user asks for one. Static proof uses `screenshot <path.png>`. Record behavior on video, and show before and after only when the comparison means something.
 
-Record owned process/session identities when starting proof services. Stop those identities only after confirming ownership; a listener found by port is not disposal permission. Use a free port instead of stopping another owner's listener.
+Record the process and session identities of the proof services you start. Stop them only after confirming that you own them; finding a listener on a port does not give permission to stop it. Use a free port instead of stopping another owner's listener.
 
 - Requested preview: choose a free port (`ss -ltn`), bind `127.0.0.1`, then `sudo tailscale serve --bg --https=<port> http://127.0.0.1:<port>`. Share `https://<host>:<port>`, with `<host>` from `tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")'`; the first request waits for a certificate. Keep it running until asked to stop, then `sudo tailscale serve --https=<port> off` and stop its process group. Other threads' previews remain untouched.
 - In one agent-browser session, `record start <path.mp4> --contact-sheet` on the open page before meaningful input, then `record stop`. A URL triggers navigation; supply one only to prove navigation. Default 30 fps/H.264 plays on the phone; inspect the contact sheet. Sign in once, `state save <scratch>/auth.json`, then reuse `--state <scratch>/auth.json`.
