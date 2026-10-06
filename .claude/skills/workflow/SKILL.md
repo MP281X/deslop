@@ -50,7 +50,7 @@ Start when the user is satisfied, or at once for a settled task.
 - **Body review.** After the body is published, run one [body reader](references/review.md#body-reader) over the published body and captures. Fix what it confirms before you report.
 - **Recap.** Render a recap in the plan's claim form. Show each delivered behavior with its before → after exhibit and lines, the size split and the riskiest places to read. Put code in `diff` blocks below the render. Then watch the pull request and end the turn.
 - **Alignment review.** Write the recap at the level of behavior and mechanism, not diffs. For each area, state what a user or caller can now do, how it works and where it lives, so the user can confirm alignment. When the user restates their understanding, mark each point correct, partly correct or wrong, correct it, and list what they missed.
-- **Clean up.** Stop what you started as soon as nothing needs it: children, services, previews, watches, browser sessions, sign-ins, extra worktrees, exit nodes and scratch files. Keep useful evidence. Keep one preview per branch, and only while the user uses it.
+- **Clean up.** Stop what you started as soon as nothing needs it: children, services, previews, watches, browser sessions, sign-ins, extra worktrees, exit nodes and scratch files. Keep useful evidence. Keep one preview per branch while the user uses it, and give a manual test script: the URL, the sign-in, what is set up, and five to eight steps with the expected result of each.
 
 ## Working
 

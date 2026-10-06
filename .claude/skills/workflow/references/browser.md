@@ -26,7 +26,7 @@ A capture proves one claim, and a reviewer must read it at the body's width.
 - **End on the outcome.** Hold the result for two seconds: the run, the file, the rejection or the filled table. A form left empty or a dialog opened is not proof.
 - **Start ready.** Seed the data before recording, and wait until loading ends before each chapter. A spinner, skeleton or placeholder on camera means the take restarts, unless loading is the claim.
 - **Legible.** Use a 1280×800 viewport at a device scale of 2. Screenshot the element with `screenshot <selector> <path>`, not the window. Record with `--cursor`, and use `highlight <selector>` before a click that matters.
-- **Short.** Keep each video under 90 seconds and one journey long. Cut waits, or speed them up with a caption that says so. Use at most eight screenshots per body.
+- **Complete.** Show a realistic workflow end to end: the inputs, every step's input and output, and the opened result. Speed up long waits with a caption; never cut a step or end early. Use at most eight screenshots per body.
 - **Current.** Capture after the final code, and name each file by its claim, such as `jira-rule-starts-run.mp4`. Compare each capture with the head's UI text before publishing.
 - **Real events.** Trigger the provider for real when an account exists, or send a signed request with `curl` when it does not. Ask the user for the provider-side step, with an exact guide, when you cannot do it.
 

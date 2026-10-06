@@ -7,7 +7,7 @@ Copy this shape. The open part above the first collapsed section must fit on one
 | Result       | Two lines, written as what a user or caller can now do                                |
 | Needs you    | Decisions and actions only, never facts or a backlog                                  |
 | Ticket       | Every requirement of the source tickets, each done, partial or missing                |
-| Proof        | One video per journey of at most 90 seconds, and at most eight cropped screenshots    |
+| Proof        | One complete video per realistic journey, and at most eight cropped screenshots       |
 | Changed      | At most eight behavior bullets; a contracts table only for public or breaking changes |
 | Review guide | At most eight rows, three files per row and 25 words of what to check                 |
 | Gaps         | At most five, each with what it prevents you from claiming                            |
