@@ -11,8 +11,15 @@ Copy this shape. The open part above the first collapsed section must fit on one
 | Changed      | At most eight behavior bullets; a contracts table only for public or breaking changes |
 | Review guide | At most eight rows, three files per row and 25 words of what to check                 |
 | Gaps         | At most five, each with what it prevents you from claiming                            |
+| Checklist    | The repository template's checklist, ticked only for what the branch did              |
 
 Leave out pass numbers, test tables, process words and anything T3 or the pipeline already shows.
+
+- **Ticket rows** quote the requirement's title from the ticket, in its language. Link a ticket only when the reviewer can open it.
+- **Captions** state the claim and the duration above each video. Screenshots sit in a two-column table, each with a caption.
+- **Before and after.** Show a changed screen as a pair with the same data, the default branch on the left.
+- **Numbers.** When speed or size is part of the claim, give a small before and after table with the command that measured it.
+- **Repository template.** When the repository has a merge request template, keep its checklist as the last section and tick it truthfully.
 
 ```markdown
 Workflows can call 69 providers (was 8) and start from their webhooks or polling. Attio, Linear, GitHub and GitLab register their webhooks automatically.
@@ -36,9 +43,13 @@ Events start runs (1:20): a signed Jira delivery starts a run, a forged one is r
 
 ![Events start runs](/uploads/<secret>/events-start-runs.mp4)
 
-| Catalog filter by provider                              | Jira automation rule setup                                |
-| ------------------------------------------------------- | --------------------------------------------------------- |
-| ![Catalog filter](/uploads/<secret>/catalog-filter.png) | ![Jira rule setup](/uploads/<secret>/jira-rule-setup.png) |
+| Catalog while a filter loads, before                         | After                                                     |
+| ------------------------------------------------------------ | --------------------------------------------------------- |
+| ![Blank table](/uploads/<secret>/catalog-loading-before.png) | ![Rows kept](/uploads/<secret>/catalog-loading-after.png) |
+
+| Request            | Before | After | Command                              |
+| ------------------ | ------ | ----- | ------------------------------------ |
+| Catalog list, warm | 2.4 s  | 90 ms | `curl -w '%{time_total}' <list URL>` |
 
 **Changed:**
 
@@ -59,4 +70,10 @@ Events start runs (1:20): a signed Jira delivery starts a run, a forged one is r
 - Attio and Linear activation ran against mocked provider responses only, so live registration is unproven.
 
 </details>
+
+**Checklist:**
+
+- [x] Agent surface: new `ProductApi` endpoints are classified
+- [x] Docs: affected guides updated
+- [x] Changeset added
 ```
