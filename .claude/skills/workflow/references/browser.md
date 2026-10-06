@@ -1,36 +1,20 @@
-# Browser and runtime proof
+# Browser proof
 
-**Scope.** Prove that the supplied inputs produce the expected outcomes and URLs, using saved sign-in state. Reuse the host you were given instead of surveying the setup. This procedure owns captures, profiling and any requested exposure; stop only the services you started.
+Prove that the supplied inputs produce the expected outcomes on the host you were given, using saved sign-in state; do not survey or restart the setup. Return the journeys and captures you observed after design's visual inspection, the actual errors, and the states you could not prove.
 
-**Return.** The journeys and captures you observed, after design's visual inspection, plus actual errors and the states you could not prove.
+## Captures
 
-## Proof and previews
+- Sign in once, `agent-browser --session <name> state save <scratch>/auth.json`, then reuse `--state <scratch>/auth.json`.
+- Before capturing, `set media dark` sets the real color preference (a dark class alone does not) and `set viewport <width> <height>` sets the size. Wait for the relevant content and fonts, never a fixed delay.
+- Static proof: `screenshot <path.png>`. Behavior: `record start <path.mp4> --contact-sheet` on the open page before the first meaningful input, then `record stop`, and inspect the contact sheet. Passing a URL to `record start` navigates; do it only to prove navigation.
+- Reuse locators, refresh `snapshot -i -c` when targets change, batch independent reads in one `eval`, and wait with a selector or `wait --fn '<condition>'`. DOM assertions are not visual proof.
 
-Proof services are temporary and listen on loopback. Static proof uses `screenshot <path.png>`. Record behavior on video, and show before and after only when the comparison means something.
+## Previews
 
-Record the process and session identities of the proof services you start. Stop them only after confirming that you own them; finding a listener on a port does not give permission to stop it. Use a free port instead of stopping another owner's listener.
+A requested preview binds `127.0.0.1` on a free port (`ss -ltn`), then `sudo tailscale serve --bg --https=<port> http://127.0.0.1:<port>`; share `https://<host>:<port>` with `<host>` from `tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")'`. Restart it in place after a rebuild. When it is no longer needed, `sudo tailscale serve --https=<port> off` and stop its process group. Stop only processes you started; a listener on a port is not yours to stop.
 
-- Requested preview: choose a free port (`ss -ltn`), bind `127.0.0.1`, then `sudo tailscale serve --bg --https=<port> http://127.0.0.1:<port>`. Share `https://<host>:<port>`, with `<host>` from `tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")'`; the first request waits for a certificate. Keep one preview per branch: after a rebuild, restart it in place on the same port instead of starting a second one. When the user is done with it, run `sudo tailscale serve --https=<port> off` and stop its process group. Other threads' previews remain untouched.
-- In one agent-browser session, `record start <path.mp4> --contact-sheet` on the open page before meaningful input, then `record stop`. A URL triggers navigation; supply one only to prove navigation. Default 30 fps/H.264 plays on the phone; inspect the contact sheet. Sign in once, `state save <scratch>/auth.json`, then reuse `--state <scratch>/auth.json`.
-- Before capture, `agent-browser --session <name> set media dark` sets the actual color preference; `set viewport <width> <height>` sets the comparison viewport. Wait for the relevant content and loaded fonts, not an arbitrary delay. A dark class alone does not activate a media-query theme.
+## Debugging
 
-### Browser debugging
-
-Reuse known locators; refresh `snapshot -i -c` when targets change, batch independent values in one `eval`, and wait for a selector or `wait --fn '<condition>'`, not blind sleeps. Capture screenshots, video and profiles on the same meaningful journey; DOM assertions are not visual proof.
-
-For a suspected React state or rerender issue, enable the hook before page JavaScript (enabling it later relaunches the session):
-
-```bash
-agent-browser --session <name> open --enable react-devtools <url>
-agent-browser --session <name> react tree
-agent-browser --session <name> react renders start
-# Reproduce the relevant input once, then collect its commits
-agent-browser --session <name> react renders stop --json
-agent-browser --session <name> react inspect <fiber-id>
-```
-
-For slow input, scrolling or main-thread work, `profiler start` before input and `profiler stop <scratch>/browser-trace.json` after; analyze the events. This is Chrome profiling, not OTLP. `react renders` requires the DevTools hook; detailed timing requires a profiling build, so normal-build commit counts are not CPU timings.
-
-### Application tracing
-
-Use the affected repository's environment reference for endpoints and known instrumentation: [Deslop](../../environment/references/deslop.md#application-tracing) or [Dual](../../environment/references/dual.md). Correlate one real action's client and server spans, errors and durations, then compare after the fix. Missing spans or allowed preflight do not prove tracing coverage or speed. Use existing observability; extra storage or dashboards need a concrete question.
+- **React state or rerenders.** Enable the hook before page JavaScript: `open --enable react-devtools <url>`, then `react tree`, `react renders start`, reproduce once, `react renders stop --json`, `react inspect <fiber-id>`. Normal-build commit counts are not CPU timings.
+- **Slow input or main-thread work.** `profiler start` before the input and `profiler stop <scratch>/trace.json` after, then analyze the events.
+- **Tracing.** Use the repository's environment reference for endpoints. Correlate one real action's client and server spans, errors and durations, and compare the same action after the fix. Missing spans do not prove coverage or speed.

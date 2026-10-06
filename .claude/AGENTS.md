@@ -20,7 +20,7 @@ Machine upkeep remains in maintenance. Update this brief when these ownership de
 | Production polish before prototype feedback           | Unaccepted directions must stay cheap to replace                                         |
 | Progress ledgers or PR recaps in chat                 | T3 and the PR show them; the closing Status table states only head, pipeline and pending |
 | Repeated instruction-simulation rounds                | They tested decisions, not real-task speed; rerun only for a consequential open question |
-| Rebuilding orchestration or review surfaces           | Out of scope unless T3 and artifacts cannot supply a requested capability                |
+| Rebuilding orchestration or review surfaces           | T3 threads, inline renders and the pull request supply them                              |
 | Importing Emil's whole skill collection               | Its variant picker, audit fan-out and style defaults conflict; keep the targeted craft   |
 | Splitting short core design standards into references | Alignment, overflow and interaction essentials stay inline                               |
 | Telegraphic, slash-heavy instruction prose            | Agents copied it into briefs with glued words                                            |
@@ -32,6 +32,9 @@ Machine upkeep remains in maintenance. Update this brief when these ownership de
 | Formatter and autofix rewrites outside the task       | They put unrelated files into pull requests and widened lint migrations                  |
 | Codex `model_context_window` override                 | Primary calls carried a median of 264k tokens; the recommended window compacts sooner    |
 | Commit series or stacked pull requests for review     | The user chose a contract-focused pull request body instead                              |
+| Children writing full reports to scratch files        | The user wants results in the thread, not side files                                     |
+| A diff-classification command                         | The user does not want another CLI; the cleanup audit procedure covers it                |
+| Verification children running checks                  | Checks write shared outputs; the primary runs them                                       |
 
 <details>
 <summary>Workflow and agent references</summary>
