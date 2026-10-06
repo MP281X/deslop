@@ -14,6 +14,7 @@ Before anything longer than a short exchange, settle this table with the user:
 | Field     | Content                                                                   |
 | --------- | ------------------------------------------------------------------------- |
 | Intent    | The outcome the user wants, in one or two lines                           |
+| Ticket    | Every requirement of the source tickets and comments, each as one claim   |
 | Decisions | Choices already made, including what does not change                      |
 | Defaults  | How to decide later choices without asking                                |
 | Size      | Expected files, children and rough time, with the smaller option first    |
@@ -21,7 +22,7 @@ Before anything longer than a short exchange, settle this table with the user:
 
 Show the plan as a render that the user can scan in seconds. Write each planned behavior as a one-line claim that can be true or false, such as "a user can pin one file version". Give each claim one exhibit: a UI mockup, a state machine, a flow or a schema. Put each decision on the claim it changes, with your default marked. End with what does not change. The question card collects the answers. A default the user did not answer is not agreement.
 
-List every decision the work needs before it starts, not only the first ones. Then work from the plan without asking again. Every brief to a thread or child carries the table. A change request after a push, or a new direction during production, updates the plan and re-enters Prototype.
+Paste the source tickets into the plan, including follow-up comments, and split them into requirements. A requirement left out of scope goes under **Needs you**; never drop one silently. List every decision the work needs before it starts, not only the first ones. Then work from the plan without asking again. Every brief to a thread or child carries the table. A change request after a push, or a new direction during production, updates the plan and re-enters Prototype.
 
 **The request is the scope.** A related improvement goes under **Needs you** as a follow-up, not into the branch. So does a defect in code the task does not otherwise change, and a capability that only a test needs. A question that would grow the scope states its size, with the smaller option first.
 
@@ -44,8 +45,9 @@ Start when the user is satisfied, or at once for a settled task.
 - **Cover inputs.** List the reachable input classes of every parser, boundary and state transition the diff adds or changes. Cover them per testing's Branches rule, and reproduce each confirmed finding before you fix it.
 - **Review.** Run one [review](references/review.md) round over the hand-written diff, with one reviewer for each lens it contains. The lenses are code behavior, and instructions and docs checked against each other. Split an area that one reviewer cannot read. Fix each confirmed finding with a test that fails first.
 - **Second round.** Review the fixes again only when they change more than the finding named. After two rounds, bring the remaining findings to the user.
-- **Prove.** Assume the default branch passes every check. Run the type and lint checks and the tests that cover the code you changed; skip tests of unchanged code. The pipeline runs the full suite after the final push. List every user-facing surface the branch changes, then cover each one with a video or screenshot. Inspect every capture, and fix the UI issues it shows before the final push.
-- **Ship.** Update from the default branch and rerun what the update affects. Squash the unpushed checkpoints and push once, after the code is final and reviewed. Open or update the draft pull request per Publishing, and link it to the thread at once. Record the video while that pipeline runs, then add it to the body; editing the body starts no pipeline. Push again only to fix a pipeline failure. Failing local checks block the push, and other irreversible or outward actions need confirmation.
+- **Prove.** Assume the default branch passes every check. Run the type and lint checks and the tests that cover the code you changed; skip tests of unchanged code. The pipeline runs the full suite after the final push. Audit every changed screen against design before recording, and fix what you find. Prove each ticket requirement with the outcome a user sees, per [PR captures](references/browser.md#pr-captures). Inspect every capture, and fix the UI issues it shows before the final push.
+- **Ship.** Update from the default branch and rerun what the update affects. Squash the unpushed checkpoints and push once, after the code is final and reviewed. Open or update the draft pull request per Publishing, and link it to the thread at once. Record the video while that pipeline runs, then add it to the body; editing the body starts no pipeline. Every embedded capture comes from the final code; remove captures from earlier passes. Push again only to fix a pipeline failure. Failing local checks block the push, and other irreversible or outward actions need confirmation.
+- **Body review.** After the body is published, run one [body reader](references/review.md#body-reader) over the published body and captures. Fix what it confirms before you report.
 - **Recap.** Render a recap in the plan's claim form. Show each delivered behavior with its before → after exhibit and lines, the size split and the riskiest places to read. Put code in `diff` blocks below the render. Then watch the pull request and end the turn.
 - **Alignment review.** Write the recap at the level of behavior and mechanism, not diffs. For each area, state what a user or caller can now do, how it works and where it lives, so the user can confirm alignment. When the user restates their understanding, mark each point correct, partly correct or wrong, correct it, and list what they missed.
 - **Clean up.** Stop what you started as soon as nothing needs it: children, services, previews, watches, browser sessions, sign-ins, extra worktrees, exit nodes and scratch files. Keep useful evidence. Keep one preview per branch, and only while the user uses it.
@@ -64,10 +66,10 @@ Start when the user is satisfied, or at once for a settled task.
 
 ## Publishing
 
-- **Body.** Follow pair's Structure. Describe what the final branch changes and how to review it, not its history. Keep consequential risks, even in mechanical changes.
-- **Changed.** List every changed public contract as a before → after row linked to its lines. Contracts include endpoints, schemas, CLI flags, configuration keys, migrations and exported APIs.
-- **Review guide.** Add a table with one row per area in reading order: order, area, files with links, and what to check. Describe each area by behavior and mechanism, not diffs. End with a row of mechanical files to skip, and the hand-written size per package with the command that reproduces generated output.
-- **Proof.** Embed the inspected videos and screenshots, and check off each changed surface. Leave out process and activity, such as reviews or checks that ran, started services and planned work.
+- **Body.** Copy the shape and budgets of the [example body](references/pr-body.md). Describe what the final branch changes and how to review it, not its history. Keep consequential risks, even in mechanical changes.
+- **Changed.** List user-visible behavior as short bullets. Add a before → after table only for public or breaking contracts, linked to their lines: endpoints, schemas, CLI flags, configuration keys, migrations and exported APIs.
+- **Review guide.** Add a table with one row per area in reading order: order, area, at most three linked files, and what to check. Describe each area by behavior and mechanism, not diffs. End with a row of mechanical files to skip, and the hand-written size per package with the command that reproduces generated output.
+- **Proof.** Embed the inspected videos and screenshots, each captioned with the claim it proves. Leave out process and activity, such as reviews or checks that ran, started services, planned work, test tables and pass numbers.
 - **Links.** GitHub uses `https://github.com/<owner>/<repo>/blob/<branch>/<path>#L<start>-L<end>`. GitLab uses `https://<host>/<project>/-/blob/<branch>/<path>#L<start>-<end>`.
 - **Commands.** Pass bodies and comments as files. Attach an image as `--attach '<file>#<alt text>'` and a GitHub video as a bare `--attach '<file>'`. `glab` has no `--jq` option, so pipe its API output into `jq`. Check the published head, title, body and files against the branch.
 
@@ -99,6 +101,7 @@ Delegate self-contained, read-only work when its result saves more than the brie
 | Cleanup audit | Each area of a large diff during Prune                           | GPT-6.1 Sol · high  | [Review](references/review.md)     |
 | Critique      | Independent judgment that can change the direction               | Opus 5.5 · high     | [Review](references/review.md)     |
 | Browser proof | A substantial, independent user journey on a running host        | GPT-6.1 Sol · high  | [Browser](references/browser.md)   |
+| Body reader   | Each published pull request body                                 | GPT-6.1 Sol · high  | [Review](references/review.md)     |
 
 Check each model against T3's live catalog and the user's budget. Use the primary's model when one is unavailable.
 

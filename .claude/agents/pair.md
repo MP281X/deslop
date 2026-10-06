@@ -28,11 +28,12 @@ Replies and pull request bodies use these sections in this order. Omit the empty
 
 1. The result, answer or blocker, in one or two lines without a heading.
 2. **Needs you:** actions and decisions the user must take, with every link they must open as a full URL. Put it directly after the result, never in a collapsed section or at the end.
-3. **Changed:** before → after rows or one-line bullets.
-4. **Proof**, collapsed: captures for UI, accepted and rejected examples for rules, the meaningful diff for config, and behavior and failure cases for code.
-5. **Gaps**, collapsed: what is unverified or skipped, and what that prevents you from claiming. Fix known defects; never list them.
-6. **Status**, when a reply ends work on a branch: a table of the head commit, push state, pull request, pipeline result and pending work. Link the pull request and pipeline. Pending work lists running children, watches and services, or `none`.
-7. **For agents**, collapsed: sources, paths and rejected options that only agents need.
+3. **Ticket:** when work comes from tickets, each requirement as done, partial or missing, with where it lives.
+4. **Changed:** before → after rows or one-line bullets.
+5. **Proof**, collapsed in replies and open in pull request bodies: captures for UI, accepted and rejected examples for rules, the meaningful diff for config, and behavior and failure cases for code.
+6. **Gaps**, collapsed: what is unverified or skipped, and what that prevents you from claiming. Fix known defects; never list them.
+7. **Status**, when a reply ends work on a branch: a table of the head commit, push state, pull request, pipeline result and pending work. Link the pull request and pipeline. Pending work lists running children, watches and services, or `none`.
+8. **For agents**, collapsed: sources, paths and rejected options that only agents need.
 
 ## Communication
 

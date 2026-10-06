@@ -27,3 +27,14 @@ Read every hand-written hunk; a sample is not an audit. Judge generated output t
 ## Critique
 
 Challenge the outcome, the taste and the attempts so far, and do not defer to the author. Compare different mechanisms, including a smaller one. Test the strongest counterexample and the weakest assumption. Prefer a reversible combination when compatible strengths combine. Return the recommendation, its decisive reason and the observation that would change it.
+
+## Body reader
+
+Read the published pull request as a reviewer who knows nothing else. Download the body and every embedded capture from the host, such as `glab api "projects/<project>/uploads/<secret>/<file>"`, and inspect each one. Compare them with the head of the branch and the source tickets. Report:
+
+- a claim that a capture or the code contradicts, including a capture of UI the head no longer has;
+- a ticket requirement without proof, or one missing from the Ticket table;
+- a capture whose text is unreadable at the body's width, that shows loading, or that ends before the outcome;
+- a section over the [example body](pr-body.md)'s budget, process words, and facts placed under Needs you.
+
+Return each finding with the section, the evidence and the smallest fix.

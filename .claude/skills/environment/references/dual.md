@@ -23,6 +23,7 @@ curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
 - **Sign-in.** Sign in as `admin@dual.local` with `preview-password`. AI journeys need provider connections.
 - **Exposure.** The printed `.localhost` URL is machine-local. Remote access uses Browser's Tailscale procedure on the app port; verify sign-in, assets and API calls through the shared URL.
 - **Lifetime.** Ctrl-C stops the preview and keeps its data. When every owner is settled and the data is disposable, `vp run --workspace-root preview:destroy` removes only that stage. Run it before you move or delete the checkout or its Alchemy state.
+- **Live webhooks.** Providers reach the preview only through a public URL. Run `sudo tailscale funnel --bg --set-path /api/webhooks http://127.0.0.1:<api port>/api/webhooks`, so the sign-in page stays private, and turn it off afterwards. `infra/saas/local.run.ts` sets `SERVER_PUBLIC_URL` to the local URL, so self-registering triggers need a temporary local override that is reverted before the push.
 - **Never.** Never use the shared `init` or `dev` commands as a preview.
 
 **Components.** `vpx shadcn@latest list @shadcn --cwd packages/ui`; inspect the docs and the installed source before adding one.

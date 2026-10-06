@@ -18,6 +18,18 @@ Prove that the supplied inputs produce the expected outcomes on the host you wer
 - **Script.** Write the journey as one batch of agent-browser commands and record it in a single take. When the UI changes, rerun the batch instead of driving it again by hand.
 - **Scope.** Record behavior only; use screenshots for static states. Record once at the end, and re-record only when the shown UI changed.
 
+## PR captures
+
+A capture proves one claim, and a reviewer must read it at the body's width.
+
+- **Claim first.** Open each video with a title card that states the claim, such as "a signed Jira delivery starts a run". Caption each chapter.
+- **End on the outcome.** Hold the result for two seconds: the run, the file, the rejection or the filled table. A form left empty or a dialog opened is not proof.
+- **Start ready.** Seed the data before recording, and wait until loading ends before each chapter. A spinner, skeleton or placeholder on camera means the take restarts, unless loading is the claim.
+- **Legible.** Use a 1280×800 viewport at a device scale of 2. Screenshot the element with `screenshot <selector> <path>`, not the window. Record with `--cursor`, and use `highlight <selector>` before a click that matters.
+- **Short.** Keep each video under 90 seconds and one journey long. Cut waits, or speed them up with a caption that says so. Use at most eight screenshots per body.
+- **Current.** Capture after the final code, and name each file by its claim, such as `jira-rule-starts-run.mp4`. Compare each capture with the head's UI text before publishing.
+- **Real events.** Trigger the provider for real when an account exists, or send a signed request with `curl` when it does not. Ask the user for the provider-side step, with an exact guide, when you cannot do it.
+
 ## Previews
 
 Bind a requested preview to `127.0.0.1` on a free port (`ss -ltn`). Expose it with `sudo tailscale serve --bg --https=<port> http://127.0.0.1:<port>`. Get the host from `tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")'`. The first request waits for a certificate. Verify sign-in, assets and API calls through `https://<host>:<port>` before you share it.
