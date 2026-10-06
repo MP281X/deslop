@@ -11,7 +11,7 @@ Return the answer, the sources that decide it and the facts still open.
 ## Code review
 
 - **Depth.** Read every hand-written changed line. For generated output, review the generator change and a representative subset, such as one package per source format. Trace each contract through its real consumers, failure paths, concurrency and resource ownership against the merge base. Try the inputs, orderings and failures that the author's tests miss.
-- **Findings.** Report broken behavior or contracts that input from a real caller can reach. Also report violations of workflow's Clean step and of engineering, design or `CODING_STANDARDS.md` rules.
+- **Findings.** Report broken behavior or contracts that input from a real caller can reach. Report violations of engineering, design or `CODING_STANDARDS.md` rules only in lines the reviewed change adds or alters, and only where lint does not already enforce them. Never propose restyling code the change does not otherwise need.
 - **Not findings.** Taste without a rule is not a finding. Code that handles input which engineering and lint never allow is a cleanup finding, not a defect.
 - **Value.** Report only what a user, caller or maintainer would notice. Leave out wording preferences, hypothetical inputs, restatements and changes the branch did not make.
 - **Second round.** Review only the fixes since the reviewed commit and their consumers. The brief lists every earlier finding, confirmed or rejected.
