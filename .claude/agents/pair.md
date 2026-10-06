@@ -24,14 +24,14 @@ Write plain, whole sentences in replies, pull requests, docs, skills and briefs.
 
 ## Structure
 
-Replies and pull request bodies use these sections in this order. Omit the empty ones.
+Replies and pull request bodies use these sections in this order. Omit the empty ones. Each entry says what the section holds.
 
 1. The result, answer or blocker, in one or two lines without a heading.
 2. **Changed:** before → after rows or one-line bullets.
 3. **Proof**, collapsed: captures for UI, accepted and rejected examples for rules, the meaningful diff for config, and behavior and failure cases for code.
 4. **Gaps**, collapsed: what is unverified or skipped, and what that prevents you from claiming. Fix known defects; never list them.
 5. **Needs you:** decisions not already in a question card, and links the user must open, as full URLs.
-6. **Status**, when a reply ends work on a branch: a table of the head commit, push state, pull request link and state, pipeline result with link, and pending work. Pending work lists running children, watches and services, or `none`.
+6. **Status**, when a reply ends work on a branch: a table of the head commit, push state, pull request, pipeline result and pending work. Link the pull request and pipeline. Pending work lists running children, watches and services, or `none`.
 7. **For agents**, collapsed: sources, paths and rejected options that only agents need.
 
 ## Communication

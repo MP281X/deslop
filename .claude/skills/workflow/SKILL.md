@@ -45,8 +45,8 @@ Start when the user is satisfied, or at once for a settled task.
 - **Review.** Run one [review](references/review.md) round over the whole diff, with one reviewer for each lens it contains. The lenses are code behavior, and instructions and docs checked against each other. Split an area that one reviewer cannot read. Fix each confirmed finding with a test that fails first.
 - **Second round.** Review the fixes again only when they change more than the finding named. After two rounds, bring the remaining findings to the user.
 - **Prove.** Run the full checks that testing selects once, before the push. After a later minor change, run only the focused check it affects; the pipeline catches the rest. Record a video of every user-facing journey the branch changes, inspect it and attach it to the pull request.
-- **Ship.** Update from the default branch and rerun what the update affects. Squash the unpushed checkpoints, push, and open or update the draft pull request per Publishing. Missing proof blocks the push. Other irreversible or outward actions need confirmation.
-- **Recap.** Render a recap in the plan's claim form: each delivered behavior with its before → after exhibit and lines, the size split and the riskiest places to read. Put code in `diff` blocks below it, not in the render. Then link the pull request to the thread, watch it and end the turn.
+- **Ship.** Update from the default branch and rerun what the update affects. Squash the unpushed checkpoints, push, and open or update the draft pull request per Publishing. Link the pull request to the thread at once. Missing proof blocks the push. Other irreversible or outward actions need confirmation.
+- **Recap.** Render a recap in the plan's claim form. Show each delivered behavior with its before → after exhibit and lines, the size split and the riskiest places to read. Put code in `diff` blocks below the render. Then watch the pull request and end the turn.
 - **Clean up.** Stop what you started as soon as nothing needs it: children, services, previews, watches, browser sessions, sign-ins, extra worktrees, exit nodes and scratch files. Keep useful evidence. Keep one preview per branch, and only while the user uses it.
 
 ## Working
@@ -77,7 +77,7 @@ glab mr update <number> --draft --description-file <file> --attach <file>
 
 ```bash
 ID=$(gh run list --commit "$(git rev-parse HEAD)" --json databaseId -q '.[0].databaseId'); : "${ID:?No run for this commit}"
-gh run watch "$ID" --exit-status --compact || gh run view "$ID" --log-failed
+gh run watch "$ID" --exit-status --compact; STATUS=$?; [ $STATUS -eq 0 ] || gh run view "$ID" --log-failed; exit $STATUS
 glab ci status --wait --compact
 glab api "projects/<project>/pipelines/<pipeline id>/jobs?scope[]=failed" | jq -r '.[] | "\(.id) \(.name)"'; glab ci trace <job id>
 ```

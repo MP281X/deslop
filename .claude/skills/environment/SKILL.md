@@ -1,6 +1,6 @@
 ---
 name: environment
-description: 'Machine facts, repository commands, machine upkeep and media extraction. Use for host setup, local entrypoints, T3 state, source checkouts or skill installation; to update, clean or redeploy the machine; or to analyze a shared video or post.'
+description: 'Machine facts, repository commands, machine upkeep and media extraction. Use it for host setup, local entrypoints, T3 state, source checkouts or skills. Also use it to update, clean or redeploy the machine, or to analyze a shared video or post.'
 ---
 
 # Environment
@@ -50,7 +50,8 @@ find "$HOME/.codex/sessions" "$HOME/.claude/projects" -type f -name "*$S.jsonl"
 ## Coding standards
 
 - **Skills.** The engineering, design and testing copies come from `vpx @deslop/coding-standards@latest`. Run it when you install or update them, or when a worktree lacks them before code work. It changes no manifest or lockfile.
-- **Lint migration.** A package adopts the `@deslop/coding-standards` preset only when the task changes its code. Formatter and lint-only edits do not count. Files the task adds pass the full rules.
-- **Existing files.** Existing files stay on the package's legacy warning list. Do not rewrite their code only to satisfy the new rules. Keep the ignores for generated and build output.
+- **Lint migration.** A package adopts the `@deslop/coding-standards` preset only when the task changes its code. Formatter and lint-only edits do not count.
+- **Changed code.** Files the task adds and code the task changes pass the full rules. A substantial refactor brings the whole package under the full rules.
+- **Untouched code.** Untouched code keeps the package's legacy warning list. Do not rewrite it only to satisfy the new rules. Keep the ignores for generated and build output.
 - **Installs.** The primary agent batches manifest, lockfile and install changes, and verifies a frozen install.
 - **Standards file.** Remove from the repository's `CODING_STANDARDS.md` what the shared skills already say. Keep the layout, tooling, stricter local choices and domain contracts.

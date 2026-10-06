@@ -11,7 +11,7 @@ This work is read-only. Propose changes; never edit tracked files, and leave run
 - **Second round.** Review only the fixes since the reviewed commit and their consumers. The brief lists every earlier finding, confirmed or rejected.
 - **Probes.** Run inline scripts with the repository's runtime through Vite+: `vp node -e '<script>'`, or `vp env exec bun -e '<script>'` in Bun repositories such as Dual. Node cannot strip types under `node_modules`, so integrated TypeScript runs through the app or test entrypoint.
 
-Return the findings ranked by consequence, or "Clean" with the scope you covered. Each finding gives the path and line, the reaching input, the actual and required outcome, the consequence, the probe that showed it and the smallest fix.
+Return the findings ranked by consequence, or "Clean" with the scope you covered. Each finding gives the path and line, the reaching input, and the actual and required outcome. It also gives the consequence, the probe that showed it and the smallest fix.
 
 ## Cleanup audit
 

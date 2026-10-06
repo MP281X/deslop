@@ -1,13 +1,6 @@
 # Maintenance
 
-Do established upkeep without asking for each step. Ask only for missing access, a new cadence or scope, or an interruption of running work. T3 updates itself, Claude Code and Codex.
-
-## Schedule
-
-- **Where.** Run recurring upkeep through T3's scheduler in one stable maintenance thread bound to the root checkout. Never use native cron or a shell daemon, and never let runs overlap.
-- **Create.** Pass a structured schedule; the task inherits the thread's model and modes and uses the server's timezone. Keep the `scheduledTaskId`, and report the cadence and next run.
-- **Results.** A dispatched run is not a successful run. Inspect each result, pause a failing task and report only failures and gaps.
-- **Not recurring.** Pipeline and child waits are not scheduled jobs.
+Do established upkeep without asking for each step. Ask only for missing access, a new scope, or an interruption of running work. T3 updates itself, Claude Code and Codex. Report only failures and gaps.
 
 ## Update and deploy
 
@@ -35,7 +28,7 @@ Remove rebuildable data, never unsettled work. A worktree is disposable only whe
 Check owners through T3's thread tools or the environment's T3 state. `orchestration_v2_projection_threads.payload_json` holds `worktreePath`, `settledAt` and `settledOverride`. Join each owner's latest `orchestration_v2_projection_runs` row for activity. A missing path, listener or row starts an investigation; it never permits deletion. Unknown owners, stopped containers, unattached volumes and the shared production `deslop` project stay.
 
 6. **Removed worktrees.** Find Compose projects whose `com.docker.compose.project.working_dir` is gone, processes with a deleted working directory, Serve mappings with no backend and `~/.deslop` folders without a checkout. After every owner is confirmed settled, remove only that project (`down --volumes --remove-orphans`), process group, mapping (`sudo tailscale serve --https=<port> off`) or folder. Keep `~/.deslop/{deploy,measure,repos}`. The tailnet listener itself is not a Serve backend.
-7. **Settled worktrees.** Delete `node_modules/.cache/deslop/*` except `proof/`. Delete `~/.deslop/<worktree directory name>/`. Remove the worktree's Compose project with `down --volumes`, or destroy its Alchemy preview before removing the checkout. Compare the preserved resource IDs afterwards, because exit code 0 does not prove preservation.
+7. **Settled worktrees.** Delete `node_modules/.cache/deslop/*` except `proof/`. Delete `~/.deslop/<worktree directory name>/`. When its data is disposable, remove the worktree's Compose project with `down --volumes`, or destroy its Alchemy preview before removing the checkout. Compare the preserved resource IDs afterwards, because exit code 0 does not prove preservation.
 8. **`/tmp`.** Remove user-owned data only for settled owners with no open handles (`lsof +D`). Keep `claude-*` and `codex*` session folders.
 9. **Caches.** With no build running, run `docker image prune -a -f` and `docker builder prune -a -f`. With no install running, run `vp pm cache clean` in `~/deslop` and `~/dual` and clear identified caches under `~/.npm` and `~/.cache`. Remove unused T3 and Codex releases, noncurrent Vite+ versions, older Node versions within each major and older package-manager versions. Run `journalctl --vacuum-size=100M`. Keep packages hardlinked into worktrees. Never run a blanket Docker system or volume prune or a negated-label exclusion.
 10. **Report.** Show `df -h /` before and after, what each step removed and the ten largest folders left (`du -xh --max-depth=2 ~ /tmp /var/lib/docker | sort -h | tail`). Count every worktree's `node_modules` in one `du`, because installs hardlink from the stores.

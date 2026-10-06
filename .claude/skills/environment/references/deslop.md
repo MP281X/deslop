@@ -23,7 +23,7 @@ The collector listens on `http://127.0.0.1:4318` and Jaeger on `http://127.0.0.1
 
 - **Browser defaults.** The browser exports to localhost on the browser's own machine. A remote preview needs a reachable `VITE_OTEL_URL` and its origin allowed.
 - **Source host.** The Vite source host supplies RPC and platform layers, not `ServerRuntime.layer` telemetry. Backend spans need the instrumented production entrypoint or scoped runtime instrumentation.
-- **Proof.** An allowed preflight does not prove that spans were emitted.
+- **Proof.** An allowed preflight does not prove that the app emits spans.
 
 ```bash
 curl -fsS http://127.0.0.1:16686/api/services
