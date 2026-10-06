@@ -1,6 +1,6 @@
 # Browser proof
 
-Prove that the supplied inputs produce the expected outcomes on the host you were given, using saved sign-in state; do not survey or restart the setup. Return the journeys and captures you observed after design's visual inspection, the actual errors, and the states you could not prove.
+Prove that the supplied inputs produce the expected outcomes on the host you were given, using saved sign-in state; do not survey or restart the setup. Return the journeys and captures you observed after design's visual inspection, the actual errors, and the states you did not prove.
 
 ## Captures
 

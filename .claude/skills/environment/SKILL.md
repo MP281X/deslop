@@ -33,7 +33,7 @@ sqlite3 -readonly -header -column ~/.t3/userdata/statev2.sqlite "SELECT provider
 find "$HOME/.codex/sessions" "$HOME/.claude/projects" -type f -name "*<session id>.jsonl"
 ```
 
-Pick the session that covers the run in question; the latest may not include stopped or replaced runs. Claude subagents sit in `<session>/subagents/`. A Codex child's first `session_meta` record names its parent in `payload.parent_thread_id`. A `compacted` record marks a compaction, not a task boundary.
+Pick the session that covers the run in question; the latest one can miss stopped or replaced runs. Claude subagents sit in `<session>/subagents/`. A Codex child's first `session_meta` record names its parent in `payload.parent_thread_id`. A `compacted` record marks a compaction, not a task boundary.
 
 ## Repositories
 

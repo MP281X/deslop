@@ -9,7 +9,7 @@ Plan with the user, iterate until they are satisfied, then make the branch merge
 
 ## Plan
 
-Before anything longer than a short exchange, settle this table with the user and post it in the thread:
+Before anything longer than a short exchange, settle this table with the user:
 
 | Field     | Content                                                                   |
 | --------- | ------------------------------------------------------------------------- |
@@ -19,7 +19,9 @@ Before anything longer than a short exchange, settle this table with the user an
 | Size      | Expected files, children and rough time; the smaller option first         |
 | Done when | Observable criteria: behavior, proof, pull request state, nothing running |
 
-Then work from it autonomously. Every brief to a thread or child carries it. A change request after a push, or a new direction during production, updates the plan and re-enters Prototype.
+Show it as a render the user can scan in seconds: each planned behavior as a one-line true-or-false claim ("a user can pin one file version") with one exhibit (UI mockup, state machine, flow or schema), each decision on the claim it changes with your default marked, and a short list of what does not change. The question card collects the answers; a default the user did not answer is not agreement.
+
+Then work from the plan autonomously. Every brief to a thread or child carries the table. A change request after a push, or a new direction during production, updates the plan and re-enters Prototype.
 
 **The request is the scope.** A related improvement, a defect in code the task does not otherwise change, or a capability only a test needs goes under **Needs you** as a follow-up, not into the branch.
 
@@ -36,13 +38,13 @@ Then work from it autonomously. Every brief to a thread or child carries it. A c
 
 Start when the user is satisfied, or at once for a settled task.
 
-- **Prune.** Iteration leaves work the final direction does not need, so cleanup is aggressive and complete in one pass. Audit the whole branch against the plan's intent with parallel [cleanup audit](references/review.md#cleanup-audit) children split by area. Present every candidate in one round, grouped as revert, supersede, simplify or keep, with sizes and what each removal breaks, defaulting to removal; the user should not need follow-up questions to find more. Apply what the user approves.
+- **Prune.** Iteration leaves work the final direction does not need, so cleanup is aggressive and complete in one pass. Audit the whole branch against the plan's intent with parallel [cleanup audit](references/review.md#cleanup-audit) children split by area. Present every candidate in one round, grouped as revert, supersede, simplify or keep, with sizes and what each removal breaks, defaulting to removal, so the user needs no follow-up questions to find more. Apply what the user approves.
 - **Clean.** Apply the approved removals. Run formatters and autofixes only on files the branch changes, and revert your own edits outside the task. Recheck every touched file against engineering and design.
 - **Encode.** Turn each recurring mistake into a type, lint rule, test or script; write guidance only for judgment calls.
 - **Cover inputs.** List the reachable input classes of every parser, boundary and state transition the diff adds or changes, and cover them per testing's Branches rule. Reproduce each confirmed finding before fixing it.
 - **Review.** One [review](references/review.md) round over the whole diff, one reviewer per lens it contains (code behavior; instructions and docs against each other), split by area when one reviewer cannot read its share. Fix each confirmed finding with a test that fails first. Run a second round over the fixes only when they change more than the finding named; after two rounds, bring remaining findings to the user.
 - **Prove.** Run the full checks testing selects once, before the push; after a later minor change, run only the focused check it affects and let the pipeline catch the rest. Record a video of every user-facing journey the branch changes, inspect it and attach it to the pull request.
-- **Ship.** Update from the default branch and rerun what the update affects. Squash the unpushed checkpoints, push, and open or update the draft pull request per Publishing. Link it to the thread and watch it. Render a review map in the thread: the size split, the changed contracts, the riskiest places to read and how the changed parts connect. Missing proof blocks the push; other irreversible or outward actions need confirmation.
+- **Ship.** Update from the default branch and rerun what the update affects. Squash the unpushed checkpoints, push, and open or update the draft pull request per Publishing. Link it to the thread and watch it. End with a recap render in the same claim form as the plan: each delivered behavior with its before → after exhibit and lines, the size split and the riskiest places to read. Code goes in `diff` blocks below it, not in the render. Missing proof blocks the push; other irreversible or outward actions need confirmation.
 - **Clean up.** Stop what you started as soon as nothing needs it: children, services, previews, watches, browser sessions, extra worktrees, exit nodes and scratch processes. Keep one preview per branch, and only while the user uses it.
 
 ## Working
