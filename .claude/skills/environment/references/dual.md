@@ -1,11 +1,11 @@
 # Dual
 
-**Commands.** Turbo caches package checks; fixes are never cached. The test runner owns its fingerprints, cache and continuation, so add no outer Vite+ cache around service-dependent tests. Fix the branch's files with `node_modules/.bin/oxfmt <files>` and `node_modules/.bin/oxlint --fix <files>`; the root fix is only for a repository-wide fix the user asked for.
+**Commands.** The machine has 8 cores and 23 GB. Two parallel type checks fill memory and starve T3, so every root check, type check, build and test suite takes the shared lock at lower priority. Turbo caches package checks; fixes are never cached. The test runner owns its fingerprints, cache and continuation, so add no outer Vite+ cache around service-dependent tests. Fix the branch's files with `node_modules/.bin/oxfmt <files>` and `node_modules/.bin/oxlint --fix <files>`; the root fix is only for a repository-wide fix the user asked for.
 
 ```bash
-vp run --workspace-root check
+flock "$HOME/.deslop/dual-test.lock" nice -n 10 vp run --workspace-root check
 vp run --workspace-root --no-cache fix
-flock "$HOME/.deslop/dual-test.lock" vp run --workspace-root test
+flock "$HOME/.deslop/dual-test.lock" nice -n 10 vp run --workspace-root test
 ```
 
 **VPN.** GitLab requires the Datapizza VPN. Check reachability and reconnect when it expires. Show the returned sign-in URL as a full URL under **Needs you**, directly after the result, then check again.
