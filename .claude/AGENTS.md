@@ -1,16 +1,16 @@
 # Personal agent configuration
 
-| Owner                                                            | Decision                                                                                                                                                      |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.claude/agents/pair.md`                                         | Shared personal instructions; `.codex/instructions.md` aliases this file                                                                                      |
-| `.claude/skills/workflow`, `environment`, `maintenance`, `media` | Maintained personal procedures; matching Codex paths alias these directories                                                                                  |
-| Engineering, design and testing in both native roots             | Generated repository copies; edit [package sources](../tools/coding-standards/skills/), then [refresh locally](../tools/coding-standards/README.md#decisions) |
-| `.claude/AGENTS.md`                                              | Shared brief; `.codex/AGENTS.md` aliases it                                                                                                                   |
-| Native settings                                                  | Harness-specific capabilities, not another copy of workflow or coding policy                                                                                  |
+| Owner                                                | Decision                                                                                                                                                      |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.claude/agents/pair.md`                             | Shared personal instructions; `.codex/instructions.md` aliases this file                                                                                      |
+| `.claude/skills/workflow` and `environment`          | Personal skills; maintenance and media are environment references; Codex paths alias the directories                                                          |
+| Engineering, design and testing in both native roots | Generated repository copies; edit [package sources](../tools/coding-standards/skills/), then [refresh locally](../tools/coding-standards/README.md#decisions) |
+| `.claude/AGENTS.md`                                  | Shared brief; `.codex/AGENTS.md` aliases it                                                                                                                   |
+| Native settings                                      | Harness-specific capabilities, not another copy of workflow or coding policy                                                                                  |
 
 Install personal configuration with the [environment procedure](skills/environment/references/deslop.md#install-personal-configuration).
 
-Machine upkeep remains in maintenance. Update this brief when these ownership decisions change, not for every implementation edit.
+Machine upkeep lives in environment's maintenance reference. Update this brief when these ownership decisions change, not for every implementation edit.
 
 ## Decisions not to repeat
 

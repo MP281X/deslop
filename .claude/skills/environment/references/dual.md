@@ -1,6 +1,6 @@
 # Dual
 
-**Commands.** Turbo caches package checks; fixes are never cached. The test runner owns its own cache, so add no outer Vite+ cache around service-dependent tests. Fix the branch's files with `node_modules/.bin/oxfmt <files>` and `node_modules/.bin/oxlint --fix <files>`; the root fix is only for a repository-wide fix the user asked for.
+**Commands.** Turbo caches package checks; fixes are never cached. The test runner owns its fingerprints, cache and continuation, so add no outer Vite+ cache around service-dependent tests. Fix the branch's files with `node_modules/.bin/oxfmt <files>` and `node_modules/.bin/oxlint --fix <files>`; the root fix is only for a repository-wide fix the user asked for.
 
 ```bash
 vp run --workspace-root check
@@ -18,7 +18,12 @@ curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
 }
 ```
 
-**Preview.** `vp run --workspace-root preview` creates the worktree's isolated Alchemy stage: ports, database, sandbox, migrations, administrator and app, API and worker watchers. Sign in as `admin@dual.local` with `preview-password`; AI journeys need provider connections. The printed `.localhost` URL is machine-local; remote access uses Browser's Tailscale procedure on the app port. Ctrl-C stops it and keeps the data. When its owner is settled, `vp run --workspace-root preview:destroy` removes the stage; run it before deleting the checkout. Never use the shared `init` or `dev` commands as a preview.
+**Preview.** `vp run --workspace-root preview` creates an isolated Alchemy stage derived from the checkout path. The stage holds the ports, database, sandbox, migrations, administrator and the app, API and worker watchers. Two threads in one worktree share its stage.
+
+- **Sign-in.** Sign in as `admin@dual.local` with `preview-password`. AI journeys need provider connections.
+- **Exposure.** The printed `.localhost` URL is machine-local. Remote access uses Browser's Tailscale procedure on the app port; verify sign-in, assets and API calls through the shared URL.
+- **Lifetime.** Ctrl-C stops the preview and keeps its data. When every owner is settled and the data is disposable, `vp run --workspace-root preview:destroy` removes only that stage. Run it before you move or delete the checkout or its Alchemy state.
+- **Never.** Never use the shared `init` or `dev` commands as a preview.
 
 **Components.** `vpx shadcn@latest list @shadcn --cwd packages/ui`; inspect the docs and the installed source before adding one.
 

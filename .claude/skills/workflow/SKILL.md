@@ -5,7 +5,7 @@ description: Primary task coordination, ownership and delivery. Use for executio
 
 # Workflow
 
-Plan with the user, iterate until they are satisfied, then make the branch merge-ready in one production pass. The primary agent writes all code and runs every check, build and test.
+Plan with the user and iterate until they are satisfied. Then make the branch merge-ready in one production pass. The primary agent writes all code and runs the shared checks, builds and test suites.
 
 ## Plan
 
@@ -14,71 +14,94 @@ Before anything longer than a short exchange, settle this table with the user:
 | Field     | Content                                                                   |
 | --------- | ------------------------------------------------------------------------- |
 | Intent    | The outcome the user wants, in one or two lines                           |
-| Decisions | Choices already made, including what is out of scope                      |
-| Defaults  | How to decide choices that come up later without asking                   |
-| Size      | Expected files, children and rough time; the smaller option first         |
+| Decisions | Choices already made, including what does not change                      |
+| Defaults  | How to decide later choices without asking                                |
+| Size      | Expected files, children and rough time, with the smaller option first    |
 | Done when | Observable criteria: behavior, proof, pull request state, nothing running |
 
-Show it as a render the user can scan in seconds: each planned behavior as a one-line true-or-false claim ("a user can pin one file version") with one exhibit (UI mockup, state machine, flow or schema), each decision on the claim it changes with your default marked, and a short list of what does not change. The question card collects the answers; a default the user did not answer is not agreement.
+Show the plan as a render that the user can scan in seconds. Write each planned behavior as a one-line claim that can be true or false, such as "a user can pin one file version". Give each claim one exhibit: a UI mockup, a state machine, a flow or a schema. Put each decision on the claim it changes, with your default marked. End with what does not change. The question card collects the answers. A default the user did not answer is not agreement.
 
-Then work from the plan autonomously. Every brief to a thread or child carries the table. A change request after a push, or a new direction during production, updates the plan and re-enters Prototype.
+Then work from the plan without asking again. Every brief to a thread or child carries the table. A change request after a push, or a new direction during production, updates the plan and re-enters Prototype.
 
-**The request is the scope.** A related improvement, a defect in code the task does not otherwise change, or a capability only a test needs goes under **Needs you** as a follow-up, not into the branch.
+**The request is the scope.** A related improvement goes under **Needs you** as a follow-up, not into the branch. So does a defect in code the task does not otherwise change, and a capability that only a test needs. A question that would grow the scope states its size, with the smaller option first.
 
 ## Prototype
 
 - **Read first.** Read the code you touch and its consumers, and reuse findings from named threads. An analysis request stays read-only.
-- **Explore.** Where the direction is open, try the alternatives and surface open questions now, so nothing needs iterating after the production pass. Engineering applies to prototype code too.
-- **Skip production work.** No root checks, review rounds, pushes or pull request updates; run the focused check that answers the current question.
-- **Show.** Inspected screenshots, short video, an inline render or the key excerpt. Compare design directions as inline renders side by side; start a preview only when the user needs the real app.
-- **Checkpoint.** Commit locally as often as useful; reset only your own changes.
+- **Explore.** Where the direction is open, try the alternatives and raise open questions now. Then nothing needs iteration after the production pass. Engineering applies to prototype code too.
+- **Skip production work.** Run no root checks or fixes, review rounds, pushes, pipeline watches or pull request updates. Run only the focused check that answers the current question.
+- **Show.** Use inspected screenshots, short video, an inline render or the key excerpt. Compare design directions as inline renders side by side. Start a preview only when the user needs the real app.
+- **Checkpoint.** Commit locally as often as useful. Remove scratch code before production, and reset only your own changes.
 - **Ask little.** Ask only about unknowable goals, access, scope or open taste, and keep working meanwhile. After two failed attempts, test a hypothesis that tells the causes apart.
 
 ## Production
 
 Start when the user is satisfied, or at once for a settled task.
 
-- **Prune.** Iteration leaves work the final direction does not need, so cleanup is aggressive and complete in one pass. Audit the whole branch against the plan's intent with parallel [cleanup audit](references/review.md#cleanup-audit) children split by area. Present every candidate in one round, grouped as revert, supersede, simplify or keep, with sizes and what each removal breaks, defaulting to removal, so the user needs no follow-up questions to find more. Apply what the user approves.
-- **Clean.** Apply the approved removals. Run formatters and autofixes only on files the branch changes, and revert your own edits outside the task. Recheck every touched file against engineering and design.
-- **Encode.** Turn each recurring mistake into a type, lint rule, test or script; write guidance only for judgment calls.
-- **Cover inputs.** List the reachable input classes of every parser, boundary and state transition the diff adds or changes, and cover them per testing's Branches rule. Reproduce each confirmed finding before fixing it.
-- **Review.** One [review](references/review.md) round over the whole diff, one reviewer per lens it contains (code behavior; instructions and docs against each other), split by area when one reviewer cannot read its share. Fix each confirmed finding with a test that fails first. Run a second round over the fixes only when they change more than the finding named; after two rounds, bring remaining findings to the user.
-- **Prove.** Run the full checks testing selects once, before the push; after a later minor change, run only the focused check it affects and let the pipeline catch the rest. Record a video of every user-facing journey the branch changes, inspect it and attach it to the pull request.
-- **Ship.** Update from the default branch and rerun what the update affects. Squash the unpushed checkpoints, push, and open or update the draft pull request per Publishing. Link it to the thread and watch it. End with a recap render in the same claim form as the plan: each delivered behavior with its before → after exhibit and lines, the size split and the riskiest places to read. Code goes in `diff` blocks below it, not in the render. Missing proof blocks the push; other irreversible or outward actions need confirmation.
-- **Clean up.** Stop what you started as soon as nothing needs it: children, services, previews, watches, browser sessions, extra worktrees, exit nodes and scratch processes. Keep one preview per branch, and only while the user uses it.
+- **Prune.** Iteration leaves work that the final direction does not need, so cleanup is aggressive and complete in one pass. Audit the whole branch against the plan's intent per the [cleanup audit](references/review.md#cleanup-audit). Split a large diff across parallel audit children by area. Present every candidate in one round, grouped as revert, supersede, simplify or keep. Give each its size and what its removal breaks, and default to removal. Apply removals the plan's defaults cover, and ask about the rest.
+- **Clean.** Apply the approved removals. Run formatters and autofixes only on files the branch changes. Revert your own edits outside the task. Recheck every touched file against engineering and design.
+- **Encode.** Turn each recurring mistake into a type, lint rule, test or script. Write guidance only for judgment calls.
+- **Cover inputs.** List the reachable input classes of every parser, boundary and state transition the diff adds or changes. Cover them per testing's Branches rule, and reproduce each confirmed finding before you fix it.
+- **Review.** Run one [review](references/review.md) round over the whole diff, with one reviewer for each lens it contains. The lenses are code behavior, and instructions and docs checked against each other. Split an area that one reviewer cannot read. Fix each confirmed finding with a test that fails first.
+- **Second round.** Review the fixes again only when they change more than the finding named. After two rounds, bring the remaining findings to the user.
+- **Prove.** Run the full checks that testing selects once, before the push. After a later minor change, run only the focused check it affects; the pipeline catches the rest. Record a video of every user-facing journey the branch changes, inspect it and attach it to the pull request.
+- **Ship.** Update from the default branch and rerun what the update affects. Squash the unpushed checkpoints, push, and open or update the draft pull request per Publishing. Missing proof blocks the push. Other irreversible or outward actions need confirmation.
+- **Recap.** Render a recap in the plan's claim form: each delivered behavior with its before → after exhibit and lines, the size split and the riskiest places to read. Put code in `diff` blocks below it, not in the render. Then link the pull request to the thread, watch it and end the turn.
+- **Clean up.** Stop what you started as soon as nothing needs it: children, services, previews, watches, browser sessions, sign-ins, extra worktrees, exit nodes and scratch files. Keep useful evidence. Keep one preview per branch, and only while the user uses it.
 
 ## Working
 
-- **Wait, do not poll.** Wait for a long command with one command that exits when the job ends, in the background when other work remains. Wait for a child with one blocking `t3_thread_wait` on its thread, or end the turn and let T3's completion notice wake you; read its result once. If a wait is interrupted, call it again. Never tail logs or reread status in a loop.
-- **Fix causes.** No workaround, duplicate work or repeated expensive step without a reason the result would differ. Prefer the repository's named scripts to ad hoc launchers.
-- **Phase notes.** When Prototype, Production review or Ship starts, post one line saying what remains. Native plan and todo tools add nothing.
-- **Own thread.** Never change the calling thread's model or options; it interrupts the running turn.
+- **Wait, do not poll.** Wait for a long command with one command that exits when the job ends. Run it in the background when other work remains.
+- **Wait for children.** Wait with one blocking `t3_thread_wait` on the child's thread, or end the turn and let T3's completion notice wake you. Read the result once. If a wait is interrupted, call it again.
+- **Run checks safely.** Serialize checks that compete for resources or write shared outputs. Give servers a readiness probe. Take the exit status from the command you started, not from a log footer. Keep bulky logs in scratch, and never filter a failure away.
+- **Fix causes.** Do no workaround, duplicate work or repeated expensive step without a reason the result would differ. Use the repository's named scripts, and fix a script that keeps failing.
+- **Phase notes.** When Prototype, Production review or Ship starts, post one line that says what remains. Native plan and todo tools add nothing.
+- **Own thread.** Never change the calling thread's model or options, because that interrupts the running turn.
 
 ## Publishing
 
-- **Body.** Pair's Structure, describing what the final branch changes and how to review it, not its history. **Changed** lists every changed public contract (endpoint, schema, CLI flag, configuration key, migration, exported API) as a before → after row linked to its lines. A collapsed **Review guide** ranks the riskiest places to read and splits the size into hand-written, generated, vendored and moved lines, naming the command that reproduces generated output. **Proof** embeds the inspected videos. Leave out process and activity: reviews or checks that ran, services started, work planned.
-- **Links.** GitHub `https://github.com/<owner>/<repo>/blob/<branch>/<path>#L<start>-L<end>`; GitLab `https://<host>/<project>/-/blob/<branch>/<path>#L<start>-<end>`.
-- **Commands.** Pass bodies as files: `gh pr edit --body-file <file> --attach '<file>#<alt text>'`, `glab mr update <number> --draft --description-file <file> --attach <file>`. `glab` has no `--jq`; pipe its API output into `jq`. Check the published head, title, body and files against the branch.
-- **Pipeline.** Register T3's `watch_pull_request` and end the turn; on a wake, read only the failed jobs' logs. Without it, run one blocking command in the background under `timeout 2h` (`gh run watch <id> --exit-status` or `glab ci status --wait`).
-- **Baseline.** To compare with the default branch, commit a checkpoint, `git restore --source=origin/<default branch> -- <paths>`, run the check, then reset; reinstall when a manifest or lockfile changed.
+- **Body.** Follow pair's Structure. Describe what the final branch changes and how to review it, not its history. Keep consequential risks, even in mechanical changes.
+- **Changed.** List every changed public contract as a before → after row linked to its lines. Contracts include endpoints, schemas, CLI flags, configuration keys, migrations and exported APIs.
+- **Review guide.** Add a collapsed guide that ranks the riskiest places to read. Split the size into hand-written, generated, vendored and moved lines, and name the command that reproduces generated output.
+- **Proof.** Embed the inspected videos. Leave out process and activity, such as reviews or checks that ran, started services and planned work.
+- **Links.** GitHub uses `https://github.com/<owner>/<repo>/blob/<branch>/<path>#L<start>-L<end>`. GitLab uses `https://<host>/<project>/-/blob/<branch>/<path>#L<start>-<end>`.
+- **Commands.** Pass bodies and comments as files. Attach an image as `--attach '<file>#<alt text>'` and a GitHub video as a bare `--attach '<file>'`. `glab` has no `--jq` option, so pipe its API output into `jq`. Check the published head, title, body and files against the branch.
+
+```bash
+gh pr edit --body-file <file> --attach '<file>#<alt text>'
+glab mr update <number> --draft --description-file <file> --attach <file>
+```
+
+- **Wakes.** T3's watch wakes the thread for failed or completed checks, comments, reviews and conflicts. Handle the cause of each wake, and resolve actionable review findings. Read logs only of failed jobs.
+- **No T3 watch.** Run one blocking command in the background under `timeout 2h`. If no run exists for the head, inspect the pipeline trigger instead of polling.
+
+```bash
+ID=$(gh run list --commit "$(git rev-parse HEAD)" --json databaseId -q '.[0].databaseId'); : "${ID:?No run for this commit}"
+gh run watch "$ID" --exit-status --compact || gh run view "$ID" --log-failed
+glab ci status --wait --compact
+glab api "projects/<project>/pipelines/<pipeline id>/jobs?scope[]=failed" | jq -r '.[] | "\(.id) \(.name)"'; glab ci trace <job id>
+```
+
+- **Baseline.** To compare with the default branch, commit a checkpoint and run `git restore --source=origin/<default branch> -- <paths>`. Run the check, then reset to the checkpoint. Reinstall after the restore and again after the reset when a manifest or lockfile changed. Create an extra worktree only when both versions must run at once, and remove it afterwards.
 
 ## Delegate
 
-Delegate self-contained, read-only work whose result saves more than briefing and joining cost. Children read, run read-only commands, inline scripts and focused existing tests, and keep captures in their own scratch directory outside the repository; they never write tracked files or touch the primary's services. They settle their own questions this way instead of asking the primary. Run independent children in parallel and in the background. Delegation is one level deep.
+Delegate self-contained, read-only work when its result saves more than the brief and the join cost. Children read and run read-only commands, inline scripts and focused existing tests. They keep captures in their own scratch directory outside the repository. They never write tracked files or touch the primary's services. They settle their own questions this way instead of asking the primary. Run independent children in parallel and in the background. Delegation is one level deep.
 
 | Task          | Worth it when                                                    | Model               | Procedure                          |
 | ------------- | ---------------------------------------------------------------- | ------------------- | ---------------------------------- |
 | Research      | A substantial, bounded investigation while the primary continues | GPT-6 Luna · medium | [Research](references/research.md) |
 | Code review   | Each production review round, or a concrete risk                 | GPT-6.1 Sol · high  | [Review](references/review.md)     |
+| Cleanup audit | Each area of a large diff during Prune                           | GPT-6.1 Sol · high  | [Review](references/review.md)     |
 | Critique      | Independent judgment that can change the direction               | Opus 5.5 · high     | [Review](references/review.md)     |
 | Browser proof | A substantial, independent user journey on a running host        | GPT-6.1 Sol · high  | [Browser](references/browser.md)   |
 
-Validate models against T3's live catalog and inherit the primary model when one is unavailable.
+Check each model against T3's live catalog and the user's budget. Use the primary's model when one is unavailable.
 
-- **Brief.** The plan, the complete scope to cover, the procedure, decisive context with sources and what to return. Model and options go in tool fields.
+- **Brief.** Include the plan, the complete scope, the procedure, decisive context with sources and what to return. Put the model and its options in tool fields.
 - **Steer.** Message a running child only with a fact that changes its next action.
-- **Join.** Reconcile missing or failed criteria; a new round goes to a fresh task with the prior findings.
+- **Join.** Reconcile missing or failed criteria. Give a new round to a fresh task with the prior findings.
 
 ## Decisions
 
-Repository contracts live in `CODING_STANDARDS.md`, folder decisions in its `AGENTS.md`, reusable guidance in its skill and machine facts in environment. Read the owner before working in its area and update it in place when a decision changes. Record only rationale the code cannot show: rejected options, non-goals and failed attempts.
+`CODING_STANDARDS.md` holds repository contracts, a folder's `AGENTS.md` holds its decisions, and environment holds machine facts. Read the owner before you work in its area, and update it in place when a decision changes. Record only rationale that the code cannot show: rejected options, non-goals and failed attempts.

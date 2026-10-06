@@ -19,7 +19,11 @@ HOST=127.0.0.1 PORT=<port> vp run --filter @deslop/portfolio preview
 
 ## Application tracing
 
-The collector listens on `http://127.0.0.1:4318` and Jaeger on `http://127.0.0.1:16686`. CORS allows the production portfolio origin and any loopback port. A remote preview needs a reachable `VITE_OTEL_URL` and its origin allowed. The Vite source host does not run `ServerRuntime.layer` telemetry, so backend spans need the instrumented production entrypoint.
+The collector listens on `http://127.0.0.1:4318` and Jaeger on `http://127.0.0.1:16686`. CORS allows the production portfolio origin and any loopback port.
+
+- **Browser defaults.** The browser exports to localhost on the browser's own machine. A remote preview needs a reachable `VITE_OTEL_URL` and its origin allowed.
+- **Source host.** The Vite source host supplies RPC and platform layers, not `ServerRuntime.layer` telemetry. Backend spans need the instrumented production entrypoint or scoped runtime instrumentation.
+- **Proof.** An allowed preflight does not prove that spans were emitted.
 
 ```bash
 curl -fsS http://127.0.0.1:16686/api/services
@@ -30,8 +34,12 @@ Logs are the collector's debug output (`docker compose --project-name deslop --f
 
 ## Install personal configuration
 
-- **Sources:** `.codex/config.toml`, `.claude/settings.json`, `.claude/agents/pair.md` and `.claude/skills/{workflow,environment,maintenance,media}/`.
-- **Targets:** `${CODEX_HOME:-$HOME/.codex}` and `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`. Personal skills are real directories under the Claude target; Codex's `instructions.md` and matching skill names are symlinks to them.
-- **Before writing,** compare each target with the repository's previous version. If it differs, reconcile the newer local change instead of overwriting it. Codex's installed `config.toml` carries local settings (service tier, trusted projects): edit only the changed keys.
-- **Write** only the changed files, atomically, keeping permissions and symlinks. Remove a retired file only when this repository owned it. Never reset a native root or delete public or unrelated skills.
-- **Verify** installed bytes and symlink targets. New sessions load the change; no restart is needed. Engineering, design and testing stay repository copies refreshed through the coding-standards CLI.
+- **Sources:** `.codex/config.toml`, `.claude/settings.json`, `.claude/agents/pair.md` and `.claude/skills/{workflow,environment}/`.
+- **Targets:** `${CODEX_HOME:-$HOME/.codex}` and `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`. Personal skills are real directories under the Claude target.
+- **Codex links.** Codex's `instructions.md` links to the Claude target's `agents/pair.md`. Each Codex personal skill links to the matching Claude skill directory.
+- **Before writing.** Compare each target with the recorded managed preimage or the repository's previous version. If it differs, reconcile the newer local change instead of overwriting it.
+- **Local settings.** Codex's installed `config.toml` carries local settings such as the service tier and trusted projects. Edit only the changed keys.
+- **Write.** Write only the changed files, atomically, and keep permissions and links. Create missing targets on an authorized first install. Remove a retired file or link only when this repository owned it.
+- **Never.** Never reset a native root, and never delete public or unrelated skills.
+- **Verify.** Check the installed bytes, the link targets, and that authentication, configuration and unrelated targets did not change. New sessions load the change without a restart.
+- **Public skills.** Engineering, design and testing stay repository copies that the coding-standards CLI refreshes.

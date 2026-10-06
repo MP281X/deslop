@@ -1,28 +1,29 @@
 # Review
 
-Work as an adversary: assume the work is wrong and prove where. Settle each suspicion yourself with an inline probe or a focused existing test instead of reporting a possibility or asking the primary to try it. The primary allows at most two rounds, so find everything in this one.
+This work is read-only. Propose changes; never edit tracked files, and leave running services alone. Work as an adversary: assume the work is wrong and prove where. Settle each suspicion yourself with an inline probe or a focused existing test. Do not report a mere possibility or ask the primary to try it. The primary allows at most two rounds, so find everything in this one.
 
 ## Code review
 
-- **Depth.** Read every changed line. Trace each contract through its real consumers, failure paths, concurrency and resource ownership against the merge base, and try the inputs, orderings and failures the author's tests miss.
-- **Finding.** A broken behavior or contract that input from a real caller or source can reach, or a violation of workflow's Clean step or an engineering, design or `CODING_STANDARDS.md` rule. Taste without a rule is not a finding, and neither is input that code following engineering and lint never produces.
+- **Depth.** Read every changed line. Trace each contract through its real consumers, failure paths, concurrency and resource ownership against the merge base. Try the inputs, orderings and failures that the author's tests miss.
+- **Findings.** Report broken behavior or contracts that input from a real caller can reach. Also report violations of workflow's Clean step and of engineering, design or `CODING_STANDARDS.md` rules.
+- **Not findings.** Taste without a rule is not a finding. Code that handles input which engineering and lint never allow is a cleanup finding, not a defect.
 - **Value.** Report only what a user, caller or maintainer would notice. Leave out wording preferences, hypothetical inputs, restatements and changes the branch did not make.
-- **Second round.** Review only the fixes since the reviewed commit and their consumers, with every earlier finding, confirmed or rejected, in the brief.
-- **Probes.** Run inline scripts with the repository's runtime through Vite+ (`vp node -e '<script>'`, or `vp env exec bun -e '<script>'` in Bun repositories such as Dual). Integrated TypeScript goes through the app or test entrypoint, because Node cannot strip types under `node_modules`.
+- **Second round.** Review only the fixes since the reviewed commit and their consumers. The brief lists every earlier finding, confirmed or rejected.
+- **Probes.** Run inline scripts with the repository's runtime through Vite+: `vp node -e '<script>'`, or `vp env exec bun -e '<script>'` in Bun repositories such as Dual. Node cannot strip types under `node_modules`, so integrated TypeScript runs through the app or test entrypoint.
 
-Return findings ranked by consequence, or "Clean" with the scope covered. Each finding gives the path and line, the reaching input, actual and required outcome, the probe that showed it and the smallest fix.
+Return the findings ranked by consequence, or "Clean" with the scope you covered. Each finding gives the path and line, the reaching input, the actual and required outcome, the consequence, the probe that showed it and the smallest fix.
 
 ## Cleanup audit
 
-Classify every changed file and hunk in your area against the plan's intent, defaulting to removal:
+Classify every changed file and hunk in your area against the plan's intent, and default to removal:
 
-- **Revert:** churn such as formatting, lint-only rewrites, renames, reordered keys and unrelated files; restore master's code, keeping a lint downgrade or reasoned disable where the new rules would fail it.
-- **Supersede:** features and versions added during iteration that the final direction replaced, compatibility for versions never released, and capabilities only a test or demo needed.
-- **Simplify:** dead code, unused exports, duplicate logic, layered overrides, no-ops, workarounds and machinery a smaller design avoids.
+- **Revert:** churn such as formatting, lint-only rewrites, renames, reordered keys and unrelated files. Propose the default branch's code, with a lint downgrade or a reasoned disable where new rules would fail it.
+- **Supersede:** features and versions that the final direction replaced, compatibility for versions nobody released, and capabilities that only a test or demo needed.
+- **Simplify:** dead code, unused exports, duplicate logic, layered overrides, no-ops, workarounds and machinery that a smaller design avoids.
 - **Keep:** what the intent needs, with the reason.
 
-Read every hunk; a sample is not an audit. Return one row per item with path and lines, class, evidence, the smallest change, its size and what it would break.
+Read every hunk; a sample is not an audit. Return one row per item with the path and lines, class, evidence, smallest change, size and what the change breaks.
 
 ## Critique
 
-Challenge the outcome, the taste and the attempts so far without deferring to the author. Compare different mechanisms, including a smaller one, and test the strongest counterexample and the weakest assumption. Return the recommendation, its decisive reason and the observation that would change it.
+Challenge the outcome, the taste and the attempts so far, and do not defer to the author. Compare different mechanisms, including a smaller one. Test the strongest counterexample and the weakest assumption. Prefer a reversible combination when compatible strengths combine. Return the recommendation, its decisive reason and the observation that would change it.
