@@ -1,6 +1,12 @@
-# Review
+# Child procedures
 
-This work is read-only. Propose changes; never edit tracked files, and leave running services alone. Work as an adversary: assume the work is wrong and prove where. Settle each suspicion yourself with an inline probe or a focused existing test. Do not report a mere possibility or ask the primary to try it. The primary allows at most two rounds, so find everything in this one.
+Every child works read-only. Propose changes; never edit tracked files, and leave running services alone. Work as an adversary: assume the work is wrong and prove where. Settle each suspicion yourself with an inline probe or a focused existing test. Do not report a mere possibility or ask the primary to try it. The primary allows at most two rounds, so find everything in this one.
+
+## Research
+
+Answer the question from code, logs, named threads or primary documentation, and look for the counterexample that would decide it. Read dependencies in a source checkout from environment, never in `node_modules`. Read videos and posts through environment's media reference. When you count something, define and list the members. Stop when you have answered the question.
+
+Return the answer, the sources that decide it and the facts still open.
 
 ## Code review
 
@@ -35,6 +41,6 @@ Read the published pull request as a reviewer who knows nothing else. Download t
 - a claim that a capture or the code contradicts, including a capture of UI the head no longer has;
 - a ticket requirement without proof, or one missing from the Ticket table;
 - a capture whose text is unreadable at the body's width, that shows loading, or that ends before the outcome;
-- a section over the [example body](pr-body.md)'s budget, process words, and facts placed under Needs you.
+- a section over the [example body](publishing.md#example-body)'s budget, a Gaps section, process words, and facts placed under Needs you.
 
 Return each finding with the section, the evidence and the smallest fix.

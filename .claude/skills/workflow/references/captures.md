@@ -1,8 +1,8 @@
-# Browser proof
+# Captures
 
 Prove that the supplied inputs produce the expected outcomes on the host you were given. Use the saved sign-in state, and do not survey or restart the setup. Any service you start for proof is temporary and listens on loopback. After design's visual inspection, return the journeys and captures you observed. Also return the actual errors and the states you did not prove.
 
-## Captures
+## Tools
 
 - **Sign-in.** Sign in once and run `agent-browser --session <name> state save <scratch>/auth.json`. Then reuse it with `--state <scratch>/auth.json`.
 - **Setup.** `set media dark` sets the real color preference; a dark class alone does not. `set viewport <width> <height>` sets the size. Wait for the content and fonts, never a fixed delay.
@@ -11,30 +11,16 @@ Prove that the supplied inputs produce the expected outcomes on the host you wer
 - **Navigation.** Passing a URL to `record start` navigates, so pass one only to prove navigation.
 - **Locators.** Reuse locators and refresh `snapshot -i -c` when targets change. Batch independent reads in one `eval`. Wait with a selector or `wait --fn '<condition>'`. DOM assertions are not visual proof.
 
-## Fast recording
+## Rules
 
-- **Host.** Record on the host that is already running; do not start a production build only for a video.
-- **Setup.** Create the data the journey needs through the API or a seed command, not through the UI on camera.
-- **Script.** Write the journey as one batch of agent-browser commands and record it in a single take. When the UI changes, rerun the batch instead of driving it again by hand.
-- **Scope.** Record behavior only; use screenshots for static states. Record once at the end, and re-record only when the shown UI changed.
+Apply testing's Visual proof rule; these add the tools and the pull request specifics.
 
-## PR captures
-
-A capture proves one claim, and a reviewer must read it at the body's width.
-
-- **Claim first.** Open each video with a title card that states the claim, such as "a signed Jira delivery starts a run". Caption each chapter.
-- **End on the outcome.** Hold the result for two seconds: the run, the file, the rejection or the filled table. A form left empty or a dialog opened is not proof.
-- **Start ready.** Seed the data before recording, and wait until loading ends before each chapter. A spinner, skeleton or placeholder on camera means the take restarts, unless loading is the claim.
-- **Legible.** Use a 1280×800 viewport at a device scale of 2. Screenshot the element with `screenshot <selector> <path>`, not the window. Record with `--cursor`, and use `highlight <selector>` before a click that matters.
-- **Complete.** Show a realistic workflow end to end: the inputs, every step's input and output, and the opened result. Speed up long waits with a caption; never cut a step or end early. Use at most eight screenshots per body.
-- **Current.** Capture after the final code, and name each file by its claim, such as `jira-rule-starts-run.mp4`. Compare each capture with the head's UI text before publishing.
+- **Claim first.** Open each video with a title card that states the claim, such as "a signed Jira delivery starts a run", and caption each chapter. Hold the outcome for two seconds.
+- **Start ready.** Record on the host that already runs, never a build made only for the video. Seed data through the API or a seed command. A spinner, skeleton or placeholder on camera restarts the take, unless loading is the claim.
+- **Legible.** Use a 1280×800 viewport at a device scale of 2. Screenshot the element with `screenshot <selector> <path>`, record with `--cursor`, and run `highlight <selector>` before a click that matters. Use at most eight screenshots per body.
+- **Chapters.** Script each chapter as one batch of agent-browser commands. Dry-run it, record chapters separately, and replace only a chapter whose code or outcome changed. Remove browser-command overhead, and watch the edited video at playback speed.
+- **Current.** Capture after the final code, and name each file by its claim, such as `jira-rule-starts-run.mp4`. Remove every stale capture, because a newer video does not replace it. Compare each capture with the head's UI text before publishing.
 - **Real events.** Trigger the provider for real when an account exists, or send a signed request with `curl` when it does not. Ask the user for the provider-side step, with an exact guide, when you cannot do it.
-
-## Previews
-
-Bind a requested preview to `127.0.0.1` on a free port (`ss -ltn`). Expose it with `sudo tailscale serve --bg --https=<port> http://127.0.0.1:<port>`. Get the host from `tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")'`. The first request waits for a certificate. Verify sign-in, assets and API calls through `https://<host>:<port>` before you share it.
-
-Record the process and session identities of what you start. Restart a preview in place after a rebuild. When nobody needs it, run `sudo tailscale serve --https=<port> off` and stop its process group. A listener on a port is not yours to stop unless you started it.
 
 ## Debugging
 

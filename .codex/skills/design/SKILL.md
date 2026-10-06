@@ -107,9 +107,51 @@ Touch and mouse can coexist; do not infer capabilities from user-agent strings o
 
 **Inspect retained UI.** Open actual captures at the sizes needed for the task. Compare related edges, columns, baselines and equivalent controls across rows/screens—not just successful clicks. Use realistic long names/URLs, translated labels, Unicode, missing fields and relevant 0/1/many records at the actual container width. Respect schema/API limits; never add a validation limit to make layout pass. Mix cases across rows. Check selected/focus/error states and scrolling; a clean default row can hide misalignment. Inspect hierarchy, density, legibility and clipping. Exercise the relevant keyboard/touch, narrow/wide, zoom and focus-return journeys; run axe where applicable. A clean scan does not prove contrast or usability. Inspect meaningful video frames and sequence; a playable file is not proof of a good composition. Batch relevant inspection/repairs; recheck affected views rather than restart a whole audit after each micro-edit. Visible misalignment, inconsistent controls or redundant elements remain defects even when types/tests pass; fix them before claiming acceptance.
 
-**Show the design.** Use inspected screenshots for layout and short video for behavior. Compare at consistent sizes with states needed for the decision; no variant switcher just to see the options. A visual must add spatial or interactive information, not reproduce prose, a file list or a fake runtime screenshot. Link useful existing evidence rather than render another explanation page. Use the user's theme and verify the actual browser color preference. Preserve useful media and retire settled attempts; persistent previews are opt-in.
+**Show the design.** Use inspected screenshots for layout and short video for behavior. Compare at consistent sizes with states needed for the decision; no variant switcher just to see the options. A visual must add spatial or interactive information, not reproduce prose, a file list or a fake runtime screenshot. Link useful existing evidence rather than render another explanation page. For diagrams, review pages and rendered answers, follow Visual explanations below. Use the user's theme and verify the actual browser color preference. Preserve useful media and retire settled attempts; persistent previews are opt-in.
 
 **Review surfaces.** Open on the outcome the user needs to judge, with technical detail available on demand. Group by changed behavior, not files or agent stages. A selected example, diagram or diff must reveal its scope; never make curated evidence look like complete coverage. Do not build a custom review dashboard when existing captures and the PR can answer the question. A design-skill edit is not a product-screen change.
+
+## Visual explanations
+
+These rules cover diagrams, review pages and rendered agent answers. A visual earns its place only when it shows what text or a table cannot: space, flow, time, a visible comparison or a measurement.
+
+**Pick the exhibit from the question.**
+
+| The reader asks                      | Exhibit                                                        |
+| ------------------------------------ | -------------------------------------------------------------- |
+| What changed on screen?              | Before and after pair with the same data, the old state left   |
+| Which transitions are allowed?       | State machine with forbidden edges marked                      |
+| What happens in order, and who acts? | Sequence in swimlanes, one lane per actor                      |
+| Where did the time go?               | Timeline with bars on one time axis                            |
+| How much faster, bigger or cheaper?  | Bars on a shared axis, values printed on the bars              |
+| Where exactly is the defect?         | Annotated capture with numbered markers and short notes        |
+| Which requirement has which proof?   | Coverage grid of requirements against proof, colored by state  |
+| Where does the change live?          | Change map: a tree with sizes, added and removed parts colored |
+| How do the parts relate?             | Node and link map with few, labeled links                      |
+| Which option is better?              | Options side by side at the same size and with the same data   |
+| What will a video show?              | Storyboard of chapter frames, the outcome frame marked         |
+
+When none fits, choose the form that matches the data's shape, not the first card layout that comes to mind. Draw a list as a list.
+
+- **One message.** Each page answers one question. Its title states the conclusion, such as "The catalog loads 26 times faster", not the topic.
+- **One dominant element.** Size, weight and position show importance. Mute the context and make secondary detail smaller.
+- **Color means something.** Use the theme's status colors only for states and the chart colors only for series. Keep one accent, and never color for decoration.
+- **Label directly.** Put names and values on the data instead of a distant legend. Show units, and use one scale per comparison.
+- **Real content.** Use real names, numbers and captures. Show the scope, so a sample never looks like full coverage.
+
+- **Grid and rhythm.** Align to one grid. Use a spacing scale of 4, 8, 12 and 16 pixels, two or three type sizes, and one corner radius.
+- **Little text.** Labels and captions stay under twelve words. A visual holds no paragraphs.
+- **Small multiples.** Compare several cases with repeated small exhibits on the same scale, rather than one crowded chart.
+- **Both themes and widths.** Use the host's theme variables, check light and dark, and keep the page readable at phone width.
+- **Inspect before showing.** Look at the rendered page for clipping, overlap, contrast and empty areas, and fix them first.
+
+**Avoid** these:
+
+- A table or bullet list redrawn as styled boxes.
+- A card, badge or icon for every fact.
+- Gradients, shadows and illustrations that carry no information.
+- Crossing links, when an ordered list or lanes would show the same relation.
+- A visual that repeats the text around it.
 
 ## Image assets
 

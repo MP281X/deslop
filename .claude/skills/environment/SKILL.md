@@ -5,7 +5,7 @@ description: 'Machine facts, repository commands, machine upkeep and media extra
 
 # Environment
 
-The development machine serves phone and Mac clients through Tailscale, and SSH uses keys. T3 owns worktree setup and harness updates.
+The development machine is an always-on, headless VPS with 8 cores and 23 GB. The user reaches it only through T3, from a Mac and a phone over Tailscale, and SSH uses keys. T3 owns worktree setup and harness updates.
 
 | Reference                                | Use it for                                                    |
 | ---------------------------------------- | ------------------------------------------------------------- |
@@ -21,7 +21,20 @@ Run repository commands from the repository root. Discover inventories and versi
 - **Tools.** `~/.vite-plus/bin` supplies the Node and package-manager shims: `vp` for packages and `vpx` for binaries. Sudo needs no password, and `gh` and `glab` use existing sign-ins.
 - **Scratch.** Logs and command output go to `node_modules/.cache/deslop/`.
 - **Services.** Run services as temporary containers, not host installations. Maintenance owns the Docker binding defaults; preserve unrelated workloads.
-- **Previews.** Requested previews use Tailscale Serve through workflow's Browser procedure. Share the verified tailnet HTTPS URL, not localhost.
+- **Heavy commands.** Type checks, builds and test suites of every repository take one machine-wide lock at lower priority: `flock "$HOME/.deslop/heavy.lock" nice -n 10 <command>`. Two at once fill memory and make T3 disconnect.
+
+## Previews
+
+- **Start.** Run the repository's preview command detached, so it survives a T3 restart: `systemd-run --user --unit=<repository>-preview-<worktree> --working-directory=<worktree> <command>`. Bind it to `127.0.0.1` on a free port (`ss -ltn`).
+- **Share.** Expose it with `sudo tailscale serve --bg --https=<port> http://127.0.0.1:<port>`, and get the host from `tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")'`. The first request waits for a certificate. Verify sign-in, assets and API calls through `https://<host>:<port>` from the tailnet before you share it, never a localhost URL.
+- **Public webhooks.** Funnel makes a whole port public, so give the webhook path its own port. Check `sudo tailscale serve status --json`, then pick an unused port among 443, 8443 and 10000; 8443 already serves another app. Run `sudo tailscale funnel --bg --https=<funnel port> --set-path <path> http://127.0.0.1:<api port><path>`, and verify that the sign-in path does not answer there. Stop it with `sudo tailscale funnel --https=<funnel port> --set-path <path> off`.
+- **Keep or stop.** Restart a preview in place after a build that deletes its files. Keep one preview per branch while the user uses it; otherwise run `sudo tailscale serve --https=<port> off` and `systemctl --user stop <unit>`. A listener you did not start is not yours to stop.
+
+## External accounts
+
+- **Read-only by default.** Read any account the user connected. Write only where the user allowed it, on scratch resources you create, named `<repository>-test-<yyyymmdd>`, private, and in the user's personal namespace.
+- **Afterwards.** Delete each resource you recorded, after checking its name and namespace again, and verify that none remain. Remove only the connections you created that hold write tokens.
+- **Tokens.** Read a token inside the command that uses it, never print it, and never write it into a file, log or body. When the user must configure a provider, give a numbered guide and ask for screenshots of results you cannot see.
 
 ## Source checkouts
 

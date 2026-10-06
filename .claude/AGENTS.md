@@ -14,27 +14,34 @@ Machine upkeep lives in environment's maintenance reference. Update this brief w
 
 ## Decisions not to repeat
 
-| Rejected approach                                     | Reason                                                                                   |
-| ----------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Mandatory delegation and model ladders                | Coordination became the work; delegation stays conditional                               |
-| Production polish before prototype feedback           | Unaccepted directions must stay cheap to replace                                         |
-| Progress ledgers or PR recaps in chat                 | T3 and the PR show them; the closing Status table states only head, pipeline and pending |
-| Repeated instruction-simulation rounds                | They tested decisions, not real-task speed; rerun only for a consequential open question |
-| Rebuilding orchestration or review surfaces           | T3 threads, inline renders and the pull request supply them                              |
-| Importing Emil's whole skill collection               | Its variant picker, audit fan-out and style defaults conflict; keep the targeted craft   |
-| Splitting short core design standards into references | Alignment, overflow and interaction essentials stay inline                               |
-| Telegraphic, slash-heavy instruction prose            | Agents copied it into briefs with glued words                                            |
-| Coordination protocols between children               | A checker idled behind GO and PAUSE gates while source changed                           |
-| Jira, Linear or other tracker connectors              | The user does not want them                                                              |
-| Implementation children, even with separate files     | In one checkout they queued on the test lock, waited on gates and reformatted each other |
-| Nested delegation                                     | No case justified a second level; finished children kept acting on pipeline events       |
-| Review fix rounds until clean                         | One day produced 28 review tasks, many one-minute checks of one-line fixes               |
-| Formatter and autofix rewrites outside the task       | They put unrelated files into pull requests and widened lint migrations                  |
-| Codex `model_context_window` override                 | Primary calls carried a median of 264k tokens; the recommended window compacts sooner    |
-| Commit series or stacked pull requests for review     | The user chose a contract-focused pull request body instead                              |
-| Children writing full reports to scratch files        | The user wants results in the thread, not side files                                     |
-| A diff-classification command                         | The user does not want another CLI; the cleanup audit procedure covers it                |
-| Verification children running checks                  | Checks write shared outputs; the primary runs them                                       |
+| Rejected approach                                     | Reason                                                                                                                               |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Mandatory delegation and model ladders                | Coordination became the work; delegation stays conditional                                                                           |
+| Production polish before prototype feedback           | Unaccepted directions must stay cheap to replace                                                                                     |
+| Progress ledgers or PR recaps in chat                 | T3 and the PR show them; the closing Status table states only head, pipeline and pending                                             |
+| Repeated instruction-simulation rounds                | They tested decisions, not real-task speed; rerun only for a consequential open question                                             |
+| Rebuilding orchestration or review surfaces           | T3 threads, inline renders and the pull request supply them                                                                          |
+| Importing Emil's whole skill collection               | Its variant picker, audit fan-out and style defaults conflict; keep the targeted craft                                               |
+| Splitting short core design standards into references | Alignment, overflow and interaction essentials stay inline                                                                           |
+| Telegraphic, slash-heavy instruction prose            | Agents copied it into briefs with glued words                                                                                        |
+| Coordination protocols between children               | A checker idled behind GO and PAUSE gates while source changed                                                                       |
+| Jira, Linear or other tracker connectors              | The user does not want them                                                                                                          |
+| Implementation children, even with separate files     | In one checkout they queued on the test lock, waited on gates and reformatted each other                                             |
+| Nested delegation                                     | No case justified a second level; finished children kept acting on pipeline events                                                   |
+| Review fix rounds until clean                         | One day produced 28 review tasks, many one-minute checks of one-line fixes                                                           |
+| Formatter and autofix rewrites outside the task       | They put unrelated files into pull requests and widened lint migrations                                                              |
+| Codex `model_context_window` override                 | Primary calls carried a median of 264k tokens; the recommended window compacts sooner                                                |
+| Commit series or stacked pull requests for review     | The user chose a contract-focused pull request body instead                                                                          |
+| Children writing full reports to scratch files        | The user wants results in the thread, not side files                                                                                 |
+| A diff-classification command                         | The user does not want another CLI; the cleanup audit procedure covers it                                                            |
+| Verification children running checks                  | Checks write shared outputs; the primary runs them                                                                                   |
+| Rerunning Finish and Deliver for every later change   | Each pass cost hours; a later change returns to Build and reruns only its hunks                                                      |
+| Full validation after a small change                  | Repeated root checks and builds; the ledger reruns only checks whose inputs changed                                                  |
+| Rendering tables, lists or prose as HTML              | Markdown already shows them; a render must show space, flow, time or a comparison                                                    |
+| Patching single cases of a repeated failure           | The same defects recurred across threads; fix the code, rule or setting that causes them                                             |
+| T3's browser preview tools                            | The VPS is headless, the Mac is often off, and remote previews are slower over the network                                           |
+| References inside the shared skills                   | Tested: split rules made engineering, design and testing results less consistent; only the workflow keeps references for path briefs |
+| Thread briefs that restate the workflow               | Every rule change then needed a steer; briefs carry the plan and task decisions only                                                 |
 
 <details>
 <summary>Workflow and agent references</summary>

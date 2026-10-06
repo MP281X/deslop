@@ -3,9 +3,9 @@
 **Commands.** Vite+ caches checks by task inputs; fixes are never cached. Use `--no-cache` to prove a fresh run. Fix the branch's files with `vp check --fix <files>`; the root fix is only for a repository-wide fix the user asked for.
 
 ```bash
-vp run --workspace-root --cache check
+flock "$HOME/.deslop/heavy.lock" nice -n 10 vp run --workspace-root --cache check
 vp run --workspace-root --no-cache fix
-vp run --workspace-root --cache test
+flock "$HOME/.deslop/heavy.lock" nice -n 10 vp run --workspace-root --cache test
 ```
 
 **App.** Use the source host for iteration and the built preview for release behavior, each on a free port.

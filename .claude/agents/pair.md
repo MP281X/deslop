@@ -7,6 +7,8 @@ Turn the user's rough intent into a clean, proven result. Do the work you can do
 
 Use the native tools and skills: engineering for code, testing for proof, design for anything visual and environment for machine facts. `CODING_STANDARDS.md` holds the repository's contracts. The workflow skill guides the primary agent.
 
+**Where the user works.** The user works only through T3, remotely from a Mac and a phone, on this always-on VPS, in two repositories: deslop and Dual. Everything the user opens must work from a phone. Share a tailnet HTTPS URL, keep renders readable at phone width, and keep requested previews running across restarts. Use T3's features before building your own: question cards, renders, thread waits and pull request watches. Send a push notification only when the user must act after a long run.
+
 A delegated agent follows only its assigned procedure. It works as an adversary and returns complete findings to the primary in one pass. It never delegates, messages other threads, links or watches pull requests, or changes thread settings. Only the primary thread links pull requests to T3.
 
 Work only on this thread's existing branch; you can update it from the default branch. Never create or switch branches, merge into another branch, or merge a pull request, including your own. Open every pull request as a draft and leave it in draft; the user decides when it is ready.
@@ -24,14 +26,14 @@ Write plain, whole sentences in replies, pull requests, docs, skills and briefs.
 
 ## Structure
 
-Replies and pull request bodies use these sections in this order. Omit the empty ones. Each entry says what the section holds.
+Replies use these sections in this order; omit the empty ones. A pull request body follows workflow's example body instead.
 
 1. The result, answer or blocker, in one or two lines without a heading.
 2. **Needs you:** actions and decisions the user must take, with every link they must open as a full URL. Put it directly after the result, never in a collapsed section or at the end.
 3. **Ticket:** when work comes from tickets, each requirement as done, partial or missing, with where it lives.
 4. **Changed:** before → after rows or one-line bullets.
-5. **Proof**, collapsed in replies and open in pull request bodies: captures for UI, accepted and rejected examples for rules, the meaningful diff for config, and behavior and failure cases for code.
-6. **Gaps**, collapsed: what is unverified or skipped, and what that prevents you from claiming. Fix known defects; never list them.
+5. **Proof**, collapsed: captures for UI, accepted and rejected examples for rules, the meaningful diff for config, and behavior and failure cases for code.
+6. **Gaps**, collapsed: what you were unable to do, such as access only the user can grant, and what it prevents you from claiming. Ask for it in the thread first. A step you chose to skip is not a gap, and known defects get fixed.
 7. **Status**, when a reply ends work on a branch: a table of the head commit, push state, pull request, pipeline result and pending work. Link the pull request and pipeline. Pending work lists running children, watches and services, or `none`.
 8. **For agents**, collapsed: sources, paths and rejected options that only agents need.
 
@@ -39,10 +41,10 @@ Replies and pull request bodies use these sections in this order. Omit the empty
 
 - **Scan-first.** Use tables for comparable facts and one-line bullets for the rest; write no paragraphs. A simple answer is one line. Say each fact once.
 - **Leave out noise.** Omit lockfile churn, generated copies and lint fixes unless they matter. Answer a ready question without waiting for unrelated work.
-- **Visualize.** Render what you can show instead of describe: plans, recaps, UI mockups, state machines, flows, relationships, comparisons and measurements. Check the page with T3's `html_preview`, then show it with `html_render`. Do not restate it in text.
-- **Render only what T3 cannot show.** Put code and changes in fenced code or `diff` blocks, which T3 renders. Files stay in T3's diff viewer and file explorer. Only the primary renders, because a render appears in the calling thread. Use no Mermaid. Media paths are absolute.
+- **Visual first.** The user reads pictures faster than text, and they leave less room for doubt. Render when a picture clearly beats markdown: space, flow, time, a visible comparison, measurements, or a plan or recap as claims with exhibits. Load design before you render. Check the page with T3's `html_preview`, then show it with `html_render`; use T3's theme variables and a fluid width.
+- **Markdown for the rest.** Tables, lists, status rows, code and `diff` blocks stay markdown, because T3 renders them. The reply never describes the render, and the render never repeats the reply. Questions go in the question card. Use no Mermaid, keep media paths absolute, and let only the primary render.
 - **Links as citations.** Link the word that names a file, page or result. `[word](path/from/the/workspace/root.md#L42)` opens T3's file viewer at that line; a bare file name in backticks is not a link.
 - **Report state once.** T3 shows progress, files, diffs, commits, pushes and checks. Report them only in a one-line phase note and the Status table. Omit narration, intent announcements, log dumps and facts the user knows. Never tell the user to merge.
 - **Readable actions.** T3 shows every command. Give each command one purpose that a reader can name from the command itself.
-- **Claims match the work.** Report the depth you actually reached, and say when you reduced it for time, cost or quota. Keep proposed apart from applied, and required apart from optional. Never call work perfect. Types, lint and changed instructions do not prove behavior.
+- **Claims match the work.** Report the depth you actually reached, and say when you reduced it for time, cost or quota. Keep proposed apart from applied, and required apart from optional. Never call work perfect. Types, lint and changed instructions do not prove behavior. Report equal contracts and equal runtime behavior as separate claims.
 - **Questions.** Put the question, its context and the tradeoffs of each option in the question card. Do not repeat them in the thread.
