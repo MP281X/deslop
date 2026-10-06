@@ -21,7 +21,7 @@ Before anything longer than a short exchange, settle this table with the user:
 
 Show the plan as a render that the user can scan in seconds. Write each planned behavior as a one-line claim that can be true or false, such as "a user can pin one file version". Give each claim one exhibit: a UI mockup, a state machine, a flow or a schema. Put each decision on the claim it changes, with your default marked. End with what does not change. The question card collects the answers. A default the user did not answer is not agreement.
 
-Then work from the plan without asking again. Every brief to a thread or child carries the table. A change request after a push, or a new direction during production, updates the plan and re-enters Prototype.
+List every decision the work needs before it starts, not only the first ones. Then work from the plan without asking again. Every brief to a thread or child carries the table. A change request after a push, or a new direction during production, updates the plan and re-enters Prototype.
 
 **The request is the scope.** A related improvement goes under **Needs you** as a follow-up, not into the branch. So does a defect in code the task does not otherwise change, and a capability that only a test needs. A question that would grow the scope states its size, with the smaller option first.
 
@@ -42,10 +42,10 @@ Start when the user is satisfied, or at once for a settled task.
 - **Clean.** Apply the approved removals. Run formatters and autofixes only on files the branch changes. Revert your own edits outside the task. Recheck every touched file against engineering and design.
 - **Encode.** Turn each recurring mistake into a type, lint rule, test or script. Write guidance only for judgment calls.
 - **Cover inputs.** List the reachable input classes of every parser, boundary and state transition the diff adds or changes. Cover them per testing's Branches rule, and reproduce each confirmed finding before you fix it.
-- **Review.** Run one [review](references/review.md) round over the whole diff, with one reviewer for each lens it contains. The lenses are code behavior, and instructions and docs checked against each other. Split an area that one reviewer cannot read. Fix each confirmed finding with a test that fails first.
+- **Review.** Run one [review](references/review.md) round over the hand-written diff, with one reviewer for each lens it contains. The lenses are code behavior, and instructions and docs checked against each other. Split an area that one reviewer cannot read. Fix each confirmed finding with a test that fails first.
 - **Second round.** Review the fixes again only when they change more than the finding named. After two rounds, bring the remaining findings to the user.
-- **Prove.** Before the push, run the root check and the focused and affected tests for what changed. The pipeline runs the full suite; never run it locally as well. Record a video of every user-facing journey the branch changes, inspect it and attach it to the pull request.
-- **Ship.** Update from the default branch and rerun what the update affects. Squash the unpushed checkpoints, push, and open or update the draft pull request per Publishing. Link the pull request to the thread at once. Missing proof blocks the push. Other irreversible or outward actions need confirmation.
+- **Prove.** Assume the default branch passes every check. Run the type and lint checks and the tests that cover the code you changed; skip tests of unchanged code. The pipeline runs the full suite after the final push. Record a video of every user-facing journey the branch changes, inspect it and attach it to the pull request.
+- **Ship.** Push once, as the final step, after proof, review and the pull request text are ready. Update from the default branch first and rerun what the update affects. Squash the unpushed checkpoints, push, and open or update the draft pull request per Publishing. Link the pull request to the thread at once. Missing proof blocks the push. Other irreversible or outward actions need confirmation.
 - **Recap.** Render a recap in the plan's claim form. Show each delivered behavior with its before → after exhibit and lines, the size split and the riskiest places to read. Put code in `diff` blocks below the render. Then watch the pull request and end the turn.
 - **Clean up.** Stop what you started as soon as nothing needs it: children, services, previews, watches, browser sessions, sign-ins, extra worktrees, exit nodes and scratch files. Keep useful evidence. Keep one preview per branch, and only while the user uses it.
 
@@ -54,8 +54,8 @@ Start when the user is satisfied, or at once for a settled task.
 - **Wait, do not poll.** Wait for a long command with one command that exits when the job ends. Run it in the background when other work remains.
 - **Wait for children.** Wait with one blocking `t3_thread_wait` on the child's thread, or end the turn and let T3's completion notice wake you. Read the result once. If a wait is interrupted, call it again.
 - **Run checks safely.** Serialize checks that compete for resources or write shared outputs. Give servers a readiness probe. Take the exit status from the command you started, not from a log footer. Keep bulky logs in scratch, and never filter a failure away.
-- **Validate once.** Each validation has one owner, the primary or the pipeline. Never run the same command twice without a change in its inputs.
-- **Use dead time.** Writes stay serial in the primary, and everything else runs in parallel. While a build, the pipeline or a child runs, start the independent reads, reviews, video recording and pull request text. Schedule work that does not depend on or overlap other work at once.
+- **Validate once.** Each validation has one owner, the primary or the pipeline. Never rerun a command, or re-review code, whose inputs did not change, unless the code is strictly related to or superseded by a change.
+- **Use dead time.** Writes stay serial in the primary, and everything else runs in parallel. While a build or a child runs, start the independent reads, reviews, video recording and pull request text. Schedule work that does not depend on or overlap other work at once.
 - **Fix causes.** Do no workaround, duplicate work or repeated expensive step without a reason the result would differ. Use the repository's named scripts, and fix a script that keeps failing.
 - **Phase notes.** When Prototype, Production review or Ship starts, post one line that says what remains. Native plan and todo tools add nothing.
 - **Own thread.** Never change the calling thread's model or options, because that interrupts the running turn.

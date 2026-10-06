@@ -11,6 +11,13 @@ Prove that the supplied inputs produce the expected outcomes on the host you wer
 - **Navigation.** Passing a URL to `record start` navigates, so pass one only to prove navigation.
 - **Locators.** Reuse locators and refresh `snapshot -i -c` when targets change. Batch independent reads in one `eval`. Wait with a selector or `wait --fn '<condition>'`. DOM assertions are not visual proof.
 
+## Fast recording
+
+- **Host.** Record on the host that is already running; do not start a production build only for a video.
+- **Setup.** Create the data the journey needs through the API or a seed command, not through the UI on camera.
+- **Script.** Write the journey as one batch of agent-browser commands and record it in a single take. When the UI changes, rerun the batch instead of driving it again by hand.
+- **Scope.** Record behavior only; use screenshots for static states. Record once at the end, and re-record only when the shown UI changed.
+
 ## Previews
 
 Bind a requested preview to `127.0.0.1` on a free port (`ss -ltn`). Expose it with `sudo tailscale serve --bg --https=<port> http://127.0.0.1:<port>`. Get the host from `tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")'`. The first request waits for a certificate. Verify sign-in, assets and API calls through `https://<host>:<port>` before you share it.

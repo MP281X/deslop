@@ -4,7 +4,7 @@ This work is read-only. Propose changes; never edit tracked files, and leave run
 
 ## Code review
 
-- **Depth.** Read every changed line. Trace each contract through its real consumers, failure paths, concurrency and resource ownership against the merge base. Try the inputs, orderings and failures that the author's tests miss.
+- **Depth.** Read every hand-written changed line. For generated output, review the generator change and a representative subset, such as one package per source format. Trace each contract through its real consumers, failure paths, concurrency and resource ownership against the merge base. Try the inputs, orderings and failures that the author's tests miss.
 - **Findings.** Report broken behavior or contracts that input from a real caller can reach. Also report violations of workflow's Clean step and of engineering, design or `CODING_STANDARDS.md` rules.
 - **Not findings.** Taste without a rule is not a finding. Code that handles input which engineering and lint never allow is a cleanup finding, not a defect.
 - **Value.** Report only what a user, caller or maintainer would notice. Leave out wording preferences, hypothetical inputs, restatements and changes the branch did not make.
@@ -22,7 +22,7 @@ Classify every changed file and hunk in your area against the plan's intent, and
 - **Simplify:** dead code, unused exports, duplicate logic, layered overrides, no-ops, workarounds and machinery that a smaller design avoids.
 - **Keep:** what the intent needs, with the reason.
 
-Read every hunk; a sample is not an audit. Return one row per item with the path and lines, class, evidence, smallest change, size and what the change breaks.
+Read every hand-written hunk; a sample is not an audit. Judge generated output through its generator and a representative subset. Return one row per item with the path and lines, class, evidence, smallest change, size and what the change breaks.
 
 ## Critique
 
