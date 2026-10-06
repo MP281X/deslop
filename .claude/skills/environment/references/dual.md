@@ -8,7 +8,7 @@ vp run --workspace-root --no-cache fix
 flock "$HOME/.deslop/dual-test.lock" vp run --workspace-root test
 ```
 
-**VPN.** GitLab requires the Datapizza VPN. Check reachability and reconnect when it expires; show the returned sign-in URL through the question tool, then check again.
+**VPN.** GitLab requires the Datapizza VPN. Check reachability and reconnect when it expires. Show the returned sign-in URL as a full URL under **Needs you**, directly after the result, then check again.
 
 ```bash
 curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
