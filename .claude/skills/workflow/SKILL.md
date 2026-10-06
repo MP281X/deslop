@@ -61,7 +61,7 @@ Post one line when Build, Finish or Deliver starts, saying what remains.
 - **Checks.** Serialize checks that compete for resources or share outputs, per environment's heavy-command lock. Give every server you start a readiness probe. Use `set -o pipefail`, and take the exit status from the command you started.
 - **Context.** Keep complete logs, reports and inventories in scratch, and read only the excerpt the next edit needs.
 - **Ownership.** Record the process groups, containers, exposures and resources you start, and stop only those, never by name, port or image. Stop each as soon as nothing needs it, not only at handoff. Never write a secret's value in a command; read it inside the command. Never change the calling thread's model or options.
-- **Parallel.** Writes stay serial in the primary. Start independent reads, children, recording and pull request text at once, in parallel with builds.
+- **Parallel.** Writes stay serial in the primary. Start independent reads, children, recording and pull request text at once, in parallel with builds. Post the user's manual steps as soon as their inputs exist, so the user works while you do.
 
 ## Delegate
 
