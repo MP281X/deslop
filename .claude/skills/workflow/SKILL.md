@@ -19,7 +19,7 @@ Iterate fast until the user is satisfied, then make the branch merge-ready in on
 - **Explore.** Where the direction is open, try the alternatives and surface the open questions now, so that no iteration is needed after the production pass.
 - **Write well.** Engineering applies to prototype code too.
 - **Skip what adds nothing yet.** No root fix or check runs, review rounds, pushes, pipeline watching or pull request updates. Run the focused check that answers the current question.
-- **Show.** Present results as inspected screenshots, short video or the key excerpt in the thread.
+- **Show.** Present results as inspected screenshots, short video, an inline render or the key excerpt in the thread. Compare design directions and mockups as inline renders side by side; start a preview only when the user needs to use the real app.
 - **Checkpoint.** Commit locally as often as useful, write scratch code in the repository and reset afterwards; reset only your own changes.
 - **Ask little.** Ask only about unknowable goals, access, scope or open taste, and keep working meanwhile. After two failures, test a hypothesis that tells the causes apart.
 
