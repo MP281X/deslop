@@ -9,6 +9,7 @@ Iterate fast until the user is satisfied, then make the branch merge-ready in on
 
 ## Scope
 
+- **Plan before work.** Before anything longer than a short exchange, settle with the user the intent, the decisions, defaults for choices that will come up later, and the done criteria. State them in the thread, then work from them autonomously without asking again; a brief to a thread or child carries them.
 - **The request is the scope.** The branch holds what the user asked for. A related improvement, a defect in code the task does not otherwise change, or a capability that only a test needs goes under **Needs you** as a follow-up instead of into the branch.
 - **Size before growth.** A question that would grow the scope states what it adds in files, rough time and children, and the smaller option comes first.
 
@@ -50,12 +51,12 @@ Start when the user is satisfied, or at once for a settled task.
 
 The primary does every write. Delegate self-contained, read-only work whose result saves more than briefing and joining cost: unbiased analysis, exploration, research, critique, review and browser proof. The primary runs checks, builds and tests itself, because they write shared outputs. Children write nothing tracked in the repository and never touch the primary's services; they read, run read-only commands, inline scripts and focused existing tests, and keep captures in their own scratch directory outside the repository. A child settles its own questions this way and never asks the primary to write a test, run a check or answer something it can find out. Because they cannot collide, run independent children in parallel and in the background while the primary works. Delegation is one level deep.
 
-| Task            | Worth it when                                                                  | Recommended model  | Procedure                                |
-| --------------- | ------------------------------------------------------------------------------ | ------------------ | ---------------------------------------- |
-| Research        | A substantial, bounded investigation while the primary continues.              | GPT-6.1 Sol · high | [Research](references/research.md)       |
-| Design critique | Independent judgment that can change the direction.                            | Opus 5.5 · high    | [Ideas](references/ideas.md)             |
-| Browser proof   | A substantial, independent user journey.                                       | GPT-6.1 Sol · high | [Browser](references/browser.md)         |
-| Code review     | Each production review round, or a concrete risk needing independent judgment. | GPT-6.1 Sol · high | [Code review](references/code-review.md) |
+| Task            | Worth it when                                                                  | Recommended model   | Procedure                                |
+| --------------- | ------------------------------------------------------------------------------ | ------------------- | ---------------------------------------- |
+| Research        | A substantial, bounded investigation while the primary continues.              | GPT-6 Luna · medium | [Research](references/research.md)       |
+| Design critique | Independent judgment that can change the direction.                            | Opus 5.5 · high     | [Ideas](references/ideas.md)             |
+| Browser proof   | A substantial, independent user journey.                                       | GPT-6.1 Sol · high  | [Browser](references/browser.md)         |
+| Code review     | Each production review round, or a concrete risk needing independent judgment. | GPT-6.1 Sol · high  | [Code review](references/code-review.md) |
 
 Models are recommendations: validate them against T3's live catalog and the user's budget, and inherit the primary model when one is unavailable.
 
