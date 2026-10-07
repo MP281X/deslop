@@ -11,7 +11,7 @@ description: 'TypeScript and Effect code conventions paired with shared lint. Us
 
 ## Simplicity
 
-**Clarity.** Plain, explicit, idiomatic code, names and files; read top to bottom without commentary or cleverness.
+**Clarity.** Plain, explicit, idiomatic code, names and files; read top to bottom without commentary or cleverness. Match the surrounding code's naming, idiom and comment density.
 
 **Experiments.** Write with these idioms; reserve the full refactor/cleanup pass for retained delivery. Keep disposable source isolated and shared rules intact.
 
