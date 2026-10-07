@@ -296,7 +296,7 @@ export const EntryKind = Schema.Literals(['income', 'expense']) // no importer
 // oxlint-disable-next-line typescript/consistent-type-assertions
 // oxlint-disable-next-line sort-keys -- keeps the printed order
 // bad
-files: ['packages/components/src/components/agent-browser.tsx', 'packages/components/src/components/form.tsx'],
+files: ['packages/components/src/components/dev-tools.tsx', 'packages/components/src/components/form.tsx'],
 ```
 
 ## Effect
