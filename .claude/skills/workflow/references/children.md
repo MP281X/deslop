@@ -1,38 +1,28 @@
 # Child procedures
 
-Work as an adversary: assume the work is wrong and prove where. Settle each suspicion yourself with an inline probe or a focused existing test. Do not report a mere possibility or ask the primary to try it. The primary allows at most two rounds, so find everything in this one.
+Return complete findings in one pass; the primary allows at most two rounds.
 
 ## Research
 
-Answer the question from code, logs, named threads or primary documentation, and look for the counterexample that would decide it. Read dependencies in a source checkout, never in `node_modules`. Read videos and posts through environment's media reference. When you count something, define and list the members. Stop when you have answered the question.
+Answer the question from code, logs, named threads or primary documentation, and look for the counterexample that would decide it. Read dependencies in a source checkout, never in `node_modules`. Read videos and posts through environment's media reference. When you count something, define and list the members. Stop when you have answered the question. Batch every independent search and read into one command. Reply in at most 40 lines: the answer first, then only the evidence that decides it, as a table or one-line bullets.
 
 ### Source checkouts
 
-Read a dependency in a checkout of its official repository at the version the lockfile uses. Reuse a matching checkout under `~/.deslop/repos/` after you check its remote and commit; shared checkouts are read-only and need no install or build.
+Read a dependency in a checkout of its official repository at the version the lockfile uses. Reuse a matching checkout under `/tmp/repos/` after you check its remote and commit; shared checkouts are read-only and need no install or build.
 
 ```bash
-git clone --depth 1 --branch <version-tag-or-required-branch> <official-repository-url> "$HOME/.deslop/repos/<repository>-<version>"
+git clone --depth 1 --branch <version-tag-or-required-branch> <official-repository-url> "/tmp/repos/<repository>-<version>"
 ```
 
 ### T3 history
 
 Prefer T3's thread tools, and search earlier decisions with `t3_thread_search` before you read transcripts. `t3_thread_search` and the database cover only the worker that runs you, so an analysis of the user's threads covers every worker: run the same queries on the other one with `ssh mp281x@<worker> '<command>'`. The Mac has no agent threads. For read-only inspection, set `T3_DB` to `~/.t3/userdata/statev2.sqlite`; session files sit in each worker's `~/.claude/projects` and `~/.codex/sessions`. Query it with `sqlite3 -readonly`, and select only the fields you need; never read raw payloads or credentials. Live threads, runs, subagents and turn items are in `orchestration_v2_projection_*`. Legacy `projection_*` tables and `provider_session_runtime` can be stale.
 
-To recover a thread's native transcripts, find its provider sessions, then the session files:
-
-```bash
-sqlite3 -readonly -header -column "$T3_DB" "SELECT provider_thread_id, provider, status, json_extract(payload_json, '$.nativeThreadRef.nativeId') AS session_id, updated_at FROM orchestration_v2_projection_provider_threads WHERE thread_id = '<thread id>' ORDER BY updated_at DESC;"
-S='<selected session id>'; : "${S:?No session selected}"
-find "$HOME/.codex/sessions" "$HOME/.claude/projects" -type f -name "*$S.jsonl"
-```
-
-- **Session choice.** Pick the session that covers the run in question; the latest one can miss stopped or replaced runs.
-- **Subagents.** Claude subagents sit in `<session>/subagents/`. A Codex child's first `session_meta` record names its parent in `payload.parent_thread_id`. Messages forked from the parent are not new work.
-- **Compaction.** A `compacted` record marks a compaction, not a task boundary.
-
-Return the answer, the sources that decide it and the facts still open.
+A whole-thread analysis of timing, tool calls or transcripts follows the retrospective skill in the deslop repository.
 
 ## Code review
+
+Work as an adversary: assume the work is wrong and prove where. Settle each suspicion yourself with an inline probe or a focused existing test. Do not report a mere possibility or ask the primary to try it. The same stance applies to the cleanup audit and the body reader.
 
 - **Depth.** Read every hand-written changed line. For generated output, review the generator change and a representative subset, such as one package per source format. Trace each contract through its real consumers, failure paths, concurrency and resource ownership against the merge base. Try the inputs, orderings and failures that the author's tests miss.
 - **Findings.** Report broken behavior or contracts that input from a real caller can reach. Report violations of engineering, design or `CODING_STANDARDS.md` rules only in lines the reviewed change adds or alters, and only where lint does not already enforce them. Never propose restyling code the change does not otherwise need.

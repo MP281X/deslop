@@ -9,7 +9,7 @@ description: 'UI and UX rules for screens and visual explanations. Use when buil
 
 ## Decide
 
-**Direction.** Start from the actual task, audience, content and settled preferences. Make the next user action and its relevant content dominant, not generic "premium" styling. When a reference is useful, inspect the relevant accepted one for transferable hierarchy, density and interaction choices; distinguish observed details from inferred ones. Community brand analyses are inspiration, not verified current tokens. Keep durable visual choices at their owner, not repeated briefs. Ask only about a consequential tradeoff the evidence cannot settle; another agent cannot establish user taste.
+**Direction.** Start from the actual task, audience, content and settled preferences. Make the next user action and its relevant content dominant, not generic "premium" styling. When a reference is useful, inspect the relevant accepted one for transferable hierarchy, density and interaction choices; distinguish observed details from inferred ones. Community brand analyses are inspiration, not verified current tokens.
 
 **One meaning.** Each visible element must add information, enable a distinct action or clarify a relationship. Delete repeated headings, summaries, counts, status badges, decorative wrappers and controls that say or do the same thing. Remove explanations that merely restate the visible example/state. Keyboard shortcuts, screen-reader labels and responsive placement are not redundant visible controls; preserve their function.
 
@@ -75,7 +75,8 @@ These rules apply to product UI. A rendered explanation follows the host's rende
 | Accents/tall scripts clip          | Tight line height or text-box clipping        | Fix the owning type-scale/overflow choice; don't shrink the font to fit                            |
 | Missing metadata leaves separators | Empty optional slots still render             | Omit orphaned separators/lines; reserve space only when the layout needs it                        |
 
-**Prevent before rejecting.** When the app already knows an action is not allowed, such as a missing permission, a referenced record or invalid input, disable or hide the control and show the reason beside it. Never let the user act and then show an error the app could have predicted.\n
+**Prevent before rejecting.** When the app already knows an action is not allowed, such as a missing permission, a referenced record or invalid input, disable or hide the control and show the reason beside it. Never let the user act and then show an error the app can predict.
+
 **Motion.** Explain change without delaying input or moving content just for decoration. Reuse existing tokens/components; no new library for a fade or universal curve, duration, bounce or press scale.
 
 | Interaction                            | Treatment                                                                                          |
@@ -86,7 +87,7 @@ These rules apply to product UI. A rendered explanation follows the host's rende
 | Drag/gesture                           | Follow the pointer; preserve the existing primitive's capture, cancellation and release behavior   |
 | Reduced motion                         | Preserve feedback through a suitable static or gentle non-spatial equivalent                       |
 
-Use responsive entry easing and brief existing durations. Simple retargetable states suit transitions; gestures may need the existing spring. Prefer transform/opacity where appropriate, but CSS/WAAPI does not guarantee compositor execution. Profile observed performance problems, not every animation. Inspect rapid repetition/reversal and reduced motion, not only the final frame.
+Use responsive entry easing and brief existing durations. Simple retargetable states suit transitions; gestures can use the existing spring. Prefer transforms and opacity where appropriate, but CSS and WAAPI do not guarantee compositor execution. Profile observed performance problems, not every animation. Inspect rapid repetition, reversal and reduced motion, not only the final frame.
 
 **Access and responsiveness.** Preserve the complete task on phones, not merely stacked desktop panes. Keep essential actions reachable with keyboard, touch and zoom. Use semantic structure, accessible names, visible focus, logical order and deliberate focus return. Inspect long/duplicate content, overflow, contrast and relevant failure/permission states. Do not remove an accessible affordance to satisfy visual minimalism.
 
@@ -103,19 +104,19 @@ Touch and mouse can coexist; do not infer capabilities from user-agent strings o
 
 **Try the question.** Build one rough representative screen or interaction in the existing host with realistic data. Inspect enough to make the trial trustworthy, then show it to the user before merge-readiness work. Label stubs and limits; a conceptual sketch is sufficient only when execution is unnecessary, never proof of working software. Set a short first-preview budget; show a partial result or blocker rather than expanding unseen. No production completeness or polished gallery first.
 
-**Use the findings.** For layout questions, compare hierarchy or interaction, not color-only variants. Add attempts only for unresolved uncertainty, feedback or an explicit request—no fixed count; a style question can compare style. Keep useful comparisons; discard/rebuild freely and combine compatible strengths, not incompatible mechanisms. Test the weakest assumption while it can change the choice. A settled direction needs no manufactured taste question or exploration round.
+**Use the findings.** For layout questions, compare hierarchy or interaction, not color-only variants. Compare several directions at the mockup stage; add real attempts only for unresolved uncertainty, feedback or an explicit request. A style question can compare style. Keep useful comparisons; discard/rebuild freely and combine compatible strengths, not incompatible mechanisms. Test the weakest assumption while it can change the choice. A settled direction needs no manufactured taste question or exploration round.
 
 ## Verify and show
 
 **Inspect retained UI.** Open actual captures at the sizes needed for the task. Compare related edges, columns, baselines and equivalent controls across rows/screens—not just successful clicks. Use realistic long names/URLs, translated labels, Unicode, missing fields and relevant 0/1/many records at the actual container width. Respect schema/API limits; never add a validation limit to make layout pass. Mix cases across rows. Check selected/focus/error states and scrolling; a clean default row can hide misalignment. Inspect hierarchy, density, legibility and clipping. Exercise the relevant keyboard/touch, narrow/wide, zoom and focus-return journeys; run axe where applicable. A clean scan does not prove contrast or usability. Inspect meaningful video frames and sequence; a playable file is not proof of a good composition. Batch relevant inspection/repairs; recheck affected views rather than restart a whole audit after each micro-edit. Visible misalignment, inconsistent controls or redundant elements remain defects even when types/tests pass; fix them before claiming acceptance.
 
-**Show the design.** Use inspected screenshots for layout and short video for behavior. Compare at consistent sizes with states needed for the decision; no variant switcher just to see the options. A visual must add spatial or interactive information, not reproduce prose, a file list or a fake runtime screenshot. Link useful existing evidence rather than render another explanation page. For diagrams, review pages and rendered answers, follow Visual explanations below. Use the user's theme and verify the actual browser color preference. Preserve useful media and retire settled attempts; persistent previews are opt-in.
+**Show the design.** Use inspected screenshots for layout and short video for behavior. Compare at consistent sizes with states needed for the decision; no variant switcher just to see the options. A visual must add spatial or interactive information, not reproduce prose, a file list or a fake runtime screenshot. Embed useful existing captures in the render rather than recreate them. For diagrams, review pages and rendered answers, follow Visual explanations below. Use the user's theme and verify the actual browser color preference. Preserve useful media and retire settled attempts; workflow decides how long previews run.
 
 **Review surfaces.** Open on the outcome the user needs to judge, with technical detail available on demand. Group by changed behavior, not files or agent stages. A selected example, diagram or diff must reveal its scope; never make curated evidence look like complete coverage. Do not build a custom review dashboard when existing captures and the PR can answer the question. A design-skill edit is not a product-screen change.
 
 ## Visual explanations
 
-These rules cover diagrams, review pages and rendered agent answers. A visual earns its place only when it shows what text or a table cannot: space, flow, time, a visible comparison or a measurement.
+These rules cover diagrams, review pages and rendered agent answers; the pair prompt decides when a reply needs a render. A render replaces the text it shows; it never repeats it.
 
 **Pick the exhibit from the question.**
 
@@ -159,4 +160,4 @@ When none fits, choose the form that matches the data's shape, not the first car
 
 Use image generation only for a needed illustrative asset, atmosphere, texture or icon exploration—not ordinary text, exact diagrams or fake working UI. Use the native tool exposed by the harness; no invented invocation or replacement API client when unavailable. Report missing capability honestly.
 
-Describe purpose, placement, composition, palette and intended size/aspect ratio. For edits, supply the real source and state what remains unchanged. Generate only what the chosen direction needs; prefer existing icons/CSS when they express the job precisely. Inspect the returned asset at its intended size for crop, text/edge artifacts, contrast and fit. Preserve useful originals and identify generated assets as such; they are not runtime/browser proof. Keep only used assets in product source.
+Describe purpose, placement, composition, palette and intended size and aspect ratio. For edits, supply the real source and state what remains unchanged. Generate only what the chosen direction needs; prefer existing icons or CSS when they express the job precisely. Inspect the returned asset at its intended size for crop, text and edge artifacts, contrast and fit. Preserve useful originals and identify generated assets as such; they are not runtime or browser proof. Keep only used assets in product source.

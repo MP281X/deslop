@@ -16,7 +16,7 @@ The workers are `dev` and `desktop`. Both run the latest Debian stable in text m
 - **Sudo.** Codex and Claude run sudo without a terminal, so `/etc/sudoers.d/99-mp281x-nopasswd` holds `mp281x ALL=(ALL:ALL) NOPASSWD: ALL` with mode 0440.
 - **Toolchain.** Docker with Compose and Buildx, `gh` with the `github/gh-stack` extension, `glab`, git, build tools, rsync, ripgrep, jq, sqlite3, ffmpeg and Python. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code lives in `~/.local/bin`.
 - **Sign-ins.** Each worker signs in on its own: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login` and `codex login --device-auth`. Show each sign-in link to the user.
-- **Repositories.** `~/deslop` uses `MP281X <paludgnachmatteo.dev@gmail.com>`. `~/dual` uses `Matteo Paludgnach <matteopaludgnach@datapizza.tech>` and the credential helper `!glab auth git-credential` for `https://git.datapizza.tech`. Run `gh auth setup-git` for GitHub.
+- **Repositories.** Git picks each repository's identity per [Git identity](#git-identity). `~/dual` uses the credential helper `!glab auth git-credential` for `https://git.datapizza.tech`. Run `gh auth setup-git` for GitHub.
 - **Automatic updates.** `unattended-upgrades` installs Debian updates daily on every worker; `/etc/apt/apt.conf.d/20auto-upgrades` turns it on.
 - **Git.** Global defaults on every worker: `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled`, `diff.algorithm histogram`, `merge.conflictStyle zdiff3` and `init.defaultBranch main`.
 - **Firewall.** Tailscale's `ts-input` chain accepts tailnet traffic and its UDP port before ufw, so ufw needs no rule for them. On dev, `/etc/sysctl.d/90-quiet-console.conf` keeps `[UFW BLOCK]` lines off the VNC console.
@@ -29,7 +29,7 @@ The workers are `dev` and `desktop`. Both run the latest Debian stable in text m
 
 ## Agent configuration
 
-Every worker runs the same agent configuration, installed from the deslop repository over SSH. Install after every change to these sources, from the checkout that holds the change, on every running worker in one pass. Report an unreachable worker as a gap unless the user turned it off; a worker that was off gets the install the next time it runs.
+Every worker runs the same agent configuration, installed from the deslop repository over SSH. Install after every change to these sources, from the checkout that holds the change, on every running worker in one pass. Report an unreachable worker as a gap unless the user turned it off. A worker that was off gets the install the next time it runs.
 
 - **Sources.** `.claude/settings.json`, `.claude/agents/pair.md`, `.claude/skills/{workflow,environment}/`, `.codex/config.toml` and `.codex/instructions.md`. Codex's personal skills are links to the Claude copies.
 - **Origin.** Install only from main or from a branch with an open pull request, and bring every installed change to main.
@@ -37,6 +37,7 @@ Every worker runs the same agent configuration, installed from the deslop reposi
 - **Public skills.** Engineering, design and testing stay repository copies that the coding-standards CLI refreshes.
 
 ```bash
+set -e
 for worker in dev desktop; do
   t=mp281x@$worker
   ssh -o ConnectTimeout=5 $t true || { echo "$worker is unreachable"; continue; }
@@ -76,7 +77,7 @@ rm -f /tmp/t3-*-projects.json /tmp/t3-dst-settings.json /tmp/t3-new-settings.jso
 
 ## Update and deploy
 
-1. **Update.** Run `apt-get update`, `apt-get upgrade -y`, `apt-get autoremove -y`, `apt-get clean`, and `vp upgrade`. glab has no apt repository: when `https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, install its `glab_<version>_linux_amd64.deb`. Restart the Docker engine only with the workload preservation below.
+1. **Update.** Run `sudo apt-get update`, `sudo apt-get upgrade -y`, `sudo apt-get autoremove -y`, `sudo apt-get clean`, and `vp upgrade`. glab has no apt repository: when `https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, install its `glab_<version>_linux_amd64.deb`. Restart the Docker engine only with the workload preservation below.
 2. **T3.** Every worker runs T3's nightly channel as the `t3code.service` user unit. Install it with `vp install -g t3@nightly` and `t3 service install`. Run `t3 connect link --headless` and show its device sign-in link to the user. Run `t3 connect publish` for push notifications and Live Activities, then `t3 service restart`, because T3 reads the link at startup. The user turns on **Device Notifications** once per phone or Mac in the app's settings.
 3. **Deploy.** On dev, from `~/deslop` on published main, run `docker compose --project-name deslop --file tools/compose.yaml pull`, then `up -d --remove-orphans`. A changed inline config needs `up -d --force-recreate --no-deps <service that mounts it>`.
 4. **Verify.** https://portfolio.mp281x.xyz and dev's http://127.0.0.1:16686/api/services must return 200. An OPTIONS preflight to otel's `/v1/traces` and `/v1/logs` with `Origin: https://portfolio.mp281x.xyz` must succeed.
@@ -98,8 +99,8 @@ Remove rebuildable data, never unsettled work. A worktree is disposable only whe
 
 Check owners through T3's thread tools or the [T3 history](../../workflow/references/children.md#t3-history) section. `orchestration_v2_projection_threads.payload_json` holds `worktreePath`, `settledAt` and `settledOverride`. Join each owner's latest `orchestration_v2_projection_runs` row for activity. A missing path, listener or row starts an investigation; it never permits deletion. Unknown owners, stopped containers, unattached volumes and the shared production `deslop` project stay.
 
-1. **Removed worktrees.** Find Compose projects whose `com.docker.compose.project.working_dir` is gone, processes with a deleted working directory, Serve mappings with no backend and `~/.deslop` folders without a checkout. After every owner is confirmed settled, remove only that project (`down --volumes --remove-orphans`), process group, mapping (`sudo tailscale serve --https=<port> off`) or folder. Keep `~/.deslop/{deploy,measure,repos}`. The tailnet listener itself is not a Serve backend.
-2. **Settled worktrees.** T3 removes worktrees under its cleanup settings: after 4 days without a run, and when their pull request merges. Before that, destroy a settled worktree's Alchemy preview or Compose project when its data is disposable. Move `node_modules/.cache/deslop/proof/` to `~/.deslop/proof/<worktree directory name>/`. Run `git worktree remove --force --force <path>` only for a clean worktree; the branch keeps every commit. List dirty worktrees for the user instead. Delete `~/.deslop/<worktree directory name>/`.
+1. **Removed worktrees.** Find Compose projects whose `com.docker.compose.project.working_dir` is gone, processes with a deleted working directory, Serve mappings with no backend and `~/.deslop/<worktree>` folders without a checkout. After every owner is confirmed settled, remove only that project (`down --volumes --remove-orphans`), process group, mapping (`sudo tailscale serve --https=<port> off`) or folder. Keep `~/.deslop/deploy`. The tailnet listener itself is not a Serve backend.
+2. **Settled worktrees.** T3 removes worktrees under its cleanup settings: after 4 days without a run, and when their pull request merges. Before that, destroy a settled worktree's Alchemy preview or Compose project when its data is disposable. Run `git worktree remove --force --force <path>` only for a clean worktree; the branch keeps every commit. List dirty worktrees for the user instead. Delete `~/.deslop/<worktree directory name>/`.
 3. **Local branches.** In `~/deslop` and `~/dual`, delete local branches that no worktree uses when the remote has their commits or their pull request merged or closed. List the others for the user.
 
    ```bash
@@ -118,7 +119,7 @@ Check owners through T3's thread tools or the [T3 history](../../workflow/refere
    done
    ```
 
-4. **`/tmp`.** Remove user-owned data only for settled owners with no open handles (`lsof +D`). Keep `claude-*` and `codex*` session folders.
+4. **`/tmp`.** systemd cleans it per [Scratch on disk](#scratch-on-disk). Remove a large folder earlier only when its owner is settled and nothing holds it open (`lsof +D`). Keep `claude-*` and `codex*` session folders.
 5. **Caches.** With no build running, run `docker image prune -a -f` and `docker builder prune -a -f`. With no install running, run `vp pm cache clean` in `~/deslop` and `~/dual` and clear identified caches under `~/.npm` and `~/.cache`. Remove noncurrent Vite+, Node and package-manager versions, and unused Codex releases. Run `journalctl --vacuum-size=100M`. Never run a blanket Docker system or volume prune or a negated-label exclusion.
 6. **T3 releases.** Skip this step while `~/.t3/runtime/service-state.json` shows an update that is not `committed`. After T3 updates itself, the unit's launcher stays on the old version, and `t3 service status` reports a repair. With no run active, run `t3 service install`, which restarts T3. With runs active, point `ExecStart` in `~/.config/systemd/user/t3code.service` at the active version in `~/.t3/runtime/service-state.json` and run `systemctl --user daemon-reload`. Delete other versions only after the repair; otherwise the next start finds no launcher.
 7. **Report.** Show `df -h /` before and after, what each step removed and the ten largest folders left (`du -xh --max-depth=2 ~ /tmp /var/lib/docker | sort -h | tail`). Count every worktree's `node_modules` in one `du`, because installs hardlink from the stores.
@@ -153,12 +154,40 @@ A reboot without a keyboard skips the MOK manager and drops the pending key. Unt
 
 These steps set up a worker from a Debian netinst image. Select only the SSH server task in the installer, because the desktop tasks install GNOME.
 
-1. Install `sudo`, `network-manager` and `ufw`, and mark them as manual. Purge any desktop stack with `--autoremove`: the `task-*desktop` tasks, GNOME, GDM, LibreOffice, Firefox, Evolution, CUPS, Avahi, BlueZ, ModemManager and PipeWire. Keep `multi-user.target` as the default target.
+1. Install `sudo`, `network-manager` and `ufw`, and mark them as manual. Put `/tmp` on disk per [Scratch on disk](#scratch-on-disk). Purge any desktop stack with `--autoremove`: the `task-*desktop` tasks, GNOME, GDM, LibreOffice, Firefox, Evolution, CUPS, Avahi, BlueZ, ModemManager and PipeWire. Keep `multi-user.target` as the default target.
 2. Write the sudoers file. Add the Docker and GitHub CLI apt sources, each key in `/etc/apt/keyrings/<name>.gpg`, and install the toolchain, `glab` and `unattended-upgrades` with its `20auto-upgrades` file. Set the git defaults. Add `mp281x` to the `docker` group and write the Docker binding defaults.
 3. Install the user's key pair per [Access changes](#access-changes). Run the Tailscale block and show its sign-in link to the user. After a second SSH login over the tailnet works, set `ufw default deny incoming`, allow 80 and 443 only on dev, and enable ufw.
 4. On dev only: add the OpenVPN 3 apt source and install `openvpn3-client`. Import the VPN with `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`, connect it, and advertise its route.
 5. Run `loginctl enable-linger mp281x`. As `mp281x`, install Vite+ with `VP_HOME="$HOME/.vite-plus"`, the global packages and Claude Code. Run the T3 step and `t3 browser setup`, and set `PRETTY_HOSTNAME`.
-6. Run the sign-ins and `gh extension install github/gh-stack`. Clone both repositories with their identities, and add each with `t3 project add --title <name> <path>`. On dev, deploy the public apps.
+6. Run the sign-ins and `gh extension install github/gh-stack`. Write the git identities by host per [Git identity](#git-identity). Clone both repositories, and add each with `t3 project add --title <name> <path>`. On dev, deploy the public apps.
 7. Install the [agent configuration](#agent-configuration), and copy the [T3 settings](#t3-settings) from another worker.
 8. After a key login from another machine succeeds, write `/etc/ssh/sshd_config.d/10-keys-only.conf` with `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no` and `X11Forwarding no`. Run `sudo sshd -t && sudo systemctl reload ssh`.
 9. With an NVIDIA GPU, enable `contrib` and `non-free`, and add NVIDIA's CUDA and container toolkit sources. Install `linux-headers-amd64`, `nvidia-open` and `nvidia-container-toolkit`. Add the `nvidia` runtime, and enroll the key per [Desktop GPU](#desktop-gpu).
+
+## Git identity
+
+Git picks the identity from the repository's remote, so repositories and worktrees carry no `user.*` of their own.
+
+| Remote host          | Name                | Email                             |
+| -------------------- | ------------------- | --------------------------------- |
+| `github.com`         | `MP281X`            | `dev@mp281x.xyz`                  |
+| `git.datapizza.tech` | `Matteo Paludgnach` | `matteopaludgnach@datapizza.tech` |
+
+```bash
+mkdir -p ~/.config/git
+printf '[user]\n\tname = MP281X\n\temail = dev@mp281x.xyz\n' > ~/.config/git/github.gitconfig
+printf '[user]\n\tname = Matteo Paludgnach\n\temail = matteopaludgnach@datapizza.tech\n' > ~/.config/git/datapizza.gitconfig
+for u in 'https://github.com/**' 'git@github.com:**' 'ssh://git@github.com/**'; do git config --global "includeIf.hasconfig:remote.*.url:$u.path" ~/.config/git/github.gitconfig; done
+for u in 'https://git.datapizza.tech/**' 'git@git.datapizza.tech:**' 'ssh://git@git.datapizza.tech/**'; do git config --global "includeIf.hasconfig:remote.*.url:$u.path" ~/.config/git/datapizza.gitconfig; done
+```
+
+## Scratch on disk
+
+Agents write every scratch file and repository clone under `/tmp`. Debian mounts `/tmp` as tmpfs in RAM, so the workers mask that mount and let systemd clean the disk directory. The change applies at the next boot.
+
+```bash
+printf '# /tmp lives on disk; empty it at boot and drop files unused for 7 days\nD /tmp 1777 root root 7d\n' | sudo tee /etc/tmpfiles.d/tmp.conf >/dev/null
+sudo systemctl mask tmp.mount
+```
+
+Check with `findmnt /tmp` after a reboot: it prints nothing when `/tmp` is on the root disk.

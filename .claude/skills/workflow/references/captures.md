@@ -11,6 +11,7 @@ T3's browser runs on the worker that runs the thread, so it reaches the worker's
 - **Setup.** `preview_set_appearance` sets the real color preference; a dark class alone does not. `preview_resize` sets the viewport. Wait with `preview_wait_for` on text, a locator or a URL, never a fixed delay.
 - **Video.** `preview_recording_start` before the first meaningful input, then `preview_recording_stop`, which returns an H.264 MP4 at device scale 2. Build a contact sheet with `ffmpeg -i <video> -vf fps=1,scale=640:-1,tile=4x4 <sheet.png>` and inspect it.
 - **Locators.** Batch independent reads in one `preview_evaluate`. DOM assertions are not visual proof.
+- **Host recovery.** A `preview_evaluate` longer than 15 seconds makes T3 drop its browser host for one second, and the next call wrongly says "Do not retry". Keep each evaluation short and wait with `preview_wait_for`. After a host error, wait two seconds, check `preview_status`, and reopen your tab by its `tabId`. Never install another browser.
 
 ## Rules
 

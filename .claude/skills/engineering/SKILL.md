@@ -5,7 +5,7 @@ description: 'TypeScript and Effect code conventions paired with shared lint. Us
 
 **Scope.** Apply these rules and repository-specific CODING_STANDARDS.md.
 
-**Dependency APIs.** Match manifest/lock versions. Inspect the relevant cloned upstream implementation, types and nearest real usage before inventing an API wrapper or workaround; never node_modules. Follow only the paths needed to settle the question, with no dependency install/build just to read source. Library APIs do not define coding policy.
+**Dependency APIs.** Match the manifest and lockfile versions. Before adding an API wrapper or workaround, read the upstream source per workflow's research procedure. Library APIs do not define coding policy.
 
 **Diagnostics.** Use the shown idiom, not casts, weakened rules or a rewrite trading one diagnostic for another.
 
@@ -15,20 +15,19 @@ description: 'TypeScript and Effect code conventions paired with shared lint. Us
 
 **Experiments.** Write with these idioms; reserve the full refactor/cleanup pass for retained delivery. Keep disposable source isolated and shared rules intact.
 
-- **Requested only.** Check whether existing code, an installed module or a platform capability already satisfies the contract before writing more. Implement only the missing behavior; shorter code never justifies dropping requested behavior, safety or accessibility. Touch only what the request needs; unrelated improvements are reported. A refactor or cleanup request asks for depth instead: every rule applies to every line of the owned files.
+- **Reuse first.** Check existing code, installed modules and platform capabilities before adding code. Implement only the missing behavior, without dropping required behavior, safety or accessibility. Workflow owns the scope. A refactor or cleanup request applies every rule to every line of the owned files.
 - **Inward layers.** Domain and service code never import HTTP, RPC, or other transport types.
 - **Building blocks.** For a consequential new interface, start with a realistic caller operation and its ordering, failure and lifetime obligations; hide useful complexity, not forwarded names. Offer services, Layers and functions the caller composes like any Effect module, never a bundle such as `serve(app)`. No mandatory architecture document or alternatives round.
-- **No machinery.** Behave correctly instead of building hooks, guards, or generators to enforce behavior.
-- **Behavior kept.** A refactor keeps behavior at every usage point. Two differences are accepted and reported with the change: one no usage point observes that makes the code simpler, and one a rule here causes, such as an error keeping its cause or sorted keys, unless a usage point parses it; printed diagnostics are not a contract. Any other behavior change is the user's decision, except a reachable bug's fix.
-- **Reachable bugs.** A bug a real input from a usage point triggers is fixed and reported, with every consumer of the changed output checked. For hard bugs, use one symptom-specific replay and a prediction per probe; compare known-good/broken states when useful. Remove edits motivated by disproven hypotheses and check the original scenario after reducing a reproduction. Handling for input no caller produces is deleted; anything that looks intentional or that other code relies on is kept and reported as possibly intentional.
-- **Performance.** Improve performance in the touched code where you know how; measure on a realistic input only when a change claims speed or keeps a slower-looking form. Diagnose at the layer that owns the symptom: distributed spans for RPC/backend dependencies, React commits for rerenders, a browser performance profile for main-thread work. Correlate one real action before changing code, then repeat it on the fix; neither a screenshot nor a service name proves latency or trace coverage. Time correct completed work under equivalent workloads/configuration; distinguish setup/cache/profiling cost and report run count/variation. Differences within noise are unproved, not speedups. Use existing instrumentation; profiling is not a ritual on every change.
+- **No machinery.** Add hooks, guards or generators only for a required contract or a recurring defect.
+- **Behavior kept.** A refactor keeps observable behavior at every consumer. Report two accepted differences with the change: one no consumer observes, and one a rule here causes, such as an error keeping its cause. Printed diagnostics are not a contract. Any other behavior change follows workflow's scope.
+- **Reachable bugs.** Fix a bug that real input reaches when it lies inside workflow's scope, and check every consumer of the changed output. For a hard bug, use one reproduction and one prediction per probe. Remove edits based on disproven hypotheses, then rerun the original scenario. Delete handling only for input the contract excludes; keep and report code that looks intentional.
+- **Performance.** Optimize only when the request or a required contract needs it, and measure realistic input before claiming a speedup. Diagnose at the layer that owns the symptom: distributed spans for RPC/backend dependencies, React commits for rerenders, a browser performance profile for main-thread work. Correlate one real action before changing code, then repeat it on the fix; neither a screenshot nor a service name proves latency or trace coverage. Time correct completed work under equivalent workloads/configuration; distinguish setup/cache/profiling cost and report run count/variation. Differences within noise are unproved, not speedups. Use existing instrumentation; profiling is not a ritual on every change.
 - **Type safety.** A fix never weakens types to make a symptom go away: no widened or erased type, cast, dropped generic, or loosened exported type.
 - **Domain.** Implement the definition the domain uses, such as a cycle for recursion, never the nearest syntactic proxy.
-- **Reread.** Before delivering retained code, reread the diff and delete every line the outcome does not require.
 
 **Happy path.** Failures flow through the error channel: no catch, retry, fallback, backup, or defensive check unless the request or an existing contract needs it.
 
-**Trusted data.** Validate and transform once, at the boundary, with Effect Schema; inside, carry narrowed values forward and never re-check what the schema, the declared type, an earlier filter, or every caller guarantees.
+**Trusted data.** Validate and transform once at the boundary with Effect Schema. Carry narrowed values forward. Never re-check what the schema, the declared type, an earlier filter or every caller guarantees.
 
 ```ts
 // good
@@ -54,7 +53,7 @@ Math.floor(Duration.toDays(DateTime.distance(oldest.timestamp, newest.timestamp)
 import {glob} from 'glob' // a dependency Effect's FileSystem replaces
 ```
 
-**Whole values.** Pass whole values or spread them. No parameter/callback/loop destructuring except labeled tuple parameters, useState and component ref; project fields only to exclude data the recipient must not receive. Name the whole value by its role; a leading underscore marks only a parameter the body never reads, and no name gains an underscore or a number to dodge shadowing.
+**Whole values.** Pass whole values or spread them. Do not destructure parameters, callbacks or loop bindings, except labeled tuple parameters, React state and component refs. Project fields only to exclude data the recipient must not receive. Name the whole value by its role. A leading underscore marks only a parameter the body never reads; never add an underscore or a number to avoid shadowing.
 
 ```ts
 // good
@@ -101,7 +100,7 @@ pipe(
 
 ## Lint pairs
 
-The forms below are the ones lint enforces without an autofix, and the single form that satisfies every rule involved.
+The forms below are the ones lint enforces without an autofix, each in a form that satisfies every rule involved.
 
 **Fallback.** A default is `??`; never a ternary on the same value.
 
@@ -112,7 +111,7 @@ const root = options?.root ?? '.'
 const root = options?.root !== undefined ? options.root : '.'
 ```
 
-**Conditions.** A boolean is tested bare; `=== true` only on a value that may be undefined.
+**Conditions.** A boolean is tested bare; `=== true` only on a value that can be undefined.
 
 ```tsx
 // good
@@ -120,7 +119,7 @@ if (enabled) return
 aria-current={props.selected === true ? 'page' : undefined}
 // bad
 if (enabled === true) return // enabled is a boolean
-if (props.selected) return // props.selected may be undefined
+if (props.selected) return // props.selected can be undefined
 ```
 
 **Flat.** Use early-return statements in Effect.fn. No nested ternaries or combinators deeper than equivalent statements. Match/combinators serve single expressions; Boolean.match selects a value, except one-line JSX-attribute ternaries.
@@ -180,7 +179,7 @@ const parsed = Option.getOrUndefined(Number.parse(event.target.value))
 
 **Handlers.** A handler used once is an arrow in place; a handler used twice is a `function`.
 
-**Pairs.** Positional tuples stay whole, read by index. Meaningful named bindings such as React state/setter pairs and explicitly labeled tuple parameters are useful exceptions.
+**Pairs.** Read positional tuples by index. Whole values lists the destructuring exceptions.
 
 **Accumulators.** No `let`: a fold or an Effect collection operation that says what it selects.
 
@@ -244,7 +243,7 @@ const text = Effect.fn('Ai.text')(function* (response: AiResponse) {
 })
 ```
 
-**Casts.** No `as`, `any` or erasing a known shape into `unknown`; `satisfies` and `as const` are the only assertions. Genuinely opaque SDK/framework inputs remain `unknown` until narrowed or decoded at their boundary—do not fabricate a shape to avoid that type. Decode incoming protocol data once with Schema before use.
+**Casts.** No `as`, `any` or erasing a known shape into `unknown`; `satisfies` and `as const` are the only assertions. Genuinely opaque SDK/framework inputs remain `unknown` until narrowed or decoded at their boundary—do not fabricate a shape to avoid that type.
 
 ```ts
 // good
@@ -301,7 +300,7 @@ files: ['packages/components/src/components/dev-tools.tsx', 'packages/components
 
 ## Effect
 
-**Functions.** Traced argument boundary: Effect.fn('Name.method'). Internal helper: Effect.fnUntraced. Argument-free multi-statement effect: Effect.gen; one statement: the effect. Annotated return: Effect.fn.Return.
+**Functions.** Use Effect.fn('Name.method') for a traced function with arguments and Effect.fnUntraced for an internal helper. Use Effect.gen for an effect with several statements and no arguments, and a single effect directly. Use Effect.fn.Return for an explicit return type.
 
 ```ts
 // good
@@ -325,7 +324,7 @@ const stop = Effect.gen(function* () {
 }) // one statement
 ```
 
-**Errors.** One domain error per service; preserve cause, redact secrets, map in Effect.fn's pipeline argument. Map SDK unknown errors at the adapter. No catch/retry/fallback without a required contract.
+**Errors.** One domain error per service; preserve cause, redact secrets, map in Effect.fn's pipeline argument. Map SDK unknown errors at the adapter.
 
 ```ts
 // good
@@ -544,7 +543,7 @@ setDraft(current => {
 
 **File tree.** Use explicit kebab-case role names and one naming scheme. Prefer one substantive file to near-empty fragments; colocate <name>.test.ts; no barrels.
 
-**Package surface.** Explicit exports for imported subpaths; imports aliases for internal paths. Shared lint preset plus generated ignores only.
+**Package surface.** Declare exports for imported subpaths and import aliases for internal paths. Use the shared lint preset with generated ignores only.
 
 ```ts
 // good
@@ -560,7 +559,7 @@ const warned = ['sort-keys', 'typescript/no-restricted-types'] // a package rule
 
 ## React
 
-**Components.** React Compiler memoizes; state is destructured at its declaration; refs are props; logic lives in atoms.
+**Components.** React Compiler memoizes. Destructure state at its declaration, receive component refs through props, and keep shared logic in atoms.
 
 ```tsx
 // good
