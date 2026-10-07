@@ -2,50 +2,56 @@
 
 ## Example body
 
-Copy this shape. The branch arrives ready to review and merge, so the body has no Gaps. Settle missing access and open decisions in the thread before pushing. Describe what the final branch changes and how to review it, not its history, and keep consequential risks. The open part above the first collapsed section must fit on one screen. Each budget is a maximum, not a target.
+Copy this shape. The body describes the whole branch against the default branch: its central change first, then everything else it changes, and how to review it. It is not a record of the last run or of the branch's history. The branch arrives ready to review and merge, so the body has no Gaps, no Needs you and no ticket table. Ticket coverage, open decisions and follow-ups go to the user in the thread before the push. Each budget is a maximum, not a target.
 
-| Section      | Budget                                                                                                                                                                                                                                              |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Result       | Two lines, written as what a user or caller can now do                                                                                                                                                                                              |
-| Needs you    | Decisions and actions only, never facts or a backlog                                                                                                                                                                                                |
-| Ticket       | Every requirement of the source tickets, each done, partial or missing                                                                                                                                                                              |
-| Changed      | At most eight behavior bullets; a before → after table, linked to lines, only for public or breaking endpoints, schemas, flags, keys, migrations and exported APIs                                                                                  |
-| Proof        | One complete video per realistic journey, and at most eight cropped screenshots                                                                                                                                                                     |
-| Review guide | One row per area in reading order: area, at most three files, and 25 words on behavior, mechanism and what to check; a last row of mechanical files to skip with the hand-written size per package and the command that reproduces generated output |
-| Checklist    | The repository template's checklist, ticked only for what the branch did                                                                                                                                                                            |
+| Section      | Budget                                                                                                                                                                                                                                                         |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Focus        | Two short paragraphs: the one central change in the user's terms, then what it makes possible. When you cannot name the central change, ask the user in the thread before writing                                                                              |
+| Changed      | Every behavior change, grouped under italic area headings with the central area first. One line per bullet, linked to the lines that implement it. A small table when a list of comparable facts is the claim, such as installed libraries and their versions  |
+| Contracts    | Collapsed, when public or breaking endpoints, schemas, flags, keys, migrations or exported APIs change: a before and after table linked to lines, then the migration a caller needs                                                                            |
+| Proof        | One complete video per realistic journey, and at most eight cropped screenshots                                                                                                                                                                                |
+| Review guide | Collapsed. One row per area in reading order: area, at most three files, and 25 words on behavior, mechanism and what to check; a last row of mechanical files to skip with the hand-written size per package and the command that reproduces generated output |
+| Checklist    | The repository template's checklist, ticked only for what the branch did                                                                                                                                                                                       |
 
 Leave out pass numbers, test tables, process words and anything T3 or the pipeline already shows.
 
-- **Ticket rows** quote the requirement's title from the ticket, in its language. Link a ticket only when the reviewer can open it.
 - **Captions** state the claim and the duration above each video. Screenshots sit in a two-column table, each with a caption.
 - **Before and after.** Show a changed screen as a pair with the same data, the default branch on the left.
 - **Numbers.** When speed or size is part of the claim, give a small before and after table with the command that measured it.
 - **Repository template.** When the repository has a merge request template, keep its checklist as the last section and tick it truthfully.
 
 ```markdown
-Workflows can call 69 providers (was 8) and start from their webhooks or polling. Attio, Linear, GitHub and GitLab register their webhooks automatically.
+Integrations are now generated, not handwritten. `dual openapi-plugin` turns an OpenAPI, Swagger, Google Discovery, GraphQL, MCP or Postman source into a versioned plugin, and the hosted catalog grows from 8 to 69 providers.
 
-**Needs you:**
-
-- Decide whether GraphQL field order joins the action hash; today a reordered schema creates a new action version.
-
-**Ticket:**
-
-| Requirement                            | State                                      | Where                               |
-| -------------------------------------- | ------------------------------------------ | ----------------------------------- |
-| Power BI Remote MCP plugin             | Done; a live query needs a Power BI tenant | [powerbi-mcp](link)                 |
-| Attio and Linear register webhooks     | Done                                       | [attio triggers.ts](link#L138-L170) |
-| Jira automation rule starts a workflow | Done                                       | [jira triggers.ts](link#L90-L140)   |
-| Manage tools connected to Jira         | Missing: the ticket asks for an evaluation | —                                   |
+On top of the generated catalog, workflows start from provider webhooks or polling, and the Architect finds actions and triggers by describing the outcome.
 
 **Changed:**
 
+_Generated plugins_
+
+- Each plugin keeps a [lock file](link#L10-L40) that freezes released action contracts; regenerating changes only the unreleased version.
+
+_Triggers_
+
+- Attio, Linear, GitHub and GitLab [register their webhooks](link#L138-L170) on activation and delete them on deactivation.
+
+_Registry catalog_
+
 - The catalog lists 22,600 capabilities and keeps the previous rows while a filter loads.
-- A Jira automation rule can start a workflow with a shared token header.
+
+<details><summary>Contracts and migration</summary>
+
+| Contract                    | Before | After                               |
+| --------------------------- | ------ | ----------------------------------- |
+| [Application version](link) | 5.0.0  | 6.0.0 selects the generated plugins |
+
+Migration: released application versions keep their plugins; nothing changes for existing workflows.
+
+</details>
 
 **Proof:**
 
-Events start runs (1:20): a signed Jira delivery starts a run, a forged one is rejected, an automation rule starts a run.
+Events start runs (1:20): a merge request starts a run, a forged token is rejected, the run comments and posts to Discord.
 
 ![Events start runs](/uploads/<secret>/events-start-runs.mp4)
 
