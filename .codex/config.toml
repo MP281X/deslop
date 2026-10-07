@@ -5,6 +5,7 @@ include_permissions_instructions = false
 include_collaboration_mode_instructions = false
 tool_output_token_limit = 15000
 background_terminal_max_timeout = 1500000
+service_tier = "default"
 
 [agents]
 enabled = false
@@ -25,3 +26,9 @@ default_mode_request_user_input = true
 
 [shell_environment_policy]
 set = { GLAB_PAGER = "cat" }
+
+[projects."/home/mp281x/deslop"]
+trust_level = "trusted"
+
+[projects."/home/mp281x/dual"]
+trust_level = "trusted"

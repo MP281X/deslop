@@ -1,10 +1,34 @@
 # Child procedures
 
-Every child works read-only. Propose changes; never edit tracked files, and leave running services alone. Work as an adversary: assume the work is wrong and prove where. Settle each suspicion yourself with an inline probe or a focused existing test. Do not report a mere possibility or ask the primary to try it. The primary allows at most two rounds, so find everything in this one.
+Work as an adversary: assume the work is wrong and prove where. Settle each suspicion yourself with an inline probe or a focused existing test. Do not report a mere possibility or ask the primary to try it. The primary allows at most two rounds, so find everything in this one.
 
 ## Research
 
-Answer the question from code, logs, named threads or primary documentation, and look for the counterexample that would decide it. Read dependencies in a source checkout from environment, never in `node_modules`. Read videos and posts through environment's media reference. When you count something, define and list the members. Stop when you have answered the question.
+Answer the question from code, logs, named threads or primary documentation, and look for the counterexample that would decide it. Read dependencies in a source checkout, never in `node_modules`. Read videos and posts through environment's media reference. When you count something, define and list the members. Stop when you have answered the question.
+
+### Source checkouts
+
+Read a dependency in a checkout of its official repository at the version the lockfile uses. Reuse a matching checkout under `~/.deslop/repos/` after you check its remote and commit; shared checkouts are read-only and need no install or build.
+
+```bash
+git clone --depth 1 --branch <version-tag-or-required-branch> <official-repository-url> "$HOME/.deslop/repos/<repository>-<version>"
+```
+
+### T3 history
+
+Prefer T3's thread tools, and search earlier decisions with `t3_thread_search` before you read transcripts. `t3_thread_search` and the database cover only the worker that runs you, so an analysis of the user's threads covers every worker: run the same queries on the other one with `ssh mp281x@<worker> '<command>'`. The Mac has no agent threads. For read-only inspection, set `T3_DB` to `~/.t3/userdata/statev2.sqlite`; session files sit in each worker's `~/.claude/projects` and `~/.codex/sessions`. Query it with `sqlite3 -readonly`, and select only the fields you need; never read raw payloads or credentials. Live threads, runs, subagents and turn items are in `orchestration_v2_projection_*`. Legacy `projection_*` tables and `provider_session_runtime` can be stale.
+
+To recover a thread's native transcripts, find its provider sessions, then the session files:
+
+```bash
+sqlite3 -readonly -header -column "$T3_DB" "SELECT provider_thread_id, provider, status, json_extract(payload_json, '$.nativeThreadRef.nativeId') AS session_id, updated_at FROM orchestration_v2_projection_provider_threads WHERE thread_id = '<thread id>' ORDER BY updated_at DESC;"
+S='<selected session id>'; : "${S:?No session selected}"
+find "$HOME/.codex/sessions" "$HOME/.claude/projects" -type f -name "*$S.jsonl"
+```
+
+- **Session choice.** Pick the session that covers the run in question; the latest one can miss stopped or replaced runs.
+- **Subagents.** Claude subagents sit in `<session>/subagents/`. A Codex child's first `session_meta` record names its parent in `payload.parent_thread_id`. Messages forked from the parent are not new work.
+- **Compaction.** A `compacted` record marks a compaction, not a task boundary.
 
 Return the answer, the sources that decide it and the facts still open.
 
@@ -39,8 +63,9 @@ Challenge the outcome, the taste and the attempts so far, and do not defer to th
 Read the published pull request as a reviewer who knows nothing else. Download the body and every embedded capture from the host, such as `glab api "projects/<project>/uploads/<secret>/<file>"`, and inspect each one. Compare them with the head of the branch and the source tickets. Report:
 
 - a claim that a capture or the code contradicts, including a capture of UI the head no longer has;
-- a ticket requirement without proof, or one missing from the Ticket table;
+- a ticket requirement without proof;
+- a body that opens with anything but the branch's central change, or that describes only the last run;
 - a capture whose text is unreadable at the body's width, that shows loading, or that ends before the outcome;
-- a section over the [example body](publishing.md#example-body)'s budget, a Gaps section, process words, and facts placed under Needs you.
+- a body that departs from the [example body](publishing.md#example-body): evidence away from its entry, a video duration, a checklist, a Gaps, Needs you or ticket section, and process words.
 
 Return each finding with the section, the evidence and the smallest fix.

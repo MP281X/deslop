@@ -11,7 +11,7 @@ description: 'TypeScript and Effect code conventions paired with shared lint. Us
 
 ## Simplicity
 
-**Clarity.** Plain, explicit, idiomatic code, names and files; read top to bottom without commentary or cleverness.
+**Clarity.** Plain, explicit, idiomatic code, names and files; read top to bottom without commentary or cleverness. Match the surrounding code's naming, idiom and comment density.
 
 **Experiments.** Write with these idioms; reserve the full refactor/cleanup pass for retained delivery. Keep disposable source isolated and shared rules intact.
 
@@ -296,7 +296,7 @@ export const EntryKind = Schema.Literals(['income', 'expense']) // no importer
 // oxlint-disable-next-line typescript/consistent-type-assertions
 // oxlint-disable-next-line sort-keys -- keeps the printed order
 // bad
-files: ['packages/components/src/components/agent-browser.tsx', 'packages/components/src/components/form.tsx'],
+files: ['packages/components/src/components/dev-tools.tsx', 'packages/components/src/components/form.tsx'],
 ```
 
 ## Effect

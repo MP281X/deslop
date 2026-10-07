@@ -2,54 +2,35 @@
 
 ## Example body
 
-Copy this shape. The branch arrives ready to review and merge, so the body has no Gaps. Settle missing access and open decisions in the thread before pushing. Describe what the final branch changes and how to review it, not its history, and keep consequential risks. The open part above the first collapsed section must fit on one screen. Each budget is a maximum, not a target.
+The body reads as a changelog with evidence. It describes the whole branch against its target branch, one entry per change a user or caller notices, each with the evidence that proves it. It is not a record of the last run or of the branch's history. The branch arrives ready to review and merge, so the body has no Gaps, no Needs you and no ticket table; those go to the user in the thread before the push. Ignore the repository's template and its checklist.
 
-| Section      | Budget                                                                                                                                                                                                                                              |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Result       | Two lines, written as what a user or caller can now do                                                                                                                                                                                              |
-| Needs you    | Decisions and actions only, never facts or a backlog                                                                                                                                                                                                |
-| Ticket       | Every requirement of the source tickets, each done, partial or missing                                                                                                                                                                              |
-| Changed      | At most eight behavior bullets; a before → after table, linked to lines, only for public or breaking endpoints, schemas, flags, keys, migrations and exported APIs                                                                                  |
-| Proof        | One complete video per realistic journey, and at most eight cropped screenshots                                                                                                                                                                     |
-| Review guide | One row per area in reading order: area, at most three files, and 25 words on behavior, mechanism and what to check; a last row of mechanical files to skip with the hand-written size per package and the command that reproduces generated output |
-| Checklist    | The repository template's checklist, ticked only for what the branch did                                                                                                                                                                            |
+| Part      | Content                                                                                                                                                                                                   |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Opening   | One or two sentences: the central change in the user's terms and what it makes possible. When you cannot name the central change, ask the user in the thread before writing                               |
+| Entries   | One `###` heading per change, central change first, phrased as what now happens. Under it: at most two sentences, then its video or screenshots, then a `Code:` line that links the lines implementing it |
+| Contracts | Collapsed, when public or breaking endpoints, schemas, flags, keys, migrations or exported APIs change: a before and after table linked to lines, then the migration a caller needs                       |
+| Review    | Collapsed. The reading order as a numbered list: the entry, at most three files and what to check. A last item names the generated or mechanical files to skip, with the command that reproduces them     |
 
-Leave out pass numbers, test tables, process words and anything T3 or the pipeline already shows.
-
-- **Ticket rows** quote the requirement's title from the ticket, in its language. Link a ticket only when the reviewer can open it.
-- **Captions** state the claim and the duration above each video. Screenshots sit in a two-column table, each with a caption.
-- **Before and after.** Show a changed screen as a pair with the same data, the default branch on the left.
-- **Numbers.** When speed or size is part of the claim, give a small before and after table with the command that measured it.
-- **Repository template.** When the repository has a merge request template, keep its checklist as the last section and tick it truthfully.
+- **Evidence.** Put each video or screenshot under the entry it proves; there is no separate proof section. A video gets no duration or timestamp. One complete video per realistic journey, and at most eight screenshots in the body.
+- **Before and after.** Show a changed screen as a two-column table with the same data, the target branch on the left.
+- **Numbers.** When speed or size is the change, the entry holds a small before and after table with the command that measured it.
+- **Small entries.** A change with nothing to show keeps its heading, its sentences and its `Code:` line. Group several minor changes under one `### Also` entry as one-line bullets.
+- **Leave out** pass counts, test tables, process words, checklists and anything T3 or the pipeline already shows.
 
 ```markdown
-Workflows can call 69 providers (was 8) and start from their webhooks or polling. Attio, Linear, GitHub and GitLab register their webhooks automatically.
+Integrations are now generated, not handwritten: the hosted catalog grows from 8 to 69 providers, and workflows start from their events.
 
-**Needs you:**
+### Provider events start workflow runs
 
-- Decide whether GraphQL field order joins the action hash; today a reordered schema creates a new action version.
+A merge request starts a run and the run comments back; a forged token is rejected.
 
-**Ticket:**
+![A merge request starts a run](/uploads/<secret>/events-start-runs.mp4)
 
-| Requirement                            | State                                      | Where                               |
-| -------------------------------------- | ------------------------------------------ | ----------------------------------- |
-| Power BI Remote MCP plugin             | Done; a live query needs a Power BI tenant | [powerbi-mcp](link)                 |
-| Attio and Linear register webhooks     | Done                                       | [attio triggers.ts](link#L138-L170) |
-| Jira automation rule starts a workflow | Done                                       | [jira triggers.ts](link#L90-L140)   |
-| Manage tools connected to Jira         | Missing: the ticket asks for an evaluation | —                                   |
+Code: [webhook registration](link#L138-L170) · [token check](link#L40-L72)
 
-**Changed:**
+### The catalog keeps its rows while a filter loads
 
-- The catalog lists 22,600 capabilities and keeps the previous rows while a filter loads.
-- A Jira automation rule can start a workflow with a shared token header.
-
-**Proof:**
-
-Events start runs (1:20): a signed Jira delivery starts a run, a forged one is rejected, an automation rule starts a run.
-
-![Events start runs](/uploads/<secret>/events-start-runs.mp4)
-
-| Catalog while a filter loads, before                         | After                                                     |
+| Before                                                       | After                                                     |
 | ------------------------------------------------------------ | --------------------------------------------------------- |
 | ![Blank table](/uploads/<secret>/catalog-loading-before.png) | ![Rows kept](/uploads/<secret>/catalog-loading-after.png) |
 
@@ -57,41 +38,56 @@ Events start runs (1:20): a signed Jira delivery starts a run, a forged one is r
 | ------------------ | ------ | ----- | ------------------------------------ |
 | Catalog list, warm | 2.4 s  | 90 ms | `curl -w '%{time_total}' <list URL>` |
 
-<details><summary>Review guide</summary>
+Code: [RegistryCatalogRepository.ts](link#L20-L64)
 
-| Order | Area          | Files                                | What to check                                                           |
-| ----- | ------------- | ------------------------------------ | ----------------------------------------------------------------------- |
-| 1     | Catalog cache | [RegistryCatalogRepository.ts](link) | Release rows load once per release; usage and failures load per request |
-| Skip  | Mechanical    | `src/generated/**`, `bun.lock`       | Generated by `dual openapi-plugin`; hand-written size: server +420 −80  |
+### Plugins come from API descriptions
+
+`dual openapi-plugin` turns an OpenAPI, GraphQL, MCP or Postman source into a versioned plugin. A lock file freezes released actions, so regenerating changes only the unreleased version.
+
+Code: [generator](link#L1-L90) · [lock file](link#L10-L40)
+
+### Also
+
+- Attio, Linear, GitHub and GitLab delete their webhooks on deactivation ([code](link#L171-L190)).
+
+<details><summary>Contracts and migration</summary>
+
+| Contract                    | Before | After                               |
+| --------------------------- | ------ | ----------------------------------- |
+| [Application version](link) | 5.0.0  | 6.0.0 selects the generated plugins |
+
+Released application versions keep their plugins; nothing changes for existing workflows.
 
 </details>
 
-**Checklist:**
+<details><summary>How to review</summary>
 
-- [x] Agent surface: new `ProductApi` endpoints are classified
-- [x] Docs: affected guides updated
-- [x] Changeset added
+1. Provider events: [triggers.ts](link), [webhooks.ts](link). Check the token comparison and retry identity.
+2. Catalog: [RegistryCatalogRepository.ts](link). Release rows load once per release; usage loads per request.
+3. Skip `src/generated/**` and `bun.lock`: `dual openapi-plugin` regenerates them. Hand-written size: server +420 −80.
+
+</details>
 ```
 
 ## Commands
 
 **Links.** GitHub uses `https://github.com/<owner>/<repo>/blob/<branch>/<path>#L<start>-L<end>`. GitLab uses `https://<host>/<project>/-/blob/<branch>/<path>#L<start>-<end>`.
 
-**Publishing.** Pass bodies and comments as files. Attach an image as `--attach '<file>#<alt text>'` and a GitHub video as a bare `--attach '<file>'`. `glab` has no `--jq` option, so pipe its API output into `jq`. Check the published head, title, body and files against the branch.
+**Publishing.** Pass bodies as files, and check the published head, title, body and files against the branch. Place each capture under its entry:
+
+- **GitHub.** Reference the file in the body as `![alt](./file.png)`; `--attach` uploads it and rewrites that reference in place. A video is a bare `--attach` with the same reference.
+- **GitLab.** `glab --attach` appends at the end, so upload each file through the API and paste the returned `markdown` under its entry. `glab` has no `--jq` option, so pipe its output into `jq`.
 
 ```bash
-gh pr edit --body-file <file> --attach '<file>#<alt text>'
-glab mr update <number> --draft --description-file <file> --attach <file>
+gh pr edit <number> --body-file <file> --attach './file.png#<alt text>'
+curl -fsS -H "PRIVATE-TOKEN: $(glab config get token --host git.datapizza.tech)" -F file=@<file> https://git.datapizza.tech/api/v4/projects/<project id>/uploads | jq -r .markdown
+glab mr update <number> --draft --description-file <file>
 ```
 
-**Wakes.** T3's watch wakes the thread for failed or completed checks, comments, reviews and conflicts. Handle the cause of each wake, resolve actionable review findings, and read logs only of failed jobs.
-
-**No T3 watch.** Run one blocking command in the background under `timeout 2h`. If no run exists for the head, inspect the pipeline trigger instead of polling.
+**Failed checks.** Read the logs of failed jobs only.
 
 ```bash
-ID=$(gh run list --commit "$(git rev-parse HEAD)" --json databaseId -q '.[0].databaseId'); : "${ID:?No run for this commit}"
-gh run watch "$ID" --exit-status --compact; STATUS=$?; [ $STATUS -eq 0 ] || gh run view "$ID" --log-failed; exit $STATUS
-glab ci status --wait --compact
+gh run view <run id> --log-failed
 glab api "projects/<project>/pipelines/<pipeline id>/jobs?scope[]=failed" | jq -r '.[] | "\(.id) \(.name)"'; glab ci trace <job id>
 ```
 

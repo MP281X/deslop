@@ -1,48 +1,58 @@
 # Personal agent configuration
 
-| Owner                                                | Decision                                                                                                                                                      |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.claude/agents/pair.md`                             | Shared personal instructions; `.codex/instructions.md` aliases this file                                                                                      |
-| `.claude/skills/workflow` and `environment`          | Personal skills; maintenance and media are environment references; Codex paths alias the directories                                                          |
-| Engineering, design and testing in both native roots | Generated repository copies; edit [package sources](../tools/coding-standards/skills/), then [refresh locally](../tools/coding-standards/README.md#decisions) |
-| `.claude/AGENTS.md`                                  | Shared brief; `.codex/AGENTS.md` aliases it                                                                                                                   |
-| Native settings                                      | Harness-specific capabilities, not another copy of workflow or coding policy                                                                                  |
+| Owner                                                 | Decision                                                                                                                                                      |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.claude/agents/pair.md` and `.codex/instructions.md` | Separate system prompts that replace each harness's built-in prompt: the built-in parts worth keeping, then the same pair rules in both                       |
+| `.claude/skills/workflow` and `environment`           | Personal skills; maintenance and media are environment references; Codex paths alias the directories                                                          |
+| Engineering, design and testing in both native roots  | Generated repository copies; edit [package sources](../tools/coding-standards/skills/), then [refresh locally](../tools/coding-standards/README.md#decisions) |
+| `.claude/AGENTS.md`                                   | Shared brief; `.codex/AGENTS.md` aliases it                                                                                                                   |
+| Native settings                                       | Harness-specific capabilities, not another copy of workflow or coding policy                                                                                  |
 
-Install personal configuration with the [environment procedure](skills/environment/references/deslop.md#install-personal-configuration).
+Install personal configuration on every worker with the [environment procedure](skills/environment/references/maintenance.md#agent-configuration).
 
 Machine upkeep lives in environment's maintenance reference. Update this brief when these ownership decisions change, not for every implementation edit.
 
 ## Decisions not to repeat
 
-| Rejected approach                                     | Reason                                                                                                                               |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Mandatory delegation and model ladders                | Coordination became the work; delegation stays conditional                                                                           |
-| Production polish before prototype feedback           | Unaccepted directions must stay cheap to replace                                                                                     |
-| Progress ledgers or PR recaps in chat                 | T3 and the PR show them; the closing Status table states only head, pipeline and pending                                             |
-| Repeated instruction-simulation rounds                | They tested decisions, not real-task speed; rerun only for a consequential open question                                             |
-| Rebuilding orchestration or review surfaces           | T3 threads, inline renders and the pull request supply them                                                                          |
-| Importing Emil's whole skill collection               | Its variant picker, audit fan-out and style defaults conflict; keep the targeted craft                                               |
-| Splitting short core design standards into references | Alignment, overflow and interaction essentials stay inline                                                                           |
-| Telegraphic, slash-heavy instruction prose            | Agents copied it into briefs with glued words                                                                                        |
-| Coordination protocols between children               | A checker idled behind GO and PAUSE gates while source changed                                                                       |
-| Jira, Linear or other tracker connectors              | The user does not want them                                                                                                          |
-| Implementation children, even with separate files     | In one checkout they queued on the test lock, waited on gates and reformatted each other                                             |
-| Nested delegation                                     | No case justified a second level; finished children kept acting on pipeline events                                                   |
-| Review fix rounds until clean                         | One day produced 28 review tasks, many one-minute checks of one-line fixes                                                           |
-| Formatter and autofix rewrites outside the task       | They put unrelated files into pull requests and widened lint migrations                                                              |
-| Codex `model_context_window` override                 | Primary calls carried a median of 264k tokens; the recommended window compacts sooner                                                |
-| Commit series or stacked pull requests for review     | The user chose a contract-focused pull request body instead                                                                          |
-| Children writing full reports to scratch files        | The user wants results in the thread, not side files                                                                                 |
-| A diff-classification command                         | The user does not want another CLI; the cleanup audit procedure covers it                                                            |
-| Verification children running checks                  | Checks write shared outputs; the primary runs them                                                                                   |
-| Rerunning Finish and Deliver for every later change   | Each pass cost hours; a later change returns to Build and reruns only its hunks                                                      |
-| Full validation after a small change                  | Repeated root checks and builds; the ledger reruns only checks whose inputs changed                                                  |
-| Rendering tables, lists or prose as HTML              | Markdown already shows them; a render must show space, flow, time or a comparison                                                    |
-| Patching single cases of a repeated failure           | The same defects recurred across threads; fix the code, rule or setting that causes them                                             |
-| T3's browser preview tools                            | The VPS is headless, the Mac is often off, and remote previews are slower over the network                                           |
-| References inside the shared skills                   | Tested: split rules made engineering, design and testing results less consistent; only the workflow keeps references for path briefs |
-| Thread briefs that restate the workflow               | Every rule change then needed a steer; briefs carry the plan and task decisions only                                                 |
-| Re-reviewing a whole branch and fixing style findings | A repeat review of 400 files returned 25 findings each and drew restyling across unrelated files                                     |
+| Rejected approach                                                           | Reason                                                                                                                               |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Mandatory delegation and model ladders                                      | Coordination became the work; delegation stays conditional                                                                           |
+| Production polish before prototype feedback                                 | Unaccepted directions must stay cheap to replace                                                                                     |
+| Progress ledgers or PR recaps in chat                                       | T3 and the PR show them; the closing Status table follows the pair prompt                                                            |
+| Repeated instruction-simulation rounds                                      | They tested decisions, not real-task speed; rerun only for a consequential open question                                             |
+| Rebuilding orchestration or review surfaces                                 | T3 threads, inline renders and the pull request supply them                                                                          |
+| Importing Emil's whole skill collection                                     | Its variant picker, audit fan-out and style defaults conflict; keep the targeted craft                                               |
+| Splitting short core design standards into references                       | Alignment, overflow and interaction essentials stay inline                                                                           |
+| Telegraphic, slash-heavy instruction prose                                  | Agents copied it into briefs with glued words                                                                                        |
+| Coordination protocols between children                                     | A checker idled behind GO and PAUSE gates while source changed                                                                       |
+| Jira, Linear or other tracker connectors                                    | The user does not want them                                                                                                          |
+| Implementation children, even with separate files                           | In one checkout they waited on gates and reformatted each other                                                                      |
+| Nested delegation                                                           | No case justified a second level; finished children kept acting on pipeline events                                                   |
+| Review fix rounds until clean                                               | One day produced 28 review tasks, many one-minute checks of one-line fixes                                                           |
+| Formatter and autofix rewrites outside the task                             | They put unrelated files into pull requests and widened lint migrations                                                              |
+| Codex `model_context_window` override                                       | Primary calls carried a median of 264k tokens; the recommended window compacts sooner                                                |
+| One thread per stack layer                                                  | A later request must land in the layer that owns it, not in the layer that is checked out                                            |
+| Stacks without a reason to split                                            | The user wants layers only where a reviewer needs them apart                                                                         |
+| A machine-wide lock and resource rules                                      | `desktop` has 24 threads and 31 GB swap; the user rejects rules shaped by machine limits, and nested lock names deadlocked a child   |
+| Tailscale SSH instead of keys                                               | The user chose one shared key pair; the Mac's Tailscale app cannot be an SSH server                                                  |
+| Copying sign-ins or configuration from another machine                      | The user can reset any machine at any time; each worker sets itself up, and the key pair comes from the user's backup                |
+| Wake-on-LAN through the Mac                                                 | The Mac shares a network with `desktop` only when the user is home and can power it on by hand                                       |
+| The Atlassian CLI                                                           | The user does not use it                                                                                                             |
+| Package-level preset adoption in deslop                                     | Deslop's root config extends the preset for the whole repository; package adoption and changed-files-only ignores apply in Dual      |
+| Updating Codex, Claude Code and T3 in maintenance                           | T3 updates all three itself                                                                                                          |
+| Template checklists, video durations and a separate Proof section in bodies | The user reads a body as a changelog: each change with its own evidence and code links                                               |
+| The harnesses' built-in writing style and progress updates                  | The user rejects both default outputs; the pair rules replace them                                                                   |
+| One prompt file shared by both harnesses                                    | Each harness keeps different built-in rules, such as Claude's tool preference and Codex's channels                                   |
+| Children writing full reports to scratch files                              | The user wants results in the thread, not side files                                                                                 |
+| A diff-classification command                                               | The user does not want another CLI; the cleanup audit procedure covers it                                                            |
+| Verification children running checks                                        | Checks write shared outputs; the primary runs them                                                                                   |
+| Rerunning Finish and Deliver for every later change                         | Each pass cost hours; a later change returns to Build and reruns only its hunks                                                      |
+| Full validation after a small change                                        | Repeated root checks and builds; the ledger reruns only checks whose inputs changed                                                  |
+| Rendering tables, lists or prose as HTML                                    | Markdown already shows them; a render must show space, flow, time or a comparison                                                    |
+| Patching single cases of a repeated failure                                 | The same defects recurred across threads; fix the code, rule or setting that causes them                                             |
+| References inside the shared skills                                         | Tested: split rules made engineering, design and testing results less consistent; only the workflow keeps references for path briefs |
+| Thread briefs that restate the workflow                                     | Every rule change then needed a steer; briefs carry the plan and task decisions only                                                 |
+| Re-reviewing a whole branch and fixing style findings                       | A repeat review of 400 files returned 25 findings each and drew restyling across unrelated files                                     |
 
 <details>
 <summary>Workflow and agent references</summary>
