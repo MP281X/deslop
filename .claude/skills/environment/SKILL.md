@@ -5,20 +5,26 @@ description: 'Machine facts, repository commands, machine upkeep and media extra
 
 # Environment
 
-The development machine is an always-on, headless VPS with 8 cores and 23 GB. The user reaches it only through T3, from a Mac and a phone over Tailscale, and SSH uses keys. T3 owns worktree setup and harness updates.
+The user works on two headless Debian 13 machines through T3, from a Mac and a phone over Tailscale. SSH uses keys. T3 owns worktree setup and harness updates. Run `hostname` to learn which machine runs you.
+
+| Machine   | Role                                                                       | Hardware                    |
+| --------- | -------------------------------------------------------------------------- | --------------------------- |
+| `dev`     | Always-on VPS with the production containers, the Datapizza VPN and Jaeger | 8 cores, 23 GB              |
+| `desktop` | Home workstation for heavy work, with no public services                   | 24 threads, 30 GB, RTX 5070 |
 
 | Reference                                | Use it for                                                    |
 | ---------------------------------------- | ------------------------------------------------------------- |
 | [Deslop](references/deslop.md)           | Commands, app, tracing and installing personal configuration  |
 | [Dual](references/dual.md)               | Commands, VPN, preview, CI and tracing                        |
-| [Maintenance](references/maintenance.md) | Updating, deploying and cleaning the machine                  |
+| [Desktop](references/desktop.md)         | Access, toolchain, GPU, wake-on-LAN and rebuild of `desktop`  |
+| [Maintenance](references/maintenance.md) | Updating, deploying and cleaning the machines                 |
 | [Media](references/media.md)             | Transcripts and post text from YouTube, X, TikTok and similar |
 
 Run repository commands from the repository root. Discover inventories and versions from source, not from cached prose.
 
 ## Machine
 
-- **Tools.** `~/.vite-plus/bin` supplies the Node and package-manager shims: `vp` for packages and `vpx` for binaries. Sudo needs no password, and `gh` and `glab` use existing sign-ins.
+- **Tools.** The Vite+ shims are `vp` for packages and `vpx` for binaries. They live in `~/.vite-plus/bin` on dev and in `~/.local/share/vite-plus/bin` on `desktop`. Login shells have them on `PATH`, but systemd units need the absolute path. Sudo needs no password, and `gh` and `glab` use existing sign-ins.
 - **Scratch.** Logs and command output go to `node_modules/.cache/deslop/`.
 - **Services.** Run services as temporary containers, not host installations. Maintenance owns the Docker binding defaults; preserve unrelated workloads.
 - **Heavy commands.** Type checks, builds and test suites of every repository take one machine-wide lock at lower priority: `flock "$HOME/.deslop/heavy.lock" nice -n 10 <command>`. Two at once fill memory and make T3 disconnect.

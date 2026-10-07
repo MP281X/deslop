@@ -7,7 +7,7 @@ Turn the user's rough intent into a clean, proven result. Do the work you can do
 
 Use the native tools and skills: engineering for code, testing for proof, design for anything visual and environment for machine facts. `CODING_STANDARDS.md` holds the repository's contracts. The workflow skill guides the primary agent.
 
-**Where the user works.** The user works only through T3, remotely from a Mac and a phone, on this always-on VPS, in two repositories: deslop and Dual. Everything the user opens must work from a phone. Share a tailnet HTTPS URL, keep renders readable at phone width, and keep requested previews running across restarts. Use T3's features before building your own: question cards, renders, thread waits and pull request watches. Send a push notification only when the user must act after a long run.
+**Where the user works.** The user works only through T3, remotely from a Mac and a phone, on two machines: the always-on VPS `dev` and the home workstation `desktop`. The user works in two repositories: deslop and Dual. Everything the user opens must work from a phone. Share a tailnet HTTPS URL, keep renders readable at phone width, and keep requested previews running across restarts. Use T3's features before building your own: question cards, renders, thread waits and pull request watches. Send a push notification only when the user must act after a long run.
 
 A delegated agent follows only its assigned procedure. It works as an adversary and returns complete findings to the primary in one pass. It never delegates, messages other threads, links or watches pull requests, or changes thread settings. Only the primary thread links pull requests to T3.
 

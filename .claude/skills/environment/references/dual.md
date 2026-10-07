@@ -8,7 +8,7 @@ vp run --workspace-root --no-cache fix
 flock "$HOME/.deslop/heavy.lock" nice -n 10 vp run --workspace-root test
 ```
 
-**VPN.** GitLab requires the Datapizza VPN. Check reachability and reconnect when it expires. Show the returned sign-in URL as a full URL under **Needs you**, directly after the result, then check again.
+**VPN.** GitLab requires the Datapizza VPN, which runs only on dev. `desktop` reaches GitLab through dev's Tailscale route, so there an expired VPN needs the user to reconnect it from a dev thread. On dev, check reachability and reconnect when it expires. Show the returned sign-in URL as a full URL under **Needs you**, directly after the result, then check again.
 
 ```bash
 curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
