@@ -9,9 +9,8 @@ T3's browser runs on the worker that runs the thread, so it reaches the worker's
 - **Tab.** Open your own tab with `preview_open` and `reuseExistingTab: false`, and pass its `tabId` to every call. Use `open: false` for background proof. Close the tab with `t3_preview_close` when the proof is done.
 - **Sign-in.** Each agent session has its own isolated browser storage, so sign in once per session through the app's sign-in page.
 - **Setup.** `preview_set_appearance` sets the real color preference; a dark class alone does not. `preview_resize` sets the viewport. Wait with `preview_wait_for` on text, a locator or a URL, never a fixed delay.
-- **Screenshots.** `preview_snapshot` with `save: true` writes a PNG and returns its path; its accessibility tree supplies `aria-ref` locators.
 - **Video.** `preview_recording_start` before the first meaningful input, then `preview_recording_stop`, which returns an H.264 MP4 at device scale 2. Build a contact sheet with `ffmpeg -i <video> -vf fps=1,scale=640:-1,tile=4x4 <sheet.png>` and inspect it.
-- **Locators.** Prefer `aria-ref` and role locators from the latest snapshot. Batch independent reads in one `preview_evaluate`. DOM assertions are not visual proof.
+- **Locators.** Batch independent reads in one `preview_evaluate`. DOM assertions are not visual proof.
 
 ## Rules
 

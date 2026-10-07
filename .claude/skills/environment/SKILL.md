@@ -5,7 +5,7 @@ description: 'Machine facts, repository commands, previews, machine upkeep and m
 
 # Environment
 
-The user works through T3 from a Mac and a phone. Agents run on two headless Debian workers in one tailnet; `hostname -s` tells you which. Most development happens on `desktop`, which the user turns on when needed. T3 owns worktree setup and updates itself, Codex and Claude Code.
+Agents run on two headless Debian workers in one tailnet; `hostname -s` tells you which. Most development happens on `desktop`, which the user turns on when needed. T3 owns worktree setup and updates itself, Codex and Claude Code.
 
 ## Tailnet
 

@@ -33,6 +33,8 @@ Do not remove necessary names, status, comfortable hit targets or instructions m
 
 ## Build
 
+These rules apply to product UI. A rendered explanation follows the host's rendering contract and the rules below.
+
 **Canonical components.** Reuse the existing renderer, states and interactions for the same role. Inspect its relevant source/API, not a full catalogue; add missing primitives through the repository registry command. Fix wrong shared patterns at their owner when delivering retained code, not before an exploratory preview. Without a sibling, use the supplied reference and component defaults within settled preferences.
 
 ```tsx

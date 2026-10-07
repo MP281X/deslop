@@ -33,6 +33,8 @@ Do not remove necessary names, status, comfortable hit targets or instructions m
 
 ## Build
 
+These rules apply to product UI. A rendered explanation follows the host's rendering contract and the rules below.
+
 **Canonical components.** Reuse the existing renderer, states and interactions for the same role. Inspect its relevant source/API, not a full catalogue; add missing primitives through the repository registry command. Fix wrong shared patterns at their owner when delivering retained code, not before an exploratory preview. Without a sibling, use the supplied reference and component defaults within settled preferences.
 
 ```tsx
@@ -72,7 +74,6 @@ Do not remove necessary names, status, comfortable hit targets or instructions m
 | Counts shift during updates        | Proportional digits/inconsistent formatting   | `tabular-nums` + consistent locale/units                                                           |
 | Accents/tall scripts clip          | Tight line height or text-box clipping        | Fix the owning type-scale/overflow choice; don't shrink the font to fit                            |
 | Missing metadata leaves separators | Empty optional slots still render             | Omit orphaned separators/lines; reserve space only when the layout needs it                        |
-
 
 **Prevent before rejecting.** When the app already knows an action is not allowed, such as a missing permission, a referenced record or invalid input, disable or hide the control and show the reason beside it. Never let the user act and then show an error the app could have predicted.\n
 **Motion.** Explain change without delaying input or moving content just for decoration. Reuse existing tokens/components; no new library for a fade or universal curve, duration, bounce or press scale.
