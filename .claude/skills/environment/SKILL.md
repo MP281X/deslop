@@ -11,13 +11,13 @@ Agents run on two headless Debian workers in one tailnet; `hostname -s` tells yo
 
 MagicDNS resolves each short name, and `<name>.tailnet-8c4c.ts.net` gives HTTPS certificates.
 
-| Name               | Address          | Role                                                                                             |
-| ------------------ | ---------------- | ------------------------------------------------------------------------------------------------ |
-| `desktop`          | `100.97.120.3`   | Home worker for most development, on only when the user turns it on: 24 threads, 30 GB, RTX 5070 |
-| `dev`              | `100.68.201.107` | Always-on worker with a public address: Traefik serves every `*.mp281x.xyz`, VPN, Jaeger         |
-| `macbook-pro`      | `100.115.207.60` | The user's control plane, often asleep; agents never set it up or develop on it                  |
-| `iphone`           | `100.117.217.10` | The user's phone; a T3 client only                                                               |
-| `*.mullvad.ts.net` | Exit nodes       | Location exits for [Media](references/media.md); never set one for other traffic                 |
+| Name               | Address          | Role                                                                                                                        |
+| ------------------ | ---------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `desktop`          | `100.97.120.3`   | Home worker for most development, on only when the user turns it on: 24 threads, 30 GB, RTX 5070                            |
+| `dev`              | `100.68.201.107` | Always-on worker with a public address: Traefik serves every `*.mp281x.xyz`, VPN, Jaeger; also long or overnight agent work |
+| `macbook-pro`      | `100.115.207.60` | The user's control plane, often asleep; agents never set it up or develop on it                                             |
+| `iphone`           | `100.117.217.10` | The user's phone; a T3 client only                                                                                          |
+| `*.mullvad.ts.net` | Exit nodes       | Location exits for [Media](references/media.md); never set one for other traffic                                            |
 
 - **SSH.** Every machine holds the user's one key pair, `~/.ssh/id_ed25519`, and authorizes only it, so any machine reaches any other. There is no `~/.ssh/config`: use `mp281x@dev`, `mp281x@desktop` and `matteopaludgnach@macbook-pro`. Copy files with `rsync -a <path> <user>@<name>:<path>`.
 - **Paths.** `dev` and `desktop` connect directly over UDP in about 40 ms. `tailscale ping <name>` shows whether a path is direct or relayed.
