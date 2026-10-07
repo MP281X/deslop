@@ -3,6 +3,7 @@
 	"disableClaudeAiConnectors": true,
 	"allowedMcpServers": [{"serverName": "t3-code"}],
 	"autoMemoryEnabled": false,
+	"theme": "dark",
 	"includeGitInstructions": false,
 	"agent": "pair",
 	"attribution": {"commit": "", "pr": ""},

@@ -1,14 +1,14 @@
 # Dual
 
-**Commands.** Check and test take environment's heavy-command lock. Turbo caches package checks; fixes are never cached. The test runner owns its fingerprints, cache and continuation, so add no outer Vite+ cache around service-dependent tests. Fix the branch's files with `node_modules/.bin/oxfmt <files>` and `node_modules/.bin/oxlint --fix <files>`; the root fix is only for a repository-wide fix the user asked for.
+**Commands.** Turbo caches package checks; fixes are never cached. The test runner owns its fingerprints, cache and continuation, so add no outer Vite+ cache around service-dependent tests. Fix the branch's files with `node_modules/.bin/oxfmt <files>` and `node_modules/.bin/oxlint --fix <files>`; the root fix is only for a repository-wide fix the user asked for.
 
 ```bash
-flock "$HOME/.deslop/heavy.lock" nice -n 10 vp run --workspace-root check
+vp run --workspace-root check
 vp run --workspace-root --no-cache fix
-flock "$HOME/.deslop/heavy.lock" nice -n 10 vp run --workspace-root test
+vp run --workspace-root test
 ```
 
-**VPN.** GitLab requires the Datapizza VPN, which runs only on dev. `desktop` reaches GitLab through dev's Tailscale route, so there an expired VPN needs the user to reconnect it from a dev thread. On dev, check reachability and reconnect when it expires. Show the returned sign-in URL as a full URL under **Needs you**, directly after the result, then check again.
+**VPN.** GitLab requires the Datapizza VPN, which runs only on dev; other machines use dev's route. Check reachability and reconnect when it expires; on `desktop`, run the reconnect through `ssh dev`. Show the returned sign-in URL as a full URL under **Needs you**, directly after the result, then check again.
 
 ```bash
 curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
@@ -18,7 +18,7 @@ curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
 }
 ```
 
-**Preview.** `vp run --workspace-root preview` creates an isolated Alchemy stage derived from the checkout path. The stage holds the ports, database, sandbox, migrations, administrator and the app, API and worker watchers. Two threads in one worktree share its stage.
+**Preview.** The preview runs development watchers, so it serves iteration only; Dual has no production preview command for release proof yet. `vp run --workspace-root preview` creates an isolated Alchemy stage derived from the checkout path. The stage holds the ports, database, sandbox, migrations, administrator and the app, API and worker watchers. Two threads in one worktree share its stage.
 
 - **Sign-in.** Sign in as `admin@dual.local` with `preview-password`. AI journeys need provider connections.
 - **Exposure.** The printed `.localhost` URL is machine-local; share the app port per environment's preview rules.

@@ -5,32 +5,36 @@ description: 'Machine facts, repository commands, machine upkeep and media extra
 
 # Environment
 
-The user works on two headless Debian 13 machines through T3, from a Mac and a phone over Tailscale. SSH uses keys. T3 owns worktree setup and harness updates. Run `hostname` to learn which machine runs you.
+The user works through T3 from a Mac and a phone. Agents run on two headless Debian workers in one tailnet; `hostname -s` tells you which. Most development happens on `desktop`. T3 owns worktree setup and harness updates.
 
-| Machine   | Role                                                                       | Hardware                    |
-| --------- | -------------------------------------------------------------------------- | --------------------------- |
-| `dev`     | Always-on VPS with the production containers, the Datapizza VPN and Jaeger | 8 cores, 23 GB              |
-| `desktop` | Home workstation for heavy work, with no public services                   | 24 threads, 30 GB, RTX 5070 |
+## Tailnet
 
-| Reference                                | Use it for                                                    |
-| ---------------------------------------- | ------------------------------------------------------------- |
-| [Deslop](references/deslop.md)           | Commands, app, tracing and installing personal configuration  |
-| [Dual](references/dual.md)               | Commands, VPN, preview, CI and tracing                        |
-| [Desktop](references/desktop.md)         | Access, toolchain, GPU, wake-on-LAN and rebuild of `desktop`  |
-| [Maintenance](references/maintenance.md) | Updating, deploying and cleaning the machines                 |
-| [Media](references/media.md)             | Transcripts and post text from YouTube, X, TikTok and similar |
+MagicDNS resolves each short name, and `<name>.tailnet-8c4c.ts.net` gives HTTPS certificates.
+
+| Name               | Address          | Role                                                                                     |
+| ------------------ | ---------------- | ---------------------------------------------------------------------------------------- |
+| `desktop`          | `100.97.120.3`   | Home worker for most development: 24 threads, 30 GB, RTX 5070                            |
+| `dev`              | `100.68.201.107` | Always-on worker with a public address: Traefik serves every `*.mp281x.xyz`, VPN, Jaeger |
+| `macbook-pro`      | `100.115.207.60` | The user's control plane, often asleep; agents never set it up or develop on it          |
+| `iphone`           | `100.117.217.10` | The user's phone; a T3 client only                                                       |
+| `*.mullvad.ts.net` | Exit nodes       | Location exits for [Media](references/media.md); never set one for other traffic         |
+
+- **SSH.** Every machine holds the user's one key pair, `~/.ssh/id_ed25519`, and authorizes only it, so any machine reaches any other. There is no `~/.ssh/config`: use `mp281x@dev`, `mp281x@desktop` and `matteopaludgnach@macbook-pro`. Copy files with `rsync -a <path> <user>@<name>:<path>`.
+- **Paths.** `dev` and `desktop` connect directly over UDP in about 40 ms. `tailscale ping <name>` shows whether a path is direct or relayed.
+- **GitLab.** `git.datapizza.tech` works only through dev's VPN. Every other machine uses the route that dev advertises, so an expired VPN breaks GitLab on every machine; reconnect it on dev per [Dual](references/dual.md).
+- **Work on the other worker.** Run public-app and VPN tasks on `dev` through SSH. Run GPU work on `desktop`.
 
 Run repository commands from the repository root. Discover inventories and versions from source, not from cached prose.
 
-## Machine
+## Machine state
 
-- **Tools.** The Vite+ shims are `vp` for packages and `vpx` for binaries. They live in `~/.vite-plus/bin` on dev and in `~/.local/share/vite-plus/bin` on `desktop`. Login shells have them on `PATH`, but systemd units need the absolute path. Sudo needs no password, and `gh` and `glab` use existing sign-ins.
+- **Tools.** Vite+ in `~/.vite-plus/bin` supplies `vp` for packages and `vpx` for binaries. Login shells have it on `PATH`; systemd units need the absolute path. Sudo needs no password, and `gh` and `glab` use existing sign-ins.
 - **Scratch.** Logs and command output go to `node_modules/.cache/deslop/`.
 - **Services.** Run services as temporary containers, not host installations. Maintenance owns the Docker binding defaults; preserve unrelated workloads.
-- **Heavy commands.** Type checks, builds and test suites of every repository take one machine-wide lock at lower priority: `flock "$HOME/.deslop/heavy.lock" nice -n 10 <command>`. Two at once fill memory and make T3 disconnect.
 
 ## Previews
 
+- **Build.** Shared previews and browser proof use the production build served through the tailnet HTTPS URL. A development server differs in bundling and network behavior, so it proves only iteration.
 - **Start.** Run the repository's preview command detached, so it survives a T3 restart: `systemd-run --user --unit=<repository>-preview-<worktree> --working-directory=<worktree> <command>`. Bind it to `127.0.0.1` on a free port (`ss -ltn`).
 - **Share.** Expose it with `sudo tailscale serve --bg --https=<port> http://127.0.0.1:<port>`, and get the host from `tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")'`. The first request waits for a certificate. Verify sign-in, assets and API calls through `https://<host>:<port>` from the tailnet before you share it, never a localhost URL.
 - **Public webhooks.** Funnel makes a whole port public, so give the webhook path its own port. Check `sudo tailscale serve status --json`, then pick an unused port among 443, 8443 and 10000; 8443 already serves another app. Run `sudo tailscale funnel --bg --https=<funnel port> --set-path <path> http://127.0.0.1:<api port><path>`, and verify that the sign-in path does not answer there. Stop it with `sudo tailscale funnel --https=<funnel port> --set-path <path> off`.
@@ -53,7 +57,7 @@ git clone --depth 1 --branch <version-tag-or-required-branch> <official-reposito
 
 ## T3 state
 
-Prefer T3's thread tools. For read-only local inspection, verify which database the running `t3 serve` process opened, and set `T3_DB` to it. On this machine it is currently `~/.t3/userdata/statev2.sqlite`. Query it with `sqlite3 -readonly`, and select only the fields you need; never read raw payloads or credentials. Live threads, runs, subagents and turn items are in `orchestration_v2_projection_*`. Legacy `projection_*` tables and `provider_session_runtime` can be stale.
+Prefer T3's thread tools. Search earlier decisions with `t3_thread_search` before you read transcripts. For read-only local inspection, verify which database the running `t3 serve` process opened, and set `T3_DB` to it. On this machine it is currently `~/.t3/userdata/statev2.sqlite`. Query it with `sqlite3 -readonly`, and select only the fields you need; never read raw payloads or credentials. Live threads, runs, subagents and turn items are in `orchestration_v2_projection_*`. Legacy `projection_*` tables and `provider_session_runtime` can be stale.
 
 To recover a thread's native transcripts, find its provider sessions, then the session files:
 

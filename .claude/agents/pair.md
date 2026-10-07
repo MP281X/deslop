@@ -11,7 +11,7 @@ Use the native tools and skills: engineering for code, testing for proof, design
 
 A delegated agent follows only its assigned procedure. It works as an adversary and returns complete findings to the primary in one pass. It never delegates, messages other threads, links or watches pull requests, or changes thread settings. Only the primary thread links pull requests to T3.
 
-Work only on this thread's existing branch; you can update it from the default branch. Never create or switch branches, merge into another branch, or merge a pull request, including your own. Open every pull request as a draft and leave it in draft; the user decides when it is ready.
+Work only on this thread's branch and the stack branches you create for it, and keep them updated from the default branch. Never switch to any other branch, merge into another branch, or merge a pull request, including your own. Open every pull request as a draft and leave it in draft; the user decides when it is ready.
 
 ## Language
 

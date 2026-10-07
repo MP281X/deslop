@@ -46,10 +46,21 @@ Post one line when Build, Finish or Deliver starts, saying what remains.
 
 ## 4. Deliver
 
-- **Ship.** Update from the default branch and rerun what the update affects. Squash only the unpushed checkpoints and push once. Open or update the draft pull request from the [example body](references/publishing.md#example-body), and link it to the thread immediately. Record the captures while the pipeline runs, then add them; a body edit starts no pipeline. Push again only for an accepted later change or a pipeline failure. Failing local checks block the push, and other irreversible or outward actions need confirmation.
+- **Ship.** Update from the default branch and rerun what the update affects. Squash only the unpushed checkpoints, into one commit per stack layer, and push once. Open or update the draft pull request from the [example body](references/publishing.md#example-body), and link it to the thread immediately. Record the captures while the pipeline runs, then add them; a body edit starts no pipeline. Push again only for an accepted later change or a pipeline failure. Failing local checks block the push, and other irreversible or outward actions need confirmation.
 - **Check the result.** Run one [body reader](references/children.md#body-reader) over the published body and captures, and fix what it confirms. While checks remain, watch the pull request with T3 and end the turn. A T3 wake is a notification, not a verdict: check the exact head and every required job before you report success.
 - **Hand off.** Recap each area at the level of behavior and mechanism: what a user or caller can now do, how it works and where it lives. Link the code and name the riskiest places to read. When the user restates their understanding, mark each point correct, partly correct or wrong, correct it, and list what they missed. Unwatch the pull request, and stop everything you started except useful evidence and a preview the user wants. Leave that preview running per environment's preview rules. Give a manual test script with the URL, sign-in, prepared data and five to eight steps with expected results.
 - **Later changes.** A change request during Finish or Deliver, or after delivery, updates the plan and returns to Build: prototype it and show it first. Then Finish and Deliver run only for its hunks: audit and review the new hunks, rerun the checks and captures they affect, and push once.
+
+## Stacks
+
+A stack splits one task into dependent pull requests, so a reviewer reads one layer at a time. The thread treats the stack as one unit of work.
+
+- **When.** Propose layers in Agree only when they have a reason, such as a contract a reviewer must approve before its consumers. Otherwise the task stays one pull request.
+- **Shape.** Each layer is one commit on its own branch, named `<thread branch>-<n>-<topic>`; the thread's own branch is the top layer. Work in the thread's one worktree, checked out at the top, and never switch to a branch outside the stack.
+- **Route changes.** Put every change in the layer that owns it, whichever layer you were working on. Commit it with `git commit --fixup=<layer commit>`. Then run `git rebase --autosquash --update-refs <default branch>`, which needs no editor. A change for a new concern becomes a new layer only with the user's approval.
+- **Stay aligned.** After each update, rebase the top onto the default branch with `--update-refs`, so every layer contains the layers below it and the default branch. Every layer must pass its checks, because each one merges alone; check from the bottom up.
+  \1Each body covers only its layer against its target branch. Link every layer to the thread.
+- **Merges.** The user merges from the bottom. Then rebase the remaining layers onto the default branch, retarget the next pull request to it, and push.
 
 ## Always
 
@@ -58,9 +69,9 @@ Post one line when Build, Finish or Deliver starts, saying what remains.
 - **Reuse results.** Keep a ledger in scratch of each check and review: the files it covered and its result. After a change, rerun only what its inputs reach. Before a push, run the formatter check on changed files, type checks and lint for changed packages, plus tests that reach changed files. The pipeline runs the rest.
 - **Root causes.** When a defect, slowdown or correction repeats, fix its cause rather than the single case. Change the owning code, type, lint rule, test, script, skill or setting; write guidance only for judgment calls. Use the repository's named scripts, and fix a script that keeps failing.
 - **Wait, never poll.** Wait on one blocking command, a build's exit status, `t3_thread_wait` or T3's notice, never on a guessed output file or on `pgrep` of a command line, which matches the waiting shell itself. Every wait must end as soon as the build, server or unit it waits on fails or stops. Run it in the background when independent work remains, and resume an interrupted wait instead of starting it again. Read a child's result once.
-- **Checks.** Serialize checks that compete for resources or share outputs, per environment's heavy-command lock. Use `set -o pipefail`, and take the exit status from the command you started.
+- **Checks.** Never run two commands that write the same build outputs at once. Use `set -o pipefail`, and take the exit status from the command you started.
 - **Context.** Keep complete logs, reports and inventories in scratch, and read only the excerpt the next edit needs.
-- **Ownership.** Record the process groups, containers, exposures and resources you start, and stop only those, never by name, port or image. Stop each as soon as nothing needs it, not only at handoff. Never write a secret's value in a command; read it inside the command. Never change the calling thread's model or options.
+- **Ownership.** Record the process groups, containers, exposures and resources you start, and stop only those, never by name, port or image. Stop each as soon as nothing needs it, not only at handoff. A checkout has one writer. Before you continue a branch that another thread or child touched, unwatch its pull requests and stop every child that can still write it. Never write a secret's value in a command; read it inside the command. Never change the calling thread's model or options.
 - **Parallel.** Writes stay serial in the primary. Start independent reads, children, recording and pull request text at once, in parallel with builds. Post the user's manual steps as soon as their inputs exist, so the user works while you do.
 
 ## Delegate
