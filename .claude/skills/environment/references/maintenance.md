@@ -16,7 +16,7 @@ The workers are `dev` and `desktop`. Both run the latest Debian stable in text m
 - **Sudo.** Codex and Claude run sudo without a terminal, so `/etc/sudoers.d/99-mp281x-nopasswd` holds `mp281x ALL=(ALL:ALL) NOPASSWD: ALL` with mode 0440.
 - **Toolchain.** Docker with Compose and Buildx, `gh` with the `github/gh-stack` extension, `glab`, git, build tools, rsync, ripgrep, jq, sqlite3, ffmpeg and Python. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code lives in `~/.local/bin`.
 - **Sign-ins.** Each worker signs in on its own: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login` and `codex login --device-auth`. Show each sign-in link to the user.
-- **Repositories.** `~/deslop` uses `MP281X <paludgnachmatteo.dev@gmail.com>`. `~/dual` uses `Matteo Paludgnach <matteopaludgnach@datapizza.tech>` and the credential helper `!glab auth git-credential` for `https://git.datapizza.tech`. Run `gh auth setup-git` for GitHub.
+- **Repositories.** Git picks each repository's identity per [Git identity](#git-identity). `~/dual` uses the credential helper `!glab auth git-credential` for `https://git.datapizza.tech`. Run `gh auth setup-git` for GitHub.
 - **Automatic updates.** `unattended-upgrades` installs Debian updates daily on every worker; `/etc/apt/apt.conf.d/20auto-upgrades` turns it on.
 - **Git.** Global defaults on every worker: `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled`, `diff.algorithm histogram`, `merge.conflictStyle zdiff3` and `init.defaultBranch main`.
 - **Firewall.** Tailscale's `ts-input` chain accepts tailnet traffic and its UDP port before ufw, so ufw needs no rule for them. On dev, `/etc/sysctl.d/90-quiet-console.conf` keeps `[UFW BLOCK]` lines off the VNC console.
@@ -29,7 +29,7 @@ The workers are `dev` and `desktop`. Both run the latest Debian stable in text m
 
 ## Agent configuration
 
-Every worker runs the same agent configuration, installed from the deslop repository over SSH. Install after every change to these sources, from the checkout that holds the change, on every running worker in one pass. Report an unreachable worker as a gap unless the user turned it off; a worker that was off gets the install the next time it runs.
+Every worker runs the same agent configuration, installed from the deslop repository over SSH. Install after every change to these sources, from the checkout that holds the change, on every running worker in one pass. Report an unreachable worker as a gap unless the user turned it off. A worker that was off gets the install the next time it runs.
 
 - **Sources.** `.claude/settings.json`, `.claude/agents/pair.md`, `.claude/skills/{workflow,environment}/`, `.codex/config.toml` and `.codex/instructions.md`. Codex's personal skills are links to the Claude copies.
 - **Origin.** Install only from main or from a branch with an open pull request, and bring every installed change to main.
@@ -37,6 +37,7 @@ Every worker runs the same agent configuration, installed from the deslop reposi
 - **Public skills.** Engineering, design and testing stay repository copies that the coding-standards CLI refreshes.
 
 ```bash
+set -e
 for worker in dev desktop; do
   t=mp281x@$worker
   ssh -o ConnectTimeout=5 $t true || { echo "$worker is unreachable"; continue; }
@@ -76,7 +77,7 @@ rm -f /tmp/t3-*-projects.json /tmp/t3-dst-settings.json /tmp/t3-new-settings.jso
 
 ## Update and deploy
 
-1. **Update.** Run `apt-get update`, `apt-get upgrade -y`, `apt-get autoremove -y`, `apt-get clean`, and `vp upgrade`. glab has no apt repository: when `https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, install its `glab_<version>_linux_amd64.deb`. Restart the Docker engine only with the workload preservation below.
+1. **Update.** Run `sudo apt-get update`, `sudo apt-get upgrade -y`, `sudo apt-get autoremove -y`, `sudo apt-get clean`, and `vp upgrade`. glab has no apt repository: when `https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, install its `glab_<version>_linux_amd64.deb`. Restart the Docker engine only with the workload preservation below.
 2. **T3.** Every worker runs T3's nightly channel as the `t3code.service` user unit. Install it with `vp install -g t3@nightly` and `t3 service install`. Run `t3 connect link --headless` and show its device sign-in link to the user. Run `t3 connect publish` for push notifications and Live Activities, then `t3 service restart`, because T3 reads the link at startup. The user turns on **Device Notifications** once per phone or Mac in the app's settings.
 3. **Deploy.** On dev, from `~/deslop` on published main, run `docker compose --project-name deslop --file tools/compose.yaml pull`, then `up -d --remove-orphans`. A changed inline config needs `up -d --force-recreate --no-deps <service that mounts it>`.
 4. **Verify.** https://portfolio.mp281x.xyz and dev's http://127.0.0.1:16686/api/services must return 200. An OPTIONS preflight to otel's `/v1/traces` and `/v1/logs` with `Origin: https://portfolio.mp281x.xyz` must succeed.
@@ -118,7 +119,7 @@ Check owners through T3's thread tools or the [T3 history](../../workflow/refere
    done
    ```
 
-4. **`/tmp`.** systemd empties it at boot and daily drops files unused for 7 days. Remove a large folder earlier only when its owner is settled and nothing holds it open (`lsof +D`). Keep `claude-*` and `codex*` session folders.
+4. **`/tmp`.** systemd cleans it per [Scratch on disk](#scratch-on-disk). Remove a large folder earlier only when its owner is settled and nothing holds it open (`lsof +D`). Keep `claude-*` and `codex*` session folders.
 5. **Caches.** With no build running, run `docker image prune -a -f` and `docker builder prune -a -f`. With no install running, run `vp pm cache clean` in `~/deslop` and `~/dual` and clear identified caches under `~/.npm` and `~/.cache`. Remove noncurrent Vite+, Node and package-manager versions, and unused Codex releases. Run `journalctl --vacuum-size=100M`. Never run a blanket Docker system or volume prune or a negated-label exclusion.
 6. **T3 releases.** Skip this step while `~/.t3/runtime/service-state.json` shows an update that is not `committed`. After T3 updates itself, the unit's launcher stays on the old version, and `t3 service status` reports a repair. With no run active, run `t3 service install`, which restarts T3. With runs active, point `ExecStart` in `~/.config/systemd/user/t3code.service` at the active version in `~/.t3/runtime/service-state.json` and run `systemctl --user daemon-reload`. Delete other versions only after the repair; otherwise the next start finds no launcher.
 7. **Report.** Show `df -h /` before and after, what each step removed and the ten largest folders left (`du -xh --max-depth=2 ~ /tmp /var/lib/docker | sort -h | tail`). Count every worktree's `node_modules` in one `du`, because installs hardlink from the stores.

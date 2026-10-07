@@ -2,7 +2,7 @@
 
 ## Example body
 
-The body reads as a changelog with evidence. It describes the whole branch against its target branch, one entry per change a user or caller notices, each with the evidence that proves it. It is not a record of the last run or of the branch's history. The branch arrives ready to review and merge, so the body has no Gaps, no Needs you and no ticket table; those go in the final reply. Ignore the repository's template and its checklist.
+The body reads as a changelog with evidence. It describes the whole branch against its target branch, one entry per change a user or caller notices, each with the evidence that proves it. It is not a record of the last run or of the branch's history. The branch arrives ready to review, so the body has no Gaps, no Needs you and no ticket table; those go in the final reply. Ignore the repository's template and its checklist.
 
 | Part      | Content                                                                                                                                                                                                   |
 | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

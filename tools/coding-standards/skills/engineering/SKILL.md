@@ -112,7 +112,7 @@ const root = options?.root ?? '.'
 const root = options?.root !== undefined ? options.root : '.'
 ```
 
-**Conditions.** A boolean is tested bare; `=== true` only on a value that may be undefined.
+**Conditions.** A boolean is tested bare; `=== true` only on a value that can be undefined.
 
 ```tsx
 // good
@@ -120,7 +120,7 @@ if (enabled) return
 aria-current={props.selected === true ? 'page' : undefined}
 // bad
 if (enabled === true) return // enabled is a boolean
-if (props.selected) return // props.selected may be undefined
+if (props.selected) return // props.selected can be undefined
 ```
 
 **Flat.** Use early-return statements in Effect.fn. No nested ternaries or combinators deeper than equivalent statements. Match/combinators serve single expressions; Boolean.match selects a value, except one-line JSX-attribute ternaries.
@@ -244,7 +244,7 @@ const text = Effect.fn('Ai.text')(function* (response: AiResponse) {
 })
 ```
 
-**Casts.** No `as`, `any` or erasing a known shape into `unknown`; `satisfies` and `as const` are the only assertions. Genuinely opaque SDK/framework inputs remain `unknown` until narrowed or decoded at their boundary—do not fabricate a shape to avoid that type. Decode incoming protocol data once with Schema before use.
+**Casts.** No `as`, `any` or erasing a known shape into `unknown`; `satisfies` and `as const` are the only assertions. Genuinely opaque SDK/framework inputs remain `unknown` until narrowed or decoded at their boundary—do not fabricate a shape to avoid that type.
 
 ```ts
 // good
@@ -325,7 +325,7 @@ const stop = Effect.gen(function* () {
 }) // one statement
 ```
 
-**Errors.** One domain error per service; preserve cause, redact secrets, map in Effect.fn's pipeline argument. Map SDK unknown errors at the adapter. No catch/retry/fallback without a required contract.
+**Errors.** One domain error per service; preserve cause, redact secrets, map in Effect.fn's pipeline argument. Map SDK unknown errors at the adapter.
 
 ```ts
 // good

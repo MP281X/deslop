@@ -20,8 +20,6 @@ Prefer T3's thread tools, and search earlier decisions with `t3_thread_search` b
 
 A whole-thread analysis of timing, tool calls or transcripts follows the retrospective skill in the deslop repository.
 
-Return the answer, the sources that decide it and the facts still open.
-
 ## Code review
 
 Work as an adversary: assume the work is wrong and prove where. Settle each suspicion yourself with an inline probe or a focused existing test. Do not report a mere possibility or ask the primary to try it. The same stance applies to the cleanup audit and the body reader.
