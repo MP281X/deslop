@@ -9,12 +9,11 @@ The body reads as a changelog with evidence. It describes the whole branch again
 | Opening   | One or two sentences: the central change in the user's terms and what it makes possible. When you cannot name the central change, ask the user in a question card before writing                          |
 | Entries   | One `###` heading per change, central change first, phrased as what now happens. Under it: at most two sentences, then its video or screenshots, then a `Code:` line that links the lines implementing it |
 | Contracts | Collapsed, when public or breaking endpoints, schemas, flags, keys, migrations or exported APIs change: a before and after table linked to lines, then the migration a caller needs                       |
-| Review    | Collapsed. The reading order as a numbered list: the entry, at most three files and what to check. A last item names the generated or mechanical files to skip, with the command that reproduces them     |
 
 - **Evidence.** Put each video or screenshot under the entry it proves; there is no separate proof section. A video gets no duration or timestamp. One complete video per realistic journey, and at most eight screenshots in the body.
 - **Before and after.** Show a changed screen as a two-column table with the same data, the target branch on the left.
 - **Numbers.** When speed or size is the change, the entry holds a small before and after table with the command that measured it.
-- **Small entries.** A change with nothing to show keeps its heading, its sentences and its `Code:` line. Group several minor changes under one `### Also` entry as one-line bullets.
+- **Small entries.** A change with nothing to show keeps its heading, its sentences and its `Code:` line. Group several minor changes under one `### Also` entry as one-line bullets. Its last bullet names generated or mechanical files with the command that reproduces them.
 - **Leave out** pass counts, test tables, process words, checklists and anything T3 or the pipeline already shows.
 
 ```markdown
@@ -49,6 +48,7 @@ Code: [generator](link#L1-L90) · [lock file](link#L10-L40)
 ### Also
 
 - Attio, Linear, GitHub and GitLab delete their webhooks on deactivation ([code](link#L171-L190)).
+- `src/generated/**` and `bun.lock` are generated: `dual openapi-plugin` reproduces them.
 
 <details><summary>Contracts and migration</summary>
 
@@ -57,14 +57,6 @@ Code: [generator](link#L1-L90) · [lock file](link#L10-L40)
 | [Application version](link) | 5.0.0  | 6.0.0 selects the generated plugins |
 
 Released application versions keep their plugins; nothing changes for existing workflows.
-
-</details>
-
-<details><summary>How to review</summary>
-
-1. Provider events: [triggers.ts](link), [webhooks.ts](link). Check the token comparison and retry identity.
-2. Catalog: [RegistryCatalogRepository.ts](link). Release rows load once per release; usage loads per request.
-3. Skip `src/generated/**` and `bun.lock`: `dual openapi-plugin` regenerates them. Hand-written size: server +420 −80.
 
 </details>
 ```
