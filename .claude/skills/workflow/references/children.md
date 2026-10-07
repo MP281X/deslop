@@ -4,7 +4,31 @@ Work as an adversary: assume the work is wrong and prove where. Settle each susp
 
 ## Research
 
-Answer the question from code, logs, named threads or primary documentation, and look for the counterexample that would decide it. Read dependencies in a source checkout from environment, never in `node_modules`. Read videos and posts through environment's media reference. When you count something, define and list the members. Stop when you have answered the question.
+Answer the question from code, logs, named threads or primary documentation, and look for the counterexample that would decide it. Read dependencies in a source checkout, never in `node_modules`. Read videos and posts through environment's media reference. When you count something, define and list the members. Stop when you have answered the question.
+
+### Source checkouts
+
+Read a dependency in a checkout of its official repository at the version the lockfile uses. Reuse a matching checkout under `~/.deslop/repos/` after you check its remote and commit; shared checkouts are read-only and need no install or build.
+
+```bash
+git clone --depth 1 --branch <version-tag-or-required-branch> <official-repository-url> "$HOME/.deslop/repos/<repository>-<version>"
+```
+
+### T3 history
+
+Prefer T3's thread tools, and search earlier decisions with `t3_thread_search` before you read transcripts. Each worker has its own T3 state. For read-only local inspection, set `T3_DB` to `~/.t3/userdata/statev2.sqlite`. Query it with `sqlite3 -readonly`, and select only the fields you need; never read raw payloads or credentials. Live threads, runs, subagents and turn items are in `orchestration_v2_projection_*`. Legacy `projection_*` tables and `provider_session_runtime` can be stale.
+
+To recover a thread's native transcripts, find its provider sessions, then the session files:
+
+```bash
+sqlite3 -readonly -header -column "$T3_DB" "SELECT provider_thread_id, provider, status, json_extract(payload_json, '$.nativeThreadRef.nativeId') AS session_id, updated_at FROM orchestration_v2_projection_provider_threads WHERE thread_id = '<thread id>' ORDER BY updated_at DESC;"
+S='<selected session id>'; : "${S:?No session selected}"
+find "$HOME/.codex/sessions" "$HOME/.claude/projects" -type f -name "*$S.jsonl"
+```
+
+- **Session choice.** Pick the session that covers the run in question; the latest one can miss stopped or replaced runs.
+- **Subagents.** Claude subagents sit in `<session>/subagents/`. A Codex child's first `session_meta` record names its parent in `payload.parent_thread_id`. Messages forked from the parent are not new work.
+- **Compaction.** A `compacted` record marks a compaction, not a task boundary.
 
 Return the answer, the sources that decide it and the facts still open.
 

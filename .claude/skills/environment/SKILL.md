@@ -1,6 +1,6 @@
 ---
 name: environment
-description: 'Machine facts, repository commands, machine upkeep and media extraction. Use it for host setup, local entrypoints, T3 state, source checkouts or skills. Also use it to update, clean or redeploy the machine, or to analyze a shared video or post.'
+description: 'Machine facts, repository commands, previews, machine upkeep and media extraction. Use it for the tailnet, repository commands, previews or coding-standards setup. Also use it to set up, update, clean or redeploy a machine, or to analyze a shared video or post.'
 ---
 
 # Environment
@@ -24,6 +24,15 @@ MagicDNS resolves each short name, and `<name>.tailnet-8c4c.ts.net` gives HTTPS 
 - **GitLab.** `git.datapizza.tech` works only through dev's VPN. Every other machine uses the route that dev advertises, so an expired VPN breaks GitLab on every machine; reconnect it on dev per [Dual](references/dual.md).
 - **Work on the other worker.** Run public-app and VPN tasks on `dev` through SSH. Run GPU work on `desktop`.
 
+## References
+
+| Reference                                | Use it for                                                              |
+| ---------------------------------------- | ----------------------------------------------------------------------- |
+| [Deslop](references/deslop.md)           | Commands, app, tracing and coding standards                             |
+| [Dual](references/dual.md)               | Commands, VPN, preview, accounts, CI, tracing and coding standards      |
+| [Maintenance](references/maintenance.md) | Machine facts, access, agent configuration, updates, cleaning and setup |
+| [Media](references/media.md)             | Transcripts and post text from YouTube, X, TikTok and similar           |
+
 Run repository commands from the repository root. Discover inventories and versions from source, not from cached prose.
 
 ## Machine state
@@ -40,35 +49,3 @@ Run repository commands from the repository root. Discover inventories and versi
 - **Public webhooks.** Funnel makes a whole port public, so give the webhook path its own port. Check `sudo tailscale serve status --json`, then pick an unused port among 443, 8443 and 10000. Run `sudo tailscale funnel --bg --https=<funnel port> --set-path <path> http://127.0.0.1:<api port><path>`, and verify that the sign-in path does not answer there. Stop it with `sudo tailscale funnel --https=<funnel port> --set-path <path> off`.
 - **Restart.** A stopped `systemd-run` unit disappears, so `systemctl --user start` cannot bring it back. Use `systemctl --user restart <unit>` while it runs; after a stop, run the same `systemd-run` command again.
 - **Keep or stop.** Restart a preview in place after a build that deletes its files. Keep one preview per branch while the user uses it; otherwise run `sudo tailscale serve --https=<port> off` and `systemctl --user stop <unit>`. A listener you did not start is not yours to stop.
-
-## Source checkouts
-
-Read a dependency in a checkout of its official repository at the version the manifest or lockfile uses. A matching vendored or shared checkout also works; check its remote and commit before you cite it. Shared checkouts are read-only and need no install or build.
-
-```bash
-git clone --depth 1 --branch <version-tag-or-required-branch> <official-repository-url> "$HOME/.deslop/repos/<repository>-<version>"
-```
-
-## T3 state
-
-Prefer T3's thread tools, and search earlier decisions with `t3_thread_search` before you read transcripts. Each worker has its own T3 state. For read-only local inspection, set `T3_DB` to `~/.t3/userdata/statev2.sqlite`. Query it with `sqlite3 -readonly`, and select only the fields you need; never read raw payloads or credentials. Live threads, runs, subagents and turn items are in `orchestration_v2_projection_*`. Legacy `projection_*` tables and `provider_session_runtime` can be stale.
-
-To recover a thread's native transcripts, find its provider sessions, then the session files:
-
-```bash
-sqlite3 -readonly -header -column "$T3_DB" "SELECT provider_thread_id, provider, status, json_extract(payload_json, '$.nativeThreadRef.nativeId') AS session_id, updated_at FROM orchestration_v2_projection_provider_threads WHERE thread_id = '<thread id>' ORDER BY updated_at DESC;"
-S='<selected session id>'; : "${S:?No session selected}"
-find "$HOME/.codex/sessions" "$HOME/.claude/projects" -type f -name "*$S.jsonl"
-```
-
-- **Session choice.** Pick the session that covers the run in question; the latest one can miss stopped or replaced runs.
-- **Subagents.** Claude subagents sit in `<session>/subagents/`. A Codex child's first `session_meta` record names its parent in `payload.parent_thread_id`. Messages forked from the parent are not new work.
-- **Compaction.** A `compacted` record marks a compaction, not a task boundary.
-
-## Coding standards
-
-- **Scope.** The `@deslop/coding-standards` CLI and lint preset apply only to Dual. Deslop owns their sources in `tools/coding-standards`.
-- **Skills.** In Dual, `vpx @deslop/coding-standards@latest` refreshes the engineering, design and testing copies. Run it when a worktree lacks them before code work. It changes no manifest or lockfile.
-- **Changed files only.** The preset applies to the files the task adds or changes. List every other file of the package in its `oxlint.config.ts` ignore patterns, and remove a file from that list when a task changes it.
-- **No blind refactors.** Never rewrite a file the task does not otherwise change, only to satisfy the rules. Keep the ignores for generated and build output.
-- **Standards file.** Remove from Dual's `CODING_STANDARDS.md` what the shared skills already say. Keep the layout, tooling, stricter local choices and domain contracts.

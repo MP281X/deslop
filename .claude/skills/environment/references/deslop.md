@@ -31,3 +31,10 @@ curl -fsSG http://127.0.0.1:16686/api/traces --data-urlencode 'service=@deslop/p
 ```
 
 Logs are the collector's debug output (`docker compose --project-name deslop --file tools/compose.yaml logs --since 10m collector`); there is no log store or metrics pipeline.
+
+## Coding standards
+
+Deslop owns the `@deslop/coding-standards` package in `tools/coding-standards`: the oxlint preset and the engineering, design and testing skills.
+
+- **Lint.** The root `vite.config.ts` extends the preset for the whole repository.
+- **Skills.** Edit the package's `skills/` sources, then refresh the copies in `.claude/skills` and `.codex/skills` with `node tools/coding-standards/src/install.ts`.

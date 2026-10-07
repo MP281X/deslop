@@ -30,7 +30,7 @@ Settle every decision before code. Settle this table with the user:
 
 Prototype until the user says the result is what they want. Most iterations belong here.
 
-- **Read first.** Read the code you touch and every consumer: callers, test doubles, export assertions, documentation sources and existing capabilities. An analysis request stays read-only.
+- **Read first.** Read the code you touch and every consumer: callers, test doubles, export assertions, documentation sources and existing capabilities. Read dependencies and earlier threads per [research](references/children.md#research). An analysis request stays read-only.
 - **Show the real thing.** Build the smallest working version in the real app with realistic data. Show it as inspected screenshots, a short video or side-by-side renders, and keep a preview the user can open.
 - **Stay cheap.** Commit locally as often as useful. Run only the focused check that answers the current question: no root checks, reviews, pushes or pull request updates. After two failed attempts, test a hypothesis that tells the causes apart.
 - **Gate.** Before Finish, ask in a question card whether the result is ready, listing what stays open. Finish starts only on the user's yes; a thread launched with an accepted plan already has it.
