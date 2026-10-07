@@ -16,7 +16,7 @@ git clone --depth 1 --branch <version-tag-or-required-branch> <official-reposito
 
 ### T3 history
 
-Prefer T3's thread tools, and search earlier decisions with `t3_thread_search` before you read transcripts. Each worker has its own T3 state. For read-only local inspection, set `T3_DB` to `~/.t3/userdata/statev2.sqlite`. Query it with `sqlite3 -readonly`, and select only the fields you need; never read raw payloads or credentials. Live threads, runs, subagents and turn items are in `orchestration_v2_projection_*`. Legacy `projection_*` tables and `provider_session_runtime` can be stale.
+Prefer T3's thread tools, and search earlier decisions with `t3_thread_search` before you read transcripts. `t3_thread_search` and the database cover only the worker that runs you, so an analysis of the user's threads covers every worker: run the same queries on the other one with `ssh mp281x@<worker> '<command>'`. The Mac has no agent threads. For read-only inspection, set `T3_DB` to `~/.t3/userdata/statev2.sqlite`; session files sit in each worker's `~/.claude/projects` and `~/.codex/sessions`. Query it with `sqlite3 -readonly`, and select only the fields you need; never read raw payloads or credentials. Live threads, runs, subagents and turn items are in `orchestration_v2_projection_*`. Legacy `projection_*` tables and `provider_session_runtime` can be stale.
 
 To recover a thread's native transcripts, find its provider sessions, then the session files:
 
