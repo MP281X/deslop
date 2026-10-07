@@ -1,14 +1,14 @@
 # Dual
 
-**Root commands.** Turbo owns package check caching; fixes are uncached. The test runner owns fingerprints/cache and continuation. Do not add an outer Vite+ cache around service-dependent tests.
+**Commands.** Check and test take environment's heavy-command lock. Turbo caches package checks; fixes are never cached. The test runner owns its fingerprints, cache and continuation, so add no outer Vite+ cache around service-dependent tests. Fix the branch's files with `node_modules/.bin/oxfmt <files>` and `node_modules/.bin/oxlint --fix <files>`; the root fix is only for a repository-wide fix the user asked for.
 
 ```bash
-vp run --workspace-root check
+flock "$HOME/.deslop/heavy.lock" nice -n 10 vp run --workspace-root check
 vp run --workspace-root --no-cache fix
-flock "$HOME/.deslop/dual-test.lock" vp run --workspace-root test
+flock "$HOME/.deslop/heavy.lock" nice -n 10 vp run --workspace-root test
 ```
 
-**VPN.** GitLab requires Datapizza VPN on the development host. Verify reachability; reconnect when it expires. Present the returned authentication URL through the question tool, then verify again.
+**VPN.** GitLab requires the Datapizza VPN. Check reachability and reconnect when it expires. Show the returned sign-in URL as a full URL under **Needs you**, directly after the result, then check again.
 
 ```bash
 curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
@@ -18,14 +18,18 @@ curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
 }
 ```
 
-**Preview.** `vp run --workspace-root preview` owns the isolated path-derived Alchemy stage, ports, database/sandbox, migrations, administrator bootstrap and app/API/worker watchers. Sign in with `admin@dual.local` / `preview-password`; AI journeys still need provider connections. Two threads in one worktree share its stage.
+**Preview.** `vp run --workspace-root preview` creates an isolated Alchemy stage derived from the checkout path. The stage holds the ports, database, sandbox, migrations, administrator and the app, API and worker watchers. Two threads in one worktree share its stage.
 
-**Exposure.** The printed .localhost URL is machine-local. Requested remote access uses Browser's Tailscale procedure with the actual app port; verify login/assets/API through the shared URL.
+- **Sign-in.** Sign in as `admin@dual.local` with `preview-password`. AI journeys need provider connections.
+- **Exposure.** The printed `.localhost` URL is machine-local; share the app port per environment's preview rules.
+- **Lifetime.** Ctrl-C stops the preview and keeps its data. When every owner is settled and the data is disposable, `vp run --workspace-root preview:destroy` removes only that stage. Run it before you move or delete the checkout or its Alchemy state.
+- **Live webhooks.** Funnel the API port's `/api/webhooks` path per environment's preview rules. `infra/saas/local.run.ts` sets `SERVER_PUBLIC_URL` to the local URL, so self-registering triggers need a temporary local override that is reverted before the push.
+- **AI cost.** Every Architect run, chat turn and AI step in a preview uses `gpt-6-luna` at low reasoning effort.
+- **Accounts.** Jira is read-only, and the user does any Jira configuration from a guide. Writes go only to GitHub `MP281X`, GitLab `matteopaludgnach` and the user's Discord test channel, whose messages can stay. Give the user a numbered guide to remove any Jira configuration they added for a test. The saved GitHub and Discord preview tokens are read-only; write tokens come from `gh auth token` and the `glab` configuration.
+- **Never.** Never use the shared `init` or `dev` commands as a preview.
 
-**Lifetime.** Ctrl-C stops processes but retains data. Once the owner is settled and data disposable, `vp run --workspace-root preview:destroy` removes only its stage; run before deleting/moving checkout or Alchemy state. Never use shared `init`/`dev` as an isolated preview.
+**Components.** `vpx shadcn@latest list @shadcn --cwd packages/ui`; inspect the docs and the installed source before adding one.
 
-**Components.** `vpx shadcn@latest list @shadcn --cwd packages/ui`; inspect current view/docs and installed source before adding a component.
+**CI.** The GitLab quality job runs a frozen install, the Effect-tsgo patch, then check, test and documentation. Read `docs/ci.md` for failures and `docs/releasing.md` for releases; a new push cancels interruptible pipelines. Check each package's Effect version in the lockfile before crossing adapter boundaries.
 
-**CI.** GitLab quality: frozen install, Effect-tsgo patch, check/test/documentation. Read `docs/ci.md` for failures and `docs/releasing.md` for releases; new pushes cancel interruptible pipelines. Verify consumed Effect versions per package/lock before crossing adapter boundaries.
-
-**Tracing.** Dual SaaS optionally exports to PostHog, not Jaeger; inspect its Observability configuration.
+**Tracing.** The SaaS app optionally exports to PostHog, not Jaeger; see its Observability configuration.

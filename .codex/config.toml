@@ -1,5 +1,4 @@
 model_instructions_file = "instructions.md"
-model_context_window = 1000000
 
 web_search = "live"
 include_permissions_instructions = false

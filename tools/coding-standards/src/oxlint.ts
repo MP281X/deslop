@@ -440,6 +440,7 @@ export const oxlint = defineConfig({
 		'no-unsafe-finally': 'error',
 		'no-unsafe-optional-chaining': ['error', {disallowArithmeticOperators: true}],
 		'no-unused-expressions': 'error',
+		'no-unused-vars': ['error', {argsIgnorePattern: '^_', ignoreRestSiblings: true, reportUsedIgnorePattern: true}],
 		'no-useless-assignment': 'error',
 		'no-useless-backreference': 'error',
 		'no-useless-call': 'error',
