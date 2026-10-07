@@ -18,17 +18,7 @@ git clone --depth 1 --branch <version-tag-or-required-branch> <official-reposito
 
 Prefer T3's thread tools, and search earlier decisions with `t3_thread_search` before you read transcripts. `t3_thread_search` and the database cover only the worker that runs you, so an analysis of the user's threads covers every worker: run the same queries on the other one with `ssh mp281x@<worker> '<command>'`. The Mac has no agent threads. For read-only inspection, set `T3_DB` to `~/.t3/userdata/statev2.sqlite`; session files sit in each worker's `~/.claude/projects` and `~/.codex/sessions`. Query it with `sqlite3 -readonly`, and select only the fields you need; never read raw payloads or credentials. Live threads, runs, subagents and turn items are in `orchestration_v2_projection_*`. Legacy `projection_*` tables and `provider_session_runtime` can be stale.
 
-To recover a thread's native transcripts, find its provider sessions, then the session files:
-
-```bash
-sqlite3 -readonly -header -column "$T3_DB" "SELECT provider_thread_id, provider, status, json_extract(payload_json, '$.nativeThreadRef.nativeId') AS session_id, updated_at FROM orchestration_v2_projection_provider_threads WHERE thread_id = '<thread id>' ORDER BY updated_at DESC;"
-S='<selected session id>'; : "${S:?No session selected}"
-find "$HOME/.codex/sessions" "$HOME/.claude/projects" -type f -name "*$S.jsonl"
-```
-
-- **Session choice.** Pick the session that covers the run in question; the latest one can miss stopped or replaced runs.
-- **Subagents.** Claude subagents sit in `<session>/subagents/`. A Codex child's first `session_meta` record names its parent in `payload.parent_thread_id`. Messages forked from the parent are not new work.
-- **Compaction.** A `compacted` record marks a compaction, not a task boundary.
+A whole-thread analysis of timing, tool calls or transcripts follows the retrospective skill in the deslop repository.
 
 Return the answer, the sources that decide it and the facts still open.
 

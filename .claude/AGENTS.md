@@ -5,6 +5,7 @@
 | `.claude/agents/pair.md` and `.codex/instructions.md` | Separate system prompts that replace each harness's built-in prompt: the built-in parts worth keeping, then the same pair rules in both                       |
 | `.claude/skills/workflow` and `environment`           | Personal skills; maintenance and media are environment references; Codex paths alias the directories                                                          |
 | Engineering, design and testing in both native roots  | Generated repository copies; edit [package sources](../tools/coding-standards/skills/), then [refresh locally](../tools/coding-standards/README.md#decisions) |
+| `.claude/skills/retrospective`                        | Repository-only skill for thread analysis and prompt evals; never installed on workers, because it edits this repository's configuration                      |
 | `.claude/AGENTS.md`                                   | Shared brief; `.codex/AGENTS.md` aliases it                                                                                                                   |
 | Native settings                                       | Harness-specific capabilities, not another copy of workflow or coding policy                                                                                  |
 

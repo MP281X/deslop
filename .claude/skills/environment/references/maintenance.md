@@ -190,4 +190,3 @@ sudo systemctl mask tmp.mount
 ```
 
 Check with `findmnt /tmp` after a reboot: it prints nothing when `/tmp` is on the root disk.
-
