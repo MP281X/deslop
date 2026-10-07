@@ -4,7 +4,7 @@ Return complete findings in one pass; the primary allows at most two rounds.
 
 ## Research
 
-Answer the question from code, logs, named threads or primary documentation, and look for the counterexample that would decide it. Read dependencies in a source checkout, never in `node_modules`. Read videos and posts through environment's media reference. When you count something, define and list the members. Stop when you have answered the question.
+Answer the question from code, logs, named threads or primary documentation, and look for the counterexample that would decide it. Read dependencies in a source checkout, never in `node_modules`. Read videos and posts through environment's media reference. When you count something, define and list the members. Stop when you have answered the question. Batch every independent search and read into one command. Reply in at most 40 lines: the answer first, then only the evidence that decides it, as a table or one-line bullets.
 
 ### Source checkouts
 
