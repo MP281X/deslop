@@ -47,7 +47,7 @@ Machine upkeep lives in environment's maintenance reference. Update this brief w
 | Full validation after a small change                   | Repeated root checks and builds; the ledger reruns only checks whose inputs changed                                                  |
 | Rendering tables, lists or prose as HTML               | Markdown already shows them; a render must show space, flow, time or a comparison                                                    |
 | Patching single cases of a repeated failure            | The same defects recurred across threads; fix the code, rule or setting that causes them                                             |
-| T3's browser preview tools                             | The VPS is headless, the Mac is often off, and remote previews are slower over the network                                           |
+| agent-browser                                          | T3's browser now runs on the worker, so it no longer needs the Mac; one browser stack is enough                                      |
 | References inside the shared skills                    | Tested: split rules made engineering, design and testing results less consistent; only the workflow keeps references for path briefs |
 | Thread briefs that restate the workflow                | Every rule change then needed a steer; briefs carry the plan and task decisions only                                                 |
 | Re-reviewing a whole branch and fixing style findings  | A repeat review of 400 files returned 25 findings each and drew restyling across unrelated files                                     |
