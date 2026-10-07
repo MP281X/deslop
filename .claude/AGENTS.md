@@ -16,10 +16,11 @@ Machine upkeep lives in environment's maintenance reference. Update this brief w
 
 | Rejected approach                                                           | Reason                                                                                                                               |
 | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Mandatory delegation and model ladders                                      | Coordination became the work; delegation stays conditional                                                                           |
+| Model ladders                                                               | Coordination became the work; children explore, the primary keeps every write                                                        |
 | Production polish before prototype feedback                                 | Unaccepted directions must stay cheap to replace                                                                                     |
-| Progress ledgers or PR recaps in chat                                       | T3 and the PR show them; the closing Status table follows the pair prompt                                                            |
-| Repeated instruction-simulation rounds                                      | They tested decisions, not real-task speed; rerun only for a consequential open question                                             |
+| Progress notes, Status tables or PR recaps in chat                          | T3 shows children, commits, pushes, the PR and its pipeline; the user reads only what adds to that                                   |
+| Installing instruction changes without an eval and the user's approval      | Each change gets one quick blind eval of old against new prompts on real scenarios; the user approves before install                 |
+| Repeated instruction-simulation rounds                                      | They tested decisions, not real-task speed; one quick eval per change is enough                                                      |
 | Rebuilding orchestration or review surfaces                                 | T3 threads, inline renders and the pull request supply them                                                                          |
 | Importing Emil's whole skill collection                                     | Its variant picker, audit fan-out and style defaults conflict; keep the targeted craft                                               |
 | Splitting short core design standards into references                       | Alignment, overflow and interaction essentials stay inline                                                                           |
@@ -48,11 +49,14 @@ Machine upkeep lives in environment's maintenance reference. Update this brief w
 | Verification children running checks                                        | Checks write shared outputs; the primary runs them                                                                                   |
 | Rerunning Finish and Deliver for every later change                         | Each pass cost hours; a later change returns to Build and reruns only its hunks                                                      |
 | Full validation after a small change                                        | Repeated root checks and builds; the ledger reruns only checks whose inputs changed                                                  |
-| Rendering tables, lists or prose as HTML                                    | Markdown already shows them; a render must show space, flow, time or a comparison                                                    |
+| Rendering a plain list or prose as HTML                                     | A render replaces text with screens, flows, timelines, options or change maps; it never restyles the same words                      |
 | Patching single cases of a repeated failure                                 | The same defects recurred across threads; fix the code, rule or setting that causes them                                             |
 | References inside the shared skills                                         | Tested: split rules made engineering, design and testing results less consistent; only the workflow keeps references for path briefs |
 | Thread briefs that restate the workflow                                     | Every rule change then needed a steer; briefs carry the plan and task decisions only                                                 |
 | Re-reviewing a whole branch and fixing style findings                       | A repeat review of 400 files returned 25 findings each and drew restyling across unrelated files                                     |
+| Asking every decision in one batch                                          | The Dual Apps brainstorm sent 18 questions in 5 cards and got 9 "not sure" answers; frontier rounds replaced it                      |
+| Text between tool calls, including Codex commentary                         | T3 shows it as a full message until the turn ends                                                                                    |
+| Links, paths or markdown in question cards                                  | T3 renders card text as plain text                                                                                                   |
 
 <details>
 <summary>Workflow and agent references</summary>

@@ -2,11 +2,11 @@
 
 ## Example body
 
-The body reads as a changelog with evidence. It describes the whole branch against its target branch, one entry per change a user or caller notices, each with the evidence that proves it. It is not a record of the last run or of the branch's history. The branch arrives ready to review and merge, so the body has no Gaps, no Needs you and no ticket table; those go to the user in the thread before the push. Ignore the repository's template and its checklist.
+The body reads as a changelog with evidence. It describes the whole branch against its target branch, one entry per change a user or caller notices, each with the evidence that proves it. It is not a record of the last run or of the branch's history. The branch arrives ready to review and merge, so the body has no Gaps, no Needs you and no ticket table; those go in the final reply. Ignore the repository's template and its checklist.
 
 | Part      | Content                                                                                                                                                                                                   |
 | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Opening   | One or two sentences: the central change in the user's terms and what it makes possible. When you cannot name the central change, ask the user in the thread before writing                               |
+| Opening   | One or two sentences: the central change in the user's terms and what it makes possible. When you cannot name the central change, ask the user in a question card before writing                          |
 | Entries   | One `###` heading per change, central change first, phrased as what now happens. Under it: at most two sentences, then its video or screenshots, then a `Code:` line that links the lines implementing it |
 | Contracts | Collapsed, when public or breaking endpoints, schemas, flags, keys, migrations or exported APIs change: a before and after table linked to lines, then the migration a caller needs                       |
 | Review    | Collapsed. The reading order as a numbered list: the entry, at most three files and what to check. A last item names the generated or mechanical files to skip, with the command that reproduces them     |

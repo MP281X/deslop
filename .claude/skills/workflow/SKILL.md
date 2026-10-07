@@ -9,30 +9,38 @@ Agreeing and building are cheap, so they run as long as the user wants. Finishin
 
 ## 1. Agree
 
-Settle every decision before code. Settle this table with the user:
+Interview the user until every decision that changes the build is settled. Find every fact yourself; ask the user only for decisions that change what they see. The interview ends with this table:
 
-| Field     | Content                                                                                                                    |
-| --------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Intent    | The outcome the user wants, in one or two lines                                                                            |
-| Ticket    | Every requirement of the pasted tickets and comments, each a claim, with the full source text linked or kept with the plan |
-| Decisions | Choices already made, including what does not change                                                                       |
-| Defaults  | How to decide later choices without asking                                                                                 |
-| Access    | Accounts, tokens and services the work needs, and who provides each                                                        |
-| Size      | Expected files, layers and rough time, with the smaller option first                                                       |
-| Done when | Observable criteria: behavior, proof, pull request state, nothing running                                                  |
+| Field     | Content                                                                                                        |
+| --------- | -------------------------------------------------------------------------------------------------------------- |
+| Intent    | The outcome the user wants, in one or two lines                                                                |
+| Ticket    | Every requirement of the pasted tickets and comments, each a claim, with the full source text linked or quoted |
+| Decisions | Choices already made, including what does not change                                                           |
+| Defaults  | How to decide later choices without asking                                                                     |
+| Access    | Accounts, tokens and services the work needs, and who provides each                                            |
+| Size      | Expected files, layers and rough time, with the smaller option first                                           |
+| Done when | Observable criteria: behavior, proof, pull request state, nothing running                                      |
 
+- **Explore first.** Before the first question, start parallel research children for every fact the decisions depend on: the touched code and its consumers, existing capabilities, named references and earlier threads. Read the implementation of each named reference's relevant feature in its source checkout per research, not only its README. A failed search or fetch is not a finding: never report "the reference has no such feature" without the source, and never ask the user for it.
+- **Journey first.** Walk one concrete journey of the person who uses the result, step by step, before any architecture question. Show it as a render.
+- **Design tree.** Map the decisions as a tree, where each decision opens the decisions that depend on it. The frontier is every open decision whose prerequisites are settled.
+- **Rounds.** Ask the whole frontier in one question card, up to the card's limit, and the rest in the next card. Recompute the frontier after each answer. A question whose fact a child is still finding waits for that child; ask the rest now.
+- **Questions.** Ask about behavior the user sees, never about a detail you can decide. Turn a mechanism choice into the behavior it changes, such as "exact order for new runs only" against "close order for every run", and pick the mechanism yourself. Put your recommendation first and add "(Recommended)" to its label. Each option's description gives one visible benefit and one visible cost. A direction question also offers "Not sure, show me mockups". Offer the existing mechanism beside any new one, such as a member without a team beside a new role.
+- **Directions.** Where the approach is open, render two or three directions as mockups with `html_render`, side by side with the same data, before any real prototype. Never build only the first idea.
+- **Unsure stays open.** "Not sure" settles nothing. Settle it with research, a render or a prototype, then ask again; never record it as a decision.
 - **Claims.** Write each planned behavior as a one-line claim that can be true or false, such as "a user can pin one file version".
-- **Directions.** Where the approach is open, propose two or three directions with their tradeoffs, side by side when a picture is clearer.
-- **One question card.** Ask every decision at once, each linked to the claim it changes, with your default first. A default the user did not answer is not agreement.
+- **Done.** The interview ends when the frontier is empty. Show the table with each decision marked as the user's answer or your default, and ask for confirmation.
+- **Plan in the thread.** Keep the plan table in the thread and in child briefs. Write no plan file, and use no plan mode.
 - **Scope.** The request is the scope. Put related improvements, defects outside the changed code and excluded requirements under **Needs you**. A question that grows the scope states its size.
 
 ## 2. Build
 
-Prototype until the user says the result is what they want. Most iterations belong here.
+Prototype until the user says the result is what they want. Most iterations belong here. A prototype is a throwaway MVP that tests a direction: it works on realistic data and looks good enough to judge, with no tests, docs or edge-case polish.
 
-- **Read first.** Read the code you touch and every consumer: callers, test doubles, export assertions, documentation sources and existing capabilities. Read dependencies and earlier threads per [research](references/children.md#research). An analysis request stays read-only.
-- **Show the real thing.** Build the smallest working version in the real app with realistic data. Show it as inspected screenshots, a short video or side-by-side renders, and keep a preview the user can open.
+- **Read first.** Read the code you touch and every consumer: callers, test doubles, export assertions, documentation sources and existing capabilities. Give each independent area to its own research child, and start editing the first area while the others map theirs. Read dependencies and earlier threads per [research](references/children.md#research). An analysis request stays read-only.
+- **Show the real thing.** Build the smallest working version in the real app with realistic data. Show it as inspected screenshots, a short video or side-by-side renders, and keep a preview the user can open. Set up the tailnet URL with the preview, and post it as soon as one journey works.
 - **Stay cheap.** Commit locally as often as useful. Run only the focused check that answers the current question: no root checks, reviews, pushes or pull request updates. After two failed attempts, test a hypothesis that tells the causes apart.
+- **Batch edits.** Get the complete consumer list from a child or one search, edit every site, then type-check once. A type checker is not a search tool. Keep seeds and scripts outside packages that a watcher restarts.
 - **Gate.** Before Finish, ask in a question card whether the result is ready, listing what stays open. Finish starts only on the user's yes; a thread launched with an accepted plan already has it.
 
 ## 3. Finish
@@ -45,7 +53,7 @@ Prototype until the user says the result is what they want. Most iterations belo
 
 - **Ship.** Update from the default branch and rerun what the update affects. Verify a frozen install after a manifest or lockfile change. Squash the unpushed checkpoints into one commit per stack layer, and push once; failing local checks block the push. Open or update the draft pull request from the [example body](references/publishing.md#example-body). Record the captures while the pipeline runs, then add them; a body edit starts no pipeline. Push again only for an accepted later change or a pipeline failure.
 - **Check the result.** Run one [body reader](references/children.md#body-reader) over the published body and captures, and fix what it confirms. Watch the pull request until its checks finish, and read the exact head and every required job before you report success.
-- **Hand off.** Recap each area as behavior and mechanism: what a user or caller can now do, how it works and where it lives. Name the riskiest places to read. Stop everything you started except useful evidence and a preview the user wants. Give a manual test script with the URL, sign-in, prepared data and five to eight steps with expected results. When the user restates their understanding, mark each point correct, partly correct or wrong, and list what they missed.
+- **Hand off.** Show the change map as a render, with each area's behavior and its riskiest lines linked. Stop everything you started except useful evidence and a preview the user wants. Put a manual test script under Needs you: the URL, sign-in, prepared data and five to eight steps with expected results. When the user restates their understanding, mark each point correct, partly correct or wrong, and list what they missed.
 - **Later changes.** A change request after Build updates the plan and returns to Build: prototype it and show it first. Then audit and review only its hunks, rerun the checks and captures they affect, and push once.
 
 ## Stacks
@@ -64,25 +72,28 @@ A stack splits one task into dependent pull requests, so a reviewer reads one la
 - **Earn its time.** Skip a step whose result cannot change what you do next, and stop a running step that a newer change made stale. Assume what the pipeline, the review or the user's gate will catch anyway, except for an outward or irreversible step.
 - **Order and batch.** Run the step most likely to fail first: a package type check before tests, one test before the suite, a dry run before recording. Run each expensive step once per direction: generation, review and recording.
 - **Reuse results.** Keep a ledger in scratch of each check and review, with the files it covered and its result, and rerun only what a change reaches. Before a push, run the formatter check on changed files, type checks and lint for changed packages, and tests that reach changed files. The pipeline runs the rest.
+- **Iterate measurable results.** When a result can be measured or compared, such as an eval, a benchmark or a screen against a reference, run two or three rounds of improve and measure before you show it.
 - **Root causes.** When a defect, slowdown or correction repeats, fix the code, type, lint rule, test, script, skill or setting that causes it. Write guidance only for judgment calls.
-- **Waits.** Wait on the command's exit status, the unit's state or T3's notice. Never wait on a guessed output file or `pgrep`, which also matches the waiting shell. A wait ends as soon as its producer fails or stops, and runs in the background when other work remains.
-- **Commands.** Never run two commands that write the same build outputs at once. Use `set -o pipefail`, and take the exit status from the command you started. Keep complete logs and reports in scratch, and read only the excerpt you need.
+- **Waits.** Wait on the command's exit status, the unit's state or T3's notice. Never wait on a guessed output file or `pgrep`, which also matches the waiting shell. A wait ends as soon as its producer fails or stops, and runs in the background when other work remains. When only children remain, wait in the turn: call `t3_thread_wait` on the child thread with `timeoutMs` of at most 120000, and repeat. Read each result with `task_status`, which acknowledges its notice. This overrides the tool's advice to end the turn. Run any command longer than two minutes in the background, so steered messages arrive between calls.
+- **Commands.** Never run two commands that write the same build outputs at once. Use `set -o pipefail`, and take the exit status from the command you started, never from a filtered excerpt or a string count. Scripts stop at the first failed login, request or run. Keep complete logs and reports in scratch, and read only the excerpt you need.
 - **Ownership.** A checkout has one writer. Before you continue a branch another thread or child touched, unwatch its pull requests and stop every child that can still write it. Never change the calling thread's model or options. Record the processes, containers and exposures you start, stop only those, and stop each as soon as nothing needs it.
 - **Secrets.** Read a secret inside the command that uses it; never print it or write it into a command, file, log or body.
 - **Parallel.** Start independent reads, children, recording and pull request text at once, in parallel with builds. Post the user's manual steps as soon as their inputs exist.
+- **Autonomy.** Do every step you can reach yourself: sign-ins, seeds, browser setup and settings pages. Ask the user only for decisions and for what only they hold. Use `request_secret` only for a tool that takes a `secretRef`. For any other secret, such as an API key in an app's settings, the user enters it: give a numbered guide under **Needs you**.
 
 ## Delegate
 
-Delegate self-contained, read-only work when its result saves more than the brief and the join. Run independent children in parallel and in the background.
+Most children run on the Codex subscription, which exists for them, so their reads are cheap and the primary's time is not. Give children every exploration: code areas, dependencies, references and earlier threads. The primary reads only the files it edits, and keeps every write, check and build. Start children in parallel and in the background, and keep working while they run. Run Codex children on the Fast service tier.
 
-| Task          | Worth it when                                       | Model               | Procedure                                        |
-| ------------- | --------------------------------------------------- | ------------------- | ------------------------------------------------ |
-| Cleanup audit | Each area of a large diff during Clean              | GPT-6.1 Sol · high  | [Children](references/children.md#cleanup-audit) |
-| Code review   | Each review round, or a concrete risk               | GPT-6.1 Sol · high  | [Children](references/children.md#code-review)   |
-| Body reader   | Each published pull request body                    | GPT-6.1 Sol · high  | [Children](references/children.md#body-reader)   |
-| Browser proof | A substantial journey on a running host             | GPT-6.1 Sol · high  | [Captures](references/captures.md)               |
-| Research      | A bounded investigation while the primary continues | GPT-6 Luna · medium | [Children](references/children.md#research)      |
-| Critique      | Independent judgment that can change the direction  | Opus 5.5 · high     | [Children](references/children.md#critique)      |
+| Task          | Start one for                                        | Model               | Procedure                                        |
+| ------------- | ---------------------------------------------------- | ------------------- | ------------------------------------------------ |
+| Research      | Each open question or independent code area          | GPT-6 Luna · medium | [Children](references/children.md#research)      |
+| Deep research | A fact that needs tracing across packages or sources | GPT-6.1 Sol · high  | [Children](references/children.md#research)      |
+| Critique      | The recommended direction before the plan is final   | Opus 5.5 · high     | [Children](references/children.md#critique)      |
+| Cleanup audit | Each area of the diff during Clean                   | GPT-6.1 Sol · high  | [Children](references/children.md#cleanup-audit) |
+| Code review   | Each review round, or a concrete risk                | GPT-6.1 Sol · high  | [Children](references/children.md#code-review)   |
+| Browser proof | Each ticket journey during Prove                     | GPT-6.1 Sol · high  | [Captures](references/captures.md)               |
+| Body reader   | Each published pull request body                     | GPT-6.1 Sol · high  | [Children](references/children.md#body-reader)   |
 
 Use the primary's model when a listed model is unavailable. A brief holds the plan table, the task's own decisions, the procedure's path, sources and what to return; it never restates this skill. Message a running child only with a fact that changes its next action. Reconcile every missing or failed criterion when a child returns.
 

@@ -1,6 +1,6 @@
 # Child procedures
 
-Work as an adversary: assume the work is wrong and prove where. Settle each suspicion yourself with an inline probe or a focused existing test. Do not report a mere possibility or ask the primary to try it. The primary allows at most two rounds, so find everything in this one.
+Return complete findings in one pass; the primary allows at most two rounds.
 
 ## Research
 
@@ -33,6 +33,8 @@ find "$HOME/.codex/sessions" "$HOME/.claude/projects" -type f -name "*$S.jsonl"
 Return the answer, the sources that decide it and the facts still open.
 
 ## Code review
+
+Work as an adversary: assume the work is wrong and prove where. Settle each suspicion yourself with an inline probe or a focused existing test. Do not report a mere possibility or ask the primary to try it. The same stance applies to the cleanup audit and the body reader.
 
 - **Depth.** Read every hand-written changed line. For generated output, review the generator change and a representative subset, such as one package per source format. Trace each contract through its real consumers, failure paths, concurrency and resource ownership against the merge base. Try the inputs, orderings and failures that the author's tests miss.
 - **Findings.** Report broken behavior or contracts that input from a real caller can reach. Report violations of engineering, design or `CODING_STANDARDS.md` rules only in lines the reviewed change adds or alters, and only where lint does not already enforce them. Never propose restyling code the change does not otherwise need.
