@@ -5,19 +5,17 @@ description: 'Select and run black-box behavior proof for Effect apps/tools. Use
 
 # Testing
 
-**Scope.** Guard owned behavior, not coverage.
-
-**Timing.** An experiment needs trustworthy proof of its question, not comprehensive release coverage. Final acceptance applies to retained delivery; label stubbed/unproved behavior.
+**Scope.** Test behavior the changed code owns; a coverage count proves nothing.
 
 - **Worth it.** Test owned branching, computation, parsing/state transitions a plausible regression breaks; add missing valuable coverage before refactoring.
-- **Seam.** Test the exported layer, service, or function of a package or an app's service as a black box, so rewriting the implementation leaves every test green; the browser proves UI components.
-- **Redundant.** Delete touched cases merely asserting types/schema rules, Effect/dependency/platform internals, wiring, constants/counts, wording, removed/unreachable behavior or an already-covered input.
+- **Public interface.** Test exported Layers, services and functions through observable behavior, so a rewrite that keeps the contract keeps the tests green. The browser proves UI components.
+- **Redundant.** Delete touched cases that only repeat dependency guarantees, constants, wording, removed behavior or an already covered input. Keep boundary tests that prove the application's own validation, encoding or integration.
 - **Independent.** Expected values come from the contract/worked example, not implementation recomputation. Use the smallest reachable discriminating fixture.
-- **Bugs.** Reproduce a bug before fixing it; its failing case stays only when the fixed logic meets this bar, in the existing test that covers the fixed code.
+- **Bugs.** Reproduce a bug before fixing it. Keep the failing case when it protects owned behavior, in the existing test that covers the fixed code, or a new case when none fits.
 - **Throwaway.** Settle a worry with a throwaway test or prototype and delete it once answered.
 - **Honest.** No wrong expectations or rule workarounds. Change assertions only for recorded behavior changes; preserve every still-relevant value.
 
-**Assertions.** One representative input per behavior in its existing case; helpers serve every case. Use @effect/vitest assert for returned/flagged input or structured error identity. Doubles use Layers/public parameters, never vi/global/module mocks. Compose once; isolate state at its owning fixture.
+**Assertions.** Use one representative input per behavior, in its existing case. Share a helper only between cases that use it. Use @effect/vitest assertions for outputs and structured error identity. Replace dependencies through Layers or public parameters, never global or module mocks. Isolate mutable state in its owning fixture.
 
 ```ts
 // good — "test files only for the services/packages public interfaces"
@@ -40,10 +38,10 @@ assert.strictEqual(Array.flatMap(attioProvider.groups, group => group.actions).l
 
 ## Choose cases
 
-- **Contract.** Reachable input → observable output; a plausible wrong implementation must fail. Use the nearest public seam, not private helpers/new harnesses. When behavior is uncertain, settle one reachable case with a focused check and minimal implementation, then choose the next case from the findings; do not batch tests for an imagined implementation or require universal TDD.
+- **Contract.** Connect a reachable input to an observable output, so a plausible wrong implementation fails. Use the nearest public interface, not private helpers or new harnesses. When behavior is uncertain, settle one reachable case with a focused check and minimal implementation, then choose the next case from the findings; do not batch tests for an imagined implementation or require universal TDD.
 - **Branches.** Exercise reachable empty/duplicate/concurrent/dependency-failure distinctions; no Cartesian product or random/repeated happy paths without a hypothesis.
 - **Failure.** Effect.flip for expected failure; Effect.exit for both outcomes. Assert domain identity and preserved state/resources: no partial write, lost value, extra retry or leak. Wording/rejection alone is insufficient; no incidental order assertions.
-- **Control.** Run against the unfixed implementation: the intended assertion fails, not setup/import/compilation. For refactoring, add missing coverage on old behavior first. Keep durable regressions, remove settled probes.
+- **Control.** Run the regression test against the unfixed implementation, and confirm that the intended assertion fails, not setup, imports or compilation. Before a refactor, cover the old behavior first.
 
 ## Effect and fixtures
 
@@ -58,9 +56,9 @@ assert.strictEqual(Array.flatMap(attioProvider.groups, group => group.actions).l
 
 ## Run and reconcile
 
-- **Run.** Use the repository's check commands scoped to the affected packages, fix commands scoped to the files the change touches, and documented test selectors; confirm intended collection/execution. Zero tests/setup-only/exit0 alone is not proof; no invented final suite.
-- **Inventory.** Collect independent failures once instead of cancelling the suite at the first failure. Distinguish separate cases from repeated observations. A timeout receives one isolated rerun of that same test; after a genuine pass, stop investigating it. Do not call a bypassed selector or a skipped operation flaky.
+- **Run.** Use the documented test selectors and confirm that they collect and execute the intended cases. Zero collected tests, setup alone or exit code 0 alone prove nothing.
+- **Inventory.** Collect independent failures once instead of cancelling the suite at the first failure. Distinguish separate cases from repeated observations. Rerun a timed-out test once in isolation; a pass proves that run, not the cause of the timeout. Do not call a bypassed selector or a skipped operation flaky.
 - **Evidence.** Preserve the first failure, exact command, execution count and exit status. Separate cause from hypothesis, product defect from setup failure, and a skipped criterion from a passing one. A source read or overall green command never substitutes for a missing behavior check.
-- **Stable inputs.** No writer changes a running check's source, dependencies, configuration or build inputs. A relevant edit invalidates its prior result; rerun affected criteria and reuse unaffected evidence. Independent research or browser journeys may continue without mutating those inputs.
-- **Final proof.** Reconcile every required behavior on the final code. Screenshots/video prove visible outcomes; public-seam execution proves nonvisual behavior; use fresh agents for changed instructions only when they can settle a consequential unresolved uncertainty, not routine wording edits. Keep the result and useful evidence, not disposable drivers, fixture installs, reports or unrequested preview services.
+- **Stable inputs.** A check proves only the source, dependencies and configuration it ran on; an edit to them invalidates its result.
+- **Final proof.** Reconcile every required behavior on the final code. Screenshots and video prove visible outcomes; execution through the public interface proves the rest.
 - **Visual proof.** A capture proves one claim and ends on its outcome, held long enough to read: the run, the file or the rejection. Seed data first, and keep loading states off camera unless loading is the claim. Show realistic journeys end to end, cropped to the element at a readable scale; speed up waits instead of cutting steps. A capture is stale once any component it shows changes.
