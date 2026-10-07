@@ -17,6 +17,8 @@ The workers are `dev` and `desktop`. Both run the latest Debian stable in text m
 - **Toolchain.** Docker with Compose and Buildx, `gh` with the `github/gh-stack` extension, `glab`, git, build tools, rsync, ripgrep, jq, sqlite3, ffmpeg and Python. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code lives in `~/.local/bin`.
 - **Sign-ins.** Each worker signs in on its own: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login` and `codex login --device-auth`. Show each sign-in link to the user.
 - **Repositories.** `~/deslop` uses `MP281X <paludgnachmatteo.dev@gmail.com>`. `~/dual` uses `Matteo Paludgnach <matteopaludgnach@datapizza.tech>` and the credential helper `!glab auth git-credential` for `https://git.datapizza.tech`. Run `gh auth setup-git` for GitHub.
+- **Automatic updates.** `unattended-upgrades` installs Debian updates daily on every worker; `/etc/apt/apt.conf.d/20auto-upgrades` turns it on.
+- **Git.** Global defaults on every worker: `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled`, `diff.algorithm histogram`, `merge.conflictStyle zdiff3` and `init.defaultBranch main`.
 - **Firewall.** Tailscale's `ts-input` chain accepts tailnet traffic and its UDP port before ufw, so ufw needs no rule for them. On dev, `/etc/sysctl.d/90-quiet-console.conf` keeps `[UFW BLOCK]` lines off the VNC console.
 
 ## Access changes
@@ -47,6 +49,28 @@ done
 ```
 
 New sessions load the change; running threads keep the version they started with. Verify with the same `diff -r`, and check that each worker's sign-ins still work.
+
+## T3 settings
+
+Every worker uses the same T3 settings. After the user changes a setting on one worker, copy that worker's `~/.t3/userdata/settings.json` to the others with the block below, run there with `target=mp281x@<worker>`. It maps project keys by workspace root, keeps the target's `environmentIcon`, and restarts the target's T3, so run it only while the target has no active run.
+
+```bash
+q="SELECT project_id, workspace_root FROM projection_projects WHERE deleted_at IS NULL"
+sqlite3 -readonly -json ~/.t3/userdata/statev2.sqlite "$q" > /tmp/t3-src-projects.json
+ssh "$target" "sqlite3 -readonly -json ~/.t3/userdata/statev2.sqlite '$q'" > /tmp/t3-dst-projects.json
+ssh "$target" 'cat ~/.t3/userdata/settings.json' > /tmp/t3-dst-settings.json
+jq --slurpfile src /tmp/t3-src-projects.json --slurpfile dst /tmp/t3-dst-projects.json --slurpfile old /tmp/t3-dst-settings.json '
+  ([$src[0][] | {key: .project_id, value: .workspace_root}] | from_entries) as $root
+  | ([$dst[0][] | {key: .workspace_root, value: .project_id}] | from_entries) as $id
+  | def remap: with_entries(select($id[$root[.key]] != null) | .key = $id[$root[.key]]);
+  (. | del(.environmentIcon)) + ($old[0] | {environmentIcon} | with_entries(select(.value != null)))
+  | .projectScriptOverrides |= ((. // {}) | remap)
+  | .projectSettingsOverrides |= ((. // {}) | remap)
+  | .projectSettingsFolded |= ((. // {}) | if type == "object" then remap else . end)
+' ~/.t3/userdata/settings.json > /tmp/t3-new-settings.json
+ssh "$target" 'systemctl --user stop t3code.service && cat > ~/.t3/userdata/settings.json && systemctl --user start t3code.service' < /tmp/t3-new-settings.json
+rm -f /tmp/t3-*-projects.json /tmp/t3-dst-settings.json /tmp/t3-new-settings.json
+```
 
 ## Update and deploy
 
@@ -110,11 +134,11 @@ A reboot without a keyboard skips the MOK manager and drops the pending key. Unt
 These steps set up a worker from a Debian netinst image. Select only the SSH server task in the installer, because the desktop tasks install GNOME.
 
 1. Install `sudo`, `network-manager` and `ufw`, and mark them as manual. Purge any desktop stack with `--autoremove`: the `task-*desktop` tasks, GNOME, GDM, LibreOffice, Firefox, Evolution, CUPS, Avahi, BlueZ, ModemManager and PipeWire. Keep `multi-user.target` as the default target.
-2. Write the sudoers file. Add the Docker and GitHub CLI apt sources, each key in `/etc/apt/keyrings/<name>.gpg`, and install the toolchain and `glab`. Add `mp281x` to the `docker` group and write the Docker binding defaults.
+2. Write the sudoers file. Add the Docker and GitHub CLI apt sources, each key in `/etc/apt/keyrings/<name>.gpg`, and install the toolchain, `glab` and `unattended-upgrades` with its `20auto-upgrades` file. Set the git defaults. Add `mp281x` to the `docker` group and write the Docker binding defaults.
 3. Install the user's key pair per [Access changes](#access-changes). Run the Tailscale block and show its sign-in link to the user. After a second SSH login over the tailnet works, set `ufw default deny incoming`, allow 80 and 443 only on dev, and enable ufw.
 4. On dev only: add the OpenVPN 3 apt source and install `openvpn3-client`. Import the VPN with `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`, connect it, and advertise its route.
 5. Run `loginctl enable-linger mp281x`. As `mp281x`, install Vite+ with `VP_HOME="$HOME/.vite-plus"`, the global packages and Claude Code. Run the T3 step and `t3 browser setup`, and set `PRETTY_HOSTNAME`.
 6. Run the sign-ins and `gh extension install github/gh-stack`. Clone both repositories with their identities, and add each with `t3 project add --title <name> <path>`. On dev, deploy the public apps.
-7. Install the [agent configuration](#agent-configuration).
+7. Install the [agent configuration](#agent-configuration), and copy the [T3 settings](#t3-settings) from another worker.
 8. After a key login from another machine succeeds, write `/etc/ssh/sshd_config.d/10-keys-only.conf` with `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no` and `X11Forwarding no`. Run `sudo sshd -t && sudo systemctl reload ssh`.
 9. With an NVIDIA GPU, enable `contrib` and `non-free`, and add NVIDIA's CUDA and container toolkit sources. Install `linux-headers-amd64`, `nvidia-open` and `nvidia-container-toolkit`. Add the `nvidia` runtime, and enroll the key per [Desktop GPU](#desktop-gpu).
