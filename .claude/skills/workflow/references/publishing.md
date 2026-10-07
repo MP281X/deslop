@@ -2,60 +2,35 @@
 
 ## Example body
 
-Copy this shape. The body describes the whole branch against the default branch: its central change first, then everything else it changes, and how to review it. It is not a record of the last run or of the branch's history. The branch arrives ready to review and merge, so the body has no Gaps, no Needs you and no ticket table. Ticket coverage, open decisions and follow-ups go to the user in the thread before the push. Each budget is a maximum, not a target.
+The body reads as a changelog with evidence. It describes the whole branch against its target branch, one entry per change a user or caller notices, each with the evidence that proves it. It is not a record of the last run or of the branch's history. The branch arrives ready to review and merge, so the body has no Gaps, no Needs you and no ticket table; those go to the user in the thread before the push. Ignore the repository's template and its checklist.
 
-| Section      | Budget                                                                                                                                                                                                                                                         |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Focus        | Two short paragraphs: the one central change in the user's terms, then what it makes possible. When you cannot name the central change, ask the user in the thread before writing                                                                              |
-| Changed      | Every behavior change, grouped under italic area headings with the central area first. One line per bullet, linked to the lines that implement it. A small table when a list of comparable facts is the claim, such as installed libraries and their versions  |
-| Contracts    | Collapsed, when public or breaking endpoints, schemas, flags, keys, migrations or exported APIs change: a before and after table linked to lines, then the migration a caller needs                                                                            |
-| Proof        | One complete video per realistic journey, and at most eight cropped screenshots                                                                                                                                                                                |
-| Review guide | Collapsed. One row per area in reading order: area, at most three files, and 25 words on behavior, mechanism and what to check; a last row of mechanical files to skip with the hand-written size per package and the command that reproduces generated output |
-| Checklist    | The repository template's checklist, ticked only for what the branch did                                                                                                                                                                                       |
+| Part      | Content                                                                                                                                                                                                   |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Opening   | One or two sentences: the central change in the user's terms and what it makes possible. When you cannot name the central change, ask the user in the thread before writing                               |
+| Entries   | One `###` heading per change, central change first, phrased as what now happens. Under it: at most two sentences, then its video or screenshots, then a `Code:` line that links the lines implementing it |
+| Contracts | Collapsed, when public or breaking endpoints, schemas, flags, keys, migrations or exported APIs change: a before and after table linked to lines, then the migration a caller needs                       |
+| Review    | Collapsed. The reading order as a numbered list: the entry, at most three files and what to check. A last item names the generated or mechanical files to skip, with the command that reproduces them     |
 
-Leave out pass numbers, test tables, process words and anything T3 or the pipeline already shows.
-
-- **Captions** state the claim and the duration above each video. Screenshots sit in a two-column table, each with a caption.
-- **Before and after.** Show a changed screen as a pair with the same data, the default branch on the left.
-- **Numbers.** When speed or size is part of the claim, give a small before and after table with the command that measured it.
-- **Repository template.** When the repository has a merge request template, keep its checklist as the last section and tick it truthfully.
+- **Evidence.** Put each video or screenshot under the entry it proves; there is no separate proof section. A video gets no duration or timestamp. One complete video per realistic journey, and at most eight screenshots in the body.
+- **Before and after.** Show a changed screen as a two-column table with the same data, the target branch on the left.
+- **Numbers.** When speed or size is the change, the entry holds a small before and after table with the command that measured it.
+- **Small entries.** A change with nothing to show keeps its heading, its sentences and its `Code:` line. Group several minor changes under one `### Also` entry as one-line bullets.
+- **Leave out** pass counts, test tables, process words, checklists and anything T3 or the pipeline already shows.
 
 ```markdown
-Integrations are now generated, not handwritten. `dual openapi-plugin` turns an OpenAPI, Swagger, Google Discovery, GraphQL, MCP or Postman source into a versioned plugin, and the hosted catalog grows from 8 to 69 providers.
+Integrations are now generated, not handwritten: the hosted catalog grows from 8 to 69 providers, and workflows start from their events.
 
-On top of the generated catalog, workflows start from provider webhooks or polling, and the Architect finds actions and triggers by describing the outcome.
+### Provider events start workflow runs
 
-**Changed:**
+A merge request starts a run and the run comments back; a forged token is rejected.
 
-_Generated plugins_
+![A merge request starts a run](/uploads/<secret>/events-start-runs.mp4)
 
-- Each plugin keeps a [lock file](link#L10-L40) that freezes released action contracts; regenerating changes only the unreleased version.
+Code: [webhook registration](link#L138-L170) · [token check](link#L40-L72)
 
-_Triggers_
+### The catalog keeps its rows while a filter loads
 
-- Attio, Linear, GitHub and GitLab [register their webhooks](link#L138-L170) on activation and delete them on deactivation.
-
-_Registry catalog_
-
-- The catalog lists 22,600 capabilities and keeps the previous rows while a filter loads.
-
-<details><summary>Contracts and migration</summary>
-
-| Contract                    | Before | After                               |
-| --------------------------- | ------ | ----------------------------------- |
-| [Application version](link) | 5.0.0  | 6.0.0 selects the generated plugins |
-
-Migration: released application versions keep their plugins; nothing changes for existing workflows.
-
-</details>
-
-**Proof:**
-
-Events start runs (1:20): a merge request starts a run, a forged token is rejected, the run comments and posts to Discord.
-
-![Events start runs](/uploads/<secret>/events-start-runs.mp4)
-
-| Catalog while a filter loads, before                         | After                                                     |
+| Before                                                       | After                                                     |
 | ------------------------------------------------------------ | --------------------------------------------------------- |
 | ![Blank table](/uploads/<secret>/catalog-loading-before.png) | ![Rows kept](/uploads/<secret>/catalog-loading-after.png) |
 
@@ -63,20 +38,35 @@ Events start runs (1:20): a merge request starts a run, a forged token is reject
 | ------------------ | ------ | ----- | ------------------------------------ |
 | Catalog list, warm | 2.4 s  | 90 ms | `curl -w '%{time_total}' <list URL>` |
 
-<details><summary>Review guide</summary>
+Code: [RegistryCatalogRepository.ts](link#L20-L64)
 
-| Order | Area          | Files                                | What to check                                                           |
-| ----- | ------------- | ------------------------------------ | ----------------------------------------------------------------------- |
-| 1     | Catalog cache | [RegistryCatalogRepository.ts](link) | Release rows load once per release; usage and failures load per request |
-| Skip  | Mechanical    | `src/generated/**`, `bun.lock`       | Generated by `dual openapi-plugin`; hand-written size: server +420 −80  |
+### Plugins come from API descriptions
+
+`dual openapi-plugin` turns an OpenAPI, GraphQL, MCP or Postman source into a versioned plugin. A lock file freezes released actions, so regenerating changes only the unreleased version.
+
+Code: [generator](link#L1-L90) · [lock file](link#L10-L40)
+
+### Also
+
+- Attio, Linear, GitHub and GitLab delete their webhooks on deactivation ([code](link#L171-L190)).
+
+<details><summary>Contracts and migration</summary>
+
+| Contract                    | Before | After                               |
+| --------------------------- | ------ | ----------------------------------- |
+| [Application version](link) | 5.0.0  | 6.0.0 selects the generated plugins |
+
+Released application versions keep their plugins; nothing changes for existing workflows.
 
 </details>
 
-**Checklist:**
+<details><summary>How to review</summary>
 
-- [x] Agent surface: new `ProductApi` endpoints are classified
-- [x] Docs: affected guides updated
-- [x] Changeset added
+1. Provider events: [triggers.ts](link), [webhooks.ts](link). Check the token comparison and retry identity.
+2. Catalog: [RegistryCatalogRepository.ts](link). Release rows load once per release; usage loads per request.
+3. Skip `src/generated/**` and `bun.lock`: `dual openapi-plugin` regenerates them. Hand-written size: server +420 −80.
+
+</details>
 ```
 
 ## Commands

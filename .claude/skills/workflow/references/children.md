@@ -42,6 +42,6 @@ Read the published pull request as a reviewer who knows nothing else. Download t
 - a ticket requirement without proof;
 - a body that opens with anything but the branch's central change, or that describes only the last run;
 - a capture whose text is unreadable at the body's width, that shows loading, or that ends before the outcome;
-- a section over the [example body](publishing.md#example-body)'s budget, a Gaps, Needs you or ticket section, and process words.
+- a body that departs from the [example body](publishing.md#example-body): evidence away from its entry, a video duration, a checklist, a Gaps, Needs you or ticket section, and process words.
 
 Return each finding with the section, the evidence and the smallest fix.
