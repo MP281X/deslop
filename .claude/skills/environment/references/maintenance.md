@@ -158,7 +158,24 @@ These steps set up a worker from a Debian netinst image. Select only the SSH ser
 3. Install the user's key pair per [Access changes](#access-changes). Run the Tailscale block and show its sign-in link to the user. After a second SSH login over the tailnet works, set `ufw default deny incoming`, allow 80 and 443 only on dev, and enable ufw.
 4. On dev only: add the OpenVPN 3 apt source and install `openvpn3-client`. Import the VPN with `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`, connect it, and advertise its route.
 5. Run `loginctl enable-linger mp281x`. As `mp281x`, install Vite+ with `VP_HOME="$HOME/.vite-plus"`, the global packages and Claude Code. Run the T3 step and `t3 browser setup`, and set `PRETTY_HOSTNAME`.
-6. Run the sign-ins and `gh extension install github/gh-stack`. Clone both repositories with their identities, and add each with `t3 project add --title <name> <path>`. On dev, deploy the public apps.
+6. Run the sign-ins and `gh extension install github/gh-stack`. Write the git identities by host per [Git identity](#git-identity). Clone both repositories, and add each with `t3 project add --title <name> <path>`. On dev, deploy the public apps.
 7. Install the [agent configuration](#agent-configuration), and copy the [T3 settings](#t3-settings) from another worker.
 8. After a key login from another machine succeeds, write `/etc/ssh/sshd_config.d/10-keys-only.conf` with `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no` and `X11Forwarding no`. Run `sudo sshd -t && sudo systemctl reload ssh`.
 9. With an NVIDIA GPU, enable `contrib` and `non-free`, and add NVIDIA's CUDA and container toolkit sources. Install `linux-headers-amd64`, `nvidia-open` and `nvidia-container-toolkit`. Add the `nvidia` runtime, and enroll the key per [Desktop GPU](#desktop-gpu).
+
+## Git identity
+
+Git picks the identity from the repository's remote, so repositories and worktrees carry no `user.*` of their own.
+
+| Remote host          | Name                | Email                             |
+| -------------------- | ------------------- | --------------------------------- |
+| `github.com`         | `MP281X`            | `dev@mp281x.xyz`                  |
+| `git.datapizza.tech` | `Matteo Paludgnach` | `matteopaludgnach@datapizza.tech` |
+
+```bash
+mkdir -p ~/.config/git
+printf '[user]\n\tname = MP281X\n\temail = dev@mp281x.xyz\n' > ~/.config/git/github.gitconfig
+printf '[user]\n\tname = Matteo Paludgnach\n\temail = matteopaludgnach@datapizza.tech\n' > ~/.config/git/datapizza.gitconfig
+for u in 'https://github.com/**' 'git@github.com:**' 'ssh://git@github.com/**'; do git config --global "includeIf.hasconfig:remote.*.url:$u.path" ~/.config/git/github.gitconfig; done
+for u in 'https://git.datapizza.tech/**' 'git@git.datapizza.tech:**' 'ssh://git@git.datapizza.tech/**'; do git config --global "includeIf.hasconfig:remote.*.url:$u.path" ~/.config/git/datapizza.gitconfig; done
+```
