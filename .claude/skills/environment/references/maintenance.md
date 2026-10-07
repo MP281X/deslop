@@ -98,8 +98,8 @@ Remove rebuildable data, never unsettled work. A worktree is disposable only whe
 
 Check owners through T3's thread tools or the [T3 history](../../workflow/references/children.md#t3-history) section. `orchestration_v2_projection_threads.payload_json` holds `worktreePath`, `settledAt` and `settledOverride`. Join each owner's latest `orchestration_v2_projection_runs` row for activity. A missing path, listener or row starts an investigation; it never permits deletion. Unknown owners, stopped containers, unattached volumes and the shared production `deslop` project stay.
 
-1. **Removed worktrees.** Find Compose projects whose `com.docker.compose.project.working_dir` is gone, processes with a deleted working directory, Serve mappings with no backend and `~/.deslop` folders without a checkout. After every owner is confirmed settled, remove only that project (`down --volumes --remove-orphans`), process group, mapping (`sudo tailscale serve --https=<port> off`) or folder. Keep `~/.deslop/{deploy,measure,repos}`. The tailnet listener itself is not a Serve backend.
-2. **Settled worktrees.** T3 removes worktrees under its cleanup settings: after 4 days without a run, and when their pull request merges. Before that, destroy a settled worktree's Alchemy preview or Compose project when its data is disposable. Move `node_modules/.cache/deslop/proof/` to `~/.deslop/proof/<worktree directory name>/`. Run `git worktree remove --force --force <path>` only for a clean worktree; the branch keeps every commit. List dirty worktrees for the user instead. Delete `~/.deslop/<worktree directory name>/`.
+1. **Removed worktrees.** Find Compose projects whose `com.docker.compose.project.working_dir` is gone, processes with a deleted working directory, Serve mappings with no backend and `~/.deslop/<worktree>` folders without a checkout. After every owner is confirmed settled, remove only that project (`down --volumes --remove-orphans`), process group, mapping (`sudo tailscale serve --https=<port> off`) or folder. Keep `~/.deslop/deploy`. The tailnet listener itself is not a Serve backend.
+2. **Settled worktrees.** T3 removes worktrees under its cleanup settings: after 4 days without a run, and when their pull request merges. Before that, destroy a settled worktree's Alchemy preview or Compose project when its data is disposable. Run `git worktree remove --force --force <path>` only for a clean worktree; the branch keeps every commit. List dirty worktrees for the user instead. Delete `~/.deslop/<worktree directory name>/`.
 3. **Local branches.** In `~/deslop` and `~/dual`, delete local branches that no worktree uses when the remote has their commits or their pull request merged or closed. List the others for the user.
 
    ```bash
@@ -118,7 +118,7 @@ Check owners through T3's thread tools or the [T3 history](../../workflow/refere
    done
    ```
 
-4. **`/tmp`.** Remove user-owned data only for settled owners with no open handles (`lsof +D`). Keep `claude-*` and `codex*` session folders.
+4. **`/tmp`.** systemd empties it at boot and daily drops files unused for 7 days. Remove a large folder earlier only when its owner is settled and nothing holds it open (`lsof +D`). Keep `claude-*` and `codex*` session folders.
 5. **Caches.** With no build running, run `docker image prune -a -f` and `docker builder prune -a -f`. With no install running, run `vp pm cache clean` in `~/deslop` and `~/dual` and clear identified caches under `~/.npm` and `~/.cache`. Remove noncurrent Vite+, Node and package-manager versions, and unused Codex releases. Run `journalctl --vacuum-size=100M`. Never run a blanket Docker system or volume prune or a negated-label exclusion.
 6. **T3 releases.** Skip this step while `~/.t3/runtime/service-state.json` shows an update that is not `committed`. After T3 updates itself, the unit's launcher stays on the old version, and `t3 service status` reports a repair. With no run active, run `t3 service install`, which restarts T3. With runs active, point `ExecStart` in `~/.config/systemd/user/t3code.service` at the active version in `~/.t3/runtime/service-state.json` and run `systemctl --user daemon-reload`. Delete other versions only after the repair; otherwise the next start finds no launcher.
 7. **Report.** Show `df -h /` before and after, what each step removed and the ten largest folders left (`du -xh --max-depth=2 ~ /tmp /var/lib/docker | sort -h | tail`). Count every worktree's `node_modules` in one `du`, because installs hardlink from the stores.
@@ -153,7 +153,7 @@ A reboot without a keyboard skips the MOK manager and drops the pending key. Unt
 
 These steps set up a worker from a Debian netinst image. Select only the SSH server task in the installer, because the desktop tasks install GNOME.
 
-1. Install `sudo`, `network-manager` and `ufw`, and mark them as manual. Purge any desktop stack with `--autoremove`: the `task-*desktop` tasks, GNOME, GDM, LibreOffice, Firefox, Evolution, CUPS, Avahi, BlueZ, ModemManager and PipeWire. Keep `multi-user.target` as the default target.
+1. Install `sudo`, `network-manager` and `ufw`, and mark them as manual. Put `/tmp` on disk per [Scratch on disk](#scratch-on-disk). Purge any desktop stack with `--autoremove`: the `task-*desktop` tasks, GNOME, GDM, LibreOffice, Firefox, Evolution, CUPS, Avahi, BlueZ, ModemManager and PipeWire. Keep `multi-user.target` as the default target.
 2. Write the sudoers file. Add the Docker and GitHub CLI apt sources, each key in `/etc/apt/keyrings/<name>.gpg`, and install the toolchain, `glab` and `unattended-upgrades` with its `20auto-upgrades` file. Set the git defaults. Add `mp281x` to the `docker` group and write the Docker binding defaults.
 3. Install the user's key pair per [Access changes](#access-changes). Run the Tailscale block and show its sign-in link to the user. After a second SSH login over the tailnet works, set `ufw default deny incoming`, allow 80 and 443 only on dev, and enable ufw.
 4. On dev only: add the OpenVPN 3 apt source and install `openvpn3-client`. Import the VPN with `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`, connect it, and advertise its route.
@@ -179,3 +179,15 @@ printf '[user]\n\tname = Matteo Paludgnach\n\temail = matteopaludgnach@datapizza
 for u in 'https://github.com/**' 'git@github.com:**' 'ssh://git@github.com/**'; do git config --global "includeIf.hasconfig:remote.*.url:$u.path" ~/.config/git/github.gitconfig; done
 for u in 'https://git.datapizza.tech/**' 'git@git.datapizza.tech:**' 'ssh://git@git.datapizza.tech/**'; do git config --global "includeIf.hasconfig:remote.*.url:$u.path" ~/.config/git/datapizza.gitconfig; done
 ```
+
+## Scratch on disk
+
+Agents write every scratch file and repository clone under `/tmp`. Debian mounts `/tmp` as tmpfs in RAM, so the workers mask that mount and let systemd clean the disk directory. The change applies at the next boot.
+
+```bash
+printf '# /tmp lives on disk; empty it at boot and drop files unused for 7 days\nD /tmp 1777 root root 7d\n' | sudo tee /etc/tmpfiles.d/tmp.conf >/dev/null
+sudo systemctl mask tmp.mount
+```
+
+Check with `findmnt /tmp` after a reboot: it prints nothing when `/tmp` is on the root disk.
+

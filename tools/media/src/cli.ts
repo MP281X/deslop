@@ -100,7 +100,7 @@ const cli = pipe(
 			output: pipe(
 				Argument.Directory('output', {mustExist: false}),
 				Argument.withDescription('Directory for info.md and transcript.txt'),
-				Argument.withDefault('node_modules/.cache/deslop/media')
+				Argument.withDefault('/tmp/media')
 			)
 		},
 		Effect.fnUntraced(
@@ -383,8 +383,7 @@ const cli = pipe(
 	),
 	Command.withExamples([
 		{
-			command:
-				'vpx @deslop/media@latest https://x.com/poteto/status/2102050467505430555 node_modules/.cache/deslop/media/poteto',
+			command: 'vpx @deslop/media@latest https://x.com/poteto/status/2102050467505430555 /tmp/media/poteto',
 			description: 'Transcribe the talk attached to an X post.'
 		}
 	])

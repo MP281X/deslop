@@ -11,7 +11,7 @@ vpx @deslop/media@latest '<url>' [output directory] [--language it]
 | `info.md`        | Title, author, date, duration, description and chapters; the text of an X post and of the post it quotes |
 | `transcript.txt` | One `[mm:ss] text` line per caption or speech segment                                                    |
 
-The output directory defaults to `node_modules/.cache/deslop/media`. The CLI takes the spoken language from `--language`, the video's original caption track or its declared language, defaulting to English, and uses published captions in that language. Without them, it downloads the audio and transcribes it locally with Whisper `small.en`, in about a quarter of the audio's duration (a 38-minute talk took 9 minutes on an 8-core server). Speech that is not English uses the multilingual Whisper model.
+The output directory defaults to `/tmp/media`. The CLI takes the spoken language from `--language`, the video's original caption track or its declared language, defaulting to English, and uses published captions in that language. Without them, it downloads the audio and transcribes it locally with Whisper `small.en`, in about a quarter of the audio's duration (a 38-minute talk took 9 minutes on an 8-core server). Speech that is not English uses the multilingual Whisper model.
 
 The first run downloads the standalone `yt-dlp`, and the first transcription the Whisper model, into `$XDG_CACHE_HOME/deslop/media` (`~/.cache` by default); later runs update `yt-dlp` in place. When YouTube refuses the connection, as it does for most datacenter addresses, `info.md` holds only the oEmbed title and channel. A URL nothing can be read from fails.
 

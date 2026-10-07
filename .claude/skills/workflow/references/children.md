@@ -8,10 +8,10 @@ Answer the question from code, logs, named threads or primary documentation, and
 
 ### Source checkouts
 
-Read a dependency in a checkout of its official repository at the version the lockfile uses. Reuse a matching checkout under `~/.deslop/repos/` after you check its remote and commit; shared checkouts are read-only and need no install or build.
+Read a dependency in a checkout of its official repository at the version the lockfile uses. Reuse a matching checkout under `/tmp/repos/` after you check its remote and commit; shared checkouts are read-only and need no install or build.
 
 ```bash
-git clone --depth 1 --branch <version-tag-or-required-branch> <official-repository-url> "$HOME/.deslop/repos/<repository>-<version>"
+git clone --depth 1 --branch <version-tag-or-required-branch> <official-repository-url> "/tmp/repos/<repository>-<version>"
 ```
 
 ### T3 history
