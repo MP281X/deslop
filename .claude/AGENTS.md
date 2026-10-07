@@ -1,12 +1,12 @@
 # Personal agent configuration
 
-| Owner                                                | Decision                                                                                                                                                      |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.claude/agents/pair.md`                             | Shared personal instructions; `.codex/instructions.md` aliases this file                                                                                      |
-| `.claude/skills/workflow` and `environment`          | Personal skills; maintenance and media are environment references; Codex paths alias the directories                                                          |
-| Engineering, design and testing in both native roots | Generated repository copies; edit [package sources](../tools/coding-standards/skills/), then [refresh locally](../tools/coding-standards/README.md#decisions) |
-| `.claude/AGENTS.md`                                  | Shared brief; `.codex/AGENTS.md` aliases it                                                                                                                   |
-| Native settings                                      | Harness-specific capabilities, not another copy of workflow or coding policy                                                                                  |
+| Owner                                                 | Decision                                                                                                                                                      |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.claude/agents/pair.md` and `.codex/instructions.md` | Separate system prompts that replace each harness's built-in prompt: the built-in parts worth keeping, then the same pair rules in both                       |
+| `.claude/skills/workflow` and `environment`           | Personal skills; maintenance and media are environment references; Codex paths alias the directories                                                          |
+| Engineering, design and testing in both native roots  | Generated repository copies; edit [package sources](../tools/coding-standards/skills/), then [refresh locally](../tools/coding-standards/README.md#decisions) |
+| `.claude/AGENTS.md`                                   | Shared brief; `.codex/AGENTS.md` aliases it                                                                                                                   |
+| Native settings                                       | Harness-specific capabilities, not another copy of workflow or coding policy                                                                                  |
 
 Install personal configuration on every worker with the [environment procedure](skills/environment/references/maintenance.md#agent-configuration).
 
@@ -41,6 +41,8 @@ Machine upkeep lives in environment's maintenance reference. Update this brief w
 | The coding-standards CLI and preset in deslop                               | Deslop owns their sources; they apply only to Dual, and only to the files a task changes                                             |
 | Updating Codex, Claude Code and T3 in maintenance                           | T3 updates all three itself                                                                                                          |
 | Template checklists, video durations and a separate Proof section in bodies | The user reads a body as a changelog: each change with its own evidence and code links                                               |
+| The harnesses' built-in writing style and progress updates                  | The user rejects both default outputs; the pair rules replace them                                                                   |
+| One prompt file shared by both harnesses                                    | Each harness keeps different built-in rules, such as Claude's tool preference and Codex's channels                                   |
 | Children writing full reports to scratch files                              | The user wants results in the thread, not side files                                                                                 |
 | A diff-classification command                                               | The user does not want another CLI; the cleanup audit procedure covers it                                                            |
 | Verification children running checks                                        | Checks write shared outputs; the primary runs them                                                                                   |

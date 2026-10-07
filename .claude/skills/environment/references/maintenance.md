@@ -31,7 +31,7 @@ The workers are `dev` and `desktop`. Both run the latest Debian stable in text m
 
 Every worker runs the same agent configuration, installed from the deslop repository over SSH. Install after every change to these sources, from the checkout that holds the change, on every worker in one pass.
 
-- **Sources.** `.claude/settings.json`, `.claude/agents/pair.md`, `.claude/skills/{workflow,environment}/` and `.codex/config.toml`. Codex's `instructions.md` and personal skills are links to the Claude copies.
+- **Sources.** `.claude/settings.json`, `.claude/agents/pair.md`, `.claude/skills/{workflow,environment}/`, `.codex/config.toml` and `.codex/instructions.md`. Codex's personal skills are links to the Claude copies.
 - **Origin.** Install only from main or from a branch with an open pull request, and bring every installed change to main.
 - **Before writing.** Run `diff -r` between the source and each worker's installed copy. A difference your branch did not make came from another branch: bring it into your branch first, never overwrite it.
 - **Public skills.** Engineering, design and testing stay repository copies that the coding-standards CLI refreshes.
@@ -43,8 +43,9 @@ for worker in dev desktop; do
   rsync -a --delete .claude/skills/environment/ $t:.claude/skills/environment/
   rsync -a .claude/settings.json $t:.claude/settings.json
   rsync -a --mkpath .claude/agents/pair.md $t:.claude/agents/pair.md
-  rsync -a --mkpath .codex/config.toml $t:.codex/config.toml
-  ssh $t 'mkdir -p ~/.codex/skills && ln -sfn ~/.claude/agents/pair.md ~/.codex/instructions.md && for s in workflow environment; do ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done'
+  ssh $t 'rm -f ~/.codex/instructions.md'
+  rsync -a --mkpath .codex/config.toml .codex/instructions.md $t:.codex/
+  ssh $t 'mkdir -p ~/.codex/skills && for s in workflow environment; do ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done'
 done
 ```
 
