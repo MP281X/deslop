@@ -73,7 +73,8 @@ Do not remove necessary names, status, comfortable hit targets or instructions m
 | Accents/tall scripts clip          | Tight line height or text-box clipping        | Fix the owning type-scale/overflow choice; don't shrink the font to fit                            |
 | Missing metadata leaves separators | Empty optional slots still render             | Omit orphaned separators/lines; reserve space only when the layout needs it                        |
 
-\1\n\n**Prevent before rejecting.** When the app already knows an action is not allowed, such as a missing permission, a referenced record or invalid input, disable or hide the control and show the reason beside it. Never let the user act and then show an error the app could have predicted.\n
+
+**Prevent before rejecting.** When the app already knows an action is not allowed, such as a missing permission, a referenced record or invalid input, disable or hide the control and show the reason beside it. Never let the user act and then show an error the app could have predicted.\n
 **Motion.** Explain change without delaying input or moving content just for decoration. Reuse existing tokens/components; no new library for a fade or universal curve, duration, bounce or press scale.
 
 | Interaction                            | Treatment                                                                                          |

@@ -59,7 +59,7 @@ A stack splits one task into dependent pull requests, so a reviewer reads one la
 - **Shape.** Each layer is one commit on its own branch, named `<thread branch>-<n>-<topic>`; the thread's own branch is the top layer. Work in the thread's one worktree, checked out at the top, and never switch to a branch outside the stack.
 - **Route changes.** Put every change in the layer that owns it, whichever layer you were working on. Commit it with `git commit --fixup=<layer commit>`. Then run `git rebase --autosquash --update-refs <default branch>`, which needs no editor. A change for a new concern becomes a new layer only with the user's approval.
 - **Stay aligned.** After each update, rebase the top onto the default branch with `--update-refs`, so every layer contains the layers below it and the default branch. Every layer must pass its checks, because each one merges alone; check from the bottom up.
-  \1Each body covers only its layer against its target branch. Link every layer to the thread.
+- **Publish.** Open one draft pull request per layer: the bottom targets the default branch and each other layer targets the layer below. On GitHub, use `gh stack init --adopt <branches>` once, then `gh stack submit`. On GitLab, push each layer with `--force-with-lease` and set each merge request's target branch. Each body covers only its layer against its target branch. Link every layer to the thread.
 - **Merges.** The user merges from the bottom. Then rebase the remaining layers onto the default branch, retarget the next pull request to it, and push.
 
 ## Always

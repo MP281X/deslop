@@ -38,6 +38,8 @@ Machine upkeep lives in environment's maintenance reference. Update this brief w
 | Copying sign-ins or configuration from another machine | The user can reset any machine at any time; each worker sets itself up, and the key pair comes from the user's backup                |
 | Wake-on-LAN through the Mac                            | The Mac shares a network with `desktop` only when the user is home and can power it on by hand                                       |
 | The Atlassian CLI                                      | The user does not use it                                                                                                             |
+| The coding-standards CLI and preset in deslop          | Deslop owns their sources; they apply only to Dual, and only to the files a task changes                                             |
+| Updating Codex, Claude Code and T3 in maintenance      | T3 updates all three itself                                                                                                          |
 | Children writing full reports to scratch files         | The user wants results in the thread, not side files                                                                                 |
 | A diff-classification command                          | The user does not want another CLI; the cleanup audit procedure covers it                                                            |
 | Verification children running checks                   | Checks write shared outputs; the primary runs them                                                                                   |
