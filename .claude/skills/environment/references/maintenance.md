@@ -1,17 +1,17 @@
 # Maintenance
 
-This reference holds the machines' setup, upkeep and rebuild. Do established upkeep without asking for each step. Ask only for missing access, a new scope, or an interruption of running work. T3 updates itself, Claude Code and Codex. Report only failures and gaps.
+This reference holds the machines' setup, upkeep and rebuild. Do established upkeep without asking for each step. Ask only for missing access, a new scope, or an interruption of running work. Report only failures and gaps.
 
 ## Machines
 
 The workers are `dev` and `desktop`. Both run the latest Debian stable in text mode, with the same setup, as `mp281x` with passwordless sudo. The user can reset any machine at any time, so setup never copies sign-ins or configuration from another machine. The Mac is only a control plane: agents never set it up or clean it, and its SSH files follow [Access changes](#access-changes).
 
-| Fact      | `dev`                                                              | `desktop`                                             |
-| --------- | ------------------------------------------------------------------ | ----------------------------------------------------- |
-| Hardware  | VPS with 8 cores, 23 GB and 15 GB swap                             | Ryzen 9 9900X, 30 GB, 31 GB swap, RTX 5070, 1 TB NVMe |
-| Network   | Always on, public `77.237.236.132`; ufw allows 80 and 443          | Home LAN on Ethernet `eno1`; ufw denies all incoming  |
-| Only here | Traefik for every `*.mp281x.xyz` public app, Datapizza VPN, Jaeger | NVIDIA driver and the Docker `nvidia` runtime         |
-| GitLab    | Through the VPN; advertises the route to the tailnet               | Through dev's route (`--accept-routes`)               |
+| Fact      | `dev`                                                              | `desktop`                                                       |
+| --------- | ------------------------------------------------------------------ | --------------------------------------------------------------- |
+| Hardware  | VPS with 8 cores, 23 GB and 15 GB swap                             | Ryzen 9 9900X, 30 GB, 31 GB swap, RTX 5070, 1 TB NVMe           |
+| Network   | Always on, public `77.237.236.132`; ufw allows 80 and 443          | On demand, home LAN on Ethernet `eno1`; ufw denies all incoming |
+| Only here | Traefik for every `*.mp281x.xyz` public app, Datapizza VPN, Jaeger | NVIDIA driver and the Docker `nvidia` runtime                   |
+| GitLab    | Through the VPN; advertises the route to the tailnet               | Through dev's route (`--accept-routes`)                         |
 
 - **Sudo.** Codex and Claude run sudo without a terminal, so `/etc/sudoers.d/99-mp281x-nopasswd` holds `mp281x ALL=(ALL:ALL) NOPASSWD: ALL` with mode 0440.
 - **Toolchain.** Docker with Compose and Buildx, `gh` with the `github/gh-stack` extension, `glab`, git, build tools, rsync, ripgrep, jq, sqlite3, ffmpeg and Python. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code lives in `~/.local/bin`.
@@ -29,7 +29,7 @@ The workers are `dev` and `desktop`. Both run the latest Debian stable in text m
 
 ## Agent configuration
 
-Every worker runs the same agent configuration, installed from the deslop repository over SSH. Install after every change to these sources, from the checkout that holds the change, on every worker in one pass.
+Every worker runs the same agent configuration, installed from the deslop repository over SSH. Install after every change to these sources, from the checkout that holds the change, on every running worker in one pass. A worker that is off gets the install the next time it runs: compare it with `diff -r` before you work there.
 
 - **Sources.** `.claude/settings.json`, `.claude/agents/pair.md`, `.claude/skills/{workflow,environment}/`, `.codex/config.toml` and `.codex/instructions.md`. Codex's personal skills are links to the Claude copies.
 - **Origin.** Install only from main or from a branch with an open pull request, and bring every installed change to main.
@@ -39,6 +39,7 @@ Every worker runs the same agent configuration, installed from the deslop reposi
 ```bash
 for worker in dev desktop; do
   t=mp281x@$worker
+  ssh -o ConnectTimeout=5 $t true || { echo "$worker is off"; continue; }
   rsync -a --delete .claude/skills/workflow/ $t:.claude/skills/workflow/
   rsync -a --delete .claude/skills/environment/ $t:.claude/skills/environment/
   rsync -a .claude/settings.json $t:.claude/settings.json
@@ -75,7 +76,7 @@ rm -f /tmp/t3-*-projects.json /tmp/t3-dst-settings.json /tmp/t3-new-settings.jso
 
 ## Update and deploy
 
-1. **Update.** Run `apt-get update`, `apt-get upgrade -y`, `apt-get autoremove -y`, `apt-get clean`, and `vp upgrade`. T3 updates itself, Codex and Claude Code from inside T3. glab has no apt repository: when `https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, install its `glab_<version>_linux_amd64.deb`. Restart the Docker engine only with the workload preservation below. After harness updates, recheck native configuration capabilities and install the [agent configuration](#agent-configuration).
+1. **Update.** Run `apt-get update`, `apt-get upgrade -y`, `apt-get autoremove -y`, `apt-get clean`, and `vp upgrade`. T3 updates itself, Codex and Claude Code from inside T3. glab has no apt repository: when `https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, install its `glab_<version>_linux_amd64.deb`. Restart the Docker engine only with the workload preservation below.
 2. **T3.** Every worker runs T3's nightly channel as the `t3code.service` user unit. Install it with `vp install -g t3@nightly` and `t3 service install`. Run `t3 connect link --headless` and show its device sign-in link to the user. Run `t3 connect publish` for push notifications and Live Activities, then `t3 service restart`, because T3 reads the link at startup. The user turns on **Device Notifications** once per phone or Mac in the app's settings.
 3. **Deploy.** On dev, from `~/deslop` on published main, run `docker compose --project-name deslop --file tools/compose.yaml pull`, then `up -d --remove-orphans`. A changed inline config needs `up -d --force-recreate --no-deps <service that mounts it>`.
 4. **Verify.** https://portfolio.mp281x.xyz and dev's http://127.0.0.1:16686/api/services must return 200. An OPTIONS preflight to otel's `/v1/traces` and `/v1/logs` with `Origin: https://portfolio.mp281x.xyz` must succeed.
@@ -98,7 +99,7 @@ Remove rebuildable data, never unsettled work. A worktree is disposable only whe
 Check owners through T3's thread tools or the environment's T3 state. `orchestration_v2_projection_threads.payload_json` holds `worktreePath`, `settledAt` and `settledOverride`. Join each owner's latest `orchestration_v2_projection_runs` row for activity. A missing path, listener or row starts an investigation; it never permits deletion. Unknown owners, stopped containers, unattached volumes and the shared production `deslop` project stay.
 
 1. **Removed worktrees.** Find Compose projects whose `com.docker.compose.project.working_dir` is gone, processes with a deleted working directory, Serve mappings with no backend and `~/.deslop` folders without a checkout. After every owner is confirmed settled, remove only that project (`down --volumes --remove-orphans`), process group, mapping (`sudo tailscale serve --https=<port> off`) or folder. Keep `~/.deslop/{deploy,measure,repos}`. The tailnet listener itself is not a Serve backend.
-2. **Settled worktrees.** Destroy the worktree's Alchemy preview or Compose project when its data is disposable. Move `node_modules/.cache/deslop/proof/` to `~/.deslop/proof/<worktree directory name>/`. Run `git worktree remove --force --force <path>` only for a clean worktree; the branch keeps every commit. List dirty worktrees for the user instead. Delete `~/.deslop/<worktree directory name>/`.
+2. **Settled worktrees.** T3 deletes worktrees 4 days after they settle and when their pull request merges. Before that, destroy a settled worktree's Alchemy preview or Compose project when its data is disposable. Move `node_modules/.cache/deslop/proof/` to `~/.deslop/proof/<worktree directory name>/`. Run `git worktree remove --force --force <path>` only for a clean worktree; the branch keeps every commit. List dirty worktrees for the user instead. Delete `~/.deslop/<worktree directory name>/`.
 3. **`/tmp`.** Remove user-owned data only for settled owners with no open handles (`lsof +D`). Keep `claude-*` and `codex*` session folders.
 4. **Caches.** With no build running, run `docker image prune -a -f` and `docker builder prune -a -f`. With no install running, run `vp pm cache clean` in `~/deslop` and `~/dual` and clear identified caches under `~/.npm` and `~/.cache`. Remove noncurrent Vite+, Node and package-manager versions, and unused Codex releases. Run `journalctl --vacuum-size=100M`. Never run a blanket Docker system or volume prune or a negated-label exclusion.
 5. **T3 releases.** Skip this step while `~/.t3/runtime/service-state.json` shows an update that is not `committed`. After T3 updates itself, the unit's launcher stays on the old version, and `t3 service status` reports a repair. With no run active, run `t3 service install`, which restarts T3. With runs active, point `ExecStart` in `~/.config/systemd/user/t3code.service` at the active version in `~/.t3/runtime/service-state.json` and run `systemctl --user daemon-reload`. Delete other versions only after the repair; otherwise the next start finds no launcher.

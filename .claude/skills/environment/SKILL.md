@@ -5,19 +5,19 @@ description: 'Machine facts, repository commands, machine upkeep and media extra
 
 # Environment
 
-The user works through T3 from a Mac and a phone. Agents run on two headless Debian workers in one tailnet; `hostname -s` tells you which. Most development happens on `desktop`. T3 owns worktree setup and harness updates.
+The user works through T3 from a Mac and a phone. Agents run on two headless Debian workers in one tailnet; `hostname -s` tells you which. Most development happens on `desktop`, which the user turns on when needed. T3 owns worktree setup and updates itself, Codex and Claude Code.
 
 ## Tailnet
 
 MagicDNS resolves each short name, and `<name>.tailnet-8c4c.ts.net` gives HTTPS certificates.
 
-| Name               | Address          | Role                                                                                     |
-| ------------------ | ---------------- | ---------------------------------------------------------------------------------------- |
-| `desktop`          | `100.97.120.3`   | Home worker for most development: 24 threads, 30 GB, RTX 5070                            |
-| `dev`              | `100.68.201.107` | Always-on worker with a public address: Traefik serves every `*.mp281x.xyz`, VPN, Jaeger |
-| `macbook-pro`      | `100.115.207.60` | The user's control plane, often asleep; agents never set it up or develop on it          |
-| `iphone`           | `100.117.217.10` | The user's phone; a T3 client only                                                       |
-| `*.mullvad.ts.net` | Exit nodes       | Location exits for [Media](references/media.md); never set one for other traffic         |
+| Name               | Address          | Role                                                                                             |
+| ------------------ | ---------------- | ------------------------------------------------------------------------------------------------ |
+| `desktop`          | `100.97.120.3`   | Home worker for most development, on only when the user turns it on: 24 threads, 30 GB, RTX 5070 |
+| `dev`              | `100.68.201.107` | Always-on worker with a public address: Traefik serves every `*.mp281x.xyz`, VPN, Jaeger         |
+| `macbook-pro`      | `100.115.207.60` | The user's control plane, often asleep; agents never set it up or develop on it                  |
+| `iphone`           | `100.117.217.10` | The user's phone; a T3 client only                                                               |
+| `*.mullvad.ts.net` | Exit nodes       | Location exits for [Media](references/media.md); never set one for other traffic                 |
 
 - **SSH.** Every machine holds the user's one key pair, `~/.ssh/id_ed25519`, and authorizes only it, so any machine reaches any other. There is no `~/.ssh/config`: use `mp281x@dev`, `mp281x@desktop` and `matteopaludgnach@macbook-pro`. Copy files with `rsync -a <path> <user>@<name>:<path>`.
 - **Paths.** `dev` and `desktop` connect directly over UDP in about 40 ms. `tailscale ping <name>` shows whether a path is direct or relayed.
@@ -37,15 +37,9 @@ Run repository commands from the repository root. Discover inventories and versi
 - **Build.** Shared previews and browser proof use the production build served through the tailnet HTTPS URL. A development server differs in bundling and network behavior, so it proves only iteration.
 - **Start.** Run the repository's preview command detached, so it survives a T3 restart: `systemd-run --user --unit=<repository>-preview-<worktree> --working-directory=<worktree> <command>`. Bind it to `127.0.0.1` on a free port (`ss -ltn`).
 - **Share.** Expose it with `sudo tailscale serve --bg --https=<port> http://127.0.0.1:<port>`, and get the host from `tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")'`. The first request waits for a certificate. Verify sign-in, assets and API calls through `https://<host>:<port>` from the tailnet before you share it, never a localhost URL.
-- **Public webhooks.** Funnel makes a whole port public, so give the webhook path its own port. Check `sudo tailscale serve status --json`, then pick an unused port among 443, 8443 and 10000; 8443 already serves another app. Run `sudo tailscale funnel --bg --https=<funnel port> --set-path <path> http://127.0.0.1:<api port><path>`, and verify that the sign-in path does not answer there. Stop it with `sudo tailscale funnel --https=<funnel port> --set-path <path> off`.
+- **Public webhooks.** Funnel makes a whole port public, so give the webhook path its own port. Check `sudo tailscale serve status --json`, then pick an unused port among 443, 8443 and 10000. Run `sudo tailscale funnel --bg --https=<funnel port> --set-path <path> http://127.0.0.1:<api port><path>`, and verify that the sign-in path does not answer there. Stop it with `sudo tailscale funnel --https=<funnel port> --set-path <path> off`.
 - **Restart.** A stopped `systemd-run` unit disappears, so `systemctl --user start` cannot bring it back. Use `systemctl --user restart <unit>` while it runs; after a stop, run the same `systemd-run` command again.
 - **Keep or stop.** Restart a preview in place after a build that deletes its files. Keep one preview per branch while the user uses it; otherwise run `sudo tailscale serve --https=<port> off` and `systemctl --user stop <unit>`. A listener you did not start is not yours to stop.
-
-## External accounts
-
-- **Read-only by default.** Read any account the user connected. Write only where the user allowed it, on scratch resources you create, named `<repository>-test-<yyyymmdd>`, private, and in the user's personal namespace.
-- **Afterwards.** Delete each resource you recorded, after checking its name and namespace again, and verify that none remain. Remove only the connections you created that hold write tokens.
-- **Tokens.** Read a token inside the command that uses it, never print it, and never write it into a file, log or body. When the user must configure a provider, give a numbered guide and ask for screenshots of results you cannot see.
 
 ## Source checkouts
 
@@ -57,7 +51,7 @@ git clone --depth 1 --branch <version-tag-or-required-branch> <official-reposito
 
 ## T3 state
 
-Prefer T3's thread tools. Search earlier decisions with `t3_thread_search` before you read transcripts. For read-only local inspection, verify which database the running `t3 serve` process opened, and set `T3_DB` to it. On this machine it is currently `~/.t3/userdata/statev2.sqlite`. Query it with `sqlite3 -readonly`, and select only the fields you need; never read raw payloads or credentials. Live threads, runs, subagents and turn items are in `orchestration_v2_projection_*`. Legacy `projection_*` tables and `provider_session_runtime` can be stale.
+Prefer T3's thread tools, and search earlier decisions with `t3_thread_search` before you read transcripts. Each worker has its own T3 state. For read-only local inspection, set `T3_DB` to `~/.t3/userdata/statev2.sqlite`. Query it with `sqlite3 -readonly`, and select only the fields you need; never read raw payloads or credentials. Live threads, runs, subagents and turn items are in `orchestration_v2_projection_*`. Legacy `projection_*` tables and `provider_session_runtime` can be stale.
 
 To recover a thread's native transcripts, find its provider sessions, then the session files:
 
@@ -77,5 +71,4 @@ find "$HOME/.codex/sessions" "$HOME/.claude/projects" -type f -name "*$S.jsonl"
 - **Skills.** In Dual, `vpx @deslop/coding-standards@latest` refreshes the engineering, design and testing copies. Run it when a worktree lacks them before code work. It changes no manifest or lockfile.
 - **Changed files only.** The preset applies to the files the task adds or changes. List every other file of the package in its `oxlint.config.ts` ignore patterns, and remove a file from that list when a task changes it.
 - **No blind refactors.** Never rewrite a file the task does not otherwise change, only to satisfy the rules. Keep the ignores for generated and build output.
-- **Installs.** The primary agent batches manifest, lockfile and install changes, and verifies a frozen install.
 - **Standards file.** Remove from Dual's `CODING_STANDARDS.md` what the shared skills already say. Keep the layout, tooling, stricter local choices and domain contracts.

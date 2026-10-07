@@ -73,21 +73,21 @@ Released application versions keep their plugins; nothing changes for existing w
 
 **Links.** GitHub uses `https://github.com/<owner>/<repo>/blob/<branch>/<path>#L<start>-L<end>`. GitLab uses `https://<host>/<project>/-/blob/<branch>/<path>#L<start>-<end>`.
 
-**Publishing.** Pass bodies and comments as files. Attach an image as `--attach '<file>#<alt text>'` and a GitHub video as a bare `--attach '<file>'`. `glab` has no `--jq` option, so pipe its API output into `jq`. Check the published head, title, body and files against the branch.
+**Publishing.** Pass bodies as files, and check the published head, title, body and files against the branch. Place each capture under its entry:
+
+- **GitHub.** Reference the file in the body as `![alt](./file.png)`; `--attach` uploads it and rewrites that reference in place. A video is a bare `--attach` with the same reference.
+- **GitLab.** `glab --attach` appends at the end, so upload each file through the API and paste the returned `markdown` under its entry. `glab` has no `--jq` option, so pipe its output into `jq`.
 
 ```bash
-gh pr edit --body-file <file> --attach '<file>#<alt text>'
-glab mr update <number> --draft --description-file <file> --attach <file>
+gh pr edit <number> --body-file <file> --attach './file.png#<alt text>'
+curl -fsS -H "PRIVATE-TOKEN: $(glab config get token --host git.datapizza.tech)" -F file=@<file> https://git.datapizza.tech/api/v4/projects/<project id>/uploads | jq -r .markdown
+glab mr update <number> --draft --description-file <file>
 ```
 
-**Wakes.** T3's watch wakes the thread for failed or completed checks, comments, reviews and conflicts. Handle the cause of each wake, resolve actionable review findings, and read logs only of failed jobs.
-
-**No T3 watch.** Run one blocking command in the background under `timeout 2h`. If no run exists for the head, inspect the pipeline trigger instead of polling.
+**Failed checks.** Read the logs of failed jobs only.
 
 ```bash
-ID=$(gh run list --commit "$(git rev-parse HEAD)" --json databaseId -q '.[0].databaseId'); : "${ID:?No run for this commit}"
-gh run watch "$ID" --exit-status --compact; STATUS=$?; [ $STATUS -eq 0 ] || gh run view "$ID" --log-failed; exit $STATUS
-glab ci status --wait --compact
+gh run view <run id> --log-failed
 glab api "projects/<project>/pipelines/<pipeline id>/jobs?scope[]=failed" | jq -r '.[] | "\(.id) \(.name)"'; glab ci trace <job id>
 ```
 

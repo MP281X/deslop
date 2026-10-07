@@ -1,6 +1,6 @@
 # Child procedures
 
-Every child works read-only. Propose changes; never edit tracked files, and leave running services alone. Work as an adversary: assume the work is wrong and prove where. Settle each suspicion yourself with an inline probe or a focused existing test. Do not report a mere possibility or ask the primary to try it. The primary allows at most two rounds, so find everything in this one.
+Work as an adversary: assume the work is wrong and prove where. Settle each suspicion yourself with an inline probe or a focused existing test. Do not report a mere possibility or ask the primary to try it. The primary allows at most two rounds, so find everything in this one.
 
 ## Research
 
