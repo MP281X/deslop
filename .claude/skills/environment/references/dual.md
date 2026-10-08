@@ -36,10 +36,17 @@ curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
 
 ## Coding standards
 
-The `@deslop/coding-standards` package comes from deslop.
+The `@deslop/coding-standards` package comes from deslop. Each package pins its own version, and each `oxlint.config.ts` keeps a legacy list: files whose `legacyRules` drop to warnings. Every other file passes the full preset.
 
-- **Skills.** `vpx @deslop/coding-standards@latest` refreshes the engineering, design and testing copies. Run it when a worktree lacks them before code work. It changes no manifest or lockfile.
-- **Package adoption.** A package adds the preset to its own `oxlint.config.ts` only when a task changes its code.
-- **Changed files only.** The preset applies to the files the task adds or changes. List every other file of the package in the ignore patterns, and remove a file from that list when a task changes it.
+- **Skills.** Run `vpx @deslop/coding-standards@latest` before code work. It refreshes the engineering, design and testing copies and changes no manifest or lockfile.
+- **Bump.** When a task changes a package's code, run `bun add --dev --exact @deslop/coding-standards@latest` in that package's directory. Leave every other package's version alone.
+- **New rules.** A bump can add rules. Files outside the legacy list must pass them. When a new rule fails a listed file, add the rule to `legacyRules`.
+- **Touched files.** Each file the task adds or changes leaves the legacy list and passes the full preset. Refactor it completely, not only the changed lines.
+- **Prune.** After the change, run the command below in the package directory. Remove every listed file it does not print. The list only shrinks: never add a file to it.
 - **No blind refactors.** Never rewrite a file the task does not otherwise change, only to satisfy the rules. Keep the ignores for generated and build output.
+
+```bash
+"$(git rev-parse --show-toplevel)"/node_modules/.bin/oxlint --format json . | jq -r '[.diagnostics[].filename] | unique[]'
+```
+
 - **Standards file.** Remove from Dual's `CODING_STANDARDS.md` what the shared skills already say. Keep the layout, tooling, stricter local choices and domain contracts.
