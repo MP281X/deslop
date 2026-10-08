@@ -1,0 +1,245 @@
+<!doctype html>
+<!--
+  Proof video template for HyperFrames. Copy it to a scratch project as index.html.
+  Edit only the marked parts: the app tokens, the claim, one .shot and one .cap per chapter, and the CHAPTERS list.
+  Recordings are T3 MP4s at 1280x800, placed in assets/. Targets are fractions of the recorded viewport.
+-->
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=1280, height=800" />
+		<title>Proof video</title>
+		<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+		<style>
+			/* EDIT: the app's own font file, copied into assets/, and its tokens. */
+			@font-face {
+				font-family: 'App';
+				src: url('assets/app-font.woff2') format('woff2');
+				font-weight: 100 900;
+			}
+			:root {
+				--canvas: #f1f2f4; /* a step darker than the app's page surface */
+				--surface: #ffffff; /* the app's page surface */
+				--text: #0f172a; /* the app's foreground */
+				--muted: #64748b; /* the app's muted foreground */
+				--primary: #2b59e8; /* the app's primary */
+				--on-primary: #ffffff;
+				--radius: 12px; /* the app's base radius, plus 2 px */
+			}
+
+			body {
+				margin: 0;
+				background: var(--canvas);
+				font-family: 'App', sans-serif;
+				color: var(--text);
+			}
+			#root {
+				position: relative;
+				width: 100%;
+				height: 100%;
+				overflow: hidden;
+				background: var(--canvas);
+			}
+
+			#claim {
+				position: absolute;
+				inset: 0;
+				background: var(--surface);
+				display: flex;
+				flex-direction: column;
+				justify-content: center;
+				padding: 0 120px;
+			}
+			.kicker {
+				font-size: 20px;
+				font-weight: 600;
+				color: var(--primary);
+				margin-bottom: 28px;
+				display: flex;
+				align-items: center;
+				gap: 12px;
+			}
+			.kicker i {
+				display: block;
+				width: 10px;
+				height: 10px;
+				border-radius: 3px;
+				background: var(--primary);
+			}
+			.line {
+				overflow: hidden;
+			}
+			.line span {
+				display: block;
+				font-size: 68px;
+				line-height: 1.08;
+				font-weight: 650;
+				letter-spacing: -0.025em;
+			}
+			.line.muted span {
+				color: var(--muted);
+			}
+			#claim-bar {
+				width: 220px;
+				height: 4px;
+				border-radius: 2px;
+				background: var(--primary);
+				margin-top: 36px;
+				transform-origin: 0 50%;
+			}
+
+			#stage {
+				position: absolute;
+				left: 80px;
+				top: 24px;
+				width: 1120px;
+				height: 700px;
+				border-radius: var(--radius);
+				overflow: hidden;
+				background: var(--surface);
+				box-shadow:
+					0 1px 2px rgba(15, 23, 42, 0.08),
+					0 18px 48px rgba(15, 23, 42, 0.16);
+			}
+			.shot {
+				position: absolute;
+				inset: 0;
+			}
+			.zoom-outer {
+				position: absolute;
+				inset: 0;
+				transform-origin: 50% 50%;
+			}
+			.zoom-inner {
+				position: absolute;
+				inset: 0;
+			}
+			video {
+				position: absolute;
+				left: 0;
+				top: 0;
+				width: 1120px;
+				height: 700px;
+			}
+
+			.cap {
+				position: absolute;
+				left: 80px;
+				top: 744px;
+				display: flex;
+				align-items: center;
+				gap: 12px;
+				font-size: 22px;
+				font-weight: 500;
+			}
+			.cap b {
+				font-size: 15px;
+				font-weight: 600;
+				color: var(--on-primary);
+				background: var(--primary);
+				border-radius: 999px;
+				padding: 4px 10px;
+				font-variant-numeric: tabular-nums;
+			}
+		</style>
+	</head>
+	<body>
+		<!-- EDIT: data-duration is the last chapter's end. -->
+		<div id="root" data-composition-id="main" data-start="0" data-width="1280" data-height="800" data-duration="22">
+			<div id="stage">
+				<!-- EDIT: one .shot per chapter; data-start and data-duration match CHAPTERS, data-media-start trims the recording. -->
+				<div class="shot" id="shot1">
+					<div class="zoom-outer" id="z1o">
+						<div class="zoom-inner" id="z1i">
+							<video
+								id="v1"
+								src="assets/chapter-1.mp4"
+								muted
+								playsinline
+								data-start="2.6"
+								data-duration="7.4"
+								data-media-start="0"
+								data-track-index="0"
+							></video>
+						</div>
+					</div>
+				</div>
+				<div class="shot" id="shot2">
+					<div class="zoom-outer" id="z2o">
+						<div class="zoom-inner" id="z2i">
+							<video
+								id="v2"
+								src="assets/chapter-2.mp4"
+								muted
+								playsinline
+								data-start="9.6"
+								data-duration="12.4"
+								data-media-start="0"
+								data-track-index="1"
+							></video>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- EDIT: one caption per chapter, under twelve words, stating what the viewer sees. -->
+			<div class="cap" id="cap1"><b>1/2</b><span>Upload the workbook and read two of its sheets</span></div>
+			<div class="cap" id="cap2"><b>2/2</b><span>The memo takes its ATECO name from the pinned table</span></div>
+
+			<!-- EDIT: the app name and area, then the claim in two or three short lines; the last line can be muted. -->
+			<div id="claim" data-start="0" data-duration="3.3" data-layout-allow-overflow>
+				<div class="kicker"><i></i>DualOS · Workflow proof</div>
+				<div class="line"><span>A pinned lookup table</span></div>
+				<div class="line"><span>and an uploaded workbook</span></div>
+				<div class="line muted"><span>make a Word memo</span></div>
+				<div id="claim-bar"></div>
+			</div>
+		</div>
+		<script>
+			// EDIT: one entry per chapter. start and end are composition seconds; target is the
+			// recorded element's center as viewport fractions; zoom is 1 for no push, at most 1.8.
+			const CHAPTERS = [
+				{start: 2.6, end: 10.0, target: [0.5, 0.47], zoom: 1.45},
+				{start: 9.6, end: 22.0, target: [0.5, 0.52], zoom: 1.75}
+			]
+
+			const W = 1120,
+				H = 700
+			const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi)
+			const aim = ([fx, fy], s) => {
+				const cx = clamp(fx * W, W / (2 * s), W - W / (2 * s))
+				const cy = clamp(fy * H, H / (2 * s), H - H / (2 * s))
+				return {s, x: -(cx - W / 2), y: -(cy - H / 2)}
+			}
+			const ease = 'power3.inOut'
+			const tl = gsap.timeline({paused: true})
+
+			tl.fromTo('.kicker', {opacity: 0, y: 12}, {opacity: 1, y: 0, duration: 0.5, ease: 'power2.out'}, 0.15)
+			tl.fromTo('.line span', {yPercent: 110}, {yPercent: 0, duration: 0.8, ease: 'expo.out', stagger: 0.09}, 0.25)
+			tl.fromTo('#claim-bar', {scaleX: 0}, {scaleX: 1, duration: 0.9, ease: 'expo.out'}, 0.7)
+			tl.to('#claim', {yPercent: -100, duration: 0.8, ease: 'expo.inOut'}, 2.4)
+			tl.fromTo('#stage', {scale: 0.9, opacity: 0}, {scale: 1, opacity: 1, duration: 0.9, ease: 'expo.out'}, 2.6)
+
+			CHAPTERS.forEach((chapter, index) => {
+				const n = index + 1
+				const last = n === CHAPTERS.length
+				if (index > 0)
+					tl.fromTo(`#shot${n}`, {opacity: 0}, {opacity: 1, duration: 0.4, ease: 'power1.inOut'}, chapter.start)
+				tl.fromTo(
+					`#cap${n}`,
+					{opacity: 0, y: 14},
+					{opacity: 1, y: 0, duration: 0.5, ease: 'power2.out'},
+					chapter.start + 0.3
+				)
+				if (!last) tl.to(`#cap${n}`, {opacity: 0, y: -10, duration: 0.35, ease: 'power2.in'}, chapter.end - 0.6)
+				if (chapter.zoom > 1) {
+					const to = aim(chapter.target, chapter.zoom)
+					tl.to(`#z${n}o`, {scale: to.s, duration: 1.4, ease}, chapter.start + 0.8)
+					tl.to(`#z${n}i`, {x: to.x, y: to.y, duration: 1.4, ease}, chapter.start + 0.8)
+				}
+			})
+
+			window.__timelines['main'] = tl
+		</script>
+	</body>
+</html>
