@@ -61,11 +61,14 @@ Prototype until the user says the result is what they want. Most iterations belo
 
 A stack splits one task into dependent pull requests, so a reviewer reads one layer at a time. The thread owns the stack as one unit of work.
 
-- **When.** Propose layers in Agree only when they have a reason, such as a contract a reviewer must approve before its consumers.
-- **Shape.** Each layer is one commit on its own branch, named `<thread branch>-<n>-<topic>`; the thread's branch is the top layer. Work in the thread's worktree, checked out at the top.
-- **Route changes.** Put every change in the layer that owns it: commit it with `git commit --fixup=<layer commit>`, then run `git rebase --autosquash --update-refs <default branch>`. A new concern becomes a new layer only with the user's approval.
+- **When.** Stacks make independent changes easier to review. Split the work into layers without asking whenever it holds independent changes, such as unrelated topics in one thread or a contract before its consumers.
+- **Topics.** Keep each layer's topic wide, such as "agent instructions" or "Dual lint rules", and merge narrow topics into one layer. A thread with more than four layers has topics that are too narrow.
+- **Order.** Order layers by importance, the most important at the bottom, so it merges first. A contract stays below its consumers, and a topic that arrives later goes on top.
+- **Shape.** Each layer is one commit on its own branch. The thread's branch holds the first layer, and later layers are named `<thread branch>-<n>-<topic>`. Work in the thread's worktree, checked out at the top.
+- **Route changes.** Put every change in the layer that owns it, the bottom one included: commit it with `git commit --fixup=<layer commit>`, then run `git rebase --autosquash --update-refs <default branch>` from the top. A later request about an existing layer's topic changes that layer, never a new layer on top.
 - **Stay aligned.** After each update, rebase the top onto the default branch, so every layer contains the layers below it. Every layer must pass its checks, because each one merges alone.
 - **Publish.** Open one draft pull request per layer. The bottom targets the default branch, and each later layer targets the layer below it. On GitHub, run `gh stack init <branches>` once, then `gh stack submit --auto`, which creates drafts. On GitLab, push each layer with `--force-with-lease` and set each merge request's target branch. Each body covers only its layer.
+- **Report.** After each push, the reply links every layer whose pull request changed, with one line on what changed in it. The user reviews only those layers, so leave out layers whose diff stayed the same.
 - **Merges.** The user merges from the bottom. Then rebase the remaining layers onto the default branch, retarget the next pull request and push.
 
 ## Always
