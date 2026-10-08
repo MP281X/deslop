@@ -31,7 +31,7 @@ Machine upkeep lives in environment's maintenance reference. Update this brief w
 | Implementation children, even with separate files                           | In one checkout they waited on gates and reformatted each other                                                                    |
 | Nested delegation                                                           | No case justified a second level; finished children kept acting on pipeline events                                                 |
 | Review fix rounds until clean                                               | One day produced 28 review tasks, many one-minute checks of one-line fixes                                                         |
-| Formatter and autofix rewrites outside the task                             | They put unrelated files into pull requests and widened lint migrations                                                            |
+| Formatter and autofix rewrites mixed into a feature layer                   | Root fixes are deterministic and welcome, but only in the bottom cleanup layer, so feature layers stay readable                    |
 | Codex `model_context_window` override                                       | Primary calls carried a median of 264k tokens; the recommended window compacts sooner                                              |
 | One thread per stack layer                                                  | A later request must land in the layer that owns it, not in the layer that is checked out                                          |
 | Stacks without a reason, narrow layers or asking first                      | Stacks simplify review of independent changes; agents make them unasked, with wide topics ordered by importance                    |
@@ -44,7 +44,7 @@ Machine upkeep lives in environment's maintenance reference. Update this brief w
 | Wake-on-LAN through the Mac                                                 | The Mac shares a network with `desktop` only when the user is home and can power it on by hand                                     |
 | Agent writes to Jira                                                        | The user picks, assigns and moves tickets himself                                                                                  |
 | Harness rules that block `acli` writes, and a sign-in script                | A prompt rule is enough for the user, who types the token himself                                                                  |
-| Package-level preset adoption in deslop                                     | Deslop's root config extends the preset for the whole repository; package adoption and changed-files-only ignores apply in Dual    |
+| Package-level preset adoption in deslop                                     | Deslop's root config extends the preset for the whole repository; Dual bumps every package in a cleanup layer                      |
 | Updating Codex, Claude Code and T3 in maintenance                           | T3 updates all three itself                                                                                                        |
 | Template checklists, video durations and a separate Proof section in bodies | The user reads a body as a changelog: each change with its own evidence and code links                                             |
 | The harnesses' built-in writing style and progress updates                  | The user rejects both default outputs; the pair rules replace them                                                                 |
@@ -60,13 +60,14 @@ Machine upkeep lives in environment's maintenance reference. Update this brief w
 | Thread briefs that restate the workflow                                     | Every rule change then needed a steer; briefs carry the plan and task decisions only                                               |
 | Re-reviewing a whole branch and fixing style findings                       | A repeat review of 400 files returned 25 findings each and drew restyling across unrelated files                                   |
 | Asking every decision in one batch                                          | The Dual Apps brainstorm sent 18 questions in 5 cards and got 9 "not sure" answers; frontier rounds replaced it                    |
-| Status text between tool calls, including Codex commentary                  | T3 shows it as a full message until the turn ends; the pair prompts list three exceptions                                          |
+| Status text between tool calls, including Codex commentary                  | T3 shows it as a full message until the turn ends; the pair prompts list the exceptions                                            |
 | Links, paths or markdown in question cards                                  | T3 renders card text as plain text                                                                                                 |
 | A question card after a guide with a link                                   | In the VPN thread the guide stayed in thinking and the card had no link; a guide now ends the turn                                 |
 | Display rules from memory                                                   | Agents assumed cards hide text and `<details>` hides on the phone; What T3 shows comes from T3 source                              |
 | Harness hooks that steer agent behavior                                     | The user wants prompt-level fixes; a hook that blocked sliced reads was rejected                                                   |
 | Codex as the primary agent                                                  | Slower than Claude on two Dual build tasks in the eval: 4 to 8 minutes against 2 to 7                                              |
 | Analysis scripts inside the retrospective skill                             | Scripts change with every analysis; the skill keeps the measures and the inline commands                                           |
+| Quoting a status example such as "Now the edits." in the no-text rule       | Eval: 3 of 7 build runs wrote such a message with the example, 0 of 6 without it                                                   |
 
 <details>
 <summary>Workflow and agent references</summary>

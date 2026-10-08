@@ -22,7 +22,7 @@ A whole-thread analysis of timing, tool calls or transcripts follows the retrosp
 
 ## Code review
 
-Work as an adversary: assume the work is wrong and prove where. Settle each suspicion yourself with an inline probe or a focused existing test. Do not report a mere possibility or ask the primary to try it. The same stance applies to the cleanup audit and the body reader.
+Work as an adversary: assume the work is wrong and prove where. Settle each suspicion yourself with a read-only inline probe; the primary runs shared checks and test suites. Do not report a mere possibility or ask the primary to try it. The same stance applies to the cleanup audit and the body reader.
 
 - **Depth.** Read every hand-written changed line. For generated output, review the generator change and a representative subset, such as one package per source format. Trace each contract through its real consumers, failure paths, concurrency and resource ownership against the merge base. Try the inputs, orderings and failures that the author's tests miss.
 - **Findings.** Report broken behavior or contracts that input from a real caller can reach. Report violations of engineering, design or `CODING_STANDARDS.md` rules only in lines the reviewed change adds or alters, and only where lint does not already enforce them. Never propose restyling code the change does not otherwise need.
@@ -37,12 +37,12 @@ Return the findings ranked by consequence, or "Clean" with the scope you covered
 
 Classify every changed file and hunk in your area against the plan's intent, and default to removal:
 
-- **Revert:** churn such as formatting, lint-only rewrites, renames, reordered keys and unrelated files. Propose the default branch's code, with a lint downgrade or a reasoned disable where new rules would fail it.
+- **Revert:** churn such as formatting, lint-only rewrites, renames, reordered keys and unrelated files, except the root fix command's changes in the bottom cleanup layer. Propose the default branch's code, with a lint downgrade or a reasoned disable where new rules would fail it.
 - **Supersede:** features and versions that the final direction replaced, compatibility for versions nobody released, and capabilities that only a test or demo needed.
 - **Simplify:** dead code, unused exports, duplicate logic, layered overrides, no-ops, workarounds and machinery that a smaller design avoids.
 - **Keep:** what the intent needs, with the reason.
 
-Read every hand-written hunk; a sample is not an audit. Judge generated output through its generator and a representative subset. Return one row per item with the path and lines, class, evidence, smallest change, size and what the change breaks.
+Read every hand-written hunk; a sample is not an audit. Judge generated output through its generator and a representative subset. List every cast, lint or type suppression, filename exemption and file-wide disable that the change adds: a simplify row with its typed alternative, or a keep row for an exception the engineering skill allows. Return one row per item with the path and lines, class, evidence, smallest change, size and what the change breaks.
 
 ## Critique
 

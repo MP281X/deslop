@@ -36,7 +36,7 @@ Analyze the threads the user names. Without names, take the top-level threads up
 ## 3. Discuss
 
 - **Show.** Render the time lost per cause as bars, and each proposed rule as a before and after.
-- **Ask.** One question card that lets the user pick several fixes: one option per fix, a label of a few words and a description under twelve words that states its effect. Ask only about fixes the render shows.
+- **Ask.** One question card that lets the user pick several fixes, or one question per fix in Codex, which has no multi-select: one option per fix, a label of a few words and a description under twelve words that states its effect. Ask only about fixes the render shows.
 - **Steering.** The user adds ideas while you work. Test each as another eval variant rather than arguing about it.
 
 ## 4. Eval
@@ -51,10 +51,10 @@ Every instruction change gets an eval of old against new before install. Give ea
 cd "$copy" && claude -p "$scenario" --system-prompt "$(cat system.md)" --disable-slash-commands --model claude-opus-5-5 --effort high \
   --disallowedTools AskUserQuestion --dangerously-skip-permissions --output-format stream-json --verbose > run.jsonl
 codex exec --cd "$copy" --skip-git-repo-check --ephemeral --dangerously-bypass-approvals-and-sandbox \
-  -m gpt-6.1-sol -c model_reasoning_effort=medium -c service_tier=priority --json "$procedure $question" > child.jsonl
+  -m gpt-6.1-sol -c model_reasoning_effort=medium -c service_tier=priority --json "$procedure $question" < /dev/null > child.jsonl
 ```
 
-- **Runs.** Two or three runs per variant and scenario; one run is noise. Iterate per workflow's measurable-results rule, and stop when a round stops helping.
+- **Runs.** Two or three runs per variant and scenario; one run is noise. Run a second round only for a variant that failed its measure, and stop when a round stops helping.
 - **Speed.** Time each command yourself. Compare wall time, steps, single-call share, slices, rereads, summed context tokens and files changed.
 - **Quality.** Give the blinded transcripts to a judge child, GPT-6.1 Sol at medium effort, with the user's criteria and shuffled labels. Check that faster variants still meet every requirement of the task.
 - **Settings.** This repository's `.claude/settings.json` applies live to the session that works in it. Test a setting through `claude --settings` in the eval, never by editing that file.
