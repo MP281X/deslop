@@ -25,8 +25,27 @@ curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
 - **Lifetime.** Ctrl-C stops the preview and keeps its data. When every owner is settled and the data is disposable, `vp run --workspace-root preview:destroy` removes only that stage. Run it before you move or delete the checkout or its Alchemy state.
 - **Live webhooks.** Funnel the API port's `/api/webhooks` path per environment's previews. `infra/saas/local.run.ts` sets `SERVER_PUBLIC_URL` to the local URL, so self-registering triggers need a temporary local override that is reverted before the push.
 - **AI cost.** Every Architect run, chat turn and AI step in a preview uses `gpt-6-luna` at low reasoning effort.
-- **Accounts.** Jira is read-only, and the user does any Jira configuration from a guide. Writes go only to GitHub `MP281X`, GitLab `matteopaludgnach` and the user's Discord test channel, whose messages can stay. Give the user a numbered guide to remove any Jira configuration they added for a test. The saved GitHub and Discord preview tokens are read-only; write tokens come from `gh auth token` and the `glab` configuration.
+- **Accounts.** Jira stays read-only per [Jira](#jira), and the user does any Jira configuration from a guide. Writes go only to GitHub `MP281X`, GitLab `matteopaludgnach` and the user's Discord test channel, whose messages can stay. Give the user a numbered guide to remove any Jira configuration they added for a test. The saved GitHub and Discord preview tokens are read-only; write tokens come from `gh auth token` and the `glab` configuration.
 - **Never.** Never use the shared `init` or `dev` commands as a preview.
+
+## Jira
+
+Jira is Dual's only issue tracker: project `DOS`, board 1053, on `datapizza.atlassian.net`. The user's account ID is `712020:87e4f57e-6b5d-40ab-8dfa-faf159ead71a`.
+
+**Read-only.** Agents must run only read commands: `view`, `search`, `list` and `acli jira auth status`. Never create, edit, assign, transition or comment on a ticket, and never change the sign-in. The user makes every change in Jira. Dual's `docs/agents/issue-tracker.md` lists write commands for the team; use only its read commands and its type hierarchy.
+
+- **Assigned.** A ticket assigned to the user is work they just started. It is the reference for the task: read it whenever its key, such as `DOS-289`, appears in a request, branch or commit, and quote the requirements you use.
+- **Unassigned.** Unassigned tickets form a shared pool that anyone on the team can pick from. Consider only those in the `To Do` status; skip `Backlog`, `Doing` and every other status.
+- **Priority.** `P1` is the highest priority and `P4` the lowest. A higher priority must be done sooner.
+- **Picking.** When the user asks what to work on, read every unassigned `To Do` ticket and rank them by priority, size and fit with the code. Areas and Initiatives group work; rank the Epics, Tasks, Stories and Bugs inside them. Decide with the user, then start workflow's Agree with the chosen ticket.
+- **Output.** Plain `view` prints the description as text, while `--json` returns Atlassian's document format. Searches read best as `--csv`.
+
+```bash
+acli jira workitem search --csv --paginate --fields key,issuetype,priority,summary --jql 'project = DOS AND assignee is EMPTY AND status = "To Do" ORDER BY priority DESC, updated DESC'
+acli jira workitem search --csv --fields key,priority,status,summary --jql 'project = DOS AND assignee = currentUser() AND statusCategory != Done'
+acli jira workitem view DOS-289
+acli jira workitem comment list --key DOS-289
+```
 
 **Components.** `vpx shadcn@latest list @shadcn --cwd packages/ui`; inspect the docs and the installed source before adding one.
 

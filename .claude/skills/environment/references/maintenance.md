@@ -14,8 +14,8 @@ The workers are `dev` and `desktop`. Both run the latest Debian stable in text m
 | GitLab    | Through the VPN; advertises the route to the tailnet               | Through dev's route (`--accept-routes`)                         |
 
 - **Sudo.** Codex and Claude run sudo without a terminal, so `/etc/sudoers.d/99-mp281x-nopasswd` holds `mp281x ALL=(ALL:ALL) NOPASSWD: ALL` with mode 0440.
-- **Toolchain.** Docker with Compose and Buildx, `gh` with the `github/gh-stack` extension, `glab`, git, build tools, rsync, ripgrep, jq, sqlite3, ffmpeg and Python. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code lives in `~/.local/bin`.
-- **Sign-ins.** Each worker signs in on its own: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login` and `codex login --device-auth`. Show each sign-in link to the user.
+- **Toolchain.** Docker with Compose and Buildx, `gh` with the `github/gh-stack` extension, `glab`, Atlassian's `acli`, git, build tools, rsync, ripgrep, jq, sqlite3, ffmpeg and Python. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code lives in `~/.local/bin`.
+- **Sign-ins.** Each worker signs in on its own: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login` and `codex login --device-auth`. Show each sign-in link to the user. The user signs `acli` in per [Jira sign-in](#jira-sign-in).
 - **Repositories.** Git picks each repository's identity per [Git identity](#git-identity). `~/dual` uses the credential helper `!glab auth git-credential` for `https://git.datapizza.tech`. Run `gh auth setup-git` for GitHub.
 - **Automatic updates.** `unattended-upgrades` installs Debian updates daily on every worker; `/etc/apt/apt.conf.d/20auto-upgrades` turns it on.
 - **Git.** Global defaults on every worker: `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled`, `diff.algorithm histogram`, `merge.conflictStyle zdiff3` and `init.defaultBranch main`.
@@ -155,14 +155,43 @@ A reboot without a keyboard skips the MOK manager and drops the pending key. Unt
 These steps set up a worker from a Debian netinst image. Select only the SSH server task in the installer, because the desktop tasks install GNOME.
 
 1. Install `sudo`, `network-manager` and `ufw`, and mark them as manual. Put `/tmp` on disk per [Scratch on disk](#scratch-on-disk). Purge any desktop stack with `--autoremove`: the `task-*desktop` tasks, GNOME, GDM, LibreOffice, Firefox, Evolution, CUPS, Avahi, BlueZ, ModemManager and PipeWire. Keep `multi-user.target` as the default target.
-2. Write the sudoers file. Add the Docker and GitHub CLI apt sources, each key in `/etc/apt/keyrings/<name>.gpg`, and install the toolchain, `glab` and `unattended-upgrades` with its `20auto-upgrades` file. Set the git defaults. Add `mp281x` to the `docker` group and write the Docker binding defaults.
+2. Write the sudoers file. Add the Docker, GitHub CLI and `acli` apt sources, each key in `/etc/apt/keyrings/<name>.gpg`, and install the toolchain, `glab` and `unattended-upgrades` with its `20auto-upgrades` file. Set the git defaults. Add `mp281x` to the `docker` group and write the Docker binding defaults.
 3. Install the user's key pair per [Access changes](#access-changes). Run the Tailscale block and show its sign-in link to the user. After a second SSH login over the tailnet works, set `ufw default deny incoming`, allow 80 and 443 only on dev, and enable ufw.
 4. On dev only: add the OpenVPN 3 apt source and install `openvpn3-client`. Import the VPN with `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`, connect it, and advertise its route.
 5. Run `loginctl enable-linger mp281x`. As `mp281x`, install Vite+ with `VP_HOME="$HOME/.vite-plus"`, the global packages and Claude Code. Run the T3 step and `t3 browser setup`, and set `PRETTY_HOSTNAME`.
-6. Run the sign-ins and `gh extension install github/gh-stack`. Write the git identities by host per [Git identity](#git-identity). Clone both repositories, and add each with `t3 project add --title <name> <path>`. On dev, deploy the public apps.
+6. Run the sign-ins, the [Jira sign-in](#jira-sign-in) and `gh extension install github/gh-stack`. Write the git identities by host per [Git identity](#git-identity). Clone both repositories, and add each with `t3 project add --title <name> <path>`. On dev, deploy the public apps.
 7. Install the [agent configuration](#agent-configuration), and copy the [T3 settings](#t3-settings) from another worker.
 8. After a key login from another machine succeeds, write `/etc/ssh/sshd_config.d/10-keys-only.conf` with `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no` and `X11Forwarding no`. Run `sudo sshd -t && sudo systemctl reload ssh`.
 9. With an NVIDIA GPU, enable `contrib` and `non-free`, and add NVIDIA's CUDA and container toolkit sources. Install `linux-headers-amd64`, `nvidia-open` and `nvidia-container-toolkit`. Add the `nvidia` runtime, and enroll the key per [Desktop GPU](#desktop-gpu).
+
+## Jira sign-in
+
+Agents read Dual's Jira through `acli` per [Dual](dual.md#jira). Atlassian's apt source supplies it, so the `apt-get upgrade` in [Update and deploy](#update-and-deploy) updates it; the daily Debian upgrades do not.
+
+```bash
+curl -fsSL https://acli.atlassian.com/gpg/public-key.asc | sudo gpg --batch --yes --dearmor -o /etc/apt/keyrings/acli.gpg
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/acli.gpg] https://acli.atlassian.com/linux/deb stable main" | sudo tee /etc/apt/sources.list.d/acli.list
+sudo apt-get update && sudo apt-get install -y acli
+```
+
+- **Secret Service.** `acli` keeps its token in a Secret Service, which a headless worker lacks. The `secret-service` user unit runs `gnome-keyring-daemon`, unlocked at start with a fixed password. Any process of `mp281x` can read the token, as with the `gh` token file.
+
+  ```bash
+  sudo apt-get install -y --no-install-recommends gnome-keyring libsecret-tools
+  mkdir -p ~/.config/systemd/user
+  printf '%s\n' '[Unit]' 'Description=Secret Service for headless CLI sign-ins' '[Service]' \
+    "ExecStart=/bin/sh -c 'printf headless | exec /usr/bin/gnome-keyring-daemon --foreground --replace --unlock --components=secrets'" \
+    'Restart=on-failure' '[Install]' 'WantedBy=default.target' > ~/.config/systemd/user/secret-service.service
+  systemctl --user daemon-reload && systemctl --user enable --now secret-service.service
+  ```
+
+- **Sign in.** `acli` has no headless browser sign-in, so it uses a classic API token without scopes. Give the user a guide: create the token at https://id.atlassian.com/manage-profile/security/api-tokens with a one-year expiry. Then run the command below in the T3 terminal of each worker, paste the token, and press Enter. The token stays off the screen and out of the shell history.
+
+  ```bash
+  read -rs t && echo "$t" | acli jira auth login --site datapizza.atlassian.net --email matteopaludgnach@datapizza.tech --token; unset t
+  ```
+
+- **Renew.** When `acli jira auth status` fails, give the user the same guide with a new token.
 
 ## Git identity
 
