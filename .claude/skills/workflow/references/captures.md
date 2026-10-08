@@ -27,7 +27,8 @@ npx -y hyperframes@0.8.141 render --quality delivery --output <claim>.mp4
 ```
 
 - **Locators.** Batch independent reads in one `preview_evaluate`. DOM assertions are not visual proof.
-- **Host recovery.** A `preview_evaluate` longer than 15 seconds makes T3 drop its browser host for one second, and the next call wrongly says "Do not retry". Keep each evaluation short and wait with `preview_wait_for`. After a host error, wait two seconds, check `preview_status`, and reopen your tab by its `tabId`. Never install another browser.
+- **Timeouts.** Give each step of a walk a timeout of 15 seconds or less, and longer only for a measured slow step such as an AI run. On the first failure, read the screen, console and failed requests, and fix the cause before the next run.
+- **Host recovery.** A `preview_evaluate` longer than 15 seconds makes T3 drop its browser host for one second, and the next call wrongly says "Do not retry". Keep each evaluation short and wait with `preview_wait_for`. After a host error, check `preview_status` and reopen your tab by its `tabId` once the host is available. Never install another browser.
 
 ## Rules
 
@@ -38,7 +39,7 @@ Apply testing's Visual proof rule; these add the tools and the pull request spec
 - **Camera.** Push in on each chapter's target at 1.2 to 1.8 times, so its text reads at phone width. Keep the target whole in the frame.
 - **Captions.** Give each chapter one numbered caption under the recording, under twelve words, stating what the viewer sees. Crossfade between chapters and hold the outcome for at least two seconds.
 - **Start ready.** Record on the host that already runs, never a build made only for the video. Seed data through the API or a seed command. A spinner, skeleton or placeholder on camera restarts the take, unless loading is the claim.
-- **Legible.** Use a 1280×800 viewport. Crop a screenshot to the element with `ffmpeg -vf crop`. Use at most eight screenshots per body.
+- **Legible.** Use a 1280×800 viewport. Crop a screenshot to the element with `ffmpeg -vf crop`.
 - **Chapters.** Script each chapter as one sequence of `preview_*` calls. Dry-run it, record chapters separately, and replace only a chapter whose code or outcome changed. Trim the pauses between tool calls with `data-media-start` and `data-duration`. Inspect frames from the render, then watch it at playback speed.
 - **Current.** Capture after the final code, and name each file by its claim, such as `jira-rule-starts-run.mp4`. Remove every stale capture, because a newer video does not replace it. Compare each capture with the head's UI text before publishing.
 - **Real events.** Trigger the provider for real when an account exists, or send a signed request with `curl` when it does not. Ask the user for the provider-side step, with an exact guide, when you cannot do it.

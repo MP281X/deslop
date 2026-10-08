@@ -2,7 +2,7 @@
 
 **Issues.** Deslop is personal software without an issue tracker. GitHub holds only its pull requests, so the request is the whole task.
 
-**Commands.** Vite+ caches checks by task inputs; fixes are never cached. Use `--no-cache` to prove a fresh run. Fix the branch's files with `vp check --fix <files>`; the root fix is only for a repository-wide fix the user asked for.
+**Commands.** Vite+ caches checks by task inputs; fixes are never cached. Use `--no-cache` to prove a fresh run.
 
 ```bash
 vp run --workspace-root --cache check

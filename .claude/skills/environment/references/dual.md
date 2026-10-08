@@ -21,7 +21,7 @@ curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
 **Preview.** The preview runs development watchers, so it serves iteration only; Dual has no production preview command for release proof yet. `vp run --workspace-root preview` creates an isolated Alchemy stage derived from the checkout path. The stage holds the ports, database, sandbox, migrations, administrator and the app, API and worker watchers. Two threads in one worktree share its stage.
 
 - **Sign-in.** Sign in as `admin@dual.local` with `preview-password`. AI journeys need provider connections.
-- **Exposure.** The printed `.localhost` URL is machine-local; share the app port per environment's previews.
+- **Exposure.** The printed `.localhost` URL is machine-local, and Vite answers 403 to the tailnet host. Alchemy builds the app's environment, so `systemd-run --setenv` never reaches Vite. For a phone preview, edit `infra/saas/local.run.ts` without committing it: set `url` to `https://<host>:${environment.webPort}` and add `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: "<host>"` to `env`. Restart the preview, share the app port per environment's previews, and revert the edit before the push.
 - **Lifetime.** Ctrl-C stops the preview and keeps its data. When every owner is settled and the data is disposable, `vp run --workspace-root preview:destroy` removes only that stage. Run it before you move or delete the checkout or its Alchemy state.
 - **Live webhooks.** Funnel the API port's `/api/webhooks` path per environment's previews. `infra/saas/local.run.ts` sets `SERVER_PUBLIC_URL` to the local URL, so self-registering triggers need a temporary local override that is reverted before the push.
 - **AI cost.** Every Architect run, chat turn and AI step in a preview uses `gpt-6-luna` at low reasoning effort.
@@ -47,7 +47,7 @@ acli jira workitem view DOS-289
 acli jira workitem comment list --key DOS-289
 ```
 
-**Components.** `vpx shadcn@latest list @shadcn --cwd packages/ui`; inspect the docs and the installed source before adding one.
+**Components.** Build every screen from the shadcn primitives in `packages/ui/src/components`, including spinners, date pickers and form controls. Add a missing one with `vpx shadcn@latest add <name> --cwd packages/ui` after `vpx shadcn@latest list @shadcn --cwd packages/ui` and its docs. Never hand-build a control that a primitive covers.
 
 **CI.** The GitLab quality job runs a frozen install, the Effect-tsgo patch, then check, test and documentation. Read `docs/ci.md` for failures and `docs/releasing.md` for releases; a new push cancels interruptible pipelines. Check each package's Effect version in the lockfile before crossing adapter boundaries.
 
@@ -62,7 +62,8 @@ The `@deslop/coding-standards` package comes from deslop. Each package pins its 
 - **New rules.** A bump can add rules. Files outside the legacy list must pass them. When a new rule fails a listed file, add the rule to `legacyRules`.
 - **Touched files.** Each file the task adds or changes leaves the legacy list and passes the full preset. Refactor it completely, not only the changed lines.
 - **Prune.** After the change, run the command below in the package directory. Remove every listed file it does not print. The list only shrinks: never add a file to it.
-- **No blind refactors.** Never rewrite a file the task does not otherwise change, only to satisfy the rules. Keep the ignores for generated and build output.
+- **No blind refactors.** Never rewrite a file the task does not otherwise change, only to satisfy the rules.
+- **Never linted.** Generated code, build output and shadcn primitives stay in `ignorePatterns`, never in the legacy list. Never lint or refactor a shadcn primitive, even one the task edits.
 
 ```bash
 "$(git rev-parse --show-toplevel)"/node_modules/.bin/oxlint --format json . | jq -r '[.diagnostics[].filename] | unique[]'
