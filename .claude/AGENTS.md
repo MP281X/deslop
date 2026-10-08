@@ -68,6 +68,7 @@ Machine upkeep lives in environment's maintenance reference. Update this brief w
 | Codex as the primary agent                                                  | Slower than Claude on two Dual build tasks in the eval: 4 to 8 minutes against 2 to 7                                              |
 | Analysis scripts inside the retrospective skill                             | Scripts change with every analysis; the skill keeps the measures and the inline commands                                           |
 | Quoting a status example such as "Now the edits." in the no-text rule       | Eval: 3 of 7 build runs wrote such a message with the example, 0 of 6 without it                                                   |
+| Effect Atom rules that cover only new frontend data                         | Eval: 1 of 4 bug fixes adopted atoms; moving the changed hook or runner to an atom raised it to 4 of 4                             |
 
 <details>
 <summary>Workflow and agent references</summary>
