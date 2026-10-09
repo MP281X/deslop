@@ -11,6 +11,8 @@
 
 Install personal configuration on every worker with the [environment procedure](skills/environment/references/maintenance.md#agent-configuration).
 
+Fit the environment to the agent, not the agent to the environment. When agents reach for a missing tool or hit a machine limit, install the tool or fix the machine, then delete the rule that worked around it. Keep a ready command only for a constraint without a fix, such as Dual's VPN. Repository code is the exception: it persists, so the coding standards and lint stay strict; scratch code follows no style rule.
+
 Machine upkeep lives in environment's maintenance reference. Update this brief when these ownership decisions change, not for every implementation edit.
 
 ## Decisions not to repeat
@@ -20,7 +22,7 @@ Machine upkeep lives in environment's maintenance reference. Update this brief w
 | Model ladders                                                               | Coordination became the work; children explore, the primary keeps every write                                                      |
 | Production polish before prototype feedback                                 | Unaccepted directions must stay cheap to replace                                                                                   |
 | Progress notes, Status tables or PR recaps in chat                          | T3 shows children, commits, pushes, the PR and its pipeline; the user reads only what adds to that                                 |
-| Installing instruction changes without an eval and the user's approval      | Each change gets one quick blind eval of old against new prompts on real scenarios; the user approves before install               |
+| Installing instruction changes without an eval                              | Each change gets one quick blind eval of old against new on real scenarios; the user reviews by merging the draft pull request     |
 | Repeated instruction-simulation rounds                                      | They tested decisions, not real-task speed; one quick eval per change is enough                                                    |
 | Rebuilding orchestration or review surfaces                                 | T3 threads, inline renders and the pull request supply them                                                                        |
 | Importing Emil's whole skill collection                                     | Its variant picker, audit fan-out and style defaults conflict; keep the targeted craft                                             |
@@ -30,14 +32,14 @@ Machine upkeep lives in environment's maintenance reference. Update this brief w
 | Linear or other tracker connectors                                          | The user does not want them; Dual's Jira uses `acli`                                                                               |
 | Implementation children, even with separate files                           | In one checkout they waited on gates and reformatted each other                                                                    |
 | Nested delegation                                                           | No case justified a second level; finished children kept acting on pipeline events                                                 |
-| Review fix rounds until clean                                               | One day produced 28 review tasks, many one-minute checks of one-line fixes                                                         |
-| Formatter and autofix rewrites mixed into a feature layer                   | Root fixes are deterministic and welcome, but only in the bottom cleanup layer, so feature layers stay readable                    |
+| Review fix rounds until clean, and serial review after the gate             | 28 shallow review tasks in one day; two deep rounds per layer run in the background while the user iterates                        |
+| Formatter and autofix rewrites mixed into a feature layer                   | Root fixes are deterministic and welcome, but only in the cleanup layer, so feature layers stay readable                           |
 | Codex `model_context_window` override                                       | Primary calls carried a median of 264k tokens; the recommended window compacts sooner                                              |
 | One thread per stack layer                                                  | A later request must land in the layer that owns it, not in the layer that is checked out                                          |
 | Stacks without a reason, narrow layers or asking first                      | Stacks simplify review of independent changes; agents make them unasked, with wide topics ordered by importance                    |
 | FFmpeg `drawtext` title cards and caption strips in proof videos            | The user rejected the flat navy card; HyperFrames composes the recording in the app's own style                                    |
 | Remotion or screenshot reenactments for proof videos                        | Remotion needs a company license; a rebuilt UI proves nothing about the real app                                                   |
-| A new layer for a fix to an existing layer                                  | The user wants a later request about a layer's topic to change that layer, even the bottom one                                     |
+| A new layer for a fix to an existing layer                                  | The user wants a later request about a layer's topic to change that layer, even the first one                                      |
 | A machine-wide lock and resource rules                                      | `desktop` has 24 threads and 31 GB swap; the user rejects rules shaped by machine limits, and nested lock names deadlocked a child |
 | Tailscale SSH instead of keys                                               | The user chose one shared key pair; the Mac's Tailscale app cannot be an SSH server                                                |
 | Copying sign-ins or configuration from another machine                      | The user can reset any machine at any time; each worker sets itself up, and the key pair comes from the user's backup              |
@@ -70,6 +72,13 @@ Machine upkeep lives in environment's maintenance reference. Update this brief w
 | Analysis scripts inside the retrospective skill                             | Scripts change with every analysis; the skill keeps the measures and the inline commands                                           |
 | Quoting a status example such as "Now the edits." in the no-text rule       | Eval: 3 of 7 build runs wrote such a message with the example, 0 of 6 without it                                                   |
 | Effect Atom rules that cover only new frontend data                         | Eval: 1 of 4 bug fixes adopted atoms; moving the changed hook or runner to an atom raised it to 4 of 4                             |
+| Trimming engineering examples that lint also checks                         | They make code right on the first write; lint fix loops are slow, so only one-line trivial pairs go                                |
+| A scheduled retrospective                                                   | `desktop` runs only during the day; the user starts the retrospective, which then runs to install without cards                    |
+| Reading source files in slices                                              | Tested in #98: whole reads cut a build from 4.9 to 3.9 minutes and sliced reads from 48 to 22; slices cost more over a task        |
+| Ending the turn while children run                                          | Each child's completion then starts its own turn that rereads the context; one thread got six such turns in 30 minutes on 10-06    |
+| Layers that merge only from the bottom of the stack                         | The user merges any layer at any time; each layer applies alone and publishes from a local chain                                   |
+| A ship gate card after the prototype                                        | Gates mattered when steps blocked in sequence; now work runs in the background and the user steers when they disagree              |
+| A plan confirmation card and a card for each choice                         | The user changes direction often; agents try directions, combine the best parts, and list their own choices under Decided          |
 
 <details>
 <summary>Workflow and agent references</summary>

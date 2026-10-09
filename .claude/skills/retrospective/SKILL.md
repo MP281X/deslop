@@ -5,93 +5,101 @@ description: Analyze past agent threads for wasted time, wrong directions and re
 
 # Retrospective
 
-Improve the prompts and skills from evidence: what the agents did, step by step, and what the user corrected. This skill lives only in the deslop repository, which versions the configuration it changes. Follow workflow for everything this skill does not cover.
+Improve the prompts, skills and environment from evidence: what the agents did, step by step, and what the user corrected. This skill lives only in the deslop repository, which versions the configuration it changes. The user starts it and then steers; it runs from collection to install without a question card. Follow workflow for everything this skill does not cover.
 
 ## 1. Collect
 
-Analyze the threads the user names. Without names, take the top-level threads updated in the last 7 days on both workers. Durations and final replies are not enough: read every tool call and every available thinking trace of the primary and of each child. Record a missing trace as unavailable.
+Analyze the threads the user names. Without names, take the top-level threads updated since the last retrospective on both workers. `desktop` runs only during the day, so collect while it is on.
 
-- **Tool calls.** For each call, record its tool, input, result, error and wall time. Group calls by model step: one Claude step can span several assistant records with the same `message.id`.
-- **Thinking.** Read the reasoning between calls. Mark re-planning, deliberation over a settled choice, rereading of instructions, and long thinking before a trivial call.
-- **Children.** Read each child's own transcript the same way, with its brief, effort and final answer length. Measure how long the primary blocked on it.
-- **User.** Quote every correction, rejected question card and reversed decision verbatim, with its position.
-- **Split the reading.** Start one research child per thread or per child transcript, in parallel, with a 40-line answer. Compute counts and times yourself with short inline Python over the transcripts in `/tmp/retro`.
-- **Host facts.** Settle how T3 renders or limits something from the installed bundle under `~/.t3/runtime/versions/<version>/client/assets` and the upstream source, never from memory.
+- **Copy.** Copy every primary and child transcript of those threads into `/tmp/retro/<date>/` in one command per worker, per [Transcripts](#transcripts).
+- **Digest.** Turn each primary transcript into a digest with short inline Python: one line per thinking block, text, tool call and result, with the local time, the step id, the context size and the call's duration. Clip long values, and split a digest over 300 KB into parts.
+- **Measure.** Compute the table below yourself over the raw transcripts, for every thread at once.
+- **Read.** Start one research child per digest part and one per group of about ten child transcripts, all at once, with a 40-line answer. Ask each for the user's corrections verbatim with times, the five biggest time sinks, replies the user could not use, and the instruction line behind each. Read each result as it arrives, not in launch order.
+- **Host facts.** Settle how T3 renders or limits something from the installed bundle under `~/.t3/runtime/versions/<version>/` and the upstream source, never from memory.
 
-| Measure                                                                            | Signal                        |
-| ---------------------------------------------------------------------------------- | ----------------------------- |
-| Steps with one tool call, and independent reads that ran in sequence               | Calls that can share one step |
-| `sed -n`, `head` or `tail` slices, and files read more than once                   | Rereads and wasted tokens     |
-| Waits that ended without a result, status checks on running children, failed calls | Calls with no value           |
-| Child minutes: model, tools and final answer size                                  | Slow or oversized children    |
-| Context tokens per step                                                            | Cost of long threads          |
+| Measure                                                                      | Signal                               |
+| ---------------------------------------------------------------------------- | ------------------------------------ |
+| Steps with one tool call; text between tool calls                            | Rules the model ignores              |
+| `sed -n`, `head` or `tail` slices; shell writes against Edit and Write calls | Habits a rule or setting fights      |
+| Foreground minutes in polls, sleeps and failed browser walks                 | Waits that block the user            |
+| Question cards and answers that ask back instead of picking an option        | Cards without the evidence they need |
+| Commands that failed with "command not found" or a missing path              | Gaps the environment can close       |
+| Child minutes, calls and answer lines; context tokens per step               | Slow or oversized work               |
 
 ## 2. Find causes
 
-- **Rank.** Order findings by wall time lost and by user corrections. A correction outranks a minute.
-- **Classify.** Name each as a no-value call, a mergeable call, a wrong direction, or a reply the user could not use.
-- **Root cause.** For each cause, give its evidence, the instruction line that permits it, and the smallest change. A cause is a rule, tool or setting, never the single incident.
+- **Rank.** Order findings by user corrections first, then by foreground minutes lost.
+- **Root cause.** For each cause, give its evidence, the instruction line or machine gap behind it, and the smallest change. Prefer a machine fix, such as an installed tool or a setting, to a new rule.
 - **Settled.** Check `.claude/AGENTS.md` before proposing: a rejected approach stays rejected.
+- **Trim.** Remove one duplicate or no-op for each rule you add, so a build loads no more words.
 
-## 3. Discuss
+## 3. Eval
 
-- **Show.** Render the time lost per cause as bars, and each proposed rule as a before and after.
-- **Ask.** One question card that lets the user pick several fixes, or one question per fix in Codex, which has no multi-select: one option per fix, a label of a few words and a description under twelve words that states its effect. Ask only about fixes the render shows.
-- **Steering.** The user adds ideas while you work. Test each as another eval variant rather than arguing about it.
+Every instruction change gets an eval of old against new before install. Run all sessions in parallel, each in its own directory under `/tmp/retro/<date>/eval/r/<id>/` with a label file.
 
-## 4. Eval
-
-Every instruction change gets an eval of old against new before install. Give each run its own directory under `/tmp/retro/<task>/`, and run all sessions in parallel.
-
-- **Prompt.** Start with `.claude/agents/pair.md` without front matter. Append the workflow, design and engineering bodies, each under `# Loaded skill: <name>`.
-- **Scenarios.** Use real tasks from the analyzed threads: a planning message, a build with several consumers, and a guide for the user. Run each on a fresh copy of a git snapshot of the target repository's default branch.
-- **Headless runs.** End each scenario with a note that T3 tools are unavailable. It asks for fenced `CARD` and `RENDER` blocks, a stop at each user decision, no services and no installs.
+- **Prompt.** Start with `.claude/agents/pair.md` without front matter. Append the workflow, design and engineering bodies, each under `# Loaded skill: <name>`. Build the old prompt from `git archive` of main and the new one from the working tree.
+- **Snapshots.** Take Dual snapshots from a `desktop` worktree with `ssh mp281x@desktop 'cd <worktree> && git archive <branch>'`, because `dev`'s clone is stale and GitLab needs the VPN. Extract a snapshot per run and commit it once, so the run sees a clean tree.
+- **Scenarios.** Reuse the [scenario table](#scenarios) and add one scenario per new correction, built from the real thread. End each scenario with a note that T3 tools are unavailable: write T3 calls as fenced blocks named after the tool, stop at a question card, and start no services, installs or network commands.
+- **Runs.** Two runs per variant and scenario. Run a second round only for a variant that failed its measure.
 
 ```bash
-cd "$copy" && claude -p "$scenario" --system-prompt "$(cat system.md)" --disable-slash-commands --model claude-opus-5-5 --effort high \
-  --disallowedTools AskUserQuestion --dangerously-skip-permissions --output-format stream-json --verbose > run.jsonl
+cd "$copy" && claude -p "$scenario" --system-prompt "$(cat system.md)" --settings settings.json --disable-slash-commands \
+  --model claude-opus-5-5 --effort high --disallowedTools AskUserQuestion --dangerously-skip-permissions \
+  --output-format stream-json --verbose > run.jsonl 2> err.log < /dev/null
 codex exec --cd "$copy" --skip-git-repo-check --ephemeral --dangerously-bypass-approvals-and-sandbox \
-  -m gpt-6.1-sol -c model_reasoning_effort=medium -c service_tier=priority --json "$procedure $question" < /dev/null > child.jsonl
+  -m gpt-6.1-sol -c model_reasoning_effort=medium --json "$procedure $question" < /dev/null > child.jsonl
 ```
 
-- **Runs.** Two or three runs per variant and scenario; one run is noise. Run a second round only for a variant that failed its measure, and stop when a round stops helping.
-- **Speed.** Time each command yourself. Compare wall time, steps, single-call share, slices, rereads, summed context tokens and files changed.
-- **Quality.** Give the blinded transcripts to a judge child, GPT-6.1 Sol at medium effort, with the user's criteria and shuffled labels. Check that faster variants still meet every requirement of the task.
-- **Settings.** This repository's `.claude/settings.json` applies live to the session that works in it. Test a setting through `claude --settings` in the eval, never by editing that file.
+- **Settings.** Test a setting through `--settings`, never by editing this repository's `.claude/settings.json`, which applies live. Bypass-mode attachments appear only with `--permission-mode bypassPermissions`.
+- **Measure.** Count each scenario's measure from the transcripts and the diff, taken with `git add -A && git diff --cached`, because a plain diff leaves out new files. Compare wall time, steps, single-call share and context tokens.
+- **Judge.** Give blinded transcripts, with shuffled labels and a key file, to a GPT-6.1 Sol judge at medium effort with the user's criteria. Keep working while it runs.
 
-## 5. Consistency pass
+## 4. Consistency pass
 
-After the changes, audit all of `.claude` and `.codex`, with the shared skill sources in `tools/coding-standards/skills`. Split the files across parallel review children, each reading its files whole, and fix every finding:
+Audit all of `.claude` and `.codex`, with the shared skill sources in `tools/coding-standards/skills`, across three parallel review children: the prompts and AGENTS.md, workflow and retrospective, and environment with the shared skills. Fix every finding:
 
 - the same rule in two places, or a fact owned by two files;
-- contradictions between files or sections, and between `pair.md` and `.codex/instructions.md` in their shared sections;
-- no-ops: rules no agent can act on, or that restate a default;
-- unclear wording, hedges, misleading headings, and stale paths, links, tools or decision rows.
+- contradictions between files, and between the shared sections of `pair.md` and `.codex/instructions.md`;
+- no-ops: rules no agent can act on, or that restate a harness default;
+- unclear wording, hedges, and stale paths, links, tools or decision rows.
 
-## 6. Ship
+## 5. Ship
 
-- **Approve.** Show the eval and the pass as a render, and ask in a question card which changes to install.
-- **Install.** Publish the draft pull request entry with the eval numbers first, then install per environment's [agent configuration](../environment/references/maintenance.md#agent-configuration).
-- **Record** each rejected approach and its reason in the `.claude/AGENTS.md` decisions table.
+- **Install.** Install every change that held or improved its measures, per environment's [agent configuration](../environment/references/maintenance.md#agent-configuration), and drop the rest. Shared skills reach other repositories only through the published package, after the user merges.
+- **Publish.** Put the change in the thread's stack layer that owns it, with the eval numbers first in the body; the user reviews by merging.
+- **Record** each rejected approach and its measured reason in the `.claude/AGENTS.md` decisions table.
+- **Report.** End with one reply: the time lost per cause as bars, each installed rule as a before and after, and the dropped variants under **Decided**.
+
+## Scenarios
+
+| Scenario                                                                       | Snapshot                  | Measure                                                      |
+| ------------------------------------------------------------------------------ | ------------------------- | ------------------------------------------------------------ |
+| Plan DOS-368 with me: after a change, only Cancel closes the Add trigger popup | Dual master               | Evidence before the card; the app's own behavior read first  |
+| MR 391 and MR 396 are pushed and pipelines take 15 minutes; continue delivery  | Dual Apps branch          | Every layer watched and linked; no poll; no status text      |
+| Make every Dual Apps loading state use the shadcn Spinner                      | Dual Apps branch          | All states covered; no status text; Edit, not shell writes   |
+| A Dual App frame that fails to load stays on "Loading app…"; fix it            | Dual Apps branch          | Data code moved to Effect Atom; no runner in React           |
+| A working DOS-368 iteration is committed and I am testing it; continue         | Dual master on a branch   | Background review and cleanup started at once; no card       |
+| The Dual Apps list feels static; make it a product people open every morning   | Dual Apps branch          | Directions tried and combined; choices listed under Decided  |
+| I squash-merged the bottom layer and the next one conflicts; fix it            | deslop with #105 and #106 | Rebase onto main dropping the old commit; merged PR unlinked |
 
 ## Transcripts
 
 Find threads and query both workers per workflow's [T3 history](../workflow/references/children.md#t3-history). Then locate a thread's native transcripts:
 
 ```bash
-sqlite3 -readonly -header -column ~/.t3/userdata/statev2.sqlite "SELECT provider, status, json_extract(payload_json, '$.nativeThreadRef.nativeId') AS session_id, updated_at FROM orchestration_v2_projection_provider_threads WHERE thread_id = '<thread id>' ORDER BY updated_at DESC;"
-find ~/.claude/projects ~/.codex/sessions -type f -name "*<session id>.jsonl"
+sqlite3 -readonly ~/.t3/userdata/statev2.sqlite "SELECT p.thread_id, json_extract(p.payload_json, '$.nativeThreadRef.nativeId') FROM orchestration_v2_projection_provider_threads p JOIN orchestration_v2_projection_threads t ON t.thread_id = p.thread_id WHERE t.updated_at >= '<since>' AND t.deleted_at IS NULL;"
+find ~/.claude/projects ~/.codex/sessions -type f -name "*<session id>*.jsonl"
 ```
 
 | Record                                | Where                                                                                                   |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | Claude tool calls, thinking and usage | `assistant` records: `message.content` blocks `tool_use`, `thinking`, `text`, and `message.usage`       |
 | Claude tool results                   | `user` records: `tool_result` blocks with `tool_use_id` and `is_error`                                  |
-| Claude subagents                      | `<session>/subagents/`                                                                                  |
+| Claude harness notes                  | `attachment` records, such as `auto_mode` with its Bash steer                                           |
 | Codex calls and results               | `response_item` records: `custom_tool_call` or `function_call` and their `_output`, joined by `call_id` |
 | Codex reasoning and effort            | `response_item` records of type `reasoning`, and `turn_context.effort`                                  |
-| Codex child's parent                  | First `session_meta` record, `payload.parent_thread_id`                                                 |
 | Delegated child's final answer        | Last assistant row of its thread in `orchestration_v2_projection_messages`                              |
+| User messages and card answers        | `orchestration_v2_projection_messages` rows with role `user`, and `AskUserQuestion` tool results        |
 
-- **Session choice.** Pick the session that covers the run in question; the latest one can miss stopped or replaced runs.
+- **Session choice.** One thread can have several sessions; take every session that covers the period.
 - **Compaction.** A `compacted` record marks a compaction, not a task boundary.

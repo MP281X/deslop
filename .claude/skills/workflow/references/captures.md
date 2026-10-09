@@ -1,15 +1,12 @@
 # Captures
 
-Prove that the supplied inputs produce the expected outcomes on the host you were given. Do not survey or restart the setup. Any service you start for proof is temporary and listens on loopback. After design's visual inspection, return the journeys and captures you observed. Also return the actual errors and the states you did not prove.
+The primary proves each ticket journey in T3's browser on the running preview, then composes proof videos. Do not survey or restart the setup. After design's visual inspection, keep the observed journeys and captures, the actual errors and the states you did not prove.
 
 ## Tools
 
-T3's browser runs on the worker that runs the thread, so it reaches the worker's loopback ports and tailnet URLs. Drive it with the `preview_*` tools; the user can watch the tab and take it over.
-
-- **Tab.** Open your own tab with `preview_open` and `reuseExistingTab: false`, and pass its `tabId` to every call. Use `open: false` for background proof. Close the tab with `t3_preview_close` when the proof is done.
-- **Sign-in.** Each agent session has its own isolated browser storage, so sign in once per session through the app's sign-in page.
+- **Tab.** Check `preview_status`, then open your own tab with `preview_open`, `reuseExistingTab: false` and a saved browser profile, which reuses its logins. Pass its `tabId` to every call, and use `open: false` for background proof. Sign in through the app only when the profile has no session. Close the tab with `t3_preview_close` when the proof is done.
 - **Setup.** `preview_set_appearance` sets the real color preference; a dark class alone does not. `preview_resize` sets the viewport. Wait with `preview_wait_for` on text, a locator or a URL, never a fixed delay.
-- **Video.** Record each chapter as its own file: `preview_recording_start` before the first meaningful input, then `preview_recording_stop`, which returns an H.264 MP4 at device scale 2. Build a contact sheet with `ffmpeg -i <video> -vf fps=1,scale=640:-1,tile=4x4 <sheet.png>` and inspect it.
+- **Video.** Record each chapter as its own file, from `preview_recording_start` before the first meaningful input to `preview_recording_stop` after its outcome. Build a contact sheet with `ffmpeg -i <video> -vf fps=1,scale=640:-1,tile=4x4 <sheet.png>` and inspect it.
 - **Targets.** Right after `preview_recording_start`, and before each input that matters, read the target's center and the time in one `preview_evaluate`. Subtract the first reading's time to place each target in the recording.
 - **Compose.** Copy [proof-video.html](proof-video.html) to `index.html` in a scratch project, with the recordings and the app's font file in `assets/`. Edit only its marked parts. Never run HyperFrames' `feedback`, `publish` or cloud commands, because they send project data out.
 
@@ -28,7 +25,7 @@ npx -y hyperframes@0.8.141 render --quality delivery --output <claim>.mp4
 
 - **Locators.** Batch independent reads in one `preview_evaluate`. DOM assertions are not visual proof.
 - **Timeouts.** Give each step of a walk a timeout of 15 seconds or less, and longer only for a measured slow step such as an AI run. On the first failure, read the screen, console and failed requests, and fix the cause before the next run.
-- **Host recovery.** A `preview_evaluate` longer than 15 seconds makes T3 drop its browser host for one second, and the next call wrongly says "Do not retry". Keep each evaluation short and wait with `preview_wait_for`. After a host error, check `preview_status` and reopen your tab by its `tabId` once the host is available. Never install another browser.
+- **Host recovery.** Keep each `preview_evaluate` under 15 seconds, because a longer one drops T3's browser host. After a host error, check `preview_status`, reopen your tab, and follow T3's fallback rules.
 
 ## Rules
 
@@ -38,10 +35,10 @@ Apply testing's Visual proof rule; these add the tools and the pull request spec
 - **Claim first.** The claim card names the app and the area, then states the claim in two or three short lines, such as "a signed Jira delivery starts a run".
 - **Camera.** Push in on each chapter's target at 1.2 to 1.8 times, so its text reads at phone width. Keep the target whole in the frame.
 - **Captions.** Give each chapter one numbered caption under the recording, under twelve words, stating what the viewer sees. Crossfade between chapters and hold the outcome for at least two seconds.
-- **Start ready.** Record on the host that already runs, never a build made only for the video. Seed data through the API or a seed command. A spinner, skeleton or placeholder on camera restarts the take, unless loading is the claim.
+- **Start ready.** Record on the running preview, never a build made only for the video.
 - **Legible.** Use a 1280×800 viewport. Crop a screenshot to the element with `ffmpeg -vf crop`.
-- **Chapters.** Script each chapter as one sequence of `preview_*` calls. Dry-run it, record chapters separately, and replace only a chapter whose code or outcome changed. Trim the pauses between tool calls with `data-media-start` and `data-duration`. Inspect frames from the render, then watch it at playback speed.
-- **Current.** Capture after the final code, and name each file by its claim, such as `jira-rule-starts-run.mp4`. Remove every stale capture, because a newer video does not replace it. Compare each capture with the head's UI text before publishing.
+- **Chapters.** Script each chapter as one sequence of `preview_*` calls. Dry-run it, record chapters separately, and replace only a chapter whose code or outcome changed. Trim idle pauses with `data-media-start` and `data-duration`, and keep every meaningful action and outcome. Inspect frames from the render, then watch it at playback speed.
+- **Current.** Name each capture by its claim, such as `jira-rule-starts-run.mp4`. Delete stale captures, and compare each kept capture with the head's UI text before publishing.
 - **Real events.** Trigger the provider for real when an account exists, or send a signed request with `curl` when it does not. Ask the user for the provider-side step, with an exact guide, when you cannot do it.
 
 ## Debugging
