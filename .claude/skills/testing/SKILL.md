@@ -20,7 +20,7 @@ description: 'Select and run black-box behavior proof for Effect apps/tools. Use
 ```ts
 // good — "test files only for the services/packages public interfaces"
 it.layer(Layer.provideMerge(Ledger.layer, NodeServices.layer))(test => {
-	test.effect('keeps the previous entries when the file is malformed', () => run(program))
+	test.effect('keeps the previous entries when the file is malformed', () => program)
 })
 assert.deepStrictEqual(customCodes(result.stdout), ['@deslop/coding-standards(no-typeof)'])
 assert.containsSubset(error, {_tag: 'SandboxUnavailable', cause: killed})

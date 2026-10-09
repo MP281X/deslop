@@ -1,6 +1,6 @@
 # Dual
 
-**Commands.** Turbo caches package checks; fixes are never cached. The test runner owns its fingerprints, cache and continuation, so add no outer Vite+ cache around service-dependent tests. Fix the branch's files with `node_modules/.bin/oxfmt <files>` and `node_modules/.bin/oxlint --fix <files>`; the root fix is only for a repository-wide fix the user asked for.
+**Commands.** Turbo caches package checks; fixes are never cached. The test runner owns its fingerprints, cache and continuation, so add no outer Vite+ cache around service-dependent tests.
 
 ```bash
 vp run --workspace-root check
@@ -47,7 +47,11 @@ acli jira workitem view DOS-289
 acli jira workitem comment list --key DOS-289
 ```
 
+## App
+
 **Components.** Build every screen from the shadcn primitives in `packages/ui/src/components`, including spinners, date pickers and form controls. Add a missing one with `vpx shadcn@latest add <name> --cwd packages/ui` after `vpx shadcn@latest list @shadcn --cwd packages/ui` and its docs. Never hand-build a control that a primitive covers.
+
+**Frontend state.** Dual has no global atom runtime: each feature defines its own `Atom.runtime(layer)` and mounts a `RegistryProvider`. A task that changes a React Query hook or an Effect runner in React code moves it to an atom. `@effect/atom-react` declares `scheduler` below 0.28, so check its peer warning against the root override when you add it.
 
 **CI.** The GitLab quality job runs a frozen install, the Effect-tsgo patch, then check, test and documentation. Read `docs/ci.md` for failures and `docs/releasing.md` for releases; a new push cancels interruptible pipelines. Check each package's Effect version in the lockfile before crossing adapter boundaries.
 
@@ -55,14 +59,14 @@ acli jira workitem comment list --key DOS-289
 
 ## Coding standards
 
-The `@deslop/coding-standards` package comes from deslop. Each package pins its own version, and each `oxlint.config.ts` keeps a legacy list: files whose `legacyRules` drop to warnings. Every other file passes the full preset.
+The `@deslop/coding-standards` package comes from deslop. Each package pins its own version, and each `oxlint.config.ts` keeps a legacy list: files whose `legacyRules` drop to warnings. Every file outside the legacy list and `ignorePatterns` passes the full preset.
 
 - **Skills.** Run `vpx @deslop/coding-standards@latest` before code work. It refreshes the engineering, design and testing copies and changes no manifest or lockfile.
-- **Bump.** When a task changes a package's code, run `bun add --dev --exact @deslop/coding-standards@latest` in that package's directory. Leave every other package's version alone.
-- **New rules.** A bump can add rules. Files outside the legacy list must pass them. When a new rule fails a listed file, add the rule to `legacyRules`.
-- **Touched files.** Each file the task adds or changes leaves the legacy list and passes the full preset. Refactor it completely, not only the changed lines.
+- **Bump.** When a task changes code, the stack's bottom cleanup layer runs `bun add --dev --exact @deslop/coding-standards@latest` in every package directory, then the root fix.
+- **New rules.** A bump can add rules. When a new rule fails a listed file, add the rule to `legacyRules`. Fix every other failure in the cleanup layer, and remove the suppressions it no longer needs.
+- **Touched files.** Each file outside `ignorePatterns` that the task adds or changes leaves the legacy list and passes the full preset. Refactor it completely, not only the changed lines.
 - **Prune.** After the change, run the command below in the package directory. Remove every listed file it does not print. The list only shrinks: never add a file to it.
-- **No blind refactors.** Never rewrite a file the task does not otherwise change, only to satisfy the rules.
+- **No blind refactors.** Never rewrite a listed file the task does not otherwise change, only to satisfy the rules.
 - **Never linted.** Generated code, build output and shadcn primitives stay in `ignorePatterns`, never in the legacy list. Never lint or refactor a shadcn primitive, even one the task edits.
 
 ```bash

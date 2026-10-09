@@ -19,7 +19,7 @@ description: 'TypeScript and Effect code conventions paired with shared lint. Us
 - **Inward layers.** Domain and service code never import HTTP, RPC, or other transport types.
 - **Building blocks.** For a consequential new interface, start with a realistic caller operation and its ordering, failure and lifetime obligations; hide useful complexity, not forwarded names. Offer services, Layers and functions the caller composes like any Effect module, never a bundle such as `serve(app)`. No mandatory architecture document or alternatives round.
 - **No machinery.** Add hooks, guards or generators only for a required contract or a recurring defect.
-- **Behavior kept.** A refactor keeps observable behavior at every consumer. Report two accepted differences with the change: one no consumer observes, and one a rule here causes, such as an error keeping its cause. Printed diagnostics are not a contract. Any other behavior change follows workflow's scope.
+- **Behavior kept.** A refactor keeps observable behavior at every consumer. Report accepted differences only when they exist: a change no consumer observes, or one a rule here causes, such as an error keeping its cause. Printed diagnostics are not a contract. Any other behavior change follows workflow's scope.
 - **Reachable bugs.** Fix a bug that real input reaches when it lies inside workflow's scope, and check every consumer of the changed output. For a hard bug, use one reproduction and one prediction per probe. Remove edits based on disproven hypotheses, then rerun the original scenario. Delete handling only for input the contract excludes; keep and report code that looks intentional.
 - **Performance.** Optimize only when the request or a required contract needs it, and measure realistic input before claiming a speedup. Diagnose at the layer that owns the symptom: distributed spans for RPC/backend dependencies, React commits for rerenders, a browser performance profile for main-thread work. Correlate one real action before changing code, then repeat it on the fix; neither a screenshot nor a service name proves latency or trace coverage. Time correct completed work under equivalent workloads/configuration; distinguish setup/cache/profiling cost and report run count/variation. Differences within noise are unproved, not speedups. Use existing instrumentation; profiling is not a ritual on every change.
 - **Type safety.** A fix never weakens types to make a symptom go away: no widened or erased type, cast, dropped generic, or loosened exported type.
@@ -187,7 +187,9 @@ const parsed = Option.getOrUndefined(Number.parse(event.target.value))
 // good
 const total = Array.reduce(values, 0, Number.sum)
 pipe(teamId, String.split(','), Array.map(String.trim), Array.findFirst(String.isNonEmpty))
-Array.filterMap(items, item => (supports(item) ? Result.succeed(item.value) : Result.failVoid))
+Array.filterMap(items, item =>
+	Boolean.match(supports(item), {onFalse: () => Result.failVoid, onTrue: () => Result.succeed(item.value)})
+)
 // bad
 let total = 0
 for (const value of values) total += value
@@ -399,7 +401,7 @@ const traced = Effect.withSpan('Notes.create')(notes.create(input))
 Effect.addFinalizer(() => closeSocket(socket)) // acquisition and release with different owners
 ```
 
-**Runtime.** The owned runtime runs the program; a Promise an external contract demands is bridged once, where it is returned.
+**Runtime.** The owned runtime runs the program; a Promise an external contract demands is bridged once, where it is returned. React code is no such contract: atoms run its Effects.
 
 ```ts
 // good
@@ -559,7 +561,7 @@ const warned = ['sort-keys', 'typescript/no-restricted-types'] // a package rule
 
 ## React
 
-**Components.** React Compiler memoizes. Destructure state at its declaration, receive component refs through props, and keep shared logic in atoms.
+**Components.** React Compiler memoizes. Destructure state at its declaration, receive component refs through props, and keep only a component's own interaction state in React.
 
 ```tsx
 // good
@@ -571,6 +573,37 @@ const handle = useCallback(() => setOpen(true), [])
 const state = useState(false)
 ```
 
+**Atoms.** Data, shared state and every Effect a component needs live in atoms; a component reads them with hooks and never runs an Effect. A task that changes a React Query hook, a fetching Effect or an Effect runner in React code moves that code to an atom. Declare atoms at module level or in `Atom.family`, never during render. Import `Atom` and `AsyncResult` from `effect/reactivity` and the hooks from `@effect/atom-react`. Supply services through `Atom.runtime(layer)`, and tie each write to the reads it changes with reactivity keys.
+
+```tsx
+// good
+const appsRuntime = Atom.runtime(DualApps.layer)
+const appAtom = Atom.family((id: AppId) => pipe(appsRuntime.atom(loadApp(id)), Atom.withReactivity(['apps'])))
+const saveAppAtom = appsRuntime.fn((draft: AppDraft) => saveApp(draft), {reactivityKeys: ['apps']})
+const app = useAtomValue(appAtom(appId))
+const [saveResult, save] = useAtom(saveAppAtom)
+// bad
+useQuery({queryFn: () => Effect.runPromiseWith(Context.empty())(loadApp(appId))})
+onClick={() => Effect.runPromise(saveApp(draft))}
+useAtomValue(Atom.make(loadApp(appId))) // a new atom on every render
+```
+
+**Outcomes.** Render every `AsyncResult` state: loading, failure with its recovery, and success. Take a write's pending and failure state from its atom's result, never from copied React state.
+
+```tsx
+// good
+AsyncResult.match(app, {
+	onFailure: failure => <LoadError cause={failure.cause} onRetry={refresh} />,
+	onInitial: () => <Spinner />,
+	onSuccess: success => <AppFrame app={success.value} />
+})
+<Button disabled={saveResult.waiting} onClick={() => save(draft)}>Save</Button>
+// bad
+app.data ? <AppFrame app={app.data} /> : <Spinner /> // a failed load spins forever
+const [pending, setPending] = useState(false) // copies the write atom's waiting state
+```
+
+- **Ownership.** Give a component that owns its own atoms, writes or lifetime its own file; keep small presentational helpers beside their one user. Reset an editable draft through a `key` on its identity, never an Effect that copies props.
 - **Pure render.** Derive display values from props and subscribed state during render; never mutate them or perform an RPC, write or subscription there. Event handlers own user-triggered actions; Effects synchronize external systems, not copied state or calculations. Reuse the existing router/atom integration rather than fetching in a new Effect.
 - **State identity.** Keep one owner for each value, stable domain keys for list items and deliberate reset boundaries. For an observed rerender problem, derive the needed value in the existing atom graph instead of subscribing to frequently changing unrelated state. Compiler memoization is a performance optimization, never a correctness or lifetime guarantee. Do not add manual memoization, compiler escape directives or weakened hook rules to hide an ownership problem.
 
