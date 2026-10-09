@@ -37,7 +37,7 @@ Run repository commands from the repository root. Discover inventories and versi
 
 ## Machine state
 
-- **Tools.** Vite+ in `~/.vite-plus/bin` supplies `vp` for packages and `vpx` for binaries. Login shells have it on `PATH`; systemd units need the absolute path. Sudo needs no password, and `gh` and `glab` use existing sign-ins.
+- **Tools.** Vite+ in `~/.vite-plus/bin` supplies `vp` for packages and `vpx` for binaries. Every shell has it on `PATH`, including `ssh <worker> '<command>'`; systemd units need the absolute path. Sudo needs no password, and `gh` and `glab` use existing sign-ins.
 - **Scratch.** Every scratch file goes under `/tmp/<task>/`: logs, command output, captures, eval copies and repository clones. `/tmp` is on disk, empties at boot and drops files unused for 7 days, so keep nothing there that must last.
 - **Services.** Run services as temporary containers, not host installations. Maintenance owns the Docker binding defaults; preserve unrelated workloads.
 

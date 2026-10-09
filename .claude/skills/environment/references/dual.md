@@ -62,7 +62,7 @@ acli jira workitem comment list --key DOS-289
 The `@deslop/coding-standards` package comes from deslop. Each package pins its own version, and each `oxlint.config.ts` keeps a legacy list: files whose `legacyRules` drop to warnings. Every file outside the legacy list and `ignorePatterns` passes the full preset.
 
 - **Skills.** Run `vpx @deslop/coding-standards@latest` before code work. It refreshes the engineering, design and testing copies and changes no manifest or lockfile.
-- **Bump.** When a task changes code, the stack's bottom cleanup layer runs `bun add --dev --exact @deslop/coding-standards@latest` in every package directory, then the root fix.
+- **Bump.** When a task changes code, the stack's cleanup layer runs `bun add --dev --exact @deslop/coding-standards@latest` in every package directory, then the root fix.
 - **New rules.** A bump can add rules. When a new rule fails a listed file, add the rule to `legacyRules`. Fix every other failure in the cleanup layer, and remove the suppressions it no longer needs.
 - **Touched files.** Each file outside `ignorePatterns` that the task adds or changes leaves the legacy list and passes the full preset. Refactor it completely, not only the changed lines.
 - **Prune.** After the change, run the command below in the package directory. Remove every listed file it does not print. The list only shrinks: never add a file to it.

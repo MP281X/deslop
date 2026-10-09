@@ -14,7 +14,7 @@ The workers are `dev` and `desktop`. Both run the latest Debian stable in text m
 | GitLab    | Through the VPN; advertises the route to the tailnet               | Through dev's route (`--accept-routes`)                         |
 
 - **Sudo.** Codex and Claude run sudo without a terminal, so `/etc/sudoers.d/99-mp281x-nopasswd` holds `mp281x ALL=(ALL:ALL) NOPASSWD: ALL` with mode 0440.
-- **Toolchain.** Docker with Compose and Buildx, `gh` with the `github/gh-stack` extension, `glab`, Atlassian's `acli`, git, build tools, rsync, ripgrep, jq, sqlite3, ffmpeg and Python. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code lives in `~/.local/bin`.
+- **Toolchain.** Docker with Compose and Buildx, `gh` with the `github/gh-stack` extension, `glab`, Atlassian's `acli`, git, build tools, rsync, ripgrep, jq, sqlite3, ffmpeg, Python, `dig` and `psql`. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code lives in `~/.local/bin`. The first lines of `~/.bashrc`, above its interactive guard, export `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`, so `ssh <worker> '<command>'` finds every tool.
 - **Sign-ins.** Each worker signs in on its own: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login` and `codex login --device-auth`. Show each sign-in link to the user. The user signs `acli` in per [Jira sign-in](#jira-sign-in).
 - **Repositories.** Git picks each repository's identity per [Git identity](#git-identity). `~/dual` uses the credential helper `!glab auth git-credential` for `https://git.datapizza.tech`. Run `gh auth setup-git` for GitHub.
 - **Automatic updates.** `unattended-upgrades` installs Debian updates daily on every worker; `/etc/apt/apt.conf.d/20auto-upgrades` turns it on.
@@ -55,7 +55,7 @@ New sessions load the change; running threads keep the version they started with
 
 ## T3 settings
 
-Every worker uses the same T3 settings. After the user changes a setting on one worker, copy that worker's `~/.t3/userdata/settings.json` to the others with the block below, run there with `target=mp281x@<worker>`. It maps project keys by workspace root, keeps the target's `environmentIcon`, and restarts the target's T3, so run it only while the target has no active run.
+Every worker uses the same T3 settings. After the user changes a setting on one worker, copy that worker's `~/.t3/userdata/settings.json` to the others with the block below, run there with `target=mp281x@<worker>`. It maps project keys by workspace root and keeps the target's `environmentIcon`. T3 reloads the file without a restart.
 
 ```bash
 q="SELECT project_id, workspace_root FROM projection_projects WHERE deleted_at IS NULL"
@@ -71,7 +71,7 @@ jq --slurpfile src /tmp/t3-src-projects.json --slurpfile dst /tmp/t3-dst-project
   | .projectSettingsOverrides |= ((. // {}) | remap)
   | .projectSettingsFolded |= ((. // {}) | if type == "object" then remap else . end)
 ' ~/.t3/userdata/settings.json > /tmp/t3-new-settings.json
-ssh "$target" 'systemctl --user stop t3code.service && cat > ~/.t3/userdata/settings.json && systemctl --user start t3code.service' < /tmp/t3-new-settings.json
+ssh "$target" 'cat > ~/.t3/userdata/settings.json' < /tmp/t3-new-settings.json
 rm -f /tmp/t3-*-projects.json /tmp/t3-dst-settings.json /tmp/t3-new-settings.json
 ```
 
