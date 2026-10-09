@@ -22,6 +22,7 @@ import {
 	Server,
 	Sparkles
 } from '@deslop/components/icons'
+import {Button} from '@deslop/components/ui/button'
 import {Dialog, DialogContent, DialogHeader, DialogTitle} from '@deslop/components/ui/dialog'
 import {cn} from '@deslop/components/utils'
 
@@ -935,18 +936,19 @@ function PortfolioRoute() {
 				<RealtimeLayer localPointerRef={localPointerRef} onIdentityColor={syncIdentityColor} viewport={viewport} />
 			</Suspense>
 
-			<button
-				type="button"
+			<Button
+				variant="outline"
+				size="icon"
 				aria-expanded={showShortcuts}
 				aria-haspopup="dialog"
 				aria-label="Toggle keyboard shortcuts"
 				onClick={() => {
 					setShowShortcuts(show => !show)
 				}}
-				className="border-border/70 bg-background/95 text-muted-foreground hover:border-primary/50 hover:text-primary fixed right-3 bottom-3 z-50 flex size-8 items-center justify-center border font-mono text-xs backdrop-blur-sm transition-colors sm:right-4 sm:bottom-4"
+				className="fixed right-3 bottom-3 z-50 sm:right-4 sm:bottom-4"
 			>
 				?
-			</button>
+			</Button>
 
 			{showShortcuts && (
 				<ShortcutsOverlay

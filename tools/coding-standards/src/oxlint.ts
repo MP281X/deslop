@@ -7,12 +7,14 @@ import {noArrayWrapTernary} from '#rules/no-array-wrap-ternary.ts'
 import {noConstantFunction} from '#rules/no-constant-function.ts'
 import {noDeepPipe} from '#rules/no-deep-pipe.ts'
 import {noDestructuredParameter} from '#rules/no-destructured-parameter.ts'
+import {noDiscardedFailure} from '#rules/no-discarded-failure.ts'
 import {noDoubleNullishCheck} from '#rules/no-double-nullish-check.ts'
 import {noEffectPropertyArrow} from '#rules/no-effect-property-arrow.ts'
 import {noErrorMessageAssertion} from '#rules/no-error-message-assertion.ts'
 import {noFakeRefState} from '#rules/no-fake-ref-state.ts'
 import {noHandWrittenGuard} from '#rules/no-hand-written-guard.ts'
 import {noLet} from '#rules/no-let.ts'
+import {noNativeControl} from '#rules/no-native-control.ts'
 import {noNativeEmptinessCheck} from '#rules/no-native-emptiness-check.ts'
 import {noNativeMethodCall} from '#rules/no-native-method-call.ts'
 import {noNullishTernary} from '#rules/no-nullish-ternary.ts'
@@ -67,10 +69,12 @@ export const oxlint = defineConfig({
 			files: ['**/components/ui/**', '**/packages/ui/**'],
 			rules: {
 				'@deslop/coding-standards/no-destructured-parameter': 'off',
+				'@deslop/coding-standards/no-native-control': 'off',
 				'@deslop/coding-standards/no-renamed-import': 'off'
 			}
 		},
 		{files: ['**/*.ts'], rules: {'react/rules-of-hooks': 'off'}},
+		{files: ['**/*.test.ts', '**/*.test.tsx'], rules: {'@deslop/coding-standards/no-discarded-failure': 'off'}},
 		{
 			files: ['**/*.tsx'],
 			rules: {
@@ -88,12 +92,14 @@ export const oxlint = defineConfig({
 		'@deslop/coding-standards/no-constant-function': 'error',
 		'@deslop/coding-standards/no-deep-pipe': 'error',
 		'@deslop/coding-standards/no-destructured-parameter': 'error',
+		'@deslop/coding-standards/no-discarded-failure': 'error',
 		'@deslop/coding-standards/no-double-nullish-check': 'error',
 		'@deslop/coding-standards/no-effect-property-arrow': 'error',
 		'@deslop/coding-standards/no-error-message-assertion': 'error',
 		'@deslop/coding-standards/no-fake-ref-state': 'error',
 		'@deslop/coding-standards/no-hand-written-guard': 'error',
 		'@deslop/coding-standards/no-let': 'error',
+		'@deslop/coding-standards/no-native-control': 'error',
 		'@deslop/coding-standards/no-native-emptiness-check': 'error',
 		'@deslop/coding-standards/no-native-method-call': 'error',
 		'@deslop/coding-standards/no-nullish-ternary': 'error',
@@ -313,6 +319,7 @@ export const oxlint = defineConfig({
 			{
 				paths: [
 					{importNames: reactLegacyApis, message: reactLegacyMessage, name: 'react'},
+					{message: 'Read and write data through Effect Atom.', name: '@tanstack/react-query'},
 					{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name: 'vitest'},
 					{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name: '@effect/vitest'},
 					{importNames: ['expect'], message: 'Use assert from @effect/vitest.', name: 'vitest'},
@@ -618,12 +625,14 @@ export default definePlugin({
 		'no-constant-function': noConstantFunction,
 		'no-deep-pipe': noDeepPipe,
 		'no-destructured-parameter': noDestructuredParameter,
+		'no-discarded-failure': noDiscardedFailure,
 		'no-double-nullish-check': noDoubleNullishCheck,
 		'no-effect-property-arrow': noEffectPropertyArrow,
 		'no-error-message-assertion': noErrorMessageAssertion,
 		'no-fake-ref-state': noFakeRefState,
 		'no-hand-written-guard': noHandWrittenGuard,
 		'no-let': noLet,
+		'no-native-control': noNativeControl,
 		'no-native-emptiness-check': noNativeEmptinessCheck,
 		'no-native-method-call': noNativeMethodCall,
 		'no-nullish-ternary': noNullishTernary,

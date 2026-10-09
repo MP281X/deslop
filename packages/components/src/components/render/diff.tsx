@@ -11,6 +11,7 @@ import {useEffect, useLayoutEffect, useRef, useState} from 'react'
 import {Markdown} from './markdown.tsx'
 
 import {GithubLight} from '#components/svgs/githubLight.tsx'
+import {Button} from '#components/ui/button.tsx'
 import {Spinner} from '#components/ui/spinner.tsx'
 import {HIGHLIGHT_THEMES, resolveLanguage} from '#lib/shiki.ts'
 
@@ -258,9 +259,9 @@ function CommentAnnotation(props: {
 				<Markdown className="text-inherit">{props.comment.body}</Markdown>
 			</button>
 			<div className="border-border bg-background text-muted-foreground inline-flex shrink-0 border text-xs">
-				<button
-					type="button"
-					className="hover:bg-muted hover:text-foreground p-1"
+				<Button
+					variant="ghost"
+					size="icon-xs"
 					aria-label="Copy comment"
 					title="Copy comment"
 					onClick={async event => {
@@ -269,11 +270,11 @@ function CommentAnnotation(props: {
 					}}
 				>
 					<CopyIcon className="size-3" />
-				</button>
+				</Button>
 				{props.onResolveComment && (
-					<button
-						type="button"
-						className="border-border hover:bg-muted hover:text-foreground border-l p-1"
+					<Button
+						variant="ghost"
+						size="icon-xs"
 						aria-label="Resolve comment"
 						title="Resolve comment"
 						disabled={props.comment.resolving}
@@ -283,7 +284,7 @@ function CommentAnnotation(props: {
 						}}
 					>
 						{props.comment.resolving === true ? <Spinner className="size-3" /> : <CircleCheckIcon className="size-3" />}
-					</button>
+					</Button>
 				)}
 			</div>
 		</div>

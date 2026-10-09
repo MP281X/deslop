@@ -64,7 +64,12 @@ The `@deslop/coding-standards` package comes from deslop. Each package pins its 
 - **Skills.** Run `vpx @deslop/coding-standards@latest` before code work. It refreshes the engineering, design and testing copies and changes no manifest or lockfile.
 - **Bump.** When a task changes code, the stack's bottom cleanup layer runs `bun add --dev --exact @deslop/coding-standards@latest` in every package directory, then the root fix.
 - **New rules.** A bump can add rules. When a new rule fails a listed file, add the rule to `legacyRules`. Fix every other failure in the cleanup layer, and remove the suppressions it no longer needs.
-- **Touched files.** Each file outside `ignorePatterns` that the task adds or changes leaves the legacy list and passes the full preset. Refactor it completely, not only the changed lines.
+- **Touched files.** Each file outside `ignorePatterns` that the task adds or changes leaves the legacy list and passes the full preset. Refactor it completely, not only the changed lines: its data code moves to Effect Atom and its casts and suppressions go, unless the engineering skill allows one with its reason. Before each push, the command below must print nothing:
+
+```bash
+for p in packages/*/; do git diff --name-only --relative="$p" origin/master...HEAD | while read -r f; do grep -qF "\"$f\"" "$p/oxlint.config.ts" && echo "$p$f"; done; done
+```
+
 - **Prune.** After the change, run the command below in the package directory. Remove every listed file it does not print. The list only shrinks: never add a file to it.
 - **No blind refactors.** Never rewrite a listed file the task does not otherwise change, only to satisfy the rules.
 - **Never linted.** Generated code, build output and shadcn primitives stay in `ignorePatterns`, never in the legacy list. Never lint or refactor a shadcn primitive, even one the task edits.
