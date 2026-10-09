@@ -1,6 +1,6 @@
 ---
 name: retrospective
-description: Analyze past agent threads for wasted time, wrong directions and replies the user could not use, then improve the agent configuration with measured evals. Use in the deslop repository when the user asks why threads were slow, what went wrong, or how to improve the agents.
+description: Analyze past agent threads for wasted time, wrong directions and unusable replies, then improve the agent configuration with measured evals. Use in the deslop repository when the user asks why threads were slow, what went wrong, or how to improve the agents.
 ---
 
 # Retrospective
@@ -14,7 +14,7 @@ Analyze the threads the user names. Without names, take the top-level threads up
 - **Copy.** Copy every primary and child transcript of those threads into `/tmp/retro/<date>/` in one command per worker, per [Transcripts](#transcripts).
 - **Digest.** Turn each primary transcript into a digest with short inline Python: one line per thinking block, text, tool call and result, with the local time, the step id, the context size and the call's duration. Clip long values, and split a digest over 300 KB into parts.
 - **Measure.** Compute the table below yourself over the raw transcripts, for every thread at once.
-- **Read.** Start one research child per digest part and one per group of about ten child transcripts, all at once, with a 40-line answer. Ask each for the user's corrections verbatim with times, the five biggest time sinks, replies the user could not use, and the instruction line behind each. Read each result as it arrives, not in launch order.
+- **Read.** Start one research child per digest part and one per group of about ten child transcripts, all at once. Ask each for the user's corrections verbatim with times, the five biggest time sinks, unusable replies, and the instruction line behind each. Tell it which lines are the user's, because cheaper models read agent text as corrections. Read each result as it arrives, not in launch order.
 - **Host facts.** Settle how T3 renders or limits something from the installed bundle under `~/.t3/runtime/versions/<version>/` and the upstream source, never from memory.
 
 | Measure                                                                      | Signal                               |
@@ -37,10 +37,10 @@ Analyze the threads the user names. Without names, take the top-level threads up
 
 Every instruction change gets an eval of old against new before install. Run all sessions in parallel, each in its own directory under `/tmp/retro/<date>/eval/r/<id>/` with a label file.
 
-- **Prompt.** Start with `.claude/agents/pair.md` without front matter. Append the workflow, design and engineering bodies, each under `# Loaded skill: <name>`. Build the old prompt from `git archive` of main and the new one from the working tree.
+- **Prompt.** Start with `.claude/agents/pair.md` without front matter. Append the workflow, design and engineering bodies, each under `# Loaded skill: <name>`, and copy every skill with its references into the run. Build the old variant from `git archive` of main and the new one from the working tree.
 - **Snapshots.** Take Dual snapshots from a `desktop` worktree with `ssh mp281x@desktop 'cd <worktree> && git archive <branch>'`, because `dev`'s clone is stale and GitLab needs the VPN. Extract a snapshot per run and commit it once, so the run sees a clean tree.
 - **Scenarios.** Reuse the [scenario table](#scenarios) and add one scenario per new correction, built from the real thread. End each scenario with a note that T3 tools are unavailable: write T3 calls as fenced blocks named after the tool, stop at a question card, and start no services, installs or network commands.
-- **Runs.** Two runs per variant and scenario. Run a second round only for a variant that failed its measure.
+- **Runs.** Two runs per variant and scenario, each under `timeout 1500`, started as one background batch while you keep working. Run a second round only for a variant that failed its measure. A scenario's inputs, such as a commit, a capture or a lint report, must exist in its snapshot, or the runs only report the mismatch.
 
 ```bash
 cd "$copy" && claude -p "$scenario" --system-prompt "$(cat system.md)" --settings settings.json --disable-slash-commands \
@@ -81,10 +81,13 @@ Audit all of `.claude` and `.codex`, with the shared skill sources in `tools/cod
 | A working DOS-368 iteration is committed and I am testing it; continue         | Dual master on a branch   | Background review and cleanup started at once; no card       |
 | The Dual Apps list feels static; make it a product people open every morning   | Dual Apps branch          | Directions tried and combined; choices listed under Decided  |
 | I squash-merged the bottom layer and the next one conflicts; fix it            | deslop with #105 and #106 | Rebase onto main dropping the old commit; merged PR unlinked |
+| A small edit plus four questions about Dual's tooling in one message           | Dual Apps branch          | Every question answered in visible text                      |
+| The MR passed and I marked it ready; add the captures and hand off             | Dual master on a branch   | No `--draft` on the body update; preview kept and linked     |
+| The generated morning-briefing app looks like default cards; redesign it       | Dual Apps branch          | Blind judge: distinct composition, workflows kept            |
 
 ## Transcripts
 
-Find threads and query both workers per workflow's [T3 history](../workflow/references/children.md#t3-history). Then locate a thread's native transcripts:
+Find threads and query both workers per explore's [T3 history](../explore/SKILL.md#t3-history). Then locate a thread's native transcripts:
 
 ```bash
 sqlite3 -readonly ~/.t3/userdata/statev2.sqlite "SELECT p.thread_id, json_extract(p.payload_json, '$.nativeThreadRef.nativeId') FROM orchestration_v2_projection_provider_threads p JOIN orchestration_v2_projection_threads t ON t.thread_id = p.thread_id WHERE t.updated_at >= '<since>' AND t.deleted_at IS NULL;"

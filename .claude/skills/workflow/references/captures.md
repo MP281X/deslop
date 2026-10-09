@@ -6,7 +6,7 @@ The primary proves each ticket journey in T3's browser on the running preview, t
 
 - **Tab.** Check `preview_status`, then open your own tab with `preview_open`, `reuseExistingTab: false` and a saved browser profile, which reuses its logins. Pass its `tabId` to every call, and use `open: false` for background proof. Sign in through the app only when the profile has no session. Close the tab with `t3_preview_close` when the proof is done.
 - **Setup.** `preview_set_appearance` sets the real color preference; a dark class alone does not. `preview_resize` sets the viewport. Wait with `preview_wait_for` on text, a locator or a URL, never a fixed delay.
-- **Video.** Record each chapter as its own file, from `preview_recording_start` before the first meaningful input to `preview_recording_stop` after its outcome. Build a contact sheet with `ffmpeg -i <video> -vf fps=1,scale=640:-1,tile=4x4 <sheet.png>` and inspect it.
+- **Video.** Record each chapter as its own file, from `preview_recording_start` before the first meaningful input to `preview_recording_stop` after its outcome. Build a contact sheet with `ffmpeg -i <video> -vf fps=1,scale=640:-1,tile=4x4 <sheet-%03d.png>` and inspect every sheet.
 - **Targets.** Right after `preview_recording_start`, and before each input that matters, read the target's center and the time in one `preview_evaluate`. Subtract the first reading's time to place each target in the recording.
 - **Compose.** Copy [proof-video.html](proof-video.html) to `index.html` in a scratch project, with the recordings and the app's font file in `assets/`. Edit only its marked parts. Never run HyperFrames' `feedback`, `publish` or cloud commands, because they send project data out.
 

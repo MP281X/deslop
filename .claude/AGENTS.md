@@ -1,13 +1,13 @@
 # Personal agent configuration
 
-| Owner                                                 | Decision                                                                                                                                                      |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.claude/agents/pair.md` and `.codex/instructions.md` | Separate system prompts that replace each harness's built-in prompt: the built-in parts worth keeping, then the same pair rules in both                       |
-| `.claude/skills/workflow` and `environment`           | Personal skills; maintenance and media are environment references; Codex paths alias the directories                                                          |
-| Engineering, design and testing in both native roots  | Generated repository copies; edit [package sources](../tools/coding-standards/skills/), then [refresh locally](../tools/coding-standards/README.md#decisions) |
-| `.claude/skills/retrospective`                        | Repository-only skill for thread analysis and prompt evals; never installed on workers, because it edits this repository's configuration                      |
-| `.claude/AGENTS.md`                                   | Shared brief; `.codex/AGENTS.md` aliases it                                                                                                                   |
-| Native settings                                       | Harness-specific capabilities, not another copy of workflow or coding policy                                                                                  |
+| Owner                                                  | Decision                                                                                                                                                      |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.claude/agents/pair.md` and `.codex/instructions.md`  | Separate system prompts that replace each harness's built-in prompt: the built-in parts worth keeping, then the same pair rules in both                       |
+| `.claude/skills/{workflow,explore,review,environment}` | Personal skills: workflow coordinates implementation, explore and review stand alone for questions, reviews and child briefs; Codex paths alias them          |
+| Engineering, design and testing in both native roots   | Generated repository copies; edit [package sources](../tools/coding-standards/skills/), then [refresh locally](../tools/coding-standards/README.md#decisions) |
+| `.claude/skills/retrospective`                         | Repository-only skill for thread analysis and prompt evals; never installed on workers, because it edits this repository's configuration                      |
+| `.claude/AGENTS.md`                                    | Shared brief; `.codex/AGENTS.md` aliases it                                                                                                                   |
+| Native settings                                        | Harness-specific capabilities, not another copy of workflow or coding policy                                                                                  |
 
 Install personal configuration on every worker with the [environment procedure](skills/environment/references/maintenance.md#agent-configuration).
 
@@ -55,7 +55,7 @@ Machine upkeep lives in environment's maintenance reference. Update this brief w
 | A diff-classification command                                               | The user does not want another CLI; the cleanup audit procedure covers it                                                          |
 | Verification children running checks                                        | Checks write shared outputs; the primary runs them                                                                                 |
 | Rerunning Finish and Deliver for every later change                         | Each pass cost hours; a later change returns to Build and reruns only its hunks                                                    |
-| Full validation after a small change                                        | Repeated root checks and builds; the ledger reruns only checks whose inputs changed                                                |
+| Full validation after a small change                                        | Repeated uncached builds; cached root commands and the ledger rerun only checks whose inputs changed                               |
 | Rendering a plain list or prose as HTML                                     | A render replaces text with screens, flows, timelines, options or change maps; it never restyles the same words                    |
 | Patching single cases of a repeated failure                                 | The same defects recurred across threads; fix the code, rule or setting that causes them                                           |
 | A lint rule against every native button, input, select and textarea         | Deslop's reference code uses unstyled native rows and editors; only a native control styled like a control is reported             |
@@ -79,6 +79,11 @@ Machine upkeep lives in environment's maintenance reference. Update this brief w
 | Layers that merge only from the bottom of the stack                         | The user merges any layer at any time; each layer applies alone and publishes from a local chain                                   |
 | A ship gate card after the prototype                                        | Gates mattered when steps blocked in sequence; now work runs in the background and the user steers when they disagree              |
 | A plan confirmation card and a card for each choice                         | The user changes direction often; agents try directions, combine the best parts, and list their own choices under Decided          |
+| Expressive-surface rules inside product UI                                  | Eval on the morning-briefing redesign: the 3 old runs ranked 1 to 3, the 3 new ones 4 to 6; creative work has its own mode instead |
+| Banned-default lists as the whole creative mode                             | Six launch pages with them still shared one skeleton; a concept step and screenshot critique reached studio level                  |
+| GPT-6 Luna as the research model                                            | It quoted 3 agent lines as user corrections in one digest; GPT-6.1 Sol, Opus 5.5 and Haiku 5.5 quoted none                         |
+| Merge webhooks and a dispatcher thread                                      | The user removed them; he sets up webhooks by hand when he needs one                                                               |
+| Scoped local checks before a push                                           | Pipelines failed on what local runs skipped; Dual's cached root commands now rerun only what changed                               |
 
 <details>
 <summary>Workflow and agent references</summary>

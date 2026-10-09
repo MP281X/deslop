@@ -14,16 +14,16 @@ The workers are `dev` and `desktop`. Both run the latest Debian stable in text m
 | GitLab    | Through the VPN; advertises the route to the tailnet               | Through dev's route (`--accept-routes`)                         |
 
 - **Sudo.** Codex and Claude run sudo without a terminal, so `/etc/sudoers.d/99-mp281x-nopasswd` holds `mp281x ALL=(ALL:ALL) NOPASSWD: ALL` with mode 0440.
-- **Toolchain.** Docker with Compose and Buildx, `gh` with the `github/gh-stack` extension, `glab`, Atlassian's `acli`, git, build tools, rsync, ripgrep, jq, sqlite3, ffmpeg, Python, `dig` and `psql`. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code lives in `~/.local/bin`. The first lines of `~/.bashrc`, above its interactive guard, export `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`, so `ssh <worker> '<command>'` finds every tool.
+- **Toolchain.** Docker with Compose and Buildx, `gh` with the `github/gh-stack` extension, `glab`, Atlassian's `acli`, git, build tools, rsync, ripgrep, jq, sqlite3, ffmpeg, ImageMagick, Python with Pillow (`python3-pil`), `dig` and `psql`. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code lives in `~/.local/bin`. The first lines of `~/.bashrc`, above its interactive guard, export `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`, so `ssh <worker> '<command>'` finds every tool.
 - **Sign-ins.** Each worker signs in on its own: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login` and `codex login --device-auth`. Show each sign-in link to the user. The user signs `acli` in per [Jira sign-in](#jira-sign-in).
 - **Repositories.** Git picks each repository's identity per [Git identity](#git-identity). `~/dual` uses the credential helper `!glab auth git-credential` for `https://git.datapizza.tech`. Run `gh auth setup-git` for GitHub.
-- **Automatic updates.** `unattended-upgrades` installs Debian updates daily on every worker; `/etc/apt/apt.conf.d/20auto-upgrades` turns it on.
+- **Automatic updates.** `unattended-upgrades` installs Debian updates daily on every worker; `/etc/apt/apt.conf.d/20auto-upgrades` turns it on. The home LAN gives `desktop` only local IPv6 addresses, so its `/etc/apt/apt.conf.d/99force-ipv4` holds `Acquire::ForceIPv4 "true";`.
 - **Git.** Global defaults on every worker: `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled`, `diff.algorithm histogram`, `merge.conflictStyle zdiff3` and `init.defaultBranch main`.
 - **Firewall.** Tailscale's `ts-input` chain accepts tailnet traffic and its UDP port before ufw, so ufw needs no rule for them. On dev, `/etc/sysctl.d/90-quiet-console.conf` keeps `[UFW BLOCK]` lines off the VNC console.
 
 ## Access changes
 
-- **Keys.** Every machine, the Mac included, holds the user's one ED25519 key pair as `~/.ssh/id_ed25519`, and `authorized_keys` holds only its public key. The user keeps a backup and gives the pair to a new or reset machine. No machine has a `~/.ssh/config` or other keys.
+- **Keys.** Every machine, the Mac included, holds the user's one ED25519 key pair as `~/.ssh/id_ed25519`, and `authorized_keys` holds only its public key. The user keeps a backup and gives the pair to a new or reset machine. No machine has a `~/.ssh/config` or other keys. Each worker's `known_hosts` holds both workers' host keys, its own included, from `ssh-keyscan -H dev desktop`.
 - **Before locking.** Turn off a login method only after a login by the remaining method succeeded from another machine. A claim that a key works is not proof.
 - **Names.** The T3 environment name comes from `PRETTY_HOSTNAME`. Set it to the Tailscale name with `sudo hostnamectl set-hostname --pretty <name>`, and restart T3 to show it.
 
@@ -31,23 +31,21 @@ The workers are `dev` and `desktop`. Both run the latest Debian stable in text m
 
 Every worker runs the same agent configuration, installed from the deslop repository over SSH. Install after every change to these sources, from the checkout that holds the change, on every running worker in one pass. Report an unreachable worker as a gap unless the user turned it off. A worker that was off gets the install the next time it runs.
 
-- **Sources.** `.claude/settings.json`, `.claude/agents/pair.md`, `.claude/skills/{workflow,environment}/`, `.codex/config.toml` and `.codex/instructions.md`. Codex's personal skills are links to the Claude copies.
+- **Sources.** `.claude/settings.json`, `.claude/agents/pair.md`, `.claude/skills/{workflow,explore,review,environment}/`, `.codex/config.toml` and `.codex/instructions.md`. Codex's personal skills are links to the Claude copies.
 - **Origin.** Install only from main or from a branch with an open pull request, and bring every installed change to main.
 - **Before writing.** Run `diff -r` between the source and each worker's installed copy. A difference your branch did not make came from another branch: bring it into your branch first, never overwrite it.
-- **Public skills.** Engineering, design and testing stay repository copies that the coding-standards CLI refreshes.
 
 ```bash
 set -e
 for worker in dev desktop; do
   t=mp281x@$worker
   ssh -o ConnectTimeout=5 $t true || { echo "$worker is unreachable"; continue; }
-  rsync -a --delete .claude/skills/workflow/ $t:.claude/skills/workflow/
-  rsync -a --delete .claude/skills/environment/ $t:.claude/skills/environment/
+  for s in workflow explore review environment; do rsync -a --delete --mkpath .claude/skills/$s/ $t:.claude/skills/$s/; done
   rsync -a .claude/settings.json $t:.claude/settings.json
   rsync -a --mkpath .claude/agents/pair.md $t:.claude/agents/pair.md
   ssh $t 'rm -f ~/.codex/instructions.md'
   rsync -a --mkpath .codex/config.toml .codex/instructions.md $t:.codex/
-  ssh $t 'mkdir -p ~/.codex/skills && for s in workflow environment; do ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done'
+  ssh $t 'mkdir -p ~/.codex/skills && for s in workflow explore review environment; do ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done'
 done
 ```
 
@@ -97,7 +95,7 @@ rm -f /tmp/t3-*-projects.json /tmp/t3-dst-settings.json /tmp/t3-new-settings.jso
 
 Remove rebuildable data, never unsettled work. A worktree is disposable only when every thread that owns it is settled, no run is queued and no process uses it. Waiting for the user is not settled. Two threads can share one worktree and its preview stage.
 
-Check owners through T3's thread tools or the [T3 history](../../workflow/references/children.md#t3-history) section. `orchestration_v2_projection_threads.payload_json` holds `worktreePath`, `settledAt` and `settledOverride`. Join each owner's latest `orchestration_v2_projection_runs` row for activity. A missing path, listener or row starts an investigation; it never permits deletion. Unknown owners, stopped containers, unattached volumes and the shared production `deslop` project stay.
+Check owners through T3's thread tools or explore's [T3 history](../../explore/SKILL.md#t3-history) section. `orchestration_v2_projection_threads.payload_json` holds `worktreePath`, `settledAt` and `settledOverride`. Join each owner's latest `orchestration_v2_projection_runs` row for activity. A missing path, listener or row starts an investigation; it never permits deletion. Unknown owners, stopped containers, unattached volumes and the shared production `deslop` project stay.
 
 1. **Removed worktrees.** Find Compose projects whose `com.docker.compose.project.working_dir` is gone, processes with a deleted working directory, Serve mappings with no backend and `~/.deslop/<worktree>` folders without a checkout. After every owner is confirmed settled, remove only that project (`down --volumes --remove-orphans`), process group, mapping (`sudo tailscale serve --https=<port> off`) or folder. Keep `~/.deslop/deploy`. The tailnet listener itself is not a Serve backend.
 2. **Settled worktrees.** T3 removes worktrees under its cleanup settings: after 4 days without a run, and when their pull request merges. Before that, destroy a settled worktree's Alchemy preview or Compose project when its data is disposable. Run `git worktree remove --force --force <path>` only for a clean worktree; the branch keeps every commit. List dirty worktrees for the user instead. Delete `~/.deslop/<worktree directory name>/`.
@@ -159,7 +157,7 @@ These steps set up a worker from a Debian netinst image. Select only the SSH ser
 3. Install the user's key pair per [Access changes](#access-changes). Run the Tailscale block and show its sign-in link to the user. After a second SSH login over the tailnet works, set `ufw default deny incoming`, allow 80 and 443 only on dev, and enable ufw.
 4. On dev only: add the OpenVPN 3 apt source and install `openvpn3-client`. Import the VPN with `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`, connect it, and advertise its route.
 5. Run `loginctl enable-linger mp281x`. As `mp281x`, install Vite+ with `VP_HOME="$HOME/.vite-plus"`, the global packages and Claude Code. Run the T3 step and `t3 browser setup`, and set `PRETTY_HOSTNAME`.
-6. Run the sign-ins, the [Jira sign-in](#jira-sign-in) and `gh extension install github/gh-stack`. Write the git identities by host per [Git identity](#git-identity). Clone both repositories, and add each with `t3 project add --title <name> <path>`. On dev, deploy the public apps.
+6. Run the sign-ins, the [Jira sign-in](#jira-sign-in) and `gh extension install github/gh-stack`. Write the git identities by host per [Git identity](#git-identity). Clone both repositories, and add each with `t3 project add --title <name> <path>`. Give the Dual project a script that runs `vpx @deslop/coding-standards@latest` on worktree creation, through `t3_project_update` from a thread on that worker, so Claude finds the shared skills in every new worktree. On dev, deploy the public apps.
 7. Install the [agent configuration](#agent-configuration), and copy the [T3 settings](#t3-settings) from another worker.
 8. After a key login from another machine succeeds, write `/etc/ssh/sshd_config.d/10-keys-only.conf` with `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no` and `X11Forwarding no`. Run `sudo sshd -t && sudo systemctl reload ssh`.
 9. With an NVIDIA GPU, enable `contrib` and `non-free`, and add NVIDIA's CUDA and container toolkit sources. Install `linux-headers-amd64`, `nvidia-open` and `nvidia-container-toolkit`. Add the `nvidia` runtime, and enroll the key per [Desktop GPU](#desktop-gpu).

@@ -49,7 +49,11 @@ const cli = pipe(
 				['.agents', '.claude', '.codex'],
 				Array.filter(directory => Array.contains(entries, directory))
 			)
-			const targets = Array.isArrayEmpty(directories) ? ['.agents'] : directories
+			const targets = Array.dedupe([
+				...directories,
+				'.claude',
+				...(Array.contains(directories, '.codex') ? [] : ['.agents'])
+			])
 
 			function isGlobal(destination: string) {
 				return Array.some(
@@ -109,7 +113,7 @@ const cli = pipe(
 		})
 	),
 	Command.withDescription(
-		'Run anywhere inside a Git repository to install engineering, design and testing at its root, including linked worktrees. Copies into skills/ under each existing .agents, .claude and .codex directory; without any, creates .agents only. Replaces these three names, preserving other skills and global configuration. Destinations resolving outside the Git root are rejected before copying. Read engineering before coding, design before rendered output and testing before test work. Run the latest CLI transiently, independently of package preset versions; no repository dependency is needed. Claude uses .claude/skills; Codex documents .agents/skills for repository discovery. These skills belong in repositories, not global configuration.'
+		'Run anywhere inside a Git repository to install engineering, design and testing at its root, including linked worktrees. Copies into skills/ under each existing .agents, .claude and .codex directory, always under .claude, and under .agents when no .codex exists. Replaces these three names, preserving other skills and global configuration. Destinations resolving outside the Git root are rejected before copying. Read engineering before coding, design before rendered output and testing before test work. Run the latest CLI transiently, independently of package preset versions; no repository dependency is needed. Claude uses .claude/skills; Codex documents .agents/skills for repository discovery. These skills belong in repositories, not global configuration.'
 	),
 	Command.withExamples([
 		{
