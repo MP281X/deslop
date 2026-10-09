@@ -510,6 +510,49 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 		)
 
 		testApi.effect(
+			'reports native controls, discarded failures and React Query outside their owners',
+			() =>
+				Effect.gen(function* () {
+					const result = yield* lintSource({
+						'controls.test.ts': pipe(
+							[
+								"import {Effect} from 'effect'",
+								'',
+								'declare const load: Effect.Effect<number, string>',
+								'export const setup = Effect.orDie(load)'
+							],
+							Array.join('\n')
+						),
+						'controls.tsx': pipe(
+							[
+								"import {useQuery} from '@tanstack/react-query'",
+								"import {Effect} from 'effect'",
+								'',
+								'declare const load: Effect.Effect<number, string>',
+								'export const ignored = Effect.ignore(load)',
+								'export const crashed = Effect.orDie(load)',
+								'export function Save() { return <button type="button" className="hover:bg-muted rounded-md px-2">Save</button> }',
+								'export function Row() { return <button type="button" className="min-w-0 bg-transparent p-0 text-left">Open</button> }',
+								'export function Pick() { return <select aria-label="Kind" /> }',
+								'export {useQuery}'
+							],
+							Array.join('\n')
+						)
+					})
+					assert.deepStrictEqual(customCodes(result.stdout), [
+						'@deslop/coding-standards(no-discarded-failure)',
+						'@deslop/coding-standards(no-discarded-failure)',
+						'@deslop/coding-standards(no-native-control)',
+						'@deslop/coding-standards(no-native-control)'
+					])
+					assert.isTrue(
+						Array.some(result.stdout.diagnostics, diagnostic => diagnostic.code === 'eslint(no-restricted-imports)')
+					)
+				}),
+			20_000
+		)
+
+		testApi.effect(
 			'enforces native correctness rules without rejecting protected cases',
 			() =>
 				Effect.gen(function* () {

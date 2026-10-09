@@ -56,6 +56,7 @@ Machine upkeep lives in environment's maintenance reference. Update this brief w
 | Full validation after a small change                                        | Repeated root checks and builds; the ledger reruns only checks whose inputs changed                                                |
 | Rendering a plain list or prose as HTML                                     | A render replaces text with screens, flows, timelines, options or change maps; it never restyles the same words                    |
 | Patching single cases of a repeated failure                                 | The same defects recurred across threads; fix the code, rule or setting that causes them                                           |
+| A lint rule against every native button, input, select and textarea         | Deslop's reference code uses unstyled native rows and editors; only a native control styled like a control is reported             |
 | References inside the shared skills                                         | Tested: split rules made engineering, design and testing results less consistent; only workflow and environment keep references    |
 | Thread briefs that restate the workflow                                     | Every rule change then needed a steer; briefs carry the plan and task decisions only                                               |
 | Re-reviewing a whole branch and fixing style findings                       | A repeat review of 400 files returned 25 findings each and drew restyling across unrelated files                                   |

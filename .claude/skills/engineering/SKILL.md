@@ -3,7 +3,7 @@ name: engineering
 description: 'TypeScript and Effect code conventions paired with shared lint. Use when designing, implementing or reviewing product/test code, including prototypes.'
 ---
 
-**Scope.** Apply these rules and repository-specific CODING_STANDARDS.md.
+**Scope.** Apply these rules and repository-specific CODING_STANDARDS.md. Write each line right the first time: the examples exist so lint and review find nothing, and lint is only the fallback.
 
 **Dependency APIs.** Match the manifest and lockfile versions. Before adding an API wrapper or workaround, read the upstream source per workflow's research procedure. Library APIs do not define coding policy.
 
@@ -16,16 +16,16 @@ description: 'TypeScript and Effect code conventions paired with shared lint. Us
 **Experiments.** Write with these idioms; reserve the full refactor/cleanup pass for retained delivery. Keep disposable source isolated and shared rules intact.
 
 - **Reuse first.** Check existing code, installed modules and platform capabilities before adding code. Implement only the missing behavior, without dropping required behavior, safety or accessibility. Workflow owns the scope. A refactor or cleanup request applies every rule to every line of the owned files.
-- **Inward layers.** Domain and service code never import HTTP, RPC, or other transport types.
+- **Inward layers.** Domain and service code never import HTTP, RPC, or other transport types, and domain schemas carry no transport annotation such as an HTTP status.
 - **Building blocks.** For a consequential new interface, start with a realistic caller operation and its ordering, failure and lifetime obligations; hide useful complexity, not forwarded names. Offer services, Layers and functions the caller composes like any Effect module, never a bundle such as `serve(app)`. No mandatory architecture document or alternatives round.
 - **No machinery.** Add hooks, guards or generators only for a required contract or a recurring defect.
 - **Behavior kept.** A refactor keeps observable behavior at every consumer. Report accepted differences only when they exist: a change no consumer observes, or one a rule here causes, such as an error keeping its cause. Printed diagnostics are not a contract. Any other behavior change follows workflow's scope.
 - **Reachable bugs.** Fix a bug that real input reaches when it lies inside workflow's scope, and check every consumer of the changed output. For a hard bug, use one reproduction and one prediction per probe. Remove edits based on disproven hypotheses, then rerun the original scenario. Delete handling only for input the contract excludes; keep and report code that looks intentional.
-- **Performance.** Optimize only when the request or a required contract needs it, and measure realistic input before claiming a speedup. Diagnose at the layer that owns the symptom: distributed spans for RPC/backend dependencies, React commits for rerenders, a browser performance profile for main-thread work. Correlate one real action before changing code, then repeat it on the fix; neither a screenshot nor a service name proves latency or trace coverage. Time correct completed work under equivalent workloads/configuration; distinguish setup/cache/profiling cost and report run count/variation. Differences within noise are unproved, not speedups. Use existing instrumentation; profiling is not a ritual on every change.
+- **Performance.** Optimize only when the request or a required contract needs it. Measure one real action on realistic input before and after the change, at the layer that owns the symptom: spans for backend calls, React commits for rerenders, a browser profile for main-thread work. Report run count and variation; a difference within noise is unproved.
 - **Type safety.** A fix never weakens types to make a symptom go away: no widened or erased type, cast, dropped generic, or loosened exported type.
 - **Domain.** Implement the definition the domain uses, such as a cycle for recursion, never the nearest syntactic proxy.
 
-**Happy path.** Failures flow through the error channel: no catch, retry, fallback, backup, or defensive check unless the request or an existing contract needs it.
+**Happy path.** Failures flow through the error channel: no catch, retry, fallback, backup, or defensive check unless the request or an existing contract needs it. Map an expected failure to the service's error; never `Effect.ignore` it or turn it into a defect with `Effect.orDie`.
 
 **Trusted data.** Validate and transform once at the boundary with Effect Schema. Carry narrowed values forward. Never re-check what the schema, the declared type, an earlier filter or every caller guarantees.
 
@@ -72,7 +72,7 @@ _input => onSubmit(_input.value) // or input2: an outer input is shadowed
 
 **Nearest sibling.** Extend the nearest implementation; match permissions, errors, refresh and tests. Reuse its helpers and change only affected state.
 
-**Once.** Extract repeated logic once; one fact has one owner.
+**Once.** Extract repeated logic once; one fact has one owner. A domain enum, such as a status, has one schema that every other schema reuses, and a cache key or atom family key carries the full identity of what it caches.
 
 ```ts
 // good
@@ -96,7 +96,7 @@ pipe(
 
 **Present needs.** No speculative option, abstraction, layer, export, file or check. Configure only what callers vary.
 
-**Dead code.** Every superseded or unused file, export, type, branch, config, validation, doc, test, and dependency goes in the same change.
+**Dead code.** Every superseded or unused file, export, type, branch, config, validation, doc, test, and dependency goes in the same change. Docs, guides and generated bundles that describe changed behavior change in the same commit.
 
 ## Lint pairs
 
@@ -149,22 +149,7 @@ Array.appendAll(
 )
 ```
 
-**Choices.** `Match` for a union, never `switch`.
-
-```ts
-// good
-pipe(
-	Match.value(usage.kind),
-	Match.when('input', () => 'in'),
-	Match.when('output', () => 'out'),
-	Match.exhaustive
-)
-// bad
-switch (usage.kind) {
-	case 'input':
-		return 'in'
-}
-```
+**Choices.** `Match` with `Match.exhaustive` for a union, never `switch`.
 
 **Options.** Use Option operators, never .value. Use Option where it composes; keep plain optional values otherwise. This is our convention, not a claim narrowing is unsafe.
 
@@ -573,7 +558,7 @@ const handle = useCallback(() => setOpen(true), [])
 const state = useState(false)
 ```
 
-**Atoms.** Data, shared state and every Effect a component needs live in atoms; a component reads them with hooks and never runs an Effect. A task that changes a React Query hook, a fetching Effect or an Effect runner in React code moves that code to an atom. Declare atoms at module level or in `Atom.family`, never during render. Import `Atom` and `AsyncResult` from `effect/reactivity` and the hooks from `@effect/atom-react`. Supply services through `Atom.runtime(layer)`, and tie each write to the reads it changes with reactivity keys.
+**Atoms.** Data, shared state and every Effect a component needs live in atoms; a component reads them with hooks and never runs an Effect. A task that changes a React Query hook, a fetching Effect or an Effect runner in React code moves that code to an atom. Declare atoms at module level or in `Atom.family`, never during render. Import `Atom` and `AsyncResult` from `effect/reactivity` and the hooks from `@effect/atom-react`. Supply services through `Atom.runtime(layer)`, and build every read and write with that runtime's `atom` and `fn`. Tie each write to the reads it changes with reactivity keys; only a runtime's `fn` honors them, so never pass them to `Atom.fn`.
 
 ```tsx
 // good
@@ -588,18 +573,22 @@ onClick={() => Effect.runPromise(saveApp(draft))}
 useAtomValue(Atom.make(loadApp(appId))) // a new atom on every render
 ```
 
-**Outcomes.** Render every `AsyncResult` state: loading, failure with its recovery, and success. Take a write's pending and failure state from its atom's result, never from copied React state.
+**Outcomes.** Read data with `useAtomSuspense`. The route or section that owns a screen wraps it in one `Suspense` boundary for loading and one error boundary that shows the failure with a retry. Components never branch on loading or failure, and never turn a failure into an empty value. Take a write's pending and failure state from its atom's result, never from copied React state.
 
 ```tsx
 // good
-AsyncResult.match(app, {
-	onFailure: failure => <LoadError cause={failure.cause} onRetry={refresh} />,
-	onInitial: () => <Spinner />,
-	onSuccess: success => <AppFrame app={success.value} />
-})
+function AppFrame(props: {appId: AppId}) {
+	return <Frame app={useAtomSuspense(appAtom(props.appId)).value} />
+}
+<ErrorBoundary fallback={<LoadError onRetry={refresh} />}>
+	<Suspense fallback={<Spinner />}>
+		<AppFrame appId={appId} />
+	</Suspense>
+</ErrorBoundary>
 <Button disabled={saveResult.waiting} onClick={() => save(draft)}>Save</Button>
 // bad
 app.data ? <AppFrame app={app.data} /> : <Spinner /> // a failed load spins forever
+const members = query.data ?? [] // a failed load looks like no members
 const [pending, setPending] = useState(false) // copies the write atom's waiting state
 ```
 
