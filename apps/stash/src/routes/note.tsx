@@ -17,13 +17,13 @@ import {
 import {
 	aspectRatio,
 	background,
-	buttonStyle,
 	foregroundStyle,
 	frame,
 	labelStyle,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	padding,
+	redacted,
 	resizable,
 	tabViewStyle,
 	textSelection
@@ -180,20 +180,6 @@ function Detail(props: {note: NoteItem; onTag: (tag: string) => void}) {
 		AsyncResult.getOrElse(() => undefined),
 		Option.fromNullishOr
 	)
-	// Folded so the note stays short: what the video says, and the original words of a written note.
-	const folds = pipe(
-		[
-			{label: 'transcript', text: Option.match(full, {onNone: () => '', onSome: loaded => loaded.transcript ?? ''})},
-			{
-				label: 'original',
-				text:
-					note.url === null && note.file === undefined
-						? Option.match(full, {onNone: () => '', onSome: loaded => loaded.text})
-						: ''
-			}
-		],
-		Array.filter(fold => String.isNonEmpty(String.trim(fold.text)))
-	)
 	return (
 		<ScrollView modifiers={[background(colors.background)]}>
 			<VStack
@@ -201,10 +187,26 @@ function Detail(props: {note: NoteItem; onTag: (tag: string) => void}) {
 				spacing={14}
 				modifiers={[padding({all: 16}), frame({alignment: 'leading', maxWidth: Infinity})]}
 			>
-				<Text modifiers={[mono('headline', 18), foregroundStyle(colors.foreground), textSelection(true)]}>
-					{note.title}
-				</Text>
-				{String.isNonEmpty(note.summary) && (
+				{/* While the server reads the note, its lines show as the system's gray placeholder bars. */}
+				{note.status === 'organizing' && (
+					<VStack alignment="leading" spacing={10} modifiers={[redacted('placeholder')]}>
+						<Text modifiers={[mono('headline', 18), foregroundStyle(colors.foreground)]}>
+							Reading the link and writing
+						</Text>
+						<Text modifiers={[mono('body', 14), foregroundStyle(colors.mutedForeground)]}>
+							The summary arrives once the note is tagged, in a minute or two.
+						</Text>
+						<Text modifiers={[mono('body', 14), foregroundStyle(colors.foreground)]}>
+							The notes list the point and the takeaways of the post.
+						</Text>
+					</VStack>
+				)}
+				{note.status !== 'organizing' && (
+					<Text modifiers={[mono('headline', 18), foregroundStyle(colors.foreground), textSelection(true)]}>
+						{note.title}
+					</Text>
+				)}
+				{note.status !== 'organizing' && String.isNonEmpty(note.summary) && (
 					<Text modifiers={[mono('body', 14), foregroundStyle(colors.mutedForeground), textSelection(true)]}>
 						{note.summary}
 					</Text>
@@ -224,37 +226,10 @@ function Detail(props: {note: NoteItem; onTag: (tag: string) => void}) {
 					Option.flatMap(full, loaded => Option.liftPredicate(loaded.body ?? '', String.isNonEmpty)),
 					{onNone: () => undefined, onSome: body => <Body text={body} />}
 				)}
-				{Array.map(folds, fold => (
-					<Fold key={fold.label} label={fold.label} text={fold.text} />
-				))}
 				{String.isNonEmpty(note.issue) && (
 					<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground)]}>{note.issue}</Text>
 				)}
 			</VStack>
 		</ScrollView>
-	)
-}
-
-// A muted label with a chevron that shows or hides a long text.
-function Fold(props: {label: string; text: string}) {
-	const [open, setOpen] = useState(false)
-	return (
-		<VStack alignment="leading" spacing={8}>
-			<Button onPress={() => setOpen(!open)} modifiers={[buttonStyle('plain')]}>
-				<HStack spacing={6}>
-					<Image
-						systemName={open ? 'chevron.down' : 'chevron.right'}
-						size={11}
-						modifiers={[foregroundStyle(colors.mutedForeground)]}
-					/>
-					<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground)]}>{props.label}</Text>
-				</HStack>
-			</Button>
-			{open && (
-				<Text modifiers={[mono('caption', 11), foregroundStyle(colors.mutedForeground), textSelection(true)]}>
-					{props.text}
-				</Text>
-			)}
-		</VStack>
 	)
 }

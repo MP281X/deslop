@@ -10,7 +10,6 @@ import {
 	Image,
 	List,
 	Menu,
-	ProgressView,
 	ScrollView,
 	SwipeActions,
 	Text,
@@ -27,7 +26,6 @@ import {
 	border,
 	clipped,
 	contentShape,
-	controlSize,
 	cornerRadius,
 	foregroundStyle,
 	frame,
@@ -42,12 +40,12 @@ import {
 	navigationTitle,
 	onAppear,
 	onTapGesture,
+	redacted,
 	resizable,
 	scrollContentBackground,
 	searchable,
 	shapes,
-	tag,
-	tint
+	tag
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
@@ -149,15 +147,7 @@ export function NotesRoute(props: {
 				Array.map(pending, item => (
 					<HStack key={item.id} alignment="top" spacing={12} modifiers={[...row, fullSeparator]}>
 						<Placeholder symbol="arrow.up" />
-						<VStack alignment="leading" spacing={4} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>
-							<Text modifiers={[mono('subheadline', 13), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
-								{Option.match(Option.fromNullishOr(item.file), {
-									onNone: () => item.text,
-									onSome: file => (String.startsWith('image/')(file.type) ? 'image' : 'video')
-								})}
-							</Text>
-							<Spinner />
-						</VStack>
+						<Skeleton />
 					</HStack>
 				))}
 			{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions from the list. */}
@@ -257,9 +247,25 @@ function Title() {
 	)
 }
 
-// Marks a capture the server is still reading, in place of its author and tags.
-function Spinner() {
-	return <ProgressView modifiers={[controlSize('mini'), tint(colors.mutedForeground)]} />
+// A note the server is still reading: the row's own lines as the system's gray placeholder bars, so the list keeps its
+// shape and the row fills in place once the note is ready.
+function Skeleton() {
+	return (
+		<VStack
+			alignment="leading"
+			spacing={3}
+			modifiers={[frame({alignment: 'leading', maxWidth: Infinity}), redacted('placeholder')]}
+		>
+			<Text modifiers={[mono('headline', 14), foregroundStyle(colors.foreground), lineLimit(1)]}>
+				Reading the link and writing
+			</Text>
+			<Text modifiers={[mono('subheadline', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
+				The summary arrives in a moment once tagged
+			</Text>
+			<Text modifiers={[mono('caption', 11), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>author</Text>
+			<Text modifiers={[mono('caption', 11), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>#tag #tag</Text>
+		</VStack>
+	)
 }
 
 function Placeholder(props: {symbol: 'arrow.up' | 'globe' | 'photo' | 'play.rectangle' | 'text.alignleft' | 'xmark'}) {
@@ -336,16 +342,16 @@ function Row(props: {
 			]}
 		>
 			<Preview note={note} />
-			<VStack alignment="leading" spacing={3} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>
-				<Text modifiers={[mono('headline', 14), foregroundStyle(colors.foreground), lineLimit(1)]}>{note.title}</Text>
-				{String.isNonEmpty(note.summary) && (
-					<Text modifiers={[mono('subheadline', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
-						{note.summary}
-					</Text>
-				)}
-				{note.status === 'organizing' ? (
-					<Spinner />
-				) : (
+			{note.status === 'organizing' ? (
+				<Skeleton />
+			) : (
+				<VStack alignment="leading" spacing={3} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>
+					<Text modifiers={[mono('headline', 14), foregroundStyle(colors.foreground), lineLimit(1)]}>{note.title}</Text>
+					{String.isNonEmpty(note.summary) && (
+						<Text modifiers={[mono('subheadline', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
+							{note.summary}
+						</Text>
+					)}
 					<VStack alignment="leading" spacing={3}>
 						<Text modifiers={[mono('caption', 11), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
 							{String.toLowerCase(String.isNonEmpty(note.author) ? note.author : note.source)}
@@ -360,8 +366,8 @@ function Row(props: {
 							</Text>
 						)}
 					</VStack>
-				)}
-			</VStack>
+				</VStack>
+			)}
 		</HStack>
 	)
 	return (
