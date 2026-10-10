@@ -19,9 +19,12 @@ import {
 } from 'effect'
 import type {Stream} from 'effect'
 
+import {Base64} from 'effect/encoding'
+
 import {Sources} from './internal/extraction.ts'
 import {Organizer} from './internal/organization.ts'
 
+import {speechOnly} from '#services/media/lib/utils.ts'
 import {captureUrl, commentFor, normalizeTags, sourceFor, tagCounts} from '#services/notes/lib/utils.ts'
 import type {Capture, ImageType} from '#services/notes/schema.ts'
 import {Extraction, Note, NotesError, NotesState} from '#services/notes/schema.ts'
@@ -82,7 +85,18 @@ export class Notes extends Context.Service<
 			// Tags saved before they became single tokens get hyphens on the next start.
 			const migrated = NotesState.make({
 				...loaded,
-				notes: Array.map(loaded.notes, note => ({...note, tags: normalizeTags(note.tags)}))
+				// Transcripts saved before the speech check lose what Whisper heard in music.
+				notes: Array.map(loaded.notes, note => {
+					const {transcript, ...rest} = note
+					return {
+						...rest,
+						tags: normalizeTags(note.tags),
+						...Option.match(Option.flatMap(Option.fromNullishOr(transcript), speechOnly), {
+							onNone: () => ({}),
+							onSome: text => ({transcript: text})
+						})
+					}
+				})
 			})
 			yield* persist(migrated)
 			const state = yield* SubscriptionRef.make(migrated)
@@ -171,6 +185,14 @@ export class Notes extends Context.Service<
 				)
 			})
 
+			// The kept preview as an image the AI can see; a missing file only costs that picture.
+			const previewOf = Effect.fnUntraced(
+				function* (id: Note['id'], type: ImageType) {
+					return [`data:${type};base64,${Base64.encode(yield* fs.readFile(path.join(images, id)))}`]
+				},
+				Effect.catch(error => Effect.as(Effect.logWarning('The preview could not be read', error), []))
+			)
+
 			const organize = Effect.fnUntraced(function* (id: Note['id'], url: Note['url']) {
 				const empty = Extraction.make({author: '', image: Option.none(), text: '', title: '', url: ''})
 				const extraction = yield* Option.match(Option.fromNullishOr(url), {
@@ -250,13 +272,19 @@ export class Notes extends Context.Service<
 							)
 					}
 				)
-				// Stills let the AI see what a video only shows; a note deleted meanwhile needs none.
-				const frames = Array.some((yield* SubscriptionRef.get(state)).notes, item => item.id === id)
+				// The kept preview and stills of a video let the AI see what the link shows; a note deleted meanwhile needs none.
+				const kept = Array.findFirst((yield* SubscriptionRef.get(state)).notes, item => item.id === id)
+				const preview = yield* Option.match(
+					Option.flatMapNullishOr(kept, item => item.image),
+					{onNone: () => Effect.succeed([]), onSome: type => previewOf(id, type)}
+				)
+				const stills = Option.isSome(kept)
 					? yield* Option.match(resolved, {
 							onNone: () => Effect.succeed([]),
 							onSome: () => sources.frames(extracted.video ?? extracted.url)
 						})
 					: []
+				const frames = [...preview, ...stills]
 				// One AI call at a time, so two captures cannot both pass the budget check before either records its cost.
 				yield* aiCalls.withPermit(
 					Effect.gen(function* () {

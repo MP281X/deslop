@@ -8,7 +8,10 @@ final class ShareViewController: UIViewController {
   override func viewDidLoad() {
     super.viewDidLoad()
     guard let context = extensionContext else { return }
+    // A clear page shows only the small card, so the app the user shared from stays in view behind it.
+    view.backgroundColor = .clear
     let host = UIHostingController(rootView: SaveView(context: context))
+    host.view.backgroundColor = .clear
     addChild(host)
     host.view.translatesAutoresizingMaskIntoConstraints = false
     view.addSubview(host.view)
@@ -48,6 +51,7 @@ private enum Theme {
   static let foreground = color(light: 0x09090B, dark: 0xF3F3F5)
   static let muted = color(light: 0x71717B, dark: 0xADADB5)
   static let primary = color(light: 0xF54900, dark: 0xE78A53)
+  static let border = color(light: 0xE4E4E7, dark: 0x2E2E33)
 
   static func mono(_ size: CGFloat, semibold: Bool = false) -> Font {
     .custom(semibold ? "JetBrainsMono-SemiBold" : "JetBrainsMono-Regular", size: size)
@@ -59,13 +63,13 @@ private struct SaveView: View {
   @State private var phase = Phase.saving
 
   var body: some View {
-    VStack(spacing: 10) {
+    VStack(spacing: 8) {
       switch phase {
       case .saving:
         ProgressView().tint(Theme.primary)
       case .sent:
         Image(systemName: "checkmark")
-          .font(.system(size: 36, weight: .semibold))
+          .font(.system(size: 24, weight: .semibold))
           .foregroundStyle(Theme.primary)
           .symbolEffect(.bounce, value: phase)
         Text("saved to stash").font(Theme.mono(16, semibold: true)).foregroundStyle(Theme.foreground)
@@ -80,9 +84,12 @@ private struct SaveView: View {
           .multilineTextAlignment(.center)
       }
     }
-    .padding(24)
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .padding(20)
+    .frame(maxWidth: 320)
     .background(Theme.background)
+    .overlay(Rectangle().stroke(Theme.border, lineWidth: 1))
+    .padding(.bottom, 48)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
     // A tap anywhere closes the sheet once the save has an outcome, so there is no button.
     .contentShape(Rectangle())
     .onTapGesture {

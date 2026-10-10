@@ -1,6 +1,6 @@
 import {useAtomMount, useAtomRefresh} from '@effect/atom-react'
 
-import {Array, Predicate} from 'effect'
+import {Array, Predicate, String} from 'effect'
 
 import {
 	Button,
@@ -16,10 +16,11 @@ import {background, foregroundStyle, tint} from '@expo/ui/swift-ui/modifiers'
 import {Suspense, useState} from 'react'
 import {ErrorBoundary} from 'react-error-boundary'
 
-import {colors, mono} from '#lib/theme.ts'
 import {deliveryAtom, pasteAtom, pendingAtom} from '#lib/utils.ts'
 import {NotesRoute} from '#routes/(home)/index.tsx'
+import {ComposeRoute} from '#routes/compose.tsx'
 import {NoteRoute} from '#routes/note.tsx'
+import {colors, mono} from '@deslop/components/mobile/theme'
 
 export function RootRoute() {
 	useAtomMount(deliveryAtom)
@@ -29,10 +30,11 @@ export function RootRoute() {
 	const [search, setSearch] = useState('')
 	const query = useNativeState('')
 
-	// Typing already updates the native field, so only a tapped tag writes it.
+	// Typing already updates the native field, so only a tapped tag writes it; tapping the active tag clears it.
 	function searchTag(tag: string) {
-		query.set(`#${tag} `)
-		setSearch(`#${tag} `)
+		const next = String.trim(search) === `#${tag}` ? '' : `#${tag} `
+		query.set(next)
+		setSearch(next)
 		setPath([])
 	}
 
@@ -65,6 +67,7 @@ export function RootRoute() {
 						<NotesRoute
 							query={query}
 							search={search}
+							onCompose={() => setPath(['compose'])}
 							onOpen={id => setPath([id])}
 							onSearch={setSearch}
 							onTag={searchTag}
@@ -73,7 +76,7 @@ export function RootRoute() {
 				</ErrorBoundary>
 				{Array.map(path, id => (
 					<NavigationDestination key={id} value={id}>
-						<NoteRoute id={id} onTag={searchTag} />
+						{id === 'compose' ? <ComposeRoute onDone={() => setPath([])} /> : <NoteRoute id={id} onTag={searchTag} />}
 					</NavigationDestination>
 				))}
 			</NavigationStack>
