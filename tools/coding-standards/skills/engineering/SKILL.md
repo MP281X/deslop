@@ -1,11 +1,11 @@
 ---
 name: engineering
-description: 'TypeScript and Effect code conventions paired with shared lint. Use when designing, implementing or reviewing product/test code, including prototypes.'
+description: 'TypeScript and Effect code conventions paired with shared lint. Use when designing, implementing or reviewing product and test code, including prototypes.'
 ---
 
 **Scope.** Apply these rules and repository-specific CODING_STANDARDS.md. Write each line right the first time: the examples exist so lint and review find nothing, and lint is only the fallback.
 
-**Dependency APIs.** Match the manifest and lockfile versions. Before adding an API wrapper or workaround, read the upstream source per workflow's research procedure. Library APIs do not define coding policy.
+**Dependency APIs.** Match the manifest and lockfile versions. Before adding an API wrapper or workaround, read the upstream source per explore's source checkouts. Library APIs do not define coding policy.
 
 **Diagnostics.** Use the shown idiom, not casts, weakened rules or a rewrite trading one diagnostic for another.
 
@@ -13,7 +13,7 @@ description: 'TypeScript and Effect code conventions paired with shared lint. Us
 
 **Clarity.** Plain, explicit, idiomatic code, names and files; read top to bottom without commentary or cleverness. Match the surrounding code's naming, idiom and comment density.
 
-**Experiments.** Write with these idioms; reserve the full refactor/cleanup pass for retained delivery. Keep disposable source isolated and shared rules intact.
+**Experiments.** Write with these idioms; reserve the full refactor and cleanup pass for retained delivery. Keep disposable source isolated and shared rules intact.
 
 - **Reuse first.** Check existing code, installed modules and platform capabilities before adding code. Implement only the missing behavior, without dropping required behavior, safety or accessibility. Workflow owns the scope. A refactor or cleanup request applies every rule to every line of the owned files.
 - **Inward layers.** Domain and service code never import HTTP, RPC, or other transport types, and domain schemas carry no transport annotation such as an HTTP status.
@@ -21,7 +21,7 @@ description: 'TypeScript and Effect code conventions paired with shared lint. Us
 - **No machinery.** Add hooks, guards or generators only for a required contract or a recurring defect.
 - **Behavior kept.** A refactor keeps observable behavior at every consumer. Report accepted differences only when they exist: a change no consumer observes, or one a rule here causes, such as an error keeping its cause. Printed diagnostics are not a contract. Any other behavior change follows workflow's scope.
 - **Reachable bugs.** Fix a bug that real input reaches when it lies inside workflow's scope, and check every consumer of the changed output. For a hard bug, use one reproduction and one prediction per probe. Remove edits based on disproven hypotheses, then rerun the original scenario. Delete handling only for input the contract excludes; keep and report code that looks intentional.
-- **Performance.** Optimize only when the request or a required contract needs it. Measure one real action on realistic input before and after the change, at the layer that owns the symptom: spans for backend calls, React commits for rerenders, a browser profile for main-thread work. Report run count and variation; a difference within noise is unproved.
+- **Performance.** Optimize only when the request or a required contract needs it. Measure one real action on realistic input before and after the change. Measure at the layer that owns the symptom: spans for backend calls, React commits for rerenders, a browser profile for main-thread work. Report run count and variation; a difference within noise is unproved.
 - **Type safety.** A fix never weakens types to make a symptom go away: no widened or erased type, cast, dropped generic, or loosened exported type.
 - **Domain.** Implement the definition the domain uses, such as a cycle for recursion, never the nearest syntactic proxy.
 
@@ -72,7 +72,7 @@ _input => onSubmit(_input.value) // or input2: an outer input is shadowed
 
 **Nearest sibling.** Extend the nearest implementation; match permissions, errors, refresh and tests. Reuse its helpers and change only affected state.
 
-**Once.** Extract repeated logic once; one fact has one owner. A domain enum, such as a status, has one schema that every other schema reuses, and a cache key or atom family key carries the full identity of what it caches.
+**Once.** Extract repeated logic once; one fact has one owner. A domain enum, such as a status, has one schema that every other schema reuses. A cache key or atom family key carries the full identity of what it caches.
 
 ```ts
 // good
@@ -88,11 +88,11 @@ pipe(
 )
 ```
 
-**Canonical data.** Store/send canonical data, derive display values, expose each state once and remove states no caller produces.
+**Canonical data.** Store and send canonical data, derive display values, expose each state once and remove states no caller produces.
 
-**One way.** Replace superseded paths; no duplicate/subset/superset fields, methods, options or exports.
+**One way.** Replace superseded paths; no duplicate, subset or superset fields, methods, options or exports.
 
-**No compatibility.** Rename the shape and every caller together. No alias, fallback, deprecated path or flag unless a documented/user-named contract requires it.
+**No compatibility.** Rename the shape and every caller together. No alias, fallback, deprecated path or flag unless a documented or user-named contract requires it.
 
 **Present needs.** No speculative option, abstraction, layer, export, file or check. Configure only what callers vary.
 
@@ -122,7 +122,7 @@ if (enabled === true) return // enabled is a boolean
 if (props.selected) return // props.selected can be undefined
 ```
 
-**Flat.** Use early-return statements in Effect.fn. No nested ternaries or combinators deeper than equivalent statements. Match/combinators serve single expressions; Boolean.match selects a value, except one-line JSX-attribute ternaries.
+**Flat.** Use early-return statements in Effect.fn. No nested ternaries or combinators deeper than equivalent statements. Match and combinators serve single expressions; Boolean.match selects a value, except one-line JSX-attribute ternaries.
 
 ```ts
 // good
@@ -185,7 +185,7 @@ const [first] = teamId
 items.filter(item => supports(item)).map(item => item.value)
 ```
 
-**Natives.** Use Effect modules instead of globals/native methods. Third-party-owned methods stay, with an inline diagnostic disable and reason when needed.
+**Natives.** Use Effect modules instead of globals and native methods. Third-party-owned methods stay, with an inline diagnostic disable and reason when needed.
 
 ```ts
 // good
@@ -230,7 +230,7 @@ const text = Effect.fn('Ai.text')(function* (response: AiResponse) {
 })
 ```
 
-**Casts.** No `as`, `any` or erasing a known shape into `unknown`; `satisfies` and `as const` are the only assertions. Genuinely opaque SDK/framework inputs remain `unknown` until narrowed or decoded at their boundary—do not fabricate a shape to avoid that type.
+**Casts.** No `as`, `any` or erasing a known shape into `unknown`; `satisfies` and `as const` are the only assertions. Opaque SDK and framework inputs remain `unknown` until narrowed or decoded at their boundary; never fabricate a shape to avoid that type.
 
 ```ts
 // good
@@ -247,7 +247,7 @@ const params: unknown = part.params // erases an already-known shape
 // good
 const load = Effect.fn('Plugin.load')(function* (path: string) {
 	const endpoint = yield* Schema.decodeEffect(Endpoint)(config.endpoint)
-	const manifest = yield* Schema.decodeEffect(PackageManifest)(yield* fs.readFileString(path))
+	const manifest = yield* Schema.decodeEffect(Schema.fromJsonString(PackageManifest))(yield* fs.readFileString(path))
 	return {endpoint, manifest}
 })
 // bad
@@ -367,7 +367,7 @@ static readonly layer = Layer.effect(Ledger, makeLedger) // a make with one call
 query(sql: string): Effect.Effect<Rows> // a method signature instead of a readonly property
 ```
 
-**Primitives.** Use Effect's primitives directly; rpcs and services already trace, and one scope owns each lifetime. Compose established independent I/O with Effect.all and explicit appropriate concurrency; keep order-dependent, transactional or resource-conflicting work sequential.
+**Primitives.** Use Effect's primitives directly; rpcs and services already trace, and one scope owns each lifetime. Compose established independent input and output with Effect.all and explicit appropriate concurrency; keep order-dependent, transactional or resource-conflicting work sequential.
 
 ```ts
 // good
@@ -412,7 +412,7 @@ entries.sort((left, right) => left.tokens - right.tokens)
 
 ## Types and Schema
 
-**Inference.** Infer types. Annotate recursion or branches TypeScript cannot unite; use schema types/indexed members in signatures. Keep intentional widening, not repeated inferred generics.
+**Inference.** Infer types. Annotate recursion or branches TypeScript cannot unite; use schema types and indexed members in signatures. Keep intentional widening, not repeated inferred generics.
 
 ```ts
 // good
@@ -494,7 +494,7 @@ function isPathNotFound(error: unknown) {
 
 ## Shape
 
-**Inline.** Inline forwarding wrappers and single-use helpers/temporaries/constants. Argument-free functions are named values.
+**Inline.** Inline forwarding wrappers and single-use helpers, temporaries and constants. Argument-free functions are named values.
 
 ```ts
 // good
@@ -573,7 +573,7 @@ onClick={() => Effect.runPromise(saveApp(draft))}
 useAtomValue(Atom.make(loadApp(appId))) // a new atom on every render
 ```
 
-**Outcomes.** Read data with `useAtomSuspense`. The route or section that owns a screen wraps it in one `Suspense` boundary for loading and one error boundary that shows the failure with a retry. Components never branch on loading or failure, and never turn a failure into an empty value. Take a write's pending and failure state from its atom's result, never from copied React state.
+**Outcomes.** Read data with `useAtomSuspense`. The route or section that owns a screen wraps it in one `Suspense` boundary for loading. One error boundary there shows the failure with a retry. Components never branch on loading or failure, and never turn a failure into an empty value. Take a write's pending and failure state from its atom's result, never from copied React state.
 
 ```tsx
 // good
@@ -593,7 +593,7 @@ const [pending, setPending] = useState(false) // copies the write atom's waiting
 ```
 
 - **Ownership.** Give a component that owns its own atoms, writes or lifetime its own file; keep small presentational helpers beside their one user. Reset an editable draft through a `key` on its identity, never an Effect that copies props.
-- **Pure render.** Derive display values from props and subscribed state during render; never mutate them or perform an RPC, write or subscription there. Event handlers own user-triggered actions; Effects synchronize external systems, not copied state or calculations. Reuse the existing router/atom integration rather than fetching in a new Effect.
+- **Pure render.** Derive display values from props and subscribed state during render; never mutate them or perform an RPC, write or subscription there. Event handlers own user-triggered actions; Effects synchronize external systems, not copied state or calculations. Reuse the existing router and atom integration rather than fetching in a new Effect.
 - **State identity.** Keep one owner for each value, stable domain keys for list items and deliberate reset boundaries. For an observed rerender problem, derive the needed value in the existing atom graph instead of subscribing to frequently changing unrelated state. Compiler memoization is a performance optimization, never a correctness or lifetime guarantee. Do not add manual memoization, compiler escape directives or weakened hook rules to hide an ownership problem.
 
 Testing judgment, fixtures, assertions and verification belong to the testing skill; these engineering rules still apply to test code.

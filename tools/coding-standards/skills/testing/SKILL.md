@@ -1,16 +1,16 @@
 ---
 name: testing
-description: 'Select and run black-box behavior proof for Effect apps/tools. Use when choosing, writing, reviewing or running tests; apply engineering to test code and keep exploratory proof question-sized.'
+description: 'Select and run black-box behavior proof for Effect apps and tools. Use when choosing, writing, reviewing or running tests; apply engineering to test code and keep exploratory proof question-sized.'
 ---
 
 # Testing
 
 **Scope.** Test behavior the changed code owns; a coverage count proves nothing.
 
-- **Worth it.** Test owned branching, computation, parsing/state transitions a plausible regression breaks; add missing valuable coverage before refactoring.
+- **Worth it.** Test owned branching, computation, parsing and state transitions that a plausible regression breaks. Add missing valuable coverage before refactoring.
 - **Public interface.** Test exported Layers, services and functions through observable behavior, so a rewrite that keeps the contract keeps the tests green. The browser proves UI components.
 - **Redundant.** Delete touched cases that only repeat dependency guarantees, constants, wording, removed behavior or an already covered input. Keep boundary tests that prove the application's own validation, encoding or integration.
-- **Independent.** Expected values come from the contract/worked example, not implementation recomputation. Use the smallest reachable discriminating fixture.
+- **Independent.** Expected values come from the contract or a worked example, not from recomputing the implementation. Use the smallest reachable fixture that tells the cases apart.
 - **Bugs.** Reproduce a bug before fixing it. Keep the failing case when it protects owned behavior, in the existing test that covers the fixed code, or a new case when none fits.
 - **Throwaway.** Settle a worry with a throwaway test or prototype and delete it once answered, unless it becomes a regression test under Bugs.
 - **Honest.** No wrong expectations or rule workarounds. Change assertions only for recorded behavior changes; preserve every still-relevant value.
@@ -38,26 +38,26 @@ assert.strictEqual(Array.flatMap(attioProvider.groups, group => group.actions).l
 
 ## Choose cases
 
-- **Contract.** Connect a reachable input to an observable output, so a plausible wrong implementation fails. Use the nearest public interface, not private helpers or new harnesses. When behavior is uncertain, settle one reachable case with a focused check and minimal implementation, then choose the next case from the findings; do not batch tests for an imagined implementation or require universal TDD.
-- **Branches.** Exercise reachable empty/duplicate/concurrent/dependency-failure distinctions; no Cartesian product or random/repeated happy paths without a hypothesis.
-- **Failure.** Effect.flip for expected failure; Effect.exit for both outcomes. Assert domain identity and preserved state/resources: no partial write, lost value, extra retry or leak. Wording/rejection alone is insufficient; no incidental order assertions.
+- **Contract.** Connect a reachable input to an observable output, so a plausible wrong implementation fails. Use the nearest public interface, not private helpers or new harnesses. When behavior is uncertain, settle one reachable case with a focused check and a minimal implementation. Then choose the next case from the findings; never batch tests for an imagined implementation or require universal TDD.
+- **Branches.** Exercise the reachable distinctions: empty, duplicate, concurrent and dependency failure. Write no Cartesian product, and no random or repeated happy paths without a hypothesis.
+- **Failure.** Use `Effect.flip` for an expected failure and `Effect.exit` for both outcomes. Assert domain identity and preserved state and resources: no partial write, lost value, extra retry or leak. Wording or rejection alone is not enough, and incidental order is no assertion.
 - **Control.** Run the regression test against the unfixed implementation, and confirm that the intended assertion fails, not setup, imports or compilation. Before a refactor, cover the old behavior first.
 
 ## Effect and fixtures
 
-- **Entrypoint.** Plain it: sync/Promise public functions. it.effect(name, () => effect): virtual services; it.live: real services. Return Effect from a callback, no runner wrapper. it.layer caches its block context and exposes effect, not live; shared live layers use {excludeTestServices: true}. Verify matched cloned-source APIs/imports.
-- **Lifetime.** it.effect/live supply case Scope; it.layer acquisition belongs to its block. Use scoped platform resources, no redundant whole-case Effect.scoped. To assert cleanup, close the smaller operation scope before inspection.
-- **Isolation.** Shared layers share mutable services/TestClock/TestConsole; Layer.fresh does not reset cached context. Distinct keys, public reset or case-local fixtures; cases pass alone/together, never depend on earlier output.
-- **Clock.** TestClock/TestConsole from effect/testing. Fork, await a dependency-boundary Deferred carrying the actual key/path, adjust time, join; forking alone is not readiness. JavaScript timers/sockets/processes need live services, not TestClock.
-- **Concurrency.** Dependency entered/release pair: await entry, start competing action, release, assert contract. Set Effect.all concurrency for overlap. Cancellation: await acquisition, interrupt and await completion; unrelated outer Scope stays open. Don't test primitives/incidental ordering.
-- **Boundary.** Double only dependencies outside tested logic, via Layer/public parameter. SDK/process/filesystem/HTTP/browser/package integration claims require the real boundary, not matching mocks/spies.
-- **Artifacts.** Public-tool proof uses real packing/declared dependencies, not source imports/stubs. Generate fixtures with the real generator after one representative input settles; never alter expected output to fit a bug.
-- **Platform.** FileSystem.layerNoop is not memory storage; HttpServer.layerServices supplies no filesystem. Use platform Layer/scoped paths. RpcTest bypasses serialization; HttpApiTest bypasses sockets while testing routing/encoding/middleware/decoding. Neither proves deployment/external integration.
+- **Entrypoint.** Plain `it` tests sync and Promise public functions. `it.effect(name, () => effect)` runs with virtual services and `it.live` with real ones. Return the Effect from the callback, with no runner wrapper. `it.layer` caches its block context and exposes `effect`, not `live`; shared live layers use `{excludeTestServices: true}`. Check APIs and imports against the cloned source.
+- **Lifetime.** `it.effect` and `it.live` supply a Scope per case; `it.layer` acquisition belongs to its block. Use scoped platform resources and no redundant whole-case `Effect.scoped`. To assert cleanup, close the smaller operation scope before you inspect.
+- **Isolation.** Shared layers share mutable services, `TestClock` and `TestConsole`, and `Layer.fresh` does not reset cached context. Use distinct keys, a public reset or case-local fixtures. Cases pass alone and together, and never depend on earlier output.
+- **Clock.** Take `TestClock` and `TestConsole` from `effect/testing`. Fork, await a `Deferred` at the dependency boundary that carries the actual key or path, adjust time, then join; forking alone is not readiness. JavaScript timers, sockets and processes need live services, not `TestClock`.
+- **Concurrency.** Give the dependency an entered and release pair: await entry, start the competing action, release, then assert the contract. Set `Effect.all` concurrency for overlap. For cancellation, await acquisition, interrupt and await completion; an unrelated outer Scope stays open. Never test primitives or incidental ordering.
+- **Boundary.** Double only dependencies outside the tested logic, through a Layer or a public parameter. A claim about an SDK, process, filesystem, HTTP, browser or package integration needs the real boundary, not matching mocks or spies.
+- **Artifacts.** Prove a public tool with real packing and declared dependencies, not source imports or stubs. Generate fixtures with the real generator after one representative input settles; never alter expected output to fit a bug.
+- **Platform.** `FileSystem.layerNoop` is not memory storage, and `HttpServer.layerServices` supplies no filesystem; use a platform Layer and scoped paths. `RpcTest` bypasses serialization, and `HttpApiTest` bypasses sockets while it tests routing, encoding, middleware and decoding. Neither proves deployment or an external integration.
 
 ## Run and reconcile
 
 - **Run.** Use the documented test selectors and confirm that they collect and execute the intended cases. Zero collected tests, setup alone or exit code 0 alone prove nothing.
-- **Inventory.** Collect independent failures once instead of cancelling the suite at the first failure. Distinguish separate cases from repeated observations. Rerun a timed-out test once in isolation; a pass proves that run, not the cause of the timeout. Do not call a bypassed selector or a skipped operation flaky.
+- **Inventory.** Collect independent failures once instead of cancelling the suite at the first failure. Distinguish separate cases from repeated observations. Rerun a timed-out test once in isolation; a pass proves that run, not the cause of the timeout. Never call a bypassed selector or a skipped operation flaky.
 - **Evidence.** Preserve the first failure, exact command, execution count and exit status. Separate cause from hypothesis, product defect from setup failure, and a skipped criterion from a passing one. A source read or overall green command never substitutes for a missing behavior check.
 - **Stable inputs.** A check proves only the source, dependencies and configuration it ran on; an edit to them invalidates its result.
 - **Final proof.** Reconcile every required behavior on the final code. Screenshots and video prove visible outcomes; execution through the public interface proves the rest.
