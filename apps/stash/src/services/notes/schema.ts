@@ -33,6 +33,8 @@ export const Note = Schema.Struct({
 	tags: Schema.Array(Tag),
 	text: Schema.String,
 	title: Schema.String,
+	// What a video says, from its published captions or local Whisper, one `[mm:ss] text` line per segment.
+	transcript: Schema.optionalKey(Schema.String),
 	url: Schema.NullOr(Schema.String)
 })
 
