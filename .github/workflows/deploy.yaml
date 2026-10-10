@@ -10,6 +10,8 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    outputs:
+      stash: ${{ steps.changes.outputs.stash }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -65,3 +67,20 @@ jobs:
             vp -C tools/$package pm pack --pack-destination "$RUNNER_TEMP/$package"
             npm publish "$RUNNER_TEMP/$package"/*.tgz
           done
+
+      - name: Changes
+        id: changes
+        if: github.ref == 'refs/heads/main'
+        uses: dorny/paths-filter@v4.0.3
+        with:
+          filters: |
+            stash: ['apps/stash/**', 'pnpm-lock.yaml', 'pnpm-workspace.yaml']
+
+  # The iOS build starts only after check and test pass for the same commit.
+  stash:
+    needs: build-and-deploy
+    if: needs.build-and-deploy.outputs.stash == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/stash.yaml
+    secrets: inherit
