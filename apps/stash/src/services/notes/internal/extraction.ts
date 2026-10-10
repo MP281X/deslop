@@ -19,6 +19,26 @@ const shortHosts = ['vm.tiktok.com', 'vt.tiktok.com', 't.co']
 // Websites whose links are videos; TikTok and X links can be videos too.
 const videoHosts = /(?:^|\.)(?:youtube\.com|youtu\.be)$/u
 
+type FxPost = typeof FxPost.Type
+const FxPost = Schema.Struct({
+	author: Schema.Struct({id: Schema.String, name: Schema.String, screen_name: Schema.String}),
+	id: Schema.String,
+	media: Schema.optionalKey(
+		Schema.Struct({
+			all: Schema.optionalKey(
+				Schema.Array(Schema.Struct({thumbnail_url: Schema.optionalKey(Schema.String), url: Schema.String}))
+			)
+		})
+	),
+	text: Schema.String
+})
+
+type FxThread = typeof FxThread.Type
+const FxThread = Schema.Struct({
+	status: Schema.Struct({...FxPost.fields, quote: Schema.optionalKey(FxPost)}),
+	thread: Schema.optionalKey(Schema.Array(FxPost))
+})
+
 type OEmbed = typeof OEmbed.Type
 const OEmbed = Schema.Struct({
 	author_name: Schema.optionalKey(Schema.String),
@@ -169,6 +189,51 @@ const oEmbed = Effect.fnUntraced(function* (endpoint: URL) {
 	)
 })
 
+// The post, the author's own follow-ups in its thread, and the post it quotes, so the note holds the whole context.
+const xThread = Effect.fnUntraced(function* (url: URL) {
+	const id = yield* pipe(
+		String.match(/\/status\/(\d+)/u)(url.pathname),
+		Option.flatMap(match => Array.get(match, 1)),
+		Effect.fromOption,
+		Effect.mapError(() => NotesError.make({message: 'The link names no post.'}))
+	)
+	const thread = yield* pipe(
+		Schema.decodeEffect(Schema.fromJsonString(FxThread))(
+			(yield* follow(new URL(`https://api.fxtwitter.com/2/thread/${id}`), readText, 0)).body
+		),
+		Effect.mapError(cause => NotesError.make({cause, message: 'The post is unreadable.'}))
+	)
+	const status = thread.status
+	const quote = Option.fromNullishOr(status.quote)
+	const followUps = Array.filter(
+		thread.thread ?? [],
+		post => post.author.id === status.author.id && post.id !== status.id
+	)
+	return Extraction.make({
+		author: status.author.name,
+		image: pipe(
+			[status, ...Option.toArray(quote)],
+			Array.flatMap((post: FxPost) => post.media?.all ?? []),
+			Array.head,
+			Option.map(media => media.thumbnail_url ?? media.url)
+		),
+		text: pipe(
+			[
+				plainText(status.text),
+				...Array.map(followUps, post => plainText(post.text)),
+				Option.match(quote, {
+					onNone: () => '',
+					onSome: post => `Quoting ${post.author.name} (@${post.author.screen_name}): ${plainText(post.text)}`
+				})
+			],
+			Array.filter(String.isNonEmpty),
+			Array.join('\n')
+		),
+		title: `${status.author.name} on X`,
+		url: canonical(url)
+	})
+})
+
 function canonical(url: URL) {
 	return captureUrl(url.href) ?? url.href
 }
@@ -234,32 +299,48 @@ export class Sources extends Context.Service<
 										})
 								)
 							),
+							// FxTwitter gives the quoted post and the author's own follow-ups; X's oEmbed is the fallback.
 							Match.when('X', () =>
-								Effect.map(
-									oEmbed(
-										new URL(
-											`https://publish.x.com/oembed?omit_script=true&dnt=true&url=${encodeURIComponent(url.href)}`
-										)
-									),
-									embed =>
-										Extraction.make({
-											author: embed.author_name ?? '',
-											image: Option.none(),
-											text: plainText(
-												cheerio
-													.load(embed.html ?? '')('blockquote p')
-													.text()
-											),
-											title: Option.match(Option.fromNullishOr(embed.author_name), {
-												onNone: () => 'Post on X',
-												onSome: author => `${author} on X`
-											}),
-											url: canonical(url)
-										})
+								Effect.catch(xThread(url), () =>
+									Effect.map(
+										oEmbed(
+											new URL(
+												`https://publish.x.com/oembed?omit_script=true&dnt=true&url=${encodeURIComponent(url.href)}`
+											)
+										),
+										embed =>
+											Extraction.make({
+												author: embed.author_name ?? '',
+												image: Option.none(),
+												text: plainText(
+													cheerio
+														.load(embed.html ?? '')('blockquote p')
+														.text()
+												),
+												title: Option.match(Option.fromNullishOr(embed.author_name), {
+													onNone: () => 'Post on X',
+													onSome: author => `${author} on X`
+												}),
+												url: canonical(url)
+											})
+									)
 								)
 							),
 							Match.orElse(() =>
 								Effect.gen(function* () {
+									// YouTube answers a datacenter with a bot check, but its oEmbed gives the title, channel and thumbnail.
+									if (Option.isSome(String.match(videoHosts)(url.hostname))) {
+										const embed = yield* oEmbed(
+											new URL(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(url.href)}`)
+										)
+										return Extraction.make({
+											author: embed.author_name ?? '',
+											image: Option.fromNullishOr(embed.thumbnail_url),
+											text: plainText(embed.title ?? ''),
+											title: plainText(embed.title ?? 'YouTube video'),
+											url: canonical(url)
+										})
+									}
 									const page = yield* follow(url, readText, 0)
 									if (!String.includes('text/html')(String.toLowerCase(page.type))) {
 										return yield* NotesError.make({message: 'Only web pages can be read.'})

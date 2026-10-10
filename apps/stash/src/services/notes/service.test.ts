@@ -88,7 +88,8 @@ function counting(calls: Ref.Ref<number>) {
 					organization: Result.succeed({
 						summary: `About ${input.note.content}`,
 						tags: ['Cooking', 'cooking', 'soup'],
-						title: 'Soup'
+						title: 'Soup',
+						topics: 'lentils; cumin'
 					})
 				}
 			)
@@ -121,7 +122,8 @@ it.layer(NodeServices.layer)('Notes', test => {
 						image: 'image/jpeg',
 						summary: 'About Lentils with cumin and tomato.',
 						tags: ['cooking', 'soup'],
-						title: 'Soup'
+						title: 'Soup',
+						topics: 'lentils; cumin'
 					})
 					assert.deepStrictEqual(yield* notes.image(ids[0]), {
 						bytes: new Uint8Array([255, 216, 255]),
