@@ -121,6 +121,7 @@ export function findNotes(notes: NotesState['notes'], query: string) {
 				note.content,
 				note.topics ?? '',
 				note.body ?? '',
+				note.screenText ?? '',
 				note.transcript ?? '',
 				note.url ?? '',
 				...note.tags

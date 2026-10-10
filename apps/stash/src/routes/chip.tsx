@@ -1,0 +1,41 @@
+import {Button} from '@expo/ui/swift-ui'
+import {
+	buttonBorderShape,
+	buttonStyle,
+	controlSize,
+	fixedSize,
+	foregroundStyle,
+	labelStyle,
+	lineLimit,
+	tint
+} from '@expo/ui/swift-ui/modifiers'
+
+import {colors, mono} from '@deslop/components/mobile/theme'
+
+// A capsule like the filter chips of iOS Mail: gray when off, filled with the text color when on. Without a label it
+// shows only its symbol.
+export function Chip(props: {
+	active: boolean
+	label: string
+	onPress: () => void
+	systemImage?: Parameters<typeof Button>[0]['systemImage']
+}) {
+	return (
+		<Button
+			label={props.label}
+			systemImage={props.systemImage}
+			onPress={props.onPress}
+			modifiers={[
+				buttonStyle(props.active ? 'borderedProminent' : 'bordered'),
+				buttonBorderShape('capsule'),
+				controlSize('small'),
+				tint(props.active ? colors.foreground : colors.mutedForeground),
+				foregroundStyle(props.active ? colors.background : colors.foreground),
+				labelStyle(props.systemImage !== undefined && !props.active ? 'iconOnly' : 'titleAndIcon'),
+				mono('caption', 12),
+				lineLimit(1),
+				fixedSize()
+			]}
+		/>
+	)
+}

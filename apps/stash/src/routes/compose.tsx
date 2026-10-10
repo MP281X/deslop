@@ -7,6 +7,7 @@ import {
 	background,
 	foregroundStyle,
 	frame,
+	labelStyle,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	padding
@@ -21,7 +22,9 @@ export function ComposeRoute(props: {onDone: () => void}) {
 	const write = useAtomSet(writeAtom)
 	const text = useNativeState(draft)
 	return (
-		<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}>
+		<Toolbar
+			modifiers={[navigationTitle('new note'), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
+		>
 			<TextField
 				text={text}
 				axis="vertical"
@@ -38,12 +41,14 @@ export function ComposeRoute(props: {onDone: () => void}) {
 			<Toolbar.Content>
 				<ToolbarItem placement="topBarTrailing">
 					<Button
+						label="Save"
 						systemImage="checkmark"
 						onPress={() => {
 							if (String.isEmpty(String.trim(draft))) return
 							write(draft)
 							props.onDone()
 						}}
+						modifiers={[labelStyle('iconOnly')]}
 					/>
 				</ToolbarItem>
 			</Toolbar.Content>

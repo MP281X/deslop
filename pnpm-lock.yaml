@@ -15,6 +15,9 @@ overrides:
 
 packageExtensionsChecksum: sha256-y6CTiocApSEXI5D2swWJHn1m7dcK48YmDoOsF8R3k2o=
 
+patchedDependencies:
+  '@expo/ui@58.0.15': 5b2fd9789a72b30333e59f60b10791d8988de68cd2d2799201443f062e1af344
+
 importers:
 
   .:
@@ -119,7 +122,7 @@ importers:
         version: link:../../packages/runtime
       '@expo/ui':
         specifier: 58.0.15
-        version: 58.0.15(@babel/core@7.29.7(supports-color@8.1.1))(expo@58.0.7)(react-dom@19.3.0(react@19.3.0))(react-native@0.88.0-rc.4(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
+        version: 58.0.15(patch_hash=5b2fd9789a72b30333e59f60b10791d8988de68cd2d2799201443f062e1af344)(@babel/core@7.29.7(supports-color@8.1.1))(expo@58.0.7)(react-dom@19.3.0(react@19.3.0))(react-native@0.88.0-rc.4(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       '@huggingface/transformers':
         specifier: 4.3.0
         version: 4.3.0(@types/node@26.6.4)
@@ -243,7 +246,7 @@ importers:
     devDependencies:
       '@expo/ui':
         specifier: 58.0.15
-        version: 58.0.15(@babel/core@7.29.7(supports-color@8.1.1))(expo@58.0.7)(react-dom@19.3.0(react@19.3.0))(react-native@0.88.0-rc.4(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
+        version: 58.0.15(patch_hash=5b2fd9789a72b30333e59f60b10791d8988de68cd2d2799201443f062e1af344)(@babel/core@7.29.7(supports-color@8.1.1))(expo@58.0.7)(react-dom@19.3.0(react@19.3.0))(react-native@0.88.0-rc.4(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       react-native:
         specifier: 0.88.0-rc.4
         version: 0.88.0-rc.4(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1)
@@ -8807,7 +8810,7 @@ snapshots:
 
   '@expo/sudo-prompt@9.3.2': {}
 
-  '@expo/ui@58.0.15(@babel/core@7.29.7(supports-color@8.1.1))(expo@58.0.7)(react-dom@19.3.0(react@19.3.0))(react-native@0.88.0-rc.4(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)':
+  '@expo/ui@58.0.15(patch_hash=5b2fd9789a72b30333e59f60b10791d8988de68cd2d2799201443f062e1af344)(@babel/core@7.29.7(supports-color@8.1.1))(expo@58.0.7)(react-dom@19.3.0(react@19.3.0))(react-native@0.88.0-rc.4(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)':
     dependencies:
       expo: 58.0.7(@babel/core@7.29.7(supports-color@8.1.1))(@expo/dom-webview@58.0.2)(react-dom@19.3.0(react@19.3.0))(react-native@0.88.0-rc.4(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1)(typescript@5.9.3)
       react: 19.3.0

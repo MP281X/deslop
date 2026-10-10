@@ -22,7 +22,7 @@ import type {Stream} from 'effect'
 import {Base64} from 'effect/encoding'
 
 import {Sources} from './internal/extraction.ts'
-import {Organizer} from './internal/organization.ts'
+import {Organizer, revision} from './internal/organization.ts'
 
 import {speechOnly} from '#services/media/lib/utils.ts'
 import {captureUrl, commentFor, normalizeTags, sourceFor, tagCounts} from '#services/notes/lib/utils.ts'
@@ -92,11 +92,13 @@ export class Notes extends Context.Service<
 			// Tags saved before they became single tokens get hyphens on the next start.
 			const migrated = NotesState.make({
 				...loaded,
-				// Transcripts saved before the speech check lose what Whisper heard in music.
+				// Transcripts saved before the speech check lose what Whisper heard in music. A note an older organizer tagged is
+				// read and tagged again with the current one.
 				notes: Array.map(loaded.notes, note => {
 					const {transcript, ...rest} = note
 					return {
 						...rest,
+						...(note.status === 'ready' && (note.revision ?? 0) < revision ? {status: 'organizing' as const} : {}),
 						tags: normalizeTags(note.tags),
 						...Option.match(Option.flatMap(Option.fromNullishOr(transcript), speechOnly), {
 							onNone: () => ({}),
@@ -163,7 +165,7 @@ export class Notes extends Context.Service<
 								Result.flatMap(outcome, answer => answer.organization),
 								{
 									onFailure: error => ({...item, issue: error.message, status: 'saved' as const}),
-									onSuccess: organization => ({...item, ...organization, status: 'ready' as const})
+									onSuccess: organization => ({...item, ...organization, revision, status: 'ready' as const})
 								}
 							)
 						})
@@ -262,26 +264,25 @@ export class Notes extends Context.Service<
 					onSome: link =>
 						Effect.catch(keepImage(id, link), error => Effect.logWarning('The preview image was not kept', error))
 				})
-				// What a video says feeds the tags and search; without captions, local Whisper can take minutes. A note deleted
-				// meanwhile, or one that kept its transcript before a restart, needs none.
-				const waiting = Array.some(
-					(yield* SubscriptionRef.get(state)).notes,
-					item => item.id === id && item.transcript === undefined
-				)
-				yield* Option.match(
-					Option.filter(resolved, () => waiting),
-					{
-						onNone: () => Effect.void,
-						onSome: () =>
-							Effect.flatMap(
-								sources.transcript(extracted.video ?? extracted.url),
-								Option.match({
-									onNone: () => Effect.void,
-									onSome: transcript => updateNote(id, item => ({...item, transcript}))
-								})
-							)
-					}
-				)
+				// A video's details (date, length, description, chapters) replace the short caption of a TikTok or YouTube link;
+				// an X post's own text stays, because its video file has no details. What the video says feeds the tags and search;
+				// without captions, local Whisper can take minutes. A note deleted meanwhile needs neither, and one that kept its
+				// transcript before needs no new one.
+				const before = Array.findFirst((yield* SubscriptionRef.get(state)).notes, item => item.id === id)
+				if (Option.isSome(resolved) && Option.isSome(before)) {
+					const video = yield* sources.video(
+						extracted.video ?? extracted.url,
+						Option.getOrThrow(before).transcript === undefined
+					)
+					yield* updateNote(id, item => ({
+						...item,
+						...Option.match(
+							Option.filter(video.info, () => extracted.video === undefined),
+							{onNone: () => ({}), onSome: info => ({content: info})}
+						),
+						...Option.match(video.transcript, {onNone: () => ({}), onSome: transcript => ({transcript})})
+					}))
+				}
 				// The kept preview and stills of a video let the AI see what the link shows; a note deleted meanwhile needs none.
 				const kept = Array.findFirst((yield* SubscriptionRef.get(state)).notes, item => item.id === id)
 				const preview = yield* Option.match(

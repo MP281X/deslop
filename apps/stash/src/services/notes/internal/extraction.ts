@@ -284,8 +284,12 @@ export class Sources extends Context.Service<
 	{
 		readonly extract: (url: string) => Effect.Effect<Extraction, NotesError>
 		readonly image: (url: string) => Effect.Effect<{bytes: Uint8Array; type: ImageType}, NotesError>
-		// What a TikTok, X or YouTube video says; nothing for other links or when the video cannot be read.
-		readonly transcript: (url: string) => Effect.Effect<Option.Option<string>>
+		// A TikTok, X or YouTube video's details as markdown (date, length, description, chapters) and, when asked, what it
+		// says; nothing for other links or what cannot be read.
+		readonly video: (
+			url: string,
+			transcript: boolean
+		) => Effect.Effect<{info: Option.Option<string>; transcript: Option.Option<string>}>
 		// Six JPEG stills and the speech of a video file kept on the server; nothing when it cannot be read.
 		readonly fileFrames: (file: string) => Effect.Effect<Uint8Array[]>
 		readonly fileTranscript: (file: string) => Effect.Effect<Option.Option<string>>
@@ -418,15 +422,27 @@ export class Sources extends Context.Service<
 						orElse: () => Effect.fail(NotesError.make({message: 'Loading the preview image took too long.'}))
 					})
 				),
-				transcript: Effect.fn('Sources.transcript')(function* (link) {
-					if (!hasVideo(link)) return Option.none()
-					return yield* pipe(
+				video: Effect.fn('Sources.video')(function* (link, transcript) {
+					const nothing = {info: Option.none<string>(), transcript: Option.none<string>()}
+					if (!hasVideo(link)) return nothing
+					const report = yield* Effect.result(
 						// Audio without captions longer than half an hour would hold every core of dev for many minutes.
-						media.read({language: Option.none(), link, maxWhisperSeconds: Option.some(30 * 60)}),
-						Effect.flatMap(report => report.transcript),
-						Effect.map(Option.map(transcript => transcript.text)),
-						Effect.catch(error => Effect.as(Effect.logWarning('No transcript', error), Option.none()))
+						media.read({language: Option.none(), link, maxWhisperSeconds: Option.some(30 * 60)})
 					)
+					if (Result.isFailure(report)) {
+						yield* Effect.logWarning('No video details', report.failure)
+						return nothing
+					}
+					const info = Option.some(report.success.info)
+					if (!transcript) return {info, transcript: Option.none<string>()}
+					return {
+						info,
+						transcript: yield* pipe(
+							report.success.transcript,
+							Effect.map(Option.map(spoken => spoken.text)),
+							Effect.catch(error => Effect.as(Effect.logWarning('No transcript', error), Option.none()))
+						)
+					}
 				})
 			})
 		})

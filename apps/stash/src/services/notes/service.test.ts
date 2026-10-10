@@ -21,7 +21,7 @@ import {
 import {TestClock} from 'effect/testing'
 
 import {Sources} from '#services/notes/internal/extraction.ts'
-import {Organizer} from '#services/notes/internal/organization.ts'
+import {Organizer, revision} from '#services/notes/internal/organization.ts'
 import type {NotesState} from '#services/notes/schema.ts'
 import {Extraction, NotesError} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
@@ -41,7 +41,7 @@ const recipe = Sources.of({
 	fileTranscript: () => Effect.succeedNone,
 	frames: () => Effect.succeed([]),
 	image: () => Effect.succeed({bytes: new Uint8Array([255, 216, 255]), type: 'image/jpeg' as const}),
-	transcript: () => Effect.succeedNone
+	video: () => Effect.succeed({info: Option.none(), transcript: Option.none()})
 })
 
 const open = Effect.fnUntraced(function* (options: {
@@ -90,6 +90,7 @@ function counting(calls: Ref.Ref<number>) {
 					cost: 0.0004,
 					organization: Result.succeed({
 						body: '',
+						screenText: '',
 						summary: `About ${input.note.content}`,
 						tags: ['Cooking', 'cooking', 'soup'],
 						title: 'Soup',
@@ -165,7 +166,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 				fileTranscript: recipe.fileTranscript,
 				frames: () => Effect.succeed([]),
 				image: () => Effect.die('No preview without a page'),
-				transcript: recipe.transcript
+				video: recipe.video
 			})
 			const cases = [
 				{
@@ -271,7 +272,11 @@ it.layer(NodeServices.layer)('Notes', test => {
 					organize: input =>
 						Effect.andThen(Ref.set(seen, Option.fromNullishOr(input.note.transcript)), counting(calls).organize(input))
 				}),
-				sources: Sources.of({...recipe, transcript: () => Effect.succeedSome('[00:01] Soak the lentils overnight.\n')})
+				sources: Sources.of({
+					...recipe,
+					video: () =>
+						Effect.succeed({info: Option.none(), transcript: Option.some('[00:01] Soak the lentils overnight.\n')})
+				})
 			})
 			yield* notes.capture({id: ids[0], text: 'https://www.tiktok.com/@cook/video/1'})
 			assert.containsSubset(
@@ -312,7 +317,8 @@ it.layer(NodeServices.layer)('Notes', test => {
 					fileTranscript: recipe.fileTranscript,
 					frames: recipe.frames,
 					image: recipe.image,
-					transcript: () => Effect.succeedSome('[00:01] Soak the lentils overnight.\n')
+					video: () =>
+						Effect.succeed({info: Option.none(), transcript: Option.some('[00:01] Soak the lentils overnight.\n')})
 				})
 			})
 			yield* notes.capture({id: ids[0], text: 'https://www.tiktok.com/@cook/video/1'})
@@ -338,7 +344,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 					fileTranscript: recipe.fileTranscript,
 					frames: recipe.frames,
 					image: recipe.image,
-					transcript: recipe.transcript
+					video: recipe.video
 				})
 			})
 			yield* notes.capture({id: ids[0], text: 'https://vm.tiktok.com/AAA/'})
@@ -381,7 +387,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 				fileTranscript: recipe.fileTranscript,
 				frames: recipe.frames,
 				image: recipe.image,
-				transcript: recipe.transcript
+				video: recipe.video
 			})
 			const state = yield* settled(yield* open({directory, organizer: counting(calls), sources: down}), current =>
 				Array.some(current.notes, note => note.status === 'ready')
@@ -393,6 +399,29 @@ it.layer(NodeServices.layer)('Notes', test => {
 				issue: '',
 				title: 'Soup'
 			})
+			assert.strictEqual(yield* Ref.get(calls), 1)
+		})
+	)
+
+	test.effect('tags a note again when an older organizer revision tagged it', () =>
+		Effect.gen(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const notes = yield* open({directory, organizer: counting(yield* Ref.make(0)), sources: recipe})
+					yield* notes.capture({id: ids[0], text: 'https://example.com/soup'})
+					yield* settled(notes, current => Array.some(current.notes, note => note.status === 'ready'))
+				})
+			)
+			// A note tagged before revisions existed has none.
+			const fs = yield* FileSystem.FileSystem
+			const saved = yield* fs.readFileString(`${directory}/notes.json`)
+			yield* fs.writeFileString(`${directory}/notes.json`, String.replaceAll(/"revision":\d+,?/gu, '')(saved))
+			const calls = yield* Ref.make(0)
+			const state = yield* settled(yield* open({directory, organizer: counting(calls), sources: recipe}), current =>
+				Array.some(current.notes, note => note.status === 'ready' && note.revision !== undefined)
+			)
+			assert.containsSubset(state.notes[0], {id: ids[0], revision, title: 'Soup'})
 			assert.strictEqual(yield* Ref.get(calls), 1)
 		})
 	)
@@ -412,7 +441,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 					fileTranscript: recipe.fileTranscript,
 					frames: recipe.frames,
 					image: link => Effect.andThen(Effect.andThen(downloading.open, release.await), recipe.image(link)),
-					transcript: recipe.transcript
+					video: recipe.video
 				})
 			})
 			yield* notes.capture({id: ids[0], text: 'https://example.com/soup'})
@@ -438,7 +467,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 					fileTranscript: recipe.fileTranscript,
 					frames: recipe.frames,
 					image: recipe.image,
-					transcript: recipe.transcript
+					video: recipe.video
 				})
 			})
 			yield* notes.capture({id: ids[0], text: 'https://example.com/slow'})

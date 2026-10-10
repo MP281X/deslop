@@ -25,7 +25,7 @@ export type Note = typeof Note.Type
 export const Note = Schema.Struct({
 	// The post's author or the site's name.
 	author: Schema.String,
-	// A note written without a link, organized by the AI; notes with links have none.
+	// The AI's notes: every useful fact as short lines, or the organized rewrite of a written note.
 	body: Schema.optionalKey(Schema.String),
 	content: Schema.String,
 	createdAt: Schema.Finite,
@@ -35,6 +35,10 @@ export const Note = Schema.Struct({
 	// The type of the preview image the server keeps for this note, served at /api/images/<id>.
 	image: Schema.optionalKey(ImageType),
 	issue: Schema.String,
+	// The organizer revision that tagged the note; a note from an older revision is tagged again on start.
+	revision: Schema.optionalKey(Schema.Finite),
+	// The words visible in the photo, screenshot or video stills, as the AI read them.
+	screenText: Schema.optionalKey(Schema.String),
 	source: Source,
 	status: Schema.Literals(['organizing', 'ready', 'saved']),
 	summary: Schema.String,
@@ -74,11 +78,13 @@ export const Extraction = Schema.Struct({
 
 export type Organization = typeof Organization.Type
 export const Organization = Schema.Struct({
-	// A note written without a link, rewritten as an organized note; empty for links.
+	// Every useful fact as short lines, or the organized rewrite of a written note.
 	body: pipe(Schema.String, Schema.check(Schema.isMaxLength(4000))),
+	// The words visible in the attached images, in reading order; empty when they show none.
+	screenText: pipe(Schema.String, Schema.check(Schema.isMaxLength(4000))),
 	summary: pipe(Schema.String, Schema.check(Schema.isMaxLength(160))),
 	tags: pipe(Schema.Array(Tag), Schema.check(Schema.isMinLength(1), Schema.isMaxLength(3))),
 	title: pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
 	// Names, tools and techniques that search should find, separated by semicolons; tags stay few and reusable.
-	topics: pipe(Schema.String, Schema.check(Schema.isMaxLength(240)))
+	topics: pipe(Schema.String, Schema.check(Schema.isMaxLength(400)))
 })

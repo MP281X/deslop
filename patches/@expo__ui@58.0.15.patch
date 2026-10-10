@@ -1,0 +1,110 @@
+diff --git a/build/swift-ui/Toolbar/index.d.ts b/build/swift-ui/Toolbar/index.d.ts
+index aeb1191459d01444aadc4ccbc78d77592347a02b..00c2fd5c1a8bb2532258d881927fedeae1a8c293 100644
+--- a/build/swift-ui/Toolbar/index.d.ts
++++ b/build/swift-ui/Toolbar/index.d.ts
+@@ -37,10 +37,16 @@ export interface ToolbarItemProps {
+      * @platform ios 27.0+
+      */
+     visibilityPriority?: ToolbarItemVisibilityPriority;
++    /**
++     * `search` places the view's search field, as SwiftUI's `DefaultToolbarItem(kind: .search)`; `spacer` adds a flexible
++     * `ToolbarSpacer`. Both ignore children and need iOS 26.
++     * @default 'item'
++     */
++    kind?: 'item' | 'search' | 'spacer';
+     /**
+      * The content of the item.
+      */
+-    children: React.ReactNode;
++    children?: React.ReactNode;
+ }
+ /**
+  * The items placed in the toolbar of the view `Toolbar` wraps.
+@@ -65,7 +71,7 @@ declare function ToolbarContent(props: ToolbarContentProps): import("react").JSX
+  * @platform ios
+  * @platform tvos
+  */
+-export declare function ToolbarItem({ placement, visibilityPriority, children, }: ToolbarItemProps): import("react").JSX.Element;
++export declare function ToolbarItem({ placement, visibilityPriority, kind, children, }: ToolbarItemProps): import("react").JSX.Element;
+ /**
+  * Adds a toolbar to the view it wraps, matching SwiftUI's `toolbar(content:)`.
+  *
+diff --git a/build/swift-ui/Toolbar/index.js b/build/swift-ui/Toolbar/index.js
+index 6b1d39173397dae66068978459c640cb256908c5..ac09b5f0f1929d81f4152535c51db957f0655109 100644
+--- a/build/swift-ui/Toolbar/index.js
++++ b/build/swift-ui/Toolbar/index.js
+@@ -29,12 +29,13 @@ const ToolbarNativeView = requireNativeView('ExpoUI', 'ToolbarView');
+  *
+  * @platform ios
+  * @platform tvos
+- */ export function ToolbarItem({ placement = 'automatic', visibilityPriority = 'automatic', children }) {
++ */ export function ToolbarItem({ placement = 'automatic', visibilityPriority = 'automatic', kind = 'item', children }) {
+     return /*#__PURE__*/ _jsx(Slot, {
+         name: "item",
+         extraProps: {
+             placement,
+-            visibilityPriority
++            visibilityPriority,
++            kind
+         },
+         children: children
+     });
+diff --git a/ios/ToolbarView.swift b/ios/ToolbarView.swift
+index 87f882bc9b56391b96c33a990bb78e6fe6da8bf7..627e96420ef0943c3c41d8620f376d0d7639bf17 100644
+--- a/ios/ToolbarView.swift
++++ b/ios/ToolbarView.swift
+@@ -37,7 +37,18 @@ private struct ToolbarItemLayer: View {
+   let content: AnyView
+ 
+   var body: some View {
+-    placed(content, on: base, placement: placement(from: props), visibilityPriority: visibilityPriority(from: props))
++    let kind = props.extraProps?["kind"] as? String
++    if #available(iOS 26.0, macOS 26.0, tvOS 26.0, visionOS 26.0, *), kind == "search" {
++      base.toolbar {
++        DefaultToolbarItem(kind: .search, placement: placement(from: props))
++      }
++    } else if #available(iOS 26.0, macOS 26.0, tvOS 26.0, visionOS 26.0, *), kind == "spacer" {
++      base.toolbar {
++        ToolbarSpacer(.flexible, placement: placement(from: props))
++      }
++    } else {
++      placed(content, on: base, placement: placement(from: props), visibilityPriority: visibilityPriority(from: props))
++    }
+   }
+ }
+ 
+diff --git a/src/swift-ui/Toolbar/index.tsx b/src/swift-ui/Toolbar/index.tsx
+index 51956878d1d4f7f5fed879f8e3ffee2080a556c0..c0b801ea5e669cd2b995f21266e2e5b77d715e0f 100644
+--- a/src/swift-ui/Toolbar/index.tsx
++++ b/src/swift-ui/Toolbar/index.tsx
+@@ -61,10 +61,16 @@ export interface ToolbarItemProps {
+    * @platform ios 27.0+
+    */
+   visibilityPriority?: ToolbarItemVisibilityPriority;
++  /**
++   * `search` places the view's search field, as SwiftUI's `DefaultToolbarItem(kind: .search)`; `spacer` adds a flexible
++   * `ToolbarSpacer`. Both ignore children and need iOS 26.
++   * @default 'item'
++   */
++  kind?: 'item' | 'search' | 'spacer';
+   /**
+    * The content of the item.
+    */
+-  children: React.ReactNode;
++  children?: React.ReactNode;
+ }
+ 
+ const ToolbarNativeView: React.ComponentType<ToolbarProps> = requireNativeView(
+@@ -101,10 +107,11 @@ function ToolbarContent(props: ToolbarContentProps) {
+ export function ToolbarItem({
+   placement = 'automatic',
+   visibilityPriority = 'automatic',
++  kind = 'item',
+   children,
+ }: ToolbarItemProps) {
+   return (
+-    <Slot name="item" extraProps={{ placement, visibilityPriority }}>
++    <Slot name="item" extraProps={{ placement, visibilityPriority, kind }}>
+       {children}
+     </Slot>
+   );

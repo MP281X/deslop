@@ -30,12 +30,15 @@ export function RootRoute() {
 	const [search, setSearch] = useState('')
 	const query = useNativeState('')
 
-	// Typing already updates the native field, so only a tapped tag writes it; tapping the active tag clears it.
-	function searchTag(tag: string) {
-		const next = String.trim(search) === `#${tag}` ? '' : `#${tag} `
+	// Typing already updates the native field, so only a tapped chip writes it; tapping the active tag clears it.
+	function searchFor(next: string) {
 		query.set(next)
 		setSearch(next)
 		setPath([])
+	}
+
+	function searchTag(tag: string) {
+		searchFor(String.trim(search) === `#${tag}` ? '' : `#${tag} `)
 	}
 
 	return (
@@ -67,6 +70,7 @@ export function RootRoute() {
 						<NotesRoute
 							query={query}
 							search={search}
+							onClear={() => searchFor('')}
 							onCompose={() => setPath(['compose'])}
 							onOpen={id => setPath([id])}
 							onSearch={setSearch}

@@ -24,14 +24,17 @@ The first run downloads the standalone `yt-dlp`, and the first transcription the
 - **Run.** `vp -C apps/stash run preview` builds `dist/server.js` and serves it on `127.0.0.1:5017`; `sudo tailscale serve --bg --https=8443 http://127.0.0.1:5017` publishes it as `https://dev.tailnet-8c4c.ts.net:8443`. The tailnet is the only sign-in, so never bind it to `0.0.0.0` on `dev`, which has a public address.
 - **Environment.** `OPENROUTER_API_KEY` in `~/.deslop/stash.env` turns tagging on. `STASH_DATA_DIR` defaults to `~/.deslop/stash`, `STASH_AI_MODEL` to `openai/gpt-6-luna` and `STASH_AI_BUDGET_USD` to 1 per month.
 - **Routes.** The app uses the JSON WebSocket RPC at `/api/rpc` and downloads previews from `/api/images/<id>`; the Swift extension posts `{id, text}` to `/api/capture`, because it cannot speak the RPC protocol. Both post a photo or video as the raw body of `/api/files/<id>`, typed `image/jpeg`, `image/png`, `video/mp4` or `video/quicktime`.
-- **Files.** A photo or screenshot goes to the tagging model at full detail, so the note's body keeps its readable text. A video gets the six stills and a Whisper transcript, and its first still becomes the preview.
+- **Organizer.** `gpt-6-luna` with medium reasoning writes the title, summary, tags, topics and a body of every useful fact, and copies the words in the images into `screenText`. The photo or the link's preview goes at full detail; stills go at low detail. Eight test notes cost $0.009 together.
+- **Revisions.** `revision` in `organization.ts` names the instructions. On start, the server tags every ready note from an older revision again, so raise it with each change to the instructions or the inputs.
+- **Files.** A video file gets the six stills and a Whisper transcript, and its first still becomes the preview.
 - **Previews.** The server keeps each link's preview image on disk, because TikTok's image links expire within days.
 - **Video stills.** Six stills sampled across a TikTok, X or YouTube video go to the tagging model at low detail, so the title, summary and tags cover what the video only shows; a TikTok cost $0.0004 to tag this way.
-- **Transcripts.** A TikTok, X or YouTube note keeps what its video says, read like the CLI does, so tags and search cover it. Without captions, Whisper transcribes audio up to 30 minutes long, one video at a time.
+- **Transcripts.** A TikTok, X or YouTube note keeps what its video says, read like the CLI does, so tags and search cover it. Without captions, Whisper transcribes audio up to 30 minutes long, one video at a time. The video's details (date, length, description, chapters) replace a TikTok or YouTube caption as the note's source.
 
 ## iOS client
 
-- **Capture.** Links, text, photos and videos arrive from the share sheet. A copied link or image becomes a note when the app opens. The pencil in the bottom bar writes a note, which the AI rewrites as short lines. Swipe deletes; a long press opens.
+- **Capture.** Links, text, photos and videos arrive from the share sheet. A copied link or image becomes a note when the app opens. The pencil in the bottom bar writes a note, which the AI rewrites as short lines.
+- **List.** The layout follows iOS Mail: tag chips on top, and select, search and write in the bottom bar. A long press shows the note above its menu; two fingers dragged down the list select several notes. Swipe deletes.
 - **Theme.** Colors, square corners and JetBrains Mono follow the deslop shadcn theme in `packages/components/src/theme.css`, applied to `@expo/ui` SwiftUI views through `@deslop/components/mobile/theme`. Brand logos come from svgl through `@deslop/components/mobile/brand`.
 - **Outbox.** The app and the share extension both write `pending/<id>.json` to the App Group container before sending, with a photo or video beside it as `pending/<id>.<ext>`. The client picks the id, so a resend never makes a second note.
 - **Share extension.** `@bacons/apple-targets` adds `targets/share` at prebuild. It finds the server in the containing app's `StashServer` Info.plist key and the App Group as `group.<app bundle id>`; the fonts live there once for both targets.
@@ -63,6 +66,7 @@ The first EAS build is the first Swift compile.
 | `services/media` | `yt-dlp` stays an external binary because no maintained JavaScript extractor covers its sites. The iOS client never imports it: Metro must not reach Transformers.js, ONNX or child processes                                                                            |
 | Transcription    | Transformers.js with q8 Whisper, bundled because it imports `onnxruntime-common` without declaring it and `pnpm dlx` (pnpm 11) cannot resolve that. Update Transformers.js `4.3.0`, `onnxruntime-common`, `onnxruntime-node` and sharp together                          |
 | Publishing       | Follows [tools/AGENTS.md](../../tools/AGENTS.md); the package replaced `@deslop/media`                                                                                                                                                                                   |
+| `@expo/ui` patch | `patches/@expo__ui@58.0.15.patch` adds `kind="search"` and `kind="spacer"` to `ToolbarItem`, for SwiftUI's `DefaultToolbarItem(kind: .search)` and `ToolbarSpacer`. Drop it when `@expo/ui` ships both                                                                   |
 
 | Rejected                                     | Reason                                                                                                 |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------ |

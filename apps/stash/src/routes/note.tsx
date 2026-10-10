@@ -1,6 +1,6 @@
 import {useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Option, String} from 'effect'
+import {Array, Option, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -16,12 +16,10 @@ import {
 import {
 	aspectRatio,
 	background,
-	border,
 	buttonStyle,
-	fixedSize,
 	foregroundStyle,
 	frame,
-	lineLimit,
+	labelStyle,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	padding,
@@ -34,10 +32,9 @@ import {Linking} from 'react-native'
 
 import {imageAtom, notesAtom} from '#lib/utils.ts'
 import {Brand, brandOf} from '#routes/brand.tsx'
+import {Chip} from '#routes/chip.tsx'
 import type {Note} from '#services/notes/schema.ts'
 import {colors, mono} from '@deslop/components/mobile/theme'
-
-const page = [navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]
 
 export function NoteRoute(props: {id: Note['id']; onTag: (tag: string) => void}) {
 	return Option.match(
@@ -47,7 +44,13 @@ export function NoteRoute(props: {id: Note['id']; onTag: (tag: string) => void})
 				<ContentUnavailableView
 					title="gone"
 					description="deleted, or joined to an earlier save of the same post"
-					modifiers={[...page, mono('body', 14), foregroundStyle(colors.mutedForeground)]}
+					modifiers={[
+						navigationTitle(''),
+						navigationBarTitleDisplayMode('inline'),
+						background(colors.background),
+						mono('body', 14),
+						foregroundStyle(colors.mutedForeground)
+					]}
 				/>
 			),
 			onSome: note => <Detail note={note} onTag={props.onTag} />
@@ -56,8 +59,8 @@ export function NoteRoute(props: {id: Note['id']; onTag: (tag: string) => void})
 }
 
 // Mounted only once the server has kept the preview, so the download never runs before the file exists. The whole
-// image fits the width, so a wide preview never pushes the page past the screen edge.
-function Cover(props: {note: Note}) {
+// image fits a box of one height, so every note's preview takes the same space and none is cropped.
+export function Cover(props: {height: number; note: Note}) {
 	const image = useAtomValue(imageAtom(props.note.id))
 	if (!AsyncResult.isSuccess(image)) return undefined
 	return (
@@ -66,57 +69,55 @@ function Cover(props: {note: Note}) {
 			modifiers={[
 				resizable(),
 				aspectRatio({contentMode: 'fit'}),
-				frame({maxHeight: props.note.source === 'TikTok' ? 240 : 180, maxWidth: Infinity})
+				frame({maxHeight: props.height, maxWidth: Infinity, minHeight: props.height})
 			]}
 		/>
 	)
 }
 
 function Detail(props: {note: Note; onTag: (tag: string) => void}) {
+	const note = props.note
+	// What the server read, folded so the note stays short: the words in the images, the page or post, what the video
+	// says, and the original words of a written note.
+	const folds = pipe(
+		[
+			{
+				label: Option.match(Option.fromNullishOr(note.file), {onNone: () => 'on screen', onSome: () => 'text'}),
+				text: note.screenText ?? ''
+			},
+			{label: 'source', text: note.content},
+			{label: 'transcript', text: note.transcript ?? ''},
+			{label: 'original', text: note.url === null && note.file === undefined ? note.text : ''}
+		],
+		Array.filter(fold => String.isNonEmpty(String.trim(fold.text)))
+	)
 	return (
-		<Toolbar modifiers={page}>
+		<Toolbar
+			modifiers={[navigationTitle(note.title), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
+		>
 			<ScrollView modifiers={[background(colors.background)]}>
 				<VStack
 					alignment="leading"
 					spacing={14}
 					modifiers={[padding({all: 16}), frame({alignment: 'leading', maxWidth: Infinity})]}
 				>
-					{props.note.image !== undefined && <Cover note={props.note} />}
-					<Text modifiers={[mono('headline', 18), foregroundStyle(colors.foreground), textSelection(true)]}>
-						{props.note.title}
-					</Text>
-					{String.isNonEmpty(props.note.summary) && (
-						<Text modifiers={[mono('body', 14), foregroundStyle(colors.mutedForeground), textSelection(true)]}>
-							{props.note.summary}
+					{note.image !== undefined && <Cover note={note} height={200} />}
+					{String.isNonEmpty(note.summary) && (
+						<Text modifiers={[mono('body', 14), foregroundStyle(colors.foreground), textSelection(true)]}>
+							{note.summary}
 						</Text>
 					)}
-					{!Array.isReadonlyArrayEmpty(props.note.tags) && (
+					{!Array.isReadonlyArrayEmpty(note.tags) && (
 						// One scrolling line of tags, so a tag never breaks across two lines.
 						<ScrollView axes="horizontal" showsIndicators={false}>
 							<HStack spacing={8}>
-								{Array.map(props.note.tags, tag => (
-									<Button
-										key={tag}
-										onPress={() => props.onTag(tag)}
-										modifiers={[buttonStyle('plain'), border({color: colors.border, width: 1})]}
-									>
-										<Text
-											modifiers={[
-												mono('caption', 12),
-												foregroundStyle(colors.primary),
-												lineLimit(1),
-												fixedSize(),
-												padding({horizontal: 8, vertical: 4})
-											]}
-										>
-											{`#${tag}`}
-										</Text>
-									</Button>
+								{Array.map(note.tags, tag => (
+									<Chip key={tag} label={tag} active={false} onPress={() => props.onTag(tag)} />
 								))}
 							</HStack>
 						</ScrollView>
 					)}
-					{Option.match(Option.liftPredicate(props.note.body ?? '', String.isNonEmpty), {
+					{Option.match(Option.liftPredicate(note.body ?? '', String.isNonEmpty), {
 						onNone: () => undefined,
 						onSome: body => (
 							<Text modifiers={[mono('body', 14), foregroundStyle(colors.foreground), textSelection(true)]}>
@@ -124,25 +125,29 @@ function Detail(props: {note: Note; onTag: (tag: string) => void}) {
 							</Text>
 						)
 					})}
-					{/* What the server read from the link and what the video says, folded so the note stays short. */}
-					{String.isNonEmpty(props.note.content) && <Fold label="source" text={props.note.content} />}
-					{Option.match(Option.fromNullishOr(props.note.transcript), {
-						onNone: () => undefined,
-						onSome: transcript => <Fold label="transcript" text={transcript} />
-					})}
-					{String.isNonEmpty(props.note.issue) && (
-						<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground)]}>{props.note.issue}</Text>
+					{Array.map(folds, fold => (
+						<Fold key={fold.label} label={fold.label} text={fold.text} />
+					))}
+					{String.isNonEmpty(note.issue) && (
+						<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground)]}>{note.issue}</Text>
 					)}
 				</VStack>
 			</ScrollView>
 			{/* The link opens from the bar, in its own app when iOS knows one. */}
-			{Option.match(Option.fromNullishOr(props.note.url), {
+			{Option.match(Option.fromNullishOr(note.url), {
 				onNone: () => undefined,
 				onSome: url => (
 					<Toolbar.Content>
 						<ToolbarItem placement="topBarTrailing">
-							{Option.match(brandOf(props.note), {
-								onNone: () => <Button systemImage="arrow.up.right" onPress={() => Linking.openURL(url)} />,
+							{Option.match(brandOf(note), {
+								onNone: () => (
+									<Button
+										label="Open Link"
+										systemImage="arrow.up.right"
+										onPress={() => Linking.openURL(url)}
+										modifiers={[labelStyle('iconOnly')]}
+									/>
+								),
 								onSome: brand => (
 									<Button onPress={() => Linking.openURL(url)}>
 										<Brand brand={brand} size={20} />
