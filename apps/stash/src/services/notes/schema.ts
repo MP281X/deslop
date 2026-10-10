@@ -58,6 +58,34 @@ export const AiSpend = Schema.Struct({month: Schema.String, usd: Schema.Finite})
 export type NotesState = typeof NotesState.Type
 export const NotesState = Schema.Struct({aiSpend: AiSpend, notes: Schema.Array(Note)})
 
+// A note as the list shows it: the long texts stay on the server until the note page asks for them, so thousands of
+// notes reach the iPhone in about a megabyte.
+export type NoteItem = typeof NoteItem.Type
+export const NoteItem = Schema.Struct({
+	author: Note.fields.author,
+	createdAt: Note.fields.createdAt,
+	file: Note.fields.file,
+	id: Note.fields.id,
+	image: Note.fields.image,
+	issue: Note.fields.issue,
+	source: Note.fields.source,
+	status: Note.fields.status,
+	summary: Note.fields.summary,
+	tags: Note.fields.tags,
+	title: Note.fields.title,
+	topics: Note.fields.topics,
+	url: Note.fields.url
+})
+
+// What a watcher receives: the whole list once with reset, then only the notes that changed or went away.
+export type NotesEvent = typeof NotesEvent.Type
+export const NotesEvent = Schema.Struct({
+	aiSpend: AiSpend,
+	removed: Schema.Array(NoteId),
+	reset: Schema.Boolean,
+	upserted: Schema.Array(NoteItem)
+})
+
 export type Capture = typeof Capture.Type
 export const Capture = Schema.Struct({
 	id: NoteId,

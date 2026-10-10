@@ -1,6 +1,6 @@
 import {Array, Option, Order, Record, String, pipe} from 'effect'
 
-import type {Note, NotesState, Source} from '#services/notes/schema.ts'
+import type {Note, NotesEvent, NotesState, Source} from '#services/notes/schema.ts'
 
 const urlPattern = /https?:\/\/[^\s<>"]+/iu
 
@@ -83,9 +83,10 @@ export function normalizeTags(tags: Note['tags']) {
 }
 
 // Tags ordered by how many notes use them, then by name.
-export function tagCounts(notes: NotesState['notes']) {
+// The server counts full notes and the app counts list items, which share the tags field.
+export function tagCounts(notes: NotesState['notes'] | NotesEvent['upserted']) {
 	return pipe(
-		Array.flatMap(notes, note => note.tags),
+		Array.flatMap(notes, (note: {tags: Note['tags']}) => note.tags),
 		Array.groupBy(tag => tag),
 		Record.toEntries,
 		Array.map(entry => ({count: entry[1].length, tag: entry[0]})),

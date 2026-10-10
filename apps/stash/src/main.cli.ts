@@ -60,20 +60,27 @@ const save = pipe(
 						text: input.entry
 					})
 					yield* Effect.logInfo('Saved; the server is reading and tagging it, which takes minutes for a long video')
-					// The note under its id, or the earlier note of the same post it joined, once tagging has finished.
-					return yield* pipe(
+					// Waits for the note under its id; when it joins an earlier note of the same post, the server's search finds
+					// that one. The full note comes once tagging has finished.
+					const finished = yield* pipe(
 						client['notes.watch'](undefined),
-						Stream.map(state =>
-							Array.findFirst(
-								state.notes,
-								item => item.id === saved.id || String.includes(String.trim(input.entry))(item.text)
-							)
+						Stream.mapAccumEffect(
+							() => saved.id,
+							Effect.fnUntraced(function* (target, event) {
+								const current = Array.contains(event.removed, target)
+									? Option.getOrElse(Array.head(yield* client['notes.search']({query: input.entry})), () => target)
+									: target
+								const done = Array.findFirst(
+									event.upserted,
+									item => item.id === current && item.status !== 'organizing'
+								)
+								return [current, Option.toArray(Option.map(done, item => item.id))] as const
+							})
 						),
-						Stream.filter(found => Option.exists(found, item => item.status !== 'organizing')),
 						Stream.runHead,
-						Effect.map(Option.flatten),
 						Effect.flatMap(Effect.fromOption)
 					)
+					return yield* client['notes.get']({id: finished})
 				}),
 				Effect.scoped,
 				// @effect-diagnostics-next-line strictEffectProvide:off -- The server address comes from this command's flag.

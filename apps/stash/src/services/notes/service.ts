@@ -6,28 +6,32 @@ import {
 	DateTime,
 	Effect,
 	FileSystem,
+	HashMap,
+	HashSet,
 	Layer,
 	Option,
 	Path,
 	Result,
 	Schema,
 	Semaphore,
+	Stream,
 	String,
+	Struct,
 	SubscriptionRef,
 	Tuple,
 	pipe
 } from 'effect'
-import type {Stream} from 'effect'
 
 import {Base64} from 'effect/encoding'
 
 import {Sources} from './internal/extraction.ts'
 import {Organizer, revision} from './internal/organization.ts'
+import {openStore} from './internal/store.ts'
 
 import {speechOnly} from '#services/media/lib/utils.ts'
-import {captureUrl, commentFor, normalizeTags, sourceFor, tagCounts} from '#services/notes/lib/utils.ts'
-import type {Capture, FileType, ImageType} from '#services/notes/schema.ts'
-import {Extraction, Note, NotesError, NotesState} from '#services/notes/schema.ts'
+import {captureUrl, commentFor, findNotes, normalizeTags, sourceFor, tagCounts} from '#services/notes/lib/utils.ts'
+import type {Capture, FileType, ImageType, NotesEvent} from '#services/notes/schema.ts'
+import {Extraction, Note, NoteItem, NotesError, NotesState} from '#services/notes/schema.ts'
 
 type NotesFile = typeof NotesFile.Type
 const NotesFile = Schema.fromJsonString(NotesState)
@@ -43,11 +47,37 @@ function withWords(note: Note, text: string) {
 	return Array.isReadonlyArrayEmpty(added) ? note : {...note, text: `${note.text}\n${Array.join(added, ' ')}`}
 }
 
+// A note's list fields, without the long texts the note page loads on its own.
+function itemOf(note: Note) {
+	return NoteItem.make(
+		Struct.pick(note, [
+			'author',
+			'createdAt',
+			'file',
+			'id',
+			'image',
+			'issue',
+			'source',
+			'status',
+			'summary',
+			'tags',
+			'title',
+			'topics',
+			'url'
+		])
+	)
+}
+
 export class Notes extends Context.Service<
 	Notes,
 	{
 		readonly capture: (input: Capture) => Effect.Effect<Note, NotesError>
 		readonly changes: Stream.Stream<NotesState>
+		// The list for watchers: every note's list fields once, then only what changed, at most every 400 ms.
+		readonly events: Stream.Stream<NotesEvent>
+		readonly get: (input: Pick<Note, 'id'>) => Effect.Effect<Note, NotesError>
+		// Ids of the notes that hold every word, searched on the server so transcripts and pages stay off the iPhone.
+		readonly search: (input: {query: string}) => Effect.Effect<Note['id'][]>
 		readonly image: (id: Note['id']) => Effect.Effect<{bytes: Uint8Array; type: ImageType}, NotesError>
 		// A photo, screenshot or video from the iPhone becomes a note the AI describes; a resent id returns the saved note.
 		readonly captureFile: (input: {
@@ -77,7 +107,7 @@ export class Notes extends Context.Service<
 				Config.Number('STASH_AI_BUDGET_USD'),
 				Config.withDefault(Option.isSome(anthropic) ? 150 : 5)
 			)
-			const file = path.join(directory, 'notes.json')
+			const legacyFile = path.join(directory, 'notes.json')
 			const images = path.join(directory, 'images')
 			const files = path.join(directory, 'files')
 			const aiCalls = yield* Semaphore.make(1)
@@ -85,15 +115,15 @@ export class Notes extends Context.Service<
 				NotesError.make({cause, message: 'The notes file could not be read or written.'})
 			)
 
-			const persist = Effect.fnUntraced(function* (next: NotesFile) {
-				yield* fs.writeFileString(`${file}.tmp`, yield* Schema.encodeEffect(NotesFile)(next), {mode: 0o600})
-				yield* fs.rename(`${file}.tmp`, file)
-			}, storageFailed)
-
 			yield* pipe(fs.makeDirectory(directory, {mode: 0o700, recursive: true}), storageFailed)
-			const loaded = (yield* pipe(fs.exists(file), storageFailed))
-				? yield* pipe(fs.readFileString(file), Effect.flatMap(Schema.decodeEffect(NotesFile)), storageFailed)
-				: NotesState.make({aiSpend: {month: '', usd: 0}, notes: []})
+			const store = yield* openStore(path.join(directory, 'stash.db'))
+			const fromDatabase = yield* store.load
+			// Notes saved before the database come from notes.json once; the file stays beside it as notes.json.imported.
+			const legacy =
+				Array.isReadonlyArrayEmpty(fromDatabase.notes) && (yield* pipe(fs.exists(legacyFile), storageFailed))
+			const loaded = legacy
+				? yield* pipe(fs.readFileString(legacyFile), Effect.flatMap(Schema.decodeEffect(NotesFile)), storageFailed)
+				: fromDatabase
 			// Tags saved before they became single tokens get hyphens on the next start.
 			const migrated = NotesState.make({
 				...loaded,
@@ -112,7 +142,8 @@ export class Notes extends Context.Service<
 					}
 				})
 			})
-			yield* persist(migrated)
+			yield* store.save(fromDatabase, migrated)
+			if (legacy) yield* pipe(fs.rename(legacyFile, `${legacyFile}.imported`), storageFailed)
 			const state = yield* SubscriptionRef.make(migrated)
 
 			// Applies one change to memory and disk together: the file holds every change anyone has seen.
@@ -121,7 +152,7 @@ export class Notes extends Context.Service<
 					SubscriptionRef.modifyEffect(state, current => {
 						const result = change(current)
 						if (result[1] === current) return Effect.succeed(result)
-						return Effect.as(persist(result[1]), result)
+						return Effect.as(store.save(current, result[1]), result)
 					})
 				)
 			}
@@ -195,7 +226,7 @@ export class Notes extends Context.Service<
 								...current,
 								notes: Array.map(current.notes, note => (note.id === id ? {...note, image: image.type} : note))
 							}
-							yield* persist(next)
+							yield* store.save(current, next)
 							return Tuple.make(undefined, next)
 						})
 					)
@@ -481,6 +512,51 @@ export class Notes extends Context.Service<
 					return note
 				}),
 				changes: SubscriptionRef.changes(state),
+				events: pipe(
+					SubscriptionRef.changes(state),
+					Stream.groupedWithin(10_000, '400 millis'),
+					Stream.flatMap(group => Stream.fromIterable(Array.takeRight(group, 1))),
+					// The first state goes out whole; after that only notes whose objects changed, and the ids that went away.
+					Stream.mapAccum(
+						() => Option.none<NotesState>(),
+						(previous, current: NotesState) =>
+							[
+								Option.some(current),
+								Option.match(previous, {
+									onNone: (): NotesEvent[] => [
+										{aiSpend: current.aiSpend, removed: [], reset: true, upserted: Array.map(current.notes, itemOf)}
+									],
+									onSome: (before): NotesEvent[] => {
+										const earlier = HashMap.fromIterable(Array.map(before.notes, note => [note.id, note] as const))
+										const ids = HashSet.fromIterable(Array.map(current.notes, note => note.id))
+										const upserted = Array.map(
+											Array.filter(
+												current.notes,
+												note => !Option.exists(HashMap.get(earlier, note.id), old => old === note)
+											),
+											itemOf
+										)
+										const removed = Array.filter(Array.fromIterable(HashMap.keys(earlier)), id => !HashSet.has(ids, id))
+										if (
+											Array.isReadonlyArrayEmpty(upserted) &&
+											Array.isReadonlyArrayEmpty(removed) &&
+											before.aiSpend === current.aiSpend
+										) {
+											return []
+										}
+										return [{aiSpend: current.aiSpend, removed, reset: false, upserted}]
+									}
+								})
+							] as const
+					)
+				),
+				get: Effect.fn('Notes.get')(function* (input: Pick<Note, 'id'>) {
+					return yield* pipe(
+						Array.findFirst((yield* SubscriptionRef.get(state)).notes, note => note.id === input.id),
+						Effect.fromOption,
+						Effect.mapError(() => NotesError.make({message: 'This note no longer exists.'}))
+					)
+				}),
 				image: Effect.fn('Notes.image')(function* (id: Note['id']) {
 					const type = yield* pipe(
 						Array.findFirst((yield* SubscriptionRef.get(state)).notes, note => note.id === id),
@@ -501,6 +577,9 @@ export class Notes extends Context.Service<
 					)
 					yield* pipe(fs.remove(path.join(images, input.id), {force: true}), storageFailed)
 					yield* pipe(fs.remove(path.join(files, input.id), {force: true}), storageFailed)
+				}),
+				search: Effect.fn('Notes.search')(function* (input: {query: string}) {
+					return Array.map(findNotes((yield* SubscriptionRef.get(state)).notes, input.query), note => note.id)
 				})
 			})
 		})

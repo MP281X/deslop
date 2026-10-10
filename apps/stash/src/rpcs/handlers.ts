@@ -8,8 +8,10 @@ export const RpcHandlers = RpcContracts.toLayer(
 		const notes = yield* Notes
 		return RpcContracts.of({
 			'notes.capture': notes.capture,
+			'notes.get': notes.get,
 			'notes.remove': notes.remove,
-			'notes.watch': () => notes.changes
+			'notes.search': notes.search,
+			'notes.watch': () => notes.events
 		})
 	})
 )

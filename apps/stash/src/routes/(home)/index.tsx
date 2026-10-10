@@ -1,6 +1,6 @@
 import {useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Match, Option, String, pipe} from 'effect'
+import {Array, HashSet, Match, Option, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -41,6 +41,7 @@ import {
 	listStyle,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
+	onAppear,
 	onTapGesture,
 	resizable,
 	scrollContentBackground,
@@ -53,13 +54,13 @@ import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 import {Linking} from 'react-native'
 
-import {assetAtom, imageAtom, notesAtom, pendingAtom, removeAtom} from '#lib/utils.ts'
+import {assetAtom, imageAtom, notesAtom, pendingAtom, removeAtom, searchAtom} from '#lib/utils.ts'
 import {Brand, brandOf, kindOf, kinds} from '#routes/brand.tsx'
 import type {Kind} from '#routes/brand.tsx'
 import {Chip} from '#routes/chip.tsx'
 import logo from '#routes/logo.png'
-import {findNotes, tagCounts} from '#services/notes/lib/utils.ts'
-import type {Note} from '#services/notes/schema.ts'
+import {tagCounts} from '#services/notes/lib/utils.ts'
+import type {Note, NoteItem} from '#services/notes/schema.ts'
 import {colors, mono} from '@deslop/components/mobile/theme'
 
 const row = [
@@ -92,13 +93,27 @@ export function NotesRoute(props: {
 	const remove = useAtomSet(removeAtom)
 	const [selecting, setSelecting] = useState(false)
 	const [selection, setSelection] = useState<Note['id'][]>([])
+	const query = String.trim(props.search)
+	const found = useAtomValue(searchAtom(query))
+	// The server searches transcripts and pages; until it answers, titles, summaries and tags narrow the list.
+	const words = pipe(query, String.toLowerCase, String.split(/\s+/u), Array.filter(String.isNonEmpty))
+	const searched = Array.filter(state.items, item => {
+		if (Array.isReadonlyArrayEmpty(words)) return true
+		if (AsyncResult.isSuccess(found)) return HashSet.has(found.value, item.id)
+		const haystack = String.toLowerCase(
+			Array.join([item.title, item.summary, item.author, item.topics ?? '', ...item.tags], ' ')
+		)
+		return Array.every(words, word => String.includes(word)(haystack))
+	})
 	const notes = Array.filter(
-		findNotes(state.notes, props.search),
+		searched,
 		note =>
 			(String.isEmpty(props.tag) || Array.contains(note.tags, props.tag)) &&
 			(props.kind === '' || kindOf(note) === props.kind)
 	)
-	const tags = Array.map(tagCounts(state.notes), entry => entry.tag)
+	const tags = Array.map(tagCounts(state.items), entry => entry.tag)
+	// Rows mount in pages as the list scrolls, so thousands of notes never build at once.
+	const [limit, setLimit] = useState(80)
 	const filtered = String.isNonEmpty(props.search) || String.isNonEmpty(props.tag) || props.kind !== ''
 
 	function finish() {
@@ -169,11 +184,14 @@ export function NotesRoute(props: {
 					</HStack>
 				))}
 			{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions from the list. */}
-			{Array.map(notes, note => (
+			{Array.map(Array.take(notes, limit), (note, position) => (
 				<Row
 					key={note.id}
 					note={note}
 					selecting={selecting}
+					onAppear={() => {
+						if (position === limit - 1) setLimit(limit + 80)
+					}}
 					onOpen={props.onOpen}
 					onRemove={id => remove(id)}
 					onSelect={id => {
@@ -194,7 +212,7 @@ export function NotesRoute(props: {
 				background(colors.background)
 			]}
 		>
-			{Array.isReadonlyArrayEmpty(state.notes) && Array.isReadonlyArrayEmpty(pending) ? (
+			{Array.isReadonlyArrayEmpty(state.items) && Array.isReadonlyArrayEmpty(pending) ? (
 				<ContentUnavailableView
 					title="nothing saved"
 					description="share a link to stash, or copy one and open the app"
@@ -313,7 +331,7 @@ function Placeholder(props: {symbol: 'arrow.up' | 'globe' | 'photo' | 'play.rect
 }
 
 // The kept preview, or a symbol for the source while it loads or when the note has none.
-function Preview(props: {note: Note}) {
+function Preview(props: {note: NoteItem}) {
 	const symbol = pipe(
 		Match.value(kindOf(props.note)),
 		Match.when('tiktok', () => 'play.rectangle' as const),
@@ -336,7 +354,7 @@ function Preview(props: {note: Note}) {
 
 // Mounted only once the server has kept the preview, so the download never runs before the file exists. The square
 // crop keeps every row the same height.
-function Thumbnail(props: {note: Note; symbol: Parameters<typeof Placeholder>[0]['symbol']}) {
+function Thumbnail(props: {note: NoteItem; symbol: Parameters<typeof Placeholder>[0]['symbol']}) {
 	const image = useAtomValue(imageAtom(props.note.id))
 	if (!AsyncResult.isSuccess(image)) return <Placeholder symbol={props.symbol} />
 	return (
@@ -353,9 +371,11 @@ function Thumbnail(props: {note: Note; symbol: Parameters<typeof Placeholder>[0]
 }
 
 function Row(props: {
-	note: Note
+	note: NoteItem
 	onOpen: (id: Note['id']) => void
 	onRemove: (id: Note['id']) => void
+	// Called when the row appears; the last mounted row mounts the next page.
+	onAppear: () => void
 	onSelect: (id: Note['id']) => void
 	selecting: boolean
 }) {
@@ -368,6 +388,7 @@ function Row(props: {
 			modifiers={[
 				fullSeparator,
 				contentShape(shapes.rectangle()),
+				onAppear(props.onAppear),
 				...(props.selecting ? [] : [onTapGesture(() => props.onOpen(note.id))])
 			]}
 		>

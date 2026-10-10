@@ -34,10 +34,10 @@ import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 import {Linking} from 'react-native'
 
-import {imageAtom, notesAtom, removeAtom} from '#lib/utils.ts'
+import {imageAtom, noteAtom, notesAtom, removeAtom} from '#lib/utils.ts'
 import {Brand, brandOf, kindOf, kinds} from '#routes/brand.tsx'
 import {Chip} from '#routes/chip.tsx'
-import type {Note} from '#services/notes/schema.ts'
+import type {Note, NoteItem} from '#services/notes/schema.ts'
 import {colors, mono} from '@deslop/components/mobile/theme'
 
 const page = [navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]
@@ -48,7 +48,7 @@ export function NoteRoute(props: {
 	onOpen: (id: Note['id']) => void
 	onTag: (tag: string) => void
 }) {
-	const notes = useAtomSuspense(notesAtom).value.notes
+	const notes = useAtomSuspense(notesAtom).value.items
 	const index = Array.findFirstIndex(notes, note => note.id === props.id)
 	return Option.match(
 		Option.flatMap(index, position => Array.get(notes, position)),
@@ -84,7 +84,7 @@ export function NoteRoute(props: {
 
 // Mounted only once the server has kept the preview, so the download never runs before the file exists. The whole
 // image fits a box of one height, so every note's preview takes the same space and none is cropped.
-function Cover(props: {height: number; note: Note}) {
+function Cover(props: {height: number; note: NoteItem}) {
 	const image = useAtomValue(imageAtom(props.note.id))
 	if (!AsyncResult.isSuccess(image)) return undefined
 	return (
@@ -135,17 +135,23 @@ function Body(props: {text: string}) {
 	)
 }
 
+// The list fields show at once; the long texts arrive with the full note from the server.
 // The page reads like a message in iOS Mail: who it comes from, the full title, the tags, the preview and the AI's
 // notes. The top bar opens the link in its app; the bottom bar deletes the note or moves to the previous or next one.
 function Detail(props: {
 	next: Option.Option<Note['id']>
-	note: Note
+	note: NoteItem
 	onClose: () => void
 	onOpen: (id: Note['id']) => void
 	onTag: (tag: string) => void
 	previous: Option.Option<Note['id']>
 }) {
 	const note = props.note
+	const full = pipe(
+		useAtomValue(noteAtom(`${note.id} ${note.status} ${note.title}`)),
+		AsyncResult.getOrElse(() => undefined),
+		Option.fromNullishOr
+	)
 	const remove = useAtomSet(removeAtom)
 	const kind = Array.findFirst(kinds, entry => entry.kind === kindOf(note))
 	const kindLabel = Option.match(kind, {onNone: () => 'Web', onSome: entry => entry.label})
@@ -153,8 +159,14 @@ function Detail(props: {
 	// Folded so the note stays short: what the video says, and the original words of a written note.
 	const folds = pipe(
 		[
-			{label: 'transcript', text: note.transcript ?? ''},
-			{label: 'original', text: note.url === null && note.file === undefined ? note.text : ''}
+			{label: 'transcript', text: Option.match(full, {onNone: () => '', onSome: loaded => loaded.transcript ?? ''})},
+			{
+				label: 'original',
+				text:
+					note.url === null && note.file === undefined
+						? Option.match(full, {onNone: () => '', onSome: loaded => loaded.text})
+						: ''
+			}
 		],
 		Array.filter(fold => String.isNonEmpty(String.trim(fold.text)))
 	)
@@ -207,10 +219,10 @@ function Detail(props: {
 						</ScrollView>
 					)}
 					{note.image !== undefined && <Cover note={note} height={220} />}
-					{Option.match(Option.liftPredicate(note.body ?? '', String.isNonEmpty), {
-						onNone: () => undefined,
-						onSome: body => <Body text={body} />
-					})}
+					{Option.match(
+						Option.flatMap(full, loaded => Option.liftPredicate(loaded.body ?? '', String.isNonEmpty)),
+						{onNone: () => undefined, onSome: body => <Body text={body} />}
+					)}
 					{Array.map(folds, fold => (
 						<Fold key={fold.label} label={fold.label} text={fold.text} />
 					))}

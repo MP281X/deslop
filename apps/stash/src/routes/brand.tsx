@@ -6,11 +6,11 @@ import {AsyncResult} from 'effect/reactivity'
 import {useColorScheme} from 'react-native'
 
 import {assetAtom} from '#lib/utils.ts'
-import type {Note} from '#services/notes/schema.ts'
+import type {NoteItem} from '#services/notes/schema.ts'
 import {BrandImage, brands} from '@deslop/components/mobile/brand'
 
 // The app a note's link opens in, when stash has its logo.
-export function brandOf(note: Note) {
+export function brandOf(note: NoteItem) {
 	if (note.source === 'TikTok') return Option.some(brands.tiktok)
 	if (note.source === 'X') return Option.some(brands.x)
 	return pipe(
@@ -32,7 +32,7 @@ export const kinds = [
 
 export type Kind = (typeof kinds)[number]['kind']
 
-export function kindOf(note: Note): Kind {
+export function kindOf(note: NoteItem): Kind {
 	if (note.file !== undefined) return 'file'
 	if (note.source === 'TikTok') return 'tiktok'
 	if (note.source === 'X') return 'x'

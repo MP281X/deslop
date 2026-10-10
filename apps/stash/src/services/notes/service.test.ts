@@ -1,3 +1,6 @@
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- The test edits the server's own SQLite file to recreate an old note.
+import {DatabaseSync} from 'node:sqlite'
+
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
@@ -6,13 +9,16 @@ import {
 	ConfigProvider,
 	Context,
 	Effect,
+	Fiber,
 	FileSystem,
 	Latch,
 	Layer,
 	Option,
 	Order,
+	Predicate,
 	Ref,
 	Result,
+	Schema,
 	Stream,
 	String,
 	pipe
@@ -22,8 +28,7 @@ import {TestClock} from 'effect/testing'
 
 import {Sources} from '#services/notes/internal/extraction.ts'
 import {Organizer, revision} from '#services/notes/internal/organization.ts'
-import type {NotesState} from '#services/notes/schema.ts'
-import {Extraction, NotesError} from '#services/notes/schema.ts'
+import {Extraction, NotesError, NotesState} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
 
 const recipe = Sources.of({
@@ -414,15 +419,70 @@ it.layer(NodeServices.layer)('Notes', test => {
 				})
 			)
 			// A note tagged before revisions existed has none.
-			const fs = yield* FileSystem.FileSystem
-			const saved = yield* fs.readFileString(`${directory}/notes.json`)
-			yield* fs.writeFileString(`${directory}/notes.json`, String.replaceAll(/"revision":\d+,?/gu, '')(saved))
+			yield* Effect.sync(() => {
+				const database = new DatabaseSync(`${directory}/stash.db`)
+				database.exec("update notes set json = json_remove(json, '$.revision')")
+				database.close()
+			})
 			const calls = yield* Ref.make(0)
 			const state = yield* settled(yield* open({directory, organizer: counting(calls), sources: recipe}), current =>
 				Array.some(current.notes, note => note.status === 'ready' && note.revision !== undefined)
 			)
 			assert.containsSubset(state.notes[0], {id: ids[0], revision, title: 'Soup'})
 			assert.strictEqual(yield* Ref.get(calls), 1)
+		})
+	)
+
+	test.effect('imports notes.json once into the database and keeps the file beside it', () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem
+			const calls = yield* Ref.make(0)
+			const notes = yield* open({
+				directory: yield* fs.makeTempDirectoryScoped(),
+				organizer: counting(calls),
+				sources: recipe
+			})
+			yield* notes.capture({id: ids[0], text: 'https://example.com/soup'})
+			const state = yield* settled(notes, current => Array.some(current.notes, note => note.status === 'ready'))
+			// The same notes as the notes.json of a server from before the database.
+			const legacy = yield* fs.makeTempDirectoryScoped()
+			yield* fs.writeFileString(
+				`${legacy}/notes.json`,
+				yield* Schema.encodeEffect(Schema.fromJsonString(NotesState))(state)
+			)
+			const imported = yield* settled(
+				yield* open({directory: legacy, organizer: counting(calls), sources: recipe}),
+				() => true
+			)
+			assert.containsSubset(imported.notes[0], {id: ids[0], status: 'ready', title: 'Soup'})
+			assert.isTrue(yield* fs.exists(`${legacy}/notes.json.imported`))
+			assert.isFalse(yield* fs.exists(`${legacy}/notes.json`))
+		})
+	)
+
+	test.effect('sends watchers the list once, then only the notes that changed, without their long texts', () =>
+		Effect.gen(function* () {
+			const notes = yield* open({
+				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				organizer: counting(yield* Ref.make(0)),
+				sources: recipe
+			})
+			const events = yield* pipe(notes.events, Stream.take(2), Stream.runCollect, Effect.forkScoped)
+			yield* TestClock.adjust('1 second')
+			yield* notes.capture({id: ids[0], text: 'https://example.com/soup'})
+			yield* TestClock.adjust('1 second')
+			const received = yield* Fiber.join(events)
+			assert.deepStrictEqual(
+				Array.map(received, event => event.reset),
+				[true, false]
+			)
+			assert.deepStrictEqual(
+				Array.map(received, event => Array.map(event.upserted, item => item.id)),
+				[[], [ids[0]]]
+			)
+			assert.isFalse(
+				Array.some(received, event => Array.some(event.upserted, item => Predicate.hasProperty(item, 'content')))
+			)
 		})
 	)
 

@@ -1,4 +1,18 @@
-import {Array, Clock, Effect, Layer, Option, Order, Result, Schedule, Schema, Stream, String, pipe} from 'effect'
+import {
+	Array,
+	Clock,
+	Effect,
+	HashSet,
+	Layer,
+	Option,
+	Order,
+	Result,
+	Schedule,
+	Schema,
+	Stream,
+	String,
+	pipe
+} from 'effect'
 
 import {AtomRpc, Atom} from 'effect/reactivity'
 import * as Rpc from 'effect/rpc'
@@ -14,8 +28,8 @@ import {Alert, AppState} from 'react-native'
 import {Outbox, Pending, deliver} from '#lib/outbox.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {captureUrl} from '#services/notes/lib/utils.ts'
-import type {FileType, Note} from '#services/notes/schema.ts'
-import {NotesError, NotesState} from '#services/notes/schema.ts'
+import type {FileType, Note, NotesEvent} from '#services/notes/schema.ts'
+import {AiSpend, NoteItem, NotesError} from '#services/notes/schema.ts'
 
 // app.config.ts writes these for each build variant.
 const settings = Schema.decodeUnknownSync(Schema.Struct({appGroup: Schema.String, server: Schema.String}))(
@@ -23,14 +37,18 @@ const settings = Schema.decodeUnknownSync(Schema.Struct({appGroup: Schema.String
 )
 
 const pastedFile = new File(Paths.document, 'pasted.txt')
-const cacheFile = new File(Paths.document, 'notes.json')
+const cacheFile = new File(Paths.document, 'list.json')
 const imagesDirectory = new Directory(Paths.cache, 'images')
 
 type PendingFile = typeof PendingFile.Type
 const PendingFile = Schema.fromJsonString(Pending)
 
+// The list as the app holds it: each note's list fields, newest first, and the month's AI spend.
+export type NotesView = typeof NotesView.Type
+const NotesView = Schema.Struct({aiSpend: AiSpend, items: Schema.Array(NoteItem)})
+
 type CacheFile = typeof CacheFile.Type
-const CacheFile = Schema.fromJsonString(NotesState)
+const CacheFile = Schema.fromJsonString(NotesView)
 
 function storageFailed(message: string) {
 	return (cause: unknown) => NotesError.make({cause, message})
@@ -122,7 +140,22 @@ const activationsAtom = Atom.make(get => {
 	return 0
 })
 
-const emptyNotes = NotesState.make({aiSpend: {month: '', usd: 0}, notes: []})
+const emptyNotes = NotesView.make({aiSpend: {month: '', usd: 0}, items: []})
+
+const newestFirst = Order.flip(Order.mapInput(Order.Number, (item: NoteItem) => item.createdAt))
+
+// A reset replaces the list; any other event swaps in the notes that changed and drops the ones that went away.
+function apply(view: NotesView, event: NotesEvent) {
+	if (event.reset) return NotesView.make({aiSpend: event.aiSpend, items: Array.sort(event.upserted, newestFirst)})
+	const replaced = HashSet.fromIterable([...event.removed, ...Array.map(event.upserted, item => item.id)])
+	return NotesView.make({
+		aiSpend: event.aiSpend,
+		items: Array.sort(
+			[...Array.filter(view.items, item => !HashSet.has(replaced, item.id)), ...event.upserted],
+			newestFirst
+		)
+	})
+}
 
 // The copy kept on this iPhone shows the notes offline. A broken copy shows nothing until the server answers.
 const cachedNotes = pipe(
@@ -139,6 +172,13 @@ export const notesAtom = Atom.keepAlive(
 			pipe(
 				Effect.map(RpcClient, client => client('notes.watch', undefined)),
 				Stream.unwrap,
+				Stream.mapAccum(
+					() => emptyNotes,
+					(view, event) => {
+						const next = apply(view, event)
+						return [next, [next]] as const
+					}
+				),
 				// A failed copy only costs the offline view, so it must not stop the live notes.
 				Stream.tap(state =>
 					pipe(
@@ -155,6 +195,22 @@ export const notesAtom = Atom.keepAlive(
 			)
 		)
 	})
+)
+
+// A note with its long texts, loaded when its page opens. The key holds the id and what the list knows changed, so a
+// note that finishes tagging loads again: `<id> <status> <title>`.
+export const noteAtom = Atom.family((key: string) =>
+	RpcClient.runtime.atom(Effect.flatMap(RpcClient, client => client('notes.get', {id: String.takeLeft(key, 36)})))
+)
+
+// Ids of the notes that hold every word, from the server's search across transcripts and pages.
+export const searchAtom = Atom.family((query: string) =>
+	RpcClient.runtime.atom(
+		Effect.map(
+			Effect.flatMap(RpcClient, client => client('notes.search', {query})),
+			ids => HashSet.fromIterable(ids)
+		)
+	)
 )
 
 // Sends a photo or video from the outbox folder as the raw request body, straight from its file, so a long video never
