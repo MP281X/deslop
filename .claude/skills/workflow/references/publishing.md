@@ -65,15 +65,15 @@ Released application versions keep their plugins; nothing changes for existing w
 
 **Links.** GitHub uses `https://github.com/<owner>/<repo>/blob/<branch>/<path>#L<start>-L<end>`. GitLab uses `https://<host>/<project>/-/blob/<branch>/<path>#L<start>-<end>`.
 
-**Publishing.** Pass bodies as files, and check the published head, title, body and files against the branch. Place each capture under its entry:
+**Publishing.** Pass bodies as files, and check the published head, title, body and files against the branch. A body update keeps the current draft state. Place each capture under its entry:
 
 - **GitHub.** Reference the file in the body as `![alt](./file.png)`; `--attach` uploads it and rewrites that reference in place. A video is a bare `--attach` with the same reference.
 - **GitLab.** `glab --attach` appends at the end, so upload each file through the API and paste the returned `markdown` under its entry. `glab` has no `--jq` option, so pipe its output into `jq`.
 
 ```bash
 gh pr edit <number> --body-file <file> --attach './file.png#<alt text>'
-curl -fsS -H "PRIVATE-TOKEN: $(glab config get token --host git.datapizza.tech)" -F file=@<file> https://git.datapizza.tech/api/v4/projects/<project id>/uploads | jq -r .markdown
-glab mr update <number> --draft --description-file <file>
+token=$(glab config get token --host git.datapizza.tech) && curl -fsS -H "PRIVATE-TOKEN: $token" -F file=@<file> https://git.datapizza.tech/api/v4/projects/<project id>/uploads | jq -r .markdown
+glab mr update <number> --description-file <file>
 ```
 
 **Failed checks.** Read the logs of failed jobs only.

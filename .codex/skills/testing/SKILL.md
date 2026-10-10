@@ -12,7 +12,7 @@ description: 'Select and run black-box behavior proof for Effect apps/tools. Use
 - **Redundant.** Delete touched cases that only repeat dependency guarantees, constants, wording, removed behavior or an already covered input. Keep boundary tests that prove the application's own validation, encoding or integration.
 - **Independent.** Expected values come from the contract/worked example, not implementation recomputation. Use the smallest reachable discriminating fixture.
 - **Bugs.** Reproduce a bug before fixing it. Keep the failing case when it protects owned behavior, in the existing test that covers the fixed code, or a new case when none fits.
-- **Throwaway.** Settle a worry with a throwaway test or prototype and delete it once answered.
+- **Throwaway.** Settle a worry with a throwaway test or prototype and delete it once answered, unless it becomes a regression test under Bugs.
 - **Honest.** No wrong expectations or rule workarounds. Change assertions only for recorded behavior changes; preserve every still-relevant value.
 
 **Assertions.** Use one representative input per behavior, in its existing case. Share a helper only between cases that use it. Use @effect/vitest assertions for outputs and structured error identity. Replace dependencies through Layers or public parameters, never global or module mocks. Isolate mutable state in its owning fixture.

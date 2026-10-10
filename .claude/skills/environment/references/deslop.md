@@ -17,7 +17,7 @@ HOST=127.0.0.1 vp -C apps/portfolio dev --host 127.0.0.1 --port <port> --strictP
 HOST=127.0.0.1 PORT=<port> vp run --filter @deslop/portfolio preview
 ```
 
-**Components.** List existing shared components first, then `vp run --workspace-root shadcn list @shadcn`, inspect with `vp run --workspace-root shadcn view <component>` and `shadcn docs <component>`, and add with `vp run --workspace-root shadcn add <component>`.
+**Components.** List existing shared components first, then `vp run --workspace-root shadcn list @shadcn`, inspect with `vp run --workspace-root shadcn view <component>` and `vp run --workspace-root shadcn docs <component>`, and add with `vp run --workspace-root shadcn add <component>`.
 
 ## Application tracing
 
