@@ -1,0 +1,21 @@
+{
+	"name": "@deslop/stash",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"sideEffects": false,
+	"imports": {
+		"#rpcs/*": "./src/rpcs/*",
+		"#services/*": "./src/services/*"
+	},
+	"scripts": {
+		"build": "rm -rf dist && vp pack",
+		"preview": "vp run build && HOST=127.0.0.1 PORT=5017 node --env-file-if-exists=$HOME/.deslop/stash.env ./dist/server.js"
+	},
+	"dependencies": {
+		"cheerio": "latest"
+	},
+	"devDependencies": {
+		"@deslop/runtime": "workspace:*"
+	}
+}
