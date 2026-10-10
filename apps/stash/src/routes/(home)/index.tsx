@@ -12,7 +12,6 @@ import {
 	Menu,
 	ProgressView,
 	ScrollView,
-	ShareLink,
 	SwipeActions,
 	Text,
 	Toolbar,
@@ -76,7 +75,7 @@ const fullSeparator = alignmentGuide('listRowSeparatorLeading', 0)
 const thumbnail = 56
 
 // The list follows iOS Mail: tag chips that filter apart from search, the filter menu, search field and write
-// button at the bottom, the system menu on a long press, and two fingers dragged down the list to select notes.
+// button at the bottom, and the system menu on a long press.
 export function NotesRoute(props: {
 	kind: Kind | ''
 	onCompose: () => void
@@ -91,8 +90,6 @@ export function NotesRoute(props: {
 	const state = useAtomSuspense(notesAtom).value
 	const pending = useAtomSuspense(pendingAtom).value
 	const remove = useAtomSet(removeAtom)
-	const [selecting, setSelecting] = useState(false)
-	const [selection, setSelection] = useState<Note['id'][]>([])
 	const query = String.trim(props.search)
 	const found = useAtomValue(searchAtom(query))
 	// The server searches transcripts and pages; until it answers, titles, summaries and tags narrow the list.
@@ -116,28 +113,8 @@ export function NotesRoute(props: {
 	const [limit, setLimit] = useState(80)
 	const filtered = String.isNonEmpty(props.search) || String.isNonEmpty(props.tag) || props.kind !== ''
 
-	function finish() {
-		setSelection([])
-		setSelecting(false)
-	}
-
 	const list = (
-		<List
-			selection={selection}
-			editing={selecting}
-			onEditingChange={editing => (editing ? setSelecting(true) : finish())}
-			onSelectionChange={next => {
-				const ids = Array.filter(next, String.isString)
-				if (selecting) {
-					setSelection(ids)
-					return
-				}
-				// Outside selecting, a row the list selects on a tap opens instead.
-				Option.match(Array.head(ids), {onNone: () => undefined, onSome: props.onOpen})
-				setSelection([])
-			}}
-			modifiers={[listStyle('plain'), scrollContentBackground('hidden'), background(colors.background)]}
-		>
+		<List modifiers={[listStyle('plain'), scrollContentBackground('hidden'), background(colors.background)]}>
 			{Array.isReadonlyArrayNonEmpty(tags) && (
 				<ScrollView
 					axes="horizontal"
@@ -188,16 +165,11 @@ export function NotesRoute(props: {
 				<Row
 					key={note.id}
 					note={note}
-					selecting={selecting}
 					onAppear={() => {
 						if (position === limit - 1) setLimit(limit + 80)
 					}}
 					onOpen={props.onOpen}
 					onRemove={id => remove(id)}
-					onSelect={id => {
-						setSelection([id])
-						setSelecting(true)
-					}}
 				/>
 			))}
 		</List>
@@ -223,51 +195,25 @@ export function NotesRoute(props: {
 			)}
 			<Toolbar.Content>
 				<ToolbarItem placement="principal">
-					{selecting ? (
-						<Text modifiers={[mono('headline', 15), foregroundStyle(colors.foreground)]}>
-							{`${selection.length} selected`}
-						</Text>
-					) : (
-						<Title />
-					)}
+					<Title />
 				</ToolbarItem>
-				{selecting ? (
-					<>
-						<ToolbarItem placement="topBarLeading">
-							<Button label="Select All" onPress={() => setSelection(Array.map(notes, note => note.id))} />
-						</ToolbarItem>
-						<ToolbarItem placement="confirmationAction">
-							<Button label="Done" systemImage="checkmark" onPress={finish} modifiers={[labelStyle('iconOnly')]} />
-						</ToolbarItem>
-						<ToolbarItem placement="bottomBar" kind="spacer" />
-						<ToolbarItem placement="bottomBar">
-							<Button
-								label="Delete"
-								systemImage="trash"
-								onPress={() => {
-									for (const id of selection) remove(id)
-									finish()
-								}}
-								modifiers={[labelStyle('iconOnly')]}
-							/>
-						</ToolbarItem>
-					</>
-				) : (
-					<>
-						<ToolbarItem placement="bottomBar">
-							<Filter kind={props.kind} onKind={props.onKind} />
-						</ToolbarItem>
-						<ToolbarItem placement="bottomBar" kind="search" />
-						<ToolbarItem placement="bottomBar">
-							<Button
-								label="Write"
-								systemImage="square.and.pencil"
-								onPress={props.onCompose}
-								modifiers={[labelStyle('iconOnly')]}
-							/>
-						</ToolbarItem>
-					</>
-				)}
+				{/* Fixed spacers part the filter, the search field and write into separate glass shapes, as in Mail. */}
+				<>
+					<ToolbarItem placement="bottomBar">
+						<Filter kind={props.kind} onKind={props.onKind} />
+					</ToolbarItem>
+					<ToolbarItem placement="bottomBar" kind="fixed-spacer" />
+					<ToolbarItem placement="bottomBar" kind="search" />
+					<ToolbarItem placement="bottomBar" kind="fixed-spacer" />
+					<ToolbarItem placement="bottomBar">
+						<Button
+							label="Write"
+							systemImage="square.and.pencil"
+							onPress={props.onCompose}
+							modifiers={[labelStyle('iconOnly')]}
+						/>
+					</ToolbarItem>
+				</>
 			</Toolbar.Content>
 		</Toolbar>
 	)
@@ -298,15 +244,15 @@ function Filter(props: {kind: Kind | ''; onKind: (kind: Kind | '') => void}) {
 	)
 }
 
-// The app's bolt and name in the middle of the bar.
+// The app's bolt and name in the middle of the bar, the icon as tall as the name's capitals and descenders.
 function Title() {
 	const uri = useAtomValue(assetAtom(logo))
 	return (
 		<HStack spacing={8}>
 			{AsyncResult.isSuccess(uri) && (
-				<Image uiImage={uri.value} modifiers={[resizable(), frame({height: 22, width: 22}), cornerRadius(5)]} />
+				<Image uiImage={uri.value} modifiers={[resizable(), frame({height: 18, width: 18}), cornerRadius(4)]} />
 			)}
-			<Text modifiers={[mono('headline', 16), foregroundStyle(colors.foreground)]}>stash</Text>
+			<Text modifiers={[mono('headline', 17), foregroundStyle(colors.foreground)]}>stash</Text>
 		</HStack>
 	)
 }
@@ -376,11 +322,8 @@ function Row(props: {
 	onRemove: (id: Note['id']) => void
 	// Called when the row appears; the last mounted row mounts the next page.
 	onAppear: () => void
-	onSelect: (id: Note['id']) => void
-	selecting: boolean
 }) {
 	const note = props.note
-	// No button around the row: a button would take the two-finger drag that starts selecting.
 	const content = (
 		<HStack
 			alignment="top"
@@ -389,7 +332,7 @@ function Row(props: {
 				fullSeparator,
 				contentShape(shapes.rectangle()),
 				onAppear(props.onAppear),
-				...(props.selecting ? [] : [onTapGesture(() => props.onOpen(note.id))])
+				onTapGesture(() => props.onOpen(note.id))
 			]}
 		>
 			<Preview note={note} />
@@ -430,21 +373,17 @@ function Row(props: {
 					{Option.match(Option.fromNullishOr(note.url), {
 						onNone: () => undefined,
 						onSome: url => (
-							<>
-								<Button
-									label={pipe(
-										kinds,
-										Array.findFirst(entry => entry.kind === kindOf(note) && entry.kind !== 'web'),
-										Option.match({onNone: () => 'Open Link', onSome: entry => `Open in ${entry.label}`})
-									)}
-									systemImage="arrow.up.right"
-									onPress={() => Linking.openURL(url)}
-								/>
-								<ShareLink item={url} />
-							</>
+							<Button
+								label={pipe(
+									kinds,
+									Array.findFirst(entry => entry.kind === kindOf(note) && entry.kind !== 'web'),
+									Option.match({onNone: () => 'Open Link', onSome: entry => `Open in ${entry.label}`})
+								)}
+								systemImage="arrow.up.right"
+								onPress={() => Linking.openURL(url)}
+							/>
 						)
 					})}
-					<Button label="Select" systemImage="checkmark.circle" onPress={() => props.onSelect(note.id)} />
 					<Button label="Delete" systemImage="trash" role="destructive" onPress={() => props.onRemove(note.id)} />
 				</ContextMenu.Items>
 			</ContextMenu>

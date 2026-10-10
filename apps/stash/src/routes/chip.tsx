@@ -12,8 +12,8 @@ import {
 
 import {colors, mono} from '@deslop/components/mobile/theme'
 
-// A capsule like the category chips of iOS Mail: gray when off, filled with the accent when on. A chip with a symbol
-// shows only the symbol while off.
+// A capsule like the category chips of iOS Mail: gray when off, filled with the accent when on. Every chip keeps its
+// label, so selecting one never shifts the row.
 export function Chip(props: {
 	active: boolean
 	label: string
@@ -31,7 +31,7 @@ export function Chip(props: {
 				controlSize('regular'),
 				tint(props.active ? colors.primary : colors.foreground),
 				foregroundStyle(props.active ? colors.primaryForeground : colors.foreground),
-				labelStyle(props.systemImage !== undefined && !props.active ? 'iconOnly' : 'titleAndIcon'),
+				labelStyle('titleAndIcon'),
 				mono('caption', 13),
 				lineLimit(1),
 				fixedSize()

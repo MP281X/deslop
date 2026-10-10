@@ -33,7 +33,7 @@ index 35e91fc87448e062bc43cec99c3e82a8b2b517b5..1e861667c375d7db6c8dd2c0c6d71b30
  }
  /**
 diff --git a/build/swift-ui/Toolbar/index.d.ts b/build/swift-ui/Toolbar/index.d.ts
-index aeb1191459d01444aadc4ccbc78d77592347a02b..00c2fd5c1a8bb2532258d881927fedeae1a8c293 100644
+index aeb1191459d01444aadc4ccbc78d77592347a02b..8194b0bf8ea9005d9f5f193b166a24ca5e021950 100644
 --- a/build/swift-ui/Toolbar/index.d.ts
 +++ b/build/swift-ui/Toolbar/index.d.ts
 @@ -37,10 +37,16 @@ export interface ToolbarItemProps {
@@ -41,11 +41,11 @@ index aeb1191459d01444aadc4ccbc78d77592347a02b..00c2fd5c1a8bb2532258d881927fedea
       */
      visibilityPriority?: ToolbarItemVisibilityPriority;
 +    /**
-+     * `search` places the view's search field, as SwiftUI's `DefaultToolbarItem(kind: .search)`; `spacer` adds a flexible
++     * `search` places the view's search field, as SwiftUI's `DefaultToolbarItem(kind: .search)`; `spacer` adds a flexible and `fixed-spacer` a fixed
 +     * `ToolbarSpacer`. Both ignore children and need iOS 26.
 +     * @default 'item'
 +     */
-+    kind?: 'item' | 'search' | 'spacer';
++    kind?: 'item' | 'search' | 'spacer' | 'fixed-spacer';
      /**
       * The content of the item.
       */
@@ -139,7 +139,7 @@ index bb93701e0b8b3e92d0e57490eedd8e0e5048ff7f..1b07c7d7c231196e616fbc44b5248bef
        List {
          Children()
 diff --git a/ios/ToolbarView.swift b/ios/ToolbarView.swift
-index 87f882bc9b56391b96c33a990bb78e6fe6da8bf7..e1ed7727854e10d55679f790e21cbe01dc607557 100644
+index 87f882bc9b56391b96c33a990bb78e6fe6da8bf7..0b253eae5e356f9ed234fb8b67242c30352a4424 100644
 --- a/ios/ToolbarView.swift
 +++ b/ios/ToolbarView.swift
 @@ -15,7 +15,9 @@ private struct ToolbarContentView: View {
@@ -153,7 +153,7 @@ index 87f882bc9b56391b96c33a990bb78e6fe6da8bf7..e1ed7727854e10d55679f790e21cbe01
          let childView: any View = child.childView
  
          guard let slot = child.childView as? SlotView, slot.props.name == "item" else {
-@@ -37,7 +39,18 @@ private struct ToolbarItemLayer: View {
+@@ -37,7 +39,22 @@ private struct ToolbarItemLayer: View {
    let content: AnyView
  
    var body: some View {
@@ -166,6 +166,10 @@ index 87f882bc9b56391b96c33a990bb78e6fe6da8bf7..e1ed7727854e10d55679f790e21cbe01
 +    } else if #available(iOS 26.0, macOS 26.0, tvOS 26.0, visionOS 26.0, *), kind == "spacer" {
 +      base.toolbar {
 +        ToolbarSpacer(.flexible, placement: placement(from: props))
++      }
++    } else if #available(iOS 26.0, macOS 26.0, tvOS 26.0, visionOS 26.0, *), kind == "fixed-spacer" {
++      base.toolbar {
++        ToolbarSpacer(.fixed, placement: placement(from: props))
 +      }
 +    } else {
 +      placed(content, on: base, placement: placement(from: props), visibilityPriority: visibilityPriority(from: props))
@@ -218,7 +222,7 @@ index a4ebca663b0b1cda3ca92420dd956a012c928567..6855bd6cf38228cde542104c004342fb
    };
  
 diff --git a/src/swift-ui/Toolbar/index.tsx b/src/swift-ui/Toolbar/index.tsx
-index 51956878d1d4f7f5fed879f8e3ffee2080a556c0..c0b801ea5e669cd2b995f21266e2e5b77d715e0f 100644
+index 51956878d1d4f7f5fed879f8e3ffee2080a556c0..386582eb690073255224cbf33c09611372f0f18a 100644
 --- a/src/swift-ui/Toolbar/index.tsx
 +++ b/src/swift-ui/Toolbar/index.tsx
 @@ -61,10 +61,16 @@ export interface ToolbarItemProps {
@@ -226,11 +230,11 @@ index 51956878d1d4f7f5fed879f8e3ffee2080a556c0..c0b801ea5e669cd2b995f21266e2e5b7
     */
    visibilityPriority?: ToolbarItemVisibilityPriority;
 +  /**
-+   * `search` places the view's search field, as SwiftUI's `DefaultToolbarItem(kind: .search)`; `spacer` adds a flexible
++   * `search` places the view's search field, as SwiftUI's `DefaultToolbarItem(kind: .search)`; `spacer` adds a flexible and `fixed-spacer` a fixed
 +   * `ToolbarSpacer`. Both ignore children and need iOS 26.
 +   * @default 'item'
 +   */
-+  kind?: 'item' | 'search' | 'spacer';
++  kind?: 'item' | 'search' | 'spacer' | 'fixed-spacer';
    /**
     * The content of the item.
     */

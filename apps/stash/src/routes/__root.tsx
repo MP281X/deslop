@@ -45,7 +45,8 @@ export function RootRoute() {
 			<NavigationStack
 				path={path}
 				onPathChange={setPath}
-				modifiers={[tint(colors.primary), background(colors.background)]}
+				// Controls and menus take the text color, as in Apple's own apps; the accent marks only the selected tag.
+				modifiers={[tint(colors.foreground), background(colors.background)]}
 			>
 				<ErrorBoundary
 					onReset={refreshPending}
@@ -83,7 +84,7 @@ export function RootRoute() {
 						{id === 'compose' ? (
 							<ComposeRoute onDone={() => setPath([])} />
 						) : (
-							<NoteRoute id={id} onClose={() => setPath([])} onOpen={next => setPath([next])} onTag={showTag} />
+							<NoteRoute id={id} onClose={() => setPath([])} onTag={showTag} />
 						)}
 					</NavigationDestination>
 				))}
