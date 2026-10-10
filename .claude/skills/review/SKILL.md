@@ -1,20 +1,23 @@
 ---
 name: review
-description: Read-only reviews of code, cleanup, directions and published pull request bodies. Use when the user asks for a review, an audit or a critique, or when a brief names one of these procedures.
+description: Reviews of code, cleanup, directions, agent instructions and published pull request bodies. Use when the user asks for a review, an audit or a critique, or when a brief names one of these procedures.
 ---
 
 # Review
 
-Assume the work is wrong and prove where. Settle each suspicion yourself with a read-only inline probe, and never ask the author to try it; the author runs checks and test suites. Reply in at most 40 lines, most consequential first. Group related findings rather than drop any, and never move results into `<details>` or a file.
+Assume the work is wrong and prove where. Settle each suspicion yourself with a read-only inline probe against the real code, data, installed files or sessions, and never ask the author to try it; the author runs checks and test suites. Reply in at most 40 lines, most consequential first. Group related findings rather than drop any, and never move results into `<details>` or a file.
 
-Code reviews, cleanup audits and body readers run GPT-6.1 Sol at high effort on the Standard service tier, because Codex goes deeper and argues harder. Critiques run Opus 5.5 at high effort. A child follows only its procedure, works read-only and never delegates.
+A child only reports. When the user asks for a review of their own code or configuration, the primary reports, then follows workflow to fix every confirmed finding in the same thread. A review of someone else's pull request only reports.
+
+Code reviews, cleanup audits and body readers run GPT-6.1 Sol at high effort on the Standard service tier, because Codex goes deeper and argues harder. Critiques and instruction reviews run Opus 5.5 at high effort.
 
 ## Code review
 
 - **Depth.** Read every hand-written changed line. For generated output, review the generator change and a representative subset, such as one package per source format. Trace each contract through its real consumers, failure paths, concurrency and resource ownership against the merge base. Try the inputs, orderings and failures that the author's tests miss. When the layer refactors a whole touched file, list each behavior the file had at the merge base and prove that each one still holds, apart from the planned change.
 - **Findings.** Report broken behavior or contracts that input from a real caller can reach. Report violations of engineering, design or `CODING_STANDARDS.md` in changed lines, and in every line of a touched file when the repository refactors touched files completely, as Dual does. Skip what lint enforces outside legacy lists, and propose no restyling the change does not otherwise need.
 - **Later rounds.** Review only the hunks not yet covered, the fixes since the reviewed commit and their consumers.
-- **Not findings.** Taste without a rule, wording preferences, hypothetical inputs and changes the branch did not make are not findings. Code that handles input which engineering and lint never allow is a cleanup finding, not a defect.
+- **Beyond the diff.** A contradiction between the change and an unchanged file, a stale reference the change leaves behind, and a false assumption the change rests on are findings of this change.
+- **Not findings.** Taste without a rule, wording preferences, hypothetical inputs and defects the branch neither made nor relies on are not findings. Code that handles input which engineering and lint never allow is a cleanup finding, not a defect.
 - **Probes.** Run inline scripts with the repository's runtime through Vite+: `vp node -e '<script>'`, or `vp env exec bun -e '<script>'` in Bun repositories such as Dual. Never start the app or a test suite; when a probe cannot load TypeScript, report that limit.
 
 Return the findings ranked by consequence, or "Clean" with the scope you covered. Each finding gives the path and line, the reaching input, the actual and required outcome, the consequence, the probe that showed it and the smallest fix.
@@ -33,6 +36,14 @@ Read every hand-written hunk; a sample is not an audit. Judge generated output t
 ## Critique
 
 Challenge the outcome, the taste and the attempts so far, and do not defer to the author. Compare different mechanisms, including a smaller one. Test the strongest counterexample and the weakest assumption. Prefer a reversible combination when compatible strengths combine. Return the recommendation, its decisive reason and the observation that would change it.
+
+## Instruction review
+
+Review agent instructions and configuration as one system, not only the changed lines: both harness prompts, every skill and reference, the settings, the decisions table and the installed copies on each running worker.
+
+- **Depth.** Read every file whole. Check each rule against the harness and T3 behavior it assumes, in their source or a real session, and against what the machines hold.
+- **Findings.** Report contradictions between files, a rule in two places, a rule one harness gets and the other lacks, rules no agent can act on, stale names, paths and models, breaks of the pair prompt's Language rules, and eval claims or decisions without the evidence they cite.
+- **Return** the findings ranked by consequence, each with the path and line, the probe that showed it and the smallest change.
 
 ## Body reader
 

@@ -1,0 +1,75 @@
+# Commands agents never run. Codex matches exact leading tokens, so these get through and only the pair prompt forbids them:
+# `git -C <dir> push`, `git push origin <branch>:main`, an API call with the method after the endpoint,
+# `glab mr update --ready` and GraphQL mutations through `gh api graphql`.
+# Codex checks each rule's examples when it loads the file.
+
+PROTECTED = [
+    "main", "master", "+main", "+master", ":main", ":master", "main:main", "master:master",
+    "HEAD:main", "HEAD:master", "+HEAD:main", "+HEAD:master",
+    "refs/heads/main", "refs/heads/master", "+refs/heads/main", "+refs/heads/master",
+    "HEAD:refs/heads/main", "HEAD:refs/heads/master", "+HEAD:refs/heads/main", "+HEAD:refs/heads/master",
+]
+PUSH_FLAGS = ["-f", "--force", "--force-with-lease", "--force-if-includes", "-u", "--set-upstream", "--no-verify", "--atomic", "--delete", "-d"]
+WRITE_METHODS = ["POST", "PUT", "PATCH", "DELETE"]
+
+prefix_rule(
+    pattern = ["git", "push", ["--all", "--mirror"]],
+    decision = "forbidden",
+    justification = "Never push every branch; publish only the thread's layers.",
+    match = ["git push --all", "git push --mirror origin"],
+)
+prefix_rule(
+    pattern = ["git", "push", "origin", ["--all", "--mirror"]],
+    decision = "forbidden",
+    justification = "Never push every branch; publish only the thread's layers.",
+    match = ["git push origin --all"],
+)
+prefix_rule(
+    pattern = ["git", "push", "origin", PROTECTED],
+    decision = "forbidden",
+    justification = "Never push to the default branch; open a draft pull request.",
+    match = ["git push origin main", "git push origin HEAD:main"],
+    not_match = ["git push origin t3/topic", "git push origin t3/topic-2-main"],
+)
+prefix_rule(
+    pattern = ["git", "push", PUSH_FLAGS, "origin", PROTECTED],
+    decision = "forbidden",
+    justification = "Never push to the default branch; open a draft pull request.",
+    match = ["git push --force-with-lease origin main", "git push -u origin master"],
+    not_match = ["git push --force-with-lease origin t3/topic"],
+)
+prefix_rule(
+    pattern = ["git", "push", "origin", PUSH_FLAGS, PROTECTED],
+    decision = "forbidden",
+    justification = "Never push to the default branch; open a draft pull request.",
+    match = ["git push origin --delete main"],
+    not_match = ["git push origin --delete t3/topic"],
+)
+prefix_rule(
+    pattern = ["gh", "pr", ["merge", "ready"]],
+    decision = "forbidden",
+    justification = "The user merges and marks drafts ready.",
+    match = ["gh pr merge 12 --squash", "gh pr ready 12"],
+    not_match = ["gh pr view 12", "gh pr create --draft"],
+)
+prefix_rule(
+    pattern = ["glab", "mr", ["merge", "approve"]],
+    decision = "forbidden",
+    justification = "The user merges merge requests.",
+    match = ["glab mr merge 3"],
+    not_match = ["glab mr update 3 --description-file body.md"],
+)
+prefix_rule(
+    pattern = ["gh", "api", ["-X", "--method"], WRITE_METHODS],
+    decision = "forbidden",
+    justification = "Write through the gh commands the workflow names.",
+    match = ["gh api -X PUT repos/owner/name/pulls/1/merge"],
+    not_match = ["gh api repos/owner/name/pulls/1"],
+)
+prefix_rule(
+    pattern = ["glab", "api", ["-X", "--method"], WRITE_METHODS],
+    decision = "forbidden",
+    justification = "Write through the glab commands the workflow names.",
+    match = ["glab api --method PUT projects/1/merge_requests/3/merge"],
+    not_match = ["glab api projects/1/pipelines/2/jobs"],
+)

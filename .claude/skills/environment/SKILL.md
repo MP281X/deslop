@@ -13,7 +13,7 @@ MagicDNS resolves each short name, and `<name>.tailnet-8c4c.ts.net` gives HTTPS 
 
 | Name               | Address          | Role                                                                                                                        |
 | ------------------ | ---------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `desktop`          | `100.97.120.3`   | Home worker for most development, on only when the user turns it on: 24 threads, 30 GB, RTX 5070                            |
+| `desktop`          | `100.97.120.3`   | Home worker for most development and GPU work, on only when the user turns it on                                            |
 | `dev`              | `100.68.201.107` | Always-on worker with a public address: Traefik serves every `*.mp281x.xyz`, VPN, Jaeger; also long or overnight agent work |
 | `macbook-pro`      | `100.115.207.60` | The user's control plane, often asleep; agents never set it up or develop on it                                             |
 | `iphone`           | `100.117.217.10` | The user's phone; a T3 client only                                                                                          |
@@ -39,11 +39,12 @@ Run repository commands from the repository root. Discover inventories and versi
 
 - **Tools.** Vite+ in `~/.vite-plus/bin` supplies `vp` for packages and `vpx` for binaries. Every shell has it on `PATH`, including `ssh <worker> '<command>'`; systemd units need the absolute path. Sudo needs no password, and `gh` and `glab` use existing sign-ins.
 - **Scratch.** Every scratch file goes under `/tmp/<task>/`: logs, command output, captures, eval copies and repository clones. `/tmp` is on disk, empties at boot and drops files unused for 7 days, so keep nothing there that must last.
+- **Git refs.** T3 keeps a checkpoint commit per turn under `refs/t3/`, which more than doubles the commits that `--all` walks. Search history with `--branches --remotes`, or add `--exclude='refs/t3/*'` before `--all`.
 - **Services.** Run services as temporary containers, not host installations. Maintenance owns the Docker binding defaults; preserve unrelated workloads.
 
 ## Previews
 
-- **Build.** Shared previews and browser proof use the production build served through the tailnet HTTPS URL. A development server differs in bundling and network behavior, so it proves only iteration.
+- **Build.** Release proof uses the production build served through the tailnet HTTPS URL. A development server differs in bundling and network behavior, so it proves only iteration. A repository reference names its preview when it has no production one.
 - **Start.** Run the repository's preview command detached, so it survives a T3 restart: `systemd-run --user --unit=<repository>-preview-<worktree> --working-directory=<worktree> <command>`. Bind it to `127.0.0.1` on a free port (`ss -ltn`).
 - **Share.** Expose it with `sudo tailscale serve --bg --https=<port> http://127.0.0.1:<port>`, and get the host from `tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")'`. The first request waits for a certificate. Verify sign-in, assets and API calls through `https://<host>:<port>` from the tailnet before you share it, never a localhost URL.
 - **Public webhooks.** Funnel makes a whole port public, so give the webhook path its own port. Check `sudo tailscale serve status --json`, then pick an unused port among 443, 8443 and 10000. Run `sudo tailscale funnel --bg --https=<funnel port> --set-path <path> http://127.0.0.1:<api port><path>`, and verify that the sign-in path does not answer there. Stop it with `sudo tailscale funnel --https=<funnel port> --set-path <path> off`.

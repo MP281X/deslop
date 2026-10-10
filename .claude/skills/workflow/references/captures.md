@@ -19,8 +19,8 @@ The primary proves each ticket journey in T3's browser on the running preview, t
 
 ```bash
 export HYPERFRAMES_NO_TELEMETRY=1 HYPERFRAMES_BROWSER_PATH=$(ls -d ~/.t3/tools/chrome-headless-shell/linux64/*/chrome-headless-shell | tail -1)
-npx -y hyperframes@0.8.141 check
-npx -y hyperframes@0.8.141 render --quality delivery --output <claim>.mp4
+vpx hyperframes@0.8.141 check
+vpx hyperframes@0.8.141 render --quality delivery --output <claim>.mp4
 ```
 
 - **Locators.** Batch independent reads in one `preview_evaluate`. DOM assertions are not visual proof.
