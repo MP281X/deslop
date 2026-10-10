@@ -113,7 +113,16 @@ export function findNotes(notes: NotesState['notes'], query: string) {
 	return Array.filter(notes, note => {
 		if (!Array.every(tags, tag => Array.contains(note.tags, tag))) return false
 		const haystack = pipe(
-			[note.title, note.summary, note.author, note.text, note.content, note.url ?? '', ...note.tags],
+			[
+				note.title,
+				note.summary,
+				note.author,
+				note.text,
+				note.content,
+				note.transcript ?? '',
+				note.url ?? '',
+				...note.tags
+			],
 			Array.join(' '),
 			String.toLowerCase
 		)

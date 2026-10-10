@@ -37,7 +37,8 @@ const recipe = Sources.of({
 				url: link
 			})
 		),
-	image: () => Effect.succeed({bytes: new Uint8Array([255, 216, 255]), type: 'image/jpeg' as const})
+	image: () => Effect.succeed({bytes: new Uint8Array([255, 216, 255]), type: 'image/jpeg' as const}),
+	transcript: () => Effect.succeedNone
 })
 
 const open = Effect.fnUntraced(function* (options: {
@@ -154,7 +155,8 @@ it.layer(NodeServices.layer)('Notes', test => {
 			const fs = yield* FileSystem.FileSystem
 			const unreachable = Sources.of({
 				extract: () => Effect.fail(NotesError.make({message: 'The link could not be loaded.'})),
-				image: () => Effect.die('No preview without a page')
+				image: () => Effect.die('No preview without a page'),
+				transcript: recipe.transcript
 			})
 			const cases = [
 				{
@@ -249,6 +251,46 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
+	test.effect('keeps what a video says and tags the note with it', () =>
+		Effect.gen(function* () {
+			const seen = yield* Ref.make<Option.Option<string>>(Option.none())
+			const calls = yield* Ref.make(0)
+			const notes = yield* open({
+				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				organizer: Organizer.of({
+					enabled: true,
+					organize: input =>
+						Effect.andThen(Ref.set(seen, Option.fromNullishOr(input.note.transcript)), counting(calls).organize(input))
+				}),
+				sources: Sources.of({...recipe, transcript: () => Effect.succeedSome('[00:01] Soak the lentils overnight.\n')})
+			})
+			yield* notes.capture({id: ids[0], text: 'https://www.tiktok.com/@cook/video/1'})
+			assert.containsSubset(
+				(yield* settled(notes, current => Array.some(current.notes, note => note.status === 'ready'))).notes[0],
+				{transcript: '[00:01] Soak the lentils overnight.\n'}
+			)
+			assert.deepStrictEqual(yield* Ref.get(seen), Option.some('[00:01] Soak the lentils overnight.\n'))
+		})
+	)
+
+	test.effect('tags a bare video link whose only words are its transcript', () =>
+		Effect.gen(function* () {
+			const calls = yield* Ref.make(0)
+			const notes = yield* open({
+				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				organizer: counting(calls),
+				sources: Sources.of({
+					extract: link => Effect.map(recipe.extract(link), extraction => ({...extraction, text: ''})),
+					image: recipe.image,
+					transcript: () => Effect.succeedSome('[00:01] Soak the lentils overnight.\n')
+				})
+			})
+			yield* notes.capture({id: ids[0], text: 'https://www.tiktok.com/@cook/video/1'})
+			yield* settled(notes, current => Array.some(current.notes, note => note.status === 'ready'))
+			assert.strictEqual(yield* Ref.get(calls), 1)
+		})
+	)
+
 	test.effect('joins a new short link to the saved post it leads to, without another AI call', () =>
 		Effect.gen(function* () {
 			const calls = yield* Ref.make(0)
@@ -262,7 +304,8 @@ it.layer(NodeServices.layer)('Notes', test => {
 							...extraction,
 							url: 'https://www.tiktok.com/@cook/video/1'
 						})),
-					image: recipe.image
+					image: recipe.image,
+					transcript: recipe.transcript
 				})
 			})
 			yield* notes.capture({id: ids[0], text: 'https://vm.tiktok.com/AAA/'})
@@ -301,7 +344,8 @@ it.layer(NodeServices.layer)('Notes', test => {
 			// The link is down after the restart, so the run goes on with what the first read fetched.
 			const down = Sources.of({
 				extract: () => Effect.fail(NotesError.make({message: 'The link could not be loaded.'})),
-				image: recipe.image
+				image: recipe.image,
+				transcript: recipe.transcript
 			})
 			const state = yield* settled(yield* open({directory, organizer: counting(calls), sources: down}), current =>
 				Array.some(current.notes, note => note.status === 'ready')
@@ -328,7 +372,8 @@ it.layer(NodeServices.layer)('Notes', test => {
 				organizer: Organizer.of({enabled: false, organize: () => Effect.die('unused')}),
 				sources: Sources.of({
 					extract: recipe.extract,
-					image: link => Effect.andThen(Effect.andThen(downloading.open, release.await), recipe.image(link))
+					image: link => Effect.andThen(Effect.andThen(downloading.open, release.await), recipe.image(link)),
+					transcript: recipe.transcript
 				})
 			})
 			yield* notes.capture({id: ids[0], text: 'https://example.com/soup'})
@@ -348,7 +393,11 @@ it.layer(NodeServices.layer)('Notes', test => {
 			const notes = yield* open({
 				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
 				organizer: Organizer.of({enabled: false, organize: () => Effect.die('unused')}),
-				sources: Sources.of({extract: () => Effect.andThen(release.await, recipe.extract('')), image: recipe.image})
+				sources: Sources.of({
+					extract: () => Effect.andThen(release.await, recipe.extract('')),
+					image: recipe.image,
+					transcript: recipe.transcript
+				})
 			})
 			yield* notes.capture({id: ids[0], text: 'https://example.com/slow'})
 			// Words shared again while the link loads survive the read that finishes afterwards.
