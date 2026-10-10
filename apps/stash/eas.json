@@ -7,18 +7,21 @@
 			"environment": "development",
 			"developmentClient": true,
 			"distribution": "internal",
+			"channel": "development",
 			"env": {"APP_VARIANT": "development"}
 		},
 		"preview": {
 			"extends": "base",
 			"environment": "preview",
 			"distribution": "internal",
+			"channel": "preview",
 			"env": {"APP_VARIANT": "preview"}
 		},
 		"production": {
 			"extends": "base",
 			"environment": "production",
 			"distribution": "store",
+			"channel": "production",
 			"env": {"APP_VARIANT": "production"}
 		}
 	},
