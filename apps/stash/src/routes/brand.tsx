@@ -20,6 +20,26 @@ export function brandOf(note: Note) {
 	)
 }
 
+// The kinds of note the filter menu offers, in its order, with their symbols.
+export const kinds = [
+	{kind: 'tiktok', label: 'TikTok', symbol: 'play.rectangle'},
+	{kind: 'x', label: 'X', symbol: 'xmark'},
+	{kind: 'youtube', label: 'YouTube', symbol: 'play.tv'},
+	{kind: 'web', label: 'Web', symbol: 'globe'},
+	{kind: 'note', label: 'Notes', symbol: 'text.alignleft'},
+	{kind: 'file', label: 'Photos and Videos', symbol: 'photo'}
+] as const
+
+export type Kind = (typeof kinds)[number]['kind']
+
+export function kindOf(note: Note): Kind {
+	if (note.file !== undefined) return 'file'
+	if (note.source === 'TikTok') return 'tiktok'
+	if (note.source === 'X') return 'x'
+	if (note.source === 'Note') return 'note'
+	return Option.isSome(brandOf(note)) ? 'youtube' : 'web'
+}
+
 // The logo for the current appearance; nothing until its file is ready.
 export function Brand(props: {brand: (typeof brands)[keyof typeof brands]; size: number}) {
 	const uri = useAtomValue(assetAtom(useColorScheme() === 'dark' ? props.brand.dark : props.brand.light))

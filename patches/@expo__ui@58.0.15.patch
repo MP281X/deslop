@@ -1,3 +1,37 @@
+diff --git a/build/swift-ui/List/index.d.ts b/build/swift-ui/List/index.d.ts
+index 0f3d4634c3fcfb4361000f4266a9ad5be8aa822b..f966f47d788357a2b923bfc13c891866c747ddb2 100644
+--- a/build/swift-ui/List/index.d.ts
++++ b/build/swift-ui/List/index.d.ts
+@@ -15,6 +15,15 @@ export interface ListProps extends CommonViewModifierProps {
+      * Returns an array of selected item tags.
+      */
+     onSelectionChange?: (selection: (string | number)[]) => void;
++    /**
++     * Whether the list is selecting several rows. Set it to give the list a writable edit mode, so two fingers dragged
++     * down the list start selecting. iOS only.
++     */
++    editing?: boolean;
++    /**
++     * Called when selecting starts or ends, by a two-finger drag or the system.
++     */
++    onEditingChange?: (editing: boolean) => void;
+ }
+ /**
+  * A list component that renders its children using a native SwiftUI `List`.
+diff --git a/build/swift-ui/List/index.js b/build/swift-ui/List/index.js
+index 35e91fc87448e062bc43cec99c3e82a8b2b517b5..1e861667c375d7db6c8dd2c0c6d71b305487c275 100644
+--- a/build/swift-ui/List/index.js
++++ b/build/swift-ui/List/index.js
+@@ -10,7 +10,8 @@ function transformListProps(props) {
+         modifiers,
+         ...modifiers ? createViewModifierEventListener(modifiers) : undefined,
+         ...restProps,
+-        onSelectionChange: ({ nativeEvent: { selection } })=>props?.onSelectionChange?.(selection)
++        onSelectionChange: ({ nativeEvent: { selection } })=>props?.onSelectionChange?.(selection),
++        onEditingChange: ({ nativeEvent: { editing } })=>props?.onEditingChange?.(editing)
+     };
+ }
+ /**
 diff --git a/build/swift-ui/Toolbar/index.d.ts b/build/swift-ui/Toolbar/index.d.ts
 index aeb1191459d01444aadc4ccbc78d77592347a02b..00c2fd5c1a8bb2532258d881927fedeae1a8c293 100644
 --- a/build/swift-ui/Toolbar/index.d.ts
@@ -49,11 +83,77 @@ index 6b1d39173397dae66068978459c640cb256908c5..ac09b5f0f1929d81f4152535c51db957
          },
          children: children
      });
+diff --git a/ios/ListView.swift b/ios/ListView.swift
+index bb93701e0b8b3e92d0e57490eedd8e0e5048ff7f..1b07c7d7c231196e616fbc44b5248bef83c95cf1 100644
+--- a/ios/ListView.swift
++++ b/ios/ListView.swift
+@@ -5,9 +5,40 @@ import SwiftUI
+ 
+ final class ListProps: UIBaseViewProps {
+   @Field var selection: [Either<String, Double>]?
++  @Field var editing: Bool?
+   var onSelectionChange = EventDispatcher()
++  var onEditingChange = EventDispatcher()
+ }
+ 
++#if os(iOS)
++// A writable edit mode for a list with selection: two fingers dragged down the list start selecting, as in Apple's apps,
++// and the JavaScript side can start or end selecting.
++private struct ListEditing: ViewModifier {
++  @ObservedObject var props: ListProps
++  @State private var editMode: EditMode = .inactive
++
++  func body(content: Content) -> some View {
++    if props.editing != nil {
++      content
++        .environment(\.editMode, $editMode)
++        .onAppear {
++          editMode = props.editing == true ? .active : .inactive
++        }
++        .onChange(of: props.editing) { editing in
++          editMode = editing == true ? .active : .inactive
++        }
++        .onChange(of: editMode) { mode in
++          if mode.isEditing != (props.editing == true) {
++            props.onEditingChange(["editing": mode.isEditing])
++          }
++        }
++    } else {
++      content
++    }
++  }
++}
++#endif
++
+ struct ListView: ExpoSwiftUI.View {
+   @ObservedObject var props: ListProps
+   @State private var selection = Set<AnyHashable>()
+@@ -34,6 +65,9 @@ struct ListView: ExpoSwiftUI.View {
+       .onChange(of: selection) { newSelection in
+         handleSelectionChange(selection: newSelection)
+       }
++      #if os(iOS)
++      .modifier(ListEditing(props: props))
++      #endif
+     } else {
+       List {
+         Children()
 diff --git a/ios/ToolbarView.swift b/ios/ToolbarView.swift
-index 87f882bc9b56391b96c33a990bb78e6fe6da8bf7..627e96420ef0943c3c41d8620f376d0d7639bf17 100644
+index 87f882bc9b56391b96c33a990bb78e6fe6da8bf7..e1ed7727854e10d55679f790e21cbe01dc607557 100644
 --- a/ios/ToolbarView.swift
 +++ b/ios/ToolbarView.swift
-@@ -37,7 +37,18 @@ private struct ToolbarItemLayer: View {
+@@ -15,7 +15,9 @@ private struct ToolbarContentView: View {
+     let children = props.children ?? []
+ 
+     if children.contains(where: isItem) {
+-      children.reduce(base) { view, child in
++      // Each item wraps the view in its own toolbar, and SwiftUI shows the outermost first, so the last child wraps
++      // first: items then appear in the order they are written.
++      children.reversed().reduce(base) { view, child in
+         let childView: any View = child.childView
+ 
+         guard let slot = child.childView as? SlotView, slot.props.name == "item" else {
+@@ -37,7 +39,18 @@ private struct ToolbarItemLayer: View {
    let content: AnyView
  
    var body: some View {
@@ -72,6 +172,50 @@ index 87f882bc9b56391b96c33a990bb78e6fe6da8bf7..627e96420ef0943c3c41d8620f376d0d
 +    }
    }
  }
+ 
+diff --git a/src/swift-ui/List/index.tsx b/src/swift-ui/List/index.tsx
+index a4ebca663b0b1cda3ca92420dd956a012c928567..6855bd6cf38228cde542104c004342fb34a20d56 100644
+--- a/src/swift-ui/List/index.tsx
++++ b/src/swift-ui/List/index.tsx
+@@ -19,6 +19,7 @@ function transformListProps(props: Omit<ListProps, 'children'>): Omit<NativeList
+     ...(modifiers ? createViewModifierEventListener(modifiers) : undefined),
+     ...restProps,
+     onSelectionChange: ({ nativeEvent: { selection } }) => props?.onSelectionChange?.(selection),
++    onEditingChange: ({ nativeEvent: { editing } }) => props?.onEditingChange?.(editing),
+   };
+ }
+ 
+@@ -38,6 +39,17 @@ export interface ListProps extends CommonViewModifierProps {
+    * Returns an array of selected item tags.
+    */
+   onSelectionChange?: (selection: (string | number)[]) => void;
++
++  /**
++   * Whether the list is selecting several rows. Set it to give the list a writable edit mode, so two fingers dragged
++   * down the list start selecting. iOS only.
++   */
++  editing?: boolean;
++
++  /**
++   * Called when selecting starts or ends, by a two-finger drag or the system.
++   */
++  onEditingChange?: (editing: boolean) => void;
+ }
+ 
+ /**
+@@ -45,8 +57,11 @@ export interface ListProps extends CommonViewModifierProps {
+  */
+ type SelectItemEvent = ViewEvent<'onSelectionChange', { selection: (string | number)[] }>;
+ 
+-type NativeListProps = Omit<ListProps, 'onSelectionChange'> &
+-  SelectItemEvent & {
++type EditingEvent = ViewEvent<'onEditingChange', { editing: boolean }>;
++
++type NativeListProps = Omit<ListProps, 'onSelectionChange' | 'onEditingChange'> &
++  SelectItemEvent &
++  EditingEvent & {
+     children: React.ReactNode;
+   };
  
 diff --git a/src/swift-ui/Toolbar/index.tsx b/src/swift-ui/Toolbar/index.tsx
 index 51956878d1d4f7f5fed879f8e3ffee2080a556c0..c0b801ea5e669cd2b995f21266e2e5b77d715e0f 100644

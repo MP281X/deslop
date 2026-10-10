@@ -68,5 +68,14 @@
 	},
 	"engines": {
 		"node": ">=26"
+	},
+	"expo": {
+		"autolinking": {
+			"ios": {
+				"buildFromSource": [
+					"ExpoUI"
+				]
+			}
+		}
 	}
 }

@@ -1,6 +1,6 @@
 import {useAtomMount, useAtomRefresh} from '@effect/atom-react'
 
-import {Array, Predicate, String} from 'effect'
+import {Array, Predicate} from 'effect'
 
 import {
 	Button,
@@ -18,6 +18,7 @@ import {ErrorBoundary} from 'react-error-boundary'
 
 import {deliveryAtom, pasteAtom, pendingAtom} from '#lib/utils.ts'
 import {NotesRoute} from '#routes/(home)/index.tsx'
+import type {Kind} from '#routes/brand.tsx'
 import {ComposeRoute} from '#routes/compose.tsx'
 import {NoteRoute} from '#routes/note.tsx'
 import {colors, mono} from '@deslop/components/mobile/theme'
@@ -28,17 +29,14 @@ export function RootRoute() {
 	const refreshPending = useAtomRefresh(pendingAtom)
 	const [path, setPath] = useState<string[]>([])
 	const [search, setSearch] = useState('')
+	const [tag, setTag] = useState('')
+	const [kind, setKind] = useState<Kind | ''>('')
 	const query = useNativeState('')
 
-	// Typing already updates the native field, so only a tapped chip writes it; tapping the active tag clears it.
-	function searchFor(next: string) {
-		query.set(next)
-		setSearch(next)
+	// A tag filters the list apart from the search field, as Mail's categories do; the note page's tags lead back to it.
+	function showTag(name: string) {
+		setTag(name)
 		setPath([])
-	}
-
-	function searchTag(tag: string) {
-		searchFor(String.trim(search) === `#${tag}` ? '' : `#${tag} `)
 	}
 
 	return (
@@ -70,17 +68,19 @@ export function RootRoute() {
 						<NotesRoute
 							query={query}
 							search={search}
-							onClear={() => searchFor('')}
+							tag={tag}
+							kind={kind}
 							onCompose={() => setPath(['compose'])}
+							onKind={setKind}
 							onOpen={id => setPath([id])}
 							onSearch={setSearch}
-							onTag={searchTag}
+							onTag={setTag}
 						/>
 					</Suspense>
 				</ErrorBoundary>
 				{Array.map(path, id => (
 					<NavigationDestination key={id} value={id}>
-						{id === 'compose' ? <ComposeRoute onDone={() => setPath([])} /> : <NoteRoute id={id} onTag={searchTag} />}
+						{id === 'compose' ? <ComposeRoute onDone={() => setPath([])} /> : <NoteRoute id={id} onTag={showTag} />}
 					</NavigationDestination>
 				))}
 			</NavigationStack>

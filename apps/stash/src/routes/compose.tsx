@@ -2,7 +2,7 @@ import {useAtom, useAtomSet} from '@effect/atom-react'
 
 import {String} from 'effect'
 
-import {Button, TextField, Toolbar, ToolbarItem, useNativeState} from '@expo/ui/swift-ui'
+import {Button, HStack, Image, Text, TextField, Toolbar, ToolbarItem, useNativeState} from '@expo/ui/swift-ui'
 import {
 	background,
 	foregroundStyle,
@@ -22,9 +22,7 @@ export function ComposeRoute(props: {onDone: () => void}) {
 	const write = useAtomSet(writeAtom)
 	const text = useNativeState(draft)
 	return (
-		<Toolbar
-			modifiers={[navigationTitle('new note'), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
-		>
+		<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}>
 			<TextField
 				text={text}
 				axis="vertical"
@@ -39,6 +37,12 @@ export function ComposeRoute(props: {onDone: () => void}) {
 				]}
 			/>
 			<Toolbar.Content>
+				<ToolbarItem placement="principal">
+					<HStack spacing={8}>
+						<Image systemName="square.and.pencil" size={15} modifiers={[foregroundStyle(colors.foreground)]} />
+						<Text modifiers={[mono('headline', 15), foregroundStyle(colors.foreground)]}>new note</Text>
+					</HStack>
+				</ToolbarItem>
 				<ToolbarItem placement="topBarTrailing">
 					<Button
 						label="Save"

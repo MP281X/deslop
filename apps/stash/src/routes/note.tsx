@@ -19,6 +19,7 @@ import {
 	buttonStyle,
 	foregroundStyle,
 	frame,
+	lineLimit,
 	labelStyle,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
@@ -31,8 +32,8 @@ import {useState} from 'react'
 import {Linking} from 'react-native'
 
 import {imageAtom, notesAtom} from '#lib/utils.ts'
-import {Brand, brandOf} from '#routes/brand.tsx'
-import {Chip} from '#routes/chip.tsx'
+import {Brand, brandOf, kindOf, kinds} from '#routes/brand.tsx'
+import {Chip, tagColor} from '#routes/chip.tsx'
 import type {Note} from '#services/notes/schema.ts'
 import {colors, mono} from '@deslop/components/mobile/theme'
 
@@ -77,24 +78,17 @@ export function Cover(props: {height: number; note: Note}) {
 
 function Detail(props: {note: Note; onTag: (tag: string) => void}) {
 	const note = props.note
-	// What the server read, folded so the note stays short: the words in the images, the page or post, what the video
-	// says, and the original words of a written note.
+	const kind = Array.findFirst(kinds, entry => entry.kind === kindOf(note))
+	// Folded so the note stays short: what the video says, and the original words of a written note.
 	const folds = pipe(
 		[
-			{
-				label: Option.match(Option.fromNullishOr(note.file), {onNone: () => 'on screen', onSome: () => 'text'}),
-				text: note.screenText ?? ''
-			},
-			{label: 'source', text: note.content},
 			{label: 'transcript', text: note.transcript ?? ''},
 			{label: 'original', text: note.url === null && note.file === undefined ? note.text : ''}
 		],
 		Array.filter(fold => String.isNonEmpty(String.trim(fold.text)))
 	)
 	return (
-		<Toolbar
-			modifiers={[navigationTitle(note.title), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
-		>
+		<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}>
 			<ScrollView modifiers={[background(colors.background)]}>
 				<VStack
 					alignment="leading"
@@ -102,8 +96,11 @@ function Detail(props: {note: Note; onTag: (tag: string) => void}) {
 					modifiers={[padding({all: 16}), frame({alignment: 'leading', maxWidth: Infinity})]}
 				>
 					{note.image !== undefined && <Cover note={note} height={200} />}
+					<Text modifiers={[mono('headline', 18), foregroundStyle(colors.foreground), textSelection(true)]}>
+						{note.title}
+					</Text>
 					{String.isNonEmpty(note.summary) && (
-						<Text modifiers={[mono('body', 14), foregroundStyle(colors.foreground), textSelection(true)]}>
+						<Text modifiers={[mono('body', 14), foregroundStyle(colors.mutedForeground), textSelection(true)]}>
 							{note.summary}
 						</Text>
 					)}
@@ -112,7 +109,7 @@ function Detail(props: {note: Note; onTag: (tag: string) => void}) {
 						<ScrollView axes="horizontal" showsIndicators={false}>
 							<HStack spacing={8}>
 								{Array.map(note.tags, tag => (
-									<Chip key={tag} label={tag} active={false} onPress={() => props.onTag(tag)} />
+									<Chip key={tag} label={tag} active color={tagColor(tag)} onPress={() => props.onTag(tag)} />
 								))}
 							</HStack>
 						</ScrollView>
@@ -133,6 +130,30 @@ function Detail(props: {note: Note; onTag: (tag: string) => void}) {
 					)}
 				</VStack>
 			</ScrollView>
+			<Toolbar.Content>
+				{/* The bar names where the note comes from: the app's logo or a symbol, and the author. */}
+				<ToolbarItem placement="principal">
+					<HStack spacing={8}>
+						{Option.match(brandOf(note), {
+							onNone: () => (
+								<Image
+									systemName={Option.match(kind, {onNone: () => 'globe' as const, onSome: entry => entry.symbol})}
+									size={15}
+									modifiers={[foregroundStyle(colors.foreground)]}
+								/>
+							),
+							onSome: brand => <Brand brand={brand} size={18} />
+						})}
+						<Text modifiers={[mono('headline', 15), foregroundStyle(colors.foreground), lineLimit(1)]}>
+							{String.toLowerCase(
+								String.isNonEmpty(note.author)
+									? note.author
+									: Option.match(kind, {onNone: () => 'web', onSome: entry => entry.label})
+							)}
+						</Text>
+					</HStack>
+				</ToolbarItem>
+			</Toolbar.Content>
 			{/* The link opens from the bar, in its own app when iOS knows one. */}
 			{Option.match(Option.fromNullishOr(note.url), {
 				onNone: () => undefined,
