@@ -80,7 +80,11 @@ export function RootRoute() {
 				</ErrorBoundary>
 				{Array.map(path, id => (
 					<NavigationDestination key={id} value={id}>
-						{id === 'compose' ? <ComposeRoute onDone={() => setPath([])} /> : <NoteRoute id={id} onTag={showTag} />}
+						{id === 'compose' ? (
+							<ComposeRoute onDone={() => setPath([])} />
+						) : (
+							<NoteRoute id={id} onClose={() => setPath([])} onOpen={next => setPath([next])} onTag={showTag} />
+						)}
 					</NavigationDestination>
 				))}
 			</NavigationStack>

@@ -12,16 +12,6 @@ export const colors = {
 	primary: DynamicColorIOS({dark: '#e78a53', light: '#f54900'})
 }
 
-// The theme's five chart colors, amber to burnt orange, each with the text color that reads on it. Tags take one each,
-// as iOS Mail gives each category its own color.
-export const chart = [
-	{fill: '#ffb86a', text: '#111114'},
-	{fill: DynamicColorIOS({dark: '#e78a53', light: '#ff6900'}), text: '#111114'},
-	{fill: '#f54900', text: '#ffffff'},
-	{fill: '#ca3500', text: '#ffffff'},
-	{fill: '#9f2d00', text: '#ffffff'}
-]
-
 // JetBrains Mono at a base size that scales with Dynamic Type like the text style it stands in for. The app registers
 // the font files, because a package cannot add fonts to an app bundle.
 export function mono(textStyle: 'body' | 'caption' | 'footnote' | 'headline' | 'subheadline', size: number) {

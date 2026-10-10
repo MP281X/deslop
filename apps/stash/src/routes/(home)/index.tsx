@@ -56,7 +56,7 @@ import {Linking} from 'react-native'
 import {assetAtom, imageAtom, notesAtom, pendingAtom, removeAtom} from '#lib/utils.ts'
 import {Brand, brandOf, kindOf, kinds} from '#routes/brand.tsx'
 import type {Kind} from '#routes/brand.tsx'
-import {Chip, tagColor} from '#routes/chip.tsx'
+import {Chip} from '#routes/chip.tsx'
 import logo from '#routes/logo.png'
 import {findNotes, tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note} from '#services/notes/schema.ts'
@@ -74,7 +74,7 @@ const fullSeparator = alignmentGuide('listRowSeparatorLeading', 0)
 // Every list thumbnail has this size, so rows line up whatever the shape of the preview.
 const thumbnail = 56
 
-// The list follows iOS Mail: colored tag chips that filter apart from search, the filter menu, search field and write
+// The list follows iOS Mail: tag chips that filter apart from search, the filter menu, search field and write
 // button at the bottom, the system menu on a long press, and two fingers dragged down the list to select notes.
 export function NotesRoute(props: {
 	kind: Kind | ''
@@ -134,19 +134,12 @@ export function NotesRoute(props: {
 					]}
 				>
 					<HStack spacing={8}>
-						<Chip
-							label="all"
-							systemImage="tray"
-							active={String.isEmpty(props.tag)}
-							color={{fill: colors.foreground, text: colors.background}}
-							onPress={() => props.onTag('')}
-						/>
+						<Chip label="all" systemImage="tray" active={String.isEmpty(props.tag)} onPress={() => props.onTag('')} />
 						{Array.map(tags, name => (
 							<Chip
 								key={name}
 								label={name}
 								active={props.tag === name}
-								color={tagColor(name)}
 								onPress={() => props.onTag(props.tag === name ? '' : name)}
 							/>
 						))}
