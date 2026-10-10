@@ -1,14 +1,18 @@
 # Dual
 
-**Commands.** Turbo caches package checks; fixes are never cached. The test runner owns its fingerprints, cache and continuation, so add no outer Vite+ cache around service-dependent tests.
+**Commands.** Run these from the root. Checks, builds, tests and preview builds share Turbo cache entries, so a repeated root run reruns only what changed. `fix` fixes the branch's changes and untracked files, not the whole repository. `check` prints failing task logs in oxlint's agent format and hides legacy warnings. Add no outer Vite+ cache around service-dependent tests.
 
 ```bash
-vp run --workspace-root check
-vp run --workspace-root --no-cache fix
-vp run --workspace-root test
+bun run check
+bun run fix
+bun run test
 ```
 
-**VPN.** GitLab requires the Datapizza VPN, which runs only on dev; other machines use dev's route. Check reachability and reconnect when it expires; on `desktop`, run the reconnect through `ssh mp281x@dev`. Show the returned sign-in URL as a full URL under **Needs you**, directly after the result, then check again.
+- **Removed scripts.** `check:prepare`, the package `fix` and barrel `codegen` scripts, `dev:*`, `migrations:cleanup` and `test:watch` are gone. Edit public `index.ts` exports by hand, run Vitest in a package for watch mode, and use the preview, whose startup runs migrations.
+- **Generated.** Root `codegen` generates icons and agent documentation, and `bun --filter @dual/docs generate` builds the Fumadocs output. `dual openapi-plugin` writes `turbo.json` for internal plugins.
+- **Tests.** Root `test` includes workspace tests, release tests and candidate packing; server tests need `.env.test`. Run consumer acceptance and live release tests separately when their contracts change.
+
+**VPN.** GitLab requires the Datapizza VPN, which runs only on dev; other machines use dev's route. Check reachability and reconnect when it expires; on `desktop`, run the reconnect through `ssh mp281x@dev`. Give the returned sign-in URL as a guide under **Needs you**, then check again.
 
 ```bash
 curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
@@ -21,9 +25,9 @@ curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
 **Preview.** The preview runs development watchers, so it serves iteration only; Dual has no production preview command for release proof yet. `vp run --workspace-root preview` creates an isolated Alchemy stage derived from the checkout path. The stage holds the ports, database, sandbox, migrations, administrator and the app, API and worker watchers. Two threads in one worktree share its stage.
 
 - **Sign-in.** Sign in as `admin@dual.local` with `preview-password`. AI journeys need provider connections.
-- **Exposure.** The printed `.localhost` URL is machine-local, and Vite answers 403 to the tailnet host. Alchemy builds the app's environment, so `systemd-run --setenv` never reaches Vite. For a phone preview, edit `infra/saas/local.run.ts` without committing it: set `url` to `https://<host>:${environment.webPort}` and add `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: "<host>"` to `env`. Restart the preview, share the app port per environment's previews, and revert the edit before the push.
+- **Exposure.** Start the detached preview with `systemd-run --setenv=DUAL_PREVIEW_HOST=<tailnet host>`, a host name without scheme or port. It sets the app origin, sign-in URLs, the public server URL and Vite's allowed host. Share the printed app port on the same port per environment's previews. Turbo restarts a watcher only when its build inputs change.
 - **Lifetime.** Ctrl-C stops the preview and keeps its data. When every owner is settled and the data is disposable, `vp run --workspace-root preview:destroy` removes only that stage. Run it before you move or delete the checkout or its Alchemy state.
-- **Live webhooks.** Funnel the API port's `/api/webhooks` path per environment's previews. `infra/saas/local.run.ts` sets `SERVER_PUBLIC_URL` to the local URL, so self-registering triggers need a temporary local override that is reverted before the push.
+- **Live webhooks.** Funnel the API port's `/api/webhooks` path per environment's previews. `SERVER_PUBLIC_URL` follows the preview's app URL, so a separate Funnel port needs a temporary callback URL override that is reverted before the push.
 - **AI cost.** Every Architect run, chat turn and AI step in a preview uses `gpt-6-luna` at low reasoning effort.
 - **Accounts.** Jira stays read-only per [Jira](#jira), and the user does any Jira configuration from a guide. Writes go only to GitHub `MP281X`, GitLab `matteopaludgnach` and the user's Discord test channel, whose messages can stay. Give the user a numbered guide to remove any Jira configuration they added for a test. The saved GitHub and Discord preview tokens are read-only; write tokens come from `gh auth token` and the `glab` configuration.
 - **Never.** Never use the shared `init` or `dev` commands as a preview.
@@ -37,7 +41,7 @@ Jira is Dual's only issue tracker: project `DOS`, board 1053, on `datapizza.atla
 - **Assigned.** A ticket assigned to the user is work they just started. It is the reference for the task: read it whenever its key, such as `DOS-289`, appears in a request, branch or commit, and quote the requirements you use.
 - **Unassigned.** Unassigned tickets form a shared pool that anyone on the team can pick from. Consider only those in the `To Do` status; skip `Backlog`, `Doing` and every other status.
 - **Priority.** `P1` is the highest priority and `P4` the lowest. A higher priority must be done sooner.
-- **Picking.** When the user asks what to work on, read every unassigned `To Do` ticket and rank them by priority, size and fit with the code. Areas and Initiatives group work; rank the Epics, Tasks, Stories and Bugs inside them. Decide with the user, then start workflow's Agree with the chosen ticket.
+- **Picking.** When the user asks what to work on, read every unassigned `To Do` ticket and rank them by priority, size and fit with the code. Areas and Initiatives group work; rank the Epics, Tasks, Stories and Bugs inside them. Decide with the user, then start workflow's Prepare with the chosen ticket.
 - **Output.** Plain `view` prints the description as text, while `--json` returns Atlassian's document format. Searches read best as `--csv`.
 
 ```bash
@@ -53,26 +57,26 @@ acli jira workitem comment list --key DOS-289
 
 **Frontend state.** Dual has no global atom runtime: each feature defines its own `Atom.runtime(layer)` and mounts a `RegistryProvider`. A task that changes a React Query hook or an Effect runner in React code moves it to an atom. `@effect/atom-react` declares `scheduler` below 0.28, so check its peer warning against the root override when you add it.
 
-**CI.** The GitLab quality job runs a frozen install, the Effect-tsgo patch, then check, test and documentation. Read `docs/ci.md` for failures and `docs/releasing.md` for releases; a new push cancels interruptible pipelines. Check each package's Effect version in the lockfile before crossing adapter boundaries.
+**CI.** The GitLab quality job runs a frozen install, the Effect-tsgo patch, then check in one Turbo graph, test and documentation. Read `docs/ci.md` for failures and `docs/releasing.md` for releases; a new push cancels interruptible pipelines. Check each package's Effect version in the lockfile before crossing adapter boundaries.
 
 **Tracing.** The SaaS app optionally exports to PostHog, not Jaeger; see its Observability configuration.
 
 ## Coding standards
 
-The `@deslop/coding-standards` package comes from deslop. Each package pins its own version, and each `oxlint.config.ts` keeps a legacy list: files whose `legacyRules` drop to warnings. Every file outside the legacy list and `ignorePatterns` passes the full preset.
+The `@deslop/coding-standards` package comes from deslop. Each workspace and infrastructure package pins its own version. Its `oxlint.config.ts` keeps a legacy list of files whose `legacyRules` drop to warnings, package-wide warning rules and rule disables; every other file passes the package's configured rules.
 
-- **Skills.** Run `vpx @deslop/coding-standards@latest` before code work. It refreshes the engineering, design and testing copies and changes no manifest or lockfile.
-- **Bump.** When a task changes code, the stack's cleanup layer runs `bun add --dev --exact @deslop/coding-standards@latest` in every package directory, then the root fix.
-- **New rules.** A bump can add rules. When a new rule fails a listed file, add the rule to `legacyRules`. Fix every other failure in the cleanup layer, and remove the suppressions it no longer needs.
-- **Touched files.** Each file outside `ignorePatterns` that the task adds or changes leaves the legacy list and passes the full preset. Refactor it completely, not only the changed lines: its data code moves to Effect Atom and its casts and suppressions go, unless the engineering skill allows one with its reason. Before each push, the command below must print nothing:
+- **Skills.** Run `vpx @deslop/coding-standards@latest` before code work. It refreshes the engineering, design and testing copies in `.agents/skills` for Codex and `.claude/skills` for Claude, and changes no manifest or lockfile.
+- **Bump.** When a task changes code, the stack's cleanup layer runs `bun add --dev --exact @deslop/coding-standards@latest` in every package directory, including infrastructure packages, the root, the scaffold baseline and consumer fixtures, then the root fix.
+- **New rules.** A bump can add rules. When a new rule fails, turn it off in that package's `oxlint.config.ts`, never with inline disables; this overrides engineering's Disables rule. Remove obsolete rule entries and the suppressions the bump no longer needs.
+- **Touched files.** Each hand-written file that the task adds or changes leaves the legacy list and the scoped React Query exemptions, and passes the package's configured rules. Refactor it completely, not only the changed lines: its data code moves to Effect Atom and its casts and suppressions go, unless the engineering skill allows one with its reason. Before each push, the command below must print nothing:
 
 ```bash
-for p in packages/*/; do git diff --name-only --relative="$p" origin/master...HEAD | while read -r f; do grep -qF "\"$f\"" "$p/oxlint.config.ts" && echo "$p$f"; done; done
+for p in packages/*/ infra/*/; do [ -f "$p/oxlint.config.ts" ] || continue; git diff --name-only --relative="$p" origin/master...HEAD | while read -r f; do grep -qF "\"$f\"" "$p/oxlint.config.ts" && echo "$p$f"; done; done
 ```
 
-- **Prune.** After the change, run the command below in the package directory. Remove every listed file it does not print. The list only shrinks: never add a file to it.
+- **Prune.** After the change, run the command below in the package directory, without `--quiet`. Remove every listed file it does not print, and an import-ban exemption only after its imports are gone. The list only shrinks: never add a file to it.
 - **No blind refactors.** Never rewrite a listed file the task does not otherwise change, only to satisfy the rules.
-- **Never linted.** Generated code, build output and shadcn primitives stay in `ignorePatterns`, never in the legacy list. Never lint or refactor a shadcn primitive, even one the task edits.
+- **Never linted.** Generated code and build output get no lint rules or formatting, and shadcn primitives stay type-checked under an all-rules-off override; none of them goes in the legacy list. Never lint or refactor a shadcn primitive, even one the task edits. The hand-written color picker, data tables and file input stay linted.
 
 ```bash
 "$(git rev-parse --show-toplevel)"/node_modules/.bin/oxlint --format json . | jq -r '[.diagnostics[].filename] | unique[]'
