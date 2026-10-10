@@ -5,7 +5,7 @@ Analyze what the speaker said, not a summary of it, then read the sources the sp
 ## Extract
 
 ```bash
-vpx @deslop/media@latest '<url>' /tmp/media/<name>
+vpx @deslop/stash@latest media '<url>' /tmp/media/<name>
 ```
 
 The command writes `info.md` and a timestamped `transcript.txt`. Pass `--language <code>` when the video does not declare its spoken language, such as a non-English X video. Run long transcriptions in the background. A video without an audio track fails transcription; then read the post text in `info.md` and look at the video frames.
@@ -17,7 +17,7 @@ Use a Mullvad exit node for this extraction only, because it routes the whole ho
 ```bash
 trap 'sudo tailscale set --exit-node=' EXIT
 sudo tailscale set --exit-node=<node>.mullvad.ts.net --exit-node-allow-lan-access=true
-vpx @deslop/media@latest '<url>' /tmp/media/<name>
+vpx @deslop/stash@latest media '<url>' /tmp/media/<name>
 ```
 
 If every node fails, use the speaker's own post of the talk, a published transcript or the repositories discussed. Label each source by where it comes from, and mark a third-party transcript as secondary.

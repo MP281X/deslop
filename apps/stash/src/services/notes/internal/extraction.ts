@@ -10,10 +10,14 @@ import {HttpClient} from 'effect/http'
 import type {HttpClientResponse} from 'effect/http'
 import {NetAddress} from 'effect/net'
 
+import {Media} from '#services/media/service.ts'
 import {captureUrl, plainText, sourceFor} from '#services/notes/lib/utils.ts'
 import {Extraction, ImageType, NotesError} from '#services/notes/schema.ts'
 
 const shortHosts = ['vm.tiktok.com', 'vt.tiktok.com', 't.co']
+
+// Websites whose links are videos; TikTok and X links can be videos too.
+const videoHosts = /(?:^|\.)(?:youtube\.com|youtu\.be)$/u
 
 type OEmbed = typeof OEmbed.Type
 const OEmbed = Schema.Struct({
@@ -200,91 +204,110 @@ export class Sources extends Context.Service<
 	{
 		readonly extract: (url: string) => Effect.Effect<Extraction, NotesError>
 		readonly image: (url: string) => Effect.Effect<{bytes: Uint8Array; type: ImageType}, NotesError>
+		// What a TikTok, X or YouTube video says; nothing for other links or when the video cannot be read.
+		readonly transcript: (url: string) => Effect.Effect<Option.Option<string>>
 	}
 >()('@deslop/stash/services/notes/internal/extraction/Sources') {
-	static readonly layer = Layer.succeed(
+	static readonly layer = Layer.effect(
 		this,
-		this.of({
-			extract: Effect.fn('Sources.extract')(
-				function* (link) {
-					const url = yield* resolve(new URL(link), 0)
-					return yield* pipe(
-						Match.value(sourceFor(url.href)),
-						Match.when('TikTok', () =>
-							Effect.map(oEmbed(new URL(`https://www.tiktok.com/oembed?url=${encodeURIComponent(url.href)}`)), embed =>
-								Extraction.make({
-									author: embed.author_name ?? '',
-									image: Option.fromNullishOr(embed.thumbnail_url),
-									text: plainText(embed.title ?? ''),
-									title: Option.match(Option.fromNullishOr(embed.author_name), {
-										onNone: () => 'TikTok video',
-										onSome: author => `${author} on TikTok`
-									}),
-									url: canonical(url)
+		Effect.gen(function* () {
+			const media = yield* Media
+			return Sources.of({
+				extract: Effect.fn('Sources.extract')(
+					function* (link) {
+						const url = yield* resolve(new URL(link), 0)
+						return yield* pipe(
+							Match.value(sourceFor(url.href)),
+							Match.when('TikTok', () =>
+								Effect.map(
+									oEmbed(new URL(`https://www.tiktok.com/oembed?url=${encodeURIComponent(url.href)}`)),
+									embed =>
+										Extraction.make({
+											author: embed.author_name ?? '',
+											image: Option.fromNullishOr(embed.thumbnail_url),
+											text: plainText(embed.title ?? ''),
+											title: Option.match(Option.fromNullishOr(embed.author_name), {
+												onNone: () => 'TikTok video',
+												onSome: author => `${author} on TikTok`
+											}),
+											url: canonical(url)
+										})
+								)
+							),
+							Match.when('X', () =>
+								Effect.map(
+									oEmbed(
+										new URL(
+											`https://publish.x.com/oembed?omit_script=true&dnt=true&url=${encodeURIComponent(url.href)}`
+										)
+									),
+									embed =>
+										Extraction.make({
+											author: embed.author_name ?? '',
+											image: Option.none(),
+											text: plainText(
+												cheerio
+													.load(embed.html ?? '')('blockquote p')
+													.text()
+											),
+											title: Option.match(Option.fromNullishOr(embed.author_name), {
+												onNone: () => 'Post on X',
+												onSome: author => `${author} on X`
+											}),
+											url: canonical(url)
+										})
+								)
+							),
+							Match.orElse(() =>
+								Effect.gen(function* () {
+									const page = yield* follow(url, readText, 0)
+									if (!String.includes('text/html')(String.toLowerCase(page.type))) {
+										return yield* NotesError.make({message: 'Only web pages can be read.'})
+									}
+									return website(page.body, page.url)
 								})
 							)
-						),
-						Match.when('X', () =>
-							Effect.map(
-								oEmbed(
-									new URL(`https://publish.x.com/oembed?omit_script=true&dnt=true&url=${encodeURIComponent(url.href)}`)
-								),
-								embed =>
-									Extraction.make({
-										author: embed.author_name ?? '',
-										image: Option.none(),
-										text: plainText(
-											cheerio
-												.load(embed.html ?? '')('blockquote p')
-												.text()
-										),
-										title: Option.match(Option.fromNullishOr(embed.author_name), {
-											onNone: () => 'Post on X',
-											onSome: author => `${author} on X`
-										}),
-										url: canonical(url)
-									})
-							)
-						),
-						Match.orElse(() =>
-							Effect.gen(function* () {
-								const page = yield* follow(url, readText, 0)
-								if (!String.includes('text/html')(String.toLowerCase(page.type))) {
-									return yield* NotesError.make({message: 'Only web pages can be read.'})
-								}
-								return website(page.body, page.url)
-							})
 						)
-					)
-				},
-				Effect.timeoutOrElse({
-					duration: '15 seconds',
-					orElse: () => Effect.fail(NotesError.make({message: 'Reading the link took too long.'}))
-				})
-			),
-			image: Effect.fn('Sources.image')(
-				function* (link) {
-					const url = yield* Effect.try({
-						catch: cause => NotesError.make({cause, message: 'The preview image link is invalid.'}),
-						try: () => new URL(link)
+					},
+					Effect.timeoutOrElse({
+						duration: '15 seconds',
+						orElse: () => Effect.fail(NotesError.make({message: 'Reading the link took too long.'}))
 					})
-					const image = yield* follow(url, readBytes, 0)
-					const type = yield* pipe(
-						image.type,
-						String.split(';'),
-						Array.head,
-						Option.map(String.trim),
-						Option.filter(Schema.is(ImageType)),
-						Effect.fromOption,
-						Effect.mapError(() => NotesError.make({message: 'The preview is not a JPEG, PNG, WebP or GIF image.'}))
+				),
+				image: Effect.fn('Sources.image')(
+					function* (link) {
+						const url = yield* Effect.try({
+							catch: cause => NotesError.make({cause, message: 'The preview image link is invalid.'}),
+							try: () => new URL(link)
+						})
+						const image = yield* follow(url, readBytes, 0)
+						const type = yield* pipe(
+							image.type,
+							String.split(';'),
+							Array.head,
+							Option.map(String.trim),
+							Option.filter(Schema.is(ImageType)),
+							Effect.fromOption,
+							Effect.mapError(() => NotesError.make({message: 'The preview is not a JPEG, PNG, WebP or GIF image.'}))
+						)
+						return {bytes: image.body, type}
+					},
+					Effect.timeoutOrElse({
+						duration: '15 seconds',
+						orElse: () => Effect.fail(NotesError.make({message: 'Loading the preview image took too long.'}))
+					})
+				),
+				transcript: Effect.fn('Sources.transcript')(function* (link) {
+					if (sourceFor(link) === 'Website' && !videoHosts.test(new URL(link).hostname)) return Option.none()
+					return yield* pipe(
+						// Audio without captions longer than half an hour would hold every core of dev for many minutes.
+						media.read({language: Option.none(), link, maxWhisperSeconds: Option.some(30 * 60)}),
+						Effect.flatMap(report => report.transcript),
+						Effect.map(Option.map(transcript => transcript.text)),
+						Effect.catch(error => Effect.as(Effect.logWarning('No transcript', error), Option.none()))
 					)
-					return {bytes: image.body, type}
-				},
-				Effect.timeoutOrElse({
-					duration: '15 seconds',
-					orElse: () => Effect.fail(NotesError.make({message: 'Loading the preview image took too long.'}))
 				})
-			)
+			})
 		})
 	)
 }

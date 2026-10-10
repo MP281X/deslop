@@ -1,10 +1,10 @@
 # Tools
 
-Each published tool is a package under `tools/` named `@deslop/<name>`. The `create-*` generators are private workspace packages.
+Each published tool is a package under `tools/` named `@deslop/<name>`. An app publishes from `apps/` when its CLI shares the app's code, as `@deslop/stash` does. The `create-*` generators are private workspace packages.
 
 ## Add a published tool
 
-1. Create `tools/<name>` with `package.json`, the README and `AGENTS.md` pair that `CODING_STANDARDS.md` prescribes for published packages, `tsconfig.json` extending the root one and `vite.config.ts`. Copy the fields from `tools/media/package.json`: `version` stays `0.1.0` because CI sets the real version, `files` lists only `dist`, `publishConfig.access` is `public` and `scripts.build` is `vp pack`. `name`, `bin` and `repository.directory` name the new tool; `repository.url` stays, because npm provenance checks it. Remove `os` and `cpu` unless the tool has media's platform limits.
+1. Create `tools/<name>` with `package.json`, the README and `AGENTS.md` pair that `CODING_STANDARDS.md` prescribes for published packages, `tsconfig.json` extending the root one and `vite.config.ts`. Copy the fields from `apps/stash/package.json`: `version` stays `0.1.0` because CI sets the real version, `files` lists only `dist`, `publishConfig.access` is `public` and `scripts.build` is `vp pack`. `name`, `bin` and `repository.directory` name the new tool; `repository.url` stays, because npm provenance checks it. Remove `os` and `cpu` unless the tool has the platform limits of stash's Whisper transcription.
 2. Bundle everything into `dist` with `pack.deps.alwaysBundle`, except dependencies that load native binaries, packages that must share one module instance with them and packages resolved by name at run time, such as lint plugins; declare those in `dependencies` and bundled packages the root does not already declare in `devDependencies`.
 3. Add dependencies with `vp -C tools/<name> add <package>`, or `add -D` for bundled ones, and set their versions as `CODING_STANDARDS.md` prescribes; the `tools/*` workspace glob already includes the folder.
 4. Prove the published shape, not the source: pack the tarball into a fresh directory, because `vpx --package <tarball>` caches by path, and run its binary.
@@ -29,8 +29,8 @@ npm trust list @deslop/<name>
 
 - `npm login`, `npm publish` and `npm trust` each write an npmjs.com URL to their log and wait. Run each in the background, post the URL as a link and wait for the exit; the URL expires after about five minutes. The `deslop` owner, npm account `matteo_paludgnach`, approves the login and the publish; `npm trust` reuses the publish approval.
 - The registry answers 404 for a minute or two after a publish.
-- Then add `<name>` to both package loops in `.github/workflows/deploy.yaml`.
+- Then add `tools/<name>` to both package loops in `.github/workflows/deploy.yaml`.
 
 ## Releases
 
-Every push to `main` publishes each tool as `0.1.<run number>` through `.github/workflows/deploy.yaml`.
+Every push to `main` publishes each tool and `apps/stash` as `0.1.<run number>` through `.github/workflows/deploy.yaml`.
