@@ -37,6 +37,7 @@ const recipe = Sources.of({
 				url: link
 			})
 		),
+	frames: () => Effect.succeed([]),
 	image: () => Effect.succeed({bytes: new Uint8Array([255, 216, 255]), type: 'image/jpeg' as const}),
 	transcript: () => Effect.succeedNone
 })
@@ -88,7 +89,8 @@ function counting(calls: Ref.Ref<number>) {
 					organization: Result.succeed({
 						summary: `About ${input.note.content}`,
 						tags: ['Cooking', 'cooking', 'soup'],
-						title: 'Soup'
+						title: 'Soup',
+						topics: 'lentils; cumin'
 					})
 				}
 			)
@@ -121,7 +123,8 @@ it.layer(NodeServices.layer)('Notes', test => {
 						image: 'image/jpeg',
 						summary: 'About Lentils with cumin and tomato.',
 						tags: ['cooking', 'soup'],
-						title: 'Soup'
+						title: 'Soup',
+						topics: 'lentils; cumin'
 					})
 					assert.deepStrictEqual(yield* notes.image(ids[0]), {
 						bytes: new Uint8Array([255, 216, 255]),
@@ -155,6 +158,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 			const fs = yield* FileSystem.FileSystem
 			const unreachable = Sources.of({
 				extract: () => Effect.fail(NotesError.make({message: 'The link could not be loaded.'})),
+				frames: () => Effect.succeed([]),
 				image: () => Effect.die('No preview without a page'),
 				transcript: recipe.transcript
 			})
@@ -273,6 +277,24 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
+	test.effect('shows the AI stills of a video', () =>
+		Effect.gen(function* () {
+			const seen = yield* Ref.make<string[]>([])
+			const calls = yield* Ref.make(0)
+			const notes = yield* open({
+				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				organizer: Organizer.of({
+					enabled: true,
+					organize: input => Effect.andThen(Ref.set(seen, input.frames), counting(calls).organize(input))
+				}),
+				sources: Sources.of({...recipe, frames: () => Effect.succeed(['data:image/jpeg;base64,AAAA'])})
+			})
+			yield* notes.capture({id: ids[0], text: 'https://www.tiktok.com/@cook/video/1'})
+			yield* settled(notes, current => Array.some(current.notes, note => note.status === 'ready'))
+			assert.deepStrictEqual(yield* Ref.get(seen), ['data:image/jpeg;base64,AAAA'])
+		})
+	)
+
 	test.effect('tags a bare video link whose only words are its transcript', () =>
 		Effect.gen(function* () {
 			const calls = yield* Ref.make(0)
@@ -281,6 +303,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 				organizer: counting(calls),
 				sources: Sources.of({
 					extract: link => Effect.map(recipe.extract(link), extraction => ({...extraction, text: ''})),
+					frames: recipe.frames,
 					image: recipe.image,
 					transcript: () => Effect.succeedSome('[00:01] Soak the lentils overnight.\n')
 				})
@@ -304,6 +327,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 							...extraction,
 							url: 'https://www.tiktok.com/@cook/video/1'
 						})),
+					frames: recipe.frames,
 					image: recipe.image,
 					transcript: recipe.transcript
 				})
@@ -344,6 +368,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 			// The link is down after the restart, so the run goes on with what the first read fetched.
 			const down = Sources.of({
 				extract: () => Effect.fail(NotesError.make({message: 'The link could not be loaded.'})),
+				frames: recipe.frames,
 				image: recipe.image,
 				transcript: recipe.transcript
 			})
@@ -372,6 +397,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 				organizer: Organizer.of({enabled: false, organize: () => Effect.die('unused')}),
 				sources: Sources.of({
 					extract: recipe.extract,
+					frames: recipe.frames,
 					image: link => Effect.andThen(Effect.andThen(downloading.open, release.await), recipe.image(link)),
 					transcript: recipe.transcript
 				})
@@ -395,6 +421,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 				organizer: Organizer.of({enabled: false, organize: () => Effect.die('unused')}),
 				sources: Sources.of({
 					extract: () => Effect.andThen(release.await, recipe.extract('')),
+					frames: recipe.frames,
 					image: recipe.image,
 					transcript: recipe.transcript
 				})

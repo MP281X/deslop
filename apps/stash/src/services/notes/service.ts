@@ -107,14 +107,15 @@ export class Notes extends Context.Service<
 				)
 			}
 
-			const tag = Effect.fnUntraced(function* (note: Note, current: NotesState) {
+			const tag = Effect.fnUntraced(function* (note: Note, current: NotesState, frames: string[]) {
 				const month = String.slice(0, 7)(DateTime.formatIsoDateUtc(yield* DateTime.now))
 				const spent = current.aiSpend.month === month ? current.aiSpend.usd : 0
 				// A bare link whose page could not be read gives the AI nothing to organize, so it costs no call.
 				if (
 					String.isEmpty(note.content) &&
 					String.isEmpty(note.transcript ?? '') &&
-					String.isEmpty(commentFor(note.text))
+					String.isEmpty(commentFor(note.text)) &&
+					Array.isReadonlyArrayEmpty(frames)
 				) {
 					yield* updateNote(note.id, item => ({...item, status: 'saved'}))
 					return
@@ -125,7 +126,7 @@ export class Notes extends Context.Service<
 					return
 				}
 				const outcome = yield* Effect.result(
-					organizer.organize({note, tags: Array.map(tagCounts(current.notes), entry => entry.tag)})
+					organizer.organize({frames, note, tags: Array.map(tagCounts(current.notes), entry => entry.tag)})
 				)
 				yield* transact(latest =>
 					Tuple.make(undefined, {
@@ -241,7 +242,7 @@ export class Notes extends Context.Service<
 						onNone: () => Effect.void,
 						onSome: () =>
 							Effect.flatMap(
-								sources.transcript(extracted.url),
+								sources.transcript(extracted.video ?? extracted.url),
 								Option.match({
 									onNone: () => Effect.void,
 									onSome: transcript => updateNote(id, item => ({...item, transcript}))
@@ -249,13 +250,20 @@ export class Notes extends Context.Service<
 							)
 					}
 				)
+				// Stills let the AI see what a video only shows; a note deleted meanwhile needs none.
+				const frames = Array.some((yield* SubscriptionRef.get(state)).notes, item => item.id === id)
+					? yield* Option.match(resolved, {
+							onNone: () => Effect.succeed([]),
+							onSome: () => sources.frames(extracted.video ?? extracted.url)
+						})
+					: []
 				// One AI call at a time, so two captures cannot both pass the budget check before either records its cost.
 				yield* aiCalls.withPermit(
 					Effect.gen(function* () {
 						const current = yield* SubscriptionRef.get(state)
 						yield* Option.match(
 							Array.findFirst(current.notes, item => item.id === id),
-							{onNone: () => Effect.void, onSome: note => tag(note, current)}
+							{onNone: () => Effect.void, onSome: note => tag(note, current, frames)}
 						)
 					})
 				)

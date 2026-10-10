@@ -33,6 +33,8 @@ export const Note = Schema.Struct({
 	tags: Schema.Array(Tag),
 	text: Schema.String,
 	title: Schema.String,
+	// Names, tools and techniques the AI found, for search; notes tagged before topics existed have none.
+	topics: Schema.optionalKey(Schema.String),
 	// What a video says, from its published captions or local Whisper, one `[mm:ss] text` line per segment.
 	transcript: Schema.optionalKey(Schema.String),
 	url: Schema.NullOr(Schema.String)
@@ -57,12 +59,16 @@ export const Extraction = Schema.Struct({
 	text: Schema.String,
 	title: Schema.String,
 	// The canonical link after short links and redirects: TikTok makes a new short link for every share of one post.
-	url: Schema.String
+	url: Schema.String,
+	// A direct video file the post carries, such as an X post's own or quoted video, for stills.
+	video: Schema.optionalKey(Schema.String)
 })
 
 export type Organization = typeof Organization.Type
 export const Organization = Schema.Struct({
-	summary: pipe(Schema.String, Schema.check(Schema.isMaxLength(600))),
-	tags: pipe(Schema.Array(Tag), Schema.check(Schema.isMinLength(1), Schema.isMaxLength(5))),
-	title: pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(120)))
+	summary: pipe(Schema.String, Schema.check(Schema.isMaxLength(160))),
+	tags: pipe(Schema.Array(Tag), Schema.check(Schema.isMinLength(1), Schema.isMaxLength(3))),
+	title: pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
+	// Names, tools and techniques that search should find, separated by semicolons; tags stay few and reusable.
+	topics: pipe(Schema.String, Schema.check(Schema.isMaxLength(240)))
 })

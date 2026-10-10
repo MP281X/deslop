@@ -7,7 +7,9 @@ import {
 	FileSystem,
 	Layer,
 	Match,
+	Number,
 	Option,
+	Order,
 	Path,
 	Record,
 	Schema,
@@ -83,6 +85,8 @@ const run = Effect.fnUntraced(function* (command: string, args: string[]) {
 export class Media extends Context.Service<
 	Media,
 	{
+		// Six JPEG stills, 512 pixels wide, spread evenly across the video, so a model sees what is only shown.
+		readonly frames: (link: string) => Effect.Effect<Uint8Array[], MediaError>
 		// The info comes first, so a caller keeps it when the slower transcript fails.
 		readonly read: (input: {
 			language: Option.Option<string>
@@ -293,6 +297,71 @@ export class Media extends Context.Service<
 			})
 
 			return Media.of({
+				frames: Effect.fn('Media.frames')(
+					function* (link) {
+						yield* install
+						const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-media-'})
+						// The smallest rendition is enough for 512-pixel stills and keeps the download short.
+						const download = yield* run(ytDlp, [
+							...ytDlpArgs,
+							'-f',
+							'worst[ext=mp4]/worst',
+							'--max-filesize',
+							'200M',
+							'-o',
+							path.join(work, 'video.%(ext)s'),
+							link
+						])
+						if (download.exitCode !== 0) {
+							return yield* MediaError.make({message: `yt-dlp cannot download the video: ${download.stderr}`})
+						}
+						const video = path.join(
+							work,
+							yield* pipe(
+								Array.findFirst(yield* fs.readDirectory(work), String.startsWith('video.')),
+								Effect.fromOption,
+								Effect.mapError(cause => MediaError.make({cause, message: 'yt-dlp downloaded no video'}))
+							)
+						)
+						const probe = yield* run('ffprobe', [
+							'-v',
+							'error',
+							'-show_entries',
+							'format=duration',
+							'-of',
+							'csv=p=0',
+							video
+						])
+						const seconds = pipe(
+							String.trim(new TextDecoder().decode(probe.stdout)),
+							Number.parse,
+							Option.filter(value => value > 0),
+							Option.getOrElse(() => 6)
+						)
+						const sampled = yield* run('ffmpeg', [
+							'-v',
+							'error',
+							'-i',
+							video,
+							'-vf',
+							`fps=6/${seconds},scale=512:-2`,
+							'-frames:v',
+							'6',
+							'-q:v',
+							'5',
+							path.join(work, 'frame-%d.jpg')
+						])
+						if (sampled.exitCode !== 0) {
+							return yield* MediaError.make({message: `ffmpeg cannot sample the video: ${sampled.stderr}`})
+						}
+						return yield* Effect.forEach(
+							Array.sort(Array.filter(yield* fs.readDirectory(work), String.startsWith('frame-')), Order.String),
+							file => fs.readFile(path.join(work, file))
+						)
+					},
+					Effect.scoped,
+					withProcesses
+				),
 				read: Effect.fn('Media.read')(
 					function* (input) {
 						yield* install

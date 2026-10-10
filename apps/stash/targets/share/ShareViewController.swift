@@ -25,7 +25,6 @@ final class ShareViewController: UIViewController {
 private enum Phase: Equatable {
   case saving
   case sent
-  case kept
   case nothing
   case failed(String)
 }
@@ -70,12 +69,6 @@ private struct SaveView: View {
           .foregroundStyle(Theme.primary)
           .symbolEffect(.bounce, value: phase)
         Text("saved to stash").font(Theme.mono(16, semibold: true)).foregroundStyle(Theme.foreground)
-      case .kept:
-        Text("saved on this iphone").font(Theme.mono(16, semibold: true)).foregroundStyle(Theme.foreground)
-        Text("stash sends it when the server is reachable over tailscale")
-          .font(Theme.mono(13))
-          .foregroundStyle(Theme.muted)
-          .multilineTextAlignment(.center)
       case .nothing:
         Text("nothing to save").font(Theme.mono(16, semibold: true)).foregroundStyle(Theme.foreground)
         Text("share a link or some text").font(Theme.mono(13)).foregroundStyle(Theme.muted)
@@ -98,7 +91,6 @@ private struct SaveView: View {
     .sensoryFeedback(trigger: phase) { _, phase in
       switch phase {
       case .sent: .success
-      case .kept: .warning
       case .nothing, .failed: .error
       case .saving: nil
       }
@@ -120,16 +112,14 @@ private struct SaveView: View {
     do {
       let store = try Store()
       let capture = Capture(id: UUID().uuidString.lowercased(), text: text, createdAt: Date().timeIntervalSince1970 * 1000)
-      // The pending file is written first, so the capture survives a failed request or a killed extension.
-      let file = try store.keep(capture)
-      if await store.send(capture) {
-        try? FileManager.default.removeItem(at: file)
-        phase = .sent
-        try? await Task.sleep(for: .milliseconds(700))
-        context.completeRequest(returningItems: nil)
-      } else {
-        phase = .kept
-      }
+      // The pending file is written first, so the capture survives a failed upload or a killed extension; the app
+      // resends it on its next start, and the server answers a resent id with the note it already has.
+      try store.keep(capture)
+      // The upload runs in the system's background session, so the sheet closes without waiting for the server.
+      try store.upload(capture)
+      phase = .sent
+      try? await Task.sleep(for: .milliseconds(250))
+      context.completeRequest(returningItems: nil)
     } catch {
       phase = .failed(error.localizedDescription)
     }
@@ -145,7 +135,9 @@ private struct Capture: Codable {
 
 private struct Store {
   let server: URL
+  let group: String
   let pending: URL
+  let uploads: URL
 
   init() throws {
     // The extension runs from the app's PlugIns/ folder, so the containing app's bundle is two levels up.
@@ -160,25 +152,38 @@ private struct Store {
       throw CocoaError(.featureUnsupported)
     }
     self.server = server
+    self.group = "group.\(identifier)"
     self.pending = container.appendingPathComponent("pending", isDirectory: true)
+    self.uploads = container.appendingPathComponent("uploads", isDirectory: true)
   }
 
-  func keep(_ capture: Capture) throws -> URL {
+  func keep(_ capture: Capture) throws {
     try FileManager.default.createDirectory(at: pending, withIntermediateDirectories: true)
     let file = pending.appendingPathComponent("\(capture.id).json")
     try JSONEncoder().encode(capture).write(to: file, options: .atomic)
-    return file
   }
 
-  func send(_ capture: Capture) async -> Bool {
-    var request = URLRequest(url: server.appendingPathComponent("api/capture"), timeoutInterval: 8)
+  // A background session uploads only from a file, so the request body lives in uploads/ until the next share
+  // removes bodies older than a day.
+  func upload(_ capture: Capture) throws {
+    let manager = FileManager.default
+    try manager.createDirectory(at: uploads, withIntermediateDirectories: true)
+    let stale = Date().addingTimeInterval(-86_400)
+    for file in (try? manager.contentsOfDirectory(at: uploads, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [] {
+      let modified = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+      if let modified, modified < stale { try? manager.removeItem(at: file) }
+    }
+    let body = uploads.appendingPathComponent("\(capture.id).json")
+    try JSONEncoder().encode(["id": capture.id, "text": capture.text]).write(to: body, options: .atomic)
+    let configuration = URLSessionConfiguration.background(withIdentifier: "\(group).share.\(capture.id)")
+    configuration.sharedContainerIdentifier = group
+    configuration.isDiscretionary = false
+    let session = URLSession(configuration: configuration)
+    var request = URLRequest(url: server.appendingPathComponent("api/capture"))
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.httpBody = try? JSONEncoder().encode(["id": capture.id, "text": capture.text])
-    guard let result = try? await URLSession.shared.data(for: request),
-      let response = result.1 as? HTTPURLResponse
-    else { return false }
-    return (200..<300).contains(response.statusCode)
+    session.uploadTask(with: request, fromFile: body).resume()
+    session.finishTasksAndInvalidate()
   }
 }
 
