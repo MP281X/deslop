@@ -5,6 +5,7 @@
 	"ignorePatterns": ["**/*.gen.ts", "packages/components/src/components/svgs/**", "tools/*/template/**"],
 	"ignoreExports": [
 		{"exports": ["*"], "file": "packages/*/src/schema.ts"},
+		{"exports": ["*"], "file": "apps/stash/src/services/notes/schema.ts"},
 		{"exports": ["*"], "file": "packages/components/src/components/**"}
 	],
 	"rules": {"require-suppression-reason": "error"}
