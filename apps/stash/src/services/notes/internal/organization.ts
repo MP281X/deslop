@@ -36,7 +36,8 @@ const Message = Schema.Struct({
 
 // Dollars per million input and output tokens for prompts under 100,000 tokens; Anthropic returns tokens, not cost.
 const claudePrices: Record.ReadonlyRecord<string, {input: number; output: number}> = {
-	'claude-haiku-5-5': {input: 0.1, output: 0.5}
+	'claude-haiku-5-5': {input: 0.1, output: 0.5},
+	'claude-sonnet-5-5': {input: 2, output: 10}
 }
 
 // Claude's structured output rejects length limits, so they leave the schema it gets; decoding the answer still checks
@@ -52,7 +53,7 @@ function withoutLimits(value: unknown): unknown {
 }
 
 // Raised whenever the instructions or the inputs change, so the server tags saved notes again on its next start.
-export const revision = 5
+export const revision = 6
 
 const instructions = [
 	"You organize entries in one person's private notes, so they find each entry again by search and learn what it holds without opening it.",
@@ -98,12 +99,13 @@ export class Organizer extends Context.Service<
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
-			// An Anthropic key wins over an OpenRouter key; each provider has its own default model.
+			// An Anthropic key wins over an OpenRouter key. The owner prefers quality over cost, so Claude defaults to Sonnet
+			// at its default high effort, about $0.04 a note.
 			const anthropic = yield* Config.option(Config.Redacted('ANTHROPIC_API_KEY'))
 			const openRouter = yield* Config.option(Config.Redacted('OPENROUTER_API_KEY'))
 			const model = yield* pipe(
 				Config.String('STASH_AI_MODEL'),
-				Config.withDefault(Option.isSome(anthropic) ? 'claude-haiku-5-5' : 'openai/gpt-6-luna')
+				Config.withDefault(Option.isSome(anthropic) ? 'claude-sonnet-5-5' : 'openai/gpt-6-luna')
 			)
 			const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 			const schema = Schema.toJsonSchemaDocument(Organization, {onExcessProperty: 'error'}).schema
@@ -119,14 +121,10 @@ export class Organizer extends Context.Service<
 						messages: [
 							{content: Array.join(instructions, ' '), role: 'system'},
 							{
-								// The photo or preview comes first at full detail, so its words stay readable; low detail keeps each
-								// still to a fixed, small token cost.
+								// Every image goes at full detail, so the words in stills and previews stay readable.
 								content: [
 									{text: entry, type: 'text'},
-									...Array.map(frames, (url, index) => ({
-										image_url: {detail: index === 0 ? 'high' : 'low', url},
-										type: 'image_url'
-									}))
+									...Array.map(frames, url => ({image_url: {detail: 'high', url}, type: 'image_url'}))
 								],
 								role: 'user'
 							}
@@ -168,7 +166,8 @@ export class Organizer extends Context.Service<
 						headers: {'anthropic-version': '2023-06-01', 'x-api-key': Redacted.value(token)}
 					}),
 					{
-						max_tokens: 16_000,
+						// Room for high-effort thinking and a long body; only used tokens cost.
+						max_tokens: 32_000,
 						messages: [{content: [...images, {text: entry, type: 'text'}], role: 'user'}],
 						model,
 						output_config: {format: {schema: withoutLimits(schema), type: 'json_schema'}},
@@ -176,7 +175,7 @@ export class Organizer extends Context.Service<
 					}
 				)
 				const message = yield* pipe(client.execute(request), Effect.flatMap(HttpClientResponse.schemaBodyJson(Message)))
-				const price = claudePrices[model] ?? {input: 0.1, output: 0.5}
+				const price = claudePrices[model] ?? {input: 2, output: 10}
 				return {
 					content: pipe(
 						Array.findFirst(message.content, block => block.type === 'text'),
@@ -199,8 +198,9 @@ export class Organizer extends Context.Service<
 								`Existing tags: ${Array.join(Array.take(input.tags, 80), ', ')}`,
 								`Link title: ${input.note.title}`,
 								`Saved text: ${input.note.text}`,
-								`Link content: ${String.slice(0, 12_000)(input.note.content)}`,
-								`Video transcript: ${String.slice(0, 12_000)(input.note.transcript ?? '')}`
+								// About 40,000 tokens each, enough for a long article or a two-hour transcript.
+								`Link content: ${String.slice(0, 150_000)(input.note.content)}`,
+								`Video transcript: ${String.slice(0, 150_000)(input.note.transcript ?? '')}`
 							],
 							Array.join('\n')
 						)
@@ -234,7 +234,7 @@ export class Organizer extends Context.Service<
 							)
 						}
 					},
-					Effect.timeout('3 minutes'),
+					Effect.timeout('5 minutes'),
 					Effect.mapError(cause =>
 						NotesError.make({cause: Redacted.make(cause), message: 'AI tagging failed; the note is saved as it is.'})
 					)

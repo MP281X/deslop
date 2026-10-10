@@ -71,7 +71,12 @@ export class Notes extends Context.Service<
 				Config.String('STASH_DATA_DIR'),
 				Config.withDefault(path.join(home, '.deslop', 'stash'))
 			)
-			const budget = yield* pipe(Config.Number('STASH_AI_BUDGET_USD'), Config.withDefault(1))
+			// With an Anthropic key the owner's monthly API credit pays, so the cap leaves room for a bulk import.
+			const anthropic = yield* Config.option(Config.Redacted('ANTHROPIC_API_KEY'))
+			const budget = yield* pipe(
+				Config.Number('STASH_AI_BUDGET_USD'),
+				Config.withDefault(Option.isSome(anthropic) ? 150 : 5)
+			)
 			const file = path.join(directory, 'notes.json')
 			const images = path.join(directory, 'images')
 			const files = path.join(directory, 'files')
