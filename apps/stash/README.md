@@ -7,20 +7,15 @@ A personal inbox for links, written notes, photos and videos on one iPhone, and 
 Runs on Linux or macOS (x64 or arm64) with Node 26+ on the tailnet.
 
 ```bash
-vpx @deslop/stash@latest save '<link or text>' [output directory] [--server <url>]
+vpx @deslop/stash@latest save '<link or text>' [--server <url>]
 ```
 
-| Output           | Content                                                                                                |
-| ---------------- | ------------------------------------------------------------------------------------------------------ |
-| `note.md`        | Title, author, link, tags, summary, the AI's notes, topics, words in the images and the source it read |
-| `transcript.txt` | One `[mm:ss] text` line per caption or speech segment, when the link has a video                       |
-
-The CLI is a client of the server: it saves the entry as a note through the RPC, waits until the server has read and tagged it, and writes the files. API keys, `yt-dlp` and Whisper stay on the server. The output directory defaults to `/tmp/stash`, and the server to `STASH_SERVER`, then `https://dev.tailnet-8c4c.ts.net:8443`.
+The CLI is a client of the server: it saves the entry as a note through the RPC, waits until the server has read and tagged it, and prints the note as Markdown on stdout: title, author, link, tags, summary, the AI's notes, topics, words in the images, the source it read and the `[mm:ss]` transcript. Progress goes to stderr. API keys, `yt-dlp` and Whisper stay on the server. The server defaults to `STASH_SERVER`, then `https://dev.tailnet-8c4c.ts.net:8443`.
 
 ## Server
 
 - **Run.** `vp -C apps/stash run preview` builds `dist/server.js` and serves it on `127.0.0.1:5017`; `sudo tailscale serve --bg --https=8443 http://127.0.0.1:5017` publishes it as `https://dev.tailnet-8c4c.ts.net:8443`. The tailnet is the only sign-in, so never bind it to `0.0.0.0` on `dev`, which has a public address.
-- **Environment.** `ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY` in `~/.deslop/stash.env` turns tagging on; the Anthropic key wins. `STASH_AI_MODEL` defaults to `claude-sonnet-5-5` with the Anthropic key, because quality matters more than cost, and to `openai/gpt-6-luna` with OpenRouter. `STASH_AI_BUDGET_USD` defaults to 150 a month with the Anthropic key and 5 without. `STASH_DATA_DIR` defaults to `~/.deslop/stash`.
+- **Environment.** `ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY` in `~/.deslop/stash.env` turns tagging on; the Anthropic key wins. `STASH_AI_MODEL` defaults to `claude-haiku-5-5` at high effort with the Anthropic key and to `openai/gpt-6-luna` with OpenRouter. `STASH_AI_BUDGET_USD` defaults to 50 a month with the Anthropic key and 5 without. `STASH_DATA_DIR` defaults to `~/.deslop/stash`.
 - **Media.** The first link with a video downloads the standalone `yt-dlp`, and the first transcription the Whisper model, into `$XDG_CACHE_HOME/deslop/media` (`~/.cache` by default). Published captions win; Whisper `small.en` takes about a quarter of the audio's length (a 38-minute talk took 9 minutes), and speech that is not English uses the multilingual model. YouTube refuses most datacenter addresses, so a YouTube note often has only the oEmbed title and channel.
 - **Storage.** Notes live in SQLite at `stash.db` in `STASH_DATA_DIR`, one row each, so a change writes only the notes it touched. A server from before the database imports `notes.json` once and renames it `notes.json.imported`. With 3,000 synthetic notes (25 MB of text), the server starts in 0.7 seconds, saves a capture in 30 ms and searches in 20 ms.
 - **Sync.** `notes.watch` sends every note's list fields once (1.4 MB for those 3,000 notes), then only the notes that changed, at most every 400 ms. The note page loads the long texts with `notes.get`, and `notes.search` searches transcripts and pages on the server.

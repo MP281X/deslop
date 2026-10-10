@@ -99,13 +99,13 @@ export class Organizer extends Context.Service<
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
-			// An Anthropic key wins over an OpenRouter key. The owner prefers quality over cost, so Claude defaults to Sonnet
-			// at its default high effort, about $0.04 a note.
+			// An Anthropic key wins over an OpenRouter key. Claude defaults to Haiku 5.5 at high effort, which Anthropic
+			// recommends for knowledge work and strict instruction following.
 			const anthropic = yield* Config.option(Config.Redacted('ANTHROPIC_API_KEY'))
 			const openRouter = yield* Config.option(Config.Redacted('OPENROUTER_API_KEY'))
 			const model = yield* pipe(
 				Config.String('STASH_AI_MODEL'),
-				Config.withDefault(Option.isSome(anthropic) ? 'claude-sonnet-5-5' : 'openai/gpt-6-luna')
+				Config.withDefault(Option.isSome(anthropic) ? 'claude-haiku-5-5' : 'openai/gpt-6-luna')
 			)
 			const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 			const schema = Schema.toJsonSchemaDocument(Organization, {onExcessProperty: 'error'}).schema
@@ -151,7 +151,7 @@ export class Organizer extends Context.Service<
 				}
 			})
 
-			// Claude reads base64 images and thinks adaptively at its default medium effort.
+			// Claude reads base64 images and thinks adaptively at high effort.
 			const askClaude = Effect.fnUntraced(function* (token: Redacted.Redacted, entry: string, frames: string[]) {
 				const images = Array.filterMap(frames, url =>
 					pipe(
@@ -170,12 +170,12 @@ export class Organizer extends Context.Service<
 						max_tokens: 32_000,
 						messages: [{content: [...images, {text: entry, type: 'text'}], role: 'user'}],
 						model,
-						output_config: {format: {schema: withoutLimits(schema), type: 'json_schema'}},
+						output_config: {effort: 'high', format: {schema: withoutLimits(schema), type: 'json_schema'}},
 						system: Array.join(instructions, ' ')
 					}
 				)
 				const message = yield* pipe(client.execute(request), Effect.flatMap(HttpClientResponse.schemaBodyJson(Message)))
-				const price = claudePrices[model] ?? {input: 2, output: 10}
+				const price = claudePrices[model] ?? {input: 0.1, output: 0.5}
 				return {
 					content: pipe(
 						Array.findFirst(message.content, block => block.type === 'text'),

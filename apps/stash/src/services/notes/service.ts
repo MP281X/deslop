@@ -105,7 +105,7 @@ export class Notes extends Context.Service<
 			const anthropic = yield* Config.option(Config.Redacted('ANTHROPIC_API_KEY'))
 			const budget = yield* pipe(
 				Config.Number('STASH_AI_BUDGET_USD'),
-				Config.withDefault(Option.isSome(anthropic) ? 150 : 5)
+				Config.withDefault(Option.isSome(anthropic) ? 50 : 5)
 			)
 			const legacyFile = path.join(directory, 'notes.json')
 			const images = path.join(directory, 'images')
