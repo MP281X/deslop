@@ -85,6 +85,9 @@ const run = Effect.fnUntraced(function* (command: string, args: string[]) {
 export class Media extends Context.Service<
 	Media,
 	{
+		// The same stills and speech for a video file on disk, such as one shared from the iPhone.
+		readonly fileFrames: (file: string) => Effect.Effect<Uint8Array[], MediaError>
+		readonly fileTranscript: (file: string) => Effect.Effect<Option.Option<Transcript>, MediaError>
 		// Six JPEG stills, 512 pixels wide, spread evenly across the video, so a model sees what is only shown.
 		readonly frames: (link: string) => Effect.Effect<Uint8Array[], MediaError>
 		// The info comes first, so a caller keeps it when the slower transcript fails.
@@ -159,11 +162,6 @@ export class Media extends Context.Service<
 			}) {
 				const media = input.media
 				const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-media-'})
-				function tooLong(seconds: number) {
-					return Option.exists(input.maxWhisperSeconds, limit =>
-						Option.match(Option.fromNullishOr(media.duration), {onNone: () => true, onSome: () => seconds > limit})
-					)
-				}
 
 				// The `-orig` automatic track names the spoken language; its plain key is the untranslated track or uploaded
 				// captions.
@@ -207,7 +205,11 @@ export class Media extends Context.Service<
 						})
 					})
 				}
-				if (tooLong(media.duration ?? 0)) {
+				if (
+					Option.exists(input.maxWhisperSeconds, limit =>
+						Option.match(Option.fromNullishOr(media.duration), {onNone: () => true, onSome: seconds => seconds > limit})
+					)
+				) {
 					yield* Effect.logInfo('No captions, and the audio is too long or of unknown length for Whisper here')
 					return Option.none()
 				}
@@ -223,18 +225,29 @@ export class Media extends Context.Service<
 				if (download.exitCode !== 0) {
 					return yield* MediaError.make({message: `yt-dlp cannot download the audio: ${download.stderr}`})
 				}
+				const audio = path.join(
+					work,
+					yield* pipe(
+						Array.findFirst(yield* fs.readDirectory(work), String.startsWith('audio.')),
+						Effect.fromOption,
+						Effect.mapError(cause => MediaError.make({cause, message: 'yt-dlp downloaded no audio'}))
+					)
+				)
+				return yield* listen({file: audio, language: Option.some(language), maxWhisperSeconds: input.maxWhisperSeconds})
+			})
+
+			// Speech in an audio or video file through local Whisper, or nothing for music, silence or audio over the limit.
+			const listen = Effect.fnUntraced(function* (input: {
+				file: string
+				// Unknown for a file from the iPhone, where the multilingual model detects it.
+				language: Option.Option<string>
+				maxWhisperSeconds: Option.Option<number>
+			}) {
 				const pcm = yield* run('ffmpeg', [
 					'-v',
 					'error',
 					'-i',
-					path.join(
-						work,
-						yield* pipe(
-							Array.findFirst(yield* fs.readDirectory(work), String.startsWith('audio.')),
-							Effect.fromOption,
-							Effect.mapError(cause => MediaError.make({cause, message: 'yt-dlp downloaded no audio'}))
-						)
-					),
+					input.file,
 					'-f',
 					's16le',
 					'-ac',
@@ -251,16 +264,18 @@ export class Media extends Context.Service<
 					sample => sample / 32768
 				)
 				// The declared duration can be shorter than the audio, as on a TikTok photo post with a song.
-				if (tooLong(samples.length / 16000)) {
+				if (Option.exists(input.maxWhisperSeconds, limit => samples.length / 16000 > limit)) {
 					yield* Effect.logInfo(
 						`No captions, and ${clock(samples.length / 16000)} of audio is too long for Whisper here`
 					)
 					return Option.none()
 				}
+				// Under a second of sound holds no speech worth a model run.
+				if (samples.length < 16_000) return Option.none()
 				env.cacheDir = path.join(cache, 'models')
 				// Whisper names languages without a region, such as en for en-US.
-				const spoken = pipe(language, String.split('-'), Array.headNonEmpty)
-				const english = spoken === 'en'
+				const spoken = Option.map(input.language, language => pipe(language, String.split('-'), Array.headNonEmpty))
+				const english = Option.contains(spoken, 'en')
 				const model = Boolean.match(english, {
 					onFalse: () => 'onnx-community/whisper-small',
 					onTrue: () => 'onnx-community/whisper-small.en'
@@ -278,7 +293,10 @@ export class Media extends Context.Service<
 								yield* Effect.tryPromise(() =>
 									recognize(samples, {
 										chunk_length_s: 30,
-										language: Boolean.match(english, {onFalse: () => spoken, onTrue: () => undefined}),
+										language: Boolean.match(english, {
+											onFalse: () => Option.getOrUndefined(spoken),
+											onTrue: () => undefined
+										}),
 										return_timestamps: true,
 										stride_length_s: 5
 									})
@@ -299,7 +317,60 @@ export class Media extends Context.Service<
 				)
 			})
 
+			// Six stills spread evenly across a video file.
+			const sample = Effect.fnUntraced(function* (video: string, work: string) {
+				const probe = yield* run('ffprobe', [
+					'-v',
+					'error',
+					'-show_entries',
+					'format=duration',
+					'-of',
+					'csv=p=0',
+					video
+				])
+				const seconds = pipe(
+					String.trim(new TextDecoder().decode(probe.stdout)),
+					Number.parse,
+					Option.filter(value => value > 0),
+					Option.getOrElse(() => 6)
+				)
+				const sampled = yield* run('ffmpeg', [
+					'-v',
+					'error',
+					'-i',
+					video,
+					'-vf',
+					`fps=6/${seconds},scale=512:-2`,
+					'-frames:v',
+					'6',
+					'-q:v',
+					'5',
+					path.join(work, 'frame-%d.jpg')
+				])
+				if (sampled.exitCode !== 0) {
+					return yield* MediaError.make({message: `ffmpeg cannot sample the video: ${sampled.stderr}`})
+				}
+				return yield* Effect.forEach(
+					Array.sort(Array.filter(yield* fs.readDirectory(work), String.startsWith('frame-')), Order.String),
+					file => fs.readFile(path.join(work, file))
+				)
+			})
+
 			return Media.of({
+				fileFrames: Effect.fn('Media.fileFrames')(
+					function* (file) {
+						return yield* sample(file, yield* fs.makeTempDirectoryScoped({prefix: 'deslop-media-'}))
+					},
+					Effect.scoped,
+					withProcesses
+				),
+				fileTranscript: Effect.fn('Media.fileTranscript')(
+					function* (file) {
+						return yield* listen({file, language: Option.none(), maxWhisperSeconds: Option.some(30 * 60)})
+					},
+					Effect.scoped,
+					withProcesses
+				),
 				frames: Effect.fn('Media.frames')(
 					function* (link) {
 						yield* install
@@ -326,41 +397,7 @@ export class Media extends Context.Service<
 								Effect.mapError(cause => MediaError.make({cause, message: 'yt-dlp downloaded no video'}))
 							)
 						)
-						const probe = yield* run('ffprobe', [
-							'-v',
-							'error',
-							'-show_entries',
-							'format=duration',
-							'-of',
-							'csv=p=0',
-							video
-						])
-						const seconds = pipe(
-							String.trim(new TextDecoder().decode(probe.stdout)),
-							Number.parse,
-							Option.filter(value => value > 0),
-							Option.getOrElse(() => 6)
-						)
-						const sampled = yield* run('ffmpeg', [
-							'-v',
-							'error',
-							'-i',
-							video,
-							'-vf',
-							`fps=6/${seconds},scale=512:-2`,
-							'-frames:v',
-							'6',
-							'-q:v',
-							'5',
-							path.join(work, 'frame-%d.jpg')
-						])
-						if (sampled.exitCode !== 0) {
-							return yield* MediaError.make({message: `ffmpeg cannot sample the video: ${sampled.stderr}`})
-						}
-						return yield* Effect.forEach(
-							Array.sort(Array.filter(yield* fs.readDirectory(work), String.startsWith('frame-')), Order.String),
-							file => fs.readFile(path.join(work, file))
-						)
+						return yield* sample(video, work)
 					},
 					Effect.scoped,
 					withProcesses

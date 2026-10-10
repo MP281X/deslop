@@ -286,6 +286,9 @@ export class Sources extends Context.Service<
 		readonly image: (url: string) => Effect.Effect<{bytes: Uint8Array; type: ImageType}, NotesError>
 		// What a TikTok, X or YouTube video says; nothing for other links or when the video cannot be read.
 		readonly transcript: (url: string) => Effect.Effect<Option.Option<string>>
+		// Six JPEG stills and the speech of a video file kept on the server; nothing when it cannot be read.
+		readonly fileFrames: (file: string) => Effect.Effect<Uint8Array[]>
+		readonly fileTranscript: (file: string) => Effect.Effect<Option.Option<string>>
 		// Six stills of a TikTok, X or YouTube video as JPEG data URLs; none for other links or an unreadable video.
 		readonly frames: (url: string) => Effect.Effect<string[]>
 	}
@@ -372,6 +375,18 @@ export class Sources extends Context.Service<
 						orElse: () => Effect.fail(NotesError.make({message: 'Reading the link took too long.'}))
 					})
 				),
+				fileFrames: Effect.fn('Sources.fileFrames')(function* (file) {
+					return yield* Effect.catch(media.fileFrames(file), error =>
+						Effect.as(Effect.logWarning('No video frames', error), [])
+					)
+				}),
+				fileTranscript: Effect.fn('Sources.fileTranscript')(function* (file) {
+					return yield* pipe(
+						media.fileTranscript(file),
+						Effect.map(Option.map(transcript => transcript.text)),
+						Effect.catch(error => Effect.as(Effect.logWarning('No transcript', error), Option.none()))
+					)
+				}),
 				frames: Effect.fn('Sources.frames')(function* (link) {
 					if (!hasVideo(link)) return []
 					return yield* pipe(

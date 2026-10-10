@@ -1,6 +1,6 @@
 import {NodeHttpClient, NodeServices} from '@effect/platform-node'
 
-import {Effect, Layer, Schema, pipe} from 'effect'
+import {Array, Effect, Layer, Schema, String, pipe} from 'effect'
 
 import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 import {RpcSerialization, RpcServer} from 'effect/rpc'
@@ -10,7 +10,7 @@ import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Media} from '#services/media/service.ts'
 import {Sources} from '#services/notes/internal/extraction.ts'
 import {Organizer} from '#services/notes/internal/organization.ts'
-import {Capture, Note, NoteId} from '#services/notes/schema.ts'
+import {Capture, FileType, Note, NoteId} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
 
 // The share extension is plain Swift, so it saves through one JSON route instead of the RPC protocol.
@@ -24,6 +24,25 @@ const routes = HttpRouter.use(router =>
 			Effect.gen(function* () {
 				return yield* HttpServerResponse.schemaJson(Note)(
 					yield* notes.capture(yield* HttpServerRequest.schemaBodyJson(Capture))
+				)
+			})
+		)
+		// Photos, screenshots and videos arrive as the raw request body, typed by its content type, because the share
+		// extension uploads them from a file in the background.
+		yield* router.add(
+			'POST',
+			'/api/files/:id',
+			Effect.gen(function* () {
+				const request = yield* HttpServerRequest.HttpServerRequest
+				const type = yield* Schema.decodeUnknownEffect(FileType)(
+					pipe(request.headers['content-type'] ?? '', String.split(';'), Array.headNonEmpty, String.trim)
+				)
+				return yield* HttpServerResponse.schemaJson(Note)(
+					yield* notes.captureFile({
+						bytes: new Uint8Array(yield* request.arrayBuffer),
+						id: (yield* HttpRouter.schemaPathParams(Schema.Struct({id: NoteId}))).id,
+						type
+					})
 				)
 			})
 		)

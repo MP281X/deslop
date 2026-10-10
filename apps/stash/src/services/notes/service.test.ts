@@ -37,6 +37,8 @@ const recipe = Sources.of({
 				url: link
 			})
 		),
+	fileFrames: () => Effect.succeed([]),
+	fileTranscript: () => Effect.succeedNone,
 	frames: () => Effect.succeed([]),
 	image: () => Effect.succeed({bytes: new Uint8Array([255, 216, 255]), type: 'image/jpeg' as const}),
 	transcript: () => Effect.succeedNone
@@ -159,6 +161,8 @@ it.layer(NodeServices.layer)('Notes', test => {
 			const fs = yield* FileSystem.FileSystem
 			const unreachable = Sources.of({
 				extract: () => Effect.fail(NotesError.make({message: 'The link could not be loaded.'})),
+				fileFrames: recipe.fileFrames,
+				fileTranscript: recipe.fileTranscript,
 				frames: () => Effect.succeed([]),
 				image: () => Effect.die('No preview without a page'),
 				transcript: recipe.transcript
@@ -304,6 +308,8 @@ it.layer(NodeServices.layer)('Notes', test => {
 				organizer: counting(calls),
 				sources: Sources.of({
 					extract: link => Effect.map(recipe.extract(link), extraction => ({...extraction, text: ''})),
+					fileFrames: recipe.fileFrames,
+					fileTranscript: recipe.fileTranscript,
 					frames: recipe.frames,
 					image: recipe.image,
 					transcript: () => Effect.succeedSome('[00:01] Soak the lentils overnight.\n')
@@ -328,6 +334,8 @@ it.layer(NodeServices.layer)('Notes', test => {
 							...extraction,
 							url: 'https://www.tiktok.com/@cook/video/1'
 						})),
+					fileFrames: recipe.fileFrames,
+					fileTranscript: recipe.fileTranscript,
 					frames: recipe.frames,
 					image: recipe.image,
 					transcript: recipe.transcript
@@ -369,6 +377,8 @@ it.layer(NodeServices.layer)('Notes', test => {
 			// The link is down after the restart, so the run goes on with what the first read fetched.
 			const down = Sources.of({
 				extract: () => Effect.fail(NotesError.make({message: 'The link could not be loaded.'})),
+				fileFrames: recipe.fileFrames,
+				fileTranscript: recipe.fileTranscript,
 				frames: recipe.frames,
 				image: recipe.image,
 				transcript: recipe.transcript
@@ -398,6 +408,8 @@ it.layer(NodeServices.layer)('Notes', test => {
 				organizer: Organizer.of({enabled: false, organize: () => Effect.die('unused')}),
 				sources: Sources.of({
 					extract: recipe.extract,
+					fileFrames: recipe.fileFrames,
+					fileTranscript: recipe.fileTranscript,
 					frames: recipe.frames,
 					image: link => Effect.andThen(Effect.andThen(downloading.open, release.await), recipe.image(link)),
 					transcript: recipe.transcript
@@ -422,6 +434,8 @@ it.layer(NodeServices.layer)('Notes', test => {
 				organizer: Organizer.of({enabled: false, organize: () => Effect.die('unused')}),
 				sources: Sources.of({
 					extract: () => Effect.andThen(release.await, recipe.extract('')),
+					fileFrames: recipe.fileFrames,
+					fileTranscript: recipe.fileTranscript,
 					frames: recipe.frames,
 					image: recipe.image,
 					transcript: recipe.transcript

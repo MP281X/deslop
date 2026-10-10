@@ -17,6 +17,10 @@ export const Source = Schema.Literals(['TikTok', 'X', 'Website', 'Note'])
 export type ImageType = typeof ImageType.Type
 export const ImageType = Schema.Literals(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 
+// A photo, screenshot or video shared or copied from the iPhone; the app sends photos as JPEG.
+export type FileType = typeof FileType.Type
+export const FileType = Schema.Literals(['image/jpeg', 'image/png', 'video/mp4', 'video/quicktime'])
+
 export type Note = typeof Note.Type
 export const Note = Schema.Struct({
 	// The post's author or the site's name.
@@ -25,6 +29,8 @@ export const Note = Schema.Struct({
 	body: Schema.optionalKey(Schema.String),
 	content: Schema.String,
 	createdAt: Schema.Finite,
+	// The type of the photo, screenshot or video the note holds, kept on the server; notes from links and text have none.
+	file: Schema.optionalKey(FileType),
 	id: NoteId,
 	// The type of the preview image the server keeps for this note, served at /api/images/<id>.
 	image: Schema.optionalKey(ImageType),

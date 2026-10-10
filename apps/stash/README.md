@@ -1,6 +1,6 @@
 # Stash
 
-A personal link inbox for one iPhone, and a CLI that reads what a video or social post says. One package holds the Effect server for `dev`, the Expo iOS client with a Swift share extension, and the `stash` command.
+A personal inbox for links, written notes, photos and videos on one iPhone, and a CLI that reads what a video or social post says. One package holds the Effect server for `dev`, the Expo iOS client with a Swift share extension, and the `stash` command.
 
 ## CLI
 
@@ -23,16 +23,17 @@ The first run downloads the standalone `yt-dlp`, and the first transcription the
 
 - **Run.** `vp -C apps/stash run preview` builds `dist/server.js` and serves it on `127.0.0.1:5017`; `sudo tailscale serve --bg --https=8443 http://127.0.0.1:5017` publishes it as `https://dev.tailnet-8c4c.ts.net:8443`. The tailnet is the only sign-in, so never bind it to `0.0.0.0` on `dev`, which has a public address.
 - **Environment.** `OPENROUTER_API_KEY` in `~/.deslop/stash.env` turns tagging on. `STASH_DATA_DIR` defaults to `~/.deslop/stash`, `STASH_AI_MODEL` to `openai/gpt-6-luna` and `STASH_AI_BUDGET_USD` to 1 per month.
-- **Routes.** The app uses the JSON WebSocket RPC at `/api/rpc` and downloads previews from `/api/images/<id>`; the Swift extension posts `{id, text}` to `/api/capture`, because it cannot speak the RPC protocol.
+- **Routes.** The app uses the JSON WebSocket RPC at `/api/rpc` and downloads previews from `/api/images/<id>`; the Swift extension posts `{id, text}` to `/api/capture`, because it cannot speak the RPC protocol. Both post a photo or video as the raw body of `/api/files/<id>`, typed `image/jpeg`, `image/png`, `video/mp4` or `video/quicktime`.
+- **Files.** A photo or screenshot goes to the tagging model at full detail, so the note's body keeps its readable text. A video gets the six stills and a Whisper transcript, and its first still becomes the preview.
 - **Previews.** The server keeps each link's preview image on disk, because TikTok's image links expire within days.
 - **Video stills.** Six stills sampled across a TikTok, X or YouTube video go to the tagging model at low detail, so the title, summary and tags cover what the video only shows; a TikTok cost $0.0004 to tag this way.
 - **Transcripts.** A TikTok, X or YouTube note keeps what its video says, read like the CLI does, so tags and search cover it. Without captions, Whisper transcribes audio up to 30 minutes long, one video at a time.
 
 ## iOS client
 
-- **No controls.** Links arrive only from the share sheet and from the clipboard when the app opens; there is no button, composer or editor. Swipe deletes; a long press opens or copies.
-- **Theme.** Colors, square corners and JetBrains Mono follow the deslop shadcn theme in `packages/components/src/theme.css`, applied to `@expo/ui` SwiftUI views through `src/lib/theme.ts`.
-- **Outbox.** The app and the share extension both write `pending/<id>.json` to the App Group container before sending. The client picks the id, so a resend never makes a second note.
+- **Capture.** Links, text, photos and videos arrive from the share sheet. A copied link or image becomes a note when the app opens. The pencil in the bottom bar writes a note, which the AI rewrites as short lines. Swipe deletes; a long press opens.
+- **Theme.** Colors, square corners and JetBrains Mono follow the deslop shadcn theme in `packages/components/src/theme.css`, applied to `@expo/ui` SwiftUI views through `@deslop/components/mobile/theme`. Brand logos come from svgl through `@deslop/components/mobile/brand`.
+- **Outbox.** The app and the share extension both write `pending/<id>.json` to the App Group container before sending, with a photo or video beside it as `pending/<id>.<ext>`. The client picks the id, so a resend never makes a second note.
 - **Share extension.** `@bacons/apple-targets` adds `targets/share` at prebuild. It finds the server in the containing app's `StashServer` Info.plist key and the App Group as `group.<app bundle id>`; the fonts live there once for both targets.
 - **Variants.** `APP_VARIANT` from `eas.json` picks the bundle id, App Group and name, so the three builds install side by side. `APPLE_TEAM_ID` comes from the project's EAS environment variables; `app.config.ts` names the EAS project.
 - **Updates.** JavaScript-only changes reach the installed build with `APP_VARIANT=production vpx eas-cli update --channel production --environment production --message '<what changed>'` from `apps/stash`, in about a minute. The runtime version is a fingerprint of the native project and `targets/share`, so a native change needs a new build first; the variant and the EAS environment must match the build's, or the fingerprint differs.
@@ -68,7 +69,6 @@ The first EAS build is the first Swift compile.
 | `expo-sharing` and `expo-share-intent`       | Both open the main app to save; sharing from TikTok must not leave TikTok                              |
 | `expo-share-extension` (React Native inside) | 6.0.0 is a beta with open crashes on SDK 57, and React Native in an extension costs most of its memory |
 | React Navigation and `react-native-screens`  | `@expo/ui` gives SwiftUI's own stack, search and swipe actions                                         |
-| Paste & Save button, composer, tag editor    | The owner wants no controls: links come only from sharing and the clipboard                            |
 | A GitHub macOS runner without EAS            | Signing on fresh runners and App Group registration need manual Apple setup and stayed unproven        |
 | EAS cloud builds from the workflow           | The free plan allows 15 iOS builds a month; macOS runners are free for this public repository          |
 | Binary RPC serialization                     | The earlier web version failed to reopen a cancelled watch with it                                     |

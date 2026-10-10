@@ -3,7 +3,7 @@ import UIKit
 import UniformTypeIdentifiers
 
 // The share sheet loads this controller. It saves what was shared at once and closes itself,
-// so sharing from TikTok, X or Safari takes one tap and never leaves that app.
+// so sharing a link, some text, a photo or a video takes one tap and never leaves that app.
 final class ShareViewController: UIViewController {
   override func viewDidLoad() {
     super.viewDidLoad()
@@ -75,7 +75,7 @@ private struct SaveView: View {
         Text("saved to stash").font(Theme.mono(16, semibold: true)).foregroundStyle(Theme.foreground)
       case .nothing:
         Text("nothing to save").font(Theme.mono(16, semibold: true)).foregroundStyle(Theme.foreground)
-        Text("share a link or some text").font(Theme.mono(13)).foregroundStyle(Theme.muted)
+        Text("share a link, text, a photo or a video").font(Theme.mono(13)).foregroundStyle(Theme.muted)
       case .failed(let message):
         Text("not saved").font(Theme.mono(16, semibold: true)).foregroundStyle(Theme.foreground)
         Text(message)
@@ -106,19 +106,25 @@ private struct SaveView: View {
   }
 
   private func save() async {
-    let text = await SharedText.read(from: context)
-    if text.isEmpty {
-      phase = .nothing
-      return
-    }
-    // The server and the app's outbox accept at most 20,000 UTF-16 units, as JavaScript counts them.
-    if text.utf16.count > 20_000 {
-      phase = .failed("too long: a note holds at most 20,000 characters")
-      return
-    }
+    let shared = await SharedText.read(from: context)
     do {
       let store = try Store()
-      let capture = Capture(id: UUID().uuidString.lowercased(), text: text, createdAt: Date().timeIntervalSince1970 * 1000)
+      let id = UUID().uuidString.lowercased()
+      // A shared web page keeps its link even when it also offers an image; anything else with a photo or a video
+      // saves the file.
+      var file: PendingFile? = nil
+      if !shared.hasLink { file = try await SharedFile.copy(from: context, into: store.pending, id: id) }
+      if file == nil && shared.text.isEmpty {
+        phase = .nothing
+        return
+      }
+      // The server and the app's outbox accept at most 20,000 UTF-16 units, as JavaScript counts them.
+      if file == nil && shared.text.utf16.count > 20_000 {
+        phase = .failed("too long: a note holds at most 20,000 characters")
+        return
+      }
+      let capture = Capture(
+        id: id, text: file == nil ? shared.text : "", createdAt: Date().timeIntervalSince1970 * 1000, file: file)
       // The pending file is written first, so the capture survives a failed upload or a killed extension; the app
       // resends it on its next start, and the server answers a resent id with the note it already has.
       try store.keep(capture)
@@ -138,6 +144,13 @@ private struct Capture: Codable {
   let id: String
   let text: String
   let createdAt: Double
+  // A photo or video saved next to the capture in pending/, named by the capture's id.
+  let file: PendingFile?
+}
+
+private struct PendingFile: Codable {
+  let name: String
+  let type: String
 }
 
 private struct Store {
@@ -171,7 +184,8 @@ private struct Store {
   }
 
   // A background session uploads only from a file, so the request body lives in uploads/ until the next share
-  // removes bodies older than a day.
+  // removes bodies older than a day. A photo or video is linked there, not copied, because the app deletes the pending
+  // file once the server has it.
   func upload(_ capture: Capture) throws {
     let manager = FileManager.default
     try manager.createDirectory(at: uploads, withIntermediateDirectories: true)
@@ -180,15 +194,25 @@ private struct Store {
       let modified = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
       if let modified, modified < stale { try? manager.removeItem(at: file) }
     }
-    let body = uploads.appendingPathComponent("\(capture.id).json")
-    try JSONEncoder().encode(["id": capture.id, "text": capture.text]).write(to: body, options: .atomic)
+    var request: URLRequest
+    let body: URL
+    if let file = capture.file {
+      body = uploads.appendingPathComponent(file.name)
+      try? manager.removeItem(at: body)
+      try manager.linkItem(at: pending.appendingPathComponent(file.name), to: body)
+      request = URLRequest(url: server.appendingPathComponent("api/files/\(capture.id)"))
+      request.setValue(file.type, forHTTPHeaderField: "Content-Type")
+    } else {
+      body = uploads.appendingPathComponent("\(capture.id).json")
+      try JSONEncoder().encode(["id": capture.id, "text": capture.text]).write(to: body, options: .atomic)
+      request = URLRequest(url: server.appendingPathComponent("api/capture"))
+      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    }
+    request.httpMethod = "POST"
     let configuration = URLSessionConfiguration.background(withIdentifier: "\(group).share.\(capture.id)")
     configuration.sharedContainerIdentifier = group
     configuration.isDiscretionary = false
     let session = URLSession(configuration: configuration)
-    var request = URLRequest(url: server.appendingPathComponent("api/capture"))
-    request.httpMethod = "POST"
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     session.uploadTask(with: request, fromFile: body).resume()
     session.finishTasksAndInvalidate()
   }
@@ -197,7 +221,7 @@ private struct Store {
 private enum SharedText {
   // TikTok and X share a link, Safari a link and its title, other apps plain text.
   // The result keeps every shared text and adds each link that the text does not already contain.
-  static func read(from context: NSExtensionContext) async -> String {
+  static func read(from context: NSExtensionContext) async -> (text: String, hasLink: Bool) {
     let providers = context.inputItems
       .compactMap { $0 as? NSExtensionItem }
       .flatMap { $0.attachments ?? [] }
@@ -219,6 +243,56 @@ private enum SharedText {
     }
     let body = texts.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
     let extra = links.filter { link in !body.contains { $0.contains(link) } }
-    return (body + extra).joined(separator: "\n")
+    return ((body + extra).joined(separator: "\n"), !links.isEmpty)
+  }
+}
+
+private enum SharedFile {
+  // Copies a shared video as it is, because the server reads MP4 and QuickTime, or a shared photo as a JPEG. Photos
+  // arrive as a file, as data, or as an image object from the screenshot editor.
+  static func copy(from context: NSExtensionContext, into folder: URL, id: String) async throws -> PendingFile? {
+    let providers = context.inputItems
+      .compactMap { $0 as? NSExtensionItem }
+      .flatMap { $0.attachments ?? [] }
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    if let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.movie.identifier) }) {
+      let mp4 = provider.hasItemConformingToTypeIdentifier(UTType.mpeg4Movie.identifier)
+      let file = PendingFile(name: "\(id).\(mp4 ? "mp4" : "mov")", type: mp4 ? "video/mp4" : "video/quicktime")
+      let target = folder.appendingPathComponent(file.name)
+      let identifier = mp4 ? UTType.mpeg4Movie.identifier : UTType.movie.identifier
+      // The system deletes the loaded file when the handler returns, so the copy happens inside it.
+      try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        _ = provider.loadFileRepresentation(forTypeIdentifier: identifier) { url, error in
+          guard let url else {
+            continuation.resume(throwing: error ?? CocoaError(.fileReadUnknown))
+            return
+          }
+          do {
+            try FileManager.default.copyItem(at: url, to: target)
+            continuation.resume()
+          } catch {
+            continuation.resume(throwing: error)
+          }
+        }
+      }
+      return file
+    }
+    if let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) }) {
+      let item = try await provider.loadItem(forTypeIdentifier: UTType.image.identifier, options: nil)
+      guard let jpeg = image(from: item)?.jpegData(compressionQuality: 0.85) else {
+        throw CocoaError(.fileReadCorruptFile)
+      }
+      let file = PendingFile(name: "\(id).jpg", type: "image/jpeg")
+      try jpeg.write(to: folder.appendingPathComponent(file.name), options: .atomic)
+      return file
+    }
+    return nil
+  }
+
+  private static func image(from item: NSSecureCoding) -> UIImage? {
+    if let image = item as? UIImage { return image }
+    if let data = item as? Data { return UIImage(data: data) }
+    if let url = item as? URL { return UIImage(contentsOfFile: url.path) }
+    return nil
   }
 }

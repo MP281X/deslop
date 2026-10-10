@@ -7,14 +7,14 @@ import {Asset} from 'expo-asset'
 import * as Clipboard from 'expo-clipboard'
 import Constants from 'expo-constants'
 import * as Crypto from 'expo-crypto'
-import {Directory, File, Paths} from 'expo-file-system'
+import {Directory, File, Paths, UploadTask, UploadType} from 'expo-file-system'
 import * as Haptics from 'expo-haptics'
 import {Alert, AppState} from 'react-native'
 
 import {Outbox, Pending, deliver} from '#lib/outbox.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {captureUrl} from '#services/notes/lib/utils.ts'
-import type {Note} from '#services/notes/schema.ts'
+import type {FileType, Note} from '#services/notes/schema.ts'
 import {NotesError, NotesState} from '#services/notes/schema.ts'
 
 // app.config.ts writes these for each build variant.
@@ -86,8 +86,10 @@ const outbox = Outbox.of({
 		yield* Effect.try({
 			catch: storageFailed('A sent capture could not be removed from this iPhone.'),
 			try: () => {
-				const file = new File(directory, `${id}.json`)
-				if (file.exists) file.delete()
+				// The capture and the photo or video beside it share the id as their name.
+				for (const entry of directory.exists ? directory.list() : []) {
+					if (entry instanceof File && String.startsWith(`${id}.`)(entry.name)) entry.delete()
+				}
 			}
 		})
 	})
@@ -155,6 +157,24 @@ export const notesAtom = Atom.keepAlive(
 	})
 )
 
+// Sends a photo or video from the outbox folder as the raw request body, straight from its file, so a long video never
+// passes through JavaScript memory.
+const upload = Effect.fnUntraced(function* (id: Pending['id'], name: string, type: FileType) {
+	const file = new File(yield* pendingDirectory, name)
+	const response = yield* Effect.tryPromise({
+		catch: storageFailed('The file could not be sent.'),
+		try: () =>
+			new UploadTask(file, new URL(`/api/files/${id}`, settings.server).href, {
+				headers: {'content-type': type},
+				httpMethod: 'POST',
+				uploadType: UploadType.BINARY_CONTENT
+			}).uploadAsync()
+	})
+	if (response.status < 200 || response.status >= 300) {
+		return yield* NotesError.make({message: `The server refused the file with status ${response.status}.`})
+	}
+})
+
 const outboxRevisionAtom = Atom.make(0)
 
 // Captures still on this iPhone, newest first, including what the share extension kept while offline.
@@ -175,7 +195,12 @@ export const deliveryAtom = Atom.keepAlive(
 			if (get(connectionAtom) !== 'online') return
 			const client = yield* RpcClient
 			const result = yield* Effect.provideService(
-				deliver(capture => client('notes.capture', capture)),
+				deliver(pending =>
+					Option.match(Option.fromNullishOr(pending.file), {
+						onNone: () => client('notes.capture', {id: pending.id, text: pending.text}),
+						onSome: file => upload(pending.id, file.name, file.type)
+					})
+				),
 				Outbox,
 				outbox
 			)
@@ -198,7 +223,43 @@ function alert(title: string) {
 		)
 }
 
-// Each time Stash opens, a copied link becomes a note. The last pasted text is remembered,
+// A copied photo or screenshot becomes a file note, sent like a shared one. Its digest is remembered like a pasted link.
+const pasteImage = Effect.gen(function* () {
+	const image = yield* Effect.tryPromise({
+		catch: storageFailed('The copied image could not be read.'),
+		try: () => Clipboard.getImageAsync({format: 'jpeg', jpegQuality: 0.85})
+	})
+	if (image === null) return false
+	const base64 = String.replace(/^data:[^,]*,/u, '')(image.data)
+	const digest = `image:${yield* Effect.promise(() => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, base64))}`
+	const last = yield* Effect.try({
+		catch: storageFailed('The last pasted image is unreadable.'),
+		try: () => (pastedFile.exists ? pastedFile.textSync() : '')
+	})
+	if (digest === last) return false
+	const id = Crypto.randomUUID()
+	const directory = yield* pendingDirectory
+	yield* Effect.try({
+		catch: storageFailed('The copied image could not be kept on this iPhone.'),
+		try: () => {
+			directory.create({idempotent: true, intermediates: true})
+			new File(directory, `${id}.jpg`).writeSync(base64, {encoding: 'base64'})
+		}
+	})
+	yield* outbox.add({
+		createdAt: yield* Clock.currentTimeMillis,
+		file: {name: `${id}.jpg`, type: 'image/jpeg'},
+		id,
+		text: ''
+	})
+	yield* Effect.try({
+		catch: storageFailed('The pasted image could not be remembered.'),
+		try: () => replace(pastedFile, digest)
+	})
+	return true
+})
+
+// Each time Stash opens, a copied link or image becomes a note. The last pasted one is remembered,
 // so opening Stash again with the same clipboard saves nothing twice.
 export const pasteAtom = Atom.keepAlive(
 	Atom.make(get =>
@@ -206,7 +267,13 @@ export const pasteAtom = Atom.keepAlive(
 			Effect.gen(function* () {
 				get(activationsAtom)
 				const clipboardFailed = storageFailed('The clipboard could not be read.')
-				// Checking for text does not show iOS's paste prompt; reading it does, unless pasting is allowed in Settings.
+				// Checking does not show iOS's paste prompt; reading does, unless pasting is allowed in Settings.
+				if (yield* Effect.tryPromise({catch: clipboardFailed, try: () => Clipboard.hasImageAsync()})) {
+					if (!(yield* pasteImage)) return
+					get.set(outboxRevisionAtom, get.once(outboxRevisionAtom) + 1)
+					yield* haptic(Haptics.NotificationFeedbackType.Success)
+					return
+				}
 				if (!(yield* Effect.tryPromise({catch: clipboardFailed, try: () => Clipboard.hasStringAsync()}))) return
 				const text = String.trim(
 					yield* Effect.tryPromise({catch: clipboardFailed, try: () => Clipboard.getStringAsync()})
@@ -224,7 +291,7 @@ export const pasteAtom = Atom.keepAlive(
 				get.set(outboxRevisionAtom, get.once(outboxRevisionAtom) + 1)
 				yield* haptic(Haptics.NotificationFeedbackType.Success)
 			}),
-			Effect.tapError(alert('Link Not Saved'))
+			Effect.tapError(alert('Not Saved'))
 		)
 	)
 )

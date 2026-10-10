@@ -152,7 +152,10 @@ export function NotesRoute(props: {
 							<Placeholder symbol="arrow.up" />
 							<VStack alignment="leading" spacing={4} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>
 								<Text modifiers={[mono('subheadline', 13), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
-									{item.text}
+									{Option.match(Option.fromNullishOr(item.file), {
+										onNone: () => item.text,
+										onSome: file => (String.startsWith('image/')(file.type) ? 'image' : 'video')
+									})}
 								</Text>
 								<Spinner />
 							</VStack>

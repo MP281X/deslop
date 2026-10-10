@@ -3,7 +3,6 @@ import {assert, it} from '@effect/vitest'
 import {Array, Effect, Ref} from 'effect'
 
 import {Outbox, Pending, deliver} from '#lib/outbox.ts'
-import type {Capture} from '#services/notes/schema.ts'
 import {NotesError} from '#services/notes/schema.ts'
 
 const captures = [
@@ -17,7 +16,7 @@ it.effect('sends the oldest capture first and keeps only the ones the server did
 		const stored = yield* Ref.make(captures)
 		const sent = yield* Ref.make(Array.empty<string>())
 		const delivered = yield* Effect.provideService(
-			deliver((capture: Capture) =>
+			deliver((capture: Pending) =>
 				Effect.andThen(
 					Ref.update(sent, Array.append(capture.text)),
 					capture.text === 'second' ? Effect.fail(NotesError.make({message: 'Offline'})) : Effect.void

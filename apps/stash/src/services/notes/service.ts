@@ -26,7 +26,7 @@ import {Organizer} from './internal/organization.ts'
 
 import {speechOnly} from '#services/media/lib/utils.ts'
 import {captureUrl, commentFor, normalizeTags, sourceFor, tagCounts} from '#services/notes/lib/utils.ts'
-import type {Capture, ImageType} from '#services/notes/schema.ts'
+import type {Capture, FileType, ImageType} from '#services/notes/schema.ts'
 import {Extraction, Note, NotesError, NotesState} from '#services/notes/schema.ts'
 
 type NotesFile = typeof NotesFile.Type
@@ -49,6 +49,12 @@ export class Notes extends Context.Service<
 		readonly capture: (input: Capture) => Effect.Effect<Note, NotesError>
 		readonly changes: Stream.Stream<NotesState>
 		readonly image: (id: Note['id']) => Effect.Effect<{bytes: Uint8Array; type: ImageType}, NotesError>
+		// A photo, screenshot or video from the iPhone becomes a note the AI describes; a resent id returns the saved note.
+		readonly captureFile: (input: {
+			bytes: Uint8Array
+			id: Note['id']
+			type: FileType
+		}) => Effect.Effect<Note, NotesError>
 		readonly remove: (input: Pick<Note, 'id'>) => Effect.Effect<void, NotesError>
 	}
 >()('@deslop/stash/services/notes/service/Notes') {
@@ -68,6 +74,7 @@ export class Notes extends Context.Service<
 			const budget = yield* pipe(Config.Number('STASH_AI_BUDGET_USD'), Config.withDefault(1))
 			const file = path.join(directory, 'notes.json')
 			const images = path.join(directory, 'images')
+			const files = path.join(directory, 'files')
 			const aiCalls = yield* Semaphore.make(1)
 			const storageFailed = Effect.mapError(cause =>
 				NotesError.make({cause, message: 'The notes file could not be read or written.'})
@@ -166,7 +173,10 @@ export class Notes extends Context.Service<
 
 			// The preview is kept on disk, because TikTok's image links expire within days.
 			const keepImage = Effect.fnUntraced(function* (id: Note['id'], link: string) {
-				const image = yield* sources.image(link)
+				yield* storeImage(id, yield* sources.image(link))
+			})
+
+			const storeImage = Effect.fnUntraced(function* (id: Note['id'], image: {bytes: Uint8Array; type: ImageType}) {
 				// Written under the same lock as removal, so a note deleted during the download leaves no file behind.
 				yield* Effect.uninterruptible(
 					SubscriptionRef.modifyEffect(state, current =>
@@ -297,11 +307,54 @@ export class Notes extends Context.Service<
 				)
 			})
 
+			// A file note has no link to read: a photo or screenshot is its own preview, and a video gives its first still as the
+			// preview, stills for the AI and its speech as the transcript.
+			const organizeFile = Effect.fnUntraced(function* (id: Note['id'], type: FileType) {
+				const stored = path.join(files, id)
+				const stills = type === 'video/mp4' || type === 'video/quicktime' ? yield* sources.fileFrames(stored) : []
+				yield* Option.match(Array.head(stills), {
+					onNone: () => Effect.void,
+					onSome: bytes =>
+						Effect.catch(storeImage(id, {bytes, type: 'image/jpeg'}), error =>
+							Effect.logWarning('The video preview was not kept', error)
+						)
+				})
+				if (Array.isReadonlyArrayNonEmpty(stills)) {
+					yield* Option.match(yield* sources.fileTranscript(stored), {
+						onNone: () => Effect.void,
+						onSome: transcript => updateNote(id, item => ({...item, transcript}))
+					})
+				}
+				const preview = yield* Option.match(
+					Option.flatMapNullishOr(
+						Array.findFirst((yield* SubscriptionRef.get(state)).notes, item => item.id === id),
+						item => item.image
+					),
+					{onNone: () => Effect.succeed([]), onSome: image => previewOf(id, image)}
+				)
+				const frames = [
+					...preview,
+					...Array.map(Array.drop(stills, 1), bytes => `data:image/jpeg;base64,${Base64.encode(bytes)}`)
+				]
+				yield* aiCalls.withPermit(
+					Effect.gen(function* () {
+						const current = yield* SubscriptionRef.get(state)
+						yield* Option.match(
+							Array.findFirst(current.notes, item => item.id === id),
+							{onNone: () => Effect.void, onSome: note => tag(note, current, frames)}
+						)
+					})
+				)
+			})
+
 			// Tagging runs beside the request. A shutdown leaves the note organizing, so the next start tags it again; any other
 			// stop keeps the note as it is and says why.
 			function start(note: Note) {
 				return pipe(
-					organize(note.id, note.url),
+					Option.match(Option.fromNullishOr(note.file), {
+						onNone: () => organize(note.id, note.url),
+						onSome: type => organizeFile(note.id, type)
+					}),
 					Effect.tapCause(cause =>
 						Cause.hasInterruptsOnly(cause)
 							? Effect.void
@@ -375,6 +428,52 @@ export class Notes extends Context.Service<
 					if (saved.fresh) yield* start(saved.note)
 					return saved.note
 				}),
+				captureFile: Effect.fn('Notes.captureFile')(function* (input: {
+					bytes: Uint8Array
+					id: Note['id']
+					type: FileType
+				}) {
+					const known = Array.findFirst((yield* SubscriptionRef.get(state)).notes, note => note.id === input.id)
+					if (Option.isSome(known)) return Option.getOrThrow(known)
+					const video = input.type === 'video/mp4' || input.type === 'video/quicktime'
+					// The file is on disk before the note, so a note never names a file that is not there.
+					yield* pipe(fs.makeDirectory(files, {mode: 0o700, recursive: true}), storageFailed)
+					yield* pipe(fs.writeFile(path.join(files, input.id), input.bytes, {mode: 0o600}), storageFailed)
+					if (!video) {
+						yield* pipe(fs.makeDirectory(images, {mode: 0o700, recursive: true}), storageFailed)
+						yield* pipe(fs.writeFile(path.join(images, input.id), input.bytes, {mode: 0o600}), storageFailed)
+					}
+					const note = Note.make({
+						author: '',
+						content: '',
+						createdAt: DateTime.toEpochMillis(yield* DateTime.now),
+						file: input.type,
+						id: input.id,
+						...(video ? {} : {image: input.type === 'image/png' ? 'image/png' : 'image/jpeg'}),
+						issue: '',
+						source: 'Note',
+						status: 'organizing',
+						summary: '',
+						tags: [],
+						text: '',
+						title: video ? 'video' : 'image',
+						// A file has no link; the stored field keeps the schema's null for that.
+						url: Option.getOrNull(Option.none())
+					})
+					// The share extension and the app can send the same file at once, so the id is checked again in the change.
+					const earlier = yield* transact(current =>
+						Option.match(
+							Array.findFirst(current.notes, item => item.id === input.id),
+							{
+								onNone: () => Tuple.make(Option.none<Note>(), {...current, notes: Array.prepend(current.notes, note)}),
+								onSome: item => Tuple.make(Option.some(item), current)
+							}
+						)
+					)
+					if (Option.isSome(earlier)) return Option.getOrThrow(earlier)
+					yield* start(note)
+					return note
+				}),
 				changes: SubscriptionRef.changes(state),
 				image: Effect.fn('Notes.image')(function* (id: Note['id']) {
 					const type = yield* pipe(
@@ -395,6 +494,7 @@ export class Notes extends Context.Service<
 						)
 					)
 					yield* pipe(fs.remove(path.join(images, input.id), {force: true}), storageFailed)
+					yield* pipe(fs.remove(path.join(files, input.id), {force: true}), storageFailed)
 				})
 			})
 		})
