@@ -29,11 +29,12 @@ const settings = Effect.runSync(
 const variant = variants[settings.variant]
 const bundleIdentifier = `xyz.mp281x.stash${variant.suffix}`
 const appGroup = `group.${bundleIdentifier}`
+const projectId = 'c9620553-0dc5-4e08-b691-a47fa3cab00e'
 
-// app.json keeps the fields `eas init` writes, the owner and the project ID; everything else lives here.
+// app.json keeps only the Expo owner; the EAS project ID also names the update server, so it lives here.
 export default (context: ConfigContext): ExpoConfig => ({
 	...context.config,
-	extra: {...context.config.extra, appGroup, server: settings.server},
+	extra: {...context.config.extra, appGroup, eas: {projectId}, server: settings.server},
 	icon: './src/routes/icon.png',
 	ios: {
 		appleTeamId: Option.getOrUndefined(settings.team),
@@ -53,8 +54,12 @@ export default (context: ConfigContext): ExpoConfig => ({
 		'@bacons/apple-targets',
 		['expo-font', {fonts: ['./targets/share/JetBrainsMono-Regular.ttf', './targets/share/JetBrainsMono-SemiBold.ttf']}]
 	],
+	// JavaScript changes reach the installed build through EAS Update; the fingerprint changes with any native change,
+	// so an update never reaches a build whose native code differs.
+	runtimeVersion: {policy: 'fingerprint'},
 	scheme: variant.scheme,
 	slug: 'stash',
+	updates: {url: `https://u.expo.dev/${projectId}`},
 	userInterfaceStyle: 'automatic',
 	version: `0.1.${settings.release}`
 })
