@@ -233,7 +233,12 @@ export class Media extends Context.Service<
 						Effect.mapError(cause => MediaError.make({cause, message: 'yt-dlp downloaded no audio'}))
 					)
 				)
-				return yield* listen({file: audio, language: Option.some(language), maxWhisperSeconds: input.maxWhisperSeconds})
+				return yield* listen({
+					file: audio,
+					language: Option.some(language),
+					maxWhisperSeconds: input.maxWhisperSeconds,
+					seconds: Option.fromNullishOr(media.duration)
+				})
 			})
 
 			// Speech in an audio or video file through local Whisper, or nothing for music, silence or audio over the limit.
@@ -242,12 +247,16 @@ export class Media extends Context.Service<
 				// Unknown for a file from the iPhone, where the multilingual model detects it.
 				language: Option.Option<string>
 				maxWhisperSeconds: Option.Option<number>
+				// The video's own length: a TikTok's audio track can be the whole song behind a 12-second clip, so decoding
+				// stops one second after the video ends.
+				seconds: Option.Option<number>
 			}) {
 				const pcm = yield* run('ffmpeg', [
 					'-v',
 					'error',
 					'-i',
 					input.file,
+					...Option.match(input.seconds, {onNone: () => [], onSome: seconds => ['-t', `${seconds + 1}`]}),
 					'-f',
 					's16le',
 					'-ac',
@@ -366,7 +375,12 @@ export class Media extends Context.Service<
 				),
 				fileTranscript: Effect.fn('Media.fileTranscript')(
 					function* (file) {
-						return yield* listen({file, language: Option.none(), maxWhisperSeconds: Option.some(30 * 60)})
+						return yield* listen({
+							file,
+							language: Option.none(),
+							maxWhisperSeconds: Option.some(30 * 60),
+							seconds: Option.none()
+						})
 					},
 					Effect.scoped,
 					withProcesses
