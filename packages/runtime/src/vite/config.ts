@@ -7,6 +7,18 @@ import type {UserConfig} from 'vite-plus'
 
 import {serverPlugin} from './server.ts'
 
+// The server bundle; native apps, whose client Metro builds, use only this part.
+export const pack = {
+	banner: '#!/usr/bin/env -S node --max-old-space-size=16384 --heapsnapshot-near-heap-limit=3 --report-on-fatalerror',
+	clean: false,
+	entry: ['src/main.ts'],
+	format: 'esm',
+	outDir: 'dist',
+	outputOptions: {entryFileNames: 'server.js'},
+	platform: 'node',
+	target: 'node26'
+} satisfies UserConfig['pack']
+
 export function make() {
 	return Effect.runPromiseWith(Context.empty())(
 		Effect.map(
@@ -21,17 +33,7 @@ export function make() {
 						target: 'esnext'
 					},
 					future: 'warn',
-					pack: {
-						banner:
-							'#!/usr/bin/env -S node --max-old-space-size=16384 --heapsnapshot-near-heap-limit=3 --report-on-fatalerror',
-						clean: false,
-						entry: ['src/main.ts'],
-						format: 'esm',
-						outDir: 'dist',
-						outputOptions: {entryFileNames: 'server.js'},
-						platform: 'node',
-						target: 'node26'
-					},
+					pack,
 					plugins: [
 						tanstackRouter({autoCodeSplitting: true, target: 'react'}),
 						react({compiler: true}),
