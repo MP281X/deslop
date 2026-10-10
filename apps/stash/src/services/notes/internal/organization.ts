@@ -1,4 +1,18 @@
-import {Array, Config, Context, Effect, Layer, Option, Redacted, Result, Schema, String, pipe} from 'effect'
+import {
+	Array,
+	Config,
+	Context,
+	Effect,
+	Layer,
+	Option,
+	Predicate,
+	Record,
+	Redacted,
+	Result,
+	Schema,
+	String,
+	pipe
+} from 'effect'
 
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 
@@ -6,12 +20,36 @@ import {normalizeTags} from '#services/notes/lib/utils.ts'
 import type {Note} from '#services/notes/schema.ts'
 import {NotesError, Organization} from '#services/notes/schema.ts'
 
+// OpenRouter's chat completion. A refusal or a filtered answer arrives with null content, and it is still billed.
 type Completion = typeof Completion.Type
 const Completion = Schema.Struct({
-	// A refusal or a filtered answer arrives with null content, and it is still billed.
 	choices: Schema.Array(Schema.Struct({message: Schema.Struct({content: Schema.NullOr(Schema.String)})})),
 	usage: Schema.Struct({cost: Schema.Finite})
 })
+
+// Anthropic's message: thinking blocks come before the text block that holds the JSON answer.
+type Message = typeof Message.Type
+const Message = Schema.Struct({
+	content: Schema.Array(Schema.Struct({text: Schema.optionalKey(Schema.String), type: Schema.String})),
+	usage: Schema.Struct({input_tokens: Schema.Finite, output_tokens: Schema.Finite})
+})
+
+// Dollars per million input and output tokens for prompts under 100,000 tokens; Anthropic returns tokens, not cost.
+const claudePrices: Record.ReadonlyRecord<string, {input: number; output: number}> = {
+	'claude-haiku-5-5': {input: 0.1, output: 0.5}
+}
+
+// Claude's structured output rejects length limits, so they leave the schema it gets; decoding the answer still checks
+// them.
+function withoutLimits(value: unknown): unknown {
+	if (Array.isArray(value)) return Array.map(value, withoutLimits)
+	if (!Predicate.isObject(value)) return value
+	return pipe(
+		value,
+		Record.filter((_item, key) => !Array.contains(['maxItems', 'maxLength', 'minLength'], key)),
+		Record.map(withoutLimits)
+	)
+}
 
 // Raised whenever the instructions or the inputs change, so the server tags saved notes again on its next start.
 export const revision = 4
@@ -53,23 +91,104 @@ export class Organizer extends Context.Service<
 			frames: string[]
 			note: Note
 			tags: Note['tags']
-		}) => Effect.Effect<
-			{cost: Completion['usage']['cost']; organization: Result.Result<Organization, NotesError>},
-			NotesError
-		>
+		}) => Effect.Effect<{cost: number; organization: Result.Result<Organization, NotesError>}, NotesError>
 	}
 >()('@deslop/stash/services/notes/internal/organization/Organizer') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
-			const key = yield* Config.option(Config.Redacted('OPENROUTER_API_KEY'))
-			const model = yield* pipe(Config.String('STASH_AI_MODEL'), Config.withDefault('openai/gpt-6-luna'))
+			// An Anthropic key wins over an OpenRouter key; each provider has its own default model.
+			const anthropic = yield* Config.option(Config.Redacted('ANTHROPIC_API_KEY'))
+			const openRouter = yield* Config.option(Config.Redacted('OPENROUTER_API_KEY'))
+			const model = yield* pipe(
+				Config.String('STASH_AI_MODEL'),
+				Config.withDefault(Option.isSome(anthropic) ? 'claude-haiku-5-5' : 'openai/gpt-6-luna')
+			)
 			const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
+			const schema = Schema.toJsonSchemaDocument(Organization, {onExcessProperty: 'error'}).schema
+
+			const askOpenRouter = Effect.fnUntraced(function* (token: Redacted.Redacted, entry: string, frames: string[]) {
+				const request = yield* HttpClientRequest.bodyJson(
+					HttpClientRequest.post('https://openrouter.ai/api/v1/chat/completions', {
+						headers: {authorization: `Bearer ${Redacted.value(token)}`}
+					}),
+					{
+						// Room for the reasoning and a long body; only used tokens cost.
+						max_tokens: 12_000,
+						messages: [
+							{content: Array.join(instructions, ' '), role: 'system'},
+							{
+								// The photo or preview comes first at full detail, so its words stay readable; low detail keeps each
+								// still to a fixed, small token cost.
+								content: [
+									{text: entry, type: 'text'},
+									...Array.map(frames, (url, index) => ({
+										image_url: {detail: index === 0 ? 'high' : 'low', url},
+										type: 'image_url'
+									}))
+								],
+								role: 'user'
+							}
+						],
+						model,
+						provider: {require_parameters: true},
+						// Medium effort reads the images and the source closely enough to catch irony and adverts.
+						reasoning: {effort: 'medium', exclude: true},
+						// Strict structured output rejects a schema that allows extra properties.
+						response_format: {json_schema: {name: 'note', schema, strict: true}, type: 'json_schema'},
+						usage: {include: true}
+					}
+				)
+				const completion = yield* pipe(
+					client.execute(request),
+					Effect.flatMap(HttpClientResponse.schemaBodyJson(Completion))
+				)
+				return {
+					content: pipe(
+						Array.head(completion.choices),
+						Option.flatMap(choice => Option.fromNullishOr(choice.message.content))
+					),
+					cost: completion.usage.cost
+				}
+			})
+
+			// Claude reads base64 images and thinks adaptively at its default medium effort.
+			const askClaude = Effect.fnUntraced(function* (token: Redacted.Redacted, entry: string, frames: string[]) {
+				const images = Array.filterMap(frames, url =>
+					pipe(
+						String.match(/^data:([^;,]+);base64,(.+)$/su)(url),
+						Option.flatMap(match => Option.all({data: Array.get(match, 2), type: Array.get(match, 1)})),
+						Option.map(image => ({source: {data: image.data, media_type: image.type, type: 'base64'}, type: 'image'})),
+						Result.fromOption(() => undefined)
+					)
+				)
+				const request = yield* HttpClientRequest.bodyJson(
+					HttpClientRequest.post('https://api.anthropic.com/v1/messages', {
+						headers: {'anthropic-version': '2023-06-01', 'x-api-key': Redacted.value(token)}
+					}),
+					{
+						max_tokens: 16_000,
+						messages: [{content: [...images, {text: entry, type: 'text'}], role: 'user'}],
+						model,
+						output_config: {format: {schema: withoutLimits(schema), type: 'json_schema'}},
+						system: Array.join(instructions, ' ')
+					}
+				)
+				const message = yield* pipe(client.execute(request), Effect.flatMap(HttpClientResponse.schemaBodyJson(Message)))
+				const price = claudePrices[model] ?? {input: 0.1, output: 0.5}
+				return {
+					content: pipe(
+						Array.findFirst(message.content, block => block.type === 'text'),
+						Option.flatMap(block => Option.fromNullishOr(block.text))
+					),
+					cost: (message.usage.input_tokens * price.input + message.usage.output_tokens * price.output) / 1_000_000
+				}
+			})
+
 			return Organizer.of({
-				enabled: Option.isSome(key),
+				enabled: Option.isSome(anthropic) || Option.isSome(openRouter),
 				organize: Effect.fn('Organizer.organize')(
 					function* (input) {
-						const token = yield* Effect.fromOption(key)
 						const entry = pipe(
 							[
 								`Source: ${input.note.source}`,
@@ -84,54 +203,16 @@ export class Organizer extends Context.Service<
 							],
 							Array.join('\n')
 						)
-						const request = yield* HttpClientRequest.bodyJson(
-							HttpClientRequest.post('https://openrouter.ai/api/v1/chat/completions', {
-								headers: {authorization: `Bearer ${Redacted.value(token)}`}
-							}),
-							{
-								// Room for the reasoning and a long body; only used tokens cost.
-								max_tokens: 12_000,
-								messages: [
-									{content: Array.join(instructions, ' '), role: 'system'},
-									{
-										// The photo or preview comes first at full detail, so its words stay readable; low detail keeps
-										// each still to a fixed, small token cost.
-										content: [
-											{text: entry, type: 'text'},
-											...Array.map(input.frames, (url, index) => ({
-												image_url: {detail: index === 0 ? 'high' : 'low', url},
-												type: 'image_url'
-											}))
-										],
-										role: 'user'
-									}
-								],
-								model,
-								provider: {require_parameters: true},
-								// Medium effort reads the images and the source closely enough to attribute claims and catch irony.
-								reasoning: {effort: 'medium', exclude: true},
-								response_format: {
-									// Strict structured output rejects a schema that allows extra properties.
-									json_schema: {
-										name: 'note',
-										schema: Schema.toJsonSchemaDocument(Organization, {onExcessProperty: 'error'}).schema,
-										strict: true
-									},
-									type: 'json_schema'
-								},
-								usage: {include: true}
-							}
-						)
-						const completion = yield* pipe(
-							client.execute(request),
-							Effect.flatMap(HttpClientResponse.schemaBodyJson(Completion))
-						)
-						// OpenRouter bills a call whose answer is unusable, so the cost is returned either way.
+						const answer = yield* Option.match(anthropic, {
+							onNone: () =>
+								Effect.flatMap(Effect.fromOption(openRouter), token => askOpenRouter(token, entry, input.frames)),
+							onSome: token => askClaude(token, entry, input.frames)
+						})
+						// Both providers bill a call whose answer is unusable, so the cost is returned either way.
 						return {
-							cost: completion.usage.cost,
+							cost: answer.cost,
 							organization: pipe(
-								Array.head(completion.choices),
-								Option.flatMap(choice => Option.fromNullishOr(choice.message.content)),
+								answer.content,
 								Result.fromOption(() => NotesError.make({message: 'The AI returned no answer.'})),
 								Result.flatMap(content =>
 									pipe(

@@ -265,7 +265,7 @@ export class Notes extends Context.Service<
 						Effect.catch(keepImage(id, link), error => Effect.logWarning('The preview image was not kept', error))
 				})
 				// A video's details (date, length, description, chapters) replace the short caption of a TikTok or YouTube link;
-				// an X post's own text stays, because its video file has no details. What the video says feeds the tags and search;
+				// an X post keeps the thread FxTwitter read, with its follow-ups and quote. What the video says feeds the tags and search;
 				// without captions, local Whisper can take minutes. A note deleted meanwhile needs neither, and one that kept its
 				// transcript before needs no new one.
 				const before = Array.findFirst((yield* SubscriptionRef.get(state)).notes, item => item.id === id)
@@ -277,7 +277,7 @@ export class Notes extends Context.Service<
 					yield* updateNote(id, item => ({
 						...item,
 						...Option.match(
-							Option.filter(video.info, () => extracted.video === undefined),
+							Option.filter(video.info, () => sourceFor(extracted.url) !== 'X'),
 							{onNone: () => ({}), onSome: info => ({content: info})}
 						),
 						...Option.match(video.transcript, {onNone: () => ({}), onSome: transcript => ({transcript})})

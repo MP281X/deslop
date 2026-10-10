@@ -1,35 +1,34 @@
 # Stash
 
-A personal inbox for links, written notes, photos and videos on one iPhone, and a CLI that reads what a video or social post says. One package holds the Effect server for `dev`, the Expo iOS client with a Swift share extension, and the `stash` command.
+A personal inbox for links, written notes, photos and videos on one iPhone, and a CLI that saves to it. One package holds the Effect server for `dev`, the Expo iOS client with a Swift share extension, and the `stash` command.
 
 ## CLI
 
-Runs on Linux or macOS (x64 or arm64) with Node 26+ and `ffmpeg` on `PATH`.
+Runs on Linux or macOS (x64 or arm64) with Node 26+ on the tailnet.
 
 ```bash
-vpx @deslop/stash@latest media '<url>' [output directory] [--language it]
+vpx @deslop/stash@latest save '<link or text>' [output directory] [--server <url>]
 ```
 
-| Output           | Content                                                                                                  |
-| ---------------- | -------------------------------------------------------------------------------------------------------- |
-| `info.md`        | Title, author, date, duration, description and chapters; the text of an X post and of the post it quotes |
-| `transcript.txt` | One `[mm:ss] text` line per caption or speech segment                                                    |
+| Output           | Content                                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------------------------ |
+| `note.md`        | Title, author, link, tags, summary, the AI's notes, topics, words in the images and the source it read |
+| `transcript.txt` | One `[mm:ss] text` line per caption or speech segment, when the link has a video                       |
 
-The output directory defaults to `/tmp/media`. The spoken language comes from `--language`, the video's original caption track or its declared language, defaulting to English, and published captions in that language win. Without them, the audio is transcribed locally with Whisper `small.en`, in about a quarter of the audio's duration (a 38-minute talk took 9 minutes on an 8-core server). Speech that is not English uses the multilingual Whisper model.
-
-The first run downloads the standalone `yt-dlp`, and the first transcription the Whisper model, into `$XDG_CACHE_HOME/deslop/media` (`~/.cache` by default); later runs update `yt-dlp` in place. When YouTube refuses the connection, as it does for most datacenter addresses, `info.md` holds only the oEmbed title and channel. A URL nothing can be read from fails.
+The CLI is a client of the server: it saves the entry as a note through the RPC, waits until the server has read and tagged it, and writes the files. API keys, `yt-dlp` and Whisper stay on the server. The output directory defaults to `/tmp/stash`, and the server to `STASH_SERVER`, then `https://dev.tailnet-8c4c.ts.net:8443`.
 
 ## Server
 
 - **Run.** `vp -C apps/stash run preview` builds `dist/server.js` and serves it on `127.0.0.1:5017`; `sudo tailscale serve --bg --https=8443 http://127.0.0.1:5017` publishes it as `https://dev.tailnet-8c4c.ts.net:8443`. The tailnet is the only sign-in, so never bind it to `0.0.0.0` on `dev`, which has a public address.
-- **Environment.** `OPENROUTER_API_KEY` in `~/.deslop/stash.env` turns tagging on. `STASH_DATA_DIR` defaults to `~/.deslop/stash`, `STASH_AI_MODEL` to `openai/gpt-6-luna` and `STASH_AI_BUDGET_USD` to 1 per month.
+- **Environment.** `ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY` in `~/.deslop/stash.env` turns tagging on; the Anthropic key wins. `STASH_AI_MODEL` defaults to `claude-haiku-5-5` with the Anthropic key and `openai/gpt-6-luna` with OpenRouter. `STASH_DATA_DIR` defaults to `~/.deslop/stash` and `STASH_AI_BUDGET_USD` to 1 per month.
+- **Media.** The first link with a video downloads the standalone `yt-dlp`, and the first transcription the Whisper model, into `$XDG_CACHE_HOME/deslop/media` (`~/.cache` by default). Published captions win; Whisper `small.en` takes about a quarter of the audio's length (a 38-minute talk took 9 minutes), and speech that is not English uses the multilingual model. YouTube refuses most datacenter addresses, so a YouTube note often has only the oEmbed title and channel.
 - **Routes.** The app uses the JSON WebSocket RPC at `/api/rpc` and downloads previews from `/api/images/<id>`; the Swift extension posts `{id, text}` to `/api/capture`, because it cannot speak the RPC protocol. Both post a photo or video as the raw body of `/api/files/<id>`, typed `image/jpeg`, `image/png`, `video/mp4` or `video/quicktime`.
-- **Organizer.** `gpt-6-luna` with medium reasoning writes the title, summary, tags, topics and a body of every useful fact as direct notes, not narration about the author, and copies the words in the images into `screenText`. The photo or the link's preview goes at full detail; stills go at low detail. Eight test notes cost $0.009 together.
+- **Organizer.** The model, with medium reasoning, writes the title, summary, tags, topics and a body of every useful fact as direct notes, not narration about the author, and copies the words in the images into `screenText`. Through OpenRouter, the photo or the link's preview goes at full detail and stills at low detail; eight test notes cost $0.009 together with `gpt-6-luna`. Claude gets the same images as base64 and a schema without length limits, which it rejects.
 - **Revisions.** `revision` in `organization.ts` names the instructions. On start, the server tags every ready note from an older revision again, so raise it with each change to the instructions or the inputs.
 - **Files.** A video file gets the six stills and a Whisper transcript, and its first still becomes the preview.
 - **Previews.** The server keeps each link's preview image on disk, because TikTok's image links expire within days.
 - **Video stills.** Six stills sampled across a TikTok, X or YouTube video go to the tagging model at low detail, so the title, summary and tags cover what the video only shows; a TikTok cost $0.0004 to tag this way.
-- **Transcripts.** A TikTok, X or YouTube note keeps what its video says, read like the CLI does, so tags and search cover it. Without captions, Whisper transcribes audio up to 30 minutes long, one video at a time. The video's details (date, length, description, chapters) replace a TikTok or YouTube caption as the note's source.
+- **Transcripts.** A TikTok, X or YouTube note keeps what its video says, so tags and search cover it. Without captions, Whisper transcribes audio up to two hours long, one video at a time. The video's details (date, length, description, chapters) replace a TikTok or YouTube caption as the note's source.
 
 ## iOS client
 
@@ -62,21 +61,22 @@ The first EAS build is the first Swift compile.
 
 | Owner            | Decision                                                                                                                                                                                                                                                                                                                                                    |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Package          | Published as `@deslop/stash` with the `stash` bin; app dependencies are `devDependencies`, bundled by `vp pack` or by Metro. Only ONNX Runtime, sharp and the Expo, React and React Native packages that `expo prebuild` requires in `dependencies` install with the CLI                                                                                    |
+| Package          | Published as `@deslop/stash` with the `stash` bin; app and server dependencies are `devDependencies`, bundled by `vp pack` or by Metro. Only the Expo, React and React Native packages that `expo prebuild` requires stay in `dependencies`. The CLI imports only the RPC contracts                                                                         |
 | `services/media` | `yt-dlp` stays an external binary because no maintained JavaScript extractor covers its sites. The iOS client never imports it: Metro must not reach Transformers.js, ONNX or child processes                                                                                                                                                               |
-| Transcription    | Transformers.js with q8 Whisper, bundled because it imports `onnxruntime-common` without declaring it and `pnpm dlx` (pnpm 11) cannot resolve that. Update Transformers.js `4.3.0`, `onnxruntime-common`, `onnxruntime-node` and sharp together                                                                                                             |
+| Transcription    | Transformers.js with q8 Whisper runs on the server; `dist/server.js` loads ONNX Runtime and sharp from the repository's install. Update Transformers.js `4.3.0`, `onnxruntime-common`, `onnxruntime-node` and sharp together                                                                                                                                |
 | Publishing       | Follows [tools/AGENTS.md](../../tools/AGENTS.md); the package replaced `@deslop/media`                                                                                                                                                                                                                                                                      |
 | `@expo/ui` patch | `patches/@expo__ui@58.0.15.patch` adds `kind="search"` and `kind="spacer"` to `ToolbarItem`, keeps toolbar items in written order, and gives `List` a writable edit mode through `editing` and `onEditingChange`. `expo.autolinking.ios.buildFromSource` in `package.json` builds `ExpoUI` from source, because the precompiled framework ignores the patch |
 
-| Rejected                                     | Reason                                                                                                 |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `expo-sharing` and `expo-share-intent`       | Both open the main app to save; sharing from TikTok must not leave TikTok                              |
-| `expo-share-extension` (React Native inside) | 6.0.0 is a beta with open crashes on SDK 57, and React Native in an extension costs most of its memory |
-| React Navigation and `react-native-screens`  | `@expo/ui` gives SwiftUI's own stack, search and swipe actions                                         |
-| A GitHub macOS runner without EAS            | Signing on fresh runners and App Group registration need manual Apple setup and stayed unproven        |
-| EAS cloud builds from the workflow           | The free plan allows 15 iOS builds a month; macOS runners are free for this public repository          |
-| Binary RPC serialization                     | The earlier web version failed to reopen a cancelled watch with it                                     |
-| A PWA                                        | iOS gives a web app no share sheet entry                                                               |
-| A separate `tools/media` package             | Stash reads the same links; one package keeps one extractor, and notes get the transcripts             |
+| Rejected                                     | Reason                                                                                                     |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `expo-sharing` and `expo-share-intent`       | Both open the main app to save; sharing from TikTok must not leave TikTok                                  |
+| `expo-share-extension` (React Native inside) | 6.0.0 is a beta with open crashes on SDK 57, and React Native in an extension costs most of its memory     |
+| React Navigation and `react-native-screens`  | `@expo/ui` gives SwiftUI's own stack, search and swipe actions                                             |
+| A GitHub macOS runner without EAS            | Signing on fresh runners and App Group registration need manual Apple setup and stayed unproven            |
+| EAS cloud builds from the workflow           | The free plan allows 15 iOS builds a month; macOS runners are free for this public repository              |
+| Binary RPC serialization                     | The earlier web version failed to reopen a cancelled watch with it                                         |
+| A PWA                                        | iOS gives a web app no share sheet entry                                                                   |
+| A separate `tools/media` package             | Stash reads the same links; one package keeps one extractor, and notes get the transcripts                 |
+| `yt-dlp` and Whisper inside the CLI          | The CLI saves through the server, so API keys and models live in one place and every analysis stays a note |
 
 </details>

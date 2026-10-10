@@ -426,8 +426,9 @@ export class Sources extends Context.Service<
 					const nothing = {info: Option.none<string>(), transcript: Option.none<string>()}
 					if (!hasVideo(link)) return nothing
 					const report = yield* Effect.result(
-						// Audio without captions longer than half an hour would hold every core of dev for many minutes.
-						media.read({language: Option.none(), link, maxWhisperSeconds: Option.some(30 * 60)})
+						// Whisper runs one video at a time in about a quarter of the audio's length, so two hours caps a run near half an
+						// hour; the CLI saves long talks through here too.
+						media.read({language: Option.none(), link, maxWhisperSeconds: Option.some(2 * 60 * 60)})
 					)
 					if (Result.isFailure(report)) {
 						yield* Effect.logWarning('No video details', report.failure)

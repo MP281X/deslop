@@ -1,7 +1,7 @@
 {
 	"name": "@deslop/stash",
 	"version": "0.1.0",
-	"description": "A personal link inbox: the server, the iOS app, and a CLI that reads a video or post into its text and a transcript.",
+	"description": "A personal inbox for links and notes: the server, the iOS app, and a CLI that saves to it.",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/MP281X/deslop",
@@ -41,11 +41,8 @@
 	},
 	"dependencies": {
 		"expo": "58.0.7",
-		"onnxruntime-common": "1.30.0",
-		"onnxruntime-node": "1.30.0",
 		"react": "19.3.0",
-		"react-native": "0.88.0-rc.4",
-		"sharp": "^0.35.4"
+		"react-native": "0.88.0-rc.4"
 	},
 	"devDependencies": {
 		"@bacons/apple-targets": "5.0.0",
@@ -64,7 +61,10 @@
 		"expo-font": "58.0.7",
 		"expo-haptics": "58.0.5",
 		"expo-updates": "58.0.15",
-		"react-error-boundary": "latest"
+		"onnxruntime-common": "1.30.0",
+		"onnxruntime-node": "1.30.0",
+		"react-error-boundary": "latest",
+		"sharp": "^0.35.4"
 	},
 	"engines": {
 		"node": ">=26"
