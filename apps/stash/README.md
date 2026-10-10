@@ -25,6 +25,7 @@ The first run downloads the standalone `yt-dlp`, and the first transcription the
 - **Environment.** `OPENROUTER_API_KEY` in `~/.deslop/stash.env` turns tagging on. `STASH_DATA_DIR` defaults to `~/.deslop/stash`, `STASH_AI_MODEL` to `openai/gpt-6-luna` and `STASH_AI_BUDGET_USD` to 1 per month.
 - **Routes.** The app uses the JSON WebSocket RPC at `/api/rpc` and downloads previews from `/api/images/<id>`; the Swift extension posts `{id, text}` to `/api/capture`, because it cannot speak the RPC protocol.
 - **Previews.** The server keeps each link's preview image on disk, because TikTok's image links expire within days.
+- **Video stills.** Six stills sampled across a TikTok, X or YouTube video go to the tagging model at low detail, so the title, summary and tags cover what the video only shows; a TikTok cost $0.0004 to tag this way.
 - **Transcripts.** A TikTok, X or YouTube note keeps what its video says, read like the CLI does, so tags and search cover it. Without captions, Whisper transcribes audio up to 30 minutes long, one video at a time.
 
 ## iOS client

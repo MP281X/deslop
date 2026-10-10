@@ -6,6 +6,7 @@ import {NodeHttpClient} from '@effect/platform-node'
 import {Array, ByteSize, Context, Effect, Layer, Match, Option, Result, Schema, Stream, String, pipe} from 'effect'
 
 import * as cheerio from 'cheerio'
+import {Base64} from 'effect/encoding'
 import {HttpClient} from 'effect/http'
 import type {HttpClientResponse} from 'effect/http'
 import {NetAddress} from 'effect/net'
@@ -18,6 +19,34 @@ const shortHosts = ['vm.tiktok.com', 'vt.tiktok.com', 't.co']
 
 // Websites whose links are videos; TikTok and X links can be videos too.
 const videoHosts = /(?:^|\.)(?:youtube\.com|youtu\.be)$/u
+
+// Links whose video yt-dlp may fetch: TikTok, X, YouTube and X's own video files, never an arbitrary website.
+function hasVideo(link: string) {
+	const host = new URL(link).hostname
+	return sourceFor(link) !== 'Website' || videoHosts.test(host) || host === 'video.twimg.com'
+}
+
+type FxPost = typeof FxPost.Type
+const FxPost = Schema.Struct({
+	author: Schema.Struct({id: Schema.String, name: Schema.String, screen_name: Schema.String}),
+	id: Schema.String,
+	media: Schema.optionalKey(
+		Schema.Struct({
+			all: Schema.optionalKey(
+				Schema.Array(
+					Schema.Struct({thumbnail_url: Schema.optionalKey(Schema.String), type: Schema.String, url: Schema.String})
+				)
+			)
+		})
+	),
+	text: Schema.String
+})
+
+type FxThread = typeof FxThread.Type
+const FxThread = Schema.Struct({
+	status: Schema.Struct({...FxPost.fields, quote: Schema.optionalKey(FxPost)}),
+	thread: Schema.optionalKey(Schema.Array(FxPost))
+})
 
 type OEmbed = typeof OEmbed.Type
 const OEmbed = Schema.Struct({
@@ -169,6 +198,57 @@ const oEmbed = Effect.fnUntraced(function* (endpoint: URL) {
 	)
 })
 
+// The post, the author's own follow-ups in its thread, and the post it quotes, so the note holds the whole context.
+const xThread = Effect.fnUntraced(function* (url: URL) {
+	const id = yield* pipe(
+		String.match(/\/status\/(\d+)/u)(url.pathname),
+		Option.flatMap(match => Array.get(match, 1)),
+		Effect.fromOption,
+		Effect.mapError(() => NotesError.make({message: 'The link names no post.'}))
+	)
+	const thread = yield* pipe(
+		Schema.decodeEffect(Schema.fromJsonString(FxThread))(
+			(yield* follow(new URL(`https://api.fxtwitter.com/2/thread/${id}`), readText, 0)).body
+		),
+		Effect.mapError(cause => NotesError.make({cause, message: 'The post is unreadable.'}))
+	)
+	const status = thread.status
+	const quote = Option.fromNullishOr(status.quote)
+	const followUps = Array.filter(
+		thread.thread ?? [],
+		post => post.author.id === status.author.id && post.id !== status.id
+	)
+	return Extraction.make({
+		author: status.author.name,
+		image: pipe(
+			[status, ...Option.toArray(quote)],
+			Array.flatMap((post: FxPost) => post.media?.all ?? []),
+			Array.head,
+			Option.map(media => media.thumbnail_url ?? media.url)
+		),
+		text: pipe(
+			[
+				plainText(status.text),
+				...Array.map(followUps, post => plainText(post.text)),
+				Option.match(quote, {
+					onNone: () => '',
+					onSome: post => `Quoting ${post.author.name} (@${post.author.screen_name}): ${plainText(post.text)}`
+				})
+			],
+			Array.filter(String.isNonEmpty),
+			Array.join('\n')
+		),
+		title: `${status.author.name} on X`,
+		url: canonical(url),
+		...pipe(
+			[status, ...Option.toArray(quote)],
+			Array.flatMap((post: FxPost) => post.media?.all ?? []),
+			Array.findFirst(media => media.type === 'video' || media.type === 'gif'),
+			Option.match({onNone: () => ({}), onSome: media => ({video: media.url})})
+		)
+	})
+})
+
 function canonical(url: URL) {
 	return captureUrl(url.href) ?? url.href
 }
@@ -206,6 +286,8 @@ export class Sources extends Context.Service<
 		readonly image: (url: string) => Effect.Effect<{bytes: Uint8Array; type: ImageType}, NotesError>
 		// What a TikTok, X or YouTube video says; nothing for other links or when the video cannot be read.
 		readonly transcript: (url: string) => Effect.Effect<Option.Option<string>>
+		// Six stills of a TikTok, X or YouTube video as JPEG data URLs; none for other links or an unreadable video.
+		readonly frames: (url: string) => Effect.Effect<string[]>
 	}
 >()('@deslop/stash/services/notes/internal/extraction/Sources') {
 	static readonly layer = Layer.effect(
@@ -234,32 +316,48 @@ export class Sources extends Context.Service<
 										})
 								)
 							),
+							// FxTwitter gives the quoted post and the author's own follow-ups; X's oEmbed is the fallback.
 							Match.when('X', () =>
-								Effect.map(
-									oEmbed(
-										new URL(
-											`https://publish.x.com/oembed?omit_script=true&dnt=true&url=${encodeURIComponent(url.href)}`
-										)
-									),
-									embed =>
-										Extraction.make({
-											author: embed.author_name ?? '',
-											image: Option.none(),
-											text: plainText(
-												cheerio
-													.load(embed.html ?? '')('blockquote p')
-													.text()
-											),
-											title: Option.match(Option.fromNullishOr(embed.author_name), {
-												onNone: () => 'Post on X',
-												onSome: author => `${author} on X`
-											}),
-											url: canonical(url)
-										})
+								Effect.catch(xThread(url), () =>
+									Effect.map(
+										oEmbed(
+											new URL(
+												`https://publish.x.com/oembed?omit_script=true&dnt=true&url=${encodeURIComponent(url.href)}`
+											)
+										),
+										embed =>
+											Extraction.make({
+												author: embed.author_name ?? '',
+												image: Option.none(),
+												text: plainText(
+													cheerio
+														.load(embed.html ?? '')('blockquote p')
+														.text()
+												),
+												title: Option.match(Option.fromNullishOr(embed.author_name), {
+													onNone: () => 'Post on X',
+													onSome: author => `${author} on X`
+												}),
+												url: canonical(url)
+											})
+									)
 								)
 							),
 							Match.orElse(() =>
 								Effect.gen(function* () {
+									// YouTube answers a datacenter with a bot check, but its oEmbed gives the title, channel and thumbnail.
+									if (Option.isSome(String.match(videoHosts)(url.hostname))) {
+										const embed = yield* oEmbed(
+											new URL(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(url.href)}`)
+										)
+										return Extraction.make({
+											author: embed.author_name ?? '',
+											image: Option.fromNullishOr(embed.thumbnail_url),
+											text: plainText(embed.title ?? ''),
+											title: plainText(embed.title ?? 'YouTube video'),
+											url: canonical(url)
+										})
+									}
 									const page = yield* follow(url, readText, 0)
 									if (!String.includes('text/html')(String.toLowerCase(page.type))) {
 										return yield* NotesError.make({message: 'Only web pages can be read.'})
@@ -274,6 +372,14 @@ export class Sources extends Context.Service<
 						orElse: () => Effect.fail(NotesError.make({message: 'Reading the link took too long.'}))
 					})
 				),
+				frames: Effect.fn('Sources.frames')(function* (link) {
+					if (!hasVideo(link)) return []
+					return yield* pipe(
+						media.frames(link),
+						Effect.map(Array.map(bytes => `data:image/jpeg;base64,${Base64.encode(bytes)}`)),
+						Effect.catch(error => Effect.as(Effect.logWarning('No video frames', error), []))
+					)
+				}),
 				image: Effect.fn('Sources.image')(
 					function* (link) {
 						const url = yield* Effect.try({
@@ -298,7 +404,7 @@ export class Sources extends Context.Service<
 					})
 				),
 				transcript: Effect.fn('Sources.transcript')(function* (link) {
-					if (sourceFor(link) === 'Website' && !videoHosts.test(new URL(link).hostname)) return Option.none()
+					if (!hasVideo(link)) return Option.none()
 					return yield* pipe(
 						// Audio without captions longer than half an hour would hold every core of dev for many minutes.
 						media.read({language: Option.none(), link, maxWhisperSeconds: Option.some(30 * 60)}),
