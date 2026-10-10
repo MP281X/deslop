@@ -7,6 +7,7 @@ import {RpcSerialization, RpcServer} from 'effect/rpc'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
+import {Media} from '#services/media/service.ts'
 import {Sources} from '#services/notes/internal/extraction.ts'
 import {Organizer} from '#services/notes/internal/organization.ts'
 import {Capture, Note, NoteId} from '#services/notes/schema.ts'
@@ -50,6 +51,6 @@ const rpc = pipe(
 export default pipe(
 	Layer.merge(rpc, routes),
 	Layer.provide(Notes.layer),
-	Layer.provide(Layer.mergeAll(Sources.layer, Organizer.layer)),
+	Layer.provide(Layer.mergeAll(pipe(Sources.layer, Layer.provide(Media.layer)), Organizer.layer)),
 	Layer.provide(Layer.merge(NodeHttpClient.layerFetch, NodeServices.layer))
 )

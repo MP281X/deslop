@@ -1,15 +1,38 @@
 {
 	"name": "@deslop/stash",
-	"version": "0.0.0",
-	"private": true,
+	"version": "0.1.0",
+	"description": "A personal link inbox: the server, the iOS app, and a CLI that reads a video or post into its text and a transcript.",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/MP281X/deslop",
+		"directory": "apps/stash"
+	},
+	"bin": {
+		"stash": "./dist/cli.js"
+	},
+	"files": [
+		"dist"
+	],
+	"os": [
+		"darwin",
+		"linux"
+	],
+	"cpu": [
+		"x64",
+		"arm64"
+	],
 	"type": "module",
 	"sideEffects": false,
 	"main": "src/main.client.tsx",
 	"imports": {
 		"#lib/*": "./src/lib/*",
+		"#package": "./package.json",
 		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
 		"#services/*": "./src/services/*"
+	},
+	"publishConfig": {
+		"access": "public"
 	},
 	"scripts": {
 		"build": "rm -rf dist && vp pack",
@@ -17,9 +40,20 @@
 		"start": "EXPO_PACKAGER_PROXY_URL=https://dev.tailnet-8c4c.ts.net:8081 expo start --dev-client --localhost"
 	},
 	"dependencies": {
-		"@expo/ui": "58.0.15",
-		"cheerio": "latest",
 		"expo": "58.0.7",
+		"onnxruntime-common": "1.30.0",
+		"onnxruntime-node": "1.30.0",
+		"react": "19.3.0",
+		"react-native": "0.88.0-rc.4",
+		"sharp": "^0.35.4"
+	},
+	"devDependencies": {
+		"@bacons/apple-targets": "5.0.0",
+		"@deslop/runtime": "workspace:*",
+		"@expo/ui": "58.0.15",
+		"@huggingface/transformers": "4.3.0",
+		"babel-preset-expo": "58.0.12",
+		"cheerio": "latest",
 		"expo-clipboard": "58.0.3",
 		"expo-constants": "58.0.10",
 		"expo-crypto": "58.0.6",
@@ -27,13 +61,9 @@
 		"expo-file-system": "58.0.8",
 		"expo-font": "58.0.7",
 		"expo-haptics": "58.0.5",
-		"react": "19.3.0",
-		"react-error-boundary": "latest",
-		"react-native": "0.88.0-rc.4"
+		"react-error-boundary": "latest"
 	},
-	"devDependencies": {
-		"@bacons/apple-targets": "5.0.0",
-		"@deslop/runtime": "workspace:*",
-		"babel-preset-expo": "58.0.12"
+	"engines": {
+		"node": ">=26"
 	}
 }

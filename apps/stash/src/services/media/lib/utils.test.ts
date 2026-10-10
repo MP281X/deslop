@@ -1,6 +1,6 @@
 import {assert, describe, it} from '@effect/vitest'
 
-import {captionTranscript, clock} from '#transcript'
+import {captionTranscript, clock} from '#services/media/lib/utils.ts'
 
 describe('captionTranscript', () => {
 	it('reads cue settings, markup and escapes', () => {
