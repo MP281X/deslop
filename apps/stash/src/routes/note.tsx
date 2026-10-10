@@ -8,7 +8,6 @@ import {
 	HStack,
 	Image,
 	ScrollView,
-	ShareLink,
 	Text,
 	Toolbar,
 	ToolbarItem,
@@ -137,7 +136,7 @@ function Body(props: {text: string}) {
 }
 
 // The page reads like a message in iOS Mail: who it comes from, the full title, the tags, the preview and the AI's
-// notes. The bar moves to the previous or next note; the bottom bar deletes, shares and opens it.
+// notes. The top bar opens the link in its app; the bottom bar deletes the note or moves to the previous or next one.
 function Detail(props: {
 	next: Option.Option<Note['id']>
 	note: Note
@@ -207,7 +206,7 @@ function Detail(props: {
 							</HStack>
 						</ScrollView>
 					)}
-					{note.image !== undefined && <Cover note={note} height={200} />}
+					{note.image !== undefined && <Cover note={note} height={220} />}
 					{Option.match(Option.liftPredicate(note.body ?? '', String.isNonEmpty), {
 						onNone: () => undefined,
 						onSome: body => <Body text={body} />
@@ -221,22 +220,29 @@ function Detail(props: {
 				</VStack>
 			</ScrollView>
 			<Toolbar.Content>
-				<ToolbarItem placement="topBarTrailing">
-					<Button
-						label="Previous"
-						systemImage="chevron.up"
-						onPress={() => Option.match(props.previous, {onNone: () => undefined, onSome: props.onOpen})}
-						modifiers={[labelStyle('iconOnly'), disabled(Option.isNone(props.previous))]}
-					/>
-				</ToolbarItem>
-				<ToolbarItem placement="topBarTrailing">
-					<Button
-						label="Next"
-						systemImage="chevron.down"
-						onPress={() => Option.match(props.next, {onNone: () => undefined, onSome: props.onOpen})}
-						modifiers={[labelStyle('iconOnly'), disabled(Option.isNone(props.next))]}
-					/>
-				</ToolbarItem>
+				{/* The link opens in its own app, named by its logo, when iOS knows one. */}
+				{Option.match(Option.fromNullishOr(note.url), {
+					onNone: () => undefined,
+					onSome: url => (
+						<ToolbarItem placement="topBarTrailing">
+							{Option.match(brandOf(note), {
+								onNone: () => (
+									<Button
+										label="Open Link"
+										systemImage="arrow.up.right"
+										onPress={() => Linking.openURL(url)}
+										modifiers={[labelStyle('iconOnly')]}
+									/>
+								),
+								onSome: brand => (
+									<Button onPress={() => Linking.openURL(url)}>
+										<Brand brand={brand} size={20} />
+									</Button>
+								)
+							})}
+						</ToolbarItem>
+					)
+				})}
 				<ToolbarItem placement="bottomBar">
 					<Button
 						label="Delete"
@@ -249,34 +255,22 @@ function Detail(props: {
 					/>
 				</ToolbarItem>
 				<ToolbarItem placement="bottomBar" kind="spacer" />
-				{Option.match(Option.fromNullishOr(note.url), {
-					onNone: () => undefined,
-					onSome: url => (
-						<>
-							<ToolbarItem placement="bottomBar">
-								<ShareLink item={url} />
-							</ToolbarItem>
-							{/* The link opens in its own app when iOS knows one. */}
-							<ToolbarItem placement="bottomBar">
-								{Option.match(brandOf(note), {
-									onNone: () => (
-										<Button
-											label="Open Link"
-											systemImage="arrow.up.right"
-											onPress={() => Linking.openURL(url)}
-											modifiers={[labelStyle('iconOnly')]}
-										/>
-									),
-									onSome: brand => (
-										<Button onPress={() => Linking.openURL(url)}>
-											<Brand brand={brand} size={20} />
-										</Button>
-									)
-								})}
-							</ToolbarItem>
-						</>
-					)
-				})}
+				<ToolbarItem placement="bottomBar">
+					<Button
+						label="Previous"
+						systemImage="chevron.up"
+						onPress={() => Option.match(props.previous, {onNone: () => undefined, onSome: props.onOpen})}
+						modifiers={[labelStyle('iconOnly'), disabled(Option.isNone(props.previous))]}
+					/>
+				</ToolbarItem>
+				<ToolbarItem placement="bottomBar">
+					<Button
+						label="Next"
+						systemImage="chevron.down"
+						onPress={() => Option.match(props.next, {onNone: () => undefined, onSome: props.onOpen})}
+						modifiers={[labelStyle('iconOnly'), disabled(Option.isNone(props.next))]}
+					/>
+				</ToolbarItem>
 			</Toolbar.Content>
 		</Toolbar>
 	)
