@@ -10,5 +10,10 @@
 # packages
 **/node_modules
 
+# expo: EAS generates the native projects on each build
+**/.expo
+apps/*/ios
+apps/*/android
+
 # tools
 .fallow

@@ -1,0 +1,46 @@
+name: Stash TestFlight
+
+# deploy.yaml calls this after check and test pass on main for a change that reaches stash; its run number is the
+# release number. A pushed tag such as stash-940 builds its commit from any branch, with 940 as the release number:
+# pick the newest Build and Deploy run number, which no release has used. Each release builds, even when several overlap.
+# The build runs on GitHub's macOS runner, not on EAS's servers, so it uses none of the free plan's 15 iOS builds a month.
+# EAS keeps the signing credentials that the first build, run by hand, created.
+on:
+  workflow_call: {}
+  push:
+    tags: ['stash-*']
+
+permissions:
+  contents: read
+
+jobs:
+  testflight:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      # Called from deploy.yaml, this is its run number, so the app shares the packages' 0.1.<run> version.
+      RELEASE_NUMBER: ${{ github.run_number }}
+    steps:
+      - name: Release number from the tag
+        if: startsWith(github.ref, 'refs/tags/stash-')
+        run: echo "RELEASE_NUMBER=${GITHUB_REF_NAME#stash-}" >> "$GITHUB_ENV"
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with: {node-version: '26', cache: true, run-install: true}
+
+      # The same Xcode as the EAS image in eas.json; the runner image defaults to 27.0.
+      - name: Xcode 27.1
+        run: sudo xcode-select --switch /Applications/Xcode_27.1.app
+
+      - name: Build
+        working-directory: apps/stash
+        run: vpx eas-cli@24.12.1 build --local --profile production --platform ios --non-interactive --output "$RUNNER_TEMP/stash.ipa"
+
+      - name: Submit to TestFlight
+        working-directory: apps/stash
+        run: vpx eas-cli@24.12.1 submit --profile production --platform ios --non-interactive --path "$RUNNER_TEMP/stash.ipa" --verbose
