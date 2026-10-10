@@ -20,7 +20,7 @@ sudo tailscale set --exit-node=<node>.mullvad.ts.net --exit-node-allow-lan-acces
 vpx @deslop/media@latest '<url>' /tmp/media/<name>
 ```
 
-If every node fails, use the speaker's own post of the talk, a published transcript or the repositories discussed. Label these as secondary sources.
+If every node fails, use the speaker's own post of the talk, a published transcript or the repositories discussed. Label each source by where it comes from, and mark a third-party transcript as secondary.
 
 ## Analyze
 

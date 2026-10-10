@@ -2,6 +2,8 @@
 
 **Issues.** Deslop is personal software without an issue tracker. GitHub holds only its pull requests, so the request is the whole task.
 
+**Agent configuration.** Before you change `.claude`, `.codex` or the shared skills, read `.claude/README.md`: it holds the owners and the decisions not to repeat. `.claude/agents/pair.md` and `.codex/instructions.md` differ only before "# The user's pair". Make each edit after that heading in both files, and confirm with `diff <(sed -n '/^# The user.s pair$/,$p' .claude/agents/pair.md) <(sed -n '/^# The user.s pair$/,$p' .codex/instructions.md)`.
+
 **Commands.** Vite+ caches checks by task inputs; fixes are never cached. Use `--no-cache` to prove a fresh run.
 
 ```bash

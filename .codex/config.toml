@@ -3,7 +3,8 @@ model_instructions_file = "instructions.md"
 web_search = "live"
 include_permissions_instructions = false
 include_collaboration_mode_instructions = false
-tool_output_token_limit = 15000
+include_apps_instructions = false
+tool_output_token_limit = 25000
 background_terminal_max_timeout = 1500000
 service_tier = "default"
 
@@ -13,8 +14,16 @@ enabled = false
 [skills.bundled]
 enabled = false
 
+[cloud.skills]
+enabled = false
+
 [features]
 skill_mcp_dependency_install = false
+skill_search = false
+tool_suggest = false
+remote_plugin = false
+plugin_sharing = false
+sleep_tool = false
 apps = false
 plugins = false
 image_generation = true

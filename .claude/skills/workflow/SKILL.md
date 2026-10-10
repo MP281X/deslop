@@ -9,7 +9,7 @@ Get code right on the first write, because fix loops are slow and expensive. Res
 
 ## 1. Prepare
 
-Keep this table in the thread and in child briefs, never in a plan file:
+Keep this table in your notes and in child briefs, never in a plan file or a message:
 
 | Field     | Content                                                                                                        |
 | --------- | -------------------------------------------------------------------------------------------------------------- |
@@ -26,29 +26,29 @@ Keep this table in the thread and in child briefs, never in a plan file:
 - **Journey first.** Walk one concrete journey of the person who uses the result, step by step, as a render, before any architecture choice.
 - **Ask little.** Ask only what a prototype cannot settle: scope, deal-breakers and what only the user holds. Ask each question about behavior the user sees, with your recommendation first and one visible benefit and cost per option. Offer the existing mechanism beside any new one. A question whose fact a child is still finding waits for that child.
 - **Directions.** Where the approach is open, try two or three directions on the same data, as `html_render` mockups or quick prototypes. Propose the combination of their best parts. "Not sure" settles nothing: settle it with research or a prototype.
-- **Start.** Write each planned behavior as a one-line claim that can be true or false, show the table, and start Build without waiting for a confirmation.
+- **Start.** Write each planned behavior as a one-line claim that can be true or false, and start Build without waiting for a confirmation.
 - **Scope.** The request is the scope. Put related improvements, defects outside the changed code and excluded requirements under **Needs you**, with their size.
 
 ## 2. Build
 
 Iterate until the result meets the plan's claims. A prototype tests a direction on realistic data; docs and edge-case polish wait until the direction holds.
 
-- **Read first.** Give each independent area to its own research child, and start editing the first area while the others map theirs. Read dependencies and earlier threads per [explore](../explore/SKILL.md). An analysis request stays read-only.
+- **Read first.** Give each independent area to its own research child, and start editing the first area while the others map theirs. Read dependencies and earlier threads per [explore](../explore/SKILL.md). An analysis request stays read-only; [review](../review/SKILL.md) decides what follows a review.
 - **Show the real thing.** Build the smallest working journey in the real app with realistic data. Inspect its captures and share its preview as soon as it works.
-- **Background quality.** When an iteration settles a layer's code, start one deep [code review](../review/SKILL.md#code-review) and one [cleanup audit](../review/SKILL.md#cleanup-audit) of that layer in the same response as its commit, split by area. Keep building, apply confirmed findings and cleanup defaults in the next iteration, and skip findings on code a later steer replaced.
+- **Background quality.** When an iteration settles a layer's code, start one deep [code review](../review/SKILL.md#code-review) and one [cleanup audit](../review/SKILL.md#cleanup-audit) of that layer in the same response as its commit, split by area. A layer under 50 hand-written lines gets one child that follows both procedures. Keep building, apply confirmed findings and cleanup defaults in the next iteration, and skip findings on code a later steer replaced.
 - **Stay cheap.** Commit locally when useful. Run only the focused check that settles the current question. After two failed attempts, test a hypothesis that tells the causes apart. Find consumers by search, never through type errors. Keep seeds and scripts outside packages that a watcher restarts.
 - **Ready.** When the result meets the plan's claims and its findings are applied, continue to Finish without asking; the user steers if they disagree.
 
 ## 3. Finish
 
-- **Cover.** Every hand-written hunk of each layer needs a review and a cleanup audit of its final code. Reuse the background rounds, and start one more round only for the hunks they missed. A direct fix to a confirmed finding needs no new review. List cleanup candidates you kept under **Decided**. Add an instructions reviewer for a consequential instruction change. A layer gets one more review only when a fix changes code outside its finding.
+- **Cover.** Every hand-written hunk of each layer needs a review and a cleanup audit of its final code. Reuse the background rounds, and start one more round only for the hunks they missed. A direct fix to a confirmed finding needs no new review. List cleanup candidates you kept under **Decided**. Add an [instruction review](../review/SKILL.md#instruction-review) for a consequential instruction or configuration change. A layer gets one more review only when a fix changes code outside its finding.
 - **Prove.** List the reachable input classes of every changed parser, boundary and state transition per testing's Branches rule, and apply testing's Bugs rule to defects. Run the checks that reach the changed code and its consumers. Compare every changed screen with an existing product screen under design. Prove each ticket requirement with the outcome a user sees, per the [capture rules](references/captures.md#rules).
 
 ## 4. Deliver
 
 - **Ship.** Fetch, rebase onto `origin/<default branch>` and rerun what the update affects. Verify a frozen install after a manifest or lockfile change. Publish only layers whose final code is reviewed and tested, per [Stacks](#stacks); failing local checks block the push. Write each body from the [example body](references/publishing.md#example-body), and link every pull request with `link_pull_request`, never `t3_thread_update`, which replaces the earlier link. Record captures while the pipeline runs, then add them; a body edit starts no pipeline.
 - **Check the result.** Watch every pushed pull request with `watch_pull_request`. Run one [body reader](../review/SKILL.md#body-reader) over each published body and its captures, and fix what it confirms. When only the pipeline remains, end the turn. On T3's notice, read the exact head and every required job before you report success. A notice about an older head changes nothing: end that turn with one line.
-- **Hand off.** Check `list_thread_pull_requests`, link any missing pull request from this work, and unwatch every pull request. Show the change map as a render, with each area's behavior and its riskiest lines linked. Stop everything you started except useful evidence and the previews environment keeps, and link those previews in the final reply. Give a manual test guide only for what you did not prove. When the user restates the result, mark each point correct, partly correct or wrong, and name what they missed.
+- **Hand off.** Check `list_thread_pull_requests`, link any missing pull request from this work, and unwatch every pull request. For more than five changes, show the change map as a render, with each area's behavior and its riskiest lines linked. Stop everything you started except useful evidence and the previews environment keeps, and link those previews in the final reply. Give a manual test guide only for what you did not prove. When the user restates the result, mark each point correct, partly correct or wrong, and name what they missed.
 - **Later changes.** A later request updates the plan and returns to Build: prototype it and show it first. Review and audit only its hunks and their consumers, rerun the checks and captures they affect, and push only the changed layers.
 
 ## Stacks
@@ -56,7 +56,7 @@ Iterate until the result meets the plan's claims. A prototype tests a direction 
 A thread's work splits into pull requests that a reviewer reads one at a time. Unrelated changes become independent pull requests on the default branch, which the user merges in any order. A change that builds on another stacks on it. The thread owns all of them as one unit of work.
 
 - **Layers.** Plan the layers before the first commit, without asking. Split unrelated topics and parts a reviewer can read apart, such as a feature and the code it supersedes, or seeds and demos. Keep each topic wide and each layer under 1,500 hand-written lines; generated files stay with their source and do not count. A cleanup layer, when the task needs one, holds the root fix command's changes, removed superseded code, removed suppressions and fixes for checks that fail on every layer.
-- **Independent.** Give each independent layer only the changes it needs to apply to the default branch alone. Stack a layer only when it needs another layer's code. Before each publish, apply the independent layers to the default branch in both orders in a temporary worktree. A conflict moves the conflicting change into one layer, so the user never needs a rebase between merges.
+- **Independent.** Give each independent layer only the changes it needs to apply to the default branch alone. Stack a layer only when it needs another layer's code. Before each publish, run `git merge-tree --write-tree <layer> <other layer>` for every pair of independent layers. A conflict moves the conflicting change into one layer, so the user never needs a rebase between merges.
 - **Chain.** Build all layers as one local chain of commits on `<thread branch>-chain` in the thread's worktree, dependencies before their consumers. Put every change in the layer that owns it with `git commit --fixup=<layer commit>`, then `git rebase --autosquash origin/<default branch>`. A later request about an existing layer's topic changes that layer.
 - **Publish.** Rebuild each layer's branch from its base and its commit: `git switch -C <branch> origin/<default branch> && git cherry-pick <layer commit>`, or its dependency's branch for a stacked layer. Name the first branch after the thread and the rest `<thread branch>-<n>-<topic>`, open each as a draft that targets its base, and switch back to the chain. Push with `--force-with-lease`.
 - **Testing.** The preview runs the whole chain, so the user tests every layer together. Each step of a manual test guide names the pull request it proves. Each pipeline checks its layer against its base. Start a preview of one layer only when the user asks.
@@ -76,17 +76,19 @@ A thread's work splits into pull requests that a reviewer reads one at a time. U
 
 ## Delegate
 
-Give children every exploration and every read-only check: code areas, dependencies, references, earlier threads, reviews and audits. The primary keeps every write, check, build and browser session. Prefer two deep rounds to many shallow ones. Start children in parallel and in the background, and keep working while they run. Use Fast only for a child the user waits on with nothing else running.
+Give children every exploration and every read-only check: code areas, dependencies, references, earlier threads, reviews and audits. The primary keeps every write, check, build and browser session. Prefer two deep rounds to many shallow ones. Start children in parallel and in the background, and keep working while they run. Use a fast tier, Claude's Fast Mode or Codex's priority tier, only for a child the user waits on with nothing else running.
 
-| Task          | Start one for                                                   | Procedure and model                        |
-| ------------- | --------------------------------------------------------------- | ------------------------------------------ |
-| Research      | Each open question, independent code area or cross-package fact | [explore](../explore/SKILL.md)             |
-| Critique      | The recommended direction                                       | [review](../review/SKILL.md#critique)      |
-| Cleanup audit | Each area of a layer whose code settled                         | [review](../review/SKILL.md#cleanup-audit) |
-| Code review   | Each area of a layer whose code settled, or a risk              | [review](../review/SKILL.md#code-review)   |
-| Body reader   | Each published pull request body                                | [review](../review/SKILL.md#body-reader)   |
+| Task               | Start one for                                                   | Procedure and model                             |
+| ------------------ | --------------------------------------------------------------- | ----------------------------------------------- |
+| Research           | Each open question, independent code area or cross-package fact | [explore](../explore/SKILL.md)                  |
+| Critique           | The recommended direction                                       | [review](../review/SKILL.md#critique)           |
+| Cleanup audit      | Each area of a layer whose code settled                         | [review](../review/SKILL.md#cleanup-audit)      |
+| Code review        | Each area of a layer whose code settled, or a risk              | [review](../review/SKILL.md#code-review)        |
+| Both, one child    | A layer under 50 hand-written lines                             | Code review, then cleanup audit                 |
+| Body reader        | Each published pull request body                                | [review](../review/SKILL.md#body-reader)        |
+| Instruction review | Each consequential instruction or configuration change          | [review](../review/SKILL.md#instruction-review) |
 
-Use the primary's model when a procedure's model is unavailable. A brief holds the plan table, the task's own decisions, the procedure's path, the checkout and how to reach it, sources and what to return; it never restates this skill. Message a running child only with a fact that changes its next action. Start each review round with a new `delegate_task` whose brief lists every earlier finding, confirmed or rejected. Reconcile every missing or failed criterion when a child returns.
+Pick each child's provider, model, effort and tier from `orchestrator_capabilities` per its procedure, and use the primary's model when that model is unavailable. A brief holds the plan table, the task's own decisions, the procedure's path, the checkout and how to reach it, sources and what to return; it never restates this skill. Message a running child only with a fact that changes its next action. Start each review round with a new `delegate_task` and `clientRequestId`, and list every earlier finding in its brief, confirmed or rejected, with every open objection. Reconcile every missing or failed criterion when a child returns.
 
 ## Decisions
 
