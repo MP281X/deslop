@@ -111,7 +111,11 @@ export class Notes extends Context.Service<
 				const month = String.slice(0, 7)(DateTime.formatIsoDateUtc(yield* DateTime.now))
 				const spent = current.aiSpend.month === month ? current.aiSpend.usd : 0
 				// A bare link whose page could not be read gives the AI nothing to organize, so it costs no call.
-				if (String.isEmpty(note.content) && String.isEmpty(commentFor(note.text))) {
+				if (
+					String.isEmpty(note.content) &&
+					String.isEmpty(note.transcript ?? '') &&
+					String.isEmpty(commentFor(note.text))
+				) {
 					yield* updateNote(note.id, item => ({...item, status: 'saved'}))
 					return
 				}
@@ -225,6 +229,26 @@ export class Notes extends Context.Service<
 					onSome: link =>
 						Effect.catch(keepImage(id, link), error => Effect.logWarning('The preview image was not kept', error))
 				})
+				// What a video says feeds the tags and search; without captions, local Whisper can take minutes. A note deleted
+				// meanwhile, or one that kept its transcript before a restart, needs none.
+				const waiting = Array.some(
+					(yield* SubscriptionRef.get(state)).notes,
+					item => item.id === id && item.transcript === undefined
+				)
+				yield* Option.match(
+					Option.filter(resolved, () => waiting),
+					{
+						onNone: () => Effect.void,
+						onSome: () =>
+							Effect.flatMap(
+								sources.transcript(extracted.url),
+								Option.match({
+									onNone: () => Effect.void,
+									onSome: transcript => updateNote(id, item => ({...item, transcript}))
+								})
+							)
+					}
+				)
 				// One AI call at a time, so two captures cannot both pass the budget check before either records its cost.
 				yield* aiCalls.withPermit(
 					Effect.gen(function* () {
