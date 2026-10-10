@@ -14,7 +14,8 @@ import {
 	SwipeActions,
 	Text,
 	Toolbar,
-	VStack
+	VStack,
+	ZStack
 } from '@expo/ui/swift-ui'
 import type {useNativeState} from '@expo/ui/swift-ui'
 import {
@@ -47,10 +48,11 @@ import {
 import {AsyncResult} from 'effect/reactivity'
 import {Linking} from 'react-native'
 
-import {colors, mono} from '#lib/theme.ts'
 import {imageAtom, notesAtom, pendingAtom, removeAtom} from '#lib/utils.ts'
+import {Brand, brandOf} from '#routes/brand.tsx'
 import {findNotes, tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note} from '#services/notes/schema.ts'
+import {colors, mono} from '@deslop/components/mobile/theme'
 
 const row = [
 	listRowBackground(colors.background),
@@ -202,8 +204,16 @@ function Preview(props: {note: Note}) {
 		Match.when('Website', () => 'globe' as const),
 		Match.orElse(() => 'text.alignleft' as const)
 	)
-	if (props.note.image === undefined) return <Placeholder symbol={symbol} />
-	return <Thumbnail note={props.note} symbol={symbol} />
+	if (props.note.image !== undefined) return <Thumbnail note={props.note} symbol={symbol} />
+	// Without a preview, the logo of the app the link opens in names the source.
+	return Option.match(brandOf(props.note), {
+		onNone: () => <Placeholder symbol={symbol} />,
+		onSome: brand => (
+			<ZStack modifiers={[frame({height: 48, width: 48}), border({color: colors.border, width: 1})]}>
+				<Brand brand={brand} size={20} />
+			</ZStack>
+		)
+	})
 }
 
 // Mounted only once the server has kept the preview, so the download never runs before the file exists.

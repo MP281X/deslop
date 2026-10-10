@@ -87,6 +87,7 @@ function counting(calls: Ref.Ref<number>) {
 				{
 					cost: 0.0004,
 					organization: Result.succeed({
+						body: '',
 						summary: `About ${input.note.content}`,
 						tags: ['Cooking', 'cooking', 'soup'],
 						title: 'Soup',

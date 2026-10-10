@@ -16,10 +16,10 @@ import {background, foregroundStyle, tint} from '@expo/ui/swift-ui/modifiers'
 import {Suspense, useState} from 'react'
 import {ErrorBoundary} from 'react-error-boundary'
 
-import {colors, mono} from '#lib/theme.ts'
 import {deliveryAtom, pasteAtom, pendingAtom} from '#lib/utils.ts'
 import {NotesRoute} from '#routes/(home)/index.tsx'
 import {NoteRoute} from '#routes/note.tsx'
+import {colors, mono} from '@deslop/components/mobile/theme'
 
 export function RootRoute() {
 	useAtomMount(deliveryAtom)

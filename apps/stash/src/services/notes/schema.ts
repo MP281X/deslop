@@ -21,6 +21,8 @@ export type Note = typeof Note.Type
 export const Note = Schema.Struct({
 	// The post's author or the site's name.
 	author: Schema.String,
+	// A note written without a link, organized by the AI; notes with links have none.
+	body: Schema.optionalKey(Schema.String),
 	content: Schema.String,
 	createdAt: Schema.Finite,
 	id: NoteId,
@@ -66,6 +68,8 @@ export const Extraction = Schema.Struct({
 
 export type Organization = typeof Organization.Type
 export const Organization = Schema.Struct({
+	// A note written without a link, rewritten as an organized note; empty for links.
+	body: pipe(Schema.String, Schema.check(Schema.isMaxLength(4000))),
 	summary: pipe(Schema.String, Schema.check(Schema.isMaxLength(160))),
 	tags: pipe(Schema.Array(Tag), Schema.check(Schema.isMinLength(1), Schema.isMaxLength(3))),
 	title: pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(80))),

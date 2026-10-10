@@ -32,9 +32,10 @@ import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 import {Linking} from 'react-native'
 
-import {colors, mono} from '#lib/theme.ts'
 import {imageAtom, notesAtom} from '#lib/utils.ts'
+import {Brand, brandOf} from '#routes/brand.tsx'
 import type {Note} from '#services/notes/schema.ts'
+import {colors, mono} from '@deslop/components/mobile/theme'
 
 const page = [navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]
 
@@ -116,6 +117,14 @@ function Detail(props: {note: Note; onTag: (tag: string) => void}) {
 							</HStack>
 						</ScrollView>
 					)}
+					{Option.match(Option.liftPredicate(props.note.body ?? '', String.isNonEmpty), {
+						onNone: () => undefined,
+						onSome: body => (
+							<Text modifiers={[mono('body', 14), foregroundStyle(colors.foreground), textSelection(true)]}>
+								{body}
+							</Text>
+						)
+					})}
 					{/* What the server read from the link: the post and its quote, or the start of the page. */}
 					{String.isNonEmpty(props.note.content) && (
 						<Text
@@ -162,7 +171,14 @@ function Detail(props: {note: Note; onTag: (tag: string) => void}) {
 				onSome: url => (
 					<Toolbar.Content>
 						<ToolbarItem placement="topBarTrailing">
-							<Button systemImage="arrow.up.right" onPress={() => Linking.openURL(url)} />
+							{Option.match(brandOf(props.note), {
+								onNone: () => <Button systemImage="arrow.up.right" onPress={() => Linking.openURL(url)} />,
+								onSome: brand => (
+									<Button onPress={() => Linking.openURL(url)}>
+										<Brand brand={brand} size={20} />
+									</Button>
+								)
+							})}
 						</ToolbarItem>
 					</Toolbar.Content>
 				)
