@@ -4,18 +4,36 @@
 	"private": true,
 	"type": "module",
 	"sideEffects": false,
+	"main": "src/main.client.tsx",
 	"imports": {
+		"#lib/*": "./src/lib/*",
+		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
 		"#services/*": "./src/services/*"
 	},
 	"scripts": {
 		"build": "rm -rf dist && vp pack",
-		"preview": "vp run build && HOST=127.0.0.1 PORT=5017 node --env-file-if-exists=$HOME/.deslop/stash.env ./dist/server.js"
+		"preview": "vp run build && HOST=127.0.0.1 PORT=5017 node --env-file-if-exists=$HOME/.deslop/stash.env ./dist/server.js",
+		"start": "EXPO_PACKAGER_PROXY_URL=https://dev.tailnet-8c4c.ts.net:8081 expo start --dev-client --localhost"
 	},
 	"dependencies": {
-		"cheerio": "latest"
+		"@expo/ui": "58.0.15",
+		"cheerio": "latest",
+		"expo": "58.0.7",
+		"expo-clipboard": "58.0.3",
+		"expo-constants": "58.0.10",
+		"expo-crypto": "58.0.6",
+		"expo-dev-client": "58.0.12",
+		"expo-file-system": "58.0.8",
+		"expo-font": "58.0.7",
+		"expo-haptics": "58.0.5",
+		"react": "19.3.0",
+		"react-error-boundary": "latest",
+		"react-native": "0.88.0-rc.4"
 	},
 	"devDependencies": {
-		"@deslop/runtime": "workspace:*"
+		"@bacons/apple-targets": "5.0.0",
+		"@deslop/runtime": "workspace:*",
+		"babel-preset-expo": "58.0.12"
 	}
 }

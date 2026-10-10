@@ -25,5 +25,14 @@ peerDependencyRules:
     '@vitejs/plugin-react@6.1.1>vite': 1.0.0
     '@vitest/mocker@5.0.1>vite': 1.0.0
     'vitest@5.0.1>vite': 1.0.0
+# apple-targets 5.0.0 requires the first three at prebuild without declaring them, which pnpm's isolated layout hides.
+# Its SDK 55 config loader takes TypeScript 5 as a peer, which the repository's TypeScript 7 does not satisfy.
+packageExtensions:
+  '@bacons/apple-targets@5.0.0':
+    dependencies:
+      '@expo/image-utils': ^0.12.4
+      '@expo/plist': ^0.10.1
+      chalk: ^4.1.2
+      typescript: ^5.9.3
 strictPeerDependencies: true
 minimumReleaseAge: 0
