@@ -65,3 +65,44 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 		''
 	)
 }
+
+// Whisper hears music as words: it loops on "mmm" or repeats one line every two seconds, between invented phrases such as
+// "Thank you for watching!". Repeated lines collapse and one-word loops go; what is left counts as speech only at a
+// talking pace of at least 40 words a minute up to its last timestamp, which songs with a few hallucinated phrases miss.
+export function speechOnly(transcript: string) {
+	const lines = pipe(
+		String.split(transcript, '\n'),
+		Array.filter(String.isNonEmpty),
+		Array.dedupeAdjacentWith((left, right) => spoken(left) === spoken(right)),
+		Array.filter(line => {
+			const words = wordsOf(spoken(line))
+			return Array.isReadonlyArrayNonEmpty(words) && Array.dedupe(words).length * 3 > words.length
+		})
+	)
+	const words = Array.flatMap(lines, line => wordsOf(spoken(line)))
+	const seconds = pipe(
+		Array.last(lines),
+		Option.flatMap(String.match(/^\[(\d+):(\d+)\]/u)),
+		Option.map(match => [match[1] ?? '0', match[2] ?? '0'] as const),
+		Option.map(parts =>
+			Array.reduce(Array.getSomes(Array.map(parts, Number.parse)), 0, (total, part) => total * 60 + part)
+		),
+		Option.getOrElse(() => 0)
+	)
+	return words.length >= 8 && words.length * 60 >= 40 * Number.max(seconds, 15)
+		? Option.some(
+				Array.join(
+					Array.map(lines, line => `${line}\n`),
+					''
+				)
+			)
+		: Option.none()
+}
+
+function spoken(line: string) {
+	return String.replace(/^\[[^\]]+\] /u, '')(line)
+}
+
+function wordsOf(text: string) {
+	return pipe(text, String.toLowerCase, String.split(/[^\p{L}\p{N}']+/u), Array.filter(String.isNonEmpty))
+}

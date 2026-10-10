@@ -23,7 +23,7 @@ import {env, pipeline} from '@huggingface/transformers'
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
-import {captionTranscript, clock} from '#services/media/lib/utils.ts'
+import {captionTranscript, clock, speechOnly} from '#services/media/lib/utils.ts'
 import type {Transcript} from '#services/media/schema.ts'
 import {MediaError} from '#services/media/schema.ts'
 
@@ -287,13 +287,16 @@ export class Media extends Context.Service<
 						})
 					)
 				)
-				return Option.some({
-					source: 'whisper' as const,
-					text: Array.join(
-						Array.map(transcription.chunks, chunk => `[${clock(chunk.timestamp[0])}] ${String.trim(chunk.text)}\n`),
-						''
-					)
-				})
+				// Music comes back as loops and invented phrases, so only speech becomes a transcript.
+				return Option.map(
+					speechOnly(
+						Array.join(
+							Array.map(transcription.chunks, chunk => `[${clock(chunk.timestamp[0])}] ${String.trim(chunk.text)}\n`),
+							''
+						)
+					),
+					text => ({source: 'whisper' as const, text})
+				)
 			})
 
 			return Media.of({

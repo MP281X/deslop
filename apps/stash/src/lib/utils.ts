@@ -3,6 +3,7 @@ import {Array, Clock, Effect, Layer, Option, Order, Result, Schedule, Schema, St
 import {AtomRpc, Atom} from 'effect/reactivity'
 import * as Rpc from 'effect/rpc'
 import {Socket} from 'effect/socket'
+import {Asset} from 'expo-asset'
 import * as Clipboard from 'expo-clipboard'
 import Constants from 'expo-constants'
 import * as Crypto from 'expo-crypto'
@@ -252,5 +253,40 @@ export const removeAtom = RpcClient.runtime.fn((id: Note['id']) =>
 		Effect.flatMap(RpcClient, client => client('notes.remove', {id})),
 		Effect.andThen(haptic(Haptics.NotificationFeedbackType.Success)),
 		Effect.tapError(alert('Not Deleted'))
+	)
+)
+
+// A bundled image as a local file, because SwiftUI images read files. Metro gives each image a module number, which the
+// web image types call a string.
+export const assetAtom = Atom.family((module: number | string) =>
+	Atom.make(
+		Effect.map(
+			Effect.promise(() => Asset.fromModule(module).downloadAsync()),
+			asset => asset.localUri ?? asset.uri
+		)
+	)
+)
+
+// A note being written stays on the iPhone at every keystroke, so closing the app never loses it.
+const draftFile = new File(Paths.document, 'draft.txt')
+
+export const draftAtom = Atom.writable(
+	() => (draftFile.exists ? draftFile.textSync() : ''),
+	(context, text: string) => {
+		replace(draftFile, text)
+		context.setSelf(text)
+	}
+)
+
+// Saves a written note like a shared one: into the outbox first, then to the server, and clears the draft.
+export const writeAtom = Atom.fn((text: string, get) =>
+	pipe(
+		Effect.gen(function* () {
+			yield* outbox.add({createdAt: yield* Clock.currentTimeMillis, id: Crypto.randomUUID(), text: String.trim(text)})
+			get.set(draftAtom, '')
+			get.set(outboxRevisionAtom, get(outboxRevisionAtom) + 1)
+			yield* haptic(Haptics.NotificationFeedbackType.Success)
+		}),
+		Effect.tapError(alert('Note Not Saved'))
 	)
 )

@@ -14,7 +14,9 @@ import {
 	SwipeActions,
 	Text,
 	Toolbar,
-	VStack
+	ToolbarItem,
+	VStack,
+	ZStack
 } from '@expo/ui/swift-ui'
 import type {useNativeState} from '@expo/ui/swift-ui'
 import {
@@ -47,10 +49,11 @@ import {
 import {AsyncResult} from 'effect/reactivity'
 import {Linking} from 'react-native'
 
-import {colors, mono} from '#lib/theme.ts'
 import {imageAtom, notesAtom, pendingAtom, removeAtom} from '#lib/utils.ts'
+import {Brand, brandOf} from '#routes/brand.tsx'
 import {findNotes, tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note} from '#services/notes/schema.ts'
+import {colors, mono} from '@deslop/components/mobile/theme'
 
 const row = [
 	listRowBackground(colors.background),
@@ -60,6 +63,7 @@ const row = [
 
 // The list is the whole app: links arrive from the share sheet or the clipboard, so there are no buttons.
 export function NotesRoute(props: {
+	onCompose: () => void
 	onOpen: (id: Note['id']) => void
 	onSearch: (text: string) => void
 	onTag: (tag: string) => void
@@ -70,19 +74,15 @@ export function NotesRoute(props: {
 	const pending = useAtomSuspense(pendingAtom).value
 	const remove = useAtomSet(removeAtom)
 	const notes = findNotes(state.notes, props.search)
-	// The tags as a row of chips: the most used first, or those that start with what follows a typed #.
+	// The tags as a row of chips, the most used first, narrowed to those that start with a typed #; the active one is
+	// filled and clears the filter when tapped again.
+	const active = String.trim(props.search)
 	const tags = pipe(
 		tagCounts(state.notes),
-		Array.filter(entry =>
-			pipe(
-				Option.liftPredicate(props.search, String.startsWith('#')),
-				Option.match({
-					onNone: () => String.isEmpty(props.search),
-					onSome: search => String.startsWith(String.slice(1)(String.trim(search)))(entry.tag)
-				})
-			)
-		),
-		Array.take(12)
+		Array.map(entry => entry.tag),
+		Array.filter(tag =>
+			String.startsWith('#')(active) ? String.startsWith(String.slice(1)(active))(tag) : String.isEmpty(active)
+		)
 	)
 	const view = pipe(
 		Match.value({
@@ -116,23 +116,31 @@ export function NotesRoute(props: {
 						]}
 					>
 						<HStack spacing={8}>
-							{Array.map(tags, entry => (
+							{Array.map(tags, tag => (
 								<Button
-									key={entry.tag}
-									onPress={() => props.onTag(entry.tag)}
-									modifiers={[buttonStyle('plain'), border({color: colors.border, width: 1})]}
+									key={tag}
+									onPress={() => props.onTag(tag)}
+									modifiers={[
+										buttonStyle('plain'),
+										border({color: colors.border, width: 1}),
+										background(active === `#${tag}` ? colors.primary : colors.background)
+									]}
 								>
-									<Text
-										modifiers={[
-											mono('caption', 12),
-											foregroundStyle(colors.primary),
-											lineLimit(1),
-											fixedSize(),
-											padding({horizontal: 8, vertical: 4})
-										]}
-									>
-										{`#${entry.tag} ${entry.count}`}
-									</Text>
+									<HStack spacing={6} modifiers={[padding({horizontal: 8, vertical: 4})]}>
+										<Text
+											modifiers={[
+												mono('caption', 12),
+												foregroundStyle(active === `#${tag}` ? colors.background : colors.primary),
+												lineLimit(1),
+												fixedSize()
+											]}
+										>
+											{`#${tag}`}
+										</Text>
+										{active === `#${tag}` && (
+											<Image systemName="xmark" size={10} modifiers={[foregroundStyle(colors.background)]} />
+										)}
+									</HStack>
 								</Button>
 							))}
 						</HStack>
@@ -170,6 +178,11 @@ export function NotesRoute(props: {
 			]}
 		>
 			{view}
+			<Toolbar.Content>
+				<ToolbarItem placement="bottomBar">
+					<Button systemImage="square.and.pencil" onPress={props.onCompose} />
+				</ToolbarItem>
+			</Toolbar.Content>
 		</Toolbar>
 	)
 }
@@ -202,8 +215,16 @@ function Preview(props: {note: Note}) {
 		Match.when('Website', () => 'globe' as const),
 		Match.orElse(() => 'text.alignleft' as const)
 	)
-	if (props.note.image === undefined) return <Placeholder symbol={symbol} />
-	return <Thumbnail note={props.note} symbol={symbol} />
+	if (props.note.image !== undefined) return <Thumbnail note={props.note} symbol={symbol} />
+	// Without a preview, the logo of the app the link opens in names the source.
+	return Option.match(brandOf(props.note), {
+		onNone: () => <Placeholder symbol={symbol} />,
+		onSome: brand => (
+			<ZStack modifiers={[frame({height: 48, width: 48}), border({color: colors.border, width: 1})]}>
+				<Brand brand={brand} size={20} />
+			</ZStack>
+		)
+	})
 }
 
 // Mounted only once the server has kept the preview, so the download never runs before the file exists.

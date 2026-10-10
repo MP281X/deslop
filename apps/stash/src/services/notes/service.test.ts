@@ -87,6 +87,7 @@ function counting(calls: Ref.Ref<number>) {
 				{
 					cost: 0.0004,
 					organization: Result.succeed({
+						body: '',
 						summary: `About ${input.note.content}`,
 						tags: ['Cooking', 'cooking', 'soup'],
 						title: 'Soup',
@@ -277,7 +278,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
-	test.effect('shows the AI stills of a video', () =>
+	test.effect('shows the AI the kept preview and stills of a video', () =>
 		Effect.gen(function* () {
 			const seen = yield* Ref.make<string[]>([])
 			const calls = yield* Ref.make(0)
@@ -291,7 +292,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 			})
 			yield* notes.capture({id: ids[0], text: 'https://www.tiktok.com/@cook/video/1'})
 			yield* settled(notes, current => Array.some(current.notes, note => note.status === 'ready'))
-			assert.deepStrictEqual(yield* Ref.get(seen), ['data:image/jpeg;base64,AAAA'])
+			assert.deepStrictEqual(yield* Ref.get(seen), ['data:image/jpeg;base64,/9j/', 'data:image/jpeg;base64,AAAA'])
 		})
 	)
 

@@ -32,9 +32,10 @@ import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 import {Linking} from 'react-native'
 
-import {colors, mono} from '#lib/theme.ts'
 import {imageAtom, notesAtom} from '#lib/utils.ts'
+import {Brand, brandOf} from '#routes/brand.tsx'
 import type {Note} from '#services/notes/schema.ts'
+import {colors, mono} from '@deslop/components/mobile/theme'
 
 const page = [navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]
 
@@ -65,14 +66,13 @@ function Cover(props: {note: Note}) {
 			modifiers={[
 				resizable(),
 				aspectRatio({contentMode: 'fit'}),
-				frame({maxHeight: props.note.source === 'TikTok' ? 420 : 260, maxWidth: Infinity})
+				frame({maxHeight: props.note.source === 'TikTok' ? 240 : 180, maxWidth: Infinity})
 			]}
 		/>
 	)
 }
 
 function Detail(props: {note: Note; onTag: (tag: string) => void}) {
-	const [transcriptOpen, setTranscriptOpen] = useState(false)
 	return (
 		<Toolbar modifiers={page}>
 			<ScrollView modifiers={[background(colors.background)]}>
@@ -116,40 +116,19 @@ function Detail(props: {note: Note; onTag: (tag: string) => void}) {
 							</HStack>
 						</ScrollView>
 					)}
-					{/* What the server read from the link: the post and its quote, or the start of the page. */}
-					{String.isNonEmpty(props.note.content) && (
-						<Text
-							modifiers={[
-								mono('caption', 12),
-								foregroundStyle(colors.foreground),
-								lineLimit(props.note.source === 'Website' ? 8 : 40),
-								textSelection(true)
-							]}
-						>
-							{props.note.content}
-						</Text>
-					)}
+					{Option.match(Option.liftPredicate(props.note.body ?? '', String.isNonEmpty), {
+						onNone: () => undefined,
+						onSome: body => (
+							<Text modifiers={[mono('body', 14), foregroundStyle(colors.foreground), textSelection(true)]}>
+								{body}
+							</Text>
+						)
+					})}
+					{/* What the server read from the link and what the video says, folded so the note stays short. */}
+					{String.isNonEmpty(props.note.content) && <Fold label="source" text={props.note.content} />}
 					{Option.match(Option.fromNullishOr(props.note.transcript), {
 						onNone: () => undefined,
-						onSome: transcript => (
-							<VStack alignment="leading" spacing={8}>
-								<Button onPress={() => setTranscriptOpen(!transcriptOpen)} modifiers={[buttonStyle('plain')]}>
-									<HStack spacing={6}>
-										<Image
-											systemName={transcriptOpen ? 'chevron.down' : 'chevron.right'}
-											size={11}
-											modifiers={[foregroundStyle(colors.mutedForeground)]}
-										/>
-										<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground)]}>transcript</Text>
-									</HStack>
-								</Button>
-								{transcriptOpen && (
-									<Text modifiers={[mono('caption', 11), foregroundStyle(colors.mutedForeground), textSelection(true)]}>
-										{transcript}
-									</Text>
-								)}
-							</VStack>
-						)
+						onSome: transcript => <Fold label="transcript" text={transcript} />
 					})}
 					{String.isNonEmpty(props.note.issue) && (
 						<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground)]}>{props.note.issue}</Text>
@@ -162,11 +141,42 @@ function Detail(props: {note: Note; onTag: (tag: string) => void}) {
 				onSome: url => (
 					<Toolbar.Content>
 						<ToolbarItem placement="topBarTrailing">
-							<Button systemImage="arrow.up.right" onPress={() => Linking.openURL(url)} />
+							{Option.match(brandOf(props.note), {
+								onNone: () => <Button systemImage="arrow.up.right" onPress={() => Linking.openURL(url)} />,
+								onSome: brand => (
+									<Button onPress={() => Linking.openURL(url)}>
+										<Brand brand={brand} size={20} />
+									</Button>
+								)
+							})}
 						</ToolbarItem>
 					</Toolbar.Content>
 				)
 			})}
 		</Toolbar>
+	)
+}
+
+// A muted label with a chevron that shows or hides a long text.
+function Fold(props: {label: string; text: string}) {
+	const [open, setOpen] = useState(false)
+	return (
+		<VStack alignment="leading" spacing={8}>
+			<Button onPress={() => setOpen(!open)} modifiers={[buttonStyle('plain')]}>
+				<HStack spacing={6}>
+					<Image
+						systemName={open ? 'chevron.down' : 'chevron.right'}
+						size={11}
+						modifiers={[foregroundStyle(colors.mutedForeground)]}
+					/>
+					<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground)]}>{props.label}</Text>
+				</HStack>
+			</Button>
+			{open && (
+				<Text modifiers={[mono('caption', 11), foregroundStyle(colors.mutedForeground), textSelection(true)]}>
+					{props.text}
+				</Text>
+			)}
+		</VStack>
 	)
 }
