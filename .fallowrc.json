@@ -1,12 +1,13 @@
 {
 	"$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-	"entry": ["**/main.*", "tools/coding-standards/src/install.ts"],
+	"entry": ["**/main.*", "apps/*/fingerprint.config.js", "tools/coding-standards/src/install.ts"],
 	"includeEntryExports": true,
 	"ignorePatterns": ["**/*.gen.ts", "packages/components/src/components/svgs/**", "tools/*/template/**"],
 	"ignoreExports": [
 		{"exports": ["*"], "file": "packages/*/src/schema.ts"},
 		{"exports": ["*"], "file": "apps/stash/src/services/*/schema.ts"},
 		{"exports": ["default"], "file": "apps/*/app.config.ts"},
+		{"exports": ["*"], "file": "apps/*/fingerprint.config.js"},
 		{"exports": ["*"], "file": "packages/components/src/components/**"}
 	],
 	"rules": {"require-suppression-reason": "error"}
