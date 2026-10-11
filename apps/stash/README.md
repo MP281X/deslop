@@ -33,13 +33,24 @@ The CLI saves the entry through the server's RPC, waits until the server has rea
 
 ## Releases
 
-On main, `deploy.yaml` checks the native fingerprint of a change under `apps/stash` or `packages`. A known fingerprint ships the JavaScript as an EAS Update; a new one builds on GitHub's `xcode-27` runner with `eas build --local`, submits to TestFlight, then publishes the update. Any pushed tag builds its commit for TestFlight. Each release is version `0.1.<run>` with build number `<run>`.
+On main, `deploy.yaml` compares `apps/stash`, `packages` and the lockfile with the commit of the last EAS Update. When they changed, a known native fingerprint ships the JavaScript as a new update; a new one first builds on GitHub's `xcode-27` runner with `eas build --local` and submits to TestFlight. A newer merge cancels the older run, and the next one ships both. Each release is version `0.1.<run>` with build number `<run>`.
 
 ## Development build
 
-`vp -C apps/stash run dev` serves Metro on localhost and writes the tailnet URL into its manifest; `sudo tailscale serve --bg --https=8081 http://localhost:8081` lets the iPhone's stash dev reach it. Use `localhost`, not `127.0.0.1`: Metro listens on `::1`.
+`vp -C apps/stash run dev` serves Metro on localhost and writes the tailnet URL into its manifest; `sudo tailscale serve --bg --https=8081 http://localhost:<Metro port>` lets stash dev reach it. Metro picks 8082 when that serve already holds 8081, so point it at the port Metro prints. Use `localhost`, not `127.0.0.1`: Metro listens on `::1`.
 
-## Checks without a Mac
+On the iOS Simulator, each branch push leaves the build as the artifact `stash-simulator-<fingerprint>`:
+
+```bash
+gh run download <run id> --name stash-simulator-<fingerprint> --dir /tmp/stash-sim && tar -xzf /tmp/stash-sim/simulator.tar.gz -C /tmp/stash-sim
+<agent-device> install xyz.mp281x.stash.dev /tmp/stash-sim/stashdev.app <flags>
+<agent-device> open xyz.mp281x.stash.dev 'stash-dev://expo-development-client/?url=https%3A%2F%2F<worker>.tailnet-8c4c.ts.net%3A8081' <flags>
+<agent-device> alert accept <flags>
+```
+
+`device_open` returns the `agent-device` command and its flags. The first open asks to open the link in stash dev, and the first launch shows the developer menu.
+
+## Checks before a build
 
 ```bash
 vp -C apps/stash exec expo config --type public
@@ -47,7 +58,7 @@ vp -C apps/stash exec expo prebuild --platform ios --no-install --clean && rm -r
 vp -C apps/stash exec expo export --platform ios --output-dir /tmp/stash-export
 ```
 
-The first EAS build is the first Swift compile.
+A Swift change compiles first in the simulator build on CI.
 
 <details>
 <summary>For agents</summary>

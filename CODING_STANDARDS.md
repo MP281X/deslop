@@ -38,7 +38,7 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 ## Deploy
 
 - Deploy is one `tools/compose.yaml` with configs inlined, direct ports, and unpinned images, driven by commands for this machine; no deploy README, flag-heavy scripts, or nested folders.
-- Each mobile app is one entry in the `ios` matrix of `.github/workflows/deploy.yaml`. On main, a changed app ships its JavaScript as an EAS Update, and a new native fingerprint first builds and submits to TestFlight. Any pushed tag builds its commit for TestFlight.
+- Each mobile app is one entry in two matrices: `ios` in `.github/workflows/deploy.yaml`, which releases from main, and `simulator` in `.github/workflows/ci.yaml`, which builds branches. [Stash's README](apps/stash/README.md#releases) explains both.
 - Reusable tooling ships as a TypeScript package `@deslop/<name>` under `tools/`, published by CI; an app whose CLI shares its code, such as stash, publishes from `apps/`. Add and publish one with [tools/AGENTS.md](tools/AGENTS.md).
 
 ## Keys
