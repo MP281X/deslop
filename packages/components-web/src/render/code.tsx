@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-file -- Public render component retained for the Workbench rebuild.
 import DOMPurify from 'dompurify'
 
 import {highlightCode} from '#lib/shiki.ts'

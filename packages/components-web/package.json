@@ -1,22 +1,22 @@
 {
-	"name": "@deslop/components",
+	"name": "@deslop/components-web",
+	"version": "0.0.0",
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
 		"#lib/*": "./src/lib/*",
-		"#hooks/*": "./src/hooks/*",
-		"#components/*": "./src/components/*"
+		"#components/*": "./src/*"
 	},
 	"exports": {
-		"./*": "./src/components/*.tsx",
-		"./ui/*": "./src/components/ui/*.tsx",
+		"./*": "./src/*.tsx",
+		"./ui/*": "./src/ui/*.tsx",
 		"./utils": "./src/lib/utils.ts",
 		"./theme.css": "./src/theme.css"
 	},
 	"dependencies": {
 		"@base-ui/react": "latest",
 		"@fontsource-variable/jetbrains-mono": "latest",
-		"@legendapp/list": "^3.0.0-beta",
+		"@legendapp/list": "^3.6.0",
 		"@lexical/react": "latest",
 		"@pierre/diffs": "latest",
 		"@tanstack/react-form": "latest",

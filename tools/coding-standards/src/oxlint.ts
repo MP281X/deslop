@@ -63,7 +63,7 @@ export const oxlint = defineConfig({
 	],
 	options: {denyWarnings: true, reportUnusedDisableDirectives: 'deny', typeAware: true, typeCheck: true},
 	overrides: [
-		{files: ['**/*.config.ts', '**/main.*'], rules: {'import/no-default-export': 'off'}},
+		{files: ['**/*.config.ts', '**/app.plugin.js', '**/main.*'], rules: {'import/no-default-export': 'off'}},
 		{files: ['**/components/ui/**'], rules: {'shadcn/no-restyle': 'off', 'shadcn/require-static-classes': 'off'}},
 		{
 			files: ['**/components/ui/**', '**/packages/ui/**'],
@@ -614,7 +614,7 @@ export const oxlint = defineConfig({
 		// JavaScript globals
 		'use-isnan': 'error'
 	},
-	settings: {react: {version: '19.0'}, shadcn: {ui: ['@deslop/components/ui', '@dual/ui/components']}}
+	settings: {react: {version: '19.0'}, shadcn: {ui: ['@deslop/components-web/ui', '@dual/ui/components']}}
 })
 
 // oxlint-disable-next-line import/no-default-export -- oxlint loads a JS plugin from its module's default export.

@@ -40,8 +40,8 @@
 		"build": "vp pack"
 	},
 	"dependencies": {
-		"@shadcn/lint": "^0.2.0",
-		"oxlint-plugin-react-doctor": "^0.9.14"
+		"@shadcn/lint": "^0.2.1",
+		"oxlint-plugin-react-doctor": "^0.9.17"
 	},
 	"devDependencies": {
 		"@oxlint/plugins": "1.85.0",

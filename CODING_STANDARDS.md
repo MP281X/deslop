@@ -21,7 +21,7 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 
 ## Runtime
 
-- `packages/runtime` is the single source of truth for what every app shares: server, router, OpenTelemetry, and Vite config.
+- `packages/runtime` is the single source of truth for what every app shares: `./server` (Node server and OpenTelemetry) and `./vite` at `src/`, and `./web` (router and RPC client) in `src/web/`.
 - Defaults live in code through `Config.withDefault`, never in `.env.example`: `HOST` is `0.0.0.0`, `PORT` is 5000 (the port traefik routes), and one `VITE_OTEL_URL` base serves both traces and logs.
 
 ## Generators
@@ -54,7 +54,7 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 ## RPC
 
 - Declare contracts as an `RpcGroup`, with `stream: true` for subscriptions, and implement them with `RpcContracts.toLayer` returning `RpcContracts.of`.
-- The client is an `AtomRpc.Service` over `ClientRuntime.layer`.
+- The client is an `AtomRpc.Service` over `WebRuntime.layer`.
 - A stream syncs one keep-alive Atom that components read; a component never owns a subscription and never polls.
 
 ## Components

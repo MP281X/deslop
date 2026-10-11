@@ -2,10 +2,11 @@
 	"$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
 	"entry": ["**/main.*", "tools/coding-standards/src/install.ts"],
 	"includeEntryExports": true,
-	"ignorePatterns": ["**/*.gen.ts", "packages/components/src/components/svgs/**", "tools/*/template/**"],
+	"ignorePatterns": ["**/*.gen.ts", "packages/components-web/src/svgs/**", "tools/*/template/**"],
 	"ignoreExports": [
 		{"exports": ["*"], "file": "packages/*/src/schema.ts"},
-		{"exports": ["*"], "file": "packages/components/src/components/**"}
+		{"exports": ["*"], "file": "packages/components-web/src/*.tsx"},
+		{"exports": ["*"], "file": "packages/components-web/src/{ui,render,svgs}/**"}
 	],
 	"rules": {"require-suppression-reason": "error"}
 }

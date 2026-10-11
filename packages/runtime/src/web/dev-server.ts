@@ -30,7 +30,7 @@ import type {RpcSerialization} from 'effect/rpc'
 import type {Connect, EnvironmentModuleNode, Plugin} from 'vite'
 import {isRunnableDevEnvironment} from 'vite'
 
-import {layerRpcSerialization} from '#server'
+import {layerRpcSerialization} from '#server.ts'
 
 const isApiUrl = Predicate.compose(
 	String.isString,
@@ -204,6 +204,6 @@ export function serverPlugin(): Plugin {
 			},
 			order: 'post'
 		},
-		name: '@deslop/runtime/server'
+		name: '@deslop/runtime/dev-server'
 	}
 }

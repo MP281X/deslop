@@ -10,11 +10,7 @@ export default defineConfig({
 		]
 	},
 	fmt: {
-		ignorePatterns: [
-			'**/*.gen.ts',
-			'packages/components/src/components/svgs/**',
-			'packages/components/src/components/ui/**'
-		],
+		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/svgs/**', 'packages/components-web/src/ui/**'],
 
 		arrowParens: 'avoid',
 		bracketSpacing: false,
@@ -62,8 +58,8 @@ export default defineConfig({
 		ignorePatterns: [
 			'**/*.gen.ts',
 			'tools/*/template/**',
-			'packages/components/src/components/svgs/**',
-			'packages/components/src/components/ui/**'
+			'packages/components-web/src/svgs/**',
+			'packages/components-web/src/ui/**'
 		],
 		jsPlugins: [{name: 'vite-plus', specifier: 'vite-plus/oxlint-plugin'}],
 		rules: {'vite-plus/prefer-vite-plus-imports': 'error'}

@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-file -- Public render component retained for the Workbench rebuild.
 import {Array, Match, Number, Option, Predicate, String, pipe} from 'effect'
 
 import type {AnnotationSide} from '@pierre/diffs'

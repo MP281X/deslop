@@ -260,12 +260,13 @@ JSON.parse(text)
 ```ts
 // good
 import {Effect, Schema} from 'effect'
-import type {Plugin} from 'vite'
-
-import type {PortfolioState} from '#rpcs/contracts.ts'
 // bad — each line is a diagnostic
 import {Schema as S} from 'effect'
+
+import type {Plugin} from 'vite'
 import {type Plugin, createServer} from 'vite'
+
+import type {PortfolioState} from '#rpcs/contracts.ts'
 export const EntryKind = Schema.Literals(['income', 'expense']) // no importer
 ```
 
@@ -282,7 +283,7 @@ export const EntryKind = Schema.Literals(['income', 'expense']) // no importer
 // oxlint-disable-next-line typescript/consistent-type-assertions
 // oxlint-disable-next-line sort-keys -- keeps the printed order
 // bad
-files: ['packages/components/src/components/dev-tools.tsx', 'packages/components/src/components/form.tsx'],
+files: ['packages/components-web/src/form.tsx', 'packages/components-web/src/rich-text-area.tsx'],
 ```
 
 ## Effect

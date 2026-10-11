@@ -21,6 +21,7 @@ vp exec effect-tsgo patch --no-typescript --oxlint
 
 ```ts
 import {defineConfig} from 'vite-plus'
+
 import {oxlint} from '@deslop/coding-standards'
 
 export default defineConfig({lint: {extends: [oxlint]}})

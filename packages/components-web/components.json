@@ -11,13 +11,7 @@
 	"rsc": false,
 	"tsx": true,
 
-	"aliases": {
-		"lib": "#lib",
-		"hooks": "#hooks",
-		"utils": "#lib/utils",
-		"ui": "#components/ui",
-		"components": "#components"
-	},
+	"aliases": {"lib": "#lib", "utils": "#lib/utils", "ui": "#components/ui", "components": "#components"},
 
 	"tailwind": {"config": "", "prefix": "", "baseColor": "zinc", "cssVariables": true, "css": "src/theme.css"}
 }
