@@ -9,6 +9,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 		return RpcContracts.of({
 			'notes.capture': notes.capture,
 			'notes.get': notes.get,
+			'notes.regenerate': notes.regenerate,
 			'notes.remove': notes.remove,
 			'notes.search': notes.search,
 			'notes.watch': () => notes.events

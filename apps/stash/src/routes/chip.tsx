@@ -29,7 +29,7 @@ export function Chip(props: {
 			modifiers={[
 				buttonStyle(props.active ? 'glassProminent' : 'glass'),
 				buttonBorderShape('capsule'),
-				controlSize('large'),
+				controlSize('regular'),
 				tint(props.active ? colors.primary : colors.foreground),
 				foregroundStyle(props.active ? colors.primaryForeground : colors.foreground),
 				labelStyle('titleAndIcon'),

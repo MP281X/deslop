@@ -371,6 +371,15 @@ export const imageAtom = Atom.family((id: Note['id']) =>
 	)
 )
 
+// Reads a note's source again; the row shows its placeholder until the new note arrives.
+export const regenerateAtom = RpcClient.runtime.fn((id: Note['id']) =>
+	pipe(
+		Effect.flatMap(RpcClient, client => client('notes.regenerate', {id})),
+		Effect.andThen(haptic(Haptics.NotificationFeedbackType.Success)),
+		Effect.tapError(alert('Not Regenerated'))
+	)
+)
+
 export const removeAtom = RpcClient.runtime.fn((id: Note['id']) =>
 	pipe(
 		Effect.flatMap(RpcClient, client => client('notes.remove', {id})),
@@ -387,6 +396,24 @@ export const assetAtom = Atom.family((module: number | string) =>
 			Effect.promise(() => Asset.fromModule(module).downloadAsync()),
 			asset => asset.localUri ?? asset.uri
 		)
+	)
+)
+
+// A logo's menu shape copied under a name that the patched image view reads as a 3x template image, so a menu draws it
+// at 18 points in the text color.
+export const menuIconAtom = Atom.family((module: number | string) =>
+	Atom.make(
+		Effect.gen(function* () {
+			const asset = yield* Effect.promise(() => Asset.fromModule(module).downloadAsync())
+			const file = new File(Paths.cache, `menu-${asset.hash ?? asset.name}.template@3x.png`)
+			if (!file.exists) {
+				yield* Effect.tryPromise({
+					catch: storageFailed('A menu icon could not be prepared.'),
+					try: () => new File(asset.localUri ?? asset.uri).copy(file)
+				})
+			}
+			return file.uri
+		})
 	)
 )
 

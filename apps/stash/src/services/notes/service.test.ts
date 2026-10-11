@@ -486,6 +486,23 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
+	test.effect('reads and tags a note again when asked to regenerate it', () =>
+		Effect.gen(function* () {
+			const calls = yield* Ref.make(0)
+			const notes = yield* open({
+				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				organizer: counting(calls),
+				sources: recipe
+			})
+			yield* notes.capture({id: ids[0], text: 'https://example.com/soup'})
+			yield* settled(notes, current => Array.some(current.notes, note => note.status === 'ready'))
+			yield* notes.regenerate({id: ids[0]})
+			yield* settled(notes, current => Array.some(current.notes, note => note.status === 'ready'))
+			assert.strictEqual(yield* Ref.get(calls), 2)
+			assert.strictEqual((yield* Effect.flip(notes.regenerate({id: ids[1]}))).message, 'This note no longer exists.')
+		})
+	)
+
 	test.effect('keeps no preview for a note deleted while its image downloads', () =>
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem

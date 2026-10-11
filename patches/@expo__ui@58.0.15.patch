@@ -83,6 +83,30 @@ index 6b1d39173397dae66068978459c640cb256908c5..ac09b5f0f1929d81f4152535c51db957
          },
          children: children
      });
+diff --git a/ios/ImageView.swift b/ios/ImageView.swift
+index 170de73445439a3ba4e5495643ee5f7c3eb332ab..4da88e7efd6e4d435789f62896285a35e21840b8 100644
+--- a/ios/ImageView.swift
++++ b/ios/ImageView.swift
+@@ -44,10 +44,18 @@ public struct ImageView: ExpoSwiftUI.View {
+     } else if let url = props.uiImage,
+               let url = URL(string: url),
+               let data = try? Data(contentsOf: url),
+-              let uiImage = UIImage(data: data) {
++              let uiImage = scaledImage(data: data, name: url.lastPathComponent) {
+       Image(uiImage: uiImage)
+         .applyImageModifiers(props.modifiers, appContext: props.appContext)
+         .applyOnTapGesture(useTapGesture: props.useTapGesture, eventDispatcher: props.onTap)
+     }
+   }
+ }
++
++// A file named like `logo@3x.png` loads at that scale, as UIKit's own image files do, so a 54-pixel file draws at 18
++// points. A `.template` in the name draws only its shape in the text color, as menus draw their symbols.
++private func scaledImage(data: Data, name: String) -> UIImage? {
++  let scale: CGFloat = name.contains("@3x") ? 3 : name.contains("@2x") ? 2 : 1
++  guard let image = UIImage(data: data, scale: scale) else { return nil }
++  return name.contains(".template") ? image.withRenderingMode(.alwaysTemplate) : image
++}
 diff --git a/ios/ListView.swift b/ios/ListView.swift
 index bb93701e0b8b3e92d0e57490eedd8e0e5048ff7f..1b07c7d7c231196e616fbc44b5248bef83c95cf1 100644
 --- a/ios/ListView.swift

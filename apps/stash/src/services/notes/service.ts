@@ -85,6 +85,8 @@ export class Notes extends Context.Service<
 			id: Note['id']
 			type: FileType
 		}) => Effect.Effect<Note, NotesError>
+		// Reads the note's source again and tags it anew, as on its first save.
+		readonly regenerate: (input: Pick<Note, 'id'>) => Effect.Effect<void, NotesError>
 		readonly remove: (input: Pick<Note, 'id'>) => Effect.Effect<void, NotesError>
 	}
 >()('@deslop/stash/services/notes/service/Notes') {
@@ -565,6 +567,29 @@ export class Notes extends Context.Service<
 						Effect.mapError(() => NotesError.make({message: 'This note has no preview image.'}))
 					)
 					return {bytes: yield* pipe(fs.readFile(path.join(images, id)), storageFailed), type}
+				}),
+				regenerate: Effect.fn('Notes.regenerate')(function* (input: Pick<Note, 'id'>) {
+					// The transcript goes too, so the video is read again; the rest is replaced by the new run.
+					const reset = yield* transact(current =>
+						Option.match(
+							Array.findFirst(current.notes, note => note.id === input.id),
+							{
+								onNone: () => Tuple.make(Option.none<Note>(), current),
+								onSome: found => {
+									const {transcript: _transcript, ...rest} = found
+									const next = {...rest, issue: '', status: 'organizing' as const}
+									return Tuple.make(Option.some(next), {
+										...current,
+										notes: Array.map(current.notes, note => (note.id === input.id ? next : note))
+									})
+								}
+							}
+						)
+					)
+					yield* Option.match(reset, {
+						onNone: () => Effect.fail(NotesError.make({message: 'This note no longer exists.'})),
+						onSome: start
+					})
 				}),
 				remove: Effect.fn('Notes.remove')(function* (input: Pick<Note, 'id'>) {
 					yield* transact(current =>

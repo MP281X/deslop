@@ -2,11 +2,11 @@ import {useAtomValue} from '@effect/atom-react'
 
 import {Option, String, pipe} from 'effect'
 
-import {Button, Label} from '@expo/ui/swift-ui'
+import {Button, Image, Label} from '@expo/ui/swift-ui'
 import {AsyncResult} from 'effect/reactivity'
 import {useColorScheme} from 'react-native'
 
-import {assetAtom} from '#lib/utils.ts'
+import {assetAtom, menuIconAtom} from '#lib/utils.ts'
 import type {NoteItem} from '#services/notes/schema.ts'
 import {BrandImage, brands} from '@deslop/components/mobile/brand'
 
@@ -48,8 +48,7 @@ export function Brand(props: {brand: (typeof brands)[keyof typeof brands]; size:
 	return <BrandImage uri={uri.value} size={props.size} />
 }
 
-// A menu action with an app's logo as its icon when it has one, otherwise a symbol. iOS draws menu icons in the
-// text color, so the logos show as plain silhouettes like the symbols beside them.
+// A menu action with an app's logo shape as its icon when it has one, otherwise a symbol.
 export function MenuAction(props: {
 	brand: Option.Option<(typeof brands)[keyof typeof brands]>
 	label: string
@@ -60,8 +59,15 @@ export function MenuAction(props: {
 		onNone: () => <Button label={props.label} systemImage={props.symbol} onPress={props.onPress} />,
 		onSome: brand => (
 			<Button onPress={props.onPress}>
-				<Label title={props.label} icon={<Brand brand={brand} size={18} />} />
+				<Label title={props.label} icon={<MenuIcon module={brand.menu} />} />
 			</Button>
 		)
 	})
+}
+
+// The logo's shape for a menu row; nothing until its file is ready.
+function MenuIcon(props: {module: number | string}) {
+	const uri = useAtomValue(menuIconAtom(props.module))
+	if (!AsyncResult.isSuccess(uri)) return undefined
+	return <Image uiImage={uri.value} />
 }

@@ -52,7 +52,7 @@ import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 import {Linking} from 'react-native'
 
-import {assetAtom, imageAtom, notesAtom, pendingAtom, removeAtom, searchAtom} from '#lib/utils.ts'
+import {assetAtom, imageAtom, notesAtom, pendingAtom, regenerateAtom, removeAtom, searchAtom} from '#lib/utils.ts'
 import {Brand, MenuAction, brandOf, kindOf, kinds} from '#routes/brand.tsx'
 import type {Kind} from '#routes/brand.tsx'
 import {Chip} from '#routes/chip.tsx'
@@ -89,6 +89,7 @@ export function NotesRoute(props: {
 	const state = useAtomSuspense(notesAtom).value
 	const pending = useAtomSuspense(pendingAtom).value
 	const remove = useAtomSet(removeAtom)
+	const regenerate = useAtomSet(regenerateAtom)
 	const query = String.trim(props.search)
 	const found = useAtomValue(searchAtom(query))
 	// The server searches transcripts and pages; until it answers, titles, summaries and tags narrow the list.
@@ -160,6 +161,7 @@ export function NotesRoute(props: {
 						if (position === limit - 1) setLimit(limit + 80)
 					}}
 					onOpen={props.onOpen}
+					onRegenerate={id => regenerate(id)}
 					onRemove={id => remove(id)}
 				/>
 			))}
@@ -330,6 +332,7 @@ function Thumbnail(props: {note: NoteItem; symbol: Parameters<typeof Placeholder
 function Row(props: {
 	note: NoteItem
 	onOpen: (id: Note['id']) => void
+	onRegenerate: (id: Note['id']) => void
 	onRemove: (id: Note['id']) => void
 	// Called when the row appears; the last mounted row mounts the next page.
 	onAppear: () => void
@@ -396,6 +399,7 @@ function Row(props: {
 							/>
 						)
 					})}
+					<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => props.onRegenerate(note.id)} />
 					{/* The destructive red is set here, because the app tints its other controls with the text color. */}
 					<Button
 						label="Delete"
