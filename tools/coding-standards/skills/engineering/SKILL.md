@@ -3,31 +3,33 @@ name: engineering
 description: 'TypeScript and Effect code conventions paired with shared lint. Use when designing, implementing or reviewing product and test code, including prototypes.'
 ---
 
-**Scope.** Apply these rules and repository-specific CODING_STANDARDS.md. Write each line right the first time: the examples exist so lint and review find nothing, and lint is only the fallback.
-
-**Dependency APIs.** Match the manifest and lockfile versions. Before adding an API wrapper or workaround, read the upstream source per explore's source checkouts. Library APIs do not define coding policy.
-
-**Diagnostics.** Use the shown idiom, not casts, weakened rules or a rewrite trading one diagnostic for another.
+**Scope.** Apply these rules and the repository's `CODING_STANDARDS.md`, and write each line right the first time; lint is only the fallback. A refactor or cleanup request applies every rule to every line of the owned files.
 
 ## Simplicity
 
-**Clarity.** Plain, explicit, idiomatic code, names and files; read top to bottom without commentary or cleverness. Match the surrounding code's naming, idiom and comment density.
+**MVP.** Write the most direct code that meets the request today. Apply YAGNI to every file, function, branch, parameter, option, export, Layer, check, config value, library and abstraction; configure only what callers vary. Write functional, explicit code: pure functions over immutable data, effects only inside Effect, and Effect modules instead of hand-written helpers.
 
-**Experiments.** Write with these idioms; reserve the full refactor and cleanup pass for retained delivery. Keep disposable source isolated and shared rules intact.
+**Plan the shape.** Before writing, choose the file tree, entrypoints and the smallest mechanism per feature, checked against `CODING_STANDARDS.md` and the nearest sibling.
 
-- **Reuse first.** Check existing code, installed modules and platform capabilities before adding code. Implement only the missing behavior, without dropping required behavior, safety or accessibility. Workflow owns the scope. A refactor or cleanup request applies every rule to every line of the owned files.
-- **Inward layers.** Domain and service code never import HTTP, RPC, or other transport types, and domain schemas carry no transport annotation such as an HTTP status.
-- **Building blocks.** For a consequential new interface, start with a realistic caller operation and its ordering, failure and lifetime obligations; hide useful complexity, not forwarded names. Offer services, Layers and functions the caller composes like any Effect module, never a bundle such as `serve(app)`. No mandatory architecture document or alternatives round.
-- **No machinery.** Add hooks, guards or generators only for a required contract or a recurring defect.
-- **Behavior kept.** A refactor keeps observable behavior at every consumer. Report accepted differences only when they exist: a change no consumer observes, or one a rule here causes, such as an error keeping its cause. Printed diagnostics are not a contract. Any other behavior change follows workflow's scope.
-- **Reachable bugs.** Fix a bug that real input reaches when it lies inside workflow's scope, and check every consumer of the changed output. For a hard bug, use one reproduction and one prediction per probe. Remove edits based on disproven hypotheses, then rerun the original scenario. Delete handling only for input the contract excludes; keep and report code that looks intentional.
-- **Performance.** Optimize only when the request or a required contract needs it. Measure one real action on realistic input before and after the change. Measure at the layer that owns the symptom: spans for backend calls, React commits for rerenders, a browser profile for main-thread work. Report run count and variation; a difference within noise is unproved.
-- **Type safety.** A fix never weakens types to make a symptom go away: no widened or erased type, cast, dropped generic, or loosened exported type.
-- **Domain.** Implement the definition the domain uses, such as a cycle for recursion, never the nearest syntactic proxy.
+**Clarity.** Code, names and files read top to bottom. Rename or split code instead of narrating it; a comment is one line and states only an outside constraint the code cannot show.
 
-**Happy path.** Failures flow through the error channel: no catch, retry, fallback, backup, or defensive check unless the request or an existing contract needs it. Map an expected failure to the service's error; never `Effect.ignore` it or turn it into a defect with `Effect.orDie`.
+**Reuse first.** Check existing code, installed modules and platform capabilities before adding code. Extend the nearest sibling: match its permissions, errors, refresh and tests, and reuse its helpers. Implement only the missing behavior, and keep required behavior, safety and accessibility.
 
-**Trusted data.** Validate and transform once at the boundary with Effect Schema. Carry narrowed values forward. Never re-check what the schema, the declared type, an earlier filter or every caller guarantees.
+**Inward dependencies.** Domain and service code never import HTTP, RPC, or other transport types, and domain schemas carry no transport annotation such as an HTTP status.
+
+**Building blocks.** Design each new public interface from a realistic caller operation and its ordering, failure and lifetime obligations; hide useful complexity, not forwarded names. Offer services, Layers and functions that the caller composes like any Effect module, never a bundle such as `serve(app)`.
+
+**Behavior kept.** A refactor keeps observable behavior at every consumer; printed diagnostics are not a contract. Accept only a difference that no consumer observes or that a rule here causes, such as an error that now keeps its cause, and report each one. Any other behavior change needs the request.
+
+**Reachable bugs.** Fix a bug that real input reaches inside the request's scope, and check every consumer of the changed output. For a hard bug, use one reproduction and one hypothesis per probe; remove edits from disproven hypotheses and rerun the original scenario. Delete handling only for input the contract excludes; keep and report code that looks intentional.
+
+**Performance.** Optimize only when the request or a contract needs it. Measure one real action on realistic input before and after, where the symptom shows: spans for backend calls, React commits for rerenders, a browser profile for main-thread work. Report run count and variation; a difference within noise is unproved.
+
+**Domain.** Implement the definition the domain uses, such as a cycle for recursion, never the nearest syntactic proxy.
+
+**Happy path.** Failures flow through the error channel: no catch, retry, fallback or defensive check unless the request or a contract needs it. Map an expected failure to the service's error; never `Effect.ignore` it or turn it into a defect with `Effect.orDie`.
+
+**Trusted data.** Validate and transform once at the boundary with Effect Schema, and carry narrowed values forward. Never re-check what the schema, the declared type, an earlier filter or every caller guarantees.
 
 ```ts
 // good
@@ -39,7 +41,7 @@ Schema.decodeEffect(LedgerDraft)(draft) // draft is already a LedgerDraft
 variable.init?.type === 'TSSatisfiesExpression' // init was already narrowed to non-null
 ```
 
-**Effect first.** Search matching cloned Effect modules before hand-writing traversal, state, configuration or platform operations. Replace dependencies covered by Effect or its platform adapters.
+**Effect first.** Search the cloned Effect modules before you hand-write traversal, state, configuration or platform operations. Replace dependencies that Effect or its platform adapters cover.
 
 ```ts
 // good
@@ -53,7 +55,7 @@ Math.floor(Duration.toDays(DateTime.distance(oldest.timestamp, newest.timestamp)
 import {glob} from 'glob' // a dependency Effect's FileSystem replaces
 ```
 
-**Whole values.** Pass whole values or spread them. Do not destructure parameters, callbacks or loop bindings, except labeled tuple parameters, React state and component refs. Project fields only to exclude data the recipient must not receive. Name the whole value by its role. A leading underscore marks only a parameter the body never reads; never add an underscore or a number to avoid shadowing.
+**Whole values.** Pass whole values or spread them, named by their role. Do not destructure parameters, callbacks or loop bindings, except labeled tuple parameters, React state and component refs; read other tuples by index. Project fields only to exclude data the recipient must not get. A leading underscore marks only an unread parameter; never add an underscore or a number to avoid shadowing.
 
 ```ts
 // good
@@ -70,9 +72,9 @@ Array.map(Record.toEntries(groups), ([key, entries]) => entries.length)
 _input => onSubmit(_input.value) // or input2: an outer input is shadowed
 ```
 
-**Nearest sibling.** Extend the nearest implementation; match permissions, errors, refresh and tests. Reuse its helpers and change only affected state.
+**Dependencies.** Declare a new dependency as `latest`; pin only versions a consumer requires. Use the locked version's API, and read its upstream source before you add a wrapper or workaround. Extend a dependency through its public API; never patch its source. Library APIs do not define coding policy.
 
-**Once.** Extract repeated logic once; one fact has one owner. A domain enum, such as a status, has one schema that every other schema reuses. A cache key or atom family key carries the full identity of what it caches.
+**Once.** Extract repeated logic once; one fact has one owner. A domain enum, such as a status, has one schema that others reuse. A cache or atom family key carries the full identity of what it caches.
 
 ```ts
 // good
@@ -90,17 +92,15 @@ pipe(
 
 **Canonical data.** Store and send canonical data, derive display values, expose each state once and remove states no caller produces.
 
-**One way.** Replace superseded paths; no duplicate, subset or superset fields, methods, options or exports.
+**One way.** No duplicate, subset or superset fields, methods, options or exports.
 
 **No compatibility.** Rename the shape and every caller together. No alias, fallback, deprecated path or flag unless a documented or user-named contract requires it.
 
-**Present needs.** No speculative option, abstraction, layer, export, file or check. Configure only what callers vary.
-
-**Dead code.** Every superseded or unused file, export, type, branch, config, validation, doc, test, and dependency goes in the same change. Docs, guides and generated bundles that describe changed behavior change in the same commit.
+**Dead code.** Delete every superseded or unused file, folder, export, type, branch, config, validation, doc, test and dependency in the same change. Update docs and generated bundles that describe changed behavior in the same commit.
 
 ## Lint pairs
 
-The forms below are the ones lint enforces without an autofix, each in a form that satisfies every rule involved.
+Lint enforces these forms without an autofix; each example satisfies every rule involved.
 
 **Fallback.** A default is `??`; never a ternary on the same value.
 
@@ -151,7 +151,7 @@ Array.appendAll(
 
 **Choices.** `Match` with `Match.exhaustive` for a union, never `switch`.
 
-**Options.** Use Option operators, never .value. Use Option where it composes; keep plain optional values otherwise. This is our convention, not a claim narrowing is unsafe.
+**Options.** Use Option operators, never `.value`. Use Option where it composes; keep plain optional values otherwise.
 
 ```ts
 // good
@@ -163,8 +163,6 @@ const parsed = Option.getOrUndefined(Number.parse(event.target.value))
 ```
 
 **Handlers.** A handler used once is an arrow in place; a handler used twice is a `function`.
-
-**Pairs.** Read positional tuples by index. Whole values lists the destructuring exceptions.
 
 **Accumulators.** No `let`: a fold or an Effect collection operation that says what it selects.
 
@@ -230,7 +228,7 @@ const text = Effect.fn('Ai.text')(function* (response: AiResponse) {
 })
 ```
 
-**Casts.** No `as`, `any` or erasing a known shape into `unknown`; `satisfies` and `as const` are the only assertions. Opaque SDK and framework inputs remain `unknown` until narrowed or decoded at their boundary; never fabricate a shape to avoid that type.
+**Casts.** No `as`, `any`, dropped generic, loosened exported type or known shape erased into `unknown`, even to make a symptom go away; `satisfies` and `as const` are the only assertions. Opaque SDK and framework inputs remain `unknown` until narrowed or decoded at their boundary; never fabricate a shape to avoid that type.
 
 ```ts
 // good
@@ -272,7 +270,7 @@ export const EntryKind = Schema.Literals(['income', 'expense']) // no importer
 
 **Readonly.** Required on service-shape properties. Allowed on class members and handwritten `Schema.suspend` cycle types; otherwise forbidden.
 
-**Disables.** Fix the idiom or reproduce a rule defect. Inline disables require an unavoidable conflict and -- reason; never disable ordering or weaken file configuration. Report dependency-only diagnostics; rename filename violations.
+**Disables.** Fix a diagnostic with the shown idiom, never a cast, a weakened rule or a rewrite that trades one diagnostic for another, or reproduce a rule defect. Inline disables require an unavoidable conflict and a `--` reason; never disable ordering or weaken file configuration. Report dependency-only diagnostics; rename filename violations.
 
 ```ts
 // good
@@ -368,7 +366,7 @@ static readonly layer = Layer.effect(Ledger, makeLedger) // a make with one call
 query(sql: string): Effect.Effect<Rows> // a method signature instead of a readonly property
 ```
 
-**Primitives.** Use Effect's primitives directly; rpcs and services already trace, and one scope owns each lifetime. Compose established independent input and output with Effect.all and explicit appropriate concurrency; keep order-dependent, transactional or resource-conflicting work sequential.
+**Primitives.** Use Effect's primitives directly; RPCs and services already trace, and one scope owns each lifetime. Run independent input and output with Effect.all and explicit concurrency; keep order-dependent, transactional or resource-conflicting work sequential.
 
 ```ts
 // good
@@ -387,7 +385,7 @@ const traced = Effect.withSpan('Notes.create')(notes.create(input))
 Effect.addFinalizer(() => closeSocket(socket)) // acquisition and release with different owners
 ```
 
-**Runtime.** The owned runtime runs the program; a Promise an external contract demands is bridged once, where it is returned. React code is no such contract: atoms run its Effects.
+**Runtime.** The owned runtime runs the program. Bridge to a Promise once, where an external contract demands it. React is no such contract: atoms run its Effects.
 
 ```ts
 // good
@@ -451,7 +449,7 @@ function cursorFromBigInt(value: bigint) {
 payload: Schema.Struct(pipe(PortfolioVisitor.fields, Struct.pick(['color', 'id', 'name', 'x', 'y']))) // the schema itself fits
 ```
 
-**Construction.** `schema.make` applies defaults and validates synchronously, throwing on failure; use it for trusted construction. For reachable fallible construction with defaults, use `schema.makeEffect` and map its `SchemaIssue.Issue` to the owning domain error. Effect decoders report `SchemaError`; use the correct error contract and do not revalidate already-narrowed data.
+**Construction.** `schema.make` applies defaults and validates synchronously, throwing on failure: use it for trusted construction. For reachable fallible construction, use `schema.makeEffect` and map its `SchemaIssue.Issue` to the owning domain error. Effect decoders report `SchemaError`.
 
 ```ts
 // good — reachable constructor failure stays in the error channel
@@ -495,7 +493,7 @@ function isPathNotFound(error: unknown) {
 
 ## Shape
 
-**Inline.** Inline forwarding wrappers and single-use helpers, temporaries and constants. Argument-free functions are named values.
+**Inline.** Inline forwarding wrappers, temporaries and constants. Keep a helper only for logic that is reused or deserves its own name. Argument-free functions are named values.
 
 ```ts
 // good
@@ -574,7 +572,7 @@ onClick={() => Effect.runPromise(saveApp(draft))}
 useAtomValue(Atom.make(loadApp(appId))) // a new atom on every render
 ```
 
-**Outcomes.** Read data with `useAtomSuspense`. The route or section that owns a screen wraps it in one `Suspense` boundary for loading. One error boundary there shows the failure with a retry. Components never branch on loading or failure, and never turn a failure into an empty value. Take a write's pending and failure state from its atom's result, never from copied React state.
+**Outcomes.** Read data with `useAtomSuspense`. The route or section that owns a screen wraps it in one `Suspense` boundary for loading. One error boundary there shows the failure with a retry. Components never branch on loading or failure, and never turn a failure into an empty value. Take a write's pending and failure state from its atom's result, never from copied React state. A reversible write updates the screen at once through `Atom.optimistic` and `Atom.optimisticFn`, which roll back on failure.
 
 ```tsx
 // good
@@ -582,7 +580,7 @@ function AppFrame(props: {appId: AppId}) {
 	return <Frame app={useAtomSuspense(appAtom(props.appId)).value} />
 }
 <ErrorBoundary fallback={<LoadError onRetry={refresh} />}>
-	<Suspense fallback={<Spinner />}>
+	<Suspense fallback={<AppFrameSkeleton />}>
 		<AppFrame appId={appId} />
 	</Suspense>
 </ErrorBoundary>
@@ -593,8 +591,6 @@ const members = query.data ?? [] // a failed load looks like no members
 const [pending, setPending] = useState(false) // copies the write atom's waiting state
 ```
 
-- **Ownership.** Give a component that owns its own atoms, writes or lifetime its own file; keep small presentational helpers beside their one user. Reset an editable draft through a `key` on its identity, never an Effect that copies props.
-- **Pure render.** Derive display values from props and subscribed state during render; never mutate them or perform an RPC, write or subscription there. Event handlers own user-triggered actions; Effects synchronize external systems, not copied state or calculations. Reuse the existing router and atom integration rather than fetching in a new Effect.
-- **State identity.** Keep one owner for each value, stable domain keys for list items and deliberate reset boundaries. For an observed rerender problem, derive the needed value in the existing atom graph instead of subscribing to frequently changing unrelated state. Compiler memoization is a performance optimization, never a correctness or lifetime guarantee. Do not add manual memoization, compiler escape directives or weakened hook rules to hide an ownership problem.
-
-Testing judgment, fixtures, assertions and verification belong to the testing skill; these engineering rules still apply to test code.
+- **Ownership.** Give a component that owns its own atoms, writes or lifetime its own file; keep small presentational helpers beside their one user. Reset an editable draft through a `key` on its identity, never a `useEffect` that copies props.
+- **Pure render.** Derive display values from props and subscribed state during render, and never mutate them or run an RPC, write or subscription there. Event handlers own user actions; `useEffect` synchronizes only external systems, never copied state or calculations.
+- **State identity.** Keep one owner per value, stable domain keys for list items and deliberate reset boundaries. For an observed rerender problem, derive the value in the existing atom graph instead of subscribing to unrelated changing state. Compiler memoization never guarantees correctness or lifetime; add no manual memoization, compiler escape directives or weakened hook rules to hide an ownership problem.
