@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-file -- Public render component retained for the Workbench rebuild.
 import {Array, Match, pipe} from 'effect'
 
 import DOMPurify from 'dompurify'

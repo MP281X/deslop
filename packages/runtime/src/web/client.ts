@@ -1,18 +1,14 @@
-import * as WebSdk from '@effect/opentelemetry/WebSdk'
-
 import {Config, ConfigProvider, Effect, Layer, Predicate, pipe} from 'effect'
 
-import {OTLPLogExporter} from '@opentelemetry/exporter-logs-otlp-http'
-import {OTLPTraceExporter} from '@opentelemetry/exporter-trace-otlp-http'
-import {BatchLogRecordProcessor} from '@opentelemetry/sdk-logs'
-import {BatchSpanProcessor} from '@opentelemetry/sdk-trace-base'
 import {createRouter} from '@tanstack/react-router'
 import type {AnyContext, AnyRoute} from '@tanstack/react-router'
 import {Atom} from 'effect/reactivity'
 import * as Rpc from 'effect/rpc'
 import {Socket} from 'effect/socket'
 
-import {Error, Loading, NotFound} from '@deslop/components/fallbacks'
+import {layerWebSdk} from '#telemetry.ts'
+
+import {Error, Loading, NotFound} from '@deslop/components-web/fallbacks'
 
 export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext: AnyContext}}>(routeTree: TRouteTree) {
 	const root = document.querySelector('#root')
@@ -47,13 +43,7 @@ export function layer(applicationName: string) {
 	const telemetry = pipe(
 		Layer.unwrap(
 			Effect.map(pipe(Config.URL('VITE_OTEL_URL'), Config.withDefault(new URL('http://localhost:4318'))), url =>
-				WebSdk.layer(() => ({
-					logRecordProcessor: new BatchLogRecordProcessor({
-						exporter: new OTLPLogExporter({url: new URL('/v1/logs', url).href})
-					}),
-					resource: {serviceName: `${applicationName}-client`},
-					spanProcessor: new BatchSpanProcessor(new OTLPTraceExporter({url: new URL('/v1/traces', url).href}))
-				}))
+				layerWebSdk(`${applicationName}-client`, url)
 			)
 		),
 		Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(import.meta.env)))

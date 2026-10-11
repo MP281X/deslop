@@ -1,18 +1,19 @@
 {
 	"name": "@deslop/runtime",
+	"version": "0.0.0",
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
-		"#server": "./src/server.ts"
+		"#*": "./src/*"
 	},
 	"exports": {
-		"./client": "./src/client.ts",
 		"./server": "./src/server.ts",
-		"./vite": "./src/vite/config.ts"
+		"./vite": "./src/vite.ts",
+		"./web": "./src/web/client.ts"
 	},
 	"dependencies": {
-		"@deslop/components": "workspace:*",
-		"@effect/opentelemetry": "^4.0.0",
+		"@deslop/components-web": "workspace:*",
+		"@effect/opentelemetry": "4.0.2",
 		"@opentelemetry/exporter-logs-otlp-http": "latest",
 		"@opentelemetry/exporter-trace-otlp-http": "latest",
 		"@opentelemetry/sdk-logs": "latest",
@@ -26,8 +27,9 @@
 		"@tanstack/react-router": "latest",
 		"@tanstack/router-plugin": "latest",
 		"@vitejs/plugin-react": "latest",
-		"oxc-transform-react": "^0.145.0",
-		"react": "^19",
-		"react-dom": "^19"
+		"oxc-transform-react": "^0.152.0",
+		"react": "^19.3.0",
+		"react-dom": "^19.3.0",
+		"react-native": "0.88.0-rc.4"
 	}
 }

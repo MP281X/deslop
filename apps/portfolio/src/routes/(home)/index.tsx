@@ -11,7 +11,7 @@ import {Suspense, useEffect, useRef, useState, useSyncExternalStore} from 'react
 import {portfolioPalette} from '#lib/portfolio.ts'
 import {RpcClient} from '#lib/utils.ts'
 import type {PortfolioTrail, PortfolioVisitor, PortfolioState} from '#rpcs/contracts.ts'
-import {Loading} from '@deslop/components/fallbacks'
+import {Loading} from '@deslop/components-web/fallbacks'
 import {
 	ArrowUpRight,
 	Boxes,
@@ -21,10 +21,10 @@ import {
 	MousePointer2,
 	Server,
 	Sparkles
-} from '@deslop/components/icons'
-import {Button} from '@deslop/components/ui/button'
-import {Dialog, DialogContent, DialogHeader, DialogTitle} from '@deslop/components/ui/dialog'
-import {cn} from '@deslop/components/utils'
+} from '@deslop/components-web/icons'
+import {Button} from '@deslop/components-web/ui/button'
+import {Dialog, DialogContent, DialogHeader, DialogTitle} from '@deslop/components-web/ui/dialog'
+import {cn} from '@deslop/components-web/utils'
 
 function randomIndex(length: number) {
 	return Math.floor(Random.Random.defaultValue().nextDoubleUnsafe() * length)

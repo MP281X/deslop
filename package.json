@@ -7,30 +7,30 @@
 		"check": "vp check && fallow dead-code --unused-files --unused-exports --unused-types --duplicate-exports --circular-deps --re-export-cycles --stale-suppressions --format compact --fail-on-issues",
 		"fix": "vp check --fix",
 		"prepare": "effect-tsgo patch --no-typescript --oxlint --force",
-		"shadcn": "cd packages/components && vpx shadcn@latest",
+		"shadcn": "cd packages/components-web && vpx shadcn@latest",
 		"test": "vp test",
 		"upgrade": "vp update -r"
 	},
 	"dependencies": {
-		"@effect/atom-react": "^4.0.0",
-		"@effect/platform-node": "^4.0.0",
-		"effect": "^4.0.0"
+		"@effect/atom-react": "4.0.2",
+		"@effect/platform-node": "4.0.2",
+		"effect": "^4.0.2"
 	},
 	"devDependencies": {
 		"@deslop/coding-standards": "workspace:*",
 		"@effect/tsgo": "latest",
-		"@effect/vitest": "^4.0.0",
+		"@effect/vitest": "4.0.2",
 		"@types/node": "latest",
-		"@types/react": "^19",
-		"@types/react-dom": "^19",
+		"@types/react": "^19.3.0",
+		"@types/react-dom": "^19.3.0",
 		"fallow": "latest",
 		"typescript": "latest",
 		"vite": "catalog:",
 		"vite-plus": "catalog:",
-		"vitest": "5.0.1"
+		"vitest": "5.0.3"
 	},
 	"engines": {
 		"node": ">=26"
 	},
-	"packageManager": "pnpm@11.22.0"
+	"packageManager": "pnpm@12.11.2"
 }

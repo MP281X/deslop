@@ -27,7 +27,7 @@
 		"preview": "vp run build && node --env-file-if-exists=.env ./dist/server.js"
 	},
 	"devDependencies": {
-		"@deslop/components": "workspace:*",
+		"@deslop/components-web": "workspace:*",
 		"@deslop/runtime": "workspace:*",
 		"@tanstack/react-router": "latest",
 		"react": "^19",

@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-file -- Public render component retained for the Workbench rebuild.
 import {useAtomSuspense} from '@effect/atom-react'
 
 import {Cause, Effect, Hash, String} from 'effect'
