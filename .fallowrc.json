@@ -5,6 +5,7 @@
 	"ignorePatterns": ["**/*.gen.ts", "packages/components-web/src/svgs/**", "tools/*/template/**"],
 	"ignoreExports": [
 		{"exports": ["*"], "file": "packages/*/src/schema.ts"},
+		{"exports": ["*"], "file": "apps/stash/src/services/*/schema.ts"},
 		{"exports": ["*"], "file": "packages/components-web/src/*.tsx"},
 		{"exports": ["*"], "file": "packages/components-web/src/{ui,render,svgs}/**"}
 	],
