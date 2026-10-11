@@ -109,7 +109,12 @@ export class Media extends Context.Service<
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const path = yield* Path.Path
-			const client = pipe(yield* HttpClient.HttpClient, HttpClient.filterStatusOk)
+			// Links are private note content, so they stay out of traces.
+			const client = pipe(
+				yield* HttpClient.HttpClient,
+				HttpClient.filterStatusOk,
+				HttpClient.transform(effect => Effect.provideService(effect, HttpClient.TracerDisabledWhen, () => true))
+			)
 			const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
 			const cache = path.join(
 				yield* pipe(
@@ -160,6 +165,10 @@ export class Media extends Context.Service<
 				return yield* attempt(0)
 			})
 
+			// yt-dlp updates itself at most once a day, so a long-running server stays current without a check per link. An
+			// update that fails only leaves the current version.
+			const update = yield* Effect.cachedWithTTL(Effect.asVoid(run(ytDlp, ['--update'])), '1 day')
+			// Downloads yt-dlp when it is missing; a failed download is tried again on the next link.
 			const install = installing.withPermit(
 				Effect.gen(function* () {
 					yield* fs.makeDirectory(cache, {recursive: true})
@@ -180,7 +189,7 @@ export class Media extends Context.Service<
 						yield* fs.chmod(partial, 0o755)
 						yield* fs.rename(partial, ytDlp)
 					}
-					yield* run(ytDlp, ['--update'])
+					yield* update
 				})
 			)
 
@@ -468,7 +477,7 @@ export class Media extends Context.Service<
 									client.get(`https://api.fxtwitter.com/${match[1]}/status/${match[2]}`),
 									Effect.flatMap(HttpClientResponse.schemaBodyJson(FxTwitter)),
 									Effect.map(body => body.tweet),
-									Effect.tapError(cause => Effect.logWarning(`Cannot read the post text: ${cause.message}`)),
+									Effect.tapError(cause => Effect.logWarning(`Cannot read the post text: ${cause._tag}`)),
 									Effect.option
 								)
 							),
@@ -483,7 +492,10 @@ export class Media extends Context.Service<
 							'--skip-download',
 							input.link
 						])
-						if (dump.exitCode !== 0) yield* Effect.logWarning(dump.stderr)
+						// The log keeps the reason without the link, which is private note content.
+						if (dump.exitCode !== 0) {
+							yield* Effect.logWarning(String.replace(/https?:\/\/\S+/gu, '<link>')(dump.stderr))
+						}
 						const metadata = yield* pipe(
 							Option.liftPredicate(dump, result => result.exitCode === 0),
 							Option.map(result =>

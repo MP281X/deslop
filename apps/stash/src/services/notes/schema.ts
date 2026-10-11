@@ -80,7 +80,6 @@ export const NoteItem = Schema.Struct({
 // What a watcher receives: the whole list once with reset, then only the notes that changed or went away.
 export type NotesEvent = typeof NotesEvent.Type
 export const NotesEvent = Schema.Struct({
-	aiSpend: AiSpend,
 	removed: Schema.Array(NoteId),
 	reset: Schema.Boolean,
 	upserted: Schema.Array(NoteItem)

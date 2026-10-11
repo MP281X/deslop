@@ -108,6 +108,16 @@ export class Organizer extends Context.Service<
 				Config.String('STASH_AI_MODEL'),
 				Config.withDefault(Option.isSome(anthropic) ? 'claude-haiku-5-5' : 'openai/gpt-6-luna')
 			)
+			// The monthly budget counts dollars, so the server does not start with a Claude model whose price it lacks.
+			const price = Option.isSome(anthropic)
+				? yield* pipe(
+						Record.get(claudePrices, model),
+						Effect.fromOption,
+						Effect.mapError(() =>
+							NotesError.make({message: `Stash has no price for ${model}; add it to claudePrices.`})
+						)
+					)
+				: {input: 0, output: 0}
 			const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 			const schema = Schema.toJsonSchemaDocument(Organization, {onExcessProperty: 'error'}).schema
 
@@ -176,7 +186,6 @@ export class Organizer extends Context.Service<
 					}
 				)
 				const message = yield* pipe(client.execute(request), Effect.flatMap(HttpClientResponse.schemaBodyJson(Message)))
-				const price = claudePrices[model] ?? {input: 0.1, output: 0.5}
 				return {
 					content: pipe(
 						Array.findFirst(message.content, block => block.type === 'text'),

@@ -63,6 +63,7 @@ import {Linking} from 'react-native'
 
 import {
 	assetAtom,
+	discardAtom,
 	imageAtom,
 	notesAtom,
 	offerAtom,
@@ -108,6 +109,7 @@ export function NotesRoute(props: {
 	const pending = useAtomSuspense(pendingAtom).value
 	const remove = useAtomSet(removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
+	const discard = useAtomSet(discardAtom)
 	const query = String.trim(props.search)
 	const found = useAtomValue(searchAtom(query))
 	// The server searches transcripts and pages; until it answers, titles, summaries and tags narrow the list.
@@ -166,10 +168,22 @@ export function NotesRoute(props: {
 			)}
 			{!filtered &&
 				Array.map(pending, item => (
-					<HStack key={item.id} alignment="top" spacing={12} modifiers={[...row, fullSeparator]}>
-						<Placeholder symbol="arrow.up" />
-						<Skeleton />
-					</HStack>
+					// A capture the server keeps refusing stays here until it is deleted.
+					<SwipeActions key={item.id} modifiers={row}>
+						<HStack alignment="top" spacing={12} modifiers={[fullSeparator]}>
+							<Placeholder symbol="arrow.up" />
+							<Skeleton />
+						</HStack>
+						<SwipeActions.Actions edge="trailing">
+							<Button
+								label="Delete"
+								systemImage="trash"
+								role="destructive"
+								onPress={() => discard(item.id)}
+								modifiers={[tint(colors.destructive)]}
+							/>
+						</SwipeActions.Actions>
+					</SwipeActions>
 				))}
 			{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions from the list. */}
 			{Array.map(Array.take(notes, limit), (note, position) => (

@@ -18,7 +18,6 @@ import {
 	Predicate,
 	Ref,
 	Result,
-	Schema,
 	Stream,
 	String,
 	pipe
@@ -28,7 +27,8 @@ import {TestClock} from 'effect/testing'
 
 import {Sources} from '#services/notes/internal/extraction.ts'
 import {Organizer, revision} from '#services/notes/internal/organization.ts'
-import {Extraction, NotesError, NotesState} from '#services/notes/schema.ts'
+import type {NotesState} from '#services/notes/schema.ts'
+import {Extraction, NotesError} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
 
 const recipe = Sources.of({
@@ -206,7 +206,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 					text: 'https://example.com/a'
 				},
 				{
-					issue: 'Not tagged: the server has no OpenRouter key.',
+					issue: 'Not tagged: the server has no AI key.',
 					organizer: Organizer.of({enabled: false, organize: () => Effect.die('AI must not run without a key')}),
 					sources: recipe,
 					spent: 0,
@@ -433,33 +433,6 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
-	test.effect('imports notes.json once into the database and keeps the file beside it', () =>
-		Effect.gen(function* () {
-			const fs = yield* FileSystem.FileSystem
-			const calls = yield* Ref.make(0)
-			const notes = yield* open({
-				directory: yield* fs.makeTempDirectoryScoped(),
-				organizer: counting(calls),
-				sources: recipe
-			})
-			yield* notes.capture({id: ids[0], text: 'https://example.com/soup'})
-			const state = yield* settled(notes, current => Array.some(current.notes, note => note.status === 'ready'))
-			// The same notes as the notes.json of a server from before the database.
-			const legacy = yield* fs.makeTempDirectoryScoped()
-			yield* fs.writeFileString(
-				`${legacy}/notes.json`,
-				yield* Schema.encodeEffect(Schema.fromJsonString(NotesState))(state)
-			)
-			const imported = yield* settled(
-				yield* open({directory: legacy, organizer: counting(calls), sources: recipe}),
-				() => true
-			)
-			assert.containsSubset(imported.notes[0], {id: ids[0], status: 'ready', title: 'Soup'})
-			assert.isTrue(yield* fs.exists(`${legacy}/notes.json.imported`))
-			assert.isFalse(yield* fs.exists(`${legacy}/notes.json`))
-		})
-	)
-
 	test.effect('sends watchers the list once, then only the notes that changed, without their long texts', () =>
 		Effect.gen(function* () {
 			const notes = yield* open({
@@ -558,6 +531,136 @@ it.layer(NodeServices.layer)('Notes', test => {
 			yield* notes.remove({id: ids[0]})
 			assert.deepStrictEqual((yield* settled(notes, () => true)).notes, [])
 			assert.strictEqual((yield* Effect.flip(notes.image(ids[0]))).message, 'This note has no preview image.')
+		})
+	)
+
+	test.effect('tells watchers which notes went away', () =>
+		Effect.gen(function* () {
+			const notes = yield* open({
+				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				organizer: counting(yield* Ref.make(0)),
+				sources: recipe
+			})
+			yield* notes.capture({id: ids[0], text: 'https://example.com/soup'})
+			yield* settled(notes, current => Array.some(current.notes, note => note.status === 'ready'))
+			const events = yield* pipe(notes.events, Stream.take(2), Stream.runCollect, Effect.forkScoped)
+			yield* TestClock.adjust('1 second')
+			yield* notes.remove({id: ids[0]})
+			yield* TestClock.adjust('1 second')
+			assert.deepStrictEqual(
+				Array.map(yield* Fiber.join(events), event => ({removed: event.removed, reset: event.reset})),
+				[
+					{removed: [], reset: true},
+					{removed: [ids[0]], reset: false}
+				]
+			)
+		})
+	)
+
+	test.effect('answers for a share that joined an earlier note of the same post', () =>
+		Effect.gen(function* () {
+			const calls = yield* Ref.make(0)
+			// Two short links that resolve to the same post.
+			const notes = yield* open({
+				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				organizer: counting(calls),
+				sources: Sources.of({...recipe, extract: () => recipe.extract('https://example.com/soup')})
+			})
+			yield* notes.capture({id: ids[0], text: 'https://example.com/a'})
+			yield* settled(notes, current => Array.some(current.notes, note => note.status === 'ready'))
+			yield* notes.capture({id: ids[1], text: 'For Sunday https://example.com/b'})
+			const state = yield* settled(
+				notes,
+				current => current.notes.length === 1 && String.endsWith('For Sunday')(current.notes[0]?.text ?? '')
+			)
+			assert.containsSubset(state.notes[0], {id: ids[0], url: 'https://example.com/soup'})
+			assert.containsSubset(yield* notes.get({id: ids[1]}), {id: ids[0]})
+			assert.strictEqual(yield* Ref.get(calls), 1)
+		})
+	)
+
+	test.effect('starts a regenerated note over while its first read still runs', () =>
+		Effect.gen(function* () {
+			const calls = yield* Ref.make(0)
+			const release = yield* Latch.make()
+			const notes = yield* open({
+				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				organizer: counting(calls),
+				sources: Sources.of({...recipe, extract: link => Effect.andThen(release.await, recipe.extract(link))})
+			})
+			yield* notes.capture({id: ids[0], text: 'https://example.com/soup'})
+			yield* notes.regenerate({id: ids[0]})
+			yield* release.open
+			assert.containsSubset(
+				(yield* settled(notes, current => Array.some(current.notes, note => note.status === 'ready'))).notes[0],
+				{id: ids[0], title: 'Soup'}
+			)
+			// The first run stopped before tagging, so the AI ran once.
+			assert.strictEqual(yield* Ref.get(calls), 1)
+		})
+	)
+
+	test.effect('keeps an uploaded photo as its own preview, once per id', () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem
+			const directory = yield* fs.makeTempDirectoryScoped()
+			const calls = yield* Ref.make(0)
+			const notes = yield* open({directory, organizer: counting(calls), sources: recipe})
+			const photo = new Uint8Array([255, 216, 255, 224])
+			assert.containsSubset(
+				yield* notes.captureFile({
+					body: Stream.make(Uint8Array.of(255, 216), Uint8Array.of(255, 224)),
+					id: ids[0],
+					type: 'image/jpeg'
+				}),
+				{file: 'image/jpeg', image: 'image/jpeg', status: 'organizing'}
+			)
+			yield* settled(notes, current => Array.some(current.notes, note => note.status === 'ready'))
+			// A resend of the same id answers with the saved note and writes nothing.
+			yield* notes.captureFile({body: Stream.die('A resend must not be read'), id: ids[0], type: 'image/jpeg'})
+			assert.deepStrictEqual(yield* notes.image(ids[0]), {bytes: photo, type: 'image/jpeg'})
+			assert.deepStrictEqual(yield* fs.readFile(`${directory}/files/${ids[0]}`), photo)
+			assert.deepStrictEqual(yield* fs.readDirectory(`${directory}/files`), [ids[0]])
+			assert.strictEqual(yield* Ref.get(calls), 1)
+		})
+	)
+
+	test.effect("takes a video upload's first still as its preview and its speech as the transcript", () =>
+		Effect.gen(function* () {
+			const still = new Uint8Array([255, 216, 255, 1])
+			const notes = yield* open({
+				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				organizer: counting(yield* Ref.make(0)),
+				sources: Sources.of({
+					...recipe,
+					fileFrames: () => Effect.succeed([still, new Uint8Array([255, 216, 255, 2])]),
+					fileTranscript: () => Effect.succeedSome('[00:00] Hello')
+				})
+			})
+			yield* notes.captureFile({body: Stream.make(Uint8Array.of(0, 0, 0)), id: ids[0], type: 'video/mp4'})
+			assert.containsSubset(
+				(yield* settled(notes, current => Array.some(current.notes, note => note.status === 'ready'))).notes[0],
+				{file: 'video/mp4', image: 'image/jpeg', transcript: '[00:00] Hello'}
+			)
+			assert.deepStrictEqual(yield* notes.image(ids[0]), {bytes: still, type: 'image/jpeg'})
+		})
+	)
+
+	test.effect('leaves no note and no file behind when an upload breaks off', () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem
+			const directory = yield* fs.makeTempDirectoryScoped()
+			const notes = yield* open({directory, organizer: counting(yield* Ref.make(0)), sources: recipe})
+			const failure = yield* Effect.flip(
+				notes.captureFile({
+					body: Stream.concat(Stream.make(Uint8Array.of(1)), Stream.fail('connection reset')),
+					id: ids[0],
+					type: 'image/jpeg'
+				})
+			)
+			assert.instanceOf(failure, NotesError)
+			assert.deepStrictEqual(yield* fs.readDirectory(`${directory}/files`), [])
+			assert.deepStrictEqual((yield* settled(notes, () => true)).notes, [])
 		})
 	)
 })

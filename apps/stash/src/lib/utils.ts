@@ -32,7 +32,7 @@ import {pasteboard} from '#modules/pasteboard/index.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {captureUrl} from '#services/notes/lib/utils.ts'
 import type {FileType, Note, NotesEvent} from '#services/notes/schema.ts'
-import {AiSpend, NoteItem, NotesError} from '#services/notes/schema.ts'
+import {NoteItem, NotesError} from '#services/notes/schema.ts'
 
 // app.config.ts writes these for each build variant.
 const settings = Schema.decodeUnknownSync(Schema.Struct({appGroup: Schema.String, server: Schema.String}))(
@@ -45,9 +45,9 @@ const imagesDirectory = new Directory(Paths.cache, 'images')
 type PendingFile = typeof PendingFile.Type
 const PendingFile = Schema.fromJsonString(Pending)
 
-// The list as the app holds it: each note's list fields, newest first, and the month's AI spend.
-export type NotesView = typeof NotesView.Type
-const NotesView = Schema.Struct({aiSpend: AiSpend, items: Schema.Array(NoteItem)})
+// The list as the app holds it: each note's list fields, newest first.
+type NotesView = typeof NotesView.Type
+const NotesView = Schema.Struct({items: Schema.Array(NoteItem)})
 
 type CacheFile = typeof CacheFile.Type
 const CacheFile = Schema.fromJsonString(NotesView)
@@ -142,16 +142,15 @@ const activationsAtom = Atom.make(get => {
 	return 0
 })
 
-const emptyNotes = NotesView.make({aiSpend: {month: '', usd: 0}, items: []})
+const emptyNotes = NotesView.make({items: []})
 
 const newestFirst = Order.flip(Order.mapInput(Order.Number, (item: NoteItem) => item.createdAt))
 
 // A reset replaces the list; any other event swaps in the notes that changed and drops the ones that went away.
 function apply(view: NotesView, event: NotesEvent) {
-	if (event.reset) return NotesView.make({aiSpend: event.aiSpend, items: Array.sort(event.upserted, newestFirst)})
+	if (event.reset) return NotesView.make({items: Array.sort(event.upserted, newestFirst)})
 	const replaced = HashSet.fromIterable([...event.removed, ...Array.map(event.upserted, item => item.id)])
 	return NotesView.make({
-		aiSpend: event.aiSpend,
 		items: Array.sort(
 			[...Array.filter(view.items, item => !HashSet.has(replaced, item.id)), ...event.upserted],
 			newestFirst
@@ -217,12 +216,15 @@ export const noteAtom = Atom.family((key: string) =>
 )
 
 // Ids of the notes that hold every word, from the server's search across transcripts and pages.
+// An empty query matches every note, so it asks the server nothing.
 export const searchAtom = Atom.family((query: string) =>
 	RpcClient.runtime.atom(
-		Effect.map(
-			Effect.flatMap(RpcClient, client => client('notes.search', {query})),
-			ids => HashSet.fromIterable(ids)
-		)
+		String.isEmpty(query)
+			? Effect.succeed(HashSet.empty<Note['id']>())
+			: Effect.map(
+					Effect.flatMap(RpcClient, client => client('notes.search', {query})),
+					ids => HashSet.fromIterable(ids)
+				)
 	)
 )
 
@@ -253,6 +255,15 @@ export const pendingAtom = Atom.make(get =>
 		get(outboxRevisionAtom)
 		return Array.sort(yield* outbox.list, Order.flip(Order.mapInput(Order.Number, (item: Pending) => item.createdAt)))
 	})
+)
+
+// Drops a capture that waits on this iPhone, such as one the server keeps refusing.
+export const discardAtom = Atom.fn((id: Pending['id'], get) =>
+	pipe(
+		outbox.remove(id),
+		Effect.andThen(Effect.sync(() => get.set(outboxRevisionAtom, get(outboxRevisionAtom) + 1))),
+		Effect.tapError(alert('Not Deleted'))
+	)
 )
 
 // Sends the outbox whenever the server answers and something new waits; a refused capture is tried again later.
@@ -292,7 +303,6 @@ function alert(title: string) {
 		)
 }
 
-// A copied photo or screenshot becomes a file note, sent like a shared one. Its digest is remembered like a pasted link.
 // The clipboard's change count when the app last saved from it, kept across launches, so a copy is offered once.
 const clipboardFile = new File(Paths.document, 'clipboard.txt')
 
@@ -310,7 +320,7 @@ const saveImage = Effect.gen(function* () {
 		catch: storageFailed('The copied image could not be read.'),
 		try: () => Clipboard.getImageAsync({format: 'jpeg', jpegQuality: 0.85})
 	})
-	if (image === null) return
+	if (image === null) return yield* NotesError.make({message: 'The clipboard no longer holds an image.'})
 	const id = Crypto.randomUUID()
 	const directory = yield* pendingDirectory
 	yield* Effect.try({
@@ -335,8 +345,10 @@ const saveLink = Effect.gen(function* () {
 			try: () => Clipboard.getStringAsync()
 		})
 	)
-	if (captureUrl(text) === null) return yield* NotesError.make({message: 'The copied text holds no link.'})
-	yield* outbox.add({createdAt: yield* Clock.currentTimeMillis, id: Crypto.randomUUID(), text})
+	// iOS also detects a bare domain such as example.com/page as a link, so a single word without a scheme gets https.
+	const link = captureUrl(text) === null && !String.includes(' ')(text) ? `https://${text}` : text
+	if (captureUrl(link) === null) return yield* NotesError.make({message: 'The copied text holds no link.'})
+	yield* outbox.add({createdAt: yield* Clock.currentTimeMillis, id: Crypto.randomUUID(), text: link})
 })
 
 // Each time Stash opens with a new copy that holds a link or an image, it asks in a sheet whether to save it. Checking

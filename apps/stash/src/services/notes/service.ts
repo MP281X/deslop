@@ -5,12 +5,16 @@ import {
 	Context,
 	DateTime,
 	Effect,
+	ByteSize,
+	FiberMap,
 	FileSystem,
 	HashMap,
 	HashSet,
 	Layer,
 	Option,
 	Path,
+	Random,
+	Ref,
 	Result,
 	Schema,
 	Semaphore,
@@ -28,13 +32,9 @@ import {Sources} from './internal/extraction.ts'
 import {Organizer, revision} from './internal/organization.ts'
 import {openStore} from './internal/store.ts'
 
-import {speechOnly} from '#services/media/lib/utils.ts'
-import {captureUrl, commentFor, findNotes, normalizeTags, sourceFor, tagCounts} from '#services/notes/lib/utils.ts'
+import {captureUrl, commentFor, findNotes, sourceFor, tagCounts} from '#services/notes/lib/utils.ts'
 import type {Capture, FileType, ImageType, NotesEvent} from '#services/notes/schema.ts'
 import {Extraction, Note, NoteItem, NotesError, NotesState} from '#services/notes/schema.ts'
-
-type NotesFile = typeof NotesFile.Type
-const NotesFile = Schema.fromJsonString(NotesState)
 
 // The same post saved again keeps one note and adds only the words it does not have yet; nothing new keeps the note as it is.
 function withWords(note: Note, text: string) {
@@ -80,8 +80,9 @@ export class Notes extends Context.Service<
 		readonly search: (input: {query: string}) => Effect.Effect<Note['id'][]>
 		readonly image: (id: Note['id']) => Effect.Effect<{bytes: Uint8Array; type: ImageType}, NotesError>
 		// A photo, screenshot or video from the iPhone becomes a note the AI describes; a resent id returns the saved note.
+		// The body streams to disk and stops past 1 GiB, so a long video never sits in memory.
 		readonly captureFile: (input: {
-			bytes: Uint8Array
+			body: Stream.Stream<Uint8Array, unknown>
 			id: Note['id']
 			type: FileType
 		}) => Effect.Effect<Note, NotesError>
@@ -97,7 +98,6 @@ export class Notes extends Context.Service<
 			const path = yield* Path.Path
 			const sources = yield* Sources
 			const organizer = yield* Organizer
-			const scope = yield* Effect.scope
 			const home = yield* Config.String('HOME')
 			const directory = yield* pipe(
 				Config.String('STASH_DATA_DIR'),
@@ -109,43 +109,30 @@ export class Notes extends Context.Service<
 				Config.Number('STASH_AI_BUDGET_USD'),
 				Config.withDefault(Option.isSome(anthropic) ? 50 : 5)
 			)
-			const legacyFile = path.join(directory, 'notes.json')
 			const images = path.join(directory, 'images')
 			const files = path.join(directory, 'files')
 			const aiCalls = yield* Semaphore.make(1)
+			// Two notes are read at a time, so a revision bump or a bulk import never starts hundreds of downloads at once.
+			const reading = yield* Semaphore.make(2)
+			// One run per note: a new run for the same note, such as a regenerate, interrupts the old one, and removal stops it.
+			const runs = yield* FiberMap.make<Note['id']>()
+			// The note an id joined, when a share of an already saved post merged into it, so a waiting client can follow it.
+			const joinedInto = yield* Ref.make(HashMap.empty<Note['id'], Note['id']>())
 			const storageFailed = Effect.mapError(cause =>
-				NotesError.make({cause, message: 'The notes file could not be read or written.'})
+				NotesError.make({cause, message: 'The notes database or files could not be read or written.'})
 			)
 
 			yield* pipe(fs.makeDirectory(directory, {mode: 0o700, recursive: true}), storageFailed)
 			const store = yield* openStore(path.join(directory, 'stash.db'))
-			const fromDatabase = yield* store.load
-			// Notes saved before the database come from notes.json once; the file stays beside it as notes.json.imported.
-			const legacy =
-				Array.isReadonlyArrayEmpty(fromDatabase.notes) && (yield* pipe(fs.exists(legacyFile), storageFailed))
-			const loaded = legacy
-				? yield* pipe(fs.readFileString(legacyFile), Effect.flatMap(Schema.decodeEffect(NotesFile)), storageFailed)
-				: fromDatabase
-			// Tags saved before they became single tokens get hyphens on the next start.
+			const loaded = yield* store.load
+			// A note an older organizer tagged is read and tagged again with the current one; only those rows are written.
 			const migrated = NotesState.make({
 				...loaded,
-				// Transcripts saved before the speech check lose what Whisper heard in music. A note an older organizer tagged is
-				// read and tagged again with the current one.
-				notes: Array.map(loaded.notes, note => {
-					const {transcript, ...rest} = note
-					return {
-						...rest,
-						...(note.status === 'ready' && (note.revision ?? 0) < revision ? {status: 'organizing' as const} : {}),
-						tags: normalizeTags(note.tags),
-						...Option.match(Option.flatMap(Option.fromNullishOr(transcript), speechOnly), {
-							onNone: () => ({}),
-							onSome: text => ({transcript: text})
-						})
-					}
-				})
+				notes: Array.map(loaded.notes, note =>
+					note.status === 'ready' && (note.revision ?? 0) < revision ? {...note, status: 'organizing' as const} : note
+				)
 			})
-			yield* store.save(fromDatabase, migrated)
-			if (legacy) yield* pipe(fs.rename(legacyFile, `${legacyFile}.imported`), storageFailed)
+			yield* store.save(loaded, migrated)
 			const state = yield* SubscriptionRef.make(migrated)
 
 			// Applies one change to memory and disk together: the file holds every change anyone has seen.
@@ -182,7 +169,7 @@ export class Notes extends Context.Service<
 					return
 				}
 				if (!organizer.enabled || spent >= budget) {
-					const reason = organizer.enabled ? "this month's AI budget is used up" : 'the server has no OpenRouter key'
+					const reason = organizer.enabled ? "this month's AI budget is used up" : 'the server has no AI key'
 					yield* updateNote(note.id, item => ({...item, issue: `Not tagged: ${reason}.`, status: 'saved'}))
 					return
 				}
@@ -253,7 +240,7 @@ export class Notes extends Context.Service<
 				const resolved = Option.filter(Option.fromNullishOr(url), () => Result.isSuccess(extraction))
 				// Applied to the latest notes, so words merged in while the link loaded stay. Another share of a saved post, under a
 				// new short link, joins that note instead and needs no preview or AI call of its own.
-				const joined = yield* transact(current =>
+				const twin = yield* transact(current =>
 					Option.match(
 						Option.all({
 							note: Array.findFirst(current.notes, item => item.id === id),
@@ -263,7 +250,7 @@ export class Notes extends Context.Service<
 						}),
 						{
 							onNone: () =>
-								Tuple.make(false, {
+								Tuple.make(Option.none<Note['id']>(), {
 									...current,
 									notes: Array.map(current.notes, item =>
 										item.id === id
@@ -285,7 +272,7 @@ export class Notes extends Context.Service<
 									)
 								}),
 							onSome: pair =>
-								Tuple.make(true, {
+								Tuple.make(Option.some(pair.twin.id), {
 									...current,
 									notes: Array.flatMap(current.notes, item => {
 										if (item.id === id) return []
@@ -295,7 +282,10 @@ export class Notes extends Context.Service<
 						}
 					)
 				)
-				if (joined) return
+				if (Option.isSome(twin)) {
+					yield* Ref.update(joinedInto, HashMap.set(id, Option.getOrThrow(twin)))
+					return
+				}
 				// A missing preview only costs the picture, so the note goes on without it.
 				yield* Option.match(extracted.image, {
 					onNone: () => Effect.void,
@@ -406,7 +396,8 @@ export class Notes extends Context.Service<
 									Effect.catch(error => Effect.logError('A stopped tagging run could not be recorded', error))
 								)
 					),
-					Effect.forkIn(scope),
+					effect => reading.withPermit(effect),
+					effect => FiberMap.run(runs, note.id, effect),
 					Effect.asVoid
 				)
 			}
@@ -468,19 +459,42 @@ export class Notes extends Context.Service<
 					return saved.note
 				}),
 				captureFile: Effect.fn('Notes.captureFile')(function* (input: {
-					bytes: Uint8Array
+					body: Stream.Stream<Uint8Array, unknown>
 					id: Note['id']
 					type: FileType
 				}) {
 					const known = Array.findFirst((yield* SubscriptionRef.get(state)).notes, note => note.id === input.id)
 					if (Option.isSome(known)) return Option.getOrThrow(known)
 					const video = input.type === 'video/mp4' || input.type === 'video/quicktime'
-					// The file is on disk before the note, so a note never names a file that is not there.
+					// The file is on disk before the note, so a note never names a file that is not there. Each upload writes its
+					// own partial file and renames it, so two sends of one id never write into the same file.
 					yield* pipe(fs.makeDirectory(files, {mode: 0o700, recursive: true}), storageFailed)
-					yield* pipe(fs.writeFile(path.join(files, input.id), input.bytes, {mode: 0o600}), storageFailed)
+					const stored = path.join(files, input.id)
+					const partial = `${stored}.${yield* Random.nextIntBetween(0, 1_000_000_000)}.partial`
+					yield* pipe(
+						input.body,
+						Stream.mapError(cause => NotesError.make({cause, message: 'The upload broke off.'})),
+						Stream.limitBytes(ByteSize.gibibytes(1), () =>
+							Stream.fail(NotesError.make({message: 'The file is larger than 1 GiB.'}))
+						),
+						Stream.run(fs.sink(partial, {mode: 0o600})),
+						Effect.mapError(cause =>
+							Schema.is(NotesError)(cause)
+								? cause
+								: NotesError.make({cause, message: 'The upload could not be written.'})
+						),
+						// A broken upload leaves no partial file behind.
+						Effect.onError(() =>
+							pipe(
+								fs.remove(partial, {force: true}),
+								Effect.catch(error => Effect.logWarning('A broken upload stays on disk', error))
+							)
+						)
+					)
+					yield* pipe(fs.rename(partial, stored), storageFailed)
 					if (!video) {
 						yield* pipe(fs.makeDirectory(images, {mode: 0o700, recursive: true}), storageFailed)
-						yield* pipe(fs.writeFile(path.join(images, input.id), input.bytes, {mode: 0o600}), storageFailed)
+						yield* pipe(fs.copyFile(stored, path.join(images, input.id)), storageFailed)
 					}
 					const note = Note.make({
 						author: '',
@@ -525,9 +539,7 @@ export class Notes extends Context.Service<
 							[
 								Option.some(current),
 								Option.match(previous, {
-									onNone: (): NotesEvent[] => [
-										{aiSpend: current.aiSpend, removed: [], reset: true, upserted: Array.map(current.notes, itemOf)}
-									],
+									onNone: (): NotesEvent[] => [{removed: [], reset: true, upserted: Array.map(current.notes, itemOf)}],
 									onSome: (before): NotesEvent[] => {
 										const earlier = HashMap.fromIterable(Array.map(before.notes, note => [note.id, note] as const))
 										const ids = HashSet.fromIterable(Array.map(current.notes, note => note.id))
@@ -539,22 +551,18 @@ export class Notes extends Context.Service<
 											itemOf
 										)
 										const removed = Array.filter(Array.fromIterable(HashMap.keys(earlier)), id => !HashSet.has(ids, id))
-										if (
-											Array.isReadonlyArrayEmpty(upserted) &&
-											Array.isReadonlyArrayEmpty(removed) &&
-											before.aiSpend === current.aiSpend
-										) {
-											return []
-										}
-										return [{aiSpend: current.aiSpend, removed, reset: false, upserted}]
+										if (Array.isReadonlyArrayEmpty(upserted) && Array.isReadonlyArrayEmpty(removed)) return []
+										return [{removed, reset: false, upserted}]
 									}
 								})
 							] as const
 					)
 				),
 				get: Effect.fn('Notes.get')(function* (input: Pick<Note, 'id'>) {
+					// An id that joined an earlier note of the same post answers with that note.
+					const id = Option.getOrElse(HashMap.get(yield* Ref.get(joinedInto), input.id), () => input.id)
 					return yield* pipe(
-						Array.findFirst((yield* SubscriptionRef.get(state)).notes, note => note.id === input.id),
+						Array.findFirst((yield* SubscriptionRef.get(state)).notes, note => note.id === id),
 						Effect.fromOption,
 						Effect.mapError(() => NotesError.make({message: 'This note no longer exists.'}))
 					)
@@ -592,6 +600,8 @@ export class Notes extends Context.Service<
 					})
 				}),
 				remove: Effect.fn('Notes.remove')(function* (input: Pick<Note, 'id'>) {
+					// A run still reading the note stops, so it neither downloads more nor writes the note back.
+					yield* FiberMap.remove(runs, input.id)
 					yield* transact(current =>
 						Tuple.make(
 							undefined,

@@ -9,6 +9,7 @@ import {Socket} from 'effect/socket'
 import packageJson from '#package' with {type: 'json'}
 
 import {RpcContracts} from '#rpcs/contracts.ts'
+import {NotesError} from '#services/notes/schema.ts'
 
 const save = pipe(
 	Command.make(
@@ -31,25 +32,35 @@ const save = pipe(
 						text: input.entry
 					})
 					yield* Effect.logInfo('Saved; the server is reading and tagging it, which takes minutes for a long video')
-					// Waits for the note under its id; when it joins an earlier note of the same post, the server's search finds
-					// that one. The full note comes once tagging has finished.
+					// Waits for the note under its id. When it joins an earlier note of the same post, the server answers that id with
+					// the earlier note, which the wait follows. The full note comes once tagging has finished; two hours covers the
+					// longest Whisper run.
 					const finished = yield* pipe(
 						client['notes.watch'](undefined),
 						Stream.mapAccumEffect(
 							() => saved.id,
 							Effect.fnUntraced(function* (target, event) {
-								const current = Array.contains(event.removed, target)
-									? Option.getOrElse(Array.head(yield* client['notes.search']({query: input.entry})), () => target)
-									: target
-								const done = Array.findFirst(
-									event.upserted,
-									item => item.id === current && item.status !== 'organizing'
-								)
-								return [current, Option.toArray(Option.map(done, item => item.id))] as const
+								if (Array.contains(event.removed, target)) {
+									const twin = yield* client['notes.get']({id: target})
+									return [twin.id, twin.status === 'organizing' ? [] : [twin.id]] as const
+								}
+								return [
+									target,
+									pipe(
+										Array.findFirst(event.upserted, item => item.id === target && item.status !== 'organizing'),
+										Option.map(item => item.id),
+										Option.toArray
+									)
+								] as const
 							})
 						),
 						Stream.runHead,
-						Effect.flatMap(Effect.fromOption)
+						Effect.flatMap(Effect.fromOption),
+						Effect.timeoutOrElse({
+							duration: '2 hours',
+							orElse: () =>
+								Effect.fail(NotesError.make({message: 'The server did not finish the note within two hours.'}))
+						})
 					)
 					return yield* client['notes.get']({id: finished})
 				}),

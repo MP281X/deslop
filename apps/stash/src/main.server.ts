@@ -27,7 +27,7 @@ const routes = HttpRouter.use(router =>
 				)
 			})
 		)
-		// Photos, screenshots and videos arrive as the raw request body, typed by its content type, because the share
+		// Photos, screenshots and videos arrive as the raw request body, streamed to disk and typed by its content type, because the share
 		// extension uploads them from a file in the background.
 		yield* router.add(
 			'POST',
@@ -39,7 +39,7 @@ const routes = HttpRouter.use(router =>
 				)
 				return yield* HttpServerResponse.schemaJson(Note)(
 					yield* notes.captureFile({
-						bytes: new Uint8Array(yield* request.arrayBuffer),
+						body: request.stream,
 						id: (yield* HttpRouter.schemaPathParams(Schema.Struct({id: NoteId}))).id,
 						type
 					})
