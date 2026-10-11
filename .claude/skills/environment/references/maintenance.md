@@ -6,12 +6,12 @@ This reference holds the machines' setup, upkeep and rebuild. Do established upk
 
 The workers are `dev` and `desktop`. Both run the latest Debian stable in text mode, with the same setup, as `mp281x` with passwordless sudo. The user can reset any machine at any time, so setup never copies sign-ins or machine configuration from another machine; only the shared [T3 settings](#t3-settings) come from another worker. The Mac is only a control plane: agents never set it up or clean it, and its SSH files follow [Access changes](#access-changes).
 
-| Fact      | `dev`                                                              | `desktop`                                                       |
-| --------- | ------------------------------------------------------------------ | --------------------------------------------------------------- |
-| Hardware  | VPS with 8 cores, 23 GB and 15 GB swap                             | Ryzen 9 9900X, 30 GB, 31 GB swap, RTX 5070, 1 TB NVMe           |
-| Network   | Always on, public `77.237.236.132`; ufw allows 80 and 443          | On demand, home LAN on Ethernet `eno1`; ufw denies all incoming |
-| Only here | Traefik for every `*.mp281x.xyz` public app, Datapizza VPN, Jaeger | NVIDIA driver and the Docker `nvidia` runtime                   |
-| GitLab    | Through the VPN; advertises the route to the tailnet               | Through dev's route (`--accept-routes`)                         |
+| Fact      | `dev`                                                                                       | `desktop`                                                       |
+| --------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Hardware  | VPS with 8 cores, 23 GB and 15 GB swap                                                      | Ryzen 9 9900X, 30 GB, 31 GB swap, RTX 5070, 1 TB NVMe           |
+| Network   | Always on, public `77.237.236.132`; ufw allows 80 and 443                                   | On demand, home LAN on Ethernet `eno1`; ufw denies all incoming |
+| Only here | Traefik for every `*.mp281x.xyz` public app, Datapizza VPN, Jaeger, the Mullvad media proxy | NVIDIA driver and the Docker `nvidia` runtime                   |
+| GitLab    | Through the VPN; advertises the route to the tailnet                                        | Through dev's route (`--accept-routes`)                         |
 
 - **Sudo.** Codex and Claude run sudo without a terminal, so `/etc/sudoers.d/99-mp281x-nopasswd` holds `mp281x ALL=(ALL:ALL) NOPASSWD: ALL` with mode 0440.
 - **Toolchain.** Docker with Compose and Buildx, `gh` with the `github/gh-stack` extension, `glab`, Atlassian's `acli`, git, build tools, rsync, ripgrep, jq, sqlite3, lsof, ffmpeg, ImageMagick, Python with Pillow (`python3-pil`), `dig` and `psql`. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code lives in `~/.local/bin`. The first lines of `~/.bashrc`, above its interactive guard, export `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`, so `ssh <worker> '<command>'` finds every tool.
@@ -19,6 +19,7 @@ The workers are `dev` and `desktop`. Both run the latest Debian stable in text m
 - **Repositories.** Git picks each repository's identity per [Git identity](#git-identity). `~/dual` uses the credential helper `!glab auth git-credential` for `https://git.datapizza.tech`. Run `gh auth setup-git` for GitHub.
 - **Automatic updates.** `unattended-upgrades` installs Debian updates daily on every worker; `/etc/apt/apt.conf.d/20auto-upgrades` turns it on. The home LAN gives `desktop` only local IPv6 addresses, so its `/etc/apt/apt.conf.d/99force-ipv4` holds `Acquire::ForceIPv4 "true";`.
 - **Git.** Global defaults on every worker: `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled`, `diff.algorithm histogram`, `merge.conflictStyle zdiff3` and `init.defaultBranch main`.
+- **Media proxy.** On dev, the user service `deslop-wireproxy` runs `~/.deslop/bin/wireproxy` (v1.1.3 from `windtf/wireproxy`, checksum checked) with `~/.deslop/wireproxy.conf`. It opens a SOCKS5 proxy on `100.68.201.107:1080`, the tailnet address only, and sends its traffic through one Mullvad WireGuard server. The user's own Mullvad account owns the keys in `~/.deslop/mullvad/*.conf` (mode 0600); never print them. `WGConfig` names the server: `it-mil-wg-202` passed YouTube's bot check on 2026-10-11, `001` did not, and `002` and `003` did not connect. Lingering keeps the service running after a reboot. A fresh worker needs new Mullvad files from the user.
 - **Firewall.** Tailscale's `ts-input` chain accepts tailnet traffic and its UDP port before ufw, so ufw needs no rule for them. On dev, `/etc/sysctl.d/90-quiet-console.conf` keeps `[UFW BLOCK]` lines off the VNC console.
 
 ## Access changes

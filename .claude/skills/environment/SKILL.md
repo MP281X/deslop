@@ -11,13 +11,13 @@ Agents run on two headless Debian workers in one tailnet; `hostname -s` tells yo
 
 MagicDNS resolves each short name, and `<name>.tailnet-8c4c.ts.net` gives HTTPS certificates.
 
-| Name               | Address          | Role                                                                                                                        |
-| ------------------ | ---------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `desktop`          | `100.97.120.3`   | Home worker for most development and GPU work, on only when the user turns it on                                            |
-| `dev`              | `100.68.201.107` | Always-on worker with a public address: Traefik serves every `*.mp281x.xyz`, VPN, Jaeger; also long or overnight agent work |
-| `macbook-pro`      | `100.115.207.60` | The user's control plane, often asleep; agents never set it up or develop on it                                             |
-| `iphone`           | `100.117.217.10` | The user's phone; a T3 client only                                                                                          |
-| `*.mullvad.ts.net` | Exit nodes       | Location exits for [Media](references/media.md); never set one for other traffic                                            |
+| Name          | Address          | Role                                                                                                                        |
+| ------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `desktop`     | `100.97.120.3`   | Home worker for most development and GPU work, on only when the user turns it on                                            |
+| `dev`         | `100.68.201.107` | Always-on worker with a public address: Traefik serves every `*.mp281x.xyz`, VPN, Jaeger; also long or overnight agent work |
+| `macbook-pro` | `100.115.207.60` | The user's control plane, often asleep; agents never set it up or develop on it                                             |
+| `iphone`      | `100.117.217.10` | The user's phone; a T3 client only                                                                                          |
+| `dev:1080`    | Media proxy      | SOCKS5 through Mullvad for fetches that block datacenters, such as YouTube; see [Media](references/media.md)                |
 
 - **SSH.** Any machine reaches any other, itself included, as `mp281x@dev`, `mp281x@desktop` and `matteopaludgnach@macbook-pro`; maintenance owns the keys. Copy files with `rsync -a <path> <user>@<name>:<path>`.
 - **Paths.** `dev` and `desktop` connect directly over UDP in about 40 ms. `tailscale ping <name>` shows whether a path is direct or relayed.
