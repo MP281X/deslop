@@ -21,15 +21,27 @@ const Name = z
 	.string()
 	.regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u, 'Use an unscoped kebab-case package name.')
 	.describe('Unscoped application name')
-const TemplateDirectory = fileURLToPath(new URL('../template', import.meta.url))
+const Kind = z.enum(['web', 'mobile']).default('web').describe('A web app, or an iOS app with an Expo client')
 
+function templateDirectory(kind: z.infer<typeof Kind>) {
+	return fileURLToPath(new URL(`../template/${kind}`, import.meta.url))
+}
+
+const parsedArguments = parseArgs({
+	args: Array.drop(process.argv, 2),
+	options: {directory: {type: 'string'}, kind: {type: 'string'}, name: {type: 'string'}},
+	strict: false
+})
+const options = z.object({directory: z.string().optional(), kind: Kind, name: Name}).parse(parsedArguments.values)
 const template = createTemplate({
 	about: {description: 'Create a full-stack Deslop application.', name: '@deslop/create-app'},
 	options: {name: Name},
 	produce: flow(
 		Effect.fnUntraced(function* (context: TemplateContext<{name: string}, unknown>) {
 			const files = yield* Effect.tryPromise(() =>
-				intakeDirectory(TemplateDirectory, {exclude: /^(?:dist|icon\.png|node_modules|routeTree\.gen\.ts)$/u})
+				intakeDirectory(templateDirectory(options.kind), {
+					exclude: /^(?:dist|icon\.png|node_modules|routeTree\.gen\.ts)$/u
+				})
 			)
 			return {
 				files: replaceDirectory(
@@ -37,7 +49,7 @@ const template = createTemplate({
 					flow(
 						String.replaceAll('@deslop/template-app', `@deslop/${context.options.name}`),
 						String.replaceAll('template-app', context.options.name),
-						String.replaceAll('../../../tsconfig.json', '../../tsconfig.json')
+						String.replaceAll('../../../../tsconfig.json', '../../tsconfig.json')
 					)
 				),
 				requests: [],
@@ -49,19 +61,11 @@ const template = createTemplate({
 	)
 })
 
-const parsedArguments = parseArgs({
-	args: Array.drop(process.argv, 2),
-	options: {directory: {type: 'string'}, name: {type: 'string'}},
-	strict: false
-})
-const options = z.object({directory: z.string().optional(), name: Name}).parse(parsedArguments.values)
 const directory = options.directory ?? `../apps/${options.name}`
 
 if (Predicate.isUndefined(options.directory)) {
 	process.argv = pipe(process.argv, Array.appendAll(['--directory', directory]))
 }
-
-const icon = fileURLToPath(new URL('../template/src/routes/icon.png', import.meta.url))
 
 NodeRuntime.runMain(
 	pipe(
@@ -74,7 +78,11 @@ NodeRuntime.runMain(
 
 			return Effect.gen(function* () {
 				const root = resolve(directory)
-				yield* (yield* FileSystem.FileSystem).copyFile(icon, resolve(root, 'src/routes/icon.png'))
+				yield* (yield* FileSystem.FileSystem).copyFile(
+					resolve(templateDirectory(options.kind), 'src/routes/icon.png'),
+					resolve(root, 'src/routes/icon.png')
+				)
+				if (options.kind === 'mobile') return
 				yield* Effect.promise(() =>
 					new Generator({
 						config: getConfig(

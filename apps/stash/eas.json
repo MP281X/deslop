@@ -1,0 +1,22 @@
+{
+	"cli": {"version": ">= 18.4.0", "appVersionSource": "local", "promptToConfigurePushNotifications": false},
+	"build": {
+		"base": {"node": "26.11.1", "pnpm": "12.11.2", "ios": {"image": "macos-tahoe-26.6-xcode-27.1"}},
+		"development": {
+			"extends": "base",
+			"environment": "development",
+			"developmentClient": true,
+			"distribution": "internal",
+			"channel": "development",
+			"env": {"APP_VARIANT": "development"}
+		},
+		"production": {
+			"extends": "base",
+			"environment": "production",
+			"distribution": "store",
+			"channel": "production",
+			"env": {"APP_VARIANT": "production"}
+		}
+	},
+	"submit": {"production": {"ios": {"ascAppId": "6821336145"}}}
+}

@@ -1,0 +1,31 @@
+{
+	"name": "@deslop/template-app",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"sideEffects": false,
+	"main": "src/main.client.tsx",
+	"imports": {
+		"#lib/*": "./src/lib/*",
+		"#routes/*": "./src/routes/*",
+		"#rpcs/*": "./src/rpcs/*"
+	},
+	"scripts": {
+		"build": "rm -rf dist && vp pack",
+		"dev": "expo start --dev-client --localhost",
+		"preview": "vp run build && node --env-file-if-exists=.env ./dist/server.js"
+	},
+	"dependencies": {
+		"expo": "^58.0.7",
+		"react": "^19.3.0",
+		"react-native": "0.88.0-rc.4"
+	},
+	"devDependencies": {
+		"@deslop/components-mobile": "workspace:*",
+		"@deslop/runtime": "workspace:*",
+		"@expo/ui": "^58.0.15",
+		"babel-preset-expo": "^58.0.12",
+		"expo-dev-client": "^58.0.12",
+		"expo-updates": "^58.0.15"
+	}
+}
