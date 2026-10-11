@@ -31,7 +31,7 @@ The CLI is a client of the server: it saves the entry as a note through the RPC,
 
 - **Capture.** Links, text, photos and videos arrive from the share sheet. A copied link or image becomes a note when the app opens. The pencil in the bottom bar writes a note, which the AI rewrites as short lines.
 - **List.** The layout follows iOS Mail. Tag chips on top filter apart from search. The bottom bar holds the kind filter, the search field and write, parted by fixed spacers. A long press opens the system menu, and swipe deletes.
-- **Note page.** A horizontal swipe moves to the next or previous note, as in Photos; only the shown note and its neighbours mount. The bottom bar deletes the note or opens it in its app.
+- **Note page.** The note's title sits in the bar, and the app's logo at the top right opens the link. Below come the preview, the tags and one summary: the AI's notes, or the one-line summary.
 - **Theme.** Colors, square corners and JetBrains Mono follow the deslop shadcn theme in `packages/components/src/theme.css`, applied to `@expo/ui` SwiftUI views through `@deslop/components/mobile/theme`. Brand logos come from svgl through `@deslop/components/mobile/brand`.
 - **Outbox.** The app and the share extension both write `pending/<id>.json` to the App Group container before sending, with a photo or video beside it as `pending/<id>.<ext>`. The client picks the id, so a resend never makes a second note.
 - **Share extension.** `@bacons/apple-targets` adds `targets/share` at prebuild. It finds the server in the containing app's `StashServer` Info.plist key and the App Group as `group.<app bundle id>`; the fonts live there once for both targets.

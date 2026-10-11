@@ -45,14 +45,15 @@ import {
 	scrollContentBackground,
 	searchable,
 	shapes,
-	tag
+	tag,
+	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 import {Linking} from 'react-native'
 
 import {assetAtom, imageAtom, notesAtom, pendingAtom, removeAtom, searchAtom} from '#lib/utils.ts'
-import {Brand, brandOf, kindOf, kinds} from '#routes/brand.tsx'
+import {Brand, MenuAction, brandOf, kindOf, kinds} from '#routes/brand.tsx'
 import type {Kind} from '#routes/brand.tsx'
 import {Chip} from '#routes/chip.tsx'
 import logo from '#routes/logo.png'
@@ -223,10 +224,14 @@ function Filter(props: {kind: Kind | ''; onKind: (kind: Kind | '') => void}) {
 				onPress={() => props.onKind('')}
 			/>
 			{Array.map(kinds, entry => (
-				<Button
+				<MenuAction
 					key={entry.kind}
 					label={entry.label}
-					systemImage={props.kind === entry.kind ? 'checkmark' : entry.symbol}
+					brand={pipe(
+						Option.fromNullishOr('brand' in entry ? entry.brand : undefined),
+						Option.filter(() => props.kind !== entry.kind)
+					)}
+					symbol={props.kind === entry.kind ? 'checkmark' : entry.symbol}
 					onPress={() => props.onKind(props.kind === entry.kind ? '' : entry.kind)}
 				/>
 			))}
@@ -379,22 +384,36 @@ function Row(props: {
 					{Option.match(Option.fromNullishOr(note.url), {
 						onNone: () => undefined,
 						onSome: url => (
-							<Button
+							<MenuAction
 								label={pipe(
 									kinds,
 									Array.findFirst(entry => entry.kind === kindOf(note) && entry.kind !== 'web'),
 									Option.match({onNone: () => 'Open Link', onSome: entry => `Open in ${entry.label}`})
 								)}
-								systemImage="arrow.up.right"
+								brand={brandOf(note)}
+								symbol="arrow.up.right"
 								onPress={() => Linking.openURL(url)}
 							/>
 						)
 					})}
-					<Button label="Delete" systemImage="trash" role="destructive" onPress={() => props.onRemove(note.id)} />
+					{/* The destructive red is set here, because the app tints its other controls with the text color. */}
+					<Button
+						label="Delete"
+						systemImage="trash"
+						role="destructive"
+						onPress={() => props.onRemove(note.id)}
+						modifiers={[tint(colors.destructive)]}
+					/>
 				</ContextMenu.Items>
 			</ContextMenu>
 			<SwipeActions.Actions edge="trailing">
-				<Button label="Delete" systemImage="trash" role="destructive" onPress={() => props.onRemove(note.id)} />
+				<Button
+					label="Delete"
+					systemImage="trash"
+					role="destructive"
+					onPress={() => props.onRemove(note.id)}
+					modifiers={[tint(colors.destructive)]}
+				/>
 			</SwipeActions.Actions>
 		</SwipeActions>
 	)

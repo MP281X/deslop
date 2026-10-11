@@ -53,7 +53,7 @@ function withoutLimits(value: unknown): unknown {
 }
 
 // Raised whenever the instructions or the inputs change, so the server tags saved notes again on its next start.
-export const revision = 8
+export const revision = 9
 
 const instructions = [
 	"You organize entries in one person's private notes, so they find each entry again by search and learn what it holds without opening it.",
@@ -73,7 +73,7 @@ const instructions = [
 	'Name the concrete thing: the product, person, number, price, date or place. No hedges such as may, might or seems; no hype, idioms, emoji or hashtags.',
 	'Never write "this video", "the post", "the thumbnail", "the caption", "the author shares", "the article argues", "he says" or "the image shows"; state the content itself.',
 	"Write in English; only a written note's body keeps the note's own language.",
-	'title: the point, claim or subject in at most 64 characters, distinguishing words first, without the source name.',
+	'title: the point, claim or subject in at most 32 characters, so it fits the bar at the top of the iPhone, distinguishing words first, without the source name.',
 	'summary: one sentence of at most 120 characters with the main takeaway, what the person learns or can do with it, and one concrete detail; never repeat the title.',
 	'tags: 1 to 3 lowercase topic tags, one word or hyphenated such as web-design, that many future entries share. Reuse existing tags; create a new tag only when no existing tag covers a main topic.',
 	'Never create a tag that narrows an existing one, such as immersive-web-design beside web-design, and never add synonyms, source or format tags such as tiktok, video or screenshot, or promotional hashtags.',

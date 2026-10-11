@@ -2,6 +2,7 @@ import {useAtomValue} from '@effect/atom-react'
 
 import {Option, String, pipe} from 'effect'
 
+import {Button, Label} from '@expo/ui/swift-ui'
 import {AsyncResult} from 'effect/reactivity'
 import {useColorScheme} from 'react-native'
 
@@ -20,11 +21,11 @@ export function brandOf(note: NoteItem) {
 	)
 }
 
-// The kinds of note the filter menu offers, in its order, with their symbols.
+// The kinds of note the filter menu offers, in its order, with their symbols and, for apps, their logos.
 export const kinds = [
-	{kind: 'tiktok', label: 'TikTok', symbol: 'play.rectangle'},
-	{kind: 'x', label: 'X', symbol: 'xmark'},
-	{kind: 'youtube', label: 'YouTube', symbol: 'play.tv'},
+	{brand: brands.tiktok, kind: 'tiktok', label: 'TikTok', symbol: 'play.rectangle'},
+	{brand: brands.x, kind: 'x', label: 'X', symbol: 'xmark'},
+	{brand: brands.youtube, kind: 'youtube', label: 'YouTube', symbol: 'play.tv'},
 	{kind: 'web', label: 'Web', symbol: 'globe'},
 	{kind: 'note', label: 'Notes', symbol: 'text.alignleft'},
 	{kind: 'file', label: 'Photos and Videos', symbol: 'photo'}
@@ -45,4 +46,22 @@ export function Brand(props: {brand: (typeof brands)[keyof typeof brands]; size:
 	const uri = useAtomValue(assetAtom(useColorScheme() === 'dark' ? props.brand.dark : props.brand.light))
 	if (!AsyncResult.isSuccess(uri)) return undefined
 	return <BrandImage uri={uri.value} size={props.size} />
+}
+
+// A menu action with an app's logo as its icon when it has one, otherwise a symbol. iOS draws menu icons in the
+// text color, so the logos show as plain silhouettes like the symbols beside them.
+export function MenuAction(props: {
+	brand: Option.Option<(typeof brands)[keyof typeof brands]>
+	label: string
+	onPress: () => void
+	symbol: Parameters<typeof Button>[0]['systemImage']
+}) {
+	return Option.match(props.brand, {
+		onNone: () => <Button label={props.label} systemImage={props.symbol} onPress={props.onPress} />,
+		onSome: brand => (
+			<Button onPress={props.onPress}>
+				<Label title={props.label} icon={<Brand brand={brand} size={18} />} />
+			</Button>
+		)
+	})
 }

@@ -1,4 +1,4 @@
-import {useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Option, String, pipe} from 'effect'
 
@@ -8,7 +8,6 @@ import {
 	HStack,
 	Image,
 	ScrollView,
-	TabView,
 	Text,
 	Toolbar,
 	ToolbarItem,
@@ -25,80 +24,51 @@ import {
 	padding,
 	redacted,
 	resizable,
-	tabViewStyle,
 	textSelection
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
-import {useState} from 'react'
 import {Linking} from 'react-native'
 
-import {imageAtom, noteAtom, notesAtom, removeAtom} from '#lib/utils.ts'
+import {imageAtom, noteAtom, notesAtom} from '#lib/utils.ts'
 import {Brand, brandOf} from '#routes/brand.tsx'
 import {Chip} from '#routes/chip.tsx'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 import {colors, mono} from '@deslop/components/mobile/theme'
 
-const page = [navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]
-
-// A swipe left or right moves to the next or previous note, as pages; only the shown note and its two neighbours
-// mount, so thousands of notes cost three pages. The bottom bar deletes the shown note or opens it in its app.
-export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (tag: string) => void}) {
-	const notes = useAtomSuspense(notesAtom).value.items
-	const remove = useAtomSet(removeAtom)
-	// The page swiped to, or the note the list opened.
-	const [swiped, setSwiped] = useState(() => Option.none<Note['id']>())
-	const current = Option.getOrElse(swiped, () => props.id)
-	const index = Array.findFirstIndex(notes, note => note.id === current)
+// The note's title stays in the bar, cut short by the system when it runs long; the app button opens the link.
+export function NoteRoute(props: {id: Note['id']; onTag: (tag: string) => void}) {
 	return Option.match(
-		Option.flatMap(index, position => Array.get(notes, position)),
+		Array.findFirst(useAtomSuspense(notesAtom).value.items, item => item.id === props.id),
 		{
 			onNone: () => (
 				<ContentUnavailableView
 					title="gone"
 					description="deleted, or joined to an earlier save of the same post"
-					modifiers={[...page, mono('body', 14), foregroundStyle(colors.mutedForeground)]}
+					modifiers={[
+						navigationTitle(''),
+						navigationBarTitleDisplayMode('inline'),
+						background(colors.background),
+						mono('body', 14),
+						foregroundStyle(colors.mutedForeground)
+					]}
 				/>
 			),
-			onSome: note => (
-				<Toolbar modifiers={page}>
-					<TabView
-						selection={note.id}
-						onSelectionChange={id => setSwiped(Option.some(id))}
-						modifiers={[tabViewStyle({indexDisplayMode: 'never', type: 'page'}), background(colors.background)]}
-					>
-						{pipe(
-							index,
-							Option.match({
-								onNone: () => [note],
-								onSome: position =>
-									Array.flatMap([position - 1, position, position + 1], at => Option.toArray(Array.get(notes, at)))
-							}),
-							Array.map(item => (
-								<TabView.Tab key={item.id} value={item.id}>
-									<Detail note={item} onTag={props.onTag} />
-								</TabView.Tab>
-							))
-						)}
-					</TabView>
-					<Toolbar.Content>
-						<ToolbarItem placement="bottomBar">
-							<Button
-								label="Delete"
-								systemImage="trash"
-								onPress={() => {
-									remove(note.id)
-									props.onClose()
-								}}
-								modifiers={[labelStyle('iconOnly')]}
-							/>
-						</ToolbarItem>
-						<ToolbarItem placement="bottomBar" kind="spacer" />
-						{/* The link opens in its own app, named by its logo, when iOS knows one. */}
-						{Option.match(Option.fromNullishOr(note.url), {
-							onNone: () => undefined,
-							onSome: url => (
-								<ToolbarItem placement="bottomBar">
-									{Option.match(brandOf(note), {
+			onSome: item => (
+				<Toolbar
+					modifiers={[
+						navigationTitle(item.status === 'organizing' ? '' : item.title),
+						navigationBarTitleDisplayMode('inline'),
+						background(colors.background)
+					]}
+				>
+					<Detail note={item} onTag={props.onTag} />
+					{/* The link opens in its own app, named by its logo, when iOS knows one. */}
+					{Option.match(Option.fromNullishOr(item.url), {
+						onNone: () => undefined,
+						onSome: url => (
+							<Toolbar.Content>
+								<ToolbarItem placement="topBarTrailing">
+									{Option.match(brandOf(item), {
 										onNone: () => (
 											<Button
 												label="Open Link"
@@ -114,9 +84,9 @@ export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (t
 										)
 									})}
 								</ToolbarItem>
-							)
-						})}
-					</Toolbar.Content>
+							</Toolbar.Content>
+						)
+					})}
 				</Toolbar>
 			)
 		}
@@ -124,14 +94,14 @@ export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (t
 }
 
 // Mounted only once the server has kept the preview, so the download never runs before the file exists. The image
-// keeps its own shape up to 220 points tall, with no box around it.
+// keeps its own shape up to 280 points tall, with no box around it.
 function Cover(props: {note: NoteItem}) {
 	const image = useAtomValue(imageAtom(props.note.id))
 	if (!AsyncResult.isSuccess(image)) return undefined
 	return (
 		<Image
 			uiImage={image.value}
-			modifiers={[resizable(), aspectRatio({contentMode: 'fit'}), frame({maxHeight: 220, maxWidth: Infinity})]}
+			modifiers={[resizable(), aspectRatio({contentMode: 'fit'}), frame({maxHeight: 280, maxWidth: Infinity})]}
 		/>
 	)
 }
@@ -171,8 +141,8 @@ function Body(props: {text: string}) {
 	)
 }
 
-// One page: the full title, summary, tags, the preview and the AI's notes. The list fields show at once; the long texts
-// arrive with the full note from the server.
+// The page under the title: the preview, the tags and one summary. The list fields show at once; the AI's notes arrive
+// with the full note from the server.
 function Detail(props: {note: NoteItem; onTag: (tag: string) => void}) {
 	const note = props.note
 	const full = pipe(
@@ -201,16 +171,7 @@ function Detail(props: {note: NoteItem; onTag: (tag: string) => void}) {
 						</Text>
 					</VStack>
 				)}
-				{note.status !== 'organizing' && (
-					<Text modifiers={[mono('headline', 18), foregroundStyle(colors.foreground), textSelection(true)]}>
-						{note.title}
-					</Text>
-				)}
-				{note.status !== 'organizing' && String.isNonEmpty(note.summary) && (
-					<Text modifiers={[mono('body', 14), foregroundStyle(colors.mutedForeground), textSelection(true)]}>
-						{note.summary}
-					</Text>
-				)}
+				{note.image !== undefined && <Cover note={note} />}
 				{!Array.isReadonlyArrayEmpty(note.tags) && (
 					// One scrolling line of tags, so a tag never breaks across two lines.
 					<ScrollView axes="horizontal" showsIndicators={false}>
@@ -221,11 +182,19 @@ function Detail(props: {note: NoteItem; onTag: (tag: string) => void}) {
 						</HStack>
 					</ScrollView>
 				)}
-				{note.image !== undefined && <Cover note={note} />}
-				{Option.match(
-					Option.flatMap(full, loaded => Option.liftPredicate(loaded.body ?? '', String.isNonEmpty)),
-					{onNone: () => undefined, onSome: body => <Body text={body} />}
-				)}
+				{/* One summary: the AI's notes, or the one-line summary while they load or when a note has none. */}
+				{note.status !== 'organizing' &&
+					Option.match(
+						Option.flatMap(full, loaded => Option.liftPredicate(loaded.body ?? '', String.isNonEmpty)),
+						{
+							onNone: () => (
+								<Text modifiers={[mono('body', 14), foregroundStyle(colors.foreground), textSelection(true)]}>
+									{note.summary}
+								</Text>
+							),
+							onSome: body => <Body text={body} />
+						}
+					)}
 				{String.isNonEmpty(note.issue) && (
 					<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground)]}>{note.issue}</Text>
 				)}

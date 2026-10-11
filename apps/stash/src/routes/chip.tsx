@@ -12,7 +12,8 @@ import {
 
 import {colors, mono} from '@deslop/components/mobile/theme'
 
-// A capsule like the category chips of iOS Mail: gray when off, filled with the accent when on. Every chip keeps its
+// A capsule in the system's glass style, like the category chips of iOS Mail: clear when off, filled with the accent when
+// on. Every chip keeps its
 // label, so selecting one never shifts the row.
 export function Chip(props: {
 	active: boolean
@@ -26,9 +27,9 @@ export function Chip(props: {
 			systemImage={props.systemImage}
 			onPress={props.onPress}
 			modifiers={[
-				buttonStyle(props.active ? 'borderedProminent' : 'bordered'),
+				buttonStyle(props.active ? 'glassProminent' : 'glass'),
 				buttonBorderShape('capsule'),
-				controlSize('regular'),
+				controlSize('large'),
 				tint(props.active ? colors.primary : colors.foreground),
 				foregroundStyle(props.active ? colors.primaryForeground : colors.foreground),
 				labelStyle('titleAndIcon'),

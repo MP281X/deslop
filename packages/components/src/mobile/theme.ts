@@ -6,6 +6,7 @@ import {DynamicColorIOS} from 'react-native'
 export const colors = {
 	background: DynamicColorIOS({dark: '#111114', light: '#ffffff'}),
 	border: DynamicColorIOS({dark: '#ffffff1f', light: '#e4e4e7'}),
+	destructive: DynamicColorIOS({dark: '#ff6467', light: '#e7000b'}),
 	foreground: DynamicColorIOS({dark: '#f3f3f5', light: '#09090b'}),
 	muted: DynamicColorIOS({dark: '#212124', light: '#f4f4f5'}),
 	mutedForeground: DynamicColorIOS({dark: '#adadb5', light: '#71717b'}),
