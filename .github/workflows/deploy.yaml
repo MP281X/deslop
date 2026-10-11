@@ -2,6 +2,11 @@ name: Build and Deploy
 
 on: [push]
 
+# Each main commit gets its own group, so every release runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 permissions:
   contents: read
   packages: write
@@ -11,11 +16,8 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Vite+
-        uses: voidzero-dev/setup-vp@v1
+      - uses: actions/checkout@v5
+      - uses: voidzero-dev/setup-vp@v1
         with: {node-version: '26', cache: true, run-install: true}
 
       - name: Check
@@ -24,44 +26,70 @@ jobs:
       - name: Test
         run: vp run test
 
-      - name: Docker Login
-        if: github.ref == 'refs/heads/main'
-        uses: docker/login-action@v4.0.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Version
+      - name: Release
         if: github.ref == 'refs/heads/main'
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_NUMBER: ${{ github.run_number }}
+          VITE_OTEL_URL: https://otel.mp281x.xyz
+        # pnpm applies publishConfig while packing; npm uploads the README metadata that pnpm omits.
         run: |
           for package in tools/coding-standards apps/stash; do
             vp -C $package pm version "0.1.$RELEASE_NUMBER" -- --no-git-tag-version --no-git-checks
           done
+          vp run build
 
-      - name: Build
-        if: github.ref == 'refs/heads/main'
-        env:
-          VITE_OTEL_URL: https://otel.mp281x.xyz
-        run: vp run build
-
-      - name: Docker
-        if: github.ref == 'refs/heads/main'
-        run: |
-          image_prefix=$(echo "ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
-
+          echo "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           for app in portfolio; do
-            docker build ./apps/$app --tag $image_prefix-$app:latest
-            docker push $image_prefix-$app:latest
+            docker build apps/$app --tag ghcr.io/${GITHUB_REPOSITORY,,}-$app:latest
+            docker push ghcr.io/${GITHUB_REPOSITORY,,}-$app:latest
           done
 
-      - name: Publish
-        if: github.ref == 'refs/heads/main'
-        # pnpm applies publishConfig while packing; npm uploads the README metadata that pnpm 11 omits.
-        run: |
+          (cd apps/stash && npm pkg delete dependencies)
           for package in tools/coding-standards apps/stash; do
             vp -C $package pm pack --pack-destination "$RUNNER_TEMP/$package"
             npm publish "$RUNNER_TEMP/$package"/*.tgz
           done
+
+  # On main, JavaScript ships as an EAS Update and only a new native fingerprint builds; any pushed tag builds for TestFlight.
+  ios:
+    needs: build-and-deploy
+    if: github.ref == 'refs/heads/main' || github.ref_type == 'tag'
+    strategy:
+      matrix:
+        app: [stash]
+    concurrency: ios-${{ matrix.app }}
+    runs-on: xcode-27
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.app }}
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      APP_VARIANT: production
+      RELEASE_NUMBER: ${{ github.run_number }}
+      # npm, because pnpm applies the workspace's strict peer checks to the EAS CLI's own dependencies.
+      EAS: npx --yes eas-cli@latest
+    steps:
+      - uses: actions/checkout@v5
+        with: {fetch-depth: 2}
+      - uses: voidzero-dev/setup-vp@v1
+        with: {node-version: '26', cache: true, run-install: true}
+
+      - name: Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ $GITHUB_REF_TYPE == branch ]] && git diff --quiet HEAD^ -- . ../../packages ../../pnpm-lock.yaml; then exit; fi
+          hash=$($EAS fingerprint:generate --platform ios --build-profile production --json --non-interactive | jq -r .hash)
+          built=$($EAS update:list --branch production --runtime-version "$hash" --limit 1 --json --non-interactive | jq '.currentPage | length > 0')
+          if [[ $GITHUB_REF_TYPE == tag || $built != true ]]; then
+            sudo xcode-select --switch /Applications/Xcode_27.1.app
+            $EAS build --local --profile production --platform ios --non-interactive --output "$RUNNER_TEMP/app.ipa"
+            $EAS submit --profile production --platform ios --non-interactive --path "$RUNNER_TEMP/app.ipa"
+          fi
+          if [[ $GITHUB_REF_TYPE == branch ]]; then
+            $EAS update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"
+          fi
