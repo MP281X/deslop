@@ -167,22 +167,22 @@ function Detail(props: {note: NoteItem; onTag: (tag: string) => void}) {
 				spacing={14}
 				modifiers={[padding({all: 16}), frame({alignment: 'leading', maxWidth: Infinity})]}
 			>
-				{/* While the server reads the note, its lines show as the system's gray placeholder bars. */}
+				{note.image !== undefined && <Cover note={note} />}
+				{/* While the server reads the note, the tags and the summary hold their places as gray placeholder bars. */}
 				{note.status === 'organizing' && (
-					<VStack alignment="leading" spacing={10} modifiers={[redacted('placeholder')]}>
-						<Text modifiers={[mono('headline', 18), foregroundStyle(colors.foreground)]}>
-							Reading the link and writing
-						</Text>
-						<Text modifiers={[mono('body', 14), foregroundStyle(colors.mutedForeground)]}>
-							The summary arrives once the note is tagged, in a minute or two.
-						</Text>
-						<Text modifiers={[mono('body', 14), foregroundStyle(colors.foreground)]}>
-							The notes list the point and the takeaways of the post.
-						</Text>
+					<VStack alignment="leading" spacing={14} modifiers={[redacted('placeholder')]}>
+						<HStack spacing={8}>
+							<Chip label="placeholder" active={false} onPress={() => undefined} />
+							<Chip label="tag" active={false} onPress={() => undefined} />
+						</HStack>
+						<Body
+							text={
+								'- The point of the post, in one line.\n- A takeaway a developer keeps from it.\n- Another takeaway with a tool and what it does.'
+							}
+						/>
 					</VStack>
 				)}
-				{note.image !== undefined && <Cover note={note} />}
-				{!Array.isReadonlyArrayEmpty(note.tags) && (
+				{note.status !== 'organizing' && !Array.isReadonlyArrayEmpty(note.tags) && (
 					// One scrolling line of tags, so a tag never breaks across two lines.
 					<ScrollView axes="horizontal" showsIndicators={false}>
 						<HStack spacing={8}>

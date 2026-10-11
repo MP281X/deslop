@@ -26,6 +26,7 @@
 	"main": "src/main.client.tsx",
 	"imports": {
 		"#lib/*": "./src/lib/*",
+		"#modules/*": "./modules/*",
 		"#package": "./package.json",
 		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",

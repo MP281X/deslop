@@ -4,8 +4,10 @@ import {Array, HashSet, Match, Option, String, pipe} from 'effect'
 
 import {
 	Button,
+	BottomSheet,
 	ContentUnavailableView,
 	ContextMenu,
+	Divider,
 	HStack,
 	Image,
 	Label,
@@ -25,8 +27,10 @@ import {
 	alignmentGuide,
 	aspectRatio,
 	background,
+	buttonStyle,
 	border,
 	clipped,
+	controlSize,
 	contentShape,
 	cornerRadius,
 	foregroundStyle,
@@ -38,10 +42,13 @@ import {
 	listRowSeparator,
 	listRowSeparatorTint,
 	listStyle,
+	menuOrder,
+	multilineTextAlignment,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	onAppear,
 	onTapGesture,
+	padding,
 	pickerStyle,
 	redacted,
 	resizable,
@@ -55,7 +62,16 @@ import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 import {Linking} from 'react-native'
 
-import {assetAtom, imageAtom, notesAtom, pendingAtom, regenerateAtom, removeAtom, searchAtom} from '#lib/utils.ts'
+import {
+	assetAtom,
+	imageAtom,
+	notesAtom,
+	offerAtom,
+	pendingAtom,
+	regenerateAtom,
+	removeAtom,
+	searchAtom
+} from '#lib/utils.ts'
 import {Brand, KindLabel, MenuAction, brandOf, kindOf, kinds} from '#routes/brand.tsx'
 import type {Kind} from '#routes/brand.tsx'
 import {Chip} from '#routes/chip.tsx'
@@ -144,9 +160,8 @@ export function NotesRoute(props: {
 			{filtered && Array.isReadonlyArrayEmpty(notes) && (
 				// The system's empty state, as Mail shows for a search or a filter with nothing in it.
 				<ContentUnavailableView
-					title={String.isEmpty(query) ? 'No Notes' : 'No Results'}
+					title={String.isEmpty(query) ? 'No Notes' : `No Results for “${query}”`}
 					systemImage={String.isEmpty(query) ? 'tray' : 'magnifyingglass'}
-					description={String.isEmpty(query) ? 'Nothing is saved here yet.' : `No notes match “${query}”.`}
 					modifiers={[...row, listRowSeparator('hidden')]}
 				/>
 			)}
@@ -193,7 +208,7 @@ export function NotesRoute(props: {
 			)}
 			<Toolbar.Content>
 				<ToolbarItem placement="principal">
-					<Title />
+					<PasteSheet />
 				</ToolbarItem>
 				{/* Fixed spacers part the filter, the search field and write into separate glass shapes, as in Mail. */}
 				<>
@@ -221,10 +236,11 @@ export function NotesRoute(props: {
 // beside the icon; the symbol fills while a filter is on.
 function Filter(props: {kind: Kind | ''; onKind: (kind: Kind | '') => void}) {
 	return (
+		// Fixed order keeps All Notes on top in its own section, as Photos does, though the menu opens from the bottom bar.
 		<Menu
 			label="Filter"
 			systemImage={props.kind === '' ? 'line.3.horizontal.decrease' : 'line.3.horizontal.decrease.circle.fill'}
-			modifiers={[labelStyle('iconOnly')]}
+			modifiers={[labelStyle('iconOnly'), menuOrder('fixed')]}
 		>
 			<Picker
 				label="Show"
@@ -241,11 +257,67 @@ function Filter(props: {kind: Kind | ''; onKind: (kind: Kind | '') => void}) {
 				modifiers={[pickerStyle('inline')]}
 			>
 				<Label title="All Notes" systemImage="tray" modifiers={[tag('')]} />
+				<Divider />
 				{Array.map(kinds, entry => (
 					<KindLabel key={entry.kind} entry={entry} modifiers={[tag(entry.kind)]} />
 				))}
 			</Picker>
 		</Menu>
+	)
+}
+
+// The save question for a copied link or image, as a small sheet in the app's own type and colors. It hangs off the
+// title, so it adds nothing to the layout; dragging it away answers Not Now.
+function PasteSheet() {
+	const offer = useAtomValue(offerAtom)
+	function answer(save: boolean) {
+		Option.match(offer, {onNone: () => undefined, onSome: open => open.answer(save)})
+	}
+	const kind = Option.match(offer, {onNone: () => 'link' as const, onSome: open => open.kind})
+	return (
+		<BottomSheet
+			anchor={<Title />}
+			isPresented={Option.isSome(offer)}
+			onIsPresentedChange={presented => {
+				if (!presented) answer(false)
+			}}
+			fitToContents
+		>
+			<VStack spacing={16} modifiers={[padding({all: 24}), frame({maxWidth: Infinity}), background(colors.background)]}>
+				<Image
+					systemName={kind === 'image' ? 'photo' : 'link'}
+					size={26}
+					modifiers={[foregroundStyle(colors.foreground)]}
+				/>
+				<Text modifiers={[mono('headline', 17), foregroundStyle(colors.foreground)]}>
+					{kind === 'image' ? 'save the copied image?' : 'save the copied link?'}
+				</Text>
+				<Text
+					modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground), multilineTextAlignment('center')]}
+				>
+					stash reads the clipboard only if you save it.
+				</Text>
+				<HStack spacing={12}>
+					<Button
+						label="Not Now"
+						onPress={() => answer(false)}
+						modifiers={[buttonStyle('glass'), controlSize('large'), mono('body', 15), frame({maxWidth: Infinity})]}
+					/>
+					<Button
+						label="Save"
+						onPress={() => answer(true)}
+						modifiers={[
+							buttonStyle('glassProminent'),
+							controlSize('large'),
+							tint(colors.primary),
+							foregroundStyle(colors.primaryForeground),
+							mono('body', 15),
+							frame({maxWidth: Infinity})
+						]}
+					/>
+				</HStack>
+			</VStack>
+		</BottomSheet>
 	)
 }
 

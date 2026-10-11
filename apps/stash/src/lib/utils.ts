@@ -28,6 +28,7 @@ import * as Updates from 'expo-updates'
 import {Alert, AppState} from 'react-native'
 
 import {Outbox, Pending, deliver} from '#lib/outbox.ts'
+import {pasteboard} from '#modules/pasteboard/index.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {captureUrl} from '#services/notes/lib/utils.ts'
 import type {FileType, Note, NotesEvent} from '#services/notes/schema.ts'
@@ -38,7 +39,6 @@ const settings = Schema.decodeUnknownSync(Schema.Struct({appGroup: Schema.String
 	Constants.expoConfig?.extra
 )
 
-const pastedFile = new File(Paths.document, 'pasted.txt')
 const cacheFile = new File(Paths.document, 'list.json')
 const imagesDirectory = new Directory(Paths.cache, 'images')
 
@@ -282,55 +282,31 @@ function alert(title: string) {
 }
 
 // A copied photo or screenshot becomes a file note, sent like a shared one. Its digest is remembered like a pasted link.
-// Copied items the owner answered Not Now to; the app asks again only after a restart.
-const declined = MutableHashSet.empty<string>()
+// The clipboard's change count when the app last saved from it, kept across launches, so a copy is offered once.
+const clipboardFile = new File(Paths.document, 'clipboard.txt')
 
-// Asks before saving what was copied. Not Now remembers the item for this run, so the question never repeats.
-const offer = Effect.fnUntraced(function* (key: string, title: string, message: string) {
-	if (MutableHashSet.has(declined, key)) return false
-	const saved = yield* Effect.callback<boolean>(resume => {
-		Alert.alert(title, message, [
-			{
-				onPress: () => {
-					resume(Effect.succeed(false))
-				},
-				style: 'cancel',
-				text: 'Not Now'
-			},
-			{
-				isPreferred: true,
-				onPress: () => {
-					resume(Effect.succeed(true))
-				},
-				text: 'Save'
-			}
-		])
-	})
-	if (!saved) MutableHashSet.add(declined, key)
-	return saved
-})
+// Change counts the owner answered Not Now to; the app asks about them again only after a restart.
+const declined = MutableHashSet.empty<number>()
 
-const pasteImage = Effect.gen(function* () {
+// The open save question: what was copied and how to answer it; none while no question is open.
+export const offerAtom = Atom.keepAlive(
+	Atom.make(Option.none<{answer: (save: boolean) => void; kind: 'image' | 'link'}>())
+)
+
+// Reads the copied image only after the owner chose to save it, so iOS shows its paste banner only then.
+const saveImage = Effect.gen(function* () {
 	const image = yield* Effect.tryPromise({
 		catch: storageFailed('The copied image could not be read.'),
 		try: () => Clipboard.getImageAsync({format: 'jpeg', jpegQuality: 0.85})
 	})
-	if (image === null) return false
-	const base64 = String.replace(/^data:[^,]*,/u, '')(image.data)
-	const digest = `image:${yield* Effect.promise(() => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, base64))}`
-	const last = yield* Effect.try({
-		catch: storageFailed('The last pasted image is unreadable.'),
-		try: () => (pastedFile.exists ? pastedFile.textSync() : '')
-	})
-	if (digest === last) return false
-	if (!(yield* offer(digest, 'Save the copied image?', 'It becomes a note that the AI describes.'))) return false
+	if (image === null) return
 	const id = Crypto.randomUUID()
 	const directory = yield* pendingDirectory
 	yield* Effect.try({
 		catch: storageFailed('The copied image could not be kept on this iPhone.'),
 		try: () => {
 			directory.create({idempotent: true, intermediates: true})
-			new File(directory, `${id}.jpg`).writeSync(base64, {encoding: 'base64'})
+			new File(directory, `${id}.jpg`).writeSync(String.replace(/^data:[^,]*,/u, '')(image.data), {encoding: 'base64'})
 		}
 	})
 	yield* outbox.add({
@@ -339,42 +315,59 @@ const pasteImage = Effect.gen(function* () {
 		id,
 		text: ''
 	})
-	yield* Effect.try({
-		catch: storageFailed('The pasted image could not be remembered.'),
-		try: () => replace(pastedFile, digest)
-	})
-	return true
 })
 
-// Each time Stash opens, it offers to save a copied link or image. The last saved one is remembered, so opening Stash
-// again with the same clipboard asks nothing twice.
+const saveLink = Effect.gen(function* () {
+	const text = String.trim(
+		yield* Effect.tryPromise({
+			catch: storageFailed('The clipboard could not be read.'),
+			try: () => Clipboard.getStringAsync()
+		})
+	)
+	if (captureUrl(text) === null) return yield* NotesError.make({message: 'The copied text holds no link.'})
+	yield* outbox.add({createdAt: yield* Clock.currentTimeMillis, id: Crypto.randomUUID(), text})
+})
+
+// Each time Stash opens with a new copy that holds a link or an image, it asks in a sheet whether to save it. Checking
+// reads nothing, so iOS shows no paste banner unless the owner saves. One question is open at a time; a return to the
+// app while it is open asks again in its place.
 export const pasteAtom = Atom.keepAlive(
 	Atom.make(get =>
 		pipe(
 			Effect.gen(function* () {
 				get(activationsAtom)
-				const clipboardFailed = storageFailed('The clipboard could not be read.')
-				// Checking does not show iOS's paste prompt; reading does, unless pasting is allowed in Settings.
-				if (yield* Effect.tryPromise({catch: clipboardFailed, try: () => Clipboard.hasImageAsync()})) {
-					if (!(yield* pasteImage)) return
-					get.set(outboxRevisionAtom, get.once(outboxRevisionAtom) + 1)
-					yield* haptic(Haptics.NotificationFeedbackType.Success)
+				const count = pasteboard.changeCount()
+				const handled = yield* Effect.try({
+					catch: storageFailed('The last saved copy is unreadable.'),
+					try: () => (clipboardFile.exists ? clipboardFile.textSync() : '')
+				})
+				if (handled === `${count}` || MutableHashSet.has(declined, count)) return
+				const link = yield* Effect.promise(() => pasteboard.hasLink())
+				const kind = pasteboard.hasImage()
+					? Option.some('image' as const)
+					: Option.liftPredicate('link' as const, () => link)
+				if (Option.isNone(kind)) return
+				const save = yield* Effect.callback<boolean>(resume => {
+					get.set(
+						offerAtom,
+						Option.some({
+							answer: (answer: boolean) => {
+								get.set(offerAtom, Option.none())
+								resume(Effect.succeed(answer))
+							},
+							kind: Option.getOrThrow(kind)
+						})
+					)
+					return Effect.sync(() => get.set(offerAtom, Option.none()))
+				})
+				if (!save) {
+					MutableHashSet.add(declined, count)
 					return
 				}
-				if (!(yield* Effect.tryPromise({catch: clipboardFailed, try: () => Clipboard.hasStringAsync()}))) return
-				const text = String.trim(
-					yield* Effect.tryPromise({catch: clipboardFailed, try: () => Clipboard.getStringAsync()})
-				)
-				const last = yield* Effect.try({
-					catch: storageFailed('The last pasted link is unreadable.'),
-					try: () => (pastedFile.exists ? pastedFile.textSync() : '')
-				})
-				if (captureUrl(text) === null || text === last) return
-				if (!(yield* offer(text, 'Save the copied link?', text))) return
-				yield* outbox.add({createdAt: yield* Clock.currentTimeMillis, id: Crypto.randomUUID(), text})
+				yield* Option.getOrThrow(kind) === 'image' ? saveImage : saveLink
 				yield* Effect.try({
-					catch: storageFailed('The pasted link could not be remembered.'),
-					try: () => replace(pastedFile, text)
+					catch: storageFailed('The saved copy could not be remembered.'),
+					try: () => replace(clipboardFile, `${count}`)
 				})
 				get.set(outboxRevisionAtom, get.once(outboxRevisionAtom) + 1)
 				yield* haptic(Haptics.NotificationFeedbackType.Success)
