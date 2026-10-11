@@ -1,4 +1,4 @@
-import {useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Option, String, pipe} from 'effect'
 
@@ -23,13 +23,14 @@ import {
 	navigationTitle,
 	padding,
 	redacted,
+	refreshable,
 	resizable,
 	textSelection
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 import {Linking} from 'react-native'
 
-import {imageAtom, noteAtom, notesAtom} from '#lib/utils.ts'
+import {imageAtom, noteAtom, notesAtom, regenerateAtom} from '#lib/utils.ts'
 import {Brand, brandOf} from '#routes/brand.tsx'
 import {Chip} from '#routes/chip.tsx'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
@@ -145,13 +146,22 @@ function Body(props: {text: string}) {
 // with the full note from the server.
 function Detail(props: {note: NoteItem; onTag: (tag: string) => void}) {
 	const note = props.note
+	const regenerate = useAtomSet(regenerateAtom, {mode: 'promise'})
 	const full = pipe(
 		useAtomValue(noteAtom(`${note.id} ${note.status} ${note.title}`)),
 		AsyncResult.getOrElse(() => undefined),
 		Option.fromNullishOr
 	)
 	return (
-		<ScrollView modifiers={[background(colors.background)]}>
+		// Pulling the page down regenerates the note from its source, with the system's refresh control.
+		<ScrollView
+			modifiers={[
+				background(colors.background),
+				refreshable(async () => {
+					await regenerate(note.id)
+				})
+			]}
+		>
 			<VStack
 				alignment="leading"
 				spacing={14}

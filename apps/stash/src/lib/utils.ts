@@ -24,6 +24,7 @@ import Constants from 'expo-constants'
 import * as Crypto from 'expo-crypto'
 import {Directory, File, Paths, UploadTask, UploadType} from 'expo-file-system'
 import * as Haptics from 'expo-haptics'
+import * as Updates from 'expo-updates'
 import {Alert, AppState} from 'react-native'
 
 import {Outbox, Pending, deliver} from '#lib/outbox.ts'
@@ -445,6 +446,24 @@ export const menuIconAtom = Atom.family((module: number | string) =>
 			}
 			return file.uri
 		})
+	)
+)
+
+// Each launch and each return to the app checks for a published JavaScript update and restarts into it at once, so a
+// fix never waits for a second launch. Development builds load their code from Metro and skip this.
+export const updateAtom = Atom.keepAlive(
+	Atom.make(get =>
+		pipe(
+			Effect.gen(function* () {
+				get(activationsAtom)
+				if (!Updates.isEnabled) return
+				const failed = storageFailed('The app update could not be loaded.')
+				if (!(yield* Effect.tryPromise({catch: failed, try: () => Updates.checkForUpdateAsync()})).isAvailable) return
+				if (!(yield* Effect.tryPromise({catch: failed, try: () => Updates.fetchUpdateAsync()})).isNew) return
+				yield* Effect.tryPromise({catch: failed, try: () => Updates.reloadAsync()})
+			}),
+			Effect.catch(error => Effect.logWarning('The app update check failed', error))
+		)
 	)
 )
 

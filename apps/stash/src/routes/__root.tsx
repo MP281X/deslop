@@ -16,7 +16,7 @@ import {background, foregroundStyle, tint} from '@expo/ui/swift-ui/modifiers'
 import {Suspense, useState} from 'react'
 import {ErrorBoundary} from 'react-error-boundary'
 
-import {deliveryAtom, pasteAtom, pendingAtom} from '#lib/utils.ts'
+import {deliveryAtom, pasteAtom, pendingAtom, updateAtom} from '#lib/utils.ts'
 import {NotesRoute} from '#routes/(home)/index.tsx'
 import type {Kind} from '#routes/brand.tsx'
 import {ComposeRoute} from '#routes/compose.tsx'
@@ -26,6 +26,7 @@ import {colors, mono} from '@deslop/components/mobile/theme'
 export function RootRoute() {
 	useAtomMount(deliveryAtom)
 	useAtomMount(pasteAtom)
+	useAtomMount(updateAtom)
 	const refreshPending = useAtomRefresh(pendingAtom)
 	const [path, setPath] = useState<string[]>([])
 	const [search, setSearch] = useState('')
