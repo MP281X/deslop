@@ -1,0 +1,9 @@
+{
+	"type": "share",
+	"name": "StashShare",
+	"displayName": "stash",
+	"bundleIdentifier": ".share",
+	"deploymentTarget": "18.0",
+	"frameworks": ["SwiftUI", "UIKit", "UniformTypeIdentifiers"],
+	"entitlements": {}
+}
