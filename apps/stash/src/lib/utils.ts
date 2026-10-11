@@ -4,6 +4,7 @@ import {
 	Effect,
 	HashSet,
 	Layer,
+	MutableHashSet,
 	Option,
 	Order,
 	Result,
@@ -280,6 +281,34 @@ function alert(title: string) {
 }
 
 // A copied photo or screenshot becomes a file note, sent like a shared one. Its digest is remembered like a pasted link.
+// Copied items the owner answered Not Now to; the app asks again only after a restart.
+const declined = MutableHashSet.empty<string>()
+
+// Asks before saving what was copied. Not Now remembers the item for this run, so the question never repeats.
+const offer = Effect.fnUntraced(function* (key: string, title: string, message: string) {
+	if (MutableHashSet.has(declined, key)) return false
+	const saved = yield* Effect.callback<boolean>(resume => {
+		Alert.alert(title, message, [
+			{
+				onPress: () => {
+					resume(Effect.succeed(false))
+				},
+				style: 'cancel',
+				text: 'Not Now'
+			},
+			{
+				isPreferred: true,
+				onPress: () => {
+					resume(Effect.succeed(true))
+				},
+				text: 'Save'
+			}
+		])
+	})
+	if (!saved) MutableHashSet.add(declined, key)
+	return saved
+})
+
 const pasteImage = Effect.gen(function* () {
 	const image = yield* Effect.tryPromise({
 		catch: storageFailed('The copied image could not be read.'),
@@ -293,6 +322,7 @@ const pasteImage = Effect.gen(function* () {
 		try: () => (pastedFile.exists ? pastedFile.textSync() : '')
 	})
 	if (digest === last) return false
+	if (!(yield* offer(digest, 'Save the copied image?', 'It becomes a note that the AI describes.'))) return false
 	const id = Crypto.randomUUID()
 	const directory = yield* pendingDirectory
 	yield* Effect.try({
@@ -315,8 +345,8 @@ const pasteImage = Effect.gen(function* () {
 	return true
 })
 
-// Each time Stash opens, a copied link or image becomes a note. The last pasted one is remembered,
-// so opening Stash again with the same clipboard saves nothing twice.
+// Each time Stash opens, it offers to save a copied link or image. The last saved one is remembered, so opening Stash
+// again with the same clipboard asks nothing twice.
 export const pasteAtom = Atom.keepAlive(
 	Atom.make(get =>
 		pipe(
@@ -339,6 +369,7 @@ export const pasteAtom = Atom.keepAlive(
 					try: () => (pastedFile.exists ? pastedFile.textSync() : '')
 				})
 				if (captureUrl(text) === null || text === last) return
+				if (!(yield* offer(text, 'Save the copied link?', text))) return
 				yield* outbox.add({createdAt: yield* Clock.currentTimeMillis, id: Crypto.randomUUID(), text})
 				yield* Effect.try({
 					catch: storageFailed('The pasted link could not be remembered.'),

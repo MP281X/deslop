@@ -65,6 +65,16 @@ export function MenuAction(props: {
 	})
 }
 
+// A kind of note as a menu row: the app's logo shape when it has one, otherwise its symbol. Modifiers such as a picker
+// tag go on the label.
+export function KindLabel(props: {entry: (typeof kinds)[number]; modifiers: Parameters<typeof Label>[0]['modifiers']}) {
+	return 'brand' in props.entry ? (
+		<Label title={props.entry.label} icon={<MenuIcon module={props.entry.brand.menu} />} modifiers={props.modifiers} />
+	) : (
+		<Label title={props.entry.label} systemImage={props.entry.symbol} modifiers={props.modifiers} />
+	)
+}
+
 // The logo's shape for a menu row; nothing until its file is ready.
 function MenuIcon(props: {module: number | string}) {
 	const uri = useAtomValue(menuIconAtom(props.module))

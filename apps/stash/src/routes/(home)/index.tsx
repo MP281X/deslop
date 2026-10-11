@@ -8,8 +8,10 @@ import {
 	ContextMenu,
 	HStack,
 	Image,
+	Label,
 	List,
 	Menu,
+	Picker,
 	ScrollView,
 	SwipeActions,
 	Text,
@@ -40,6 +42,7 @@ import {
 	navigationTitle,
 	onAppear,
 	onTapGesture,
+	pickerStyle,
 	redacted,
 	resizable,
 	scrollContentBackground,
@@ -53,7 +56,7 @@ import {useState} from 'react'
 import {Linking} from 'react-native'
 
 import {assetAtom, imageAtom, notesAtom, pendingAtom, regenerateAtom, removeAtom, searchAtom} from '#lib/utils.ts'
-import {Brand, MenuAction, brandOf, kindOf, kinds} from '#routes/brand.tsx'
+import {Brand, KindLabel, MenuAction, brandOf, kindOf, kinds} from '#routes/brand.tsx'
 import type {Kind} from '#routes/brand.tsx'
 import {Chip} from '#routes/chip.tsx'
 import logo from '#routes/logo.png'
@@ -139,11 +142,13 @@ export function NotesRoute(props: {
 				</ScrollView>
 			)}
 			{filtered && Array.isReadonlyArrayEmpty(notes) && (
-				<Text
-					modifiers={[...row, listRowSeparator('hidden'), mono('body', 13), foregroundStyle(colors.mutedForeground)]}
-				>
-					no matches
-				</Text>
+				// The system's empty state, as Mail shows for a search or a filter with nothing in it.
+				<ContentUnavailableView
+					title={String.isEmpty(query) ? 'No Notes' : 'No Results'}
+					systemImage={String.isEmpty(query) ? 'tray' : 'magnifyingglass'}
+					description={String.isEmpty(query) ? 'Nothing is saved here yet.' : `No notes match “${query}”.`}
+					modifiers={[...row, listRowSeparator('hidden')]}
+				/>
 			)}
 			{!filtered &&
 				Array.map(pending, item => (
@@ -179,9 +184,9 @@ export function NotesRoute(props: {
 		>
 			{Array.isReadonlyArrayEmpty(state.items) && Array.isReadonlyArrayEmpty(pending) ? (
 				<ContentUnavailableView
-					title="nothing saved"
-					description="share a link to stash, or copy one and open the app"
-					modifiers={[mono('body', 14), foregroundStyle(colors.mutedForeground)]}
+					title="Nothing Saved"
+					systemImage="tray"
+					description="Share a link to stash, or copy one and open the app."
 				/>
 			) : (
 				list
@@ -212,7 +217,8 @@ export function NotesRoute(props: {
 	)
 }
 
-// Mail's filter button: a menu of note kinds, the active one checked; the symbol fills while a filter is on.
+// Mail's filter button: a menu with the system picker of note kinds, which marks the shown kind with its own check
+// beside the icon; the symbol fills while a filter is on.
 function Filter(props: {kind: Kind | ''; onKind: (kind: Kind | '') => void}) {
 	return (
 		<Menu
@@ -220,23 +226,25 @@ function Filter(props: {kind: Kind | ''; onKind: (kind: Kind | '') => void}) {
 			systemImage={props.kind === '' ? 'line.3.horizontal.decrease' : 'line.3.horizontal.decrease.circle.fill'}
 			modifiers={[labelStyle('iconOnly')]}
 		>
-			<Button
-				label="All Notes"
-				systemImage={props.kind === '' ? 'checkmark' : 'tray'}
-				onPress={() => props.onKind('')}
-			/>
-			{Array.map(kinds, entry => (
-				<MenuAction
-					key={entry.kind}
-					label={entry.label}
-					brand={pipe(
-						Option.fromNullishOr('brand' in entry ? entry.brand : undefined),
-						Option.filter(() => props.kind !== entry.kind)
-					)}
-					symbol={props.kind === entry.kind ? 'checkmark' : entry.symbol}
-					onPress={() => props.onKind(props.kind === entry.kind ? '' : entry.kind)}
-				/>
-			))}
+			<Picker
+				label="Show"
+				selection={props.kind}
+				onSelectionChange={(next: string) =>
+					props.onKind(
+						pipe(
+							kinds,
+							Array.findFirst(entry => entry.kind === next),
+							Option.match({onNone: () => '' as const, onSome: entry => entry.kind})
+						)
+					)
+				}
+				modifiers={[pickerStyle('inline')]}
+			>
+				<Label title="All Notes" systemImage="tray" modifiers={[tag('')]} />
+				{Array.map(kinds, entry => (
+					<KindLabel key={entry.kind} entry={entry} modifiers={[tag(entry.kind)]} />
+				))}
+			</Picker>
 		</Menu>
 	)
 }

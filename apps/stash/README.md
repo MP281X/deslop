@@ -29,7 +29,7 @@ The CLI is a client of the server: it saves the entry as a note through the RPC,
 
 ## iOS client
 
-- **Capture.** Links, text, photos and videos arrive from the share sheet. A copied link or image becomes a note when the app opens. The pencil in the bottom bar writes a note, which the AI rewrites as short lines.
+- **Capture.** Links, text, photos and videos arrive from the share sheet. When the app opens with a new link or image copied, it asks whether to save it; Not Now stops the question for that item until the app restarts, so pasting can stay allowed in Settings. The pencil in the bottom bar writes a note, which the AI rewrites as short lines.
 - **List.** The layout follows iOS Mail. Tag chips on top filter apart from search. The bottom bar holds the kind filter, the search field and write, parted by fixed spacers. A long press opens the system menu, and swipe deletes. The long-press menu opens the note in its app, regenerates it from its source, or deletes it; menus show the apps' logo shapes in the text color.
 - **Note page.** The note's title sits in the bar, and the app's logo at the top right opens the link. Below come the preview, the tags and one summary: the AI's notes, or the one-line summary.
 - **Theme.** Colors, square corners and JetBrains Mono follow the deslop shadcn theme in `packages/components/src/theme.css`, applied to `@expo/ui` SwiftUI views through `@deslop/components/mobile/theme`. Brand logos come from svgl through `@deslop/components/mobile/brand`.
