@@ -6,7 +6,6 @@ include_collaboration_mode_instructions = false
 include_apps_instructions = false
 tool_output_token_limit = 25000
 background_terminal_max_timeout = 1500000
-service_tier = "default"
 
 [agents]
 enabled = false
@@ -31,7 +30,6 @@ goals = false
 memories = false
 multi_agent = false
 multi_agent_v2 = false
-default_mode_request_user_input = true
 
 [shell_environment_policy]
 set = { GLAB_PAGER = "cat" }

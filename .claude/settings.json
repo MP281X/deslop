@@ -41,6 +41,7 @@
 	"permissions": {
 		"deny": [
 			"Agent",
+			"AskUserQuestion",
 			"ListAgents",
 			"SendMessage",
 			"SubagentHandback",
@@ -83,6 +84,7 @@
 			"Bash(*git *push*--mirror*)",
 			"Bash(*gh pr merge*)",
 			"Bash(*gh pr ready*)",
+			"Bash(*gh stack *--open*)",
 			"Bash(*gh api*/merge*PUT*)",
 			"Bash(*gh api*PUT*/merge*)",
 			"Bash(*gh api*mergePullRequest*)",

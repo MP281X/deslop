@@ -1,10 +1,10 @@
 # Deslop
 
-**Issues.** Deslop is personal software without an issue tracker. GitHub holds only its pull requests, so the request is the whole task.
+**Issues.** Deslop has no issue tracker; GitHub holds only its pull requests, so the request is the whole task.
 
-**Agent configuration.** Before you change `.claude`, `.codex` or the shared skills, read `.claude/README.md`: it holds the owners and the decisions not to repeat. `.claude/agents/pair.md` and `.codex/instructions.md` differ only before "# The user's pair". Make each edit after that heading in both files, and confirm with `diff <(sed -n '/^# The user.s pair$/,$p' .claude/agents/pair.md) <(sed -n '/^# The user.s pair$/,$p' .codex/instructions.md)`.
+**Agent configuration.** Before you change `.claude`, `.codex` or the shared skills, read the retrospective skill's [Decisions](../../retrospective/references/decisions.md) for the owners and the adopted and rejected approaches. `.claude/agents/pair.md` and `.codex/instructions.md` differ only before "# The user's pair": make each edit below that heading in both files, and confirm with `diff <(sed -n '/^# The user.s pair$/,$p' .claude/agents/pair.md) <(sed -n '/^# The user.s pair$/,$p' .codex/instructions.md)`.
 
-**Commands.** Vite+ caches checks by task inputs; fixes are never cached. Use `--no-cache` to prove a fresh run.
+**Commands.** Vite+ caches checks by task inputs and never caches fixes. Use `--no-cache` to prove a fresh run.
 
 ```bash
 vp run --workspace-root --cache check
@@ -19,14 +19,14 @@ HOST=127.0.0.1 vp -C apps/portfolio dev --host 127.0.0.1 --port <port> --strictP
 HOST=127.0.0.1 PORT=<port> vp run --filter @deslop/portfolio preview
 ```
 
-**Components.** List existing shared components first, then `vp run --workspace-root shadcn list @shadcn`, inspect with `vp run --workspace-root shadcn view <component>` and `vp run --workspace-root shadcn docs <component>`, and add with `vp run --workspace-root shadcn add <component>`.
+**Components.** List the existing shared components first. Inspect with `vp run --workspace-root shadcn list @shadcn`, `vp run --workspace-root shadcn view <component>` and `vp run --workspace-root shadcn docs <component>`, and add with `vp run --workspace-root shadcn add <component>`.
 
 ## Application tracing
 
 On dev only, the collector listens on `http://127.0.0.1:4318` and Jaeger on `http://127.0.0.1:16686`. CORS allows the production portfolio origin and any loopback port.
 
-- **Browser defaults.** The browser exports to localhost on the browser's own machine. A remote preview needs a reachable `VITE_OTEL_URL` and its origin allowed.
-- **Source host.** The Vite source host supplies RPC and platform layers, not `ServerRuntime.layer` telemetry. Backend spans need the instrumented production entrypoint or scoped runtime instrumentation.
+- **Browser.** The browser exports to localhost on its own machine. A remote preview needs a reachable `VITE_OTEL_URL` with its origin allowed.
+- **Source host.** The Vite source host has no `ServerRuntime.layer` telemetry. Backend spans need the instrumented production entrypoint or scoped runtime instrumentation.
 - **Proof.** An allowed preflight does not prove that the app emits spans.
 
 ```bash
@@ -38,7 +38,4 @@ Logs are the collector's debug output (`docker compose --project-name deslop --f
 
 ## Coding standards
 
-Deslop owns the `@deslop/coding-standards` package in `tools/coding-standards`: the oxlint preset and the engineering, design and testing skills.
-
-- **Lint.** The root `vite.config.ts` extends the preset for the whole repository.
-- **Skills.** Edit the package's `skills/` sources, then refresh the copies in `.claude/skills` and `.codex/skills` with `node tools/coding-standards/src/install.ts`.
+`tools/coding-standards` holds the `@deslop/coding-standards` package: the oxlint preset, which the root `vite.config.ts` extends, and the engineering, design and testing skills. Edit the skills in the package's `skills/`, then refresh the copies in `.claude/skills` and `.codex/skills` with `node tools/coding-standards/src/install.ts`.
