@@ -118,7 +118,19 @@ export class Media extends Context.Service<
 			const whisper = yield* Semaphore.make(1)
 			const installing = yield* Semaphore.make(1)
 			const ytDlp = path.join(cache, 'yt-dlp')
-			const ytDlpArgs = ['--js-runtimes', 'node', '--no-progress', '--no-warnings', '--no-playlist']
+			// A proxy such as a SOCKS5 port that exits through a Mullvad server keeps YouTube and TikTok from blocking the
+			// server's datacenter address, without routing the rest of the machine.
+			const ytDlpArgs = [
+				'--js-runtimes',
+				'node',
+				'--no-progress',
+				'--no-warnings',
+				'--no-playlist',
+				...Option.match(yield* Config.option(Config.String('STASH_MEDIA_PROXY')), {
+					onNone: () => [],
+					onSome: address => ['--proxy', address]
+				})
+			]
 
 			const install = installing.withPermit(
 				Effect.gen(function* () {
