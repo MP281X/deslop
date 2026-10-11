@@ -160,8 +160,19 @@ function apply(view: NotesView, event: NotesEvent) {
 }
 
 // The copy kept on this iPhone shows the notes offline. A broken copy shows nothing until the server answers.
+// Earlier versions kept the whole notes in notes.json and the last pasted text in pasted.txt; both go on the first read.
 const cachedNotes = pipe(
-	Effect.try({catch: storageFailed('The saved copy is unreadable.'), try: () => cacheFile.textSync()}),
+	Effect.try({
+		catch: storageFailed('Files from an earlier version could not be removed.'),
+		try: () => {
+			for (const name of ['notes.json', 'pasted.txt']) {
+				const old = new File(Paths.document, name)
+				if (old.exists) old.delete()
+			}
+		}
+	}),
+	Effect.catch(error => Effect.logWarning('Files from an earlier version stay on this iPhone', error)),
+	Effect.andThen(Effect.try({catch: storageFailed('The saved copy is unreadable.'), try: () => cacheFile.textSync()})),
 	Effect.flatMap(text => Schema.decodeEffect(CacheFile)(text)),
 	Effect.orElseSucceed(() => emptyNotes)
 )

@@ -43,7 +43,6 @@ import {
 	listRowSeparatorTint,
 	listStyle,
 	menuOrder,
-	multilineTextAlignment,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	onAppear,
@@ -283,39 +282,48 @@ function PasteSheet() {
 			}}
 			fitToContents
 		>
-			<VStack spacing={16} modifiers={[padding({all: 24}), frame({maxWidth: Infinity}), background(colors.background)]}>
+			{/* Apple's layout for a one-question sheet: a symbol, the question, a full-width Save and a plain Not Now. */}
+			<VStack
+				spacing={14}
+				modifiers={[
+					padding({bottom: 8, leading: 24, top: 28, trailing: 24}),
+					frame({maxWidth: Infinity}),
+					background(colors.background)
+				]}
+			>
 				<Image
 					systemName={kind === 'image' ? 'photo' : 'link'}
-					size={26}
+					size={24}
 					modifiers={[foregroundStyle(colors.foreground)]}
 				/>
 				<Text modifiers={[mono('headline', 17), foregroundStyle(colors.foreground)]}>
 					{kind === 'image' ? 'save the copied image?' : 'save the copied link?'}
 				</Text>
-				<Text
-					modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground), multilineTextAlignment('center')]}
-				>
-					stash reads the clipboard only if you save it.
-				</Text>
-				<HStack spacing={12}>
+				<VStack spacing={4} modifiers={[padding({top: 6})]}>
 					<Button
-						label="Not Now"
-						onPress={() => answer(false)}
-						modifiers={[buttonStyle('glass'), controlSize('large'), mono('body', 15), frame({maxWidth: Infinity})]}
-					/>
-					<Button
-						label="Save"
 						onPress={() => answer(true)}
 						modifiers={[
 							buttonStyle('glassProminent'),
 							controlSize('large'),
 							tint(colors.primary),
-							foregroundStyle(colors.primaryForeground),
-							mono('body', 15),
-							frame({maxWidth: Infinity})
+							foregroundStyle(colors.primaryForeground)
 						]}
-					/>
-				</HStack>
+					>
+						<Text modifiers={[mono('headline', 16), frame({maxWidth: Infinity})]}>Save</Text>
+					</Button>
+					<Button onPress={() => answer(false)} modifiers={[buttonStyle('plain'), controlSize('large')]}>
+						<Text
+							modifiers={[
+								mono('body', 15),
+								foregroundStyle(colors.mutedForeground),
+								padding({vertical: 12}),
+								frame({maxWidth: Infinity})
+							]}
+						>
+							Not Now
+						</Text>
+					</Button>
+				</VStack>
 			</VStack>
 		</BottomSheet>
 	)
