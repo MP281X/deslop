@@ -11,6 +11,7 @@ import {
 	Option,
 	Order,
 	Path,
+	Ref,
 	Record,
 	Schema,
 	Semaphore,
@@ -67,6 +68,10 @@ function postText(post: Post) {
 	return `${post.author.name} (@${post.author.screen_name}), ${post.created_at}\n\n${post.text}`
 }
 
+// What a site answers when it refuses the server's address, or a proxy that cannot connect: worth another proxy.
+const blockedAnswer =
+	/confirm you.re not a bot|HTTP Error (?:403|429)|Unable to download (?:API page|webpage)|unreachable|Connection refused|timed out|IP address is blocked/iu
+
 const run = Effect.fnUntraced(function* (command: string, args: string[]) {
 	const handle = yield* ChildProcess.make(command, args, {stderr: 'pipe', stdout: 'pipe'})
 	return yield* Effect.all(
@@ -118,19 +123,42 @@ export class Media extends Context.Service<
 			const whisper = yield* Semaphore.make(1)
 			const installing = yield* Semaphore.make(1)
 			const ytDlp = path.join(cache, 'yt-dlp')
-			// A proxy such as a SOCKS5 port that exits through a Mullvad server keeps YouTube and TikTok from blocking the
-			// server's datacenter address, without routing the rest of the machine.
-			const ytDlpArgs = [
-				'--js-runtimes',
-				'node',
-				'--no-progress',
-				'--no-warnings',
-				'--no-playlist',
-				...Option.match(yield* Config.option(Config.String('STASH_MEDIA_PROXY')), {
-					onNone: () => [],
-					onSome: address => ['--proxy', address]
-				})
-			]
+			const ytDlpArgs = ['--js-runtimes', 'node', '--no-progress', '--no-warnings', '--no-playlist']
+			// Proxies such as SOCKS5 ports that exit through Mullvad servers keep YouTube and TikTok from blocking the server's
+			// datacenter address, without routing the rest of the machine. STASH_MEDIA_PROXY lists them, separated by commas.
+			const proxies = pipe(
+				yield* Config.option(Config.String('STASH_MEDIA_PROXY')),
+				Option.getOrElse(() => ''),
+				String.split(','),
+				Array.map(String.trim),
+				Array.filter(String.isNonEmpty)
+			)
+			// The proxy that last got through goes first next time.
+			const working = yield* Ref.make(0)
+
+			// Runs yt-dlp through each proxy in turn until one is not blocked; a failure of another kind stops at once.
+			const fetch = Effect.fnUntraced(function* (args: string[]) {
+				if (Array.isReadonlyArrayEmpty(proxies)) return yield* run(ytDlp, args)
+				const start = yield* Ref.get(working)
+				function attempt(offset: number): ReturnType<typeof run> {
+					return Effect.gen(function* () {
+						const index = (start + offset) % proxies.length
+						const proxy = Option.getOrElse(Array.get(proxies, index), () => '')
+						const result = yield* run(ytDlp, ['--proxy', proxy, ...args])
+						if (result.exitCode === 0) yield* Ref.set(working, index)
+						if (
+							result.exitCode === 0 ||
+							Option.isNone(String.match(blockedAnswer)(result.stderr)) ||
+							offset + 1 >= proxies.length
+						) {
+							return result
+						}
+						yield* Effect.logWarning(`yt-dlp was blocked through ${proxy}; trying the next proxy`)
+						return yield* attempt(offset + 1)
+					})
+				}
+				return yield* attempt(0)
+			})
 
 			const install = installing.withPermit(
 				Effect.gen(function* () {
@@ -190,7 +218,7 @@ export class Media extends Context.Service<
 					Option.getOrElse(() => 'en')
 				)
 
-				yield* run(ytDlp, [
+				yield* fetch([
 					...ytDlpArgs,
 					'--skip-download',
 					'--write-subs',
@@ -226,7 +254,7 @@ export class Media extends Context.Service<
 					return Option.none()
 				}
 
-				const download = yield* run(ytDlp, [
+				const download = yield* fetch([
 					...ytDlpArgs,
 					'-f',
 					'bestaudio/best',
@@ -402,7 +430,7 @@ export class Media extends Context.Service<
 						yield* install
 						const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-media-'})
 						// The smallest rendition is enough for 512-pixel stills and keeps the download short.
-						const download = yield* run(ytDlp, [
+						const download = yield* fetch([
 							...ytDlpArgs,
 							'-f',
 							'worst[ext=mp4]/worst',
@@ -448,7 +476,7 @@ export class Media extends Context.Service<
 							Effect.map(Option.flatten)
 						)
 
-						const dump = yield* run(ytDlp, [
+						const dump = yield* fetch([
 							...ytDlpArgs,
 							'--dump-single-json',
 							'--flat-playlist',
