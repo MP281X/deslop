@@ -8,6 +8,7 @@ export function clock(seconds: number) {
 export function captionTranscript(input: {authored: boolean; vtt: string}) {
 	const cues = pipe(
 		input.vtt,
+		String.replace(/\r\n?/gu, '\n'),
 		String.split('\n\n'),
 		Array.flatMap(block => {
 			const lines = String.split(block, '\n')
@@ -47,8 +48,7 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 		}),
 		Array.filter(cue => String.isNonEmpty(cue.text))
 	)
-	// Automatic rolling captions repeat a line in the cue that starts as the previous one ends; uploaded captions and
-	// later repeats stay.
+	// Rolling automatic captions repeat each line in the next cue.
 	return Array.join(
 		Array.map(
 			Array.filter(cues, (cue, index) =>
@@ -64,4 +64,43 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 		),
 		''
 	)
+}
+
+// Whisper hears music as looping or invented words, so only a talking pace of 40 words a minute counts as speech.
+export function speechOnly(transcript: string) {
+	const lines = pipe(
+		String.split(transcript, '\n'),
+		Array.filter(String.isNonEmpty),
+		Array.dedupeAdjacentWith((left, right) => spoken(left) === spoken(right)),
+		Array.filter(line => {
+			const words = wordsOf(spoken(line))
+			return Array.isReadonlyArrayNonEmpty(words) && Array.dedupe(words).length * 3 > words.length
+		})
+	)
+	const words = Array.flatMap(lines, line => wordsOf(spoken(line)))
+	const seconds = pipe(
+		Array.last(lines),
+		Option.flatMap(String.match(/^\[(\d+):(\d+)\]/u)),
+		Option.map(match => [match[1] ?? '0', match[2] ?? '0'] as const),
+		Option.map(parts =>
+			Array.reduce(Array.getSomes(Array.map(parts, Number.parse)), 0, (total, part) => total * 60 + part)
+		),
+		Option.getOrElse(() => 0)
+	)
+	return words.length >= 8 && words.length * 60 >= 40 * Number.max(seconds, 15)
+		? Option.some(
+				Array.join(
+					Array.map(lines, line => `${line}\n`),
+					''
+				)
+			)
+		: Option.none()
+}
+
+function spoken(line: string) {
+	return String.replace(/^\[[^\]]+\] /u, '')(line)
+}
+
+function wordsOf(text: string) {
+	return pipe(text, String.toLowerCase, String.split(/[^\p{L}\p{N}']+/u), Array.filter(String.isNonEmpty))
 }

@@ -1,0 +1,18 @@
+import {Effect} from 'effect'
+
+import {RpcContracts} from '#rpcs/contracts.ts'
+import {Notes} from '#services/notes/service.ts'
+
+export const RpcHandlers = RpcContracts.toLayer(
+	Effect.gen(function* () {
+		const notes = yield* Notes
+		return RpcContracts.of({
+			'notes.capture': notes.capture,
+			'notes.get': notes.get,
+			'notes.regenerate': notes.regenerate,
+			'notes.remove': notes.remove,
+			'notes.search': notes.search,
+			'notes.watch': () => notes.events
+		})
+	})
+)

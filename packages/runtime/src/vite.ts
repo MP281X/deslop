@@ -7,7 +7,7 @@ import type {UserConfig} from 'vite-plus'
 
 import {serverPlugin} from '#web/dev-server.ts'
 
-const pack = {
+export const pack = {
 	banner: '#!/usr/bin/env -S node --max-old-space-size=16384 --heapsnapshot-near-heap-limit=3 --report-on-fatalerror',
 	clean: false,
 	entry: ['src/main.ts'],

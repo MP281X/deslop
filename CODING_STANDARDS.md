@@ -33,7 +33,7 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 ## Deploy
 
 - Deploy is one `tools/compose.yaml` with configs inlined, direct ports, and unpinned images, driven by commands for this machine; no deploy README, flag-heavy scripts, or nested folders.
-- Reusable tooling ships as a TypeScript package `@deslop/<name>` under `tools/`, published by CI. Add and publish one with [tools/AGENTS.md](tools/AGENTS.md).
+- Reusable tooling ships as a TypeScript package `@deslop/<name>` under `tools/`, published by CI; an app whose CLI shares its code, such as stash, publishes from `apps/`. Add and publish one with [tools/AGENTS.md](tools/AGENTS.md).
 
 ## Keys
 
