@@ -29,7 +29,7 @@ import {openStore} from './internal/store.ts'
 
 import {Media} from '#services/media/service.ts'
 import {captureUrl, commentFor, diff, findNotes, hasVideo, sourceFor, tagCounts} from '#services/notes/lib/utils.ts'
-import type {Capture, FileType, Image, NotesEvent} from '#services/notes/schema.ts'
+import type {Capture, Extraction, FileType, Image, NotesEvent} from '#services/notes/schema.ts'
 import {Note, NotesError} from '#services/notes/schema.ts'
 
 function withWords(note: Note, text: string) {
@@ -40,6 +40,10 @@ function withWords(note: Note, text: string) {
 		Array.filter(word => String.isNonEmpty(word) && !Array.contains(known, String.toLowerCase(word)))
 	)
 	return Array.isReadonlyArrayEmpty(added) ? note : {...note, text: `${note.text}\n${Array.join(added, ' ')}`}
+}
+
+function still(bytes: Uint8Array): Image {
+	return {bytes, type: 'image/jpeg'}
 }
 
 function isVideo(type: FileType) {
@@ -130,7 +134,7 @@ export class Notes extends Context.Service<
 				yield* updateNote(id, note => ({...note, image: image.type}))
 			})
 
-			const tagNote = Effect.fnUntraced(function* (note: Note, stills: Uint8Array[]) {
+			const tagNote = Effect.fnUntraced(function* (note: Note, stills: Image[]) {
 				const id = note.id
 				const preview = yield* pipe(
 					Effect.forEach(Option.toArray(Option.fromNullishOr(note.image)), type =>
@@ -138,7 +142,7 @@ export class Notes extends Context.Service<
 					),
 					optional('The preview could not be read', Array.empty<Image>)
 				)
-				const pictures = [...preview, ...Array.map(stills, bytes => ({bytes, type: 'image/jpeg' as const}))]
+				const pictures = [...preview, ...stills]
 				if (
 					String.isEmpty(note.content) &&
 					String.isEmpty(note.transcript ?? '') &&
@@ -166,12 +170,28 @@ export class Notes extends Context.Service<
 				)
 			})
 
-			function tag(id: Note['id'], stills: Uint8Array[]) {
+			function tag(id: Note['id'], stills: Image[]) {
 				return Effect.flatMap(
 					findNote(id),
 					Option.match({onNone: () => Effect.void, onSome: note => tagNote(note, stills)})
 				)
 			}
+
+			// TikTok's preview image links expire within days, so the server keeps the image; a regenerated note keeps its own.
+			const keepImages = Effect.fnUntraced(function* (note: Note, page: Extraction) {
+				yield* pipe(
+					Effect.forEach(
+						Option.toArray(Option.filter(page.image, () => note.image === undefined)),
+						image => Effect.flatMap(sources.image(image), bytes => storeImage(note.id, bytes)),
+						{discard: true}
+					),
+					skip('The preview image was not kept')
+				)
+				const slides = yield* Effect.forEach(page.slides ?? [], image =>
+					pipe(sources.image(image), Effect.asSome, optional('A slide was not read', Option.none<Image>))
+				)
+				return Array.getSomes(slides)
+			})
 
 			const organizeLink = Effect.fnUntraced(function* (note: Note, link: string) {
 				const extraction = yield* Effect.result(sources.extract(link))
@@ -187,19 +207,14 @@ export class Notes extends Context.Service<
 						})
 					})
 				)
-				if (Result.isFailure(extraction)) return yield* tag(note.id, [])
-				const page = extraction.success
-				// TikTok's preview image links expire within days, so the server keeps the image; a regenerated note keeps its own.
-				yield* pipe(
-					Effect.forEach(
-						Option.toArray(Option.filter(page.image, () => note.image === undefined)),
-						image => Effect.flatMap(sources.image(image), bytes => storeImage(note.id, bytes)),
-						{discard: true}
-					),
-					skip('The preview image was not kept')
-				)
-				if (!hasVideo(page.url)) return yield* tag(note.id, [])
-				const video = page.video ?? page.url
+				const slides = yield* Result.match(extraction, {
+					onFailure: () => Effect.succeed(Array.empty<Image>()),
+					onSuccess: page => keepImages(note, page)
+				})
+				// A video site can refuse the page reader and still answer yt-dlp.
+				const url = Result.match(extraction, {onFailure: () => link, onSuccess: page => page.url})
+				if (!hasVideo(url)) return yield* tag(note.id, slides)
+				const video = Result.match(extraction, {onFailure: () => link, onSuccess: page => page.video ?? page.url})
 				const read = yield* pipe(media.read(video), Effect.asSome, optional('The video could not be read', Option.none))
 				const transcript = yield* pipe(
 					Option.filter(read, () => note.transcript === undefined),
@@ -210,12 +225,15 @@ export class Notes extends Context.Service<
 				yield* updateNote(note.id, item => ({
 					...item,
 					...Option.match(
-						Option.filter(read, () => sourceFor(page.url) !== 'X'),
-						{onNone: () => ({}), onSome: details => ({content: details.info})}
+						Option.filter(read, () => sourceFor(url) !== 'X' || Result.isFailure(extraction)),
+						{onNone: () => ({}), onSome: details => ({content: details.info, issue: ''})}
 					),
 					...Option.match(transcript, {onNone: () => ({}), onSome: text => ({transcript: text})})
 				}))
-				yield* tag(note.id, yield* pipe(media.frames(video), optional('No video frames', Array.empty<Uint8Array>)))
+				yield* tag(note.id, [
+					...slides,
+					...Array.map(yield* pipe(media.frames(video), optional('No video frames', Array.empty<Uint8Array>)), still)
+				])
 			})
 
 			const organizeFile = Effect.fnUntraced(function* (note: Note, type: FileType) {
@@ -224,14 +242,13 @@ export class Notes extends Context.Service<
 				const stills = yield* pipe(media.fileFrames(stored), optional('No video frames', Array.empty<Uint8Array>))
 				yield* Option.match(Array.head(stills), {
 					onNone: () => Effect.void,
-					onSome: bytes =>
-						pipe(storeImage(note.id, {bytes, type: 'image/jpeg'}), skip('The video preview was not kept'))
+					onSome: bytes => pipe(storeImage(note.id, still(bytes)), skip('The video preview was not kept'))
 				})
 				yield* Option.match(yield* pipe(media.fileTranscript(stored), optional('No transcript', Option.none<string>)), {
 					onNone: () => Effect.void,
 					onSome: text => updateNote(note.id, item => ({...item, transcript: text}))
 				})
-				yield* tag(note.id, Array.drop(stills, 1))
+				yield* tag(note.id, Array.map(Array.drop(stills, 1), still))
 			})
 
 			function start(note: Note) {

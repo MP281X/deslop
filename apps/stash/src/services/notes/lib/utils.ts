@@ -8,6 +8,8 @@ const xHosts = ['twitter.com', 'www.twitter.com', 'mobile.twitter.com', 'x.com',
 
 const youTubeHosts = /(?:^|\.)(?:youtube\.com|youtu\.be)$/u
 
+const instagramHosts = /(?:^|\.)instagram\.com$/u
+
 const trackingParameters = [
 	'fbclid',
 	'gclid',
@@ -67,7 +69,7 @@ export function isYouTube(url: string) {
 }
 
 export function hasVideo(url: string) {
-	return sourceFor(url) !== 'Website' || isYouTube(url)
+	return sourceFor(url) !== 'Website' || isYouTube(url) || instagramHosts.test(new URL(url).hostname)
 }
 
 export function commentFor(text: string) {
