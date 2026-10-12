@@ -64,6 +64,7 @@ export type Extraction = typeof Extraction.Type
 export const Extraction = Schema.Struct({
 	author: Schema.String,
 	image: Schema.Option(Schema.String),
+	slides: Schema.optionalKey(Schema.Array(Schema.String)),
 	text: Schema.String,
 	title: Schema.String,
 	url: Schema.String,
@@ -72,9 +73,9 @@ export const Extraction = Schema.Struct({
 
 export type Organization = typeof Organization.Type
 export const Organization = Schema.Struct({
-	body: pipe(Schema.String, Schema.check(Schema.isMaxLength(4000))),
+	body: pipe(Schema.String, Schema.check(Schema.isMaxLength(12_000))),
 	screenText: pipe(Schema.String, Schema.check(Schema.isMaxLength(4000))),
-	summary: pipe(Schema.String, Schema.check(Schema.isMaxLength(160))),
+	summary: pipe(Schema.String, Schema.check(Schema.isMaxLength(300))),
 	tags: pipe(Schema.Array(Tag), Schema.check(Schema.isMinLength(1), Schema.isMaxLength(3))),
 	title: pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
 	topics: pipe(Schema.String, Schema.check(Schema.isMaxLength(400)))

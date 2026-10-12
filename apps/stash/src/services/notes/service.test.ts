@@ -250,6 +250,66 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
+	test.effect('reads a video through yt-dlp when its page refuses the reader', () =>
+		Effect.gen(function* () {
+			const notes = yield* open({
+				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				media: Media.of({
+					...noVideo,
+					read: () => Effect.succeed({info: '# Lentils', transcript: Effect.succeedSome('[00:01] Soak them.\n')})
+				}),
+				organizer: counting(yield* Ref.make(0)),
+				sources: Sources.of({
+					...recipe,
+					extract: () => Effect.fail(NotesError.make({message: 'The link answered with status 400.'}))
+				})
+			})
+			yield* notes.capture({id: ids[0], text: 'https://www.tiktok.com/@cook/video/1'})
+			assert.containsSubset((yield* settled(notes, isReady))[0], {
+				content: '# Lentils',
+				issue: '',
+				transcript: '[00:01] Soak them.\n'
+			})
+		})
+	)
+
+	test.effect('shows the AI every slide of a photo post after its preview', () =>
+		Effect.gen(function* () {
+			const seen = yield* Ref.make(Array.empty<Uint8Array>())
+			const tagger = counting(yield* Ref.make(0))
+			const notes = yield* open({
+				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				organizer: Organizer.of({
+					organize: input =>
+						Effect.andThen(
+							Ref.set(
+								seen,
+								Array.map(input.images, image => image.bytes)
+							),
+							tagger.organize(input)
+						)
+				}),
+				sources: Sources.of({
+					...recipe,
+					extract: link =>
+						Effect.map(recipe.extract(link), extraction => ({
+							...extraction,
+							image: Option.some('https://example.com/1.jpg'),
+							slides: ['https://example.com/2.jpg']
+						})),
+					image: link =>
+						Effect.succeed({
+							bytes: new Uint8Array([String.endsWith('2.jpg')(link) ? 2 : 1]),
+							type: 'image/jpeg' as const
+						})
+				})
+			})
+			yield* notes.capture({id: ids[0], text: 'https://example.com/slides'})
+			yield* settled(notes, isReady)
+			assert.deepStrictEqual(yield* Ref.get(seen), [new Uint8Array([1]), new Uint8Array([2])])
+		})
+	)
+
 	test.effect('resolves a short link before saving, so another share of the post joins the saved note', () =>
 		Effect.gen(function* () {
 			const calls = yield* Ref.make(0)

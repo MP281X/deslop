@@ -10,7 +10,7 @@ import {
 	Option,
 	Order,
 	Path,
-	Ref,
+	Random,
 	Record,
 	Schema,
 	Semaphore,
@@ -22,7 +22,7 @@ import {
 import {env, pipeline} from '@huggingface/transformers'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
-import {captionTranscript, clock, speechOnly} from '#services/media/lib/utils.ts'
+import {captionTranscript, clock, sourceProxy, speechOnly, sticky} from '#services/media/lib/utils.ts'
 import {MediaError} from '#services/media/schema.ts'
 
 type Metadata = typeof Metadata.Type
@@ -51,7 +51,7 @@ const Transcription = Schema.Struct({
 const maxWhisperSeconds = 2 * 60 * 60
 
 const blockedAnswer =
-	/confirm you.re not a bot|HTTP Error (?:403|429)|Unable to download (?:API page|webpage)|unreachable|Connection refused|timed out|IP address is blocked/iu
+	/not a bot|requir(?:es|ing) login|login required|CONNECT tunnel failed|ProxyError|HTTP Error (?:403|429|5\d\d)|Requested format is not available|timed out/iu
 
 const run = Effect.fnUntraced(function* (command: string, args: string[]) {
 	const handle = yield* ChildProcess.make(command, args, {stderr: 'pipe', stdout: 'pipe'})
@@ -92,37 +92,21 @@ export class Media extends Context.Service<
 			)
 			const whisper = yield* Semaphore.make(1)
 			const ytDlpArgs = ['--js-runtimes', 'node', '--no-progress', '--no-warnings', '--no-playlist']
-			// YouTube and TikTok block datacenter addresses, so yt-dlp can exit through proxies such as Mullvad's.
-			const proxies = pipe(
-				yield* Config.option(Config.String('STASH_MEDIA_PROXY')),
-				Option.getOrElse(() => ''),
-				String.split(','),
-				Array.map(String.trim),
-				Array.filter(String.isNonEmpty)
-			)
-			const working = yield* Ref.make(0)
+			const exit = yield* sourceProxy
 
+			// A residential exit can be offline or flagged by the site, so a blocked run retries twice, each time from another exit address.
 			const fetch = Effect.fnUntraced(function* (args: string[]) {
-				if (Array.isReadonlyArrayEmpty(proxies)) return yield* run('yt-dlp', args)
-				const start = yield* Ref.get(working)
-				function attempt(offset: number): ReturnType<typeof run> {
-					return Effect.gen(function* () {
-						const index = (start + offset) % proxies.length
-						const proxy = Option.getOrElse(Array.get(proxies, index), () => '')
-						const result = yield* run('yt-dlp', ['--proxy', proxy, ...args])
-						if (result.exitCode === 0) yield* Ref.set(working, index)
-						if (
-							result.exitCode === 0 ||
-							Option.isNone(String.match(blockedAnswer)(result.stderr)) ||
-							offset + 1 >= proxies.length
-						) {
-							return result
-						}
-						yield* Effect.logWarning(`yt-dlp was blocked through ${proxy}; trying the next proxy`)
-						return yield* attempt(offset + 1)
-					})
-				}
-				return yield* attempt(0)
+				const attempt = Effect.gen(function* () {
+					const session = `${yield* Random.nextIntBetween(10_000_000, 99_999_999)}`
+					return yield* run(
+						'yt-dlp',
+						Option.match(exit, {onNone: () => args, onSome: url => ['--proxy', sticky(url, session), ...args]})
+					)
+				})
+				return yield* Effect.repeat(attempt, {
+					times: Option.isSome(exit) ? 2 : 0,
+					while: result => result.exitCode !== 0 && Option.isSome(String.match(blockedAnswer)(result.stderr))
+				})
 			})
 
 			function withProcesses<A, E>(effect: Effect.Effect<A, E, ChildProcessSpawner.ChildProcessSpawner>) {
@@ -295,12 +279,12 @@ export class Media extends Context.Service<
 					'-i',
 					video,
 					'-vf',
-					`fps=6/${seconds},scale=512:-2`,
+					`fps=12/${seconds},scale='min(768,iw)':-2`,
 					'-frames:v',
-					'6',
+					'12',
 					'-q:v',
 					'5',
-					path.join(work, 'frame-%d.jpg')
+					path.join(work, 'frame-%02d.jpg')
 				])
 				if (sampled.exitCode !== 0) {
 					return yield* MediaError.make({message: `ffmpeg cannot sample the video: ${sampled.stderr}`})
@@ -332,7 +316,8 @@ export class Media extends Context.Service<
 						const download = yield* fetch([
 							...ytDlpArgs,
 							'-f',
-							'worst[ext=mp4]/worst',
+							// YouTube offers no plain mp4 to a server, so the stills come from the smallest video stream from 360p down.
+							'bv*[height<=360]/wv*/b',
 							'--max-filesize',
 							'200M',
 							'-o',
