@@ -14,6 +14,7 @@ import {noErrorMessageAssertion} from '#rules/no-error-message-assertion.ts'
 import {noFakeRefState} from '#rules/no-fake-ref-state.ts'
 import {noHandWrittenGuard} from '#rules/no-hand-written-guard.ts'
 import {noLet} from '#rules/no-let.ts'
+import {noMultilineComment} from '#rules/no-multiline-comment.ts'
 import {noNativeControl} from '#rules/no-native-control.ts'
 import {noNativeEmptinessCheck} from '#rules/no-native-emptiness-check.ts'
 import {noNativeMethodCall} from '#rules/no-native-method-call.ts'
@@ -99,6 +100,7 @@ export const oxlint = defineConfig({
 		'@deslop/coding-standards/no-fake-ref-state': 'error',
 		'@deslop/coding-standards/no-hand-written-guard': 'error',
 		'@deslop/coding-standards/no-let': 'error',
+		'@deslop/coding-standards/no-multiline-comment': 'error',
 		'@deslop/coding-standards/no-native-control': 'error',
 		'@deslop/coding-standards/no-native-emptiness-check': 'error',
 		'@deslop/coding-standards/no-native-method-call': 'error',
@@ -632,6 +634,7 @@ export default definePlugin({
 		'no-fake-ref-state': noFakeRefState,
 		'no-hand-written-guard': noHandWrittenGuard,
 		'no-let': noLet,
+		'no-multiline-comment': noMultilineComment,
 		'no-native-control': noNativeControl,
 		'no-native-emptiness-check': noNativeEmptinessCheck,
 		'no-native-method-call': noNativeMethodCall,
