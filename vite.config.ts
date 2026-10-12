@@ -58,6 +58,7 @@ export default defineConfig({
 		ignorePatterns: [
 			'**/*.gen.ts',
 			'tools/*/template/**',
+			'**/evals/fixtures/**',
 			'packages/components-web/src/svgs/**',
 			'packages/components-web/src/ui/**'
 		],

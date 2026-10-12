@@ -80,12 +80,13 @@ The first draft the user sees is already the refined one. Work through these ste
 - The URL holds navigation state, and Back restores the scroll position and the draft.
 - Place an error beside its field and move focus to the first one. Undo or confirm a destructive action.
 - When the app already knows an action is not allowed, disable it and show the reason beside it.
+- Selecting "All" clears the filter; never store or show "All" as one more filter value.
 
 **States and speed.** A loading state has the layout of the loaded content, and a loader waits before it appears. Use stale-while-revalidate for cached data. Apply writes optimistically and roll back on failure without losing the person's place. Start unavoidable work early, and add no artificial wait. Errors and rare states get the same care as the main path.
 
 **Copy.** Name actions after the person's task, with one vocabulary and sentence case. An empty state offers the next action. An error names what failed and the recovery that exists, beside its control.
 
-**Motion.** Motion explains a change; it never delays input or decorates.
+**Motion.** Motion explains a state change or a spatial relationship: plan its trigger, source and destination with the interaction. It never delays input or decorates.
 
 - Frequent actions and typing get no animation. Keep tweens under 300 ms, ease-out for entrances and ease-in-out for morphs. Interface springs start at a 0.4 second duration with 0.15 bounce.
 - An entrance starts near its resting size, from 0.9 scale or more. A surface anchored to a trigger enters and exits from it.
@@ -97,11 +98,11 @@ The first draft the user sees is already the refined one. Work through these ste
 
 ## Prototype and tune
 
-**Variants.** When a direction needs the user's judgment, build an interactive render before product code: two or three variants on the same data, each clickable through every state from the States step. Give the page a variant switch and a grouped state selector that the phone can use. Fill it with realistic mock data, and draw it as close as possible to the code you will write: the app's tokens, components, copy and behavior. For a native app the render settles structure, flow and states; settle the final look in simulator captures. Label each variant with its one difference, mark your recommendation, and let the user pick by message.
+**Variants.** When layout or interaction has real alternatives, build an interactive render before product code: two or three variants on the same data, each clickable through every state from the States step. Give the page a variant switch and a grouped state selector that the phone can use. Fill it with realistic mock data, and draw it as close as possible to the code you will write: the app's tokens, components, copy and behavior. For a native app the render settles structure, flow and states; settle the final look in simulator captures. Label each variant with its one difference and mark your recommendation.
 
 **Real host.** Build one representative screen with realistic data in the real host: the browser preview for the web, the simulator for a native app. An HTML imitation of a native screen misleads.
 
-**Tune.** Settle values yourself; the user never operates a tuning tool. For values you cannot settle by reasoning, such as spacing, timing, springs or blur, capture candidates side by side, including both extremes, and judge them against the reference. Write the chosen values into the source and recapture.
+**Tune.** Settle values yourself. For values you cannot settle by reasoning, such as spacing, timing, springs or blur, capture candidates side by side, including both extremes, and judge them against the reference. Write the chosen values into the source and recapture.
 
 ## Critique before showing
 
@@ -131,10 +132,11 @@ Ground the page in its subject: name the audience and the page's one job, and ta
 
 ## Visual explanations
 
-These rules cover diagrams, review pages and rendered agent answers; the reply decides when it needs a render. A render adds spatial or interactive information and replaces the text it shows; it never redraws prose, a file list or a fake runtime screenshot.
+These rules cover diagrams, review pages and rendered agent answers; the reply decides when it needs a render. A render adds spatial or interactive information and replaces the text it shows; it never redraws prose, a file list, a check table or a fake runtime screenshot.
 
 | The reader asks                      | Exhibit                                                       |
 | ------------------------------------ | ------------------------------------------------------------- |
+| What does it look like now?          | State map of the changed system, changed parts marked         |
 | What changed on screen?              | Before and after pair with the same data, the old state left  |
 | Which transitions are allowed?       | State machine with forbidden edges marked                     |
 | What happens in order, and who acts? | Sequence in swimlanes, one lane per actor                     |
@@ -149,8 +151,9 @@ These rules cover diagrams, review pages and rendered agent answers; the reply d
 When none fits, choose the form that matches the data's shape; draw a list as a list.
 
 - **One message.** Each page answers one question, and its first line states the conclusion, such as "The catalog loads 26 times faster".
-- **One dominant element.** Size, weight and position show importance; mute the context.
+- **One dominant element.** Size, weight and position show importance; mute the context. Show at most six labeled elements; never a text table, a collapsed card or a filter chip.
+- **Honest scale.** Bars start at zero on one linear scale; draw a range as a range.
 - **Labels.** Put names, values and units on the data, with one scale per comparison. Labels and captions stay under twelve words, and a visual holds no paragraphs.
 - **Real content.** Use real names, numbers and captures, and show the scope.
-- **Interaction.** A render sends nothing back, so decisions come by message. When side-by-side options or captures turn unreadable at phone width, show them at one position behind labeled tabs. The conclusion stays visible without a tap.
-- **Check.** Use the host's theme variables, check light, dark and phone width, and fix clipping, overlap and contrast before you show it.
+- **Interaction.** When side-by-side options or captures turn unreadable at phone width, show them at one position behind labeled tabs. The conclusion stays visible without a tap.
+- **Check.** Use the host's theme variables, check light, dark and a 390-point width, and fix clipping, overlap and contrast before you show it. At that width the page stays under about 400 points tall.

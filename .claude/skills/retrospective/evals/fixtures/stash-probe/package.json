@@ -1,0 +1,9 @@
+{
+	"name": "stash-probe",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"check": "node --check src/notes.ts",
+		"test": "node --test 'src/*.test.ts'"
+	}
+}

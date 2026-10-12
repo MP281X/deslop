@@ -76,7 +76,20 @@ ssh "$target" 'cat > ~/.t3/userdata/settings.json' < $d/new-settings.json
 rm -rf $d
 ```
 
+**Claude launch arguments.** `providerInstances.claudeAgent.config.launchArgs` is `--system-prompt-snapshot off --thinking-display omitted`. The second flag keeps Claude's thinking and stops T3 from showing thinking summaries as messages.
+
 The copy carries project scripts, such as Dual's worktree script `vp install --frozen-lockfile && vpx @deslop/coding-standards@latest`. Check them on the target with `t3_project_list`.
+
+**Review guides.** `reviewGuidesEnabled` is `true`, `reviewGuideModelSelection` is Codex `gpt-6.1-sol`, and `reviewGuideInstructions` holds exactly this text:
+
+```text
+The reader is a tired reviewer who wants to finish fast and must not miss a risk.
+Open with the stop that can break something: a migration, a changed contract or schema, a permission change, removed behavior or a new dependency. Put the risk in its attention note.
+Then follow what a user or caller sees change, then the interfaces, then the implementation.
+Spend words only on choices a maintainer must agree with: a new abstraction, option, fallback, retry, special case, compatibility alias or comment. Name each one and ask whether the change needs it.
+Put generated files, lockfiles, formatting, renames and moves in one closing skim stop.
+Use at most five stops of two short sentences each, in plain words. No praise, no restated diff, no test counts or pipeline results.
+```
 
 ## Update and deploy
 
@@ -173,7 +186,7 @@ The Mac runs T3's desktop app and the iOS Simulator, which T3's device tools dri
 
 ## Jira sign-in
 
-Agents read Dual's Jira through `acli` per [Dual](dual.md#jira). Its apt source updates it with [Update and deploy](#update-and-deploy), not with the daily Debian upgrades.
+Agents read Dual's Jira and assign approved tickets through `acli` per [Dual](dual.md#jira). Its apt source updates it with [Update and deploy](#update-and-deploy), not with the daily Debian upgrades.
 
 ```bash
 curl -fsSL https://acli.atlassian.com/gpg/public-key.asc | sudo gpg --batch --yes --dearmor -o /etc/apt/keyrings/acli.gpg

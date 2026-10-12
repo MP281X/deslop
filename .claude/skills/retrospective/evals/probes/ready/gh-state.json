@@ -1,0 +1,25 @@
+{
+	"next": 14,
+	"prs": [
+		{
+			"number": 12,
+			"headRefName": "t3/export",
+			"baseRefName": "main",
+			"title": "stash: export every note as a markdown file",
+			"state": "OPEN",
+			"isDraft": true,
+			"url": "https://github.com/probe-owner/stash-probe/pull/12",
+			"body": "Every note now exports as one markdown file into a folder you pick.\n\n### The export writes one file per note\n\n![Export](https://github.com/user-attachments/assets/export.mp4)"
+		},
+		{
+			"number": 13,
+			"headRefName": "t3/export-2-cli",
+			"baseRefName": "t3/export",
+			"title": "stash: export from the CLI into a folder you pick",
+			"state": "OPEN",
+			"isDraft": true,
+			"url": "https://github.com/probe-owner/stash-probe/pull/13",
+			"body": "`stash export <folder>` runs the export from the CLI and prints how many notes it wrote.\n\n### The CLI prints the count\n\n![CLI](https://github.com/user-attachments/assets/cli.png)"
+		}
+	]
+}

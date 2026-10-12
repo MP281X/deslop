@@ -3,7 +3,7 @@ name: engineering
 description: 'TypeScript and Effect code conventions paired with shared lint. Use when designing, implementing or reviewing product and test code, including prototypes.'
 ---
 
-**Scope.** Apply these rules and the repository's `CODING_STANDARDS.md`, and write each line right the first time; lint is only the fallback. A refactor or cleanup request applies every rule to every line of the owned files.
+**Scope.** Apply these rules and the repository's `CODING_STANDARDS.md`, and write each line right the first time; lint is only the fallback. A refactor or cleanup request applies every rule to every line of the owned files. Scratch code outside the repository follows no style rule.
 
 ## Simplicity
 

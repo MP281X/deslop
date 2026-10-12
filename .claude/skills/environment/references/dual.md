@@ -34,10 +34,10 @@ curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
 
 Jira is Dual's only issue tracker: project `DOS`, board 1053, on `datapizza.atlassian.net`. The user's account ID is `712020:87e4f57e-6b5d-40ab-8dfa-faf159ead71a`.
 
-**Read-only.** Run only `view`, `search`, `list` and `acli jira auth status`. Never create, edit, assign, transition or comment on a ticket, and never change the sign-in. From Dual's `docs/agents/issue-tracker.md`, use only the read commands and the type hierarchy.
+**Writes.** The only writes: when the user approves the tickets to work on, assign each to him and move it to `Doing`. Never create, edit or comment on a ticket, move it to another status, or change the sign-in. From Dual's `docs/agents/issue-tracker.md`, use only the read commands and the type hierarchy.
 
 - **Assigned.** A ticket assigned to the user is work he started. Read it whenever its key, such as `DOS-289`, appears in a request, branch or commit, and quote the requirements you use.
-- **Picking.** When the user asks what to work on, rank the unassigned tickets in `To Do` by priority (`P1` highest), size and fit with the code; skip every other status. Rank the Epics, Tasks, Stories and Bugs inside Areas and Initiatives. Decide with the user, then start software-factory's Prepare with the chosen ticket.
+- **Picking.** When the user asks what to work on, rank the unassigned tickets in `To Do` by priority (`P1` highest), size and fit with the code; skip every other status. Rank the Epics, Tasks, Stories and Bugs inside Areas and Initiatives. Decide with the user, assign and move the approved tickets, then start software-factory's Prepare with them.
 - **Output.** Plain `view` prints the description as text; `--json` returns Atlassian's document format. Use `--csv` for searches.
 
 ```bash
@@ -45,9 +45,18 @@ acli jira workitem search --csv --paginate --fields key,issuetype,priority,summa
 acli jira workitem search --csv --fields key,priority,status,summary --jql 'project = DOS AND assignee = currentUser() AND statusCategory != Done'
 acli jira workitem view DOS-289
 acli jira workitem comment list --key DOS-289
+acli jira workitem assign --key DOS-289 --assignee @me --yes
+acli jira workitem transition --key DOS-289 --status Doing --yes
 ```
 
 ## App
+
+**Dual Apps.** The user's settled product rules:
+
+- An app complements Dual's own screens for one workflow; it never replaces them and never becomes a form or website builder.
+- Whoever can open a workflow can open its apps; an invitation also opens one app to people without workflow access.
+- Apps share the company font, sizes and primary color; layout and the shadcn theme's spacing, size and radius vary per app.
+- A notification or email exists in an app only when Dual's own workflows already send it.
 
 **Components.** Build every screen from the shadcn primitives in `packages/ui/src/components`, including spinners, date pickers and form controls. Add a missing one with `vpx shadcn@latest add <name> --cwd packages/ui` after you check `vpx shadcn@latest list @shadcn --cwd packages/ui` and its docs. Never hand-build a control that a primitive covers.
 
@@ -64,14 +73,8 @@ Each workspace and infrastructure package pins its own `@deslop/coding-standards
 - **Skills.** The worktree script runs `vpx @deslop/coding-standards@latest`, which refreshes the engineering, design and testing copies in `.agents/skills` and `.claude/skills`.
 - **Bump.** When a task changes code, the cleanup pull request runs `bun add --dev --exact @deslop/coding-standards@latest` in every package directory, including infrastructure packages, the root, the scaffold baseline and consumer fixtures, then the root fix.
 - **New rules.** When a rule from a bump fails, turn it off in that package's `oxlint.config.ts`, never with inline disables; this overrides engineering's Disables rule. Remove rule entries and suppressions that the bump made obsolete.
-- **Touched files.** Each hand-written file that the task adds or changes leaves the legacy list and the scoped React Query exemptions, and passes the configured rules. Refactor it completely: its data code moves to Effect Atom, and its casts and suppressions go unless engineering allows one with a reason. Before each push, this command must print nothing:
-
-```bash
-for p in packages/*/ infra/*/; do [ -f "$p/oxlint.config.ts" ] || continue; git diff --name-only --relative="$p" origin/master...HEAD | while read -r f; do grep -qF "\"$f\"" "$p/oxlint.config.ts" && echo "$p$f"; done; done
-```
-
+- **Touched files.** A hand-written file that the task adds, or rewrites over half of, leaves the legacy list and the scoped exemptions and passes the configured rules: its casts and suppressions go unless engineering allows one with a reason. Every other changed file stays listed; never refactor a file only for lint or Effect Atom.
 - **Prune.** After the change, run the command below in the package directory, without `--quiet`. Remove each listed file that it does not print, and an import-ban exemption only after its imports are gone. Never add a file to the list.
-- **No blind refactors.** Never rewrite a listed file that the task does not otherwise change.
 - **Never linted.** Every source file, generated code and shadcn primitives included, is type-checked. Generated code and build output get no lint rules and no formatting. Shadcn primitives are formatted, with all lint rules off. None of them enters the legacy list. Never refactor a shadcn primitive, even one the task edits. The hand-written color picker, data tables and file input stay linted.
 
 ```bash

@@ -114,6 +114,17 @@
 				position: absolute;
 				inset: 0;
 			}
+			.tap {
+				position: absolute;
+				width: 44px;
+				height: 44px;
+				margin: -22px 0 0 -22px;
+				border-radius: 50%;
+				border: 3px solid var(--primary);
+				background: color-mix(in oklch, var(--primary) 18%, transparent);
+				opacity: 0;
+				z-index: 1;
+			}
 			video {
 				position: absolute;
 				left: 0;
@@ -196,11 +207,19 @@
 			</div>
 		</div>
 		<script>
-			// EDIT: one entry per chapter. start and end are composition seconds; target is the
-			// recorded element's center as viewport fractions; zoom is 1 for no push, at most 1.8.
+			// EDIT: one entry per chapter. start and end are composition seconds. Each move is one input
+			// or outcome: at is the composition second it happens, target the element's center as
+			// viewport fractions, zoom 1 for no push and at most 1.8, tap true for a click or a tap.
 			const CHAPTERS = [
-				{start: 2.6, end: 10.0, target: [0.5, 0.47], zoom: 1.45},
-				{start: 9.6, end: 22.0, target: [0.5, 0.52], zoom: 1.75}
+				{
+					start: 2.6,
+					end: 10.0,
+					moves: [
+						{at: 4.2, target: [0.5, 0.47], zoom: 1.45, tap: true},
+						{at: 7.4, target: [0.66, 0.72], zoom: 1.6, tap: true}
+					]
+				},
+				{start: 9.6, end: 22.0, moves: [{at: 11.4, target: [0.5, 0.52], zoom: 1.75, tap: false}]}
 			]
 
 			const W = 1120,
@@ -232,11 +251,25 @@
 					chapter.start + 0.3
 				)
 				if (!last) tl.to(`#cap${n}`, {opacity: 0, y: -10, duration: 0.35, ease: 'power2.in'}, chapter.end - 0.6)
-				if (chapter.zoom > 1) {
-					const to = aim(chapter.target, chapter.zoom)
-					tl.to(`#z${n}o`, {scale: to.s, duration: 1.4, ease}, chapter.start + 0.8)
-					tl.to(`#z${n}i`, {x: to.x, y: to.y, duration: 1.4, ease}, chapter.start + 0.8)
-				}
+				// The camera arrives on each target before its input, then the tap ring marks the input.
+				chapter.moves.forEach(move => {
+					const to = aim(move.target, move.zoom)
+					const arrive = Math.max(chapter.start, move.at - 1.1)
+					tl.to(`#z${n}o`, {scale: to.s, duration: 1.0, ease}, arrive)
+					tl.to(`#z${n}i`, {x: to.x, y: to.y, duration: 1.0, ease}, arrive)
+					if (!move.tap) return
+					const ring = document.createElement('div')
+					ring.className = 'tap'
+					ring.style.left = `${move.target[0] * W}px`
+					ring.style.top = `${move.target[1] * H}px`
+					document.getElementById('z' + n + 'i').append(ring)
+					tl.fromTo(
+						ring,
+						{scale: 0.5, opacity: 0.9},
+						{scale: 1.6, opacity: 0, duration: 0.6, ease: 'power2.out', immediateRender: false},
+						move.at
+					)
+				})
 			})
 
 			window.__timelines['main'] = tl

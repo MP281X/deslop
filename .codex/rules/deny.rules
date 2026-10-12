@@ -1,6 +1,6 @@
 # Commands agents never run. Codex matches exact leading tokens, so these get through and only the pair prompt forbids them:
 # `git -C <dir> push`, `git push origin <branch>:main`, an API call with the method after the endpoint,
-# `glab mr update --ready`, `gh stack submit --open`, `gh stack link --open` and the `mergePullRequest` and `markPullRequestReadyForReview` mutations through `gh api graphql`.
+# `gh stack submit --open`, `gh stack link --open` and the `mergePullRequest` mutation through `gh api graphql`.
 # Codex checks each rule's examples when it loads the file.
 
 PROTECTED = [
@@ -46,10 +46,10 @@ prefix_rule(
     not_match = ["git push origin --delete t3/topic"],
 )
 prefix_rule(
-    pattern = ["gh", "pr", ["merge", "ready"]],
+    pattern = ["gh", "pr", "merge"],
     decision = "forbidden",
-    justification = "The user merges and marks drafts ready.",
-    match = ["gh pr merge 12 --squash", "gh pr ready 12"],
+    justification = "The user merges pull requests.",
+    match = ["gh pr merge 12 --squash"],
     not_match = ["gh pr view 12", "gh pr create --draft"],
 )
 prefix_rule(
