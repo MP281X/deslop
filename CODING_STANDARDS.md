@@ -15,8 +15,6 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 - An app owns its RPCs, entrypoints, and services: `rpcs/contracts.ts` holds the RpcGroup and its schemas, `rpcs/handlers.ts` its layer, `lib/utils.ts` the AtomRpc client and shared operations, `services/<name>/` each service in the package shape, and `routes/` the pages in the web file-router layout, mobile apps included: `__root.tsx`, `(home)/index.tsx`, `<name>.tsx` and `<name>/$id.tsx`. A component one page uses stays in that page's file.
 - Entrypoints are `src/main.<role>.ts(x)`: `main.server.ts` the HTTP layer graph, `main.client.tsx` the router and root, and `main.cli.ts` a command line. A web app adds `main.ts` to run the server, because the Vite dev server imports `main.server.ts`; a mobile app has no dev server, so its `main.server.ts` runs itself.
 - A mobile app keeps what Expo reads at its root: `app.config.ts`, `eas.json`, `fingerprint.config.js` when it has native files the fingerprint misses, `modules/<name>` for its local native module and `targets/<name>` for app extensions.
-- Never patch a dependency's code with `pnpm patch`. Extend it through its public API, such as a local Expo module that registers `@expo/ui` modifiers and views.
-- Comments are one line and only state a constraint the code cannot show, such as a platform limit or an outside API's behavior. Rename or split code instead of narrating it.
 
 ## Apps
 
@@ -52,9 +50,8 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 
 ## Dependencies
 
-- Declare a new dependency as `latest`. When packages must match the versions another package declares, pin that package and those versions.
 - Keep dependencies in their existing owning packages; shared root dependencies stay at the root. Resolve version drift with normal package-manager updates, not by relocating declarations.
-- Updates stay within declared ranges and supported upstream families; update coupled packages together, then verify their real consumers. Vite+ owns its exact lint/test toolchain versions; do not independently chase their newer tags.
+- Updates stay within declared ranges and supported upstream families; update coupled packages together, then verify their real consumers. Vite+ owns its exact lint and test toolchain versions; do not independently chase their newer tags.
 - Peer checks stay strict. Vite+'s versioned Vite alias is accepted only for explicitly inspected consumer versions in `pnpm-workspace.yaml`, not through blanket `allowAny` or TypeScript peer suppression. Recheck compatibility when either side changes.
 
 ## RPC
@@ -65,7 +62,7 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 
 ## Components
 
-- Deslop surfaces use square borders, with no cards or rounded corners.
+- Deslop web surfaces use square borders, with no cards or rounded corners. iOS screens keep the system shapes.
 - Give each context one icon entrypoint for an action instead of text buttons repeating it.
 - Leave conventional icons without a tooltip; add a label only where it disambiguates.
 
@@ -76,5 +73,5 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 
 ## Local context
 
-- A touched package or meaningful configuration folder owns a concise `AGENTS.md` for usage and non-obvious decisions, with `README.md` as a relative symlink to it. Claude loads every `AGENTS.md` on the paths it reads; Codex loads only those from the repository root to its working directory, so workflow tells both to read the owner first. The agent configuration keeps its brief as `.claude/README.md` alone, because only configuration work needs it. A published package keeps the real file as `README.md` and links `AGENTS.md` to it, because `pnpm pack` drops a symlinked README, and ends it with a collapsed For agents section. Keep it current with the owning changes.
-- No duplicated repository/skill policy, source-code narration, empty templates, briefs inside `src`, or generic folder documents without a semantic owner. Shared procedures remain in skills; package-specific context belongs in its brief.
+- A touched package or meaningful configuration folder owns a concise `AGENTS.md` for usage and non-obvious decisions, with `README.md` as a relative symlink to it. A published package keeps the real file as `README.md` and links `AGENTS.md` to it, because `pnpm pack` drops a symlinked README, and ends it with a collapsed For agents section. Keep it current with the owning changes.
+- No policy duplicated between the repository and a skill, source-code narration, empty templates, `AGENTS.md` files inside `src`, or generic folder documents without a semantic owner. Shared procedures remain in skills; package-specific context belongs in its `AGENTS.md`.
