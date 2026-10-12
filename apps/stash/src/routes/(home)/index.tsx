@@ -1,6 +1,6 @@
 import {useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, HashSet, Match, Option, String, pipe} from 'effect'
+import {Array, DateTime, HashSet, Match, Option, String, pipe} from 'effect'
 
 import {
 	BottomSheet,
@@ -14,6 +14,7 @@ import {
 	List,
 	Menu,
 	Picker,
+	ProgressView,
 	ScrollView,
 	SwipeActions,
 	Text,
@@ -24,15 +25,17 @@ import {
 } from '@expo/ui/swift-ui'
 import type {useNativeState} from '@expo/ui/swift-ui'
 import {
+	accessibilityElement,
+	accessibilityHidden,
 	alignmentGuide,
 	aspectRatio,
 	background,
-	border,
 	buttonStyle,
-	clipped,
+	clipShape,
 	contentShape,
 	controlSize,
 	cornerRadius,
+	font,
 	foregroundStyle,
 	frame,
 	labelStyle,
@@ -49,7 +52,6 @@ import {
 	onTapGesture,
 	padding,
 	pickerStyle,
-	redacted,
 	resizable,
 	scrollContentBackground,
 	searchable,
@@ -63,12 +65,14 @@ import {Linking} from 'react-native'
 
 import {
 	answerAtom,
+	appOf,
 	brandOf,
 	imageAtom,
 	kindOf,
 	kinds,
 	notesAtom,
 	offerAtom,
+	queryAtom,
 	regenerateAtom,
 	removeAtom,
 	searchAtom
@@ -89,20 +93,20 @@ const row = [
 	listRowInsets({bottom: 10, leading: 16, top: 10, trailing: 16})
 ]
 
-const thumbnail = 56
+const thumbnail = 64
 
-const caption = [mono('caption', 11), foregroundStyle(colors.mutedForeground), lineLimit(1)]
+const caption = [mono('caption', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]
 
-function Placeholder(props: {symbol: 'globe' | 'photo' | 'play.rectangle' | 'text.alignleft' | 'xmark'}) {
+const square = frame({height: thumbnail, width: thumbnail})
+
+const tile = [clipShape('roundedRectangle', 10), accessibilityHidden(true)]
+
+function Placeholder(props: {symbol: 'globe' | 'photo' | 'play.rectangle' | 'text.alignleft' | 'text.bubble'}) {
 	return (
 		<Image
 			systemName={props.symbol}
-			size={18}
-			modifiers={[
-				foregroundStyle(colors.mutedForeground),
-				frame({height: thumbnail, width: thumbnail}),
-				border({color: colors.border, width: 1})
-			]}
+			size={20}
+			modifiers={[foregroundStyle(colors.mutedForeground), square, background(colors.border), ...tile]}
 		/>
 	)
 }
@@ -111,24 +115,14 @@ function Placeholder(props: {symbol: 'globe' | 'photo' | 'play.rectangle' | 'tex
 function Thumbnail(props: {id: Note['id']; symbol: Parameters<typeof Placeholder>[0]['symbol']}) {
 	const image = useAtomValue(imageAtom(props.id))
 	if (!AsyncResult.isSuccess(image)) return <Placeholder symbol={props.symbol} />
-	return (
-		<Image
-			uiImage={image.value}
-			modifiers={[
-				resizable(),
-				aspectRatio({contentMode: 'fill'}),
-				frame({height: thumbnail, width: thumbnail}),
-				clipped()
-			]}
-		/>
-	)
+	return <Image uiImage={image.value} modifiers={[resizable(), aspectRatio({contentMode: 'fill'}), square, ...tile]} />
 }
 
 function Preview(props: {note: NoteItem}) {
 	const symbol = pipe(
 		Match.value(kindOf(props.note)),
 		Match.when('tiktok', () => 'play.rectangle' as const),
-		Match.when('x', () => 'xmark' as const),
+		Match.when('x', () => 'text.bubble' as const),
 		Match.when('file', () => 'photo' as const),
 		Match.when('note', () => 'text.alignleft' as const),
 		Match.orElse(() => 'globe' as const)
@@ -137,51 +131,51 @@ function Preview(props: {note: NoteItem}) {
 	return Option.match(brandOf(props.note), {
 		onNone: () => <Placeholder symbol={symbol} />,
 		onSome: brand => (
-			<ZStack modifiers={[frame({height: thumbnail, width: thumbnail}), border({color: colors.border, width: 1})]}>
-				<BrandLogo brand={brand} size={22} />
+			<ZStack modifiers={[square, background(colors.border), ...tile]}>
+				<BrandLogo brand={brand} size={24} />
 			</ZStack>
 		)
 	})
 }
 
+const title = [mono('headline', 16), foregroundStyle(colors.foreground), lineLimit(2)]
+
 function Lines(props: {note: NoteItem}) {
 	const note = props.note
+	const byline = pipe(
+		[note.author, DateTime.formatLocal(DateTime.makeUnsafe(note.createdAt), {day: 'numeric', month: 'short'})],
+		Array.filter(String.isNonEmpty),
+		Array.join(' · ')
+	)
 	return pipe(
 		Match.value(note.status),
 		Match.when('organizing', () => (
-			<VStack alignment="leading" spacing={3} modifiers={[redacted('placeholder')]}>
-				<Text modifiers={[mono('headline', 14), lineLimit(1)]}>Reading the link and writing</Text>
-				<Text modifiers={[mono('subheadline', 12), lineLimit(1)]}>The summary arrives once tagged</Text>
-				<Text modifiers={caption}>author</Text>
+			<VStack alignment="leading" spacing={4}>
+				<Text modifiers={title}>{note.title}</Text>
+				<HStack spacing={6}>
+					<ProgressView modifiers={[controlSize('mini')]} />
+					<Text modifiers={caption}>Reading…</Text>
+				</HStack>
 			</VStack>
 		)),
 		Match.when('failed', () => (
-			<VStack alignment="leading" spacing={3}>
-				<Text modifiers={[mono('headline', 14), foregroundStyle(colors.foreground), lineLimit(1)]}>{note.title}</Text>
+			<VStack alignment="leading" spacing={4}>
+				<Text modifiers={title}>{note.title}</Text>
 				<Label
-					title="Couldn’t read · tap to retry"
+					title="Couldn’t read this link"
 					systemImage="exclamationmark.triangle.fill"
-					modifiers={[mono('subheadline', 12), foregroundStyle(colors.destructive), lineLimit(1)]}
+					modifiers={[font({textStyle: 'subheadline'}), foregroundStyle(colors.destructive), lineLimit(1)]}
 				/>
-				<Text modifiers={caption}>{note.issue}</Text>
+				<Text modifiers={caption}>{byline}</Text>
 			</VStack>
 		)),
 		Match.orElse(() => (
-			<VStack alignment="leading" spacing={3}>
-				<Text modifiers={[mono('headline', 14), foregroundStyle(colors.foreground), lineLimit(1)]}>{note.title}</Text>
-				<Text modifiers={[mono('subheadline', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
+			<VStack alignment="leading" spacing={4}>
+				<Text modifiers={title}>{note.title}</Text>
+				<Text modifiers={[font({textStyle: 'subheadline'}), foregroundStyle(colors.mutedForeground), lineLimit(2)]}>
 					{note.summary}
 				</Text>
-				<Text modifiers={caption}>
-					{String.toLowerCase(String.isNonEmpty(note.author) ? note.author : note.source)}
-				</Text>
-				<Text modifiers={caption}>
-					{pipe(
-						note.tags,
-						Array.map(name => `#${name}`),
-						Array.join('  ')
-					)}
-				</Text>
+				<Text modifiers={caption}>{byline}</Text>
 			</VStack>
 		))
 	)
@@ -216,7 +210,8 @@ function NoteRow(props: {
 							frame({alignment: 'leading', maxWidth: Infinity}),
 							contentShape(shapes.rectangle()),
 							onAppear(props.onAppear),
-							onTapGesture(() => (note.status === 'failed' ? props.onRegenerate(note.id) : props.onOpen(note.id)))
+							onTapGesture(() => props.onOpen(note.id)),
+							accessibilityElement('combine')
 						]}
 					>
 						<Preview note={note} />
@@ -229,10 +224,7 @@ function NoteRow(props: {
 						onSome: url => (
 							<Button onPress={() => Linking.openURL(url)}>
 								<Label
-									title={pipe(
-										Array.findFirst(kinds, entry => entry.kind === kindOf(note) && entry.kind !== 'web'),
-										Option.match({onNone: () => 'Open Link', onSome: entry => `Open in ${entry.label}`})
-									)}
+									title={Option.match(appOf(note), {onNone: () => 'Open Link', onSome: name => `Open in ${name}`})}
 									{...Option.match(brandOf(note), {
 										onNone: () => ({systemImage: 'arrow.up.right' as const}),
 										onSome: brand => ({icon: <BrandIcon brand={brand} />})
@@ -329,7 +321,7 @@ function PasteSheet() {
 					modifiers={[foregroundStyle(colors.foreground)]}
 				/>
 				<Text modifiers={[mono('headline', 17), foregroundStyle(colors.foreground)]}>
-					{kind === 'image' ? 'save the copied image?' : 'save the copied link?'}
+					{kind === 'image' ? 'Save the copied image?' : 'Save the copied link?'}
 				</Text>
 				<VStack spacing={4} modifiers={[padding({top: 6})]}>
 					<Button
@@ -369,14 +361,13 @@ export function HomeRoute(props: {
 	onSearch: (text: string) => void
 	onTag: (name: string) => void
 	query: ReturnType<typeof useNativeState<string>>
-	search: string
 	tag: string
 }) {
 	const items = useAtomSuspense(notesAtom).value
 	const remove = useAtomSet(removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
-	const query = String.trim(props.search)
-	const found = pipe(useAtomValue(searchAtom(query)), AsyncResult.getOrElse(Option.none))
+	const query = String.trim(useAtomValue(queryAtom))
+	const found = pipe(useAtomValue(searchAtom), AsyncResult.getOrElse(Option.none))
 	const notes = Array.filter(
 		items,
 		note =>
@@ -434,11 +425,22 @@ export function HomeRoute(props: {
 							</HStack>
 						</ScrollView>
 						{filtered && Array.isReadonlyArrayEmpty(notes) && (
-							<ContentUnavailableView
-								title={String.isEmpty(query) ? 'No Notes' : `No Results for “${query}”`}
-								systemImage={String.isEmpty(query) ? 'tray' : 'magnifyingglass'}
-								modifiers={[...row, listRowSeparator('hidden')]}
-							/>
+							<VStack spacing={12} modifiers={[...row, listRowSeparator('hidden')]}>
+								<ContentUnavailableView
+									title={String.isEmpty(query) ? 'No Notes' : `No Results for “${query}”`}
+									systemImage={String.isEmpty(query) ? 'tray' : 'magnifyingglass'}
+								/>
+								{(String.isNonEmpty(props.tag) || props.kind !== '') && (
+									<Button
+										label="Show All Notes"
+										onPress={() => {
+											props.onTag('')
+											props.onKind('')
+										}}
+										modifiers={[buttonStyle('glass')]}
+									/>
+								)}
+							</VStack>
 						)}
 						{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
 						{Array.map(Array.take(notes, limit), (note, position) => (
