@@ -143,6 +143,31 @@ function redundantConstAlias(input: {context: Context; node: ESTree.VariableDecl
 	)
 }
 
+function exportedAlias(input: {context: Context; node: ESTree.VariableDeclarator}) {
+	return (
+		input.node.parent.type === 'VariableDeclaration' &&
+		input.node.parent.kind === 'const' &&
+		input.node.parent.parent.type === 'ExportNamedDeclaration' &&
+		input.node.id.type === 'Identifier' &&
+		input.node.init?.type === 'Identifier' &&
+		pipe(
+			variableFor(input.context, input.node.init),
+			Option.exists(variable =>
+				Array.some(
+					variable.defs,
+					definition =>
+						definition.type === 'ImportBinding' ||
+						definition.type === 'FunctionName' ||
+						definition.type === 'ClassName' ||
+						(definition.node.type === 'VariableDeclarator' &&
+							definition.node.parent.type === 'VariableDeclaration' &&
+							definition.node.parent.kind === 'const')
+				)
+			)
+		)
+	)
+}
+
 function singleUseLiteral(input: {context: Context; node: ESTree.VariableDeclarator}) {
 	if (
 		input.node.parent.type !== 'VariableDeclaration' ||
@@ -230,6 +255,9 @@ export const noTrivialIndirection = defineRule({
 			}
 		},
 		VariableDeclarator: node => {
+			if (exportedAlias({context, node})) {
+				context.report({message: 'Export the value under one name; this second name is an alias.', node})
+			}
 			if (redundantConstAlias({context, node})) {
 				context.report({message: 'Use the immutable source binding directly.', node})
 			}
