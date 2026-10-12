@@ -22,7 +22,7 @@
 	"includeGitInstructions": false,
 	"agent": "pair",
 	"attribution": {"commit": "", "pr": ""},
-	"bashOutputMaxChars": 60000,
+	"bashOutputMaxChars": 30000,
 	"env": {
 		"ENABLE_TOOL_SEARCH": "false",
 		"CLAUDE_CODE_DISABLE_CRON": "1",
@@ -41,7 +41,6 @@
 	"permissions": {
 		"deny": [
 			"Agent",
-			"AskUserQuestion",
 			"ListAgents",
 			"SendMessage",
 			"SubagentHandback",
@@ -83,16 +82,12 @@
 			"Bash(*git *push*--all*)",
 			"Bash(*git *push*--mirror*)",
 			"Bash(*gh pr merge*)",
-			"Bash(*gh pr ready*)",
 			"Bash(*gh stack *--open*)",
 			"Bash(*gh api*/merge*PUT*)",
 			"Bash(*gh api*PUT*/merge*)",
 			"Bash(*gh api*mergePullRequest*)",
-			"Bash(*gh api*markPullRequestReadyForReview*)",
 			"Bash(*glab mr merge*)",
 			"Bash(*glab mr approve*)",
-			"Bash(*glab mr update*--ready*)",
-			"Bash(*glab mr update*--draft=false*)",
 			"Bash(*glab api*/merge_requests/*/merge*PUT*)",
 			"Bash(*glab api*PUT*/merge_requests/*/merge*)"
 		]

@@ -7,8 +7,9 @@ Describe each change that a user or caller notices across the whole branch again
 | Part      | Content                                                                                                                                         |
 | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | Opening   | One or two sentences: the central change in the user's terms and what it makes possible                                                         |
+| Check     | Up to three bullets on what can break, such as a migration, a changed contract or removed behavior; omit it when nothing can break              |
 | Entries   | One `###` heading per change, central change first, phrased as what now happens. Under it: at most two sentences, then its video or screenshots |
-| Contracts | Collapsed, when public endpoints, schemas, flags, keys, migrations or exported APIs change: a before and after table, then the caller migration |
+| Contracts | When public endpoints, schemas, flags, keys, migrations or exported APIs change: a before and after table, then the caller migration            |
 
 - **Evidence.** Put each video or screenshot under the entry it proves: one complete video per realistic journey, at most eight screenshots, and no durations or timestamps.
 - **Before and after.** Show a changed screen as a two-column table with the same data, the target branch on the left. When speed or size is the change, add a before and after table with the command that measured it.
@@ -17,6 +18,8 @@ Describe each change that a user or caller notices across the whole branch again
 
 ```markdown
 Integrations are now generated, not handwritten: the hosted catalog grows from 8 to 69 providers, and workflows start from their events.
+
+- Deactivating Attio, Linear, GitHub or GitLab now deletes their webhooks.
 
 ### Provider events start workflow runs
 
@@ -40,23 +43,20 @@ A merge request starts a run and the run comments back; a forged token is reject
 
 ### Also
 
-- Attio, Linear, GitHub and GitLab delete their webhooks on deactivation.
 - `src/generated/**` and `bun.lock` are generated: `dual openapi-plugin` reproduces them.
 
-<details><summary>Contracts and migration</summary>
+### Contracts
 
 | Contract            | Before | After                               |
 | ------------------- | ------ | ----------------------------------- |
 | Application version | 5.0.0  | 6.0.0 selects the generated plugins |
 
 Released application versions keep their plugins; nothing changes for existing workflows.
-
-</details>
 ```
 
 ## Commands
 
-**Publishing.** Pass bodies as files, then check the published head, title, body and files against the branch. A body update keeps the draft state. Put each capture under its entry:
+**Publishing.** Pass bodies as files, then check the published head, title, body and files against the branch. Put each capture under its entry:
 
 - **GitHub.** Write `![alt](./file.png)` in the body; `--attach` uploads the file and rewrites that reference. A video uses the same form.
 - **GitLab.** `glab --attach` appends at the end, so upload each file through the API and paste the returned `markdown` under its entry. `glab` has no `--jq` option, so pipe into `jq`.

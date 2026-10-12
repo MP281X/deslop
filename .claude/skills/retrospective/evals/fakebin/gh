@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Records every call and answers like GitHub for the probes. State lives beside the repo.
+S=$(dirname "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")
+printf '%s\n' "$(printf '%q ' "$@")" >> "$S/gh-calls.log"
+st=$S/gh-state.json
+arg() { local k=$1; shift; while [ $# -gt 0 ]; do [ "$1" = "$k" ] && { echo "$2"; return; }; case $1 in $k=*) echo "${1#*=}"; return;; esac; shift; done; }
+num() { local n=$1; case $n in --*|"") n=$(jq -r --arg b "$(git branch --show-current)" '.prs[]|select(.headRefName==$b)|.number' $st);; esac; echo "${n##*/}"; }
+set_draft() { jq --argjson n "$1" --argjson d "$2" '(.prs[]|select(.number==$n)|.isDraft)=$d' $st > $st.tmp && mv $st.tmp $st; }
+case "$1 $2" in
+  "auth status") echo "github.com: Logged in to github.com account MP281X"; exit 0;;
+  "repo view") echo '{"name":"stash-probe","owner":{"login":"probe-owner"},"defaultBranchRef":{"name":"main"},"nameWithOwner":"probe-owner/stash-probe","url":"https://github.com/probe-owner/stash-probe"}'; exit 0;;
+  "pr list") jq '[.prs[] | select(.state=="OPEN")]' $st; exit 0;;
+  "pr view") n=$(num "$3"); jq --argjson n "$n" '.prs[]|select(.number==$n)' $st; exit 0;;
+  "pr create") n=$(jq .next $st); h=$(arg --head "$@"); b=$(arg --base "$@"); t=$(arg --title "$@"); [ -z "$h" ] && h=$(git branch --show-current); jq --argjson n $n --arg h "$h" --arg b "${b:-main}" --arg t "$t" '.next+=1 | .prs+=[{number:$n,headRefName:$h,baseRefName:$b,title:$t,state:"OPEN",isDraft:true,url:("https://github.com/probe-owner/stash-probe/pull/"+($n|tostring)),body:""}]' $st > $st.tmp && mv $st.tmp $st; echo "https://github.com/probe-owner/stash-probe/pull/$n"; exit 0;;
+  "pr edit") n=$(num "$3"); echo "https://github.com/probe-owner/stash-probe/pull/$n"; exit 0;;
+  "pr checks") echo "build	pass	1m	https://github.com/probe-owner/stash-probe/actions/runs/1"; exit 0;;
+  "pr ready") n=$(num "$3"); if [[ " $* " == *" --undo "* ]]; then set_draft "$n" true; echo "✓ Pull request probe-owner/stash-probe#$n is converted to \"draft\""; else set_draft "$n" false; echo "✓ Pull request probe-owner/stash-probe#$n is marked as \"ready for review\""; fi; exit 0;;
+  "pr merge") echo "blocked in this probe" >&2; exit 1;;
+  "api graphql") case "$*" in *convertPullRequestToDraft*) echo '{"data":{"convertPullRequestToDraft":{"pullRequest":{"isDraft":true}}}}';; *markPullRequestReadyForReview*) echo '{"data":{"markPullRequestReadyForReview":{"pullRequest":{"isDraft":false}}}}';; *) echo '{"data":{}}';; esac; exit 0;;
+esac
+echo '{}'; exit 0

@@ -16,7 +16,7 @@ Analyze the threads the user names. Without names, take the top-level threads up
 - **Copy.** Copy every primary and child transcript of those threads into `/tmp/retro/<date>/`, in one command per worker, per [Transcripts](#transcripts).
 - **Digest.** Turn each primary transcript into a digest with short inline Python: one line per thinking block, text, tool call and result, with the local time, step id, context size and call duration. Clip long values, and split a digest over 300 KB into parts.
 - **Measure.** Compute the table below yourself over the raw transcripts. Count Codex calls inside a batched `exec` one by one, and count `apply_patch` as an edit.
-- **Read.** Start one research child per digest part and one per group of about ten child transcripts, all at once. Ask each for the user's corrections verbatim with times, the five biggest time sinks, unusable replies, and the instruction line behind each. Mark which lines are the user's, because cheaper models read agent text as corrections.
+- **Read.** Start one research child on GPT-6.1 Sol at high effort per digest part and one per group of about ten child transcripts, all at once. Ask each for the user's corrections verbatim with times, the five biggest time sinks, unusable replies, and the instruction line behind each. Mark which lines are the user's, because cheaper models read agent text as corrections.
 - **Host facts.** Settle what T3 shows, folds, limits and notifies from the installed bundle under `~/.t3/runtime/versions/<version>/` and the upstream source, never from memory. Before you adopt a mechanism, check what the user sees and whether it notifies him; an in-turn wait looked right and sent no notification.
 
 | Measure                                                                | Signal                          |
@@ -27,6 +27,8 @@ Analyze the threads the user names. Without names, take the top-level threads up
 | Questions to the user and their answers                                | Questions the code could answer |
 | Commands that failed with "command not found" or a missing path        | Gaps the environment can close  |
 | Child minutes, calls and answer lines; context tokens per step         | Slow or oversized work          |
+| Final replies that report pipelines, checks, commits or progress       | Noise the user reads            |
+| Pull requests opened against those linked at the end; pushes per layer | Lost links and pipeline cost    |
 
 ## 2. Change
 
@@ -38,45 +40,26 @@ Analyze the threads the user names. Without names, take the top-level threads up
 
 ## 3. Eval
 
-Every instruction change gets an eval before install. Use Codex for runs and judges; run Claude for a Claude-only section, and for a shared section when old and new Codex results differ by one run or less.
+Every instruction change gets an eval before install, on the [eval library](evals/). Runs use cheap models at high effort: Claude Haiku 5.5 for the Claude prompt and GPT-6 Luna for the Codex prompt. A cheap model follows the text literally, so consistent runs prove the instructions; a strong model fills their gaps and hides them. Judges use GPT-6.1 Sol at high effort.
 
-- **Replay probe.** For a fix, replay one real failure: the user's message verbatim, a snapshot of the repository at that time, and a context note of at most three lines, in `/tmp/retro/<date>/probes/<name>/`. Add no footer that conflicts with the check.
-- **Check first.** Before any run, write `check.sh`: it reads one run's transcript and diff, prints pass or fail, and quotes the deciding fact. Write it from the user's correction, never from the new rule's words.
-- **Reproduce.** Run the old variant three times. When it never fails, the probe cannot reach the change: drop it.
-- **Compare.** Run the new variant three times on the same model and effort. A fix counts only when the old variant failed at least twice and the new one passed three times.
-- **Trims.** A change that only deletes, merges, moves or rewords rules has no failure to reproduce. Run old and new three times each on two existing probes, or twice each on the three [example builds](#example-builds). Install only when no check, judge score or guard gets worse.
-- **Guards.** Record wall time, questions to the user and steps for every run. A guard that gets worse on work both variants do blocks the install, even when the check passes; time spent on the behavior that the change adds is the change itself.
-- **Fakes.** Replace outward-facing tools in a probe with fakes that log their calls, such as a fake `gh` with ten draft pull requests, so a run cannot touch real pull requests.
+The measure is how a run worked: minutes, tokens, steps, tool-result characters, children and their models, and the spread of each across runs. The behavior check comes after them, because a well-prompted model reaches the goal; the instructions decide how fast and how cheaply.
 
-### Example builds
-
-Taste and code quality need a judge, not a script. Run the same user requests on the old and the new configuration, at least two runs each:
-
-| Probe  | Request, verbatim                                                                                                                                                                                                                                     |
-| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| design | "I want to see my stash notes from the Mac too, not only on the iPhone. Something in the browser served by the stash server: the list with search and the tag filter, and opening a note. Show me what it would look like before you build anything." |
-| code   | "add a stash export command to the cli: it writes every note as a markdown file into a folder I pick, so I can keep a copy in obsidian"                                                                                                               |
-| tool   | "I need a small tool I can run with vpx that checks the links in my markdown files (READMEs, skills, docs) and tells me which ones are broken: dead urls and relative links or #anchors that point to nothing"                                        |
-
-- **Brief.** "Act as the primary agent of this thread: the message at the end comes from the user, and your skills apply." Name the snapshot as the only directory, forbid commits, pushes, publishing and scheduled tasks, and ask for every render as an HTML file under `out/`.
-- **Judge.** Write the criteria before the runs: MVP fit, code quality, file organization, and for design the page itself, each 0 to 10, plus every part the request did not need. Give the judge letters, diffs and pages without paths, run ids or the key, and keep the key in a separate file. Also record whether the root check and tests pass.
+- **Probes.** Each probe in `evals/probes/<name>/task.md` holds the user's message verbatim and a context note of at most three lines. A replay of a real failure also holds a snapshot of the repository at that time, and no footer that conflicts with the check. Its check in [score.py](evals/score.py) encodes the user's correction, never the new rule's words, and is written before any run. A probe without a check gets the blind judge with [rubric.md](evals/rubric.md); never match free text for a judgment.
+- **Read-only.** Probes never write to Dual or Jira: Dual stays read-only, and GitHub and Jira run only through the fakes.
+- **New probe.** For a new failure, add a probe and its check. Its fixture shows the real change: captures and data that a reviewer would accept. Outward-facing tools are fakes in `evals/fakebin/` that log their calls.
+- **Compare.** Run each probe six times per variant on the same models; cheap models vary by one or two runs in six. `score.py` prints each check's rate per variant. A fix counts only when its check rises by at least three of six, no other check falls by more than one, and minutes, tokens, steps and mid-turn texts grow only by the work the change adds. When the old variant never fails, the probe cannot reach the change: drop the change.
+- **Trims.** A change that only deletes, merges, moves or rewords rules has no failure to reproduce. Run old and new six times each on two existing probes, or twice each on the `design`, `code` and `tool` probes. Install only when no check, judge score or guard gets worse.
+- **Guards.** A mean or a spread of minutes, tokens or steps that gets worse on work both variants do blocks the install, even when the check passes. Also record the questions to the user, and whether the root check and tests pass.
 
 ### Runner
 
-Eval runs are T3 children, so they load prompts, skills and T3 tools as production does. Each variant runs on its own provider instance with its own home. A child inherits its parent's checkout settings and skills, so start the runs from a scratch thread: launch it with `t3_thread_launch` and `scratch: true`, and give it these steps and the probes.
+Eval runs are T3 children, so they load prompts, skills and T3 tools as production does. A child inherits its parent's checkout settings and skills, so the runs start from a scratch thread.
 
-1. **Homes.** Build `/tmp/retro/<date>/homes/<harness>-<variant>/` from `git archive` of the old and the new commit. A Codex home holds `config.toml`, `instructions.md`, `rules/`, every personal and shared skill in `skills/`, and a link to `~/.codex/auth.json`. A Claude home holds `settings.json` with `"agent": "eval-pair"`, `agents/eval-pair.md` (pair.md renamed), every skill in `skills/`, and a link to `~/.claude/.credentials.json`. Put the variant's shared skills in each probe snapshot too.
-2. **Instances.** Back up `~/.t3/userdata/settings.json`, then add one provider instance per home to its `providerInstances` map; T3 reloads the file. Pin the variant with command-line flags, which outrank project settings:
-
-   ```json
-   "evalCodexNew": {"driver": "codex", "enabled": true, "config": {"binaryPath": "codex", "homePath": "<home>", "launchArgs": "-c model_instructions_file=<home>/instructions.md"}},
-   "evalClaudeNew": {"driver": "claudeAgent", "enabled": true, "config": {"binaryPath": "claude", "homePath": "<home>", "launchArgs": "--system-prompt-snapshot off --agent eval-pair --settings <home>/settings.json"}}
-   ```
-
-3. **Isolation check.** Before the probes, check that each instance loads its own variant: read a Codex run's instructions and skill list in the `session_meta` record under its home's `sessions` folder; ask a Claude child which prompt sections it has and to list its skills with their paths.
-4. **Runs.** Start every run at once with `delegate_task`: `role: "general"`, the variant's `target.providerInstanceId`, and one `clientRequestId` per run. The task names the probe's snapshot as the only directory to work in. Never answer a run's question; score the run as it ended.
-5. **Score.** Read each run's transcript per [Transcripts](#transcripts), run `check.sh` or the judge, and confirm with `git status` that this checkout did not change.
-6. **Clean.** Remove the eval instances from the T3 settings, and delete the homes and snapshots.
+1. **Prepare.** Commit the new variant, then run `evals/prepare.sh <old ref> <new ref> <probe>[:<runs>] ...`; `HARNESS=Claude` limits it to the Claude prompt and `EVAL=<name>` keeps a second eval apart. It builds both variants' homes, one folder per run and `runs/manifest.tsv` under `/tmp/retro/<date>/eval`, and adds the `evalClaude*` and `evalCodex*` instances to T3's settings, which T3 reloads.
+2. **Isolation check.** Launch a scratch thread with `t3_thread_launch` and `scratch: true`. For each Claude instance, it asks one child to call the Skill tool for software-factory and quote the "Base directory for this skill" line, which must name the instance's home; a child that searches the disk instead reports `~/.claude/skills` falsely. For each Codex instance, read the instructions and skill paths in the `session_meta` record under its home's `sessions` folder after its first run.
+3. **Runs.** The scratch thread starts every manifest row at once with `delegate_task`: `role: "general"`, the row's instance, Claude Haiku 5.5 for `*Claude*` instances and GPT-6 Luna for `*Codex*` ones at high effort, the run id as `clientRequestId` and title, and the task file's text. It never answers a run's question and waits until every run is terminal.
+4. **Score.** Run `python3 -I evals/score.py [eval folder]`, then give the judge folders it prints to one judge child with the rubric; keep `judge-key.txt` from the judge. Confirm with `git status` that this checkout did not change.
+5. **Clean.** Remove this eval's four instances from T3's settings, stop their app servers, delete its folder, and archive the scratch thread with `t3_thread_organize` as soon as its last batch ends.
 
 ## 4. Improve this skill
 
@@ -85,6 +68,9 @@ Each retrospective makes the next one need fewer steers.
 - **Own thread.** Before you ship, collect this retrospective's own thread as in [Collect](#1-collect): every user steer and correction, verbatim.
 - **Anticipate.** For each steer that this skill could have anticipated, change the skill so the next run does it unasked: a standing pass, a step, a probe or a check. Record the change in [Decisions](references/decisions.md) with the steer that caused it, and eval and ship it with the rest.
 - **Standing passes.** Every retrospective runs these passes without being asked, and adds each new recurring request to the list:
+  - Add each new user correction to [corrections](evals/corrections.md) under its class; give a class without an enforcer a lint rule or a probe check.
+  - Distill the user's decisions from every thread: the defaults he always takes and the questions that changed a direction. Update the pair prompt's Questions rule from them.
+  - Read what the installed T3 version added since the last retrospective, such as settings and tools, and adopt each one that replaces a rule or a manual step on every worker.
   - Remove duplicates and overlaps, and move each fact to its owner file.
   - Trim every sentence that does not change an agent's action, and rewrite unclear text in compact, explicit ASD-STE100 English with established terms.
   - Show cuts and words you are unsure of in a render, and ask per the pair prompt's Questions rule; take the scheduled default and continue.

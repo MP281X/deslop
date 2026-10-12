@@ -4,6 +4,8 @@
 
 **Agent configuration.** Before you change `.claude`, `.codex` or the shared skills, read the retrospective skill's [Decisions](../../retrospective/references/decisions.md) for the owners and the adopted and rejected approaches. `.claude/agents/pair.md` and `.codex/instructions.md` differ only before "# The user's pair": make each edit below that heading in both files, and confirm with `diff <(sed -n '/^# The user.s pair$/,$p' .claude/agents/pair.md) <(sed -n '/^# The user.s pair$/,$p' .codex/instructions.md)`.
 
+**Reference app.** `apps/stash` follows `CODING_STANDARDS.md`'s layout; copy its shape for a new app, service, route or command.
+
 **Commands.** Vite+ caches checks by task inputs and never caches fixes. Use `--no-cache` to prove a fresh run.
 
 ```bash
