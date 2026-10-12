@@ -16,8 +16,7 @@ const repeating = [
 	'WhileStatement'
 ]
 
-// True when the read runs exactly once whenever the statement runs: not repeated by a loop or callback, and not
-// skipped by a conditional, short-circuit or optional chain.
+// Loops, callbacks, conditionals, short-circuits and optional chains can repeat or skip the read.
 function runsOnce(input: {child: ESTree.Node; node: ESTree.Node; statement: ESTree.Node}): boolean {
 	const node = input.node
 	const child = input.child

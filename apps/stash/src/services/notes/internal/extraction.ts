@@ -194,8 +194,7 @@ function readBytes(response: HttpClientResponse.HttpClientResponse) {
 	)
 }
 
-// DNS is resolved once and the connection pinned to the checked address, so a rebinding host cannot reach the tailnet.
-// Through the proxy, the proxy resolves the host outside the tailnet.
+// Pinning the checked address stops a rebinding host from reaching the tailnet; the proxy resolves outside it.
 const load = Effect.fnUntraced(function* <A, E>(
 	url: URL,
 	read: (response: HttpClientResponse.HttpClientResponse) => Effect.Effect<A, E>

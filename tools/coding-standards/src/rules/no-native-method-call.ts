@@ -69,9 +69,7 @@ const nativeMethods = [
 	'with'
 ]
 
-// The flags of a native regular expression literal or global RegExp construction; inner None means unknown flags.
-// The flags of a regular expression created right here: a literal, or RegExp with a literal pattern. Inner None means
-// unknown flags.
+// Inner None means the flags are unknown.
 function freshRegExpFlags(input: {context: Context; node: ESTree.Expression}): Option.Option<Option.Option<string>> {
 	if (input.node.type === 'Literal' && Predicate.hasProperty(input.node, 'regex')) {
 		return Option.some(pipe(input.context.sourceCode.getText(input.node), String.split('/'), Array.last))
