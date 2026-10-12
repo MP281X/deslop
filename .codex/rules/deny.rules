@@ -1,6 +1,6 @@
 # Commands agents never run. Codex matches exact leading tokens, so these get through and only the pair prompt forbids them:
 # `git -C <dir> push`, `git push origin <branch>:main`, an API call with the method after the endpoint,
-# `glab mr update --ready` and GraphQL mutations through `gh api graphql`.
+# `glab mr update --ready`, `gh stack submit --open`, `gh stack link --open` and the `mergePullRequest` and `markPullRequestReadyForReview` mutations through `gh api graphql`.
 # Codex checks each rule's examples when it loads the file.
 
 PROTECTED = [
@@ -15,13 +15,13 @@ WRITE_METHODS = ["POST", "PUT", "PATCH", "DELETE"]
 prefix_rule(
     pattern = ["git", "push", ["--all", "--mirror"]],
     decision = "forbidden",
-    justification = "Never push every branch; publish only the thread's layers.",
+    justification = "Never push every branch; publish only the thread's branches.",
     match = ["git push --all", "git push --mirror origin"],
 )
 prefix_rule(
     pattern = ["git", "push", "origin", ["--all", "--mirror"]],
     decision = "forbidden",
-    justification = "Never push every branch; publish only the thread's layers.",
+    justification = "Never push every branch; publish only the thread's branches.",
     match = ["git push origin --all"],
 )
 prefix_rule(
@@ -62,14 +62,14 @@ prefix_rule(
 prefix_rule(
     pattern = ["gh", "api", ["-X", "--method"], WRITE_METHODS],
     decision = "forbidden",
-    justification = "Write through the gh commands the workflow names.",
+    justification = "Write through the gh commands software-factory names.",
     match = ["gh api -X PUT repos/owner/name/pulls/1/merge"],
     not_match = ["gh api repos/owner/name/pulls/1"],
 )
 prefix_rule(
     pattern = ["glab", "api", ["-X", "--method"], WRITE_METHODS],
     decision = "forbidden",
-    justification = "Write through the glab commands the workflow names.",
+    justification = "Write through the glab commands software-factory names.",
     match = ["glab api --method PUT projects/1/merge_requests/3/merge"],
     not_match = ["glab api projects/1/pipelines/2/jobs"],
 )

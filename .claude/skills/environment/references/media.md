@@ -8,20 +8,20 @@ Analyze what the speaker said, not a summary of it, then read the sources the sp
 vpx @deslop/stash@latest save '<url>' > /tmp/stash-<name>.md
 ```
 
-The command saves the link as a stash note on the server on `dev`, waits until the server has read and tagged it, and prints the note as Markdown: the title, the AI's notes, the words in the images, the source text the server read and a timestamped transcript. The server transcribes audio up to two hours long, one video at a time, so run long talks in the background. A video without an audio track has no transcript; then read the post text in the note and look at the video frames.
+The command saves the link as a stash note on dev's server, waits until the server read and tagged it, and prints the note as Markdown: the title, the AI notes, the text in the images, the source text and a timestamped transcript. The server transcribes audio up to two hours long, one video at a time, so run long talks in the background. A video without audio has no transcript: read the post text and look at the frames.
 
-## When a site blocks this host
+## Blocked sites
 
-The stash server already sends every `yt-dlp` request through the Mullvad proxies on `dev` and moves to the next one when a site blocks it, so `save` reaches YouTube. For your own fetches from any tailnet machine, use a proxy on ports 1080 to 1084 instead of a Mullvad exit node, which would route the whole machine:
+The stash server sends every `yt-dlp` request through the Mullvad proxies on dev and moves to the next proxy when a site blocks one. For your own fetches, use a proxy on ports 1080 to 1084, never a Mullvad exit node, which routes the whole machine:
 
 ```bash
 yt-dlp --proxy socks5://dev:1080 '<url>'
 curl --proxy socks5h://dev:1080 '<url>'
 ```
 
-`curl --proxy socks5h://dev:1080 https://am.i.mullvad.net/json` shows the exit server. When YouTube asks to confirm you are not a bot, try the next port; to replace a relay, follow [Maintenance](maintenance.md#machines). If every server fails, use the speaker's own post of the talk, a published transcript or the repositories discussed. Label each source by where it comes from, and mark a third-party transcript as secondary.
+When YouTube asks for a bot check, try the next port; to replace a relay, follow [Maintenance](maintenance.md#machines). When every proxy fails, use the speaker's own post, a published transcript or the repositories discussed. Label each source by its origin, and mark a third-party transcript as secondary.
 
 ## Analyze
 
-- Keep apart what the speaker said (with a timestamp), what primary sources show and your own inference.
-- Map each idea to a proposed change in a named file. Implement and test it only when the task asks for changes.
+- Keep apart what the speaker said, with a timestamp, what primary sources show, and your own inference.
+- Map each idea to a proposed change in a named file. Implement it only when the task asks for changes.
