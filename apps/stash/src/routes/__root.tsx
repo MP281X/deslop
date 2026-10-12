@@ -1,4 +1,4 @@
-import {useAtomMount} from '@effect/atom-react'
+import {useAtomMount, useAtomSet} from '@effect/atom-react'
 
 import {Array} from 'effect'
 
@@ -6,6 +6,7 @@ import {Host, NavigationDestination, NavigationStack, ProgressView, useNativeSta
 import {background, tint} from '@expo/ui/swift-ui/modifiers'
 import {Suspense, useState} from 'react'
 
+import {queryAtom} from '#lib/utils.ts'
 import type {Kind} from '#lib/utils.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
 import {ComposeRoute} from '#routes/compose.tsx'
@@ -16,7 +17,7 @@ import {updateAtom} from '@deslop/runtime/mobile'
 export function RootRoute() {
 	useAtomMount(updateAtom)
 	const [path, setPath] = useState<string[]>([])
-	const [search, setSearch] = useState('')
+	const setQuery = useAtomSet(queryAtom)
 	const [tag, setTag] = useState('')
 	const [kind, setKind] = useState<Kind | ''>('')
 	const query = useNativeState('')
@@ -32,13 +33,12 @@ export function RootRoute() {
 				<Suspense fallback={<ProgressView />}>
 					<HomeRoute
 						query={query}
-						search={search}
 						tag={tag}
 						kind={kind}
 						onCompose={() => setPath(['compose'])}
 						onKind={setKind}
 						onOpen={id => setPath([id])}
-						onSearch={setSearch}
+						onSearch={setQuery}
 						onTag={setTag}
 					/>
 				</Suspense>
@@ -49,6 +49,7 @@ export function RootRoute() {
 						) : (
 							<NoteRoute
 								id={id}
+								onClose={() => setPath([])}
 								onTag={name => {
 									setTag(name)
 									setPath([])

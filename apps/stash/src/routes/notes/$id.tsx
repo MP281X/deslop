@@ -1,71 +1,75 @@
-import {useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Option, String, pipe} from 'effect'
+import {Array, DateTime, Match, Option, String, pipe} from 'effect'
 
 import {
 	Button,
 	ContentUnavailableView,
+	DisclosureGroup,
 	HStack,
 	Image,
+	Menu,
 	ScrollView,
+	ShareLink,
 	Text,
 	Toolbar,
 	ToolbarItem,
 	VStack
 } from '@expo/ui/swift-ui'
 import {
+	accessibilityHidden,
+	accessibilityLabel,
 	aspectRatio,
 	background,
+	buttonStyle,
+	clipShape,
+	font,
 	foregroundStyle,
 	frame,
 	labelStyle,
+	lineSpacing,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	padding,
 	redacted,
-	refreshable,
 	resizable,
-	textSelection
+	textSelection,
+	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
+import {useState} from 'react'
 import {Linking} from 'react-native'
 
-import {brandOf, imageAtom, noteAtom, notesAtom, regenerateAtom} from '#lib/utils.ts'
+import {appOf, brandOf, imageAtom, noteAtom, notesAtom, regenerateAtom, removeAtom} from '#lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 import {Chip} from '@deslop/components-mobile/chip'
 import {BrandLogo} from '@deslop/components-mobile/icons'
 import {colors, mono} from '@deslop/components-mobile/theme'
 
-export function NoteRoute(props: {id: Note['id']; onTag: (tag: string) => void}) {
+const prose = [font({textStyle: 'body'}), lineSpacing(4), foregroundStyle(colors.foreground), textSelection(true)]
+
+export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (tag: string) => void}) {
+	const remove = useAtomSet(removeAtom)
+	const regenerate = useAtomSet(regenerateAtom)
 	return Option.match(
 		Array.findFirst(useAtomSuspense(notesAtom).value, item => item.id === props.id),
 		{
 			onNone: () => (
 				<ContentUnavailableView
-					title="gone"
-					description="this note was deleted"
-					modifiers={[
-						navigationTitle(''),
-						navigationBarTitleDisplayMode('inline'),
-						background(colors.background),
-						mono('body', 14),
-						foregroundStyle(colors.mutedForeground)
-					]}
+					title="Note Deleted"
+					systemImage="trash"
+					modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
 				/>
 			),
 			onSome: item => (
 				<Toolbar
-					modifiers={[
-						navigationTitle(item.status === 'organizing' ? '' : item.title),
-						navigationBarTitleDisplayMode('inline'),
-						background(colors.background)
-					]}
+					modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
 				>
-					<Detail note={item} onTag={props.onTag} />
-					{Option.match(Option.fromNullishOr(item.url), {
-						onNone: () => undefined,
-						onSome: url => (
-							<Toolbar.Content>
+					<Detail note={item} onRetry={() => regenerate(item.id)} onTag={props.onTag} />
+					<Toolbar.Content>
+						{Option.match(Option.fromNullishOr(item.url), {
+							onNone: () => undefined,
+							onSome: url => (
 								<ToolbarItem placement="topBarTrailing">
 									{Option.match(brandOf(item), {
 										onNone: () => (
@@ -77,15 +81,40 @@ export function NoteRoute(props: {id: Note['id']; onTag: (tag: string) => void})
 											/>
 										),
 										onSome: brand => (
-											<Button onPress={() => Linking.openURL(url)}>
+											<Button
+												onPress={() => Linking.openURL(url)}
+												modifiers={[
+													accessibilityLabel(
+														Option.match(appOf(item), {onNone: () => 'Open Link', onSome: name => `Open in ${name}`})
+													)
+												]}
+											>
 												<BrandLogo brand={brand} size={20} />
 											</Button>
 										)
 									})}
 								</ToolbarItem>
-							</Toolbar.Content>
-						)
-					})}
+							)
+						})}
+						<ToolbarItem placement="topBarTrailing">
+							<Menu label="More" systemImage="ellipsis" modifiers={[labelStyle('iconOnly')]}>
+								{Option.match(Option.fromNullishOr(item.url), {
+									onNone: () => undefined,
+									onSome: url => <ShareLink item={url} />
+								})}
+								<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => regenerate(item.id)} />
+								<Button
+									label="Delete"
+									systemImage="trash"
+									role="destructive"
+									onPress={() => {
+										remove(item.id)
+										props.onClose()
+									}}
+								/>
+							</Menu>
+						</ToolbarItem>
+					</Toolbar.Content>
 				</Toolbar>
 			)
 		}
@@ -98,82 +127,173 @@ function Cover(props: {note: NoteItem}) {
 	return (
 		<Image
 			uiImage={image.value}
-			modifiers={[resizable(), aspectRatio({contentMode: 'fit'}), frame({maxHeight: 280, maxWidth: Infinity})]}
+			modifiers={[
+				resizable(),
+				aspectRatio({contentMode: 'fit'}),
+				frame({maxHeight: 280, maxWidth: Infinity}),
+				clipShape('roundedRectangle', 12),
+				accessibilityHidden(true)
+			]}
 		/>
 	)
 }
 
+// The AI writes Markdown lines: "## " headings, "- " facts, "1. " steps and "> " quotes, with inline bold, code and links.
 function Body(props: {text: string}) {
 	return (
-		<VStack alignment="leading" spacing={8} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>
-			{pipe(
-				props.text,
-				String.split('\n'),
-				Array.map(String.trim),
-				Array.filter(String.isNonEmpty),
-				Array.map(line =>
-					String.startsWith('- ')(line) ? (
-						<HStack key={line} alignment="top" spacing={8}>
-							<Text modifiers={[mono('body', 14), foregroundStyle(colors.mutedForeground)]}>•</Text>
+		<VStack
+			alignment="leading"
+			spacing={10}
+			modifiers={[frame({alignment: 'leading', maxWidth: Infinity}), tint(colors.primary)]}
+		>
+			{Array.map(
+				Array.filter(Array.map(String.split(props.text, '\n'), String.trim), String.isNonEmpty),
+				(line, index) =>
+					pipe(
+						Match.value(line),
+						Match.when(String.startsWith('#'), () => (
 							<Text
-								modifiers={[
-									mono('body', 14),
-									foregroundStyle(colors.foreground),
-									textSelection(true),
-									frame({alignment: 'leading', maxWidth: Infinity})
-								]}
+								key={index}
+								modifiers={[mono('headline', 17), foregroundStyle(colors.foreground), padding({top: 10})]}
+							>
+								{String.replace(/^#+\s*/u, '')(line)}
+							</Text>
+						)),
+						Match.when(
+							text => Option.isSome(String.match(/^(?:[-*•]|\d+\.)\s/u)(text)),
+							() => (
+								<HStack key={index} alignment="firstTextBaseline" spacing={8}>
+									<Text modifiers={[font({textStyle: 'body'}), foregroundStyle(colors.mutedForeground)]}>
+										{String.startsWith('- ')(line) ? '•' : String.replace(/\s.*$/u, '')(line)}
+									</Text>
+									<Text markdownEnabled modifiers={[...prose, frame({alignment: 'leading', maxWidth: Infinity})]}>
+										{String.replace(/^\S+\s/u, '')(line)}
+									</Text>
+								</HStack>
+							)
+						),
+						Match.when(String.startsWith('> '), () => (
+							<Text
+								key={index}
+								markdownEnabled
+								modifiers={[...prose, foregroundStyle(colors.mutedForeground), padding({leading: 12})]}
 							>
 								{String.slice(2)(line)}
 							</Text>
-						</HStack>
-					) : (
-						<Text key={line} modifiers={[mono('body', 14), foregroundStyle(colors.foreground), textSelection(true)]}>
-							{line}
-						</Text>
+						)),
+						Match.orElse(() => (
+							<Text key={index} markdownEnabled modifiers={prose}>
+								{line}
+							</Text>
+						))
 					)
-				)
 			)}
 		</VStack>
 	)
 }
 
-function Detail(props: {note: NoteItem; onTag: (tag: string) => void}) {
+function Source(props: {label: string; text: string}) {
+	const [expanded, setExpanded] = useState(false)
+	if (String.isEmpty(String.trim(props.text))) return undefined
+	return (
+		<DisclosureGroup
+			label={props.label}
+			isExpanded={expanded}
+			onIsExpandedChange={setExpanded}
+			modifiers={[mono('subheadline', 15), tint(colors.mutedForeground)]}
+		>
+			<Text
+				modifiers={[
+					mono('caption', 13),
+					lineSpacing(3),
+					foregroundStyle(colors.mutedForeground),
+					textSelection(true),
+					padding({top: 8}),
+					frame({alignment: 'leading', maxWidth: Infinity})
+				]}
+			>
+				{props.text}
+			</Text>
+		</DisclosureGroup>
+	)
+}
+
+function Placeholder() {
+	return (
+		<VStack alignment="leading" spacing={10} modifiers={[redacted('placeholder')]}>
+			<Body
+				text={
+					'The main point of the entry, in one or two plain sentences.\n- A takeaway a developer keeps from it.\n- Another takeaway with a tool and what it does.\n- A number that matters.'
+				}
+			/>
+		</VStack>
+	)
+}
+
+function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string) => void}) {
 	const note = props.note
-	const regenerate = useAtomSet(regenerateAtom, {mode: 'promise'})
-	const full = pipe(
-		useAtomValue(noteAtom(note)),
-		AsyncResult.getOrElse(() => undefined),
-		Option.fromNullishOr
+	const full = useAtomValue(noteAtom(note))
+	const reload = useAtomRefresh(noteAtom(note))
+	const meta = pipe(
+		[
+			note.author,
+			Option.getOrElse(appOf(note), () => ''),
+			DateTime.formatLocal(DateTime.makeUnsafe(note.createdAt), {day: 'numeric', month: 'short', year: 'numeric'})
+		],
+		Array.filter(String.isNonEmpty),
+		Array.join(' · ')
 	)
 	return (
-		<ScrollView
-			modifiers={[
-				background(colors.background),
-				refreshable(async () => {
-					await regenerate(note.id)
-				})
-			]}
-		>
+		<ScrollView modifiers={[background(colors.background)]}>
 			<VStack
 				alignment="leading"
-				spacing={14}
-				modifiers={[padding({all: 16}), frame({alignment: 'leading', maxWidth: Infinity})]}
+				spacing={16}
+				modifiers={[padding({bottom: 32, horizontal: 20, top: 8}), frame({alignment: 'leading', maxWidth: Infinity})]}
 			>
 				{note.image !== undefined && <Cover note={note} />}
-				{note.status === 'organizing' && (
-					<VStack alignment="leading" spacing={14} modifiers={[redacted('placeholder')]}>
-						<HStack spacing={8}>
-							<Chip label="placeholder" active={false} onPress={() => undefined} />
-							<Chip label="tag" active={false} onPress={() => undefined} />
-						</HStack>
-						<Body
-							text={
-								'- The point of the post, in one line.\n- A takeaway a developer keeps from it.\n- Another takeaway with a tool and what it does.'
-							}
-						/>
-					</VStack>
+				<VStack alignment="leading" spacing={6}>
+					<Text modifiers={[mono('headline', 22), foregroundStyle(colors.foreground), textSelection(true)]}>
+						{note.title}
+					</Text>
+					<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground)]}>{meta}</Text>
+				</VStack>
+				{pipe(
+					Match.value(note.status),
+					Match.when('organizing', () => <Placeholder />),
+					Match.when('failed', () => (
+						<VStack spacing={12} modifiers={[frame({maxWidth: Infinity})]}>
+							<ContentUnavailableView
+								title="Couldn’t Read This Link"
+								systemImage="exclamationmark.triangle"
+								description={note.issue}
+							/>
+							<Button
+								label="Try Again"
+								systemImage="arrow.clockwise"
+								onPress={props.onRetry}
+								modifiers={[buttonStyle('glass')]}
+							/>
+						</VStack>
+					)),
+					Match.orElse(() => (
+						<VStack alignment="leading" spacing={16}>
+							<Text modifiers={prose}>{note.summary}</Text>
+							{AsyncResult.match(full, {
+								onFailure: () => (
+									<Button
+										label="Load the Notes Again"
+										systemImage="arrow.clockwise"
+										onPress={reload}
+										modifiers={[buttonStyle('glass')]}
+									/>
+								),
+								onInitial: () => <Placeholder />,
+								onSuccess: loaded => <Body text={loaded.value.body ?? ''} />
+							})}
+						</VStack>
+					))
 				)}
-				{note.status === 'ready' && !Array.isReadonlyArrayEmpty(note.tags) && (
+				{!Array.isReadonlyArrayEmpty(note.tags) && (
 					<ScrollView axes="horizontal" showsIndicators={false}>
 						<HStack spacing={8}>
 							{Array.map(note.tags, tag => (
@@ -182,25 +302,13 @@ function Detail(props: {note: NoteItem; onTag: (tag: string) => void}) {
 						</HStack>
 					</ScrollView>
 				)}
-				{note.status === 'failed' && (
-					<ContentUnavailableView
-						title="Couldn’t Read This Note"
-						systemImage="exclamationmark.triangle"
-						description={`${note.issue} Pull down to try again.`}
-					/>
+				{AsyncResult.isSuccess(full) && (
+					<VStack alignment="leading" spacing={12}>
+						<Source label="Transcript" text={full.value.transcript ?? ''} />
+						<Source label="Source" text={full.value.content} />
+						<Source label="Text in the images" text={full.value.screenText ?? ''} />
+					</VStack>
 				)}
-				{note.status === 'ready' &&
-					Option.match(
-						Option.flatMap(full, loaded => Option.liftPredicate(loaded.body ?? '', String.isNonEmpty)),
-						{
-							onNone: () => (
-								<Text modifiers={[mono('body', 14), foregroundStyle(colors.foreground), textSelection(true)]}>
-									{note.summary}
-								</Text>
-							),
-							onSome: body => <Body text={body} />
-						}
-					)}
 			</VStack>
 		</ScrollView>
 	)

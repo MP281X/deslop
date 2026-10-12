@@ -46,6 +46,14 @@ export function kindOf(note: NoteItem): Kind {
 	return Option.isSome(brandOf(note)) ? 'youtube' : 'web'
 }
 
+// The app that opens the note's link, when it is not the browser.
+export function appOf(note: NoteItem) {
+	return pipe(
+		Array.findFirst(kinds, entry => entry.kind === kindOf(note) && 'brand' in entry),
+		Option.map(entry => entry.label)
+	)
+}
+
 // Notes
 
 const listFile = new File(Paths.document, 'list.json')
@@ -96,16 +104,18 @@ export const noteAtom = Atom.family((item: NoteItem) =>
 	RpcClient.runtime.atom(Effect.flatMap(RpcClient, client => client('notes.get', {id: item.id})))
 )
 
-export const searchAtom = Atom.family((query: string) =>
-	RpcClient.runtime.atom(
-		String.isEmpty(query)
-			? Effect.succeedNone
-			: Effect.map(
-					Effect.flatMap(RpcClient, client => client('notes.search', {query})),
-					ids => Option.some(HashSet.fromIterable(ids))
-				)
-	)
-)
+export const queryAtom = Atom.make('')
+
+// One atom for every query, so the previous results stay on screen while the next ones load.
+export const searchAtom = RpcClient.runtime.atom(get => {
+	const query = String.trim(get(queryAtom))
+	return String.isEmpty(query)
+		? Effect.succeedNone
+		: Effect.map(
+				Effect.flatMap(RpcClient, client => client('notes.search', {query})),
+				ids => Option.some(HashSet.fromIterable(ids))
+			)
+})
 
 export function imageAtom(id: Note['id']) {
 	return downloadAtom({name: id, url: new URL(`/api/images/${id}`, MobileRuntime.server).href})

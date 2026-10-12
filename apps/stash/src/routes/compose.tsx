@@ -29,10 +29,10 @@ export function ComposeRoute(props: {onDone: () => void}) {
 				text={text}
 				axis="vertical"
 				autoFocus
-				placeholder="write a note"
+				placeholder="Write a note"
 				onTextChange={setDraft}
 				modifiers={[
-					mono('body', 15),
+					mono('body', 17),
 					foregroundStyle(colors.foreground),
 					padding({all: 16}),
 					frame({alignment: 'topLeading', maxHeight: Infinity, maxWidth: Infinity})
