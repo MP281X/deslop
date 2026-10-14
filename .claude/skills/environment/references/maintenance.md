@@ -75,7 +75,9 @@ ssh "$target" 'cat > ~/.t3/userdata/settings.json' < $d/new-settings.json
 rm -rf $d
 ```
 
-**Claude launch arguments.** `providerInstances.claudeAgent.config.launchArgs` is `--system-prompt-snapshot off --thinking-display omitted`. The second flag keeps Claude's thinking and stops T3 from showing thinking summaries as messages.
+**Claude launch arguments.** `providerInstances.claudeAgent.config.launchArgs` is `--system-prompt-snapshot off --thinking-display omitted --autocompact 500k`. These keep prompt updates visible, hide thinking summaries and select a 500k compaction window. Claude reserves a buffer inside that window; this is not a promise to reach exactly 500,000 tokens before compaction. Keep the custom pair prompt and `ENABLE_TOOL_SEARCH=false`.
+
+Change only this provider's compaction flag on each running worker; preserve other launch arguments, providers, sign-ins and thread selections. T3 passes the flag to fresh Claude processes, including resumed sessions. Do not stop active threads or restart T3 to force the change into an existing process. Verify the configured arguments and run Claude's local `/context` command with them; it must show the 500k window with zero model turns. A later real compaction is required to measure summary quality and net usage savings.
 
 The copy carries project scripts, such as Dual's worktree script `vp install --frozen-lockfile && vpx @deslop/coding-standards@latest`. Check them on the target with `t3_project_list`.
 
