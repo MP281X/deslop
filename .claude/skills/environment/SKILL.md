@@ -1,6 +1,6 @@
 ---
 name: environment
-description: 'Machine facts, repository commands, previews, machine upkeep and media extraction. Use it for the tailnet, repository commands, previews or coding-standards setup. Also use it to set up, update, clean or redeploy a machine, or to analyze a shared video or post.'
+description: 'Machine facts, repository commands, previews, agent configuration installation and media extraction. Use it for the tailnet, repository commands, previews, coding-standards setup or installing Claude and Codex configuration on both workers. Also use it to set up, update, clean or redeploy a machine, or to analyze a shared video or post.'
 ---
 
 # Environment
@@ -42,9 +42,15 @@ Run repository commands from the repository root. Read inventories and versions 
 
 ## Previews
 
-- **Build.** Release proof uses the production build on the tailnet HTTPS URL; a development server proves only iteration. A repository reference names its preview when it has no production one.
+- **Build.** Use the repository reference's documented preview command and share it through tailnet HTTPS.
 - **Start.** Run the preview command detached, so it survives a T3 restart: `systemd-run --user --unit=<repository>-preview-<worktree> --working-directory=<worktree> <command>`. Bind it to `127.0.0.1` on a free port (`ss -ltn`).
 - **Share.** Run `sudo tailscale serve --bg --https=<port> http://127.0.0.1:<port>`; the host is `tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")'`. The first request waits for a certificate. Verify sign-in, assets and API calls through `https://<host>:<port>` before you share it.
 - **Public webhooks.** Funnel exposes a whole port, so give the webhook path its own port: an unused one among 443, 8443 and 10000 in `sudo tailscale serve status --json`. Run `sudo tailscale funnel --bg --https=<funnel port> --set-path <path> http://127.0.0.1:<api port><path>`, and verify that the sign-in path does not answer there. Stop it with `sudo tailscale funnel --https=<funnel port> --set-path <path> off`.
 - **Restart.** Run `systemctl --user restart <unit>` while the unit runs, also after a build that deletes the preview's files. A stopped unit disappears, so run the same `systemd-run` again. A failed unit stays until `systemctl --user reset-failed <unit>`.
 - **Stop.** Keep the thread's preview until the user says to stop it or its pull requests merge. Then run `sudo tailscale serve --https=<port> off` and `systemctl --user stop <unit>`. Never stop a listener you did not start.
+
+## Diagnostics
+
+- **Rerenders.** Count with React Profiler or temporary `console.count` through `preview_evaluate`; remove the probe before push. Normal-build commit counts are not CPU timings; use a profiling build for timing.
+- **Slow input.** Use `performance.mark` and a `PerformanceObserver` for `longtask` and `event` entries through `preview_evaluate`.
+- **Tracing.** Use the [Deslop](references/deslop.md#application-tracing) or [Dual](references/dual.md) endpoints. Correlate one real action's client and server spans, hierarchy, errors and duration before and after the fix. Missing spans prove neither coverage nor speed.

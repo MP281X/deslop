@@ -1,3 +1,8 @@
+---
+name: review
+description: Read-only review of code, cleanup, designs, instructions and published pull request bodies. Use for reviews, audits and critiques; orchestrator schedules delivery gates and delivery owns publishing.
+---
+
 # Review
 
 Assume the work is wrong and prove where. Settle each suspicion yourself with a read-only inline probe against the real code, data, installed files or sessions; the author runs checks and test suites. Rank findings by consequence.
@@ -31,7 +36,7 @@ Challenge the outcome, the taste and the attempts so far, and do not defer to th
 
 ## Instruction review
 
-Review the agent configuration as one system: both prompts, every skill and reference, the settings, the retrospective's decisions and the installed copies on each running worker. Read every file whole. Check each rule against the harness and T3 behavior it assumes, in their source or a real session.
+Review the affected agent configuration as one system: both prompts, skills and references, settings, repository rules and installed copies on each running worker. Read every relevant file whole. Check each rule against the harness and T3 behavior it assumes, in their source or a real session.
 
 Report contradictions, duplicate rules, rules that only one harness gets, rules that no agent can act on, stale names, paths and models, breaks of the Language rules, text that does not change an agent's action, and eval claims without evidence. Return the findings ranked, each with the path and line, the probe and the smallest change.
 
@@ -43,6 +48,6 @@ Read the published pull request as a reviewer who knows nothing else. Download t
 - A claim that a capture or the code contradicts.
 - A ticket requirement without proof.
 - A capture that is unreadable, ends before its outcome, or shows loading that is not the claim.
-- Each departure from the [example body](publishing.md#example-body).
+- Each departure from the [example body](../delivery/SKILL.md#example-body).
 
 Return each finding with the section, the evidence and the smallest fix.

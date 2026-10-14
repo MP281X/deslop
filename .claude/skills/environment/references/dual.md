@@ -37,7 +37,7 @@ Jira is Dual's only issue tracker: project `DOS`, board 1053, on `datapizza.atla
 **Writes.** The only writes: when the user approves the tickets to work on, assign each to him and move it to `Doing`. Never create, edit or comment on a ticket, move it to another status, or change the sign-in. From Dual's `docs/agents/issue-tracker.md`, use only the read commands and the type hierarchy.
 
 - **Assigned.** A ticket assigned to the user is work he started. Read it whenever its key, such as `DOS-289`, appears in a request, branch or commit, and quote the requirements you use.
-- **Picking.** When the user asks what to work on, rank the unassigned tickets in `To Do` by priority (`P1` highest), size and fit with the code; skip every other status. Rank the Epics, Tasks, Stories and Bugs inside Areas and Initiatives. Decide with the user, assign and move the approved tickets, then start software-factory's Prepare with them.
+- **Picking.** When the user asks what to work on, rank the unassigned tickets in `To Do` by priority (`P1` highest), size and fit with the code; skip every other status. Rank the Epics, Tasks, Stories and Bugs inside Areas and Initiatives. Decide with the user, assign and move the approved tickets, then start orchestrator's Prepare with them.
 - **Output.** Plain `view` prints the description as text; `--json` returns Atlassian's document format. Use `--csv` for searches.
 
 ```bash

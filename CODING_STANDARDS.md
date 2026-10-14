@@ -73,5 +73,5 @@ Repository-specific decisions live here. Reusable coding, testing and visual rul
 
 ## Local context
 
-- A touched package or meaningful configuration folder owns a concise `AGENTS.md` for usage and non-obvious decisions, with `README.md` as a relative symlink to it. A published package keeps the real file as `README.md` and links `AGENTS.md` to it, because `pnpm pack` drops a symlinked README, and ends it with a collapsed For agents section. Keep it current with the owning changes.
+- Keep a real `README.md` for public package usage; link `AGENTS.md` to it only when it has agent-specific context. A private folder needs an `AGENTS.md` only for constraints or decisions that its code and configuration cannot explain. Do not create a document or alias just because a package changes.
 - No policy duplicated between the repository and a skill, source-code narration, empty templates, `AGENTS.md` files inside `src`, or generic folder documents without a semantic owner. Shared procedures remain in skills; package-specific context belongs in its `AGENTS.md`.

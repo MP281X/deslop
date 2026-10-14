@@ -5,7 +5,7 @@ description: 'UI and UX rules for product screens, creative pages and visual exp
 
 # Design
 
-Follow the repository's `CODING_STANDARDS.md` and the engineering skill; where `CODING_STANDARDS.md` sets a style, such as square borders, it wins over this skill.
+Follow the engineering skill and the repository's `CODING_STANDARDS.md` when present; where it sets a style, such as square borders, it wins over this skill.
 
 **The bar.** Build what people recommend for its polish and simplicity: Linear, T3 Code, Apple's own apps and apple.com. A person who is not technical uses it without help. The repository's existing screens are the floor, not the target.
 
@@ -124,7 +124,7 @@ Repair in this order: grouping, hierarchy, alignment, copy, then states. Recaptu
 | Generic copy such as "seamless" or "Learn more" | Each label names its capability or the outcome        |
 | Content that waits for an entrance animation    | The first frame is readable and actionable            |
 
-**Show the design** with inspected screenshots for layout and a short video for behavior, at consistent sizes, in the user's theme.
+**Show the design.** Use screenshots for layout and short videos for behavior. Keep text readable on a phone, match the app's visual style and show the input, action and outcome without unrelated decoration. Evidence must show the real application.
 
 ## Creative mode
 

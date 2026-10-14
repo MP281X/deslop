@@ -2,7 +2,7 @@
 
 **Issues.** Deslop has no issue tracker; GitHub holds only its pull requests, so the request is the whole task.
 
-**Agent configuration.** Before you change `.claude`, `.codex` or the shared skills, read the retrospective skill's [Decisions](../../retrospective/references/decisions.md) for the owners and the adopted and rejected approaches. `.claude/agents/pair.md` and `.codex/instructions.md` differ only before "# The user's pair": make each edit below that heading in both files, and confirm with `diff <(sed -n '/^# The user.s pair$/,$p' .claude/agents/pair.md) <(sed -n '/^# The user.s pair$/,$p' .codex/instructions.md)`.
+**Agent configuration.** Native `.claude` and `.codex` files own the base configuration. The Claude pair and Codex instructions differ only before "# Core": keep every edit below that heading identical. `@deslop/coding-standards` owns engineering, design and testing; refresh repository copies with its installer.
 
 **Reference app.** `apps/stash` follows `CODING_STANDARDS.md`'s layout; copy its shape for a new app, service, route or command.
 
