@@ -18,6 +18,7 @@ const cli = pipe(
 			const fs = yield* FileSystem.FileSystem
 			const path = yield* Path.Path
 			const source = path.join(import.meta.dirname, '../skills')
+			const names = yield* fs.readDirectory(source)
 			const handle = yield* ChildProcess.make('git', ['rev-parse', '--show-toplevel'], {stdout: 'pipe'})
 			const result = yield* Effect.all(
 				{exitCode: handle.exitCode, stdout: Stream.mkString(Stream.decodeText(handle.stdout))},
@@ -83,7 +84,7 @@ const cli = pipe(
 					}
 				}
 				const skills = yield* canonical(path.join(target, 'skills'))
-				for (const name of ['engineering', 'design', 'testing']) {
+				for (const name of names) {
 					const owned = path.join(skills, name)
 					if (
 						isGlobal(owned) ||
@@ -96,7 +97,7 @@ const cli = pipe(
 
 			for (const directory of targets) {
 				yield* fs.makeDirectory(path.join(root, directory, 'skills'), {recursive: true})
-				for (const name of ['engineering', 'design', 'testing']) {
+				for (const name of names) {
 					const target = path.join(root, directory, 'skills', name)
 					yield* fs.remove(target, {force: true, recursive: true})
 					yield* fs.copy(path.join(source, name), target)
@@ -104,7 +105,7 @@ const cli = pipe(
 			}
 
 			yield* Console.log(
-				`Installed engineering, design and testing in ${pipe(
+				`Installed ${Array.join(names, ', ')} in ${pipe(
 					targets,
 					Array.map(directory => path.join(root, directory, 'skills')),
 					Array.join(', ')
@@ -113,12 +114,12 @@ const cli = pipe(
 		})
 	),
 	Command.withDescription(
-		'Run anywhere inside a Git repository to install engineering, design and testing at its root, including linked worktrees. Copies into skills/ under each existing .agents, .claude and .codex directory, always under .claude, and under .agents when no .codex exists. Replaces these three names, preserving other skills and global configuration. Destinations resolving outside the Git root are rejected before copying. Read engineering before coding, design before rendered output and testing before test work. Run the latest CLI transiently, independently of package preset versions; no repository dependency is needed. Claude uses .claude/skills; Codex documents .agents/skills for repository discovery. These skills belong in repositories, not global configuration.'
+		'Install the package’s architecture, engineering, design, testing and review skills at the Git repository root, including linked worktrees. Copy into each existing .agents, .claude and .codex skills directory, always .claude, and .agents when no .codex exists. Replace only package-owned names; preserve other skills and global configuration. Reject destinations outside the repository before copying. Refer to skills by name. Run the latest CLI transiently without adding a dependency. These skills belong in repositories, not global configuration.'
 	),
 	Command.withExamples([
 		{
 			command: 'vpx @deslop/coding-standards@latest',
-			description: 'Install or refresh this repository’s three skills without adding a dependency.'
+			description: 'Install or refresh this repository’s shared skills without adding a dependency.'
 		}
 	])
 )

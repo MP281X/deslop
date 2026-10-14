@@ -7,12 +7,12 @@ description: 'Select and run black-box behavior proof for Effect apps and tools.
 
 **Scope.** Test behavior the changed code owns; a coverage count proves nothing.
 
-- **Worth it.** Test owned branching, computation, parsing and state transitions that a plausible regression breaks.
+- **Worth it.** Retain a test only when it names owned behavior, a plausible wrong implementation, an independently known observable result and distinct protection. State what breaks without it. A green suite, coverage increase or extra case is not a reason to keep a test.
 - **Public interface.** Test exported Layers, services and functions through observable behavior, so a rewrite that keeps the contract keeps the tests green. The browser proves web UI components; the simulator proves native ones.
 - **Redundant.** Delete touched cases that only repeat dependency guarantees, constants, wording, removed behavior or a covered input. Keep boundary tests of the application's own validation, encoding or integration.
 - **Independent.** Take expected values from the contract or a worked example, never from the implementation. Use the smallest reachable fixture that tells the cases apart.
-- **Bugs.** Reproduce a bug before you fix it. Keep the failing case when it protects owned behavior, in the existing test of the fixed code, or in a new case when none fits.
-- **Throwaway.** Settle a question with a spike, and delete it once answered unless it becomes a regression test.
+- **Bugs.** Reproduce a bug before you fix it. Keep a regression case when future changes can plausibly break its contractual behavior, in the existing test of the fixed code or a new case when none fits. An independently reproduced defect does not require a new test file.
+- **Throwaway.** Start with question-sized inline code, an existing test or a focused real-browser check. Delete the spike after it answers the question. Promote it only when its distinct regression protection meets Worth it; never add a private export or configurable production seam just for proof.
 - **Honest.** No wrong expectations or rule workarounds. Change assertions only for recorded behavior changes, and keep every still-relevant value.
 
 **Assertions.** Use one representative input per behavior, in its existing case. Share a helper only between cases that use it. Use @effect/vitest assertions for outputs and structured error identity. Replace dependencies through Layers or public parameters, never global or module mocks. Keep mutable state in its owning fixture.
@@ -42,6 +42,7 @@ assert.strictEqual(Array.flatMap(attioProvider.groups, group => group.actions).l
 - **Branches.** Exercise the reachable distinctions: empty, duplicate, concurrent and dependency failure. Write no Cartesian product, and no random or repeated happy paths without a hypothesis.
 - **Failure.** Use `Effect.flip` for an expected failure and `Effect.exit` for both outcomes. Assert domain identity and preserved state and resources: no partial write, lost value, extra retry or leak. Wording or rejection alone is not enough, and incidental order is no assertion.
 - **Control.** Run the regression test against the unfixed implementation, and confirm that the intended assertion fails, not setup, imports or compilation. Before a refactor, cover the old behavior.
+- **Audit.** Remove duplicate and tautological cases in the touched scope, but retain independent protocol, package, validation, authorization and persistence contracts. Mock call counts do not prove an external boundary. Do not replace a useful test with a disposable script just to reduce the count.
 
 ## Effect and fixtures
 
@@ -59,5 +60,5 @@ assert.strictEqual(Array.flatMap(attioProvider.groups, group => group.actions).l
 - **Run.** Use the documented test selectors, and confirm that they collect and run the intended cases. Zero collected tests, setup alone or exit code 0 alone prove nothing.
 - **Inventory.** Collect independent failures in one run instead of stopping at the first, and tell separate cases from repeated observations. Rerun a timed-out test once in isolation; a pass proves that run, not the cause. Never call a bypassed selector or a skipped operation flaky.
 - **Evidence.** Keep the first failure, exact command, execution count and exit status. Separate cause from hypothesis, product defect from setup failure, and a skipped criterion from a passing one. A source read or a green command never replaces a missing behavior check.
-- **Final proof.** A check proves only the source, dependencies and configuration it ran on, so reconcile every required behavior on the final code. Release proof uses the production build, not the development server. Screenshots and video prove visible outcomes; execution through the public interface proves the rest.
+- **Final proof.** A check proves only the source, dependencies and configuration it ran on, so reconcile every required behavior on the final code. Use the actual built preview for final browser proof when the repository provides one. A command named preview that runs development watchers does not prove the production build. Screenshots and video prove visible outcomes; execution through the public interface proves the rest.
 - **Visual proof.** Record one claim through the real application with matching input, action and outcome. Keep every meaningful step. A capture is stale once a component it shows changes. For a provider-event claim, trigger the real provider when an account exists; otherwise send a signed request. When only the user can do the provider-side step, prepare a guide.

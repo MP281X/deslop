@@ -7,6 +7,8 @@ description: 'TypeScript and Effect code conventions paired with shared lint. Us
 
 ## Simplicity
 
+**Architecture.** Use architecture for a new boundary, state owner, background lifetime, dependency or storage contract. Reuse the existing shape for routine changes; do not turn a small feature into a framework.
+
 **MVP.** Write the most direct code that meets the request today. Apply YAGNI to every file, function, branch, parameter, option, export, Layer, check, config value, library and abstraction; configure only what callers vary. Write functional, explicit code: pure functions over immutable data, effects only inside Effect, and Effect modules instead of hand-written helpers.
 
 **Plan the shape.** Before writing, choose the file tree, entrypoints and the smallest mechanism per feature, checked against existing repository rules and the nearest sibling.

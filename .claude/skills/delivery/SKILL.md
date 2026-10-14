@@ -23,7 +23,7 @@ The user reviews and squash-merges one pull request at a time. Independent chang
 2. Push every changed PR of the iteration together. Set titles and bodies only after the push they describe; use the format below. Link each PR with `link_pull_request`, never the replacing link action of `t3_thread_update`, and watch each pushed PR.
 3. Write the title, body and commit message once from the final change facts. Do not reread or self-check them, fetch them back after editing, or delegate an artifact review. Correct a known error or changed fact directly; review an artifact only when the user requests it or an evaluation targets it. While only pipelines run, use the core's nonempty external-wait reply. Ignore notices for older heads or running jobs.
 4. When required jobs pass on the exact final head, mark that PR ready and start its T3 review guide in the same step. Never repeat a notice to the user. Commands: `gh pr ready <number>` or `glab mr update <number> --ready`.
-5. Unwatch every PR and stop owned services except evidence and previews environment keeps. Give a manual guide only for unproved behavior; render the overview and reply per the pair prompt.
+5. Unwatch every PR and stop owned services except the tested preview environment keeps. Leave its visible tab and full tailnet HTTPS URL available. Give a manual guide only for user-only unproved behavior. The thread adds the whole-worktree picture, not another PR recap; T3 owns PR, agent, task and pipeline presentation.
 
 ## Visual proof
 

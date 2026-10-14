@@ -70,7 +70,7 @@ acli jira workitem transition --key DOS-289 --status Doing --yes
 
 Each workspace and infrastructure package pins its own `@deslop/coding-standards` version. Its `oxlint.config.ts` holds a legacy list of files whose `legacyRules` drop to warnings, package-wide warning rules and rule disables; every other file passes the configured rules.
 
-- **Skills.** The worktree script runs `vpx @deslop/coding-standards@latest`, which refreshes the engineering, design and testing copies in `.agents/skills` and `.claude/skills`.
+- **Skills.** The worktree script runs `vpx @deslop/coding-standards@latest`, which refreshes architecture, engineering, design, testing and review in `.agents/skills` and `.claude/skills`.
 - **Bump.** When a task changes code, the cleanup pull request runs `bun add --dev --exact @deslop/coding-standards@latest` in every package directory, including infrastructure packages, the root, the scaffold baseline and consumer fixtures, then the root fix.
 - **New rules.** When a rule from a bump fails, turn it off in that package's `oxlint.config.ts`, never with inline disables; this overrides engineering's Disables rule. Remove rule entries and suppressions that the bump made obsolete.
 - **Touched files.** A hand-written file that the task adds, or rewrites over half of, leaves the legacy list and the scoped exemptions and passes the configured rules: its casts and suppressions go unless engineering allows one with a reason. Every other changed file stays listed; never refactor a file only for lint or Effect Atom.

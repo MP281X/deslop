@@ -5,7 +5,7 @@ description: Read-only research into code, dependencies, documentation and earli
 
 # Explore
 
-Answer from code, logs, named threads or primary documentation, and look for the counterexample that decides the question. Read a named reference's feature in its source, not in its README. Read dependencies per [Source checkouts](#source-checkouts), never in `node_modules`, and videos and posts per environment's [media reference](../environment/references/media.md). When you count, define and list the members. A failed search or fetch is not a finding. Stop when the evidence answers the question.
+Answer from code, logs, named threads or primary documentation, and look for the counterexample that decides the question. Read a named reference's feature in its source, not in its README. Read dependencies per Source checkouts, never in `node_modules`; use environment's media procedure for videos and posts. Use disposable inline code and a small HTML visualization when they settle the question without repository changes. When you count, define and list the members. A failed search or fetch is not a finding. Stop when the evidence answers the question.
 
 Reply with the answer first, then only the deciding evidence, as a table or one-line bullets.
 

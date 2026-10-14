@@ -1,6 +1,6 @@
 # Coding standards
 
-A strict Oxlint preset and an installer for the engineering, design and testing agent skills. Requires Node 26+.
+A strict Oxlint preset and an installer for the architecture, engineering, design, testing and review skills. Requires Node 26+.
 
 ## Install the skills
 
@@ -10,7 +10,9 @@ Run inside a Git repository, including a linked worktree:
 vpx @deslop/coding-standards@latest
 ```
 
-It copies the three skills into the repository's existing `.agents`, `.claude` and `.codex` directories, including their `EVALS.md`. It always writes `.claude`, which Claude Code reads, and writes `.agents` when no `.codex` exists. A refresh replaces only those three skills, and destinations outside the repository or inside global agent configuration are rejected. Nothing is added to the manifest, lockfile or lint configuration. Edit package sources; refresh installed copies with the CLI.
+It copies all package-owned skills into the repository's existing `.agents`, `.claude` and `.codex` directories, including their `EVALS.md`. It always writes `.claude`, which Claude Code reads, and writes `.agents` when no `.codex` exists. A refresh replaces only those names; destinations outside the repository or inside global agent configuration are rejected. Other skills, sign-ins, manifests, lockfiles and lint configuration stay unchanged. Edit package sources, then refresh installed copies with the CLI.
+
+Use architecture for mechanisms and ownership, engineering for code, design for visible behavior, testing for useful proof and review for independent critique and cleanup. Refer to another skill by name, not its installation path. Personal orchestration, delivery, machine commands and reply preferences stay outside this package.
 
 ## Use the lint preset
 
@@ -37,7 +39,7 @@ The preset needs Effect-tsgo's patched Oxlint, so keep the patch command in the 
 | Owner      | Decision                                                                                                                                                                                                                                                                                                                                                                      |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/`     | Flat package structure; rules in `src/rules`, no separate plugin or install-test harness                                                                                                                                                                                                                                                                                      |
-| `skills/`  | Maintained engineering, design and testing sources; refresh repository copies from the TypeScript CLI, no build needed                                                                                                                                                                                                                                                        |
+| `skills/`  | Maintained architecture, engineering, design, testing and review sources; refresh repository copies from the TypeScript CLI, no build needed                                                                                                                                                                                                                                  |
 | Lint rules | Prefer an equivalent maintained rule before custom enforcement; consumer code conforms to strict standards, not the reverse. Fix broken or imprecise rules, not inconvenient valid diagnostics. A rule targets code the engineering skill and the other rules allow; an edge case that only unusual code reaches takes an inline disable with its reason, never a looser rule |
 | Rule proof | Existing public CLI regression cases, with accepted and rejected controls; no severity or exclusion workaround                                                                                                                                                                                                                                                                |
 
@@ -70,6 +72,16 @@ node tools/coding-standards/src/install.ts
 | [Interface Craft](https://www.interfacecraft.dev/library), the user's licensed library                                                                                                                                                                                                                                                                                                               | Before-the-first-draft steps, range and depth, agent-run tuning, the four-pass critique, optical, color, type and motion values; ideas adapted in our words, no files copied                      |
 | [Apple HIG](https://developer.apple.com/design/human-interface-guidelines), [Linear](https://linear.app/now/how-we-redesigned-the-linear-ui), [Rauno Freiberg](https://rauno.me/craft/interaction-design), [Geist](https://vercel.com/geist), [Radix](https://www.radix-ui.com/primitives/docs/overview/accessibility) and [WCAG](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html) | The quality bar, platform conventions, semantic type and glass, gesture behavior, border and shadow roles, dialog contracts and contrast ratios                                                   |
 
-These are selectively adapted ideas, not imported frameworks. Concrete behavior, existing stack and settled user decisions govern the maintained skills.
+Additional sources for this refinement:
+
+- [OpenClaw test audit](https://github.com/openclaw/openclaw/blob/main/.agents/skills/test-audit/SKILL.md): distinct regression protection and deletion of tautological tests; retain independent boundary contracts.
+- [Trail of Bits](https://github.com/trailofbits/skills): reproduce the strongest reachable counterexample and inspect variants of a known root cause; no routine security-audit machinery.
+- [Bret Victor](https://worrydream.com/ExplorableExplanations/) and [Nicky Case](https://blog.ncase.me/how-i-make-an-explorable-explanation/): concrete cause and consequence, with optional exploration rather than mandatory navigation.
+- [Taste skill](https://github.com/Leonxlnx/taste-skill/tree/a60a36dc2bb3bb77ccf17f2f62041f5ca8a458b9): real subject inventory and screenshot critique; no mandatory image, motion or component quotas.
+- [Anatomy](https://github.com/wheresryan22/anatomy): physical and isometric explanations when their relationships are the concept; no mandatory dense machine or separate card frame.
+- [Antfu design](https://github.com/antfu/design): native token hierarchy, density and affordance; no Vue or UnoCSS dependency added.
+- [Animated sprites](https://github.com/elithrar/dotfiles/tree/main/.agents/skills/animated-sprites): separate structural validity from perceptual motion and actual timing; no character assets required.
+
+These are selectively adapted ideas, not imported frameworks. Concrete behavior, existing stack and settled user decisions govern the maintained skills. Source inspection and drafted evaluation criteria do not establish a model-quality improvement.
 
 </details>

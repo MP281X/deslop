@@ -17,7 +17,7 @@ node tools/evals/src/main.cli.ts collect <directory>
 node tools/evals/src/main.cli.ts cleanup <directory>
 ```
 
-1. Preparation fully replaces the five managed global base files from this checkout without merging or backups, before creating isolated provider homes and repositories. It preserves sign-ins, sessions, existing skills and remembered approvals. Each runtime gets the base configuration and selected skill only.
+1. Preparation copies the five managed base files from this checkout directly into isolated provider homes and repositories. Never replace live global base files to evaluate a candidate. Each runtime gets the base configuration and selected skill only; authentication links and temporary T3 provider registrations preserve existing sign-ins, sessions, skills and approvals.
 2. With authorization for temporary evaluation threads, register `run.repo` using `t3_project_create`. Launch its project with `workspaceStrategy: {type: "root", branch: "main"}`, its provider instance, task and a high-effort cheap model. A child that inherits this checkout does not prove selected-skill isolation.
 3. Record the thread id, wait for terminal status and collect. Check the native session's loaded configuration and skills. Give anonymous numbered `judge/` snapshots to the quality judge without identities or efficiency measurements; the user judges final artifacts.
 4. After collection, delete owned projects through `t3_project_delete(force: true)`, which also deletes their threads. Verify deletion, then run cleanup to remove owned provider registrations and authentication links. Stop owned app-server and starter processes; keep evidence.

@@ -1,6 +1,6 @@
 # Coding Standards
 
-Repository-specific decisions live here. Reusable coding, testing and visual rules live in the installed engineering, design and testing skills; automated enforcement lives in the tooling.
+Repository-specific decisions live here. Reusable architecture, coding, testing, design and review rules live in the installed shared skills; automated enforcement lives in the tooling.
 
 ## Product scope
 

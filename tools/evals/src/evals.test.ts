@@ -123,7 +123,7 @@ it.effect('rejects duplicated criteria and preserves ordinary Markdown headings'
 )
 
 it.effect(
-	'applies global base configuration, prepares one skill and preserves full T3 evidence',
+	'isolates candidate configuration, prepares one skill and preserves full T3 evidence',
 	() =>
 		pipe(
 			Effect.gen(function* () {
@@ -136,6 +136,17 @@ it.effect(
 				yield* fs.makeDirectory(`${home}/.claude/skills/unrelated`, {recursive: true})
 				yield* fs.writeFileString(`${home}/.codex/rules/default.rules`, 'Keep')
 				yield* fs.writeFileString(`${home}/.claude/skills/unrelated/SKILL.md`, 'Keep')
+				const baseFiles = [
+					'.codex/instructions.md',
+					'.codex/config.toml',
+					'.codex/rules/deny.rules',
+					'.claude/agents/pair.md',
+					'.claude/settings.json'
+				]
+				for (const file of baseFiles) {
+					yield* fs.makeDirectory(path.dirname(path.join(home, file)), {recursive: true})
+					yield* fs.writeFileString(path.join(home, file), `Keep ${file}`)
+				}
 				const original = {colorTheme: 'dark', providerInstances: {user: {enabled: true}}} satisfies Settings
 				yield* fs.writeFileString(
 					`${home}/.t3/userdata/settings.json`,
@@ -156,9 +167,25 @@ it.effect(
 				assert.include(yield* fs.readFileString(`${run.repo}/.gitignore`), 'node_modules/')
 				assert.strictEqual(yield* fs.readFileString(`${home}/.codex/rules/default.rules`), 'Keep')
 				assert.strictEqual(yield* fs.readFileString(`${home}/.claude/skills/unrelated/SKILL.md`), 'Keep')
+				for (const file of baseFiles) {
+					assert.strictEqual(yield* fs.readFileString(path.join(home, file)), `Keep ${file}`)
+				}
 				assert.strictEqual(
-					yield* fs.readFileString(`${home}/.codex/instructions.md`),
+					yield* fs.readFileString(`${run.home}/instructions.md`),
 					yield* fs.readFileString(path.join(root, '.codex/instructions.md'))
+				)
+				assert.include(
+					yield* fs.readFileString(`${run.home}/config.toml`),
+					`model_instructions_file = "${run.home}/instructions.md"`
+				)
+				const claudeRun = Option.getOrThrow(Array.findFirst(manifest.runs, row => row.harness === 'claude'))
+				assert.strictEqual(
+					yield* fs.readFileString(`${claudeRun.home}/settings.json`),
+					yield* fs.readFileString(path.join(root, '.claude/settings.json'))
+				)
+				assert.strictEqual(
+					yield* fs.readFileString(`${claudeRun.home}/agents/pair.md`),
+					yield* fs.readFileString(path.join(root, '.claude/agents/pair.md'))
 				)
 				assert.deepStrictEqual(yield* fs.readDirectory(`${run.home}/skills`), ['engineering'])
 				assert.isFalse(yield* fs.exists(`${run.home}/skills/engineering/EVALS.md`))
@@ -169,7 +196,7 @@ it.effect(
 					harnesses: ['codex'],
 					home,
 					root,
-					skill: path.join(root, '.claude/skills/review')
+					skill: path.join(root, 'tools/coding-standards/skills/review')
 				})
 				const reviewRun = Option.getOrThrow(Array.head(review.runs))
 				assert.include(yield* command(reviewRun.repo, 'git', ['diff']), "fs.glob('*.json'")

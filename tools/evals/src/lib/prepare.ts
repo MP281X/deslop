@@ -71,24 +71,6 @@ export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 		'.codex/instructions.md',
 		'.codex/rules/deny.rules'
 	]
-	for (const file of files) {
-		const target = path.join(input.home, file)
-		yield* fs.makeDirectory(path.dirname(target), {recursive: true})
-		if (file === '.codex/config.toml') {
-			yield* fs.writeFileString(
-				target,
-				pipe(
-					yield* fs.readFileString(path.join(input.root, file)),
-					String.replace(
-						/^model_instructions_file = .*$/mu,
-						`model_instructions_file = "${path.join(input.home, '.codex/instructions.md')}"`
-					)
-				)
-			)
-		} else {
-			yield* fs.copyFile(path.join(input.root, file), target)
-		}
-	}
 	const directory = yield* fs.makeTempDirectory({prefix: 'deslop-evals-'})
 	const starter = path.resolve(import.meta.dirname, '../../starter/importer')
 	const runs = Array.flatten(
@@ -129,7 +111,7 @@ export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 					}
 					for (const file of files) {
 						yield* fs.makeDirectory(path.dirname(path.join(repo, file)), {recursive: true})
-						yield* fs.copyFile(path.join(input.home, file), path.join(repo, file))
+						yield* fs.copyFile(path.join(input.root, file), path.join(repo, file))
 					}
 					yield* fs.copy(
 						path.join(repo, harness === 'claude' ? '.claude' : '.codex', 'skills'),
@@ -137,17 +119,17 @@ export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 					)
 					if (harness === 'claude') {
 						yield* fs.makeDirectory(path.join(home, 'agents'))
-						yield* fs.copyFile(path.join(input.home, '.claude/agents/pair.md'), path.join(home, 'agents/pair.md'))
-						yield* fs.copyFile(path.join(input.home, '.claude/settings.json'), path.join(home, 'settings.json'))
+						yield* fs.copyFile(path.join(input.root, '.claude/agents/pair.md'), path.join(home, 'agents/pair.md'))
+						yield* fs.copyFile(path.join(input.root, '.claude/settings.json'), path.join(home, 'settings.json'))
 						yield* fs.symlink(path.join(input.home, '.claude/.credentials.json'), path.join(home, '.credentials.json'))
 					} else {
-						yield* fs.copyFile(path.join(input.home, '.codex/instructions.md'), path.join(home, 'instructions.md'))
+						yield* fs.copyFile(path.join(input.root, '.codex/instructions.md'), path.join(home, 'instructions.md'))
 						yield* fs.makeDirectory(path.join(home, 'rules'))
-						yield* fs.copyFile(path.join(input.home, '.codex/rules/deny.rules'), path.join(home, 'rules/deny.rules'))
+						yield* fs.copyFile(path.join(input.root, '.codex/rules/deny.rules'), path.join(home, 'rules/deny.rules'))
 						yield* fs.writeFileString(
 							path.join(home, 'config.toml'),
 							pipe(
-								yield* fs.readFileString(path.join(input.home, '.codex/config.toml')),
+								yield* fs.readFileString(path.join(input.root, '.codex/config.toml')),
 								String.replace(
 									/^model_instructions_file = .*$/mu,
 									`model_instructions_file = "${home}/instructions.md"`
