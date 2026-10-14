@@ -32,7 +32,7 @@ const save = pipe(
 				Effect.gen(function* () {
 					const client = yield* RpcClient.make(RpcContracts)
 					const saved = yield* client['notes.capture']({
-						id: yield* (yield* Crypto.Crypto).randomUUIDv4,
+						id: yield* (yield* Crypto.Crypto).randomUUIDv4(),
 						text: input.entry
 					})
 					yield* Effect.logInfo('Saved; the server is reading and tagging it, which takes minutes for a long video')
