@@ -14,11 +14,10 @@ vp run --workspace-root --no-cache fix
 vp run --workspace-root --cache test
 ```
 
-**App.** Prefer the built preview for browser testing, captures and handoff, on a free port. Use the source host only when live iteration needs it, not as a second default proof environment.
+**App.** Web apps have no development server. Run the built preview on a free port for iteration, browser testing, captures and handoff; rerun it after each change.
 
 ```bash
 HOST=127.0.0.1 PORT=<port> vp run --filter @deslop/portfolio preview
-HOST=127.0.0.1 vp -C apps/portfolio dev --host 127.0.0.1 --port <port> --strictPort
 ```
 
 **Components.** List the existing shared components first. Inspect with `vp run --workspace-root shadcn list @shadcn`, `vp run --workspace-root shadcn view <component>` and `vp run --workspace-root shadcn docs <component>`, and add with `vp run --workspace-root shadcn add <component>`.
@@ -28,7 +27,6 @@ HOST=127.0.0.1 vp -C apps/portfolio dev --host 127.0.0.1 --port <port> --strictP
 On dev only, the collector listens on `http://127.0.0.1:4318` and Jaeger on `http://127.0.0.1:16686`. CORS allows the production portfolio origin and any loopback port.
 
 - **Browser.** The browser exports to localhost on its own machine. A remote preview needs a reachable `VITE_OTEL_URL` with its origin allowed.
-- **Source host.** The Vite source host has no `ServerRuntime.layer` telemetry. Backend spans need the instrumented production entrypoint or scoped runtime instrumentation.
 - **Proof.** An allowed preflight does not prove that the app emits spans.
 
 ```bash
