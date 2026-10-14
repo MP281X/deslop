@@ -4,12 +4,12 @@ import {DatabaseSync} from 'node:sqlite'
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Effect, FileSystem, Option, Path, Schema, pipe} from 'effect'
+import {Array, Effect, FileSystem, Option, Order, Path, Record, Schema, pipe} from 'effect'
 
 import {Transcript} from '#schema'
 
 import {collect, recordRun} from '#lib/collect'
-import {cleanup, parseCases, prepare, Settings, command} from '#lib/prepare'
+import {activate, cleanup, parseCases, prepare, Settings, command} from '#lib/prepare'
 import {blindText, measure} from '#lib/utils'
 
 it('keeps usage categories separate and deduplicates streamed Claude messages', () => {
@@ -160,6 +160,61 @@ it.effect(
 				})
 				assert.strictEqual(manifest.runs.length, 2)
 				const run = Option.getOrThrow(Array.findFirst(manifest.runs, row => row.harness === 'codex'))
+				assert.strictEqual(
+					yield* fs.readFileString(`${home}/.t3/userdata/settings.json`),
+					yield* Schema.encodeEffect(Schema.fromJsonString(Settings))(original)
+				)
+				assert.isFalse(yield* fs.exists(`${run.home}/auth.json`))
+				assert.strictEqual((yield* Effect.exit(activate(manifest.directory, run.id, home)))._tag, 'Failure')
+				yield* fs.writeFileString(`${home}/.codex/auth.json`, 'Private fixture')
+				yield* fs.writeFileString(`${home}/.t3/userdata/settings.json`, 'invalid')
+				assert.strictEqual((yield* Effect.exit(activate(manifest.directory, run.id, home)))._tag, 'Failure')
+				assert.isFalse(Array.contains(yield* fs.readDirectory(run.home), 'auth.json'))
+				yield* fs.writeFileString(
+					`${home}/.t3/userdata/settings.json`,
+					yield* Schema.encodeEffect(Schema.fromJsonString(Settings))(original)
+				)
+				assert.strictEqual(
+					(yield* Effect.exit(
+						pipe(
+							activate(manifest.directory, run.id, home),
+							Effect.provideService(FileSystem.FileSystem, {
+								...fs,
+								writeFileString: () => fs.writeFileString(`${home}/missing/settings.json`, 'unreachable')
+							})
+						)
+					))._tag,
+					'Failure'
+				)
+				assert.isFalse(Array.contains(yield* fs.readDirectory(run.home), 'auth.json'))
+				yield* activate(manifest.directory, run.id, home)
+				yield* activate(manifest.directory, run.id, home)
+				assert.isTrue(yield* fs.exists(`${run.home}/auth.json`))
+				const activated = yield* Schema.decodeEffect(Schema.fromJsonString(Settings))(
+					yield* fs.readFileString(`${home}/.t3/userdata/settings.json`)
+				)
+				assert.deepStrictEqual(
+					Array.sort(Record.keys(activated.providerInstances), Order.String),
+					Array.sort([run.instance, 'user'], Order.String)
+				)
+				yield* cleanup(manifest.directory, home, run.id)
+				assert.isFalse(yield* fs.exists(`${run.home}/auth.json`))
+				assert.deepStrictEqual(
+					yield* Schema.decodeEffect(Schema.fromJsonString(Settings))(
+						yield* fs.readFileString(`${home}/.t3/userdata/settings.json`)
+					),
+					original
+				)
+				yield* activate(manifest.directory, run.id, home)
+				yield* fs.writeFileString(`${home}/.t3/userdata/settings.json`, 'invalid')
+				assert.strictEqual((yield* Effect.exit(cleanup(manifest.directory, home, run.id)))._tag, 'Failure')
+				assert.isFalse(Array.contains(yield* fs.readDirectory(run.home), 'auth.json'))
+				assert.strictEqual(yield* fs.readFileString(`${home}/.codex/auth.json`), 'Private fixture')
+				yield* fs.writeFileString(
+					`${home}/.t3/userdata/settings.json`,
+					yield* Schema.encodeEffect(Schema.fromJsonString(Settings))(original)
+				)
+				yield* activate(manifest.directory, run.id, home)
 				yield* command(run.repo, 'vp', ['check'])
 				assert.isFalse(yield* fs.exists(`${run.repo}/README.md`))
 				assert.isFalse(yield* fs.exists(`${run.repo}/CODING_STANDARDS.md`))
@@ -269,6 +324,7 @@ console.log(JSON.stringify(await Effect.runPromise(pipe(program, Effect.scoped, 
 					'Add feature'
 				])
 				yield* command(run.repo, 'git', ['branch', 'feature/export'])
+				yield* fs.remove(`${run.repo}/artifacts`, {recursive: true})
 				const result = Option.getOrThrow(
 					Array.findFirst(yield* collect(manifest.directory, home), row => row.status !== 'not-run')
 				)

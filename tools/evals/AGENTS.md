@@ -12,15 +12,18 @@ Cases contain no starter paths or install commands: the CLI copies the existing 
 
 ```bash
 node tools/evals/src/main.cli.ts prepare <skill-directory>
+node tools/evals/src/main.cli.ts activate <directory> <run-id>
 node tools/evals/src/main.cli.ts record <directory> <run-id> <thread-id>
 node tools/evals/src/main.cli.ts collect <directory>
+node tools/evals/src/main.cli.ts cleanup-run <directory> <run-id>
 node tools/evals/src/main.cli.ts cleanup <directory>
 ```
 
 1. Preparation copies the five managed base files from this checkout directly into isolated provider homes and repositories. Never replace live global base files to evaluate a candidate. Each runtime gets the base configuration and selected skill only; authentication links and temporary T3 provider registrations preserve existing sign-ins, sessions, skills and approvals.
-2. With authorization for temporary evaluation threads, register `run.repo` using `t3_project_create`. Launch its project with `workspaceStrategy: {type: "root", branch: "main"}`, its provider instance, task and a high-effort cheap model. A child that inherits this checkout does not prove selected-skill isolation.
+   Preparation registers no providers or authentication links. Activate only a run that will start now. Normalize the starter and injected review diff with Oxfmt and deterministic lint autofix before the agent analyzes it. Keep the same normalization in both candidates. Measure remaining lint errors and structural correction effort, not raw formatting differences.
+2. With authorization for temporary evaluation threads, register `run.repo` using `t3_project_create`. Launch its project with `workspaceStrategy: {type: "root", branch: "main"}`, its Codex provider instance, task and a high-effort model with `serviceTier: default`. Do not launch Claude or fast-mode evaluations. A child that inherits this checkout does not prove selected-skill isolation. Record runs in the same manifest sequentially; wait for each write to finish.
 3. Record the thread id, wait for terminal status and collect. Check the native session's loaded configuration and skills. Give anonymous numbered `judge/` snapshots to the quality judge without identities or efficiency measurements; the user judges final artifacts.
-4. After collection, delete owned projects through `t3_project_delete(force: true)`, which also deletes their threads. Verify deletion, then run cleanup to remove owned provider registrations and authentication links. Stop owned app-server and starter processes; keep evidence.
+4. Always preserve required evidence, then automatically delete each finished evaluation project through `t3_project_delete(force: true)` and verify that its threads are gone. Run `cleanup-run` immediately to remove that run's provider and authentication link; do not wait for other cases. Verify both removals. Run `cleanup` when the whole evaluation ends, including failed, cancelled and superseded runs. Stop owned app-server and starter processes; keep evidence and preserve unrelated state.
 
 ## Compare
 

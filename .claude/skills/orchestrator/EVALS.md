@@ -48,4 +48,6 @@ We are planning folder import, not implementing it yet. My proposed direction is
 - Show the journey without a new app, repository change or decorative dashboard.
 - Ask one consequential question with a recommendation, benefit and cost; do not schedule a default or implement before an answer.
 - For a follow-up dialogue, apply explicit replacement immediately, retain independent work on additive steering, and leave tentative ideas as questions rather than requirements.
+- Treat approval as a provisional trial. Expose one complete real journey early; after hands-on feedback, revise the affected behavior without demanding a new full specification or restarting independent work.
+- Keep one simple implementation, not speculative flags or variant stores. Remove the rejected version after proving its replacement.
 - Mark the follow-up criteria unobserved until that dialogue runs; a written plan is not steering proof.

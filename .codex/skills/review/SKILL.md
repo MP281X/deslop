@@ -9,6 +9,8 @@ Challenge the work independently. Trace the contract, try its strongest reachabl
 
 ## Code review
 
+Review the normalized diff: the author must run Oxfmt and deterministic lint autofix first. Do not spend review reasoning on formatting or already-fixable diagnostics. If normalization is unavailable, name that gap and have the author prepare it; never mutate a read-only target.
+
 - **Depth.** Read every hand-written changed line. For generated output, review the generator change and a sample, such as one package per source format. Trace each contract through its real consumers, failure paths, concurrency and resource ownership against the merge base. Try the inputs, orderings and failures that the tests miss. When the change refactors a whole file, list each behavior the file had at the merge base and prove that each one still holds, apart from the planned change.
 - **Findings.** Report broken behavior or contracts that a real caller's input reaches. Report violations of engineering, design or `CODING_STANDARDS.md` in changed lines, and in every line of a file that the task adds or rewrites. Skip what lint enforces outside legacy lists, and restyling that the change does not need.
 - **Beyond the diff.** A contradiction with an unchanged file, a stale reference that the change leaves, and a false assumption that the change rests on are findings.

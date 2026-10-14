@@ -3,7 +3,9 @@ name: engineering
 description: 'TypeScript and Effect code conventions paired with shared lint. Use when designing, implementing or reviewing product and test code, including prototypes.'
 ---
 
-**Scope.** Apply these rules and the repository's `CODING_STANDARDS.md` when present, and write each line right the first time; lint is only the fallback. A refactor or cleanup request applies every rule to every line of the owned files. Scratch code outside the repository follows no style rule. Do not create a standards file just to satisfy this reference.
+**Scope.** Apply these rules and the repository's `CODING_STANDARDS.md` when present. Aim for a structurally correct first pass with few lint errors, not a promise of zero diagnostics. Oxlint remains the authoritative check; instructions do not replace it. Oxfmt owns whitespace, indentation and other mechanical formatting. Use automatic formatting and available fixes instead of spending reasoning on those details; fix remaining structural diagnostics at their source without a full rewrite or weakened rules. A refactor or cleanup request applies every rule to every line of the owned files. Scratch code outside the repository follows no style rule. Do not create a standards file just to satisfy this reference.
+
+**Before checking.** Run Oxfmt and the repository's deterministic lint autofix before manual code analysis, independent review or a check-only lint pass. Use the owned scope and preserve unrelated changes. Run both even when generated code looks correct; automatic fixes need no model iteration. Analyze the remaining diagnostics and behavior only after normalization. For a read-only review, the author prepares the normalized diff; the reviewer never writes the reviewed checkout.
 
 ## Simplicity
 

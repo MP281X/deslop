@@ -9,7 +9,7 @@ import {Argument, Command} from 'effect/cli'
 import packageJson from '#package' with {type: 'json'}
 
 import {collect, recordRun} from '#lib/collect'
-import {cleanup, command, prepare} from '#lib/prepare'
+import {activate, cleanup, command, prepare} from '#lib/prepare'
 
 const commands = [
 	Command.make(
@@ -20,12 +20,26 @@ const commands = [
 				yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
 					yield* prepare({
 						...input,
-						harnesses: ['claude', 'codex'],
+						harnesses: ['codex'],
 						home: yield* Config.String('HOME'),
 						root: String.trim(yield* command('.', 'git', ['rev-parse', '--show-toplevel']))
 					})
 				)
 			)
+		})
+	),
+	Command.make(
+		'activate',
+		{directory: Argument.String('directory'), id: Argument.String('run-id')},
+		Effect.fnUntraced(function* (input) {
+			yield* activate(input.directory, input.id, yield* Config.String('HOME'))
+		})
+	),
+	Command.make(
+		'cleanup-run',
+		{directory: Argument.String('directory'), id: Argument.String('run-id')},
+		Effect.fnUntraced(function* (input) {
+			yield* cleanup(input.directory, yield* Config.String('HOME'), input.id)
 		})
 	),
 	Command.make(
