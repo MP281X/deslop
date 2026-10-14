@@ -35,7 +35,7 @@ import {Extraction, ImageType, NotesError} from '#services/notes/schema.ts'
 const shortHosts = ['vm.tiktok.com', 'vt.tiktok.com', 't.co']
 
 // The proxy every request of a Sources method exits through.
-const Exit = Context.Reference<Option.Option<string>>('@deslop/stash/services/notes/internal/extraction/Exit', {
+const Exit = Context.Reference<Option.Option<string>>('@deslop/stash/services/notes/lib/extraction/Exit', {
 	defaultValue: Option.none
 })
 
@@ -728,7 +728,7 @@ export class Sources extends Context.Service<
 		readonly image: (url: string) => Effect.Effect<Image, NotesError>
 		readonly resolve: (url: string) => Effect.Effect<string, NotesError>
 	}
->()('@deslop/stash/services/notes/internal/extraction/Sources') {
+>()('@deslop/stash/services/notes/lib/extraction/Sources') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {

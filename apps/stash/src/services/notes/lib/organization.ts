@@ -48,7 +48,7 @@ export class Organizer extends Context.Service<
 			tags: Note['tags']
 		}) => Effect.Effect<Organization, NotesError>
 	}
->()('@deslop/stash/services/notes/internal/organization/Organizer') {
+>()('@deslop/stash/services/notes/lib/organization/Organizer') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
