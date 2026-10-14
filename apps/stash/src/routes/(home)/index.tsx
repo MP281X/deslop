@@ -1,4 +1,4 @@
-import {useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, DateTime, HashSet, Match, Option, String, pipe} from 'effect'
 
@@ -14,7 +14,6 @@ import {
 	List,
 	Menu,
 	Picker,
-	ProgressView,
 	ScrollView,
 	SwipeActions,
 	Text,
@@ -27,6 +26,7 @@ import type {useNativeState} from '@expo/ui/swift-ui'
 import {
 	accessibilityElement,
 	accessibilityHidden,
+	accessibilityLabel,
 	alignmentGuide,
 	aspectRatio,
 	background,
@@ -52,6 +52,7 @@ import {
 	onTapGesture,
 	padding,
 	pickerStyle,
+	redacted,
 	resizable,
 	scrollContentBackground,
 	searchable,
@@ -140,6 +141,8 @@ function Preview(props: {note: NoteItem}) {
 
 const title = [mono('headline', 16), foregroundStyle(colors.foreground), lineLimit(2)]
 
+const summary = [font({textStyle: 'subheadline'}), foregroundStyle(colors.mutedForeground), lineLimit(2)]
+
 function Lines(props: {note: NoteItem}) {
 	const note = props.note
 	const byline = pipe(
@@ -152,10 +155,10 @@ function Lines(props: {note: NoteItem}) {
 		Match.when('organizing', () => (
 			<VStack alignment="leading" spacing={4}>
 				<Text modifiers={title}>{note.title}</Text>
-				<HStack spacing={6}>
-					<ProgressView modifiers={[controlSize('mini')]} />
-					<Text modifiers={caption}>Reading…</Text>
-				</HStack>
+				<Text modifiers={[...summary, redacted('placeholder'), accessibilityLabel('Reading')]}>
+					The server is reading this entry and writing its summary.
+				</Text>
+				<Text modifiers={caption}>{byline}</Text>
 			</VStack>
 		)),
 		Match.when('failed', () => (
@@ -172,9 +175,7 @@ function Lines(props: {note: NoteItem}) {
 		Match.orElse(() => (
 			<VStack alignment="leading" spacing={4}>
 				<Text modifiers={title}>{note.title}</Text>
-				<Text modifiers={[font({textStyle: 'subheadline'}), foregroundStyle(colors.mutedForeground), lineLimit(2)]}>
-					{note.summary}
-				</Text>
+				<Text modifiers={summary}>{note.summary}</Text>
 				<Text modifiers={caption}>{byline}</Text>
 			</VStack>
 		))
@@ -285,11 +286,16 @@ function FilterMenu(props: {kind: Kind | ''; onKind: (kind: Kind | '') => void})
 // The sheet hangs off the title in the bar, so it adds nothing to the layout.
 function PasteSheet() {
 	const offer = pipe(useAtomValue(offerAtom), AsyncResult.getOrElse(Option.none))
-	const respond = useAtomSet(answerAtom)
+	const [answered, respond] = useAtom(answerAtom)
 	const logoUri = useAtomValue(assetAtom(logo))
 	const kind = Option.match(offer, {onNone: () => 'link' as const, onSome: open => open.kind})
+	const open = Option.filter(
+		offer,
+		current =>
+			!AsyncResult.isWaiting(answered) && !Option.exists(AsyncResult.value(answered), count => count === current.count)
+	)
 	function answer(save: boolean) {
-		Option.match(offer, {onNone: () => undefined, onSome: open => respond({...open, save})})
+		Option.match(open, {onNone: () => undefined, onSome: current => respond({...current, save})})
 	}
 	return (
 		<BottomSheet
@@ -301,7 +307,7 @@ function PasteSheet() {
 					<Text modifiers={[mono('headline', 17), foregroundStyle(colors.foreground)]}>stash</Text>
 				</HStack>
 			}
-			isPresented={Option.isSome(offer)}
+			isPresented={Option.isSome(open)}
 			onIsPresentedChange={presented => {
 				if (!presented) answer(false)
 			}}

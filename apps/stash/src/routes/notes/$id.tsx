@@ -5,7 +5,6 @@ import {Array, DateTime, Match, Option, String, pipe} from 'effect'
 import {
 	Button,
 	ContentUnavailableView,
-	DisclosureGroup,
 	HStack,
 	Image,
 	Menu,
@@ -37,7 +36,6 @@ import {
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
-import {useState} from 'react'
 import {Linking} from 'react-native'
 
 import {appOf, brandOf, imageAtom, noteAtom, notesAtom, regenerateAtom, removeAtom} from '#lib/utils.ts'
@@ -111,6 +109,7 @@ export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (t
 										remove(item.id)
 										props.onClose()
 									}}
+									modifiers={[tint(colors.destructive)]}
 								/>
 							</Menu>
 						</ToolbarItem>
@@ -192,32 +191,6 @@ function Body(props: {text: string}) {
 	)
 }
 
-function Source(props: {label: string; text: string}) {
-	const [expanded, setExpanded] = useState(false)
-	if (String.isEmpty(String.trim(props.text))) return undefined
-	return (
-		<DisclosureGroup
-			label={props.label}
-			isExpanded={expanded}
-			onIsExpandedChange={setExpanded}
-			modifiers={[mono('subheadline', 15), tint(colors.mutedForeground)]}
-		>
-			<Text
-				modifiers={[
-					mono('caption', 13),
-					lineSpacing(3),
-					foregroundStyle(colors.mutedForeground),
-					textSelection(true),
-					padding({top: 8}),
-					frame({alignment: 'leading', maxWidth: Infinity})
-				]}
-			>
-				{props.text}
-			</Text>
-		</DisclosureGroup>
-	)
-}
-
 function Placeholder() {
 	return (
 		<VStack alignment="leading" spacing={10} modifiers={[redacted('placeholder')]}>
@@ -252,7 +225,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 			>
 				{note.image !== undefined && <Cover note={note} />}
 				<VStack alignment="leading" spacing={6}>
-					<Text modifiers={[mono('headline', 22), foregroundStyle(colors.foreground), textSelection(true)]}>
+					<Text modifiers={[mono('headline', 18), foregroundStyle(colors.foreground), textSelection(true)]}>
 						{note.title}
 					</Text>
 					<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground)]}>{meta}</Text>
@@ -301,13 +274,6 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 							))}
 						</HStack>
 					</ScrollView>
-				)}
-				{AsyncResult.isSuccess(full) && (
-					<VStack alignment="leading" spacing={12}>
-						<Source label="Transcript" text={full.value.transcript ?? ''} />
-						<Source label="Source" text={full.value.content} />
-						<Source label="Text in the images" text={full.value.screenText ?? ''} />
-					</VStack>
 				)}
 			</VStack>
 		</ScrollView>
