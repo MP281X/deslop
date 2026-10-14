@@ -1,27 +1,10 @@
-import {Array, Config, Context, Effect, Layer, Option, Predicate, Record, Redacted, Schema, String, pipe} from 'effect'
+import {AnthropicClient, AnthropicLanguageModel} from '@effect/ai-anthropic'
 
-import {Base64} from 'effect/encoding'
-import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
+import {Array, Config, Context, Effect, Layer, Option, Redacted, Schema, String, pipe} from 'effect'
 
 import {normalizeTags} from '#services/notes/lib/utils.ts'
 import type {Image, Note} from '#services/notes/schema.ts'
 import {NotesError, Organization} from '#services/notes/schema.ts'
-
-type Message = typeof Message.Type
-const Message = Schema.Struct({
-	content: Schema.Array(Schema.Struct({text: Schema.optionalKey(Schema.String), type: Schema.String}))
-})
-
-// Claude's structured output rejects length limits; decoding the answer still checks them.
-function withoutLimits(value: unknown): unknown {
-	if (Array.isArray(value)) return Array.map(value, withoutLimits)
-	if (!Predicate.isObject(value)) return value
-	return pipe(
-		value,
-		Record.filter((_item, key) => !Array.contains(['maxItems', 'maxLength', 'minLength'], key)),
-		Record.map(withoutLimits)
-	)
-}
 
 const instructions = [
 	"You organize entries in one person's private notes, so they find each entry again by search and learn what it holds without opening it.",
@@ -70,13 +53,22 @@ export class Organizer extends Context.Service<
 		this,
 		Effect.gen(function* () {
 			const key = yield* Config.option(Config.Redacted('ANTHROPIC_API_KEY'))
-			const model = yield* pipe(Config.String('STASH_AI_MODEL'), Config.withDefault('claude-haiku-5-5'))
-			const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
-			const schema = withoutLimits(Schema.toJsonSchemaDocument(Organization, {onExcessProperty: 'error'}).schema)
+			const model = yield* pipe(
+				AnthropicLanguageModel.make({
+					config: {max_tokens: 32_000, output_config: {effort: 'high'}},
+					model: 'claude-haiku-5-5'
+				}),
+				Effect.provideServiceEffect(
+					AnthropicClient.AnthropicClient,
+					AnthropicClient.make({apiKey: Option.getOrUndefined(key)})
+				)
+			)
 
 			return Organizer.of({
 				organize: Effect.fn('Organizer.organize')(
 					function* (input) {
+						if (Option.isNone(key)) return yield* NotesError.make({message: 'Not tagged: the server has no AI key.'})
+
 						const entry = Array.join(
 							[
 								`Source: ${input.note.source}`,
@@ -91,48 +83,24 @@ export class Organizer extends Context.Service<
 							],
 							'\n'
 						)
-						const token = yield* pipe(
-							Effect.fromOption(key),
-							Effect.mapError(() => NotesError.make({message: 'Not tagged: the server has no AI key.'}))
-						)
-						const request = yield* HttpClientRequest.bodyJson(
-							HttpClientRequest.post('https://api.anthropic.com/v1/messages', {
-								headers: {'anthropic-version': '2023-06-01', 'x-api-key': Redacted.value(token)}
-							}),
-							{
-								max_tokens: 32_000,
-								messages: [
-									{
-										content: [
-											...Array.map(input.images, image => ({
-												source: {data: Base64.encode(image.bytes), media_type: image.type, type: 'base64'},
-												type: 'image'
-											})),
-											{text: entry, type: 'text'}
-										],
-										role: 'user'
-									}
-								],
-								model,
-								output_config: {effort: 'high', format: {schema, type: 'json_schema'}},
-								system: Array.join(instructions, ' ')
-							}
-						)
-						const message = yield* pipe(
-							client.execute(request),
-							Effect.flatMap(HttpClientResponse.schemaBodyJson(Message))
-						)
-						const answer = yield* pipe(
-							Array.findFirst(message.content, block => block.type === 'text'),
-							Option.flatMapNullishOr(block => block.text),
-							Effect.fromOption,
-							Effect.mapError(() => NotesError.make({message: 'The AI returned no answer.'}))
-						)
-						const organization = yield* pipe(
-							Schema.decodeEffect(Schema.fromJsonString(Organization))(answer),
-							Effect.mapError(cause => NotesError.make({cause, message: 'The AI answer was unreadable.'}))
-						)
-						return {...organization, tags: normalizeTags(organization.tags)}
+						const response = yield* model.generateObject({
+							prompt: [
+								{content: Array.join(instructions, ' '), role: 'system'},
+								{
+									content: [
+										...Array.map(input.images, image => ({
+											data: image.bytes,
+											mediaType: image.type,
+											type: 'file' as const
+										})),
+										{text: entry, type: 'text' as const}
+									],
+									role: 'user'
+								}
+							],
+							schema: Organization
+						})
+						return {...response.value, tags: normalizeTags(response.value.tags)}
 					},
 					Effect.timeout('5 minutes'),
 					Effect.mapError(cause =>
