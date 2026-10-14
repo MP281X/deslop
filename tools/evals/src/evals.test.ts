@@ -4,12 +4,12 @@ import {DatabaseSync} from 'node:sqlite'
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Effect, FileSystem, Option, Path, Schema, pipe} from 'effect'
+import {Array, Effect, FileSystem, Option, Order, Path, Record, Schema, pipe} from 'effect'
 
 import {Transcript} from '#schema'
 
 import {collect, recordRun} from '#lib/collect'
-import {cleanup, parseCases, prepare, Settings, command} from '#lib/prepare'
+import {activate, cleanup, parseCases, prepare, Settings, command} from '#lib/prepare'
 import {blindText, measure} from '#lib/utils'
 
 it('keeps usage categories separate and deduplicates streamed Claude messages', () => {
@@ -123,7 +123,7 @@ it.effect('rejects duplicated criteria and preserves ordinary Markdown headings'
 )
 
 it.effect(
-	'applies global base configuration, prepares one skill and preserves full T3 evidence',
+	'isolates candidate configuration, prepares one skill and preserves full T3 evidence',
 	() =>
 		pipe(
 			Effect.gen(function* () {
@@ -136,6 +136,17 @@ it.effect(
 				yield* fs.makeDirectory(`${home}/.claude/skills/unrelated`, {recursive: true})
 				yield* fs.writeFileString(`${home}/.codex/rules/default.rules`, 'Keep')
 				yield* fs.writeFileString(`${home}/.claude/skills/unrelated/SKILL.md`, 'Keep')
+				const baseFiles = [
+					'.codex/instructions.md',
+					'.codex/config.toml',
+					'.codex/rules/deny.rules',
+					'.claude/agents/pair.md',
+					'.claude/settings.json'
+				]
+				for (const file of baseFiles) {
+					yield* fs.makeDirectory(path.dirname(path.join(home, file)), {recursive: true})
+					yield* fs.writeFileString(path.join(home, file), `Keep ${file}`)
+				}
 				const original = {colorTheme: 'dark', providerInstances: {user: {enabled: true}}} satisfies Settings
 				yield* fs.writeFileString(
 					`${home}/.t3/userdata/settings.json`,
@@ -143,12 +154,66 @@ it.effect(
 				)
 				const manifest = yield* prepare({
 					harnesses: ['codex', 'claude'],
-					home,
 					root,
 					skill: path.join(root, 'tools/coding-standards/skills/engineering')
 				})
 				assert.strictEqual(manifest.runs.length, 2)
 				const run = Option.getOrThrow(Array.findFirst(manifest.runs, row => row.harness === 'codex'))
+				assert.strictEqual(
+					yield* fs.readFileString(`${home}/.t3/userdata/settings.json`),
+					yield* Schema.encodeEffect(Schema.fromJsonString(Settings))(original)
+				)
+				assert.isFalse(yield* fs.exists(`${run.home}/auth.json`))
+				assert.strictEqual((yield* Effect.exit(activate(manifest.directory, run.id, home)))._tag, 'Failure')
+				yield* fs.writeFileString(`${home}/.codex/auth.json`, 'Private fixture')
+				yield* fs.writeFileString(`${home}/.t3/userdata/settings.json`, 'invalid')
+				assert.strictEqual((yield* Effect.exit(activate(manifest.directory, run.id, home)))._tag, 'Failure')
+				assert.isFalse(Array.contains(yield* fs.readDirectory(run.home), 'auth.json'))
+				yield* fs.writeFileString(
+					`${home}/.t3/userdata/settings.json`,
+					yield* Schema.encodeEffect(Schema.fromJsonString(Settings))(original)
+				)
+				assert.strictEqual(
+					(yield* Effect.exit(
+						pipe(
+							activate(manifest.directory, run.id, home),
+							Effect.provideService(FileSystem.FileSystem, {
+								...fs,
+								writeFileString: () => fs.writeFileString(`${home}/missing/settings.json`, 'unreachable')
+							})
+						)
+					))._tag,
+					'Failure'
+				)
+				assert.isFalse(Array.contains(yield* fs.readDirectory(run.home), 'auth.json'))
+				yield* activate(manifest.directory, run.id, home)
+				yield* activate(manifest.directory, run.id, home)
+				assert.isTrue(yield* fs.exists(`${run.home}/auth.json`))
+				const activated = yield* Schema.decodeEffect(Schema.fromJsonString(Settings))(
+					yield* fs.readFileString(`${home}/.t3/userdata/settings.json`)
+				)
+				assert.deepStrictEqual(
+					Array.sort(Record.keys(activated.providerInstances), Order.String),
+					Array.sort([run.instance, 'user'], Order.String)
+				)
+				yield* cleanup(manifest.directory, home, run.id)
+				assert.isFalse(yield* fs.exists(`${run.home}/auth.json`))
+				assert.deepStrictEqual(
+					yield* Schema.decodeEffect(Schema.fromJsonString(Settings))(
+						yield* fs.readFileString(`${home}/.t3/userdata/settings.json`)
+					),
+					original
+				)
+				yield* activate(manifest.directory, run.id, home)
+				yield* fs.writeFileString(`${home}/.t3/userdata/settings.json`, 'invalid')
+				assert.strictEqual((yield* Effect.exit(cleanup(manifest.directory, home, run.id)))._tag, 'Failure')
+				assert.isFalse(Array.contains(yield* fs.readDirectory(run.home), 'auth.json'))
+				assert.strictEqual(yield* fs.readFileString(`${home}/.codex/auth.json`), 'Private fixture')
+				yield* fs.writeFileString(
+					`${home}/.t3/userdata/settings.json`,
+					yield* Schema.encodeEffect(Schema.fromJsonString(Settings))(original)
+				)
+				yield* activate(manifest.directory, run.id, home)
 				yield* command(run.repo, 'vp', ['check'])
 				assert.isFalse(yield* fs.exists(`${run.repo}/README.md`))
 				assert.isFalse(yield* fs.exists(`${run.repo}/CODING_STANDARDS.md`))
@@ -156,9 +221,25 @@ it.effect(
 				assert.include(yield* fs.readFileString(`${run.repo}/.gitignore`), 'node_modules/')
 				assert.strictEqual(yield* fs.readFileString(`${home}/.codex/rules/default.rules`), 'Keep')
 				assert.strictEqual(yield* fs.readFileString(`${home}/.claude/skills/unrelated/SKILL.md`), 'Keep')
+				for (const file of baseFiles) {
+					assert.strictEqual(yield* fs.readFileString(path.join(home, file)), `Keep ${file}`)
+				}
 				assert.strictEqual(
-					yield* fs.readFileString(`${home}/.codex/instructions.md`),
+					yield* fs.readFileString(`${run.home}/instructions.md`),
 					yield* fs.readFileString(path.join(root, '.codex/instructions.md'))
+				)
+				assert.include(
+					yield* fs.readFileString(`${run.home}/config.toml`),
+					`model_instructions_file = "${run.home}/instructions.md"`
+				)
+				const claudeRun = Option.getOrThrow(Array.findFirst(manifest.runs, row => row.harness === 'claude'))
+				assert.strictEqual(
+					yield* fs.readFileString(`${claudeRun.home}/settings.json`),
+					yield* fs.readFileString(path.join(root, '.claude/settings.json'))
+				)
+				assert.strictEqual(
+					yield* fs.readFileString(`${claudeRun.home}/agents/pair.md`),
+					yield* fs.readFileString(path.join(root, '.claude/agents/pair.md'))
 				)
 				assert.deepStrictEqual(yield* fs.readDirectory(`${run.home}/skills`), ['engineering'])
 				assert.isFalse(yield* fs.exists(`${run.home}/skills/engineering/EVALS.md`))
@@ -167,9 +248,8 @@ it.effect(
 				assert.include(yield* fs.realPath(`${run.repo}/node_modules/effect`), run.repo)
 				const review = yield* prepare({
 					harnesses: ['codex'],
-					home,
 					root,
-					skill: path.join(root, '.claude/skills/review')
+					skill: path.join(root, 'tools/coding-standards/skills/review')
 				})
 				const reviewRun = Option.getOrThrow(Array.head(review.runs))
 				assert.include(yield* command(reviewRun.repo, 'git', ['diff']), "fs.glob('*.json'")
@@ -242,6 +322,7 @@ console.log(JSON.stringify(await Effect.runPromise(pipe(program, Effect.scoped, 
 					'Add feature'
 				])
 				yield* command(run.repo, 'git', ['branch', 'feature/export'])
+				yield* fs.remove(`${run.repo}/artifacts`, {recursive: true})
 				const result = Option.getOrThrow(
 					Array.findFirst(yield* collect(manifest.directory, home), row => row.status !== 'not-run')
 				)

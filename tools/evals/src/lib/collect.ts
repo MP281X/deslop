@@ -247,7 +247,9 @@ export const collect = Effect.fn('Evals.collect')(function* (directory: string, 
 				blindText(yield* fs.readFileString(`${evidence}/branches.txt`), directory)
 			)
 			yield* fs.writeFileString(`${judge}/diff.patch`, blindText(diff, directory))
-			yield* fs.copy(`${run.repo}/artifacts`, `${evidence}/artifacts`)
+			if (yield* fs.exists(`${run.repo}/artifacts`)) {
+				yield* fs.copy(`${run.repo}/artifacts`, `${evidence}/artifacts`)
+			}
 			const captures = pipe(
 				metrics,
 				Array.flatMap(metric => metric.sessions),
@@ -262,6 +264,7 @@ export const collect = Effect.fn('Evals.collect')(function* (directory: string, 
 			for (const file of captures) {
 				if (yield* fs.exists(file)) {
 					yield* fs.makeDirectory(`${judge}/repo/artifacts`, {recursive: true})
+					yield* fs.makeDirectory(`${evidence}/artifacts`, {recursive: true})
 					yield* fs.copyFile(file, `${evidence}/artifacts/${path.basename(file)}`)
 					yield* fs.copyFile(file, `${judge}/repo/artifacts/${path.basename(file)}`)
 				}

@@ -1,7 +1,7 @@
 <!doctype html>
 <!--
   Proof video template for HyperFrames. Copy it to a scratch project as index.html.
-  Edit only the marked parts: the app tokens, the claim, one .shot and one .cap per chapter, and the CHAPTERS list.
+  Edit only the marked parts: the app tokens, one .shot and one necessary .cap per chapter, and the CHAPTERS list.
   Recordings are T3 MP4s at 1280x800, placed in assets/. Targets are fractions of the recorded viewport.
 -->
 <html lang="en">
@@ -21,9 +21,7 @@
 				--canvas: #f1f2f4; /* a step darker than the app's page surface */
 				--surface: #ffffff; /* the app's page surface */
 				--text: #0f172a; /* the app's foreground */
-				--muted: #64748b; /* the app's muted foreground */
 				--primary: #2b59e8; /* the app's primary */
-				--on-primary: #ffffff;
 				--radius: 12px; /* the app's base radius, plus 2 px */
 			}
 
@@ -39,53 +37,6 @@
 				height: 100%;
 				overflow: hidden;
 				background: var(--canvas);
-			}
-
-			#claim {
-				position: absolute;
-				inset: 0;
-				background: var(--surface);
-				display: flex;
-				flex-direction: column;
-				justify-content: center;
-				padding: 0 120px;
-			}
-			.kicker {
-				font-size: 20px;
-				font-weight: 600;
-				color: var(--primary);
-				margin-bottom: 28px;
-				display: flex;
-				align-items: center;
-				gap: 12px;
-			}
-			.kicker i {
-				display: block;
-				width: 10px;
-				height: 10px;
-				border-radius: 3px;
-				background: var(--primary);
-			}
-			.line {
-				overflow: hidden;
-			}
-			.line span {
-				display: block;
-				font-size: 68px;
-				line-height: 1.08;
-				font-weight: 650;
-				letter-spacing: -0.025em;
-			}
-			.line.muted span {
-				color: var(--muted);
-			}
-			#claim-bar {
-				width: 220px;
-				height: 4px;
-				border-radius: 2px;
-				background: var(--primary);
-				margin-top: 36px;
-				transform-origin: 0 50%;
 			}
 
 			#stage {
@@ -137,26 +88,14 @@
 				position: absolute;
 				left: 80px;
 				top: 744px;
-				display: flex;
-				align-items: center;
-				gap: 12px;
-				font-size: 22px;
+				font-size: 44px;
 				font-weight: 500;
-			}
-			.cap b {
-				font-size: 15px;
-				font-weight: 600;
-				color: var(--on-primary);
-				background: var(--primary);
-				border-radius: 999px;
-				padding: 4px 10px;
-				font-variant-numeric: tabular-nums;
 			}
 		</style>
 	</head>
 	<body>
 		<!-- EDIT: data-duration is the last chapter's end. -->
-		<div id="root" data-composition-id="main" data-start="0" data-width="1280" data-height="800" data-duration="22">
+		<div id="root" data-composition-id="main" data-start="0" data-width="1280" data-height="800" data-duration="19.4">
 			<div id="stage">
 				<!-- EDIT: one .shot per chapter; data-start and data-duration match CHAPTERS, data-media-start trims the recording. -->
 				<div class="shot" id="shot1">
@@ -167,7 +106,7 @@
 								src="assets/chapter-1.mp4"
 								muted
 								playsinline
-								data-start="2.6"
+								data-start="0"
 								data-duration="7.4"
 								data-media-start="0"
 								data-track-index="0"
@@ -183,7 +122,7 @@
 								src="assets/chapter-2.mp4"
 								muted
 								playsinline
-								data-start="9.6"
+								data-start="7"
 								data-duration="12.4"
 								data-media-start="0"
 								data-track-index="1"
@@ -193,18 +132,9 @@
 				</div>
 			</div>
 
-			<!-- EDIT: one caption per chapter, under twelve words, stating what the viewer sees. -->
-			<div class="cap" id="cap1"><b>1/2</b><span>Choose a file and start the import</span></div>
-			<div class="cap" id="cap2"><b>2/2</b><span>The completed records remain after stopping</span></div>
-
-			<!-- EDIT: the app name and area, then the claim in two or three short lines; the last line can be muted. -->
-			<div id="claim" data-start="0" data-duration="3.3" data-layout-allow-overflow>
-				<div class="kicker"><i></i>App · Import proof</div>
-				<div class="line"><span>Import records</span></div>
-				<div class="line"><span>and stop the work</span></div>
-				<div class="line muted"><span>without losing completed records</span></div>
-				<div id="claim-bar"></div>
-			</div>
+			<!-- EDIT: captions add only meaning the recording does not already show, under twelve words. -->
+			<div class="cap" id="cap1">Choose a file and start the import</div>
+			<div class="cap" id="cap2">The completed records remain after stopping</div>
 		</div>
 		<script>
 			// EDIT: one entry per chapter. start and end are composition seconds. Each move is one input
@@ -212,14 +142,14 @@
 			// viewport fractions, zoom 1 for no push and at most 1.8, tap true for a click or a tap.
 			const CHAPTERS = [
 				{
-					start: 2.6,
-					end: 10.0,
+					start: 0,
+					end: 7.4,
 					moves: [
-						{at: 4.2, target: [0.5, 0.47], zoom: 1.45, tap: true},
-						{at: 7.4, target: [0.66, 0.72], zoom: 1.6, tap: true}
+						{at: 1.6, target: [0.5, 0.47], zoom: 1.45, tap: true},
+						{at: 4.8, target: [0.66, 0.72], zoom: 1.6, tap: true}
 					]
 				},
-				{start: 9.6, end: 22.0, moves: [{at: 11.4, target: [0.5, 0.52], zoom: 1.75, tap: false}]}
+				{start: 7.0, end: 19.4, moves: [{at: 8.8, target: [0.5, 0.52], zoom: 1.75, tap: false}]}
 			]
 
 			const W = 1120,
@@ -233,30 +163,21 @@
 			const ease = 'power3.inOut'
 			const tl = gsap.timeline({paused: true})
 
-			tl.fromTo('.kicker', {opacity: 0, y: 12}, {opacity: 1, y: 0, duration: 0.5, ease: 'power2.out'}, 0.15)
-			tl.fromTo('.line span', {yPercent: 110}, {yPercent: 0, duration: 0.8, ease: 'expo.out', stagger: 0.09}, 0.25)
-			tl.fromTo('#claim-bar', {scaleX: 0}, {scaleX: 1, duration: 0.9, ease: 'expo.out'}, 0.7)
-			tl.to('#claim', {yPercent: -100, duration: 0.8, ease: 'expo.inOut'}, 2.4)
-			tl.fromTo('#stage', {scale: 0.9, opacity: 0}, {scale: 1, opacity: 1, duration: 0.9, ease: 'expo.out'}, 2.6)
-
 			CHAPTERS.forEach((chapter, index) => {
 				const n = index + 1
 				const last = n === CHAPTERS.length
 				if (index > 0)
-					tl.fromTo(`#shot${n}`, {opacity: 0}, {opacity: 1, duration: 0.4, ease: 'power1.inOut'}, chapter.start)
-				tl.fromTo(
-					`#cap${n}`,
-					{opacity: 0, y: 14},
-					{opacity: 1, y: 0, duration: 0.5, ease: 'power2.out'},
-					chapter.start + 0.3
-				)
-				if (!last) tl.to(`#cap${n}`, {opacity: 0, y: -10, duration: 0.35, ease: 'power2.in'}, chapter.end - 0.6)
+					tl.fromTo(`#shot${n}`, {opacity: 0}, {opacity: 1, duration: 0.18, ease: 'power1.inOut'}, chapter.start)
+				tl.fromTo(`#cap${n}`, {opacity: 0, y: 14}, {opacity: 1, y: 0, duration: 0.2, ease: 'power2.out'}, chapter.start)
+				if (!last)
+					tl.to(`#cap${n}`, {opacity: 0, y: -4, duration: 0.18, ease: 'power2.in'}, CHAPTERS[index + 1].start - 0.18)
 				// The camera arrives on each target before its input, then the tap ring marks the input.
 				chapter.moves.forEach(move => {
 					const to = aim(move.target, move.zoom)
-					const arrive = Math.max(chapter.start, move.at - 1.1)
-					tl.to(`#z${n}o`, {scale: to.s, duration: 1.0, ease}, arrive)
-					tl.to(`#z${n}i`, {x: to.x, y: to.y, duration: 1.0, ease}, arrive)
+					const arrive = Math.max(chapter.start, move.at - 0.4)
+					const duration = Math.min(0.32, move.at - arrive)
+					tl.to(`#z${n}o`, {scale: to.s, duration, ease}, arrive)
+					tl.to(`#z${n}i`, {x: to.x, y: to.y, duration, ease}, arrive)
 					if (!move.tap) return
 					const ring = document.createElement('div')
 					ring.className = 'tap'
@@ -266,7 +187,7 @@
 					tl.fromTo(
 						ring,
 						{scale: 0.5, opacity: 0.9},
-						{scale: 1.6, opacity: 0, duration: 0.6, ease: 'power2.out', immediateRender: false},
+						{scale: 1.6, opacity: 0, duration: 0.32, ease: 'power2.out', immediateRender: false},
 						move.at
 					)
 				})

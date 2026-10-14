@@ -18,5 +18,7 @@ The starting repository contains the existing single-file importer and an uncomm
 - Do not flag preserved schema decoding, cause mapping or sequential stream consumption as defects.
 - Do not rewrite code, invent requirements or reverse settled decisions.
 - Keep the report readable and actionable; omit praise and process narration.
+- Reproduce suspicions with inline probes rather than adding permanent tests or private test seams.
+- Preserve independent validation, failure causes and existing caller contracts during cleanup.
 
 Record missed defects, false positives, unnecessary reads, tokens, elapsed time and corrective requests separately. The user judges whether the report supports acceptance. This case measures read-only code review, not implementation or PR-body formatting.

@@ -1,4 +1,4 @@
-import {Array, Effect, FileSystem, Option, Path, Record, Schema, Stream, String, pipe} from 'effect'
+import {Array, Effect, Exit, FileSystem, Option, Path, Record, Schema, Stream, String, pipe} from 'effect'
 
 import {ChildProcess} from 'effect/process'
 
@@ -55,7 +55,6 @@ export const parseCases = Effect.fnUntraced(function* (text: string) {
 
 export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 	root: string
-	home: string
 	skill: string
 	harnesses: Run['harness'][]
 }) {
@@ -71,24 +70,6 @@ export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 		'.codex/instructions.md',
 		'.codex/rules/deny.rules'
 	]
-	for (const file of files) {
-		const target = path.join(input.home, file)
-		yield* fs.makeDirectory(path.dirname(target), {recursive: true})
-		if (file === '.codex/config.toml') {
-			yield* fs.writeFileString(
-				target,
-				pipe(
-					yield* fs.readFileString(path.join(input.root, file)),
-					String.replace(
-						/^model_instructions_file = .*$/mu,
-						`model_instructions_file = "${path.join(input.home, '.codex/instructions.md')}"`
-					)
-				)
-			)
-		} else {
-			yield* fs.copyFile(path.join(input.root, file), target)
-		}
-	}
 	const directory = yield* fs.makeTempDirectory({prefix: 'deslop-evals-'})
 	const starter = path.resolve(import.meta.dirname, '../../starter/importer')
 	const runs = Array.flatten(
@@ -129,7 +110,7 @@ export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 					}
 					for (const file of files) {
 						yield* fs.makeDirectory(path.dirname(path.join(repo, file)), {recursive: true})
-						yield* fs.copyFile(path.join(input.home, file), path.join(repo, file))
+						yield* fs.copyFile(path.join(input.root, file), path.join(repo, file))
 					}
 					yield* fs.copy(
 						path.join(repo, harness === 'claude' ? '.claude' : '.codex', 'skills'),
@@ -137,17 +118,16 @@ export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 					)
 					if (harness === 'claude') {
 						yield* fs.makeDirectory(path.join(home, 'agents'))
-						yield* fs.copyFile(path.join(input.home, '.claude/agents/pair.md'), path.join(home, 'agents/pair.md'))
-						yield* fs.copyFile(path.join(input.home, '.claude/settings.json'), path.join(home, 'settings.json'))
-						yield* fs.symlink(path.join(input.home, '.claude/.credentials.json'), path.join(home, '.credentials.json'))
+						yield* fs.copyFile(path.join(input.root, '.claude/agents/pair.md'), path.join(home, 'agents/pair.md'))
+						yield* fs.copyFile(path.join(input.root, '.claude/settings.json'), path.join(home, 'settings.json'))
 					} else {
-						yield* fs.copyFile(path.join(input.home, '.codex/instructions.md'), path.join(home, 'instructions.md'))
+						yield* fs.copyFile(path.join(input.root, '.codex/instructions.md'), path.join(home, 'instructions.md'))
 						yield* fs.makeDirectory(path.join(home, 'rules'))
-						yield* fs.copyFile(path.join(input.home, '.codex/rules/deny.rules'), path.join(home, 'rules/deny.rules'))
+						yield* fs.copyFile(path.join(input.root, '.codex/rules/deny.rules'), path.join(home, 'rules/deny.rules'))
 						yield* fs.writeFileString(
 							path.join(home, 'config.toml'),
 							pipe(
-								yield* fs.readFileString(path.join(input.home, '.codex/config.toml')),
+								yield* fs.readFileString(path.join(input.root, '.codex/config.toml')),
 								String.replace(
 									/^model_instructions_file = .*$/mu,
 									`model_instructions_file = "${home}/instructions.md"`
@@ -155,7 +135,6 @@ export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 							)
 						)
 						yield* fs.copyFile(path.join(home, 'config.toml'), path.join(repo, '.codex/config.toml'))
-						yield* fs.symlink(path.join(input.home, '.codex/auth.json'), path.join(home, 'auth.json'))
 					}
 					const task = path.join(directory, 'runs', id, 'task.md')
 					const criteria = path.join(directory, 'criteria', `${item.id}.md`)
@@ -163,9 +142,10 @@ export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 					yield* fs.writeFileString(criteria, item.criteria)
 					yield* fs.writeFileString(
 						task,
-						`Work only in ${repo}. Read the supplied ${name} skill before the task. Do not delegate, publish, schedule tasks, change global configuration or load other skills. Keep artifacts under artifacts. Ask only in the final reply and never take a default.\n\n${item.task}\n`
+						`Work only in ${repo}. The supplied code was normalized with Oxfmt and lint autofix. Read the supplied ${name} skill before the task. Do not delegate, publish, schedule tasks, change global configuration or load other skills. Keep artifacts under artifacts. Ask only in the final reply and never take a default.\n\n${item.task}\n`
 					)
 					yield* command(repo, 'vp', ['install', '--frozen-lockfile'])
+					yield* command(repo, 'vp', ['check', '--fix'])
 					yield* command(repo, 'git', ['init', '-q', '-b', 'main'])
 					yield* command(repo, 'git', ['add', '-A'])
 					yield* command(repo, 'git', [
@@ -182,6 +162,7 @@ export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 							path.resolve(import.meta.dirname, '../../starter/review/src/service.ts'),
 							path.join(repo, 'src/service.ts')
 						)
+						yield* command(repo, 'vp', ['check', '--fix'])
 					}
 					return {
 						case: item.id,
@@ -204,53 +185,81 @@ export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 		path.join(directory, 'manifest.json'),
 		yield* Schema.encodeEffect(Schema.fromJsonString(Manifest, {space: 2}))(manifest)
 	)
-	const settingsPath = path.join(input.home, '.t3/userdata/settings.json')
-	const settings = yield* Schema.decodeEffect(Schema.fromJsonString(Settings))(yield* fs.readFileString(settingsPath))
-	const providers = Record.fromEntries(
-		Array.map(runs, run => [
-			run.instance,
-			{
-				config: {
-					binaryPath: run.harness,
-					homePath: run.home,
-					launchArgs:
-						run.harness === 'claude'
-							? `--system-prompt-snapshot off --agent pair --settings ${run.home}/settings.json`
-							: `-c model_instructions_file=${run.home}/instructions.md`
-				},
-				driver: run.harness === 'claude' ? 'claudeAgent' : 'codex',
-				enabled: true
-			}
-		])
-	)
-	yield* fs.writeFileString(
-		settingsPath,
-		yield* Schema.encodeEffect(Schema.fromJsonString(Settings, {space: 2}))({
-			...settings,
-			providerInstances: {...settings.providerInstances, ...providers}
-		})
-	)
 	return manifest
 })
 
-export const cleanup = Effect.fn('Evals.cleanup')(function* (directory: string, home: string) {
+export const activate = Effect.fn('Evals.activate')(function* (directory: string, id: string, home: string) {
+	const fs = yield* FileSystem.FileSystem
+	const manifest = yield* Schema.decodeEffect(Schema.fromJsonString(Manifest))(
+		yield* fs.readFileString(`${directory}/manifest.json`)
+	)
+	const selected = Array.findFirst(manifest.runs, run => run.id === id)
+	if (Option.isNone(selected)) return yield* EvalError.make({message: `Unknown evaluation run: ${id}`})
+	const run = Option.getOrThrow(selected)
+	const auth = run.harness === 'claude' ? '.credentials.json' : 'auth.json'
+	const source = `${home}/.${run.harness}/${auth}`
+	const destination = `${run.home}/${auth}`
+	if (!(yield* fs.exists(source))) return yield* EvalError.make({message: `Missing authentication for ${run.harness}`})
+	const linked = Array.contains(yield* fs.readDirectory(run.home), auth)
+	if (linked && (yield* fs.readLink(destination)) !== source) {
+		return yield* EvalError.make({message: `Authentication link is not owned by this evaluation: ${id}`})
+	}
+	const settingsPath = `${home}/.t3/userdata/settings.json`
+	const settings = yield* Schema.decodeEffect(Schema.fromJsonString(Settings))(yield* fs.readFileString(settingsPath))
+	const provider = {
+		config: {
+			binaryPath: run.harness,
+			homePath: run.home,
+			launchArgs:
+				run.harness === 'claude'
+					? `--system-prompt-snapshot off --agent pair --settings ${run.home}/settings.json`
+					: `-c model_instructions_file=${run.home}/instructions.md`
+		},
+		driver: run.harness === 'claude' ? 'claudeAgent' : 'codex',
+		enabled: true
+	}
+	const encoded = yield* Schema.encodeEffect(Schema.fromJsonString(Settings, {space: 2}))({
+		...settings,
+		providerInstances: {...settings.providerInstances, [run.instance]: provider}
+	})
+	yield* Effect.acquireUseRelease(
+		linked ? Effect.void : fs.symlink(source, destination),
+		() => fs.writeFileString(settingsPath, encoded),
+		(_link, exit) => (linked || Exit.isSuccess(exit) ? Effect.void : fs.remove(destination, {force: true}))
+	)
+})
+
+export const cleanup = Effect.fn('Evals.cleanup')(function* (directory: string, home: string, id?: string) {
 	const fs = yield* FileSystem.FileSystem
 	const manifest = yield* Schema.decodeEffect(Schema.fromJsonString(Manifest))(
 		yield* fs.readFileString(`${directory}/manifest.json`)
 	)
 	const settingsPath = `${home}/.t3/userdata/settings.json`
-	const settings = yield* Schema.decodeEffect(Schema.fromJsonString(Settings))(yield* fs.readFileString(settingsPath))
-	yield* fs.writeFileString(
-		settingsPath,
-		yield* Schema.encodeEffect(Schema.fromJsonString(Settings, {space: 2}))({
-			...settings,
-			providerInstances: Record.filter(
-				settings.providerInstances,
-				(_value, id) => !Array.some(manifest.runs, run => run.instance === id)
+	const runs = Option.match(Option.fromUndefinedOr(id), {
+		onNone: () => manifest.runs,
+		onSome: key => Array.filter(manifest.runs, run => run.id === key)
+	})
+	if (Array.isReadonlyArrayEmpty(runs)) return yield* EvalError.make({message: `Unknown evaluation run: ${id}`})
+	yield* pipe(
+		Effect.gen(function* () {
+			const settings = yield* Schema.decodeEffect(Schema.fromJsonString(Settings))(
+				yield* fs.readFileString(settingsPath)
 			)
-		})
+			yield* fs.writeFileString(
+				settingsPath,
+				yield* Schema.encodeEffect(Schema.fromJsonString(Settings, {space: 2}))({
+					...settings,
+					providerInstances: Record.filter(
+						settings.providerInstances,
+						(_value, key) => !Array.some(runs, run => run.instance === key)
+					)
+				})
+			)
+		}),
+		Effect.onExit(() =>
+			Effect.forEach(runs, run =>
+				fs.remove(`${run.home}/${run.harness === 'claude' ? '.credentials.json' : 'auth.json'}`, {force: true})
+			)
+		)
 	)
-	for (const run of manifest.runs) {
-		yield* fs.remove(`${run.home}/${run.harness === 'claude' ? '.credentials.json' : 'auth.json'}`, {force: true})
-	}
 })

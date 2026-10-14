@@ -32,7 +32,7 @@ The workers `dev` and `desktop` run the latest Debian stable in text mode with t
 
 Every worker runs the same agent configuration from the deslop repository. After each change to the sources, install from the checkout that holds the change on every running worker. Report an unreachable worker as a gap unless the user turned it off; it gets the install when it runs again.
 
-- **Sources.** `.claude/settings.json`, `.claude/agents/pair.md`, `.codex/config.toml`, `.codex/instructions.md` and `.codex/rules/deny.rules` own the base configuration. Personal skills remain in `.claude/skills/{orchestrator,review,delivery,explore,environment}/`; Codex links to them.
+- **Sources.** `.claude/settings.json`, `.claude/agents/pair.md`, `.codex/config.toml`, `.codex/instructions.md` and `.codex/rules/deny.rules` own the base configuration. Personal skills remain in `.claude/skills/{orchestrator,delivery,explore,environment}/`; Codex links to them. Architecture, engineering, design, testing and review belong to coding-standards and install into repositories, not global configuration.
 - **Origin.** Install only from main or from a branch with an open pull request, and bring every installed change to main.
 - **Before writing.** Run `diff -r` between the source and each installed copy. A difference that neither your branch nor `origin/main` made comes from another branch: bring it into your branch first, never overwrite it. Evaluation preparation follows its package's Run contract instead.
 
@@ -41,16 +41,16 @@ set -e
 for worker in dev desktop; do
   t=mp281x@$worker
   ssh -o ConnectTimeout=5 $t true || { echo "$worker is unreachable"; continue; }
-  for s in orchestrator review delivery explore environment; do rsync -a --delete --mkpath .claude/skills/$s/ $t:.claude/skills/$s/; done
+  for s in orchestrator delivery explore environment; do rsync -a --delete --mkpath .claude/skills/$s/ $t:.claude/skills/$s/; done
   rsync -a .claude/settings.json $t:.claude/settings.json
   rsync -a --mkpath .claude/agents/pair.md $t:.claude/agents/pair.md
   rsync -a --mkpath .codex/config.toml .codex/instructions.md $t:.codex/
   rsync -a --mkpath .codex/rules/deny.rules $t:.codex/rules/deny.rules
-  ssh $t 'mkdir -p ~/.codex/skills && for s in orchestrator review delivery explore environment; do ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done'
+  ssh $t 'mkdir -p ~/.codex/skills && for s in orchestrator delivery explore environment; do ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done'
 done
 ```
 
-The settings turn off claude.ai skill and plugin sync. After a rename, inspect and remove only the obsolete owned skill directory and its Codex link; preserve unrelated skills and plugins. New sessions load the change; running threads keep their version. Verify with the same `diff -r`, check that each worker's sign-ins work, and run `codex execpolicy check --rules ~/.codex/rules/deny.rules true`, which fails when a rule's examples no longer match.
+The settings turn off claude.ai skill and plugin sync. After a rename or move into coding-standards, compare the obsolete global copy with its old approved source before removing only that owned directory and its Codex link. Keep the legacy global review skill until every active project that relies on it has its shared replacement installed and verified. Use each project's owner or setup procedure; never edit another thread's checkout to finish the migration. Preserve unrelated skills and plugins. New sessions load the change; running threads keep their version. Verify with the same `diff -r`, check that each worker's sign-ins work, and run `codex execpolicy check --rules ~/.codex/rules/deny.rules true`, which fails when a rule's examples no longer match.
 
 ## T3 settings
 
@@ -75,7 +75,9 @@ ssh "$target" 'cat > ~/.t3/userdata/settings.json' < $d/new-settings.json
 rm -rf $d
 ```
 
-**Claude launch arguments.** `providerInstances.claudeAgent.config.launchArgs` is `--system-prompt-snapshot off --thinking-display omitted`. The second flag keeps Claude's thinking and stops T3 from showing thinking summaries as messages.
+**Claude launch arguments.** `providerInstances.claudeAgent.config.launchArgs` is `--system-prompt-snapshot off --thinking-display omitted --autocompact 500k`. These keep prompt updates visible, hide thinking summaries and select a 500k compaction window. Claude reserves a buffer inside that window; this is not a promise to reach exactly 500,000 tokens before compaction. Keep the custom pair prompt and `ENABLE_TOOL_SEARCH=false`.
+
+Change only this provider's compaction flag on each running worker; preserve other launch arguments, providers, sign-ins and thread selections. T3 passes the flag to fresh Claude processes, including resumed sessions. Do not stop active threads or restart T3 to force the change into an existing process. Verify the configured arguments and run Claude's local `/context` command with them; it must show the 500k window with zero model turns. A later real compaction is required to measure summary quality and net usage savings.
 
 The copy carries project scripts, such as Dual's worktree script `vp install --frozen-lockfile && vpx @deslop/coding-standards@latest`. Check them on the target with `t3_project_list`.
 
@@ -112,7 +114,7 @@ Use at most five stops of two short sentences each, in plain words. No praise, n
 
 Remove rebuildable data, never unsettled work. A worktree is disposable only when every thread that owns it is settled, no run is queued and no process uses it; waiting for the user is not settled. Two threads can share one worktree and its preview stage.
 
-Find owners with T3's thread tools or explore's [T3 history](../../explore/SKILL.md#t3-history): `orchestration_v2_projection_threads.payload_json` holds `worktreePath`, `settledAt` and `settledOverride`, and each owner's latest `orchestration_v2_projection_runs` row shows activity. A missing path, listener or row starts an investigation, never a deletion. Unknown owners, stopped containers, unattached volumes and the production `deslop` project stay.
+Find owners with T3's thread tools or explore's T3 history procedure: `orchestration_v2_projection_threads.payload_json` holds `worktreePath`, `settledAt` and `settledOverride`, and each owner's latest `orchestration_v2_projection_runs` row shows activity. A missing path, listener or row starts an investigation, never a deletion. Unknown owners, stopped containers, unattached volumes and the production `deslop` project stay.
 
 1. **Removed worktrees.** Find Compose projects whose `com.docker.compose.project.working_dir` is gone, processes with a deleted working directory, Serve mappings without a backend, and `~/.deslop/<worktree>` folders without a checkout. When every owner is settled, remove that project (`down --volumes --remove-orphans`), process group, mapping (`sudo tailscale serve --https=<port> off`) or folder. Keep `~/.deslop/deploy`.
 2. **Settled worktrees.** T3 removes worktrees 4 days after their last run and when their pull request merges. Before that, destroy a settled worktree's disposable Alchemy preview or Compose project. Run `git worktree remove --force --force <path>` only on a clean worktree, and list dirty ones for the user. Delete `~/.deslop/<worktree directory name>/`.

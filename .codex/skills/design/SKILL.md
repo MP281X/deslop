@@ -13,11 +13,11 @@ Follow the engineering skill and the repository's `CODING_STANDARDS.md` when pre
 
 ## Before the first draft
 
-The first draft the user sees is already the refined one. Work through these steps privately, then show the result.
+For an open direction, show a question-sized prototype before polishing it. Use orchestrator when available to settle consequential user choices. Approval is provisional: let the user try a small real journey before expensive expansion. Own routine refinement, but expect the real experience to change the user's direction.
 
 1. **Task and feeling.** Name the person, their task, their context and the feeling the product gives, such as calm, fast or trustworthy. Name three qualities the person notices, each with what "excellent" looks like.
 2. **Baseline.** Name the category and platform, and the reference screen for each screen you build: one of Apple's apps on iOS, the product's existing screen, or a reference the user named. Capture the reference in the states you need. Start from the system or established component defaults.
-3. **Range.** When the structure is open, compare structurally different solutions on the same data, including one that removes the interface by automating the task. Keep the strongest and combine compatible strengths.
+3. **Range.** Compare structurally different solutions only when the structure has a real unresolved fork, on the same data. Include a simpler solution that removes unnecessary controls. Show the smallest comparison that decides the fork, then develop the chosen direction.
 4. **States.** List every screen, its reachable states (empty, loading, partial, error, success, long content) and the events between them, before any code. Group states by concern instead of multiplying every combination.
 5. **Settled choices.** Carry forward what the user approved and what he removed. Never re-add a removed element or change an approved detail without a request.
 
@@ -98,9 +98,9 @@ The first draft the user sees is already the refined one. Work through these ste
 
 ## Prototype and tune
 
-**Variants.** When layout or interaction has real alternatives, build an interactive render before product code: two or three variants on the same data, each clickable through every state from the States step. Give the page a variant switch and a grouped state selector that the phone can use. Fill it with realistic mock data, and draw it as close as possible to the code you will write: the app's tokens, components, copy and behavior. For a native app the render settles structure, flow and states; settle the final look in simulator captures. Label each variant with its one difference and mark your recommendation.
+**Variants.** For a real unresolved choice, show one representative journey or a small comparison on the same realistic data before product code. Use the app's tokens, components, copy and behavior. Add interaction only when manipulating the subject exposes a consequential difference; never add tabs or a state dashboard merely to navigate the explanation. Get the direction approved before expanding its states and polish. For a native app the render settles structure and flow; settle its native appearance in simulator captures.
 
-**Real host.** Build one representative screen with realistic data in the real host: the browser preview for the web, the simulator for a native app. An HTML imitation of a native screen misleads.
+**Real host.** For a consequential behavior or taste choice, build one complete representative journey with realistic data in the real host: the browser preview for the web, the simulator for a native app. Let the user try it before broader implementation and polish. Complete specified fixes and approved-pattern work with focused proof, without a user checkpoint. Carry unaffected choices forward when feedback changes the journey; revise the affected design instead of defending prototype approval. An HTML imitation of a native screen misleads.
 
 **Tune.** Settle values yourself. For values you cannot settle by reasoning, such as spacing, timing, springs or blur, capture candidates side by side, including both extremes, and judge them against the reference. Write the chosen values into the source and recapture.
 
@@ -132,28 +132,31 @@ Ground the page in its subject: name the audience and the page's one job, and ta
 
 ## Visual explanations
 
-These rules cover diagrams, review pages and rendered agent answers; the reply decides when it needs a render. A render adds spatial or interactive information and replaces the text it shows; it never redraws prose, a file list, a check table or a fake runtime screenshot.
+These rules cover diagrams, review pages and agent answers. Transmit a specific message with the fewest words and least effort. Write that message privately before choosing the form. Markdown lists, tables and embedded captures are visual representations. Use them directly when they carry the message; do not rebuild them in HTML. HTML complements Markdown only when a necessary spatial relationship, motion or direct manipulation exceeds Markdown's capabilities. Name that added capability privately before rendering; decoration is not one. Use a sentence when it is clearer. Never turn a source list, process recap or checklist into a dashboard.
 
-| The reader asks                      | Exhibit                                                       |
-| ------------------------------------ | ------------------------------------------------------------- |
-| What does it look like now?          | State map of the changed system, changed parts marked         |
-| What changed on screen?              | Before and after pair with the same data, the old state left  |
-| Which transitions are allowed?       | State machine with forbidden edges marked                     |
-| What happens in order, and who acts? | Sequence in swimlanes, one lane per actor                     |
-| Where did the time go?               | Timeline with bars on one time axis                           |
-| How much faster, bigger or cheaper?  | Bars on a shared axis, values printed on the bars             |
-| Where exactly is the defect?         | Annotated capture with numbered markers and short notes       |
-| Which requirement has which proof?   | Coverage grid of requirements against proof, colored by state |
-| How do the parts relate?             | Node and link map with few, labeled links                     |
-| Which option is better?              | Options side by side at the same size and with the same data  |
-| What will a video show?              | Storyboard of chapter frames, the outcome frame marked        |
+| The reader asks                      | Exhibit                                                        |
+| ------------------------------------ | -------------------------------------------------------------- |
+| What does it look like now?          | Real capture, or a named system view with changed parts marked |
+| What changed on screen?              | Before and after pair with the same data, the old state left   |
+| Which transitions are allowed?       | State machine with forbidden edges marked                      |
+| What happens in order, and who acts? | Sequence in swimlanes, one lane per actor                      |
+| Where did the time go?               | Timeline with bars on one time axis                            |
+| How much faster, bigger or cheaper?  | Bars on a shared axis, values printed on the bars              |
+| Where exactly is the defect?         | Annotated capture with numbered markers and short notes        |
+| Which requirement has which proof?   | Coverage grid of requirements against proof, colored by state  |
+| How do the parts relate?             | Named actors and explicit relationships; no unlabeled blocks   |
+| Which option is better?              | Options side by side at the same size and with the same data   |
+| What will a video show?              | Storyboard of chapter frames, the outcome frame marked         |
 
 When none fits, choose the form that matches the data's shape; draw a list as a list.
 
-- **One message.** Each page answers one question, and its first line states the conclusion, such as "The catalog loads 26 times faster".
-- **One dominant element.** Size, weight and position show importance; mute the context. Show at most six labeled elements; never a text table, a collapsed card or a filter chip.
+- **One message.** The first visible state must state the actual change, comparison or consequence. Put the relevant names, direction, units and state on the subject. Use a sentence only when the graphic otherwise requires guessing. A decorative title or recap is not a substitute for that meaning.
+- **One dominant element.** Size, weight and position show importance; mute context. Use the available width without stretching an empty stage. Add each shape, label and surface only for a relationship or action it communicates. Isometric depth belongs to a meaningful layer or ownership boundary, not arbitrary slabs.
 - **Honest scale.** Bars start at zero on one linear scale; draw a range as a range.
 - **Labels.** Put names, values and units on the data, with one scale per comparison. Labels and captions stay under twelve words, and a visual holds no paragraphs.
-- **Real content.** Use real names, numbers and captures, and show the scope.
-- **Interaction.** When side-by-side options or captures turn unreadable at phone width, show them at one position behind labeled tabs. The conclusion stays visible without a tap.
+- **Real content.** Use actual names, operations and relationships. Keep a proposal distinct from an applied change, and a simulated explanation distinct from application evidence. A physical model is useful only when its operation explains the concept without another metaphor to decode.
+- **Interaction.** Keep the message understandable without a click. Add a control only to explore a real alternative or change an assumption. A predetermined change uses an automatic sequence, not a required click. On a phone, keep essential comparisons visible; do not hide the answer in tabs or menus.
+- **Motion.** Animate the subject from its real source to its destination. Keep identity, scale, alignment and unchanged context stable. Use transform and opacity, not per-frame layout. Make transitions brief and uninterrupted; pause only to let the reader see a state. If a demonstration needs replay, make its reset distinct from an undo. Do not use an invisible one-shot movement as the only explanation.
+- **Host.** Match the enclosing UI's typography, density, controls, surfaces and semantic tokens, not only its colors. Keep the outer background transparent and remove unnecessary card wrappers. Prefer native CSS for simple automatic diagrams; use relative geometry instead of JavaScript sizing when it gives the same result.
+- **Proof.** Inspect the artifact in its actual host, including an intermediate frame and the final state. A valid file, a correct model or a headless screenshot alone does not prove readable, smooth, correctly triggered motion. Compare before and after at the same scale and actual playback speed. Fix a repeated failure in its representation or source, not with more prompt prohibitions.
 - **Check.** Use the host's theme variables, check light, dark and a 390-point width, and fix clipping, overlap and contrast before you show it. At that width the page stays under about 400 points tall.

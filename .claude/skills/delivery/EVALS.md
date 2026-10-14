@@ -13,7 +13,7 @@ Change facts: folder import is added to an existing single-file importer; progre
 Judge the thread reply, PR title and body, commit message and instruction as separate artifacts.
 
 - State the user-visible change and cancellation contract without inventing guarantees.
-- Keep the final reply concise and self-contained; omit pipeline results and process notes.
+- Keep the final reply concise. Add only the whole-worktree picture and a real preview URL when available; omit T3's PR, stack, agent, task and pipeline information.
 - Give each artifact its role; do not repeat the same essay across them.
 - Remove question cards and scheduled defaults without inventing new permissions.
 - Use English, established technical terms and the existing publishing format.
@@ -49,6 +49,9 @@ Show me that importing a file through the browser writes the records I can read 
 - Record the real browser import and the resulting durable records with matching data.
 - Show input, action and result in one complete journey, not a screenshot of an idle page.
 - Keep text and the final result readable on a phone; inspect the captured files.
+- Open on the real action, remove idle time and redundant introductions, and make camera moves arrive before input.
+- Replay the final encoded video to inspect transitions. Stills and a nominal frame rate do not establish smooth motion.
+- Keep the tested preview and shared tab open with their real HTTPS URL. Do not label a development watcher as a built preview.
 - Use the real application, never a mock, terminal illustration or invented screenshot.
 - Make no product-code changes just to manufacture a successful capture.
 
