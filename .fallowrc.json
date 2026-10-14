@@ -2,7 +2,12 @@
 	"$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
 	"entry": ["**/main.*", "**/app.plugin.js", "apps/*/fingerprint.config.js", "tools/coding-standards/src/install.ts"],
 	"includeEntryExports": true,
-	"ignorePatterns": ["**/*.gen.ts", "packages/components-web/src/svgs/**", "tools/*/template/**"],
+	"ignorePatterns": [
+		"**/*.gen.ts",
+		"packages/components-web/src/svgs/**",
+		"tools/*/template/**",
+		"tools/evals/starter/**"
+	],
 	"ignoreExports": [
 		{"exports": ["*"], "file": "packages/*/src/schema.ts"},
 		{"exports": ["*"], "file": "apps/stash/src/services/*/schema.ts"},

@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width,initial-scale=1" />
+		<style>
+			body {
+				font: 16px system-ui;
+				margin: 24px;
+				max-width: 620px;
+			}
+			label,
+			input,
+			button {
+				display: block;
+				margin: 12px 0;
+			}
+			input {
+				font: inherit;
+				width: 100%;
+				box-sizing: border-box;
+			}
+			button {
+				font: inherit;
+				padding: 10px;
+			}
+			li {
+				margin: 12px 0;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>Import records</h1>
+		<form>
+			<label>Data file<input name="file" value="samples/one.json" /></label><button>Import</button>
+		</form>
+		<p id="status">Choose a JSON file.</p>
+		<ul id="records"></ul>
+		<script>
+			document.querySelector('form').onsubmit = async event => {
+				event.preventDefault()
+				const file = new FormData(event.target).get('file')
+				const response = await fetch('/imports', {
+					method: 'POST',
+					headers: {'Content-Type': 'application/json'},
+					body: JSON.stringify({file})
+				})
+				document.querySelector('#status').textContent = JSON.stringify(await response.json())
+				await load()
+			}
+			async function load() {
+				const rows = await (await fetch('/records')).json()
+				document.querySelector('#records').replaceChildren(
+					...rows.map(row => {
+						const item = document.createElement('li')
+						item.textContent = row.title
+						return item
+					})
+				)
+			}
+			load()
+		</script>
+	</body>
+</html>

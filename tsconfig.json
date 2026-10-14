@@ -11,6 +11,7 @@
 		"${configDir}/**/node_modules",
 		"${configDir}/**/dist",
 		"${configDir}/**/.output",
+		"${configDir}/tools/evals/starter/**/*",
 		"${configDir}/tools/*/template/**/*"
 	]
 }
