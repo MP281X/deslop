@@ -132,7 +132,7 @@ Ground the page in its subject: name the audience and the page's one job, and ta
 
 ## Visual explanations
 
-These rules cover diagrams, review pages and rendered agent answers. The visual must transmit a specific message with less effort than prose. Write that message privately before choosing the form. Do not render when a sentence is clearer. Never turn a source list, process recap or checklist into a dashboard.
+These rules cover diagrams, review pages and agent answers. Transmit a specific message with the fewest words and least effort. Write that message privately before choosing the form. Markdown lists, tables and embedded captures are visual representations. Use them directly when they carry the message; do not rebuild them in HTML. HTML complements Markdown only when a necessary spatial relationship, motion or direct manipulation exceeds Markdown's capabilities. Name that added capability privately before rendering; decoration is not one. Use a sentence when it is clearer. Never turn a source list, process recap or checklist into a dashboard.
 
 | The reader asks                      | Exhibit                                                        |
 | ------------------------------------ | -------------------------------------------------------------- |

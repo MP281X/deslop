@@ -7,7 +7,7 @@ description: Orchestrates implementation, councils and delegated work. Use for c
 
 Keep sequencing, delegation and completion gates here. Load the skill that owns each procedure instead of repeating it.
 
-For a read-only brainstorm, research directly, run disposable inline code and show a small HTML prototype without changing the repository or creating a worktree. Use Council only for a consequential unresolved tradeoff. Answer settled and evidence-backed questions yourself.
+For a read-only brainstorm, use direct research, disposable inline code, Markdown or a small prototype as the question requires. Use design to choose the representation; do not impose HTML on a list or table. Keep prototypes outside the repository, without a new worktree. Use Council only for a consequential unresolved tradeoff. Answer settled and evidence-backed questions yourself.
 
 ## Approach
 
