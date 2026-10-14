@@ -21,9 +21,15 @@ The user reviews and squash-merges one pull request at a time. Independent chang
 
 1. Fetch, rebase onto `origin/<default branch>` and rerun root commands. Verify frozen installation after manifest or lockfile changes. Failing local checks block publishing.
 2. Push every changed PR of the iteration together. Set titles and bodies only after the push they describe; use the format below. Link each PR with `link_pull_request`, never the replacing link action of `t3_thread_update`, and watch each pushed PR.
-3. Write the title, body and commit message once from the final change facts. Do not reread or self-check them, fetch them back after editing, or delegate an artifact review. Correct a known error or changed fact directly; review an artifact only when the user requests it or an evaluation targets it. While only pipelines run, use the core's nonempty external-wait reply. Ignore notices for older heads or running jobs.
+3. Write the title, body and commit message once from the final change facts. Do not reread or self-check them, fetch them back after editing, or delegate an artifact review. Correct a known error or changed fact directly; review an artifact only when the user requests it or an evaluation targets it. While only pipelines run, use the core's nonempty external-wait reply. Handle notices per Notices below.
 4. When required jobs pass on the exact final head, mark that PR ready and start its T3 review guide in the same step. Never repeat a notice to the user. Commands: `gh pr ready <number>` or `glab mr update <number> --ready`.
 5. Unwatch every PR and stop owned services except the tested preview environment keeps. Leave its visible tab and full tailnet HTTPS URL available. Give a manual guide only for user-only unproved behavior. The thread adds the whole-worktree picture, not another PR recap; T3 owns PR, agent, task and pipeline presentation.
+
+## Notices
+
+Retain each PR's current head, handled check state, unresolved review and readiness action in the current plan. Compare a notice with that state before reading logs or delegating work. Ignore older-head checks, running-job updates and already-handled transitions. If the head is unknown, read its current identity and check state once. Act on a new failure, current-head completion, new review finding or conflict; a repeated notice does not invalidate proof or reopen review. Handle readiness once per final head, and unwatch at handoff.
+
+These instructions reduce work after a model wake. Filtering duplicates or combining events before the model runs requires T3 runtime support; do not claim that a skill implements it or patch an installed runtime binary.
 
 ## Visual proof
 

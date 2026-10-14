@@ -32,22 +32,22 @@ For a read-only brainstorm, use direct research, disposable inline code, Markdow
 
 ## Prepare
 
-- **Intent.** Keep the user's outcome, quoted ticket requirements, settled choices, access, smallest scope and observable completion claims in your notes. Child briefs carry the relevant facts, not a second plan file.
+- **Intent.** Keep the user's outcome, relevant quoted requirements, settled choices, access, smallest scope and observable completion claims in your notes. Child briefs carry the relevant facts, not a second plan file.
 - **Tasks.** For multi-step work, keep the harness's native task list current when that tool is available.
 - **Explore.** Use explore to settle touched code, consumers, capabilities and named references. Read directly when the evidence is accessible; do not create a lookup child for a question one source read answers.
-- **Plan.** Keep the current outcome, settled decisions and genuine open questions in the native task list or current plan, not another document. Show only a visual that makes the pending choice clearer. Follow Decide together; a visual plan does not need interaction when an automatic animation or static comparison states the message.
+- **Plan.** Keep the current outcome, settled decisions and genuine open questions in the native task list or current plan, not another document. At a milestone, retain the reviewed commit and scope, proof with its inputs and dependencies, unresolved findings, owned resources, pending task IDs and next action. Replace stale entries instead of appending a diary. After compaction or a notice, resume from this state; reopen history only for a missing fact or contradiction. Show only a visual that makes the pending choice clearer. Follow Decide together; a visual plan does not need interaction when an automatic animation or static comparison states the message.
 - **Structure.** Load delivery to settle PR boundaries before the first commit. A later change returns an affected ready PR to draft before editing.
 
 ## Build
 
 - **Implement.** Reuse the existing feature shape and choose the smallest mechanism with architecture. Load engineering for code, design for visible output and testing for proof. Use environment for commands and a shared built preview when available, delivery for captures. Keep the tested preview visible and running for the user.
 - **Normalize.** Run Oxfmt and deterministic lint autofix on owned code before manual analysis, independent review and check-only lint. Use the repository's fix command when it runs both. These static corrections need no model loop; judge and repair the remaining structural errors and behavior.
-- **Review.** Use review for consequential code or instruction changes. Combine architecture, code, instruction and cleanup review in one focused task when they share context. Give the reviewer the goal and artifact, not the author's verdict. Split only independent technical questions; never delegate routine formatting or artifact checks.
+- **Review.** Use review for consequential code or instruction changes. Combine architecture, code, instruction and cleanup review in one focused task when they share context. Give the reviewer the goal, artifact, prior covered commit and scope, and unresolved findings, not the author's verdict. Split only independent technical questions; never delegate routine formatting or artifact checks. Reuse completed coverage until changed code, consumers or contracts invalidate it; a notification alone starts no review round.
 - **Prove.** Record each settled journey, not just the final screen. Testing owns evidence validity; delivery owns captures and their presentation. Use focused checks during iteration.
 
 ## Finish
 
-- **Cover.** Account for review of consequential code and instructions. Reuse coverage that still applies; review only uncovered changes and their consumers. A direct fix of a confirmed finding needs no new round.
+- **Cover.** Account for review of consequential code and instructions. Reuse coverage that still applies; review only uncovered changes and their consumers. Apply review's Later rounds rule to confirmed fixes: new contracts, mechanisms or failure paths need uncovered review, not a restart of covered work.
 - **Simplify.** Include cleanup of the whole diff in the focused review, not another task. Remove mechanisms without a reaching caller or required contract. Retain requested outcomes, necessary dependencies, reachable existing contracts, security, accessibility and useful regression protection. Fix the root cause across its real variants; do not add another workaround.
 - **Gate.** Continue only when the claims hold, findings are resolved, root fix, check and test commands pass, and the evidence matches the final code. Never run concurrent commands that write the same build outputs.
 - **Agent configuration.** Before delivery of a base-config or personal-skill change, apply environment's agent-configuration procedure on every running worker and verify the installed copies.
@@ -66,13 +66,13 @@ The primary owns writes, commands, builds and browser sessions. Children are rea
 | Council                                                     | [Council](#council) |
 | Code review, cleanup audit, critique and instruction review | review              |
 
-- **Brief.** Include the user's words verbatim, settled decisions, sources, checkout, one procedure and return format. A review or audit brief carries no author's plan as authority.
+- **Brief.** Include the relevant user requirements verbatim, settled decisions, exact source locations, checkout, one procedure and return format. Do not copy the whole conversation, transcript or tool catalog. A review or audit brief carries no author's plan as authority.
 - **Boundary.** A child never writes files, touches the primary's services, messages threads, schedules tasks, asks the user or changes thread settings. Only the primary delegates, one level deep. Every brief starts with "You are a child agent: never delegate or launch threads." Return all findings in one pass, answer first, at most 40 lines unless the procedure requires one row per item, never in details or a file.
-- **Models.** Keep the thread's selected model and options. Use Codex for delegated agents and agent-created evaluation threads; no Claude fallback. Get current model IDs from `orchestrator_capabilities` and use high effort. Never use fast mode for children, research, reviews, councils or evaluations; set `serviceTier: default` explicitly. Prefer GPT-6 Luna for lookups and GPT-6.1 Sol for reviews, audits and critiques. Use a distinct perspective, not merely another model, when a council needs independent judgment.
+- **Models.** Keep the thread's selected model and options. Use Codex for delegated agents and agent-created evaluation threads; no Claude fallback. Get current model IDs from `orchestrator_capabilities` and use high effort. Retain the selected provider, model and supported options; refresh only after a configuration change or a rejection that identifies a stale selection. Never use fast mode for children, research, reviews, councils or evaluations; set `serviceTier: default` explicitly. Prefer GPT-6 Luna for lookups and GPT-6.1 Sol for reviews, audits and critiques. Use a distinct perspective, not merely another model, when a council needs independent judgment.
 - **Evaluation cleanup.** Always preserve required evidence, then automatically delete owned evaluation threads, projects and provider registrations when their use ends, including failed, cancelled and superseded runs. Stop their owned services and remove authentication links. Verify the cleanup; never delete unrelated threads or providers.
 - **Rounds.** Each review round is a new delegated task with the original brief, prior findings, verdicts and unresolved objections. Never continue a review through its backing thread.
 - **Reconcile.** Resolve every missing or failed criterion. Fix confirmed defects in the user's code; a review of someone else's PR reports only.
-- **Wait.** When only children remain, use `t3_thread_wait` on each backing thread with `timeoutMs: 1500000`. A steer ends the wait: handle it, then resume. After terminal status, call `task_status` once to acknowledge the result.
+- **Wait.** When only children remain, use `t3_thread_wait` on each backing thread with `timeoutMs: 1500000`. A steer ends the wait: handle it, then resume. After terminal status, call `task_status` once to acknowledge the result. Retain the task ID and resolved findings; a repeated terminal notice does not require another status read or review. Read again only when the notice identifies later work or the retained result is incomplete.
 
 ## Council
 
