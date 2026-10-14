@@ -55,7 +55,6 @@ export const parseCases = Effect.fnUntraced(function* (text: string) {
 
 export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 	root: string
-	home: string
 	skill: string
 	harnesses: Run['harness'][]
 }) {

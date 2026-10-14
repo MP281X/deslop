@@ -154,7 +154,6 @@ it.effect(
 				)
 				const manifest = yield* prepare({
 					harnesses: ['codex', 'claude'],
-					home,
 					root,
 					skill: path.join(root, 'tools/coding-standards/skills/engineering')
 				})
@@ -249,7 +248,6 @@ it.effect(
 				assert.include(yield* fs.realPath(`${run.repo}/node_modules/effect`), run.repo)
 				const review = yield* prepare({
 					harnesses: ['codex'],
-					home,
 					root,
 					skill: path.join(root, 'tools/coding-standards/skills/review')
 				})

@@ -21,7 +21,6 @@ const commands = [
 					yield* prepare({
 						...input,
 						harnesses: ['codex'],
-						home: yield* Config.String('HOME'),
 						root: String.trim(yield* command('.', 'git', ['rev-parse', '--show-toplevel']))
 					})
 				)
