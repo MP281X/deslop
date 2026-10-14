@@ -62,14 +62,14 @@ prefix_rule(
 prefix_rule(
     pattern = ["gh", "api", ["-X", "--method"], WRITE_METHODS],
     decision = "forbidden",
-    justification = "Write through the gh commands software-factory names.",
+    justification = "Write through the gh commands delivery names.",
     match = ["gh api -X PUT repos/owner/name/pulls/1/merge"],
     not_match = ["gh api repos/owner/name/pulls/1"],
 )
 prefix_rule(
     pattern = ["glab", "api", ["-X", "--method"], WRITE_METHODS],
     decision = "forbidden",
-    justification = "Write through the glab commands software-factory names.",
+    justification = "Write through the glab commands delivery names.",
     match = ["glab api --method PUT projects/1/merge_requests/3/merge"],
     not_match = ["glab api projects/1/pipelines/2/jobs"],
 )

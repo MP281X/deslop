@@ -32,26 +32,25 @@ The workers `dev` and `desktop` run the latest Debian stable in text mode with t
 
 Every worker runs the same agent configuration from the deslop repository. After each change to the sources, install from the checkout that holds the change on every running worker. Report an unreachable worker as a gap unless the user turned it off; it gets the install when it runs again.
 
-- **Sources.** `.claude/settings.json`, `.claude/agents/pair.md`, `.claude/skills/{software-factory,explore,environment}/`, `.codex/config.toml`, `.codex/instructions.md` and `.codex/rules/deny.rules`. Codex's personal skills link to the Claude copies. The install leaves `~/.codex/rules/default.rules`, Codex's remembered approvals, alone.
+- **Sources.** `.claude/settings.json`, `.claude/agents/pair.md`, `.codex/config.toml`, `.codex/instructions.md` and `.codex/rules/deny.rules` own the base configuration. Personal skills remain in `.claude/skills/{orchestrator,review,delivery,explore,environment}/`; Codex links to them.
 - **Origin.** Install only from main or from a branch with an open pull request, and bring every installed change to main.
-- **Before writing.** Run `diff -r` between the source and each installed copy. A difference that neither your branch nor `origin/main` made comes from another branch: bring it into your branch first, never overwrite it.
+- **Before writing.** Run `diff -r` between the source and each installed copy. A difference that neither your branch nor `origin/main` made comes from another branch: bring it into your branch first, never overwrite it. Evaluation preparation follows its package's Run contract instead.
 
 ```bash
 set -e
 for worker in dev desktop; do
   t=mp281x@$worker
   ssh -o ConnectTimeout=5 $t true || { echo "$worker is unreachable"; continue; }
-  for s in software-factory explore environment; do rsync -a --delete --mkpath .claude/skills/$s/ $t:.claude/skills/$s/; done
+  for s in orchestrator review delivery explore environment; do rsync -a --delete --mkpath .claude/skills/$s/ $t:.claude/skills/$s/; done
   rsync -a .claude/settings.json $t:.claude/settings.json
   rsync -a --mkpath .claude/agents/pair.md $t:.claude/agents/pair.md
-  ssh $t 'rm -rf ~/.claude/skills/synced ~/.claude/skills/workflow ~/.claude/skills/review ~/.codex/skills/workflow ~/.codex/skills/review ~/.claude/plugins'
   rsync -a --mkpath .codex/config.toml .codex/instructions.md $t:.codex/
   rsync -a --mkpath .codex/rules/deny.rules $t:.codex/rules/deny.rules
-  ssh $t 'mkdir -p ~/.codex/skills && for s in software-factory explore environment; do ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done'
+  ssh $t 'mkdir -p ~/.codex/skills && for s in orchestrator review delivery explore environment; do ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done'
 done
 ```
 
-The settings turn off claude.ai skill and plugin sync, so the install deletes the synced skills and `~/.claude/plugins`. New sessions load the change; running threads keep their version. Verify with the same `diff -r`, check that each worker's sign-ins work, and run `codex execpolicy check --rules ~/.codex/rules/deny.rules true`, which fails when a rule's examples no longer match.
+The settings turn off claude.ai skill and plugin sync. After a rename, inspect and remove only the obsolete owned skill directory and its Codex link; preserve unrelated skills and plugins. New sessions load the change; running threads keep their version. Verify with the same `diff -r`, check that each worker's sign-ins work, and run `codex execpolicy check --rules ~/.codex/rules/deny.rules true`, which fails when a rule's examples no longer match.
 
 ## T3 settings
 

@@ -16,6 +16,9 @@ enabled = false
 [cloud.skills]
 enabled = false
 
+[tools.experimental_request_user_input]
+enabled = false
+
 [features]
 skill_mcp_dependency_install = false
 skill_search = false
@@ -30,7 +33,6 @@ goals = false
 memories = false
 multi_agent = false
 multi_agent_v2 = false
-default_mode_request_user_input = true
 
 [shell_environment_policy]
 set = { GLAB_PAGER = "cat" }

@@ -10,7 +10,7 @@ Run inside a Git repository, including a linked worktree:
 vpx @deslop/coding-standards@latest
 ```
 
-It copies the three skills into the repository's existing `.agents`, `.claude` and `.codex` directories. It always writes `.claude`, which Claude Code reads, and writes `.agents` when no `.codex` exists. A refresh replaces only those three skills, and destinations outside the repository or inside global agent configuration are rejected. Nothing is added to the manifest, lockfile or lint configuration. Installed copies are read-only; refresh them with the CLI.
+It copies the three skills into the repository's existing `.agents`, `.claude` and `.codex` directories, including their `EVALS.md`. It always writes `.claude`, which Claude Code reads, and writes `.agents` when no `.codex` exists. A refresh replaces only those three skills, and destinations outside the repository or inside global agent configuration are rejected. Nothing is added to the manifest, lockfile or lint configuration. Edit package sources; refresh installed copies with the CLI.
 
 ## Use the lint preset
 

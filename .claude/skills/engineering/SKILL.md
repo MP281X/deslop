@@ -3,15 +3,17 @@ name: engineering
 description: 'TypeScript and Effect code conventions paired with shared lint. Use when designing, implementing or reviewing product and test code, including prototypes.'
 ---
 
-**Scope.** Apply these rules and the repository's `CODING_STANDARDS.md`, and write each line right the first time; lint is only the fallback. A refactor or cleanup request applies every rule to every line of the owned files. Scratch code outside the repository follows no style rule.
+**Scope.** Apply these rules and the repository's `CODING_STANDARDS.md` when present, and write each line right the first time; lint is only the fallback. A refactor or cleanup request applies every rule to every line of the owned files. Scratch code outside the repository follows no style rule. Do not create a standards file just to satisfy this reference.
 
 ## Simplicity
 
 **MVP.** Write the most direct code that meets the request today. Apply YAGNI to every file, function, branch, parameter, option, export, Layer, check, config value, library and abstraction; configure only what callers vary. Write functional, explicit code: pure functions over immutable data, effects only inside Effect, and Effect modules instead of hand-written helpers.
 
-**Plan the shape.** Before writing, choose the file tree, entrypoints and the smallest mechanism per feature, checked against `CODING_STANDARDS.md` and the nearest sibling.
+**Plan the shape.** Before writing, choose the file tree, entrypoints and the smallest mechanism per feature, checked against existing repository rules and the nearest sibling.
 
-**Clarity.** Code, names and files read top to bottom. Rename or split code instead of narrating it; a comment is one line and states only an outside constraint the code cannot show.
+**Clarity.** Code, names and files read top to bottom. Rename or split code instead of narrating it.
+
+**Comments.** Default to no comments. Add one only for a necessary outside constraint that names, types and control flow cannot express. Keep it to one line. Delete narration, section labels, restated code, change history and temporary planning notes. Required diagnostic directives retain their reason.
 
 **Reuse first.** Check existing code, installed modules and platform capabilities before adding code. Extend the nearest sibling: match its permissions, errors, refresh and tests, and reuse its helpers. Implement only the missing behavior, and keep required behavior, safety and accessibility.
 
