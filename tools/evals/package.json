@@ -1,0 +1,14 @@
+{
+	"name": "@deslop/evals",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"imports": {
+		"#package": "./package.json",
+		"#schema": "./src/schema.ts",
+		"#lib/*": "./src/lib/*.ts"
+	},
+	"engines": {
+		"node": ">=26"
+	}
+}

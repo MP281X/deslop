@@ -1,0 +1,32 @@
+{
+	"name": "@deslop/importer",
+	"private": true,
+	"type": "module",
+	"imports": {
+		"#schema": "./src/schema.ts",
+		"#service": "./src/service.ts"
+	},
+	"scripts": {
+		"check": "vp check",
+		"prepare": "effect-tsgo patch --no-typescript --oxlint --force",
+		"test": "vp test"
+	},
+	"dependencies": {
+		"@effect/platform-node": "4.0.2",
+		"effect": "4.0.2"
+	},
+	"devDependencies": {
+		"@deslop/coding-standards": "0.1.1064",
+		"@effect/tsgo": "latest",
+		"@effect/vitest": "4.0.2",
+		"@types/node": "latest",
+		"typescript": "latest",
+		"vite": "npm:@voidzero-dev/vite-plus-core@1.1.0",
+		"vite-plus": "1.1.0",
+		"vitest": "5.0.3"
+	},
+	"engines": {
+		"node": ">=26"
+	},
+	"packageManager": "pnpm@12.11.2"
+}
