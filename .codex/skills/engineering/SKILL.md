@@ -7,6 +7,7 @@ Oxlint and Oxfmt check every change and stay authoritative. This skill holds wha
 
 - **Normalize.** Run the repository's fix command, or Oxfmt and the deterministic lint autofix, on the owned scope before you analyze code, review it or run a check-only lint. Automatic fixes need no model iteration; analyze only the diagnostics that remain. For a read-only review, the author normalizes and the reviewer never writes the checkout.
 - **First pass.** Write the [Lint forms](#lint-forms) from the start. Fix a remaining diagnostic at its source with the form its message or the table names. Never use a cast, a weakened rule or a rewrite that trades one diagnostic for another.
+- **Type early.** Type errors cause most fix loops: run the repository's check after each small batch of edits, not once after the whole feature. Read the types of an API you have not used in the installed version's source before you call it. Fix the first error in each file first: one unresolved type or import turns into hundreds of implicit `any` errors, such as TS7006 and TS7031, in every consumer.
 - **Disables.** An inline disable needs an unavoidable conflict with an outside contract and a `--` reason that names it. Never disable ordering or weaken file configuration. Report dependency-only diagnostics; rename filename violations.
 
 ## Simplicity
