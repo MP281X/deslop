@@ -5,11 +5,11 @@
 ```bash
 bun run check
 bun run fix
-bun run test
+bun run test --output-logs=errors-only
 ```
 
 - **Generated.** Root `codegen` generates icons and agent documentation; `bun --filter @dual/docs generate` builds the Fumadocs output; `dual openapi-plugin` writes `turbo.json` for internal plugins.
-- **Tests.** Root `test` runs workspace tests, release tests and candidate packing; server tests need `.env.test`. Run consumer acceptance and live release tests separately when their contracts change.
+- **Tests.** Root `test` runs workspace tests, release tests and candidate packing; server tests start their own database containers. `--output-logs=errors-only` prints only failing task logs: a cold run otherwise prints about 9,000 lines. Run consumer acceptance and live release tests separately when their contracts change.
 
 **VPN.** When GitLab does not answer, reconnect the VPN on dev: directly when the current worker is `dev`, otherwise through `ssh mp281x@dev`. Give the returned sign-in URL as a guide under **Needs you**, then check again.
 
@@ -21,11 +21,11 @@ curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
 }
 ```
 
-**Preview.** Dual has no production preview, so its preview proves only iteration. `vp run --workspace-root preview` creates an isolated Alchemy stage from the checkout path, with its own ports, database, sandbox, migrations, administrator, and app, API and worker watchers. Two threads in one worktree share its stage.
+**Preview.** Dual has no production preview, so its preview proves only iteration. README's `bun run preview` creates an isolated Alchemy stage from the checkout path, with free ports that the stage keeps, a database, a sandbox, migrations, an administrator, and app, API and worker watchers. Two threads in one worktree share its stage. Start it with environment's `preview.sh start bun run preview`: the script sets `DUAL_PREVIEW_HOST` to the tailnet host, so the app uses `https://<host>:<app port>`, and it shares the app port from the `Preview ready:` line.
 
 - **Sign-in.** `admin@dual.local` with `preview-password`. AI journeys need provider connections.
-- **Exposure.** Start the detached preview with `systemd-run --setenv=DUAL_PREVIEW_HOST=<tailnet host>`, a host without scheme or port; it sets the app origin, sign-in URLs, the public server URL and Vite's allowed host. Share the printed app port per environment's Previews. Turbo restarts a watcher only when its build inputs change.
-- **Lifetime.** Ctrl-C stops the preview and keeps its data. When every owner is settled and the data is disposable, `vp run --workspace-root preview:destroy` removes only that stage; run it before you move or delete the checkout.
+- **Reload.** Source edits reload through the watchers; Turbo restarts a watcher only when its build inputs change.
+- **Lifetime.** `preview.sh stop` stops the processes like Ctrl-C and keeps the containers and data. `bun run preview:destroy` removes only that stage, its containers and its data; the settle script runs it when the last open thread of the worktree settles. Run it yourself before you move or delete the checkout.
 - **Live webhooks.** Funnel the API port's `/api/webhooks` path per environment's Previews. `SERVER_PUBLIC_URL` follows the app URL, so a separate Funnel port needs a temporary callback URL override, reverted before the push.
 - **Accounts.** Writes go only to GitHub `MP281X`, GitLab `matteopaludgnach` and the user's Discord test channel. The saved GitHub and Discord preview tokens are read-only; write tokens come from `gh auth token` and the `glab` configuration. The user configures Jira and removes test configuration himself, from a guide.
 - **Never** use the shared `init` or `dev` commands as a preview.
@@ -71,7 +71,7 @@ acli jira workitem transition --key DOS-289 --status Doing --yes
 Each workspace and infrastructure package pins its own `@deslop/coding-standards` version. Its `oxlint.config.ts` holds a legacy list of files whose `legacyRules` drop to warnings, package-wide warning rules and rule disables; every other file passes the configured rules.
 
 - **Skills.** The worktree script runs `vpx @deslop/coding-standards@latest`, which refreshes architecture, engineering, design, testing and review in `.agents/skills` and `.claude/skills`.
-- **Bump.** When a task changes code, the cleanup pull request runs `bun add --dev --exact @deslop/coding-standards@latest` in every package directory, including infrastructure packages, the root, the scaffold baseline and consumer fixtures, then the root fix.
+- **Bump.** The user bumps `@deslop/coding-standards` when he needs to; never bump it in another task. When he asks, run `bun add --dev --exact @deslop/coding-standards@latest` in every package directory, including infrastructure packages, the root, the scaffold baseline and consumer fixtures, then the root fix.
 - **New rules.** When a rule from a bump fails, turn it off in that package's `oxlint.config.ts`, never with inline disables; this overrides engineering's Disables rule. Remove rule entries and suppressions that the bump made obsolete.
 - **Touched files.** A hand-written file that the task adds, or rewrites over half of, leaves the legacy list and the scoped exemptions and passes the configured rules: its casts and suppressions go unless engineering allows one with a reason. Every other changed file stays listed; never refactor a file only for lint or Effect Atom.
 - **Prune.** After the change, run the command below in the package directory, without `--quiet`. Remove each listed file that it does not print, and an import-ban exemption only after its imports are gone. Never add a file to the list.

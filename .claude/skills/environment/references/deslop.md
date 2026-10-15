@@ -14,10 +14,10 @@ vp run --workspace-root --no-cache fix
 vp run --workspace-root --cache test
 ```
 
-**App.** Web apps have no development server. Run the built preview on a free port for iteration, browser testing, captures and handoff; rerun it after each change.
+**App.** Web apps have no development server. Run the built preview for iteration, browser testing, captures and handoff, and rerun the command after each change. The script sets `HOST` and `PORT`. The stash server has no worktree preview: its preview command keeps port 5017 and the real notes in `~/.deslop/stash`, which the running stash on dev uses.
 
 ```bash
-HOST=127.0.0.1 PORT=<port> vp run --filter @deslop/portfolio preview
+bash ~/.claude/skills/environment/scripts/preview.sh start vp run --filter @deslop/portfolio preview
 ```
 
 **Components.** List the existing shared components first. Inspect with `vp run --workspace-root shadcn list @shadcn`, `vp run --workspace-root shadcn view <component>` and `vp run --workspace-root shadcn docs <component>`, and add with `vp run --workspace-root shadcn add <component>`.

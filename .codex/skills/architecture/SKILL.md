@@ -19,7 +19,7 @@ Before code, settle these facts in the current plan, without creating another do
 - The boundary where untrusted input becomes trusted data.
 - What remains durable after interruption, and how the caller knows.
 
-For a user-visible direction that remains open, decide it with the user before implementation; use orchestrator when available. File layout, module boundaries, public interfaces and names are the user's taste: when the Patterns and Taste sections of `CODING_STANDARDS.md` do not settle them, show the shape before code, per orchestrator's Taste gate when available. Settle technical mechanisms with source, a disposable inline probe or a small executable prototype. Do not ask the user to choose between implementation details that evidence can rank.
+For a user-visible direction that remains open, brainstorm it with the user while you build; use orchestrator when available. File layout, module boundaries, public interfaces and names are the user's taste: when the Patterns and Taste sections of `CODING_STANDARDS.md` do not settle them, show the shape beside the first code, per orchestrator's Prototype when available, and change it when the user steers. Settle technical mechanisms with source, a disposable inline probe or a small executable prototype. Do not ask the user to choose between implementation details that evidence can rank.
 
 ## Choose the smallest mechanism
 
