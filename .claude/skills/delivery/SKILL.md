@@ -45,19 +45,20 @@ Do not use `glab stack` in shared T3 worktrees: glab 1.122.0 stores both metadat
 
 Describe each change that a user or caller notices across the whole branch against its target branch, each with its evidence. T3's review guide tours the code, so the body has no code links. Gaps, user actions and ticket status go in the final reply. Ignore the repository's template and checklist.
 
-| Part      | Content                                                                                                                                         |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Opening   | One or two sentences: the central change in the user's terms and what it makes possible                                                         |
-| Check     | Up to three bullets on what can break, such as a migration, a changed contract or removed behavior; omit it when nothing can break              |
-| Entries   | One `###` heading per change, central change first, phrased as what now happens. Under it: at most two sentences, then its video or screenshots |
-| Contracts | When public endpoints, schemas, flags, keys, migrations or exported APIs change: a before and after table, then the caller migration            |
+| Part      | Content                                                                                                                              |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Opening   | One or two sentences: the central change in the user's terms and what it makes possible                                              |
+| Check     | Up to three bullets on what can break, such as a migration, a changed contract or removed behavior; omit it when nothing can break   |
+| Entries   | One `###` heading per change, central change first, phrased as what now happens. Under it: at most one sentence, then its visual     |
+| Contracts | When public endpoints, schemas, flags, keys, migrations or exported APIs change: a before and after table, then the caller migration |
 
+- **Visual.** Show each change in its least ambiguous visual form per the base prompt's Show rule: a video, screenshots, a mermaid diagram, a code block or a table.
 - **Evidence.** Put each video or screenshot under the entry it proves: one complete video per realistic journey, at most eight screenshots, and no durations or timestamps.
 - **Before and after.** Show a changed screen as a two-column table with the same data, the target branch on the left. When speed or size is the change, add a before and after table with the command that measured it.
-- **Also.** A change with nothing to show keeps its heading and sentences. Group minor changes under one `### Also` entry as one-line bullets. The last bullet names the generated files and the command that reproduces them.
+- **Also.** A change with nothing to show keeps its heading and sentence. Group minor changes under one `### Also` entry as one-line bullets. The last bullet names the generated files and the command that reproduces them.
 - **Leave out** pass counts, test tables, process notes, checklists, a proof section and anything that T3 or the pipeline shows.
 
-```markdown
+````markdown
 Integrations are now generated, not handwritten: the hosted catalog grows from 8 to 69 providers, and workflows start from their events.
 
 - Deactivating Attio, Linear, GitHub or GitLab now deletes their webhooks.
@@ -80,7 +81,12 @@ A merge request starts a run and the run comments back; a forged token is reject
 
 ### Plugins come from API descriptions
 
-`dual openapi-plugin` turns an OpenAPI, GraphQL, MCP or Postman source into a versioned plugin. A lock file freezes released actions, so regenerating changes only the unreleased version.
+A lock file freezes released actions; regenerating changes only the unreleased version.
+
+```bash
+dual openapi-plugin linear.graphql
+# plugins/linear/v3 written, v1 and v2 unchanged
+```
 
 ### Also
 
@@ -93,7 +99,7 @@ A merge request starts a run and the run comments back; a forged token is reject
 | Application version | 5.0.0  | 6.0.0 selects the generated plugins |
 
 Released application versions keep their plugins; nothing changes for existing workflows.
-```
+````
 
 ## Commands
 
