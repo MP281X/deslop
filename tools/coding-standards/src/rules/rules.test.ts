@@ -17,7 +17,7 @@ const OxlintOutput = Schema.Struct({
 	)
 })
 
-const lintSource = Effect.fnUntraced(function* (input: Record<string, string>) {
+const lintSource = Effect.fnUntraced(function* (input: Record<string, string>, flags: string[] = []) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const directory = yield* fs.makeTempDirectoryScoped({directory: import.meta.dirname, prefix: 'fixture-'})
@@ -27,11 +27,13 @@ const lintSource = Effect.fnUntraced(function* (input: Record<string, string>) {
 			String.replace(/^((?:import[^\n]*\n)+)(?!\n)/u, '$1\n')(entry[1])
 		)
 	)
-	const handle = yield* ChildProcess.make(
-		'vp',
-		['lint', ...Array.map(Record.keys(input), name => path.join(directory, name)), '--format=json'],
-		{cwd: path.resolve(import.meta.dirname, '../../../..'), stderr: 'pipe', stdout: 'pipe'}
-	)
+	const files = Array.map(Record.keys(input), name => path.join(directory, name))
+	const root = path.resolve(import.meta.dirname, '../../../..')
+	const handle = yield* ChildProcess.make('vp', ['lint', ...files, '--format=json', ...flags], {
+		cwd: root,
+		stderr: 'pipe',
+		stdout: 'pipe'
+	})
 	const result = yield* Effect.all(
 		{
 			exitCode: handle.exitCode,
@@ -40,8 +42,13 @@ const lintSource = Effect.fnUntraced(function* (input: Record<string, string>) {
 		},
 		{concurrency: 'unbounded'}
 	)
+	// The repository's fix command formats after the lint fixes, so a fixed source is compared as the formatter leaves it.
+	if (Array.contains(flags, '--fix')) {
+		yield* Effect.flatMap(ChildProcess.make('vp', ['fmt', ...files], {cwd: root}), formatter => formatter.exitCode)
+	}
 	return {
 		exitCode: result.exitCode,
+		sources: yield* Effect.forEach(files, file => fs.readFileString(file)),
 		stderr: result.stderr,
 		stdout: yield* Schema.decodeEffect(Schema.fromJsonString(OxlintOutput))(result.stdout)
 	}
@@ -718,6 +725,126 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 						'@deslop/coding-standards(no-readonly-type-syntax)',
 						'@deslop/coding-standards(no-readonly-type-syntax)',
 						'@deslop/coding-standards(no-readonly-type-syntax)'
+					])
+				}),
+			20_000
+		)
+
+		testApi.effect(
+			'fixes readonly syntax and single-use values without changing behavior',
+			() =>
+				Effect.gen(function* () {
+					const result = yield* lintSource(
+						{
+							'fixable.ts': pipe(
+								[
+									"import {Context} from 'effect'",
+									"import type {Effect} from 'effect'",
+									'declare const text: string',
+									'declare function consume(...values: unknown[]): number',
+									'export type Explicit = {readonly values: readonly string[]}',
+									'export type Mapped<T> = {readonly [K in keyof T]: T[K]}',
+									'export type Frozen = Readonly<{value: string}>',
+									'// oxlint-disable-next-line effecttsgo/deterministic-keys -- a fixture in a temporary directory has no stable key',
+									'export class Clock extends Context.Service<Clock, {now: Effect.Effect<number>}>()("Clock") {}',
+									'export function sum() {',
+									'	const size = text.length + 1',
+									'	return consume(size * 2)',
+									'}',
+									'export function shorthand() {',
+									'	const label = consume(text)',
+									'	return consume({label})',
+									'}',
+									'declare const obj: {method: () => number; first: () => number; second: number; p: number; make: () => {Component: new () => object}}',
+									'export type Union = Readonly<string | number>[]',
+									'export function detached() {',
+									'	const method = obj.method',
+									'	return method()',
+									'}',
+									'export function constructed() {',
+									'	const make = obj.make()',
+									'	return new make.Component()',
+									'}',
+									'export function statement() {',
+									'	obj.first()',
+									'	const values = [obj.p]',
+									'	values.slice(1)',
+									'}',
+									'export function asserted() {',
+									'	const method = obj.method',
+									'	return method!()',
+									'}',
+									'export function pattern() {',
+									'	obj.first()',
+									'	const matcher = /x/u',
+									'	matcher.lastIndex = 1',
+									'}',
+									'export function named() {',
+									'	const Value = class {} satisfies object',
+									'	return Value.name',
+									'}'
+								],
+								Array.join('\n')
+							)
+						},
+						['--fix']
+					)
+					assert.deepStrictEqual(result.sources, [
+						pipe(
+							[
+								"import {Context} from 'effect'",
+								"import type {Effect} from 'effect'",
+								'',
+								'declare const text: string',
+								'declare function consume(...values: unknown[]): number',
+								'export type Explicit = {values: string[]}',
+								'export type Mapped<T> = {[K in keyof T]: T[K]}',
+								'export type Frozen = {value: string}',
+								'// oxlint-disable-next-line effecttsgo/deterministic-keys -- a fixture in a temporary directory has no stable key',
+								"export class Clock extends Context.Service<Clock, {readonly now: Effect.Effect<number>}>()('Clock') {}",
+								'export function sum() {',
+								'	return consume((text.length + 1) * 2)',
+								'}',
+								'export function shorthand() {',
+								'	return consume({label: consume(text)})',
+								'}',
+								'declare const obj: {',
+								'	method: () => number',
+								'	first: () => number',
+								'	second: number',
+								'	p: number',
+								'	make: () => {Component: new () => object}',
+								'}',
+								'export type Union = (string | number)[]',
+								'export function detached() {',
+								'	const method = obj.method',
+								'	return method()',
+								'}',
+								'export function constructed() {',
+								'	return new (obj.make().Component)()',
+								'}',
+								'export function statement() {',
+								'	obj.first()',
+								'',
+								'	;[obj.p].slice(1)',
+								'}',
+								'export function asserted() {',
+								'	const method = obj.method',
+								'	return method()',
+								'}',
+								'export function pattern() {',
+								'	obj.first()',
+								'',
+								'	;/x/u.lastIndex = 1',
+								'}',
+								'export function named() {',
+								'	const Value = class {} satisfies object',
+								'	return Value.name',
+								'}',
+								''
+							],
+							Array.join('\n')
+						)
 					])
 				}),
 			20_000
