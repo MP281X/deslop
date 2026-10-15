@@ -23,7 +23,7 @@ Inspect every visible state and transition. Grade hierarchy, behavior and readab
 
 ### Task
 
-Give me a quick overview of these changes: Review moved into coding-standards; Architecture was added; open choices need a prototype and approval; routine fixes do not; proof uses inline probes before permanent tests. These instruction changes are local, not installed. There are no UI captures, measurements or interactive choices to show.
+Give me a quick overview of these changes: Review moved into coding-standards; Architecture was added; open choices get an inline prototype beside the production code, with no approval wait; routine fixes need no prototype; proof uses inline probes before permanent tests. These instruction changes are local, not installed. There are no UI captures, measurements or interactive choices to show.
 
 ### Criteria
 

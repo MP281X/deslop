@@ -23,7 +23,7 @@ For a screen that the recorded taste does not settle, show a realistic mock besi
 
 ## Decide
 
-**Standard first.** Each screen and interaction follows the convention people know from the reference. Copy its structure, controls, gestures and states. Depart from it only for a deliberate improvement that a capture beside the reference proves. In product mode, such an improvement is a pattern change: propose it, and after approval apply it to every screen per engineering's Patterns.
+**Standard first.** Each screen and interaction follows the convention people know from the reference. Copy its structure, controls, gestures and states. Depart from it only for a deliberate improvement that a capture beside the reference proves. In product mode, such an improvement is a pattern change: apply it to every screen per engineering's Patterns and show it beside the old form.
 
 **Fewest parts.** Start from the content and the next action. Add a control, label, section, color or decoration only when the request, the reference screen or a rule below needs it. When the user calls a screen bloated or wrong, remove parts before you add any.
 

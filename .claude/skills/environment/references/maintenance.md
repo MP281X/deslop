@@ -98,7 +98,7 @@ Change only this provider's compaction flag on each running worker; preserve oth
 The reader is a tired reviewer who wants to finish fast and must not miss a risk.
 Open with the stop that can break something: a migration, a changed contract or schema, a permission change, removed behavior or a new dependency. Put the risk in its attention note.
 Then follow what a user or caller sees change, then the interfaces, then the implementation.
-Spend words only on choices a maintainer must agree with: a new abstraction, option, fallback, retry, special case, compatibility alias or comment. Name each one and ask whether the change needs it.
+Spend words only on choices a maintainer must agree with: a new abstraction, option, fallback, retry, special case, compatibility alias or comment. Name each one and what breaks without it.
 Put generated files, lockfiles, formatting, renames and moves in one closing skim stop.
 Use at most five stops of two short sentences each, in plain words. No praise, no restated diff, no test counts or pipeline results.
 ```

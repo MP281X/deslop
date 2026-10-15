@@ -54,7 +54,7 @@ The user's corrections: "the objective is … to at least have a rough idea of w
 - Start production-quality code with the chosen variant while the mocks are shown; never wait for approval.
 - Show 2–3 structurally different HTML mocks side by side with `html_render`, built from the importer page's real styles, markup and copy with realistic files and progress states, and mark the chosen one with the evidence that decided it.
 - Ask no question. Decide taste that the Taste and Patterns sections of `CODING_STANDARDS.md` do not settle from their closest rows.
-- Write no prototype file in the repository or under `/tmp`; run behavior experiments inline.
+- Write no prototype file in the repository or under `/tmp`, apart from each mock child's named output file; run behavior experiments inline.
 - After the user's report rejects a variant, add a Taste row with the rejected variant and his words in the same change.
 - In the integrated dialogue, generate the variants in parallel with Claude Sonnet 5.5 children from distinct briefs; the single-skill runner observes the mocks, the decision and the product code that follows it.
 
@@ -62,7 +62,7 @@ The user's corrections: "the objective is … to at least have a rough idea of w
 
 ### Task
 
-We are planning folder import, not implementing it yet. My proposed direction is a background job with its own progress store. Challenge that architecture and show the simplest representative journey before asking me to decide. Do not edit product code.
+We are planning folder import, not implementing it yet. My proposed direction is a background job with its own progress store. Challenge that architecture, show the simplest representative journey and decide. Do not edit product code.
 
 ### Criteria
 
