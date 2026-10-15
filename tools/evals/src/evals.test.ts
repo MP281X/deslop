@@ -6,7 +6,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Effect, FileSystem, Option, Order, Path, Record, Schema, pipe} from 'effect'
 
-import {Transcript} from '#schema'
+import {Transcript, type Manifest} from '#schema'
 
 import {collect, recordRun} from '#lib/collect'
 import {activate, cleanup, parseCases, prepare, Settings, command} from '#lib/prepare'
@@ -150,11 +150,18 @@ it.effect(
 					`${home}/.t3/userdata/settings.json`,
 					yield* Schema.encodeEffect(Schema.fromJsonString(Settings))(original)
 				)
-				const manifest = yield* prepare({
-					harnesses: ['codex', 'claude'],
-					root,
-					skill: path.join(root, 'tools/coding-standards/skills/engineering')
-				})
+				function release(prepared: Manifest) {
+					return Effect.orDie(fs.remove(prepared.directory, {recursive: true}))
+				}
+				const manifest = yield* Effect.acquireRelease(
+					prepare({
+						harnesses: ['codex', 'claude'],
+						root,
+						skill: path.join(root, 'tools/coding-standards/skills/engineering')
+					}),
+					release,
+					{interruptible: true}
+				)
 				assert.strictEqual(manifest.runs.length, 4)
 				const run = Option.getOrThrow(Array.findFirst(manifest.runs, row => row.harness === 'codex'))
 				assert.strictEqual(
@@ -243,11 +250,11 @@ it.effect(
 				assert.notInclude(yield* fs.readFileString(run.task), 'appropriate Effect primitives')
 				assert.include(yield* fs.readFileString(`${run.repo}/package.json`), '"effect": "4.0.2"')
 				assert.include(yield* fs.realPath(`${run.repo}/node_modules/effect`), run.repo)
-				const review = yield* prepare({
-					harnesses: ['codex'],
-					root,
-					skill: path.join(root, 'tools/coding-standards/skills/review')
-				})
+				const review = yield* Effect.acquireRelease(
+					prepare({harnesses: ['codex'], root, skill: path.join(root, 'tools/coding-standards/skills/review')}),
+					release,
+					{interruptible: true}
+				)
 				const reviewRun = Option.getOrThrow(Array.head(review.runs))
 				assert.include(yield* command(reviewRun.repo, 'git', ['diff']), "fs.glob('*.json'")
 				assert.notInclude(yield* fs.readFileString(reviewRun.task), 'progress emitted before durable writes')
@@ -282,7 +289,6 @@ console.log(JSON.stringify(await Effect.runPromise(pipe(program, Effect.scoped, 
 					{nested: 4, visible: [true, true]}
 				)
 				yield* cleanup(review.directory, home)
-				yield* fs.remove(review.directory, {recursive: true})
 				yield* recordRun(manifest.directory, run.id, 'thread-one')
 				const database = yield* Effect.acquireRelease(
 					Effect.try(() => new DatabaseSync(`${home}/.t3/userdata/statev2.sqlite`)),
@@ -358,7 +364,6 @@ console.log(JSON.stringify(await Effect.runPromise(pipe(program, Effect.scoped, 
 					{...original, contrast: 'high', providerInstances: {...original.providerInstances, other: {enabled: true}}}
 				)
 				assert.isTrue(yield* fs.exists(`${manifest.directory}/report.json`))
-				yield* fs.remove(manifest.directory, {recursive: true})
 			}),
 			// @effect-diagnostics-next-line strictEffectProvide:off -- This test owns platform and SQLite lifetimes.
 			Effect.provide(NodeServices.layer)
