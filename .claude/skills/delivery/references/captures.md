@@ -30,7 +30,7 @@ Use testing for evidence validity. This reference owns capture tools and present
 
 ## Native apps
 
-Use environment's device-host procedure to boot a simulator on `macbook-pro`. Read the app's build and Metro commands, then use T3's device tools.
+Use environment's device-host procedure to boot a simulator on `macbook-pro`. Read the app's simulator commands, then use T3's device tools.
 
 - **Session.** Keep the exact launcher and flags from `device_open` on every call. Run `open <bundle id>` before `snapshot -i`, `screenshot` or recording; snapshots supply interaction refs.
 - **Files.** Use `screenshot <path> --pixel-density 3`, `record start <path>` and `record stop` for native-resolution captures.

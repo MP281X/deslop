@@ -12,7 +12,6 @@
 	},
 	"scripts": {
 		"build": "rm -rf dist && vp pack",
-		"dev": "expo start --dev-client --localhost",
 		"preview": "vp run build && node --env-file-if-exists=.env ./dist/server.js"
 	},
 	"dependencies": {
@@ -25,7 +24,6 @@
 		"@deslop/runtime": "workspace:*",
 		"@expo/ui": "^58.0.17",
 		"babel-preset-expo": "^58.0.14",
-		"expo-dev-client": "^58.0.13",
 		"expo-updates": "^58.0.16"
 	}
 }
