@@ -5,8 +5,7 @@
 	"imports": {
 		"#schema": "./src/schema.ts",
 		"#service": "./src/service.ts",
-		"#lib/*": "./src/lib/*",
-		"#internal/*": "./src/internal/*"
+		"#lib/*": "./src/lib/*"
 	},
 	"exports": {
 		"./schema": "./src/schema.ts",

@@ -23,11 +23,10 @@ import {
 	pipe
 } from 'effect'
 
-import {Sources} from './internal/extraction.ts'
-import {Organizer} from './internal/organization.ts'
-import {openStore} from './internal/store.ts'
-
 import {Media} from '#services/media/service.ts'
+import {Sources} from '#services/notes/lib/extraction.ts'
+import {Organizer} from '#services/notes/lib/organization.ts'
+import {openStore} from '#services/notes/lib/store.ts'
 import {captureUrl, commentFor, diff, findNotes, hasVideo, sourceFor, tagCounts} from '#services/notes/lib/utils.ts'
 import type {Capture, Extraction, FileType, Image, NotesEvent} from '#services/notes/schema.ts'
 import {Note, NotesError} from '#services/notes/schema.ts'
