@@ -69,7 +69,9 @@ export function isYouTube(url: string) {
 }
 
 export function hasVideo(url: string) {
-	return sourceFor(url) !== 'Website' || isYouTube(url) || instagramHosts.test(new URL(url).hostname)
+	const link = new URL(url)
+	if (sourceFor(url) === 'TikTok') return !String.includes('/photo/')(link.pathname)
+	return sourceFor(url) === 'X' || isYouTube(url) || instagramHosts.test(link.hostname)
 }
 
 export function commentFor(text: string) {

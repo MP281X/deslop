@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array} from 'effect'
 
-import {captureUrl, commentFor, findNotes, normalizeTags, tagCounts} from '#services/notes/lib/utils.ts'
+import {captureUrl, commentFor, findNotes, hasVideo, normalizeTags, tagCounts} from '#services/notes/lib/utils.ts'
 import {Note} from '#services/notes/schema.ts'
 
 it('maps every share of the same post to one canonical link', () => {
@@ -28,6 +28,22 @@ it('maps every share of the same post to one canonical link', () => {
 		]
 	)
 	assert.strictEqual(commentFor('Try this  https://x.com/a/status/1 \n tonight'), 'Try this tonight')
+})
+
+it('reads the video of a TikTok, but not of its photo posts', () => {
+	assert.deepStrictEqual(
+		Array.map(
+			[
+				'https://www.tiktok.com/@cook/video/123',
+				'https://www.tiktok.com/@cook/photo/123',
+				'https://vm.tiktok.com/ZN8Bp9ayx/',
+				'https://x.com/jack/status/20',
+				'https://example.com/read'
+			],
+			hasVideo
+		),
+		[true, false, true, true, false]
+	)
 })
 
 it('makes each tag one lowercase token', () => {
