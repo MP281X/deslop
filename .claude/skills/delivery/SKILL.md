@@ -23,12 +23,12 @@ The user reviews and squash-merges one pull request at a time. Independent chang
 1. Fetch, rebase onto `origin/<default branch>` and rerun root commands. Verify frozen installation after manifest or lockfile changes. Failing local checks block the push; running captures, reviews and pipelines do not. Commit and push as soon as a working slice passes root commands, then again after each working step, so every pushed head works and the user can stop at any of them.
 2. Push every changed PR of the iteration together. Set titles and bodies only after the push they describe; use the format below. Link each PR with `link_pull_request`, never the replacing link action of `t3_thread_update`, watch each pushed PR and start its T3 review guide.
 3. Write the title, body and commit message at the first push, from the change facts. Later edits only add an entry for a pushed change, a capture under its entry, or correct a known error or changed fact. Do not reread or self-check them, fetch them back after editing, or delegate an artifact review. Review an artifact only when the user requests it or an evaluation targets it. Handle notices per Notices below.
-4. When required jobs pass on the exact final head, review findings are resolved and the captures are in the body, mark that PR ready. When `read_pull_request_guide` reports the guide stale, start it again in the same step. Never repeat a notice to the user. Commands: `gh pr ready <number>` or `glab mr update <number> --ready`.
-5. Unwatch every PR and stop owned services except the preview. Leave the preview service, its full tailnet HTTPS URL and the shared tab running on the final code; the project's settle script stops them. Give a manual guide only for user-only unproved behavior. The thread adds the whole-worktree picture, not another PR recap; T3 owns PR, agent, task and pipeline presentation.
+4. When required jobs pass on the exact final head, review findings are resolved and the captures are in the body, mark that PR ready. When `read_pull_request_guide` reports the guide stale, start it again in the same step. Commands: `gh pr ready <number>` or `glab mr update <number> --ready`.
+5. Unwatch every PR and stop owned services; the preview and its tab stay per environment's Previews. Give a manual guide only for user-only unproved behavior.
 
 ## Notices
 
-Retain each PR's current head, handled check state, unresolved review and readiness action in the current plan. Compare a notice with that state before reading logs or delegating work. Ignore older-head checks, running-job updates and already-handled transitions. If the head is unknown, read its current identity and check state once. Act on a new failure, current-head completion, new review finding or conflict; a repeated notice does not invalidate proof or reopen review. Handle readiness once per final head, and unwatch at handoff.
+Retain each PR's current head, handled check state, unresolved review and readiness action in the current plan. Compare a notice with that state before reading logs or delegating work. Ignore older-head checks, running-job updates and already-handled transitions. If the head is unknown, read its current identity and check state once. Act on a new failure, current-head completion, new review finding or conflict; a repeated notice does not invalidate proof or reopen review. Handle readiness once per final head.
 
 These instructions reduce work after a model wake. Filtering duplicates or combining events before the model runs requires T3 runtime support; do not claim that a skill implements it or patch an installed runtime binary.
 
@@ -46,14 +46,13 @@ Do not use `glab stack` in shared T3 worktrees: glab 1.122.0 stores both metadat
 
 Describe each change that a user or caller notices across the whole branch against its target branch, each with its evidence. T3's review guide tours the code, so the body has no code links. Gaps, user actions and ticket status go in the final reply. Ignore the repository's template and checklist.
 
-| Part      | Content                                                                                                                              |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Opening   | One or two sentences: the central change in the user's terms and what it makes possible                                              |
-| Check     | Up to three bullets on what can break, such as a migration, a changed contract or removed behavior; omit it when nothing can break   |
-| Entries   | One `###` heading per change, central change first, phrased as what now happens. Under it: at most one sentence, then its visual     |
-| Contracts | When public endpoints, schemas, flags, keys, migrations or exported APIs change: a before and after table, then the caller migration |
+| Part      | Content                                                                                                                                                          |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Opening   | One or two sentences: the central change in the user's terms and what it makes possible                                                                          |
+| Check     | Up to three bullets on what can break, such as a migration, a changed contract or removed behavior; omit it when nothing can break                               |
+| Entries   | One `###` heading per change, central change first, phrased as what now happens. Under it: at most one sentence, then its visual per the base prompt's Show rule |
+| Contracts | When public endpoints, schemas, flags, keys, migrations or exported APIs change: a before and after table, then the caller migration                             |
 
-- **Visual.** Show each change in its least ambiguous visual form per the base prompt's Show rule: a video, screenshots, a mermaid diagram, a code block or a table.
 - **Evidence.** Put each video or screenshot under the entry it proves: one complete video per realistic journey, at most eight screenshots, and no durations or timestamps.
 - **Before and after.** Show a changed screen as a two-column table with the same data, the target branch on the left. When speed or size is the change, add a before and after table with the command that measured it.
 - **Also.** A change with nothing to show keeps its heading and sentence. Group minor changes under one `### Also` entry as one-line bullets. The last bullet names the generated files and the command that reproduces them.
