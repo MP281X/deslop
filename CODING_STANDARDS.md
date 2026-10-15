@@ -13,7 +13,8 @@ Repository-specific decisions live here. Reusable architecture, coding, testing,
 - A service package holds one service in exactly these files: `src/schema.ts` for its schemas, their types, and its domain error; `src/service.ts` for the tag, its shape, and its static layers; `src/lib/utils.ts` for pure helpers; other `src/lib/*.ts` files for the implementation. Split nothing further, so every package reads the same way.
 - Keep `lib/utils.ts` frontend-safe.
 - An app owns its RPCs, entrypoints, and services: `rpcs/contracts.ts` holds the RpcGroup and its schemas, `rpcs/handlers.ts` its layer, `lib/utils.ts` the AtomRpc client and shared operations, `services/<name>/` each service in the package shape, and `routes/` the pages in the web file-router layout, mobile apps included: `__root.tsx`, `(home)/index.tsx`, `<name>.tsx` and `<name>/$id.tsx`. A component one page uses stays in that page's file.
-- Entrypoints are `src/main.<role>.ts(x)`: `main.server.ts` the HTTP layer graph, `main.client.tsx` the router and root, and `main.cli.ts` a command line. A web app adds `main.ts` to run the server, because the Vite dev server imports `main.server.ts`; a mobile app has no dev server, so its `main.server.ts` runs itself.
+- Entrypoints are `src/main.<role>.ts(x)`: `main.server.ts` runs the HTTP server, `main.client.tsx` the router and root, and `main.cli.ts` a command line.
+- A web app has no development server: `preview` builds the client and server and runs `dist/server.js`, the same build that deploys.
 - A mobile app keeps what Expo reads at its root: `app.config.ts`, `eas.json`, `fingerprint.config.js` when it has native files the fingerprint misses, `modules/<name>` for its local native module and `targets/<name>` for app extensions.
 
 ## Apps

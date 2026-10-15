@@ -14,8 +14,6 @@ import {BatchSpanProcessor} from '@opentelemetry/sdk-trace-base'
 import {HttpStaticServer} from 'effect/http'
 import {RpcSerialization} from 'effect/rpc'
 
-export const layerRpcSerialization = RpcSerialization.layerSchemaBinary()
-
 export function layer(applicationName: string) {
 	return Layer.mergeAll(
 		Layer.unwrap(
@@ -29,7 +27,7 @@ export function layer(applicationName: string) {
 				}))
 			)
 		),
-		layerRpcSerialization
+		RpcSerialization.layerSchemaBinary()
 	)
 }
 
