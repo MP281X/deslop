@@ -9,7 +9,7 @@ Challenge the work independently. Trace the contract, try its strongest reachabl
 
 ## Code review
 
-Review the diff that the author normalized per engineering. Spend no reasoning on formatting or diagnostics that lint reports; if normalization is missing, name that gap and never mutate a read-only target.
+Review the diff that the author normalized per engineering. Spend no reasoning on formatting or diagnostics that lint reports outside legacy lists; if normalization is missing, name that gap and never mutate a read-only target.
 
 - **Depth.** Read every hand-written changed line. For generated output, review the generator change and a sample, such as one package per source format. Trace each contract through its real consumers, failure paths, concurrency and resource ownership against the merge base. Try the inputs, orderings and failures that the tests miss. When the change refactors a whole file, list each behavior the file had at the merge base and prove that each one still holds, apart from the planned change.
 - **Findings.** Report broken behavior or contracts that a real caller's input reaches. Report violations of engineering, design or `CODING_STANDARDS.md` in changed lines, and in every line of a file that the task adds or rewrites. A recurring shape that departs from its canonical example without a request is a finding. For a pattern change, run the Patterns search for the old form and report each remaining consumer. Skip what lint enforces outside legacy lists, and restyling that the change does not need.
