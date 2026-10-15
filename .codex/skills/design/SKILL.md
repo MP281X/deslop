@@ -13,8 +13,6 @@ Follow the engineering skill and the repository's `CODING_STANDARDS.md` when pre
 
 ## Before the first draft
 
-For a screen that the recorded taste does not settle, show a realistic mock beside the first real build, per orchestrator's Prototype when available; never wait for approval. Let the user try a small real journey before expensive expansion. Own routine refinement, and expect the real experience to change the user's direction.
-
 1. **Task and feeling.** Name the person, their task, their context and the feeling the product gives, such as calm, fast or trustworthy. Name three qualities the person notices, each with what "excellent" looks like.
 2. **Baseline.** Name the category and platform, and the reference screen for each screen you build: in product mode the canonical screen per engineering's Patterns, otherwise one of Apple's apps on iOS or a reference the user named. Capture the reference in the states you need. Start from the system or established component defaults.
 3. **Range.** When the reference screen and the Taste section of `CODING_STANDARDS.md` do not settle the structure, compare 2–3 structurally different solutions on the same data. Include a simpler solution that removes unnecessary controls. Develop only the chosen direction.
@@ -23,7 +21,7 @@ For a screen that the recorded taste does not settle, show a realistic mock besi
 
 ## Decide
 
-**Standard first.** Each screen and interaction follows the convention people know from the reference. Copy its structure, controls, gestures and states. Depart from it only for a deliberate improvement that a capture beside the reference proves. In product mode, such an improvement is a pattern change: apply it to every screen per engineering's Patterns and show it beside the old form.
+**Standard first.** Each screen and interaction follows the convention people know from the reference. Copy its structure, controls, gestures and states. Depart from it only for a deliberate improvement that a capture beside the reference proves. In product mode, make such an improvement only when the request covers it, as a pattern change to every screen per engineering's Patterns.
 
 **Fewest parts.** Start from the content and the next action. Add a control, label, section, color or decoration only when the request, the reference screen or a rule below needs it. When the user calls a screen bloated or wrong, remove parts before you add any.
 
@@ -98,9 +96,9 @@ For a screen that the recorded taste does not settle, show a realistic mock besi
 
 ## Prototype and tune
 
-**Mocks.** Start the mock from the real screen: copy its rendered markup, theme tokens and fonts from the running app or its source, then change only what the decision needs. Keep its components, copy, spacing, realistic data and main states. For a native app, imitate the platform's system look; the mock settles structure, flow and the rough look. Add interaction only when manipulating the subject exposes a consequential difference; never add tabs or a state dashboard merely to navigate the explanation. The mock runs beside the code: build the recommended direction in code at the same time, and move the code when the user picks another one.
+**Mocks.** Start the mock from the real screen: copy its rendered markup, theme tokens and fonts from the running app or its source, then change only what the decision needs. Keep its components, copy, spacing, realistic data and main states. For a native app, imitate the platform's system look; the mock settles structure, flow and the rough look. Add interaction only when manipulating the subject exposes a consequential difference; never add tabs or a state dashboard merely to navigate the explanation.
 
-**Real host.** Build one complete representative journey with realistic data in the real host: the browser preview for the web, the simulator for a native app. Settle the final native appearance there. Let the user try it before broader implementation and polish. Complete specified fixes and approved-pattern work with focused proof, without a user checkpoint. Carry unaffected choices forward when feedback changes the journey; revise the affected design instead of defending the earlier mock.
+**Real host.** The real host is the browser preview for the web and the simulator for a native app; settle the final native appearance there, and revise the affected design instead of defending the earlier mock.
 
 **Tune.** Settle values yourself. For values you cannot settle by reasoning, such as spacing, timing, springs or blur, capture candidates side by side, including both extremes, and judge them against the reference. Write the chosen values into the source and recapture.
 
