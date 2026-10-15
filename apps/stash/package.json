@@ -40,7 +40,7 @@
 		"@bacons/apple-targets": "latest",
 		"@deslop/components-mobile": "workspace:*",
 		"@deslop/runtime": "workspace:*",
-		"@effect/ai-anthropic": "4.0.4",
+		"@effect/ai-anthropic": "4.0.5",
 		"@expo/ui": "^58.0.17",
 		"@huggingface/transformers": "4.3.1",
 		"babel-preset-expo": "^58.0.14",

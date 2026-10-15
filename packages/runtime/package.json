@@ -15,7 +15,7 @@
 	},
 	"dependencies": {
 		"@deslop/components-web": "workspace:*",
-		"@effect/opentelemetry": "4.0.4",
+		"@effect/opentelemetry": "4.0.5",
 		"@opentelemetry/exporter-logs-otlp-http": "latest",
 		"@opentelemetry/exporter-trace-otlp-http": "latest",
 		"@opentelemetry/sdk-logs": "latest",
