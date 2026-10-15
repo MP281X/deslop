@@ -31,7 +31,8 @@ export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext:
 
 export function layer(applicationName: string) {
 	const protocol = pipe(
-		Rpc.RpcClient.layerProtocolSocket({retryTransientErrors: true}),
+		// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
+		Rpc.RpcClient.layerProtocolSocket({pingTimeout: '15 seconds', retryTransientErrors: true}),
 		Layer.provide(
 			pipe(
 				Socket.layerWebSocket(Effect.sync(() => `${location.origin}/api/rpc`)),
