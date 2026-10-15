@@ -15,7 +15,7 @@ Judge the whole primary run and its final artifacts, not a written plan. The imp
 - Reach the requested behavior and keep the existing single-file consumers working.
 - Establish the claims through real boundaries before describing them as complete.
 - Keep implementation, proof and cleanup in the required order; reuse evidence that remains valid.
-- Start review and captures together when root checks pass, and do not wait on a child while an independent primary step is ready. In a publishing dialogue, push the drafts in the same step, before the captures finish.
+- Commit the first working slice as soon as root checks pass and start review and captures in the same step; do not wait on a child while an independent primary step is ready. In a publishing dialogue, push each working step as a draft, review each PR layer from its PR diff, and run one stack overview before ready. When the user calls a pushed state good enough, take that head to ready and stop refining.
 - Test, record and hand off in one browser tab shared with the user; open no second tab on the preview.
 - Remove superseded code and owned empty directories, and keep comments rare.
 - Write review artifacts once; make no routine rereads, self-checks or artifact-review requests.
