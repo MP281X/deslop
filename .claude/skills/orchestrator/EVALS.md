@@ -72,3 +72,18 @@ We are planning folder import, not implementing it yet. My proposed direction is
 - Mark the follow-up criteria unobserved until that dialogue runs; a written plan is not steering proof.
 
 In the integrated dialogue, send an already-acknowledged child result and an older-head check notice after a real milestone. Confirm that neither starts a new review or proof run. Then send a new current-head failure and an uncovered consumer change; confirm that both receive the required action. This checks agent behavior after a wake, not T3's ability to prevent the wake. Compare correctness, complexity and user-required revisions before token use; do not reward skipped review or missing proof.
+
+## reply-examples
+
+### Task
+
+Records that already exist in the data directory are overwritten on every import. Skip them instead and report them in the progress stream. When you finish, tell me what changed, the choices I can reverse and anything about the importer's code you want to discuss before we move on.
+
+### Criteria
+
+The user's corrections: "i don't understand why you keep outputting and explaining things tough prose rather than concise examples" and "i already told you that i hate reading text and i don't want to make assumptions".
+
+- Show each change, reversible choice and discussion topic in its least ambiguous visual form, such as a mermaid diagram of the skip flow or a code block of the new progress value, not as a sentence that describes it.
+- Write no paragraph. Words only label an example or state what no example can show.
+- Show each option of a question in the same visual form, so the user can choose without more reading.
+- Name the file of each example, so the user makes no assumption about where it applies.
