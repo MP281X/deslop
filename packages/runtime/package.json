@@ -15,7 +15,7 @@
 	},
 	"dependencies": {
 		"@deslop/components-web": "workspace:*",
-		"@effect/opentelemetry": "4.0.2",
+		"@effect/opentelemetry": "4.0.4",
 		"@opentelemetry/exporter-logs-otlp-http": "latest",
 		"@opentelemetry/exporter-trace-otlp-http": "latest",
 		"@opentelemetry/sdk-logs": "latest",
@@ -29,12 +29,12 @@
 		"@tanstack/react-router": "latest",
 		"@tanstack/router-plugin": "latest",
 		"@vitejs/plugin-react": "latest",
-		"expo": "^58.0.7",
-		"expo-constants": "^58.0.10",
-		"expo-updates": "^58.0.15",
+		"expo": "^58.0.10",
+		"expo-constants": "^58.0.12",
+		"expo-updates": "^58.0.16",
 		"oxc-transform-react": "^0.152.0",
-		"react": "^19.3.0",
-		"react-dom": "^19.3.0",
+		"react": "^19.3.1",
+		"react-dom": "^19.3.1",
 		"react-native": "0.88.0-rc.4"
 	}
 }

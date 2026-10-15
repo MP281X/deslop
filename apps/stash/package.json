@@ -33,24 +33,24 @@
 		"preview": "vp run build && HOST=127.0.0.1 PORT=5017 node --env-file-if-exists=$HOME/.deslop/stash.env ./dist/server.js"
 	},
 	"dependencies": {
-		"expo": "^58.0.7",
-		"react": "^19.3.0",
+		"expo": "^58.0.10",
+		"react": "^19.3.1",
 		"react-native": "0.88.0-rc.4"
 	},
 	"devDependencies": {
 		"@bacons/apple-targets": "latest",
 		"@deslop/components-mobile": "workspace:*",
 		"@deslop/runtime": "workspace:*",
-		"@effect/ai-anthropic": "4.0.2",
-		"@expo/ui": "^58.0.15",
-		"@huggingface/transformers": "4.3.0",
-		"babel-preset-expo": "^58.0.12",
+		"@effect/ai-anthropic": "4.0.4",
+		"@expo/ui": "^58.0.17",
+		"@huggingface/transformers": "4.3.1",
+		"babel-preset-expo": "^58.0.14",
 		"cheerio": "latest",
 		"expo-clipboard": "^58.0.3",
 		"expo-crypto": "^58.0.6",
-		"expo-dev-client": "^58.0.12",
-		"expo-file-system": "^58.0.8",
-		"expo-updates": "^58.0.15",
+		"expo-dev-client": "^58.0.13",
+		"expo-file-system": "^58.0.9",
+		"expo-updates": "^58.0.16",
 		"onnxruntime-common": "1.30.0",
 		"onnxruntime-node": "1.30.0",
 		"sharp": "latest"

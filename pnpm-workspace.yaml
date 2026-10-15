@@ -4,31 +4,27 @@ packages:
   - tools/*
 
 allowBuilds:
-  '@google/genai': false
-  esbuild: false
   onnxruntime-node: false
   protobufjs: false
 
-catalogMode: prefer
-
 catalog:
-  vite-plus: 1.1.0
-  vite: npm:@voidzero-dev/vite-plus-core@1.1.0
+  vite-plus: 1.2.0
+  vite: npm:@voidzero-dev/vite-plus-core@1.2.0
+
 overrides:
   vite: 'catalog:'
-  # Effect 4.0.3 was never published, but the other 4.0.3 packages require it.
-  '@effect/platform-node-shared': 4.0.2
   # apple-targets 5.0.0 pins the SDK 55 config loader, which needs TypeScript 5; SDK 58's loader works the same.
   '@bacons/apple-targets>@expo/prebuild-config': 58.0.11
-# Vite+ 1.1.0 exposes Vite 8 under its own 1.1.0 package version.
-# Accept that alias only for these inspected Vite-8-compatible consumers.
+
+# Vite+ exposes Vite 8 under its own package version; accept it only for these inspected Vite 8 consumers.
 peerDependencyRules:
   allowedVersions:
-    '@tailwindcss/vite@4.3.3>vite': 1.1.0
-    '@tanstack/router-plugin@1.168.42>vite': 1.1.0
-    '@vitejs/plugin-react@6.1.2>vite': 1.1.0
-    '@vitest/mocker@5.0.3>vite': 1.1.0
-    'vitest@5.0.3>vite': 1.1.0
+    '@tailwindcss/vite@4.3.3>vite': 1.2.0
+    '@tanstack/router-plugin@1.168.46>vite': 1.2.0
+    '@vitejs/plugin-react@6.1.2>vite': 1.2.0
+    '@vitest/mocker@5.0.4>vite': 1.2.0
+    'vitest@5.0.4>vite': 1.2.0
+
 # apple-targets 5.0.0 loads these without declaring them.
 packageExtensions:
   '@bacons/apple-targets':

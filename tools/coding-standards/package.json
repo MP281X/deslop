@@ -41,12 +41,12 @@
 	},
 	"dependencies": {
 		"@shadcn/lint": "^0.2.1",
-		"oxlint-plugin-react-doctor": "^0.9.17"
+		"oxlint-plugin-react-doctor": "^0.9.18"
 	},
 	"devDependencies": {
-		"@oxlint/plugins": "1.85.0",
-		"oxlint": "1.85.0",
-		"oxlint-tsgolint": "7.0.2003"
+		"@oxlint/plugins": "1.88.0",
+		"oxlint": "1.88.0",
+		"oxlint-tsgolint": "7.0.2004"
 	},
 	"peerDependencies": {
 		"@effect/tsgo": ">=0.46",

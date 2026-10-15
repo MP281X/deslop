@@ -12,14 +12,14 @@
 		"upgrade": "vp update -r"
 	},
 	"dependencies": {
-		"@effect/atom-react": "4.0.2",
-		"@effect/platform-node": "4.0.2",
-		"effect": "^4.0.2"
+		"@effect/atom-react": "4.0.4",
+		"@effect/platform-node": "4.0.4",
+		"effect": "^4.0.4"
 	},
 	"devDependencies": {
 		"@deslop/coding-standards": "workspace:*",
 		"@effect/tsgo": "latest",
-		"@effect/vitest": "4.0.2",
+		"@effect/vitest": "4.0.4",
 		"@types/node": "latest",
 		"@types/react": "^19.3.0",
 		"@types/react-dom": "^19.3.0",
@@ -27,7 +27,7 @@
 		"typescript": "latest",
 		"vite": "catalog:",
 		"vite-plus": "catalog:",
-		"vitest": "5.0.3"
+		"vitest": "5.0.4"
 	},
 	"engines": {
 		"node": ">=26"

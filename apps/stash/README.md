@@ -69,7 +69,7 @@ A Swift change compiles first in the simulator build on CI.
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Package       | Published as `@deslop/stash`; app dependencies are `devDependencies`. ONNX Runtime and sharp stay external through `deps.neverBundle`, because only the server loads them                  |
 | Media         | `yt-dlp` stays an external binary because no maintained JavaScript extractor covers its sites. The iOS client never imports `services/media`                                               |
-| Transcription | Update Transformers.js `4.3.0`, `onnxruntime-common`, `onnxruntime-node` and sharp together                                                                                                |
+| Transcription | Update Transformers.js, `onnxruntime-common`, `onnxruntime-node` and sharp together                                                                                                        |
 | Fingerprint   | `fingerprint.config.js` adds `targets/share`, whose Swift the Expo fingerprint does not read                                                                                               |
 | Toolbar order | `@expo/ui` shows the outermost toolbar's items first, so the list nests one `Toolbar` for write inside the one for the filter, with the search modifier between them; unproven until build |
 
