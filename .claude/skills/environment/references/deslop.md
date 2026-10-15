@@ -4,7 +4,7 @@
 
 **Agent configuration.** Native `.claude` and `.codex` files own the base configuration. The Claude pair and Codex instructions differ only before "# Core": keep every edit below that heading identical. `@deslop/coding-standards` owns architecture, engineering, design, testing and review; refresh repository copies with its installer.
 
-**Reference app.** `apps/stash` follows `CODING_STANDARDS.md`'s layout; copy its shape for a new app, service, route or command.
+**Reference app.** The Patterns table in `CODING_STANDARDS.md` names the canonical example for each shape: `apps/portfolio` for a web app, `apps/stash` for a mobile app, a service, a route or a command.
 
 **Commands.** Vite+ caches checks by task inputs and never caches fixes. Use `--no-cache` to prove a fresh run. Run root checks and rule tests sequentially: rule tests create temporary source fixtures that a concurrent type scan can read while they disappear.
 

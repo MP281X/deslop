@@ -34,6 +34,16 @@ memories = false
 multi_agent = false
 multi_agent_v2 = false
 
+[[hooks.SessionStart]]
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "printf 'Execution worker: %s\n' \"$(hostname -s)\""
+timeout = 5
+
+# Codex runs a user hook only when this hash of its event and handler matches; app-server `hooks/list` prints the current one.
+[hooks.state."/home/mp281x/.codex/config.toml:session_start:0:0"]
+trusted_hash = "sha256:e963292c7825ded13e242a454d027809ac0c8eb1cabdb193f215e9e095109f5a"
+
 [shell_environment_policy]
 set = { GLAB_PAGER = "cat" }
 

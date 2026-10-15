@@ -5,7 +5,7 @@ description: 'Machine facts, repository commands, previews, agent configuration 
 
 # Environment
 
-Agents run on two headless Debian workers in one tailnet; `hostname -s` names the current one. Most development runs on `desktop`, which the user turns on when needed. T3 sets up worktrees and updates itself, Codex and Claude Code.
+Agents run on two headless Debian workers in one tailnet, and the user switches between them. Both have the same paths and user, so a path never identifies the worker. A session-start hook in both harnesses puts `Execution worker: <name>` in context; without it, `hostname -s` names the current one. Check it before a machine-specific step, and run commands for the other worker through SSH. T3 sets up worktrees and updates itself, Codex and Claude Code.
 
 ## Tailnet
 

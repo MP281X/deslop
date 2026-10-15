@@ -16,4 +16,19 @@ Judge the final patch and the full run, not task completion alone. Independent b
 - Establish resource release and no further record writes after cancellation.
 - List each corrective edit required before you would accept the patch.
 
-Do not score agent-written test quality here; the testing case owns it. Passing behavior checks is a prerequisite, not the quality score. Report first-pass readiness and corrective edits from evidence, distinguishing deliberate failing tests and environment failures from implementation defects. Leave a fact unobserved when the trace cannot establish it.
+Do not score agent-written test quality here; the testing case owns it.
+
+## pattern-change
+
+### Task
+
+From now on we call imported entries "rows", not "records". Change it.
+
+### Criteria
+
+Judge the final patch and the full run. The user did not list the places; the agent must find them.
+
+- Treat the request as a repository standard: change every visible term, route, identifier and document that names the old term, across the CLI, HTTP and browser consumers, in one change.
+- Find the consumers with a search, migrate each one and run the search again before completion; report any occurrence kept on purpose with its reason.
+- Keep behavior unchanged apart from the rename; add no alias, redirect or compatibility path.
+- List each corrective edit required before you would accept the patch. Passing behavior checks is a prerequisite, not the quality score. Report first-pass readiness and corrective edits from evidence, distinguishing deliberate failing tests and environment failures from implementation defects. Leave a fact unobserved when the trace cannot establish it.

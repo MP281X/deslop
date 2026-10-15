@@ -23,7 +23,7 @@ For a user-visible direction that remains open, decide it with the user before i
 
 ## Choose the smallest mechanism
 
-- **Existing shape.** Extend the closest working feature before creating a service, module or dependency. Keep domain code independent of transport and UI types.
+- **Existing shape.** Extend the canonical example from engineering's Patterns before creating a service, module or dependency. Keep domain code independent of transport and UI types.
 - **Direct operation.** Prefer a function or existing service method. Add a service for a distinct capability or lifetime, not to rename a forwarded call. Add another backend only when a real consumer needs it.
 - **Authoritative state.** Derive values from their owner. Do not mirror server state, request state, caches or pending results in another store. A persisted value has one write boundary.
 - **Lifetime.** Keep finite request work in its request scope. A stream serves progressive results; it does not require a job system. Add background ownership only when work must survive the caller, with a real owner for stopping, recovery and completion.
