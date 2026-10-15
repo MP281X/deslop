@@ -230,17 +230,23 @@ const saveLink = Effect.gen(function* () {
 	yield* capture(link)
 })
 
+const saveAtom = Atom.keepAlive(
+	RpcClient.runtime.fn((kind: Offer['kind']) => pipe(kind === 'image' ? saveImage : saveLink, alert('Not Saved')))
+)
+
 export const answerAtom = Atom.keepAlive(
-	RpcClient.runtime.fn((answer: Offer & {save: boolean}, get) =>
+	Atom.fn((answer: Offer & {save: boolean}, get) =>
 		pipe(
-			Effect.gen(function* () {
-				yield* Effect.try({
-					catch: cause => NotesError.make({cause, message: 'The answer could not be kept on this iPhone.'}),
-					try: () => writeAtomically(clipboardFile, answer.count)
-				})
-				get.refresh(offerAtom)
-				if (answer.save) yield* answer.kind === 'image' ? saveImage : saveLink
+			Effect.try({
+				catch: cause => NotesError.make({cause, message: 'The answer could not be kept on this iPhone.'}),
+				try: () => writeAtomically(clipboardFile, answer.count)
 			}),
+			Effect.andThen(
+				Effect.sync(() => {
+					if (answer.save) get.set(saveAtom, answer.kind)
+				})
+			),
+			Effect.as(answer.count),
 			alert('Not Saved')
 		)
 	)
