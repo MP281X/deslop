@@ -39,7 +39,7 @@ export const command = Effect.fnUntraced(function* (cwd: string, program: string
 		return yield* EvalError.make({message: `${program} exited ${result.exitCode}: ${result.stderr}${result.stdout}`})
 	}
 	return result.stdout
-})
+}, Effect.scoped)
 
 export const parseCases = Effect.fnUntraced(function* (text: string) {
 	const cases = yield* Effect.forEach(Array.drop(String.split(text, /^## /mu), 1), body =>
@@ -85,7 +85,7 @@ export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 	]
 	const directory = yield* fs.makeTempDirectory({prefix: 'deslop-evals-'})
 	const starter = path.resolve(import.meta.dirname, '../../starter/importer')
-	const runs = yield* pipe(
+	return yield* pipe(
 		fs.makeDirectory(path.join(directory, 'criteria')),
 		Effect.andThen(
 			Effect.forEach(cases, item =>
@@ -198,14 +198,15 @@ export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 				{concurrency: 'unbounded'}
 			)
 		),
+		Effect.map(runs => ({directory, runs, skill, version: packageJson.version}) satisfies Manifest),
+		Effect.tap(manifest =>
+			pipe(
+				Schema.encodeEffect(Schema.fromJsonString(Manifest, {space: 2}))(manifest),
+				Effect.flatMap(text => fs.writeFileString(path.join(directory, 'manifest.json'), text))
+			)
+		),
 		Effect.onExitIf(Exit.isFailure, () => fs.remove(directory, {recursive: true}))
 	)
-	const manifest = {directory, runs, skill, version: packageJson.version} satisfies Manifest
-	yield* fs.writeFileString(
-		path.join(directory, 'manifest.json'),
-		yield* Schema.encodeEffect(Schema.fromJsonString(Manifest, {space: 2}))(manifest)
-	)
-	return manifest
 })
 
 export const activate = Effect.fn('Evals.activate')(function* (directory: string, id: string, home: string) {
