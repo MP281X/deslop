@@ -1,3 +1,5 @@
+import {Boolean} from 'effect'
+
 import {Button} from '@expo/ui/swift-ui'
 import {
 	buttonBorderShape,
@@ -18,17 +20,21 @@ export function Chip(props: {
 	onPress: () => void
 	systemImage?: Parameters<typeof Button>[0]['systemImage']
 }) {
+	const look = Boolean.match(props.active, {
+		onFalse: () => ({foreground: colors.foreground, style: 'glass' as const, tint: colors.foreground}),
+		onTrue: () => ({foreground: colors.primaryForeground, style: 'glassProminent' as const, tint: colors.primary})
+	})
 	return (
 		<Button
 			label={props.label}
 			systemImage={props.systemImage}
 			onPress={props.onPress}
 			modifiers={[
-				buttonStyle(props.active ? 'glassProminent' : 'glass'),
+				buttonStyle(look.style),
 				buttonBorderShape('capsule'),
 				controlSize('regular'),
-				tint(props.active ? colors.primary : colors.foreground),
-				foregroundStyle(props.active ? colors.primaryForeground : colors.foreground),
+				tint(look.tint),
+				foregroundStyle(look.foreground),
 				labelStyle('titleAndIcon'),
 				mono('caption', 13),
 				lineLimit(1),

@@ -1,6 +1,6 @@
 import {useAtomMount, useAtomSet} from '@effect/atom-react'
 
-import {Array} from 'effect'
+import {Array, Boolean} from 'effect'
 
 import {Host, NavigationDestination, NavigationStack, ProgressView, useNativeState} from '@expo/ui/swift-ui'
 import {background, tint} from '@expo/ui/swift-ui/modifiers'
@@ -44,18 +44,19 @@ export function RootRoute() {
 				</Suspense>
 				{Array.map(path, id => (
 					<NavigationDestination key={id} value={id}>
-						{id === 'compose' ? (
-							<ComposeRoute onDone={() => setPath([])} />
-						) : (
-							<NoteRoute
-								id={id}
-								onClose={() => setPath([])}
-								onTag={name => {
-									setTag(name)
-									setPath([])
-								}}
-							/>
-						)}
+						{Boolean.match(id === 'compose', {
+							onFalse: () => (
+								<NoteRoute
+									id={id}
+									onClose={() => setPath([])}
+									onTag={name => {
+										setTag(name)
+										setPath([])
+									}}
+								/>
+							),
+							onTrue: () => <ComposeRoute onDone={() => setPath([])} />
+						})}
 					</NavigationDestination>
 				))}
 			</NavigationStack>

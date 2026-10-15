@@ -1,12 +1,14 @@
-import {Array, Option, Predicate, pipe} from 'effect'
+import {Array, Function, Option, Predicate, pipe} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
 import {
 	importedMember,
+	matches,
 	memberName,
 	returnedExpression,
+	rootName,
 	singleUseThunk,
 	variableFor,
 	variableFromScope
@@ -20,10 +22,10 @@ function parameterName(parameter: ESTree.ParamPattern) {
 	return Option.none()
 }
 
-function forwardedCall(input: {names: string[]; node: ESTree.CallExpression | ESTree.NewExpression}) {
+function forwarded(input: {args: ESTree.CallExpression['arguments']; names: string[]}) {
 	return (
-		input.node.arguments.length === input.names.length &&
-		Array.every(input.node.arguments, (argument, index) => {
+		input.args.length === input.names.length &&
+		Array.every(input.args, (argument, index) => {
 			const name = input.names[index]
 			if (argument.type === 'SpreadElement') {
 				return argument.argument.type === 'Identifier' && argument.argument.name === name
@@ -33,17 +35,69 @@ function forwardedCall(input: {names: string[]; node: ESTree.CallExpression | ES
 	)
 }
 
-function exactForwardingFunction(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
-	const names = pipe(node.params, Array.map(parameterName), Array.getSomes)
-	const returned = returnedExpression(node)
-	if (Array.isArrayEmpty(names) || names.length !== node.params.length || Predicate.isNullish(returned)) {
+function callGroups(node: ESTree.Node): {callee: ESTree.Node; groups: ESTree.CallExpression['arguments'][]} {
+	if (node.type !== 'CallExpression') return {callee: node, groups: []}
+	const inner = callGroups(node.callee)
+	return {callee: inner.callee, groups: Array.append(inner.groups, node.arguments)}
+}
+
+// Effect modules export plain functions, so `Effect.succeed` runs without `this`; a method such as `Schema.String.annotate` needs its receiver.
+function detachable(input: {context: Context; node: ESTree.Node}) {
+	if (input.node.type === 'Identifier') return true
+	if (input.node.type !== 'MemberExpression' || input.node.object.type !== 'Identifier') return false
+	return pipe(
+		rootName(input.node),
+		Option.flatMap(name => variableFromScope({name, scope: input.context.sourceCode.getScope(input.node)})),
+		Option.exists(variable =>
+			Array.some(
+				variable.defs,
+				definition =>
+					definition.type === 'ImportBinding' &&
+					definition.parent?.type === 'ImportDeclaration' &&
+					// `effect` exports its modules, and `effect/Schema` exports objects such as `String` too.
+					(definition.parent.source.value === 'effect' ||
+						(definition.node.type === 'ImportNamespaceSpecifier' &&
+							matches(/^effect\//u)(definition.parent.source.value)))
+			)
+		)
+	)
+}
+
+// `value => Schema.is(File)(value)` and `value => Effect.succeed(value)` only pass their parameters, in order, to a fixed function.
+function forwardedChain(input: {context: Context; names: string[]; returned: ESTree.Node}) {
+	const chain = callGroups(input.returned)
+	function fixed(node: ESTree.Node) {
+		return node.type === 'Literal' || Option.exists(rootName(node), root => !Array.contains(input.names, root))
+	}
+	return Array.matchRight(chain.groups, {
+		onEmpty: Function.constFalse,
+		onNonEmpty: (earlier, last) =>
+			fixed(chain.callee) &&
+			Array.every(Array.flatten(earlier), fixed) &&
+			forwarded({args: last, names: input.names}) &&
+			(Array.isArrayNonEmpty(earlier) || detachable({context: input.context, node: chain.callee}))
+	})
+}
+
+function exactForwardingFunction(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
+	const names = pipe(input.node.params, Array.map(parameterName), Array.getSomes)
+	const returned = returnedExpression(input.node)
+	// An async function also turns a throw into a rejected Promise, and a generator returns an iterator.
+	if (
+		input.node.async ||
+		input.node.generator ||
+		Array.isArrayEmpty(names) ||
+		names.length !== input.node.params.length ||
+		Predicate.isNullish(returned)
+	) {
 		return false
 	}
 	if (returned.type === 'Identifier') return names.length === 1 && returned.name === names[0]
 	return (
-		(returned.type === 'CallExpression' || returned.type === 'NewExpression') &&
-		returned.callee.type === 'Identifier' &&
-		forwardedCall({names, node: returned})
+		(returned.type === 'NewExpression' &&
+			returned.callee.type === 'Identifier' &&
+			forwarded({args: returned.arguments, names})) ||
+		forwardedChain({context: input.context, names, returned})
 	)
 }
 
@@ -58,10 +112,13 @@ function isIdentity(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
 	)
 }
 
-function indirectionMessage(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
-	return isIdentity(node)
-		? 'Pass identity from effect instead of this function.'
-		: 'Inline this function at its only use site.'
+function indirectionMessage(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
+	if (isIdentity(input.node)) return 'Pass identity from effect instead of this function.'
+	const returned = returnedExpression(input.node)
+	if (exactForwardingFunction(input) && returned?.type === 'CallExpression') {
+		return `Use ${input.context.sourceCode.getText(returned.callee)} directly; this function only passes its parameters on.`
+	}
+	return 'Inline this function at its only use site.'
 }
 
 function isExport(node: ESTree.Node | null) {
@@ -234,14 +291,20 @@ export const noTrivialIndirection = defineRule({
 		ArrowFunctionExpression: node => {
 			if (
 				(node.parent.type === 'VariableDeclarator' || node.parent.type === 'Property') &&
-				(exactForwardingFunction(node) || singleUseThunk({context, node}) || singleCallerWrapper({context, node}))
+				(exactForwardingFunction({context, node}) ||
+					singleUseThunk({context, node}) ||
+					singleCallerWrapper({context, node}))
 			) {
-				context.report({message: indirectionMessage(node), node})
+				context.report({message: indirectionMessage({context, node}), node})
 			}
 		},
 		FunctionDeclaration: node => {
-			if (exactForwardingFunction(node) || singleUseThunk({context, node}) || singleCallerWrapper({context, node})) {
-				context.report({message: indirectionMessage(node), node})
+			if (
+				exactForwardingFunction({context, node}) ||
+				singleUseThunk({context, node}) ||
+				singleCallerWrapper({context, node})
+			) {
+				context.report({message: indirectionMessage({context, node}), node})
 			}
 		},
 		FunctionExpression: node => {
@@ -249,9 +312,11 @@ export const noTrivialIndirection = defineRule({
 				(node.parent.type === 'VariableDeclarator' ||
 					node.parent.type === 'Property' ||
 					(node.parent.type === 'MethodDefinition' && node.parent.override !== true)) &&
-				(exactForwardingFunction(node) || singleUseThunk({context, node}) || singleCallerWrapper({context, node}))
+				(exactForwardingFunction({context, node}) ||
+					singleUseThunk({context, node}) ||
+					singleCallerWrapper({context, node}))
 			) {
-				context.report({message: indirectionMessage(node), node})
+				context.report({message: indirectionMessage({context, node}), node})
 			}
 		},
 		VariableDeclarator: node => {

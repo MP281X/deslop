@@ -42,7 +42,7 @@ assert.strictEqual(Array.flatMap(attioProvider.groups, group => group.actions).l
 - **Branches.** Exercise the reachable distinctions: empty, duplicate, concurrent and dependency failure. Write no Cartesian product, and no random or repeated happy paths without a hypothesis.
 - **Failure.** Use `Effect.flip` for an expected failure and `Effect.exit` for both outcomes. Assert domain identity and preserved state and resources: no partial write, lost value, extra retry or leak. Wording or rejection alone is not enough, and incidental order is no assertion.
 - **Control.** Run the regression test against the unfixed implementation, and confirm that the intended assertion fails, not setup, imports or compilation. Before a refactor, cover the old behavior.
-- **Audit.** Remove duplicate and tautological cases in the touched scope, but retain independent protocol, package, validation, authorization and persistence contracts. Mock call counts do not prove an external boundary. Do not replace a useful test with a disposable script just to reduce the count.
+- **Audit.** Delete a case that no plausible wrong implementation fails, such as an assertion on a constant placeholder. Remove duplicate and tautological cases in the touched scope, but retain independent protocol, package, validation, authorization and persistence contracts. Mock call counts do not prove an external boundary. Do not replace a useful test with a disposable script just to reduce the count.
 
 ## Effect and fixtures
 

@@ -13,6 +13,7 @@ import {noEffectPropertyArrow} from '#rules/no-effect-property-arrow.ts'
 import {noErrorMessageAssertion} from '#rules/no-error-message-assertion.ts'
 import {noFakeRefState} from '#rules/no-fake-ref-state.ts'
 import {noHandWrittenGuard} from '#rules/no-hand-written-guard.ts'
+import {noInOperator} from '#rules/no-in-operator.ts'
 import {noLet} from '#rules/no-let.ts'
 import {noMultilineComment} from '#rules/no-multiline-comment.ts'
 import {noNativeControl} from '#rules/no-native-control.ts'
@@ -20,13 +21,14 @@ import {noNativeEmptinessCheck} from '#rules/no-native-emptiness-check.ts'
 import {noNativeMethodCall} from '#rules/no-native-method-call.ts'
 import {noNullishTernary} from '#rules/no-nullish-ternary.ts'
 import {noOptionValueAccess} from '#rules/no-option-value-access.ts'
+import {noPropertyAlias} from '#rules/no-property-alias.ts'
 import {noReadonlyTypeSyntax} from '#rules/no-readonly-type-syntax.ts'
-import {noRedundantReturnType} from '#rules/no-redundant-return-type.ts'
 import {noRedundantStateType} from '#rules/no-redundant-state-type.ts'
 import {noRedundantUseRefNullType} from '#rules/no-redundant-use-ref-null-type.ts'
 import {noRedundantVariableAnnotation} from '#rules/no-redundant-variable-annotation.ts'
 import {noReinventedSchema} from '#rules/no-reinvented-schema.ts'
 import {noRenamedImport} from '#rules/no-renamed-import.ts'
+import {noReturnType} from '#rules/no-return-type.ts'
 import {noSingleUseValue} from '#rules/no-single-use-value.ts'
 import {noStoredSchemaOperation} from '#rules/no-stored-schema-operation.ts'
 import {noSwitchStatement} from '#rules/no-switch-statement.ts'
@@ -41,8 +43,41 @@ const reactLegacyApis = ['Component', 'PureComponent', 'createRef', 'forwardRef'
 const reactLegacyMessage = 'Use React 19 function components with refs as props; React Compiler owns memoization.'
 const mapMessage =
 	'Use HashMap, or MutableHashMap for local mutation; for identity keys, wrap objects the code owns in Equal.byReferenceUnsafe, which marks them reference-compared globally.'
+const reactHooks = [
+	'use',
+	'useActionState',
+	'useContext',
+	'useDebugValue',
+	'useDeferredValue',
+	'useEffect',
+	'useEffectEvent',
+	'useId',
+	'useImperativeHandle',
+	'useInsertionEffect',
+	'useLayoutEffect',
+	'useOptimistic',
+	'useReducer',
+	'useRef',
+	'useState',
+	'useSyncExternalStore',
+	'useTransition'
+]
 const runMessage =
-	'Run the entry point with NodeRuntime.runMain, or bridge a Promise an external contract demands once, where it is returned, with Effect.runPromiseWith(Context.empty()).'
+	'Run the entry point with NodeRuntime.runMain, and Effects in React through atoms. A Promise that an external contract demands takes Effect.runPromise once, with an inline disable that names the contract.'
+const runners = [
+	'runCallback',
+	'runCallbackWith',
+	'runFork',
+	'runForkWith',
+	'runPromise',
+	'runPromiseExit',
+	'runPromiseExitWith',
+	'runPromiseWith',
+	'runSync',
+	'runSyncExit',
+	'runSyncExitWith',
+	'runSyncWith'
+]
 const setMessage =
 	'Use HashSet, or MutableHashSet for local mutation; for identity keys, wrap objects the code owns in Equal.byReferenceUnsafe, which marks them reference-compared globally.'
 
@@ -99,6 +134,7 @@ export const oxlint = defineConfig({
 		'@deslop/coding-standards/no-error-message-assertion': 'error',
 		'@deslop/coding-standards/no-fake-ref-state': 'error',
 		'@deslop/coding-standards/no-hand-written-guard': 'error',
+		'@deslop/coding-standards/no-in-operator': 'error',
 		'@deslop/coding-standards/no-let': 'error',
 		'@deslop/coding-standards/no-multiline-comment': 'error',
 		'@deslop/coding-standards/no-native-control': 'error',
@@ -106,13 +142,14 @@ export const oxlint = defineConfig({
 		'@deslop/coding-standards/no-native-method-call': 'error',
 		'@deslop/coding-standards/no-nullish-ternary': 'error',
 		'@deslop/coding-standards/no-option-value-access': 'error',
+		'@deslop/coding-standards/no-property-alias': 'error',
 		'@deslop/coding-standards/no-readonly-type-syntax': 'error',
-		'@deslop/coding-standards/no-redundant-return-type': 'error',
 		'@deslop/coding-standards/no-redundant-state-type': 'error',
 		'@deslop/coding-standards/no-redundant-use-ref-null-type': 'error',
 		'@deslop/coding-standards/no-redundant-variable-annotation': 'error',
 		'@deslop/coding-standards/no-reinvented-schema': 'error',
 		'@deslop/coding-standards/no-renamed-import': 'error',
+		'@deslop/coding-standards/no-return-type': 'error',
 		'@deslop/coding-standards/no-single-use-value': 'error',
 		'@deslop/coding-standards/no-stored-schema-operation': 'error',
 		'@deslop/coding-standards/no-switch-statement': 'error',
@@ -362,7 +399,6 @@ export const oxlint = defineConfig({
 		'no-misleading-character-class': 'error',
 		'no-multi-assign': 'error',
 		'no-negated-condition': 'error',
-		'no-nested-ternary': 'error',
 		'no-new': 'error',
 		'no-param-reassign': ['error', {props: true}],
 		'no-plusplus': 'error',
@@ -390,16 +426,18 @@ export const oxlint = defineConfig({
 			'error',
 			{message: 'Use standalone pipe.', property: 'pipe'},
 			{allowObjects: ['Predicate'], message: 'Use Predicate.hasProperty.', property: 'hasOwnProperty'},
-			{message: runMessage, object: 'Effect', property: 'runFork'},
-			{message: runMessage, object: 'Effect', property: 'runPromise'},
-			{message: runMessage, object: 'Effect', property: 'runPromiseExit'},
-			{message: runMessage, object: 'Effect', property: 'runSync'},
-			{message: runMessage, object: 'Effect', property: 'runSyncExit'},
+			...Array.map(runners, property => ({message: runMessage, object: 'Effect', property})),
 			{message: runMessage, object: 'ManagedRuntime', property: 'make'},
 			{message: 'Use Number.max.', object: 'Math', property: 'max'},
+			{message: 'Use Option.getOrUndefined; undefined marks an absent value.', object: 'Option', property: 'getOrNull'},
 			{message: 'Use Number.min.', object: 'Math', property: 'min'},
 			{message: 'Use Number.round.', object: 'Math', property: 'round'},
 			...Array.map(reactLegacyApis, property => ({message: reactLegacyMessage, object: 'React', property})),
+			...Array.map(reactHooks, property => ({
+				message: `Import ${property} by name from react.`,
+				object: 'React',
+				property
+			})),
 			{message: 'Use Schema.Struct.', object: 'Schema', property: 'Class'},
 			{message: 'Use a branded schema.', object: 'Schema', property: 'Opaque'},
 			{message: 'Use Schema.Struct.', object: 'Schema', property: 'TaggedClass'},
@@ -442,6 +480,7 @@ export const oxlint = defineConfig({
 			{allow: ['Array', 'Boolean', 'Console', 'Effect', 'HashMap', 'Number', 'Option', 'Schema', 'String']}
 		],
 		'no-sparse-arrays': 'error',
+		'no-ternary': 'error',
 		'no-throw-literal': 'error',
 		'no-unmodified-loop-condition': 'error',
 		'no-unneeded-ternary': 'error',
@@ -633,6 +672,7 @@ export default definePlugin({
 		'no-error-message-assertion': noErrorMessageAssertion,
 		'no-fake-ref-state': noFakeRefState,
 		'no-hand-written-guard': noHandWrittenGuard,
+		'no-in-operator': noInOperator,
 		'no-let': noLet,
 		'no-multiline-comment': noMultilineComment,
 		'no-native-control': noNativeControl,
@@ -640,13 +680,14 @@ export default definePlugin({
 		'no-native-method-call': noNativeMethodCall,
 		'no-nullish-ternary': noNullishTernary,
 		'no-option-value-access': noOptionValueAccess,
+		'no-property-alias': noPropertyAlias,
 		'no-readonly-type-syntax': noReadonlyTypeSyntax,
-		'no-redundant-return-type': noRedundantReturnType,
 		'no-redundant-state-type': noRedundantStateType,
 		'no-redundant-use-ref-null-type': noRedundantUseRefNullType,
 		'no-redundant-variable-annotation': noRedundantVariableAnnotation,
 		'no-reinvented-schema': noReinventedSchema,
 		'no-renamed-import': noRenamedImport,
+		'no-return-type': noReturnType,
 		'no-single-use-value': noSingleUseValue,
 		'no-stored-schema-operation': noStoredSchemaOperation,
 		'no-switch-statement': noSwitchStatement,

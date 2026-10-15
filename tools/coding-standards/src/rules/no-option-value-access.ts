@@ -32,13 +32,12 @@ function exits(node: ESTree.Statement) {
 }
 
 function earlyExit(input: Guard & {node: ESTree.Node}) {
-	const parent = input.node.parent
-	if (parent?.type !== 'BlockStatement' && parent?.type !== 'Program') return false
+	if (input.node.parent?.type !== 'BlockStatement' && input.node.parent?.type !== 'Program') return false
 	return Array.some(
 		Array.take(
-			parent.body,
+			input.node.parent.body,
 			Option.getOrElse(
-				Array.findFirstIndex(parent.body, statement => statement === input.node),
+				Array.findFirstIndex(input.node.parent.body, statement => statement === input.node),
 				() => 0
 			)
 		),
@@ -50,24 +49,27 @@ function earlyExit(input: Guard & {node: ESTree.Node}) {
 }
 
 function guarded(input: Guard & {node: ESTree.Node}): boolean {
-	const parent = input.node.parent
-	if (parent === null || parent.type === 'FunctionDeclaration') return false
+	if (input.node.parent === null || input.node.parent.type === 'FunctionDeclaration') return false
 	function some(test: ESTree.Node) {
 		return checks({...input, name: 'isSome', operator: '&&', test})
 	}
 	return (
-		(parent.type === 'IfStatement' && parent.consequent === input.node && some(parent.test)) ||
-		(parent.type === 'ConditionalExpression' && parent.consequent === input.node && some(parent.test)) ||
-		(parent.type === 'LogicalExpression' &&
-			parent.right === input.node &&
-			parent.operator === '&&' &&
-			some(parent.left)) ||
-		(parent.type === 'LogicalExpression' &&
-			parent.right === input.node &&
-			parent.operator === '||' &&
-			checks({...input, name: 'isNone', operator: '||', test: parent.left})) ||
+		(input.node.parent.type === 'IfStatement' &&
+			input.node.parent.consequent === input.node &&
+			some(input.node.parent.test)) ||
+		(input.node.parent.type === 'ConditionalExpression' &&
+			input.node.parent.consequent === input.node &&
+			some(input.node.parent.test)) ||
+		(input.node.parent.type === 'LogicalExpression' &&
+			input.node.parent.right === input.node &&
+			input.node.parent.operator === '&&' &&
+			some(input.node.parent.left)) ||
+		(input.node.parent.type === 'LogicalExpression' &&
+			input.node.parent.right === input.node &&
+			input.node.parent.operator === '||' &&
+			checks({...input, name: 'isNone', operator: '||', test: input.node.parent.left})) ||
 		earlyExit(input) ||
-		guarded({...input, node: parent})
+		guarded({...input, node: input.node.parent})
 	)
 }
 

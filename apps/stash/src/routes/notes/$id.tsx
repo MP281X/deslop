@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, DateTime, Match, Option, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Match, Option, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -163,7 +163,10 @@ function Body(props: {text: string}) {
 							() => (
 								<HStack key={index} alignment="firstTextBaseline" spacing={8}>
 									<Text modifiers={[font({textStyle: 'body'}), foregroundStyle(colors.mutedForeground)]}>
-										{String.startsWith('- ')(line) ? '•' : String.replace(/\s.*$/u, '')(line)}
+										{Boolean.match(String.startsWith('- ')(line), {
+											onFalse: () => String.replace(/\s.*$/u, '')(line),
+											onTrue: () => '•'
+										})}
 									</Text>
 									<Text markdownEnabled modifiers={[...prose, frame({alignment: 'leading', maxWidth: Infinity})]}>
 										{String.replace(/^\S+\s/u, '')(line)}

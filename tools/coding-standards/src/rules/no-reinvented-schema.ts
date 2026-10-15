@@ -14,10 +14,13 @@ const shipped = [
 ]
 
 function schemaMember(input: {context: Context; node: ESTree.Node}) {
-	return input.node.type === 'MemberExpression' &&
-		importedMember({context: input.context, importedName: 'Schema', node: input.node})
-		? memberName(input.node)
-		: Option.none()
+	if (
+		input.node.type !== 'MemberExpression' ||
+		!importedMember({context: input.context, importedName: 'Schema', node: input.node})
+	) {
+		return Option.none()
+	}
+	return memberName(input.node)
 }
 
 function shippedSchema(input: {base: ESTree.Node; context: Context; filter: ESTree.Node}) {
@@ -42,16 +45,23 @@ function shippedSchema(input: {base: ESTree.Node; context: Context; filter: ESTr
 }
 
 function pipedBase(node: ESTree.CallExpression) {
-	const parent = node.parent
-	if (parent.type !== 'CallExpression') return Option.none()
-	if (parent.callee.type === 'Identifier' && parent.callee.name === 'pipe' && parent.arguments.length === 2) {
-		return parent.arguments[1] === node ? Option.fromNullishOr(parent.arguments[0]) : Option.none()
+	if (node.parent.type !== 'CallExpression') return Option.none()
+	if (
+		node.parent.callee.type === 'Identifier' &&
+		node.parent.callee.name === 'pipe' &&
+		node.parent.arguments.length === 2
+	) {
+		if (node.parent.arguments[1] !== node) return Option.none()
+		return Option.fromNullishOr(node.parent.arguments[0])
 	}
-	return parent.callee.type === 'MemberExpression' &&
-		Option.contains(memberName(parent.callee), 'pipe') &&
-		parent.arguments.length === 1
-		? Option.some(parent.callee.object)
-		: Option.none()
+	if (
+		node.parent.callee.type !== 'MemberExpression' ||
+		!Option.contains(memberName(node.parent.callee), 'pipe') ||
+		node.parent.arguments.length !== 1
+	) {
+		return Option.none()
+	}
+	return Option.some(node.parent.callee.object)
 }
 
 function reinventedSchema(input: {context: Context; node: ESTree.CallExpression}) {
@@ -61,13 +71,10 @@ function reinventedSchema(input: {context: Context; node: ESTree.CallExpression}
 	const callee = input.node.callee
 	const [filter] = input.node.arguments
 	if (Option.isSome(schemaMember({context: input.context, node: callee}))) {
+		if (input.node.arguments.length !== 1 || filter === undefined) return Option.none()
 		return pipe(
 			pipedBase(input.node),
-			Option.flatMap(base =>
-				input.node.arguments.length === 1 && filter !== undefined
-					? shippedSchema({base, context: input.context, filter})
-					: Option.none()
-			)
+			Option.flatMap(base => shippedSchema({base, context: input.context, filter}))
 		)
 	}
 	return Array.findFirst(input.node.arguments, argument =>

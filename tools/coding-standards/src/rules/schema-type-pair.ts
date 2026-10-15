@@ -100,7 +100,7 @@ function reportSchemaVariable(input: {
 	if (input.variable.id.type !== 'Identifier' || !matches(/^[A-Z]/u)(input.variable.id.name)) return
 	if (input.variable.init === null || !isSchemaDefinition({context: input.context, node: input.variable.init})) return
 	const name = input.variable.id.name
-	const annotation = input.variable.id.typeAnnotation
+
 	const typeStatement = pipe(
 		input.program.body,
 		Array.findFirstIndex(statement => statement === input.statement),
@@ -119,7 +119,7 @@ function reportSchemaVariable(input: {
 				node: input.variable
 			})
 		}
-		if (Predicate.isNotNullish(annotation)) {
+		if (Predicate.isNotNullish(input.variable.id.typeAnnotation)) {
 			input.context.report({
 				message: 'Annotate the Schema.suspend thunk, not the recursive Schema.',
 				node: input.variable.id
@@ -145,8 +145,8 @@ function reportSchemaVariable(input: {
 		input.context.report({message: 'Infer this schema instead of restating Schema.Schema.', node: input.variable.init})
 	}
 	if (
-		Predicate.isNotNullish(annotation) &&
-		schemaSchemaType({context: input.context, node: annotation.typeAnnotation})
+		Predicate.isNotNullish(input.variable.id.typeAnnotation) &&
+		schemaSchemaType({context: input.context, node: input.variable.id.typeAnnotation.typeAnnotation})
 	) {
 		input.context.report({message: 'Infer this schema instead of annotating Schema.Schema.', node: input.variable.id})
 	}

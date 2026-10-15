@@ -5,8 +5,14 @@ import type {Context, ESTree} from '@oxlint/plugins'
 
 function nullishOperand(node: ESTree.Expression) {
 	if (node.type === 'Literal' && node.value === null) return Option.some('null')
-	return node.type === 'Identifier' && node.name === 'undefined' ? Option.some('undefined') : Option.none()
+	if (node.type === 'Identifier' && node.name === 'undefined') return Option.some('undefined')
+	return Option.none()
 }
+
+const variants = {
+	'&&': {comparison: '!==', message: 'Use Predicate.isNotNullish.'},
+	'||': {comparison: '===', message: 'Use Predicate.isNullish.'}
+} as const
 
 function operands(input: {node: ESTree.Expression; operator: '&&' | '||'}): ESTree.Expression[] {
 	if (input.node.type !== 'LogicalExpression' || input.node.operator !== input.operator) return [input.node]
@@ -27,22 +33,17 @@ export const noDoubleNullishCheck = defineRule({
 		LogicalExpression: node => {
 			if (node.operator === '??') return
 			if (node.parent.type === 'LogicalExpression' && node.parent.operator === node.operator) return
-			const comparison = node.operator === '&&' ? '!==' : '==='
+			const variant = variants[node.operator]
 			const checks = pipe(
 				operands({node, operator: node.operator}),
 				Array.filterMap(operand =>
-					Result.fromOption(comparedNullish({context, node: operand, operator: comparison}), () => undefined)
+					Result.fromOption(comparedNullish({context, node: operand, operator: variant.comparison}), () => undefined)
 				)
 			)
 			const doubled = Array.some(checks, check =>
 				Array.some(checks, other => other.subject === check.subject && other.nullish !== check.nullish)
 			)
-			if (doubled) {
-				context.report({
-					message: comparison === '!==' ? 'Use Predicate.isNotNullish.' : 'Use Predicate.isNullish.',
-					node
-				})
-			}
+			if (doubled) context.report({message: variant.message, node})
 		}
 	}),
 	meta: {type: 'problem'}

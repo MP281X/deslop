@@ -18,7 +18,7 @@ const Run = Schema.Struct({
 	repo: Schema.String,
 	seed: Schema.String,
 	task: Schema.String,
-	threadId: Schema.NullOr(Schema.String)
+	threadId: Schema.optionalKey(Schema.String)
 })
 
 export type Manifest = typeof Manifest.Type
@@ -40,7 +40,7 @@ const Usage = Schema.Struct({
 	output_tokens_details: Schema.optionalKey(Schema.Struct({thinking_tokens: Schema.optionalKey(Schema.Finite)})),
 	reasoning_output_tokens: Schema.optionalKey(Schema.Finite)
 })
-export type Block = typeof Block.Type
+type Block = typeof Block.Type
 const Block = Schema.Struct({
 	content: Schema.optionalKey(Schema.Unknown),
 	id: Schema.optionalKey(Schema.String),
@@ -87,12 +87,12 @@ export const Transcript = Schema.Array(NativeRecord)
 
 export type Event = typeof Event.Type
 const Event = Schema.Struct({
-	failed: Schema.NullOr(Schema.Boolean),
+	failed: Schema.UndefinedOr(Schema.Boolean),
 	id: Schema.String,
 	kind: Schema.Literals(['call', 'result', 'reply', 'commentary']),
 	name: Schema.String,
 	text: Schema.String,
-	timestamp: Schema.NullOr(Schema.String)
+	timestamp: Schema.UndefinedOr(Schema.String)
 })
 
 export class EvalError extends Schema.TaggedError<EvalError>()('EvalError', {

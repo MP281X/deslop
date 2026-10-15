@@ -1,4 +1,4 @@
-import {Array, Effect, HashSet, Option, Order, Schedule, Schema, Stream, String, pipe} from 'effect'
+import {Array, Boolean, Effect, HashSet, Option, Order, Predicate, Schedule, Schema, Stream, String, pipe} from 'effect'
 
 import {AtomRpc, Atom} from 'effect/reactivity'
 import * as Clipboard from 'expo-clipboard'
@@ -38,18 +38,19 @@ export function brandOf(note: NoteItem) {
 	return Option.as(Option.filter(Option.fromNullishOr(note.url), isYouTube), brands.youtube)
 }
 
-export function kindOf(note: NoteItem): Kind {
+export function kindOf(note: NoteItem) {
 	if (note.file !== undefined) return 'file'
 	if (note.source === 'TikTok') return 'tiktok'
 	if (note.source === 'X') return 'x'
 	if (note.source === 'Note') return 'note'
-	return Option.isSome(brandOf(note)) ? 'youtube' : 'web'
+	if (Option.isSome(brandOf(note))) return 'youtube'
+	return 'web'
 }
 
 // The app that opens the note's link, when it is not the browser.
 export function appOf(note: NoteItem) {
 	return pipe(
-		Array.findFirst(kinds, entry => entry.kind === kindOf(note) && 'brand' in entry),
+		Array.findFirst(kinds, entry => entry.kind === kindOf(note) && Predicate.hasProperty(entry, 'brand')),
 		Option.map(entry => entry.label)
 	)
 }
@@ -109,12 +110,11 @@ export const queryAtom = Atom.make('')
 // One atom for every query, so the previous results stay on screen while the next ones load.
 export const searchAtom = RpcClient.runtime.atom(get => {
 	const query = String.trim(get(queryAtom))
-	return String.isEmpty(query)
-		? Effect.succeedNone
-		: Effect.map(
-				Effect.flatMap(RpcClient, client => client('notes.search', {query})),
-				ids => Option.some(HashSet.fromIterable(ids))
-			)
+	if (String.isEmpty(query)) return Effect.succeedNone
+	return Effect.map(
+		Effect.flatMap(RpcClient, client => client('notes.search', {query})),
+		ids => Option.some(HashSet.fromIterable(ids))
+	)
 })
 
 export function imageAtom(id: Note['id']) {
@@ -148,7 +148,7 @@ function capture(text: string) {
 const draftFile = new File(Paths.document, 'draft.txt')
 
 export const draftAtom = Atom.writable(
-	() => (draftFile.exists ? draftFile.textSync() : ''),
+	() => Boolean.match(draftFile.exists, {onFalse: () => '', onTrue: () => draftFile.textSync()}),
 	(context, text: string) => {
 		writeAtomically(draftFile, text)
 		context.setSelf(text)
@@ -225,13 +225,18 @@ const saveLink = Effect.gen(function* () {
 		})
 	)
 	// iOS detects a bare domain such as example.com/page as a link too.
-	const link = captureUrl(text) === null && !String.includes(' ')(text) ? `https://${text}` : text
-	if (captureUrl(link) === null) return yield* NotesError.make({message: 'The copied text holds no link.'})
+	const link = Boolean.match(Predicate.isUndefined(captureUrl(text)) && !String.includes(' ')(text), {
+		onFalse: () => text,
+		onTrue: () => `https://${text}`
+	})
+	if (Predicate.isUndefined(captureUrl(link))) {
+		return yield* NotesError.make({message: 'The copied text holds no link.'})
+	}
 	yield* capture(link)
 })
 
 const saveAtom = Atom.keepAlive(
-	RpcClient.runtime.fn((kind: Offer['kind']) => pipe(kind === 'image' ? saveImage : saveLink, alert('Not Saved')))
+	RpcClient.runtime.fn((kind: Offer['kind']) => pipe({image: saveImage, link: saveLink}[kind], alert('Not Saved')))
 )
 
 export const answerAtom = Atom.keepAlive(

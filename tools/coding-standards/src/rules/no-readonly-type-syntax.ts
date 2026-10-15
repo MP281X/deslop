@@ -22,12 +22,15 @@ function typeDeclarations(input: {context: Context; name: ESTree.TSTypeName}): E
 	if (input.name.type === 'Identifier') {
 		return pipe(
 			variableFromScope({name: input.name.name, scope: input.context.sourceCode.getScope(input.name)}),
-			Option.flatMap(variable =>
-				variable.scope.block.type === 'ClassDeclaration' &&
-				Array.some(variable.defs, definition => definition.node === variable.scope.block)
-					? variableFromScope({name: variable.name, scope: variable.scope.upper})
-					: Option.some(variable)
-			),
+			Option.flatMap(variable => {
+				if (
+					variable.scope.block.type !== 'ClassDeclaration' ||
+					!Array.some(variable.defs, definition => definition.node === variable.scope.block)
+				) {
+					return Option.some(variable)
+				}
+				return variableFromScope({name: variable.name, scope: variable.scope.upper})
+			}),
 			Option.map(variable => Array.map(variable.defs, definition => definition.node)),
 			Option.getOrElse(() => Array.empty<ESTree.Node>())
 		)

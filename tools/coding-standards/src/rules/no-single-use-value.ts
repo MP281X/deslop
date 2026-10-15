@@ -3,7 +3,7 @@ import {Array, Function, MutableRef, Option, Predicate, String, pipe} from 'effe
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
-import {variableFromScope} from '#rules/shared.ts'
+import {outermost, rootName, typeWrapped, variableFromScope} from '#rules/shared.ts'
 
 const repeating = [
 	'ArrowFunctionExpression',
@@ -18,28 +18,27 @@ const repeating = [
 
 // Loops, callbacks, conditionals, short-circuits and optional chains can repeat or skip the read.
 function runsOnce(input: {child: ESTree.Node; node: ESTree.Node; statement: ESTree.Node}): boolean {
-	const node = input.node
-	const child = input.child
 	if (
-		((node.type === 'ForOfStatement' || node.type === 'ForInStatement') && node.right === child) ||
-		(node.type === 'IfStatement' && node.test === child) ||
-		(node.type === 'ConditionalExpression' && node.test === child) ||
-		(node.type === 'LogicalExpression' && node.left === child)
+		((input.node.type === 'ForOfStatement' || input.node.type === 'ForInStatement') &&
+			input.node.right === input.child) ||
+		(input.node.type === 'IfStatement' && input.node.test === input.child) ||
+		(input.node.type === 'ConditionalExpression' && input.node.test === input.child) ||
+		(input.node.type === 'LogicalExpression' && input.node.left === input.child)
 	) {
-		return climb({...input, node})
+		return climb({...input, node: input.node})
 	}
 	if (
-		Array.contains(repeating, node.type) ||
-		node.type === 'IfStatement' ||
-		node.type === 'ConditionalExpression' ||
-		node.type === 'LogicalExpression' ||
-		node.type === 'ChainExpression' ||
-		node.type === 'SwitchStatement' ||
-		node.type === 'TryStatement'
+		Array.contains(repeating, input.node.type) ||
+		input.node.type === 'IfStatement' ||
+		input.node.type === 'ConditionalExpression' ||
+		input.node.type === 'LogicalExpression' ||
+		input.node.type === 'ChainExpression' ||
+		input.node.type === 'SwitchStatement' ||
+		input.node.type === 'TryStatement'
 	) {
 		return false
 	}
-	return climb({...input, node})
+	return climb({...input, node: input.node})
 }
 
 function climb(input: {node: ESTree.Node; statement: ESTree.Node}) {
@@ -55,46 +54,24 @@ function insideConditional(input: {node: ESTree.Node; statement: ESTree.Node}): 
 }
 
 function candidate(node: ESTree.VariableDeclarator) {
-	const declaration = node.parent
-	const init = node.init
 	return (
-		declaration.type === 'VariableDeclaration' &&
-		declaration.kind === 'const' &&
-		declaration.declarations.length === 1 &&
-		declaration.parent.type === 'BlockStatement' &&
+		node.parent.type === 'VariableDeclaration' &&
+		node.parent.kind === 'const' &&
+		node.parent.declarations.length === 1 &&
+		node.parent.parent.type === 'BlockStatement' &&
 		node.id.type === 'Identifier' &&
 		node.id.typeAnnotation === null &&
-		init !== null &&
-		// Functions belong to the indirection check and plain literals to the literal check.
-		!Array.contains(['ArrowFunctionExpression', 'FunctionExpression'], init.type) &&
-		!(init.type === 'Literal' && !Predicate.hasProperty(init, 'regex')) &&
-		!(init.type === 'TemplateLiteral' && Array.isArrayEmpty(init.expressions))
+		node.init !== null &&
+		// Functions belong to the indirection check, property chains to the alias check and plain literals to the literal check.
+		!Array.contains(['ArrowFunctionExpression', 'FunctionExpression'], node.init.type) &&
+		!(node.init.type === 'MemberExpression' && Option.isSome(rootName(node.init))) &&
+		!(node.init.type === 'Literal' && !Predicate.hasProperty(node.init, 'regex')) &&
+		!(node.init.type === 'TemplateLiteral' && Array.isArrayEmpty(node.init.expressions))
 	)
-}
-
-function typeWrapped(node: ESTree.Node) {
-	if (
-		node.type === 'TSAsExpression' ||
-		node.type === 'TSInstantiationExpression' ||
-		node.type === 'TSNonNullExpression' ||
-		node.type === 'TSSatisfiesExpression' ||
-		node.type === 'TSTypeAssertion'
-	) {
-		return Option.some(node.expression)
-	}
-	return Option.none()
 }
 
 function unwrapped(node: ESTree.Node): ESTree.Node {
 	return pipe(typeWrapped(node), Option.match({onNone: () => node, onSome: unwrapped}))
-}
-
-function outermost(node: ESTree.Node): ESTree.Node {
-	return pipe(
-		Option.fromNullishOr(node.parent),
-		Option.filter(parent => Option.isSome(typeWrapped(parent))),
-		Option.match({onNone: () => node, onSome: outermost})
-	)
 }
 
 // A detached method keeps no receiver, and an anonymous class takes its name from the binding.

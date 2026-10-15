@@ -1,6 +1,6 @@
 import {Array, HashMap, HashSet, Option, Order, Record, String, pipe} from 'effect'
 
-import type {Note, NotesEvent, Source} from '#services/notes/schema.ts'
+import type {Note, NotesEvent} from '#services/notes/schema.ts'
 
 const urlPattern = /https?:\/\/[^\s<>"]+/iu
 
@@ -52,12 +52,11 @@ export function captureUrl(text: string) {
 		Option.flatMap(Array.head),
 		Option.map(withoutTrailingPunctuation),
 		Option.flatMap(Option.liftThrowable(canonicalUrl)),
-		Option.getOrNull
+		Option.getOrUndefined
 	)
 }
 
-export function sourceFor(url: string | null): Source {
-	if (url === null) return 'Note'
+export function sourceFor(url: string) {
 	const host = new URL(url).hostname
 	if (Array.contains(xHosts, host) || host === 't.co') return 'X'
 	if (host === 'tiktok.com' || String.endsWith('.tiktok.com')(host)) return 'TikTok'

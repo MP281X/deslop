@@ -3,6 +3,7 @@ import {DatabaseSync} from 'node:sqlite'
 
 import {
 	Array,
+	Boolean,
 	DateTime,
 	Effect,
 	FileSystem,
@@ -48,7 +49,9 @@ export const recordRun = Effect.fn('Evals.recordRun')(function* (directory: stri
 		`${directory}/manifest.json`,
 		yield* Schema.encodeEffect(Schema.fromJsonString(Manifest, {space: 2}))({
 			...manifest,
-			runs: Array.map(manifest.runs, run => (run.id === id ? {...run, threadId} : run))
+			runs: Array.map(manifest.runs, run =>
+				Boolean.match(run.id === id, {onFalse: () => run, onTrue: () => ({...run, threadId})})
+			)
 		})
 	)
 })
@@ -106,16 +109,20 @@ export const collect = Effect.fn('Evals.collect')(function* (directory: string, 
 						Array.findFirst(manifest.runs, run => run.instance === session.provider_instance_id),
 						{
 							onNone: () =>
-								provider.config?.homePath ?? path.join(home, provider.driver === 'claudeAgent' ? '.claude' : '.codex'),
+								provider.config?.homePath ??
+								path.join(
+									home,
+									Boolean.match(provider.driver === 'claudeAgent', {onFalse: () => '.codex', onTrue: () => '.claude'})
+								),
 							onSome: run => path.join(directory, 'homes', run.id)
 						}
 					)
-					const files =
-						Predicate.isNull(session.native_id) || !(yield* fs.exists(nativeHome))
-							? []
-							: Array.map(yield* fs.glob(`**/*${session.native_id}*.jsonl`, {root: nativeHome}), file =>
-									path.join(nativeHome, file)
-								)
+					if (Predicate.isNull(session.native_id) || !(yield* fs.exists(nativeHome))) {
+						return {files: Array.empty<string>(), records: Array.empty<NativeRecord>(), state: session}
+					}
+					const files = Array.map(yield* fs.glob(`**/*${session.native_id}*.jsonl`, {root: nativeHome}), file =>
+						path.join(nativeHome, file)
+					)
 					return {files, records: Array.flatten(yield* Effect.forEach(files, readTrace)), state: session}
 				})
 		)
@@ -133,20 +140,26 @@ export const collect = Effect.fn('Evals.collect')(function* (directory: string, 
 		return [{sessions, threadId}, ...Array.flatten(nested)]
 	})
 	const keyPath = `${directory}/judge-key.json`
-	const key = (yield* fs.exists(keyPath))
-		? yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Record(Schema.String, Schema.String)))(
-				yield* fs.readFileString(keyPath)
+	const key = yield* Boolean.match(yield* fs.exists(keyPath), {
+		onFalse: () =>
+			Effect.map(Random.shuffle(manifest.runs), runs =>
+				Record.fromEntries(Array.map(runs, (run, index) => [`${index + 1}`, run.id]))
+			),
+		onTrue: () =>
+			Effect.flatMap(
+				fs.readFileString(keyPath),
+				Schema.decodeEffect(Schema.fromJsonString(Schema.Record(Schema.String, Schema.String)))
 			)
-		: Record.fromEntries(Array.map(yield* Random.shuffle(manifest.runs), (run, index) => [`${index + 1}`, run.id]))
+	})
 	yield* fs.writeFileString(
 		keyPath,
 		yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Record(Schema.String, Schema.String), {space: 2}))(key)
 	)
 	const report = yield* Effect.forEach(manifest.runs, run =>
 		Effect.gen(function* () {
-			if (Predicate.isNull(run.threadId)) return {id: run.id, status: 'not-run'}
+			if (Predicate.isUndefined(run.threadId)) return {id: run.id, status: 'not-run'}
 			const sessions = yield* all(run.threadId)
-			const last = Option.getOrNull(Array.last(sessions))
+			const last = Option.getOrUndefined(Array.last(sessions))
 			if (!last || !Array.contains(['completed', 'failed', 'cancelled', 'interrupted'], last.status)) {
 				return yield* EvalError.make({message: `Wait for ${run.id} to reach a terminal state before collecting`})
 			}
@@ -306,10 +319,12 @@ export const collect = Effect.fn('Evals.collect')(function* (directory: string, 
 			yield* fs.copyFile(run.criteria, `${judge}/criteria.md`)
 			const started = Option.getOrThrow(DateTime.make(sessions[0]?.requested_at ?? last.requested_at))
 			return {
-				elapsedMilliseconds: Option.match(Option.flatMap(Option.fromNullishOr(last.completed_at), DateTime.make), {
-					onNone: () => Option.getOrNull(Option.none()),
-					onSome: date => DateTime.toEpochMillis(date) - DateTime.toEpochMillis(started)
-				}),
+				elapsedMilliseconds: pipe(
+					Option.fromNullishOr(last.completed_at),
+					Option.flatMap(DateTime.make),
+					Option.map(date => DateTime.toEpochMillis(date) - DateTime.toEpochMillis(started)),
+					Option.getOrUndefined
+				),
 				id: run.id,
 				judge: letter,
 				status: last.status,

@@ -12,7 +12,8 @@ import {RpcContracts} from '#rpcs/contracts.ts'
 import {NotesError} from '#services/notes/schema.ts'
 
 function section(title: string, text: string) {
-	return String.isEmpty(text) ? '' : `## ${title}\n\n${text}`
+	if (String.isEmpty(text)) return ''
+	return `## ${title}\n\n${text}`
 }
 
 const save = pipe(

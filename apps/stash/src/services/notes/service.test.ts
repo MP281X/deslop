@@ -3,6 +3,7 @@ import {assert, it} from '@effect/vitest'
 
 import {
 	Array,
+	Boolean,
 	ConfigProvider,
 	Context,
 	Effect,
@@ -41,7 +42,7 @@ const recipe = Sources.of({
 			})
 		),
 	image: () => Effect.succeed({bytes: new Uint8Array([255, 216, 255]), type: 'image/jpeg' as const}),
-	resolve: link => Effect.succeed(link)
+	resolve: Effect.succeed
 })
 
 const noVideo = Media.of({
@@ -299,7 +300,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 						})),
 					image: link =>
 						Effect.succeed({
-							bytes: new Uint8Array([String.endsWith('2.jpg')(link) ? 2 : 1]),
+							bytes: new Uint8Array([
+								Boolean.match(String.endsWith('2.jpg')(link), {onFalse: () => 1, onTrue: () => 2})
+							]),
 							type: 'image/jpeg' as const
 						})
 				})

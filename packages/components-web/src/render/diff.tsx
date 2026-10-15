@@ -1,4 +1,4 @@
-import {Array, Match, Number, Option, Predicate, String, pipe} from 'effect'
+import {Array, Boolean, Match, Number, Option, Predicate, String, pipe} from 'effect'
 
 import type {AnnotationSide} from '@pierre/diffs'
 import {getSingularPatch, setLanguageOverride} from '@pierre/diffs'
@@ -101,7 +101,7 @@ export function formatCopiedComment(comment: {
 	lineNumber: number
 	side?: AnnotationSide
 }) {
-	return `# Review comments\n\n## ${comment.filePath}\n\n${comment.side === 'deletions' ? 'deleted' : 'line'}:${comment.lineNumber}: ${comment.body}`
+	return `# Review comments\n\n## ${comment.filePath}\n\n${Boolean.match(comment.side === 'deletions', {onFalse: () => 'line', onTrue: () => 'deleted'})}:${comment.lineNumber}: ${comment.body}`
 }
 
 function captureScrollAnchor(container: HTMLElement, clientY: number) {
@@ -135,12 +135,14 @@ function restoreScrollAnchor(
 	anchor: {clientY: number; offsetWithinLine: number; lineNumber: string; scrollTop: number},
 	mode: 'diff' | 'file'
 ) {
+	const line = `[data-line="${CSS.escape(anchor.lineNumber)}"]`
 	const targetLine = container
 		.querySelector('diffs-container')
 		?.shadowRoot?.querySelector(
-			mode === 'diff'
-				? `[data-line="${CSS.escape(anchor.lineNumber)}"]:not([data-line-type="change-deletion"])`
-				: `[data-line="${CSS.escape(anchor.lineNumber)}"]`
+			Boolean.match(mode === 'diff', {
+				onFalse: () => line,
+				onTrue: () => `${line}:not([data-line-type="change-deletion"])`
+			})
 		)
 
 	if (!(targetLine instanceof HTMLElement)) {
@@ -153,6 +155,11 @@ function restoreScrollAnchor(
 		top: container.scrollTop + targetLine.getBoundingClientRect().top - (anchor.clientY - anchor.offsetWithinLine)
 	})
 	return true
+}
+
+function SourceIcon(props: {source: PatchDiff.Comment['source']}) {
+	if (props.source === 'github') return <GithubLight className="size-3 shrink-0" />
+	return <MessageSquareTextIcon className="size-3 shrink-0" />
 }
 
 function CommentAnnotation(props: {
@@ -201,11 +208,7 @@ function CommentAnnotation(props: {
 			// oxlint-disable-next-line shadcn/no-arbitrary-values -- no grid-cols scale step gives a shrinkable body column between two auto columns.
 			<div className="border-border/70 bg-muted/70 text-foreground box-border grid w-full max-w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 border-y p-2">
 				<div className="border-border bg-background text-muted-foreground inline-flex shrink-0 border p-1">
-					{props.comment.source === 'github' ? (
-						<GithubLight className="size-3 shrink-0" />
-					) : (
-						<MessageSquareTextIcon className="size-3 shrink-0" />
-					)}
+					<SourceIcon source={props.comment.source} />
 				</div>
 				<div className="min-w-0">
 					<textarea
@@ -241,11 +244,7 @@ function CommentAnnotation(props: {
 		// oxlint-disable-next-line shadcn/no-arbitrary-values -- no grid-cols scale step gives a shrinkable body column between two auto columns.
 		<div className="border-border/70 bg-muted/70 text-foreground box-border grid w-full max-w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 border-y p-2">
 			<div className="border-border bg-background text-muted-foreground inline-flex shrink-0 border p-1">
-				{props.comment.source === 'github' ? (
-					<GithubLight className="size-3 shrink-0" />
-				) : (
-					<MessageSquareTextIcon className="size-3 shrink-0" />
-				)}
+				<SourceIcon source={props.comment.source} />
 			</div>
 			<button
 				type="button"
@@ -282,7 +281,10 @@ function CommentAnnotation(props: {
 							props.onResolveComment?.(props.comment)
 						}}
 					>
-						{props.comment.resolving === true ? <Spinner className="size-3" /> : <CircleCheckIcon className="size-3" />}
+						{Boolean.match(props.comment.resolving === true, {
+							onFalse: () => <CircleCheckIcon className="size-3" />,
+							onTrue: () => <Spinner className="size-3" />
+						})}
 					</Button>
 				)}
 			</div>
@@ -302,25 +304,32 @@ export function PatchDiff(props: {
 	const pointerClientYRef = useRef<number>(null)
 	const scrollAnchorRef = useRef<NonNullable<ReturnType<typeof captureScrollAnchor>>>(null)
 	const [draftComment, setDraftComment] = useState<PatchDiff.Comment>()
-	const patch = Predicate.isString(props.patch) && String.isNonEmpty(props.patch) ? props.patch : undefined
-	const fileContent = Predicate.isString(props.fileContent) ? props.fileContent : undefined
-	const modeKey = `${props.filePath}\u0000${patch ?? ''}\u0000${Predicate.isString(fileContent) ? 'file' : 'pending'}`
-	const [modeState, setModeState] = useState<{key: string; mode: 'diff' | 'file'}>(() => ({
-		key: modeKey,
-		mode: Predicate.isString(patch) ? 'diff' : 'file'
-	}))
-	const preferredMode = Predicate.isString(patch) ? 'diff' : 'file'
-	const requestedMode = modeState.key === modeKey ? modeState.mode : preferredMode
+	const patch = pipe(Option.fromUndefinedOr(props.patch), Option.filter(String.isNonEmpty), Option.getOrUndefined)
+
+	const modeKey = `${props.filePath}\u0000${patch ?? ''}\u0000${Boolean.match(Predicate.isString(props.fileContent), {onFalse: () => 'pending', onTrue: () => 'file'})}`
+	const preferredMode = Boolean.match(Predicate.isString(patch), {
+		onFalse: () => 'file' as const,
+		onTrue: () => 'diff' as const
+	})
+	const [modeState, setModeState] = useState(() => ({key: modeKey, mode: preferredMode}))
+	const requestedMode = Boolean.match(modeState.key === modeKey, {
+		onFalse: () => preferredMode,
+		onTrue: () => modeState.mode
+	})
 	function resolveMode() {
 		if (requestedMode === 'diff' && Predicate.isUndefined(patch)) return 'file'
-		if (requestedMode === 'file' && Predicate.isUndefined(fileContent) && Predicate.isString(patch)) return 'diff'
+		if (requestedMode === 'file' && Predicate.isUndefined(props.fileContent) && Predicate.isString(patch)) return 'diff'
 		return requestedMode
 	}
 	const mode = resolveMode()
 	const language = resolveLanguage(props.filePath)
-	const fileDiff = Predicate.isString(patch) ? setLanguageOverride(getSingularPatch(patch), language) : undefined
+	const fileDiff = pipe(
+		Option.fromUndefinedOr(patch),
+		Option.map(text => setLanguageOverride(getSingularPatch(text), language))
+	)
 	const comments = props.comments ?? []
-	const commentsWithDraft = draftComment ? Array.append(comments, draftComment) : comments
+	const draft = Option.fromUndefinedOr(draftComment)
+	const commentsWithDraft = Array.appendAll(comments, Option.toArray(draft))
 
 	useEffect(() => {
 		containerRef.current?.focus()
@@ -332,7 +341,7 @@ export function PatchDiff(props: {
 	}, [mode, props.fileContent])
 
 	function toggleMode() {
-		if (Predicate.isUndefined(patch) || Predicate.isUndefined(fileContent)) return
+		if (Predicate.isUndefined(patch) || Predicate.isUndefined(props.fileContent)) return
 		if (Predicate.isNull(containerRef.current)) return
 
 		const rect = containerRef.current.getBoundingClientRect()
@@ -346,14 +355,17 @@ export function PatchDiff(props: {
 		scrollAnchorRef.current = captureScrollAnchor(containerRef.current, clientY) ?? null
 		setModeState(current => ({
 			key: modeKey,
-			mode: current.key === modeKey && current.mode === 'file' ? 'diff' : 'file'
+			mode: Boolean.match(current.key === modeKey && current.mode === 'file', {
+				onFalse: () => 'file' as const,
+				onTrue: () => 'diff' as const
+			})
 		}))
 	}
 
 	useHotkey(
 		'Tab',
 		event => {
-			if (Predicate.isUndefined(patch) || Predicate.isUndefined(fileContent)) return
+			if (Predicate.isUndefined(patch) || Predicate.isUndefined(props.fileContent)) return
 			event.preventDefault()
 			toggleMode()
 		},
@@ -364,30 +376,26 @@ export function PatchDiff(props: {
 		if (!props.onSaveComment) return
 		const location = {filePath: props.filePath, lineNumber: line.lineNumber, side: line.side}
 
-		if (draftComment && sameDiffLine(draftComment, location)) {
-			return
-		}
-
-		if (draftComment) return
+		if (Option.isSome(draft)) return
 
 		if (!Array.some(comments, current => sameDiffLine(current, location))) {
 			setDraftComment({
 				body: '',
 				filePath: props.filePath,
 				lineNumber: line.lineNumber,
-				...(line.side === 'deletions' ? {side: line.side} : {})
+				...Boolean.match(line.side === 'deletions', {onFalse: () => ({}), onTrue: () => ({side: 'deletions' as const})})
 			})
 		}
 	}
 
 	const content = pipe(
-		Match.value({fileContent, fileDiff, mode, patch}),
+		Match.value({fileContent: props.fileContent, fileDiff, mode, patch}),
 		Match.when(
-			value => value.mode === 'diff' && Predicate.isNotUndefined(value.fileDiff),
+			value => value.mode === 'diff' && Option.isSome(value.fileDiff),
 			value => (
 				<FileDiff<PatchDiff.Comment>
 					key={value.patch}
-					fileDiff={Option.getOrThrow(Option.fromUndefinedOr(value.fileDiff))}
+					fileDiff={Option.getOrThrow(value.fileDiff)}
 					options={{
 						diffIndicators: 'bars',
 						diffStyle: 'unified',
@@ -411,7 +419,7 @@ export function PatchDiff(props: {
 					renderAnnotation={annotation => (
 						<CommentAnnotation
 							comment={annotation.metadata}
-							isDraft={draftComment ? sameDiffLine(annotation.metadata, draftComment) : undefined}
+							isDraft={Option.exists(draft, current => sameDiffLine(annotation.metadata, current))}
 							onSaveComment={props.onSaveComment}
 							onResolveComment={props.onResolveComment}
 							onCloseDraft={() => {
@@ -446,7 +454,7 @@ export function PatchDiff(props: {
 					renderAnnotation={annotation => (
 						<CommentAnnotation
 							comment={annotation.metadata}
-							isDraft={draftComment ? sameDiffLine(annotation.metadata, draftComment) : undefined}
+							isDraft={Option.exists(draft, current => sameDiffLine(annotation.metadata, current))}
 							onSaveComment={props.onSaveComment}
 							onResolveComment={props.onResolveComment}
 							onCloseDraft={() => {

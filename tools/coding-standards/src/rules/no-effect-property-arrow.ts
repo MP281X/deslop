@@ -14,10 +14,10 @@ export const noEffectPropertyArrow = defineRule({
 			) {
 				return
 			}
-			const callee = node.value.body.callee
+
 			if (
-				(callee.type === 'Identifier' &&
-					isImportBinding({context, importedName: 'pipe', node: callee, source: 'effect'}) &&
+				(node.value.body.callee.type === 'Identifier' &&
+					isImportBinding({context, importedName: 'pipe', node: node.value.body.callee, source: 'effect'}) &&
 					Array.some(
 						node.value.body.arguments,
 						argument =>
@@ -26,8 +26,8 @@ export const noEffectPropertyArrow = defineRule({
 							(argument.type === 'CallExpression' &&
 								importedMember({context, importedName: 'Effect', node: argument.callee}))
 					)) ||
-				(callee.type === 'MemberExpression' &&
-					importedMember({context, importedName: 'Effect', node: callee, propertyName: 'tryPromise'}))
+				(node.value.body.callee.type === 'MemberExpression' &&
+					importedMember({context, importedName: 'Effect', node: node.value.body.callee, propertyName: 'tryPromise'}))
 			) {
 				context.report({message: 'Define this property with Effect.fn or Effect.fnUntraced instead of an arrow.', node})
 			}

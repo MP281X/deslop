@@ -6,13 +6,13 @@ export function replaceDirectory(directory: IntakeDirectory, replace: (content: 
 	return pipe(
 		directory,
 		Record.filter(Predicate.isNotUndefined),
-		Record.map((entry): CreatedEntry => {
+		Record.map(entry => {
 			if (!Array.isArray(entry)) return replaceDirectory(entry, replace)
 
 			const replaced = replace(entry[0])
 			return Option.match(Option.fromUndefinedOr(entry[1]), {
-				onNone: (): CreatedEntry => [replaced],
-				onSome: (options): CreatedEntry => [replaced, options]
+				onNone: () => [replaced] satisfies CreatedEntry,
+				onSome: options => [replaced, options] satisfies CreatedEntry
 			})
 		})
 	)

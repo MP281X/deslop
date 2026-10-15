@@ -2,7 +2,7 @@
 
 import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {Array, Config, Console, Effect, FileSystem, Path, Stream, String, pipe} from 'effect'
+import {Array, Boolean, Config, Console, Effect, FileSystem, Path, Stream, String, pipe} from 'effect'
 import type {PlatformError} from 'effect'
 
 import {CliError, Command} from 'effect/cli'
@@ -53,7 +53,10 @@ const cli = pipe(
 			const targets = Array.dedupe([
 				...directories,
 				'.claude',
-				...(Array.contains(directories, '.codex') ? [] : ['.agents'])
+				...Boolean.match(Array.contains(directories, '.codex'), {
+					onFalse: () => ['.agents'],
+					onTrue: () => Array.empty<string>()
+				})
 			])
 
 			function isGlobal(destination: string) {

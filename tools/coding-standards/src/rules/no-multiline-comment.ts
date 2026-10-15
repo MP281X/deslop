@@ -6,9 +6,11 @@ import type {ESTree} from '@oxlint/plugins'
 const directive = /^\s*(?:eslint|oxlint|@effect-diagnostics|@ts-|\/\s*<reference|#region|#endregion)/u
 
 function adjacentLines(pair: {first?: ESTree.Comment; second?: ESTree.Comment}) {
-	const first = pair.first
-	const second = pair.second
-	return first?.type === 'Line' && second?.type === 'Line' && second.loc.start.line === first.loc.end.line + 1
+	return (
+		pair.first?.type === 'Line' &&
+		pair.second?.type === 'Line' &&
+		pair.second.loc.start.line === pair.first.loc.end.line + 1
+	)
 }
 
 export const noMultilineComment = defineRule({

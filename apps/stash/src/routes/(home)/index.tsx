@@ -1,6 +1,6 @@
 import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, DateTime, HashSet, Match, Option, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, HashSet, Match, Option, String, pipe} from 'effect'
 
 import {
 	BottomSheet,
@@ -248,7 +248,10 @@ function FilterMenu(props: {kind: Kind | ''; onKind: (kind: Kind | '') => void})
 		// A menu opened from the bottom bar reverses its items unless the order is fixed.
 		<Menu
 			label="Filter"
-			systemImage={props.kind === '' ? 'line.3.horizontal.decrease' : 'line.3.horizontal.decrease.circle.fill'}
+			systemImage={Boolean.match(props.kind === '', {
+				onFalse: () => 'line.3.horizontal.decrease.circle.fill',
+				onTrue: () => 'line.3.horizontal.decrease'
+			})}
 			modifiers={[labelStyle('iconOnly'), menuOrder('fixed')]}
 		>
 			<Picker
@@ -267,21 +270,30 @@ function FilterMenu(props: {kind: Kind | ''; onKind: (kind: Kind | '') => void})
 				<Label title="All Notes" systemImage="tray" modifiers={[tag('')]} />
 				<Divider />
 				{Array.map(kinds, entry =>
-					'brand' in entry ? (
-						<Label
-							key={entry.kind}
-							title={entry.label}
-							icon={<BrandIcon brand={entry.brand} />}
-							modifiers={[tag(entry.kind)]}
-						/>
-					) : (
-						<Label key={entry.kind} title={entry.label} systemImage={entry.symbol} modifiers={[tag(entry.kind)]} />
+					pipe(
+						Match.value(entry),
+						Match.when({brand: Match.defined}, branded => (
+							<Label
+								key={branded.kind}
+								title={branded.label}
+								icon={<BrandIcon brand={branded.brand} />}
+								modifiers={[tag(branded.kind)]}
+							/>
+						)),
+						Match.orElse(plain => (
+							<Label key={plain.kind} title={plain.label} systemImage={plain.symbol} modifiers={[tag(plain.kind)]} />
+						))
 					)
 				)}
 			</Picker>
 		</Menu>
 	)
 }
+
+const offers = {
+	image: {question: 'Save the copied image?', symbol: 'photo'},
+	link: {question: 'Save the copied link?', symbol: 'link'}
+} as const
 
 // The sheet hangs off the title in the bar, so it adds nothing to the layout.
 function PasteSheet() {
@@ -321,14 +333,8 @@ function PasteSheet() {
 					background(colors.background)
 				]}
 			>
-				<Image
-					systemName={kind === 'image' ? 'photo' : 'link'}
-					size={24}
-					modifiers={[foregroundStyle(colors.foreground)]}
-				/>
-				<Text modifiers={[mono('headline', 17), foregroundStyle(colors.foreground)]}>
-					{kind === 'image' ? 'Save the copied image?' : 'Save the copied link?'}
-				</Text>
+				<Image systemName={offers[kind].symbol} size={24} modifiers={[foregroundStyle(colors.foreground)]} />
+				<Text modifiers={[mono('headline', 17), foregroundStyle(colors.foreground)]}>{offers[kind].question}</Text>
 				<VStack spacing={4} modifiers={[padding({top: 6})]}>
 					<Button
 						onPress={() => answer(true)}
@@ -396,73 +402,80 @@ export function HomeRoute(props: {
 		>
 			{/* SwiftUI shows the outermost toolbar's items first: the filter, the search field, then write. */}
 			<Toolbar modifiers={[bottomBarSearch]}>
-				{Array.isReadonlyArrayEmpty(items) ? (
-					<ContentUnavailableView
-						title="Nothing Saved"
-						systemImage="tray"
-						description="Share a link to stash, or copy one and open the app."
-					/>
-				) : (
-					<List modifiers={[listStyle('plain'), scrollContentBackground('hidden'), background(colors.background)]}>
-						<ScrollView
-							axes="horizontal"
-							showsIndicators={false}
-							modifiers={[
-								...row,
-								listRowSeparator('hidden'),
-								listRowInsets({bottom: 6, leading: 16, top: 4, trailing: 16})
-							]}
-						>
-							<HStack spacing={8}>
-								<Chip
-									label="all"
-									systemImage="tray"
-									active={String.isEmpty(props.tag)}
-									onPress={() => props.onTag('')}
-								/>
-								{Array.map(tags, name => (
+				{Array.match(items, {
+					onEmpty: () => (
+						<ContentUnavailableView
+							title="Nothing Saved"
+							systemImage="tray"
+							description="Share a link to stash, or copy one and open the app."
+						/>
+					),
+					onNonEmpty: () => (
+						<List modifiers={[listStyle('plain'), scrollContentBackground('hidden'), background(colors.background)]}>
+							<ScrollView
+								axes="horizontal"
+								showsIndicators={false}
+								modifiers={[
+									...row,
+									listRowSeparator('hidden'),
+									listRowInsets({bottom: 6, leading: 16, top: 4, trailing: 16})
+								]}
+							>
+								<HStack spacing={8}>
 									<Chip
-										key={name}
-										label={name}
-										active={props.tag === name}
-										onPress={() => props.onTag(props.tag === name ? '' : name)}
+										label="all"
+										systemImage="tray"
+										active={String.isEmpty(props.tag)}
+										onPress={() => props.onTag('')}
 									/>
-								))}
-							</HStack>
-						</ScrollView>
-						{filtered && Array.isReadonlyArrayEmpty(notes) && (
-							<VStack spacing={12} modifiers={[...row, listRowSeparator('hidden')]}>
-								<ContentUnavailableView
-									title={String.isEmpty(query) ? 'No Notes' : `No Results for “${query}”`}
-									systemImage={String.isEmpty(query) ? 'tray' : 'magnifyingglass'}
+									{Array.map(tags, name => (
+										<Chip
+											key={name}
+											label={name}
+											active={props.tag === name}
+											onPress={() =>
+												props.onTag(Boolean.match(props.tag === name, {onFalse: () => name, onTrue: () => ''}))
+											}
+										/>
+									))}
+								</HStack>
+							</ScrollView>
+							{filtered && Array.isReadonlyArrayEmpty(notes) && (
+								<VStack spacing={12} modifiers={[...row, listRowSeparator('hidden')]}>
+									<ContentUnavailableView
+										{...Boolean.match(String.isEmpty(query), {
+											onFalse: () => ({systemImage: 'magnifyingglass' as const, title: `No Results for “${query}”`}),
+											onTrue: () => ({systemImage: 'tray' as const, title: 'No Notes'})
+										})}
+									/>
+									{(String.isNonEmpty(props.tag) || props.kind !== '') && (
+										<Button
+											label="Show All Notes"
+											onPress={() => {
+												props.onTag('')
+												props.onKind('')
+											}}
+											modifiers={[buttonStyle('glass')]}
+										/>
+									)}
+								</VStack>
+							)}
+							{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
+							{Array.map(Array.take(notes, limit), (note, position) => (
+								<NoteRow
+									key={note.id}
+									note={note}
+									onAppear={() => {
+										if (position === limit - 1) setLimit(limit + 80)
+									}}
+									onOpen={props.onOpen}
+									onRegenerate={id => regenerate(id)}
+									onRemove={id => remove(id)}
 								/>
-								{(String.isNonEmpty(props.tag) || props.kind !== '') && (
-									<Button
-										label="Show All Notes"
-										onPress={() => {
-											props.onTag('')
-											props.onKind('')
-										}}
-										modifiers={[buttonStyle('glass')]}
-									/>
-								)}
-							</VStack>
-						)}
-						{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
-						{Array.map(Array.take(notes, limit), (note, position) => (
-							<NoteRow
-								key={note.id}
-								note={note}
-								onAppear={() => {
-									if (position === limit - 1) setLimit(limit + 80)
-								}}
-								onOpen={props.onOpen}
-								onRegenerate={id => regenerate(id)}
-								onRemove={id => remove(id)}
-							/>
-						))}
-					</List>
-				)}
+							))}
+						</List>
+					)
+				})}
 				<Toolbar.Content>
 					<ToolbarItem placement="bottomBar">
 						<Button

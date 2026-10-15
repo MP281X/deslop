@@ -26,8 +26,8 @@ export function isImportBinding(input: {
 		Option.exists(variable =>
 			Array.some(variable.defs, definition => {
 				if (definition.type !== 'ImportBinding' || definition.parent?.type !== 'ImportDeclaration') return false
-				const source = definition.parent.source.value
-				if (Predicate.isString(input.source) ? source !== input.source : !input.source.test(source)) return false
+				if (Predicate.isString(input.source) && definition.parent.source.value !== input.source) return false
+				if (Predicate.isRegExp(input.source) && !input.source.test(definition.parent.source.value)) return false
 				return (
 					input.importedName === undefined ||
 					(definition.node.type === 'ImportSpecifier' &&
@@ -55,11 +55,40 @@ export function isNamespaceImport(input: {context: Context; node: ESTree.Identif
 	)
 }
 
+export function typeWrapped(node: ESTree.Node) {
+	if (
+		node.type === 'TSAsExpression' ||
+		node.type === 'TSInstantiationExpression' ||
+		node.type === 'TSNonNullExpression' ||
+		node.type === 'TSSatisfiesExpression' ||
+		node.type === 'TSTypeAssertion'
+	) {
+		return Option.some(node.expression)
+	}
+	return Option.none()
+}
+
+// The outermost type assertion around a node, which is what its parent sees.
+export function outermost(node: ESTree.Node): ESTree.Node {
+	return pipe(
+		Option.fromNullishOr(node.parent),
+		Option.filter(parent => Option.isSome(typeWrapped(parent))),
+		Option.match({onNone: () => node, onSome: outermost})
+	)
+}
+
 export function returnedExpression(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
 	if (node.body === null) return
 	if (node.body.type !== 'BlockStatement') return node.body
 	if (node.body.body.length !== 1 || node.body.body[0]?.type !== 'ReturnStatement') return
 	return node.body.body[0].argument
+}
+
+// The identifier a plain property chain such as `input.node.parent` starts from.
+export function rootName(node: ESTree.Node): Option.Option<string> {
+	if (node.type === 'Identifier') return Option.some(node.name)
+	if (node.type === 'MemberExpression' && !node.computed && !node.optional) return rootName(node.object)
+	return Option.none()
 }
 
 export function memberName(node: ESTree.MemberExpression) {
@@ -93,9 +122,9 @@ export function matches(regExp: RegExp) {
 	return (text: string) => Option.isSome(pipe(text, String.match(regExp)))
 }
 
-export function isSchemaOperationName(name: string) {
-	return matches(/^(?:(?:decode|encode)(?:Unknown)?(?:Effect|Exit|Option|Promise|Result|Sync)|asserts|is)$/u)(name)
-}
+export const isSchemaOperationName = matches(
+	/^(?:(?:decode|encode)(?:Unknown)?(?:Effect|Exit|Option|Promise|Result|Sync)|asserts|is)$/u
+)
 
 export function isSchemaOperationCall(input: {context: Context; node: ESTree.CallExpression}) {
 	if (
@@ -120,12 +149,14 @@ export function isReactUseState(input: {context: Context; node: ESTree.CallExpre
 }
 
 export function statementDeclaration(statement: ESTree.Statement | ESTree.ModuleDeclaration) {
-	return statement.type === 'ExportNamedDeclaration' ? statement.declaration : statement
+	if (statement.type === 'ExportNamedDeclaration') return statement.declaration
+	return statement
 }
 
 export function typeAlias(statement: ESTree.Statement | ESTree.ModuleDeclaration) {
 	const declaration = statementDeclaration(statement)
-	return declaration?.type === 'TSTypeAliasDeclaration' ? Option.some(declaration) : Option.none()
+	if (declaration?.type !== 'TSTypeAliasDeclaration') return Option.none()
+	return Option.some(declaration)
 }
 
 export function isInferredType(input: {name: string; node: ESTree.TSType}) {
@@ -163,11 +194,10 @@ function typeArgumentName(node: ESTree.TSType) {
 	if (node.type !== 'TSTypeReference' || node.typeArguments === null) return Option.none<string>()
 	return pipe(
 		Array.get(node.typeArguments.params, 0),
-		Option.flatMap(parameter =>
-			parameter.type === 'TSTypeReference' && parameter.typeName.type === 'Identifier'
-				? Option.some(parameter.typeName.name)
-				: Option.none<string>()
-		)
+		Option.flatMap(parameter => {
+			if (parameter.type !== 'TSTypeReference' || parameter.typeName.type !== 'Identifier') return Option.none<string>()
+			return Option.some(parameter.typeName.name)
+		})
 	)
 }
 
@@ -180,11 +210,10 @@ function suspendedTypeName(input: {context: Context; node: ESTree.CallExpression
 	}
 	return pipe(
 		Array.get(input.node.arguments, 0),
-		Option.flatMap(argument =>
-			argument.type === 'ArrowFunctionExpression' || argument.type === 'FunctionExpression'
-				? Option.fromNullishOr(argument.returnType)
-				: Option.none()
-		),
+		Option.flatMap(argument => {
+			if (argument.type !== 'ArrowFunctionExpression' && argument.type !== 'FunctionExpression') return Option.none()
+			return Option.fromNullishOr(argument.returnType)
+		}),
 		Option.filter(returnType => isSchemaCodecType({context: input.context, node: returnType.typeAnnotation})),
 		Option.flatMap(returnType => typeArgumentName(returnType.typeAnnotation))
 	)
@@ -197,7 +226,8 @@ function referencedTypeNames(node: ESTree.TSType | ESTree.TSTupleElement): strin
 			Option.map(typeArguments => pipe(typeArguments.params, Array.flatMap(referencedTypeNames))),
 			Option.getOrElse(() => Array.empty<string>())
 		)
-		return node.typeName.type === 'Identifier' ? Array.prepend(argumentNames, node.typeName.name) : argumentNames
+		if (node.typeName.type !== 'Identifier') return argumentNames
+		return Array.prepend(argumentNames, node.typeName.name)
 	}
 	if (node.type === 'TSArrayType') return referencedTypeNames(node.elementType)
 	if (node.type === 'TSUnionType' || node.type === 'TSIntersectionType') {
@@ -235,13 +265,18 @@ function referencedTypeNames(node: ESTree.TSType | ESTree.TSTupleElement): strin
 	return Array.empty<string>()
 }
 
-function memberTypeNames(member: ESTree.TSSignature): string[] {
-	if (member.type === 'TSIndexSignature') return referencedTypeNames(member.typeAnnotation.typeAnnotation)
+function annotationTypeNames(annotation?: ESTree.TSTypeAnnotation | null) {
 	return pipe(
-		Option.fromNullishOr(member.type === 'TSPropertySignature' ? member.typeAnnotation : member.returnType),
-		Option.map(annotation => referencedTypeNames(annotation.typeAnnotation)),
+		Option.fromNullishOr(annotation),
+		Option.map(present => referencedTypeNames(present.typeAnnotation)),
 		Option.getOrElse(() => Array.empty<string>())
 	)
+}
+
+function memberTypeNames(member: ESTree.TSSignature): string[] {
+	if (member.type === 'TSIndexSignature') return referencedTypeNames(member.typeAnnotation.typeAnnotation)
+	if (member.type === 'TSPropertySignature') return annotationTypeNames(member.typeAnnotation)
+	return annotationTypeNames(member.returnType)
 }
 
 type NameEdges = {name: string; targets: string[]}
@@ -250,7 +285,7 @@ function isNode(value: unknown): value is ESTree.Node {
 	return Predicate.hasProperty(value, 'type') && Predicate.isString(value.type)
 }
 
-function childNodes(node: unknown): ESTree.Node[] {
+function childNodes(node: unknown) {
 	if (!Predicate.isReadonlyObject(node)) return Array.empty<ESTree.Node>()
 	return pipe(Record.values(Record.remove(node, 'parent')), Array.flatMap(Array.ensure), Array.filter(isNode))
 }
@@ -277,15 +312,15 @@ function referenceNames(node: ESTree.Node): string[] {
 		),
 		Array.flatMap(referenceNames)
 	)
-	return node.type === 'Identifier' ? Array.prepend(nested, node.name) : nested
+	if (node.type !== 'Identifier') return nested
+	return Array.prepend(nested, node.name)
 }
 
-function schemaEdges(statement: ESTree.Statement | ESTree.ModuleDeclaration): NameEdges[] {
+function schemaEdges(statement: ESTree.Statement | ESTree.ModuleDeclaration) {
 	const declaration = statementDeclaration(statement)
 	if (declaration?.type === 'TSTypeAliasDeclaration') {
-		return isInferredType({name: declaration.id.name, node: declaration.typeAnnotation})
-			? Array.empty<NameEdges>()
-			: [{name: declaration.id.name, targets: referencedTypeNames(declaration.typeAnnotation)}]
+		if (isInferredType({name: declaration.id.name, node: declaration.typeAnnotation})) return Array.empty<NameEdges>()
+		return [{name: declaration.id.name, targets: referencedTypeNames(declaration.typeAnnotation)}]
 	}
 	if (declaration?.type !== 'VariableDeclaration' || declaration.kind !== 'const') return Array.empty<NameEdges>()
 	return Array.flatMap(declaration.declarations, declarator => {
@@ -294,7 +329,7 @@ function schemaEdges(statement: ESTree.Statement | ESTree.ModuleDeclaration): Na
 	})
 }
 
-export function schemaCycleNames(input: {context: Context; program: ESTree.Program}): string[] {
+export function schemaCycleNames(input: {context: Context; program: ESTree.Program}) {
 	const seeds = suspendSeeds({context: input.context, node: input.program})
 	if (Array.isArrayEmpty(seeds)) return Array.empty<string>()
 	const edges = pipe(input.program.body, Array.flatMap(schemaEdges))
