@@ -1,7 +1,20 @@
 /* oxlint-disable shadcn/no-arbitrary-values -- The page's 0.15-0.35em letter-spacing sits beyond tracking-widest, and its 26px trail grid, the grid's line gradient, and the auto/1fr shortcut columns have no scale step. */
 import {useAtomSet, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Effect, Function, HashMap, Number, Option, Predicate, Random, Stream, String, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Effect,
+	Function,
+	HashMap,
+	Number,
+	Option,
+	Predicate,
+	Random,
+	Stream,
+	String,
+	pipe
+} from 'effect'
 
 import {useHotkey} from '@tanstack/react-hotkeys'
 import {createFileRoute} from '@tanstack/react-router'
@@ -102,8 +115,18 @@ function createCursorMotion(target: {x: number; y: number}, viewport: {width: nu
 	}
 }
 
+function approach(input: {catchUp: number; maximum: number; position: number; target: number}) {
+	if (Math.abs(input.target - input.position) < 0.3) return input.target
+	return Number.clamp({maximum: input.maximum, minimum: 0})(
+		input.position + (input.target - input.position) * input.catchUp
+	)
+}
+
 function stepCursorMotion(motion: ReturnType<typeof createCursorMotion>, now: number) {
-	const frameDelta = motion.lastFrameAt > 0 ? Number.clamp({maximum: 64, minimum: 8})(now - motion.lastFrameAt) : 16
+	const frameDelta = Boolean.match(motion.lastFrameAt > 0, {
+		onFalse: () => 16,
+		onTrue: () => Number.clamp({maximum: 64, minimum: 8})(now - motion.lastFrameAt)
+	})
 	const deltaX = motion.targetX - motion.x
 	const deltaY = motion.targetY - motion.y
 	const catchUp = Number.min(1, (1 - Math.exp(-frameDelta / 130)) * (1 + Math.hypot(deltaX, deltaY) / 220))
@@ -111,14 +134,8 @@ function stepCursorMotion(motion: ReturnType<typeof createCursorMotion>, now: nu
 	return {
 		...motion,
 		lastFrameAt: now,
-		x:
-			Math.abs(deltaX) < 0.3
-				? motion.targetX
-				: Number.clamp({maximum: motion.viewportWidth, minimum: 0})(motion.x + deltaX * catchUp),
-		y:
-			Math.abs(deltaY) < 0.3
-				? motion.targetY
-				: Number.clamp({maximum: motion.viewportHeight, minimum: 0})(motion.y + deltaY * catchUp)
+		x: approach({catchUp, maximum: motion.viewportWidth, position: motion.x, target: motion.targetX}),
+		y: approach({catchUp, maximum: motion.viewportHeight, position: motion.y, target: motion.targetY})
 	}
 }
 
@@ -217,11 +234,14 @@ function TrailCanvas(input: {trails: PortfolioState['trails']; viewport: {width:
 				const stepCount = Number.max(Math.abs(current.col - previous.col), Math.abs(current.row - previous.row))
 
 				for (const step of Array.makeBy(stepCount + 1, Function.identity)) {
-					const progress = stepCount === 0 ? 1 : step / stepCount
+					const progress = Boolean.match(stepCount === 0, {onFalse: () => step / stepCount, onTrue: () => 1})
 					const col = Number.round(previous.col + (current.col - previous.col) * progress, 0)
 					const row = Number.round(previous.row + (current.row - previous.row) * progress, 0)
 
-					context.fillStyle = progress < 1 ? previous.trail.color : current.trail.color
+					context.fillStyle = Boolean.match(progress < 1, {
+						onFalse: () => current.trail.color,
+						onTrue: () => previous.trail.color
+					})
 					context.fillRect(col * 26 + 1, row * 26 + 1, 24, 24)
 				}
 
@@ -279,12 +299,12 @@ function CursorEl(input: {
 			)
 
 			setCursorTransform(nodeRef.current, motionRef.current.x, motionRef.current.y)
-			animationFrameRef.current =
+			animationFrameRef.current = Boolean.match(
 				input.isMe ||
-				motionRef.current.x !== motionRef.current.targetX ||
-				motionRef.current.y !== motionRef.current.targetY
-					? requestAnimationFrame(tick)
-					: 0
+					motionRef.current.x !== motionRef.current.targetX ||
+					motionRef.current.y !== motionRef.current.targetY,
+				{onFalse: () => 0, onTrue: () => requestAnimationFrame(tick)}
+			)
 		}
 		animationFrameRef.current = requestAnimationFrame(tick)
 
@@ -306,7 +326,7 @@ function CursorEl(input: {
 				<MousePointer2 className="size-4 text-(--cursor-color)" />
 				<span className="bg-background text-foreground border border-(--cursor-color) px-1.5 py-1 font-mono text-xs whitespace-nowrap">
 					{input.cursor.name}
-					{input.isMe ? ' (you)' : ''}
+					{input.isMe && ' (you)'}
 				</span>
 			</div>
 		</div>
@@ -767,7 +787,10 @@ function RealtimeLayer(input: {
 				<span className="size-2 bg-(--identity-color)" style={{'--identity-color': identityColor}} />
 				<span className="text-primary">{Array.length(portfolio.value.visitors)}</span>
 				<span className="text-muted-foreground">
-					{Array.length(portfolio.value.visitors) === 1 ? 'visitor' : 'visitors'}
+					{Boolean.match(Array.length(portfolio.value.visitors) === 1, {
+						onFalse: () => 'visitors',
+						onTrue: () => 'visitor'
+					})}
 				</span>
 			</div>
 		</>

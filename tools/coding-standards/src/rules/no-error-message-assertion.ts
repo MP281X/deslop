@@ -7,7 +7,8 @@ import {matches, memberName} from '#rules/shared.ts'
 
 function receiverName(node: ESTree.Node) {
 	if (node.type === 'Identifier') return Option.some(node.name)
-	return node.type === 'MemberExpression' ? memberName(node) : Option.none<string>()
+	if (node.type !== 'MemberExpression') return Option.none<string>()
+	return memberName(node)
 }
 
 function isErrorMessage(node?: ESTree.Node | null) {
@@ -18,17 +19,20 @@ function isErrorMessage(node?: ESTree.Node | null) {
 	)
 }
 
-function expectsMessage(node: ESTree.MemberExpression) {
-	const subject =
-		node.object.type === 'MemberExpression' && Option.contains(memberName(node.object), 'not')
-			? node.object.object
-			: node.object
+function expectsErrorMessage(node: ESTree.Node) {
 	return (
-		subject.type === 'CallExpression' &&
-		subject.callee.type === 'Identifier' &&
-		subject.callee.name === 'expect' &&
-		isErrorMessage(subject.arguments[0])
+		node.type === 'CallExpression' &&
+		node.callee.type === 'Identifier' &&
+		node.callee.name === 'expect' &&
+		isErrorMessage(node.arguments[0])
 	)
+}
+
+function expectsMessage(node: ESTree.MemberExpression) {
+	if (node.object.type === 'MemberExpression' && Option.contains(memberName(node.object), 'not')) {
+		return expectsErrorMessage(node.object.object)
+	}
+	return expectsErrorMessage(node.object)
 }
 
 function assertsMessage(node: ESTree.CallExpression) {

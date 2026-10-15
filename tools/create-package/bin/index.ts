@@ -6,7 +6,7 @@ import {parseArgs} from 'node:util'
 
 import {NodeRuntime} from '@effect/platform-node'
 
-import {Array, Context, Effect, Predicate, String, flow, pipe} from 'effect'
+import {Array, Effect, Predicate, String, flow, pipe} from 'effect'
 
 import {createTemplate, runTemplateCLI} from 'bingo'
 import type {Template, TemplateContext} from 'bingo'
@@ -46,7 +46,8 @@ const template = createTemplate({
 				suggestions: []
 			}
 		}),
-		Effect.runPromiseWith(Context.empty())
+		// oxlint-disable-next-line no-restricted-properties -- Bingo's produce contract demands a Promise.
+		Effect.runPromise
 	)
 })
 

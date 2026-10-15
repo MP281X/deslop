@@ -48,9 +48,10 @@ function check(input: {name: string; node: ESTree.Expression}): Option.Option<st
 	}
 	if (input.node.type !== 'BinaryExpression') return Option.none()
 	if (input.node.operator === 'instanceof') {
-		return isSubject({name: input.name, node: input.node.left}) && input.node.right.type === 'Identifier'
-			? Option.some([`instanceof ${input.node.right.name}`])
-			: Option.none()
+		if (!isSubject({name: input.name, node: input.node.left}) || input.node.right.type !== 'Identifier') {
+			return Option.none()
+		}
+		return Option.some([`instanceof ${input.node.right.name}`])
 	}
 	return pipe(
 		Option.firstSomeOf([

@@ -1,5 +1,7 @@
 import {useAtomValue} from '@effect/atom-react'
 
+import {Boolean} from 'effect'
+
 import {AsyncResult} from 'effect/reactivity'
 import {requireNativeView} from 'expo'
 import {useColorScheme} from 'react-native'
@@ -23,7 +25,11 @@ export const brands = {
 export type Brand = (typeof brands)[keyof typeof brands]
 
 export function BrandLogo(props: {brand: Brand; size: number}) {
-	const uri = useAtomValue(assetAtom(useColorScheme() === 'dark' ? props.brand.dark : props.brand.light))
+	const uri = useAtomValue(
+		assetAtom(
+			Boolean.match(useColorScheme() === 'dark', {onFalse: () => props.brand.light, onTrue: () => props.brand.dark})
+		)
+	)
 	if (!AsyncResult.isSuccess(uri)) return undefined
 	return <Logo uri={uri.value} size={props.size} />
 }

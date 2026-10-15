@@ -1,4 +1,4 @@
-import {Config, Effect, Option, pipe} from 'effect'
+import {Boolean, Config, Effect, Option, pipe} from 'effect'
 
 import type {ExpoConfig} from 'expo/config'
 
@@ -22,27 +22,34 @@ export function make(app: {
 					Config.Literals(['development', 'production'], 'APP_VARIANT'),
 					Config.withDefault('development')
 				)) === 'production'
-			const bundleIdentifier = production ? app.bundleIdentifier : `${app.bundleIdentifier}.dev`
+			const variant = Boolean.match(production, {
+				onFalse: () => ({
+					bundleIdentifier: `${app.bundleIdentifier}.dev`,
+					name: `${app.name} dev`,
+					scheme: `${app.slug}-dev`
+				}),
+				onTrue: () => ({bundleIdentifier: app.bundleIdentifier, name: app.name, scheme: app.slug})
+			})
 			return {
-				appGroup: `group.${bundleIdentifier}`,
+				appGroup: `group.${variant.bundleIdentifier}`,
 				config: {
 					extra: {eas: {projectId: app.projectId}, otel, server: app.server},
 					icon: './src/routes/icon.png',
 					ios: {
 						appleTeamId: Option.getOrUndefined(team),
 						buildNumber: `${release}`,
-						bundleIdentifier,
+						bundleIdentifier: variant.bundleIdentifier,
 						config: {usesNonExemptEncryption: false},
 						deploymentTarget: '18.0',
 						supportsTablet: false
 					},
-					name: production ? app.name : `${app.name} dev`,
+					name: variant.name,
 					orientation: 'portrait',
 					owner: app.owner,
 					platforms: ['ios'],
 					plugins: ['@deslop/components-mobile'],
 					runtimeVersion: {policy: 'fingerprint'},
-					scheme: production ? app.slug : `${app.slug}-dev`,
+					scheme: variant.scheme,
 					slug: app.slug,
 					updates: {url: `https://u.expo.dev/${app.projectId}`},
 					userInterfaceStyle: 'automatic',

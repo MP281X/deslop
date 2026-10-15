@@ -1,3 +1,5 @@
+import {Boolean} from 'effect'
+
 import {font} from '@expo/ui/swift-ui/modifiers'
 import {DynamicColorIOS} from 'react-native'
 
@@ -14,5 +16,12 @@ export const colors = {
 
 // The app registers the JetBrains Mono files, because a package cannot add fonts to an app bundle.
 export function mono(textStyle: 'body' | 'caption' | 'headline' | 'subheadline', size: number) {
-	return font({family: textStyle === 'headline' ? 'JetBrainsMono-SemiBold' : 'JetBrainsMono-Regular', size, textStyle})
+	return font({
+		family: Boolean.match(textStyle === 'headline', {
+			onFalse: () => 'JetBrainsMono-Regular',
+			onTrue: () => 'JetBrainsMono-SemiBold'
+		}),
+		size,
+		textStyle
+	})
 }

@@ -1,4 +1,4 @@
-import {Array, Number, Option, String, pipe} from 'effect'
+import {Array, Number, Option, String} from 'effect'
 
 import * as tanstackForm from '@tanstack/react-form'
 import {useState} from 'react'
@@ -219,11 +219,7 @@ function ComboboxField<TOption extends {id: string}>(props: {
 	const field = useFieldContext<string>()
 	const [open, setOpen] = useState(false)
 
-	const selectedOption = pipe(
-		props.options,
-		Array.findFirst(option => option.id === field.state.value),
-		Option.getOrUndefined
-	)
+	const selectedOption = Array.findFirst(props.options, option => option.id === field.state.value)
 
 	return (
 		<FieldWrapper>
@@ -237,7 +233,7 @@ function ComboboxField<TOption extends {id: string}>(props: {
 						/>
 					}
 				>
-					{selectedOption ? props.children(selectedOption) : toSentenceCase(field.name)}
+					{Option.match(selectedOption, {onNone: () => toSentenceCase(field.name), onSome: props.children})}
 				</PopoverTrigger>
 				{/* oxlint-disable-next-line shadcn/no-restyle -- the Command fills the popover edge to edge, and PopoverContent has no unpadded size. */}
 				<PopoverContent className="w-(--anchor-width) p-0">

@@ -28,19 +28,35 @@ function isSingletonArray(input: {context: Context; node: ESTree.Expression; val
 	return input.context.sourceCode.getText(element) === input.context.sourceCode.getText(input.value)
 }
 
-function restatesArrayEnsure(input: {context: Context; node: ESTree.ConditionalExpression}) {
-	const test =
-		input.node.test.type === 'UnaryExpression' && input.node.test.operator === '!'
-			? input.node.test.argument
-			: input.node.test
-	const negated = test !== input.node.test
+function wrapsTestedValue(input: {
+	context: Context
+	kept: ESTree.Expression
+	test: ESTree.Expression
+	wrapped: ESTree.Expression
+}) {
 	return Option.exists(
-		testedValue(test),
+		testedValue(input.test),
 		value =>
-			input.context.sourceCode.getText(negated ? input.node.alternate : input.node.consequent) ===
-				input.context.sourceCode.getText(value) &&
-			isSingletonArray({context: input.context, node: negated ? input.node.consequent : input.node.alternate, value})
+			input.context.sourceCode.getText(input.kept) === input.context.sourceCode.getText(value) &&
+			isSingletonArray({context: input.context, node: input.wrapped, value})
 	)
+}
+
+function restatesArrayEnsure(input: {context: Context; node: ESTree.ConditionalExpression}) {
+	if (input.node.test.type === 'UnaryExpression' && input.node.test.operator === '!') {
+		return wrapsTestedValue({
+			context: input.context,
+			kept: input.node.alternate,
+			test: input.node.test.argument,
+			wrapped: input.node.consequent
+		})
+	}
+	return wrapsTestedValue({
+		context: input.context,
+		kept: input.node.consequent,
+		test: input.node.test,
+		wrapped: input.node.alternate
+	})
 }
 
 export const noArrayWrapTernary = defineRule({

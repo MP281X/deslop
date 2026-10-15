@@ -1,4 +1,4 @@
-import {Array} from 'effect'
+import {Array, Option, pipe} from 'effect'
 
 import type {PortfolioState, PortfolioTrail, PortfolioVisitor} from '#rpcs/contracts.ts'
 
@@ -26,17 +26,19 @@ export const portfolioPalette = [
 ] as const
 
 export function appendPortfolioTrail(trails: PortfolioState['trails'], trail: PortfolioTrail) {
-	const next = Array.append(trails, trail)
-	return Array.length(next) > 180 ? Array.drop(next, Array.length(next) - 180) : next
+	return Array.takeRight(Array.append(trails, trail), 180)
 }
 
 export function removePortfolioVisitor(visitors: PortfolioState['visitors'], id: string) {
 	const next = Array.filter(visitors, visitor => visitor.id !== id)
-	return Array.length(next) === Array.length(visitors) ? visitors : next
+	if (Array.length(next) === Array.length(visitors)) return visitors
+	return next
 }
 
 export function upsertPortfolioVisitor(visitors: PortfolioState['visitors'], visitor: PortfolioVisitor) {
-	return Array.some(visitors, current => current.id === visitor.id)
-		? Array.map(visitors, current => (current.id === visitor.id ? visitor : current))
-		: Array.append(visitors, visitor)
+	return pipe(
+		Array.findFirstIndex(visitors, current => current.id === visitor.id),
+		Option.flatMap(index => Array.replace(visitors, index, visitor)),
+		Option.getOrElse(() => Array.append(visitors, visitor))
+	)
 }

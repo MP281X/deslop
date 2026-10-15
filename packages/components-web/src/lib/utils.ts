@@ -1,4 +1,4 @@
-import {Array, Cause, Match, Predicate, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Cause, Match, Predicate, Schema, String, pipe} from 'effect'
 
 import type {ClassValue} from 'clsx'
 import {clsx} from 'clsx'
@@ -18,7 +18,9 @@ export const formatError = pipe(
 		pipe(
 			cause,
 			Cause.prettyErrors,
-			Array.map(error => (String.isNonEmpty(error.message) ? error.message : error.name)),
+			Array.map(error =>
+				Boolean.match(String.isNonEmpty(error.message), {onFalse: () => error.name, onTrue: () => error.message})
+			),
 			Array.join('\n')
 		)
 	),

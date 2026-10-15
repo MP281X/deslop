@@ -1,4 +1,4 @@
-import {Array, Effect, Exit, FileSystem, Option, Path, Record, Schema, Stream, String, pipe} from 'effect'
+import {Array, Boolean, Effect, Exit, FileSystem, Option, Path, Record, Schema, Stream, String, pipe} from 'effect'
 
 import {ChildProcess} from 'effect/process'
 
@@ -11,6 +11,19 @@ export const Settings = Schema.StructWithRest(
 	Schema.Struct({providerInstances: Schema.Record(Schema.String, Schema.Unknown)}),
 	[Schema.Record(Schema.String, Schema.Unknown)]
 )
+
+const harnesses = {
+	claude: {
+		auth: '.credentials.json',
+		driver: 'claudeAgent',
+		launchArgs: (home: string) => `--system-prompt-snapshot off --agent pair --settings ${home}/settings.json`
+	},
+	codex: {
+		auth: 'auth.json',
+		driver: 'codex',
+		launchArgs: (home: string) => `-c model_instructions_file=${home}/instructions.md`
+	}
+}
 
 export const command = Effect.fnUntraced(function* (cwd: string, program: string, args: string[]) {
 	const handle = yield* ChildProcess.make(program, args, {cwd, stderr: 'pipe', stdout: 'pipe'})
@@ -81,10 +94,10 @@ export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 					const repo = path.join(directory, 'runs', id, 'repo')
 					yield* fs.makeDirectory(home, {recursive: true})
 					yield* fs.makeDirectory(repo, {recursive: true})
-					const sources = [
-						starter,
-						...(name === 'testing' ? [path.resolve(import.meta.dirname, '../../starter/folder-import')] : [])
-					]
+					const sources = Boolean.match(name === 'testing', {
+						onFalse: () => [starter],
+						onTrue: () => [starter, path.resolve(import.meta.dirname, '../../starter/folder-import')]
+					})
 					for (const source of sources) {
 						yield* Effect.forEach(
 							yield* fs.glob('**/*', {exclude: ['node_modules/**', '.git/**'], root: source}),
@@ -112,10 +125,7 @@ export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 						yield* fs.makeDirectory(path.dirname(path.join(repo, file)), {recursive: true})
 						yield* fs.copyFile(path.join(input.root, file), path.join(repo, file))
 					}
-					yield* fs.copy(
-						path.join(repo, harness === 'claude' ? '.claude' : '.codex', 'skills'),
-						path.join(home, 'skills')
-					)
+					yield* fs.copy(path.join(repo, `.${harness}`, 'skills'), path.join(home, 'skills'))
 					if (harness === 'claude') {
 						yield* fs.makeDirectory(path.join(home, 'agents'))
 						yield* fs.copyFile(path.join(input.root, '.claude/agents/pair.md'), path.join(home, 'agents/pair.md'))
@@ -174,8 +184,7 @@ export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 						instance: `eval-${path.basename(directory)}-${id}`,
 						repo,
 						seed: String.trim(yield* command(repo, 'git', ['rev-parse', 'HEAD'])),
-						task,
-						threadId: Option.getOrNull(Option.none())
+						task
 					} satisfies Run
 				})
 			)
@@ -197,26 +206,18 @@ export const activate = Effect.fn('Evals.activate')(function* (directory: string
 	const selected = Array.findFirst(manifest.runs, run => run.id === id)
 	if (Option.isNone(selected)) return yield* EvalError.make({message: `Unknown evaluation run: ${id}`})
 	const run = Option.getOrThrow(selected)
-	const auth = run.harness === 'claude' ? '.credentials.json' : 'auth.json'
-	const source = `${home}/.${run.harness}/${auth}`
-	const destination = `${run.home}/${auth}`
+	const source = `${home}/.${run.harness}/${harnesses[run.harness].auth}`
+	const destination = `${run.home}/${harnesses[run.harness].auth}`
 	if (!(yield* fs.exists(source))) return yield* EvalError.make({message: `Missing authentication for ${run.harness}`})
-	const linked = Array.contains(yield* fs.readDirectory(run.home), auth)
+	const linked = Array.contains(yield* fs.readDirectory(run.home), harnesses[run.harness].auth)
 	if (linked && (yield* fs.readLink(destination)) !== source) {
 		return yield* EvalError.make({message: `Authentication link is not owned by this evaluation: ${id}`})
 	}
 	const settingsPath = `${home}/.t3/userdata/settings.json`
 	const settings = yield* Schema.decodeEffect(Schema.fromJsonString(Settings))(yield* fs.readFileString(settingsPath))
 	const provider = {
-		config: {
-			binaryPath: run.harness,
-			homePath: run.home,
-			launchArgs:
-				run.harness === 'claude'
-					? `--system-prompt-snapshot off --agent pair --settings ${run.home}/settings.json`
-					: `-c model_instructions_file=${run.home}/instructions.md`
-		},
-		driver: run.harness === 'claude' ? 'claudeAgent' : 'codex',
+		config: {binaryPath: run.harness, homePath: run.home, launchArgs: harnesses[run.harness].launchArgs(run.home)},
+		driver: harnesses[run.harness].driver,
 		enabled: true
 	}
 	const encoded = yield* Schema.encodeEffect(Schema.fromJsonString(Settings, {space: 2}))({
@@ -224,9 +225,13 @@ export const activate = Effect.fn('Evals.activate')(function* (directory: string
 		providerInstances: {...settings.providerInstances, [run.instance]: provider}
 	})
 	yield* Effect.acquireUseRelease(
-		linked ? Effect.void : fs.symlink(source, destination),
+		Boolean.match(linked, {onFalse: () => fs.symlink(source, destination), onTrue: () => Effect.void}),
 		() => fs.writeFileString(settingsPath, encoded),
-		(_link, exit) => (linked || Exit.isSuccess(exit) ? Effect.void : fs.remove(destination, {force: true}))
+		(_link, exit) =>
+			Boolean.match(linked || Exit.isSuccess(exit), {
+				onFalse: () => fs.remove(destination, {force: true}),
+				onTrue: () => Effect.void
+			})
 	)
 })
 
@@ -258,9 +263,7 @@ export const cleanup = Effect.fn('Evals.cleanup')(function* (directory: string, 
 			)
 		}),
 		Effect.onExit(() =>
-			Effect.forEach(runs, run =>
-				fs.remove(`${run.home}/${run.harness === 'claude' ? '.credentials.json' : 'auth.json'}`, {force: true})
-			)
+			Effect.forEach(runs, run => fs.remove(`${run.home}/${harnesses[run.harness].auth}`, {force: true}))
 		)
 	)
 })

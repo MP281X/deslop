@@ -1,4 +1,4 @@
-import {NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
+import {NodeDns, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
 
 import {Array, Effect, Layer, Schema, String, pipe} from 'effect'
 
@@ -68,7 +68,7 @@ NodeRuntime.runMain(
 		HttpRouter.serve(Layer.merge(rpc, routes), {disableLogger: true}),
 		Layer.provide(Notes.layer),
 		Layer.provide(Layer.mergeAll(Sources.layer, Media.layer, Organizer.layer)),
-		Layer.provide(Layer.merge(NodeHttpClient.layerFetch, NodeServices.layer)),
+		Layer.provide(Layer.mergeAll(NodeDns.layer, NodeHttpClient.layerFetch, NodeServices.layer)),
 		Layer.provide(ServerRuntime.layer('@deslop/stash')),
 		Layer.provide(ServerRuntime.layerNodeHttpServer),
 		Layer.launch

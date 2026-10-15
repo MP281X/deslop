@@ -104,12 +104,15 @@ export class Organizer extends Context.Service<
 					},
 					Effect.timeout('5 minutes'),
 					Effect.mapError(cause =>
-						Schema.is(NotesError)(cause)
-							? cause
-							: NotesError.make({
+						pipe(
+							Option.liftPredicate(cause, Schema.is(NotesError)),
+							Option.getOrElse(() =>
+								NotesError.make({
 									cause: Redacted.make(cause),
 									message: 'AI tagging failed; the note is saved as it is.'
 								})
+							)
+						)
 					)
 				)
 			})

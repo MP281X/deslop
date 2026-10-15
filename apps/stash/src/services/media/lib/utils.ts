@@ -94,19 +94,16 @@ export function speechOnly(transcript: string) {
 		),
 		Option.getOrElse(() => 0)
 	)
-	return words.length >= 8 && words.length * 60 >= 40 * Number.max(seconds, 15)
-		? Option.some(
-				Array.join(
-					Array.map(lines, line => `${line}\n`),
-					''
-				)
-			)
-		: Option.none()
+	if (words.length < 8 || words.length * 60 < 40 * Number.max(seconds, 15)) return Option.none()
+	return Option.some(
+		Array.join(
+			Array.map(lines, line => `${line}\n`),
+			''
+		)
+	)
 }
 
-function spoken(line: string) {
-	return String.replace(/^\[[^\]]+\] /u, '')(line)
-}
+const spoken = String.replace(/^\[[^\]]+\] /u, '')
 
 function wordsOf(text: string) {
 	return pipe(text, String.toLowerCase, String.split(/[^\p{L}\p{N}']+/u), Array.filter(String.isNonEmpty))

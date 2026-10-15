@@ -70,7 +70,7 @@ const nativeMethods = [
 ]
 
 // Inner None means the flags are unknown.
-function freshRegExpFlags(input: {context: Context; node: ESTree.Expression}): Option.Option<Option.Option<string>> {
+function freshRegExpFlags(input: {context: Context; node: ESTree.Expression}) {
 	if (input.node.type === 'Literal' && Predicate.hasProperty(input.node, 'regex')) {
 		return Option.some(pipe(input.context.sourceCode.getText(input.node), String.split('/'), Array.last))
 	}
@@ -83,9 +83,8 @@ function freshRegExpFlags(input: {context: Context; node: ESTree.Expression}): O
 	}
 	const flags = input.node.arguments[1]
 	if (flags === undefined) return Option.some(Option.some(''))
-	return Option.some(
-		flags.type === 'Literal' && Predicate.isString(flags.value) ? Option.some(flags.value) : Option.none()
-	)
+	if (flags.type !== 'Literal' || !Predicate.isString(flags.value)) return Option.some(Option.none<string>())
+	return Option.some(Option.some(flags.value))
 }
 
 export const noNativeMethodCall = defineRule({

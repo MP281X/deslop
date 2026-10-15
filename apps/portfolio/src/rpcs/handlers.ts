@@ -1,5 +1,6 @@
 import {
 	Array,
+	Boolean,
 	Clock,
 	Duration,
 	Effect,
@@ -138,17 +139,19 @@ export const RpcHandlers = RpcContracts.toLayer(
 												HashMap.get(current, payload.id),
 												Option.getOrElse(() => 0)
 											)
-											return count <= 1
-												? ([true, HashMap.remove(current, payload.id)] as const)
-												: ([false, HashMap.set(current, payload.id, count - 1)] as const)
+											return Boolean.match(count <= 1, {
+												onFalse: () => [false, HashMap.set(current, payload.id, count - 1)] as const,
+												onTrue: () => [true, HashMap.remove(current, payload.id)] as const
+											})
 										})
 										if (!remove) return
 
 										yield* SubscriptionRef.update(state, latestState => {
 											const visitors = removePortfolioVisitor(latestState.visitors, payload.id)
-											return visitors === latestState.visitors
-												? latestState
-												: PortfolioState.make({trails: latestState.trails, visitors})
+											return Boolean.match(visitors === latestState.visitors, {
+												onFalse: () => PortfolioState.make({trails: latestState.trails, visitors}),
+												onTrue: () => latestState
+											})
 										})
 									})
 								)

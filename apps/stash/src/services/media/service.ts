@@ -104,7 +104,7 @@ export class Media extends Context.Service<
 					)
 				})
 				return yield* Effect.repeat(attempt, {
-					times: Option.isSome(exit) ? 2 : 0,
+					times: Boolean.match(Option.isSome(exit), {onFalse: () => 0, onTrue: () => 2}),
 					while: result => result.exitCode !== 0 && Option.isSome(String.match(blockedAnswer)(result.stderr))
 				})
 			})
@@ -114,7 +114,10 @@ export class Media extends Context.Service<
 					effect,
 					Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
 					Effect.mapError(cause =>
-						Schema.is(MediaError)(cause) ? cause : MediaError.make({cause, message: 'Cannot extract the media'})
+						pipe(
+							Option.liftPredicate(cause, Schema.is(MediaError)),
+							Option.getOrElse(() => MediaError.make({cause, message: 'Cannot extract the media'}))
+						)
 					)
 				)
 			}

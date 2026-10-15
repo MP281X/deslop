@@ -136,13 +136,13 @@ const root = options?.root !== undefined ? options.root : '.'
 ```tsx
 // good
 if (enabled) return
-aria-current={props.selected === true ? 'page' : undefined}
+aria-current={Boolean.match(props.selected === true, {onFalse: () => undefined, onTrue: () => 'page'})}
 // bad
 if (enabled === true) return // enabled is a boolean
 if (props.selected) return // props.selected can be undefined
 ```
 
-**Flat.** Use early-return statements in Effect.fn. No nested ternaries or combinators deeper than equivalent statements. Match and combinators serve single expressions; Boolean.match selects a value, except one-line JSX-attribute ternaries.
+**Flat.** Use early-return statements in Effect.fn. No ternaries, in JSX too, and no combinators deeper than equivalent statements. An early return, `Boolean.match`, `Option.match`, `Array.match`, `Match` or a lookup record selects a value.
 
 ```ts
 // good
@@ -155,6 +155,7 @@ Boolean.match(ignoreCase, {onFalse: () => undefined, onTrue: () => 'i'})
 // bad
 const type = event.type === 'text-delta' ? 'text' : event.type === 'reasoning-delta' ? 'reasoning' : 'unknown'
 const flags = ignoreCase ? 'i' : undefined // "instead of a ternary the Boolean.match would be cleaner"
+{props.children ? props.children(entry) : <Label entry={entry} />} // "the ternaries are impossible to read"
 // bad
 Array.appendAll(
 	base,
@@ -180,6 +181,17 @@ Option.map(Array.head(parts), part => part.text)
 // bad
 if (Option.isSome(open)) open.value.append(event.delta)
 const parsed = Option.getOrUndefined(Number.parse(event.target.value))
+```
+
+**Absence.** `undefined` marks an absent value. Use `null` only where an outside contract, such as a stored schema or a library callback, demands it, with an inline disable that names the contract.
+
+```ts
+// good
+const last = Option.getOrUndefined(Array.last(sessions))
+// oxlint-disable-next-line no-restricted-properties -- The schema stores a missing link as null.
+url: Option.getOrNull(url)
+// bad
+failed: Option.getOrNull(Option.none()) // "i don't like null, i prefer undefined"
 ```
 
 **Handlers.** A handler used once is an arrow in place; a handler used twice is a `function`.
@@ -209,6 +221,7 @@ items.filter(item => supports(item)).map(item => item.value)
 // good
 Number.parse(input.count)
 Predicate.isString(value)
+Predicate.hasProperty(node, 'tagName')
 Predicate.isNotNullish(annotation)
 Array.isReadonlyArrayEmpty(node.arguments)
 String.isNonEmpty(event.delta)
@@ -223,6 +236,7 @@ const serve = Effect.gen(function* () {
 // bad
 parseInt(input.count)
 typeof value === 'string'
+'tagName' in node // "typeof and in shouldn't be allowed, probably this should use effect schema"
 annotation !== null && annotation !== undefined
 node.arguments.length === 0
 Effect.promise(() => new Promise(resolve => setTimeout(resolve, delay)))
@@ -306,11 +320,11 @@ files: ['packages/components-web/src/form.tsx', 'packages/components-web/src/ric
 
 ## Effect
 
-**Functions.** Use Effect.fn('Name.method') for a traced function with arguments and Effect.fnUntraced for an internal helper. Use Effect.gen for an effect with several statements and no arguments, and a single effect directly. Use Effect.fn.Return for an explicit return type.
+**Functions.** Use Effect.fn('Name.method') for a traced function with arguments and Effect.fnUntraced for an internal helper. Use Effect.gen for an effect with several statements and no arguments, and a single effect directly. Use Effect.fn.Return only for a generator that calls itself.
 
 ```ts
 // good
-const prompt = Effect.fn('Ai.prompt')(function* (message: Prompt.UserMessage): Effect.fn.Return<void, AiError> {
+const prompt = Effect.fn('Ai.prompt')(function* (message: Prompt.UserMessage) {
 	const input = yield* piUserMessage(message)
 	yield* send(input)
 })
@@ -405,15 +419,17 @@ const traced = Effect.withSpan('Notes.create')(notes.create(input))
 Effect.addFinalizer(() => closeSocket(socket)) // acquisition and release with different owners
 ```
 
-**Runtime.** The owned runtime runs the program. Bridge to a Promise once, where an external contract demands it. React is no such contract: atoms run its Effects.
+**Runtime.** The entry point runs the program with `NodeRuntime.runMain`. Bridge to a Promise once, where an external contract demands it, with `Effect.runPromise` and an inline disable that names the contract. React is no such contract: atoms run its Effects.
 
 ```ts
 // good
 NodeRuntime.runMain(program)
-health: flow(rpc.health, Effect.runPromiseWith(Context.empty())),
+// oxlint-disable-next-line no-restricted-properties -- Bingo's produce contract demands a Promise.
+produce: flow(generate, Effect.runPromise),
 // bad
 const runtime = ManagedRuntime.make(AppLayer)
 const run = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(effect)
+Effect.runPromiseWith(Context.empty()) // "what's the point of using the runPromiseWith if i pass an empty context?"
 ```
 
 **Sorting.** `Order` for sorting, `Result` for a fallible pure value.
@@ -431,7 +447,7 @@ entries.sort((left, right) => left.tokens - right.tokens)
 
 ## Types and Schema
 
-**Inference.** Infer types. Annotate recursion or branches TypeScript cannot unite; use schema types and indexed members in signatures. Keep intentional widening, not repeated inferred generics.
+**Inference.** Infer types. Annotate a return type only on a type guard, an assertion function, a recursive function or the thunk of a recursive `Schema.suspend`. Check a returned object with `satisfies`, and type an empty or one-element array with `Array.empty<T>()` or `Array.of<T>(...)` instead of its callback. Use schema types and indexed members in signatures. Keep intentional widening, not repeated inferred generics.
 
 ```ts
 // good
@@ -444,8 +460,14 @@ function visit(node: Node): Result {
 function settle(amount: LedgerEntry['amount']) {
 	return BigDecimal.format(amount)
 }
+function still(bytes: Uint8Array) {
+	return {bytes, type: 'image/jpeg'} satisfies Image
+}
 export type Sandbox = ReturnType<typeof fromSdk>
 // bad
+function still(bytes: Uint8Array): Image {
+	return {bytes, type: 'image/jpeg'}
+} // "not a fan of assigning the return type, i would have preferred a satisfies"
 const Input = Schema.Struct({value: Schema.String}) satisfies Schema.Schema<Input>
 const label = MutableRef.make<string>('') // repeats the inferred type
 export type SandboxLike = {id: string; renew: (seconds: number) => Promise<unknown>} // a copy of an inferred shape
@@ -513,7 +535,7 @@ function isPathNotFound(error: unknown) {
 
 ## Shape
 
-**Inline.** Inline forwarding wrappers, temporaries and constants. Keep a helper only for logic that is reused or deserves its own name. Argument-free functions are named values.
+**Inline.** Inline forwarding wrappers, temporaries, constants and property aliases; keep an alias only where a callback needs its narrowed type. Inline a small helper with one caller. A helper that several files share lives in the package's `lib/utils`. Argument-free functions are named values.
 
 ```ts
 // good
@@ -530,6 +552,10 @@ function isBackendRequest(request: IncomingMessage) {
 } // "this is just a wrapper / factory function"
 Ref.set(entries, Array.copy(decoded)) // decoded is already an array
 const runPromise = Effect.runPromiseWith(Context.empty()) // "wrapper function, tmp variable ... that can be inlined"
+const parent = read.parent // "inline the property access since it add no value"
+function isVideo(type: FileType) {
+	return String.startsWith('video/')(type)
+} // String.startsWith('video/') is already the function
 ```
 
 **Linked state.** Linked state moves in one pure updater, never a setter that calls another.
@@ -565,7 +591,7 @@ const warned = ['sort-keys', 'typescript/no-restricted-types'] // a package rule
 
 ## React
 
-**Components.** React Compiler memoizes. Destructure state at its declaration, receive component refs through props, and keep only a component's own interaction state in React.
+**Components.** React Compiler memoizes. Import hooks by name from `react`. Destructure state at its declaration, receive component refs through props, and keep only a component's own interaction state in React.
 
 ```tsx
 // good
@@ -575,6 +601,7 @@ const moveRpc = useAtomSet(RpcClient.mutation('portfolio.move'))
 // bad
 const handle = useCallback(() => setOpen(true), [])
 const state = useState(false)
+const [open, setOpen] = React.useState(false) // "why are you using the React.useState and not importing useState"
 ```
 
 **Atoms.** Data, shared state and every Effect a component needs live in atoms; a component reads them with hooks and never runs an Effect. A task that changes a React Query hook, a fetching Effect or an Effect runner in React code moves that code to an atom. Declare atoms at module level or in `Atom.family`, never during render. Import `Atom` and `AsyncResult` from `effect/reactivity` and the hooks from `@effect/atom-react`. Supply services through `Atom.runtime(layer)`, and build every read and write with that runtime's `atom` and `fn`. Tie each write to the reads it changes with reactivity keys; only a runtime's `fn` honors them, so never pass them to `Atom.fn`.

@@ -12,9 +12,8 @@ function propertyName(node: ESTree.ObjectProperty) {
 }
 
 function hasUnusedSetter(input: {context: Context; node: ESTree.CallExpression}) {
-	const declaration = input.node.parent
-	if (declaration.type !== 'VariableDeclarator' || declaration.id.type !== 'ArrayPattern') return false
-	const setter = declaration.id.elements[1]
+	if (input.node.parent.type !== 'VariableDeclarator' || input.node.parent.id.type !== 'ArrayPattern') return false
+	const setter = input.node.parent.id.elements[1]
 	if (Predicate.isNullish(setter)) return true
 	if (setter.type !== 'Identifier') return false
 	return pipe(

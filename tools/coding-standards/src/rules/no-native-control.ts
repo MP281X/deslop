@@ -23,11 +23,10 @@ export const noNativeControl = defineRule({
 							attribute.name.type === 'JSXIdentifier' &&
 							attribute.name.name === 'className'
 					),
-					Option.flatMap(attribute =>
-						attribute.type === 'JSXAttribute' && attribute.value?.type === 'Literal'
-							? Option.fromNullishOr(attribute.value.value)
-							: Option.none()
-					),
+					Option.flatMap(attribute => {
+						if (attribute.type !== 'JSXAttribute' || attribute.value?.type !== 'Literal') return Option.none()
+						return Option.fromNullishOr(attribute.value.value)
+					}),
 					Option.exists(value => Array.some(String.split(value, /\s+/u), matches(controlStyle)))
 				)
 				if (name !== 'select' && !styled) return

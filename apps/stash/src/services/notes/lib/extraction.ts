@@ -1,11 +1,9 @@
-// @effect-diagnostics-next-line nodeBuiltinImport:off -- Effect's platform has no DNS API, and the checked address is pinned for the connection.
-import {lookup} from 'node:dns/promises'
-
 import {NodeHttpClient} from '@effect/platform-node'
 
 import type {Duration} from 'effect'
 import {
 	Array,
+	Boolean,
 	ByteSize,
 	Context,
 	Effect,
@@ -13,19 +11,21 @@ import {
 	Match,
 	Option,
 	Order,
+	Predicate,
 	Random,
 	Record,
 	Result,
 	Schema,
 	Stream,
 	String,
+	flow,
 	pipe
 } from 'effect'
 
 import * as cheerio from 'cheerio'
 import {HttpClient} from 'effect/http'
 import type {HttpClientResponse} from 'effect/http'
-import {NetAddress} from 'effect/net'
+import {Dns, NetAddress} from 'effect/net'
 
 import {sourceProxy, sticky} from '#services/media/lib/utils.ts'
 import {captureUrl, isYouTube, plainText, sourceFor} from '#services/notes/lib/utils.ts'
@@ -207,22 +207,14 @@ const load = Effect.fnUntraced(function* <A, E>(
 	) {
 		return yield* NotesError.make({message: 'Only public web links can be read.'})
 	}
-	const resolved = yield* Effect.tryPromise({
-		catch: cause => NotesError.make({cause, message: 'The link host could not be found.'}),
-		try: () => lookup(url.hostname, {all: true, family: 4})
-	})
-	const addresses = Array.map(resolved, entry => entry.address)
-	const allPublic = Array.every(addresses, address =>
-		pipe(
-			NetAddress.ipv4FromString(address),
-			Result.map(isPublic),
-			Result.getOrElse(() => false)
-		)
+	const addresses = yield* pipe(
+		(yield* Dns.Dns).lookup(url.hostname, {family: 'IPv4'}),
+		Effect.mapError(cause => NotesError.make({cause, message: 'The link host could not be found.'}))
 	)
-	if (!Array.isReadonlyArrayNonEmpty(addresses) || !allPublic) {
+	if (!Array.every(addresses, isPublic)) {
 		return yield* NotesError.make({message: 'The link points to a private network.'})
 	}
-	const address = Array.headNonEmpty(addresses)
+	const address = NetAddress.formatIp(Array.headNonEmpty(addresses))
 	const session = `${yield* Random.nextIntBetween(10_000_000, 99_999_999)}`
 	const proxy = Option.map(yield* Exit, exit => sticky(exit, session))
 	return yield* pipe(
@@ -234,7 +226,7 @@ const load = Effect.fnUntraced(function* <A, E>(
 			}
 		}),
 		Effect.flatMap(response =>
-			Effect.map(response.status === 200 ? Effect.asSome(read(response)) : Effect.succeed(Option.none<A>()), body => ({
+			Effect.map(Effect.when(read(response), Effect.succeed(response.status === 200)), body => ({
 				body,
 				location: response.headers['location'],
 				status: response.status,
@@ -249,22 +241,27 @@ const load = Effect.fnUntraced(function* <A, E>(
 				Layer.provide(
 					NodeHttpClient.layerAgentOptions(
 						Option.match(proxy, {
-							onNone: (): AgentOptions => ({
-								autoSelectFamily: false,
-								// oxlint-disable-next-line unicorn/no-null -- Node's lookup callback takes null on success.
-								lookup: (_hostname, _options, callback) => callback(null, address, 4)
-							}),
+							onNone: () =>
+								({
+									autoSelectFamily: false,
+									// oxlint-disable-next-line unicorn/no-null -- Node's lookup callback takes null on success.
+									lookup: (_hostname, _options, callback) => callback(null, address, 4)
+								}) satisfies AgentOptions,
 							// Expo's types make NODE_ENV required in every environment object.
-							onSome: (exit): AgentOptions => ({
-								proxyEnv: {HTTP_PROXY: exit, HTTPS_PROXY: exit, NODE_ENV: 'production'}
-							})
+							onSome: exit =>
+								({proxyEnv: {HTTP_PROXY: exit, HTTPS_PROXY: exit, NODE_ENV: 'production'}}) satisfies AgentOptions
 						})
 					)
 				)
 			)
 		),
 		Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
-		Effect.mapError(cause => (Schema.is(NotesError)(cause) ? cause : NotesError.make({cause, message: unreachable})))
+		Effect.mapError(cause =>
+			pipe(
+				Option.liftPredicate(cause, Schema.is(NotesError)),
+				Option.getOrElse(() => NotesError.make({cause, message: unreachable}))
+			)
+		)
 	)
 })
 
@@ -277,7 +274,7 @@ const follow = Effect.fnUntraced(function* <A, E>(
 	url: URL,
 	read: (response: HttpClientResponse.HttpClientResponse) => Effect.Effect<A, E>,
 	hops: number
-): Effect.fn.Return<{body: A; type: string; url: URL}, NotesError> {
+): Effect.fn.Return<{body: A; type: string; url: URL}, NotesError, Dns.Dns> {
 	const proxied = Option.isSome(yield* Exit)
 	const answer = yield* pipe(
 		load(url, read),
@@ -286,7 +283,10 @@ const follow = Effect.fnUntraced(function* <A, E>(
 			() => NotesError.make({message: unreachable})
 		),
 		timeLimit('15 seconds', unreachable),
-		Effect.retry({times: proxied ? 2 : 0, while: error => error.message === unreachable})
+		Effect.retry({
+			times: Boolean.match(proxied, {onFalse: () => 0, onTrue: () => 2}),
+			while: error => error.message === unreachable
+		})
 	)
 	if (answer.status >= 300 && answer.status < 400 && answer.location !== undefined) {
 		if (hops === 5) return yield* NotesError.make({message: 'The link redirects too often.'})
@@ -305,7 +305,7 @@ const decode = Effect.fnUntraced(function* <S extends Schema.Constraint>(schema:
 	)
 })
 
-const resolve = Effect.fnUntraced(function* (url: URL, hops: number): Effect.fn.Return<URL, NotesError> {
+const resolve = Effect.fnUntraced(function* (url: URL, hops: number): Effect.fn.Return<URL, NotesError, Dns.Dns> {
 	if (!Array.contains(shortHosts, url.hostname)) return url
 	const answer = yield* load(url, () => Effect.void)
 	if (answer.location === undefined || hops === 5) {
@@ -589,7 +589,7 @@ const blockTags = [
 
 function markdown($: cheerio.CheerioAPI, node: Node, base: URL): string {
 	if (node.nodeType === 3) return String.replace(/\s+/gu, ' ')(node.data)
-	if (!('tagName' in node)) return ''
+	if (!Predicate.hasProperty(node, 'tagName')) return ''
 	const inner = pipe(
 		$(node).contents().toArray(),
 		Array.map(child => markdown($, child, base)),
@@ -608,7 +608,10 @@ function element($: cheerio.CheerioAPI, input: {base: URL; inner: string; node: 
 	return pipe(
 		Match.value(input.tag),
 		Match.when('li', () => {
-			const marker = $(node).parent().is('ol') ? `${$(node).index() + 1}.` : '-'
+			const marker = Boolean.match($(node).parent().is('ol'), {
+				onFalse: () => '-',
+				onTrue: () => `${$(node).index() + 1}.`
+			})
 			return `\n${String.repeat($(node).parents('ul, ol').length - 1)('  ')}${marker} ${text}`
 		}),
 		Match.when('pre', () => `\n\n\`\`\`\n${$(node).text()}\n\`\`\`\n\n`),
@@ -655,15 +658,17 @@ export function pageText(html: string, url: URL) {
 		),
 		String.split('```'),
 		Array.map((part, index) =>
-			index % 2 === 1
-				? part
-				: pipe(
+			Boolean.match(index % 2 === 1, {
+				onFalse: () =>
+					pipe(
 						part,
 						String.split('\n'),
 						Array.map(line => String.replace(/^ (?=\S)/u, '')(String.trimEnd(line))),
 						Array.join('\n'),
 						String.replace(/\n{3,}/gu, '\n\n')
-					)
+					),
+				onTrue: () => part
+			})
 		),
 		Array.join('```'),
 		String.trim
@@ -732,7 +737,10 @@ export class Sources extends Context.Service<
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
-			const through = Effect.provideService(Exit, yield* sourceProxy)
+			const through = flow(
+				Effect.provideService(Exit, yield* sourceProxy),
+				Effect.provideService(Dns.Dns, yield* Dns.Dns)
+			)
 
 			return Sources.of({
 				extract: Effect.fn('Sources.extract')(
@@ -742,7 +750,7 @@ export class Sources extends Context.Service<
 						// TikTok answers some exits with a login page instead of the post.
 						if (source === 'TikTok' && String.includes('/photo/')(url.pathname)) {
 							return yield* Effect.retry(tikTokPhotos(url), {
-								times: Option.isSome(yield* Exit) ? 2 : 0,
+								times: Boolean.match(Option.isSome(yield* Exit), {onFalse: () => 0, onTrue: () => 2}),
 								while: error => error.message === 'The TikTok photo post is unreadable.'
 							})
 						}

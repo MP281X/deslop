@@ -1,6 +1,20 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Array, HashMap, HashSet, Match, Number, Option, Order, Predicate, Record, String, Tuple, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	HashMap,
+	HashSet,
+	Match,
+	Number,
+	Option,
+	Order,
+	Predicate,
+	Record,
+	String,
+	Tuple,
+	pipe
+} from 'effect'
 
 import {useLexicalComposerContext} from '@lexical/react/LexicalComposerContext'
 import {ContentEditable} from '@lexical/react/LexicalContentEditable'
@@ -163,14 +177,20 @@ function getItems<TValue extends RichTextArea.Value>(
 						queryIndex: state.queryIndex + 1,
 						total:
 							state.total +
-							(state.lastMatchIndex === index - 1 ? 8 : 1) +
-							(index === 0 || label[index - 1] === '/' || label[index - 1] === '-' || label[index - 1] === '_' ? 4 : 0)
+							Boolean.match(state.lastMatchIndex === index - 1, {onFalse: () => 1, onTrue: () => 8}) +
+							Boolean.match(
+								index === 0 || label[index - 1] === '/' || label[index - 1] === '-' || label[index - 1] === '_',
+								{onFalse: () => 0, onTrue: () => 4}
+							)
 					}
 				}
 			)
 
 			return {
-				score: score.queryIndex === String.length(query) ? score.total - String.length(label) / 1000 : noMatchScore,
+				score: Boolean.match(score.queryIndex === String.length(query), {
+					onFalse: () => noMatchScore,
+					onTrue: () => score.total - String.length(label) / 1000
+				}),
 				value
 			}
 		}),
@@ -319,17 +339,15 @@ function EditorPlugin<TValue extends RichTextArea.Value>(props: {
 			editor.registerCommand(
 				Lexical.PASTE_COMMAND,
 				event => {
-					const files =
-						event instanceof ClipboardEvent ? Array.fromIterable(event.clipboardData?.files ?? []) : Array.empty<File>()
+					if (!(event instanceof ClipboardEvent)) return false
+					const files = Array.fromIterable(event.clipboardData?.files ?? [])
 					if (Array.isReadonlyArrayEmpty(files)) return false
 
 					event.preventDefault()
 
 					editor.update(() => {
-						const currentSelection = Lexical.$getSelection()
-						const selection = Lexical.$isRangeSelection(currentSelection)
-							? currentSelection
-							: pipe(Lexical.$getRoot().selectEnd(), () => Lexical.$getSelection())
+						if (!Lexical.$isRangeSelection(Lexical.$getSelection())) Lexical.$getRoot().selectEnd()
+						const selection = Lexical.$getSelection()
 
 						if (!Lexical.$isRangeSelection(selection)) {
 							return
@@ -406,19 +424,25 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 								)
 							})
 						)
-					),
-					Option.getOrNull
+					)
 				)
 
 				setSearch(current => {
-					const value = next ? {query: next.query, trigger: next.trigger} : undefined
+					const value = Option.getOrUndefined(Option.map(next, found => ({query: found.query, trigger: found.trigger})))
 					if (current?.trigger === value?.trigger && current?.query === value?.query) return current
 					return value
 				})
 
-				return next
-					? {leadOffset: next.leadOffset, matchingString: next.query, replaceableString: next.replaceableString}
-					: null
+				return pipe(
+					next,
+					Option.map(found => ({
+						leadOffset: found.leadOffset,
+						matchingString: found.query,
+						replaceableString: found.replaceableString
+					})),
+					// oxlint-disable-next-line no-restricted-properties -- Lexical's trigger function returns null when nothing matches.
+					Option.getOrNull
+				)
 			}}
 			onSelectOption={(option, node, close) => {
 				// @effect-diagnostics-next-line cryptoRandomUUID:off -- The synchronous Lexical selection boundary requires an immediate collision-safe identifier.
@@ -486,16 +510,17 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 									}}
 								>
 									<div className="flex min-w-0 items-center gap-2">
-										{props.children ? (
-											props.children(option.entry)
-										) : (
-											<>
-												<span className="text-(--entry-color)" style={{'--entry-color': option.entry.color}}>
-													{option.entry.trigger}
-												</span>
-												<span className="text-foreground">{option.entry.value.label}</span>
-											</>
-										)}
+										{Option.match(Option.fromUndefinedOr(props.children), {
+											onNone: () => (
+												<>
+													<span className="text-(--entry-color)" style={{'--entry-color': option.entry.color}}>
+														{option.entry.trigger}
+													</span>
+													<span className="text-foreground">{option.entry.value.label}</span>
+												</>
+											),
+											onSome: render => render(option.entry)
+										})}
 									</div>
 								</CommandItem>
 							))}

@@ -3,7 +3,7 @@ import {Array, Option, pipe} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
-import {matches, variableFromScope} from '#rules/shared.ts'
+import {bindingName, matches, variableFromScope} from '#rules/shared.ts'
 
 function namedTuple(input: {context: Context; node: ESTree.TSType; seen: ESTree.TSType[]}): boolean {
 	if (Array.contains(input.seen, input.node)) return false
@@ -37,11 +37,13 @@ function namedTuple(input: {context: Context; node: ESTree.TSType; seen: ESTree.
 	)
 }
 
+function componentName(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+	if (node.type !== 'ArrowFunctionExpression' && node.id !== null) return Option.some(node.id.name)
+	return bindingName(node)
+}
+
 function component(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
-	const name =
-		(node.type === 'ArrowFunctionExpression' ? undefined : node.id) ??
-		(node.parent.type === 'VariableDeclarator' && node.parent.id.type === 'Identifier' ? node.parent.id : undefined)
-	if (name === undefined || !matches(/^[A-Z]/u)(name.name) || node.params.length !== 1 || node.body === null) {
+	if (!Option.exists(componentName(node), matches(/^[A-Z]/u)) || node.params.length !== 1 || node.body === null) {
 		return false
 	}
 	if (node.body.type === 'JSXElement' || node.body.type === 'JSXFragment') return true
@@ -56,21 +58,25 @@ function component(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
 	)
 }
 
-function isPattern(input: {context: Context; node: ESTree.ParamPattern | ESTree.BindingPattern; component: boolean}) {
-	const target = input.node.type === 'AssignmentPattern' ? input.node.left : input.node
-	if (target.type === 'ArrayPattern') {
-		return !Option.exists(Option.fromNullishOr(target.typeAnnotation), annotation =>
+function isPattern(input: {
+	context: Context
+	node: ESTree.ParamPattern | ESTree.BindingPattern
+	component: boolean
+}): boolean {
+	if (input.node.type === 'AssignmentPattern') return isPattern({...input, node: input.node.left})
+	if (input.node.type === 'ArrayPattern') {
+		return !Option.exists(Option.fromNullishOr(input.node.typeAnnotation), annotation =>
 			namedTuple({context: input.context, node: annotation.typeAnnotation, seen: []})
 		)
 	}
-	if (target.type !== 'ObjectPattern') return false
-	const named = Array.filter(target.properties, property => property.type === 'Property')
+	if (input.node.type !== 'ObjectPattern') return false
+	const named = Array.filter(input.node.properties, property => property.type === 'Property')
 	return !(
 		input.component &&
 		named.length === 1 &&
 		named[0]?.key.type === 'Identifier' &&
 		named[0].key.name === 'ref' &&
-		Array.some(target.properties, property => property.type === 'RestElement')
+		Array.some(input.node.properties, property => property.type === 'RestElement')
 	)
 }
 

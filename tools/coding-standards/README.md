@@ -29,7 +29,7 @@ import {oxlint} from '@deslop/coding-standards'
 export default defineConfig({lint: {extends: [oxlint]}})
 ```
 
-The preset needs Effect-tsgo's patched Oxlint, so keep the patch command in the project's `prepare` script. Its fixes leave redundant parentheses and blank lines for the formatter, so the project's fix script runs `vp fmt` after `vp check --fix`.
+The preset needs Effect-tsgo's patched Oxlint, so keep the patch command in the project's `prepare` script. Its fixes leave redundant parentheses and blank lines for the formatter, so the project's fix script runs `vp fmt` after `vp check --fix`, even when diagnostics remain, and exits with the status of the check.
 
 <details>
 <summary>For agents</summary>

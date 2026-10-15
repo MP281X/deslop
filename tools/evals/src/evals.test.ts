@@ -39,9 +39,8 @@ it('does not add cumulative Codex snapshots or treat progress as a final reply',
 	assert.strictEqual(metrics.outputTokens, 8)
 	assert.strictEqual(metrics.reply, '')
 	assert.strictEqual(metrics.toolCalls, 1)
-	assert.isNull(metrics.editCalls)
-	assert.isNull(metrics.repeatedReadRequests)
-	assert.isNull(metrics.correctiveEdits)
+	assert.isUndefined(metrics.editCalls)
+	assert.isUndefined(metrics.repeatedReadRequests)
 })
 
 it('classifies Claude tool-turn text and its streamed fragments as commentary', () => {
@@ -89,7 +88,7 @@ it('retains the final assistant message across trailing results and distinguishe
 	]`)
 	)
 	assert.strictEqual(metrics.reply, 'First.\nSecond.')
-	assert.isNull(measure([], false).toolCalls)
+	assert.isUndefined(measure([], false).toolCalls)
 	assert.strictEqual(measure([]).toolCalls, 0)
 })
 
@@ -106,8 +105,7 @@ it('pairs tool results by identity and leaves unobserved facts unavailable', () 
 	assert.strictEqual(metrics.explicitToolFailures, 1)
 	assert.strictEqual(metrics.repeatedReadRequests, 1)
 	assert.strictEqual(metrics.editCalls, 0)
-	assert.isNull(metrics.inputTokens)
-	assert.isNull(metrics.firstPassReady)
+	assert.isUndefined(metrics.inputTokens)
 	assert.strictEqual(blindText('/tmp/eval/runs/candidate-codex/repo', '/tmp/eval'), 'EVAL/runs/RUN/repo')
 })
 
@@ -327,7 +325,6 @@ console.log(JSON.stringify(await Effect.runPromise(pipe(program, Effect.scoped, 
 				)
 				if (!result.threads) return yield* Effect.die('Missing thread evidence')
 				assert.strictEqual(result.threads[0]?.sessions[0]?.inputTokens, 12)
-				assert.isNull(result.threads[0]?.sessions[0]?.firstPassReady)
 				assert.include(yield* fs.readFileString(`${manifest.directory}/evidence/${run.id}/diff.patch`), 'Change')
 				assert.isTrue(yield* fs.exists(`${manifest.directory}/judge/${result.judge}/branches/feature/export.patch`))
 				assert.strictEqual(

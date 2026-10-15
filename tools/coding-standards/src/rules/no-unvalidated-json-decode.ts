@@ -38,17 +38,17 @@ function unknownJsonSchema(input: {context: Context; node: ESTree.CallExpression
 	) {
 		return false
 	}
-	const parent = input.node.parent
+
 	if (
-		parent.type !== 'CallExpression' ||
-		parent.arguments[0] !== input.node ||
-		parent.callee.type !== 'MemberExpression'
+		input.node.parent.type !== 'CallExpression' ||
+		input.node.parent.arguments[0] !== input.node ||
+		input.node.parent.callee.type !== 'MemberExpression'
 	) {
 		return false
 	}
 	return (
-		importedMember({context: input.context, importedName: 'Schema', node: parent.callee}) &&
-		pipe(memberName(parent.callee), Option.exists(String.startsWith('decode')))
+		importedMember({context: input.context, importedName: 'Schema', node: input.node.parent.callee}) &&
+		pipe(memberName(input.node.parent.callee), Option.exists(String.startsWith('decode')))
 	)
 }
 
