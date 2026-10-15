@@ -26,7 +26,7 @@ jobs:
       - name: Test
         run: vp run test
 
-  # Each native fingerprint builds once for the iOS Simulator; agents install it and serve JavaScript from Metro.
+  # Each native fingerprint builds once for the iOS Simulator; agents replace its JavaScript bundle with their branch's.
   simulator:
     strategy:
       matrix:

@@ -31,26 +31,22 @@ The CLI saves the entry through the server's RPC, waits until the server has rea
 - **Note page.** A reading page like Mail's message: preview, title, author, app and date, the summary, then the AI's notes in the system body font, with headings, bold names and tappable links. Tags follow; the transcript, the source text and the words in the images stay on the server for search and the CLI. The app's logo opens the link; the menu shares, regenerates or deletes. A note the server could not read shows why and a Try Again button.
 - **Native module.** `modules/native` checks the clipboard without reading it and adds the bottom-bar search field through `@expo/ui`'s modifier API. The logos come from `@deslop/components-mobile`, which renders svgl's SVGs natively and cuts out their white parts for menu icons.
 - **Share extension.** `@bacons/apple-targets` adds `targets/share` at prebuild. It finds the server in the app's `StashServer` Info.plist key and uploads from the App Group `group.<app bundle id>`. A failed background upload is not reported, because the sheet has already closed.
-- **Variants.** `APP_VARIANT` from `eas.json` picks `development` or `production`; the development build installs beside the TestFlight one. `APPLE_TEAM_ID` comes from the EAS environment.
+- **Variants.** `APP_VARIANT` from `eas.json` picks `development` for the simulator build, as `stash dev` with the bundle identifier `xyz.mp281x.stash.dev`, or `production`. `APPLE_TEAM_ID` comes from the EAS environment.
 
 ## Releases
 
 On main, `deploy.yaml` compares `apps/stash`, `packages` and the lockfile with the commit of the last EAS Update. When they changed, a known native fingerprint ships the JavaScript as a new update; a new one first builds on GitHub's `xcode-27` runner with `eas build --local` and submits to TestFlight. A newer merge cancels the older run, and the next one ships both. Each release is version `0.1.<run>` with build number `<run>`.
 
-## Development build
+## Simulator
 
-`vp -C apps/stash run dev` serves Metro on localhost and writes the tailnet URL into its manifest; `sudo tailscale serve --bg --https=8081 http://localhost:<Metro port>` lets stash dev reach it. Metro picks 8082 when that serve already holds 8081, so point it at the port Metro prints. Use `localhost`, not `127.0.0.1`: Metro listens on `::1`.
-
-On the iOS Simulator, each branch push leaves the build as the artifact `stash-simulator-<fingerprint>`:
+CI builds the app for the iOS Simulator once per native fingerprint, as the artifact `stash-simulator-<fingerprint>` of the branch's CI run. The app holds the JavaScript of the commit that built it, so replace its bundle with the branch's own before you install it. `device_open` returns the `agent-device` command and its flags.
 
 ```bash
 gh run download <run id> --name stash-simulator-<fingerprint> --dir /tmp/stash-sim && tar -xzf /tmp/stash-sim/simulator.tar.gz -C /tmp/stash-sim
+APP_VARIANT=development vp -C apps/stash exec expo export:embed --platform ios --dev false --bundle-output /tmp/stash-sim/stashdev.app/main.jsbundle --assets-dest /tmp/stash-sim/stashdev.app
 <agent-device> install xyz.mp281x.stash.dev /tmp/stash-sim/stashdev.app <flags>
-<agent-device> open xyz.mp281x.stash.dev 'stash-dev://expo-development-client/?url=https%3A%2F%2F<worker>.tailnet-8c4c.ts.net%3A8081' <flags>
-<agent-device> alert accept <flags>
+<agent-device> open xyz.mp281x.stash.dev <flags>
 ```
-
-`device_open` returns the `agent-device` command and its flags. The first open asks to open the link in stash dev, and the first launch shows the developer menu.
 
 ## Checks before a build
 

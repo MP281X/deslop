@@ -2,7 +2,7 @@ import {Config, Effect, Option, pipe} from 'effect'
 
 import type {ExpoConfig} from 'expo/config'
 
-// EAS sets APP_VARIANT from the build profile; the development build installs beside the TestFlight one.
+// EAS sets APP_VARIANT from the build profile; the simulator build gets its own bundle identifier and name.
 export function make(app: {
 	bundleIdentifier: string
 	name: string

@@ -171,7 +171,7 @@ Start from a Debian netinst image, and select only the SSH server task.
 
 ## Mac
 
-The Mac runs T3's desktop app and the iOS Simulator, which T3's device tools drive over SSH from a worker. It builds nothing: the simulator app comes from CI, and its JavaScript from Metro on the worker.
+The Mac runs T3's desktop app and the iOS Simulator, which T3's device tools drive over SSH from a worker. It builds nothing: the simulator app comes from CI, with the JavaScript bundle that the worker exports.
 
 - **Owner.** The user's organization manages it through MDM: updates, FileVault, the firewall and power settings. Keep those policies.
 - **On demand.** System sleep is off (`pmset` sleep 0), so the Mac stays reachable with its display off. A closed lid or the Sleep command makes it unreachable. When `ssh matteopaludgnach@macbook-pro true` fails, ask under **Needs you** to wake it.
