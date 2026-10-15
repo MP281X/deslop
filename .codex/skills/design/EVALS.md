@@ -14,7 +14,7 @@ Judge the browser experience, not the amount of UI produced.
 - Make idle, active, cancelled, completed and empty states understandable.
 - Keep completed records visible when the import stops; distinguish stop from undo.
 - Establish readable light and dark views at 390-point width, touch targets and keyboard access.
-- Settle the representative journey with the user before backend changes; expand only its approved direction.
+- Show the representative journey early in the real host and start the backend change at once; revise only the part the user's report steers.
 - Remove redundant controls and status text; use interaction to explore a real consequence, not to navigate an explanation.
 
 Inspect every visible state and transition. Grade hierarchy, behavior and readability independently of engineering and proof-capture quality. The user judges the final variants.

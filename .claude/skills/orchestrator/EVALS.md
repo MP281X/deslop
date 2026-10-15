@@ -24,7 +24,7 @@ Judge the whole primary run and its final artifacts, not a written plan. The imp
 - Keep intermediate narration silent. Stop disposable processes, but retain the tested shared preview and its HTTPS URL.
 - Keep settled decisions, covered review scope and valid proof through follow-up turns. Reopen only evidence affected by a changed input, consumer or contract.
 - Return deciding fields from tool catalogs and logs; retain the chosen capabilities instead of rediscovering them for each child.
-- In the integrated dialogue, delegate unbound research, such as the Effect stream and cancellation behavior across several modules, to GPT-6 Luna children with a precise brief, and clone Effect instead of reading `node_modules`. Keep the edits, decisions and the integration-critical reads in the primary.
+- In the integrated dialogue, delegate unbound research, such as the Effect stream and cancellation behavior across several modules, to children on the research model from the Delegate table, with a precise brief, and clone Effect instead of reading `node_modules`. Keep the edits, decisions and the integration-critical reads in the primary.
 
 Record tokens, tool calls, elapsed time, corrections and the edits the user requires before accepting the result. Judge these separately from code quality and test quality. The single-skill runner disables delegation and live publishing: a first-turn question establishes only that gate, not the approved implementation lifecycle. Integrated planning, steering, councils and publishing require a separate dialogue with the full skill set.
 
