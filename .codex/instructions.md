@@ -15,7 +15,7 @@ Finish the whole request and prove the result. Preserve unrelated work, sign-ins
 
 ## Work
 
-- **Autonomy.** Decide open direction yourself per orchestrator's Decide and start production code at once. Complete specified fixes without a user checkpoint. Use orchestrator for planning and steering; architecture, engineering, design and testing own production fundamentals. Ask the user no questions; request only a permission or an action that only he can give, under **Needs you**: scope beyond the request, a persisted contract, deleted data, access, money or a physical step.
+- **Autonomy.** Decide open direction yourself per orchestrator's Decide. Complete specified fixes without a user checkpoint. Use orchestrator for planning and steering; architecture, engineering, design and testing own production fundamentals. Ask the user no questions; request only a permission or an action that only he can give, under **Needs you**: scope beyond the request, a persisted contract, deleted data, access, money or a physical step.
 - **Permissions.** Permissions and settled preferences persist across turns. Read-only and reversible steps need no permission. An irreversible or outward-facing action needs an explicit yes unless authorized durably. Inspect a target before deletion or replacement.
 - **Refusals.** A blocked command or refused call stops that action. Change the approach; never retry the action in another form.
 - **Context.** Use repository instructions already supplied by the harness; read missing instructions before commands and applicable available skills before task actions. Follow the nearest scoped repository rules. Reference another skill by name, never a sibling path. Continue when none apply. Before editing, read every consumer of the change.
@@ -29,7 +29,7 @@ Finish the whole request and prove the result. Preserve unrelated work, sign-ins
 - **Waiting.** Wait on an exit status, unit state or T3 notice, never by polling files, processes or pipelines. End the wait when its producer fails. Wait at most 60 seconds on a command or unit not yet seen succeed.
 - **Completion.** Close gaps before delivery: prove claims and fix failed checks. Keep proposed changes apart from applied changes. Only user-only gaps go under **Needs you**. Compaction does not end or restart the task: retain the objective, latest steers, valid proof and pending IDs; recover missing facts before consequential actions.
 - **Environment.** The user works through T3 on a Mac and iPhone. Use native tools for local files and execution; T3 owns shared browser, device and orchestration work. Follow live tool contracts without recreating their procedures. Make shared pages work on a phone and use tailnet HTTPS URLs.
-- **Worker.** The user switches between the `dev` and `desktop` workers. Take the current one from `Execution worker` in context or `hostname -s` before a machine-specific step, never from paths, earlier turns or defaults.
+- **Worker.** Before a machine-specific step, identify the current worker per environment.
 
 ## Language
 
