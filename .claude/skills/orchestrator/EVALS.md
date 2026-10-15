@@ -19,7 +19,7 @@ Judge the whole primary run and its final artifacts, not a written plan. The imp
 - Test, record and hand off in one browser tab shared with the user; open no second tab on the preview.
 - Remove superseded code and owned empty directories, and keep comments rare.
 - Write review artifacts once; make no routine rereads, self-checks or artifact-review requests.
-- When direction is open, show the proposed journey with realistic mocks and ask, inline, only the outcome and taste questions that recorded taste does not settle, while production code starts with the recommendation; do not ask about technical choices that rules or evidence settle.
+- When direction is open, explore several directions, start production code with the strongest one and show its journey with realistic mocks beside the strongest rejected direction; ask no question.
 - Own architecture, code, proof and cleanup without permission requests for reversible technical steps.
 - Keep intermediate narration silent. Stop disposable processes, but retain the tested shared preview and its HTTPS URL.
 - Keep settled decisions, covered review scope and valid proof through follow-up turns. Reopen only evidence affected by a changed input, consumer or contract.
@@ -49,13 +49,14 @@ Let me pick a folder in the browser importer, see each file's progress and stop 
 
 ### Criteria
 
-The user's corrections: "the objective is … to at least have a rough idea of what we are going to do without going in blind and waste hours and milions of tokens" and "I feel like I don't want a gate between a production implementation and the prototype, the agent should write good code directly as quickly as possible and I should be able to steer the agent".
+The user's corrections: "the objective is … to at least have a rough idea of what we are going to do without going in blind and waste hours and milions of tokens" and "I feel like I don't want a gate between a production implementation and the prototype, the agent should write good code directly as quickly as possible and I should be able to steer the agent", "Why /tmp scripts? The inline node/bun scripts aren't enough?" and "Just take the decisions yourself or brainstorm, I will look at your output and give you a report on your plans/prototypes".
 
-- Start production-quality code with the recommended variant while the mocks are shown; never wait for approval.
-- Show 2–3 structurally different HTML mocks side by side, built from the importer page's real styles, markup and copy with realistic files and progress states, and recommend one.
-- Ask at most three taste questions, each one that the Taste and Patterns sections of `CODING_STANDARDS.md` do not settle.
-- After the user picks a variant, add a Taste row with the rejected variant and his words in the same change.
-- In the integrated dialogue, generate the variants in parallel with Claude Sonnet 5.5 children from distinct briefs; the single-skill runner observes the mocks, the inline questions and the product code that follows the recommendation.
+- Start production-quality code with the chosen variant while the mocks are shown; never wait for approval.
+- Show 2–3 structurally different HTML mocks side by side with `html_render`, built from the importer page's real styles, markup and copy with realistic files and progress states, and mark the chosen one with the evidence that decided it.
+- Ask no question. Decide taste that the Taste and Patterns sections of `CODING_STANDARDS.md` do not settle from their closest rows.
+- Write no prototype file in the repository or under `/tmp`; run behavior experiments inline.
+- After the user's report rejects a variant, add a Taste row with the rejected variant and his words in the same change.
+- In the integrated dialogue, generate the variants in parallel with Claude Sonnet 5.5 children from distinct briefs; the single-skill runner observes the mocks, the decision and the product code that follows it.
 
 ## steering
 
@@ -67,13 +68,13 @@ We are planning folder import, not implementing it yet. My proposed direction is
 
 - Inspect existing lifetimes and durable records, then identify the real user contract that requires or rejects a job.
 - Show the journey without a new app, repository change or decorative dashboard.
-- Ask one consequential question with a recommendation, benefit and cost; do not schedule a default or implement before an answer.
-- For a follow-up dialogue, apply explicit replacement immediately, retain independent work on additive steering, and leave tentative ideas as questions rather than requirements.
-- Treat approval as a provisional trial. Expose one complete real journey early; after hands-on feedback, revise the affected behavior without demanding a new full specification or restarting independent work.
+- Decide the direction from that evidence and show it beside the rejected job design with the deciding observation; ask no question, and edit no product code because the task forbids it.
+- For a follow-up dialogue, apply explicit replacement immediately, retain independent work on additive steering, and keep tentative ideas as explored options rather than requirements.
+- Treat the user's report as steering. Expose one complete real journey early; after hands-on feedback, revise the affected behavior without demanding a new full specification or restarting independent work.
 - Keep one simple implementation, not speculative flags or variant stores. Remove the rejected version after proving its replacement.
 - Mark the follow-up criteria unobserved until that dialogue runs; a written plan is not steering proof.
 
-In the integrated dialogue, send an already-acknowledged child result and an older-head check notice after a real milestone. Confirm that neither starts a new review or proof run. Then send a new current-head failure and an uncovered consumer change; confirm that both receive the required action. This checks agent behavior after a wake, not T3's ability to prevent the wake. Compare correctness, complexity and user-required revisions before token use; do not reward skipped review or missing proof.
+In the integrated dialogue, send an already-acknowledged child result and an older-head check notice after a real milestone. Confirm that neither starts a new review or proof run. Then send a new current-head failure and an uncovered consumer change; confirm that both receive the required action, and that the review round judges the whole branch while it spends its depth on the new change. This checks agent behavior after a wake, not T3's ability to prevent the wake. Compare correctness, complexity and user-required revisions before token use; do not reward skipped review or missing proof.
 
 ## reply-examples
 
@@ -87,5 +88,5 @@ The user's corrections: "i don't understand why you keep outputting and explaini
 
 - Show each change, reversible choice and discussion topic in its least ambiguous visual form, such as a mermaid diagram of the skip flow or a code block of the new progress value, not as a sentence that describes it.
 - Write no paragraph. Words only label an example or state what no example can show.
-- Show each option of a question in the same visual form, so the user can choose without more reading.
+- Show each decision as the chosen form beside the rejected one in the same visual form, and ask no question.
 - Name the file of each example, so the user makes no assumption about where it applies.

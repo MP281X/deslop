@@ -31,7 +31,7 @@ Engineering's Patterns rule reads this table. A pattern change updates the owner
 
 ## Taste
 
-Engineering's Taste rule reads and extends this table. Ask the user only about taste that no row, pattern or rule settles.
+Engineering's Taste rule reads and extends this table.
 
 | Area            | Choice                                                          | Rejected                                      | His words                                                                                        |
 | --------------- | --------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------ |
