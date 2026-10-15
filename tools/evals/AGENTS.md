@@ -29,6 +29,7 @@ node tools/evals/src/main.cli.ts cleanup <directory>
 
 Runner changes require real T3 isolation and collection proof. Reuse retained native runs for unchanged contracts; source checks and constructed transcripts do not prove T3 behavior.
 
+- **Corrections.** Derive each case from a correction the user made in a real thread: the task repeats his original request on the starter, and the criteria quote his correction. A candidate passes only when the corrected mistake does not recur. A case without a recorded correction does not rank instruction changes.
 - **Pilot first.** Before activation, fix the question, representative task, candidate difference, quality criteria and observation that ends the comparison. Start with one representative task pair, not every skill, model or instruction variant. Judge correctness, architecture, useful proof and user-required revisions before token traffic. Expand only to resolve a named uncovered contract or an inconsistent observation; no automatic next round or model sweep.
 - **Full workflow.** For lifecycle changes, use the complete skill set and one real journey: provisional prototype approval, early real trial, an affected-direction steer and completion. Keep single-skill diagnostics separate. Reuse the established baseline when its task, source, harness and model still match; a changed baseline needs a new pair. A shorter reply or cheaper run does not prove better results or fewer user revisions. Stop with an unresolved result when evidence cannot rank the candidates.
 

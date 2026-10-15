@@ -29,6 +29,16 @@ Engineering's Patterns rule reads this table. A pattern change updates the owner
 | RPC              | `apps/portfolio/src/rpcs/` and its client in `apps/portfolio/src/lib/utils.ts` | `rg --files -g '**/rpcs/contracts.ts' apps tools`                                              | RPC rules below                |
 | Web UI primitive | `packages/components-web/src/ui/`, added with `vp run shadcn add`              | `rg -l -e @deslop/components-web -e '#components/ui/' apps packages tools/create-app/template` | `shadcn/no-raw-colors`, review |
 
+## Taste
+
+Engineering's Taste rule reads and extends this table. Ask the user only about taste that no row, pattern or rule settles.
+
+| Area            | Choice                                                          | Rejected                                      | His words                                                                                        |
+| --------------- | --------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| AI calls        | The Effect AI provider module, directly in the service using it | A wrapper `ai` package with its own interface | "This interface looks like shit … just remove the package and use the effect ai module directly" |
+| Identifiers     | A literal union for a closed set of ids, such as model ids      | `string`                                      | "The id need to be a literal"                                                                    |
+| Stash note page | The note's content and tags                                     | Source and Text in image sections             | "Sections like the source and text in image can be removed"                                      |
+
 ## Apps
 
 - Routes never repeat the base styles (`bg-background text-foreground`) the root applies, and add no `main` or `h1` wrapper they don't need.

@@ -17,7 +17,7 @@ Judge the whole primary run and its final artifacts, not a written plan. The imp
 - Keep implementation, proof and cleanup in the required order; reuse evidence that remains valid.
 - Remove superseded code and owned empty directories, and keep comments rare.
 - Write review artifacts once; make no routine rereads, self-checks or artifact-review requests.
-- Ask one consequential outcome question before implementation when direction is open. Demonstrate the proposed journey with a cheap prototype; do not ask the user to settle code organization.
+- Before implementation, when direction is open, demonstrate the proposed journey with realistic mocks and ask only the outcome and taste questions that recorded taste does not settle; do not ask about technical choices that rules or evidence settle.
 - After approval, own architecture, code, proof and cleanup without repeated permission requests for reversible technical steps.
 - Keep intermediate narration silent. Stop disposable processes, but retain the tested shared preview and its HTTPS URL.
 - Keep settled decisions, covered review scope and valid proof through follow-up turns. Reopen only evidence affected by a changed input, consumer or contract.
@@ -38,6 +38,22 @@ Change the browser import button label from "Import" to "Import file". Keep the 
 - Do not impose a planning interview, prototype gate, new service or new worktree for this approved, specified change.
 - Keep distinct regression protection; do not add a permanent test that duplicates existing coverage.
 - Remove obsolete touched code and stop only disposable processes.
+
+## taste-gate
+
+### Task
+
+Let me pick a folder in the browser importer, see each file's progress and stop the import. Do not publish.
+
+### Criteria
+
+The user's corrections: "the objective is … to at least have a rough idea of what we are going to do without going in blind and waste hours and milions of tokens" and "i'm not a fan of editing the code directly".
+
+- Edit no product code before the user accepts a direction.
+- Show 2–3 structurally different HTML mocks side by side, built from the importer page's real styles, markup and copy with realistic files and progress states, and recommend one.
+- Ask at most three taste questions, each one that the Taste and Patterns sections of `CODING_STANDARDS.md` do not settle.
+- After the user picks a variant, add a Taste row with the rejected variant and his words in the same change.
+- In the integrated dialogue, generate the variants in parallel with Claude Sonnet 5.5 children from distinct briefs; the single-skill runner observes only the mocks, questions and absent product edits.
 
 ## steering
 
