@@ -1,4 +1,4 @@
-import {Array, MutableRef, Option, Predicate, String, pipe} from 'effect'
+import {Array, Function, MutableRef, Option, Predicate, String, pipe} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
@@ -72,6 +72,56 @@ function candidate(node: ESTree.VariableDeclarator) {
 	)
 }
 
+function typeWrapped(node: ESTree.Node) {
+	if (
+		node.type === 'TSAsExpression' ||
+		node.type === 'TSInstantiationExpression' ||
+		node.type === 'TSNonNullExpression' ||
+		node.type === 'TSSatisfiesExpression' ||
+		node.type === 'TSTypeAssertion'
+	) {
+		return Option.some(node.expression)
+	}
+	return Option.none()
+}
+
+function unwrapped(node: ESTree.Node): ESTree.Node {
+	return pipe(typeWrapped(node), Option.match({onNone: () => node, onSome: unwrapped}))
+}
+
+function outermost(node: ESTree.Node): ESTree.Node {
+	return pipe(
+		Option.fromNullishOr(node.parent),
+		Option.filter(parent => Option.isSome(typeWrapped(parent))),
+		Option.match({onNone: () => node, onSome: outermost})
+	)
+}
+
+// A detached method keeps no receiver, and an anonymous class takes its name from the binding.
+function fixable(input: {init: ESTree.Expression; read: ESTree.Node}) {
+	const read = outermost(input.read)
+	return !(
+		unwrapped(input.init).type === 'ClassExpression' ||
+		(read.parent?.type === 'CallExpression' && read.parent.callee === read) ||
+		(read.parent?.type === 'TaggedTemplateExpression' && read.parent.tag === read)
+	)
+}
+
+// The value always moves in parentheses; the formatter that runs after the fix drops the redundant ones.
+function inlined(input: {
+	context: Context
+	init: ESTree.Expression
+	name: string
+	next: ESTree.Node
+	read: ESTree.Node
+}) {
+	const value = `(${input.context.sourceCode.getText(input.init)})`
+	if (input.read.parent?.type === 'Property' && input.read.parent.shorthand) return `${input.name}: ${value}`
+	// A statement that now starts with a parenthesis continues the previous line without a semicolon.
+	if (input.read.range[0] === input.next.range[0]) return `;${value}`
+	return value
+}
+
 function report(input: {context: Context; effects: ESTree.Node[]; node: ESTree.VariableDeclarator}) {
 	const declaration = input.node.parent
 	const init = input.node.init
@@ -105,11 +155,24 @@ function report(input: {context: Context; effects: ESTree.Node[]; node: ESTree.V
 						!(init.type === 'ConditionalExpression' && insideConditional({node: read, statement: next})) &&
 						// Moving the value past code that runs first would change what it reads or reorder effects.
 						!Array.some(input.effects, effect => effect.range[0] >= next.range[0] && effect.range[1] <= read.range[0])
-				)
+				),
+				Option.map(read => ({next, read}))
 			)
 		),
-		Option.map(() => {
-			input.context.report({message: 'Inline this value into the next statement, its only use.', node: input.node})
+		Option.match({
+			onNone: Function.constVoid,
+			onSome: found =>
+				input.context.report({
+					fix: fixer => {
+						if (!fixable({init, read: found.read})) return []
+						return [
+							fixer.remove(declaration),
+							fixer.replaceText(found.read, inlined({context: input.context, init, name, ...found}))
+						]
+					},
+					message: 'Inline this value into the next statement, its only use.',
+					node: input.node
+				})
 		})
 	)
 }
@@ -137,5 +200,5 @@ export const noSingleUseValue = defineRule({
 			YieldExpression: effect
 		}
 	},
-	meta: {type: 'problem'}
+	meta: {fixable: 'code', type: 'problem'}
 })
