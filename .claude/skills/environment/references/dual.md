@@ -11,7 +11,7 @@ bun run test
 - **Generated.** Root `codegen` generates icons and agent documentation; `bun --filter @dual/docs generate` builds the Fumadocs output; `dual openapi-plugin` writes `turbo.json` for internal plugins.
 - **Tests.** Root `test` runs workspace tests, release tests and candidate packing; server tests need `.env.test`. Run consumer acceptance and live release tests separately when their contracts change.
 
-**VPN.** When GitLab does not answer, reconnect the VPN on dev (from `desktop`, through `ssh mp281x@dev`). Give the returned sign-in URL as a guide under **Needs you**, then check again.
+**VPN.** When GitLab does not answer, reconnect the VPN on dev: directly when the current worker is `dev`, otherwise through `ssh mp281x@dev`. Give the returned sign-in URL as a guide under **Needs you**, then check again.
 
 ```bash
 curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {

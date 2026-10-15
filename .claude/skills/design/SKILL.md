@@ -7,7 +7,7 @@ description: 'UI and UX rules for product screens, creative pages and visual exp
 
 Follow the engineering skill and the repository's `CODING_STANDARDS.md` when present; where it sets a style, such as square borders, it wins over this skill.
 
-**The bar.** Build what people recommend for its polish and simplicity: Linear, T3 Code, Apple's own apps and apple.com. A person who is not technical uses it without help. The repository's existing screens are the floor, not the target.
+**The bar.** Build what people recommend for its polish and simplicity: Linear, T3 Code, Apple's own apps and apple.com. A person who is not technical uses it without help. The repository's existing screens are the floor, not the target: raise them through a pattern change that updates every screen, never through one screen that diverges.
 
 **Two modes.** Product mode works inside an app and follows every rule below. Creative mode covers websites, launch pages and motion pieces with no product to match; it adds [Creative mode](#creative-mode) and keeps every other rule.
 
@@ -16,14 +16,14 @@ Follow the engineering skill and the repository's `CODING_STANDARDS.md` when pre
 For an open direction, show a question-sized prototype before polishing it. Use orchestrator when available to settle consequential user choices. Approval is provisional: let the user try a small real journey before expensive expansion. Own routine refinement, but expect the real experience to change the user's direction.
 
 1. **Task and feeling.** Name the person, their task, their context and the feeling the product gives, such as calm, fast or trustworthy. Name three qualities the person notices, each with what "excellent" looks like.
-2. **Baseline.** Name the category and platform, and the reference screen for each screen you build: one of Apple's apps on iOS, the product's existing screen, or a reference the user named. Capture the reference in the states you need. Start from the system or established component defaults.
+2. **Baseline.** Name the category and platform, and the reference screen for each screen you build: in product mode the canonical screen per engineering's Patterns, otherwise one of Apple's apps on iOS or a reference the user named. Capture the reference in the states you need. Start from the system or established component defaults.
 3. **Range.** Compare structurally different solutions only when the structure has a real unresolved fork, on the same data. Include a simpler solution that removes unnecessary controls. Show the smallest comparison that decides the fork, then develop the chosen direction.
 4. **States.** List every screen, its reachable states (empty, loading, partial, error, success, long content) and the events between them, before any code. Group states by concern instead of multiplying every combination.
-5. **Settled choices.** Carry forward what the user approved and what he removed. Never re-add a removed element or change an approved detail without a request.
+5. **Settled choices.** Carry forward what the user approved and what he removed. Never re-add a removed element, rename a visible term or change an approved detail without a request.
 
 ## Decide
 
-**Standard first.** Each screen and interaction follows the convention people know from the reference. Copy its structure, controls, gestures and states. Depart from it only for a deliberate improvement that a capture beside the reference proves.
+**Standard first.** Each screen and interaction follows the convention people know from the reference. Copy its structure, controls, gestures and states. Depart from it only for a deliberate improvement that a capture beside the reference proves. In product mode, such an improvement is a pattern change: propose it, and after approval apply it to every screen per engineering's Patterns.
 
 **Fewest parts.** Start from the content and the next action. Add a control, label, section, color or decoration only when the request, the reference screen or a rule below needs it. When the user calls a screen bloated or wrong, remove parts before you add any.
 
@@ -108,7 +108,7 @@ For an open direction, show a question-sized prototype before polishing it. Use 
 
 Capture the result at the reference's size, theme, data and state, and put it beside the reference. Review it in four separate passes, measure each defect and record the repair:
 
-1. **Structure.** Does the screen open on current work? Is anything redundant, hidden or missing for the task?
+1. **Structure.** Does the screen open on current work? Is anything redundant, hidden or missing for the task? In product mode, compare the entry route, sections, controls, visible terms, copy and states with the canonical screen; each difference without a request is a defect.
 2. **Behavior.** Do states, focus, errors, gestures and motion behave like the reference? Replay transitions and loop joins.
 3. **Visual.** Check hierarchy, alignment, spacing, type, color, icon consistency and the generic tells below.
 4. **Context.** Does it carry the named feeling and the three qualities? Where does a person hesitate?

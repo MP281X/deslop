@@ -34,7 +34,7 @@ For a read-only brainstorm, use direct research, disposable inline code, Markdow
 
 - **Intent.** Keep the user's outcome, relevant quoted requirements, settled choices, access, smallest scope and observable completion claims in your notes. Child briefs carry the relevant facts, not a second plan file.
 - **Tasks.** For multi-step work, keep the harness's native task list current when that tool is available.
-- **Explore.** Use explore to settle touched code, consumers, capabilities and named references. Read directly when the evidence is accessible; do not create a lookup child for a question one source read answers.
+- **Explore.** Use explore to settle touched code, consumers, capabilities and named references. Read inline only a known file or fact, the code you will edit and its direct consumers. Delegate every other research question per [Delegate](#delegate) before you read it yourself: inventories across features or packages, dependency behavior across several files, comparisons of approaches or packages, thread history, web and vendor research, and the consumer inventory of a pattern change. Split by independent question and start all children in one batch. Read only the deciding sources a child cites; never repeat its exploration.
 - **Plan.** Keep the current outcome, settled decisions and genuine open questions in the native task list or current plan, not another document. At a milestone, retain the reviewed commit and scope, proof with its inputs and dependencies, unresolved findings, owned resources, pending task IDs and next action. Replace stale entries instead of appending a diary. After compaction or a notice, resume from this state; reopen history only for a missing fact or contradiction. Show only a visual that makes the pending choice clearer. Follow Decide together; a visual plan does not need interaction when an automatic animation or static comparison states the message.
 - **Structure.** Load delivery to settle PR boundaries before the first commit. A later change returns an affected ready PR to draft before editing.
 
@@ -58,17 +58,17 @@ Run delivery only after Finish. It owns rebasing, publishing, exact-head readine
 
 ## Delegate
 
-The primary owns writes, commands, builds and browser sessions. Children are read-only and run in parallel where independent.
+The primary owns writes, commands, builds, browser sessions, intent and decisions. Children are read-only and run in parallel where independent. The primary infers what the user means; a child executes a precise brief, so a cheap model does most child work.
 
-| Work                                                        | Procedure           |
-| ----------------------------------------------------------- | ------------------- |
-| Lookup                                                      | explore             |
-| Council                                                     | [Council](#council) |
-| Code review, cleanup audit, critique and instruction review | review              |
+| Work                                                        | Procedure           | Model              |
+| ----------------------------------------------------------- | ------------------- | ------------------ |
+| Lookup, inventory, dependency, history and web research     | explore             | GPT-6 Luna, medium |
+| Code review, cleanup audit, critique and instruction review | review              | GPT-6.1 Sol, high  |
+| Council                                                     | [Council](#council) | GPT-6.1 Sol, high  |
 
-- **Brief.** Include the relevant user requirements verbatim, settled decisions, exact source locations, checkout, one procedure and return format. Do not copy the whole conversation, transcript or tool catalog. A review or audit brief carries no author's plan as authority.
-- **Boundary.** A child never writes files, touches the primary's services, messages threads, schedules tasks, asks the user or changes thread settings. Only the primary delegates, one level deep. Every brief starts with "You are a child agent: never delegate or launch threads." Return all findings in one pass, answer first, at most 40 lines unless the procedure requires one row per item, never in details or a file.
-- **Models.** Keep the thread's selected model and options. Use Codex for delegated agents and agent-created evaluation threads; no Claude fallback. Get current model IDs from `orchestrator_capabilities` and use high effort. Retain the selected provider, model and supported options; refresh only after a configuration change or a rejection that identifies a stale selection. Never use fast mode for children, research, reviews, councils or evaluations; set `serviceTier: default` explicitly. Prefer GPT-6 Luna for lookups and GPT-6.1 Sol for reviews, audits and critiques. Use a distinct perspective, not merely another model, when a council needs independent judgment.
+- **Brief.** Write a research brief that needs no inference: one question and the decision it serves, the worker, exact checkouts, paths, repositories with versions or search terms, the definition of each counted member, the stop condition and the return format. Ask for evidence and measurements with paths and lines, the files read, surprises and unresolved questions, not a recommendation; the primary judges. Include the relevant user requirements verbatim and settled decisions. Do not copy the whole conversation, transcript or tool catalog. A review or audit brief carries no author's plan as authority.
+- **Boundary.** A child writes only scratch files under `/tmp/<task>/` and source checkouts under `/tmp/repos/`. It never writes other files, touches the primary's services, messages threads, schedules tasks, asks the user or changes thread settings. Only the primary delegates, one level deep. Every brief starts with "You are a child agent: never delegate or launch threads." Return all findings in one pass, answer first, at most 40 lines unless the procedure requires one row per item, never in details or a file.
+- **Models.** Keep the thread's selected model and options. Use Codex for delegated agents and agent-created evaluation threads; no Claude fallback. Choose each child's model and effort from the table, with model IDs from `orchestrator_capabilities`. Retain the selected provider, model and supported options; refresh only after a configuration change or a rejection that identifies a stale selection. Never use fast mode for children, research, reviews, councils or evaluations; set `serviceTier: default` explicitly. When a research result is wrong or incomplete, sharpen the brief first; move that question to GPT-6.1 Sol only when a precise brief still fails. Use a distinct perspective, not merely another model, when a council needs independent judgment.
 - **Evaluation cleanup.** Always preserve required evidence, then automatically delete owned evaluation threads, projects and provider registrations when their use ends, including failed, cancelled and superseded runs. Stop their owned services and remove authentication links. Verify the cleanup; never delete unrelated threads or providers.
 - **Rounds.** Each review round is a new delegated task with the original brief, prior findings, verdicts and unresolved objections. Never continue a review through its backing thread.
 - **Reconcile.** Resolve every missing or failed criterion. Fix confirmed defects in the user's code; a review of someone else's PR reports only.
@@ -76,7 +76,7 @@ The primary owns writes, commands, builds and browser sessions. Children are rea
 
 ## Council
 
-Use a council only when the user requests multiple independent perspectives or an unresolved choice needs competing technical approaches. Do not use it for settled preferences, routine implementation, formatting or a direct factual answer. Choose only the distinct perspectives that can change the decision; no fixed-size fan-out. Use available Codex models at high effort without fast mode, and decide from evidence rather than a vote.
+Use a council only when the user requests multiple independent perspectives or an unresolved choice needs competing technical approaches. Do not use it for settled preferences, routine implementation, formatting or a direct factual answer. Choose only the distinct perspectives that can change the decision; no fixed-size fan-out. Use the Council model from [Delegate](#delegate), and decide from evidence rather than a vote.
 
 Write one scratch context file with the question verbatim and measured facts. Each brief names its path and one point of view: a skeptic who removes mechanisms, cost engineer, architecture critic, evals researcher, designer or the user as his messages show him. Withhold other members' conclusions. Cluster the ideas and run the smallest experiment that decides between the strongest mechanisms. A vote does not settle a technical contract or the user's taste.
 

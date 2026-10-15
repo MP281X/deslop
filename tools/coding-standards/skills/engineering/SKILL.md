@@ -3,7 +3,7 @@ name: engineering
 description: 'TypeScript and Effect code conventions paired with shared lint. Use when designing, implementing or reviewing product and test code, including prototypes.'
 ---
 
-**Scope.** Apply these rules and the repository's `CODING_STANDARDS.md` when present. Aim for a structurally correct first pass with few lint errors, not a promise of zero diagnostics. Oxlint remains the authoritative check; instructions do not replace it. Oxfmt owns whitespace, indentation and other mechanical formatting. Use automatic formatting and available fixes instead of spending reasoning on those details; fix remaining structural diagnostics at their source without a full rewrite or weakened rules. A refactor or cleanup request applies every rule to every line of the owned files. Scratch code outside the repository follows no style rule. Do not create a standards file just to satisfy this reference.
+**Scope.** Apply these rules and the repository's `CODING_STANDARDS.md` when present. Aim for a structurally correct first pass with few lint errors, not a promise of zero diagnostics. Oxlint remains the authoritative check; instructions do not replace it. Oxfmt owns whitespace, indentation and other mechanical formatting. Use automatic formatting and available fixes instead of spending reasoning on those details; fix remaining structural diagnostics at their source without a full rewrite or weakened rules. A refactor or cleanup request applies every rule to every line of the owned files. Scratch code outside the repository follows no style rule. Create a missing standards file only to hold a [Patterns](#patterns) row.
 
 **Before checking.** Run Oxfmt and the repository's deterministic lint autofix before manual code analysis, independent review or a check-only lint pass. Use the owned scope and preserve unrelated changes. Run both even when generated code looks correct; automatic fixes need no model iteration. Analyze the remaining diagnostics and behavior only after normalization. For a read-only review, the author prepares the normalized diff; the reviewer never writes the reviewed checkout.
 
@@ -13,13 +13,13 @@ description: 'TypeScript and Effect code conventions paired with shared lint. Us
 
 **MVP.** Write the most direct code that meets the request today. Apply YAGNI to every file, function, branch, parameter, option, export, Layer, check, config value, library and abstraction; configure only what callers vary. Write functional, explicit code: pure functions over immutable data, effects only inside Effect, and Effect modules instead of hand-written helpers.
 
-**Plan the shape.** Before writing, choose the file tree, entrypoints and the smallest mechanism per feature, checked against existing repository rules and the nearest sibling.
+**Plan the shape.** Before writing, choose the file tree, entrypoints and the smallest mechanism per feature, checked against existing repository rules and the canonical examples from [Patterns](#patterns).
 
 **Clarity.** Code, names and files read top to bottom. Rename or split code instead of narrating it.
 
 **Comments.** Default to no comments. Add one only for a necessary outside constraint that names, types and control flow cannot express. Keep it to one line. Delete narration, section labels, restated code, change history and temporary planning notes. Required diagnostic directives retain their reason.
 
-**Reuse first.** Check existing code, installed modules and platform capabilities before adding code. Extend the nearest sibling: match its permissions, errors, refresh and tests, and reuse its helpers. Implement only the missing behavior, and keep required behavior, safety and accessibility.
+**Reuse first.** Check existing code, installed modules and platform capabilities before adding code. Extend the canonical example: match its permissions, errors, refresh and tests, and reuse its helpers. Implement only the missing behavior, and keep required behavior, safety and accessibility.
 
 **Inward dependencies.** Domain and service code never import HTTP, RPC, or other transport types, and domain schemas carry no transport annotation such as an HTTP status.
 
@@ -103,6 +103,18 @@ pipe(
 **No compatibility.** Rename the shape and every caller together. No alias, fallback, deprecated path or flag unless a documented or user-named contract requires it.
 
 **Dead code.** Delete every superseded or unused file, folder, export, type, branch, config, validation, doc, test and dependency in the same change. Update docs and generated bundles that describe changed behavior in the same commit.
+
+## Patterns
+
+Keep the repository consistent by default, without a reminder, and change a standard everywhere at once.
+
+**Canonical example.** Before writing a recurring shape, such as a page layout, list, form, empty or loading state, dialog, service, route, error mapping, file layout or name, find its canonical example. Use the row in the Patterns section of `CODING_STANDARDS.md` first. Otherwise, use the variant that most current consumers use, and the newest one on a tie; the nearest file is not the example when it uses a minority variant. Copy its structure, components, names, visible terms, copy and states. Depart from it only on request, and never write a recurring shape from scratch when an example exists.
+
+**Register.** When a task settles a shape that two or more consumers share and the Patterns section has no row for it, add one: the pattern, its owner and canonical example, a search that lists its consumers, and what enforces it.
+
+**Pattern change.** A user change to a pattern, style, name or convention changes the repository standard, unless he limits its scope. In the same change, update its owner: the shared component, template, generator, lint rule and Patterns row. List every consumer with the row's search, migrate each one, delete the superseded variant and its exemptions, then run the search for the old form again. Report each consumer kept on purpose with its reason. A migration that crosses another repository or a published contract needs the user's approval first.
+
+**Enforce.** When the same correction happens twice, make the mistake impossible at the highest level that works: an owner component, export or type that removes the wrong form, then a lint rule whose message names the replacement, then a test. Keep a prose rule only for a judgment that no check can make. Prove a new check against the real past mistake and an accepted control.
 
 ## Lint pairs
 

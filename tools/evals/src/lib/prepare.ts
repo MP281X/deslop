@@ -131,7 +131,8 @@ export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 								String.replace(
 									/^model_instructions_file = .*$/mu,
 									`model_instructions_file = "${home}/instructions.md"`
-								)
+								),
+								String.replaceAll(/^\[hooks\.state\."[^"]*\/config\.toml:/gmu, `[hooks.state."${home}/config.toml:`)
 							)
 						)
 						yield* fs.copyFile(path.join(home, 'config.toml'), path.join(repo, '.codex/config.toml'))

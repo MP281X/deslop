@@ -23,6 +23,11 @@
 	"agent": "pair",
 	"attribution": {"commit": "", "pr": ""},
 	"bashOutputMaxChars": 30000,
+	"hooks": {
+		"SessionStart": [
+			{"hooks": [{"type": "command", "command": "printf 'Execution worker: %s\\n' \"$(hostname -s)\"", "timeout": 5}]}
+		]
+	},
 	"env": {
 		"ENABLE_TOOL_SEARCH": "false",
 		"CLAUDE_CODE_DISABLE_CRON": "1",
@@ -43,7 +48,6 @@
 			"AskUserQuestion",
 			"ListAgents",
 			"SendMessage",
-			"SubagentHandback",
 			"Workflow",
 			"ScheduleWakeup",
 			"RemoteTrigger",

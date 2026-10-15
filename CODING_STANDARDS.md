@@ -17,6 +17,18 @@ Repository-specific decisions live here. Reusable architecture, coding, testing,
 - A web app has no development server: `preview` builds the client and server and runs `dist/server.js`, the same build that deploys.
 - A mobile app keeps what Expo reads at its root: `app.config.ts`, `eas.json`, `fingerprint.config.js` when it has native files the fingerprint misses, `modules/<name>` for its local native module and `targets/<name>` for app extensions.
 
+## Patterns
+
+Engineering's Patterns rule reads this table. A pattern change updates the owner, then every consumer the search lists.
+
+| Pattern          | Owner and canonical example                                                    | Consumers                                                                                      | Enforced by                    |
+| ---------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- | ------------------------------ |
+| Service          | `tools/create-package/template/`, `apps/stash/src/services/notes/`             | `rg --files -g '**/service.ts' apps packages tools`                                            | Layout above, review           |
+| Web app          | `tools/create-app/template/web/`, which mirrors `apps/portfolio`               | `rg --files -g '**/index.html' apps tools/create-app/template`                                 | Generator                      |
+| Mobile app       | `tools/create-app/template/mobile/`, which mirrors `apps/stash`                | `rg --files -g '**/app.config.ts' apps tools/create-app/template`                              | Generator                      |
+| RPC              | `apps/portfolio/src/rpcs/` and its client in `apps/portfolio/src/lib/utils.ts` | `rg --files -g '**/rpcs/contracts.ts' apps tools`                                              | RPC rules below                |
+| Web UI primitive | `packages/components-web/src/ui/`, added with `vp run shadcn add`              | `rg -l -e @deslop/components-web -e '#components/ui/' apps packages tools/create-app/template` | `shadcn/no-raw-colors`, review |
+
 ## Apps
 
 - Routes never repeat the base styles (`bg-background text-foreground`) the root applies, and add no `main` or `h1` wrapper they don't need.

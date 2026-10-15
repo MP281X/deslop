@@ -81,6 +81,7 @@ Additional sources for this refinement:
 - [Anatomy](https://github.com/wheresryan22/anatomy): physical and isometric explanations when their relationships are the concept; no mandatory dense machine or separate card frame.
 - [Antfu design](https://github.com/antfu/design): native token hierarchy, density and affordance; no Vue or UnoCSS dependency added.
 - [Animated sprites](https://github.com/elithrar/dotfiles/tree/main/.agents/skills/animated-sprites): separate structural validity from perceptual motion and actual timing; no character assets required.
+- [pstack correct](https://github.com/cursor/plugins/blob/e5136d82418d2db3165ea1050d17577cd618cc05/pstack/skills/correct/SKILL.md), [caller migration](https://github.com/cursor/plugins/blob/e5136d82418d2db3165ea1050d17577cd618cc05/pstack/skills/principle-migrate-callers-then-delete-legacy-apis/SKILL.md) and [design red flags](https://github.com/cursor/plugins/blob/e5136d82418d2db3165ea1050d17577cd618cc05/pstack/skills/architect/references/design-red-flags.md): engineering's Patterns, with a canonical example per shape, whole-repository pattern changes and enforcement of repeated corrections above prose; no rule table beside the Patterns rows, no expiry dates on exceptions.
 
 These are selectively adapted ideas, not imported frameworks. Concrete behavior, existing stack and settled user decisions govern the maintained skills. Source inspection and drafted evaluation criteria do not establish a model-quality improvement.
 

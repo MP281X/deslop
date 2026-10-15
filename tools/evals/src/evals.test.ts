@@ -157,7 +157,7 @@ it.effect(
 					root,
 					skill: path.join(root, 'tools/coding-standards/skills/engineering')
 				})
-				assert.strictEqual(manifest.runs.length, 2)
+				assert.strictEqual(manifest.runs.length, 4)
 				const run = Option.getOrThrow(Array.findFirst(manifest.runs, row => row.harness === 'codex'))
 				assert.strictEqual(
 					yield* fs.readFileString(`${home}/.t3/userdata/settings.json`),
@@ -228,10 +228,9 @@ it.effect(
 					yield* fs.readFileString(`${run.home}/instructions.md`),
 					yield* fs.readFileString(path.join(root, '.codex/instructions.md'))
 				)
-				assert.include(
-					yield* fs.readFileString(`${run.home}/config.toml`),
-					`model_instructions_file = "${run.home}/instructions.md"`
-				)
+				const codexConfig = yield* fs.readFileString(`${run.home}/config.toml`)
+				assert.include(codexConfig, `model_instructions_file = "${run.home}/instructions.md"`)
+				assert.include(codexConfig, `[hooks.state."${run.home}/config.toml:session_start:0:0"]`)
 				const claudeRun = Option.getOrThrow(Array.findFirst(manifest.runs, row => row.harness === 'claude'))
 				assert.strictEqual(
 					yield* fs.readFileString(`${claudeRun.home}/settings.json`),
