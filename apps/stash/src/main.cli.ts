@@ -54,7 +54,8 @@ const save = pipe(
 				// @effect-diagnostics-next-line strictEffectProvide:off -- The server address comes from this command's flag.
 				Effect.provide(
 					pipe(
-						RpcClient.layerProtocolSocket(),
+						// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
+						RpcClient.layerProtocolSocket({pingTimeout: '15 seconds'}),
 						Layer.provide(
 							Socket.layerWebSocket(pipe(new URL('/api/rpc', input.server).href, String.replace(/^http/u, 'ws')))
 						),

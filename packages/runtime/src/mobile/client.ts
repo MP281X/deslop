@@ -19,7 +19,8 @@ export const server = extra.server
 export function layer(applicationName: string) {
 	Atom.runtime.addGlobalLayer(layerWebSdk(`${applicationName}-ios`, extra.otel))
 	return pipe(
-		Rpc.RpcClient.layerProtocolSocket({retryTransientErrors: true}),
+		// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
+		Rpc.RpcClient.layerProtocolSocket({pingTimeout: '15 seconds', retryTransientErrors: true}),
 		Layer.provide(Socket.layerWebSocket(pipe(new URL('/api/rpc', server).href, String.replace(/^http/u, 'ws')))),
 		Layer.provide(Socket.layerWebSocketConstructorGlobal),
 		Layer.provide(Rpc.RpcSerialization.layerJson)
