@@ -34,7 +34,7 @@ for worker in dev desktop; do
   t=mp281x@$worker
   ssh -o ConnectTimeout=5 $t true || { echo "$worker is unreachable"; continue; }
   for s in orchestrator delivery explore environment; do rsync -a --delete --mkpath .claude/skills/$s/ $t:.claude/skills/$s/; done
-  rsync -a --delete --delete-excluded --mkpath --exclude EVALS.md tools/coding-standards/skills/review/ $t:.claude/skills/review/
+  rsync -a --delete --mkpath tools/coding-standards/skills/review/ $t:.claude/skills/review/
   rsync -a .claude/settings.json $t:.claude/settings.json
   rsync -a --mkpath .claude/agents/pair.md $t:.claude/agents/pair.md
   rsync -a --mkpath .codex/config.toml .codex/instructions.md $t:.codex/

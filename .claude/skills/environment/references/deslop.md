@@ -14,7 +14,7 @@ vp run --workspace-root --cache check && vp run --workspace-root --cache test  #
 
 - **App.** The deslop `preview` project script runs the portfolio build for iteration, browser tests and captures. The stash server has no worktree preview: its port 5017 and real notes in `~/.deslop/stash` belong to the running stash on dev.
 - **Components.** `vp run --workspace-root shadcn list @shadcn`, `shadcn view <component>`, `shadcn docs <component>`.
-- **Agent configuration.** `.claude/agents/pair.md` and `.codex/instructions.md` are identical from `# Work` down. Shared skills live in `tools/coding-standards/skills/`; refresh the repository copies with `node tools/coding-standards/src/install.ts`.
+- **Agent configuration.** `.claude/agents/pair.md` and `.codex/instructions.md` are identical from `# Work` down. Shared skills live in `tools/coding-standards/skills/`; refresh the repository copies with `node tools/coding-standards/src/install.ts`. `.claude/skills/retrospective`, linked from `.codex/skills`, is repository-only and never installed on the workers.
 
 ## Tracing
 

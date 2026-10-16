@@ -1,6 +1,0 @@
-{
-	"extends": "@deslop/coding-standards/tsconfig.json",
-	"compilerOptions": {"types": ["node", "vite-plus/client"]},
-	"include": ["src/**/*.ts"],
-	"exclude": ["node_modules"]
-}

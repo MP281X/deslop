@@ -10,7 +10,7 @@ Run inside a Git repository, including a linked worktree:
 vpx @deslop/coding-standards@latest
 ```
 
-It copies all package-owned skills into the repository's existing `.agents`, `.claude` and `.codex` directories, including their `EVALS.md`. It always writes `.claude`, which Claude Code reads, and writes `.agents` when no `.codex` exists. A refresh replaces only those names; destinations outside the repository or inside global agent configuration are rejected. Other skills, sign-ins, manifests, lockfiles and lint configuration stay unchanged. Edit package sources, then refresh installed copies with the CLI.
+It copies all package-owned skills into the repository's existing `.agents`, `.claude` and `.codex` directories. It always writes `.claude`, which Claude Code reads, and writes `.agents` when no `.codex` exists. A refresh replaces only those names; destinations outside the repository or inside global agent configuration are rejected. Other skills, sign-ins, manifests, lockfiles and lint configuration stay unchanged. Edit package sources, then refresh installed copies with the CLI.
 
 Use engineering for mechanisms, code, tests and proof, design for visible behavior and review for independent critique and cleanup. Refer to another skill by name, not its installation path. Personal orchestration, delivery, machine commands and reply preferences stay outside this package.
 
@@ -87,6 +87,6 @@ Additional sources for this refinement:
 - [Felix Rieseberg, How to be more ambitious](https://felixrieseberg.com/how-to-be-more-ambitious-a-tutorial-for-humans-with-models/): adversarial review by activity, never persona, from raw evidence, and the expert's unrequested check.
 - [Emil Kowalski's animate skill](https://github.com/emilkowalski/skills/tree/2d228630ba1446365f614a108cb8252f1feda202/skills/animate) and [Taste v2](https://github.com/Leonxlnx/taste-skill/tree/f624f37a8c650b9cc550253104925efe4c8de246): a slower pace for explanatory motion and measured overflow, clipping and font checks before visual critique.
 
-These are selectively adapted ideas, not imported frameworks. Concrete behavior, existing stack and settled user decisions govern the maintained skills. Source inspection and drafted evaluation criteria do not establish a model-quality improvement.
+These are selectively adapted ideas, not imported frameworks. Concrete behavior, existing stack and settled user decisions govern the maintained skills. Source inspection does not establish a model-quality improvement.
 
 </details>

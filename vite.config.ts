@@ -10,12 +10,7 @@ export default defineConfig({
 		]
 	},
 	fmt: {
-		ignorePatterns: [
-			'**/*.gen.ts',
-			'packages/components-web/src/svgs/**',
-			'packages/components-web/src/ui/**',
-			'tools/evals/starter/**'
-		],
+		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/svgs/**', 'packages/components-web/src/ui/**'],
 
 		arrowParens: 'avoid',
 		bracketSpacing: false,
@@ -63,7 +58,6 @@ export default defineConfig({
 		ignorePatterns: [
 			'**/*.gen.ts',
 			'tools/*/template/**',
-			'tools/evals/starter/**',
 			'packages/components-web/src/svgs/**',
 			'packages/components-web/src/ui/**'
 		],
