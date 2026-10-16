@@ -85,14 +85,14 @@ Change only this provider's compaction flag on each running worker; preserve oth
 # deslop
 install: vp install --frozen-lockfile
 preview: u=preview-${PWD##*/} p=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)); systemctl --user stop $u 2>/dev/null; systemd-run --user -G -d -u $u -E PATH="$HOME/.vite-plus/bin:$PATH" -E HOST=127.0.0.1 -E PORT=$p vp run --filter @deslop/portfolio preview && sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null && echo https://$(hostname -s).tailnet-8c4c.ts.net:$p
-stop: systemctl --user stop preview-${PWD##*/}; sudo tailscale serve --https=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)) off
-settle: systemctl --user stop preview-${PWD##*/}; sudo tailscale serve --https=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)) off
+stop: systemctl --user stop preview-${PWD##*/}; sudo tailscale serve --https=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)) off 2>/dev/null || true
+settle: systemctl --user stop preview-${PWD##*/}; sudo tailscale serve --https=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)) off 2>/dev/null || true
 
 # dual
 install: vp install --frozen-lockfile && vpx @deslop/coding-standards@latest
-preview: u=preview-${PWD##*/} h=$(hostname -s).tailnet-8c4c.ts.net t=$(date +%s); systemctl --user stop $u 2>/dev/null; systemd-run --user -G -d -u $u -p KillSignal=SIGINT -E PATH="$HOME/.vite-plus/bin:$PATH" -E DUAL_PREVIEW_HOST=$h bun run preview && until p=$(journalctl --user -u $u -S @$t -o cat | grep -oPm1 'Preview ready: \S+:\K[0-9]+'); do systemctl --user is-active -q $u || exit 1; sleep 5; done && sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null && echo https://$h:$p
-stop: u=preview-${PWD##*/}; p=$(journalctl --user -u $u -o cat | grep -oP 'Preview ready: \S+:\K[0-9]+' | tail -1); systemctl --user stop $u; [ -z "$p" ] || sudo tailscale serve --https=$p off
-settle: u=preview-${PWD##*/}; p=$(journalctl --user -u $u -o cat | grep -oP 'Preview ready: \S+:\K[0-9]+' | tail -1); systemctl --user stop $u; [ -z "$p" ] || sudo tailscale serve --https=$p off; bun run preview:destroy
+preview: u=preview-${PWD##*/} h=$(hostname -s).tailnet-8c4c.ts.net; systemctl --user stop $u 2>/dev/null; systemd-run --user -G -d -u $u -p KillSignal=SIGINT -E PATH="$HOME/.vite-plus/bin:$PATH" -E DUAL_PREVIEW_HOST=$h bun run preview && until p=$(journalctl --user _SYSTEMD_INVOCATION_ID=$(systemctl --user show -p InvocationID --value $u) -o cat | grep -oPm1 'Preview ready: \S+:\K[0-9]+'); do systemctl --user is-active -q $u || exit 1; sleep 5; done && sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null && echo https://$h:$p
+stop: u=preview-${PWD##*/}; p=$(journalctl --user -u $u -o cat | grep -oP 'Preview ready: \S+:\K[0-9]+' | tail -1); systemctl --user stop $u; [ -z "$p" ] || sudo tailscale serve --https=$p off 2>/dev/null || true
+settle: u=preview-${PWD##*/}; p=$(journalctl --user -u $u -o cat | grep -oP 'Preview ready: \S+:\K[0-9]+' | tail -1); systemctl --user stop $u; [ -z "$p" ] || sudo tailscale serve --https=$p off 2>/dev/null || true; bun run preview:destroy
 ```
 
 **Review guides.** `reviewGuidesEnabled` is `true`, `reviewGuideModelSelection` is Codex `gpt-6.1-sol`, and `reviewGuideInstructions` holds exactly this text:
@@ -131,7 +131,7 @@ Remove rebuildable data, never unsettled work. A worktree is disposable only whe
 Find owners with T3's thread tools or explore's T3 history procedure: `orchestration_v2_projection_threads.payload_json` holds `worktreePath`, `settledAt` and `settledOverride`, and each owner's latest `orchestration_v2_projection_runs` row shows activity. A missing path, listener or row starts an investigation, never a deletion. Unknown owners, stopped containers, unattached volumes and the production `deslop` project stay.
 
 1. **Removed worktrees.** Find Compose projects whose `com.docker.compose.project.working_dir` is gone, processes with a deleted working directory, Serve mappings without a backend, and `~/.deslop/<worktree>` folders without a checkout. When every owner is settled, remove that project (`down --volumes --remove-orphans`), process group, mapping (`sudo tailscale serve --https=<port> off`) or folder. Keep `~/.deslop/deploy`.
-2. **Settled worktrees.** T3 removes worktrees 4 days after their last run and when their pull request merges. The project's settle script removes the preview when the last open thread settles. For a settled worktree whose units, mappings or containers remain, run the settle script's `command` there by hand with `T3CODE_WORKTREE_PATH=<path>`, and remove a remaining Compose project. Run `git worktree remove --force --force <path>` only on a clean worktree, and list dirty ones for the user. Delete `~/.deslop/<worktree directory name>/`.
+2. **Settled worktrees.** T3 removes worktrees 4 days after their last run and when their pull request merges. The project's settle script removes the preview, and for Dual its stage and data, each time a thread with its own worktree settles. For a settled worktree whose units, mappings or containers remain, run the settle script's `command` from that worktree, and remove a remaining Compose project. Run `git worktree remove --force --force <path>` only on a clean worktree, and list dirty ones for the user. Delete `~/.deslop/<worktree directory name>/`.
 3. **Local branches.** In `~/deslop` and `~/dual`, delete local branches that no worktree uses once their pull request merged. A stack's published branches are not checked out, so an open or closed pull request keeps its branch. List branches without a merged or open pull request for the user.
 
    ```bash
