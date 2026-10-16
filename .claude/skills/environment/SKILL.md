@@ -43,11 +43,13 @@ Run repository commands from the repository root. Read inventories and versions 
 ## Previews
 
 - **Build.** Prefer the repository's actual built preview for browser testing and recording. Use its documented command and share it through tailnet HTTPS. A preview command that runs development watchers proves iteration only; do not invent a production-preview command or relabel that evidence. Keep development servers for work that requires them, not as a second default proof environment.
-- **Start.** Run the preview command detached, so it survives a T3 restart: `systemd-run --user --unit=<repository>-preview-<worktree> --working-directory=<worktree> <command>`. Bind it to `127.0.0.1` on a free port (`ss -ltn`).
-- **Share.** Run `sudo tailscale serve --bg --https=<port> http://127.0.0.1:<port>`; the host is `tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")'`. The first request waits for a certificate. Verify sign-in, assets and API calls through `https://<host>:<port>` before you share it. Use the same visible browser tab for testing, recording and handoff; keep it open with its preview service and HTTPS link.
+- **Start.** Each worktree has one preview: the systemd user unit `preview-<worktree name>`, which survives a T3 restart, shared on the tailnet over HTTPS. The project's `preview`, `stop` and `settle` scripts in [maintenance's Project scripts](references/maintenance.md#t3-settings) own it; the user runs the same scripts from T3's script menu. To start it, run the project's `preview` command from the worktree root: it replaces a running preview and prints the HTTPS URL, which stays the same across restarts.
+- **Share.** The first request waits for a certificate. Verify sign-in, assets and API calls through the printed URL before you share it. Open it in the one T3 tab that you share with the user, per delivery's captures, and give the URL in each delivery reply.
 - **Public webhooks.** Funnel exposes a whole port, so give the webhook path its own port: an unused one among 443, 8443 and 10000 in `sudo tailscale serve status --json`. Run `sudo tailscale funnel --bg --https=<funnel port> --set-path <path> http://127.0.0.1:<api port><path>`, and verify that the sign-in path does not answer there. Stop it with `sudo tailscale funnel --https=<funnel port> --set-path <path> off`.
-- **Restart.** Run `systemctl --user restart <unit>` while the unit runs, also after a build that deletes the preview's files. A stopped unit disappears, so run the same `systemd-run` again. A failed unit stays until `systemctl --user reset-failed <unit>`.
-- **Stop.** Keep the thread's preview until the user says to stop it or its pull requests merge. Then run `sudo tailscale serve --https=<port> off` and `systemctl --user stop <unit>`. Never stop a listener you did not start.
+- **Restart.** Run the `preview` command again after a change that the preview does not reload, also after a build that deletes its files.
+- **Keep.** At the end of every turn, also after delivery, leave the preview running on the latest code with its HTTPS link and the T3 tab. Never stop it at handoff or wait for the user to ask for it again.
+- **Stop.** The `stop` command stops the unit and removes its Tailscale mapping. Run it only when the user asks. Never stop a listener you did not start.
+- **Settle.** T3 runs the `settle` command when the user settles a thread with its own worktree or its pull request merges. It stops the preview and runs the project's cleanup.
 
 ## Diagnostics
 

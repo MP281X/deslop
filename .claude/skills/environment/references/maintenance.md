@@ -79,7 +79,21 @@ rm -rf $d
 
 Change only this provider's compaction flag on each running worker; preserve other launch arguments, providers, sign-ins and thread selections. T3 passes the flag to fresh Claude processes, including resumed sessions. Do not stop active threads or restart T3 to force the change into an existing process. Verify the configured arguments and run Claude's local `/context` command with them; it must show the 500k window with zero model turns. A later real compaction is required to measure summary quality and net usage savings.
 
-The copy carries project scripts, such as Dual's worktree script `vp install --frozen-lockfile && vpx @deslop/coding-standards@latest`. Check them on the target with `t3_project_list`.
+**Project scripts.** T3 runs the scripts in `projectSettingsOverrides.<project id>.defaultProjectScripts` of the settings file in the thread's worktree; they replace the project's own scripts, which `t3_project_update` writes and `t3_project_list` shows. The copy carries them. Check them with `jq '.projectSettingsOverrides' ~/.t3/userdata/settings.json` on each worker. `install` runs on worktree creation (`runOnWorktreeCreate: true`), `settle` on settle (`runOnSettle: true`), and the user runs `preview` and `stop` from the script menu. Each preview is the transient unit `preview-<worktree name>`; deslop's port comes from the worktree path, Dual's from its `Preview ready:` line.
+
+```bash
+# deslop
+install: vp install --frozen-lockfile
+preview: u=preview-${PWD##*/} p=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)); systemctl --user stop $u 2>/dev/null; systemd-run --user -G -d -u $u -E PATH="$HOME/.vite-plus/bin:$PATH" -E HOST=127.0.0.1 -E PORT=$p vp run --filter @deslop/portfolio preview && sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null && echo https://$(hostname -s).tailnet-8c4c.ts.net:$p
+stop: systemctl --user stop preview-${PWD##*/}; sudo tailscale serve --https=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)) off 2>/dev/null || true
+settle: systemctl --user stop preview-${PWD##*/}; sudo tailscale serve --https=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)) off 2>/dev/null || true
+
+# dual
+install: vp install --frozen-lockfile && vpx @deslop/coding-standards@latest
+preview: u=preview-${PWD##*/} h=$(hostname -s).tailnet-8c4c.ts.net; systemctl --user stop $u 2>/dev/null; systemd-run --user -G -d -u $u -p KillSignal=SIGINT -E PATH="$HOME/.vite-plus/bin:$PATH" -E DUAL_PREVIEW_HOST=$h bun run preview && until p=$(journalctl --user _SYSTEMD_INVOCATION_ID=$(systemctl --user show -p InvocationID --value $u) -o cat | grep -oPm1 'Preview ready: \S+:\K[0-9]+'); do systemctl --user is-active -q $u || exit 1; sleep 5; done && sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null && echo https://$h:$p
+stop: u=preview-${PWD##*/}; p=$(journalctl --user -u $u -o cat | grep -oP 'Preview ready: \S+:\K[0-9]+' | tail -1); systemctl --user stop $u; [ -z "$p" ] || sudo tailscale serve --https=$p off 2>/dev/null || true
+settle: u=preview-${PWD##*/}; p=$(journalctl --user -u $u -o cat | grep -oP 'Preview ready: \S+:\K[0-9]+' | tail -1); systemctl --user stop $u; [ -z "$p" ] || sudo tailscale serve --https=$p off 2>/dev/null || true; bun run preview:destroy
+```
 
 **Review guides.** `reviewGuidesEnabled` is `true`, `reviewGuideModelSelection` is Codex `gpt-6.1-sol`, and `reviewGuideInstructions` holds exactly this text:
 
@@ -87,7 +101,7 @@ The copy carries project scripts, such as Dual's worktree script `vp install --f
 The reader is a tired reviewer who wants to finish fast and must not miss a risk.
 Open with the stop that can break something: a migration, a changed contract or schema, a permission change, removed behavior or a new dependency. Put the risk in its attention note.
 Then follow what a user or caller sees change, then the interfaces, then the implementation.
-Spend words only on choices a maintainer must agree with: a new abstraction, option, fallback, retry, special case, compatibility alias or comment. Name each one and ask whether the change needs it.
+Spend words only on choices a maintainer must agree with: a new abstraction, option, fallback, retry, special case, compatibility alias or comment. Name each one and what breaks without it.
 Put generated files, lockfiles, formatting, renames and moves in one closing skim stop.
 Use at most five stops of two short sentences each, in plain words. No praise, no restated diff, no test counts or pipeline results.
 ```
@@ -117,7 +131,7 @@ Remove rebuildable data, never unsettled work. A worktree is disposable only whe
 Find owners with T3's thread tools or explore's T3 history procedure: `orchestration_v2_projection_threads.payload_json` holds `worktreePath`, `settledAt` and `settledOverride`, and each owner's latest `orchestration_v2_projection_runs` row shows activity. A missing path, listener or row starts an investigation, never a deletion. Unknown owners, stopped containers, unattached volumes and the production `deslop` project stay.
 
 1. **Removed worktrees.** Find Compose projects whose `com.docker.compose.project.working_dir` is gone, processes with a deleted working directory, Serve mappings without a backend, and `~/.deslop/<worktree>` folders without a checkout. When every owner is settled, remove that project (`down --volumes --remove-orphans`), process group, mapping (`sudo tailscale serve --https=<port> off`) or folder. Keep `~/.deslop/deploy`.
-2. **Settled worktrees.** T3 removes worktrees 4 days after their last run and when their pull request merges. Before that, destroy a settled worktree's disposable Alchemy preview or Compose project. Run `git worktree remove --force --force <path>` only on a clean worktree, and list dirty ones for the user. Delete `~/.deslop/<worktree directory name>/`.
+2. **Settled worktrees.** T3 removes worktrees 4 days after their last run and when their pull request merges. The project's settle script removes the preview, and for Dual its stage and data, each time a thread with its own worktree settles. For a settled worktree whose units, mappings or containers remain, run the settle script's `command` from that worktree, and remove a remaining Compose project. Run `git worktree remove --force --force <path>` only on a clean worktree, and list dirty ones for the user. Delete `~/.deslop/<worktree directory name>/`.
 3. **Local branches.** In `~/deslop` and `~/dual`, delete local branches that no worktree uses once their pull request merged. A stack's published branches are not checked out, so an open or closed pull request keeps its branch. List branches without a merged or open pull request for the user.
 
    ```bash
@@ -165,7 +179,7 @@ Start from a Debian netinst image, and select only the SSH server task.
 3. Install the user's key pair per [Access changes](#access-changes). Run the Tailscale block. After a second SSH login over the tailnet works, set `ufw default deny incoming`, allow 80 and 443 only on dev, and enable ufw.
 4. On dev only: install `openvpn3-client` from the OpenVPN 3 apt source, import the VPN with `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`, connect it, and advertise its route.
 5. Run `loginctl enable-linger mp281x`. As `mp281x`, install Vite+ with `VP_HOME="$HOME/.vite-plus"`, the global packages and Claude Code. Put `export PATH="$HOME/.local/bin:$HOME/.vite-plus/bin:$PATH"` at the top of `~/.bashrc`, and check `ssh <worker> 'command -v vp claude codex'`. Write `~/.config/pnpm/config.yaml` with `minimumReleaseAgeExclude: ["@deslop/*"]`, so `vpx @deslop/<package>@latest` gets same-day releases. Run the T3 step and `t3 browser setup`, and set `PRETTY_HOSTNAME`.
-6. Run the sign-ins, the [Jira sign-in](#jira-sign-in) and `gh extension install github/gh-stack`. Write the git identities per [Git identity](#git-identity). Clone both repositories and add each with `t3 project add --title <name> <path>`. From a thread on that worker, give each project a worktree script with `t3_project_update`: `vp install --frozen-lockfile`, and for Dual also `vpx @deslop/coding-standards@latest`. On dev, deploy the public apps.
+6. Run the sign-ins, the [Jira sign-in](#jira-sign-in) and `gh extension install github/gh-stack`. Write the git identities per [Git identity](#git-identity). Clone both repositories and add each with `t3 project add --title <name> <path>`. The [T3 settings](#t3-settings) copy in step 7 brings their project scripts. On dev, deploy the public apps.
 7. Install the [agent configuration](#agent-configuration), and copy the [T3 settings](#t3-settings) from another worker.
 8. After a key login from another machine succeeds, write `/etc/ssh/sshd_config.d/10-keys-only.conf` with `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no` and `X11Forwarding no`, then run `sudo sshd -t && sudo systemctl reload ssh`.
 

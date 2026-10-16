@@ -6,7 +6,7 @@
 
 Turn this change into something I can review quickly: the final thread reply, PR title and body, commit message, and the updated agent instruction.
 
-Change facts: folder import is added to an existing single-file importer; progress represents records already written; stopping keeps those records. The CLI and HTTP API still support one file. The instruction currently reads: "Always ask the user through a question card, and if they don't answer after five minutes schedule the recommended default." The user now wants context, question and options together in the thread and no default taken. Write the artifacts under artifacts; do not change product code or settings.
+Change facts: folder import is added to an existing single-file importer; progress represents records already written; stopping keeps those records. The CLI and HTTP API still support one file. The instruction currently reads: "Always ask the user through a question card, and if they don't answer after five minutes schedule the recommended default." The user now wants no questions: the agent decides, shows each decision in the thread beside the rejected option, and takes no scheduled default. Write the artifacts under artifacts; do not change product code or settings.
 
 ### Criteria
 

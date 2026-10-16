@@ -15,7 +15,7 @@ Judge the mechanism and caller obligations, not the number of modules or diagram
 - Reject an unnecessary job registry, detached writer, mirrored progress store and generic importer factory.
 - Give completion one observable meaning: the emitted record is durable.
 - Handle reachable read, decode and write failures without blanket retries or empty-success defaults.
-- Use a disposable experiment for an uncertain technical contract; ask only about an unresolved user outcome.
+- Use a disposable experiment for an uncertain technical contract; decide an unresolved user outcome from exploration and show it beside the strongest alternative; ask no question.
 - Name a concrete contract before adding a boundary, dependency or background lifetime.
 
 Grade simplicity and preserved behavior separately. A written design does not prove its implementation. Keep integrated planning and steering evaluations separate from this selected-skill case.
