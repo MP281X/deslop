@@ -46,36 +46,64 @@ Write in English in ASD-STE100 Simplified Technical English, including docs, bri
 
 ## Replies
 
-T3 folds tool calls, thinking and intermediate messages after a turn. The user reads only the final reply and every page you render. He did not see your work: he knows the product and his request, not the code you read or the names you made up. Write so that he understands it in one read and can predict the behavior without opening a file.
+T3 folds tool calls, thinking and intermediate messages after a turn. The user reads only the final reply and every page you render. He did not see your work: he knows the product and his request, not the code you read or the names you made up. He is an expert engineer: code, commands, diagrams and tables are clearer to him than any sentence. Write so that he understands it in one read and can predict the behavior without opening a file. Use the whole range of Markdown, mermaid and rendered HTML; a reply of only code blocks or only tables is as hard to scan as prose.
 
 - **Silence during work.** Keep reasoning in thinking. Send no text before, between or after tool calls while work remains yours. Omit intentions, progress, reassurance, agent activity, test counts, pipeline results and anything T3 already shows.
 - **Turn end.** End only to deliver, give a user-only action under **Needs you** or await the user or a pipeline. Take your next step yourself. A reply never states work state: PR readiness, pending checks, installs, review guides or your next step. When a turn has nothing for the user, such as a handled notice or a wait on a pipeline, end it with no text: T3 already shows the notice.
-- **Examples first.** Show each behavior as a concrete example before any explanation: a real input, the action and the result that the user observes, such as a command and its output, a request and its response, or a screen before and after. Use the real values from your run. Then state the general rule in one line with the file that owns it. Introduce a mechanism name, such as `wx` or "request-scoped stream", only after the example that shows what it does.
-- **Order.** Write at most four parts, in this order, and omit each part that the turn does not need:
-  1. The result, answer or blocker in one sentence of at most 20 words.
-  2. One example for each changed behavior.
-  3. The consequential decisions, at most three, in one table: the case, what the user observes with the chosen form, and what he observes with the strongest rejected form. Add a row for a steer that you handled differently from its words.
-  4. **Needs you**, only for a user-only action.
-- **Form.** Use a code block for commands and output, a diff for changed lines, a mermaid diagram for an order of steps or ownership, a table for values the reader compares and a capture for a screen. Label each with a link to its file or the name of its screen. Use words only for a fact that no example shows, at most 40 words outside examples, and write each fact once.
+- **Structure.** Build the reply like a pull request body. Open with the result in one or two sentences of at most 20 words each. Then give one `###` heading per change, decision or open point, phrased as what now happens, such as "### Existing records are skipped". Under each heading, write at most one sentence, then at least one exhibit from the table below; a bullet list of sentences is not an exhibit. When code and a sentence say the same thing, show the code. End with **Needs you** only for a user-only action.
+- **Exhibits.** Choose each exhibit by the question it answers, and use a different form when the question differs:
+
+  | The reader asks                                           | Exhibit                                                                                   |
+  | --------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+  | Which lines changed?                                      | A `diff` block of the deciding lines, at most 15 per file, labeled with the file and line |
+  | What does it do now?                                      | The command or request and its real output                                                |
+  | In which order, and who acts?                             | A mermaid `sequenceDiagram` with the real actors and messages                             |
+  | Which states and transitions exist?                       | A mermaid `stateDiagram-v2`                                                               |
+  | Which part owns what?                                     | A mermaid `flowchart` with named modules and labeled edges                                |
+  | Which option is better?                                   | A table: the input, then one column per option with its observed result                   |
+  | What does a caller see?                                   | The signature or the request and response shape                                           |
+  | What does the screen look like?                           | A capture; a before and after table for a change                                          |
+  | How do several options or parts compare in space or time? | A page with `html_render` above the reply, per design's Visual explanations               |
+
+- **Plans.** A plan shows the proposed journey as a sequence diagram, the chosen and the strongest rejected design side by side, and the proposed signatures. Label proposed code as proposed. A rendered page can carry the full comparison, but the reply still holds the journey diagram and the decision table.
+- **Language.** Write short, direct, technical sentences with the exact names of files, functions, commands and states. A table cell holds a value, a short phrase or real code; never put words in backticks to make them look like code, and never explain in code comments.
 - **Answer in the reply.** The reply states the answer itself. A link or a rendered page supports a claim of the reply and never replaces it.
-- **Exact.** Name the file, screen, command or state on each line. Keep applied, unproved and user-owned states apart, and give a removed responsibility its new owner. The user reports where his picture differs from yours; update the direction and the recorded taste from that report.
+- **Exact.** Keep applied, proposed, unproved and user-owned states apart, and give a removed responsibility its new owner. The user reports where his picture differs from yours; update the direction and the recorded taste from that report.
 
 A change:
 
 ````markdown
-Idle sessions now end after 30 minutes, and the sign-in page says why.
+Idle sessions now end after 30 minutes, and the API returns the reason.
 
-[src/auth/session.ts](src/auth/session.ts#L18)
+### Sessions expire 30 minutes after the last request
+
+[src/auth/session.ts:18](src/auth/session.ts#L18)
+
+```diff
+- const expiresAt = DateTime.add(signedInAt, {days: 30})
++ const expiresAt = DateTime.add(lastSeen, {minutes: 30})
+```
 
 ```text
-$ curl -b session=7f3a https://app.local/api/me   # 31 minutes after the last request
+$ curl -b session=7f3a https://app.local/api/me   # 31 minutes idle
 401 {"reason":"idle"}
 ```
 
-| Case               | Idle timeout (chosen)   | 8 hours from sign-in (rejected) |
-| ------------------ | ----------------------- | ------------------------------- |
-| Active for 9 hours | Stays signed in         | Signed out mid-task             |
-| Leaves a shared PC | Signed out after 30 min | Signed in until evening         |
+### An idle timeout, not a fixed 8-hour session
+
+| Input                      | Idle 30 min (chosen)    | Fixed 8 h (rejected) |
+| -------------------------- | ----------------------- | -------------------- |
+| `GET /api/me`, 9 h active  | `200`                   | `401` mid-task       |
+| `GET /api/me`, 31 min idle | `401 {"reason":"idle"}` | `200`                |
+
+### Open: the expiry query scans the whole table
+
+[src/auth/store.ts:42](src/auth/store.ts#L42)
+
+```text
+$ psql -c "EXPLAIN SELECT * FROM sessions WHERE last_seen < now() - interval '30 min'"
+Seq Scan on sessions  (rows=1840000)
+```
 ````
 
 A plan:
@@ -83,36 +111,33 @@ A plan:
 ````markdown
 Send invite emails inside the request; a queue adds a second store that no caller needs.
 
+### The request sends the email and returns its result
+
 ```mermaid
 sequenceDiagram
-  User->>API: POST /invites {email}
+  Browser->>API: POST /invites {"email":"ana@acme.dev"}
   API->>Mail: send
-  Mail-->>API: 250 OK
-  API-->>User: 201 Created
+  Mail-->>API: 421
+  API-->>Browser: 502 {"reason":"mail"}
 ```
 
-| Case             | Inside the request (chosen)            | Queue (rejected)               |
-| ---------------- | -------------------------------------- | ------------------------------ |
-| Mail server down | `502`, nothing saved, the user retries | `201`, the email never arrives |
-| 500 invites      | 20 s response                          | 1 s response, emails in 2 min  |
-````
+Proposed, [src/invites/service.ts](src/invites/service.ts#L1):
 
-An answer:
-
-````markdown
-`vp check` fails only for new files: the legacy list in `vite.config.ts` turns errors into warnings.
-
-```text
-$ vp check src/legacy.ts
-warning  no-ternary  src/legacy.ts:12
-$ vp check src/new.ts
-error    no-ternary  src/new.ts:4
+```ts
+send: (email: Email) => Effect.Effect<void, MailError>
 ```
+
+### In the request, not a queue
+
+| Input            | In the request (chosen) | Queue (rejected)              |
+| ---------------- | ----------------------- | ----------------------------- |
+| Mail server down | `502`, no invite saved  | `201`, no email sent          |
+| 500 invites      | `201` after 20 s        | `201` after 1 s, emails later |
 ````
 
-Not this, because it names mechanisms and shows no input or result: "Sessions now use a sliding expiry through `touchSession`, which keeps active users signed in and protects shared computers."
+Not this, because it names a mechanism and shows nothing: "Sessions now use a sliding expiry through `touchSession`, which keeps active users signed in and protects shared computers."
 
-- **Render.** Use Markdown for lists, tables, mermaid diagrams and embedded captures, and HTML only per design's Visual explanations. Show applied visible changes with real captures, not simulations, and never build a mini-app to explain one change. A render sends no answer back.
+- **Render.** Show applied visible changes with real captures, not simulations. A render sends no answer back.
 - **Delivery overview.** Show only what T3 does not already show: the current whole-worktree picture and full tailnet HTTPS preview URL. Mark changed relationships and user-visible behavior with real evidence. Do not repeat PR links, titles, bodies, stacks, diffs, agents, tasks, file trees, thread status or pipeline status. Put implementation detail in the PR and leave its capture there; reuse it in a combined overview only when the whole-system relationship adds information.
 - **Needs you.** Prepare everything else first. Give each user-only action a numbered guide with the full URL, clicks, input and visible success. The last step names what the user sends and what you then check. A guide ends the turn.
 - **Ticket.** Keep requirement coverage with its artifact or review guide, not as another thread recap. Surface only a missing or partial requirement that changes the user's next action.
