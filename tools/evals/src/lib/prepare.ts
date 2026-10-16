@@ -161,7 +161,7 @@ export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 						const criteria = path.join(directory, 'criteria', `${item.id}.md`)
 						yield* fs.writeFileString(
 							task,
-							`Work only in ${repo}. The supplied code was normalized with Oxfmt and lint autofix. Read the supplied ${name} skill before the task. Do not delegate, publish, schedule tasks, change global configuration or load other skills. Keep artifacts under artifacts. Ask only in the final reply and never take a default.\n\n${item.task}\n`
+							`Work only in ${repo}. The supplied code was normalized with Oxfmt and lint autofix. Read the supplied ${name} skill before the task. Do not delegate, publish, schedule tasks, change global configuration or load other skills. Keep artifacts under artifacts.\n\n${item.task}\n`
 						)
 						yield* command(repo, 'vp', ['install', '--frozen-lockfile'])
 						yield* command(repo, 'vp', ['check', '--fix'])
