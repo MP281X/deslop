@@ -39,7 +39,7 @@ export const command = Effect.fnUntraced(function* (cwd: string, program: string
 		return yield* EvalError.make({message: `${program} exited ${result.exitCode}: ${result.stderr}${result.stdout}`})
 	}
 	return result.stdout
-})
+}, Effect.scoped)
 
 export const parseCases = Effect.fnUntraced(function* (text: string) {
 	const cases = yield* Effect.forEach(Array.drop(String.split(text, /^## /mu), 1), body =>
@@ -85,117 +85,128 @@ export const prepare = Effect.fn('Evals.prepare')(function* (input: {
 	]
 	const directory = yield* fs.makeTempDirectory({prefix: 'deslop-evals-'})
 	const starter = path.resolve(import.meta.dirname, '../../starter/importer')
-	const runs = Array.flatten(
-		yield* Effect.forEach(cases, item =>
-			Effect.forEach(input.harnesses, harness =>
-				Effect.gen(function* () {
-					const id = `${item.id}-${harness}`
-					const home = path.join(directory, 'homes', id)
-					const repo = path.join(directory, 'runs', id, 'repo')
-					yield* fs.makeDirectory(home, {recursive: true})
-					yield* fs.makeDirectory(repo, {recursive: true})
-					const sources = Boolean.match(name === 'testing', {
-						onFalse: () => [starter],
-						onTrue: () => [starter, path.resolve(import.meta.dirname, '../../starter/folder-import')]
-					})
-					for (const source of sources) {
-						yield* Effect.forEach(
-							yield* fs.glob('**/*', {exclude: ['node_modules/**', '.git/**'], root: source}),
-							file =>
-								Effect.gen(function* () {
-									if ((yield* fs.stat(path.join(source, file))).type === 'Directory') return
-									yield* fs.makeDirectory(path.dirname(path.join(repo, file)), {recursive: true})
-									yield* fs.copyFile(path.join(source, file), path.join(repo, file))
-								})
-						)
-					}
-					yield* fs.copyFile(path.join(starter, '.gitignore'), path.join(repo, '.gitignore'))
-					yield* fs.makeDirectory(path.join(repo, 'artifacts'))
-					for (const root of ['.claude', '.codex']) {
-						const destination = path.join(repo, root, 'skills', name)
-						yield* Effect.forEach(yield* fs.glob('**/*', {exclude: ['EVALS.md'], root: skill}), file =>
-							Effect.gen(function* () {
-								if ((yield* fs.stat(path.join(skill, file))).type === 'Directory') return
-								yield* fs.makeDirectory(path.dirname(path.join(destination, file)), {recursive: true})
-								yield* fs.copyFile(path.join(skill, file), path.join(destination, file))
-							})
-						)
-					}
-					for (const file of files) {
-						yield* fs.makeDirectory(path.dirname(path.join(repo, file)), {recursive: true})
-						yield* fs.copyFile(path.join(input.root, file), path.join(repo, file))
-					}
-					yield* fs.copy(path.join(repo, `.${harness}`, 'skills'), path.join(home, 'skills'))
-					if (harness === 'claude') {
-						yield* fs.makeDirectory(path.join(home, 'agents'))
-						yield* fs.copyFile(path.join(input.root, '.claude/agents/pair.md'), path.join(home, 'agents/pair.md'))
-						yield* fs.copyFile(path.join(input.root, '.claude/settings.json'), path.join(home, 'settings.json'))
-					} else {
-						yield* fs.copyFile(path.join(input.root, '.codex/instructions.md'), path.join(home, 'instructions.md'))
-						yield* fs.makeDirectory(path.join(home, 'rules'))
-						yield* fs.copyFile(path.join(input.root, '.codex/rules/deny.rules'), path.join(home, 'rules/deny.rules'))
-						yield* fs.writeFileString(
-							path.join(home, 'config.toml'),
-							pipe(
-								yield* fs.readFileString(path.join(input.root, '.codex/config.toml')),
-								String.replace(
-									/^model_instructions_file = .*$/mu,
-									`model_instructions_file = "${home}/instructions.md"`
-								),
-								String.replaceAll(/^\[hooks\.state\."[^"]*\/config\.toml:/gmu, `[hooks.state."${home}/config.toml:`)
-							)
-						)
-						yield* fs.copyFile(path.join(home, 'config.toml'), path.join(repo, '.codex/config.toml'))
-					}
-					const task = path.join(directory, 'runs', id, 'task.md')
-					const criteria = path.join(directory, 'criteria', `${item.id}.md`)
-					yield* fs.makeDirectory(path.dirname(criteria), {recursive: true})
-					yield* fs.writeFileString(criteria, item.criteria)
-					yield* fs.writeFileString(
-						task,
-						`Work only in ${repo}. The supplied code was normalized with Oxfmt and lint autofix. Read the supplied ${name} skill before the task. Do not delegate, publish, schedule tasks, change global configuration or load other skills. Keep artifacts under artifacts. Ask only in the final reply and never take a default.\n\n${item.task}\n`
-					)
-					yield* command(repo, 'vp', ['install', '--frozen-lockfile'])
-					yield* command(repo, 'vp', ['check', '--fix'])
-					yield* command(repo, 'git', ['init', '-q', '-b', 'main'])
-					yield* command(repo, 'git', ['add', '-A'])
-					yield* command(repo, 'git', [
-						'-c',
-						'user.name=Eval',
-						'-c',
-						'user.email=eval@example.invalid',
-						'commit',
-						'-qm',
-						'Seed evaluation starter'
-					])
-					if (name === 'review') {
-						yield* fs.copyFile(
-							path.resolve(import.meta.dirname, '../../starter/review/src/service.ts'),
-							path.join(repo, 'src/service.ts')
-						)
-						yield* command(repo, 'vp', ['check', '--fix'])
-					}
-					return {
-						case: item.id,
-						criteria,
-						harness,
-						home,
-						id,
-						instance: `eval-${path.basename(directory)}-${id}`,
-						repo,
-						seed: String.trim(yield* command(repo, 'git', ['rev-parse', 'HEAD'])),
-						task
-					} satisfies Run
-				})
+	return yield* pipe(
+		fs.makeDirectory(path.join(directory, 'criteria')),
+		Effect.andThen(
+			Effect.forEach(cases, item =>
+				fs.writeFileString(path.join(directory, 'criteria', `${item.id}.md`), item.criteria)
 			)
-		)
+		),
+		Effect.andThen(
+			Effect.forEach(
+				Array.cartesian(cases, input.harnesses),
+				pair =>
+					Effect.gen(function* () {
+						const item = pair[0]
+						const harness = pair[1]
+						const id = `${item.id}-${harness}`
+						const home = path.join(directory, 'homes', id)
+						const repo = path.join(directory, 'runs', id, 'repo')
+						yield* fs.makeDirectory(home, {recursive: true})
+						yield* fs.makeDirectory(repo, {recursive: true})
+						const sources = Boolean.match(name === 'testing', {
+							onFalse: () => [starter],
+							onTrue: () => [starter, path.resolve(import.meta.dirname, '../../starter/folder-import')]
+						})
+						for (const source of sources) {
+							yield* Effect.forEach(
+								yield* fs.glob('**/*', {exclude: ['node_modules/**', '.git/**'], root: source}),
+								file =>
+									Effect.gen(function* () {
+										if ((yield* fs.stat(path.join(source, file))).type === 'Directory') return
+										yield* fs.makeDirectory(path.dirname(path.join(repo, file)), {recursive: true})
+										yield* fs.copyFile(path.join(source, file), path.join(repo, file))
+									})
+							)
+						}
+						yield* fs.copyFile(path.join(starter, '.gitignore'), path.join(repo, '.gitignore'))
+						yield* fs.makeDirectory(path.join(repo, 'artifacts'))
+						for (const root of ['.claude', '.codex']) {
+							const destination = path.join(repo, root, 'skills', name)
+							yield* Effect.forEach(yield* fs.glob('**/*', {exclude: ['EVALS.md'], root: skill}), file =>
+								Effect.gen(function* () {
+									if ((yield* fs.stat(path.join(skill, file))).type === 'Directory') return
+									yield* fs.makeDirectory(path.dirname(path.join(destination, file)), {recursive: true})
+									yield* fs.copyFile(path.join(skill, file), path.join(destination, file))
+								})
+							)
+						}
+						for (const file of files) {
+							yield* fs.makeDirectory(path.dirname(path.join(repo, file)), {recursive: true})
+							yield* fs.copyFile(path.join(input.root, file), path.join(repo, file))
+						}
+						yield* fs.copy(path.join(repo, `.${harness}`, 'skills'), path.join(home, 'skills'))
+						if (harness === 'claude') {
+							yield* fs.makeDirectory(path.join(home, 'agents'))
+							yield* fs.copyFile(path.join(input.root, '.claude/agents/pair.md'), path.join(home, 'agents/pair.md'))
+							yield* fs.copyFile(path.join(input.root, '.claude/settings.json'), path.join(home, 'settings.json'))
+						} else {
+							yield* fs.copyFile(path.join(input.root, '.codex/instructions.md'), path.join(home, 'instructions.md'))
+							yield* fs.makeDirectory(path.join(home, 'rules'))
+							yield* fs.copyFile(path.join(input.root, '.codex/rules/deny.rules'), path.join(home, 'rules/deny.rules'))
+							yield* fs.writeFileString(
+								path.join(home, 'config.toml'),
+								pipe(
+									yield* fs.readFileString(path.join(input.root, '.codex/config.toml')),
+									String.replace(
+										/^model_instructions_file = .*$/mu,
+										`model_instructions_file = "${home}/instructions.md"`
+									),
+									String.replaceAll(/^\[hooks\.state\."[^"]*\/config\.toml:/gmu, `[hooks.state."${home}/config.toml:`)
+								)
+							)
+							yield* fs.copyFile(path.join(home, 'config.toml'), path.join(repo, '.codex/config.toml'))
+						}
+						const task = path.join(directory, 'runs', id, 'task.md')
+						const criteria = path.join(directory, 'criteria', `${item.id}.md`)
+						yield* fs.writeFileString(
+							task,
+							`Work only in ${repo}. The supplied code was normalized with Oxfmt and lint autofix. Read the supplied ${name} skill before the task. Do not delegate, publish, schedule tasks, change global configuration or load other skills. Keep artifacts under artifacts.\n\n${item.task}\n`
+						)
+						yield* command(repo, 'vp', ['install', '--frozen-lockfile'])
+						yield* command(repo, 'vp', ['check', '--fix'])
+						yield* command(repo, 'git', ['init', '-q', '-b', 'main'])
+						yield* command(repo, 'git', ['add', '-A'])
+						yield* command(repo, 'git', [
+							'-c',
+							'user.name=Eval',
+							'-c',
+							'user.email=eval@example.invalid',
+							'commit',
+							'-qm',
+							'Seed evaluation starter'
+						])
+						if (name === 'review') {
+							yield* fs.copyFile(
+								path.resolve(import.meta.dirname, '../../starter/review/src/service.ts'),
+								path.join(repo, 'src/service.ts')
+							)
+							yield* command(repo, 'vp', ['check', '--fix'])
+						}
+						return {
+							case: item.id,
+							criteria,
+							harness,
+							home,
+							id,
+							instance: `eval-${path.basename(directory)}-${id}`,
+							repo,
+							seed: String.trim(yield* command(repo, 'git', ['rev-parse', 'HEAD'])),
+							task
+						} satisfies Run
+					}),
+				{concurrency: 'unbounded'}
+			)
+		),
+		Effect.map(runs => ({directory, runs, skill, version: packageJson.version}) satisfies Manifest),
+		Effect.tap(manifest =>
+			pipe(
+				Schema.encodeEffect(Schema.fromJsonString(Manifest, {space: 2}))(manifest),
+				Effect.flatMap(text => fs.writeFileString(path.join(directory, 'manifest.json'), text))
+			)
+		),
+		Effect.onExitIf(Exit.isFailure, () => fs.remove(directory, {recursive: true}))
 	)
-	const manifest = {directory, runs, skill, version: packageJson.version} satisfies Manifest
-	yield* fs.writeFileString(
-		path.join(directory, 'manifest.json'),
-		yield* Schema.encodeEffect(Schema.fromJsonString(Manifest, {space: 2}))(manifest)
-	)
-	return manifest
 })
 
 export const activate = Effect.fn('Evals.activate')(function* (directory: string, id: string, home: string) {
