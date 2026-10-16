@@ -19,7 +19,7 @@ Repository-specific decisions live here. Reusable architecture, coding, testing,
 
 ## Patterns
 
-Engineering's Patterns rule reads this table. A pattern change updates the owner, then every consumer the search lists.
+Engineering's Patterns rule reads this table.
 
 | Pattern          | Owner and canonical example                                                    | Consumers                                                                                      | Enforced by                    |
 | ---------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- | ------------------------------ |
@@ -52,7 +52,7 @@ Engineering's Taste rule reads and extends this table.
 
 ## Generators
 
-- Create apps under `apps/` with `vp create app -- --name <name>`, adding `--kind mobile` for an iOS app, and packages under `packages/` with `vp create package -- --name <name>`, using an unscoped kebab-case name, then `vp install` before anything else; never copy one. Add shadcn components with `vp run shadcn add <component>`; `vp run upgrade` refreshes dependencies.
+- Create apps under `apps/` with `vp create app -- --name <name>`, adding `--kind mobile` for an iOS app, and packages under `packages/` with `vp create package -- --name <name>`, using an unscoped kebab-case name, then `vp install` before anything else; never copy one. `vp run upgrade` refreshes dependencies.
 - A template is real files under `tools/create-*/template/` that the generator copies and edits like any other file, never file bodies inlined as strings, and never generated files such as `*.gen.ts`.
 - The web template mirrors the portfolio (its `icon.png`, `__root.tsx`, and entrypoints, with one RPC returning the app name shown on the home page) and always carries the `Dockerfile`, even when an app doesn't deploy. The mobile template mirrors stash's skeleton with the same RPC. A new mobile app needs its EAS project id from `npx eas-cli init` in `app.config.ts`, and after its first store build, `submit.production.ios.ascAppId` in `eas.json`.
 

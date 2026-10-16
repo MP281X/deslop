@@ -111,7 +111,7 @@ Capture the result at the reference's size, theme, data and state, and put it be
 3. **Visual.** Check hierarchy, alignment, spacing, type, color, icon consistency and the generic tells below.
 4. **Context.** Does it carry the named feeling and the three qualities? Where does a person hesitate?
 
-Repair in this order: grouping, hierarchy, alignment, copy, then states. Recapture after each batch, and stress long names, Unicode, 0, 1 and many records, the narrow phone and dark mode. Misalignment and inconsistent controls stay defects when types and tests pass.
+Repair in this order: grouping, hierarchy, alignment, copy, then states. Recapture after each batch, and stress long names, Unicode, 0, 1 and many records, the narrow phone and dark mode. Misalignment and inconsistent controls stay defects when types and tests pass. Show the result with captures per delivery's captures.
 
 | Generic tell                                    | Check                                                 |
 | ----------------------------------------------- | ----------------------------------------------------- |
@@ -121,8 +121,6 @@ Repair in this order: grouping, hierarchy, alignment, copy, then states. Recaptu
 | An emphasized headline word or decorative label | Removing the treatment loses no meaning, so remove it |
 | Generic copy such as "seamless" or "Learn more" | Each label names its capability or the outcome        |
 | Content that waits for an entrance animation    | The first frame is readable and actionable            |
-
-**Show the design.** Use screenshots for layout and short videos for behavior. Keep text readable on a phone, match the app's visual style and show the input, action and outcome without unrelated decoration. Evidence must show the real application.
 
 ## Creative mode
 
@@ -154,7 +152,7 @@ When none fits, choose the form that matches the data's shape; draw a list as a 
 - **Labels.** Put names, values and units on the data, with one scale per comparison. Labels and captions stay under twelve words, and a visual holds no paragraphs.
 - **Real content.** Use actual names, operations and relationships. Keep a proposal distinct from an applied change, and a simulated explanation distinct from application evidence. A physical model is useful only when its operation explains the concept without another metaphor to decode.
 - **Interaction.** Keep the message understandable without a click. Add a control only to explore a real alternative or change an assumption. A predetermined change uses an automatic sequence, not a required click. On a phone, keep essential comparisons visible; do not hide the answer in tabs or menus.
-- **Motion.** Animate the subject from its real source to its destination. Keep identity, scale, alignment and unchanged context stable. Use transform and opacity, not per-frame layout. Make transitions brief and uninterrupted; pause only to let the reader see a state. If a demonstration needs replay, make its reset distinct from an undo. Do not use an invisible one-shot movement as the only explanation.
+- **Motion.** Animate the subject from its real source to its destination. Keep identity, scale, alignment and unchanged context stable. Use transform and opacity, not per-frame layout. Make transitions 180–350 ms and uninterrupted, with no decorative pulses; pause only to let the reader see a state. Replay a demonstration only when one pass is easy to miss, and make its reset distinct from an undo. Do not use an invisible one-shot movement as the only explanation.
 - **Host.** Match the enclosing UI's typography, density, controls, surfaces and semantic tokens, not only its colors. Keep the outer background transparent and remove unnecessary card wrappers. Prefer native CSS for simple automatic diagrams; use relative geometry instead of JavaScript sizing when it gives the same result.
 - **Proof.** Inspect the artifact in its actual host, including an intermediate frame and the final state. A valid file, a correct model or a headless screenshot alone does not prove readable, smooth, correctly triggered motion. Compare before and after at the same scale and actual playback speed. Fix a repeated failure in its representation or source, not with more prompt prohibitions.
 - **Check.** Use the host's theme variables, check light, dark and a 390-point width, and fix clipping, overlap and contrast before you show it. At that width the page stays under about 400 points tall.

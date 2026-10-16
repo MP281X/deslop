@@ -3,327 +3,62 @@ name: engineering
 description: 'TypeScript and Effect code conventions paired with shared lint. Use when designing, implementing or reviewing product and test code, including prototypes.'
 ---
 
-**Scope.** Apply these rules and the repository's `CODING_STANDARDS.md` when present. Aim for a structurally correct first pass with few lint errors, not a promise of zero diagnostics. Oxlint remains the authoritative check; instructions do not replace it. Oxfmt owns whitespace, indentation and other mechanical formatting. Use automatic formatting and available fixes instead of spending reasoning on those details; fix remaining structural diagnostics at their source without a full rewrite or weakened rules. A refactor or cleanup request applies every rule to every line of the owned files. Scratch code outside the repository follows no style rule. Create a missing standards file only to hold a [Patterns](#patterns) or Taste row.
+Oxlint and Oxfmt check every change and stay authoritative. This skill holds what they cannot check, and the forms they require without an autofix, to reduce first-pass corrections. Apply it with the repository's `CODING_STANDARDS.md`. A refactor or cleanup request applies every rule to every line of the owned files. Scratch code outside the repository follows no style rule.
 
-**Before checking.** Run Oxfmt and the repository's deterministic lint autofix before manual code analysis, independent review or a check-only lint pass. Use the owned scope and preserve unrelated changes. Run both even when generated code looks correct; automatic fixes need no model iteration. Analyze the remaining diagnostics and behavior only after normalization. For a read-only review, the author prepares the normalized diff; the reviewer never writes the reviewed checkout.
+- **Normalize.** Run the repository's fix command, or Oxfmt and the deterministic lint autofix, on the owned scope before you analyze code, review it or run a check-only lint. Automatic fixes need no model iteration; analyze only the diagnostics that remain. For a read-only review, the author normalizes and the reviewer never writes the checkout.
+- **First pass.** Write the [Lint forms](#lint-forms) from the start. Fix a remaining diagnostic at its source with the form its message or the table names. Never use a cast, a weakened rule or a rewrite that trades one diagnostic for another.
+- **Type early.** Type errors cause most fix loops: run the repository's check after each small batch of edits, not once after the whole feature. Read the types of an API you have not used in the installed version's source before you call it. Fix the first error in each file first: one unresolved type or import turns into hundreds of implicit `any` errors, such as TS7006 and TS7031, in every consumer.
+- **Disables.** An inline disable needs an unavoidable conflict with an outside contract and a `--` reason that names it. Never disable ordering or weaken file configuration. Report dependency-only diagnostics; rename filename violations.
 
 ## Simplicity
 
-**Architecture.** Use architecture for a new boundary, state owner, background lifetime, dependency or storage contract. Reuse the existing shape for routine changes; do not turn a small feature into a framework.
-
-**MVP.** Write the most direct code that meets the request today. Apply YAGNI to every file, function, branch, parameter, option, export, Layer, check, config value, library and abstraction; configure only what callers vary. Write functional, explicit code: pure functions over immutable data, effects only inside Effect, and Effect modules instead of hand-written helpers.
-
-**Plan the shape.** Before writing, choose the file tree, entrypoints and the smallest mechanism per feature, checked against existing repository rules and the canonical examples from [Patterns](#patterns).
-
-**Clarity.** Code, names and files read top to bottom. Rename or split code instead of narrating it.
-
-**Comments.** Default to no comments. Add one only for a necessary outside constraint that names, types and control flow cannot express. Keep it to one line. Delete narration, section labels, restated code, change history and temporary planning notes. Required diagnostic directives retain their reason.
-
-**Reuse first.** Check existing code, installed modules and platform capabilities before adding code. Extend the canonical example: match its permissions, errors, refresh and tests, and reuse its helpers. Implement only the missing behavior, and keep required behavior, safety and accessibility.
-
-**Inward dependencies.** Domain and service code never import HTTP, RPC, or other transport types, and domain schemas carry no transport annotation such as an HTTP status.
-
-**Building blocks.** Design each new public interface from a realistic caller operation and its ordering, failure and lifetime obligations; hide useful complexity, not forwarded names. Offer services, Layers and functions that the caller composes like any Effect module, never a bundle such as `serve(app)`.
-
-**Behavior kept.** A refactor keeps observable behavior at every consumer; printed diagnostics are not a contract. Accept only a difference that no consumer observes or that a rule here causes, such as an error that now keeps its cause, and report each one. Any other behavior change needs the request.
-
-**Reachable bugs.** Fix a bug that real input reaches inside the request's scope, and check every consumer of the changed output. For a hard bug, use one reproduction and one hypothesis per probe; remove edits from disproven hypotheses and rerun the original scenario. Delete handling only for input the contract excludes; keep and report code that looks intentional.
-
-**Performance.** Optimize only when the request or a contract needs it. Measure one real action on realistic input before and after, where the symptom shows: spans for backend calls, React commits for rerenders, a browser profile for main-thread work. Report run count and variation; a difference within noise is unproved.
-
-**Domain.** Implement the definition the domain uses, such as a cycle for recursion, never the nearest syntactic proxy.
-
-**Happy path.** Failures flow through the error channel: no catch, retry, fallback or defensive check unless the request or a contract needs it. Map an expected failure to the service's error; never `Effect.ignore` it or turn it into a defect with `Effect.orDie`.
-
-**Trusted data.** Validate and transform once at the boundary with Effect Schema, and carry narrowed values forward. Never re-check what the schema, the declared type, an earlier filter or every caller guarantees.
-
-```ts
-// good
-const add = Effect.fn('Ledger.add')(function* (draft: LedgerDraft) {
-	yield* Ref.update(entries, Array.append(draft))
-})
-// bad
-Schema.decodeEffect(LedgerDraft)(draft) // draft is already a LedgerDraft
-variable.init?.type === 'TSSatisfiesExpression' // init was already narrowed to non-null
-```
-
-**Effect first.** Search the cloned Effect modules before you hand-write traversal, state, configuration or platform operations. Replace dependencies that Effect or its platform adapters cover.
-
-```ts
-// good
-const cycles = Graph.stronglyConnectedComponents(graph)
-BigDecimal.format(amount)
-Duration.parts(DateTime.distance(oldest.timestamp, newest.timestamp)).days
-fs.glob('**/.env*.example', {exclude: ['**/node_modules'], root: config.cwd})
-// bad
-const digits = BigDecimal.scale(BigDecimal.abs(amount), 2).value.toString().padStart(3, '0')
-Math.floor(Duration.toDays(DateTime.distance(oldest.timestamp, newest.timestamp)))
-import {glob} from 'glob' // a dependency Effect's FileSystem replaces
-```
-
-**Whole values.** Pass whole values or spread them, named by their role. Do not destructure parameters, callbacks or loop bindings, except labeled tuple parameters, React state and component refs; read other tuples by index. Project fields only to exclude data the recipient must not get. A leading underscore marks only an unread parameter; never add an underscore or a number to avoid shadowing.
-
-```ts
-// good
-server => ({server: {...server, forwardConsole: true, warmup}})
-for (const schema of schemas) report(schema.name)
-Record.map(groups, entries => entries.length)
-upload({scope: input.scope, type: input.type}) // input also holds the bearer token
-submission => onSubmit(submission.value)
-// bad
-({host, port}) => ({server: {forwardConsole: true, host, port, warmup}})
-server: {forwardConsole: true, host: config.host, port: config.port, warmup}
-for (const {name} of schemas) report(name)
-Array.map(Record.toEntries(groups), ([key, entries]) => entries.length)
-_input => onSubmit(_input.value) // or input2: an outer input is shadowed
-```
-
-**Dependencies.** Declare a new dependency as `latest`; pin only versions a consumer requires. Use the locked version's API, and read its upstream source before you add a wrapper or workaround. Extend a dependency through its public API; never patch its source. Library APIs do not define coding policy.
-
-**Once.** Extract repeated logic once; one fact has one owner. A domain enum, such as a status, has one schema that others reuse. A cache or atom family key carries the full identity of what it caches.
+- **MVP.** Write the most direct code that meets the request today. Apply YAGNI to every file, function, branch, parameter, option, export, Layer, check, config value, library and abstraction; configure only what callers vary. Write pure functions over immutable data, effects only inside Effect.
+- **Plan the shape.** Before writing, choose the file tree, entrypoints and the smallest mechanism per feature from the canonical examples in [Patterns](#patterns). Use architecture for a new boundary, state owner, background lifetime, dependency or storage contract.
+- **Clarity.** Code, names and files read top to bottom. Rename or split code instead of narrating it. Write a comment only for an outside constraint that names, types and control flow cannot express.
+- **Reuse first.** Check existing code, installed modules and platform capabilities before you add code. Extend the canonical example: match its permissions, errors, refresh and tests, and reuse its helpers.
+- **Effect first.** Search the cloned Effect modules before you hand-write traversal, state, configuration or platform operations, and replace dependencies that Effect or its platform adapters cover.
+- **Inward dependencies.** Domain and service code never import HTTP, RPC or other transport types, and domain schemas carry no transport annotation such as an HTTP status.
+- **Building blocks.** Design a new public interface from a realistic caller operation and its ordering, failure and lifetime obligations. Offer services, Layers and functions that the caller composes like any Effect module, never a bundle such as `serve(app)`.
+- **Behavior kept.** A refactor keeps observable behavior at every consumer; printed diagnostics are not a contract. Accept only a difference that no consumer observes or that a rule here causes, such as an error that now keeps its cause, and report it; any other behavior change needs the request.
+- **Reachable bugs.** Fix a bug that real input reaches inside the request's scope, and check every consumer of the changed output. Delete handling only for input the contract excludes; keep and report code that looks intentional.
+- **Performance.** Optimize only when the request or a contract needs it. Measure one real action on realistic input before and after, where the symptom shows: spans for backend calls, React commits for rerenders, a browser profile for main-thread work. Report run count and variation; a difference within noise is unproved.
+- **Domain.** Implement the definition the domain uses, such as a cycle for recursion, never the nearest syntactic proxy.
+- **Happy path.** Failures flow through the error channel: no catch, retry, fallback or defensive check unless the request or a contract needs it.
+- **Trusted data.** Decode once at the boundary with Effect Schema and carry the narrowed value forward. Never re-check what the schema, the declared type, an earlier filter or every caller guarantees.
+- **Whole values.** Pass whole values or spread them, named by their role. Project fields only to keep data from a recipient that must not get it, such as a bearer token. When a name shadows an outer one, rename by role; never add an underscore or a number.
+- **Options.** Use Option where it composes with other Option operators; keep a plain optional value otherwise.
+- **Once.** One fact has one owner: extract repeated logic once, give a domain enum one schema, and give a cache or atom family key the full identity of what it caches.
+- **One way.** No duplicate, subset or superset fields, methods, options or exports. Store and send canonical data, derive display values, expose each state once and remove states no caller produces.
+- **No compatibility.** Rename the shape and every caller together. No alias, fallback, deprecated path or flag unless a documented or user-named contract requires it.
+- **Dependencies.** Declare a new dependency as `latest`; pin only versions a consumer requires. Read the locked version's upstream source before you add a wrapper or workaround, and extend it through its public API, never a patch.
+- **Dead code.** In the same change, delete every superseded or unused file, folder, export, type, branch, config, validation, doc, test and dependency, and the empty directories that remain. Update docs and generated bundles that describe changed behavior.
 
 ```ts
 // good
 const sandboxGone = Effect.mapError(cause => SandboxError.make({cause, message: 'The sandbox is gone'}))
-// bad — the same mapping written in three handlers
-pipe(
-	sandbox.exec(input),
-	Effect.mapError(cause => SandboxError.make({cause, message: 'The sandbox is gone'}))
-)
-pipe(
-	sandbox.read(path),
-	Effect.mapError(cause => SandboxError.make({cause, message: 'The sandbox is gone'}))
-)
+const cycles = Graph.stronglyConnectedComponents(graph)
+upload({scope: input.scope, type: input.type}) // input also holds the bearer token
+// bad
+Schema.decodeEffect(LedgerDraft)(draft) // draft is already a LedgerDraft
+import {glob} from 'glob' // Effect's FileSystem has glob
+const digits = BigDecimal.scale(BigDecimal.abs(amount), 2).value.toString().padStart(3, '0') // BigDecimal.format
 ```
-
-**Canonical data.** Store and send canonical data, derive display values, expose each state once and remove states no caller produces.
-
-**One way.** No duplicate, subset or superset fields, methods, options or exports.
-
-**No compatibility.** Rename the shape and every caller together. No alias, fallback, deprecated path or flag unless a documented or user-named contract requires it.
-
-**Dead code.** Delete every superseded or unused file, folder, export, type, branch, config, validation, doc, test and dependency in the same change. Update docs and generated bundles that describe changed behavior in the same commit.
 
 ## Patterns
 
 Keep the repository consistent by default, without a reminder, and change a standard everywhere at once.
 
-**Canonical example.** Before writing a recurring shape, such as a page layout, list, form, empty or loading state, dialog, service, route, error mapping, file layout or name, find its canonical example. Use the row in the Patterns section of `CODING_STANDARDS.md` first. Otherwise, use the variant that most current consumers use, and the newest one on a tie; the nearest file is not the example when it uses a minority variant. Copy its structure, components, names, visible terms, copy and states. Depart from it only on request, and never write a recurring shape from scratch when an example exists.
-
-**Register.** When a task settles a shape that two or more consumers share and the Patterns section has no row for it, add one: the pattern, its owner and canonical example, a search that lists its consumers, and what enforces it.
-
-**Taste.** Read the Taste section of `CODING_STANDARDS.md` before choosing a layout, file organization, interface or name, and follow its rows like Patterns rows. When the user picks a variant, rejects one or corrects a taste choice that no rule covers, add a row in the same change: the area, the choice, the rejected alternative and his reason in his words. A row that recurs across repositories moves into the owning skill.
-
-**Pattern change.** A user change to a pattern, style, name or convention changes the repository standard, unless he limits its scope. In the same change, update its owner: the shared component, template, generator, lint rule and Patterns row. List every consumer with the row's search, migrate each one, delete the superseded variant and its exemptions, then run the search for the old form again. Report each consumer kept on purpose with its reason. A migration that crosses another repository or a published contract needs the user's approval first.
-
-**Enforce.** When the same correction happens twice, make the mistake impossible at the highest level that works: an owner component, export or type that removes the wrong form, then a lint rule whose message names the replacement, then a test. Keep a prose rule only for a judgment that no check can make. Prove a new check against the real past mistake and an accepted control.
-
-## Lint pairs
-
-Lint enforces these forms without an autofix; each example satisfies every rule involved.
-
-**Fallback.** A default is `??`; never a ternary on the same value.
-
-```ts
-// good
-const root = options?.root ?? '.'
-// bad — no-negated-condition flips it, then prefer-nullish-coalescing flags it
-const root = options?.root !== undefined ? options.root : '.'
-```
-
-**Conditions.** A boolean is tested bare; `=== true` only on a value that can be undefined.
-
-```tsx
-// good
-if (enabled) return
-aria-current={Boolean.match(props.selected === true, {onFalse: () => undefined, onTrue: () => 'page'})}
-// bad
-if (enabled === true) return // enabled is a boolean
-if (props.selected) return // props.selected can be undefined
-```
-
-**Flat.** Use early-return statements in Effect.fn. No ternaries, in JSX too, and no combinators deeper than equivalent statements. An early return, `Boolean.match`, `Option.match`, `Array.match`, `Match` or a lookup record selects a value.
-
-```ts
-// good
-const kill = Effect.fn('Sandbox.kill')(function* (sandbox?: Sandbox) {
-	if (sandbox?.status !== 'running') return
-
-	yield* sandbox.kill
-})
-Boolean.match(ignoreCase, {onFalse: () => undefined, onTrue: () => 'i'})
-// bad
-const type = event.type === 'text-delta' ? 'text' : event.type === 'reasoning-delta' ? 'reasoning' : 'unknown'
-const flags = ignoreCase ? 'i' : undefined // "instead of a ternary the Boolean.match would be cleaner"
-{props.children ? props.children(entry) : <Label entry={entry} />} // "the ternaries are impossible to read"
-// bad
-Array.appendAll(
-	base,
-	Boolean.match(hasTools, {
-		onFalse: () => [],
-		onTrue: () =>
-			pipe(
-				tools,
-				Array.map(tool => pipe(tool, Option.toArray))
-			)
-	})
-)
-```
-
-**Choices.** `Match` with `Match.exhaustive` for a union, never `switch`.
-
-**Options.** Use Option operators, never `.value`. Use Option where it composes; keep plain optional values otherwise.
-
-```ts
-// good
-Option.map(Number.parse(event.target.value), field.handleChange)
-Option.map(Array.head(parts), part => part.text)
-// bad
-if (Option.isSome(open)) open.value.append(event.delta)
-const parsed = Option.getOrUndefined(Number.parse(event.target.value))
-```
-
-**Absence.** `undefined` marks an absent value. Use `null` only where an outside contract, such as a stored schema or a library callback, demands it, with an inline disable that names the contract.
-
-```ts
-// good
-const last = Option.getOrUndefined(Array.last(sessions))
-// oxlint-disable-next-line no-restricted-properties -- The schema stores a missing link as null.
-url: Option.getOrNull(url)
-// bad
-failed: Option.getOrNull(Option.none()) // "i don't like null, i prefer undefined"
-```
-
-**Handlers.** A handler used once is an arrow in place; a handler used twice is a `function`.
-
-**Accumulators.** No `let`: a fold or an Effect collection operation that says what it selects.
-
-```ts
-// good
-const total = Array.reduce(values, 0, Number.sum)
-pipe(teamId, String.split(','), Array.map(String.trim), Array.findFirst(String.isNonEmpty))
-Array.filterMap(items, item =>
-	Boolean.match(supports(item), {onFalse: () => Result.failVoid, onTrue: () => Result.succeed(item.value)})
-)
-// bad
-let total = 0
-for (const value of values) total += value
-const [first] = teamId
-	.split(',')
-	.map(value => value.trim())
-	.filter(value => value.length > 0)
-items.filter(item => supports(item)).map(item => item.value)
-```
-
-**Natives.** Use Effect modules instead of globals and native methods. Third-party-owned methods stay, with an inline diagnostic disable and reason when needed.
-
-```ts
-// good
-Number.parse(input.count)
-Predicate.isString(value)
-Predicate.hasProperty(node, 'tagName')
-Predicate.isNotNullish(annotation)
-Array.isReadonlyArrayEmpty(node.arguments)
-String.isNonEmpty(event.delta)
-Array.get(items, 0)
-const serve = Effect.gen(function* () {
-	const start = yield* Clock.currentTimeMillis
-	const host = yield* pipe(Config.String('HOST'), Config.withDefault('0.0.0.0'))
-	const password = yield* Config.Redacted('SMTP_PASS')
-	yield* Effect.sleep(Duration.millis(delay))
-	return {host, password, start}
-})
-// bad
-parseInt(input.count)
-typeof value === 'string'
-'tagName' in node // "typeof and in shouldn't be allowed, probably this should use effect schema"
-annotation !== null && annotation !== undefined
-node.arguments.length === 0
-Effect.promise(() => new Promise(resolve => setTimeout(resolve, delay)))
-process.env.HOST ?? '0.0.0.0'
-```
-
-**Pipe.** A standalone `pipe`, nested at most three deep; never the `.pipe` method.
-
-**Failures.** Yield a yieldable domain error directly in a generator: `return yield* E.make(...)`. Keep `Effect.fail(error)` when the error is not yieldable; outside a generator, use `Effect.fail`. Do not infer yieldability from factory-call syntax.
-
-```ts
-// good
-const text = Effect.fn('Ai.text')(function* (response: AiResponse) {
-	if (response.status === 'refused') return yield* AiError.make({message: 'The model refused the prompt'})
-
-	return response.text
-})
-// bad
-const text = Effect.fn('Ai.text')(function* (response: AiResponse) {
-	if (response.status === 'refused') yield* Effect.fail(AiError.make({message: 'The model refused the prompt'}))
-	if (response.status === 'refused') throw new Error('The model refused the prompt')
-	return response.text
-})
-```
-
-**Casts.** No `as`, `any`, dropped generic, loosened exported type or known shape erased into `unknown`, even to make a symptom go away; `satisfies` and `as const` are the only assertions. Opaque SDK and framework inputs remain `unknown` until narrowed or decoded at their boundary; never fabricate a shape to avoid that type.
-
-```ts
-// good
-const params = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Unknown))(part.params)
-return Effect.succeed([{text: part.text, type: 'text'} satisfies TextContent])
-// bad — a cast satisfies one rule and the next flags it
-const params = part.params as Record<string, unknown>
-const params: unknown = part.params // erases an already-known shape
-```
-
-**Decoders.** `Schema.decodeUnknownEffect` only for `unknown` input; typed input uses `Schema.decodeEffect`, and JSON text goes through `Schema.fromJsonString`.
-
-```ts
-// good
-const load = Effect.fn('Plugin.load')(function* (path: string) {
-	const endpoint = yield* Schema.decodeEffect(Endpoint)(config.endpoint)
-	const manifest = yield* Schema.decodeEffect(Schema.fromJsonString(PackageManifest))(yield* fs.readFileString(path))
-	return {endpoint, manifest}
-})
-// bad
-Schema.decodeUnknownEffect(Endpoint)(config.endpoint) // config.endpoint is a string
-JSON.parse(text)
-```
-
-**Imports.** Keep module names; only generated shadcn aliases differ. Separate type imports; packages, blank line, then # aliases. Every export has a consumer.
-
-```ts
-// good
-import {Effect, Schema} from 'effect'
-// bad — each line is a diagnostic
-import {Schema as S} from 'effect'
-
-import type {Plugin} from 'vite'
-import {type Plugin, createServer} from 'vite'
-
-import type {PortfolioState} from '#rpcs/contracts.ts'
-export const EntryKind = Schema.Literals(['income', 'expense']) // no importer
-```
-
-**Readonly.** Required on service-shape properties. Allowed on class members and handwritten `Schema.suspend` cycle types; otherwise forbidden.
-
-**Disables.** Fix a diagnostic with the shown idiom, never a cast, a weakened rule or a rewrite that trades one diagnostic for another, or reproduce a rule defect. Inline disables require an unavoidable conflict and a `--` reason; never disable ordering or weaken file configuration. Report dependency-only diagnostics; rename filename violations.
-
-```ts
-// good
-// oxlint-disable-next-line typescript/consistent-type-definitions -- TanStack Router augments this interface by name.
-// @effect-diagnostics-next-line nodeBuiltinImport:off -- Vite's plugin API hands over a Node server.
-// bad
-"exactOptionalPropertyTypes": false
-// oxlint-disable-next-line typescript/consistent-type-assertions
-// oxlint-disable-next-line sort-keys -- keeps the printed order
-// bad
-files: ['packages/components-web/src/form.tsx', 'packages/components-web/src/rich-text-area.tsx'],
-```
+- **Canonical example.** Before you write a recurring shape, such as a page layout, list, form, empty or loading state, dialog, service, route, error mapping, file layout or name, find its canonical example: the row in the Patterns section of `CODING_STANDARDS.md`, else the variant that most current consumers use, the newest one on a tie. Copy its structure, components, names, visible terms, copy and states. Depart from it only on request.
+- **Register.** When a task settles a shape that two or more consumers share and no Patterns row covers it, add one: the pattern, its owner and canonical example, a search that lists its consumers, and what enforces it.
+- **Taste.** The user's taste decides layout, visual design, file organization, module boundaries, public interfaces and names. Read the Taste section of `CODING_STANDARDS.md` first and follow its rows like Patterns rows; decide a choice that no row settles from the closest rows. When the user picks, rejects or corrects a choice that no rule covers, add a row in the same change: the area, the choice, the rejected alternative and his words. Create a missing `CODING_STANDARDS.md` only to hold a Patterns or Taste row. A row that recurs across repositories moves into the owning skill.
+- **Pattern change.** A user change to a pattern, style, name or convention changes the repository standard unless he limits its scope. In the same change, update its owner (shared component, template, generator, lint rule and Patterns row), migrate every consumer that the row's search lists, delete the superseded variant and its exemptions, and run the search again. Report each consumer kept on purpose. A migration across another repository or a published contract needs the user's approval first.
+- **Enforce.** When the same correction happens twice, make the mistake impossible at the highest level that works: an owner component, export or type, then a lint rule whose message names the replacement, then a test. Keep a prose rule only for a judgment that no check can make. Prove a new check against the real past mistake and an accepted control.
 
 ## Effect
 
-**Functions.** Use Effect.fn('Name.method') for a traced function with arguments and Effect.fnUntraced for an internal helper. Use Effect.gen for an effect with several statements and no arguments, and a single effect directly. Use Effect.fn.Return only for a generator that calls itself.
+**Functions.** Use `Effect.fn('Service.method')` for a traced function with arguments, `Effect.fnUntraced` for an internal helper, `Effect.gen` for several statements without arguments, and a single effect directly. Use `Effect.fn.Return` only for a generator that calls itself.
 
 ```ts
-// good
 const prompt = Effect.fn('Ai.prompt')(function* (message: Prompt.UserMessage) {
 	const input = yield* piUserMessage(message)
 	yield* send(input)
@@ -331,27 +66,13 @@ const prompt = Effect.fn('Ai.prompt')(function* (message: Prompt.UserMessage) {
 const decodePart = Effect.fnUntraced(function* (part: Part) {
 	return yield* Schema.decodeEffect(Event)(part)
 })
-const stop = Effect.gen(function* () {
-	yield* setStatus('stopping')
-	yield* kill
-})
 const restart = setStatus('starting')
-// bad
-fetch: url => Effect.tryPromise(() => fetch(url))
-const decodePart = Effect.fn('decodePart')(function* (part: Part) {}) // a span on an internal helper
-const stop = Effect.gen(function* () {
-	yield* setStatus('stopping')
-}) // one statement
 ```
 
-**Errors.** One domain error per service; preserve cause, redact secrets, map in Effect.fn's pipeline argument. Map SDK unknown errors at the adapter.
+**Errors.** One `Schema.TaggedError` per service. Map in `Effect.fn`'s pipeline argument, keep the cause, redact secrets, and map SDK errors at the adapter, so library failures never leak from the service.
 
 ```ts
 // good
-export class AiError extends Schema.TaggedError<AiError>()('AiError', {
-	cause: Schema.optional(Schema.Defect()),
-	message: Schema.String
-}) {}
 const prompt = Effect.fn('Ai.prompt')(
 	function* (message: Prompt.UserMessage) {
 		yield* send(message)
@@ -362,23 +83,18 @@ const pages = Effect.tryPromise({
 	catch: cause => NotionError.make({cause, message: 'Cannot list pages'}),
 	try: () => client.pages.list()
 })
-Effect.mapError(cause => WorkspaceError.make({cause: Redacted.make(cause), operation: 'exec input'}))
-Effect.tapError(() => cleanup)
 // bad
 pipe(
 	fs.readFileString(target),
 	Effect.catch(() => Effect.succeed(''))
 )
-pipe(loadConfig, Effect.retry(Schedule.recurs(3)))
-Effect.mapError(failure => new LedgerError({reason: failure.message})) // cause dropped, new
-Effect.catch(error => pipe(cleanup, Effect.andThen(Effect.fail(error)))) // fails again with the error it caught
-load: (path: string) => Effect.Effect<void, PlatformError | Schema.SchemaError> // library failures leak from the service
+Effect.mapError(failure => new LedgerError({reason: failure.message})) // cause dropped
+load: (path: string) => Effect.Effect<void, PlatformError | Schema.SchemaError> // library failures leak
 ```
 
-**Services.** Inline a sole implementation in its Layer; name layers for multiple backends. Defaults use Context.Reference. Implement with Service.of or satisfies; service methods are readonly properties.
+**Services.** Inline a sole implementation in its Layer; name layers only for several backends. Use `Context.Reference` for a default. Build the shape with `Service.of` or `satisfies`.
 
 ```ts
-// good
 export class Ledger extends Context.Service<Ledger, Ledger.Shape>()('@app/ledger/service/Ledger') {
 	static readonly layer = Layer.effect(
 		this,
@@ -388,256 +104,124 @@ export class Ledger extends Context.Service<Ledger, Ledger.Shape>()('@app/ledger
 		})
 	)
 }
-export class Ai extends Context.Service<Ai, Ai.Agent>()('@app/ai/service/Ai') {
-	static layerPi(config: Pi.Config) {
-		return Layer.effect(this, makePi(config))
-	}
-}
 export const Verbose = Context.Reference<boolean>('@app/ai/Verbose', {defaultValue: () => false})
-// bad
-class Logger extends Context.Service<Logger>()('Logger', {make: Effect.succeed(service)}) {}
-static readonly layer = Layer.effect(Ledger, makeLedger) // a make with one caller
-query(sql: string): Effect.Effect<Rows> // a method signature instead of a readonly property
 ```
 
-**Primitives.** Use Effect's primitives directly; RPCs and services already trace, and one scope owns each lifetime. Run independent input and output with Effect.all and explicit concurrency; keep order-dependent, transactional or resource-conflicting work sequential.
+**Primitives.** Use Effect's primitives directly: RPCs and services already trace, and one scope owns each lifetime, with acquisition and release in one `Effect.acquireRelease`. Run independent input and output with `Effect.all` or `Effect.forEach` and explicit concurrency; keep order-dependent, transactional or conflicting work sequential.
 
-```ts
-// good
-const connect = Effect.gen(function* () {
-	const state = yield* SubscriptionRef.make(PortfolioState.make({}))
-	const socket = yield* Effect.acquireRelease(openSocket, closeSocket)
-	return {socket, state}
-})
-// bad
-class State {
-	update(f: (s: PortfolioState) => PortfolioState) {
-		return SubscriptionRef.update(this.ref, f)
-	}
-}
-const traced = Effect.withSpan('Notes.create')(notes.create(input))
-Effect.addFinalizer(() => closeSocket(socket)) // acquisition and release with different owners
-```
+**Failures.** Yield a yieldable domain error directly in a generator: `return yield* E.make(...)`. Use `Effect.fail(error)` for an error that is not yieldable, and for every error outside a generator. Factory-call syntax does not show yieldability; the type does.
 
-**Runtime.** The entry point runs the program with `NodeRuntime.runMain`. Bridge to a Promise once, where an external contract demands it, with `Effect.runPromise` and an inline disable that names the contract. React is no such contract: atoms run its Effects.
+**Results.** Sort with `Order`, and return a fallible pure value as a `Result`.
 
-```ts
-// good
-NodeRuntime.runMain(program)
-// oxlint-disable-next-line no-restricted-properties -- Bingo's produce contract demands a Promise.
-produce: flow(generate, Effect.runPromise),
-// bad
-const runtime = ManagedRuntime.make(AppLayer)
-const run = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(effect)
-Effect.runPromiseWith(Context.empty()) // "what's the point of using the runPromiseWith if i pass an empty context?"
-```
-
-**Sorting.** `Order` for sorting, `Result` for a fallible pure value.
-
-```ts
-// good
-Array.sort(
-	entries,
-	Order.mapInput(Order.Number, entry => entry.tokens)
-)
-Result.fromOption(Array.head(parts), () => AiError.make({message: 'The model returned no parts'}))
-// bad
-entries.sort((left, right) => left.tokens - right.tokens)
-```
+**Runtime.** The entry point runs `NodeRuntime.runMain(program)`. Bridge to a Promise once, where an outside contract demands it, with `Effect.runPromise` and a disable that names the contract. React is no such contract: atoms run its Effects.
 
 ## Types and Schema
 
-**Inference.** Infer types. Annotate a return type only on a type guard, an assertion function, a recursive function or the thunk of a recursive `Schema.suspend`. Check a returned object with `satisfies`, and type an empty or one-element array with `Array.empty<T>()` or `Array.of<T>(...)` instead of its callback. Use schema types and indexed members in signatures. Keep intentional widening, not repeated inferred generics.
+- **Inference.** Infer types, and check a returned object with `satisfies`. Type an empty or one-element array with `Array.empty<T>()` or `Array.of<T>(...)`. Never drop a generic or loosen an exported type to silence an error. Annotate a return type only on a type guard, an assertion function, a recursive function or a recursive `Schema.suspend` thunk. Use schema types and indexed members, such as `LedgerEntry['amount']`, in signatures. Keep an intentional widening, such as `useState<'idle' | 'running'>('idle')`. Derive a type from its source, such as `ReturnType<typeof fromSdk>`; never copy an inferred shape by hand.
+- **Schema pairs.** Write `export type X = typeof X.Type` directly before `export const X = Schema.Struct(...)`; reuse fields by spreading `.fields`. Use `Schema.optionalKey` for an absent field; reserve `Schema.optional` for an explicit `undefined`.
+- **Construction.** `X.make` validates synchronously and throws: use it for trusted values. For input that can fail a refinement, use `X.makeEffect` and map its issue to the owning domain error.
+- **Cycles.** Handwrite each recursive-cycle type and annotate only its `Schema.suspend` thunk; other types stay inferred, and a union follows its members.
+- **Error predicates.** A predicate is a static member of its tagged error; check a struct inline with `Schema.is`.
+- **Casts.** Opaque SDK and framework inputs stay `unknown` until decoded at their boundary; never fabricate a shape or erase a known shape into `unknown`.
 
 ```ts
-// good
-const balances = Array.reduce(decoded, HashMap.empty<Tag, BigDecimal.BigDecimal>(), sumByTag)
-const label = MutableRef.make('') // the initializer infers string, not just ''
-const [status, setStatus] = useState<'idle' | 'running'>('idle') // intentional widening
-function visit(node: Node): Result {
-	return visit(node.parent)
-}
-function settle(amount: LedgerEntry['amount']) {
-	return BigDecimal.format(amount)
-}
-function still(bytes: Uint8Array) {
-	return {bytes, type: 'image/jpeg'} satisfies Image
-}
-export type Sandbox = ReturnType<typeof fromSdk>
-// bad
-function still(bytes: Uint8Array): Image {
-	return {bytes, type: 'image/jpeg'}
-} // "not a fan of assigning the return type, i would have preferred a satisfies"
-const Input = Schema.Struct({value: Schema.String}) satisfies Schema.Schema<Input>
-const label = MutableRef.make<string>('') // repeats the inferred type
-export type SandboxLike = {id: string; renew: (seconds: number) => Promise<unknown>} // a copy of an inferred shape
-```
-
-**Schema pairs.** Type pair immediately before every schema. Structs use Schema.Struct, never Schema.Class; reuse fields by spreading. Use Schema.optionalKey for absent fields; Schema.optional allows explicit undefined too, so reserve it for that contract.
-
-```ts
-// good
 export type LedgerDraft = typeof LedgerDraft.Type
 export const LedgerDraft = Schema.Struct({...LedgerEntry.fields, id: Schema.optionalKey(Schema.NonEmptyString)})
-RunEventCursor.make(value.toString())
-trails: pipe(Schema.Array(PortfolioTrail), Schema.withConstructorDefault(Effect.succeed([])))
-// bad
-export type EntryDraft = {amount: EntryAmount; id?: EntryId; tag: string} // a hand-written shape beside the schema
-// bad
-new AiError({message: 'The model returned no text'}) // the schema has make
-function cursorFromBigInt(value: bigint) {
-	return RunEventCursor.make(value.toString())
-}
-payload: Schema.Struct(pipe(PortfolioVisitor.fields, Struct.pick(['color', 'id', 'name', 'x', 'y']))) // the schema itself fits
-```
-
-**Construction.** `schema.make` applies defaults and validates synchronously, throwing on failure: use it for trusted construction. For reachable fallible construction, use `schema.makeEffect` and map its `SchemaIssue.Issue` to the owning domain error. Effect decoders report `SchemaError`.
-
-```ts
-// good — reachable constructor failure stays in the error channel
-pipe(
-	Name.makeEffect(input),
-	Effect.mapError(cause => NameError.make({cause, message: 'Invalid name'}))
-)
-// bad — input can fail a refinement even though its TypeScript type is string
-Name.make(input)
-```
-
-**Cycles.** Handwrite each recursive-cycle type; annotate only Schema.suspend thunks. Noncycle types stay inferred; unions follow members.
-
-```ts
-// good
-export type CodeStep = typeof CodeStep.Type
-export const CodeStep = Schema.Struct({code: Schema.String, kind: Schema.Literal('code')})
 export type CallStep = {readonly do: readonly Step[]; readonly kind: 'call'}
 export const CallStep = Schema.Struct({
 	do: Schema.Array(Schema.suspend((): Schema.Codec<Step> => Step)),
 	kind: Schema.Literal('call')
 })
-export type Step = CallStep | CodeStep
-export const Step = Schema.Union([CallStep, CodeStep])
-```
-
-**Error predicates.** A predicate is a static member of its tagged error; a struct is checked inline with `Schema.is`.
-
-```ts
-// good
-class PathNotFound extends Schema.TaggedError<PathNotFound>()('PathNotFound', {
-	cause: Schema.optional(Schema.Defect())
-}) {
-	static matches = (error: Cause.UnknownError) => Schema.is(FileNotFound)(error.cause)
-}
-// bad
-function isPathNotFound(error: unknown) {
-	return Schema.is(FileNotFound)(error)
-}
+pipe(
+	Name.makeEffect(input),
+	Effect.mapError(cause => NameError.make({cause, message: 'Invalid name'}))
+)
 ```
 
 ## Shape
 
-**Inline.** Inline forwarding wrappers, temporaries, constants and property aliases; keep an alias only where a callback needs its narrowed type. Inline a small helper with one caller. A helper that several files share lives in the package's `lib/utils`. Argument-free functions are named values.
-
-```ts
-// good
-function randomIndex(length: number) {
-	return Random.Random.defaultValue().nextIntUnsafe() % length
-}
-const isApiUrl = Predicate.compose(String.isString, Predicate.or(Equal.equals('/api'), String.startsWith('/api/'))) // a predicate, reused
-static generateText = generateTextPi
-const notFound = HttpServerResponse.empty({status: 404})
-// bad
-const random = Random.Random.defaultValue()
-function isBackendRequest(request: IncomingMessage) {
-	return isApiUrl(request.url)
-} // "this is just a wrapper / factory function"
-Ref.set(entries, Array.copy(decoded)) // decoded is already an array
-const runPromise = Effect.runPromiseWith(Context.empty()) // "wrapper function, tmp variable ... that can be inlined"
-const parent = read.parent // "inline the property access since it add no value"
-function isVideo(type: FileType) {
-	return String.startsWith('video/')(type)
-} // String.startsWith('video/') is already the function
-```
-
-**Linked state.** Linked state moves in one pure updater, never a setter that calls another.
-
-```ts
-// good
-setState(current => {
-	const draft = {...current.draft, files}
-	return {draft, owner: ownerAfter(draft)}
-})
-// bad
-setDraft(current => {
-	setOwner(ownerAfter(current))
-	return {...current, files}
-})
-```
-
-**File tree.** Use explicit kebab-case role names and one naming scheme. Prefer one substantive file to near-empty fragments; colocate <name>.test.ts; no barrels.
-
-**Package surface.** Declare exports for imported subpaths and import aliases for internal paths. Use the shared lint preset with generated ignores only.
-
-```ts
-// good
-"exports": {"./plugin": "./src/generated/plugin.ts"}
-export {oxlint as default} from '@deslop/coding-standards'
-// bad — consumers import two names from a barrel of everything
-export * from './generated/Client.ts'
-const warned = ['sort-keys', 'typescript/no-restricted-types'] // a package rule list
-"typecheck": "tsc --noEmit" // type-aware lint already checks types
-```
-
-**Generated code.** A generator emits code that follows these rules as closely as it can; lint ignores its output.
+- **Inline.** Inline forwarding wrappers, temporaries, constants and property aliases; keep an alias only where a callback needs its narrowed type. Inline a small helper with one caller; a helper that several files share lives in the package's `lib/utils`. An argument-free function is a named value.
+- **Linked state.** Linked state moves in one pure updater, never a setter that calls another.
+- **File tree.** Use explicit kebab-case role names and one naming scheme. Prefer one substantive file to near-empty fragments; colocate `<name>.test.ts`; no barrels.
+- **Package surface.** Declare exports for imported subpaths and import aliases for internal paths. Extend the shared lint preset with generated ignores only; add no package rule list or separate typecheck script.
+- **Generated code.** A generator emits code that follows these rules as closely as it can; lint ignores its output.
 
 ## React
 
-**Components.** React Compiler memoizes. Import hooks by name from `react`. Destructure state at its declaration, receive component refs through props, and keep only a component's own interaction state in React.
+- **Atoms.** Data, shared state and every Effect a component needs live in atoms; a component reads them with hooks and never runs an Effect. A task that changes a React Query hook, a fetching Effect or an Effect runner in React code moves it to an atom. Declare atoms at module level or in `Atom.family`, never during render. Import `Atom` and `AsyncResult` from `effect/reactivity` and the hooks from `@effect/atom-react`. Supply services through `Atom.runtime(layer)` and build every read and write with that runtime's `atom` and `fn`. Tie each write to the reads it changes with reactivity keys; only a runtime's `fn` honors them.
+- **Outcomes.** Read data with `useAtomSuspense`. The route or section that owns a screen wraps it in one `Suspense` boundary and one error boundary with a retry. Components never branch on loading or failure, and never turn a failure into an empty value. Take a write's pending and failure state from its atom's result. A reversible write updates the screen at once through `Atom.optimistic` and `Atom.optimisticFn`.
+- **Ownership.** A component that owns atoms, writes or a lifetime gets its own file; a small presentational helper stays beside its one user. Reset an editable draft through a `key` on its identity, never a `useEffect` that copies props.
+- **Pure render.** Derive display values during render, and never mutate them or run an RPC, write or subscription there. Event handlers own user actions; `useEffect` synchronizes only external systems.
+- **State identity.** Keep one owner per value, stable domain keys for list items and deliberate reset boundaries. Fix an observed rerender by deriving the value in the existing atom graph; add no manual memoization or compiler escape directives.
 
 ```tsx
-// good
-const editorRef = useRef<Lexical.LexicalEditor>(null)
-const [showShortcuts, setShowShortcuts] = useState(false)
-const moveRpc = useAtomSet(RpcClient.mutation('portfolio.move'))
-// bad
-const handle = useCallback(() => setOpen(true), [])
-const state = useState(false)
-const [open, setOpen] = React.useState(false) // "why are you using the React.useState and not importing useState"
-```
-
-**Atoms.** Data, shared state and every Effect a component needs live in atoms; a component reads them with hooks and never runs an Effect. A task that changes a React Query hook, a fetching Effect or an Effect runner in React code moves that code to an atom. Declare atoms at module level or in `Atom.family`, never during render. Import `Atom` and `AsyncResult` from `effect/reactivity` and the hooks from `@effect/atom-react`. Supply services through `Atom.runtime(layer)`, and build every read and write with that runtime's `atom` and `fn`. Tie each write to the reads it changes with reactivity keys; only a runtime's `fn` honors them, so never pass them to `Atom.fn`.
-
-```tsx
-// good
 const appsRuntime = Atom.runtime(DualApps.layer)
 const appAtom = Atom.family((id: AppId) => pipe(appsRuntime.atom(loadApp(id)), Atom.withReactivity(['apps'])))
 const saveAppAtom = appsRuntime.fn((draft: AppDraft) => saveApp(draft), {reactivityKeys: ['apps']})
-const app = useAtomValue(appAtom(appId))
-const [saveResult, save] = useAtom(saveAppAtom)
-// bad
-useQuery({queryFn: () => Effect.runPromiseWith(Context.empty())(loadApp(appId))})
-onClick={() => Effect.runPromise(saveApp(draft))}
-useAtomValue(Atom.make(loadApp(appId))) // a new atom on every render
-```
-
-**Outcomes.** Read data with `useAtomSuspense`. The route or section that owns a screen wraps it in one `Suspense` boundary for loading. One error boundary there shows the failure with a retry. Components never branch on loading or failure, and never turn a failure into an empty value. Take a write's pending and failure state from its atom's result, never from copied React state. A reversible write updates the screen at once through `Atom.optimistic` and `Atom.optimisticFn`, which roll back on failure.
-
-```tsx
-// good
 function AppFrame(props: {appId: AppId}) {
 	return <Frame app={useAtomSuspense(appAtom(props.appId)).value} />
 }
-<ErrorBoundary fallback={<LoadError onRetry={refresh} />}>
-	<Suspense fallback={<AppFrameSkeleton />}>
-		<AppFrame appId={appId} />
-	</Suspense>
-</ErrorBoundary>
-<Button disabled={saveResult.waiting} onClick={() => save(draft)}>Save</Button>
-// bad
-app.data ? <AppFrame app={app.data} /> : <Spinner /> // a failed load spins forever
-const members = query.data ?? [] // a failed load looks like no members
-const [pending, setPending] = useState(false) // copies the write atom's waiting state
 ```
 
-- **Ownership.** Give a component that owns its own atoms, writes or lifetime its own file; keep small presentational helpers beside their one user. Reset an editable draft through a `key` on its identity, never a `useEffect` that copies props.
-- **Pure render.** Derive display values from props and subscribed state during render, and never mutate them or run an RPC, write or subscription there. Event handlers own user actions; `useEffect` synchronizes only external systems, never copied state or calculations.
-- **State identity.** Keep one owner per value, stable domain keys for list items and deliberate reset boundaries. For an observed rerender problem, derive the value in the existing atom graph instead of subscribing to unrelated changing state. Compiler memoization never guarantees correctness or lifetime; add no manual memoization, compiler escape directives or weakened hook rules to hide an ownership problem.
+## Lint forms
+
+Lint rejects the right column and has no autofix for it. Write the left column from the start.
+
+| Write                                                                                              | Never                                                                        | Rule                                                                                     |
+| -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| An early `return`, `Boolean.match(x, {onFalse, onTrue})`, `Option.match` or a lookup record        | `a ? b : c`, in JSX too                                                      | `no-ternary`                                                                             |
+| `options?.root ?? '.'`                                                                             | `root !== undefined ? root : '.'`                                            | `no-nullish-ternary`, `prefer-nullish-coalescing`                                        |
+| `pipe(Match.value(event), Match.tag('Text', text), Match.exhaustive)`                              | `switch`                                                                     | `no-switch-statement`                                                                    |
+| `selected === true` on a value that can be `undefined`                                             | `if (selected)` on an optional                                               | `strict-boolean-expressions`                                                             |
+| `Array.filter` before the loop, an early `return` in a callback                                    | `continue`                                                                   | `no-continue`                                                                            |
+| At most 3 nested blocks, 6 nested callbacks and 3 nested `pipe` calls                              | Deeper nesting                                                               | `max-depth`, `max-nested-callbacks`, `no-deep-pipe`                                      |
+| `pipe(value, f, g)`                                                                                | `value.pipe(f, g)`                                                           | `no-restricted-properties`                                                               |
+| `const total = Array.reduce(values, 0, Number.sum)`                                                | `let` with a loop                                                            | `no-let`                                                                                 |
+| `Array.join(parts, ', ')`, `Array.map(items, f)`, `String.split(text, ',')`, `Record.keys(record)` | `parts.join(', ')`, `items.map(f)`, `text.split(',')`, `Object.keys(record)` | `no-native-method-call`, `no-restricted-globals`; the `Path` service's `path.join` stays |
+| `Predicate.isString(v)`, `Predicate.hasProperty(node, 'tag')`, `Predicate.isNotNullish(v)`         | `typeof`, `'tag' in node`, `v !== null && v !== undefined`                   | `no-typeof`, `no-in-operator`, `no-double-nullish-check`                                 |
+| `Array.isReadonlyArrayEmpty(items)`, `String.isNonEmpty(text)`                                     | `items.length === 0`, `text.length > 0`                                      | `no-native-emptiness-check`                                                              |
+| `Array.ensure(value)`                                                                              | `Array.isArray(value) ? value : [value]`                                     | `no-array-wrap-ternary`                                                                  |
+| `Option.map(option, f)`, `Option.match`, `Option.getOrElse`                                        | `option.value` after `Option.isSome`                                         | `no-option-value-access`                                                                 |
+| `undefined`, `Option.getOrUndefined`                                                               | `null`, `Option.getOrNull`, except for an outside contract                   | `unicorn/no-null`, `no-restricted-properties`                                            |
+| `Number.parse(text)`, `Number.max`, `HashMap`, `HashSet`, `DateTime`                               | `parseInt`, `Math.max`, `Map`, `Set`, `Date`                                 | `no-restricted-globals`, `no-restricted-properties`, `no-restricted-types`               |
+| `Clock`, `Config`, `Console`, `Random`, `Effect.sleep`, `HttpClient`                               | `Date.now()`, `process.env`, `console`, `setTimeout`, `fetch`                | `effecttsgo/global-*`, `effecttsgo/process-env`                                          |
+| `function name() {}` for a named function; an arrow only in place                                  | `const name = () => {}`                                                      | `func-style`                                                                             |
+| `server => ({...server, warmup})`, `for (const schema of schemas)`, `pair => pair[0]`              | `({host, port}) =>`, `for (const {name} of schemas)`                         | `no-destructured-parameter`; labeled tuples, React state and refs can destructure        |
+| `Array.sort(entries, Order.mapInput(Order.Number, (entry: Entry) => entry.tokens))`                | `entries.sort((left, right) => left.tokens - right.tokens)`                  | `no-native-method-call`; a third-party object's own method stays                         |
+| The source value where it is used                                                                  | A one-line wrapper, alias or argument-free constant function                 | `no-trivial-indirection`, `no-constant-function`                                         |
+| `import {Schema} from 'effect'`                                                                    | `import {Schema as S} from 'effect'`                                         | `no-renamed-import`                                                                      |
+| Properties built with `Effect.fn` or `Effect.fnUntraced`                                           | `fetch: url => Effect.tryPromise(...)` as a property arrow                   | `no-effect-property-arrow`                                                               |
+| Inferred return and variable types, `satisfies`, `Array.empty<T>()`                                | `function f(): T`, `const items: T[] = []`                                   | `no-return-type`, `no-redundant-variable-annotation`                                     |
+| `satisfies T`, `as const`                                                                          | `as T`, `any`, `value!`                                                      | `consistent-type-assertions`, `no-explicit-any`, `no-non-null-assertion`                 |
+| `Ref.make(0)`, `useState(false)`, `useRef<HTMLDivElement>(null)`                                   | `Ref.make<number>(0)`, `useRef<HTMLDivElement \| null>(null)`                | `no-redundant-state-type`, `no-redundant-use-ref-null-type`                              |
+| `T[]`, an optional property                                                                        | `Array<T>`, `Promise<T>`, `x: T \| undefined`                                | `no-restricted-types`                                                                    |
+| `return yield* NotFound.make({...})`                                                               | `yield* Effect.fail(NotFound.make({...}))`                                   | `effecttsgo/unnecessary-fail-yieldable-error`                                            |
+| `Schema.decodeEffect(S)(typed)`, `Schema.fromJsonString(S)` for JSON text                          | `Schema.decodeUnknownEffect` on typed input, `JSON.parse` in an Effect       | `effecttsgo/prefer-typed-schema-decoder`, `prefer-schema-over-json`                      |
+| The Schema operation inline at its use                                                             | `const decode = Schema.decodeEffect(S)` stored for later                     | `no-stored-schema-operation`                                                             |
+| `Schema.Struct`, `Schema.TaggedError`, `Schema.NonEmptyString`                                     | `Schema.Class`, `Data.TaggedError`, `Error`, a rebuilt refinement            | `no-restricted-properties`, `no-restricted-globals`, `no-reinvented-schema`              |
+| The failure mapped to the service's error                                                          | `Effect.ignore`, `Effect.orDie` outside tests                                | `no-discarded-failure`                                                                   |
+| `NodeRuntime.runMain(program)`; atoms in React                                                     | `Effect.runPromise`, `ManagedRuntime.make`                                   | `no-restricted-properties`                                                               |
+| `import {useState} from 'react'`; `const [open, setOpen] = useState(false)`                        | `React.useState`, `const state = useState(false)`                            | `no-restricted-properties`, `no-undestructured-use-state`                                |
+| React Compiler memoization, a `ref` prop                                                           | `useCallback`, `useMemo`, `memo`, `forwardRef`                               | `no-restricted-imports`                                                                  |
+| The UI package's primitive                                                                         | A styled native `<button>` or `<input>`                                      | `no-native-control`                                                                      |
+| `assert` from `@effect/vitest`, the failure's identity                                             | `expect`, `vi`, an assertion on message wording                              | `no-restricted-imports`, `no-error-message-assertion`                                    |
+| One comment line for an outside constraint                                                         | A multiline comment                                                          | `no-multiline-comment`                                                                   |
+| Object keys in ascending order; a blank line starts a new group                                    | Unsorted keys, a `sort-keys` disable                                         | `sort-keys`, `no-unexplained-disable`                                                    |
+
+These forms satisfy every rule involved, where the obvious fix trades one diagnostic for another:
+
+```ts
+// A handler used twice: a function declaration, not a const arrow.
+function label(entry: Entry) {
+	return Boolean.match(entry.done, {onFalse: () => 'Running', onTrue: () => 'Done'})
+}
+// Two nested loops: one loop over the pairs, not a sixth nested callback.
+Effect.forEach(Array.cartesian(cases, harnesses), pair => prepareRun(pair[0], pair[1]), {concurrency: 'unbounded'})
+// Cleanup on failure: its own failure flows, without Effect.orDie or Effect.ignore.
+pipe(
+	prepareRuns,
+	Effect.onExitIf(Exit.isFailure, () => fs.remove(directory, {recursive: true}))
+)
+// A choice inside a deep pipeline: a named function, not a nested Boolean.match.
+Array.appendAll(base, toolParts(tools, hasTools))
+```

@@ -2,9 +2,7 @@
 
 **Issues.** Deslop has no issue tracker; GitHub holds only its pull requests, so the request is the whole task.
 
-**Agent configuration.** Native `.claude` and `.codex` files own the base configuration. The Claude pair and Codex instructions differ only before "# Core": keep every edit below that heading identical. `@deslop/coding-standards` owns architecture, engineering, design, testing and review; refresh repository copies with its installer.
-
-**Reference app.** The Patterns table in `CODING_STANDARDS.md` names the canonical example for each shape: `apps/portfolio` for a web app, `apps/stash` for a mobile app, a service, a route or a command.
+**Agent configuration.** The Claude pair and Codex instructions differ only before "# Core": keep every edit below that heading identical.
 
 **Commands.** Vite+ caches checks by task inputs and never caches fixes. Use `--no-cache` to prove a fresh run. Run root checks and rule tests sequentially: rule tests create temporary source fixtures that a concurrent type scan can read while they disappear.
 
@@ -14,9 +12,9 @@ vp run --workspace-root --no-cache fix
 vp run --workspace-root --cache test
 ```
 
-**App.** Web apps have no development server. Run the built preview with the deslop `preview` command from [maintenance's Project scripts](maintenance.md#t3-settings) for iteration, browser testing, captures and handoff, and rerun it after each change. It sets `HOST` and `PORT`. The stash server has no worktree preview: its preview command keeps port 5017 and the real notes in `~/.deslop/stash`, which the running stash on dev uses.
+**App.** Run the portfolio preview with the deslop `preview` command from [maintenance's Project scripts](maintenance.md#t3-settings) for iteration, browser testing, captures and handoff; it sets `HOST` and `PORT`. The stash server has no worktree preview: its preview command keeps port 5017 and the real notes in `~/.deslop/stash`, which the running stash on dev uses.
 
-**Components.** List the existing shared components first. Inspect with `vp run --workspace-root shadcn list @shadcn`, `vp run --workspace-root shadcn view <component>` and `vp run --workspace-root shadcn docs <component>`, and add with `vp run --workspace-root shadcn add <component>`.
+**Components.** List the existing shared components first. Inspect with `vp run --workspace-root shadcn list @shadcn`, `vp run --workspace-root shadcn view <component>` and `vp run --workspace-root shadcn docs <component>`.
 
 ## Application tracing
 
