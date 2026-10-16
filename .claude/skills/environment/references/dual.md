@@ -25,7 +25,7 @@ curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
 
 - **Sign-in.** `admin@dual.local` with `preview-password`. AI journeys need provider connections.
 - **Reload.** Source edits reload through the watchers; Turbo restarts a watcher only when its build inputs change.
-- **Lifetime.** `preview.sh stop` stops the processes like Ctrl-C and keeps the containers and data. `bun run preview:destroy`, the settle script's cleanup command, removes only that stage, its containers and its data. Run it yourself before you move or delete the checkout.
+- **Lifetime.** The `stop` command stops the processes like Ctrl-C and keeps the containers and data. `bun run preview:destroy`, the settle script's cleanup command, removes only that stage, its containers and its data. Run it yourself before you move or delete the checkout.
 - **Live webhooks.** Funnel the API port's `/api/webhooks` path per environment's Previews. `SERVER_PUBLIC_URL` follows the app URL, so a separate Funnel port needs a temporary callback URL override, reverted before the push.
 - **Accounts.** Writes go only to GitHub `MP281X`, GitLab `matteopaludgnach` and the user's Discord test channel. The saved GitHub and Discord preview tokens are read-only; write tokens come from `gh auth token` and the `glab` configuration. The user configures Jira and removes test configuration himself, from a guide.
 - **Never** use the shared `init` or `dev` commands as a preview.
