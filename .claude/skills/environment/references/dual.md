@@ -1,44 +1,33 @@
 # Dual
 
-**Commands.** Run these from the root. Checks, builds, tests and preview builds share Turbo cache entries, so a repeated run reruns only what changed. `fix` fixes the branch's changes and untracked files only. `check` prints failing task logs in oxlint's agent format and hides legacy warnings. Add no outer Vite+ cache around service-dependent tests.
+Dual is a production SaaS in startup mode: requirements change often and anything can change, except that production data must keep working.
+
+## Production data
+
+- **Migrate, never reset.** Every change to a persisted shape ships a migration that converts existing rows: a renamed id, a stored enum value, a JSON column shape, a table. A schema change comes from `bun run db:generate` in `packages/server`; a data change is `bun run db:generate --custom --name <name>` filled with SQL that rewrites existing rows in place and skips rows already converted.
+- **Prove it** on a local database seeded with the old shape: run the migration, then the changed journey. The user has no production database access; never make one a merge prerequisite.
+- The new code reads only the new shape: no alias or dual read path.
+
+## Commands
+
+From the root. Checks, builds, tests and previews share one Turbo cache per worker, `~/dual/.turbo/cache`, across all its worktrees.
 
 ```bash
-bun run check
-bun run fix
-bun run test --output-logs=errors-only
+bun run fix                                                           # always at the root: branch changes and untracked files
+bunx turbo run check --filter=<package> && bunx turbo run test --filter=<package>   # while you work
+bun run check --affected && bun run test --affected                   # the local gate, before every push
 ```
 
-- **Generated.** Root `codegen` generates icons and agent documentation; `bun --filter @dual/docs generate` builds the Fumadocs output; `dual openapi-plugin` writes `turbo.json` for internal plugins.
-- **Tests.** Root `test` runs workspace tests, release tests and candidate packing; server tests start their own database containers. `--output-logs=errors-only` prints only failing task logs: a cold run otherwise prints about 9,000 lines. Run consumer acceptance and live release tests separately when their contracts change.
-
-**VPN.** When GitLab does not answer, reconnect the VPN on dev: directly when the current worker is `dev`, otherwise through `ssh mp281x@dev`. Give the returned sign-in URL as a guide under **Needs you**, then check again.
-
-```bash
-curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
-  openvpn3 session-manage --config datapizza --disconnect
-  openvpn3 session-start --config datapizza --background
-  openvpn3 session-auth
-}
-```
-
-**Preview.** Dual has no production preview, so its preview proves only iteration. README's `bun run preview` creates an isolated Alchemy stage from the checkout path, with free ports that the stage keeps, a database, a sandbox, migrations, an administrator, and app, API and worker watchers. Two threads in one worktree share its stage. Start it with the Dual `preview` command from [maintenance's Project scripts](maintenance.md#t3-settings): it sets `DUAL_PREVIEW_HOST` to the tailnet host, so the app uses `https://<host>:<app port>`, and it shares the app port from the `Preview ready:` line.
-
-- **Sign-in.** `admin@dual.local` with `preview-password`. AI journeys need provider connections.
-- **Reload.** Source edits reload through the watchers; Turbo restarts a watcher only when its build inputs change.
-- **Lifetime.** The `stop` command stops the processes like Ctrl-C and keeps the containers and data. `bun run preview:destroy`, the settle script's cleanup command, removes only that stage, its containers and its data. Run it yourself before you move or delete the checkout.
-- **Live webhooks.** Funnel the API port's `/api/webhooks` path per environment's Previews. `SERVER_PUBLIC_URL` follows the app URL, so a separate Funnel port needs a temporary callback URL override, reverted before the push.
-- **Accounts.** Writes go only to GitHub `MP281X`, GitLab `matteopaludgnach` and the user's Discord test channel. The saved GitHub and Discord preview tokens are read-only; write tokens come from `gh auth token` and the `glab` configuration. The user configures Jira and removes test configuration himself, from a guide.
-- **Never** use the shared `init` or `dev` commands as a preview.
+- **Local gate.** `--affected` keeps the root tasks and runs only changed packages and their dependents against `TURBO_SCM_BASE`, which the agent environment sets to `origin/master`: about 40 package tasks for a typical branch instead of 276. Check and test run one after the other. Never run them without `--affected` locally: each package runs a type-aware linter at 4–7 GB, a full run takes up to 30 minutes, and the pipeline runs it.
+- **Generated:** root `codegen` (icons, agent docs), `bun --filter @dual/docs generate` (Fumadocs), `dual openapi-plugin` (internal plugins and their `turbo.json`).
+- **Tests** start their own database containers. Run consumer acceptance and live release tests only when their contracts change.
 
 ## Jira
 
-Jira is Dual's only issue tracker: project `DOS`, board 1053, on `datapizza.atlassian.net`. The user's account ID is `712020:87e4f57e-6b5d-40ab-8dfa-faf159ead71a`.
+Project `DOS`, board 1053, on `datapizza.atlassian.net`; the user's account ID is `712020:87e4f57e-6b5d-40ab-8dfa-faf159ead71a`.
 
-**Writes.** The only writes: when the user approves the tickets to work on, assign each to him and move it to `Doing`. Never create, edit or comment on a ticket, move it to another status, or change the sign-in. From Dual's `docs/agents/issue-tracker.md`, use only the read commands and the type hierarchy.
-
-- **Assigned.** A ticket assigned to the user is work he started. Read it whenever its key, such as `DOS-289`, appears in a request, branch or commit, and quote the requirements you use.
-- **Picking.** When the user asks what to work on, rank the unassigned tickets in `To Do` by priority (`P1` highest), size and fit with the code; skip every other status. Rank the Epics, Tasks, Stories and Bugs inside Areas and Initiatives. Decide with the user, assign and move the approved tickets, then start orchestrator's Prepare with them.
-- **Output.** Plain `view` prints the description as text; `--json` returns Atlassian's document format. Use `--csv` for searches.
+- **Picking.** When the user asks what to work on: rank only unassigned `To Do` tickets by priority (`P1` highest), size and fit with the code; skip every other status. Rank Epics, Tasks, Stories and Bugs, not Areas or Initiatives. After the user approves, assign each ticket to the user and move it to `Doing`; these are the only Jira writes.
+- **Assigned.** A ticket key in a request, branch or commit means work the user started: read it and quote the requirements you use.
 
 ```bash
 acli jira workitem search --csv --paginate --fields key,issuetype,priority,summary --jql 'project = DOS AND assignee is EMPTY AND status = "To Do" ORDER BY priority DESC, updated DESC'
@@ -49,36 +38,46 @@ acli jira workitem assign --key DOS-289 --assignee @me --yes
 acli jira workitem transition --key DOS-289 --status Doing --yes
 ```
 
+## VPN
+
+`git.datapizza.tech` works only through dev's VPN route. When it does not answer, reconnect on dev (through `ssh mp281x@dev` from desktop), give the printed sign-in URL once under **Needs you**, then check again:
+
+```bash
+curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
+  openvpn3 session-manage --config datapizza --disconnect
+  openvpn3 session-start --config datapizza --background
+  openvpn3 session-auth
+}
+```
+
+## Preview
+
+The `preview` project script runs `bun run preview` in its unit and builds an isolated Alchemy stage from the checkout path: database, sandbox, migrations, an administrator and app, API and worker watchers. It proves iteration, not a production build. Sign in as `admin@dual.local` with `preview-password`; AI journeys need provider connections.
+
+- Source edits reload through the watchers. `stop` keeps containers and data; `bun run preview:destroy` (the settle cleanup) removes the stage. Run it before you move or delete a checkout.
+- Live webhooks: funnel the API port's `/api/webhooks` per environment's Previews, with a temporary callback URL override reverted before the push.
+- Never use the shared `init` or `dev` commands as a preview.
+- **Accounts.** Writes go only to GitHub `MP281X`, GitLab `matteopaludgnach` and the user's Discord test channel. Saved preview tokens are read-only; write tokens come from `gh auth token` and the `glab` configuration.
+
 ## App
 
-**Dual Apps.** The user's settled product rules:
-
-- An app complements Dual's own screens for one workflow; it never replaces them and never becomes a form or website builder.
-- Whoever can open a workflow can open its apps; an invitation also opens one app to people without workflow access.
-- Apps share the company font, sizes and primary color; layout and the shadcn theme's spacing, size and radius vary per app.
-- A notification or email exists in an app only when Dual's own workflows already send it.
-
-**Components.** Build every screen from the shadcn primitives in `packages/ui/src/components`, including spinners, date pickers and form controls. Add a missing one with `vpx shadcn@latest add <name> --cwd packages/ui` after you check `vpx shadcn@latest list @shadcn --cwd packages/ui` and its docs. Never hand-build a control that a primitive covers.
-
-**Frontend state.** Dual has no global atom runtime: each feature defines its own `Atom.runtime(layer)` and mounts a `RegistryProvider`. `@effect/atom-react` declares `scheduler` below 0.28, so check its peer warning against the root override when you add it.
-
-**CI.** The GitLab quality job runs a frozen install, the Effect-tsgo patch, then check, test and documentation in one Turbo graph. Read `docs/ci.md` for failures and `docs/releasing.md` for releases. A new push cancels interruptible pipelines. Check each package's Effect version in the lockfile before you cross adapter boundaries.
-
-**Tracing.** The SaaS app can export to PostHog, not Jaeger; see its Observability configuration.
+- **Dual Apps.** An app complements Dual's screens for one workflow, never a form or website builder. Whoever opens a workflow opens its apps; an invitation opens one app without workflow access. Apps share the company font, sizes and primary color; layout, spacing, size and radius vary per app. An app sends a notification or email only when Dual's workflows already send it.
+- **Components** come from the shadcn primitives in `packages/ui/src/components`; add a missing one with `vpx shadcn@latest add <name> --cwd packages/ui`.
+- **Frontend state.** Each feature defines its own `Atom.runtime(layer)` and mounts a `RegistryProvider`.
+- **CI.** The GitLab quality job runs a frozen install, the Effect-tsgo patch, then check, test and docs in one Turbo graph; see `docs/ci.md` and `docs/releasing.md`. A new push cancels interruptible pipelines.
+- **Tracing.** The SaaS exports to PostHog, not Jaeger.
 
 ## Coding standards
 
-Each workspace and infrastructure package pins its own `@deslop/coding-standards` version. Its `oxlint.config.ts` holds a legacy list of files whose `legacyRules` drop to warnings, package-wide warning rules and rule disables; every other file passes the configured rules.
+Each package pins its own `@deslop/coding-standards`; its `oxlint.config.ts` holds a legacy file list whose rules drop to warnings.
 
-- **Skills.** The worktree script runs `vpx @deslop/coding-standards@latest`, which refreshes architecture, engineering, design, testing and review in `.agents/skills` and `.claude/skills`.
-- **Bump.** The user bumps `@deslop/coding-standards` when he needs to; never bump it in another task. When he asks, run `bun add --dev --exact @deslop/coding-standards@latest` in every package directory, including infrastructure packages, the root, the scaffold baseline and consumer fixtures, then the root fix.
-- **New rules.** When a rule from a bump fails, turn it off in that package's `oxlint.config.ts`, never with inline disables; this overrides engineering's Disables rule. Remove rule entries and suppressions that the bump made obsolete.
-- **Touched files.** A hand-written file that the task adds, or rewrites over half of, leaves the legacy list and the scoped exemptions and passes the configured rules: its casts and suppressions go unless engineering allows one with a reason. Every other changed file stays listed; never refactor a file only for lint or Effect Atom.
-- **Prune.** After the change, run the command below in the package directory, without `--quiet`. Remove each listed file that it does not print, and an import-ban exemption only after its imports are gone. Never add a file to the list.
-- **Never linted.** Every source file, generated code and shadcn primitives included, is type-checked. Generated code and build output get no lint rules and no formatting. Shadcn primitives are formatted, with all lint rules off. None of them enters the legacy list. Never refactor a shadcn primitive, even one the task edits. The hand-written color picker, data tables and file input stay linted.
+- **Skills** refresh into `.claude/skills` and `.agents/skills` through the worktree script `vpx @deslop/coding-standards@latest`.
+- **Bump** only when the user asks: `bun add --dev --exact @deslop/coding-standards@latest` in every package directory, the root, the scaffold baseline and consumer fixtures, then `bun run fix`. A rule the bump breaks is turned off in that package's `oxlint.config.ts`, never inline.
+- **Touched files.** A hand-written file the task adds or rewrites over half of leaves the legacy list and passes every rule. Other changed files stay listed; never refactor a file only for lint.
+- **Prune** after the change: remove listed files that this command no longer prints.
 
-```bash
-"$(git rev-parse --show-toplevel)"/node_modules/.bin/oxlint --format json . | jq -r '[.diagnostics[].filename] | unique[]'
-```
+  ```bash
+  "$(git rev-parse --show-toplevel)"/node_modules/.bin/oxlint --format json . | jq -r '[.diagnostics[].filename] | unique[]'
+  ```
 
-- **Standards file.** Remove from Dual's `CODING_STANDARDS.md` what the shared skills already say. Keep the layout, tooling, stricter local choices and domain contracts.
+- **Never linted:** generated code, build output and shadcn primitives (formatted only, never refactored). Everything is type-checked.

@@ -1,21 +1,18 @@
 # Coding Standards
 
-Repository-specific decisions live here. Reusable architecture, coding, testing, design and review rules live in the installed shared skills; automated enforcement lives in the tooling.
+Repository-specific decisions that the code, the generators and lint do not already show. Reusable engineering, design and review rules live in the installed shared skills.
 
 ## Product scope
 
 - Target this environment and the user's personal-software workflow only.
-- Releases are linear and squash-merged. Apply data changes at every merged pull request.
+- Releases are linear and squash-merged; a newer merge cancels an older release run, so a data change covers everything since the last successful deploy.
 - Local data is disposable. Preserve production data only from the immediately previous release; delete obsolete data.
 
 ## Layout
 
-- A service package holds one service in exactly these files: `src/schema.ts` for its schemas, their types, and its domain error; `src/service.ts` for the tag, its shape, and its static layers; `src/lib/utils.ts` for pure helpers; other `src/lib/*.ts` files for the implementation. Split nothing further, so every package reads the same way.
-- Keep `lib/utils.ts` frontend-safe.
-- An app owns its RPCs, entrypoints, and services: `rpcs/contracts.ts` holds the RpcGroup and its schemas, `rpcs/handlers.ts` its layer, `lib/utils.ts` the AtomRpc client and shared operations, `services/<name>/` each service in the package shape, and `routes/` the pages in the web file-router layout, mobile apps included: `__root.tsx`, `(home)/index.tsx`, `<name>.tsx` and `<name>/$id.tsx`. A component one page uses stays in that page's file.
-- Entrypoints are `src/main.<role>.ts(x)`: `main.server.ts` runs the HTTP server, `main.client.tsx` the router and root, and `main.cli.ts` a command line.
-- A web app has no development server: `preview` builds the client and server and runs `dist/server.js`, the same build that deploys.
-- A mobile app keeps what Expo reads at its root: `app.config.ts`, `eas.json`, `fingerprint.config.js` when it has native files the fingerprint misses, `modules/<name>` for its local native module and `targets/<name>` for app extensions.
+- A service's public contract lives in `src/schema.ts` (schemas, types, domain error) and `src/service.ts` (tag, shape, static layers); its implementation, private adapters and private schemas stay in `src/lib/`. `lib/utils.ts` holds pure helpers and stays frontend-safe.
+- A component one page uses stays in that page's file.
+- Workspace packages export their TypeScript source directly, with no library build; tools and apps require Node 26.
 
 ## Patterns
 
@@ -33,7 +30,7 @@ Engineering's Patterns rule reads this table.
 
 Engineering's Taste rule reads and extends this table.
 
-| Area            | Choice                                                          | Rejected                                      | His words                                                                                        |
+| Area            | Choice                                                          | Rejected                                      | The user's words                                                                                 |
 | --------------- | --------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | AI calls        | The Effect AI provider module, directly in the service using it | A wrapper `ai` package with its own interface | "This interface looks like shit … just remove the package and use the effect ai module directly" |
 | Identifiers     | A literal union for a closed set of ids, such as model ids      | `string`                                      | "The id need to be a literal"                                                                    |
@@ -41,30 +38,20 @@ Engineering's Taste rule reads and extends this table.
 
 ## Apps
 
-- Routes never repeat the base styles (`bg-background text-foreground`) the root applies, and add no `main` or `h1` wrapper they don't need.
+- Routes inherit the base styles the root applies (`bg-background text-foreground`) and add a `main` or `h1` wrapper only when the page needs it.
 - Name by role (`Home`, `utils`), never by kind or app (`AppName`, `web`).
-
-## Runtime
-
-- `packages/runtime` is the single source of truth for what every app shares: `./server` (Node server and OpenTelemetry) and `./vite` at `src/`, `./web` (router and RPC client) in `src/web/`, and `./mobile` (RPC client, OpenTelemetry, foreground and updates) and `./mobile/expo` (the Expo config of each app variant) in `src/mobile/`.
-- `@deslop/components-web` holds web components at `src/`, shadcn primitives at `src/ui/` and svgl logos at `src/svgs/`. `@deslop/components-mobile` holds the SwiftUI counterparts: `theme.ts`, components at `src/`, helpers at `src/lib/utils.ts`, svgl logos at `src/svgs/` as the SVG files svgl serves, its native views in `ios/`, and an Expo plugin that registers its fonts. It owns its native dependencies; an app lists only the packages it imports.
-- Defaults live in code through `Config.withDefault`, never in `.env.example`: `HOST` is `0.0.0.0`, `PORT` is 5000 (the port traefik routes), and one `VITE_OTEL_URL` base serves both traces and logs.
+- Defaults live in code through `Config.withDefault`, never in `.env.example`: `HOST` is `0.0.0.0`, `PORT` is 5000 (the port traefik routes). Web and server telemetry read one `VITE_OTEL_URL` base for traces and logs; the Expo config reads `OTEL_URL`.
 
 ## Generators
 
-- Create apps under `apps/` with `vp create app -- --name <name>`, adding `--kind mobile` for an iOS app, and packages under `packages/` with `vp create package -- --name <name>`, using an unscoped kebab-case name, then `vp install` before anything else; never copy one. `vp run upgrade` refreshes dependencies.
-- A template is real files under `tools/create-*/template/` that the generator copies and edits like any other file, never file bodies inlined as strings, and never generated files such as `*.gen.ts`.
-- The web template mirrors the portfolio (its `icon.png`, `__root.tsx`, and entrypoints, with one RPC returning the app name shown on the home page) and always carries the `Dockerfile`, even when an app doesn't deploy. The mobile template mirrors stash's skeleton with the same RPC. A new mobile app needs its EAS project id from `npx eas-cli init` in `app.config.ts`, and after its first store build, `submit.production.ios.ascAppId` in `eas.json`.
+- Create apps with `vp create app -- --name <name>` (`--kind mobile` for iOS) and packages with `vp create package -- --name <name>`, an unscoped kebab-case name, then `vp install` before anything else; never copy one. `vp run upgrade` refreshes dependencies.
+- The web template always carries the `Dockerfile`, even when an app doesn't deploy. A new mobile app needs its EAS project id from `npx eas-cli init` in `app.config.ts`, and after its first store build, `submit.production.ios.ascAppId` in `eas.json`.
 
 ## Deploy
 
 - Deploy is one `tools/compose.yaml` with configs inlined, direct ports, and unpinned images, driven by commands for this machine; no deploy README, flag-heavy scripts, or nested folders.
 - Each mobile app is one entry in two matrices: `ios` in `.github/workflows/deploy.yaml`, which releases from main, and `simulator` in `.github/workflows/simulator.yaml`, which builds branches that change `apps/stash`, `packages` or the lockfile. [Stash's README](apps/stash/README.md#releases) explains both.
-- Reusable tooling ships as a TypeScript package `@deslop/<name>` under `tools/`, published by CI; an app whose CLI shares its code, such as stash, publishes from `apps/`. Add and publish one with [tools/AGENTS.md](tools/AGENTS.md).
-
-## Keys
-
-- Name a service or RPC client key `@deslop/<package>/<path>`, derivable from the file that declares it.
+- Published tools follow [tools/AGENTS.md](tools/AGENTS.md); generators stay private; an app whose CLI shares its code, such as stash, publishes from `apps/`.
 
 ## Imports and Exports
 
@@ -74,27 +61,26 @@ Engineering's Taste rule reads and extends this table.
 ## Dependencies
 
 - Keep dependencies in their existing owning packages; shared root dependencies stay at the root. Resolve version drift with normal package-manager updates, not by relocating declarations.
-- Updates stay within declared ranges and supported upstream families; update coupled packages together, then verify their real consumers. Vite+ owns its exact lint and test toolchain versions; do not independently chase their newer tags.
-- Peer checks stay strict. Vite+'s versioned Vite alias is accepted only for explicitly inspected consumer versions in `pnpm-workspace.yaml`, not through blanket `allowAny` or TypeScript peer suppression. Recheck compatibility when either side changes.
+- Update coupled packages together, then verify their real consumers. Vite+ owns its exact lint and test toolchain versions; do not independently chase their newer tags.
+- Vite+'s versioned Vite alias is accepted only for the consumer versions listed in `pnpm-workspace.yaml`; recheck them when either side changes.
 
 ## RPC
 
-- Declare contracts as an `RpcGroup`, with `stream: true` for subscriptions, and implement them with `RpcContracts.toLayer` returning `RpcContracts.of`.
-- The client is an `AtomRpc.Service` over `WebRuntime.layer` or `MobileRuntime.layer`.
+- React clients use an `AtomRpc.Service` over `WebRuntime.layer` or `MobileRuntime.layer`; a command line uses a scoped `RpcClient.make`.
 - A stream syncs one keep-alive Atom that components read; a component never owns a subscription and never polls.
 
 ## Components
 
-- Deslop web surfaces use square borders, with no cards or rounded corners. iOS screens keep the system shapes.
+- Deslop's web look lives in its shadcn theme, `packages/components-web/src/theme.css`; primitives keep their shipped shapes, and pages add no cards. iOS screens keep the system shapes.
 - Give each context one icon entrypoint for an action instead of text buttons repeating it.
-- Leave conventional icons without a tooltip; add a label only where it disambiguates.
+- Leave conventional icons without a tooltip; give every icon-only control an accessible label.
 
 ## Tooling
 
 - A check that needs a script becomes a custom lint rule instead.
-- `tsconfig.json` owns jsx, lib, types and exclude only; `vite.config.ts` owns ignores, overrides, repository plugins, env and the entire formatter configuration with the `@deslop` import group; `.fallowrc.json` owns dead-code analysis.
+- `@deslop/coding-standards` owns compiler and lint policy; the root `vite.config.ts` owns repository formatting and ignores, `.fallowrc.json` dead-code analysis.
 
 ## Local context
 
-- Keep a real `README.md` for public package usage; link `AGENTS.md` to it only when it has agent-specific context. A private folder needs an `AGENTS.md` only for constraints or decisions that its code and configuration cannot explain. Do not create a document or alias just because a package changes.
-- No policy duplicated between the repository and a skill, source-code narration, empty templates, `AGENTS.md` files inside `src`, or generic folder documents without a semantic owner. Shared procedures remain in skills; package-specific context belongs in its `AGENTS.md`.
+- Keep a real `README.md` for public package usage; link `AGENTS.md` to it only when it has agent-specific context. A private folder needs an `AGENTS.md` only for constraints or decisions that its code and configuration cannot explain.
+- No policy duplicated between the repository and a skill, source-code narration, empty templates, `AGENTS.md` files inside `src`, or generic folder documents without a semantic owner.

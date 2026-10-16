@@ -1,0 +1,378 @@
+<!doctype html>
+<!--
+  Proof video template for HyperFrames. Copy it to a scratch project as index.html and edit only the EDIT parts.
+  Portrait 1080x1920 shows a phone recording (390x844, cropped to 384x832) at full width; the device frame shows
+  about four fifths of the screen's height and the camera pans to each input.
+  Landscape 1920x1080 is for a layout that exists only on desktop: recordings at 1440x900, cropped to 1440x896, and
+  every frame meant to be read pushes in until at most 500 CSS px of the app's width are in view.
+  Recordings are cropped to multiples of 16: other sizes render a black strip at the stage's edge.
+-->
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<title>Proof video</title>
+		<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+		<style>
+			/* EDIT: the app's own font file, copied into assets/, and its theme tokens. */
+			@font-face {
+				font-family: 'App';
+				src: url('assets/app-font.woff2') format('woff2');
+				font-weight: 100 900;
+			}
+			:root {
+				--primary: oklch(0.646 0.222 41.116); /* the app's primary */
+				--canvas: oklch(0.17 0.006 285.9); /* the app's foreground hue, darkened to a backdrop */
+				--radius: 0px; /* the app's base radius times the stage scale */
+			}
+
+			body {
+				margin: 0;
+				font-family: 'App', sans-serif;
+			}
+			#root {
+				position: relative;
+				width: 100%;
+				height: 100%;
+				overflow: hidden;
+				background: var(--canvas);
+				color: oklch(0.97 0 0);
+			}
+			/* Flat colors only, never a gradient, glow or blurred shadow; the primary marks progress, inputs and the reveal. */
+			#progress {
+				position: absolute;
+				display: flex;
+				gap: 10px;
+			}
+			.segment {
+				flex: 1;
+				height: 6px;
+				border-radius: 3px;
+				overflow: hidden;
+				background: oklch(1 0 0 / 0.14);
+			}
+			.fill {
+				height: 100%;
+				background: var(--primary);
+				transform-origin: 0 50%;
+				transform: scaleX(0);
+			}
+			.cap {
+				position: absolute;
+				font-weight: 650;
+				line-height: 1.12;
+				letter-spacing: -0.02em;
+				text-wrap: balance;
+			}
+			.word {
+				display: inline-block;
+				margin-right: 0.28em;
+				opacity: 0;
+			}
+			#device {
+				position: absolute;
+				transform-origin: 50% 0%;
+			}
+			#stage {
+				position: absolute;
+				inset: 0;
+				border-radius: var(--radius);
+				overflow: hidden;
+				background: oklch(1 0 0);
+				box-shadow: 0 0 0 1px oklch(1 0 0 / 0.1);
+			}
+			.shot,
+			.zoom-outer {
+				position: absolute;
+				inset: 0;
+			}
+			.zoom-outer {
+				transform-origin: 50% 50%;
+			}
+			.zoom-inner {
+				position: absolute;
+				top: 0;
+				left: 0;
+			}
+			video {
+				position: absolute;
+				inset: 0;
+				width: 100%;
+				height: 100%;
+				object-fit: cover;
+			}
+			.touch,
+			.ripple {
+				position: absolute;
+				border-radius: 50%;
+				opacity: 0;
+			}
+			.touch {
+				background: oklch(1 0 0 / 0.55);
+				border: 3px solid oklch(1 0 0 / 0.95);
+				box-shadow: 0 0 0 6px color-mix(in oklch, var(--primary) 35%, transparent);
+			}
+			.ripple {
+				border: 4px solid var(--primary);
+			}
+			.spotlight,
+			.halo {
+				position: absolute;
+				opacity: 0;
+			}
+			.spotlight {
+				outline: 4px solid var(--primary);
+				outline-offset: 6px;
+				box-shadow: 0 0 0 4000px color-mix(in oklch, var(--canvas) 80%, transparent);
+			}
+			.halo {
+				outline: 3px solid var(--primary);
+				outline-offset: 6px;
+			}
+		</style>
+	</head>
+	<body>
+		<!-- EDIT: data-width and data-height pick the format; data-duration is the last chapter's end. -->
+		<div id="root" data-composition-id="main" data-start="0" data-width="1080" data-height="1920" data-duration="15">
+			<div id="progress"></div>
+			<!-- EDIT: one caption per chapter, a benefit in at most six words. -->
+			<div class="cap" id="cap1">Import a file in two taps</div>
+			<div class="cap" id="cap2">Stopping keeps imported records</div>
+			<div id="device">
+				<div id="stage">
+					<!-- EDIT: one .shot per chapter; data-start and data-duration match CHAPTERS, data-media-start trims the recording. -->
+					<div class="shot" id="shot1">
+						<div class="zoom-outer" id="z1o">
+							<div class="zoom-inner" id="z1i">
+								<video
+									id="v1"
+									src="assets/chapter-1.mp4"
+									muted
+									playsinline
+									data-start="0"
+									data-duration="7"
+									data-media-start="0"
+									data-track-index="0"
+								></video>
+							</div>
+						</div>
+					</div>
+					<div class="shot" id="shot2">
+						<div class="zoom-outer" id="z2o">
+							<div class="zoom-inner" id="z2i">
+								<video
+									id="v2"
+									src="assets/chapter-2.mp4"
+									muted
+									playsinline
+									data-start="6.4"
+									data-duration="8.6"
+									data-media-start="0"
+									data-track-index="1"
+								></video>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+		<script>
+			// EDIT: the cropped recordings' size in CSS px, the same for every chapter.
+			const RECORDING = [384, 832]
+			// EDIT: one entry per chapter; start and end are composition seconds, and a chapter starts 0.6 s
+			// before the previous one ends, while it grows out of the previous chapter's last input. Each move
+			// is one input: at is its second, target the element's center as fractions of the recording, width
+			// the fraction of the recording's width in view, tap true for a click or a tap. A portrait recording
+			// keeps width 1, since a push crops its rows, and the camera pans to the target on its own; a
+			// landscape one pushes to at most 500 CSS px. The reveal frames the verified outcome, dims everything
+			// else and holds until the chapter ends, at least 2 s; box is [left, top, width, height] fractions.
+			const CHAPTERS = [
+				{
+					start: 0,
+					end: 7,
+					moves: [
+						{at: 1.6, target: [0.927, 0.034], width: 1, tap: true},
+						{at: 4.2, target: [0.5, 0.815], width: 1, tap: true}
+					]
+				},
+				{
+					start: 6.4,
+					end: 15,
+					moves: [{at: 9.6, target: [0.91, 0.096], width: 1, tap: true}],
+					reveal: {at: 10.6, box: [0.03, 0.067, 0.94, 0.433]}
+				}
+			]
+
+			const root = document.getElementById('root')
+			const width = Number(root.dataset.width)
+			const height = Number(root.dataset.height)
+			const font = Math.round(Math.min(width, height) * 0.05)
+			const margin = Math.round(Math.min(width, height) * 0.06)
+			const capTop = margin * 0.5 + 6 + margin * 0.45
+			const band = capTop + font * 2.3 + margin * 0.6
+			// Portrait fills the width and shows what fits of the screen's height; landscape shows the whole recording.
+			const portrait = height > width
+			const scale = portrait
+				? (width - 2 * margin) / RECORDING[0]
+				: Math.min((width - 2 * margin) / RECORDING[0], (height - band - margin) / RECORDING[1])
+			const W = RECORDING[0] * scale
+			const H = RECORDING[1] * scale
+			const frame = Math.min(H, height - band - margin)
+			const left = (width - W) / 2
+			Object.assign(document.getElementById('device').style, {
+				height: `${frame}px`,
+				left: `${left}px`,
+				top: `${band}px`,
+				width: `${W}px`
+			})
+			Object.assign(document.getElementById('progress').style, {
+				left: `${left}px`,
+				top: `${margin * 0.5}px`,
+				width: `${W}px`
+			})
+			document
+				.querySelectorAll('.zoom-inner')
+				.forEach(inner => Object.assign(inner.style, {height: `${H}px`, width: `${W}px`}))
+			document.querySelectorAll('.cap').forEach(cap => {
+				Object.assign(cap.style, {fontSize: `${font}px`, left: `${left}px`, top: `${capTop}px`, width: `${W}px`})
+				cap.innerHTML = cap.textContent
+					.split(' ')
+					.map(word => `<span class="word">${word}</span>`)
+					.join('')
+			})
+
+			const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi)
+			// The camera puts the target at the frame's center without showing past the recording's edges.
+			const aim = (target, zoom) => {
+				const cx = clamp(target[0] * W, W / (2 * zoom), W - W / (2 * zoom))
+				const cy = clamp(target[1] * H, frame / (2 * zoom), Math.max(frame / (2 * zoom), H - frame / (2 * zoom)))
+				return {x: W / 2 - cx, y: frame / 2 - cy, zoom}
+			}
+			// Where a point of the recording appears in the frame for a camera view.
+			const onFrame = (target, view) => [
+				W / 2 + (target[0] * W + view.x - W / 2) * view.zoom,
+				frame / 2 + (target[1] * H + view.y - frame / 2) * view.zoom
+			]
+			const place = (element, cx, cy, size) =>
+				Object.assign(element.style, {
+					height: `${size}px`,
+					left: `${cx - size / 2}px`,
+					top: `${cy - size / 2}px`,
+					width: `${size}px`
+				})
+			const tl = gsap.timeline({paused: true})
+
+			// The device settles into place while its first frame already shows the app.
+			tl.fromTo('#device', {scale: 0.97, y: frame * 0.03}, {duration: 0.9, ease: 'expo.out', scale: 1, y: 0}, 0)
+
+			// Elements are looked up by id: HyperFrames' bundler cannot parse a selector built from a template literal.
+			const byId = id => document.getElementById(id)
+			CHAPTERS.forEach((chapter, index) => {
+				const n = index + 1
+				const outer = byId('z' + n + 'o')
+				const inner = byId('z' + n + 'i')
+				const segment = document.createElement('div')
+				segment.className = 'segment'
+				segment.innerHTML = '<div class="fill"></div>'
+				document.getElementById('progress').append(segment)
+				tl.to(segment.firstChild, {duration: chapter.end - chapter.start, ease: 'none', scaleX: 1}, chapter.start)
+
+				// The chapter grows out of the previous chapter's last input while the previous view recedes.
+				if (index > 0) {
+					const last = CHAPTERS[index - 1].moves.at(-1)
+					const from = onFrame(last.target, aim(last.target, 1 / last.width))
+					const origin = `${from[0]}px ${from[1]}px`
+					tl.fromTo(
+						byId('shot' + n),
+						{clipPath: `circle(0% at ${origin})`},
+						{clipPath: `circle(150% at ${origin})`, duration: 0.6, ease: 'expo.inOut'},
+						chapter.start
+					)
+					// The start value is explicit: from no filter, GSAP interpolates brightness up from zero and flashes black.
+					tl.fromTo(
+						byId('shot' + index),
+						{filter: 'brightness(1)', scale: 1},
+						{duration: 0.6, ease: 'expo.inOut', filter: 'brightness(0.55)', immediateRender: false, scale: 0.96},
+						chapter.start
+					)
+				}
+
+				// Words rise into focus one after another; the caption leaves before the next one arrives.
+				const words = Array.from(byId('cap' + n).children)
+				tl.fromTo(
+					words,
+					{filter: 'blur(12px)', opacity: 0, y: font * 0.5},
+					{duration: 0.45, ease: 'expo.out', filter: 'blur(0px)', opacity: 1, stagger: 0.035, y: 0},
+					chapter.start + 0.2
+				)
+				if (n < CHAPTERS.length)
+					tl.to(
+						words,
+						{duration: 0.2, ease: 'power2.in', filter: 'blur(8px)', opacity: 0, stagger: 0.015, y: -font * 0.3},
+						CHAPTERS[n].start - 0.1
+					)
+
+				// The camera settles 0.2 s before each input, so the viewer watches the input land.
+				const moveTo = (to, at) => {
+					const begin = Math.max(chapter.start, at - 0.85)
+					const duration = Math.max(0.25, Math.min(0.65, at - 0.2 - begin))
+					tl.to(outer, {duration, ease: 'expo.inOut', scale: to.zoom}, begin)
+					tl.to(inner, {duration, ease: 'expo.inOut', x: to.x, y: to.y}, begin)
+				}
+				chapter.moves.forEach(move => {
+					moveTo(aim(move.target, 1 / move.width), move.at)
+					if (!move.tap) return
+					const cx = move.target[0] * W
+					const cy = move.target[1] * H
+					const touch = document.createElement('div')
+					touch.className = 'touch'
+					place(touch, cx, cy, 38 * scale)
+					const ripple = document.createElement('div')
+					ripple.className = 'ripple'
+					place(ripple, cx, cy, 38 * scale)
+					inner.append(ripple, touch)
+					tl.fromTo(
+						touch,
+						{opacity: 0, scale: 0.4},
+						{duration: 0.22, ease: 'back.out(2)', opacity: 1, scale: 1},
+						move.at - 0.3
+					)
+					tl.to(touch, {duration: 0.08, ease: 'power2.in', scale: 0.78}, move.at - 0.06)
+					tl.to(touch, {duration: 0.25, ease: 'power2.out', opacity: 0, scale: 1.1}, move.at + 0.12)
+					tl.fromTo(
+						ripple,
+						{opacity: 0.9, scale: 0.7},
+						{duration: 0.55, ease: 'expo.out', immediateRender: false, opacity: 0, scale: 2.6},
+						move.at
+					)
+				})
+
+				if (!chapter.reveal) return
+				const [bx, by, bw, bh] = chapter.reveal.box
+				const at = chapter.reveal.at
+				const rect = {height: `${bh * H}px`, left: `${bx * W}px`, top: `${by * H}px`, width: `${bw * W}px`}
+				const spotlight = document.createElement('div')
+				spotlight.className = 'spotlight'
+				const halo = document.createElement('div')
+				halo.className = 'halo'
+				Object.assign(spotlight.style, rect)
+				Object.assign(halo.style, rect)
+				inner.append(spotlight, halo)
+				moveTo(aim([bx + bw / 2, by + bh / 2], clamp(Math.min(0.86 / bw, (0.85 * frame) / (bh * H)), 1, 2.6)), at)
+				tl.fromTo(
+					spotlight,
+					{opacity: 0, scale: 1.06},
+					{duration: 0.5, ease: 'expo.out', opacity: 1, scale: 1},
+					at - 0.2
+				)
+				tl.fromTo(
+					halo,
+					{opacity: 0.8, scale: 1},
+					{duration: 0.85, ease: 'expo.out', immediateRender: false, opacity: 0, scale: 1.08},
+					at + 0.35
+				)
+			})
+
+			window.__timelines['main'] = tl
+		</script>
+	</body>
+</html>

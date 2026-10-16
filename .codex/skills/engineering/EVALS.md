@@ -16,8 +16,6 @@ Judge the final patch and the full run, not task completion alone. Independent b
 - Establish resource release and no further record writes after cancellation.
 - List each corrective edit required before you would accept the patch.
 
-Do not score agent-written test quality here; the testing case owns it.
-
 ## pattern-change
 
 ### Task

@@ -100,6 +100,10 @@ const cli = pipe(
 
 			for (const directory of targets) {
 				yield* fs.makeDirectory(path.join(root, directory, 'skills'), {recursive: true})
+				// Skills merged into engineering; installed copies of them would contradict it.
+				for (const name of ['architecture', 'testing']) {
+					yield* fs.remove(path.join(root, directory, 'skills', name), {force: true, recursive: true})
+				}
 				for (const name of names) {
 					const target = path.join(root, directory, 'skills', name)
 					yield* fs.remove(target, {force: true, recursive: true})
@@ -117,7 +121,7 @@ const cli = pipe(
 		})
 	),
 	Command.withDescription(
-		'Install the package’s architecture, engineering, design, testing and review skills at the Git repository root, including linked worktrees. Copy into each existing .agents, .claude and .codex skills directory, always .claude, and .agents when no .codex exists. Replace only package-owned names; preserve other skills and global configuration. Reject destinations outside the repository before copying. Refer to skills by name. Run the latest CLI transiently without adding a dependency. These skills belong in repositories, not global configuration.'
+		'Install the package’s engineering, design and review skills at the Git repository root, including linked worktrees. Copy into each existing .agents, .claude and .codex skills directory, always .claude, and .agents when no .codex exists. Replace only package-owned names; preserve other skills and global configuration. Reject destinations outside the repository before copying. Refer to skills by name. Run the latest CLI transiently without adding a dependency. These skills belong in repositories, not global configuration.'
 	),
 	Command.withExamples([
 		{
