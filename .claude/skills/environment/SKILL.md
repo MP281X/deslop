@@ -49,7 +49,7 @@ Run repository commands from the repository root. Read inventories and versions 
 - **Restart.** Run the `preview` command again after a change that the preview does not reload, also after a build that deletes its files.
 - **Keep.** At the end of every turn, also after delivery, leave the preview running on the latest code with its HTTPS link and the T3 tab. Never stop it at handoff or wait for the user to ask for it again.
 - **Stop.** The `stop` command stops the unit and removes its Tailscale mapping. Run it only when the user asks. Never stop a listener you did not start.
-- **Settle.** T3 runs the `settle` command when a thread with its own worktree settles, also after its pull request merges. It stops the preview and runs the project's cleanup only when no open thread other than a subagent uses the worktree.
+- **Settle.** T3 runs the `settle` command when the user settles a thread with its own worktree or its pull request merges. It stops the preview and runs the project's cleanup.
 
 ## Diagnostics
 
