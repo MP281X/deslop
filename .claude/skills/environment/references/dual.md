@@ -21,11 +21,11 @@ curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
 }
 ```
 
-**Preview.** Dual has no production preview, so its preview proves only iteration. README's `bun run preview` creates an isolated Alchemy stage from the checkout path, with free ports that the stage keeps, a database, a sandbox, migrations, an administrator, and app, API and worker watchers. Two threads in one worktree share its stage. Start it with environment's `preview.sh start bun run preview`: the script sets `DUAL_PREVIEW_HOST` to the tailnet host, so the app uses `https://<host>:<app port>`, and it shares the app port from the `Preview ready:` line.
+**Preview.** Dual has no production preview, so its preview proves only iteration. README's `bun run preview` creates an isolated Alchemy stage from the checkout path, with free ports that the stage keeps, a database, a sandbox, migrations, an administrator, and app, API and worker watchers. Two threads in one worktree share its stage. Start it with the Dual `preview` command from [maintenance's Project scripts](maintenance.md#t3-settings): it sets `DUAL_PREVIEW_HOST` to the tailnet host, so the app uses `https://<host>:<app port>`, and it shares the app port from the `Preview ready:` line.
 
 - **Sign-in.** `admin@dual.local` with `preview-password`. AI journeys need provider connections.
 - **Reload.** Source edits reload through the watchers; Turbo restarts a watcher only when its build inputs change.
-- **Lifetime.** `preview.sh stop` stops the processes like Ctrl-C and keeps the containers and data. `bun run preview:destroy` removes only that stage, its containers and its data; the settle script runs it when the last open thread of the worktree settles. Run it yourself before you move or delete the checkout.
+- **Lifetime.** The `stop` command stops the processes like Ctrl-C and keeps the containers and data. `bun run preview:destroy` removes only that stage, its containers and its data; the settle script runs it when the last open thread of the worktree settles. Run it yourself before you move or delete the checkout.
 - **Live webhooks.** Funnel the API port's `/api/webhooks` path per environment's Previews. `SERVER_PUBLIC_URL` follows the app URL, so a separate Funnel port needs a temporary callback URL override, reverted before the push.
 - **Accounts.** Writes go only to GitHub `MP281X`, GitLab `matteopaludgnach` and the user's Discord test channel. The saved GitHub and Discord preview tokens are read-only; write tokens come from `gh auth token` and the `glab` configuration. The user configures Jira and removes test configuration himself, from a guide.
 - **Never** use the shared `init` or `dev` commands as a preview.

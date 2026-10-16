@@ -79,18 +79,21 @@ rm -rf $d
 
 Change only this provider's compaction flag on each running worker; preserve other launch arguments, providers, sign-ins and thread selections. T3 passes the flag to fresh Claude processes, including resumed sessions. Do not stop active threads or restart T3 to force the change into an existing process. Verify the configured arguments and run Claude's local `/context` command with them; it must show the 500k window with zero model turns. A later real compaction is required to measure summary quality and net usage savings.
 
-**Project scripts.** T3 runs the scripts in `projectSettingsOverrides.<project id>.defaultProjectScripts` of the settings file; they replace the project's own scripts, which `t3_project_update` writes and `t3_project_list` shows. The copy carries them. Check them with `jq '.projectSettingsOverrides' ~/.t3/userdata/settings.json` on each worker. The user runs `preview` and `stop` from the project's script menu; `p` stands for `bash ~/.claude/skills/environment/scripts/preview.sh`.
+**Project scripts.** T3 runs the scripts in `projectSettingsOverrides.<project id>.defaultProjectScripts` of the settings file in the thread's worktree; they replace the project's own scripts, which `t3_project_update` writes and `t3_project_list` shows. The copy carries them. Check them with `jq '.projectSettingsOverrides' ~/.t3/userdata/settings.json` on each worker. `install` runs on worktree creation (`runOnWorktreeCreate: true`), `settle` on settle (`runOnSettle: true`), and the user runs `preview` and `stop` from the script menu. Each preview is the transient unit `preview-<worktree name>`; deslop's port comes from the worktree path, Dual's from its `Preview ready:` line. `settle` does nothing while an open thread other than a subagent uses the worktree, because T3 also settles subagents in the parent's worktree.
 
-| Project | Script `id` | Trigger                     | `command`                                                             |
-| ------- | ----------- | --------------------------- | --------------------------------------------------------------------- |
-| deslop  | `install`   | `runOnWorktreeCreate: true` | `vp install --frozen-lockfile`                                        |
-| deslop  | `preview`   | Manual                      | `p start vp run --filter @deslop/portfolio preview`                   |
-| deslop  | `stop`      | Manual                      | `p stop`                                                              |
-| deslop  | `settle`    | `runOnSettle: true`         | `p settle`                                                            |
-| dual    | `install`   | `runOnWorktreeCreate: true` | `vp install --frozen-lockfile && vpx @deslop/coding-standards@latest` |
-| dual    | `preview`   | Manual                      | `p start bun run preview`                                             |
-| dual    | `stop`      | Manual                      | `p stop`                                                              |
-| dual    | `settle`    | `runOnSettle: true`         | `p settle bun run preview:destroy`                                    |
+```bash
+# deslop
+install: vp install --frozen-lockfile
+preview: u=preview-${PWD##*/} p=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)); systemctl --user stop $u 2>/dev/null; systemd-run --user -G -d -u $u -E PATH="$HOME/.vite-plus/bin:$PATH" -E HOST=127.0.0.1 -E PORT=$p vp run --filter @deslop/portfolio preview && sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null && echo https://$(hostname -s).tailnet-8c4c.ts.net:$p
+stop: systemctl --user stop preview-${PWD##*/}; sudo tailscale serve --https=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)) off
+settle: [ $(sqlite3 -readonly ~/.t3/userdata/statev2.sqlite "SELECT count(*) FROM orchestration_v2_projection_threads WHERE deleted_at IS NULL AND archived_at IS NULL AND payload_json->>'$.worktreePath' = '$PWD' AND payload_json->>'$.lineage.relationshipToParent' IS NOT 'subagent' AND payload_json->>'$.settledOverride' IS NOT 'settled'") = 0 ] && { systemctl --user stop preview-${PWD##*/}; sudo tailscale serve --https=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)) off; }
+
+# dual
+install: vp install --frozen-lockfile && vpx @deslop/coding-standards@latest
+preview: u=preview-${PWD##*/} h=$(hostname -s).tailnet-8c4c.ts.net t=$(date +%s); systemctl --user stop $u 2>/dev/null; systemd-run --user -G -d -u $u -p KillSignal=SIGINT -E PATH="$HOME/.vite-plus/bin:$PATH" -E DUAL_PREVIEW_HOST=$h bun run preview && until p=$(journalctl --user -u $u -S @$t -o cat | grep -oPm1 'Preview ready: \S+:\K[0-9]+'); do systemctl --user is-active -q $u || exit 1; sleep 5; done && sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null && echo https://$h:$p
+stop: u=preview-${PWD##*/}; p=$(journalctl --user -u $u -o cat | grep -oP 'Preview ready: \S+:\K[0-9]+' | tail -1); systemctl --user stop $u; [ -z "$p" ] || sudo tailscale serve --https=$p off
+settle: [ $(sqlite3 -readonly ~/.t3/userdata/statev2.sqlite "SELECT count(*) FROM orchestration_v2_projection_threads WHERE deleted_at IS NULL AND archived_at IS NULL AND payload_json->>'$.worktreePath' = '$PWD' AND payload_json->>'$.lineage.relationshipToParent' IS NOT 'subagent' AND payload_json->>'$.settledOverride' IS NOT 'settled'") = 0 ] && { u=preview-${PWD##*/}; p=$(journalctl --user -u $u -o cat | grep -oP 'Preview ready: \S+:\K[0-9]+' | tail -1); systemctl --user stop $u; [ -z "$p" ] || sudo tailscale serve --https=$p off; bun run preview:destroy; }
+```
 
 **Review guides.** `reviewGuidesEnabled` is `true`, `reviewGuideModelSelection` is Codex `gpt-6.1-sol`, and `reviewGuideInstructions` holds exactly this text:
 
