@@ -46,12 +46,12 @@ Do not use `glab stack` in shared T3 worktrees: glab 1.122.0 stores both metadat
 
 Describe each change that a user or caller notices across the whole branch against its target branch, each with its evidence. T3's review guide tours the code, so the body has no code links. Gaps, user actions and ticket status go in the final reply. Ignore the repository's template and checklist.
 
-| Part      | Content                                                                                                                                                          |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Opening   | One or two sentences: the central change in the user's terms and what it makes possible                                                                          |
-| Check     | Up to three bullets on what can break, such as a migration, a changed contract or removed behavior; omit it when nothing can break                               |
-| Entries   | One `###` heading per change, central change first, phrased as what now happens. Under it: at most one sentence, then its visual per the base prompt's Show rule |
-| Contracts | When public endpoints, schemas, flags, keys, migrations or exported APIs change: a before and after table, then the caller migration                             |
+| Part      | Content                                                                                                                                                               |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Opening   | One or two sentences: the central change in the user's terms and what it makes possible                                                                               |
+| Check     | Up to three bullets on what can break, such as a migration, a changed contract or removed behavior; omit it when nothing can break                                    |
+| Entries   | One `###` heading per change, central change first, phrased as what now happens. Under it: at most one sentence, then its exhibit per the base prompt's Exhibits rule |
+| Contracts | When public endpoints, schemas, flags, keys, migrations or exported APIs change: a before and after table, then the caller migration                                  |
 
 - **Evidence.** Put each video or screenshot under the entry it proves: one complete video per realistic journey, at most eight screenshots, and no durations or timestamps.
 - **Before and after.** Show a changed screen as a two-column table with the same data, the target branch on the left. When speed or size is the change, add a before and after table with the command that measured it.

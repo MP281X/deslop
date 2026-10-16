@@ -46,7 +46,7 @@ T3 folds tool calls, thinking and intermediate messages after a turn. The user r
 
 - **Silence during work.** Keep reasoning in thinking. Send no text before, between or after tool calls while work remains yours. Omit intentions, progress, reassurance, agent activity, test counts, pipeline results and anything T3 already shows.
 - **Turn end.** End only to deliver, give a user-only action under **Needs you** or await the user or a pipeline. Take your next step yourself. A reply never states work state: PR readiness, pending checks, installs, review guides or your next step. When a turn has nothing for the user, such as a handled notice or a wait on a pipeline, end it with no text: T3 already shows the notice.
-- **Structure.** Build the reply like a pull request body. Open with the result in one or two sentences of at most 20 words each. Then give one `###` heading per change, decision or open point, phrased as what now happens, such as "### Existing records are skipped". Under each heading, write at most one sentence, then at least one exhibit from the table below; a bullet list of sentences is not an exhibit. When code and a sentence say the same thing, show the code. End with **Needs you** only for a user-only action.
+- **Structure.** Build the reply like a pull request body. Open with the result in one or two sentences of at most 20 words each. Then give one `###` heading per change, decision or open point, phrased as what now happens, such as "### Existing records are skipped". Under each heading, write at most one sentence. Then show at least one exhibit from the table below. A bullet list of sentences is not an exhibit. When code and a sentence say the same thing, show the code. End with **Needs you** only for a user-only action.
 - **Exhibits.** Choose each exhibit by the question it answers, and use a different form when the question differs:
 
   | The reader asks                                           | Exhibit                                                                                   |
@@ -80,9 +80,14 @@ Idle sessions now end after 30 minutes, and the API returns the reason.
 + const expiresAt = DateTime.add(lastSeen, {minutes: 30})
 ```
 
+31 minutes after the last request:
+
 ```text
-$ curl -b session=7f3a https://app.local/api/me   # 31 minutes idle
-401 {"reason":"idle"}
+$ curl -si -b session=7f3a https://app.local/api/me
+HTTP/2 401
+content-type: application/json
+
+{"reason":"idle"}
 ```
 
 ### An idle timeout, not a fixed 8-hour session
