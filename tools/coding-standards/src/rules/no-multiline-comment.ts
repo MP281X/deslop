@@ -3,7 +3,7 @@ import {Array, String, pipe} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {ESTree} from '@oxlint/plugins'
 
-const directive = /^\s*(?:eslint|oxlint|@effect-diagnostics|@ts-|\/\s*<reference|#region|#endregion)/u
+import {matches} from '#rules/shared.ts'
 
 function adjacentLines(pair: {first?: ESTree.Comment; second?: ESTree.Comment}) {
 	return (
@@ -18,7 +18,12 @@ export const noMultilineComment = defineRule({
 		Program: () => {
 			const comments = pipe(
 				context.sourceCode.getAllComments(),
-				Array.filter(comment => !directive.test(comment.value))
+				Array.filter(
+					comment =>
+						!matches(/^\s*(?:eslint|oxlint|@effect-diagnostics|@ts-|\/\s*<reference|#region|#endregion)/u)(
+							comment.value
+						)
+				)
 			)
 			pipe(
 				comments,

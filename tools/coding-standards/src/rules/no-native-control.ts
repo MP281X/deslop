@@ -5,9 +5,9 @@ import type {ESTree} from '@oxlint/plugins'
 
 import {matches} from '#rules/shared.ts'
 
-const primitives: Record<string, string> = {button: 'Button', input: 'Input', select: 'Select', textarea: 'Textarea'}
+const PRIMITIVES: Record<string, string> = {button: 'Button', input: 'Input', select: 'Select', textarea: 'Textarea'}
 
-const controlStyle =
+const CONTROL_STYLE =
 	/(?:^|:)(?:hover|focus|focus-visible|active):|(?:^|:)(?:rounded|shadow|ring)(?:-|$)|(?:^|:)p[blrtxy]?-(?!0$)|(?:^|:)bg-(?!transparent$)|(?:^|:)border(?:-[blrtxy])?$|(?:^|:)border-(?!0$|[blrtxy]-0$)/u
 
 // Every string a className expression can produce: literals, template parts, and `cn(...)` or conditional arguments.
@@ -29,7 +29,7 @@ export const noNativeControl = defineRule({
 		JSXOpeningElement: node => {
 			if (node.name.type !== 'JSXIdentifier') return
 			const name = node.name.name
-			Option.map(Record.get(primitives, name), primitive => {
+			Option.map(Record.get(PRIMITIVES, name), primitive => {
 				const styled = pipe(
 					node.attributes,
 					Array.findFirst(
@@ -43,7 +43,7 @@ export const noNativeControl = defineRule({
 						return classStrings(attribute.value)
 					}),
 					Option.exists(values =>
-						Array.some(values, value => Array.some(String.split(value, /\s+/u), matches(controlStyle)))
+						Array.some(values, value => Array.some(String.split(value, /\s+/u), matches(CONTROL_STYLE)))
 					)
 				)
 				if (name !== 'select' && !styled) return

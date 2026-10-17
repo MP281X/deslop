@@ -1,6 +1,13 @@
 import {Array, Graph, Option, Predicate, Record, String, pipe} from 'effect'
 
-import type {Context, ESTree, Scope, Variable} from '@oxlint/plugins'
+import type {Context, ESTree, Scope, Token, Variable} from '@oxlint/plugins'
+
+// Names, literals and the openings of calls, arrays and objects run no code, so a getter cannot run before a moved read.
+export function inert(token: Token) {
+	if (Array.contains(['Boolean', 'Identifier', 'Null', 'Numeric', 'String'], token.type)) return true
+	if (token.type === 'Keyword') return Array.contains(['const', 'new', 'return'], token.value)
+	return token.type === 'Punctuator' && Array.contains(['(', ',', ':', '=', '[', '{'], token.value)
+}
 
 export function variableFromScope(input: {name: string; scope: Scope | null}): Option.Option<Variable> {
 	if (input.scope === null) return Option.none()
@@ -285,7 +292,7 @@ function isNode(value: unknown): value is ESTree.Node {
 	return Predicate.hasProperty(value, 'type') && Predicate.isString(value.type)
 }
 
-function childNodes(node: unknown) {
+export function childNodes(node: unknown) {
 	if (!Predicate.isReadonlyObject(node)) return Array.empty<ESTree.Node>()
 	return pipe(Record.values(Record.remove(node, 'parent')), Array.flatMap(Array.ensure), Array.filter(isNode))
 }

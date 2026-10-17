@@ -13,7 +13,6 @@ import {
 	Order,
 	Predicate,
 	Random,
-	Record,
 	Result,
 	Schema,
 	Stream,
@@ -23,6 +22,7 @@ import {
 } from 'effect'
 
 import * as cheerio from 'cheerio'
+import type {AnyNode} from 'domhandler'
 import {HttpClient} from 'effect/http'
 import type {HttpClientResponse} from 'effect/http'
 import {Dns, NetAddress} from 'effect/net'
@@ -32,7 +32,26 @@ import {captureUrl, isYouTube, plainText, sourceFor} from '#services/notes/lib/u
 import type {Image} from '#services/notes/schema.ts'
 import {Extraction, ImageType, NotesError} from '#services/notes/schema.ts'
 
-const shortHosts = ['vm.tiktok.com', 'vt.tiktok.com', 't.co']
+const CHALLENGE =
+	/Just a moment\.\.\.|Verify you are human|Attention Required! \| Cloudflare|Enable JavaScript and cookies to continue|Performing security verification/u
+
+const UNREACHABLE = 'The link could not be loaded.'
+
+const BLOCK_TAGS = [
+	'article',
+	'aside',
+	'blockquote',
+	'dd',
+	'details',
+	'div',
+	'dl',
+	'dt',
+	'figure',
+	'main',
+	'p',
+	'section',
+	'table'
+]
 
 // The proxy every request of a Sources method exits through.
 const Exit = Context.Reference<Option.Option<string>>('@deslop/stash/services/notes/lib/extraction/Exit', {
@@ -143,9 +162,6 @@ const GitHubIssue = Schema.Struct({...GitHubComment.fields, state: Schema.String
 type Reader = typeof Reader.Type
 const Reader = Schema.Struct({data: Schema.Struct({content: Schema.String, title: Schema.String})})
 
-const challenge =
-	/Just a moment\.\.\.|Verify you are human|Attention Required! \| Cloudflare|Enable JavaScript and cookies to continue|Performing security verification/u
-
 function isPublic(address: NetAddress.Ipv4Address) {
 	const octets = NetAddress.ipv4ToOctets(address)
 	return (
@@ -180,8 +196,6 @@ function readText(characters: number) {
 
 const page = readText(512 * 1024)
 const api = readText(4 * 1024 * 1024)
-
-type AgentOptions = Parameters<typeof NodeHttpClient.layerAgentOptions>[0]
 
 function readBytes(response: HttpClientResponse.HttpClientResponse) {
 	return pipe(
@@ -239,19 +253,19 @@ const load = Effect.fnUntraced(function* <A, E>(
 			pipe(
 				NodeHttpClient.layerNodeHttpNoAgent,
 				Layer.provide(
-					NodeHttpClient.layerAgentOptions(
-						Option.match(proxy, {
-							onNone: () =>
-								({
-									autoSelectFamily: false,
-									// oxlint-disable-next-line unicorn/no-null -- Node's lookup callback takes null on success.
-									lookup: (_hostname, _options, callback) => callback(null, address, 4)
-								}) satisfies AgentOptions,
-							// Expo's types make NODE_ENV required in every environment object.
-							onSome: exit =>
-								({proxyEnv: {HTTP_PROXY: exit, HTTPS_PROXY: exit, NODE_ENV: 'production'}}) satisfies AgentOptions
-						})
-					)
+					Option.match(proxy, {
+						onNone: () =>
+							NodeHttpClient.layerAgentOptions({
+								autoSelectFamily: false,
+								// oxlint-disable-next-line unicorn/no-null -- Node's lookup callback takes null on success.
+								lookup: (_hostname, _options, callback) => callback(null, address, 4)
+							}),
+						// Expo's types make NODE_ENV required in every environment object.
+						onSome: exit =>
+							NodeHttpClient.layerAgentOptions({
+								proxyEnv: {HTTP_PROXY: exit, HTTPS_PROXY: exit, NODE_ENV: 'production'}
+							})
+					})
 				)
 			)
 		),
@@ -259,16 +273,11 @@ const load = Effect.fnUntraced(function* <A, E>(
 		Effect.mapError(cause =>
 			pipe(
 				Option.liftPredicate(cause, Schema.is(NotesError)),
-				Option.getOrElse(() => NotesError.make({cause, message: unreachable}))
+				Option.getOrElse(() => NotesError.make({cause, message: UNREACHABLE}))
 			)
 		)
 	)
 })
-
-// A residential exit can be offline or flagged; each new try gets another exit address.
-const blockedStatuses = [403, 429, 500, 502, 503]
-
-const unreachable = 'The link could not be loaded.'
 
 const follow = Effect.fnUntraced(function* <A, E>(
 	url: URL,
@@ -279,13 +288,14 @@ const follow = Effect.fnUntraced(function* <A, E>(
 	const answer = yield* pipe(
 		load(url, read),
 		Effect.filterOrFail(
-			found => !proxied || !Array.contains(blockedStatuses, found.status),
-			() => NotesError.make({message: unreachable})
+			// A residential exit can be offline or flagged; each new try gets another exit address.
+			found => !proxied || !Array.contains([403, 429, 500, 502, 503], found.status),
+			() => NotesError.make({message: UNREACHABLE})
 		),
-		timeLimit('15 seconds', unreachable),
+		timeLimit('15 seconds', UNREACHABLE),
 		Effect.retry({
 			times: Boolean.match(proxied, {onFalse: () => 0, onTrue: () => 2}),
-			while: error => error.message === unreachable
+			while: error => error.message === UNREACHABLE
 		})
 	)
 	if (answer.status >= 300 && answer.status < 400 && answer.location !== undefined) {
@@ -306,7 +316,7 @@ const decode = Effect.fnUntraced(function* <S extends Schema.Constraint>(schema:
 })
 
 const resolve = Effect.fnUntraced(function* (url: URL, hops: number): Effect.fn.Return<URL, NotesError, Dns.Dns> {
-	if (!Array.contains(shortHosts, url.hostname)) return url
+	if (!Array.contains(['vm.tiktok.com', 'vt.tiktok.com', 't.co'], url.hostname)) return url
 	const answer = yield* load(url, () => Effect.void)
 	if (answer.location === undefined || hops === 5) {
 		return yield* NotesError.make({message: 'The short link leads to no post.'})
@@ -569,27 +579,7 @@ const gitHub = Effect.fnUntraced(function* (url: URL) {
 	)
 })
 
-type Node = Parameters<typeof cheerio.contains>[1]
-
-const headings: Record.ReadonlyRecord<string, number> = {h1: 1, h2: 2, h3: 3, h4: 4, h5: 5, h6: 6}
-
-const blockTags = [
-	'article',
-	'aside',
-	'blockquote',
-	'dd',
-	'details',
-	'div',
-	'dl',
-	'dt',
-	'figure',
-	'main',
-	'p',
-	'section',
-	'table'
-]
-
-function markdown($: cheerio.CheerioAPI, node: Node, base: URL): string {
+function markdown($: cheerio.CheerioAPI, node: AnyNode, base: URL): string {
 	if (node.nodeType === 3) return String.replace(/\s+/gu, ' ')(node.data)
 	if (!Predicate.hasProperty(node, 'tagName')) return ''
 	const inner = pipe(
@@ -598,25 +588,24 @@ function markdown($: cheerio.CheerioAPI, node: Node, base: URL): string {
 		Array.join('')
 	)
 	return pipe(
-		Record.get(headings, node.tagName),
-		Option.map(level => `\n\n${String.repeat(level)('#')} ${String.trim(inner)}\n\n`),
+		Array.findFirstIndex(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'], heading => heading === node.tagName),
+		Option.map(index => `\n\n${String.repeat(index + 1)('#')} ${String.trim(inner)}\n\n`),
 		Option.getOrElse(() => element($, {base, inner, node, tag: node.tagName}))
 	)
 }
 
-function element($: cheerio.CheerioAPI, input: {base: URL; inner: string; node: Node; tag: string}) {
-	const node = input.node
+function element($: cheerio.CheerioAPI, input: {base: URL; inner: string; node: AnyNode; tag: string}) {
 	const text = String.trim(input.inner)
 	return pipe(
 		Match.value(input.tag),
 		Match.when('li', () => {
-			const marker = Boolean.match($(node).parent().is('ol'), {
+			const marker = Boolean.match($(input.node).parent().is('ol'), {
 				onFalse: () => '-',
-				onTrue: () => `${$(node).index() + 1}.`
+				onTrue: () => `${$(input.node).index() + 1}.`
 			})
-			return `\n${String.repeat($(node).parents('ul, ol').length - 1)('  ')}${marker} ${text}`
+			return `\n${String.repeat($(input.node).parents('ul, ol').length - 1)('  ')}${marker} ${text}`
 		}),
-		Match.when('pre', () => `\n\n\`\`\`\n${$(node).text()}\n\`\`\`\n\n`),
+		Match.when('pre', () => `\n\n\`\`\`\n${$(input.node).text()}\n\`\`\`\n\n`),
 		Match.when('code', () => `\`${text}\``),
 		Match.when('br', () => '\n'),
 		Match.when('tr', () => `\n${text}`),
@@ -626,14 +615,14 @@ function element($: cheerio.CheerioAPI, input: {base: URL; inner: string; node: 
 		),
 		Match.when('a', () =>
 			pipe(
-				Option.fromNullishOr($(node).attr('href')),
+				Option.fromNullishOr($(input.node).attr('href')),
 				Option.flatMap(Option.liftThrowable(href => new URL(href, input.base))),
 				Option.filter(link => (link.protocol === 'https:' || link.protocol === 'http:') && String.isNonEmpty(text)),
 				Option.match({onNone: () => input.inner, onSome: link => `[${text}](${link.href})`})
 			)
 		),
 		Match.when(
-			name => Array.contains(blockTags, name),
+			name => Array.contains(BLOCK_TAGS, name),
 			() => `\n\n${text}\n\n`
 		),
 		Match.orElse(() => input.inner)
@@ -694,7 +683,7 @@ const reader = Effect.fnUntraced(function* (url: URL) {
 		decode(Reader, new URL(`https://r.jina.ai/${url.href}`)),
 		timeLimit('30 seconds', 'The reader took too long.')
 	)
-	if (challenge.test(answer.data.content) || String.isEmpty(String.trim(answer.data.content))) {
+	if (CHALLENGE.test(answer.data.content) || String.isEmpty(String.trim(answer.data.content))) {
 		return yield* NotesError.make({message: 'The site blocks automated reading.'})
 	}
 	return Extraction.make({
@@ -716,7 +705,7 @@ const readPage = Effect.fnUntraced(function* (url: URL) {
 	const loaded = yield* pipe(
 		follow(url, page, 0),
 		Effect.filterOrFail(
-			found => !challenge.test(found.body),
+			found => !CHALLENGE.test(found.body),
 			() => NotesError.make({message: 'The site answered with a bot check.'})
 		),
 		Effect.map(readable),

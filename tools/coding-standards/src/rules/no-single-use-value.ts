@@ -3,9 +3,9 @@ import {Array, Function, MutableRef, Option, Predicate, String, pipe} from 'effe
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
-import {outermost, rootName, typeWrapped, variableFromScope} from '#rules/shared.ts'
+import {childNodes, inert, outermost, rootName, typeWrapped, variableFromScope} from '#rules/shared.ts'
 
-const repeating = [
+const REPEATING = [
 	'ArrowFunctionExpression',
 	'DoWhileStatement',
 	'ForInStatement',
@@ -28,7 +28,7 @@ function runsOnce(input: {child: ESTree.Node; node: ESTree.Node; statement: ESTr
 		return climb({...input, node: input.node})
 	}
 	if (
-		Array.contains(repeating, input.node.type) ||
+		Array.contains(REPEATING, input.node.type) ||
 		input.node.type === 'IfStatement' ||
 		input.node.type === 'ConditionalExpression' ||
 		input.node.type === 'LogicalExpression' ||
@@ -99,6 +99,77 @@ function inlined(input: {
 	return value
 }
 
+// A value that runs code must run before anything that runs before its new place, such as a getter on the way to the read.
+function executes(node: ESTree.Node): boolean {
+	if (
+		Array.contains(
+			[
+				'AwaitExpression',
+				'CallExpression',
+				'MemberExpression',
+				'NewExpression',
+				'SpreadElement',
+				'TaggedTemplateExpression',
+				'YieldExpression'
+			],
+			node.type
+		)
+	) {
+		return true
+	}
+	if (Array.contains(['ArrowFunctionExpression', 'FunctionDeclaration', 'FunctionExpression'], node.type)) return false
+	return Array.some(childNodes(node), executes)
+}
+
+function suspends(node: ESTree.Node): boolean {
+	if (node.type === 'YieldExpression' || node.type === 'AwaitExpression') return true
+	if (Array.contains(['ArrowFunctionExpression', 'FunctionDeclaration', 'FunctionExpression'], node.type)) return false
+	return Array.some(childNodes(node), suspends)
+}
+
+// Between the slot and its statement only markup, a declaration or a yield may stand, so the moved value is not buried in an expression.
+function surface(node: ESTree.Node): boolean {
+	if (
+		Array.contains(['ExpressionStatement', 'ReturnStatement', 'VariableDeclaration'], node.type) ||
+		(node.type === 'ArrowFunctionExpression' && node.expression)
+	) {
+		return true
+	}
+	if (
+		Predicate.isNullish(node.parent) ||
+		!Array.contains(
+			[
+				'AwaitExpression',
+				'JSXAttribute',
+				'JSXElement',
+				'JSXExpressionContainer',
+				'JSXFragment',
+				'JSXOpeningElement',
+				'VariableDeclarator',
+				'YieldExpression'
+			],
+			node.type
+		)
+	) {
+		return false
+	}
+	return surface(node.parent)
+}
+
+// A value spanning several lines reads well inlined only as a whole slot near the surface of its statement (an argument, a JSX child, a returned value), and never when it waits on a step of its own.
+function readable(input: {context: Context; init: ESTree.Expression; read: ESTree.Node}) {
+	if (!pipe(input.context.sourceCode.getText(input.init), String.includes('\n'))) return true
+	const slot = outermost(input.read)
+	if (Predicate.isNullish(slot.parent) || suspends(input.init)) return false
+	if (slot.parent.type === 'JSXExpressionContainer' || slot.parent.type === 'ReturnStatement') return true
+	return (
+		Predicate.isNotNullish(slot.parent.parent) &&
+		((slot.parent.type === 'CallExpression' && slot.parent.callee !== slot) ||
+			slot.parent.type === 'ArrayExpression') &&
+		surface(slot.parent.parent)
+	)
+}
+
 function report(input: {context: Context; effects: ESTree.Node[]; node: ESTree.VariableDeclarator}) {
 	const declaration = input.node.parent
 	const init = input.node.init
@@ -106,8 +177,7 @@ function report(input: {context: Context; effects: ESTree.Node[]; node: ESTree.V
 		declaration.type !== 'VariableDeclaration' ||
 		declaration.parent.type !== 'BlockStatement' ||
 		input.node.id.type !== 'Identifier' ||
-		init === null ||
-		pipe(input.context.sourceCode.getText(init), String.includes('\n'))
+		init === null
 	) {
 		return
 	}
@@ -128,6 +198,7 @@ function report(input: {context: Context; effects: ESTree.Node[]; node: ESTree.V
 						read.range[0] >= next.range[0] &&
 						read.range[1] <= next.range[1] &&
 						climb({node: read, statement: next}) &&
+						readable({context: input.context, init, read}) &&
 						// Inlining a conditional value into another conditional would nest ternaries, which lint forbids.
 						!(init.type === 'ConditionalExpression' && insideConditional({node: read, statement: next})) &&
 						// Moving the value past code that runs first would change what it reads or reorder effects.
@@ -141,7 +212,13 @@ function report(input: {context: Context; effects: ESTree.Node[]; node: ESTree.V
 			onSome: found =>
 				input.context.report({
 					fix: fixer => {
-						if (!fixable({init, read: found.read})) return []
+						if (
+							!fixable({init, read: found.read}) ||
+							(executes(init) &&
+								!Array.every(input.context.sourceCode.getTokensBetween(declaration, found.read), inert))
+						) {
+							return []
+						}
 						return [
 							fixer.remove(declaration),
 							fixer.replaceText(found.read, inlined({context: input.context, init, name, ...found}))

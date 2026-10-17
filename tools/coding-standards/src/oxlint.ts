@@ -4,6 +4,7 @@ import {definePlugin} from '@oxlint/plugins'
 import {defineConfig} from 'oxlint'
 
 import {explicitEffectConcurrency} from '#rules/explicit-effect-concurrency.ts'
+import {moduleConstant} from '#rules/module-constant.ts'
 import {motionLimits} from '#rules/motion-limits.ts'
 import {noArrayWrapTernary} from '#rules/no-array-wrap-ternary.ts'
 import {noBarrelModule} from '#rules/no-barrel-module.ts'
@@ -18,6 +19,7 @@ import {noEffectPropertyArrow} from '#rules/no-effect-property-arrow.ts'
 import {noEmptyRecovery} from '#rules/no-empty-recovery.ts'
 import {noErrorMessageAssertion} from '#rules/no-error-message-assertion.ts'
 import {noFakeRefState} from '#rules/no-fake-ref-state.ts'
+import {noFloatingDerivedType} from '#rules/no-floating-derived-type.ts'
 import {noGradient} from '#rules/no-gradient.ts'
 import {noHandWrittenGuard} from '#rules/no-hand-written-guard.ts'
 import {noInOperator} from '#rules/no-in-operator.ts'
@@ -37,6 +39,7 @@ import {noReinventedSchema} from '#rules/no-reinvented-schema.ts'
 import {noRenamedImport} from '#rules/no-renamed-import.ts'
 import {noReturnType} from '#rules/no-return-type.ts'
 import {noSingleUseValue} from '#rules/no-single-use-value.ts'
+import {noStoredJsx} from '#rules/no-stored-jsx.ts'
 import {noStoredSchemaOperation} from '#rules/no-stored-schema-operation.ts'
 import {noSwitchStatement} from '#rules/no-switch-statement.ts'
 import {noTrivialIndirection} from '#rules/no-trivial-indirection.ts'
@@ -47,11 +50,11 @@ import {noUnvalidatedJsonDecode} from '#rules/no-unvalidated-json-decode.ts'
 import {preserveErrorCause} from '#rules/preserve-error-cause.ts'
 import {schemaTypePair} from '#rules/schema-type-pair.ts'
 
-const reactLegacyApis = ['Component', 'PureComponent', 'createRef', 'forwardRef', 'memo', 'useCallback', 'useMemo']
-const reactLegacyMessage = 'Use React 19 function components with refs as props; React Compiler owns memoization.'
-const mapMessage =
+const REACT_LEGACY_APIS = ['Component', 'PureComponent', 'createRef', 'forwardRef', 'memo', 'useCallback', 'useMemo']
+const REACT_LEGACY_MESSAGE = 'Use React 19 function components with refs as props; React Compiler owns memoization.'
+const MAP_MESSAGE =
 	'Use HashMap, or MutableHashMap for local mutation; for identity keys, wrap objects the code owns in Equal.byReferenceUnsafe, which marks them reference-compared globally.'
-const reactHooks = [
+const REACT_HOOKS = [
 	'use',
 	'useActionState',
 	'useContext',
@@ -70,9 +73,9 @@ const reactHooks = [
 	'useSyncExternalStore',
 	'useTransition'
 ]
-const runMessage =
+const RUN_MESSAGE =
 	'Run the entry point with NodeRuntime.runMain, and Effects in React through atoms. A Promise that an external contract demands takes Effect.runPromise once, with an inline disable that names the contract.'
-const runners = [
+const RUNNERS = [
 	'runCallback',
 	'runCallbackWith',
 	'runFork',
@@ -86,7 +89,7 @@ const runners = [
 	'runSyncExitWith',
 	'runSyncWith'
 ]
-const setMessage =
+const SET_MESSAGE =
 	'Use HashSet, or MutableHashSet for local mutation; for identity keys, wrap objects the code owns in Equal.byReferenceUnsafe, which marks them reference-compared globally.'
 
 export const oxlint = defineConfig({
@@ -137,6 +140,7 @@ export const oxlint = defineConfig({
 	rules: {
 		// Effect and React forms that maintained rules cannot express.
 		'@deslop/coding-standards/explicit-effect-concurrency': 'error',
+		'@deslop/coding-standards/module-constant': 'error',
 		'@deslop/coding-standards/motion-limits': 'error',
 		'@deslop/coding-standards/no-array-wrap-ternary': 'error',
 		'@deslop/coding-standards/no-barrel-module': 'error',
@@ -151,6 +155,7 @@ export const oxlint = defineConfig({
 		'@deslop/coding-standards/no-empty-recovery': 'error',
 		'@deslop/coding-standards/no-error-message-assertion': 'error',
 		'@deslop/coding-standards/no-fake-ref-state': 'error',
+		'@deslop/coding-standards/no-floating-derived-type': 'error',
 		'@deslop/coding-standards/no-gradient': 'error',
 		'@deslop/coding-standards/no-hand-written-guard': 'error',
 		'@deslop/coding-standards/no-in-operator': 'error',
@@ -170,6 +175,7 @@ export const oxlint = defineConfig({
 		'@deslop/coding-standards/no-renamed-import': 'error',
 		'@deslop/coding-standards/no-return-type': 'error',
 		'@deslop/coding-standards/no-single-use-value': 'error',
+		'@deslop/coding-standards/no-stored-jsx': 'error',
 		'@deslop/coding-standards/no-stored-schema-operation': 'error',
 		'@deslop/coding-standards/no-switch-statement': 'error',
 		'@deslop/coding-standards/no-trivial-indirection': 'error',
@@ -381,7 +387,7 @@ export const oxlint = defineConfig({
 			'error',
 			{
 				paths: [
-					{importNames: reactLegacyApis, message: reactLegacyMessage, name: 'react'},
+					{importNames: REACT_LEGACY_APIS, message: REACT_LEGACY_MESSAGE, name: 'react'},
 					{message: 'Read and write data through Effect Atom.', name: '@tanstack/react-query'},
 					{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name: 'vitest'},
 					{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name: '@effect/vitest'},
@@ -435,14 +441,14 @@ export const oxlint = defineConfig({
 			{message: "Import Array from 'effect'.", name: 'Array'},
 			{message: "Import Boolean from 'effect'.", name: 'Boolean'},
 			{message: 'Define a Schema.TaggedError and fail with it.', name: 'Error'},
-			{message: mapMessage, name: 'Map'},
+			{message: MAP_MESSAGE, name: 'Map'},
 			{message: "Import Number from 'effect'.", name: 'Number'},
 			{message: "Use Record or Struct from 'effect'.", name: 'Object'},
 			{message: 'Use Number.parse.', name: 'parseFloat'},
 			{message: 'Use Number.parse.', name: 'parseInt'},
 			{message: 'Use Effect: Effect.tryPromise at the boundary, Effect.all to combine.', name: 'Promise'},
 			{message: "Use Predicate or Record from 'effect'.", name: 'Reflect'},
-			{message: setMessage, name: 'Set'},
+			{message: SET_MESSAGE, name: 'Set'},
 			{message: "Import String from 'effect'.", name: 'String'},
 			{message: 'Read configuration with Config and services from the context.', name: 'global'},
 			{message: 'Read configuration with Config and services from the context.', name: 'globalThis'}
@@ -451,14 +457,14 @@ export const oxlint = defineConfig({
 			'error',
 			{message: 'Use standalone pipe.', property: 'pipe'},
 			{allowObjects: ['Predicate'], message: 'Use Predicate.hasProperty.', property: 'hasOwnProperty'},
-			...Array.map(runners, property => ({message: runMessage, object: 'Effect', property})),
-			{message: runMessage, object: 'ManagedRuntime', property: 'make'},
+			...Array.map(RUNNERS, property => ({message: RUN_MESSAGE, object: 'Effect', property})),
+			{message: RUN_MESSAGE, object: 'ManagedRuntime', property: 'make'},
 			{message: 'Use Number.max.', object: 'Math', property: 'max'},
 			{message: 'Use Option.getOrUndefined; undefined marks an absent value.', object: 'Option', property: 'getOrNull'},
 			{message: 'Use Number.min.', object: 'Math', property: 'min'},
 			{message: 'Use Number.round.', object: 'Math', property: 'round'},
-			...Array.map(reactLegacyApis, property => ({message: reactLegacyMessage, object: 'React', property})),
-			...Array.map(reactHooks, property => ({
+			...Array.map(REACT_LEGACY_APIS, property => ({message: REACT_LEGACY_MESSAGE, object: 'React', property})),
+			...Array.map(REACT_HOOKS, property => ({
 				message: `Import ${property} by name from react.`,
 				object: 'React',
 				property
@@ -514,6 +520,7 @@ export const oxlint = defineConfig({
 		'no-unsafe-optional-chaining': ['error', {disallowArithmeticOperators: true}],
 		'no-unused-expressions': 'error',
 		'no-unused-vars': ['error', {argsIgnorePattern: '^_', ignoreRestSiblings: true, reportUsedIgnorePattern: true}],
+		'no-use-before-define': ['error', {classes: false, functions: false, typedefs: false, variables: true}],
 		'no-useless-assignment': 'error',
 		'no-useless-backreference': 'error',
 		'no-useless-call': 'error',
@@ -666,12 +673,12 @@ export const oxlint = defineConfig({
 					Date: 'Use DateTime.',
 					Error: 'Use Schema.TaggedError.',
 					Iterable: 'Use T[].',
-					Map: mapMessage,
+					Map: MAP_MESSAGE,
 					Promise: 'Use Effect.',
 					ReadonlyArray: 'Use T[].',
-					ReadonlyMap: mapMessage,
-					ReadonlySet: setMessage,
-					Set: setMessage,
+					ReadonlyMap: MAP_MESSAGE,
+					ReadonlySet: SET_MESSAGE,
+					Set: SET_MESSAGE,
 					undefined: 'Use an optional property or parameter, or let inference supply undefined.'
 				}
 			}
@@ -709,6 +716,7 @@ export default definePlugin({
 	meta: {name: '@deslop/coding-standards'},
 	rules: {
 		'explicit-effect-concurrency': explicitEffectConcurrency,
+		'module-constant': moduleConstant,
 		'motion-limits': motionLimits,
 		'no-array-wrap-ternary': noArrayWrapTernary,
 		'no-barrel-module': noBarrelModule,
@@ -723,6 +731,7 @@ export default definePlugin({
 		'no-empty-recovery': noEmptyRecovery,
 		'no-error-message-assertion': noErrorMessageAssertion,
 		'no-fake-ref-state': noFakeRefState,
+		'no-floating-derived-type': noFloatingDerivedType,
 		'no-gradient': noGradient,
 		'no-hand-written-guard': noHandWrittenGuard,
 		'no-in-operator': noInOperator,
@@ -742,6 +751,7 @@ export default definePlugin({
 		'no-renamed-import': noRenamedImport,
 		'no-return-type': noReturnType,
 		'no-single-use-value': noSingleUseValue,
+		'no-stored-jsx': noStoredJsx,
 		'no-stored-schema-operation': noStoredSchemaOperation,
 		'no-switch-statement': noSwitchStatement,
 		'no-trivial-indirection': noTrivialIndirection,

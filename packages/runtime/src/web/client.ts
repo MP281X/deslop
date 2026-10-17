@@ -41,15 +41,16 @@ export function layer(applicationName: string) {
 		),
 		Layer.provideMerge(Rpc.RpcSerialization.layerSchemaBinary())
 	)
-	const telemetry = pipe(
-		Layer.unwrap(
-			Effect.map(pipe(Config.URL('VITE_OTEL_URL'), Config.withDefault(new URL('http://localhost:4318'))), url =>
-				layerWebSdk(`${applicationName}-client`, url)
-			)
-		),
-		Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(import.meta.env)))
-	)
 
-	Atom.runtime.addGlobalLayer(telemetry)
+	Atom.runtime.addGlobalLayer(
+		pipe(
+			Layer.unwrap(
+				Effect.map(pipe(Config.URL('VITE_OTEL_URL'), Config.withDefault(new URL('http://localhost:4318'))), url =>
+					layerWebSdk(`${applicationName}-client`, url)
+				)
+			),
+			Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(import.meta.env)))
+		)
+	)
 	return protocol
 }

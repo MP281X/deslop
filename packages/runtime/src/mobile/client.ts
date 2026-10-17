@@ -9,11 +9,9 @@ import {AppState} from 'react-native'
 
 import {layerWebSdk} from '#telemetry.ts'
 
-const extra = Schema.decodeUnknownSync(Schema.Struct({otel: Schema.String, server: Schema.String}))(
+export const extra = Schema.decodeUnknownSync(Schema.Struct({otel: Schema.String, server: Schema.String}))(
 	Constants.expoConfig?.extra
 )
-
-export const server = extra.server
 
 // Binary frames failed to reopen a cancelled watch on iOS.
 export function layer(applicationName: string) {
@@ -21,7 +19,7 @@ export function layer(applicationName: string) {
 	return pipe(
 		// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
 		Rpc.RpcClient.layerProtocolSocket({pingTimeout: '15 seconds', retryTransientErrors: true}),
-		Layer.provide(Socket.layerWebSocket(pipe(new URL('/api/rpc', server).href, String.replace(/^http/u, 'ws')))),
+		Layer.provide(Socket.layerWebSocket(pipe(new URL('/api/rpc', extra.server).href, String.replace(/^http/u, 'ws')))),
 		Layer.provide(Socket.layerWebSocketConstructorGlobal),
 		Layer.provide(Rpc.RpcSerialization.layerJson)
 	)

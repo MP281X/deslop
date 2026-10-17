@@ -30,6 +30,12 @@ import type {Note} from '#services/notes/schema.ts'
 import {Extraction, NotesError, NotesEvent} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
 
+const IDS = [
+	'6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c01',
+	'6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c02',
+	'6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c03'
+] as const
+
 const recipe = Sources.of({
 	extract: link =>
 		Effect.succeed(
@@ -107,12 +113,6 @@ function counting(calls: Ref.Ref<number>) {
 	})
 }
 
-const ids = [
-	'6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c01',
-	'6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c02',
-	'6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c03'
-] as const
-
 it.layer(NodeServices.layer)('Notes', test => {
 	test.effect('saves the original first, tags it once, and keeps the result across a restart', () =>
 		Effect.gen(function* () {
@@ -121,7 +121,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 			yield* Effect.scoped(
 				Effect.gen(function* () {
 					const notes = yield* open({directory, organizer: counting(calls), sources: recipe})
-					assert.containsSubset(yield* notes.capture({id: ids[0], text: ' https://example.com/soup?utm_source=x '}), {
+					assert.containsSubset(yield* notes.capture({id: IDS[0], text: ' https://example.com/soup?utm_source=x '}), {
 						status: 'organizing',
 						title: 'https://example.com/soup',
 						url: 'https://example.com/soup'
@@ -135,14 +135,14 @@ it.layer(NodeServices.layer)('Notes', test => {
 						title: 'Soup',
 						topics: 'lentils; cumin'
 					})
-					assert.deepStrictEqual(yield* notes.image(ids[0]), {
+					assert.deepStrictEqual(yield* notes.image(IDS[0]), {
 						bytes: new Uint8Array([255, 216, 255]),
 						type: 'image/jpeg'
 					})
-					yield* notes.capture({id: ids[1], text: 'https://example.com/soup#method'})
-					yield* notes.capture({id: ids[0], text: 'https://example.com/soup?utm_source=x'})
-					yield* notes.capture({id: ids[1], text: 'Make it on Sunday https://example.com/soup'})
-					yield* notes.capture({id: ids[2], text: 'make it on sunday tonight https://example.com/soup'})
+					yield* notes.capture({id: IDS[1], text: 'https://example.com/soup#method'})
+					yield* notes.capture({id: IDS[0], text: 'https://example.com/soup?utm_source=x'})
+					yield* notes.capture({id: IDS[1], text: 'Make it on Sunday https://example.com/soup'})
+					yield* notes.capture({id: IDS[2], text: 'make it on sunday tonight https://example.com/soup'})
 					const merged = yield* settled(notes, current =>
 						Array.some(current, note => String.endsWith('tonight')(note.text))
 					)
@@ -154,7 +154,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 			)
 			assert.containsSubset(
 				(yield* settled(yield* open({directory, organizer: counting(calls), sources: recipe}), () => true))[0],
-				{id: ids[0], status: 'ready', title: 'Soup'}
+				{id: IDS[0], status: 'ready', title: 'Soup'}
 			)
 			assert.strictEqual(yield* Ref.get(calls), 1)
 		})
@@ -200,7 +200,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 			]
 			for (const entry of cases) {
 				const notes = yield* open({...entry, directory: yield* fs.makeTempDirectoryScoped()})
-				yield* notes.capture({id: ids[0], text: entry.text})
+				yield* notes.capture({id: IDS[0], text: entry.text})
 				assert.containsSubset(
 					(yield* settled(notes, current => Array.some(current, note => note.status === 'failed')))[0],
 					{issue: entry.issue, tags: [], text: entry.text}
@@ -236,7 +236,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 					extract: link => Effect.map(recipe.extract(link), extraction => ({...extraction, text: ''}))
 				})
 			})
-			yield* notes.capture({id: ids[0], text: 'https://www.tiktok.com/@cook/video/1'})
+			yield* notes.capture({id: IDS[0], text: 'https://www.tiktok.com/@cook/video/1'})
 			assert.containsSubset((yield* settled(notes, isReady))[0], {
 				content: '# Lentils',
 				transcript: '[00:01] Soak the lentils overnight.\n'
@@ -265,7 +265,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 					extract: () => Effect.fail(NotesError.make({message: 'The link answered with status 400.'}))
 				})
 			})
-			yield* notes.capture({id: ids[0], text: 'https://www.tiktok.com/@cook/video/1'})
+			yield* notes.capture({id: IDS[0], text: 'https://www.tiktok.com/@cook/video/1'})
 			assert.containsSubset((yield* settled(notes, isReady))[0], {
 				content: '# Lentils',
 				issue: '',
@@ -307,7 +307,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 						})
 				})
 			})
-			yield* notes.capture({id: ids[0], text: 'https://example.com/slides'})
+			yield* notes.capture({id: IDS[0], text: 'https://example.com/slides'})
 			yield* settled(notes, isReady)
 			assert.deepStrictEqual(yield* Ref.get(seen), [new Uint8Array([1]), new Uint8Array([2])])
 		})
@@ -321,10 +321,10 @@ it.layer(NodeServices.layer)('Notes', test => {
 				organizer: counting(calls),
 				sources: Sources.of({...recipe, resolve: () => Effect.succeed('https://www.tiktok.com/@cook/video/1')})
 			})
-			yield* notes.capture({id: ids[0], text: 'https://vm.tiktok.com/AAA/'})
+			yield* notes.capture({id: IDS[0], text: 'https://vm.tiktok.com/AAA/'})
 			yield* settled(notes, isReady)
-			assert.containsSubset(yield* notes.capture({id: ids[1], text: 'Make it tonight https://vm.tiktok.com/BBB/'}), {
-				id: ids[0],
+			assert.containsSubset(yield* notes.capture({id: IDS[1], text: 'Make it tonight https://vm.tiktok.com/BBB/'}), {
+				id: IDS[0],
 				text: 'https://vm.tiktok.com/AAA/\nMake it tonight',
 				url: 'https://www.tiktok.com/@cook/video/1'
 			})
@@ -343,7 +343,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 						organizer: Organizer.of({organize: () => Effect.andThen(tagging.open, Effect.never)}),
 						sources: recipe
 					})
-					yield* notes.capture({id: ids[0], text: 'https://example.com/soup'})
+					yield* notes.capture({id: IDS[0], text: 'https://example.com/soup'})
 					yield* tagging.await
 				})
 			)
@@ -354,7 +354,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 			})
 			assert.containsSubset(
 				(yield* settled(yield* open({directory, organizer: counting(calls), sources: down}), isReady))[0],
-				{author: 'Cookbook', content: 'Lentils with cumin and tomato.', id: ids[0], issue: '', title: 'Soup'}
+				{author: 'Cookbook', content: 'Lentils with cumin and tomato.', id: IDS[0], issue: '', title: 'Soup'}
 			)
 			assert.strictEqual(yield* Ref.get(calls), 1)
 		})
@@ -367,14 +367,14 @@ it.layer(NodeServices.layer)('Notes', test => {
 				organizer: counting(yield* Ref.make(0)),
 				sources: recipe
 			})
-			yield* notes.capture({id: ids[0], text: 'https://example.com/soup'})
+			yield* notes.capture({id: IDS[0], text: 'https://example.com/soup'})
 			yield* settled(notes, isReady)
 			const events = yield* pipe(notes.events, Stream.take(3), Stream.runCollect, Effect.forkScoped)
 			yield* TestClock.adjust('1 second')
-			yield* notes.capture({id: ids[1], text: 'https://example.com/stew'})
+			yield* notes.capture({id: IDS[1], text: 'https://example.com/stew'})
 			yield* settled(notes, current => Array.every(current, note => note.status === 'ready'))
 			yield* TestClock.adjust('1 second')
-			yield* notes.remove({id: ids[0]})
+			yield* notes.remove({id: IDS[0]})
 			yield* TestClock.adjust('1 second')
 			const received = yield* Effect.forEach(
 				yield* Fiber.join(events),
@@ -388,9 +388,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 					upserted: Array.dedupe(Array.map(event.upserted, item => item.id))
 				})),
 				[
-					{removed: [], reset: true, upserted: [ids[0]]},
-					{removed: [], reset: false, upserted: [ids[1]]},
-					{removed: [ids[0]], reset: false, upserted: []}
+					{removed: [], reset: true, upserted: [IDS[0]]},
+					{removed: [], reset: false, upserted: [IDS[1]]},
+					{removed: [IDS[0]], reset: false, upserted: []}
 				]
 			)
 			assert.isFalse(
@@ -407,12 +407,12 @@ it.layer(NodeServices.layer)('Notes', test => {
 				organizer: counting(calls),
 				sources: recipe
 			})
-			yield* notes.capture({id: ids[0], text: 'https://example.com/soup'})
+			yield* notes.capture({id: IDS[0], text: 'https://example.com/soup'})
 			yield* settled(notes, isReady)
-			yield* notes.regenerate({id: ids[0]})
+			yield* notes.regenerate({id: IDS[0]})
 			yield* settled(notes, isReady)
 			assert.strictEqual(yield* Ref.get(calls), 2)
-			assert.strictEqual((yield* Effect.flip(notes.regenerate({id: ids[1]}))).message, 'This note no longer exists.')
+			assert.strictEqual((yield* Effect.flip(notes.regenerate({id: IDS[1]}))).message, 'This note no longer exists.')
 		})
 	)
 
@@ -425,10 +425,10 @@ it.layer(NodeServices.layer)('Notes', test => {
 				organizer: counting(calls),
 				sources: Sources.of({...recipe, extract: link => Effect.andThen(release.await, recipe.extract(link))})
 			})
-			yield* notes.capture({id: ids[0], text: 'https://example.com/soup'})
-			yield* notes.regenerate({id: ids[0]})
+			yield* notes.capture({id: IDS[0], text: 'https://example.com/soup'})
+			yield* notes.regenerate({id: IDS[0]})
 			yield* release.open
-			assert.containsSubset((yield* settled(notes, isReady))[0], {id: ids[0], title: 'Soup'})
+			assert.containsSubset((yield* settled(notes, isReady))[0], {id: IDS[0], title: 'Soup'})
 			assert.strictEqual(yield* Ref.get(calls), 1)
 		})
 	)
@@ -447,13 +447,13 @@ it.layer(NodeServices.layer)('Notes', test => {
 					image: link => Effect.andThen(Effect.andThen(downloading.open, release.await), recipe.image(link))
 				})
 			})
-			yield* notes.capture({id: ids[0], text: 'https://example.com/soup'})
+			yield* notes.capture({id: IDS[0], text: 'https://example.com/soup'})
 			yield* downloading.await
-			yield* notes.remove({id: ids[0]})
+			yield* notes.remove({id: IDS[0]})
 			yield* release.open
 			yield* settled(notes, Array.isReadonlyArrayEmpty)
 			yield* TestClock.withLive(Effect.sleep('100 millis'))
-			assert.isFalse(yield* fs.exists(`${directory}/images/${ids[0]}`))
+			assert.isFalse(yield* fs.exists(`${directory}/images/${IDS[0]}`))
 		})
 	)
 
@@ -465,16 +465,16 @@ it.layer(NodeServices.layer)('Notes', test => {
 				organizer: noKey,
 				sources: Sources.of({...recipe, extract: link => Effect.andThen(release.await, recipe.extract(link))})
 			})
-			yield* notes.capture({id: ids[0], text: 'https://example.com/slow'})
-			yield* notes.capture({id: ids[1], text: 'Read later https://example.com/slow'})
+			yield* notes.capture({id: IDS[0], text: 'https://example.com/slow'})
+			yield* notes.capture({id: IDS[1], text: 'Read later https://example.com/slow'})
 			yield* release.open
 			assert.containsSubset(
 				(yield* settled(notes, current => Array.some(current, note => note.status === 'failed')))[0],
 				{image: 'image/jpeg', text: 'https://example.com/slow\nRead later'}
 			)
-			yield* notes.remove({id: ids[0]})
+			yield* notes.remove({id: IDS[0]})
 			assert.deepStrictEqual(yield* settled(notes, () => true), [])
-			assert.strictEqual((yield* Effect.flip(notes.image(ids[0]))).message, 'This note has no preview image.')
+			assert.strictEqual((yield* Effect.flip(notes.image(IDS[0]))).message, 'This note has no preview image.')
 		})
 	)
 
@@ -488,15 +488,15 @@ it.layer(NodeServices.layer)('Notes', test => {
 			assert.containsSubset(
 				yield* notes.captureFile({
 					body: Stream.make(Uint8Array.of(255, 216), Uint8Array.of(255, 224)),
-					id: ids[0],
+					id: IDS[0],
 					type: 'image/jpeg'
 				}),
 				{file: 'image/jpeg', image: 'image/jpeg', status: 'organizing'}
 			)
 			yield* settled(notes, isReady)
-			yield* notes.captureFile({body: Stream.die('A resend must not be read'), id: ids[0], type: 'image/jpeg'})
-			assert.deepStrictEqual(yield* notes.image(ids[0]), {bytes: photo, type: 'image/jpeg'})
-			assert.deepStrictEqual(yield* fs.readDirectory(`${directory}/images`), [ids[0]])
+			yield* notes.captureFile({body: Stream.die('A resend must not be read'), id: IDS[0], type: 'image/jpeg'})
+			assert.deepStrictEqual(yield* notes.image(IDS[0]), {bytes: photo, type: 'image/jpeg'})
+			assert.deepStrictEqual(yield* fs.readDirectory(`${directory}/images`), [IDS[0]])
 			assert.deepStrictEqual(yield* fs.readDirectory(`${directory}/files`), [])
 			assert.strictEqual(yield* Ref.get(calls), 1)
 		})
@@ -515,13 +515,13 @@ it.layer(NodeServices.layer)('Notes', test => {
 				organizer: counting(yield* Ref.make(0)),
 				sources: recipe
 			})
-			yield* notes.captureFile({body: Stream.make(Uint8Array.of(0, 0, 0)), id: ids[0], type: 'video/mp4'})
+			yield* notes.captureFile({body: Stream.make(Uint8Array.of(0, 0, 0)), id: IDS[0], type: 'video/mp4'})
 			assert.containsSubset((yield* settled(notes, isReady))[0], {
 				file: 'video/mp4',
 				image: 'image/jpeg',
 				transcript: '[00:00] Hello'
 			})
-			assert.deepStrictEqual(yield* notes.image(ids[0]), {bytes: still, type: 'image/jpeg'})
+			assert.deepStrictEqual(yield* notes.image(IDS[0]), {bytes: still, type: 'image/jpeg'})
 		})
 	)
 
@@ -533,7 +533,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 			const failure = yield* Effect.flip(
 				notes.captureFile({
 					body: Stream.concat(Stream.make(Uint8Array.of(1)), Stream.fail('connection reset')),
-					id: ids[0],
+					id: IDS[0],
 					type: 'image/jpeg'
 				})
 			)

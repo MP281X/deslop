@@ -5,7 +5,7 @@ import type {Context, ESTree} from '@oxlint/plugins'
 
 import {matches, memberName, variableFor} from '#rules/shared.ts'
 
-const nativeMethods = [
+const NATIVE_METHODS = [
 	'at',
 	'catch',
 	'charAt',
@@ -87,8 +87,6 @@ function freshRegExpFlags(input: {context: Context; node: ESTree.Expression}) {
 	return Option.some(Option.some(flags.value))
 }
 
-const nativeGlobals = ['Object', 'Promise', 'RegExp']
-
 // The object a property chain starts from: `path` in `path.posix`.
 function memberRoot(node: ESTree.Expression): ESTree.Expression {
 	if (node.type === 'MemberExpression') return memberRoot(node.object)
@@ -130,7 +128,8 @@ function ownsMethod(input: {context: Context; receiver: ESTree.Expression}) {
 		Option.filter(variable => Array.isReadonlyArrayNonEmpty(variable.defs)),
 		Option.match({
 			// An unbound capitalized name is a global class such as Buffer; Object, Promise and RegExp stay native.
-			onNone: () => !throughCall && matches(/^[A-Z]/u)(root.name) && !Array.contains(nativeGlobals, root.name),
+			onNone: () =>
+				!throughCall && matches(/^[A-Z]/u)(root.name) && !Array.contains(['Object', 'Promise', 'RegExp'], root.name),
 			onSome: variable =>
 				Array.some(variable.defs, definition => {
 					if (definition.node.type === 'VariableDeclarator') {
@@ -170,7 +169,7 @@ export const noNativeMethodCall = defineRule({
 			}
 			pipe(
 				memberName(node.callee),
-				Option.filter(name => Array.contains(nativeMethods, name)),
+				Option.filter(name => Array.contains(NATIVE_METHODS, name)),
 				Option.filter(
 					name =>
 						!Array.contains(['entries', 'keys', 'values'], name) ||
