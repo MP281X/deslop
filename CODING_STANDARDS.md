@@ -59,7 +59,7 @@ Engineering's Taste rule reads and extends this table.
 ## Deploy
 
 - Deploy is one `tools/compose.yaml` with configs inlined, direct ports, and unpinned images, driven by commands for this machine; no deploy README, flag-heavy scripts, or nested folders.
-- Each mobile app is one entry in two matrices: `ios` in `.github/workflows/deploy.yaml`, which releases from main, and `simulator` in `.github/workflows/ci.yaml`, which builds branches. [Stash's README](apps/stash/README.md#releases) explains both.
+- Each mobile app is one entry in two matrices: `ios` in `.github/workflows/deploy.yaml`, which releases from main, and `simulator` in `.github/workflows/simulator.yaml`, which builds branches that change `apps/stash`, `packages` or the lockfile. [Stash's README](apps/stash/README.md#releases) explains both.
 - Reusable tooling ships as a TypeScript package `@deslop/<name>` under `tools/`, published by CI; an app whose CLI shares its code, such as stash, publishes from `apps/`. Add and publish one with [tools/AGENTS.md](tools/AGENTS.md).
 
 ## Keys

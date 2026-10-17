@@ -39,10 +39,11 @@ On main, `deploy.yaml` compares `apps/stash`, `packages` and the lockfile with t
 
 ## Simulator
 
-CI builds the app for the iOS Simulator once per native fingerprint, as the artifact `stash-simulator-<fingerprint>` of the branch's CI run. The app holds the JavaScript of the commit that built it, so replace its bundle with the branch's own before you install it. `device_open` returns the `agent-device` command and its flags.
+The Simulator workflow builds the app for the iOS Simulator once per native fingerprint, as the artifact `stash-simulator-<fingerprint>`; it runs only for a push that changes `apps/stash`, `packages` or the lockfile, so a branch without one reuses the artifact another branch built. The app holds the JavaScript of the commit that built it, so replace its bundle with the branch's own before you install it. `device_open` returns the `agent-device` command and its flags.
 
 ```bash
-gh run download <run id> --name stash-simulator-<fingerprint> --dir /tmp/stash-sim && tar -xzf /tmp/stash-sim/simulator.tar.gz -C /tmp/stash-sim
+run=$(gh api "repos/MP281X/deslop/actions/artifacts?name=stash-simulator-<fingerprint>" --jq '.artifacts[0].workflow_run.id')
+gh run download $run --name stash-simulator-<fingerprint> --dir /tmp/stash-sim && tar -xzf /tmp/stash-sim/simulator.tar.gz -C /tmp/stash-sim
 APP_VARIANT=development vp -C apps/stash exec expo export:embed --platform ios --dev false --bundle-output /tmp/stash-sim/stashdev.app/main.jsbundle --assets-dest /tmp/stash-sim/stashdev.app
 <agent-device> install xyz.mp281x.stash.dev /tmp/stash-sim/stashdev.app <flags>
 <agent-device> open xyz.mp281x.stash.dev <flags>
