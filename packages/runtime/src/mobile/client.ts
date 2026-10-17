@@ -44,7 +44,7 @@ export const updateAtom = Atom.keepAlive(
 				if (!(yield* Effect.tryPromise(() => Updates.fetchUpdateAsync())).isNew) return
 				yield* Effect.tryPromise(() => Updates.reloadAsync())
 			}),
-			Effect.catch(error => Effect.logWarning('The app update check failed', error))
+			Effect.ignore({log: 'Warn', message: 'The app update check failed'})
 		)
 	)
 )

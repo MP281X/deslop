@@ -1,6 +1,6 @@
 import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {Array, Config, Console, Crypto, Effect, Layer, Logger, Stream, String, pipe} from 'effect'
+import {Array, Config, Console, Crypto, Effect, Layer, Logger, Option, Predicate, Stream, String, pipe} from 'effect'
 
 import {Argument, Command, Flag} from 'effect/cli'
 import {RpcClient, RpcSerialization} from 'effect/rpc'
@@ -11,9 +11,12 @@ import packageJson from '#package' with {type: 'json'}
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {NotesError} from '#services/notes/schema.ts'
 
-function section(title: string, text: string) {
-	if (String.isEmpty(text)) return ''
-	return `## ${title}\n\n${text}`
+function section(title: string, text?: string) {
+	return pipe(
+		Option.fromUndefinedOr(text),
+		Option.filter(String.isNonEmpty),
+		Option.map(found => `## ${title}\n\n${found}`)
+	)
 }
 
 const save = pipe(
@@ -51,42 +54,46 @@ const save = pipe(
 					)
 					return yield* client['notes.get']({id: saved.id})
 				}),
-				Effect.scoped,
-				// @effect-diagnostics-next-line strictEffectProvide:off -- The server address comes from this command's flag.
-				Effect.provide(
-					pipe(
-						// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
-						RpcClient.layerProtocolSocket({pingTimeout: '15 seconds'}),
-						Layer.provide(
-							Socket.layerWebSocket(pipe(new URL('/api/rpc', input.server).href, String.replace(/^http/u, 'ws')))
-						),
-						Layer.provide(Socket.layerWebSocketConstructorGlobal),
-						Layer.provide(RpcSerialization.layerJson)
-					)
-				)
+				Effect.scoped
 			)
 			yield* Console.log(
 				pipe(
 					[
-						`# ${note.title}`,
-						Array.join(Array.filter([note.author, note.source, note.url ?? ''], String.isNonEmpty), ' · '),
-						Array.join(
-							Array.map(note.tags, name => `#${name}`),
-							' '
+						Option.some(`# ${note.title}`),
+						Option.some(
+							Array.join(Array.filter([note.author, note.source, note.url], Predicate.isNotUndefined), ' · ')
 						),
-						note.summary,
-						section('Notes', note.body ?? ''),
-						section('Topics', note.topics ?? ''),
-						section('Text in the images', note.screenText ?? ''),
+						Option.some(
+							Array.join(
+								Array.map(note.tags, name => `#${name}`),
+								' '
+							)
+						),
+						Option.some(note.summary),
+						section('Notes', note.body),
+						section('Topics', note.topics),
+						section('Text in the images', note.screenText),
 						section('Source', note.content),
-						section('Transcript', note.transcript ?? ''),
+						section('Transcript', note.transcript),
 						section('Issue', note.issue)
 					],
+					Array.getSomes,
 					Array.filter(String.isNonEmpty),
 					Array.join('\n\n')
 				)
 			)
 		})
+	),
+	Command.provide(input =>
+		pipe(
+			// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
+			RpcClient.layerProtocolSocket({pingTimeout: '15 seconds'}),
+			Layer.provide(
+				Socket.layerWebSocket(pipe(new URL('/api/rpc', input.server).href, String.replace(/^http/u, 'ws')))
+			),
+			Layer.provide(Socket.layerWebSocketConstructorGlobal),
+			Layer.provide(RpcSerialization.layerJson)
+		)
 	),
 	Command.withDescription(
 		'Save a link or a note to stash and print it as Markdown: title, summary, tags, notes, source text and the transcript with [mm:ss] timestamps. The server reads the link, transcribes its video with published captions or Whisper, and tags it; the CLI waits until it finishes. Needs the tailnet.'

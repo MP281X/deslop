@@ -211,7 +211,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 	const reload = useAtomRefresh(noteAtom(props.note))
 	const meta = pipe(
 		[
-			Option.liftPredicate(props.note.author, String.isNonEmpty),
+			Option.fromUndefinedOr(props.note.author),
 			appOf(props.note),
 			Option.some(
 				DateTime.formatLocal(DateTime.makeUnsafe(props.note.createdAt), {
@@ -269,7 +269,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 									/>
 								),
 								onInitial: () => <Placeholder />,
-								onSuccess: loaded => <Body text={loaded.value.body ?? ''} />
+								onSuccess: loaded => loaded.value.body !== undefined && <Body text={loaded.value.body} />
 							})}
 						</VStack>
 					))

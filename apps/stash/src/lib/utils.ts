@@ -85,7 +85,7 @@ export const notesAtom = Atom.keepAlive(
 					pipe(
 						Schema.encodeEffect(ListJson)(items),
 						Effect.flatMap(json => Effect.try(() => writeAtomically(listFile, json))),
-						Effect.catch(error => Effect.logWarning('The list could not be kept on this iPhone', error))
+						Effect.ignore({log: 'Warn', message: 'The list could not be kept on this iPhone'})
 					)
 				),
 				Stream.retry(Schedule.spaced('2 seconds'))

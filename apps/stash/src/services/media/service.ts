@@ -337,17 +337,17 @@ export class Media extends Context.Service<
 						if (media._type === 'playlist') {
 							return yield* MediaError.make({message: 'The link holds several videos.'})
 						}
-						const details = Array.filter(
+						const details = pipe(
 							[
-								media.uploader ?? '',
-								pipe(media.upload_date ?? '', String.replace(/^(\d{4})(\d{2})(\d{2})$/u, '$1-$2-$3')),
-								pipe(
-									Option.fromNullishOr(media.duration),
-									Option.map(clock),
-									Option.getOrElse(() => String.empty)
-								)
+								Option.fromNullishOr(media.uploader),
+								Option.map(
+									Option.fromNullishOr(media.upload_date),
+									String.replace(/^(\d{4})(\d{2})(\d{2})$/u, '$1-$2-$3')
+								),
+								Option.map(Option.fromNullishOr(media.duration), clock)
 							],
-							String.isNonEmpty
+							Array.getSomes,
+							Array.filter(String.isNonEmpty)
 						)
 						const info = Array.join(
 							Array.getSomes([
