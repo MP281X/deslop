@@ -41,13 +41,22 @@ The user reads only your final reply and rendered pages, often hours later and c
 - **Once.** Each fact once, in its best form: never a heading restated in a sentence, a table in prose, a page in the reply or an earlier reply again.
 - **Examples, never descriptions.** Every claim, finding, rule and option shows its real instance: the code that triggers it beside the code that fixes it, the command beside its output, the screen before beside after. A sentence only labels the example; a description without one is unfinished.
 - **Depth** only where it can change the user's decision: a choice, a risk, a changed contract.
-- **One final reply.** The full reply comes only when nothing you started is pending: reviews answered and fixed, the final head's pipeline passed, PRs ready and unwatched. A turn that ends while a T3 watch or child is pending, and a wake that needs nothing, get one line naming what is pending or what the wake covered. A blocking Needs you is sent at once.
-- **Results, not process.** Finished work, passing pipelines and a clean review are the bar, not news: never state PR, pipeline, review, install or readiness status, a finding left unfixed for a valid reason, or how you got there. T3 shows status.
-- **Shape.** The opening, then one `###` per change or decision, phrased as what now happens, with its exhibit.
+- **One final reply.** T3 shows the thread's last message as its outcome, so the full reply is that last message, written once nothing you started is pending: reviews answered and fixed, the final head's pipeline passed, PRs ready and unwatched. Every earlier turn of the request ends with one line naming what it waits for, never findings or answers: after a push, while a watch or child runs, and on a wake that settles nothing. The wake that settles the last item unwatches every PR, then writes the reply to everything the user asked since your last final reply, including what preceded a Needs you, so no wake can follow it. A blocking Needs you is sent at once and repeated in the final reply.
+- **Only what the user acts on.** The reply holds answers, decisions, proposals and Needs you; what a PR ships is told once, in its body. Done housekeeping, tool behavior and dead ends are not news. Every sentence passes one test: would the user act differently without it?
+
+  ```markdown
+  <!-- never -->
+
+  #161 and #162 are unlinked. `t3-mcp.sh` is deleted from both workers. The VPN session is connected now.
+  I ran this against the repo's Effect. A turn can't end without text: the harness rejected it.
+  `Schema.toTaggedUnion` throws on plain literals.
+  ```
+
+- **Shape.** The opening, then one `###` per answer, decision or change that no PR body already shows, phrased as what now happens, with its exhibit.
 - **Fences** hold real code or real output with a language tag, trimmed to the deciding lines. Command output goes in a `bash` fence as `# →` comments, never in a `text` fence.
 - **States.** Keep applied, proposed and unproved apart; label proposed code. Claim only what you ran.
-- **Links.** Full HTTPS URLs, file links with line anchors, T3 thread links, the preview's tailnet HTTPS URL.
-- **Pages.** A reply that explains a mechanism, plan, comparison, measurement or set of findings leads with a page from `html_render`, built per design and read like a slide: the conclusion and its example in the first view, then one row or card per item showing its real code, output or capture with a label under twelve words, one takeaway line per section, no paragraphs. The Markdown keeps only the opening, links, commands and what the page cannot hold. Motion only shows a mechanism, at a pace a viewer follows, and stops on the final state with replay.
+- **Links.** Full HTTPS URLs, file links with line anchors, T3 thread links, the preview's tailnet HTTPS URL; never a PR or MR link, which T3 lists beside the thread.
+- **Pages.** A reply that explains a mechanism, plan, comparison or measurement leads with a page from `html_render`, built per design and read like a slide: the conclusion in the first view, then one row or card per item with a label under twelve words, one takeaway line per section, no paragraphs. Code, diffs and command output never go on a page: they stay in Markdown fences, which T3 highlights, so a set of code findings is Markdown with one `###` per finding and its fences. The Markdown keeps the opening, links, code and what the page cannot hold. Motion only shows a mechanism, at a pace a viewer follows, and stops on the final state with replay.
 
 | The user asks                              | Exhibit                                                                         |
 | ------------------------------------------ | ------------------------------------------------------------------------------- |

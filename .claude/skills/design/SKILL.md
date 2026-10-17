@@ -35,7 +35,7 @@ Blur a capture: the primary content and next action still stand out.
 - **Web components.** shadcn's primitives, used as shipped. The registry changes often, so list it before you choose: `vpx shadcn@latest list @shadcn -t registry:ui`, then `vpx shadcn@latest docs <name>` for the chosen one. When shadcn has the component, use it with its own variants, props and sizes; add a missing one with `shadcn add` and its defaults. Never a wrapper, a new variant, a restyle or a hand-built replacement; `className` only places a primitive in the layout. Needing heavy customization means the wrong primitive or pattern.
 - **iOS.** The same shadcn look, carried by native iOS elements: the mobile theme's tokens for color, radius and type on SwiftUI primitives through `@expo/ui` (navigation, toolbars, search, lists, menus, swipe actions, sheets, SF Symbols) with their system sizes and behavior. Glass for controls and navigation, never content. Never draw a custom system control.
 - **Surfaces and color** come from the theme's tokens and semantic colors only: no raw colors, shadows or radii. Group by proximity before borders; no nested cards; one border owner per edge.
-- **Flat.** Never a gradient, glow or blurred shadow, anywhere: screens, pages, videos and images use flat theme colors and 1 px borders.
+- **Flat.** Never a gradient, glow or blurred shadow, anywhere: screens, pages, videos and images use flat theme colors and even 1 px borders, never a colored stripe on one side.
 
   ```tsx
   <div className="bg-card border" />                          // good
@@ -65,7 +65,7 @@ Capture the result at the reference's size, theme, data and state, beside the re
 
 1. **Structure.** Opens on current work; nothing repeated, hidden or missing; route, sections, controls, terms and copy match the canonical screen unless the request changed them.
 2. **Behavior.** States, focus, errors, gestures and motion match the reference; replay transitions.
-3. **Visual.** Hierarchy, alignment, spacing, type, color, icons, and these tells: any gradient or glow, every section a bordered card with an icon, equal prominence everywhere, a color per tile, decorative emphasized words, generic copy such as "seamless", content waiting on an entrance animation, and generated defaults: cream canvas with serif and clay accent, identical rounded cards, all-caps eyebrows, the hero, feature grid, logo row and email form skeleton.
+3. **Visual.** Hierarchy, alignment, spacing, type, color, icons, and these tells: any gradient or glow, a colored stripe on one side of a card, quote or code block, every section a bordered card with an icon, equal prominence everywhere, a color per tile, decorative emphasized words, generic copy such as "seamless", content waiting on an entrance animation, and generated defaults: cream canvas with serif and clay accent, identical rounded cards, all-caps eyebrows, the hero, feature grid, logo row and email form skeleton.
 
 Repair grouping, then hierarchy, alignment, copy and states; recapture with long names, Unicode, 0, 1 and many records, the narrow phone and dark mode.
 
