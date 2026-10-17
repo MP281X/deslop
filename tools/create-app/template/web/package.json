@@ -1,25 +1,11 @@
 {
 	"name": "@deslop/template-app",
-	"version": "0.0.0",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/MP281X/deslop"
-	},
-	"bin": {
-		"template-app": "dist/server.js"
-	},
-	"files": [
-		"dist"
-	],
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
 		"#lib/*": "./src/lib/*",
 		"#rpcs/*": "./src/rpcs/*",
 		"#routes/*": "./src/routes/*"
-	},
-	"publishConfig": {
-		"access": "public"
 	},
 	"scripts": {
 		"build": "rm -rf dist && vp build && vp pack",
@@ -29,7 +15,7 @@
 		"@deslop/components-web": "workspace:*",
 		"@deslop/runtime": "workspace:*",
 		"@tanstack/react-router": "latest",
-		"react": "^19",
-		"react-dom": "^19"
+		"react": "latest",
+		"react-dom": "latest"
 	}
 }

@@ -1,7 +1,6 @@
 {
 	"name": "@deslop",
 	"type": "module",
-	"sideEffects": false,
 	"scripts": {
 		"build": "vp run -r build",
 		"check": "vp check && fallow dead-code --format compact --fail-on-issues",
@@ -9,17 +8,17 @@
 		"prepare": "effect-tsgo patch --no-typescript --oxlint --force"
 	},
 	"dependencies": {
-		"@effect/atom-react": "4.0.5",
-		"@effect/platform-node": "4.0.5",
-		"effect": "^4.0.5"
+		"@effect/atom-react": "latest",
+		"@effect/platform-node": "latest",
+		"effect": "latest"
 	},
 	"devDependencies": {
 		"@deslop/coding-standards": "workspace:*",
 		"@effect/tsgo": "latest",
-		"@effect/vitest": "4.0.5",
+		"@effect/vitest": "latest",
 		"@types/node": "latest",
-		"@types/react": "^19.3.0",
-		"@types/react-dom": "^19.3.0",
+		"@types/react": "latest",
+		"@types/react-dom": "latest",
 		"fallow": "latest",
 		"typescript": "latest",
 		"vite": "catalog:",

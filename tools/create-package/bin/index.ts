@@ -1,74 +1,51 @@
 #!/usr/bin/env node
 
-// @effect-diagnostics-next-line nodeBuiltinImport:off -- Generator paths and CLI arguments are native Node boundaries.
-import {fileURLToPath} from 'node:url'
-import {parseArgs} from 'node:util'
+import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {NodeRuntime} from '@effect/platform-node'
+import {Array, Effect, Option, Path, Schema, String, flow, pipe} from 'effect'
 
-import {Array, Effect, Predicate, String, flow, pipe} from 'effect'
+import {Command, Flag} from 'effect/cli'
 
-import {createTemplate, runTemplateCLI} from 'bingo'
-import type {Template, TemplateContext} from 'bingo'
-import {intakeDirectory} from 'bingo-fs'
-import {z} from 'zod'
+import {copyTemplate} from '#copy-template'
+import packageJson from '#package' with {type: 'json'}
 
-import {replaceDirectory} from '#replace-directory'
-
-const Name = z
-	.string()
-	.regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u, 'Use an unscoped kebab-case package name.')
-	.describe('Unscoped package name')
-const TemplateDirectory = fileURLToPath(new URL('../template', import.meta.url))
-
-const template = createTemplate({
-	about: {description: 'Create a standard Deslop package.', name: '@deslop/create-package'},
-	options: {name: Name},
-	produce: flow(
-		Effect.fnUntraced(function* (context: TemplateContext<{name: string}, unknown>) {
-			const files = yield* Effect.tryPromise(() =>
-				intakeDirectory(TemplateDirectory, {exclude: /^(?:dist|node_modules)$/u})
-			)
-			return {
-				files: replaceDirectory(
-					files,
-					flow(
-						String.replaceAll(
-							'TemplatePackage',
-							pipe(context.options.name, String.split('-'), Array.map(String.capitalize), Array.join(''))
-						),
-						String.replaceAll('@deslop/template-package', `@deslop/${context.options.name}`),
-						String.replaceAll('../../../tsconfig.json', '../../tsconfig.json')
-					)
+const create = Command.make(
+	'create-package',
+	{
+		directory: pipe(Flag.String('directory'), Flag.withDescription('Defaults to packages/<name>'), Flag.optional),
+		name: pipe(
+			Flag.String('name'),
+			Flag.withSchema(
+				Schema.String.check(
+					Schema.isPattern(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u, {message: 'Use an unscoped kebab-case package name.'})
+				)
+			),
+			Flag.withDescription('Unscoped package name')
+		)
+	},
+	Effect.fnUntraced(function* (input) {
+		const path = yield* Path.Path
+		yield* copyTemplate({
+			from: path.join(import.meta.dirname, '../template'),
+			rewrite: flow(
+				String.replaceAll(
+					'TemplatePackage',
+					pipe(input.name, String.split('-'), Array.map(String.capitalize), Array.join(''))
 				),
-				requests: [],
-				scripts: [],
-				suggestions: []
-			}
-		}),
-		// oxlint-disable-next-line no-restricted-properties -- Bingo's produce contract demands a Promise.
-		Effect.runPromise
-	)
-})
-
-const parsedArguments = parseArgs({
-	args: Array.drop(process.argv, 2),
-	options: {directory: {type: 'string'}, name: {type: 'string'}},
-	strict: false
-})
-const options = z.object({directory: z.string().optional(), name: Name}).parse(parsedArguments.values)
-const directory = options.directory ?? `../packages/${options.name}`
-
-if (Predicate.isUndefined(options.directory)) {
-	process.argv = pipe(process.argv, Array.appendAll(['--directory', directory]))
-}
+				String.replaceAll('@deslop/template-package', `@deslop/${input.name}`),
+				String.replaceAll('../../../tsconfig.json', '../../tsconfig.json')
+			),
+			to: Option.getOrElse(input.directory, () => path.join(import.meta.dirname, '../../../packages', input.name))
+		})
+	})
+)
 
 NodeRuntime.runMain(
 	pipe(
-		Effect.promise(() =>
-			// oxlint-disable-next-line typescript/consistent-type-assertions -- Bingo's non-generic CLI signature erases the concrete option schema.
-			runTemplateCLI(template as unknown as Template)
-		),
-		Effect.tap(status => Effect.sync(() => (process.exitCode = status)))
+		create,
+		Command.withDescription('Create a standard Deslop package.'),
+		Command.run({version: packageJson.version}),
+		// @effect-diagnostics-next-line strictEffectProvide:off -- This CLI entrypoint owns the single platform Layer.
+		Effect.provide(NodeServices.layer)
 	)
 )

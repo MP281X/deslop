@@ -1,7 +1,5 @@
 {
 	"name": "@deslop/template-app",
-	"version": "0.0.0",
-	"private": true,
 	"type": "module",
 	"sideEffects": false,
 	"main": "src/main.client.tsx",
@@ -15,15 +13,15 @@
 		"preview": "vp run build && node --env-file-if-exists=.env ./dist/server.js"
 	},
 	"dependencies": {
-		"expo": "^58.0.10",
-		"react": "^19.3.1",
+		"expo": "^58.0",
+		"react": "latest",
 		"react-native": "0.88.0-rc.4"
 	},
 	"devDependencies": {
 		"@deslop/components-mobile": "workspace:*",
 		"@deslop/runtime": "workspace:*",
-		"@expo/ui": "^58.0.17",
-		"babel-preset-expo": "^58.0.14",
-		"expo-updates": "^58.0.16"
+		"@expo/ui": "^58.0",
+		"babel-preset-expo": "^58.0",
+		"expo-updates": "^58.0"
 	}
 }

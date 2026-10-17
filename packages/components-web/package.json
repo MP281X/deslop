@@ -1,6 +1,5 @@
 {
 	"name": "@deslop/components-web",
-	"version": "0.0.0",
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
@@ -16,7 +15,7 @@
 	"dependencies": {
 		"@base-ui/react": "latest",
 		"@fontsource-variable/jetbrains-mono": "latest",
-		"@legendapp/list": "^3.6.0",
+		"@legendapp/list": "latest",
 		"@lexical/react": "latest",
 		"@pierre/diffs": "latest",
 		"@tanstack/react-form": "latest",

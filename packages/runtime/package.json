@@ -1,6 +1,5 @@
 {
 	"name": "@deslop/runtime",
-	"version": "0.0.0",
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
@@ -15,26 +14,17 @@
 	},
 	"dependencies": {
 		"@deslop/components-web": "workspace:*",
-		"@effect/opentelemetry": "4.0.5",
-		"@opentelemetry/exporter-logs-otlp-http": "latest",
-		"@opentelemetry/exporter-trace-otlp-http": "latest",
-		"@opentelemetry/sdk-logs": "latest",
-		"@opentelemetry/sdk-trace-base": "latest",
-		"@opentelemetry/sdk-trace-node": "latest",
-		"@opentelemetry/sdk-trace-web": "latest",
 		"@tanstack/react-router": "latest"
 	},
 	"devDependencies": {
 		"@tailwindcss/vite": "latest",
-		"@tanstack/react-router": "latest",
 		"@tanstack/router-plugin": "latest",
 		"@vitejs/plugin-react": "latest",
-		"expo": "^58.0.10",
-		"expo-constants": "^58.0.12",
-		"expo-updates": "^58.0.16",
-		"oxc-transform-react": "^0.152.0",
-		"react": "^19.3.1",
-		"react-dom": "^19.3.1",
+		"expo": "^58.0",
+		"expo-constants": "^58.0",
+		"expo-updates": "^58.0",
+		"oxc-transform-react": "^0.152",
+		"react": "latest",
 		"react-native": "0.88.0-rc.4"
 	}
 }

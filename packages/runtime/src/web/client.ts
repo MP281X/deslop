@@ -8,7 +8,7 @@ import {Socket} from 'effect/socket'
 
 import {Error, Loading, NotFound} from '@deslop/components-web/fallbacks'
 
-import {layerWebSdk} from '#telemetry.ts'
+import {layerOtlp} from '#telemetry.ts'
 
 export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext: AnyContext}}>(routeTree: TRouteTree) {
 	const root = document.querySelector('#root')
@@ -46,7 +46,7 @@ export function layer(applicationName: string) {
 		pipe(
 			Layer.unwrap(
 				Effect.map(pipe(Config.URL('VITE_OTEL_URL'), Config.withDefault(new URL('http://localhost:4318'))), url =>
-					layerWebSdk(`${applicationName}-client`, url)
+					layerOtlp(`${applicationName}-client`, url)
 				)
 			),
 			Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(import.meta.env)))

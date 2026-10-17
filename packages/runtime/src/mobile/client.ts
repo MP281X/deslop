@@ -7,7 +7,7 @@ import Constants from 'expo-constants'
 import * as Updates from 'expo-updates'
 import {AppState} from 'react-native'
 
-import {layerWebSdk} from '#telemetry.ts'
+import {layerOtlp} from '#telemetry.ts'
 
 export const extra = Schema.decodeUnknownSync(Schema.Struct({otel: Schema.String, server: Schema.String}))(
 	Constants.expoConfig?.extra
@@ -15,7 +15,7 @@ export const extra = Schema.decodeUnknownSync(Schema.Struct({otel: Schema.String
 
 // Binary frames failed to reopen a cancelled watch on iOS.
 export function layer(applicationName: string) {
-	Atom.runtime.addGlobalLayer(layerWebSdk(`${applicationName}-ios`, extra.otel))
+	Atom.runtime.addGlobalLayer(layerOtlp(`${applicationName}-ios`, extra.otel))
 	return pipe(
 		// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
 		Rpc.RpcClient.layerProtocolSocket({pingTimeout: '15 seconds', retryTransientErrors: true}),

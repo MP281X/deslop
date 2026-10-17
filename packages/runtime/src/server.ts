@@ -2,29 +2,20 @@
 import {createServer} from 'node:http'
 import {fileURLToPath} from 'node:url'
 
-import * as NodeSdk from '@effect/opentelemetry/NodeSdk'
 import {NodeHttpServer} from '@effect/platform-node'
 
 import {Config, Effect, Layer, pipe} from 'effect'
 
-import {OTLPLogExporter} from '@opentelemetry/exporter-logs-otlp-http'
-import {OTLPTraceExporter} from '@opentelemetry/exporter-trace-otlp-http'
-import {BatchLogRecordProcessor} from '@opentelemetry/sdk-logs'
-import {BatchSpanProcessor} from '@opentelemetry/sdk-trace-base'
 import {HttpStaticServer} from 'effect/http'
 import {RpcSerialization} from 'effect/rpc'
+
+import {layerOtlp} from '#telemetry.ts'
 
 export function layer(applicationName: string) {
 	return Layer.mergeAll(
 		Layer.unwrap(
 			Effect.map(pipe(Config.URL('VITE_OTEL_URL'), Config.withDefault(new URL('http://localhost:4318'))), url =>
-				NodeSdk.layer(() => ({
-					logRecordProcessor: new BatchLogRecordProcessor({
-						exporter: new OTLPLogExporter({url: new URL('/v1/logs', url).href})
-					}),
-					resource: {serviceName: `${applicationName}-server`},
-					spanProcessor: new BatchSpanProcessor(new OTLPTraceExporter({url: new URL('/v1/traces', url).href}))
-				}))
+				layerOtlp(`${applicationName}-server`, url)
 			)
 		),
 		RpcSerialization.layerSchemaBinary()

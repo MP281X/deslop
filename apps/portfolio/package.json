@@ -1,25 +1,11 @@
 {
 	"name": "@deslop/portfolio",
-	"version": "0.0.0",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/MP281X/deslop"
-	},
-	"bin": {
-		"portfolio": "dist/server.js"
-	},
-	"files": [
-		"dist"
-	],
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
 		"#lib/*": "./src/lib/*",
 		"#rpcs/*": "./src/rpcs/*",
 		"#routes/*": "./src/routes/*"
-	},
-	"publishConfig": {
-		"access": "public"
 	},
 	"scripts": {
 		"build": "rm -rf dist && vp build && vp pack",
@@ -31,7 +17,7 @@
 		"@tanstack/react-hotkeys": "latest",
 		"@tanstack/react-router": "latest",
 		"lucide-react": "latest",
-		"react": "^19.3.1",
-		"react-dom": "^19.3.1"
+		"react": "latest",
+		"react-dom": "latest"
 	}
 }
