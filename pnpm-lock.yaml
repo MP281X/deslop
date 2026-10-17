@@ -517,8 +517,6 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
 
-  tools/evals: {}
-
 packages:
 
   2g@1.0.1:
