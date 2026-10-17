@@ -32,6 +32,15 @@ services:
       traefik.http.routers.portfolio.rule: Host(`portfolio.mp281x.xyz`)
       traefik.http.services.portfolio.loadbalancer.server.port: '5000'
 
+  # Tailnet only: `tailscale serve` publishes 127.0.0.1:5017 as https://dev.tailnet-8c4c.ts.net:8443.
+  stash:
+    <<: *service
+    image: ghcr.io/mp281x/deslop-stash:latest
+    env_file: ${HOME}/.deslop/stash.env
+    environment: {VITE_OTEL_URL: http://collector:4318}
+    ports: [127.0.0.1:5017:5000]
+    volumes: ['${HOME}/.deslop/stash:/home/node/.deslop/stash', '${HOME}/.cache/deslop:/home/node/.cache/deslop']
+
   jaeger:
     <<: *service
     image: jaegertracing/all-in-one:latest

@@ -12,7 +12,7 @@ Setup, upkeep and rebuild of the machines. Do established upkeep without asking;
 | Network  | Always on, public `77.237.236.132`; ufw allows 80 and 443 | On demand, home LAN on `eno1`; ufw denies all incoming |
 | GitLab   | Through the VPN; advertises the route to the tailnet      | Through dev's route (`--accept-routes`)                |
 
-- **Toolchain.** Docker with Compose and Buildx, `gh` with `github/gh-stack`, `glab`, `acli`, git, build tools, rsync, ripgrep, jq, sqlite3, lsof, ffmpeg, ImageMagick, `dig`, `psql`; on dev also `yt-dlp` in `/usr/local/bin`. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code is in `~/.local/bin`. The first lines of `~/.bashrc`, above its interactive guard, put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`.
+- **Toolchain.** Docker with Compose and Buildx, `gh` with `github/gh-stack`, `glab`, `acli`, git, build tools, rsync, ripgrep, jq, sqlite3, lsof, ffmpeg, ImageMagick, `dig`, `psql`. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code is in `~/.local/bin`. The first lines of `~/.bashrc`, above its interactive guard, put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`.
 - **Sign-ins.** Each worker signs in on its own: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login`, `codex login --device-auth`, and [Jira](#jira-sign-in). Show each sign-in link to the user.
 - **Repositories.** `~/dual` uses the credential helper `!glab auth git-credential` for `https://git.datapizza.tech`; GitHub uses `gh auth setup-git`. Identities follow [Git identity](#git-identity).
 - **Updates.** `unattended-upgrades` runs daily. `desktop` has only local IPv6, so `/etc/apt/apt.conf.d/99force-ipv4` holds `Acquire::ForceIPv4 "true";`.
@@ -108,10 +108,10 @@ Use at most five stops of two short sentences each, in plain words. No praise, n
 
 ## Update and deploy
 
-1. **Update.** `sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get autoremove -y && sudo apt-get clean`, `vp upgrade`; on dev `sudo yt-dlp -U`. glab: when `curl -fsSL https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, install its `glab_<version>_linux_amd64.deb`.
+1. **Update.** `sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get autoremove -y && sudo apt-get clean`, `vp upgrade`. glab: when `curl -fsSL https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, install its `glab_<version>_linux_amd64.deb`.
 2. **T3** runs the nightly channel as the `t3code.service` user unit: `vp install -g t3@nightly`, `t3 service install`, `t3 connect link --headless` (show the user the link), `t3 connect publish`, then `t3 service restart` with no run active.
 3. **Deploy** on dev from `~/deslop` on published main: `docker compose --project-name deslop --file tools/compose.yaml pull`, then `up -d --remove-orphans`; a changed inline config needs `up -d --force-recreate --no-deps <service>`.
-4. **Verify.** https://portfolio.mp281x.xyz and dev's http://127.0.0.1:16686/api/services return 200, and an OPTIONS preflight to otel's `/v1/traces` and `/v1/logs` with `Origin: https://portfolio.mp281x.xyz` succeeds.
+4. **Verify.** https://portfolio.mp281x.xyz, https://dev.tailnet-8c4c.ts.net:8443 and dev's http://127.0.0.1:16686/api/services return 200, and an OPTIONS preflight to otel's `/v1/traces` and `/v1/logs` with `Origin: https://portfolio.mp281x.xyz` succeeds.
 
 ## Clean
 
