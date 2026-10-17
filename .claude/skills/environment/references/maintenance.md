@@ -6,12 +6,11 @@ Setup, upkeep and rebuild of the machines. Do established upkeep without asking;
 
 `dev` and `desktop` run the latest Debian stable in text mode with the same setup, as `mp281x` with passwordless sudo (`/etc/sudoers.d/99-mp281x-nopasswd`, mode 0440). Setup never copies sign-ins or machine configuration between machines; only the [T3 settings](#t3-settings) are shared.
 
-| Fact      | `dev`                                                                            | `desktop`                                              |
-| --------- | -------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| Hardware  | VPS, 8 cores, 23 GB, 15 GB swap                                                  | Ryzen 9 9900X, 30 GB, 31 GB swap, 1 TB NVMe            |
-| Network   | Always on, public `77.237.236.132`; ufw allows 80 and 443                        | On demand, home LAN on `eno1`; ufw denies all incoming |
-| Only here | Traefik for `*.mp281x.xyz`, the Datapizza VPN, Jaeger, the Mullvad media proxies | Nothing                                                |
-| GitLab    | Through the VPN; advertises the route to the tailnet                             | Through dev's route (`--accept-routes`)                |
+| Fact     | `dev`                                                     | `desktop`                                              |
+| -------- | --------------------------------------------------------- | ------------------------------------------------------ |
+| Hardware | VPS, 8 cores, 23 GB, 15 GB swap                           | Ryzen 9 9900X, 30 GB, 31 GB swap, 1 TB NVMe            |
+| Network  | Always on, public `77.237.236.132`; ufw allows 80 and 443 | On demand, home LAN on `eno1`; ufw denies all incoming |
+| GitLab   | Through the VPN; advertises the route to the tailnet      | Through dev's route (`--accept-routes`)                |
 
 - **Toolchain.** Docker with Compose and Buildx, `gh` with `github/gh-stack`, `glab`, `acli`, git, build tools, rsync, ripgrep, jq, sqlite3, lsof, ffmpeg, ImageMagick, `dig`, `psql`; on dev also `yt-dlp` in `/usr/local/bin`. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code is in `~/.local/bin`. The first lines of `~/.bashrc`, above its interactive guard, put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`.
 - **Sign-ins.** Each worker signs in on its own: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login`, `codex login --device-auth`, and [Jira](#jira-sign-in). Show each sign-in link to the user.
@@ -24,26 +23,37 @@ Setup, upkeep and rebuild of the machines. Do established upkeep without asking;
 
 ## Agent configuration
 
-Every worker runs the same configuration from the deslop repository. Sources: `.claude/settings.json`, `.claude/agents/pair.md`, `.codex/config.toml`, `.codex/instructions.md`, `.codex/rules/deny.rules`, and the personal skills `.claude/skills/{orchestrator,delivery,explore,environment}`. Engineering, design and review belong to coding-standards and install into repositories; review also installs globally, so review children work in a checkout without installed skills. A variable only agents need goes in both `.claude/settings.json` `env` and `.codex/config.toml` `shell_environment_policy.set`, never in `~/.bashrc`.
+Every worker runs the same configuration from the deslop repository. `.codex/global-config.toml` has that name so Codex never loads it a second time as deslop's project config. Engineering, design and review belong to coding-standards and install into repositories; review also installs globally for Claude, so Claude review children work in a checkout without installed skills, while Codex lists a skill only once. A variable only agents need goes in both `.claude/settings.json` `env` and `.codex/global-config.toml` `shell_environment_policy.set`, never in `~/.bashrc`.
 
-Install from main or from a branch with an open PR, on every running worker; an unreachable worker that the user turned off gets it when it runs again. First `diff -r` each installed copy against the source: a difference that neither your branch nor `origin/main` made comes from another branch, so bring it in first.
+Each installed path is a symlink into the main checkout `~/deslop`, so a worker runs the configuration on `origin/main`: Claude's `SessionStart` hook fast-forwards `~/deslop` in the background (`git pull --ff-only`), so the session after a merge loads it. T3's own automatic pull does not cover this: it pulls a checkout only while something refreshes that checkout's Git status. Never edit an installed path, and never switch `~/deslop` off `main`: both change every thread's configuration. Running threads keep the configuration they started with.
+
+| Installed path                                                 | Links to `~/deslop/…`                  |
+| -------------------------------------------------------------- | -------------------------------------- |
+| `~/.claude/settings.json`                                      | `.claude/settings.json`                |
+| `~/.claude/agents/pair.md`                                     | `.claude/agents/pair.md`               |
+| `~/.claude/skills/{orchestrator,delivery,explore,environment}` | `.claude/skills/<name>`                |
+| `~/.claude/skills/review`                                      | `tools/coding-standards/skills/review` |
+| `~/.codex/config.toml`                                         | `.codex/global-config.toml`            |
+| `~/.codex/instructions.md`                                     | `.codex/instructions.md`               |
+| `~/.codex/rules/deny.rules`                                    | `.codex/rules/deny.rules`              |
+| `~/.codex/skills/{orchestrator,delivery,explore,environment}`  | `~/.claude/skills/<name>`              |
+
+Set up once per worker, and again after a harness replaced a link with a file:
 
 ```bash
-set -e
-for worker in dev desktop; do
-  t=mp281x@$worker
-  ssh -o ConnectTimeout=5 $t true || { echo "$worker is unreachable"; continue; }
-  for s in orchestrator delivery explore environment; do rsync -a --delete --mkpath .claude/skills/$s/ $t:.claude/skills/$s/; done
-  rsync -a --delete --mkpath tools/coding-standards/skills/review/ $t:.claude/skills/review/
-  rsync -a .claude/settings.json $t:.claude/settings.json
-  rsync -a --mkpath .claude/agents/pair.md $t:.claude/agents/pair.md
-  rsync -a --mkpath .codex/config.toml .codex/instructions.md $t:.codex/
-  rsync -a --mkpath .codex/rules/deny.rules $t:.codex/rules/deny.rules
-  ssh $t 'mkdir -p ~/.codex/skills && rm -rf ~/.codex/skills/review && for s in orchestrator delivery explore environment review; do ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done; codex execpolicy check --rules ~/.codex/rules/deny.rules true >/dev/null'
-done
+r=~/deslop
+mkdir -p ~/.claude/agents ~/.claude/skills ~/.codex/rules ~/.codex/skills
+ln -sfn $r/.claude/settings.json ~/.claude/settings.json
+ln -sfn $r/.claude/agents/pair.md ~/.claude/agents/pair.md
+for s in orchestrator delivery explore environment; do rm -rf ~/.claude/skills/$s; ln -sfn $r/.claude/skills/$s ~/.claude/skills/$s; ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done
+rm -rf ~/.claude/skills/review && ln -sfn $r/tools/coding-standards/skills/review ~/.claude/skills/review
+ln -sfn $r/.codex/global-config.toml ~/.codex/config.toml
+ln -sfn $r/.codex/instructions.md ~/.codex/instructions.md
+ln -sfn $r/.codex/rules/deny.rules ~/.codex/rules/deny.rules
+codex execpolicy check --rules ~/.codex/rules/deny.rules true
 ```
 
-New sessions load the change; running threads keep theirs. Verify with the same `diff -r`.
+**Check** with `find ~/.claude/settings.json ~/.claude/agents/pair.md ~/.codex/config.toml ~/.codex/instructions.md ~/.codex/rules/deny.rules ~/.claude/skills/* ~/.codex/skills/* -maxdepth 0 ! -type l` (prints a link a harness replaced) and `git -C ~/deslop status --short` (a harness that wrote through a link; carry the write into a PR, then `git -C ~/deslop restore` it, because a dirty checkout stops the automatic pull).
 
 ## T3 settings
 
@@ -68,8 +78,8 @@ ssh "$target" 'cat > ~/.t3/userdata/settings.json' < $d/new-settings.json
 rm -rf $d
 ```
 
-- **Claude launch arguments.** `providerInstances.claudeAgent.config.launchArgs` is `--system-prompt-snapshot off --thinking-display omitted --autocompact 500k`, with the custom pair prompt and `ENABLE_TOOL_SEARCH=false`. T3 passes them to new Claude processes; never restart T3 or stop threads to apply them.
-- **Project scripts** live in `projectSettingsOverrides.<project id>.defaultProjectScripts` and replace the project's own scripts. `install` runs on worktree creation, `settle` on settle; the user runs `preview` and `stop` from the script menu. Each preview is the unit `preview-<worktree name>`; deslop's port comes from the worktree path, Dual's from its `Preview ready:` line.
+- **Claude launch arguments.** `providerInstances.claudeAgent.config.launchArgs` is `--system-prompt-snapshot off --thinking-display omitted --autocompact 500k`. T3 passes them to new Claude processes; never restart T3 or stop threads to apply them.
+- **Project scripts** live in `projectSettingsOverrides.<project id>.defaultProjectScripts` and replace the project's own scripts. `install` runs on worktree creation and `settle` on settle; agents run `preview` per environment's Previews, and the user can run `preview` and `stop` from the script menu. Each preview is the unit `preview-<worktree name>`; deslop's port comes from the worktree path, Dual's from its `Preview ready:` line.
 
 ```bash
 # deslop
@@ -160,7 +170,7 @@ Show the user the `tailscale up` sign-in URL; the user disables key expiry and a
 
 ## Mac
 
-T3's desktop app and the iOS Simulator; it builds nothing, the simulator app comes from CI. The user's organization manages it through MDM; keep its policies. System sleep is off, so it stays reachable with the display off; a closed lid makes it unreachable: when `ssh matteopaludgnach@macbook-pro true` fails, ask under **Needs you** to wake it. Sudo needs the user's password, so the user installs apps, updates and permissions from a guide. Agents run `vp upgrade`, `softwareupdate -l` and `xcrun simctl delete unavailable`, and install nothing else.
+T3's desktop app and the iOS Simulator; it builds nothing, the simulator app comes from CI. The user's organization manages it through MDM; keep its policies. System sleep is off, so it stays reachable with the display off; a closed lid makes it unreachable: when `ssh matteopaludgnach@macbook-pro true` fails, ask the user to wake it. Sudo needs the user's password, so the user installs apps, updates and permissions from a guide. Agents run `vp upgrade`, `softwareupdate -l` and `xcrun simctl delete unavailable`, and install nothing else.
 
 **Device host.**
 

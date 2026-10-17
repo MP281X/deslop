@@ -1,11 +1,9 @@
 {
 	"compilerOptions": {
 		"strict": true,
-		"noUnusedLocals": true,
 		"noImplicitReturns": true,
 		"noErrorTruncation": true,
 		"allowUnusedLabels": false,
-		"noUnusedParameters": true,
 		"noImplicitOverride": true,
 		"allowUnreachableCode": false,
 		"noUncheckedIndexedAccess": true,

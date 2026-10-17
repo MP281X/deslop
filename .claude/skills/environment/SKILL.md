@@ -1,6 +1,6 @@
 ---
 name: environment
-description: Use before any command in the Dual or deslop repository, any preview, a Jira or DOS ticket, a GitLab or VPN step, a change to persisted Dual data, a task on another worker, installing agent configuration, updating T3 or the machines, a deploy, and machine setup or cleanup.
+description: Use before the first command of a session, and before any preview, a Jira or DOS ticket, a GitLab or VPN step, a change to persisted Dual data, a task on another worker, the agent configuration links, updating T3 or the machines, a deploy, and machine setup or cleanup.
 ---
 
 # Environment
@@ -19,7 +19,7 @@ Two headless Debian workers in one tailnet, same user and paths; the user switch
 - **Scratch** under `/tmp/<task>/`, on disk, emptied at boot.
 - **Git refs.** T3 keeps checkpoint commits under `refs/t3/`; search history with `--branches --remotes`.
 - **Services** run as temporary containers, not host installs.
-- **Threads on the other worker.** T3 tools reach only this worker's threads. To start work in a thread on the other worker, give the user the message to paste under Needs you; never reach its T3 server through its API, auth tokens or pairing codes.
+- **Threads on the other worker.** T3 tools reach only this worker's threads. To start work in a thread on the other worker, give the user the message to paste there; never reach its T3 server through its API, auth tokens or pairing codes.
 
 | Reference                                | For                                                                    |
 | ---------------------------------------- | ---------------------------------------------------------------------- |
@@ -29,9 +29,16 @@ Two headless Debian workers in one tailnet, same user and paths; the user switch
 
 ## Previews
 
-- **One per worktree:** the systemd user unit `preview-<worktree name>`, shared over tailnet HTTPS. Start or restart it only with the project's `preview` script from the worktree root, per [maintenance's project scripts](references/maintenance.md#t3-settings); it prints the stable HTTPS URL and replaces the previous one. Never run the repository's preview command directly or as a harness background task: a second copy doubles its memory, and a background task dies after two hours.
+- **One per worktree:** the systemd user unit `preview-<worktree name>`, shared over tailnet HTTPS. A thread that changes the app starts or restarts it only with the project's `preview` script, run from the worktree root; it prints the stable HTTPS URL and replaces the previous one. Never run the repository's preview command directly or as a harness background task: a second copy doubles its memory, and a background task dies after two hours.
+
+  ```bash
+  root=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+  id=$(sqlite3 -readonly ~/.t3/userdata/statev2.sqlite "SELECT project_id FROM projection_projects WHERE workspace_root = '$root' AND deleted_at IS NULL")
+  bash -c "$(jq -r --arg id "$id" '.projectSettingsOverrides[$id].defaultProjectScripts[] | select(.id == "preview").command' ~/.t3/userdata/settings.json)"
+  ```
+
 - **Share** only after the URL loads sign-in, assets and API calls; open it in the thread's one T3 tab per delivery's Captures.
-- **Keep** it running on the latest code at the end of every turn. `stop` runs only when the user asks; T3 runs `settle` when the thread settles or its PR merges.
+- **Keep** a started preview on the latest code at the end of every turn. `stop` runs only when the user asks; T3 runs `settle` when the thread settles or its PR merges.
 - **Webhooks.** Funnel exposes a whole port: pick a free one of 443, 8443, 10000 and run `sudo tailscale funnel --bg --https=<port> --set-path <path> http://127.0.0.1:<api port><path>`; remove it with `... --set-path <path> off`.
 
 ## Diagnostics

@@ -6,7 +6,6 @@ import {defineConfig} from 'oxlint'
 import {explicitEffectConcurrency} from '#rules/explicit-effect-concurrency.ts'
 import {moduleConstant} from '#rules/module-constant.ts'
 import {motionLimits} from '#rules/motion-limits.ts'
-import {noArrayWrapTernary} from '#rules/no-array-wrap-ternary.ts'
 import {noBarrelModule} from '#rules/no-barrel-module.ts'
 import {noCompilerOptOut} from '#rules/no-compiler-opt-out.ts'
 import {noComponentAtomAllocation} from '#rules/no-component-atom-allocation.ts'
@@ -28,7 +27,6 @@ import {noMultilineComment} from '#rules/no-multiline-comment.ts'
 import {noNativeControl} from '#rules/no-native-control.ts'
 import {noNativeEmptinessCheck} from '#rules/no-native-emptiness-check.ts'
 import {noNativeMethodCall} from '#rules/no-native-method-call.ts'
-import {noNullishTernary} from '#rules/no-nullish-ternary.ts'
 import {noOptionValueAccess} from '#rules/no-option-value-access.ts'
 import {noPropertyAlias} from '#rules/no-property-alias.ts'
 import {noReadonlyTypeSyntax} from '#rules/no-readonly-type-syntax.ts'
@@ -111,7 +109,7 @@ export const oxlint = defineConfig({
 	],
 	options: {denyWarnings: true, reportUnusedDisableDirectives: 'deny', typeAware: true, typeCheck: true},
 	overrides: [
-		{files: ['**/*.config.ts', '**/app.plugin.js', '**/main.*'], rules: {'import/no-default-export': 'off'}},
+		{files: ['**/*.config.ts', '**/app.plugin.js'], rules: {'import/no-default-export': 'off'}},
 		// Expo resolves a config plugin only from the package's app.plugin.js, which re-exports the plugin.
 		{files: ['**/app.plugin.js'], rules: {'@deslop/coding-standards/no-barrel-module': 'off'}},
 		{files: ['**/components/ui/**'], rules: {'shadcn/no-restyle': 'off', 'shadcn/require-static-classes': 'off'}},
@@ -126,7 +124,7 @@ export const oxlint = defineConfig({
 			}
 		},
 		{files: ['**/*.ts'], rules: {'react/rules-of-hooks': 'off'}},
-		{files: ['**/*.test.ts', '**/*.test.tsx'], rules: {'@deslop/coding-standards/no-discarded-failure': 'off'}},
+		{files: ['**/*.test.ts'], rules: {'@deslop/coding-standards/no-discarded-failure': 'off'}},
 		{
 			files: ['**/*.tsx'],
 			rules: {
@@ -143,7 +141,6 @@ export const oxlint = defineConfig({
 		'@deslop/coding-standards/explicit-effect-concurrency': 'error',
 		'@deslop/coding-standards/module-constant': 'error',
 		'@deslop/coding-standards/motion-limits': 'error',
-		'@deslop/coding-standards/no-array-wrap-ternary': 'error',
 		'@deslop/coding-standards/no-barrel-module': 'error',
 		'@deslop/coding-standards/no-compiler-opt-out': 'error',
 		'@deslop/coding-standards/no-component-atom-allocation': 'error',
@@ -165,7 +162,6 @@ export const oxlint = defineConfig({
 		'@deslop/coding-standards/no-native-control': 'error',
 		'@deslop/coding-standards/no-native-emptiness-check': 'error',
 		'@deslop/coding-standards/no-native-method-call': 'error',
-		'@deslop/coding-standards/no-nullish-ternary': 'error',
 		'@deslop/coding-standards/no-option-value-access': 'error',
 		'@deslop/coding-standards/no-property-alias': 'error',
 		'@deslop/coding-standards/no-readonly-type-syntax': 'error',
@@ -203,6 +199,8 @@ export const oxlint = defineConfig({
 		'effecttsgo/global-timers': 'error',
 		'effecttsgo/global-timers-in-effect': 'error',
 		'effecttsgo/node-builtin-import': 'error',
+		'effecttsgo/prefer-effect-array': 'error',
+		'effecttsgo/prefer-effect-record': 'error',
 		'effecttsgo/prefer-schema-over-json': 'error',
 		'effecttsgo/process-env': 'error',
 		'effecttsgo/process-env-in-effect': 'error',
@@ -223,9 +221,11 @@ export const oxlint = defineConfig({
 		'effecttsgo/effect-in-void-success': 'error',
 		'effecttsgo/effect-map-flatten': 'error',
 		'effecttsgo/effect-map-void': 'error',
+		'effecttsgo/effect-sleep-zero-to-yield-now': 'error',
 		'effecttsgo/effect-succeed-with-void': 'error',
 		'effecttsgo/flat-map-ignored-param-to-and-then': 'error',
 		'effecttsgo/flat-map-to-map': 'error',
+		'effecttsgo/flat-map-to-tap': 'error',
 		'effecttsgo/floating-effect': 'error',
 		'effecttsgo/floating-effect-in-vitest': 'error',
 		'effecttsgo/layer-merge-all-with-dependencies': 'error',
@@ -265,11 +265,10 @@ export const oxlint = defineConfig({
 		'effecttsgo/catch-all-to-map-error': 'error',
 		'effecttsgo/catch-chain-to-first-success-of': 'error',
 		'effecttsgo/catch-conditional-refail-to-catch-if': 'error',
-		'effecttsgo/catch-die-to-or-die': 'error',
 		'effecttsgo/catch-tag-to-catch-reason': 'error',
-		'effecttsgo/catch-to-ignore': 'error',
 		'effecttsgo/catch-to-or-else-succeed': 'error',
 		'effecttsgo/catch-unfailable-effect': 'error',
+		'effecttsgo/error-payload-shadows-name': 'error',
 		'effecttsgo/flat-map-conditional-to-filter-or-fail': 'error',
 		'effecttsgo/global-error-in-effect-catch': 'error',
 		'effecttsgo/global-error-in-effect-failure': 'error',
@@ -278,12 +277,10 @@ export const oxlint = defineConfig({
 		'effecttsgo/redundant-map-error': 'error',
 		'effecttsgo/redundant-or-die': 'error',
 		'effecttsgo/timeout-catch-tag-to-timeout-or-else': 'error',
-		'effecttsgo/unknown-in-effect-catch': 'error',
 
 		// Services and schemas use current, sound class and identity forms.
 		'effecttsgo/class-self-mismatch': 'error',
 		'effecttsgo/deterministic-keys': 'error',
-		'effecttsgo/generic-effect-services': 'error',
 		'effecttsgo/instance-of-schema': 'error',
 		'effecttsgo/new-schema-class': 'error',
 		'effecttsgo/obsolete-match-import': 'error',
@@ -296,6 +293,7 @@ export const oxlint = defineConfig({
 		'effecttsgo/schema-number': 'error',
 		'effecttsgo/schema-struct-with-tag': 'error',
 		'effecttsgo/schema-sync-in-effect': 'error',
+		'effecttsgo/schema-union-of-literals': 'error',
 		'effecttsgo/service-not-as-class': 'error',
 		'effecttsgo/unnecessary-typeof-type': 'error',
 
@@ -356,7 +354,8 @@ export const oxlint = defineConfig({
 
 		// TypeScript preferences
 		'typescript/prefer-as-const': 'error',
-		'typescript/prefer-nullish-coalescing': 'error',
+		// no-ternary owns conditional expressions.
+		'typescript/prefer-nullish-coalescing': ['error', {ignoreTernaryTests: true}],
 		'typescript/prefer-optional-chain': 'error',
 
 		// TypeScript expression boundaries
@@ -397,6 +396,7 @@ export const oxlint = defineConfig({
 					{importNames: ['expect'], message: 'Use assert from @effect/vitest.', name: '@effect/vitest'}
 				],
 				patterns: [
+					{message: 'Prove a screen in the browser; no UI tests.', regex: '^(?:@testing-library/|jsdom$|happy-dom$)'},
 					{message: 'Use public package exports.', regex: '^@[^/]+/[^/]+/(?:src|lib)(?:/|$)'},
 					{message: 'Use glob from the FileSystem service.', regex: '^glob(?:/|$)'},
 					{message: 'Use effect/cli.', regex: '^(?:commander|yargs)(?:/|$)'},
@@ -410,7 +410,6 @@ export const oxlint = defineConfig({
 		],
 
 		// JavaScript correctness
-		'array-callback-return': 'error',
 		'max-depth': ['error', 3],
 		'max-nested-callbacks': ['error', 6],
 		'no-cond-assign': 'error',
@@ -445,7 +444,6 @@ export const oxlint = defineConfig({
 			{message: 'Define a Schema.TaggedError and fail with it.', name: 'Error'},
 			{message: MAP_MESSAGE, name: 'Map'},
 			{message: "Import Number from 'effect'.", name: 'Number'},
-			{message: "Use Record or Struct from 'effect'.", name: 'Object'},
 			{message: 'Use Number.parse.', name: 'parseFloat'},
 			{message: 'Use Number.parse.', name: 'parseInt'},
 			{message: 'Use Effect: Effect.tryPromise at the boundary, Effect.all to combine.', name: 'Promise'},
@@ -458,7 +456,12 @@ export const oxlint = defineConfig({
 		'no-restricted-properties': [
 			'error',
 			{message: 'Use standalone pipe.', property: 'pipe'},
-			{allowObjects: ['Predicate'], message: 'Use Predicate.hasProperty.', property: 'hasOwnProperty'},
+			// effecttsgo/prefer-effect-record owns keys, values, entries, fromEntries, hasOwn and hasOwnProperty.
+			{
+				allowProperties: ['entries', 'fromEntries', 'hasOwn', 'keys', 'values'],
+				message: "Use Record or Struct from 'effect'.",
+				object: 'Object'
+			},
 			...Array.map(RUNNERS, property => ({message: RUN_MESSAGE, object: 'Effect', property})),
 			{message: RUN_MESSAGE, object: 'ManagedRuntime', property: 'make'},
 			{message: 'Use Number.max.', object: 'Math', property: 'max'},
@@ -516,12 +519,15 @@ export const oxlint = defineConfig({
 		'no-ternary': 'error',
 		'no-throw-literal': 'error',
 		'no-unmodified-loop-condition': 'error',
-		'no-unneeded-ternary': 'error',
 		'no-unreachable-loop': 'error',
 		'no-unsafe-finally': 'error',
 		'no-unsafe-optional-chaining': ['error', {disallowArithmeticOperators: true}],
 		'no-unused-expressions': 'error',
-		'no-unused-vars': ['error', {argsIgnorePattern: '^_', ignoreRestSiblings: true, reportUsedIgnorePattern: true}],
+		// Owns unused bindings instead of noUnusedLocals, so a used `_` parameter is reported too.
+		'no-unused-vars': [
+			'error',
+			{args: 'all', argsIgnorePattern: '^_', ignoreRestSiblings: true, reportUsedIgnorePattern: true}
+		],
 		'no-use-before-define': ['error', {classes: false, functions: false, typedefs: false, variables: true}],
 		'no-useless-assignment': 'error',
 		'no-useless-backreference': 'error',
@@ -539,8 +545,6 @@ export const oxlint = defineConfig({
 
 		// Oxc
 		'oxc/branches-sharing-code': 'error',
-		'oxc/no-accumulating-spread': 'error',
-		'oxc/no-map-spread': 'error',
 		'oxc/only-used-in-recursion': 'error',
 
 		// JavaScript preferences
@@ -550,11 +554,18 @@ export const oxlint = defineConfig({
 		'require-unicode-regexp': 'error',
 
 		// Accessibility: shadcn primitives map to their HTML roles in settings.
+		'jsx-a11y/alt-text': 'error',
+		'jsx-a11y/aria-props': 'error',
+		'jsx-a11y/aria-proptypes': 'error',
 		'jsx-a11y/autocomplete-valid': 'error',
 		'jsx-a11y/click-events-have-key-events': 'error',
 		'jsx-a11y/control-has-associated-label': 'error',
+		'jsx-a11y/heading-has-content': 'error',
 		'jsx-a11y/interactive-supports-focus': 'error',
 		'jsx-a11y/label-has-associated-control': 'error',
+		'jsx-a11y/no-aria-hidden-on-focusable': 'error',
+		'jsx-a11y/role-has-required-aria-props': 'error',
+		'jsx-a11y/tabindex-no-positive': 'error',
 
 		// React Doctor JSX and component contracts
 		'react-doctor/no-aria-invalid-without-description': 'error',
@@ -631,7 +642,6 @@ export const oxlint = defineConfig({
 		'react/jsx-no-script-url': 'error',
 		'react/jsx-no-target-blank': 'error',
 		'react/jsx-no-useless-fragment': 'error',
-		'react/memo-dependencies': 'error',
 		'react/no-array-index-key': 'error',
 		'react/no-children-prop': 'error',
 		'react/no-clone-element': 'error',
@@ -639,8 +649,6 @@ export const oxlint = defineConfig({
 		'react/no-object-type-as-default-prop': 'error',
 		'react/no-react-children': 'error',
 		'react/no-unknown-property': 'error',
-		'react/no-unstable-nested-components': ['error', {allowAsProps: true}],
-		'react/preserve-manual-memoization': 'error',
 		'react/purity': 'error',
 		'react/refs': 'error',
 		'react/rule-suppression': 'error',
@@ -649,9 +657,7 @@ export const oxlint = defineConfig({
 		'react/set-state-in-effect': 'error',
 		'react/set-state-in-render': 'error',
 		'react/static-components': 'error',
-		'react/use-memo': 'error',
 		'react/void-dom-elements-no-children': 'error',
-		'react/void-use-memo': 'error',
 
 		// shadcn design-system classes
 		'shadcn/no-arbitrary-values': 'error',
@@ -698,10 +704,9 @@ export const oxlint = defineConfig({
 		'unicorn/no-process-exit': 'error',
 		'unicorn/no-static-only-class': 'error',
 		'unicorn/no-useless-fallback-in-spread': 'error',
-		'unicorn/no-useless-length-check': 'error',
 		'unicorn/no-useless-spread': 'error',
-		'unicorn/prefer-logical-operator-over-ternary': 'error',
 		'unicorn/prefer-optional-catch-binding': 'error',
+		'unicorn/prefer-string-replace-all': 'error',
 
 		// JavaScript globals
 		'use-isnan': 'error'
@@ -720,7 +725,6 @@ export default definePlugin({
 		'explicit-effect-concurrency': explicitEffectConcurrency,
 		'module-constant': moduleConstant,
 		'motion-limits': motionLimits,
-		'no-array-wrap-ternary': noArrayWrapTernary,
 		'no-barrel-module': noBarrelModule,
 		'no-compiler-opt-out': noCompilerOptOut,
 		'no-component-atom-allocation': noComponentAtomAllocation,
@@ -742,7 +746,6 @@ export default definePlugin({
 		'no-native-control': noNativeControl,
 		'no-native-emptiness-check': noNativeEmptinessCheck,
 		'no-native-method-call': noNativeMethodCall,
-		'no-nullish-ternary': noNullishTernary,
 		'no-option-value-access': noOptionValueAccess,
 		'no-property-alias': noPropertyAlias,
 		'no-readonly-type-syntax': noReadonlyTypeSyntax,

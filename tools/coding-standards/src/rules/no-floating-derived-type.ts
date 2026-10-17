@@ -26,7 +26,8 @@ export const noFloatingDerivedType = defineRule({
 			)
 			if (node.parent.type === 'ExportNamedDeclaration' || listed || !derived(node.typeAnnotation)) return
 			context.report({
-				message: "Import the library's own type, or pass the value straight to the call that types it.",
+				message:
+					"Import the library's exported type, else write ReturnType<typeof f> in the signature that needs it, or pass the value straight to the call that types it.",
 				node
 			})
 		}

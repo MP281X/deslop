@@ -288,11 +288,35 @@ function singleUseLayerPart(input: {context: Context; node: ESTree.VariableDecla
 	)
 }
 
+// A capitalized function is a React component: its name is the hook boundary and the DevTools label.
+function isComponent(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+	if (node.type === 'FunctionDeclaration') {
+		return Option.exists(Option.fromNullishOr(node.id), id => matches(/^[A-Z]/u)(id.name))
+	}
+	return (
+		node.parent.type === 'VariableDeclarator' &&
+		node.parent.id.type === 'Identifier' &&
+		matches(/^[A-Z]/u)(node.parent.id.name)
+	)
+}
+
+// `catch: cause => cause` is preserve-error-cause's and any-unknown-in-error-context's finding, not an indirection.
+function isCatchHandler(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+	return (
+		node.parent.type === 'Property' &&
+		!node.parent.computed &&
+		node.parent.key.type === 'Identifier' &&
+		node.parent.key.name === 'catch'
+	)
+}
+
 export const noTrivialIndirection = defineRule({
 	create: context => ({
 		ArrowFunctionExpression: node => {
 			if (
 				(node.parent.type === 'VariableDeclarator' || node.parent.type === 'Property') &&
+				!isComponent(node) &&
+				!isCatchHandler(node) &&
 				(exactForwardingFunction({context, node}) ||
 					singleUseThunk({context, node}) ||
 					singleCallerWrapper({context, node}))
@@ -302,9 +326,10 @@ export const noTrivialIndirection = defineRule({
 		},
 		FunctionDeclaration: node => {
 			if (
-				exactForwardingFunction({context, node}) ||
-				singleUseThunk({context, node}) ||
-				singleCallerWrapper({context, node})
+				!isComponent(node) &&
+				(exactForwardingFunction({context, node}) ||
+					singleUseThunk({context, node}) ||
+					singleCallerWrapper({context, node}))
 			) {
 				context.report({message: indirectionMessage({context, node}), node})
 			}
@@ -314,6 +339,8 @@ export const noTrivialIndirection = defineRule({
 				(node.parent.type === 'VariableDeclarator' ||
 					node.parent.type === 'Property' ||
 					(node.parent.type === 'MethodDefinition' && node.parent.override !== true)) &&
+				!isComponent(node) &&
+				!isCatchHandler(node) &&
 				(exactForwardingFunction({context, node}) ||
 					singleUseThunk({context, node}) ||
 					singleCallerWrapper({context, node}))
@@ -326,7 +353,7 @@ export const noTrivialIndirection = defineRule({
 				context.report({message: 'Export the value under one name; this second name is an alias.', node})
 			}
 			if (redundantConstAlias({context, node})) {
-				context.report({message: 'Use the immutable source binding directly.', node})
+				context.report({message: `Use ${context.sourceCode.getText(node.init)} directly; this name is an alias.`, node})
 			}
 			if (singleUseLiteral({context, node})) {
 				context.report({message: 'Inline this literal at its only use site.', node})

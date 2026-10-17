@@ -5,9 +5,10 @@ import {Layer, pipe} from 'effect'
 import {HttpRouter} from 'effect/http'
 import {RpcSerialization, RpcServer} from 'effect/rpc'
 
+import * as ServerRuntime from '@deslop/runtime/server'
+
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
-import * as ServerRuntime from '@deslop/runtime/server'
 
 NodeRuntime.runMain(
 	pipe(

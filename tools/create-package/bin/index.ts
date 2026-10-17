@@ -66,7 +66,7 @@ if (Predicate.isUndefined(options.directory)) {
 NodeRuntime.runMain(
 	pipe(
 		Effect.promise(() =>
-			// oxlint-disable-next-line @typescript-eslint/consistent-type-assertions -- Bingo's non-generic CLI signature erases the concrete option schema.
+			// oxlint-disable-next-line typescript/consistent-type-assertions -- Bingo's non-generic CLI signature erases the concrete option schema.
 			runTemplateCLI(template as unknown as Template)
 		),
 		Effect.tap(status => Effect.sync(() => (process.exitCode = status)))

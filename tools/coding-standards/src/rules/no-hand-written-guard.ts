@@ -62,57 +62,55 @@ function check(input: {name: string; node: ESTree.Expression}): Option.Option<st
 	)
 }
 
-function report(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
-	const predicate = input.node.returnType?.typeAnnotation
-	const returned = returnedExpression(input.node)
+// The Predicate guard that replaces this function; no-typeof leaves the checks inside it to this rule.
+export function replaceableGuard(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+	const predicate = node.returnType?.typeAnnotation
+	const returned = returnedExpression(node)
 	if (
 		predicate?.type !== 'TSTypePredicate' ||
 		predicate.asserts ||
 		predicate.parameterName.type !== 'Identifier' ||
 		Predicate.isNullish(returned)
 	) {
-		return
+		return Option.none<string>()
 	}
-
-	Option.map(
-		pipe(
-			check({name: predicate.parameterName.name, node: returned}),
-			Option.map(checks => pipe(checks, Array.sort(String.Order), Array.join(' && '))),
-			Option.flatMap(key =>
-				Record.get<string, string>(
-					{
-						'!= null': 'isNotNullish',
-						'!== null': 'isNotNull',
-						'!== null && !Array.isArray && typeof === object': 'isObject',
-						'!== null && typeof === object': 'isObjectOrArray',
-						'!== undefined': 'isNotUndefined',
-						'== null': 'isNullish',
-						'=== null': 'isNull',
-						'=== undefined': 'isUndefined',
-						'instanceof Date': 'isDate',
-						'instanceof Error': 'isError',
-						'instanceof Map': 'isMap',
-						'instanceof RegExp': 'isRegExp',
-						'instanceof Set': 'isSet',
-						'instanceof Uint8Array': 'isUint8Array',
-						'typeof === bigint': 'isBigInt',
-						'typeof === boolean': 'isBoolean',
-						'typeof === function': 'isFunction',
-						'typeof === number': 'isNumber',
-						'typeof === string': 'isString',
-						'typeof === symbol': 'isSymbol',
-						'typeof === undefined': 'isUndefined'
-					},
-					key
-				)
+	return pipe(
+		check({name: predicate.parameterName.name, node: returned}),
+		Option.map(checks => pipe(checks, Array.sort(String.Order), Array.join(' && '))),
+		Option.flatMap(key =>
+			Record.get<string, string>(
+				{
+					'!= null': 'isNotNullish',
+					'!== null': 'isNotNull',
+					'!== null && !Array.isArray && typeof === object': 'isObject',
+					'!== null && typeof === object': 'isObjectOrArray',
+					'!== undefined': 'isNotUndefined',
+					'== null': 'isNullish',
+					'=== null': 'isNull',
+					'=== undefined': 'isUndefined',
+					'instanceof Date': 'isDate',
+					'instanceof Error': 'isError',
+					'instanceof Map': 'isMap',
+					'instanceof RegExp': 'isRegExp',
+					'instanceof Set': 'isSet',
+					'instanceof Uint8Array': 'isUint8Array',
+					'typeof === bigint': 'isBigInt',
+					'typeof === boolean': 'isBoolean',
+					'typeof === function': 'isFunction',
+					'typeof === number': 'isNumber',
+					'typeof === string': 'isString',
+					'typeof === symbol': 'isSymbol',
+					'typeof === undefined': 'isUndefined'
+				},
+				key
 			)
-		),
-		guard => {
-			input.context.report({
-				message: `Use Predicate.${guard} instead of this hand-written type guard.`,
-				node: input.node
-			})
-		}
+		)
+	)
+}
+
+function report(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
+	Option.map(replaceableGuard(input.node), guard =>
+		input.context.report({message: `Use Predicate.${guard} instead of this hand-written type guard.`, node: input.node})
 	)
 }
 

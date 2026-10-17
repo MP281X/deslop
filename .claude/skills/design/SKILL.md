@@ -1,13 +1,11 @@
 ---
 name: design
-description: 'Use before building, mocking or judging a screen, component or web page, before rendering an explanatory page, and before taking a screenshot or recording, composing or editing a video that shows a change.'
+description: 'Use before editing a .tsx, .css or .html file, before building, mocking or judging a screen, component or web page, before html_preview or html_render, and before a screenshot, recording, device session or video that shows a change.'
 ---
 
 # Design
 
-Follow engineering and the repository's `CODING_STANDARDS.md`.
-
-**The bar.** Calm, fast screens in the class of Linear, T3 Code and Apple's own apps: the content and the next action read at a glance, every input answers at once, and a person who is not technical finishes the task without help or explanation. Existing screens are the floor; raise them with a pattern change to every screen, never one screen that diverges.
+**The bar.** Calm, fast screens in the class of Linear, T3 Code and Apple's own apps: the content and the next action read at a glance, every input answers at once, and a person who is not technical finishes the task without help or explanation. Existing screens are the floor; raise them per engineering's Pattern change, never on one screen that diverges.
 
 **Less is more.** Empty space is a material: it groups, ranks and lets the content breathe. Start from the content and the next action, and add a control, label, section, color or decoration only for the request, the reference or a rule here; never fill a gap because it is empty. A crowded screen is fixed by removing: fewer elements, borders, colors, sizes and words, each one larger and clearer.
 
@@ -32,20 +30,15 @@ Blur a capture: the primary content and next action still stand out.
 ## Build
 
 - **Theme.** Before web UI work, read the repository's shadcn theme, the CSS file its `components.json` names under `tailwind.css`. The look lives only there: a change to color, radius, type, spacing or shadow goes into the theme's tokens for every screen and keeps them consistent, never into a page or a primitive.
-- **Web components.** shadcn's primitives, used as shipped. The registry changes often, so list it before you choose: `vpx shadcn@latest list @shadcn -t registry:ui`, then `vpx shadcn@latest docs <name>` for the chosen one. When shadcn has the component, use it with its own variants, props and sizes; add a missing one with `shadcn add` and its defaults. Never a wrapper, a new variant, a restyle or a hand-built replacement; `className` only places a primitive in the layout. Needing heavy customization means the wrong primitive or pattern.
+- **Web components.** shadcn's primitives, used as shipped. The registry changes often, so list it before you choose: `vpx shadcn@latest list @shadcn -t registry:ui`, then `vpx shadcn@latest docs <name>` for the chosen one. When shadcn has the component, use it with its own variants, props and sizes; add a missing one with `shadcn add` and its defaults. Never a wrapper, a new variant, a restyle or a hand-built replacement; needing one means the wrong primitive or pattern.
 - **iOS.** The same shadcn look, carried by native iOS elements: the mobile theme's tokens for color, radius and type on SwiftUI primitives through `@expo/ui` (navigation, toolbars, search, lists, menus, swipe actions, sheets, SF Symbols) with their system sizes and behavior. Glass for controls and navigation, never content. Never draw a custom system control.
-- **Surfaces and color** come from the theme's tokens and semantic colors only: no raw colors, shadows or radii. Group by proximity before borders; no nested cards; one border owner per edge.
+- **Surfaces** take color, shadow and radius from the theme's tokens only, group by proximity before borders and give each edge one border owner.
 - **Flat.** Never a gradient, glow or blurred shadow, anywhere: screens, pages, videos and images use flat theme colors and even 1 px borders, never a colored stripe on one side.
-
-  ```tsx
-  <div className="bg-card border" />                          // good
-  <div className="bg-linear-to-b from-muted to-background" /> // bad: no-gradient
-  ```
 
 - **Type.** The theme's semantic styles, at most five sizes per screen, prose 45–75 characters, tabular figures for changing numbers, middle truncation when the end distinguishes names.
 - **Alignment.** Few edges; headers share columns with rows; equivalent controls share size, icon style and hit target. Squashed icon: `shrink-0`. Vanishing trailing action: `min-w-0` on content. Empty optional slots render no orphan separators.
 - **Interaction.** Inputs with the right type and autofill; visible focus restored after a dialog; Escape closes it; the URL holds navigation state and Back restores scroll and draft; errors beside their field; destructive actions undo or confirm; a known-forbidden action is disabled with its reason beside it; "All" clears a filter.
-- **Speed** at the level of [T3 Code](https://github.com/pingdotgg/t3code), the reference to read for it: every input answers in the next frame from local state, and the network catches up behind it. Loading keeps the loaded layout and appears after a delay; cached data shows stale while revalidating; reversible writes apply optimistically and roll back without losing the place.
+- **Speed** at the level of [T3 Code](https://github.com/pingdotgg/t3code), the reference to read for it: every input answers in the next frame from local state, and the network catches up behind it. The screen owner's `Suspense` fallback keeps the loaded layout and appears after a delay; cached data shows stale while revalidating; reversible writes apply optimistically and roll back without losing the place.
 - **Copy.** Actions named after the task, sentence case, one vocabulary; an empty state offers the next action; an error names what failed and the recovery.
 - **Motion** explains a state change or spatial relationship and never delays input. No animation on frequent actions or typing. Tweens under 300 ms, ease-out entrances, ease-in-out morphs, springs 0.4 s with 0.15 bounce, entrances from 0.9 scale or more, anchored surfaces enter from their trigger, content swaps crossfade, drags keep velocity and resist at bounds, every motion interruptible, reduced motion keeps feedback without movement.
 - **Phones.** The whole task works on a phone with touch, keyboard and zoom; text reflows at 200% and Dynamic Type; bottom controls clear the keyboard and safe areas.
@@ -59,6 +52,10 @@ The user chooses by seeing and trying, never by reading a description.
 - **Variants.** An open direction gets three variants, two when a third would only pad. Each tests one named hypothesis about structure or interaction (where the action lives, what the list groups by, inline edit or a sheet), never palette or spacing; all share the same data, states and copy; the interactions the decision turns on work.
 - **Comparison.** One page shows every variant as a choice: its name, its hypothesis in one line, what it costs. Mark a recommendation without hiding the others; the user picks or combines. At 390 px, show paired full-width crops of the deciding region first, then each full screen; never shrunken screens side by side.
 
+## Pages
+
+An explanatory page reads like a slide: the conclusion in the first view, then one row or card per item with a label under twelve words, one takeaway line per section, no paragraphs. Motion only shows a mechanism, at a pace a viewer follows, and stops on the final state with replay.
+
 ## Critique
 
 Capture the result at the reference's size, theme, data and state, beside the reference. First measure in the page: list elements wider than the viewport or their container, text clipped by its box and fonts that did not load, and fix each. Then check in order:
@@ -71,7 +68,7 @@ Repair grouping, then hierarchy, alignment, copy and states; recapture with long
 
 **Captures** show the result: screenshots for layout, a video for behavior. The real application only, with realistic data in the user's theme, cropped to the subject and readable on a phone; record at phone width when desktop text is too small. Inspect each file before you show it; a capture is stale once a component it shows changes.
 
-**Video.** A proof video is a short motion piece the user wants to watch, composed per delivery's Captures; a raw recording only for one action under ten seconds.
+**Video.** A proof video is a short motion piece the user wants to watch; a raw recording only for one action under ten seconds.
 
 - **Storyboard** before recording: per chapter the claim, the focal element, the input and the payoff. Two to four chapters, 15–35 s in total, one dataset and one recurring object across chapters.
 - **Open** on the real subject in the first frame, its value visible within 3 s: no title card, introduction or idle time. **End** on the verified outcome, framed by the reveal and held at least 2 s.

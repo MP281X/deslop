@@ -4,9 +4,10 @@ import {Host, NavigationStack, ProgressView} from '@expo/ui/swift-ui'
 import {background, tint} from '@expo/ui/swift-ui/modifiers'
 import {Suspense} from 'react'
 
-import {HomeRoute} from '#routes/(home)/index.tsx'
 import {colors} from '@deslop/components-mobile/theme'
 import {updateAtom} from '@deslop/runtime/mobile'
+
+import {HomeRoute} from '#routes/(home)/index.tsx'
 
 export function RootRoute() {
 	useAtomMount(updateAtom)

@@ -65,6 +65,11 @@ import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 import {Linking} from 'react-native'
 
+import {Chip} from '@deslop/components-mobile/chip'
+import {BrandIcon, BrandLogo} from '@deslop/components-mobile/icons'
+import {colors, mono} from '@deslop/components-mobile/theme'
+import {assetAtom} from '@deslop/components-mobile/utils'
+
 import {
 	answerAtom,
 	appOf,
@@ -84,10 +89,6 @@ import logo from '#routes/logo.png'
 import {tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 import {Brand, Kind} from '#services/notes/schema.ts'
-import {Chip} from '@deslop/components-mobile/chip'
-import {BrandIcon, BrandLogo} from '@deslop/components-mobile/icons'
-import {colors, mono} from '@deslop/components-mobile/theme'
-import {assetAtom} from '@deslop/components-mobile/utils'
 
 const OFFERS = {
 	image: {question: 'Save the copied image?', symbol: 'photo'},

@@ -1,41 +1,45 @@
 ---
 name: retrospective
-description: Use for the daily retrospective, and when the user asks why threads went wrong or how to improve the agents.
+description: Use for a retrospective, and when the user asks why threads went wrong or how to improve the agents.
 ---
 
 # Retrospective
 
-Improve the agent configuration from the user's real threads: the same or better results with fewer words, tokens, tool calls and minutes. Run from collection to install without the user. This skill stays in the deslop repository and is never installed on the workers.
+Improve the agent configuration from the user's real threads: the same or better results with fewer words, tokens, tool calls and minutes. Run from collection to a ready PR without the user; the workers load it once the user merges.
 
 ## Collect
 
-Take the last 24 hours, or the threads the user names, on every running worker; query the other worker through `ssh mp281x@<worker>`.
+Take the threads since the last merged retrospective PR (`gh pr list --state merged --search 'retrospective in:title' --limit 1`), or the threads the user names, on every running worker; query the other worker through `ssh mp281x@<worker>`. Real threads only: provider instances `codex` and `claudeAgent`, never `eval*`.
 
 ```bash
-sqlite3 -readonly ~/.t3/userdata/statev2.sqlite "SELECT m.thread_id, m.created_at, json_extract(m.payload_json, '$.text') FROM orchestration_v2_projection_messages m WHERE m.role = 'user' AND julianday(m.created_at) >= julianday('now', '-1 day') AND m.thread_id NOT LIKE 'thread:delegated-task:%' AND json_extract(m.payload_json, '$.text') NOT LIKE 'Update on pull request%' AND json_extract(m.payload_json, '$.text') NOT LIKE 'Delegated task %' ORDER BY m.created_at"
-sqlite3 -readonly ~/.t3/userdata/statev2.sqlite "SELECT thread_id, json_extract(payload_json, '$.nativeThreadRef.nativeId') FROM orchestration_v2_projection_provider_threads WHERE thread_id = '<thread id>'"
-find ~/.claude/projects ~/.codex/sessions -type f -name '*<native id>*.jsonl'
+db=~/.t3/userdata/statev2.sqlite since='<merged at>'
+# The user's words; T3 stores PR wakes, child results and background exits as user rows.
+sqlite3 -readonly $db "SELECT m.thread_id, m.created_at, json_extract(m.payload_json, '$.text') FROM orchestration_v2_projection_messages m JOIN orchestration_v2_projection_threads t USING (thread_id) WHERE m.role = 'user' AND m.created_at >= '$since' AND t.provider_instance_id IN ('codex', 'claudeAgent') AND m.thread_id NOT LIKE 'thread:delegated-task:%' AND json_extract(m.payload_json, '$.text') NOT LIKE 'Update on pull request%' AND json_extract(m.payload_json, '$.text') NOT LIKE 'Delegated task %' AND json_extract(m.payload_json, '$.text') NOT LIKE 'Background command completed%' ORDER BY m.created_at"
+# Cost per thread, children included: turns, wall minutes, tokens.
+sqlite3 -readonly $db "SELECT p.thread_id, count(*), round(sum(julianday(p.completed_at) - julianday(p.started_at)) * 1440, 1), sum(json_extract(p.payload_json, '$.turnTokenUsage.inputTokens')), sum(json_extract(p.payload_json, '$.turnTokenUsage.cachedInputTokens')), sum(json_extract(p.payload_json, '$.turnTokenUsage.outputTokens')) FROM orchestration_v2_projection_provider_turns p JOIN orchestration_v2_projection_threads t USING (thread_id) WHERE p.started_at >= '$since' AND t.provider_instance_id IN ('codex', 'claudeAgent') GROUP BY 1 ORDER BY 4 DESC"
+# Tool calls per thread by type and status; failed commands with their input and output.
+sqlite3 -readonly $db "SELECT thread_id, type, status, count(*) FROM orchestration_v2_projection_turn_items WHERE thread_id = '<thread id>' GROUP BY 2, 3"
+sqlite3 -readonly $db "SELECT json_extract(payload_json, '$.input'), substr(json_extract(payload_json, '$.output'), 1, 300) FROM orchestration_v2_projection_turn_items WHERE thread_id = '<thread id>' AND type = 'command_execution' AND status = 'failed'"
 ```
 
 - **Corrections.** Keep each user message that corrects, rejects, repeats or restates a request after an agent reply, or sets a rule ("always", "never", "I want"), verbatim with its thread and time.
-- **Transcripts.** Read the agent's turn before each correction in its native transcript, with the thread's children. Delegate one research child per group of about ten threads per orchestrator; its brief says which lines are the user's, because a cheaper model reads agent text as corrections.
-- **Measure** from the raw transcripts, not from memory:
+- **Cause.** For each correction, read the agent's turn before it in `turn_items`; open the native transcript (`orchestration_v2_projection_provider_threads.payload_json` `$.nativeThreadRef.nativeId` under `~/.claude/projects` or `~/.codex/sessions`) only when the item text does not show the cause.
+- **Measure** with the queries above, never from memory:
 
-| Measure                                                                                                                                                                                                                         | Signal                             |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| Per thread and per child: wall minutes from the first to the last timestamp, tool calls, input, cached and output tokens (Claude `message.usage`, Codex `token_count` events' `total_token_usage`) and their cost at list price | Where the cost goes, task by task  |
-| The same kind of task compared across threads, such as a one-file fix or a PR body                                                                                                                                              | A habit that makes a thread costly |
-| Shell writes against Edit, Write and `apply_patch`; sliced or repeated reads                                                                                                                                                    | A habit a rule or setting fights   |
-| Foreground minutes in polls, sleeps and failed browser actions                                                                                                                                                                  | Waits that block the user          |
-| Questions to the user that the code or a probe could answer                                                                                                                                                                     | Missing autonomy                   |
-| Commands failing with "command not found" or a missing path                                                                                                                                                                     | A gap the machine can close        |
-| Pipeline failures a local gate would have caught                                                                                                                                                                                | A skipped gate                     |
-| Replies that report status, process or superseded facts                                                                                                                                                                         | Noise the user reads               |
-| Child minutes and lines; children that edited a repository                                                                                                                                                                      | Oversized or wrong delegation      |
+| Measure                                                                                        | Signal                             |
+| ---------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Per thread and child: minutes, turns, uncached input and output tokens                         | Where the cost goes                |
+| The same kind of task compared across threads, such as a one-file fix or a PR body             | A habit that makes a thread costly |
+| Failed commands: "command not found", a missing path, a denied command retried in another form | A gap the machine can close        |
+| Files written only to be read back, scripts and reports the agent wrote for itself             | Wasted tokens                      |
+| Questions to the user that the code, a probe or a council could answer                         | Missing autonomy                   |
+| Pipeline failures a local gate would have caught                                               | A skipped gate                     |
+| Replies that report status, process or superseded facts                                        | Noise the user reads               |
+| Children that edited a repository, and expensive models on lookups                             | Wrong delegation                   |
 
 ## Change
 
-- **Rank** causes by the user's corrections first, then by minutes and cost lost. A change that saves cost keeps the result: show both before and after on the same task.
+- **Rank** causes by the user's corrections first, then by minutes and tokens lost. A change that saves cost keeps the result: show both before and after on the same task.
 - **Cause.** Apply review's Instruction review to each cause.
 - **Machine first.** Prefer a lint rule, a setting, a deny rule or an installed tool to a sentence, then delete the rule it replaces.
 - **Threshold.** Change for a pattern in two threads or a rule the user stated; a single slip with a clear rule needs nothing.
@@ -45,8 +49,7 @@ find ~/.claude/projects ~/.codex/sessions -type f -name '*<native id>*.jsonl'
 
 ## Ship
 
-- **Worktree.** A run that starts in `~/deslop` moves into its own worktree with `t3_worktree_handoff` before any edit.
+- **Worktree.** In `~/deslop`, call `t3_worktree_handoff` first, with a `continuationPrompt` naming this skill.
 - **PR** per orchestrator and delivery: one `###` per changed rule with the before and after, under a table of its threads, the user's words and the cause.
-- **Install** per environment's agent configuration.
 - **Nothing to change** ends with one line and no PR.
 - **This skill.** A correction the user makes in a retrospective's own thread changes this skill in the same PR.

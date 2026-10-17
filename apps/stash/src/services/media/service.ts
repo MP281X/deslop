@@ -328,7 +328,7 @@ export class Media extends Context.Service<
 						const dump = yield* fetch([...ytDlpArgs, '--dump-single-json', '--flat-playlist', '--skip-download', link])
 						if (dump.exitCode !== 0) {
 							return yield* MediaError.make({
-								message: `yt-dlp cannot read the video: ${String.replace(/https?:\/\/\S+/gu, '<link>')(dump.stderr)}`
+								message: `yt-dlp cannot read the video: ${String.replaceAll(/https?:\/\/\S+/gu, '<link>')(dump.stderr)}`
 							})
 						}
 						const media = yield* Schema.decodeEffect(Schema.fromJsonString(Metadata))(

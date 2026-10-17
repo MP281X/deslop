@@ -3,8 +3,9 @@ import {useAtomSuspense} from '@effect/atom-react'
 import {Text} from '@expo/ui/swift-ui'
 import {foregroundStyle, navigationTitle} from '@expo/ui/swift-ui/modifiers'
 
-import {RpcClient} from '#lib/utils.ts'
 import {colors, mono} from '@deslop/components-mobile/theme'
+
+import {RpcClient} from '#lib/utils.ts'
 
 export function HomeRoute() {
 	return (

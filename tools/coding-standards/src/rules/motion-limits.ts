@@ -12,7 +12,7 @@ function utility(token: string) {
 		String.split(':'),
 		Array.last,
 		Option.getOrElse(() => token),
-		String.replace(/^!|!$/gu, '')
+		String.replaceAll(/^!|!$/gu, '')
 	)
 }
 
@@ -31,8 +31,8 @@ function amount(token: string, pattern: RegExp) {
 }
 
 function violation(token: string) {
-	if (Option.exists(amount(token, /^duration-(\d+)$/u), value => value > 300)) {
-		return Option.some('Keep a transition under 300 ms: duration-300 or less.')
+	if (Option.exists(amount(token, /^duration-(\d+)$/u), value => value >= 300)) {
+		return Option.some('Keep a tween under 300 ms, such as duration-200.')
 	}
 	if (
 		matches(/^zoom-(?:in|out)$/u)(utility(token)) ||

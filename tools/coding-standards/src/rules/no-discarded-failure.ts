@@ -32,8 +32,12 @@ export const noDiscardedFailure = defineRule({
 	create: context => ({
 		MemberExpression: node => {
 			if (!importedMember({context, importedName: 'Effect', node})) return
-			if (!Option.exists(memberName(node), name => Array.contains(['ignore', 'orDie', 'orDieWith'], name))) return
-			if (Option.contains(memberName(node), 'ignore') && logged(node)) return
+			if (
+				!Option.exists(memberName(node), name => Array.contains(['ignore', 'ignoreCause', 'orDie', 'orDieWith'], name))
+			) {
+				return
+			}
+			if (Option.exists(memberName(node), name => name !== 'orDie' && name !== 'orDieWith') && logged(node)) return
 			context.report({
 				message:
 					"Map the failure to the service's error, or log best-effort work with Effect.ignore({log: 'Warn', message}); an expected failure is never dropped silently or turned into a defect.",

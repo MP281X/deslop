@@ -6,13 +6,14 @@ import {Host, NavigationDestination, NavigationStack, ProgressView, useNativeSta
 import {background, tint} from '@expo/ui/swift-ui/modifiers'
 import {Suspense, useState} from 'react'
 
+import {colors} from '@deslop/components-mobile/theme'
+import {updateAtom} from '@deslop/runtime/mobile'
+
 import {queryAtom} from '#lib/utils.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
 import {ComposeRoute} from '#routes/compose.tsx'
 import {NoteRoute} from '#routes/notes/$id.tsx'
 import type {Kind} from '#services/notes/schema.ts'
-import {colors} from '@deslop/components-mobile/theme'
-import {updateAtom} from '@deslop/runtime/mobile'
 
 export function RootRoute() {
 	useAtomMount(updateAtom)
