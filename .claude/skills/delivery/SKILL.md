@@ -13,20 +13,20 @@ The user reviews and squash-merges one PR at a time.
 - **Chain.** Keep one commit per PR on `<thread branch>-chain`, dependencies first. A follow-up to a feature is `git commit --fixup=<commit> -- <paths>` into its layer, naming its paths so nothing else staged rides along; a new layer only for a new feature.
 - **Publish.** Rebuild each layer with `git switch -C <branch> <base> && git cherry-pick <commit>`, push with `--force-with-lease`, one push per command, then return to the chain. Open drafts; on GitHub link stacks with `gh stack link <numbers, bottom first>`, never `--open`. Reuse open PRs and branch names; `gh stack unstack` before reordering.
 - **Rebase** before every push: `git fetch` and `git rebase --autosquash origin/<default branch>`. A conflict gets the same rebase. A PR is never behind or conflicting at handoff.
-- **After merges.** Rebase the chain, republish changed layers and unlink merged PRs; retarget the next GitLab merge request.
+- **After merges.** Rebase the chain, republish changed layers, remove each merged PR from the stack and from the thread with `unlink_pull_request`, and retarget the next GitLab merge request.
 
 ## Publish
 
 1. **Gate** at the root on every layer's head before every push, with the repository's local gate per environment: `git switch --detach <layer head> && <gate> && git switch -`, one layer after another. The pipeline is slow and only confirms what passed locally. Push every working step.
 2. **Describe** the head as it is now, per [Body](#body): write the title, body and commit message at the first push and rewrite them after every push that changes what they say. They never narrate how the PR got there: no "now also", "updated", "fixed review" or superseded captures.
 3. Link each PR with `link_pull_request`, watch it with `watch_pull_request` and start its review guide with `write_pull_request_guides`.
-4. **Monitor** only through the `watch_pull_request` wakes: after a push, end the turn with one line naming the head it waits for. A wake about the current head (a failure, a review comment by someone else, a conflict) gets a fix and a push; a wake about an older head, a running job or a repeat needs no action.
+4. **Monitor** only through the `watch_pull_request` wakes, never a CLI wait: after a push, end the turn with one line naming the head it waits for. A wake about the current head (a failure, a review comment by someone else, a conflict) gets a fix and a push; a wake about an older head, a running job or a repeat ends with that one line.
 5. **Ready** when the final head passes required jobs, the review loop has no open P1 or P2, the captures are in the body and [Critique](#critique) finds nothing: `gh pr ready <n>` or `glab mr update <n> --ready`. A new commit on a ready layer returns it to draft in the same step (`gh pr ready <n> --undo`, `glab mr update <n> --draft`). Restart a stale review guide.
-6. **Handoff** once every PR is ready and current with the default branch: `unwatch_pull_request` each PR, stop owned services, then write the one final reply. The preview and its tab stay.
+6. **Handoff** once every PR is ready and current with the default branch: `unwatch_pull_request` each PR, stop owned services, then write the one final reply in that same turn, so it stays the thread's last message. The preview and its tab stay.
 
 ## Body
 
-The body reads like a reply per pair's Replies rules: an opening line with the central change in the user's terms, then one `###` per change a user or caller notices, each with its exhibit, central change first.
+The body reads like a reply per pair's Replies rules: an opening line with the central change in the user's terms, then one `###` per change a user or caller notices, each with its one deciding exhibit, central change first. Minor wording and generated copies stay out of the sections.
 
 - **Risk.** Up to three bullets right after the opening: a migration, a changed contract, removed behavior. Omit when nothing can break.
 - **Contracts.** A changed endpoint, schema, key, migration or exported API gets a before and after table and the caller migration.

@@ -19,6 +19,7 @@ Two headless Debian workers in one tailnet, same user and paths; the user switch
 - **Scratch** under `/tmp/<task>/`, on disk, emptied at boot.
 - **Git refs.** T3 keeps checkpoint commits under `refs/t3/`; search history with `--branches --remotes`.
 - **Services** run as temporary containers, not host installs.
+- **Threads on the other worker.** T3 tools reach only this worker's threads. To start work in a thread on the other worker, give the user the message to paste under Needs you; never reach its T3 server through its API, auth tokens or pairing codes.
 
 | Reference                                | For                                                                    |
 | ---------------------------------------- | ---------------------------------------------------------------------- |
