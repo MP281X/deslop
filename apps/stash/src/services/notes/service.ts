@@ -62,10 +62,6 @@ function optional<B>(message: string, fallback: () => B) {
 		)
 }
 
-function skip(message: string) {
-	return <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.catch(effect, error => Effect.logWarning(message, error))
-}
-
 export class Notes extends Context.Service<
 	Notes,
 	{
@@ -144,16 +140,13 @@ export class Notes extends Context.Service<
 				const pictures = [...preview, ...stills]
 				if (
 					String.isEmpty(note.content) &&
-					String.isEmpty(note.transcript ?? '') &&
+					!Option.exists(Option.fromUndefinedOr(note.transcript), String.isNonEmpty) &&
 					String.isEmpty(commentFor(note.text)) &&
 					Array.isReadonlyArrayEmpty(pictures)
 				) {
 					return yield* updateNote(note.id, item => ({
 						...item,
-						issue: Boolean.match(String.isEmpty(item.issue), {
-							onFalse: () => item.issue,
-							onTrue: () => 'Nothing to read at this link.'
-						}),
+						issue: item.issue ?? 'Nothing to read at this link.',
 						status: 'failed'
 					}))
 				}
@@ -187,7 +180,7 @@ export class Notes extends Context.Service<
 						image => Effect.flatMap(sources.image(image), bytes => storeImage(note.id, bytes)),
 						{concurrency: 'unbounded', discard: true}
 					),
-					skip('The preview image was not kept')
+					Effect.ignore({log: 'Warn', message: 'The preview image was not kept'})
 				)
 				const slides = yield* Effect.forEach(
 					page.slides ?? [],
@@ -201,18 +194,18 @@ export class Notes extends Context.Service<
 				const extraction = yield* Effect.result(sources.extract(link))
 				yield* updateNote(note.id, item =>
 					Result.match(extraction, {
-						onFailure: error => ({
-							...item,
-							issue: Boolean.match(String.isEmpty(item.content), {
-								onFalse: () => item.issue,
-								onTrue: () => error.message
-							})
-						}),
+						onFailure: error =>
+							Boolean.match(String.isEmpty(item.content), {
+								onFalse: () => item,
+								onTrue: () => ({...item, issue: error.message})
+							}),
 						onSuccess: page => ({
-							...item,
-							author: page.author,
+							...Struct.omit(item, ['issue']),
+							...Option.match(Option.filter(page.author, String.isNonEmpty), {
+								onNone: () => ({}),
+								onSome: author => ({author})
+							}),
 							content: page.text,
-							issue: '',
 							title: Boolean.match(String.isNonEmpty(page.title) && item.title === item.url, {
 								onFalse: () => item.title,
 								onTrue: () => page.title
@@ -236,10 +229,9 @@ export class Notes extends Context.Service<
 					Effect.map(Option.flatten)
 				)
 				yield* updateNote(note.id, item => ({
-					...item,
 					...Option.match(
 						Option.filter(read, () => sourceFor(url) !== 'X' || Result.isFailure(extraction)),
-						{onNone: () => ({}), onSome: details => ({content: details.info, issue: ''})}
+						{onNone: () => item, onSome: details => ({...Struct.omit(item, ['issue']), content: details.info})}
 					),
 					...Option.match(transcript, {onNone: () => ({}), onSome: text => ({transcript: text})})
 				}))
@@ -253,10 +245,13 @@ export class Notes extends Context.Service<
 				if (!isVideo(type)) return yield* tag(note.id, [])
 				const stored = path.join(files, note.id)
 				const stills = yield* pipe(media.fileFrames(stored), optional('No video frames', Array.empty<Uint8Array>))
-				yield* Option.match(Array.head(stills), {
-					onNone: () => Effect.void,
-					onSome: bytes => pipe(storeImage(note.id, still(bytes)), skip('The video preview was not kept'))
-				})
+				yield* pipe(
+					Option.match(Array.head(stills), {
+						onNone: () => Effect.void,
+						onSome: bytes => storeImage(note.id, still(bytes))
+					}),
+					Effect.ignore({log: 'Warn', message: 'The video preview was not kept'})
+				)
 				yield* Option.match(yield* pipe(media.fileTranscript(stored), optional('No transcript', Option.none<string>)), {
 					onNone: () => Effect.void,
 					onSome: text => updateNote(note.id, item => ({...item, transcript: text}))
@@ -284,7 +279,7 @@ export class Notes extends Context.Service<
 											onTrue: () => ({...item, issue: 'Tagging stopped before it finished.', status: 'failed' as const})
 										})
 									),
-									skip('A stopped tagging run could not be recorded')
+									Effect.ignore({log: 'Warn', message: 'A stopped tagging run could not be recorded'})
 								),
 							onTrue: () => Effect.void
 						})
@@ -322,11 +317,15 @@ export class Notes extends Context.Service<
 					Effect.catchTag('PlatformError', cause =>
 						Effect.fail(NotesError.make({cause, message: 'The upload could not be written.'}))
 					),
-					Effect.onError(() => pipe(fs.remove(partial, {force: true}), skip('A broken upload stays on disk')))
+					Effect.onError(() =>
+						pipe(
+							fs.remove(partial, {force: true}),
+							Effect.ignore({log: 'Warn', message: 'A broken upload stays on disk'})
+						)
+					)
 				)
 				yield* pipe(fs.rename(partial, stored), storageFailed)
 				const note = Note.make({
-					author: '',
 					content: '',
 					createdAt: DateTime.toEpochMillis(yield* DateTime.now),
 					file: input.type,
@@ -335,14 +334,11 @@ export class Notes extends Context.Service<
 						Option.liftPredicate(input.type, Schema.is(ImageType)),
 						Option.match({onNone: () => ({title: 'video'}), onSome: image => ({image, title: 'image'})})
 					),
-					issue: '',
 					source: 'Note',
 					status: 'organizing',
 					summary: '',
 					tags: [],
-					text: '',
-					// oxlint-disable-next-line unicorn/no-null -- The schema stores a missing link as null.
-					url: null
+					text: ''
 				})
 				const earlier = yield* transact(current =>
 					Option.match(
@@ -372,11 +368,9 @@ export class Notes extends Context.Service<
 							{
 								onNone: () => {
 									const note = Note.make({
-										author: '',
 										content: '',
 										createdAt,
 										id: input.id,
-										issue: '',
 										source: Option.match(url, {onNone: () => 'Note' as const, onSome: sourceFor}),
 										status: 'organizing',
 										summary: '',
@@ -388,8 +382,7 @@ export class Notes extends Context.Service<
 											Option.getOrElse(() => text),
 											String.slice(0, 200)
 										),
-										// oxlint-disable-next-line no-restricted-properties -- The schema stores a missing link as null.
-										url: Option.getOrNull(url)
+										...Option.match(url, {onNone: () => ({}), onSome: link => ({url: link})})
 									})
 									return Tuple.make({fresh: true, note}, Array.prepend(current, note))
 								},
@@ -453,7 +446,7 @@ export class Notes extends Context.Service<
 							{
 								onNone: () => Tuple.make(Option.none<Note>(), current),
 								onSome: found => {
-									const next = {...Struct.omit(found, ['transcript']), issue: '', status: 'organizing' as const}
+									const next = {...Struct.omit(found, ['issue', 'transcript']), status: 'organizing' as const}
 									return Tuple.make(
 										Option.some(next),
 										changeNote(current, input.id, () => next)

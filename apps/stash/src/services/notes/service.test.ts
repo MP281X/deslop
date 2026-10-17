@@ -40,7 +40,7 @@ const recipe = Sources.of({
 	extract: link =>
 		Effect.succeed(
 			Extraction.make({
-				author: 'Cookbook',
+				author: Option.some('Cookbook'),
 				image: Option.some('https://example.com/soup.jpg'),
 				text: 'Lentils with cumin and tomato.',
 				title: 'Lentil soup',
@@ -268,7 +268,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 			yield* notes.capture({id: IDS[0], text: 'https://www.tiktok.com/@cook/video/1'})
 			assert.containsSubset((yield* settled(notes, isReady))[0], {
 				content: '# Lentils',
-				issue: '',
+				issue: undefined,
 				transcript: '[00:01] Soak them.\n'
 			})
 		})
@@ -354,7 +354,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 			})
 			assert.containsSubset(
 				(yield* settled(yield* open({directory, organizer: counting(calls), sources: down}), isReady))[0],
-				{author: 'Cookbook', content: 'Lentils with cumin and tomato.', id: IDS[0], issue: '', title: 'Soup'}
+				{author: 'Cookbook', content: 'Lentils with cumin and tomato.', id: IDS[0], issue: undefined, title: 'Soup'}
 			)
 			assert.strictEqual(yield* Ref.get(calls), 1)
 		})

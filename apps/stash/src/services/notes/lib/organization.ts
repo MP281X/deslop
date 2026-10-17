@@ -77,12 +77,16 @@ export class Organizer extends Context.Service<
 								`Source: ${input.note.source}`,
 								`Link: ${input.note.url ?? 'none'}`,
 								`Saved file: ${input.note.file ?? 'none'}`,
-								`Author: ${input.note.author}`,
+								`Author: ${input.note.author ?? 'none'}`,
 								`Existing tags: ${Array.join(Array.take(input.tags, 80), ', ')}`,
 								`Link title: ${input.note.title}`,
 								`Saved text: ${input.note.text}`,
 								`Link content: ${String.slice(0, 150_000)(input.note.content)}`,
-								`Video transcript: ${String.slice(0, 150_000)(input.note.transcript ?? '')}`
+								`Video transcript: ${pipe(
+									Option.fromUndefinedOr(input.note.transcript),
+									Option.map(String.slice(0, 150_000)),
+									Option.getOrElse(() => 'none')
+								)}`
 							],
 							'\n'
 						)

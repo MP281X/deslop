@@ -609,6 +609,10 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								'declare const load: Effect.Effect<number, string>',
 								'export const ignored = Effect.ignore(load)',
 								'export const crashed = Effect.orDie(load)',
+								"export const logged = Effect.ignore(load, {log: 'Warn', message: 'The preview was not kept'})",
+								"export const curried = Effect.ignore({'log': 'Warn'})(load)",
+								'export const unset = Effect.ignore(load, {log: undefined})',
+								"export const overridden = Effect.ignore(load, {log: 'Warn', ...{log: false}})",
 								'export function Save() { return <button type="button" className="hover:bg-muted rounded-md px-2">Save</button> }',
 								'export function Row() { return <button type="button" className="min-w-0 bg-transparent p-0 text-left">Open</button> }',
 								'export function Pick() { return <select aria-label="Kind" /> }',
@@ -618,6 +622,8 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 						)
 					})
 					assert.deepStrictEqual(customCodes(result.stdout), [
+						'@deslop/coding-standards(no-discarded-failure)',
+						'@deslop/coding-standards(no-discarded-failure)',
 						'@deslop/coding-standards(no-discarded-failure)',
 						'@deslop/coding-standards(no-discarded-failure)',
 						'@deslop/coding-standards(no-native-control)',

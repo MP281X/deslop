@@ -244,7 +244,7 @@ function canonical(url: URL) {
 const fromOEmbed = Effect.fnUntraced(function* (endpoint: string, url: URL, title: (embed: OEmbed) => string) {
 	const embed = yield* decode(OEmbed, new URL(`${endpoint}${encodeURIComponent(url.href)}`))
 	return Extraction.make({
-		author: embed.author_name ?? '',
+		author: Option.fromUndefinedOr(embed.author_name),
 		image: Option.fromNullishOr(embed.thumbnail_url),
 		text: plainText(embed.title ?? ''),
 		title: title(embed),
@@ -258,7 +258,7 @@ const xOEmbed = Effect.fnUntraced(function* (url: URL) {
 		new URL(`https://publish.x.com/oembed?omit_script=true&dnt=true&url=${encodeURIComponent(url.href)}`)
 	)
 	return Extraction.make({
-		author: embed.author_name ?? '',
+		author: Option.fromUndefinedOr(embed.author_name),
 		image: Option.none(),
 		text: plainText(
 			cheerio
@@ -358,7 +358,7 @@ const xThread = Effect.fnUntraced(function* (url: URL) {
 		{concurrency: 'unbounded'}
 	)
 	return Extraction.make({
-		author: status.author.name,
+		author: Option.some(status.author.name),
 		image: Option.map(Array.head(media), item => item.thumbnail_url ?? item.url),
 		text: pipe(
 			[
@@ -411,11 +411,12 @@ const tikTokPhotos = Effect.fnUntraced(function* (url: URL) {
 		Result.fromOption(Array.head(image.imageURL.urlList), () => undefined)
 	)
 	return Extraction.make({
-		author: item.author.nickname,
+		author: Option.some(item.author.nickname),
 		image: Array.head(images),
 		slides: Array.drop(images, 1),
 		text: pipe(
-			[item.imagePost.title ?? '', item.desc],
+			[item.imagePost.title, item.desc],
+			Array.filter(Predicate.isNotUndefined),
 			Array.map(plainText),
 			Array.filter(String.isNonEmpty),
 			Array.join('\n')
@@ -432,14 +433,13 @@ const issue = Effect.fnUntraced(function* (url: URL, repository: string, number:
 		new URL(`https://api.github.com/repos/${repository}/issues/${number}/comments?per_page=100`)
 	)
 	return Extraction.make({
-		author: found.user.login,
+		author: Option.some(found.user.login),
 		image: Option.some(`https://opengraph.githubassets.com/1/${repository}/issues/${number}`),
 		text: pipe(
-			[
-				`# ${found.title} (${found.state})`,
-				`**${found.user.login}**: ${found.body ?? ''}`,
-				...Array.map(comments, comment => `**${comment.user.login}**: ${comment.body ?? ''}`)
-			],
+			[found, ...comments],
+			Array.map(post => Option.map(Option.fromNullishOr(post.body), body => `**${post.user.login}**: ${body}`)),
+			Array.getSomes,
+			Array.prepend(`# ${found.title} (${found.state})`),
 			Array.join('\n\n')
 		),
 		title: found.title,
@@ -457,19 +457,20 @@ const repository = Effect.fnUntraced(function* (url: URL, name: string) {
 		Effect.option
 	)
 	return Extraction.make({
-		author: found.owner.login,
+		author: Option.some(found.owner.login),
 		image: Option.some(`https://opengraph.githubassets.com/1/${name}`),
 		text: pipe(
 			[
-				found.description ?? '',
+				Option.fromNullishOr(found.description),
 				pipe(
 					Option.fromNullishOr(found.topics),
 					Option.filter(Array.isReadonlyArrayNonEmpty),
-					Option.match({onNone: () => '', onSome: topics => `Topics: ${Array.join(topics, ', ')}`})
+					Option.map(topics => `Topics: ${Array.join(topics, ', ')}`)
 				),
-				found.homepage ?? '',
-				Option.getOrElse(readme, () => '')
+				Option.fromNullishOr(found.homepage),
+				readme
 			],
+			Array.getSomes,
 			Array.filter(String.isNonEmpty),
 			Array.join('\n\n')
 		),
@@ -578,14 +579,24 @@ export function pageText(html: string, url: URL) {
 		String.trim
 	)
 	return Extraction.make({
-		author: plainText($('meta[property="og:site_name"]').attr('content') ?? url.hostname),
+		author: pipe(
+			Option.fromUndefinedOr($('meta[property="og:site_name"]').attr('content')),
+			Option.map(plainText),
+			Option.filter(String.isNonEmpty),
+			Option.orElseSome(() => url.hostname)
+		),
 		image: pipe(
 			Option.fromNullishOr(
 				$('meta[property="og:image"]').attr('content') ?? $('meta[name="twitter:image"]').attr('content')
 			),
 			Option.flatMap(Option.liftThrowable(image => new URL(image, url).href))
 		),
-		text: pipe([plainText(description ?? ''), body], Array.filter(String.isNonEmpty), Array.join('\n\n')),
+		text: pipe(
+			[Option.map(Option.fromUndefinedOr(description), plainText), Option.some(body)],
+			Array.getSomes,
+			Array.filter(String.isNonEmpty),
+			Array.join('\n\n')
+		),
 		title: plainText($('meta[property="og:title"]').attr('content') ?? $('title').first().text()),
 		url: canonical(url)
 	})
@@ -600,7 +611,7 @@ const reader = Effect.fnUntraced(function* (url: URL) {
 		return yield* NotesError.make({message: 'The site blocks automated reading.'})
 	}
 	return Extraction.make({
-		author: url.hostname,
+		author: Option.some(url.hostname),
 		image: Option.none(),
 		text: answer.data.content,
 		title: plainText(answer.data.title),

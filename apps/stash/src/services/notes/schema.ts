@@ -33,14 +33,14 @@ export const FileType = Schema.Literals(['image/jpeg', 'image/png', 'video/mp4',
 
 export type Note = typeof Note.Type
 export const Note = Schema.Struct({
-	author: Schema.String,
+	author: Schema.optionalKey(Schema.String),
 	body: Schema.optionalKey(Schema.String),
 	content: Schema.String,
 	createdAt: Schema.Finite,
 	file: Schema.optionalKey(FileType),
 	id: NoteId,
 	image: Schema.optionalKey(ImageType),
-	issue: Schema.String,
+	issue: Schema.optionalKey(Schema.String),
 	screenText: Schema.optionalKey(Schema.String),
 	source: Source,
 	status: Schema.Literals(['organizing', 'ready', 'failed']),
@@ -50,7 +50,7 @@ export const Note = Schema.Struct({
 	title: Schema.String,
 	topics: Schema.optionalKey(Schema.String),
 	transcript: Schema.optionalKey(Schema.String),
-	url: Schema.NullOr(Schema.String)
+	url: Schema.optionalKey(Schema.String)
 })
 
 // A note as the store keeps it.
@@ -75,7 +75,7 @@ export const Capture = Schema.Struct({
 
 export type Extraction = typeof Extraction.Type
 export const Extraction = Schema.Struct({
-	author: Schema.String,
+	author: Schema.Option(Schema.String),
 	image: Schema.Option(Schema.String),
 	slides: Schema.optionalKey(Schema.Array(Schema.String)),
 	text: Schema.String,

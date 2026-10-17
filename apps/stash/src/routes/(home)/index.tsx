@@ -158,10 +158,10 @@ function Preview(props: {note: NoteItem}) {
 function Lines(props: {note: NoteItem}) {
 	const byline = pipe(
 		[
-			props.note.author,
-			DateTime.formatLocal(DateTime.makeUnsafe(props.note.createdAt), {day: 'numeric', month: 'short'})
+			Option.fromUndefinedOr(props.note.author),
+			Option.some(DateTime.formatLocal(DateTime.makeUnsafe(props.note.createdAt), {day: 'numeric', month: 'short'}))
 		],
-		Array.filter(String.isNonEmpty),
+		Array.getSomes,
 		Array.join(' · ')
 	)
 	return pipe(

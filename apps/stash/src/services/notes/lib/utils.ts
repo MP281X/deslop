@@ -1,4 +1,4 @@
-import {Array, HashMap, HashSet, Option, Order, Record, String, pipe} from 'effect'
+import {Array, HashMap, HashSet, Option, Order, Predicate, Record, String, pipe} from 'effect'
 
 import type {Note, NotesEvent} from '#services/notes/schema.ts'
 
@@ -134,13 +134,14 @@ export function findNotes(notes: Note[], query: string) {
 				note.author,
 				note.text,
 				note.content,
-				note.topics ?? '',
-				note.body ?? '',
-				note.screenText ?? '',
-				note.transcript ?? '',
-				note.url ?? '',
+				note.topics,
+				note.body,
+				note.screenText,
+				note.transcript,
+				note.url,
 				...note.tags
 			],
+			Array.filter(Predicate.isNotUndefined),
 			Array.join(' '),
 			String.toLowerCase
 		)
