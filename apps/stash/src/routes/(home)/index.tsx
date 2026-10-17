@@ -88,26 +88,18 @@ import {BrandIcon, BrandLogo} from '@deslop/components-mobile/icons'
 import {colors, mono} from '@deslop/components-mobile/theme'
 import {assetAtom} from '@deslop/components-mobile/utils'
 
-const row = [
-	listRowBackground(colors.background),
-	listRowSeparatorTint(colors.border),
-	listRowInsets({bottom: 10, leading: 16, top: 10, trailing: 16})
-]
-
-const thumbnail = 64
-
-const caption = [mono('caption', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]
-
-const square = frame({height: thumbnail, width: thumbnail})
-
-const tile = [clipShape('roundedRectangle', 10), accessibilityHidden(true)]
-
 function Placeholder(props: {symbol: 'globe' | 'photo' | 'play.rectangle' | 'text.alignleft' | 'text.bubble'}) {
 	return (
 		<Image
 			systemName={props.symbol}
 			size={20}
-			modifiers={[foregroundStyle(colors.mutedForeground), square, background(colors.border), ...tile]}
+			modifiers={[
+				foregroundStyle(colors.mutedForeground),
+				frame({height: 64, width: 64}),
+				background(colors.border),
+				clipShape('roundedRectangle', 10),
+				accessibilityHidden(true)
+			]}
 		/>
 	)
 }
@@ -116,7 +108,18 @@ function Placeholder(props: {symbol: 'globe' | 'photo' | 'play.rectangle' | 'tex
 function Thumbnail(props: {id: Note['id']; symbol: Parameters<typeof Placeholder>[0]['symbol']}) {
 	const image = useAtomValue(imageAtom(props.id))
 	if (!AsyncResult.isSuccess(image)) return <Placeholder symbol={props.symbol} />
-	return <Image uiImage={image.value} modifiers={[resizable(), aspectRatio({contentMode: 'fill'}), square, ...tile]} />
+	return (
+		<Image
+			uiImage={image.value}
+			modifiers={[
+				resizable(),
+				aspectRatio({contentMode: 'fill'}),
+				frame({height: 64, width: 64}),
+				clipShape('roundedRectangle', 10),
+				accessibilityHidden(true)
+			]}
+		/>
+	)
 }
 
 function Preview(props: {note: NoteItem}) {
@@ -132,16 +135,19 @@ function Preview(props: {note: NoteItem}) {
 	return Option.match(brandOf(props.note), {
 		onNone: () => <Placeholder symbol={symbol} />,
 		onSome: brand => (
-			<ZStack modifiers={[square, background(colors.border), ...tile]}>
+			<ZStack
+				modifiers={[
+					frame({height: 64, width: 64}),
+					background(colors.border),
+					clipShape('roundedRectangle', 10),
+					accessibilityHidden(true)
+				]}
+			>
 				<BrandLogo brand={brand} size={24} />
 			</ZStack>
 		)
 	})
 }
-
-const title = [mono('headline', 16), foregroundStyle(colors.foreground), lineLimit(2)]
-
-const summary = [font({textStyle: 'subheadline'}), foregroundStyle(colors.mutedForeground), lineLimit(2)]
 
 function Lines(props: {note: NoteItem}) {
 	const note = props.note
@@ -154,29 +160,39 @@ function Lines(props: {note: NoteItem}) {
 		Match.value(note.status),
 		Match.when('organizing', () => (
 			<VStack alignment="leading" spacing={4}>
-				<Text modifiers={title}>{note.title}</Text>
-				<Text modifiers={[...summary, redacted('placeholder'), accessibilityLabel('Reading')]}>
+				<Text modifiers={[mono('headline', 16), foregroundStyle(colors.foreground), lineLimit(2)]}>{note.title}</Text>
+				<Text
+					modifiers={[
+						font({textStyle: 'subheadline'}),
+						foregroundStyle(colors.mutedForeground),
+						lineLimit(2),
+						redacted('placeholder'),
+						accessibilityLabel('Reading')
+					]}
+				>
 					The server is reading this entry and writing its summary.
 				</Text>
-				<Text modifiers={caption}>{byline}</Text>
+				<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>{byline}</Text>
 			</VStack>
 		)),
 		Match.when('failed', () => (
 			<VStack alignment="leading" spacing={4}>
-				<Text modifiers={title}>{note.title}</Text>
+				<Text modifiers={[mono('headline', 16), foregroundStyle(colors.foreground), lineLimit(2)]}>{note.title}</Text>
 				<Label
 					title="Couldn’t read this link"
 					systemImage="exclamationmark.triangle.fill"
 					modifiers={[font({textStyle: 'subheadline'}), foregroundStyle(colors.destructive), lineLimit(1)]}
 				/>
-				<Text modifiers={caption}>{byline}</Text>
+				<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>{byline}</Text>
 			</VStack>
 		)),
 		Match.orElse(() => (
 			<VStack alignment="leading" spacing={4}>
-				<Text modifiers={title}>{note.title}</Text>
-				<Text modifiers={summary}>{note.summary}</Text>
-				<Text modifiers={caption}>{byline}</Text>
+				<Text modifiers={[mono('headline', 16), foregroundStyle(colors.foreground), lineLimit(2)]}>{note.title}</Text>
+				<Text modifiers={[font({textStyle: 'subheadline'}), foregroundStyle(colors.mutedForeground), lineLimit(2)]}>
+					{note.summary}
+				</Text>
+				<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>{byline}</Text>
 			</VStack>
 		))
 	)
@@ -200,7 +216,14 @@ function NoteRow(props: {
 		/>
 	)
 	return (
-		<SwipeActions modifiers={[...row, tag(note.id)]}>
+		<SwipeActions
+			modifiers={[
+				listRowBackground(colors.background),
+				listRowSeparatorTint(colors.border),
+				listRowInsets({bottom: 10, leading: 16, top: 10, trailing: 16}),
+				tag(note.id)
+			]}
+		>
 			<ContextMenu>
 				<ContextMenu.Trigger>
 					<HStack
@@ -416,7 +439,9 @@ export function HomeRoute(props: {
 								axes="horizontal"
 								showsIndicators={false}
 								modifiers={[
-									...row,
+									listRowBackground(colors.background),
+									listRowSeparatorTint(colors.border),
+									listRowInsets({bottom: 10, leading: 16, top: 10, trailing: 16}),
 									listRowSeparator('hidden'),
 									listRowInsets({bottom: 6, leading: 16, top: 4, trailing: 16})
 								]}
@@ -441,7 +466,15 @@ export function HomeRoute(props: {
 								</HStack>
 							</ScrollView>
 							{filtered && Array.isReadonlyArrayEmpty(notes) && (
-								<VStack spacing={12} modifiers={[...row, listRowSeparator('hidden')]}>
+								<VStack
+									spacing={12}
+									modifiers={[
+										listRowBackground(colors.background),
+										listRowSeparatorTint(colors.border),
+										listRowInsets({bottom: 10, leading: 16, top: 10, trailing: 16}),
+										listRowSeparator('hidden')
+									]}
+								>
 									<ContentUnavailableView
 										{...Boolean.match(String.isEmpty(query), {
 											onFalse: () => ({systemImage: 'magnifyingglass' as const, title: `No Results for “${query}”`}),
