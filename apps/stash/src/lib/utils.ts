@@ -8,8 +8,8 @@ import {File, Paths} from 'expo-file-system'
 import {pasteboard} from '#modules/native/index.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {captureUrl, isYouTube} from '#services/notes/lib/utils.ts'
-import type {Note, NotesEvent} from '#services/notes/schema.ts'
-import {NoteItem, NotesError} from '#services/notes/schema.ts'
+import type {Kind, Note, NotesEvent} from '#services/notes/schema.ts'
+import {Brand, NoteItem, NotesError} from '#services/notes/schema.ts'
 import {brands} from '@deslop/components-mobile/icons'
 import {alert, downloadAtom, writeAtomically} from '@deslop/components-mobile/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
@@ -21,38 +21,32 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/stash/lib/utils/Rp
 
 // Kinds
 
-export const kinds = [
-	{brand: brands.tiktok, kind: 'tiktok', label: 'TikTok', symbol: 'play.rectangle'},
-	{brand: brands.x, kind: 'x', label: 'X', symbol: 'xmark'},
-	{brand: brands.youtube, kind: 'youtube', label: 'YouTube', symbol: 'play.tv'},
-	{kind: 'web', label: 'Web', symbol: 'globe'},
-	{kind: 'note', label: 'Notes', symbol: 'text.alignleft'},
-	{kind: 'file', label: 'Photos and Videos', symbol: 'photo'}
-] as const
-
-export type Kind = (typeof kinds)[number]['kind']
-
-export function brandOf(note: NoteItem) {
-	if (note.source === 'TikTok') return Option.some(brands.tiktok)
-	if (note.source === 'X') return Option.some(brands.x)
-	return Option.as(Option.filter(Option.fromNullishOr(note.url), isYouTube), brands.youtube)
-}
+export const kinds = {
+	file: {label: 'Photos and Videos', symbol: 'photo'},
+	note: {label: 'Notes', symbol: 'text.alignleft'},
+	tiktok: {label: 'TikTok', logo: brands.tiktok},
+	web: {label: 'Web', symbol: 'globe'},
+	x: {label: 'X', logo: brands.x},
+	youtube: {label: 'YouTube', logo: brands.youtube}
+} as const satisfies Record<Kind, unknown>
 
 export function kindOf(note: NoteItem) {
 	if (note.file !== undefined) return 'file'
 	if (note.source === 'TikTok') return 'tiktok'
 	if (note.source === 'X') return 'x'
 	if (note.source === 'Note') return 'note'
-	if (Option.isSome(brandOf(note))) return 'youtube'
+	if (Option.exists(Option.fromNullishOr(note.url), isYouTube)) return 'youtube'
 	return 'web'
+}
+
+// The kind of a note whose app has a logo.
+export function brandOf(note: NoteItem) {
+	return Option.liftPredicate(kindOf(note), Schema.is(Brand))
 }
 
 // The app that opens the note's link, when it is not the browser.
 export function appOf(note: NoteItem) {
-	return pipe(
-		Array.findFirst(kinds, entry => entry.kind === kindOf(note) && Predicate.hasProperty(entry, 'brand')),
-		Option.map(entry => entry.label)
-	)
+	return Option.map(brandOf(note), brand => kinds[brand].label)
 }
 
 // Notes

@@ -38,7 +38,7 @@ import {
 import {AsyncResult} from 'effect/reactivity'
 import {Linking} from 'react-native'
 
-import {appOf, brandOf, imageAtom, noteAtom, notesAtom, regenerateAtom, removeAtom} from '#lib/utils.ts'
+import {appOf, brandOf, imageAtom, kinds, noteAtom, notesAtom, regenerateAtom, removeAtom} from '#lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 import {Chip} from '@deslop/components-mobile/chip'
 import {BrandLogo} from '@deslop/components-mobile/icons'
@@ -87,7 +87,7 @@ export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (t
 													)
 												]}
 											>
-												<BrandLogo brand={brand} size={20} />
+												<BrandLogo brand={kinds[brand].logo} size={20} />
 											</Button>
 										)
 									})}
@@ -211,11 +211,17 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 	const reload = useAtomRefresh(noteAtom(props.note))
 	const meta = pipe(
 		[
-			props.note.author,
-			Option.getOrElse(appOf(props.note), () => ''),
-			DateTime.formatLocal(DateTime.makeUnsafe(props.note.createdAt), {day: 'numeric', month: 'short', year: 'numeric'})
+			Option.liftPredicate(props.note.author, String.isNonEmpty),
+			appOf(props.note),
+			Option.some(
+				DateTime.formatLocal(DateTime.makeUnsafe(props.note.createdAt), {
+					day: 'numeric',
+					month: 'short',
+					year: 'numeric'
+				})
+			)
 		],
-		Array.filter(String.isNonEmpty),
+		Array.getSomes,
 		Array.join(' · ')
 	)
 	return (

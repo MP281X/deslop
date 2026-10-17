@@ -1105,6 +1105,42 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 		)
 
 		testApi.effect(
+			'reports closed sets read from a value instead of a schema',
+			() =>
+				Effect.gen(function* () {
+					const result = yield* lintSource({
+						'closed-sets.ts': pipe(
+							[
+								"import {Schema} from 'effect'",
+								'',
+								'const TABLE = [{kind: "a"}, {kind: "b"}] as const',
+								'export type Kind = (typeof TABLE)[number]["kind"]',
+								'export type Index = keyof typeof TABLE',
+								'export type Letter = typeof Letter.Type',
+								'export const Letter = Schema.Literals(["a", "b"])',
+								'export type Pair = typeof Letter.literals',
+								'export type Field = (typeof Letter.Type)[number]',
+								'const OWNER = {table: ["a", "b"]} as const',
+								'export type Owned = (typeof OWNER.table)[number]',
+								'type Known = Record<string, string>',
+								'export type Keyed = Known[(typeof TABLE)[number]["kind"]]',
+								'export {OWNER, TABLE}',
+								'export type {Known}'
+							],
+							Array.join('\n')
+						)
+					})
+					assert.deepStrictEqual(customCodes(result.stdout), [
+						'@deslop/coding-standards(no-type-from-value)',
+						'@deslop/coding-standards(no-type-from-value)',
+						'@deslop/coding-standards(no-type-from-value)',
+						'@deslop/coding-standards(no-type-from-value)'
+					])
+				}),
+			20_000
+		)
+
+		testApi.effect(
 			'uses import bindings instead of matching shadowed names',
 			() =>
 				Effect.gen(function* () {

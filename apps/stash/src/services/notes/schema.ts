@@ -14,6 +14,14 @@ export const Tag = pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schem
 export type Source = typeof Source.Type
 export const Source = Schema.Literals(['TikTok', 'X', 'Website', 'Note'])
 
+// What the list filters by, in menu order.
+export type Kind = typeof Kind.Type
+export const Kind = Schema.Literals(['tiktok', 'x', 'youtube', 'web', 'note', 'file'])
+
+// The kinds whose app has a logo.
+export type Brand = typeof Brand.Type
+export const Brand = Kind.pick(['tiktok', 'x', 'youtube'])
+
 export type ImageType = typeof ImageType.Type
 export const ImageType = Schema.Literals(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 

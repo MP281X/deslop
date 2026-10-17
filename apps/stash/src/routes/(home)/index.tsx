@@ -1,6 +1,6 @@
 import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, HashSet, Match, Option, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, HashSet, Match, Option, Schema, String, pipe} from 'effect'
 
 import {
 	BottomSheet,
@@ -17,6 +17,7 @@ import {
 	ScrollView,
 	SwipeActions,
 	Text,
+	Toggle,
 	Toolbar,
 	ToolbarItem,
 	VStack,
@@ -78,11 +79,11 @@ import {
 	removeAtom,
 	searchAtom
 } from '#lib/utils.ts'
-import type {Kind} from '#lib/utils.ts'
 import {bottomBarSearch} from '#modules/native/index.ts'
 import logo from '#routes/logo.png'
 import {tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
+import {Brand, Kind} from '#services/notes/schema.ts'
 import {Chip} from '@deslop/components-mobile/chip'
 import {BrandIcon, BrandLogo} from '@deslop/components-mobile/icons'
 import {colors, mono} from '@deslop/components-mobile/theme'
@@ -148,7 +149,7 @@ function Preview(props: {note: NoteItem}) {
 					accessibilityHidden(true)
 				]}
 			>
-				<BrandLogo brand={brand} size={24} />
+				<BrandLogo brand={kinds[brand].logo} size={24} />
 			</ZStack>
 		)
 	})
@@ -257,7 +258,7 @@ function NoteRow(props: {
 									})}
 									{...Option.match(brandOf(props.note), {
 										onNone: () => ({systemImage: 'arrow.up.right' as const}),
-										onSome: brand => ({icon: <BrandIcon brand={brand} />})
+										onSome: brand => ({icon: <BrandIcon brand={kinds[brand].logo} />})
 									})}
 								/>
 							</Button>
@@ -286,51 +287,50 @@ function DeleteButton(props: {onPress: () => void}) {
 	)
 }
 
-function FilterMenu(props: {kind: Kind | ''; onKind: (kind: Kind | '') => void}) {
+// A picker row's tag is a string or a number, so "All Notes", which clears the filter, is a toggle beside it.
+function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 	return (
 		// A menu opened from the bottom bar reverses its items unless the order is fixed.
 		<Menu
 			label="Filter"
-			systemImage={Boolean.match(props.kind === '', {
+			systemImage={Boolean.match(props.kind === undefined, {
 				onFalse: () => 'line.3.horizontal.decrease.circle.fill',
 				onTrue: () => 'line.3.horizontal.decrease'
 			})}
 			modifiers={[labelStyle('iconOnly'), menuOrder('fixed')]}
 		>
-			<Picker
+			<Toggle
+				label="All Notes"
+				systemImage="tray"
+				isOn={props.kind === undefined}
+				onIsOnChange={() => props.onKind()}
+			/>
+			<Divider />
+			<Picker<Kind>
 				label="Show"
 				selection={props.kind}
-				onSelectionChange={(next: string) =>
-					props.onKind(
-						pipe(
-							Array.findFirst(kinds, entry => entry.kind === next),
-							Option.match({onNone: () => '' as const, onSome: entry => entry.kind})
-						)
-					)
-				}
+				onSelectionChange={props.onKind}
 				modifiers={[pickerStyle('inline')]}
 			>
-				<Label title="All Notes" systemImage="tray" modifiers={[tag('')]} />
-				<Divider />
-				{Array.map(kinds, entry =>
-					pipe(
-						Match.value(entry),
-						Match.when({brand: Match.defined}, branded => (
-							<Label
-								key={branded.kind}
-								title={branded.label}
-								icon={<BrandIcon brand={branded.brand} />}
-								modifiers={[tag(branded.kind)]}
-							/>
-						)),
-						Match.orElse(plain => (
-							<Label key={plain.kind} title={plain.label} systemImage={plain.symbol} modifiers={[tag(plain.kind)]} />
-						))
-					)
-				)}
+				{Array.map(Kind.literals, kind => (
+					<KindLabel key={kind} kind={kind} />
+				))}
 			</Picker>
 		</Menu>
 	)
+}
+
+function KindLabel(props: {kind: Kind}) {
+	if (Schema.is(Brand)(props.kind)) {
+		return (
+			<Label
+				title={kinds[props.kind].label}
+				icon={<BrandIcon brand={kinds[props.kind].logo} />}
+				modifiers={[tag(props.kind)]}
+			/>
+		)
+	}
+	return <Label title={kinds[props.kind].label} systemImage={kinds[props.kind].symbol} modifiers={[tag(props.kind)]} />
 }
 
 // The sheet hangs off the title in the bar, so it adds nothing to the layout.
@@ -404,14 +404,14 @@ function PasteSheet() {
 }
 
 export function HomeRoute(props: {
-	kind: Kind | ''
+	kind?: Kind
 	onCompose: () => void
-	onKind: (kind: Kind | '') => void
+	onKind: (kind?: Kind) => void
 	onOpen: (id: Note['id']) => void
 	onSearch: (text: string) => void
-	onTag: (name: string) => void
+	onTag: (name?: string) => void
 	query: ReturnType<typeof useNativeState<string>>
-	tag: string
+	tag?: string
 }) {
 	const items = useAtomSuspense(notesAtom).value
 	const remove = useAtomSet(removeAtom)
@@ -422,12 +422,12 @@ export function HomeRoute(props: {
 		items,
 		note =>
 			Option.match(found, {onNone: () => true, onSome: ids => HashSet.has(ids, note.id)}) &&
-			(String.isEmpty(props.tag) || Array.contains(note.tags, props.tag)) &&
-			(props.kind === '' || kindOf(note) === props.kind)
+			(props.tag === undefined || Array.contains(note.tags, props.tag)) &&
+			(props.kind === undefined || kindOf(note) === props.kind)
 	)
 	const tags = Array.map(tagCounts(items), entry => entry.tag)
 	const [limit, setLimit] = useState(80)
-	const filtered = String.isNonEmpty(query) || String.isNonEmpty(props.tag) || props.kind !== ''
+	const filtered = String.isNonEmpty(query) || props.tag !== undefined || props.kind !== undefined
 
 	return (
 		<Toolbar
@@ -462,19 +462,17 @@ export function HomeRoute(props: {
 								]}
 							>
 								<HStack spacing={8}>
-									<Chip
-										label="all"
-										systemImage="tray"
-										active={String.isEmpty(props.tag)}
-										onPress={() => props.onTag('')}
-									/>
+									<Chip label="all" systemImage="tray" active={props.tag === undefined} onPress={() => props.onTag()} />
 									{Array.map(tags, name => (
 										<Chip
 											key={name}
 											label={name}
 											active={props.tag === name}
 											onPress={() =>
-												props.onTag(Boolean.match(props.tag === name, {onFalse: () => name, onTrue: () => ''}))
+												Boolean.match(props.tag === name, {
+													onFalse: () => props.onTag(name),
+													onTrue: () => props.onTag()
+												})
 											}
 										/>
 									))}
@@ -496,12 +494,12 @@ export function HomeRoute(props: {
 											onTrue: () => ({systemImage: 'tray' as const, title: 'No Notes'})
 										})}
 									/>
-									{(String.isNonEmpty(props.tag) || props.kind !== '') && (
+									{(props.tag !== undefined || props.kind !== undefined) && (
 										<Button
 											label="Show All Notes"
 											onPress={() => {
-												props.onTag('')
-												props.onKind('')
+												props.onTag()
+												props.onKind()
 											}}
 											modifiers={[buttonStyle('glass')]}
 										/>
