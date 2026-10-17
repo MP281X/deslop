@@ -1,0 +1,63 @@
+name: Simulator
+
+# Only a change to what the native build reads can change its fingerprint.
+on:
+  push:
+    branches-ignore: [main]
+    paths: [apps/stash/**, packages/**, pnpm-lock.yaml, .github/workflows/simulator.yaml]
+
+# A newer push to the same branch replaces the older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Each native fingerprint builds once for the iOS Simulator; agents replace its JavaScript bundle with their branch's.
+  simulator:
+    strategy:
+      matrix:
+        app: [stash]
+    # One build at a time per app, so a second branch finds the first branch's artifact.
+    concurrency: simulator-${{ matrix.app }}
+    runs-on: xcode-27
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.app }}
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      APP_VARIANT: development
+      EAS: npx --yes eas-cli@latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: voidzero-dev/setup-vp@v1
+        with: {node-version: '26', cache: true, run-install: true}
+
+      - name: Fingerprint
+        id: fingerprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          hash=$($EAS fingerprint:generate --platform ios --build-profile simulator --json --non-interactive | jq -r .hash)
+          echo "name=${{ matrix.app }}-simulator-$hash" >> "$GITHUB_OUTPUT"
+          echo "built=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=${{ matrix.app }}-simulator-$hash" --jq '[.artifacts[] | select(.expired | not)] | length > 0')" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        if: steps.fingerprint.outputs.built != 'true'
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_27.1.app
+          $EAS build --local --profile simulator --platform ios --non-interactive --output "$RUNNER_TEMP/simulator.tar.gz"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.fingerprint.outputs.built != 'true'
+        with:
+          name: ${{ steps.fingerprint.outputs.name }}
+          path: ${{ runner.temp }}/simulator.tar.gz
+          retention-days: 90
