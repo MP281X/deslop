@@ -1,73 +1,59 @@
-import {Array, Option, Predicate, String, pipe} from 'effect'
+import {Array, Option, Predicate, Record, String, pipe} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
 import {matches, memberName, variableFor} from '#rules/shared.ts'
 
-const NATIVE_METHODS = [
-	'at',
-	'catch',
-	'charAt',
-	'charCodeAt',
-	'codePointAt',
-	'concat',
-	'endsWith',
-	'entries',
-	'every',
-	'fill',
-	'filter',
-	'finally',
-	'find',
-	'findIndex',
-	'findLast',
-	'findLastIndex',
-	'flat',
-	'flatMap',
-	'forEach',
-	'includes',
-	'indexOf',
-	'join',
-	'keys',
-	'lastIndexOf',
-	'localeCompare',
-	'map',
-	'match',
-	'matchAll',
-	'normalize',
-	'padEnd',
-	'padStart',
-	'pop',
-	'push',
-	'reduce',
-	'reduceRight',
-	'repeat',
-	'replace',
-	'replaceAll',
-	'reverse',
-	'shift',
-	'slice',
-	'some',
-	'sort',
-	'splice',
-	'split',
-	'startsWith',
-	'substring',
-	'then',
-	'toLocaleLowerCase',
-	'toLocaleUpperCase',
-	'toLowerCase',
-	'toReversed',
-	'toSorted',
-	'toSpliced',
-	'toUpperCase',
-	'trim',
-	'trimEnd',
-	'trimStart',
-	'unshift',
-	'values',
-	'with'
-]
+// effecttsgo/prefer-effect-array owns the typed array methods it maps: map, filter, find, reduce, join, toSorted and the rest.
+const REPLACEMENTS: Record.ReadonlyRecord<string, string> = {
+	at: 'Array.get or String.at',
+	catch: 'Effect.tryPromise and Effect.catchTag',
+	charAt: 'String.charAt',
+	charCodeAt: 'String.charCodeAt',
+	codePointAt: 'String.codePointAt',
+	concat: 'Array.appendAll or String.concat',
+	endsWith: 'String.endsWith',
+	entries: 'Array.map(items, (item, index) => [index, item]), Record.toEntries or HashMap.entries',
+	fill: 'Array.replicate or Array.makeBy',
+	finally: 'Effect.ensuring',
+	flat: 'Array.flatten',
+	includes: 'Array.contains or String.includes',
+	indexOf: 'Array.findFirstIndex or String.indexOf',
+	keys: 'Record.keys or HashMap.keys',
+	lastIndexOf: 'Array.findLastIndex or String.lastIndexOf',
+	localeCompare: 'String.localeCompare',
+	match: 'String.match',
+	matchAll: 'String.matchAll',
+	normalize: 'String.normalize',
+	padEnd: 'String.padEnd',
+	padStart: 'String.padStart',
+	pop: 'Array.last and Array.dropRight',
+	push: 'Array.append',
+	repeat: 'String.repeat',
+	replace: 'String.replace',
+	replaceAll: 'String.replaceAll',
+	reverse: 'Array.reverse',
+	shift: 'Array.head and Array.drop',
+	slice: 'Array.take, Array.drop or String.slice',
+	sort: 'Array.sort(items, Order.mapInput(...))',
+	splice: 'Array.remove or Array.insertAt',
+	split: 'String.split',
+	startsWith: 'String.startsWith',
+	substring: 'String.substring',
+	then: 'Effect.tryPromise and Effect.map',
+	toLocaleLowerCase: 'String.toLowerCase',
+	toLocaleUpperCase: 'String.toUpperCase',
+	toLowerCase: 'String.toLowerCase',
+	toSpliced: 'Array.remove',
+	toUpperCase: 'String.toUpperCase',
+	trim: 'String.trim',
+	trimEnd: 'String.trimEnd',
+	trimStart: 'String.trimStart',
+	unshift: 'Array.prepend',
+	values: 'Record.values or HashMap.values',
+	with: 'Array.replace'
+}
 
 // Inner None means the flags are unknown.
 function freshRegExpFlags(input: {context: Context; node: ESTree.Expression}) {
@@ -149,8 +135,7 @@ export const noNativeMethodCall = defineRule({
 	create: context => ({
 		CallExpression: node => {
 			if (node.callee.type !== 'MemberExpression' || ownsMethod({context, receiver: node.callee.object})) return
-			const receiver = node.callee.object
-			const regExpFlags = freshRegExpFlags({context, node: receiver})
+			const regExpFlags = freshRegExpFlags({context, node: node.callee.object})
 			if (
 				Option.isSome(regExpFlags) &&
 				Option.exists(
@@ -169,16 +154,19 @@ export const noNativeMethodCall = defineRule({
 			}
 			pipe(
 				memberName(node.callee),
-				Option.filter(name => Array.contains(NATIVE_METHODS, name)),
+				// `Object.keys(record)` belongs to prefer-effect-record; only an argument-free `.keys()` is a native iterator.
 				Option.filter(
-					name =>
-						!Array.contains(['entries', 'keys', 'values'], name) ||
-						Array.isArrayEmpty(node.arguments) ||
-						(receiver.type === 'Identifier' && receiver.name === 'Object')
+					name => !Array.contains(['entries', 'keys', 'values'], name) || Array.isArrayEmpty(node.arguments)
 				),
-				Option.map(name =>
+				Option.flatMap(name =>
+					pipe(
+						Record.get(REPLACEMENTS, name),
+						Option.map(replacement => ({name, replacement}))
+					)
+				),
+				Option.map(method =>
 					context.report({
-						message: `Replace .${name}() on a native array, string, record, or Promise with its Effect Array, String, Record, or Effect function; a third-party API's own method stays, with an inline disable and its reason.`,
+						message: `Use ${method.replacement} instead of the native .${method.name}(); a third-party object's own method stays, with an inline disable naming it.`,
 						node: node.callee
 					})
 				)

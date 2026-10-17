@@ -28,7 +28,7 @@ export default defineConfig({
 			customGroups: [
 				{elementNamePattern: ['@effect/**'], groupName: 'effectPackages', selector: 'external'},
 				{elementNamePattern: ['effect'], groupName: 'effect', selector: 'external'},
-				{elementNamePattern: ['@deslop/**'], groupName: 'aiToolkit', selector: 'external'},
+				{elementNamePattern: ['@deslop/**'], groupName: 'workspace', selector: 'internal'},
 				{elementNamePattern: ['@/**', '#*', '~/**'], groupName: 'aliases', selector: 'internal'}
 			],
 			groups: [
@@ -41,7 +41,7 @@ export default defineConfig({
 				{newlinesBetween: true},
 				'external',
 				{newlinesBetween: true},
-				'aiToolkit',
+				'workspace',
 				{newlinesBetween: true},
 				'aliases',
 				{newlinesBetween: true},
@@ -55,6 +55,7 @@ export default defineConfig({
 	lint: {
 		env: {browser: true, builtin: true, node: true},
 		extends: [oxlint],
+		// An extended config's ignorePatterns do not carry over, so the preset's generated-file ignore repeats here.
 		ignorePatterns: [
 			'**/*.gen.ts',
 			'tools/*/template/**',
@@ -67,13 +68,7 @@ export default defineConfig({
 	run: {
 		tasks: {
 			// The rule tests write lint fixtures while they run; tracked, those writes invalidate the task's own cache.
-			test: {
-				cache: {
-					input: [{auto: true}, '!tools/coding-standards/.fixtures/**'],
-					output: [{auto: true}, '!tools/coding-standards/.fixtures/**']
-				},
-				command: 'vp test'
-			}
+			test: {cache: {input: [{auto: true}, '!tools/coding-standards/.fixtures/**']}, command: 'vp test'}
 		}
 	},
 	test: {

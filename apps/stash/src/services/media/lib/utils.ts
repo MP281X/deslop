@@ -15,7 +15,7 @@ export function clock(seconds: number) {
 export function captionTranscript(input: {authored: boolean; vtt: string}) {
 	const cues = pipe(
 		input.vtt,
-		String.replace(/\r\n?/gu, '\n'),
+		String.replaceAll(/\r\n?/gu, '\n'),
 		String.split('\n\n'),
 		Array.flatMap(block => {
 			const lines = String.split(block, '\n')
@@ -41,11 +41,11 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 						start: Array.headNonEmpty(times),
 						text: pipe(
 							line,
-							String.replace(/<[^>]+>/gu, ''),
-							String.replace(/&nbsp;/gu, ' '),
-							String.replace(/&lt;/gu, '<'),
-							String.replace(/&gt;/gu, '>'),
-							String.replace(/&amp;/gu, '&'),
+							String.replaceAll(/<[^>]+>/gu, ''),
+							String.replaceAll('&nbsp;', ' '),
+							String.replaceAll('&lt;', '<'),
+							String.replaceAll('&gt;', '>'),
+							String.replaceAll('&amp;', '&'),
 							String.trim
 						)
 					}))

@@ -1,44 +1,44 @@
 ---
 name: delivery
-description: Use before the first commit or push, before writing a PR body, before monitoring a PR, before taking a screenshot or recording or composing a video, and on every PR notice.
+description: Use before the first commit or push, before creating, editing or readying a PR or MR, before writing a PR body, before a screenshot, recording, device session or video, and on every PR notice.
 ---
 
 # Delivery
 
 ## Branches
 
-The user reviews and squash-merges one PR at a time.
+The user reviews every PR of a thread at the end and squash-merges them one at a time.
 
-- **Split.** One PR is one feature the user accepts as a unit. Independent features start from the default branch; a layer stacks only on a real dependency. Instruction and configuration changes of one thread ship as one PR. Generated files stay with their source. Decide the split yourself before the first commit.
-- **Chain.** Keep one commit per PR on `<thread branch>-chain`, dependencies first. A follow-up to a feature is `git commit --fixup=<commit> -- <paths>` into its layer, naming its paths so nothing else staged rides along; a new layer only for a new feature.
+- **Split.** One PR by default. A second PR only for a feature the user would accept or reject on its own; independent features start from the default branch, and a layer stacks only on a real dependency. Never split one feature across layers, and no layer rewrites what another adds. Instruction and configuration changes of one thread are one PR; generated files stay with their source. Decide the split before the first commit.
+- **Chain.** A stack keeps one commit per PR on `<thread branch>-chain`, dependencies first. A follow-up to a feature is `git commit --fixup=<commit> -- <paths>` into its layer, naming its paths so nothing else staged rides along.
 - **Publish.** Rebuild each layer with `git switch -C <branch> <base> && git cherry-pick <commit>`, push with `--force-with-lease`, one push per command, then return to the chain. Open drafts; on GitHub link stacks with `gh stack link <numbers, bottom first>`, never `--open`. Reuse open PRs and branch names; `gh stack unstack` before reordering.
-- **Rebase** before every push: `git fetch` and `git rebase --autosquash origin/<default branch>`. A conflict gets the same rebase. A PR is never behind or conflicting at handoff.
+- **Current.** The last Verify before a push follows `git fetch` and `git rebase --autosquash origin/<default branch>`, and a wake about a conflict gets the same rebase: a PR is never behind or conflicting.
 - **After merges.** Rebase the chain, republish changed layers, remove each merged PR from the stack and from the thread with `unlink_pull_request`, and retarget the next GitLab merge request.
 
 ## Publish
 
-1. **Gate** at the root on every layer's head before every push, with the repository's local gate per environment: `git switch --detach <layer head> && <gate> && git switch -`, one layer after another. The pipeline is slow and only confirms what passed locally. Push every working step.
+1. **Push** only heads that passed engineering's Verify after their last rebase; in a stack, Verify each layer's head in order (`git switch --detach <layer head>`, then back). Every fix of a round rides one commit and one push: each push starts a pipeline and cancels the last, and the pipeline only confirms what passed locally.
 2. **Describe** the head as it is now, per [Body](#body): write the title, body and commit message at the first push and rewrite them after every push that changes what they say. They never narrate how the PR got there: no "now also", "updated", "fixed review" or superseded captures.
-3. Link each PR with `link_pull_request`, watch it with `watch_pull_request` and start its review guide with `write_pull_request_guides`.
-4. **Monitor** only through the `watch_pull_request` wakes, never a CLI wait: after a push, end the turn with one line naming the head it waits for. A wake about the current head (a failure, a review comment by someone else, a conflict) gets a fix and a push; a wake about an older head, a running job or a repeat ends with that one line.
-5. **Ready** when the final head passes required jobs, the review loop has no open P1 or P2, the captures are in the body and [Critique](#critique) finds nothing: `gh pr ready <n>` or `glab mr update <n> --ready`. A new commit on a ready layer returns it to draft in the same step (`gh pr ready <n> --undo`, `glab mr update <n> --draft`). Restart a stale review guide.
-6. **Handoff** once every PR is ready and current with the default branch: `unwatch_pull_request` each PR, stop owned services, then write the one final reply in that same turn, so it stays the thread's last message. The preview and its tab stay.
+3. **Watch** each PR with `watch_pull_request`.
+4. **Monitor.** When nothing else remains, end the turn with one line naming the head it waits for. A wake about the current head (a failure, someone else's review comment, a conflict) gets a fix, Verify and one push; any other wake ends with that line.
+5. **Ready** when the final head passes required jobs, the review loop has no open P1 or P2, the captures are in the body and [Critique](#critique) finds nothing: `gh pr ready <n>` or `glab mr update <n> --ready`. A new commit on a ready layer returns it to draft in the same step (`gh pr ready <n> --undo`, `glab mr update <n> --draft`).
+6. **Handoff** once every PR is ready and current with the default branch: write the final reply in that same turn.
 
 ## Body
 
-The body reads like a reply per pair's Replies rules: an opening line with the central change in the user's terms, then one `###` per change a user or caller notices, each with its one deciding exhibit, central change first. Minor wording and generated copies stay out of the sections.
+The body follows pair's Replies with captures and real output as exhibits: an opening line with the central change in the user's terms, then one `###` per change a user or caller notices, central change first. Minor wording and generated copies stay out of the sections.
 
 - **Risk.** Up to three bullets right after the opening: a migration, a changed contract, removed behavior. Omit when nothing can break.
 - **Contracts.** A changed endpoint, schema, key, migration or exported API gets a before and after table and the caller migration.
-- **Evidence.** Each capture under the entry it proves: one video per journey, at most eight screenshots, a changed screen as a before and after table with the same data, the target branch left.
+- **Evidence.** Each capture under the entry it proves: one video per journey, at most eight screenshots, a changed screen as a before (target branch) and after table with the same data.
 - **Also.** Minor changes as one-line bullets under `### Also`; the last names generated files and the command that reproduces them.
-- **Never** test counts, check tables, process notes, a proof section, code links (T3's review guide tours the code) or the repository's template.
+- **Never** test counts, check tables, process notes, a proof section, diffs, code links or the repository's template.
 
 ## Captures
 
 What a capture shows and how it looks follow design; this section is how to make one.
 
-- **Browser.** One tab, shared with the user. Find it with `preview_status`; open one only when none exists, with `preview_open`, `open: true` and the preview URL. Pass its `tabId` to every call; never a second tab on the preview. While the user controls it, do other work. Leave it open on the changed screen.
+- **Browser.** One tab on the preview, shared with the user: reuse it, never a second. While the user controls it, do other work. Leave it open on the changed screen.
 - **Drive.** Theme with `preview_set_appearance`, size with `preview_resize`, wait with `preview_wait_for`, never a fixed delay. Batch reads in `preview_evaluate`. After a failed action, read the screen, console and failed requests before you retry.
 - **Record** each storyboard chapter with `preview_recording_start` before its first meaningful input and `preview_recording_stop` after its outcome, the tab resized with `preview_resize` to the `iphone-12-pro` preset (390×844); a layout that exists only on desktop at 1440×900 (freeform). Contact sheet: `ffmpeg -i <video> -vf fps=1,scale=640:-1,tile=4x4 <sheet-%03d.png>`.
 - **Native apps.** Boot a simulator on `macbook-pro` per environment's device host, then use T3's device tools with the exact launcher and flags from `device_open`. Run `open <bundle id>` before `snapshot -i`, `screenshot <path> --pixel-density 3` or `record start <path>`.
@@ -69,19 +69,20 @@ What a capture shows and how it looks follow design; this section is how to make
 Read the published PR as the user will, from a phone, hours later, without the chat. Fix every "no" before ready:
 
 1. Does the first screen of the body say what changed for the user?
-2. Does it describe only the current head, with nothing superseded?
-3. Does each claim carry a capture or real output that proves it, and does each capture prove a claim?
-4. Would the user accept each PR as one unit, or split or merge it?
-5. Is everything in the diff something the request asked for?
-6. Would the user watch the video to the end?
+2. Does each claim carry a capture or real output that proves it, and does each capture prove a claim?
+3. Would the user accept each PR as one unit, or merge it with another?
+4. Is everything in the diff something the request asked for?
+5. Would the user watch the video to the end?
 
 ## Commands
 
 ```bash
-gh pr edit <n> --body-file <file> --attach './shot.png#<alt>'   # run beside the file: body ![alt](./shot.png) is rewritten to the upload; any other path appends it
-gh pr edit <n> --body-file <file> --attach './proof.mp4'        # a video takes no #alt; its bare URL is appended, so move that line under its entry
-token=$(glab config get token --host git.datapizza.tech) && curl -fsS -H "PRIVATE-TOKEN: $token" -F file=@<file> https://git.datapizza.tech/api/v4/projects/<id>/uploads | jq -r .markdown
-glab mr update <n> --description-file <file>
+gh pr edit <n> --title '<title>' --body-file - <<'EOF'            # the body inline through stdin, never a file; the quoted EOF keeps backticks and quotes literal
+<body>
+EOF
+gh pr edit <n> --body-file - --attach './shot.png#<alt>' <<'EOF'  # run beside the capture: ![alt](./shot.png) in the body is rewritten to the upload
+gh pr edit <n> --attach './proof.mp4'                             # a video takes no #alt; its URL is appended, so move it under its entry in the next edit
+glab mr update <n> --description-file - --attach ./shot.png <<'EOF'   # the upload's reference is appended to the description
 gh run view <run id> --log-failed
 glab api "projects/<id>/pipelines/<pipeline>/jobs?scope[]=failed" | jq -r '.[] | "\(.id) \(.name)"'; glab ci trace <job id>
 ```

@@ -5,7 +5,7 @@ description: 'Use for any review, audit, critique or review round of code, a PR,
 
 # Review
 
-Do what a short seller does to a position: build the strongest case that the work is wrong from raw evidence (the code, real runs, data), never from the author's summary or rationale. Before you report, name what a top expert in the area would check that the brief did not ask for, and check it. Load every skill the work needed (engineering for code, design for visible output, and the other skills the checkout has for the task) with the repository's `CODING_STANDARDS.md` and agent instructions; last, answer each loaded skill's Critique against the change, as its author should have: a question the change fails is a finding.
+Do what a short seller does to a position: build the strongest case that the work is wrong from raw evidence (the code, real runs, data), never from the author's summary or rationale. Load every skill the work needed (engineering for code, design for visible output, and the other skills the checkout has for the task) with the repository's `AGENTS.md` files and the standards they link; last, answer each loaded skill's Critique against the change, as its author should have: a question the change fails is a finding.
 
 ## Findings
 
@@ -17,20 +17,19 @@ Each finding: severity, `path:line`, the reaching input, actual and required out
 | P2       | Wrong owner, boundary or organization, rule violation, duplicated or dead code, or a mechanism, option or element the request does not need |
 | P3       | Naming, wording or style                                                                                                                    |
 
-- **Classes.** Report a defect class once, with every instance's `path:line`; never repeat a finding an earlier round raised and the author answered.
+- **One pass.** Report everything the first round can find: every class once, with every instance's `path:line`, across every layer, so no later round discovers what this one could have. A later round checks each earlier fix and reads only the commits since; it never repeats a finding the author answered.
 - **Rank honestly.** Never inflate a P3 to keep it alive; never pad a report with P3 to look thorough. Return P1 first; "Clean" with the covered scope when nothing reaches P2.
-- **Not findings:** taste without a rule, hypothetical inputs no caller sends, defects the branch neither made nor relies on, what lint reports outside legacy lists.
+- **Not findings:** taste without a rule, hypothetical inputs no caller sends, defects the branch neither made nor relies on, what lint already reports.
 - **Probe** a suspicion inline per engineering's Proof; never start a service or test suite in a read-only review.
 
 ## Code
 
 - **Architecture first.** Before the lines, rebuild the change from the request alone: who owns each piece of state, the boundaries, the file and module organization, the data flow and the mechanism. The first pass usually gets this wrong, so attack it: wherever the change's shape differs from the simplest idiomatic one (fewer parts, the existing pattern, Effect's own building blocks), report it with that shape as the fix, even when every line is correct.
-- **Depth.** Read every hand-written changed line; for generated output, the generator change and a sample. Trace each contract through its real consumers, failure paths, concurrency and resource ownership against the merge base. A whole-file refactor keeps every behavior the file had.
+- **Depth.** Read every hand-written changed line; for generated output, the generator change and a sample. Trace each contract through its real consumers, failure paths, concurrency and resource ownership against the merge base.
 - **Simplicity.** Name each part the request does not need: a script, flag, option, wrapper, fallback, reimplemented library job, UI control or test, and each abstraction (helper, shared constant, generic, factory) that saves lines without lowering what a reader must hold. Name each block that duplicates code already in the repository, with both locations.
 - **Requirements.** Map each of the user's requirements to the hunk and the proof that meet it; a requirement with neither is a finding, even when no line changed for it.
-- **Production data.** A changed persisted shape without a migration that converts existing data is P1.
 - **Beyond the diff.** A contradiction with an unchanged file, a stale reference the change leaves, or a false assumption it rests on.
-- **Rounds.** Read the pushed head, never the author's working tree, which keeps changing: `gh pr diff <n>`, `glab mr diff <n>`, `git show <head>:<path>`. Judge the layer as one change; spend depth on commits since the last reviewed one. A stack overview reports what crosses layers: duplication, a contract one layer breaks for another, code in the wrong layer.
+- **Head.** Read the pushed head, never the author's working tree, which keeps changing: `gh pr diff <n>`, `glab mr diff <n>`, `git show <head>:<path>`. Judge a stack as one change and report what crosses layers: duplication, a contract one layer breaks for another, code in the wrong layer.
 - **Browser.** Inspect the existing preview, captures, console and requests without changing page state; name the smallest missing check for the author.
 
 ## Cleanup audit

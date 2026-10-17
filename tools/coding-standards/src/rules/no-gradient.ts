@@ -7,7 +7,10 @@ import type {Context, ESTree} from '@oxlint/plugins'
 const GRADIENT = /(?:^|[\s:])bg-(?:linear|radial|conic|gradient)(?:-|$|\s)|gradient\(/u
 
 function report(context: Context, node: ESTree.Node) {
-	context.report({message: 'Use a flat theme color; gradients are never part of the design.', node})
+	context.report({
+		message: 'Use a flat theme token such as bg-card or bg-muted; gradients are never part of the design.',
+		node
+	})
 }
 
 export const noGradient = defineRule({

@@ -72,17 +72,17 @@ export function hasVideo(url: string) {
 }
 
 export function commentFor(text: string) {
-	return pipe(text, String.replace(new RegExp(URL_PATTERN.source, 'giu'), ''), plainText)
+	return pipe(text, String.replaceAll(new RegExp(URL_PATTERN.source, 'giu'), ''), plainText)
 }
 
 export function plainText(text: string) {
-	return pipe(text, String.replace(/\s+/gu, ' '), String.trim)
+	return pipe(text, String.replaceAll(/\s+/gu, ' '), String.trim)
 }
 
 export function normalizeTags(tags: Note['tags']) {
 	return pipe(
 		tags,
-		Array.map(tag => pipe(tag, String.toLowerCase, plainText, String.replace(/^#+/u, ''), String.replace(/ /gu, '-'))),
+		Array.map(tag => pipe(tag, String.toLowerCase, plainText, String.replace(/^#+/u, ''), String.replaceAll(' ', '-'))),
 		Array.filter(String.isNonEmpty),
 		Array.dedupe
 	)

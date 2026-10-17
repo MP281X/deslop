@@ -3,7 +3,6 @@ model_instructions_file = "instructions.md"
 web_search = "live"
 include_permissions_instructions = false
 include_collaboration_mode_instructions = false
-include_apps_instructions = false
 tool_output_token_limit = 25000
 background_terminal_max_timeout = 1500000
 
@@ -28,11 +27,7 @@ plugin_sharing = false
 sleep_tool = false
 apps = false
 plugins = false
-image_generation = true
 goals = false
-memories = false
-multi_agent = false
-multi_agent_v2 = false
 
 [[hooks.SessionStart]]
 [[hooks.SessionStart.hooks]]
@@ -45,7 +40,7 @@ timeout = 5
 trusted_hash = "sha256:e963292c7825ded13e242a454d027809ac0c8eb1cabdb193f215e9e095109f5a"
 
 [shell_environment_policy]
-set = { GLAB_PAGER = "cat", TURBO_SCM_BASE = "origin/master" }
+set = { GLAB_PAGER = "cat", NO_COLOR = "1", TURBO_SCM_BASE = "origin/master" }
 
 [projects."/home/mp281x/deslop"]
 trust_level = "trusted"

@@ -5,6 +5,9 @@ import type {ESTree} from '@oxlint/plugins'
 
 import {matches, memberName} from '#rules/shared.ts'
 
+const ASSERT_IDENTITY =
+	"Assert the failure's identity, such as assert.containsSubset(error, {_tag: 'NotFound'}) on Effect.flip's result, never its message."
+
 function receiverName(node: ESTree.Node) {
 	if (node.type === 'Identifier') return Option.some(node.name)
 	if (node.type !== 'MemberExpression') return Option.none<string>()
@@ -50,7 +53,7 @@ export const noErrorMessageAssertion = defineRule({
 	create: context => ({
 		CallExpression: node => {
 			if (assertsMessage(node)) {
-				context.report({message: 'Assert the failure, never its message wording.', node})
+				context.report({message: ASSERT_IDENTITY, node})
 				return
 			}
 			if (
@@ -59,7 +62,7 @@ export const noErrorMessageAssertion = defineRule({
 				(Option.exists(memberName(node.callee), name => Array.contains(['toThrow', 'toThrowError'], name)) ||
 					expectsMessage(node.callee))
 			) {
-				context.report({message: 'Assert the failure, never its message wording.', node})
+				context.report({message: ASSERT_IDENTITY, node})
 			}
 		}
 	}),

@@ -3,7 +3,15 @@ import {Array, Function, MutableRef, Option, Predicate, String, pipe} from 'effe
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
-import {childNodes, inert, outermost, rootName, typeWrapped, variableFromScope} from '#rules/shared.ts'
+import {
+	childNodes,
+	inert,
+	isSchemaOperationCall,
+	outermost,
+	rootName,
+	typeWrapped,
+	variableFromScope
+} from '#rules/shared.ts'
 
 const REPEATING = [
 	'ArrowFunctionExpression',
@@ -53,7 +61,7 @@ function insideConditional(input: {node: ESTree.Node; statement: ESTree.Node}): 
 	return Predicate.isNotNullish(input.node.parent) && insideConditional({...input, node: input.node.parent})
 }
 
-function candidate(node: ESTree.VariableDeclarator) {
+function candidate(context: Context, node: ESTree.VariableDeclarator) {
 	return (
 		node.parent.type === 'VariableDeclaration' &&
 		node.parent.kind === 'const' &&
@@ -62,8 +70,12 @@ function candidate(node: ESTree.VariableDeclarator) {
 		node.id.type === 'Identifier' &&
 		node.id.typeAnnotation === null &&
 		node.init !== null &&
-		// Functions belong to the indirection check, property chains to the alias check and plain literals to the literal check.
-		!Array.contains(['ArrowFunctionExpression', 'FunctionExpression'], node.init.type) &&
+		// Functions belong to the indirection check, property chains to the alias check, plain literals to the literal check, elements to no-stored-jsx and Schema operations to no-stored-schema-operation.
+		!Array.contains(
+			['ArrowFunctionExpression', 'FunctionExpression', 'JSXElement', 'JSXFragment'],
+			unwrapped(node.init).type
+		) &&
+		!(node.init.type === 'CallExpression' && isSchemaOperationCall({context, node: node.init})) &&
 		!(node.init.type === 'MemberExpression' && Option.isSome(rootName(node.init))) &&
 		!(node.init.type === 'Literal' && !Predicate.hasProperty(node.init, 'regex')) &&
 		!(node.init.type === 'TemplateLiteral' && Array.isArrayEmpty(node.init.expressions))
@@ -249,7 +261,7 @@ export const noSingleUseValue = defineRule({
 			TaggedTemplateExpression: effect,
 			UpdateExpression: effect,
 			VariableDeclarator: node => {
-				if (candidate(node)) MutableRef.update(candidates, Array.append(node))
+				if (candidate(context, node)) MutableRef.update(candidates, Array.append(node))
 			},
 			YieldExpression: effect
 		}

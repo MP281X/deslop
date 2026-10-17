@@ -494,7 +494,7 @@ const gitHub = Effect.fnUntraced(function* (url: URL) {
 })
 
 function markdown($: cheerio.CheerioAPI, node: AnyNode, base: URL): string {
-	if (node.nodeType === 3) return String.replace(/\s+/gu, ' ')(node.data)
+	if (node.nodeType === 3) return String.replaceAll(/\s+/gu, ' ')(node.data)
 	if (!Predicate.hasProperty(node, 'tagName')) return ''
 	const inner = pipe(
 		$(node).contents().toArray(),
@@ -570,7 +570,7 @@ export function pageText(html: string, url: URL) {
 						String.split('\n'),
 						Array.map(line => String.replace(/^ (?=\S)/u, '')(String.trimEnd(line))),
 						Array.join('\n'),
-						String.replace(/\n{3,}/gu, '\n\n')
+						String.replaceAll(/\n{3,}/gu, '\n\n')
 					),
 				onTrue: () => part
 			})

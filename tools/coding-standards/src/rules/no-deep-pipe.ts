@@ -31,7 +31,11 @@ export const noDeepPipe = defineRule({
 	create: context => ({
 		CallExpression: node => {
 			if (isPipeCall(context, node) && enclosingPipes(context, node) >= 3) {
-				context.report({message: 'Flatten this pipeline; pipe calls nest at most three deep.', node})
+				context.report({
+					message:
+						'Merge this pipe into its parent, or move it into a named function declaration; pipe calls nest at most three deep.',
+					node
+				})
 			}
 		}
 	}),

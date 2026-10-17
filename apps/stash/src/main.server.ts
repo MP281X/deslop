@@ -5,6 +5,8 @@ import {Array, Effect, Layer, Schema, String, pipe} from 'effect'
 import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 import {RpcSerialization, RpcServer} from 'effect/rpc'
 
+import * as ServerRuntime from '@deslop/runtime/server'
+
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Media} from '#services/media/service.ts'
@@ -12,7 +14,6 @@ import {Sources} from '#services/notes/lib/extraction.ts'
 import {Organizer} from '#services/notes/lib/organization.ts'
 import {Capture, FileType, Note, NoteId} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
-import * as ServerRuntime from '@deslop/runtime/server'
 
 const noteIdParam = HttpRouter.schemaPathParams(Schema.Struct({id: NoteId}))
 

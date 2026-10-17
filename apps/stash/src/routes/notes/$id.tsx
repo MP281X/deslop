@@ -38,11 +38,12 @@ import {
 import {AsyncResult} from 'effect/reactivity'
 import {Linking} from 'react-native'
 
-import {appOf, brandOf, imageAtom, kinds, noteAtom, notesAtom, regenerateAtom, removeAtom} from '#lib/utils.ts'
-import type {Note, NoteItem} from '#services/notes/schema.ts'
 import {Chip} from '@deslop/components-mobile/chip'
 import {BrandLogo} from '@deslop/components-mobile/icons'
 import {colors, mono} from '@deslop/components-mobile/theme'
+
+import {appOf, brandOf, imageAtom, kinds, noteAtom, notesAtom, regenerateAtom, removeAtom} from '#lib/utils.ts'
+import type {Note, NoteItem} from '#services/notes/schema.ts'
 
 const prose = [font({textStyle: 'body'}), lineSpacing(4), foregroundStyle(colors.foreground), textSelection(true)]
 

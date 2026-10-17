@@ -82,7 +82,7 @@ export const noEmptyRecovery = defineRule({
 				) {
 					context.report({
 						message:
-							'Let the failure flow, or map it to the service’s error; an empty value hides that the work failed.',
+							'Let the failure flow, map it with Effect.mapError(cause => ServiceError.make({cause, message})), or use Effect.option when absence is a valid result; an empty value hides the failure.',
 						node: argument
 					})
 				}

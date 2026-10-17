@@ -1,6 +1,6 @@
-# Commands agents never run. Codex matches exact leading tokens, so these get through and only the pair prompt forbids them:
-# `git -C <dir> push`, `git push origin <branch>:main`, an API call with the method after the endpoint,
-# `gh stack submit --open`, `gh stack link --open` and the `mergePullRequest` mutation through `gh api graphql`.
+# Commands agents never run. Codex matches exact leading tokens, so these get through and only the prompts forbid them
+# (pair's Branches, delivery's `--open`): `git -C <dir> push`, `git push origin <branch>:main`, more than two push flags,
+# an API call with the method after the endpoint, a GraphQL mutation, `gh stack submit --open` and `gh stack link --open`.
 # Codex checks each rule's examples when it loads the file.
 
 PROTECTED = [
@@ -66,6 +66,13 @@ prefix_rule(
     not_match = ["git push --force-with-lease origin t3/topic"],
 )
 prefix_rule(
+    pattern = ["git", "push", PUSH_FLAGS, PUSH_FLAGS, "origin", PROTECTED],
+    decision = "forbidden",
+    justification = "Never push to the default branch; open a draft pull request.",
+    match = ["git push --force-with-lease -u origin main"],
+    not_match = ["git push --force-with-lease -u origin t3/topic"],
+)
+prefix_rule(
     pattern = ["git", "push", "origin", PUSH_FLAGS, PROTECTED],
     decision = "forbidden",
     justification = "Never push to the default branch; open a draft pull request.",
@@ -80,10 +87,17 @@ prefix_rule(
     not_match = ["gh pr view 12", "gh pr create --draft"],
 )
 prefix_rule(
+    pattern = ["gh", "pr", "review"],
+    decision = "forbidden",
+    justification = "The user reviews and approves pull requests; findings go in the reply or a comment.",
+    match = ["gh pr review 12 --approve"],
+    not_match = ["gh pr comment 12 --body-file body.md"],
+)
+prefix_rule(
     pattern = ["glab", "mr", ["merge", "approve"]],
     decision = "forbidden",
-    justification = "The user merges merge requests.",
-    match = ["glab mr merge 3"],
+    justification = "The user approves and merges merge requests.",
+    match = ["glab mr merge 3", "glab mr approve 3"],
     not_match = ["glab mr update 3 --description-file body.md"],
 )
 prefix_rule(

@@ -13,12 +13,10 @@ Dual is a production SaaS in startup mode: requirements change often and anythin
 From the root. Checks, builds, tests and previews share one Turbo cache per worker, `~/dual/.turbo/cache`, across all its worktrees.
 
 ```bash
-bun run fix                                                           # always at the root: branch changes and untracked files
-bunx turbo run check --filter=<package> && bunx turbo run test --filter=<package>   # while you work
-bun run check --affected && bun run test --affected                   # the local gate, before every push
+bun run fix && bun run check --affected && bun run test --affected   # fix (lint fixes, then format, branch files only), check, test
 ```
 
-- **Local gate.** `--affected` keeps the root tasks and runs only changed packages and their dependents against `TURBO_SCM_BASE`, which the agent environment sets to `origin/master`: about 40 package tasks for a typical branch instead of 276. Check and test run one after the other. Never run them without `--affected` locally: each package runs a type-aware linter at 4–7 GB, a full run takes up to 30 minutes, and the pipeline runs it.
+- **`--affected`** keeps the root tasks (format, scripts, infra, `test:release`) and runs only changed packages and their dependents against `TURBO_SCM_BASE`, which the agent environment sets to `origin/master`: about 40 package tasks for a typical branch instead of 276, and Turbo replays unchanged ones from cache. Never run them without `--affected` locally: each package runs a type-aware linter at 4–7 GB, a full run takes up to 30 minutes, and the pipeline runs it.
 - **Generated:** root `codegen` (icons, agent docs), `bun --filter @dual/docs generate` (Fumadocs), `dual openapi-plugin` (internal plugins and their `turbo.json`).
 - **Tests** start their own database containers. Run consumer acceptance and live release tests only when their contracts change.
 
@@ -40,7 +38,7 @@ acli jira workitem transition --key DOS-289 --status Doing --yes
 
 ## VPN
 
-`git.datapizza.tech` works only through dev's VPN route. When it does not answer, reconnect on dev (through `ssh mp281x@dev` from desktop), give the printed sign-in URL once under **Needs you**, then check again:
+`git.datapizza.tech` works only through dev's VPN route. When it does not answer, reconnect on dev (through `ssh mp281x@dev` from desktop), give the user the printed sign-in URL once, then check again:
 
 ```bash
 curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
