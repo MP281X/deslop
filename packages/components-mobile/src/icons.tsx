@@ -16,13 +16,13 @@ import {assetAtom} from '#lib/utils.ts'
 
 const Logo = requireNativeView<{size: number; template?: boolean; uri: string}>('DeslopComponents', 'Logo')
 
+export type Brand = {dark: string; light: string}
+
 export const brands = {
 	tiktok: {dark: tiktokDark, light: tiktokLight},
 	x: {dark: xDark, light: xLight},
 	youtube: {dark: youtube, light: youtube}
-}
-
-export type Brand = (typeof brands)[keyof typeof brands]
+} satisfies Record<string, Brand>
 
 export function BrandLogo(props: {brand: Brand; size: number}) {
 	const uri = useAtomValue(

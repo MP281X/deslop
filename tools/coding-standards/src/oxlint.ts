@@ -43,6 +43,7 @@ import {noStoredJsx} from '#rules/no-stored-jsx.ts'
 import {noStoredSchemaOperation} from '#rules/no-stored-schema-operation.ts'
 import {noSwitchStatement} from '#rules/no-switch-statement.ts'
 import {noTrivialIndirection} from '#rules/no-trivial-indirection.ts'
+import {noTypeFromValue} from '#rules/no-type-from-value.ts'
 import {noTypeof} from '#rules/no-typeof.ts'
 import {noUndestructuredUseState} from '#rules/no-undestructured-use-state.ts'
 import {noUnexplainedDisable} from '#rules/no-unexplained-disable.ts'
@@ -179,6 +180,7 @@ export const oxlint = defineConfig({
 		'@deslop/coding-standards/no-stored-schema-operation': 'error',
 		'@deslop/coding-standards/no-switch-statement': 'error',
 		'@deslop/coding-standards/no-trivial-indirection': 'error',
+		'@deslop/coding-standards/no-type-from-value': 'error',
 		'@deslop/coding-standards/no-typeof': 'error',
 		'@deslop/coding-standards/no-undestructured-use-state': 'error',
 		'@deslop/coding-standards/no-unexplained-disable': 'error',
@@ -755,6 +757,7 @@ export default definePlugin({
 		'no-stored-schema-operation': noStoredSchemaOperation,
 		'no-switch-statement': noSwitchStatement,
 		'no-trivial-indirection': noTrivialIndirection,
+		'no-type-from-value': noTypeFromValue,
 		'no-typeof': noTypeof,
 		'no-undestructured-use-state': noUndestructuredUseState,
 		'no-unexplained-disable': noUnexplainedDisable,

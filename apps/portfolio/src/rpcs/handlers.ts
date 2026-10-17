@@ -40,13 +40,6 @@ const SERVER_BOTS = [
 	}
 ] as const
 
-function botPosition(bot: (typeof SERVER_BOTS)[number], t: number) {
-	return {
-		x: Number.clamp({maximum: 0.995, minimum: 0.005})(0.5 + 0.4 * Math.sin(t * bot.xFreq + bot.xPhase)),
-		y: Number.clamp({maximum: 0.995, minimum: 0.005})(0.5 + 0.4 * Math.cos(t * bot.yFreq + bot.yPhase))
-	}
-}
-
 function hasMeaningfulMove(current: {x: number; y: number}, next: {x: number; y: number}) {
 	const deltaX = next.x - current.x
 	const deltaY = next.y - current.y
@@ -83,7 +76,11 @@ export const RpcHandlers = RpcContracts.toLayer(
 			yield* Effect.forkScoped(
 				Effect.repeat(
 					Effect.gen(function* () {
-						const pos = botPosition(bot, ((yield* Clock.currentTimeMillis) - start) / 1000)
+						const t = ((yield* Clock.currentTimeMillis) - start) / 1000
+						const pos = {
+							x: Number.clamp({maximum: 0.995, minimum: 0.005})(0.5 + 0.4 * Math.sin(t * bot.xFreq + bot.xPhase)),
+							y: Number.clamp({maximum: 0.995, minimum: 0.005})(0.5 + 0.4 * Math.cos(t * bot.yFreq + bot.yPhase))
+						}
 						const visitor = PortfolioVisitor.make({color: bot.color, id: bot.id, name: bot.name, x: pos.x, y: pos.y})
 						yield* SubscriptionRef.modifySome(state, currentState => {
 							const currentBot = findVisitor(currentState.visitors, bot.id)
