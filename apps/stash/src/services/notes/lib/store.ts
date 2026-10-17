@@ -4,10 +4,8 @@ import {DatabaseSync} from 'node:sqlite'
 import {Effect, Schema, pipe} from 'effect'
 
 import {diff} from '#services/notes/lib/utils.ts'
-import {Note, NotesError} from '#services/notes/schema.ts'
-
-type NoteJson = typeof NoteJson.Type
-const NoteJson = Schema.fromJsonString(Note)
+import type {Note} from '#services/notes/schema.ts'
+import {NoteJson, NotesError} from '#services/notes/schema.ts'
 
 const failed = Effect.mapError((cause: unknown) => NotesError.make({cause, message: 'The notes database failed.'}))
 

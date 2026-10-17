@@ -29,8 +29,21 @@ import {Dns, NetAddress} from 'effect/net'
 
 import {sourceProxy, sticky} from '#services/media/lib/utils.ts'
 import {captureUrl, isYouTube, plainText, sourceFor} from '#services/notes/lib/utils.ts'
-import type {Image} from '#services/notes/schema.ts'
-import {Extraction, ImageType, NotesError} from '#services/notes/schema.ts'
+import type {FxArticle, FxPost, Image} from '#services/notes/schema.ts'
+import {
+	Extraction,
+	FxConversation,
+	FxStatus,
+	GitHubComment,
+	GitHubIssue,
+	GitHubReadme,
+	GitHubRepo,
+	ImageType,
+	NotesError,
+	OEmbed,
+	Reader,
+	TikTokPage
+} from '#services/notes/schema.ts'
 
 const CHALLENGE =
 	/Just a moment\.\.\.|Verify you are human|Attention Required! \| Cloudflare|Enable JavaScript and cookies to continue|Performing security verification/u
@@ -61,106 +74,6 @@ const Exit = Context.Reference<Option.Option<string>>('@deslop/stash/services/no
 function timeLimit(duration: Duration.Input, message: string) {
 	return Effect.timeoutOrElse({duration, orElse: () => Effect.fail(NotesError.make({message}))})
 }
-
-type FxPost = typeof FxPost.Type
-const FxPost = Schema.Struct({
-	author: Schema.Struct({id: Schema.String, name: Schema.String, screen_name: Schema.String}),
-	created_timestamp: Schema.Finite,
-	id: Schema.String,
-	media: Schema.optionalKey(
-		Schema.Struct({
-			all: Schema.optionalKey(
-				Schema.Array(
-					Schema.Struct({thumbnail_url: Schema.optionalKey(Schema.String), type: Schema.String, url: Schema.String})
-				)
-			)
-		})
-	),
-	raw_text: Schema.optionalKey(
-		Schema.Struct({facets: Schema.Array(Schema.Struct({replacement: Schema.optionalKey(Schema.String)}))})
-	),
-	text: Schema.String
-})
-
-type FxArticle = typeof FxArticle.Type
-const FxArticle = Schema.Struct({
-	content: Schema.Struct({
-		blocks: Schema.Array(
-			Schema.Struct({
-				entityRanges: Schema.Array(Schema.Struct({key: Schema.Finite})),
-				text: Schema.String,
-				type: Schema.String
-			})
-		),
-		entityMap: Schema.Array(
-			Schema.Struct({
-				key: Schema.String,
-				value: Schema.Struct({
-					data: Schema.Struct({markdown: Schema.optionalKey(Schema.String), url: Schema.optionalKey(Schema.String)}),
-					type: Schema.String
-				})
-			})
-		)
-	}),
-	title: Schema.String
-})
-
-type FxStatus = typeof FxStatus.Type
-const FxStatus = Schema.Struct({
-	status: Schema.Struct({...FxPost.fields, article: Schema.optionalKey(FxArticle), quote: Schema.optionalKey(FxPost)})
-})
-
-// `thread` holds the posts above the saved one and the saved post itself; `replies` holds the posts below it.
-type FxConversation = typeof FxConversation.Type
-const FxConversation = Schema.Struct({
-	...FxStatus.fields,
-	replies: Schema.optionalKey(Schema.Array(FxPost)),
-	thread: Schema.optionalKey(Schema.Array(FxPost))
-})
-
-type OEmbed = typeof OEmbed.Type
-const OEmbed = Schema.Struct({
-	author_name: Schema.optionalKey(Schema.String),
-	html: Schema.optionalKey(Schema.String),
-	thumbnail_url: Schema.optionalKey(Schema.String),
-	title: Schema.optionalKey(Schema.String)
-})
-
-type TikTokPage = typeof TikTokPage.Type
-const TikTokPage = Schema.Struct({
-	__DEFAULT_SCOPE__: Schema.Struct({
-		'webapp.video-detail': Schema.Struct({
-			itemInfo: Schema.Struct({
-				itemStruct: Schema.Struct({
-					author: Schema.Struct({nickname: Schema.String}),
-					desc: Schema.String,
-					imagePost: Schema.Struct({
-						images: Schema.Array(Schema.Struct({imageURL: Schema.Struct({urlList: Schema.Array(Schema.String)})})),
-						title: Schema.optionalKey(Schema.String)
-					})
-				})
-			})
-		})
-	})
-})
-
-type GitHubRepo = typeof GitHubRepo.Type
-const GitHubRepo = Schema.Struct({
-	description: Schema.NullOr(Schema.String),
-	full_name: Schema.String,
-	homepage: Schema.optionalKey(Schema.NullOr(Schema.String)),
-	owner: Schema.Struct({login: Schema.String}),
-	topics: Schema.optionalKey(Schema.Array(Schema.String))
-})
-
-type GitHubComment = typeof GitHubComment.Type
-const GitHubComment = Schema.Struct({body: Schema.NullOr(Schema.String), user: Schema.Struct({login: Schema.String})})
-
-type GitHubIssue = typeof GitHubIssue.Type
-const GitHubIssue = Schema.Struct({...GitHubComment.fields, state: Schema.String, title: Schema.String})
-
-type Reader = typeof Reader.Type
-const Reader = Schema.Struct({data: Schema.Struct({content: Schema.String, title: Schema.String})})
 
 function isPublic(address: NetAddress.Ipv4Address) {
 	const octets = NetAddress.ipv4ToOctets(address)
@@ -537,7 +450,7 @@ const issue = Effect.fnUntraced(function* (url: URL, repository: string, number:
 const repository = Effect.fnUntraced(function* (url: URL, name: string) {
 	const found = yield* decode(GitHubRepo, new URL(`https://api.github.com/repos/${name}`))
 	const readme = yield* pipe(
-		decode(Schema.Struct({download_url: Schema.String}), new URL(`https://api.github.com/repos/${name}/readme`)),
+		decode(GitHubReadme, new URL(`https://api.github.com/repos/${name}/readme`)),
 		Effect.flatMap(file => follow(new URL(file.download_url), api, 0)),
 		Effect.map(file => file.body),
 		// A repository without a README answers 404; the note keeps the description and topics.
