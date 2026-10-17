@@ -19,22 +19,13 @@ import {
 import {useHotkey} from '@tanstack/react-hotkeys'
 import {createFileRoute} from '@tanstack/react-router'
 import {Atom} from 'effect/reactivity'
+import {ArrowUpRight, Boxes, Database, FlaskConical, Monitor, MousePointer2, Server, Sparkles} from 'lucide-react'
 import {Suspense, useEffect, useRef, useState, useSyncExternalStore} from 'react'
 
 import {portfolioPalette} from '#lib/portfolio.ts'
 import {RpcClient} from '#lib/utils.ts'
 import type {PortfolioTrail, PortfolioVisitor, PortfolioState} from '#rpcs/contracts.ts'
 import {Loading} from '@deslop/components-web/fallbacks'
-import {
-	ArrowUpRight,
-	Boxes,
-	Database,
-	FlaskConical,
-	Monitor,
-	MousePointer2,
-	Server,
-	Sparkles
-} from '@deslop/components-web/icons'
 import {Button} from '@deslop/components-web/ui/button'
 import {Dialog, DialogContent, DialogHeader, DialogTitle} from '@deslop/components-web/ui/dialog'
 import {cn} from '@deslop/components-web/utils'
@@ -195,7 +186,7 @@ function TrailCanvas(input: {trails: PortfolioState['trails']; viewport: {width:
 	const canvasRef = useRef<HTMLCanvasElement>(null)
 
 	useEffect(() => {
-		if (!canvasRef.current || input.viewport.width <= 0 || input.viewport.height <= 0) return
+		if (canvasRef.current === null || input.viewport.width <= 0 || input.viewport.height <= 0) return
 
 		const canvasWidth = Number.max(1, Number.round(input.viewport.width * window.devicePixelRatio, 0))
 		const canvasHeight = Number.max(1, Number.round(input.viewport.height * window.devicePixelRatio, 0))
@@ -208,7 +199,7 @@ function TrailCanvas(input: {trails: PortfolioState['trails']; viewport: {width:
 		}
 
 		const context = canvasRef.current.getContext('2d')
-		if (!context) return
+		if (context === null) return
 
 		context.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0)
 		context.clearRect(0, 0, input.viewport.width, input.viewport.height)
@@ -280,12 +271,12 @@ function CursorEl(input: {
 			input.localPointerRef.current ?? undefined
 		)
 
-		if (!nodeRef.current) return
+		if (nodeRef.current === null) return
 
 		setCursorTransform(nodeRef.current, motionRef.current.x, motionRef.current.y)
 
 		function tick(now: number) {
-			if (!nodeRef.current) return
+			if (nodeRef.current === null) return
 
 			motionRef.current = stepCursorMotion(
 				syncCursorMotion(
@@ -770,6 +761,7 @@ function RealtimeLayer(input: {
 
 	return (
 		<>
+			{/* oxlint-disable-next-line @deslop/coding-standards/no-gradient -- hard color stops draw the 1px trail grid's lines; nothing fades */}
 			<div className="pointer-events-none fixed inset-0 z-1 bg-[linear-gradient(to_right,color-mix(in_oklch,var(--color-foreground)_3%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklch,var(--color-foreground)_3%,transparent)_1px,transparent_1px)] bg-size-[26px_26px]" />
 			<TrailCanvas trails={portfolio.value.trails} viewport={input.viewport} />
 
@@ -826,7 +818,7 @@ function PortfolioRoute() {
 
 	function scrollTo(index: number) {
 		const target = sectionRefs.current[index]
-		if (!target) return
+		if (Predicate.isNullish(target)) return
 
 		target.scrollIntoView({behavior: 'smooth', block: 'start'})
 		currentSectionRef.current = index

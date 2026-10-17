@@ -3,15 +3,22 @@ import {Array} from 'effect'
 import {definePlugin} from '@oxlint/plugins'
 import {defineConfig} from 'oxlint'
 
+import {explicitEffectConcurrency} from '#rules/explicit-effect-concurrency.ts'
+import {motionLimits} from '#rules/motion-limits.ts'
 import {noArrayWrapTernary} from '#rules/no-array-wrap-ternary.ts'
+import {noBarrelModule} from '#rules/no-barrel-module.ts'
+import {noCompilerOptOut} from '#rules/no-compiler-opt-out.ts'
+import {noComponentAtomAllocation} from '#rules/no-component-atom-allocation.ts'
 import {noConstantFunction} from '#rules/no-constant-function.ts'
 import {noDeepPipe} from '#rules/no-deep-pipe.ts'
 import {noDestructuredParameter} from '#rules/no-destructured-parameter.ts'
 import {noDiscardedFailure} from '#rules/no-discarded-failure.ts'
 import {noDoubleNullishCheck} from '#rules/no-double-nullish-check.ts'
 import {noEffectPropertyArrow} from '#rules/no-effect-property-arrow.ts'
+import {noEmptyRecovery} from '#rules/no-empty-recovery.ts'
 import {noErrorMessageAssertion} from '#rules/no-error-message-assertion.ts'
 import {noFakeRefState} from '#rules/no-fake-ref-state.ts'
+import {noGradient} from '#rules/no-gradient.ts'
 import {noHandWrittenGuard} from '#rules/no-hand-written-guard.ts'
 import {noInOperator} from '#rules/no-in-operator.ts'
 import {noLet} from '#rules/no-let.ts'
@@ -37,6 +44,7 @@ import {noTypeof} from '#rules/no-typeof.ts'
 import {noUndestructuredUseState} from '#rules/no-undestructured-use-state.ts'
 import {noUnexplainedDisable} from '#rules/no-unexplained-disable.ts'
 import {noUnvalidatedJsonDecode} from '#rules/no-unvalidated-json-decode.ts'
+import {preserveErrorCause} from '#rules/preserve-error-cause.ts'
 import {schemaTypePair} from '#rules/schema-type-pair.ts'
 
 const reactLegacyApis = ['Component', 'PureComponent', 'createRef', 'forwardRef', 'memo', 'useCallback', 'useMemo']
@@ -100,13 +108,17 @@ export const oxlint = defineConfig({
 	options: {denyWarnings: true, reportUnusedDisableDirectives: 'deny', typeAware: true, typeCheck: true},
 	overrides: [
 		{files: ['**/*.config.ts', '**/app.plugin.js', '**/main.*'], rules: {'import/no-default-export': 'off'}},
+		// Expo resolves a config plugin only from the package's app.plugin.js, which re-exports the plugin.
+		{files: ['**/app.plugin.js'], rules: {'@deslop/coding-standards/no-barrel-module': 'off'}},
 		{files: ['**/components/ui/**'], rules: {'shadcn/no-restyle': 'off', 'shadcn/require-static-classes': 'off'}},
 		{
 			files: ['**/components/ui/**', '**/packages/ui/**'],
 			rules: {
 				'@deslop/coding-standards/no-destructured-parameter': 'off',
 				'@deslop/coding-standards/no-native-control': 'off',
-				'@deslop/coding-standards/no-renamed-import': 'off'
+				'@deslop/coding-standards/no-renamed-import': 'off',
+				'jsx-a11y/click-events-have-key-events': 'off',
+				'jsx-a11y/label-has-associated-control': 'off'
 			}
 		},
 		{files: ['**/*.ts'], rules: {'react/rules-of-hooks': 'off'}},
@@ -121,18 +133,25 @@ export const oxlint = defineConfig({
 			}
 		}
 	],
-	plugins: ['effecttsgo', 'eslint', 'typescript', 'oxc', 'import', 'react', 'unicorn'],
+	plugins: ['effecttsgo', 'eslint', 'typescript', 'oxc', 'import', 'jsx-a11y', 'react', 'unicorn'],
 	rules: {
 		// Effect and React forms that maintained rules cannot express.
+		'@deslop/coding-standards/explicit-effect-concurrency': 'error',
+		'@deslop/coding-standards/motion-limits': 'error',
 		'@deslop/coding-standards/no-array-wrap-ternary': 'error',
+		'@deslop/coding-standards/no-barrel-module': 'error',
+		'@deslop/coding-standards/no-compiler-opt-out': 'error',
+		'@deslop/coding-standards/no-component-atom-allocation': 'error',
 		'@deslop/coding-standards/no-constant-function': 'error',
 		'@deslop/coding-standards/no-deep-pipe': 'error',
 		'@deslop/coding-standards/no-destructured-parameter': 'error',
 		'@deslop/coding-standards/no-discarded-failure': 'error',
 		'@deslop/coding-standards/no-double-nullish-check': 'error',
 		'@deslop/coding-standards/no-effect-property-arrow': 'error',
+		'@deslop/coding-standards/no-empty-recovery': 'error',
 		'@deslop/coding-standards/no-error-message-assertion': 'error',
 		'@deslop/coding-standards/no-fake-ref-state': 'error',
+		'@deslop/coding-standards/no-gradient': 'error',
 		'@deslop/coding-standards/no-hand-written-guard': 'error',
 		'@deslop/coding-standards/no-in-operator': 'error',
 		'@deslop/coding-standards/no-let': 'error',
@@ -158,6 +177,7 @@ export const oxlint = defineConfig({
 		'@deslop/coding-standards/no-undestructured-use-state': 'error',
 		'@deslop/coding-standards/no-unexplained-disable': 'error',
 		'@deslop/coding-standards/no-unvalidated-json-decode': 'error',
+		'@deslop/coding-standards/preserve-error-cause': 'error',
 		'@deslop/coding-standards/schema-type-pair': 'error',
 
 		// Effect owns native capabilities in and outside generators.
@@ -298,7 +318,8 @@ export const oxlint = defineConfig({
 		'typescript/no-import-type-side-effects': 'error',
 		'typescript/no-inferrable-types': 'error',
 		'typescript/no-invalid-void-type': 'error',
-		'typescript/no-misused-promises': ['error', {checksVoidReturn: false}],
+		// JSX handlers may return a promise; every other void position must not drop one.
+		'typescript/no-misused-promises': ['error', {checksVoidReturn: {attributes: false}}],
 		'typescript/no-misused-spread': 'error',
 		'typescript/no-namespace': ['error', {allowDeclarations: true}],
 		'typescript/no-non-null-assertion': 'error',
@@ -333,7 +354,10 @@ export const oxlint = defineConfig({
 		// TypeScript expression boundaries
 		'typescript/restrict-plus-operands': 'error',
 		'typescript/restrict-template-expressions': 'error',
-		'typescript/strict-boolean-expressions': ['error', {allowNumber: false, allowString: false}],
+		'typescript/strict-boolean-expressions': [
+			'error',
+			{allowNullableObject: false, allowNumber: false, allowString: false}
+		],
 		'typescript/strict-void-return': 'error',
 
 		// JavaScript style
@@ -378,6 +402,7 @@ export const oxlint = defineConfig({
 		],
 
 		// JavaScript correctness
+		'array-callback-return': 'error',
 		'max-depth': ['error', 3],
 		'max-nested-callbacks': ['error', 6],
 		'no-cond-assign': 'error',
@@ -515,7 +540,15 @@ export const oxlint = defineConfig({
 		'prefer-template': 'error',
 		'require-unicode-regexp': 'error',
 
+		// Accessibility: shadcn primitives map to their HTML roles in settings.
+		'jsx-a11y/autocomplete-valid': 'error',
+		'jsx-a11y/click-events-have-key-events': 'error',
+		'jsx-a11y/control-has-associated-label': 'error',
+		'jsx-a11y/interactive-supports-focus': 'error',
+		'jsx-a11y/label-has-associated-control': 'error',
+
 		// React Doctor JSX and component contracts
+		'react-doctor/no-aria-invalid-without-description': 'error',
 		'react-doctor/no-call-component-as-function': 'error',
 		'react-doctor/no-controlled-input-value-without-state-update': 'error',
 		'react-doctor/no-create-context-in-render': 'error',
@@ -523,14 +556,20 @@ export const oxlint = defineConfig({
 		'react-doctor/no-inline-exhaustive-style': 'error',
 		'react-doctor/no-jsx-element-type': 'error',
 		'react-doctor/no-many-boolean-props': 'error',
+		'react-doctor/no-nested-card-surface': 'error',
+		'react-doctor/no-placeholder-only-field': 'error',
 		'react-doctor/no-prop-types': 'error',
 		'react-doctor/no-uncontrolled-input': 'error',
+		'react-doctor/shadcn-dialog-content-requires-title': 'error',
 		'react-doctor/shadcn-icon-button-requires-label': 'error',
 
 		// React Doctor effects and state
 		'react-doctor/effect-listener-cleanup-mismatch': 'error',
+		'react-doctor/effect-needs-cleanup': 'error',
+		'react-doctor/no-adjust-state-on-prop-change': 'error',
 		'react-doctor/no-async-effect-callback': 'error',
 		'react-doctor/no-create-object-url-without-revoke': 'error',
+		'react-doctor/no-derived-state': 'error',
 		'react-doctor/no-derived-useState': 'error',
 		'react-doctor/no-effect-event-in-deps': 'error',
 		'react-doctor/no-effect-with-fresh-deps': 'error',
@@ -564,10 +603,10 @@ export const oxlint = defineConfig({
 		'react-doctor/no-large-animated-blur': 'error',
 		'react-doctor/no-layout-property-animation': 'error',
 		'react-doctor/no-layout-transition-inline': 'error',
-		'react-doctor/no-long-transition-duration': 'error',
 		'react-doctor/no-outline-none': 'error',
-		'react-doctor/no-scale-from-zero': 'error',
+		'react-doctor/no-reduced-motion-content-removal': 'error',
 		'react-doctor/no-transition-all': 'error',
+		'react-doctor/no-ungated-tailwind-animation': 'error',
 
 		// React
 		'react/button-has-type': 'error',
@@ -595,6 +634,7 @@ export const oxlint = defineConfig({
 		'react/preserve-manual-memoization': 'error',
 		'react/purity': 'error',
 		'react/refs': 'error',
+		'react/rule-suppression': 'error',
 		'react/rules-of-hooks': 'error',
 		'react/self-closing-comp': 'error',
 		'react/set-state-in-effect': 'error',
@@ -641,6 +681,8 @@ export const oxlint = defineConfig({
 
 		// Unicorn
 		'unicorn/filename-case': 'error',
+		'unicorn/no-abusive-eslint-disable': 'error',
+		'unicorn/no-empty-file': 'error',
 		'unicorn/no-immediate-mutation': 'error',
 		'unicorn/no-null': 'error',
 		'unicorn/no-object-as-default-parameter': 'error',
@@ -655,22 +697,33 @@ export const oxlint = defineConfig({
 		// JavaScript globals
 		'use-isnan': 'error'
 	},
-	settings: {react: {version: '19.0'}, shadcn: {ui: ['@deslop/components-web/ui', '@dual/ui/components']}}
+	settings: {
+		'jsx-a11y': {components: {Button: 'button', Input: 'input', Label: 'label', Textarea: 'textarea'}},
+		react: {version: '19.0'},
+		shadcn: {ui: ['@deslop/components-web/ui', '@dual/ui/components']}
+	}
 })
 
 // oxlint-disable-next-line import/no-default-export -- oxlint loads a JS plugin from its module's default export.
 export default definePlugin({
 	meta: {name: '@deslop/coding-standards'},
 	rules: {
+		'explicit-effect-concurrency': explicitEffectConcurrency,
+		'motion-limits': motionLimits,
 		'no-array-wrap-ternary': noArrayWrapTernary,
+		'no-barrel-module': noBarrelModule,
+		'no-compiler-opt-out': noCompilerOptOut,
+		'no-component-atom-allocation': noComponentAtomAllocation,
 		'no-constant-function': noConstantFunction,
 		'no-deep-pipe': noDeepPipe,
 		'no-destructured-parameter': noDestructuredParameter,
 		'no-discarded-failure': noDiscardedFailure,
 		'no-double-nullish-check': noDoubleNullishCheck,
 		'no-effect-property-arrow': noEffectPropertyArrow,
+		'no-empty-recovery': noEmptyRecovery,
 		'no-error-message-assertion': noErrorMessageAssertion,
 		'no-fake-ref-state': noFakeRefState,
+		'no-gradient': noGradient,
 		'no-hand-written-guard': noHandWrittenGuard,
 		'no-in-operator': noInOperator,
 		'no-let': noLet,
@@ -696,6 +749,7 @@ export default definePlugin({
 		'no-undestructured-use-state': noUndestructuredUseState,
 		'no-unexplained-disable': noUnexplainedDisable,
 		'no-unvalidated-json-decode': noUnvalidatedJsonDecode,
+		'preserve-error-cause': preserveErrorCause,
 		'schema-type-pair': schemaTypePair
 	}
 })

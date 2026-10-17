@@ -39,7 +39,7 @@ Blur a capture: the primary content and next action still stand out.
 
   ```tsx
   <div className="bg-card border" />                          // good
-  <div className="bg-linear-to-b from-muted to-background" /> // bad
+  <div className="bg-linear-to-b from-muted to-background" /> // bad: no-gradient
   ```
 
 - **Type.** The theme's semantic styles, at most five sizes per screen, prose 45–75 characters, tabular figures for changing numbers, middle truncation when the end distinguishes names.

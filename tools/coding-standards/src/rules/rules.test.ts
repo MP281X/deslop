@@ -20,12 +20,17 @@ const OxlintOutput = Schema.Struct({
 const lintSource = Effect.fnUntraced(function* (input: Record<string, string>, flags: string[] = []) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
-	const directory = yield* fs.makeTempDirectoryScoped({directory: import.meta.dirname, prefix: 'fixture-'})
-	yield* Effect.forEach(Record.toEntries(input), entry =>
-		fs.writeFileString(
-			path.join(directory, entry[0]),
-			String.replace(/^((?:import[^\n]*\n)+)(?!\n)/u, '$1\n')(entry[1])
-		)
+	const fixtures = path.resolve(import.meta.dirname, '../../.fixtures')
+	yield* fs.makeDirectory(fixtures, {recursive: true})
+	const directory = yield* fs.makeTempDirectoryScoped({directory: fixtures, prefix: 'fixture-'})
+	yield* Effect.forEach(
+		Record.toEntries(input),
+		entry =>
+			fs.writeFileString(
+				path.join(directory, entry[0]),
+				String.replace(/^((?:import[^\n]*\n)+)(?!\n)/u, '$1\n')(entry[1])
+			),
+		{concurrency: 'unbounded'}
 	)
 	const files = Array.map(Record.keys(input), name => path.join(directory, name))
 	const root = path.resolve(import.meta.dirname, '../../../..')
@@ -48,7 +53,7 @@ const lintSource = Effect.fnUntraced(function* (input: Record<string, string>, f
 	}
 	return {
 		exitCode: result.exitCode,
-		sources: yield* Effect.forEach(files, file => fs.readFileString(file)),
+		sources: yield* Effect.forEach(files, file => fs.readFileString(file), {concurrency: 'unbounded'}),
 		stderr: result.stderr,
 		stdout: yield* Schema.decodeEffect(Schema.fromJsonString(OxlintOutput))(result.stdout)
 	}
@@ -106,6 +111,13 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								'const MissingEncode = Schema.encode({decode: SchemaGetter.transform(identity), encode: SchemaGetter.transform(identity)})(Schema.String)',
 								'type Tree = typeof Tree.Type',
 								'const Tree: Schema.Codec<Tree> = Schema.Struct({children: Schema.Array(Schema.suspend((): Schema.Codec<Tree> => Tree))})',
+								'export type Public = typeof Public.Type',
+								'const Public = Schema.Struct({name: Schema.String})',
+								'type Private = typeof Private.Type',
+								'export const Private = Schema.Struct({name: Schema.String})',
+								'type InlineType = typeof InlineType.Type',
+								'const InlineType = Schema.Struct({name: Schema.String})',
+								'export {type InlineType}',
 								'type Explicit = {readonly values: readonly string[]}',
 								'type Mapped<T> = {readonly [K in keyof T]: T[K]}',
 								'type Frozen = Readonly<{value: string}>',
@@ -271,6 +283,9 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								'@deslop/coding-standards(schema-type-pair)',
 								'@deslop/coding-standards(schema-type-pair)',
 								'@deslop/coding-standards(schema-type-pair)',
+								'@deslop/coding-standards(schema-type-pair)',
+								'@deslop/coding-standards(schema-type-pair)',
+								'@deslop/coding-standards(schema-type-pair)',
 								'@deslop/coding-standards(schema-type-pair)'
 							],
 							Array.sort(String.Order)
@@ -315,8 +330,6 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								'export const checkedName = Schema.decodeSync(CheckedName)("ab")',
 								'type Annotated = typeof Annotated.Type',
 								'const Annotated = Schema.String.annotate({description: "value"})',
-								'export type Public = typeof Public.Type',
-								'const Public = Schema.Struct({name: Schema.String})',
 								'type CodeStep = typeof CodeStep.Type',
 								'const CodeStep = Schema.Struct({code: Schema.String, kind: Schema.Literal("code")})',
 								'type CallStep = {readonly do: readonly Step[]; readonly kind: "call"}',
@@ -325,8 +338,10 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								'const Step = Schema.Union([CallStep, CodeStep])',
 								'type LinearIssue = typeof LinearIssue.Type',
 								'const LinearIssue = Schema.Struct({id: Schema.String})',
-								'type Exported = typeof Exported.Type',
+								'export type Exported = typeof Exported.Type',
 								'export const Exported = Schema.Struct({name: Schema.String})',
+								'type Listed = typeof Listed.Type',
+								'const Listed = Schema.Struct({name: Schema.String})',
 								'type Normalized = typeof Normalized.Type',
 								'const Normalized = pipe(Schema.Struct({value: Schema.String}), Schema.decodeTo(Schema.Struct({value: Schema.String}), SchemaTransformation.transform({decode: identity, encode: identity})))',
 								'type Decoded = typeof Decoded.Type',
@@ -406,7 +421,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								'const hasWindow = typeof window !== "undefined"',
 								'function unavailable() { return Effect.die("unused") }',
 								'const stubs = {load: unavailable, save: unavailable}',
-								'export {Annotated, CallStep, hasWindow, stubs, CodeStep, Decoded, DefaultInput, Encoded, Formatter, Ledger, LinearIssue, Normalized, Step, circle, circles, constants, countdown, counter, counts, curried, annotate, annotateString, decoded, decodedMany, echo, encoded, ensured, flags, depth, first, identify, isCall, isUser, labels, layers, limits, loadName, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, annotatedName, nickname, noUser, payload, odd, parseWith, ping, readSnapshot, singleName, snapshots, swap, test, thunks, Walker, transform, tuple, version, versionPatterns, withDefault}'
+								'export {Annotated, CallStep, hasWindow, stubs, CodeStep, Decoded, DefaultInput, Encoded, Formatter, Ledger, LinearIssue, Listed, Normalized, Step, circle, circles, constants, countdown, counter, counts, curried, annotate, annotateString, decoded, decodedMany, echo, encoded, ensured, flags, depth, first, identify, isCall, isUser, labels, layers, limits, loadName, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, annotatedName, nickname, noUser, payload, odd, parseWith, ping, readSnapshot, singleName, snapshots, swap, test, thunks, Walker, transform, tuple, version, versionPatterns, withDefault}'
 							],
 							Array.join('\n')
 						)
@@ -1060,6 +1075,145 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 					assert.deepStrictEqual(customCodes(valid.stdout), [])
 					assert.strictEqual(valid.exitCode, ChildProcessSpawner.ExitCode(0))
 					assert.strictEqual(valid.stderr, '')
+				}),
+			20_000
+		)
+
+		testApi.effect(
+			'reports implicit concurrency, dropped causes, empty recoveries, render-time atoms, barrels, gradients and slow motion',
+			() =>
+				Effect.gen(function* () {
+					const result = yield* lintSource({
+						'barrel.ts': "export {Effect} from 'effect'\nexport * from 'effect/Option'",
+						'effects.tsx': pipe(
+							[
+								"import {Array, Effect, Schema} from 'effect'",
+								"import {Atom} from 'effect/reactivity'",
+								'',
+								'declare const items: number[]',
+								'declare const options: {concurrency: number}',
+								'declare function load(id: number): Effect.Effect<number>',
+								'declare function download(): Promise<string>',
+								'class Failed extends Schema.TaggedError<Failed>()("Failed", {cause: Schema.Unknown, message: Schema.String}) {}',
+								'const countAtom = Atom.make(0)',
+								'export const sequential = Effect.forEach(items, load)',
+								'export const dataLast = Effect.forEach(load)',
+								'export const combined = Effect.all([load(1), load(2)])',
+								'export const discarded = Effect.all([load(1)], {discard: true})',
+								'export const parallel = Effect.forEach(items, load, {concurrency: "unbounded"})',
+								'export const ordered = Effect.forEach(load, {concurrency: 1})',
+								'export const forwarded = Effect.all([load(1)], options)',
+								'export const piped = Effect.forEach((id: number) => load(id), options)',
+								'export const struct = Effect.all({one: load(1)}, {concurrency: 2})',
+								'export const dropped = Effect.mapError(load(1), failure => Failed.make({message: "Cannot load"}))',
+								'export const tried = Effect.tryPromise({catch: failure => Failed.make({message: "Cannot download"}), try: download})',
+								'export const kept = Effect.mapError(load(1), cause => Failed.make({cause, message: "Cannot load"}))',
+								'export const spread = Effect.mapError(load(1), failure => Failed.make({...{message: "Cannot load"}}))',
+								'export const emptied = Effect.orElseSucceed(load(1), () => [])',
+								'export const emptyArray = Effect.orElseSucceed(load(1), () => Array.empty<number>())',
+								'export const described = Effect.catch(load(1), failure => Effect.succeed(`${failure}`))',
+								'export const silenced = Effect.catch(load(1), () => Effect.void)',
+								'export const blanked = Effect.catch(load(1), () => Effect.succeed(""))',
+								'export const optional = Effect.option(load(1))',
+								'export const zero = Effect.orElseSucceed(load(1), () => 0)',
+								'export function Counter() { const local = Atom.make(0); return <span>{countAtom.label}{local.label}</span> }',
+								'export function Check(props: {value: unknown}) { return <span>{String(Atom.isAtom(props.value))}</span> }',
+								'export function Frozen() { "use no memo"; return <div /> }',
+								'export const slow = "transition-opacity duration-500"',
+								'export const zoomed = "animate-in zoom-in"',
+								'export const shrunk = "starting:scale-50"',
+								'export const important = "duration-500!"',
+								'export const themed = "dark:starting:scale-50"',
+								'export const faded = "bg-linear-to-b from-muted to-background"',
+								// oxlint-disable-next-line @deslop/coding-standards/no-gradient -- the fixture holds the class the rule rejects
+								'export const painted = "bg-[radial-gradient(circle,var(--muted),transparent)]"',
+								'export const calm = "transition-opacity duration-200 animate-in zoom-in-95 starting:scale-95 bg-card"'
+							],
+							Array.join('\n')
+						),
+						'reexports.ts': "export {Option} from 'effect'"
+					})
+					const rules = [
+						'explicit-effect-concurrency',
+						'motion-limits',
+						'no-barrel-module',
+						'no-compiler-opt-out',
+						'no-component-atom-allocation',
+						'no-empty-recovery',
+						'no-gradient',
+						'preserve-error-cause'
+					]
+					assert.deepStrictEqual(
+						pipe(
+							customCodes(result.stdout),
+							Array.filter(code => Array.some(rules, rule => code === `@deslop/coding-standards(${rule})`))
+						),
+						Array.map(
+							[
+								'explicit-effect-concurrency',
+								'explicit-effect-concurrency',
+								'explicit-effect-concurrency',
+								'explicit-effect-concurrency',
+								'motion-limits',
+								'motion-limits',
+								'motion-limits',
+								'motion-limits',
+								'motion-limits',
+								'no-barrel-module',
+								'no-barrel-module',
+								'no-compiler-opt-out',
+								'no-component-atom-allocation',
+								'no-empty-recovery',
+								'no-empty-recovery',
+								'no-empty-recovery',
+								'no-empty-recovery',
+								'no-gradient',
+								'no-gradient',
+								'preserve-error-cause',
+								'preserve-error-cause',
+								'preserve-error-cause'
+							],
+							rule => `@deslop/coding-standards(${rule})`
+						)
+					)
+				}),
+			20_000
+		)
+
+		testApi.effect(
+			'keeps package APIs, global classes and Effect services out of native method calls',
+			() =>
+				Effect.gen(function* () {
+					const result = yield* lintSource({
+						'receivers.ts': pipe(
+							[
+								"import {Array, Context, Effect} from 'effect'",
+								"import {z} from 'zod'",
+								'',
+								'declare const path: {posix: {join: (...parts: string[]) => string}; join: (...parts: string[]) => string}',
+								'// oxlint-disable-next-line effecttsgo/deterministic-keys -- a fixture in a temporary directory has no stable key',
+								'class Groups extends Context.Service<Groups, {replace: (id: string) => Effect.Effect<void>}>()("Groups") {}',
+								'export const joined = path.posix.join("a", "b")',
+								'export const bytes = Buffer.concat([])',
+								'export const trimmed = z.string().trim()',
+								'export const replaced = Effect.gen(function* () { const groups = yield* Groups; return yield* groups.replace("a") })',
+								'export const listed = Array.map(["a"], value => value).join(",")',
+								'export const split = path.join("a").split("/")',
+								'export const keys = Object.keys({a: 1})',
+								'declare const pending: Effect.Effect<string[]>',
+								'export const mapped = Effect.gen(function* () { const values = yield* pending; return values.map(value => value) })'
+							],
+							Array.join('\n')
+						)
+					})
+					assert.deepStrictEqual(
+						pipe(
+							result.stdout.diagnostics,
+							Array.filter(diagnostic => diagnostic.code === '@deslop/coding-standards(no-native-method-call)'),
+							Array.map(diagnostic => diagnostic.labels[0]?.span.line)
+						),
+						[12, 13, 14, 16]
+					)
 				}),
 			20_000
 		)

@@ -135,8 +135,10 @@ export class Notes extends Context.Service<
 			const tagNote = Effect.fnUntraced(function* (note: Note, stills: Image[]) {
 				const id = note.id
 				const preview = yield* pipe(
-					Effect.forEach(Option.toArray(Option.fromNullishOr(note.image)), type =>
-						Effect.map(fs.readFile(path.join(images, id)), bytes => ({bytes, type}))
+					Effect.forEach(
+						Option.toArray(Option.fromNullishOr(note.image)),
+						type => Effect.map(fs.readFile(path.join(images, id)), bytes => ({bytes, type})),
+						{concurrency: 'unbounded'}
 					),
 					optional('The preview could not be read', Array.empty<Image>)
 				)
@@ -184,12 +186,14 @@ export class Notes extends Context.Service<
 					Effect.forEach(
 						Option.toArray(Option.filter(page.image, () => note.image === undefined)),
 						image => Effect.flatMap(sources.image(image), bytes => storeImage(note.id, bytes)),
-						{discard: true}
+						{concurrency: 'unbounded', discard: true}
 					),
 					skip('The preview image was not kept')
 				)
-				const slides = yield* Effect.forEach(page.slides ?? [], image =>
-					pipe(sources.image(image), Effect.asSome, optional('A slide was not read', Option.none<Image>))
+				const slides = yield* Effect.forEach(
+					page.slides ?? [],
+					image => pipe(sources.image(image), Effect.asSome, optional('A slide was not read', Option.none<Image>)),
+					{concurrency: 1}
 				)
 				return Array.getSomes(slides)
 			})
@@ -294,7 +298,7 @@ export class Notes extends Context.Service<
 			yield* Effect.forEach(
 				Array.filter(yield* SubscriptionRef.get(state), note => note.status === 'organizing'),
 				start,
-				{discard: true}
+				{concurrency: 1, discard: true}
 			)
 
 			const missing = Effect.mapError(() => NotesError.make({message: 'This note no longer exists.'}))

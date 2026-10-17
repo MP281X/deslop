@@ -1,5 +1,3 @@
-import {useAtom} from '@effect/atom-react'
-
 import {
 	Array,
 	Boolean,
@@ -23,7 +21,6 @@ import {LexicalExtensionComposer} from '@lexical/react/LexicalExtensionComposer'
 import {HistoryPlugin} from '@lexical/react/LexicalHistoryPlugin'
 import {PlainTextPlugin} from '@lexical/react/LexicalPlainTextPlugin'
 import {LexicalTypeaheadMenuPlugin, MenuOption} from '@lexical/react/LexicalTypeaheadMenuPlugin'
-import {Atom} from 'effect/reactivity'
 import * as Lexical from 'lexical'
 import {useEffect, useImperativeHandle, useRef, useState} from 'react'
 import {createPortal} from 'react-dom'
@@ -94,7 +91,7 @@ function editorSnapshot<TValue extends RichTextArea.Value>(
 	) => void,
 	editor?: Lexical.LexicalEditor
 ) {
-	if (!editor) {
+	if (editor === undefined) {
 		const emptyEditor = Lexical.createEditor({namespace: 'rich-text-area', nodes: [TokenNode]})
 		emptyEditor.update(
 			() => {
@@ -141,7 +138,7 @@ function restore<TValue extends RichTextArea.Value>(
 	setTokensMap: (tokensMap: HashMap.HashMap<string, RichTextArea.Token<TValue>>) => void,
 	editor?: Lexical.LexicalEditor
 ) {
-	if (!editor) return
+	if (editor === undefined) return
 
 	setTokensMap(HashMap.fromIterable(Array.map(snapshot.tokens, token => Tuple.make(token.id, token))))
 
@@ -152,10 +149,10 @@ function getItems<TValue extends RichTextArea.Value>(
 	search?: {trigger: string; query: string},
 	options?: Record<string, {color: string; values: TValue[]}>
 ) {
-	if (!search) return Array.empty<Item<TValue>>()
+	if (search === undefined) return Array.empty<Item<TValue>>()
 
 	const group = options?.[search.trigger]
-	if (!group) return Array.empty<Item<TValue>>()
+	if (group === undefined) return Array.empty<Item<TValue>>()
 
 	const noMatchScore = -1_000_000
 
@@ -233,7 +230,7 @@ function continueList(event?: KeyboardEvent) {
 	if (event?.shiftKey !== true) return false
 
 	const current = currentTextNodeSelection()
-	if (!current) return false
+	if (current === undefined) return false
 
 	const currentLine = lineBeforeCursor(current.node.getTextContent(), current.selection.anchor.offset)
 	if (Option.isSome(pipe(currentLine.line, String.match(/^\s*(?:[-*+]|\d+\.)\s*$/u)))) {
@@ -268,7 +265,7 @@ function closeXmlTag(event: KeyboardEvent) {
 	if (event.key !== '>' || event.metaKey || event.ctrlKey || event.altKey) return false
 
 	const current = currentTextNodeSelection()
-	if (!current) return false
+	if (current === undefined) return false
 
 	return pipe(
 		lineBeforeCursor(current.node.getTextContent(), current.selection.anchor.offset).line,
@@ -456,9 +453,9 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 					.setStyle(`color: ${option.entry.color}`)
 
 				// oxlint-disable-next-line @deslop/coding-standards/no-native-method-call -- Lexical owns this AST mutation API.
-				if (node) node.replace(token)
+				if (node !== null) node.replace(token)
 
-				if (!node) {
+				if (node === null) {
 					const selection = Lexical.$getSelection()
 					if (!Lexical.$isRangeSelection(selection)) return
 					selection.insertNodes([token])
@@ -472,7 +469,11 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 			options={getItems(search, props.options)}
 			anchorClassName="z-50"
 			menuRenderFn={(anchorRef, menuProps) => {
-				if (!(anchorRef.current && props.menuBoxRef.current) || Array.isReadonlyArrayEmpty(menuProps.options)) {
+				if (
+					anchorRef.current === null ||
+					props.menuBoxRef.current === null ||
+					Array.isReadonlyArrayEmpty(menuProps.options)
+				) {
 					return null
 				}
 				return createPortal(
@@ -492,7 +493,7 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 									key={option.key}
 									ref={element => {
 										option.setRefElement(element)
-										if (element && index === menuProps.selectedIndex) {
+										if (element !== null && index === menuProps.selectedIndex) {
 											editor.getRootElement()?.setAttribute('aria-activedescendant', element.id)
 										}
 									}}
@@ -572,14 +573,13 @@ export function RichTextArea<TValue extends RichTextArea.Value = RichTextArea.Va
 	const menuBoxRef = useRef<HTMLDivElement>(null)
 	const menuRef = useRef(false)
 	const initialSnapshotRestoredRef = useRef(false)
-	const [tokensAtom] = useState(() => Atom.make(HashMap.empty<string, RichTextArea.Token<TValue>>()))
-	const [tokensMap, setTokensMap] = useAtom(tokensAtom)
+	const [tokensMap, setTokensMap] = useState(() => HashMap.empty<string, RichTextArea.Token<TValue>>())
 
 	useImperativeHandle(
 		ref,
 		() => ({
 			clear() {
-				if (!editorRef.current) return
+				if (editorRef.current === null) return
 				menuRef.current = false
 				setTokensMap(HashMap.empty())
 				editorRef.current.update(
@@ -630,7 +630,7 @@ export function RichTextArea<TValue extends RichTextArea.Value = RichTextArea.Va
 					onSubmit={input.onSubmit}
 					setEditor={editor => {
 						editorRef.current = editor
-						if (editor && !initialSnapshotRestoredRef.current) {
+						if (editor !== null && !initialSnapshotRestoredRef.current) {
 							initialSnapshotRestoredRef.current = true
 							if (Predicate.isNotUndefined(input.initialSnapshot)) {
 								restore(input.initialSnapshot, setTokensMap, editor)

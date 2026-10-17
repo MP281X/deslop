@@ -2,6 +2,14 @@
 	"$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
 	"entry": ["**/main.*", "**/app.plugin.js", "apps/*/fingerprint.config.js", "tools/coding-standards/src/install.ts"],
 	"includeEntryExports": true,
+	"ignoreDependencies": [
+		"@expo-google-fonts/jetbrains-mono",
+		"babel-preset-expo",
+		"expo-font",
+		"expo-updates",
+		"onnxruntime-common",
+		"onnxruntime-node"
+	],
 	"ignorePatterns": ["**/*.gen.ts", "packages/components-web/src/svgs/**", "tools/*/template/**"],
 	"ignoreExports": [
 		{"exports": ["*"], "file": "packages/*/src/schema.ts"},

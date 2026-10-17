@@ -16,8 +16,6 @@ import {Spinner} from './ui/spinner.tsx'
 import {resolveLanguage} from '#lib/shiki.ts'
 import {cn} from '#lib/utils.ts'
 
-export * from 'lucide-react'
-
 export function AgentIcon(props: {layer: 'claude' | 'codex' | 'effect' | 'opencode'; className?: string}) {
 	return pipe(
 		Match.value(props.layer),

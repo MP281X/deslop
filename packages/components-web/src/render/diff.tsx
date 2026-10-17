@@ -118,7 +118,7 @@ function captureScrollAnchor(container: HTMLElement, clientY: number) {
 		Option.getOrUndefined
 	)
 
-	if (!lineElement) return
+	if (lineElement === undefined) return
 
 	if (Predicate.isUndefined(lineElement.dataset['line']) || String.isEmpty(lineElement.dataset['line'])) return
 
@@ -215,6 +215,7 @@ function CommentAnnotation(props: {
 						ref={inputRef}
 						defaultValue={props.comment.body}
 						placeholder="Add comment"
+						aria-label="Comment"
 						className="block min-h-16 w-full resize-y border-0 bg-transparent p-0 text-inherit outline-none"
 						onClick={event => {
 							event.stopPropagation()
@@ -269,7 +270,7 @@ function CommentAnnotation(props: {
 				>
 					<CopyIcon className="size-3" />
 				</Button>
-				{props.onResolveComment && (
+				{props.onResolveComment !== undefined && (
 					<Button
 						variant="ghost"
 						size="icon-xs"
@@ -373,7 +374,7 @@ export function PatchDiff(props: {
 	)
 
 	function openComment(line: {lineNumber: number; side?: AnnotationSide}) {
-		if (!props.onSaveComment) return
+		if (props.onSaveComment === undefined) return
 		const location = {filePath: props.filePath, lineNumber: line.lineNumber, side: line.side}
 
 		if (Option.isSome(draft)) return

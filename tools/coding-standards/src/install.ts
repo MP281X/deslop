@@ -43,7 +43,8 @@ const cli = pipe(
 					yield* pipe(Config.String('CLAUDE_CONFIG_DIR'), Config.withDefault(path.join(home, '.claude'))),
 					yield* pipe(Config.String('CODEX_HOME'), Config.withDefault(path.join(home, '.codex')))
 				]),
-				canonical
+				canonical,
+				{concurrency: 'unbounded'}
 			)
 			const entries = yield* fs.readDirectory(root)
 			const directories = pipe(
