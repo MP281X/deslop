@@ -32,14 +32,20 @@ export const openStore = Effect.fnUntraced(function* (path: string) {
 
 	const load = pipe(
 		Effect.try(() => database.prepare('select json from notes order by created_at desc').all()),
-		Effect.flatMap(Effect.forEach(row => Schema.decodeUnknownEffect(NoteJson)(row['json']))),
+		Effect.flatMap(
+			Effect.forEach(row => Schema.decodeUnknownEffect(NoteJson)(row['json']), {concurrency: 'unbounded'})
+		),
 		failed
 	)
 
 	const save = Effect.fnUntraced(function* (previous: Note[], next: Note[]) {
 		const changes = diff(previous, next)
 		const rows = yield* pipe(
-			Effect.forEach(changes.upserted, note => Effect.map(Schema.encodeEffect(NoteJson)(note), json => ({json, note}))),
+			Effect.forEach(
+				changes.upserted,
+				note => Effect.map(Schema.encodeEffect(NoteJson)(note), json => ({json, note})),
+				{concurrency: 'unbounded'}
+			),
 			failed
 		)
 		yield* pipe(

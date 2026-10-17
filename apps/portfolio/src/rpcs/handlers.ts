@@ -87,7 +87,9 @@ export const RpcHandlers = RpcContracts.toLayer(
 						const visitor = PortfolioVisitor.make({color: bot.color, id: bot.id, name: bot.name, x: pos.x, y: pos.y})
 						yield* SubscriptionRef.modifySome(state, currentState => {
 							const currentBot = findVisitor(currentState.visitors, bot.id)
-							if (currentBot && !hasMeaningfulMove(currentBot, pos)) return Tuple.make(undefined, Option.none())
+							if (currentBot !== undefined && !hasMeaningfulMove(currentBot, pos)) {
+								return Tuple.make(undefined, Option.none())
+							}
 
 							return Tuple.make(undefined, Option.some(moveVisitor(currentState, visitor)))
 						})
@@ -163,7 +165,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 			'portfolio.move': Effect.fn('PortfolioRpc.move')(function* (payload) {
 				yield* SubscriptionRef.modifySome(state, currentState => {
 					const found = findVisitor(currentState.visitors, payload.id)
-					if (!found || (found.color === payload.color && !hasMeaningfulMove(found, payload))) {
+					if (found === undefined || (found.color === payload.color && !hasMeaningfulMove(found, payload))) {
 						return Tuple.make(undefined, Option.none())
 					}
 

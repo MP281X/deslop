@@ -294,7 +294,8 @@ export class Media extends Context.Service<
 				}
 				return yield* Effect.forEach(
 					Array.sort(Array.filter(yield* fs.readDirectory(work), String.startsWith('frame-')), Order.String),
-					file => fs.readFile(path.join(work, file))
+					file => fs.readFile(path.join(work, file)),
+					{concurrency: 'unbounded'}
 				)
 			})
 

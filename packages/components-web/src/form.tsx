@@ -204,7 +204,8 @@ function FileField() {
 				type="file"
 				id={field.name}
 				onChange={event => {
-					if (event.target.files?.[0]) field.handleChange(event.target.files[0])
+					const file = event.target.files?.[0]
+					if (file !== undefined) field.handleChange(file)
 				}}
 				aria-invalid={field.state.meta.isTouched && !field.state.meta.isValid}
 			/>

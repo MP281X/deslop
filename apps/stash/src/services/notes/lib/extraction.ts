@@ -431,7 +431,8 @@ const xThread = Effect.fnUntraced(function* (url: URL) {
 		linkedId =>
 			Effect.option(
 				Effect.map(decode(FxStatus, new URL(`https://api.fxtwitter.com/2/status/${linkedId}`)), found => found.status)
-			)
+			),
+		{concurrency: 'unbounded'}
 	)
 	return Extraction.make({
 		author: status.author.name,
@@ -529,7 +530,8 @@ const repository = Effect.fnUntraced(function* (url: URL, name: string) {
 		decode(Schema.Struct({download_url: Schema.String}), new URL(`https://api.github.com/repos/${name}/readme`)),
 		Effect.flatMap(file => follow(new URL(file.download_url), api, 0)),
 		Effect.map(file => file.body),
-		Effect.orElseSucceed(() => '')
+		// A repository without a README answers 404; the note keeps the description and topics.
+		Effect.option
 	)
 	return Extraction.make({
 		author: found.owner.login,
@@ -543,7 +545,7 @@ const repository = Effect.fnUntraced(function* (url: URL, name: string) {
 					Option.match({onNone: () => '', onSome: topics => `Topics: ${Array.join(topics, ', ')}`})
 				),
 				found.homepage ?? '',
-				readme
+				Option.getOrElse(readme, () => '')
 			],
 			Array.filter(String.isNonEmpty),
 			Array.join('\n\n')

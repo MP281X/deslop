@@ -376,7 +376,11 @@ it.layer(NodeServices.layer)('Notes', test => {
 			yield* TestClock.adjust('1 second')
 			yield* notes.remove({id: ids[0]})
 			yield* TestClock.adjust('1 second')
-			const received = yield* Effect.forEach(yield* Fiber.join(events), event => Schema.encodeEffect(NotesEvent)(event))
+			const received = yield* Effect.forEach(
+				yield* Fiber.join(events),
+				event => Schema.encodeEffect(NotesEvent)(event),
+				{concurrency: 'unbounded'}
+			)
 			assert.deepStrictEqual(
 				Array.map(received, event => ({
 					removed: event.removed,

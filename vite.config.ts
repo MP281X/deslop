@@ -64,6 +64,18 @@ export default defineConfig({
 		jsPlugins: [{name: 'vite-plus', specifier: 'vite-plus/oxlint-plugin'}],
 		rules: {'vite-plus/prefer-vite-plus-imports': 'error'}
 	},
+	run: {
+		tasks: {
+			// The rule tests write lint fixtures while they run; tracked, those writes invalidate the task's own cache.
+			test: {
+				cache: {
+					input: [{auto: true}, '!tools/coding-standards/.fixtures/**'],
+					output: [{auto: true}, '!tools/coding-standards/.fixtures/**']
+				},
+				command: 'vp test'
+			}
+		}
+	},
 	test: {
 		environment: 'node',
 		include: ['apps/*/src/**/*.test.ts', 'packages/*/src/**/*.test.ts', 'tools/*/src/**/*.test.ts'],

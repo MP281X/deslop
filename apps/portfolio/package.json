@@ -30,8 +30,8 @@
 		"@deslop/runtime": "workspace:*",
 		"@tanstack/react-hotkeys": "latest",
 		"@tanstack/react-router": "latest",
+		"lucide-react": "latest",
 		"react": "^19.3.1",
-		"react-dom": "^19.3.1",
-		"tailwindcss": "latest"
+		"react-dom": "^19.3.1"
 	}
 }
