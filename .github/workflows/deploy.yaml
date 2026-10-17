@@ -46,7 +46,7 @@ jobs:
             docker push ghcr.io/${GITHUB_REPOSITORY,,}-$app:latest
           done
 
-          (cd apps/stash && npm pkg delete dependencies)
+          (cd apps/stash && npm pkg delete dependencies devDependencies)
           for package in tools/coding-standards apps/stash; do
             vp -C $package pm pack --pack-destination "$RUNNER_TEMP/$package"
             npm publish "$RUNNER_TEMP/$package"/*.tgz
