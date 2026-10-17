@@ -153,18 +153,19 @@ function getViewportSnapshot() {
 }
 
 function useViewport() {
-	const snapshot = useSyncExternalStore(
-		onStoreChange => {
-			addEventListener('resize', onStoreChange)
-			return () => {
-				removeEventListener('resize', onStoreChange)
-			}
-		},
-		getViewportSnapshot,
-		getViewportSnapshot
+	const [width, height] = pipe(
+		useSyncExternalStore(
+			onStoreChange => {
+				addEventListener('resize', onStoreChange)
+				return () => {
+					removeEventListener('resize', onStoreChange)
+				}
+			},
+			getViewportSnapshot,
+			getViewportSnapshot
+		),
+		String.split(':')
 	)
-
-	const [width, height] = pipe(snapshot, String.split(':'))
 
 	return {
 		height: Option.getOrElse(Number.parse(height ?? '0'), () => 0),
@@ -480,45 +481,47 @@ function ProjectCard(input: {
 }
 
 function ProjectsSection(input: {registerSection: (id: number, node: HTMLElement | null) => void}) {
-	const featuredProject = {
-		currentWork:
-			'An orchestration workflow that uses GPT-5.6 and Fable to plan with the user, then delegates implementation, testing, blind review, and publication to cheaper models, with self-improvement loops that learn from failures.',
-		description:
-			'A full-stack TypeScript monorepo that brings my applications, shared packages, and development tooling into one workspace.',
-		href: 'https://github.com/MP281X/deslop',
-		name: 'deslop',
-		role: 'Full-Stack TypeScript Monorepo',
-		stack: 'Effect · React · TypeScript · WebSockets · PostgreSQL · Docker'
-	}
-	const supportingProjects = [
-		{
-			description:
-				'A starter for React and Kotlin/Spring applications with generated API types, PostgreSQL migrations, real-time sync, authentication, and reusable UI components.',
-			href: 'https://github.com/MP281X/kotlin-react-template',
-			name: 'Kotlin React Template',
-			role: 'Full-Stack Starter',
-			stack: 'React · Kotlin · Spring · Effect · PostgreSQL · ElectricSQL'
-		},
-		{
-			description:
-				'An open-source video platform with FFmpeg/HLS processing, background jobs, real-time upload progress, PostgreSQL, Redis, S3-compatible storage, and Kubernetes deployment.',
-			href: 'https://github.com/MP281X/blixter_video',
-			name: 'Blixter',
-			role: 'Video Streaming Platform',
-			stack: 'TypeScript · FFmpeg · PostgreSQL · Redis · Kubernetes'
-		}
-	]
-
 	return (
 		<Section id={3} registerSection={input.registerSection}>
 			<SectionLabel title="Personal Projects" />
 			<div className="flex w-full max-w-5xl flex-col gap-4">
-				<ProjectCard project={featuredProject} />
+				<ProjectCard
+					project={{
+						currentWork:
+							'An orchestration workflow that uses GPT-5.6 and Fable to plan with the user, then delegates implementation, testing, blind review, and publication to cheaper models, with self-improvement loops that learn from failures.',
+						description:
+							'A full-stack TypeScript monorepo that brings my applications, shared packages, and development tooling into one workspace.',
+						href: 'https://github.com/MP281X/deslop',
+						name: 'deslop',
+						role: 'Full-Stack TypeScript Monorepo',
+						stack: 'Effect · React · TypeScript · WebSockets · PostgreSQL · Docker'
+					}}
+				/>
 
 				<div className="grid gap-4 md:grid-cols-2">
-					{Array.map(supportingProjects, project => (
-						<ProjectCard key={project.name} project={project} />
-					))}
+					{Array.map(
+						[
+							{
+								description:
+									'A starter for React and Kotlin/Spring applications with generated API types, PostgreSQL migrations, real-time sync, authentication, and reusable UI components.',
+								href: 'https://github.com/MP281X/kotlin-react-template',
+								name: 'Kotlin React Template',
+								role: 'Full-Stack Starter',
+								stack: 'React · Kotlin · Spring · Effect · PostgreSQL · ElectricSQL'
+							},
+							{
+								description:
+									'An open-source video platform with FFmpeg/HLS processing, background jobs, real-time upload progress, PostgreSQL, Redis, S3-compatible storage, and Kubernetes deployment.',
+								href: 'https://github.com/MP281X/blixter_video',
+								name: 'Blixter',
+								role: 'Video Streaming Platform',
+								stack: 'TypeScript · FFmpeg · PostgreSQL · Redis · Kubernetes'
+							}
+						],
+						project => (
+							<ProjectCard key={project.name} project={project} />
+						)
+					)}
 				</div>
 			</div>
 		</Section>
@@ -526,141 +529,144 @@ function ProjectsSection(input: {registerSection: (id: number, node: HTMLElement
 }
 
 function ExperienceSection(input: {registerSection: (id: number, node: HTMLElement | null) => void}) {
-	const experience = [
-		{
-			company: 'Humans.Tech',
-			highlights: [
-				'Built the shared frontend foundation used to start new products, defining reusable architecture, tooling, and development conventions',
-				'Developed reusable messaging interfaces for person-to-person and AI-agent conversations',
-				'Created reusable data-display primitives, including tables and virtualized lists for large datasets',
-				'Collaborated closely with backend engineers to design, integrate, and refine product functionality',
-				'Introduced AI-assisted development workflows that accelerated implementation for both individual and team delivery'
-			],
-			location: 'Frosinone, Italy',
-			note: '',
-			period: 'Apr 2026 – Jul 2026',
-			role: 'Frontend Developer'
-		},
-		{
-			company: 'Tinexta Cyber',
-			highlights: [
-				'Developed a real-time network inventory application for a major telecommunications company',
-				'Built the real-time frontend in React with ElectricSQL for live updates across all users',
-				'Implemented a custom type-safe RPC-like client from the Kotlin backend OpenAPI schema',
-				'Gathered requirements directly from end users and iterated through feedback rounds',
-				'Containerized and deployed multiple services using Docker with Jenkins CI/CD',
-				'Used AI coding agents daily with project-specific guidelines for development'
-			],
-			location: 'Udine, Italy',
-			note: '',
-			period: 'Oct 2024 – Mar 2026',
-			role: 'Full-Stack Developer'
-		},
-		{
-			company: 'Altitudo',
-			highlights: [
-				'Migrated the build system from Create React App to Vite',
-				'Improved rendering performance by adding proper memoization',
-				'Migrated legacy class components to modern functional components using React hooks',
-				'Recreated and restyled multiple pages using React and Tailwind CSS'
-			],
-			location: 'Salzburg, Austria',
-			note: 'Erasmus Internship',
-			period: 'Jan 2024 – Mar 2024',
-			role: 'Frontend Developer'
-		},
-		{
-			company: 'BizAway',
-			highlights: [
-				'Developed a type-safe E2E testing framework on top of the OpenAPI schema using Playwright',
-				'Built a type-safe email template framework using TSX-style components',
-				'Migrated API endpoints from the old OpenAPI version to the new specification',
-				'Built and updated multiple Angular components and features'
-			],
-			location: 'Spilimbergo, Italy',
-			note: 'Internship',
-			period: 'Jun 2023 – Aug 2023',
-			role: 'Backend Developer'
-		}
-	]
-
 	return (
 		<Section id={4} registerSection={input.registerSection}>
 			<SectionLabel title="Experience" />
 			<div className="flex w-full max-w-5xl flex-col gap-4">
-				{Array.map(experience, job => (
-					<Panel key={job.company} className="px-4 py-4 sm:px-5">
-						<div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-							<div className="space-y-1">
-								<p className="text-foreground font-mono text-sm font-semibold tracking-widest uppercase">
-									{job.company}
-								</p>
-								<div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs sm:text-sm">
-									<span>{job.role}</span>
-									{String.isNonEmpty(job.note) && <span className="text-muted-foreground/80">· {job.note}</span>}
+				{Array.map(
+					[
+						{
+							company: 'Humans.Tech',
+							highlights: [
+								'Built the shared frontend foundation used to start new products, defining reusable architecture, tooling, and development conventions',
+								'Developed reusable messaging interfaces for person-to-person and AI-agent conversations',
+								'Created reusable data-display primitives, including tables and virtualized lists for large datasets',
+								'Collaborated closely with backend engineers to design, integrate, and refine product functionality',
+								'Introduced AI-assisted development workflows that accelerated implementation for both individual and team delivery'
+							],
+							location: 'Frosinone, Italy',
+							note: '',
+							period: 'Apr 2026 – Jul 2026',
+							role: 'Frontend Developer'
+						},
+						{
+							company: 'Tinexta Cyber',
+							highlights: [
+								'Developed a real-time network inventory application for a major telecommunications company',
+								'Built the real-time frontend in React with ElectricSQL for live updates across all users',
+								'Implemented a custom type-safe RPC-like client from the Kotlin backend OpenAPI schema',
+								'Gathered requirements directly from end users and iterated through feedback rounds',
+								'Containerized and deployed multiple services using Docker with Jenkins CI/CD',
+								'Used AI coding agents daily with project-specific guidelines for development'
+							],
+							location: 'Udine, Italy',
+							note: '',
+							period: 'Oct 2024 – Mar 2026',
+							role: 'Full-Stack Developer'
+						},
+						{
+							company: 'Altitudo',
+							highlights: [
+								'Migrated the build system from Create React App to Vite',
+								'Improved rendering performance by adding proper memoization',
+								'Migrated legacy class components to modern functional components using React hooks',
+								'Recreated and restyled multiple pages using React and Tailwind CSS'
+							],
+							location: 'Salzburg, Austria',
+							note: 'Erasmus Internship',
+							period: 'Jan 2024 – Mar 2024',
+							role: 'Frontend Developer'
+						},
+						{
+							company: 'BizAway',
+							highlights: [
+								'Developed a type-safe E2E testing framework on top of the OpenAPI schema using Playwright',
+								'Built a type-safe email template framework using TSX-style components',
+								'Migrated API endpoints from the old OpenAPI version to the new specification',
+								'Built and updated multiple Angular components and features'
+							],
+							location: 'Spilimbergo, Italy',
+							note: 'Internship',
+							period: 'Jun 2023 – Aug 2023',
+							role: 'Backend Developer'
+						}
+					],
+					job => (
+						<Panel key={job.company} className="px-4 py-4 sm:px-5">
+							<div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+								<div className="space-y-1">
+									<p className="text-foreground font-mono text-sm font-semibold tracking-widest uppercase">
+										{job.company}
+									</p>
+									<div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs sm:text-sm">
+										<span>{job.role}</span>
+										{String.isNonEmpty(job.note) && <span className="text-muted-foreground/80">· {job.note}</span>}
+									</div>
 								</div>
+								<p className="text-muted-foreground font-mono text-xs sm:text-right">
+									{job.period} · {job.location}
+								</p>
 							</div>
-							<p className="text-muted-foreground font-mono text-xs sm:text-right">
-								{job.period} · {job.location}
-							</p>
-						</div>
-						{Array.isReadonlyArrayNonEmpty(job.highlights) && (
-							<ul className="mt-3 flex flex-col gap-1.5">
-								{Array.map(job.highlights, highlight => (
-									<li
-										key={highlight}
-										className="text-foreground/85 flex items-start gap-2 font-mono text-xs leading-6 sm:text-sm"
-									>
-										<span className="bg-foreground/50 mt-2 size-1 shrink-0 rounded-full" aria-hidden="true" />
-										<span>{highlight}</span>
-									</li>
-								))}
-							</ul>
-						)}
-					</Panel>
-				))}
+							{Array.isReadonlyArrayNonEmpty(job.highlights) && (
+								<ul className="mt-3 flex flex-col gap-1.5">
+									{Array.map(job.highlights, highlight => (
+										<li
+											key={highlight}
+											className="text-foreground/85 flex items-start gap-2 font-mono text-xs leading-6 sm:text-sm"
+										>
+											<span className="bg-foreground/50 mt-2 size-1 shrink-0 rounded-full" aria-hidden="true" />
+											<span>{highlight}</span>
+										</li>
+									))}
+								</ul>
+							)}
+						</Panel>
+					)
+				)}
 			</div>
 		</Section>
 	)
 }
 
 function EducationSection(input: {registerSection: (id: number, node: HTMLElement | null) => void}) {
-	const education = [
-		{
-			degree: 'Cloud Developer Diploma',
-			description: 'Cloud-native architectures, CI/CD, Docker & Kubernetes, full-stack web application development.',
-			grade: '95/100',
-			period: '2022 – 2024',
-			school: 'ITS Alto Adriatico'
-		},
-		{
-			degree: 'High School Diploma – IT and Telecommunications',
-			description: 'Telecommunications, electronics, networking fundamentals, and programming foundations.',
-			grade: '',
-			period: '2017 – 2022',
-			school: 'ISIS A. Malignani'
-		}
-	]
-
 	return (
 		<Section id={5} registerSection={input.registerSection}>
 			<SectionLabel title="Education & Languages" />
 			<div className="flex w-full max-w-5xl flex-col gap-4">
-				{Array.map(education, entry => (
-					<Panel key={entry.school} className="px-4 py-4 sm:px-5">
-						<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-							<div className="flex flex-wrap items-baseline gap-x-3">
-								<span className="text-foreground font-mono text-sm font-semibold">{entry.school}</span>
-								<span className="text-muted-foreground font-mono text-xs sm:text-sm">{entry.degree}</span>
-								{String.isNonEmpty(entry.grade) && (
-									<span className="text-muted-foreground/80 font-mono text-xs">({entry.grade})</span>
-								)}
+				{Array.map(
+					[
+						{
+							degree: 'Cloud Developer Diploma',
+							description:
+								'Cloud-native architectures, CI/CD, Docker & Kubernetes, full-stack web application development.',
+							grade: '95/100',
+							period: '2022 – 2024',
+							school: 'ITS Alto Adriatico'
+						},
+						{
+							degree: 'High School Diploma – IT and Telecommunications',
+							description: 'Telecommunications, electronics, networking fundamentals, and programming foundations.',
+							grade: '',
+							period: '2017 – 2022',
+							school: 'ISIS A. Malignani'
+						}
+					],
+					entry => (
+						<Panel key={entry.school} className="px-4 py-4 sm:px-5">
+							<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+								<div className="flex flex-wrap items-baseline gap-x-3">
+									<span className="text-foreground font-mono text-sm font-semibold">{entry.school}</span>
+									<span className="text-muted-foreground font-mono text-xs sm:text-sm">{entry.degree}</span>
+									{String.isNonEmpty(entry.grade) && (
+										<span className="text-muted-foreground/80 font-mono text-xs">({entry.grade})</span>
+									)}
+								</div>
+								<span className="text-muted-foreground/80 font-mono text-xs">{entry.period}</span>
 							</div>
-							<span className="text-muted-foreground/80 font-mono text-xs">{entry.period}</span>
-						</div>
-						<p className="text-foreground/85 mt-2 font-mono text-xs leading-6 sm:text-sm">{entry.description}</p>
-					</Panel>
-				))}
+							<p className="text-foreground/85 mt-2 font-mono text-xs leading-6 sm:text-sm">{entry.description}</p>
+						</Panel>
+					)
+				)}
 				<div className="grid gap-3 sm:grid-cols-3">
 					{Array.map(
 						[

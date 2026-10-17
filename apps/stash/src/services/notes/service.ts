@@ -133,11 +133,10 @@ export class Notes extends Context.Service<
 			})
 
 			const tagNote = Effect.fnUntraced(function* (note: Note, stills: Image[]) {
-				const id = note.id
 				const preview = yield* pipe(
 					Effect.forEach(
 						Option.toArray(Option.fromNullishOr(note.image)),
-						type => Effect.map(fs.readFile(path.join(images, id)), bytes => ({bytes, type})),
+						type => Effect.map(fs.readFile(path.join(images, note.id)), bytes => ({bytes, type})),
 						{concurrency: 'unbounded'}
 					),
 					optional('The preview could not be read', Array.empty<Image>)
@@ -149,7 +148,7 @@ export class Notes extends Context.Service<
 					String.isEmpty(commentFor(note.text)) &&
 					Array.isReadonlyArrayEmpty(pictures)
 				) {
-					return yield* updateNote(id, item => ({
+					return yield* updateNote(note.id, item => ({
 						...item,
 						issue: Boolean.match(String.isEmpty(item.issue), {
 							onFalse: () => item.issue,
@@ -165,7 +164,7 @@ export class Notes extends Context.Service<
 						tags: Array.map(tagCounts(yield* SubscriptionRef.get(state)), entry => entry.tag)
 					})
 				)
-				yield* updateNote(id, item =>
+				yield* updateNote(note.id, item =>
 					Result.match(outcome, {
 						onFailure: error => ({...item, issue: error.message, status: 'failed' as const}),
 						onSuccess: organization => ({...item, ...organization, status: 'ready' as const})

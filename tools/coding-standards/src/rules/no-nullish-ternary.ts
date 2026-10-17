@@ -5,8 +5,6 @@ import type {Context, ESTree} from '@oxlint/plugins'
 
 import {importedMember, memberName} from '#rules/shared.ts'
 
-const nullishPredicates = ['isNotNull', 'isNotNullish', 'isNotUndefined', 'isNull', 'isNullish', 'isUndefined']
-
 function isNullish(input: {context: Context; node: ESTree.Expression | ESTree.PrivateIdentifier}) {
 	if (input.node.type === 'Literal') return input.node.value === null
 	return input.node.type === 'Identifier' && input.node.name === 'undefined'
@@ -26,7 +24,9 @@ function testsNullish(input: {context: Context; node: ESTree.Expression}) {
 		input.node.type === 'CallExpression' &&
 		input.node.callee.type === 'MemberExpression' &&
 		importedMember({context: input.context, importedName: 'Predicate', node: input.node.callee}) &&
-		Option.exists(memberName(input.node.callee), name => Array.contains(nullishPredicates, name))
+		Option.exists(memberName(input.node.callee), name =>
+			Array.contains(['isNotNull', 'isNotNullish', 'isNotUndefined', 'isNull', 'isNullish', 'isUndefined'], name)
+		)
 	)
 }
 

@@ -1,29 +1,15 @@
 import {Array, Function, MutableList, Option, Predicate, String, pipe} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
-import type {Context, ESTree, Token, Variable} from '@oxlint/plugins'
+import type {Context, ESTree, Variable} from '@oxlint/plugins'
 
-import {outermost, rootName, variableFromScope} from '#rules/shared.ts'
+import {inert, matches, outermost, rootName, variableFromScope} from '#rules/shared.ts'
 
-const functions = ['ArrowFunctionExpression', 'FunctionDeclaration', 'FunctionExpression']
-
-// A read inside a loop or a branch runs a different number of times than the declaration.
-const deferred = [
-	'ChainExpression',
-	'ConditionalExpression',
-	'DoWhileStatement',
-	'ForInStatement',
-	'ForOfStatement',
-	'ForStatement',
-	'IfStatement',
-	'LogicalExpression',
-	'SwitchStatement',
-	'WhileStatement'
-]
+const FUNCTIONS = ['ArrowFunctionExpression', 'FunctionDeclaration', 'FunctionExpression']
 
 function insideFunction(node: ESTree.Node): boolean {
 	if (Predicate.isNullish(node.parent) || node.parent.type === 'Program') return false
-	if (Array.contains(functions, node.parent.type)) return true
+	if (Array.contains(FUNCTIONS, node.parent.type)) return true
 	return insideFunction(node.parent)
 }
 
@@ -34,6 +20,91 @@ function sameRoot(input: {context: Context; declarator: ESTree.Node; name: strin
 			variableFromScope({name: input.name, scope: input.context.sourceCode.getScope(input.declarator)})
 		) ===
 		Option.getOrUndefined(variableFromScope({name: input.name, scope: input.context.sourceCode.getScope(input.read)}))
+	)
+}
+
+// `note` in `note.image.length` reads the path `note.image.length`.
+function pathTop(node: ESTree.Node): ESTree.Node {
+	if (node.parent?.type === 'MemberExpression' && node.parent.object === node && !node.parent.computed) {
+		return pathTop(node.parent)
+	}
+	return node
+}
+
+// A comparison, a negation, a condition or a predicate call on a path narrows it; the right side of `a && b` passes its value on to whatever tests it.
+function tested(node: ESTree.Node): boolean {
+	if (Predicate.isNullish(node.parent)) return false
+	if (node.parent.type === 'LogicalExpression') return node.parent.left === node || tested(node.parent)
+	if (Array.contains(['ChainExpression', 'TSAsExpression', 'TSNonNullExpression'], node.parent.type)) {
+		return tested(node.parent)
+	}
+	return (
+		(node.parent.type === 'BinaryExpression' &&
+			Array.contains(['!=', '!==', '==', '===', 'in', 'instanceof'], node.parent.operator)) ||
+		(node.parent.type === 'UnaryExpression' && Array.contains(['!', 'typeof'], node.parent.operator)) ||
+		(node.parent.type === 'ConditionalExpression' && node.parent.test === node) ||
+		(node.parent.type === 'IfStatement' && node.parent.test === node) ||
+		(node.parent.type === 'SwitchStatement' && node.parent.discriminant === node) ||
+		// Any call can be a type guard, so an argument counts as tested when the call is, or when the callee reads as a predicate.
+		(node.parent.type === 'CallExpression' &&
+			node.parent.callee !== node &&
+			// `schema` in `Schema.is(schema)(value)` builds the predicate; only `value` is tested.
+			!(node.parent.parent.type === 'CallExpression' && node.parent.parent.callee === node.parent) &&
+			(predicate(node.parent.callee) || tested(node.parent)))
+	)
+}
+
+// `isText`, `Predicate.isString`, `Option.isSome` and the curried `Schema.is(Schema.String)` read as predicates.
+function predicate(callee: ESTree.Node): boolean {
+	if (callee.type === 'CallExpression') return predicate(callee.callee)
+	if (callee.type === 'Identifier') return matches(/^(?:has|is)(?:[A-Z]|$)/u)(callee.name)
+	return (
+		callee.type === 'MemberExpression' &&
+		callee.property.type === 'Identifier' &&
+		matches(/^(?:has|is)(?:[A-Z]|$)/u)(callee.property.name)
+	)
+}
+
+// A callback that is not passed straight to a call may run after the property changes, so its alias is a snapshot.
+function deferred(input: {block: ESTree.Node; node: ESTree.Node}): boolean {
+	if (Predicate.isNullish(input.node.parent) || input.node.parent === input.block) return false
+	const parent = input.node.parent
+	if (
+		Array.contains(FUNCTIONS, parent.type) &&
+		!(parent.parent?.type === 'CallExpression' && Array.some(parent.parent.arguments, argument => argument === parent))
+	) {
+		return true
+	}
+	return deferred({...input, node: parent})
+}
+
+// TypeScript keeps a narrowed alias inside a callback but drops a narrowed property path, so the alias is needed only when a callback reads a path that a check narrowed, or when a check before the alias narrowed its property.
+function needsAlias(input: {context: Context; declaration: ESTree.VariableDeclaration; reads: ESTree.Node[]}) {
+	if (
+		input.declaration.parent.type !== 'BlockStatement' ||
+		!Array.contains(FUNCTIONS, input.declaration.parent.parent.type) ||
+		!pipe(
+			input.declaration.parent.body,
+			Array.takeWhile(statement => statement !== input.declaration),
+			Array.every(statement => statement.type === 'VariableDeclaration')
+		)
+	) {
+		return true
+	}
+	const block = input.declaration.parent
+	const paths = Array.map(input.reads, read => ({
+		callback: enclosed({block, node: read, types: FUNCTIONS}),
+		node: pathTop(read),
+		text: input.context.sourceCode.getText(pathTop(read))
+	}))
+	return Array.some(
+		paths,
+		checked =>
+			tested(checked.node) &&
+			Array.some(
+				paths,
+				read => read.callback && (read.text === checked.text || String.startsWith(`${checked.text}.`)(read.text))
+			)
 	)
 }
 
@@ -60,13 +131,6 @@ function written(node: ESTree.Node) {
 		return objectRoot(node.argument)
 	}
 	return Option.none()
-}
-
-// Names, literals and the openings of calls, arrays and objects run no code, so a getter cannot run before the moved read.
-function inert(token: Token) {
-	if (Array.contains(['Boolean', 'Identifier', 'Null', 'Numeric', 'String'], token.type)) return true
-	if (token.type === 'Keyword') return Array.contains(['const', 'return'], token.value)
-	return token.type === 'Punctuator' && Array.contains(['(', ',', ':', '=', '[', '{'], token.value)
 }
 
 function replacement(input: {name: string; read: ESTree.Node; text: string}) {
@@ -99,8 +163,9 @@ function report(input: {
 					const used = outermost(read)
 					return (
 						read.parent.type !== 'ExportSpecifier' &&
-						// TypeScript drops a property path's narrowing inside a callback, so a read there can need the alias.
-						!enclosed({block: input.declaration.parent, node: read, types: functions}) &&
+						(!needsAlias({context: input.context, declaration: input.declaration, reads}) ||
+							!enclosed({block: input.declaration.parent, node: read, types: FUNCTIONS})) &&
+						!deferred({block: input.declaration.parent, node: read}) &&
 						// A called alias is a detached method, which runs without `this`.
 						!(used.parent?.type === 'CallExpression' && used.parent.callee === used) &&
 						!(used.parent?.type === 'TaggedTemplateExpression' && used.parent.tag === used) &&
@@ -127,7 +192,24 @@ function report(input: {
 								read =>
 									// A JSX tag name also has a closing name.
 									String.startsWith('JSX')(read.parent.type) ||
-									enclosed({block: input.declaration.parent, node: read, types: deferred}) ||
+									// A read inside a callback, a loop or a branch runs a different number of times than the declaration.
+									enclosed({
+										block: input.declaration.parent,
+										node: read,
+										types: [
+											...FUNCTIONS,
+											'ChainExpression',
+											'ConditionalExpression',
+											'DoWhileStatement',
+											'ForInStatement',
+											'ForOfStatement',
+											'ForStatement',
+											'IfStatement',
+											'LogicalExpression',
+											'SwitchStatement',
+											'WhileStatement'
+										]
+									}) ||
 									Array.some(input.statements, node => between({declaration: input.declaration, node, read})) ||
 									!Array.every(input.context.sourceCode.getTokensBetween(input.declaration, read), inert)
 							)
@@ -178,6 +260,27 @@ export const noPropertyAlias = defineRule({
 			},
 			UpdateExpression: write,
 			VariableDeclarator: node => {
+				if (
+					node.parent.type === 'VariableDeclaration' &&
+					node.parent.parent.type === 'ExportNamedDeclaration' &&
+					node.id.type === 'Identifier' &&
+					node.init?.type === 'MemberExpression'
+				) {
+					const init = node.init
+					pipe(
+						rootName(init),
+						Option.flatMap(root => variableFromScope({name: root, scope: context.sourceCode.getScope(node)})),
+						Option.filter(variable => Array.every(variable.defs, definition => definition.type === 'Variable')),
+						Option.match({
+							onNone: Function.constVoid,
+							onSome: variable =>
+								context.report({
+									message: `Export ${variable.name} and read ${context.sourceCode.getText(init)} where it is used.`,
+									node
+								})
+						})
+					)
+				}
 				if (
 					node.parent.type === 'VariableDeclaration' &&
 					node.parent.kind === 'const' &&

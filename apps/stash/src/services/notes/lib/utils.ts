@@ -2,15 +2,11 @@ import {Array, HashMap, HashSet, Option, Order, Record, String, pipe} from 'effe
 
 import type {Note, NotesEvent} from '#services/notes/schema.ts'
 
-const urlPattern = /https?:\/\/[^\s<>"]+/iu
+const URL_PATTERN = /https?:\/\/[^\s<>"]+/iu
 
-const xHosts = ['twitter.com', 'www.twitter.com', 'mobile.twitter.com', 'x.com', 'www.x.com', 'mobile.x.com']
+const X_HOSTS = ['twitter.com', 'www.twitter.com', 'mobile.twitter.com', 'x.com', 'www.x.com', 'mobile.x.com']
 
-const youTubeHosts = /(?:^|\.)(?:youtube\.com|youtu\.be)$/u
-
-const instagramHosts = /(?:^|\.)instagram\.com$/u
-
-const trackingParameters = [
+const TRACKING_PARAMETERS = [
 	'fbclid',
 	'gclid',
 	'igsh',
@@ -36,9 +32,9 @@ function withoutTrailingPunctuation(link: string): string {
 
 function canonicalUrl(link: string) {
 	const url = new URL(link)
-	if (Array.contains(xHosts, url.hostname)) url.hostname = 'x.com'
+	if (Array.contains(X_HOSTS, url.hostname)) url.hostname = 'x.com'
 	if (sourceFor(url.href) === 'Website') {
-		for (const key of trackingParameters) url.searchParams.delete(key)
+		for (const key of TRACKING_PARAMETERS) url.searchParams.delete(key)
 	} else {
 		url.search = ''
 	}
@@ -48,7 +44,7 @@ function canonicalUrl(link: string) {
 
 export function captureUrl(text: string) {
 	return pipe(
-		String.match(urlPattern)(text),
+		String.match(URL_PATTERN)(text),
 		Option.flatMap(Array.head),
 		Option.map(withoutTrailingPunctuation),
 		Option.flatMap(Option.liftThrowable(canonicalUrl)),
@@ -58,23 +54,25 @@ export function captureUrl(text: string) {
 
 export function sourceFor(url: string) {
 	const host = new URL(url).hostname
-	if (Array.contains(xHosts, host) || host === 't.co') return 'X'
+	if (Array.contains(X_HOSTS, host) || host === 't.co') return 'X'
 	if (host === 'tiktok.com' || String.endsWith('.tiktok.com')(host)) return 'TikTok'
 	return 'Website'
 }
 
 export function isYouTube(url: string) {
-	return youTubeHosts.test(new URL(url).hostname)
+	return Option.isSome(String.match(/(?:^|\.)(?:youtube\.com|youtu\.be)$/u)(new URL(url).hostname))
 }
 
 export function hasVideo(url: string) {
 	const link = new URL(url)
 	if (sourceFor(url) === 'TikTok') return !String.includes('/photo/')(link.pathname)
-	return sourceFor(url) === 'X' || isYouTube(url) || instagramHosts.test(link.hostname)
+	return (
+		sourceFor(url) === 'X' || isYouTube(url) || Option.isSome(String.match(/(?:^|\.)instagram\.com$/u)(link.hostname))
+	)
 }
 
 export function commentFor(text: string) {
-	return pipe(text, String.replace(new RegExp(urlPattern.source, 'giu'), ''), plainText)
+	return pipe(text, String.replace(new RegExp(URL_PATTERN.source, 'giu'), ''), plainText)
 }
 
 export function plainText(text: string) {

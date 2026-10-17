@@ -73,41 +73,47 @@ function report(input: {context: Context; node: ESTree.Function | ESTree.ArrowFu
 	) {
 		return
 	}
-	const name = pipe(
-		check({name: predicate.parameterName.name, node: returned}),
-		Option.map(checks => pipe(checks, Array.sort(String.Order), Array.join(' && '))),
-		Option.flatMap(key =>
-			Record.get<string, string>(
-				{
-					'!= null': 'isNotNullish',
-					'!== null': 'isNotNull',
-					'!== null && !Array.isArray && typeof === object': 'isObject',
-					'!== null && typeof === object': 'isObjectOrArray',
-					'!== undefined': 'isNotUndefined',
-					'== null': 'isNullish',
-					'=== null': 'isNull',
-					'=== undefined': 'isUndefined',
-					'instanceof Date': 'isDate',
-					'instanceof Error': 'isError',
-					'instanceof Map': 'isMap',
-					'instanceof RegExp': 'isRegExp',
-					'instanceof Set': 'isSet',
-					'instanceof Uint8Array': 'isUint8Array',
-					'typeof === bigint': 'isBigInt',
-					'typeof === boolean': 'isBoolean',
-					'typeof === function': 'isFunction',
-					'typeof === number': 'isNumber',
-					'typeof === string': 'isString',
-					'typeof === symbol': 'isSymbol',
-					'typeof === undefined': 'isUndefined'
-				},
-				key
+
+	Option.map(
+		pipe(
+			check({name: predicate.parameterName.name, node: returned}),
+			Option.map(checks => pipe(checks, Array.sort(String.Order), Array.join(' && '))),
+			Option.flatMap(key =>
+				Record.get<string, string>(
+					{
+						'!= null': 'isNotNullish',
+						'!== null': 'isNotNull',
+						'!== null && !Array.isArray && typeof === object': 'isObject',
+						'!== null && typeof === object': 'isObjectOrArray',
+						'!== undefined': 'isNotUndefined',
+						'== null': 'isNullish',
+						'=== null': 'isNull',
+						'=== undefined': 'isUndefined',
+						'instanceof Date': 'isDate',
+						'instanceof Error': 'isError',
+						'instanceof Map': 'isMap',
+						'instanceof RegExp': 'isRegExp',
+						'instanceof Set': 'isSet',
+						'instanceof Uint8Array': 'isUint8Array',
+						'typeof === bigint': 'isBigInt',
+						'typeof === boolean': 'isBoolean',
+						'typeof === function': 'isFunction',
+						'typeof === number': 'isNumber',
+						'typeof === string': 'isString',
+						'typeof === symbol': 'isSymbol',
+						'typeof === undefined': 'isUndefined'
+					},
+					key
+				)
 			)
-		)
+		),
+		guard => {
+			input.context.report({
+				message: `Use Predicate.${guard} instead of this hand-written type guard.`,
+				node: input.node
+			})
+		}
 	)
-	Option.map(name, guard => {
-		input.context.report({message: `Use Predicate.${guard} instead of this hand-written type guard.`, node: input.node})
-	})
 }
 
 export const noHandWrittenGuard = defineRule({

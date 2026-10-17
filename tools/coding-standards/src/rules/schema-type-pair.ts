@@ -90,8 +90,6 @@ function namedTypeAlias(input: {
 	)
 }
 
-type ExportLists = ReturnType<typeof exportLists>
-
 function exportedNames(input: {program: ESTree.Program; typeOnly: boolean}) {
 	return Array.flatMap(input.program.body, statement => {
 		if (statement.type !== 'ExportNamedDeclaration' || statement.declaration !== null || statement.source !== null) {
@@ -111,7 +109,7 @@ function exportLists(program: ESTree.Program) {
 }
 
 function isExported(input: {
-	exports: ExportLists
+	exports: {types: string[]; values: string[]}
 	name: string
 	statement: ESTree.Statement | ESTree.ModuleDeclaration
 	typeOnly: boolean
@@ -126,7 +124,7 @@ function isExported(input: {
 function reportSchemaVariable(input: {
 	context: Context
 	cycleNames: string[]
-	exports: ExportLists
+	exports: {types: string[]; values: string[]}
 	program: ESTree.Program
 	statement: ESTree.Statement
 	variable: ESTree.VariableDeclarator

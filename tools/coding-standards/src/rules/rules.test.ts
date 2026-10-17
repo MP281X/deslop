@@ -203,6 +203,7 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 						customCodes(result.stdout),
 						pipe(
 							[
+								'@deslop/coding-standards(module-constant)',
 								'@deslop/coding-standards(no-array-wrap-ternary)',
 								'@deslop/coding-standards(no-array-wrap-ternary)',
 								'@deslop/coding-standards(no-constant-function)',
@@ -238,7 +239,6 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								'@deslop/coding-standards(no-return-type)',
 								'@deslop/coding-standards(no-in-operator)',
 								'@deslop/coding-standards(no-property-alias)',
-								'@deslop/coding-standards(no-trivial-indirection)',
 								'@deslop/coding-standards(no-trivial-indirection)',
 								'@deslop/coding-standards(no-redundant-use-ref-null-type)',
 								'@deslop/coding-standards(no-redundant-use-ref-null-type)',
@@ -309,6 +309,9 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								"import * as EffectArray from 'effect/Array'",
 								"import {String} from 'effect/Schema'",
 								'',
+								'// GitHub caps a page at 100 items.',
+								'const LIMIT = 2',
+								'const VERSION_PATTERN = /^v/u',
 								'declare const input: unknown',
 								'declare const names: string[]',
 								'const namespaced = EffectArray.map([input], identity)',
@@ -367,12 +370,9 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								'const snapshots = Array.map([input], readSnapshot)',
 								'const DefaultInput = Schema.JsonObject.make({schema: {type: "object"}})',
 								'function isCall(node: {type: string}): node is {type: "CallExpression"} { return node.type === "CallExpression" }',
-								'// GitHub caps a page at 100 items.',
-								'const limit = 2',
-								'const limits = [limit, limit]',
+								'const limits = [LIMIT, LIMIT]',
 								'const version = "1"',
-								'const versionPattern = /^v/u',
-								'const versionPatterns = [versionPattern]',
+								'const versionPatterns = [VERSION_PATTERN, VERSION_PATTERN]',
 								'const thunks = {size: () => pipe(names, Array.map(identity))}',
 								'const measure = Effect.fn("measure")(function* (value: string) { return yield* Effect.succeed(value.length) }, Effect.map(length => length + 1))',
 								'const payload: unknown = names',
@@ -395,7 +395,9 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								'function first(value: number): number { if (value <= 0) return 0; return second(value - 1) }',
 								'function second(value: number): number { return third(value) + 1 }',
 								'function third(value: number): number { return first(value) * 2 }',
+								'// oxlint-disable-next-line no-use-before-define -- a cycle of constants has no order',
 								'const ping = Effect.fnUntraced(function* (value: number): Effect.fn.Return<number> { return yield* pong(value) })',
+								'// oxlint-disable-next-line no-use-before-define -- a cycle of constants has no order',
 								'const pong = Effect.fnUntraced(function* (value: number): Effect.fn.Return<number> { return yield* pang(value) })',
 								'const pang = Effect.fnUntraced(function* (value: number): Effect.fn.Return<number> { if (value <= 0) return 0; return yield* ping(value - 1) })',
 								'class Walker { walk(value: number): number { if (value <= 0) return 0; return this.walk(value - 1) + 1 } }',
@@ -410,7 +412,6 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 								'declare function fetchName(id: string): Promise<string>',
 								'async function loadName(id: string) { return fetchName(id) }',
 								'function* echo(value: string) { return transform(value) }',
-								'export function slotLengths(holder: {slot: string}) { const slot = holder.slot; return Array.map(names, () => slot.length) }',
 								'declare class Missing { _tag: "Missing" }',
 								'const missing = Effect.fail(new Missing())',
 								'const nestedFailure = Effect.fn("nestedFailure")(function* (id: string) { return yield* pipe(Effect.succeed(id), Effect.flatMap(() => Effect.fail(new Missing()))) })',
@@ -575,6 +576,8 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 						'@deslop/coding-standards(no-property-alias)',
 						'@deslop/coding-standards(no-property-alias)',
 						'@deslop/coding-standards(no-property-alias)',
+						'@deslop/coding-standards(no-property-alias)',
+						'@deslop/coding-standards(no-single-use-value)',
 						'@deslop/coding-standards(no-single-use-value)',
 						'@deslop/coding-standards(no-single-use-value)',
 						'@deslop/coding-standards(no-single-use-value)',
@@ -976,6 +979,126 @@ describe('deslop Oxlint plugin', {concurrent: false}, () => {
 							],
 							Array.join('\n')
 						)
+					])
+				}),
+			20_000
+		)
+
+		testApi.effect(
+			'names and places module constants, keeps elements and derived types out of variables, and keeps aliases TypeScript narrows',
+			() =>
+				Effect.gen(function* () {
+					const result = yield* lintSource({
+						'values.tsx': pipe(
+							[
+								"import {Array, Schema} from 'effect'",
+								'',
+								'const LIMIT = 5',
+								'const PRIMITIVES: Record<string, string> = {button: "Button"}',
+								'const once = 3',
+								'const maxSize = 10',
+								'const STICKY = /x/gu',
+								'const COUNTER = {value: 0}',
+								'declare const items: string[]',
+								'declare function ready(value: unknown): value is string',
+								'declare function isText(value: unknown): value is string',
+								'declare function consume(...values: unknown[]): number',
+								'declare function load(): Promise<string>',
+								'const TRAILING = "late"',
+								'type Loaded = Awaited<ReturnType<typeof load>>',
+								'export type Exported = Awaited<ReturnType<typeof load>>',
+								'const icon = <span />',
+								'export function Icon() { return <div>{icon}{icon}</div> }',
+								'export function show(value: Loaded) { return [value, value] }',
+								'export const counted = consume(LIMIT, LIMIT, once, maxSize, maxSize, TRAILING, TRAILING, PRIMITIVES.button)',
+								'export function narrowed(holder: {image?: string}) { const image = holder.image; if (image === undefined) return 0; return Array.map(items, () => image.length) }',
+								'export function Detail(props: {note: {image?: string; title: string}}) { const note = props.note; return note.image !== undefined && Array.map(items, () => note.title) }',
+								'export function guarded(holder: {image?: string}) { const image = holder.image; if (!ready(image)) return 0; return Array.map(items, () => image.length) }',
+								'export function snapshot(box: {value: string}) { const value = box.value; return () => value }',
+								'export function advance(text: string) { return STICKY.exec(text) }',
+								'export function next() { return ++COUNTER.value }',
+								'export function named(holder: {image?: string}) { const image = holder.image; const valid = isText(image); if (!valid) return []; return [valid, Array.map(items, () => image.length)] }',
+								'export function curried(holder: {image?: string}) { const image = holder.image; const valid = Schema.is(Schema.String)(image); if (!valid) return []; return [valid, Array.map(items, () => image.length)] }',
+								'export function factory(holder: {schema: typeof Schema.String}) { const schema = holder.schema; return Array.map(items, value => Schema.is(schema)(value)) }',
+								'type Listed = ReturnType<typeof load>',
+								'export type {Listed}'
+							],
+							Array.join('\n')
+						)
+					})
+					assert.deepStrictEqual(customCodes(result.stdout), [
+						'@deslop/coding-standards(module-constant)',
+						'@deslop/coding-standards(module-constant)',
+						'@deslop/coding-standards(module-constant)',
+						'@deslop/coding-standards(no-floating-derived-type)',
+						'@deslop/coding-standards(no-property-alias)',
+						'@deslop/coding-standards(no-property-alias)',
+						'@deslop/coding-standards(no-stored-jsx)'
+					])
+					const fixed = yield* lintSource(
+						{
+							'annotated.ts': pipe(
+								[
+									'const labels: Record<string, string> = {small: "s"}',
+									'const minSize = 1',
+									'export const sizes = {small: labels.small, tiny: labels.tiny}',
+									'export function shadowed(MIN_SIZE: number) { return [minSize, minSize, MIN_SIZE] }'
+								],
+								Array.join('\n')
+							),
+							'ordered.ts': pipe(
+								[
+									'declare const api: {method: (value: string) => string}',
+									'declare function make(value: string): string',
+									'export function ordered() {',
+									'	const output = make(',
+									'		"x"',
+									'	)',
+									'	return api.method(output)',
+									'}',
+									'export function spread(source: {value: string}) {',
+									'	const copy = {',
+									'		...source',
+									'	}',
+									'	return api.method(copy.value)',
+									'}'
+								],
+								Array.join('\n')
+							),
+							'rename.ts': 'const maxSize = 10\nexport const sizes = {maxSize, other: maxSize}'
+						},
+						['--fix']
+					)
+					assert.deepStrictEqual(fixed.sources, [
+						pipe(
+							[
+								"const LABELS: Record<string, string> = {small: 's'}",
+								'const minSize = 1',
+								'export const sizes = {small: LABELS.small, tiny: LABELS.tiny}',
+								'export function shadowed(MIN_SIZE: number) {',
+								'	return [minSize, minSize, MIN_SIZE]',
+								'}',
+								''
+							],
+							Array.join('\n')
+						),
+						pipe(
+							[
+								'declare const api: {method: (value: string) => string}',
+								'declare function make(value: string): string',
+								'export function ordered() {',
+								"	const output = make('x')",
+								'	return api.method(output)',
+								'}',
+								'export function spread(source: {value: string}) {',
+								'	const copy = {...source}',
+								'	return api.method(copy.value)',
+								'}',
+								''
+							],
+							Array.join('\n')
+						),
+						'const MAX_SIZE = 10\nexport const sizes = {maxSize: MAX_SIZE, other: MAX_SIZE}\n'
 					])
 				}),
 			20_000

@@ -14,10 +14,7 @@ import {Spinner} from '#components/ui/spinner.tsx'
 import {Textarea} from '#components/ui/textarea.tsx'
 import {cn, formatError, toSentenceCase} from '#lib/utils.ts'
 
-const formContexts = tanstackForm.createFormHookContexts()
-
-export const useFieldContext = formContexts.useFieldContext
-export const useFormContext = formContexts.useFormContext
+const {fieldContext, formContext, useFieldContext, useFormContext} = tanstackForm.createFormHookContexts()
 
 function FieldWrapper(props: {children: React.ReactNode}) {
 	const field = useFieldContext<unknown>()
@@ -264,7 +261,7 @@ function ComboboxField<TOption extends {id: string}>(props: {
 	)
 }
 
-const formHook = tanstackForm.createFormHook({
+export const {useAppForm} = tanstackForm.createFormHook({
 	fieldComponents: {
 		CheckboxField,
 		ComboboxField,
@@ -275,12 +272,11 @@ const formHook = tanstackForm.createFormHook({
 		TextAreaField,
 		TextField
 	},
-	fieldContext: formContexts.fieldContext,
+	fieldContext,
 	formComponents: {CancelButton, SubmitButton},
-	formContext: formContexts.formContext
+	formContext
 })
 
-export const useForm = formHook.useAppForm
 export const revalidateLogic = tanstackForm.revalidateLogic
 
 export declare namespace Form {

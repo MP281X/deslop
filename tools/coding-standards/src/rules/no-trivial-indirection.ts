@@ -230,6 +230,8 @@ function singleUseLiteral(input: {context: Context; node: ESTree.VariableDeclara
 		input.node.parent.type !== 'VariableDeclaration' ||
 		input.node.parent.kind !== 'const' ||
 		isExport(input.node.parent.parent) ||
+		// module-constant owns module-level literals.
+		input.node.parent.parent.type === 'Program' ||
 		input.node.id.type !== 'Identifier' ||
 		input.node.id.typeAnnotation !== null ||
 		!(

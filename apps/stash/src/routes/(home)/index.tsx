@@ -88,6 +88,11 @@ import {BrandIcon, BrandLogo} from '@deslop/components-mobile/icons'
 import {colors, mono} from '@deslop/components-mobile/theme'
 import {assetAtom} from '@deslop/components-mobile/utils'
 
+const OFFERS = {
+	image: {question: 'Save the copied image?', symbol: 'photo'},
+	link: {question: 'Save the copied link?', symbol: 'link'}
+} as const
+
 function Placeholder(props: {symbol: 'globe' | 'photo' | 'play.rectangle' | 'text.alignleft' | 'text.bubble'}) {
 	return (
 		<Image
@@ -150,17 +155,21 @@ function Preview(props: {note: NoteItem}) {
 }
 
 function Lines(props: {note: NoteItem}) {
-	const note = props.note
 	const byline = pipe(
-		[note.author, DateTime.formatLocal(DateTime.makeUnsafe(note.createdAt), {day: 'numeric', month: 'short'})],
+		[
+			props.note.author,
+			DateTime.formatLocal(DateTime.makeUnsafe(props.note.createdAt), {day: 'numeric', month: 'short'})
+		],
 		Array.filter(String.isNonEmpty),
 		Array.join(' · ')
 	)
 	return pipe(
-		Match.value(note.status),
+		Match.value(props.note.status),
 		Match.when('organizing', () => (
 			<VStack alignment="leading" spacing={4}>
-				<Text modifiers={[mono('headline', 16), foregroundStyle(colors.foreground), lineLimit(2)]}>{note.title}</Text>
+				<Text modifiers={[mono('headline', 16), foregroundStyle(colors.foreground), lineLimit(2)]}>
+					{props.note.title}
+				</Text>
 				<Text
 					modifiers={[
 						font({textStyle: 'subheadline'}),
@@ -177,7 +186,9 @@ function Lines(props: {note: NoteItem}) {
 		)),
 		Match.when('failed', () => (
 			<VStack alignment="leading" spacing={4}>
-				<Text modifiers={[mono('headline', 16), foregroundStyle(colors.foreground), lineLimit(2)]}>{note.title}</Text>
+				<Text modifiers={[mono('headline', 16), foregroundStyle(colors.foreground), lineLimit(2)]}>
+					{props.note.title}
+				</Text>
 				<Label
 					title="Couldn’t read this link"
 					systemImage="exclamationmark.triangle.fill"
@@ -188,9 +199,11 @@ function Lines(props: {note: NoteItem}) {
 		)),
 		Match.orElse(() => (
 			<VStack alignment="leading" spacing={4}>
-				<Text modifiers={[mono('headline', 16), foregroundStyle(colors.foreground), lineLimit(2)]}>{note.title}</Text>
+				<Text modifiers={[mono('headline', 16), foregroundStyle(colors.foreground), lineLimit(2)]}>
+					{props.note.title}
+				</Text>
 				<Text modifiers={[font({textStyle: 'subheadline'}), foregroundStyle(colors.mutedForeground), lineLimit(2)]}>
-					{note.summary}
+					{props.note.summary}
 				</Text>
 				<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>{byline}</Text>
 			</VStack>
@@ -205,23 +218,13 @@ function NoteRow(props: {
 	onRegenerate: (id: Note['id']) => void
 	onRemove: (id: Note['id']) => void
 }) {
-	const note = props.note
-	const remove = (
-		<Button
-			label="Delete"
-			systemImage="trash"
-			role="destructive"
-			onPress={() => props.onRemove(note.id)}
-			modifiers={[tint(colors.destructive)]}
-		/>
-	)
 	return (
 		<SwipeActions
 			modifiers={[
 				listRowBackground(colors.background),
 				listRowSeparatorTint(colors.border),
 				listRowInsets({bottom: 10, leading: 16, top: 10, trailing: 16}),
-				tag(note.id)
+				tag(props.note.id)
 			]}
 		>
 			<ContextMenu>
@@ -234,22 +237,25 @@ function NoteRow(props: {
 							frame({alignment: 'leading', maxWidth: Infinity}),
 							contentShape(shapes.rectangle()),
 							onAppear(props.onAppear),
-							onTapGesture(() => props.onOpen(note.id)),
+							onTapGesture(() => props.onOpen(props.note.id)),
 							accessibilityElement('combine')
 						]}
 					>
-						<Preview note={note} />
-						<Lines note={note} />
+						<Preview note={props.note} />
+						<Lines note={props.note} />
 					</HStack>
 				</ContextMenu.Trigger>
 				<ContextMenu.Items>
-					{Option.match(Option.fromNullishOr(note.url), {
+					{Option.match(Option.fromNullishOr(props.note.url), {
 						onNone: () => undefined,
 						onSome: url => (
 							<Button onPress={() => Linking.openURL(url)}>
 								<Label
-									title={Option.match(appOf(note), {onNone: () => 'Open Link', onSome: name => `Open in ${name}`})}
-									{...Option.match(brandOf(note), {
+									title={Option.match(appOf(props.note), {
+										onNone: () => 'Open Link',
+										onSome: name => `Open in ${name}`
+									})}
+									{...Option.match(brandOf(props.note), {
 										onNone: () => ({systemImage: 'arrow.up.right' as const}),
 										onSome: brand => ({icon: <BrandIcon brand={brand} />})
 									})}
@@ -257,12 +263,26 @@ function NoteRow(props: {
 							</Button>
 						)
 					})}
-					<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => props.onRegenerate(note.id)} />
-					{remove}
+					<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => props.onRegenerate(props.note.id)} />
+					<DeleteButton onPress={() => props.onRemove(props.note.id)} />
 				</ContextMenu.Items>
 			</ContextMenu>
-			<SwipeActions.Actions edge="trailing">{remove}</SwipeActions.Actions>
+			<SwipeActions.Actions edge="trailing">
+				<DeleteButton onPress={() => props.onRemove(props.note.id)} />
+			</SwipeActions.Actions>
 		</SwipeActions>
+	)
+}
+
+function DeleteButton(props: {onPress: () => void}) {
+	return (
+		<Button
+			label="Delete"
+			systemImage="trash"
+			role="destructive"
+			onPress={props.onPress}
+			modifiers={[tint(colors.destructive)]}
+		/>
 	)
 }
 
@@ -313,11 +333,6 @@ function FilterMenu(props: {kind: Kind | ''; onKind: (kind: Kind | '') => void})
 	)
 }
 
-const offers = {
-	image: {question: 'Save the copied image?', symbol: 'photo'},
-	link: {question: 'Save the copied link?', symbol: 'link'}
-} as const
-
 // The sheet hangs off the title in the bar, so it adds nothing to the layout.
 function PasteSheet() {
 	const offer = pipe(useAtomValue(offerAtom), AsyncResult.getOrElse(Option.none))
@@ -356,8 +371,8 @@ function PasteSheet() {
 					background(colors.background)
 				]}
 			>
-				<Image systemName={offers[kind].symbol} size={24} modifiers={[foregroundStyle(colors.foreground)]} />
-				<Text modifiers={[mono('headline', 17), foregroundStyle(colors.foreground)]}>{offers[kind].question}</Text>
+				<Image systemName={OFFERS[kind].symbol} size={24} modifiers={[foregroundStyle(colors.foreground)]} />
+				<Text modifiers={[mono('headline', 17), foregroundStyle(colors.foreground)]}>{OFFERS[kind].question}</Text>
 				<VStack spacing={4} modifiers={[padding({top: 6})]}>
 					<Button
 						onPress={() => answer(true)}

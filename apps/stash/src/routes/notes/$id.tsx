@@ -207,14 +207,13 @@ function Placeholder() {
 }
 
 function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string) => void}) {
-	const note = props.note
-	const full = useAtomValue(noteAtom(note))
-	const reload = useAtomRefresh(noteAtom(note))
+	const full = useAtomValue(noteAtom(props.note))
+	const reload = useAtomRefresh(noteAtom(props.note))
 	const meta = pipe(
 		[
-			note.author,
-			Option.getOrElse(appOf(note), () => ''),
-			DateTime.formatLocal(DateTime.makeUnsafe(note.createdAt), {day: 'numeric', month: 'short', year: 'numeric'})
+			props.note.author,
+			Option.getOrElse(appOf(props.note), () => ''),
+			DateTime.formatLocal(DateTime.makeUnsafe(props.note.createdAt), {day: 'numeric', month: 'short', year: 'numeric'})
 		],
 		Array.filter(String.isNonEmpty),
 		Array.join(' · ')
@@ -226,22 +225,22 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 				spacing={16}
 				modifiers={[padding({bottom: 32, horizontal: 20, top: 8}), frame({alignment: 'leading', maxWidth: Infinity})]}
 			>
-				{note.image !== undefined && <Cover note={note} />}
+				{props.note.image !== undefined && <Cover note={props.note} />}
 				<VStack alignment="leading" spacing={6}>
 					<Text modifiers={[mono('headline', 18), foregroundStyle(colors.foreground), textSelection(true)]}>
-						{note.title}
+						{props.note.title}
 					</Text>
 					<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground)]}>{meta}</Text>
 				</VStack>
 				{pipe(
-					Match.value(note.status),
+					Match.value(props.note.status),
 					Match.when('organizing', () => <Placeholder />),
 					Match.when('failed', () => (
 						<VStack spacing={12} modifiers={[frame({maxWidth: Infinity})]}>
 							<ContentUnavailableView
 								title="Couldn’t Read This Link"
 								systemImage="exclamationmark.triangle"
-								description={note.issue}
+								description={props.note.issue}
 							/>
 							<Button
 								label="Try Again"
@@ -253,7 +252,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 					)),
 					Match.orElse(() => (
 						<VStack alignment="leading" spacing={16}>
-							<Text modifiers={prose}>{note.summary}</Text>
+							<Text modifiers={prose}>{props.note.summary}</Text>
 							{AsyncResult.match(full, {
 								onFailure: () => (
 									<Button
@@ -269,10 +268,10 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 						</VStack>
 					))
 				)}
-				{!Array.isReadonlyArrayEmpty(note.tags) && (
+				{!Array.isReadonlyArrayEmpty(props.note.tags) && (
 					<ScrollView axes="horizontal" showsIndicators={false}>
 						<HStack spacing={8}>
-							{Array.map(note.tags, tag => (
+							{Array.map(props.note.tags, tag => (
 								<Chip key={tag} label={tag} active={false} onPress={() => props.onTag(tag)} />
 							))}
 						</HStack>

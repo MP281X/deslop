@@ -282,6 +282,9 @@ importers:
       cheerio:
         specifier: latest
         version: 1.2.0
+      domhandler:
+        specifier: ^5.0.3
+        version: 5.0.3
       expo-clipboard:
         specifier: ^58.0.3
         version: 58.0.3(expo@58.0.10(@babel/core@7.29.7(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.1))(react-native@0.88.0-rc.4(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)(typescript@7.0.2))(react-native@0.88.0-rc.4(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)

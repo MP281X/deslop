@@ -3,16 +3,16 @@ import {Array, Option, Result, pipe} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
+const VARIANTS = {
+	'&&': {comparison: '!==', message: 'Use Predicate.isNotNullish.'},
+	'||': {comparison: '===', message: 'Use Predicate.isNullish.'}
+} as const
+
 function nullishOperand(node: ESTree.Expression) {
 	if (node.type === 'Literal' && node.value === null) return Option.some('null')
 	if (node.type === 'Identifier' && node.name === 'undefined') return Option.some('undefined')
 	return Option.none()
 }
-
-const variants = {
-	'&&': {comparison: '!==', message: 'Use Predicate.isNotNullish.'},
-	'||': {comparison: '===', message: 'Use Predicate.isNullish.'}
-} as const
 
 function operands(input: {node: ESTree.Expression; operator: '&&' | '||'}): ESTree.Expression[] {
 	if (input.node.type !== 'LogicalExpression' || input.node.operator !== input.operator) return [input.node]
@@ -33,7 +33,7 @@ export const noDoubleNullishCheck = defineRule({
 		LogicalExpression: node => {
 			if (node.operator === '??') return
 			if (node.parent.type === 'LogicalExpression' && node.parent.operator === node.operator) return
-			const variant = variants[node.operator]
+			const variant = VARIANTS[node.operator]
 			const checks = pipe(
 				operands({node, operator: node.operator}),
 				Array.filterMap(operand =>

@@ -118,7 +118,7 @@ export const searchAtom = RpcClient.runtime.atom(get => {
 })
 
 export function imageAtom(id: Note['id']) {
-	return downloadAtom({name: id, url: new URL(`/api/images/${id}`, MobileRuntime.server).href})
+	return downloadAtom({name: id, url: new URL(`/api/images/${id}`, MobileRuntime.extra.server).href})
 }
 
 // Actions stay alive, so leaving the screen does not interrupt the request.
@@ -204,7 +204,7 @@ const saveImage = Effect.gen(function* () {
 			catch: cause => NotesError.make({cause, message: 'The image could not be sent.'}),
 			try: () => {
 				file.writeSync(String.replace(/^data:[^,]*,/u, '')(image.data), {encoding: 'base64'})
-				return file.upload(new URL(`/api/files/${id}`, MobileRuntime.server).href, {
+				return file.upload(new URL(`/api/files/${id}`, MobileRuntime.extra.server).href, {
 					headers: {'content-type': 'image/jpeg'},
 					httpMethod: 'POST'
 				})
