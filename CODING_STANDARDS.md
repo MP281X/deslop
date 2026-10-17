@@ -10,7 +10,7 @@ Repository-specific decisions that the code, the generators and lint do not alre
 
 ## Layout
 
-- A service's public contract lives in `src/schema.ts` (schemas, types, domain error) and `src/service.ts` (tag, shape, static layers); a sole implementation stays inline in its Layer, as in `apps/stash/src/services/notes/service.ts`, and private adapters and schemas go in `src/lib/`. `lib/utils.ts` holds pure helpers and stays frontend-safe. Each file exists once it has content.
+- A service's public contract lives in `src/schema.ts` (schemas, types, domain error) and `src/service.ts` (tag, shape, static layers); a sole implementation stays inline in its Layer, as in `apps/stash/src/services/notes/service.ts`, and private adapters go in `src/lib/`. Every schema of a service lives in its `schema.ts`, including the answer of an outside source, such as `FxPost` and `Metadata` in `apps/stash/src/services/*/schema.ts`. `lib/utils.ts` holds pure helpers and stays frontend-safe. Each file exists once it has content.
 - A component one page uses stays in that page's file.
 - Workspace packages export their TypeScript source directly, with no library build; tools and apps require Node 26.
 

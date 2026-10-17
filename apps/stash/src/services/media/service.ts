@@ -23,35 +23,12 @@ import {env, pipeline} from '@huggingface/transformers'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
 import {captionTranscript, clock, sourceProxy, speechOnly, sticky} from '#services/media/lib/utils.ts'
-import {MediaError} from '#services/media/schema.ts'
+import {MediaError, Metadata, Transcription} from '#services/media/schema.ts'
 
 const MAX_WHISPER_SECONDS = 2 * 60 * 60
 
 const BLOCKED_ANSWER =
 	/not a bot|requir(?:es|ing) login|login required|CONNECT tunnel failed|ProxyError|HTTP Error (?:403|429|5\d\d)|Requested format is not available|timed out/iu
-
-type Metadata = typeof Metadata.Type
-const Metadata = Schema.Struct({
-	_type: Schema.optionalKey(Schema.String),
-	automatic_captions: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown))),
-	chapters: Schema.optionalKey(
-		Schema.NullOr(Schema.Array(Schema.Struct({start_time: Schema.Finite, title: Schema.String})))
-	),
-	description: Schema.optionalKey(Schema.NullOr(Schema.String)),
-	duration: Schema.optionalKey(Schema.NullOr(Schema.Finite)),
-	language: Schema.optionalKey(Schema.NullOr(Schema.String)),
-	subtitles: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown))),
-	title: Schema.String,
-	upload_date: Schema.optionalKey(Schema.NullOr(Schema.String)),
-	uploader: Schema.optionalKey(Schema.NullOr(Schema.String))
-})
-
-type Transcription = typeof Transcription.Type
-const Transcription = Schema.Struct({
-	chunks: Schema.Array(
-		Schema.Struct({text: Schema.String, timestamp: Schema.Tuple([Schema.Finite, Schema.NullOr(Schema.Finite)])})
-	)
-})
 
 const run = Effect.fnUntraced(function* (command: string, args: string[]) {
 	const handle = yield* ChildProcess.make(command, args, {stderr: 'pipe', stdout: 'pipe'})
