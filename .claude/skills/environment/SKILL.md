@@ -1,58 +1,40 @@
 ---
 name: environment
-description: 'Machine facts, repository commands, previews, agent configuration installation and media extraction. Use it for the tailnet, repository commands, previews, coding-standards setup or installing Claude and Codex configuration on both workers. Also use it to set up, update, clean or redeploy a machine, or to analyze a shared video or post.'
+description: Use before any command in the Dual or deslop repository, any preview, a Jira or DOS ticket, a GitLab or VPN step, a change to persisted Dual data, a task on another worker, installing agent configuration, updating T3 or the machines, a deploy, and machine setup or cleanup.
 ---
 
 # Environment
 
-Agents run on two headless Debian workers in one tailnet, and the user switches between them. Both have the same paths and user, so a path never identifies the worker. A session-start hook in both harnesses puts `Execution worker: <name>` in context; without it, `hostname -s` names the current one. Check it before a machine-specific step, and run commands for the other worker through SSH. T3 sets up worktrees and updates itself, Codex and Claude Code.
+Two headless Debian workers in one tailnet, same user and paths; the user switches between them. The session hook prints `Execution worker: <name>`; run commands for the other worker through `ssh mp281x@<worker>`.
 
-## Tailnet
+| Name          | Address          | Role                                                                                         |
+| ------------- | ---------------- | -------------------------------------------------------------------------------------------- |
+| `desktop`     | `100.97.120.3`   | Home worker for most development, on only when the user turns it on                          |
+| `dev`         | `100.68.201.107` | Always on, public address: Traefik for `*.mp281x.xyz`, Datapizza VPN, Jaeger, overnight work |
+| `macbook-pro` | `100.115.207.60` | The user's control plane and the iOS Simulator host, on demand                               |
+| `iphone`      | `100.117.217.10` | T3 client only                                                                               |
 
-MagicDNS resolves short names, and `<name>.tailnet-8c4c.ts.net` has HTTPS certificates.
+- **Names.** MagicDNS short names; `<name>.tailnet-8c4c.ts.net` has HTTPS certificates. SSH as `mp281x@dev`, `mp281x@desktop`, `matteopaludgnach@macbook-pro`.
+- **Tools.** `vp` and `vpx` (Vite+) on `PATH` everywhere, also over SSH; systemd units need `~/.vite-plus/bin`. Sudo needs no password; `gh`, `glab` and `acli` are signed in.
+- **Scratch** under `/tmp/<task>/`, on disk, emptied at boot.
+- **Git refs.** T3 keeps checkpoint commits under `refs/t3/`; search history with `--branches --remotes`.
+- **Services** run as temporary containers, not host installs.
 
-| Name          | Address          | Role                                                                                                    |
-| ------------- | ---------------- | ------------------------------------------------------------------------------------------------------- |
-| `desktop`     | `100.97.120.3`   | Home worker for most development, on only when the user turns it on                                     |
-| `dev`         | `100.68.201.107` | Always-on worker with a public address: Traefik for `*.mp281x.xyz`, VPN, Jaeger, long or overnight work |
-| `macbook-pro` | `100.115.207.60` | The user's control plane and the iOS Simulator [device host](references/maintenance.md#mac), on demand  |
-| `iphone`      | `100.117.217.10` | The user's phone, a T3 client only                                                                      |
-
-- **SSH.** Every machine reaches every other, itself included, as `mp281x@dev`, `mp281x@desktop` and `matteopaludgnach@macbook-pro`. Copy files with `rsync -a`.
-- **GitLab.** `git.datapizza.tech` works only through dev's VPN route, so an expired VPN breaks GitLab on every machine. Reconnect it on dev per [Dual](references/dual.md).
-- **Dev tasks.** Run public-app and VPN tasks on `dev` through SSH.
-
-## References
-
-| Reference                                | Use it for                                                              |
-| ---------------------------------------- | ----------------------------------------------------------------------- |
-| [Deslop](references/deslop.md)           | Commands, app, tracing and coding standards                             |
-| [Dual](references/dual.md)               | Commands, VPN, preview, accounts, CI, tracing and coding standards      |
-| [Maintenance](references/maintenance.md) | Machine facts, access, agent configuration, updates, cleaning and setup |
-| [Media](references/media.md)             | Transcripts and post text from YouTube, X, TikTok and similar           |
-
-Run repository commands from the repository root. Read inventories and versions from source, not from prose.
-
-## Machine state
-
-- **Tools.** Vite+ supplies `vp` for packages and `vpx` for binaries. Both are on `PATH` in every shell, including `ssh <worker> '<command>'`; systemd units need the absolute `~/.vite-plus/bin` path. Sudo needs no password, and `gh` and `glab` are signed in.
-- **Scratch.** Put every scratch file under `/tmp/<task>/`. `/tmp` is on disk, empties at boot and drops files unused for 7 days.
-- **Git refs.** T3 keeps a checkpoint commit per turn under `refs/t3/`. Search history with `--branches --remotes`, or with `--exclude='refs/t3/*' --all`.
-- **Services.** Run services as temporary containers, not host installations. Preserve unrelated workloads.
+| Reference                                | For                                                                    |
+| ---------------------------------------- | ---------------------------------------------------------------------- |
+| [Dual](references/dual.md)               | Commands, production data, Jira, VPN, preview, accounts, CI, standards |
+| [Deslop](references/deslop.md)           | Commands, app, tracing, coding standards                               |
+| [Maintenance](references/maintenance.md) | Machines, agent configuration, T3 settings, updates, cleanup, setup    |
 
 ## Previews
 
-- **Build.** Run the repository's documented preview command, which the repository references name; testing's Final proof decides what it proves. Never invent a production-preview command, and keep development servers for work that requires them.
-- **Start.** Each worktree has one preview: the systemd user unit `preview-<worktree name>`, which survives a T3 restart, shared on the tailnet over HTTPS. The project's `preview`, `stop` and `settle` scripts in [maintenance's Project scripts](references/maintenance.md#t3-settings) own it; the user runs the same scripts from T3's script menu. To start it, run the project's `preview` command from the worktree root: it replaces a running preview and prints the HTTPS URL, which stays the same across restarts.
-- **Share.** The first request waits for a certificate. Verify sign-in, assets and API calls through the printed URL before you share it. Open it in the one T3 tab that you share with the user, per delivery's captures.
-- **Public webhooks.** Funnel exposes a whole port, so give the webhook path its own port: an unused one among 443, 8443 and 10000 in `sudo tailscale serve status --json`. Run `sudo tailscale funnel --bg --https=<funnel port> --set-path <path> http://127.0.0.1:<api port><path>`, and verify that the sign-in path does not answer there. Stop it with `sudo tailscale funnel --https=<funnel port> --set-path <path> off`.
-- **Restart.** Run the `preview` command again after a change that the preview does not reload, also after a build that deletes its files.
-- **Keep.** At the end of every turn, also after delivery, leave the preview running on the latest code with its HTTPS link and the T3 tab. Never stop it at handoff or wait for the user to ask for it again.
-- **Stop.** The `stop` command stops the unit and removes its Tailscale mapping. Run it only when the user asks. Never stop a listener you did not start.
-- **Settle.** T3 runs the `settle` command when the user settles a thread with its own worktree or its pull request merges. It stops the preview and runs the project's cleanup.
+- **One per worktree:** the systemd user unit `preview-<worktree name>`, shared over tailnet HTTPS. Start or restart it only with the project's `preview` script from the worktree root, per [maintenance's project scripts](references/maintenance.md#t3-settings); it prints the stable HTTPS URL and replaces the previous one. Never run the repository's preview command directly or as a harness background task: a second copy doubles its memory, and a background task dies after two hours.
+- **Share** only after the URL loads sign-in, assets and API calls; open it in the thread's one T3 tab per delivery's Captures.
+- **Keep** it running on the latest code at the end of every turn. `stop` runs only when the user asks; T3 runs `settle` when the thread settles or its PR merges.
+- **Webhooks.** Funnel exposes a whole port: pick a free one of 443, 8443, 10000 and run `sudo tailscale funnel --bg --https=<port> --set-path <path> http://127.0.0.1:<api port><path>`; remove it with `... --set-path <path> off`.
 
 ## Diagnostics
 
-- **Rerenders.** Count with React Profiler or temporary `console.count` through `preview_evaluate`; remove the probe before push. Normal-build commit counts are not CPU timings; use a profiling build for timing.
-- **Slow input.** Use `performance.mark` and a `PerformanceObserver` for `longtask` and `event` entries through `preview_evaluate`.
-- **Tracing.** Use the [Deslop](references/deslop.md#application-tracing) or [Dual](references/dual.md) endpoints. Correlate one real action's client and server spans, hierarchy, errors and duration before and after the fix. Missing spans prove neither coverage nor speed.
+- **Rerenders:** React Profiler or a temporary `console.count` through `preview_evaluate`, removed before push.
+- **Slow input:** `performance.mark` and a `PerformanceObserver` for `longtask` and `event`.
+- **Tracing:** correlate one real action's client and server spans before and after, per the repository reference.

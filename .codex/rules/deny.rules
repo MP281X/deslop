@@ -13,6 +13,33 @@ PUSH_FLAGS = ["-f", "--force", "--force-with-lease", "--force-if-includes", "-u"
 WRITE_METHODS = ["POST", "PUT", "PATCH", "DELETE"]
 
 prefix_rule(
+    pattern = [["python", "python3"]],
+    decision = "forbidden",
+    justification = "Edit with apply_patch; query data with jq or an inline vp node script.",
+    match = ["python3 -c 'print(1)'", "python script.py"],
+    not_match = ["node -e 1"],
+)
+prefix_rule(
+    pattern = ["sed", ["-i", "-i.bak", "--in-place", "--in-place=.bak"]],
+    decision = "forbidden",
+    justification = "Edit with apply_patch.",
+    match = ["sed -i s/a/b/ file.ts", "sed --in-place=.bak s/a/b/ file.ts"],
+    not_match = ["sed -n 1,20p file.ts"],
+)
+prefix_rule(
+    pattern = ["sed", ["-E", "-r"], ["-i", "-i.bak"]],
+    decision = "forbidden",
+    justification = "Edit with apply_patch.",
+    match = ["sed -E -i s/a/b/ file.ts"],
+    not_match = ["sed -E -n 1p file.ts"],
+)
+prefix_rule(
+    pattern = ["perl", ["-i", "-pi", "-pi.bak"]],
+    decision = "forbidden",
+    justification = "Edit with apply_patch.",
+    match = ["perl -pi -e s/a/b/ file.ts"],
+)
+prefix_rule(
     pattern = ["git", "push", ["--all", "--mirror"]],
     decision = "forbidden",
     justification = "Never push every branch; publish only the thread's branches.",

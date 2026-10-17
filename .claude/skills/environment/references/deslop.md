@@ -1,35 +1,26 @@
 # Deslop
 
-**Issues.** Deslop has no issue tracker; GitHub holds only its pull requests, so the request is the whole task.
+The user's own repository: no issue tracker, so the request is the whole task. Local data is disposable; production data follows `CODING_STANDARDS.md`.
 
-**Agent configuration.** The Claude pair and Codex instructions differ only before "# Core": keep every edit below that heading identical.
+## Commands
 
-**Commands.** Vite+ caches checks by task inputs and never caches fixes. Use `--no-cache` to prove a fresh run. Run root checks and rule tests sequentially: rule tests create temporary source fixtures that a concurrent type scan can read while they disappear.
-
-```bash
-vp run --workspace-root --cache check
-vp run --workspace-root --no-cache fix
-vp run --workspace-root --cache test
-```
-
-**App.** Run the portfolio preview with the deslop `preview` command from [maintenance's Project scripts](maintenance.md#t3-settings) for iteration, browser testing, captures and handoff; it sets `HOST` and `PORT`. The stash server has no worktree preview: its preview command keeps port 5017 and the real notes in `~/.deslop/stash`, which the running stash on dev uses.
-
-**Components.** List the existing shared components first. Inspect with `vp run --workspace-root shadcn list @shadcn`, `vp run --workspace-root shadcn view <component>` and `vp run --workspace-root shadcn docs <component>`.
-
-## Application tracing
-
-On dev only, the collector listens on `http://127.0.0.1:4318` and Jaeger on `http://127.0.0.1:16686`. CORS allows the production portfolio origin and any loopback port.
-
-- **Browser.** The browser exports to localhost on its own machine. A remote preview needs a reachable `VITE_OTEL_URL` with its origin allowed.
-- **Proof.** An allowed preflight does not prove that the app emits spans.
+Fix always runs at the root; check and test run on the package while you work, and at the root as the local gate before every push, one after another: rule tests create fixtures that a concurrent type scan reads. Vite+ caches checks by task inputs and never caches fixes; `--no-cache` proves a fresh run.
 
 ```bash
-curl -fsS http://127.0.0.1:16686/api/services
-curl -fsSG http://127.0.0.1:16686/api/traces --data-urlencode 'service=@deslop/portfolio-server' --data-urlencode 'lookback=10m' --data-urlencode 'limit=20' | jq '.data[] | {traceID, spans: [.spans[] | {operationName, duration, startTime}]}'
+vp run --workspace-root --no-cache fix                                         # always at the root
+vp check <package dir> && vp test run <package dir>                            # while you work
+vp run --workspace-root --cache check && vp run --workspace-root --cache test  # the local gate, before every push
 ```
 
-Logs are the collector's debug output (`docker compose --project-name deslop --file tools/compose.yaml logs --since 10m collector`); there is no log store or metrics pipeline.
+- **App.** The deslop `preview` project script runs the portfolio build for iteration, browser tests and captures. The stash server has no worktree preview: its port 5017 and real notes in `~/.deslop/stash` belong to the running stash on dev.
+- **Components.** `vp run --workspace-root shadcn list @shadcn`, `shadcn view <component>`, `shadcn docs <component>`.
+- **Agent configuration.** `.claude/agents/pair.md` and `.codex/instructions.md` are identical from `# Work` down. Shared skills live in `tools/coding-standards/skills/`; refresh the repository copies with `node tools/coding-standards/src/install.ts`.
 
-## Coding standards
+## Tracing
 
-`tools/coding-standards` holds the `@deslop/coding-standards` package: the oxlint preset, which the root `vite.config.ts` extends, and the shared skills. Edit the skills in the package's `skills/`, then refresh the copies in `.claude/skills` and `.codex/skills` with `node tools/coding-standards/src/install.ts`.
+On dev only: collector `http://127.0.0.1:4318`, Jaeger `http://127.0.0.1:16686`, CORS for the production portfolio origin and loopback. A remote preview needs a reachable `VITE_OTEL_URL`. An allowed preflight does not prove spans.
+
+```bash
+curl -fsSG http://127.0.0.1:16686/api/traces --data-urlencode 'service=@deslop/portfolio-server' --data-urlencode 'lookback=10m' --data-urlencode 'limit=20' | jq '.data[] | {traceID, spans: [.spans[] | {operationName, duration}]}'
+docker compose --project-name deslop --file tools/compose.yaml logs --since 10m collector
+```

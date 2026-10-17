@@ -1,20 +1,42 @@
 ---
 name: explore
-description: Read-only research into code, dependencies, documentation and earlier threads. Use for a plain question, a comparison of approaches, the research before an implementation, or a delegated research brief; machine questions and shared media use environment, reviews and audits use review.
+description: Use before reading anything beyond the files you will edit, their consumers and the canonical example, for a question that needs no change, a comparison of approaches, dependencies or reference repositories, research before a change, a delegated research brief, and any question about earlier threads.
 ---
 
 # Explore
 
-Answer from code, logs, named threads or primary documentation, and look for the counterexample that decides the question. Name the decision and the observation that settles it before broad exploration. Reuse known sources and capability selections while their inputs remain current; search again only for a missing fact, changed version or contradiction. Read a named reference's feature in its source, not in its README, and dependencies per [Source checkouts](#source-checkouts); use environment's media procedure for videos and posts. Settle a behavior question with a probe per testing's Throwaway. When you count, define and list the members. A failed search or fetch is not a finding. Stop when the evidence answers the question, and reply with the answer first, then only the deciding evidence.
+- **Decision first.** Name the decision and the observation that settles it; stop when the evidence settles it. Look for the counterexample, not more support.
+- **Existing first.** Lead with what the codebase and its dependencies already do for the same job.
+- **Sources.** Raw material over summaries: code, logs, rows and traces over docs and memory, a probe over reading; settle behavior with an inline script per engineering's Proof. Reproduce a stated belief from raw data before you build on it. Search by the domain concept, not only the request's words. A failed search is not a finding. When you count, define and list the members.
+- **Answer** first, then only the deciding evidence with paths and lines; mark measured facts apart from inference.
 
 ## Source checkouts
 
-Clone before you read a second file of a dependency or reference project, or before you answer a question about its behavior. Read it in a checkout of its official repository at the lockfile version; use a documentation page only for a contract the source does not state. Reuse a matching checkout under `/tmp/repos/` after you check its remote and commit. Never install, build or change a shared checkout.
+Read a dependency in a checkout of its official repository at the version the lockfile holds, never in `node_modules`. Reuse a matching checkout under `/tmp/repos/` after checking its remote and commit; never build or change a shared one.
+
+| Dependency                                                                 | Repository                                 | Tag                                            |
+| -------------------------------------------------------------------------- | ------------------------------------------ | ---------------------------------------------- |
+| Effect and `@effect/*`: platform, vitest, atom-react, sql, ai, `packages/` | https://github.com/Effect-TS/effect        | `effect@<version>`, `@effect/<name>@<version>` |
+| Vite+: `vp`, Vite, Vitest, packing                                         | https://github.com/voidzero-dev/vite-plus  | `v<version>`                                   |
+| TanStack Router and Start                                                  | https://github.com/TanStack/router         | `@tanstack/<package>@<version>`                |
+| Expo and `@expo/ui`                                                        | https://github.com/expo/expo               | `expo@<version>`, `@expo/ui@<version>`         |
+| Better Auth                                                                | https://github.com/better-auth/better-auth | `v<version>`                                   |
 
 ```bash
-git clone --depth 1 --branch <version-tag-or-required-branch> <official-repository-url> "/tmp/repos/<repository>-<version>"
+git clone --depth 1 --branch effect@4.0.5 https://github.com/Effect-TS/effect /tmp/repos/effect-4.0.5
 ```
+
+For a shape the repository has no canonical example for, read how these codebases build it, at their default branch, before you invent one. Clone with `git clone --depth 1` into `/tmp/repos/<name>` and read the named directories first:
+
+| Study                                                                   | Repository and directories                                                                                                                                                      |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Effect end to end, speed, web UI/UX, React Native app, schemas over RPC | [T3 Code](https://github.com/pingdotgg/t3code): `apps/web/src` (`state`, `rpc`, `components`), `apps/server/src`, `apps/mobile/src`, `packages/contracts/src`, `.agents/skills` |
+| Agents, tool execution, sandboxed runtimes, generative UI, Effect atoms | [Executor](https://github.com/UsefulSoftwareCo/executor): `packages/kernel`, `packages/core/execution`, `packages/react/src`, `apps/cli/src`, `.agents/skills/wrdn-effect-*`    |
+| Package organization, AI providers, CLI and TUI                         | [OpenCode](https://github.com/anomalyco/opencode): `packages/ai/src`, `packages/core/src`, `packages/cli/src`                                                                   |
+| Effect's own idioms and tests                                           | [Effect](https://github.com/Effect-TS/effect): `packages/effect/src`, `packages/*/test`                                                                                         |
+| Local-first sync and optimistic writes                                  | [Electric](https://github.com/electric-sql/electric): `examples/agents-chat-starter/src`                                                                                        |
+| Streaming generative UI in React                                        | [AI SDK](https://github.com/vercel/ai): `packages/react/src`                                                                                                                    |
 
 ## T3 history
 
-Search earlier decisions with `t3_thread_search` before you read transcripts. Each worker stores only its own threads, so an analysis of the user's threads queries both workers: the local one that `hostname -s` names, and the other one through `ssh mp281x@<worker> '<command>'`. A child whose brief names one worker queries only that worker. Query `~/.t3/userdata/statev2.sqlite` with `sqlite3 -readonly`, and select only the fields you need, never raw payloads or credentials. Current records are in `orchestration_v2_projection_*`; other `projection_*` tables can be stale, except `projection_projects`. Native transcripts are in `~/.claude/projects` and `~/.codex/sessions`. Analyze the full run, including children, tool results, corrections and artifacts; distinguish measured facts from evaluator judgments.
+Search with `t3_thread_search` first. Each worker stores only its own threads: query both, the other through `ssh mp281x@<worker>`. Use `sqlite3 -readonly ~/.t3/userdata/statev2.sqlite`, selecting only needed fields; current records are in `orchestration_v2_projection_*` (`_threads`, `_messages`, `_turn_items`, `_runs`, `_subagents`). Native transcripts with every tool call: `~/.claude/projects/*/*.jsonl`, `~/.codex/sessions/**`. Analyze the full run with its children and the user's corrections.

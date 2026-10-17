@@ -33,7 +33,7 @@ This is an offline publishing exercise. Use local Git branches and commits; writ
 - Split independent export and browser-search changes into independent branches on the baseline.
 - Keep each branch runnable alone and preserve import behavior.
 - Assign each hunk to exactly one PR; keep shared dependencies in a real parent only when needed.
-- Replay branches independently and together in disposable checkouts; test merge-tree for conflicts.
+- Check each branch head in the current checkout; test merge-tree for conflicts.
 - Put the user-visible behavior and its evidence in each PR body.
 
 Judge the structure from actual commits and diffs, not a proposed stack diagram. Reject empty layers, duplicated patches, unrelated formatting and a stack added without a dependency. No live publishing is required; this case does not claim to evaluate host notifications or pipeline scheduling.

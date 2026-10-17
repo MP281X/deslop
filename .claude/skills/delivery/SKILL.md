@@ -1,124 +1,90 @@
 ---
 name: delivery
-description: Branches, pull requests, publishing, readiness and visual proof. Use when structuring or publishing changes, writing review artifacts, recording screenshots or video, or handling pull request notices; orchestrator owns the implementation lifecycle.
+description: Use before the first commit or push, before writing a PR body, before monitoring a PR, before taking a screenshot or recording or composing a video, and on every PR notice.
 ---
 
 # Delivery
 
 ## Branches
 
-The user reviews and squash-merges one pull request at a time. Independent changes start from the default branch; dependent changes stack on their real dependency.
+The user reviews and squash-merges one PR at a time.
 
-- **Split.** Settle PR boundaries before the first commit. One PR holds one feature that the user reviews as a unit; split unrelated features, never one feature only for its size. Keep generated files with their source.
-- **Owner.** The thread owns every layer of its stack and decides the split itself; never ask the user how to split. Fold a follow-up change into the layer whose feature it changes with a fixup commit; open a new layer only for a new feature. Restructure the layers when the feature set changes. A cleanup PR holds root-fix changes on untouched lines and removed superseded code.
-- **Independent.** Keep each branch runnable alone. Put shared required changes in a real parent. Before publishing, run `git merge-tree --write-tree <branch> <other branch>` for each independent pair and resolve overlapping ownership.
-- **Chain.** Keep one commit per PR on `<thread branch>-chain`, dependencies first. Use `git commit --fixup=<commit>` and `git rebase --autosquash origin/<default branch>` to update its owning commit.
-- **Publish branches.** Rebuild each thread-owned branch with `git switch -C <branch> <base> && git cherry-pick <commit>`; its base is the default branch or dependency branch. Open drafts, never use `gh stack --open`, and return to the chain. Push with `--force-with-lease`, one push per command; deny rules reject a command containing both a push and the default branch name. On GitHub, run `gh stack link <numbers, bottom first>`.
-- **Reuse.** Reuse open PRs and branch names. Run `gh stack unstack <stack number>` before reordering or dropping a linked PR, then relink. Close only a PR whose content moved, naming its new location.
-- **Back to draft.** When you commit to the layer of a ready PR, return it to draft in the same step: `gh pr ready <number> --undo` or `glab mr update <number> --draft`. Draft marks work in progress; ready marks a finished head.
-- **After merges.** Fetch and rebase the chain onto the default branch; republish only changed bases or diffs and unlink merged PRs. GitHub stacks retarget themselves; retarget the next GitLab merge request.
+- **Split.** One PR is one feature the user accepts as a unit. Independent features start from the default branch; a layer stacks only on a real dependency. Instruction and configuration changes of one thread ship as one PR. Generated files stay with their source. Decide the split yourself before the first commit.
+- **Chain.** Keep one commit per PR on `<thread branch>-chain`, dependencies first. A follow-up to a feature is `git commit --fixup=<commit> -- <paths>` into its layer, naming its paths so nothing else staged rides along; a new layer only for a new feature.
+- **Publish.** Rebuild each layer with `git switch -C <branch> <base> && git cherry-pick <commit>`, push with `--force-with-lease`, one push per command, then return to the chain. Open drafts; on GitHub link stacks with `gh stack link <numbers, bottom first>`, never `--open`. Reuse open PRs and branch names; `gh stack unstack` before reordering.
+- **Rebase** before every push: `git fetch` and `git rebase --autosquash origin/<default branch>`. A conflict gets the same rebase. A PR is never behind or conflicting at handoff.
+- **After merges.** Rebase the chain, republish changed layers and unlink merged PRs; retarget the next GitLab merge request.
 
-## Publish and hand off
+## Publish
 
-1. Fetch, rebase onto `origin/<default branch>` and rerun root commands. Verify frozen installation after manifest or lockfile changes. Failing local checks block the push; running captures, reviews and pipelines do not. Commit and push as soon as a working slice passes root commands, then again after each working step, so every pushed head works and the user can stop at any of them.
-2. Push every changed PR of the iteration together. Set titles and bodies only after the push they describe; use the format below. Link each PR with `link_pull_request`, never the replacing link action of `t3_thread_update`, watch each pushed PR and start its T3 review guide.
-3. Write the title, body and commit message at the first push, from the change facts. Later edits only add an entry for a pushed change, a capture under its entry, or correct a known error or changed fact. Do not reread or self-check them, fetch them back after editing, or delegate an artifact review. Review an artifact only when the user requests it or an evaluation targets it. Handle notices per Notices below.
-4. When required jobs pass on the exact final head, review findings are resolved and the captures are in the body, mark that PR ready. When `read_pull_request_guide` reports the guide stale, start it again in the same step. Commands: `gh pr ready <number>` or `glab mr update <number> --ready`.
-5. Unwatch every PR and stop owned services; the preview and its tab stay per environment's Previews. Give a manual guide only for user-only unproved behavior.
+1. **Gate** at the root on every layer's head before every push, with the repository's local gate per environment: `git switch --detach <layer head> && <gate> && git switch -`, one layer after another. The pipeline is slow and only confirms what passed locally. Push every working step.
+2. **Describe** the head as it is now, per [Body](#body): write the title, body and commit message at the first push and rewrite them after every push that changes what they say. They never narrate how the PR got there: no "now also", "updated", "fixed review" or superseded captures.
+3. Link each PR with `link_pull_request`, watch it with `watch_pull_request` and start its review guide with `write_pull_request_guides`.
+4. **Monitor** only through the `watch_pull_request` wakes: after a push, end the turn with one line naming the head it waits for. A wake about the current head (a failure, a review comment by someone else, a conflict) gets a fix and a push; a wake about an older head, a running job or a repeat needs no action.
+5. **Ready** when the final head passes required jobs, the review loop has no open P1 or P2, the captures are in the body and [Critique](#critique) finds nothing: `gh pr ready <n>` or `glab mr update <n> --ready`. A new commit on a ready layer returns it to draft in the same step (`gh pr ready <n> --undo`, `glab mr update <n> --draft`). Restart a stale review guide.
+6. **Handoff** once every PR is ready and current with the default branch: `unwatch_pull_request` each PR, stop owned services, then write the one final reply. The preview and its tab stay.
 
-## Notices
+## Body
 
-Retain each PR's current head, handled check state, unresolved review and readiness action in the current plan. Compare a notice with that state before reading logs or delegating work. Ignore older-head checks, running-job updates and already-handled transitions. If the head is unknown, read its current identity and check state once. Act on a new failure, current-head completion, new review finding or conflict; a repeated notice does not invalidate proof or reopen review. Handle readiness once per final head.
+The body reads like a reply per pair's Replies rules: an opening line with the central change in the user's terms, then one `###` per change a user or caller notices, each with its exhibit, central change first.
 
-These instructions reduce work after a model wake. Filtering duplicates or combining events before the model runs requires T3 runtime support; do not claim that a skill implements it or patch an installed runtime binary.
+- **Risk.** Up to three bullets right after the opening: a migration, a changed contract, removed behavior. Omit when nothing can break.
+- **Contracts.** A changed endpoint, schema, key, migration or exported API gets a before and after table and the caller migration.
+- **Evidence.** Each capture under the entry it proves: one video per journey, at most eight screenshots, a changed screen as a before and after table with the same data, the target branch left.
+- **Also.** Minor changes as one-line bullets under `### Also`; the last names generated files and the command that reproduces them.
+- **Never** test counts, check tables, process notes, a proof section, code links (T3's review guide tours the code) or the repository's template.
 
-## Visual proof
+## Captures
 
-Use [captures](references/captures.md) to record, inspect and present screenshots and video. Testing owns whether the evidence proves the claim; design owns the application's interface.
+What a capture shows and how it looks follow design; this section is how to make one.
 
-## GitLab stacks
+- **Browser.** One tab, shared with the user. Find it with `preview_status`; open one only when none exists, with `preview_open`, `open: true` and the preview URL. Pass its `tabId` to every call; never a second tab on the preview. While the user controls it, do other work. Leave it open on the changed screen.
+- **Drive.** Theme with `preview_set_appearance`, size with `preview_resize`, wait with `preview_wait_for`, never a fixed delay. Batch reads in `preview_evaluate`. After a failed action, read the screen, console and failed requests before you retry.
+- **Record** each storyboard chapter with `preview_recording_start` before its first meaningful input and `preview_recording_stop` after its outcome, the tab resized with `preview_resize` to the `iphone-12-pro` preset (390×844); a layout that exists only on desktop at 1440×900 (freeform). Contact sheet: `ffmpeg -i <video> -vf fps=1,scale=640:-1,tile=4x4 <sheet-%03d.png>`.
+- **Native apps.** Boot a simulator on `macbook-pro` per environment's device host, then use T3's device tools with the exact launcher and flags from `device_open`. Run `open <bundle id>` before `snapshot -i`, `screenshot <path> --pixel-density 3` or `record start <path>`.
+- **Camera targets.** Read each input's target and the outcome's box right after recording starts and before each input:
 
-Stack ordinary merge requests by targeting each predecessor branch; publish and retarget with `glab mr create` and `glab mr update --target-branch`. The GitLab UI needs no stack feature.
+  ```js
+  ;(() => {
+  	const r = document.querySelector('<selector>').getBoundingClientRect()
+  	// Fractions of the recording after its crop to multiples of 16.
+  	const w = Math.floor(innerWidth / 16) * 16
+  	const h = Math.floor(innerHeight / 16) * 16
+  	const box = [r.left / w, r.top / h, r.width / w, r.height / h]
+  	return {box, t: Date.now(), target: [box[0] + box[2] / 2, box[1] + box[3] / 2]}
+  })()
+  ```
 
-Do not use `glab stack` in shared T3 worktrees: glab 1.122.0 stores both metadata and the active stack in the common Git directory. A second worktree can change which stack a command operates on. Keep the thread-owned chain and explicit MR targets above, without another stack manager.
+- **Compose** the video: copy [proof-video.html](proof-video.html) into a scratch project with the chapter recordings and the app font in `assets/`, set its tokens from the app's theme, then its captions, chapters, moves and reveal from the storyboard. Its look stays in every video: a flat near-black backdrop, captions whose words rise into focus, a touch marker that presses, chapters that grow out of the last input, a spotlight reveal and expo easing. Re-encode each recording with a keyframe every second and both sides cropped to a multiple of 16, then check and render. Never run HyperFrames feedback, publish or cloud commands.
 
-## Example body
+  ```bash
+  ffmpeg -i <recording> -vf 'crop=trunc(iw/16)*16:trunc(ih/16)*16:0:0' -force_key_frames 'expr:gte(t,n_forced)' -c:v libx264 -pix_fmt yuv420p assets/chapter-<n>.mp4
+  export HYPERFRAMES_NO_TELEMETRY=1 HYPERFRAMES_BROWSER_PATH=$(ls -d ~/.t3/tools/chrome-headless-shell/linux64/*/chrome-headless-shell | tail -1)
+  vpx hyperframes@0.8.141 check && vpx hyperframes@0.8.141 render --quality delivery --output <claim>.mp4
+  ffmpeg -ss <second> -i <claim>.mp4 -frames:v 1 -vf scale=390:-1 <frame>.png # read each chapter's frame at phone size
+  ```
 
-Describe each change that a user or caller notices across the whole branch against its target branch, each with its evidence. T3's review guide tours the code, so the body has no code links. Gaps, user actions and ticket status go in the final reply. Ignore the repository's template and checklist.
+## Critique
 
-| Part      | Content                                                                                                                                                               |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Opening   | One or two sentences: the central change in the user's terms and what it makes possible                                                                               |
-| Check     | Up to three bullets on what can break, such as a migration, a changed contract or removed behavior; omit it when nothing can break                                    |
-| Entries   | One `###` heading per change, central change first, phrased as what now happens. Under it: at most one sentence, then its exhibit per the base prompt's Exhibits rule |
-| Contracts | When public endpoints, schemas, flags, keys, migrations or exported APIs change: a before and after table, then the caller migration                                  |
+Read the published PR as the user will, from a phone, hours later, without the chat. Fix every "no" before ready:
 
-- **Evidence.** Put each video or screenshot under the entry it proves: one complete video per realistic journey, at most eight screenshots, and no durations or timestamps.
-- **Before and after.** Show a changed screen as a two-column table with the same data, the target branch on the left. When speed or size is the change, add a before and after table with the command that measured it.
-- **Also.** A change with nothing to show keeps its heading and sentence. Group minor changes under one `### Also` entry as one-line bullets. The last bullet names the generated files and the command that reproduces them.
-- **Leave out** pass counts, test tables, process notes, checklists, a proof section and anything that T3 or the pipeline shows.
-
-````markdown
-Integrations are now generated, not handwritten: the hosted catalog grows from 8 to 69 providers, and workflows start from their events.
-
-- Deactivating Attio, Linear, GitHub or GitLab now deletes their webhooks.
-
-### Provider events start workflow runs
-
-A merge request starts a run and the run comments back; a forged token is rejected.
-
-![A merge request starts a run](/uploads/<secret>/events-start-runs.mp4)
-
-### The catalog keeps its rows while a filter loads
-
-| Before                                                       | After                                                     |
-| ------------------------------------------------------------ | --------------------------------------------------------- |
-| ![Blank table](/uploads/<secret>/catalog-loading-before.png) | ![Rows kept](/uploads/<secret>/catalog-loading-after.png) |
-
-| Request            | Before | After | Command                              |
-| ------------------ | ------ | ----- | ------------------------------------ |
-| Catalog list, warm | 2.4 s  | 90 ms | `curl -w '%{time_total}' <list URL>` |
-
-### Plugins come from API descriptions
-
-A lock file freezes released actions; regenerating changes only the unreleased version.
-
-```bash
-dual openapi-plugin linear.graphql
-# plugins/linear/v3 written, v1 and v2 unchanged
-```
-
-### Also
-
-- `src/generated/**` and `bun.lock` are generated: `dual openapi-plugin` reproduces them.
-
-### Contracts
-
-| Contract            | Before | After                               |
-| ------------------- | ------ | ----------------------------------- |
-| Application version | 5.0.0  | 6.0.0 selects the generated plugins |
-
-Released application versions keep their plugins; nothing changes for existing workflows.
-````
+1. Does the first screen of the body say what changed for the user?
+2. Does it describe only the current head, with nothing superseded?
+3. Does each claim carry a capture or real output that proves it, and does each capture prove a claim?
+4. Would the user accept each PR as one unit, or split or merge it?
+5. Is everything in the diff something the request asked for?
+6. Would the user watch the video to the end?
 
 ## Commands
 
-**Publishing.** Pass bodies as files and put each capture under its entry. A successful edit command completes the artifact update; do not fetch it back for confirmation.
-
-- **GitHub.** Write `![alt](./file.png)` in the body; `--attach` uploads the file and rewrites that reference. A video uses the same form.
-- **GitLab.** `glab --attach` appends at the end, so upload each file through the API and paste the returned `markdown` under its entry. `glab` has no `--jq` option, so pipe into `jq`.
-
 ```bash
-gh pr edit <number> --body-file <file> --attach './file.png#<alt text>'
-token=$(glab config get token --host git.datapizza.tech) && curl -fsS -H "PRIVATE-TOKEN: $token" -F file=@<file> https://git.datapizza.tech/api/v4/projects/<project id>/uploads | jq -r .markdown
-glab mr update <number> --description-file <file>
-```
-
-**Failed checks.** Read only the logs of failed jobs:
-
-```bash
+gh pr edit <n> --body-file <file> --attach './shot.png#<alt>'   # run beside the file: body ![alt](./shot.png) is rewritten to the upload; any other path appends it
+gh pr edit <n> --body-file <file> --attach './proof.mp4'        # a video takes no #alt; its bare URL is appended, so move that line under its entry
+token=$(glab config get token --host git.datapizza.tech) && curl -fsS -H "PRIVATE-TOKEN: $token" -F file=@<file> https://git.datapizza.tech/api/v4/projects/<id>/uploads | jq -r .markdown
+glab mr update <n> --description-file <file>
 gh run view <run id> --log-failed
-glab api "projects/<project>/pipelines/<pipeline id>/jobs?scope[]=failed" | jq -r '.[] | "\(.id) \(.name)"'; glab ci trace <job id>
+glab api "projects/<id>/pipelines/<pipeline>/jobs?scope[]=failed" | jq -r '.[] | "\(.id) \(.name)"'; glab ci trace <job id>
 ```
 
-**Baseline.** To compare with the target branch, commit a checkpoint, run `git restore --source=origin/<target branch> -- <paths>`, run the check, then run `git restore --source=<checkpoint> -- <paths>`. Reinstall after a restore that changes a manifest or lockfile. Use an extra worktree only when both versions must run at once, and remove it afterwards.
+- **GitLab stacks** target each predecessor branch with `glab mr create` and `glab mr update --target-branch`; never `glab stack`, which shares state across worktrees.
+- **Baseline.** To compare with the target branch in this checkout: commit, `git restore --source=origin/<target> -- <paths>`, measure, `git restore --source=HEAD -- <paths>`.

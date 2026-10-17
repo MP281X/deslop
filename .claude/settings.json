@@ -40,7 +40,8 @@
 		"BASH_MAX_TIMEOUT_MS": "3000000",
 		"CLAUDE_CODE_SILENT_TURN_REMINDER": "0",
 		"CLAUDE_CODE_THRIFTY_SONIC": "0",
-		"NO_COLOR": "1"
+		"NO_COLOR": "1",
+		"TURBO_SCM_BASE": "origin/master"
 	},
 	"permissions": {
 		"deny": [
@@ -66,6 +67,15 @@
 			"SendFeedback",
 			"ShareOnboardingGuide",
 			"EndConversation",
+			"Bash(python *)",
+			"Bash(python3 *)",
+			"Bash(sed -i*)",
+			"Bash(sed -E -i*)",
+			"Bash(sed --in-place*)",
+			"Bash(perl -i*)",
+			"Bash(perl -pi*)",
+			"Bash(cat >*)",
+			"Bash(cat <<*)",
 			"Bash(*git *push * main)",
 			"Bash(*git *push * main *)",
 			"Bash(*git *push * master)",
