@@ -177,7 +177,7 @@ T3's desktop app and the iOS Simulator; it builds nothing, the simulator app com
 
 ## MCP sign-in
 
-Codex reads `dual` and `scope` from the installed configuration and keeps the Dual sign-in in the Secret Service keyring; Claude keeps MCP servers in `~/.claude.json`, so register them on each worker, once the installed `.claude/settings.json` allows them:
+Codex reads `dual`, `scope` and `stash` from the installed configuration and keeps the Dual sign-in in the Secret Service keyring; Claude keeps MCP servers in `~/.claude.json`, so register them on each worker, once the installed `.claude/settings.json` allows them:
 
 ```bash
 sudo apt-get install -y gnome-keyring libsecret-tools
@@ -188,6 +188,7 @@ printf '%s\n' '[Unit]' 'Description=Secret Service for headless CLI sign-ins' '[
 systemctl --user daemon-reload && systemctl --user enable --now secret-service.service
 claude mcp add --transport http --scope user dual https://app.dualos.ai/mcp
 claude mcp add --transport http --scope user scope https://dev.tailnet-8c4c.ts.net:4318/mcp
+claude mcp add --transport http --scope user stash https://dev.tailnet-8c4c.ts.net:4319/mcp
 ```
 
 Guide: in each worker's T3 terminal run the two lines below one at a time, open each printed URL and approve Dual; the browser then fails to load `http://127.0.0.1:…/callback?…`, so copy that address from the address bar and paste it into the terminal.

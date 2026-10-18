@@ -23,6 +23,16 @@ export function layer(applicationName: string) {
 	)
 }
 
+// A request through the public proxy, or from a web page whose domain was rebound to the server, carries another host.
+export function isTailnetHost(request: HttpServerRequest.HttpServerRequest) {
+	return Option.exists(
+		Option.flatMap(Option.fromNullishOr(request.headers['host']), value =>
+			Option.liftThrowable(() => new URL(`http://${value}`).hostname)()
+		),
+		name => Array.contains(['localhost', '127.0.0.1', '[::1]'], name) || String.endsWith('.ts.net')(name)
+	)
+}
+
 // Codex speaks MCP's stateless 2026-07-28 revision; Claude still opens a session, which it ends with DELETE.
 export function layerMcp(options: {instructions: string; name: string; version: string}) {
 	return pipe(
@@ -36,18 +46,7 @@ export function layerMcp(options: {instructions: string; name: string; version: 
 		Layer.provide(
 			HttpRouter.middleware(app =>
 				Effect.gen(function* () {
-					// A request through the public proxy, or from a web page whose domain was rebound to the server, carries another host.
-					if (
-						!Option.exists(
-							Option.flatMap(
-								Option.fromNullishOr((yield* HttpServerRequest.HttpServerRequest).headers['host']),
-								value => Option.liftThrowable(() => new URL(`http://${value}`).hostname)()
-							),
-							name => Array.contains(['localhost', '127.0.0.1', '[::1]'], name) || String.endsWith('.ts.net')(name)
-						)
-					) {
-						return HttpServerResponse.empty({status: 403})
-					}
+					if (!isTailnetHost(yield* HttpServerRequest.HttpServerRequest)) return HttpServerResponse.empty({status: 403})
 					return yield* app
 				})
 			).layer

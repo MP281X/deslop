@@ -22,7 +22,7 @@ NodeRuntime.runMain(
 					),
 					ServerRuntime.layerStaticFiles
 				),
-				Layer.provide(Issuer.layer({redirects: ['stash://auth', 'stash-dev://auth']}))
+				Layer.provide(Issuer.layer({redirects: []}))
 			),
 			{disableLogger: true}
 		),
