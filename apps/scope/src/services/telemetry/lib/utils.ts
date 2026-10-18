@@ -1,6 +1,6 @@
 import {Array, Boolean, HashSet, Number, Option, Order, Record, Schema, String, pipe} from 'effect'
 
-import {AttributeArray, Nano, Runtime} from '#services/telemetry/schema.ts'
+import {Nano, Runtime} from '#services/telemetry/schema.ts'
 import type {Entry, Query, Resource, Service, Stats, Trace} from '#services/telemetry/schema.ts'
 
 function resourceString(resource: Resource, key: string) {
@@ -57,43 +57,6 @@ export function serviceName(resource: Resource) {
 
 export function displayValue(value: unknown) {
 	return JSON.stringify(value, undefined, 2)
-}
-
-function attributeValue(value: Schema.JsonObject): Schema.Json {
-	if (Schema.is(AttributeArray)(value)) return Array.map(value.arrayValue.values, attributeValue)
-	if (value['stringValue'] !== undefined) return value['stringValue']
-	if (value['boolValue'] !== undefined) return value['boolValue']
-	if (value['intValue'] !== undefined) return value['intValue']
-	if (value['doubleValue'] !== undefined) return value['doubleValue']
-	if (value['bytesValue'] !== undefined) return value['bytesValue']
-	return value
-}
-
-export function attributes(resource: Resource) {
-	return Record.fromEntries(
-		Array.map(resource.attributes ?? [], attribute => [attribute.key, attributeValue(attribute.value)] as const)
-	)
-}
-
-export function treeBranches(spans: Trace['spans'], span: Trace['spans'][number]) {
-	return Array.reverse(
-		Array.unfold({remaining: span.depth, span}, current => {
-			if (current.remaining === 0) return Option.none()
-			return pipe(
-				Array.findFirst(spans, parent => parent.spanId === current.span.parentSpanId),
-				Option.map(
-					parent =>
-						[
-							pipe(
-								Array.findLast(spans, sibling => sibling.parentSpanId === current.span.parentSpanId),
-								Option.exists(sibling => sibling.spanId !== current.span.spanId)
-							),
-							{remaining: current.remaining - 1, span: parent}
-						] as const
-				)
-			)
-		})
-	)
 }
 
 export function logMessage(body: Schema.JsonObject) {

@@ -13,7 +13,6 @@ import {
 	Order,
 	Schema,
 	String,
-	SubscriptionRef,
 	pipe
 } from 'effect'
 
@@ -40,7 +39,6 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		Effect.gen(function* () {
 			const sql = yield* SqliteClient.SqliteClient
 			const crypto = yield* Crypto.Crypto
-			const revision = yield* SubscriptionRef.make(0)
 			yield* sql`create table if not exists telemetry (id text primary key, json text not null)`
 			yield* sql`drop table if exists entries`
 
@@ -61,7 +59,6 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 						{concurrency: 1, discard: true}
 					)
 				)
-				yield* SubscriptionRef.update(revision, Number.increment)
 			}, failed)
 			function find(entries: Entry[], query: Query, signal: Entry['signal'] | 'all') {
 				return Array.filter(entries, entry => {
@@ -83,7 +80,6 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				return {entries: Array.take(Array.drop(entries, query.offset), query.limit), total: entries.length}
 			})
 			return {
-				changes: SubscriptionRef.changes(revision),
 				ingestLogs: Effect.fn('Telemetry.ingestLogs')(function* (payload: LogsRequest) {
 					const now = `${BigInt(yield* Clock.currentTimeMillis) * 1_000_000n}`
 					yield* save(

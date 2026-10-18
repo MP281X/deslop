@@ -19,6 +19,8 @@ enabled = false
 enabled = false
 
 [features]
+# Stateless MCP: no initialize handshake or session per server.
+mcp_2026_07_28 = true
 skill_mcp_dependency_install = false
 skill_search = false
 tool_suggest = false
@@ -32,6 +34,10 @@ goals = false
 # Threads run without approval prompts, so an MCP tool that asks for approval is rejected.
 [mcp_servers.dual]
 url = "https://app.dualos.ai/mcp"
+default_tools_approval_mode = "approve"
+
+[mcp_servers.scope]
+url = "https://dev.tailnet-8c4c.ts.net:4318/mcp"
 default_tools_approval_mode = "approve"
 
 [[hooks.SessionStart]]

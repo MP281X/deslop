@@ -1,19 +1,22 @@
-# Scope
+# @deslop/scope
 
-Query the always-on Effect development debugger at https://scope.mp281x.xyz.
+An Effect development debugger: an OTLP/HTTP JSON receiver on port 4318 whose traces and logs agents query through MCP.
 
 ```bash
-npx @deslop/scope@latest login '<API key from https://auth.mp281x.xyz>'
-npx @deslop/scope@latest services
-npx @deslop/scope@latest traces --service @deslop/portfolio-server
-npx @deslop/scope@latest trace <trace-id>
-npx @deslop/scope@latest watch --service @deslop/portfolio-server
+npx @deslop/scope@latest                                    # http://127.0.0.1:4318, data in ~/.deslop/scope
+claude mcp add --transport http scope http://127.0.0.1:4318/mcp
+codex mcp add scope --url http://127.0.0.1:4318/mcp
 ```
 
-`login` saves the API key with owner-only permissions in `~/.deslop/scope/api-key`. The web app uses the same auth app's session cookie. `SCOPE_SERVER` or `--server` overrides the server URL.
+Apps export to `http://127.0.0.1:4318/v1/traces` and `/v1/logs` with `content-type: application/json`. `HOST` and `PORT` change the address; the MCP endpoint has no authentication, so expose it only on a private network.
 
-Every query writes JSON to stdout and diagnostics to stderr. `watch` emits newline-delimited JSON when matching traces change. `trace` returns the full parent-ordered span tree, frontend/backend runtimes, offsets and logs attached to their spans. `traces`, `spans`, `logs` and `stats` accept `--service`, `--operation`, `--trace`, `--text`, `--errors`, `--since '10 minutes'`, `--limit` and `--offset`. `stats` covers the entire window rather than the first page.
+| Tool       | Returns                                                                  |
+| ---------- | ------------------------------------------------------------------------ |
+| `services` | Services with a current run and their runtime: web, mobile or server     |
+| `traces`   | Matching traces, newest or slowest first, with the total match count     |
+| `spans`    | Matching spans with their original OTLP fields                           |
+| `logs`     | Matching logs, standalone or attached to a span                          |
+| `stats`    | Span count, errors and p50, p95 and max latency over the whole window    |
+| `trace`    | One trace whole: spans in parent order with depth, offset and their logs |
 
-Only the current application runs are visible. Deslop's runtime sets `scope.runtime`, `service.instance.id` and `scope.run.started_unix_nano` resource attributes. When a participating service exports a newer run, the whole previous trace is hidden, including its spans from other services. Uncorrelated OTLP logs remain queryable through the CLI, not a separate web log feed.
-
-For a local server started with `NODE_ENV=development`, the shared auth package uses a mock developer. Run `scope services --dev --server http://localhost:5000`; no OAuth or API key is needed. Without `--dev`, the CLI always sends its stored API key, including from a development shell. Production requires real authentication. OTLP/HTTP JSON ingestion at `/v1/traces` and `/v1/logs` is unauthenticated.
+`traces`, `spans`, `logs` and `stats` take `service`, `operation`, `traceId`, `text`, `errors` and `since` (`"10 minutes"` by default); `traces`, `spans` and `logs` add `limit` and `offset`; `traces` and `spans` add `sort`. Only the current run of each service is visible: when a service exports a newer run, every trace it took part in before is hidden.

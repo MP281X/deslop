@@ -24,7 +24,7 @@ Two headless Debian workers in one tailnet, same user and paths; the user switch
 | Reference                                | For                                                                    |
 | ---------------------------------------- | ---------------------------------------------------------------------- |
 | [Dual](references/dual.md)               | Commands, production data, Jira, VPN, preview, accounts, CI, standards |
-| [Deslop](references/deslop.md)           | Commands, app, tracing, coding standards                               |
+| [Deslop](references/deslop.md)           | Commands, app, tracing, deploy, coding standards                       |
 | [Maintenance](references/maintenance.md) | Machines, setup, agent links, T3 history and settings, updates, clean  |
 
 ## Previews

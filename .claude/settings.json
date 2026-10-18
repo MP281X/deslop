@@ -3,7 +3,7 @@
 	"disableClaudeAiConnectors": true,
 	"syncClaudeAiSkills": false,
 	"syncClaudeAiPlugins": false,
-	"allowedMcpServers": [{"serverName": "t3-code"}, {"serverName": "dual"}],
+	"allowedMcpServers": [{"serverName": "t3-code"}, {"serverName": "dual"}, {"serverName": "scope"}],
 	"enabledPlugins": {
 		"plugin-authoring@builtin": false,
 		"mods-guide@builtin": false,
