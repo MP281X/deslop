@@ -21,7 +21,7 @@ For a design, architecture or high-level direction question, the user decides ta
 1. **Diverge.** A council per [Delegate](#delegate), each member with its own direction. Each lists at least six structurally different options as one table: option, mechanism or object, what changes for the reader or caller, cost, and its strongest reason to fail.
 2. **Kill.** One adversarial Sol child takes the union and kills each option with one counterexample from the code, a probe, the reference or design's bar. Keep 2–3 passing finalists. Fewer than two: diverge again with the killed options' counterexamples in the brief. More than three: kill again.
 3. **Prototype.** One child per finalist, the artifact by decision type:
-   - Visual: a mock per design's Mocks, on the real base with the same data and one named hypothesis each. Look at every mock at 390 px and at desktop before you show it.
+   - Visual: a mock per design's Mocks. Look at every mock at 390 px and at desktop before you show it.
    - Architecture or code shape: the file tree, the exported signatures and one data flow, checked against the real modules it would touch.
 4. **Present.** One `html_render` comparison: finalists as columns, the same rows, the one difference that is taste marked, your recommendation marked while the other finalists stay visible. Then stop and wait for the choice.
 
