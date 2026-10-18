@@ -45,9 +45,16 @@ Every push to `main` publishes each `tools/*` package in `.github/workflows/depl
 
 ## Tracing
 
-On dev only: collector `http://127.0.0.1:4318`, Jaeger `http://127.0.0.1:16686`, CORS for the production portfolio origin and loopback. A remote preview needs a reachable `VITE_OTEL_URL`. An allowed preflight does not prove spans.
+Scope receives OTLP/HTTP JSON directly at `http://127.0.0.1:4318` on dev and `https://otel.mp281x.xyz` from apps. Its web UI and query RPC stay private: the public router exposes only `/v1/traces` and `/v1/logs`. A remote preview needs a reachable `VITE_OTEL_URL`; an allowed preflight does not prove spans. Scope itself never exports telemetry back into its receiver.
 
 ```bash
-curl -fsSG http://127.0.0.1:16686/api/traces --data-urlencode 'service=@deslop/portfolio-server' --data-urlencode 'lookback=10m' --data-urlencode 'limit=20' | jq '.data[] | {traceID, spans: [.spans[] | {operationName, duration}]}'
-docker compose --project-name deslop --file tools/compose.yaml logs --since 10m collector
+vp -C apps/scope run build
+node apps/scope/dist/cli.js traces --server http://127.0.0.1:4318 --service @deslop/portfolio-server --since '10 minutes'
+node apps/scope/dist/cli.js trace <trace-id> --server http://127.0.0.1:4318
+node apps/scope/dist/cli.js logs --server http://127.0.0.1:4318 --since '10 minutes'
+node apps/scope/dist/cli.js stats --server http://127.0.0.1:4318 --operation Notes.capture --since '10 minutes'
 ```
+
+For a standalone instance, `vp -C apps/scope run preview` listens on port 5000 by default, which is also the CLI default; `SCOPE_SERVER` overrides the CLI destination and `SCOPE_DATABASE` selects its disposable SQLite file. Stop the server before deleting that file. Keep the query server on loopback or the tailnet, not on the public Internet.
+
+Dual's existing `packages/saas/src/Observability.ts` already sends the same JSON protocol. In its development process only, set `POSTHOG_OTLP_BASE_URL` to the Scope base URL and `POSTHOG_PROJECT_TOKEN` to a nonempty development marker such as `scope-dev`; that token enables the exporter. Scope's private receiver does not authenticate that marker. Never replace Dual's production PostHog configuration.

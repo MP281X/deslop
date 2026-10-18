@@ -1,0 +1,34 @@
+{
+	"name": "@deslop/scope",
+	"version": "0.1.0",
+	"bin": {
+		"scope": "./dist/cli.js"
+	},
+	"files": [
+		"dist"
+	],
+	"type": "module",
+	"sideEffects": false,
+	"imports": {
+		"#package": "./package.json",
+		"#lib/*": "./src/lib/*",
+		"#rpcs/*": "./src/rpcs/*",
+		"#routes/*": "./src/routes/*",
+		"#services/telemetry/schema.ts": "./src/services/telemetry/schema.ts",
+		"#services/telemetry/service.ts": "./src/services/telemetry/service.ts",
+		"#services/telemetry/lib/utils.ts": "./src/services/telemetry/lib/utils.ts"
+	},
+	"scripts": {
+		"build": "rm -rf dist && vp build && vp pack",
+		"preview": "vp run build && node --env-file-if-exists=.env ./dist/server.js"
+	},
+	"devDependencies": {
+		"@deslop/components-web": "workspace:*",
+		"@deslop/runtime": "workspace:*",
+		"@effect/sql-sqlite-node": "latest",
+		"@tanstack/react-router": "latest",
+		"lucide-react": "latest",
+		"react": "latest",
+		"react-dom": "latest"
+	}
+}

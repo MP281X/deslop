@@ -3,7 +3,6 @@ import {Layer, pipe} from 'effect'
 import {FetchHttpClient} from 'effect/http'
 import {OtlpLogger, OtlpSerialization, OtlpTracer} from 'effect/observability'
 
-// Traces and logs only: the collector has no metrics pipeline.
 export function layerOtlp(serviceName: string, url: URL | string) {
 	const resource = {serviceName}
 	return pipe(

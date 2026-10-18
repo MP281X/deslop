@@ -20,12 +20,13 @@ Decisions the code, the generators and lint do not show.
 
 ## Taste
 
-| Area            | Choice                                                                                    | Rejected                                      | The user's words                                                                                 |
-| --------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| AI calls        | The Effect AI provider module, directly in the service using it                           | A wrapper `ai` package with its own interface | "This interface looks like shit … just remove the package and use the effect ai module directly" |
-| Identifiers     | A literal union for a closed set of ids, such as model ids                                | `string`                                      | "The id need to be a literal"                                                                    |
-| Stash note page | The note's content and tags                                                               | Source and Text in image sections             | "Sections like the source and text in image can be removed"                                      |
-| Versions        | `latest`; `^X.Y`, or the exact version, only where a peer, the Expo SDK or Vite+ fixes it | `^X.Y.Z` and pins without a reason            | "when possible use latest or "^\*.\*" … (i perfer latest)"                                       |
+| Area                  | Choice                                                                                    | Rejected                                       | The user's words                                                                                               |
+| --------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| AI calls              | The Effect AI provider module, directly in the service using it                           | A wrapper `ai` package with its own interface  | "This interface looks like shit … just remove the package and use the effect ai module directly"               |
+| Identifiers           | A literal union for a closed set of ids, such as model ids                                | `string`                                       | "The id need to be a literal"                                                                                  |
+| Stash note page       | The note's content and tags                                                               | Source and Text in image sections              | "Sections like the source and text in image can be removed"                                                    |
+| Versions              | `latest`; `^X.Y`, or the exact version, only where a peer, the Expo SDK or Vite+ fixes it | `^X.Y.Z` and pins without a reason             | "when possible use latest or "^\*.\*" … (i perfer latest)"                                                     |
+| Development telemetry | A new Effect app with its own OTLP/HTTP JSON receiver and SQLite                          | A Collector dependency or every OTLP transport | "we already know the apps where this will be used"; "Like for motel I want to write the ingestor/receiver too" |
 
 ## Layout
 

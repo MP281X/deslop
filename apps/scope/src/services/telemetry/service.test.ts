@@ -1,0 +1,163 @@
+import {NodeServices} from '@effect/platform-node'
+import {SqliteClient} from '@effect/sql-sqlite-node'
+import {assert, it} from '@effect/vitest'
+
+import {Array, Effect, Layer} from 'effect'
+
+import {LogsRequest, Query, TracesRequest} from '#services/telemetry/schema.ts'
+import {Telemetry} from '#services/telemetry/service.ts'
+
+const TRACE_ID = '1234567890abcdef1234567890abcdef'
+
+const layer = Layer.provide(
+	Telemetry.layer,
+	Layer.merge(SqliteClient.layer({filename: ':memory:'}), NodeServices.layer)
+)
+const query = Query.make({
+	errors: false,
+	from: 0,
+	limit: 1,
+	offset: 0,
+	operation: '',
+	service: 'ordering',
+	sort: 'recent',
+	text: '',
+	to: 2_000_000_000_000,
+	traceId: ''
+})
+
+it.layer(layer)(test => {
+	test.effect('assembles late parents, replaces repeated spans and preserves exact OTLP data', () =>
+		Effect.gen(function* () {
+			const telemetry = yield* Telemetry
+			const child = TracesRequest.make({
+				resourceSpans: [
+					{
+						resource: {attributes: [{key: 'service.name', value: {stringValue: 'ordering'}}]},
+						schemaUrl: 'https://opentelemetry.io/schemas/1.0.0',
+						scopeSpans: [
+							{
+								scope: {name: 'test'},
+								spans: [
+									{
+										attributes: [{key: 'big', value: {intValue: '9007199254740993'}}],
+										endTimeUnixNano: '1781870000001500001',
+										name: 'child',
+										parentSpanId: '1111111111111111',
+										spanId: '2222222222222222',
+										startTimeUnixNano: '1781870000001000000',
+										status: {code: 2},
+										traceId: TRACE_ID
+									}
+								]
+							}
+						]
+					}
+				]
+			})
+			yield* telemetry.ingestTraces(child)
+			yield* telemetry.ingestTraces(child)
+			yield* telemetry.ingestTraces(
+				TracesRequest.make({
+					resourceSpans: [
+						{
+							resource: {attributes: [{key: 'service.name', value: {stringValue: 'ordering'}}]},
+							scopeSpans: [
+								{
+									spans: [
+										{
+											endTimeUnixNano: '1781870000002000000',
+											name: 'root',
+											spanId: '1111111111111111',
+											startTimeUnixNano: '1781870000000000000',
+											traceId: TRACE_ID
+										}
+									]
+								}
+							]
+						}
+					]
+				})
+			)
+			assert.strictEqual((yield* telemetry.spans(query)).total, 2)
+			const trace = yield* telemetry.trace(TRACE_ID)
+			assert.strictEqual(trace.entries.length, 2)
+			assert.deepStrictEqual(
+				Array.map(trace.entries, entry => entry.name),
+				['root', 'child']
+			)
+			assert.containsSubset(trace.entries, [
+				{
+					payload: {
+						attributes: [{key: 'big', value: {intValue: '9007199254740993'}}],
+						endTimeUnixNano: '1781870000001500001'
+					},
+					resourceSchemaUrl: 'https://opentelemetry.io/schemas/1.0.0'
+				}
+			])
+			assert.deepStrictEqual(yield* telemetry.traces(query), {
+				entries: [
+					{
+						durationMs: 2,
+						errors: 1,
+						id: TRACE_ID,
+						operation: 'root',
+						service: 'ordering',
+						spans: 2,
+						time: '1781870000000000000'
+					}
+				],
+				total: 1
+			})
+			assert.deepStrictEqual(yield* telemetry.stats(query), {
+				count: 2,
+				errors: 1,
+				from: query.from,
+				maxMs: 2,
+				p50Ms: 0.500001,
+				p95Ms: 2,
+				to: query.to
+			})
+		})
+	)
+
+	test.effect('keeps standalone logs searchable and correlates logs without requiring a stored span', () =>
+		Effect.gen(function* () {
+			const telemetry = yield* Telemetry
+			yield* telemetry.ingestLogs(
+				LogsRequest.make({
+					resourceLogs: [
+						{
+							resource: {attributes: [{key: 'service.name', value: {stringValue: 'logging'}}]},
+							scopeLogs: [
+								{
+									logRecords: [
+										{body: {stringValue: 'standalone'}, observedTimeUnixNano: '1781870000001000000'},
+										{
+											body: {kvlistValue: {values: [{key: 'bytes', value: {bytesValue: 'AAE='}}]}},
+											severityNumber: 17,
+											timeUnixNano: '1781870000002000000',
+											traceId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+										}
+									]
+								}
+							]
+						}
+					]
+				})
+			)
+			const page = yield* telemetry.logs({...query, service: 'logging'})
+			assert.strictEqual(page.total, 2)
+			assert.strictEqual(page.entries.length, 1)
+			assert.strictEqual((yield* telemetry.logs({...query, errors: true, service: 'logging'})).total, 1)
+			assert.strictEqual((yield* telemetry.trace('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')).entries.length, 1)
+			assert.deepStrictEqual(
+				Array.map(
+					(yield* telemetry.logs({...query, service: 'logging', text: 'standalone'})).entries,
+					entry => entry.traceId
+				),
+				['']
+			)
+		})
+	)
+})

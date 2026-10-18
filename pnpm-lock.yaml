@@ -270,6 +270,30 @@ importers:
         specifier: latest
         version: 19.3.1(react@19.3.1)
 
+  apps/scope:
+    devDependencies:
+      '@deslop/components-web':
+        specifier: workspace:*
+        version: link:../../packages/components-web
+      '@deslop/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      '@effect/sql-sqlite-node':
+        specifier: latest
+        version: 4.0.5(effect@4.0.5)
+      '@tanstack/react-router':
+        specifier: latest
+        version: 1.170.45(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      lucide-react:
+        specifier: latest
+        version: 1.59.0(@types/react@19.3.0)(react@19.3.1)
+      react:
+        specifier: latest
+        version: 19.3.1
+      react-dom:
+        specifier: latest
+        version: 19.3.1(react@19.3.1)
+
   apps/stash:
     dependencies:
       expo:
@@ -962,6 +986,11 @@ packages:
     peerDependencies:
       effect: ^4.0.5
       redis: '>=5.0.0 <7.0.0'
+
+  '@effect/sql-sqlite-node@4.0.5':
+    resolution: {integrity: sha512-SHza5qNwiI4dRtUk45wvUfvZq7vB950DW2wD6npzt2aH/tesFfPlZJSDBIvwhazoK+gvDknBOONfKyFZsIF+tg==}
+    peerDependencies:
+      effect: ^4.0.5
 
   '@effect/tsgo-darwin-arm64@0.53.4':
     resolution: {integrity: sha512-NVU043pBMzheL+IYoG13emaYqZTzrTGwhLZ2tXScqLCBWPwXc0SB1zt038v4/WW3aHF+MbIHwTKTPi/bcpwo5g==}
@@ -7233,6 +7262,10 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
+
+  '@effect/sql-sqlite-node@4.0.5(effect@4.0.5)':
+    dependencies:
+      effect: 4.0.5
 
   '@effect/tsgo-darwin-arm64@0.53.4':
     optional: true
