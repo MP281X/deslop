@@ -27,7 +27,6 @@ export class RpcAuth extends RpcMiddleware.Service<RpcAuth, {provides: CurrentUs
 	static readonly layerClient = <R>(token: Effect.Effect<string, AuthError, R>) =>
 		RpcMiddleware.layerClient(RpcAuth, options =>
 			Effect.gen(function* () {
-				if (yield* development) return yield* options.next(options.request)
 				return yield* options.next({
 					...options.request,
 					headers: Headers.set(options.request.headers, 'authorization', `Bearer ${yield* token}`)

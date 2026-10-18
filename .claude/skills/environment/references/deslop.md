@@ -57,4 +57,13 @@ vpx @deslop/scope@latest watch --service @deslop/portfolio-server
 
 The CLI defaults to the always-on `https://scope.mp281x.xyz`; `SCOPE_SERVER` or `--server` overrides it. Scope stores its SQLite database and CLI API key under `~/.deslop/scope/`. Its preview uses `NODE_ENV=development`, where the shared auth package supplies a mock developer without OAuth. Production defaults to real verification. Deslop exporters attach `scope.runtime`, `service.instance.id` and `scope.run.started_unix_nano`; the receiver hides an entire trace when any participating service moves to a newer run. Delayed batches cannot reactivate an old run.
 
-Dual's existing `packages/saas/src/Observability.ts` already sends the same JSON protocol. In its development process only, set `POSTHOG_OTLP_BASE_URL` to the Scope base URL and `POSTHOG_PROJECT_TOKEN` to a nonempty development marker such as `scope-dev`; that token enables the exporter. Scope's private receiver does not authenticate that marker. Never replace Dual's production PostHog configuration.
+Dual's existing `packages/saas/src/Observability.ts` sends the same JSON protocol and merges `OTEL_RESOURCE_ATTRIBUTES`. Compute the startup timestamp at every development launch, never in `.env`, so restarting a service hides its previous traces. From `packages/saas`, with its development environment and dependencies already configured:
+
+```bash
+OTEL_RESOURCE_ATTRIBUTES="scope.runtime=server,scope.run.started_unix_nano=$(date +%s%N)" \
+POSTHOG_PROJECT_TOKEN=scope-dev POSTHOG_OTLP_BASE_URL=https://otel.mp281x.xyz \
+bun --env-file .env src/dev.ts api
+# Use the same launch environment with `src/dev.ts worker` for the worker.
+```
+
+The nonempty PostHog marker enables Dual's exporter; Scope's receiver ignores it. This is opt-in development configuration, not a change to Dual's production PostHog configuration.

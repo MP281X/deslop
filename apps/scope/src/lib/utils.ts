@@ -29,22 +29,30 @@ export const resultsAtom = Atom.family((search: Search) =>
 		Effect.gen(function* () {
 			yield* get.result(revisionAtom)
 			const now = yield* Clock.currentTimeMillis
-			const client = yield* RpcClient
-			const query = Query.make({
-				errors: false,
-				from: 0,
-				limit: 100,
-				offset: search.offset,
-				operation: '',
-				service: search.service,
-				sort: 'recent',
-				text: search.query,
-				to: now,
-				traceId: ''
-			})
-			return {page: yield* client('telemetry.traces', query), services: yield* client('telemetry.services', undefined)}
+			return yield* (yield* RpcClient)(
+				'telemetry.traces',
+				Query.make({
+					errors: false,
+					from: 0,
+					limit: 100,
+					offset: search.offset,
+					operation: '',
+					service: search.service,
+					sort: 'recent',
+					text: search.query,
+					to: now,
+					traceId: ''
+				})
+			)
 		})
 	)
+)
+
+export const servicesAtom = RpcClient.runtime.atom(get =>
+	Effect.gen(function* () {
+		yield* get.result(revisionAtom)
+		return yield* (yield* RpcClient)('telemetry.services', undefined)
+	})
 )
 
 export const traceAtom = Atom.family((id: string) =>

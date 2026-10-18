@@ -16,7 +16,7 @@ import {
 	Smartphone,
 	TriangleAlert
 } from 'lucide-react'
-import {Suspense} from 'react'
+import {Suspense, useDeferredValue} from 'react'
 
 import {Code} from '@deslop/components-web/render/code'
 import {Button} from '@deslop/components-web/ui/button'
@@ -24,7 +24,7 @@ import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/compo
 import {Input} from '@deslop/components-web/ui/input'
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@deslop/components-web/ui/select'
 
-import {resultsAtom, traceAtom} from '#lib/utils.ts'
+import {resultsAtom, servicesAtom, traceAtom} from '#lib/utils.ts'
 import {attributes, displayValue, durationMs, treeBranches} from '#services/telemetry/lib/utils.ts'
 import {Search, SpanDetails} from '#services/telemetry/schema.ts'
 import type {Entry, Runtime, Service, TraceSpan} from '#services/telemetry/schema.ts'
@@ -90,19 +90,21 @@ function SpanName(props: {name: string}) {
 
 function TreePrefix(props: {branches: boolean[]; branch?: boolean}) {
 	return (
-		<span className="pointer-events-none flex shrink-0 self-stretch" aria-hidden>
+		<span className="pointer-events-none flex shrink-0 self-stretch opacity-70" aria-hidden data-tree>
 			{Array.map(props.branches, (continues, index) => (
-				<span key={index} className="relative w-3 shrink-0">
+				<span key={index} className="relative w-3 shrink-0 lg:w-3.5">
 					{(continues || (props.branch === true && index === props.branches.length - 1)) && (
 						<span
 							className={Boolean.match(props.branch === true && index === props.branches.length - 1 && !continues, {
-								onFalse: () => 'border-muted-foreground/60 absolute top-0 bottom-0 left-1 border-l',
-								onTrue: () => 'border-muted-foreground/60 absolute top-0 left-1 h-1/2 border-l'
+								onFalse: () =>
+									'border-muted-foreground absolute top-0 -bottom-px left-1.25 border-l lg:-top-px lg:-bottom-0.5',
+								onTrue: () =>
+									'border-muted-foreground absolute top-0 left-1.25 h-1.75 border-l lg:-top-px lg:bottom-1/2 lg:h-auto'
 							})}
 						/>
 					)}
 					{props.branch === true && index === props.branches.length - 1 && (
-						<span className="border-muted-foreground/60 absolute top-1/2 right-0 left-1 border-t" />
+						<span className="border-muted-foreground absolute top-1.75 right-0.75 left-1.25 border-t lg:top-1/2" />
 					)}
 				</span>
 			))}
@@ -246,7 +248,7 @@ function SpanRow(props: {
 	})
 	return (
 		<Collapsible open={props.selected} onOpenChange={() => props.onSelect(props.span.spanId)}>
-			<div className="border-b">
+			<div className="flex border-b">
 				<CollapsibleTrigger
 					render={<Button variant="ghost" className="group h-auto w-full p-0 text-left whitespace-normal" />}
 					aria-label={`Inspect ${props.span.name}`}
@@ -270,7 +272,9 @@ function SpanRow(props: {
 							</div>
 							{handoff && (
 								<div className="flex min-w-0 items-center text-xs lg:hidden">
-									<TreePrefix branches={props.branches} />
+									<span className="invisible flex shrink-0" aria-hidden>
+										<TreePrefix branches={props.branches} />
+									</span>
 									<RuntimeLabel service={{name: props.span.service, runtime: props.span.runtime}} />
 								</div>
 							)}
@@ -415,8 +419,9 @@ function TraceDetail(props: {
 	)
 }
 
-function Results(props: {search: Search; onChange: (next: Partial<Search>) => void}) {
-	const results = useAtomSuspense(resultsAtom(props.search)).value
+function TraceResults(props: {search: Search; onChange: (next: Partial<Search>) => void}) {
+	const services = useAtomSuspense(servicesAtom).value
+	const deferredSearch = useDeferredValue(props.search)
 	return (
 		<section className="flex min-h-0 min-w-0 flex-1 flex-col">
 			<header className="flex flex-wrap gap-2 border-b p-3">
@@ -436,7 +441,7 @@ function Results(props: {search: Search; onChange: (next: Partial<Search>) => vo
 					</SelectTrigger>
 					<SelectContent>
 						<SelectItem value="">All services</SelectItem>
-						{Array.map(results.services, service => (
+						{Array.map(services, service => (
 							<SelectItem key={service.name} value={service.name}>
 								{service.name}
 							</SelectItem>
@@ -451,9 +456,20 @@ function Results(props: {search: Search; onChange: (next: Partial<Search>) => vo
 					onChange={event => props.onChange({offset: 0, query: event.target.value})}
 				/>
 			</header>
+			<Suspense fallback={<p className="text-muted-foreground p-4 text-sm">Loading traces…</p>}>
+				<Results search={deferredSearch} onChange={props.onChange} />
+			</Suspense>
+		</section>
+	)
+}
+
+function Results(props: {search: Search; onChange: (next: Partial<Search>) => void}) {
+	const results = useAtomSuspense(resultsAtom(props.search)).value
+	return (
+		<section className="flex min-h-0 min-w-0 flex-1 flex-col">
 			<div className="min-h-0 flex-1 overflow-auto" data-scroll-restoration-id="telemetry-results">
 				{Array.map(
-					Record.toEntries(Array.groupBy(results.page.entries, trace => `${trace.service} / ${trace.operation}`)),
+					Record.toEntries(Array.groupBy(results.entries, trace => `${trace.service} / ${trace.operation}`)),
 					group => (
 						<div key={group[0]}>
 							<header className="bg-muted/30 flex items-center justify-between gap-2 border-b px-3 py-2 text-xs">
@@ -501,14 +517,14 @@ function Results(props: {search: Search; onChange: (next: Partial<Search>) => vo
 						</div>
 					)
 				)}
-				{results.page.total === 0 && (
+				{results.total === 0 && (
 					<div className="p-6">
 						<h2 className="text-sm">No current traces</h2>
 						<p className="text-muted-foreground mt-2 text-xs">Run an action in your app, or clear the filters.</p>
 					</div>
 				)}
 			</div>
-			{results.page.total > 100 && (
+			{results.total > 100 && (
 				<footer className="flex items-center justify-between border-t p-2 text-xs">
 					<Button
 						aria-label="Previous page"
@@ -520,14 +536,13 @@ function Results(props: {search: Search; onChange: (next: Partial<Search>) => vo
 						<ChevronLeft />
 					</Button>
 					<span>
-						{props.search.offset + 1}–{Number.min(props.search.offset + 100, results.page.total)} of{' '}
-						{results.page.total}
+						{props.search.offset + 1}–{Number.min(props.search.offset + 100, results.total)} of {results.total}
 					</span>
 					<Button
 						aria-label="Next page"
 						variant="ghost"
 						size="icon"
-						disabled={props.search.offset + 100 >= results.page.total}
+						disabled={props.search.offset + 100 >= results.total}
 						onClick={() => props.onChange({offset: props.search.offset + 100})}
 					>
 						<ChevronRight />
@@ -548,7 +563,7 @@ function Home() {
 		<main className="flex min-h-0 flex-1 flex-col">
 			<Suspense fallback={<p className="text-muted-foreground p-4 text-sm">Loading traces…</p>}>
 				{Boolean.match(search.trace !== undefined, {
-					onFalse: () => <Results search={search} onChange={change} />,
+					onFalse: () => <TraceResults search={search} onChange={change} />,
 					onTrue: () =>
 						search.trace !== undefined && (
 							<TraceDetail

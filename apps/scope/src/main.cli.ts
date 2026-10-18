@@ -33,7 +33,13 @@ const server = pipe(
 	Flag.withFallbackConfig(Config.String('SCOPE_SERVER')),
 	Flag.withDefault('https://scope.mp281x.xyz')
 )
+const dev = pipe(
+	Flag.Boolean('dev'),
+	Flag.withDefault(false),
+	Flag.withDescription('Use the development server’s mock authentication instead of a stored API key.')
+)
 const filters = {
+	dev,
 	errors: pipe(Flag.Boolean('errors'), Flag.withDefault(false)),
 	limit: pipe(Flag.Int('limit'), Flag.withDefault(100)),
 	offset: pipe(Flag.Int('offset'), Flag.withDefault(0)),
@@ -51,7 +57,7 @@ const filters = {
 	traceId: pipe(Flag.String('trace'), Flag.withDefault(''))
 }
 
-function protocol(url: string) {
+function protocol(url: string, mock: boolean) {
 	return Layer.merge(
 		pipe(
 			RpcClient.layerProtocolSocket({pingTimeout: '15 seconds'}),
@@ -62,6 +68,7 @@ function protocol(url: string) {
 		RpcAuth.layerClient(
 			pipe(
 				Effect.gen(function* () {
+					if (mock) return 'development'
 					return yield* (yield* FileSystem.FileSystem).readFileString(
 						`${yield* Config.String('HOME')}/.deslop/scope/api-key`
 					)
@@ -92,7 +99,7 @@ const login = pipe(
 const services = pipe(
 	Command.make(
 		'services',
-		{server},
+		{dev, server},
 		Effect.fnUntraced(function* () {
 			yield* Console.log(
 				yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Array(Service), {space: 2}))(
@@ -101,7 +108,7 @@ const services = pipe(
 			)
 		})
 	),
-	Command.provide(input => protocol(input.server)),
+	Command.provide(input => protocol(input.server, input.dev)),
 	Command.withDescription('List current services and their frontend/backend runtimes.')
 )
 
@@ -130,7 +137,7 @@ const traces = pipe(
 			)
 		})
 	),
-	Command.provide(input => protocol(input.server)),
+	Command.provide(input => protocol(input.server, input.dev)),
 	Command.withDescription('Search traces. JSON includes the full matching count; paginate with --offset.')
 )
 
@@ -146,7 +153,7 @@ const spans = pipe(
 			)
 		})
 	),
-	Command.provide(input => protocol(input.server)),
+	Command.provide(input => protocol(input.server, input.dev)),
 	Command.withDescription('Search individual spans, including their original OTLP fields.')
 )
 
@@ -162,7 +169,7 @@ const logs = pipe(
 			)
 		})
 	),
-	Command.provide(input => protocol(input.server)),
+	Command.provide(input => protocol(input.server, input.dev)),
 	Command.withDescription('Search standalone or trace-correlated logs.')
 )
 
@@ -178,14 +185,14 @@ const stats = pipe(
 			)
 		})
 	),
-	Command.provide(input => protocol(input.server)),
+	Command.provide(input => protocol(input.server, input.dev)),
 	Command.withDescription('Span latency and error counts across the entire window, not just the first page.')
 )
 
 const trace = pipe(
 	Command.make(
 		'trace',
-		{id: pipe(Argument.String('trace-id'), Argument.withSchema(TraceId)), server},
+		{dev, id: pipe(Argument.String('trace-id'), Argument.withSchema(TraceId)), server},
 		Effect.fnUntraced(function* (input) {
 			yield* Console.log(
 				yield* Schema.encodeEffect(Schema.fromJsonString(Trace, {space: 2}))(
@@ -194,7 +201,7 @@ const trace = pipe(
 			)
 		})
 	),
-	Command.provide(input => protocol(input.server)),
+	Command.provide(input => protocol(input.server, input.dev)),
 	Command.withDescription('Read every received span and log for one trace; no time window or result cap.')
 )
 
@@ -218,7 +225,7 @@ const watch = pipe(
 			)
 		})
 	),
-	Command.provide(input => protocol(input.server)),
+	Command.provide(input => protocol(input.server, input.dev)),
 	Command.withDescription(
 		'Follow matching traces as newline-delimited JSON. Emits an initial snapshot, then changes; Ctrl-C stops.'
 	)

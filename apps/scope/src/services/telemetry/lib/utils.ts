@@ -157,7 +157,11 @@ export function traceView(entries: Entry[], id: string) {
 		(entry, index) => ({entry, index})
 	)
 	const byId = Record.fromEntries(Array.map(spans, span => [span.entry.spanId, span] as const))
-	const start = Option.match(Array.head(ordered), {onNone: () => '0', onSome: entry => entry.time})
+	const start = pipe(
+		Array.head(Array.map(spans, span => span.entry)),
+		Option.orElse(() => Array.head(ordered)),
+		Option.match({onNone: () => '0', onSome: entry => entry.time})
+	)
 	const logs = Array.filter(ordered, entry => entry.signal === 'log')
 	const nodes = Array.map(spans, span => {
 		const ancestors = Array.reverse(
