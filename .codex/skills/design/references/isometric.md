@@ -1,65 +1,70 @@
 # Isometric and flat 3D figures
 
-For a figure that explains one idea as a physical object, in flat colour with a 45°/30° isometric view. Adapted from the anatomy skill (MIT, https://github.com/wheresryan22/anatomy, read at e9488296): its `SKILL.md`, `references/craft.md` (parts vocabulary) and `references/verify.md` (checklist) hold the full recipes. Its kit is not vendored here.
+For an explanatory figure that shows one idea as a physical object in an isometric view. The source is the anatomy skill (MIT, https://github.com/wheresryan22/anatomy, commit e948829). Before a figure, read its `SKILL.md` ("The one idea that matters", "Craft rules", Workflow), `references/craft.md` (sections 2, 4, 5, 7) and `references/verify.md`. This file keeps the rules that carry to this repo and the repo rules that override the source.
 
-## The one idea
+## The object is the explanation
 
-The object is the explanation. Invent a real machine whose working is the concept, and say in one sentence what moves and what that motion means.
+- Invent a real machine whose working is the concept. Say in one sentence what moves and what the motion means (`SKILL.md`, Workflow step 3).
+- Too abstract: "stacked plates, floating slabs or labelled boxes" (`SKILL.md`). Layers are allowed only with a working mechanism: drawers, trays in a rack, plates on guide pillars, cards in a holder (`craft.md`, "Abstract stacks").
+- Too flat and bland: one slab with lines has no volume and no parts.
+- Truth first (Workflow step 2): the readout, the motion and the caption all come from one model.
+- Parts list before geometry (Workflow step 4): 40–80 parts for a Figure, 80–150 for a Hero. An Epic is not built here: propose a Hero (Workflow step 1).
+- Two looks: at 1× one clear machine; at 4× something true in every region. Check at 4× last and add the missing real parts (`SKILL.md`, "Check it last").
 
-Two failures the source names, both seen in this repo:
+## Tones and lines
 
-- **Too abstract.** Stacked plates, floating slabs and labelled boxes read as shelves, not as anything. A stack of six plates on four posts, one plate per skill, is this failure.
-- **Too flat and bland.** One slab with lines has no volume and no parts.
+- Four side tones by facing plus a lighter top, from `extrude` (`SKILL.md`, "Let the kit shade"). Use `flat` only for floors and inlays thinner than one unit.
+- Tone hierarchy is separate from facing: base `lo`, structure `mid`, the subject `hi`, exactly one `lit` (`craft.md`, section 4). Monochrome unless colour is the subject.
+- Curved surfaces are smooth-shaded, never a staircase of flat tone blocks (`SKILL.md`, "Curved surfaces shade smoothly"). A texture that must end ends on an edge or fades out (`verify.md`, "No abrupt texture ends").
+- Every line ends on a face, another line or a terminal dot (`SKILL.md`, "Lines resolve"). Exempt: `free` rule lines that stand for printed text, a needle's tail, a pointer's tip, and ramps from `fadeLineSvg` (`verify.md`, "Line ends").
+- Text a machine displays fits its window at its widest string and is clipped to it (`verify.md`, Checklist).
 
-The fix is the same for both: a recognisable machine built from many small, precise parts, each sitting on another part.
+## Painter's order and pass-through
 
-## Size before you build
-
-- **Figure:** one mechanism, 40–80 parts, desktop card.
-- **Hero:** several layers or one 3D subject, 80–150 parts.
-- **Epic:** a whole system, six hours or more. Propose a Hero that keeps the core instead.
-
-Name the size and the parts count before geometry. "Minimal" lowers the part count, never the rules below.
-
-## Parts list before geometry
-
-Write the list grouped: base (plate, feet, screws, label plate), structure (posts, rails, frame bars), mechanism (carriage, bushings, springs, plunger), controls (knob, thumb screw), subject (the one lit part). Each row names what it sits on.
-
-## Craft rules
-
-- **Solids, not wireframes.** Fill every part and paint back to front. No dashed hidden lines.
-- **Four tones by facing.** Top lightest, one side mid, the other side darkest. Base low, structure mid, subject high. One lit accent, the part the reader watches. Colour only when colour is the subject.
-- **Lines resolve.** Every line ends on a face, another line or a dot. No leader lines or floating labels.
-- **Texture ends on an edge or fades.** Ribs, seams and grooves never stop mid-face.
-- **Painter's order is geometry, not a guess.** Split anything that wraps another part: a post through a plate is drawn as the segments in the gap between plates, so the plate hides what passes through it.
-- **Hidden faces stay hidden.** A post's top face under a plate is never drawn; drawn on top, it shows as a cap.
-- **Volume without gradients.** Thickness, feet and a flat offset shape under a lifted part. Never a blur or a gradient (see Flat in the design skill).
-- **Composition.** Centre the figure, fill 55–65% of the card, keep one scale across figures, and read it at 390 px.
-- **Card.** "Fig n" top left, short title top right, hint bottom left, live readout bottom right, a true caption under the card.
+- Draw back to front, bottom to top. A part that wraps another is split into a back half and a front half (`craft.md`, section 5).
+- A vertical part through a horizontal one is drawn in two segments, below and above, with the block painted between them. A full ring over a cylinder that continues shows its back half: use the front arc only (`verify.md`, "Common faults").
+- Nothing passes through anything. The audit's `clearance`, `through` and `sunk` lines prove it when `kit/audit.mjs` runs (see Verify).
 
 ## Projection
 
-Azimuth 45°, elevation 30°, z up, one world unit about one pixel.
+The kit's `iso()` at azimuth 45°, elevation 30°, z up. `k = scale × √1.6` (the kit's `UNIT`):
 
 ```ts
-const COS30 = Math.cos(Math.PI / 6)
-const project = (p: {x: number; y: number; z: number}) => ({x: (p.x - p.y) * COS30, y: (p.x + p.y) / 2 - p.z})
-// visible faces: top, the +x side (right), the +y side (left)
+const k = scale * Math.sqrt(1.6)
+const project = ([x, y, z]: readonly [number, number, number]) => [
+	(x - y) * Math.SQRT1_2 * k,
+	((x + y) * Math.SQRT1_2 * 0.5 - z * (Math.sqrt(3) / 2)) * k
+]
+// project([1, 1, 0]) → [0, 0.707·k]: toward the viewer lands below the origin (y grows down)
+// visible sides: +x on the right, +y on the left, top
 ```
 
-Fit one fixed view over the largest state, so the figure never rescales while it moves.
+Fit once over the largest state: `fitProjection(points, width, height, { pad })` (`kit/iso-kit.mjs`), so the figure never rescales while it moves.
 
 ## Motion
 
-One time-based or scroll-linked value drives every moving part. Tweens under 300 ms, ease-out. Reduced motion shows the final state with no movement. The readout reads the same model the parts read. Hover or focus on a part lights it, and the list beside the figure shows the same selection.
+From `references/motion.md` (the source's rules, which this repo follows):
+
+- Time-based: `dt` from `requestAnimationFrame`, clamped to 1/30 s. Pointer and keyboard set a target; the part eases to it, never snaps.
+- One loop per figure; write `setAttribute` and `textContent` through refs, never a React render per frame.
+- Stop offscreen: `IntersectionObserver` with `rootMargin: "120px 0px"`, reading `entries[entries.length - 1]`.
+- Idle tour after about 1.4 s; pause on hover, focus or press; resume about 3.6 s after the last interaction.
+- Reduced motion: no tour, no flow or pulse, jump to targets. The figure still responds to input.
+- Keyboard: focusable root, arrows step, Home and End go to the extremes, Space or Enter presses, Escape releases. `aria-valuetext` says the state in words. Focus ring: `outline: 1px solid` with `outline-offset: 6px`.
+
+The repo's motion limits in the design skill (Build, "Motion") also apply.
 
 ## Verify
 
-- Capture desktop at 1×, close-ups of every junction at 4×, the phone width (390 px), light and dark. A tone that inverts in dark mode is a defect: a top face mixed from the foreground goes darker than its sides.
-- Ask: is it instantly a real object? Rich in small parts with volume? Does every line end on something? Is any corner empty at 4×?
-- Read each capture before you show it; the owner finds faults by zooming.
+Capture each of these and read every PNG (`verify.md`, "Capture"):
 
-## Repo notes
+- Each resting state: assembled and apart, the sliding extremes, hover, focus, and intermediate frames during motion (`--times`, `--hover`, `--key`, `--reduced`).
+- Desktop at 1×, phone at 390 px, and a 4× close-up of every junction in both themes.
+- Dark-mode invariant: in both themes each top face is lighter than every side. A top mixed from the foreground goes dark in dark mode, which inverted the tones in this repo's first figure. `verify.md` says "Sides shaded and tops lighter".
+- Geometry: `node build.mjs --audit` ends `audit passed` and `node scripts/lines.mjs page.html` prints `line ends: 0` (`verify.md`, "Audit" and "Line ends"). Both need `kit/` and `scripts/` from `/tmp/repos/anatomy`, which this repo does not vendor. Without them a figure is proven by captures only; say so in the PR.
 
-- Figure tones are theme tokens with light and dark values (`packages/components-web/src/theme.css`), never raw colours in TSX.
-- The anatomy kit's audit and line-check scripts are not used here; the rules above are checked by reading the captures.
+## Repo rules that override the source
+
+- Figure tones are theme tokens with light and dark values in `packages/components-web/src/theme.css`, never raw colours in TSX (`craft.md`, section 7, "Every colour is a token").
+- A card with `Fig n`, title, hint and readout (`SKILL.md`, Workflow step 8) frames a standalone explanatory figure only. A page section never gets a card (AGENTS.md: "pages add no cards").
+- Flat: no gradient, glow, blur or soft halo (the design skill's Build, "Flat"). The source's blurred halo under the base is not used here.
