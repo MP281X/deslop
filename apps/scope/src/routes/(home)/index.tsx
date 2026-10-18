@@ -28,20 +28,44 @@ function millis(value: number) {
 	return `${value.toFixed(2)} ms`
 }
 
-function RawEntry(props: {entry: Entry}) {
+function severityLabel(entry: Entry) {
+	if (String.isString(entry.payload['severityText'])) return entry.payload['severityText']
+	if (entry.status === 2) return 'Error'
+	if (Number.isNumber(entry.payload['severityNumber'])) return `Severity ${entry.payload['severityNumber']}`
+	return ''
+}
+
+function RawEntry(props: {entry: Entry; onTrace?: (id: string) => void}) {
 	return (
-		<details className="border-b px-4 py-3">
-			<summary className="cursor-pointer text-sm break-words">{props.entry.name}</summary>
-			<pre className="mt-3 overflow-x-auto text-xs break-words whitespace-pre-wrap">
-				{displayValue({
-					payload: props.entry.payload,
-					resource: props.entry.resource,
-					resourceSchemaUrl: props.entry.resourceSchemaUrl,
-					scope: props.entry.scope,
-					scopeSchemaUrl: props.entry.scopeSchemaUrl
-				})}
-			</pre>
-		</details>
+		<div className="border-b px-4 py-3">
+			<div className="text-muted-foreground mb-2 flex flex-wrap items-center gap-2 text-xs">
+				<span
+					className={Boolean.match(props.entry.status === 2, {onFalse: () => '', onTrue: () => 'text-destructive'})}
+				>
+					{severityLabel(props.entry)}
+				</span>
+				<span className="min-w-0 break-words">
+					{props.entry.service} · {time(props.entry.time)}
+				</span>
+				{props.onTrace !== undefined && String.isNonEmpty(props.entry.traceId) && (
+					<Button variant="link" size="xs" onClick={() => props.onTrace?.(props.entry.traceId)}>
+						Open trace
+					</Button>
+				)}
+			</div>
+			<details>
+				<summary className="cursor-pointer text-sm break-words">{props.entry.name}</summary>
+				<pre className="mt-3 overflow-x-auto text-xs break-words whitespace-pre-wrap">
+					{displayValue({
+						payload: props.entry.payload,
+						resource: props.entry.resource,
+						resourceSchemaUrl: props.entry.resourceSchemaUrl,
+						scope: props.entry.scope,
+						scopeSchemaUrl: props.entry.scopeSchemaUrl
+					})}
+				</pre>
+			</details>
+		</div>
 	)
 }
 
@@ -58,6 +82,7 @@ function TraceDetail(props: {id: string; onBack: () => void}) {
 	const extent = Array.reduce(spans, 0, (end, span) =>
 		Number.max(end, durationMs(first.time, span.time) + span.durationMs)
 	)
+	const scale = Boolean.match(extent > 0, {onFalse: () => 1, onTrue: () => extent})
 	return (
 		<section className="min-w-0 flex-1 overflow-auto">
 			<header className="flex items-start gap-3 border-b p-4">
@@ -107,9 +132,9 @@ function TraceDetail(props: {id: string; onBack: () => void}) {
 						aria-label={`${span.name}: ${millis(span.durationMs)}`}
 					>
 						<rect
-							x={(durationMs(first.time, span.time) / Number.max(1, extent)) * 1000}
+							x={(durationMs(first.time, span.time) / scale) * 1000}
 							y={0}
-							width={Number.max(1, (span.durationMs / Number.max(1, extent)) * 1000)}
+							width={Number.max(1, (span.durationMs / scale) * 1000)}
 							height={12}
 							className={Boolean.match(span.status === 2, {
 								onFalse: () => 'fill-primary',
@@ -149,7 +174,7 @@ function Results(props: {search: Search; onPage: (offset: number) => void; onTra
 				</span>
 				<span>Live · all received data</span>
 			</div>
-			<div className="min-h-0 flex-1 overflow-auto">
+			<div className="min-h-0 flex-1 overflow-auto" data-scroll-restoration-id="telemetry-results">
 				{results.kind === 'traces' &&
 					Array.map(results.page.entries, trace => (
 						<Button
@@ -174,21 +199,7 @@ function Results(props: {search: Search; onPage: (offset: number) => void; onTra
 						</Button>
 					))}
 				{results.kind === 'logs' &&
-					Array.map(results.page.entries, log => (
-						<div key={log.id}>
-							<div className="text-muted-foreground flex flex-wrap items-center justify-between gap-2 px-4 pt-3 text-xs">
-								<span>
-									{log.service} · {time(log.time)}
-								</span>
-								{String.isNonEmpty(log.traceId) && (
-									<Button variant="link" size="xs" onClick={() => props.onTrace(log.traceId)}>
-										Open trace
-									</Button>
-								)}
-							</div>
-							<RawEntry entry={log} />
-						</div>
-					))}
+					Array.map(results.page.entries, log => <RawEntry key={log.id} entry={log} onTrace={props.onTrace} />)}
 				{results.page.total === 0 && (
 					<div className="mx-auto max-w-lg p-8">
 						<h2 className="text-lg">No telemetry matches</h2>
@@ -232,8 +243,8 @@ function Results(props: {search: Search; onPage: (offset: number) => void; onTra
 function Home() {
 	const search = Route.useSearch()
 	const navigate = Route.useNavigate()
-	function change(next: Partial<Search>) {
-		return navigate({search: previous => ({...previous, offset: 0, ...next})})
+	function change(next: Partial<Omit<Search, 'trace'>>) {
+		return navigate({search: previous => ({...previous, offset: 0, trace: undefined, ...next})})
 	}
 	return (
 		<main className="flex min-h-0 flex-1 flex-col">
@@ -241,13 +252,13 @@ function Home() {
 				<span className="mr-auto text-lg">scope</span>
 				<Button
 					variant={Boolean.match(search.kind === 'traces', {onFalse: () => 'ghost', onTrue: () => 'secondary'})}
-					onClick={() => change({kind: 'traces', trace: undefined})}
+					onClick={() => change({kind: 'traces'})}
 				>
 					Traces
 				</Button>
 				<Button
 					variant={Boolean.match(search.kind === 'logs', {onFalse: () => 'ghost', onTrue: () => 'secondary'})}
-					onClick={() => change({kind: 'logs', trace: undefined})}
+					onClick={() => change({kind: 'logs'})}
 				>
 					Logs
 				</Button>
@@ -295,13 +306,20 @@ function Home() {
 							</Button>
 						</div>
 						<Suspense fallback={<p className="text-muted-foreground p-4 text-sm">Loading telemetry…</p>}>
-							<Results search={search} onPage={offset => change({offset})} onTrace={trace => change({trace})} />
+							<Results
+								search={search}
+								onPage={offset => change({offset})}
+								onTrace={trace => navigate({search: previous => ({...previous, trace})})}
+							/>
 						</Suspense>
 					</>
 				),
 				onTrue: () => (
 					<Suspense fallback={<p className="text-muted-foreground p-4 text-sm">Loading trace…</p>}>
-						<TraceDetail id={search.trace ?? ''} onBack={() => change({trace: undefined})} />
+						<TraceDetail
+							id={search.trace ?? ''}
+							onBack={() => navigate({search: previous => ({...previous, trace: undefined})})}
+						/>
 					</Suspense>
 				)
 			})}
