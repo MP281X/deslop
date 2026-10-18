@@ -60,22 +60,18 @@ codex execpolicy check --rules ~/.codex/rules/deny.rules true
 All workers share T3 settings. After the user changes one on a worker, run this there with `target=mp281x@<other worker>`; it maps project keys by workspace root and keeps the target's `environmentIcon`. T3 reloads the file.
 
 ```bash
-d=$(mktemp -d /tmp/t3-settings-XXXX)
 q="SELECT project_id, workspace_root FROM projection_projects WHERE deleted_at IS NULL"
-sqlite3 -readonly -json ~/.t3/userdata/statev2.sqlite "$q" > $d/src-projects.json
-ssh "$target" "sqlite3 -readonly -json ~/.t3/userdata/statev2.sqlite '$q'" > $d/dst-projects.json
-ssh "$target" 'cat ~/.t3/userdata/settings.json' > $d/dst-settings.json
-jq --slurpfile src $d/src-projects.json --slurpfile dst $d/dst-projects.json --slurpfile old $d/dst-settings.json '
-  ([$src[0][] | {key: .project_id, value: .workspace_root}] | from_entries) as $root
-  | ([$dst[0][] | {key: .workspace_root, value: .project_id}] | from_entries) as $id
+new=$(jq --argjson src "$(sqlite3 -readonly -json ~/.t3/userdata/statev2.sqlite "$q")" \
+  --argjson dst "$(ssh "$target" "sqlite3 -readonly -json ~/.t3/userdata/statev2.sqlite '$q'")" \
+  --argjson old "$(ssh "$target" 'cat ~/.t3/userdata/settings.json')" '
+  ([$src[] | {key: .project_id, value: .workspace_root}] | from_entries) as $root
+  | ([$dst[] | {key: .workspace_root, value: .project_id}] | from_entries) as $id
   | def remap: with_entries(select($id[$root[.key]] != null) | .key = $id[$root[.key]]);
-  (. | del(.environmentIcon)) + ($old[0] | {environmentIcon} | with_entries(select(.value != null)))
+  (. | del(.environmentIcon)) + ($old | {environmentIcon} | with_entries(select(.value != null)))
   | .projectScriptOverrides |= ((. // {}) | remap)
   | .projectSettingsOverrides |= ((. // {}) | remap)
   | .projectSettingsFolded |= ((. // {}) | if type == "object" then remap else . end)
-' ~/.t3/userdata/settings.json > $d/new-settings.json
-ssh "$target" 'cat > ~/.t3/userdata/settings.json' < $d/new-settings.json
-rm -rf $d
+' ~/.t3/userdata/settings.json) && ssh "$target" 'cat > ~/.t3/userdata/settings.json' <<<"$new"
 ```
 
 - **Claude launch arguments.** `providerInstances.claudeAgent.config.launchArgs` is `--system-prompt-snapshot off --thinking-display omitted --autocompact 500k`. T3 passes them to new Claude processes; never restart T3 or stop threads to apply them.
