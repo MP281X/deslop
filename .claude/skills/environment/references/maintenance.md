@@ -17,7 +17,6 @@ Setup, upkeep and rebuild of the machines. Do established upkeep without asking;
 - **Repositories.** `~/dual` uses the credential helper `!glab auth git-credential` for `https://git.datapizza.tech`; GitHub uses `gh auth setup-git`. Identities follow [Git identity](#git-identity).
 - **Updates.** `unattended-upgrades` runs daily. `desktop` has only local IPv6, so `/etc/apt/apt.conf.d/99force-ipv4` holds `Acquire::ForceIPv4 "true";`.
 - **Git defaults:** `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled`, `diff.algorithm histogram`, `merge.conflictStyle zdiff3`, `init.defaultBranch main`.
-- **Media proxy.** On dev, `deslop-wireproxy@<relay>` user units run `~/.deslop/bin/wireproxy` (v1.1.3, `windtf/wireproxy`) per Mullvad relay with `~/.deslop/wireproxy/<relay>.conf` and a SOCKS5 port from 1080 up. `~/.deslop/mullvad/<relay>.conf` (0600, never print) holds the WireGuard file. To replace a blocked relay: take its key and address from `https://api.mullvad.net/www/relays/wireguard/`, write both files with the next port, `systemctl --user enable --now deslop-wireproxy@<relay>`, update `STASH_MEDIA_PROXY` in `~/.deslop/stash.env`.
 - **Firewall.** Tailscale's `ts-input` chain accepts tailnet traffic before ufw. On dev, `/etc/sysctl.d/90-quiet-console.conf` keeps `[UFW BLOCK]` off the console.
 - **Access.** Every machine holds the user's one ED25519 pair as `~/.ssh/id_ed25519`; `authorized_keys` holds only its public key; no `~/.ssh/config`. `known_hosts` comes from `ssh-keyscan -H dev desktop macbook-pro`. Disable a login method only after the remaining one worked from another machine. T3 shows `PRETTY_HOSTNAME`: `sudo hostnamectl set-hostname --pretty <name>`, then restart T3.
 
@@ -107,7 +106,7 @@ Use at most five stops of two short sentences each, in plain words. No praise, n
 1. **Update.** `sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get autoremove -y && sudo apt-get clean`, `vp upgrade`. glab: when `curl -fsSL https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, install its `glab_<version>_linux_amd64.deb`.
 2. **T3** runs the nightly channel as the `t3code.service` user unit: `vp install -g t3@nightly`, `t3 service install`, `t3 connect link --headless` (show the user the link), `t3 connect publish`, then `t3 service restart` with no run active.
 3. **Deploy** on dev from `~/deslop` on published main: `docker compose --project-name deslop --file tools/compose.yaml pull`, then `up -d --remove-orphans`; a changed inline config needs `up -d --force-recreate --no-deps <service>`.
-4. **Verify.** https://portfolio.mp281x.xyz, https://dev.tailnet-8c4c.ts.net:8443 and dev's http://127.0.0.1:16686/api/services return 200, and an OPTIONS preflight to otel's `/v1/traces` and `/v1/logs` with `Origin: https://portfolio.mp281x.xyz` succeeds.
+4. **Verify.** https://portfolio.mp281x.xyz and dev's http://127.0.0.1:16686/api/services return 200, an OPTIONS preflight to otel's `/v1/traces` and `/v1/logs` with `Origin: https://portfolio.mp281x.xyz` succeeds, and https://dev.tailnet-8c4c.ts.net:8443/api/rpc returns 400: stash serves only its RPC socket, which rejects a plain GET.
 
 ## Clean
 
