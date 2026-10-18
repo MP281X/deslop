@@ -13,7 +13,15 @@ Oxlint and Oxfmt check every change and stay authoritative; this skill holds wha
 
 ## Loop
 
-- **Verify** at the root once the whole change is in, and again after each round of fixes: the repository's fix command (lint fixes, then format), then its check, then its tests, chained in one command so a failure stops the rest; fix what fails and rerun the chain until it passes. Never a package-level or per-edit check: one root run costs fewer steps than many partial ones, and the cache replays unchanged work. Fix the first error in each file first: one broken import turns into hundreds of implicit `any` errors downstream. A read-only reviewer never runs fix.
+- **Verify** at the root once the whole change is in, and again after each round of fixes: the repository's fix command (lint fixes, then format), then its check, then its tests, chained bare in one command so a failure stops the rest; fix what fails and rerun the chain until it passes. Read the failures from that run's whole output, never from a rerun with another filter. Never a package-level or per-edit check. Fix the first error in each file first: one broken import turns into hundreds of implicit `any` errors downstream. A read-only reviewer never runs fix.
+
+  ```bash
+  # good
+  vp run -w fix && vp run -w --cache check && vp run -w test
+  # bad: each step exits with tail's code, so test runs after a failed check, and the cut diagnostics need a rerun
+  vp run -w fix 2>&1 | tail -5 && vp run -w --cache check 2>&1 | tail -20 && vp run -w test 2>&1 | tail -20
+  ```
+
 - **First pass.** Write the forms in [Lint rules](#lint-rules) from the start. Fix a diagnostic at its source with the form its message or row names; never a cast, a weakened rule or a rewrite that trades one diagnostic for another.
 - **Fix the code, not the rule.** A diagnostic whose named form does not fit points at the model upstream: change the model, not the line that trips the rule. A diagnostic on code the rules allow is a rule bug: fix the rule with a rejected and an accepted case.
 
@@ -31,8 +39,9 @@ Oxlint and Oxfmt check every change and stay authoritative; this skill holds wha
 Start from a real caller and the outcome, not a pattern. Trace one successful operation and its strongest reachable failure through the existing modules: the authoritative state, write boundary, resource lifetime and completion signal.
 
 - **Direct.** The most direct code that meets today's request: extend the canonical example per [Patterns](#patterns), else a function or an existing service method. A new service only for a distinct capability or lifetime; reimplementing a library's job is a new mechanism. Keep the direct version unless a probe proves a concrete contract rules it out.
+- **Process.** A step agents must take, such as loading a skill, verifying before a push or keeping two prompts equal, lives in the instruction that names it, never in a hook, stamp file, generator or sync check: the user rejected each of these.
 - **Callers.** Every function, parameter, option, export, Layer, check and config value has a caller that varies it. Handle reachable inputs only: no futureproofing or impossible cases. Explicit variants for genuinely different behaviors; no boolean combinations, registries, generic configuration or factories for hypothetical callers.
-- **Reuse.** Search existing code, installed modules and Effect's modules by the domain concept, not only the request's words, before you write traversal, state, configuration or platform code; replace dependencies Effect covers. Before a hand-written type, guard, table, wrapper or dependency, list the owning module's exports in its locked source checkout per explore: `Schema.Literals([...]).pick([...])` replaces a second literal list, `Schema.TaggedUnion` a hand-written matcher. Identical logic twice (a computation, a query, an Effect pipeline) is one function in its owner's `lib/utils`. Similar code stays separate: three similar lines beat an abstraction, and a shared function never branches on its caller. Class lists and small expressions stay inline at each use, never in shared constants. Compose with Effect's own combinators, pipelines, Layers and Schema instead of writing a wrapper.
+- **Reuse.** Search existing code, installed modules and Effect's modules by the domain concept, not only the request's words, before you write traversal, state, configuration or platform code; replace dependencies Effect covers. Before a hand-written type, guard, table, wrapper or dependency, list the owning module's exports in its locked source checkout per explore: `Schema.TaggedUnion` replaces a hand-written matcher. Identical logic twice (a computation, a query, an Effect pipeline) is one function in its owner's `lib/utils`. Similar code stays separate: three similar lines beat an abstraction, and a shared function never branches on its caller. Class lists and small expressions stay inline at each use, never in shared constants. Compose with Effect's own combinators, pipelines, Layers and Schema instead of writing a wrapper.
 - **One owner.** Derive values from their owner; never mirror server state, request state, caches or pending results in another store. A persisted value has one write boundary, a domain enum one schema, a cache key the full identity it caches. No duplicate, subset or superset fields, methods, options or exports; remove states no caller produces.
 - **Lifetime.** Finite work stays in its request scope; a stream serves progress without a job system. Background ownership only when work must outlive its caller.
 - **Failure.** Failures flow through the error channel with their cause; never turn one into empty success. No catch, retry, fallback, idempotency or defensive check without a contract that needs it.
@@ -50,7 +59,7 @@ Start from a real caller and the outcome, not a pattern. Trace one successful op
 
 ```ts
 // good
-const cycles = Graph.stronglyConnectedComponents(graph)
+const recursion = Graph.findCycle(calls) // stronglyConnectedComponents also lists every node outside a cycle
 upload({scope: input.scope, type: input.type}) // input also holds the bearer token
 // bad
 Schema.decodeEffect(LedgerDraft)(draft) // draft is already a decoded LedgerDraft

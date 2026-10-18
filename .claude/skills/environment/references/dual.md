@@ -69,7 +69,7 @@ The `preview` project script runs `bun run preview` in its unit and builds an is
 
 Each package pins its own `@deslop/coding-standards`; its `oxlint.config.ts` holds a legacy file list whose rules drop to warnings.
 
-- **Skills** refresh into `.claude/skills` and `.agents/skills` through the worktree script `vpx @deslop/coding-standards@latest`.
+- **Skills** refresh into `.claude/skills` and `.agents/skills` through the worktree script `vpx @deslop/coding-standards@latest`, and stay tracked: commit each refresh.
 - **Bump** only when the user asks: `bun add --dev --exact @deslop/coding-standards@latest` in every package directory, the root, the scaffold baseline and consumer fixtures, then `bun run fix`. A rule the bump breaks is turned off in that package's `oxlint.config.ts`, never inline.
 - **Touched files.** A hand-written file the task adds or rewrites over half of leaves the legacy list and passes every rule. Other changed files stay listed; never refactor a file only for lint.
 - **Prune** after the change: remove listed files that this command no longer prints.

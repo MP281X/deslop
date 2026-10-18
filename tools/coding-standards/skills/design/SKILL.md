@@ -54,7 +54,7 @@ The user chooses by seeing and trying, never by reading a description.
 
 ## Pages
 
-An explanatory page reads like a slide: the conclusion in the first view, then one row or card per item with a label under twelve words, one takeaway line per section, no paragraphs. Motion only shows a mechanism, at a pace a viewer follows, and stops on the final state with replay.
+An explanatory page reads like a slide: the conclusion in the first view, then one row per item with a label under twelve words, one takeaway line per section, no paragraphs. Motion only shows a mechanism, at a pace a viewer follows, and stops on the final state with replay.
 
 ## Critique
 
