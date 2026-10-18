@@ -20,7 +20,7 @@ The user reviews every PR of a thread at the end and squash-merges them one at a
 1. **Push** only heads that passed engineering's Verify after their last rebase; in a stack, Verify each layer's head in order (`git switch --detach <layer head>`, then back). Every fix of a round rides one commit and one push: each push starts a pipeline and cancels the last, and the pipeline only confirms what passed locally.
 2. **Describe** the head as it is now, per [Body](#body): write the title, body and commit message at the first push and rewrite them after every push that changes what they say. They never narrate how the PR got there: no "now also", "updated", "fixed review" or superseded captures.
 3. **Watch** each PR with `watch_pull_request`.
-4. **Monitor.** A wake about the current head (a failure, someone else's review comment, a conflict) gets a fix, Verify and one push; any other wake ends with pair's waiting line.
+4. **Monitor.** A wake about the current head (a failure, someone else's review comment, a conflict) gets a fix, Verify and one push; any other wake is read and recorded without a message, per the Replies section of your instructions.
 5. **Ready** when the final head passes required jobs, the review loop has no open P1 or P2, the captures are in the body and [Critique](#critique) finds nothing: `gh pr ready <n>` or `glab mr update <n> --ready`. A new commit on a ready layer returns it to draft in the same step (`gh pr ready <n> --undo`, `glab mr update <n> --draft`).
 6. **Handoff** once every PR is ready and current with the default branch: write the final reply in that same turn.
 
