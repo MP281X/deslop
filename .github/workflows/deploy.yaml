@@ -41,7 +41,7 @@ jobs:
           vp run build
 
           echo "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          for app in portfolio stash; do
+          for app in auth-server portfolio stash; do
             docker build apps/$app --tag ghcr.io/${GITHUB_REPOSITORY,,}-$app:latest
             docker push ghcr.io/${GITHUB_REPOSITORY,,}-$app:latest
           done

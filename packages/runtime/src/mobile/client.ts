@@ -13,6 +13,9 @@ export const extra = Schema.decodeUnknownSync(Schema.Struct({otel: Schema.String
 	Constants.expoConfig?.extra
 )
 
+// `stash`, or `stash-dev` in a development build.
+export const scheme = Schema.decodeUnknownSync(Schema.String)(Constants.expoConfig?.scheme)
+
 // Binary frames failed to reopen a cancelled watch on iOS.
 export function layer(applicationName: string) {
 	Atom.runtime.addGlobalLayer(layerOtlp(`${applicationName}-ios`, extra.otel))

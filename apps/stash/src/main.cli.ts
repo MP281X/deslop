@@ -1,15 +1,43 @@
 import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {Array, Config, Console, Crypto, Effect, Layer, Logger, Option, Predicate, Stream, String, pipe} from 'effect'
+import {
+	Array,
+	Config,
+	Console,
+	Crypto,
+	Effect,
+	FileSystem,
+	Layer,
+	Logger,
+	Option,
+	Predicate,
+	Redacted,
+	Stream,
+	String,
+	pipe
+} from 'effect'
 
 import {Argument, Command, Flag} from 'effect/cli'
 import {RpcClient, RpcSerialization} from 'effect/rpc'
 import {Socket} from 'effect/socket'
 
+import {AuthError} from '@deslop/auth/schema'
+import {AUTH_URL, RpcAuth} from '@deslop/auth/utils'
+
 import packageJson from '#package' with {type: 'json'}
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {NotesError} from '#services/notes/schema.ts'
+
+const server = pipe(
+	Flag.String('server'),
+	Flag.withDescription('Stash server; defaults to STASH_SERVER, then https://stash.mp281x.xyz'),
+	Flag.withFallbackConfig(Config.String('STASH_SERVER')),
+	Flag.withDefault('https://stash.mp281x.xyz')
+)
+
+// `login` keeps the API key here for `save`.
+const keyFolder = Effect.map(Config.String('HOME'), home => `${home}/.config/stash`)
 
 function section(title: string, text?: string) {
 	return pipe(
@@ -19,18 +47,28 @@ function section(title: string, text?: string) {
 	)
 }
 
+const login = pipe(
+	Command.make(
+		'login',
+		{key: pipe(Argument.Redacted('api-key'), Argument.withDescription(`An API key created at ${AUTH_URL}`))},
+		Effect.fnUntraced(function* (input) {
+			const fs = yield* FileSystem.FileSystem
+			const folder = yield* keyFolder
+			yield* fs.makeDirectory(folder, {recursive: true})
+			yield* fs.writeFileString(`${folder}/api-key`, Redacted.value(input.key), {mode: 0o600})
+			yield* Effect.logInfo(`Signed in; the API key is in ${folder}/api-key`)
+		})
+	),
+	Command.withDescription(`Keep an API key created at ${AUTH_URL} in ~/.config/stash/api-key for save.`),
+	Command.withExamples([
+		{command: "vpx @deslop/stash@latest login '<api key>'", description: `Sign in with a key from ${AUTH_URL}.`}
+	])
+)
+
 const save = pipe(
 	Command.make(
 		'save',
-		{
-			entry: pipe(Argument.String('text'), Argument.withDescription('A link, or the text of a note')),
-			server: pipe(
-				Flag.String('server'),
-				Flag.withDescription('Stash server; defaults to STASH_SERVER, then the tailnet address on dev'),
-				Flag.withFallbackConfig(Config.String('STASH_SERVER')),
-				Flag.withDefault('https://dev.tailnet-8c4c.ts.net:8443')
-			)
-		},
+		{entry: pipe(Argument.String('text'), Argument.withDescription('A link, or the text of a note')), server},
 		Effect.fnUntraced(function* (input) {
 			const note = yield* pipe(
 				Effect.gen(function* () {
@@ -85,18 +123,33 @@ const save = pipe(
 		})
 	),
 	Command.provide(input =>
-		pipe(
-			// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
-			RpcClient.layerProtocolSocket({pingTimeout: '15 seconds'}),
-			Layer.provide(
-				Socket.layerWebSocket(pipe(new URL('/api/rpc', input.server).href, String.replace(/^http/u, 'ws')))
+		Layer.merge(
+			pipe(
+				// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
+				RpcClient.layerProtocolSocket({pingTimeout: '15 seconds'}),
+				Layer.provide(
+					Socket.layerWebSocket(pipe(new URL('/api/rpc', input.server).href, String.replace(/^http/u, 'ws')))
+				),
+				Layer.provide(Socket.layerWebSocketConstructorGlobal),
+				Layer.provide(RpcSerialization.layerJson)
 			),
-			Layer.provide(Socket.layerWebSocketConstructorGlobal),
-			Layer.provide(RpcSerialization.layerJson)
+			RpcAuth.layerClient(
+				pipe(
+					Effect.gen(function* () {
+						return yield* (yield* FileSystem.FileSystem).readFileString(`${yield* keyFolder}/api-key`)
+					}),
+					Effect.mapError(cause =>
+						AuthError.make({
+							cause,
+							message: `Sign in first: create an API key at ${AUTH_URL}, then run stash login '<api key>'`
+						})
+					)
+				)
+			)
 		)
 	),
 	Command.withDescription(
-		'Save a link or a note to stash and print it as Markdown: title, summary, tags, notes, source text and the transcript with [mm:ss] timestamps. The server reads the link, transcribes its video with published captions or Whisper, and tags it; the CLI waits until it finishes. Needs the tailnet.'
+		'Save a link or a note to stash and print it as Markdown: title, summary, tags, notes, source text and the transcript with [mm:ss] timestamps. The server reads the link, transcribes its video with published captions or Whisper, and tags it; the CLI waits until it finishes. Needs `stash login` first.'
 	),
 	Command.withExamples([
 		{
@@ -110,7 +163,7 @@ NodeRuntime.runMain(
 	pipe(
 		Command.make('stash'),
 		Command.withDescription('Save links and notes to stash; the server and iOS app share this package.'),
-		Command.withSubcommands([save]),
+		Command.withSubcommands([login, save]),
 		Command.run({version: packageJson.version}),
 		Effect.provideService(Logger.LogToStderr, true),
 		// @effect-diagnostics-next-line strictEffectProvide:off -- This CLI entrypoint owns the single platform Layer and its resource lifetime.
