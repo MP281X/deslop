@@ -67,11 +67,30 @@ private struct SaveView: View {
   }
 }
 
+private struct SignInRequired: LocalizedError {
+  var errorDescription: String? { "Open stash and sign in first." }
+}
+
+// The server rejects an expired token only after the sheet closes, so the sheet checks the expiry in its base64url JSON first.
+private struct Session: Decodable {
+  let expiresAt: Double
+
+  static func valid(_ token: String) -> Bool {
+    guard let payload = token.split(separator: ".").first else { return false }
+    var base64 = payload.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+    base64 += String(repeating: "=", count: (4 - base64.count % 4) % 4)
+    guard let data = Data(base64Encoded: base64), let session = try? JSONDecoder().decode(Session.self, from: data)
+    else { return false }
+    return Date(timeIntervalSince1970: session.expiresAt / 1000) > Date()
+  }
+}
+
 // A background session sends the body after the sheet closes, and it uploads only from a file in the App Group.
 private struct Upload {
   let server: URL
   let group: String
   let folder: URL
+  let token: String
 
   init() throws {
     // The extension runs from the app's PlugIns/ folder, so the containing app's bundle is two levels up.
@@ -85,6 +104,13 @@ private struct Upload {
     else {
       throw CocoaError(.featureUnsupported)
     }
+    // The app keeps the token it got from signing in here.
+    guard let token = try? String(contentsOf: container.appendingPathComponent("token"), encoding: .utf8),
+      Session.valid(token)
+    else {
+      throw SignInRequired()
+    }
+    self.token = token
     self.server = server
     self.group = "group.\(identifier)"
     self.folder = container.appendingPathComponent("uploads", isDirectory: true)
@@ -113,6 +139,7 @@ private struct Upload {
     var request = URLRequest(url: server.appendingPathComponent(path))
     request.httpMethod = "POST"
     request.setValue(type, forHTTPHeaderField: "Content-Type")
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     let configuration = URLSessionConfiguration.background(withIdentifier: "\(group).share.\(id)")
     configuration.sharedContainerIdentifier = group
     configuration.isDiscretionary = false

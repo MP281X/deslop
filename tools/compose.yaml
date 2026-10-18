@@ -15,6 +15,8 @@ services:
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --entrypoints.websecure.address=:443
       - --entrypoints.websecure.http.tls.certresolver=letsencrypt
+      # The default 60-second read timeout cuts off a video the share extension uploads over a slow network.
+      - --entrypoints.websecure.transport.respondingTimeouts.readTimeout=1h
       - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
       - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
       - --providers.docker.exposedbydefault=false
@@ -32,14 +34,26 @@ services:
       traefik.http.routers.portfolio.rule: Host(`portfolio.mp281x.xyz`)
       traefik.http.services.portfolio.loadbalancer.server.port: '5000'
 
-  # Tailnet only: `tailscale serve` publishes 127.0.0.1:5017 as https://dev.tailnet-8c4c.ts.net:8443.
+  auth-server:
+    <<: *service
+    image: ghcr.io/mp281x/deslop-auth-server:latest
+    env_file: ${HOME}/.deslop/auth-server.env
+    environment: {VITE_OTEL_URL: http://collector:4318}
+    labels:
+      traefik.enable: 'true'
+      traefik.http.routers.auth-server.rule: Host(`auth.mp281x.xyz`)
+      traefik.http.services.auth-server.loadbalancer.server.port: '5000'
+
   stash:
     <<: *service
     image: ghcr.io/mp281x/deslop-stash:latest
     env_file: ${HOME}/.deslop/stash.env
     environment: {VITE_OTEL_URL: http://collector:4318}
-    ports: [127.0.0.1:5017:5000]
     volumes: ['${HOME}/.deslop/stash:/home/node/.deslop/stash', '${HOME}/.cache/deslop:/home/node/.cache/deslop']
+    labels:
+      traefik.enable: 'true'
+      traefik.http.routers.stash.rule: Host(`stash.mp281x.xyz`)
+      traefik.http.services.stash.loadbalancer.server.port: '5000'
 
   jaeger:
     <<: *service
@@ -64,7 +78,7 @@ configs:
           protocols:
             http:
               endpoint: 0.0.0.0:4318
-              cors: {allowed_origins: [https://portfolio.mp281x.xyz, 'http://127.0.0.1:*', 'http://localhost:*']}
+              cors: {allowed_origins: [https://auth.mp281x.xyz, https://portfolio.mp281x.xyz, 'http://127.0.0.1:*', 'http://localhost:*']}
       processors:
         memory_limiter: {check_interval: 1s, limit_mib: 256}
         batch: {}

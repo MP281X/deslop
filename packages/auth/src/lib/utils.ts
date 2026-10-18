@@ -1,0 +1,29 @@
+import {Context, Effect} from 'effect'
+
+import {Headers} from 'effect/http'
+import {RpcMiddleware} from 'effect/rpc'
+
+import type {User} from '#schema'
+import {AuthError} from '#schema'
+
+// The auth app: native apps and command lines sign in here, and every app reads its public key from here.
+export const AUTH_URL = 'https://auth.mp281x.xyz'
+
+export class CurrentUser extends Context.Service<CurrentUser, User>()('@deslop/auth/lib/utils/CurrentUser') {}
+
+// Contracts add it with `.middleware(RpcAuth)`; the server's `Auth.layer` verifies each request.
+export class RpcAuth extends RpcMiddleware.Service<RpcAuth, {provides: CurrentUser}>()(
+	'@deslop/auth/lib/utils/RpcAuth',
+	{error: AuthError}
+) {
+	// Sends the session token as the bearer of every request, read again for each one.
+	static readonly layerClient = <R>(token: Effect.Effect<string, AuthError, R>) =>
+		RpcMiddleware.layerClient(RpcAuth, options =>
+			Effect.flatMap(token, value =>
+				options.next({
+					...options.request,
+					headers: Headers.set(options.request.headers, 'authorization', `Bearer ${value}`)
+				})
+			)
+		)
+}

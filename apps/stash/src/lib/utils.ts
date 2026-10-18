@@ -1,10 +1,28 @@
-import {Array, Boolean, Effect, HashSet, Option, Order, Predicate, Schedule, Schema, Stream, String, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Effect,
+	HashSet,
+	Layer,
+	Option,
+	Order,
+	Predicate,
+	Record,
+	Schedule,
+	Schema,
+	Stream,
+	String,
+	pipe
+} from 'effect'
 
 import {AtomRpc, Atom} from 'effect/reactivity'
 import * as Clipboard from 'expo-clipboard'
 import * as Crypto from 'expo-crypto'
 import {File, Paths} from 'expo-file-system'
+import * as WebBrowser from 'expo-web-browser'
 
+import {AuthError} from '@deslop/auth/schema'
+import {AUTH_URL, RpcAuth} from '@deslop/auth/utils'
 import {brands} from '@deslop/components-mobile/icons'
 import {alert, downloadAtom, writeAtomically} from '@deslop/components-mobile/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
@@ -15,9 +33,81 @@ import {captureUrl, isYouTube} from '#services/notes/lib/utils.ts'
 import type {Kind, Note, NotesEvent} from '#services/notes/schema.ts'
 import {Brand, NoteItem, NotesError} from '#services/notes/schema.ts'
 
+// Session
+
+// The app's one App Group, where the share extension reads the token too; an empty file means signed out.
+const tokenFile = pipe(
+	Record.values(Paths.appleSharedContainers),
+	Array.head,
+	Option.map(folder => new File(folder, 'token'))
+)
+
+export const tokenAtom = Atom.writable(
+	() =>
+		pipe(
+			tokenFile,
+			Option.filter(file => file.exists),
+			Option.map(file => file.textSync()),
+			Option.filter(String.isNonEmpty)
+		),
+	(context, token: Option.Option<string>) => {
+		Option.map(tokenFile, file =>
+			writeAtomically(
+				file,
+				Option.getOrElse(token, () => '')
+			)
+		)
+		context.setSelf(token)
+	}
+)
+
+function authorization(token: Option.Option<string>) {
+	return {authorization: `Bearer ${Option.getOrElse(token, () => '')}`}
+}
+
+// The server ends the sign-in on this URL with `?token=` appended.
+const signInRedirect = `${MobileRuntime.scheme}://auth`
+
+export const signInAtom = Atom.keepAlive(
+	Atom.fn(() =>
+		pipe(
+			Effect.gen(function* () {
+				const result = yield* Effect.tryPromise({
+					catch: cause => AuthError.make({cause, message: 'The GitHub sign-in could not open.'}),
+					try: () =>
+						WebBrowser.openAuthSessionAsync(
+							`${AUTH_URL}/auth/github?redirect=${encodeURIComponent(signInRedirect)}`,
+							signInRedirect
+						)
+				})
+				if (result.type !== 'success') return
+				const token = yield* pipe(
+					Array.get(String.split(result.url, 'token='), 1),
+					Effect.fromOption,
+					Effect.mapError(() => AuthError.make({message: 'The server sent no token.'}))
+				)
+				yield* Atom.set(tokenAtom, Option.some(token))
+			}),
+			alert('Not Signed In')
+		)
+	)
+)
+
+const protocol = MobileRuntime.layer('@deslop/stash')
+
+// Each token builds its own client, so signing in reconnects.
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/stash/lib/utils/RpcClient', {
 	group: RpcContracts,
-	protocol: MobileRuntime.layer('@deslop/stash')
+	protocol: get =>
+		Layer.merge(
+			protocol,
+			RpcAuth.layerClient(
+				pipe(
+					Effect.fromOption(get(tokenAtom)),
+					Effect.mapError(() => AuthError.make({message: 'Sign in first.'}))
+				)
+			)
+		)
 }) {}
 
 // Kinds
@@ -89,6 +179,10 @@ export const notesAtom = Atom.keepAlive(
 						Effect.ignore({log: 'Warn', message: 'The list could not be kept on this iPhone'})
 					)
 				),
+				// A rejected token shows the sign-in again instead of retrying.
+				Stream.catchTag('AuthError', () =>
+					Stream.fromEffectDrain(Effect.sync(() => get.set(tokenAtom, Option.none())))
+				),
 				Stream.retry(Schedule.spaced('2 seconds'))
 			)
 		)
@@ -112,9 +206,17 @@ export const searchAtom = RpcClient.runtime.atom(get => {
 	)
 })
 
-export function imageAtom(id: Note['id']) {
-	return downloadAtom({name: id, url: new URL(`/api/images/${id}`, MobileRuntime.extra.server).href})
-}
+export const imageAtom = Atom.family((id: Note['id']) =>
+	Atom.make(get =>
+		get.result(
+			downloadAtom({
+				headers: authorization(get(tokenAtom)),
+				name: id,
+				url: new URL(`/api/images/${id}`, MobileRuntime.extra.server).href
+			})
+		)
+	)
+)
 
 // Actions stay alive, so leaving the screen does not interrupt the request.
 
@@ -186,7 +288,7 @@ export const offerAtom = Atom.keepAlive(
 	)
 )
 
-const saveImage = Effect.gen(function* () {
+const saveImage = Effect.fnUntraced(function* (token: Option.Option<string>) {
 	const image = yield* Effect.tryPromise({
 		catch: cause => NotesError.make({cause, message: 'The copied image could not be read.'}),
 		try: () => Clipboard.getImageAsync({format: 'jpeg', jpegQuality: 0.85})
@@ -200,7 +302,7 @@ const saveImage = Effect.gen(function* () {
 			try: () => {
 				file.writeSync(String.replace(/^data:[^,]*,/u, '')(image.data), {encoding: 'base64'})
 				return file.upload(new URL(`/api/files/${id}`, MobileRuntime.extra.server).href, {
-					headers: {'content-type': 'image/jpeg'},
+					headers: {...authorization(token), 'content-type': 'image/jpeg'},
 					httpMethod: 'POST'
 				})
 			}
@@ -231,7 +333,9 @@ const saveLink = Effect.gen(function* () {
 })
 
 const saveAtom = Atom.keepAlive(
-	RpcClient.runtime.fn((kind: Offer['kind']) => pipe({image: saveImage, link: saveLink}[kind], alert('Not Saved')))
+	RpcClient.runtime.fn((kind: Offer['kind'], get) =>
+		pipe({image: saveImage(get(tokenAtom)), link: saveLink}[kind], alert('Not Saved'))
+	)
 )
 
 export const answerAtom = Atom.keepAlive(

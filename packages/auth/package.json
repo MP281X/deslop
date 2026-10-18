@@ -1,0 +1,15 @@
+{
+	"name": "@deslop/auth",
+	"type": "module",
+	"sideEffects": false,
+	"imports": {
+		"#lib/utils": "./src/lib/utils.ts",
+		"#schema": "./src/schema.ts",
+		"#service": "./src/service.ts"
+	},
+	"exports": {
+		"./schema": "./src/schema.ts",
+		"./service": "./src/service.ts",
+		"./utils": "./src/lib/utils.ts"
+	}
+}

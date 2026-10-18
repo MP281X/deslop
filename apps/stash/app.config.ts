@@ -5,7 +5,7 @@ const app = ExpoRuntime.make({
 	name: 'stash',
 	owner: 'mp281x.xyz',
 	projectId: 'c9620553-0dc5-4e08-b691-a47fa3cab00e',
-	server: 'https://dev.tailnet-8c4c.ts.net:8443',
+	server: 'https://stash.mp281x.xyz',
 	slug: 'stash'
 })
 

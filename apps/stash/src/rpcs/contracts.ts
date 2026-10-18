@@ -2,6 +2,8 @@ import {Schema} from 'effect'
 
 import {Rpc, RpcGroup} from 'effect/rpc'
 
+import {RpcAuth} from '@deslop/auth/utils'
+
 import {Capture, Note, NoteId, NotesError, NotesEvent} from '#services/notes/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
@@ -11,4 +13,4 @@ export class RpcContracts extends RpcGroup.make(
 	Rpc.make('notes.capture', {error: NotesError, payload: Capture, success: Note}),
 	Rpc.make('notes.regenerate', {error: NotesError, payload: Schema.Struct({id: NoteId})}),
 	Rpc.make('notes.remove', {error: NotesError, payload: Schema.Struct({id: NoteId})})
-) {}
+).middleware(RpcAuth) {}
