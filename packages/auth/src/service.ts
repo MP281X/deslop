@@ -148,10 +148,15 @@ const SameOrigin = HttpRouter.middleware(
 	httpEffect =>
 		Effect.gen(function* () {
 			const request = yield* HttpServerRequest.HttpServerRequest
+			// Traefik forwards a WebSocket upgrade over TLS as `wss`, which `HttpServerRequest.toURL` reads as http.
+			const scheme = Boolean.match(
+				Option.exists(Headers.get(request.headers, 'x-forwarded-proto'), proto => proto === 'https' || proto === 'wss'),
+				{onFalse: () => 'http', onTrue: () => 'https'}
+			)
 			if (
 				Option.exists(
 					Headers.get(request.headers, 'origin'),
-					origin => !Option.exists(HttpServerRequest.toURL(request), url => url.origin === origin)
+					origin => origin !== `${scheme}://${request.headers['host'] ?? ''}`
 				)
 			) {
 				return HttpServerResponse.text('The request comes from another origin', {status: 403})

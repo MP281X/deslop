@@ -28,26 +28,32 @@ export function layer(applicationName: string) {
 	)
 }
 
-// iOS suspends sockets in the background, so atoms that read this count start over on each return to the app.
+// iOS suspends sockets in the background, so atoms that read this count start over on each return from it; a sign-in sheet only makes the app inactive.
 export const activationsAtom = Atom.make(get => {
+	const left = {background: false}
 	const subscription = AppState.addEventListener('change', state => {
-		if (state === 'active') get.setSelf(Option.getOrElse(get.self<number>(), () => 0) + 1)
+		if (state === 'background') left.background = true
+		if (state !== 'active' || !left.background) return
+		left.background = false
+		get.setSelf(Option.getOrElse(get.self<number>(), () => 0) + 1)
 	})
 	get.addFinalizer(() => subscription.remove())
 	return 0
 })
 
-export const updateAtom = Atom.keepAlive(
-	Atom.make(get =>
-		pipe(
-			Effect.gen(function* () {
-				get(activationsAtom)
-				if (!Updates.isEnabled) return
-				if (!(yield* Effect.tryPromise(() => Updates.checkForUpdateAsync())).isAvailable) return
-				if (!(yield* Effect.tryPromise(() => Updates.fetchUpdateAsync())).isNew) return
-				yield* Effect.tryPromise(() => Updates.reloadAsync())
-			}),
-			Effect.ignore({log: 'Warn', message: 'The app update check failed'})
-		)
+const downloadedAtom = Atom.keepAlive(Atom.make(false))
+
+// A reload ends what the user is doing, so a downloaded update starts on the next return to the app, before anything else; mount it only where a reload loses nothing.
+export const updateAtom = Atom.make(get =>
+	pipe(
+		Effect.gen(function* () {
+			get(activationsAtom)
+			if (!Updates.isEnabled) return
+			if (get.once(downloadedAtom)) return yield* Effect.tryPromise(() => Updates.reloadAsync())
+			if (!(yield* Effect.tryPromise(() => Updates.checkForUpdateAsync())).isAvailable) return
+			if (!(yield* Effect.tryPromise(() => Updates.fetchUpdateAsync())).isNew) return
+			get.set(downloadedAtom, true)
+		}),
+		Effect.ignore({log: 'Warn', message: 'The app update check failed'})
 	)
 )

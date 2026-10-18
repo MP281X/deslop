@@ -111,7 +111,7 @@ const servers = Effect.gen(function* () {
 function send(
 	web: Effect.Success<typeof servers>['app'],
 	url: string,
-	init: {authorization?: string; cookie?: string; method?: 'POST'; origin?: string} = {}
+	init: {authorization?: string; cookie?: string; method?: 'POST'; origin?: string; proto?: string} = {}
 ) {
 	const target = new URL(url)
 	return Effect.promise(() =>
@@ -124,7 +124,7 @@ function send(
 						['cookie', init.cookie ?? ''],
 						['host', target.host],
 						['origin', init.origin ?? target.origin],
-						['x-forwarded-proto', 'https']
+						['x-forwarded-proto', init.proto ?? 'https']
 					],
 					header => header[1] !== ''
 				),
@@ -145,7 +145,7 @@ function cookie(response: Response, name: string) {
 
 const signedInAs = Effect.fnUntraced(function* (
 	web: Effect.Success<typeof servers>['app'],
-	init: {authorization?: string; cookie?: string; origin?: string}
+	init: {authorization?: string; cookie?: string; origin?: string; proto?: string}
 ) {
 	const response = yield* send(web, `https://${APP}/me`, init)
 	if (response.status !== 200) return response.status
@@ -234,6 +234,7 @@ it.live('answers a request from another origin with 403 and signs out from the a
 
 		assert.strictEqual(yield* signedInAs(web.app, {cookie: session, origin: `https://${AUTH}`}), 403)
 		assert.strictEqual(yield* signedInAs(web.app, {cookie: session, origin: `http://${APP}`}), 403)
+		assert.strictEqual(yield* signedInAs(web.app, {cookie: session, proto: 'wss'}), 'octocat')
 		assert.strictEqual(
 			(yield* send(web.issuer, `https://${AUTH}/auth/sign-out`, {method: 'POST', origin: `https://${APP}`})).status,
 			403

@@ -1,4 +1,4 @@
-import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomMount, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, DateTime, HashSet, Match, Option, Schema, String, pipe} from 'effect'
 
@@ -69,6 +69,7 @@ import {Chip} from '@deslop/components-mobile/chip'
 import {BrandIcon, BrandLogo} from '@deslop/components-mobile/icons'
 import {colors, mono} from '@deslop/components-mobile/theme'
 import {assetAtom} from '@deslop/components-mobile/utils'
+import {updateAtom} from '@deslop/runtime/mobile'
 
 import {
 	answerAtom,
@@ -414,6 +415,8 @@ export function HomeRoute(props: {
 	query: ReturnType<typeof useNativeState<string>>
 	tag?: string
 }) {
+	// Only a signed-in screen reloads for an update, so a reload never ends a sign-in.
+	useAtomMount(updateAtom)
 	const items = useAtomSuspense(notesAtom).value
 	const remove = useAtomSet(removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
