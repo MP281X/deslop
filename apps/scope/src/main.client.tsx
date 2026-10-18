@@ -6,14 +6,10 @@ import * as WebRuntime from '@deslop/runtime/web'
 
 import {routeTree} from './routeTree.gen.ts'
 
-const {root, router} = WebRuntime.makeRouter(routeTree)
-
-router.update({
-	getScrollRestorationKey: location => {
-		const search = new URLSearchParams(location.searchStr)
-		search.delete('trace')
-		return `${location.pathname}?${search.toString()}`
-	}
+const {root, router} = WebRuntime.makeRouter(routeTree, location => {
+	const search = new URLSearchParams(location.searchStr)
+	search.delete('trace')
+	return `${location.pathname}?${search.toString()}`
 })
 
 declare module '@tanstack/react-router' {
