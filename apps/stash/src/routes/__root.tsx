@@ -1,4 +1,4 @@
-import {useAtomMount, useAtomSet, useAtomValue} from '@effect/atom-react'
+import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Option} from 'effect'
 
@@ -7,7 +7,6 @@ import {background, tint} from '@expo/ui/swift-ui/modifiers'
 import {Suspense, useState} from 'react'
 
 import {colors} from '@deslop/components-mobile/theme'
-import {updateAtom} from '@deslop/runtime/mobile'
 
 import {queryAtom, tokenAtom} from '#lib/utils.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
@@ -17,7 +16,6 @@ import {SignInRoute} from '#routes/sign-in.tsx'
 import type {Kind} from '#services/notes/schema.ts'
 
 export function RootRoute() {
-	useAtomMount(updateAtom)
 	const [path, setPath] = useState<string[]>([])
 	const setQuery = useAtomSet(queryAtom)
 	const [tag, setTag] = useState<string>()

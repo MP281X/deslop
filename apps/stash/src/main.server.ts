@@ -14,7 +14,7 @@ import {Media} from '#services/media/service.ts'
 import {Sources} from '#services/notes/lib/extraction.ts'
 import {Organizer} from '#services/notes/lib/organization.ts'
 import {Capture, FileType, Note, NoteId} from '#services/notes/schema.ts'
-import {Notes} from '#services/notes/service.ts'
+import {UserNotes} from '#services/notes/service.ts'
 
 const noteIdParam = HttpRouter.schemaPathParams(Schema.Struct({id: NoteId}))
 
@@ -22,13 +22,13 @@ const noteIdParam = HttpRouter.schemaPathParams(Schema.Struct({id: NoteId}))
 const routes = pipe(
 	HttpRouter.use(router =>
 		Effect.gen(function* () {
-			const notes = yield* Notes
+			const userNotes = (yield* UserNotes).current
 			yield* router.add(
 				'POST',
 				'/api/capture',
 				Effect.gen(function* () {
 					return yield* HttpServerResponse.schemaJson(Note)(
-						yield* notes.capture(yield* HttpServerRequest.schemaBodyJson(Capture))
+						yield* (yield* userNotes).capture(yield* HttpServerRequest.schemaBodyJson(Capture))
 					)
 				})
 			)
@@ -41,7 +41,7 @@ const routes = pipe(
 						pipe(request.headers['content-type'] ?? '', String.split(';'), Array.headNonEmpty, String.trim)
 					)
 					return yield* HttpServerResponse.schemaJson(Note)(
-						yield* notes.captureFile({body: request.stream, id: (yield* noteIdParam).id, type})
+						yield* (yield* userNotes).captureFile({body: request.stream, id: (yield* noteIdParam).id, type})
 					)
 				})
 			)
@@ -49,7 +49,7 @@ const routes = pipe(
 				'GET',
 				'/api/images/:id',
 				Effect.gen(function* () {
-					const image = yield* notes.image((yield* noteIdParam).id)
+					const image = yield* (yield* userNotes).image((yield* noteIdParam).id)
 					return HttpServerResponse.uint8Array(image.bytes, {
 						contentType: image.type,
 						headers: {'cache-control': 'private, max-age=31536000, immutable'}
@@ -71,7 +71,7 @@ const rpc = pipe(
 NodeRuntime.runMain(
 	pipe(
 		HttpRouter.serve(pipe(Layer.merge(rpc, routes), Layer.provide(Auth.layer)), {disableLogger: true}),
-		Layer.provide(Notes.layer),
+		Layer.provide(UserNotes.layer),
 		Layer.provide(Layer.mergeAll(Sources.layer, Media.layer, Organizer.layer)),
 		Layer.provide(Layer.mergeAll(NodeDns.layer, NodeHttpClient.layerFetch, NodeServices.layer)),
 		Layer.provide(ServerRuntime.layer('@deslop/stash')),

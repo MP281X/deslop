@@ -4,7 +4,7 @@ Decisions the code, the generators and lint do not show.
 
 ## Product scope
 
-- No portability, multi-user or compatibility code: one user on these two workers.
+- No portability, multi-user or compatibility code: one user on these two workers. The exception is a public app behind `auth.mp281x.xyz`: each GitHub user in `GITHUB_USERS` gets their own data, such as their own stash folder.
 - Releases are linear and squash-merged; a newer merge cancels an older release run, so a data change covers everything since the last successful deploy.
 - Local data is disposable. Preserve production data only from the immediately previous release; delete obsolete data.
 

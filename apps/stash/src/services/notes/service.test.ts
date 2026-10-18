@@ -4,7 +4,6 @@ import {assert, it} from '@effect/vitest'
 import {
 	Array,
 	Boolean,
-	ConfigProvider,
 	Context,
 	Effect,
 	Fiber,
@@ -66,13 +65,10 @@ const open = Effect.fnUntraced(function* (options: {
 }) {
 	const context = yield* Layer.build(
 		pipe(
-			Notes.layer,
+			Notes.layer(options.directory),
 			Layer.provide(Layer.succeed(Sources, options.sources)),
 			Layer.provide(Layer.succeed(Media, options.media ?? noVideo)),
-			Layer.provide(Layer.succeed(Organizer, options.organizer)),
-			Layer.provide(
-				ConfigProvider.layer(ConfigProvider.fromUnknown({HOME: options.directory, STASH_DATA_DIR: options.directory}))
-			)
+			Layer.provide(Layer.succeed(Organizer, options.organizer))
 		)
 	)
 	return Context.get(context, Notes)
