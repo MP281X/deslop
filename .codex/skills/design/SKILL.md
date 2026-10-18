@@ -15,7 +15,7 @@ description: 'Use before editing a .tsx, .css or .html file, before building, mo
 - **One meaning.** Each element adds information, a distinct action or a relationship. One action has one control in one place. No heading, summary, badge or text restates what the screen already shows. Keyboard shortcuts and screen-reader labels are not repetition.
 - **Zero clicks.** What the task needs is visible: the important value, warning and next action never sit behind a menu, tab, hover or expand. Each frequent action is one click; a choice the app can make is not asked.
 - **Current work first.** The first viewport shows real content and the next action; completed work recedes without hiding.
-- **Range.** When the reference and the Taste rows leave the structure open, compare 2–3 structurally different solutions on the same data, including one with fewer controls; build only the chosen one. A website or a new kind of piece starts from three concepts that differ in structure or metaphor, not palette.
+- **Range.** When the reference and the Taste rows leave the structure open, compare 2–3 structurally different solutions on the same data, including one with fewer controls. Present the survivors per orchestrator's Gate and build only the one the user chooses. A website or a new kind of piece starts from three concepts that differ in structure or metaphor, not palette.
 - **States.** List each screen's reachable states (empty, loading, partial, error, success, long content) before code. Never re-add an element the user removed or rename a visible term without a request.
 
 ## Hierarchy
@@ -34,6 +34,7 @@ Blur a capture: the primary content and next action still stand out.
 - **iOS.** The same shadcn look, carried by native iOS elements: the mobile theme's tokens for color, radius and type on SwiftUI primitives through `@expo/ui` (navigation, toolbars, search, lists, menus, swipe actions, sheets, SF Symbols) with their system sizes and behavior. Glass for controls and navigation, never content. Never draw a custom system control.
 - **Surfaces** take color, shadow and radius from the theme's tokens only, group by proximity before borders and give each edge one border owner.
 - **Flat.** Never a gradient, glow or blurred shadow, anywhere: screens, pages, videos and images use flat theme colors and even 1 px borders, never a colored stripe on one side.
+- **Isometric figures.** A flat 3D figure that explains an idea follows `references/isometric.md`: a real machine, many small parts, four tones, painter's order, checked at 4× and in dark mode.
 
 - **Type.** The theme's semantic styles, at most five sizes per screen, prose 45–75 characters, tabular figures for changing numbers, middle truncation when the end distinguishes names.
 - **Alignment.** Few edges; headers share columns with rows; equivalent controls share size, icon style and hit target. Squashed icon: `shrink-0`. Vanishing trailing action: `min-w-0` on content. Empty optional slots render no orphan separators.

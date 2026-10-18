@@ -10,9 +10,18 @@ description: Use before the first edit of any change, when a design or direction
 - **Outcome.** Work toward the outcome behind the request: the cause of a bug and its siblings, the whole journey rather than one screen. A larger outcome beyond the request is a proposal in the reply, not work.
 - **Depth.** Before a consequential change, name what a top expert would do that the request did not ask for, the rawest material they start from (logs, rows, traces, source), their instruments, and what outside you confirms the result; plan that, a deeper version rather than a bigger one. Set the hard target (the platform's limit, zero cases of the class) and treat it as solvable until a measurement proves the limit.
 - **Brainstorm wide, report narrow.** When a change has more than one plausible shape, list at least three structurally different options, always including reuse what exists, do less (delete, inline, no new parts) and the most direct new code; for an open question, a council per [Delegate](#delegate) adds them. Kill each with one concrete counterexample from the code or a probe; keep the simplest survivor. The final reply carries one table: option, deciding consequence, chosen. A specified fix skips this.
-- **Prototype** when a sketch decides faster than code: a screen as an HTML mock per design's Mocks (for an open direction, one mock child per variant hypothesis, combined into one comparison page); a code shape as the file tree, exported signatures and one data flow; a behavior as an inline probe. Build your pick at once, unless the user asked to plan per pair's Ask, and switch when the user picks another.
+- **Prototype** when a sketch decides faster than code: a screen as an HTML mock per design's Mocks (for an open direction, one mock child per variant hypothesis, combined into one comparison page); a code shape as the file tree, exported signatures and one data flow; a behavior as an inline probe. Never build a pick for a design, architecture or direction question: run the [Gate](#gate) and let the user choose. Build only the option the user chose, or a specified fix.
 - **Tripwire.** When time or lines reach twice the estimate, or a mechanism the request did not name appears (script, daemon, store, wrapper, protocol, reimplementation), stop and brainstorm again from the user's request verbatim.
 - **Steers.** Read new messages before each consequential step. A replacement drops the old direction, keeps valid code and proof, and deletes the rejected version once the new one works. An addition extends the work without a restart. A tentative idea is explored, not made a requirement. "Good enough" takes that head to ready and ends refinement. One implementation: no flags or variants for hypothetical revisions.
+
+## Gate
+
+For a design, architecture or high-level direction question, the user decides taste and you filter the bar, before any edit:
+
+1. **Diverge.** A council per [Delegate](#delegate): up to six members, half Luna and half Haiku, each with its own direction. Each lists at least six structurally different options as one table: option, mechanism or object, what changes for the reader, cost, and its strongest reason to fail.
+2. **Kill.** One adversarial Sol child takes the union and kills each option with one counterexample from the code, a probe, the reference or design's bar. Keep only the survivors.
+3. **Prototype.** One mock child per survivor, per design's Mocks: the real base, the same data, one named hypothesis each. Look at every mock yourself at 390 px and at desktop before you show it.
+4. **Present.** One `html_render` comparison: options as columns, the same rows, the one difference that is taste marked, your recommendation marked while the other options stay visible. Then stop and wait for the choice.
 
 ## Build
 
