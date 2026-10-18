@@ -21,11 +21,11 @@ For a design, architecture or high-level direction question, the user decides ta
 
 0. **Criteria.** Before any child starts, derive 3–6 criteria from the user's own words, never from your preference. Each names a quoted requirement, an observable result and a pass condition. Label an inferred proxy as a hypothesis: it does not prove a subjective goal or add a hard requirement. The user never writes them; the reply states them once, as the row labels of the comparison.
 
-   | Criterion                    | Test                                                         | From the user's words                                                    |
-   | ---------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------ |
-   | Fun after 5 min              | replay two different first 60 s; the outcomes differ         | "I don't really understand what part of this would be fun"               |
-   | Reopen tomorrow (hypothesis) | a new seed changes the best choice in at least 1 of 10 seeds | "It seems boring to be honest"                                           |
-   | No repo, no CI               | the build path touches no repository or pipeline             | "I don't really want this to be related to this repo or to writing code" |
+   | Criterion             | Test                                                                           | From the user's words                       |
+   | --------------------- | ------------------------------------------------------------------------------ | ------------------------------------------- |
+   | Loads fast on a phone | LCP of the changed page under 1.0 s on a 390 px emulated device                | "it should feel instant on my phone"        |
+   | No new dependency     | `git diff origin/main -- '**/package.json'` adds no entry under `dependencies` | "keep it small, I don't want more packages" |
+   | Works offline         | the page renders with the network disabled in the preview                      | "it has to work when I'm on the train"      |
 
 1. **Diverge.** A council per [Delegate](#delegate), each member with its own direction. Each lists at least six structurally different options as one table: option, mechanism or object, what changes for the reader or caller, cost, and its strongest reason to fail.
 2. **Kill.** One adversarial Sol child takes the union, scores each option against every criterion, and kills it with one counterexample from the code, a probe, the reference or design's bar, citing the criterion it fails. Keep 2–3 passing finalists. Fewer than two: next round (step 3), with the counterexamples in its brief, even without a new viewpoint. More than three: kill again.
