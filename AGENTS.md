@@ -20,13 +20,12 @@ Decisions the code, the generators and lint do not show.
 
 ## Taste
 
-| Area            | Choice                                                                                    | Rejected                                                                           | The user's words                                                                                 |
-| --------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| AI calls        | The Effect AI provider module, directly in the service using it                           | A wrapper `ai` package with its own interface                                      | "This interface looks like shit … just remove the package and use the effect ai module directly" |
-| Identifiers     | A literal union for a closed set of ids, such as model ids                                | `string`                                                                           | "The id need to be a literal"                                                                    |
-| Stash note page | The note's content and tags                                                               | Source and Text in image sections                                                  | "Sections like the source and text in image can be removed"                                      |
-| Versions        | `latest`; `^X.Y`, or the exact version, only where a peer, the Expo SDK or Vite+ fixes it | `^X.Y.Z` and pins without a reason                                                 | "when possible use latest or "^\*.\*" … (i perfer latest)"                                       |
-| Agent messages  | Only what changes a decision of the user or adds what they lack                           | Process facts: skill loads, child states, wakes, checks, reviews, PR states, costs | "Why do you keep giving me reports and status updates while you work? They add no value to me"   |
+| Area            | Choice                                                                                    | Rejected                                      | The user's words                                                                                 |
+| --------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| AI calls        | The Effect AI provider module, directly in the service using it                           | A wrapper `ai` package with its own interface | "This interface looks like shit … just remove the package and use the effect ai module directly" |
+| Identifiers     | A literal union for a closed set of ids, such as model ids                                | `string`                                      | "The id need to be a literal"                                                                    |
+| Stash note page | The note's content and tags                                                               | Source and Text in image sections             | "Sections like the source and text in image can be removed"                                      |
+| Versions        | `latest`; `^X.Y`, or the exact version, only where a peer, the Expo SDK or Vite+ fixes it | `^X.Y.Z` and pins without a reason            | "when possible use latest or "^\*.\*" … (i perfer latest)"                                       |
 
 ## Layout
 
