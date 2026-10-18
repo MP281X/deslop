@@ -28,7 +28,7 @@ services:
   portfolio:
     <<: *service
     image: ghcr.io/mp281x/deslop-portfolio:latest
-    environment: {VITE_OTEL_URL: http://collector:4318}
+    environment: {VITE_OTEL_URL: http://scope:5000}
     labels:
       traefik.enable: 'true'
       traefik.http.routers.portfolio.rule: Host(`portfolio.mp281x.xyz`)
@@ -38,7 +38,7 @@ services:
     <<: *service
     image: ghcr.io/mp281x/deslop-auth-server:latest
     env_file: ${HOME}/.deslop/auth-server.env
-    environment: {VITE_OTEL_URL: http://collector:4318}
+    environment: {VITE_OTEL_URL: http://scope:5000}
     labels:
       traefik.enable: 'true'
       traefik.http.routers.auth-server.rule: Host(`auth.mp281x.xyz`)
@@ -48,47 +48,25 @@ services:
     <<: *service
     image: ghcr.io/mp281x/deslop-stash:latest
     env_file: ${HOME}/.deslop/stash.env
-    environment: {VITE_OTEL_URL: http://collector:4318}
+    environment: {VITE_OTEL_URL: http://scope:5000}
     volumes: ['${HOME}/.deslop/stash:/home/node/.deslop/stash', '${HOME}/.cache/deslop:/home/node/.cache/deslop']
     labels:
       traefik.enable: 'true'
       traefik.http.routers.stash.rule: Host(`stash.mp281x.xyz`)
       traefik.http.services.stash.loadbalancer.server.port: '5000'
 
-  jaeger:
+  scope:
     <<: *service
-    image: jaegertracing/all-in-one:latest
-    ports: [127.0.0.1:16686:16686]
-
-  collector:
-    <<: *service
-    image: otel/opentelemetry-collector-contrib:latest
-    configs: [{source: collector, target: /etc/otelcol-contrib/config.yaml}]
-    ports: [127.0.0.1:4318:4318]
+    image: ghcr.io/mp281x/deslop-scope:latest
+    environment: {HOST: 0.0.0.0}
+    volumes: ['${HOME}/.deslop/scope:/home/node/.deslop/scope']
+    ports: [127.0.0.1:4318:5000]
     labels:
       traefik.enable: 'true'
-      traefik.http.routers.otlp.rule: Host(`otel.mp281x.xyz`)
-      traefik.http.services.otlp.loadbalancer.server.port: '4318'
-
-configs:
-  collector:
-    content: |
-      receivers:
-        otlp:
-          protocols:
-            http:
-              endpoint: 0.0.0.0:4318
-              cors: {allowed_origins: [https://auth.mp281x.xyz, https://portfolio.mp281x.xyz, 'http://127.0.0.1:*', 'http://localhost:*']}
-      processors:
-        memory_limiter: {check_interval: 1s, limit_mib: 256}
-        batch: {}
-      exporters:
-        debug: {verbosity: basic}
-        otlp/jaeger: {endpoint: jaeger:4317, tls: {insecure: true}}
-      service:
-        pipelines:
-          logs: {receivers: [otlp], processors: [memory_limiter, batch], exporters: [debug]}
-          traces: {receivers: [otlp], processors: [memory_limiter, batch], exporters: [otlp/jaeger]}
+      traefik.http.routers.otlp.rule: Host(`otel.mp281x.xyz`) && (Path(`/v1/traces`) || Path(`/v1/logs`))
+      traefik.http.services.otlp.loadbalancer.server.port: '5000'
+      traefik.http.routers.scope.rule: Host(`scope.mp281x.xyz`)
+      traefik.http.routers.scope.service: otlp
 
 networks:
   deslop:

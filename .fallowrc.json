@@ -15,7 +15,7 @@
 		{"exports": ["default"], "file": "apps/*/app.config.ts"},
 		{"exports": ["*"], "file": "apps/*/fingerprint.config.js"},
 		{"exports": ["default"], "file": "packages/*/app.plugin.js"},
-		{"exports": ["*"], "file": "apps/stash/src/services/*/schema.ts"},
+		{"exports": ["*"], "file": "apps/*/src/services/*/schema.ts"},
 		{"exports": ["*"], "file": "packages/components-web/src/**/*.tsx"}
 	],
 	"rules": {"require-suppression-reason": "error", "unlisted-dependencies": "off"}

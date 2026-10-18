@@ -17,7 +17,7 @@
 	],
 	"type": "module",
 	"imports": {
-		"#package": "./package.json",
+		"#package.*": "./package.*",
 		"#rules/*": "./src/rules/*"
 	},
 	"exports": {

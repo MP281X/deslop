@@ -29,7 +29,7 @@ vp -C apps/stash exec expo prebuild --platform ios --no-install --clean && rm -r
 
 ## Publish a new tool
 
-Every push to `main` publishes each `tools/*` package in `.github/workflows/deploy.yaml` and `apps/stash` as `0.1.<run>` with npm trusted publishing, which npm accepts only for a package that already exists.
+Every push to `main` publishes the packages listed in `.github/workflows/deploy.yaml` as `0.1.<run>` with npm trusted publishing, which npm accepts only for a package that already exists.
 
 1. **Shape.** Copy `apps/stash/package.json`'s publish fields: `version` `0.1.0`, `files: ["dist"]`, `publishConfig.access: public`, `scripts.build: vp pack`, and `repository.url` unchanged (provenance checks it). `pack.deps.alwaysBundle` bundles everything except native-binary packages, packages that share a module instance with them and packages resolved by name at run time, such as lint plugins, which go in `dependencies`.
 2. **Prove** the packed tarball, never the source: `PACK=$(mktemp -d) && vp -C tools/<name> run build && vp -C tools/<name> pm pack --pack-destination "$PACK" && vpx --package "$PACK"/deslop-<name>-0.1.0.tgz deslop-<name> --help`.
@@ -45,9 +45,25 @@ Every push to `main` publishes each `tools/*` package in `.github/workflows/depl
 
 ## Tracing
 
-On dev only: collector `http://127.0.0.1:4318`, Jaeger `http://127.0.0.1:16686`, CORS for the production portfolio origin and loopback. A remote preview needs a reachable `VITE_OTEL_URL`. An allowed preflight does not prove spans.
+Scope receives unauthenticated OTLP/HTTP JSON directly at `http://127.0.0.1:4318` on dev and `https://otel.mp281x.xyz` from apps. `https://scope.mp281x.xyz` serves its authenticated UI and query RPC using the auth app. A remote preview needs a reachable `VITE_OTEL_URL`; an allowed preflight does not prove spans.
 
 ```bash
-curl -fsSG http://127.0.0.1:16686/api/traces --data-urlencode 'service=@deslop/portfolio-server' --data-urlencode 'lookback=10m' --data-urlencode 'limit=20' | jq '.data[] | {traceID, spans: [.spans[] | {operationName, duration}]}'
-docker compose --project-name deslop --file tools/compose.yaml logs --since 10m collector
+vpx @deslop/scope@latest login '<API key from https://auth.mp281x.xyz>'
+vpx @deslop/scope@latest services
+vpx @deslop/scope@latest traces --service @deslop/portfolio-server --since '10 minutes'
+vpx @deslop/scope@latest trace <trace-id>
+vpx @deslop/scope@latest watch --service @deslop/portfolio-server
 ```
+
+The CLI defaults to the always-on `https://scope.mp281x.xyz`; `SCOPE_SERVER` or `--server` overrides it. Scope stores its SQLite database and CLI API key under `~/.deslop/scope/`. Its preview uses `NODE_ENV=development`, where the shared auth package supplies a mock developer without OAuth. Production defaults to real verification. Deslop exporters attach `scope.runtime`, `service.instance.id` and `scope.run.started_unix_nano`; the receiver hides an entire trace when any participating service moves to a newer run. Delayed batches cannot reactivate an old run.
+
+Dual's existing `packages/saas/src/Observability.ts` sends the same JSON protocol and merges `OTEL_RESOURCE_ATTRIBUTES`. Compute the startup timestamp at every development launch, never in `.env`, so restarting a service hides its previous traces. From `packages/saas`, with its development environment and dependencies already configured:
+
+```bash
+OTEL_RESOURCE_ATTRIBUTES="scope.runtime=server,scope.run.started_unix_nano=$(date +%s%N)" \
+POSTHOG_PROJECT_TOKEN=scope-dev POSTHOG_OTLP_BASE_URL=https://otel.mp281x.xyz \
+bun --env-file .env src/dev.ts api
+# Use the same launch environment with `src/dev.ts worker` for the worker.
+```
+
+The nonempty PostHog marker enables Dual's exporter; Scope's receiver ignores it. This is opt-in development configuration, not a change to Dual's production PostHog configuration.

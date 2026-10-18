@@ -6,6 +6,9 @@
 # build output & cache
 **/dist
 **/*.tsbuildinfo
+**/*.sqlite
+**/*.sqlite-shm
+**/*.sqlite-wal
 
 # packages
 **/node_modules

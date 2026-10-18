@@ -35,19 +35,20 @@ jobs:
           VITE_OTEL_URL: https://otel.mp281x.xyz
         # pnpm applies publishConfig while packing; npm uploads the README metadata that pnpm omits.
         run: |
-          for package in tools/coding-standards apps/stash; do
+          for package in tools/coding-standards apps/scope apps/stash; do
             vp -C $package pm version "0.1.$RELEASE_NUMBER" -- --no-git-tag-version --no-git-checks
           done
           vp run build
 
           echo "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          for app in auth-server portfolio stash; do
+          for app in auth-server portfolio scope stash; do
             docker build apps/$app --tag ghcr.io/${GITHUB_REPOSITORY,,}-$app:latest
             docker push ghcr.io/${GITHUB_REPOSITORY,,}-$app:latest
           done
 
           (cd apps/stash && npm pkg delete dependencies devDependencies)
-          for package in tools/coding-standards apps/stash; do
+          (cd apps/scope && npm pkg delete devDependencies)
+          for package in tools/coding-standards apps/scope apps/stash; do
             vp -C $package pm pack --pack-destination "$RUNNER_TEMP/$package"
             npm publish "$RUNNER_TEMP/$package"/*.tgz
           done

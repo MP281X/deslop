@@ -1,13 +1,20 @@
-import {Context, Effect} from 'effect'
+import {Config, Context, Effect, pipe} from 'effect'
 
 import {Headers} from 'effect/http'
 import {RpcMiddleware} from 'effect/rpc'
 
-import type {User} from '#schema'
-import {AuthError} from '#schema'
+import type {User} from '#schema.ts'
+import {AuthError} from '#schema.ts'
 
 // The auth app: native apps and command lines sign in here, and every app reads its public key from here.
 export const AUTH_URL = 'https://auth.mp281x.xyz'
+
+export const development = pipe(
+	Config.String('NODE_ENV'),
+	Config.withDefault('production'),
+	Config.map(mode => mode === 'development'),
+	Effect.mapError(cause => AuthError.make({cause, message: 'Cannot read the authentication mode'}))
+)
 
 export class CurrentUser extends Context.Service<CurrentUser, User>()('@deslop/auth/lib/utils/CurrentUser') {}
 
@@ -19,11 +26,11 @@ export class RpcAuth extends RpcMiddleware.Service<RpcAuth, {provides: CurrentUs
 	// Sends the session token as the bearer of every request, read again for each one.
 	static readonly layerClient = <R>(token: Effect.Effect<string, AuthError, R>) =>
 		RpcMiddleware.layerClient(RpcAuth, options =>
-			Effect.flatMap(token, value =>
-				options.next({
+			Effect.gen(function* () {
+				return yield* options.next({
 					...options.request,
-					headers: Headers.set(options.request.headers, 'authorization', `Bearer ${value}`)
+					headers: Headers.set(options.request.headers, 'authorization', `Bearer ${yield* token}`)
 				})
-			)
+			})
 		)
 }

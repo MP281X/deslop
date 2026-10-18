@@ -6,8 +6,8 @@ import {Array, Effect, Option, Path, Schema, String, flow, pipe} from 'effect'
 
 import {Command, Flag} from 'effect/cli'
 
-import {copyTemplate} from '#copy-template'
-import packageJson from '#package' with {type: 'json'}
+import {copyTemplate} from '#copy-template.ts'
+import packageJson from '#package.json' with {type: 'json'}
 
 const create = Command.make(
 	'create-package',

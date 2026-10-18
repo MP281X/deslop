@@ -1,7 +1,7 @@
 import {Config, ConfigProvider, Effect, Layer, Predicate, pipe} from 'effect'
 
 import {createRouter} from '@tanstack/react-router'
-import type {AnyContext, AnyRoute} from '@tanstack/react-router'
+import type {AnyContext, AnyRoute, RouterOptions} from '@tanstack/react-router'
 import {Atom} from 'effect/reactivity'
 import * as Rpc from 'effect/rpc'
 import {Socket} from 'effect/socket'
@@ -10,7 +10,10 @@ import {Error, Loading, NotFound} from '@deslop/components-web/fallbacks'
 
 import {layerOtlp} from '#telemetry.ts'
 
-export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext: AnyContext}}>(routeTree: TRouteTree) {
+export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext: AnyContext}}>(
+	routeTree: TRouteTree,
+	getScrollRestorationKey?: RouterOptions<TRouteTree, 'never'>['getScrollRestorationKey']
+) {
 	const root = document.querySelector('#root')
 	if (Predicate.isNull(root)) throw new TypeError('Missing application mount element with id "root"')
 
@@ -23,6 +26,7 @@ export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext:
 			defaultPendingComponent: Loading,
 			defaultPendingMs: 0,
 			defaultPreload: 'intent',
+			getScrollRestorationKey,
 			routeTree,
 			scrollRestoration: true
 		})
@@ -46,7 +50,7 @@ export function layer(applicationName: string) {
 		pipe(
 			Layer.unwrap(
 				Effect.map(pipe(Config.URL('VITE_OTEL_URL'), Config.withDefault(new URL('http://localhost:4318'))), url =>
-					layerOtlp(`${applicationName}-client`, url)
+					layerOtlp(`${applicationName}-client`, url, 'web')
 				)
 			),
 			Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(import.meta.env)))

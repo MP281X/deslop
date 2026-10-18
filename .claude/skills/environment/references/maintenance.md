@@ -106,7 +106,7 @@ Use at most five stops of two short sentences each, in plain words. No praise, n
 1. **Update.** `sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get autoremove -y && sudo apt-get clean`, `vp upgrade`. glab: when `curl -fsSL https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, install its `glab_<version>_linux_amd64.deb`.
 2. **T3** runs the nightly channel as the `t3code.service` user unit: `vp install -g t3@nightly`, `t3 service install`, `t3 connect link --headless` (show the user the link), `t3 connect publish`, then `t3 service restart` with no run active.
 3. **Deploy** on dev from `~/deslop` on published main: `docker compose --project-name deslop --file tools/compose.yaml pull`, then `up -d --remove-orphans`; a changed inline config needs `up -d --force-recreate --no-deps <service>`.
-4. **Verify.** https://portfolio.mp281x.xyz and dev's http://127.0.0.1:16686/api/services return 200, an OPTIONS preflight to otel's `/v1/traces` and `/v1/logs` with `Origin: https://portfolio.mp281x.xyz` succeeds, and https://dev.tailnet-8c4c.ts.net:8443/api/rpc returns 400: stash serves only its RPC socket, which rejects a plain GET.
+4. **Verify.** https://portfolio.mp281x.xyz and dev's http://127.0.0.1:4318/health return 200, an OPTIONS preflight to otel's `/v1/traces` and `/v1/logs` with `Origin: https://portfolio.mp281x.xyz` succeeds, and https://dev.tailnet-8c4c.ts.net:8443/api/rpc returns 400: stash serves only its RPC socket, which rejects a plain GET. Query Scope through the CLI per Deslop's Tracing reference; its read API stays private.
 
 ## Clean
 

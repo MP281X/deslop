@@ -18,7 +18,7 @@ export const scheme = Schema.decodeUnknownSync(Schema.String)(Constants.expoConf
 
 // Binary frames failed to reopen a cancelled watch on iOS.
 export function layer(applicationName: string) {
-	Atom.runtime.addGlobalLayer(layerOtlp(`${applicationName}-ios`, extra.otel))
+	Atom.runtime.addGlobalLayer(layerOtlp(`${applicationName}-ios`, extra.otel, 'mobile'))
 	return pipe(
 		// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
 		Rpc.RpcClient.layerProtocolSocket({pingTimeout: '15 seconds', retryTransientErrors: true}),

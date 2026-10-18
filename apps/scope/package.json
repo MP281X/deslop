@@ -1,0 +1,46 @@
+{
+	"name": "@deslop/scope",
+	"version": "0.1.0",
+	"description": "An Effect development debugger: query live end-to-end traces and span logs as JSON.",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/MP281X/deslop",
+		"directory": "apps/scope"
+	},
+	"bin": {
+		"scope": "./dist/cli.js"
+	},
+	"files": [
+		"dist/cli.js",
+		"dist/*.mjs"
+	],
+	"type": "module",
+	"sideEffects": false,
+	"imports": {
+		"#package.*": "./package.*",
+		"#lib/*": "./src/lib/*",
+		"#rpcs/*": "./src/rpcs/*",
+		"#routes/*": "./src/routes/*",
+		"#services/*": "./src/services/*"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "rm -rf dist && vp build && vp pack",
+		"preview": "vp run build && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js"
+	},
+	"devDependencies": {
+		"@deslop/auth": "workspace:*",
+		"@deslop/components-web": "workspace:*",
+		"@deslop/runtime": "workspace:*",
+		"@effect/sql-sqlite-node": "latest",
+		"@tanstack/react-router": "latest",
+		"lucide-react": "latest",
+		"react": "latest",
+		"react-dom": "latest"
+	},
+	"engines": {
+		"node": ">=26"
+	}
+}

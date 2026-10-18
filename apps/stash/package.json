@@ -19,7 +19,7 @@
 	"imports": {
 		"#lib/*": "./src/lib/*",
 		"#modules/*": "./modules/*",
-		"#package": "./package.json",
+		"#package.*": "./package.*",
 		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
 		"#services/*": "./src/services/*"

@@ -4,8 +4,8 @@
 	"bin": "./bin/index.ts",
 	"type": "module",
 	"imports": {
-		"#copy-template": "./src/copy-template.ts",
-		"#package": "./package.json"
+		"#*": "./src/*",
+		"#package.*": "./package.*"
 	},
 	"exports": {
 		".": "./src/copy-template.ts"

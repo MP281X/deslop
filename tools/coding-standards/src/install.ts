@@ -8,7 +8,7 @@ import type {PlatformError} from 'effect'
 import {CliError, Command} from 'effect/cli'
 import {ChildProcess} from 'effect/process'
 
-import packageJson from '#package' with {type: 'json'}
+import packageJson from '#package.json' with {type: 'json'}
 
 const cli = pipe(
 	Command.make(

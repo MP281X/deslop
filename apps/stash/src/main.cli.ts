@@ -24,7 +24,7 @@ import {Socket} from 'effect/socket'
 import {AuthError} from '@deslop/auth/schema'
 import {AUTH_URL, RpcAuth} from '@deslop/auth/utils'
 
-import packageJson from '#package' with {type: 'json'}
+import packageJson from '#package.json' with {type: 'json'}
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {NotesError} from '#services/notes/schema.ts'
@@ -37,7 +37,7 @@ const server = pipe(
 )
 
 // `login` keeps the API key here for `save`.
-const keyFolder = Effect.map(Config.String('HOME'), home => `${home}/.config/stash`)
+const keyFolder = Effect.map(Config.String('HOME'), home => `${home}/.deslop/stash`)
 
 function section(title: string, text?: string) {
 	return pipe(
@@ -59,7 +59,7 @@ const login = pipe(
 			yield* Effect.logInfo(`Signed in; the API key is in ${folder}/api-key`)
 		})
 	),
-	Command.withDescription(`Keep an API key created at ${AUTH_URL} in ~/.config/stash/api-key for save.`),
+	Command.withDescription(`Keep an API key created at ${AUTH_URL} in ~/.deslop/stash/api-key for save.`),
 	Command.withExamples([
 		{command: "vpx @deslop/stash@latest login '<api key>'", description: `Sign in with a key from ${AUTH_URL}.`}
 	])

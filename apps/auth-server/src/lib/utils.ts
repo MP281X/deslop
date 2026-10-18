@@ -3,7 +3,6 @@ import {Effect, Schema, pipe} from 'effect'
 import {Atom, AtomRpc} from 'effect/reactivity'
 
 import {AuthError} from '@deslop/auth/schema'
-import {toast} from '@deslop/components-web/ui/sonner'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -26,11 +25,6 @@ export const meAtom = RpcClient.runtime.atom(
 export const apiKeyAtom = RpcClient.runtime.fn(() =>
 	pipe(
 		Effect.flatMap(RpcClient, client => client('auth.createApiKey', undefined)),
-		Effect.tapError(error =>
-			Effect.andThen(
-				Effect.sync(() => toast.error(`Cannot create an API key: ${error.message}`)),
-				Effect.when(Atom.refresh(meAtom), Effect.succeed(Schema.is(AuthError)(error)))
-			)
-		)
+		Effect.tapError(error => Effect.when(Atom.refresh(meAtom), Effect.succeed(Schema.is(AuthError)(error))))
 	)
 )
