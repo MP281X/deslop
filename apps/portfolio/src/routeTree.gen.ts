@@ -9,8 +9,14 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as R3dRouteImport } from './routes/3d'
 import { Route as homeIndexRouteImport } from './routes/(home)/index'
 
+const R3dRoute = R3dRouteImport.update({
+  id: '/3d',
+  path: '/3d',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const homeIndexRoute = homeIndexRouteImport.update({
   id: '/(home)/',
   path: '/',
@@ -18,29 +24,40 @@ const homeIndexRoute = homeIndexRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
+  '/3d': typeof R3dRoute
   '/': typeof homeIndexRoute
 }
 export interface FileRoutesByTo {
+  '/3d': typeof R3dRoute
   '/': typeof homeIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/3d': typeof R3dRoute
   '/(home)/': typeof homeIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/3d' | '/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/(home)/'
+  to: '/3d' | '/'
+  id: '__root__' | '/3d' | '/(home)/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  R3dRoute: typeof R3dRoute
   homeIndexRoute: typeof homeIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/3d': {
+      id: '/3d'
+      path: '/3d'
+      fullPath: '/3d'
+      preLoaderRoute: typeof R3dRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/(home)/': {
       id: '/(home)/'
       path: '/'
@@ -52,6 +69,7 @@ declare module '@tanstack/react-router' {
 }
 
 const rootRouteChildren: RootRouteChildren = {
+  R3dRoute: R3dRoute,
   homeIndexRoute: homeIndexRoute,
 }
 export const routeTree = rootRouteImport
