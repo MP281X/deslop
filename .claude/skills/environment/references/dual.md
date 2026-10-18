@@ -25,15 +25,90 @@ bun run fix && bun run check --affected && bun run test --affected   # fix (lint
 Project `DOS`, board 1053, on `datapizza.atlassian.net`; the user's account ID is `712020:87e4f57e-6b5d-40ab-8dfa-faf159ead71a`.
 
 - **Picking.** When the user asks what to work on: rank only unassigned `To Do` tickets by priority (`P1` highest), size and fit with the code; skip every other status. Rank Epics, Tasks, Stories and Bugs, not Areas or Initiatives. After the user approves, assign each ticket to the user and move it to `Doing`; these are the only Jira writes.
+- **Page.** A ticket key links to `https://datapizza.atlassian.net/browse/<key>`.
 - **Assigned.** A ticket key in a request, branch or commit means work the user started: read it and quote the requirements you use.
+- **Through Dual.** Every Jira read and write is one call to the `dual` MCP server's `execute` tool with the code below, with the ticket keys in place of `DOS-289`. An action not listed here is found by an explore child with `tools.search({query})` and `tools.describe.tool({path})` inside `execute`. The connection is a service account: `currentUser()` and `@me` are not the user, so name the user by account ID. Report each slow or confusing step to the user, who builds Dual.
 
-```bash
-acli jira workitem search --csv --paginate --fields key,issuetype,priority,summary --jql 'project = DOS AND assignee is EMPTY AND status = "To Do" ORDER BY priority DESC, updated DESC'
-acli jira workitem search --csv --fields key,priority,status,summary --jql 'project = DOS AND assignee = currentUser() AND statusCategory != Done'
-acli jira workitem view DOS-289
-acli jira workitem comment list --key DOS-289
-acli jira workitem assign --key DOS-289 --assignee @me --yes
-acli jira workitem transition --key DOS-289 --status Doing --yes
+```js
+// search, every page; for the user's open tickets the jql is
+// project = DOS AND assignee = "712020:87e4f57e-6b5d-40ab-8dfa-faf159ead71a" AND statusCategory != Done
+const jql = 'project = DOS AND assignee is EMPTY AND status = "To Do" ORDER BY priority DESC, updated DESC'
+const rows = []
+let nextPageToken
+do {
+	const page = await tools['atlassian-api.jira-issue-search.search-and-reconsile-issues-using-jql']({
+		jql,
+		fields: ['issuetype', 'priority', 'status', 'summary'],
+		maxResults: 100,
+		nextPageToken
+	})
+	rows.push(
+		...page.issues.map(i =>
+			[i.key, i.fields.issuetype.name, i.fields.priority.name, i.fields.status.name, i.fields.summary].join(' | ')
+		)
+	)
+	nextPageToken = page.nextPageToken
+} while (nextPageToken)
+return rows
+```
+
+```js
+// one ticket and every comment
+const issue = await tools['atlassian-api.jira-issues.get-issue']({
+	issueIdOrKey: 'DOS-289',
+	fields: ['summary', 'description', 'status']
+})
+const comments = []
+let page
+do {
+	page = await tools['atlassian-api.jira-issue-comments.get-comments']({
+		issueIdOrKey: 'DOS-289',
+		startAt: comments.length,
+		maxResults: 100
+	})
+	comments.push(...page.comments)
+} while (comments.length < page.total)
+return {comments, issue}
+```
+
+```js
+// take a picked ticket: assign it to the user, then move it to Doing (transition 21)
+await tools['atlassian-api.jira-issues.assign-issue']({
+	issueIdOrKey: 'DOS-289',
+	payload: {accountId: '712020:87e4f57e-6b5d-40ab-8dfa-faf159ead71a'}
+})
+return await tools['atlassian-api.jira-issues.do-transition']({
+	issueIdOrKey: 'DOS-289',
+	payload: {transition: {id: '21'}}
+})
+```
+
+## Google
+
+The same `execute` reads the user's work calendar and mail, `matteopaludgnach@datapizza.tech`, in `Europe/Rome`; nothing writes to them. A day's events carry their Meet link in `hangoutLink`:
+
+```js
+const events = await tools['google-api.calendar-events.list']({
+	calendarId: 'primary',
+	timeMin: '2026-10-19T00:00:00+02:00',
+	timeMax: '2026-10-20T00:00:00+02:00',
+	singleEvents: true,
+	orderBy: 'startTime',
+	timeZone: 'Europe/Rome'
+})
+const list = await tools['google-api.gmail-users-messages.list']({userId: 'me', maxResults: 12, q: 'in:inbox'})
+const mails = []
+for (const message of list.messages ?? []) {
+	mails.push(
+		await tools['google-api.gmail-users-messages.get']({
+			userId: 'me',
+			id: message.id,
+			format: 'metadata',
+			metadataHeaders: ['From', 'Subject', 'Date']
+		})
+	)
+}
+return {events: events.items, mails}
 ```
 
 ## VPN
