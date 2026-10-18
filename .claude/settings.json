@@ -7,7 +7,8 @@
 		{"serverName": "t3-code"},
 		{"serverName": "dual"},
 		{"serverName": "scope"},
-		{"serverName": "stash"}
+		{"serverName": "stash"},
+		{"serverName": "portfolio"}
 	],
 	"enabledPlugins": {
 		"plugin-authoring@builtin": false,

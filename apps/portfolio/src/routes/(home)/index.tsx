@@ -29,7 +29,7 @@ import {cn} from '@deslop/components-web/utils'
 
 import {portfolioPalette} from '#lib/portfolio.ts'
 import {RpcClient} from '#lib/utils.ts'
-import type {PortfolioTrail, PortfolioVisitor, PortfolioState} from '#rpcs/contracts.ts'
+import type {PortfolioTrail, PortfolioVisitor, PortfolioState} from '#services/presence/schema.ts'
 
 function randomIndex(length: number) {
 	return Math.floor(Random.Random.defaultValue().nextDoubleUnsafe() * length)
