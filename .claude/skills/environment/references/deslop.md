@@ -29,7 +29,7 @@ vp -C apps/stash exec expo prebuild --platform ios --no-install --clean && rm -r
 
 ## Publish a new tool
 
-Every push to `main` publishes each `tools/*` package in `.github/workflows/deploy.yaml` and `apps/stash` as `0.1.<run>` with npm trusted publishing, which npm accepts only for a package that already exists.
+Every push to `main` publishes the packages listed in `.github/workflows/deploy.yaml` as `0.1.<run>` with npm trusted publishing, which npm accepts only for a package that already exists.
 
 1. **Shape.** Copy `apps/stash/package.json`'s publish fields: `version` `0.1.0`, `files: ["dist"]`, `publishConfig.access: public`, `scripts.build: vp pack`, and `repository.url` unchanged (provenance checks it). `pack.deps.alwaysBundle` bundles everything except native-binary packages, packages that share a module instance with them and packages resolved by name at run time, such as lint plugins, which go in `dependencies`.
 2. **Prove** the packed tarball, never the source: `PACK=$(mktemp -d) && vp -C tools/<name> run build && vp -C tools/<name> pm pack --pack-destination "$PACK" && vpx --package "$PACK"/deslop-<name>-0.1.0.tgz deslop-<name> --help`.
@@ -45,16 +45,16 @@ Every push to `main` publishes each `tools/*` package in `.github/workflows/depl
 
 ## Tracing
 
-Scope receives OTLP/HTTP JSON directly at `http://127.0.0.1:4318` on dev and `https://otel.mp281x.xyz` from apps. Its web UI and query RPC stay private: the public router exposes only `/v1/traces` and `/v1/logs`. A remote preview needs a reachable `VITE_OTEL_URL`; an allowed preflight does not prove spans. Scope itself never exports telemetry back into its receiver.
+Scope receives unauthenticated OTLP/HTTP JSON directly at `http://127.0.0.1:4318` on dev and `https://otel.mp281x.xyz` from apps. `https://scope.mp281x.xyz` serves its authenticated UI and query RPC using the auth app. A remote preview needs a reachable `VITE_OTEL_URL`; an allowed preflight does not prove spans.
 
 ```bash
-vp -C apps/scope run build
-node apps/scope/dist/cli.js traces --server http://127.0.0.1:4318 --service @deslop/portfolio-server --since '10 minutes'
-node apps/scope/dist/cli.js trace <trace-id> --server http://127.0.0.1:4318
-node apps/scope/dist/cli.js logs --server http://127.0.0.1:4318 --since '10 minutes'
-node apps/scope/dist/cli.js stats --server http://127.0.0.1:4318 --operation Notes.capture --since '10 minutes'
+vpx @deslop/scope@latest login '<API key from https://auth.mp281x.xyz>'
+vpx @deslop/scope@latest services
+vpx @deslop/scope@latest traces --service @deslop/portfolio-server --since '10 minutes'
+vpx @deslop/scope@latest trace <trace-id>
+vpx @deslop/scope@latest watch --service @deslop/portfolio-server
 ```
 
-For a standalone instance, `vp -C apps/scope run preview` listens on port 5000 by default, which is also the CLI default; `SCOPE_SERVER` overrides the CLI destination and `SCOPE_DATABASE` selects its disposable SQLite file. Stop the server before deleting that file. Keep the query server on loopback or the tailnet, not on the public Internet.
+The CLI defaults to the always-on `https://scope.mp281x.xyz`; `SCOPE_SERVER` or `--server` overrides it. Scope stores its SQLite database and CLI API key under `~/.deslop/scope/`. Its preview uses `NODE_ENV=development`, where the shared auth package supplies a mock developer without OAuth. Production defaults to real verification. Deslop exporters attach `scope.runtime`, `service.instance.id` and `scope.run.started_unix_nano`; the receiver hides an entire trace when any participating service moves to a newer run. Delayed batches cannot reactivate an old run.
 
 Dual's existing `packages/saas/src/Observability.ts` already sends the same JSON protocol. In its development process only, set `POSTHOG_OTLP_BASE_URL` to the Scope base URL and `POSTHOG_PROJECT_TOKEN` to a nonempty development marker such as `scope-dev`; that token enables the exporter. Scope's private receiver does not authenticate that marker. Never replace Dual's production PostHog configuration.

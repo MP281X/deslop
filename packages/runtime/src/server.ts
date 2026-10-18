@@ -15,7 +15,7 @@ export function layer(applicationName: string) {
 	return Layer.mergeAll(
 		Layer.unwrap(
 			Effect.map(pipe(Config.URL('VITE_OTEL_URL'), Config.withDefault(new URL('http://localhost:4318'))), url =>
-				layerOtlp(`${applicationName}-server`, url)
+				layerOtlp(`${applicationName}-server`, url, 'server')
 			)
 		),
 		RpcSerialization.layerSchemaBinary()

@@ -7,4 +7,4 @@ vpx @deslop/stash@latest login '<api key>'
 vpx @deslop/stash@latest save '<link or text>' [--server <url>]
 ```
 
-`login` keeps an API key created at https://auth.mp281x.xyz in `~/.config/stash/api-key`.
+`login` keeps an API key created at https://auth.mp281x.xyz in `~/.deslop/stash/api-key`.

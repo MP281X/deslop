@@ -9,7 +9,7 @@
 	},
 	"scripts": {
 		"build": "rm -rf dist && vp build && vp pack",
-		"preview": "vp run build && node --env-file-if-exists=.env ./dist/server.js"
+		"preview": "vp run build && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js"
 	},
 	"devDependencies": {
 		"@deslop/auth": "workspace:*",

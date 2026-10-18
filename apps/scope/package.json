@@ -1,28 +1,37 @@
 {
 	"name": "@deslop/scope",
 	"version": "0.1.0",
+	"description": "An Effect development debugger: query live end-to-end traces and span logs as JSON.",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/MP281X/deslop",
+		"directory": "apps/scope"
+	},
 	"bin": {
 		"scope": "./dist/cli.js"
 	},
 	"files": [
-		"dist"
+		"dist/cli.js",
+		"dist/*.mjs"
 	],
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
-		"#package": "./package.json",
+		"#package.*": "./package.*",
 		"#lib/*": "./src/lib/*",
 		"#rpcs/*": "./src/rpcs/*",
 		"#routes/*": "./src/routes/*",
-		"#services/telemetry/schema.ts": "./src/services/telemetry/schema.ts",
-		"#services/telemetry/service.ts": "./src/services/telemetry/service.ts",
-		"#services/telemetry/lib/utils.ts": "./src/services/telemetry/lib/utils.ts"
+		"#services/*": "./src/services/*"
+	},
+	"publishConfig": {
+		"access": "public"
 	},
 	"scripts": {
 		"build": "rm -rf dist && vp build && vp pack",
-		"preview": "vp run build && node --env-file-if-exists=.env ./dist/server.js"
+		"preview": "vp run build && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js"
 	},
 	"devDependencies": {
+		"@deslop/auth": "workspace:*",
 		"@deslop/components-web": "workspace:*",
 		"@deslop/runtime": "workspace:*",
 		"@effect/sql-sqlite-node": "latest",
@@ -30,5 +39,8 @@
 		"lucide-react": "latest",
 		"react": "latest",
 		"react-dom": "latest"
+	},
+	"engines": {
+		"node": ">=26"
 	}
 }

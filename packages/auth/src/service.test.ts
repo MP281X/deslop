@@ -6,10 +6,10 @@ import {Array, Boolean, ConfigProvider, Effect, Layer, Option, Schema, String, p
 import {Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientResponse, HttpRouter, HttpServerResponse} from 'effect/http'
 
-import {Session, User} from '#schema'
-import {Auth, HttpAuth, Issuer} from '#service'
+import {Session, User} from '#schema.ts'
+import {Auth, HttpAuth, Issuer} from '#service.ts'
 
-import {CurrentUser} from '#lib/utils'
+import {CurrentUser} from '#lib/utils.ts'
 
 const AUTH = 'auth.example.test'
 const APP = 'app.example.test'

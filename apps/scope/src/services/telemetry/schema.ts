@@ -11,8 +11,8 @@ export const TraceId = pipe(Schema.String, Schema.check(Schema.isPattern(/^[a-fA
 type SpanId = typeof SpanId.Type
 const SpanId = pipe(Schema.String, Schema.check(Schema.isPattern(/^[a-fA-F0-9]{16}$/u)))
 
-type Nano = typeof Nano.Type
-const Nano = pipe(Schema.String, Schema.check(Schema.isPattern(/^\d{1,20}$/u)))
+export type Nano = typeof Nano.Type
+export const Nano = pipe(Schema.String, Schema.check(Schema.isPattern(/^\d{1,20}$/u)))
 
 type Attribute = typeof Attribute.Type
 const Attribute = Schema.Struct({key: Schema.String, value: Schema.JsonObject})
@@ -23,13 +23,41 @@ export const Resource = Schema.StructWithRest(
 	[Schema.JsonObject]
 )
 
+export type SpanDetails = typeof SpanDetails.Type
+export const SpanDetails = Schema.Struct({
+	attributes: Schema.optionalKey(Schema.Array(Attribute)),
+	events: Schema.optionalKey(
+		Schema.Array(
+			Schema.StructWithRest(
+				Schema.Struct({
+					attributes: Schema.optionalKey(Schema.Array(Attribute)),
+					name: Schema.String,
+					timeUnixNano: Nano
+				}),
+				[Schema.JsonObject]
+			)
+		)
+	),
+	links: Schema.optionalKey(
+		Schema.Array(
+			Schema.StructWithRest(
+				Schema.Struct({attributes: Schema.optionalKey(Schema.Array(Attribute)), spanId: SpanId, traceId: TraceId}),
+				[Schema.JsonObject]
+			)
+		)
+	)
+})
+
+export type AttributeArray = typeof AttributeArray.Type
+export const AttributeArray = Schema.Struct({arrayValue: Schema.Struct({values: Schema.Array(Schema.JsonObject)})})
+
 type Span = typeof Span.Type
 const Span = Schema.StructWithRest(
 	Schema.Struct({
-		attributes: Schema.optionalKey(Schema.Array(Attribute)),
+		...SpanDetails.fields,
 		endTimeUnixNano: Schema.optionalKey(Nano),
 		name: Schema.optionalKey(Schema.String),
-		parentSpanId: Schema.optionalKey(Schema.String),
+		parentSpanId: Schema.optionalKey(Schema.Union([SpanId, Schema.Literal('')])),
 		spanId: SpanId,
 		startTimeUnixNano: Nano,
 		status: Schema.optionalKey(
@@ -48,9 +76,9 @@ const Log = Schema.StructWithRest(
 		observedTimeUnixNano: Schema.optionalKey(Nano),
 		severityNumber: Schema.optionalKey(Schema.Int),
 		severityText: Schema.optionalKey(Schema.String),
-		spanId: Schema.optionalKey(Schema.String),
+		spanId: Schema.optionalKey(Schema.Union([SpanId, Schema.Literal('')])),
 		timeUnixNano: Schema.optionalKey(Nano),
-		traceId: Schema.optionalKey(Schema.String)
+		traceId: Schema.optionalKey(Schema.Union([TraceId, Schema.Literal('')]))
 	}),
 	[Schema.JsonObject]
 )
@@ -144,13 +172,21 @@ export const Query = Schema.Struct({
 export type Page = typeof Page.Type
 export const Page = Schema.Struct({entries: Schema.Array(Entry), total: Schema.Int})
 
+export type Runtime = typeof Runtime.Type
+export const Runtime = Schema.Literals(['web', 'mobile', 'server', 'unknown'])
+
+export type Service = typeof Service.Type
+export const Service = Schema.Struct({name: Schema.String, runtime: Runtime})
+
 export type TraceSummary = typeof TraceSummary.Type
 export const TraceSummary = Schema.Struct({
 	durationMs: Schema.Finite,
 	errors: Schema.Int,
 	id: TraceId,
+	logs: Schema.Int,
 	operation: Schema.String,
 	service: Schema.String,
+	services: Schema.Array(Service),
 	spans: Schema.Int,
 	time: Nano
 })
@@ -169,22 +205,33 @@ export const Stats = Schema.Struct({
 	to: Schema.Finite
 })
 
+export type TraceSpan = typeof TraceSpan.Type
+export const TraceSpan = Schema.Struct({
+	...Entry.fields,
+	depth: Schema.Natural,
+	logs: Schema.Array(Entry),
+	offsetMs: Schema.Finite,
+	parentSpanId: Schema.String,
+	runtime: Runtime
+})
+
 export type Trace = typeof Trace.Type
-export const Trace = Schema.Struct({entries: Schema.Array(Entry), id: TraceId})
+export const Trace = Schema.Struct({
+	durationMs: Schema.Finite,
+	id: TraceId,
+	logs: Schema.Array(Entry),
+	services: Schema.Array(Service),
+	spans: Schema.Array(TraceSpan)
+})
 
 export type StoredEntry = typeof StoredEntry.Type
 export const StoredEntry = Schema.Struct({json: Schema.fromJsonString(Entry)})
 
 export type Search = typeof Search.Type
 export const Search = Schema.Struct({
-	errors: pipe(Schema.Boolean, Schema.withDecodingDefaultTypeKey(Effect.succeed(false))),
-	kind: pipe(Schema.Literals(['traces', 'logs']), Schema.withDecodingDefaultTypeKey(Effect.succeed('traces' as const))),
-	offset: pipe(Schema.Int, Schema.withDecodingDefaultTypeKey(Effect.succeed(0))),
+	expanded: pipe(Schema.Array(Schema.String), Schema.withDecodingDefaultTypeKey(Effect.succeed([]))),
+	offset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey(Effect.succeed(0))),
 	query: pipe(Schema.String, Schema.withDecodingDefaultTypeKey(Effect.succeed(''))),
 	service: pipe(Schema.String, Schema.withDecodingDefaultTypeKey(Effect.succeed(''))),
-	sort: pipe(
-		Schema.Literals(['recent', 'slowest']),
-		Schema.withDecodingDefaultTypeKey(Effect.succeed('recent' as const))
-	),
-	trace: Schema.optionalKey(Schema.String)
+	trace: Schema.optionalKey(TraceId)
 })

@@ -1,20 +1,37 @@
 import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {Clock, Config, Console, Duration, Effect, Layer, Logger, Schema, String, pipe} from 'effect'
+import {
+	Clock,
+	Config,
+	Console,
+	Duration,
+	Effect,
+	FileSystem,
+	Layer,
+	Logger,
+	Redacted,
+	Schema,
+	Stream,
+	String,
+	pipe
+} from 'effect'
 
 import {Argument, Command, Flag} from 'effect/cli'
 import {RpcClient, RpcSerialization} from 'effect/rpc'
 import {Socket} from 'effect/socket'
 
-import packageJson from '#package' with {type: 'json'}
+import {AuthError} from '@deslop/auth/schema'
+import {AUTH_URL, RpcAuth} from '@deslop/auth/utils'
+
+import packageJson from '#package.json' with {type: 'json'}
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import {Page, Query, Stats, TelemetryError, Trace, TraceId, TracesPage} from '#services/telemetry/schema.ts'
+import {Page, Query, Service, Stats, TelemetryError, Trace, TraceId, TracesPage} from '#services/telemetry/schema.ts'
 
 const server = pipe(
 	Flag.String('server'),
 	Flag.withFallbackConfig(Config.String('SCOPE_SERVER')),
-	Flag.withDefault('http://localhost:5000')
+	Flag.withDefault('https://scope.mp281x.xyz')
 )
 const filters = {
 	errors: pipe(Flag.Boolean('errors'), Flag.withDefault(false)),
@@ -35,13 +52,58 @@ const filters = {
 }
 
 function protocol(url: string) {
-	return pipe(
-		RpcClient.layerProtocolSocket({pingTimeout: '15 seconds'}),
-		Layer.provide(Socket.layerWebSocket(pipe(new URL('/api/rpc', url).href, String.replace(/^http/u, 'ws')))),
-		Layer.provide(Socket.layerWebSocketConstructorGlobal),
-		Layer.provide(RpcSerialization.layerSchemaBinary())
+	return Layer.merge(
+		pipe(
+			RpcClient.layerProtocolSocket({pingTimeout: '15 seconds'}),
+			Layer.provide(Socket.layerWebSocket(pipe(new URL('/api/rpc', url).href, String.replace(/^http/u, 'ws')))),
+			Layer.provide(Socket.layerWebSocketConstructorGlobal),
+			Layer.provide(RpcSerialization.layerSchemaBinary())
+		),
+		RpcAuth.layerClient(
+			pipe(
+				Effect.gen(function* () {
+					return yield* (yield* FileSystem.FileSystem).readFileString(
+						`${yield* Config.String('HOME')}/.deslop/scope/api-key`
+					)
+				}),
+				Effect.mapError(cause =>
+					AuthError.make({cause, message: `Create an API key at ${AUTH_URL}, then run scope login '<api key>'.`})
+				)
+			)
+		)
 	)
 }
+
+const login = pipe(
+	Command.make(
+		'login',
+		{key: Argument.Redacted('api-key')},
+		Effect.fnUntraced(function* (input) {
+			const fs = yield* FileSystem.FileSystem
+			const directory = `${yield* Config.String('HOME')}/.deslop/scope`
+			yield* fs.makeDirectory(directory, {recursive: true})
+			yield* fs.writeFileString(`${directory}/api-key`, Redacted.value(input.key), {mode: 0o600})
+			yield* Effect.logInfo('Signed in to Scope.')
+		})
+	),
+	Command.withDescription(`Store an API key from ${AUTH_URL} in ~/.deslop/scope/api-key.`)
+)
+
+const services = pipe(
+	Command.make(
+		'services',
+		{server},
+		Effect.fnUntraced(function* () {
+			yield* Console.log(
+				yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Array(Service), {space: 2}))(
+					yield* (yield* RpcClient.make(RpcContracts))['telemetry.services'](undefined)
+				)
+			)
+		})
+	),
+	Command.provide(input => protocol(input.server)),
+	Command.withDescription('List current services and their frontend/backend runtimes.')
+)
 
 const query = Effect.fnUntraced(function* (input: Command.Command.Config.Infer<typeof filters>) {
 	const now = yield* Clock.currentTimeMillis
@@ -136,13 +198,39 @@ const trace = pipe(
 	Command.withDescription('Read every received span and log for one trace; no time window or result cap.')
 )
 
+const watch = pipe(
+	Command.make(
+		'watch',
+		filters,
+		Effect.fnUntraced(function* (input) {
+			const client = yield* RpcClient.make(RpcContracts)
+			yield* pipe(
+				client['telemetry.watch'](undefined),
+				Stream.mapEffect(
+					Effect.fnUntraced(function* () {
+						return yield* Schema.encodeEffect(Schema.fromJsonString(TracesPage))(
+							yield* client['telemetry.traces'](yield* query(input))
+						)
+					})
+				),
+				Stream.changes,
+				Stream.runForEach(value => Console.log(value))
+			)
+		})
+	),
+	Command.provide(input => protocol(input.server)),
+	Command.withDescription(
+		'Follow matching traces as newline-delimited JSON. Emits an initial snapshot, then changes; Ctrl-C stops.'
+	)
+)
+
 NodeRuntime.runMain(
 	pipe(
 		Command.make('scope'),
 		Command.withDescription(
 			'Inspect Effect traces and logs. Every command writes JSON to stdout; diagnostics go to stderr.'
 		),
-		Command.withSubcommands([traces, spans, logs, stats, trace]),
+		Command.withSubcommands([login, services, traces, spans, logs, stats, trace, watch]),
 		Command.run({version: packageJson.version}),
 		Effect.scoped,
 		Effect.provideService(Logger.LogToStderr, true),

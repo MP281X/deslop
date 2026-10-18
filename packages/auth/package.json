@@ -3,9 +3,7 @@
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
-		"#lib/utils": "./src/lib/utils.ts",
-		"#schema": "./src/schema.ts",
-		"#service": "./src/service.ts"
+		"#*": "./src/*"
 	},
 	"exports": {
 		"./schema": "./src/schema.ts",

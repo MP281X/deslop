@@ -8,6 +8,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 		const telemetry = yield* Telemetry
 		return RpcContracts.of({
 			'telemetry.logs': query => telemetry.logs(query),
+			'telemetry.services': () => telemetry.services(),
 			'telemetry.spans': query => telemetry.spans(query),
 			'telemetry.stats': query => telemetry.stats(query),
 			'telemetry.trace': id => telemetry.trace(id),

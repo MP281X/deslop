@@ -31,19 +31,18 @@ export const resultsAtom = Atom.family((search: Search) =>
 			const now = yield* Clock.currentTimeMillis
 			const client = yield* RpcClient
 			const query = Query.make({
-				errors: search.errors,
+				errors: false,
 				from: 0,
 				limit: 100,
 				offset: search.offset,
 				operation: '',
 				service: search.service,
-				sort: search.sort,
+				sort: 'recent',
 				text: search.query,
 				to: now,
 				traceId: ''
 			})
-			if (search.kind === 'logs') return {kind: 'logs' as const, page: yield* client('telemetry.logs', query)}
-			return {kind: 'traces' as const, page: yield* client('telemetry.traces', query)}
+			return {page: yield* client('telemetry.traces', query), services: yield* client('telemetry.services', undefined)}
 		})
 	)
 )

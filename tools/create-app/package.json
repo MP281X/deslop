@@ -4,7 +4,7 @@
 	"bin": "./bin/index.ts",
 	"type": "module",
 	"imports": {
-		"#package": "./package.json"
+		"#package.*": "./package.*"
 	},
 	"dependencies": {
 		"@deslop/create-package": "workspace:*",

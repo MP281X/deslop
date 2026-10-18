@@ -9,7 +9,7 @@ import {Command, Flag} from 'effect/cli'
 
 import {copyTemplate} from '@deslop/create-package'
 
-import packageJson from '#package' with {type: 'json'}
+import packageJson from '#package.json' with {type: 'json'}
 
 const create = Command.make(
 	'create-app',

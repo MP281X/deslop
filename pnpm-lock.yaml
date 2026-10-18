@@ -272,6 +272,9 @@ importers:
 
   apps/scope:
     devDependencies:
+      '@deslop/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@deslop/components-web':
         specifier: workspace:*
         version: link:../../packages/components-web

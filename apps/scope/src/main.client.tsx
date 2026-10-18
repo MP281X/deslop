@@ -9,6 +9,7 @@ import {routeTree} from './routeTree.gen.ts'
 const {root, router} = WebRuntime.makeRouter(routeTree, location => {
 	const search = new URLSearchParams(location.searchStr)
 	search.delete('trace')
+	search.delete('span')
 	return `${location.pathname}?${search.toString()}`
 })
 

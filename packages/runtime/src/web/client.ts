@@ -50,7 +50,7 @@ export function layer(applicationName: string) {
 		pipe(
 			Layer.unwrap(
 				Effect.map(pipe(Config.URL('VITE_OTEL_URL'), Config.withDefault(new URL('http://localhost:4318'))), url =>
-					layerOtlp(`${applicationName}-client`, url)
+					layerOtlp(`${applicationName}-client`, url, 'web')
 				)
 			),
 			Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(import.meta.env)))

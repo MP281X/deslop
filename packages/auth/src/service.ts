@@ -33,7 +33,6 @@ import {
 	Url
 } from 'effect/http'
 
-import type {User} from '#schema'
 import {
 	AuthError,
 	CallbackParams,
@@ -43,16 +42,23 @@ import {
 	OAuthTokenResponse,
 	Session,
 	SignInParams,
-	Verification
-} from '#schema'
+	Verification,
+	User
+} from '#schema.ts'
 
-import {AUTH_URL, CurrentUser, RpcAuth} from '#lib/utils'
+import {AUTH_URL, CurrentUser, RpcAuth, development} from '#lib/utils.ts'
 
 const SESSION_COOKIE = '__Secure-session'
 const OAUTH_COOKIE = '__Host-oauth'
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 const SESSION_DURATION = Duration.days(365)
 const OAUTH_DURATION = Duration.minutes(10)
+const DEVELOPMENT_USER = User.make({id: 'development', name: 'Developer'})
+const MOCK_AUTH = {
+	verify: Effect.fn('Auth.verify')(function* (_token: string) {
+		return yield* Effect.succeed(DEVELOPMENT_USER)
+	})
+}
 // An Ed25519 private key in PKCS #8 is this header and the 32-byte seed.
 const PKCS8_ED25519 = Uint8Array.from([
 	0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20
@@ -86,8 +92,9 @@ function respond<E, R>(message: string, handler: Effect.Effect<HttpServerRespons
 }
 
 // A command line and a native app send the token as the bearer, a browser in the session cookie.
-function userFrom(auth: typeof Auth.Service, headers: Headers.Headers) {
-	return pipe(
+const userFrom = Effect.fnUntraced(function* (auth: typeof Auth.Service, headers: Headers.Headers) {
+	if (yield* development) return DEVELOPMENT_USER
+	return yield* pipe(
 		Headers.get(headers, 'authorization'),
 		Option.filter(String.startsWith('Bearer ')),
 		Option.map(String.replace('Bearer ', '')),
@@ -101,7 +108,7 @@ function userFrom(auth: typeof Auth.Service, headers: Headers.Headers) {
 		rejected('Sign in first'),
 		Effect.flatMap(token => auth.verify(token))
 	)
-}
+})
 
 function provide(auth: typeof Auth.Service) {
 	return pipe(
@@ -144,27 +151,25 @@ function verifyWith(current: Effect.Effect<{publicKey: CryptoKey; users: HashSet
 }
 
 // Browsers send Origin on every POST, cross-origin fetch and WebSocket upgrade; any other origin is cross-site request forgery.
-const SameOrigin = HttpRouter.middleware(
-	httpEffect =>
-		Effect.gen(function* () {
-			const request = yield* HttpServerRequest.HttpServerRequest
-			// Traefik forwards a WebSocket upgrade over TLS as `wss`, which `HttpServerRequest.toURL` reads as http.
-			const scheme = Boolean.match(
-				Option.exists(Headers.get(request.headers, 'x-forwarded-proto'), proto => proto === 'https' || proto === 'wss'),
-				{onFalse: () => 'http', onTrue: () => 'https'}
+const SameOrigin = HttpRouter.middleware(httpEffect =>
+	Effect.gen(function* () {
+		const request = yield* HttpServerRequest.HttpServerRequest
+		// Traefik forwards a WebSocket upgrade over TLS as `wss`, which `HttpServerRequest.toURL` reads as http.
+		const scheme = Boolean.match(
+			Option.exists(Headers.get(request.headers, 'x-forwarded-proto'), proto => proto === 'https' || proto === 'wss'),
+			{onFalse: () => 'http', onTrue: () => 'https'}
+		)
+		if (
+			Option.exists(
+				Headers.get(request.headers, 'origin'),
+				origin => origin !== `${scheme}://${request.headers['host'] ?? ''}`
 			)
-			if (
-				Option.exists(
-					Headers.get(request.headers, 'origin'),
-					origin => origin !== `${scheme}://${request.headers['host'] ?? ''}`
-				)
-			) {
-				return HttpServerResponse.text('The request comes from another origin', {status: 403})
-			}
-			return yield* httpEffect
-		}),
-	{global: true}
-)
+		) {
+			return HttpServerResponse.text('The request comes from another origin', {status: 403})
+		}
+		return yield* httpEffect
+	})
+).layer
 
 // auth.mp281x.xyz sets the session cookie on mp281x.xyz, so every app beside it reads it.
 function parentDomain(request: HttpServerRequest.HttpServerRequest) {
@@ -313,6 +318,7 @@ export class Auth extends Context.Service<Auth, {readonly verify: (token: string
 		SameOrigin,
 		Layer.effectContext(
 			Effect.gen(function* () {
+				if (yield* development) return provide(Auth.of(MOCK_AUTH))
 				const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 				const url = yield* pipe(Config.String('AUTH_URL'), Config.withDefault(AUTH_URL))
 				const read = pipe(
@@ -360,11 +366,22 @@ export class Issuer extends Context.Service<
 >()('@deslop/auth/service/Issuer') {
 	// The auth app: an Ed25519 key from GITHUB_CLIENT_SECRET; `redirects` are native sign-in URLs, such as `stash://auth`.
 	static readonly layer = (options: {redirects: string[]}) =>
-		Layer.merge(
-			SameOrigin,
+		Layer.provideMerge(
 			Layer.effectContext(
 				Effect.gen(function* () {
 					const router = yield* HttpRouter.HttpRouter
+					if (yield* development) {
+						yield* router.add('POST', '/auth/sign-out', HttpServerResponse.redirect('/', {status: 303}))
+						return Context.add(
+							provide(Auth.of(MOCK_AUTH)),
+							Issuer,
+							Issuer.of({
+								issue: Effect.fn('Issuer.issue')(function* (_user: User) {
+									return yield* Effect.succeed('development')
+								})
+							})
+						)
+					}
 					const random = yield* Crypto.Crypto
 					const provider = yield* Config.option(github)
 					const users = HashSet.fromIterable(
@@ -433,7 +450,8 @@ export class Issuer extends Context.Service<
 
 					return Context.add(provide(Auth.of({verify: verifyWith(Effect.succeed({publicKey, users}))})), Issuer, issuer)
 				})
-			)
+			),
+			SameOrigin
 		)
 }
 
@@ -442,8 +460,14 @@ export const HttpAuth = HttpRouter.middleware<{provides: CurrentUser}>()(
 		const auth = yield* Auth
 		return httpEffect =>
 			Effect.gen(function* () {
-				const user = yield* Effect.result(userFrom(auth, (yield* HttpServerRequest.HttpServerRequest).headers))
+				const request = yield* HttpServerRequest.HttpServerRequest
+				const user = yield* Effect.result(userFrom(auth, request.headers))
 				if (Result.isFailure(user)) {
+					if (String.includes('text/html')(request.headers['accept'] ?? '')) {
+						return HttpServerResponse.redirect(
+							`${AUTH_URL}/auth/github?${UrlParams.toString(UrlParams.fromInput({redirect: Option.match(HttpServerRequest.toURL(request), {onNone: () => '/', onSome: url => url.href})}))}`
+						)
+					}
 					return yield* Effect.as(
 						Effect.logWarning('Sign in first', user.failure),
 						HttpServerResponse.text('Sign in first', {status: 401})

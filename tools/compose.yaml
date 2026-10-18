@@ -58,13 +58,15 @@ services:
   scope:
     <<: *service
     image: ghcr.io/mp281x/deslop-scope:latest
-    environment: {HOST: 0.0.0.0, SCOPE_DATABASE: /data/scope.sqlite}
-    volumes: ['${HOME}/.deslop/scope:/data']
+    environment: {HOST: 0.0.0.0}
+    volumes: ['${HOME}/.deslop/scope:/home/node/.deslop/scope']
     ports: [127.0.0.1:4318:5000]
     labels:
       traefik.enable: 'true'
       traefik.http.routers.otlp.rule: Host(`otel.mp281x.xyz`) && (Path(`/v1/traces`) || Path(`/v1/logs`))
       traefik.http.services.otlp.loadbalancer.server.port: '5000'
+      traefik.http.routers.scope.rule: Host(`scope.mp281x.xyz`)
+      traefik.http.routers.scope.service: otlp
 
 networks:
   deslop:

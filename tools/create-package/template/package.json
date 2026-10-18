@@ -3,7 +3,7 @@
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
-		"#service": "./src/service.ts"
+		"#*": "./src/*"
 	},
 	"exports": {
 		"./service": "./src/service.ts"

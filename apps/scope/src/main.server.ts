@@ -1,11 +1,19 @@
 import {NodeRuntime, NodeServices} from '@effect/platform-node'
 import {SqliteClient} from '@effect/sql-sqlite-node'
 
-import {ByteSize, Config, ConfigProvider, Effect, Layer, String, pipe} from 'effect'
+import {ByteSize, Config, ConfigProvider, Effect, FileSystem, Layer, Path, String, pipe} from 'effect'
 
-import {HttpIncomingMessage, HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
+import {
+	FetchHttpClient,
+	HttpIncomingMessage,
+	HttpMiddleware,
+	HttpRouter,
+	HttpServerRequest,
+	HttpServerResponse
+} from 'effect/http'
 import {RpcSerialization, RpcServer} from 'effect/rpc'
 
+import {Auth, HttpAuth} from '@deslop/auth/service'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -61,6 +69,16 @@ const receiver = HttpRouter.use(router =>
 	})
 )
 
+const database = Layer.unwrap(
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem
+		const path = yield* Path.Path
+		const directory = path.join(yield* Config.String('HOME'), '.deslop', 'scope')
+		yield* fs.makeDirectory(directory, {recursive: true})
+		return SqliteClient.layer({filename: path.join(directory, 'telemetry.sqlite')})
+	})
+)
+
 // The receiver never exports its own spans or query traffic back into itself.
 NodeRuntime.runMain(
 	pipe(
@@ -68,27 +86,15 @@ NodeRuntime.runMain(
 			Layer.mergeAll(
 				receiver,
 				pipe(
-					RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
-					Layer.provide(RpcHandlers),
-					// Browser WebSockets must come from this UI; CLI clients send no Origin.
-					Layer.provide(
-						HttpRouter.middleware(effect =>
-							Effect.gen(function* () {
-								const request = yield* HttpServerRequest.HttpServerRequest
-								const origin = request.headers['origin']
-								if (
-									origin !== undefined &&
-									origin !== `http://${request.headers['host'] ?? ''}` &&
-									origin !== `https://${request.headers['host'] ?? ''}`
-								) {
-									return HttpServerResponse.empty({status: 403})
-								}
-								return yield* effect
-							})
-						).layer
-					)
+					Layer.merge(
+						pipe(
+							RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
+							Layer.provide(RpcHandlers)
+						),
+						pipe(ServerRuntime.layerStaticFiles, Layer.provide(HttpAuth.layer))
+					),
+					Layer.provide(Auth.layer)
 				),
-				ServerRuntime.layerStaticFiles,
 				HttpRouter.cors({
 					allowedHeaders: ['content-type', 'authorization'],
 					allowedMethods: ['POST', 'OPTIONS'],
@@ -98,10 +104,9 @@ NodeRuntime.runMain(
 			{disableLogger: true, middleware: HttpMiddleware.decompression()}
 		),
 		Layer.provide(Telemetry.layer),
-		Layer.provide(
-			SqliteClient.layerConfig({filename: pipe(Config.String('SCOPE_DATABASE'), Config.withDefault('scope.sqlite'))})
-		),
+		Layer.provide(database),
 		Layer.provide(RpcSerialization.layerSchemaBinary()),
+		Layer.provide(FetchHttpClient.layer),
 		Layer.provide(NodeServices.layer),
 		Layer.provide(Layer.succeed(HttpIncomingMessage.MaxBodySize)(ByteSize.mebibytes(10))),
 		Layer.provide(ServerRuntime.layerNodeHttpServer),

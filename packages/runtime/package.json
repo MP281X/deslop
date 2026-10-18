@@ -3,7 +3,7 @@
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
-		"#telemetry.ts": "./src/telemetry.ts"
+		"#*": "./src/*"
 	},
 	"exports": {
 		"./mobile": "./src/mobile/client.ts",
