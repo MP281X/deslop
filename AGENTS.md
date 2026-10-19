@@ -4,6 +4,7 @@ Decisions the code, the generators and lint do not show.
 
 ## Product scope
 
+- No issue tracker: the request is the whole task.
 - No portability, multi-user or compatibility code: one user on these two workers. The exception is a public app behind `auth.mp281x.xyz`: each GitHub user in `GITHUB_USERS` gets their own data, such as their own stash folder.
 - Releases are linear and squash-merged; a newer merge cancels an older release run, so a data change covers everything since the last successful deploy.
 - Local data is disposable. Preserve production data only from the immediately previous release; delete obsolete data.
@@ -29,6 +30,8 @@ Decisions the code, the generators and lint do not show.
 | Development telemetry | A new Effect app with its own OTLP/HTTP JSON receiver and SQLite                                                                          | A Collector dependency or every OTLP transport                                                  | "we already know the apps where this will be used"; "Like for motel I want to write the ingestor/receiver too"                   |
 | Scope UI              | Aligned operation/service/timing/duration columns, tree branches, runtime and severity icons, inline logs and expandable extra attributes | Separate logs, sort/error filters, repeated role text, dialog inspectors and duplicate metadata | "i love the A"; "the only thing ... missing are the tree lines"; "an accordion on each trace line would be better than a dialog" |
 | Auth UI               | Guided access: sign in, API key, command line; completed steps recede                                                                     | Account workspace and single replacing action                                                   | "C is the best overall for the auth app"                                                                                         |
+| Reply pages           | Static HTML from a few shared classes in the agent prompt, values written in place                                                        | Script components that render data lines                                                        | "just to define static html elements that the agent can fill with data and compose"; "js is worse"                               |
+| Agent instructions    | Only what a model cannot infer: the user's choices, exact values, non-obvious rules                                                       | Full templates and code for known techniques                                                    | "let the models do their job and figure the "known" part out on their own"                                                       |
 
 ## Layout
 
@@ -46,7 +49,7 @@ Decisions the code, the generators and lint do not show.
 
 ## Generators and deploy
 
-- Create apps with `vp create app -- --name <name>` (`--kind mobile` for iOS) and packages with `vp create package -- --name <name>`, then `vp install`; never copy one. A new mobile app needs its EAS project id from `npx eas-cli init` in `app.config.ts`, and after its first store build, `submit.production.ios.ascAppId` in `eas.json`.
+- Create apps with `vp create app -- --name <name>` (`--kind mobile` for iOS) and packages with `vp create package -- --name <name>`, then `vp install`; never copy one.
 - Deploy is one `tools/compose.yaml` with configs inlined, direct ports and unpinned images; no flag-heavy scripts or nested folders. Each mobile app is one entry in the `ios` matrix of `deploy.yaml` and the `simulator` matrix of `simulator.yaml`.
 
 ## Dependencies and tooling

@@ -1,7 +1,5 @@
 # Deslop
 
-The user's own repository: no issue tracker, so the request is the whole task.
-
 ## Commands
 
 Check and test run one after the other: rule tests create fixtures that a concurrent type scan reads. `--cache` replays the `check` script when its inputs are unchanged; the `test` task caches by default.
@@ -12,7 +10,8 @@ vp run -w fix && vp run -w --cache check && vp run -w test   # fix (lint fixes, 
 
 - **App.** The deslop `preview` project script runs the portfolio build for iteration, browser tests and captures.
 - **Stash** has no worktree preview: the `stash` compose service on dev owns `127.0.0.1:5017`, published only on the tailnet with `sudo tailscale serve --bg --https=8443 http://127.0.0.1:5017`, and the real notes in `~/.deslop/stash`, which are production data. Try a change in its image on another port with a scratch data directory: `mkdir -p /tmp/<task>/stash && vp -C apps/stash run build && docker build apps/stash -t stash:local && docker run --rm -d --env-file ~/.deslop/stash.env -p 127.0.0.1:5018:5000 -v /tmp/<task>/stash:/home/node/.deslop/stash stash:local`, then `node apps/stash/dist/cli.js save '<link>' --server http://127.0.0.1:5018`. `~/.deslop/stash.env` holds the variables in `apps/stash/.env.example`; `STASH_PROXY` is the user's DataImpulse residential plan "stash", with `__sessid.{session}` after the login.
-- **Agent configuration.** `.claude/agents/pair.md` and `.codex/instructions.md` are identical from `# Work` down; only `# Harness` differs. Shared skills live in `tools/coding-standards/skills/`; refresh the repository copies with `node tools/coding-standards/src/install.ts`. `.claude/skills/retrospective`, linked from `.codex/skills`, is repository-only and never installed on the workers; the personal skills reach Codex only through the global links, so Codex lists each skill once. The workers run the configuration on `main` through symlinks per maintenance's Agent configuration.
+- **Agent configuration.** `.claude/agents/pair.md` and `.codex/instructions.md` are identical from `# Work` down; only `# Harness` differs. Shared skills live in `tools/coding-standards/skills/`; refresh the repository copies with `node tools/coding-standards/src/install.ts`. `.claude/skills/retrospective`, linked from `.codex/skills`, is repository-only; the workers' links are in maintenance's Agent configuration.
+- **New mobile app.** After `vp create app -- --name <name> --kind mobile`, put the EAS project id from `npx eas-cli init` in `app.config.ts`, and after its first store build, `submit.production.ios.ascAppId` in `eas.json`.
 
 ## Stash simulator
 

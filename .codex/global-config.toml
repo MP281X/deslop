@@ -29,6 +29,11 @@ apps = false
 plugins = false
 goals = false
 
+# Threads run without approval prompts, so an MCP tool that asks for approval is rejected.
+[mcp_servers.dual]
+url = "https://app.dualos.ai/mcp"
+default_tools_approval_mode = "approve"
+
 [[hooks.SessionStart]]
 [[hooks.SessionStart.hooks]]
 type = "command"

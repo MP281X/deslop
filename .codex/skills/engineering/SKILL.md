@@ -70,7 +70,7 @@ const unique = Array.fromIterable(HashSet.fromIterable(items)) // Array.dedupe(i
 
 ## Patterns
 
-- **Canonical example.** Before you write a recurring shape (page layout, list, form, empty or loading state, dialog, service, route, error mapping, file layout, name), find its canonical example: the Patterns row in the repository's standards, else the variant most consumers use, the newest on a tie. Copy its structure, components, names, copy and states.
+- **Canonical example.** Before you write a recurring shape (page layout, list, form, empty or loading state, dialog, service, route, error mapping, file layout, name), find its canonical example: the Patterns row in the repository's standards, else the variant most consumers use, the newest on a tie. Copy its structure, components, names, copy and states; with no example in the repository, take the idea from the [Study](#study) row.
 - **Register.** A shape two consumers share without a row gets one: pattern, owner and example, a search listing its consumers, and what enforces it.
 - **Taste.** The user's taste decides layout, file organization, boundaries, interfaces and names. Follow the Taste rows of the repository's standards; when the user picks, rejects or corrects an uncovered choice, add a row with the user's words in the same change.
 - **Pattern change.** The user's change to a pattern, style or name changes the standard: update its owner (component, template, generator, lint rule, row), migrate every consumer its search lists, delete the old variant and search again. Another repository or a published contract needs the user's approval first.
@@ -162,7 +162,7 @@ function AppFrame(props: {appId: AppId}) {
 - **Bugs.** Reproduce before you fix, then shrink the reproduction until every remaining input, setting and step is needed. One hypothesis per probe. After two failed fixes, write down the premise they share and test it before a third. Rerun the original scenario after the fix.
 - **Tests** only for complex logic you own, such as parsing, state transitions, concurrency, scheduling, money or data conversion: a black box through its public interface, expected values from the contract, never the implementation. One representative input per behavior; reachable distinctions only (empty, duplicate, concurrent, dependency failure).
 - **No tests** for UI (the browser proves a screen); external libraries, APIs or SDKs; what types or schemas guarantee; inputs the architecture makes impossible; simple code (a filter, a mapping, wiring, a constant); an assumption (a probe answers it); a fixed bug (no regression tests); anything that changes when the implementation changes. Delete touched tests that break these rules.
-- **Effect tests.** `it.effect` runs virtual services, `it.live` real ones, `it.layer` caches a block's context. `TestClock` and `TestConsole` come from `effect/testing`: fork, await a `Deferred` at the dependency boundary, adjust time, join. Concurrency: block the dependency on a `Deferred`, assert the entered state, then release it. Expected failure: `Effect.flip`; both outcomes: `Effect.exit`; assert domain identity and preserved state.
+- **Effect tests.** `it.effect` runs virtual services, `it.live` real ones, `it.layer` caches a block's context. `TestClock` and `TestConsole` come from `effect/testing`; virtual time and concurrency follow the [Study](#study) row's tests. Expected failure: `Effect.flip`; both outcomes: `Effect.exit`; assert domain identity and preserved state.
 - **Boundaries.** Replace dependencies through Layers or public parameters, never module mocks. A claim about an SDK, process, filesystem, HTTP, browser or package needs the real boundary. `FileSystem.layerNoop` is not storage; `RpcTest` bypasses serialization. A public tool is proved packed, not from source.
 - **Evidence.** Keep the exact command, result and revision of each claim; rerun only proof whose inputs changed.
 
@@ -178,6 +178,21 @@ it.effect('forwards the prompt', () => run(agent.prompt(message))) // wiring tha
 it('shows the empty state', () => render(<Notes notes={[]} />)) // a UI test: open the screen in the browser
 assert.strictEqual(Array.flatMap(provider.groups, group => group.actions).length, 75) // a pinned count
 ```
+
+## Study
+
+Real code by strong engineers settles a design faster than a rule. Before you design a module, a test suite, a contract or a process boundary, read how the row's repositories built the same shape, per explore's Study repositories; the repository's own canonical example still wins.
+
+| Shape                                                        | Read                                                                                                                                                                                                            |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Services, Layers, tagged errors, resource lifetimes          | [T3 Code](https://github.com/pingdotgg/t3code) `apps/server/src` (`secrets/SecretRequests.ts`); [Executor](https://github.com/UsefulSoftwareCo/executor) `packages/hosts/mcp/src`, `packages/kernel`            |
+| What to test and how: test Layers, virtual time, concurrency | T3 Code `apps/server/src/secrets/SecretRequests.test.ts`, `apps/server/src/pullRequest/*.test.ts`; Executor `packages/hosts/mcp/src/*.test.ts`; [Effect](https://github.com/Effect-TS/effect) `packages/*/test` |
+| Schema contracts shared by server and clients                | T3 Code `packages/contracts/src`, `packages/client-runtime/src`                                                                                                                                                 |
+| Command lines, long-running servers, MCP                     | T3 Code `apps/server/src/bin.ts`, `apps/server/src/mcp`; [OpenCode](https://github.com/anomalyco/opencode) `packages/cli/src`; Executor `apps/cli/src`                                                          |
+| Monorepo: apps, packages, catalogs                           | T3 Code `pnpm-workspace.yaml`, `apps/*/package.json`, `packages/*/package.json`                                                                                                                                 |
+| Atoms, streams and React state                               | T3 Code `apps/web/src/state`; Executor `packages/react/src`                                                                                                                                                     |
+| Local-first sync and optimistic writes                       | [Zero](https://github.com/rocicorp/mono) `apps/zbugs/shared/mutators.ts`, `apps/zbugs/src`; [Electric](https://github.com/electric-sql/electric) `examples/agents-chat-starter/src`                             |
+| AI providers and streaming generative UI                     | OpenCode `packages/ai/src`; [AI SDK](https://github.com/vercel/ai) `packages/react/src`                                                                                                                         |
 
 ## Critique
 

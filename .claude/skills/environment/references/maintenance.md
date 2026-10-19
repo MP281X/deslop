@@ -12,8 +12,8 @@ Setup, upkeep and rebuild of the machines. Do established upkeep without asking;
 | Network  | Always on, public `77.237.236.132`; ufw allows 80 and 443 | On demand, home LAN on `eno1`; ufw denies all incoming |
 | GitLab   | Through the VPN; advertises the route to the tailnet      | Through dev's route (`--accept-routes`)                |
 
-- **Toolchain.** Docker with Compose and Buildx, `gh` with `github/gh-stack`, `glab`, `acli`, git, build tools, rsync, ripgrep, jq, sqlite3, lsof, ffmpeg, ImageMagick, `dig`, `psql`. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code is in `~/.local/bin`. The first lines of `~/.bashrc`, above its interactive guard, put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`.
-- **Sign-ins.** Each worker signs in on its own: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login`, `codex login --device-auth`, and [Jira](#jira-sign-in). Show each sign-in link to the user.
+- **Toolchain.** Docker with Compose and Buildx, `gh` with `github/gh-stack`, `glab`, git, build tools, rsync, ripgrep, jq, sqlite3, lsof, ffmpeg, ImageMagick, `dig`, `psql`. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code is in `~/.local/bin`. The first lines of `~/.bashrc`, above its interactive guard, put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`.
+- **Sign-ins.** Each worker signs in on its own: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login`, `codex login --device-auth`, and [MCP](#mcp-sign-in). Show each sign-in link to the user.
 - **Repositories.** `~/dual` uses the credential helper `!glab auth git-credential` for `https://git.datapizza.tech`; GitHub uses `gh auth setup-git`. Identities follow [Git identity](#git-identity).
 - **Updates.** `unattended-upgrades` runs daily. `desktop` has only local IPv6, so `/etc/apt/apt.conf.d/99force-ipv4` holds `Acquire::ForceIPv4 "true";`.
 - **Git defaults:** `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled`, `diff.algorithm histogram`, `merge.conflictStyle zdiff3`, `init.defaultBranch main`.
@@ -22,20 +22,19 @@ Setup, upkeep and rebuild of the machines. Do established upkeep without asking;
 
 ## Agent configuration
 
-Every worker runs the same configuration from the deslop repository. `.codex/global-config.toml` has that name so Codex never loads it a second time as deslop's project config. Engineering, design and review belong to coding-standards and install into repositories; review also installs globally for Claude, so Claude review children work in a checkout without installed skills, while Codex lists a skill only once. A variable only agents need goes in both `.claude/settings.json` `env` and `.codex/global-config.toml` `shell_environment_policy.set`, never in `~/.bashrc`.
+Every worker runs the same configuration from the deslop repository. `.codex/global-config.toml` has that name so Codex never loads it a second time as deslop's project config. Only orchestrator and environment are global; the other skills belong to coding-standards and install into each repository. A variable only agents need goes in both `.claude/settings.json` `env` and `.codex/global-config.toml` `shell_environment_policy.set`, never in `~/.bashrc`.
 
 Each installed path is a symlink into the main checkout `~/deslop`, so a worker runs the configuration on `origin/main`: Claude's `SessionStart` hook fast-forwards `~/deslop` in the background (`git pull --ff-only`), so the session after a merge loads it. T3's own automatic pull does not cover this: it pulls a checkout only while something refreshes that checkout's Git status. Never edit an installed path, and never switch `~/deslop` off `main`: both change every thread's configuration. Running threads keep the configuration they started with.
 
-| Installed path                                                 | Links to `~/deslop/…`                  |
-| -------------------------------------------------------------- | -------------------------------------- |
-| `~/.claude/settings.json`                                      | `.claude/settings.json`                |
-| `~/.claude/agents/pair.md`                                     | `.claude/agents/pair.md`               |
-| `~/.claude/skills/{orchestrator,delivery,explore,environment}` | `.claude/skills/<name>`                |
-| `~/.claude/skills/review`                                      | `tools/coding-standards/skills/review` |
-| `~/.codex/config.toml`                                         | `.codex/global-config.toml`            |
-| `~/.codex/instructions.md`                                     | `.codex/instructions.md`               |
-| `~/.codex/rules/deny.rules`                                    | `.codex/rules/deny.rules`              |
-| `~/.codex/skills/{orchestrator,delivery,explore,environment}`  | `~/.claude/skills/<name>`              |
+| Installed path                                | Links to `~/deslop/…`       |
+| --------------------------------------------- | --------------------------- |
+| `~/.claude/settings.json`                     | `.claude/settings.json`     |
+| `~/.claude/agents/pair.md`                    | `.claude/agents/pair.md`    |
+| `~/.claude/skills/{orchestrator,environment}` | `.claude/skills/<name>`     |
+| `~/.codex/config.toml`                        | `.codex/global-config.toml` |
+| `~/.codex/instructions.md`                    | `.codex/instructions.md`    |
+| `~/.codex/rules/deny.rules`                   | `.codex/rules/deny.rules`   |
+| `~/.codex/skills/{orchestrator,environment}`  | `~/.claude/skills/<name>`   |
 
 Set up once per worker, and again after a harness replaced a link with a file:
 
@@ -44,8 +43,8 @@ r=~/deslop
 mkdir -p ~/.claude/agents ~/.claude/skills ~/.codex/rules ~/.codex/skills
 ln -sfn $r/.claude/settings.json ~/.claude/settings.json
 ln -sfn $r/.claude/agents/pair.md ~/.claude/agents/pair.md
-for s in orchestrator delivery explore environment; do rm -rf ~/.claude/skills/$s; ln -sfn $r/.claude/skills/$s ~/.claude/skills/$s; ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done
-rm -rf ~/.claude/skills/review && ln -sfn $r/tools/coding-standards/skills/review ~/.claude/skills/review
+rm -rf ~/.claude/skills/* ~/.codex/skills/*
+for s in orchestrator environment; do ln -sfn $r/.claude/skills/$s ~/.claude/skills/$s; ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done
 ln -sfn $r/.codex/global-config.toml ~/.codex/config.toml
 ln -sfn $r/.codex/instructions.md ~/.codex/instructions.md
 ln -sfn $r/.codex/rules/deny.rules ~/.codex/rules/deny.rules
@@ -53,6 +52,10 @@ codex execpolicy check --rules ~/.codex/rules/deny.rules true
 ```
 
 **Check** with `find ~/.claude/settings.json ~/.claude/agents/pair.md ~/.codex/config.toml ~/.codex/instructions.md ~/.codex/rules/deny.rules ~/.claude/skills/* ~/.codex/skills/* -maxdepth 0 ! -type l` (prints a link a harness replaced) and `git -C ~/deslop status --short` (a harness that wrote through a link; carry the write into a PR, then `git -C ~/deslop restore` it, because a dirty checkout stops the automatic pull).
+
+## T3 history
+
+Search with `t3_thread_search` first. Each worker stores only its own threads: query both, the other through `ssh mp281x@<worker>`. Use `sqlite3 -readonly ~/.t3/userdata/statev2.sqlite`, selecting only needed fields; current records are in `orchestration_v2_projection_*` (`_threads`, `_messages`, `_turn_items`, `_runs`, `_subagents`). Native transcripts with every tool call: `~/.claude/projects/*/*.jsonl`, `~/.codex/sessions/**`.
 
 ## T3 settings
 
@@ -143,12 +146,12 @@ Remove rebuildable data, never unsettled work. A worktree is disposable only whe
 Start from a Debian netinst image with only the SSH server task.
 
 1. Install `sudo`, `network-manager`, `ufw`. Put `/tmp` on disk: `printf 'D /tmp 1777 root root 7d\n' | sudo tee /etc/tmpfiles.d/tmp.conf && sudo systemctl mask tmp.mount`. Purge any desktop stack with `--autoremove`; keep `multi-user.target`.
-2. Write the sudoers file; add the Docker, GitHub CLI and `acli` apt sources with keys in `/etc/apt/keyrings/<name>.gpg`; install the toolchain, `glab` and `unattended-upgrades`; set the git defaults; add `mp281x` to `docker`; write `/etc/docker/daemon.json` as `{"live-restore": true, "ip": "127.0.0.1", "default-network-opts": {"bridge": {"com.docker.network.bridge.host_binding_ipv4": "127.0.0.1"}}}`.
+2. Write the sudoers file; add the Docker and GitHub CLI apt sources with keys in `/etc/apt/keyrings/<name>.gpg`; install the toolchain, `glab` and `unattended-upgrades`; set the git defaults; add `mp281x` to `docker`; write `/etc/docker/daemon.json` as `{"live-restore": true, "ip": "127.0.0.1", "default-network-opts": {"bridge": {"com.docker.network.bridge.host_binding_ipv4": "127.0.0.1"}}}`.
 3. Install the user's key pair. Run the Tailscale block below. After a second SSH login over the tailnet works: `ufw default deny incoming`, allow 80 and 443 only on dev, enable ufw.
 4. Dev only: install `openvpn3-client`, `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`, connect, advertise its route.
 5. `loginctl enable-linger mp281x`. As `mp281x`: Vite+ with `VP_HOME="$HOME/.vite-plus"`, the global packages, Claude Code, the `PATH` line in `~/.bashrc`; check `ssh <worker> 'command -v vp claude codex'`. Write `~/.config/pnpm/config.yaml` with `minimumReleaseAgeExclude: ["@deslop/*"]`. Run the T3 step, `t3 browser setup`, set `PRETTY_HOSTNAME`.
-6. Sign-ins, Jira sign-in, `gh extension install github/gh-stack`, Git identity, clone both repositories and `t3 project add --title <name> <path>`. On dev, deploy.
-7. Install the agent configuration and copy the T3 settings from another worker.
+6. GitHub, GitLab, Claude and Codex sign-ins, `gh extension install github/gh-stack`, Git identity, clone both repositories and `t3 project add --title <name> <path>`. On dev, deploy.
+7. Install the agent configuration, copy the T3 settings from another worker, then MCP sign-in.
 8. After a key login from another machine works, write `/etc/ssh/sshd_config.d/10-keys-only.conf` with `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no`, `X11Forwarding no`, then `sudo sshd -t && sudo systemctl reload ssh`.
 
 ```bash
@@ -174,23 +177,25 @@ T3's desktop app and the iOS Simulator; it builds nothing, the simulator app com
 3. Over SSH: `xcrun simctl list runtimes` lists iOS and `node --version` is 22.12 or newer; boot the iPhone Air simulator once with `xcrun simctl boot <udid>`.
 4. Guide: T3 Settings, Integrations, Devices, the worker's environment, turn on Device hub and Agent device access, add `matteopaludgnach@macbook-pro`, test. Copy the settings to the other worker.
 
-## Jira sign-in
+## MCP sign-in
+
+Codex reads `dual` from the installed configuration and keeps its sign-in in the Secret Service keyring; Claude keeps MCP servers in `~/.claude.json`, so register it on each worker, once the installed `.claude/settings.json` allows `dual`:
 
 ```bash
-curl -fsSL https://acli.atlassian.com/gpg/public-key.asc | sudo gpg --batch --yes --dearmor -o /etc/apt/keyrings/acli.gpg
-echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/acli.gpg] https://acli.atlassian.com/linux/deb stable main" | sudo tee /etc/apt/sources.list.d/acli.list
-sudo apt-get update && sudo apt-get install -y acli gnome-keyring libsecret-tools
+sudo apt-get install -y gnome-keyring libsecret-tools
 mkdir -p ~/.config/systemd/user
 printf '%s\n' '[Unit]' 'Description=Secret Service for headless CLI sign-ins' '[Service]' \
   "ExecStart=/bin/sh -c 'printf headless | exec /usr/bin/gnome-keyring-daemon --foreground --replace --unlock --components=secrets'" \
   'Restart=on-failure' '[Install]' 'WantedBy=default.target' > ~/.config/systemd/user/secret-service.service
 systemctl --user daemon-reload && systemctl --user enable --now secret-service.service
+claude mcp add --transport http --scope user dual https://app.dualos.ai/mcp
 ```
 
-Guide: create a classic API token without scopes at https://id.atlassian.com/manage-profile/security/api-tokens with a one-year expiry, then in each worker's T3 terminal run the line below, paste the token and press Enter. When `acli jira auth status` fails, repeat with a new token.
+Guide: in each worker's T3 terminal run the two lines below one at a time, open each printed URL and approve Dual; the browser then fails to load `http://127.0.0.1:…/callback?…`, so copy that address from the address bar and paste it into the terminal.
 
 ```bash
-read -rs t && echo "$t" | acli jira auth login --site datapizza.atlassian.net --email matteopaludgnach@datapizza.tech --token; unset t
+codex mcp login --no-browser dual
+claude mcp login --no-browser dual
 ```
 
 ## Git identity

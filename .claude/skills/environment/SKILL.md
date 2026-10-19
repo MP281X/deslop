@@ -1,6 +1,6 @@
 ---
 name: environment
-description: Use before the first command of a session, and before any preview, a Jira or DOS ticket, a GitLab or VPN step, a change to persisted Dual data, a task on another worker, the agent configuration links, updating T3 or the machines, a deploy, and machine setup or cleanup.
+description: Use before the first command of a session, and before any preview, a Jira or DOS ticket, a GitLab or VPN step, a change to persisted Dual data, a task on another worker, the agent configuration links, updating T3 or the machines, a deploy, earlier threads, and machine setup or cleanup.
 ---
 
 # Environment
@@ -15,7 +15,7 @@ Two headless Debian workers in one tailnet, same user and paths; the user switch
 | `iphone`      | `100.117.217.10` | T3 client only                                                                              |
 
 - **Names.** MagicDNS short names; `<name>.tailnet-8c4c.ts.net` has HTTPS certificates. SSH as `mp281x@dev`, `mp281x@desktop`, `matteopaludgnach@macbook-pro`.
-- **Tools.** `vp` and `vpx` (Vite+) on `PATH` everywhere, also over SSH; systemd units need `~/.vite-plus/bin`. Sudo needs no password; `gh`, `glab` and `acli` are signed in.
+- **Tools.** `vp` and `vpx` (Vite+) on `PATH` everywhere, also over SSH; systemd units need `~/.vite-plus/bin`. Sudo needs no password; `gh` and `glab` are signed in, and so is the `dual` MCP server.
 - **Scratch** under `/tmp/<task>/`, on disk, emptied at boot.
 - **Git refs.** T3 keeps checkpoint commits under `refs/t3/`; search history with `--branches --remotes`.
 - **Services** run as temporary containers, not host installs.
@@ -25,7 +25,7 @@ Two headless Debian workers in one tailnet, same user and paths; the user switch
 | ---------------------------------------- | ---------------------------------------------------------------------- |
 | [Dual](references/dual.md)               | Commands, production data, Jira, VPN, preview, accounts, CI, standards |
 | [Deslop](references/deslop.md)           | Commands, app, tracing, coding standards                               |
-| [Maintenance](references/maintenance.md) | Machines, agent configuration, T3 settings, updates, cleanup, setup    |
+| [Maintenance](references/maintenance.md) | Machines, setup, agent links, T3 history and settings, updates, clean  |
 
 ## Previews
 
