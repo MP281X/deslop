@@ -10,12 +10,17 @@ import {
 	Effect,
 	FileSystem,
 	Layer,
+	Match,
+	Number,
 	Option,
 	Path,
+	PubSub,
 	Redacted,
 	Result,
 	Schema,
 	String,
+	Stream,
+	Struct,
 	pipe
 } from 'effect'
 
@@ -33,9 +38,11 @@ import {
 	UrlParams
 } from 'effect/http'
 
+import type {PendingAuthorization} from '#schema.ts'
 import {
 	AuthError,
-	Authorization,
+	AuthorizationRow,
+	AuthorizationStatus,
 	AuthorizeParams,
 	CallbackParams,
 	ConsentParams,
@@ -43,7 +50,6 @@ import {
 	GitHubUser,
 	Registration,
 	Resource,
-	RequestParams,
 	RevokeParams,
 	SignInParams,
 	Stored,
@@ -57,7 +63,7 @@ import {AUTH_URL, CurrentUser, RpcAuth} from '#lib/utils.ts'
 
 const SESSION_COOKIE = '__Secure-session'
 const LOGIN_COOKIE = '__Host-login'
-const REQUEST_COOKIE = '__Host-request'
+const REQUEST_COOKIE = '__Host-request-'
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 
 function rejected(message: string) {
@@ -111,6 +117,14 @@ function allowedRedirect(redirect: string) {
 	})
 }
 
+export class Authorizations extends Context.Service<
+	Authorizations,
+	{
+		readonly pending: (headers: Headers.Headers) => Stream.Stream<PendingAuthorization[], AuthError>
+		readonly wait: (id: string, headers: Headers.Headers) => Stream.Stream<AuthorizationStatus, AuthError>
+	}
+>()('@deslop/auth/service/Authorizations') {}
+
 export class Auth extends Context.Service<
 	Auth,
 	{
@@ -160,6 +174,7 @@ export class Auth extends Context.Service<
 			Effect.gen(function* () {
 				const sql = yield* SqliteClient.SqliteClient
 				const random = yield* Crypto.Crypto
+				const changes = yield* PubSub.sliding<true>(1)
 				const router = yield* HttpRouter.HttpRouter
 				const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 				const url = yield* pipe(Config.String('AUTH_URL'), Config.withDefault(AUTH_URL))
@@ -170,6 +185,8 @@ export class Auth extends Context.Service<
 					users: Config.Array(Schema.String, 'GITHUB_USERS')
 				})
 				yield* sql`CREATE TABLE IF NOT EXISTS auth_state (hash TEXT PRIMARY KEY, payload TEXT NOT NULL, expires_at INTEGER NOT NULL)`
+				// Pending authorizations from the previous release have no separate public identifier.
+				yield* sql`DELETE FROM auth_state WHERE json_extract(payload, '$._tag') = 'Request' AND json_extract(payload, '$.id') IS NULL`
 				const hash = Effect.fnUntraced(function* (value: string) {
 					return Base64Url.encode(yield* random.digest('SHA-256', new TextEncoder().encode(value)))
 				})
@@ -216,22 +233,157 @@ export class Auth extends Context.Service<
 					}
 					return yield* allowed(stored.user)
 				}, rejected('Sign in first'))
-				const sameOrigin = Effect.gen(function* () {
-					if ((yield* HttpServerRequest.HttpServerRequest).headers['origin'] !== new URL(url).origin) {
+				const checkOrigin = Effect.fnUntraced(function* (headers: Headers.Headers) {
+					if (headers['origin'] !== new URL(url).origin) {
 						return yield* AuthError.make({error: 'access_denied', message: 'The request comes from another origin'})
 					}
 				})
+				const sameOrigin = Effect.flatMap(HttpServerRequest.HttpServerRequest, request => checkOrigin(request.headers))
+				const requestRow = Effect.fnUntraced(function* (id: string) {
+					return yield* pipe(
+						sql`SELECT hash, payload, expires_at AS "expiresAt" FROM auth_state WHERE json_extract(payload, '$.id') = ${id} AND expires_at > ${yield* Clock.currentTimeMillis}`,
+						Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(AuthorizationRow))),
+						Effect.map(Array.head)
+					)
+				})
 				const requestState = Effect.fnUntraced(function* (id: string) {
-					if ((yield* HttpServerRequest.HttpServerRequest).cookies[REQUEST_COOKIE] !== id) {
-						return yield* AuthError.make({message: 'Open the authorization link again'})
-					}
-					const stored = yield* load(id)
+					const row = yield* Effect.fromOption(yield* requestRow(id))
+					const stored = yield* Schema.decodeEffect(Schema.fromJsonString(Stored))(row.payload)
 					if (stored._tag !== 'Request') return yield* AuthError.make({message: 'The authorization request expired'})
 					return stored
+				}, rejected('The authorization request expired'))
+				const receiver = Effect.fnUntraced(function* (id: string, headers: Headers.Headers) {
+					const token = Cookies.parseHeader(headers['cookie'] ?? '')[`${REQUEST_COOKIE}${id}`]
+					if (token === undefined) {
+						return yield* AuthError.make({message: 'Open the authorization link again'})
+					}
+					return yield* Option.match(yield* requestRow(id), {
+						onNone: () => Effect.succeedNone,
+						onSome: Effect.fnUntraced(function* (row) {
+							if (row.hash !== (yield* hash(token))) {
+								return yield* AuthError.make({message: 'The authorization belongs to another browser'})
+							}
+							return Option.some(row)
+						})
+					})
 				})
+				function watch<A>(read: Effect.Effect<A, AuthError>, expires: (value: A) => number) {
+					return Stream.unwrap(
+						Effect.gen(function* () {
+							const subscription = yield* PubSub.subscribe(changes)
+							return Stream.unfold(Option.none<number>(), previous =>
+								Effect.gen(function* () {
+									yield* Option.match(previous, {
+										onNone: () => Effect.void,
+										onSome: expiresAt =>
+											Effect.raceFirst(
+												PubSub.take(subscription),
+												Boolean.match(expiresAt === Infinity, {
+													onFalse: () =>
+														Effect.flatMap(Clock.currentTimeMillis, now =>
+															Effect.sleep(Number.max(0, expiresAt - now))
+														),
+													onTrue: () => Effect.never
+												})
+											)
+									})
+									const value = yield* read
+									return [value, Option.some(expires(value))] as const
+								})
+							)
+						})
+					)
+				}
+				function publicRequest(request: typeof Stored.cases.Request.Type, expiresAt: number) {
+					return {
+						...pipe(request, Struct.pick(['clientName', 'createdAt', 'id', 'redirectUri', 'resources'])),
+						expiresAt
+					}
+				}
+				const pending = Effect.fnUntraced(function* (headers: Headers.Headers) {
+					yield* session(headers)
+					const rows = yield* pipe(
+						sql`SELECT payload, hash, expires_at AS "expiresAt" FROM auth_state WHERE json_extract(payload, '$._tag') = 'Request' AND json_extract(payload, '$.decision._tag') = 'Pending' AND expires_at > ${yield* Clock.currentTimeMillis} ORDER BY json_extract(payload, '$.createdAt') DESC, hash`,
+						Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(AuthorizationRow)))
+					)
+					return yield* Effect.forEach(
+						rows,
+						Effect.fnUntraced(function* (row) {
+							return publicRequest(
+								yield* Schema.decodeEffect(Schema.fromJsonString(Stored.cases.Request))(row.payload),
+								row.expiresAt
+							)
+						}),
+						{concurrency: 1}
+					)
+				}, rejected('Cannot read pending authorizations'))
+				const respond = Effect.fn('Authorizations.respond')(function* (
+					params: ConsentParams,
+					headers: Headers.Headers
+				) {
+					yield* checkOrigin(headers)
+					const user = yield* session(headers)
+					yield* sql.withTransaction(
+						Effect.gen(function* () {
+							const request = yield* requestState(params.request)
+							if (request.decision._tag !== 'Pending') {
+								return yield* AuthError.make({message: 'This authorization has already been answered'})
+							}
+							yield* sql`UPDATE auth_state SET payload = ${yield* Schema.encodeEffect(Schema.fromJsonString(Stored))({
+								...request,
+								decision: Boolean.match(params.accept, {
+									onFalse: () => ({_tag: 'Denied' as const}),
+									onTrue: () => ({_tag: 'Approved' as const, user})
+								})
+							})} WHERE json_extract(payload, '$.id') = ${params.request}`
+						})
+					)
+					yield* PubSub.publish(changes, true)
+				}, rejected('Cannot answer the authorization request'))
+				const receive = Effect.fnUntraced(function* (id: string, headers: Headers.Headers) {
+					return yield* sql.withTransaction(
+						Effect.flatMap(receiver(id, headers), result =>
+							Option.match(result, {
+								onNone: () => Effect.succeed(AuthorizationStatus.make({_tag: 'Expired'})),
+								onSome: Effect.fnUntraced(function* (row) {
+									const request = yield* Schema.decodeEffect(Schema.fromJsonString(Stored))(row.payload)
+									if (request._tag === 'Delivered') {
+										return AuthorizationStatus.make({_tag: 'Completed', url: request.url})
+									}
+									if (request._tag !== 'Request') {
+										return yield* AuthError.make({message: 'Invalid authorization request'})
+									}
+									if (request.decision._tag === 'Pending') {
+										return AuthorizationStatus.make({_tag: 'Waiting', request: publicRequest(request, row.expiresAt)})
+									}
+									const target = new URL(request.redirectUri)
+									target.searchParams.set('state', request.state)
+									target.searchParams.set('iss', issuer)
+									if (request.decision._tag === 'Approved') {
+										target.searchParams.set(
+											'code',
+											yield* save(
+												{
+													...pipe(request, Struct.pick(['challenge', 'clientId', 'redirectUri', 'resources', 'state'])),
+													_tag: 'Code',
+													user: request.decision.user
+												},
+												60
+											)
+										)
+									} else {
+										target.searchParams.set('error', 'access_denied')
+									}
+									yield* sql`UPDATE auth_state SET payload = ${yield* Schema.encodeEffect(Schema.fromJsonString(Stored))({_tag: 'Delivered', id, url: target.href})}, expires_at = ${yield* Clock.currentTimeMillis} + 60000 WHERE hash = ${row.hash}`
+									return AuthorizationStatus.make({_tag: 'Completed', url: target.href})
+								})
+							})
+						)
+					)
+				}, rejected('Cannot complete the authorization request'))
 				const grantTokens = Effect.fnUntraced(function* (
 					grant: typeof Stored.cases.Refresh.Type,
-					resources: Authorization['resources']
+					resources: PendingAuthorization['resources']
 				) {
 					yield* allowed(grant.user)
 					// A queued iOS upload cannot refresh its bearer after the share sheet closes.
@@ -250,7 +402,10 @@ export class Auth extends Context.Service<
 						{headers: {'cache-control': 'no-store'}}
 					)
 				})
-				const tokenResources = Effect.fnUntraced(function* (params: TokenParams, granted: Authorization['resources']) {
+				const tokenResources = Effect.fnUntraced(function* (
+					params: TokenParams,
+					granted: PendingAuthorization['resources']
+				) {
 					if (params.resource === undefined) return granted
 					if (!Array.every(params.resource, value => Array.contains(granted, value))) {
 						return yield* AuthError.make({error: 'invalid_target', message: 'The resource was not authorized'})
@@ -289,7 +444,10 @@ export class Auth extends Context.Service<
 							}
 							return HttpServerResponse.jsonUnsafe(
 								{
-									client_id: yield* save({_tag: 'Client', redirects: params.redirect_uris}, 365 * 86400),
+									client_id: yield* save(
+										{_tag: 'Client', name: params.client_name ?? 'Unknown client', redirects: params.redirect_uris},
+										365 * 86400
+									),
 									grant_types: ['authorization_code', 'refresh_token'],
 									redirect_uris: params.redirect_uris,
 									response_types: ['code'],
@@ -304,88 +462,69 @@ export class Auth extends Context.Service<
 					'GET',
 					'/api/auth/oauth2/authorize',
 					oauth(
-						Effect.gen(function* () {
-							const params = yield* pipe(
-								HttpServerRequest.schemaSearchParams(AuthorizeParams),
-								rejected('Invalid authorization request')
-							)
-							const registration = yield* load(params.client_id)
-							if (registration._tag !== 'Client' || !Array.contains(registration.redirects, params.redirect_uri)) {
-								return yield* AuthError.make({
-									error: 'invalid_client',
-									message: 'The callback does not match the registered client'
+						pipe(
+							sql.withTransaction(
+								Effect.gen(function* () {
+									const params = yield* pipe(
+										HttpServerRequest.schemaSearchParams(AuthorizeParams),
+										rejected('Invalid authorization request')
+									)
+									const registration = yield* load(params.client_id)
+									if (registration._tag !== 'Client' || !Array.contains(registration.redirects, params.redirect_uri)) {
+										return yield* AuthError.make({
+											error: 'invalid_client',
+											message: 'The callback does not match the registered client'
+										})
+									}
+									if (
+										!Array.every(
+											String.split(params.scope ?? 'deslop', ' '),
+											scope => scope === 'deslop' || scope === 'offline_access'
+										)
+									) {
+										return yield* AuthError.make({error: 'invalid_scope', message: 'Only Deslop access is supported'})
+									}
+									const now = yield* Clock.currentTimeMillis
+									const id = Base64Url.encode(yield* random.randomBytes(16))
+									const token = yield* save(
+										{
+											_tag: 'Request',
+											challenge: params.code_challenge,
+											clientId: params.client_id,
+											clientName: registration.name ?? 'Unknown client',
+											createdAt: now,
+											decision: {_tag: 'Pending'},
+											id,
+											redirectUri: params.redirect_uri,
+											resources: params.resource,
+											state: params.state
+										},
+										240
+									)
+									return HttpServerResponse.setCookieUnsafe(
+										HttpServerResponse.redirect(`/?request=${id}`),
+										`${REQUEST_COOKIE}${id}`,
+										token,
+										{...COOKIE, maxAge: '5 minutes'}
+									)
 								})
-							}
-							if (
-								!Array.every(
-									String.split(params.scope ?? 'deslop', ' '),
-									scope => scope === 'deslop' || scope === 'offline_access'
-								)
-							) {
-								return yield* AuthError.make({error: 'invalid_scope', message: 'Only Deslop access is supported'})
-							}
-							const id = yield* save(
-								{
-									_tag: 'Request',
-									challenge: params.code_challenge,
-									clientId: params.client_id,
-									redirectUri: params.redirect_uri,
-									resources: params.resource,
-									state: params.state
-								},
-								600
-							)
-							return HttpServerResponse.setCookieUnsafe(
-								HttpServerResponse.redirect(`/?request=${id}`),
-								REQUEST_COOKIE,
-								id,
-								{...COOKIE, maxAge: '10 minutes'}
-							)
-						})
-					)
-				)
-				yield* router.add(
-					'GET',
-					'/auth/request',
-					oauth(
-						Effect.gen(function* () {
-							const params = yield* pipe(
-								HttpServerRequest.schemaSearchParams(RequestParams),
-								rejected('Open the authorization link again')
-							)
-							return yield* HttpServerResponse.schemaJson(Authorization)(yield* requestState(params.request))
-						})
+							),
+							Effect.tap(() => PubSub.publish(changes, true))
+						)
 					)
 				)
 				yield* router.add(
 					'POST',
 					'/api/auth/oauth2/consent',
 					oauth(
-						sql.withTransaction(
-							Effect.gen(function* () {
-								yield* sameOrigin
-								const params = yield* pipe(
-									HttpServerRequest.schemaBodyJson(ConsentParams),
-									rejected('Invalid authorization response')
-								)
-								const grant = yield* requestState(params.request)
-								const user = yield* session((yield* HttpServerRequest.HttpServerRequest).headers)
-								yield* remove(params.request)
-								const target = new URL(grant.redirectUri)
-								target.searchParams.set('state', grant.state)
-								target.searchParams.set('iss', issuer)
-								if (params.accept) {
-									target.searchParams.set('code', yield* save({...grant, _tag: 'Code', user}, 60))
-								} else {
-									target.searchParams.set('error', 'access_denied')
-								}
-								return HttpServerResponse.expireCookieUnsafe(
-									HttpServerResponse.jsonUnsafe({url: target.href}, {headers: {'cache-control': 'no-store'}}),
-									REQUEST_COOKIE,
-									COOKIE
-								)
-							})
-						)
+						Effect.gen(function* () {
+							const params = yield* pipe(
+								HttpServerRequest.schemaBodyJson(ConsentParams),
+								rejected('Invalid authorization response')
+							)
+							yield* respond(params, (yield* HttpServerRequest.HttpServerRequest).headers)
+							return HttpServerResponse.empty()
+						})
 					)
 				)
 				yield* router.add(
@@ -499,7 +638,9 @@ export class Auth extends Context.Service<
 								HttpServerRequest.schemaSearchParams(SignInParams),
 								rejected('Invalid sign-in request')
 							)
-							if (params.request !== undefined) yield* requestState(params.request)
+							if (params.request !== undefined) {
+								yield* receiver(params.request, (yield* HttpServerRequest.HttpServerRequest).headers)
+							}
 							const verifier = Base64Url.encode(yield* random.randomBytes(32))
 							const state = yield* save({_tag: 'Login', ...params, verifier}, 600)
 							const authorize = new URL('https://github.com/login/oauth/authorize')
@@ -587,12 +728,7 @@ export class Auth extends Context.Service<
 								yield* Effect.logWarning('GitHub sign-in failed', cause)
 								return HttpServerResponse.expireCookieUnsafe(
 									HttpServerResponse.redirect(
-										`/?${UrlParams.toString(
-											UrlParams.fromInput({
-												error: 'github',
-												request: (yield* HttpServerRequest.HttpServerRequest).cookies[REQUEST_COOKIE]
-											})
-										)}`
+										`/?${UrlParams.toString(UrlParams.fromInput({error: 'github', request: undefined}))}`
 									),
 									LOGIN_COOKIE,
 									COOKIE
@@ -615,13 +751,35 @@ export class Auth extends Context.Service<
 						})
 					)
 				)
-				return provide(
-					Auth.of({
-						access,
-						user: Effect.fn('Auth.user')(function* (headers: Headers.Headers) {
-							return yield* session(headers)
+				return pipe(
+					provide(
+						Auth.of({
+							access,
+							user: Effect.fn('Auth.user')(function* (headers: Headers.Headers) {
+								return yield* session(headers)
+							})
 						})
-					})
+					),
+					Context.add(
+						Authorizations,
+						Authorizations.of({
+							pending: headers =>
+								watch(pending(headers), requests =>
+									Array.reduce(requests, Infinity, (expiresAt, request) => Number.min(expiresAt, request.expiresAt))
+								),
+							wait: (id, headers) =>
+								pipe(
+									watch(receive(id, headers), status =>
+										pipe(
+											Match.value(status),
+											Match.tag('Waiting', value => value.request.expiresAt),
+											Match.orElse(() => Infinity)
+										)
+									),
+									Stream.takeUntil(status => status._tag !== 'Waiting')
+								)
+						})
+					)
 				)
 			})
 		),
