@@ -5,9 +5,9 @@
 	"allowedMcpServers": [
 		{"serverUrl": "http://127.0.0.1:*/mcp"},
 		{"serverUrl": "https://app.dualos.ai/mcp"},
-		{"serverUrl": "https://dev.tailnet-8c4c.ts.net:4318/mcp"},
-		{"serverUrl": "https://dev.tailnet-8c4c.ts.net:4319/mcp"},
-		{"serverUrl": "https://dev.tailnet-8c4c.ts.net:4320/mcp"},
+		{"serverUrl": "https://scope.mp281x.xyz/mcp"},
+		{"serverUrl": "https://stash.mp281x.xyz/mcp"},
+		{"serverUrl": "https://portfolio.mp281x.xyz/mcp"},
 		{"serverUrl": "https://api.mobbin.com/mcp"}
 	],
 	"enabledPlugins": {
