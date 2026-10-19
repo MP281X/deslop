@@ -59,7 +59,7 @@ An explanatory page reads like a slide: the conclusion in the first view, then o
 
 ## Critique
 
-Capture the result at the reference's size, theme, data and state, beside the reference. First measure in the page: list elements wider than the viewport or their container, text clipped by its box and fonts that did not load, and fix each. Then check in order:
+Capture the result at the reference's size, theme, data and state, beside the reference; once the user picks a mock, that mock is the reference, and its deciding geometry (offsets, widths, the joins of lines across rows) is measured in both until it matches. First measure in the page: list elements wider than the viewport or their container, text clipped by its box and fonts that did not load, and fix each. Then check in order:
 
 1. **Structure.** Opens on current work; nothing repeated, hidden or missing; route, sections, controls, terms and copy match the canonical screen unless the request changed them.
 2. **Behavior.** States, focus, errors, gestures and motion match the reference; replay transitions.

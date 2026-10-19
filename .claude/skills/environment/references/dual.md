@@ -44,7 +44,8 @@ acli jira workitem transition --key DOS-289 --status Doing --yes
 curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
   openvpn3 session-manage --config datapizza --disconnect
   openvpn3 session-start --config datapizza --background
-  openvpn3 session-auth
+  # right after the start it prints "No sessions requires authentication interaction"
+  timeout 55 bash -c 'until openvpn3 session-auth | rg -o "https://\S+"; do sleep 1; done'
 }
 ```
 
