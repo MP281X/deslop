@@ -12,7 +12,7 @@ Setup, upkeep and rebuild of the machines. Do established upkeep without asking;
 | Network  | Always on, public `77.237.236.132`; ufw allows 80 and 443 | On demand, home LAN on `eno1`; ufw denies all incoming |
 | GitLab   | Through the VPN; advertises the route to the tailnet      | Through dev's route (`--accept-routes`)                |
 
-- **Toolchain.** Docker with Compose and Buildx, `gh` with `github/gh-stack`, `glab`, git, build tools, rsync, ripgrep, jq, sqlite3, lsof, ffmpeg, ImageMagick, `dig`, `psql`. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code is in `~/.local/bin`. The first lines of `~/.bashrc`, above its interactive guard, put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`.
+- **Toolchain.** Docker with Compose and Buildx, `gh` with `github/gh-stack`, `glab`, git, build tools, rsync, ripgrep, jq, sqlite3, lsof, ffmpeg, ImageMagick, `dig`, `psql`. Vite+ in `~/.vite-plus` holds Codex, `@opencode/cli@latest` (OpenCode v2) and `t3@nightly`; Claude Code is in `~/.local/bin`. The first lines of `~/.bashrc`, above its interactive guard, put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`.
 - **Sign-ins.** Each worker signs in on its own: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login`, `codex login --device-auth`, and [MCP](#mcp-sign-in). Show each sign-in link to the user.
 - **Repositories.** `~/dual` uses the credential helper `!glab auth git-credential` for `https://git.datapizza.tech`; GitHub uses `gh auth setup-git`. Identities follow [Git identity](#git-identity).
 - **Updates.** `unattended-upgrades` runs daily. `desktop` has only local IPv6, so `/etc/apt/apt.conf.d/99force-ipv4` holds `Acquire::ForceIPv4 "true";`.
@@ -22,36 +22,45 @@ Setup, upkeep and rebuild of the machines. Do established upkeep without asking;
 
 ## Agent configuration
 
-Every worker runs the same configuration from the deslop repository. `.codex/global-config.toml` has that name so Codex never loads it a second time as deslop's project config. Only orchestrator and environment are global; the other skills belong to coding-standards and install into each repository. A variable only agents need goes in both `.claude/settings.json` `env` and `.codex/global-config.toml` `shell_environment_policy.set`, never in `~/.bashrc`.
+Every worker runs the same configuration from the deslop repository. `.codex/global-config.toml` and `.opencode/global-config.json` have those names so neither CLI loads them a second time as deslop's project config. Only orchestrator and environment are global; the other skills belong to coding-standards and install into each repository. A variable only agents need goes in `.claude/settings.json` `env`, `.codex/global-config.toml` `shell_environment_policy.set` and T3's OpenCode provider environment, never in `~/.bashrc`.
 
 Each installed path is a symlink into the main checkout `~/deslop`, so a worker runs the configuration on `origin/main`: Claude's `SessionStart` hook fast-forwards `~/deslop` in the background (`git pull --ff-only`), so the session after a merge loads it. T3's own automatic pull does not cover this: it pulls a checkout only while something refreshes that checkout's Git status. Never edit an installed path, and never switch `~/deslop` off `main`: both change every thread's configuration. Running threads keep the configuration they started with.
 
-| Installed path                                | Links to `~/deslop/…`       |
-| --------------------------------------------- | --------------------------- |
-| `~/.claude/settings.json`                     | `.claude/settings.json`     |
-| `~/.claude/agents/pair.md`                    | `.claude/agents/pair.md`    |
-| `~/.claude/skills/{orchestrator,environment}` | `.claude/skills/<name>`     |
-| `~/.codex/config.toml`                        | `.codex/global-config.toml` |
-| `~/.codex/instructions.md`                    | `.codex/instructions.md`    |
-| `~/.codex/rules/deny.rules`                   | `.codex/rules/deny.rules`   |
-| `~/.codex/skills/{orchestrator,environment}`  | `~/.claude/skills/<name>`   |
+| Installed path                                         | Links to `~/deslop/…`          |
+| ------------------------------------------------------ | ------------------------------ |
+| `~/.claude/settings.json`                              | `.claude/settings.json`        |
+| `~/.claude/agents/pair.md`                             | `.claude/agents/pair.md`       |
+| `~/.claude/skills/{orchestrator,environment}`          | `.claude/skills/<name>`        |
+| `~/.codex/config.toml`                                 | `.codex/global-config.toml`    |
+| `~/.codex/instructions.md`                             | `.codex/instructions.md`       |
+| `~/.codex/rules/deny.rules`                            | `.codex/rules/deny.rules`      |
+| `~/.codex/skills/{orchestrator,environment}`           | `~/.claude/skills/<name>`      |
+| `~/.config/opencode/opencode.json`                     | `.opencode/global-config.json` |
+| `~/.config/opencode/agents/build.md`                   | `.opencode/agents/build.md`    |
+| `~/.config/opencode/skills/{orchestrator,environment}` | `.claude/skills/<name>`        |
 
 Set up once per worker, and again after a harness replaced a link with a file:
 
 ```bash
 r=~/deslop
-mkdir -p ~/.claude/agents ~/.claude/skills ~/.codex/rules ~/.codex/skills
+mkdir -p ~/.claude/agents ~/.claude/skills ~/.codex/rules ~/.codex/skills ~/.config/opencode/agents ~/.config/opencode/skills
 ln -sfn $r/.claude/settings.json ~/.claude/settings.json
 ln -sfn $r/.claude/agents/pair.md ~/.claude/agents/pair.md
 rm -rf ~/.claude/skills/* ~/.codex/skills/*
-for s in orchestrator environment; do ln -sfn $r/.claude/skills/$s ~/.claude/skills/$s; ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done
+for s in orchestrator environment; do ln -sfn $r/.claude/skills/$s ~/.claude/skills/$s; ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; ln -sfn $r/.claude/skills/$s ~/.config/opencode/skills/$s; done
 ln -sfn $r/.codex/global-config.toml ~/.codex/config.toml
 ln -sfn $r/.codex/instructions.md ~/.codex/instructions.md
 ln -sfn $r/.codex/rules/deny.rules ~/.codex/rules/deny.rules
+ln -sfn $r/.opencode/global-config.json ~/.config/opencode/opencode.json
+ln -sfn $r/.opencode/agents/build.md ~/.config/opencode/agents/build.md
 codex execpolicy check --rules ~/.codex/rules/deny.rules true
 ```
 
-**Check** with `find ~/.claude/settings.json ~/.claude/agents/pair.md ~/.codex/config.toml ~/.codex/instructions.md ~/.codex/rules/deny.rules ~/.claude/skills/* ~/.codex/skills/* -maxdepth 0 ! -type l` (prints a link a harness replaced) and `git -C ~/deslop status --short` (a harness that wrote through a link; carry the write into a PR, then `git -C ~/deslop restore` it, because a dirty checkout stops the automatic pull).
+**Check** with `find ~/.claude/settings.json ~/.claude/agents/pair.md ~/.codex/config.toml ~/.codex/instructions.md ~/.codex/rules/deny.rules ~/.config/opencode/opencode.json ~/.config/opencode/agents/build.md ~/.claude/skills/* ~/.codex/skills/* ~/.config/opencode/skills/* -maxdepth 0 ! -type l` (prints a link a harness replaced) and `git -C ~/deslop status --short` (a harness that wrote through a link; carry the write into a PR, then `git -C ~/deslop restore` it, because a dirty checkout stops the automatic pull).
+
+**OpenCode v2.** Install with `vp install -g @opencode/cli@latest`, not `opencode-ai` (v1). T3 selects `build`, so its Markdown agent replaces the base system prompt; project instructions, skills and T3's session instructions still load. The disabled built-in plugins remove native subagents, questions, session-management and worktree tools without removing Code Mode or MCP. T3 owns delegation and worktrees. Shell restrictions use `policies`, because T3's full-access session rules override ordinary agent permissions. The `plan` agent is disabled; use T3's default interaction mode.
+
+Sign in separately on each worker with `opencode auth login`; select OpenCode and follow its browser authorization. Verify with `opencode auth list` and `opencode models`. The [Console](https://opencode.ai/console) manages Go subscriptions and Zen/Console credits; do not buy either on the user's behalf or copy credentials between workers. If a provider requires an API key, enter it in the CLI's private prompt, never chat. MCP sign-ins use `opencode mcp auth <name>` for the servers in the configuration; they do not reuse Codex or Claude credentials.
 
 ## T3 history
 
