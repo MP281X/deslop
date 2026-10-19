@@ -1,18 +1,31 @@
-import {Effect, Option, pipe} from 'effect'
+import {Array, DateTime, Effect, Layer, Match, Option, Schedule, Stream, String, pipe} from 'effect'
 
-import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
+import {FetchHttpClient, HttpClient, HttpClientRequest} from 'effect/http'
 import {Atom, AtomRpc} from 'effect/reactivity'
+import * as Rpc from 'effect/rpc'
 
-import {AuthError, Authorization, Redirect} from '@deslop/auth/schema'
+import type {PendingAuthorization} from '@deslop/auth/schema'
+import {AuthError} from '@deslop/auth/schema'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 
 const authRuntime = Atom.runtime(FetchHttpClient.layer)
 
+export const connectedAtom = Atom.make(false)
+
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/auth-server/lib/utils/RpcClient', {
 	group: RpcContracts,
-	protocol: WebRuntime.layer('@deslop/auth-server')
+	protocol: get =>
+		pipe(
+			WebRuntime.layer('@deslop/auth-server'),
+			Layer.provide(
+				Layer.succeed(Rpc.RpcClient.ConnectionHooks, {
+					onConnect: Effect.sync(() => get.set(connectedAtom, true)),
+					onDisconnect: Effect.sync(() => get.set(connectedAtom, false))
+				})
+			)
+		)
 }) {}
 
 export const meAtom = RpcClient.runtime.atom(
@@ -23,20 +36,83 @@ export const meAtom = RpcClient.runtime.atom(
 	)
 )
 
-export const requestAtom = authRuntime.atom(
-	Option.match(Option.fromNullishOr(new URLSearchParams(location.search).get('request')), {
-		onNone: () => Effect.succeedNone,
-		onSome: Effect.fnUntraced(function* (request: string) {
-			return yield* pipe(
-				HttpClient.HttpClient.use(client =>
-					HttpClient.filterStatusOk(client).get('/auth/request', {urlParams: {request}})
-				),
-				Effect.flatMap(HttpClientResponse.schemaBodyJson(Authorization)),
-				Effect.asSome,
-				Effect.mapError(cause => AuthError.make({cause, message: 'Open the authorization link again'}))
+export const pendingAtom = Atom.keepAlive(
+	RpcClient.runtime.atom(
+		pipe(
+			RpcClient,
+			Effect.map(client => client('auth.pending', undefined)),
+			Stream.unwrap,
+			Stream.retry($ =>
+				pipe(
+					$(Schedule.spaced('1 second')),
+					Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
+				)
 			)
-		})
-	})
+		)
+	)
+)
+
+export const requestId = Option.fromNullishOr(new URLSearchParams(location.search).get('request'))
+
+export const requestAtom = Atom.family((request: string) =>
+	RpcClient.runtime.atom(
+		pipe(
+			RpcClient,
+			Effect.map(client => client('auth.wait', {request})),
+			Stream.unwrap,
+			Stream.retry($ =>
+				pipe(
+					$(Schedule.spaced('1 second')),
+					Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
+				)
+			),
+			Stream.tap(status =>
+				pipe(
+					Match.value(status),
+					Match.tag('Completed', result => Effect.sync(() => location.assign(result.url))),
+					Match.orElse(() => Effect.void)
+				)
+			)
+		)
+	)
+)
+
+export function requestCode(id: string) {
+	return `${String.slice(0, 4)(id)}-${String.slice(4, 8)(id)}`
+}
+
+export function applicationName(request: PendingAuthorization) {
+	const names = Array.dedupe(
+		Array.map(request.resources, resource =>
+			pipe(
+				new URL(resource).hostname,
+				String.split('.'),
+				Array.head,
+				Option.getOrElse(() => '')
+			)
+		)
+	)
+	if (names.length !== 1) return 'Shared access'
+	return String.capitalize(names[0] ?? 'Unknown app')
+}
+
+export function timeLabel(time: number) {
+	return pipe(DateTime.makeUnsafe(time), DateTime.formatLocal({hour: '2-digit', minute: '2-digit'}))
+}
+
+export const consentAtom = authRuntime.fn((input: {accept: boolean; request: PendingAuthorization}) =>
+	pipe(
+		HttpClientRequest.post('/api/auth/oauth2/consent'),
+		HttpClientRequest.bodyJson({accept: input.accept, request: input.request.id}),
+		Effect.flatMap(request => HttpClient.HttpClient.use(client => HttpClient.filterStatusOk(client).execute(request))),
+		Effect.as(input),
+		Effect.mapError(cause =>
+			AuthError.make({
+				cause,
+				message: 'Cannot answer the authorization request. It may have expired or already been answered.'
+			})
+		)
+	)
 )
 
 export const signInAtom = Atom.fn(() =>
@@ -51,16 +127,5 @@ export const signOutAtom = authRuntime.fn(() =>
 		HttpClient.HttpClient.use(client => HttpClient.filterStatusOk(client).post('/auth/sign-out')),
 		Effect.andThen(Effect.sync(() => location.reload())),
 		Effect.mapError(cause => AuthError.make({cause, message: 'Cannot sign out'}))
-	)
-)
-
-export const consentAtom = authRuntime.fn((accept: boolean) =>
-	pipe(
-		HttpClientRequest.post('/api/auth/oauth2/consent'),
-		HttpClientRequest.bodyJson({accept, request: new URLSearchParams(location.search).get('request')}),
-		Effect.flatMap(request => HttpClient.HttpClient.use(client => HttpClient.filterStatusOk(client).execute(request))),
-		Effect.flatMap(HttpClientResponse.schemaBodyJson(Redirect)),
-		Effect.flatMap(result => Effect.sync(() => location.assign(result.url))),
-		Effect.mapError(cause => AuthError.make({cause, message: 'Cannot finish authorization'}))
 	)
 )

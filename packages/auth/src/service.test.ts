@@ -9,20 +9,31 @@ import {
 	Crypto,
 	Effect,
 	FileSystem,
+	Fiber,
 	Layer,
 	Order,
+	Queue,
 	Schema,
 	String,
+	Stream,
 	pipe
 } from 'effect'
 
 import {Base64Url} from 'effect/encoding'
-import {HttpClient, HttpClientResponse, HttpRouter, HttpServerResponse, UrlParams} from 'effect/http'
+import {HttpClient, HttpClientResponse, HttpRouter, HttpServerRequest, HttpServerResponse, UrlParams} from 'effect/http'
 import {TestClock} from 'effect/testing'
 
 import type {Resource} from '#schema.ts'
-import {ClientRegistration, ConsentParams, Redirect, Registration, TokenResponse, User} from '#schema.ts'
-import {Auth, HttpAuth} from '#service.ts'
+import {
+	AuthorizationStatus,
+	ClientRegistration,
+	ConsentParams,
+	PendingAuthorization,
+	Registration,
+	TokenResponse,
+	User
+} from '#schema.ts'
+import {Auth, Authorizations, HttpAuth} from '#service.ts'
 
 import {CurrentUser} from '#lib/utils.ts'
 
@@ -39,6 +50,7 @@ const servers = Effect.gen(function* () {
 	const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
 	const random = yield* Crypto.Crypto
 	const clock = yield* Clock.Clock
+	const ready = yield* Queue.make<true>()
 	const github = HttpClient.make(request =>
 		Effect.gen(function* () {
 			if (request.url === 'https://github.com/login/oauth/access_token' && request.body._tag === 'Uint8Array') {
@@ -64,8 +76,50 @@ const servers = Effect.gen(function* () {
 		Effect.sync(() =>
 			HttpRouter.toWebHandler(
 				pipe(
-					me,
-					Layer.provide(Auth.layerIssuer),
+					Layer.merge(
+						me,
+						pipe(
+							Layer.merge(
+								HttpRouter.add(
+									'GET',
+									'/pending',
+									Effect.gen(function* () {
+										return yield* HttpServerResponse.schemaJson(Schema.Array(PendingAuthorization))(
+											yield* Effect.flatMap(
+												Stream.runHead(
+													(yield* Authorizations).pending((yield* HttpServerRequest.HttpServerRequest).headers)
+												),
+												Effect.fromOption
+											)
+										)
+									})
+								),
+								HttpRouter.add(
+									'GET',
+									'/events',
+									Effect.gen(function* () {
+										return HttpServerResponse.stream(
+											pipe(
+												(yield* Authorizations).pending((yield* HttpServerRequest.HttpServerRequest).headers),
+												Stream.take(2),
+												Stream.mapEffect((snapshot, index) =>
+													Effect.gen(function* () {
+														if (index === 0) yield* Queue.offer(ready, true)
+														return yield* Schema.encodeEffect(
+															Schema.fromJsonString(Schema.Array(PendingAuthorization))
+														)(snapshot)
+													})
+												),
+												Stream.map(value => new TextEncoder().encode(`${value}\n`))
+											)
+										)
+									})
+								)
+							),
+							Layer.provide(HttpAuth.layer)
+						)
+					),
+					Layer.provideMerge(Auth.layerIssuer),
 					Layer.provide(
 						Layer.mergeAll(
 							NodeServices.layer,
@@ -121,7 +175,7 @@ const servers = Effect.gen(function* () {
 		),
 		web => Effect.promise(() => web.dispose())
 	)
-	return {app, issuer}
+	return {app, issuer, ready}
 })
 
 function send(web: Effect.Success<typeof servers>['issuer'], path: string, init?: RequestInit) {
@@ -159,6 +213,7 @@ const authorize = Effect.fnUntraced(function* (
 ) {
 	const registered = yield* send(web, '/api/auth/oauth2/register', {
 		body: yield* Schema.encodeEffect(Schema.fromJsonString(Registration))({
+			client_name: 'opencode',
 			redirect_uris: [redirect],
 			token_endpoint_auth_method: 'none'
 		}),
@@ -189,7 +244,7 @@ const authorize = Effect.fnUntraced(function* (
 	assert.strictEqual(request.status, 302)
 	return {
 		clientId: registration.client_id,
-		cookie: `${session}; ${cookie(request)}`,
+		cookie: pipe([session, cookie(request)], Array.filter(String.isNonEmpty), Array.join('; ')),
 		id: new URL(request.headers.get('location') ?? '', AUTH).searchParams.get('request') ?? '',
 		redirect,
 		resources
@@ -206,10 +261,14 @@ const consent = Effect.fnUntraced(function* (
 		headers: {'content-type': 'application/json', cookie: request.cookie, origin: AUTH},
 		method: 'POST'
 	})
-	assert.strictEqual(response.status, 200)
-	return new URL(
-		(yield* Schema.decodeEffect(Schema.fromJsonString(Redirect))(yield* Effect.promise(() => response.text()))).url
+	assert.strictEqual(response.status, 204)
+	const receiver = yield* send(web, `/auth/request?request=${request.id}`, {headers: {cookie: request.cookie}})
+	const status = yield* Schema.decodeEffect(Schema.fromJsonString(AuthorizationStatus))(
+		yield* Effect.promise(() => receiver.text())
 	)
+	assert.strictEqual(status._tag, 'Completed')
+	if (status._tag !== 'Completed') return yield* Effect.die('Expected a completed authorization')
+	return new URL(status.url)
 })
 
 const exchange = Effect.fnUntraced(function* (
@@ -248,6 +307,178 @@ const refresh = Effect.fnUntraced(function* (
 })
 
 it.layer(NodeServices.layer)(test => {
+	test.effect('approves from a separate session while only the originating browser receives the callback', () =>
+		Effect.gen(function* () {
+			const web = yield* servers
+			const session = cookie(yield* signIn(web.issuer, 'octocat'))
+			assert.strictEqual((yield* send(web.issuer, '/pending')).status, 401)
+			const first = yield* authorize(web.issuer, '', 'http://127.0.0.1:34567/callback', [
+				'https://scope.mp281x.xyz/mcp'
+			])
+			const second = yield* authorize(web.issuer, '', 'http://127.0.0.1:34568/callback', [
+				'https://stash.mp281x.xyz/mcp'
+			])
+			const response = yield* send(web.issuer, '/pending', {headers: {cookie: session}})
+			const body = yield* Effect.promise(() => response.text())
+			assert.isFalse(String.includes('fixture-state')(body))
+			assert.isFalse(String.includes('challenge')(body))
+			assert.isFalse(String.includes(first.clientId)(body))
+			assert.deepStrictEqual(
+				Array.sort(
+					Array.map(
+						yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(PendingAuthorization)))(body),
+						item => item.id
+					),
+					Order.String
+				),
+				Array.sort([first.id, second.id], Order.String)
+			)
+			assert.strictEqual(
+				(yield* send(web.issuer, `/auth/request?request=${first.id}`, {headers: {cookie: session}})).status,
+				400
+			)
+			assert.strictEqual(
+				(yield* send(web.issuer, `/auth/request?request=${second.id}`, {headers: {cookie: first.cookie}})).status,
+				400
+			)
+			const decision = yield* send(web.issuer, '/api/auth/oauth2/consent', {
+				body: yield* Schema.encodeEffect(Schema.fromJsonString(ConsentParams))({accept: true, request: first.id}),
+				headers: {'content-type': 'application/json', cookie: session, origin: AUTH},
+				method: 'POST'
+			})
+			assert.strictEqual(decision.status, 204)
+			assert.strictEqual(yield* Effect.promise(() => decision.text()), '')
+			const callbackResponse = yield* send(web.issuer, `/auth/request?request=${first.id}`, {
+				headers: {cookie: `${first.cookie}; ${second.cookie}`}
+			})
+			const callback = yield* Schema.decodeEffect(Schema.fromJsonString(AuthorizationStatus))(
+				yield* Effect.promise(() => callbackResponse.text())
+			)
+			assert.strictEqual(callback._tag, 'Completed')
+			if (callback._tag !== 'Completed') return yield* Effect.die('Expected a callback')
+			const repeated = yield* send(web.issuer, `/auth/request?request=${first.id}`, {headers: {cookie: first.cookie}})
+			assert.deepStrictEqual(
+				yield* Schema.decodeEffect(Schema.fromJsonString(AuthorizationStatus))(
+					yield* Effect.promise(() => repeated.text())
+				),
+				callback
+			)
+			assert.strictEqual(
+				(yield* exchange(web.issuer, first, new URL(callback.url).searchParams.get('code') ?? '')).status,
+				200
+			)
+			const waiting = yield* send(web.issuer, `/auth/request?request=${second.id}`, {
+				headers: {cookie: `${first.cookie}; ${second.cookie}`}
+			})
+			assert.strictEqual(
+				(yield* Schema.decodeEffect(Schema.fromJsonString(AuthorizationStatus))(
+					yield* Effect.promise(() => waiting.text())
+				))._tag,
+				'Waiting'
+			)
+		})
+	)
+
+	test.effect('streams creations and expiration without refresh and rejects decisions after expiry', () =>
+		Effect.gen(function* () {
+			const web = yield* servers
+			const session = cookie(yield* signIn(web.issuer, 'octocat'))
+			const creations = yield* pipe(
+				send(web.issuer, '/events', {headers: {cookie: session}}),
+				Effect.flatMap(response => Effect.promise(() => response.text())),
+				Effect.forkScoped
+			)
+			yield* Queue.take(web.ready)
+			const request = yield* authorize(web.issuer, '', 'http://127.0.0.1:34567/callback', [
+				'https://portfolio.mp281x.xyz/mcp'
+			])
+			const created = yield* Effect.forEach(
+				pipe(yield* Fiber.join(creations), String.trim, String.split('\n')),
+				line => Schema.decodeEffect(Schema.fromJsonString(Schema.Array(PendingAuthorization)))(line),
+				{concurrency: 1}
+			)
+			assert.deepStrictEqual(
+				Array.map(created, snapshot => Array.map(snapshot, item => item.id)),
+				[[], [request.id]]
+			)
+			const expirations = yield* pipe(
+				send(web.issuer, '/events', {headers: {cookie: session}}),
+				Effect.flatMap(response => Effect.promise(() => response.text())),
+				Effect.forkScoped
+			)
+			yield* Queue.take(web.ready)
+			yield* TestClock.adjust('241 seconds')
+			const expired = yield* Effect.forEach(
+				pipe(yield* Fiber.join(expirations), String.trim, String.split('\n')),
+				line => Schema.decodeEffect(Schema.fromJsonString(Schema.Array(PendingAuthorization)))(line),
+				{concurrency: 1}
+			)
+			assert.deepStrictEqual(
+				Array.map(expired, snapshot => Array.map(snapshot, item => item.id)),
+				[[request.id], []]
+			)
+			const receiver = yield* send(web.issuer, `/auth/request?request=${request.id}`, {
+				headers: {cookie: request.cookie}
+			})
+			assert.deepStrictEqual(
+				yield* Schema.decodeEffect(Schema.fromJsonString(AuthorizationStatus))(
+					yield* Effect.promise(() => receiver.text())
+				),
+				{_tag: 'Expired'}
+			)
+			assert.strictEqual(
+				(yield* send(web.issuer, '/api/auth/oauth2/consent', {
+					body: yield* Schema.encodeEffect(Schema.fromJsonString(ConsentParams))({accept: true, request: request.id}),
+					headers: {'content-type': 'application/json', cookie: session, origin: AUTH},
+					method: 'POST'
+				})).status,
+				400
+			)
+		})
+	)
+
+	test.effect('accepts one decision across concurrent approving and denying sessions', () =>
+		Effect.gen(function* () {
+			const web = yield* servers
+			const first = cookie(yield* signIn(web.issuer, 'octocat'))
+			const second = cookie(yield* signIn(web.issuer, 'octocat'))
+			const request = yield* authorize(web.issuer, '', 'http://127.0.0.1:34567/callback', [
+				'https://scope.mp281x.xyz/mcp'
+			])
+			const responses = yield* Effect.forEach(
+				[
+					{accept: true, session: first},
+					{accept: false, session: second}
+				],
+				Effect.fnUntraced(function* (decision) {
+					return yield* send(web.issuer, '/api/auth/oauth2/consent', {
+						body: yield* Schema.encodeEffect(Schema.fromJsonString(ConsentParams))({
+							accept: decision.accept,
+							request: request.id
+						}),
+						headers: {'content-type': 'application/json', cookie: decision.session, origin: AUTH},
+						method: 'POST'
+					})
+				}),
+				{concurrency: 'unbounded'}
+			)
+			assert.deepStrictEqual(
+				Array.sort(
+					Array.map(responses, response => response.status),
+					Order.Number
+				),
+				[204, 400]
+			)
+			const pending = yield* send(web.issuer, '/pending', {headers: {cookie: first}})
+			assert.deepStrictEqual(
+				yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(PendingAuthorization)))(
+					yield* Effect.promise(() => pending.text())
+				),
+				[]
+			)
+		})
+	)
+
 	test.effect('binds consent and one-use PKCE codes to the browser, client, callback and resources', () =>
 		Effect.gen(function* () {
 			const web = yield* servers

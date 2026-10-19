@@ -1,14 +1,30 @@
-import {useAtom, useAtomSuspense} from '@effect/atom-react'
+import {useAtom, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Option} from 'effect'
+import {Array, Boolean, DateTime, Option, Record} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {LoaderCircle, LogOut} from 'lucide-react'
+import {Suspense} from 'react'
 
+import type {PendingAuthorization} from '@deslop/auth/schema'
+import {AuthorizationStatus} from '@deslop/auth/schema'
+import {Loading} from '@deslop/components-web/fallbacks'
 import {Button} from '@deslop/components-web/ui/button'
 
-import {consentAtom, meAtom, requestAtom, signInAtom, signOutAtom} from '#lib/utils.ts'
+import {
+	applicationName,
+	connectedAtom,
+	consentAtom,
+	meAtom,
+	pendingAtom,
+	requestAtom,
+	requestCode,
+	requestId,
+	signInAtom,
+	signOutAtom,
+	timeLabel
+} from '#lib/utils.ts'
 
 export const Route = createFileRoute('/(home)/')({component: Home})
 
@@ -38,11 +54,151 @@ function GitHubIcon() {
 }
 
 function Home() {
+	return (
+		<Suspense fallback={<Loading />}>
+			<HomeContent />
+		</Suspense>
+	)
+}
+
+function Waiting(props: {id: string}) {
+	return AuthorizationStatus.match(useAtomSuspense(requestAtom(props.id)).value, {
+		Completed: () => (
+			<p className="text-muted-foreground text-sm" role="status">
+				Returning to the app…
+			</p>
+		),
+		Expired: () => (
+			<p className="text-destructive text-sm" role="alert">
+				This request expired. Start sign-in again in the app.
+			</p>
+		),
+		Waiting: value => (
+			<section className="flex flex-col gap-2 border-y py-3">
+				<h2 className="text-sm font-medium">Waiting for approval · {requestCode(value.request.id)}</h2>
+				<p className="text-muted-foreground text-sm">
+					Approve {applicationName(value.request)} at {location.host} in your signed-in browser. You do not need to sign
+					in here.
+				</p>
+			</section>
+		)
+	})
+}
+
+function RequestRow(props: {request: PendingAuthorization}) {
+	const connected = useAtomValue(connectedAtom)
+	const [consent, respond] = useAtom(consentAtom)
+	return (
+		<li className="flex flex-col gap-3 border-b py-3">
+			<div className="flex flex-wrap items-baseline gap-x-2">
+				<span className="text-sm font-medium">{props.request.clientName}</span>
+				<span className="text-muted-foreground text-xs">claimed client</span>
+				<time
+					className="text-muted-foreground ml-auto text-xs"
+					dateTime={DateTime.formatIso(DateTime.makeUnsafe(props.request.createdAt))}
+				>
+					{timeLabel(props.request.createdAt)}
+				</time>
+			</div>
+			<dl className="text-sm">
+				<div className="grid grid-cols-4 items-baseline gap-3 py-0.5">
+					<dt className="text-muted-foreground text-xs">Request ID</dt>
+					<dd className="col-span-3 min-w-0 tabular-nums">{requestCode(props.request.id)}</dd>
+				</div>
+				<div className="grid grid-cols-4 items-baseline gap-3 py-0.5">
+					<dt className="text-muted-foreground text-xs">Returns to</dt>
+					<dd className="col-span-3 min-w-0 break-all">{props.request.redirectUri}</dd>
+				</div>
+				<div className="grid grid-cols-4 items-baseline gap-3 py-0.5">
+					<dt className="text-muted-foreground text-xs">Access</dt>
+					<dd className="col-span-3 min-w-0 break-all">
+						<ul>
+							{Array.map(props.request.resources, resource => (
+								<li key={resource}>{resource}</li>
+							))}
+						</ul>
+					</dd>
+				</div>
+				<div className="grid grid-cols-4 items-baseline gap-3 py-0.5">
+					<dt className="text-muted-foreground text-xs">Expires</dt>
+					<dd className="col-span-3 min-w-0">
+						<time dateTime={DateTime.formatIso(DateTime.makeUnsafe(props.request.expiresAt))}>
+							{timeLabel(props.request.expiresAt)}
+						</time>
+					</dd>
+				</div>
+			</dl>
+			<div className="grid grid-cols-2 gap-2">
+				<Button
+					size="lg"
+					disabled={!connected || AsyncResult.isWaiting(consent)}
+					onClick={() => respond({accept: true, request: props.request})}
+				>
+					Approve
+				</Button>
+				<Button
+					size="lg"
+					variant="outline"
+					disabled={!connected || AsyncResult.isWaiting(consent)}
+					onClick={() => respond({accept: false, request: props.request})}
+				>
+					Deny
+				</Button>
+			</div>
+		</li>
+	)
+}
+
+function Inbox() {
+	const requests = useAtomSuspense(pendingAtom).value
+	const connected = useAtomValue(connectedAtom)
+	const consent = useAtomValue(consentAtom)
+	return (
+		<section className="flex flex-col gap-6" aria-label="Pending requests">
+			<div className="flex flex-col gap-1">
+				<p className="text-muted-foreground text-xs">
+					Approve only requests you started. Match the request ID in your thread.
+				</p>
+				<p className="text-muted-foreground text-xs" role="status">
+					{Boolean.match(connected, {
+						onFalse: () => 'Reconnecting · approvals paused until live updates return',
+						onTrue: () => 'Live'
+					})}
+				</p>
+				{AsyncResult.isSuccess(consent) && (
+					<p className="text-muted-foreground text-xs" role="status">
+						{Boolean.match(consent.value.accept, {onFalse: () => 'Denied', onTrue: () => 'Approved'})}{' '}
+						{requestCode(consent.value.request.id)} · {applicationName(consent.value.request)}
+					</p>
+				)}
+			</div>
+			{Array.match(requests, {
+				onEmpty: () => (
+					<p className="text-muted-foreground text-sm" role="status">
+						No pending requests
+					</p>
+				),
+				onNonEmpty: pending =>
+					Array.map(Record.toEntries(Array.groupBy(pending, applicationName)), entry => (
+						<section key={entry[0]}>
+							<h2 className="border-b pb-2 text-sm font-medium">{entry[0]}</h2>
+							<ul>
+								{Array.map(entry[1], request => (
+									<RequestRow key={request.id} request={request} />
+								))}
+							</ul>
+						</section>
+					))
+			})}
+		</section>
+	)
+}
+
+function HomeContent() {
 	const user = useAtomSuspense(meAtom).value
-	const request = useAtomSuspense(requestAtom).value
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [signOut, endSession] = useAtom(signOutAtom)
-	const [consent, respond] = useAtom(consentAtom)
+	const consent = useAtomValue(consentAtom)
 	const error = Option.orElse(AsyncResult.error(signIn), () =>
 		Option.orElse(AsyncResult.error(consent), () => AsyncResult.error(signOut))
 	)
@@ -53,6 +209,7 @@ function Home() {
 					<Logo />
 					<h1 className="text-xl font-semibold">Deslop Auth</h1>
 				</div>
+				{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting id={id} />})}
 				{Option.match(user, {
 					onNone: () => (
 						<Button size="lg" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
@@ -65,81 +222,19 @@ function Home() {
 					),
 					onSome: account => (
 						<>
-							{Option.match(request, {
-								onNone: () => (
-									<>
-										<div className="flex items-center justify-between gap-2 border-y py-3">
-											<p className="min-w-0 truncate text-sm">{account.name}</p>
-											<Button
-												variant="ghost"
-												size="icon-lg"
-												aria-label="Sign out"
-												disabled={AsyncResult.isWaiting(signOut)}
-												onClick={() => endSession()}
-											>
-												<LogOut />
-											</Button>
-										</div>
-										<p className="text-muted-foreground text-sm">
-											Open an app or connect its MCP URL. Sign-in and authorization happen here automatically.
-										</p>
-									</>
-								),
-								onSome: grant => (
-									<>
-										<div>
-											<h2 className="border-b pb-2 text-sm font-medium">Allow access to Deslop?</h2>
-											<dl>
-												<div className="grid grid-cols-4 items-start gap-3 border-b py-3">
-													<dt className="text-muted-foreground text-xs">Client ID</dt>
-													<dd className="col-span-3 min-w-0 text-sm break-all">{grant.clientId}</dd>
-												</div>
-												<div className="grid grid-cols-4 items-start gap-3 border-b py-3">
-													<dt className="text-muted-foreground text-xs">Return to</dt>
-													<dd className="col-span-3 min-w-0 text-sm break-all">{grant.redirectUri}</dd>
-												</div>
-												<div className="grid grid-cols-4 items-start gap-3 border-b py-3">
-													<dt className="text-muted-foreground text-xs">Resources</dt>
-													<dd className="col-span-3 min-w-0 space-y-1 text-sm break-all">
-														{Array.map(grant.resources, resource => (
-															<p key={resource}>{resource}</p>
-														))}
-													</dd>
-												</div>
-												<div className="grid grid-cols-4 items-center gap-3 border-b py-3">
-													<dt className="text-muted-foreground text-xs">Account</dt>
-													<dd className="col-span-3 flex min-w-0 items-center justify-between gap-2">
-														<p className="min-w-0 truncate text-sm">{account.name}</p>
-														<Button
-															variant="ghost"
-															size="icon-lg"
-															aria-label="Sign out"
-															disabled={AsyncResult.isWaiting(signOut)}
-															onClick={() => endSession()}
-														>
-															<LogOut />
-														</Button>
-													</dd>
-												</div>
-											</dl>
-										</div>
-										<div className="flex flex-col gap-2">
-											<Button size="lg" disabled={AsyncResult.isWaiting(consent)} onClick={() => respond(true)}>
-												{AsyncResult.isWaiting(consent) && <LoaderCircle className="motion-safe:animate-spin" />}
-												Allow
-											</Button>
-											<Button
-												size="lg"
-												variant="outline"
-												disabled={AsyncResult.isWaiting(consent)}
-												onClick={() => respond(false)}
-											>
-												Deny
-											</Button>
-										</div>
-									</>
-								)
-							})}
+							<div className="flex items-center justify-between gap-2 border-y py-3">
+								<p className="min-w-0 truncate text-sm">{account.name}</p>
+								<Button
+									variant="ghost"
+									size="icon-lg"
+									aria-label="Sign out"
+									disabled={AsyncResult.isWaiting(signOut)}
+									onClick={() => endSession()}
+								>
+									<LogOut />
+								</Button>
+							</div>
+							<Inbox />
 						</>
 					)
 				})}

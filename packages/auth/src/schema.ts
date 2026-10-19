@@ -28,19 +28,36 @@ export const Resource = Schema.Literals([
 	'https://otel.mp281x.xyz'
 ])
 
-export type Authorization = typeof Authorization.Type
-export const Authorization = Schema.Struct({
+const authorizationFields = {
 	challenge: Schema.NonEmptyString,
 	clientId: Schema.NonEmptyString,
 	redirectUri: Schema.NonEmptyString,
 	resources: Schema.Array(Resource),
 	state: Schema.NonEmptyString
-})
+}
 
 export type Registration = typeof Registration.Type
 export const Registration = Schema.Struct({
+	client_name: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(100))),
 	redirect_uris: Schema.NonEmptyArray(Schema.NonEmptyString),
 	token_endpoint_auth_method: Schema.optionalKey(Schema.Literal('none'))
+})
+
+export type PendingAuthorization = typeof PendingAuthorization.Type
+export const PendingAuthorization = Schema.Struct({
+	clientName: Schema.String,
+	createdAt: Schema.Finite,
+	expiresAt: Schema.Finite,
+	id: Schema.NonEmptyString,
+	redirectUri: Schema.NonEmptyString,
+	resources: Schema.Array(Resource)
+})
+
+export type AuthorizationStatus = typeof AuthorizationStatus.Type
+export const AuthorizationStatus = Schema.TaggedUnion({
+	Completed: {url: Schema.NonEmptyString},
+	Expired: {},
+	Waiting: {request: PendingAuthorization}
 })
 
 export type AuthorizeParams = typeof AuthorizeParams.Type
@@ -76,8 +93,9 @@ export const TokenParams = Schema.Union([
 export type Stored = typeof Stored.Type
 export const Stored = Schema.TaggedUnion({
 	Access: {family: Schema.NonEmptyString, resources: Schema.Array(Resource), user: User},
-	Client: {redirects: Schema.NonEmptyArray(Schema.NonEmptyString)},
-	Code: {...Authorization.fields, user: User},
+	Client: {name: Schema.optionalKey(Schema.String), redirects: Schema.NonEmptyArray(Schema.NonEmptyString)},
+	Code: {...authorizationFields, user: User},
+	Delivered: {id: Schema.NonEmptyString, url: Schema.NonEmptyString},
 	Login: {request: Schema.optionalKey(Schema.NonEmptyString), verifier: Schema.NonEmptyString},
 	Refresh: {
 		clientId: Schema.NonEmptyString,
@@ -85,13 +103,22 @@ export const Stored = Schema.TaggedUnion({
 		resources: Schema.Array(Resource),
 		user: User
 	},
-	Request: Authorization.fields,
+	Request: {
+		...authorizationFields,
+		clientName: Schema.String,
+		createdAt: Schema.Finite,
+		decision: Schema.TaggedUnion({Approved: {user: User}, Denied: {}, Pending: {}}),
+		id: Schema.NonEmptyString
+	},
 	Session: {user: User},
 	UsedRefresh: {clientId: Schema.NonEmptyString, family: Schema.NonEmptyString}
 })
 
 export type StoredRow = typeof StoredRow.Type
 export const StoredRow = Schema.Struct({payload: Schema.String})
+
+export type AuthorizationRow = typeof AuthorizationRow.Type
+export const AuthorizationRow = Schema.Struct({expiresAt: Schema.Finite, hash: Schema.String, payload: Schema.String})
 
 export type RequestParams = typeof RequestParams.Type
 export const RequestParams = Schema.Struct({request: Schema.NonEmptyString})
@@ -131,9 +158,6 @@ export const TokenResponse = Schema.Struct({
 	expires_in: Schema.Finite,
 	refresh_token: Schema.NonEmptyString
 })
-
-export type Redirect = typeof Redirect.Type
-export const Redirect = Schema.Struct({url: Schema.NonEmptyString})
 
 export type VerificationParams = typeof VerificationParams.Type
 export const VerificationParams = Schema.Struct({resource: Resource})
