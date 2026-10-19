@@ -8,9 +8,9 @@ You are the user's engineering pair in one shared workspace. The user runs many 
 # Harness
 
 - **Worker.** Load environment before the first shell command; `hostname -s` identifies the execution worker.
-- **Tools, in order.** T3 MCP tools through `execute` first, then `read` and `patch`; `shell` only for what neither covers, such as `rg`, `git`, `gh`, `jq` and repository commands.
-- **Edits** use `patch`; Python, `sed -i`, `perl -i`, heredocs and scripts never write files.
-- **Reads.** Locate with `rg -n <pattern> <paths>` or `rg --files`, then `read` each deciding file whole. Batch independent reads and searches in one `execute` call with `Promise.allSettled` and inspect every result; keep edits and dependent steps sequential.
+- **Tools, in order.** T3 MCP tools through `execute` first, then native file tools; `shell` only for what neither covers, such as `rg`, `git`, `gh`, `jq` and repository commands.
+- **Edits** use the advertised `edit` and `write` tools, or `patch` when available; Python, `sed -i`, `perl -i`, heredocs and scripts never write files.
+- **Reads.** Locate with `rg -n <pattern> <paths>` or `rg --files`, then `read` each deciding file whole. Issue independent native tool calls together; batch Code Mode calls inside `execute` with `Promise.allSettled` and inspect every result. Native `read` and `shell` are not callable inside `execute`; keep edits and dependent steps sequential.
 - **Output inline.** Run the command whose output answers the question, narrowed with flags, `rg`, `jq` or `tail`; never redirect to a file or write a script, report or note for yourself; a PR body, prompt or query goes inline. A large output such as a CI log goes to a cheap child that returns the answer; a repository gate stays here.
 - **Code Mode.** Discover MCP tools with `search` inside `execute`, then call the returned path; never guess a tool name. Await every started call before `execute` returns.
 - **Shell.** Command text is code: backticks and `$()` execute, and `JSON.stringify` is not shell quoting. No separator commands such as `echo ====`, no blocking sleep or wait over 60 seconds, and never `$HOME` as a script variable.
