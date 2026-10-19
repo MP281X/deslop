@@ -205,6 +205,8 @@ The installed settings must not set `disableClaudeAiConnectors: true` in any sco
 
 **Mobbin in Codex.** Authorize `https://api.mobbin.com/mcp` separately on each worker with `codex mcp login --no-browser mobbin` and the callback procedure above; Claude's connector authorization does not transfer to Codex. Never copy credentials between workers. [Official setup](https://docs.mobbin.com/mcp/introduction).
 
+Keep `features.mcp_2026_07_28 = false`: in Codex 0.163.0, an authenticated Mobbin server exposed no tools with stateless MCP enabled; the same headless standard search succeeded with it disabled. This switch is global, not per-server; verify discovery for Dual, Scope, Stash and Portfolio when changing it. Check each worker's Mobbin sign-in with `codex mcp list`: `OAuth` means credentials are stored, `Not logged in` requires that worker's own authorization. Verify a real tool call separately.
+
 Verify with a standard screen search for `iOS saved notes search filters` and a flow search for `workflow run failure details`. Inspect returned preview images and preserve the product names and Mobbin links; a connected server alone does not prove search or image access. Standard searches, `search_flows` and `search_sections` use no AI credits; only successful `search_screens` calls with `mode: "deep"` consume credits. [Tools and images](https://docs.mobbin.com/mcp/features), [credit rules](https://docs.mobbin.com/ai-credits).
 
 If direct client registration or discovery returns a Vercel `HTTP 403` challenge, keep OAuth success separate from tool availability and report the failing step to [Mobbin support](https://help.mobbin.com/en/contact-us). For Claude, use the recommended shared connector rather than retrying direct registration.
