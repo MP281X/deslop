@@ -45,7 +45,7 @@ const REPLACEMENTS: Record.ReadonlyRecord<string, string> = {
 	toLocaleLowerCase: 'String.toLowerCase',
 	toLocaleUpperCase: 'String.toUpperCase',
 	toLowerCase: 'String.toLowerCase',
-	toSpliced: 'Array.remove',
+	toSpliced: 'Array.remove or Array.insertAt',
 	toUpperCase: 'String.toUpperCase',
 	trim: 'String.trim',
 	trimEnd: 'String.trimEnd',

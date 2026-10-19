@@ -5,150 +5,99 @@ description: "Use before writing or changing code, tests, scripts or configurati
 
 # Engineering
 
-Every file, flag, option, branch, abstraction and line answers one question: what breaks for the user without it? If nothing, remove it.
+Standards for known things. The repository's `AGENTS.md` and the files it links win over this skill; lint owns every mechanical form, and this skill holds what lint cannot see. A cleanup request applies every rule to every line of the touched files; scratch code follows none.
 
-Agents write and maintain the code; people review it from the PR body, the proof and a scan of the diff. Write for that reader: idiomatic, effectful, testable code that reads in place, explicit and self-contained like Tailwind classes, so editing one part cannot break another. An abstraction stays only when it lowers what a reader must hold, never because it saves lines.
+**YAGNI.** What breaks for the user without it? Nothing: delete it. Today's request only; no planning for the future.
 
-Oxlint and Oxfmt check every change and stay authoritative; this skill holds what they cannot check. Apply it with the repository's standards: its `AGENTS.md` and the files it links, such as a `CODING_STANDARDS.md`; a cleanup request applies every rule to every line of the files the task touches. Scratch code follows no style rule.
+**Reader-first.** People review the PR body, the proof and a scan of the diff: idiomatic, effectful code that reads in place, where editing one part cannot break another.
 
 ## Loop
 
-- **Verify** at the root once the whole change is in, and again after each round of fixes: the repository's fix command (lint fixes, then format), then its check, then its tests, as its `AGENTS.md` or scripts name them, chained bare in one command so a failure stops the rest; fix what fails and rerun the chain until it passes. Read the failures from that run's whole output, never from a rerun with another filter. Never a package-level or per-edit check. Fix the first error in each file first: one broken import turns into hundreds of implicit `any` errors downstream. A read-only reviewer never runs fix.
+**Verify once.** At the root after the whole change and after each round of fixes, never per edit or package: the repository's fix, check and test commands chained bare. Read the failures from that run's whole output, never from a rerun with another filter; the first error in each file first.
 
-  ```bash
-  # good
-  <fix> && <check> && <test>
-  # bad: each step exits with tail's code, so test runs after a failed check, and the cut diagnostics need a rerun
-  <fix> 2>&1 | tail -5 && <check> 2>&1 | tail -20 && <test> 2>&1 | tail -20
-  ```
-
-- **First pass.** Write the forms in [Lint rules](#lint-rules) from the start. Fix a diagnostic at its source with the form its message or row names; never a cast, a weakened rule or a rewrite that trades one diagnostic for another.
-- **Fix the code, not the rule.** A diagnostic whose named form does not fit points at the model upstream: change the model, not the line that trips the rule. A diagnostic on code the rules allow is a rule bug: fix the rule with a rejected and an accepted case.
-
-  ```ts
-  // good: absence is an optional value, cleared by "All"
-  const [kind, setKind] = useState<Kind>()
-  // bad: a sentinel that only exists because `undefined` is banned as a type
-  const [kind, setKind] = useState<Kind | ''>('')
-  ```
-
-- **Disables** need an unavoidable conflict with an outside contract and a `--` reason naming it. Never disable ordering or weaken file configuration.
-
-## Mechanism
-
-Start from a real caller and the outcome, not a pattern. Trace one successful operation and its strongest reachable failure through the existing modules: the authoritative state, write boundary, resource lifetime and completion signal.
-
-- **Direct.** The most direct code that meets today's request: extend the canonical example per [Patterns](#patterns), else a function or an existing service method. A new service only for a distinct capability or lifetime; reimplementing a library's job is a new mechanism. Keep the direct version unless a probe proves a concrete contract rules it out.
-- **Callers.** Every function, parameter, option, export, Layer, check and config value has a caller that varies it. Handle reachable inputs only: no futureproofing or impossible cases. Explicit variants for genuinely different behaviors; no boolean combinations, registries, generic configuration or factories for hypothetical callers.
-- **Reuse.** Search existing code, installed modules and Effect's modules by the domain concept, not only the request's words, before you write traversal, state, configuration or platform code; replace dependencies Effect covers. Before a hand-written type, guard, table, wrapper or dependency, list the owning module's exports in its locked source checkout per explore: `Schema.TaggedUnion` replaces a hand-written matcher. Identical logic twice (a computation, a query, an Effect pipeline) is one function in its owner's `lib/utils`. Similar code stays separate: three similar lines beat an abstraction, and a shared function never branches on its caller. Class lists and small expressions stay inline at each use, never in shared constants. Compose with Effect's own combinators, pipelines, Layers and Schema instead of writing a wrapper.
-- **One owner.** Derive values from their owner; never mirror server state, request state, caches or pending results in another store. A persisted value has one write boundary, a domain enum one schema, a cache key the full identity it caches. No duplicate, subset or superset fields, methods, options or exports; remove states no caller produces.
-- **Lifetime.** Finite work stays in its request scope; a stream serves progress without a job system. Background ownership only when work must outlive its caller.
-- **Failure.** Failures flow through the error channel with their cause; never turn one into empty success. No catch, retry, fallback, idempotency or defensive check without a contract that needs it.
-- **Trusted data.** Decode once at the boundary with Effect Schema; never re-check what the schema, the type or every caller guarantees.
-- **Whole values.** Pass whole values or spread them, named by role; project fields only to withhold one, such as a bearer token.
-- **Inward.** Domain and service code never import transport types; domain schemas carry no HTTP status.
-- **Building blocks.** A public interface offers services, Layers and functions a caller composes, never a bundle such as `serve(app)`.
-- **No compatibility.** Rename a shape and every caller together: no alias, fallback, deprecated path or flag. Persisted production data is the exception: a migration converts the stored data, and the code reads only the new shape.
-- **Refactors** keep observable behavior at every consumer: capture the current output through the real interface before you change structure and compare it after; type checks and lint are not that capture. Report any difference. Fix reachable bugs inside the scope and check every consumer of the changed output.
-- **Clarity.** Pure functions over immutable data, effects only inside Effect. Code reads top to bottom; rename or split instead of narrating; a comment only for an outside constraint the code cannot express.
-- **Performance** only when the request needs it: locate the cost with a profiler or trace, measure one real action before and after with run count and variation, and treat a gap within the variation as no change.
-- **Domain.** Implement the domain's definition, such as a cycle for recursion, never a syntactic proxy.
-- **Dependencies.** A new one is `latest`; pin only what a consumer requires. Extend it through its public API, never a patch.
-- **Dead code.** In the same change, delete every superseded file, export, type, branch, config, doc, test, dependency and empty directory.
-
-```ts
-// good
-const recursion = Graph.findCycle(calls) // stronglyConnectedComponents also lists every node outside a cycle
-upload({scope: input.scope, type: input.type}) // input also holds the bearer token
-// bad
-Schema.decodeEffect(LedgerDraft)(draft) // draft is already a decoded LedgerDraft
-function save(kind: 'note' | 'tag', value: Note | Tag) {} // one helper branching per caller: saveNote and saveTag
-import {glob} from 'glob' // Effect's FileSystem has glob
-const unique = Array.fromIterable(HashSet.fromIterable(items)) // Array.dedupe(items)
+```bash
+<fix> && <check> && <test>
+# bad: each step exits with tail's code, so test runs after a failed check
+<fix> 2>&1 | tail -5 && <check> 2>&1 | tail -20 && <test> 2>&1 | tail -20
 ```
+
+**Root cause.** Fix the class, not the instance: search every sibling of the failing form. After two failed fixes, write down the premise they share and test it before a third. A diagnostic on code the rules allow is a rule bug: fix the rule with a rejected and an accepted case.
+
+**Disables** need an unavoidable outside contract and a `--` reason naming it; never for ordering or file configuration. A package extends the shared preset with generated ignores only.
+
+## Design
+
+**KISS.** Start from a real caller; trace one success and its strongest failure. The most direct code: extend the canonical example, else a function or an existing service method; a new service only for a distinct capability or lifetime.
+
+**Scope discipline.** Fix reachable bugs inside the request; everything else is a proposal for the user.
+
+**Don't reinvent the wheel.** Before a hand-written type, guard, table, wrapper, traversal or dependency, list the owning module's exports per explore: `Schema.TaggedUnion` replaces a matcher, `Array.dedupe` a `HashSet` round trip, `FileSystem` has glob.
+
+**Rule of three.** Identical logic twice is one function in its owner's `lib/utils`; similar code stays apart; a shared function never branches on its caller.
+
+**No speculative generality.** Each function, parameter, option, export, Layer or config value has a caller that varies it; explicit variants over boolean combinations, registries or factories.
+
+**Single source of truth.** Derive from the owner; never mirror server state, request state or caches in another store. One write boundary per persisted value, one schema per domain enum, the full identity in a cache key.
+
+**Parse, don't validate.** Decode once at the boundary with Effect Schema; never re-check what types guarantee. SDK input stays `unknown` until decoded.
+
+**Fail loudly.** Errors flow through the channel with their cause, never as empty success; no catch, retry or fallback without a contract that needs it.
+
+**Request lifetime.** Finite work stays in its request; background ownership only when work outlives its caller.
+
+**Dependency inversion.** Domain code never imports transport types; domain schemas carry no HTTP status.
+
+**Whole values.** Pass whole values; project fields only to withhold one, such as a bearer token.
+
+**No backwards compatibility.** Rename a shape and every caller together. Persisted production data is the exception: a migration converts it and the code reads only the new shape.
+
+**Characterization.** A refactor keeps observable output at every consumer: capture it through the real interface before, compare after.
+
+**Dependencies.** A new one is `latest`, pinned only where a consumer requires it; extend it through its public API, never a patch.
+
+**Measure performance.** Only when the request needs it: locate the cost with a profiler or trace, measure one real action before and after with run count and variation; a gap within the variation is no change.
+
+**Dead code.** Delete every superseded file, export, type, branch, config, doc, test, dependency and empty directory in the same change.
 
 ## Patterns
 
-- **Canonical example.** Before you write a recurring shape (page layout, list, form, empty or loading state, dialog, service, route, error mapping, file layout, name), find its canonical example: the Patterns row in the repository's standards, else the variant most consumers use, the newest on a tie. Copy its structure, components, names, copy and states; with no example in the repository, copy the idea from explore's References.
-- **Register.** A shape two consumers share without a row gets one: pattern, owner and example, a search listing its consumers, and what enforces it.
-- **Taste.** The user's taste decides layout, file organization, boundaries, interfaces and names. Follow the Taste rows of the repository's standards; when the user picks, rejects or corrects an uncovered choice, add a row with the user's words in the same change.
-- **Pattern change.** The user's change to a pattern, style or name changes the standard: update its owner (component, template, generator, lint rule, row), migrate every consumer its search lists, delete the old variant and search again. Another repository or a published contract needs the user's approval first.
-- **Enforce.** The same correction twice becomes impossible at the highest level that works: an owner component or type, then a lint rule naming the replacement.
+**Canonical example.** Before a recurring shape (layout, list, form, state, dialog, service, route, error mapping, file, name), copy its canonical example: the Patterns row in the repository's standards, else the variant most consumers use, the newest on a tie; with none, explore's References.
+
+**Taste.** The user's choices rule layout, files, boundaries, interfaces and names; add a Taste row with their words when they pick, reject or correct an uncovered choice.
+
+**Pattern change.** A changed pattern updates its owner, migrates every consumer the row's search lists and deletes the old variant; a shared shape without a row gets one. Another repository or a published contract needs the user's approval first.
+
+**Poka-yoke.** The same correction twice becomes impossible at the highest level that works: an owner component or type, then a lint rule naming the replacement.
 
 ## Effect
 
-**Functions.** `Effect.fn('Service.method')` for a traced function with arguments, `Effect.fnUntraced` for an internal helper, `Effect.gen` for statements without arguments, a single effect directly. `Effect.fn.Return` only for a generator that calls itself.
+**Effect 4, not 3.** Names guessed from Effect 3 do not exist: `Order.flip` not `Order.reverse`, `Order.Number` not `Order.number`, `Schema.fromJsonString` not `Schema.parseJson`, `Schema.decodeUnknownEffect` not `Schema.decodeUnknown`. An unfamiliar name gets checked in the source per explore before use.
 
-**Errors.** One `Schema.TaggedError` per service. Map in `Effect.fn`'s pipeline argument, redact secrets, map SDK errors at the adapter so no library failure leaks into a service signature.
+**Functions.** `Effect.fn('Service.method')` with arguments, `Effect.fnUntraced` internal, `Effect.gen` without arguments. RPC handlers and `Effect.fn` already trace: no span.
 
-```ts
-// good
-const prompt = Effect.fn('Ai.prompt')(
-	function* (message: Prompt.UserMessage) {
-		yield* send(message)
-	},
-	Effect.mapError(cause => AiError.make({cause, message: 'Cannot prompt the agent'}))
-)
-// bad: library failures leak
-load: (path: string) => Effect.Effect<void, PlatformError | Schema.SchemaError>
-```
+**Errors.** One `Schema.TaggedError` per service, mapped in `Effect.fn`'s pipeline argument at the adapter with secrets redacted; no SDK failure in a service signature.
 
-**Services.** Inline a sole implementation in its Layer; name layers only for several backends. `Context.Reference` for a default; build the shape with `Service.of` or `satisfies`.
-
-```ts
-export class Ledger extends Context.Service<Ledger, Ledger.Shape>()('@app/ledger/service/Ledger') {
-	static readonly layer = Layer.effect(
-		this,
-		Effect.gen(function* () {
-			const entries = yield* Ref.make(Array.empty<LedgerEntry>())
-			return Ledger.of({add: add(entries), balanceByTag: balanceByTag(entries)})
-		})
-	)
-}
-export const Verbose = Context.Reference<boolean>('@app/ai/Verbose', {defaultValue: () => false})
-```
-
-- **Tracing.** RPC handlers and `Effect.fn` already trace: add no span.
-- **Lifetimes.** One scope owns each lifetime, with acquisition and release in one `Effect.acquireRelease`.
-- **Results.** A fallible pure value returns a `Result`.
+**Services.** Inline a sole implementation in its Layer; `Context.Reference` for a default; build the shape with `Service.of`. One scope per lifetime, `Effect.acquireRelease`. A fallible pure value returns a `Result`.
 
 ## Types and Schema
 
-- **Derive** types from their source: the library's exported type first, else `ReturnType<typeof fromSdk>` in the signature that needs it, never a private alias; use schema types and indexed members in signatures.
-- **Optionality.** `Schema.optionalKey` for an absent field; `Schema.optional` only for an explicit `undefined`. Reuse fields by spreading `.fields`.
-- **Construction.** `X.make` validates and throws: trusted values only. Input that can fail uses `X.makeEffect`, mapped to the domain error.
-- **Error predicates** are static members of their tagged error; check a struct inline with `Schema.is`.
-- **Opaque** SDK input stays `unknown` until decoded at its boundary.
+**Derived types.** The library's type first, else `ReturnType<typeof fromSdk>` in the signature; never a type restating a schema.
 
-```ts
-export type LedgerDraft = typeof LedgerDraft.Type
-export const LedgerDraft = Schema.Struct({...LedgerEntry.fields, id: Schema.optionalKey(Schema.NonEmptyString)})
-// recursive: Schema.suspend needs the type written by hand, readonly as Schema.Array decodes it
-export type CallStep = {readonly do: readonly Step[]; readonly kind: 'call'}
-export const CallStep = Schema.Struct({
-	do: Schema.Array(Schema.suspend((): Schema.Codec<Step> => Step)),
-	kind: Schema.Literal('call')
-})
-```
+**Optionality.** `Schema.optionalKey` for an absent field, `Schema.optional` only for an explicit `undefined`; reuse by spreading `.fields`.
 
-## Shape
-
-- **Linked state** moves in one pure updater, never a setter that calls another.
-- **Files.** One substantive file over near-empty fragments, named by role (`home`, `utils`), never by kind or app; `<name>.test.ts` beside its source.
-- **Package surface.** Extend the shared lint preset with generated ignores only.
-- **Generated code** follows these rules as closely as it can; lint ignores it.
+**Smart constructor.** `X.make` throws: trusted values only; fallible input `X.makeEffect`, mapped to the domain error.
 
 ## React
 
-- **Atoms.** Data, shared state and every Effect a component needs live in atoms; components read them with hooks and never run an Effect. Import `Atom` and `AsyncResult` from `effect/reactivity`, hooks from `@effect/atom-react`. Supply services through `Atom.runtime(layer)` and build reads and writes with its `atom` and `fn`; tie writes to reads with reactivity keys. Never wrap a write that already has an owner, such as an existing mutation, in a second state holder.
-- **Outcomes.** Read with `useAtomSuspense`; the screen's owner wraps it in one `Suspense` and one error boundary with retry. Components never branch on loading or failure. A write's pending and failure state come from its atom; a reversible write uses `Atom.optimistic`.
-- **Ownership.** A component owning atoms, writes or a lifetime gets its own file.
-- **Pure render.** Derive display values in render; event handlers own actions. Fix a rerender in the atom graph.
+**Atoms own state.** Data, shared state and every Effect live in atoms; components read them and never run an Effect. `Atom` and `AsyncResult` from `effect/reactivity`, hooks from `@effect/atom-react`; services via `Atom.runtime(layer)`, writes tied to reads by reactivity keys; no second state holder around a write that has an owner.
+
+**Suspense boundary.** `useAtomSuspense`; the screen's owner wraps one `Suspense` and one error boundary with retry; components never branch on loading or failure; reversible writes use `Atom.optimistic`.
+
+**Colocation.** A component stays in the file of its only user; one substantive file over fragments, named by role, never by kind or app.
 
 ```tsx
-const appsRuntime = Atom.runtime(DualApps.layer)
+const appsRuntime = Atom.runtime(Apps.layer)
 const appAtom = Atom.family((id: AppId) => pipe(appsRuntime.atom(loadApp(id)), Atom.withReactivity(['apps'])))
-const saveAppAtom = appsRuntime.fn((draft: AppDraft) => saveApp(draft), {reactivityKeys: ['apps']})
 function AppFrame(props: {appId: AppId}) {
 	return <Frame app={useAtomSuspense(appAtom(props.appId)).value} />
 }
@@ -156,135 +105,63 @@ function AppFrame(props: {appId: AppId}) {
 
 ## Proof
 
-- **Probe first.** Answer a question or check an assumption with inline code against the public interface or real data, run by the repository's script runner, such as `vp node -e '<script>'` or `bun -e '<script>'`. Never a test file, seam, worktree or clone for one question.
-- **Done** means each changed behavior and each of its consumers ran through its real interface on the final code: a screen in the browser, an API through a request, a CLI by running it; for a stack, on every layer's head. A green suite does not replace that run; zero collected tests or exit 0 alone prove nothing.
-- **Bugs.** Reproduce before you fix, then shrink the reproduction until every remaining input, setting and step is needed. One hypothesis per probe. After two failed fixes, write down the premise they share and test it before a third. Rerun the original scenario after the fix.
-- **Tests** only for complex logic you own, such as parsing, state transitions, concurrency, scheduling, money or data conversion: a black box through its public interface, expected values from the contract, never the implementation. One representative input per behavior; reachable distinctions only (empty, duplicate, concurrent, dependency failure).
-- **No tests** for UI (the browser proves a screen); external libraries, APIs or SDKs; what types or schemas guarantee; inputs the architecture makes impossible; simple code (a filter, a mapping, wiring, a constant); an assumption (a probe answers it); a fixed bug (no regression tests); anything that changes when the implementation changes. Delete touched tests that break these rules.
-- **Effect tests.** `it.effect` runs virtual services, `it.live` real ones, `it.layer` caches a block's context. `TestClock` and `TestConsole` come from `effect/testing`; virtual time and concurrency follow Effect's own `packages/*/test`. Expected failure: `Effect.flip`; both outcomes: `Effect.exit`; assert domain identity and preserved state.
-- **Boundaries.** Replace dependencies through Layers or public parameters, never module mocks. A claim about an SDK, process, filesystem, HTTP, browser or package needs the real boundary. `FileSystem.layerNoop` is not storage; `RpcTest` bypasses serialization. A public tool is proved packed, not from source.
-- **Evidence.** Keep the exact command, result and revision of each claim; rerun only proof whose inputs changed.
+**Spike.** Probe a question with inline code against the public interface or real data through the repository's script runner, such as `vp node -e '<script>'` or `bun -e '<script>'`; never a test file, seam, worktree or clone for one question.
 
-```ts
-// good
-it.layer(Layer.provideMerge(Ledger.layer, NodeServices.layer))(test => {
-	test.effect('keeps the previous entries when the file is malformed', () => program)
-})
-assert.containsSubset(error, {_tag: 'SandboxUnavailable', cause: killed})
-// bad
-it.effect('rejects an empty tag', () => run(ledger.add({tag: ''}))) // Schema.isNonEmpty already does
-it.effect('forwards the prompt', () => run(agent.prompt(message))) // wiring that only reaches a double
-it('shows the empty state', () => render(<Notes notes={[]} />)) // a UI test: open the screen in the browser
-assert.strictEqual(Array.flatMap(provider.groups, group => group.actions).length, 75) // a pinned count
-```
+**Definition of done.** Each changed behavior and consumer ran through its real interface on the final code: a screen in the browser, an API by request, a CLI by running it. A green suite does not replace that; zero collected tests or exit 0 alone prove nothing.
+
+**Reproduce, then fix.** Shrink the reproduction until every input is needed; one hypothesis per probe; rerun the original scenario after.
+
+**Test only owned logic.** Complex logic you own (parsing, state transitions, concurrency, scheduling, money, conversion): black box, expected values from the contract, one input per behavior. Never UI, libraries, what schemas guarantee, simple code, fixed bugs or implementation details; delete touched tests that break this.
+
+**Effect tests.** `it.effect` virtual, `it.live` real, `it.layer` shares a block's context; `TestClock` from `effect/testing`; `Effect.flip` for a failure, `Effect.exit` for both; assert identity, not message.
+
+**Real boundary.** Replace dependencies through Layers or parameters, never module mocks; an SDK, filesystem, HTTP or browser claim needs the real boundary; `FileSystem.layerNoop` is not storage, `RpcTest` bypasses serialization; a published tool is proved packed, not from source.
 
 ## Critique
 
-Once it works, reread the diff as a reviewer who knows only the request, and act on each answer before you call it done:
+Before done, reread the diff knowing only the request: **Smaller?** delete one part at a time and rerun the proof. **Existing?** the repository, a dependency or Effect already does it. **Consistent?** each shape matches its canonical example. **Proved?** each changed behavior and consumer ran through its real interface.
 
-1. **Smaller?** Delete one part at a time (an edge-case branch, a check, an option, a helper, superseded code) and rerun the proof; keep only the parts whose removal breaks it.
-2. **Existing?** Does the repository, a dependency or Effect already do any part of it?
-3. **Consistent?** Does each recurring shape match its canonical example, and each name say its role?
-4. **In place?** Can each changed file be understood without the chat or a jump to another file?
-5. **Proved?** Which changed behavior or consumer has not run through its real interface?
-6. **Expert?** What would a top expert in this area change, and what did the request imply that the diff skips?
+## Lint hazards
 
-## Lint rules
+Write these shapes first: the tempting fix for each trips another rule or reshapes the code. Every other diagnostic is fixed in place as its message says.
 
-Lint rejects the Never column; write the Write column from the start. The fix command rewrites the rows whose rule has an autofix.
+- **Make illegal states unrepresentable.** `export type Kind = typeof Kind.Type` above `export const Kind = Schema.Literals([...])`, subset `Kind.pick`; a recursive schema hand-writes its type, `readonly` as `Schema.Array` decodes it, and annotates the `suspend` thunk; other shapes mutable, `readonly` only on service properties; rules: `no-type-from-value`, `schema-type-pair`, `no-reinvented-schema`, `effecttsgo/schema-union-of-literals`, `no-readonly-type-syntax`, `typescript/no-restricted-types`
+- **Type the boundary.** Decode an `any` or `unknown` with the protocol schema; never `?.`, a cast or a disable on it; rules: `typescript/no-unsafe-*`, `no-unvalidated-json-decode`
+- **One home per type.** The library's type or `ReturnType<typeof make>` in the signature, never a module alias; import from the defining module; rules: `no-floating-derived-type`, `no-barrel-module`
+- **Reset by key.** Atoms at module level or `Atom.family`; `key` resets state when a prop changes, render derives a value, `useRef` holds lifecycle state, never a `useEffect` that sets state; rules: `no-component-atom-allocation`, `react-doctor/no-adjust-state-on-prop-change`, `react-doctor/no-derived-state`, `react/set-state-in-effect`, `no-fake-ref-state`, `no-undestructured-use-state`
 
-| Write                                                                                                                                                  | Never                                                                                                                              | Rule                                                                                                                                                                      |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| An early `return`, `Boolean.match(x, {onFalse, onTrue})`, `Option.match`, a lookup record; `options?.root ?? '.'` for a default; `Array.ensure(value)` | `a ? b : c`, in JSX too                                                                                                            | `no-ternary`                                                                                                                                                              |
-| `selected === true` on a value that can be `undefined`; `ref.current === null`, `editor === undefined`                                                 | `if (selected)` on an optional, `if (!ref.current)`, `if (editor)`                                                                 | `strict-boolean-expressions`                                                                                                                                              |
-| `Array.filter` before the loop, an early `return` in a callback                                                                                        | `continue`                                                                                                                         | `no-continue`                                                                                                                                                             |
-| At most 3 nested blocks, 6 nested callbacks and 3 nested `pipe` calls; a named function for a deeper branch                                            | Deeper nesting                                                                                                                     | `max-depth`, `max-nested-callbacks`, `no-deep-pipe`                                                                                                                       |
-| `pipe(value, f, g)`                                                                                                                                    | `value.pipe(f, g)`                                                                                                                 | `no-restricted-properties`                                                                                                                                                |
-| `const total = Array.reduce(values, 0, Number.sum)`                                                                                                    | `let` with a loop                                                                                                                  | `no-let`                                                                                                                                                                  |
-| `return consume(String.trim(text))`                                                                                                                    | `const trimmed = String.trim(text); return consume(trimmed)`                                                                       | `no-single-use-value`                                                                                                                                                     |
-| `Array.join(parts, ', ')`, `Array.findFirst(items, f)`, `String.split(text, ',')`, `Record.keys(record)`                                               | `parts.join(', ')`, `items.find(f)`, `text.split(',')`, `Object.keys(record)`                                                      | `effecttsgo/prefer-effect-array`, `effecttsgo/prefer-effect-record`, `no-native-method-call`; the `Path` service's `path.join` and a third-party object's own method stay |
-| `Array.sort(entries, Order.mapInput(Order.Number, (entry: Entry) => entry.tokens))`                                                                    | `entries.sort((left, right) => left.tokens - right.tokens)`                                                                        | `no-native-method-call`                                                                                                                                                   |
-| `Predicate.isString(v)`, `Predicate.hasProperty(node, 'tag')`, `Predicate.isNotNullish` passed directly                                                | `typeof`, `'tag' in node`, `v !== null && v !== undefined`, a hand-written guard `(v): v is T => v !== null`                       | `no-typeof`, `no-in-operator`, `no-double-nullish-check`, `no-hand-written-guard`                                                                                         |
-| `Array.isReadonlyArrayEmpty(items)`, `String.isNonEmpty(text)`                                                                                         | `items.length === 0`, `text.length > 0`                                                                                            | `no-native-emptiness-check`                                                                                                                                               |
-| `Option.map(option, f)`, `Option.match`, `Option.getOrElse`                                                                                            | `option.value` after `Option.isSome`                                                                                               | `no-option-value-access`                                                                                                                                                  |
-| `undefined`, `Option.getOrUndefined`; `null` only in `.tsx`, such as `useRef<HTMLDivElement>(null)`, and for an outside contract                       | `null`, `Option.getOrNull`                                                                                                         | `unicorn/no-null`, `no-restricted-properties`                                                                                                                             |
-| `Number.parse(text)`, `Number.max`, `HashMap`, `HashSet`, `DateTime`                                                                                   | `parseInt`, `Math.max`, `Map`, `Set`, `Date`                                                                                       | `no-restricted-globals`, `no-restricted-properties`, `no-restricted-types`                                                                                                |
-| `Clock`, `Config`, `Console`, `Random`, `Effect.sleep`, `HttpClient`                                                                                   | `Date.now()`, `process.env`, `console`, `setTimeout`, `fetch`                                                                      | `effecttsgo/global-*`, `effecttsgo/process-env`                                                                                                                           |
-| `FileSystem`, `Path`, `ChildProcess`, `Crypto`'s `randomUUIDv4`                                                                                        | `node:fs`, `node:path`, `node:child_process`, `crypto.randomUUID()`                                                                | `effecttsgo/node-builtin-import`, `effecttsgo/crypto-random-uuid`                                                                                                         |
-| `#lib/utils.ts` through the package's `imports` map, named imports, named exports                                                                      | `../lib/utils`, `import * as utils from '#lib/utils.ts'`, `export default` outside config files, a `namespace` outside a `declare` | `import/no-relative-parent-imports`, `import/no-namespace`, `import/no-default-export`, `typescript/no-namespace`                                                         |
-| `import {Folder} from 'lucide-react'` from the defining module                                                                                         | `export * from 'lucide-react'`, a file that only re-exports                                                                        | `no-barrel-module`                                                                                                                                                        |
-| A name an outer scope does not use                                                                                                                     | An inner `entry` shadowing an outer `entry`                                                                                        | `no-shadow`                                                                                                                                                               |
-| A new value                                                                                                                                            | Assigning to a parameter or its properties                                                                                         | `no-param-reassign`                                                                                                                                                       |
-| `/pattern/u`                                                                                                                                           | A regular expression without the `u` or `v` flag                                                                                   | `require-unicode-regexp`                                                                                                                                                  |
-| Strings, numbers and booleans in a template literal                                                                                                    | An object, `Option` or `unknown` value interpolated                                                                                | `typescript/restrict-template-expressions`, `typescript/no-base-to-string`                                                                                                |
-| A check only where the type allows both outcomes                                                                                                       | `?.`, `??` or a condition on a value whose type rules one outcome out                                                              | `typescript/no-unnecessary-condition`                                                                                                                                     |
-| A type parameter that links two positions                                                                                                              | A type parameter used once, `string \| 'id'`, `void` in a union or parameter                                                       | `typescript/no-unnecessary-type-parameters`, `typescript/no-redundant-type-constituents`, `typescript/no-invalid-void-type`                                               |
-| `items => service.load(items)`                                                                                                                         | `service.load` passed unbound                                                                                                      | `typescript/unbound-method`                                                                                                                                               |
-| An Effect (`Effect.fn`, `Effect.tryPromise`); in `.tsx` only, an `async` handler that awaits                                                           | An `async` function in `.ts`, `async` without `await`, `void promise`, an unhandled promise                                        | `effecttsgo/async-function`, `typescript/require-await`, `no-void`, `typescript/no-floating-promises`                                                                     |
-| Values decoded with Schema before use                                                                                                                  | Member access, calls, assignments, arguments or returns on `any`                                                                   | `typescript/no-unsafe-*`                                                                                                                                                  |
-| `function name() {}` for a named function; an arrow only in place                                                                                      | `const name = () => {}`                                                                                                            | `func-style`                                                                                                                                                              |
-| `server => ({...server, warmup})`, `for (const schema of schemas)`, `pair => pair[0]`                                                                  | `({host, port}) =>`, `for (const {name} of schemas)`                                                                               | `no-destructured-parameter`; labeled tuples, React state and refs can destructure                                                                                         |
-| The source value where it is used                                                                                                                      | A one-line wrapper, alias or argument-free constant function                                                                       | `no-trivial-indirection`, `no-constant-function`                                                                                                                          |
-| `props.note.title` in place; an alias only for a value a check narrows and a callback reads                                                            | `const note = props.note`, `export const server = extra.server`                                                                    | `no-property-alias`                                                                                                                                                       |
-| `const MAX_WHISPER_SECONDS = 2 * 60 * 60` directly under the imports; a one-line literal read once in place                                            | `const maxSize = 10` below a function, `const pattern = /x/u` read once                                                            | `module-constant`                                                                                                                                                         |
-| Definitions above their first use                                                                                                                      | A `const` read above its declaration                                                                                               | `no-use-before-define`                                                                                                                                                    |
-| The element where it renders; a component such as `function DeleteButton(props)` when several places render it                                         | `const remove = <Button label="Delete" />`                                                                                         | `no-stored-jsx`                                                                                                                                                           |
-| The library's own type, such as `import type {AnyNode} from 'domhandler'`, else `ReturnType<typeof make>` in the signature that needs it               | `type Options = Parameters<typeof make>[0]` kept as a module alias                                                                 | `no-floating-derived-type`                                                                                                                                                |
-| `export type Kind = typeof Kind.Type` above `export const Kind = Schema.Literals([...])`; `Kind.pick([...])` for a subset                              | `(typeof kinds)[number]['kind']`, `keyof typeof table`                                                                             | `no-type-from-value`                                                                                                                                                      |
-| `import {Schema} from 'effect'`                                                                                                                        | `import {Schema as S} from 'effect'`                                                                                               | `no-renamed-import`                                                                                                                                                       |
-| Properties built with `Effect.fn` or `Effect.fnUntraced`                                                                                               | `fetch: url => Effect.tryPromise(...)` as a property arrow                                                                         | `no-effect-property-arrow`                                                                                                                                                |
-| Inferred return and variable types, `satisfies`, `Array.empty<T>()`                                                                                    | `function f(): T`, `const items: T[] = []`                                                                                         | `no-return-type`, `no-redundant-variable-annotation`                                                                                                                      |
-| `{values: string[]}`; `readonly` only where the fix adds it, on service shapes                                                                         | `readonly string[]`, `Readonly<T>`                                                                                                 | `no-readonly-type-syntax`                                                                                                                                                 |
-| `satisfies T`, `as const`                                                                                                                              | `as T`, `any`, `value!`                                                                                                            | `typescript/consistent-type-assertions`, `typescript/no-explicit-any`, `typescript/no-non-null-assertion`                                                                 |
-| `useRef(initial)` for lifecycle state                                                                                                                  | `const [box] = useState(() => ({current: initial}))` with no setter                                                                | `no-fake-ref-state`                                                                                                                                                       |
-| `Ref.make(0)`, `useState(false)`, `useRef<HTMLDivElement>(null)`                                                                                       | `Ref.make<number>(0)`, `useRef<HTMLDivElement \| null>(null)`                                                                      | `no-redundant-state-type`, `no-redundant-use-ref-null-type`                                                                                                               |
-| `T[]`, an optional property                                                                                                                            | `Array<T>`, `Promise<T>`, `x: T \| undefined`                                                                                      | `typescript/no-restricted-types`                                                                                                                                          |
-| `Effect.tryPromise({catch: cause => X.make({cause, message}), try})`, each failure typed by its tagged error                                           | `unknown` or `any` in the error or requirements channel, a `catch` returning the raw cause                                         | `effecttsgo/any-unknown-in-error-context`                                                                                                                                 |
-| `Effect.mapError(cause => X.make({cause, message}))`                                                                                                   | `Effect.mapError(failure => X.make({message}))`, `catch: failure => X.make({message})`                                             | `preserve-error-cause`                                                                                                                                                    |
-| The failure in the error channel; `Effect.option` for a value that is optional by design                                                               | `Effect.orElseSucceed(() => [])`, `Effect.catch(() => Effect.void)`, `Effect.succeed('')` in a catch                               | `no-empty-recovery`                                                                                                                                                       |
-| `Effect.forEach(items, load, {concurrency: 'unbounded'})`; `{concurrency: 1}` when order or a resource matters                                         | `Effect.forEach(items, load)`, `Effect.all([a, b])`, `Effect.all(effects, {discard: true})`                                        | `explicit-effect-concurrency`                                                                                                                                             |
-| `Effect.fn('Service.method')` for a function returning an Effect                                                                                       | A plain function returning `Effect.gen`                                                                                            | `effecttsgo/effect-fn-opportunity`                                                                                                                                        |
-| Layers provided once at the entry point; `Layer.provide` between layers                                                                                | `Effect.provide(layer)` inside services or per call                                                                                | `effecttsgo/strict-effect-provide`                                                                                                                                        |
-| `Layer.provideMerge` when one layer needs another                                                                                                      | `Layer.mergeAll` of layers that depend on each other                                                                               | `effecttsgo/layer-merge-all-with-dependencies`                                                                                                                            |
-| One `pipe(value, f, g, h)`                                                                                                                             | `pipe(pipe(value, f), g)`, `pipe(value)`                                                                                           | `effecttsgo/unnecessary-pipe-chain`, `effecttsgo/unnecessary-pipe`                                                                                                        |
-| Service keys `@<package>/<path>/<Name>`; an error's tag is its class name                                                                              | A service key that does not match the package, path and class name                                                                 | `effecttsgo/deterministic-keys`                                                                                                                                           |
-| `return yield* NotFound.make({...})`                                                                                                                   | `yield* Effect.fail(NotFound.make({...}))`                                                                                         | `effecttsgo/unnecessary-fail-yieldable-error`                                                                                                                             |
-| `Schema.decodeEffect(S)(encoded)` on an `S.Encoded` value, `Schema.fromJsonString(S)` for JSON text                                                    | `Schema.decodeUnknownEffect(S)` on typed input, `JSON.parse` in an Effect                                                          | `effecttsgo/prefer-typed-schema-decoder`, `effecttsgo/prefer-schema-over-json`                                                                                            |
-| `Schema.fromJsonString(Protocol)` with the protocol's schema                                                                                           | `Schema.UnknownFromJsonString`, `Schema.fromJsonString(Schema.Unknown)`                                                            | `no-unvalidated-json-decode`                                                                                                                                              |
-| `export type X = typeof X.Type` directly before `export const X`; an inferred schema                                                                   | A type elsewhere, `Schema.Schema<X>` restated, an unannotated `suspend` thunk                                                      | `schema-type-pair`                                                                                                                                                        |
-| `X.make(...)`, `Schema.is(X)(value)`, `Schema.decodeEffect` inside an Effect, `Schema.Finite` for numbers                                              | `new X(...)` on a schema class, `instanceof X`, `Schema.decodeSync` in a generator, `Schema.Number`                                | `effecttsgo/new-schema-class`, `effecttsgo/instance-of-schema`, `effecttsgo/schema-sync-in-effect`, `effecttsgo/schema-number`                                            |
-| The Schema operation inline at its use                                                                                                                 | `const decode = Schema.decodeEffect(S)` stored for later                                                                           | `no-stored-schema-operation`                                                                                                                                              |
-| `Schema.Struct`, `Schema.TaggedError`, `Schema.NonEmptyString`, `Schema.Literals([...])`                                                               | `Schema.Class`, `Data.TaggedError`, `Error`, a rebuilt refinement, `Schema.Union` of literals                                      | `no-restricted-properties`, `no-restricted-globals`, `no-reinvented-schema`, `effecttsgo/schema-union-of-literals`                                                        |
-| The failure mapped to the service's error; best-effort work as `Effect.ignore({log: 'Warn', message})`                                                 | A bare `Effect.ignore` or `Effect.ignoreCause`, `Effect.orDie` outside tests                                                       | `no-discarded-failure`                                                                                                                                                    |
-| `NodeRuntime.runMain(program)`; atoms in React                                                                                                         | `Effect.runPromise`, `ManagedRuntime.make`                                                                                         | `no-restricted-properties`                                                                                                                                                |
-| `import {useState} from 'react'`; `const [open, setOpen] = useState(false)`                                                                            | `React.useState`, `const state = useState(false)`                                                                                  | `no-restricted-properties`, `no-undestructured-use-state`                                                                                                                 |
-| React Compiler memoization, a `ref` prop                                                                                                               | `useCallback`, `useMemo`, `memo`, `forwardRef`                                                                                     | `no-restricted-imports`                                                                                                                                                   |
-| Code the compiler accepts                                                                                                                              | `'use no memo'`, an inline disable of a React rule                                                                                 | `no-compiler-opt-out`, `react/rule-suppression`                                                                                                                           |
-| `const countAtom = Atom.make(0)` at module level, `Atom.family(id => ...)` per prop                                                                    | `Atom.make` inside a component or hook, `useState(() => Atom.make(0))`                                                             | `no-component-atom-allocation`                                                                                                                                            |
-| `<Editor key={draft.id} />` to reset a draft; a value derived in render                                                                                | A `useEffect` that copies a prop into state                                                                                        | `react-doctor/no-adjust-state-on-prop-change`, `react-doctor/no-derived-state`                                                                                            |
-| `<Label htmlFor="name">`, `aria-label` on a field without a visible label, a `<Button>` for a click                                                    | A placeholder as the only label, `<div onClick>`                                                                                   | `jsx-a11y/*`, `react-doctor/no-placeholder-only-field`                                                                                                                    |
-| `bg-card`, `border`                                                                                                                                    | `bg-linear-to-b from-muted`, `bg-[radial-gradient(...)]`                                                                           | `no-gradient`                                                                                                                                                             |
-| `duration-200`, `zoom-in-95`, `starting:scale-95`, `motion-safe:animate-spin`                                                                          | `duration-300`, `zoom-in`, `starting:scale-50`, an ungated `animate-bounce`                                                        | `motion-limits`, `react-doctor/no-ungated-tailwind-animation`                                                                                                             |
-| Tailwind's scale and the theme's tokens: `w-64`, `text-sm`, `bg-primary`; `className` on a primitive for layout only                                   | `w-[312px]`, `text-blue-500`, `style={{...}}`, an unknown class, a primitive restyled                                              | `shadcn/no-arbitrary-values`, `shadcn/no-raw-colors`, `shadcn/no-inline-styles`, `shadcn/no-unknown-classes`, `shadcn/no-restyle`                                         |
-| The UI package's primitive                                                                                                                             | A styled native `<button>` or `<input>`                                                                                            | `no-native-control`                                                                                                                                                       |
-| `assert` from `@effect/vitest` on the failure's identity; a screen proved in the browser                                                               | `expect`, `vi`, an assertion on message wording, `@testing-library/*`, `jsdom`                                                     | `no-restricted-imports`, `no-error-message-assertion`                                                                                                                     |
-| One comment line for an outside constraint                                                                                                             | A multiline comment                                                                                                                | `no-multiline-comment`                                                                                                                                                    |
-| Object keys in ascending order; a blank line starts a new group                                                                                        | Unsorted keys, a `sort-keys` disable                                                                                               | `sort-keys`, `no-unexplained-disable`                                                                                                                                     |
-
-Forms that satisfy every rule where the obvious fix trades one diagnostic for another:
+**Errors are values.** `preserve-error-cause`, `no-empty-recovery`, `no-discarded-failure`, `explicit-effect-concurrency`, `effecttsgo/effect-fn-opportunity`, `effecttsgo/strict-effect-provide`
 
 ```ts
-// A handler used twice: a function declaration, not a const arrow.
+export const load = Effect.fn('Notes.load')(
+	function* (path: string) {
+		const fs = yield* FileSystem.FileSystem
+		yield* pipe(fs.remove(`${path}.lock`), Effect.ignore({log: 'Warn', message: 'Lock not removed'}))
+		return yield* fs.readFileString(path)
+	},
+	Effect.mapError(cause => NotesError.make({cause, message: 'Cannot read the note'}))
+)
+export const loadAll = Effect.fn('Notes.loadAll')(function* (paths: string[]) {
+	return yield* Effect.forEach(paths, load, {concurrency: 'unbounded'})
+})
+// not: Effect.catch(() => Effect.void), Effect.orDie, mapError(() => X.make({message})), Effect.provide inside a service
+```
+
+**Flat code.** `no-ternary`, `no-continue`, `no-let`, `max-nested-callbacks`, `no-deep-pipe`, `no-single-use-value`, `no-property-alias`, `no-trivial-indirection`, `no-return-type`, `func-style`
+
+```ts
 function label(entry: Entry) {
 	return Boolean.match(entry.done, {onFalse: () => 'Running', onTrue: () => 'Done'})
 }
-// Two nested loops: one loop over the pairs, not a sixth nested callback.
-Effect.forEach(Array.cartesian(cases, harnesses), pair => prepareRun(pair[0], pair[1]), {concurrency: 'unbounded'})
-// Cleanup on failure: its own failure flows, without Effect.orDie or Effect.ignore.
-pipe(
-	prepareRuns,
-	Effect.onExitIf(Exit.isFailure, () => fs.remove(directory, {recursive: true}))
-)
-// A choice inside a deep pipeline: a named function, not a nested Boolean.match.
-Array.appendAll(base, toolParts(tools, hasTools))
+export function summarize(entries: Entry[]) {
+	return {
+		labels: pipe(
+			entries,
+			Array.filter(entry => entry.open),
+			Array.map(label)
+		),
+		total: Array.reduce(entries, 0, (sum, entry) => sum + entry.tokens)
+	} satisfies Summary
+}
+// not: a ? b : c, continue, let total, const open = entries.filter(…), const label = (entry) => …, summarize(): Summary
 ```
