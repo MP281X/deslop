@@ -139,7 +139,19 @@ The `preview` project script runs `bun run preview` in its unit and builds an is
 - **Components** come from the shadcn primitives in `packages/ui/src/components`; add a missing one with `vpx shadcn@latest add <name> --cwd packages/ui`.
 - **Frontend state.** Each feature defines its own `Atom.runtime(layer)` and mounts a `RegistryProvider`.
 - **CI.** The GitLab quality job runs a frozen install, the Effect-tsgo patch, then check, test and docs in one Turbo graph; see `docs/ci.md` and `docs/releasing.md`. A new push cancels interruptible pipelines.
-- **Tracing.** The SaaS exports to PostHog, not Jaeger.
+
+## Tracing
+
+The SaaS exports to PostHog. For development, `packages/saas/src/Observability.ts` sends the same OTLP/HTTP JSON that deslop's Scope receives, and merges `OTEL_RESOURCE_ATTRIBUTES`. Compute the startup timestamp at every launch, never in `.env`, so restarting a service hides its previous traces. From `packages/saas`, with its development environment and dependencies already configured:
+
+```bash
+OTEL_RESOURCE_ATTRIBUTES="scope.runtime=server,scope.run.started_unix_nano=$(date +%s%N)" \
+POSTHOG_PROJECT_TOKEN=scope-dev POSTHOG_OTLP_BASE_URL=https://dev.tailnet-8c4c.ts.net:4318 \
+bun --env-file .env src/dev.ts api
+# Use the same launch environment with `src/dev.ts worker` for the worker.
+```
+
+The nonempty PostHog marker enables Dual's exporter; Scope's receiver ignores it. This is opt-in development configuration, not a change to Dual's production PostHog configuration.
 
 ## Coding standards
 

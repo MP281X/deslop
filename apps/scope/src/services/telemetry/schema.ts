@@ -1,4 +1,4 @@
-import {Effect, Schema, pipe} from 'effect'
+import {Duration, Effect, Schema, pipe} from 'effect'
 
 export class TelemetryError extends Schema.TaggedError<TelemetryError>()('TelemetryError', {
 	cause: Schema.optional(Schema.Defect()),
@@ -23,8 +23,8 @@ export const Resource = Schema.StructWithRest(
 	[Schema.JsonObject]
 )
 
-export type SpanDetails = typeof SpanDetails.Type
-export const SpanDetails = Schema.Struct({
+type SpanDetails = typeof SpanDetails.Type
+const SpanDetails = Schema.Struct({
 	attributes: Schema.optionalKey(Schema.Array(Attribute)),
 	events: Schema.optionalKey(
 		Schema.Array(
@@ -47,9 +47,6 @@ export const SpanDetails = Schema.Struct({
 		)
 	)
 })
-
-export type AttributeArray = typeof AttributeArray.Type
-export const AttributeArray = Schema.Struct({arrayValue: Schema.Struct({values: Schema.Array(Schema.JsonObject)})})
 
 type Span = typeof Span.Type
 const Span = Schema.StructWithRest(
@@ -205,8 +202,8 @@ export const Stats = Schema.Struct({
 	to: Schema.Finite
 })
 
-export type TraceSpan = typeof TraceSpan.Type
-export const TraceSpan = Schema.Struct({
+type TraceSpan = typeof TraceSpan.Type
+const TraceSpan = Schema.Struct({
 	...Entry.fields,
 	depth: Schema.Natural,
 	logs: Schema.Array(Entry),
@@ -227,11 +224,51 @@ export const Trace = Schema.Struct({
 export type StoredEntry = typeof StoredEntry.Type
 export const StoredEntry = Schema.Struct({json: Schema.fromJsonString(Entry)})
 
-export type Search = typeof Search.Type
-export const Search = Schema.Struct({
-	expanded: pipe(Schema.Array(Schema.String), Schema.withDecodingDefaultTypeKey(Effect.succeed([]))),
-	offset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey(Effect.succeed(0))),
-	query: pipe(Schema.String, Schema.withDecodingDefaultTypeKey(Effect.succeed(''))),
-	service: pipe(Schema.String, Schema.withDecodingDefaultTypeKey(Effect.succeed(''))),
-	trace: Schema.optionalKey(TraceId)
+// The tools' inputs; `since` becomes the query's window when the tool runs.
+export type Filters = typeof Filters.Type
+export const Filters = Schema.Struct({
+	errors: pipe(
+		Query.fields.errors,
+		Schema.withDecodingDefaultTypeKey(Effect.succeed(false)),
+		Schema.annotateEncoded({description: 'Only failed spans and error logs.'})
+	),
+	operation: pipe(
+		Query.fields.operation,
+		Schema.withDecodingDefaultTypeKey(Effect.succeed('')),
+		Schema.annotateEncoded({description: 'Exact span name.'})
+	),
+	service: pipe(
+		Query.fields.service,
+		Schema.withDecodingDefaultTypeKey(Effect.succeed('')),
+		Schema.annotateEncoded({description: 'Exact service name, from the services tool.'})
+	),
+	since: pipe(
+		Schema.DurationFromString,
+		Schema.check(Schema.makeFilter(Duration.isFinite, {expected: 'a finite duration'})),
+		Schema.withDecodingDefaultTypeKey(Effect.succeed(Duration.minutes(10))),
+		Schema.annotateEncoded({description: 'Lookback, such as "10 minutes" or "1 hour".'})
+	),
+	text: pipe(
+		Query.fields.text,
+		Schema.withDecodingDefaultTypeKey(Effect.succeed('')),
+		Schema.annotateEncoded({description: 'Case-insensitive text in the span name, log message or attributes.'})
+	),
+	traceId: pipe(Query.fields.traceId, Schema.withDecodingDefaultTypeKey(Effect.succeed('')))
+})
+
+export type PageFilters = typeof PageFilters.Type
+export const PageFilters = Schema.Struct({
+	...Filters.fields,
+	limit: pipe(
+		Query.fields.limit,
+		Schema.withDecodingDefaultTypeKey(Effect.succeed(100)),
+		Schema.annotateEncoded({description: 'Page size, 1 to 1000.'})
+	),
+	offset: pipe(Query.fields.offset, Schema.withDecodingDefaultTypeKey(Effect.succeed(0)))
+})
+
+export type SortFilters = typeof SortFilters.Type
+export const SortFilters = Schema.Struct({
+	...PageFilters.fields,
+	sort: pipe(Query.fields.sort, Schema.withDecodingDefaultTypeKey(Effect.succeed('recent' as const)))
 })

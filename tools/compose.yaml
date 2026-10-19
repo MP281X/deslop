@@ -27,8 +27,8 @@ services:
 
   portfolio:
     <<: *service
-    image: ghcr.io/mp281x/deslop-portfolio:latest
-    environment: {VITE_OTEL_URL: http://scope:5000}
+    image: ghcr.io/mp281x/deslop-portfolio:${REVISION:-latest}
+    environment: {VITE_OTEL_URL: http://scope:4318}
     labels:
       traefik.enable: 'true'
       traefik.http.routers.portfolio.rule: Host(`portfolio.mp281x.xyz`)
@@ -36,9 +36,9 @@ services:
 
   auth-server:
     <<: *service
-    image: ghcr.io/mp281x/deslop-auth-server:latest
+    image: ghcr.io/mp281x/deslop-auth-server:${REVISION:-latest}
     env_file: ${HOME}/.deslop/auth-server.env
-    environment: {VITE_OTEL_URL: http://scope:5000}
+    environment: {VITE_OTEL_URL: http://scope:4318}
     labels:
       traefik.enable: 'true'
       traefik.http.routers.auth-server.rule: Host(`auth.mp281x.xyz`)
@@ -46,27 +46,47 @@ services:
 
   stash:
     <<: *service
-    image: ghcr.io/mp281x/deslop-stash:latest
+    image: ghcr.io/mp281x/deslop-stash:${REVISION:-latest}
     env_file: ${HOME}/.deslop/stash.env
-    environment: {VITE_OTEL_URL: http://scope:5000}
+    environment: {VITE_OTEL_URL: http://scope:4318}
     volumes: ['${HOME}/.deslop/stash:/home/node/.deslop/stash', '${HOME}/.cache/deslop:/home/node/.cache/deslop']
     labels:
       traefik.enable: 'true'
       traefik.http.routers.stash.rule: Host(`stash.mp281x.xyz`)
       traefik.http.services.stash.loadbalancer.server.port: '5000'
 
+  # The tailnet reaches its MCP endpoint through `tailscale serve`; the internet reaches only the receiver.
   scope:
     <<: *service
-    image: ghcr.io/mp281x/deslop-scope:latest
+    image: ghcr.io/mp281x/deslop-scope:${REVISION:-latest}
     environment: {HOST: 0.0.0.0}
     volumes: ['${HOME}/.deslop/scope:/home/node/.deslop/scope']
-    ports: [127.0.0.1:4318:5000]
+    ports: [127.0.0.1:4318:4318]
     labels:
       traefik.enable: 'true'
       traefik.http.routers.otlp.rule: Host(`otel.mp281x.xyz`) && (Path(`/v1/traces`) || Path(`/v1/logs`))
-      traefik.http.services.otlp.loadbalancer.server.port: '5000'
-      traefik.http.routers.scope.rule: Host(`scope.mp281x.xyz`)
-      traefik.http.routers.scope.service: otlp
+      traefik.http.services.otlp.loadbalancer.server.port: '4318'
+
+  # Every minute it applies main's commit with the app images tagged by that commit; until a release has pushed all of them, the pull fails and nothing changes.
+  # It reads main's commit from Git's ref listing, which has no API rate limit. A change to this entry needs one manual `up -d`.
+  deploy:
+    <<: *service
+    image: docker:cli
+    environment: {HOME: '${HOME}'}
+    working_dir: ${HOME}/.deslop/deploy
+    volumes: ['/var/run/docker.sock:/var/run/docker.sock', '${HOME}/.deslop:${HOME}/.deslop']
+    command:
+      - sh
+      - -c
+      - |
+        while true; do
+          export REVISION=$$(wget -qO- 'https://github.com/MP281X/deslop.git/info/refs?service=git-upload-pack' | tr -d '\000' | grep -o '[0-9a-f]\{40\} refs/heads/main' | cut -c1-40)
+          [ -n "$$REVISION" ] &&
+            wget -qO compose.yaml "https://raw.githubusercontent.com/MP281X/deslop/$$REVISION/tools/compose.yaml" &&
+            docker compose --project-name deslop --file compose.yaml pull --quiet &&
+            docker compose --project-name deslop --file compose.yaml up --detach --remove-orphans $$(docker compose --file compose.yaml config --services | grep -vx deploy)
+          sleep 60
+        done
 
 networks:
   deslop:

@@ -42,8 +42,8 @@ jobs:
 
           echo "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           for app in auth-server portfolio scope stash; do
-            docker build apps/$app --tag ghcr.io/${GITHUB_REPOSITORY,,}-$app:latest
-            docker push ghcr.io/${GITHUB_REPOSITORY,,}-$app:latest
+            docker build apps/$app --tag ghcr.io/${GITHUB_REPOSITORY,,}-$app:latest --tag ghcr.io/${GITHUB_REPOSITORY,,}-$app:$GITHUB_SHA
+            docker push --all-tags ghcr.io/${GITHUB_REPOSITORY,,}-$app
           done
 
           (cd apps/stash && npm pkg delete dependencies devDependencies)

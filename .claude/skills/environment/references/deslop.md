@@ -44,25 +44,11 @@ Every push to `main` publishes the packages listed in `.github/workflows/deploy.
 
 ## Tracing
 
-Scope receives unauthenticated OTLP/HTTP JSON directly at `http://127.0.0.1:4318` on dev and `https://otel.mp281x.xyz` from apps. `https://scope.mp281x.xyz` serves its authenticated UI and query RPC using the auth app. A remote preview needs a reachable `VITE_OTEL_URL`; an allowed preflight does not prove spans.
+The `scope` compose service on dev receives unauthenticated OTLP/HTTP JSON on `127.0.0.1:4318`, published on the tailnet as `https://dev.tailnet-8c4c.ts.net:4318` with `sudo tailscale serve --bg --https=4318 http://127.0.0.1:4318`, and from the internet only at `https://otel.mp281x.xyz/v1/traces` and `/v1/logs`. Query it with the `scope` MCP server's tools (`services`, `traces`, `spans`, `logs`, `stats`, `trace`) at `https://dev.tailnet-8c4c.ts.net:4318/mcp`. A preview on desktop exports with `VITE_OTEL_URL=https://dev.tailnet-8c4c.ts.net:4318`; an allowed preflight does not prove spans.
 
-```bash
-vpx @deslop/scope@latest login '<API key from https://auth.mp281x.xyz>'
-vpx @deslop/scope@latest services
-vpx @deslop/scope@latest traces --service @deslop/portfolio-server --since '10 minutes'
-vpx @deslop/scope@latest trace <trace-id>
-vpx @deslop/scope@latest watch --service @deslop/portfolio-server
-```
+Scope keeps its SQLite database in `~/.deslop/scope/`. Dual's development launch against Scope is in the Dual reference's Tracing.
 
-The CLI defaults to the always-on `https://scope.mp281x.xyz`; `SCOPE_SERVER` or `--server` overrides it. Scope stores its SQLite database and CLI API key under `~/.deslop/scope/`. Its preview uses `NODE_ENV=development`, where the shared auth package supplies a mock developer without OAuth. Production defaults to real verification. Deslop exporters attach `scope.runtime`, `service.instance.id` and `scope.run.started_unix_nano`; the receiver hides an entire trace when any participating service moves to a newer run. Delayed batches cannot reactivate an old run.
+## Deploy
 
-Dual's existing `packages/saas/src/Observability.ts` sends the same JSON protocol and merges `OTEL_RESOURCE_ATTRIBUTES`. Compute the startup timestamp at every development launch, never in `.env`, so restarting a service hides its previous traces. From `packages/saas`, with its development environment and dependencies already configured:
-
-```bash
-OTEL_RESOURCE_ATTRIBUTES="scope.runtime=server,scope.run.started_unix_nano=$(date +%s%N)" \
-POSTHOG_PROJECT_TOKEN=scope-dev POSTHOG_OTLP_BASE_URL=https://otel.mp281x.xyz \
-bun --env-file .env src/dev.ts api
-# Use the same launch environment with `src/dev.ts worker` for the worker.
-```
-
-The nonempty PostHog marker enables Dual's exporter; Scope's receiver ignores it. This is opt-in development configuration, not a change to Dual's production PostHog configuration.
+1. **Apply.** The `deploy` compose service on dev applies main's commit each minute: that commit's `tools/compose.yaml` with the app images the release tagged with the commit, once all of them are pushed. Start the project with it, or apply a change to its own entry, from `~/deslop` on published main: `docker compose --project-name deslop --file tools/compose.yaml up -d`. Each tailnet app publishes its port, Scope's 4318 and the next ones upward, with `sudo tailscale serve --bg --https=<port> http://127.0.0.1:<port>`.
+2. **Verify.** https://portfolio.mp281x.xyz and dev's http://127.0.0.1:4318/health return 200, an OPTIONS preflight to otel's `/v1/traces` and `/v1/logs` with `Origin: https://portfolio.mp281x.xyz` succeeds, and https://dev.tailnet-8c4c.ts.net:8443/api/rpc returns 400: stash serves only its RPC socket, which rejects a plain GET. Scope's MCP endpoint answers only on the tailnet, per Tracing.

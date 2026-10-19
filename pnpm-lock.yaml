@@ -272,30 +272,12 @@ importers:
 
   apps/scope:
     devDependencies:
-      '@deslop/auth':
-        specifier: workspace:*
-        version: link:../../packages/auth
-      '@deslop/components-web':
-        specifier: workspace:*
-        version: link:../../packages/components-web
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
       '@effect/sql-sqlite-node':
         specifier: latest
         version: 4.0.5(effect@4.0.5)
-      '@tanstack/react-router':
-        specifier: latest
-        version: 1.170.45(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      lucide-react:
-        specifier: latest
-        version: 1.59.0(@types/react@19.3.0)(react@19.3.1)
-      react:
-        specifier: latest
-        version: 19.3.1
-      react-dom:
-        specifier: latest
-        version: 19.3.1(react@19.3.1)
 
   apps/stash:
     dependencies:
