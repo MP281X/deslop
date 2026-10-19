@@ -8,7 +8,7 @@ import {LoaderCircle, LogOut} from 'lucide-react'
 
 import {Button} from '@deslop/components-web/ui/button'
 
-import {consentAtom, meAtom, signInAtom, signOutAtom} from '#lib/utils.ts'
+import {consentAtom, meAtom, requestAtom, signInAtom, signOutAtom} from '#lib/utils.ts'
 
 export const Route = createFileRoute('/(home)/')({component: Home})
 
@@ -39,11 +39,10 @@ function GitHubIcon() {
 
 function Home() {
 	const user = useAtomSuspense(meAtom).value
+	const request = useAtomSuspense(requestAtom).value
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [signOut, endSession] = useAtom(signOutAtom)
 	const [consent, respond] = useAtom(consentAtom)
-	const query = new URLSearchParams(location.search)
-	const requesting = query.has('client_id') && query.has('sig')
 	const error = Option.orElse(AsyncResult.error(signIn), () =>
 		Option.orElse(AsyncResult.error(consent), () => AsyncResult.error(signOut))
 	)
@@ -56,12 +55,7 @@ function Home() {
 				</div>
 				{Option.match(user, {
 					onNone: () => (
-						<Button
-							size="lg"
-							className="self-start"
-							disabled={AsyncResult.isWaiting(signIn)}
-							onClick={() => startSignIn()}
-						>
+						<Button size="lg" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
 							{Boolean.match(AsyncResult.isWaiting(signIn), {
 								onFalse: () => <GitHubIcon />,
 								onTrue: () => <LoaderCircle className="motion-safe:animate-spin" />
@@ -71,37 +65,71 @@ function Home() {
 					),
 					onSome: account => (
 						<>
-							<div className="flex items-center justify-between gap-2">
-								<p className="min-w-0 truncate text-sm">{account.name}</p>
-								<Button
-									variant="ghost"
-									size="icon-lg"
-									aria-label="Sign out"
-									disabled={AsyncResult.isWaiting(signOut)}
-									onClick={() => endSession()}
-								>
-									<LogOut />
-								</Button>
-							</div>
-							{Boolean.match(requesting, {
-								onFalse: () => (
-									<p className="text-muted-foreground text-sm">
-										Open an app or connect its MCP URL. Sign-in and authorization happen here automatically.
-									</p>
-								),
-								onTrue: () => (
+							{Option.match(request, {
+								onNone: () => (
 									<>
-										<div className="flex flex-col gap-2">
-											<h2 className="text-sm font-medium">Allow access to Deslop?</h2>
-											<p className="text-muted-foreground text-sm break-all">{query.get('client_id')}</p>
-											<p className="text-muted-foreground text-sm break-all">Return to: {query.get('redirect_uri')}</p>
-											<p className="text-sm break-all">{Array.join(query.getAll('resource'), ', ')}</p>
+										<div className="flex items-center justify-between gap-2 border-y py-3">
+											<p className="min-w-0 truncate text-sm">{account.name}</p>
+											<Button
+												variant="ghost"
+												size="icon-lg"
+												aria-label="Sign out"
+												disabled={AsyncResult.isWaiting(signOut)}
+												onClick={() => endSession()}
+											>
+												<LogOut />
+											</Button>
 										</div>
-										<div className="flex gap-2">
-											<Button disabled={AsyncResult.isWaiting(consent)} onClick={() => respond(true)}>
+										<p className="text-muted-foreground text-sm">
+											Open an app or connect its MCP URL. Sign-in and authorization happen here automatically.
+										</p>
+									</>
+								),
+								onSome: grant => (
+									<>
+										<div>
+											<h2 className="border-b pb-2 text-sm font-medium">Allow access to Deslop?</h2>
+											<dl>
+												<div className="grid grid-cols-4 items-start gap-3 border-b py-3">
+													<dt className="text-muted-foreground text-xs">Client ID</dt>
+													<dd className="col-span-3 min-w-0 text-sm break-all">{grant.clientId}</dd>
+												</div>
+												<div className="grid grid-cols-4 items-start gap-3 border-b py-3">
+													<dt className="text-muted-foreground text-xs">Return to</dt>
+													<dd className="col-span-3 min-w-0 text-sm break-all">{grant.redirectUri}</dd>
+												</div>
+												<div className="grid grid-cols-4 items-start gap-3 border-b py-3">
+													<dt className="text-muted-foreground text-xs">Resources</dt>
+													<dd className="col-span-3 min-w-0 space-y-1 text-sm break-all">
+														{Array.map(grant.resources, resource => (
+															<p key={resource}>{resource}</p>
+														))}
+													</dd>
+												</div>
+												<div className="grid grid-cols-4 items-center gap-3 border-b py-3">
+													<dt className="text-muted-foreground text-xs">Account</dt>
+													<dd className="col-span-3 flex min-w-0 items-center justify-between gap-2">
+														<p className="min-w-0 truncate text-sm">{account.name}</p>
+														<Button
+															variant="ghost"
+															size="icon-lg"
+															aria-label="Sign out"
+															disabled={AsyncResult.isWaiting(signOut)}
+															onClick={() => endSession()}
+														>
+															<LogOut />
+														</Button>
+													</dd>
+												</div>
+											</dl>
+										</div>
+										<div className="flex flex-col gap-2">
+											<Button size="lg" disabled={AsyncResult.isWaiting(consent)} onClick={() => respond(true)}>
+												{AsyncResult.isWaiting(consent) && <LoaderCircle className="motion-safe:animate-spin" />}
 												Allow
 											</Button>
 											<Button
+												size="lg"
 												variant="outline"
 												disabled={AsyncResult.isWaiting(consent)}
 												onClick={() => respond(false)}
@@ -123,7 +151,7 @@ function Home() {
 						</p>
 					)
 				})}
-				{query.has('error') && (
+				{new URLSearchParams(location.search).has('error') && (
 					<p className="text-destructive text-sm" role="alert">
 						Sign-in failed. Sign in with an allowed GitHub account.
 					</p>

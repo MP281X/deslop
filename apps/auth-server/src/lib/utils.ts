@@ -1,15 +1,14 @@
-import {Effect, pipe} from 'effect'
+import {Effect, Option, pipe} from 'effect'
 
-import {oauthProviderClient} from '@better-auth/oauth-provider/client'
-import {createAuthClient} from 'better-auth/client'
+import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Atom, AtomRpc} from 'effect/reactivity'
 
-import {AuthError} from '@deslop/auth/schema'
+import {AuthError, Authorization, Redirect} from '@deslop/auth/schema'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 
-const client = createAuthClient({baseURL: location.origin, plugins: [oauthProviderClient()]})
+const authRuntime = Atom.runtime(FetchHttpClient.layer)
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/auth-server/lib/utils/RpcClient', {
 	group: RpcContracts,
@@ -24,29 +23,44 @@ export const meAtom = RpcClient.runtime.atom(
 	)
 )
 
-export const signInAtom = Atom.fn(() =>
-	Effect.tryPromise({
-		catch: cause => AuthError.make({cause, message: 'Cannot start GitHub sign-in'}),
-		try: () => client.signIn.social({callbackURL: location.href, provider: 'github'}, {throw: true})
+export const requestAtom = authRuntime.atom(
+	Option.match(Option.fromNullishOr(new URLSearchParams(location.search).get('request')), {
+		onNone: () => Effect.succeedNone,
+		onSome: Effect.fnUntraced(function* (request: string) {
+			return yield* pipe(
+				HttpClient.HttpClient.use(client =>
+					HttpClient.filterStatusOk(client).get('/auth/request', {urlParams: {request}})
+				),
+				Effect.flatMap(HttpClientResponse.schemaBodyJson(Authorization)),
+				Effect.asSome,
+				Effect.mapError(cause => AuthError.make({cause, message: 'Open the authorization link again'}))
+			)
+		})
 	})
 )
 
-export const signOutAtom = Atom.fn(() =>
+export const signInAtom = Atom.fn(() =>
+	Effect.try({
+		catch: cause => AuthError.make({cause, message: 'Cannot start GitHub sign-in'}),
+		try: () => location.assign(`/auth/github${location.search}`)
+	})
+)
+
+export const signOutAtom = authRuntime.fn(() =>
 	pipe(
-		Effect.tryPromise({
-			catch: cause => AuthError.make({cause, message: 'Cannot sign out'}),
-			try: () => client.signOut({fetchOptions: {throw: true}})
-		}),
-		Effect.andThen(Effect.sync(() => location.assign('/')))
+		HttpClient.HttpClient.use(client => HttpClient.filterStatusOk(client).post('/auth/sign-out')),
+		Effect.andThen(Effect.sync(() => location.assign('/'))),
+		Effect.mapError(cause => AuthError.make({cause, message: 'Cannot sign out'}))
 	)
 )
 
-export const consentAtom = Atom.fn((accept: boolean) =>
+export const consentAtom = authRuntime.fn((accept: boolean) =>
 	pipe(
-		Effect.tryPromise({
-			catch: cause => AuthError.make({cause, message: 'Cannot finish authorization'}),
-			try: () => client.oauth2.consent({accept}, {throw: true})
-		}),
-		Effect.flatMap(result => Effect.sync(() => location.assign(result.url)))
+		HttpClientRequest.post('/api/auth/oauth2/consent'),
+		HttpClientRequest.bodyJson({accept, request: new URLSearchParams(location.search).get('request')}),
+		Effect.flatMap(request => HttpClient.HttpClient.use(client => HttpClient.filterStatusOk(client).execute(request))),
+		Effect.flatMap(HttpClientResponse.schemaBodyJson(Redirect)),
+		Effect.flatMap(result => Effect.sync(() => location.assign(result.url))),
+		Effect.mapError(cause => AuthError.make({cause, message: 'Cannot finish authorization'}))
 	)
 )

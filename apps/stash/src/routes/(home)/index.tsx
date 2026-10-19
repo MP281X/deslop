@@ -14,25 +14,21 @@ import {
 	List,
 	Menu,
 	Picker,
+	ProgressView,
 	ScrollView,
 	SwipeActions,
 	Text,
 	Toggle,
 	Toolbar,
 	ToolbarItem,
-	VStack,
-	ZStack
+	VStack
 } from '@expo/ui/swift-ui'
 import type {useNativeState} from '@expo/ui/swift-ui'
 import {
 	accessibilityElement,
-	accessibilityHidden,
-	accessibilityLabel,
 	alignmentGuide,
-	aspectRatio,
 	background,
 	buttonStyle,
-	clipShape,
 	contentShape,
 	controlSize,
 	cornerRadius,
@@ -53,7 +49,6 @@ import {
 	onTapGesture,
 	padding,
 	pickerStyle,
-	redacted,
 	resizable,
 	scrollContentBackground,
 	searchable,
@@ -75,7 +70,6 @@ import {
 	answerAtom,
 	appOf,
 	brandOf,
-	imageAtom,
 	kindOf,
 	kinds,
 	notesAtom,
@@ -97,65 +91,24 @@ const OFFERS = {
 	link: {question: 'Save the copied link?', symbol: 'link'}
 } as const
 
-function Placeholder(props: {symbol: 'globe' | 'photo' | 'play.rectangle' | 'text.alignleft' | 'text.bubble'}) {
-	return (
-		<Image
-			systemName={props.symbol}
-			size={20}
-			modifiers={[
-				foregroundStyle(colors.mutedForeground),
-				frame({height: 64, width: 64}),
-				background(colors.border),
-				clipShape('roundedRectangle', 10),
-				accessibilityHidden(true)
-			]}
-		/>
-	)
-}
-
-// Mounted only once the server has kept the preview, so the download never runs before the file exists.
-function Thumbnail(props: {id: Note['id']; symbol: Parameters<typeof Placeholder>[0]['symbol']}) {
-	const image = useAtomValue(imageAtom(props.id))
-	if (!AsyncResult.isSuccess(image)) return <Placeholder symbol={props.symbol} />
-	return (
-		<Image
-			uiImage={image.value}
-			modifiers={[
-				resizable(),
-				aspectRatio({contentMode: 'fill'}),
-				frame({height: 64, width: 64}),
-				clipShape('roundedRectangle', 10),
-				accessibilityHidden(true)
-			]}
-		/>
-	)
-}
-
-function Preview(props: {note: NoteItem}) {
-	const symbol = pipe(
-		Match.value(kindOf(props.note)),
-		Match.when('tiktok', () => 'play.rectangle' as const),
-		Match.when('x', () => 'text.bubble' as const),
-		Match.when('file', () => 'photo' as const),
-		Match.when('note', () => 'text.alignleft' as const),
-		Match.orElse(() => 'globe' as const)
-	)
-	if (props.note.image !== undefined) return <Thumbnail id={props.note.id} symbol={symbol} />
-	return Option.match(brandOf(props.note), {
-		onNone: () => <Placeholder symbol={symbol} />,
-		onSome: brand => (
-			<ZStack
-				modifiers={[
-					frame({height: 64, width: 64}),
-					background(colors.border),
-					clipShape('roundedRectangle', 10),
-					accessibilityHidden(true)
-				]}
-			>
-				<BrandLogo brand={kinds[brand].logo} size={24} />
-			</ZStack>
+function Source(props: {kind: Kind}) {
+	if (Schema.is(Brand)(props.kind)) {
+		return (
+			<HStack spacing={4}>
+				<BrandLogo brand={kinds[props.kind].logo} size={12} />
+				<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
+					{kinds[props.kind].label}
+				</Text>
+			</HStack>
 		)
-	})
+	}
+	return (
+		<Label
+			title={kinds[props.kind].label}
+			systemImage={kinds[props.kind].symbol}
+			modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]}
+		/>
+	)
 }
 
 function Lines(props: {note: NoteItem}) {
@@ -167,51 +120,46 @@ function Lines(props: {note: NoteItem}) {
 		Array.getSomes,
 		Array.join(' · ')
 	)
-	return pipe(
-		Match.value(props.note.status),
-		Match.when('organizing', () => (
-			<VStack alignment="leading" spacing={4}>
-				<Text modifiers={[mono('headline', 16), foregroundStyle(colors.foreground), lineLimit(2)]}>
-					{props.note.title}
-				</Text>
+	return (
+		<VStack alignment="leading" spacing={4} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>
+			<Text modifiers={[mono('headline', 16), foregroundStyle(colors.foreground), lineLimit(2)]}>
+				{props.note.title}
+			</Text>
+			{pipe(
+				Match.value(props.note.status),
+				Match.when('organizing', () => (
+					<HStack spacing={6}>
+						<ProgressView />
+						<Text modifiers={[font({textStyle: 'subheadline'}), foregroundStyle(colors.mutedForeground)]}>Reading</Text>
+					</HStack>
+				)),
+				Match.when('failed', () => (
+					<Label
+						title="Couldn’t read this link"
+						systemImage="exclamationmark.triangle.fill"
+						modifiers={[font({textStyle: 'subheadline'}), foregroundStyle(colors.destructive), lineLimit(1)]}
+					/>
+				)),
+				Match.orElse(() => (
+					<Text modifiers={[font({textStyle: 'subheadline'}), foregroundStyle(colors.mutedForeground), lineLimit(2)]}>
+						{props.note.summary}
+					</Text>
+				))
+			)}
+			<HStack spacing={12} modifiers={[padding({top: 2})]}>
 				<Text
 					modifiers={[
-						font({textStyle: 'subheadline'}),
+						mono('caption', 12),
 						foregroundStyle(colors.mutedForeground),
-						lineLimit(2),
-						redacted('placeholder'),
-						accessibilityLabel('Reading')
+						lineLimit(1),
+						frame({alignment: 'leading', maxWidth: Infinity})
 					]}
 				>
-					The server is reading this entry and writing its summary.
+					{byline}
 				</Text>
-				<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>{byline}</Text>
-			</VStack>
-		)),
-		Match.when('failed', () => (
-			<VStack alignment="leading" spacing={4}>
-				<Text modifiers={[mono('headline', 16), foregroundStyle(colors.foreground), lineLimit(2)]}>
-					{props.note.title}
-				</Text>
-				<Label
-					title="Couldn’t read this link"
-					systemImage="exclamationmark.triangle.fill"
-					modifiers={[font({textStyle: 'subheadline'}), foregroundStyle(colors.destructive), lineLimit(1)]}
-				/>
-				<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>{byline}</Text>
-			</VStack>
-		)),
-		Match.orElse(() => (
-			<VStack alignment="leading" spacing={4}>
-				<Text modifiers={[mono('headline', 16), foregroundStyle(colors.foreground), lineLimit(2)]}>
-					{props.note.title}
-				</Text>
-				<Text modifiers={[font({textStyle: 'subheadline'}), foregroundStyle(colors.mutedForeground), lineLimit(2)]}>
-					{props.note.summary}
-				</Text>
-				<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>{byline}</Text>
-			</VStack>
-		))
+				<Source kind={kindOf(props.note)} />
+			</HStack>
+		</VStack>
 	)
 }
 
@@ -245,7 +193,6 @@ function NoteRow(props: {
 							accessibilityElement('combine')
 						]}
 					>
-						<Preview note={props.note} />
 						<Lines note={props.note} />
 					</HStack>
 				</ContextMenu.Trigger>
