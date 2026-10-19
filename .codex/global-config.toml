@@ -19,8 +19,8 @@ enabled = false
 enabled = false
 
 [features]
-# Stateless MCP: no initialize handshake or session per server.
-mcp_2026_07_28 = true
+# Mobbin exposes no tools through Codex 0.163.0's stateless MCP mode.
+mcp_2026_07_28 = false
 skill_mcp_dependency_install = false
 skill_search = false
 tool_suggest = false
@@ -46,6 +46,10 @@ default_tools_approval_mode = "approve"
 
 [mcp_servers.portfolio]
 url = "https://dev.tailnet-8c4c.ts.net:4320/mcp"
+default_tools_approval_mode = "approve"
+
+[mcp_servers.mobbin]
+url = "https://api.mobbin.com/mcp"
 default_tools_approval_mode = "approve"
 
 [[hooks.SessionStart]]
