@@ -1,5 +1,5 @@
 # Commands agents never run. Codex matches exact leading tokens, so these get through and only the prompts forbid them
-# (pair's Branches, delivery's `--open`): `git -C <dir> push`, `git push origin <branch>:main`, more than two push flags,
+# (pair's Branches, orchestrator's Stacks): `git -C <dir> push`, `git push origin <branch>:main`, more than two push flags,
 # an API call with the method after the endpoint, a GraphQL mutation, `gh stack submit --open` and `gh stack link --open`.
 # Codex checks each rule's examples when it loads the file.
 

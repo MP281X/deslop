@@ -8,10 +8,10 @@ description: Use before the first edit of any change, when a design or direction
 ## Decide
 
 - **Outcome.** Work toward the outcome behind the request: the cause of a bug and its siblings, the whole journey rather than one screen. A larger outcome beyond the request is a proposal in the reply, not work.
-- **Depth.** Before a consequential change, name what a top expert would do that the request did not ask for, the rawest material they start from (logs, rows, traces, source), their instruments, and what outside you confirms the result; plan that, a deeper version rather than a bigger one. Set the hard target (the platform's limit, zero cases of the class) and treat it as solvable until a measurement proves the limit.
-- **Brainstorm wide, report narrow.** When a change has more than one plausible shape, list at least three structurally different options, always including reuse what exists, do less (delete, inline, no new parts) and the most direct new code; for an open question, a council per [Delegate](#delegate) adds them. Kill each with one concrete counterexample from the code or a probe, scored against criteria derived per the [Gate](#gate)'s step 0 before the comparison; keep the simplest survivor. The reply names only the survivors and the one that was chosen, with its deciding criterion; killed options are not listed. A design, architecture or direction question goes to the [Gate](#gate) instead. A specified fix skips this.
+- **Depth.** Before a consequential change, name what a top expert would do that the request did not ask for, the rawest material they start from (logs, rows, traces, source), their instruments, and what outside you confirms the result; plan that, a deeper version rather than a bigger one. Set the hard target (the platform's limit, zero cases of the class) and treat it as solvable until a measurement proves the limit.- **Brainstorm wide, report narrow.** When a change has more than one plausible shape, list at least three structurally different options, always including reuse what exists, do less (delete, inline, no new parts) and the most direct new code; for an open question, a council per [Delegate](#delegate) adds them. Kill each with one concrete counterexample from the code or a probe, scored against criteria derived per the [Gate](#gate)'s step 0 before the comparison; keep the simplest survivor. The reply names only the survivors and the one that was chosen, with its deciding criterion; killed options are not listed. A design, architecture or direction question goes to the [Gate](#gate) instead. A specified fix skips this.
 - **Prototype** when a sketch decides faster than code: a behavior as an inline probe, a direction question as the [Gate](#gate)'s artifacts. Never build a pick for a design, architecture or direction question: run the Gate and let the user choose. Build only the option the user chose, or a specified fix.
 - **Tripwire.** When time or lines reach twice the estimate, or a mechanism the request did not name appears (script, daemon, store, wrapper, protocol, reimplementation), stop and brainstorm again from the user's request verbatim.
+- **Process.** A step agents must take, such as loading a skill, verifying before a push or keeping two prompts equal, lives in the instruction that names it, never in a hook, stamp file, generator or sync check: the user rejected each of these.
 - **Steers.** Read new messages before each consequential step. A replacement drops the old direction, keeps valid code and proof, and deletes the rejected version once the new one works. An addition extends the work without a restart. A tentative idea is explored, not made a requirement. "Good enough" takes that head to ready and ends refinement. One implementation: no flags or variants for hypothetical revisions.
 
 ## Gate
@@ -39,7 +39,15 @@ For a design, architecture or high-level direction question, the user decides ta
 1. **Change.** Apply the whole change and run each changed behavior through its real interface per engineering's Proof.
 2. **Verify** per engineering, in this thread, one run per checkout at a time.
 3. **Review** per [Review loop](#review-loop); fix the findings, then Verify again.
-4. **Publish**, wait for the pipeline and finish per delivery.
+4. **Publish** per delivery and [Stacks](#stacks), then wait for the pipeline.
+
+## Stacks
+
+The user reviews every PR of a thread at the end and squash-merges them one at a time.
+
+- **Chain.** A stack keeps one commit per PR on `<thread branch>-chain`, dependencies first. A follow-up to a feature is `git commit --fixup=<commit> -- <paths>` into its layer, naming its paths so nothing else staged rides along; the rebase before a push is `git rebase --autosquash origin/<default branch>`.
+- **Layers.** Rebuild each layer with `git switch -C <branch> <base> && git cherry-pick <commit>`, Verify its head in order, push with `--force-with-lease`, one push per command, then return to the chain. Open drafts; on GitHub link stacks with `gh stack link <numbers, bottom first>`, never `--open`. Reuse open PRs and branch names; `gh stack unstack` before reordering.
+- **After merges.** Rebase the chain, republish changed layers, remove each merged PR from the stack and from the thread with `unlink_pull_request`, and retarget the next GitLab merge request.
 
 ## Review loop
 

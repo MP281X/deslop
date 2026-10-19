@@ -6,7 +6,7 @@ description: Use before reading anything beyond the files you will edit, their c
 # Explore
 
 - **Decision first.** Name the decision and the observation that settles it; stop when the evidence settles it. Look for the counterexample, not more support.
-- **Existing first.** Lead with what the codebase and its dependencies already do for the same job. Before any hand-written type, table, guard, wrapper, store or protocol, list the owning module's exports in its source checkout and read the closest ones, then how the owning skill's Study repositories use them; a helper found this way replaces the code:
+- **Existing first.** Lead with what the codebase and its dependencies already do for the same job. Before any hand-written type, table, guard, wrapper, store or protocol, list the owning module's exports in its source checkout and read the closest ones, then how its own tests and examples use them; a helper found this way replaces the code:
 
   ```bash
   rg -on '^export (const|function|class|interface) \w*(Literal|Tagged|Union)\w*' /tmp/repos/effect-4.0.5/packages/effect/src/Schema.ts
@@ -18,30 +18,35 @@ description: Use before reading anything beyond the files you will edit, their c
 - **Sessions.** Earlier agent sessions are raw material too: read the full run with its children and the user's corrections, from wherever the environment stores them.
 - **Answer** first, then only the deciding evidence with paths and lines; mark measured facts apart from inference.
 
-## Source checkouts
+## Repositories
 
-Read a dependency in a checkout of its official repository at the version the lockfile holds, never in `node_modules`. Reuse a matching checkout under `/tmp/repos/` after checking its remote and commit; never build or change a shared one.
-
-| Dependency                                                                 | Repository                                 | Tag                                            |
-| -------------------------------------------------------------------------- | ------------------------------------------ | ---------------------------------------------- |
-| Effect and `@effect/*`: platform, vitest, atom-react, sql, ai, `packages/` | https://github.com/Effect-TS/effect        | `effect@<version>`, `@effect/<name>@<version>` |
-| Vite+: `vp`, Vite, Vitest, packing                                         | https://github.com/voidzero-dev/vite-plus  | `v<version>`                                   |
-| TanStack Router and Start                                                  | https://github.com/TanStack/router         | `@tanstack/<package>@<version>`                |
-| Expo and `@expo/ui`                                                        | https://github.com/expo/expo               | `expo@<version>`, `@expo/ui@<version>`         |
-| Better Auth                                                                | https://github.com/better-auth/better-auth | `v<version>`                                   |
+Clone under `/tmp/repos/` with `--depth 1`; reuse a matching checkout after checking its remote and commit, never build or change a shared one.
 
 ```bash
 git clone --depth 1 --branch effect@4.0.5 https://github.com/Effect-TS/effect /tmp/repos/effect-4.0.5
 ```
 
-## Study repositories
+**Documentation.** A library's source, tests and examples are its documentation: read them at the version the lockfile holds, never in `node_modules`, before you use an API.
 
-For a shape the repository has no canonical example for, read how strong engineers built it before you invent one: engineering, design and delivery each keep a Study table for their domain, and this one covers agent instructions. Clone at the default branch with `git clone --depth 1` into `/tmp/repos/<name>`, read the named paths first, and copy the idea, not the files:
+- https://github.com/Effect-TS/effect
+- https://github.com/voidzero-dev/vite-plus
+- https://github.com/TanStack/router
+- https://github.com/shadcn-ui/ui
+- https://github.com/emilkowalski/sonner
+- https://github.com/motiondivision/motion
+- https://github.com/vercel/ai
+- https://github.com/electric-sql/electric
+- https://github.com/better-auth/better-auth
+- https://github.com/expo/expo
+- https://github.com/heygen-com/hyperframes
 
-| Study                                                                 | Repository and directories                                                                                                                                 |
-| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Skills: terse engineering workflows, writing for agents               | [Matt Pocock's skills](https://github.com/mattpocock/skills): `skills/engineering`, `skills/productivity/writing-for-agents`                               |
-| Skills: one router skill, principles and playbooks                    | [pstack by poteto](https://github.com/cursor/plugins): `pstack/skills/poteto-mode` (`playbooks/authoring-a-skill.md`), `pstack/skills/principle-*`         |
-| Skills: explanatory figures as objects, references checked by scripts | [Anatomy](https://github.com/wheresryan22/anatomy): `SKILL.md`, `references/craft.md`, `examples`                                                          |
-| Skills tested like code: pressure tests, verification, subagents      | [Superpowers](https://github.com/obra/superpowers): `skills/writing-skills`, `skills/verification-before-completion`, `skills/subagent-driven-development` |
-| Skill format, creation and evaluation                                 | [Anthropic skills](https://github.com/anthropics/skills): `skills/skill-creator`, `skills/frontend-design`, `skills/mcp-builder`                           |
+**References.** Good code, design and architecture: read them at the default branch for patterns, examples and options to brainstorm, when the repository has no canonical example.
+
+- https://github.com/pingdotgg/t3code
+- https://github.com/UsefulSoftwareCo/executor
+- https://github.com/anomalyco/opencode
+- https://github.com/rocicorp/mono
+- https://github.com/bluesky-social/social-app
+- https://github.com/mattpocock/skills
+- https://github.com/obra/superpowers
+- https://github.com/anthropics/skills

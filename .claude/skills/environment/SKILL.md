@@ -1,6 +1,6 @@
 ---
 name: environment
-description: Use before the first command of a session, and before any preview, a Jira or DOS ticket, a GitLab or VPN step, a change to persisted Dual data, a task on another worker, the agent configuration links, updating T3 or the machines, a deploy, earlier threads, and machine setup or cleanup.
+description: Use before the first command of a session, and before any preview, a proof video, a Jira or DOS ticket, a GitLab or VPN step, a change to persisted Dual data, a task on another worker, the agent configuration links, updating T3 or the machines, a deploy, earlier threads, and machine setup or cleanup.
 ---
 
 # Environment
@@ -26,6 +26,7 @@ Two headless Debian workers in one tailnet, same user and paths; the user switch
 | [Dual](references/dual.md)               | Commands, production data, Jira, VPN, preview, accounts, CI, standards |
 | [Deslop](references/deslop.md)           | Commands, app, tracing, deploy, coding standards                       |
 | [Maintenance](references/maintenance.md) | Machines, setup, agent links, T3 history and settings, updates, clean  |
+| [Video](references/video.md)             | Proof videos: camera targets, HyperFrames composition and look         |
 
 ## Previews
 
@@ -37,7 +38,7 @@ Two headless Debian workers in one tailnet, same user and paths; the user switch
   bash -c "$(jq -r --arg id "$id" '.projectSettingsOverrides[$id].defaultProjectScripts[] | select(.id == "preview").command' ~/.t3/userdata/settings.json)"
   ```
 
-- **Share** only after the URL loads sign-in, assets and API calls; open it in the thread's one T3 tab per delivery's Captures.
+- **Share** only after the URL loads sign-in, assets and API calls; open it in the thread's one T3 tab per the Captures rule of your instructions.
 - **Keep** a started preview on the latest code at the end of every turn. `stop` runs only when the user asks; T3 runs `settle` when the thread settles or its PR merges.
 - **Webhooks.** Funnel exposes a whole port: pick a free one of 443, 8443, 10000 and run `sudo tailscale funnel --bg --https=<port> --set-path <path> http://127.0.0.1:<api port><path>`; remove it with `... --set-path <path> off`.
 

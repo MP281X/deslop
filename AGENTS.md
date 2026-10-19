@@ -47,7 +47,7 @@ Decisions the code, the generators and lint do not show.
 ## RPC and components
 
 - React clients use an `AtomRpc.Service` over `WebRuntime.layer` or `MobileRuntime.layer`; a command line uses a scoped `RpcClient.make`. A stream syncs one keep-alive Atom that components read; a component never owns a subscription and never polls.
-- The web look lives in the shadcn theme, `packages/components-web/src/theme.css`; pages add no cards. iOS screens keep the system shapes.
+- The web look lives in the shadcn theme, `packages/components-web/src/theme.css`; pages add no cards. iOS screens carry the same look through SwiftUI primitives from `@expo/ui` (navigation, toolbars, search, lists, menus, swipe actions, sheets, SF Symbols) with the mobile theme's tokens and their system sizes and behavior; glass for controls and navigation, never content; never a custom system control.
 - Each context has one icon entrypoint for an action instead of text buttons repeating it; conventional icons get no tooltip.
 
 ## Generators and deploy
