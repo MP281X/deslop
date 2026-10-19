@@ -163,39 +163,41 @@ export const signInAtom = authRuntime.fn(() =>
 	)
 )
 
-export const signOutAtom = authRuntime.fn(() =>
-	pipe(
-		Effect.gen(function* () {
-			const session = yield* Effect.scoped(
-				Effect.gen(function* () {
-					yield* sessionLock
-					const saved = yield* readSession
-					yield* Effect.try(() => native.clearSession())
-					return saved
-				})
-			)
-			yield* Atom.refresh(sessionAtom)
-			yield* pipe(
-				Effect.forEach(
-					Option.toArray(session),
-					saved =>
-						pipe(
-							HttpClientRequest.post(`${AUTH_URL}/api/auth/oauth2/revoke`),
-							HttpClientRequest.bodyUrlParams({
-								client_id: saved.clientId,
-								token: saved.refreshToken,
-								token_type_hint: 'refresh_token'
-							}),
-							request => HttpClient.HttpClient.use(client => client.execute(request))
-						),
-					{concurrency: 1}
-				),
-				Effect.timeout('30 seconds'),
-				Effect.ignore({log: 'Warn', message: 'The server session could not be revoked; signing out on this iPhone'})
-			)
-		}),
-		Effect.mapError(cause => AuthError.make({cause, message: 'Cannot sign out'})),
-		alert('Not Signed Out')
+export const signOutAtom = Atom.keepAlive(
+	authRuntime.fn(() =>
+		pipe(
+			Effect.gen(function* () {
+				const session = yield* Effect.scoped(
+					Effect.gen(function* () {
+						yield* sessionLock
+						const saved = yield* readSession
+						yield* Effect.try(() => native.clearSession())
+						return saved
+					})
+				)
+				yield* Atom.refresh(sessionAtom)
+				yield* pipe(
+					Effect.forEach(
+						Option.toArray(session),
+						saved =>
+							pipe(
+								HttpClientRequest.post(`${AUTH_URL}/api/auth/oauth2/revoke`),
+								HttpClientRequest.bodyUrlParams({
+									client_id: saved.clientId,
+									token: saved.refreshToken,
+									token_type_hint: 'refresh_token'
+								}),
+								request => HttpClient.HttpClient.use(client => client.execute(request))
+							),
+						{concurrency: 1}
+					),
+					Effect.timeout('30 seconds'),
+					Effect.ignore({log: 'Warn', message: 'The server session could not be revoked; signing out on this iPhone'})
+				)
+			}),
+			Effect.mapError(cause => AuthError.make({cause, message: 'Cannot sign out'})),
+			alert('Not Signed Out')
+		)
 	)
 )
 
