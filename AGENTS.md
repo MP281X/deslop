@@ -17,7 +17,7 @@ Decisions the code, the generators and lint do not show.
 | Web app          | `tools/create-app/template/web/`, which mirrors `apps/portfolio`                               | `rg --files -g '**/index.html' apps tools/create-app/template`                                 | Generator                      |
 | Mobile app       | `tools/create-app/template/mobile/`, which mirrors `apps/stash`                                | `rg --files -g '**/app.config.ts' apps tools/create-app/template`                              | Generator                      |
 | RPC              | `apps/portfolio/src/rpcs/` and its client in `apps/portfolio/src/lib/utils.ts`                 | `rg --files -g '**/rpcs/contracts.ts' apps tools`                                              | RPC rules below                |
-| MCP tools        | `apps/scope/src/tools/`, served by `ServerRuntime.layerMcp` in `apps/scope/src/main.server.ts` | `rg --files -g '**/tools/contracts.ts' apps`                                                   | Review                         |
+| MCP tools        | `apps/scope/src/tools/`, served by `ServerRuntime.layerMcp` in `apps/scope/src/main.server.ts` | `rg --files -g '**/tools/contracts.ts' apps tools/create-app/template`                         | Generator, review              |
 | Web UI primitive | `packages/components-web/src/ui/`, added with `vpx shadcn@latest add` there                    | `rg -l -e @deslop/components-web -e '#components/ui/' apps packages tools/create-app/template` | `shadcn/no-raw-colors`, review |
 
 ## Taste

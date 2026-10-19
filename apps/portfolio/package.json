@@ -1,11 +1,15 @@
 {
 	"name": "@deslop/portfolio",
+	"version": "0.1.0",
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
 		"#lib/*": "./src/lib/*",
+		"#package.*": "./package.*",
+		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
-		"#routes/*": "./src/routes/*"
+		"#services/*": "./src/services/*",
+		"#tools/*": "./src/tools/*"
 	},
 	"scripts": {
 		"build": "rm -rf dist && vp build && vp pack",

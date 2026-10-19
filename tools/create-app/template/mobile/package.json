@@ -1,12 +1,15 @@
 {
 	"name": "@deslop/template-app",
+	"version": "0.1.0",
 	"type": "module",
 	"sideEffects": false,
 	"main": "src/main.client.tsx",
 	"imports": {
 		"#lib/*": "./src/lib/*",
+		"#package.*": "./package.*",
 		"#routes/*": "./src/routes/*",
-		"#rpcs/*": "./src/rpcs/*"
+		"#rpcs/*": "./src/rpcs/*",
+		"#tools/*": "./src/tools/*"
 	},
 	"scripts": {
 		"build": "rm -rf dist && vp pack",

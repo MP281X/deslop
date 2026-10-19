@@ -1,6 +1,6 @@
 import {Array, Option, pipe} from 'effect'
 
-import type {PortfolioState, PortfolioTrail, PortfolioVisitor} from '#rpcs/contracts.ts'
+import type {PortfolioState, PortfolioTrail, PortfolioVisitor} from '#services/presence/schema.ts'
 
 export const portfolioPalette = [
 	'oklch(0.74 0.19 118)',

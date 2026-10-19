@@ -25,10 +25,12 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${HOME}/.deslop/deploy/acme:/acme
 
+  # The tailnet reaches its MCP endpoint through `tailscale serve`; the endpoint refuses the public host.
   portfolio:
     <<: *service
     image: ghcr.io/mp281x/deslop-portfolio:${REVISION:-latest}
     environment: {VITE_OTEL_URL: http://scope:4318}
+    ports: [127.0.0.1:4320:5000]
     labels:
       traefik.enable: 'true'
       traefik.http.routers.portfolio.rule: Host(`portfolio.mp281x.xyz`)

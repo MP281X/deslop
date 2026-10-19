@@ -1,11 +1,14 @@
 {
 	"name": "@deslop/template-app",
+	"version": "0.1.0",
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
 		"#lib/*": "./src/lib/*",
+		"#package.*": "./package.*",
+		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
-		"#routes/*": "./src/routes/*"
+		"#tools/*": "./src/tools/*"
 	},
 	"scripts": {
 		"build": "rm -rf dist && vp build && vp pack",

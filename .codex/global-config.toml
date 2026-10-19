@@ -44,6 +44,10 @@ default_tools_approval_mode = "approve"
 url = "https://dev.tailnet-8c4c.ts.net:4319/mcp"
 default_tools_approval_mode = "approve"
 
+[mcp_servers.portfolio]
+url = "https://dev.tailnet-8c4c.ts.net:4320/mcp"
+default_tools_approval_mode = "approve"
+
 [[hooks.SessionStart]]
 [[hooks.SessionStart.hooks]]
 type = "command"
