@@ -7,6 +7,8 @@ export const native = requireNativeModule<{
 	getSession: () => string
 	setSession: (value: string) => void
 	clearSession: () => void
+	lockSession: () => PromiseLike<{backgroundTask: number; descriptor: number}>
+	unlockSession: (lock: {backgroundTask: number; descriptor: number}) => PromiseLike<void>
 }>('StashNative')
 
 export const bottomBarSearch = createModifier('bottomBarSearch')

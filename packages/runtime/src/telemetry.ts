@@ -1,4 +1,4 @@
-import {Clock, Effect, Layer, pipe} from 'effect'
+import {Boolean, Clock, Effect, Layer, pipe} from 'effect'
 
 import {FetchHttpClient, HttpClient, HttpClientError, HttpClientRequest} from 'effect/http'
 import {OtlpLogger, OtlpSerialization, OtlpTracer} from 'effect/observability'
@@ -20,7 +20,12 @@ export function layerOtlp(
 					Effect.map(HttpClient.HttpClient, raw =>
 						HttpClient.mapRequestEffect(
 							HttpClient.transform(raw, effect =>
-								Effect.provideService(effect, FetchHttpClient.RequestInit, {credentials: 'include'})
+								Effect.provideService(effect, FetchHttpClient.RequestInit, {
+									credentials: Boolean.match(new URL(url).origin === 'https://otel.mp281x.xyz', {
+										onFalse: () => 'omit' as const,
+										onTrue: () => 'include' as const
+									})
+								})
 							),
 							request => {
 								if (authorization === undefined) return Effect.succeed(request)

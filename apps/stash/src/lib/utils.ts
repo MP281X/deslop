@@ -11,7 +11,6 @@ import {
 	Record,
 	Schedule,
 	Schema,
-	Semaphore,
 	Stream,
 	String,
 	pipe
@@ -42,8 +41,11 @@ const DISCOVERY = {
 	authorizationEndpoint: `${AUTH_URL}/api/auth/oauth2/authorize`,
 	tokenEndpoint: `${AUTH_URL}/api/auth/oauth2/token`
 }
-const refreshLock = Semaphore.makeUnsafe(1)
 const authRuntime = Atom.runtime(FetchHttpClient.layer)
+const sessionLock = Effect.acquireRelease(
+	Effect.tryPromise(() => native.lockSession()),
+	lock => Effect.promise(() => native.unlockSession(lock))
+)
 
 const sharedFolder = Array.head(Record.values(Paths.appleSharedContainers))
 const listFile = new File(Paths.document, 'list.json')
@@ -96,10 +98,11 @@ const tokenRequest = Effect.fnUntraced(function* (clientId: string, params: Reco
 		return yield* AuthError.make({message: 'Sign in to Stash again'})
 	}
 	return yield* saveSession(clientId, yield* HttpClientResponse.schemaBodyJson(TokenResponse)(response))
-})
+}, Effect.timeout('10 seconds'))
 
 const accessToken = pipe(
 	Effect.gen(function* () {
+		yield* sessionLock
 		const credentials = yield* Effect.fromOption(yield* readSession)
 		if (credentials.expiresAt > (yield* Clock.currentTimeMillis) + 60_000) return credentials.accessToken
 		return yield* tokenRequest(credentials.clientId, {
@@ -107,7 +110,7 @@ const accessToken = pipe(
 			refresh_token: credentials.refreshToken
 		})
 	}),
-	Semaphore.withPermit(refreshLock),
+	Effect.scoped,
 	Effect.mapError(cause => AuthError.make({cause, message: 'Sign in to Stash'}))
 )
 
@@ -142,12 +145,17 @@ export const signInAtom = authRuntime.fn(() =>
 			if (result.params['iss'] !== `${AUTH_URL}/api/auth`) {
 				return yield* AuthError.make({message: 'The sign-in issuer did not match'})
 			}
-			yield* tokenRequest(registration.client_id, {
-				code: result.params['code'] ?? '',
-				code_verifier: request.codeVerifier ?? '',
-				grant_type: 'authorization_code',
-				redirect_uri: redirectUri
-			})
+			yield* Effect.scoped(
+				Effect.andThen(
+					sessionLock,
+					tokenRequest(registration.client_id, {
+						code: result.params['code'] ?? '',
+						code_verifier: request.codeVerifier ?? '',
+						grant_type: 'authorization_code',
+						redirect_uri: redirectUri
+					})
+				)
+			)
 			yield* Atom.refresh(sessionAtom)
 		}),
 		Effect.mapError(cause => AuthError.make({cause, message: 'Cannot sign in to Stash'})),
@@ -158,9 +166,18 @@ export const signInAtom = authRuntime.fn(() =>
 export const signOutAtom = authRuntime.fn(() =>
 	pipe(
 		Effect.gen(function* () {
+			const session = yield* Effect.scoped(
+				Effect.gen(function* () {
+					yield* sessionLock
+					const saved = yield* readSession
+					yield* Effect.try(() => native.clearSession())
+					return saved
+				})
+			)
+			yield* Atom.refresh(sessionAtom)
 			yield* pipe(
 				Effect.forEach(
-					Option.toArray(yield* readSession),
+					Option.toArray(session),
 					saved =>
 						pipe(
 							HttpClientRequest.post(`${AUTH_URL}/api/auth/oauth2/revoke`),
@@ -173,10 +190,9 @@ export const signOutAtom = authRuntime.fn(() =>
 						),
 					{concurrency: 1}
 				),
+				Effect.timeout('30 seconds'),
 				Effect.ignore({log: 'Warn', message: 'The server session could not be revoked; signing out on this iPhone'})
 			)
-			yield* Effect.try(() => native.clearSession())
-			yield* Atom.refresh(sessionAtom)
 		}),
 		Effect.mapError(cause => AuthError.make({cause, message: 'Cannot sign out'})),
 		alert('Not Signed Out')

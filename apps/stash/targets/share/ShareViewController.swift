@@ -135,6 +135,8 @@ private struct Upload {
   }
 
   private func accessToken() async throws -> String {
+    let descriptor = try await SessionLock.acquire(group: group)
+    defer { SessionLock.release(descriptor) }
     var query = keychainQuery
     query[kSecReturnData as String] = true
     query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -156,6 +158,7 @@ private struct Upload {
       throw CocoaError(.featureUnsupported)
     }
     var request = URLRequest(url: endpoint)
+    request.timeoutInterval = 10
     request.httpMethod = "POST"
     request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
     request.httpBody = form.percentEncodedQuery?.data(using: .utf8)

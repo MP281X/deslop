@@ -38,7 +38,6 @@ import {AUTH_URL, CurrentUser, RpcAuth, development} from '#lib/utils.ts'
 const RESOURCES = [
 	'https://stash.mp281x.xyz',
 	'https://stash.mp281x.xyz/mcp',
-	'https://scope.mp281x.xyz',
 	'https://scope.mp281x.xyz/mcp',
 	'https://portfolio.mp281x.xyz/mcp',
 	'https://otel.mp281x.xyz'
@@ -89,7 +88,7 @@ function issuerOptions(options: {
 				},
 				grantTypes: ['authorization_code', 'refresh_token'],
 				loginPage: '/',
-				// The app and share extension can refresh the same shared Keychain credential concurrently.
+				// A lost refresh response can be retried briefly without discarding the shared credential.
 				refreshTokenReuseInterval: 60,
 				resource: 'https://scope.mp281x.xyz/mcp',
 				resourceSeedMode: 'overwrite',

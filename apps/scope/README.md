@@ -7,10 +7,10 @@ npx @deslop/scope@latest                                    # http://127.0.0.1:4
 claude mcp add --transport http scope https://scope.mp281x.xyz/mcp
 claude mcp login scope --no-browser
 codex mcp add scope --url https://scope.mp281x.xyz/mcp
-codex mcp login scope
+codex mcp login --no-browser scope
 ```
 
-Trusted local exporters use `http://127.0.0.1:4318/v1/traces` and `/v1/logs` with `content-type: application/json`; never publish port 4318 to the internet. The public port serves MCP and authenticated ingestion. `HOST` changes the bind address; `PORT` changes the public port. Authorization uses Deslop Auth; no pasted API keys. Remote Codex clients need an HTTPS OAuth callback forwarded to their listener. Claude Code's headless login accepts the full callback URL when the phone cannot reach its localhost redirect.
+Trusted local exporters use `http://127.0.0.1:4318/v1/traces` and `/v1/logs` with `content-type: application/json`; never publish port 4318 to the internet. The public port serves MCP and authenticated ingestion. `HOST` changes the bind address; `PORT` changes the public port. Authorization uses Deslop Auth; no pasted API keys. Both headless clients print an authorization URL: open it on the phone, approve access, then copy the full callback URL from the address bar into the remote terminal. The phone need not reach the localhost callback; no forwarding is required.
 
 | Tool       | Returns                                                                  |
 | ---------- | ------------------------------------------------------------------------ |

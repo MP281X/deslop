@@ -70,6 +70,32 @@ public class StashNativeModule: Module {
       else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
     }
 
+    AsyncFunction("lockSession") { () async throws -> [String: Int] in
+      guard let identifier = Bundle.main.bundleIdentifier else { throw CocoaError(.featureUnsupported) }
+      // The JS continuation must write credentials before iOS suspends the containing app.
+      let task = await MainActor.run {
+        UIApplication.shared.beginBackgroundTask(withName: "Stash authentication")
+      }
+      guard task != .invalid else { throw CocoaError(.userCancelled) }
+      do {
+        let descriptor = try await SessionLock.acquire(group: "group.\(identifier)")
+        return ["backgroundTask": task.rawValue, "descriptor": Int(descriptor)]
+      } catch {
+        await MainActor.run { UIApplication.shared.endBackgroundTask(task) }
+        throw error
+      }
+    }
+
+    AsyncFunction("unlockSession") { (lock: [String: Int]) async throws in
+      guard let descriptor = lock["descriptor"], let task = lock["backgroundTask"] else {
+        throw CocoaError(.coderValueNotFound)
+      }
+      SessionLock.release(Int32(descriptor))
+      await MainActor.run {
+        UIApplication.shared.endBackgroundTask(UIBackgroundTaskIdentifier(rawValue: task))
+      }
+    }
+
   }
 
   private func keychainQuery() throws -> [String: Any] {
