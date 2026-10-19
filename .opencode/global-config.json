@@ -1,0 +1,29 @@
+{
+	"$schema": "https://opencode.ai/config.json",
+	"plugins": ["-opencode.tool.subagent", "-opencode.tool.question", "-opencode.tools"],
+	"agents": {"plan": {"disabled": true}, "general": {"disabled": true}, "explore": {"disabled": true}},
+	"policies": [
+		{"action": "tool.use", "resource": "shell:python *", "effect": "deny"},
+		{"action": "tool.use", "resource": "shell:python3 *", "effect": "deny"},
+		{"action": "tool.use", "resource": "shell:sed -i*", "effect": "deny"},
+		{"action": "tool.use", "resource": "shell:sed -E -i*", "effect": "deny"},
+		{"action": "tool.use", "resource": "shell:sed --in-place*", "effect": "deny"},
+		{"action": "tool.use", "resource": "shell:perl -i*", "effect": "deny"},
+		{"action": "tool.use", "resource": "shell:perl -pi*", "effect": "deny"},
+		{"action": "tool.use", "resource": "shell:cat >*", "effect": "deny"},
+		{"action": "tool.use", "resource": "shell:cat <<*", "effect": "deny"},
+		{"action": "tool.use", "resource": "shell:*gh pr merge*", "effect": "deny"},
+		{"action": "tool.use", "resource": "shell:*gh pr review*", "effect": "deny"},
+		{"action": "tool.use", "resource": "shell:*glab mr merge*", "effect": "deny"},
+		{"action": "tool.use", "resource": "shell:*glab mr approve*", "effect": "deny"}
+	],
+	"mcp": {
+		"servers": {
+			"dual": {"type": "remote", "url": "https://app.dualos.ai/mcp"},
+			"scope": {"type": "remote", "url": "https://scope.mp281x.xyz/mcp"},
+			"stash": {"type": "remote", "url": "https://stash.mp281x.xyz/mcp"},
+			"portfolio": {"type": "remote", "url": "https://portfolio.mp281x.xyz/mcp"},
+			"mobbin": {"type": "remote", "url": "https://api.mobbin.com/mcp"}
+		}
+	}
+}
