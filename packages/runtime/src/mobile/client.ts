@@ -13,19 +13,17 @@ export const extra = Schema.decodeUnknownSync(Schema.Struct({otel: Schema.String
 	Constants.expoConfig?.extra
 )
 
-// `stash`, or `stash-dev` in a development build.
-export const scheme = Schema.decodeUnknownSync(Schema.String)(Constants.expoConfig?.scheme)
-
-// Binary frames failed to reopen a cancelled watch on iOS.
+// Telemetry starts once; the socket is built per server. JSON frames, because binary ones failed to reopen a cancelled watch on iOS.
 export function layer(applicationName: string) {
 	Atom.runtime.addGlobalLayer(layerOtlp(`${applicationName}-ios`, extra.otel, 'mobile'))
-	return pipe(
-		// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
-		Rpc.RpcClient.layerProtocolSocket({pingTimeout: '15 seconds', retryTransientErrors: true}),
-		Layer.provide(Socket.layerWebSocket(pipe(new URL('/api/rpc', extra.server).href, String.replace(/^http/u, 'ws')))),
-		Layer.provide(Socket.layerWebSocketConstructorGlobal),
-		Layer.provide(Rpc.RpcSerialization.layerJson)
-	)
+	return (server: string) =>
+		pipe(
+			// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
+			Rpc.RpcClient.layerProtocolSocket({pingTimeout: '15 seconds', retryTransientErrors: true}),
+			Layer.provide(Socket.layerWebSocket(pipe(new URL('/api/rpc', server).href, String.replace(/^http/u, 'ws')))),
+			Layer.provide(Socket.layerWebSocketConstructorGlobal),
+			Layer.provide(Rpc.RpcSerialization.layerJson)
+		)
 }
 
 // iOS suspends sockets in the background, so atoms that read this count start over on each return from it; a sign-in sheet only makes the app inactive.

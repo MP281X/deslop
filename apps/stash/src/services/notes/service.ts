@@ -7,29 +7,22 @@ import {
 	Context,
 	DateTime,
 	Effect,
-	Exit,
 	FiberMap,
 	FileSystem,
-	HashMap,
 	Layer,
 	Option,
 	Path,
 	Random,
 	Result,
 	Schema,
-	Scope,
 	Semaphore,
 	Stream,
 	String,
 	Struct,
 	SubscriptionRef,
-	SynchronizedRef,
 	Tuple,
 	pipe
 } from 'effect'
-
-import type {User} from '@deslop/auth/schema'
-import {CurrentUser} from '@deslop/auth/utils'
 
 import {Media} from '#services/media/service.ts'
 import {Sources} from '#services/notes/lib/extraction.ts'
@@ -82,6 +75,7 @@ export class Notes extends Context.Service<
 		readonly events: Stream.Stream<NotesEvent>
 		readonly get: (input: Pick<Note, 'id'>) => Effect.Effect<Note, NotesError>
 		readonly image: (id: Note['id']) => Effect.Effect<Image, NotesError>
+		readonly list: Effect.Effect<Note[]>
 		readonly regenerate: (input: Pick<Note, 'id'>) => Effect.Effect<void, NotesError>
 		readonly remove: (input: Pick<Note, 'id'>) => Effect.Effect<void, NotesError>
 		readonly search: (input: {query: string}) => Effect.Effect<Note['id'][]>
@@ -453,6 +447,7 @@ export class Notes extends Context.Service<
 						)
 						return {bytes: yield* pipe(fs.readFile(path.join(images, id)), storageFailed), type}
 					}),
+					list: SubscriptionRef.get(state),
 					regenerate: Effect.fn('Notes.regenerate')(function* (input) {
 						yield* FiberMap.remove(runs, input.id)
 						const reset = yield* transact(current =>
@@ -494,54 +489,32 @@ export class Notes extends Context.Service<
 		)
 }
 
-// Each user's notes, images and files live in their own folder, so no request reaches another user's notes.
-export class UserNotes extends Context.Service<
-	UserNotes,
-	{readonly current: Effect.Effect<typeof Notes.Service, NotesError, CurrentUser>}
->()('@deslop/stash/services/notes/service/UserNotes') {
-	static readonly layer = Layer.effect(
-		this,
-		Effect.gen(function* () {
-			const fs = yield* FileSystem.FileSystem
-			const path = yield* Path.Path
-			const directory = yield* pipe(
-				Config.String('STASH_DATA_DIR'),
-				Config.withDefault(path.join(yield* Config.String('HOME'), '.deslop', 'stash'))
-			)
-			const users = yield* pipe(
-				fs.makeDirectory(directory, {mode: 0o700, recursive: true}),
-				Effect.andThen(fs.readDirectory(directory)),
-				Effect.mapError(cause => NotesError.make({cause, message: 'The notes folder could not be read.'}))
-			)
-			const scope = yield* Scope.Scope
-			const services = Layer.succeedContext(
-				yield* Effect.context<FileSystem.FileSystem | Path.Path | Sources | Media | Organizer>()
-			)
-			const loaded = yield* SynchronizedRef.make(HashMap.empty<User['id'], typeof Notes.Service>())
-
-			// A failed build closes what it opened, such as the database.
-			const build = Effect.fnUntraced(function* (user: User['id']) {
-				const owned = yield* Scope.fork(scope)
-				const context = yield* pipe(
-					Layer.buildWithScope(pipe(Notes.layer(path.join(directory, user)), Layer.provide(services)), owned),
-					Effect.onError(cause => Scope.close(owned, Exit.failCause(cause)))
+// The server's notes folder; the previous release kept the one user's notes in its `github:<id>` folder.
+const notesFolder = pipe(
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem
+		const path = yield* Path.Path
+		const directory = yield* pipe(
+			Config.String('STASH_DATA_DIR'),
+			Config.withDefault(path.join(yield* Config.String('HOME'), '.deslop', 'stash'))
+		)
+		yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
+		yield* Effect.forEach(
+			Array.filter(yield* fs.readDirectory(directory), String.startsWith('github:')),
+			Effect.fnUntraced(function* (user) {
+				const folder = path.join(directory, user)
+				yield* Effect.forEach(
+					yield* fs.readDirectory(folder),
+					entry => fs.rename(path.join(folder, entry), path.join(directory, entry)),
+					{concurrency: 1, discard: true}
 				)
-				return Context.get(context, Notes)
-			})
+				yield* fs.remove(folder, {recursive: true})
+			}),
+			{concurrency: 1, discard: true}
+		)
+		return directory
+	}),
+	Effect.mapError(cause => NotesError.make({cause, message: 'The notes folder could not be read.'}))
+)
 
-			// One load at a time, and a failed load keeps nothing, so the next request loads the folder again.
-			function load(user: User['id']) {
-				return SynchronizedRef.modifyEffect(loaded, current =>
-					Option.match(HashMap.get(current, user), {
-						onNone: () => Effect.map(build(user), notes => Tuple.make(notes, HashMap.set(current, user, notes))),
-						onSome: notes => Effect.succeed(Tuple.make(notes, current))
-					})
-				)
-			}
-
-			// Loading every user at start resumes the notes still being tagged when the server stopped.
-			yield* Effect.forEach(users, load, {concurrency: 1, discard: true})
-			return UserNotes.of({current: Effect.flatMap(CurrentUser, user => load(user.id))})
-		})
-	)
-}
+export const layerNotes = Layer.unwrap(Effect.map(notesFolder, directory => Notes.layer(directory)))

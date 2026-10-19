@@ -290,7 +290,7 @@ function DeleteButton(props: {onPress: () => void}) {
 }
 
 // A picker row's tag is a string or a number, so "All Notes", which clears the filter, is a toggle beside it.
-function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
+function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void; onServer: () => void}) {
 	return (
 		// A menu opened from the bottom bar reverses its items unless the order is fixed.
 		<Menu
@@ -318,6 +318,8 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 					<KindLabel key={kind} kind={kind} />
 				))}
 			</Picker>
+			<Divider />
+			<Button label="Server" systemImage="server.rack" onPress={props.onServer} />
 		</Menu>
 	)
 }
@@ -411,11 +413,11 @@ export function HomeRoute(props: {
 	onKind: (kind?: Kind) => void
 	onOpen: (id: Note['id']) => void
 	onSearch: (text: string) => void
+	onServer: () => void
 	onTag: (name?: string) => void
 	query: ReturnType<typeof useNativeState<string>>
 	tag?: string
 }) {
-	// Only a signed-in screen reloads for an update, so a reload never ends a sign-in.
 	useAtomMount(updateAtom)
 	const items = useAtomSuspense(notesAtom).value
 	const remove = useAtomSet(removeAtom)
@@ -542,7 +544,7 @@ export function HomeRoute(props: {
 					<PasteSheet />
 				</ToolbarItem>
 				<ToolbarItem placement="bottomBar">
-					<FilterMenu kind={props.kind} onKind={props.onKind} />
+					<FilterMenu kind={props.kind} onKind={props.onKind} onServer={props.onServer} />
 				</ToolbarItem>
 			</Toolbar.Content>
 		</Toolbar>

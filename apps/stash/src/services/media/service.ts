@@ -59,14 +59,7 @@ export class Media extends Context.Service<
 			const fs = yield* FileSystem.FileSystem
 			const path = yield* Path.Path
 			const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
-			const cache = path.join(
-				yield* pipe(
-					Config.String('XDG_CACHE_HOME'),
-					Config.withDefault(path.join(yield* Config.String('HOME'), '.cache'))
-				),
-				'deslop',
-				'media'
-			)
+			const cache = path.join(yield* pipe(Config.String('TMPDIR'), Config.withDefault('/tmp')), 'deslop', 'stash')
 			const whisper = yield* Semaphore.make(1)
 			const ytDlpArgs = ['--js-runtimes', 'node', '--no-progress', '--no-warnings', '--no-playlist']
 			const exit = yield* sourceProxy

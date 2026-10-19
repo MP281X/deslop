@@ -44,16 +44,14 @@ services:
       traefik.http.routers.auth-server.rule: Host(`auth.mp281x.xyz`)
       traefik.http.services.auth-server.loadbalancer.server.port: '5000'
 
+  # No authentication: only the tailnet reaches it, through `tailscale serve`.
   stash:
     <<: *service
     image: ghcr.io/mp281x/deslop-stash:${REVISION:-latest}
     env_file: ${HOME}/.deslop/stash.env
     environment: {VITE_OTEL_URL: http://scope:4318}
-    volumes: ['${HOME}/.deslop/stash:/home/node/.deslop/stash', '${HOME}/.cache/deslop:/home/node/.cache/deslop']
-    labels:
-      traefik.enable: 'true'
-      traefik.http.routers.stash.rule: Host(`stash.mp281x.xyz`)
-      traefik.http.services.stash.loadbalancer.server.port: '5000'
+    volumes: ['${HOME}/.deslop/stash:/home/node/.deslop/stash']
+    ports: [127.0.0.1:4319:5000]
 
   # The tailnet reaches its MCP endpoint through `tailscale serve`; the internet reaches only the receiver.
   scope:

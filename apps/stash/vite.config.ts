@@ -6,8 +6,6 @@ import * as ViteConfig from '@deslop/runtime/vite'
 export default defineConfig({
 	pack: {
 		...ViteConfig.pack,
-		deps: {alwaysBundle: [/^(?!onnxruntime-|sharp$)/u], neverBundle: [/^onnxruntime-/u, 'sharp']},
-		entry: {cli: 'src/main.cli.ts', server: 'src/main.server.ts'},
-		outputOptions: {entryFileNames: '[name].js'}
+		deps: {alwaysBundle: [/^(?!onnxruntime-|sharp$)/u], neverBundle: [/^onnxruntime-/u, 'sharp']}
 	}
 })

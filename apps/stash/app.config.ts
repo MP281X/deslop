@@ -1,11 +1,12 @@
 import * as ExpoRuntime from '@deslop/runtime/mobile/expo'
 
+// The server is the default until the user picks another in the app, which the share extension reads too.
 const app = ExpoRuntime.make({
 	bundleIdentifier: 'xyz.mp281x.stash',
 	name: 'stash',
 	owner: 'mp281x.xyz',
 	projectId: 'c9620553-0dc5-4e08-b691-a47fa3cab00e',
-	server: 'https://stash.mp281x.xyz',
+	server: 'https://dev.tailnet-8c4c.ts.net:4319',
 	slug: 'stash'
 })
 

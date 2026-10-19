@@ -364,7 +364,7 @@ export class Issuer extends Context.Service<
 	Issuer,
 	{readonly issue: (user: User) => Effect.Effect<string, AuthError>}
 >()('@deslop/auth/service/Issuer') {
-	// The auth app: an Ed25519 key from GITHUB_CLIENT_SECRET; `redirects` are native sign-in URLs, such as `stash://auth`.
+	// The auth app: an Ed25519 key from GITHUB_CLIENT_SECRET; `redirects` are native sign-in URLs, such as `<app scheme>://auth`.
 	static readonly layer = (options: {redirects: string[]}) =>
 		Layer.provideMerge(
 			Layer.effectContext(
