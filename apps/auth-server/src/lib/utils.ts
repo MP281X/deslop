@@ -49,7 +49,7 @@ export const signInAtom = Atom.fn(() =>
 export const signOutAtom = authRuntime.fn(() =>
 	pipe(
 		HttpClient.HttpClient.use(client => HttpClient.filterStatusOk(client).post('/auth/sign-out')),
-		Effect.andThen(Effect.sync(() => location.assign('/'))),
+		Effect.andThen(Effect.sync(() => location.reload())),
 		Effect.mapError(cause => AuthError.make({cause, message: 'Cannot sign out'}))
 	)
 )

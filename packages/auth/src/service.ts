@@ -115,7 +115,7 @@ export class Auth extends Context.Service<
 	Auth,
 	{
 		readonly user: (headers: Headers.Headers) => Effect.Effect<User, AuthError>
-		readonly access: (request: Request, resource: string) => Effect.Effect<User, AuthError>
+		readonly access: (headers: Headers.Headers, resource: string) => Effect.Effect<User, AuthError>
 	}
 >()('@deslop/auth/service/Auth') {
 	static readonly layer = (resource: string) =>
@@ -124,10 +124,10 @@ export class Auth extends Context.Service<
 				const url = yield* pipe(Config.String('AUTH_URL'), Config.withDefault(AUTH_URL))
 				const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 				const origins = [new URL(url).origin, ...Array.map(Resource.literals, identifier => new URL(identifier).origin)]
-				const access = Effect.fn('Auth.access')(function* (request: Request, audience: string) {
+				const access = Effect.fn('Auth.access')(function* (headers: Headers.Headers, audience: string) {
 					return yield* pipe(
 						client.get(`${url}/auth/verify`, {
-							headers: {authorization: request.headers.get('authorization') ?? ''},
+							headers: {authorization: headers['authorization'] ?? ''},
 							urlParams: {resource: audience}
 						}),
 						Effect.flatMap(HttpClientResponse.schemaBodyJson(User)),
@@ -139,7 +139,7 @@ export class Auth extends Context.Service<
 						access,
 						user: Effect.fn('Auth.user')(function* (headers: Headers.Headers) {
 							if (Option.isSome(Headers.get(headers, 'authorization'))) {
-								return yield* access(new Request(resource, {headers}), resource)
+								return yield* access(headers, resource)
 							}
 							if (Option.exists(Headers.get(headers, 'origin'), origin => !Array.contains(origins, origin))) {
 								return yield* AuthError.make({message: 'The request comes from another origin'})
@@ -164,16 +164,10 @@ export class Auth extends Context.Service<
 				const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 				const url = yield* pipe(Config.String('AUTH_URL'), Config.withDefault(AUTH_URL))
 				const issuer = `${url}/api/auth`
-				const provider = yield* Config.option(
-					Config.all({
-						clientId: Config.String('GITHUB_CLIENT_ID'),
-						secret: Config.Redacted('GITHUB_CLIENT_SECRET'),
-						users: Config.Array(Schema.String, 'GITHUB_USERS')
-					})
-				)
-				const users = Option.match(provider, {
-					onNone: Array.empty<string>,
-					onSome: config => Array.fromIterable(config.users)
+				const provider = yield* Config.all({
+					clientId: Config.String('GITHUB_CLIENT_ID'),
+					secret: Config.Redacted('GITHUB_CLIENT_SECRET'),
+					users: Config.Array(Schema.String, 'GITHUB_USERS')
 				})
 				yield* sql`CREATE TABLE IF NOT EXISTS auth_state (hash TEXT PRIMARY KEY, payload TEXT NOT NULL, expires_at INTEGER NOT NULL)`
 				const hash = Effect.fnUntraced(function* (value: string) {
@@ -203,7 +197,7 @@ export class Auth extends Context.Service<
 					yield* sql`DELETE FROM auth_state WHERE hash = ${yield* hash(token)}`
 				})
 				const allowed = Effect.fnUntraced(function* (user: User) {
-					if (!Array.contains(users, String.replace('github:', '')(user.id))) {
+					if (!Array.contains(provider.users, String.replace('github:', '')(user.id))) {
 						return yield* AuthError.make({error: 'access_denied', message: 'This GitHub account is not allowed'})
 					}
 					return user
@@ -213,8 +207,8 @@ export class Auth extends Context.Service<
 					if (stored._tag !== 'Session') return yield* AuthError.make({message: 'Sign in first'})
 					return yield* allowed(stored.user)
 				}, rejected('Sign in first'))
-				const access = Effect.fn('Auth.access')(function* (request: Request, resource: string) {
-					const authorization = request.headers.get('authorization') ?? ''
+				const access = Effect.fn('Auth.access')(function* (headers: Headers.Headers, resource: string) {
+					const authorization = headers['authorization'] ?? ''
 					if (!String.startsWith('Bearer ')(authorization)) return yield* AuthError.make({message: 'Sign in first'})
 					const stored = yield* load(String.slice(7)(authorization))
 					if (stored._tag !== 'Access' || !Array.some(stored.resources, value => value === resource)) {
@@ -489,7 +483,7 @@ export class Auth extends Context.Service<
 							rejected('Invalid resource')
 						)
 						const user = yield* Effect.result(
-							access(new Request(url, {headers: (yield* HttpServerRequest.HttpServerRequest).headers}), params.resource)
+							access((yield* HttpServerRequest.HttpServerRequest).headers, params.resource)
 						)
 						if (Result.isFailure(user)) return HttpServerResponse.empty({status: 401})
 						return yield* HttpServerResponse.schemaJson(User)(user.success, {headers: {'cache-control': 'no-store'}})
@@ -501,7 +495,6 @@ export class Auth extends Context.Service<
 					'/auth/github',
 					oauth(
 						Effect.gen(function* () {
-							const config = yield* pipe(Effect.fromOption(provider), rejected('GitHub sign-in is not configured'))
 							const params = yield* pipe(
 								HttpServerRequest.schemaSearchParams(SignInParams),
 								rejected('Invalid sign-in request')
@@ -512,7 +505,7 @@ export class Auth extends Context.Service<
 							const authorize = new URL('https://github.com/login/oauth/authorize')
 							authorize.search = UrlParams.toString(
 								UrlParams.fromInput({
-									client_id: config.clientId,
+									client_id: provider.clientId,
 									code_challenge: yield* hash(verifier),
 									code_challenge_method: 'S256',
 									redirect_uri: `${url}/auth/github/callback`,
@@ -533,7 +526,6 @@ export class Auth extends Context.Service<
 					'/auth/github/callback',
 					pipe(
 						Effect.gen(function* () {
-							const config = yield* pipe(Effect.fromOption(provider), rejected('GitHub sign-in is not configured'))
 							const params = yield* pipe(
 								HttpServerRequest.schemaSearchParams(CallbackParams),
 								rejected('GitHub sent no code')
@@ -553,8 +545,8 @@ export class Auth extends Context.Service<
 								HttpClientRequest.post('https://github.com/login/oauth/access_token'),
 								HttpClientRequest.acceptJson,
 								HttpClientRequest.bodyUrlParams({
-									client_id: config.clientId,
-									client_secret: Redacted.value(config.secret),
+									client_id: provider.clientId,
+									client_secret: Redacted.value(provider.secret),
 									code: params.code,
 									code_verifier: flow.verifier,
 									redirect_uri: `${url}/auth/github/callback`
@@ -590,17 +582,22 @@ export class Auth extends Context.Service<
 								}
 							)
 						}),
-						Effect.catch(cause =>
-							pipe(
-								Effect.logWarning('GitHub sign-in failed', cause),
-								Effect.as(
-									HttpServerResponse.expireCookieUnsafe(
-										HttpServerResponse.redirect('/?error=github'),
-										LOGIN_COOKIE,
-										COOKIE
-									)
+						Effect.catch(
+							Effect.fnUntraced(function* (cause) {
+								yield* Effect.logWarning('GitHub sign-in failed', cause)
+								return HttpServerResponse.expireCookieUnsafe(
+									HttpServerResponse.redirect(
+										`/?${UrlParams.toString(
+											UrlParams.fromInput({
+												error: 'github',
+												request: (yield* HttpServerRequest.HttpServerRequest).cookies[REQUEST_COOKIE]
+											})
+										)}`
+									),
+									LOGIN_COOKIE,
+									COOKIE
 								)
-							)
+							})
 						)
 					)
 				)
@@ -660,12 +657,7 @@ export function layerMcpAuth(resource: string) {
 			const auth = yield* Auth
 			return app =>
 				Effect.gen(function* () {
-					const user = yield* Effect.result(
-						auth.access(
-							new Request(resource, {headers: (yield* HttpServerRequest.HttpServerRequest).headers}),
-							resource
-						)
-					)
+					const user = yield* Effect.result(auth.access((yield* HttpServerRequest.HttpServerRequest).headers, resource))
 					if (Result.isFailure(user)) {
 						return HttpServerResponse.text('Authorization required', {
 							headers: {
