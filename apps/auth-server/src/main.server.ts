@@ -5,7 +5,7 @@ import {Layer, pipe} from 'effect'
 import {HttpRouter} from 'effect/http'
 import {RpcServer} from 'effect/rpc'
 
-import {Issuer} from '@deslop/auth/service'
+import {Auth} from '@deslop/auth/service'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -22,7 +22,7 @@ NodeRuntime.runMain(
 					),
 					ServerRuntime.layerStaticFiles
 				),
-				Layer.provide(Issuer.layer({redirects: []}))
+				Layer.provide(Auth.layerIssuer)
 			),
 			{disableLogger: true}
 		),

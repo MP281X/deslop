@@ -37,15 +37,15 @@ url = "https://app.dualos.ai/mcp"
 default_tools_approval_mode = "approve"
 
 [mcp_servers.scope]
-url = "https://dev.tailnet-8c4c.ts.net:4318/mcp"
+url = "https://scope.mp281x.xyz/mcp"
 default_tools_approval_mode = "approve"
 
 [mcp_servers.stash]
-url = "https://dev.tailnet-8c4c.ts.net:4319/mcp"
+url = "https://stash.mp281x.xyz/mcp"
 default_tools_approval_mode = "approve"
 
 [mcp_servers.portfolio]
-url = "https://dev.tailnet-8c4c.ts.net:4320/mcp"
+url = "https://portfolio.mp281x.xyz/mcp"
 default_tools_approval_mode = "approve"
 
 [mcp_servers.mobbin]

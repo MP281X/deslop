@@ -1,17 +1,14 @@
 import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Boolean, Option} from 'effect'
+import {Array, Boolean, Option} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Check, Copy, LoaderCircle, LogOut} from 'lucide-react'
-import {useState, type ReactNode} from 'react'
+import {LoaderCircle, LogOut} from 'lucide-react'
 
-import {Button, buttonVariants} from '@deslop/components-web/ui/button'
-import {InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput} from '@deslop/components-web/ui/input-group'
-import {toast} from '@deslop/components-web/ui/sonner'
+import {Button} from '@deslop/components-web/ui/button'
 
-import {apiKeyAtom, meAtom} from '#lib/utils.ts'
+import {consentAtom, meAtom, requestAtom, signInAtom, signOutAtom} from '#lib/utils.ts'
 
 export const Route = createFileRoute('/(home)/')({component: Home})
 
@@ -40,142 +37,125 @@ function GitHubIcon() {
 	)
 }
 
-function Step(props: {children?: ReactNode; number: number; status: 'current' | 'done' | 'next'; title: string}) {
-	return (
-		<li
-			className="group relative flex gap-4 pb-7 last:pb-0"
-			data-status={props.status}
-			aria-current={Boolean.match(props.status === 'current', {onFalse: () => false, onTrue: () => 'step' as const})}
-		>
-			<span className="absolute top-8 bottom-1 left-3 border-l group-last:hidden" aria-hidden="true" />
-			<span
-				className="text-muted-foreground group-data-[status=current]:text-foreground group-data-[status=current]:border-foreground grid size-6 shrink-0 place-items-center border text-xs group-data-[status=done]:border-transparent"
-				aria-hidden="true"
-			>
-				{Boolean.match(props.status === 'done', {
-					onFalse: () => props.number,
-					onTrue: () => <Check className="size-4" />
-				})}
-			</span>
-			<div className="flex min-w-0 flex-1 flex-col gap-3 pt-1">
-				<h2 className="text-muted-foreground group-data-[status=current]:text-foreground text-sm font-medium">
-					{props.title}
-				</h2>
-				{props.children}
-			</div>
-		</li>
-	)
-}
-
 function Home() {
-	const [apiKey, createApiKey] = useAtom(apiKeyAtom)
-	const [copied, setCopied] = useState(false)
 	const user = useAtomSuspense(meAtom).value
-	const key = AsyncResult.value(apiKey)
+	const request = useAtomSuspense(requestAtom).value
+	const [signIn, startSignIn] = useAtom(signInAtom)
+	const [signOut, endSession] = useAtom(signOutAtom)
+	const [consent, respond] = useAtom(consentAtom)
+	const error = Option.orElse(AsyncResult.error(signIn), () =>
+		Option.orElse(AsyncResult.error(consent), () => AsyncResult.error(signOut))
+	)
 	return (
 		<main className="flex flex-1 justify-center overflow-y-auto px-6 py-10 md:py-24">
-			<div className="w-full max-w-md">
-				<div className="mb-8 flex items-center gap-2.5">
+			<div className="flex w-full max-w-md flex-col gap-6">
+				<div className="flex items-center gap-2.5">
 					<Logo />
 					<h1 className="text-xl font-semibold">Deslop Auth</h1>
 				</div>
-				<ol>
-					<Step
-						number={1}
-						status={Boolean.match(Option.isSome(user), {onFalse: () => 'current', onTrue: () => 'done'})}
-						title="Sign in"
-					>
-						{Option.match(user, {
-							onNone: () => (
-								<a href="/auth/github" className={buttonVariants({className: 'self-start', size: 'lg'})}>
-									<GitHubIcon />
-									Sign in with GitHub
-								</a>
-							),
-							onSome: account => (
-								<div className="-mt-1 flex min-w-0 items-center justify-between gap-2">
-									<p className="min-w-0 truncate text-sm">{account.name}</p>
-									<form method="post" action="/auth/sign-out">
-										<Button type="submit" variant="ghost" size="icon-lg" aria-label="Sign out">
-											<LogOut />
-										</Button>
-									</form>
-								</div>
-							)
-						})}
-					</Step>
-					<Step
-						number={2}
-						status={Boolean.match(Option.isNone(user), {
-							onFalse: () => Boolean.match(Option.isSome(key), {onFalse: () => 'current', onTrue: () => 'done'}),
-							onTrue: () => 'next'
-						})}
-						title="API key"
-					>
-						{Option.isSome(user) &&
-							Option.match(key, {
+				{Option.match(user, {
+					onNone: () => (
+						<Button size="lg" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
+							{Boolean.match(AsyncResult.isWaiting(signIn), {
+								onFalse: () => <GitHubIcon />,
+								onTrue: () => <LoaderCircle className="motion-safe:animate-spin" />
+							})}
+							Sign in with GitHub
+						</Button>
+					),
+					onSome: account => (
+						<>
+							{Option.match(request, {
 								onNone: () => (
 									<>
-										{Option.match(AsyncResult.error(apiKey), {
-											onNone: () => null,
-											onSome: error => (
-												<p className="text-destructive text-sm" role="alert">
-													Cannot create an API key: {error.message}
-												</p>
-											)
-										})}
-										<Button
-											size="lg"
-											className="self-start"
-											disabled={AsyncResult.isWaiting(apiKey)}
-											onClick={() => createApiKey()}
-										>
-											{AsyncResult.isWaiting(apiKey) && <LoaderCircle className="motion-safe:animate-spin" />}Create API
-											key
-										</Button>
+										<div className="flex items-center justify-between gap-2 border-y py-3">
+											<p className="min-w-0 truncate text-sm">{account.name}</p>
+											<Button
+												variant="ghost"
+												size="icon-lg"
+												aria-label="Sign out"
+												disabled={AsyncResult.isWaiting(signOut)}
+												onClick={() => endSession()}
+											>
+												<LogOut />
+											</Button>
+										</div>
+										<p className="text-muted-foreground text-sm">
+											Open an app or connect its MCP URL. Sign-in and authorization happen here automatically.
+										</p>
 									</>
 								),
-								onSome: value => (
-									<InputGroup>
-										<InputGroupInput readOnly value={value} aria-label="API key" />
-										<InputGroupAddon align="inline-end">
-											<InputGroupButton
-												size="icon-xs"
-												aria-label={Boolean.match(copied, {onFalse: () => 'Copy API key', onTrue: () => 'Copied'})}
-												onClick={async () => {
-													try {
-														await navigator.clipboard.writeText(value)
-														setCopied(true)
-													} catch {
-														toast.error('Cannot copy the API key. Select and copy it from the field.')
-													}
-												}}
+								onSome: grant => (
+									<>
+										<div>
+											<h2 className="border-b pb-2 text-sm font-medium">Allow access to Deslop?</h2>
+											<dl>
+												<div className="grid grid-cols-4 items-start gap-3 border-b py-3">
+													<dt className="text-muted-foreground text-xs">Client ID</dt>
+													<dd className="col-span-3 min-w-0 text-sm break-all">{grant.clientId}</dd>
+												</div>
+												<div className="grid grid-cols-4 items-start gap-3 border-b py-3">
+													<dt className="text-muted-foreground text-xs">Return to</dt>
+													<dd className="col-span-3 min-w-0 text-sm break-all">{grant.redirectUri}</dd>
+												</div>
+												<div className="grid grid-cols-4 items-start gap-3 border-b py-3">
+													<dt className="text-muted-foreground text-xs">Resources</dt>
+													<dd className="col-span-3 min-w-0 space-y-1 text-sm break-all">
+														{Array.map(grant.resources, resource => (
+															<p key={resource}>{resource}</p>
+														))}
+													</dd>
+												</div>
+												<div className="grid grid-cols-4 items-center gap-3 border-b py-3">
+													<dt className="text-muted-foreground text-xs">Account</dt>
+													<dd className="col-span-3 flex min-w-0 items-center justify-between gap-2">
+														<p className="min-w-0 truncate text-sm">{account.name}</p>
+														<Button
+															variant="ghost"
+															size="icon-lg"
+															aria-label="Sign out"
+															disabled={AsyncResult.isWaiting(signOut)}
+															onClick={() => endSession()}
+														>
+															<LogOut />
+														</Button>
+													</dd>
+												</div>
+											</dl>
+										</div>
+										<div className="flex flex-col gap-2">
+											<Button size="lg" disabled={AsyncResult.isWaiting(consent)} onClick={() => respond(true)}>
+												{AsyncResult.isWaiting(consent) && <LoaderCircle className="motion-safe:animate-spin" />}
+												Allow
+											</Button>
+											<Button
+												size="lg"
+												variant="outline"
+												disabled={AsyncResult.isWaiting(consent)}
+												onClick={() => respond(false)}
 											>
-												{Boolean.match(copied, {onFalse: () => <Copy />, onTrue: () => <Check />})}
-											</InputGroupButton>
-											{copied && (
-												<span className="sr-only" role="status">
-													Copied
-												</span>
-											)}
-										</InputGroupAddon>
-									</InputGroup>
+												Deny
+											</Button>
+										</div>
+									</>
 								)
 							})}
-					</Step>
-					<Step
-						number={3}
-						status={Boolean.match(Option.isSome(key), {onFalse: () => 'next', onTrue: () => 'current'})}
-						title="Command line"
-					>
-						{Option.isSome(key) && (
-							<p className="text-muted-foreground text-sm">
-								Shown once. Save it with your app’s{' '}
-								<code className="text-foreground bg-muted px-1">login &lt;key&gt;</code> command.
-							</p>
-						)}
-					</Step>
-				</ol>
+						</>
+					)
+				})}
+				{Option.match(error, {
+					onNone: () => null,
+					onSome: failure => (
+						<p className="text-destructive text-sm" role="alert">
+							{failure.message}
+						</p>
+					)
+				})}
+				{new URLSearchParams(location.search).has('error') && (
+					<p className="text-destructive text-sm" role="alert">
+						Sign-in failed. Sign in with an allowed GitHub account.
+					</p>
+				)}
 			</div>
 		</main>
 	)

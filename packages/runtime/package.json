@@ -13,6 +13,7 @@
 		"./web": "./src/web/client.ts"
 	},
 	"dependencies": {
+		"@deslop/auth": "workspace:*",
 		"@deslop/components-web": "workspace:*",
 		"@tanstack/react-router": "latest"
 	},

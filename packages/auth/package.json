@@ -9,5 +9,8 @@
 		"./schema": "./src/schema.ts",
 		"./service": "./src/service.ts",
 		"./utils": "./src/lib/utils.ts"
+	},
+	"dependencies": {
+		"@effect/sql-sqlite-node": "latest"
 	}
 }

@@ -1,3 +1,5 @@
+import {SqliteClient} from '@effect/sql-sqlite-node'
+
 import {
 	Array,
 	Boolean,
@@ -5,15 +7,13 @@ import {
 	Config,
 	Context,
 	Crypto,
-	Duration,
 	Effect,
-	HashSet,
+	FileSystem,
 	Layer,
 	Option,
+	Path,
 	Redacted,
-	Ref,
 	Result,
-	Schedule,
 	Schema,
 	String,
 	pipe
@@ -29,86 +29,43 @@ import {
 	HttpRouter,
 	HttpServerRequest,
 	HttpServerResponse,
-	UrlParams,
-	Url
+	Url,
+	UrlParams
 } from 'effect/http'
 
 import {
 	AuthError,
+	Authorization,
+	AuthorizeParams,
 	CallbackParams,
+	ConsentParams,
+	GitHubToken,
 	GitHubUser,
-	OAuthFlow,
-	OAuthTokenError,
-	OAuthTokenResponse,
-	Session,
+	Registration,
+	Resource,
+	RequestParams,
+	RevokeParams,
 	SignInParams,
-	Verification,
-	User
+	Stored,
+	StoredRow,
+	TokenParams,
+	User,
+	VerificationParams
 } from '#schema.ts'
 
-import {AUTH_URL, CurrentUser, RpcAuth, development} from '#lib/utils.ts'
+import {AUTH_URL, CurrentUser, RpcAuth} from '#lib/utils.ts'
 
 const SESSION_COOKIE = '__Secure-session'
-const OAUTH_COOKIE = '__Host-oauth'
+const LOGIN_COOKIE = '__Host-login'
+const REQUEST_COOKIE = '__Host-request'
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
-const SESSION_DURATION = Duration.days(365)
-const OAUTH_DURATION = Duration.minutes(10)
-const DEVELOPMENT_USER = User.make({id: 'development', name: 'Developer'})
-const MOCK_AUTH = {
-	verify: Effect.fn('Auth.verify')(function* (_token: string) {
-		return yield* Effect.succeed(DEVELOPMENT_USER)
-	})
-}
-// An Ed25519 private key in PKCS #8 is this header and the 32-byte seed.
-const PKCS8_ED25519 = Uint8Array.from([
-	0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20
-])
-
-// GitHub sign-in turns on once all three are set; GITHUB_USERS lists the GitHub ids let in, from `gh api user --jq .id`.
-const github = Config.all({
-	clientId: Config.String('GITHUB_CLIENT_ID'),
-	clientSecret: Config.Redacted('GITHUB_CLIENT_SECRET'),
-	users: Config.Array(Schema.Int, 'GITHUB_USERS')
-})
-
-function bytes(text: string) {
-	return new TextEncoder().encode(text)
-}
 
 function rejected(message: string) {
-	return Effect.mapError(cause => AuthError.make({cause, message}))
+	return Effect.mapError(cause => {
+		if (Schema.is(AuthError)(cause)) return cause
+		return AuthError.make({cause, message})
+	})
 }
-
-// A rejection answers 401, a failing dependency 500; the log keeps the cause.
-function respond<E, R>(message: string, handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
-	return Effect.catch(handler, cause =>
-		Effect.as(
-			Effect.logWarning(message, cause),
-			HttpServerResponse.text(message, {
-				status: Boolean.match(Schema.is(AuthError)(cause), {onFalse: () => 500, onTrue: () => 401})
-			})
-		)
-	)
-}
-
-// A command line and a native app send the token as the bearer, a browser in the session cookie.
-const userFrom = Effect.fnUntraced(function* (auth: typeof Auth.Service, headers: Headers.Headers) {
-	if (yield* development) return DEVELOPMENT_USER
-	return yield* pipe(
-		Headers.get(headers, 'authorization'),
-		Option.filter(String.startsWith('Bearer ')),
-		Option.map(String.replace('Bearer ', '')),
-		Option.orElse(() =>
-			pipe(
-				Headers.get(headers, 'cookie'),
-				Option.flatMapNullishOr(cookie => Cookies.parseHeader(cookie)[SESSION_COOKIE])
-			)
-		),
-		Effect.fromOption,
-		rejected('Sign in first'),
-		Effect.flatMap(token => auth.verify(token))
-	)
-})
 
 function provide(auth: typeof Auth.Service) {
 	return pipe(
@@ -116,364 +73,601 @@ function provide(auth: typeof Auth.Service) {
 		Context.add(
 			RpcAuth,
 			RpcAuth.of((effect, request) =>
-				Effect.flatMap(userFrom(auth, request.headers), user => Effect.provideService(effect, CurrentUser, user))
+				pipe(
+					auth.user(request.headers),
+					Effect.flatMap(user => Effect.provideService(effect, CurrentUser, user))
+				)
 			)
 		)
 	)
 }
 
-// A token is `<base64url Session JSON>.<base64url Ed25519 signature>`, checked against the current key and users.
-function verifyWith(current: Effect.Effect<{publicKey: CryptoKey; users: HashSet.HashSet<string>}>) {
-	return Effect.fn('Auth.verify')(function* (token: string) {
-		const {publicKey, users} = yield* current
-		const parts = String.split(token, '.')
-		const signature = yield* pipe(
-			Array.get(parts, 1),
-			Option.flatMap(part => Result.getSuccess(Base64Url.decode(part))),
-			Effect.fromOption
-		)
-		if (
-			!(yield* Effect.tryPromise(() =>
-				crypto.subtle.verify('Ed25519', publicKey, new Uint8Array(signature), bytes(Array.headNonEmpty(parts)))
-			))
-		) {
-			return yield* AuthError.make({message: 'The session signature is invalid'})
-		}
-		const session = yield* Schema.decodeEffect(Session)(Array.headNonEmpty(parts))
-		if (session.expiresAt <= (yield* Clock.currentTimeMillis)) {
-			return yield* AuthError.make({message: 'The session expired'})
-		}
-		if (!HashSet.has(users, session.user.id)) {
-			return yield* AuthError.make({message: `${session.user.id} is not on the allow list`})
-		}
-		return session.user
-	}, rejected('Sign in first'))
+function oauth<E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
+	return pipe(
+		handler,
+		Effect.catchIf(Schema.is(AuthError), failure =>
+			Effect.succeed(
+				HttpServerResponse.jsonUnsafe(
+					{error: failure.error ?? 'invalid_request', error_description: failure.message},
+					{status: 400}
+				)
+			)
+		),
+		Effect.map(HttpServerResponse.setHeader('cache-control', 'no-store'))
+	)
 }
 
-// Browsers send Origin on every POST, cross-origin fetch and WebSocket upgrade; any other origin is cross-site request forgery.
-const SameOrigin = HttpRouter.middleware(httpEffect =>
-	Effect.gen(function* () {
-		const request = yield* HttpServerRequest.HttpServerRequest
-		// Traefik forwards a WebSocket upgrade over TLS as `wss`, which `HttpServerRequest.toURL` reads as http.
-		const scheme = Boolean.match(
-			Option.exists(Headers.get(request.headers, 'x-forwarded-proto'), proto => proto === 'https' || proto === 'wss'),
-			{onFalse: () => 'http', onTrue: () => 'https'}
-		)
-		if (
-			Option.exists(
-				Headers.get(request.headers, 'origin'),
-				origin => origin !== `${scheme}://${request.headers['host'] ?? ''}`
-			)
-		) {
-			return HttpServerResponse.text('The request comes from another origin', {status: 403})
-		}
-		return yield* httpEffect
+function allowedRedirect(redirect: string) {
+	if (redirect === 'stash://auth/callback' || redirect === 'stash-dev://auth/callback') return true
+	return Result.match(Url.fromString(redirect), {
+		onFailure: () => false,
+		onSuccess: target =>
+			target.protocol === 'http:' &&
+			(target.hostname === '127.0.0.1' || target.hostname === 'localhost') &&
+			String.isEmpty(target.username) &&
+			String.isEmpty(target.password) &&
+			String.isEmpty(target.search) &&
+			String.isEmpty(target.hash)
 	})
-).layer
-
-// auth.mp281x.xyz sets the session cookie on mp281x.xyz, so every app beside it reads it.
-function parentDomain(request: HttpServerRequest.HttpServerRequest) {
-	return pipe(
-		HttpServerRequest.toURL(request),
-		Option.map(url => pipe(url.hostname, String.split('.'), Array.drop(1), Array.join('.'))),
-		Option.filter(String.isNonEmpty)
-	)
 }
 
-// The callback URL follows the request's host; register https://<host>/auth/github/callback in the GitHub OAuth app.
-function callbackUrl(request: HttpServerRequest.HttpServerRequest) {
-	return pipe(
-		HttpServerRequest.toURL(request),
-		Option.map(url => new URL('/auth/github/callback', url).href),
-		Effect.fromOption
-	)
-}
-
-// OAuth with PKCE: a native app's sign-in ends on one of `redirects` with `?token=`, a web app's on its URL with the cookie.
-const addGitHub = Effect.fnUntraced(function* (
-	issuer: typeof Issuer.Service,
-	config: Config.Success<typeof github>,
-	redirects: string[]
-) {
-	const router = yield* HttpRouter.HttpRouter
-	const random = yield* Crypto.Crypto
-	const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
-
-	yield* router.add(
-		'GET',
-		'/auth/github',
-		respond(
-			'Cannot start the GitHub sign-in',
-			Effect.gen(function* () {
-				const request = yield* HttpServerRequest.HttpServerRequest
-				const query = yield* pipe(
-					HttpServerRequest.schemaSearchParams(SignInParams),
-					rejected('The redirect is invalid')
-				)
-				const domain = parentDomain(request)
-				if (
-					Option.exists(
-						Option.fromUndefinedOr(query.redirect),
-						redirect =>
-							!Array.contains(redirects, redirect) &&
-							!Option.exists(
-								Result.getSuccess(Url.fromString(redirect)),
-								url =>
-									url.protocol === 'https:' &&
-									Option.exists(domain, parent => String.endsWith(`.${parent}`)(`.${url.hostname}`))
-							)
-					)
-				) {
-					return yield* AuthError.make({message: 'The redirect is not allowed'})
-				}
-				const state = Base64Url.encode(yield* random.randomBytes(32))
-				const verifier = Base64Url.encode(yield* random.randomBytes(32))
-				const authorize = UrlParams.toString(
-					UrlParams.fromInput({
-						client_id: config.clientId,
-						code_challenge: Base64Url.encode(yield* random.digest('SHA-256', bytes(verifier))),
-						code_challenge_method: 'S256',
-						redirect_uri: yield* callbackUrl(request),
-						response_type: 'code',
-						state
-					})
-				)
-				return HttpServerResponse.setCookieUnsafe(
-					HttpServerResponse.redirect(`https://github.com/login/oauth/authorize?${authorize}`),
-					OAUTH_COOKIE,
-					yield* Schema.encodeEffect(OAuthFlow)({...query, state, verifier}),
-					{...COOKIE, maxAge: OAUTH_DURATION}
-				)
-			})
-		)
-	)
-
-	yield* router.add(
-		'GET',
-		'/auth/github/callback',
-		respond(
-			'The GitHub sign-in failed',
-			Effect.gen(function* () {
-				const request = yield* HttpServerRequest.HttpServerRequest
-				const params = yield* pipe(
-					HttpServerRequest.schemaSearchParams(CallbackParams),
-					rejected('GitHub sent no code')
-				)
-				const flow = yield* pipe(
-					Schema.decodeUnknownEffect(OAuthFlow)(request.cookies[OAUTH_COOKIE]),
-					rejected('The sign-in expired')
-				)
-				if (flow.state !== params.state) {
-					return yield* AuthError.make({message: 'The sign-in state does not match'})
-				}
-				const token = yield* pipe(
-					HttpClientRequest.post('https://github.com/login/oauth/access_token'),
-					HttpClientRequest.acceptJson,
-					HttpClientRequest.bodyUrlParams({
-						client_id: config.clientId,
-						client_secret: Redacted.value(config.clientSecret),
-						code: params.code,
-						code_verifier: flow.verifier,
-						grant_type: 'authorization_code',
-						redirect_uri: yield* callbackUrl(request)
-					}),
-					exchange => client.execute(exchange),
-					Effect.flatMap(HttpClientResponse.schemaBodyJson(OAuthTokenResponse))
-				)
-				if (Schema.is(OAuthTokenError)(token)) {
-					return yield* AuthError.make({message: `GitHub rejected the code: ${token.error}`})
-				}
-				const githubUser = yield* pipe(
-					HttpClientRequest.get('https://api.github.com/user'),
-					HttpClientRequest.bearerToken(token.access_token),
-					HttpClientRequest.setHeaders({accept: 'application/vnd.github+json', 'user-agent': '@deslop/auth'}),
-					lookup => client.execute(lookup),
-					Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubUser))
-				)
-				const session = yield* issuer.issue({id: `github:${githubUser.id}`, name: githubUser.login})
-				const redirect = flow.redirect ?? '/'
-				if (Array.contains(redirects, redirect)) {
-					return HttpServerResponse.expireCookieUnsafe(
-						HttpServerResponse.redirect(`${redirect}?${UrlParams.toString(UrlParams.fromInput({token: session}))}`),
-						OAUTH_COOKIE,
-						COOKIE
-					)
-				}
-				return HttpServerResponse.setCookieUnsafe(
-					HttpServerResponse.expireCookieUnsafe(HttpServerResponse.redirect(redirect), OAUTH_COOKIE, COOKIE),
-					SESSION_COOKIE,
-					session,
-					{...COOKIE, domain: Option.getOrUndefined(parentDomain(request)), maxAge: SESSION_DURATION}
-				)
-			})
-		)
-	)
-})
-
-export class Auth extends Context.Service<Auth, {readonly verify: (token: string) => Effect.Effect<User, AuthError>}>()(
-	'@deslop/auth/service/Auth'
-) {
-	// Every app beside the auth app: provides Auth and RpcAuth with the key and users read from AUTH_URL each minute.
-	static readonly layer = Layer.merge(
-		SameOrigin,
+export class Auth extends Context.Service<
+	Auth,
+	{
+		readonly user: (headers: Headers.Headers) => Effect.Effect<User, AuthError>
+		readonly access: (headers: Headers.Headers, resource: string) => Effect.Effect<User, AuthError>
+	}
+>()('@deslop/auth/service/Auth') {
+	static readonly layer = (resource: string) =>
 		Layer.effectContext(
 			Effect.gen(function* () {
-				if (yield* development) return provide(Auth.of(MOCK_AUTH))
-				const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 				const url = yield* pipe(Config.String('AUTH_URL'), Config.withDefault(AUTH_URL))
-				const read = pipe(
-					client.get(`${url}/auth/keys`),
-					Effect.flatMap(HttpClientResponse.schemaBodyJson(Verification)),
-					Effect.flatMap(verification =>
-						Effect.map(
-							pipe(
-								Effect.fromResult(Base64Url.decode(verification.key)),
-								Effect.flatMap(key =>
-									Effect.tryPromise(() =>
-										crypto.subtle.importKey('raw', new Uint8Array(key), {name: 'Ed25519'}, false, ['verify'])
-									)
-								)
-							),
-							publicKey => ({publicKey, users: HashSet.fromIterable(verification.users)})
-						)
-					),
-					Effect.timeout('10 seconds')
-				)
-				const current = yield* Ref.make(
-					yield* pipe(
-						read,
-						Effect.tapError(cause => Effect.logWarning(`Cannot read the auth keys from ${url}`, cause)),
-						Effect.retry(Schedule.spaced('5 seconds'))
+				const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
+				const origins = [new URL(url).origin, ...Array.map(Resource.literals, identifier => new URL(identifier).origin)]
+				const access = Effect.fn('Auth.access')(function* (headers: Headers.Headers, audience: string) {
+					return yield* pipe(
+						client.get(`${url}/auth/verify`, {
+							headers: {authorization: headers['authorization'] ?? ''},
+							urlParams: {resource: audience}
+						}),
+						Effect.flatMap(HttpClientResponse.schemaBodyJson(User)),
+						Effect.timeout('10 seconds')
 					)
+				}, rejected('Sign in first'))
+				return provide(
+					Auth.of({
+						access,
+						user: Effect.fn('Auth.user')(function* (headers: Headers.Headers) {
+							if (Option.isSome(Headers.get(headers, 'authorization'))) {
+								return yield* access(headers, resource)
+							}
+							if (Option.exists(Headers.get(headers, 'origin'), origin => !Array.contains(origins, origin))) {
+								return yield* AuthError.make({message: 'The request comes from another origin'})
+							}
+							return yield* pipe(
+								client.get(`${url}/auth/session`, {headers: {cookie: headers['cookie'] ?? ''}}),
+								Effect.flatMap(HttpClientResponse.schemaBodyJson(User)),
+								Effect.timeout('10 seconds')
+							)
+						}, rejected('Sign in first'))
+					})
 				)
-				// An unreachable auth app keeps the last key and users until it answers again.
-				yield* pipe(
-					read,
-					Effect.flatMap(verification => Ref.set(current, verification)),
-					Effect.ignore({log: 'Warn', message: `Cannot refresh the auth keys from ${url}`}),
-					Effect.repeat(Schedule.spaced('1 minute')),
-					Effect.forkScoped
-				)
-				return provide(Auth.of({verify: verifyWith(Ref.get(current))}))
 			})
 		)
-	)
-}
 
-export class Issuer extends Context.Service<
-	Issuer,
-	{readonly issue: (user: User) => Effect.Effect<string, AuthError>}
->()('@deslop/auth/service/Issuer') {
-	// The auth app: an Ed25519 key from GITHUB_CLIENT_SECRET; `redirects` are native sign-in URLs, such as `<app scheme>://auth`.
-	static readonly layer = (options: {redirects: string[]}) =>
-		Layer.provideMerge(
-			Layer.effectContext(
-				Effect.gen(function* () {
-					const router = yield* HttpRouter.HttpRouter
-					if (yield* development) {
-						yield* router.add('POST', '/auth/sign-out', HttpServerResponse.redirect('/', {status: 303}))
-						return Context.add(
-							provide(Auth.of(MOCK_AUTH)),
-							Issuer,
-							Issuer.of({
-								issue: Effect.fn('Issuer.issue')(function* (_user: User) {
-									return yield* Effect.succeed('development')
-								})
-							})
-						)
-					}
-					const random = yield* Crypto.Crypto
-					const provider = yield* Config.option(github)
-					const users = HashSet.fromIterable(
-						Option.match(provider, {
-							onNone: Array.empty<string>,
-							onSome: config => Array.map(config.users, id => `github:${id}`)
-						})
-					)
-					// Without a provider nobody signs in, so the key needs no secret.
-					const seed = yield* Option.match(provider, {
-						onNone: () => random.randomBytes(32),
-						onSome: config =>
-							random.digest('SHA-256', bytes(`@deslop/auth session ${Redacted.value(config.clientSecret)}`))
-					})
-					const privateKey = yield* Effect.tryPromise(() =>
-						crypto.subtle.importKey(
-							'pkcs8',
-							new Uint8Array([...PKCS8_ED25519, ...new Uint8Array(seed)]),
-							{name: 'Ed25519'},
-							true,
-							['sign']
-						)
-					)
-					// The JWK of an Ed25519 key holds its public key as `x`, base64url.
-					const publicJwk = yield* pipe(
-						Effect.tryPromise(() => crypto.subtle.exportKey('jwk', privateKey)),
-						Effect.flatMap(jwk => Effect.fromOption(Option.fromUndefinedOr(jwk.x))),
-						Effect.map(x => ({crv: 'Ed25519', kty: 'OKP', x}))
-					)
-					const publicKey = yield* Effect.tryPromise(() =>
-						crypto.subtle.importKey('jwk', publicJwk, {name: 'Ed25519'}, false, ['verify'])
-					)
-
-					const issue = Effect.fn('Issuer.issue')(function* (user: User) {
-						if (!HashSet.has(users, user.id)) {
-							return yield* AuthError.make({message: `${user.id} is not on the allow list`})
-						}
-						const payload = yield* Schema.encodeEffect(Session)({
-							expiresAt: (yield* Clock.currentTimeMillis) + Duration.toMillis(SESSION_DURATION),
-							user
-						})
-						return `${payload}.${Base64Url.encode(new Uint8Array(yield* Effect.tryPromise(() => crypto.subtle.sign('Ed25519', privateKey, bytes(payload)))))}`
-					}, rejected('Cannot sign in'))
-
-					const issuer = Issuer.of({issue})
-
-					yield* router.add(
-						'GET',
-						'/auth/keys',
-						HttpServerResponse.schemaJson(Verification)({key: publicJwk.x, users: Array.fromIterable(users)})
-					)
-					yield* router.add(
-						'POST',
-						'/auth/sign-out',
-						Effect.map(HttpServerRequest.HttpServerRequest, request =>
-							HttpServerResponse.expireCookieUnsafe(HttpServerResponse.redirect('/', {status: 303}), SESSION_COOKIE, {
-								...COOKIE,
-								domain: Option.getOrUndefined(parentDomain(request))
-							})
-						)
-					)
-					yield* Option.match(provider, {
-						onNone: () => Effect.void,
-						onSome: config => addGitHub(issuer, config, options.redirects)
-					})
-
-					return Context.add(provide(Auth.of({verify: verifyWith(Effect.succeed({publicKey, users}))})), Issuer, issuer)
+	static readonly layerIssuer = pipe(
+		Layer.effectContext(
+			Effect.gen(function* () {
+				const sql = yield* SqliteClient.SqliteClient
+				const random = yield* Crypto.Crypto
+				const router = yield* HttpRouter.HttpRouter
+				const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
+				const url = yield* pipe(Config.String('AUTH_URL'), Config.withDefault(AUTH_URL))
+				const issuer = `${url}/api/auth`
+				const provider = yield* Config.all({
+					clientId: Config.String('GITHUB_CLIENT_ID'),
+					secret: Config.Redacted('GITHUB_CLIENT_SECRET'),
+					users: Config.Array(Schema.String, 'GITHUB_USERS')
 				})
-			),
-			SameOrigin
+				yield* sql`CREATE TABLE IF NOT EXISTS auth_state (hash TEXT PRIMARY KEY, payload TEXT NOT NULL, expires_at INTEGER NOT NULL)`
+				const hash = Effect.fnUntraced(function* (value: string) {
+					return Base64Url.encode(yield* random.digest('SHA-256', new TextEncoder().encode(value)))
+				})
+				const save = Effect.fnUntraced(function* (state: Stored, seconds: number) {
+					const token = Base64Url.encode(yield* random.randomBytes(32))
+					const now = yield* Clock.currentTimeMillis
+					yield* sql`DELETE FROM auth_state WHERE expires_at <= ${now}`
+					yield* sql`INSERT INTO auth_state (hash, payload, expires_at) VALUES (${yield* hash(token)}, ${yield* Schema.encodeEffect(Schema.fromJsonString(Stored))(state)}, ${now + seconds * 1000})`
+					return token
+				})
+				const load = Effect.fnUntraced(function* (token: string) {
+					const row = yield* pipe(
+						Array.head(
+							yield* sql`SELECT payload FROM auth_state WHERE hash = ${yield* hash(token)} AND expires_at > ${yield* Clock.currentTimeMillis}`
+						),
+						Effect.fromOption,
+						Effect.flatMap(Schema.decodeUnknownEffect(StoredRow)),
+						Effect.mapError(cause =>
+							AuthError.make({cause, error: 'invalid_grant', message: 'The authorization expired. Sign in again.'})
+						)
+					)
+					return yield* Schema.decodeEffect(Schema.fromJsonString(Stored))(row.payload)
+				})
+				const remove = Effect.fnUntraced(function* (token: string) {
+					yield* sql`DELETE FROM auth_state WHERE hash = ${yield* hash(token)}`
+				})
+				const allowed = Effect.fnUntraced(function* (user: User) {
+					if (!Array.contains(provider.users, String.replace('github:', '')(user.id))) {
+						return yield* AuthError.make({error: 'access_denied', message: 'This GitHub account is not allowed'})
+					}
+					return user
+				})
+				const session = Effect.fnUntraced(function* (headers: Headers.Headers) {
+					const stored = yield* load(Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE] ?? '')
+					if (stored._tag !== 'Session') return yield* AuthError.make({message: 'Sign in first'})
+					return yield* allowed(stored.user)
+				}, rejected('Sign in first'))
+				const access = Effect.fn('Auth.access')(function* (headers: Headers.Headers, resource: string) {
+					const authorization = headers['authorization'] ?? ''
+					if (!String.startsWith('Bearer ')(authorization)) return yield* AuthError.make({message: 'Sign in first'})
+					const stored = yield* load(String.slice(7)(authorization))
+					if (stored._tag !== 'Access' || !Array.some(stored.resources, value => value === resource)) {
+						return yield* AuthError.make({message: 'The token is not valid for this app'})
+					}
+					return yield* allowed(stored.user)
+				}, rejected('Sign in first'))
+				const sameOrigin = Effect.gen(function* () {
+					if ((yield* HttpServerRequest.HttpServerRequest).headers['origin'] !== new URL(url).origin) {
+						return yield* AuthError.make({error: 'access_denied', message: 'The request comes from another origin'})
+					}
+				})
+				const requestState = Effect.fnUntraced(function* (id: string) {
+					if ((yield* HttpServerRequest.HttpServerRequest).cookies[REQUEST_COOKIE] !== id) {
+						return yield* AuthError.make({message: 'Open the authorization link again'})
+					}
+					const stored = yield* load(id)
+					if (stored._tag !== 'Request') return yield* AuthError.make({message: 'The authorization request expired'})
+					return stored
+				})
+				const grantTokens = Effect.fnUntraced(function* (
+					grant: typeof Stored.cases.Refresh.Type,
+					resources: Authorization['resources']
+				) {
+					yield* allowed(grant.user)
+					// A queued iOS upload cannot refresh its bearer after the share sheet closes.
+					const seconds = Boolean.match(Array.contains(resources, 'https://stash.mp281x.xyz'), {
+						onFalse: () => 900,
+						onTrue: () => 90_000
+					})
+					return HttpServerResponse.jsonUnsafe(
+						{
+							access_token: yield* save({_tag: 'Access', family: grant.family, resources, user: grant.user}, seconds),
+							expires_in: seconds,
+							refresh_token: yield* save({...grant, _tag: 'Refresh'}, 30 * 86400),
+							scope: 'deslop',
+							token_type: 'Bearer'
+						},
+						{headers: {'cache-control': 'no-store'}}
+					)
+				})
+				const tokenResources = Effect.fnUntraced(function* (params: TokenParams, granted: Authorization['resources']) {
+					if (params.resource === undefined) return granted
+					if (!Array.every(params.resource, value => Array.contains(granted, value))) {
+						return yield* AuthError.make({error: 'invalid_target', message: 'The resource was not authorized'})
+					}
+					return params.resource
+				})
+
+				yield* router.add(
+					'GET',
+					'/.well-known/oauth-authorization-server/api/auth',
+					HttpServerResponse.jsonUnsafe({
+						authorization_endpoint: `${issuer}/oauth2/authorize`,
+						authorization_response_iss_parameter_supported: true,
+						code_challenge_methods_supported: ['S256'],
+						grant_types_supported: ['authorization_code', 'refresh_token'],
+						issuer,
+						registration_endpoint: `${issuer}/oauth2/register`,
+						response_types_supported: ['code'],
+						revocation_endpoint: `${issuer}/oauth2/revoke`,
+						scopes_supported: ['deslop', 'offline_access'],
+						token_endpoint: `${issuer}/oauth2/token`,
+						token_endpoint_auth_methods_supported: ['none']
+					})
+				)
+				yield* router.add(
+					'POST',
+					'/api/auth/oauth2/register',
+					oauth(
+						Effect.gen(function* () {
+							const params = yield* pipe(
+								HttpServerRequest.schemaBodyJson(Registration),
+								rejected('Invalid client registration')
+							)
+							if (!Array.every(params.redirect_uris, allowedRedirect)) {
+								return yield* AuthError.make({message: 'Use a Codex, Claude Code or Stash callback'})
+							}
+							return HttpServerResponse.jsonUnsafe(
+								{
+									client_id: yield* save({_tag: 'Client', redirects: params.redirect_uris}, 365 * 86400),
+									grant_types: ['authorization_code', 'refresh_token'],
+									redirect_uris: params.redirect_uris,
+									response_types: ['code'],
+									token_endpoint_auth_method: 'none'
+								},
+								{status: 201}
+							)
+						})
+					)
+				)
+				yield* router.add(
+					'GET',
+					'/api/auth/oauth2/authorize',
+					oauth(
+						Effect.gen(function* () {
+							const params = yield* pipe(
+								HttpServerRequest.schemaSearchParams(AuthorizeParams),
+								rejected('Invalid authorization request')
+							)
+							const registration = yield* load(params.client_id)
+							if (registration._tag !== 'Client' || !Array.contains(registration.redirects, params.redirect_uri)) {
+								return yield* AuthError.make({
+									error: 'invalid_client',
+									message: 'The callback does not match the registered client'
+								})
+							}
+							if (
+								!Array.every(
+									String.split(params.scope ?? 'deslop', ' '),
+									scope => scope === 'deslop' || scope === 'offline_access'
+								)
+							) {
+								return yield* AuthError.make({error: 'invalid_scope', message: 'Only Deslop access is supported'})
+							}
+							const id = yield* save(
+								{
+									_tag: 'Request',
+									challenge: params.code_challenge,
+									clientId: params.client_id,
+									redirectUri: params.redirect_uri,
+									resources: params.resource,
+									state: params.state
+								},
+								600
+							)
+							return HttpServerResponse.setCookieUnsafe(
+								HttpServerResponse.redirect(`/?request=${id}`),
+								REQUEST_COOKIE,
+								id,
+								{...COOKIE, maxAge: '10 minutes'}
+							)
+						})
+					)
+				)
+				yield* router.add(
+					'GET',
+					'/auth/request',
+					oauth(
+						Effect.gen(function* () {
+							const params = yield* pipe(
+								HttpServerRequest.schemaSearchParams(RequestParams),
+								rejected('Open the authorization link again')
+							)
+							return yield* HttpServerResponse.schemaJson(Authorization)(yield* requestState(params.request))
+						})
+					)
+				)
+				yield* router.add(
+					'POST',
+					'/api/auth/oauth2/consent',
+					oauth(
+						sql.withTransaction(
+							Effect.gen(function* () {
+								yield* sameOrigin
+								const params = yield* pipe(
+									HttpServerRequest.schemaBodyJson(ConsentParams),
+									rejected('Invalid authorization response')
+								)
+								const grant = yield* requestState(params.request)
+								const user = yield* session((yield* HttpServerRequest.HttpServerRequest).headers)
+								yield* remove(params.request)
+								const target = new URL(grant.redirectUri)
+								target.searchParams.set('state', grant.state)
+								target.searchParams.set('iss', issuer)
+								if (params.accept) {
+									target.searchParams.set('code', yield* save({...grant, _tag: 'Code', user}, 60))
+								} else {
+									target.searchParams.set('error', 'access_denied')
+								}
+								return HttpServerResponse.expireCookieUnsafe(
+									HttpServerResponse.jsonUnsafe({url: target.href}, {headers: {'cache-control': 'no-store'}}),
+									REQUEST_COOKIE,
+									COOKIE
+								)
+							})
+						)
+					)
+				)
+				yield* router.add(
+					'POST',
+					'/api/auth/oauth2/token',
+					oauth(
+						Effect.gen(function* () {
+							const params = yield* pipe(
+								HttpServerRequest.schemaBodyUrlParams(TokenParams),
+								rejected('Invalid token request')
+							)
+							return yield* sql.withTransaction(
+								Effect.gen(function* () {
+									if (params.grant_type === 'authorization_code') {
+										const code = yield* load(params.code)
+										if (
+											code._tag !== 'Code' ||
+											code.clientId !== params.client_id ||
+											code.redirectUri !== params.redirect_uri ||
+											code.challenge !== (yield* hash(params.code_verifier))
+										) {
+											return yield* AuthError.make({
+												error: 'invalid_grant',
+												message: 'The authorization code or verifier is invalid'
+											})
+										}
+										const resources = yield* tokenResources(params, code.resources)
+										yield* remove(params.code)
+										return yield* grantTokens(
+											{
+												_tag: 'Refresh',
+												clientId: code.clientId,
+												family: Base64Url.encode(yield* random.randomBytes(32)),
+												resources: code.resources,
+												user: code.user
+											},
+											resources
+										)
+									}
+									const refresh = yield* load(params.refresh_token)
+									if (refresh._tag === 'UsedRefresh') {
+										yield* sql`DELETE FROM auth_state WHERE json_extract(payload, '$.family') = ${refresh.family}`
+										return HttpServerResponse.jsonUnsafe(
+											{error: 'invalid_grant', error_description: 'Sign in again'},
+											{status: 400}
+										)
+									}
+									if (refresh._tag !== 'Refresh' || refresh.clientId !== params.client_id) {
+										return yield* AuthError.make({error: 'invalid_grant', message: 'The refresh token is invalid'})
+									}
+									const resources = yield* tokenResources(params, refresh.resources)
+									yield* sql`UPDATE auth_state SET payload = ${yield* Schema.encodeEffect(Schema.fromJsonString(Stored))({_tag: 'UsedRefresh', clientId: refresh.clientId, family: refresh.family})} WHERE hash = ${yield* hash(params.refresh_token)}`
+									return yield* grantTokens(refresh, resources)
+								})
+							)
+						})
+					)
+				)
+				yield* router.add(
+					'POST',
+					'/api/auth/oauth2/revoke',
+					oauth(
+						Effect.gen(function* () {
+							const params = yield* pipe(
+								HttpServerRequest.schemaBodyUrlParams(RevokeParams),
+								rejected('Invalid revocation request')
+							)
+							const token = yield* Effect.result(load(params.token))
+							if (
+								Result.isSuccess(token) &&
+								(token.success._tag === 'Refresh' || token.success._tag === 'UsedRefresh') &&
+								token.success.clientId === params.client_id
+							) {
+								yield* sql`DELETE FROM auth_state WHERE json_extract(payload, '$.family') = ${token.success.family}`
+							}
+							return HttpServerResponse.empty()
+						})
+					)
+				)
+				yield* router.add(
+					'GET',
+					'/auth/session',
+					Effect.gen(function* () {
+						const user = yield* Effect.result(session((yield* HttpServerRequest.HttpServerRequest).headers))
+						if (Result.isFailure(user)) return HttpServerResponse.empty({status: 401})
+						return yield* HttpServerResponse.schemaJson(User)(user.success, {headers: {'cache-control': 'no-store'}})
+					})
+				)
+				yield* router.add(
+					'GET',
+					'/auth/verify',
+					Effect.gen(function* () {
+						const params = yield* pipe(
+							HttpServerRequest.schemaSearchParams(VerificationParams),
+							rejected('Invalid resource')
+						)
+						const user = yield* Effect.result(
+							access((yield* HttpServerRequest.HttpServerRequest).headers, params.resource)
+						)
+						if (Result.isFailure(user)) return HttpServerResponse.empty({status: 401})
+						return yield* HttpServerResponse.schemaJson(User)(user.success, {headers: {'cache-control': 'no-store'}})
+					})
+				)
+
+				yield* router.add(
+					'GET',
+					'/auth/github',
+					oauth(
+						Effect.gen(function* () {
+							const params = yield* pipe(
+								HttpServerRequest.schemaSearchParams(SignInParams),
+								rejected('Invalid sign-in request')
+							)
+							if (params.request !== undefined) yield* requestState(params.request)
+							const verifier = Base64Url.encode(yield* random.randomBytes(32))
+							const state = yield* save({_tag: 'Login', ...params, verifier}, 600)
+							const authorize = new URL('https://github.com/login/oauth/authorize')
+							authorize.search = UrlParams.toString(
+								UrlParams.fromInput({
+									client_id: provider.clientId,
+									code_challenge: yield* hash(verifier),
+									code_challenge_method: 'S256',
+									redirect_uri: `${url}/auth/github/callback`,
+									state
+								})
+							)
+							return HttpServerResponse.setCookieUnsafe(
+								HttpServerResponse.redirect(authorize.href),
+								LOGIN_COOKIE,
+								state,
+								{...COOKIE, maxAge: '10 minutes'}
+							)
+						})
+					)
+				)
+				yield* router.add(
+					'GET',
+					'/auth/github/callback',
+					pipe(
+						Effect.gen(function* () {
+							const params = yield* pipe(
+								HttpServerRequest.schemaSearchParams(CallbackParams),
+								rejected('GitHub sent no code')
+							)
+							if ((yield* HttpServerRequest.HttpServerRequest).cookies[LOGIN_COOKIE] !== params.state) {
+								return yield* AuthError.make({message: 'The sign-in state does not match'})
+							}
+							const flow = yield* sql.withTransaction(
+								Effect.gen(function* () {
+									const stored = yield* load(params.state)
+									if (stored._tag !== 'Login') return yield* AuthError.make({message: 'The sign-in expired'})
+									yield* remove(params.state)
+									return stored
+								})
+							)
+							const token = yield* pipe(
+								HttpClientRequest.post('https://github.com/login/oauth/access_token'),
+								HttpClientRequest.acceptJson,
+								HttpClientRequest.bodyUrlParams({
+									client_id: provider.clientId,
+									client_secret: Redacted.value(provider.secret),
+									code: params.code,
+									code_verifier: flow.verifier,
+									redirect_uri: `${url}/auth/github/callback`
+								}),
+								request => client.execute(request),
+								Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubToken))
+							)
+							const github = yield* pipe(
+								HttpClientRequest.get('https://api.github.com/user'),
+								HttpClientRequest.bearerToken(token.access_token),
+								HttpClientRequest.setHeaders({accept: 'application/vnd.github+json', 'user-agent': '@deslop/auth'}),
+								request => client.execute(request),
+								Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubUser))
+							)
+							const user = yield* allowed({id: `github:${github.id}`, name: github.login})
+							return HttpServerResponse.setCookieUnsafe(
+								HttpServerResponse.expireCookieUnsafe(
+									HttpServerResponse.redirect(
+										Boolean.match(flow.request === undefined, {
+											onFalse: () => `/?request=${flow.request}`,
+											onTrue: () => '/'
+										})
+									),
+									LOGIN_COOKIE,
+									COOKIE
+								),
+								SESSION_COOKIE,
+								yield* save({_tag: 'Session', user}, 365 * 86400),
+								{
+									...COOKIE,
+									domain: pipe(new URL(url).hostname, String.split('.'), Array.drop(1), Array.join('.')),
+									maxAge: '365 days'
+								}
+							)
+						}),
+						Effect.catch(
+							Effect.fnUntraced(function* (cause) {
+								yield* Effect.logWarning('GitHub sign-in failed', cause)
+								return HttpServerResponse.expireCookieUnsafe(
+									HttpServerResponse.redirect(
+										`/?${UrlParams.toString(
+											UrlParams.fromInput({
+												error: 'github',
+												request: (yield* HttpServerRequest.HttpServerRequest).cookies[REQUEST_COOKIE]
+											})
+										)}`
+									),
+									LOGIN_COOKIE,
+									COOKIE
+								)
+							})
+						)
+					)
+				)
+				yield* router.add(
+					'POST',
+					'/auth/sign-out',
+					oauth(
+						Effect.gen(function* () {
+							yield* sameOrigin
+							yield* remove((yield* HttpServerRequest.HttpServerRequest).cookies[SESSION_COOKIE] ?? '')
+							return HttpServerResponse.expireCookieUnsafe(HttpServerResponse.empty(), SESSION_COOKIE, {
+								...COOKIE,
+								domain: pipe(new URL(url).hostname, String.split('.'), Array.drop(1), Array.join('.'))
+							})
+						})
+					)
+				)
+				return provide(
+					Auth.of({
+						access,
+						user: Effect.fn('Auth.user')(function* (headers: Headers.Headers) {
+							return yield* session(headers)
+						})
+					})
+				)
+			})
+		),
+		Layer.provide(
+			Layer.unwrap(
+				Effect.gen(function* () {
+					const fs = yield* FileSystem.FileSystem
+					const path = yield* Path.Path
+					const directory = path.join(yield* Config.String('HOME'), '.deslop', 'auth-server')
+					yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
+					return SqliteClient.layer({filename: path.join(directory, 'auth.sqlite')})
+				})
+			)
 		)
+	)
 }
 
 export const HttpAuth = HttpRouter.middleware<{provides: CurrentUser}>()(
 	Effect.gen(function* () {
 		const auth = yield* Auth
-		return httpEffect =>
+		return app =>
 			Effect.gen(function* () {
-				const request = yield* HttpServerRequest.HttpServerRequest
-				const user = yield* Effect.result(userFrom(auth, request.headers))
-				if (Result.isFailure(user)) {
-					if (String.includes('text/html')(request.headers['accept'] ?? '')) {
-						return HttpServerResponse.redirect(
-							`${AUTH_URL}/auth/github?${UrlParams.toString(UrlParams.fromInput({redirect: Option.match(HttpServerRequest.toURL(request), {onNone: () => '/', onSome: url => url.href})}))}`
-						)
-					}
-					return yield* Effect.as(
-						Effect.logWarning('Sign in first', user.failure),
-						HttpServerResponse.text('Sign in first', {status: 401})
-					)
-				}
-				return yield* Effect.provideService(httpEffect, CurrentUser, user.success)
+				const user = yield* Effect.result(auth.user((yield* HttpServerRequest.HttpServerRequest).headers))
+				if (Result.isFailure(user)) return HttpServerResponse.text('Sign in first', {status: 401})
+				return yield* Effect.provideService(app, CurrentUser, user.success)
 			})
 	})
 )
+
+export function layerMcpAuth(resource: string) {
+	return HttpRouter.middleware<{provides: CurrentUser}>()(
+		Effect.gen(function* () {
+			const auth = yield* Auth
+			return app =>
+				Effect.gen(function* () {
+					const user = yield* Effect.result(auth.access((yield* HttpServerRequest.HttpServerRequest).headers, resource))
+					if (Result.isFailure(user)) {
+						return HttpServerResponse.text('Authorization required', {
+							headers: {
+								'www-authenticate': `Bearer resource_metadata="${new URL('/.well-known/oauth-protected-resource/mcp', resource).href}", scope="deslop"`
+							},
+							status: 401
+						})
+					}
+					return yield* Effect.provideService(app, CurrentUser, user.success)
+				})
+		})
+	).layer
+}

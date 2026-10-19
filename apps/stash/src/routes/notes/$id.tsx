@@ -5,6 +5,7 @@ import {Array, Boolean, DateTime, Match, Option, String, pipe} from 'effect'
 import {
 	Button,
 	ContentUnavailableView,
+	Divider,
 	HStack,
 	Image,
 	Menu,
@@ -232,13 +233,10 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 				spacing={16}
 				modifiers={[padding({bottom: 32, horizontal: 20, top: 8}), frame({alignment: 'leading', maxWidth: Infinity})]}
 			>
+				<Text modifiers={[mono('headline', 18), foregroundStyle(colors.foreground), textSelection(true)]}>
+					{props.note.title}
+				</Text>
 				{props.note.image !== undefined && <Cover note={props.note} />}
-				<VStack alignment="leading" spacing={6}>
-					<Text modifiers={[mono('headline', 18), foregroundStyle(colors.foreground), textSelection(true)]}>
-						{props.note.title}
-					</Text>
-					<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground)]}>{meta}</Text>
-				</VStack>
 				{pipe(
 					Match.value(props.note.status),
 					Match.when('organizing', () => <Placeholder />),
@@ -275,6 +273,8 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 						</VStack>
 					))
 				)}
+				<Divider />
+				<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground)]}>{meta}</Text>
 				{!Array.isReadonlyArrayEmpty(props.note.tags) && (
 					<ScrollView axes="horizontal" showsIndicators={false}>
 						<HStack spacing={8}>

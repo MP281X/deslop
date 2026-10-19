@@ -187,16 +187,20 @@ printf '%s\n' '[Unit]' 'Description=Secret Service for headless CLI sign-ins' '[
   'Restart=on-failure' '[Install]' 'WantedBy=default.target' > ~/.config/systemd/user/secret-service.service
 systemctl --user daemon-reload && systemctl --user enable --now secret-service.service
 claude mcp add --transport http --scope user dual https://app.dualos.ai/mcp
-claude mcp add --transport http --scope user scope https://dev.tailnet-8c4c.ts.net:4318/mcp
-claude mcp add --transport http --scope user stash https://dev.tailnet-8c4c.ts.net:4319/mcp
-claude mcp add --transport http --scope user portfolio https://dev.tailnet-8c4c.ts.net:4320/mcp
+claude mcp add --transport http --scope user scope https://scope.mp281x.xyz/mcp
+claude mcp add --transport http --scope user stash https://stash.mp281x.xyz/mcp
+claude mcp add --transport http --scope user portfolio https://portfolio.mp281x.xyz/mcp
 ```
 
-Guide: in each worker's T3 terminal run the two lines below one at a time, open each printed URL and approve Dual; the browser then fails to load `http://127.0.0.1:…/callback?…`, so copy that address from the address bar and paste it into the terminal.
+After the public-auth release, remove each old Claude registration with `claude mcp remove --scope user <name>` before adding its public URL above. Codex URLs update with the installed configuration. Do this on each worker; never copy OAuth credentials between machines.
+
+Guide: in each worker's T3 terminal run the lines below one at a time, open each printed URL and approve access; the browser then fails to load `http://127.0.0.1:…/callback?…`, so copy that full address from the address bar and paste it into the terminal. The callback carries a one-use authorization code, not a reusable API token; no port forwarding is required. Repeat with `stash` and `portfolio`.
 
 ```bash
 codex mcp login --no-browser dual
 claude mcp login --no-browser dual
+codex mcp login --no-browser scope
+claude mcp login --no-browser scope
 ```
 
 **Mobbin in Claude.** Connect the [verified connector](https://claude.ai/directory/connectors/mobbin) to the paid Mobbin account, then use `claude auth login` on each worker with that same Claude account. Subscription-authenticated Claude Code and T3 Claude sessions fetch the connector automatically; no separate Mobbin CLI OAuth or local server is needed. If a local `mobbin` entry already exists, remove it with `claude mcp remove mobbin --scope user`: a local server at the same URL shadows the shared connector. API-key and `claude setup-token` sessions do not import it. [Recommended Mobbin setup](https://docs.mobbin.com/mcp/clients/claude-code-cli), [Claude connector authentication](https://code.claude.com/docs/en/mcp#use-mcp-servers-from-claudeai).

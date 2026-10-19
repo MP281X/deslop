@@ -5,7 +5,7 @@ Decisions the code, the generators and lint do not show.
 ## Product scope
 
 - No issue tracker: the request is the whole task.
-- No portability, multi-user or compatibility code: one user on these two workers. Personal tools run on the tailnet without authentication; `auth.mp281x.xyz` stays for a future public app, where each GitHub user in `GITHUB_USERS` gets their own data.
+- No portability, multi-user or compatibility code: one user on these two workers. Apps and MCP endpoints are public, with shared authentication through `auth.mp281x.xyz`; `GITHUB_USERS` is an allowlist, not an invitation to add multi-user data.
 - Releases are linear and squash-merged; a newer merge cancels an older release run, so a data change covers everything since the last successful deploy.
 - Local data is disposable. Preserve production data only from the immediately previous release; delete obsolete data.
 
@@ -22,17 +22,19 @@ Decisions the code, the generators and lint do not show.
 
 ## Taste
 
-| Area                  | Choice                                                                                    | Rejected                                       | The user's words                                                                                                |
-| --------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| AI calls              | The Effect AI provider module, directly in the service using it                           | A wrapper `ai` package with its own interface  | "This interface looks like shit … just remove the package and use the effect ai module directly"                |
-| Identifiers           | A literal union for a closed set of ids, such as model ids                                | `string`                                       | "The id need to be a literal"                                                                                   |
-| Stash note page       | The note's content and tags                                                               | Source and Text in image sections              | "Sections like the source and text in image can be removed"                                                     |
-| Versions              | `latest`; `^X.Y`, or the exact version, only where a peer, the Expo SDK or Vite+ fixes it | `^X.Y.Z` and pins without a reason             | "when possible use latest or "^\*.\*" … (i perfer latest)"                                                      |
-| Development telemetry | A new Effect app with its own OTLP/HTTP JSON receiver and SQLite                          | A Collector dependency or every OTLP transport | "we already know the apps where this will be used"; "Like for motel I want to write the ingestor/receiver too"  |
-| Personal tools        | An always-on server whose MCP tools agents call; T3 pages show the results                | A web UI or a CLI per tool                     | "you can fully replace the scope app with a custom mcp"; "the clis remain as permanent processes (auto update)" |
-| Auth UI               | Guided access: sign in, API key, command line; completed steps recede                     | Account workspace and single replacing action  | "C is the best overall for the auth app"                                                                        |
-| Reply pages           | Static HTML from a few shared classes in the agent prompt, values written in place        | Script components that render data lines       | "just to define static html elements that the agent can fill with data and compose"; "js is worse"              |
-| Agent instructions    | Only what a model cannot infer: the user's choices, exact values, non-obvious rules       | Full templates and code for known techniques   | "let the models do their job and figure the "known" part out on their own"                                      |
+| Area                  | Choice                                                                                    | Rejected                                              | The user's words                                                                                                |
+| --------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| AI calls              | The Effect AI provider module, directly in the service using it                           | A wrapper `ai` package with its own interface         | "This interface looks like shit … just remove the package and use the effect ai module directly"                |
+| Identifiers           | A literal union for a closed set of ids, such as model ids                                | `string`                                              | "The id need to be a literal"                                                                                   |
+| Stash note page       | The note's content and tags                                                               | Source and Text in image sections                     | "Sections like the source and text in image can be removed"                                                     |
+| Versions              | `latest`; `^X.Y`, or the exact version, only where a peer, the Expo SDK or Vite+ fixes it | `^X.Y.Z` and pins without a reason                    | "when possible use latest or "^\*.\*" … (i perfer latest)"                                                      |
+| Development telemetry | A new Effect app with its own OTLP/HTTP JSON receiver and SQLite                          | A Collector dependency or every OTLP transport        | "we already know the apps where this will be used"; "Like for motel I want to write the ingestor/receiver too"  |
+| Personal tools        | An always-on server whose MCP tools agents call; T3 pages show the results                | A web UI or a CLI per tool                            | "you can fully replace the scope app with a custom mcp"; "the clis remain as permanent processes (auto update)" |
+| Auth                  | Browser sign-in and standard OAuth; clients manage credentials automatically              | Manual API keys and tokens                            | "remove manual tokens, standardize the auth and make the apps public"                                           |
+| Auth implementation   | In-repo OAuth for Deslop apps, Codex and Claude Code only                                 | Better Auth and unused provider features              | "keep the auth as simple as possible and remove better auth"                                                    |
+| Stash and Auth UI     | Reading-first list, quiet source markers and flat authorization receipt                   | Leading placeholder thumbnails and dense consent text | "i really like B, there is just some misalignment"                                                              |
+| Reply pages           | Static HTML from a few shared classes in the agent prompt, values written in place        | Script components that render data lines              | "just to define static html elements that the agent can fill with data and compose"; "js is worse"              |
+| Agent instructions    | Only what a model cannot infer: the user's choices, exact values, non-obvious rules       | Full templates and code for known techniques          | "let the models do their job and figure the "known" part out on their own"                                      |
 
 ## Layout
 

@@ -30,13 +30,13 @@ export const assetAtom = Atom.family((module: number | string) =>
 const downloads = new Directory(Paths.cache, 'downloads')
 
 // A remote file downloaded once into the cache under its name, for views that read local files.
-export const downloadAtom = Atom.family((source: {name: string; url: string}) =>
+export const downloadAtom = Atom.family((source: {headers?: Record<string, string>; name: string; url: string}) =>
 	Atom.make(
 		Effect.gen(function* () {
 			const file = new File(downloads, source.name)
 			if (file.exists) return file.uri
 			downloads.create({idempotent: true, intermediates: true})
-			return (yield* Effect.tryPromise(() => File.downloadFileAsync(source.url, file))).uri
+			return (yield* Effect.tryPromise(() => File.downloadFileAsync(source.url, file, {headers: source.headers}))).uri
 		})
 	)
 )

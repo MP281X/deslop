@@ -1,6 +1,12 @@
 {
 	"$schema": "./node_modules/fallow/schema.json",
-	"entry": ["**/main.*", "**/app.plugin.js", "apps/*/fingerprint.config.js", "tools/coding-standards/src/install.ts"],
+	"entry": [
+		"**/main.*",
+		"**/app.plugin.js",
+		"apps/*/fingerprint.config.js",
+		"apps/*/targets/*/expo-target.config.js",
+		"tools/coding-standards/src/install.ts"
+	],
 	"includeEntryExports": true,
 	"ignoreDependencies": [
 		"@expo-google-fonts/jetbrains-mono",
@@ -14,6 +20,7 @@
 	"ignoreExports": [
 		{"exports": ["default"], "file": "apps/*/app.config.ts"},
 		{"exports": ["*"], "file": "apps/*/fingerprint.config.js"},
+		{"exports": ["module.exports"], "file": "apps/*/targets/*/expo-target.config.js"},
 		{"exports": ["default"], "file": "packages/*/app.plugin.js"},
 		{"exports": ["*"], "file": "apps/*/src/services/*/schema.ts"},
 		{"exports": ["*"], "file": "packages/components-web/src/**/*.tsx"}

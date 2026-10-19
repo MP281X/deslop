@@ -1,4 +1,4 @@
-import {Config, Context, Effect, pipe} from 'effect'
+import {Context, Effect} from 'effect'
 
 import {Headers} from 'effect/http'
 import {RpcMiddleware} from 'effect/rpc'
@@ -6,15 +6,8 @@ import {RpcMiddleware} from 'effect/rpc'
 import type {User} from '#schema.ts'
 import {AuthError} from '#schema.ts'
 
-// The auth app: native apps and command lines sign in here, and every app reads its public key from here.
+// Native apps and MCP clients sign in here; backends verify their bearer here.
 export const AUTH_URL = 'https://auth.mp281x.xyz'
-
-export const development = pipe(
-	Config.String('NODE_ENV'),
-	Config.withDefault('production'),
-	Config.map(mode => mode === 'development'),
-	Effect.mapError(cause => AuthError.make({cause, message: 'Cannot read the authentication mode'}))
-)
 
 export class CurrentUser extends Context.Service<CurrentUser, User>()('@deslop/auth/lib/utils/CurrentUser') {}
 
