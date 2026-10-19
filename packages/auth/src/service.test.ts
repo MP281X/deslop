@@ -30,6 +30,7 @@ import {
 	ConsentParams,
 	PendingAuthorization,
 	Registration,
+	RequestParams,
 	TokenResponse,
 	User
 } from '#schema.ts'
@@ -76,8 +77,29 @@ const servers = Effect.gen(function* () {
 		Effect.sync(() =>
 			HttpRouter.toWebHandler(
 				pipe(
-					Layer.merge(
+					Layer.mergeAll(
 						me,
+						HttpRouter.add(
+							'GET',
+							'/auth/request',
+							pipe(
+								Effect.gen(function* () {
+									const params = yield* HttpServerRequest.schemaSearchParams(RequestParams)
+									return yield* HttpServerResponse.schemaJson(AuthorizationStatus)(
+										yield* Effect.flatMap(
+											Stream.runHead(
+												(yield* Authorizations).wait(
+													params.request,
+													(yield* HttpServerRequest.HttpServerRequest).headers
+												)
+											),
+											Effect.fromOption
+										)
+									)
+								}),
+								Effect.catchTag('AuthError', () => Effect.succeed(HttpServerResponse.empty({status: 400})))
+							)
+						),
 						pipe(
 							Layer.merge(
 								HttpRouter.add(

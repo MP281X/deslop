@@ -83,13 +83,15 @@ export function requestCode(id: string) {
 
 export function applicationName(request: PendingAuthorization) {
 	const names = Array.dedupe(
-		Array.map(request.resources, resource =>
-			pipe(
-				new URL(resource).hostname,
-				String.split('.'),
-				Array.head,
-				Option.getOrElse(() => '')
-			)
+		Array.map(
+			Array.filter(request.resources, resource => resource !== 'https://otel.mp281x.xyz'),
+			resource =>
+				pipe(
+					new URL(resource).hostname,
+					String.split('.'),
+					Array.head,
+					Option.getOrElse(() => '')
+				)
 		)
 	)
 	if (names.length !== 1) return 'Shared access'

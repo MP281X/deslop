@@ -50,7 +50,6 @@ import {
 	GitHubUser,
 	Registration,
 	Resource,
-	RequestParams,
 	RevokeParams,
 	SignInParams,
 	Stored,
@@ -486,15 +485,6 @@ export class Auth extends Context.Service<
 										return yield* AuthError.make({error: 'invalid_scope', message: 'Only Deslop access is supported'})
 									}
 									const now = yield* Clock.currentTimeMillis
-									if (
-										Array.length(
-											yield* sql`SELECT hash FROM auth_state WHERE json_extract(payload, '$._tag') = 'Request' AND expires_at > ${now} LIMIT 32`
-										) >= 32
-									) {
-										return yield* AuthError.make({
-											message: 'Too many pending authorizations. Answer or wait for them to expire.'
-										})
-									}
 									const id = Base64Url.encode(yield* random.randomBytes(16))
 									const token = yield* save(
 										{
@@ -521,21 +511,6 @@ export class Auth extends Context.Service<
 							),
 							Effect.tap(() => PubSub.publish(changes, true))
 						)
-					)
-				)
-				yield* router.add(
-					'GET',
-					'/auth/request',
-					oauth(
-						Effect.gen(function* () {
-							const params = yield* pipe(
-								HttpServerRequest.schemaSearchParams(RequestParams),
-								rejected('Open the authorization link again')
-							)
-							return yield* HttpServerResponse.schemaJson(AuthorizationStatus)(
-								yield* receive(params.request, (yield* HttpServerRequest.HttpServerRequest).headers)
-							)
-						})
 					)
 				)
 				yield* router.add(

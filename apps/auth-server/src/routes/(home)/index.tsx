@@ -91,7 +91,7 @@ function RequestRow(props: {request: PendingAuthorization}) {
 	return (
 		<li className="flex flex-col gap-3 border-b py-3">
 			<div className="flex flex-wrap items-baseline gap-x-2">
-				<span className="text-sm font-medium">{props.request.clientName}</span>
+				<span className="min-w-0 text-sm font-medium break-all">{props.request.clientName}</span>
 				<span className="text-muted-foreground text-xs">claimed client</span>
 				<time
 					className="text-muted-foreground ml-auto text-xs"
