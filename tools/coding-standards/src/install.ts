@@ -29,6 +29,7 @@ const cli = pipe(
 			}
 			const root = yield* fs.realPath(String.trimEnd(result.stdout))
 			const home = yield* fs.realPath(yield* Config.String('HOME'))
+			const configHome = yield* pipe(Config.String('XDG_CONFIG_HOME'), Config.withDefault(path.join(home, '.config')))
 			const canonical = Effect.fnUntraced(function* (
 				directory: string
 			): Effect.fn.Return<string, PlatformError.PlatformError> {
@@ -40,15 +41,18 @@ const cli = pipe(
 					path.join(home, '.agents'),
 					path.join(home, '.claude'),
 					path.join(home, '.codex'),
+					path.join(home, '.config', 'opencode'),
+					path.join(configHome, 'opencode'),
 					yield* pipe(Config.String('CLAUDE_CONFIG_DIR'), Config.withDefault(path.join(home, '.claude'))),
-					yield* pipe(Config.String('CODEX_HOME'), Config.withDefault(path.join(home, '.codex')))
+					yield* pipe(Config.String('CODEX_HOME'), Config.withDefault(path.join(home, '.codex'))),
+					yield* pipe(Config.String('OPENCODE_CONFIG_DIR'), Config.withDefault(path.join(configHome, 'opencode')))
 				]),
 				canonical,
 				{concurrency: 'unbounded'}
 			)
 			const entries = yield* fs.readDirectory(root)
 			const directories = pipe(
-				['.agents', '.claude', '.codex'],
+				['.agents', '.claude', '.codex', '.opencode'],
 				Array.filter(directory => Array.contains(entries, directory))
 			)
 			const targets = Array.dedupe([
@@ -122,7 +126,7 @@ const cli = pipe(
 		})
 	),
 	Command.withDescription(
-		'Install the package’s engineering, design, delivery, explore and review skills at the Git repository root, including linked worktrees. Copy into each existing .agents, .claude and .codex skills directory, always .claude, and .agents when no .codex exists. Replace only package-owned names; preserve other skills and global configuration. Reject destinations outside the repository before copying. Refer to skills by name. Run the latest CLI transiently without adding a dependency. These skills belong in repositories, not global configuration.'
+		'Install the package’s engineering, design, delivery, explore and review skills at the Git repository root, including linked worktrees. Copy into each existing .agents, .claude, .codex and .opencode skills directory, always .claude, and .agents when no .codex exists. Replace only package-owned names; preserve other skills and global configuration. Reject destinations outside the repository before copying. Refer to skills by name. Run the latest CLI transiently without adding a dependency. These skills belong in repositories, not global configuration.'
 	),
 	Command.withExamples([
 		{
