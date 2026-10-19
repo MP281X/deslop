@@ -177,7 +177,7 @@ T3's desktop app and the iOS Simulator; it builds nothing, the simulator app com
 
 ## MCP sign-in
 
-Codex reads `dual`, `scope`, `stash`, `portfolio` and `mobbin` from the installed configuration and keeps OAuth sign-ins in the Secret Service keyring; Claude keeps MCP servers in `~/.claude.json`, so register them on each worker, once the installed `.claude/settings.json` allows them:
+Codex reads `dual`, `scope`, `stash`, `portfolio` and `mobbin` from the installed configuration and keeps OAuth sign-ins in the Secret Service keyring. Claude keeps locally registered MCP servers in `~/.claude.json`; register the following on each worker once the installed `.claude/settings.json` allows them. Mobbin uses the shared Claude connector instead.
 
 ```bash
 sudo apt-get install -y gnome-keyring libsecret-tools
@@ -190,7 +190,6 @@ claude mcp add --transport http --scope user dual https://app.dualos.ai/mcp
 claude mcp add --transport http --scope user scope https://dev.tailnet-8c4c.ts.net:4318/mcp
 claude mcp add --transport http --scope user stash https://dev.tailnet-8c4c.ts.net:4319/mcp
 claude mcp add --transport http --scope user portfolio https://dev.tailnet-8c4c.ts.net:4320/mcp
-claude mcp add --transport http --scope user mobbin https://api.mobbin.com/mcp
 ```
 
 Guide: in each worker's T3 terminal run the two lines below one at a time, open each printed URL and approve Dual; the browser then fails to load `http://127.0.0.1:…/callback?…`, so copy that address from the address bar and paste it into the terminal.
@@ -200,11 +199,15 @@ codex mcp login --no-browser dual
 claude mcp login --no-browser dual
 ```
 
-Mobbin requires a paid Mobbin account and a separate OAuth authorization for each client on each worker; never copy credentials between workers. Authorize it with `codex mcp login --no-browser mobbin` and `claude mcp login --no-browser mobbin` using the same callback procedure. The endpoint is remote: no local server or API key is needed. [Official setup](https://docs.mobbin.com/mcp/introduction).
+**Mobbin in Claude.** Connect the [verified connector](https://claude.ai/directory/connectors/mobbin) to the paid Mobbin account, then use `claude auth login` on each worker with that same Claude account. Subscription-authenticated Claude Code and T3 Claude sessions fetch the connector automatically; no separate Mobbin CLI OAuth or local server is needed. If a local `mobbin` entry already exists, remove it with `claude mcp remove mobbin --scope user`: a local server at the same URL shadows the shared connector. API-key and `claude setup-token` sessions do not import it. [Recommended Mobbin setup](https://docs.mobbin.com/mcp/clients/claude-code-cli), [Claude connector authentication](https://code.claude.com/docs/en/mcp#use-mcp-servers-from-claudeai).
+
+The installed settings must not set `disableClaudeAiConnectors: true` in any scope; a project-level `false` cannot override it. The URL allowlist admits Mobbin and the existing services, not unrelated cloud connectors. Once any `serverUrl` entry exists, every remote server needs a URL rule, including T3's HTTP endpoint at `http://127.0.0.1:<port>/mcp`; name rules no longer admit remote servers. Skill and plugin synchronization stay disabled. After merging configuration changes, start a new session. Check `/mcp` for `claude.ai Mobbin` with status `connected`; `claude mcp list` alone does not prove a shared connector loaded. [Allowlist matching](https://code.claude.com/docs/en/managed-mcp#match-servers-by-url-command-or-name).
+
+**Mobbin in Codex.** Authorize `https://api.mobbin.com/mcp` separately on each worker with `codex mcp login --no-browser mobbin` and the callback procedure above; Claude's connector authorization does not transfer to Codex. Never copy credentials between workers. [Official setup](https://docs.mobbin.com/mcp/introduction).
 
 Verify with a standard screen search for `iOS saved notes search filters` and a flow search for `workflow run failure details`. Inspect returned preview images and preserve the product names and Mobbin links; a connected server alone does not prove search or image access. Standard searches, `search_flows` and `search_sections` use no AI credits; only successful `search_screens` calls with `mode: "deep"` consume credits. [Tools and images](https://docs.mobbin.com/mcp/features), [credit rules](https://docs.mobbin.com/ai-credits).
 
-If registration or tool discovery returns a Vercel `HTTP 403` challenge, report the rejection to [Mobbin support](https://help.mobbin.com/en/contact-us); a successful OAuth login does not prove the tools are usable.
+If direct client registration or discovery returns a Vercel `HTTP 403` challenge, keep OAuth success separate from tool availability and report the failing step to [Mobbin support](https://help.mobbin.com/en/contact-us). For Claude, use the recommended shared connector rather than retrying direct registration.
 
 ## Git identity
 
