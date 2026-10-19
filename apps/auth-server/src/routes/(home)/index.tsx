@@ -101,17 +101,17 @@ function RequestRow(props: {request: PendingAuthorization}) {
 				</time>
 			</div>
 			<dl className="text-sm">
-				<div className="grid grid-cols-4 items-baseline gap-3 py-0.5">
-					<dt className="text-muted-foreground text-xs">Request ID</dt>
-					<dd className="col-span-3 min-w-0 tabular-nums">{requestCode(props.request.id)}</dd>
+				<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-0.5">
+					<dt className="text-muted-foreground shrink-0 basis-24 text-xs">Request ID</dt>
+					<dd className="min-w-0 grow basis-48 break-all tabular-nums">{requestCode(props.request.id)}</dd>
 				</div>
-				<div className="grid grid-cols-4 items-baseline gap-3 py-0.5">
-					<dt className="text-muted-foreground text-xs">Returns to</dt>
-					<dd className="col-span-3 min-w-0 break-all">{props.request.redirectUri}</dd>
+				<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-0.5">
+					<dt className="text-muted-foreground shrink-0 basis-24 text-xs">Returns to</dt>
+					<dd className="min-w-0 grow basis-48 break-all">{props.request.redirectUri}</dd>
 				</div>
-				<div className="grid grid-cols-4 items-baseline gap-3 py-0.5">
-					<dt className="text-muted-foreground text-xs">Access</dt>
-					<dd className="col-span-3 min-w-0 break-all">
+				<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-0.5">
+					<dt className="text-muted-foreground shrink-0 basis-24 text-xs">Access</dt>
+					<dd className="min-w-0 grow basis-48 break-all">
 						<ul>
 							{Array.map(props.request.resources, resource => (
 								<li key={resource}>{resource}</li>
@@ -119,9 +119,9 @@ function RequestRow(props: {request: PendingAuthorization}) {
 						</ul>
 					</dd>
 				</div>
-				<div className="grid grid-cols-4 items-baseline gap-3 py-0.5">
-					<dt className="text-muted-foreground text-xs">Expires</dt>
-					<dd className="col-span-3 min-w-0">
+				<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-0.5">
+					<dt className="text-muted-foreground shrink-0 basis-24 text-xs">Expires</dt>
+					<dd className="min-w-0 grow basis-48 break-all">
 						<time dateTime={DateTime.formatIso(DateTime.makeUnsafe(props.request.expiresAt))}>
 							{timeLabel(props.request.expiresAt)}
 						</time>
