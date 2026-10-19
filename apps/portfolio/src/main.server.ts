@@ -1,4 +1,4 @@
-import {NodeRuntime} from '@effect/platform-node'
+import {NodeHttpClient, NodeRuntime} from '@effect/platform-node'
 
 import {Layer, pipe} from 'effect'
 
@@ -6,6 +6,7 @@ import {McpServer} from 'effect/ai'
 import {HttpRouter} from 'effect/http'
 import {RpcServer} from 'effect/rpc'
 
+import {Auth} from '@deslop/auth/service'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import packageJson from '#package.json' with {type: 'json'}
@@ -42,6 +43,8 @@ NodeRuntime.runMain(
 			{disableLogger: true}
 		),
 		Layer.provide(Presence.layer),
+		Layer.provide(Auth.layer('https://portfolio.mp281x.xyz')),
+		Layer.provide(NodeHttpClient.layerFetch),
 		Layer.provide(ServerRuntime.layer('@deslop/portfolio')),
 		Layer.provide(ServerRuntime.layerNodeHttpServer),
 		Layer.launch

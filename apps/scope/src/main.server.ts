@@ -1,7 +1,7 @@
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- NodeHttpServer requires the native server constructor at the application boundary.
 import {createServer} from 'node:http'
 
-import {NodeHttpServer, NodeRuntime, NodeServices} from '@effect/platform-node'
+import {NodeHttpClient, NodeHttpServer, NodeRuntime, NodeServices} from '@effect/platform-node'
 import {SqliteClient} from '@effect/sql-sqlite-node'
 
 import {ByteSize, Config, Effect, FileSystem, Layer, Path, String, pipe} from 'effect'
@@ -9,6 +9,7 @@ import {ByteSize, Config, Effect, FileSystem, Layer, Path, String, pipe} from 'e
 import {McpServer} from 'effect/ai'
 import {HttpIncomingMessage, HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 
+import {Auth, HttpAuth} from '@deslop/auth/service'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import packageJson from '#package.json' with {type: 'json'}
@@ -66,7 +67,7 @@ const receiver = HttpRouter.use(router =>
 	})
 )
 
-// Agents reach the tools over the tailnet; the endpoint has no authentication of its own.
+// Public MCP clients authorize through the shared auth app.
 const mcp = pipe(
 	McpServer.toolkit(Tools),
 	Layer.provide(ToolHandlers),
@@ -93,26 +94,43 @@ const database = Layer.unwrap(
 // The receiver never exports its own spans or query traffic back into itself.
 NodeRuntime.runMain(
 	pipe(
-		HttpRouter.serve(
-			Layer.mergeAll(
-				receiver,
-				mcp,
-				HttpRouter.cors({allowedHeaders: ['content-type'], allowedMethods: ['POST', 'OPTIONS'], allowedOrigins: ['*']})
+		Layer.merge(
+			pipe(
+				HttpRouter.serve(
+					Layer.mergeAll(
+						pipe(Layer.fresh(receiver), Layer.provide(HttpAuth.layer)),
+						mcp,
+						HttpRouter.cors({
+							allowedHeaders: ['authorization', 'content-type'],
+							allowedMethods: ['POST', 'OPTIONS'],
+							allowedOrigins: ['https://portfolio.mp281x.xyz', 'https://auth.mp281x.xyz', 'https://stash.mp281x.xyz'],
+							credentials: true
+						})
+					),
+					{disableLogger: true, middleware: HttpMiddleware.decompression()}
+				),
+				Layer.provide(ServerRuntime.layerNodeHttpServer)
 			),
-			{disableLogger: true, middleware: HttpMiddleware.decompression()}
+			// Exporters inside the private Docker network and tailnet keep their standard OTLP port.
+			pipe(
+				HttpRouter.serve(Layer.merge(Layer.fresh(receiver), HttpRouter.cors({allowedHeaders: ['content-type']})), {
+					disableLogger: true,
+					middleware: HttpMiddleware.decompression()
+				}),
+				Layer.provide(
+					NodeHttpServer.layerConfig(createServer, {
+						host: pipe(Config.String('HOST'), Config.withDefault('127.0.0.1')),
+						port: Config.succeed(4318)
+					})
+				)
+			)
 		),
+		Layer.provide(Auth.layer('https://otel.mp281x.xyz')),
+		Layer.provide(NodeHttpClient.layerFetch),
 		Layer.provide(Telemetry.layer),
 		Layer.provide(database),
 		Layer.provide(NodeServices.layer),
 		Layer.provide(Layer.succeed(HttpIncomingMessage.MaxBodySize)(ByteSize.mebibytes(10))),
-		// 4318 is OTLP/HTTP's port, where exporters send by default.
-		Layer.provide(
-			NodeHttpServer.layerConfig(createServer, {
-				gracefulShutdownTimeout: Config.succeed('1500 millis'),
-				host: pipe(Config.String('HOST'), Config.withDefault('127.0.0.1')),
-				port: pipe(Config.Port('PORT'), Config.withDefault(4318))
-			})
-		),
 		Layer.launch
 	)
 )

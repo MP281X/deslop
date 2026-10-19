@@ -1,7 +1,9 @@
 import {
 	Array,
 	Boolean,
+	Clock,
 	Effect,
+	Layer,
 	HashSet,
 	Option,
 	Order,
@@ -9,69 +11,188 @@ import {
 	Record,
 	Schedule,
 	Schema,
+	Semaphore,
 	Stream,
 	String,
 	pipe
 } from 'effect'
 
-import {AtomRpc, Atom} from 'effect/reactivity'
+import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
+import {AsyncResult, AtomRpc, Atom} from 'effect/reactivity'
+import {AuthRequest, makeRedirectUri} from 'expo-auth-session'
 import * as Clipboard from 'expo-clipboard'
 import * as Crypto from 'expo-crypto'
 import {File, Paths} from 'expo-file-system'
 
+import {AuthError, ClientRegistration, Credentials, TokenResponse} from '@deslop/auth/schema'
+import {AUTH_URL, RpcAuth} from '@deslop/auth/utils'
 import {brands} from '@deslop/components-mobile/icons'
 import {alert, downloadAtom, writeAtomically} from '@deslop/components-mobile/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 
-import {pasteboard} from '#modules/native/index.ts'
+import {native} from '#modules/native/index.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {captureUrl, isYouTube} from '#services/notes/lib/utils.ts'
 import type {Kind, Note, NotesEvent} from '#services/notes/schema.ts'
 import {Brand, NoteItem, NotesError} from '#services/notes/schema.ts'
 
-// Server
+const SERVER = 'https://stash.mp281x.xyz'
+const TELEMETRY = 'https://otel.mp281x.xyz'
+const DISCOVERY = {
+	authorizationEndpoint: `${AUTH_URL}/api/auth/oauth2/authorize`,
+	tokenEndpoint: `${AUTH_URL}/api/auth/oauth2/token`
+}
+const refreshLock = Semaphore.makeUnsafe(1)
+const authRuntime = Atom.runtime(FetchHttpClient.layer)
 
-// The app's one App Group, where the share extension reads the server too; without the file, the build's server.
 const sharedFolder = Array.head(Record.values(Paths.appleSharedContainers))
-const serverFile = Option.map(sharedFolder, folder => new File(folder, 'server'))
+const listFile = new File(Paths.document, 'list.json')
 
-// The previous release signed in and kept its token here.
+// Remove the obsolete server selection and its cached list once.
+pipe(
+	sharedFolder,
+	Option.map(folder => new File(folder, 'server')),
+	Option.filter(file => file.exists),
+	Option.map(file => {
+		file.delete()
+		if (listFile.exists) listFile.delete()
+	})
+)
 pipe(
 	sharedFolder,
 	Option.map(folder => new File(folder, 'token')),
-	Option.filter(token => token.exists),
-	Option.map(token => token.delete())
+	Option.filter(file => file.exists),
+	Option.map(file => file.delete())
 )
 
-const listFile = new File(Paths.document, 'list.json')
+const readSession = Effect.gen(function* () {
+	const text = yield* Effect.try(() => native.getSession())
+	if (String.isEmpty(text)) return Option.none<Credentials>()
+	return Option.some(yield* Schema.decodeEffect(Schema.fromJsonString(Credentials))(text))
+})
+export const sessionAtom = Atom.keepAlive(authRuntime.atom(readSession))
 
-function savedServer() {
-	return pipe(
-		serverFile,
-		Option.filter(file => file.exists),
-		Option.map(file => file.textSync()),
-		Option.filter(String.isNonEmpty),
-		Option.getOrElse(() => MobileRuntime.extra.server)
-	)
-}
-
-// Another server's list must not show while the new one is out of reach.
-export const serverAtom = Atom.writable(savedServer, (context, server: string) => {
-	if (server === savedServer()) return
-	Option.map(serverFile, file => writeAtomically(file, server))
-	if (listFile.exists) listFile.delete()
-	context.setSelf(server)
+const saveSession = Effect.fnUntraced(function* (clientId: string, response: TokenResponse) {
+	const credentials = {
+		accessToken: response.access_token,
+		clientId,
+		expiresAt: (yield* Clock.currentTimeMillis) + response.expires_in * 1000,
+		refreshToken: response.refresh_token
+	}
+	const text = yield* Schema.encodeEffect(Schema.fromJsonString(Credentials))(credentials)
+	yield* Effect.try(() => native.setSession(text))
+	return credentials.accessToken
 })
 
-const protocol = MobileRuntime.layer('@deslop/stash')
+const tokenRequest = Effect.fnUntraced(function* (clientId: string, params: Record<string, string>) {
+	const response = yield* (yield* HttpClient.HttpClient).execute(
+		pipe(
+			HttpClientRequest.post(DISCOVERY.tokenEndpoint),
+			HttpClientRequest.bodyUrlParams({...params, client_id: clientId, resource: [SERVER, TELEMETRY]})
+		)
+	)
+	if (response.status === 400 || response.status === 401) {
+		yield* Effect.try(() => native.clearSession())
+		return yield* AuthError.make({message: 'Sign in to Stash again'})
+	}
+	return yield* saveSession(clientId, yield* HttpClientResponse.schemaBodyJson(TokenResponse)(response))
+})
 
-// Each server builds its own client, so choosing another reconnects.
+const accessToken = pipe(
+	Effect.gen(function* () {
+		const credentials = yield* Effect.fromOption(yield* readSession)
+		if (credentials.expiresAt > (yield* Clock.currentTimeMillis) + 60_000) return credentials.accessToken
+		return yield* tokenRequest(credentials.clientId, {
+			grant_type: 'refresh_token',
+			refresh_token: credentials.refreshToken
+		})
+	}),
+	Semaphore.withPermit(refreshLock),
+	Effect.mapError(cause => AuthError.make({cause, message: 'Sign in to Stash'}))
+)
+
+export const signInAtom = authRuntime.fn(() =>
+	pipe(
+		Effect.gen(function* () {
+			const redirectUri = makeRedirectUri({path: 'auth/callback', scheme: MobileRuntime.extra.scheme})
+			const client = yield* HttpClient.HttpClient
+			const registration = yield* pipe(
+				HttpClientRequest.post(`${AUTH_URL}/api/auth/oauth2/register`),
+				HttpClientRequest.bodyJson({
+					application_type: 'native',
+					client_name: 'Stash',
+					grant_types: ['authorization_code', 'refresh_token'],
+					redirect_uris: [redirectUri],
+					response_types: ['code'],
+					token_endpoint_auth_method: 'none'
+				}),
+				Effect.flatMap(request => client.execute(request)),
+				Effect.flatMap(HttpClientResponse.schemaBodyJson(ClientRegistration))
+			)
+			const request = new AuthRequest({
+				clientId: registration.client_id,
+				extraParams: {resource: SERVER},
+				redirectUri,
+				scopes: ['deslop', 'offline_access']
+			})
+			const url = new URL(yield* Effect.tryPromise(() => request.makeAuthUrlAsync(DISCOVERY)))
+			url.searchParams.append('resource', TELEMETRY)
+			const result = yield* Effect.tryPromise(() => request.promptAsync(DISCOVERY, {url: url.href}))
+			if (result.type !== 'success') return yield* AuthError.make({message: 'Sign-in was not completed'})
+			if (result.params['iss'] !== `${AUTH_URL}/api/auth`) {
+				return yield* AuthError.make({message: 'The sign-in issuer did not match'})
+			}
+			yield* tokenRequest(registration.client_id, {
+				code: result.params['code'] ?? '',
+				code_verifier: request.codeVerifier ?? '',
+				grant_type: 'authorization_code',
+				redirect_uri: redirectUri
+			})
+			yield* Atom.refresh(sessionAtom)
+		}),
+		Effect.mapError(cause => AuthError.make({cause, message: 'Cannot sign in to Stash'})),
+		alert('Not Signed In')
+	)
+)
+
+export const signOutAtom = authRuntime.fn(() =>
+	pipe(
+		Effect.gen(function* () {
+			yield* pipe(
+				Effect.forEach(
+					Option.toArray(yield* readSession),
+					saved =>
+						pipe(
+							HttpClientRequest.post(`${AUTH_URL}/api/auth/oauth2/revoke`),
+							HttpClientRequest.bodyUrlParams({
+								client_id: saved.clientId,
+								token: saved.refreshToken,
+								token_type_hint: 'refresh_token'
+							}),
+							request => HttpClient.HttpClient.use(client => client.execute(request))
+						),
+					{concurrency: 1}
+				),
+				Effect.ignore({log: 'Warn', message: 'The server session could not be revoked; signing out on this iPhone'})
+			)
+			yield* Effect.try(() => native.clearSession())
+			yield* Atom.refresh(sessionAtom)
+		}),
+		Effect.mapError(cause => AuthError.make({cause, message: 'Cannot sign out'})),
+		alert('Not Signed Out')
+	)
+)
+
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/stash/lib/utils/RpcClient', {
 	group: RpcContracts,
-	protocol: get => protocol(get(serverAtom))
+	protocol: pipe(
+		MobileRuntime.layer('@deslop/stash', accessToken)(SERVER),
+		Layer.provideMerge(RpcAuth.layerClient(accessToken)),
+		Layer.provide(FetchHttpClient.layer)
+	)
 }) {}
 
-// An action reads the client once: an action atom built on the client reruns its last call when the server changes.
+// Actions read the client once rather than rerunning their last write when it reconnects.
 function withClient<A, E>(get: Atom.FnContext, effect: Effect.Effect<A, E, RpcClient>) {
 	return Effect.flatMap(get.result(RpcClient.runtime), context => Effect.provideContext(effect, context))
 }
@@ -122,6 +243,8 @@ function apply(items: NoteItem[], event: NotesEvent) {
 // The copy on the iPhone shows the list while the server is out of reach.
 export const notesAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get => {
+		const session = get(sessionAtom)
+		if (!AsyncResult.isSuccess(session) || Option.isNone(session.value)) return Stream.succeed(Array.empty<NoteItem>())
 		get(MobileRuntime.activationsAtom)
 		return Stream.concat(
 			Stream.fromEffect(
@@ -143,6 +266,7 @@ export const notesAtom = Atom.keepAlive(
 						Effect.ignore({log: 'Warn', message: 'The list could not be kept on this iPhone'})
 					)
 				),
+				Stream.tapError(() => Atom.refresh(sessionAtom)),
 				Stream.retry(Schedule.spaced('2 seconds'))
 			)
 		)
@@ -166,12 +290,18 @@ export const searchAtom = RpcClient.runtime.atom(get => {
 	)
 })
 
-// The file name holds the server, since two servers can hold the same note id.
 export const imageAtom = Atom.family((id: Note['id']) =>
-	Atom.make(get => {
-		const server = new URL(get(serverAtom))
-		return get.result(downloadAtom({name: `${server.host}-${id}`, url: new URL(`/api/images/${id}`, server).href}))
-	})
+	authRuntime.atom(get =>
+		Effect.gen(function* () {
+			return yield* get.result(
+				downloadAtom({
+					headers: {authorization: `Bearer ${yield* accessToken}`},
+					name: id,
+					url: new URL(`/api/images/${id}`, SERVER).href
+				})
+			)
+		})
+	)
 )
 
 // Actions stay alive, so leaving the screen does not interrupt the request.
@@ -241,16 +371,17 @@ export const offerAtom = Atom.keepAlive(
 	Atom.make(get =>
 		Effect.gen(function* () {
 			get(MobileRuntime.activationsAtom)
-			const count = `${pasteboard.changeCount()}`
+			const count = `${native.changeCount()}`
 			if (clipboardFile.exists && clipboardFile.textSync() === count) return Option.none<Offer>()
 			if (yield* Effect.promise(() => Clipboard.hasImageAsync())) return Option.some<Offer>({count, kind: 'image'})
-			if (yield* Effect.promise(() => pasteboard.hasLink())) return Option.some<Offer>({count, kind: 'link'})
+			if (yield* Effect.promise(() => native.hasLink())) return Option.some<Offer>({count, kind: 'link'})
 			return Option.none<Offer>()
 		})
 	)
 )
 
-const saveImage = Effect.fnUntraced(function* (server: string) {
+const saveImage = Effect.fnUntraced(function* () {
+	const token = yield* accessToken
 	const image = yield* Effect.tryPromise({
 		catch: cause => NotesError.make({cause, message: 'The copied image could not be read.'}),
 		try: () => Clipboard.getImageAsync({format: 'jpeg', jpegQuality: 0.85})
@@ -263,8 +394,8 @@ const saveImage = Effect.fnUntraced(function* (server: string) {
 			catch: cause => NotesError.make({cause, message: 'The image could not be sent.'}),
 			try: () => {
 				file.writeSync(String.replace(/^data:[^,]*,/u, '')(image.data), {encoding: 'base64'})
-				return file.upload(new URL(`/api/files/${id}`, server).href, {
-					headers: {'content-type': 'image/jpeg'},
+				return file.upload(new URL(`/api/files/${id}`, SERVER).href, {
+					headers: {authorization: `Bearer ${token}`, 'content-type': 'image/jpeg'},
 					httpMethod: 'POST'
 				})
 			}
@@ -295,8 +426,11 @@ const saveLink = Effect.gen(function* () {
 })
 
 const saveAtom = Atom.keepAlive(
-	Atom.fn((kind: Offer['kind'], get) =>
-		pipe(withClient(get, {image: saveImage(get.registry.get(serverAtom)), link: saveLink}[kind]), alert('Not Saved'))
+	authRuntime.fn((kind: Offer['kind'], get) =>
+		pipe(
+			Boolean.match(kind === 'image', {onFalse: () => withClient(get, saveLink), onTrue: () => saveImage()}),
+			alert('Not Saved')
+		)
 	)
 )
 

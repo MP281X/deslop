@@ -21,6 +21,7 @@
 		"react-native": "0.88.0-rc.4"
 	},
 	"devDependencies": {
+		"@deslop/auth": "workspace:*",
 		"@deslop/components-mobile": "workspace:*",
 		"@deslop/runtime": "workspace:*",
 		"@expo/ui": "^58.0",

@@ -1,4 +1,5 @@
 import ImageIO
+import Security
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -59,7 +60,7 @@ private struct SaveView: View {
         failure = "A note holds at most 20,000 characters."
         return
       }
-      try upload.text(shared.text)
+      try await upload.text(shared.text)
       context.completeRequest(returningItems: nil)
     } catch {
       failure = error.localizedDescription
@@ -72,6 +73,7 @@ private struct Upload {
   let server: URL
   let group: String
   let folder: URL
+  let keychainGroup: String
 
   init() throws {
     // The extension runs from the app's PlugIns/ folder, so the containing app's bundle is two levels up.
@@ -79,17 +81,16 @@ private struct Upload {
     guard
       let app,
       let identifier = app.bundleIdentifier,
-      let fallback = app.object(forInfoDictionaryKey: "StashServer") as? String,
+      let keychainGroup = app.object(forInfoDictionaryKey: "DeslopKeychainGroup") as? String,
       let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.\(identifier)")
     else {
       throw CocoaError(.featureUnsupported)
     }
-    // The app keeps the server chosen in its settings here; without it, the build's server.
-    let chosen = try? String(contentsOf: container.appendingPathComponent("server"), encoding: .utf8)
-    guard let server = URL(string: chosen.flatMap { $0.isEmpty ? nil : $0 } ?? fallback) else {
+    guard let server = URL(string: "https://stash.mp281x.xyz") else {
       throw CocoaError(.featureUnsupported)
     }
     self.server = server
+    self.keychainGroup = keychainGroup
     self.group = "group.\(identifier)"
     self.folder = container.appendingPathComponent("uploads", isDirectory: true)
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -106,17 +107,18 @@ private struct Upload {
     folder.appendingPathComponent(name)
   }
 
-  func text(_ text: String) throws {
+  func text(_ text: String) async throws {
     let id = UUID().uuidString.lowercased()
     let body = file(named: "\(id).json")
     try JSONEncoder().encode(["id": id, "text": text]).write(to: body, options: .atomic)
-    send(body, to: "api/capture", type: "application/json", id: id)
+    try await send(body, to: "api/capture", type: "application/json", id: id)
   }
 
-  func send(_ body: URL, to path: String, type: String, id: String) {
+  func send(_ body: URL, to path: String, type: String, id: String) async throws {
     var request = URLRequest(url: server.appendingPathComponent(path))
     request.httpMethod = "POST"
     request.setValue(type, forHTTPHeaderField: "Content-Type")
+    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
     let configuration = URLSessionConfiguration.background(withIdentifier: "\(group).share.\(id)")
     configuration.sharedContainerIdentifier = group
     configuration.isDiscretionary = false
@@ -125,6 +127,64 @@ private struct Upload {
     session.uploadTask(with: request, fromFile: body).resume()
     session.finishTasksAndInvalidate()
   }
+
+  private var keychainQuery: [String: Any] {
+    [kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: "deslop.auth", kSecAttrAccount as String: "stash",
+      kSecAttrAccessGroup as String: keychainGroup]
+  }
+
+  private func accessToken() async throws -> String {
+    var query = keychainQuery
+    query[kSecReturnData as String] = true
+    query[kSecMatchLimit as String] = kSecMatchLimitOne
+    var value: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &value)
+    guard status == errSecSuccess, let data = value as? Data else {
+      throw NSError(domain: "Stash", code: 401, userInfo: [NSLocalizedDescriptionKey: "Open Stash and sign in first."])
+    }
+    var credentials = try JSONDecoder().decode(Credentials.self, from: data)
+    // A queued background request cannot replace its bearer after the extension closes.
+    if credentials.expiresAt > Date().timeIntervalSince1970 * 1000 + 86_460_000 { return credentials.accessToken }
+    var form = URLComponents()
+    form.queryItems = [URLQueryItem(name: "client_id", value: credentials.clientId),
+      URLQueryItem(name: "grant_type", value: "refresh_token"),
+      URLQueryItem(name: "refresh_token", value: credentials.refreshToken),
+      URLQueryItem(name: "resource", value: "https://stash.mp281x.xyz"),
+      URLQueryItem(name: "resource", value: "https://otel.mp281x.xyz")]
+    guard let endpoint = URL(string: "https://auth.mp281x.xyz/api/auth/oauth2/token") else {
+      throw CocoaError(.featureUnsupported)
+    }
+    var request = URLRequest(url: endpoint)
+    request.httpMethod = "POST"
+    request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+    request.httpBody = form.percentEncodedQuery?.data(using: .utf8)
+    let (body, response) = try await URLSession.shared.data(for: request)
+    guard let response = response as? HTTPURLResponse, response.statusCode == 200 else {
+      throw NSError(domain: "Stash", code: 401, userInfo: [NSLocalizedDescriptionKey: "Open Stash and sign in again."])
+    }
+    let token = try JSONDecoder().decode(OAuthResponse.self, from: body)
+    credentials.accessToken = token.access_token
+    credentials.refreshToken = token.refresh_token
+    credentials.expiresAt = Date().timeIntervalSince1970 * 1000 + token.expires_in * 1000
+    let saved = SecItemUpdate(keychainQuery as CFDictionary,
+      [kSecValueData as String: try JSONEncoder().encode(credentials)] as CFDictionary)
+    guard saved == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(saved)) }
+    return credentials.accessToken
+  }
+}
+
+private struct Credentials: Codable {
+  var accessToken: String
+  let clientId: String
+  var expiresAt: Double
+  var refreshToken: String
+}
+
+private struct OAuthResponse: Decodable {
+  let access_token: String
+  let expires_in: Double
+  let refresh_token: String
 }
 
 private enum SharedText {
@@ -171,7 +231,7 @@ private enum SharedFile {
           continuation.resume(with: Result(catching: { try FileManager.default.copyItem(at: url, to: target) }))
         }
       }
-      upload.send(target, to: "api/files/\(id)", type: mp4 ? "video/mp4" : "video/quicktime", id: id)
+      try await upload.send(target, to: "api/files/\(id)", type: mp4 ? "video/mp4" : "video/quicktime", id: id)
       return true
     }
     if let provider = items.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) }) {
@@ -181,7 +241,7 @@ private enum SharedFile {
       }
       let target = upload.file(named: "\(id).jpg")
       try jpeg.write(to: target, options: .atomic)
-      upload.send(target, to: "api/files/\(id)", type: "image/jpeg", id: id)
+      try await upload.send(target, to: "api/files/\(id)", type: "image/jpeg", id: id)
       return true
     }
     return false

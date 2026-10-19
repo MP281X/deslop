@@ -3,14 +3,7 @@ import {Boolean, Config, Effect, Option, pipe} from 'effect'
 import type {ExpoConfig} from 'expo/config'
 
 // EAS sets APP_VARIANT from the build profile; the simulator build gets its own bundle identifier and name.
-export function make(app: {
-	bundleIdentifier: string
-	name: string
-	owner: string
-	projectId: string
-	server: string
-	slug: string
-}) {
+export function make(app: {bundleIdentifier: string; name: string; owner: string; projectId: string; slug: string}) {
 	// oxlint-disable-next-line eslint/no-restricted-properties -- Expo loads the app config outside any Effect runtime.
 	return Effect.runSync(
 		Effect.gen(function* () {
@@ -33,7 +26,7 @@ export function make(app: {
 			return {
 				appGroup: `group.${variant.bundleIdentifier}`,
 				config: {
-					extra: {eas: {projectId: app.projectId}, otel, server: app.server},
+					extra: {eas: {projectId: app.projectId}, otel, scheme: variant.scheme},
 					icon: './src/routes/icon.png',
 					ios: {
 						appleTeamId: Option.getOrUndefined(team),

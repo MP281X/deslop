@@ -12,10 +12,12 @@
 		"preview": "vp run build && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js"
 	},
 	"devDependencies": {
+		"@better-auth/oauth-provider": "latest",
 		"@deslop/auth": "workspace:*",
 		"@deslop/components-web": "workspace:*",
 		"@deslop/runtime": "workspace:*",
 		"@tanstack/react-router": "latest",
+		"better-auth": "latest",
 		"lucide-react": "latest",
 		"react": "latest",
 		"react-dom": "latest"

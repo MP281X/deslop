@@ -1,21 +1,67 @@
-import {useAtomSet} from '@effect/atom-react'
+import {useAtom, useAtomSet, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Match, pipe} from 'effect'
+import {Array, Match, Option, pipe} from 'effect'
 
-import {Host, NavigationDestination, NavigationStack, ProgressView, useNativeState} from '@expo/ui/swift-ui'
-import {background, tint} from '@expo/ui/swift-ui/modifiers'
+import {
+	Button,
+	Host,
+	NavigationDestination,
+	NavigationStack,
+	ProgressView,
+	Text,
+	VStack,
+	useNativeState
+} from '@expo/ui/swift-ui'
+import {background, buttonStyle, disabled, frame, tint} from '@expo/ui/swift-ui/modifiers'
+import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
 import {colors} from '@deslop/components-mobile/theme'
 
-import {queryAtom} from '#lib/utils.ts'
+import {queryAtom, sessionAtom, signInAtom} from '#lib/utils.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
 import {ComposeRoute} from '#routes/compose.tsx'
 import {NoteRoute} from '#routes/notes/$id.tsx'
-import {ServerRoute} from '#routes/server.tsx'
 import type {Kind} from '#services/notes/schema.ts'
 
 export function RootRoute() {
+	return (
+		<Suspense
+			fallback={
+				// oxlint-disable-next-line shadcn/no-inline-styles -- The native SwiftUI host fills the React Native screen.
+				<Host style={{flex: 1}}>
+					<ProgressView />
+				</Host>
+			}
+		>
+			<SessionRoute />
+		</Suspense>
+	)
+}
+
+function SessionRoute() {
+	const session = useAtomSuspense(sessionAtom).value
+	const [signIn, start] = useAtom(signInAtom)
+	if (Option.isSome(session)) return <AppRoutes />
+	return (
+		// oxlint-disable-next-line shadcn/no-inline-styles -- The native SwiftUI host fills the React Native screen.
+		<Host style={{flex: 1}}>
+			<VStack
+				spacing={20}
+				modifiers={[frame({maxHeight: Infinity, maxWidth: Infinity}), background(colors.background)]}
+			>
+				<Text>Sign in to Stash</Text>
+				<Button
+					label="Sign in with GitHub"
+					onPress={() => start()}
+					modifiers={[buttonStyle('glassProminent'), disabled(AsyncResult.isWaiting(signIn))]}
+				/>
+			</VStack>
+		</Host>
+	)
+}
+
+function AppRoutes() {
 	const [path, setPath] = useState<string[]>([])
 	const setQuery = useAtomSet(queryAtom)
 	const [tag, setTag] = useState<string>()
@@ -39,7 +85,6 @@ export function RootRoute() {
 						onKind={setKind}
 						onOpen={id => setPath([id])}
 						onSearch={setQuery}
-						onServer={() => setPath(['server'])}
 						onTag={setTag}
 					/>
 				</Suspense>
@@ -48,7 +93,6 @@ export function RootRoute() {
 						{pipe(
 							Match.value(id),
 							Match.when('compose', () => <ComposeRoute onDone={() => setPath([])} />),
-							Match.when('server', () => <ServerRoute onDone={() => setPath([])} />),
 							Match.orElse(() => (
 								<NoteRoute
 									id={id}

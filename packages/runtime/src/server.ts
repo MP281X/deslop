@@ -4,11 +4,14 @@ import {fileURLToPath} from 'node:url'
 
 import {NodeHttpServer} from '@effect/platform-node'
 
-import {Array, Config, Effect, Layer, Option, String, pipe} from 'effect'
+import {Config, Effect, Layer, pipe} from 'effect'
 
 import {McpProtocol, McpServer} from 'effect/ai'
-import {HttpRouter, HttpServerRequest, HttpServerResponse, HttpStaticServer} from 'effect/http'
+import {HttpRouter, HttpServerResponse, HttpStaticServer} from 'effect/http'
 import {RpcSerialization} from 'effect/rpc'
+
+import {layerMcpAuth} from '@deslop/auth/service'
+import {AUTH_URL} from '@deslop/auth/utils'
 
 import {layerOtlp} from '#telemetry.ts'
 
@@ -23,33 +26,30 @@ export function layer(applicationName: string) {
 	)
 }
 
-// A request through the public proxy, or from a web page whose domain was rebound to the server, carries another host.
-export function isTailnetHost(request: HttpServerRequest.HttpServerRequest) {
-	return Option.exists(
-		Option.flatMap(Option.fromNullishOr(request.headers['host']), value =>
-			Option.liftThrowable(() => new URL(`http://${value}`).hostname)()
-		),
-		name => Array.contains(['localhost', '127.0.0.1', '[::1]'], name) || String.endsWith('.ts.net')(name)
-	)
-}
-
 // Codex speaks MCP's stateless 2026-07-28 revision; Claude still opens a session, which it ends with DELETE.
 export function layerMcp(options: {instructions: string; name: string; version: string}) {
-	return pipe(
-		McpServer.layerHttp({
-			...options,
-			allowSessionTermination: true,
-			path: '/mcp',
-			protocols: [McpProtocol.v2026_07_28, McpProtocol.v2025_11_25, McpProtocol.v2025_06_18]
-		}),
-		// An MCP session lives until its client ends it, so only the tailnet may open one.
-		Layer.provide(
-			HttpRouter.middleware(app =>
-				Effect.gen(function* () {
-					if (!isTailnetHost(yield* HttpServerRequest.HttpServerRequest)) return HttpServerResponse.empty({status: 403})
-					return yield* app
+	const resource = `https://${options.name}.mp281x.xyz/mcp`
+	return Layer.mergeAll(
+		pipe(
+			McpServer.layerHttp({
+				...options,
+				allowSessionTermination: true,
+				path: '/mcp',
+				protocols: [McpProtocol.v2026_07_28, McpProtocol.v2025_11_25, McpProtocol.v2025_06_18]
+			}),
+			Layer.provide(layerMcpAuth(resource))
+		),
+		HttpRouter.add(
+			'GET',
+			'/.well-known/oauth-protected-resource/mcp',
+			Effect.map(pipe(Config.String('AUTH_URL'), Config.withDefault(AUTH_URL)), url =>
+				HttpServerResponse.jsonUnsafe({
+					authorization_servers: [`${url}/api/auth`],
+					bearer_methods_supported: ['header'],
+					resource,
+					scopes_supported: ['deslop']
 				})
-			).layer
+			)
 		)
 	)
 }

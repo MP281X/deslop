@@ -16,6 +16,7 @@
 		"preview": "vp run build && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js"
 	},
 	"devDependencies": {
+		"@deslop/auth": "workspace:*",
 		"@deslop/components-web": "workspace:*",
 		"@deslop/runtime": "workspace:*",
 		"@tanstack/react-hotkeys": "latest",

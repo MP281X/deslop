@@ -83,7 +83,8 @@ import {
 	queryAtom,
 	regenerateAtom,
 	removeAtom,
-	searchAtom
+	searchAtom,
+	signOutAtom
 } from '#lib/utils.ts'
 import {bottomBarSearch} from '#modules/native/index.ts'
 import logo from '#routes/logo.png'
@@ -290,7 +291,8 @@ function DeleteButton(props: {onPress: () => void}) {
 }
 
 // A picker row's tag is a string or a number, so "All Notes", which clears the filter, is a toggle beside it.
-function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void; onServer: () => void}) {
+function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
+	const signOut = useAtomSet(signOutAtom)
 	return (
 		// A menu opened from the bottom bar reverses its items unless the order is fixed.
 		<Menu
@@ -319,7 +321,7 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void; onServer
 				))}
 			</Picker>
 			<Divider />
-			<Button label="Server" systemImage="server.rack" onPress={props.onServer} />
+			<Button label="Sign Out" systemImage="rectangle.portrait.and.arrow.right" onPress={() => signOut()} />
 		</Menu>
 	)
 }
@@ -413,7 +415,6 @@ export function HomeRoute(props: {
 	onKind: (kind?: Kind) => void
 	onOpen: (id: Note['id']) => void
 	onSearch: (text: string) => void
-	onServer: () => void
 	onTag: (name?: string) => void
 	query: ReturnType<typeof useNativeState<string>>
 	tag?: string
@@ -544,7 +545,7 @@ export function HomeRoute(props: {
 					<PasteSheet />
 				</ToolbarItem>
 				<ToolbarItem placement="bottomBar">
-					<FilterMenu kind={props.kind} onKind={props.onKind} onServer={props.onServer} />
+					<FilterMenu kind={props.kind} onKind={props.onKind} />
 				</ToolbarItem>
 			</Toolbar.Content>
 		</Toolbar>

@@ -25,7 +25,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${HOME}/.deslop/deploy/acme:/acme
 
-  # The tailnet reaches its MCP endpoint through `tailscale serve`; the endpoint refuses the public host.
   portfolio:
     <<: *service
     image: ghcr.io/mp281x/deslop-portfolio:${REVISION:-latest}
@@ -41,12 +40,12 @@ services:
     image: ghcr.io/mp281x/deslop-auth-server:${REVISION:-latest}
     env_file: ${HOME}/.deslop/auth-server.env
     environment: {VITE_OTEL_URL: http://scope:4318}
+    volumes: ['${HOME}/.deslop/auth-server:/home/node/.deslop/auth-server']
     labels:
       traefik.enable: 'true'
       traefik.http.routers.auth-server.rule: Host(`auth.mp281x.xyz`)
       traefik.http.services.auth-server.loadbalancer.server.port: '5000'
 
-  # No authentication: only the tailnet reaches it, through `tailscale serve`.
   stash:
     <<: *service
     image: ghcr.io/mp281x/deslop-stash:${REVISION:-latest}
@@ -54,8 +53,11 @@ services:
     environment: {VITE_OTEL_URL: http://scope:4318}
     volumes: ['${HOME}/.deslop/stash:/home/node/.deslop/stash']
     ports: [127.0.0.1:4319:5000]
+    labels:
+      traefik.enable: 'true'
+      traefik.http.routers.stash.rule: Host(`stash.mp281x.xyz`)
+      traefik.http.services.stash.loadbalancer.server.port: '5000'
 
-  # The tailnet reaches its MCP endpoint through `tailscale serve`; the internet reaches only the receiver.
   scope:
     <<: *service
     image: ghcr.io/mp281x/deslop-scope:${REVISION:-latest}
@@ -64,8 +66,9 @@ services:
     ports: [127.0.0.1:4318:4318]
     labels:
       traefik.enable: 'true'
+      traefik.http.routers.scope.rule: Host(`scope.mp281x.xyz`)
       traefik.http.routers.otlp.rule: Host(`otel.mp281x.xyz`) && (Path(`/v1/traces`) || Path(`/v1/logs`))
-      traefik.http.services.otlp.loadbalancer.server.port: '4318'
+      traefik.http.services.otlp.loadbalancer.server.port: '5000'
 
   # Every minute it applies main's commit with the app images tagged by that commit; until a release has pushed all of them, the pull fails and nothing changes.
   # It reads main's commit from Git's ref listing, which has no API rate limit. A change to this entry needs one manual `up -d`.

@@ -1,14 +1,16 @@
 # @deslop/scope
 
-An Effect development debugger: an OTLP/HTTP JSON receiver on port 4318 whose traces and logs agents query through MCP.
+An Effect development debugger: a private OTLP/HTTP JSON receiver on port 4318 whose traces and logs agents query through an OAuth-protected MCP endpoint on port 5000.
 
 ```bash
 npx @deslop/scope@latest                                    # http://127.0.0.1:4318, data in ~/.deslop/scope
-claude mcp add --transport http scope http://127.0.0.1:4318/mcp
-codex mcp add scope --url http://127.0.0.1:4318/mcp
+claude mcp add --transport http scope https://scope.mp281x.xyz/mcp
+claude mcp login scope --no-browser
+codex mcp add scope --url https://scope.mp281x.xyz/mcp
+codex mcp login scope
 ```
 
-Apps export to `http://127.0.0.1:4318/v1/traces` and `/v1/logs` with `content-type: application/json`. `HOST` and `PORT` change the address; the MCP endpoint has no authentication, so expose it only on a private network.
+Trusted local exporters use `http://127.0.0.1:4318/v1/traces` and `/v1/logs` with `content-type: application/json`; never publish port 4318 to the internet. The public port serves MCP and authenticated ingestion. `HOST` changes the bind address; `PORT` changes the public port. Authorization uses Deslop Auth; no pasted API keys. Remote Codex clients need an HTTPS OAuth callback forwarded to their listener. Claude Code's headless login accepts the full callback URL when the phone cannot reach its localhost redirect.
 
 | Tool       | Returns                                                                  |
 | ---------- | ------------------------------------------------------------------------ |

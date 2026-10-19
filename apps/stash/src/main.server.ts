@@ -6,6 +6,7 @@ import {McpServer} from 'effect/ai'
 import {HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 import {RpcSerialization, RpcServer} from 'effect/rpc'
 
+import {Auth, HttpAuth} from '@deslop/auth/service'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import packageJson from '#package.json' with {type: 'json'}
@@ -62,7 +63,7 @@ const routes = HttpRouter.use(router =>
 	})
 )
 
-// A web page on a tailnet device reaches the server too, directly or through a domain rebound to its address.
+// Cookie-authenticated browsers must use the server's own origin.
 const sameOrigin = HttpMiddleware.make(app =>
 	Effect.gen(function* () {
 		const request = yield* HttpServerRequest.HttpServerRequest
@@ -72,7 +73,7 @@ const sameOrigin = HttpMiddleware.make(app =>
 			Option.flatMap(origin, value => Option.liftThrowable(() => new URL(value).host)()),
 			value => value === request.headers['host']
 		)
-		if (!ServerRuntime.isTailnetHost(request) || (Option.isSome(origin) && !own)) {
+		if (Option.isSome(origin) && !own) {
 			return HttpServerResponse.empty({status: 403})
 		}
 		return yield* app
@@ -86,7 +87,6 @@ const rpc = pipe(
 	Layer.provide(RpcSerialization.layerJson)
 )
 
-// The app, the share extension and agents reach the server over the tailnet; it has no authentication of its own.
 const mcp = pipe(
 	McpServer.toolkit(Tools),
 	Layer.provide(ToolHandlers),
@@ -102,7 +102,11 @@ const mcp = pipe(
 
 NodeRuntime.runMain(
 	pipe(
-		HttpRouter.serve(Layer.mergeAll(rpc, routes, mcp), {disableLogger: true, middleware: sameOrigin}),
+		HttpRouter.serve(Layer.mergeAll(rpc, pipe(routes, Layer.provide(HttpAuth.layer)), mcp), {
+			disableLogger: true,
+			middleware: sameOrigin
+		}),
+		Layer.provide(Auth.layer('https://stash.mp281x.xyz')),
 		Layer.provide(layerNotes),
 		Layer.provide(Layer.mergeAll(Sources.layer, Media.layer, Organizer.layer)),
 		Layer.provide(Layer.mergeAll(NodeDns.layer, NodeHttpClient.layerFetch, NodeServices.layer)),

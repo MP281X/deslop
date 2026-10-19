@@ -9,5 +9,11 @@
 		"./schema": "./src/schema.ts",
 		"./service": "./src/service.ts",
 		"./utils": "./src/lib/utils.ts"
+	},
+	"dependencies": {
+		"@better-auth/cimd": "latest",
+		"@better-auth/mcp": "latest",
+		"@better-auth/oauth-provider": "latest",
+		"better-auth": "latest"
 	}
 }
