@@ -1,14 +1,12 @@
 import {useAtom, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Option, Record} from 'effect'
+import {Array, Boolean, DateTime, Match, Option, Record, pipe} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {LoaderCircle, LogOut} from 'lucide-react'
 import {Suspense} from 'react'
 
-import type {PendingAuthorization} from '@deslop/auth/schema'
-import {AuthorizationStatus} from '@deslop/auth/schema'
 import {Loading} from '@deslop/components-web/fallbacks'
 import {Button} from '@deslop/components-web/ui/button'
 
@@ -25,6 +23,7 @@ import {
 	signOutAtom,
 	timeLabel
 } from '#lib/utils.ts'
+import type {PendingAuthorization} from '#services/authorizations/schema.ts'
 
 export const Route = createFileRoute('/(home)/')({component: Home})
 
@@ -62,27 +61,31 @@ function Home() {
 }
 
 function Waiting(props: {id: string}) {
-	return AuthorizationStatus.match(useAtomSuspense(requestAtom(props.id)).value, {
-		Completed: () => (
-			<p className="text-muted-foreground text-sm" role="status">
-				Returning to the app…
-			</p>
-		),
-		Expired: () => (
-			<p className="text-destructive text-sm" role="alert">
-				This request expired. Start sign-in again in the app.
-			</p>
-		),
-		Waiting: value => (
-			<section className="flex flex-col gap-2 border-y py-3">
-				<h2 className="text-sm font-medium">Waiting for approval · {requestCode(value.request.id)}</h2>
-				<p className="text-muted-foreground text-sm">
-					Approve {applicationName(value.request)} at {location.host} in your signed-in browser. You do not need to sign
-					in here.
+	return pipe(
+		useAtomSuspense(requestAtom(props.id)).value,
+		Match.value,
+		Match.tagsExhaustive({
+			Completed: () => (
+				<p className="text-muted-foreground text-sm" role="status">
+					Returning to the app…
 				</p>
-			</section>
-		)
-	})
+			),
+			Expired: () => (
+				<p className="text-destructive text-sm" role="alert">
+					This request expired. Start sign-in again in the app.
+				</p>
+			),
+			Waiting: value => (
+				<section className="flex flex-col gap-2 border-y py-3">
+					<h2 className="text-sm font-medium">Waiting for approval · {requestCode(value.request.id)}</h2>
+					<p className="text-muted-foreground text-sm">
+						Approve {applicationName(value.request)} at {location.host} in your signed-in browser. You do not need to
+						sign in here.
+					</p>
+				</section>
+			)
+		})
+	)
 }
 
 function RequestRow(props: {request: PendingAuthorization}) {

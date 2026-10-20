@@ -25,9 +25,9 @@ import {
 } from 'effect'
 
 import {Base64Url} from 'effect/encoding'
+import type {Headers} from 'effect/http'
 import {
 	Cookies,
-	Headers,
 	HttpClient,
 	HttpClientRequest,
 	HttpClientResponse,
@@ -38,9 +38,12 @@ import {
 	UrlParams
 } from 'effect/http'
 
-import type {PendingAuthorization} from '#schema.ts'
+import {AuthError, User} from '@deslop/runtime/auth/schema'
+import {Auth} from '@deslop/runtime/auth/service'
+import {AUTH_URL} from '@deslop/runtime/auth/utils'
+
+import type {PendingAuthorization} from '#services/authorizations/schema.ts'
 import {
-	AuthError,
 	AuthorizationRow,
 	AuthorizationStatus,
 	AuthorizeParams,
@@ -49,17 +52,13 @@ import {
 	GitHubToken,
 	GitHubUser,
 	Registration,
-	Resource,
 	RevokeParams,
 	SignInParams,
 	Stored,
 	StoredRow,
 	TokenParams,
-	User,
 	VerificationParams
-} from '#schema.ts'
-
-import {AUTH_URL, CurrentUser, RpcAuth} from '#lib/utils.ts'
+} from '#services/authorizations/schema.ts'
 
 const SESSION_COOKIE = '__Secure-session'
 const LOGIN_COOKIE = '__Host-login'
@@ -71,21 +70,6 @@ function rejected(message: string) {
 		if (Schema.is(AuthError)(cause)) return cause
 		return AuthError.make({cause, message})
 	})
-}
-
-function provide(auth: typeof Auth.Service) {
-	return pipe(
-		Context.make(Auth, auth),
-		Context.add(
-			RpcAuth,
-			RpcAuth.of((effect, request) =>
-				pipe(
-					auth.user(request.headers),
-					Effect.flatMap(user => Effect.provideService(effect, CurrentUser, user))
-				)
-			)
-		)
-	)
 }
 
 function oauth<E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
@@ -127,57 +111,8 @@ export class Authorizations extends Context.Service<
 		readonly pending: (headers: Headers.Headers) => Stream.Stream<PendingAuthorization[], AuthError>
 		readonly wait: (id: string, headers: Headers.Headers) => Stream.Stream<AuthorizationStatus, AuthError>
 	}
->()('@deslop/auth/service/Authorizations') {}
-
-export class Auth extends Context.Service<
-	Auth,
-	{
-		readonly user: (headers: Headers.Headers) => Effect.Effect<User, AuthError>
-		readonly access: (headers: Headers.Headers, resource: string) => Effect.Effect<User, AuthError>
-	}
->()('@deslop/auth/service/Auth') {
-	static readonly layer = (resource: string) =>
-		Layer.effectContext(
-			Effect.gen(function* () {
-				const url = yield* pipe(Config.String('AUTH_URL'), Config.withDefault(AUTH_URL))
-				const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
-				const origins = [
-					new URL(url).origin,
-					'https://portfolio.mp281x.xyz',
-					...Array.map(Resource.literals, identifier => new URL(identifier).origin)
-				]
-				const access = Effect.fn('Auth.access')(function* (headers: Headers.Headers, audience: string) {
-					return yield* pipe(
-						client.get(`${url}/auth/verify`, {
-							headers: {authorization: headers['authorization'] ?? ''},
-							urlParams: {resource: audience}
-						}),
-						Effect.flatMap(HttpClientResponse.schemaBodyJson(User)),
-						Effect.timeout('10 seconds')
-					)
-				}, rejected('Sign in first'))
-				return provide(
-					Auth.of({
-						access,
-						user: Effect.fn('Auth.user')(function* (headers: Headers.Headers) {
-							if (Option.isSome(Headers.get(headers, 'authorization'))) {
-								return yield* access(headers, resource)
-							}
-							if (Option.exists(Headers.get(headers, 'origin'), origin => !Array.contains(origins, origin))) {
-								return yield* AuthError.make({message: 'The request comes from another origin'})
-							}
-							return yield* pipe(
-								client.get(`${url}/auth/session`, {headers: {cookie: headers['cookie'] ?? ''}}),
-								Effect.flatMap(HttpClientResponse.schemaBodyJson(User)),
-								Effect.timeout('10 seconds')
-							)
-						}, rejected('Sign in first'))
-					})
-				)
-			})
-		)
-
-	static readonly layerIssuer = pipe(
+>()('@deslop/auth/services/authorizations/service/Authorizations') {
+	static readonly layer = pipe(
 		Layer.effectContext(
 			Effect.gen(function* () {
 				const sql = yield* SqliteClient.SqliteClient
@@ -752,7 +687,7 @@ export class Auth extends Context.Service<
 					)
 				)
 				return pipe(
-					provide(
+					Auth.makeContext(
 						Auth.of({
 							access,
 							user: Effect.fn('Auth.user')(function* (headers: Headers.Headers) {
@@ -788,44 +723,11 @@ export class Auth extends Context.Service<
 				Effect.gen(function* () {
 					const fs = yield* FileSystem.FileSystem
 					const path = yield* Path.Path
-					const directory = path.join(yield* Config.String('HOME'), '.deslop', 'auth-server')
+					const directory = path.join(yield* Config.String('HOME'), '.deslop', 'auth')
 					yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
 					return SqliteClient.layer({filename: path.join(directory, 'auth.sqlite')})
 				})
 			)
 		)
 	)
-}
-
-export const HttpAuth = HttpRouter.middleware<{provides: CurrentUser}>()(
-	Effect.gen(function* () {
-		const auth = yield* Auth
-		return app =>
-			Effect.gen(function* () {
-				const user = yield* Effect.result(auth.user((yield* HttpServerRequest.HttpServerRequest).headers))
-				if (Result.isFailure(user)) return HttpServerResponse.text('Sign in first', {status: 401})
-				return yield* Effect.provideService(app, CurrentUser, user.success)
-			})
-	})
-)
-
-export function layerMcpAuth(resource: string) {
-	return HttpRouter.middleware<{provides: CurrentUser}>()(
-		Effect.gen(function* () {
-			const auth = yield* Auth
-			return app =>
-				Effect.gen(function* () {
-					const user = yield* Effect.result(auth.access((yield* HttpServerRequest.HttpServerRequest).headers, resource))
-					if (Result.isFailure(user)) {
-						return HttpServerResponse.text('Authorization required', {
-							headers: {
-								'www-authenticate': `Bearer resource_metadata="${new URL('/.well-known/oauth-protected-resource/mcp', resource).href}", scope="deslop"`
-							},
-							status: 401
-						})
-					}
-					return yield* Effect.provideService(app, CurrentUser, user.success)
-				})
-		})
-	).layer
 }

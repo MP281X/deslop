@@ -8,9 +8,9 @@ import Constants from 'expo-constants'
 import * as Updates from 'expo-updates'
 import {AppState} from 'react-native'
 
-import type {AuthError} from '@deslop/auth/schema'
-
 import {layerOtlp} from '#telemetry.ts'
+
+import type {AuthError} from '#auth/schema.ts'
 
 export const extra = Schema.decodeUnknownSync(Schema.Struct({otel: Schema.String, scheme: Schema.String}))(
 	Constants.expoConfig?.extra

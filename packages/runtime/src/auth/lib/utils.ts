@@ -3,17 +3,17 @@ import {Context, Effect} from 'effect'
 import {Headers} from 'effect/http'
 import {RpcMiddleware} from 'effect/rpc'
 
-import type {User} from '#schema.ts'
-import {AuthError} from '#schema.ts'
+import type {User} from '#auth/schema.ts'
+import {AuthError} from '#auth/schema.ts'
 
 // Native apps and MCP clients sign in here; backends verify their bearer here.
 export const AUTH_URL = 'https://auth.mp281x.xyz'
 
-export class CurrentUser extends Context.Service<CurrentUser, User>()('@deslop/auth/lib/utils/CurrentUser') {}
+export class CurrentUser extends Context.Service<CurrentUser, User>()('@deslop/runtime/auth/lib/utils/CurrentUser') {}
 
 // Contracts add it with `.middleware(RpcAuth)`; the server's `Auth.layer` verifies each request.
 export class RpcAuth extends RpcMiddleware.Service<RpcAuth, {provides: CurrentUser}>()(
-	'@deslop/auth/lib/utils/RpcAuth',
+	'@deslop/runtime/auth/lib/utils/RpcAuth',
 	{error: AuthError}
 ) {
 	// Sends the session token as the bearer of every request, read again for each one.

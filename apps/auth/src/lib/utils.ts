@@ -4,21 +4,21 @@ import {FetchHttpClient, HttpClient, HttpClientRequest} from 'effect/http'
 import {Atom, AtomRpc} from 'effect/reactivity'
 import * as Rpc from 'effect/rpc'
 
-import type {PendingAuthorization} from '@deslop/auth/schema'
-import {AuthError} from '@deslop/auth/schema'
+import {AuthError} from '@deslop/runtime/auth/schema'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
+import type {PendingAuthorization} from '#services/authorizations/schema.ts'
 
 const authRuntime = Atom.runtime(FetchHttpClient.layer)
 
 export const connectedAtom = Atom.make(false)
 
-class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/auth-server/lib/utils/RpcClient', {
+class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/auth/lib/utils/RpcClient', {
 	group: RpcContracts,
 	protocol: get =>
 		pipe(
-			WebRuntime.layer('@deslop/auth-server'),
+			WebRuntime.layer('@deslop/auth'),
 			Layer.provide(
 				Layer.succeed(Rpc.RpcClient.ConnectionHooks, {
 					onConnect: Effect.sync(() => get.set(connectedAtom, true)),

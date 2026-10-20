@@ -23,7 +23,6 @@
 	},
 	"devDependencies": {
 		"@bacons/apple-targets": "latest",
-		"@deslop/auth": "workspace:*",
 		"@deslop/components-mobile": "workspace:*",
 		"@deslop/runtime": "workspace:*",
 		"@effect/ai-anthropic": "latest",

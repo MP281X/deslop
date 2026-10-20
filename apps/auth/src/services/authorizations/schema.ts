@@ -1,31 +1,6 @@
-// fallow-ignore-file unused-type -- Schema types pair with their values so consumers can import either.
 import {Schema} from 'effect'
 
-export class AuthError extends Schema.TaggedError<AuthError>()('AuthError', {
-	cause: Schema.optional(Schema.Defect()),
-	error: Schema.optionalKey(
-		Schema.Literals([
-			'invalid_request',
-			'invalid_client',
-			'invalid_grant',
-			'invalid_target',
-			'invalid_scope',
-			'access_denied'
-		])
-	),
-	message: Schema.String
-}) {}
-
-export type User = typeof User.Type
-export const User = Schema.Struct({id: Schema.NonEmptyString, name: Schema.NonEmptyString})
-
-export type Resource = typeof Resource.Type
-export const Resource = Schema.Literals([
-	'https://stash.mp281x.xyz',
-	'https://stash.mp281x.xyz/mcp',
-	'https://scope.mp281x.xyz/mcp',
-	'https://otel.mp281x.xyz'
-])
+import {Resource, User} from '@deslop/runtime/auth/schema'
 
 const authorizationFields = {
 	challenge: Schema.NonEmptyString,
@@ -139,24 +114,6 @@ export const GitHubToken = Schema.Struct({access_token: Schema.NonEmptyString})
 
 export type GitHubUser = typeof GitHubUser.Type
 export const GitHubUser = Schema.Struct({id: Schema.Int, login: Schema.NonEmptyString})
-
-export type Credentials = typeof Credentials.Type
-export const Credentials = Schema.Struct({
-	accessToken: Schema.NonEmptyString,
-	clientId: Schema.NonEmptyString,
-	expiresAt: Schema.Finite,
-	refreshToken: Schema.NonEmptyString
-})
-
-export type ClientRegistration = typeof ClientRegistration.Type
-export const ClientRegistration = Schema.Struct({client_id: Schema.NonEmptyString})
-
-export type TokenResponse = typeof TokenResponse.Type
-export const TokenResponse = Schema.Struct({
-	access_token: Schema.NonEmptyString,
-	expires_in: Schema.Finite,
-	refresh_token: Schema.NonEmptyString
-})
 
 export type VerificationParams = typeof VerificationParams.Type
 export const VerificationParams = Schema.Struct({resource: Resource})

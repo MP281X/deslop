@@ -1,20 +1,21 @@
 {
-	"name": "@deslop/auth-server",
+	"name": "@deslop/auth",
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
 		"#lib/*": "./src/lib/*",
 		"#rpcs/*": "./src/rpcs/*",
-		"#routes/*": "./src/routes/*"
+		"#routes/*": "./src/routes/*",
+		"#services/*": "./src/services/*"
 	},
 	"scripts": {
 		"build": "rm -rf dist && vp build && vp pack",
 		"preview": "vp run build && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js"
 	},
 	"devDependencies": {
-		"@deslop/auth": "workspace:*",
 		"@deslop/components-web": "workspace:*",
 		"@deslop/runtime": "workspace:*",
+		"@effect/sql-sqlite-node": "latest",
 		"@tanstack/react-router": "latest",
 		"lucide-react": "latest",
 		"react": "latest",

@@ -222,17 +222,17 @@ importers:
         specifier: 5.0.5
         version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.3.0(@types/node@26.6.5)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2))
 
-  apps/auth-server:
+  apps/auth:
     devDependencies:
-      '@deslop/auth':
-        specifier: workspace:*
-        version: link:../../packages/auth
       '@deslop/components-web':
         specifier: workspace:*
         version: link:../../packages/components-web
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
+      '@effect/sql-sqlite-node':
+        specifier: latest
+        version: 4.0.5(effect@4.0.5)
       '@tanstack/react-router':
         specifier: latest
         version: 1.170.45(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -272,9 +272,6 @@ importers:
 
   apps/scope:
     devDependencies:
-      '@deslop/auth':
-        specifier: workspace:*
-        version: link:../../packages/auth
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -297,9 +294,6 @@ importers:
       '@bacons/apple-targets':
         specifier: latest
         version: 5.0.0(expo@58.0.16(@babel/core@7.29.7(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.1))(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)(typescript@7.0.2))(supports-color@8.1.1)(typescript@7.0.2)
-      '@deslop/auth':
-        specifier: workspace:*
-        version: link:../../packages/auth
       '@deslop/components-mobile':
         specifier: workspace:*
         version: link:../../packages/components-mobile
@@ -351,12 +345,6 @@ importers:
       sharp:
         specifier: latest
         version: 0.35.5(@types/node@26.6.5)
-
-  packages/auth:
-    dependencies:
-      '@effect/sql-sqlite-node':
-        specifier: latest
-        version: 4.0.5(effect@4.0.5)
 
   packages/components-mobile:
     dependencies:
@@ -460,9 +448,6 @@ importers:
 
   packages/runtime:
     dependencies:
-      '@deslop/auth':
-        specifier: workspace:*
-        version: link:../auth
       '@deslop/components-web':
         specifier: workspace:*
         version: link:../components-web

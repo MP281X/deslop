@@ -5,12 +5,12 @@ import {Config, Effect, Layer, pipe} from 'effect'
 import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 import {RpcServer} from 'effect/rpc'
 
-import {Auth} from '@deslop/auth/service'
-import {AUTH_URL} from '@deslop/auth/utils'
+import {AUTH_URL} from '@deslop/runtime/auth/utils'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
+import {Authorizations} from '#services/authorizations/service.ts'
 
 const RpcOrigin = HttpRouter.middleware()(
 	Effect.gen(function* () {
@@ -37,12 +37,12 @@ NodeRuntime.runMain(
 					),
 					ServerRuntime.layerStaticFiles
 				),
-				Layer.provide(Auth.layerIssuer)
+				Layer.provide(Authorizations.layer)
 			),
 			{disableLogger: true}
 		),
 		Layer.provide(Layer.mergeAll(NodeHttpClient.layerFetch, NodeServices.layer)),
-		Layer.provide(ServerRuntime.layer('@deslop/auth-server')),
+		Layer.provide(ServerRuntime.layer('@deslop/auth')),
 		Layer.provide(ServerRuntime.layerNodeHttpServer),
 		Layer.launch
 	)

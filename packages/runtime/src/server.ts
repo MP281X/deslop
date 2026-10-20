@@ -10,10 +10,10 @@ import {McpProtocol, McpServer} from 'effect/ai'
 import {HttpRouter, HttpServerResponse, HttpStaticServer} from 'effect/http'
 import {RpcSerialization} from 'effect/rpc'
 
-import {layerMcpAuth} from '@deslop/auth/service'
-import {AUTH_URL} from '@deslop/auth/utils'
-
 import {layerOtlp} from '#telemetry.ts'
+
+import {AUTH_URL} from '#auth/lib/utils.ts'
+import {layerMcpAuth} from '#auth/service.ts'
 
 export function layer(applicationName: string) {
 	return Layer.mergeAll(

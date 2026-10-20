@@ -1,9 +1,9 @@
 import {Effect} from 'effect'
 
-import {Authorizations} from '@deslop/auth/service'
-import {CurrentUser} from '@deslop/auth/utils'
+import {CurrentUser} from '@deslop/runtime/auth/utils'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
+import {Authorizations} from '#services/authorizations/service.ts'
 
 export const RpcHandlers = RpcContracts.toLayer(
 	Effect.gen(function* () {
