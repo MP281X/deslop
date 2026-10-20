@@ -5,7 +5,7 @@ description: 'Use for any review, audit, critique or review round of code, a PR,
 
 # Review
 
-**One complete pass.** Build the strongest case that the work is wrong from raw evidence (the code, real runs, data, the references), never from the author's summary, and report every class of defect in this pass: a later round only checks the fixes. Judge the diff against the repository's `CODING_STANDARDS.md`, `AGENTS.md` and the skills the work needed: each departure is a finding that cites its rule.
+**One complete pass.** Build the strongest case that the work is wrong from raw evidence (the code, real runs, data, the references), never from the author's summary, and report every class of defect in this pass: a later round checks the fixes and their affected contracts. Judge the diff against the repository's `CODING_STANDARDS.md`, `AGENTS.md` and relevant rules; consult another skill only for a gap this review needs resolved.
 
 ## Findings
 
@@ -27,13 +27,29 @@ Each finding: severity, `path:line`, the reaching input, actual and required out
 - **Architecture first.** Rebuild the change from the request and its references alone: state owners, boundaries, files, data flow. Where its shape differs from the reference's or the simplest idiomatic one, report it with that shape as the fix, even when every line is correct.
 - **Depth.** Read every hand-written changed line, and for generated output the generator change and a sample; trace each contract through its real consumers, failure paths, concurrency and resource ownership, and persisted data from the previous release.
 - **Claims.** Check each claim in the PR body, comments and messages against its artifact; a false or unsupported claim is a P1.
-- **Requirements.** Map each of the user's requirements to its hunk and proof; one with neither is a finding.
-- **Committed state.** Read the commit range you were given, `git show <head>:<path>`, or the pushed head (`gh pr diff <n>`, `glab mr diff <n>`), never the author's working tree. Judge a stack as one change.
+- **Requirements.** Resolve approvals against the proposals they approve, not the author's summary. Map accepted requirements, including public names and paths, to the final implementation and evidence; a cosmetic substitute or an unapproved deviation is a finding.
+- **Committed state.** Read the supplied immutable base/head pairs, `git show <head>:<path>`, or the pushed heads (`gh pr diff <n>`, `glab mr diff <n>`), never the author's working tree. Judge related PRs together, including independent branches, and each slice on its actual base.
 - **Browser.** Inspect the existing preview, captures, console and requests without changing page state.
 
 ## Lenses
 
 **Contracts** (callers, data, migrations, failure paths), **shape** (references, owners, what can be deleted) and **proof** (each claim and requirement against its artifact); a reviewer given one lens applies every other part of this skill through it. The lead keeps a finding with a reachable input and a concrete harm, or a shape that departs from its reference, merges duplicates and drops preferences.
+
+## Evaluate
+
+Apply the questions the change touches, using existing evidence first; report findings, not a checklist of affirmative answers. A read-only reviewer identifies missing proof for the author rather than running repository checks, changing code or driving the preview. Use the repository's policy and supported targets, not invented budgets, a fixed device matrix or personal taste imposed on another team.
+
+| Question                                                              | Deciding evidence                                                                                                                                                                                                                                                                                                   |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Does the demonstration prove the requested journey, not a proxy?      | Per delivery, real input through each materially changed outcome and relevant failure path. A health check, successful exit or green suite proves only its own stage, not that the consumer works.                                                                                                                  |
+| Does each boundary reduce reading cost?                               | Substantive code and caller/import relationships: private implementation near its consumer, genuinely shared behavior in one owner, without replacing indirection with an unmanageable file. Fewer lines alone do not justify a boundary.                                                                           |
+| What required behavior is missing from existing owners or primitives? | Their exports and real consumers, plus a concrete reason reuse or composition cannot meet the requirement. A wrapper earns its place only by lowering actual complexity.                                                                                                                                            |
+| Does the shipped result match its agreed reference and conventions?   | Same-data reference/result captures and element boxes for deciding geometry, alignment, clipping and hierarchy, using the existing theme and layout owners.                                                                                                                                                         |
+| Does each persistent test protect reachable, owned behavior?          | The repository's test policy, reaching input and assertion: detect incorrect behavior without freezing equivalent implementations or re-testing libraries/types. Judge protection, not the regression label; request a targeted sensitivity probe only when needed.                                                 |
+| Is interaction responsive on first load, navigation and revisit?      | Real interaction recording, requests and timings/traces against the baseline: input stays locally responsive, still-valid available content stays visible and loading feedback belongs to the affected region. Initial loading and repeat navigation are different states; cosmetic progress is not responsiveness. |
+| Are async work and data scoped to the current need?                   | Actual request payloads/counts and resource lifetimes on representative data; obsolete cancelable work stops, ownership prevents redundant subscriptions or loading boundaries, and a small interaction does not fetch an unrelated corpus.                                                                         |
+| Are relevant states and failure paths reachable and correct?          | Changed empty, loading, partial, stale, error, success and long-content paths; evidence appropriate to the state, not a capture for every hypothetical combination.                                                                                                                                                 |
+| Does every added part serve the final requirement?                    | A reachable requirement or consumer that needs it, across the whole related PR set; no superseded approach, unused variant or unrelated cleanup kept merely because it was already built.                                                                                                                           |
 
 ## Instructions
 
@@ -41,4 +57,4 @@ Read the affected prompts, skills, references and settings whole, as one system,
 
 ## Body reader
 
-Read the published PR as a reviewer who knows nothing else: the body, every capture downloaded from the host, the branch head and the source tickets. Report a risk the body does not name, a claim the code or a capture contradicts, a requirement without proof and an unreadable capture.
+Read the published body, its captures, branch head and source tickets without the chat. Each sentence must change a review decision or prove behavior; report analysis dumps, process counts, inventories and repeated diff narration that bury the change. Require delivery's real input-to-outcome demonstration for non-UI changes too, preserving explicit capture limitations. Report material risks omitted, unsupported claims, requirements without proof, missing feasible demonstrations and unreadable captures.

@@ -1,16 +1,16 @@
 ---
-name: explore
-description: 'Use before choosing how to build something, before researching an API, library, approach, reference repository or earlier agent session, before a screen, and before proving or judging behavior or a screen.'
+name: patterns
+description: Find canonical code and UI patterns or resolve unfamiliar library APIs. Use when choosing an unfamiliar implementation shape or filling a reference gap; start with the repository's named examples.
 ---
 
-# Explore
+# Code patterns and references
 
-Find the shape the repository already uses, fill gaps from excellent Effect 4 codebases, ground every claim in something you read or ran, and loop on [Evaluate](#evaluate) and review's Code checks (scope, shape, claims) until every question the change touches answers yes (screen questions only for a changed screen).
+Find the relevant precedent, not a new workflow. The repository's named examples lead; external references fill a specific gap. Stop when the implementation shape or API question is settled; review owns evaluation.
 
 ## Sources, in order
 
-1. **The repository's own style.** The canonical examples its `AGENTS.md` names, then its `CODING_STANDARDS.md`. In a repository being cleaned up, an unnamed nearest file is code to replace.
-2. **References** for a shape the repository has no canonical example of: `git clone --depth 1 <url> /tmp/repos/<name>`, or `git -C /tmp/repos/<name> pull` when present, and read the listed paths at the default branch. Copy the structure into the repository's style; take every Effect name from the installed `effect` package's source, since the references run other Effect 4 versions.
+1. **The repository's own style.** The canonical examples its `AGENTS.md` names, then its `CODING_STANDARDS.md`. Read the owning module's exports and real consumers: a name or a screenshot alone does not establish its pattern. In a repository being cleaned up, an unnamed nearest file is code to replace.
+2. **References** for a shape the repository has no canonical example of: reuse a matching clone under `/tmp/repos/<name>` after checking its remote and revision, or `git clone --depth 1 <url> /tmp/repos/<name>`. Read the relevant paths at the default branch; fetching a reference never authorizes edits, builds or installs there. Copy the structure into the repository's style; take every Effect name from the installed `effect` package's source, since reference versions differ.
 
 | Shape                                       | Repository                                     | Open                                                                                                    |
 | ------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -25,7 +25,7 @@ Find the shape the repository already uses, fill gaps from excellent Effect 4 co
 | Atoms, AtomRpc, React hooks                 | https://github.com/Effect-TS/effect            | `packages/effect/src/reactivity/`, `packages/atom/react/`                                               |
 | Atoms in an app                             | https://github.com/tim-smart/bunnings-lite     | `src/atoms/`, `src/RpcClient.ts`                                                                        |
 | Expo                                        | https://github.com/pingdotgg/t3code            | `apps/mobile/src/state/`, `docs/internals/mobile-development.md`                                        |
-| Web UI, UX and speed                        | https://github.com/pingdotgg/t3code            | `docs/internals/web-ui.md`, `docs/internals/performance-regressions.md`, `apps/web/src/components/ui/`  |
+| Web input, loading, cache and navigation    | https://github.com/pingdotgg/t3code            | `docs/internals/web-ui.md`, `docs/internals/performance-regressions.md`, `apps/web/src/components/ui/`  |
 | Components as shipped                       | https://github.com/shadcn-ui/ui                | `apps/v4/registry/`, `skills/`                                                                          |
 | Design system document                      | https://github.com/google-labs-code/design.md  | `docs/spec.md`; worked: executor `design.md`, Effect-TS/website `apps/web/DESIGN.md`                    |
 | Official Effect apps                        | https://github.com/Effect-TS/website           | `apps/web/`; also Effect-TS/discord-bot and Effect-TS/cafe                                              |
@@ -46,19 +46,6 @@ rg -on '^export (const|function) (decodeUnknown\w*|fromJsonString|parseJson)\b' 
 # → decodeUnknownEffect decodeUnknownExit decodeUnknownOption … fromJsonString   (Effect 3's decodeUnknown and parseJson are gone)
 ```
 
-**Probe.** One question, one inline script against the public interface or real data through the repository's runner, such as `vp node -e '<script>'`. Shrink a reproduction until every input is needed; after two failed fixes, test the premise they share.
+**Probe.** One question, one inline script against the public interface or real data through the repository's runner, such as `vp node -e '<script>'`. Shrink a reproduction until every input is needed; repeated failed fixes call for testing their shared premise.
 
-## Evaluate
-
-| Question                                                                       | Instrument                                                                                                          |
-| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| Does the code read in place, top to bottom?                                    | One pass over the diff: each jump elsewhere to understand a line, and each comment a name could carry, is a finding |
-| Did every changed behavior and consumer run through its interface?             | The final code in the browser, by request, from the CLI or in the simulator; a green suite is not this              |
-| Does every element fit its container and share its neighbors' edges?           | The browser's element boxes at 390 px and desktop, light and dark, with long text, 0, 1 and many records            |
-| Does the screen read like its reference?                                       | Captures side by side with the same data; blur them: content and the next action still lead                         |
-| Does every input answer at once, with no flicker?                              | Event timing, long frames and layout shift after the real input; the action's trace before and after                |
-| Is every state reachable and shown?                                            | Empty, loading, partial, error, success and long content, each captured                                             |
-| Is every part needed?                                                          | Delete it and rerun the proof; a dependency, Effect or the repository may already do it                             |
-| Does each test fail when the behavior breaks and pass when the internals move? | Break the behavior, then restructure the code; tests cover owned logic, never UI or libraries                       |
-
-**Tells** a screen fails on: a gradient or glow, a colored side stripe, a bordered card per section, equal prominence everywhere, a color per tile, generic copy, content waiting on an entrance animation, the hero, feature grid and logo row skeleton.
+**Visual taste.** For this user's screens, avoid gradients or glows, colored side stripes, a bordered card per section, equal prominence everywhere, a color per tile, generic copy, content waiting on an entrance animation and the hero/feature-grid/logo-row skeleton. The user's picked reference wins.

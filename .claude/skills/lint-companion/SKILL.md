@@ -9,7 +9,7 @@ Lint owns every mechanical form and its message names the fix; this skill holds 
 
 ## Verify once
 
-The repository's static gate and tests, chained bare at the root, after the whole change and after each round of fixes; read failures from that run, the first error in each file first.
+Run the repository's static gate and tests, chained bare at the root, on a stable state after the whole change and each round of fixes. Preserve the failing step's exit status and diagnostics; fix from that run, the first error in each file first. Keep autofixes for the next run, never discard them to make later checks pass.
 
 ```bash
 <static gate> && <test>
