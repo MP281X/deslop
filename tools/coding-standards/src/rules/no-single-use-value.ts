@@ -213,6 +213,8 @@ function report(input: {context: Context; effects: ESTree.Node[]; node: ESTree.V
 						readable({context: input.context, init, read}) &&
 						// Inlining a conditional value into another conditional would nest ternaries, which lint forbids.
 						!(init.type === 'ConditionalExpression' && insideConditional({node: read, statement: next})) &&
+						// `yield* client.trace(id)` reads better than `yield* (yield* RpcClient.make(Rpcs)).trace(id)`.
+						!(suspends(init) && outermost(read).parent?.type === 'MemberExpression') &&
 						// Moving the value past code that runs first would change what it reads or reorder effects.
 						!Array.some(input.effects, effect => effect.range[0] >= next.range[0] && effect.range[1] <= read.range[0])
 				),
