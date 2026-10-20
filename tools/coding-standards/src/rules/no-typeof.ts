@@ -28,10 +28,21 @@ function enclosingFunction(node: ESTree.Node): Option.Option<ESTree.Function | E
 	return Option.flatMap(Option.fromNullishOr(node.parent), enclosingFunction)
 }
 
-// `typeof value === 'string'` on a declared name becomes `Predicate.isString(value)`; `object` has no single guard.
+// A `declare`d name may not exist at run time, where `typeof` still answers and a call throws.
+function ambient(node: ESTree.Node): boolean {
+	if ((Predicate.hasProperty(node, 'declare') && node.declare) || node.type === 'TSDeclareFunction') {
+		return true
+	}
+	return Predicate.isNotNullish(node.parent) && ambient(node.parent)
+}
+
+// `typeof value === 'string'` on a name declared in code becomes `Predicate.isString(value)`; `object` has no single guard.
 function fix(input: {context: Context; fixer: Fixer; node: ESTree.UnaryExpression}) {
 	if (
 		input.node.argument.type !== 'Identifier' ||
+		Option.exists(variableFor(input.context, input.node.argument), variable =>
+			Array.some(variable.defs, definition => ambient(definition.node))
+		) ||
 		input.node.parent.type !== 'BinaryExpression' ||
 		input.node.parent.left !== input.node ||
 		(input.node.parent.operator !== '===' && input.node.parent.operator !== '!==') ||

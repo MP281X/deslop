@@ -3,7 +3,7 @@ import {Array, Option, Result, pipe} from 'effect'
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree, Fixer} from '@oxlint/plugins'
 
-import {predicateImport} from '#rules/shared.ts'
+import {predicateImport, variableFor} from '#rules/shared.ts'
 
 const VARIANTS = {
 	'&&': {comparison: '!==', guard: 'isNotNullish', message: 'Use Predicate.isNotNullish.'},
@@ -12,9 +12,16 @@ const VARIANTS = {
 
 type Check = {node: ESTree.Expression; nullish: string; subject: ESTree.Expression}
 
-function nullishOperand(node: ESTree.Expression) {
-	if (node.type === 'Literal' && node.value === null) return Option.some('null')
-	if (node.type === 'Identifier' && node.name === 'undefined') return Option.some('undefined')
+// A parameter or local named `undefined` is a value, not the global.
+function nullishOperand(input: {context: Context; node: ESTree.Expression}) {
+	if (input.node.type === 'Literal' && input.node.value === null) return Option.some('null')
+	if (
+		input.node.type === 'Identifier' &&
+		input.node.name === 'undefined' &&
+		!Option.exists(variableFor(input.context, input.node), variable => Array.isArrayNonEmpty(variable.defs))
+	) {
+		return Option.some('undefined')
+	}
 	return Option.none()
 }
 
@@ -26,10 +33,14 @@ function operands(input: {node: ESTree.Expression; operator: '&&' | '||'}): ESTr
 	)
 }
 
-function comparedNullish(input: {node: ESTree.Expression; operator: '!==' | '==='}) {
+function comparedNullish(input: {context: Context; node: ESTree.Expression; operator: '!==' | '==='}) {
 	if (input.node.type !== 'BinaryExpression' || input.node.operator !== input.operator) return Option.none<Check>()
 	const subject = input.node.left
-	return Option.map(nullishOperand(input.node.right), nullish => ({node: input.node, nullish, subject}))
+	return Option.map(nullishOperand({context: input.context, node: input.node.right}), nullish => ({
+		node: input.node,
+		nullish,
+		subject
+	}))
 }
 
 function doubled(input: {context: Context; first: Check; second: Check}) {
@@ -68,7 +79,7 @@ export const noDoubleNullishCheck = defineRule({
 			if (node.parent.type === 'LogicalExpression' && node.parent.operator === node.operator) return
 			const variant = VARIANTS[node.operator]
 			const checks = Array.map(operands({node, operator: node.operator}), operand =>
-				comparedNullish({node: operand, operator: variant.comparison})
+				comparedNullish({context, node: operand, operator: variant.comparison})
 			)
 			if (
 				pipe(

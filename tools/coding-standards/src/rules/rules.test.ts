@@ -916,7 +916,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 									"import {MutableRef, Predicate, Schema, SubscriptionRef} from 'effect'",
 									"import {useRef, useState} from 'react'",
 									'declare const loose: string | null | undefined',
-									'declare const value: unknown',
 									'declare const flag: boolean',
 									"export const text = MutableRef.make<string>('')",
 									'export const enabled = SubscriptionRef.make<boolean>(false)',
@@ -934,17 +933,14 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 									'export const locals = [Local]',
 									'export const present = loose !== null && loose !== undefined',
 									'export const absent = flag || loose === null || loose === undefined',
-									"export const isText = typeof value === 'string'",
-									"export const notCallable = typeof value !== 'function'",
-									"export const isWhole = typeof value === 'bigint'"
+									"export function kinds(value: unknown) { return {isText: typeof value === 'string', isWhole: typeof value === 'bigint', notCallable: typeof value !== 'function'} }"
 								],
 								Array.join('\n')
 							),
 							'guard.ts': pipe(
 								[
 									"import {Array} from 'effect'",
-									'declare const value: unknown',
-									"export const isText = typeof value === 'string'",
+									"export function kinds(value: unknown) { return {isText: typeof value === 'string'} }",
 									'export const names = Array.empty<string>()'
 								],
 								Array.join('\n')
@@ -969,7 +965,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								"import {useRef, useState} from 'react'",
 								'',
 								'declare const loose: string | null | undefined',
-								'declare const value: unknown',
 								'declare const flag: boolean',
 								"export const text = MutableRef.make('')",
 								'export const enabled = SubscriptionRef.make(false)',
@@ -988,9 +983,13 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'export const locals = [Local]',
 								'export const present = Predicate.isNotNullish(loose)',
 								'export const absent = flag || Predicate.isNullish(loose)',
-								'export const isText = Predicate.isString(value)',
-								'export const notCallable = !Predicate.isFunction(value)',
-								'export const isWhole = Predicate.isBigInt(value)',
+								'export function kinds(value: unknown) {',
+								'	return {',
+								'		isText: Predicate.isString(value),',
+								'		isWhole: Predicate.isBigInt(value),',
+								'		notCallable: !Predicate.isFunction(value)',
+								'	}',
+								'}',
 								''
 							],
 							Array.join('\n')
@@ -999,8 +998,9 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							[
 								"import {Array, Predicate} from 'effect'",
 								'',
-								'declare const value: unknown',
-								'export const isText = Predicate.isString(value)',
+								'export function kinds(value: unknown) {',
+								'	return {isText: Predicate.isString(value)}',
+								'}',
 								'export const names = Array.empty<string>()',
 								''
 							],
@@ -1036,6 +1036,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 									'export const sized = box.size !== null && box.size !== undefined',
 									'export const wrapped = (value !== null) && value !== undefined',
 									"export const isObject = typeof value === 'object'",
+									"export const hasGlobal = typeof value === 'undefined'",
+									'export function shadowed(input: unknown, undefined: unknown) { return input !== null && input !== undefined }',
 									'export const nullish = Predicate.isNullish(value)',
 									'export type Taken = {name: string}',
 									'export const Taken = Schema.Struct({name: Schema.String})',
@@ -1049,6 +1051,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					assert.deepStrictEqual(customCodes(unfixable.stdout), [
 						'@deslop/coding-standards(no-double-nullish-check)',
 						'@deslop/coding-standards(no-double-nullish-check)',
+						'@deslop/coding-standards(no-typeof)',
 						'@deslop/coding-standards(no-typeof)',
 						'@deslop/coding-standards(no-typeof)',
 						'@deslop/coding-standards(schema-type-pair)',
