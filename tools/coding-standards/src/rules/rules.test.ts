@@ -523,7 +523,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					const result = yield* lintSource({
 						'inline.ts': pipe(
 							[
-								"import {Array, Effect, Predicate, Ref} from 'effect'",
+								"import {Array, Effect, Predicate, Ref, pipe} from 'effect'",
 								'',
 								'declare const text: string',
 								'declare const items: string[]',
@@ -564,7 +564,9 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'export const variableTest = pattern.test(text)',
 								'export const fallback = maybe === undefined ? "none" : maybe',
 								'export const predicateFallback = Predicate.isNullish(maybe) ? "none" : maybe',
-								'export const choice = consume(1) > 0 ? "some" : "none"'
+								'export const choice = consume(1) > 0 ? "some" : "none"',
+								// Inlining `p` would nest a pipe four deep, which no-deep-pipe rejects.
+								'export function deep() { const p = pipe(items, Array.appendAll(pipe(items, Array.appendAll(pipe(items, Array.take(1)))))); return pipe(p, Array.take(2)) }'
 							],
 							Array.join('\n')
 						)
@@ -898,6 +900,160 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							],
 							Array.join('\n')
 						)
+					])
+				}),
+			20_000
+		)
+
+		testApi.effect(
+			'fixes state types, nullable ref types, nullish checks, typeof, compiler opt-outs and schema types without changing behavior',
+			() =>
+				Effect.gen(function* () {
+					const fixed = yield* lintSource(
+						{
+							'fixes.tsx': pipe(
+								[
+									"import {MutableRef, Predicate, Schema, SubscriptionRef} from 'effect'",
+									"import {useRef, useState} from 'react'",
+									'declare const loose: string | null | undefined',
+									'declare const value: unknown',
+									'declare const flag: boolean',
+									"export const text = MutableRef.make<string>('')",
+									'export const enabled = SubscriptionRef.make<boolean>(false)',
+									'export function Frame() {',
+									"	'use no memo'",
+									'	const both = useRef<(() => void) | null | string>(null)',
+									'	const handler = useRef<null | (() => void)>(null)',
+									'	const element = useRef<HTMLDivElement | null>(null)',
+									'	const [size] = useState<number>(1)',
+									'	return <div ref={element} data-size={size} data-handler={handler} data-both={both} />',
+									'}',
+									"// The user's record.",
+									'export const User = Schema.Struct({name: Schema.String})',
+									'const Local = Schema.Struct({id: Schema.String})',
+									'export const locals = [Local]',
+									'export const present = loose !== null && loose !== undefined',
+									'export const absent = flag || loose === null || loose === undefined',
+									"export const isText = typeof value === 'string'",
+									"export const notCallable = typeof value !== 'function'",
+									"export const isWhole = typeof value === 'bigint'"
+								],
+								Array.join('\n')
+							),
+							'guard.ts': pipe(
+								[
+									"import {Array} from 'effect'",
+									'declare const value: unknown',
+									"export const isText = typeof value === 'string'",
+									'export const names = Array.empty<string>()'
+								],
+								Array.join('\n')
+							),
+							'nullish.ts': pipe(
+								[
+									"import {pipe} from 'effect'",
+									'declare const loose: string | null | undefined',
+									'export const present = loose !== null && loose !== undefined',
+									'export const piped = pipe(loose)'
+								],
+								Array.join('\n')
+							)
+						},
+						['--fix']
+					)
+					assert.deepStrictEqual(fixed.sources, [
+						pipe(
+							[
+								"import {MutableRef, Predicate, Schema, SubscriptionRef} from 'effect'",
+								'',
+								"import {useRef, useState} from 'react'",
+								'',
+								'declare const loose: string | null | undefined',
+								'declare const value: unknown',
+								'declare const flag: boolean',
+								"export const text = MutableRef.make('')",
+								'export const enabled = SubscriptionRef.make(false)',
+								'export function Frame() {',
+								'	const both = useRef<(() => void) | string>(null)',
+								'	const handler = useRef<() => void>(null)',
+								'	const element = useRef<HTMLDivElement>(null)',
+								'	const [size] = useState(1)',
+								'	return <div ref={element} data-size={size} data-handler={handler} data-both={both} />',
+								'}',
+								'export type User = typeof User.Type',
+								"// The user's record.",
+								'export const User = Schema.Struct({name: Schema.String})',
+								'type Local = typeof Local.Type',
+								'const Local = Schema.Struct({id: Schema.String})',
+								'export const locals = [Local]',
+								'export const present = Predicate.isNotNullish(loose)',
+								'export const absent = flag || Predicate.isNullish(loose)',
+								'export const isText = Predicate.isString(value)',
+								'export const notCallable = !Predicate.isFunction(value)',
+								'export const isWhole = Predicate.isBigInt(value)',
+								''
+							],
+							Array.join('\n')
+						),
+						pipe(
+							[
+								"import {Array, Predicate} from 'effect'",
+								'',
+								'declare const value: unknown',
+								'export const isText = Predicate.isString(value)',
+								'export const names = Array.empty<string>()',
+								''
+							],
+							Array.join('\n')
+						),
+						pipe(
+							[
+								"import {Predicate, pipe} from 'effect'",
+								'',
+								'declare const loose: string | null | undefined',
+								'export const present = Predicate.isNotNullish(loose)',
+								'export const piped = pipe(loose)',
+								''
+							],
+							Array.join('\n')
+						)
+					])
+					const relinted = yield* lintSource({
+						'fixes.tsx': fixed.sources[0] ?? '',
+						'guard.ts': fixed.sources[1] ?? '',
+						'nullish.ts': fixed.sources[2] ?? ''
+					})
+					assert.deepStrictEqual(customCodes(relinted.stdout), [])
+					const unfixable = yield* lintSource(
+						{
+							'bare.ts': "declare const value: unknown\nexport const isText = typeof value === 'string'\n",
+							'unfixable.ts': pipe(
+								[
+									"import {Predicate, Schema} from 'effect'",
+									'',
+									'declare const box: {size?: number | null}',
+									'declare const value: unknown',
+									'export const sized = box.size !== null && box.size !== undefined',
+									'export const wrapped = (value !== null) && value !== undefined',
+									"export const isObject = typeof value === 'object'",
+									'export const nullish = Predicate.isNullish(value)',
+									'export type Taken = {name: string}',
+									'export const Taken = Schema.Struct({name: Schema.String})',
+									'export const First = Schema.String, Second = Schema.Number'
+								],
+								Array.join('\n')
+							)
+						},
+						['--fix']
+					)
+					assert.deepStrictEqual(customCodes(unfixable.stdout), [
+						'@deslop/coding-standards(no-double-nullish-check)',
+						'@deslop/coding-standards(no-double-nullish-check)',
+						'@deslop/coding-standards(no-typeof)',
+						'@deslop/coding-standards(no-typeof)',
+						'@deslop/coding-standards(schema-type-pair)',
+						'@deslop/coding-standards(schema-type-pair)',
+						'@deslop/coding-standards(schema-type-pair)'
 					])
 				}),
 			20_000

@@ -1,10 +1,21 @@
-import {Array, Option} from 'effect'
+import {Array, Option, Predicate} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
-import type {ESTree} from '@oxlint/plugins'
+import type {Context, ESTree, Fixer} from '@oxlint/plugins'
 
 import {replaceableGuard} from '#rules/no-hand-written-guard.ts'
-import {variableFor} from '#rules/shared.ts'
+import {predicateImport, variableFor} from '#rules/shared.ts'
+
+const GUARDS: Record<string, string> = {
+	bigint: 'isBigInt',
+	boolean: 'isBoolean',
+	function: 'isFunction',
+	number: 'isNumber',
+	string: 'isString',
+	symbol: 'isSymbol',
+	undefined: 'isUndefined'
+}
+const NEGATIONS = {'!==': '!', '===': ''}
 
 function enclosingFunction(node: ESTree.Node): Option.Option<ESTree.Function | ESTree.ArrowFunctionExpression> {
 	if (
@@ -15,6 +26,32 @@ function enclosingFunction(node: ESTree.Node): Option.Option<ESTree.Function | E
 		return Option.some(node)
 	}
 	return Option.flatMap(Option.fromNullishOr(node.parent), enclosingFunction)
+}
+
+// `typeof value === 'string'` on a declared name becomes `Predicate.isString(value)`; `object` has no single guard.
+function fix(input: {context: Context; fixer: Fixer; node: ESTree.UnaryExpression}) {
+	if (
+		input.node.argument.type !== 'Identifier' ||
+		input.node.parent.type !== 'BinaryExpression' ||
+		input.node.parent.left !== input.node ||
+		(input.node.parent.operator !== '===' && input.node.parent.operator !== '!==') ||
+		input.node.parent.right.type !== 'Literal' ||
+		!Predicate.isString(input.node.parent.right.value)
+	) {
+		return []
+	}
+	const guard = GUARDS[input.node.parent.right.value]
+	if (guard === undefined) return []
+	const replacement = input.fixer.replaceTextRange(
+		input.node.parent.range,
+		`${NEGATIONS[input.node.parent.operator]}Predicate.${guard}(${input.node.argument.name})`
+	)
+	return Option.getOrElse(
+		Option.map(predicateImport({context: input.context, fixer: input.fixer, node: input.node}), imports =>
+			Array.append(imports, replacement)
+		),
+		() => []
+	)
 }
 
 export const noTypeof = defineRule({
@@ -30,11 +67,12 @@ export const noTypeof = defineRule({
 			// no-hand-written-guard replaces the whole guard.
 			if (Option.exists(enclosingFunction(node), fn => Option.isSome(replaceableGuard(fn)))) return
 			context.report({
+				fix: fixer => fix({context, fixer, node}),
 				message:
 					'Replace typeof with its Predicate guard: Predicate.isString, isNumber, isBoolean, isFunction, isObject or isUndefined.',
 				node
 			})
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {fixable: 'code', type: 'problem'}
 })

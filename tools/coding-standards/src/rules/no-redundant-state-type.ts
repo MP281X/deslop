@@ -1,4 +1,4 @@
-import {Array, Predicate} from 'effect'
+import {Array, Option, Predicate} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
 
@@ -32,9 +32,16 @@ export const noRedundantStateType = defineRule({
 				(Predicate.isNumber(argument.value) && type?.type === 'TSNumberKeyword') ||
 				(Predicate.isBoolean(argument.value) && type?.type === 'TSBooleanKeyword')
 			) {
-				context.report({message: 'Drop this state type; the initializer infers the same primitive type.', node: type})
+				context.report({
+					fix: fixer =>
+						Option.toArray(
+							Option.map(Option.fromNullishOr(node.typeArguments), typeArguments => fixer.remove(typeArguments))
+						),
+					message: 'Drop this state type; the initializer infers the same primitive type.',
+					node: type
+				})
 			}
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {fixable: 'code', type: 'problem'}
 })

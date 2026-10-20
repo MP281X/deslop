@@ -289,6 +289,7 @@ export const oxlint = defineConfig({
 		'effecttsgo/prefer-schema-type-property': 'error',
 		'effecttsgo/prefer-typed-schema-decoder': 'error',
 		'effecttsgo/redundant-schema-tag-identifier': 'error',
+		'effecttsgo/schema-class-object-literal': 'error',
 		'effecttsgo/schema-literal-non-finite': 'error',
 		'effecttsgo/schema-number': 'error',
 		'effecttsgo/schema-struct-with-tag': 'error',
@@ -321,6 +322,8 @@ export const oxlint = defineConfig({
 		'typescript/no-empty-object-type': 'error',
 		'typescript/no-explicit-any': 'error',
 		'typescript/no-floating-promises': 'error',
+		'typescript/no-for-in-array': 'error',
+		'typescript/no-generated-empty-object-type': 'error',
 		'typescript/no-import-type-side-effects': 'error',
 		'typescript/no-inferrable-types': 'error',
 		'typescript/no-invalid-void-type': 'error',
@@ -347,12 +350,14 @@ export const oxlint = defineConfig({
 		'typescript/no-unsafe-function-type': 'error',
 		'typescript/no-unsafe-member-access': 'error',
 		'typescript/no-unsafe-return': 'error',
+		'typescript/no-unsafe-unary-minus': 'error',
 		'typescript/no-useless-empty-export': 'error',
 		'typescript/no-wrapper-object-types': 'error',
 		'typescript/unbound-method': 'error',
 		'typescript/unified-signatures': 'error',
 
 		// TypeScript preferences
+		'typescript/dot-notation': 'error',
 		'typescript/prefer-as-const': 'error',
 		// no-ternary owns conditional expressions.
 		'typescript/prefer-nullish-coalescing': ['error', {ignoreTernaryTests: true}],
@@ -375,6 +380,7 @@ export const oxlint = defineConfig({
 		'func-style': ['error', 'declaration'],
 
 		// Imports
+		'import/first': 'error',
 		'import/newline-after-import': 'error',
 		'import/no-absolute-path': 'error',
 		'import/no-commonjs': 'error',
@@ -384,6 +390,7 @@ export const oxlint = defineConfig({
 		'import/no-mutable-exports': 'error',
 		'import/no-namespace': ['error', {ignore: ['[!#./]*', '[!#./]*/**']}],
 		'import/no-relative-parent-imports': 'error',
+		'import/no-self-import': 'error',
 		'no-restricted-imports': [
 			'error',
 			{
@@ -410,13 +417,18 @@ export const oxlint = defineConfig({
 		],
 
 		// JavaScript correctness
+		'getter-return': 'error',
 		'max-depth': ['error', 3],
 		'max-nested-callbacks': ['error', 6],
 		'no-cond-assign': 'error',
 		'no-constant-binary-expression': 'error',
+		'no-constant-condition': 'error',
+		'no-constructor-return': 'error',
 		'no-continue': 'error',
 		'no-control-regex': 'error',
 		'no-debugger': 'error',
+		'no-dupe-else-if': 'error',
+		'no-dupe-keys': 'error',
 		'no-else-return': 'error',
 		'no-empty-function': ['error', {allow: ['arrowFunctions']}],
 		'no-eval': 'error',
@@ -426,6 +438,7 @@ export const oxlint = defineConfig({
 		'no-implied-eval': 'error',
 		'no-invalid-regexp': 'error',
 		'no-iterator': 'error',
+		'no-labels': 'error',
 		'no-lonely-if': 'error',
 		'no-loss-of-precision': 'error',
 		'no-misleading-character-class': 'error',
@@ -510,7 +523,9 @@ export const oxlint = defineConfig({
 			{message: 'Use HttpClient.', object: 'window', property: 'fetch'},
 			{message: 'Use Clock.', object: 'window', property: 'performance'}
 		],
+		'no-return-assign': 'error',
 		'no-self-assign': 'error',
+		'no-self-compare': 'error',
 		'no-shadow': [
 			'error',
 			{allow: ['Array', 'Boolean', 'Console', 'Effect', 'HashMap', 'Number', 'Option', 'Schema', 'String']}
@@ -518,7 +533,9 @@ export const oxlint = defineConfig({
 		'no-sparse-arrays': 'error',
 		'no-ternary': 'error',
 		'no-throw-literal': 'error',
+		'no-unexpected-multiline': 'error',
 		'no-unmodified-loop-condition': 'error',
+		'no-unreachable': 'error',
 		'no-unreachable-loop': 'error',
 		'no-unsafe-finally': 'error',
 		'no-unsafe-optional-chaining': ['error', {disallowArithmeticOperators: true}],
@@ -543,8 +560,13 @@ export const oxlint = defineConfig({
 		'no-void': 'error',
 		'object-shorthand': 'error',
 
-		// Oxc
+		// Oxc: no-accumulating-spread and no-map-spread fire only on the native reduce and map prefer-effect-array owns, and advise the Object.assign no-restricted-properties rejects.
+		'oxc/bad-comparison-sequence': 'error',
+		'oxc/bad-object-literal-comparison': 'error',
 		'oxc/branches-sharing-code': 'error',
+		'oxc/const-comparisons': 'error',
+		'oxc/double-comparisons': 'error',
+		'oxc/no-this-in-exported-function': 'error',
 		'oxc/only-used-in-recursion': 'error',
 
 		// JavaScript preferences
@@ -568,6 +590,8 @@ export const oxlint = defineConfig({
 		'jsx-a11y/tabindex-no-positive': 'error',
 
 		// React Doctor JSX and component contracts
+		'react-doctor/html-no-nested-interactive': 'error',
+		'react-doctor/loading-action-preserves-trigger': 'error',
 		'react-doctor/no-aria-invalid-without-description': 'error',
 		'react-doctor/no-call-component-as-function': 'error',
 		'react-doctor/no-controlled-input-value-without-state-update': 'error',
@@ -579,6 +603,7 @@ export const oxlint = defineConfig({
 		'react-doctor/no-nested-card-surface': 'error',
 		'react-doctor/no-placeholder-only-field': 'error',
 		'react-doctor/no-prop-types': 'error',
+		'react-doctor/no-random-key': 'error',
 		'react-doctor/no-uncontrolled-input': 'error',
 		'react-doctor/shadcn-dialog-content-requires-title': 'error',
 		'react-doctor/shadcn-icon-button-requires-label': 'error',
@@ -597,6 +622,8 @@ export const oxlint = defineConfig({
 		'react-doctor/no-impure-state-updater': 'error',
 		'react-doctor/no-mutable-in-deps': 'error',
 		'react-doctor/no-mutating-reducer-state': 'error',
+		'react-doctor/no-prop-callback-in-effect': 'error',
+		'react-doctor/no-prop-callback-in-render': 'error',
 		'react-doctor/no-self-updating-effect': 'error',
 		'react-doctor/no-set-state-in-render': 'error',
 		'react-doctor/no-stale-timer-ref': 'error',
@@ -631,7 +658,9 @@ export const oxlint = defineConfig({
 		// React
 		'react/button-has-type': 'error',
 		'react/checked-requires-onchange-or-readonly': 'error',
+		'react/error-boundaries': 'error',
 		'react/exhaustive-deps': 'error',
+		'react/globals': 'error',
 		'react/iframe-missing-sandbox': 'error',
 		'react/immutability': 'error',
 		'react/incompatible-library': 'error',
@@ -639,9 +668,12 @@ export const oxlint = defineConfig({
 		'react/jsx-curly-brace-presence': ['error', {children: 'never', propElementValues: 'always', props: 'never'}],
 		'react/jsx-fragments': ['error', 'syntax'],
 		'react/jsx-key': 'error',
+		'react/jsx-no-comment-textnodes': 'error',
+		'react/jsx-no-duplicate-props': 'error',
 		'react/jsx-no-script-url': 'error',
 		'react/jsx-no-target-blank': 'error',
 		'react/jsx-no-useless-fragment': 'error',
+		'react/jsx-props-no-spread-multi': 'error',
 		'react/no-array-index-key': 'error',
 		'react/no-children-prop': 'error',
 		'react/no-clone-element': 'error',
@@ -695,16 +727,20 @@ export const oxlint = defineConfig({
 		'typescript/no-useless-default-assignment': 'error',
 
 		// Unicorn
+		'unicorn/consistent-function-scoping': 'error',
 		'unicorn/filename-case': 'error',
 		'unicorn/no-abusive-eslint-disable': 'error',
+		'unicorn/no-accessor-recursion': 'error',
 		'unicorn/no-empty-file': 'error',
 		'unicorn/no-immediate-mutation': 'error',
+		'unicorn/no-invalid-remove-event-listener': 'error',
 		'unicorn/no-null': 'error',
 		'unicorn/no-object-as-default-parameter': 'error',
 		'unicorn/no-process-exit': 'error',
 		'unicorn/no-static-only-class': 'error',
 		'unicorn/no-useless-fallback-in-spread': 'error',
 		'unicorn/no-useless-spread': 'error',
+		'unicorn/prefer-bigint-literals': 'error',
 		'unicorn/prefer-optional-catch-binding': 'error',
 		'unicorn/prefer-string-replace-all': 'error',
 

@@ -1,6 +1,6 @@
 import {Array, Graph, Option, Predicate, Record, String, pipe} from 'effect'
 
-import type {Context, ESTree, Scope, Token, Variable} from '@oxlint/plugins'
+import type {Context, ESTree, Fix, Fixer, Scope, Token, Variable} from '@oxlint/plugins'
 
 // Names, literals and the openings of calls, arrays and objects run no code, so a getter cannot run before a moved read.
 export function inert(token: Token) {
@@ -43,6 +43,62 @@ export function isImportBinding(input: {
 				)
 			})
 		)
+	)
+}
+
+function importedName(specifier: ESTree.ImportDeclarationSpecifier) {
+	if (specifier.type !== 'ImportSpecifier' || specifier.imported.type !== 'Identifier') return ''
+	return specifier.imported.name
+}
+
+// A fix that calls Predicate uses the file's Predicate import, or adds Predicate in its sorted place to the file's named import from 'effect', which makes the fix span from the import to the call, so the file's other Predicate fixes follow on the next fix run; with neither import, there is no fix.
+export function predicateImport(input: {context: Context; fixer: Fixer; node: ESTree.Node}) {
+	return pipe(
+		variableFromScope({name: 'Predicate', scope: input.context.sourceCode.getScope(input.node)}),
+		Option.match({
+			onNone: () =>
+				pipe(
+					input.context.sourceCode.ast.body,
+					Array.findFirst(
+						statement =>
+							statement.type === 'ImportDeclaration' &&
+							statement.source.value === 'effect' &&
+							statement.importKind !== 'type' &&
+							Array.every(statement.specifiers, specifier => specifier.type === 'ImportSpecifier')
+					),
+					Option.flatMap(statement => {
+						if (statement.type !== 'ImportDeclaration') return Option.none()
+						return pipe(
+							Array.findFirst(
+								statement.specifiers,
+								specifier => String.Order(importedName(specifier), 'Predicate') > 0
+							),
+							Option.map(specifier => input.fixer.insertTextBefore(specifier, 'Predicate, ')),
+							Option.orElse(() =>
+								Option.map(Array.last(statement.specifiers), specifier =>
+									input.fixer.insertTextAfter(specifier, ', Predicate')
+								)
+							)
+						)
+					}),
+					Option.map(Array.of)
+				),
+			onSome: variable =>
+				Option.liftPredicate(Array.empty<Fix>(), () =>
+					Array.some(
+						variable.defs,
+						definition =>
+							definition.type === 'ImportBinding' &&
+							definition.parent?.type === 'ImportDeclaration' &&
+							definition.parent.source.value === 'effect' &&
+							definition.parent.importKind !== 'type' &&
+							definition.node.type === 'ImportSpecifier' &&
+							definition.node.importKind !== 'type' &&
+							definition.node.imported.type === 'Identifier' &&
+							definition.node.imported.name === 'Predicate'
+					)
+				)
+		})
 	)
 }
 
