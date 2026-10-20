@@ -26,7 +26,7 @@ Follow the repository's PR template. State the changed behavior, deciding eviden
 
 **End to end.** A behavior change gets a visible demonstration from its real input through its observable result, not just a description or a green suite. This applies to backend, API, CLI and infrastructure changes too, not only UI. Show the actual consuming interface, terminal, requests and results, or traces as appropriate. A video proves a sequence or journey; screenshots prove observable states and outcomes. Include changed failure paths when they matter. An HTML mock or an animation of the intended behavior is not proof that it works.
 
-**Capture.** Use representative data at the application's supported viewport and theme; native apps from a simulator. Wait for a condition rather than a delay; record from the meaningful input through its outcome. Compare target and changed behavior on the same data when needed to establish the difference. Inspect each capture and place it under the claim it proves. Real command output supports the demonstration; do not silently substitute prose or logs for feasible screenshots or video. If a capture is unavailable or the change has no runnable behavior, name that limitation and show the strongest real evidence without claiming end-to-end verification.
+**Capture.** Use representative data at the supported viewport and theme; native apps from a simulator. Wait for a condition, not a delay; record from meaningful input through outcome. Compare target and changed behavior on the same data when needed. Inspect each capture, embed it under its claim, and check the published PR renders the image or video player. On GitHub, keep an uploaded video URL alone in its paragraph, not in a Markdown link. Command output supports, not replaces, feasible captures. If capture is unavailable or nothing runs, state the limitation and show the strongest real evidence without claiming end-to-end verification.
 
 ## Commands
 
@@ -35,7 +35,7 @@ gh pr edit <n> --title '<title>' --body-file - <<'EOF'            # the body inl
 <body>
 EOF
 gh pr edit <n> --body-file - --attach './shot.png#<alt>' <<'EOF'  # ![alt](./shot.png) in the body is rewritten to the upload
-gh pr edit <n> --attach './proof.mp4'                             # a video takes no #alt; its URL is appended, so move it under its entry next edit
+gh pr edit <n> --attach './proof.mp4'                             # appended video URL; move the bare paragraph under its claim
 glab mr update <n> --description-file - --attach ./shot.png <<'EOF'   # the upload's reference is appended to the description
 gh run view <run id> --log-failed
 glab api "projects/<id>/pipelines/<pipeline>/jobs?scope[]=failed" | jq -r '.[] | "\(.id) \(.name)"'; glab ci trace <job id>
