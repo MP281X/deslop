@@ -5,7 +5,7 @@ description: 'Use before choosing how to build something, before researching an 
 
 # Explore
 
-Find the shape the repository already uses, fill gaps from excellent Effect 4 codebases, ground every claim in something you read or ran, and loop on [Evaluate](#evaluate) until every question the change touches answers yes (screen questions only for a changed screen); review asks the same questions.
+Find the shape the repository already uses, fill gaps from excellent Effect 4 codebases, ground every claim in something you read or ran, and loop on [Evaluate](#evaluate) and review's Code checks (scope, shape, claims) until every question the change touches answers yes (screen questions only for a changed screen).
 
 ## Sources, in order
 
@@ -52,10 +52,7 @@ rg -on '^export (const|function) (decodeUnknown\w*|fromJsonString|parseJson)\b' 
 
 | Question                                                                       | Instrument                                                                                                          |
 | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| Is every mechanism one the request needs?                                      | The request verbatim beside each new script, store, wrapper, branch or edge case                                    |
-| Does each shape match the repository's canonical example, or its reference?    | That file open beside the diff                                                                                      |
 | Does the code read in place, top to bottom?                                    | One pass over the diff: each jump elsewhere to understand a line, and each comment a name could carry, is a finding |
-| Does every claim name its artifact?                                            | The file and line, command output, request or trace beside it                                                       |
 | Did every changed behavior and consumer run through its interface?             | The final code in the browser, by request, from the CLI or in the simulator; a green suite is not this              |
 | Does every element fit its container and share its neighbors' edges?           | The browser's element boxes at 390 px and desktop, light and dark, with long text, 0, 1 and many records            |
 | Does the screen read like its reference?                                       | Captures side by side with the same data; blur them: content and the next action still lead                         |

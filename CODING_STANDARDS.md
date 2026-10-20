@@ -21,7 +21,7 @@ The user's choices. Add a row with their words when they pick, reject or correct
 
 ## Layout
 
-- Every schema of a service lives in its `schema.ts`, including the answer of an outside source, such as `FxPost` in `apps/stash/src/services/*/schema.ts`. `lib/utils.ts` holds pure helpers and stays frontend-safe. A file exists once it has content.
+- Every schema of a service lives in its `schema.ts`, including the answer of an outside source, such as `FxPost` in `apps/stash/src/services/*/schema.ts`. `lib/utils.ts` holds pure helpers and stays frontend-safe.
 - A component one page uses stays in that page's file.
 - Node subpath aliases use wildcard `imports`, such as `"#services/*": "./src/services/*"`; source specifiers include their file extension, such as `#services/notes/service.ts`. A service package exports only `./schema`, `./service` and `./utils`.
 - App data and CLI credentials live under `~/.deslop/<appname>/`, outside the checkout.

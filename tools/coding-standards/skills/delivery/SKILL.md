@@ -38,8 +38,7 @@ Read the published PR as a reviewer will, without the chat. Fix every "no" befor
 1. Does the first screen of the body say what changed for the user?
 2. Does each claim carry a capture or real output, and does each capture prove a claim?
 3. Would the user accept each PR as one unit?
-4. Is everything in the diff something the request asked for?
-5. Would the user watch the video to the end?
+4. Would the user watch the video to the end?
 
 ## Commands
 
