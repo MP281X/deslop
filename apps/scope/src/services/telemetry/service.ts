@@ -1,25 +1,11 @@
 import {SqliteClient} from '@effect/sql-sqlite-node'
 
-import {
-	Array,
-	Boolean,
-	Clock,
-	Context,
-	Crypto,
-	Effect,
-	Layer,
-	Number,
-	Option,
-	Order,
-	Schema,
-	String,
-	pipe
-} from 'effect'
+import {Array, Boolean, Clock, Context, Crypto, Effect, Layer, Option, Order, Schema, String, pipe} from 'effect'
 
 import {
 	currentEntries,
-	displayValue,
 	durationMs,
+	filterEntries,
 	logMessage,
 	orderEntries,
 	serviceName,
@@ -60,23 +46,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					)
 				)
 			}, failed)
-			function find(entries: Entry[], query: Query, signal: Entry['signal'] | 'all') {
-				return Array.filter(entries, entry => {
-					const milliseconds = pipe(Number.parse(`${BigInt(entry.time) / 1_000_000n}`), Option.getOrThrow)
-					return (
-						(signal === 'all' || entry.signal === signal) &&
-						milliseconds >= query.from &&
-						milliseconds <= query.to &&
-						(query.service === '' || entry.service === query.service) &&
-						(query.operation === '' || entry.name === query.operation) &&
-						(query.traceId === '' || entry.traceId === String.toLowerCase(query.traceId)) &&
-						(!query.errors || entry.status === 2) &&
-						String.includes(String.toLowerCase(query.text))(String.toLowerCase(displayValue(entry)))
-					)
-				})
-			}
 			const page = Effect.fnUntraced(function* (query: Query, signal: Entry['signal']) {
-				const entries = orderEntries(find(currentEntries(yield* read()), query, signal), query.sort)
+				const entries = orderEntries(filterEntries(currentEntries(yield* read()), query, signal), query.sort)
 				return {entries: Array.take(Array.drop(entries, query.offset), query.limit), total: entries.length}
 			})
 			return {
@@ -144,7 +115,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					return yield* page(query, 'trace')
 				}),
 				stats: Effect.fn('Telemetry.stats')(function* (query: Query) {
-					return summary(find(currentEntries(yield* read()), query, 'trace'), query)
+					return summary(filterEntries(currentEntries(yield* read()), query, 'trace'), query)
 				}),
 				trace: Effect.fn('Telemetry.trace')(function* (id: string) {
 					const entries = yield* read()
@@ -161,7 +132,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					const entries = Array.map(
 						Array.dedupe(
 							Array.map(
-								Array.filter(find(active, query, 'all'), entry => entry.traceId !== ''),
+								Array.filter(filterEntries(active, query, 'all'), entry => entry.traceId !== ''),
 								entry => entry.traceId
 							)
 						),

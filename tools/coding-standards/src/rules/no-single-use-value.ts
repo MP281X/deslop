@@ -3,6 +3,7 @@ import {Array, Function, MutableRef, Option, Predicate, String, pipe} from 'effe
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
 
+import {nestsTooDeep} from '#rules/no-deep-pipe.ts'
 import {
 	childNodes,
 	inert,
@@ -225,6 +226,8 @@ function report(input: {context: Context; effects: ESTree.Node[]; node: ESTree.V
 						!(init.type === 'ConditionalExpression' && insideConditional({node: read, statement: next})) &&
 						// `yield* client.trace(id)` reads better than `yield* (yield* RpcClient.make(Rpcs)).trace(id)`.
 						!(suspends(init) && receiver(outermost(read))) &&
+						// A pipe moved into another pipe must stay within no-deep-pipe's nesting limit.
+						!nestsTooDeep({context: input.context, read, value: init}) &&
 						// Moving the value past code that runs first would change what it reads or reorder effects.
 						!Array.some(input.effects, effect => effect.range[0] >= next.range[0] && effect.range[1] <= read.range[0])
 				),

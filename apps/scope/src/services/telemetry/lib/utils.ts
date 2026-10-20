@@ -55,7 +55,7 @@ export function serviceName(resource: Resource) {
 	return 'unknown'
 }
 
-export function displayValue(value: unknown) {
+function displayValue(value: unknown) {
 	return JSON.stringify(value, undefined, 2)
 }
 
@@ -89,6 +89,22 @@ export function summary(entries: Entry[], query: Query) {
 		p95Ms: percentile(0.95),
 		to: query.to
 	} satisfies Stats
+}
+
+export function filterEntries(entries: Entry[], query: Query, signal: Entry['signal'] | 'all') {
+	return Array.filter(entries, entry => {
+		const milliseconds = pipe(Number.parse(`${BigInt(entry.time) / 1_000_000n}`), Option.getOrThrow)
+		return (
+			(signal === 'all' || entry.signal === signal) &&
+			milliseconds >= query.from &&
+			milliseconds <= query.to &&
+			(query.service === '' || entry.service === query.service) &&
+			(query.operation === '' || entry.name === query.operation) &&
+			(query.traceId === '' || entry.traceId === String.toLowerCase(query.traceId)) &&
+			(!query.errors || entry.status === 2) &&
+			String.includes(String.toLowerCase(query.text))(String.toLowerCase(displayValue(entry)))
+		)
+	})
 }
 
 export function orderEntries(entries: Entry[], sort: Query['sort']) {

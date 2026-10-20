@@ -13,8 +13,11 @@ import {
 	schemaCycleNames,
 	schemaSchemaType,
 	statementDeclaration,
-	typeAlias
+	typeAlias,
+	variableFromScope
 } from '#rules/shared.ts'
+
+const EXPORT_PREFIXES: Record<string, string> = {ExportNamedDeclaration: 'export '}
 
 function expressionRoot(node: ESTree.Expression): ESTree.Expression {
 	if (node.type === 'MemberExpression') return expressionRoot(node.object)
@@ -121,6 +124,32 @@ function isExported(input: {
 	)
 }
 
+// The type goes in front only when the statement declares this Schema alone and nothing else in the file is named after it.
+function pairable(input: {
+	context: Context
+	name: string
+	program: ESTree.Program
+	statement: ESTree.Statement
+	variable: ESTree.VariableDeclarator
+}) {
+	const declaration = statementDeclaration(input.statement)
+	return (
+		declaration?.type === 'VariableDeclaration' &&
+		declaration.declarations.length === 1 &&
+		!Array.some(input.program.body, statement => {
+			const named = statementDeclaration(statement)
+			return (
+				(named?.type === 'TSTypeAliasDeclaration' || named?.type === 'TSInterfaceDeclaration') &&
+				named.id.name === input.name
+			)
+		}) &&
+		Option.exists(
+			variableFromScope({name: input.name, scope: input.context.sourceCode.getScope(input.variable)}),
+			variable => variable.defs.length === 1
+		)
+	)
+}
+
 function reportSchemaVariable(input: {
 	context: Context
 	cycleNames: string[]
@@ -166,6 +195,20 @@ function reportSchemaVariable(input: {
 		)
 	) {
 		input.context.report({
+			fix: fixer => {
+				if (!pairable({...input, name})) return []
+				const start = pipe(
+					input.context.sourceCode.getCommentsBefore(input.statement),
+					Array.head,
+					Option.getOrElse(() => input.statement)
+				).range[0]
+				return [
+					fixer.insertTextBeforeRange(
+						[start, start],
+						`${EXPORT_PREFIXES[input.statement.type] ?? ''}type ${name} = typeof ${name}.Type\n`
+					)
+				]
+			},
 			message: `Place \`type ${name} = typeof ${name}.Type\` immediately before this Schema.`,
 			node: input.variable
 		})
@@ -207,5 +250,5 @@ export const schemaTypePair = defineRule({
 			}
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {fixable: 'code', type: 'problem'}
 })

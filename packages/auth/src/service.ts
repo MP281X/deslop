@@ -103,6 +103,10 @@ function oauth<E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerRespons
 	)
 }
 
+function publicRequest(request: typeof Stored.cases.Request.Type, expiresAt: number) {
+	return {...pipe(request, Struct.pick(['clientName', 'createdAt', 'id', 'redirectUri', 'resources'])), expiresAt}
+}
+
 function allowedRedirect(redirect: string) {
 	if (redirect === 'stash://auth/callback' || redirect === 'stash-dev://auth/callback') return true
 	return Result.match(Url.fromString(redirect), {
@@ -295,12 +299,6 @@ export class Auth extends Context.Service<
 							)
 						})
 					)
-				}
-				function publicRequest(request: typeof Stored.cases.Request.Type, expiresAt: number) {
-					return {
-						...pipe(request, Struct.pick(['clientName', 'createdAt', 'id', 'redirectUri', 'resources'])),
-						expiresAt
-					}
 				}
 				const pending = Effect.fnUntraced(function* (headers: Headers.Headers) {
 					yield* session(headers)
