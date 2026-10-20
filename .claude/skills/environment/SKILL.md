@@ -44,6 +44,8 @@ Two headless Debian workers in one tailnet, same user and paths; the user switch
 
 ## Diagnostics
 
+- **Scope first.** The `scope` MCP server is the debugger: every Effect app in development, Deslop's and Dual's, exports its traces and logs to it. Reproduce the action, then `find_traces` and `read_trace` for what the code did, `find_logs` for what it said, `measure_latency` on the same operation before and after a change.
+- **Layout:** `preview_snapshot` returns every element's box, the console and the network requests; a clipped, overflowing or misaligned element shows in its box against its container's.
+- **Slow input:** a `PerformanceObserver` for `event`, `long-animation-frame` and `layout-shift` through `preview_evaluate`, read after the real input.
 - **Rerenders:** React Profiler or a temporary `console.count` through `preview_evaluate`, removed before push.
-- **Slow input:** `performance.mark` and a `PerformanceObserver` for `longtask` and `event`.
-- **Tracing:** correlate one real action's client and server spans before and after, per the repository reference.
+- **Saved reading:** the `stash` MCP server holds the articles, videos and posts the user saved; `search_notes` when they refer to one.
