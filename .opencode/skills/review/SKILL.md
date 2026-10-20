@@ -26,18 +26,18 @@ Each finding: severity, `path:line`, the reaching input, actual and required out
 
 - **Architecture first.** Rebuild the change from the request and its references alone: state owners, boundaries, files, data flow. Where its shape differs from the reference's or the simplest idiomatic one, report it with that shape as the fix, even when every line is correct.
 - **Depth.** Read every hand-written changed line, and for generated output the generator change and a sample; trace each contract through its real consumers, failure paths, concurrency and resource ownership, and persisted data from the previous release.
-- **Claims.** Check each claim in the PR body, comments and messages against its artifact; one you cannot reproduce is a P1.
+- **Claims.** Check each claim in the PR body, comments and messages against its artifact; a false or unsupported claim is a P1.
 - **Requirements.** Map each of the user's requirements to its hunk and proof; one with neither is a finding.
 - **Committed state.** Read the commit range you were given, `git show <head>:<path>`, or the pushed head (`gh pr diff <n>`, `glab mr diff <n>`), never the author's working tree. Judge a stack as one change.
 - **Browser.** Inspect the existing preview, captures, console and requests without changing page state.
 
 ## Lenses
 
-A large change splits the pass into parallel reviewers on the same head, each with one lens and every other part of this skill: **contracts** (callers, data, migrations, failure paths), **shape** (references, owners, what can be deleted) and **proof** (each claim and requirement against its artifact). The lead keeps a finding only with a reachable input and a concrete harm, merges duplicates and drops preferences.
+**Contracts** (callers, data, migrations, failure paths), **shape** (references, owners, what can be deleted) and **proof** (each claim and requirement against its artifact); a reviewer given one lens applies every other part of this skill through it. The lead keeps a finding with a reachable input and a concrete harm, or a shape that departs from its reference, merges duplicates and drops preferences.
 
 ## Instructions
 
-Read the affected prompts, skills, references and settings whole, as one system, and rank by how much agent behavior each finding changes: contradictions, duplicates, a rule in the wrong owner, rules no agent can act on, text that changes no action, stale names, paths and models, a rule that assumes tool behavior it does not have. Read the transcript first: a rule that never loaded needs its trigger; one that loaded and was ignored needs an example or a better place, not more words.
+Read the affected prompts, skills, references and settings whole, as one system, and rank by how much agent behavior each finding changes: contradictions; one meaning in two places; a rule in the wrong owner; a no-op the model already does by default; a sentence a leading word could replace; a prohibition without the behavior to do instead; stale names, paths and models; a rule that assumes tool behavior it does not have.
 
 ## Body reader
 

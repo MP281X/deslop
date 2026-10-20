@@ -8,7 +8,7 @@ description: Use before the first commit or push, before creating, editing or re
 ## Branches
 
 - **One PR per feature.** A second PR only for a feature the user would accept or reject on its own; it stacks only on a real dependency. Never split a feature across PRs, and no PR rewrites what another adds. A task's instruction and configuration changes are one PR; generated files stay with their source. Decide the split before the first commit.
-- **Current.** The last Verify before a push follows `git fetch` and `git rebase origin/<default branch>`, and a conflict gets the same rebase: a PR is never behind or conflicting.
+- **Current.** The last Verify before a push follows `git fetch` and a rebase onto the PR's target branch, and a conflict gets the same rebase: every PR stays current with its target.
 
 ## Publish
 
@@ -19,7 +19,7 @@ description: Use before the first commit or push, before creating, editing or re
 
 ## Body
 
-**Inverted pyramid.** One opening line with the central change in the reader's terms, then one `###` per change a user or caller notices, central change first, each proved by a capture or real command output in a fenced block. Follow the repository's PR template when it has one.
+**Inverted pyramid.** One opening line with the central change in the reader's terms, then one `###` per change a user or caller notices, central change first, each proved by a capture or real command output in a fenced block. It reads once, top to bottom: full names, each term defined where it first appears. Follow the repository's PR template when it has one.
 
 - **Risk.** Up to three bullets after the opening: a migration, a changed contract, removed behavior; none when nothing can break.
 - **Contracts.** A changed endpoint, schema, key, migration or exported API gets a before and after table and the caller migration.
@@ -29,14 +29,7 @@ description: Use before the first commit or push, before creating, editing or re
 
 ## Captures
 
-A capture shows the real application with realistic data in the user's theme, cropped to the subject and readable on a phone: screenshots for layout, a video for behavior. Inspect each file before you show it; it is stale once a component it shows changes.
-
-- **One tab** on the preview, shared with the user: reuse it, never a second; while the user drives it, do other work; leave it on the changed screen.
-- **Wait for a condition,** never a fixed delay; batch reads in one script; after a failed action, read the screen, console and failed requests before you retry.
-- **Record** each storyboard chapter from just before its first meaningful input to just after its outcome, at phone size (390×844); a desktop-only layout at 1440×900.
-- **Native apps** are captured from a simulator, never a mock.
-
-**Video.** A short motion piece the user wants to watch; a raw recording only for one action under ten seconds. Storyboard first: per chapter the claim, the focal element, the input and the payoff; two to four chapters, 15–35 s, one dataset. Open on the real subject with its value visible within 3 s, no title card; end on the verified outcome, held at least 2 s. The camera lands on each input before it happens and holds still while the change happens; real speed for the meaningful action, accelerated footage labelled. One caption per chapter, a benefit in at most six words; frames read at 390 px wide without zoom.
+The real application with realistic data in the user's theme, cropped to its subject and readable on a phone: screenshots for layout, a video for a journey. Wait for a condition rather than a delay; record each chapter from just before its first input to just after its outcome, at 390×844, or 1440×900 for a desktop-only layout; native apps from a simulator. Look at every capture before you show it.
 
 ## Critique
 

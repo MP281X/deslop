@@ -36,9 +36,6 @@ Decisions the code, the generators and lint do not show.
 | Auth approvals        | Live pending requests grouped by app; approval in the user's own browser                  | Chronological inbox; signing in inside the agent browser | "B looks a lot better, go for it"; "i can't login in your browser"                                              |
 | Reply pages           | Static HTML from a few shared classes in the agent prompt, values written in place        | Script components that render data lines                 | "just to define static html elements that the agent can fill with data and compose"; "js is worse"              |
 | Agent instructions    | Only what a model cannot infer: the user's choices, exact values, non-obvious rules       | Full templates and code for known techniques             | "let the models do their job and figure the "known" part out on their own"                                      |
-| Agent references      | Effect 4 repositories at their default branch, names checked in the Effect source         | Pinned commits; the nearest file of a slopped codebase   | "just keep it simple and use latest"                                                                            |
-| Agent decisions       | One built proposal naming what it optimized for; the user comments                        | Option menus that wait for a pick                        | "you proposse just the best option ... and then i can leave comments"                                           |
-| Agent tools           | T3 tools wherever one exists, then the user's MCP servers                                 | CLI calls whose state T3 cannot show                     | "the usage of the t3code tools is mandatory"                                                                    |
 
 ## Layout
 
@@ -56,14 +53,16 @@ Decisions the code, the generators and lint do not show.
 
 ## Generators and deploy
 
-- Create apps with `vp create app -- --name <name>` (`--kind mobile` for iOS) and packages with `vp create package -- --name <name>`, then `vp install`; never copy one.
+- Create apps with `vp create app -- --name <name>` (`--kind mobile` for iOS) and packages with `vp create package -- --name <name>`, then `vp install`; never copy one. A new mobile app then takes the EAS project id from `npx eas-cli init` in `app.config.ts`, and after its first store build `submit.production.ios.ascAppId` in `eas.json`.
 - Deploy is one `tools/compose.yaml` with configs inlined, direct ports and unpinned images; no flag-heavy scripts or nested folders. Each mobile app is one entry in the `ios` matrix of `deploy.yaml` and the `simulator` matrix of `simulator.yaml`.
 
 ## Dependencies and tooling
 
 - Keep dependencies in their owning packages; update coupled packages together and verify their real consumers. Vite+ owns its lint and test toolchain versions; its Vite alias is accepted only for the consumer versions listed in `pnpm-workspace.yaml`.
-- `@deslop/coding-standards` owns compiler and lint policy: an upstream rule replaces a custom one, each rejected form has one owner, a custom rule's message names the replacement, and its tests assert only custom rules. The root `vite.config.ts` owns formatting and ignores, `.fallowrc.json` dead-code analysis.
+- `@deslop/coding-standards` owns compiler and lint policy: an upstream rule replaces a custom one, each rejected form has one owner, and its tests assert only custom rules. The root `vite.config.ts` owns formatting and ignores, `.fallowrc.json` dead-code analysis.
+- **Verify** is `vp run -w fix && vp run -w test`. `fix` is the whole static gate (lint fixes, types, format, Fallow), which CI runs without writes as `check`; test runs after it because rule tests create fixtures that a concurrent type scan reads.
+- **Agent configuration.** `.claude/agents/pair.md`, `.codex/instructions.md` and `.opencode/agents/build.md` are identical from `# Work` down. Team skills live in `tools/coding-standards/skills/`, and `node tools/coding-standards/src/install.ts` refreshes their copies in `.claude/skills`, `.codex/skills` and `.opencode/skills`; `.claude/skills/retrospective` is repository-only.
 
 ## Documents
 
-- One source of truth per fact: the code first, then this file for decisions the code cannot show, a published package's `README.md` only for its install and usage, and environment's deslop reference for commands and procedures. Never a second `AGENTS.md`, a README for an unpublished folder, source-code narration or a rule repeated from a skill.
+- One source of truth per fact: the code first, then this file for decisions the code cannot show, a published package's `README.md` only for its install and usage, and environment's deslop reference for the user's infrastructure (workers, deploy, tracing endpoints, accounts). One `AGENTS.md`, a README only for a published package, comments only for what a name cannot say, and each rule in its one owner.
