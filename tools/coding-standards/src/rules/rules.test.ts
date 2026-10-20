@@ -92,6 +92,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'const deepPipe = pipe(values, Array.appendAll(pipe(values, Array.appendAll(pipe(values, Array.appendAll(pipe(values, Array.take(1))))))))',
 								'const decode =Schema.decodeUnknownSync(Schema.String)',
 								'const operations = {decode: Schema.decodeUnknownSync(Schema.String)}',
+								'export const frozen = Object.freeze({decode: Schema.decodeUnknownSync(Schema.String)})',
 								'class Codecs { decode = Schema.decodeUnknownSync(Schema.String) }',
 								'const decoders = [Schema.decodeUnknownSync(Schema.String)]',
 								'const IsString = Schema.is(Schema.String)',
@@ -244,6 +245,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'@deslop/coding-standards(no-reinvented-schema)',
 								'@deslop/coding-standards(no-reinvented-schema)',
 								'@deslop/coding-standards(no-renamed-import)',
+								'@deslop/coding-standards(no-stored-schema-operation)',
 								'@deslop/coding-standards(no-stored-schema-operation)',
 								'@deslop/coding-standards(no-stored-schema-operation)',
 								'@deslop/coding-standards(no-stored-schema-operation)',
@@ -419,7 +421,10 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'const stubs = {load: unavailable, save: unavailable}',
 								'function HomeLayout() { return <div /> }',
 								'const route = {component: HomeLayout}',
-								'export {Annotated, CallStep, hasWindow, route, stubs, CodeStep, Decoded, DefaultInput, Encoded, Formatter, Ledger, LinearIssue, Listed, Normalized, Step, circle, circles, constants, countdown, counter, counts, curried, annotate, annotateString, decoded, decodedMany, echo, encoded, ensured, flags, depth, first, identify, isCall, isUser, labels, layers, limits, loadName, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, annotatedName, nickname, noUser, payload, odd, parseWith, ping, readSnapshot, singleName, snapshots, swap, test, thunks, Walker, transform, tuple, version, versionPatterns, withDefault}'
+								'declare function createRoute(options: {validateSearch: (value: unknown) => User}): void',
+								'createRoute({validateSearch: Schema.decodeUnknownSync(User)})',
+								'const added = Effect.fn("added")(function* (value: number) { const ledger = yield* Ledger; return yield* ledger.add(value) })',
+								'export {added, Annotated, CallStep, hasWindow, route, stubs, CodeStep, Decoded, DefaultInput, Encoded, Formatter, Ledger, LinearIssue, Listed, Normalized, Step, circle, circles, constants, countdown, counter, counts, curried, annotate, annotateString, decoded, decodedMany, echo, encoded, ensured, flags, depth, first, identify, isCall, isUser, labels, layers, limits, loadName, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, annotatedName, nickname, noUser, payload, odd, parseWith, ping, readSnapshot, singleName, snapshots, swap, test, thunks, Walker, transform, tuple, version, versionPatterns, withDefault}'
 							],
 							Array.join('\n')
 						)
@@ -532,6 +537,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'export function interpolated() { const label = `${text}!`; return consume(label.length) }',
 								'export function header() { const listed = compute(); for (const item of listed) consume(item.length) }',
 								'export const enclosed = Effect.gen(function* () { const first = yield* Ref.get(state); return yield* Ref.set(state, first) })',
+								'export const measured = Effect.gen(function* () { const listed = yield* Effect.succeed(items); return listed.length })',
+								'export const keyed = Effect.gen(function* () { const index = yield* Ref.get(state); return items[index] })',
 								'export function multiline() {',
 								'	const size = Array.reduce(items, 0, (total, item) =>',
 								'		total + item.length)',
@@ -571,6 +578,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'@deslop/coding-standards(no-property-alias)',
 						'@deslop/coding-standards(no-property-alias)',
 						'@deslop/coding-standards(no-property-alias)',
+						'@deslop/coding-standards(no-single-use-value)',
+						'@deslop/coding-standards(no-single-use-value)',
 						'@deslop/coding-standards(no-single-use-value)',
 						'@deslop/coding-standards(no-single-use-value)',
 						'@deslop/coding-standards(no-single-use-value)',
