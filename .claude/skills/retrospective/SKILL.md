@@ -5,7 +5,7 @@ description: Use for a retrospective, and when the user asks why threads went wr
 
 # Retrospective
 
-**Goal.** The same or better results with fewer corrections, Verify runs, words, tokens and minutes. A read-only request ends at diagnosis and proposals; implement and publish when authorized. The workers load changed instructions after the user merges.
+**Goal.** Improve the actual result, not a report about improving it: same or better outcomes with fewer corrections, Verify runs, words, tokens and minutes. Preserve discussion and read-only boundaries; implement and publish when authorized.
 
 ## Collect
 

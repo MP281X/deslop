@@ -20,7 +20,7 @@ description: Use before the first commit or push, before creating, editing or re
 
 ## Body
 
-Follow the repository's PR template. State the changed behavior, deciding evidence, material risks and required migration. Keep a sentence only if it helps the reviewer accept or reject the change. Link supporting analysis rather than paste it; omit research history, process counts, file inventories and facts the diff already makes obvious. Put end-to-end evidence beside its claim and distinguish measured behavior from unverified expectations.
+Describe this PR's complete change, not the thread history, at behavior, architecture and contract level. Follow the repository template. Use Markdown lists for distinct changes, tables for comparisons and headings for separate concerns; concision does not mean flattening structure into prose. Include material risks, migrations and deciding evidence; link supporting detail. Keep verified behavior distinct from expectations. Leave implementation walkthroughs to the diff; omit process, test counts, inventories, generic caveats and repeated summaries. Verify text-only PR bodies through the host CLI/API; use a browser when rendered embeds or layout need inspection.
 
 ## Captures
 
