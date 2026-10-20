@@ -133,6 +133,16 @@ function executes(node: ESTree.Node): boolean {
 	return Array.some(childNodes(node), executes)
 }
 
+// The read is the object a method is called on, as `client` in `client.trace(id)`.
+function receiver(read: ESTree.Node) {
+	return (
+		read.parent?.type === 'MemberExpression' &&
+		read.parent.object === read &&
+		read.parent.parent.type === 'CallExpression' &&
+		read.parent.parent.callee === read.parent
+	)
+}
+
 function suspends(node: ESTree.Node): boolean {
 	if (node.type === 'YieldExpression' || node.type === 'AwaitExpression') return true
 	if (Array.contains(['ArrowFunctionExpression', 'FunctionDeclaration', 'FunctionExpression'], node.type)) return false
@@ -214,7 +224,7 @@ function report(input: {context: Context; effects: ESTree.Node[]; node: ESTree.V
 						// Inlining a conditional value into another conditional would nest ternaries, which lint forbids.
 						!(init.type === 'ConditionalExpression' && insideConditional({node: read, statement: next})) &&
 						// `yield* client.trace(id)` reads better than `yield* (yield* RpcClient.make(Rpcs)).trace(id)`.
-						!(suspends(init) && outermost(read).parent?.type === 'MemberExpression') &&
+						!(suspends(init) && receiver(outermost(read))) &&
 						// Moving the value past code that runs first would change what it reads or reorder effects.
 						!Array.some(input.effects, effect => effect.range[0] >= next.range[0] && effect.range[1] <= read.range[0])
 				),
