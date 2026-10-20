@@ -412,7 +412,7 @@ it.layer(NodeServices.layer)(test => {
 			)
 			yield* Queue.take(web.ready)
 			const request = yield* authorize(web.issuer, '', 'http://127.0.0.1:34567/callback', [
-				'https://portfolio.mp281x.xyz/mcp'
+				'https://scope.mp281x.xyz/mcp'
 			])
 			const created = yield* Effect.forEach(
 				pipe(yield* Fiber.join(creations), String.trim, String.split('\n')),
@@ -645,7 +645,7 @@ it.layer(NodeServices.layer)(test => {
 			const session = cookie(yield* signIn(web.issuer, 'octocat'))
 			const denied = yield* consent(
 				web.issuer,
-				yield* authorize(web.issuer, session, 'http://localhost:34567/callback', ['https://portfolio.mp281x.xyz/mcp']),
+				yield* authorize(web.issuer, session, 'http://localhost:34567/callback', ['https://scope.mp281x.xyz/mcp']),
 				false
 			)
 			assert.strictEqual(denied.searchParams.get('error'), 'access_denied')

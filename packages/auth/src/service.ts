@@ -137,7 +137,11 @@ export class Auth extends Context.Service<
 			Effect.gen(function* () {
 				const url = yield* pipe(Config.String('AUTH_URL'), Config.withDefault(AUTH_URL))
 				const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
-				const origins = [new URL(url).origin, ...Array.map(Resource.literals, identifier => new URL(identifier).origin)]
+				const origins = [
+					new URL(url).origin,
+					'https://portfolio.mp281x.xyz',
+					...Array.map(Resource.literals, identifier => new URL(identifier).origin)
+				]
 				const access = Effect.fn('Auth.access')(function* (headers: Headers.Headers, audience: string) {
 					return yield* pipe(
 						client.get(`${url}/auth/verify`, {
@@ -185,8 +189,6 @@ export class Auth extends Context.Service<
 					users: Config.Array(Schema.String, 'GITHUB_USERS')
 				})
 				yield* sql`CREATE TABLE IF NOT EXISTS auth_state (hash TEXT PRIMARY KEY, payload TEXT NOT NULL, expires_at INTEGER NOT NULL)`
-				// Pending authorizations from the previous release have no separate public identifier.
-				yield* sql`DELETE FROM auth_state WHERE json_extract(payload, '$._tag') = 'Request' AND json_extract(payload, '$.id') IS NULL`
 				const hash = Effect.fnUntraced(function* (value: string) {
 					return Base64Url.encode(yield* random.digest('SHA-256', new TextEncoder().encode(value)))
 				})

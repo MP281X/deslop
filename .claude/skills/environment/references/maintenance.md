@@ -186,7 +186,7 @@ T3's desktop app and the iOS Simulator; it builds nothing, the simulator app com
 
 ## MCP sign-in
 
-Codex reads `dual`, `scope`, `stash`, `portfolio` and `mobbin` from the installed configuration and keeps OAuth sign-ins in the Secret Service keyring. Claude keeps locally registered MCP servers in `~/.claude.json`; register the following on each worker once the installed `.claude/settings.json` allows them. Mobbin uses the shared Claude connector instead.
+Codex reads `dual`, `scope`, `stash` and `mobbin` from the installed configuration and keeps OAuth sign-ins in the Secret Service keyring. Claude keeps locally registered MCP servers in `~/.claude.json`; register the following on each worker once the installed `.claude/settings.json` allows them. Mobbin uses the shared Claude connector instead.
 
 ```bash
 sudo apt-get install -y gnome-keyring libsecret-tools
@@ -198,12 +198,11 @@ systemctl --user daemon-reload && systemctl --user enable --now secret-service.s
 claude mcp add --transport http --scope user dual https://app.dualos.ai/mcp
 claude mcp add --transport http --scope user scope https://scope.mp281x.xyz/mcp
 claude mcp add --transport http --scope user stash https://stash.mp281x.xyz/mcp
-claude mcp add --transport http --scope user portfolio https://portfolio.mp281x.xyz/mcp
 ```
 
 After the public-auth release, remove each old Claude registration with `claude mcp remove --scope user <name>` before adding its public URL above. Codex URLs update with the installed configuration. Do this on each worker; never copy OAuth credentials between machines.
 
-**Scope, Stash and Portfolio.** Run the native login on its worker and open its printed authorization URL in that worker's T3 preview. Leave that page waiting; the user signs in at https://auth.mp281x.xyz in their own browser, matches the displayed request ID against the thread, and approves the pending request. The inbox updates live. The original worker page completes the local callback without the user signing in there or copying codes. Repeat separately for each client and worker, replacing `scope` with `stash` or `portfolio`.
+**Scope and Stash.** Run the native login on its worker and open its printed authorization URL in that worker's T3 preview. Leave that page waiting; the user signs in at https://auth.mp281x.xyz in their own browser, matches the displayed request ID against the thread, and approves the pending request. The inbox updates live. The original worker page completes the local callback without the user signing in there or copying codes. Repeat separately for each client and worker, replacing `scope` with `stash`.
 
 ```bash
 codex mcp login --no-browser scope
@@ -226,7 +225,7 @@ The installed settings must not set `disableClaudeAiConnectors: true` in any sco
 
 **Mobbin in Codex.** Authorize `https://api.mobbin.com/mcp` separately on each worker with `codex mcp login --no-browser mobbin` and the callback procedure above; Claude's connector authorization does not transfer to Codex. Never copy credentials between workers. [Official setup](https://docs.mobbin.com/mcp/introduction).
 
-Keep `features.mcp_2026_07_28 = false`: in Codex 0.163.0, an authenticated Mobbin server exposed no tools with stateless MCP enabled; the same headless standard search succeeded with it disabled. This switch is global, not per-server; verify discovery for Dual, Scope, Stash and Portfolio when changing it. Check each worker's Mobbin sign-in with `codex mcp list`: `OAuth` means credentials are stored, `Not logged in` requires that worker's own authorization. Verify a real tool call separately.
+Keep `features.mcp_2026_07_28 = false`: in Codex 0.163.0, an authenticated Mobbin server exposed no tools with stateless MCP enabled; the same headless standard search succeeded with it disabled. This switch is global, not per-server; verify discovery for Dual, Scope and Stash when changing it. Check each worker's Mobbin sign-in with `codex mcp list`: `OAuth` means credentials are stored, `Not logged in` requires that worker's own authorization. Verify a real tool call separately.
 
 Verify with a standard screen search for `iOS saved notes search filters` and a flow search for `workflow run failure details`. Inspect returned preview images and preserve the product names and Mobbin links; a connected server alone does not prove search or image access. Standard searches, `search_flows` and `search_sections` use no AI credits; only successful `search_screens` calls with `mode: "deep"` consume credits. [Tools and images](https://docs.mobbin.com/mcp/features), [credit rules](https://docs.mobbin.com/ai-credits).
 

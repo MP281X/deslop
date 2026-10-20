@@ -24,7 +24,6 @@ export const Resource = Schema.Literals([
 	'https://stash.mp281x.xyz',
 	'https://stash.mp281x.xyz/mcp',
 	'https://scope.mp281x.xyz/mcp',
-	'https://portfolio.mp281x.xyz/mcp',
 	'https://otel.mp281x.xyz'
 ])
 

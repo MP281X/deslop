@@ -7,7 +7,6 @@
 		{"serverUrl": "https://app.dualos.ai/mcp"},
 		{"serverUrl": "https://scope.mp281x.xyz/mcp"},
 		{"serverUrl": "https://stash.mp281x.xyz/mcp"},
-		{"serverUrl": "https://portfolio.mp281x.xyz/mcp"},
 		{"serverUrl": "https://api.mobbin.com/mcp"}
 	],
 	"enabledPlugins": {
