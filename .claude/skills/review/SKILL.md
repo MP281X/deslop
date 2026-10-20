@@ -57,4 +57,4 @@ Read the affected prompts, skills, references and settings whole, as one system,
 
 ## Body reader
 
-Read the published body, its captures, branch head and source tickets without the chat. Each sentence must change a review decision or prove behavior; report analysis dumps, process counts, inventories and repeated diff narration that bury the change. Require delivery's real input-to-outcome demonstration for non-UI changes too, preserving explicit capture limitations. Report material risks omitted, unsupported claims, requirements without proof, missing feasible demonstrations and unreadable captures.
+Read the published body, captures and head without the chat: it must explain the PR's complete change, not its implementation tour. Check that Markdown structure exposes distinct changes and comparisons. Flag repeated summaries, process, inventories and low-level detail already in the diff. Require delivery's real input-to-outcome demonstration, including non-UI changes. Report material risks omitted, unsupported claims, missing proof and unreadable captures; preserve material verification limits.

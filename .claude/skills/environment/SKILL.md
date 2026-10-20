@@ -27,7 +27,6 @@ Two headless Debian workers in one tailnet, same user, paths and agent configura
 | [Deslop](references/deslop.md)           | Apps on dev, Stash data, simulator build, publishing, tracing, deploy |
 | [Maintenance](references/maintenance.md) | Machines, setup, agent links, T3 history and settings, updates, clean |
 | [Video](references/video.md)             | Proof videos: camera targets, HyperFrames composition and look        |
-| [Replies](references/replies.md)         | HTML page primitives and evidence formats when a visual helps         |
 
 ## Resource budget
 
