@@ -46,10 +46,11 @@ Measures, each with its counted member:
 **Owner**, one per fix:
 
 - **Lint rule:** a code form; its message names one fix that satisfies every other rule, proved by a probe.
-- **`build` Write these shapes first:** only a rule whose wrong fix restructures code or trips another rule; the rest stays lint-only.
-- **`build` References:** a shape agents got wrong whose good version lives in an Effect 4 repository; a directory at its default branch, never a commit.
+- **`lint-companion` Write these shapes first:** only a rule whose wrong fix restructures code or trips another rule; the rest stays lint-only.
+- **Repository `CODING_STANDARDS.md`:** a judgement call no lint rule can check, read at review.
+- **`explore` References:** a shape agents got wrong whose good version lives in an Effect 4 repository; a directory at its default branch, never a commit.
 - **Team skill:** practice every teammate's repository shares; no person, machine, path or T3 tool name.
-- **Repository `AGENTS.md`:** its decisions, commands and canonical examples.
+- **Repository `AGENTS.md`:** its scope, commands and canonical examples, the pointers every agent needs.
 - **`pair.md`, `.codex/instructions.md` and `.opencode/agents/build.md`:** replies, T3 tools, harness; identical from `# Work` down.
 - **`orchestrator`, `environment`:** the user's process, machines and references.
 

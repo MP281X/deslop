@@ -22,22 +22,22 @@ Setup, upkeep and rebuild of the machines. Do established upkeep without asking;
 
 ## Agent configuration
 
-Every worker runs the same configuration from the deslop repository. `.codex/global-config.toml` and `.opencode/global-config.json` have those names so neither CLI loads them a second time as deslop's project config. Only orchestrator and environment are global; the other skills belong to coding-standards and install into each repository. A variable only agents need goes in `.claude/settings.json` `env`, `.codex/global-config.toml` `shell_environment_policy.set` and T3's OpenCode provider environment, never in `~/.bashrc`.
+Every worker runs the same configuration from the deslop repository. `.codex/global-config.toml` and `.opencode/global-config.json` have those names so neither CLI loads them a second time as deslop's project config. The personal skills, orchestrator, environment, explore and retrospective, are global; lint-companion, delivery and review belong to coding-standards and install into each repository. A variable only agents need goes in `.claude/settings.json` `env`, `.codex/global-config.toml` `shell_environment_policy.set` and T3's OpenCode provider environment, never in `~/.bashrc`.
 
 Each installed path is a symlink into the main checkout `~/deslop`, so a worker runs the configuration on `origin/main`: Claude's `SessionStart` hook fast-forwards `~/deslop` in the background (`git pull --ff-only`), so the session after a merge loads it. T3's own automatic pull does not cover this: it pulls a checkout only while something refreshes that checkout's Git status. Never edit an installed path, and never switch `~/deslop` off `main`: both change every thread's configuration. Running threads keep the configuration they started with.
 
-| Installed path                                         | Links to `~/deslop/…`          |
-| ------------------------------------------------------ | ------------------------------ |
-| `~/.claude/settings.json`                              | `.claude/settings.json`        |
-| `~/.claude/agents/pair.md`                             | `.claude/agents/pair.md`       |
-| `~/.claude/skills/{orchestrator,environment}`          | `.claude/skills/<name>`        |
-| `~/.codex/config.toml`                                 | `.codex/global-config.toml`    |
-| `~/.codex/instructions.md`                             | `.codex/instructions.md`       |
-| `~/.codex/rules/deny.rules`                            | `.codex/rules/deny.rules`      |
-| `~/.codex/skills/{orchestrator,environment}`           | `~/.claude/skills/<name>`      |
-| `~/.config/opencode/opencode.json`                     | `.opencode/global-config.json` |
-| `~/.config/opencode/agents/build.md`                   | `.opencode/agents/build.md`    |
-| `~/.config/opencode/skills/{orchestrator,environment}` | `.claude/skills/<name>`        |
+| Installed path                               | Links to `~/deslop/…`          |
+| -------------------------------------------- | ------------------------------ |
+| `~/.claude/settings.json`                    | `.claude/settings.json`        |
+| `~/.claude/agents/pair.md`                   | `.claude/agents/pair.md`       |
+| `~/.claude/skills/<personal skill>`          | `.claude/skills/<name>`        |
+| `~/.codex/config.toml`                       | `.codex/global-config.toml`    |
+| `~/.codex/instructions.md`                   | `.codex/instructions.md`       |
+| `~/.codex/rules/deny.rules`                  | `.codex/rules/deny.rules`      |
+| `~/.codex/skills/<personal skill>`           | `~/.claude/skills/<name>`      |
+| `~/.config/opencode/opencode.json`           | `.opencode/global-config.json` |
+| `~/.config/opencode/agents/build.md`         | `.opencode/agents/build.md`    |
+| `~/.config/opencode/skills/<personal skill>` | `.claude/skills/<name>`        |
 
 Set up once per worker, and again after a harness replaced a link with a file:
 
@@ -47,7 +47,7 @@ mkdir -p ~/.claude/agents ~/.claude/skills ~/.codex/rules ~/.codex/skills ~/.con
 ln -sfn $r/.claude/settings.json ~/.claude/settings.json
 ln -sfn $r/.claude/agents/pair.md ~/.claude/agents/pair.md
 rm -rf ~/.claude/skills/* ~/.codex/skills/*
-for s in orchestrator environment; do ln -sfn $r/.claude/skills/$s ~/.claude/skills/$s; ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; ln -sfn $r/.claude/skills/$s ~/.config/opencode/skills/$s; done
+for s in orchestrator environment explore retrospective; do ln -sfn $r/.claude/skills/$s ~/.claude/skills/$s; ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; ln -sfn $r/.claude/skills/$s ~/.config/opencode/skills/$s; done
 ln -sfn $r/.codex/global-config.toml ~/.codex/config.toml
 ln -sfn $r/.codex/instructions.md ~/.codex/instructions.md
 ln -sfn $r/.codex/rules/deny.rules ~/.codex/rules/deny.rules

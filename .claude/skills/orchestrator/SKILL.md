@@ -23,7 +23,7 @@ description: Use before the first edit of any change, when a design or direction
 
 ## Build
 
-Change and prove per build, Verify, one review round per [Review](#review), fix, Verify, publish per delivery and [Stacks](#stacks).
+Change per explore and lint-companion, Verify, one review round per [Review](#review), fix, Verify, publish per delivery and [Stacks](#stacks).
 
 ## Stacks
 
@@ -35,7 +35,7 @@ The user reviews every PR of a thread at the end and squash-merges them one at a
 
 ## Review
 
-- **One round** on the whole verified change before the first push, covering every PR of the thread: one Sol child, or one per review lens in parallel when the change touches persisted data, a contract or more than about 300 lines. Each brief holds the goal, the checkout, the range `origin/<default branch>..<head>` and the user's requirements verbatim.
+- **One round** on the whole verified change before the first push, covering every PR of the thread: one Sol child, or one per review lens in parallel when the change touches persisted data, a contract or more than about 300 lines. Each brief holds the goal, the checkout, the range `origin/<default branch>..<head>`, the user's requirements verbatim and "Load the review and explore skills; answer explore's Evaluate questions the change touches."
 - **Fix** every P1, P2 and trivial P3 in one batch; a second round only when a fix changed a contract.
 
 ## Delegate

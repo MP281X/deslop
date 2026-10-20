@@ -12,7 +12,7 @@ description: Use before the first commit or push, before creating, editing or re
 
 ## Publish
 
-1. **Push** only a head that passed build's Verify after its last rebase, opening each PR as a draft. A round of fixes is one commit and one push: each push starts a pipeline and cancels the last.
+1. **Push** only a head that passed lint-companion's Verify after its last rebase, opening each PR as a draft. A round of fixes is one commit and one push: each push starts a pipeline and cancels the last.
 2. **Describe** the head as it is now per [Body](#body), at the first push and after every push that changes what it says; never narrate how the PR got there ("now also", "updated", "fixed review").
 3. **Watch** the final head's pipeline to its end with the harness's pull request watcher when it has one, else the host CLI. A failure, someone else's review comment or a conflict on the current head gets a fix, Verify and one push.
 4. **Ready** when the final head passes required jobs, no P1 or P2 finding is open, the captures are in the body and [Critique](#critique) finds nothing: `gh pr ready <n>` or `glab mr update <n> --ready`. A new commit on a ready PR returns it to draft in the same step (`gh pr ready <n> --undo`, `glab mr update <n> --draft`).

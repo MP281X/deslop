@@ -1,15 +1,16 @@
 ---
-name: build
-description: 'Use before writing or changing code, tests, scripts, configuration or a screen; before researching an API, library, approach or earlier agent session; before a repository fix, check, lint or test command; and before proving or judging behavior or a screen.'
+name: explore
+description: 'Use before choosing how to build something, before researching an API, library, approach, reference repository or earlier agent session, before a screen, and before proving or judging behavior or a screen.'
 ---
 
-# Build
+# Explore
 
-Copy what excellent Effect 4 codebases already do, ground every claim in something you read or ran, and loop on [Evaluate](#evaluate) until every question the change touches answers yes (screen questions only for a changed screen); review asks the same questions. The repository's `AGENTS.md` wins over this skill, and lint owns every mechanical form.
+Find the shape the repository already uses, fill gaps from excellent Effect 4 codebases, ground every claim in something you read or ran, and loop on [Evaluate](#evaluate) until every question the change touches answers yes (screen questions only for a changed screen); review asks the same questions.
 
-## References
+## Sources, in order
 
-Before an unfamiliar shape, open its reference: `git clone --depth 1 <url> /tmp/repos/<name>`, or `git -C /tmp/repos/<name> pull` when present, and read the listed paths at the default branch. Copy the structure; take every Effect name from the installed `effect` package's source, since the references run other Effect 4 versions. In a repository being cleaned up, the nearest file is code to replace; its canonical examples are the ones `AGENTS.md` names.
+1. **The repository's own style.** The canonical examples its `AGENTS.md` names, then its `CODING_STANDARDS.md`. In a repository being cleaned up, an unnamed nearest file is code to replace.
+2. **References** for a shape the repository has no canonical example of: `git clone --depth 1 <url> /tmp/repos/<name>`, or `git -C /tmp/repos/<name> pull` when present, and read the listed paths at the default branch. Copy the structure into the repository's style; take every Effect name from the installed `effect` package's source, since the references run other Effect 4 versions.
 
 | Shape                                       | Repository                                     | Open                                                                                                    |
 | ------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -34,7 +35,7 @@ Before an unfamiliar shape, open its reference: `git clone --depth 1 <url> /tmp/
 | Skill packaging and evaluation              | https://github.com/anthropics/skills           | `skills/skill-creator/`                                                                                 |
 | Effect knowledge for agents                 | https://github.com/Effect-TS/skills            | `skills/effect-ts/`                                                                                     |
 
-**Screens.** When a Mobbin tool is available, search its screens or flows for the screen's job and build from the relevant hits; otherwise from the references above and the repository's own screens. Color, radius, type, spacing and shadow live in the theme the repository's `components.json` names.
+**Screens.** When a Mobbin tool is available, search its screens or flows for the screen's job and build from the relevant hits; otherwise from the repository's own screens and the references above. Color, radius, type, spacing and shadow live in the theme the repository's `components.json` names.
 
 ## Ground
 
@@ -45,21 +46,14 @@ rg -on '^export (const|function) (decodeUnknown\w*|fromJsonString|parseJson)\b' 
 # → decodeUnknownEffect decodeUnknownExit decodeUnknownOption … fromJsonString   (Effect 3's decodeUnknown and parseJson are gone)
 ```
 
-**Probe, don't guess.** One question, one inline script against the public interface or real data through the repository's runner, such as `vp node -e '<script>'`. Shrink a reproduction until every input is needed; after two failed fixes, test the premise they share.
-
-**Verify once.** The repository's static gate and tests, chained bare at the root, after the whole change and after each round of fixes; read failures from that run, the first error in each file first.
-
-```bash
-<static gate> && <test>
-# not: <gate> 2>&1 | tail -5 && <test>, where test runs after a failed gate
-```
+**Probe.** One question, one inline script against the public interface or real data through the repository's runner, such as `vp node -e '<script>'`. Shrink a reproduction until every input is needed; after two failed fixes, test the premise they share.
 
 ## Evaluate
 
 | Question                                                                       | Instrument                                                                                                          |
 | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
 | Is every mechanism one the request needs?                                      | The request verbatim beside each new script, store, wrapper, branch or edge case                                    |
-| Does each shape match its reference?                                           | The reference file open beside the diff                                                                             |
+| Does each shape match the repository's canonical example, or its reference?    | That file open beside the diff                                                                                      |
 | Does the code read in place, top to bottom?                                    | One pass over the diff: each jump elsewhere to understand a line, and each comment a name could carry, is a finding |
 | Does every claim name its artifact?                                            | The file and line, command output, request or trace beside it                                                       |
 | Did every changed behavior and consumer run through its interface?             | The final code in the browser, by request, from the CLI or in the simulator; a green suite is not this              |
@@ -71,46 +65,3 @@ rg -on '^export (const|function) (decodeUnknown\w*|fromJsonString|parseJson)\b' 
 | Does each test fail when the behavior breaks and pass when the internals move? | Break the behavior, then restructure the code; tests cover owned logic, never UI or libraries                       |
 
 **Tells** a screen fails on: a gradient or glow, a colored side stripe, a bordered card per section, equal prominence everywhere, a color per tile, generic copy, content waiting on an entrance animation, the hero, feature grid and logo row skeleton.
-
-## Write these shapes first
-
-The tempting fix for each trips another rule or reshapes the code; every other diagnostic is fixed in place as its message says.
-
-- **Make illegal states unrepresentable.** `export type Kind = typeof Kind.Type` above `export const Kind = Schema.Literals([...])`, subset `Kind.pick`; a recursive schema hand-writes its type, `readonly` as `Schema.Array` decodes it, and annotates the `suspend` thunk; other shapes mutable, `readonly` only on service properties.
-- **Type the boundary.** Decode an `any` or `unknown` with the protocol schema; never `?.`, a cast or a disable on it.
-- **One home per type.** The library's type or `ReturnType<typeof make>` in the signature, never a module alias; import from the defining module.
-- **Reset by key.** Atoms at module level or in an `Atom.family` keyed by their input, built on the runtime the repository's `AGENTS.md` names; `key` resets state when a prop changes, render derives a value, `useRef` holds lifecycle state, and effects never set state. Components read atoms and never run an Effect; the screen's owner wraps one `Suspense` and one error boundary.
-
-```ts
-export const load = Effect.fn('Notes.load')(
-	function* (path: string) {
-		const fs = yield* FileSystem.FileSystem
-		yield* pipe(fs.remove(`${path}.lock`), Effect.ignore({log: 'Warn', message: 'Lock not removed'}))
-		return yield* fs.readFileString(path)
-	},
-	Effect.mapError(cause => NotesError.make({cause, message: 'Cannot read the note'}))
-)
-export const loadAll = Effect.fn('Notes.loadAll')(function* (paths: string[]) {
-	return yield* Effect.forEach(paths, load, {concurrency: 'unbounded'})
-})
-// not: Effect.catch(() => Effect.void), Effect.orDie, mapError(() => X.make({message})), Effect.provide inside a service
-```
-
-```ts
-function label(entry: Entry) {
-	return Boolean.match(entry.done, {onFalse: () => 'Running', onTrue: () => 'Done'})
-}
-export function summarize(entries: Entry[]) {
-	return {
-		labels: pipe(
-			entries,
-			Array.filter(entry => entry.open),
-			Array.map(label)
-		),
-		total: Array.reduce(entries, 0, (sum, entry) => sum + entry.tokens)
-	} satisfies Summary
-}
-// not: a ? b : c, continue, let total, const open = entries.filter(…), const label = (entry) => …, summarize(): Summary
-```
-
-**Same correction twice** becomes impossible at the highest level that works: an owner component or type, then a lint rule whose message names the one fix, with a rejected and an accepted case from the real mistake. A diagnostic on code the rules allow is a rule bug: fix the rule. A disable needs an outside contract named in its `--` reason.
