@@ -5,7 +5,7 @@ description: 'Use before writing or changing code, tests, scripts, configuration
 
 # Build
 
-Copy what excellent Effect 4 codebases already do, ground every claim in something you read or ran, and loop on [Evaluate](#evaluate) until every answer is yes; review asks the same questions. The repository's `AGENTS.md` wins over this skill, and lint owns every mechanical form.
+Copy what excellent Effect 4 codebases already do, ground every claim in something you read or ran, and loop on [Evaluate](#evaluate) until every question the change touches answers yes (screen questions only for a changed screen); review asks the same questions. The repository's `AGENTS.md` wins over this skill, and lint owns every mechanical form.
 
 ## References
 
@@ -60,7 +60,7 @@ rg -on '^export (const|function) (decodeUnknown\w*|fromJsonString|parseJson)\b' 
 | Does the screen read like its reference?                                       | Captures side by side with the same data; blur them: content and the next action still lead              |
 | Does every input answer at once, with no flicker?                              | Event timing, long frames and layout shift after the real input; the action's trace before and after     |
 | Is every state reachable and shown?                                            | Empty, loading, partial, error, success and long content, each captured                                  |
-| Can a part go?                                                                 | Delete it and rerun the proof; a dependency, Effect or the repository may already do it                  |
+| Is every part needed?                                                          | Delete it and rerun the proof; a dependency, Effect or the repository may already do it                  |
 | Does each test fail when the behavior breaks and pass when the internals move? | Break the behavior, then restructure the code; test owned logic only, never UI or libraries              |
 
 **Tells** a screen fails on: a gradient or glow, a colored side stripe, a bordered card per section, equal prominence everywhere, a color per tile, generic copy, content waiting on an entrance animation, the hero, feature grid and logo row skeleton.

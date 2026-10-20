@@ -5,7 +5,7 @@ description: 'Use for any review, audit, critique or review round of code, a PR,
 
 # Review
 
-**One complete pass.** Build the strongest case that the work is wrong from raw evidence (the code, real runs, data, the references), never from the author's summary, and report every class of defect in this pass: a later round only checks the fixes. Load the repository's `AGENTS.md` and the skills the work needed, then answer build's Evaluate questions against the change: each "no" is a finding.
+**One complete pass.** Build the strongest case that the work is wrong from raw evidence (the code, real runs, data, the references), never from the author's summary, and report every class of defect in this pass: a later round only checks the fixes. Load the repository's `AGENTS.md` and the skills the work needed, then answer build's Evaluate questions the change touches: each "no" is a finding.
 
 ## Findings
 
