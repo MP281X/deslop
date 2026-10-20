@@ -72,7 +72,7 @@ function customCodes(output: OxlintOutput) {
 	)
 }
 
-describe('deslop Oxlint plugin', {concurrent: false}, () => {
+describe('deslop Oxlint plugin', {concurrent: true}, () => {
 	it.layer(NodeServices.layer)(testApi => {
 		testApi.effect(
 			'reports every project-specific invalid state',

@@ -4,7 +4,7 @@
 	"scripts": {
 		"build": "vp run -r build",
 		"check": "vp check && fallow dead-code --format compact --fail-on-issues",
-		"fix": "vp check --fix; status=$?; vp fmt && exit $status",
+		"fix": "vp check --fix; status=$?; vp fmt && fallow dead-code --format compact --fail-on-issues && exit $status",
 		"prepare": "effect-tsgo patch --no-typescript --oxlint --force"
 	},
 	"dependencies": {
