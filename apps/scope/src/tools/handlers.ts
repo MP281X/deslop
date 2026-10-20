@@ -21,12 +21,12 @@ export const ToolHandlers = Tools.toLayer(
 	Effect.gen(function* () {
 		const telemetry = yield* Telemetry
 		return Tools.of({
-			logs: filters => Effect.flatMap(query(filters), telemetry.logs),
-			services: () => Effect.map(telemetry.services(), services => ({services})),
-			spans: filters => Effect.flatMap(query(filters), telemetry.spans),
-			stats: filters => Effect.flatMap(query(filters), telemetry.stats),
-			trace: input => telemetry.trace(input.id),
-			traces: filters => Effect.flatMap(query(filters), telemetry.traces)
+			find_logs: filters => Effect.flatMap(query(filters), telemetry.logs),
+			find_spans: filters => Effect.flatMap(query(filters), telemetry.spans),
+			find_traces: filters => Effect.flatMap(query(filters), telemetry.traces),
+			list_services: () => Effect.map(telemetry.services(), services => ({services})),
+			measure_latency: filters => Effect.flatMap(query(filters), telemetry.stats),
+			read_trace: input => telemetry.trace(input.id)
 		})
 	})
 )

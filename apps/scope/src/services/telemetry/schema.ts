@@ -240,7 +240,7 @@ export const Filters = Schema.Struct({
 	service: pipe(
 		Query.fields.service,
 		Schema.withDecodingDefaultTypeKey(Effect.succeed('')),
-		Schema.annotateEncoded({description: 'Exact service name, from the services tool.'})
+		Schema.annotateEncoded({description: 'Exact service name, from list_services.'})
 	),
 	since: pipe(
 		Schema.DurationFromString,
@@ -253,7 +253,11 @@ export const Filters = Schema.Struct({
 		Schema.withDecodingDefaultTypeKey(Effect.succeed('')),
 		Schema.annotateEncoded({description: 'Case-insensitive text in the span name, log message or attributes.'})
 	),
-	traceId: pipe(Query.fields.traceId, Schema.withDecodingDefaultTypeKey(Effect.succeed('')))
+	traceId: pipe(
+		Query.fields.traceId,
+		Schema.withDecodingDefaultTypeKey(Effect.succeed('')),
+		Schema.annotateEncoded({description: 'Only entries of this trace.'})
+	)
 })
 
 export type PageFilters = typeof PageFilters.Type
@@ -264,11 +268,19 @@ export const PageFilters = Schema.Struct({
 		Schema.withDecodingDefaultTypeKey(Effect.succeed(100)),
 		Schema.annotateEncoded({description: 'Page size, 1 to 1000.'})
 	),
-	offset: pipe(Query.fields.offset, Schema.withDecodingDefaultTypeKey(Effect.succeed(0)))
+	offset: pipe(
+		Query.fields.offset,
+		Schema.withDecodingDefaultTypeKey(Effect.succeed(0)),
+		Schema.annotateEncoded({description: 'Entries to skip, for the next page.'})
+	)
 })
 
 export type SortFilters = typeof SortFilters.Type
 export const SortFilters = Schema.Struct({
 	...PageFilters.fields,
-	sort: pipe(Query.fields.sort, Schema.withDecodingDefaultTypeKey(Effect.succeed('recent' as const)))
+	sort: pipe(
+		Query.fields.sort,
+		Schema.withDecodingDefaultTypeKey(Effect.succeed('recent' as const)),
+		Schema.annotateEncoded({description: '"recent" puts the newest first, "slowest" the longest first.'})
+	)
 })

@@ -93,7 +93,7 @@ const mcp = pipe(
 	Layer.provide(
 		ServerRuntime.layerMcp({
 			instructions:
-				'Stash keeps links and notes the user saved: it reads each link, transcribes its video and tags it. Search or list notes, read one whole with get, and save a link or text with save.',
+				'Stash is the reading list of articles, videos and posts the user saved: it reads each link, transcribes its video and tags it. Use it when the user refers to something they saved or read, or asks to keep a link: search_notes or list_notes, read one whole with read_note, keep a link or text with save_note.',
 			name: 'stash',
 			version: packageJson.version
 		})

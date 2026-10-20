@@ -74,7 +74,7 @@ const mcp = pipe(
 	Layer.provide(
 		ServerRuntime.layerMcp({
 			instructions:
-				'Scope receives OTLP/HTTP JSON traces and logs from Effect apps in development and keeps only the current run of each app. Start with services, then traces; read one trace whole with trace.',
+				"Scope is the debugger for the user's Effect apps: each app's web, mobile and server code exports its traces and logs here, and Scope keeps only the current run of each app. Use it to see what the code actually did instead of guessing: reproduce the action, then list_services, find_traces and read_trace; find_logs for what the app said; measure_latency before and after a change to prove it got faster.",
 			name: 'scope',
 			version: packageJson.version
 		})
