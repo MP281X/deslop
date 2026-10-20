@@ -7,7 +7,8 @@ description: Use before the first commit or push, before creating, editing or re
 
 ## Branches
 
-- **One PR per feature.** A second PR only for a feature the user would accept or reject on its own; it stacks only on a real dependency. Never split a feature across PRs, and no PR rewrites what another adds. A task's instruction and configuration changes are one PR; generated files stay with their source. Decide the split before the first commit.
+- **Review units.** Split a change for reading, each PR coherent and runnable on its target. Independent changes target the default branch; stack only real code dependencies. Keep generated files with their source.
+- **Composition.** Before ready, prove clean application in dependency order and between independent PRs; reshape shared edits in their owning slices to remove conflicts.
 - **Current.** The last Verify before a push follows `git fetch` and a rebase onto the PR's target branch, and a conflict gets the same rebase: every PR stays current with its target.
 
 ## Publish
@@ -15,30 +16,17 @@ description: Use before the first commit or push, before creating, editing or re
 1. **Push** only a head that passed lint-companion's Verify after its last rebase, opening each PR as a draft. A round of fixes is one commit and one push: each push starts a pipeline and cancels the last.
 2. **Describe** the head as it is now per [Body](#body), at the first push and after every push that changes what it says; never narrate how the PR got there ("now also", "updated", "fixed review").
 3. **Watch** the final head's pipeline to its end with the harness's pull request watcher when it has one, else the host CLI. A failure, someone else's review comment or a conflict on the current head gets a fix, Verify and one push.
-4. **Ready** when the final head passes required jobs, no P1 or P2 finding is open, the captures are in the body and [Critique](#critique) finds nothing: `gh pr ready <n>` or `glab mr update <n> --ready`. A new commit on a ready PR returns it to draft in the same step (`gh pr ready <n> --undo`, `glab mr update <n> --draft`).
+4. **Ready** when the final head passes required jobs, no P1 or P2 finding is open and review's Body reader finds no unsupported claim or missing evidence: `gh pr ready <n>` or `glab mr update <n> --ready`. A new commit on a ready PR returns it to draft in the same step (`gh pr ready <n> --undo`, `glab mr update <n> --draft`).
 
 ## Body
 
-**Inverted pyramid.** One opening line with the central change in the reader's terms, then one `###` per change a user or caller notices, central change first, each proved by a capture or real command output in a fenced block. It reads once, top to bottom: full names, each term defined where it first appears. Follow the repository's PR template when it has one.
-
-- **Risk.** Up to three bullets after the opening: a migration, a changed contract, removed behavior; none when nothing can break.
-- **Contracts.** A changed endpoint, schema, key, migration or exported API gets a before and after table and the caller migration.
-- **Evidence.** Each capture under the entry it proves: one video per journey, at most eight screenshots, a changed screen as a before (target branch) and after table with the same data.
-- **Also.** Minor changes as one-line bullets under `### Also`; the last names generated files and the command that reproduces them.
-- **Never** test counts, check tables, process notes, a proof section, diffs or code links.
+Follow the repository's PR template. State the changed behavior, deciding evidence, material risks and required migration. Keep a sentence only if it helps the reviewer accept or reject the change. Link supporting analysis rather than paste it; omit research history, process counts, file inventories and facts the diff already makes obvious. Put end-to-end evidence beside its claim and distinguish measured behavior from unverified expectations.
 
 ## Captures
 
-The real application with realistic data in the user's theme, cropped to its subject and readable on a phone: screenshots for layout, a video for a journey. Wait for a condition rather than a delay; record each chapter from just before its first input to just after its outcome, at 390×844, or 1440×900 for a desktop-only layout; native apps from a simulator. Look at every capture before you show it.
+**End to end.** A behavior change gets a visible demonstration from its real input through its observable result, not just a description or a green suite. This applies to backend, API, CLI and infrastructure changes too, not only UI. Show the actual consuming interface, terminal, requests and results, or traces as appropriate. A video proves a sequence or journey; screenshots prove observable states and outcomes. Include changed failure paths when they matter. An HTML mock or an animation of the intended behavior is not proof that it works.
 
-## Critique
-
-Read the published PR as a reviewer will, without the chat. Fix every "no" before ready:
-
-1. Does the first screen of the body say what changed for the user?
-2. Does each claim carry a capture or real output, and does each capture prove a claim?
-3. Would the user accept each PR as one unit?
-4. Would the user watch the video to the end?
+**Capture.** Use representative data at the application's supported viewport and theme; native apps from a simulator. Wait for a condition rather than a delay; record from the meaningful input through its outcome. Compare target and changed behavior on the same data when needed to establish the difference. Inspect each capture and place it under the claim it proves. Real command output supports the demonstration; do not silently substitute prose or logs for feasible screenshots or video. If a capture is unavailable or the change has no runnable behavior, name that limitation and show the strongest real evidence without claiming end-to-end verification.
 
 ## Commands
 

@@ -22,7 +22,7 @@ The user's choices. Add a row with their words when they pick, reject or correct
 ## Layout
 
 - Every schema of a service lives in its `schema.ts`, including the answer of an outside source, such as `FxPost` in `apps/stash/src/services/*/schema.ts`. `lib/utils.ts` holds pure helpers and stays frontend-safe.
-- A component one page uses stays in that page's file.
+- Page-private components and helpers stay with their consumer; genuinely shared behavior has one common owner. A boundary earns its place by reducing what the reader holds, not merely shortening files; balance colocation against navigable file size.
 - Node subpath aliases use wildcard `imports`, such as `"#services/*": "./src/services/*"`; source specifiers include their file extension, such as `#services/notes/service.ts`. A service package exports only `./schema`, `./service` and `./utils`.
 - App data and CLI credentials live under `~/.deslop/<appname>/`, outside the checkout.
 - Defaults live in code through `Config.withDefault`, never in `.env.example`.
@@ -32,6 +32,10 @@ The user's choices. Add a row with their words when they pick, reject or correct
 - React clients use an `AtomRpc.Service` over `WebRuntime.layer` or `MobileRuntime.layer`; a command line uses a scoped `RpcClient.make`. A stream syncs one keep-alive Atom that components read; components neither own subscriptions nor poll.
 - The web look lives in the shadcn theme, `packages/components-web/src/theme.css`; pages add no cards. iOS screens carry the same look through SwiftUI primitives from `@expo/ui` (navigation, toolbars, search, lists, menus, swipe actions, sheets, SF Symbols) with the mobile theme's tokens and their system sizes and behavior; glass for controls and navigation, never content; system controls stay native.
 - Each context has one icon entrypoint for an action instead of text buttons repeating it; conventional icons get no tooltip.
+
+## Tests
+
+Keep useful tests of owned runtime behavior when their protection earns ongoing maintenance. Use throwaway inline probes or browser proofs for one-off assumptions; a fix does not automatically need a new persistent regression test. Tests should survive equivalent implementations rather than freeze private structure or re-test library and type-system guarantees. Preserve useful tests when simplifying.
 
 ## Deploy
 

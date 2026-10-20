@@ -1,6 +1,6 @@
 ---
 name: environment
-description: Use before the first command of a session, and before any preview, a proof video, a Jira or DOS ticket, the user's calendar or mail, a GitLab or VPN step, a task on another worker, the agent configuration links, updating T3 or the machines, a deploy, earlier threads, and machine setup or cleanup.
+description: Use before the first command, a resource-heavy local run, a preview or HTML page, a proof video, external accounts, another worker, agent configuration links, deployment, thread history or machine maintenance.
 ---
 
 # Environment
@@ -27,6 +27,11 @@ Two headless Debian workers in one tailnet, same user, paths and agent configura
 | [Deslop](references/deslop.md)           | Apps on dev, Stash data, simulator build, publishing, tracing, deploy |
 | [Maintenance](references/maintenance.md) | Machines, setup, agent links, T3 history and settings, updates, clean |
 | [Video](references/video.md)             | Proof videos: camera targets, HyperFrames composition and look        |
+| [Replies](references/replies.md)         | HTML page primitives and evidence formats when a visual helps         |
+
+## Resource budget
+
+The worker is shared with the user's other threads. Before a memory-heavy gate, build, install or render, inspect available RAM, active swapping and existing heavy processes (`free -h`, `vmstat 1 3`, `ps -eo pid,ppid,comm,rss,pcpu --sort=-rss`). Run this thread's heavy commands serially and reuse its existing preview. If another heavy run leaves insufficient headroom or memory pressure is active, defer yours and do bounded read-only work; do not multiply workers, raise heap limits or retry into the same pressure. Inspect the process's checkout before attributing it to a thread. Stop only work this thread owns; never kill another thread's processes or stop its preview to make room. No custom scheduler, lock files or background polling loops.
 
 ## Previews
 
