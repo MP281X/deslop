@@ -46,7 +46,8 @@ Measures, each with its counted member:
 **Owner**, one per fix:
 
 - **Lint rule:** a code form; its message names one fix that satisfies every other rule, proved by a probe.
-- **`engineering` Lint hazards:** only a rule whose wrong fix restructures code or trips another rule; the rest stays lint-only.
+- **`build` Write these shapes first:** only a rule whose wrong fix restructures code or trips another rule; the rest stays lint-only.
+- **`build` References:** a shape agents got wrong whose good version lives in an Effect 4 repository; a directory at its default branch, never a commit.
 - **Team skill:** practice every teammate's repository shares; no person, machine, path or T3 tool name.
 - **Repository `AGENTS.md`:** its decisions, commands and canonical examples.
 - **`pair.md` and `instructions.md`:** replies, T3 tools, harness; identical from `# Work` down.

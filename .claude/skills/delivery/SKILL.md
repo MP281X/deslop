@@ -12,9 +12,9 @@ description: Use before the first commit or push, before creating, editing or re
 
 ## Publish
 
-1. **Push** only a head that passed engineering's Verify after its last rebase, opening each PR as a draft. A round of fixes is one commit and one push: each push starts a pipeline and cancels the last.
+1. **Push** only a head that passed build's Verify after its last rebase, opening each PR as a draft. A round of fixes is one commit and one push: each push starts a pipeline and cancels the last.
 2. **Describe** the head as it is now per [Body](#body), at the first push and after every push that changes what it says; never narrate how the PR got there ("now also", "updated", "fixed review").
-3. **Watch** the final head's pipeline to its end. A failure, someone else's review comment or a conflict on the current head gets a fix, Verify and one push.
+3. **Watch** the final head's pipeline to its end with the harness's pull request watcher when it has one, else the host CLI. A failure, someone else's review comment or a conflict on the current head gets a fix, Verify and one push.
 4. **Ready** when the final head passes required jobs, no P1 or P2 finding is open, the captures are in the body and [Critique](#critique) finds nothing: `gh pr ready <n>` or `glab mr update <n> --ready`. A new commit on a ready PR returns it to draft in the same step (`gh pr ready <n> --undo`, `glab mr update <n> --draft`).
 
 ## Body
@@ -29,12 +29,14 @@ description: Use before the first commit or push, before creating, editing or re
 
 ## Captures
 
-How a capture looks follows design; this is how to make one.
+A capture shows the real application with realistic data in the user's theme, cropped to the subject and readable on a phone: screenshots for layout, a video for behavior. Inspect each file before you show it; it is stale once a component it shows changes.
 
 - **One tab** on the preview, shared with the user: reuse it, never a second; while the user drives it, do other work; leave it on the changed screen.
 - **Wait for a condition,** never a fixed delay; batch reads in one script; after a failed action, read the screen, console and failed requests before you retry.
 - **Record** each storyboard chapter from just before its first meaningful input to just after its outcome, at phone size (390×844); a desktop-only layout at 1440×900.
 - **Native apps** are captured from a simulator, never a mock.
+
+**Video.** A short motion piece the user wants to watch; a raw recording only for one action under ten seconds. Storyboard first: per chapter the claim, the focal element, the input and the payoff; two to four chapters, 15–35 s, one dataset. Open on the real subject with its value visible within 3 s, no title card; end on the verified outcome, held at least 2 s. The camera lands on each input before it happens and holds still while the change happens; real speed for the meaningful action, accelerated footage labelled. One caption per chapter, a benefit in at most six words; frames read at 390 px wide without zoom.
 
 ## Critique
 

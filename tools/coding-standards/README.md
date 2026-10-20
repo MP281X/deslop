@@ -1,6 +1,6 @@
 # @deslop/coding-standards
 
-A strict Oxlint preset, and the engineering, design, delivery, explore and review skills for Claude Code, Codex and OpenCode.
+A strict Oxlint preset, and the build, delivery and review skills for Claude Code, Codex and OpenCode.
 
 ```bash
 vpx @deslop/coding-standards@latest                   # copy the skills into the repository's .claude, .codex, .opencode or .agents

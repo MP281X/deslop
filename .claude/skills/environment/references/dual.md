@@ -27,7 +27,7 @@ Project `DOS`, board 1053, on `datapizza.atlassian.net`; the user's account ID i
 - **Picking.** When the user asks what to work on: rank only unassigned `To Do` tickets by priority (`P1` highest), size and fit with the code; skip every other status. Rank Epics, Tasks, Stories and Bugs, not Areas or Initiatives. After the user approves, assign each ticket to the user and move it to `Doing`; these are the only Jira writes.
 - **Page.** A ticket key links to `https://datapizza.atlassian.net/browse/<key>`.
 - **Assigned.** A ticket key in a request, branch or commit means work the user started: read it and quote the requirements you use.
-- **Through Dual.** Every Jira read and write is one call to the `dual` MCP server's `execute` tool with the code below, with the ticket keys in place of `DOS-289`. An action not listed here is found by an explore child with `tools.search({query})` and `tools.describe.tool({path})` inside `execute`. The connection is a service account: `currentUser()` and `@me` are not the user, so name the user by account ID. Report each slow or confusing step to the user, who builds Dual.
+- **Through Dual.** Every Jira read and write is one call to the `dual` MCP server's `execute` tool with the code below, with the ticket keys in place of `DOS-289`. An action not listed here is found by a research child with `tools.search({query})` and `tools.describe.tool({path})` inside `execute`. The connection is a service account: `currentUser()` and `@me` are not the user, so name the user by account ID. Report each slow or confusing step to the user, who builds Dual.
 
 ```js
 // search, every page; for the user's open tickets the jql is

@@ -1,6 +1,6 @@
 # Video
 
-A proof video follows design's Video; this is how to make it on these workers. Record each chapter per the Captures rule of your instructions, then compose.
+A proof video follows delivery's Video; this is how to make it on these workers. Record each chapter per the Captures rule of your instructions, then compose.
 
 - **Camera targets.** Read each input's target and the outcome's box with `preview_evaluate` right after recording starts and before each input:
 

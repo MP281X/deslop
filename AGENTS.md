@@ -36,6 +36,9 @@ Decisions the code, the generators and lint do not show.
 | Auth approvals        | Live pending requests grouped by app; approval in the user's own browser                  | Chronological inbox; signing in inside the agent browser | "B looks a lot better, go for it"; "i can't login in your browser"                                              |
 | Reply pages           | Static HTML from a few shared classes in the agent prompt, values written in place        | Script components that render data lines                 | "just to define static html elements that the agent can fill with data and compose"; "js is worse"              |
 | Agent instructions    | Only what a model cannot infer: the user's choices, exact values, non-obvious rules       | Full templates and code for known techniques             | "let the models do their job and figure the "known" part out on their own"                                      |
+| Agent references      | Effect 4 repositories at their default branch, names checked in the Effect source         | Pinned commits; the nearest file of a slopped codebase   | "just keep it simple and use latest"                                                                            |
+| Agent decisions       | One built proposal naming what it optimized for; the user comments                        | Option menus that wait for a pick                        | "you proposse just the best option ... and then i can leave comments"                                           |
+| Agent tools           | T3 tools wherever one exists, then the user's MCP servers                                 | CLI calls whose state T3 cannot show                     | "the usage of the t3code tools is mandatory"                                                                    |
 
 ## Layout
 
