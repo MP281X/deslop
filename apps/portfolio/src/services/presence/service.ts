@@ -72,7 +72,6 @@ export class Presence extends Context.Service<
 	{
 		readonly join: (payload: Pick<PortfolioVisitor, 'color' | 'id' | 'name'>) => Stream.Stream<PortfolioState>
 		readonly move: (payload: Pick<PortfolioVisitor, 'color' | 'id' | 'x' | 'y'>) => Effect.Effect<void>
-		readonly visitors: Effect.Effect<PortfolioVisitor[]>
 	}
 >()('@deslop/portfolio/services/presence/service/Presence') {
 	static readonly layer = Layer.effect(
@@ -186,10 +185,7 @@ export class Presence extends Context.Service<
 						})
 						return Tuple.make(undefined, Option.some(moveVisitor(currentState, nextVisitor)))
 					})
-				}),
-				visitors: Effect.map(SubscriptionRef.get(state), current =>
-					Array.filter(current.visitors, visitor => !Array.some(SERVER_BOTS, bot => bot.id === visitor.id))
-				)
+				})
 			})
 		})
 	)

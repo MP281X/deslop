@@ -81,7 +81,6 @@
 			"dual": {"type": "remote", "url": "https://app.dualos.ai/mcp"},
 			"scope": {"type": "remote", "url": "https://scope.mp281x.xyz/mcp"},
 			"stash": {"type": "remote", "url": "https://stash.mp281x.xyz/mcp"},
-			"portfolio": {"type": "remote", "url": "https://portfolio.mp281x.xyz/mcp"},
 			"mobbin": {"type": "remote", "url": "https://api.mobbin.com/mcp"}
 		}
 	}

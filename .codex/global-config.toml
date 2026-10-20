@@ -44,10 +44,6 @@ default_tools_approval_mode = "approve"
 url = "https://stash.mp281x.xyz/mcp"
 default_tools_approval_mode = "approve"
 
-[mcp_servers.portfolio]
-url = "https://portfolio.mp281x.xyz/mcp"
-default_tools_approval_mode = "approve"
-
 [mcp_servers.mobbin]
 url = "https://api.mobbin.com/mcp"
 default_tools_approval_mode = "approve"

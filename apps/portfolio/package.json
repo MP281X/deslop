@@ -5,18 +5,15 @@
 	"sideEffects": false,
 	"imports": {
 		"#lib/*": "./src/lib/*",
-		"#package.*": "./package.*",
 		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
-		"#services/*": "./src/services/*",
-		"#tools/*": "./src/tools/*"
+		"#services/*": "./src/services/*"
 	},
 	"scripts": {
 		"build": "rm -rf dist && vp build && vp pack",
 		"preview": "vp run build && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js"
 	},
 	"devDependencies": {
-		"@deslop/auth": "workspace:*",
 		"@deslop/components-web": "workspace:*",
 		"@deslop/runtime": "workspace:*",
 		"@tanstack/react-hotkeys": "latest",
