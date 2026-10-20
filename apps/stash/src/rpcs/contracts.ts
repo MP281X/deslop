@@ -2,7 +2,7 @@ import {Schema} from 'effect'
 
 import {Rpc, RpcGroup} from 'effect/rpc'
 
-import {RpcAuth} from '@deslop/auth/utils'
+import {RpcAuth} from '@deslop/runtime/auth/utils'
 
 import {Capture, Note, NoteId, NotesError, NotesEvent} from '#services/notes/schema.ts'
 

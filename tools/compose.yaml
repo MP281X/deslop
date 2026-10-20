@@ -35,16 +35,16 @@ services:
       traefik.http.routers.portfolio.rule: Host(`portfolio.mp281x.xyz`)
       traefik.http.services.portfolio.loadbalancer.server.port: '5000'
 
-  auth-server:
+  auth:
     <<: *service
-    image: ghcr.io/mp281x/deslop-auth-server:${REVISION:-latest}
-    env_file: ${HOME}/.deslop/auth-server.env
+    image: ghcr.io/mp281x/deslop-auth:${REVISION:-latest}
+    env_file: ${HOME}/.deslop/auth.env
     environment: {VITE_OTEL_URL: http://scope:4318}
-    volumes: ['${HOME}/.deslop/auth-server:/home/node/.deslop/auth-server']
+    volumes: ['${HOME}/.deslop/auth:/home/node/.deslop/auth']
     labels:
       traefik.enable: 'true'
-      traefik.http.routers.auth-server.rule: Host(`auth.mp281x.xyz`)
-      traefik.http.services.auth-server.loadbalancer.server.port: '5000'
+      traefik.http.routers.auth.rule: Host(`auth.mp281x.xyz`)
+      traefik.http.services.auth.loadbalancer.server.port: '5000'
 
   stash:
     <<: *service

@@ -23,10 +23,10 @@ import * as Clipboard from 'expo-clipboard'
 import * as Crypto from 'expo-crypto'
 import {File, Paths} from 'expo-file-system'
 
-import {AuthError, ClientRegistration, Credentials, TokenResponse} from '@deslop/auth/schema'
-import {AUTH_URL, RpcAuth} from '@deslop/auth/utils'
 import {brands} from '@deslop/components-mobile/icons'
 import {alert, downloadAtom, writeAtomically} from '@deslop/components-mobile/utils'
+import {AuthError, ClientRegistration, Credentials, TokenResponse} from '@deslop/runtime/auth/schema'
+import {AUTH_URL, RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 
 import {native} from '#modules/native/index.ts'

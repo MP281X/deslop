@@ -27,7 +27,6 @@
 		"build": "rm -rf dist && vp pack"
 	},
 	"devDependencies": {
-		"@deslop/auth": "workspace:*",
 		"@deslop/runtime": "workspace:*",
 		"@effect/sql-sqlite-node": "latest"
 	},

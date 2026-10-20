@@ -6,7 +6,7 @@ import {McpServer} from 'effect/ai'
 import {HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 import {RpcSerialization, RpcServer} from 'effect/rpc'
 
-import {Auth, HttpAuth} from '@deslop/auth/service'
+import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import packageJson from '#package.json' with {type: 'json'}

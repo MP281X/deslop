@@ -1,4 +1,5 @@
 import {NodeServices} from '@effect/platform-node'
+import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
 import {
@@ -12,6 +13,7 @@ import {
 	Fiber,
 	Layer,
 	Order,
+	Path,
 	Queue,
 	Schema,
 	String,
@@ -23,20 +25,19 @@ import {Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientResponse, HttpRouter, HttpServerRequest, HttpServerResponse, UrlParams} from 'effect/http'
 import {TestClock} from 'effect/testing'
 
-import type {Resource} from '#schema.ts'
+import type {Resource} from '@deslop/runtime/auth/schema'
+import {ClientRegistration, TokenResponse, User} from '@deslop/runtime/auth/schema'
+import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
+import {CurrentUser} from '@deslop/runtime/auth/utils'
+
 import {
 	AuthorizationStatus,
-	ClientRegistration,
 	ConsentParams,
 	PendingAuthorization,
 	Registration,
-	RequestParams,
-	TokenResponse,
-	User
-} from '#schema.ts'
-import {Auth, Authorizations, HttpAuth} from '#service.ts'
-
-import {CurrentUser} from '#lib/utils.ts'
+	RequestParams
+} from '#services/authorizations/schema.ts'
+import {Authorizations} from '#services/authorizations/service.ts'
 
 const AUTH = 'https://auth.example.test'
 const API = 'https://stash.mp281x.xyz'
@@ -47,8 +48,8 @@ const me = pipe(
 	Layer.provide(HttpAuth.layer)
 )
 
-const servers = Effect.gen(function* () {
-	const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+const servers = Effect.fnUntraced(function* (home?: string) {
+	const directory = home ?? (yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped())
 	const random = yield* Crypto.Crypto
 	const clock = yield* Clock.Clock
 	const ready = yield* Queue.make<true>()
@@ -141,7 +142,7 @@ const servers = Effect.gen(function* () {
 							Layer.provide(HttpAuth.layer)
 						)
 					),
-					Layer.provideMerge(Auth.layerIssuer),
+					Layer.provideMerge(Authorizations.layer),
 					Layer.provide(
 						Layer.mergeAll(
 							NodeServices.layer,
@@ -200,7 +201,7 @@ const servers = Effect.gen(function* () {
 	return {app, issuer, ready}
 })
 
-function send(web: Effect.Success<typeof servers>['issuer'], path: string, init?: RequestInit) {
+function send(web: Effect.Success<ReturnType<typeof servers>>['issuer'], path: string, init?: RequestInit) {
 	return Effect.promise(() => web.handler(new Request(new URL(path, AUTH), init)))
 }
 
@@ -212,7 +213,7 @@ function cookie(response: Response) {
 	)
 }
 
-const signIn = Effect.fnUntraced(function* (web: Effect.Success<typeof servers>['issuer'], login: string) {
+const signIn = Effect.fnUntraced(function* (web: Effect.Success<ReturnType<typeof servers>>['issuer'], login: string) {
 	const start = yield* send(web, '/auth/github')
 	const target = new URL(start.headers.get('location') ?? '')
 	return yield* send(
@@ -228,7 +229,7 @@ const signIn = Effect.fnUntraced(function* (web: Effect.Success<typeof servers>[
 })
 
 const authorize = Effect.fnUntraced(function* (
-	web: Effect.Success<typeof servers>['issuer'],
+	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
 	session: string,
 	redirect: string,
 	resources: Resource[]
@@ -274,7 +275,7 @@ const authorize = Effect.fnUntraced(function* (
 })
 
 const consent = Effect.fnUntraced(function* (
-	web: Effect.Success<typeof servers>['issuer'],
+	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
 	request: Effect.Success<ReturnType<typeof authorize>>,
 	accept: boolean
 ) {
@@ -294,7 +295,7 @@ const consent = Effect.fnUntraced(function* (
 })
 
 const exchange = Effect.fnUntraced(function* (
-	web: Effect.Success<typeof servers>['issuer'],
+	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
 	request: Effect.Success<ReturnType<typeof authorize>>,
 	code: string
 ) {
@@ -315,7 +316,7 @@ const exchange = Effect.fnUntraced(function* (
 })
 
 const refresh = Effect.fnUntraced(function* (
-	web: Effect.Success<typeof servers>['issuer'],
+	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
 	clientId: string,
 	token: string
 ) {
@@ -329,9 +330,70 @@ const refresh = Effect.fnUntraced(function* (
 })
 
 it.layer(NodeServices.layer)(test => {
+	test.effect('keeps previous-release sessions and grants after renaming host storage', () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem
+			const path = yield* Path.Path
+			const home = yield* fs.makeTempDirectoryScoped()
+			const storage = path.join(home, '.deslop', 'auth-server')
+			yield* fs.makeDirectory(storage, {recursive: true})
+			const expires = (yield* Clock.currentTimeMillis) + 86400000
+			const random = yield* Crypto.Crypto
+			yield* pipe(
+				Effect.gen(function* () {
+					const sql = yield* SqliteClient.SqliteClient
+					yield* sql`CREATE TABLE auth_state (hash TEXT PRIMARY KEY, payload TEXT NOT NULL, expires_at INTEGER NOT NULL)`
+					yield* Effect.forEach(
+						[
+							{payload: '{"_tag":"Session","user":{"id":"github:42","name":"octocat"}}', token: 'previous-session'},
+							{
+								payload:
+									'{"_tag":"Access","family":"previous-family","resources":["https://scope.mp281x.xyz/mcp"],"user":{"id":"github:42","name":"octocat"}}',
+								token: 'previous-access'
+							},
+							{
+								payload:
+									'{"_tag":"Refresh","clientId":"previous-client","family":"previous-family","resources":["https://scope.mp281x.xyz/mcp"],"user":{"id":"github:42","name":"octocat"}}',
+								token: 'previous-refresh'
+							}
+						],
+						Effect.fnUntraced(function* (entry) {
+							yield* sql`INSERT INTO auth_state (hash, payload, expires_at) VALUES (${Base64Url.encode(yield* random.digest('SHA-256', new TextEncoder().encode(entry.token)))}, ${entry.payload}, ${expires})`
+						}),
+						{concurrency: 1, discard: true}
+					)
+				}),
+				// @effect-diagnostics-next-line strictEffectProvide:off -- This test fixture closes its SQLite connection before starting the issuer.
+				Effect.provide(SqliteClient.layer({filename: path.join(storage, 'auth.sqlite')}))
+			)
+			yield* fs.rename(storage, path.join(home, '.deslop', 'auth'))
+			const web = yield* servers(home)
+			const session = yield* send(web.issuer, '/auth/session', {headers: {cookie: '__Secure-session=previous-session'}})
+			assert.strictEqual(session.status, 200)
+			assert.deepStrictEqual(yield* Effect.promise(() => session.json()), {id: 'github:42', name: 'octocat'})
+			assert.strictEqual(
+				(yield* send(web.issuer, '/auth/verify?resource=https://scope.mp281x.xyz/mcp', {
+					headers: {authorization: 'Bearer previous-access'}
+				})).status,
+				200
+			)
+			const response = yield* refresh(web.issuer, 'previous-client', 'previous-refresh')
+			assert.strictEqual(response.status, 200)
+			const rotated = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
+				yield* Effect.promise(() => response.text())
+			)
+			assert.strictEqual(
+				(yield* send(web.issuer, '/auth/verify?resource=https://scope.mp281x.xyz/mcp', {
+					headers: {authorization: `Bearer ${rotated.access_token}`}
+				})).status,
+				200
+			)
+		})
+	)
+
 	test.effect('approves from a separate session while only the originating browser receives the callback', () =>
 		Effect.gen(function* () {
-			const web = yield* servers
+			const web = yield* servers()
 			const session = cookie(yield* signIn(web.issuer, 'octocat'))
 			assert.strictEqual((yield* send(web.issuer, '/pending')).status, 401)
 			const first = yield* authorize(web.issuer, '', 'http://127.0.0.1:34567/callback', [
@@ -403,7 +465,7 @@ it.layer(NodeServices.layer)(test => {
 
 	test.effect('streams creations and expiration without refresh and rejects decisions after expiry', () =>
 		Effect.gen(function* () {
-			const web = yield* servers
+			const web = yield* servers()
 			const session = cookie(yield* signIn(web.issuer, 'octocat'))
 			const creations = yield* pipe(
 				send(web.issuer, '/events', {headers: {cookie: session}}),
@@ -461,7 +523,7 @@ it.layer(NodeServices.layer)(test => {
 
 	test.effect('accepts one decision across concurrent approving and denying sessions', () =>
 		Effect.gen(function* () {
-			const web = yield* servers
+			const web = yield* servers()
 			const first = cookie(yield* signIn(web.issuer, 'octocat'))
 			const second = cookie(yield* signIn(web.issuer, 'octocat'))
 			const request = yield* authorize(web.issuer, '', 'http://127.0.0.1:34567/callback', [
@@ -503,7 +565,7 @@ it.layer(NodeServices.layer)(test => {
 
 	test.effect('binds consent and one-use PKCE codes to the browser, client, callback and resources', () =>
 		Effect.gen(function* () {
-			const web = yield* servers
+			const web = yield* servers()
 			assert.strictEqual((yield* send(web.app, '/me')).status, 401)
 			const session = cookie(yield* signIn(web.issuer, 'octocat'))
 			assert.strictEqual((yield* send(web.issuer, '/me', {headers: {cookie: session}})).status, 200)
@@ -577,7 +639,7 @@ it.layer(NodeServices.layer)(test => {
 
 	test.effect('rotates refresh tokens, revokes a reused family, and revokes active access at sign-out', () =>
 		Effect.gen(function* () {
-			const web = yield* servers
+			const web = yield* servers()
 			const session = cookie(yield* signIn(web.issuer, 'octocat'))
 			const request = yield* authorize(web.issuer, session, 'http://127.0.0.1:34567/callback', [
 				'https://scope.mp281x.xyz/mcp'
@@ -641,7 +703,7 @@ it.layer(NodeServices.layer)(test => {
 
 	test.effect('denies access without issuing a code and expires a code before exchange', () =>
 		Effect.gen(function* () {
-			const web = yield* servers
+			const web = yield* servers()
 			const session = cookie(yield* signIn(web.issuer, 'octocat'))
 			const denied = yield* consent(
 				web.issuer,

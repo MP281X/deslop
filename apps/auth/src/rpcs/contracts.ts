@@ -2,8 +2,10 @@ import {Schema} from 'effect'
 
 import {Rpc, RpcGroup} from 'effect/rpc'
 
-import {AuthError, AuthorizationStatus, PendingAuthorization, RequestParams, User} from '@deslop/auth/schema'
-import {RpcAuth} from '@deslop/auth/utils'
+import {AuthError, User} from '@deslop/runtime/auth/schema'
+import {RpcAuth} from '@deslop/runtime/auth/utils'
+
+import {AuthorizationStatus, PendingAuthorization, RequestParams} from '#services/authorizations/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
 	Rpc.make('auth.me', {success: User}),

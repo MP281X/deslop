@@ -3,7 +3,7 @@ import {Boolean, Clock, Effect, Layer, pipe} from 'effect'
 import {FetchHttpClient, HttpClient, HttpClientError, HttpClientRequest} from 'effect/http'
 import {OtlpLogger, OtlpSerialization, OtlpTracer} from 'effect/observability'
 
-import type {AuthError} from '@deslop/auth/schema'
+import type {AuthError} from '#auth/schema.ts'
 
 export function layerOtlp(
 	serviceName: string,
