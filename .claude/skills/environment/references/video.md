@@ -1,6 +1,6 @@
 # Video
 
-A proof video follows design's Video; this is how to make it on these workers. Record each chapter per the Captures rule of your instructions, then compose.
+A proof video is a short motion piece the user wants to watch; a raw recording only for one action under ten seconds. Storyboard first: per chapter the claim, the focal element, the input and the payoff; two to four chapters, 15–35 s, one dataset. It opens on the real subject with its value visible within 3 s and ends on the verified outcome, held at least 2 s. The camera lands on each input before it happens and holds still while the change happens; real speed for the meaningful action, accelerated footage labelled. One caption per chapter, a benefit in at most six words; frames read at 390 px wide without zoom.
 
 - **Camera targets.** Read each input's target and the outcome's box with `preview_evaluate` right after recording starts and before each input:
 

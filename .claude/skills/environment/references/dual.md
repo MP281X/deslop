@@ -1,33 +1,21 @@
 # Dual
 
-Dual is a production SaaS in startup mode: requirements change often and anything can change, except that production data must keep working.
+Dual's `AGENTS.md` owns its commands, production data, app and coding standards; this is the user's access around it.
 
-## Production data
+## Workers
 
-- **Migrate, never reset.** Every change to a persisted shape ships a migration that converts existing rows: a renamed id, a stored enum value, a JSON column shape, a table. A schema change comes from `bun run db:generate` in `packages/server`; a data change is `bun run db:generate --custom --name <name>` filled with SQL that rewrites existing rows in place and skips rows already converted.
-- **Prove it** on a local database seeded with the old shape: run the migration, then the changed journey. The user has no production database access; never make one a merge prerequisite.
-- The new code reads only the new shape: no alias or dual read path.
-
-## Commands
-
-From the root. Checks, builds, tests and previews share one Turbo cache per worker, `~/dual/.turbo/cache`, across all its worktrees.
-
-```bash
-bun run fix && bun run check --affected && bun run test --affected   # fix (lint fixes, then format, branch files only), check, test
-```
-
-- **`--affected`** keeps the root tasks (format, scripts, infra, `test:release`) and runs only changed packages and their dependents against `TURBO_SCM_BASE`, which the agent environment sets to `origin/master`: about 40 package tasks for a typical branch instead of 276, and Turbo replays unchanged ones from cache. Never run them without `--affected` locally: each package runs a type-aware linter at 4–7 GB, a full run takes up to 30 minutes, and the pipeline runs it.
-- **Generated:** root `codegen` (icons, agent docs), `bun --filter @dual/docs generate` (Fumadocs), `dual openapi-plugin` (internal plugins and their `turbo.json`).
-- **Tests** start their own database containers. Run consumer acceptance and live release tests only when their contracts change.
+- **Cache.** Checks, builds, tests and previews share one Turbo cache per worker, `~/dual/.turbo/cache`, across every worktree; the agent environment sets `TURBO_SCM_BASE=origin/master` for `--affected`.
+- **Accounts.** Writes go only to GitHub `MP281X`, GitLab `matteopaludgnach` and the user's Discord test channel. Saved preview tokens are read-only; write tokens come from `gh auth token` and the `glab` configuration.
+- **Preview** through the T3 `preview` project script, which runs `bun run preview` in its unit. Live webhooks: funnel the API port's `/api/webhooks` per environment's Previews, with a temporary callback URL override reverted before the push.
 
 ## Jira
 
-Project `DOS`, board 1053, on `datapizza.atlassian.net`; the user's account ID is `712020:87e4f57e-6b5d-40ab-8dfa-faf159ead71a`.
+Project `DOS`, board 1053, on `datapizza.atlassian.net`; the user's account ID is `712020:87e4f57e-6b5d-40ab-8dfa-faf159ead71a`. On these workers Jira goes through the `dual` MCP server, in place of the `acli` that Dual's `AGENTS.md` names.
 
-- **Picking.** When the user asks what to work on: rank only unassigned `To Do` tickets by priority (`P1` highest), size and fit with the code; skip every other status. Rank Epics, Tasks, Stories and Bugs, not Areas or Initiatives. After the user approves, assign each ticket to the user and move it to `Doing`; these are the only Jira writes.
+- **Picking.** When the user asks what to work on: rank only unassigned `To Do` tickets by priority (`P1` highest), size and fit with the code. Rank Epics, Tasks, Stories and Bugs, not Areas or Initiatives. After the user approves, assign each ticket to the user and move it to `Doing`; these are the only Jira writes.
 - **Page.** A ticket key links to `https://datapizza.atlassian.net/browse/<key>`.
 - **Assigned.** A ticket key in a request, branch or commit means work the user started: read it and quote the requirements you use.
-- **Through Dual.** Every Jira read and write is one call to the `dual` MCP server's `execute` tool with the code below, with the ticket keys in place of `DOS-289`. An action not listed here is found by an explore child with `tools.search({query})` and `tools.describe.tool({path})` inside `execute`. The connection is a service account: `currentUser()` and `@me` are not the user, so name the user by account ID. Report each slow or confusing step to the user, who builds Dual.
+- **Through Dual.** Every Jira read and write is one call to the `dual` MCP server's `execute` tool with the code below, with the ticket keys in place of `DOS-289`. An action not listed here is found by a research child with `tools.search({query})` and `tools.describe.tool({path})` inside `execute`. The connection is a service account: `currentUser()` and `@me` are not the user, so name the user by account ID. A slow or confusing step is a Dual defect the user wants in the final reply.
 
 ```js
 // search, every page; for the user's open tickets the jql is
@@ -85,7 +73,7 @@ return await tools['atlassian-api.jira-issues.do-transition']({
 
 ## Google
 
-The same `execute` reads the user's work calendar and mail, `matteopaludgnach@datapizza.tech`, in `Europe/Rome`; nothing writes to them. A day's events carry their Meet link in `hangoutLink`:
+The same `execute` reads the user's work calendar and mail, `matteopaludgnach@datapizza.tech`, in `Europe/Rome`; it only reads them. A day's events carry their Meet link in `hangoutLink`:
 
 ```js
 const events = await tools['google-api.calendar-events.list']({
@@ -124,25 +112,9 @@ curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
 }
 ```
 
-## Preview
-
-The `preview` project script runs `bun run preview` in its unit and builds an isolated Alchemy stage from the checkout path: database, sandbox, migrations, an administrator and app, API and worker watchers. It proves iteration, not a production build. Sign in as `admin@dual.local` with `preview-password`; AI journeys need provider connections.
-
-- Source edits reload through the watchers. `stop` keeps containers and data; `bun run preview:destroy` (the settle cleanup) removes the stage. Run it before you move or delete a checkout.
-- Live webhooks: funnel the API port's `/api/webhooks` per environment's Previews, with a temporary callback URL override reverted before the push.
-- Never use the shared `init` or `dev` commands as a preview.
-- **Accounts.** Writes go only to GitHub `MP281X`, GitLab `matteopaludgnach` and the user's Discord test channel. Saved preview tokens are read-only; write tokens come from `gh auth token` and the `glab` configuration.
-
-## App
-
-- **Dual Apps.** An app complements Dual's screens for one workflow, never a form or website builder. Whoever opens a workflow opens its apps; an invitation opens one app without workflow access. Apps share the company font, sizes and primary color; layout, spacing, size and radius vary per app. An app sends a notification or email only when Dual's workflows already send it.
-- **Components** come from the shadcn primitives in `packages/ui/src/components`; add a missing one with `vpx shadcn@latest add <name> --cwd packages/ui`.
-- **Frontend state.** Each feature defines its own `Atom.runtime(layer)` and mounts a `RegistryProvider`.
-- **CI.** The GitLab quality job runs a frozen install, the Effect-tsgo patch, then check, test and docs in one Turbo graph; see `docs/ci.md` and `docs/releasing.md`. A new push cancels interruptible pipelines.
-
 ## Tracing
 
-The SaaS exports to PostHog. For development, `packages/saas/src/Observability.ts` sends the same OTLP/HTTP JSON that deslop's Scope receives, and merges `OTEL_RESOURCE_ATTRIBUTES`. Compute the startup timestamp at every launch, never in `.env`, so restarting a service hides its previous traces. From `packages/saas`, with its development environment and dependencies already configured:
+For development, `packages/saas/src/Observability.ts` sends the OTLP/HTTP JSON that deslop's Scope receives, and merges `OTEL_RESOURCE_ATTRIBUTES`. Compute the startup timestamp at every launch, so a restarted service hides its previous traces. From `packages/saas`, with its development environment configured:
 
 ```bash
 OTEL_RESOURCE_ATTRIBUTES="scope.runtime=server,scope.run.started_unix_nano=$(date +%s%N)" \
@@ -151,19 +123,4 @@ bun --env-file .env src/dev.ts api
 # Use the same launch environment with `src/dev.ts worker` for the worker.
 ```
 
-The nonempty PostHog marker enables Dual's exporter; Scope's receiver ignores it. This is opt-in development configuration, not a change to Dual's production PostHog configuration.
-
-## Coding standards
-
-Each package pins its own `@deslop/coding-standards`; its `oxlint.config.ts` holds a legacy file list whose rules drop to warnings.
-
-- **Skills** refresh into `.claude/skills` and `.agents/skills` through the worktree script `vpx @deslop/coding-standards@latest`, and stay tracked: commit each refresh.
-- **Bump** only when the user asks: `bun add --dev --exact @deslop/coding-standards@latest` in every package directory, the root, the scaffold baseline and consumer fixtures, then `bun run fix`. A rule the bump breaks is turned off in that package's `oxlint.config.ts`, never inline.
-- **Touched files.** A hand-written file the task adds or rewrites over half of leaves the legacy list and passes every rule. Other changed files stay listed; never refactor a file only for lint.
-- **Prune** after the change: remove listed files that this command no longer prints.
-
-  ```bash
-  "$(git rev-parse --show-toplevel)"/node_modules/.bin/oxlint --format json . | jq -r '[.diagnostics[].filename] | unique[]'
-  ```
-
-- **Never linted:** generated code, build output and shadcn primitives (formatted only, never refactored). Everything is type-checked.
+The nonempty PostHog marker enables Dual's exporter and Scope's receiver ignores it; production PostHog configuration stays as it is.
