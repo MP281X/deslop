@@ -2,10 +2,10 @@
 
 ## Commands
 
-Check and test run one after the other: rule tests create fixtures that a concurrent type scan reads. `--cache` replays the `check` script when its inputs are unchanged; the `test` task caches by default.
+`fix` is the whole static gate; CI runs `check`, the same gate without writes. Fix and test run one after the other: rule tests create fixtures that a concurrent type scan reads.
 
 ```bash
-vp run -w fix && vp run -w --cache check && vp run -w test   # fix (lint fixes, then format), check (lint, types, Fallow), test
+vp run -w fix && vp run -w test   # fix (lint fixes, types, format, Fallow), test
 ```
 
 - **App.** The deslop `preview` project script runs the portfolio build for iteration, browser tests and captures.

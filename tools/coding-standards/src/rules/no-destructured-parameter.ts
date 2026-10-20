@@ -1,4 +1,4 @@
-import {Array, Option, pipe} from 'effect'
+import {Array, Equivalence, Option, pipe} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree} from '@oxlint/plugins'
@@ -6,7 +6,7 @@ import type {Context, ESTree} from '@oxlint/plugins'
 import {bindingName, matches, variableFromScope} from '#rules/shared.ts'
 
 function namedTuple(input: {context: Context; node: ESTree.TSType; seen: ESTree.TSType[]}): boolean {
-	if (Array.contains(input.seen, input.node)) return false
+	if (Array.containsWith(Equivalence.strictEqual<ESTree.TSType>())(input.seen, input.node)) return false
 	if (input.node.type === 'TSTupleType') {
 		return (
 			Array.isArrayNonEmpty(input.node.elementTypes) &&

@@ -1,4 +1,4 @@
-import {Array, MutableRef, Option, String, pipe} from 'effect'
+import {Array, Equivalence, MutableRef, Option, String, pipe} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree, Fixer} from '@oxlint/plugins'
@@ -70,7 +70,9 @@ function shapeLiterals(input: {
 	return pipe(
 		typeDeclarations({context: input.context, name: input.type.typeName}),
 		Array.filter(declaration => declaration.type === 'TSTypeAliasDeclaration'),
-		Array.filter(alias => !Array.contains(input.seen, alias)),
+		Array.filter(
+			alias => !Array.containsWith(Equivalence.strictEqual<ESTree.TSTypeAliasDeclaration>())(input.seen, alias)
+		),
 		Array.flatMap(alias => shapeLiterals({...input, seen: Array.append(input.seen, alias), type: alias.typeAnnotation}))
 	)
 }

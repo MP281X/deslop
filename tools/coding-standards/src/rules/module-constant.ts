@@ -1,4 +1,4 @@
-import {Array, Function, Option, Predicate, String, pipe} from 'effect'
+import {Array, Equivalence, Function, Option, Predicate, String, pipe} from 'effect'
 
 import {defineRule} from '@oxlint/plugins'
 import type {Context, ESTree, Fixer, Variable} from '@oxlint/plugins'
@@ -123,7 +123,15 @@ export const moduleConstant = defineRule({
 					),
 					Option.match({
 						onNone: Function.constVoid,
-						onSome: match => check({...match, context, leading: Array.contains(leading, statement)})
+						onSome: match =>
+							check({
+								...match,
+								context,
+								leading: Array.containsWith(Equivalence.strictEqual<ESTree.Statement | ESTree.ModuleDeclaration>())(
+									leading,
+									statement
+								)
+							})
 					})
 				)
 			}
