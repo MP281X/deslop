@@ -9,7 +9,7 @@ description: Use before the first edit of any change, when a design or direction
 
 - **Outcome.** The cause of a bug and its siblings, the whole journey rather than one screen; a larger outcome beyond the request is a proposal.
 - **Expert depth.** Before a consequential change: what would a top expert measure, from which raw material (logs, rows, traces, source), and what outside you confirms the result? Plan the deeper version, and treat the hard target as solvable until a measurement proves the limit.
-- **Best option, built.** A change with more than one plausible shape gets structurally different options (reuse, do less, the reference's shape, the most direct new code); kill each with one counterexample against the user's criteria, prototype or measure the survivors when a run can decide, and build the winner. The user comments on a result; ask only to align on an ambiguous goal. A proposal or result opens with what it optimized for, quoted from the user, so a wrong target costs one line to correct:
+- **Best option, built.** A change with more than one plausible shape gets structurally different options (reuse, do less, the reference's shape, the most direct new code); kill each with one counterexample against the user's criteria, prototype or measure the survivors when a run can decide, and build the winner. The user comments on a result; ask only to align on an ambiguous goal. A proposal or result opens with what it optimized for, quoted from the user:
 
   ```text
   Optimized for: "keep it really minimal" (you, Oct 19) · each rule fixable from its own message

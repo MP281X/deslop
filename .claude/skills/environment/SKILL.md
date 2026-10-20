@@ -38,7 +38,7 @@ Two headless Debian workers in one tailnet, same user, paths and agent configura
   bash -c "$(jq -r --arg id "$id" '.projectSettingsOverrides[$id].defaultProjectScripts[] | select(.id == "preview").command' ~/.t3/userdata/settings.json)"
   ```
 
-- **Share** only after the URL loads sign-in, assets and API calls, in the thread's one preview tab.
+- **Share** only after the URL loads sign-in, assets and API calls.
 - **Simulator.** A native app runs on `macbook-pro` through the launcher and flags `device_open` returns: `open <bundle id>` before `snapshot -i`, `screenshot <path> --pixel-density 3` or `record start <path>`.
 - **Keep** a started preview on the latest code at the end of every turn. `stop` runs only when the user asks; T3 runs `settle` when the thread settles or its PR merges.
 - **Webhooks.** Funnel exposes a whole port: pick a free one of 443, 8443, 10000 and run `sudo tailscale funnel --bg --https=<port> --set-path <path> http://127.0.0.1:<api port><path>`; remove it with `... --set-path <path> off`.

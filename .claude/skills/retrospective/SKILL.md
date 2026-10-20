@@ -50,7 +50,8 @@ Measures, each with its counted member:
 - **`build` References:** a shape agents got wrong whose good version lives in an Effect 4 repository; a directory at its default branch, never a commit.
 - **Team skill:** practice every teammate's repository shares; no person, machine, path or T3 tool name.
 - **Repository `AGENTS.md`:** its decisions, commands and canonical examples.
-- **`pair.md`, `.codex/instructions.md` and `.opencode/agents/build.md`:** replies, T3 tools, harness; identical from `# Work` down.- **`orchestrator`, `environment`:** the user's process, machines and references.
+- **`pair.md`, `.codex/instructions.md` and `.opencode/agents/build.md`:** replies, T3 tools, harness; identical from `# Work` down.
+- **`orchestrator`, `environment`:** the user's process, machines and references.
 
 ## Change
 

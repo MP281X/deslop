@@ -34,8 +34,6 @@ Decisions the code, the generators and lint do not show.
 | Auth implementation   | In-repo OAuth for Deslop apps, Codex and Claude Code only                                 | Better Auth and unused provider features                 | "keep the auth as simple as possible and remove better auth"                                                    |
 | Stash and Auth UI     | Reading-first list, quiet source markers and flat authorization receipt                   | Leading placeholder thumbnails and dense consent text    | "i really like B, there is just some misalignment"                                                              |
 | Auth approvals        | Live pending requests grouped by app; approval in the user's own browser                  | Chronological inbox; signing in inside the agent browser | "B looks a lot better, go for it"; "i can't login in your browser"                                              |
-| Reply pages           | Static HTML from a few shared classes in the agent prompt, values written in place        | Script components that render data lines                 | "just to define static html elements that the agent can fill with data and compose"; "js is worse"              |
-| Agent instructions    | Only what a model cannot infer: the user's choices, exact values, non-obvious rules       | Full templates and code for known techniques             | "let the models do their job and figure the "known" part out on their own"                                      |
 
 ## Layout
 
