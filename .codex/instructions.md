@@ -39,21 +39,27 @@ The user, an expert in TypeScript, Effect, React and AI, reads only your final r
 - **Fences** hold real code or output with a language tag, trimmed to the deciding lines; command output in a `bash` fence as `# →` comments.
 - **States.** Applied, proposed and unproved apart; proposed code labelled; claim only what you ran.
 - **Links.** Full HTTPS URLs, file links with line anchors, T3 thread links, the preview's tailnet HTTPS URL; never a PR or MR link, which T3 lists beside the thread.
-- **Pages.** A mechanism, plan, comparison or measurement leads with an `html_render` page that reads like a slide: the conclusion in the first view, one row per item with a label under twelve words, one takeaway line per section, no paragraphs or cards. Static HTML from these classes on T3's theme variables, values written in place; a table or bar row before a hand-drawn chart; motion only for a mechanism, stopping on its final state with replay. Code, diffs and command output stay in Markdown fences.
+- **Pages.** A mechanism, plan, comparison or measurement leads with an `html_render` page that reads like a slide: the conclusion in the first view, one row per item with a label under twelve words, one takeaway line per section, no paragraphs or cards. Static HTML from these tags and classes on T3's theme variables, values written in place; a table or bar row before a hand-drawn chart; motion only for a mechanism, stopping on its final state with replay. Code, diffs and command output stay in Markdown fences.
 
 <!-- prettier-ignore -->
 ```css
-h3{font-size:13px;margin:20px 0 6px;display:flex;justify-content:space-between;gap:8px}
-h3 small,th,.m,.done{color:var(--muted-foreground);font-weight:400}
-table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:6px 8px 6px 0;border-bottom:1px solid var(--border);text-align:left}
-.n{font:12px var(--font-mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
-.stats{display:flex;flex-wrap:wrap;gap:4px 28px}.stats b{display:block;font-size:24px;font-variant-numeric:tabular-nums}
-.bar{display:block;position:relative;min-width:60px;height:6px;border-radius:3px;background:var(--muted)}.bar i{position:absolute;inset:0 auto 0 var(--x,0);width:var(--w);border-radius:3px;background:var(--c,var(--chart-1))}
-.tag{font-size:11px;padding:1px 6px;border-radius:4px;background:var(--secondary)}
+body{padding-right:4px}
+h3{font-size:13px;margin:20px 0 6px;padding-right:4px;display:flex;justify-content:space-between;gap:8px}h3:first-child{margin-top:0}
+small,th,.m,.done{color:var(--muted-foreground);font-weight:400}small{font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:6px 8px 6px 0;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}th{font-size:12px}th:last-child,td:last-child{padding-right:4px}
+.n{font:12px var(--font-mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}th.n{white-space:normal}
+.stats{display:flex;flex-wrap:wrap;gap:8px 28px;margin:4px 0 14px}.stats b{display:flex;flex-direction:column;font-size:24px;font-weight:600;line-height:1.2;font-variant-numeric:tabular-nums}
+.bar{display:block;position:relative;min-width:60px;height:6px;border-radius:3px;background:var(--muted);overflow:hidden}.bar i{position:absolute;inset:0 auto 0 var(--x,0);width:var(--w);border-radius:3px;background:var(--c,var(--chart-1))}.bar.err i{background:var(--destructive)}
+.axis{display:flex;justify-content:space-between;color:var(--muted-foreground);font:11px var(--font-mono);margin-top:2px}
+.tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:4px;background:var(--secondary);color:var(--secondary-foreground)}
 .ok{color:var(--success)}.no{color:var(--destructive)}.warn{color:var(--warning)}.pick,.now{background:var(--accent-surface)}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:4px 0 14px;font-size:13px;color:var(--muted-foreground)}.flow b{font-weight:500;color:var(--foreground);padding:2px 6px;border-radius:4px}
+dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:4px 0 14px;font-size:13px}dt{color:var(--muted-foreground)}dd{margin:0}
+figure{margin:8px 0 14px}figure img{display:block;width:100%;border:1px solid var(--border);border-radius:calc(var(--radius) - 2px)}figcaption{font-size:12px;color:var(--muted-foreground);margin-top:4px}
+.cols{display:flex;flex-wrap:wrap;gap:12px;margin:8px 0 14px}.cols>*{flex:1 1 160px;min-width:0;margin:0}
 ```
 
-`<span class="bar"><i style="--x:4%;--w:93%"></i></span>` in a table row is a bar from zero, a trace span or a plan lane; `.pick` marks the chosen option, `.now` the current step and `.done` what recedes.
+`<span class=bar><i style="--x:4%;--w:93%"></i></span>` is a bar from zero, `.axis` its shared scale; `.flow b` steps with `.now` the current; `.pick` the chosen option, `.done` what recedes; `.stats b` a value with its `small` label.
 
 | The user asks                              | Exhibit                                                                      |
 | ------------------------------------------ | ---------------------------------------------------------------------------- |
