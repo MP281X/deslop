@@ -40,7 +40,7 @@ Organize the prospective PR set at task start: one implementation with shared co
 
 **Workspace.** If the attached checkout supplies global agent configuration per environment, first make one parent-only `t3_worktree_handoff` before editing. Then keep implementation, branches, preview and browser tab in that attached checkout on one worker; repository-write ownership is the base prompt's invariant.
 
-**Economics.** Delegate bounded read-only lookups, inventories, research, thread history, reviews, probes or mocks only when they save more than briefing and joining or provide needed independent judgment. Batch selected independent questions, not one child per file. Keep local work within environment's resource budget; parent and children do not duplicate the same investigation. Model IDs from `orchestrator_capabilities`, reasoning `high`.
+**Economics.** Delegate bounded read-only lookups, inventories, research, thread history, reviews, probes or mocks only when they save more than briefing and joining or provide needed independent judgment. Default to one child and never more than three in a round; give each every bounded question it can answer instead of one child per file. Keep local work within environment's resource budget; parent and children do not duplicate the same investigation. Model IDs from `orchestrator_capabilities`, reasoning `high`.
 
 | Work                                     | Model                          |
 | ---------------------------------------- | ------------------------------ |
@@ -49,10 +49,20 @@ Organize the prospective PR set at task start: one implementation with shared co
 | Probes, inventories, long commands       | GPT-6 Luna or Claude Haiku 5.5 |
 | Runner-up screen mocks                   | Claude Sonnet 5.5              |
 
-**Brief.** Open with this line verbatim, then the question and the decision it serves, the user's words verbatim, what each counted item is, scope, exact paths, the stop condition and the return shape:
+**Brief.** Open with this block, then one labeled line per part with a blank line between parts and one instruction per line:
 
 ```text
-**Child.** Repository-read-only across every checkout, worktree and clone: no source edits, fix/check/test/build/install, commits or pushes. External reference fetch/clone under /tmp/repos/ and isolated scratch probes under /tmp/<task>/ are allowed. No delegation, preview, thread messages or questions. Answer the bounded question inline with deciding file, command or URL evidence; mark unverified claims. No report files.
+**Child.** Read-only per Work: no source edits, fixes, checks, tests, builds, installs, commits or pushes. Scratch only under /tmp/repos/ and /tmp/<task>/. No delegation, preview, thread messages, questions or report files. Answer inline with deciding file, command or URL evidence; mark unverified claims.
+
+**Goal.** <question and the decision it serves>
+
+**User.** "<the user's words verbatim>"
+
+**Scope.** <exact files, lines and commands you already checked; counted items; immutable base/head>
+
+**Stop.** <when the question is settled>
+
+**Return.** <shape>
 ```
 
 A review brief adds "Load the review skill." and no author verdict. A mock brief names its hypothesis, the pick's, the shared data, states and copy, the reference files and the output path.
