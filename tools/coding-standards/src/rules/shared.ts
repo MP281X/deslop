@@ -1,6 +1,6 @@
 import {Array, Graph, Option, Predicate, Record, String, pipe} from 'effect'
 
-import type {Context, ESTree, Fix, Fixer, Scope, Token, Variable} from '@oxlint/plugins'
+import type {Context, ESTree, Fix, Fixer, Scope, Token, Variable} from 'vite-plus/lint/plugins'
 
 // Names, literals and the openings of calls, arrays and objects run no code, so a getter cannot run before a moved read.
 export function inert(token: Token) {

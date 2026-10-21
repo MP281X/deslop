@@ -494,16 +494,9 @@ importers:
       oxlint-plugin-react-doctor:
         specifier: latest
         version: 0.9.18
-    devDependencies:
-      '@oxlint/plugins':
-        specifier: 1.88.0
-        version: 1.88.0
-      oxlint:
-        specifier: 1.88.0
-        version: 1.88.0(oxlint-tsgolint@7.0.2004)(vite-plus@1.3.0(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/ui@5.0.5)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2))
-      oxlint-tsgolint:
-        specifier: 7.0.2004
-        version: 7.0.2004
+      vite-plus:
+        specifier: ^1.3
+        version: 1.3.0(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/ui@5.0.5)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)
 
   tools/create-app:
     dependencies:

@@ -1,6 +1,6 @@
 import {defineConfig} from 'vite-plus'
 
-import {oxlint} from '@deslop/coding-standards'
+import {lint} from './tools/coding-standards/src/lint.ts'
 
 export default defineConfig({
 	create: {
@@ -54,16 +54,14 @@ export default defineConfig({
 	},
 	lint: {
 		env: {browser: true, builtin: true, node: true},
-		extends: [oxlint],
+		extends: [lint],
 		// An extended config's ignorePatterns do not carry over, so the preset's generated-file ignore repeats here.
 		ignorePatterns: [
 			'**/*.gen.ts',
 			'tools/*/template/**',
 			'packages/components-web/src/svgs/**',
 			'packages/components-web/src/ui/**'
-		],
-		jsPlugins: [{name: 'vite-plus', specifier: 'vite-plus/oxlint-plugin'}],
-		rules: {'vite-plus/prefer-vite-plus-imports': 'error'}
+		]
 	},
 	run: {
 		tasks: {
