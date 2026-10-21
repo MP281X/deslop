@@ -1,6 +1,6 @@
 import {Array, Predicate} from 'effect'
 
-import {defineRule} from '@oxlint/plugins'
+import {defineRule} from 'vite-plus/lint/plugins'
 
 export const noRedundantVariableAnnotation = defineRule({
 	create: context => ({

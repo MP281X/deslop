@@ -18,22 +18,14 @@
 	"type": "module",
 	"imports": {
 		"#package.*": "./package.*",
-		"#rules/*": "./src/rules/*"
+		"#*": "./src/*"
 	},
 	"exports": {
-		".": "./src/oxlint.ts",
+		".": "./dist/lint.js",
 		"./css-properties": "./src/css-properties.d.ts",
 		"./tsconfig.json": "./tsconfig.json"
 	},
 	"publishConfig": {
-		"exports": {
-			".": {
-				"types": "./dist/oxlint.d.ts",
-				"default": "./dist/oxlint.js"
-			},
-			"./css-properties": "./src/css-properties.d.ts",
-			"./tsconfig.json": "./tsconfig.json"
-		},
 		"access": "public"
 	},
 	"scripts": {
@@ -43,28 +35,8 @@
 		"@shadcn/lint": "latest",
 		"oxlint-plugin-react-doctor": "latest"
 	},
-	"devDependencies": {
-		"@oxlint/plugins": "1.88.0",
-		"oxlint": "1.88.0",
-		"oxlint-tsgolint": "7.0.2004"
-	},
 	"peerDependencies": {
 		"@effect/tsgo": ">=0.46",
-		"oxlint": "^1.82",
-		"oxlint-tsgolint": "^7.0"
-	},
-	"peerDependenciesMeta": {
-		"@effect/tsgo": {
-			"optional": true
-		},
-		"oxlint": {
-			"optional": true
-		},
-		"oxlint-tsgolint": {
-			"optional": true
-		}
-	},
-	"engines": {
-		"node": ">=26"
+		"vite-plus": "^1.3"
 	}
 }

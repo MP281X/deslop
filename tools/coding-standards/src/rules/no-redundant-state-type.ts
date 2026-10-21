@@ -1,6 +1,6 @@
 import {Array, Option, Predicate} from 'effect'
 
-import {defineRule} from '@oxlint/plugins'
+import {defineRule} from 'vite-plus/lint/plugins'
 
 import {importedMember, isReactUseState} from '#rules/shared.ts'
 

@@ -1,6 +1,6 @@
 import {Array} from 'effect'
 
-import {defineRule} from '@oxlint/plugins'
+import {defineRule} from 'vite-plus/lint/plugins'
 
 import {importedMember, isImportBinding} from '#rules/shared.ts'
 

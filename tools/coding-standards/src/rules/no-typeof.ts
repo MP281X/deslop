@@ -1,7 +1,7 @@
 import {Array, Option, Predicate} from 'effect'
 
-import {defineRule} from '@oxlint/plugins'
-import type {Context, ESTree, Fixer} from '@oxlint/plugins'
+import {defineRule} from 'vite-plus/lint/plugins'
+import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
 
 import {replaceableGuard} from '#rules/no-hand-written-guard.ts'
 import {predicateImport, variableFor} from '#rules/shared.ts'

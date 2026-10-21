@@ -1,7 +1,7 @@
 import {Predicate} from 'effect'
 
-import {defineRule} from '@oxlint/plugins'
-import type {Context, ESTree} from '@oxlint/plugins'
+import {defineRule} from 'vite-plus/lint/plugins'
+import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
 // Tailwind gradient utilities with any variant prefix, and CSS gradient functions in class or style strings.
 const GRADIENT = /(?:^|[\s:])bg-(?:linear|radial|conic|gradient)(?:-|$|\s)|gradient\(/u

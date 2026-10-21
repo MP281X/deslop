@@ -1,7 +1,7 @@
 import {Array} from 'effect'
 
-import {defineRule} from '@oxlint/plugins'
-import type {ESTree} from '@oxlint/plugins'
+import {defineRule} from 'vite-plus/lint/plugins'
+import type {ESTree} from 'vite-plus/lint/plugins'
 
 function derived(node: ESTree.TSType): boolean {
 	if (node.type === 'TSIndexedAccessType') return derived(node.objectType)

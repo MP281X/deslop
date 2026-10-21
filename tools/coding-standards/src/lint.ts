@@ -1,7 +1,7 @@
 import {Array} from 'effect'
 
-import {definePlugin} from '@oxlint/plugins'
-import {defineConfig} from 'oxlint'
+import type {OxlintConfig} from 'vite-plus/lint'
+import {definePlugin} from 'vite-plus/lint/plugins'
 
 import {explicitEffectConcurrency} from '#rules/explicit-effect-concurrency.ts'
 import {moduleConstant} from '#rules/module-constant.ts'
@@ -91,7 +91,7 @@ const RUNNERS = [
 const SET_MESSAGE =
 	'Use HashSet, or MutableHashSet for local mutation; for identity keys, wrap objects the code owns in Equal.byReferenceUnsafe, which marks them reference-compared globally.'
 
-export const oxlint = defineConfig({
+export const lint = {
 	categories: {
 		correctness: 'off',
 		nursery: 'off',
@@ -105,7 +105,8 @@ export const oxlint = defineConfig({
 	jsPlugins: [
 		{name: '@deslop/coding-standards', specifier: import.meta.url},
 		{name: 'react-doctor', specifier: import.meta.resolve('oxlint-plugin-react-doctor')},
-		{name: 'shadcn', specifier: import.meta.resolve('@shadcn/lint')}
+		{name: 'shadcn', specifier: import.meta.resolve('@shadcn/lint')},
+		{name: 'vite-plus', specifier: import.meta.resolve('vite-plus/oxlint-plugin')}
 	],
 	options: {denyWarnings: true, reportUnusedDisableDirectives: 'deny', typeAware: true, typeCheck: true},
 	overrides: [
@@ -745,16 +746,17 @@ export const oxlint = defineConfig({
 		'unicorn/prefer-string-replace-all': 'error',
 
 		// JavaScript globals
-		'use-isnan': 'error'
+		'use-isnan': 'error',
+		'vite-plus/prefer-vite-plus-imports': 'error'
 	},
 	settings: {
 		'jsx-a11y': {components: {Button: 'button', Input: 'input', Label: 'label', Textarea: 'textarea'}},
 		react: {version: '19.0'},
 		shadcn: {ui: ['@deslop/components-web/ui', '@dual/ui/components']}
 	}
-})
+} satisfies OxlintConfig
 
-// oxlint-disable-next-line import/no-default-export -- oxlint loads a JS plugin from its module's default export.
+// oxlint-disable-next-line import/no-default-export -- Vite+ loads a lint plugin from its module's default export.
 export default definePlugin({
 	meta: {name: '@deslop/coding-standards'},
 	rules: {

@@ -5,7 +5,7 @@ import {Array, Effect, FileSystem, Path, Record, Schema, Stream, String, pipe} f
 
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
-import plugin from '@deslop/coding-standards'
+import plugin from '#lint.ts'
 
 type OxlintOutput = typeof OxlintOutput.Type
 const OxlintOutput = Schema.Struct({

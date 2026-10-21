@@ -1,7 +1,7 @@
 import {Array, Equivalence, Option, Predicate, String, pipe} from 'effect'
 
-import {defineRule} from '@oxlint/plugins'
-import type {Context, ESTree, Reference, Variable} from '@oxlint/plugins'
+import {defineRule} from 'vite-plus/lint/plugins'
+import type {Context, ESTree, Reference, Variable} from 'vite-plus/lint/plugins'
 
 import {bindingName, importedMember, matches, variableFromScope} from '#rules/shared.ts'
 
