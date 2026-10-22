@@ -19,7 +19,7 @@ Each finding: severity, `path:line`, the reaching input, actual and required out
 
 - **Every instance.** Each class once, with every instance's `path:line`, across every layer.
 - **Rank honestly.** P1 first; "Clean" with the covered scope when nothing reaches P2; no padding with P3.
-- **Not findings:** taste without a rule or reference, inputs no caller sends, defects the change neither made nor relies on, what lint reports.
+- **Not findings:** taste without a rule or reference, inputs no caller sends, defects the change neither made nor relies on, harm that rests on an unstated assumption, what lint reports.
 - **Probe** a suspicion inline against the public interface; never start a service or test suite in a read-only review.
 
 ## Code
@@ -41,7 +41,7 @@ Apply the questions the change touches, using existing evidence first; report fi
 
 | Question                                                              | Deciding evidence                                                                                                                                                                                                                                                                                                   |
 | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Does the demonstration prove the requested journey, not a proxy?      | Per delivery, real input through each materially changed outcome and relevant failure path. A health check, successful exit or green suite proves only its own stage, not that the consumer works.                                                                                                                  |
+| Does the demonstration prove the requested journey, not a proxy?      | Per delivery, real input through each materially changed outcome and relevant failure path, beside its before on the same input. A health check, successful exit or green suite proves only its own stage, not that the consumer works.                                                                             |
 | Does each boundary reduce reading cost?                               | Substantive code and caller/import relationships: private implementation near its consumer, genuinely shared behavior in one owner, without replacing indirection with an unmanageable file. Fewer lines alone do not justify a boundary.                                                                           |
 | What required behavior is missing from existing owners or primitives? | Their exports and real consumers, plus a concrete reason reuse or composition cannot meet the requirement. A wrapper earns its place only by lowering actual complexity.                                                                                                                                            |
 | Does the shipped result match its agreed reference and conventions?   | Same-data reference/result captures and element boxes for deciding geometry, alignment, clipping and hierarchy, using the existing theme and layout owners.                                                                                                                                                         |

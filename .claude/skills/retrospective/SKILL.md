@@ -61,7 +61,7 @@ Measures, each with its counted member:
 - **Evidence.** Fewer bytes prove nothing: show the correction class or the Verify loop before and after on the same task.
 - **No-op.** A rule that traces to no correction, failure or user choice goes.
 - **Threshold.** A corroborated failure pattern or a rule the user stated; a single slip under a clear rule needs no additional instruction.
-- **History.** Read `git log -p` of the touched files and the bodies of merged retrospective PRs first: a reverted or rejected change stays rejected unless new evidence beats its reason.
+- **History.** Read `git log -p` of the touched files and the bodies of merged retrospective PRs first: a reverted or rejected change stays rejected unless new evidence beats its reason. Never adopt hooks that gate the agent, a reviewer per rule or per model family, an agent that validates another's review, or a model switch mid-thread.
 - **T3.** Settle what T3 shows, notifies and offers from the installed bundle under `~/.t3/runtime/versions/<version>/`, never from memory; adopt a T3 feature that replaces a rule or a manual step.
 
 ## Ship
