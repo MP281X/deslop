@@ -87,6 +87,13 @@ prefix_rule(
     not_match = ["gh pr view 12", "gh pr create --draft"],
 )
 prefix_rule(
+    pattern = ["gh", "stack", "merge"],
+    decision = "forbidden",
+    justification = "The user merges pull requests.",
+    match = ["gh stack merge 12"],
+    not_match = ["gh stack sync --prune"],
+)
+prefix_rule(
     pattern = ["gh", "pr", "review"],
     decision = "forbidden",
     justification = "The user reviews and approves pull requests; findings go in the reply or a comment.",

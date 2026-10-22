@@ -8,6 +8,7 @@ description: Use before changing a behavior a PR will demonstrate, before the fi
 ## Branches
 
 - **Review units.** Split a change for reading: each PR coherent and runnable on its target, generated files with their source. Independent changes target the default branch; stack only real code dependencies.
+- **Stacks.** Each dependent slice is one commit on its own branch, built on the branch it depends on. The host tracks the chain and retargets the next PR when one merges, and its stack commands under [Commands](#commands) restack and publish; retarget by hand only to adopt or reorder existing PRs.
 - **Composition.** Before ready, prove the PRs apply cleanly in dependency order and beside each other; resolve a shared edit in its owning slice.
 - **Current.** Fetch and rebase onto the target before the last Verify before a push, and on a conflict, so every PR stays current.
 
@@ -70,4 +71,17 @@ gh run view <run id> --log-failed
 glab api "projects/<id>/pipelines/<pipeline>/jobs?scope[]=failed" | jq -r '.[] | "\(.id) \(.name)"'; glab ci trace <job id>
 ```
 
-**GitLab stacks** target each predecessor branch with `glab mr create` and `glab mr update --target-branch`; never `glab stack`, which shares state across worktrees.
+```bash
+# GitHub stacks
+gh stack init --adopt <bottom> <next> <top>   # existing slice branches, bottom first
+gh stack submit --auto                         # push, open drafts on their parents, link the stack
+gh stack rebase --upstack                      # after amending a slice, restack the branches above it
+gh stack rebase                                # after a merge or a target change: pull and restack onto the default branch
+gh stack push                                  # every changed head, with --force-with-lease, after Verify
+# GitLab stacks: the server links MRs by their targets and retargets a child once its parent merges with its branch deleted
+glab mr create --draft --remove-source-branch --source-branch <slice> --target-branch <parent>
+glab mr update <n> --target-branch <parent>                   # adopt or reorder an existing MR
+git rebase --onto origin/<default> <old parent tip> <child>   # after a squash merge GitLab retargets but does not rebase
+```
+
+Never `glab stack`: its sync opens MRs ready, not as drafts.
