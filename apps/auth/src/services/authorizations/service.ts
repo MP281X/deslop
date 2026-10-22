@@ -92,17 +92,23 @@ function publicRequest(request: typeof Stored.cases.Request.Type, expiresAt: num
 }
 
 function allowedRedirect(redirect: string) {
-	if (redirect === 'stash://auth/callback' || redirect === 'stash-dev://auth/callback') return true
-	return Result.match(Url.fromString(redirect), {
-		onFailure: () => false,
-		onSuccess: target =>
-			target.protocol === 'http:' &&
-			(target.hostname === '127.0.0.1' || target.hostname === 'localhost') &&
-			String.isEmpty(target.username) &&
-			String.isEmpty(target.password) &&
-			String.isEmpty(target.search) &&
-			String.isEmpty(target.hash)
-	})
+	// The iOS apps in their release and Simulator builds, or a loopback callback of a desktop agent.
+	return (
+		Array.contains(
+			['stash://auth/callback', 'stash-dev://auth/callback', 'opm://auth/callback', 'opm-dev://auth/callback'],
+			redirect
+		) ||
+		Result.match(Url.fromString(redirect), {
+			onFailure: () => false,
+			onSuccess: target =>
+				target.protocol === 'http:' &&
+				(target.hostname === '127.0.0.1' || target.hostname === 'localhost') &&
+				String.isEmpty(target.username) &&
+				String.isEmpty(target.password) &&
+				String.isEmpty(target.search) &&
+				String.isEmpty(target.hash)
+		})
+	)
 }
 
 export class Authorizations extends Context.Service<
@@ -375,7 +381,7 @@ export class Authorizations extends Context.Service<
 								rejected('Invalid client registration')
 							)
 							if (!Array.every(params.redirect_uris, allowedRedirect)) {
-								return yield* AuthError.make({message: 'Use a Codex, Claude Code or Stash callback'})
+								return yield* AuthError.make({message: 'Use a Codex, Claude Code, Stash or opm callback'})
 							}
 							return HttpServerResponse.jsonUnsafe(
 								{

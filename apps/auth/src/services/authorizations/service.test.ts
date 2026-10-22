@@ -672,6 +672,7 @@ it.layer(NodeServices.layer)(test => {
 				})).status,
 				401
 			)
+			yield* authorize(web.issuer, session, 'opm://auth/callback', [API])
 			const next = yield* authorize(web.issuer, session, 'stash-dev://auth/callback', [API])
 			const nextResponse = yield* exchange(
 				web.issuer,
