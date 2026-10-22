@@ -3,6 +3,7 @@ import {
 	Boolean,
 	Clock,
 	Effect,
+	FiberHandle,
 	Layer,
 	HashSet,
 	Option,
@@ -273,17 +274,27 @@ export const notesAtom = Atom.keepAlive(
 				)
 			),
 			pipe(
-				Effect.map(RpcClient, client => client('notes.watch', undefined)),
-				Stream.unwrap,
-				Stream.scan(Array.empty<NoteItem>, apply),
-				Stream.drop(1),
-				Stream.tap(items =>
-					pipe(
-						Schema.encodeEffect(ListJson)(items),
-						Effect.flatMap(json => Effect.try(() => writeAtomically(listFile, json))),
-						Effect.ignore({log: 'Warn', message: 'The list could not be kept on this iPhone'})
+				Effect.gen(function* () {
+					// The copy is written once the list settles, off the path that shows each change.
+					const writes = yield* FiberHandle.make()
+					return pipe(
+						(yield* RpcClient)('notes.watch', undefined),
+						Stream.scan(Array.empty<NoteItem>, apply),
+						Stream.drop(1),
+						Stream.tap(items =>
+							FiberHandle.run(
+								writes,
+								pipe(
+									Schema.encodeEffect(ListJson)(items),
+									Effect.flatMap(json => Effect.try(() => writeAtomically(listFile, json))),
+									Effect.delay('2 seconds'),
+									Effect.ignore({log: 'Warn', message: 'The list could not be kept on this iPhone'})
+								)
+							)
+						)
 					)
-				),
+				}),
+				Stream.unwrap,
 				Stream.tapError(() => Atom.refresh(sessionAtom)),
 				Stream.retry(Schedule.spaced('2 seconds'))
 			)
@@ -298,13 +309,14 @@ export const noteAtom = Atom.family((item: NoteItem) =>
 
 export const queryAtom = Atom.make('')
 
-// One atom for every query, so the previous results stay on screen while the next ones load.
+// One atom for every query keeps the previous results on screen; each keystroke restarts the wait, so the server searches once typing pauses.
 export const searchAtom = RpcClient.runtime.atom(get => {
 	const query = String.trim(get(queryAtom))
 	if (String.isEmpty(query)) return Effect.succeedNone
-	return Effect.map(
-		Effect.flatMap(RpcClient, client => client('notes.search', {query})),
-		ids => Option.some(HashSet.fromIterable(ids))
+	return pipe(
+		Effect.sleep('250 millis'),
+		Effect.andThen(Effect.flatMap(RpcClient, client => client('notes.search', {query}))),
+		Effect.map(ids => Option.some(HashSet.fromIterable(ids)))
 	)
 })
 

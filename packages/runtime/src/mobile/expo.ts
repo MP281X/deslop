@@ -26,6 +26,8 @@ export function make(app: {bundleIdentifier: string; name: string; owner: string
 			return {
 				appGroup: `group.${variant.bundleIdentifier}`,
 				config: {
+					// The compiler memoizes components, as on the web, so a changed row re-renders without the rest of its list.
+					experiments: {reactCompiler: true},
 					extra: {eas: {projectId: app.projectId}, otel, scheme: variant.scheme},
 					icon: './src/routes/icon.png',
 					ios: {
