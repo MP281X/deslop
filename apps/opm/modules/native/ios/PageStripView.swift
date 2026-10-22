@@ -4,8 +4,17 @@ import ImageIO
 import SwiftUI
 import UIKit
 
-public final class PageStripViewProps: UIBaseViewProps {
+struct StripChapter: Record, Equatable {
+  @Field var number: Double = 0
   @Field var pages: [String] = []
+
+  static func == (left: StripChapter, right: StripChapter) -> Bool {
+    left.number == right.number && left.pages == right.pages
+  }
+}
+
+public final class PageStripViewProps: UIBaseViewProps {
+  @Field var chapters: [StripChapter] = []
   @Field var start: Int = 0
   var onPage = EventDispatcher()
 }
@@ -21,7 +30,7 @@ public struct PageStripView: ExpoSwiftUI.View {
 
   public var body: some View {
     PageStrip(
-      pages: props.pages,
+      chapters: props.chapters,
       start: props.start,
       onPage: { index in props.onPage(["index": index]) },
       onTap: { withAnimation(.easeInOut(duration: 0.2)) { barsHidden.toggle() } },
@@ -38,7 +47,7 @@ public struct PageStripView: ExpoSwiftUI.View {
 }
 
 struct PageStrip: UIViewRepresentable {
-  let pages: [String]
+  let chapters: [StripChapter]
   let start: Int
   let onPage: (Int) -> Void
   let onTap: () -> Void
@@ -61,7 +70,7 @@ struct PageStrip: UIViewRepresentable {
     controller.onPage = onPage
     controller.onTap = onTap
     controller.onScroll = onScroll
-    controller.show(pages: pages, start: start)
+    controller.show(chapters: chapters, start: start)
   }
 }
 
@@ -75,10 +84,15 @@ final class StripScrollView: UIScrollView {
 }
 
 final class StripController: NSObject, UIScrollViewDelegate {
+  // Black shows through between pages, as a thin line where one ends.
+  private static let gap: CGFloat = 1
+  private static let markerHeight: CGFloat = 64
+
   let scrollView = StripScrollView()
   private let content = UIView()
+  private var chapters: [StripChapter] = []
   private var pageViews: [PageView] = []
-  private var urls: [String] = []
+  private var markers: [EndMarker] = []
   // Height over width of each page; a page keeps a typical manga shape until its image arrives.
   private var aspects: [CGFloat] = []
   private var pendingStart: Int?
@@ -92,14 +106,13 @@ final class StripController: NSObject, UIScrollViewDelegate {
     super.init()
     scrollView.delegate = self
     scrollView.backgroundColor = .black
+    // The strip is black in either appearance, so its markers take the dark one's colors.
+    scrollView.overrideUserInterfaceStyle = .dark
     scrollView.minimumZoomScale = 1
     scrollView.maximumZoomScale = 4
     scrollView.contentInsetAdjustmentBehavior = .never
     scrollView.addSubview(content)
-    scrollView.onLayout = { [weak self] in
-      guard let self, self.scrollView.bounds.width != self.laidOutWidth else { return }
-      self.layout()
-    }
+    scrollView.onLayout = { [weak self] in self?.fit() }
     let double = UITapGestureRecognizer(target: self, action: #selector(doubleTapped(_:)))
     double.numberOfTapsRequired = 2
     let single = UITapGestureRecognizer(target: self, action: #selector(tapped))
@@ -108,33 +121,53 @@ final class StripController: NSObject, UIScrollViewDelegate {
     scrollView.addGestureRecognizer(single)
   }
 
-  // The same pages with more after them extend the strip in place; anything else starts over at `start`.
-  func show(pages: [String], start: Int) {
-    if pages == urls { return }
-    if !urls.isEmpty && pages.count > urls.count && Array(pages.prefix(urls.count)) == urls {
-      pages[urls.count...].forEach(add)
-      urls = pages
+  // The same chapters with more after them extend the strip in place; anything else starts over at `start`.
+  func show(chapters: [StripChapter], start: Int) {
+    if chapters == self.chapters { return }
+    if !self.chapters.isEmpty && chapters.count > self.chapters.count
+      && Array(chapters.prefix(self.chapters.count)) == self.chapters
+    {
+      chapters[self.chapters.count...].forEach(add)
+      self.chapters = chapters
       layout()
       return
     }
-    pageViews.forEach { $0.removeFromSuperview() }
+    content.subviews.forEach { $0.removeFromSuperview() }
     pageViews = []
+    markers = []
     aspects = []
-    urls = pages
+    self.chapters = chapters
     current = -1
-    pages.forEach(add)
+    chapters.forEach(add)
     scrollView.zoomScale = 1
-    pendingStart = min(max(start, 0), max(pages.count - 1, 0))
+    pendingStart = min(max(start, 0), max(pageViews.count - 1, 0))
     layout()
   }
 
-  private func add(_ url: String) {
-    let index = pageViews.count
-    let view = PageView(url: url)
-    view.onAspect = { [weak self] aspect in self?.resize(index, to: aspect) }
-    content.addSubview(view)
-    pageViews.append(view)
-    aspects.append(1.42)
+  private func add(_ chapter: StripChapter) {
+    for url in chapter.pages {
+      let index = pageViews.count
+      let view = PageView(url: url)
+      view.onAspect = { [weak self] aspect in self?.resize(index, to: aspect) }
+      content.addSubview(view)
+      pageViews.append(view)
+      aspects.append(1.42)
+    }
+    let marker = EndMarker(number: chapter.number)
+    content.addSubview(marker)
+    markers.append(marker)
+  }
+
+  // The window's safe area, not the view's, so the strip starts below the Dynamic Island whether or not the bars show.
+  private func fit() {
+    let insets = scrollView.window?.safeAreaInsets ?? .zero
+    let inset = UIEdgeInsets(top: insets.top, left: 0, bottom: insets.bottom, right: 0)
+    if scrollView.contentInset != inset {
+      scrollView.contentInset = inset
+      layout()
+    } else if scrollView.bounds.width != laidOutWidth {
+      layout()
+    }
   }
 
   private func layout() {
@@ -143,18 +176,26 @@ final class StripController: NSObject, UIScrollViewDelegate {
     laidOutWidth = width
     let scale = scrollView.zoomScale
     var y: CGFloat = 0
-    for (index, view) in pageViews.enumerated() {
-      let height = (width * aspects[index]).rounded()
-      view.frame = CGRect(x: 0, y: y, width: width, height: height)
-      y += height
+    var page = 0
+    for (index, chapter) in chapters.enumerated() {
+      for _ in chapter.pages {
+        let height = (width * aspects[page]).rounded()
+        pageViews[page].frame = CGRect(x: 0, y: y, width: width, height: height)
+        y += height + Self.gap
+        page += 1
+      }
+      markers[index].frame = CGRect(x: 0, y: y, width: width, height: Self.markerHeight)
+      y += Self.markerHeight
     }
     content.bounds = CGRect(x: 0, y: 0, width: width, height: y)
     content.center = CGPoint(x: width * scale / 2, y: y * scale / 2)
     scrollView.contentSize = CGSize(width: width * scale, height: y * scale)
-    if let start = pendingStart, start < pageViews.count {
+    // The start waits for the window, whose safe area sets the inset it scrolls past.
+    if let start = pendingStart, start < pageViews.count, scrollView.window != nil {
       pendingStart = nil
-      let limit = max(scrollView.contentSize.height - scrollView.bounds.height, 0)
-      scrollView.contentOffset = CGPoint(x: 0, y: min(pageViews[start].frame.minY * scale, limit))
+      let top = scrollView.contentInset.top
+      let limit = max(scrollView.contentSize.height - scrollView.bounds.height + scrollView.contentInset.bottom, -top)
+      scrollView.contentOffset = CGPoint(x: 0, y: min(pageViews[start].frame.minY * scale - top, limit))
     }
     track()
   }
@@ -163,7 +204,7 @@ final class StripController: NSObject, UIScrollViewDelegate {
   private func resize(_ index: Int, to aspect: CGFloat) {
     guard index < aspects.count, abs(aspects[index] - aspect) > 0.001 else { return }
     let scale = scrollView.zoomScale
-    let above = pageViews[index].frame.maxY <= scrollView.contentOffset.y / scale
+    let above = pageViews[index].frame.maxY <= (scrollView.contentOffset.y + scrollView.contentInset.top) / scale
     let delta = (laidOutWidth * aspect).rounded() - (laidOutWidth * aspects[index]).rounded()
     aspects[index] = aspect
     layout()
@@ -217,6 +258,37 @@ final class StripController: NSObject, UIScrollViewDelegate {
   }
 }
 
+// "End of 242" between two hairlines, after the last page of each chapter.
+final class EndMarker: UIView {
+  private let label = UILabel()
+  private let left = UIView()
+  private let right = UIView()
+
+  init(number: Double) {
+    super.init(frame: .zero)
+    label.text = "End of \(number.rounded() == number ? String(Int(number)) : String(number))"
+    label.font = .systemFont(ofSize: 13)
+    label.textColor = .secondaryLabel
+    left.backgroundColor = .separator
+    right.backgroundColor = .separator
+    [left, label, right].forEach(addSubview)
+  }
+
+  required init?(coder: NSCoder) {
+    nil
+  }
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    label.sizeToFit()
+    label.center = CGPoint(x: bounds.midX, y: bounds.midY)
+    let line = 1 / max(traitCollection.displayScale, 1)
+    left.frame = CGRect(x: 20, y: bounds.midY, width: max(label.frame.minX - 32, 0), height: line)
+    right.frame = CGRect(
+      x: label.frame.maxX + 12, y: bounds.midY, width: max(bounds.width - label.frame.maxX - 32, 0), height: line)
+  }
+}
+
 final class PageView: UIImageView {
   private let url: URL?
   private let spinner = UIActivityIndicatorView(style: .medium)
@@ -244,7 +316,7 @@ final class PageView: UIImageView {
   func load() {
     guard image == nil, task == nil, let url else { return }
     task = Task { [weak self] in
-      let loaded = await PageLoader.image(url)
+      let loaded = await PageLoader.image(url, size: 3000)
       guard let self, !Task.isCancelled else { return }
       self.task = nil
       guard let loaded, loaded.size.width > 0 else { return }
@@ -275,13 +347,14 @@ enum PageLoader {
     return URLSession(configuration: configuration)
   }()
 
-  static func image(_ url: URL) async -> UIImage? {
+  // `size` is the longest side in pixels: a zoomed-in screen for a page, a few points for a cover.
+  static func image(_ url: URL, size: Int) async -> UIImage? {
     guard let (data, _) = try? await session.data(from: url) else { return nil }
-    return await Task.detached(priority: .userInitiated) { decode(data) }.value
+    return await Task.detached(priority: .userInitiated) { decode(data, size: size) }.value
   }
 
-  // Decoding off the main thread, and no larger than a zoomed-in screen needs, keeps scrolling smooth and memory flat.
-  private static func decode(_ data: Data) -> UIImage? {
+  // Decoding off the main thread, and no larger than needed, keeps scrolling smooth and memory flat.
+  private static func decode(_ data: Data, size: Int) -> UIImage? {
     guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary)
     else { return nil }
     let options =
@@ -289,7 +362,7 @@ enum PageLoader {
         kCGImageSourceCreateThumbnailFromImageAlways: true,
         kCGImageSourceCreateThumbnailWithTransform: true,
         kCGImageSourceShouldCacheImmediately: true,
-        kCGImageSourceThumbnailMaxPixelSize: 3000,
+        kCGImageSourceThumbnailMaxPixelSize: size,
       ] as CFDictionary
     guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else { return nil }
     return UIImage(cgImage: image)
