@@ -11,11 +11,13 @@ concurrency:
 
 permissions:
   contents: read
-  packages: write
-  id-token: write
+
+env:
+  # npm, because pnpm applies the workspace's strict peer checks to the EAS CLI's own dependencies.
+  EAS: npx --yes eas-cli@latest
 
 jobs:
-  build-and-deploy:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -27,6 +29,18 @@ jobs:
 
       - name: Test
         run: vp run test
+
+  docker:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: voidzero-dev/setup-vp@v1
+        with: {node-version: '26', cache: true, run-install: true}
 
       - name: Release
         env:
@@ -40,10 +54,12 @@ jobs:
           done
           vp run build
 
+          # Each image reuses the unchanged layers of the last one, such as Stash's ffmpeg and ONNX Runtime.
           echo "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           for app in auth portfolio scope stash opm; do
-            docker build apps/$app --tag ghcr.io/${GITHUB_REPOSITORY,,}-$app:latest --tag ghcr.io/${GITHUB_REPOSITORY,,}-$app:$GITHUB_SHA
-            docker push --all-tags ghcr.io/${GITHUB_REPOSITORY,,}-$app
+            image="ghcr.io/${GITHUB_REPOSITORY,,}-$app"
+            docker build "apps/$app" --cache-from "$image:latest" --build-arg BUILDKIT_INLINE_CACHE=1 --tag "$image:latest" --tag "$image:$GITHUB_SHA"
+            docker push --all-tags "$image"
           done
 
           (cd apps/scope && npm pkg delete devDependencies)
@@ -52,12 +68,48 @@ jobs:
             npm publish "$RUNNER_TEMP/$package"/*.tgz
           done
 
-  # JavaScript ships as an EAS Update, and only a new native fingerprint builds for TestFlight.
+  # JavaScript ships as an EAS Update from Linux; only an app whose native fingerprint has no build yet goes to the Mac.
+  plan:
+    needs: check
+    runs-on: ubuntu-latest
+    outputs:
+      native: ${{ steps.release.outputs.native }}
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      APP_VARIANT: production
+      RELEASE_NUMBER: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v5
+        with: {fetch-depth: 0}
+      - uses: voidzero-dev/setup-vp@v1
+        with: {node-version: '26', cache: true, run-install: true}
+
+      - name: Release
+        id: release
+        run: |
+          set -euo pipefail
+          native=()
+          for app in stash opm; do
+            cd "$GITHUB_WORKSPACE/apps/$app"
+            group=$($EAS update:list --branch production --limit 1 --json --non-interactive | jq -r '.currentPage[0].group // empty')
+            released=$([[ -n $group ]] && $EAS update:view "$group" --json | jq -r '.[0].gitCommitHash' || true)
+            if [[ -n $released ]] && git cat-file -e "$released^{commit}" 2>/dev/null && git diff --quiet "$released" -- . ../../packages ../../pnpm-lock.yaml; then continue; fi
+            hash=$($EAS fingerprint:generate --platform ios --build-profile production --json --non-interactive | jq -r .hash)
+            # An update exists for a fingerprint only once its build has shipped, so a failed build is tried again next release.
+            if [[ $($EAS update:list --branch production --runtime-version "$hash" --limit 1 --json --non-interactive | jq '.currentPage | length > 0') != true ]]; then
+              native+=("$app")
+              continue
+            fi
+            $EAS update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"
+          done
+          echo "native=$(jq -cn '$ARGS.positional' --args "${native[@]}")" >> "$GITHUB_OUTPUT"
+
   ios:
-    needs: build-and-deploy
+    needs: plan
+    if: needs.plan.outputs.native != '[]'
     strategy:
       matrix:
-        app: [stash, opm]
+        app: ${{ fromJSON(needs.plan.outputs.native) }}
     concurrency: ios-${{ matrix.app }}
     runs-on: xcode-27
     timeout-minutes: 60
@@ -70,26 +122,23 @@ jobs:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       APP_VARIANT: production
       RELEASE_NUMBER: ${{ github.run_number }}
-      # npm, because pnpm applies the workspace's strict peer checks to the EAS CLI's own dependencies.
-      EAS: npx --yes eas-cli@latest
+      EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: 1
     steps:
       - uses: actions/checkout@v5
-        with: {fetch-depth: 0}
       - uses: voidzero-dev/setup-vp@v1
         with: {node-version: '26', cache: true, run-install: true}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/CocoaPods
+            ~/Library/Caches/ReactNative
+          key: pods-${{ matrix.app }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pods-${{ matrix.app }}-
 
       - name: Release
-        shell: bash
         run: |
-          set -euo pipefail
-          group=$($EAS update:list --branch production --limit 1 --json --non-interactive | jq -r '.currentPage[0].group // empty')
-          released=$([[ -n $group ]] && $EAS update:view "$group" --json | jq -r '.[0].gitCommitHash' || true)
-          if [[ -n $released ]] && git cat-file -e "$released^{commit}" 2>/dev/null && git diff --quiet "$released" -- . ../../packages ../../pnpm-lock.yaml; then exit; fi
-          hash=$($EAS fingerprint:generate --platform ios --build-profile production --json --non-interactive | jq -r .hash)
-          built=$($EAS update:list --branch production --runtime-version "$hash" --limit 1 --json --non-interactive | jq '.currentPage | length > 0')
-          if [[ $built != true ]]; then
-            sudo xcode-select --switch /Applications/Xcode_27.1.app
-            $EAS build --local --profile production --platform ios --non-interactive --output "$RUNNER_TEMP/app.ipa"
-            $EAS submit --profile production --platform ios --non-interactive --path "$RUNNER_TEMP/app.ipa"
-          fi
+          sudo xcode-select --switch /Applications/Xcode_27.1.app
+          $EAS build --local --profile production --platform ios --non-interactive --output "$RUNNER_TEMP/app.ipa"
+          # EAS hands the build to Apple on its own servers; waiting for that kept the Mac idle for about 14 minutes.
+          $EAS submit --profile production --platform ios --non-interactive --no-wait --path "$RUNNER_TEMP/app.ipa"
           $EAS update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"
