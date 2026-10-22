@@ -2,7 +2,7 @@ import {Effect, Layer, Option, Schema, String, pipe} from 'effect'
 
 import type {HttpClient} from 'effect/http'
 import {Atom} from 'effect/reactivity'
-import * as Rpc from 'effect/rpc'
+import {RpcClient, RpcSerialization} from 'effect/rpc'
 import {Socket} from 'effect/socket'
 import Constants from 'expo-constants'
 import * as Updates from 'expo-updates'
@@ -25,10 +25,10 @@ export function layer(
 	return (server: string) =>
 		pipe(
 			// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
-			Rpc.RpcClient.layerProtocolSocket({pingTimeout: '15 seconds', retryTransientErrors: true}),
+			RpcClient.layerProtocolSocket({pingTimeout: '15 seconds', retryTransientErrors: true}),
 			Layer.provide(Socket.layerWebSocket(pipe(new URL('/api/rpc', server).href, String.replace(/^http/u, 'ws')))),
 			Layer.provide(Socket.layerWebSocketConstructorGlobal),
-			Layer.provide(Rpc.RpcSerialization.layerJson)
+			Layer.provide(RpcSerialization.layerJson)
 		)
 }
 

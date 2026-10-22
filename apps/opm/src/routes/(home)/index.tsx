@@ -28,7 +28,8 @@ import {readAtom} from '#lib/utils.ts'
 import {byNumber} from '#services/chapters/lib/utils.ts'
 import type {ChapterItem, ChapterList} from '#services/chapters/schema.ts'
 
-function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: () => void}) {
+// Every prop keeps its identity while the chapter is unchanged, so a page turn in the reader re-renders one row.
+function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (number: number) => void}) {
 	const read = useAtomSet(readAtom)
 	const done = props.chapter.reading?.done === true
 	const tone = Boolean.match(done, {onFalse: () => colors.foreground, onTrue: () => colors.mutedForeground})
@@ -45,7 +46,7 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: () => 
 				modifiers={[
 					frame({alignment: 'leading', maxWidth: Infinity}),
 					contentShape(shapes.rectangle()),
-					onTapGesture(props.onOpen),
+					onTapGesture(() => props.onOpen(props.chapter.number)),
 					accessibilityElement('combine')
 				]}
 			>
@@ -129,7 +130,7 @@ export function ChaptersRoute(props: {chapters: ChapterList; onOpen: (number: nu
 						key={chapter.number}
 						chapter={chapter}
 						fresh={Option.exists(reached, number => chapter.number > number)}
-						onOpen={() => props.onOpen(chapter.number)}
+						onOpen={props.onOpen}
 					/>
 				))}
 			</List>
