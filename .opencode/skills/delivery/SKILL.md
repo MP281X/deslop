@@ -1,6 +1,6 @@
 ---
 name: delivery
-description: Use before the first commit or push, before creating, editing or readying a PR or MR, before writing a PR body, before a screenshot, recording, device session or video, and on every PR notice.
+description: Use before changing a behavior a PR will demonstrate, before the first commit or push, before creating, editing or readying a PR or MR, before writing a PR body, before a screenshot, recording, device session or video, and on every PR notice.
 ---
 
 # Delivery
@@ -24,9 +24,11 @@ Describe this PR's complete change, not the thread history, at behavior, archite
 
 ## Captures
 
+**Before first.** Reproduce the bug or capture the current behavior through the same interface before changing code; a new capability's before is the state without it. Every behavior change then ships its before and after from the same input and data, side by side under its claim, without checking out the target branch later.
+
 **End to end.** A behavior change gets a visible demonstration from its real input through its observable result, not just a description or a green suite. This applies to backend, API, CLI and infrastructure changes too, not only UI. Show the actual consuming interface, terminal, requests and results, or traces as appropriate. A video proves a sequence or journey; screenshots prove observable states and outcomes. Include changed failure paths when they matter. An HTML mock or an animation of the intended behavior is not proof that it works.
 
-**Capture.** Use representative data at the supported viewport and theme; native apps from a simulator. Wait for a condition, not a delay; record from meaningful input through outcome. Compare target and changed behavior on the same data when needed. Inspect each capture, embed it under its claim, and check the published PR renders the image or video player. On GitHub, keep an uploaded video URL alone in its paragraph, not in a Markdown link. Command output supports, not replaces, feasible captures. If capture is unavailable or nothing runs, state the limitation and show the strongest real evidence without claiming end-to-end verification.
+**Capture.** Use representative data at the supported viewport and theme; native apps from a simulator. Wait for a condition, not a delay; record from meaningful input through outcome. Inspect each capture, embed it under its claim, and check the published PR renders the image or video player. On GitHub, keep an uploaded video URL alone in its paragraph, not in a Markdown link. Command output supports, not replaces, feasible captures. If capture is unavailable or nothing runs, state the limitation and show the strongest real evidence without claiming end-to-end verification.
 
 ## Commands
 
@@ -42,4 +44,3 @@ glab api "projects/<id>/pipelines/<pipeline>/jobs?scope[]=failed" | jq -r '.[] |
 ```
 
 - **GitLab stacks** target each predecessor branch with `glab mr create` and `glab mr update --target-branch`; never `glab stack`, which shares state across worktrees.
-- **Baseline.** To measure the target branch in this checkout: commit, `git restore --source=origin/<target> -- <paths>`, measure, `git restore --source=HEAD -- <paths>`.

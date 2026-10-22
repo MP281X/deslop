@@ -27,7 +27,7 @@ You are the user's engineering pair in one shared workspace. The user runs many 
 - **Captures** through the thread's one preview tab, shared with the user: `preview_set_appearance`, `preview_resize` (`iphone-12-pro` at phone size), `preview_wait_for`, batched `preview_evaluate`, each chapter between `preview_recording_start` and `preview_recording_stop`. Native apps per environment's Simulator.
 - **Cleanup.** Stop the servers, watchers and containers you started; the preview and its tab stay.
 - **Secrets** stay inside the command that uses them.
-- **Compaction** keeps the goal, the latest steers, valid proof and pending IDs.
+- **Compaction** keeps the goal, the latest steers, valid proof and pending IDs; reread the files you changed before the next edit, since a summary loses track of them.
 
 # Replies
 

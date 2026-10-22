@@ -10,6 +10,7 @@ description: Use at task start, when requirements or direction change, and befor
 - **Outcome.** The cause of a bug and its siblings, the whole journey rather than one screen; a larger outcome beyond the request is a proposal.
 - **Expert depth.** Before a consequential change: what would a top expert measure, from which raw material (logs, rows, traces, source), and what outside you confirms the result? Plan the deeper version, and treat the hard target as solvable until a measurement proves the limit.
 - **Options.** For a consequential open decision, compare structurally different approaches, including reuse and doing less, against the user's criteria. Test the deciding counterexample; stop researching when it settles the choice. A specified fix follows the existing pattern without a comparison ceremony.
+- **Oracle.** A consequential design gets, before implementation, a second opinion from the other model family: one read-only child with the request, the planned files, signatures and data flow, and the evidence so far. It returns objections and the alternative it would pick; you decide. A different model catches what the same one would rationalize.
 - **Screens.** An open visual direction gets comparable mocks on the same data before implementation; the user picks. An agreed direction or a local correction needs no new variants. Measure the built result against the picked reference.
 - **Measure, don't debate.** Options that differ in a result you can run (lint diagnostics, timing, behavior) run on the same input.
 - **Tripwire.** Expanding scope, repeated failed fixes or a new mechanism (script, daemon, store, wrapper, protocol, reimplementation) prompts a check against the requested outcome before more implementation.
@@ -19,7 +20,7 @@ description: Use at task start, when requirements or direction change, and befor
 
 ## Build
 
-Consult patterns for unfamiliar implementation shapes or API gaps, and lint-companion before writing. Implement a coherent batch, prove its changed behavior through the real interfaces, Verify, review, fix in a batch, then Verify and publish per delivery. Reuse applicable evidence when its covered state is unchanged; do not repeat research, gates or captures merely to narrate progress.
+Consult patterns for unfamiliar implementation shapes or API gaps, and lint-companion before writing. Capture the before per delivery, implement a coherent batch, prove its changed behavior through the same interface and input, Verify, review, triage and fix in a batch, then Verify and publish per delivery. Reuse applicable evidence when its covered state is unchanged; do not repeat research, gates or captures merely to narrate progress.
 
 ## PR set
 
@@ -34,7 +35,7 @@ Organize the prospective PR set at task start: one implementation with shared co
 ## Review
 
 - **One complete round** on the verified unmerged PR set before the first push: one Sol child by default; add reviewers only for distinct risks or expertise worth the coordination. Each brief holds the goal, checkout, every slice's immutable base/head pair, the combined head, the user's relevant requirements and approved proposals, unresolved deviations, and "Load review; apply its applicable evaluation questions." Quote the deciding words rather than an author-approved reinterpretation. Reuse review and captures across retargets or hash-only rewrites only when their covered patches and trees are unchanged; required CI still runs.
-- **Fix** every P1, P2 and trivial P3 in one batch. A follow-up checks the fixes and their affected contracts, not the unchanged whole change again; request it when the fixes need independent validation.
+- **Triage** each finding yourself, since you hold the context the reviewer lacks: keep it when the change introduced it, a reachable input shows the harm or its shape departs from the reference, and it rests on no unstated assumption; reject the rest with a one-line reason that a follow-up's brief carries. Fix every kept P1, P2 and trivial P3 in one batch. A follow-up checks the fixes and their affected contracts, not the unchanged whole change again; request it when the fixes need independent validation.
 
 ## Delegate
 
@@ -42,12 +43,13 @@ Organize the prospective PR set at task start: one implementation with shared co
 
 **Economics.** Delegate bounded read-only lookups, inventories, research, thread history, reviews, probes or mocks only when they save more than briefing and joining or provide needed independent judgment. Default to one child and never more than three in a round; give each every bounded question it can answer instead of one child per file. Keep local work within environment's resource budget; parent and children do not duplicate the same investigation. Model IDs from `orchestrator_capabilities`, reasoning `high`.
 
-| Work                                     | Model                          |
-| ---------------------------------------- | ------------------------------ |
-| Review, audit, critique, thread history  | GPT-6.1 Sol                    |
-| Research, reference lookups, comparisons | Claude Sonnet 5.5              |
-| Probes, inventories, long commands       | GPT-6 Luna or Claude Haiku 5.5 |
-| Runner-up screen mocks                   | Claude Sonnet 5.5              |
+| Work                                     | Model                                                               |
+| ---------------------------------------- | ------------------------------------------------------------------- |
+| Oracle                                   | The other family: GPT-6.1 Sol from Claude, Claude Opus 5.5 from GPT |
+| Review, audit, critique, thread history  | GPT-6.1 Sol                                                         |
+| Research, reference lookups, comparisons | Claude Sonnet 5.5                                                   |
+| Probes, inventories, long commands       | GPT-6 Luna or Claude Haiku 5.5                                      |
+| Runner-up screen mocks                   | Claude Sonnet 5.5                                                   |
 
 **Brief.** Open with this block, then one labeled line per part with a blank line between parts and one instruction per line:
 
@@ -65,4 +67,4 @@ Organize the prospective PR set at task start: one implementation with shared co
 **Return.** <shape>
 ```
 
-A review brief adds "Load the review skill." and no author verdict. A mock brief names its hypothesis, the pick's, the shared data, states and copy, the reference files and the output path.
+A review or oracle brief adds "Load the review skill." and no author verdict. A mock brief names its hypothesis, the pick's, the shared data, states and copy, the reference files and the output path.
