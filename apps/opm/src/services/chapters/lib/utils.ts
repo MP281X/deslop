@@ -87,7 +87,8 @@ export function resumeOf(chapters: ChapterList) {
 	)
 }
 
-// The chapter's own name from a title such as "Chapter 225: New Blood 3"; a title that only repeats the number has none.
+// The chapter's own name from "Chapter 225: New Blood 3"; a title of only the number or a scanlation note has none.
 export function nameOf(title: string) {
-	return String.trim(String.replace(/^.*?(?:Chapter|OPM)\s+[\d.]+\s*:?\s*/iu, '')(title))
+	const name = String.trim(String.replace(/^.*?(?:Chapter|OPM)\s+[\d.]+\s*:?\s*/iu, '')(title))
+	return Option.match(String.match(/^(?:translated|english|raw)$/iu)(name), {onNone: () => name, onSome: () => ''})
 }

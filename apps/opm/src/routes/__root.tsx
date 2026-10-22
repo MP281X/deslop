@@ -24,16 +24,19 @@ import {ChaptersRoute} from '#routes/(home)/index.tsx'
 import {ReaderRoute} from '#routes/chapters/$number.tsx'
 import {resumeOf} from '#services/chapters/lib/utils.ts'
 
+// The spinner fills the screen, so it sits in the middle of it on the app's background.
+function Loading() {
+	return (
+		// oxlint-disable-next-line shadcn/no-inline-styles -- The native SwiftUI host fills the React Native screen.
+		<Host style={{flex: 1}}>
+			<ProgressView modifiers={[frame({maxHeight: Infinity, maxWidth: Infinity}), background(colors.background)]} />
+		</Host>
+	)
+}
+
 export function RootRoute() {
 	return (
-		<Suspense
-			fallback={
-				// oxlint-disable-next-line shadcn/no-inline-styles -- The native SwiftUI host fills the React Native screen.
-				<Host style={{flex: 1}}>
-					<ProgressView />
-				</Host>
-			}
-		>
+		<Suspense fallback={<Loading />}>
 			<SessionRoute />
 		</Suspense>
 	)
@@ -44,14 +47,7 @@ function SessionRoute() {
 	const [signIn, start] = useAtom(signInAtom)
 	if (Option.isSome(session)) {
 		return (
-			<Suspense
-				fallback={
-					// oxlint-disable-next-line shadcn/no-inline-styles -- The native SwiftUI host fills the React Native screen.
-					<Host style={{flex: 1}}>
-						<ProgressView />
-					</Host>
-				}
-			>
+			<Suspense fallback={<Loading />}>
 				<AppRoutes />
 			</Suspense>
 		)

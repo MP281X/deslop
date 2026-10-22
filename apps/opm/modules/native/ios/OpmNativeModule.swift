@@ -6,5 +6,6 @@ public class OpmNativeModule: Module {
     Name("OpmNative")
 
     ExpoUIView(PageStripView.self)
+    ExpoUIView(CoverView.self)
   }
 }

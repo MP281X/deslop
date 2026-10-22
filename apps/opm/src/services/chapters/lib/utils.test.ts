@@ -43,6 +43,7 @@ it('unwraps pages of the dead image proxy and drops its error texts', () => {
 	)
 	assert.strictEqual(nameOf('Chapter 225: New Blood 3'), 'New Blood 3')
 	assert.strictEqual(nameOf('One Punch Man Chapter 242'), '')
+	assert.strictEqual(nameOf('Translated'), '')
 })
 
 function unread(number: number) {

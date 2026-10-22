@@ -40,7 +40,7 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number}) {
 
 	return (
 		<PageStrip
-			pages={Array.flatMap(shown, chapter => chapter.pages)}
+			chapters={Array.map(shown, chapter => ({number: chapter.number, pages: chapter.pages}))}
 			start={pipe(
 				Option.fromUndefinedOr(Array.headNonEmpty(shown).reading),
 				Option.filter(reading => !reading.done),
