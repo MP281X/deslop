@@ -62,10 +62,11 @@ function SessionRoute() {
 		<Host style={{flex: 1}}>
 			<VStack
 				spacing={20}
+				// The padding comes first so the colour behind it reaches every edge of the screen.
 				modifiers={[
+					padding({all: 24}),
 					frame({maxHeight: Infinity, maxWidth: Infinity}),
-					background(colors.background),
-					padding({all: 24})
+					background(colors.background)
 				]}
 			>
 				<VStack spacing={16} modifiers={[frame({maxHeight: Infinity, maxWidth: Infinity}), padding({bottom: 64})]}>
