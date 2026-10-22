@@ -23,6 +23,7 @@ export type Resource = typeof Resource.Type
 export const Resource = Schema.Literals([
 	'https://stash.mp281x.xyz',
 	'https://stash.mp281x.xyz/mcp',
+	'https://opm.mp281x.xyz',
 	'https://scope.mp281x.xyz/mcp',
 	'https://otel.mp281x.xyz'
 ])

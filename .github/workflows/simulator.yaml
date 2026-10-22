@@ -4,7 +4,7 @@ name: Simulator
 on:
   push:
     branches-ignore: [main]
-    paths: [apps/stash/**, packages/**, pnpm-lock.yaml, .github/workflows/simulator.yaml]
+    paths: [apps/stash/**, apps/opm/**, packages/**, pnpm-lock.yaml, .github/workflows/simulator.yaml]
 
 # A newer push to the same branch replaces the older run.
 concurrency:
@@ -19,7 +19,7 @@ jobs:
   simulator:
     strategy:
       matrix:
-        app: [stash]
+        app: [stash, opm]
     # One build at a time per app, so a second branch finds the first branch's artifact.
     concurrency: simulator-${{ matrix.app }}
     runs-on: xcode-27
