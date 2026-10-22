@@ -28,4 +28,4 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 
 ## Documents
 
-One source of truth per fact: the code first, lint for every mechanical form, this file for scope, commands and canonical examples, `CODING_STANDARDS.md` for judgement calls, a published package's `README.md` for its install and usage, and environment's deslop reference for the user's infrastructure (workers, deploy, tracing endpoints, accounts). Comments only for what a name cannot say.
+One source of truth per fact: the code first, lint for every mechanical form, this file for scope, commands and canonical examples, `CODING_STANDARDS.md` for judgement calls, a published package's `README.md` for its install and usage, and the environment skill with its references for the user's infrastructure (workers, deploy, tracing endpoints, accounts). Comments only for what a name cannot say.

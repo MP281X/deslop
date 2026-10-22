@@ -5,7 +5,7 @@ description: Use for a retrospective, and when the user asks why threads went wr
 
 # Retrospective
 
-**Goal.** Improve the actual result, not a report about improving it: same or better outcomes with fewer corrections, Verify runs, words, tokens and minutes. Preserve discussion and read-only boundaries; implement and publish when authorized.
+**Goal.** Improve outcomes, not reports: the same or better results with fewer corrections, Verify runs, words, tokens and minutes. Implement and publish only when authorized.
 
 ## Collect
 
@@ -51,22 +51,21 @@ Measures, each with its counted member:
 - **`patterns` References:** a shape agents got wrong whose good version lives in an Effect 4 repository; a directory at its default branch, never a commit.
 - **Team skill:** practice every teammate's repository shares; no person, machine, path or T3 tool name.
 - **Repository `AGENTS.md`:** its scope, commands and canonical examples, the pointers every agent needs.
-- **`pair.md`, `.codex/instructions.md` and `.opencode/agents/build.md`:** replies, T3 tools, harness; identical from `# Work` down.
+- **`pair.md`, `.codex/instructions.md` and `.opencode/agents/build.md`:** replies, T3 tools, harness; kept in step per `AGENTS.md`.
 - **`orchestrator`, `environment`:** the user's process, prompting semantics, machines and references. A phrase gets a fixed meaning only when the user defines it; corroborated usage informs interpretation, not a keyword parser. Keep personal habits out of team skills.
 
 ## Change
 
 - **Replace, don't append.** A fix rewrites or deletes the rule it supersedes; the touched files shrink, unless a new user choice adds a row.
-- **Leading word.** Each rule is `**Term.** value`: a word the model already knows, then only what it cannot carry: exact names, commands, numbers, the user's words; stated as the behavior to do. The writing reference is mattpocock/skills `skills/productivity/writing-for-agents/`.
+- **Form.** A standalone rule is `**Term.** value`: a familiar term, then the specifics the model cannot infer (names, commands, numbers, the user's words) as the behavior to do, with a short reason when its purpose is not obvious, so the model can apply it to cases the rule does not name. An output shape gets one short example; procedures, commands and examples keep their own form. The writing reference is mattpocock/skills `skills/productivity/writing-for-agents/`.
 - **Evidence.** Fewer bytes prove nothing: show the correction class or the Verify loop before and after on the same task.
 - **No-op.** A rule that traces to no correction, failure or user choice goes.
 - **Threshold.** A corroborated failure pattern or a rule the user stated; a single slip under a clear rule needs no additional instruction.
-- **History.** Read `git log -p` of the touched files and the bodies of merged retrospective PRs first: a reverted or rejected change stays rejected unless new evidence beats its reason. Never adopt hooks that gate the agent, a reviewer per rule or per model family, an agent that validates another's review, or a model switch mid-thread.
+- **History.** Read `git log -p` of the touched files and the bodies of merged retrospective PRs first: a reverted or rejected change stays rejected unless new evidence beats its reason. Never adopt hooks that gate the agent, a reviewer per rule or per model family on every PR, an agent that validates another's review, or a model switch mid-thread.
 - **T3.** Settle what T3 shows, notifies and offers from the installed bundle under `~/.t3/runtime/versions/<version>/`, never from memory; adopt a T3 feature that replaces a rule or a manual step.
 
 ## Ship
 
-- **Workspace.** Use the thread's attached checkout per orchestrator; reading history on other workers does not distribute implementation.
-- **PR** per delivery: final behavior, deciding evidence and material activation risks. Keep the mining, counts and diagnosis in the thread; do not copy the retrospective into the PR.
+- **PR** per delivery, implemented in this thread's checkout even when history came from another worker. The mining, counts and diagnosis stay in the thread.
 - **Nothing to change** ends with one line and no PR.
 - **This skill.** A correction the user makes in a retrospective's own thread changes this skill in the same PR.

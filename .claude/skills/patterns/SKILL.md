@@ -10,7 +10,7 @@ Find the relevant precedent, not a new workflow. The repository's named examples
 ## Sources, in order
 
 1. **The repository's own style.** The canonical examples its `AGENTS.md` names, then its `CODING_STANDARDS.md`. Read the owning module's exports and real consumers: a name or a screenshot alone does not establish its pattern. In a repository being cleaned up, an unnamed nearest file is code to replace.
-2. **References** for a shape the repository has no canonical example of: reuse a matching clone under `/tmp/repos/<name>` after checking its remote and revision, or `git clone --depth 1 <url> /tmp/repos/<name>`. Read the relevant paths at the default branch; fetching a reference never authorizes edits, builds or installs there. Copy the structure into the repository's style; take every Effect name from the installed `effect` package's source, since reference versions differ.
+2. **References** for a shape the repository has no canonical example of: reuse a matching clone under `/tmp/repos/<name>` after checking its remote and revision, or `git clone --depth 1 <url> /tmp/repos/<name>`. Read the relevant paths at the default branch; a reference clone is never edited, built or installed. Copy the structure into the repository's style; take every Effect name from the installed `effect` package's source, since reference versions differ.
 
 | Shape                                       | Repository                                     | Open                                                                                                    |
 | ------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- |

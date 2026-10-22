@@ -30,11 +30,11 @@ Two headless Debian workers in one tailnet, same user, paths and agent configura
 
 ## Resource budget
 
-The worker is shared with the user's other threads. Before a memory-heavy gate, build, install or render, inspect available RAM, active swapping and existing heavy processes (`free -h`, `vmstat 1 3`, `ps -eo pid,ppid,comm,rss,pcpu --sort=-rss`). Run this thread's heavy commands serially and reuse its existing preview. If another heavy run leaves insufficient headroom or memory pressure is active, defer yours and do bounded read-only work; do not multiply workers, raise heap limits or retry into the same pressure. Inspect the process's checkout before attributing it to a thread. Stop only work this thread owns; never kill another thread's processes or stop its preview to make room. No custom scheduler, lock files or background polling loops.
+The worker is shared with the user's other threads. Before a heavy gate, build, install or render, inspect RAM, swapping and heavy processes (`free -h`, `vmstat 1 3`, `ps -eo pid,ppid,comm,rss,pcpu --sort=-rss`). Run this thread's heavy commands serially and reuse its preview. Under memory pressure, defer and do bounded read-only work; never multiply workers, raise heap limits or retry into the same pressure. Inspect a process's checkout before attributing it, and stop only processes this thread started, never another thread's processes or preview. No custom scheduler, lock files or background polling loops.
 
 ## Previews
 
-- **One per worktree:** the systemd user unit `preview-<worktree name>`, shared over tailnet HTTPS. A thread that changes the app starts or restarts it only with the project's `preview` script, run from the worktree root; it prints the stable HTTPS URL and replaces the previous one. Never run the repository's preview command directly or as a harness background task: a second copy doubles its memory, and a background task dies after two hours.
+- **One per worktree:** the systemd user unit `preview-<worktree name>`, shared over tailnet HTTPS. Start or restart it only through the project's `preview` script from the worktree root, which prints the stable HTTPS URL and replaces the previous run. Never run the repository's preview command directly or as a background task: a second copy doubles its memory, and a background task dies after two hours.
 
   ```bash
   root=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
