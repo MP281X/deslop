@@ -122,6 +122,7 @@
 			"Bash(*gh pr merge*)",
 			"Bash(*gh pr review*)",
 			"Bash(*gh stack *--open*)",
+			"Bash(*gh stack merge*)",
 			"Bash(*gh api*-X POST*)",
 			"Bash(*gh api*-X PUT*)",
 			"Bash(*gh api*-X PATCH*)",

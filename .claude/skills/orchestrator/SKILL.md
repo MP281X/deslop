@@ -27,10 +27,10 @@ Consult patterns for unfamiliar shapes or API gaps and lint-companion before wri
 Plan the PR set at task start as one implementation split into review slices per delivery's Branches, and reshape it as the work changes.
 
 - **Reshape.** Fix the owning slice; remove a rejected approach from every unmerged slice rather than adding and removing it across slices. Reuse existing PRs and branches; close only one the new shape makes redundant.
-- **History.** One commit per slice, fixups into their owner, and the combined state in this checkout. Publish existing commits when their ancestry matches the target; otherwise extract the slice onto its real base here and restore the combined state. An independent PR excludes other slices' commits.
-- **Publish.** Verify changed heads on their actual bases per delivery and push each once with `--force-with-lease`, one push per command; moving a ref to an already-verified commit needs no rebuild. Link only dependent GitHub chains with `gh stack link <numbers, bottom first>` without `--open`; `gh stack unstack` before reordering one.
-- **Merges.** The user can merge a ready subset while work continues: every PR into the default branch, dependent PRs bottom-up, never a child into its parent. In a stack A ← B ← C, review B against A and C against B; A merges, then B retargets to the default branch and merges, then C.
-- **After merges.** Fetch the default branch; merged PRs are fixed baseline. Drop merged slices from dependent histories, rebase the rest onto it, retarget the next PR, republish changed heads, and unlink merged PRs from the stack and thread with `unlink_pull_request`.
+- **History.** Dependent slices form a stack per delivery's Stacks, whose top is the combined state for Verify and the preview; fix a slice by amending its branch and restacking the ones above. An independent PR branches from the default branch with only its own commit.
+- **Publish.** Verify changed heads on their actual bases per delivery and publish with its stack commands; moving a ref to an already-verified commit needs no rebuild.
+- **Merges.** The user merges a ready subset while work continues, bottom-up into the default branch; review each slice against its parent.
+- **After merges.** Restack onto the default branch per delivery, Verify and republish changed heads, and unlink merged PRs from the thread with `unlink_pull_request`.
 
 ## Review
 

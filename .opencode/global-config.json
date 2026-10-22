@@ -53,6 +53,7 @@
 		{"action": "tool.use", "resource": "shell:*gh pr merge*", "effect": "deny"},
 		{"action": "tool.use", "resource": "shell:*gh pr review*", "effect": "deny"},
 		{"action": "tool.use", "resource": "shell:*gh stack *--open*", "effect": "deny"},
+		{"action": "tool.use", "resource": "shell:*gh stack merge*", "effect": "deny"},
 		{"action": "tool.use", "resource": "shell:*gh api*-X POST*", "effect": "deny"},
 		{"action": "tool.use", "resource": "shell:*gh api*-X PUT*", "effect": "deny"},
 		{"action": "tool.use", "resource": "shell:*gh api*-X PATCH*", "effect": "deny"},
