@@ -41,7 +41,7 @@ jobs:
           vp run build
 
           echo "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          for app in auth portfolio scope stash; do
+          for app in auth portfolio scope stash opm; do
             docker build apps/$app --tag ghcr.io/${GITHUB_REPOSITORY,,}-$app:latest --tag ghcr.io/${GITHUB_REPOSITORY,,}-$app:$GITHUB_SHA
             docker push --all-tags ghcr.io/${GITHUB_REPOSITORY,,}-$app
           done
@@ -57,7 +57,7 @@ jobs:
     needs: build-and-deploy
     strategy:
       matrix:
-        app: [stash]
+        app: [stash, opm]
     concurrency: ios-${{ matrix.app }}
     runs-on: xcode-27
     timeout-minutes: 60

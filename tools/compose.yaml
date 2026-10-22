@@ -58,6 +58,17 @@ services:
       traefik.http.routers.stash.rule: Host(`stash.mp281x.xyz`)
       traefik.http.services.stash.loadbalancer.server.port: '5000'
 
+  opm:
+    <<: *service
+    image: ghcr.io/mp281x/deslop-opm:${REVISION:-latest}
+    env_file: ${HOME}/.deslop/opm.env
+    environment: {VITE_OTEL_URL: http://scope:4318}
+    volumes: ['${HOME}/.deslop/opm:/home/node/.deslop/opm']
+    labels:
+      traefik.enable: 'true'
+      traefik.http.routers.opm.rule: Host(`opm.mp281x.xyz`)
+      traefik.http.services.opm.loadbalancer.server.port: '5000'
+
   scope:
     <<: *service
     image: ghcr.io/mp281x/deslop-scope:${REVISION:-latest}
