@@ -69,10 +69,10 @@ function SessionRoute() {
 					background(colors.background)
 				]}
 			>
-				<VStack spacing={16} modifiers={[frame({maxHeight: Infinity, maxWidth: Infinity}), padding({bottom: 64})]}>
-					<Image uiImage={logoUri} modifiers={[resizable(), frame({height: 44, width: 44})]} />
-					<Text modifiers={[mono('headline', 20), foregroundStyle(colors.foreground)]}>Sign in to Stash</Text>
-				</VStack>
+				<Image
+					uiImage={logoUri}
+					modifiers={[resizable(), frame({height: 64, width: 64}), frame({maxHeight: Infinity}), padding({bottom: 64})]}
+				/>
 				<Button
 					onPress={() => start()}
 					modifiers={[

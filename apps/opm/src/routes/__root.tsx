@@ -2,26 +2,39 @@ import {useAtom, useAtomMount, useAtomSubscribe, useAtomSuspense, useAtomValue} 
 
 import {Array, Number, Option} from 'effect'
 
-import {Button, Host, NavigationDestination, NavigationStack, ProgressView, Text, VStack} from '@expo/ui/swift-ui'
+import {
+	Button,
+	Host,
+	Image,
+	NavigationDestination,
+	NavigationStack,
+	ProgressView,
+	Text,
+	VStack
+} from '@expo/ui/swift-ui'
 import {
 	background,
 	buttonStyle,
+	clipShape,
 	controlSize,
 	disabled,
 	foregroundStyle,
 	frame,
 	padding,
+	resizable,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
 import {colors, mono} from '@deslop/components-mobile/theme'
+import {assetAtom} from '@deslop/components-mobile/utils'
 import {updateAtom} from '@deslop/runtime/mobile'
 
 import {chaptersAtom, diagnosticsAtom, openedAtom, pushAtom, sessionAtom, signInAtom} from '#lib/utils.ts'
 import {ChaptersRoute} from '#routes/(home)/index.tsx'
 import {ReaderRoute} from '#routes/chapters/$number.tsx'
+import icon from '#routes/icon.png'
 import {resumeOf} from '#services/chapters/lib/utils.ts'
 
 // The spinner fills the screen, so it sits in the middle of it on the app's background.
@@ -45,6 +58,7 @@ export function RootRoute() {
 function SessionRoute() {
 	const session = useAtomSuspense(sessionAtom).value
 	const [signIn, start] = useAtom(signInAtom)
+	const iconUri = useAtomSuspense(assetAtom(icon)).value
 	if (Option.isSome(session)) {
 		return (
 			<Suspense fallback={<Loading />}>
@@ -64,16 +78,16 @@ function SessionRoute() {
 					background(colors.background)
 				]}
 			>
-				<Text
+				<Image
+					uiImage={iconUri}
 					modifiers={[
-						mono('headline', 28),
-						foregroundStyle(colors.foreground),
+						resizable(),
+						frame({height: 64, width: 64}),
+						clipShape('roundedRectangle', 14),
 						frame({maxHeight: Infinity}),
-						padding({top: 64})
+						padding({bottom: 64})
 					]}
-				>
-					opm
-				</Text>
+				/>
 				<Button
 					onPress={() => start()}
 					modifiers={[

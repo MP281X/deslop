@@ -1,7 +1,7 @@
 Pod::Spec.new do |s|
   s.name           = 'OpmNative'
   s.version        = '1.0.0'
-  s.summary        = 'The zoomable page reader that Expo UI lacks.'
+  s.summary        = 'The page reader, covers, progress disc and title that Expo UI lacks.'
   s.author         = 'mp281x'
   s.homepage       = 'https://github.com/MP281X/deslop'
   s.platforms      = {
@@ -16,4 +16,5 @@ Pod::Spec.new do |s|
     'DEFINES_MODULE' => 'YES',
   }
   s.source_files = '**/*.swift'
+  s.resource_bundles = { 'OpmNative' => ['assets/*.png'] }
 end
