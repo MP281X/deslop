@@ -20,6 +20,8 @@ APP_VARIANT=development vp -C apps/stash exec expo export:embed --platform ios -
 vp -C apps/stash exec expo prebuild --platform ios --no-install --clean && rm -rf apps/stash/ios   # config check before a native change
 ```
 
+opm builds the same way as `opm-simulator-<fingerprint>` with `opmdev.app`. To sign a Simulator build in, tap Sign in with GitHub, then Continue. Read the request code on the sign-in page, such as `j_yv-eHBa`, and approve it with the `auth` MCP's `answer_request`; the page then completes the sign-in by itself. The same tool answers any waiting sign-in, and `list_requests` shows them; approve one you started or the user asks for.
+
 ## Publish a new tool
 
 Every push to `main` publishes the packages listed in `.github/workflows/deploy.yaml` as `0.1.<run>` with npm trusted publishing, which npm accepts only for a package that already exists.
