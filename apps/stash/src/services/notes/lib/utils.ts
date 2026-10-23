@@ -30,7 +30,22 @@ function withoutTrailingPunctuation(link: string): string {
 	return trimmed
 }
 
-function canonicalUrl(link: string) {
+// youtu.be, Shorts, live and embed links and the mobile site all name one video by its id.
+function youTubeId(url: URL) {
+	if (url.hostname === 'youtu.be') return Array.get(Array.filter(String.split(url.pathname, '/'), String.isNonEmpty), 0)
+	if (Option.isNone(String.match(/(?:^|\.)youtube\.com$/u)(url.hostname))) return Option.none<string>()
+	return pipe(
+		Option.fromNullishOr(url.searchParams.get('v')),
+		Option.orElse(() =>
+			pipe(
+				String.match(/^\/(?:shorts|live|embed)\/([\w-]+)/u)(url.pathname),
+				Option.flatMap(match => Array.get(match, 1))
+			)
+		)
+	)
+}
+
+function withoutTracking(link: string) {
 	const url = new URL(link)
 	if (Array.contains(X_HOSTS, url.hostname)) url.hostname = 'x.com'
 	if (sourceFor(url.href) === 'Website') {
@@ -40,6 +55,13 @@ function canonicalUrl(link: string) {
 	}
 	url.hash = ''
 	return url.href
+}
+
+function canonicalUrl(link: string) {
+	return Option.match(youTubeId(new URL(link)), {
+		onNone: () => withoutTracking(link),
+		onSome: id => `https://www.youtube.com/watch?v=${id}`
+	})
 }
 
 export function captureUrl(text: string) {

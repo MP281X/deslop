@@ -391,6 +391,31 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
+	test.effect('joins a share to a note saved under an older form of its link', () =>
+		Effect.gen(function* () {
+			// The first save stands in for the release that stored youtu.be links as shared.
+			const older = yield* Ref.make(Option.some('https://youtu.be/USeyDcWyVCc'))
+			const notes = yield* open({
+				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				organizer: counting(yield* Ref.make(0)),
+				sources: Sources.of({
+					...recipe,
+					resolve: link =>
+						Effect.map(
+							Ref.getAndSet(older, Option.none()),
+							Option.getOrElse(() => link)
+						)
+				})
+			})
+			yield* notes.capture({id: IDS[0], text: 'https://youtu.be/USeyDcWyVCc'})
+			yield* settled(notes, isReady)
+			assert.containsSubset(
+				yield* notes.capture({id: IDS[1], text: 'https://www.youtube.com/watch?v=USeyDcWyVCc&t=42s'}),
+				{id: IDS[0], url: 'https://youtu.be/USeyDcWyVCc'}
+			)
+		})
+	)
+
 	test.effect('tags a note again when a shutdown interrupted its tagging', () =>
 		Effect.gen(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
