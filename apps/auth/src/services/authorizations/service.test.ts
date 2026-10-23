@@ -4,7 +4,6 @@ import {assert, it} from '@effect/vitest'
 
 import {
 	Array,
-	Boolean,
 	Clock,
 	ConfigProvider,
 	Crypto,
@@ -34,6 +33,7 @@ import {
 	AuthorizationStatus,
 	ConsentParams,
 	PendingAuthorization,
+	Person,
 	Registration,
 	RequestParams
 } from '#services/authorizations/schema.ts'
@@ -43,6 +43,7 @@ import {layerMcp} from '#tools/handlers.ts'
 const AUTH = 'https://auth.example.test'
 const API = 'https://stash.mp281x.xyz'
 const APPROVALS = 'https://auth.mp281x.xyz/mcp'
+const GITHUB_IDS: Record<string, number> = {drifter: 9, octocat: 42, stranger: 7}
 const VERIFIER = String.repeat(43)('x')
 
 const me = pipe(
@@ -72,7 +73,7 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 			const login = String.replace('Bearer ', '')(request.headers['authorization'] ?? '')
 			return HttpClientResponse.fromWeb(
 				request,
-				Response.json({id: Boolean.match(login === 'octocat', {onFalse: () => 7, onTrue: () => 42}), login})
+				Response.json({id: GITHUB_IDS[login] ?? 1, login, name: `${login} fixture`})
 			)
 		})
 	)
@@ -153,9 +154,9 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 							ConfigProvider.layer(
 								ConfigProvider.fromUnknown({
 									AUTH_URL: AUTH,
+									GITHUB_ADMINS: '42',
 									GITHUB_CLIENT_ID: 'fixture',
 									GITHUB_CLIENT_SECRET: 'fixture',
-									GITHUB_USERS: '42',
 									HOME: directory,
 									NODE_ENV: 'production'
 								})
@@ -366,6 +367,29 @@ const refresh = Effect.fnUntraced(function* (
 		headers: {'content-type': 'application/x-www-form-urlencoded'},
 		method: 'POST'
 	})
+})
+
+// An agent's auth MCP token, approved in the browser of the signed-in session.
+const agentToken = Effect.fnUntraced(function* (
+	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
+	session: string
+) {
+	const agent = yield* authorize(web, session, 'http://127.0.0.1:34569/callback', [APPROVALS])
+	const granted = yield* exchange(web, agent, (yield* consent(web, agent, true)).searchParams.get('code') ?? '')
+	return (yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(yield* Effect.promise(() => granted.text())))
+		.access_token
+})
+
+const people = Effect.fnUntraced(function* (web: Effect.Success<ReturnType<typeof servers>>['issuer'], token: string) {
+	const response = yield* callTool(web, token, 'list_people', {})
+	return Array.map(
+		(yield* Schema.decodeEffect(
+			Schema.fromJsonString(
+				Schema.Struct({result: Schema.Struct({structuredContent: Schema.Struct({people: Schema.Array(Person)})})})
+			)
+		)(yield* Effect.promise(() => response.text()))).result.structuredContent.people,
+		person => `${person.name}:${person.role}`
+	)
 })
 
 it.layer(NodeServices.layer)(test => {
@@ -616,7 +640,11 @@ it.layer(NodeServices.layer)(test => {
 				(yield* send(web.app, '/me', {headers: {cookie: session, origin: 'https://evil.test'}})).status,
 				401
 			)
-			assert.strictEqual(cookie(yield* signIn(web.issuer, 'stranger')), '__Host-login=')
+			assert.strictEqual(
+				(yield* send(web.issuer, '/auth/session', {headers: {cookie: cookie(yield* signIn(web.issuer, 'stranger'))}}))
+					.status,
+				401
+			)
 			const request = yield* authorize(web.issuer, session, 'stash://auth/callback', [API, 'https://otel.mp281x.xyz'])
 			assert.strictEqual(
 				(yield* send(web.issuer, '/api/auth/oauth2/consent', {
@@ -762,20 +790,7 @@ it.layer(NodeServices.layer)(test => {
 	test.effect('lets an agent list and answer any waiting sign-in as the browser does', () =>
 		Effect.gen(function* () {
 			const web = yield* servers()
-			const agent = yield* authorize(
-				web.issuer,
-				cookie(yield* signIn(web.issuer, 'octocat')),
-				'http://127.0.0.1:34569/callback',
-				[APPROVALS]
-			)
-			const granted = yield* exchange(
-				web.issuer,
-				agent,
-				(yield* consent(web.issuer, agent, true)).searchParams.get('code') ?? ''
-			)
-			const token = (yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
-				yield* Effect.promise(() => granted.text())
-			)).access_token
+			const token = yield* agentToken(web.issuer, cookie(yield* signIn(web.issuer, 'octocat')))
 			const simulator = yield* authorize(web.issuer, '', 'opm-dev://auth/callback', [
 				'https://opm.mp281x.xyz',
 				'https://otel.mp281x.xyz'
@@ -850,6 +865,47 @@ it.layer(NodeServices.layer)(test => {
 				yield* Schema.decodeEffect(Schema.fromJsonString(User))(yield* Effect.promise(() => verified.text())),
 				{id: 'github:42', name: 'octocat'}
 			)
+		})
+	)
+
+	test.effect('lets only an admin allow, decline and remove GitHub accounts, which sign them in and out', () =>
+		Effect.gen(function* () {
+			const web = yield* servers()
+			const admin = yield* agentToken(web.issuer, cookie(yield* signIn(web.issuer, 'octocat')))
+			const stranger = cookie(yield* signIn(web.issuer, 'stranger'))
+			const drifter = cookie(yield* signIn(web.issuer, 'drifter'))
+			const status = Effect.fnUntraced(function* (session: string) {
+				return (yield* send(web.issuer, '/auth/session', {headers: {cookie: session}})).status
+			})
+			const text = Effect.fnUntraced(function* (response: Response) {
+				return yield* Effect.promise(() => response.text())
+			})
+			assert.deepStrictEqual([yield* status(stranger), yield* status(drifter)], [401, 401])
+			assert.deepStrictEqual(yield* people(web.issuer, admin), ['octocat:Admin', 'drifter:Waiting', 'stranger:Waiting'])
+			yield* callTool(web.issuer, admin, 'answer_access_request', {allow: true, login: 'Stranger'})
+			yield* callTool(web.issuer, admin, 'answer_access_request', {allow: false, login: 'drifter'})
+			assert.deepStrictEqual([yield* status(stranger), yield* status(drifter)], [200, 401])
+			assert.deepStrictEqual(yield* people(web.issuer, admin), ['octocat:Admin', 'stranger:Member'])
+			const member = yield* agentToken(web.issuer, stranger)
+			assert.isTrue(
+				String.includes('Only an admin can manage people')(
+					yield* text(yield* callTool(web.issuer, member, 'remove_person', {login: 'octocat'}))
+				)
+			)
+			assert.isTrue(
+				String.includes('cannot be removed here')(
+					yield* text(yield* callTool(web.issuer, admin, 'remove_person', {login: 'octocat'}))
+				)
+			)
+			yield* callTool(web.issuer, admin, 'remove_person', {login: 'stranger'})
+			assert.strictEqual(yield* status(stranger), 401)
+			assert.strictEqual(
+				(yield* send(web.issuer, '/auth/verify?resource=https://auth.mp281x.xyz/mcp', {
+					headers: {authorization: `Bearer ${member}`}
+				})).status,
+				401
+			)
+			assert.deepStrictEqual(yield* people(web.issuer, admin), ['octocat:Admin'])
 		})
 	)
 })

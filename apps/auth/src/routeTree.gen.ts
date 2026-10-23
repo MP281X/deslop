@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as homeRouteRouteImport } from './routes/(home)/route'
 import { Route as homeIndexRouteImport } from './routes/(home)/index'
+import { Route as homePeopleRouteImport } from './routes/(home)/people'
 
 const homeRouteRoute = homeRouteRouteImport.update({
   id: '/(home)',
@@ -21,24 +22,32 @@ const homeIndexRoute = homeIndexRouteImport.update({
   path: '/',
   getParentRoute: () => homeRouteRoute,
 } as any)
+const homePeopleRoute = homePeopleRouteImport.update({
+  id: '/people',
+  path: '/people',
+  getParentRoute: () => homeRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
+  '/people': typeof homePeopleRoute
   '/': typeof homeIndexRoute
 }
 export interface FileRoutesByTo {
+  '/people': typeof homePeopleRoute
   '/': typeof homeIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/(home)': typeof homeRouteRouteWithChildren
+  '/(home)/people': typeof homePeopleRoute
   '/(home)/': typeof homeIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/people' | '/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/(home)' | '/(home)/'
+  to: '/people' | '/'
+  id: '__root__' | '/(home)' | '/(home)/people' | '/(home)/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -61,14 +70,23 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof homeIndexRouteImport
       parentRoute: typeof homeRouteRoute
     }
+    '/(home)/people': {
+      id: '/(home)/people'
+      path: '/people'
+      fullPath: '/people'
+      preLoaderRoute: typeof homePeopleRouteImport
+      parentRoute: typeof homeRouteRoute
+    }
   }
 }
 
 interface homeRouteRouteChildren {
+  homePeopleRoute: typeof homePeopleRoute
   homeIndexRoute: typeof homeIndexRoute
 }
 
 const homeRouteRouteChildren: homeRouteRouteChildren = {
+  homePeopleRoute: homePeopleRoute,
   homeIndexRoute: homeIndexRoute,
 }
 

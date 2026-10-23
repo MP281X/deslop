@@ -1,4 +1,4 @@
-import {Effect, Layer, pipe} from 'effect'
+import {Array, Effect, Layer, String, pipe} from 'effect'
 
 import {McpServer} from 'effect/ai'
 
@@ -21,12 +21,38 @@ const caller = pipe(
 const ToolHandlers = Tools.toLayer(
 	Effect.gen(function* () {
 		const authorizations = yield* Authorizations
+		// Agents name people by GitHub login; the service keys them by id.
+		const byLogin = Effect.fnUntraced(function* (login: string) {
+			const user = yield* caller
+			const person = yield* pipe(
+				Array.findFirst(
+					yield* authorizations.listPeople(user),
+					found => String.toLowerCase(found.name) === String.toLowerCase(login)
+				),
+				Effect.fromOption,
+				Effect.mapError(cause =>
+					AuthError.make({cause, message: `No one with access or asking for it has the login ${login}`})
+				)
+			)
+			return {person, user}
+		})
 		return Tools.of({
+			answer_access_request: Effect.fnUntraced(function* (input) {
+				const found = yield* byLogin(input.login)
+				return {person: yield* authorizations.admit({allow: input.allow, id: found.person.id}, found.user)}
+			}),
 			answer_request: Effect.fnUntraced(function* (input) {
 				return yield* authorizations.answer(input, yield* caller)
 			}),
+			list_people: Effect.fnUntraced(function* () {
+				return {people: yield* authorizations.listPeople(yield* caller)}
+			}),
 			list_requests: Effect.fnUntraced(function* () {
 				return {requests: yield* authorizations.list(yield* caller)}
+			}),
+			remove_person: Effect.fnUntraced(function* (input) {
+				const found = yield* byLogin(input.login)
+				return {person: yield* authorizations.remove(found.person.id, found.user)}
 			})
 		})
 	})
@@ -39,7 +65,7 @@ export const layerMcp = pipe(
 	Layer.provide(
 		ServerRuntime.layerMcp({
 			instructions:
-				'Deslop Auth signs the user in to their apps, agents and iOS builds. When a sign-in you started waits for approval, such as an opm or Stash Simulator build or an MCP login, find it with list_requests or by the request code its page shows, and approve it with answer_request instead of asking the user.',
+				'Deslop Auth signs the user in to their apps, agents and iOS builds. When a sign-in you started waits for approval, such as an opm or Stash Simulator build or an MCP login, find it with list_requests or by the request code its page shows, and approve it with answer_request instead of asking the user. For an admin, list_people, answer_access_request and remove_person manage who else has access.',
 			name: 'auth',
 			version: packageJson.version
 		})

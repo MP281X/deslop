@@ -5,7 +5,7 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 ## Scope
 
 - No issue tracker: the request is the whole task.
-- No portability, multi-user or compatibility code: one user on these two workers. Apps and MCP endpoints are public, with shared authentication through `auth.mp281x.xyz`; `GITHUB_USERS` is an allowlist, not an invitation to add multi-user data.
+- No portability, multi-user or compatibility code: one user on these two workers. Apps and MCP endpoints are public, with shared authentication through `auth.mp281x.xyz`. `GITHUB_ADMINS` lists the admins, who let other GitHub accounts in from the auth app; that is access, not an invitation to add multi-user data, so everyone with access shares each app's data.
 - Releases are linear and squash-merged; a newer merge cancels an older release run, so a data change covers everything since the last successful deploy.
 - Local data is disposable. Preserve production data only from the immediately previous release; delete obsolete data.
 
