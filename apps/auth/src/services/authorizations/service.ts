@@ -13,6 +13,7 @@ import {
 	Match,
 	Number,
 	Option,
+	Order,
 	Path,
 	PubSub,
 	Redacted,
@@ -42,8 +43,9 @@ import {AuthError, User} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 import {AUTH_URL} from '@deslop/runtime/auth/utils'
 
-import type {PendingAuthorization} from '#services/authorizations/schema.ts'
+import type {AdmitParams, PendingAuthorization, Role} from '#services/authorizations/schema.ts'
 import {
+	Account,
 	AuthorizationRow,
 	AuthorizationStatus,
 	AuthorizeParams,
@@ -51,6 +53,8 @@ import {
 	ConsentParams,
 	GitHubToken,
 	GitHubUser,
+	MemberRow,
+	Person,
 	Registration,
 	RevokeParams,
 	SignInParams,
@@ -64,6 +68,7 @@ const SESSION_COOKIE = '__Secure-session'
 const LOGIN_COOKIE = '__Host-login'
 const REQUEST_COOKIE = '__Host-request-'
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
+const ROLE_ORDER = {Admin: 0, Member: 2, Waiting: 1} satisfies Record<Role, number>
 
 function rejected(message: string) {
 	return Effect.mapError(cause => {
@@ -114,9 +119,14 @@ function allowedRedirect(redirect: string) {
 export class Authorizations extends Context.Service<
 	Authorizations,
 	{
+		readonly account: (headers: Headers.Headers) => Stream.Stream<Account, AuthError>
+		readonly admit: (params: AdmitParams, user: User) => Effect.Effect<Person, AuthError>
 		readonly answer: (params: ConsentParams, user: User) => Effect.Effect<{clientName: string}, AuthError>
 		readonly list: (user: User) => Effect.Effect<PendingAuthorization[], AuthError>
+		readonly listPeople: (user: User) => Effect.Effect<Person[], AuthError>
 		readonly pending: (headers: Headers.Headers) => Stream.Stream<PendingAuthorization[], AuthError>
+		readonly people: (user: User) => Stream.Stream<Person[], AuthError>
+		readonly remove: (id: string, user: User) => Effect.Effect<Person, AuthError>
 		readonly wait: (id: string, headers: Headers.Headers) => Stream.Stream<AuthorizationStatus, AuthError>
 	}
 >()('@deslop/auth/services/authorizations/service/Authorizations') {
@@ -131,11 +141,12 @@ export class Authorizations extends Context.Service<
 				const url = yield* pipe(Config.String('AUTH_URL'), Config.withDefault(AUTH_URL))
 				const issuer = `${url}/api/auth`
 				const provider = yield* Config.all({
+					admins: Config.Array(Schema.String, 'GITHUB_ADMINS'),
 					clientId: Config.String('GITHUB_CLIENT_ID'),
-					secret: Config.Redacted('GITHUB_CLIENT_SECRET'),
-					users: Config.Array(Schema.String, 'GITHUB_USERS')
+					secret: Config.Redacted('GITHUB_CLIENT_SECRET')
 				})
 				yield* sql`CREATE TABLE IF NOT EXISTS auth_state (hash TEXT PRIMARY KEY, payload TEXT NOT NULL, expires_at INTEGER NOT NULL)`
+				yield* sql`CREATE TABLE IF NOT EXISTS members (id TEXT PRIMARY KEY, name TEXT NOT NULL, full_name TEXT NOT NULL, status TEXT NOT NULL, since INTEGER NOT NULL)`
 				const hash = Effect.fnUntraced(function* (value: string) {
 					return Base64Url.encode(yield* random.digest('SHA-256', new TextEncoder().encode(value)))
 				})
@@ -162,17 +173,67 @@ export class Authorizations extends Context.Service<
 				const remove = Effect.fnUntraced(function* (token: string) {
 					yield* sql`DELETE FROM auth_state WHERE hash = ${yield* hash(token)}`
 				})
+				function isAdmin(id: string) {
+					return Array.contains(provider.admins, String.replace('github:', '')(id))
+				}
+				const members = pipe(
+					sql`SELECT id, name, full_name AS "fullName", status, since FROM members ORDER BY since DESC, rowid DESC`,
+					Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(MemberRow)))
+				)
+				const member = Effect.fnUntraced(function* (id: string) {
+					return yield* pipe(
+						sql`SELECT id, name, full_name AS "fullName", status, since FROM members WHERE id = ${id}`,
+						Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(MemberRow))),
+						Effect.map(Array.head)
+					)
+				})
+				function personOf(row: MemberRow) {
+					return Person.make({
+						...pipe(row, Struct.pick(['id', 'name', 'since'])),
+						...Boolean.match(String.isEmpty(row.fullName), {
+							onFalse: () => ({fullName: row.fullName}),
+							onTrue: () => ({})
+						}),
+						role: Boolean.match(isAdmin(row.id), {
+							onFalse: () =>
+								Boolean.match(row.status === 'Allowed', {
+									onFalse: () => 'Waiting' as const,
+									onTrue: () => 'Member' as const
+								}),
+							onTrue: () => 'Admin' as const
+						})
+					})
+				}
+				const roleOf = Effect.fnUntraced(function* (user: User) {
+					if (isAdmin(user.id)) return 'Admin' as const
+					return Option.match(yield* member(user.id), {
+						onNone: () => 'Waiting' as const,
+						onSome: row => personOf(row).role
+					})
+				}, rejected('Cannot read the account'))
 				const allowed = Effect.fnUntraced(function* (user: User) {
-					if (!Array.contains(provider.users, String.replace('github:', '')(user.id))) {
-						return yield* AuthError.make({error: 'access_denied', message: 'This GitHub account is not allowed'})
+					if ((yield* roleOf(user)) === 'Waiting') {
+						return yield* AuthError.make({
+							error: 'access_denied',
+							message: 'An admin has not allowed this GitHub account yet'
+						})
 					}
 					return user
 				})
-				const session = Effect.fnUntraced(function* (headers: Headers.Headers) {
+				const admin = Effect.fnUntraced(function* (user: User) {
+					if (!isAdmin(user.id)) {
+						return yield* AuthError.make({error: 'access_denied', message: 'Only an admin can manage people'})
+					}
+				})
+				// Signed in with GitHub, allowed or not: the auth app shows a waiting account its state.
+				const signedIn = Effect.fnUntraced(function* (headers: Headers.Headers) {
 					const stored = yield* load(Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE] ?? '')
 					if (stored._tag !== 'Session') return yield* AuthError.make({message: 'Sign in first'})
-					return yield* allowed(stored.user)
+					return stored.user
 				}, rejected('Sign in first'))
+				const session = Effect.fnUntraced(function* (headers: Headers.Headers) {
+					return yield* allowed(yield* signedIn(headers))
+				})
 				const access = Effect.fn('Auth.access')(function* (headers: Headers.Headers, resource: string) {
 					const authorization = headers['authorization'] ?? ''
 					if (!String.startsWith('Bearer ')(authorization)) return yield* AuthError.make({message: 'Sign in first'})
@@ -312,6 +373,82 @@ export class Authorizations extends Context.Service<
 					yield* decide({accept: params.accept, request: request.id}, user)
 					return {clientName: request.clientName}
 				}, rejected('Cannot answer the authorization request'))
+				// Every GitHub sign-in is recorded with its session in one transaction: an admin as allowed, anyone else as asking for access until an admin answers.
+				const register = Effect.fnUntraced(function* (github: GitHubUser) {
+					const user = {id: `github:${github.id}`, name: github.login}
+					const status = Boolean.match(isAdmin(user.id), {
+						onFalse: () => 'Waiting' as const,
+						onTrue: () => 'Allowed' as const
+					})
+					const token = yield* sql.withTransaction(
+						Effect.andThen(
+							sql`INSERT INTO members (id, name, full_name, status, since) VALUES (${user.id}, ${user.name}, ${github.name ?? ''}, ${status}, ${yield* Clock.currentTimeMillis}) ON CONFLICT(id) DO UPDATE SET name = excluded.name, full_name = excluded.full_name`,
+							save({_tag: 'Session', user}, 365 * 86400)
+						)
+					)
+					yield* PubSub.publish(changes, true)
+					return token
+				})
+				const account = Effect.fnUntraced(function* (headers: Headers.Headers) {
+					const user = yield* signedIn(headers)
+					return Account.make({...user, role: yield* roleOf(user)})
+				})
+				// Admins first, then the accounts asking for access, then members, each newest first.
+				const listPeople = Effect.fn('Authorizations.listPeople')(function* (user: User) {
+					yield* admin(user)
+					const known = Array.map(yield* members, personOf)
+					return Array.sort(
+						[
+							...Array.map(
+								Array.filter(provider.admins, id => !Array.some(known, person => person.id === `github:${id}`)),
+								id => Person.make({id: `github:${id}`, name: `GitHub ${id}`, role: 'Admin', since: 0})
+							),
+							...known
+						],
+						Order.mapInput(Number.Order, (person: Person) => ROLE_ORDER[person.role])
+					)
+				}, rejected('Cannot read people'))
+				// Removing an account signs it out everywhere: its session, its app tokens and any sign-in it approved but did not deliver.
+				const forget = Effect.fnUntraced(function* (id: string) {
+					yield* sql`DELETE FROM members WHERE id = ${id}`
+					yield* sql`DELETE FROM auth_state WHERE json_extract(payload, '$.user.id') = ${id} OR json_extract(payload, '$.decision.user.id') = ${id}`
+				})
+				// Each answer reads and changes the account in one transaction, so two answers to the same account cannot both apply.
+				const admit = Effect.fn('Authorizations.admit')(function* (params: AdmitParams, user: User) {
+					yield* admin(user)
+					const person = yield* sql.withTransaction(
+						Effect.gen(function* () {
+							const found = personOf(yield* Effect.fromOption(yield* member(params.id)))
+							if (found.role !== 'Waiting') {
+								return yield* AuthError.make({message: 'This account is not asking for access'})
+							}
+							if (!params.allow) {
+								yield* forget(params.id)
+								return found
+							}
+							const now = yield* Clock.currentTimeMillis
+							yield* sql`UPDATE members SET status = 'Allowed', since = ${now} WHERE id = ${params.id}`
+							return Person.make({...found, role: 'Member', since: now})
+						})
+					)
+					yield* PubSub.publish(changes, true)
+					return person
+				}, rejected('Cannot answer the access request'))
+				const removePerson = Effect.fn('Authorizations.remove')(function* (id: string, user: User) {
+					yield* admin(user)
+					if (isAdmin(id)) {
+						return yield* AuthError.make({message: 'Admins come from GITHUB_ADMINS, so they cannot be removed here'})
+					}
+					const person = yield* sql.withTransaction(
+						Effect.gen(function* () {
+							const found = personOf(yield* Effect.fromOption(yield* member(id)))
+							yield* forget(id)
+							return found
+						})
+					)
+					yield* PubSub.publish(changes, true)
+					return person
+				}, rejected('Cannot remove this account'))
 				const receive = Effect.fnUntraced(function* (id: string, headers: Headers.Headers) {
 					return yield* sql.withTransaction(
 						Effect.flatMap(receiver(id, headers), result =>
@@ -674,7 +811,7 @@ export class Authorizations extends Context.Service<
 								request => client.execute(request),
 								Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubUser))
 							)
-							const user = yield* allowed({id: `github:${github.id}`, name: github.login})
+							const signedInToken = yield* register(github)
 							return HttpServerResponse.setCookieUnsafe(
 								HttpServerResponse.expireCookieUnsafe(
 									HttpServerResponse.redirect(
@@ -687,7 +824,7 @@ export class Authorizations extends Context.Service<
 									COOKIE
 								),
 								SESSION_COOKIE,
-								yield* save({_tag: 'Session', user}, 365 * 86400),
+								signedInToken,
 								{
 									...COOKIE,
 									domain: pipe(new URL(url).hostname, String.split('.'), Array.drop(1), Array.join('.')),
@@ -735,12 +872,17 @@ export class Authorizations extends Context.Service<
 					Context.add(
 						Authorizations,
 						Authorizations.of({
+							account: headers => watch(account(headers), () => Infinity),
+							admit,
 							answer,
 							list,
+							listPeople,
 							pending: headers =>
 								watch(pending(headers), requests =>
 									Array.reduce(requests, Infinity, (expiresAt, request) => Number.min(expiresAt, request.expiresAt))
 								),
+							people: user => watch(listPeople(user), () => Infinity),
+							remove: removePerson,
 							wait: (id, headers) =>
 								pipe(
 									watch(receive(id, headers), status =>

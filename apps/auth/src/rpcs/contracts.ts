@@ -2,18 +2,30 @@ import {Schema} from 'effect'
 
 import {Rpc, RpcGroup} from 'effect/rpc'
 
-import {AuthError, User} from '@deslop/runtime/auth/schema'
+import {AuthError} from '@deslop/runtime/auth/schema'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 
-import {AuthorizationStatus, PendingAuthorization, RequestParams} from '#services/authorizations/schema.ts'
+import {
+	Account,
+	AdmitParams,
+	AuthorizationStatus,
+	PendingAuthorization,
+	Person,
+	PersonParams,
+	RequestParams
+} from '#services/authorizations/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
-	Rpc.make('auth.me', {success: User}),
-	Rpc.make('auth.pending', {error: AuthError, stream: true, success: Schema.Array(PendingAuthorization)})
+	Rpc.make('auth.pending', {error: AuthError, stream: true, success: Schema.Array(PendingAuthorization)}),
+	Rpc.make('auth.people', {error: AuthError, stream: true, success: Schema.Array(Person)}),
+	Rpc.make('auth.admit', {error: AuthError, payload: AdmitParams, success: Person}),
+	Rpc.make('auth.remove', {error: AuthError, payload: PersonParams, success: Person})
 )
 	.middleware(RpcAuth)
 	.merge(
+		// A GitHub account an admin has not allowed yet still reads its own state, so these two need no allowed session.
 		RpcGroup.make(
+			Rpc.make('auth.account', {error: AuthError, stream: true, success: Account}),
 			Rpc.make('auth.wait', {error: AuthError, payload: RequestParams, stream: true, success: AuthorizationStatus})
 		)
 	) {}
