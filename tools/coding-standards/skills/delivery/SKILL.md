@@ -26,15 +26,15 @@ The reader reviews the diff without having been in the conversation, so the body
 - **Why** the change exists, first and in plain words.
 - **What changes** for users or callers.
 - **Decisions** a reviewer must agree with: a rejected alternative, a new boundary, an invariant across files, where to start reading.
-- **Proof**: before and after, per [Captures](#captures).
+- **Proof** per [Captures](#captures).
 - **Risk**: a migration, a required step, what could break.
 
-**Short.** A reviewer reads it in under a minute: a why of one or two sentences, one line per bullet, under 150 words besides captures and tables. Use only the parts this change needs, and cut what a reviewer would not miss. Leave to the diff what it already shows: file lists, moves, renames, symbol tours. Describe the head as it is, never the history of the work; keep verified behavior apart from expectations; follow the repository template. Check a text body through the host CLI, a rendered embed in a browser.
+**Short.** A reviewer reads it in under a minute: a why of one or two sentences, one line per bullet, under 150 words besides captures and tables. Use only the parts this change needs; explain neither the diff nor what the media shows, even implicitly. Describe the head as it is, never the work history; keep verified behavior apart from expectations; follow the repository template. Check a text body through the host CLI, a rendered embed in a browser.
 
 A small fix:
 
 ```md
-Tagged notes looked missing from search: after the schema rename, search matched only titles. It matches tags too now.
+The schema rename left search querying only titles.
 
 | Before                                          | After                                              |
 | ----------------------------------------------- | -------------------------------------------------- |
@@ -54,9 +54,9 @@ Every auth change touched both a shared package and its server. Now the auth app
 
 ## Captures
 
-- **Before first.** Reproduce the bug or capture the current behavior through the same interface before changing code; a new capability's before is the state without it. The PR then shows before and after from the same input and data, side by side, without checking out the target later.
+- **Comparison.** Reproduce a bug or regression before changing code. Capture a baseline first when the claim depends on a difference, then compare the same input and data. Before/after is evidence for that claim, not a default presentation for every change.
 - **End to end.** A behavior change, backend, API, CLI and infrastructure included, shows its real input through its observable result in the consuming interface, terminal, requests or traces: a video for a sequence, screenshots for states, changed failure paths when they matter. A green suite, a description or a mock of the intended behavior is not proof.
-- **Capture.** Representative data at the supported viewport and theme; native apps from a simulator. Wait for a condition, not a delay. Inspect each capture, embed it under its claim and check the published PR renders it; on GitHub an uploaded video URL stands alone in its paragraph. Command output supports feasible captures, never replaces them; when nothing can run, state the limit and show the strongest real evidence.
+- **Capture.** Representative data at the supported viewport and theme; native apps from a simulator. Wait for a condition, not a delay. Inspect states and transitions, not just the last frame; embed the deciding captures under their claim and check the published PR renders them. On GitHub a video URL stands alone in its paragraph. Command output supports feasible captures, never replaces them; when nothing can run, state the limit and show the strongest real evidence.
 
 ## Commands
 
@@ -73,7 +73,7 @@ glab api "projects/<id>/pipelines/<pipeline>/jobs?scope[]=failed" | jq -r '.[] |
 
 ```bash
 # GitHub stacks
-gh stack init --adopt <bottom> <next> <top>   # existing slice branches, bottom first
+gh stack init <bottom> <next> <top>           # existing branches are adopted, bottom first
 gh stack submit --auto                         # push, open drafts on their parents, link the stack
 gh stack rebase --upstack                      # after amending a slice, restack the branches above it
 gh stack rebase                                # after a merge or a target change: pull and restack onto the default branch

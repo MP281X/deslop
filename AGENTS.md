@@ -12,7 +12,7 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 ## Commands
 
 - **Verify** is `vp run -w fix && vp run -w test`. `fix` is the whole static gate (lint fixes, types, format, Fallow), which CI runs without writes as `check`; test runs after it because rule tests create fixtures that a concurrent type scan reads.
-- **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. A new mobile app then takes the EAS project id from `npx eas-cli init` in `app.config.ts`, and after its first store build `submit.production.ios.ascAppId` in `eas.json`.
+- **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. Before the first mobile push, follow environment's Deslop reference, **Publish an iOS app**.
 - **Agent configuration.** `.claude/agents/pair.md` and `.codex/instructions.md` are identical from `# Work` down. Team skills live in `tools/coding-standards/skills/`, and `node tools/coding-standards/src/install.ts` refreshes their copies in `.claude/skills` and `.codex/skills`. The personal skills in `.claude/skills` (orchestrator, environment, patterns, retrospective) load globally through the workers' links.
 
 ## Patterns

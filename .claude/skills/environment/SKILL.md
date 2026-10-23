@@ -1,6 +1,6 @@
 ---
 name: environment
-description: Use before the first command, a resource-heavy local run, a preview or HTML page, a proof video, external accounts, another worker, agent configuration links, deployment, thread history or machine maintenance.
+description: Use before the first command, a resource-heavy local run, a preview or HTML page, a proof video, external accounts, iOS publishing or TestFlight, another worker, agent configuration links, deployment, thread history or machine maintenance.
 ---
 
 # Environment
@@ -21,12 +21,12 @@ Two headless Debian workers in one tailnet, same user, paths and agent configura
 - **Services** run as temporary containers, not host installs.
 - **Threads on the other worker.** T3 tools reach only this worker's threads. To start work in a thread on the other worker, give the user the message to paste there; never reach its T3 server through its API, auth tokens or pairing codes.
 
-| Reference                                | For                                                                   |
-| ---------------------------------------- | --------------------------------------------------------------------- |
-| [Dual](references/dual.md)               | Turbo cache, accounts, preview, Jira, Google, VPN, tracing            |
-| [Deslop](references/deslop.md)           | Apps on dev, Stash data, simulator build, publishing, tracing, deploy |
-| [Maintenance](references/maintenance.md) | Machines, setup, agent links, T3 history and settings, updates, clean |
-| [Video](references/video.md)             | Proof videos: camera targets, HyperFrames composition and look        |
+| Reference                                | For                                                                         |
+| ---------------------------------------- | --------------------------------------------------------------------------- |
+| [Dual](references/dual.md)               | Turbo cache, accounts, preview, Jira, Google, VPN, tracing                  |
+| [Deslop](references/deslop.md)           | Apps on dev, Simulator, npm and iOS publishing, TestFlight, tracing, deploy |
+| [Maintenance](references/maintenance.md) | Machines, setup, agent links, T3 history and settings, updates, clean       |
+| [Video](references/video.md)             | Proof videos: camera targets, HyperFrames composition and look              |
 
 ## Resource budget
 
