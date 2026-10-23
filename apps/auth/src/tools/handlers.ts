@@ -65,7 +65,7 @@ export const layerMcp = pipe(
 	Layer.provide(
 		ServerRuntime.layerMcp({
 			instructions:
-				'Deslop Auth signs the user in to their apps, agents and iOS builds. When a sign-in you started waits for approval, such as an opm or Stash Simulator build or an MCP login, find it with list_requests or by the request code its page shows, and approve it with answer_request instead of asking the user. For an admin, list_people, answer_access_request and remove_person manage who else has access.',
+				'Deslop Auth signs the user in to their apps, agents and iOS builds. When a sign-in you started waits for approval, such as an opm or Stash Simulator build or an MCP login, read the code its page shows, such as WDJB-MJHT, and approve it with answer_request instead of asking the user. For an admin, list_people, answer_access_request and remove_person manage who else has access.',
 			name: 'auth',
 			version: packageJson.version
 		})

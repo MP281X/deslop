@@ -69,6 +69,8 @@ const LOGIN_COOKIE = '__Host-login'
 const REQUEST_COOKIE = '__Host-request-'
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 const ROLE_ORDER = {Admin: 0, Member: 2, Waiting: 1} satisfies Record<Role, number>
+// A request's id is the code its sign-in page shows, in RFC 8628's user-code letters: no vowels and no letters that read alike.
+const CODE_LETTERS = 'BCDFGHJKLMNPQRSTVWXZ'
 
 function rejected(message: string) {
 	return Effect.mapError(cause => {
@@ -147,6 +149,8 @@ export class Authorizations extends Context.Service<
 				})
 				yield* sql`CREATE TABLE IF NOT EXISTS auth_state (hash TEXT PRIMARY KEY, payload TEXT NOT NULL, expires_at INTEGER NOT NULL)`
 				yield* sql`CREATE TABLE IF NOT EXISTS members (id TEXT PRIMARY KEY, name TEXT NOT NULL, full_name TEXT NOT NULL, status TEXT NOT NULL, since INTEGER NOT NULL)`
+				// A sign-in still waiting under the previous release's id has no code to type, so its page asks to start again.
+				yield* sql`DELETE FROM auth_state WHERE json_extract(payload, '$._tag') = 'Request' AND json_extract(payload, '$.id') GLOB '*[^A-Z]*'`
 				const hash = Effect.fnUntraced(function* (value: string) {
 					return Base64Url.encode(yield* random.digest('SHA-256', new TextEncoder().encode(value)))
 				})
@@ -204,6 +208,26 @@ export class Authorizations extends Context.Service<
 						})
 					})
 				}
+				// An admin who has not signed in since GITHUB_ADMINS named them still shows their GitHub profile.
+				yield* pipe(
+					Effect.forEach(
+						provider.admins,
+						Effect.fnUntraced(function* (id) {
+							if (Option.isSome(yield* member(`github:${id}`))) return
+							const github = yield* pipe(
+								HttpClientRequest.get(`https://api.github.com/user/${id}`),
+								HttpClientRequest.setHeaders({accept: 'application/vnd.github+json', 'user-agent': '@deslop/auth'}),
+								request => client.execute(request),
+								Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubUser))
+							)
+							yield* sql`INSERT INTO members (id, name, full_name, status, since) VALUES (${`github:${github.id}`}, ${github.login}, ${github.name ?? ''}, 'Allowed', ${yield* Clock.currentTimeMillis}) ON CONFLICT(id) DO NOTHING`
+							yield* PubSub.publish(changes, true)
+						}),
+						{concurrency: 1, discard: true}
+					),
+					Effect.ignore({log: 'Warn', message: 'The admins’ GitHub profiles could not be read'}),
+					Effect.forkScoped
+				)
 				const roleOf = Effect.fnUntraced(function* (user: User) {
 					if (isAdmin(user.id)) return 'Admin' as const
 					return Option.match(yield* member(user.id), {
@@ -353,18 +377,12 @@ export class Authorizations extends Context.Service<
 					yield* allowed(user)
 					return yield* pendingRequests
 				}, rejected('Cannot read pending authorizations'))
-				// The request is the code a sign-in page shows, the id's first eight characters with a dash after four, or the whole id. Ids hold dashes too.
+				// The code as its sign-in page shows it, in any case and with or without the dash.
 				const answer = Effect.fn('Authorizations.answer')(function* (params: ConsentParams, user: User) {
 					yield* allowed(user)
-					const shown = String.trim(params.request)
-					const prefix = Boolean.match(shown.length === 9 && String.slice(4, 5)(shown) === '-', {
-						onFalse: () => shown,
-						onTrue: () => `${String.slice(0, 4)(shown)}${String.slice(5)(shown)}`
-					})
+					const code = String.toUpperCase(String.replaceAll(/[^a-z]/giu, '')(params.request))
 					const request = yield* pipe(
-						Array.filter(yield* pendingRequests, found => String.startsWith(prefix)(found.id)),
-						Option.liftPredicate(matches => prefix.length >= 8 && matches.length === 1),
-						Option.flatMap(Array.head),
+						Array.findFirst(yield* pendingRequests, found => found.id === code),
 						Effect.fromOption,
 						Effect.mapError(cause =>
 							AuthError.make({cause, message: 'No waiting sign-in has this code; start it again'})
@@ -391,8 +409,12 @@ export class Authorizations extends Context.Service<
 				})
 				const account = Effect.fnUntraced(function* (headers: Headers.Headers) {
 					const user = yield* signedIn(headers)
-					return Account.make({...user, role: yield* roleOf(user)})
-				})
+					const role = yield* roleOf(user)
+					return Option.match(yield* member(user.id), {
+						onNone: () => Account.make({...user, role}),
+						onSome: row => Account.make(pipe(personOf(row), Struct.omit(['since'])))
+					})
+				}, rejected('Cannot read the account'))
 				// Admins first, then the accounts asking for access, then members, each newest first.
 				const listPeople = Effect.fn('Authorizations.listPeople')(function* (user: User) {
 					yield* admin(user)
@@ -594,7 +616,20 @@ export class Authorizations extends Context.Service<
 										return yield* AuthError.make({error: 'invalid_scope', message: 'Only Deslop access is supported'})
 									}
 									const now = yield* Clock.currentTimeMillis
-									const id = Base64Url.encode(yield* random.randomBytes(16))
+									const id = Array.join(
+										Array.map(Array.fromIterable(yield* random.randomBytes(8)), byte =>
+											pipe(
+												CODE_LETTERS,
+												String.charAt(byte % CODE_LETTERS.length),
+												Option.getOrElse(() => '')
+											)
+										),
+										''
+									)
+									// Two live sign-ins never share a code; one in about 10^10 draws repeats one, and its app simply starts again.
+									if (Option.isSome(yield* requestRow(id))) {
+										return yield* AuthError.make({message: 'Start the sign-in again'})
+									}
 									const token = yield* save(
 										{
 											_tag: 'Request',

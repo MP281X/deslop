@@ -10,7 +10,7 @@ import {Suspense} from 'react'
 import {Loading} from '@deslop/components-web/fallbacks'
 import {Button} from '@deslop/components-web/ui/button'
 
-import {Avatar} from '#lib/components.tsx'
+import {Avatar, GitHubIcon} from '#lib/components.tsx'
 import {
 	accountAtom,
 	applicationName,
@@ -37,15 +37,6 @@ function Logo() {
 				className="fill-foreground"
 				d="M13 0h1v1h-1zM3 1h1v1h-1zM7 1h1v1h-1zM12 1h1v1h-1zM6 2h1v1h-1zM12 2h1v1h-1zM5 3h1v1h-1zM11 3h1v1h-1zM4 4h1v1h-1zM11 4h1v1h-1zM10 5h1v1h-1zM10 6h1v1h-1zM9 7h1v1h-1zM9 8h1v1h-1zM13 9h1v1h-1zM12 10h1v1h-1zM11 11h1v1h-1zM10 12h1v1h-1zM9 13h1v1h-1zM8 14h1v1h-1zM12 14h1v1h-1zM7 15h1v1h-1zM11 15h1v1h-1zM6 16h1v1h-1zM10 16h1v1h-1zM5 17h1v1h-1zM13 17h1v1h-1z"
 			/>
-		</svg>
-	)
-}
-
-// Lucide has no brand icons; this is GitHub's mark from its Octicons.
-function GitHubIcon() {
-	return (
-		<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-			<path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
 		</svg>
 	)
 }
@@ -78,10 +69,13 @@ function Waiting(props: {id: string}) {
 				</p>
 			),
 			Waiting: value => (
-				<section className="bg-card flex flex-col gap-2 p-4">
-					<h2 className="text-sm font-medium">Waiting for approval · {requestCode(value.request.id)}</h2>
+				<section className="bg-card flex flex-col items-center gap-2 p-6 text-center">
+					<h2 className="text-muted-foreground text-xs tracking-wider uppercase">
+						Sign in to {applicationName(value.request)}
+					</h2>
+					<p className="text-3xl font-semibold tracking-widest tabular-nums">{requestCode(value.request.id)}</p>
 					<p className="text-muted-foreground text-xs">
-						Approve {applicationName(value.request)} at {location.host} in your signed-in browser. You do not need to
+						Enter this code at {location.host} where you are signed in, or give it to your agent. You do not need to
 						sign in here.
 					</p>
 				</section>
@@ -162,7 +156,7 @@ function Shell() {
 					onSome: signed => (
 						<>
 							<Avatar id={signed.id} name={signed.name} />
-							<span className="sr-only">{signed.name}</span>
+							<span className="max-w-32 truncate text-sm">{signed.fullName ?? signed.name}</span>
 							<Button
 								variant="ghost"
 								size="icon-sm"

@@ -1,6 +1,6 @@
 import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Option} from 'effect'
+import {Array, Option} from 'effect'
 
 import {Navigate, createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
@@ -32,12 +32,9 @@ function AskingCard(props: {person: Person}) {
 			<div className="flex items-center gap-3">
 				<Avatar id={props.person.id} name={props.person.name} />
 				<div className="flex min-w-0 flex-col">
-					<span className="truncate text-sm">{props.person.name}</span>
+					<span className="truncate text-sm">{props.person.fullName ?? props.person.name}</span>
 					<span className="text-muted-foreground truncate text-xs">
-						{Array.join(
-							Array.filter([props.person.fullName ?? '', `asked ${dayLabel(props.person.since)}`], part => part !== ''),
-							' · '
-						)}
+						@{props.person.name} · asked {dayLabel(props.person.since)}
 					</span>
 				</div>
 			</div>
@@ -69,14 +66,12 @@ function MemberRow(props: {person: Person}) {
 			<Avatar id={props.person.id} name={props.person.name} />
 			<div className="flex min-w-0 grow flex-col">
 				<span className="flex items-center gap-1.5 text-sm">
-					<span className="truncate">{props.person.name}</span>
+					<span className="truncate">{props.person.fullName ?? props.person.name}</span>
 					{props.person.role === 'Admin' && <span className="bg-secondary text-primary px-1.5 text-xs">admin</span>}
 				</span>
-				<span className="text-muted-foreground text-xs">
-					{Boolean.match(props.person.role === 'Admin', {
-						onFalse: () => `since ${dayLabel(props.person.since)}`,
-						onTrue: () => 'from GITHUB_ADMINS'
-					})}
+				<span className="text-muted-foreground truncate text-xs">
+					@{props.person.name}
+					{props.person.role === 'Member' && ` · since ${dayLabel(props.person.since)}`}
 				</span>
 			</div>
 			{props.person.role === 'Member' && (
