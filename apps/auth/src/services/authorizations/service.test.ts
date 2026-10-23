@@ -822,9 +822,9 @@ it.layer(NodeServices.layer)(test => {
 			)
 			yield* Effect.forEach(
 				[
-					{accept: true, request: `${String.slice(0, 4)(simulator.id)}-${String.slice(4, 8)(simulator.id)}`},
+					{accept: true, request: `${String.slice(0, 4)(simulator.id)}-${String.slice(4)(simulator.id)}`},
 					{accept: true, request: desktop.id},
-					{accept: false, request: `${String.slice(0, 4)(release.id)}-${String.slice(4, 8)(release.id)}`}
+					{accept: false, request: String.toLowerCase(release.id)}
 				],
 				input => callTool(web.issuer, token, 'answer_request', input),
 				{concurrency: 1, discard: true}

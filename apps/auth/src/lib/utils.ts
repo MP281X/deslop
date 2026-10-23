@@ -1,8 +1,7 @@
-import {Array, DateTime, Effect, Layer, Match, Option, Schedule, Stream, String, pipe} from 'effect'
+import {Array, DateTime, Effect, Match, Option, Schedule, Stream, String, pipe} from 'effect'
 
 import {FetchHttpClient, HttpClient, HttpClientRequest} from 'effect/http'
 import {Atom, AtomRpc} from 'effect/reactivity'
-import * as Rpc from 'effect/rpc'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
 import * as WebRuntime from '@deslop/runtime/web'
@@ -12,20 +11,9 @@ import type {Account, AdmitParams, PendingAuthorization} from '#services/authori
 
 const authRuntime = Atom.runtime(FetchHttpClient.layer)
 
-export const connectedAtom = Atom.make(false)
-
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/auth/lib/utils/RpcClient', {
 	group: RpcContracts,
-	protocol: get =>
-		pipe(
-			WebRuntime.layer('@deslop/auth'),
-			Layer.provide(
-				Layer.succeed(Rpc.RpcClient.ConnectionHooks, {
-					onConnect: Effect.sync(() => get.set(connectedAtom, true)),
-					onDisconnect: Effect.sync(() => get.set(connectedAtom, false))
-				})
-			)
-		)
+	protocol: WebRuntime.layer('@deslop/auth')
 }) {}
 
 // Live, so an account waiting for an admin moves on once allowed; a declined or removed account is signed out and reads None.
@@ -112,8 +100,14 @@ export const requestAtom = Atom.family((request: string) =>
 	)
 )
 
+// WDJBMJHT reads WDJB-MJHT.
 export function requestCode(id: string) {
-	return `${String.slice(0, 4)(id)}-${String.slice(4, 8)(id)}`
+	return `${String.slice(0, 4)(id)}-${String.slice(4)(id)}`
+}
+
+// What someone typed, as the id it names: letters only, in capitals.
+export function typedCode(text: string) {
+	return String.toUpperCase(String.replaceAll(/[^a-z]/giu, '')(text))
 }
 
 export function applicationName(request: PendingAuthorization) {
@@ -142,33 +136,9 @@ export function dayLabel(time: number) {
 	return pipe(DateTime.makeUnsafe(time), DateTime.formatLocal({day: 'numeric', month: 'short'}))
 }
 
-// "luca-b" reads LB and "MP281X" MP, from the login's first two words or its first two letters.
-export function initials(login: string) {
-	const words = Array.filter(String.split(login, /[-_.\s]+/u), String.isNonEmpty)
-	return String.toUpperCase(
-		Array.match(Array.drop(words, 1), {
-			onEmpty: () => String.slice(0, 2)(login),
-			onNonEmpty: rest => `${String.slice(0, 1)(words[0] ?? '')}${String.slice(0, 1)(rest[0])}`
-		})
-	)
-}
-
-// The same account keeps the same square, picked from the theme's chart colors by its id.
-export function avatarClass(id: string) {
-	const shades = ['bg-chart-1', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4', 'bg-chart-5']
-	return shades[
-		Array.reduce(
-			String.split(id, ''),
-			0,
-			(sum, letter) =>
-				sum +
-				pipe(
-					letter,
-					String.charCodeAt(0),
-					Option.getOrElse(() => 0)
-				)
-		) % shades.length
-	]
+// Accounts are keyed "provider:id"; GitHub serves every account's picture by its numeric id.
+export function avatarUrl(id: string) {
+	return `https://avatars.githubusercontent.com/u/${String.replace('github:', '')(id)}?s=96`
 }
 
 export const consentAtom = authRuntime.fn((input: {accept: boolean; request: PendingAuthorization}) =>
