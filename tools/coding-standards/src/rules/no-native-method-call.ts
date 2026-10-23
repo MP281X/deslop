@@ -29,7 +29,7 @@ const REPLACEMENTS: Record.ReadonlyRecord<string, string> = {
 	padEnd: 'String.padEnd',
 	padStart: 'String.padStart',
 	pop: 'Array.last and Array.dropRight',
-	push: 'Array.append',
+	push: 'Array.append, or MutableList.append for a local append-only collector consumed at the end',
 	repeat: 'String.repeat',
 	replace: 'String.replace',
 	replaceAll: 'String.replaceAll',

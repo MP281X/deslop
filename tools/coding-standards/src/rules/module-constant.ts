@@ -65,7 +65,7 @@ function check(input: {
 		input.found.id.typeAnnotation === null &&
 		input.found.node.init !== null &&
 		primitive(input.found.node.init) &&
-		Array.filter(input.variable.references, reference => reference.isRead()).length === 1 &&
+		Array.countBy(input.variable.references, reference => reference.isRead()) === 1 &&
 		!pipe(input.context.sourceCode.getText(input.found.node), String.includes('\n'))
 	) {
 		input.context.report({message: 'Inline this value at its only use.', node: input.found.node})

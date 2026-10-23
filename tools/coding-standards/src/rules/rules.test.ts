@@ -1,7 +1,7 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, describe, it} from '@effect/vitest'
 
-import {Array, Effect, FileSystem, Path, Record, Schema, Stream, String, pipe} from 'effect'
+import {Array, Effect, FileSystem, Order, Path, Record, Schema, Stream, String, pipe} from 'effect'
 
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
@@ -280,15 +280,163 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'@deslop/coding-standards(schema-type-pair)',
 								'@deslop/coding-standards(schema-type-pair)',
 								'@deslop/coding-standards(schema-type-pair)',
-								'@deslop/coding-standards(schema-type-pair)',
-								'@deslop/coding-standards(schema-type-pair)',
-								'@deslop/coding-standards(schema-type-pair)',
 								'@deslop/coding-standards(schema-type-pair)'
 							],
 							Array.sort(String.Order)
 						)
 					)
 					assert.strictEqual(result.stderr, '')
+				}),
+			20_000
+		)
+
+		testApi.effect(
+			'rejects redundant branches and callbacks without rejecting narrowing or consumer-owned exports',
+			() =>
+				Effect.gen(function* () {
+					const result = yield* lintSource({
+						'consumer.ts':
+							"import {Schema} from 'effect'\nimport type {TypeOnly} from './type-only.ts'\nimport {ValueOnly} from './value-only.ts'\nexport type Viewed = typeof ValueOnly.Type\nexport const decoded = Schema.decodeSync(ValueOnly)('example' satisfies TypeOnly)",
+						'simplification.test.ts': pipe(
+							[
+								"import {assert} from '@effect/vitest'",
+								"import {Array, Boolean, Effect, Function, Option, String, pipe} from 'effect'",
+								'',
+								'declare const tags: string[]',
+								'declare const maybe: Option.Option<string>',
+								'declare const flags: boolean[]',
+								'declare const maybeFlag: Option.Option<boolean>',
+								'declare const load: Effect.Effect<number, {message: string}>',
+								'declare const note: Effect.Effect<{message: string}>',
+								'declare const flag: boolean',
+								'export function bounded(text: string) { return Boolean.match(String.length(text) > 3, {onFalse: () => text, onTrue: () => String.slice(0, 3)(text)}) }',
+								'export function direct(text: string) { if (String.length(text) > 3) return String.slice(0, 3)(text); return text }',
+								'function label(done: boolean) { return Boolean.match(done, {onFalse: () => "Running", onTrue: () => "Done"}) }',
+								'export const labelled = label(flag)',
+								'export const generator = Effect.gen(function* () { yield* Effect.void; return Boolean.match(flag, {onFalse: () => "Running", onTrue: () => "Done"}) })',
+								'export const grouped = pipe(tags, Array.groupBy(tag => tag))',
+								'export const groupedFirst = Array.groupBy(tags, tag => tag)',
+								'export const mapped = Option.map(maybe, value => value)',
+								'export const identity = Array.groupBy(tags, Function.identity)',
+								'export const narrowed = Option.filter((list: string[]) => Array.isReadonlyArrayNonEmpty(list))',
+								'export const typed = Array.groupBy(tags, (tag: string) => tag)',
+								'export const truths: true[] = Array.filter(flags, (value): value is true => value)',
+								'export const trueOption: Option.Option<true> = Option.filter(maybeFlag, (value): value is true => value)',
+								'export const indexed = Array.map(tags, (tag, index) => tag + index)',
+								'export const expression = Array.map(tags, tag => Boolean.match(flag, {onFalse: () => tag, onTrue: () => String.toUpperCase(tag)}))',
+								'export function nested(done: boolean) { if (done) { return Boolean.match(flag, {onFalse: () => "Running", onTrue: () => "Done"}) } return "Other" }',
+								'export function methods(done: boolean) { return Boolean.match(done, {onFalse() { return "Running" }, onTrue() { return "Done" }}) }',
+								'export function computed(done: boolean) { return Boolean.match(done, {["onFalse"]: () => "Running", onTrue: () => "Done"}) }',
+								'export function asynchronous(done: boolean) { return Boolean.match(done, {onFalse: async () => "Running", onTrue: async () => "Done"}) }',
+								'export function block(done: boolean) { return Boolean.match(done, {onFalse: () => { return "Running" }, onTrue: () => "Done"}) }',
+								'export function curried(done: boolean) { return pipe(done, Boolean.match({onFalse: () => "Running", onTrue: () => "Done"})) }',
+								'export function callbacks(done: boolean) { return Boolean.match(done, {onFalse: Function.constFalse, onTrue: Function.constTrue}) }',
+								'export const failures = Effect.gen(function* () {',
+								'  assert.strictEqual((yield* Effect.flip(load)).message, "gone")',
+								'  const missing = yield* Effect.flip(load)',
+								'  assert.strictEqual(missing.message, "gone")',
+								'  const piped = yield* pipe(load, Effect.flip)',
+								'  assert.strictEqual(piped.message, "gone")',
+								'  const value = yield* note',
+								'  assert.strictEqual(value.message, "hello")',
+								'  return [missing, piped, value]',
+								'})'
+							],
+							Array.join('\n')
+						),
+						'type-only.ts':
+							"import {Schema} from 'effect'\nexport type TypeOnly = typeof TypeOnly.Type\nconst TypeOnly = Schema.String",
+						'value-only.ts':
+							"import {Schema} from 'effect'\ntype ValueOnly = typeof ValueOnly.Type\nexport const ValueOnly = Schema.String"
+					})
+					assert.deepStrictEqual(customCodes(result.stdout), [
+						'@deslop/coding-standards(no-error-message-assertion)',
+						'@deslop/coding-standards(no-error-message-assertion)',
+						'@deslop/coding-standards(no-error-message-assertion)',
+						'@deslop/coding-standards(no-trivial-indirection)',
+						'@deslop/coding-standards(no-trivial-indirection)',
+						'@deslop/coding-standards(no-trivial-indirection)',
+						'@deslop/coding-standards(no-trivial-indirection)',
+						'@deslop/coding-standards(no-trivial-indirection)',
+						'@deslop/coding-standards(no-trivial-indirection)'
+					])
+					assert.deepStrictEqual(
+						Array.filter(result.stdout.diagnostics, diagnostic => String.startsWith('typescript(')(diagnostic.code)),
+						[]
+					)
+				}),
+			20_000
+		)
+
+		testApi.effect(
+			'counts filtered matches with one diagnostic while retaining consumed arrays and nonmatching bindings',
+			() =>
+				Effect.gen(function* () {
+					const source = [
+						"import {Array, String, pipe} from 'effect'",
+						'',
+						'declare const values: string[]',
+						'declare const flags: boolean[]',
+						'export const count = Array.filter(values, value => value.length > 3).length',
+						'export const empty = Array.filter(values, value => value.length > 3).length === 0',
+						'export const present = Array.filter(values, value => value.length > 3).length > 0',
+						'export const computed = Array["filter"](values, String.isNonEmpty)["length"]',
+						'export const refined = Array.filter(flags, (value): value is true => value).length',
+						'export const direct = Array.countBy(values, value => value.length > 3)',
+						'export const directEmpty = Array.countBy(values, value => value.length > 3) === 0',
+						'export const directPresent = Array.countBy(values, value => value.length > 3) > 0',
+						'export function kept() { const matches = Array.filter(values, String.isNonEmpty); return {entries: matches, total: matches.length} }',
+						'export const native = values.filter(String.isNonEmpty).length',
+						'export function shadowed(Array: {filter: (values: string[], predicate: (value: string) => boolean) => string[]}) { return Array.filter(values, String.isNonEmpty).length }',
+						'export const curried = pipe(values, Array.filter(String.isNonEmpty)).length',
+						'export const optionalCall = Array.filter?.(values, String.isNonEmpty).length',
+						'export const optionalMember = Array.filter(values, String.isNonEmpty)?.length',
+						'export const optionalCallee = Array?.filter(values, String.isNonEmpty).length',
+						'export const spread = Array.filter(...[values, String.isNonEmpty] as const).length',
+						'Array.filter(values, String.isNonEmpty).length = 0',
+						'Array.filter(values, String.isNonEmpty).length++',
+						'delete Array.filter(values, String.isNonEmpty).length',
+						';[Array.filter(values, String.isNonEmpty).length] = [0]',
+						';({length: Array.filter(values, String.isNonEmpty).length} = {length: 0})',
+						';[Array.filter(values, String.isNonEmpty).length = 0] = []',
+						';[...Array.filter(values, String.isNonEmpty).length] = []',
+						'for (Array.filter(values, String.isNonEmpty).length of [0]) {}',
+						'for (Array.filter(values, String.isNonEmpty).length in {zero: 0}) {}',
+						'export function defaultRead() { const [count = Array.filter(values, String.isNonEmpty).length] = []; return [count, count] }',
+						'export function keyRead(input: Record<number, string>) { const {[Array.filter(values, String.isNonEmpty).length]: value} = input; return [value, value] }'
+					]
+					const result = yield* lintSource({'counts.ts': Array.join(source, '\n')})
+					assert.strictEqual(result.stderr, '')
+					assert.deepStrictEqual(
+						pipe(
+							result.stdout.diagnostics,
+							Array.filter(diagnostic =>
+								Array.contains(
+									[
+										'@deslop/coding-standards(prefer-effect-count-by)',
+										'@deslop/coding-standards(no-native-emptiness-check)'
+									],
+									diagnostic.code
+								)
+							),
+							Array.sort(
+								Order.mapInput(
+									Order.Number,
+									(diagnostic: OxlintOutput['diagnostics'][number]) => diagnostic.labels[0]?.span.line ?? 0
+								)
+							),
+							Array.map(diagnostic => ({code: diagnostic.code, line: diagnostic.labels[0]?.span.line}))
+						),
+						[
+							{code: '@deslop/coding-standards(prefer-effect-count-by)', line: 5},
+							{code: '@deslop/coding-standards(prefer-effect-count-by)', line: 6},
+							{code: '@deslop/coding-standards(prefer-effect-count-by)', line: 7},
+							{code: '@deslop/coding-standards(prefer-effect-count-by)', line: 8},
+							{code: '@deslop/coding-standards(prefer-effect-count-by)', line: 9},
+							{code: '@deslop/coding-standards(prefer-effect-count-by)', line: 30},
+							{code: '@deslop/coding-standards(prefer-effect-count-by)', line: 31}
+						]
+					)
 				}),
 			20_000
 		)

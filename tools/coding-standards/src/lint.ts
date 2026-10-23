@@ -46,6 +46,7 @@ import {noTypeof} from '#rules/no-typeof.ts'
 import {noUndestructuredUseState} from '#rules/no-undestructured-use-state.ts'
 import {noUnexplainedDisable} from '#rules/no-unexplained-disable.ts'
 import {noUnvalidatedJsonDecode} from '#rules/no-unvalidated-json-decode.ts'
+import {preferEffectCountBy} from '#rules/prefer-effect-count-by.ts'
 import {preserveErrorCause} from '#rules/preserve-error-cause.ts'
 import {schemaTypePair} from '#rules/schema-type-pair.ts'
 
@@ -182,6 +183,7 @@ export const lint = {
 		'@deslop/coding-standards/no-undestructured-use-state': 'error',
 		'@deslop/coding-standards/no-unexplained-disable': 'error',
 		'@deslop/coding-standards/no-unvalidated-json-decode': 'error',
+		'@deslop/coding-standards/prefer-effect-count-by': 'error',
 		'@deslop/coding-standards/preserve-error-cause': 'error',
 		'@deslop/coding-standards/schema-type-pair': 'error',
 
@@ -803,6 +805,7 @@ export default definePlugin({
 		'no-undestructured-use-state': noUndestructuredUseState,
 		'no-unexplained-disable': noUnexplainedDisable,
 		'no-unvalidated-json-decode': noUnvalidatedJsonDecode,
+		'prefer-effect-count-by': preferEffectCountBy,
 		'preserve-error-cause': preserveErrorCause,
 		'schema-type-pair': schemaTypePair
 	}

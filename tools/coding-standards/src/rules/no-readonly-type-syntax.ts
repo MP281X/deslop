@@ -1,4 +1,4 @@
-import {Array, Equivalence, MutableRef, Option, String, pipe} from 'effect'
+import {Array, Equivalence, MutableList, Option, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
@@ -92,9 +92,9 @@ function removeLeading(input: {context: Context; node: ESTree.Node; pattern: Reg
 export const noReadonlyTypeSyntax = defineRule({
 	create: context => {
 		const cycleNames = schemaCycleNames({context, program: context.sourceCode.ast})
-		const shapes = MutableRef.make(Array.empty<ESTree.TSType>())
-		const properties = MutableRef.make(Array.empty<ESTree.TSPropertySignature>())
-		const methods = MutableRef.make(Array.empty<ESTree.TSMethodSignature>())
+		const shapes = MutableList.make<ESTree.TSType>()
+		const properties = MutableList.make<ESTree.TSPropertySignature>()
+		const methods = MutableList.make<ESTree.TSMethodSignature>()
 		function exempt(node: ESTree.Node) {
 			return insideCycleType({cycleNames, node})
 		}
@@ -103,19 +103,19 @@ export const noReadonlyTypeSyntax = defineRule({
 				if (importedMember({context, importedName: 'Context', node: node.callee, propertyName: 'Service'})) {
 					pipe(
 						Option.fromNullishOr(node.typeArguments?.params[1]),
-						Option.map(shape => MutableRef.update(shapes, Array.append(shape)))
+						Option.map(shape => MutableList.append(shapes, shape))
 					)
 				}
 			},
 			'Program:exit': () => {
 				const literals = pipe(
-					MutableRef.get(shapes),
+					MutableList.toArray(shapes),
 					Array.flatMap(shape => shapeLiterals({context, seen: [], type: shape}))
 				)
 				function inShape(node: ESTree.Node) {
 					return Array.some(literals, literal => literal === node.parent)
 				}
-				for (const node of MutableRef.get(properties)) {
+				for (const node of MutableList.toArray(properties)) {
 					if (inShape(node) && !node.readonly) {
 						context.report({
 							fix: fixer => fixer.insertTextBefore(node, 'readonly '),
@@ -131,7 +131,7 @@ export const noReadonlyTypeSyntax = defineRule({
 						})
 					}
 				}
-				for (const node of MutableRef.get(methods)) {
+				for (const node of MutableList.toArray(methods)) {
 					if (inShape(node)) {
 						context.report({message: 'Write this service method as a readonly property holding a function.', node})
 					}
@@ -156,10 +156,10 @@ export const noReadonlyTypeSyntax = defineRule({
 				}
 			},
 			TSMethodSignature: node => {
-				MutableRef.update(methods, Array.append(node))
+				MutableList.append(methods, node)
 			},
 			TSPropertySignature: node => {
-				MutableRef.update(properties, Array.append(node))
+				MutableList.append(properties, node)
 			},
 			TSTypeOperator: node => {
 				if (node.operator === 'readonly' && !exempt(node)) {

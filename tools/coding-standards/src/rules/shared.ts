@@ -181,6 +181,46 @@ export function importedMember(input: {
 	)
 }
 
+export function isFilteredCount(input: {context: Context; node: ESTree.Node}) {
+	if (
+		input.node.type !== 'MemberExpression' ||
+		input.node.optional ||
+		!Option.contains(memberName(input.node), 'length') ||
+		input.node.object.type !== 'CallExpression'
+	) {
+		return false
+	}
+	const target = outermost(input.node)
+	return (
+		!input.node.object.optional &&
+		input.node.object.callee.type === 'MemberExpression' &&
+		!input.node.object.callee.optional &&
+		input.node.object.arguments.length === 2 &&
+		Array.every(input.node.object.arguments, argument => argument.type !== 'SpreadElement') &&
+		importedMember({
+			context: input.context,
+			importedName: 'Array',
+			node: input.node.object.callee,
+			propertyName: 'filter'
+		}) &&
+		!(target.parent?.type === 'AssignmentExpression' && target.parent.left === target) &&
+		!(target.parent?.type === 'AssignmentPattern' && target.parent.left === target) &&
+		target.parent?.type !== 'ArrayPattern' &&
+		target.parent?.type !== 'RestElement' &&
+		!(
+			target.parent?.type === 'Property' &&
+			target.parent.value === target &&
+			target.parent.parent.type === 'ObjectPattern'
+		) &&
+		!(
+			(target.parent?.type === 'ForInStatement' || target.parent?.type === 'ForOfStatement') &&
+			target.parent.left === target
+		) &&
+		target.parent?.type !== 'UpdateExpression' &&
+		!(target.parent?.type === 'UnaryExpression' && target.parent.operator === 'delete')
+	)
+}
+
 export function matches(regExp: RegExp) {
 	return (text: string) => Option.isSome(pipe(text, String.match(regExp)))
 }
@@ -453,6 +493,6 @@ export function singleUseThunk(input: {context: Context; node: ESTree.Function |
 	return pipe(
 		bindingName(input.node),
 		Option.flatMap(name => variableFromScope({name, scope: input.context.sourceCode.getScope(input.node)})),
-		Option.exists(variable => Array.filter(variable.references, reference => reference.isRead()).length === 1)
+		Option.exists(variable => Array.countBy(variable.references, reference => reference.isRead()) === 1)
 	)
 }

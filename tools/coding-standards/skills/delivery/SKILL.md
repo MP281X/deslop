@@ -23,13 +23,32 @@ description: Use before changing a behavior a PR will demonstrate, before the fi
 
 The reader reviews the diff without having been in the conversation, so the body gives what the diff cannot show:
 
-- **Why** the change exists, first and in plain words.
+- **Why** the change exists: a short heading or one-line problem.
 - **What changes** for users or callers.
 - **Decisions** a reviewer must agree with: a rejected alternative, a new boundary, an invariant across files, where to start reading.
 - **Proof** per [Captures](#captures).
 - **Risk**: a migration, a required step, what could break.
 
-**Short.** A reviewer reads it in under a minute: a why of one or two sentences, one line per bullet, under 150 words besides captures and tables. Use only the parts this change needs; explain neither the diff nor what the media shows, even implicitly. Describe the head as it is, never the work history; keep verified behavior apart from expectations; follow the repository template. Check a text body through the host CLI, a rendered embed in a browser.
+- **Shape.** Short headings, fragments and one-line bullets; under 150 prose words, code, captures and tables separate. Drop empty sections and prose repeating an example or visual, even implicitly.
+- **Examples.** A code-rule change starts with minimal rejected/accepted code, in fenced blocks or a diff, plus a preserved case where the boundary matters. A description is not a substitute.
+- **Ground.** Describe the head, not the work history; separate proof from expectations and follow the repository template. Check text through the host CLI, rendered embeds in a browser.
+
+A rule change:
+
+````md
+## Direct branches
+
+```diff
+ export function label(done: boolean) {
+-  return Boolean.match(done, {
+-    onFalse: () => 'Running',
+-    onTrue: () => 'Done'
+-  })
++  if (done) return 'Done'
++  return 'Running'
+ }
+```
+````
 
 A small fix:
 

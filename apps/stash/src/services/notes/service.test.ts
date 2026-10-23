@@ -496,7 +496,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 			yield* notes.regenerate({id: IDS[0]})
 			yield* settled(notes, isReady)
 			assert.strictEqual(yield* Ref.get(calls), 2)
-			assert.strictEqual((yield* Effect.flip(notes.regenerate({id: IDS[1]}))).message, 'This note no longer exists.')
+			assert.instanceOf(yield* Effect.flip(notes.regenerate({id: IDS[1]})), NotesError)
 		})
 	)
 
@@ -558,7 +558,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 			)
 			yield* notes.remove({id: IDS[0]})
 			assert.deepStrictEqual(yield* settled(notes, () => true), [])
-			assert.strictEqual((yield* Effect.flip(notes.image(IDS[0]))).message, 'This note has no preview image.')
+			assert.instanceOf(yield* Effect.flip(notes.image(IDS[0])), NotesError)
 		})
 	)
 

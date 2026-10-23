@@ -20,7 +20,7 @@ Run the repository's static gate and tests, chained bare at the root, on a stabl
 
 The tempting fix for each trips another rule or reshapes the code; every other diagnostic is fixed in place as its message says.
 
-- **Make illegal states unrepresentable.** `export type Kind = typeof Kind.Type` above `export const Kind = Schema.Literals([...])`, subset `Kind.pick`; a recursive schema hand-writes its type, `readonly` as `Schema.Array` decodes it, and annotates the `suspend` thunk; other shapes mutable, `readonly` only on service properties.
+- **Make illegal states unrepresentable.** `type Kind = typeof Kind.Type` immediately above `const Kind = Schema.Literals([...])`, subset `Kind.pick`; export each half only when consumers use it. Recursive schemas hand-write their type, `readonly` as `Schema.Array` decodes it, and annotate the `suspend` thunk; other shapes mutable, `readonly` only on service properties.
 - **Type the boundary.** Decode an `any` or `unknown` with the protocol schema, before any `?.`, cast or disable could touch it.
 - **One home per type.** The library's type or `ReturnType<typeof make>` in the signature rather than a module alias; import from the defining module.
 - **Reset by key.** Atoms at module level or in an `Atom.family` keyed by their input, built on the runtime the repository's canonical example or `CODING_STANDARDS.md` names; `key` resets state when a prop changes, render derives a value, `useRef` holds lifecycle state, and effects never set state. Components read atoms and never run an Effect; the screen's owner wraps one `Suspense` and one error boundary.
@@ -37,12 +37,13 @@ export const load = Effect.fn('Notes.load')(
 export const loadAll = Effect.fn('Notes.loadAll')(function* (paths: string[]) {
 	return yield* Effect.forEach(paths, load, {concurrency: 'unbounded'})
 })
-// not: Effect.catch(() => Effect.void), Effect.orDie, mapError(() => X.make({message})), Effect.provide inside a service
+// not: Effect.catch(() => Effect.void), Effect.orDie, mapError(cause => X.make({message})), Effect.provide inside a service
 ```
 
 ```ts
 function label(entry: Entry) {
-	return Boolean.match(entry.done, {onFalse: () => 'Running', onTrue: () => 'Done'})
+	if (entry.done) return 'Done'
+	return 'Running'
 }
 export function summarize(entries: Entry[]) {
 	return {
@@ -56,6 +57,20 @@ export function summarize(entries: Entry[]) {
 }
 // not: a ? b : c, continue, let total, const open = entries.filter(…), const label = (entry) => …, summarize(): Summary
 ```
+
+### Local collectors
+
+```diff
+-const items = MutableRef.make(Array.empty<Entry>())
+-MutableRef.update(items, Array.append(entry))
++const items = MutableList.make<Entry>()
++MutableList.append(items, entry)
+ // Consume once, after collection.
++const entries = MutableList.toArray(items)
+```
+
+- `MutableList`: local, append-only; no observed intermediate array identity.
+- `MutableRef`: replacement or observed current value, not a blanket collection wrapper.
 
 ## Rules
 

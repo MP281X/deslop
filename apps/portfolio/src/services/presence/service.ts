@@ -1,6 +1,5 @@
 import {
 	Array,
-	Boolean,
 	Clock,
 	Context,
 	Duration,
@@ -148,19 +147,15 @@ export class Presence extends Context.Service<
 													HashMap.get(current, payload.id),
 													Option.getOrElse(() => 0)
 												)
-												return Boolean.match(count <= 1, {
-													onFalse: () => [false, HashMap.set(current, payload.id, count - 1)] as const,
-													onTrue: () => [true, HashMap.remove(current, payload.id)] as const
-												})
+												if (count <= 1) return [true, HashMap.remove(current, payload.id)] as const
+												return [false, HashMap.set(current, payload.id, count - 1)] as const
 											})
 											if (!remove) return
 
 											yield* SubscriptionRef.update(state, latestState => {
 												const visitors = removePortfolioVisitor(latestState.visitors, payload.id)
-												return Boolean.match(visitors === latestState.visitors, {
-													onFalse: () => PortfolioState.make({trails: latestState.trails, visitors}),
-													onTrue: () => latestState
-												})
+												if (visitors === latestState.visitors) return latestState
+												return PortfolioState.make({trails: latestState.trails, visitors})
 											})
 										})
 									)
