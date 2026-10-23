@@ -1,6 +1,6 @@
 import {useAtomSet} from '@effect/atom-react'
 
-import {Array, Option, pipe} from 'effect'
+import {Array, MutableHashSet, Option, pipe} from 'effect'
 
 import {ContentUnavailableView} from '@expo/ui/swift-ui'
 import {background, navigationBarTitleDisplayMode, navigationTitle} from '@expo/ui/swift-ui/modifiers'
@@ -24,6 +24,8 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number}) {
 	const [length, setLength] = useState(2)
 	const [scrolledTo, setScrolledTo] = useState(Option.none<number>)
 	const previous = useRef(props.number)
+	// What this reader finished, so a page turn before the server's copy of the list arrives cannot unfinish it.
+	const [finished] = useState(MutableHashSet.empty<number>)
 	const shown = Array.take(following, length)
 	// Where each chapter's first page sits in the strip.
 	const starts = Array.scan(shown, 0, (total, chapter) => total + chapter.pages.length)
@@ -59,11 +61,18 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number}) {
 								Array.findFirst(shown, item => item.number === previous.current && item.number < chapter.number),
 								{
 									onNone: () => undefined,
-									onSome: before => read({done: true, number: before.number, page: before.pages.length - 1})
+									onSome: before => {
+										MutableHashSet.add(finished, before.number)
+										read({done: true, number: before.number, page: before.pages.length - 1})
+									}
 								}
 							)
 							previous.current = chapter.number
-							read({done: page === chapter.pages.length - 1, number: chapter.number, page})
+							// A finished chapter stays finished while it is read again; only "Unread" in the list starts it over.
+							if (page === chapter.pages.length - 1 || chapter.reading?.done === true) {
+								MutableHashSet.add(finished, chapter.number)
+							}
+							read({done: MutableHashSet.has(finished, chapter.number), number: chapter.number, page})
 							setScrolledTo(Option.some(chapter.number))
 							if (chapter.number === Array.lastNonEmpty(shown).number && length < following.length) {
 								setLength(length + 1)

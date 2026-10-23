@@ -1,4 +1,4 @@
-import {Effect, Layer, Option, Schema, String, pipe} from 'effect'
+import {DateTime, Duration, Effect, Layer, Option, Schema, String, pipe} from 'effect'
 
 import type {HttpClient} from 'effect/http'
 import {Atom} from 'effect/reactivity'
@@ -32,13 +32,20 @@ export function layer(
 		)
 }
 
+// How long the app spent in the background before its latest return, in milliseconds.
+const awayAtom = Atom.keepAlive(Atom.make(0))
+
 // iOS suspends sockets in the background, so atoms that read this count start over on each return from it; a sign-in sheet only makes the app inactive.
 export const activationsAtom = Atom.make(get => {
-	const left = {background: false}
+	const left = {at: 0, background: false}
 	const subscription = AppState.addEventListener('change', state => {
-		if (state === 'background') left.background = true
+		if (state === 'background') {
+			left.at = DateTime.toEpochMillis(DateTime.nowUnsafe())
+			left.background = true
+		}
 		if (state !== 'active' || !left.background) return
 		left.background = false
+		get.set(awayAtom, DateTime.toEpochMillis(DateTime.nowUnsafe()) - left.at)
 		get.setSelf(Option.getOrElse(get.self<number>(), () => 0) + 1)
 	})
 	get.addFinalizer(() => subscription.remove())
@@ -47,13 +54,16 @@ export const activationsAtom = Atom.make(get => {
 
 const downloadedAtom = Atom.keepAlive(Atom.make(false))
 
-// A reload ends what the user is doing, so a downloaded update starts on the next return to the app, before anything else; mount it only where a reload loses nothing.
+// A reload looks like a crash to someone switching apps for a moment, so a downloaded update starts on the next launch or on a return after ten minutes away; mount it only where a reload loses nothing.
 export const updateAtom = Atom.make(get =>
 	pipe(
 		Effect.gen(function* () {
 			get(activationsAtom)
 			if (!Updates.isEnabled) return
-			if (get.once(downloadedAtom)) return yield* Effect.tryPromise(() => Updates.reloadAsync())
+			if (get.once(downloadedAtom)) {
+				if (get.once(awayAtom) < Duration.toMillis(Duration.minutes(10))) return
+				return yield* Effect.tryPromise(() => Updates.reloadAsync())
+			}
 			if (!(yield* Effect.tryPromise(() => Updates.checkForUpdateAsync())).isAvailable) return
 			if (!(yield* Effect.tryPromise(() => Updates.fetchUpdateAsync())).isNew) return
 			get.set(downloadedAtom, true)

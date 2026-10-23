@@ -1,3 +1,4 @@
+import CryptoKit
 import ExpoModulesCore
 import ExpoUI
 import SwiftUI
@@ -26,18 +27,52 @@ public struct CoverView: ExpoSwiftUI.View {
       .clipped()
       .task(id: props.url) {
         let link = props.url
-        image = CoverCache.shared.object(forKey: link as NSString)
-        guard image == nil, let url = URL(string: link), let loaded = await PageLoader.image(url, size: 180)
-        else { return }
-        CoverCache.shared.setObject(loaded, forKey: link as NSString)
-        // A new link cancels this task, and the image it decoded belongs to the old one.
+        image = CoverCache.memory.object(forKey: link as NSString)
+        if image != nil { return }
+        if let saved = await CoverCache.saved(link) {
+          if !Task.isCancelled { image = saved }
+          return
+        }
+        guard let url = URL(string: link), let loaded = await PageLoader.image(url, size: 240) else { return }
+        // Kept even when the row scrolled away, so the next time it shows at once.
+        CoverCache.save(loaded, for: link)
         if !Task.isCancelled { image = loaded }
       }
   }
 }
 
-// Decoded thumbnails, so scrolling the list back up shows them without decoding again.
+// Thumbnails in memory for scrolling and on disk for the next launch: making one downloads a whole page.
 @MainActor
 enum CoverCache {
-  static let shared = NSCache<NSString, UIImage>()
+  static let memory: NSCache<NSString, UIImage> = {
+    let cache = NSCache<NSString, UIImage>()
+    cache.countLimit = 400
+    return cache
+  }()
+
+  private static let folder: URL? = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+    .appendingPathComponent("covers")
+
+  private static func file(_ link: String) -> URL? {
+    let name = SHA256.hash(data: Data(link.utf8)).map { String(format: "%02x", $0) }.joined()
+    return folder?.appendingPathComponent("\(name).jpg")
+  }
+
+  static func saved(_ link: String) async -> UIImage? {
+    guard let file = file(link) else { return nil }
+    let image = await Task.detached(priority: .userInitiated) {
+      UIImage(contentsOfFile: file.path)?.preparingForDisplay()
+    }.value
+    if let image { memory.setObject(image, forKey: link as NSString) }
+    return image
+  }
+
+  static func save(_ image: UIImage, for link: String) {
+    memory.setObject(image, forKey: link as NSString)
+    guard let folder, let file = file(link) else { return }
+    Task.detached(priority: .utility) {
+      try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+      try? image.jpegData(compressionQuality: 0.8)?.write(to: file, options: .atomic)
+    }
+  }
 }

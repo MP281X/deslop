@@ -5,6 +5,14 @@ public class OpmNativeModule: Module {
   public func definition() -> ModuleDefinition {
     Name("OpmNative")
 
+    OnCreate {
+      Diagnostics.shared.start()
+    }
+
+    Function("takeDiagnostics") {
+      Diagnostics.take()
+    }
+
     ExpoUIView(PageStripView.self)
     ExpoUIView(CoverView.self)
   }
