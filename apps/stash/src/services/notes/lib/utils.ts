@@ -88,6 +88,23 @@ export function normalizeTags(tags: Note['tags']) {
 	)
 }
 
+// `+` and `#` name languages (c, c++, c#), and a word of three letters or fewer keeps its s (ios, aws).
+function tagKey(tag: string) {
+	return pipe(tag, String.replaceAll(/[^a-z0-9+#]/gu, ''), String.replace(/^(.{2,}[^s])s$/u, '$1'))
+}
+
+// A plural, hyphen or spacing variant of a tag in use is that tag.
+export function reuseTags(tags: Note['tags'], existing: Note['tags']) {
+	return Array.dedupe(
+		Array.map(tags, tag =>
+			pipe(
+				Array.findFirst(existing, known => tagKey(known) === tagKey(tag)),
+				Option.getOrElse(() => tag)
+			)
+		)
+	)
+}
+
 export function tagCounts(notes: NotesEvent['upserted']) {
 	return pipe(
 		Array.flatMap(notes, note => note.tags),

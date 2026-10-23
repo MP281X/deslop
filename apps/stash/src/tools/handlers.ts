@@ -17,6 +17,7 @@ export const ToolHandlers = Tools.toLayer(
 					notes: Array.take(Array.drop(all, input.offset), input.limit),
 					total: all.length
 				})),
+			list_tags: () => Effect.map(notes.tags, tags => ({tags})),
 			read_note: input => notes.get(input),
 			reprocess_note: input => notes.regenerate(input),
 			save_note: input =>

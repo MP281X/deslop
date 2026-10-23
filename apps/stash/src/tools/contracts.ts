@@ -2,7 +2,7 @@ import {Effect, Schema, pipe} from 'effect'
 
 import {Tool, Toolkit} from 'effect/ai'
 
-import {Capture, Note, NoteId, NoteItem, NotesError} from '#services/notes/schema.ts'
+import {Capture, Note, NoteId, NoteItem, NotesError, TagEntry} from '#services/notes/schema.ts'
 
 type Notes = typeof Notes.Type
 const Notes = Schema.Struct({notes: Schema.Array(NoteItem), total: Schema.Int})
@@ -25,6 +25,11 @@ export const Tools = Toolkit.make(
 			offset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey(Effect.succeed(0)))
 		}),
 		success: Notes
+	}).annotate(Tool.Readonly, true),
+	Tool.make('list_tags', {
+		description:
+			'List the tags in use, most used first, each with its note count and what belongs under it; search a tag with #tag in search_notes.',
+		success: Schema.Struct({tags: Schema.Array(TagEntry)})
 	}).annotate(Tool.Readonly, true),
 	Tool.make('read_note', {
 		description:

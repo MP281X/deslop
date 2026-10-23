@@ -10,6 +10,7 @@ import {
 	FileSystem,
 	Latch,
 	Layer,
+	Number,
 	Option,
 	Predicate,
 	Ref,
@@ -25,7 +26,7 @@ import {MediaError} from '#services/media/schema.ts'
 import {Media} from '#services/media/service.ts'
 import {Sources} from '#services/notes/lib/extraction.ts'
 import {Organizer} from '#services/notes/lib/organization.ts'
-import type {Note} from '#services/notes/schema.ts'
+import type {Note, TagEntry} from '#services/notes/schema.ts'
 import {Extraction, NotesError, NotesEvent} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
 
@@ -99,6 +100,7 @@ function counting(calls: Ref.Ref<number>) {
 				Ref.update(calls, count => count + 1),
 				{
 					body: '',
+					definitions: [{definition: 'Recipes and cooking techniques.', tag: 'cooking'}],
 					screenText: '',
 					summary: `About ${input.note.content}`,
 					tags: ['cooking', 'soup'],
@@ -205,15 +207,71 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
-	test.effect('keeps what a video says and shows the AI its preview and stills', () =>
+	test.effect('keeps the first definition of each tag, takes a variant as the tag in use, and remembers both', () =>
 		Effect.gen(function* () {
-			const seen = yield* Ref.make<Option.Option<{images: Uint8Array[]; transcript: Note['transcript']}>>(Option.none())
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const seen = yield* Ref.make(Array.empty<TagEntry[]>())
+			const answers = [
+				{definitions: [{definition: 'Recipes and kitchen techniques.', tag: 'Cooking'}], tags: ['cooking']},
+				{
+					definitions: [
+						{definition: 'Anything with a stove.', tag: 'cooking'},
+						{definition: 'Soups and stews.', tag: 'soup'}
+					],
+					tags: ['cookings', 'soup']
+				}
+			]
+			const organizer = Organizer.of({
+				organize: input =>
+					Effect.map(
+						Ref.getAndUpdate(seen, all => [...all, input.tags]),
+						earlier => ({
+							body: '',
+							screenText: '',
+							summary: '',
+							title: 'Soup',
+							topics: '',
+							...Array.getUnsafe(answers, Number.min(earlier.length, 1))
+						})
+					)
+			})
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const notes = yield* open({directory, organizer, sources: recipe})
+					yield* notes.capture({id: IDS[0], text: 'https://example.com/soup'})
+					yield* settled(notes, isReady)
+					yield* notes.capture({id: IDS[1], text: 'https://example.com/stew'})
+					assert.deepStrictEqual(
+						Array.map(
+							yield* settled(notes, current => Array.every(current, note => note.status === 'ready')),
+							note => note.tags
+						),
+						[['cooking', 'soup'], ['cooking']]
+					)
+				})
+			)
+			assert.deepStrictEqual(yield* (yield* open({directory, organizer, sources: recipe})).tags, [
+				{count: 2, definition: 'Recipes and kitchen techniques.', tag: 'cooking'},
+				{count: 1, definition: 'Soups and stews.', tag: 'soup'}
+			])
+			assert.deepStrictEqual(
+				Array.get(yield* Ref.get(seen), 1),
+				Option.some([{count: 1, definition: 'Recipes and kitchen techniques.', tag: 'cooking'}])
+			)
+		})
+	)
+
+	test.effect('keeps what a video says and shows the AI its labeled preview and stills', () =>
+		Effect.gen(function* () {
+			const seen = yield* Ref.make<
+				Option.Option<{images: Uint8Array[]; labels: string[]; transcript: Note['transcript']}>
+			>(Option.none())
 			const calls = yield* Ref.make(0)
 			const notes = yield* open({
 				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
 				media: Media.of({
 					...noVideo,
-					frames: () => Effect.succeed([new Uint8Array([1])]),
+					frames: () => Effect.succeed([{bytes: new Uint8Array([1]), seconds: 0}]),
 					read: () =>
 						Effect.succeed({info: '# Lentils', transcript: Effect.succeedSome('[00:01] Soak the lentils overnight.\n')})
 				}),
@@ -222,7 +280,11 @@ it.layer(NodeServices.layer)('Notes', test => {
 						Effect.andThen(
 							Ref.set(
 								seen,
-								Option.some({images: Array.map(input.images, image => image.bytes), transcript: input.note.transcript})
+								Option.some({
+									images: Array.map(input.images, image => image.bytes),
+									labels: Array.map(input.images, image => image.label),
+									transcript: input.note.transcript
+								})
 							),
 							counting(calls).organize(input)
 						)
@@ -241,6 +303,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 				yield* Ref.get(seen),
 				Option.some({
 					images: [new Uint8Array([255, 216, 255]), new Uint8Array([1])],
+					labels: ['Preview image', 'Video still at [00:00]'],
 					transcript: '[00:01] Soak the lentils overnight.\n'
 				})
 			)
@@ -505,7 +568,11 @@ it.layer(NodeServices.layer)('Notes', test => {
 				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
 				media: Media.of({
 					...noVideo,
-					fileFrames: () => Effect.succeed([still, new Uint8Array([255, 216, 255, 2])]),
+					fileFrames: () =>
+						Effect.succeed([
+							{bytes: still, seconds: 0},
+							{bytes: new Uint8Array([255, 216, 255, 2]), seconds: 1}
+						]),
 					fileTranscript: () => Effect.succeedSome('[00:00] Hello')
 				}),
 				organizer: counting(yield* Ref.make(0)),

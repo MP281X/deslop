@@ -12,11 +12,12 @@ codex mcp add stash --url http://127.0.0.1:5000/mcp
 
 The image carries ffmpeg, yt-dlp and the Whisper runtime. The server has no authentication: it answers only loopback and tailnet (`*.ts.net`) host names, so reach it on `127.0.0.1` or through `tailscale serve`. `STASH_PROXY` sends video downloads through a proxy.
 
-| Tool         | Does                                                                          |
-| ------------ | ----------------------------------------------------------------------------- |
-| `list`       | Notes newest first, without their long texts                                  |
-| `search`     | Notes holding every word of the query; a `#word` must be a tag                |
-| `get`        | One note whole, with its source text and its transcript in `[mm:ss]` sections |
-| `save`       | Saves a link or text; the note is done once its status is `ready`             |
-| `regenerate` | Reads and tags a note again                                                   |
-| `remove`     | Deletes a note with its files                                                 |
+| Tool             | Does                                                                          |
+| ---------------- | ----------------------------------------------------------------------------- |
+| `list_notes`     | Notes newest first, without their long texts                                  |
+| `search_notes`   | Notes holding every word of the query; a `#word` must be a tag                |
+| `list_tags`      | Tags in use with their note counts and what belongs under each                |
+| `read_note`      | One note whole, with its source text and its transcript in `[mm:ss]` sections |
+| `save_note`      | Saves a link or text; the note is done once its status is `ready`             |
+| `reprocess_note` | Reads and tags a note again                                                   |
+| `delete_note`    | Deletes a note with its files                                                 |

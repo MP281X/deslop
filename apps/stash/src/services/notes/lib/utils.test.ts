@@ -2,7 +2,15 @@ import {assert, it} from '@effect/vitest'
 
 import {Array} from 'effect'
 
-import {captureUrl, commentFor, findNotes, hasVideo, normalizeTags, tagCounts} from '#services/notes/lib/utils.ts'
+import {
+	captureUrl,
+	commentFor,
+	findNotes,
+	hasVideo,
+	normalizeTags,
+	reuseTags,
+	tagCounts
+} from '#services/notes/lib/utils.ts'
 import {Note} from '#services/notes/schema.ts'
 
 it('maps every share of the same post to one canonical link', () => {
@@ -51,6 +59,20 @@ it('makes each tag one lowercase token', () => {
 		'web-design',
 		'digital-marketing',
 		'ai'
+	])
+})
+
+it('takes a plural or separator variant of a tag in use as that tag, but keeps a narrower tag apart', () => {
+	assert.deepStrictEqual(
+		reuseTags(['databases', 'webdesign', 'load-testing', 'security'], ['database', 'web-design', 'testing']),
+		['database', 'web-design', 'load-testing', 'security']
+	)
+	assert.deepStrictEqual(reuseTags(['ios', 'c++', 'c#', 'aws', 'class'], ['io', 'c', 'aw', 'clas']), [
+		'ios',
+		'c++',
+		'c#',
+		'aws',
+		'class'
 	])
 })
 
