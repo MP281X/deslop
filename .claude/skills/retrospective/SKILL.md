@@ -51,7 +51,7 @@ Measures, each with its counted member:
 - **`patterns` References:** a shape agents got wrong whose good version lives in an Effect 4 repository; a directory at its default branch, never a commit.
 - **Team skill:** practice every teammate's repository shares; no person, machine, path or T3 tool name.
 - **Repository `AGENTS.md`:** its scope, commands and canonical examples, the pointers every agent needs.
-- **`pair.md`, `.codex/instructions.md` and `.opencode/agents/build.md`:** replies, T3 tools, harness; kept in step per `AGENTS.md`.
+- **`pair.md` and `.codex/instructions.md`:** replies, T3 tools, harness; kept in step per `AGENTS.md`.
 - **`orchestrator`, `environment`:** the user's process, prompting semantics, machines and references. A phrase gets a fixed meaning only when the user defines it; corroborated usage informs interpretation, not a keyword parser. Keep personal habits out of team skills.
 
 ## Change
@@ -66,6 +66,7 @@ Measures, each with its counted member:
 
 ## Ship
 
+- **Report.** Show the few decisions that matter through compact code, diagrams and realistic mocks; keep mining details out of the overview. A text plan's approval followed by a rejected result also tests whether the proposal let the user see and feel the choice, not just whether the implementation matched its words.
 - **PR** per delivery, implemented in this thread's checkout even when history came from another worker. The mining, counts and diagnosis stay in the thread.
 - **Nothing to change** ends with one line and no PR.
 - **This skill.** A correction the user makes in a retrospective's own thread changes this skill in the same PR.
