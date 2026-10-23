@@ -13,7 +13,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 			'auth.admit': Effect.fnUntraced(function* (input) {
 				return yield* authorizations.admit(input, yield* CurrentUser)
 			}),
-			'auth.pending': (_, options) => authorizations.pending(options.headers),
+			'auth.lookup': (input, options) => authorizations.lookup(input.code, options.headers),
 			'auth.people': () => Stream.unwrap(Effect.map(CurrentUser, authorizations.people)),
 			'auth.remove': Effect.fnUntraced(function* (input) {
 				return yield* authorizations.remove(input.id, yield* CurrentUser)

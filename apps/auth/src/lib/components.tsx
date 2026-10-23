@@ -1,4 +1,39 @@
-import {avatarUrl} from '#lib/utils.ts'
+import {useAtom} from '@effect/atom-react'
+
+import {Array, Option, String, pipe} from 'effect'
+
+import {AsyncResult} from 'effect/reactivity'
+import {toQR} from 'toqr'
+
+import {Button} from '@deslop/components-web/ui/button'
+
+import {applicationName, avatarUrl, consentAtom, timeLabel} from '#lib/utils.ts'
+import type {Account, PendingAuthorization} from '#services/authorizations/schema.ts'
+
+// The link as a QR code, one square per dark module, inside the quiet zone scanners need.
+export function QrCode(props: {className?: string; text: string}) {
+	const modules = Array.fromIterable(toQR(props.text))
+	const size = Math.sqrt(modules.length)
+	return (
+		<svg
+			viewBox={`-2 -2 ${size + 4} ${size + 4}`}
+			shapeRendering="crispEdges"
+			fill="currentColor"
+			className={props.className}
+			aria-hidden="true"
+		>
+			<path
+				d={pipe(
+					modules,
+					Array.map((dark, index) => ({dark, x: index % size, y: Math.floor(index / size)})),
+					Array.filter(module => module.dark === 1),
+					Array.map(module => `M${module.x} ${module.y}h1v1h-1z`),
+					Array.join('')
+				)}
+			/>
+		</svg>
+	)
+}
 
 // Lucide has no brand icons; this is GitHub's mark from its Octicons.
 export function GitHubIcon(props: {className?: string}) {
@@ -13,11 +48,61 @@ export function GitHubIcon(props: {className?: string}) {
 export function Avatar(props: {id: string; name: string}) {
 	return (
 		<span className="relative size-8 shrink-0">
-			<img src={avatarUrl(props.id)} alt="" className="bg-muted size-8 rounded-full" />
-			<span className="bg-background text-foreground absolute -right-1 -bottom-1 grid size-4 place-items-center rounded-full">
+			<img src={avatarUrl(props.id)} alt="" className="bg-muted size-8" />
+			<span className="bg-background text-foreground absolute -right-1 -bottom-1 grid size-4 place-items-center">
 				<GitHubIcon className="size-3" />
 			</span>
 			<span className="sr-only">{props.name} on GitHub</span>
 		</span>
+	)
+}
+
+// A waiting sign-in with the account it signs in as, answered here; a failed answer stays on the card to retry.
+export function RequestCard(props: {account: Account; request: PendingAuthorization}) {
+	const [consent, respond] = useAtom(consentAtom)
+	function answer(accept: boolean) {
+		respond({accept, request: props.request})
+	}
+	return (
+		<div className="bg-card flex flex-col gap-3 p-4">
+			<div className="flex items-start gap-3">
+				<div className="flex min-w-0 grow flex-col">
+					<span className="truncate text-sm font-medium">
+						{Array.join(
+							Array.dedupeWith([applicationName(props.request), props.request.clientName], (left, right) =>
+								String.Equivalence(String.toLowerCase(left), String.toLowerCase(right))
+							),
+							' · '
+						)}
+					</span>
+					<span className="text-muted-foreground truncate text-xs">{props.request.redirectUri}</span>
+				</div>
+				<span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+					until {timeLabel(props.request.expiresAt)}
+				</span>
+			</div>
+			<div className="text-muted-foreground flex items-center gap-2 text-xs">
+				<Avatar id={props.account.id} name={props.account.name} />
+				<span className="truncate">
+					Signs in as <span className="text-foreground">{props.account.fullName ?? props.account.name}</span>
+				</span>
+			</div>
+			<div className="grid grid-cols-2 gap-2">
+				<Button size="lg" disabled={AsyncResult.isWaiting(consent)} onClick={() => answer(true)}>
+					Approve
+				</Button>
+				<Button size="lg" variant="secondary" disabled={AsyncResult.isWaiting(consent)} onClick={() => answer(false)}>
+					Deny
+				</Button>
+			</div>
+			{Option.match(AsyncResult.error(consent), {
+				onNone: () => null,
+				onSome: failure => (
+					<p className="text-destructive text-xs" role="alert">
+						{failure.message}
+					</p>
+				)
+			})}
+		</div>
 	)
 }

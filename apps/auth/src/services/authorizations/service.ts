@@ -124,9 +124,11 @@ export class Authorizations extends Context.Service<
 		readonly account: (headers: Headers.Headers) => Stream.Stream<Account, AuthError>
 		readonly admit: (params: AdmitParams, user: User) => Effect.Effect<Person, AuthError>
 		readonly answer: (params: ConsentParams, user: User) => Effect.Effect<{clientName: string}, AuthError>
-		readonly list: (user: User) => Effect.Effect<PendingAuthorization[], AuthError>
 		readonly listPeople: (user: User) => Effect.Effect<Person[], AuthError>
-		readonly pending: (headers: Headers.Headers) => Stream.Stream<PendingAuthorization[], AuthError>
+		readonly lookup: (
+			code: string,
+			headers: Headers.Headers
+		) => Stream.Stream<Option.Option<PendingAuthorization>, AuthError>
 		readonly people: (user: User) => Stream.Stream<Person[], AuthError>
 		readonly remove: (id: string, user: User) => Effect.Effect<Person, AuthError>
 		readonly wait: (id: string, headers: Headers.Headers) => Stream.Stream<AuthorizationStatus, AuthError>
@@ -328,26 +330,21 @@ export class Authorizations extends Context.Service<
 						})
 					)
 				}
-				const pendingRequests = Effect.gen(function* () {
-					const rows = yield* pipe(
-						sql`SELECT payload, hash, expires_at AS "expiresAt" FROM auth_state WHERE json_extract(payload, '$._tag') = 'Request' AND json_extract(payload, '$.decision._tag') = 'Pending' AND expires_at > ${yield* Clock.currentTimeMillis} ORDER BY json_extract(payload, '$.createdAt') DESC, hash`,
-						Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(AuthorizationRow)))
-					)
-					return yield* Effect.forEach(
-						rows,
-						Effect.fnUntraced(function* (row) {
-							return publicRequest(
-								yield* Schema.decodeEffect(Schema.fromJsonString(Stored.cases.Request))(row.payload),
-								row.expiresAt
-							)
-						}),
-						{concurrency: 1}
-					)
+				// A waiting sign-in is read only by its code, in any case and with or without the dash, so no account lists anyone else's.
+				const pendingRequest = Effect.fnUntraced(function* (typed: string) {
+					return yield* Option.match(yield* requestRow(String.toUpperCase(String.replaceAll(/[^a-z]/giu, '')(typed))), {
+						onNone: () => Effect.succeedNone,
+						onSome: Effect.fnUntraced(function* (row) {
+							const stored = yield* Schema.decodeEffect(Schema.fromJsonString(Stored))(row.payload)
+							if (stored._tag !== 'Request' || stored.decision._tag !== 'Pending') return Option.none()
+							return Option.some(publicRequest(stored, row.expiresAt))
+						})
+					})
 				})
-				const pending = Effect.fnUntraced(function* (headers: Headers.Headers) {
+				const lookup = Effect.fnUntraced(function* (code: string, headers: Headers.Headers) {
 					yield* session(headers)
-					return yield* pendingRequests
-				}, rejected('Cannot read pending authorizations'))
+					return yield* pendingRequest(code)
+				}, rejected('Cannot read the sign-in'))
 				const decide = Effect.fnUntraced(function* (params: ConsentParams, user: User) {
 					yield* sql.withTransaction(
 						Effect.gen(function* () {
@@ -373,16 +370,10 @@ export class Authorizations extends Context.Service<
 					yield* checkOrigin(headers)
 					yield* decide(params, yield* session(headers))
 				}, rejected('Cannot answer the authorization request'))
-				const list = Effect.fn('Authorizations.list')(function* (user: User) {
-					yield* allowed(user)
-					return yield* pendingRequests
-				}, rejected('Cannot read pending authorizations'))
-				// The code as its sign-in page shows it, in any case and with or without the dash.
 				const answer = Effect.fn('Authorizations.answer')(function* (params: ConsentParams, user: User) {
 					yield* allowed(user)
-					const code = String.toUpperCase(String.replaceAll(/[^a-z]/giu, '')(params.request))
 					const request = yield* pipe(
-						Array.findFirst(yield* pendingRequests, found => found.id === code),
+						yield* pendingRequest(params.request),
 						Effect.fromOption,
 						Effect.mapError(cause =>
 							AuthError.make({cause, message: 'No waiting sign-in has this code; start it again'})
@@ -910,11 +901,10 @@ export class Authorizations extends Context.Service<
 							account: headers => watch(account(headers), () => Infinity),
 							admit,
 							answer,
-							list,
 							listPeople,
-							pending: headers =>
-								watch(pending(headers), requests =>
-									Array.reduce(requests, Infinity, (expiresAt, request) => Number.min(expiresAt, request.expiresAt))
+							lookup: (code, headers) =>
+								watch(lookup(code, headers), found =>
+									Option.match(found, {onNone: () => Infinity, onSome: request => request.expiresAt})
 								),
 							people: user => watch(listPeople(user), () => Infinity),
 							remove: removePerson,

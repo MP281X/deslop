@@ -10,10 +10,11 @@ import {Suspense} from 'react'
 import {Loading} from '@deslop/components-web/fallbacks'
 import {Button} from '@deslop/components-web/ui/button'
 
-import {Avatar, GitHubIcon} from '#lib/components.tsx'
+import {Avatar, GitHubIcon, QrCode, RequestCard} from '#lib/components.tsx'
 import {
 	accountAtom,
 	applicationName,
+	approveLink,
 	peopleAtom,
 	requestAtom,
 	requestCode,
@@ -21,7 +22,7 @@ import {
 	signInAtom,
 	signOutAtom
 } from '#lib/utils.ts'
-import type {Account} from '#services/authorizations/schema.ts'
+import type {Account, PendingAuthorization} from '#services/authorizations/schema.ts'
 
 export const Route = createFileRoute('/(home)')({component: HomeLayout})
 
@@ -53,7 +54,35 @@ function HomeLayout() {
 	)
 }
 
-function Waiting(props: {id: string}) {
+// A device that is not signed in: the QR opens the approve page with the code filled in on a phone that is.
+function CodeCard(props: {request: PendingAuthorization}) {
+	const [signIn, startSignIn] = useAtom(signInAtom)
+	return (
+		<section className="flex flex-col items-center gap-4 pt-4 text-center">
+			<h2 className="text-muted-foreground text-xs tracking-wider uppercase">
+				{applicationName(props.request)} wants to sign in
+			</h2>
+			<a href={approveLink(props.request.id)} aria-label="Approve this sign-in" className="border p-3">
+				<QrCode text={approveLink(props.request.id)} className="size-36" />
+			</a>
+			<p className="text-2xl font-semibold tracking-widest tabular-nums">{requestCode(props.request.id)}</p>
+			<p className="text-muted-foreground max-w-72 text-xs">
+				Scan with a phone where you are signed in, or enter the code at{' '}
+				<span className="text-foreground">{location.host}</span>.
+			</p>
+			<p className="text-muted-foreground flex items-center gap-2 text-xs" role="status">
+				<span className="bg-primary size-2 motion-safe:animate-pulse" aria-hidden="true" />
+				Waiting for approval
+			</p>
+			<Button variant="link" size="sm" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
+				Sign in with GitHub on this device
+			</Button>
+		</section>
+	)
+}
+
+// This browser started the sign-in, so a signed-in account answers it here without a code.
+function Waiting(props: {account: Option.Option<Account>; id: string}) {
 	return pipe(
 		useAtomSuspense(requestAtom(props.id)).value,
 		Match.value,
@@ -68,18 +97,14 @@ function Waiting(props: {id: string}) {
 					This request expired. Start sign-in again in the app.
 				</p>
 			),
-			Waiting: value => (
-				<section className="bg-card flex flex-col items-center gap-2 p-6 text-center">
-					<h2 className="text-muted-foreground text-xs tracking-wider uppercase">
-						Sign in to {applicationName(value.request)}
-					</h2>
-					<p className="text-3xl font-semibold tracking-widest tabular-nums">{requestCode(value.request.id)}</p>
-					<p className="text-muted-foreground text-xs">
-						Enter this code at {location.host} where you are signed in, or give it to your agent. You do not need to
-						sign in here.
-					</p>
-				</section>
-			)
+			Waiting: value =>
+				Option.match(
+					Option.filter(props.account, signed => signed.role !== 'Waiting'),
+					{
+						onNone: () => <CodeCard request={value.request} />,
+						onSome: signed => <RequestCard account={signed} request={value.request} />
+					}
+				)
 		})
 	)
 }
@@ -170,18 +195,24 @@ function Shell() {
 					)
 				})}
 			</header>
-			{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting id={id} />})}
+			{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting account={account} id={id} />})}
 			{Option.match(account, {
-				onNone: () => (
-					<Button size="lg" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
-						{Boolean.match(AsyncResult.isWaiting(signIn), {
-							onFalse: () => <GitHubIcon />,
-							onTrue: () => <LoaderCircle className="motion-safe:animate-spin" />
-						})}
-						Sign in with GitHub
-					</Button>
-				),
-				onSome: signed => <Signed account={signed} />
+				// A waiting sign-in offers GitHub as its last step, under the code.
+				onNone: () =>
+					Option.isNone(requestId) && (
+						<Button size="lg" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
+							{Boolean.match(AsyncResult.isWaiting(signIn), {
+								onFalse: () => <GitHubIcon />,
+								onTrue: () => <LoaderCircle className="motion-safe:animate-spin" />
+							})}
+							Sign in with GitHub
+						</Button>
+					),
+				onSome: signed =>
+					Boolean.match(Option.isSome(requestId) && signed.role !== 'Waiting', {
+						onFalse: () => <Signed account={signed} />,
+						onTrue: () => null
+					})
 			})}
 			{Option.match(error, {
 				onNone: () => null,
