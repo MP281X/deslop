@@ -11,6 +11,7 @@ import {
 	FileSystem,
 	Fiber,
 	Layer,
+	Option,
 	Order,
 	Path,
 	Queue,
@@ -31,6 +32,7 @@ import {CurrentUser} from '@deslop/runtime/auth/utils'
 
 import {
 	AuthorizationStatus,
+	CodeParams,
 	ConsentParams,
 	PendingAuthorization,
 	Person,
@@ -109,14 +111,20 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 							Layer.merge(
 								HttpRouter.add(
 									'GET',
-									'/pending',
+									'/lookup',
 									Effect.gen(function* () {
+										const params = yield* HttpServerRequest.schemaSearchParams(CodeParams)
 										return yield* HttpServerResponse.schemaJson(Schema.Array(PendingAuthorization))(
-											yield* Effect.flatMap(
-												Stream.runHead(
-													(yield* Authorizations).pending((yield* HttpServerRequest.HttpServerRequest).headers)
-												),
-												Effect.fromOption
+											Option.toArray(
+												yield* Effect.flatMap(
+													Stream.runHead(
+														(yield* Authorizations).lookup(
+															params.code,
+															(yield* HttpServerRequest.HttpServerRequest).headers
+														)
+													),
+													Effect.fromOption
+												)
 											)
 										)
 									})
@@ -125,16 +133,20 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 									'GET',
 									'/events',
 									Effect.gen(function* () {
+										const params = yield* HttpServerRequest.schemaSearchParams(CodeParams)
 										return HttpServerResponse.stream(
 											pipe(
-												(yield* Authorizations).pending((yield* HttpServerRequest.HttpServerRequest).headers),
+												(yield* Authorizations).lookup(
+													params.code,
+													(yield* HttpServerRequest.HttpServerRequest).headers
+												),
 												Stream.take(2),
-												Stream.mapEffect((snapshot, index) =>
+												Stream.mapEffect((found, index) =>
 													Effect.gen(function* () {
 														if (index === 0) yield* Queue.offer(ready, true)
 														return yield* Schema.encodeEffect(
 															Schema.fromJsonString(Schema.Array(PendingAuthorization))
-														)(snapshot)
+														)(Option.toArray(found))
 													})
 												),
 												Stream.map(value => new TextEncoder().encode(`${value}\n`))
@@ -458,28 +470,31 @@ it.layer(NodeServices.layer)(test => {
 		Effect.gen(function* () {
 			const web = yield* servers()
 			const session = cookie(yield* signIn(web.issuer, 'octocat'))
-			assert.strictEqual((yield* send(web.issuer, '/pending')).status, 401)
 			const first = yield* authorize(web.issuer, '', 'http://127.0.0.1:34567/callback', [
 				'https://scope.mp281x.xyz/mcp'
 			])
 			const second = yield* authorize(web.issuer, '', 'http://127.0.0.1:34568/callback', [
 				'https://stash.mp281x.xyz/mcp'
 			])
-			const response = yield* send(web.issuer, '/pending', {headers: {cookie: session}})
-			const body = yield* Effect.promise(() => response.text())
-			assert.isFalse(String.includes('fixture-state')(body))
-			assert.isFalse(String.includes('challenge')(body))
-			assert.isFalse(String.includes(first.clientId)(body))
-			assert.deepStrictEqual(
-				Array.sort(
-					Array.map(
+			assert.strictEqual((yield* send(web.issuer, `/lookup?code=${first.id}`)).status, 401)
+			const lookup = Effect.fnUntraced(function* (code: string) {
+				const response = yield* send(web.issuer, `/lookup?code=${code}`, {headers: {cookie: session}})
+				const body = yield* Effect.promise(() => response.text())
+				return {
+					body,
+					ids: Array.map(
 						yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(PendingAuthorization)))(body),
 						item => item.id
-					),
-					Order.String
-				),
-				Array.sort([first.id, second.id], Order.String)
-			)
+					)
+				}
+			})
+			const found = yield* lookup(String.toLowerCase(`${String.slice(0, 4)(first.id)}-${String.slice(4)(first.id)}`))
+			assert.isFalse(String.includes('fixture-state')(found.body))
+			assert.isFalse(String.includes('challenge')(found.body))
+			assert.isFalse(String.includes(first.clientId)(found.body))
+			// One code reads one sign-in: the other waiting one stays out of the answer, and an unknown code reads nothing.
+			assert.deepStrictEqual(found.ids, [first.id])
+			assert.deepStrictEqual((yield* lookup('BCDFGHJK')).ids, [])
 			assert.strictEqual(
 				(yield* send(web.issuer, `/auth/request?request=${first.id}`, {headers: {cookie: session}})).status,
 				400
@@ -526,30 +541,15 @@ it.layer(NodeServices.layer)(test => {
 		})
 	)
 
-	test.effect('streams creations and expiration without refresh and rejects decisions after expiry', () =>
+	test.effect('streams a typed code until its sign-in expires and rejects decisions after expiry', () =>
 		Effect.gen(function* () {
 			const web = yield* servers()
 			const session = cookie(yield* signIn(web.issuer, 'octocat'))
-			const creations = yield* pipe(
-				send(web.issuer, '/events', {headers: {cookie: session}}),
-				Effect.flatMap(response => Effect.promise(() => response.text())),
-				Effect.forkScoped
-			)
-			yield* Queue.take(web.ready)
 			const request = yield* authorize(web.issuer, '', 'http://127.0.0.1:34567/callback', [
 				'https://scope.mp281x.xyz/mcp'
 			])
-			const created = yield* Effect.forEach(
-				pipe(yield* Fiber.join(creations), String.trim, String.split('\n')),
-				line => Schema.decodeEffect(Schema.fromJsonString(Schema.Array(PendingAuthorization)))(line),
-				{concurrency: 1}
-			)
-			assert.deepStrictEqual(
-				Array.map(created, snapshot => Array.map(snapshot, item => item.id)),
-				[[], [request.id]]
-			)
 			const expirations = yield* pipe(
-				send(web.issuer, '/events', {headers: {cookie: session}}),
+				send(web.issuer, `/events?code=${request.id}`, {headers: {cookie: session}}),
 				Effect.flatMap(response => Effect.promise(() => response.text())),
 				Effect.forkScoped
 			)
@@ -616,7 +616,7 @@ it.layer(NodeServices.layer)(test => {
 				),
 				[204, 400]
 			)
-			const pending = yield* send(web.issuer, '/pending', {headers: {cookie: first}})
+			const pending = yield* send(web.issuer, `/lookup?code=${request.id}`, {headers: {cookie: first}})
 			assert.deepStrictEqual(
 				yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(PendingAuthorization)))(
 					yield* Effect.promise(() => pending.text())
@@ -787,7 +787,7 @@ it.layer(NodeServices.layer)(test => {
 		})
 	)
 
-	test.effect('lets an agent list and answer any waiting sign-in as the browser does', () =>
+	test.effect('lets an agent answer a waiting sign-in by its code as the browser does', () =>
 		Effect.gen(function* () {
 			const web = yield* servers()
 			const token = yield* agentToken(web.issuer, cookie(yield* signIn(web.issuer, 'octocat')))
@@ -800,25 +800,9 @@ it.layer(NodeServices.layer)(test => {
 				APPROVALS
 			])
 			const release = yield* authorize(web.issuer, '', 'stash://auth/callback', [API, 'https://otel.mp281x.xyz'])
-			assert.strictEqual((yield* callTool(web.issuer, '', 'list_requests', {})).status, 401)
-			const listed = yield* callTool(web.issuer, token, 'list_requests', {})
-			assert.deepStrictEqual(
-				Array.sort(
-					Array.map(
-						(yield* Schema.decodeEffect(
-							Schema.fromJsonString(
-								Schema.Struct({
-									result: Schema.Struct({
-										structuredContent: Schema.Struct({requests: Schema.Array(PendingAuthorization)})
-									})
-								})
-							)
-						)(yield* Effect.promise(() => listed.text()))).result.structuredContent.requests,
-						item => item.id
-					),
-					Order.String
-				),
-				Array.sort([simulator.id, desktop.id, release.id], Order.String)
+			assert.strictEqual(
+				(yield* callTool(web.issuer, '', 'answer_request', {accept: true, request: simulator.id})).status,
+				401
 			)
 			yield* Effect.forEach(
 				[

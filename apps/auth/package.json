@@ -22,6 +22,7 @@
 		"@tanstack/react-router": "latest",
 		"lucide-react": "latest",
 		"react": "latest",
-		"react-dom": "latest"
+		"react-dom": "latest",
+		"toqr": "latest"
 	}
 }

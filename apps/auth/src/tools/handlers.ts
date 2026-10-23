@@ -47,9 +47,6 @@ const ToolHandlers = Tools.toLayer(
 			list_people: Effect.fnUntraced(function* () {
 				return {people: yield* authorizations.listPeople(yield* caller)}
 			}),
-			list_requests: Effect.fnUntraced(function* () {
-				return {requests: yield* authorizations.list(yield* caller)}
-			}),
 			remove_person: Effect.fnUntraced(function* (input) {
 				const found = yield* byLogin(input.login)
 				return {person: yield* authorizations.remove(found.person.id, found.user)}

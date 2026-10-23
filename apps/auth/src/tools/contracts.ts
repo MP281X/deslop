@@ -4,15 +4,9 @@ import {Tool, Toolkit} from 'effect/ai'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
 
-import {PendingAuthorization, Person} from '#services/authorizations/schema.ts'
+import {Person} from '#services/authorizations/schema.ts'
 
 export const Tools = Toolkit.make(
-	Tool.make('list_requests', {
-		description:
-			'List the sign-ins waiting for approval, newest first: the client, the callback it returns to, the apps it asks for and when it expires. Each id is the code its sign-in page shows, such as WDJBMJHT for WDJB-MJHT.',
-		failure: AuthError,
-		success: Schema.Struct({requests: Schema.Array(PendingAuthorization)})
-	}).annotate(Tool.Readonly, true),
 	Tool.make('answer_request', {
 		description:
 			'Approve or deny a waiting sign-in as the signed-in account, as entering its code at https://auth.mp281x.xyz does. Pass the code its sign-in page shows, such as WDJB-MJHT. The waiting page then completes or fails the sign-in by itself.',

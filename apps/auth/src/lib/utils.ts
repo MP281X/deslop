@@ -35,11 +35,12 @@ export const accountAtom = Atom.keepAlive(
 	)
 )
 
-export const pendingAtom = Atom.keepAlive(
+// Live, so the card goes away once the sign-in is answered elsewhere or expires.
+export const lookupAtom = Atom.family((code: string) =>
 	RpcClient.runtime.atom(
 		pipe(
 			RpcClient,
-			Effect.map(client => client('auth.pending', undefined)),
+			Effect.map(client => client('auth.lookup', {code})),
 			Stream.unwrap,
 			Stream.retry($ =>
 				pipe(
@@ -109,6 +110,13 @@ export function requestCode(id: string) {
 export function typedCode(text: string) {
 	return String.toUpperCase(String.replaceAll(/[^a-z]/giu, '')(text))
 }
+
+// The link RFC 8628 calls verification_uri_complete: it opens the approve page with the code filled in.
+export function approveLink(id: string) {
+	return `${location.origin}/?code=${id}`
+}
+
+export const linkedCode = typedCode(new URLSearchParams(location.search).get('code') ?? '')
 
 export function applicationName(request: PendingAuthorization) {
 	return Array.match(

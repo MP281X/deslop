@@ -97,6 +97,9 @@ export const AuthorizationRow = Schema.Struct({expiresAt: Schema.Finite, hash: S
 export type RequestParams = typeof RequestParams.Type
 export const RequestParams = Schema.Struct({request: Schema.NonEmptyString})
 
+export type CodeParams = typeof CodeParams.Type
+export const CodeParams = Schema.Struct({code: Schema.NonEmptyString})
+
 export type SignInParams = typeof SignInParams.Type
 export const SignInParams = Schema.Struct({request: Schema.optionalKey(Schema.NonEmptyString)})
 

@@ -9,6 +9,7 @@ import {
 	Account,
 	AdmitParams,
 	AuthorizationStatus,
+	CodeParams,
 	PendingAuthorization,
 	Person,
 	PersonParams,
@@ -16,7 +17,12 @@ import {
 } from '#services/authorizations/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
-	Rpc.make('auth.pending', {error: AuthError, stream: true, success: Schema.Array(PendingAuthorization)}),
+	Rpc.make('auth.lookup', {
+		error: AuthError,
+		payload: CodeParams,
+		stream: true,
+		success: Schema.Option(PendingAuthorization)
+	}),
 	Rpc.make('auth.people', {error: AuthError, stream: true, success: Schema.Array(Person)}),
 	Rpc.make('auth.admit', {error: AuthError, payload: AdmitParams, success: Person}),
 	Rpc.make('auth.remove', {error: AuthError, payload: PersonParams, success: Person})
