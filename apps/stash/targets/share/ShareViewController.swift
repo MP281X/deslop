@@ -1,3 +1,4 @@
+import CoreText
 import ImageIO
 import Security
 import SwiftUI
@@ -32,41 +33,88 @@ private enum Outcome {
   case queued
 }
 
+// The app's theme (packages/components-mobile/src/theme.ts) and its JetBrains Mono, which the containing app bundles.
+private enum Theme {
+  static let app = Bundle(url: Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent())
+  static let background = color(dark: 0x111114, light: 0xffffff)
+  static let foreground = color(dark: 0xf3f3f5, light: 0x09090b)
+  static let muted = color(dark: 0xadadb5, light: 0x71717b)
+  static let primary = color(dark: 0xe78a53, light: 0xf54900)
+  static let destructive = color(dark: 0xff6467, light: 0xe7000b)
+  static let logo = app?.url(forResource: "assets/src/routes/logo", withExtension: "png").flatMap {
+    UIImage(contentsOfFile: $0.path)
+  }
+
+  static func registerFonts() {
+    for name in ["JetBrainsMono_400Regular", "JetBrainsMono_600SemiBold"] {
+      if let url = app?.url(forResource: name, withExtension: "ttf") {
+        CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+      }
+    }
+  }
+
+  static func mono(_ size: CGFloat, bold: Bool = false) -> Font {
+    .custom(bold ? "JetBrainsMono-SemiBold" : "JetBrainsMono-Regular", size: size)
+  }
+
+  private static func color(dark: Int, light: Int) -> Color {
+    Color(
+      uiColor: UIColor { traits in
+        let value = traits.userInterfaceStyle == .dark ? dark : light
+        return UIColor(
+          red: CGFloat((value >> 16) & 0xff) / 255, green: CGFloat((value >> 8) & 0xff) / 255,
+          blue: CGFloat(value & 0xff) / 255, alpha: 1)
+      })
+  }
+}
+
 private struct SaveView: View {
   let context: NSExtensionContext
   @State private var phase = Phase.saving
 
+  init(context: NSExtensionContext) {
+    self.context = context
+    Theme.registerFonts()
+  }
+
   // iOS always presents the extension as a full-height sheet, ignoring overFullScreen and custom detents,
-  // so the status fills the sheet's center instead of sitting in a card at its bottom.
+  // so the status fills the sheet's center, under the app's name as its own screens show it.
   var body: some View {
-    VStack(spacing: 14) {
-      switch phase {
-      case .saving:
-        ProgressView().controlSize(.extraLarge).frame(height: 64)
-        Text("Saving to Stash").font(.title3.weight(.semibold))
-      case .saved:
-        Image(systemName: "checkmark.circle.fill")
-          .font(.system(size: 64))
-          .foregroundStyle(.green)
-          .symbolEffect(.bounce, value: phase)
-        Text("Saved to Stash").font(.title3.weight(.semibold))
-      case .queued:
-        Image(systemName: "arrow.up.circle.fill")
-          .font(.system(size: 64))
-          .foregroundStyle(.tint)
-          .symbolEffect(.bounce, value: phase)
-        Text("Sending to Stash").font(.title3.weight(.semibold))
-        Text("It shows up once the upload finishes.").font(.subheadline).foregroundStyle(.secondary)
-      case .failed(let message):
-        Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 60)).foregroundStyle(.orange)
-        Text("Not Saved").font(.title3.weight(.semibold))
-        Text(message).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-        Text("Tap to close").font(.footnote).foregroundStyle(.tertiary)
+    VStack(spacing: 0) {
+      HStack(spacing: 8) {
+        if let logo = Theme.logo {
+          Image(uiImage: logo).resizable().interpolation(.none).frame(width: 18, height: 18)
+        }
+        Text("stash").font(Theme.mono(17, bold: true)).foregroundStyle(Theme.foreground)
       }
+      .padding(.top, 20)
+      VStack(spacing: 12) {
+        switch phase {
+        case .saving:
+          ProgressView().controlSize(.large).tint(Theme.primary).frame(height: 44)
+          Text("Saving…").font(Theme.mono(16, bold: true)).foregroundStyle(Theme.foreground)
+        case .saved:
+          Image(systemName: "checkmark").font(.system(size: 36, weight: .semibold)).foregroundStyle(Theme.primary)
+            .frame(height: 44).symbolEffect(.bounce, value: phase)
+          Text("Saved").font(Theme.mono(16, bold: true)).foregroundStyle(Theme.foreground)
+        case .queued:
+          Image(systemName: "arrow.up").font(.system(size: 36, weight: .semibold)).foregroundStyle(Theme.primary)
+            .frame(height: 44).symbolEffect(.bounce, value: phase)
+          Text("Sending…").font(Theme.mono(16, bold: true)).foregroundStyle(Theme.foreground)
+          Text("It shows up once the upload finishes.").font(Theme.mono(13)).foregroundStyle(Theme.muted)
+        case .failed(let message):
+          Image(systemName: "exclamationmark.triangle").font(.system(size: 34, weight: .semibold))
+            .foregroundStyle(Theme.destructive).frame(height: 44)
+          Text("Not saved").font(Theme.mono(16, bold: true)).foregroundStyle(Theme.foreground)
+          Text(message).font(Theme.mono(13)).foregroundStyle(Theme.muted)
+          Text("Tap to close").font(Theme.mono(12)).foregroundStyle(Theme.muted).padding(.top, 8)
+        }
+      }
+      .multilineTextAlignment(.center)
+      .padding(.horizontal, 32)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    .padding(.horizontal, 32)
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(Color(.systemBackground))
+    .background(Theme.background)
     .contentShape(Rectangle())
     .animation(.snappy, value: phase)
     .onTapGesture { if case .failed = phase { context.completeRequest(returningItems: nil) } }
