@@ -116,7 +116,7 @@ function Tabs() {
 				[
 					{count: 0, label: 'Sign-ins', to: '/'},
 					{
-						count: Array.filter(useAtomSuspense(peopleAtom).value, person => person.role === 'Waiting').length,
+						count: Array.countBy(useAtomSuspense(peopleAtom).value, person => person.role === 'Waiting'),
 						label: 'People',
 						to: '/people'
 					}

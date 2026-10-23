@@ -1,4 +1,4 @@
-import {Array, HashMap, HashSet, Option, Order, Predicate, Record, String, pipe} from 'effect'
+import {Array, Function, HashMap, HashSet, Option, Order, Predicate, Record, String, pipe} from 'effect'
 
 import type {Note, NotesEvent} from '#services/notes/schema.ts'
 
@@ -130,7 +130,7 @@ export function reuseTags(tags: Note['tags'], existing: Note['tags']) {
 export function tagCounts(notes: NotesEvent['upserted']) {
 	return pipe(
 		Array.flatMap(notes, note => note.tags),
-		Array.groupBy(tag => tag),
+		Array.groupBy(Function.identity),
 		Record.toEntries,
 		Array.map(entry => ({count: entry[1].length, tag: entry[0]})),
 		Array.sort(

@@ -229,7 +229,8 @@ export class Chapters extends Context.Service<
 									existing,
 									item => post.postedAt > (item.revisedAt ?? item.postedAt) && item.source !== post.link
 								)
-							return Boolean.match(fresh || revision, {onFalse: () => chosen, onTrue: () => Array.append(chosen, post)})
+							if (fresh || revision) return Array.append(chosen, post)
+							return chosen
 						}),
 						post =>
 							pipe(

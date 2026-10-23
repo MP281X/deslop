@@ -1,4 +1,4 @@
-import {Array, Function, MutableRef, Option, Predicate, String, pipe} from 'effect'
+import {Array, Function, MutableList, Option, Predicate, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -260,10 +260,10 @@ function report(input: {context: Context; effects: ESTree.Node[]; node: ESTree.V
 
 export const noSingleUseValue = defineRule({
 	create: context => {
-		const effects = MutableRef.make(Array.empty<ESTree.Node>())
-		const candidates = MutableRef.make(Array.empty<ESTree.VariableDeclarator>())
+		const effects = MutableList.make<ESTree.Node>()
+		const candidates = MutableList.make<ESTree.VariableDeclarator>()
 		function effect(node: ESTree.Node) {
-			MutableRef.update(effects, Array.append(node))
+			MutableList.append(effects, node)
 		}
 		return {
 			AssignmentExpression: effect,
@@ -271,12 +271,13 @@ export const noSingleUseValue = defineRule({
 			CallExpression: effect,
 			NewExpression: effect,
 			'Program:exit': () => {
-				for (const node of MutableRef.get(candidates)) report({context, effects: MutableRef.get(effects), node})
+				const nodes = MutableList.toArray(effects)
+				for (const node of MutableList.toArray(candidates)) report({context, effects: nodes, node})
 			},
 			TaggedTemplateExpression: effect,
 			UpdateExpression: effect,
 			VariableDeclarator: node => {
-				if (candidate(context, node)) MutableRef.update(candidates, Array.append(node))
+				if (candidate(context, node)) MutableList.append(candidates, node)
 			},
 			YieldExpression: effect
 		}

@@ -82,7 +82,7 @@ export function summary(entries: Entry[], query: Query) {
 	}
 	return {
 		count: entries.length,
-		errors: Array.filter(entries, entry => entry.status === 2).length,
+		errors: Array.countBy(entries, entry => entry.status === 2),
 		from: query.from,
 		maxMs: percentile(1),
 		p50Ms: percentile(0.5),

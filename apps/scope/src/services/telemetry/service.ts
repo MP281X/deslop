@@ -142,9 +142,9 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 							const root = Option.getOrElse(Array.head(view.spans), () => Option.getOrThrow(Array.head(records)))
 							return {
 								durationMs: view.durationMs,
-								errors: Array.filter(records, entry => entry.status === 2).length,
+								errors: Array.countBy(records, entry => entry.status === 2),
 								id,
-								logs: Array.filter(records, entry => entry.signal === 'log').length,
+								logs: Array.countBy(records, entry => entry.signal === 'log'),
 								operation: root.name,
 								service: root.service,
 								services: view.services,

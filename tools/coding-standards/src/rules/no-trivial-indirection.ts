@@ -113,7 +113,7 @@ function isIdentity(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
 }
 
 function indirectionMessage(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
-	if (isIdentity(input.node)) return 'Pass identity from effect instead of this function.'
+	if (isIdentity(input.node)) return 'Pass Function.identity from effect instead of this function.'
 	const returned = returnedExpression(input.node)
 	if (exactForwardingFunction(input) && returned?.type === 'CallExpression') {
 		return `Use ${input.context.sourceCode.getText(returned.callee)} directly; this function only passes its parameters on.`
@@ -196,7 +196,7 @@ function redundantConstAlias(input: {context: Context; node: ESTree.VariableDecl
 	}
 	return pipe(
 		variableFromScope({name: input.node.id.name, scope: input.context.sourceCode.getScope(input.node)}),
-		Option.exists(alias => Array.filter(alias.references, reference => reference.isRead()).length === 1)
+		Option.exists(alias => Array.countBy(alias.references, reference => reference.isRead()) === 1)
 	)
 }
 
@@ -310,43 +310,107 @@ function isCatchHandler(node: ESTree.Function | ESTree.ArrowFunctionExpression) 
 	)
 }
 
+function reportsIndirection(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
+	return (
+		(input.node.type === 'FunctionDeclaration' ||
+			input.node.parent.type === 'VariableDeclarator' ||
+			input.node.parent.type === 'Property' ||
+			(input.node.type === 'FunctionExpression' &&
+				input.node.parent.type === 'MethodDefinition' &&
+				input.node.parent.override !== true)) &&
+		!isComponent(input.node) &&
+		!isCatchHandler(input.node) &&
+		(exactForwardingFunction(input) || singleUseThunk(input) || singleCallerWrapper(input))
+	)
+}
+
+function identityCallback(node: ESTree.ArrowFunctionExpression) {
+	return (
+		!node.async &&
+		node.typeParameters === null &&
+		node.returnType === null &&
+		node.params[0]?.type === 'Identifier' &&
+		node.params[0].typeAnnotation === null &&
+		node.parent.type === 'CallExpression' &&
+		Array.contains(node.parent.arguments, node) &&
+		isIdentity(node)
+	)
+}
+
+function booleanBranch(input: {context: Context; node: ESTree.CallExpression}) {
+	const [condition, options] = input.node.arguments
+	return (
+		input.node.arguments.length === 2 &&
+		condition?.type !== 'SpreadElement' &&
+		importedMember({context: input.context, importedName: 'Boolean', node: input.node.callee, propertyName: 'match'}) &&
+		options?.type === 'ObjectExpression' &&
+		options.properties.length === 2 &&
+		Array.every(['onFalse', 'onTrue'], name =>
+			Array.some(
+				options.properties,
+				property =>
+					property.type === 'Property' &&
+					property.kind === 'init' &&
+					!property.computed &&
+					!property.method &&
+					!property.shorthand &&
+					property.key.type === 'Identifier' &&
+					property.key.name === name &&
+					property.value.type === 'ArrowFunctionExpression' &&
+					!property.value.async &&
+					Array.isArrayEmpty(property.value.params) &&
+					property.value.body.type !== 'BlockStatement'
+			)
+		)
+	)
+}
+
 export const noTrivialIndirection = defineRule({
 	create: context => ({
 		ArrowFunctionExpression: node => {
-			if (
-				(node.parent.type === 'VariableDeclarator' || node.parent.type === 'Property') &&
-				!isComponent(node) &&
-				!isCatchHandler(node) &&
-				(exactForwardingFunction({context, node}) ||
-					singleUseThunk({context, node}) ||
-					singleCallerWrapper({context, node}))
-			) {
+			if (identityCallback(node) && node.parent.type === 'CallExpression') {
+				const call = node.parent
+				if (
+					Array.some(['Array', 'Effect', 'Option'], importedName =>
+						importedMember({context, importedName, node: call.callee, propertyName: 'map'})
+					)
+				) {
+					context.report({message: 'Remove this identity map; use Array.copy if a separate array is required.', node})
+					return
+				}
+				context.report({message: 'Pass Function.identity from effect instead of this callback.', node})
+				return
+			}
+			if (reportsIndirection({context, node})) {
 				context.report({message: indirectionMessage({context, node}), node})
 			}
 		},
 		FunctionDeclaration: node => {
-			if (
-				!isComponent(node) &&
-				(exactForwardingFunction({context, node}) ||
-					singleUseThunk({context, node}) ||
-					singleCallerWrapper({context, node}))
-			) {
+			if (reportsIndirection({context, node})) {
 				context.report({message: indirectionMessage({context, node}), node})
 			}
 		},
 		FunctionExpression: node => {
-			if (
-				(node.parent.type === 'VariableDeclarator' ||
-					node.parent.type === 'Property' ||
-					(node.parent.type === 'MethodDefinition' && node.parent.override !== true)) &&
-				!isComponent(node) &&
-				!isCatchHandler(node) &&
-				(exactForwardingFunction({context, node}) ||
-					singleUseThunk({context, node}) ||
-					singleCallerWrapper({context, node}))
-			) {
+			if (reportsIndirection({context, node})) {
 				context.report({message: indirectionMessage({context, node}), node})
 			}
+		},
+		ReturnStatement: node => {
+			if (node.parent.type !== 'BlockStatement' || node.argument?.type !== 'CallExpression') return
+			if (
+				(node.parent.parent.type !== 'FunctionDeclaration' &&
+					node.parent.parent.type !== 'FunctionExpression' &&
+					node.parent.parent.type !== 'ArrowFunctionExpression') ||
+				node.parent.parent.body !== node.parent ||
+				reportsIndirection({context, node: node.parent.parent}) ||
+				!booleanBranch({context, node: node.argument})
+			) {
+				return
+			}
+			context.report({
+				message: 'Return early: if (condition) return the onTrue value, then return the onFalse value.',
+				node
+			})
 		},
 		VariableDeclarator: node => {
 			if (exportedAlias({context, node})) {

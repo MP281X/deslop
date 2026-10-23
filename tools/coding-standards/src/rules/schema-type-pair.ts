@@ -93,37 +93,6 @@ function namedTypeAlias(input: {
 	)
 }
 
-function exportedNames(input: {program: ESTree.Program; typeOnly: boolean}) {
-	return Array.flatMap(input.program.body, statement => {
-		if (statement.type !== 'ExportNamedDeclaration' || statement.declaration !== null || statement.source !== null) {
-			return Array.empty<string>()
-		}
-		return Array.flatMap(statement.specifiers, specifier => {
-			const typeOnly = statement.exportKind === 'type' || specifier.exportKind === 'type'
-			if (specifier.local.type !== 'Identifier' || typeOnly !== input.typeOnly) return Array.empty<string>()
-			return [specifier.local.name]
-		})
-	})
-}
-
-// Names a later `export {X}` exports as type and value, and `export type {X}` or `export {type X}` as type only.
-function exportLists(program: ESTree.Program) {
-	return {types: exportedNames({program, typeOnly: true}), values: exportedNames({program, typeOnly: false})}
-}
-
-function isExported(input: {
-	exports: {types: string[]; values: string[]}
-	name: string
-	statement: ESTree.Statement | ESTree.ModuleDeclaration
-	typeOnly: boolean
-}) {
-	return (
-		input.statement.type === 'ExportNamedDeclaration' ||
-		Array.contains(input.exports.values, input.name) ||
-		(input.typeOnly && Array.contains(input.exports.types, input.name))
-	)
-}
-
 // The type goes in front only when the statement declares this Schema alone and nothing else in the file is named after it.
 function pairable(input: {
 	context: Context
@@ -153,7 +122,6 @@ function pairable(input: {
 function reportSchemaVariable(input: {
 	context: Context
 	cycleNames: string[]
-	exports: {types: string[]; values: string[]}
 	program: ESTree.Program
 	statement: ESTree.Statement
 	variable: ESTree.VariableDeclarator
@@ -212,14 +180,6 @@ function reportSchemaVariable(input: {
 			message: `Place \`type ${name} = typeof ${name}.Type\` immediately before this Schema.`,
 			node: input.variable
 		})
-	} else if (
-		isExported({exports: input.exports, name, statement: input.statement, typeOnly: false}) !==
-		Option.exists(typeStatement, statement => isExported({exports: input.exports, name, statement, typeOnly: true}))
-	) {
-		input.context.report({
-			message: `Export both \`type ${name}\` and the \`${name}\` Schema, or neither.`,
-			node: input.variable
-		})
 	}
 	if (
 		input.variable.init.type === 'TSSatisfiesExpression' &&
@@ -239,12 +199,11 @@ export const schemaTypePair = defineRule({
 	createOnce: context => ({
 		'Program:exit': program => {
 			const cycleNames = schemaCycleNames({context, program})
-			const exports = exportLists(program)
 			for (const statement of program.body) {
 				const declaration = statementDeclaration(statement)
 				if (declaration?.type === 'VariableDeclaration') {
 					for (const variable of declaration.declarations) {
-						reportSchemaVariable({context, cycleNames, exports, program, statement, variable})
+						reportSchemaVariable({context, cycleNames, program, statement, variable})
 					}
 				}
 			}

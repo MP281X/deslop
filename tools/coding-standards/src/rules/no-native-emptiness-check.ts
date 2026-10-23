@@ -1,11 +1,12 @@
 import {Option} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
-import type {ESTree} from 'vite-plus/lint/plugins'
+import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {memberName} from '#rules/shared.ts'
+import {isFilteredCount, memberName} from '#rules/shared.ts'
 
-function emptinessPredicate(node: ESTree.BinaryExpression) {
+function emptinessPredicate(context: Context, node: ESTree.BinaryExpression) {
+	if (isFilteredCount({context, node: node.left})) return Option.none()
 	const comparesLength =
 		node.left.type === 'MemberExpression' &&
 		Option.contains(memberName(node.left), 'length') &&
@@ -23,7 +24,7 @@ function emptinessPredicate(node: ESTree.BinaryExpression) {
 export const noNativeEmptinessCheck = defineRule({
 	create: context => ({
 		BinaryExpression: node => {
-			Option.map(emptinessPredicate(node), predicate => {
+			Option.map(emptinessPredicate(context, node), predicate => {
 				context.report({message: `Use ${predicate}.`, node})
 			})
 		}

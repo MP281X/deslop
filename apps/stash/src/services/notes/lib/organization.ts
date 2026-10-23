@@ -1,6 +1,6 @@
 import {AnthropicClient, AnthropicLanguageModel} from '@effect/ai-anthropic'
 
-import {Array, Boolean, Config, Context, Effect, Layer, Option, Redacted, Schema, String, pipe} from 'effect'
+import {Array, Config, Context, Effect, Layer, Option, Redacted, Schema, String, pipe} from 'effect'
 
 import {normalizeTags} from '#services/notes/lib/utils.ts'
 import type {Note, Picture, TagEntry} from '#services/notes/schema.ts'
@@ -75,10 +75,8 @@ Reread the title, summary and key points against the source: each number and cla
 
 // About 50,000 tokens each for the content and the transcript, inside the model's window with the images.
 function bounded(text: string) {
-	return Boolean.match(String.length(text) > 200_000, {
-		onFalse: () => text,
-		onTrue: () => `${String.slice(0, 200_000)(text)}\n[cut here]`
-	})
+	if (String.length(text) > 200_000) return `${String.slice(0, 200_000)(text)}\n[cut here]`
+	return text
 }
 
 function tagLine(entry: TagEntry) {
