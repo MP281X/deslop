@@ -114,6 +114,8 @@ function allowedRedirect(redirect: string) {
 export class Authorizations extends Context.Service<
 	Authorizations,
 	{
+		readonly answer: (params: ConsentParams, user: User) => Effect.Effect<{clientName: string}, AuthError>
+		readonly list: (user: User) => Effect.Effect<PendingAuthorization[], AuthError>
 		readonly pending: (headers: Headers.Headers) => Stream.Stream<PendingAuthorization[], AuthError>
 		readonly wait: (id: string, headers: Headers.Headers) => Stream.Stream<AuthorizationStatus, AuthError>
 	}
@@ -241,8 +243,7 @@ export class Authorizations extends Context.Service<
 						})
 					)
 				}
-				const pending = Effect.fnUntraced(function* (headers: Headers.Headers) {
-					yield* session(headers)
+				const pendingRequests = Effect.gen(function* () {
 					const rows = yield* pipe(
 						sql`SELECT payload, hash, expires_at AS "expiresAt" FROM auth_state WHERE json_extract(payload, '$._tag') = 'Request' AND json_extract(payload, '$.decision._tag') = 'Pending' AND expires_at > ${yield* Clock.currentTimeMillis} ORDER BY json_extract(payload, '$.createdAt') DESC, hash`,
 						Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(AuthorizationRow)))
@@ -257,13 +258,12 @@ export class Authorizations extends Context.Service<
 						}),
 						{concurrency: 1}
 					)
+				})
+				const pending = Effect.fnUntraced(function* (headers: Headers.Headers) {
+					yield* session(headers)
+					return yield* pendingRequests
 				}, rejected('Cannot read pending authorizations'))
-				const respond = Effect.fn('Authorizations.respond')(function* (
-					params: ConsentParams,
-					headers: Headers.Headers
-				) {
-					yield* checkOrigin(headers)
-					const user = yield* session(headers)
+				const decide = Effect.fnUntraced(function* (params: ConsentParams, user: User) {
 					yield* sql.withTransaction(
 						Effect.gen(function* () {
 							const request = yield* requestState(params.request)
@@ -280,6 +280,37 @@ export class Authorizations extends Context.Service<
 						})
 					)
 					yield* PubSub.publish(changes, true)
+				})
+				const respond = Effect.fn('Authorizations.respond')(function* (
+					params: ConsentParams,
+					headers: Headers.Headers
+				) {
+					yield* checkOrigin(headers)
+					yield* decide(params, yield* session(headers))
+				}, rejected('Cannot answer the authorization request'))
+				const list = Effect.fn('Authorizations.list')(function* (user: User) {
+					yield* allowed(user)
+					return yield* pendingRequests
+				}, rejected('Cannot read pending authorizations'))
+				// The request is the code a sign-in page shows, the id's first eight characters with a dash after four, or the whole id. Ids hold dashes too.
+				const answer = Effect.fn('Authorizations.answer')(function* (params: ConsentParams, user: User) {
+					yield* allowed(user)
+					const shown = String.trim(params.request)
+					const prefix = Boolean.match(shown.length === 9 && String.slice(4, 5)(shown) === '-', {
+						onFalse: () => shown,
+						onTrue: () => `${String.slice(0, 4)(shown)}${String.slice(5)(shown)}`
+					})
+					const request = yield* pipe(
+						Array.filter(yield* pendingRequests, found => String.startsWith(prefix)(found.id)),
+						Option.liftPredicate(matches => prefix.length >= 8 && matches.length === 1),
+						Option.flatMap(Array.head),
+						Effect.fromOption,
+						Effect.mapError(cause =>
+							AuthError.make({cause, message: 'No waiting sign-in has this code; start it again'})
+						)
+					)
+					yield* decide({accept: params.accept, request: request.id}, user)
+					return {clientName: request.clientName}
 				}, rejected('Cannot answer the authorization request'))
 				const receive = Effect.fnUntraced(function* (id: string, headers: Headers.Headers) {
 					return yield* sql.withTransaction(
@@ -704,6 +735,8 @@ export class Authorizations extends Context.Service<
 					Context.add(
 						Authorizations,
 						Authorizations.of({
+							answer,
+							list,
 							pending: headers =>
 								watch(pending(headers), requests =>
 									Array.reduce(requests, Infinity, (expiresAt, request) => Number.min(expiresAt, request.expiresAt))

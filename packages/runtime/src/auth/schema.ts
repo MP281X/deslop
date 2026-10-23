@@ -25,7 +25,8 @@ export const Resource = Schema.Literals([
 	'https://stash.mp281x.xyz/mcp',
 	'https://opm.mp281x.xyz',
 	'https://scope.mp281x.xyz/mcp',
-	'https://otel.mp281x.xyz'
+	'https://otel.mp281x.xyz',
+	'https://auth.mp281x.xyz/mcp'
 ])
 
 export type Credentials = typeof Credentials.Type

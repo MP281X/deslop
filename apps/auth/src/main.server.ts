@@ -11,6 +11,7 @@ import * as ServerRuntime from '@deslop/runtime/server'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Authorizations} from '#services/authorizations/service.ts'
+import {layerMcp} from '#tools/handlers.ts'
 
 const RpcOrigin = HttpRouter.middleware()(
 	Effect.gen(function* () {
@@ -29,12 +30,13 @@ NodeRuntime.runMain(
 	pipe(
 		HttpRouter.serve(
 			pipe(
-				Layer.merge(
+				Layer.mergeAll(
 					pipe(
 						RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
 						Layer.provide(RpcHandlers),
 						Layer.provide(RpcOrigin.layer)
 					),
+					layerMcp,
 					ServerRuntime.layerStaticFiles
 				),
 				Layer.provide(Authorizations.layer)

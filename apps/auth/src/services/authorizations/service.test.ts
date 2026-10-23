@@ -38,9 +38,11 @@ import {
 	RequestParams
 } from '#services/authorizations/schema.ts'
 import {Authorizations} from '#services/authorizations/service.ts'
+import {layerMcp} from '#tools/handlers.ts'
 
 const AUTH = 'https://auth.example.test'
 const API = 'https://stash.mp281x.xyz'
+const APPROVALS = 'https://auth.mp281x.xyz/mcp'
 const VERIFIER = String.repeat(43)('x')
 
 const me = pipe(
@@ -80,6 +82,7 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 				pipe(
 					Layer.mergeAll(
 						me,
+						layerMcp,
 						HttpRouter.add(
 							'GET',
 							'/auth/request',
@@ -292,6 +295,42 @@ const consent = Effect.fnUntraced(function* (
 	assert.strictEqual(status._tag, 'Completed')
 	if (status._tag !== 'Completed') return yield* Effect.die('Expected a completed authorization')
 	return new URL(status.url)
+})
+
+// An MCP client's initialize, then the tool call with the session it got.
+const callTool = Effect.fnUntraced(function* (
+	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
+	token: string,
+	name: string,
+	input: Record<string, unknown>
+) {
+	const headers = {
+		accept: 'application/json, text/event-stream',
+		authorization: `Bearer ${token}`,
+		'content-type': 'application/json',
+		'mcp-protocol-version': '2025-06-18'
+	}
+	const opened = yield* send(web, '/mcp', {
+		body: yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
+			id: 1,
+			jsonrpc: '2.0',
+			method: 'initialize',
+			params: {capabilities: {}, clientInfo: {name: 'agent', version: '1'}, protocolVersion: '2025-06-18'}
+		}),
+		headers,
+		method: 'POST'
+	})
+	if (opened.status !== 200) return opened
+	return yield* send(web, '/mcp', {
+		body: yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
+			id: 2,
+			jsonrpc: '2.0',
+			method: 'tools/call',
+			params: {arguments: input, name}
+		}),
+		headers: {...headers, 'mcp-session-id': opened.headers.get('mcp-session-id') ?? ''},
+		method: 'POST'
+	})
 })
 
 const exchange = Effect.fnUntraced(function* (
@@ -717,6 +756,100 @@ it.layer(NodeServices.layer)(test => {
 			const callback = yield* consent(web.issuer, request, true)
 			yield* TestClock.adjust('61 seconds')
 			assert.strictEqual((yield* exchange(web.issuer, request, callback.searchParams.get('code') ?? '')).status, 400)
+		})
+	)
+
+	test.effect('lets an agent list and answer any waiting sign-in as the browser does', () =>
+		Effect.gen(function* () {
+			const web = yield* servers()
+			const agent = yield* authorize(
+				web.issuer,
+				cookie(yield* signIn(web.issuer, 'octocat')),
+				'http://127.0.0.1:34569/callback',
+				[APPROVALS]
+			)
+			const granted = yield* exchange(
+				web.issuer,
+				agent,
+				(yield* consent(web.issuer, agent, true)).searchParams.get('code') ?? ''
+			)
+			const token = (yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
+				yield* Effect.promise(() => granted.text())
+			)).access_token
+			const simulator = yield* authorize(web.issuer, '', 'opm-dev://auth/callback', [
+				'https://opm.mp281x.xyz',
+				'https://otel.mp281x.xyz'
+			])
+			const desktop = yield* authorize(web.issuer, '', 'http://127.0.0.1:34570/callback', [
+				'https://scope.mp281x.xyz/mcp',
+				APPROVALS
+			])
+			const release = yield* authorize(web.issuer, '', 'stash://auth/callback', [API, 'https://otel.mp281x.xyz'])
+			assert.strictEqual((yield* callTool(web.issuer, '', 'list_requests', {})).status, 401)
+			const listed = yield* callTool(web.issuer, token, 'list_requests', {})
+			assert.deepStrictEqual(
+				Array.sort(
+					Array.map(
+						(yield* Schema.decodeEffect(
+							Schema.fromJsonString(
+								Schema.Struct({
+									result: Schema.Struct({
+										structuredContent: Schema.Struct({requests: Schema.Array(PendingAuthorization)})
+									})
+								})
+							)
+						)(yield* Effect.promise(() => listed.text()))).result.structuredContent.requests,
+						item => item.id
+					),
+					Order.String
+				),
+				Array.sort([simulator.id, desktop.id, release.id], Order.String)
+			)
+			yield* Effect.forEach(
+				[
+					{accept: true, request: `${String.slice(0, 4)(simulator.id)}-${String.slice(4, 8)(simulator.id)}`},
+					{accept: true, request: desktop.id},
+					{accept: false, request: `${String.slice(0, 4)(release.id)}-${String.slice(4, 8)(release.id)}`}
+				],
+				input => callTool(web.issuer, token, 'answer_request', input),
+				{concurrency: 1, discard: true}
+			)
+			const callbacks = yield* Effect.forEach(
+				[simulator, desktop, release],
+				Effect.fnUntraced(function* (request) {
+					const receiver = yield* send(web.issuer, `/auth/request?request=${request.id}`, {
+						headers: {cookie: request.cookie}
+					})
+					const status = yield* Schema.decodeEffect(Schema.fromJsonString(AuthorizationStatus))(
+						yield* Effect.promise(() => receiver.text())
+					)
+					if (status._tag !== 'Completed') return yield* Effect.die('Expected every sign-in to be answered')
+					const params = new URL(status.url).searchParams
+					return {code: params.get('code') ?? '', error: params.get('error') ?? ''}
+				}),
+				{concurrency: 1}
+			)
+			assert.deepStrictEqual(
+				Array.map(callbacks, callback => [String.isNonEmpty(callback.code), callback.error]),
+				[
+					[true, ''],
+					[true, ''],
+					[false, 'access_denied']
+				]
+			)
+			const signedIn = yield* exchange(web.issuer, simulator, callbacks[0]?.code ?? '')
+			const access = (yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
+				yield* Effect.promise(() => signedIn.text())
+			)).access_token
+			const verified = yield* send(
+				web.issuer,
+				`/auth/verify?resource=${encodeURIComponent('https://opm.mp281x.xyz')}`,
+				{headers: {authorization: `Bearer ${access}`}}
+			)
+			assert.deepStrictEqual(
+				yield* Schema.decodeEffect(Schema.fromJsonString(User))(yield* Effect.promise(() => verified.text())),
+				{id: 'github:42', name: 'octocat'}
+			)
 		})
 	)
 })

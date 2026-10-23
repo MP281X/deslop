@@ -199,11 +199,12 @@ systemctl --user daemon-reload && systemctl --user enable --now secret-service.s
 claude mcp add --transport http --scope user dual https://app.dualos.ai/mcp
 claude mcp add --transport http --scope user scope https://scope.mp281x.xyz/mcp
 claude mcp add --transport http --scope user stash https://stash.mp281x.xyz/mcp
+claude mcp add --transport http --scope user auth https://auth.mp281x.xyz/mcp
 ```
 
 After the public-auth release, remove each old Claude registration with `claude mcp remove --scope user <name>` before adding its public URL above. Codex URLs update with the installed configuration. Do this on each worker; never copy OAuth credentials between machines.
 
-**Scope and Stash.** Run the native login on its worker and open its printed authorization URL in that worker's T3 preview. Leave that page waiting; the user signs in at https://auth.mp281x.xyz in their own browser, matches the displayed request ID against the thread, and approves the pending request. The inbox updates live. The original worker page completes the local callback without the user signing in there or copying codes. Repeat separately for each client and worker, replacing `scope` with `stash`.
+**Scope and Stash.** Run the native login on its worker and open its printed authorization URL in that worker's T3 preview. Leave that page waiting; the user signs in at https://auth.mp281x.xyz in their own browser, matches the displayed request ID against the thread, and approves the pending request. The inbox updates live. The original worker page completes the local callback without the user signing in there or copying codes. Repeat separately for each client and worker, replacing `scope` with `stash` and `auth`. Once `auth` is logged in, the agent approves later logins itself with its `answer_request`.
 
 ```bash
 codex mcp login --no-browser scope
