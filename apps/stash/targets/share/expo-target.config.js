@@ -6,6 +6,8 @@ function targetConfig(config) {
 		displayName: 'stash',
 		entitlements: {'keychain-access-groups': [`$(AppIdentifierPrefix)group.${config.ios.bundleIdentifier}`]},
 		frameworks: ['SwiftUI', 'UIKit', 'UniformTypeIdentifiers', 'Security'],
+		// The share sheet shows the extension's own icon, which apple-targets generates only from this path.
+		icon: '../../src/routes/icon.png',
 		name: 'StashShare',
 		type: 'share'
 	}

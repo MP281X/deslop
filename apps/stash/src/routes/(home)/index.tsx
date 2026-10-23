@@ -14,7 +14,6 @@ import {
 	List,
 	Menu,
 	Picker,
-	ProgressView,
 	ScrollView,
 	SwipeActions,
 	Text,
@@ -26,9 +25,13 @@ import {
 import type {useNativeState} from '@expo/ui/swift-ui'
 import {
 	accessibilityElement,
+	accessibilityHidden,
+	accessibilityLabel,
 	alignmentGuide,
+	aspectRatio,
 	background,
 	buttonStyle,
+	clipShape,
 	contentShape,
 	controlSize,
 	cornerRadius,
@@ -49,6 +52,7 @@ import {
 	onTapGesture,
 	padding,
 	pickerStyle,
+	redacted,
 	resizable,
 	scrollContentBackground,
 	searchable,
@@ -70,6 +74,7 @@ import {
 	answerAtom,
 	appOf,
 	brandOf,
+	imageAtom,
 	kindOf,
 	kinds,
 	notesAtom,
@@ -94,11 +99,14 @@ const OFFERS = {
 function Source(props: {kind: Kind}) {
 	if (Schema.is(Brand)(props.kind)) {
 		return (
-			<HStack spacing={4}>
+			<HStack spacing={4} modifiers={[accessibilityLabel(kinds[props.kind].label)]}>
 				<BrandLogo brand={kinds[props.kind].logo} size={12} />
-				<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
-					{kinds[props.kind].label}
-				</Text>
+				{/* X's logo is its name, so its label would say X twice. */}
+				{props.kind !== 'x' && (
+					<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
+						{kinds[props.kind].label}
+					</Text>
+				)}
 			</HStack>
 		)
 	}
@@ -128,10 +136,17 @@ function Lines(props: {note: NoteItem}) {
 			{pipe(
 				Match.value(props.note.status),
 				Match.when('organizing', () => (
-					<HStack spacing={6}>
-						<ProgressView />
-						<Text modifiers={[font({textStyle: 'subheadline'}), foregroundStyle(colors.mutedForeground)]}>Reading</Text>
-					</HStack>
+					<Text
+						modifiers={[
+							font({textStyle: 'subheadline'}),
+							foregroundStyle(colors.mutedForeground),
+							lineLimit(2),
+							redacted('placeholder'),
+							accessibilityLabel('Reading')
+						]}
+					>
+						The main point of this entry, in one or two plain sentences that fill the row.
+					</Text>
 				)),
 				Match.when('failed', () => (
 					<Label
@@ -160,6 +175,24 @@ function Lines(props: {note: NoteItem}) {
 				<Source kind={kindOf(props.note)} />
 			</HStack>
 		</VStack>
+	)
+}
+
+// Mounted only once the server has kept the preview, so the download never runs before the file exists.
+function Thumbnail(props: {id: Note['id']}) {
+	const image = useAtomValue(imageAtom(props.id))
+	if (!AsyncResult.isSuccess(image)) return undefined
+	return (
+		<Image
+			uiImage={image.value}
+			modifiers={[
+				resizable(),
+				aspectRatio({contentMode: 'fill'}),
+				frame({height: 64, width: 64}),
+				clipShape('roundedRectangle', 10),
+				accessibilityHidden(true)
+			]}
+		/>
 	)
 }
 
@@ -193,6 +226,7 @@ function NoteRow(props: {
 							accessibilityElement('combine')
 						]}
 					>
+						{props.note.image !== undefined && <Thumbnail id={props.note.id} />}
 						<Lines note={props.note} />
 					</HStack>
 				</ContextMenu.Trigger>

@@ -19,26 +19,57 @@ final class ShareViewController: UIViewController {
   }
 }
 
+private enum Phase: Equatable {
+  case saving
+  case saved
+  case queued
+  case failed(String)
+}
+
+// Saved means the server accepted the note; queued means the background session will send it after the sheet closes.
+private enum Outcome {
+  case saved
+  case queued
+}
+
 private struct SaveView: View {
   let context: NSExtensionContext
-  @State private var failure: String?
+  @State private var phase = Phase.saving
 
+  // iOS always presents the extension as a full-height sheet, ignoring overFullScreen and custom detents,
+  // so the status fills the sheet's center instead of sitting in a card at its bottom.
   var body: some View {
-    VStack(spacing: 8) {
-      if let failure {
-        Text("Not Saved").font(.headline)
-        Text(failure).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-      } else {
-        ProgressView()
+    VStack(spacing: 14) {
+      switch phase {
+      case .saving:
+        ProgressView().controlSize(.extraLarge).frame(height: 64)
+        Text("Saving to Stash").font(.title3.weight(.semibold))
+      case .saved:
+        Image(systemName: "checkmark.circle.fill")
+          .font(.system(size: 64))
+          .foregroundStyle(.green)
+          .symbolEffect(.bounce, value: phase)
+        Text("Saved to Stash").font(.title3.weight(.semibold))
+      case .queued:
+        Image(systemName: "arrow.up.circle.fill")
+          .font(.system(size: 64))
+          .foregroundStyle(.tint)
+          .symbolEffect(.bounce, value: phase)
+        Text("Sending to Stash").font(.title3.weight(.semibold))
+        Text("It shows up once the upload finishes.").font(.subheadline).foregroundStyle(.secondary)
+      case .failed(let message):
+        Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 60)).foregroundStyle(.orange)
+        Text("Not Saved").font(.title3.weight(.semibold))
+        Text(message).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        Text("Tap to close").font(.footnote).foregroundStyle(.tertiary)
       }
     }
-    .padding(20)
-    .frame(maxWidth: 320)
-    .background(.regularMaterial, in: .rect(cornerRadius: 20))
-    .padding(.bottom, 48)
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    .padding(.horizontal, 32)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Color(.systemBackground))
     .contentShape(Rectangle())
-    .onTapGesture { if failure != nil { context.completeRequest(returningItems: nil) } }
+    .animation(.snappy, value: phase)
+    .onTapGesture { if case .failed = phase { context.completeRequest(returningItems: nil) } }
     .task { await save() }
   }
 
@@ -47,24 +78,35 @@ private struct SaveView: View {
       let upload = try Upload()
       let shared = await SharedText.read(from: context)
       // A shared web page keeps its link even when it also offers an image.
-      if !shared.hasLink, try await SharedFile.send(from: context, with: upload) {
-        context.completeRequest(returningItems: nil)
+      if !shared.hasLink, let outcome = try await SharedFile.send(from: context, with: upload) {
+        await finish(outcome)
         return
       }
       if shared.text.isEmpty {
-        failure = "Share a link, text, a photo or a video."
+        phase = .failed("Share a link, text, a photo or a video.")
         return
       }
       // The server accepts at most 20,000 UTF-16 units, as JavaScript counts them.
       if shared.text.utf16.count > 20_000 {
-        failure = "A note holds at most 20,000 characters."
+        phase = .failed("A note holds at most 20,000 characters.")
         return
       }
-      try await upload.text(shared.text)
-      context.completeRequest(returningItems: nil)
+      await finish(try await upload.text(shared.text))
     } catch {
-      failure = error.localizedDescription
+      phase = .failed(error.localizedDescription)
     }
+  }
+
+  private func finish(_ outcome: Outcome) async {
+    switch outcome {
+    case .saved:
+      phase = .saved
+      try? await Task.sleep(for: .milliseconds(700))
+    case .queued:
+      phase = .queued
+      try? await Task.sleep(for: .milliseconds(1_400))
+    }
+    context.completeRequest(returningItems: nil)
   }
 }
 
@@ -107,18 +149,52 @@ private struct Upload {
     folder.appendingPathComponent(name)
   }
 
-  func text(_ text: String) async throws {
+  func text(_ text: String) async throws -> Outcome {
     let id = UUID().uuidString.lowercased()
-    let body = file(named: "\(id).json")
-    try JSONEncoder().encode(["id": id, "text": text]).write(to: body, options: .atomic)
-    try await send(body, to: "api/capture", type: "application/json", id: id)
+    let payload = try JSONEncoder().encode(["id": id, "text": text])
+    return try await deliver(payload, named: "\(id).json", to: "api/capture", type: "application/json", id: id)
+  }
+
+  // Sent while the sheet is open, the note exists before the app opens. Offline, a timeout or a server error
+  // queues it on the background session, and the server keys each save by its id, so a resend is not a duplicate.
+  func deliver(_ payload: Data, named name: String, to path: String, type: String, id: String) async throws -> Outcome {
+    if let status = try? await sendNow(payload, to: path, type: type) {
+      if (200..<300).contains(status) { return .saved }
+      if (400..<500).contains(status) { throw rejection(status) }
+    }
+    let body = file(named: name)
+    try payload.write(to: body, options: .atomic)
+    try await send(body, to: path, type: type, id: id)
+    return .queued
+  }
+
+  private func rejection(_ status: Int) -> NSError {
+    let message: String
+    switch status {
+    case 401, 403: message = "Open Stash and sign in again."
+    case 413: message = "This is too large for Stash."
+    default: message = "Stash refused this share (HTTP \(status))."
+    }
+    return NSError(domain: "Stash", code: status, userInfo: [NSLocalizedDescriptionKey: message])
+  }
+
+  private func sendNow(_ payload: Data, to path: String, type: String) async throws -> Int {
+    var request = URLRequest(url: server.appendingPathComponent(path))
+    request.httpMethod = "POST"
+    request.timeoutInterval = 10
+    request.setValue(type, forHTTPHeaderField: "Content-Type")
+    request.setValue("Bearer \(try await accessToken(validFor: 60))", forHTTPHeaderField: "Authorization")
+    let (_, response) = try await URLSession.shared.upload(for: request, from: payload)
+    guard let response = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+    return response.statusCode
   }
 
   func send(_ body: URL, to path: String, type: String, id: String) async throws {
     var request = URLRequest(url: server.appendingPathComponent(path))
     request.httpMethod = "POST"
     request.setValue(type, forHTTPHeaderField: "Content-Type")
-    request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+    // A queued background request cannot replace its bearer after the extension closes, so it needs a day of validity.
+    request.setValue("Bearer \(try await accessToken(validFor: 86_460))", forHTTPHeaderField: "Authorization")
     let configuration = URLSessionConfiguration.background(withIdentifier: "\(group).share.\(id)")
     configuration.sharedContainerIdentifier = group
     configuration.isDiscretionary = false
@@ -134,7 +210,7 @@ private struct Upload {
       kSecAttrAccessGroup as String: keychainGroup]
   }
 
-  private func accessToken() async throws -> String {
+  private func accessToken(validFor seconds: Double) async throws -> String {
     let descriptor = try await SessionLock.acquire(group: group)
     defer { SessionLock.release(descriptor) }
     var query = keychainQuery
@@ -146,8 +222,7 @@ private struct Upload {
       throw NSError(domain: "Stash", code: 401, userInfo: [NSLocalizedDescriptionKey: "Open Stash and sign in first."])
     }
     var credentials = try JSONDecoder().decode(Credentials.self, from: data)
-    // A queued background request cannot replace its bearer after the extension closes.
-    if credentials.expiresAt > Date().timeIntervalSince1970 * 1000 + 86_460_000 { return credentials.accessToken }
+    if credentials.expiresAt > (Date().timeIntervalSince1970 + seconds) * 1000 { return credentials.accessToken }
     var form = URLComponents()
     form.queryItems = [URLQueryItem(name: "client_id", value: credentials.clientId),
       URLQueryItem(name: "grant_type", value: "refresh_token"),
@@ -216,7 +291,7 @@ private enum SharedText {
 
 private enum SharedFile {
   // A video goes as it is, because the server reads MP4 and QuickTime; a photo goes as a JPEG.
-  static func send(from context: NSExtensionContext, with upload: Upload) async throws -> Bool {
+  static func send(from context: NSExtensionContext, with upload: Upload) async throws -> Outcome? {
     let items = providers(of: context)
     let id = UUID().uuidString.lowercased()
     if let provider = items.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.movie.identifier) }) {
@@ -234,20 +309,18 @@ private enum SharedFile {
           continuation.resume(with: Result(catching: { try FileManager.default.copyItem(at: url, to: target) }))
         }
       }
+      // A video can take minutes to upload, longer than the sheet stays open.
       try await upload.send(target, to: "api/files/\(id)", type: mp4 ? "video/mp4" : "video/quicktime", id: id)
-      return true
+      return .queued
     }
     if let provider = items.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) }) {
       let item = try await provider.loadItem(forTypeIdentifier: UTType.image.identifier, options: nil)
       guard let jpeg = jpeg(from: item) else {
         throw CocoaError(.fileReadCorruptFile)
       }
-      let target = upload.file(named: "\(id).jpg")
-      try jpeg.write(to: target, options: .atomic)
-      try await upload.send(target, to: "api/files/\(id)", type: "image/jpeg", id: id)
-      return true
+      return try await upload.deliver(jpeg, named: "\(id).jpg", to: "api/files/\(id)", type: "image/jpeg", id: id)
     }
-    return false
+    return nil
   }
 
   // A full-size photo decoded at once can pass the extension's memory limit, so it is downsampled while decoding.

@@ -370,7 +370,11 @@ export class Notes extends Context.Service<
 						const createdAt = DateTime.toEpochMillis(yield* DateTime.now)
 						const saved = yield* transact<{fresh: boolean; note: Note}>(current =>
 							Option.match(
-								Array.findFirst(current, note => note.id === input.id || Option.exists(url, link => note.url === link)),
+								// A link saved in an older form, such as youtu.be, matches its canonical form.
+								Array.findFirst(
+									current,
+									note => note.id === input.id || Option.exists(url, link => captureUrl(note.url ?? '') === link)
+								),
 								{
 									onNone: () => {
 										const note = Note.make({
