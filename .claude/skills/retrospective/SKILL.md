@@ -66,7 +66,7 @@ Measures, each with its counted member:
 
 ## Ship
 
-- **Report.** Show the few decisions that matter through compact code, diagrams and realistic mocks; keep mining details out of the overview. A text plan's approval followed by a rejected result also tests whether the proposal let the user see and feel the choice, not just whether the implementation matched its words.
+- **Report.** Show deciding choices per Replies; mining details stay in the thread. A text-approved plan followed by a rejected result also tests whether the proposal made the choice visible, not just whether implementation matched its words.
 - **PR** per delivery, implemented in this thread's checkout even when history came from another worker. The mining, counts and diagnosis stay in the thread.
 - **Nothing to change** ends with one line and no PR.
 - **This skill.** A correction the user makes in a retrospective's own thread changes this skill in the same PR.

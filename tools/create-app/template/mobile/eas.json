@@ -16,5 +16,6 @@
 			"channel": "production",
 			"env": {"APP_VARIANT": "production"}
 		}
-	}
+	},
+	"submit": {"production": {"ios": {}}}
 }

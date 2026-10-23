@@ -24,7 +24,7 @@ The user's choices. Add a row with their words when they pick, reject or correct
 ## Layout
 
 - Every schema of a service lives in its `schema.ts`, including the answer of an outside source, such as `FxPost` in `apps/stash/src/services/*/schema.ts`. `lib/utils.ts` holds pure helpers and stays frontend-safe.
-- Page-private components and helpers stay with their consumer; genuinely shared behavior has one common owner. A boundary earns its place by reducing what the reader holds, not merely shortening files; balance colocation against navigable file size.
+- Page-private components and helpers stay with their consumer; shared behavior has one owner. A new abstraction must supply a capability the existing owner lacks or reduce what a reader holds, not merely shorten files. Prefer direct domain names, control flow and explicit configuration over wrappers and configuration languages; balance colocation against navigable file size.
 - Node subpath aliases use wildcard `imports`, such as `"#services/*": "./src/services/*"`; source specifiers include their file extension, such as `#services/notes/service.ts`. A service package exports only `./schema`, `./service` and `./utils`.
 - App data and CLI credentials live under `~/.deslop/<appname>/`, outside the checkout.
 - Defaults live in code through `Config.withDefault`, never in `.env.example`.
@@ -37,7 +37,7 @@ The user's choices. Add a row with their words when they pick, reject or correct
 
 ## Tests
 
-Keep useful tests of owned runtime behavior when their protection earns ongoing maintenance. Use throwaway inline probes or browser proofs for one-off assumptions; a fix does not automatically need a new persistent regression test. Tests should survive equivalent implementations rather than freeze private structure or re-test library and type-system guarantees. Preserve useful tests when simplifying.
+Keep tests of owned runtime behavior that survive equivalent implementations, not private structure or library and type-system guarantees. Each scenario protects a distinct behavior: merge genuine subsets, preserving unique assertions, or remove repeated protection from the broader test. Similar setup is not duplication; different inputs, dependencies, timing, state or failure paths can protect different behavior. E2E proves the user's input through the outcome, including relevant failures, not merely that screens open. Use inline probes or browser proofs for one-off assumptions; a fix alone does not justify another persistent test.
 
 ## Deploy
 
