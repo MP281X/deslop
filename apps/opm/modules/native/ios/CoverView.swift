@@ -8,10 +8,12 @@ public final class CoverViewProps: UIBaseViewProps {
   @Field var url: String = ""
 }
 
-// A chapter's first page as a thumbnail, a gray tile until it loads; the caller sizes and rounds it.
+// A chapter's first page as a thumbnail, a gray tile with a spinner until it loads; the caller sizes and rounds it.
+// A failed cover shows a retry mark and tries again after two, four, then every eight seconds while its row is on screen.
 public struct CoverView: ExpoSwiftUI.View {
   @ObservedObject public var props: CoverViewProps
   @State private var image: UIImage?
+  @State private var failed = false
 
   public init(props: CoverViewProps) {
     self.props = props
@@ -24,19 +26,39 @@ public struct CoverView: ExpoSwiftUI.View {
           SwiftUI.Image(uiImage: image).resizable().scaledToFill()
         }
       }
+      .overlay {
+        if image == nil {
+          if failed {
+            SwiftUI.Image(systemName: "arrow.clockwise").foregroundStyle(.secondary)
+          } else {
+            ProgressView().controlSize(.small)
+          }
+        }
+      }
       .clipped()
       .task(id: props.url) {
         let link = props.url
+        failed = false
         image = CoverCache.memory.object(forKey: link as NSString)
         if image != nil { return }
         if let saved = await CoverCache.saved(link) {
           if !Task.isCancelled { image = saved }
           return
         }
-        guard let url = URL(string: link), let loaded = await PageLoader.image(url, size: 240) else { return }
-        // Kept even when the row scrolled away, so the next time it shows at once.
-        CoverCache.save(loaded, for: link)
-        if !Task.isCancelled { image = loaded }
+        guard let url = URL(string: link) else { return }
+        var failures = 0.0
+        while !Task.isCancelled {
+          if let loaded = await PageLoader.image(url, size: 240) {
+            // Kept even when the row scrolled away, so the next time it shows at once.
+            CoverCache.save(loaded, for: link)
+            if !Task.isCancelled { image = loaded }
+            return
+          }
+          failures += 1
+          failed = true
+          try? await Task.sleep(for: .seconds(min(pow(2, failures), 8)))
+          failed = false
+        }
       }
   }
 }

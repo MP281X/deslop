@@ -1,49 +1,58 @@
-import {useAtomSet} from '@effect/atom-react'
+import {useAtom, useAtomSet} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Number, Option, Order, pipe} from 'effect'
+import {Array, Boolean, DateTime, Number, Option, Order, String, pipe} from 'effect'
 
 import {
 	Button,
 	Circle,
 	ContentUnavailableView,
+	Divider,
 	HStack,
 	List,
+	Menu,
 	SwipeActions,
 	Text,
+	Toggle,
 	Toolbar,
 	ToolbarItem,
-	VStack
+	VStack,
+	useNativeState
 } from '@expo/ui/swift-ui'
 import {
 	accessibilityElement,
 	background,
 	clipShape,
 	contentShape,
+	disabled,
 	foregroundStyle,
 	frame,
+	labelStyle,
 	lineLimit,
 	listRowBackground,
 	listRowInsets,
 	listRowSeparator,
 	listStyle,
+	menuOrder,
+	navigationBarTitleDisplayMode,
 	navigationTitle,
 	onTapGesture,
 	opacity,
 	scrollContentBackground,
+	searchable,
 	shapes,
-	tint,
-	toolbarTitleDisplayMode
+	tint
 } from '@expo/ui/swift-ui/modifiers'
+import {useState} from 'react'
 
 import {colors, mono} from '@deslop/components-mobile/theme'
+import {AppTitle} from '@deslop/components-mobile/title'
+import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
-import {readAtom} from '#lib/utils.ts'
-import {ChapterProgress, Cover, Title} from '#modules/native/index.ts'
-import {byNumber, nameOf} from '#services/chapters/lib/utils.ts'
+import {continuousAtom, readAtom, signOutAtom} from '#lib/utils.ts'
+import {ChapterProgress, Cover} from '#modules/native/index.ts'
+import icon from '#routes/icon.png'
+import {byNumber, nameOf, resumeOf} from '#services/chapters/lib/utils.ts'
 import type {ChapterItem, ChapterList} from '#services/chapters/schema.ts'
-
-// The series name as its covers letter it.
-const SERIES = 'ONEPUNCH-MAN'
 
 // "21 Oct" this year, "21 Oct 2025" before it.
 function postedOn(postedAt: number) {
@@ -61,7 +70,6 @@ function postedOn(postedAt: number) {
 function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (number: number) => void}) {
 	const read = useAtomSet(readAtom)
 	const done = props.chapter.reading?.done === true
-	const name = nameOf(props.chapter.title)
 	return (
 		<SwipeActions
 			modifiers={[
@@ -104,7 +112,7 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 					</HStack>
 					<Text modifiers={[mono('subheadline', 13), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
 						{Array.join(
-							Array.filter([name, postedOn(props.chapter.postedAt)], part => part !== ''),
+							Array.filter([nameOf(props.chapter.title), postedOn(props.chapter.postedAt)], String.isNonEmpty),
 							' · '
 						)}
 					</Text>
@@ -145,50 +153,106 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 	)
 }
 
+// A menu opened from the bottom bar reverses its items unless the order is fixed.
+function SettingsMenu() {
+	const [continuous, setContinuous] = useAtom(continuousAtom)
+	const signOut = useAtomSet(signOutAtom)
+	return (
+		<Menu label="Settings" systemImage="line.3.horizontal" modifiers={[labelStyle('iconOnly'), menuOrder('fixed')]}>
+			<Toggle
+				label="Scroll Into the Next Chapter"
+				systemImage="arrow.down.to.line"
+				isOn={continuous}
+				onIsOnChange={setContinuous}
+			/>
+			<Divider />
+			<Button label="Sign Out" systemImage="rectangle.portrait.and.arrow.right" onPress={() => signOut()} />
+		</Menu>
+	)
+}
+
+// A query matches a chapter's number from its start, or any part of its name.
+function matches(chapter: ChapterItem, query: string) {
+	return (
+		String.startsWith(query)(`${chapter.number}`) || String.includes(query)(String.toLowerCase(nameOf(chapter.title)))
+	)
+}
+
 export function ChaptersRoute(props: {chapters: ChapterList; onOpen: (number: number) => void}) {
+	const query = useNativeState('')
+	const [searched, setSearched] = useState('')
+	const text = String.toLowerCase(String.trim(searched))
 	// New means past the newest chapter ever opened, so the back catalogue carries no dots.
 	const reached = pipe(
 		Array.filter(props.chapters, chapter => chapter.reading !== undefined),
 		Array.map(chapter => chapter.number),
 		Array.match({onEmpty: Option.none<number>, onNonEmpty: numbers => Option.some(Array.max(numbers, Order.Number))})
 	)
-	return Array.match(props.chapters, {
-		onEmpty: () => (
-			<ContentUnavailableView
-				title="No Chapters Yet"
-				systemImage="book.closed"
-				description="They appear here as soon as the server has read them."
-				modifiers={[navigationTitle(SERIES), background(colors.background)]}
-			/>
-		),
-		onNonEmpty: chapters => (
-			<Toolbar>
-				<List
-					modifiers={[
-						navigationTitle(SERIES),
-						// The large title sits in the bar's own row, without the empty one above it.
-						toolbarTitleDisplayMode('inlineLarge'),
-						listStyle('plain'),
-						scrollContentBackground('hidden'),
-						background(colors.background)
-					]}
-				>
-					{Array.map(Array.sort(chapters, Order.flip(byNumber)), chapter => (
-						<ChapterRow
-							key={chapter.number}
-							chapter={chapter}
-							fresh={Option.exists(reached, number => chapter.number > number)}
-							onOpen={props.onOpen}
-						/>
-					))}
-				</List>
+	const resume = resumeOf(props.chapters)
+	const shown = pipe(
+		Array.sort(props.chapters, Order.flip(byNumber)),
+		Array.filter(chapter => matches(chapter, text))
+	)
+	return (
+		<Toolbar
+			modifiers={[
+				navigationTitle('opm'),
+				navigationBarTitleDisplayMode('inline'),
+				searchable(query, {onChange: setSearched, prompt: 'Search'}),
+				background(colors.background)
+			]}
+		>
+			{/* SwiftUI shows the outermost toolbar's items first: the menu, the search field, then continue. */}
+			<Toolbar modifiers={[bottomBarSearch]}>
+				{Array.match(shown, {
+					onEmpty: () =>
+						Boolean.match(String.isEmpty(text), {
+							onFalse: () => (
+								<ContentUnavailableView title={`No Results for “${searched}”`} systemImage="magnifyingglass" />
+							),
+							onTrue: () => (
+								<ContentUnavailableView
+									title="No Chapters Yet"
+									systemImage="book.closed"
+									description="They appear here as soon as the server has read them."
+								/>
+							)
+						}),
+					onNonEmpty: chapters => (
+						<List modifiers={[listStyle('plain'), scrollContentBackground('hidden'), background(colors.background)]}>
+							{Array.map(chapters, chapter => (
+								<ChapterRow
+									key={chapter.number}
+									chapter={chapter}
+									fresh={Option.exists(reached, number => chapter.number > number)}
+									onOpen={props.onOpen}
+								/>
+							))}
+						</List>
+					)
+				})}
 				<Toolbar.Content>
-					{/* The cover's lettering with the app icon stands in for the large title. */}
-					<ToolbarItem placement="largeTitle">
-						<Title />
+					<ToolbarItem placement="bottomBar">
+						<Button
+							label={Option.match(resume, {
+								onNone: () => 'Continue Reading',
+								onSome: found => `Continue Chapter ${found.number}`
+							})}
+							systemImage="book"
+							onPress={() => Option.map(resume, found => props.onOpen(found.number))}
+							modifiers={[labelStyle('iconOnly'), disabled(Option.isNone(resume))]}
+						/>
 					</ToolbarItem>
 				</Toolbar.Content>
 			</Toolbar>
-		)
-	})
+			<Toolbar.Content>
+				<ToolbarItem placement="principal">
+					<AppTitle logo={icon} name="opm" />
+				</ToolbarItem>
+				<ToolbarItem placement="bottomBar">
+					<SettingsMenu />
+				</ToolbarItem>
+			</Toolbar.Content>
+		</Toolbar>
+	)
 }

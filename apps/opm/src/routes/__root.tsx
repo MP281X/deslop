@@ -1,6 +1,13 @@
-import {useAtom, useAtomMount, useAtomSubscribe, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {
+	useAtom,
+	useAtomMount,
+	useAtomRefresh,
+	useAtomSubscribe,
+	useAtomSuspense,
+	useAtomValue
+} from '@effect/atom-react'
 
-import {Array, Number, Option} from 'effect'
+import {Array, Cause, Number, Option} from 'effect'
 
 import {
 	Button,
@@ -20,6 +27,7 @@ import {
 	disabled,
 	foregroundStyle,
 	frame,
+	lineLimit,
 	padding,
 	resizable,
 	tint
@@ -35,7 +43,6 @@ import {chaptersAtom, diagnosticsAtom, openedAtom, pushAtom, sessionAtom, signIn
 import {ChaptersRoute} from '#routes/(home)/index.tsx'
 import {ReaderRoute} from '#routes/chapters/$number.tsx'
 import icon from '#routes/icon.png'
-import {resumeOf} from '#services/chapters/lib/utils.ts'
 
 // The spinner fills the screen, so it sits in the middle of it on the app's background.
 function Loading() {
@@ -43,6 +50,39 @@ function Loading() {
 		// oxlint-disable-next-line shadcn/no-inline-styles -- The native SwiftUI host fills the React Native screen.
 		<Host style={{flex: 1}}>
 			<ProgressView modifiers={[frame({maxHeight: Infinity, maxWidth: Infinity}), background(colors.background)]} />
+		</Host>
+	)
+}
+
+// A failure thrown while rendering is fatal in React Native and closes the app, so the root reads it as a value and offers a retry.
+function Failed(props: {cause: Cause.Cause<unknown>}) {
+	const refreshSession = useAtomRefresh(sessionAtom)
+	const refreshChapters = useAtomRefresh(chaptersAtom)
+	return (
+		// oxlint-disable-next-line shadcn/no-inline-styles -- The native SwiftUI host fills the React Native screen.
+		<Host style={{flex: 1}}>
+			<VStack
+				spacing={12}
+				modifiers={[
+					padding({all: 24}),
+					frame({maxHeight: Infinity, maxWidth: Infinity}),
+					background(colors.background)
+				]}
+			>
+				<Text modifiers={[mono('headline', 17), foregroundStyle(colors.foreground)]}>opm hit an error</Text>
+				<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground), lineLimit(6)]}>
+					{Cause.pretty(props.cause)}
+				</Text>
+				<Button
+					onPress={() => {
+						refreshSession()
+						refreshChapters()
+					}}
+					modifiers={[buttonStyle('glassProminent'), tint(colors.primary), foregroundStyle(colors.primaryForeground)]}
+				>
+					<Text modifiers={[mono('headline', 16)]}>Try Again</Text>
+				</Button>
+			</VStack>
 		</Host>
 	)
 }
@@ -56,10 +96,11 @@ export function RootRoute() {
 }
 
 function SessionRoute() {
-	const session = useAtomSuspense(sessionAtom).value
+	const session = useAtomSuspense(sessionAtom, {includeFailure: true})
 	const [signIn, start] = useAtom(signInAtom)
 	const iconUri = useAtomSuspense(assetAtom(icon)).value
-	if (Option.isSome(session)) {
+	if (AsyncResult.isFailure(session)) return <Failed cause={session.cause} />
+	if (Option.isSome(session.value)) {
 		return (
 			<Suspense fallback={<Loading />}>
 				<AppRoutes />
@@ -105,22 +146,21 @@ function SessionRoute() {
 	)
 }
 
-// The app opens on the chapter to continue, with the list one back-swipe away; a tapped notification opens its chapter.
+// The app opens on the list; a tapped notification opens its chapter.
 function AppRoutes() {
 	useAtomMount(updateAtom)
 	useAtomMount(pushAtom)
 	useAtomMount(diagnosticsAtom)
-	const chapters = useAtomSuspense(chaptersAtom).value
+	const loaded = useAtomSuspense(chaptersAtom, {includeFailure: true})
 	const opened = useAtomValue(openedAtom)
 	const [path, setPath] = useState(() =>
-		Option.match(
-			Option.orElse(opened, () => Option.map(resumeOf(chapters), found => found.number)),
-			{onNone: () => Array.empty<string>(), onSome: number => [`${number}`]}
-		)
+		Option.match(opened, {onNone: () => Array.empty<string>(), onSome: number => [`${number}`]})
 	)
 	useAtomSubscribe(openedAtom, tapped =>
 		Option.match(tapped, {onNone: () => undefined, onSome: number => setPath([`${number}`])})
 	)
+	if (AsyncResult.isFailure(loaded)) return <Failed cause={loaded.cause} />
+	const chapters = loaded.value
 
 	return (
 		// oxlint-disable-next-line shadcn/no-inline-styles -- The SwiftUI host is a React Native view and fills the screen through its style.
@@ -133,7 +173,12 @@ function AppRoutes() {
 				<ChaptersRoute chapters={chapters} onOpen={number => setPath([`${number}`])} />
 				{Array.map(path, number => (
 					<NavigationDestination key={number} value={number}>
-						<ReaderRoute key={number} chapters={chapters} number={Option.getOrElse(Number.parse(number), () => 0)} />
+						<ReaderRoute
+							key={number}
+							chapters={chapters}
+							number={Option.getOrElse(Number.parse(number), () => 0)}
+							onOpen={next => setPath([`${next}`])}
+						/>
 					</NavigationDestination>
 				))}
 			</NavigationStack>

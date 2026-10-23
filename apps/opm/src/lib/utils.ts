@@ -141,6 +141,43 @@ export const signInAtom = authRuntime.fn(() =>
 	)
 )
 
+export const signOutAtom = Atom.keepAlive(
+	authRuntime.fn(() =>
+		pipe(
+			Effect.gen(function* () {
+				const session = yield* refreshing.withPermit(
+					Effect.gen(function* () {
+						const saved = yield* readSession
+						yield* Effect.promise(() => SecureStore.deleteItemAsync(SESSION))
+						return saved
+					})
+				)
+				yield* Atom.refresh(sessionAtom)
+				yield* pipe(
+					Effect.forEach(
+						Option.toArray(session),
+						saved =>
+							pipe(
+								HttpClientRequest.post(`${AUTH_URL}/api/auth/oauth2/revoke`),
+								HttpClientRequest.bodyUrlParams({
+									client_id: saved.clientId,
+									token: saved.refreshToken,
+									token_type_hint: 'refresh_token'
+								}),
+								request => HttpClient.HttpClient.use(client => client.execute(request))
+							),
+						{concurrency: 1}
+					),
+					Effect.timeout('30 seconds'),
+					Effect.ignore({log: 'Warn', message: 'The server session could not be revoked; signing out on this iPhone'})
+				)
+			}),
+			Effect.mapError(cause => AuthError.make({cause, message: 'Cannot sign out'})),
+			alert('Not Signed Out')
+		)
+	)
+)
+
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/opm/lib/utils/RpcClient', {
 	group: RpcContracts,
 	protocol: pipe(
@@ -205,7 +242,15 @@ export const chaptersAtom = Atom.keepAlive(
 					)
 				}),
 				Stream.unwrap,
-				Stream.tapError(() => Atom.refresh(sessionAtom)),
+				// Refreshing the session restarts this list, so it happens only once the session is gone; any other failure waits for the retry.
+				Stream.tapError(() =>
+					pipe(
+						readSession,
+						Effect.flatMap(saved =>
+							Option.match(saved, {onNone: () => Atom.refresh(sessionAtom), onSome: () => Effect.void})
+						)
+					)
+				),
 				Stream.retry(Schedule.spaced('2 seconds'))
 			)
 		)
@@ -263,13 +308,34 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 
 // Diagnostics
 
-// A crash leaves no trace of its own, so the report iOS hands over on a later launch goes to the telemetry as an error.
+const crashFile = new File(Paths.document, 'crash.txt')
+
+// iOS's crash report shows only React Native rethrowing a fatal JavaScript error, so its stack waits on disk for the next launch.
+const fatalHandler = ErrorUtils.getGlobalHandler()
+ErrorUtils.setGlobalHandler((error, fatal) => {
+	if (fatal === true) {
+		Option.map(
+			Schema.decodeUnknownOption(Schema.Struct({message: Schema.String, stack: Schema.optionalKey(Schema.String)}))(
+				error
+			),
+			// A disk that cannot take the stack must not hide the error itself.
+			thrown => Option.liftThrowable(writeAtomically)(crashFile, thrown.stack ?? thrown.message)
+		)
+	}
+	fatalHandler(error, fatal)
+})
+
+// A crash leaves no trace of its own, so the reports iOS and the handler above leave for a later launch go to the telemetry as errors.
 export const diagnosticsAtom = RpcClient.runtime.atom(get =>
 	pipe(
 		Effect.gen(function* () {
 			const session = get(sessionAtom)
 			if (session._tag !== 'Success' || Option.isNone(session.value)) return
 			get(MobileRuntime.activationsAtom)
+			if (crashFile.exists) {
+				yield* Effect.logError('A JavaScript error closed the app on an earlier run', crashFile.textSync())
+				crashFile.delete()
+			}
 			yield* Effect.forEach(
 				yield* Effect.try(() => OpmNative.takeDiagnostics()),
 				report => Effect.logError('iOS reported a crash or hang on an earlier run', report),
@@ -278,6 +344,18 @@ export const diagnosticsAtom = RpcClient.runtime.atom(get =>
 		}),
 		Effect.ignore({log: 'Warn', message: 'The crash reports were not read'})
 	)
+)
+
+const continuousFile = new File(Paths.document, 'continuous')
+
+// One chapter at a time, or one strip that runs on into the next chapter; the list's menu switches.
+export const continuousAtom = Atom.writable(
+	() => continuousFile.exists,
+	(context, continuous: boolean) => {
+		if (continuous) writeAtomically(continuousFile, '')
+		else if (continuousFile.exists) continuousFile.delete()
+		context.setSelf(continuous)
+	}
 )
 
 type ChapterData = typeof ChapterData.Type

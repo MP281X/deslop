@@ -19,7 +19,7 @@ public final class PageStripViewProps: UIBaseViewProps {
   var onPage = EventDispatcher()
 }
 
-// The pages of one or more chapters in one vertical strip: pinch or double-tap to zoom, tap to show the bars, scroll to hide them.
+// The pages of one or more chapters in one vertical strip: tap to show the bars, scroll to hide them, hold a page to copy it.
 public struct PageStripView: ExpoSwiftUI.View {
   @ObservedObject public var props: PageStripViewProps
   @State private var barsHidden = true
@@ -82,6 +82,7 @@ struct PageStrip: UIViewRepresentable {
 
 final class StripScrollView: UIScrollView {
   var onLayout: () -> Void = {}
+  var onWindow: () -> Void = {}
 
   override func layoutSubviews() {
     super.layoutSubviews()
@@ -92,8 +93,6 @@ final class StripScrollView: UIScrollView {
     super.didMoveToWindow()
     if window != nil { onWindow() }
   }
-
-  var onWindow: () -> Void = {}
 }
 
 // UIKit drops every touch of the edge swipe back while the navigation bar is hidden, so the reader fades the bar out instead
@@ -151,14 +150,11 @@ final class BarFade: NSObject {
 final class StripController: NSObject, UIScrollViewDelegate {
   // Black shows through between pages, as a thin line where one ends.
   private static let gap: CGFloat = 1
-  private static let markerHeight: CGFloat = 64
 
   let scrollView = StripScrollView()
   let bar = BarFade()
-  private let content = UIView()
   private var chapters: [StripChapter] = []
   private var pageViews: [PageView] = []
-  private var markers: [EndMarker] = []
   // Height over width of each page; a page keeps a typical manga shape until its image arrives.
   private var aspects: [CGFloat] = []
   private var pendingStart: Int?
@@ -174,22 +170,12 @@ final class StripController: NSObject, UIScrollViewDelegate {
     super.init()
     scrollView.delegate = self
     scrollView.backgroundColor = .black
-    // The strip is black in either appearance, so its markers take the dark one's colors.
-    scrollView.overrideUserInterfaceStyle = .dark
-    scrollView.minimumZoomScale = 1
-    scrollView.maximumZoomScale = 4
     scrollView.contentInsetAdjustmentBehavior = .never
-    scrollView.addSubview(content)
     scrollView.onLayout = { [weak self] in self?.fit() }
     scrollView.onWindow = { [weak self] in
       if let self { self.bar.attach(from: self.scrollView) }
     }
-    let double = UITapGestureRecognizer(target: self, action: #selector(doubleTapped(_:)))
-    double.numberOfTapsRequired = 2
-    let single = UITapGestureRecognizer(target: self, action: #selector(tapped))
-    single.require(toFail: double)
-    scrollView.addGestureRecognizer(double)
-    scrollView.addGestureRecognizer(single)
+    scrollView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
   }
 
   // The same chapters with more after them extend the strip in place; anything else starts over at `start`.
@@ -205,14 +191,12 @@ final class StripController: NSObject, UIScrollViewDelegate {
     }
     // The old pages stop their downloads, so a strip that starts over does not decode images nobody sees.
     stop()
-    content.subviews.forEach { $0.removeFromSuperview() }
+    pageViews.forEach { $0.removeFromSuperview() }
     pageViews = []
-    markers = []
     aspects = []
     self.chapters = chapters
     current = -1
     chapters.forEach(add)
-    scrollView.zoomScale = 1
     pendingStart = min(max(start, 0), max(pageViews.count - 1, 0))
     layout()
   }
@@ -222,13 +206,10 @@ final class StripController: NSObject, UIScrollViewDelegate {
       let index = pageViews.count
       let view = PageView(url: url)
       view.onAspect = { [weak self] aspect in self?.resize(index, to: aspect) }
-      content.addSubview(view)
+      scrollView.addSubview(view)
       pageViews.append(view)
       aspects.append(1.42)
     }
-    let marker = EndMarker(number: chapter.number)
-    content.addSubview(marker)
-    markers.append(marker)
   }
 
   // The window's safe area, not the view's, so the strip starts below the Dynamic Island whether or not the bars show.
@@ -247,61 +228,49 @@ final class StripController: NSObject, UIScrollViewDelegate {
     let width = scrollView.bounds.width
     guard width > 0 else { return }
     laidOutWidth = width
-    let scale = scrollView.zoomScale
     var y: CGFloat = 0
-    var page = 0
-    for (index, chapter) in chapters.enumerated() {
-      for _ in chapter.pages {
-        let height = (width * aspects[page]).rounded()
-        pageViews[page].frame = CGRect(x: 0, y: y, width: width, height: height)
-        y += height + Self.gap
-        page += 1
-      }
-      markers[index].frame = CGRect(x: 0, y: y, width: width, height: Self.markerHeight)
-      y += Self.markerHeight
+    for (index, view) in pageViews.enumerated() {
+      let height = (width * aspects[index]).rounded()
+      view.frame = CGRect(x: 0, y: y, width: width, height: height)
+      y += height + Self.gap
     }
-    content.bounds = CGRect(x: 0, y: 0, width: width, height: y)
-    content.center = CGPoint(x: width * scale / 2, y: y * scale / 2)
-    scrollView.contentSize = CGSize(width: width * scale, height: y * scale)
+    scrollView.contentSize = CGSize(width: width, height: max(y - Self.gap, 0))
     // The start waits for the window, whose safe area sets the inset it scrolls past.
     if let start = pendingStart, start < pageViews.count, scrollView.window != nil {
       pendingStart = nil
       let top = scrollView.contentInset.top
-      let limit = max(scrollView.contentSize.height - scrollView.bounds.height + scrollView.contentInset.bottom, -top)
-      scrollView.contentOffset = CGPoint(x: 0, y: min(pageViews[start].frame.minY * scale - top, limit))
+      scrollView.contentOffset = CGPoint(x: 0, y: min(pageViews[start].frame.minY - top, bottomOffset))
     }
     track()
+  }
+
+  private var bottomOffset: CGFloat {
+    max(
+      scrollView.contentSize.height - scrollView.bounds.height + scrollView.contentInset.bottom,
+      -scrollView.contentInset.top)
   }
 
   // A page above the screen that grows or shrinks moves the offset with it, so what is on screen stays put.
   private func resize(_ index: Int, to aspect: CGFloat) {
     guard index < aspects.count, abs(aspects[index] - aspect) > 0.001 else { return }
-    let scale = scrollView.zoomScale
-    let above = pageViews[index].frame.maxY <= (scrollView.contentOffset.y + scrollView.contentInset.top) / scale
+    let above = pageViews[index].frame.maxY <= scrollView.contentOffset.y + scrollView.contentInset.top
     let delta = (laidOutWidth * aspect).rounded() - (laidOutWidth * aspects[index]).rounded()
     aspects[index] = aspect
     layout()
     if above {
-      scrollView.contentOffset.y += delta * scale
+      scrollView.contentOffset.y += delta
     }
   }
 
   // The page under the middle of the screen is the one being read; only pages near it hold their images.
   // Until the strip has scrolled to its start, the top page is not the one being read, so nothing is reported.
-  // A short last page never reaches the middle, so a chapter whose end marker shows whole is read to its last page.
+  // A short last page never reaches the middle, so the strip scrolled to its end is read to its last page.
   private func track() {
     guard !pageViews.isEmpty, pendingStart == nil else { return }
-    let scale = scrollView.zoomScale
-    let middle = (scrollView.contentOffset.y + scrollView.bounds.height / 2) / scale
-    let bottom = (scrollView.contentOffset.y + scrollView.bounds.height - scrollView.contentInset.bottom) / scale
-    var index = pageViews.firstIndex { $0.frame.maxY > middle } ?? pageViews.count - 1
-    var last = -1
-    for (position, chapter) in chapters.enumerated() {
-      last += chapter.pages.count
-      if last < index { continue }
-      if markers[position].frame.maxY <= bottom { index = last }
-      break
-    }
+    let middle = scrollView.contentOffset.y + scrollView.bounds.height / 2
+    let index =
+      scrollView.contentOffset.y >= bottomOffset - 1
+      ? pageViews.count - 1 : pageViews.firstIndex { $0.frame.maxY > middle } ?? pageViews.count - 1
     for (position, view) in pageViews.enumerated() {
       if position >= index - 2 && position <= index + 4 {
         view.load()
@@ -329,10 +298,6 @@ final class StripController: NSObject, UIScrollViewDelegate {
     if scrollView.isDragging { onScroll() }
   }
 
-  func viewForZooming(in scrollView: UIScrollView) -> UIView? {
-    content
-  }
-
   @objc private func tapped() {
     onTap()
   }
@@ -344,65 +309,29 @@ final class StripController: NSObject, UIScrollViewDelegate {
     prefetches.values.forEach { $0?.cancel() }
     prefetches = [:]
   }
-
-  @objc private func doubleTapped(_ gesture: UITapGestureRecognizer) {
-    if scrollView.zoomScale > 1.01 {
-      scrollView.setZoomScale(1, animated: true)
-      return
-    }
-    let point = gesture.location(in: content)
-    let size = CGSize(width: scrollView.bounds.width / 2.5, height: scrollView.bounds.height / 2.5)
-    scrollView.zoom(
-      to: CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2, width: size.width, height: size.height),
-      animated: true)
-  }
 }
 
-// "End of Chapter 242" between two hairlines, after the last page of each chapter.
-final class EndMarker: UIView {
-  private let label = UILabel()
-  private let left = UIView()
-  private let right = UIView()
-
-  init(number: Double) {
-    super.init(frame: .zero)
-    label.text = "End of Chapter \(number.rounded() == number ? String(Int(number)) : String(number))"
-    label.font = .systemFont(ofSize: 13)
-    label.textColor = .secondaryLabel
-    left.backgroundColor = .separator
-    right.backgroundColor = .separator
-    [left, label, right].forEach(addSubview)
-  }
-
-  required init?(coder: NSCoder) {
-    nil
-  }
-
-  override func layoutSubviews() {
-    super.layoutSubviews()
-    label.sizeToFit()
-    label.center = CGPoint(x: bounds.midX, y: bounds.midY)
-    let line = 1 / max(traitCollection.displayScale, 1)
-    left.frame = CGRect(x: 20, y: bounds.midY, width: max(label.frame.minX - 32, 0), height: line)
-    right.frame = CGRect(
-      x: label.frame.maxX + 12, y: bounds.midY, width: max(bounds.width - label.frame.maxX - 32, 0), height: line)
-  }
-}
-
-// A page spins only while its image is on its way; pages far from the screen stay still.
-final class PageView: UIImageView {
+// A page spins while its image is on its way and tries again after a failure, so a page is never silently black.
+final class PageView: UIImageView, UIContextMenuInteractionDelegate {
   let url: URL?
   private let spinner = UIActivityIndicatorView(style: .medium)
+  private let failure = UIImageView(image: UIImage(systemName: "arrow.clockwise"))
   private var task: Task<Void, Never>?
+  private var failures = 0
   var onAspect: (CGFloat) -> Void = { _ in }
 
   init(url: String) {
     self.url = URL(string: url)
     super.init(frame: .zero)
     contentMode = .scaleAspectFit
+    isUserInteractionEnabled = true
     spinner.color = .gray
     spinner.hidesWhenStopped = true
+    failure.tintColor = .gray
+    failure.isHidden = true
     addSubview(spinner)
+    addSubview(failure)
+    addInteraction(UIContextMenuInteraction(delegate: self))
   }
 
   required init?(coder: NSCoder) {
@@ -412,18 +341,30 @@ final class PageView: UIImageView {
   override func layoutSubviews() {
     super.layoutSubviews()
     spinner.center = CGPoint(x: bounds.midX, y: bounds.midY)
+    failure.center = spinner.center
   }
 
   func load() {
     guard image == nil, task == nil, let url else { return }
     spinner.startAnimating()
+    failure.isHidden = true
     task = Task { [weak self] in
-      let loaded = await PageLoader.image(url, size: 3000)
+      let loaded = await PageLoader.image(url, size: 2400)
       guard let self, !Task.isCancelled else { return }
+      guard let loaded, loaded.size.width > 0 else {
+        // Two, four, then eight seconds, while the page stays near the screen.
+        self.failures += 1
+        self.spinner.stopAnimating()
+        self.failure.isHidden = false
+        try? await Task.sleep(for: .seconds(min(pow(2, Double(self.failures)), 8)))
+        guard !Task.isCancelled else { return }
+        self.task = nil
+        self.load()
+        return
+      }
       self.task = nil
+      self.failures = 0
       self.spinner.stopAnimating()
-      // A failed page stays black until the next scroll past it loads it again.
-      guard let loaded, loaded.size.width > 0 else { return }
       self.image = loaded
       self.onAspect(loaded.size.height / loaded.size.width)
     }
@@ -433,7 +374,34 @@ final class PageView: UIImageView {
     task?.cancel()
     task = nil
     spinner.stopAnimating()
+    failure.isHidden = true
     image = nil
+  }
+
+  // Holding a page offers to copy it, as Photos does.
+  func contextMenuInteraction(_ interaction: UIContextMenuInteraction, configurationForMenuAtLocation location: CGPoint)
+    -> UIContextMenuConfiguration?
+  {
+    guard let image else { return nil }
+    return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+      UIMenu(children: [
+        UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { _ in UIPasteboard.general.image = image },
+        UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
+          self?.share(image)
+        },
+      ])
+    }
+  }
+
+  private func share(_ image: UIImage) {
+    var responder: UIResponder? = self
+    while let current = responder, !(current is UIViewController) {
+      responder = current.next
+    }
+    guard let controller = responder as? UIViewController else { return }
+    let sheet = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+    sheet.popoverPresentationController?.sourceView = self
+    controller.present(sheet, animated: true)
   }
 }
 
@@ -453,6 +421,7 @@ enum PageLoader {
     configuration.urlCache = cache
     configuration.requestCachePolicy = .returnCacheDataElseLoad
     configuration.httpMaximumConnectionsPerHost = connections
+    configuration.timeoutIntervalForRequest = 20
     return URLSession(configuration: configuration)
   }
 
@@ -464,10 +433,17 @@ enum PageLoader {
     return task
   }
 
-  // `size` is the longest side in pixels: a zoomed-in screen for a page, a few points for a cover.
+  // `size` is the longest side in pixels: a whole screen for a page, a few points for a cover. An error page or bytes
+  // that are no image leave the cache, so the next try downloads the page again.
   static func image(_ url: URL, size: Int) async -> UIImage? {
-    guard let (data, _) = try? await session.data(from: url), !Task.isCancelled else { return nil }
-    return await Task.detached(priority: .userInitiated) { decode(data, size: size) }.value
+    guard let (data, response) = try? await session.data(from: url), !Task.isCancelled else { return nil }
+    guard (response as? HTTPURLResponse)?.statusCode == 200,
+      let image = await Task.detached(priority: .userInitiated, operation: { decode(data, size: size) }).value
+    else {
+      cache.removeCachedResponse(for: URLRequest(url: url))
+      return nil
+    }
+    return image
   }
 
   // Decoding off the main thread, and no larger than needed, keeps scrolling smooth and memory flat.

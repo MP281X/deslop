@@ -1,46 +1,6 @@
 import ExpoModulesCore
 import ExpoUI
 import SwiftUI
-import UIKit
-
-// The pictures in assets/, which the podspec ships as the OpmNative bundle.
-enum Assets {
-  private static let bundle =
-    Bundle.main.url(forResource: "OpmNative", withExtension: "bundle").flatMap(Bundle.init(url:)) ?? .main
-
-  static func image(_ name: String) -> UIImage {
-    UIImage(named: name, in: bundle, with: nil) ?? UIImage()
-  }
-}
-
-public final class TitleViewProps: UIBaseViewProps {}
-
-// The app icon beside the series name in the lettering of the cover, tinted like text so it follows the appearance.
-public struct TitleView: ExpoSwiftUI.View {
-  @ObservedObject public var props: TitleViewProps
-
-  public init(props: TitleViewProps) {
-    self.props = props
-  }
-
-  public var body: some View {
-    HStack(spacing: 10) {
-      SwiftUI.Image(uiImage: Assets.image("icon"))
-        .resizable()
-        .frame(width: 34, height: 34)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-      SwiftUI.Image(uiImage: Assets.image("logo"))
-        .renderingMode(.template)
-        .resizable()
-        .scaledToFit()
-        .frame(height: 28)
-        .foregroundStyle(.primary)
-    }
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel("One-Punch Man")
-    .accessibilityAddTraits(.isHeader)
-  }
-}
 
 public final class ChapterProgressViewProps: UIBaseViewProps {
   // Read pages over all pages; 1 once the chapter is read.
