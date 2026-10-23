@@ -1,5 +1,6 @@
 import type {CommonViewModifierProps} from '@expo/ui/swift-ui'
 import {requireNativeModule, requireNativeView} from 'expo'
+import type {ColorValue} from 'react-native'
 
 import type {ChapterItem} from '#services/chapters/schema.ts'
 
@@ -17,3 +18,11 @@ export const PageStrip = requireNativeView<
 
 // ios/CoverView.swift: a page as a thumbnail, sized and rounded by its modifiers.
 export const Cover = requireNativeView<CommonViewModifierProps & {url: string}>('OpmNative', 'CoverView')
+
+// ios/BrandViews.swift: the app icon and the cover's lettering, for the list's large title.
+export const Title = requireNativeView<CommonViewModifierProps>('OpmNative', 'TitleView')
+
+// ios/BrandViews.swift: a gray disc that fills with `accent` as `fraction` of the chapter is read and turns `read` once read, sized by its modifiers.
+export const ChapterProgress = requireNativeView<
+	CommonViewModifierProps & {accent: ColorValue; fraction: number; read: ColorValue}
+>('OpmNative', 'ChapterProgressView')
