@@ -1,4 +1,3 @@
-import {createModifier} from '@expo/ui/swift-ui/modifiers'
 import {requireNativeModule} from 'expo'
 
 export const native = requireNativeModule<{
@@ -10,5 +9,3 @@ export const native = requireNativeModule<{
 	lockSession: () => PromiseLike<{backgroundTask: number; descriptor: number}>
 	unlockSession: (lock: {backgroundTask: number; descriptor: number}) => PromiseLike<void>
 }>('StashNative')
-
-export const bottomBarSearch = createModifier('bottomBarSearch')

@@ -34,7 +34,6 @@ import {
 	clipShape,
 	contentShape,
 	controlSize,
-	cornerRadius,
 	font,
 	foregroundStyle,
 	frame,
@@ -67,7 +66,8 @@ import {Linking} from 'react-native'
 import {Chip} from '@deslop/components-mobile/chip'
 import {BrandIcon} from '@deslop/components-mobile/icons'
 import {colors, mono} from '@deslop/components-mobile/theme'
-import {assetAtom} from '@deslop/components-mobile/utils'
+import {AppTitle} from '@deslop/components-mobile/title'
+import {bottomBarSearch} from '@deslop/components-mobile/utils'
 import {updateAtom} from '@deslop/runtime/mobile'
 
 import {Byline} from '#lib/components.tsx'
@@ -86,7 +86,6 @@ import {
 	searchAtom,
 	signOutAtom
 } from '#lib/utils.ts'
-import {bottomBarSearch} from '#modules/native/index.ts'
 import logo from '#routes/logo.png'
 import {tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
@@ -282,7 +281,6 @@ function KindLabel(props: {kind: Kind}) {
 function PasteSheet() {
 	const offer = pipe(useAtomValue(offerAtom), AsyncResult.getOrElse(Option.none))
 	const [answered, respond] = useAtom(answerAtom)
-	const logoUri = useAtomValue(assetAtom(logo))
 	const kind = Option.match(offer, {onNone: () => 'link' as const, onSome: open => open.kind})
 	const open = Option.filter(
 		offer,
@@ -294,14 +292,7 @@ function PasteSheet() {
 	}
 	return (
 		<BottomSheet
-			anchor={
-				<HStack spacing={8}>
-					{AsyncResult.isSuccess(logoUri) && (
-						<Image uiImage={logoUri.value} modifiers={[resizable(), frame({height: 18, width: 18}), cornerRadius(4)]} />
-					)}
-					<Text modifiers={[mono('headline', 17), foregroundStyle(colors.foreground)]}>stash</Text>
-				</HStack>
-			}
+			anchor={<AppTitle logo={logo} name="stash" />}
 			isPresented={Option.isSome(open)}
 			onIsPresentedChange={presented => {
 				if (!presented) answer(false)
