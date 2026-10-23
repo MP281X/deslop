@@ -28,6 +28,10 @@ export const ImageType = Schema.Literals(['image/jpeg', 'image/png', 'image/webp
 export type Image = typeof Image.Type
 export const Image = Schema.Struct({bytes: Schema.Uint8Array, type: ImageType})
 
+// An image the AI sees, labeled with what it is: the preview, one of the post's images or a video still at its time.
+export type Picture = typeof Picture.Type
+export const Picture = Schema.Struct({...Image.fields, label: Schema.String})
+
 export type FileType = typeof FileType.Type
 export const FileType = Schema.Literals(['image/jpeg', 'image/png', 'video/mp4', 'video/quicktime'])
 
@@ -84,37 +88,28 @@ export const Extraction = Schema.Struct({
 	video: Schema.optionalKey(Schema.String)
 })
 
+// A tag in use, with what belongs under it, so the AI reuses tags by meaning instead of by name.
+export type TagEntry = typeof TagEntry.Type
+export const TagEntry = Schema.Struct({count: Schema.Int, definition: Schema.optionalKey(Schema.String), tag: Tag})
+
+export type TagDefinition = typeof TagDefinition.Type
+export const TagDefinition = Schema.Struct({
+	definition: pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(240))),
+	tag: Tag
+})
+
 export type Organization = typeof Organization.Type
 export const Organization = Schema.Struct({
-	body: pipe(Schema.String, Schema.check(Schema.isMaxLength(12_000))),
+	body: pipe(Schema.String, Schema.check(Schema.isMaxLength(40_000))),
+	definitions: Schema.Array(TagDefinition),
 	screenText: Schema.String,
-	summary: pipe(Schema.String, Schema.check(Schema.isMaxLength(300))),
+	summary: pipe(Schema.String, Schema.check(Schema.isMaxLength(400))),
 	tags: pipe(Schema.Array(Tag), Schema.check(Schema.isMinLength(1), Schema.isMaxLength(3))),
-	title: pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
-	topics: pipe(Schema.String, Schema.check(Schema.isMaxLength(400)))
+	title: pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(90))),
+	topics: pipe(Schema.String, Schema.check(Schema.isMaxLength(1_000)))
 })
 
 // What the sources answer.
-
-export type FxPost = typeof FxPost.Type
-export const FxPost = Schema.Struct({
-	author: Schema.Struct({id: Schema.String, name: Schema.String, screen_name: Schema.String}),
-	created_timestamp: Schema.Finite,
-	id: Schema.String,
-	media: Schema.optionalKey(
-		Schema.Struct({
-			all: Schema.optionalKey(
-				Schema.Array(
-					Schema.Struct({thumbnail_url: Schema.optionalKey(Schema.String), type: Schema.String, url: Schema.String})
-				)
-			)
-		})
-	),
-	raw_text: Schema.optionalKey(
-		Schema.Struct({facets: Schema.Array(Schema.Struct({replacement: Schema.optionalKey(Schema.String)}))})
-	),
-	text: Schema.String
-})
 
 export type FxArticle = typeof FxArticle.Type
 export const FxArticle = Schema.Struct({
@@ -136,13 +131,39 @@ export const FxArticle = Schema.Struct({
 			})
 		)
 	}),
+	media_entities: Schema.optionalKey(
+		Schema.Array(Schema.Struct({media_info: Schema.Struct({original_img_url: Schema.optionalKey(Schema.String)})}))
+	),
 	title: Schema.String
 })
 
-export type FxStatus = typeof FxStatus.Type
-export const FxStatus = Schema.Struct({
-	status: Schema.Struct({...FxPost.fields, article: Schema.optionalKey(FxArticle), quote: Schema.optionalKey(FxPost)})
+export type FxPost = typeof FxPost.Type
+export const FxPost = Schema.Struct({
+	article: Schema.optionalKey(FxArticle),
+	author: Schema.Struct({id: Schema.String, name: Schema.String, screen_name: Schema.String}),
+	created_timestamp: Schema.Finite,
+	id: Schema.String,
+	likes: Schema.optionalKey(Schema.Finite),
+	media: Schema.optionalKey(
+		Schema.Struct({
+			all: Schema.optionalKey(
+				Schema.Array(
+					Schema.Struct({thumbnail_url: Schema.optionalKey(Schema.String), type: Schema.String, url: Schema.String})
+				)
+			)
+		})
+	),
+	raw_text: Schema.optionalKey(
+		Schema.Struct({facets: Schema.Array(Schema.Struct({replacement: Schema.optionalKey(Schema.String)}))})
+	),
+	replying_to: Schema.optionalKey(
+		Schema.NullOr(Schema.Struct({status: Schema.optionalKey(Schema.NullOr(Schema.String))}))
+	),
+	text: Schema.String
 })
+
+export type FxStatus = typeof FxStatus.Type
+export const FxStatus = Schema.Struct({status: Schema.Struct({...FxPost.fields, quote: Schema.optionalKey(FxPost)})})
 
 // `thread` holds the posts above the saved one and the saved post itself; `replies` holds the posts below it.
 export type FxConversation = typeof FxConversation.Type

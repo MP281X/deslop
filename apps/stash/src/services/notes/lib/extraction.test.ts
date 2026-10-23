@@ -43,3 +43,19 @@ fn main() {
 	assert.deepStrictEqual(page.image, Option.some('https://blog.cloudflare.com/cover.png'))
 	assert.strictEqual(page.title, 'Pingora')
 })
+
+it('shows a page without a preview by its largest PNG icon, else by the favicon service', () => {
+	const icon = pageText(
+		`<html><head><title>Docs</title>
+			<link rel="icon" href="/favicon.ico">
+			<link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png">
+			<link rel="apple-touch-icon" sizes="180x180" href="/touch.png">
+		</head><body><p>Docs</p></body></html>`,
+		new URL('https://docs.example.com/guide')
+	)
+	assert.deepStrictEqual(icon.image, Option.some('https://docs.example.com/touch.png'))
+	assert.deepStrictEqual(
+		pageText('<html><body><p>Docs</p></body></html>', new URL('https://docs.example.com/guide')).image,
+		Option.some('https://www.google.com/s2/favicons?domain=docs.example.com&sz=128')
+	)
+})

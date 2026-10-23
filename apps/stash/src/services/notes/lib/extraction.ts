@@ -9,6 +9,7 @@ import {
 	Effect,
 	Layer,
 	Match,
+	Number,
 	Option,
 	Order,
 	Predicate,
@@ -50,6 +51,8 @@ const CHALLENGE =
 
 const UNREACHABLE = 'The link could not be loaded.'
 
+const X_LINK = /^https?:\/\/(?:[\w-]+\.)?(?:x|twitter)\.com\//u
+
 const BLOCK_TAGS = [
 	'article',
 	'aside',
@@ -70,6 +73,8 @@ const BLOCK_TAGS = [
 const Exit = Context.Reference<Option.Option<string>>('@deslop/stash/services/notes/lib/extraction/Exit', {
 	defaultValue: Option.none
 })
+
+const BY_SIZE = Order.mapInput(Order.flip(Order.Number), (icon: {href: string; size: number}) => icon.size)
 
 function timeLimit(duration: Duration.Input, message: string) {
 	return Effect.timeoutOrElse({duration, orElse: () => Effect.fail(NotesError.make({message}))})
@@ -107,7 +112,7 @@ function readText(characters: number) {
 		)
 }
 
-const page = readText(512 * 1024)
+const page = readText(6 * 1024 * 1024)
 const api = readText(4 * 1024 * 1024)
 
 function readBytes(response: HttpClientResponse.HttpClientResponse) {
@@ -228,6 +233,22 @@ const decode = Effect.fnUntraced(function* <S extends Schema.Constraint>(schema:
 	)
 })
 
+function fx<S extends Schema.Constraint>(schema: S, path: string) {
+	return decode(schema, new URL(`https://api.fxtwitter.com/2/${path}`))
+}
+
+// The conversation answer sometimes drops an article's body; the post's own answer keeps it.
+function whole(post: FxStatus['status']) {
+	if (post.article === undefined || Array.isReadonlyArrayNonEmpty(post.article.content.blocks)) {
+		return Effect.succeed(post)
+	}
+	return pipe(
+		fx(FxStatus, `status/${post.id}`),
+		Effect.map(found => found.status),
+		Effect.orElseSucceed(() => post)
+	)
+}
+
 const resolve = Effect.fnUntraced(function* (url: URL, hops: number): Effect.fn.Return<URL, NotesError, Dns.Dns> {
 	if (!Array.contains(['vm.tiktok.com', 'vt.tiktok.com', 't.co'], url.hostname)) return url
 	const answer = yield* load(url, () => Effect.void)
@@ -266,7 +287,9 @@ const xOEmbed = Effect.fnUntraced(function* (url: URL) {
 				.text()
 		),
 		title: `${embed.author_name ?? 'A post'} on X`,
-		url: canonical(url)
+		url: canonical(url),
+		// Without the thread nothing says whether the post has a video, so yt-dlp tries.
+		video: canonical(url)
 	})
 })
 
@@ -302,101 +325,6 @@ function articleText(article: FxArticle) {
 	})
 	return `# ${article.title}\n\n${Array.join(lines, '\n\n')}`
 }
-
-const byTime = Order.mapInput(Order.Number, (post: FxPost) => post.created_timestamp)
-
-function said(post: FxStatus['status']) {
-	return pipe(
-		[
-			`**${post.author.name} (@${post.author.screen_name})**: ${plainText(post.text)}`,
-			Option.match(Option.fromNullishOr(post.article), {onNone: () => '', onSome: articleText})
-		],
-		Array.filter(String.isNonEmpty),
-		Array.join('\n\n')
-	)
-}
-
-function section(title: string, posts: FxStatus['status'][]) {
-	if (Array.isReadonlyArrayEmpty(posts)) return ''
-	return `## ${title}\n\n${Array.join(Array.map(posts, said), '\n\n')}`
-}
-
-// The saved post with the posts it answers, the author's follow-ups, quoted and linked posts, and the top replies.
-const xThread = Effect.fnUntraced(function* (url: URL) {
-	const id = yield* pipe(
-		String.match(/\/status\/(\d+)/u)(url.pathname),
-		Option.flatMap(match => Array.get(match, 1)),
-		Effect.fromOption,
-		Effect.mapError(() => NotesError.make({message: 'The link names no post.'}))
-	)
-	const conversation = yield* decode(FxConversation, new URL(`https://api.fxtwitter.com/2/conversation/${id}`))
-	const status = conversation.status
-	const quote = Option.fromNullishOr(status.quote)
-	const media = Array.flatMap([status, ...Option.toArray(quote)], (post: FxPost) => post.media?.all ?? [])
-	const replies = conversation.replies ?? []
-	const linked = yield* Effect.forEach(
-		pipe(
-			status.raw_text?.facets ?? [],
-			Array.filterMap(facet =>
-				Result.fromOption(
-					pipe(
-						Option.fromNullishOr(facet.replacement),
-						Option.flatMap(String.match(/(?:x|twitter)\.com\/[^/]+\/status\/(\d+)/u)),
-						Option.flatMap(match => Array.get(match, 1))
-					),
-					() => undefined
-				)
-			),
-			Array.filter(linkedId => linkedId !== status.id && !Option.exists(quote, post => post.id === linkedId)),
-			Array.dedupe,
-			Array.take(5)
-		),
-		linkedId =>
-			Effect.option(
-				Effect.map(decode(FxStatus, new URL(`https://api.fxtwitter.com/2/status/${linkedId}`)), found => found.status)
-			),
-		{concurrency: 'unbounded'}
-	)
-	return Extraction.make({
-		author: Option.some(status.author.name),
-		image: Option.map(Array.head(media), item => item.thumbnail_url ?? item.url),
-		text: pipe(
-			[
-				section(
-					'Earlier in the conversation',
-					Array.sort(
-						Array.filter(conversation.thread ?? [], post => post.id !== status.id),
-						byTime
-					)
-				),
-				plainText(status.text),
-				...pipe(
-					Array.filter(replies, post => post.author.id === status.author.id),
-					Array.sort(byTime),
-					Array.map(post => plainText(post.text))
-				),
-				Option.match(quote, {onNone: () => '', onSome: post => `Quoting ${said(post)}`}),
-				Option.match(Option.fromNullishOr(status.article), {onNone: () => '', onSome: articleText}),
-				section('Linked posts', Array.getSomes(linked)),
-				section(
-					'Replies',
-					Array.take(
-						Array.filter(replies, post => post.author.id !== status.author.id),
-						30
-					)
-				)
-			],
-			Array.filter(String.isNonEmpty),
-			Array.join('\n\n')
-		),
-		title: `${status.author.name} on X`,
-		url: canonical(url),
-		...pipe(
-			Array.findFirst(media, item => item.type === 'video' || item.type === 'gif'),
-			Option.match({onNone: () => ({}), onSome: item => ({video: item.url})})
-		)
-	})
-})
 
 // A photo post has no oEmbed and yt-dlp cannot read it, but its page under /video/ holds every slide.
 const tikTokPhotos = Effect.fnUntraced(function* (url: URL) {
@@ -585,14 +513,65 @@ export function pageText(html: string, url: URL) {
 			Option.filter(String.isNonEmpty),
 			Option.orElseSome(() => url.hostname)
 		),
+		// Without a preview, the site's largest PNG or touch icon (ICO and SVG do not decode), else the favicon service.
 		image: pipe(
 			Option.fromNullishOr(
 				$('meta[property="og:image"]').attr('content') ?? $('meta[name="twitter:image"]').attr('content')
 			),
-			Option.flatMap(Option.liftThrowable(image => new URL(image, url).href))
+			Option.orElse(() =>
+				pipe(
+					$('link[rel~="apple-touch-icon"], link[rel~="icon"]').toArray(),
+					Array.map(link => $(link)),
+					Array.filter(
+						link =>
+							link.attr('type') === 'image/png' ||
+							Option.isSome(String.match(/\.png(?:$|\?)/iu)(link.attr('href') ?? '')) ||
+							Option.isSome(String.match(/apple-touch-icon/iu)(link.attr('rel') ?? ''))
+					),
+					Array.filterMap(link =>
+						Result.fromOption(
+							Option.map(Option.fromUndefinedOr(link.attr('href')), href => ({
+								href,
+								size: pipe(
+									String.match(/(\d+)x\d+/u)(link.attr('sizes') ?? ''),
+									Option.flatMap(match => Array.get(match, 1)),
+									Option.flatMap(Number.parse),
+									Option.getOrElse(() => 0)
+								)
+							})),
+							() => undefined
+						)
+					),
+					Array.sort(BY_SIZE),
+					Array.head,
+					Option.map(icon => icon.href)
+				)
+			),
+			Option.flatMap(Option.liftThrowable(image => new URL(image, url).href)),
+			Option.orElseSome(() => `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=128`)
 		),
 		text: pipe(
-			[Option.map(Option.fromUndefinedOr(description), plainText), Option.some(body)],
+			[
+				pipe(
+					[
+						Option.map(
+							Option.fromUndefinedOr($('meta[property="article:published_time"]').attr('content')),
+							date => `Published ${date}`
+						),
+						Option.map(
+							Option.fromUndefinedOr(
+								$('meta[name="author"]').attr('content') ?? $('meta[property="article:author"]').attr('content')
+							),
+							name => `by ${plainText(name)}`
+						)
+					],
+					Array.getSomes,
+					Option.liftPredicate(Array.isReadonlyArrayNonEmpty),
+					Option.map(Array.join(' '))
+				),
+				Option.map(Option.fromUndefinedOr(description), plainText),
+				Option.some(body)
+			],
 			Array.getSomes,
 			Array.filter(String.isNonEmpty),
 			Array.join('\n\n')
@@ -624,7 +603,7 @@ function readable(found: {body: string; type: string; url: URL}) {
 	return Option.liftPredicate(pageText(found.body, found.url), extraction => String.isNonEmpty(extraction.text))
 }
 
-// A blocked page, a bot check or a page without text, such as a JavaScript app or a PDF, goes to the reader.
+// A blocked page, a bot check, a page without text or a page that is mostly script and renders its text in the browser goes to the reader.
 const readPage = Effect.fnUntraced(function* (url: URL) {
 	const loaded = yield* pipe(
 		follow(url, page, 0),
@@ -632,12 +611,212 @@ const readPage = Effect.fnUntraced(function* (url: URL) {
 			found => !CHALLENGE.test(found.body),
 			() => NotesError.make({message: 'The site answered with a bot check.'})
 		),
-		Effect.map(readable),
 		Effect.result
 	)
 	return yield* Result.match(loaded, {
 		onFailure: error => Effect.mapError(reader(url), () => error),
-		onSuccess: Option.match({onNone: () => reader(url), onSome: Effect.succeed})
+		onSuccess: found =>
+			Option.match(readable(found), {
+				onNone: () => reader(url),
+				onSome: extraction =>
+					Boolean.match(String.length(extraction.text) * 40 < String.length(found.body), {
+						onFalse: () => Effect.succeed(extraction),
+						onTrue: () =>
+							pipe(
+								reader(url),
+								Effect.map(rendered => ({...rendered, author: extraction.author, image: extraction.image})),
+								Effect.orElseSucceed(() => extraction)
+							)
+					})
+			})
+	})
+})
+
+const byTime = Order.mapInput(Order.Number, (post: FxPost) => post.created_timestamp)
+
+const byLikes = Order.mapInput(Order.flip(Order.Number), (post: FxPost) => post.likes ?? 0)
+
+function said(post: FxPost) {
+	return pipe(
+		[
+			`**${post.author.name} (@${post.author.screen_name})**: ${plainText(post.text)}`,
+			Option.match(Option.fromNullishOr(post.article), {onNone: () => '', onSome: articleText})
+		],
+		Array.filter(String.isNonEmpty),
+		Array.join('\n\n')
+	)
+}
+
+function section(title: string, entries: string[]) {
+	if (Array.isReadonlyArrayEmpty(entries)) return ''
+	return `## ${title}\n\n${Array.join(entries, '\n\n')}`
+}
+
+function photosOf(post: FxPost) {
+	return [
+		...pipe(
+			post.media?.all ?? [],
+			Array.filter(item => item.type === 'photo'),
+			Array.map(item => item.url)
+		),
+		...Array.getSomes(
+			Array.map(post.article?.media_entities ?? [], entity =>
+				Option.fromUndefinedOr(entity.media_info.original_img_url)
+			)
+		)
+	]
+}
+
+function linksOf(post: FxPost) {
+	return Array.getSomes(Array.map(post.raw_text?.facets ?? [], facet => Option.fromUndefinedOr(facet.replacement)))
+}
+
+// A linked article or repository often holds what the post only points at.
+function readLinked(url: URL) {
+	return pipe(
+		Boolean.match(url.hostname === 'github.com', {
+			onFalse: () => readPage(url),
+			onTrue: () => Effect.catch(gitHub(url), () => readPage(url))
+		}),
+		Effect.map(found => `### ${found.title}\n\n${found.url}\n\n${String.slice(0, 40_000)(found.text)}`),
+		timeLimit('40 seconds', 'The linked page took too long.'),
+		Effect.option
+	)
+}
+
+// The saved post with the posts it answers, the author's follow-ups, the quoted post or article, linked posts and pages, and the most liked replies.
+const xThread = Effect.fnUntraced(function* (url: URL) {
+	const id = yield* pipe(
+		String.match(/\/status\/(\d+)/u)(url.pathname),
+		Option.flatMap(match => Array.get(match, 1)),
+		Effect.fromOption,
+		Effect.mapError(() => NotesError.make({message: 'The link names no post.'}))
+	)
+	const conversation = yield* fx(FxConversation, `conversation/${id}`)
+	const status = yield* whole(conversation.status)
+	const quote = yield* Effect.transposeOption(Option.map(Option.fromNullishOr(status.quote), whole))
+	const replies = conversation.replies ?? []
+	// The author's follow-ups answer the saved post or an earlier follow-up; the author's answers to readers stay replies.
+	const followUps = Array.reduce(
+		Array.sort(
+			Array.filter(replies, post => post.author.id === status.author.id),
+			byTime
+		),
+		Array.empty<FxPost>(),
+		(chain, post) =>
+			Boolean.match(
+				Array.contains([status.id, ...Array.map(chain, earlier => earlier.id)], post.replying_to?.status ?? ''),
+				{onFalse: () => chain, onTrue: () => [...chain, post]}
+			)
+	)
+	const earlier = Array.sort(
+		Array.filter(conversation.thread ?? [], post => post.id !== status.id),
+		byTime
+	)
+	const shown = [status, ...followUps, ...Option.toArray(quote)]
+	// The posts above the saved one come after it, so its own links and photos lead.
+	const context = [...shown, ...earlier]
+	const links = Array.dedupe(Array.flatMap(context, linksOf))
+	const linked = yield* Effect.all(
+		{
+			pages: Effect.forEach(
+				pipe(
+					links,
+					Array.filter(link => !X_LINK.test(link)),
+					Array.filterMap(link => Result.fromOption(Option.liftThrowable(() => new URL(link))(), () => undefined)),
+					Array.take(3)
+				),
+				readLinked,
+				{concurrency: 'unbounded'}
+			),
+			posts: Effect.forEach(
+				pipe(
+					links,
+					Array.filterMap(link =>
+						Result.fromOption(
+							pipe(
+								String.match(/(?:x|twitter)\.com\/[^/]+\/status\/(\d+)/u)(link),
+								Option.flatMap(match => Array.get(match, 1))
+							),
+							() => undefined
+						)
+					),
+					Array.filter(linkedId => !Array.some(context, post => post.id === linkedId)),
+					Array.dedupe,
+					Array.take(5)
+				),
+				linkedId => Effect.option(Effect.map(fx(FxStatus, `status/${linkedId}`), found => found.status)),
+				{concurrency: 'unbounded'}
+			)
+		},
+		{concurrency: 'unbounded'}
+	)
+	const posts = Array.getSomes(linked.posts)
+	const media = Array.flatMap(shown, post => post.media?.all ?? [])
+	const photos = Array.dedupe(Array.flatMap([...context, ...posts], photosOf))
+	return Extraction.make({
+		author: Option.some(status.author.name),
+		image: Option.orElse(Array.head(photos), () =>
+			Option.map(Array.head(media), item => item.thumbnail_url ?? item.url)
+		),
+		slides: Array.take(Array.drop(photos, 1), 30),
+		text: pipe(
+			[
+				section('Earlier in the conversation', Array.map(earlier, said)),
+				said(status),
+				...Array.map(followUps, post => plainText(post.text)),
+				Option.match(quote, {onNone: () => '', onSome: post => `Quoting ${said(post)}`}),
+				section('Linked posts', Array.map(posts, said)),
+				section('Linked pages', Array.getSomes(linked.pages)),
+				section(
+					"The author's answers to readers",
+					pipe(
+						replies,
+						Array.filter(
+							post => post.author.id === status.author.id && !Array.some(followUps, own => own.id === post.id)
+						),
+						Array.sort(byTime),
+						Array.map(answer =>
+							Option.match(
+								Array.findFirst(replies, post => post.id === answer.replying_to?.status),
+								{
+									onNone: () => plainText(answer.text),
+									onSome: question =>
+										`**${question.author.name} (@${question.author.screen_name})** wrote: ${plainText(question.text)}\nThe author answered: ${plainText(answer.text)}`
+								}
+							)
+						)
+					)
+				),
+				section(
+					'Replies',
+					pipe(
+						replies,
+						Array.filter(post => post.author.id !== status.author.id),
+						Array.sort(byLikes),
+						Array.take(40),
+						// Likes tell the AI which replies readers agreed with.
+						Array.map(
+							post =>
+								`**${post.author.name} (@${post.author.screen_name})**${Option.match(
+									Option.fromUndefinedOr(post.likes),
+									{onNone: () => '', onSome: likes => `, ${likes} likes`}
+								)}: ${plainText(post.text)}`
+						)
+					)
+				)
+			],
+			Array.filter(String.isNonEmpty),
+			Array.join('\n\n')
+		),
+		title: `${status.author.name} on X`,
+		url: canonical(url),
+		...pipe(
+			// A clip with speech says more than a looping GIF beside it.
+			Array.findFirst(media, item => item.type === 'video'),
+			Option.orElse(() => Array.findFirst(media, item => item.type === 'gif')),
+			Option.match({onNone: () => ({}), onSome: item => ({video: item.url})})
+		)
 	})
 })
 
