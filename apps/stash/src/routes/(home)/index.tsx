@@ -13,6 +13,7 @@ import {
 	Label,
 	List,
 	Menu,
+	Overlay,
 	Picker,
 	ScrollView,
 	SwipeActions,
@@ -172,7 +173,7 @@ function NoteRow(props: {
 			<ContextMenu>
 				<ContextMenu.Trigger>
 					<HStack
-						alignment="top"
+						alignment="center"
 						spacing={12}
 						modifiers={[
 							alignmentGuide('listRowSeparatorLeading', 0),
@@ -386,77 +387,67 @@ export function HomeRoute(props: {
 						/>
 					),
 					onNonEmpty: () => (
-						<List modifiers={[listStyle('plain'), scrollContentBackground('hidden'), background(colors.background)]}>
-							<ScrollView
-								axes="horizontal"
-								showsIndicators={false}
-								modifiers={[
-									listRowBackground(colors.background),
-									listRowSeparatorTint(colors.border),
-									listRowInsets({bottom: 10, leading: 16, top: 10, trailing: 16}),
-									listRowSeparator('hidden'),
-									listRowInsets({bottom: 6, leading: 16, top: 4, trailing: 16})
-								]}
-							>
-								<HStack spacing={8}>
-									<Chip label="all" systemImage="tray" active={props.tag === undefined} onPress={() => props.onTag()} />
-									{Array.map(tags, name => (
-										<Chip
-											key={name}
-											label={name}
-											active={props.tag === name}
-											onPress={() =>
-												Boolean.match(props.tag === name, {
-													onFalse: () => props.onTag(name),
-													onTrue: () => props.onTag()
-												})
-											}
-										/>
-									))}
-								</HStack>
-							</ScrollView>
-							{filtered && Array.isReadonlyArrayEmpty(notes) && (
-								<VStack
-									spacing={12}
+						// The empty state sits over the list, centered on the screen, as SwiftUI's own apps show it.
+						<Overlay>
+							<List modifiers={[listStyle('plain'), scrollContentBackground('hidden'), background(colors.background)]}>
+								<ScrollView
+									axes="horizontal"
+									showsIndicators={false}
 									modifiers={[
 										listRowBackground(colors.background),
 										listRowSeparatorTint(colors.border),
 										listRowInsets({bottom: 10, leading: 16, top: 10, trailing: 16}),
-										listRowSeparator('hidden')
+										listRowSeparator('hidden'),
+										listRowInsets({bottom: 6, leading: 16, top: 4, trailing: 16})
 									]}
 								>
+									<HStack spacing={8}>
+										<Chip
+											label="all"
+											systemImage="tray"
+											active={props.tag === undefined}
+											onPress={() => props.onTag()}
+										/>
+										{Array.map(tags, name => (
+											<Chip
+												key={name}
+												label={name}
+												active={props.tag === name}
+												onPress={() =>
+													Boolean.match(props.tag === name, {
+														onFalse: () => props.onTag(name),
+														onTrue: () => props.onTag()
+													})
+												}
+											/>
+										))}
+									</HStack>
+								</ScrollView>
+								{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
+								{Array.map(Array.take(notes, limit), (note, position) => (
+									<NoteRow
+										key={note.id}
+										note={note}
+										onAppear={() => {
+											if (position === limit - 1) setLimit(limit + 80)
+										}}
+										onOpen={props.onOpen}
+										onRegenerate={id => regenerate(id)}
+										onRemove={id => remove(id)}
+									/>
+								))}
+							</List>
+							{filtered && Array.isReadonlyArrayEmpty(notes) && (
+								<Overlay.Content>
 									<ContentUnavailableView
 										{...Boolean.match(String.isEmpty(query), {
 											onFalse: () => ({systemImage: 'magnifyingglass' as const, title: `No Results for “${query}”`}),
 											onTrue: () => ({systemImage: 'tray' as const, title: 'No Notes'})
 										})}
 									/>
-									{(props.tag !== undefined || props.kind !== undefined) && (
-										<Button
-											label="Show All Notes"
-											onPress={() => {
-												props.onTag()
-												props.onKind()
-											}}
-											modifiers={[buttonStyle('glass')]}
-										/>
-									)}
-								</VStack>
+								</Overlay.Content>
 							)}
-							{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
-							{Array.map(Array.take(notes, limit), (note, position) => (
-								<NoteRow
-									key={note.id}
-									note={note}
-									onAppear={() => {
-										if (position === limit - 1) setLimit(limit + 80)
-									}}
-									onOpen={props.onOpen}
-									onRegenerate={id => regenerate(id)}
-									onRemove={id => remove(id)}
-								/>
-							))}
-						</List>
+						</Overlay>
 					)
 				})}
 				<Toolbar.Content>
