@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Match, Option, String, pipe} from 'effect'
+import {Array, Boolean, Match, Option, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -43,6 +43,7 @@ import {Chip} from '@deslop/components-mobile/chip'
 import {BrandLogo} from '@deslop/components-mobile/icons'
 import {colors, mono} from '@deslop/components-mobile/theme'
 
+import {Byline} from '#lib/components.tsx'
 import {appOf, brandOf, imageAtom, kinds, noteAtom, notesAtom, regenerateAtom, removeAtom} from '#lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 
@@ -211,21 +212,6 @@ function Placeholder() {
 function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string) => void}) {
 	const full = useAtomValue(noteAtom(props.note))
 	const reload = useAtomRefresh(noteAtom(props.note))
-	const meta = pipe(
-		[
-			Option.fromUndefinedOr(props.note.author),
-			appOf(props.note),
-			Option.some(
-				DateTime.formatLocal(DateTime.makeUnsafe(props.note.createdAt), {
-					day: 'numeric',
-					month: 'short',
-					year: 'numeric'
-				})
-			)
-		],
-		Array.getSomes,
-		Array.join(' · ')
-	)
 	return (
 		<ScrollView modifiers={[background(colors.background)]}>
 			<VStack
@@ -274,7 +260,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 					))
 				)}
 				<Divider />
-				<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground)]}>{meta}</Text>
+				<Byline note={props.note} />
 				{!Array.isReadonlyArrayEmpty(props.note.tags) && (
 					<ScrollView axes="horizontal" showsIndicators={false}>
 						<HStack spacing={8}>

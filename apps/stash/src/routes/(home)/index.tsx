@@ -1,6 +1,6 @@
 import {useAtom, useAtomMount, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, HashSet, Match, Option, Schema, String, pipe} from 'effect'
+import {Array, Boolean, HashSet, Match, Option, Schema, String, pipe} from 'effect'
 
 import {
 	BottomSheet,
@@ -65,11 +65,12 @@ import {useState} from 'react'
 import {Linking} from 'react-native'
 
 import {Chip} from '@deslop/components-mobile/chip'
-import {BrandIcon, BrandLogo} from '@deslop/components-mobile/icons'
+import {BrandIcon} from '@deslop/components-mobile/icons'
 import {colors, mono} from '@deslop/components-mobile/theme'
 import {assetAtom} from '@deslop/components-mobile/utils'
 import {updateAtom} from '@deslop/runtime/mobile'
 
+import {Byline} from '#lib/components.tsx'
 import {
 	answerAtom,
 	appOf,
@@ -96,38 +97,7 @@ const OFFERS = {
 	link: {question: 'Save the copied link?', symbol: 'link'}
 } as const
 
-function Source(props: {kind: Kind}) {
-	if (Schema.is(Brand)(props.kind)) {
-		return (
-			<HStack spacing={4} modifiers={[accessibilityLabel(kinds[props.kind].label)]}>
-				<BrandLogo brand={kinds[props.kind].logo} size={12} />
-				{/* X's logo is its name, so its label would say X twice. */}
-				{props.kind !== 'x' && (
-					<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
-						{kinds[props.kind].label}
-					</Text>
-				)}
-			</HStack>
-		)
-	}
-	return (
-		<Label
-			title={kinds[props.kind].label}
-			systemImage={kinds[props.kind].symbol}
-			modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]}
-		/>
-	)
-}
-
 function Lines(props: {note: NoteItem}) {
-	const byline = pipe(
-		[
-			Option.fromUndefinedOr(props.note.author),
-			Option.some(DateTime.formatLocal(DateTime.makeUnsafe(props.note.createdAt), {day: 'numeric', month: 'short'}))
-		],
-		Array.getSomes,
-		Array.join(' · ')
-	)
 	return (
 		<VStack alignment="leading" spacing={4} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>
 			<Text modifiers={[mono('headline', 16), foregroundStyle(colors.foreground), lineLimit(2)]}>
@@ -161,19 +131,7 @@ function Lines(props: {note: NoteItem}) {
 					</Text>
 				))
 			)}
-			<HStack spacing={12} modifiers={[padding({top: 2})]}>
-				<Text
-					modifiers={[
-						mono('caption', 12),
-						foregroundStyle(colors.mutedForeground),
-						lineLimit(1),
-						frame({alignment: 'leading', maxWidth: Infinity})
-					]}
-				>
-					{byline}
-				</Text>
-				<Source kind={kindOf(props.note)} />
-			</HStack>
+			<Byline note={props.note} />
 		</VStack>
 	)
 }

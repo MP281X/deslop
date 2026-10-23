@@ -1,3 +1,4 @@
+import type {Record} from 'effect'
 import {
 	Array,
 	Boolean,
@@ -9,7 +10,6 @@ import {
 	Option,
 	Order,
 	Predicate,
-	Record,
 	Schedule,
 	Schema,
 	Stream,
@@ -22,10 +22,10 @@ import {AsyncResult, AtomRpc, Atom} from 'effect/reactivity'
 import {AuthRequest, makeRedirectUri} from 'expo-auth-session'
 import * as Clipboard from 'expo-clipboard'
 import * as Crypto from 'expo-crypto'
-import {File, Paths} from 'expo-file-system'
+import {Directory, File, Paths} from 'expo-file-system'
 
 import {brands} from '@deslop/components-mobile/icons'
-import {alert, downloadAtom, writeAtomically} from '@deslop/components-mobile/utils'
+import {alert, writeAtomically} from '@deslop/components-mobile/utils'
 import {AuthError, ClientRegistration, Credentials, TokenResponse} from '@deslop/runtime/auth/schema'
 import {AUTH_URL, RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
@@ -48,25 +48,7 @@ const sessionLock = Effect.acquireRelease(
 	lock => Effect.promise(() => native.unlockSession(lock))
 )
 
-const sharedFolder = Array.head(Record.values(Paths.appleSharedContainers))
 const listFile = new File(Paths.document, 'list.json')
-
-// Remove the obsolete server selection and its cached list once.
-pipe(
-	sharedFolder,
-	Option.map(folder => new File(folder, 'server')),
-	Option.filter(file => file.exists),
-	Option.map(file => {
-		file.delete()
-		if (listFile.exists) listFile.delete()
-	})
-)
-pipe(
-	sharedFolder,
-	Option.map(folder => new File(folder, 'token')),
-	Option.filter(file => file.exists),
-	Option.map(file => file.delete())
-)
 
 const readSession = Effect.gen(function* () {
 	const text = yield* Effect.try(() => native.getSession())
@@ -236,6 +218,16 @@ export function kindOf(note: NoteItem) {
 	return 'web'
 }
 
+// The site a web page is on, such as github.com.
+export function siteOf(note: NoteItem) {
+	return pipe(
+		Option.fromNullishOr(note.url),
+		Option.filter(() => kindOf(note) === 'web'),
+		Option.flatMap(url => Option.liftThrowable(() => new URL(url).hostname)()),
+		Option.map(String.replace(/^www\./u, ''))
+	)
+}
+
 // The kind of a note whose app has a logo.
 export function brandOf(note: NoteItem) {
 	return Option.liftPredicate(kindOf(note), Schema.is(Brand))
@@ -295,7 +287,16 @@ export const notesAtom = Atom.keepAlive(
 					)
 				}),
 				Stream.unwrap,
-				Stream.tapError(() => Atom.refresh(sessionAtom)),
+				// Refreshing the session restarts this list, so it happens only once the session is gone; any other failure waits for the retry.
+				Stream.tapError(() =>
+					pipe(
+						readSession,
+						Effect.flatMap(saved =>
+							Option.match(saved, {onNone: () => Atom.refresh(sessionAtom), onSome: () => Effect.void})
+						),
+						Effect.ignore({log: 'Warn', message: 'The session could not be read'})
+					)
+				),
 				Stream.retry(Schedule.spaced('2 seconds'))
 			)
 		)
@@ -320,16 +321,22 @@ export const searchAtom = RpcClient.runtime.atom(get => {
 	)
 })
 
+const images = new Directory(Paths.cache, 'downloads')
+
+// SwiftUI images read local files, so each note's preview is downloaded once into the cache; a failed download stays failed until the app restarts.
 export const imageAtom = Atom.family((id: Note['id']) =>
-	authRuntime.atom(get =>
+	authRuntime.atom(
 		Effect.gen(function* () {
-			return yield* get.result(
-				downloadAtom({
-					headers: {authorization: `Bearer ${yield* accessToken}`},
-					name: id,
-					url: new URL(`/api/images/${id}`, SERVER).href
+			const file = new File(images, id)
+			if (file.exists) return file.uri
+			images.create({idempotent: true, intermediates: true})
+			const token = yield* accessToken
+			const downloaded = yield* Effect.tryPromise(() =>
+				File.downloadFileAsync(new URL(`/api/images/${id}`, SERVER).href, file, {
+					headers: {authorization: `Bearer ${token}`}
 				})
 			)
+			return downloaded.uri
 		})
 	)
 )

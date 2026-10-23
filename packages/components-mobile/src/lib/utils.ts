@@ -2,7 +2,7 @@ import {Effect} from 'effect'
 
 import {Atom} from 'effect/reactivity'
 import {Asset} from 'expo-asset'
-import {Directory, File, Paths} from 'expo-file-system'
+import {File} from 'expo-file-system'
 import {Alert} from 'react-native'
 
 export function alert(title: string) {
@@ -24,19 +24,5 @@ export const assetAtom = Atom.family((module: number | string) =>
 			Effect.promise(() => Asset.fromModule(module).downloadAsync()),
 			asset => asset.localUri ?? asset.uri
 		)
-	)
-)
-
-const downloads = new Directory(Paths.cache, 'downloads')
-
-// A remote file downloaded once into the cache under its name, for views that read local files.
-export const downloadAtom = Atom.family((source: {headers?: Record<string, string>; name: string; url: string}) =>
-	Atom.make(
-		Effect.gen(function* () {
-			const file = new File(downloads, source.name)
-			if (file.exists) return file.uri
-			downloads.create({idempotent: true, intermediates: true})
-			return (yield* Effect.tryPromise(() => File.downloadFileAsync(source.url, file, {headers: source.headers}))).uri
-		})
 	)
 )
