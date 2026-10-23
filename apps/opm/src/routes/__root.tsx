@@ -19,7 +19,7 @@ import {Suspense, useState} from 'react'
 import {colors, mono} from '@deslop/components-mobile/theme'
 import {updateAtom} from '@deslop/runtime/mobile'
 
-import {chaptersAtom, openedAtom, pushAtom, sessionAtom, signInAtom} from '#lib/utils.ts'
+import {chaptersAtom, diagnosticsAtom, openedAtom, pushAtom, sessionAtom, signInAtom} from '#lib/utils.ts'
 import {ChaptersRoute} from '#routes/(home)/index.tsx'
 import {ReaderRoute} from '#routes/chapters/$number.tsx'
 import {resumeOf} from '#services/chapters/lib/utils.ts'
@@ -95,6 +95,7 @@ function SessionRoute() {
 function AppRoutes() {
 	useAtomMount(updateAtom)
 	useAtomMount(pushAtom)
+	useAtomMount(diagnosticsAtom)
 	const chapters = useAtomSuspense(chaptersAtom).value
 	const opened = useAtomValue(openedAtom)
 	const [path, setPath] = useState(() =>

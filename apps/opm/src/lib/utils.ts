@@ -27,6 +27,7 @@ import {AuthError, ClientRegistration, Credentials, TokenResponse} from '@deslop
 import {AUTH_URL, RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 
+import {OpmNative} from '#modules/native/index.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {byNumber} from '#services/chapters/lib/utils.ts'
 import type {ChapterItem, ChaptersEvent, ReadingUpdate} from '#services/chapters/schema.ts'
@@ -45,11 +46,17 @@ const refreshing = Semaphore.makeUnsafe(1)
 
 // Auth
 
-const readSession = Effect.gen(function* () {
-	const text = yield* Effect.try(() => SecureStore.getItem(SESSION) ?? '')
-	if (String.isEmpty(text)) return Option.none<Credentials>()
-	return Option.some(yield* Schema.decodeEffect(Schema.fromJsonString(Credentials))(text))
-})
+// A failed read reaches React as a thrown error and closes the app, so a locked Keychain is read again and bad JSON signs out.
+const readSession = pipe(
+	Effect.try(() => SecureStore.getItem(SESSION) ?? ''),
+	Effect.retry(Schedule.spaced('1 second')),
+	Effect.map(text =>
+		Option.flatMap(
+			Option.liftPredicate(text, String.isNonEmpty),
+			Schema.decodeUnknownOption(Schema.fromJsonString(Credentials))
+		)
+	)
+)
 export const sessionAtom = Atom.keepAlive(authRuntime.atom(readSession))
 
 const tokenRequest = Effect.fnUntraced(function* (clientId: string, params: Record<string, string>) {
@@ -70,7 +77,8 @@ const tokenRequest = Effect.fnUntraced(function* (clientId: string, params: Reco
 		expiresAt: (yield* Clock.currentTimeMillis) + token.expires_in * 1000,
 		refreshToken: token.refresh_token
 	})
-	yield* Effect.try(() => SecureStore.setItem(SESSION, text))
+	// Readable from the first unlock after a restart, so a socket that reconnects while the iPhone is locked finds it.
+	yield* Effect.try(() => SecureStore.setItem(SESSION, text, {keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK}))
 	return token.access_token
 }, Effect.timeout('10 seconds'))
 
@@ -250,6 +258,25 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 			yield* Effect.flatMap(RpcClient, client => client('devices.register', {token: token.data}))
 		}),
 		Effect.ignore({log: 'Warn', message: 'Notifications are not set up on this iPhone'})
+	)
+)
+
+// Diagnostics
+
+// A crash leaves no trace of its own, so the report iOS hands over on a later launch goes to the telemetry as an error.
+export const diagnosticsAtom = RpcClient.runtime.atom(get =>
+	pipe(
+		Effect.gen(function* () {
+			const session = get(sessionAtom)
+			if (session._tag !== 'Success' || Option.isNone(session.value)) return
+			get(MobileRuntime.activationsAtom)
+			yield* Effect.forEach(
+				yield* Effect.try(() => OpmNative.takeDiagnostics()),
+				report => Effect.logError('iOS reported a crash or hang on an earlier run', report),
+				{concurrency: 1, discard: true}
+			)
+		}),
+		Effect.ignore({log: 'Warn', message: 'The crash reports were not read'})
 	)
 )
 

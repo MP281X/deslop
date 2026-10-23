@@ -32,6 +32,7 @@ public struct PageStripView: ExpoSwiftUI.View {
     PageStrip(
       chapters: props.chapters,
       start: props.start,
+      barsHidden: barsHidden,
       onPage: { index in props.onPage(["index": index]) },
       onTap: { withAnimation(.easeInOut(duration: 0.2)) { barsHidden.toggle() } },
       onScroll: {
@@ -40,7 +41,6 @@ public struct PageStripView: ExpoSwiftUI.View {
     )
     .ignoresSafeArea()
     .background(Color.black)
-    .toolbar(barsHidden ? .hidden : .visible, for: .navigationBar)
     .statusBarHidden(barsHidden)
     .persistentSystemOverlays(barsHidden ? .hidden : .automatic)
   }
@@ -49,6 +49,7 @@ public struct PageStripView: ExpoSwiftUI.View {
 struct PageStrip: UIViewRepresentable {
   let chapters: [StripChapter]
   let start: Int
+  let barsHidden: Bool
   let onPage: (Int) -> Void
   let onTap: () -> Void
   let onScroll: () -> Void
@@ -66,10 +67,15 @@ struct PageStrip: UIViewRepresentable {
     update(context.coordinator)
   }
 
+  static func dismantleUIView(_ view: UIScrollView, coordinator: StripController) {
+    coordinator.stop()
+  }
+
   private func update(_ controller: StripController) {
     controller.onPage = onPage
     controller.onTap = onTap
     controller.onScroll = onScroll
+    controller.bar.set(hidden: barsHidden)
     controller.show(chapters: chapters, start: start)
   }
 }
@@ -81,6 +87,65 @@ final class StripScrollView: UIScrollView {
     super.layoutSubviews()
     onLayout()
   }
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    if window != nil { onWindow() }
+  }
+
+  var onWindow: () -> Void = {}
+}
+
+// UIKit drops every touch of the edge swipe back while the navigation bar is hidden, so the reader fades the bar out instead
+// of hiding it: a bar at zero alpha takes no touches, and the swipe keeps working.
+final class BarFade: NSObject {
+  private weak var navigation: UINavigationController?
+  private var hidden = true
+
+  func attach(from view: UIView) {
+    var responder: UIResponder? = view
+    while let current = responder, !(current is UINavigationController) {
+      responder = current.next
+    }
+    guard let found = responder as? UINavigationController else { return }
+    if found !== navigation {
+      navigation?.interactivePopGestureRecognizer?.removeTarget(self, action: #selector(swiped(_:)))
+      navigation = found
+      found.interactivePopGestureRecognizer?.addTarget(self, action: #selector(swiped(_:)))
+    }
+    // Pushed, the bar fades out with the transition rather than vanishing as it starts.
+    if let coordinator = found.transitionCoordinator {
+      coordinator.animate(alongsideTransition: { _ in self.apply() })
+    } else {
+      apply()
+    }
+  }
+
+  func set(hidden: Bool) {
+    guard hidden != self.hidden else { return }
+    self.hidden = hidden
+    UIView.animate(withDuration: 0.2) { self.apply() }
+  }
+
+  // The list's bar fades in with the swipe back, and out again if the swipe is cancelled.
+  @objc private func swiped(_ gesture: UIGestureRecognizer) {
+    guard gesture.state == .began, let coordinator = navigation?.transitionCoordinator else { return }
+    coordinator.animate(
+      alongsideTransition: { _ in self.navigation?.navigationBar.alpha = 1 },
+      completion: { context in if context.isCancelled { self.apply() } })
+  }
+
+  // A reader replaced by another one leaves the bar to it; one popped back to the list shows it.
+  func detach() {
+    guard let navigation else { return }
+    navigation.interactivePopGestureRecognizer?.removeTarget(self, action: #selector(swiped(_:)))
+    if navigation.viewControllers.count <= 1 { navigation.navigationBar.alpha = 1 }
+    self.navigation = nil
+  }
+
+  private func apply() {
+    navigation?.navigationBar.alpha = hidden ? 0 : 1
+  }
 }
 
 final class StripController: NSObject, UIScrollViewDelegate {
@@ -89,6 +154,7 @@ final class StripController: NSObject, UIScrollViewDelegate {
   private static let markerHeight: CGFloat = 64
 
   let scrollView = StripScrollView()
+  let bar = BarFade()
   private let content = UIView()
   private var chapters: [StripChapter] = []
   private var pageViews: [PageView] = []
@@ -96,6 +162,8 @@ final class StripController: NSObject, UIScrollViewDelegate {
   // Height over width of each page; a page keeps a typical manga shape until its image arrives.
   private var aspects: [CGFloat] = []
   private var pendingStart: Int?
+  // Every page asked for ahead, with its download while one runs.
+  private var prefetches: [URL: URLSessionDataTask?] = [:]
   private var current = -1
   private var laidOutWidth: CGFloat = 0
   var onPage: (Int) -> Void = { _ in }
@@ -113,6 +181,9 @@ final class StripController: NSObject, UIScrollViewDelegate {
     scrollView.contentInsetAdjustmentBehavior = .never
     scrollView.addSubview(content)
     scrollView.onLayout = { [weak self] in self?.fit() }
+    scrollView.onWindow = { [weak self] in
+      if let self { self.bar.attach(from: self.scrollView) }
+    }
     let double = UITapGestureRecognizer(target: self, action: #selector(doubleTapped(_:)))
     double.numberOfTapsRequired = 2
     let single = UITapGestureRecognizer(target: self, action: #selector(tapped))
@@ -132,6 +203,8 @@ final class StripController: NSObject, UIScrollViewDelegate {
       layout()
       return
     }
+    // The old pages stop their downloads, so a strip that starts over does not decode images nobody sees.
+    stop()
     content.subviews.forEach { $0.removeFromSuperview() }
     pageViews = []
     markers = []
@@ -214,22 +287,41 @@ final class StripController: NSObject, UIScrollViewDelegate {
   }
 
   // The page under the middle of the screen is the one being read; only pages near it hold their images.
+  // Until the strip has scrolled to its start, the top page is not the one being read, so nothing is reported.
+  // A short last page never reaches the middle, so a chapter whose end marker shows whole is read to its last page.
   private func track() {
-    guard !pageViews.isEmpty else { return }
+    guard !pageViews.isEmpty, pendingStart == nil else { return }
     let scale = scrollView.zoomScale
     let middle = (scrollView.contentOffset.y + scrollView.bounds.height / 2) / scale
-    let index = pageViews.firstIndex { $0.frame.maxY > middle } ?? pageViews.count - 1
+    let bottom = (scrollView.contentOffset.y + scrollView.bounds.height - scrollView.contentInset.bottom) / scale
+    var index = pageViews.firstIndex { $0.frame.maxY > middle } ?? pageViews.count - 1
+    var last = -1
+    for (position, chapter) in chapters.enumerated() {
+      last += chapter.pages.count
+      if last < index { continue }
+      if markers[position].frame.maxY <= bottom { index = last }
+      break
+    }
     for (position, view) in pageViews.enumerated() {
       if position >= index - 2 && position <= index + 4 {
         view.load()
       } else if position < index - 6 || position > index + 8 {
         view.unload()
       }
+      if position > index + 4 && position <= index + 16 {
+        prefetch(view)
+      }
     }
     if index != current {
       current = index
       onPage(index)
     }
+  }
+
+  // The image hosts take a second or two per page, so the pages after the loaded ones download ahead into the disk cache.
+  private func prefetch(_ view: PageView) {
+    guard let url = view.url, prefetches[url] == nil else { return }
+    prefetches.updateValue(PageLoader.prefetch(url), forKey: url)
   }
 
   func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -245,6 +337,14 @@ final class StripController: NSObject, UIScrollViewDelegate {
     onTap()
   }
 
+  // Leaving the reader stops every download and decode it started, and gives the list its bar back.
+  func stop() {
+    bar.detach()
+    pageViews.forEach { $0.unload() }
+    prefetches.values.forEach { $0?.cancel() }
+    prefetches = [:]
+  }
+
   @objc private func doubleTapped(_ gesture: UITapGestureRecognizer) {
     if scrollView.zoomScale > 1.01 {
       scrollView.setZoomScale(1, animated: true)
@@ -258,7 +358,7 @@ final class StripController: NSObject, UIScrollViewDelegate {
   }
 }
 
-// "End of 242" between two hairlines, after the last page of each chapter.
+// "End of Chapter 242" between two hairlines, after the last page of each chapter.
 final class EndMarker: UIView {
   private let label = UILabel()
   private let left = UIView()
@@ -266,7 +366,7 @@ final class EndMarker: UIView {
 
   init(number: Double) {
     super.init(frame: .zero)
-    label.text = "End of \(number.rounded() == number ? String(Int(number)) : String(number))"
+    label.text = "End of Chapter \(number.rounded() == number ? String(Int(number)) : String(number))"
     label.font = .systemFont(ofSize: 13)
     label.textColor = .secondaryLabel
     left.backgroundColor = .separator
@@ -289,8 +389,9 @@ final class EndMarker: UIView {
   }
 }
 
+// A page spins only while its image is on its way; pages far from the screen stay still.
 final class PageView: UIImageView {
-  private let url: URL?
+  let url: URL?
   private let spinner = UIActivityIndicatorView(style: .medium)
   private var task: Task<Void, Never>?
   var onAspect: (CGFloat) -> Void = { _ in }
@@ -300,7 +401,7 @@ final class PageView: UIImageView {
     super.init(frame: .zero)
     contentMode = .scaleAspectFit
     spinner.color = .gray
-    spinner.startAnimating()
+    spinner.hidesWhenStopped = true
     addSubview(spinner)
   }
 
@@ -315,13 +416,15 @@ final class PageView: UIImageView {
 
   func load() {
     guard image == nil, task == nil, let url else { return }
+    spinner.startAnimating()
     task = Task { [weak self] in
       let loaded = await PageLoader.image(url, size: 3000)
       guard let self, !Task.isCancelled else { return }
       self.task = nil
+      self.spinner.stopAnimating()
+      // A failed page stays black until the next scroll past it loads it again.
       guard let loaded, loaded.size.width > 0 else { return }
       self.image = loaded
-      self.spinner.stopAnimating()
       self.onAspect(loaded.size.height / loaded.size.width)
     }
   }
@@ -329,27 +432,41 @@ final class PageView: UIImageView {
   func unload() {
     task?.cancel()
     task = nil
-    guard image != nil else { return }
+    spinner.stopAnimating()
     image = nil
-    spinner.startAnimating()
   }
 }
 
 enum PageLoader {
   // Pages never change at their link, so a read chapter opens again from the disk without the network.
-  static let session: URLSession = {
+  private static let cache = URLCache(
+    memoryCapacity: 16 << 20, diskCapacity: 1 << 30,
+    directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+      .appendingPathComponent("pages"))
+
+  private static let session = makeSession(connections: 6)
+  // Downloads ahead take two connections of their own, so they never hold up the page on screen.
+  private static let ahead = makeSession(connections: 2)
+
+  private static func makeSession(connections: Int) -> URLSession {
     let configuration = URLSessionConfiguration.default
-    configuration.urlCache = URLCache(
-      memoryCapacity: 16 << 20, diskCapacity: 1 << 30,
-      directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
-        .appendingPathComponent("pages"))
+    configuration.urlCache = cache
     configuration.requestCachePolicy = .returnCacheDataElseLoad
+    configuration.httpMaximumConnectionsPerHost = connections
     return URLSession(configuration: configuration)
-  }()
+  }
+
+  // No download when the page is already on disk.
+  static func prefetch(_ url: URL) -> URLSessionDataTask? {
+    guard cache.cachedResponse(for: URLRequest(url: url)) == nil else { return nil }
+    let task = ahead.dataTask(with: url) { _, _, _ in }
+    task.resume()
+    return task
+  }
 
   // `size` is the longest side in pixels: a zoomed-in screen for a page, a few points for a cover.
   static func image(_ url: URL, size: Int) async -> UIImage? {
-    guard let (data, _) = try? await session.data(from: url) else { return nil }
+    guard let (data, _) = try? await session.data(from: url), !Task.isCancelled else { return nil }
     return await Task.detached(priority: .userInitiated) { decode(data, size: size) }.value
   }
 
