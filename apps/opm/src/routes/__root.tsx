@@ -88,6 +88,7 @@ function Failed(props: {cause: Cause.Cause<unknown>}) {
 }
 
 export function RootRoute() {
+	useAtomMount(updateAtom)
 	return (
 		<Suspense fallback={<Loading />}>
 			<SessionRoute />
@@ -148,7 +149,6 @@ function SessionRoute() {
 
 // The app opens on the list; a tapped notification opens its chapter.
 function AppRoutes() {
-	useAtomMount(updateAtom)
 	useAtomMount(pushAtom)
 	useAtomMount(diagnosticsAtom)
 	const loaded = useAtomSuspense(chaptersAtom, {includeFailure: true})
