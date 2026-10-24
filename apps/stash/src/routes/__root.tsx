@@ -1,4 +1,4 @@
-import {useAtom, useAtomSet, useAtomSuspense} from '@effect/atom-react'
+import {useAtom, useAtomMount, useAtomSet, useAtomSuspense} from '@effect/atom-react'
 
 import {Array, Match, Option, pipe} from 'effect'
 
@@ -29,6 +29,7 @@ import {Suspense, useState} from 'react'
 
 import {colors, mono} from '@deslop/components-mobile/theme'
 import {assetAtom} from '@deslop/components-mobile/utils'
+import {updateAtom} from '@deslop/runtime/mobile'
 
 import {queryAtom, sessionAtom, signInAtom} from '#lib/utils.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
@@ -38,6 +39,7 @@ import {NoteRoute} from '#routes/notes/$id.tsx'
 import type {Kind} from '#services/notes/schema.ts'
 
 export function RootRoute() {
+	useAtomMount(updateAtom)
 	return (
 		<Suspense
 			fallback={

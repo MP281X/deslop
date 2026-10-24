@@ -83,18 +83,20 @@ const tokenRequest = Effect.fnUntraced(function* (clientId: string, params: Reco
 	return token.access_token
 }, Effect.timeout('10 seconds'))
 
-const accessToken = pipe(
-	Effect.gen(function* () {
+const sessionToken = Effect.fnUntraced(
+	function* (refresh: boolean) {
 		const credentials = yield* Effect.fromOption(yield* readSession)
-		if (credentials.expiresAt > (yield* Clock.currentTimeMillis) + 60_000) return credentials.accessToken
+		if (!refresh && credentials.expiresAt > (yield* Clock.currentTimeMillis) + 60_000) return credentials.accessToken
 		return yield* tokenRequest(credentials.clientId, {
 			grant_type: 'refresh_token',
 			refresh_token: credentials.refreshToken
 		})
-	}),
+	},
 	Semaphore.withPermit(refreshing),
 	Effect.mapError(cause => AuthError.make({cause, message: 'Sign in to opm'}))
 )
+
+const accessToken = sessionToken(false)
 
 export const signInAtom = authRuntime.fn(() =>
 	pipe(
@@ -204,10 +206,20 @@ export const chaptersAtom = Atom.keepAlive(
 					)
 				}),
 				Stream.unwrap,
-				// Refreshing the session restarts this list, so it happens only once the session is gone; any other failure waits for the retry.
-				Stream.tapError(() =>
+				// A server can forget an unexpired bearer; only a refused refresh clears the saved session.
+				Stream.tapError(error =>
 					pipe(
-						readSession,
+						Effect.gen(function* () {
+							if (Schema.is(AuthError)(error)) {
+								yield* pipe(
+									Effect.flatMap(get.result(authRuntime), context =>
+										Effect.provideContext(sessionToken(true), context)
+									),
+									Effect.ignore({log: 'Warn', message: 'The session could not be renewed'})
+								)
+							}
+						}),
+						Effect.andThen(readSession),
 						Effect.flatMap(saved =>
 							Option.match(saved, {onNone: () => Atom.refresh(sessionAtom), onSome: () => Effect.void})
 						)

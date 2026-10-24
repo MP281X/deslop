@@ -1,4 +1,4 @@
-import {useAtom, useAtomMount, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, HashSet, Match, Option, Schema, String, pipe} from 'effect'
 
@@ -69,7 +69,6 @@ import {BrandIcon} from '@deslop/components-mobile/icons'
 import {colors, mono} from '@deslop/components-mobile/theme'
 import {AppTitle} from '@deslop/components-mobile/title'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
-import {updateAtom} from '@deslop/runtime/mobile'
 
 import {Byline} from '#lib/components.tsx'
 import {
@@ -346,7 +345,6 @@ export function HomeRoute(props: {
 	query: ReturnType<typeof useNativeState<string>>
 	tag?: string
 }) {
-	useAtomMount(updateAtom)
 	const items = useAtomSuspense(notesAtom).value
 	const remove = useAtomSet(removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
