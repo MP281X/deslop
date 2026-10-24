@@ -4,9 +4,9 @@ import {Tool, Toolkit} from 'effect/ai'
 
 import {
 	Filters,
+	IngestionStatus,
 	Page,
 	PageFilters,
-	Service,
 	SortFilters,
 	Stats,
 	TelemetryError,
@@ -18,9 +18,9 @@ import {
 export const Tools = Toolkit.make(
 	Tool.make('list_services', {
 		description:
-			'List the apps sending telemetry in their current run, with their runtime: web, mobile or server. Call it first: the other tools filter by these exact names.',
+			'Check ingestion first: every stored service, its runtime, latest run, last event time and entry count. Event/run times use the exporter clock (Unix nanoseconds), not receiver arrival time. Rejected OTLP requests are grouped by route, HTTP status and credential-header presence, never attributed to an app. Rejection counters and since (Unix milliseconds) reset when Scope restarts. Missing services have never sent retained telemetry.',
 		failure: TelemetryError,
-		success: Schema.Struct({services: Schema.Array(Service)})
+		success: IngestionStatus
 	}).annotate(Tool.Readonly, true),
 	Tool.make('find_traces', {
 		description:
@@ -31,7 +31,7 @@ export const Tools = Toolkit.make(
 	}).annotate(Tool.Readonly, true),
 	Tool.make('read_trace', {
 		description:
-			'Read one trace whole: every span in parent order with its depth, start offset, runtime and logs. Shows where an action spent its time and which span failed.',
+			'Read one stored trace whole, including earlier runs: every span in parent order with its depth, start offset, runtime and logs. Shows where an action spent its time and which span failed.',
 		failure: TelemetryError,
 		parameters: Schema.Struct({
 			id: pipe(TraceId, Schema.annotateEncoded({description: 'The 32-character id from find_traces or a span.'}))

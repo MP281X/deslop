@@ -56,6 +56,7 @@ const query = Query.make({
 	limit: 1,
 	offset: 0,
 	operation: '',
+	runs: 'current',
 	service: 'ordering',
 	sort: 'recent',
 	text: '',
@@ -64,7 +65,7 @@ const query = Query.make({
 })
 
 it.layer(layer)(test => {
-	test.effect('hides an entire cross-service trace on restart and rejects delayed batches from the old run', () =>
+	test.effect('keeps default searches current while allowing complete historical traces', () =>
 		Effect.gen(function* () {
 			const telemetry = yield* Telemetry
 			const oldId = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
@@ -122,12 +123,40 @@ it.layer(layer)(test => {
 				})
 			)
 			yield* telemetry.ingestTraces(old)
-			assert.deepStrictEqual((yield* telemetry.trace(oldId)).spans, [])
+			assert.strictEqual((yield* telemetry.trace(oldId)).spans.length, 2)
 			assert.strictEqual((yield* telemetry.spans({...query, service: 'session-web'})).total, 0)
+			assert.strictEqual((yield* telemetry.spans({...query, runs: 'all', service: 'session-web'})).total, 1)
 			assert.deepStrictEqual(
 				Array.map((yield* telemetry.traces({...query, service: 'session-api'})).entries, entry => entry.id),
 				[newId]
 			)
+			assert.deepStrictEqual(
+				Array.map(
+					(yield* telemetry.traces({...query, limit: 10, runs: 'all', service: 'session-api'})).entries,
+					entry => entry.id
+				),
+				[newId, oldId]
+			)
+			assert.strictEqual((yield* telemetry.stats({...query, runs: 'all', service: 'session-api'})).count, 2)
+			assert.containsSubset((yield* telemetry.services()).services, [
+				{entries: 1, lastEventAt: '1781870000003000000', name: 'session-api', runStartedAt: '200'},
+				{entries: 1, lastEventAt: '1781870000000000000', name: 'session-web', runStartedAt: '100'}
+			])
+		})
+	)
+
+	test.effect('reports rejected exports by credential presence without inventing service attribution', () =>
+		Effect.gen(function* () {
+			const telemetry = yield* Telemetry
+			yield* telemetry.reject({credential: 'authorization', route: '/v1/traces', status: 401})
+			yield* telemetry.reject({credential: 'authorization', route: '/v1/traces', status: 401})
+			yield* telemetry.reject({credential: 'none', route: '/v1/traces', status: 401})
+			yield* telemetry.reject({credential: 'cookie', route: '/v1/logs', status: 503})
+			assert.containsSubset((yield* telemetry.services()).rejections, [
+				{count: 2, credential: 'authorization', route: '/v1/traces', status: 401},
+				{count: 1, credential: 'none', route: '/v1/traces', status: 401},
+				{count: 1, credential: 'cookie', route: '/v1/logs', status: 503}
+			])
 		})
 	)
 

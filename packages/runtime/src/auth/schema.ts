@@ -10,7 +10,8 @@ export class AuthError extends Schema.TaggedError<AuthError>()('AuthError', {
 			'invalid_grant',
 			'invalid_target',
 			'invalid_scope',
-			'access_denied'
+			'access_denied',
+			'temporarily_unavailable'
 		])
 	),
 	message: Schema.String
