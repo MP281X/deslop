@@ -1,22 +1,21 @@
-import {useAtomSet, useAtomValue} from '@effect/atom-react'
+import {useAtomSet} from '@effect/atom-react'
 
-import {Array, Boolean, MutableHashSet, Option, pipe} from 'effect'
+import {Array, MutableHashSet, Number, Option, pipe} from 'effect'
 
-import {Button, ContentUnavailableView, Toolbar, ToolbarItem} from '@expo/ui/swift-ui'
-import {background, labelStyle, navigationBarTitleDisplayMode, navigationTitle} from '@expo/ui/swift-ui/modifiers'
+import {ContentUnavailableView, Toolbar} from '@expo/ui/swift-ui'
+import {background, navigationBarTitleDisplayMode, navigationTitle} from '@expo/ui/swift-ui/modifiers'
 import {useRef, useState} from 'react'
 
 import {colors} from '@deslop/components-mobile/theme'
 
-import {continuousAtom, readAtom} from '#lib/utils.ts'
+import {readAtom} from '#lib/utils.ts'
 import {PageStrip} from '#modules/native/index.ts'
 import {byNumber} from '#services/chapters/lib/utils.ts'
 import type {ChapterList} from '#services/chapters/schema.ts'
 
-// The opened chapter alone, or with the ones after it in one strip when the list's menu turns on scrolling into the next chapter.
-export function ReaderRoute(props: {chapters: ChapterList; number: number; onOpen: (number: number) => void}) {
+// The strip grows into the next chapter as it is reached; no separate reading mode or navigation button.
+export function ReaderRoute(props: {chapters: ChapterList; number: number; start?: number}) {
 	const read = useAtomSet(readAtom)
-	const continuous = useAtomValue(continuousAtom)
 	const following = pipe(
 		Array.sort(props.chapters, byNumber),
 		Array.filter(chapter => chapter.number >= props.number)
@@ -27,7 +26,7 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; onOpe
 	const previous = useRef(props.number)
 	// What this reader finished, so a page turn before the server's copy of the list arrives cannot unfinish it.
 	const [finished] = useState(MutableHashSet.empty<number>)
-	const shown = Array.take(following, Boolean.match(continuous, {onFalse: () => 1, onTrue: () => length}))
+	const shown = Array.take(following, length)
 	// Where each chapter's first page sits in the strip.
 	const starts = Array.scan(shown, 0, (total, chapter) => total + chapter.pages.length)
 
@@ -49,11 +48,15 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; onOpe
 			]}
 		>
 			<PageStrip
-				chapters={Array.map(shown, chapter => ({number: chapter.number, pages: chapter.pages}))}
-				start={pipe(
-					Option.fromUndefinedOr(Array.headNonEmpty(shown).reading),
-					Option.filter(reading => !reading.done),
-					Option.match({onNone: () => 0, onSome: reading => reading.page})
+				pages={Array.flatMap(shown, chapter => chapter.pages)}
+				start={Number.clamp(
+					props.start ??
+						pipe(
+							Option.fromUndefinedOr(Array.headNonEmpty(shown).reading),
+							Option.filter(reading => !reading.done),
+							Option.match({onNone: () => 0, onSome: reading => reading.page})
+						),
+					{maximum: Number.max(Array.headNonEmpty(shown).pages.length - 1, 0), minimum: 0}
 				)}
 				onPage={event =>
 					Option.match(
@@ -70,7 +73,7 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; onOpe
 										onNone: () => undefined,
 										onSome: before => {
 											MutableHashSet.add(finished, before.number)
-											read({done: true, number: before.number, page: before.pages.length - 1})
+											read({done: true, number: before.number, opened: true, page: before.pages.length - 1})
 										}
 									}
 								)
@@ -79,7 +82,7 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; onOpe
 								if (page === chapter.pages.length - 1 || chapter.reading?.done === true) {
 									MutableHashSet.add(finished, chapter.number)
 								}
-								read({done: MutableHashSet.has(finished, chapter.number), number: chapter.number, page})
+								read({done: MutableHashSet.has(finished, chapter.number), number: chapter.number, opened: true, page})
 								setScrolledTo(Option.some(chapter.number))
 								if (chapter.number === Array.lastNonEmpty(shown).number && length < following.length) {
 									setLength(length + 1)
@@ -89,23 +92,6 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; onOpe
 					)
 				}
 			/>
-			{!continuous && (
-				<Toolbar.Content>
-					{Option.match(Array.get(following, 1), {
-						onNone: () => undefined,
-						onSome: next => (
-							<ToolbarItem placement="topBarTrailing">
-								<Button
-									label={`Chapter ${next.number}`}
-									systemImage="chevron.forward"
-									onPress={() => props.onOpen(next.number)}
-									modifiers={[labelStyle('iconOnly')]}
-								/>
-							</ToolbarItem>
-						)
-					})}
-				</Toolbar.Content>
-			)}
 		</Toolbar>
 	)
 }

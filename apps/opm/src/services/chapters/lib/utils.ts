@@ -67,22 +67,12 @@ export function pagesOf(series: CubariSeries, chapter: string) {
 	)
 }
 
-function isDone(chapter: ChapterItem) {
-	return chapter.reading?.done === true
-}
-
-// The chapter the app opens on: the one read last while unfinished, else the next unread after it; none before any reading or once caught up.
+// Reopen what was read last, including a finished chapter; choosing the next one belongs to the reader.
 export function resumeOf(chapters: ChapterList) {
 	return pipe(
-		Array.filter(chapters, chapter => chapter.reading !== undefined),
+		Array.filter(chapters, chapter => (chapter.reading?.at ?? 0) > 0),
 		Array.sort(Order.flip(Order.mapInput(Order.Number, (chapter: ChapterItem) => chapter.reading?.at ?? 0))),
 		Array.head,
-		Option.flatMap(last =>
-			pipe(
-				Array.sort(chapters, byNumber),
-				Array.findFirst(chapter => chapter.number >= last.number && !isDone(chapter))
-			)
-		),
 		Option.map(chapter => ({number: chapter.number, page: chapter.reading?.page ?? 0}))
 	)
 }

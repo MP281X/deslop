@@ -84,8 +84,7 @@ import {
 	queryAtom,
 	regenerateAtom,
 	removeAtom,
-	searchAtom,
-	signOutAtom
+	searchAtom
 } from '#lib/utils.ts'
 import logo from '#routes/logo.png'
 import {tagCounts} from '#services/notes/lib/utils.ts'
@@ -231,7 +230,6 @@ function DeleteButton(props: {onPress: () => void}) {
 
 // A picker row's tag is a string or a number, so "All Notes", which clears the filter, is a toggle beside it.
 function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
-	const signOut = useAtomSet(signOutAtom)
 	return (
 		// A menu opened from the bottom bar reverses its items unless the order is fixed.
 		<Menu
@@ -259,8 +257,6 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 					<KindLabel key={kind} kind={kind} />
 				))}
 			</Picker>
-			<Divider />
-			<Button label="Sign Out" systemImage="rectangle.portrait.and.arrow.right" onPress={() => signOut()} />
 		</Menu>
 	)
 }
@@ -369,15 +365,10 @@ export function HomeRoute(props: {
 
 	return (
 		<Toolbar
-			modifiers={[
-				navigationTitle('stash'),
-				navigationBarTitleDisplayMode('inline'),
-				searchable(props.query, {onChange: props.onSearch, prompt: 'Search'}),
-				background(colors.background)
-			]}
+			modifiers={[navigationTitle('stash'), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
 		>
 			{/* SwiftUI shows the outermost toolbar's items first: the filter, the search field, then write. */}
-			<Toolbar modifiers={[bottomBarSearch]}>
+			<Toolbar modifiers={[searchable(props.query, {onChange: props.onSearch, prompt: 'Search'}), bottomBarSearch]}>
 				{Array.match(items, {
 					onEmpty: () => (
 						<ContentUnavailableView

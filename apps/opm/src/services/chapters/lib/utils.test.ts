@@ -54,15 +54,16 @@ function read(number: number, reading: Reading) {
 	return ChapterItem.make({...unread(number), reading})
 }
 
-it('resumes the chapter read last, then the next unread one, and nothing once caught up', () => {
+it('reopens the last-read chapter even when finished or caught up, and has no resume before any reading', () => {
 	assert.deepStrictEqual(
 		resumeOf([read(240, {at: 1, done: true, page: 17}), read(241, {at: 2, done: false, page: 6}), unread(242)]),
 		Option.some({number: 241, page: 6})
 	)
 	assert.deepStrictEqual(
 		resumeOf([read(240, {at: 2, done: true, page: 17}), unread(241), unread(242)]),
-		Option.some({number: 241, page: 0})
+		Option.some({number: 240, page: 17})
 	)
-	assert.deepStrictEqual(resumeOf([read(241, {at: 1, done: true, page: 9})]), Option.none())
+	assert.deepStrictEqual(resumeOf([read(241, {at: 1, done: true, page: 9})]), Option.some({number: 241, page: 9}))
 	assert.deepStrictEqual(resumeOf([unread(241), unread(242)]), Option.none())
+	assert.deepStrictEqual(resumeOf([read(242, {at: 0, done: true, page: 17})]), Option.none())
 })

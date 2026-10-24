@@ -153,12 +153,23 @@ function AppRoutes() {
 	useAtomMount(diagnosticsAtom)
 	const loaded = useAtomSuspense(chaptersAtom, {includeFailure: true})
 	const opened = useAtomValue(openedAtom)
+	const [resumePage, setResumePage] = useState<number>()
 	const [path, setPath] = useState(() =>
 		Option.match(opened, {onNone: () => Array.empty<string>(), onSome: number => [`${number}`]})
 	)
 	useAtomSubscribe(openedAtom, tapped =>
-		Option.match(tapped, {onNone: () => undefined, onSome: number => setPath([`${number}`])})
+		Option.match(tapped, {
+			onNone: () => undefined,
+			onSome: number => {
+				setResumePage(undefined)
+				setPath([`${number}`])
+			}
+		})
 	)
+	function open(number: number, page?: number) {
+		setResumePage(page)
+		setPath([`${number}`])
+	}
 	if (AsyncResult.isFailure(loaded)) return <Failed cause={loaded.cause} />
 	const chapters = loaded.value
 
@@ -170,14 +181,14 @@ function AppRoutes() {
 				onPathChange={setPath}
 				modifiers={[tint(colors.foreground), background(colors.background)]}
 			>
-				<ChaptersRoute chapters={chapters} onOpen={number => setPath([`${number}`])} />
+				<ChaptersRoute chapters={chapters} onOpen={open} />
 				{Array.map(path, number => (
 					<NavigationDestination key={number} value={number}>
 						<ReaderRoute
 							key={number}
 							chapters={chapters}
 							number={Option.getOrElse(Number.parse(number), () => 0)}
-							onOpen={next => setPath([`${next}`])}
+							start={resumePage}
 						/>
 					</NavigationDestination>
 				))}

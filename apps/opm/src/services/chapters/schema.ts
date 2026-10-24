@@ -38,7 +38,12 @@ export type ChaptersEvent = typeof ChaptersEvent.Type
 export const ChaptersEvent = Schema.Struct({reset: Schema.Boolean, upserted: ChapterList})
 
 export type ReadingUpdate = typeof ReadingUpdate.Type
-export const ReadingUpdate = Schema.Struct({done: Schema.Boolean, number: Schema.Finite, page: Schema.Finite})
+export const ReadingUpdate = Schema.Struct({
+	done: Schema.Boolean,
+	number: Schema.Finite,
+	opened: Schema.Boolean,
+	page: Schema.Finite
+})
 
 export type PushToken = typeof PushToken.Type
 export const PushToken = Schema.String.check(Schema.isPattern(/^Expo(?:nent)?PushToken\[[\w-]{10,64}\]$/u))
