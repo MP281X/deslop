@@ -17,7 +17,9 @@ import {noDoubleNullishCheck} from '#rules/no-double-nullish-check.ts'
 import {noEffectPropertyArrow} from '#rules/no-effect-property-arrow.ts'
 import {noEmptyRecovery} from '#rules/no-empty-recovery.ts'
 import {noErrorMessageAssertion} from '#rules/no-error-message-assertion.ts'
+import {noErrorMessageControlFlow} from '#rules/no-error-message-control-flow.ts'
 import {noFakeRefState} from '#rules/no-fake-ref-state.ts'
+import {noFalliblePromise} from '#rules/no-fallible-promise.ts'
 import {noFloatingDerivedType} from '#rules/no-floating-derived-type.ts'
 import {noGradient} from '#rules/no-gradient.ts'
 import {noHandWrittenGuard} from '#rules/no-hand-written-guard.ts'
@@ -154,7 +156,9 @@ export const lint = {
 		'@deslop/coding-standards/no-effect-property-arrow': 'error',
 		'@deslop/coding-standards/no-empty-recovery': 'error',
 		'@deslop/coding-standards/no-error-message-assertion': 'error',
+		'@deslop/coding-standards/no-error-message-control-flow': 'error',
 		'@deslop/coding-standards/no-fake-ref-state': 'error',
+		'@deslop/coding-standards/no-fallible-promise': 'error',
 		'@deslop/coding-standards/no-floating-derived-type': 'error',
 		'@deslop/coding-standards/no-gradient': 'error',
 		'@deslop/coding-standards/no-hand-written-guard': 'error',
@@ -776,7 +780,9 @@ export default definePlugin({
 		'no-effect-property-arrow': noEffectPropertyArrow,
 		'no-empty-recovery': noEmptyRecovery,
 		'no-error-message-assertion': noErrorMessageAssertion,
+		'no-error-message-control-flow': noErrorMessageControlFlow,
 		'no-fake-ref-state': noFakeRefState,
+		'no-fallible-promise': noFalliblePromise,
 		'no-floating-derived-type': noFloatingDerivedType,
 		'no-gradient': noGradient,
 		'no-hand-written-guard': noHandWrittenGuard,

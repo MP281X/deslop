@@ -28,7 +28,9 @@
 	},
 	"devDependencies": {
 		"@deslop/runtime": "workspace:*",
-		"@effect/sql-sqlite-node": "latest"
+		"@effect/platform-node": "latest",
+		"@effect/sql-sqlite-node": "latest",
+		"effect": "latest"
 	},
 	"engines": {
 		"node": ">=26"

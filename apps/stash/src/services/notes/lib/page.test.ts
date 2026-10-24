@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Option} from 'effect'
 
-import {pageText} from './extraction.ts'
+import {pageText} from './page.ts'
 
 it('keeps an article as Markdown with its headings, lists and absolute links, without the page chrome', () => {
 	const page = pageText(

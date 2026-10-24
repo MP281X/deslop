@@ -1567,6 +1567,117 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 
 		testApi.effect(
+			'keeps fallible I/O in the error channel and recovery independent of display wording',
+			() =>
+				Effect.gen(function* () {
+					const source = [
+						"import {Effect} from 'effect'",
+						"import * as SecureStore from 'expo-secure-store'",
+						"import * as Notifications from 'expo-notifications'",
+						"import {Asset} from 'expo-asset'",
+						'',
+						'declare const work: Effect.Effect<void, {message: string; reason: string}>',
+						'declare const native: {hasLink: () => Promise<boolean>}',
+						'export const deleted = Effect.promise(() => SecureStore.deleteItemAsync("session"))',
+						'export const badge = Effect.promise(() => Notifications.setBadgeCountAsync(0))',
+						'export const permissions = Effect.promise(() => Notifications.requestPermissionsAsync())',
+						'export const asset = Effect.promise(() => Asset.fromModule(1).downloadAsync())',
+						'export const typed = Effect.tryPromise(() => SecureStore.deleteItemAsync("session"))',
+						'export const infallible = Effect.promise(() => native.hasLink())',
+						'export function shadowed(SecureStore: {deleteItemAsync: () => Promise<void>}) { return Effect.promise(() => SecureStore.deleteItemAsync()) }',
+						'export const retry = Effect.retry(work, {while: failure => failure.message === "offline"})',
+						'export const catchMessage = Effect.catchIf(work, failure => failure.message !== "offline", () => Effect.void)',
+						'export const retryReason = Effect.retry(work, {while: failure => failure.reason === "Offline"})',
+						'export const display = Effect.mapError(work, failure => failure.message === "Error" ? "Unavailable" : failure.message)',
+						'export const repeatValue = Effect.repeat(Effect.succeed({message: "ready"}), {while: value => value.message === "ready"})'
+					]
+					const result = yield* lintSource({'boundaries.ts': Array.join(source, '\n')})
+					assert.strictEqual(result.stderr, '')
+					assert.deepStrictEqual(
+						pipe(
+							result.stdout.diagnostics,
+							Array.filter(diagnostic =>
+								Array.contains(
+									[
+										'@deslop/coding-standards(no-fallible-promise)',
+										'@deslop/coding-standards(no-error-message-control-flow)'
+									],
+									diagnostic.code
+								)
+							),
+							Array.map(
+								diagnostic =>
+									String.split(result.sources[0] ?? '', '\n')[(diagnostic.labels[0]?.span.line ?? 0) - 1] ?? ''
+							),
+							Array.sort(String.Order)
+						),
+						pipe(
+							[7, 8, 9, 10, 14, 15],
+							Array.map(index => source[index] ?? ''),
+							Array.sort(String.Order)
+						)
+					)
+				}),
+			20_000
+		)
+
+		testApi.effect(
+			'distinguishes named data-last callbacks and absent error causes',
+			() =>
+				Effect.gen(function* () {
+					const source = [
+						"import {Effect, Redacted, Schema} from 'effect'",
+						'',
+						'declare const items: number[]',
+						'declare const options: {concurrency: number}',
+						'function load(id: number) { return Effect.succeed(id) }',
+						'class Failed extends Schema.TaggedError<Failed>()("Failed", {cause: Schema.Unknown}) {}',
+						'export const dataLast = Effect.forEach(load, options)',
+						'export const dataFirst = Effect.forEach(items, load)',
+						'export const missing = Effect.mapError(Effect.fail("failure"), failure => Failed.make({cause: undefined}))',
+						'export const nullCause = Effect.mapError(Effect.fail("failure"), failure => Failed.make({"cause": null}))',
+						'export const voidCause = Effect.mapError(Effect.fail("failure"), failure => Failed.make({cause: void failure}))',
+						'export const kept = Effect.mapError(Effect.fail("failure"), failure => Failed.make({cause: failure}))',
+						'export const redacted = Effect.mapError(Effect.fail("failure"), failure => Failed.make({cause: Redacted.make(failure)}))',
+						'export function shadowed(undefined: string) { return Effect.mapError(Effect.fail("failure"), failure => Failed.make({cause: undefined})) }',
+						'const loadUntraced = Effect.fnUntraced(function* (id: number) { return yield* Effect.succeed(id) })',
+						'const loadTraced = Effect.fn("load")(function* (id: number) { return yield* Effect.succeed(id) })',
+						'export const untraced = Effect.forEach(loadUntraced, options)',
+						'export const traced = Effect.forEach(loadTraced, options)',
+						'const loadDirect = Effect.fn(function* (id: number) { return yield* Effect.succeed(id) })',
+						'export const direct = Effect.forEach(loadDirect, options)'
+					]
+					const result = yield* lintSource({'precision.ts': Array.join(source, '\n')})
+					assert.strictEqual(result.stderr, '')
+					assert.deepStrictEqual(
+						pipe(
+							result.stdout.diagnostics,
+							Array.filter(diagnostic =>
+								Array.contains(
+									[
+										'@deslop/coding-standards(explicit-effect-concurrency)',
+										'@deslop/coding-standards(preserve-error-cause)'
+									],
+									diagnostic.code
+								)
+							),
+							Array.map(
+								diagnostic =>
+									String.split(result.sources[0] ?? '', '\n')[(diagnostic.labels[0]?.span.line ?? 0) - 1] ?? ''
+							),
+							Array.sort(String.Order)
+						),
+						pipe(
+							[7, 8, 9, 10],
+							Array.map(index => source[index] ?? ''),
+							Array.sort(String.Order)
+						)
+					)
+				}),
+			20_000
+		)
+
+		testApi.effect(
 			'keeps package APIs, global classes and Effect services out of native method calls',
 			() =>
 				Effect.gen(function* () {

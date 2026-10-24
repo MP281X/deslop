@@ -16,8 +16,11 @@
 	"devDependencies": {
 		"@deslop/components-web": "workspace:*",
 		"@deslop/runtime": "workspace:*",
+		"@effect/atom-react": "latest",
+		"@effect/platform-node": "latest",
 		"@tanstack/react-hotkeys": "latest",
 		"@tanstack/react-router": "latest",
+		"effect": "latest",
 		"lucide-react": "latest",
 		"react": "latest",
 		"react-dom": "latest"

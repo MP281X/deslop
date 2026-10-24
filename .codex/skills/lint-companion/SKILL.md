@@ -22,6 +22,8 @@ The tempting fix for each trips another rule or reshapes the code; every other d
 
 - **Make illegal states unrepresentable.** `type Kind = typeof Kind.Type` immediately above `const Kind = Schema.Literals([...])`, subset `Kind.pick`; export each half only when consumers use it. Recursive schemas hand-write their type, `readonly` as `Schema.Array` decodes it, and annotate the `suspend` thunk; other shapes mutable, `readonly` only on service properties.
 - **Type the boundary.** Decode an `any` or `unknown` with the protocol schema, before any `?.`, cast or disable could touch it.
+- **Adapt the failure contract, not the return syntax.** A rejecting Promise takes `Effect.tryPromise`; `Effect.promise` means rejection is a defect, not a typed failure. Finalizers need an explicit release-failure policy rather than a mechanical rewrite to a fallible release. Keep plain values plain when the host already accepts them; an Effect runtime around a literal owns no work.
+- **Separate reasons from wording.** Retry and recovery consume a stable tagged error or literal reason; messages remain display copy. Add only distinctions a caller actually uses, and preserve causes rather than replacing them with their messages.
 - **One home per type.** The library's type or `ReturnType<typeof make>` in the signature rather than a module alias; import from the defining module.
 - **Reset by key.** Atoms at module level or in an `Atom.family` keyed by their input, built on the runtime the repository's canonical example or `CODING_STANDARDS.md` names; `key` resets state when a prop changes, render derives a value, `useRef` holds lifecycle state, and effects never set state. Components read atoms and never run an Effect; the screen's owner wraps one `Suspense` and one error boundary.
 
@@ -77,3 +79,9 @@ export function summarize(entries: Entry[]) {
 - **Rule bug.** A diagnostic on code the rules allow, or two rules that reject each other's fix, is a rule bug: fix the rule with a rejected and an accepted case from the real code.
 - **Same correction twice** becomes impossible at the highest level that works: an owner component or type, then a lint rule whose message names the one fix.
 - **Disables** name an outside contract in their `--` reason.
+
+## Repository analysis
+
+Keep the full Fallow scan and a production-reachability scan: tests are roots in the full scan, so a test import does not prove shipping use. Trace a finding before removal; a helper still called locally needs its export removed, not its implementation deleted, and unique behavior stays covered through the production seam. Published APIs and framework entrypoints are outside contracts, not blanket tooling exceptions.
+
+Duplication and complexity are evidence to inspect, not instructions to introduce wrappers. Compare owners and inputs before sharing code; a justified exception names the exact clone or function and why its current shape is clearer. Architecture zones follow browser-safe schemas and helpers versus server implementations, not an entire `services` directory.

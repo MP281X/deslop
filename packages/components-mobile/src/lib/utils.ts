@@ -25,7 +25,7 @@ export function writeAtomically(file: File, text: string) {
 export const assetAtom = Atom.family((module: number | string) =>
 	Atom.make(
 		Effect.map(
-			Effect.promise(() => Asset.fromModule(module).downloadAsync()),
+			Effect.tryPromise(() => Asset.fromModule(module).downloadAsync()),
 			asset => asset.localUri ?? asset.uri
 		)
 	)
