@@ -2,7 +2,6 @@
 import {createServer} from 'node:http'
 
 import {NodeHttpClient, NodeHttpServer, NodeRuntime, NodeServices} from '@effect/platform-node'
-import {SqliteClient} from '@effect/sql-sqlite-node'
 
 import {ByteSize, Config, Effect, FileSystem, Layer, Path, String, pipe} from 'effect'
 
@@ -81,13 +80,18 @@ const mcp = pipe(
 	)
 )
 
-const database = Layer.unwrap(
+const telemetry = Layer.unwrap(
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem
 		const path = yield* Path.Path
 		const directory = path.join(yield* Config.String('HOME'), '.deslop', 'scope')
 		yield* fs.makeDirectory(directory, {recursive: true})
-		return SqliteClient.layer({filename: path.join(directory, 'telemetry.sqlite')})
+		yield* Effect.forEach(
+			['telemetry.sqlite', 'telemetry.sqlite-wal', 'telemetry.sqlite-shm'],
+			name => fs.remove(path.join(directory, name), {force: true}),
+			{concurrency: 1, discard: true}
+		)
+		return Telemetry.layer(path.join(directory, 'entries'))
 	})
 )
 
@@ -127,8 +131,7 @@ NodeRuntime.runMain(
 		),
 		Layer.provide(Auth.layer('https://otel.mp281x.xyz')),
 		Layer.provide(NodeHttpClient.layerFetch),
-		Layer.provide(Telemetry.layer),
-		Layer.provide(database),
+		Layer.provide(telemetry),
 		Layer.provide(NodeServices.layer),
 		Layer.provide(Layer.succeed(HttpIncomingMessage.MaxBodySize)(ByteSize.mebibytes(10))),
 		Layer.launch

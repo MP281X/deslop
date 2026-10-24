@@ -88,12 +88,6 @@ export const Stored = Schema.TaggedUnion({
 	UsedRefresh: {clientId: Schema.NonEmptyString, family: Schema.NonEmptyString}
 })
 
-export type StoredRow = typeof StoredRow.Type
-export const StoredRow = Schema.Struct({payload: Schema.String})
-
-export type AuthorizationRow = typeof AuthorizationRow.Type
-export const AuthorizationRow = Schema.Struct({expiresAt: Schema.Finite, hash: Schema.String, payload: Schema.String})
-
 export type RequestParams = typeof RequestParams.Type
 export const RequestParams = Schema.Struct({request: Schema.NonEmptyString})
 
@@ -143,6 +137,12 @@ export const MemberRow = Schema.Struct({
 	name: Schema.NonEmptyString,
 	since: Schema.Finite,
 	status: MemberStatus
+})
+
+export type AuthState = typeof AuthState.Type
+export const AuthState = Schema.Struct({
+	members: Schema.Array(MemberRow),
+	tokens: Schema.Record(Schema.String, Schema.Struct({expiresAt: Schema.Finite, payload: Stored}))
 })
 
 export type AdmitParams = typeof AdmitParams.Type

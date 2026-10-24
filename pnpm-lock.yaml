@@ -229,9 +229,6 @@ importers:
       '@effect/platform-node':
         specifier: latest
         version: 4.0.5(effect@4.0.5)(redis@6.3.0(@opentelemetry/api@1.9.1))
-      '@effect/sql-sqlite-node':
-        specifier: latest
-        version: 4.0.5(effect@4.0.5)
       '@tanstack/react-router':
         specifier: latest
         version: 1.170.45(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -350,9 +347,6 @@ importers:
       '@effect/platform-node':
         specifier: latest
         version: 4.0.5(effect@4.0.5)(redis@6.3.0(@opentelemetry/api@1.9.1))
-      '@effect/sql-sqlite-node':
-        specifier: latest
-        version: 4.0.5(effect@4.0.5)
       effect:
         specifier: latest
         version: 4.0.5
@@ -1080,11 +1074,6 @@ packages:
     peerDependencies:
       effect: ^4.0.5
       redis: '>=5.0.0 <7.0.0'
-
-  '@effect/sql-sqlite-node@4.0.5':
-    resolution: {integrity: sha512-SHza5qNwiI4dRtUk45wvUfvZq7vB950DW2wD6npzt2aH/tesFfPlZJSDBIvwhazoK+gvDknBOONfKyFZsIF+tg==}
-    peerDependencies:
-      effect: ^4.0.5
 
   '@effect/tsgo-darwin-arm64@0.54.1':
     resolution: {integrity: sha512-eVLYXfsik3FTO24dBoXZN/KVYPYVM36Kc18hXM/3y6ixNdaxVnqzNqFyLlAuNdgse6skBXjeZq1V+XyShcl+7Q==}
@@ -7473,10 +7462,6 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
-
-  '@effect/sql-sqlite-node@4.0.5(effect@4.0.5)':
-    dependencies:
-      effect: 4.0.5
 
   '@effect/tsgo-darwin-arm64@0.54.1':
     optional: true

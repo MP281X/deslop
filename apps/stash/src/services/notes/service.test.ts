@@ -212,7 +212,13 @@ it.layer(NodeServices.layer)('Notes', test => {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
 			const seen = yield* Ref.make(Array.empty<TagEntry[]>())
 			const answers = [
-				{definitions: [{definition: 'Recipes and kitchen techniques.', tag: 'Cooking'}], tags: ['cooking']},
+				{
+					definitions: [
+						{definition: 'Recipes and kitchen techniques.', tag: 'Cooking'},
+						{definition: 'A later duplicate must not replace the first definition.', tag: 'cooking'}
+					],
+					tags: ['cooking']
+				},
 				{
 					definitions: [
 						{definition: 'Anything with a stove.', tag: 'cooking'},

@@ -4,16 +4,57 @@ import {fileURLToPath} from 'node:url'
 
 import {NodeHttpServer} from '@effect/platform-node'
 
-import {Config, Effect, Layer, pipe} from 'effect'
+import {Config, Effect, FileSystem, Layer, Path, Predicate, Semaphore, Struct, pipe} from 'effect'
 
 import {McpProtocol, McpServer} from 'effect/ai'
 import {HttpRouter, HttpServerResponse, HttpStaticServer} from 'effect/http'
+import {KeyValueStore} from 'effect/persistence'
 import {RpcSerialization} from 'effect/rpc'
 
 import {layerOtlp} from '#telemetry.ts'
 
 import {AUTH_URL} from '#auth/lib/utils.ts'
 import {layerMcpAuth} from '#auth/service.ts'
+
+// Schema stores share Effect's filesystem implementation, but replace values atomically instead of truncating them in place.
+export function layerKeyValueStore(directory: string) {
+	return pipe(
+		Layer.effect(
+			KeyValueStore.KeyValueStore,
+			Effect.gen(function* () {
+				const base = yield* KeyValueStore.KeyValueStore
+				const fs = yield* FileSystem.FileSystem
+				const path = yield* Path.Path
+				const writes = yield* Semaphore.make(1)
+				return KeyValueStore.make({
+					...Struct.omit(base, ['set', 'modify', 'modifyUint8Array']),
+					set: (key, value) => {
+						if (key === '' || key === '.' || key === '..') {
+							return Effect.fail(
+								new KeyValueStore.KeyValueStoreError({key, message: 'Invalid storage key', method: 'set'})
+							)
+						}
+						const target = path.join(directory, encodeURIComponent(key))
+						return pipe(
+							Effect.gen(function* () {
+								if (Predicate.isString(value)) yield* fs.writeFileString(`${target}.tmp`, value, {mode: 0o600})
+								else yield* fs.writeFile(`${target}.tmp`, value, {mode: 0o600})
+							}),
+							Effect.andThen(fs.rename(`${target}.tmp`, target)),
+							Semaphore.withPermit(writes),
+							Effect.uninterruptible,
+							Effect.mapError(
+								cause =>
+									new KeyValueStore.KeyValueStoreError({cause, key, message: 'Cannot save the value', method: 'set'})
+							)
+						)
+					}
+				})
+			})
+		),
+		Layer.provide(KeyValueStore.layerFileSystem(directory))
+	)
+}
 
 export function layer(applicationName: string) {
 	return Layer.mergeAll(

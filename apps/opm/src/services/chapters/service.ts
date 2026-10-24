@@ -113,7 +113,7 @@ export class Chapters extends Context.Service<
 			Effect.gen(function* () {
 				const client = yield* HttpClient.HttpClient
 				const exit = yield* pipe(Config.option(Config.String('OPM_PROXY')), failed('OPM_PROXY is unreadable.'))
-				const store = yield* openStore(`${directory}/opm.db`)
+				const store = yield* openStore(directory)
 				const state = yield* SubscriptionRef.make(Array.sort(yield* store.load, newestFirst))
 				function series(url: string) {
 					return pipe(
@@ -172,12 +172,13 @@ export class Chapters extends Context.Service<
 					} satisfies Chapter
 				})
 
-				// Every change replaces only the chapters it touches, so the rest keep their identity and are not written again.
+				// Persist before publishing; unchanged chapters keep their identity so the stream sends only changes.
 				function save(apply: (current: Chapter[]) => Chapter[]) {
 					return Effect.uninterruptible(
 						SubscriptionRef.updateEffect(state, current => {
 							const next = apply(current)
-							return Effect.as(store.save(changed(next, current)), next)
+							if (Array.isReadonlyArrayEmpty(changed(next, current))) return Effect.succeed(current)
+							return Effect.as(store.save(next), next)
 						})
 					)
 				}
@@ -379,6 +380,11 @@ const dataFolder = pipe(
 			Config.withDefault(path.join(yield* Config.String('HOME'), '.deslop', 'opm'))
 		)
 		yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
+		yield* Effect.forEach(
+			['opm.db', 'opm.db-wal', 'opm.db-shm'],
+			name => fs.remove(path.join(directory, name), {force: true}),
+			{concurrency: 1, discard: true}
+		)
 		return directory
 	}),
 	failed('The chapters folder could not be read.')

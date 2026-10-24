@@ -58,10 +58,6 @@ export const Note = Schema.Struct({
 	url: Schema.optionalKey(Schema.String)
 })
 
-// A note as the store keeps it.
-export type NoteJson = typeof NoteJson.Type
-export const NoteJson = Schema.fromJsonString(Note)
-
 export type NoteItem = typeof NoteItem.Type
 export const NoteItem = Note.mapFields(Struct.omit(['body', 'content', 'screenText', 'text', 'transcript']))
 
