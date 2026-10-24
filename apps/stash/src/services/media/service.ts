@@ -23,7 +23,8 @@ import type {AutomaticSpeechRecognitionPipeline} from '@huggingface/transformers
 import {Tensor, env, pipeline} from '@huggingface/transformers'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
-import {captionTranscript, clock, sourceProxy, speechOnly, sticky} from '#services/media/lib/utils.ts'
+import {sourceProxy, sticky} from '#services/media/lib/proxy.ts'
+import {captionTranscript, clock, speechOnly} from '#services/media/lib/utils.ts'
 import type {Comment, Still} from '#services/media/schema.ts'
 import {MediaError, Metadata, Transcription} from '#services/media/schema.ts'
 

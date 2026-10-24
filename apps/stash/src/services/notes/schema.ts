@@ -2,7 +2,8 @@ import {Schema, Struct, pipe} from 'effect'
 
 export class NotesError extends Schema.TaggedError<NotesError>()('NotesError', {
 	cause: Schema.optional(Schema.Defect()),
-	message: Schema.String
+	message: Schema.String,
+	reason: Schema.optional(Schema.Literals(['Unreachable', 'UnreadablePhoto']))
 }) {}
 
 export type NoteId = typeof NoteId.Type

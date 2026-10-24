@@ -25,6 +25,7 @@ The user's choices. Add a row with their words when they pick, reject or correct
 
 - Every schema of a service lives in its `schema.ts`, including the answer of an outside source, such as `FxPost` in `apps/stash/src/services/*/schema.ts`. `lib/utils.ts` holds pure helpers and stays frontend-safe.
 - Page-private components and helpers stay with their consumer; shared behavior has one owner. A new abstraction must supply a capability the existing owner lacks or reduce what a reader holds, not merely shorten files. Prefer direct domain names, control flow and explicit configuration over wrappers and configuration languages; balance colocation against navigable file size.
+- Index repeated relationships once: a set for membership, a map for lookup, or `Array.groupBy` for one-to-many joins, as in Scope's telemetry views. Preserve key uniqueness, first-match semantics and reference-sensitive change detection; bounded lists and genuinely pairwise algorithms need no index merely to satisfy a metric.
 - Node subpath aliases use wildcard `imports`, such as `"#services/*": "./src/services/*"`; source specifiers include their file extension, such as `#services/notes/service.ts`. A service package exports only `./schema`, `./service` and `./utils`.
 - App data and CLI credentials live under `~/.deslop/<appname>/`, outside the checkout.
 - Defaults live in code through `Config.withDefault`, never in `.env.example`.
@@ -46,4 +47,4 @@ Deploy is one `tools/compose.yaml` with configs inlined, direct ports and unpinn
 ## Dependencies and tooling
 
 - Keep dependencies in their owning packages; update coupled packages together and verify their real consumers. Vite+ owns its lint and test toolchain versions; its Vite alias is accepted only for the consumer versions listed in `pnpm-workspace.yaml`.
-- `@deslop/coding-standards` owns compiler and lint policy: an upstream rule replaces a custom one, each rejected form has one owner, and its tests assert only custom rules. The root `vite.config.ts` owns formatting and ignores, `.fallowrc.json` dead-code analysis.
+- `@deslop/coding-standards` owns compiler and lint policy: an upstream rule replaces a custom one, each rejected form has one owner, and its tests assert only custom rules. The root `vite.config.ts` owns formatting and ignores; `.fallowrc.json` owns reachability, boundaries, duplication and complexity.

@@ -147,6 +147,41 @@ export function returnedExpression(node: ESTree.Function | ESTree.ArrowFunctionE
 	return node.body.body[0].argument
 }
 
+// Follow local immutable aliases only; imports, parameters, mutable bindings and cycles remain unknown.
+export function resolveBinding(context: Context, node: ESTree.Node, seen: Variable[] = []): ESTree.Node {
+	const expression = pipe(
+		typeWrapped(node),
+		Option.getOrElse(() => node)
+	)
+	if (expression !== node) return resolveBinding(context, expression, seen)
+	if (node.type !== 'Identifier') return node
+	return pipe(
+		variableFromScope({name: node.name, scope: context.sourceCode.getScope(node)}),
+		Option.filter(
+			variable =>
+				variable.defs.length === 1 &&
+				!Array.some(seen, previous => previous === variable) &&
+				!Array.some(variable.references, reference => reference.isWrite() && !reference.init)
+		),
+		Option.match({
+			onNone: () => node,
+			onSome: variable => {
+				const definition = variable.defs[0]
+				if (definition?.node.type === 'FunctionDeclaration') return definition.node
+				if (
+					definition?.node.type !== 'VariableDeclarator' ||
+					definition.node.parent.type !== 'VariableDeclaration' ||
+					definition.node.parent.kind !== 'const' ||
+					definition.node.init === null
+				) {
+					return node
+				}
+				return resolveBinding(context, definition.node.init, [...seen, variable])
+			}
+		})
+	)
+}
+
 // The identifier a plain property chain such as `input.node.parent` starts from.
 export function rootName(node: ESTree.Node): Option.Option<string> {
 	if (node.type === 'Identifier') return Option.some(node.name)
@@ -181,6 +216,20 @@ export function importedMember(input: {
 	)
 }
 
+function isWriteTarget(node: ESTree.Node) {
+	if (node.parent === null) return false
+	return (
+		((node.parent.type === 'AssignmentExpression' || node.parent.type === 'AssignmentPattern') &&
+			node.parent.left === node) ||
+		node.parent.type === 'ArrayPattern' ||
+		node.parent.type === 'RestElement' ||
+		(node.parent.type === 'Property' && node.parent.value === node && node.parent.parent.type === 'ObjectPattern') ||
+		((node.parent.type === 'ForInStatement' || node.parent.type === 'ForOfStatement') && node.parent.left === node) ||
+		node.parent.type === 'UpdateExpression' ||
+		(node.parent.type === 'UnaryExpression' && node.parent.operator === 'delete')
+	)
+}
+
 export function isFilteredCount(input: {context: Context; node: ESTree.Node}) {
 	if (
 		input.node.type !== 'MemberExpression' ||
@@ -203,21 +252,7 @@ export function isFilteredCount(input: {context: Context; node: ESTree.Node}) {
 			node: input.node.object.callee,
 			propertyName: 'filter'
 		}) &&
-		!(target.parent?.type === 'AssignmentExpression' && target.parent.left === target) &&
-		!(target.parent?.type === 'AssignmentPattern' && target.parent.left === target) &&
-		target.parent?.type !== 'ArrayPattern' &&
-		target.parent?.type !== 'RestElement' &&
-		!(
-			target.parent?.type === 'Property' &&
-			target.parent.value === target &&
-			target.parent.parent.type === 'ObjectPattern'
-		) &&
-		!(
-			(target.parent?.type === 'ForInStatement' || target.parent?.type === 'ForOfStatement') &&
-			target.parent.left === target
-		) &&
-		target.parent?.type !== 'UpdateExpression' &&
-		!(target.parent?.type === 'UnaryExpression' && target.parent.operator === 'delete')
+		!isWriteTarget(target)
 	)
 }
 

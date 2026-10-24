@@ -3,15 +3,15 @@ import {Array, Option, Predicate, String, pipe} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {importedMember, isImportBinding, memberName, returnedExpression} from '#rules/shared.ts'
+import {importedMember, isImportBinding, memberName, resolveBinding, returnedExpression} from '#rules/shared.ts'
 
-function calleeOf(node: ESTree.Expression) {
+function calleeOf(node: ESTree.Node) {
 	if (node.type === 'CallExpression' && node.callee.type !== 'Super') return node.callee
 	return node
 }
 
 // Effect's empty constructors, such as `Array.empty()`, `HashMap.empty()` and `String.empty`.
-function isEffectEmpty(input: {context: Context; node: ESTree.Expression}) {
+function isEffectEmpty(input: {context: Context; node: ESTree.Node}) {
 	const member = calleeOf(input.node)
 	return (
 		member.type === 'MemberExpression' &&
@@ -76,9 +76,13 @@ export const noEmptyRecovery = defineRule({
 			)
 			if (!pipe(name, String.startsWith('catch')) && !pipe(name, String.startsWith('orElse'))) return
 			for (const argument of node.arguments) {
+				const callback = resolveBinding(context, argument)
 				if (
-					(argument.type === 'ArrowFunctionExpression' || argument.type === 'FunctionExpression') &&
-					recoversEmpty({context, name, node: returnedExpression(argument)})
+					(name === 'orElseSucceed' && isEffectEmpty({context, node: callback})) ||
+					((callback.type === 'ArrowFunctionExpression' ||
+						callback.type === 'FunctionExpression' ||
+						callback.type === 'FunctionDeclaration') &&
+						recoversEmpty({context, name, node: returnedExpression(callback)}))
 				) {
 					context.report({
 						message:

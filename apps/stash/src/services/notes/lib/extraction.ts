@@ -7,9 +7,10 @@ import {
 	ByteSize,
 	Context,
 	Effect,
+	HashMap,
+	HashSet,
 	Layer,
 	Match,
-	Number,
 	Option,
 	Order,
 	Predicate,
@@ -23,12 +24,12 @@ import {
 } from 'effect'
 
 import * as cheerio from 'cheerio'
-import type {AnyNode} from 'domhandler'
 import {HttpClient} from 'effect/http'
 import type {HttpClientResponse} from 'effect/http'
 import {Dns, NetAddress} from 'effect/net'
 
-import {sourceProxy, sticky} from '#services/media/lib/utils.ts'
+import {sourceProxy, sticky} from '#services/media/lib/proxy.ts'
+import {pageText} from '#services/notes/lib/page.ts'
 import {captureUrl, isYouTube, plainText, sourceFor} from '#services/notes/lib/utils.ts'
 import type {FxArticle, FxPost, Image} from '#services/notes/schema.ts'
 import {
@@ -53,31 +54,13 @@ const UNREACHABLE = 'The link could not be loaded.'
 
 const X_LINK = /^https?:\/\/(?:[\w-]+\.)?(?:x|twitter)\.com\//u
 
-const BLOCK_TAGS = [
-	'article',
-	'aside',
-	'blockquote',
-	'dd',
-	'details',
-	'div',
-	'dl',
-	'dt',
-	'figure',
-	'main',
-	'p',
-	'section',
-	'table'
-]
-
 // The proxy every request of a Sources method exits through.
 const Exit = Context.Reference<Option.Option<string>>('@deslop/stash/services/notes/lib/extraction/Exit', {
 	defaultValue: Option.none
 })
 
-const BY_SIZE = Order.mapInput(Order.flip(Order.Number), (icon: {href: string; size: number}) => icon.size)
-
-function timeLimit(duration: Duration.Input, message: string) {
-	return Effect.timeoutOrElse({duration, orElse: () => Effect.fail(NotesError.make({message}))})
+function timeLimit(duration: Duration.Input, message: string, reason?: NotesError['reason']) {
+	return Effect.timeoutOrElse({duration, orElse: () => Effect.fail(NotesError.make({message, reason}))})
 }
 
 function isPublic(address: NetAddress.Ipv4Address) {
@@ -191,7 +174,7 @@ const load = Effect.fnUntraced(function* <A, E>(
 		Effect.mapError(cause =>
 			pipe(
 				Option.liftPredicate(cause, Schema.is(NotesError)),
-				Option.getOrElse(() => NotesError.make({cause, message: UNREACHABLE}))
+				Option.getOrElse(() => NotesError.make({cause, message: UNREACHABLE, reason: 'Unreachable'}))
 			)
 		)
 	)
@@ -208,12 +191,12 @@ const follow = Effect.fnUntraced(function* <A, E>(
 		Effect.filterOrFail(
 			// A residential exit can be offline or flagged; each new try gets another exit address.
 			found => !proxied || !Array.contains([403, 429, 500, 502, 503], found.status),
-			() => NotesError.make({message: UNREACHABLE})
+			() => NotesError.make({message: UNREACHABLE, reason: 'Unreachable'})
 		),
-		timeLimit('15 seconds', UNREACHABLE),
+		timeLimit('15 seconds', UNREACHABLE, 'Unreachable'),
 		Effect.retry({
 			times: Boolean.match(proxied, {onFalse: () => 0, onTrue: () => 2}),
-			while: error => error.message === UNREACHABLE
+			while: error => error.reason === 'Unreachable'
 		})
 	)
 	if (answer.status >= 300 && answer.status < 400 && answer.location !== undefined) {
@@ -295,13 +278,17 @@ const xOEmbed = Effect.fnUntraced(function* (url: URL) {
 
 // A block's entity ranges name entityMap entries by their key; links and code blocks live there.
 function articleText(article: FxArticle) {
+	// findFirst used the first entry when a source repeated a key.
+	const entities = HashMap.fromIterable(
+		Array.map(Array.reverse(article.content.entityMap), entity => [entity.key, entity] as const)
+	)
 	const lines = Array.filterMap(article.content.blocks, block => {
 		const attached = pipe(
 			block.entityRanges,
 			Array.filterMap(range =>
 				Result.fromOption(
 					pipe(
-						Array.findFirst(article.content.entityMap, entity => entity.key === `${range.key}`),
+						HashMap.get(entities, `${range.key}`),
 						Option.flatMapNullishOr(entity => entity.value.data.markdown ?? entity.value.data.url)
 					),
 					() => undefined
@@ -333,7 +320,9 @@ const tikTokPhotos = Effect.fnUntraced(function* (url: URL) {
 		Schema.decodeEffect(Schema.fromJsonString(TikTokPage))(
 			cheerio.load(html.body)('#__UNIVERSAL_DATA_FOR_REHYDRATION__').text()
 		),
-		Effect.mapError(cause => NotesError.make({cause, message: 'The TikTok photo post is unreadable.'}))
+		Effect.mapError(cause =>
+			NotesError.make({cause, message: 'The TikTok photo post is unreadable.', reason: 'UnreadablePhoto'})
+		)
 	)).__DEFAULT_SCOPE__['webapp.video-detail'].itemInfo.itemStruct
 	const images = Array.filterMap(item.imagePost.images, image =>
 		Result.fromOption(Array.head(image.imageURL.urlList), () => undefined)
@@ -420,166 +409,6 @@ const gitHub = Effect.fnUntraced(function* (url: URL) {
 		})
 	)
 })
-
-function markdown($: cheerio.CheerioAPI, node: AnyNode, base: URL): string {
-	if (node.nodeType === 3) return String.replaceAll(/\s+/gu, ' ')(node.data)
-	if (!Predicate.hasProperty(node, 'tagName')) return ''
-	const inner = pipe(
-		$(node).contents().toArray(),
-		Array.map(child => markdown($, child, base)),
-		Array.join('')
-	)
-	return pipe(
-		Array.findFirstIndex(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'], heading => heading === node.tagName),
-		Option.map(index => `\n\n${String.repeat(index + 1)('#')} ${String.trim(inner)}\n\n`),
-		Option.getOrElse(() => element($, {base, inner, node, tag: node.tagName}))
-	)
-}
-
-function element($: cheerio.CheerioAPI, input: {base: URL; inner: string; node: AnyNode; tag: string}) {
-	const text = String.trim(input.inner)
-	return pipe(
-		Match.value(input.tag),
-		Match.when('li', () => {
-			const marker = Boolean.match($(input.node).parent().is('ol'), {
-				onFalse: () => '-',
-				onTrue: () => `${$(input.node).index() + 1}.`
-			})
-			return `\n${String.repeat($(input.node).parents('ul, ol').length - 1)('  ')}${marker} ${text}`
-		}),
-		Match.when('pre', () => `\n\n\`\`\`\n${$(input.node).text()}\n\`\`\`\n\n`),
-		Match.when('code', () => `\`${text}\``),
-		Match.when('br', () => '\n'),
-		Match.when('tr', () => `\n${text}`),
-		Match.when(
-			name => name === 'td' || name === 'th',
-			() => `${text} | `
-		),
-		Match.when('a', () =>
-			pipe(
-				Option.fromNullishOr($(input.node).attr('href')),
-				Option.flatMap(Option.liftThrowable(href => new URL(href, input.base))),
-				Option.filter(link => (link.protocol === 'https:' || link.protocol === 'http:') && String.isNonEmpty(text)),
-				Option.match({onNone: () => input.inner, onSome: link => `[${text}](${link.href})`})
-			)
-		),
-		Match.when(
-			name => Array.contains(BLOCK_TAGS, name),
-			() => `\n\n${text}\n\n`
-		),
-		Match.orElse(() => input.inner)
-	)
-}
-
-// The article's text as Markdown, so the AI keeps its headings, lists and link targets.
-export function pageText(html: string, url: URL) {
-	const $ = cheerio.load(html)
-	$('script, style, noscript, iframe, svg, nav, header, footer, form, aside, button, dialog, template').remove()
-	const description =
-		$('meta[property="og:description"]').attr('content') ?? $('meta[name="description"]').attr('content')
-	const root = pipe(
-		['article', 'main', '[role="main"]'],
-		Array.map(selector => $(selector).first()),
-		Array.findFirst(found => String.length(plainText(found.text())) >= 200),
-		Option.getOrElse(() => $('body'))
-	)
-	// Whitespace stays only inside code blocks; elsewhere it is markup indentation.
-	const body = pipe(
-		Array.join(
-			Array.map(root.toArray(), node => markdown($, node, url)),
-			''
-		),
-		String.split('```'),
-		Array.map((part, index) =>
-			Boolean.match(index % 2 === 1, {
-				onFalse: () =>
-					pipe(
-						part,
-						String.split('\n'),
-						Array.map(line => String.replace(/^ (?=\S)/u, '')(String.trimEnd(line))),
-						Array.join('\n'),
-						String.replaceAll(/\n{3,}/gu, '\n\n')
-					),
-				onTrue: () => part
-			})
-		),
-		Array.join('```'),
-		String.trim
-	)
-	return Extraction.make({
-		author: pipe(
-			Option.fromUndefinedOr($('meta[property="og:site_name"]').attr('content')),
-			Option.map(plainText),
-			Option.filter(String.isNonEmpty),
-			Option.orElseSome(() => url.hostname)
-		),
-		// Without a preview, the site's largest PNG or touch icon (ICO and SVG do not decode), else the favicon service.
-		image: pipe(
-			Option.fromNullishOr(
-				$('meta[property="og:image"]').attr('content') ?? $('meta[name="twitter:image"]').attr('content')
-			),
-			Option.orElse(() =>
-				pipe(
-					$('link[rel~="apple-touch-icon"], link[rel~="icon"]').toArray(),
-					Array.map(link => $(link)),
-					Array.filter(
-						link =>
-							link.attr('type') === 'image/png' ||
-							Option.isSome(String.match(/\.png(?:$|\?)/iu)(link.attr('href') ?? '')) ||
-							Option.isSome(String.match(/apple-touch-icon/iu)(link.attr('rel') ?? ''))
-					),
-					Array.filterMap(link =>
-						Result.fromOption(
-							Option.map(Option.fromUndefinedOr(link.attr('href')), href => ({
-								href,
-								size: pipe(
-									String.match(/(\d+)x\d+/u)(link.attr('sizes') ?? ''),
-									Option.flatMap(match => Array.get(match, 1)),
-									Option.flatMap(Number.parse),
-									Option.getOrElse(() => 0)
-								)
-							})),
-							() => undefined
-						)
-					),
-					Array.sort(BY_SIZE),
-					Array.head,
-					Option.map(icon => icon.href)
-				)
-			),
-			Option.flatMap(Option.liftThrowable(image => new URL(image, url).href)),
-			Option.orElseSome(() => `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=128`)
-		),
-		text: pipe(
-			[
-				pipe(
-					[
-						Option.map(
-							Option.fromUndefinedOr($('meta[property="article:published_time"]').attr('content')),
-							date => `Published ${date}`
-						),
-						Option.map(
-							Option.fromUndefinedOr(
-								$('meta[name="author"]').attr('content') ?? $('meta[property="article:author"]').attr('content')
-							),
-							name => `by ${plainText(name)}`
-						)
-					],
-					Array.getSomes,
-					Option.liftPredicate(Array.isReadonlyArrayNonEmpty),
-					Option.map(Array.join(' '))
-				),
-				Option.map(Option.fromUndefinedOr(description), plainText),
-				Option.some(body)
-			],
-			Array.getSomes,
-			Array.filter(String.isNonEmpty),
-			Array.join('\n\n')
-		),
-		title: plainText($('meta[property="og:title"]').attr('content') ?? $('title').first().text()),
-		url: canonical(url)
-	})
-}
 
 const reader = Effect.fnUntraced(function* (url: URL) {
 	const answer = yield* pipe(
@@ -696,6 +525,7 @@ const xThread = Effect.fnUntraced(function* (url: URL) {
 	const status = yield* whole(conversation.status)
 	const quote = yield* Effect.transposeOption(Option.map(Option.fromNullishOr(status.quote), whole))
 	const replies = conversation.replies ?? []
+	const byId = HashMap.fromIterable(Array.map(Array.reverse(replies), post => [post.id, post] as const))
 	// The author's follow-ups answer the saved post or an earlier follow-up; the author's answers to readers stay replies.
 	const followUps = Array.reduce(
 		Array.sort(
@@ -716,6 +546,8 @@ const xThread = Effect.fnUntraced(function* (url: URL) {
 	const shown = [status, ...followUps, ...Option.toArray(quote)]
 	// The posts above the saved one come after it, so its own links and photos lead.
 	const context = [...shown, ...earlier]
+	const contextIds = HashSet.fromIterable(Array.map(context, post => post.id))
+	const followUpIds = HashSet.fromIterable(Array.map(followUps, post => post.id))
 	const links = Array.dedupe(Array.flatMap(context, linksOf))
 	const linked = yield* Effect.all(
 		{
@@ -741,7 +573,7 @@ const xThread = Effect.fnUntraced(function* (url: URL) {
 							() => undefined
 						)
 					),
-					Array.filter(linkedId => !Array.some(context, post => post.id === linkedId)),
+					Array.filter(linkedId => !HashSet.has(contextIds, linkedId)),
 					Array.dedupe,
 					Array.take(5)
 				),
@@ -772,13 +604,13 @@ const xThread = Effect.fnUntraced(function* (url: URL) {
 					"The author's answers to readers",
 					pipe(
 						replies,
-						Array.filter(
-							post => post.author.id === status.author.id && !Array.some(followUps, own => own.id === post.id)
-						),
+						Array.filter(post => post.author.id === status.author.id && !HashSet.has(followUpIds, post.id)),
 						Array.sort(byTime),
 						Array.map(answer =>
 							Option.match(
-								Array.findFirst(replies, post => post.id === answer.replying_to?.status),
+								Option.flatMap(Option.fromNullishOr(answer.replying_to?.status), parentId =>
+									HashMap.get(byId, parentId)
+								),
 								{
 									onNone: () => plainText(answer.text),
 									onSome: question =>
@@ -845,7 +677,7 @@ export class Sources extends Context.Service<
 						if (source === 'TikTok' && String.includes('/photo/')(url.pathname)) {
 							return yield* Effect.retry(tikTokPhotos(url), {
 								times: Boolean.match(Option.isSome(yield* Exit), {onFalse: () => 0, onTrue: () => 2}),
-								while: error => error.message === 'The TikTok photo post is unreadable.'
+								while: error => error.reason === 'UnreadablePhoto'
 							})
 						}
 						if (source === 'TikTok') {

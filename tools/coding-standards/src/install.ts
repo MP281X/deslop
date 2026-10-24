@@ -76,28 +76,32 @@ const cli = pipe(
 					return yield* CliError.UserError.make({cause: `${ancestor} resolves outside this Git repository.`})
 				}
 			})
-			for (const directory of targets) {
-				const target = path.join(root, directory)
-				if (isGlobal(target)) {
-					return yield* CliError.UserError.make({cause: `${target} resolves into global agent configuration.`})
-				}
-				if (Array.contains(entries, directory)) {
-					yield* validate(target)
-					if (Array.contains(yield* fs.readDirectory(target), 'skills')) {
-						yield* validate(path.join(target, 'skills'))
+			yield* Effect.forEach(
+				targets,
+				Effect.fnUntraced(function* (directory: string) {
+					const target = path.join(root, directory)
+					if (isGlobal(target)) {
+						return yield* CliError.UserError.make({cause: `${target} resolves into global agent configuration.`})
 					}
-				}
-				const skills = yield* canonical(path.join(target, 'skills'))
-				for (const name of names) {
-					const owned = path.join(skills, name)
-					if (
-						isGlobal(owned) ||
-						Array.some(globals, global => pipe(global, String.startsWith(`${owned}${path.sep}`)))
-					) {
-						return yield* CliError.UserError.make({cause: `${owned} overlaps global agent configuration.`})
+					if (Array.contains(entries, directory)) {
+						yield* validate(target)
+						if (Array.contains(yield* fs.readDirectory(target), 'skills')) {
+							yield* validate(path.join(target, 'skills'))
+						}
 					}
-				}
-			}
+					const skills = yield* canonical(path.join(target, 'skills'))
+					for (const name of names) {
+						const owned = path.join(skills, name)
+						if (
+							isGlobal(owned) ||
+							Array.some(globals, global => pipe(global, String.startsWith(`${owned}${path.sep}`)))
+						) {
+							return yield* CliError.UserError.make({cause: `${owned} overlaps global agent configuration.`})
+						}
+					}
+				}),
+				{concurrency: 1, discard: true}
+			)
 
 			for (const directory of targets) {
 				yield* fs.makeDirectory(path.join(root, directory, 'skills'), {recursive: true})

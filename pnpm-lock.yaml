@@ -177,16 +177,6 @@ packageExtensionsChecksum: sha256-H0sozbqlUTsXIJ3l/dFqqZlABythdQm0Wps+rxuCS88=
 importers:
 
   .:
-    dependencies:
-      '@effect/atom-react':
-        specifier: latest
-        version: 4.0.5(effect@4.0.5)(react@19.3.1)(scheduler@0.28.0)
-      '@effect/platform-node':
-        specifier: latest
-        version: 4.0.5(effect@4.0.5)(redis@6.3.0(@opentelemetry/api@1.9.1))
-      effect:
-        specifier: latest
-        version: 4.0.5
     devDependencies:
       '@deslop/coding-standards':
         specifier: workspace:*
@@ -206,6 +196,9 @@ importers:
       '@types/react-dom':
         specifier: latest
         version: 19.3.0(@types/react@19.3.0)
+      effect:
+        specifier: latest
+        version: 4.0.5
       fallow:
         specifier: latest
         version: 3.35.0
@@ -230,12 +223,21 @@ importers:
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
+      '@effect/atom-react':
+        specifier: latest
+        version: 4.0.5(effect@4.0.5)(react@19.3.1)(scheduler@0.28.0)
+      '@effect/platform-node':
+        specifier: latest
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0(@opentelemetry/api@1.9.1))
       '@effect/sql-sqlite-node':
         specifier: latest
         version: 4.0.5(effect@4.0.5)
       '@tanstack/react-router':
         specifier: latest
         version: 1.170.45(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      effect:
+        specifier: latest
+        version: 4.0.5
       lucide-react:
         specifier: latest
         version: 1.61.0(@types/react@19.3.0)(react@19.3.1)
@@ -267,6 +269,12 @@ importers:
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
+      '@effect/atom-react':
+        specifier: latest
+        version: 4.0.5(effect@4.0.5)(react@19.3.1)(scheduler@0.28.0)
+      '@effect/platform-node':
+        specifier: latest
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0(@opentelemetry/api@1.9.1))
       '@expo/ui':
         specifier: ^58.0
         version: 58.0.21(@babel/core@7.29.7(supports-color@8.1.1))(expo@58.0.16(@babel/core@7.29.7(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.1))(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)(typescript@7.0.2))(react-dom@19.3.1(react@19.3.1))(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
@@ -276,6 +284,9 @@ importers:
       cheerio:
         specifier: latest
         version: 1.2.0
+      effect:
+        specifier: latest
+        version: 4.0.5
       expo-auth-session:
         specifier: ^58.0
         version: 58.0.13(expo@58.0.16(@babel/core@7.29.7(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.1))(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)(typescript@7.0.2))(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)(typescript@7.0.2)
@@ -306,12 +317,21 @@ importers:
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
+      '@effect/atom-react':
+        specifier: latest
+        version: 4.0.5(effect@4.0.5)(react@19.3.1)(scheduler@0.28.0)
+      '@effect/platform-node':
+        specifier: latest
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0(@opentelemetry/api@1.9.1))
       '@tanstack/react-hotkeys':
         specifier: latest
         version: 0.16.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@tanstack/react-router':
         specifier: latest
         version: 1.170.45(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      effect:
+        specifier: latest
+        version: 4.0.5
       lucide-react:
         specifier: latest
         version: 1.61.0(@types/react@19.3.0)(react@19.3.1)
@@ -327,9 +347,15 @@ importers:
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
+      '@effect/platform-node':
+        specifier: latest
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0(@opentelemetry/api@1.9.1))
       '@effect/sql-sqlite-node':
         specifier: latest
         version: 4.0.5(effect@4.0.5)
+      effect:
+        specifier: latest
+        version: 4.0.5
 
   apps/stash:
     dependencies:
@@ -355,6 +381,12 @@ importers:
       '@effect/ai-anthropic':
         specifier: latest
         version: 4.0.5(effect@4.0.5)
+      '@effect/atom-react':
+        specifier: latest
+        version: 4.0.5(effect@4.0.5)(react@19.3.1)(scheduler@0.28.0)
+      '@effect/platform-node':
+        specifier: latest
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0(@opentelemetry/api@1.9.1))
       '@expo/ui':
         specifier: ^58.0
         version: 58.0.21(@babel/core@7.29.7(supports-color@8.1.1))(expo@58.0.16(@babel/core@7.29.7(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.1))(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)(typescript@7.0.2))(react-dom@19.3.1(react@19.3.1))(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
@@ -370,6 +402,9 @@ importers:
       domhandler:
         specifier: ^5.0
         version: 5.0.3
+      effect:
+        specifier: latest
+        version: 4.0.5
       expo-auth-session:
         specifier: ^58.0
         version: 58.0.13(expo@58.0.16(@babel/core@7.29.7(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.1))(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)(typescript@7.0.2))(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)(typescript@7.0.2)
@@ -400,12 +435,18 @@ importers:
 
   packages/components-mobile:
     dependencies:
+      '@effect/atom-react':
+        specifier: latest
+        version: 4.0.5(effect@4.0.5)(react@19.3.1)(scheduler@0.28.0)
       '@expo-google-fonts/jetbrains-mono':
         specifier: latest
         version: 0.4.1
       '@expo/ui':
         specifier: ^58.0
         version: 58.0.21(@babel/core@7.29.7(supports-color@8.1.1))(expo@58.0.16(@babel/core@7.29.7(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.1))(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)(typescript@7.0.2))(react-dom@19.3.1(react@19.3.1))(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
+      effect:
+        specifier: latest
+        version: 4.0.5
       expo-asset:
         specifier: ^58.0
         version: 58.0.17(expo@58.0.16(@babel/core@7.29.7(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.1))(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)(typescript@7.0.2))(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)(typescript@7.0.2)
@@ -431,6 +472,9 @@ importers:
       '@base-ui/react':
         specifier: latest
         version: 1.9.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@effect/atom-react':
+        specifier: latest
+        version: 4.0.5(effect@4.0.5)(react@19.3.1)(scheduler@0.28.0)
       '@fontsource-variable/jetbrains-mono':
         specifier: latest
         version: 5.3.0
@@ -461,6 +505,9 @@ importers:
       dompurify:
         specifier: latest
         version: 3.4.17
+      effect:
+        specifier: latest
+        version: 4.0.5
       input-otp:
         specifier: latest
         version: 1.5.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -506,9 +553,15 @@ importers:
       '@deslop/components-web':
         specifier: workspace:*
         version: link:../components-web
+      '@effect/platform-node':
+        specifier: latest
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0(@opentelemetry/api@1.9.1))
       '@tanstack/react-router':
         specifier: latest
         version: 1.170.45(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      effect:
+        specifier: latest
+        version: 4.0.5
     devDependencies:
       '@tailwindcss/vite':
         specifier: latest
@@ -540,12 +593,18 @@ importers:
 
   tools/coding-standards:
     dependencies:
+      '@effect/platform-node':
+        specifier: latest
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0(@opentelemetry/api@1.9.1))
       '@effect/tsgo':
         specifier: '>=0.46'
         version: 0.54.1
       '@shadcn/lint':
         specifier: latest
         version: 0.2.3
+      effect:
+        specifier: latest
+        version: 4.0.5
       oxlint-plugin-react-doctor:
         specifier: latest
         version: 0.9.18
@@ -558,11 +617,24 @@ importers:
       '@deslop/create-package':
         specifier: workspace:*
         version: link:../create-package
+      '@effect/platform-node':
+        specifier: latest
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0(@opentelemetry/api@1.9.1))
       '@tanstack/router-generator':
         specifier: latest
         version: 1.167.45(supports-color@8.1.1)
+      effect:
+        specifier: latest
+        version: 4.0.5
 
-  tools/create-package: {}
+  tools/create-package:
+    dependencies:
+      '@effect/platform-node':
+        specifier: latest
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0(@opentelemetry/api@1.9.1))
+      effect:
+        specifier: latest
+        version: 4.0.5
 
 packages:
 
