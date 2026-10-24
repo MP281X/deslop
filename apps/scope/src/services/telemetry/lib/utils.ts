@@ -142,6 +142,7 @@ export function traceView(entries: Entry[], id: string) {
 		Option.match({onNone: () => '0', onSome: entry => entry.time})
 	)
 	const logs = Array.filter(ordered, entry => entry.signal === 'log')
+	const bySpan = Array.groupBy(logs, log => log.spanId)
 	const nodes = Array.map(spans, span => {
 		const ancestors = Array.reverse(
 			Array.unfold({entry: span.entry, seen: HashSet.make(span.entry.spanId)}, current =>
@@ -159,7 +160,7 @@ export function traceView(entries: Entry[], id: string) {
 			value: {
 				...span.entry,
 				depth: ancestors.length,
-				logs: Array.filter(logs, log => log.spanId === span.entry.spanId),
+				logs: Option.getOrElse(Record.get(bySpan, span.entry.spanId), () => []),
 				offsetMs: durationMs(start, span.entry.time),
 				parentSpanId: parentId(span.entry),
 				runtime: runtime(span.entry.resource)

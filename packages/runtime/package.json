@@ -17,7 +17,9 @@
 	},
 	"dependencies": {
 		"@deslop/components-web": "workspace:*",
-		"@tanstack/react-router": "latest"
+		"@effect/platform-node": "latest",
+		"@tanstack/react-router": "latest",
+		"effect": "latest"
 	},
 	"devDependencies": {
 		"@tailwindcss/vite": "latest",

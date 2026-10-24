@@ -37,7 +37,7 @@ export function seriesOf(link: string) {
 }
 
 // A page link cubari can still load: the dead proxy's links unwrap to the file they point at, and its error texts drop.
-export function pageLink(page: CubariSeries['chapters'][string]['groups'][string][number]) {
+function pageLink(page: CubariSeries['chapters'][string]['groups'][string][number]) {
 	if (Predicate.isString(page)) return unwrapped(page)
 	return unwrapped(page.src)
 }

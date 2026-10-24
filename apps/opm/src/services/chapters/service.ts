@@ -8,6 +8,8 @@ import {
 	Context,
 	Effect,
 	FileSystem,
+	HashMap,
+	HashSet,
 	Layer,
 	Number,
 	Option,
@@ -69,6 +71,14 @@ function merge(current: Chapter[], chapter: Chapter) {
 function change(chapters: Chapter[], number: number, update: (chapter: Chapter) => Chapter) {
 	return Array.map(chapters, item =>
 		Boolean.match(item.number === number, {onFalse: () => item, onTrue: () => update(item)})
+	)
+}
+
+function changed(chapters: Chapter[], before: Chapter[]) {
+	const previous = HashMap.fromIterable(Array.map(before, chapter => [chapter.number, chapter] as const))
+	return Array.filter(
+		chapters,
+		chapter => !Option.exists(HashMap.get(previous, chapter.number), item => item === chapter)
 	)
 }
 
@@ -167,10 +177,7 @@ export class Chapters extends Context.Service<
 					return Effect.uninterruptible(
 						SubscriptionRef.updateEffect(state, current => {
 							const next = apply(current)
-							return Effect.as(
-								store.save(Array.filter(next, chapter => !Array.some(current, item => item === chapter))),
-								next
-							)
+							return Effect.as(store.save(changed(next, current)), next)
 						})
 					)
 				}
@@ -200,13 +207,14 @@ export class Chapters extends Context.Service<
 						Array.getSomes
 					)
 					// Only the numbers still missing: a chapter Reddit already supplied keeps its pages.
-					yield* save(current =>
-						Array.reduce(
-							Array.filter(chapters, chapter => !Array.some(current, item => item.number === chapter.number)),
+					yield* save(current => {
+						const numbers = HashSet.fromIterable(Array.map(current, chapter => chapter.number))
+						return Array.reduce(
+							Array.filter(chapters, chapter => !HashSet.has(numbers, chapter.number)),
 							current,
 							merge
 						)
-					)
+					})
 					yield* Effect.logInfo(`Backfilled ${chapters.length} chapters from the community index`)
 				})
 
@@ -216,12 +224,14 @@ export class Chapters extends Context.Service<
 						yield* pipe(backfill, Effect.ignore({log: 'Warn', message: 'The community index was not read'}))
 					}
 					const posts = postsOf(yield* feed)
-					const known = yield* SubscriptionRef.get(state)
+					const known = HashMap.fromIterable(
+						Array.map(yield* SubscriptionRef.get(state), chapter => [chapter.number, chapter] as const)
+					)
 					const now = yield* Clock.currentTimeMillis
 					const found = yield* Effect.forEach(
 						// The first post of a new chapter, or a later explicit revision of a known one with other pages.
 						Array.reduce(posts, Array.empty<Post>(), (chosen, post) => {
-							const existing = Array.findFirst(known, item => item.number === post.number)
+							const existing = HashMap.get(known, post.number)
 							const fresh = Option.isNone(existing) && !Array.some(chosen, item => item.number === post.number)
 							const revision =
 								post.revised &&
@@ -333,11 +343,11 @@ export class Chapters extends Context.Service<
 										onNone: () => [{reset: true, upserted: Array.map(current, Struct.omit(['notified']))}],
 										onSome: before =>
 											pipe(
-												Array.filter(current, chapter => !Array.some(before, item => item === chapter)),
+												changed(current, before),
 												Array.match({
 													onEmpty: () => Array.empty<ChaptersEvent>(),
-													onNonEmpty: changed => [
-														{reset: false, upserted: Array.map(changed, Struct.omit(['notified']))}
+													onNonEmpty: updates => [
+														{reset: false, upserted: Array.map(updates, Struct.omit(['notified']))}
 													]
 												})
 											)

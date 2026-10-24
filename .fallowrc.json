@@ -8,6 +8,88 @@
 		"tools/coding-standards/src/install.ts"
 	],
 	"includeEntryExports": true,
+	"publicPackages": ["@deslop/coding-standards"],
+	"failOnParseError": true,
+	"boundaries": {
+		"zones": [
+			{
+				"name": "client",
+				"patterns": [
+					"apps/*/index.html",
+					"apps/*/src/main.client.tsx",
+					"apps/*/src/routes/**",
+					"apps/*/src/lib/{utils.ts,components.tsx}",
+					"apps/*/modules/native/index.ts",
+					"packages/components-*/src/**",
+					"packages/runtime/src/{web,mobile}/client.ts"
+				]
+			},
+			{
+				"name": "shared",
+				"patterns": [
+					"apps/*/src/services/*/{schema.ts,lib/utils.ts,lib/page.ts}",
+					"apps/*/src/{rpcs,tools}/contracts.ts",
+					"apps/portfolio/src/lib/portfolio.ts",
+					"packages/runtime/src/auth/schema.ts",
+					"packages/runtime/src/auth/lib/utils.ts",
+					"packages/runtime/src/telemetry.ts"
+				]
+			},
+			{
+				"name": "server",
+				"patterns": [
+					"apps/*/src/main.server.ts",
+					// First match wins: schemas and pure helpers above stay shared; implementations default to server-only.
+					"apps/*/src/services/**",
+					"apps/*/src/{rpcs,tools}/handlers.ts",
+					"packages/runtime/src/auth/service.ts",
+					"packages/runtime/src/server.ts"
+				]
+			}
+		],
+		"rules": [
+			{"from": "client", "allow": ["client", "shared"]},
+			{"from": "shared", "allow": ["shared"]},
+			{"from": "server", "allow": ["server", "shared"]}
+		],
+		"coverage": {
+			"requireAllFiles": true,
+			"allowUnmatched": [
+				"tools/**",
+				"**/*.config.*",
+				"**/*.test.ts",
+				"**/app.plugin.js",
+				"apps/*/fingerprint.config.js",
+				"apps/*/targets/**",
+				"packages/runtime/src/vite.ts",
+				"packages/runtime/src/mobile/expo.ts"
+			]
+		}
+	},
+	"health": {
+		// No production coverage exists: estimated CRAP must not masquerade as measured risk.
+		"maxCrap": 0,
+		"thresholdOverrides": [
+			{
+				"files": ["tools/coding-standards/src/rules/shared.ts"],
+				"functions": ["referencedTypeNames"],
+				"maxCognitive": 17,
+				"reason": "One recursive visitor follows TypeScript's finite type-node variants."
+			},
+			{
+				"files": ["apps/stash/src/services/notes/lib/extraction.ts"],
+				"functions": ["isPublic"],
+				"maxCyclomatic": 22,
+				"reason": "Keep the public IPv4 exclusions together for security review."
+			},
+			{
+				"files": ["apps/portfolio/src/routes/(home)/index.tsx"],
+				"functions": ["PortfolioRoute"],
+				"maxCognitive": 24,
+				"reason": "The score counts 23 hook calls; moving them into a wrapper does not simplify the screen's state ownership."
+			}
+		]
+	},
 	"ignoreDependencies": [
 		"@expo-google-fonts/jetbrains-mono",
 		"babel-preset-expo",
@@ -25,5 +107,5 @@
 		{"exports": ["*"], "file": "apps/*/src/services/*/schema.ts"},
 		{"exports": ["*"], "file": "packages/components-web/src/**/*.tsx"}
 	],
-	"rules": {"require-suppression-reason": "error", "unlisted-dependencies": "off"}
+	"rules": {"policy-violation": "off", "require-suppression-reason": "error", "unlisted-dependencies": "error"}
 }

@@ -1,11 +1,4 @@
-import {Array, Config, Duration, Number, Option, String, pipe} from 'effect'
-
-// When set, every read of a source exits through this proxy, so sites never see the server's address; `{session}` keeps one exit address per request.
-export const sourceProxy = Config.option(Config.String('STASH_PROXY'))
-
-export function sticky(proxy: string, session: string) {
-	return String.replaceAll('{session}', session)(proxy)
-}
+import {Array, Duration, Number, Option, String, pipe} from 'effect'
 
 export function clock(seconds: number) {
 	const parts = Duration.parts(Duration.seconds(seconds))

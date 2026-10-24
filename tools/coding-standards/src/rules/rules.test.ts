@@ -1567,6 +1567,210 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 
 		testApi.effect(
+			'keeps fallible I/O in the error channel and recovery independent of display wording',
+			() =>
+				Effect.gen(function* () {
+					const source = [
+						"import {Effect} from 'effect'",
+						"import * as SecureStore from 'expo-secure-store'",
+						"import * as Notifications from 'expo-notifications'",
+						"import {Asset} from 'expo-asset'",
+						'',
+						'declare const work: Effect.Effect<void, {message: string; reason: string}>',
+						'declare const native: {hasLink: () => Promise<boolean>}',
+						'export const deleted = Effect.promise(() => SecureStore.deleteItemAsync("session"))',
+						'export const badge = Effect.promise(() => Notifications.setBadgeCountAsync(0))',
+						'export const permissions = Effect.promise(() => Notifications.requestPermissionsAsync())',
+						'export const asset = Effect.promise(() => Asset.fromModule(1).downloadAsync())',
+						'export const typed = Effect.tryPromise(() => SecureStore.deleteItemAsync("session"))',
+						'export const infallible = Effect.promise(() => native.hasLink())',
+						'export function shadowed(SecureStore: {deleteItemAsync: () => Promise<void>}) { return Effect.promise(() => SecureStore.deleteItemAsync()) }',
+						'export const retry = Effect.retry(work, {while: failure => failure.message === "offline"})',
+						'export const catchMessage = Effect.catchIf(work, failure => failure.message !== "offline", () => Effect.void)',
+						'export const retryReason = Effect.retry(work, {while: failure => failure.reason === "Offline"})',
+						'export const display = Effect.mapError(work, failure => failure.message === "Error" ? "Unavailable" : failure.message)',
+						'export const repeatValue = Effect.repeat(Effect.succeed({message: "ready"}), {while: value => value.message === "ready"})'
+					]
+					const result = yield* lintSource({'boundaries.ts': Array.join(source, '\n')})
+					assert.strictEqual(result.stderr, '')
+					assert.deepStrictEqual(
+						pipe(
+							result.stdout.diagnostics,
+							Array.filter(diagnostic =>
+								Array.contains(
+									[
+										'@deslop/coding-standards(no-fallible-promise)',
+										'@deslop/coding-standards(no-error-message-control-flow)'
+									],
+									diagnostic.code
+								)
+							),
+							Array.map(
+								diagnostic =>
+									String.split(result.sources[0] ?? '', '\n')[(diagnostic.labels[0]?.span.line ?? 0) - 1] ?? ''
+							),
+							Array.sort(String.Order)
+						),
+						pipe(
+							[7, 8, 9, 10, 14, 15],
+							Array.map(index => source[index] ?? ''),
+							Array.sort(String.Order)
+						)
+					)
+				}),
+			20_000
+		)
+
+		testApi.effect(
+			'distinguishes named data-last callbacks and absent error causes',
+			() =>
+				Effect.gen(function* () {
+					const source = [
+						"import {Effect, Redacted, Schema} from 'effect'",
+						'',
+						'declare const items: number[]',
+						'declare const options: {concurrency: number}',
+						'function load(id: number) { return Effect.succeed(id) }',
+						'class Failed extends Schema.TaggedError<Failed>()("Failed", {cause: Schema.Unknown}) {}',
+						'export const dataLast = Effect.forEach(load, options)',
+						'export const dataFirst = Effect.forEach(items, load)',
+						'export const missing = Effect.mapError(Effect.fail("failure"), failure => Failed.make({cause: undefined}))',
+						'export const nullCause = Effect.mapError(Effect.fail("failure"), failure => Failed.make({"cause": null}))',
+						'export const voidCause = Effect.mapError(Effect.fail("failure"), failure => Failed.make({cause: void failure}))',
+						'export const kept = Effect.mapError(Effect.fail("failure"), failure => Failed.make({cause: failure}))',
+						'export const redacted = Effect.mapError(Effect.fail("failure"), failure => Failed.make({cause: Redacted.make(failure)}))',
+						'export function shadowed(undefined: string) { return Effect.mapError(Effect.fail("failure"), failure => Failed.make({cause: undefined})) }',
+						'const loadUntraced = Effect.fnUntraced(function* (id: number) { return yield* Effect.succeed(id) })',
+						'const loadTraced = Effect.fn("load")(function* (id: number) { return yield* Effect.succeed(id) })',
+						'export const untraced = Effect.forEach(loadUntraced, options)',
+						'export const traced = Effect.forEach(loadTraced, options)',
+						'const loadDirect = Effect.fn(function* (id: number) { return yield* Effect.succeed(id) })',
+						'export const direct = Effect.forEach(loadDirect, options)'
+					]
+					const result = yield* lintSource({'precision.ts': Array.join(source, '\n')})
+					assert.strictEqual(result.stderr, '')
+					assert.deepStrictEqual(
+						pipe(
+							result.stdout.diagnostics,
+							Array.filter(diagnostic =>
+								Array.contains(
+									[
+										'@deslop/coding-standards(explicit-effect-concurrency)',
+										'@deslop/coding-standards(preserve-error-cause)'
+									],
+									diagnostic.code
+								)
+							),
+							Array.map(
+								diagnostic =>
+									String.split(result.sources[0] ?? '', '\n')[(diagnostic.labels[0]?.span.line ?? 0) - 1] ?? ''
+							),
+							Array.sort(String.Order)
+						),
+						pipe(
+							[7, 8, 9, 10, 13],
+							Array.map(index => source[index] ?? ''),
+							Array.sort(String.Order)
+						)
+					)
+				}),
+			20_000
+		)
+
+		testApi.effect(
+			'follows immutable boundary callbacks and schemas without rejecting optionality, validation or encoding',
+			() =>
+				Effect.gen(function* () {
+					const source = [
+						"import {Array, Effect, Redacted, Schema, pipe} from 'effect'",
+						"import {HttpClientRequest, HttpClientResponse, HttpIncomingMessage, HttpServerRequest} from 'effect/http'",
+						"import * as Notifications from 'expo-notifications'",
+						"import {getExpoPushTokenAsync, setBadgeCountAsync} from 'expo-notifications'",
+						"import {deleteItemAsync} from 'expo-secure-store'",
+						'',
+						'declare const work: Effect.Effect<number[], Error>',
+						'declare const source: string',
+						'declare const response: HttpClientResponse.HttpClientResponse',
+						'declare const native: {hasLink: () => Promise<boolean>}',
+						'class BoundaryError extends Schema.TaggedError<BoundaryError>()("BoundaryError", {cause: Schema.Unknown}) {}',
+						'function empty() { return [] }',
+						'const nothing = () => Effect.void',
+						'export const badEmpty = Effect.orElseSucceed(work, Array.empty<number>)',
+						'export const badNamedEmpty = Effect.orElseSucceed(work, empty)',
+						'export const badConstEmpty = Effect.catch(work, nothing)',
+						'export const goodOptional = Effect.option(work)',
+						'export const goodZero = Effect.orElseSucceed(work, () => 0)',
+						'export const goodLogged = Effect.ignore(work, {log: "Warn", message: "Cache not read"})',
+						'export const badLiteralCause = Effect.mapError(work, cause => BoundaryError.make({cause: "failed"}))',
+						'export const badMessageCause = Effect.mapError(work, cause => BoundaryError.make({cause: cause.message}))',
+						'declare const metadata: {cause: string}',
+						'export const badPropertyCause = Effect.mapError(work, cause => BoundaryError.make({cause: metadata.cause}))',
+						'declare const message: string',
+						'export const badOuterCause = Effect.mapError(work, cause => BoundaryError.make({cause: message}))',
+						'export const badShadowCause = Effect.mapError(work, cause => BoundaryError.make({cause: ((cause: string) => cause)("lost")}))',
+						'export const badNoParamCatch = Effect.tryPromise({try: () => native.hasLink(), catch: () => BoundaryError.make({})})',
+						'export const goodCause = Effect.mapError(work, cause => BoundaryError.make({cause}))',
+						'export const goodRedacted = Effect.mapError(work, cause => BoundaryError.make({cause: Redacted.make(cause)}))',
+						'export const goodClassify = Effect.mapError(Effect.fromOption(Schema.decodeUnknownOption(Schema.String)(source)), () => BoundaryError.make({}))',
+						'const Json = Schema.fromJsonString(Schema.Unknown)',
+						'const alias = Json',
+						'export const badJson = Schema.decodeUnknownSync(alias)(source)',
+						'export const badResponse = HttpClientResponse.schemaBodyJson(Schema.Unknown)',
+						'export const badIncoming = HttpIncomingMessage.schemaBodyJson(Schema.Unknown)',
+						'export const badRequest = HttpServerRequest.schemaBodyJson(Schema.Unknown)',
+						'export const goodResponse = HttpClientResponse.schemaBodyJson(Schema.Struct({payload: Schema.Unknown}))',
+						'export const goodEncoding = Schema.encodeSync(Json)({message})',
+						'export const goodRequestEncoding = HttpClientRequest.schemaBodyJson(Schema.Unknown)',
+						'export const goodStaged = Schema.decodeUnknownSync(Schema.String)(Schema.decodeUnknownSync(Json)(source))',
+						'export const goodSyncPiped = pipe(Schema.decodeUnknownSync(Schema.UnknownFromJsonString)(source), Schema.decodeUnknownSync(Schema.String))',
+						'export const goodEffectStaged = pipe(HttpClientResponse.schemaBodyJson(Schema.Unknown)(response), Effect.flatMap(Schema.decodeUnknownEffect(Schema.String)))',
+						'const token = () => Notifications.getExpoPushTokenAsync()',
+						'function remove() { return Notifications.setBadgeCountAsync(0) }',
+						'export const badToken = Effect.promise(token)',
+						'export const badNamedPromise = Effect.promise(remove)',
+						'export const badInlineToken = Effect.promise(() => Notifications.getExpoPushTokenAsync())',
+						'export const badNamedToken = Effect.promise(() => getExpoPushTokenAsync())',
+						'export const badNamedBadge = Effect.promise(() => setBadgeCountAsync(0))',
+						'export const badNamedDelete = Effect.promise(() => deleteItemAsync("session"))',
+						'export const goodNamedTyped = Effect.tryPromise(() => getExpoPushTokenAsync())',
+						'export function goodShadowedPromise(getExpoPushTokenAsync: () => Promise<string>) { return Effect.promise(() => getExpoPushTokenAsync()) }',
+						'export const goodTyped = Effect.tryPromise(token)',
+						'export const goodNative = Effect.promise(() => native.hasLink())',
+						'export function goodParameter(fallback: () => number[]) { return Effect.orElseSucceed(work, fallback) }',
+						'export function goodShadow(HttpClientResponse: {schemaBodyJson: (schema: unknown) => unknown}) { return HttpClientResponse.schemaBodyJson(Schema.Unknown) }',
+						'let mutable = token',
+						'export const goodUnknownBinding = Effect.promise(mutable)',
+						'function reassigned() { return Notifications.setBadgeCountAsync(0) }',
+						'reassigned = () => Promise.resolve(true)',
+						'export const goodReassigned = Effect.promise(reassigned)',
+						'const cycleA = cycleB',
+						'const cycleB = cycleA',
+						'export const goodUnknownCycle = Effect.orElseSucceed(work, cycleA)'
+					]
+					const result = yield* lintSource({'boundary-aliases.ts': Array.join(source, '\n')})
+					assert.strictEqual(result.stderr, '')
+					assert.deepStrictEqual(
+						pipe(
+							result.stdout.diagnostics,
+							Array.filter(diagnostic =>
+								Array.some(
+									['no-empty-recovery', 'preserve-error-cause', 'no-unvalidated-json-decode', 'no-fallible-promise'],
+									rule => diagnostic.code === `@deslop/coding-standards(${rule})`
+								)
+							),
+							Array.map(
+								diagnostic =>
+									String.split(result.sources[0] ?? '', '\n')[(diagnostic.labels[0]?.span.line ?? 0) - 1] ?? ''
+							),
+							Array.sort(String.Order)
+						),
+						pipe(source, Array.filter(String.startsWith('export const bad')), Array.sort(String.Order))
+					)
+				}),
+			20_000
+		)
+
+		testApi.effect(
 			'keeps package APIs, global classes and Effect services out of native method calls',
 			() =>
 				Effect.gen(function* () {

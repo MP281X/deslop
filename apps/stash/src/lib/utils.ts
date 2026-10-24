@@ -258,12 +258,15 @@ export const notesAtom = Atom.keepAlive(
 		if (!AsyncResult.isSuccess(session) || Option.isNone(session.value)) return Stream.succeed(Array.empty<NoteItem>())
 		get(MobileRuntime.activationsAtom)
 		return Stream.concat(
-			Stream.fromEffect(
-				pipe(
-					Effect.try(() => listFile.textSync()),
-					Effect.flatMap(Schema.decodeEffect(ListJson)),
-					Effect.orElseSucceed(Array.empty<NoteItem>)
-				)
+			Stream.flatMap(
+				Stream.fromEffect(
+					pipe(
+						Effect.try(() => listFile.textSync()),
+						Effect.flatMap(Schema.decodeEffect(ListJson)),
+						Effect.option
+					)
+				),
+				cached => Stream.fromIterable(Option.toArray(cached))
 			),
 			pipe(
 				Effect.gen(function* () {

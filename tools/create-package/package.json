@@ -9,5 +9,9 @@
 	},
 	"exports": {
 		".": "./src/copy-template.ts"
+	},
+	"dependencies": {
+		"@effect/platform-node": "latest",
+		"effect": "latest"
 	}
 }
