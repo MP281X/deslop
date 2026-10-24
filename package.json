@@ -3,14 +3,9 @@
 	"type": "module",
 	"scripts": {
 		"build": "vp run -r build",
-		"check": "vp check && fallow dead-code --format compact --fail-on-issues",
-		"fix": "vp check --fix; status=$?; vp fmt && fallow dead-code --format compact --fail-on-issues && exit $status",
+		"check": "vp check && fallow dead-code --format compact --fail-on-issues && fallow dead-code --production --format compact --fail-on-issues && fallow dupes --format compact --fail-on-issues && fallow health --complexity --format compact",
+		"fix": "vp check --fix; status=$?; vp fmt && fallow dead-code --format compact --fail-on-issues && fallow dead-code --production --format compact --fail-on-issues && fallow dupes --format compact --fail-on-issues && fallow health --complexity --format compact && exit $status",
 		"prepare": "effect-tsgo patch --no-typescript --oxlint --force"
-	},
-	"dependencies": {
-		"@effect/atom-react": "latest",
-		"@effect/platform-node": "latest",
-		"effect": "latest"
 	},
 	"devDependencies": {
 		"@deslop/coding-standards": "workspace:*",
@@ -19,6 +14,7 @@
 		"@types/node": "latest",
 		"@types/react": "latest",
 		"@types/react-dom": "latest",
+		"effect": "latest",
 		"fallow": "latest",
 		"typescript": "latest",
 		"vite": "catalog:",

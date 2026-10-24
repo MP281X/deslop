@@ -227,6 +227,54 @@ it.layer(layer)(test => {
 				),
 				['']
 			)
+			yield* telemetry.ingestTraces(
+				TracesRequest.make({
+					resourceSpans: [
+						{
+							resource: {attributes: [{key: 'service.name', value: {stringValue: 'logging'}}]},
+							scopeSpans: [
+								{
+									spans: [
+										{
+											name: 'request',
+											spanId: '1111111111111111',
+											startTimeUnixNano: '1781870000002000000',
+											traceId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+										}
+									]
+								}
+							]
+						}
+					]
+				})
+			)
+			yield* telemetry.ingestLogs(
+				LogsRequest.make({
+					resourceLogs: [
+						{
+							resource: {attributes: [{key: 'service.name', value: {stringValue: 'logging'}}]},
+							scopeLogs: [
+								{
+									logRecords: [
+										{
+											body: {stringValue: 'attached'},
+											spanId: '1111111111111111',
+											timeUnixNano: '1781870000003000000',
+											traceId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+										}
+									]
+								}
+							]
+						}
+					]
+				})
+			)
+			const trace = yield* telemetry.trace('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+			assert.deepStrictEqual(
+				Array.map(trace.spans, span => Array.map(span.logs, log => log.name)),
+				[['attached']]
+			)
+			assert.strictEqual(trace.logs.length, 1)
 		})
 	)
 })

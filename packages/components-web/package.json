@@ -14,6 +14,7 @@
 	},
 	"dependencies": {
 		"@base-ui/react": "latest",
+		"@effect/atom-react": "latest",
 		"@fontsource-variable/jetbrains-mono": "latest",
 		"@legendapp/list": "latest",
 		"@lexical/react": "latest",
@@ -24,6 +25,7 @@
 		"clsx": "latest",
 		"cmdk": "latest",
 		"dompurify": "latest",
+		"effect": "latest",
 		"input-otp": "latest",
 		"lexical": "latest",
 		"lucide-react": "latest",

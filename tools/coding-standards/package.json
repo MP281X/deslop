@@ -32,7 +32,9 @@
 		"build": "vp pack"
 	},
 	"dependencies": {
+		"@effect/platform-node": "latest",
 		"@shadcn/lint": "latest",
+		"effect": "latest",
 		"oxlint-plugin-react-doctor": "latest"
 	},
 	"peerDependencies": {

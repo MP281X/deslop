@@ -18,8 +18,11 @@
 	"devDependencies": {
 		"@deslop/components-web": "workspace:*",
 		"@deslop/runtime": "workspace:*",
+		"@effect/atom-react": "latest",
+		"@effect/platform-node": "latest",
 		"@effect/sql-sqlite-node": "latest",
 		"@tanstack/react-router": "latest",
+		"effect": "latest",
 		"lucide-react": "latest",
 		"react": "latest",
 		"react-dom": "latest",

@@ -8,6 +8,145 @@
 		"tools/coding-standards/src/install.ts"
 	],
 	"includeEntryExports": true,
+	"publicPackages": ["@deslop/coding-standards"],
+	"failOnParseError": true,
+	"boundaries": {
+		"zones": [
+			{
+				"name": "client",
+				"patterns": [
+					"apps/*/index.html",
+					"apps/*/src/main.client.tsx",
+					"apps/*/src/routes/**",
+					"apps/*/src/lib/utils.ts",
+					"apps/*/src/lib/components.tsx",
+					"apps/*/modules/native/index.ts",
+					"packages/components-*/src/**",
+					"packages/runtime/src/web/client.ts",
+					"packages/runtime/src/mobile/client.ts"
+				]
+			},
+			{
+				"name": "shared",
+				"patterns": [
+					"apps/*/src/services/*/schema.ts",
+					"apps/*/src/rpcs/contracts.ts",
+					"apps/*/src/tools/contracts.ts",
+					"apps/portfolio/src/lib/portfolio.ts",
+					"apps/opm/src/services/chapters/lib/utils.ts",
+					"apps/stash/src/services/notes/lib/utils.ts",
+					"apps/stash/src/services/notes/lib/page.ts",
+					"apps/scope/src/services/telemetry/lib/utils.ts",
+					"packages/runtime/src/auth/schema.ts",
+					"packages/runtime/src/auth/lib/utils.ts",
+					"packages/runtime/src/telemetry.ts"
+				]
+			},
+			{
+				"name": "server",
+				"patterns": [
+					"apps/*/src/main.server.ts",
+					"apps/*/src/services/*/service.ts",
+					"apps/*/src/services/*/lib/store.ts",
+					"apps/*/src/services/*/lib/extraction.ts",
+					"apps/*/src/services/*/lib/organization.ts",
+					"apps/stash/src/services/media/lib/utils.ts",
+					"apps/*/src/rpcs/handlers.ts",
+					"apps/*/src/tools/handlers.ts",
+					"packages/runtime/src/auth/service.ts",
+					"packages/runtime/src/server.ts"
+				]
+			}
+		],
+		"rules": [
+			{"from": "client", "allow": ["client", "shared"]},
+			{"from": "shared", "allow": ["shared"]},
+			{"from": "server", "allow": ["server", "shared"]}
+		],
+		"coverage": {
+			"requireAllFiles": true,
+			"allowUnmatched": [
+				"tools/**",
+				"**/*.config.*",
+				"**/*.test.ts",
+				"**/app.plugin.js",
+				"apps/*/fingerprint.config.js",
+				"apps/*/targets/**",
+				"packages/runtime/src/vite.ts",
+				"packages/runtime/src/mobile/expo.ts"
+			]
+		}
+	},
+	"duplicates": {
+		// Keys include content and occurrence count: edits or another copy require review again, not a higher repository-wide percentage.
+		"ignoredClones": [
+			// Mobile OAuth protocol steps have different Keychain and refresh-lock owners; a configurable auth framework would obscure them.
+			"dup:a86698e5:2",
+			"dup:8187c92c:2",
+			"dup:7e705c58:2",
+			"dup:5606f348:2",
+			"dup:ef2eb352:2",
+			// Independent mobile screens, stream lifetimes and activation checks; shared syntax is not shared state ownership.
+			"dup:a654f554:2",
+			"dup:cff3fb6d:2",
+			"dup:952ea5f3:2",
+			"dup:78aa3416:2",
+			// Each OTLP route keeps its decoder, ingestion method and response mapping together.
+			"dup:aa4ba900:2",
+			"dup:7aba03f9:2",
+			// Rule-specific AST predicates and visitor preambles: retain their different exclusions without a visitor configuration language.
+			"dup:b1ee38be:2",
+			"dup:416f2247:3",
+			"dup:7a32491c:2",
+			"dup:ecbfaea7:2",
+			// File and diff renderers have distinct annotation and line contracts; query atoms have distinct keys and stream ownership.
+			"dup:7584f4e0:2",
+			"dup:5b89b8d2:2",
+			"dup:bd84dadc:2",
+			// OAuth error normalization and redirects stay with their respective public and authenticated routes.
+			"dup:7192cc4e:2",
+			"dup:2133702b:2",
+			// Independent SQLite domains own their schema, transaction and write policy.
+			"dup:501c9cca:2",
+			"dup:7267461a:2"
+		]
+	},
+	"health": {
+		// No production coverage exists: estimated CRAP must not masquerade as measured risk.
+		"maxCrap": 0,
+		"thresholdOverrides": [
+			{
+				"files": ["tools/coding-standards/src/rules/shared.ts"],
+				"functions": ["isFilteredCount"],
+				"maxCyclomatic": 34,
+				"reason": "Flat AST exclusions preserve mutation semantics; extracting each boolean only hides the same decisions."
+			},
+			{
+				"files": ["tools/coding-standards/src/rules/shared.ts"],
+				"functions": ["referencedTypeNames"],
+				"maxCognitive": 17,
+				"reason": "One recursive visitor follows TypeScript's finite type-node variants."
+			},
+			{
+				"files": ["apps/stash/src/services/notes/lib/extraction.ts"],
+				"functions": ["isPublic"],
+				"maxCyclomatic": 22,
+				"reason": "Keep the public IPv4 exclusions together for security review."
+			},
+			{
+				"files": ["tools/coding-standards/src/install.ts"],
+				"functions": ["cli"],
+				"maxCognitive": 20,
+				"reason": "Validate every destination before any repository skill copy; splitting the traversal obscures that ordering."
+			},
+			{
+				"files": ["apps/portfolio/src/routes/(home)/index.tsx"],
+				"functions": ["PortfolioRoute"],
+				"maxCognitive": 24,
+				"reason": "The score counts 23 hook calls; moving them into a wrapper does not simplify the screen's state ownership."
+			}
+		]
+	},
 	"ignoreDependencies": [
 		"@expo-google-fonts/jetbrains-mono",
 		"babel-preset-expo",
@@ -25,5 +164,5 @@
 		{"exports": ["*"], "file": "apps/*/src/services/*/schema.ts"},
 		{"exports": ["*"], "file": "packages/components-web/src/**/*.tsx"}
 	],
-	"rules": {"require-suppression-reason": "error", "unlisted-dependencies": "off"}
+	"rules": {"policy-violation": "off", "require-suppression-reason": "error", "unlisted-dependencies": "error"}
 }

@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Option} from 'effect'
 
-import {nameOf, pageLink, postFrom, resumeOf, seriesOf} from '#services/chapters/lib/utils.ts'
+import {nameOf, pagesOf, postFrom, resumeOf, seriesOf} from '#services/chapters/lib/utils.ts'
 import type {Reading} from '#services/chapters/schema.ts'
 import {ChapterItem} from '#services/chapters/schema.ts'
 
@@ -37,9 +37,9 @@ it('unwraps pages of the dead image proxy and drops its error texts', () => {
 				`https://services.f-ck.me/v1/image/${btoa('Invalid uploader')}`,
 				{src: 'https://i.example.org/b.png'}
 			],
-			pageLink
+			page => pagesOf({chapters: {'1': {groups: {english: [page]}}}}, '1')
 		),
-		[Option.some('https://files.example.org/a.png'), Option.none(), Option.some('https://i.example.org/b.png')]
+		[Option.some(['https://files.example.org/a.png']), Option.none(), Option.some(['https://i.example.org/b.png'])]
 	)
 	assert.strictEqual(nameOf('Chapter 225: New Blood 3'), 'New Blood 3')
 	assert.strictEqual(nameOf('One Punch Man Chapter 242'), '')

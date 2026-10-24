@@ -129,6 +129,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				}),
 				traces: Effect.fn('Telemetry.traces')(function* (query: Query) {
 					const active = currentEntries(yield* read())
+					const byTrace = Array.groupBy(active, entry => entry.traceId)
 					const entries = Array.map(
 						Array.dedupe(
 							Array.map(
@@ -137,7 +138,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 							)
 						),
 						id => {
-							const records = Array.filter(active, entry => entry.traceId === id)
+							const records = byTrace[id] ?? []
 							const view = traceView(records, id)
 							const root = Option.getOrElse(Array.head(view.spans), () => Option.getOrThrow(Array.head(records)))
 							return {

@@ -8,6 +8,8 @@
 	},
 	"dependencies": {
 		"@deslop/create-package": "workspace:*",
-		"@tanstack/router-generator": "latest"
+		"@effect/platform-node": "latest",
+		"@tanstack/router-generator": "latest",
+		"effect": "latest"
 	}
 }

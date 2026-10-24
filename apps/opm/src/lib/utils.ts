@@ -3,6 +3,7 @@ import {
 	Clock,
 	Effect,
 	FiberHandle,
+	HashSet,
 	Layer,
 	Option,
 	Order,
@@ -67,7 +68,7 @@ const tokenRequest = Effect.fnUntraced(function* (clientId: string, params: Reco
 		)
 	)
 	if (response.status === 400 || response.status === 401) {
-		yield* Effect.promise(() => SecureStore.deleteItemAsync(SESSION))
+		yield* Effect.tryPromise(() => SecureStore.deleteItemAsync(SESSION))
 		return yield* AuthError.make({message: 'Sign in again'})
 	}
 	const token = yield* HttpClientResponse.schemaBodyJson(TokenResponse)(response)
@@ -148,7 +149,7 @@ export const signOutAtom = Atom.keepAlive(
 				const session = yield* refreshing.withPermit(
 					Effect.gen(function* () {
 						const saved = yield* readSession
-						yield* Effect.promise(() => SecureStore.deleteItemAsync(SESSION))
+						yield* Effect.tryPromise(() => SecureStore.deleteItemAsync(SESSION))
 						return saved
 					})
 				)
@@ -195,11 +196,9 @@ const chaptersFile = new File(Paths.document, 'chapters.json')
 
 function apply(chapters: ChapterList, event: ChaptersEvent) {
 	if (event.reset) return Array.copy(event.upserted)
+	const replaced = HashSet.fromIterable(Array.map(event.upserted, chapter => chapter.number))
 	return Array.sort(
-		[
-			...Array.filter(chapters, chapter => !Array.some(event.upserted, item => item.number === chapter.number)),
-			...event.upserted
-		],
+		[...Array.filter(chapters, chapter => !HashSet.has(replaced, chapter.number)), ...event.upserted],
 		Order.flip(byNumber)
 	)
 }
@@ -292,8 +291,8 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 			const session = get(sessionAtom)
 			if (session._tag !== 'Success' || Option.isNone(session.value)) return
 			get(MobileRuntime.activationsAtom)
-			yield* Effect.promise(() => Notifications.setBadgeCountAsync(0))
-			if (!(yield* Effect.promise(() => Notifications.requestPermissionsAsync())).granted) return
+			yield* Effect.tryPromise(() => Notifications.setBadgeCountAsync(0))
+			if (!(yield* Effect.tryPromise(() => Notifications.requestPermissionsAsync())).granted) return
 			const extra = yield* Schema.decodeUnknownEffect(Schema.Struct({eas: Schema.Struct({projectId: Schema.String})}))(
 				Constants.expoConfig?.extra
 			)

@@ -3,7 +3,7 @@ import {Array, Option} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {importedMember, memberName, returnedExpression} from '#rules/shared.ts'
+import {importedMember, memberName, returnedExpression, variableFromScope} from '#rules/shared.ts'
 
 // The fields of `X.make({...})` or `new X({...})`, the shapes a mapped error is built with.
 function constructedFields(node?: ESTree.Expression | null) {
@@ -16,7 +16,19 @@ function constructedFields(node?: ESTree.Expression | null) {
 	return Option.some(fields)
 }
 
-function dropsCause(node: ESTree.Node) {
+function absentCause(context: Context, node: ESTree.Node) {
+	if (node.type === 'Literal') return node.value === null
+	if (node.type === 'UnaryExpression') return node.operator === 'void'
+	return (
+		node.type === 'Identifier' &&
+		node.name === 'undefined' &&
+		!Option.exists(variableFromScope({name: node.name, scope: context.sourceCode.getScope(node)}), variable =>
+			Array.isArrayNonEmpty(variable.defs)
+		)
+	)
+}
+
+function dropsCause(context: Context, node: ESTree.Node) {
 	if (
 		(node.type !== 'ArrowFunctionExpression' && node.type !== 'FunctionExpression') ||
 		Array.isArrayEmpty(node.params)
@@ -27,7 +39,12 @@ function dropsCause(node: ESTree.Node) {
 		Array.every(
 			fields.properties,
 			property =>
-				property.type === 'SpreadElement' || !(property.key.type === 'Identifier' && property.key.name === 'cause')
+				property.type === 'SpreadElement' ||
+				!(
+					(property.key.type === 'Identifier' && property.key.name === 'cause') ||
+					(property.key.type === 'Literal' && property.key.value === 'cause')
+				) ||
+				absentCause(context, property.value)
 		)
 	)
 }
@@ -47,7 +64,10 @@ export const preserveErrorCause = defineRule({
 			}
 			const name = memberName(node.callee)
 			if (Option.contains(name, 'mapError')) {
-				Array.forEach(Array.filter(node.arguments, dropsCause), callback => report(context, callback))
+				Array.forEach(
+					Array.filter(node.arguments, argument => dropsCause(context, argument)),
+					callback => report(context, callback)
+				)
 				return
 			}
 			if (!Option.exists(name, method => method === 'try' || method === 'tryPromise')) return
@@ -58,7 +78,7 @@ export const preserveErrorCause = defineRule({
 					property.type === 'Property' &&
 					property.key.type === 'Identifier' &&
 					property.key.name === 'catch' &&
-					dropsCause(property.value)
+					dropsCause(context, property.value)
 				) {
 					report(context, property.value)
 				}
