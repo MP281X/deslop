@@ -142,43 +142,6 @@ export const signInAtom = authRuntime.fn(() =>
 	)
 )
 
-export const signOutAtom = Atom.keepAlive(
-	authRuntime.fn(() =>
-		pipe(
-			Effect.gen(function* () {
-				const session = yield* refreshing.withPermit(
-					Effect.gen(function* () {
-						const saved = yield* readSession
-						yield* Effect.tryPromise(() => SecureStore.deleteItemAsync(SESSION))
-						return saved
-					})
-				)
-				yield* Atom.refresh(sessionAtom)
-				yield* pipe(
-					Effect.forEach(
-						Option.toArray(session),
-						saved =>
-							pipe(
-								HttpClientRequest.post(`${AUTH_URL}/api/auth/oauth2/revoke`),
-								HttpClientRequest.bodyUrlParams({
-									client_id: saved.clientId,
-									token: saved.refreshToken,
-									token_type_hint: 'refresh_token'
-								}),
-								request => HttpClient.HttpClient.use(client => client.execute(request))
-							),
-						{concurrency: 1}
-					),
-					Effect.timeout('30 seconds'),
-					Effect.ignore({log: 'Warn', message: 'The server session could not be revoked; signing out on this iPhone'})
-				)
-			}),
-			Effect.mapError(cause => AuthError.make({cause, message: 'Cannot sign out'})),
-			alert('Not Signed Out')
-		)
-	)
-)
-
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/opm/lib/utils/RpcClient', {
 	group: RpcContracts,
 	protocol: pipe(
@@ -343,18 +306,6 @@ export const diagnosticsAtom = RpcClient.runtime.atom(get =>
 		}),
 		Effect.ignore({log: 'Warn', message: 'The crash reports were not read'})
 	)
-)
-
-const continuousFile = new File(Paths.document, 'continuous')
-
-// One chapter at a time, or one strip that runs on into the next chapter; the list's menu switches.
-export const continuousAtom = Atom.writable(
-	() => continuousFile.exists,
-	(context, continuous: boolean) => {
-		if (continuous) writeAtomically(continuousFile, '')
-		else if (continuousFile.exists) continuousFile.delete()
-		context.setSelf(continuous)
-	}
 )
 
 type ChapterData = typeof ChapterData.Type

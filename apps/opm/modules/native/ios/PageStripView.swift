@@ -4,17 +4,8 @@ import ImageIO
 import SwiftUI
 import UIKit
 
-struct StripChapter: Record, Equatable {
-  @Field var number: Double = 0
-  @Field var pages: [String] = []
-
-  static func == (left: StripChapter, right: StripChapter) -> Bool {
-    left.number == right.number && left.pages == right.pages
-  }
-}
-
 public final class PageStripViewProps: UIBaseViewProps {
-  @Field var chapters: [StripChapter] = []
+  @Field var pages: [String] = []
   @Field var start: Int = 0
   var onPage = EventDispatcher()
 }
@@ -30,7 +21,7 @@ public struct PageStripView: ExpoSwiftUI.View {
 
   public var body: some View {
     PageStrip(
-      chapters: props.chapters,
+      pages: props.pages,
       start: props.start,
       barsHidden: barsHidden,
       onPage: { index in props.onPage(["index": index]) },
@@ -47,7 +38,7 @@ public struct PageStripView: ExpoSwiftUI.View {
 }
 
 struct PageStrip: UIViewRepresentable {
-  let chapters: [StripChapter]
+  let pages: [String]
   let start: Int
   let barsHidden: Bool
   let onPage: (Int) -> Void
@@ -76,7 +67,7 @@ struct PageStrip: UIViewRepresentable {
     controller.onTap = onTap
     controller.onScroll = onScroll
     controller.bar.set(hidden: barsHidden)
-    controller.show(chapters: chapters, start: start)
+    controller.show(pages: pages, start: start)
   }
 }
 
@@ -153,7 +144,7 @@ final class StripController: NSObject, UIScrollViewDelegate {
 
   let scrollView = StripScrollView()
   let bar = BarFade()
-  private var chapters: [StripChapter] = []
+  private var pages: [String] = []
   private var pageViews: [PageView] = []
   // Height over width of each page; a page keeps a typical manga shape until its image arrives.
   private var aspects: [CGFloat] = []
@@ -162,6 +153,7 @@ final class StripController: NSObject, UIScrollViewDelegate {
   private var prefetches: [URL: URLSessionDataTask?] = [:]
   private var current = -1
   private var laidOutWidth: CGFloat = 0
+  private var adjusting = false
   var onPage: (Int) -> Void = { _ in }
   var onTap: () -> Void = {}
   var onScroll: () -> Void = {}
@@ -173,19 +165,21 @@ final class StripController: NSObject, UIScrollViewDelegate {
     scrollView.contentInsetAdjustmentBehavior = .never
     scrollView.onLayout = { [weak self] in self?.fit() }
     scrollView.onWindow = { [weak self] in
-      if let self { self.bar.attach(from: self.scrollView) }
+      if let self {
+        self.fit()
+        self.bar.attach(from: self.scrollView)
+      }
     }
     scrollView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
   }
 
-  // The same chapters with more after them extend the strip in place; anything else starts over at `start`.
-  func show(chapters: [StripChapter], start: Int) {
-    if chapters == self.chapters { return }
-    if !self.chapters.isEmpty && chapters.count > self.chapters.count
-      && Array(chapters.prefix(self.chapters.count)) == self.chapters
+  // Appending pages extends the strip in place; anything else starts over at `start`.
+  func show(pages: [String], start: Int) {
+    if pages == self.pages { return }
+    if !self.pages.isEmpty && pages.count > self.pages.count && pages.starts(with: self.pages)
     {
-      chapters[self.chapters.count...].forEach(add)
-      self.chapters = chapters
+      pages[self.pages.count...].forEach(add)
+      self.pages = pages
       layout()
       return
     }
@@ -194,22 +188,21 @@ final class StripController: NSObject, UIScrollViewDelegate {
     pageViews.forEach { $0.removeFromSuperview() }
     pageViews = []
     aspects = []
-    self.chapters = chapters
+    self.pages = pages
     current = -1
-    chapters.forEach(add)
+    pages.forEach(add)
     pendingStart = min(max(start, 0), max(pageViews.count - 1, 0))
     layout()
+    bar.attach(from: scrollView)
   }
 
-  private func add(_ chapter: StripChapter) {
-    for url in chapter.pages {
-      let index = pageViews.count
-      let view = PageView(url: url)
-      view.onAspect = { [weak self] aspect in self?.resize(index, to: aspect) }
-      scrollView.addSubview(view)
-      pageViews.append(view)
-      aspects.append(1.42)
-    }
+  private func add(_ url: String) {
+    let index = pageViews.count
+    let view = PageView(url: url)
+    view.onAspect = { [weak self] aspect in self?.resize(index, to: aspect) }
+    scrollView.addSubview(view)
+    pageViews.append(view)
+    aspects.append(1.42)
   }
 
   // The window's safe area, not the view's, so the strip starts below the Dynamic Island whether or not the bars show.
@@ -219,12 +212,12 @@ final class StripController: NSObject, UIScrollViewDelegate {
     if scrollView.contentInset != inset {
       scrollView.contentInset = inset
       layout()
-    } else if scrollView.bounds.width != laidOutWidth {
+    } else if scrollView.bounds.width != laidOutWidth || pendingStart != nil {
       layout()
     }
   }
 
-  private func layout() {
+  private func layout(report: Bool = true) {
     let width = scrollView.bounds.width
     guard width > 0 else { return }
     laidOutWidth = width
@@ -241,7 +234,7 @@ final class StripController: NSObject, UIScrollViewDelegate {
       let top = scrollView.contentInset.top
       scrollView.contentOffset = CGPoint(x: 0, y: min(pageViews[start].frame.minY - top, bottomOffset))
     }
-    track()
+    if report { track() }
   }
 
   private var bottomOffset: CGFloat {
@@ -255,22 +248,25 @@ final class StripController: NSObject, UIScrollViewDelegate {
     guard index < aspects.count, abs(aspects[index] - aspect) > 0.001 else { return }
     let above = pageViews[index].frame.maxY <= scrollView.contentOffset.y + scrollView.contentInset.top
     let delta = (laidOutWidth * aspect).rounded() - (laidOutWidth * aspects[index]).rounded()
+    adjusting = true
     aspects[index] = aspect
-    layout()
+    layout(report: false)
     if above {
       scrollView.contentOffset.y += delta
     }
+    adjusting = false
+    track()
   }
 
-  // The page under the middle of the screen is the one being read; only pages near it hold their images.
+  // Save and restore the same top-edge anchor, including pages shorter than half the screen.
   // Until the strip has scrolled to its start, the top page is not the one being read, so nothing is reported.
-  // A short last page never reaches the middle, so the strip scrolled to its end is read to its last page.
+  // At the bottom, even a short final page counts as read.
   private func track() {
-    guard !pageViews.isEmpty, pendingStart == nil else { return }
-    let middle = scrollView.contentOffset.y + scrollView.bounds.height / 2
+    guard !pageViews.isEmpty, pendingStart == nil, !adjusting else { return }
+    let top = scrollView.contentOffset.y + scrollView.contentInset.top + 1
     let index =
-      scrollView.contentOffset.y >= bottomOffset - 1
-      ? pageViews.count - 1 : pageViews.firstIndex { $0.frame.maxY > middle } ?? pageViews.count - 1
+      bottomOffset > -scrollView.contentInset.top && scrollView.contentOffset.y >= bottomOffset - 1
+      ? pageViews.count - 1 : pageViews.firstIndex { $0.frame.maxY > top } ?? pageViews.count - 1
     for (position, view) in pageViews.enumerated() {
       if position >= index - 2 && position <= index + 4 {
         view.load()
@@ -458,6 +454,30 @@ enum PageLoader {
         kCGImageSourceThumbnailMaxPixelSize: size,
       ] as CFDictionary
     guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else { return nil }
-    return UIImage(cgImage: image)
+    return UIImage(cgImage: trimmed(image))
+  }
+
+  // Scans alternate their binding margin. Remove only entirely blank side columns, never artwork or page numbers.
+  private static func trimmed(_ image: CGImage) -> CGImage {
+    let width = image.width
+    let height = image.height
+    var pixels = [UInt8](repeating: 0, count: width * height * 4)
+    return pixels.withUnsafeMutableBytes { bytes in
+      guard let context = CGContext(
+        data: bytes.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+        space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue)
+      else { return image }
+      context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+      func blank(_ x: Int) -> Bool {
+        stride(from: x * 4, to: bytes.count, by: width * 4).allSatisfy { index in
+          bytes[index] > 245 && bytes[index + 1] > 245 && bytes[index + 2] > 245
+        }
+      }
+      let limit = width / 10
+      let left = (0..<limit).first { !blank($0) } ?? limit
+      let right = (0..<limit).first { !blank(width - $0 - 1) } ?? limit
+      guard left + right > 0 else { return image }
+      return image.cropping(to: CGRect(x: left, y: 0, width: width - left - right, height: height)) ?? image
+    }
   }
 }

@@ -1,4 +1,4 @@
-import {useAtom, useAtomSet} from '@effect/atom-react'
+import {useAtomSet} from '@effect/atom-react'
 
 import {Array, Boolean, DateTime, Number, Option, Order, String, pipe} from 'effect'
 
@@ -6,13 +6,10 @@ import {
 	Button,
 	Circle,
 	ContentUnavailableView,
-	Divider,
 	HStack,
 	List,
-	Menu,
 	SwipeActions,
 	Text,
-	Toggle,
 	Toolbar,
 	ToolbarItem,
 	VStack,
@@ -32,7 +29,6 @@ import {
 	listRowInsets,
 	listRowSeparator,
 	listStyle,
-	menuOrder,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	onTapGesture,
@@ -48,7 +44,7 @@ import {colors, mono} from '@deslop/components-mobile/theme'
 import {AppTitle} from '@deslop/components-mobile/title'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
-import {continuousAtom, readAtom, signOutAtom} from '#lib/utils.ts'
+import {readAtom} from '#lib/utils.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
 import icon from '#routes/icon.png'
 import {byNumber, nameOf, resumeOf} from '#services/chapters/lib/utils.ts'
@@ -143,6 +139,7 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 						read({
 							done: !done,
 							number: props.chapter.number,
+							opened: false,
 							page: Boolean.match(done, {onFalse: () => Number.max(props.chapter.pages.length - 1, 0), onTrue: () => 0})
 						})
 					}
@@ -153,24 +150,6 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 	)
 }
 
-// A menu opened from the bottom bar reverses its items unless the order is fixed.
-function SettingsMenu() {
-	const [continuous, setContinuous] = useAtom(continuousAtom)
-	const signOut = useAtomSet(signOutAtom)
-	return (
-		<Menu label="Settings" systemImage="line.3.horizontal" modifiers={[labelStyle('iconOnly'), menuOrder('fixed')]}>
-			<Toggle
-				label="Scroll Into the Next Chapter"
-				systemImage="arrow.down.to.line"
-				isOn={continuous}
-				onIsOnChange={setContinuous}
-			/>
-			<Divider />
-			<Button label="Sign Out" systemImage="rectangle.portrait.and.arrow.right" onPress={() => signOut()} />
-		</Menu>
-	)
-}
-
 // A query matches a chapter's number from its start, or any part of its name.
 function matches(chapter: ChapterItem, query: string) {
 	return (
@@ -178,13 +157,13 @@ function matches(chapter: ChapterItem, query: string) {
 	)
 }
 
-export function ChaptersRoute(props: {chapters: ChapterList; onOpen: (number: number) => void}) {
+export function ChaptersRoute(props: {chapters: ChapterList; onOpen: (number: number, page?: number) => void}) {
 	const query = useNativeState('')
 	const [searched, setSearched] = useState('')
 	const text = String.toLowerCase(String.trim(searched))
 	// New means past the newest chapter ever opened, so the back catalogue carries no dots.
 	const reached = pipe(
-		Array.filter(props.chapters, chapter => chapter.reading !== undefined),
+		Array.filter(props.chapters, chapter => (chapter.reading?.at ?? 0) > 0),
 		Array.map(chapter => chapter.number),
 		Array.match({onEmpty: Option.none<number>, onNonEmpty: numbers => Option.some(Array.max(numbers, Order.Number))})
 	)
@@ -195,15 +174,10 @@ export function ChaptersRoute(props: {chapters: ChapterList; onOpen: (number: nu
 	)
 	return (
 		<Toolbar
-			modifiers={[
-				navigationTitle('opm'),
-				navigationBarTitleDisplayMode('inline'),
-				searchable(query, {onChange: setSearched, prompt: 'Search'}),
-				background(colors.background)
-			]}
+			modifiers={[navigationTitle('opm'), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
 		>
-			{/* SwiftUI shows the outermost toolbar's items first: the menu, the search field, then continue. */}
-			<Toolbar modifiers={[bottomBarSearch]}>
+			{/* Search and its explicit bottom-bar item share the same SwiftUI owner. */}
+			<Toolbar modifiers={[searchable(query, {onChange: setSearched, prompt: 'Search'}), bottomBarSearch]}>
 				{Array.match(shown, {
 					onEmpty: () =>
 						Boolean.match(String.isEmpty(text), {
@@ -235,11 +209,11 @@ export function ChaptersRoute(props: {chapters: ChapterList; onOpen: (number: nu
 					<ToolbarItem placement="bottomBar">
 						<Button
 							label={Option.match(resume, {
-								onNone: () => 'Continue Reading',
-								onSome: found => `Continue Chapter ${found.number}`
+								onNone: () => 'Resume Reading',
+								onSome: found => `Resume Chapter ${found.number}`
 							})}
 							systemImage="book"
-							onPress={() => Option.map(resume, found => props.onOpen(found.number))}
+							onPress={() => Option.map(resume, found => props.onOpen(found.number, found.page))}
 							modifiers={[labelStyle('iconOnly'), disabled(Option.isNone(resume))]}
 						/>
 					</ToolbarItem>
@@ -248,9 +222,6 @@ export function ChaptersRoute(props: {chapters: ChapterList; onOpen: (number: nu
 			<Toolbar.Content>
 				<ToolbarItem placement="principal">
 					<AppTitle logo={icon} name="opm" />
-				</ToolbarItem>
-				<ToolbarItem placement="bottomBar">
-					<SettingsMenu />
 				</ToolbarItem>
 			</Toolbar.Content>
 		</Toolbar>

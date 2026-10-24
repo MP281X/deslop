@@ -359,7 +359,14 @@ export class Chapters extends Context.Service<
 					read: Effect.fn('Chapters.read')(function* (update) {
 						const at = yield* Clock.currentTimeMillis
 						yield* save(chapters =>
-							change(chapters, update.number, item => ({...item, reading: {at, done: update.done, page: update.page}}))
+							change(chapters, update.number, item => ({
+								...item,
+								reading: {
+									at: Boolean.match(update.opened, {onFalse: () => item.reading?.at ?? 0, onTrue: () => at}),
+									done: update.done,
+									page: update.page
+								}
+							}))
 						)
 					}),
 					register: Effect.fn('Chapters.register')(function* (token) {
