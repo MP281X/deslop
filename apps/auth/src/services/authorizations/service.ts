@@ -1,5 +1,3 @@
-import {SqliteClient} from '@effect/sql-sqlite-node'
-
 import {
 	Array,
 	Boolean,
@@ -16,9 +14,12 @@ import {
 	Order,
 	Path,
 	PubSub,
+	Record,
 	Redacted,
+	Ref,
 	Result,
 	Schema,
+	Semaphore,
 	String,
 	Stream,
 	Struct,
@@ -38,28 +39,27 @@ import {
 	Url,
 	UrlParams
 } from 'effect/http'
+import {KeyValueStore} from 'effect/persistence'
 
 import {AuthError, User} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 import {AUTH_URL} from '@deslop/runtime/auth/utils'
+import {layerKeyValueStore} from '@deslop/runtime/server'
 
-import type {AdmitParams, PendingAuthorization, Role} from '#services/authorizations/schema.ts'
+import type {AdmitParams, PendingAuthorization, Role, MemberRow, Stored} from '#services/authorizations/schema.ts'
 import {
 	Account,
-	AuthorizationRow,
+	AuthState,
 	AuthorizationStatus,
 	AuthorizeParams,
 	CallbackParams,
 	ConsentParams,
 	GitHubToken,
 	GitHubUser,
-	MemberRow,
 	Person,
 	Registration,
 	RevokeParams,
 	SignInParams,
-	Stored,
-	StoredRow,
 	TokenParams,
 	VerificationParams
 } from '#services/authorizations/schema.ts'
@@ -118,6 +118,43 @@ function allowedRedirect(redirect: string) {
 	)
 }
 
+function revokeFamily(family: string, draft: Ref.Ref<AuthState>) {
+	return Ref.update(draft, current => ({
+		...current,
+		tokens: Record.filter(
+			current.tokens,
+			entry =>
+				!(
+					(entry.payload._tag === 'Access' ||
+						entry.payload._tag === 'Refresh' ||
+						entry.payload._tag === 'UsedRefresh') &&
+					entry.payload.family === family
+				)
+		)
+	}))
+}
+
+// Removing an account signs it out everywhere: its session, its app tokens and any sign-in it approved but did not deliver.
+function forget(id: string, draft: Ref.Ref<AuthState>) {
+	return Ref.update(draft, current => ({
+		members: Array.filter(current.members, row => row.id !== id),
+		tokens: Record.filter(
+			current.tokens,
+			entry =>
+				!(
+					((entry.payload._tag === 'Access' ||
+						entry.payload._tag === 'Code' ||
+						entry.payload._tag === 'Refresh' ||
+						entry.payload._tag === 'Session') &&
+						entry.payload.user.id === id) ||
+					(entry.payload._tag === 'Request' &&
+						entry.payload.decision._tag === 'Approved' &&
+						entry.payload.decision.user.id === id)
+				)
+		)
+	}))
+}
+
 export class Authorizations extends Context.Service<
 	Authorizations,
 	{
@@ -137,7 +174,28 @@ export class Authorizations extends Context.Service<
 	static readonly layer = pipe(
 		Layer.effectContext(
 			Effect.gen(function* () {
-				const sql = yield* SqliteClient.SqliteClient
+				const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, AuthState)
+				const state = yield* Ref.make<AuthState>(
+					Option.getOrElse(yield* store.get('state'), () => ({members: [], tokens: {}}))
+				)
+				const writes = yield* Semaphore.make(1)
+				function transact<A, E, R>(change: (draft: Ref.Ref<AuthState>) => Effect.Effect<A, E, R>) {
+					return writes.withPermit(
+						Effect.uninterruptible(
+							Effect.gen(function* () {
+								const before = yield* Ref.get(state)
+								const draft = yield* Ref.make(before)
+								const result = yield* change(draft)
+								const after = yield* Ref.get(draft)
+								if (after !== before) {
+									yield* store.set('state', after)
+									yield* Ref.set(state, after)
+								}
+								return result
+							})
+						)
+					)
+				}
 				const random = yield* Crypto.Crypto
 				const changes = yield* PubSub.sliding<true>(1)
 				const router = yield* HttpRouter.HttpRouter
@@ -149,50 +207,56 @@ export class Authorizations extends Context.Service<
 					clientId: Config.String('GITHUB_CLIENT_ID'),
 					secret: Config.Redacted('GITHUB_CLIENT_SECRET')
 				})
-				yield* sql`CREATE TABLE IF NOT EXISTS auth_state (hash TEXT PRIMARY KEY, payload TEXT NOT NULL, expires_at INTEGER NOT NULL)`
-				yield* sql`CREATE TABLE IF NOT EXISTS members (id TEXT PRIMARY KEY, name TEXT NOT NULL, full_name TEXT NOT NULL, status TEXT NOT NULL, since INTEGER NOT NULL)`
-				// A sign-in still waiting under the previous release's id has no code to type, so its page asks to start again.
-				yield* sql`DELETE FROM auth_state WHERE json_extract(payload, '$._tag') = 'Request' AND json_extract(payload, '$.id') GLOB '*[^A-Z]*'`
 				const hash = Effect.fnUntraced(function* (value: string) {
 					return Base64Url.encode(yield* random.digest('SHA-256', new TextEncoder().encode(value)))
 				})
-				const save = Effect.fnUntraced(function* (state: Stored, seconds: number) {
+				const mint = Effect.fnUntraced(function* (payload: Stored, seconds: number, draft: Ref.Ref<AuthState>) {
 					const token = Base64Url.encode(yield* random.randomBytes(32))
 					const now = yield* Clock.currentTimeMillis
-					yield* sql`DELETE FROM auth_state WHERE expires_at <= ${now}`
-					yield* sql`INSERT INTO auth_state (hash, payload, expires_at) VALUES (${yield* hash(token)}, ${yield* Schema.encodeEffect(Schema.fromJsonString(Stored))(state)}, ${now + seconds * 1000})`
+					const key = yield* hash(token)
+					yield* Ref.update(draft, current => ({
+						...current,
+						tokens: {
+							...Record.filter(current.tokens, entry => entry.expiresAt > now),
+							[key]: {expiresAt: now + seconds * 1000, payload}
+						}
+					}))
 					return token
 				})
-				const load = Effect.fnUntraced(function* (token: string) {
-					const row = yield* pipe(
-						Array.head(
-							yield* sql`SELECT payload FROM auth_state WHERE hash = ${yield* hash(token)} AND expires_at > ${yield* Clock.currentTimeMillis}`
-						),
+				function save(payload: Stored, seconds: number) {
+					return transact(draft => mint(payload, seconds, draft))
+				}
+				const load = Effect.fnUntraced(function* (token: string, draft: Ref.Ref<AuthState> = state) {
+					const now = yield* Clock.currentTimeMillis
+					return yield* pipe(
+						Record.get((yield* Ref.get(draft)).tokens, yield* hash(token)),
+						Option.filter(entry => entry.expiresAt > now),
+						Option.map(entry => entry.payload),
 						Effect.fromOption,
-						Effect.flatMap(Schema.decodeUnknownEffect(StoredRow)),
 						Effect.mapError(cause =>
 							AuthError.make({cause, error: 'invalid_grant', message: 'The authorization expired. Sign in again.'})
 						)
 					)
-					return yield* Schema.decodeEffect(Schema.fromJsonString(Stored))(row.payload)
 				})
-				const remove = Effect.fnUntraced(function* (token: string) {
-					yield* sql`DELETE FROM auth_state WHERE hash = ${yield* hash(token)}`
+				const remove = Effect.fnUntraced(function* (token: string, draft: Ref.Ref<AuthState>) {
+					const key = yield* hash(token)
+					yield* Ref.update(draft, current => ({...current, tokens: Record.remove(current.tokens, key)}))
 				})
 				function isAdmin(id: string) {
 					return Array.contains(provider.admins, String.replace('github:', '')(id))
 				}
 				const members = pipe(
-					sql`SELECT id, name, full_name AS "fullName", status, since FROM members ORDER BY since DESC, rowid DESC`,
-					Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(MemberRow)))
-				)
-				const member = Effect.fnUntraced(function* (id: string) {
-					return yield* pipe(
-						sql`SELECT id, name, full_name AS "fullName", status, since FROM members WHERE id = ${id}`,
-						Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(MemberRow))),
-						Effect.map(Array.head)
+					Ref.get(state),
+					Effect.map(current =>
+						Array.sort(
+							Array.reverse(current.members),
+							Order.flip(Order.mapInput(Order.Number, (row: MemberRow) => row.since))
+						)
 					)
-				})
+				)
+				function member(id: string, draft: Ref.Ref<AuthState> = state) {
+					return Effect.map(Ref.get(draft), current => Array.findFirst(current.members, row => row.id === id))
+				}
 				function personOf(row: MemberRow) {
 					return Person.make({
 						...pipe(row, Struct.pick(['id', 'name', 'since'])),
@@ -222,7 +286,25 @@ export class Authorizations extends Context.Service<
 								request => client.execute(request),
 								Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubUser))
 							)
-							yield* sql`INSERT INTO members (id, name, full_name, status, since) VALUES (${`github:${github.id}`}, ${github.login}, ${github.name ?? ''}, 'Allowed', ${yield* Clock.currentTimeMillis}) ON CONFLICT(id) DO NOTHING`
+							const since = yield* Clock.currentTimeMillis
+							yield* transact(draft =>
+								Ref.update(draft, current => {
+									if (Array.some(current.members, row => row.id === `github:${github.id}`)) return current
+									return {
+										...current,
+										members: [
+											...current.members,
+											{
+												fullName: github.name ?? '',
+												id: `github:${github.id}`,
+												name: github.login,
+												since,
+												status: 'Allowed' as const
+											}
+										]
+									}
+								})
+							)
 							yield* PubSub.publish(changes, true)
 						}),
 						{concurrency: 1, discard: true}
@@ -230,15 +312,15 @@ export class Authorizations extends Context.Service<
 					Effect.ignore({log: 'Warn', message: 'The admins’ GitHub profiles could not be read'}),
 					Effect.forkScoped
 				)
-				const roleOf = Effect.fnUntraced(function* (user: User) {
+				const roleOf = Effect.fnUntraced(function* (user: User, draft: Ref.Ref<AuthState> = state) {
 					if (isAdmin(user.id)) return 'Admin' as const
-					return Option.match(yield* member(user.id), {
+					return Option.match(yield* member(user.id, draft), {
 						onNone: () => 'Waiting' as const,
 						onSome: row => personOf(row).role
 					})
 				}, rejected('Cannot read the account'))
-				const allowed = Effect.fnUntraced(function* (user: User) {
-					if ((yield* roleOf(user)) === 'Waiting') {
+				const allowed = Effect.fnUntraced(function* (user: User, draft: Ref.Ref<AuthState> = state) {
+					if ((yield* roleOf(user, draft)) === 'Waiting') {
 						return yield* AuthError.make({
 							error: 'access_denied',
 							message: 'An admin has not allowed this GitHub account yet'
@@ -275,25 +357,39 @@ export class Authorizations extends Context.Service<
 					}
 				})
 				const sameOrigin = Effect.flatMap(HttpServerRequest.HttpServerRequest, request => checkOrigin(request.headers))
-				const requestRow = Effect.fnUntraced(function* (id: string) {
+				const requestRow = Effect.fnUntraced(function* (id: string, draft: Ref.Ref<AuthState> = state) {
+					const now = yield* Clock.currentTimeMillis
 					return yield* pipe(
-						sql`SELECT hash, payload, expires_at AS "expiresAt" FROM auth_state WHERE json_extract(payload, '$.id') = ${id} AND expires_at > ${yield* Clock.currentTimeMillis}`,
-						Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(AuthorizationRow))),
-						Effect.map(Array.head)
+						Ref.get(draft),
+						Effect.map(current =>
+							pipe(
+								Record.toEntries(current.tokens),
+								Array.findFirst(
+									pair =>
+										pair[1].expiresAt > now &&
+										(pair[1].payload._tag === 'Request' || pair[1].payload._tag === 'Delivered') &&
+										pair[1].payload.id === id
+								),
+								Option.map(pair => ({...pair[1], hash: pair[0]}))
+							)
+						)
 					)
 				})
-				const requestState = Effect.fnUntraced(function* (id: string) {
-					const row = yield* Effect.fromOption(yield* requestRow(id))
-					const stored = yield* Schema.decodeEffect(Schema.fromJsonString(Stored))(row.payload)
+				const requestState = Effect.fnUntraced(function* (id: string, draft: Ref.Ref<AuthState>) {
+					const stored = (yield* Effect.fromOption(yield* requestRow(id, draft))).payload
 					if (stored._tag !== 'Request') return yield* AuthError.make({message: 'The authorization request expired'})
 					return stored
 				}, rejected('The authorization request expired'))
-				const receiver = Effect.fnUntraced(function* (id: string, headers: Headers.Headers) {
+				const receiver = Effect.fnUntraced(function* (
+					id: string,
+					headers: Headers.Headers,
+					draft: Ref.Ref<AuthState> = state
+				) {
 					const token = Cookies.parseHeader(headers['cookie'] ?? '')[`${REQUEST_COOKIE}${id}`]
 					if (token === undefined) {
 						return yield* AuthError.make({message: 'Open the authorization link again'})
 					}
-					return yield* Option.match(yield* requestRow(id), {
+					return yield* Option.match(yield* requestRow(id, draft), {
 						onNone: () => Effect.succeedNone,
 						onSome: Effect.fnUntraced(function* (row) {
 							if (row.hash !== (yield* hash(token))) {
@@ -335,9 +431,8 @@ export class Authorizations extends Context.Service<
 					return yield* Option.match(yield* requestRow(String.toUpperCase(String.replaceAll(/[^a-z]/giu, '')(typed))), {
 						onNone: () => Effect.succeedNone,
 						onSome: Effect.fnUntraced(function* (row) {
-							const stored = yield* Schema.decodeEffect(Schema.fromJsonString(Stored))(row.payload)
-							if (stored._tag !== 'Request' || stored.decision._tag !== 'Pending') return Option.none()
-							return Option.some(publicRequest(stored, row.expiresAt))
+							if (row.payload._tag !== 'Request' || row.payload.decision._tag !== 'Pending') return Option.none()
+							return Option.some(publicRequest(row.payload, row.expiresAt))
 						})
 					})
 				})
@@ -346,19 +441,28 @@ export class Authorizations extends Context.Service<
 					return yield* pendingRequest(code)
 				}, rejected('Cannot read the sign-in'))
 				const decide = Effect.fnUntraced(function* (params: ConsentParams, user: User) {
-					yield* sql.withTransaction(
+					yield* transact(draft =>
 						Effect.gen(function* () {
-							const request = yield* requestState(params.request)
+							const request = yield* requestState(params.request, draft)
 							if (request.decision._tag !== 'Pending') {
 								return yield* AuthError.make({message: 'This authorization has already been answered'})
 							}
-							yield* sql`UPDATE auth_state SET payload = ${yield* Schema.encodeEffect(Schema.fromJsonString(Stored))({
-								...request,
-								decision: Boolean.match(params.accept, {
-									onFalse: () => ({_tag: 'Denied' as const}),
-									onTrue: () => ({_tag: 'Approved' as const, user})
+							yield* Ref.update(draft, current => ({
+								...current,
+								tokens: Record.map(current.tokens, entry => {
+									if (entry.payload._tag !== 'Request' || entry.payload.id !== params.request) return entry
+									return {
+										...entry,
+										payload: {
+											...request,
+											decision: Boolean.match(params.accept, {
+												onFalse: () => ({_tag: 'Denied' as const}),
+												onTrue: () => ({_tag: 'Approved' as const, user})
+											})
+										}
+									}
 								})
-							})} WHERE json_extract(payload, '$.id') = ${params.request}`
+							}))
 						})
 					)
 					yield* PubSub.publish(changes, true)
@@ -389,11 +493,25 @@ export class Authorizations extends Context.Service<
 						onFalse: () => 'Waiting' as const,
 						onTrue: () => 'Allowed' as const
 					})
-					const token = yield* sql.withTransaction(
-						Effect.andThen(
-							sql`INSERT INTO members (id, name, full_name, status, since) VALUES (${user.id}, ${user.name}, ${github.name ?? ''}, ${status}, ${yield* Clock.currentTimeMillis}) ON CONFLICT(id) DO UPDATE SET name = excluded.name, full_name = excluded.full_name`,
-							save({_tag: 'Session', user}, 365 * 86400)
-						)
+					const since = yield* Clock.currentTimeMillis
+					const token = yield* transact(draft =>
+						Effect.gen(function* () {
+							yield* Ref.update(draft, current => ({
+								...current,
+								members: Option.match(
+									Array.findFirst(current.members, row => row.id === user.id),
+									{
+										onNone: () => [...current.members, {fullName: github.name ?? '', ...user, since, status}],
+										onSome: () =>
+											Array.map(current.members, row => {
+												if (row.id !== user.id) return row
+												return {...row, fullName: github.name ?? '', name: user.name}
+											})
+									}
+								)
+							}))
+							return yield* mint({_tag: 'Session', user}, 365 * 86400, draft)
+						})
 					)
 					yield* PubSub.publish(changes, true)
 					return token
@@ -421,26 +539,27 @@ export class Authorizations extends Context.Service<
 						Order.mapInput(Number.Order, (person: Person) => ROLE_ORDER[person.role])
 					)
 				}, rejected('Cannot read people'))
-				// Removing an account signs it out everywhere: its session, its app tokens and any sign-in it approved but did not deliver.
-				const forget = Effect.fnUntraced(function* (id: string) {
-					yield* sql`DELETE FROM members WHERE id = ${id}`
-					yield* sql`DELETE FROM auth_state WHERE json_extract(payload, '$.user.id') = ${id} OR json_extract(payload, '$.decision.user.id') = ${id}`
-				})
 				// Each answer reads and changes the account in one transaction, so two answers to the same account cannot both apply.
 				const admit = Effect.fn('Authorizations.admit')(function* (params: AdmitParams, user: User) {
 					yield* admin(user)
-					const person = yield* sql.withTransaction(
+					const person = yield* transact(draft =>
 						Effect.gen(function* () {
-							const found = personOf(yield* Effect.fromOption(yield* member(params.id)))
+							const found = personOf(yield* Effect.fromOption(yield* member(params.id, draft)))
 							if (found.role !== 'Waiting') {
 								return yield* AuthError.make({message: 'This account is not asking for access'})
 							}
 							if (!params.allow) {
-								yield* forget(params.id)
+								yield* forget(params.id, draft)
 								return found
 							}
 							const now = yield* Clock.currentTimeMillis
-							yield* sql`UPDATE members SET status = 'Allowed', since = ${now} WHERE id = ${params.id}`
+							yield* Ref.update(draft, current => ({
+								...current,
+								members: Array.map(current.members, row => {
+									if (row.id !== params.id) return row
+									return {...row, since: now, status: 'Allowed' as const}
+								})
+							}))
 							return Person.make({...found, role: 'Member', since: now})
 						})
 					)
@@ -452,10 +571,10 @@ export class Authorizations extends Context.Service<
 					if (isAdmin(id)) {
 						return yield* AuthError.make({message: 'Admins come from GITHUB_ADMINS, so they cannot be removed here'})
 					}
-					const person = yield* sql.withTransaction(
+					const person = yield* transact(draft =>
 						Effect.gen(function* () {
-							const found = personOf(yield* Effect.fromOption(yield* member(id)))
-							yield* forget(id)
+							const found = personOf(yield* Effect.fromOption(yield* member(id, draft)))
+							yield* forget(id, draft)
 							return found
 						})
 					)
@@ -463,40 +582,53 @@ export class Authorizations extends Context.Service<
 					return person
 				}, rejected('Cannot remove this account'))
 				const receive = Effect.fnUntraced(function* (id: string, headers: Headers.Headers) {
-					return yield* sql.withTransaction(
-						Effect.flatMap(receiver(id, headers), result =>
+					return yield* transact(draft =>
+						Effect.flatMap(receiver(id, headers, draft), result =>
 							Option.match(result, {
 								onNone: () => Effect.succeed(AuthorizationStatus.make({_tag: 'Expired'})),
 								onSome: Effect.fnUntraced(function* (row) {
-									const request = yield* Schema.decodeEffect(Schema.fromJsonString(Stored))(row.payload)
-									if (request._tag === 'Delivered') {
-										return AuthorizationStatus.make({_tag: 'Completed', url: request.url})
+									if (row.payload._tag === 'Delivered') {
+										return AuthorizationStatus.make({_tag: 'Completed', url: row.payload.url})
 									}
-									if (request._tag !== 'Request') {
+									if (row.payload._tag !== 'Request') {
 										return yield* AuthError.make({message: 'Invalid authorization request'})
 									}
-									if (request.decision._tag === 'Pending') {
-										return AuthorizationStatus.make({_tag: 'Waiting', request: publicRequest(request, row.expiresAt)})
+									if (row.payload.decision._tag === 'Pending') {
+										return AuthorizationStatus.make({
+											_tag: 'Waiting',
+											request: publicRequest(row.payload, row.expiresAt)
+										})
 									}
-									const target = new URL(request.redirectUri)
-									target.searchParams.set('state', request.state)
+									const target = new URL(row.payload.redirectUri)
+									target.searchParams.set('state', row.payload.state)
 									target.searchParams.set('iss', issuer)
-									if (request.decision._tag === 'Approved') {
+									if (row.payload.decision._tag === 'Approved') {
 										target.searchParams.set(
 											'code',
-											yield* save(
+											yield* mint(
 												{
-													...pipe(request, Struct.pick(['challenge', 'clientId', 'redirectUri', 'resources', 'state'])),
+													...pipe(
+														row.payload,
+														Struct.pick(['challenge', 'clientId', 'redirectUri', 'resources', 'state'])
+													),
 													_tag: 'Code',
-													user: request.decision.user
+													user: row.payload.decision.user
 												},
-												60
+												60,
+												draft
 											)
 										)
 									} else {
 										target.searchParams.set('error', 'access_denied')
 									}
-									yield* sql`UPDATE auth_state SET payload = ${yield* Schema.encodeEffect(Schema.fromJsonString(Stored))({_tag: 'Delivered', id, url: target.href})}, expires_at = ${yield* Clock.currentTimeMillis} + 60000 WHERE hash = ${row.hash}`
+									const expiresAt = (yield* Clock.currentTimeMillis) + 60000
+									yield* Ref.update(draft, current => ({
+										...current,
+										tokens: {
+											...current.tokens,
+											[row.hash]: {expiresAt, payload: {_tag: 'Delivered' as const, id, url: target.href}}
+										}
+									}))
 									return AuthorizationStatus.make({_tag: 'Completed', url: target.href})
 								})
 							})
@@ -505,9 +637,10 @@ export class Authorizations extends Context.Service<
 				}, rejected('Cannot complete the authorization request'))
 				const grantTokens = Effect.fnUntraced(function* (
 					grant: typeof Stored.cases.Refresh.Type,
-					resources: PendingAuthorization['resources']
+					resources: PendingAuthorization['resources'],
+					draft: Ref.Ref<AuthState>
 				) {
-					yield* allowed(grant.user)
+					yield* allowed(grant.user, draft)
 					// A queued iOS upload cannot refresh its bearer after the share sheet closes.
 					const seconds = Boolean.match(Array.contains(resources, 'https://stash.mp281x.xyz'), {
 						onFalse: () => 900,
@@ -515,9 +648,13 @@ export class Authorizations extends Context.Service<
 					})
 					return HttpServerResponse.jsonUnsafe(
 						{
-							access_token: yield* save({_tag: 'Access', family: grant.family, resources, user: grant.user}, seconds),
+							access_token: yield* mint(
+								{_tag: 'Access', family: grant.family, resources, user: grant.user},
+								seconds,
+								draft
+							),
 							expires_in: seconds,
-							refresh_token: yield* save({...grant, _tag: 'Refresh'}, 30 * 86400),
+							refresh_token: yield* mint({...grant, _tag: 'Refresh'}, 30 * 86400, draft),
 							scope: 'deslop',
 							token_type: 'Bearer'
 						},
@@ -585,13 +722,13 @@ export class Authorizations extends Context.Service<
 					'/api/auth/oauth2/authorize',
 					oauth(
 						pipe(
-							sql.withTransaction(
+							transact(draft =>
 								Effect.gen(function* () {
 									const params = yield* pipe(
 										HttpServerRequest.schemaSearchParams(AuthorizeParams),
 										rejected('Invalid authorization request')
 									)
-									const registration = yield* load(params.client_id)
+									const registration = yield* load(params.client_id, draft)
 									if (registration._tag !== 'Client' || !Array.contains(registration.redirects, params.redirect_uri)) {
 										return yield* AuthError.make({
 											error: 'invalid_client',
@@ -618,10 +755,10 @@ export class Authorizations extends Context.Service<
 										''
 									)
 									// Two live sign-ins never share a code; one in about 10^10 draws repeats one, and its app simply starts again.
-									if (Option.isSome(yield* requestRow(id))) {
+									if (Option.isSome(yield* requestRow(id, draft))) {
 										return yield* AuthError.make({message: 'Start the sign-in again'})
 									}
-									const token = yield* save(
+									const token = yield* mint(
 										{
 											_tag: 'Request',
 											challenge: params.code_challenge,
@@ -634,7 +771,8 @@ export class Authorizations extends Context.Service<
 											resources: params.resource,
 											state: params.state
 										},
-										240
+										240,
+										draft
 									)
 									return HttpServerResponse.setCookieUnsafe(
 										HttpServerResponse.redirect(`/?request=${id}`),
@@ -671,10 +809,10 @@ export class Authorizations extends Context.Service<
 								HttpServerRequest.schemaBodyUrlParams(TokenParams),
 								rejected('Invalid token request')
 							)
-							return yield* sql.withTransaction(
+							return yield* transact(draft =>
 								Effect.gen(function* () {
 									if (params.grant_type === 'authorization_code') {
-										const code = yield* load(params.code)
+										const code = yield* load(params.code, draft)
 										if (
 											code._tag !== 'Code' ||
 											code.clientId !== params.client_id ||
@@ -687,7 +825,7 @@ export class Authorizations extends Context.Service<
 											})
 										}
 										const resources = yield* tokenResources(params, code.resources)
-										yield* remove(params.code)
+										yield* remove(params.code, draft)
 										return yield* grantTokens(
 											{
 												_tag: 'Refresh',
@@ -696,12 +834,13 @@ export class Authorizations extends Context.Service<
 												resources: code.resources,
 												user: code.user
 											},
-											resources
+											resources,
+											draft
 										)
 									}
-									const refresh = yield* load(params.refresh_token)
+									const refresh = yield* load(params.refresh_token, draft)
 									if (refresh._tag === 'UsedRefresh') {
-										yield* sql`DELETE FROM auth_state WHERE json_extract(payload, '$.family') = ${refresh.family}`
+										yield* revokeFamily(refresh.family, draft)
 										return HttpServerResponse.jsonUnsafe(
 											{error: 'invalid_grant', error_description: 'Sign in again'},
 											{status: 400}
@@ -711,8 +850,18 @@ export class Authorizations extends Context.Service<
 										return yield* AuthError.make({error: 'invalid_grant', message: 'The refresh token is invalid'})
 									}
 									const resources = yield* tokenResources(params, refresh.resources)
-									yield* sql`UPDATE auth_state SET payload = ${yield* Schema.encodeEffect(Schema.fromJsonString(Stored))({_tag: 'UsedRefresh', clientId: refresh.clientId, family: refresh.family})} WHERE hash = ${yield* hash(params.refresh_token)}`
-									return yield* grantTokens(refresh, resources)
+									const key = yield* hash(params.refresh_token)
+									yield* Ref.update(draft, current => ({
+										...current,
+										tokens: Record.map(current.tokens, (entry, savedKey) => {
+											if (key !== savedKey) return entry
+											return {
+												...entry,
+												payload: {_tag: 'UsedRefresh' as const, clientId: refresh.clientId, family: refresh.family}
+											}
+										})
+									}))
+									return yield* grantTokens(refresh, resources, draft)
 								})
 							)
 						})
@@ -727,15 +876,19 @@ export class Authorizations extends Context.Service<
 								HttpServerRequest.schemaBodyUrlParams(RevokeParams),
 								rejected('Invalid revocation request')
 							)
-							const token = yield* Effect.result(load(params.token))
-							if (
-								Result.isSuccess(token) &&
-								(token.success._tag === 'Refresh' || token.success._tag === 'UsedRefresh') &&
-								token.success.clientId === params.client_id
-							) {
-								yield* sql`DELETE FROM auth_state WHERE json_extract(payload, '$.family') = ${token.success.family}`
-							}
-							return HttpServerResponse.empty()
+							return yield* transact(draft =>
+								Effect.gen(function* () {
+									const token = yield* Effect.result(load(params.token, draft))
+									if (
+										Result.isSuccess(token) &&
+										(token.success._tag === 'Refresh' || token.success._tag === 'UsedRefresh') &&
+										token.success.clientId === params.client_id
+									) {
+										yield* revokeFamily(token.success.family, draft)
+									}
+									return HttpServerResponse.empty()
+								})
+							)
 						})
 					)
 				)
@@ -777,7 +930,7 @@ export class Authorizations extends Context.Service<
 								yield* receiver(params.request, (yield* HttpServerRequest.HttpServerRequest).headers)
 							}
 							const verifier = Base64Url.encode(yield* random.randomBytes(32))
-							const state = yield* save({_tag: 'Login', ...params, verifier}, 600)
+							const loginState = yield* save({_tag: 'Login', ...params, verifier}, 600)
 							const authorize = new URL('https://github.com/login/oauth/authorize')
 							authorize.search = UrlParams.toString(
 								UrlParams.fromInput({
@@ -785,13 +938,13 @@ export class Authorizations extends Context.Service<
 									code_challenge: yield* hash(verifier),
 									code_challenge_method: 'S256',
 									redirect_uri: `${url}/auth/github/callback`,
-									state
+									state: loginState
 								})
 							)
 							return HttpServerResponse.setCookieUnsafe(
 								HttpServerResponse.redirect(authorize.href),
 								LOGIN_COOKIE,
-								state,
+								loginState,
 								{...COOKIE, maxAge: '10 minutes'}
 							)
 						})
@@ -809,11 +962,11 @@ export class Authorizations extends Context.Service<
 							if ((yield* HttpServerRequest.HttpServerRequest).cookies[LOGIN_COOKIE] !== params.state) {
 								return yield* AuthError.make({message: 'The sign-in state does not match'})
 							}
-							const flow = yield* sql.withTransaction(
+							const flow = yield* transact(draft =>
 								Effect.gen(function* () {
-									const stored = yield* load(params.state)
+									const stored = yield* load(params.state, draft)
 									if (stored._tag !== 'Login') return yield* AuthError.make({message: 'The sign-in expired'})
-									yield* remove(params.state)
+									yield* remove(params.state, draft)
 									return stored
 								})
 							)
@@ -878,7 +1031,8 @@ export class Authorizations extends Context.Service<
 					oauth(
 						Effect.gen(function* () {
 							yield* sameOrigin
-							yield* remove((yield* HttpServerRequest.HttpServerRequest).cookies[SESSION_COOKIE] ?? '')
+							const token = (yield* HttpServerRequest.HttpServerRequest).cookies[SESSION_COOKIE] ?? ''
+							yield* transact(draft => remove(token, draft))
 							return HttpServerResponse.expireCookieUnsafe(HttpServerResponse.empty(), SESSION_COOKIE, {
 								...COOKIE,
 								domain: pipe(new URL(url).hostname, String.split('.'), Array.drop(1), Array.join('.'))
@@ -931,7 +1085,12 @@ export class Authorizations extends Context.Service<
 					const path = yield* Path.Path
 					const directory = path.join(yield* Config.String('HOME'), '.deslop', 'auth')
 					yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
-					return SqliteClient.layer({filename: path.join(directory, 'auth.sqlite')})
+					yield* Effect.forEach(
+						['auth.sqlite', 'auth.sqlite-wal', 'auth.sqlite-shm'],
+						name => fs.remove(path.join(directory, name), {force: true}),
+						{concurrency: 1, discard: true}
+					)
+					return layerKeyValueStore(directory)
 				})
 			)
 		)

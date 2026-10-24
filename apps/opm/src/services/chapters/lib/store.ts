@@ -1,89 +1,33 @@
-// @effect-diagnostics-next-line nodeBuiltinImport:off -- Effect has no client for Node's built-in SQLite.
-import {DatabaseSync} from 'node:sqlite'
+import {Array, Context, Effect, Layer, Option, Schema, SynchronizedRef, pipe} from 'effect'
 
-import {Array, Effect, Schema, pipe} from 'effect'
+import {KeyValueStore} from 'effect/persistence'
 
-import type {Chapter, PushToken} from '#services/chapters/schema.ts'
-import {ChapterJson, ChaptersError} from '#services/chapters/schema.ts'
+import {layerKeyValueStore} from '@deslop/runtime/server'
 
-const failed = Effect.mapError((cause: unknown) =>
-	ChaptersError.make({cause, message: 'The chapters database failed.'})
-)
+import {Chapter, ChaptersError, PushToken} from '#services/chapters/schema.ts'
 
-export const openStore = Effect.fnUntraced(function* (path: string) {
-	const database = yield* Effect.acquireRelease(
-		pipe(
-			Effect.try(() => {
-				const opened = new DatabaseSync(path)
-				opened.exec(
-					'pragma journal_mode = wal; create table if not exists chapters (number real primary key, json text not null); create table if not exists devices (token text primary key)'
-				)
-				return opened
+const failed = Effect.mapError((cause: unknown) => ChaptersError.make({cause, message: 'The chapter storage failed.'}))
+
+export const openStore = Effect.fnUntraced(function* (directory: string) {
+	const store = Context.get(yield* Layer.build(layerKeyValueStore(directory)), KeyValueStore.KeyValueStore)
+	const chapters = KeyValueStore.toSchemaStore(store, Schema.Array(Chapter))
+	const devices = KeyValueStore.toSchemaStore(store, Schema.Array(PushToken))
+	const tokens = yield* SynchronizedRef.make(Array.copy(Option.getOrElse(yield* devices.get('devices'), () => [])))
+	function updateDevices(update: (current: PushToken[]) => PushToken[]) {
+		return pipe(
+			SynchronizedRef.updateEffect(tokens, current => {
+				const next = update(current)
+				return Effect.as(devices.set('devices', next), next)
 			}),
-			failed
-		),
-		opened => Effect.sync(() => opened.close())
-	)
-	const upsert = database.prepare(
-		'insert into chapters (number, json) values (?, ?) on conflict (number) do update set json = excluded.json'
-	)
-	const addDevice = database.prepare('insert into devices (token) values (?) on conflict (token) do nothing')
-	const removeDevice = database.prepare('delete from devices where token = ?')
-
-	const load = pipe(
-		Effect.try(() => database.prepare('select json from chapters order by number').all()),
-		Effect.flatMap(
-			Effect.forEach(row => Schema.decodeUnknownEffect(ChapterJson)(row['json']), {concurrency: 'unbounded'})
-		),
-		failed
-	)
-
-	const save = Effect.fnUntraced(function* (chapters: Chapter[]) {
-		const rows = yield* pipe(
-			Effect.forEach(
-				chapters,
-				chapter => Effect.map(Schema.encodeEffect(ChapterJson)(chapter), json => ({chapter, json})),
-				{concurrency: 'unbounded'}
-			),
+			Effect.uninterruptible,
 			failed
 		)
-		yield* pipe(
-			Effect.try(() => {
-				database.exec('begin')
-				try {
-					for (const row of rows) upsert.run(row.chapter.number, row.json)
-					database.exec('commit')
-				} catch (error) {
-					database.exec('rollback')
-					throw error
-				}
-			}),
-			failed
-		)
-	})
-
-	const devices = pipe(
-		Effect.try(() => database.prepare('select token from devices').all()),
-		Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(Schema.Struct({token: Schema.String})))),
-		Effect.map(Array.map(row => row.token)),
-		failed
-	)
-
-	return {
-		addDevice: Effect.fnUntraced(function* (token: PushToken) {
-			yield* pipe(
-				Effect.try(() => addDevice.run(token)),
-				failed
-			)
-		}),
-		devices,
-		load,
-		removeDevice: Effect.fnUntraced(function* (token: string) {
-			yield* pipe(
-				Effect.try(() => removeDevice.run(token)),
-				failed
-			)
-		}),
-		save
 	}
-})
+	return {
+		addDevice: (token: PushToken) => updateDevices(current => Array.dedupe([...current, token])),
+		devices: SynchronizedRef.get(tokens),
+		load: pipe(chapters.get('chapters'), Effect.map(Option.getOrElse(() => [])), failed),
+		removeDevice: (token: string) => updateDevices(current => Array.filter(current, saved => saved !== token)),
+		save: (current: Chapter[]) => pipe(chapters.set('chapters', current), failed)
+	}
+}, failed)

@@ -221,9 +221,6 @@ export const Trace = Schema.Struct({
 	spans: Schema.Array(TraceSpan)
 })
 
-export type StoredEntry = typeof StoredEntry.Type
-export const StoredEntry = Schema.Struct({json: Schema.fromJsonString(Entry)})
-
 // The tools' inputs; `since` becomes the query's window when the tool runs.
 export type Filters = typeof Filters.Type
 export const Filters = Schema.Struct({

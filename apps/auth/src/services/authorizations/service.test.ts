@@ -1,5 +1,4 @@
 import {NodeServices} from '@effect/platform-node'
-import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
 import {
@@ -13,7 +12,6 @@ import {
 	Layer,
 	Option,
 	Order,
-	Path,
 	Queue,
 	Schema,
 	String,
@@ -405,63 +403,49 @@ const people = Effect.fnUntraced(function* (web: Effect.Success<ReturnType<typeo
 })
 
 it.layer(NodeServices.layer)(test => {
-	test.effect('keeps previous-release sessions and grants after renaming host storage', () =>
+	test.effect('keeps sessions, rotated tokens and revocations across restarts', () =>
 		Effect.gen(function* () {
-			const fs = yield* FileSystem.FileSystem
-			const path = yield* Path.Path
-			const home = yield* fs.makeTempDirectoryScoped()
-			const storage = path.join(home, '.deslop', 'auth-server')
-			yield* fs.makeDirectory(storage, {recursive: true})
-			const expires = (yield* Clock.currentTimeMillis) + 86400000
-			const random = yield* Crypto.Crypto
-			yield* pipe(
+			const home = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const saved = yield* Effect.scoped(
 				Effect.gen(function* () {
-					const sql = yield* SqliteClient.SqliteClient
-					yield* sql`CREATE TABLE auth_state (hash TEXT PRIMARY KEY, payload TEXT NOT NULL, expires_at INTEGER NOT NULL)`
-					yield* Effect.forEach(
-						[
-							{payload: '{"_tag":"Session","user":{"id":"github:42","name":"octocat"}}', token: 'previous-session'},
-							{
-								payload:
-									'{"_tag":"Access","family":"previous-family","resources":["https://scope.mp281x.xyz/mcp"],"user":{"id":"github:42","name":"octocat"}}',
-								token: 'previous-access'
-							},
-							{
-								payload:
-									'{"_tag":"Refresh","clientId":"previous-client","family":"previous-family","resources":["https://scope.mp281x.xyz/mcp"],"user":{"id":"github:42","name":"octocat"}}',
-								token: 'previous-refresh'
-							}
-						],
-						Effect.fnUntraced(function* (entry) {
-							yield* sql`INSERT INTO auth_state (hash, payload, expires_at) VALUES (${Base64Url.encode(yield* random.digest('SHA-256', new TextEncoder().encode(entry.token)))}, ${entry.payload}, ${expires})`
-						}),
-						{concurrency: 1, discard: true}
+					const web = yield* servers(home)
+					const session = cookie(yield* signIn(web.issuer, 'octocat'))
+					const request = yield* authorize(web.issuer, session, 'opm://auth/callback', [API])
+					const response = yield* exchange(
+						web.issuer,
+						request,
+						(yield* consent(web.issuer, request, true)).searchParams.get('code') ?? ''
 					)
-				}),
-				// @effect-diagnostics-next-line strictEffectProvide:off -- This test fixture closes its SQLite connection before starting the issuer.
-				Effect.provide(SqliteClient.layer({filename: path.join(storage, 'auth.sqlite')}))
+					const first = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
+						yield* Effect.promise(() => response.text())
+					)
+					const rotated = yield* refresh(web.issuer, request.clientId, first.refresh_token)
+					const token = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
+						yield* Effect.promise(() => rotated.text())
+					)
+					return {clientId: request.clientId, first, session, token}
+				})
 			)
-			yield* fs.rename(storage, path.join(home, '.deslop', 'auth'))
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const web = yield* servers(home)
+					assert.strictEqual((yield* send(web.issuer, '/auth/session', {headers: {cookie: saved.session}})).status, 200)
+					assert.strictEqual(
+						(yield* send(web.issuer, `/auth/verify?resource=${API}`, {
+							headers: {authorization: `Bearer ${saved.token.access_token}`}
+						})).status,
+						200
+					)
+					assert.strictEqual((yield* refresh(web.issuer, saved.clientId, saved.first.refresh_token)).status, 400)
+				})
+			)
 			const web = yield* servers(home)
-			const session = yield* send(web.issuer, '/auth/session', {headers: {cookie: '__Secure-session=previous-session'}})
-			assert.strictEqual(session.status, 200)
-			assert.deepStrictEqual(yield* Effect.promise(() => session.json()), {id: 'github:42', name: 'octocat'})
+			assert.strictEqual((yield* refresh(web.issuer, saved.clientId, saved.token.refresh_token)).status, 400)
 			assert.strictEqual(
-				(yield* send(web.issuer, '/auth/verify?resource=https://scope.mp281x.xyz/mcp', {
-					headers: {authorization: 'Bearer previous-access'}
+				(yield* send(web.issuer, `/auth/verify?resource=${API}`, {
+					headers: {authorization: `Bearer ${saved.token.access_token}`}
 				})).status,
-				200
-			)
-			const response = yield* refresh(web.issuer, 'previous-client', 'previous-refresh')
-			assert.strictEqual(response.status, 200)
-			const rotated = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
-				yield* Effect.promise(() => response.text())
-			)
-			assert.strictEqual(
-				(yield* send(web.issuer, '/auth/verify?resource=https://scope.mp281x.xyz/mcp', {
-					headers: {authorization: `Bearer ${rotated.access_token}`}
-				})).status,
-				200
+				401
 			)
 		})
 	)

@@ -1,17 +1,54 @@
 import {NodeServices} from '@effect/platform-node'
-import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Effect, Layer, String} from 'effect'
+import {Array, Context, Effect, FileSystem, Layer, String, pipe} from 'effect'
 
 import {LogsRequest, Query, TracesRequest} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
 
 const TRACE_ID = '1234567890abcdef1234567890abcdef'
 
-const layer = Layer.provide(
-	Telemetry.layer,
-	Layer.merge(SqliteClient.layer({filename: ':memory:'}), NodeServices.layer)
+it.layer(NodeServices.layer)(test => {
+	test.effect('keeps ingested spans readable after restarting storage', () =>
+		Effect.gen(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+					yield* telemetry.ingestTraces({
+						resourceSpans: [
+							{
+								scopeSpans: [
+									{
+										spans: [
+											{
+												name: 'persisted',
+												spanId: '1111111111111111',
+												startTimeUnixNano: '1781870000000000000',
+												traceId: TRACE_ID
+											}
+										]
+									}
+								]
+							}
+						]
+					})
+				})
+			)
+			const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+			assert.strictEqual((yield* telemetry.trace(TRACE_ID)).spans[0]?.name, 'persisted')
+		})
+	)
+})
+
+const layer = pipe(
+	Layer.unwrap(
+		Effect.map(
+			FileSystem.FileSystem.use(fs => fs.makeTempDirectoryScoped()),
+			Telemetry.layer
+		)
+	),
+	Layer.provide(NodeServices.layer)
 )
 const query = Query.make({
 	errors: false,

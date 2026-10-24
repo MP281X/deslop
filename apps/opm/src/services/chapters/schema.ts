@@ -26,10 +26,6 @@ export const Chapter = Schema.Struct({
 	title: Schema.String
 })
 
-// A chapter as the store keeps it.
-export type ChapterJson = typeof ChapterJson.Type
-export const ChapterJson = Schema.fromJsonString(Chapter)
-
 // A chapter as the iPhone sees it; the whole list with its page links is a few hundred kilobytes.
 export type ChapterItem = typeof ChapterItem.Type
 export const ChapterItem = Chapter.mapFields(Struct.omit(['notified']))

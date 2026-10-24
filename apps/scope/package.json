@@ -29,7 +29,6 @@
 	"devDependencies": {
 		"@deslop/runtime": "workspace:*",
 		"@effect/platform-node": "latest",
-		"@effect/sql-sqlite-node": "latest",
 		"effect": "latest"
 	},
 	"engines": {

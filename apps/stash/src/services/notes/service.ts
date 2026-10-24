@@ -112,12 +112,22 @@ export class Notes extends Context.Service<
 				const tagging = yield* Semaphore.make(1)
 				const runs = yield* FiberMap.make<Note['id']>()
 				const storageFailed = Effect.mapError(cause =>
-					NotesError.make({cause, message: 'The notes database or files could not be read or written.'})
+					NotesError.make({cause, message: 'The notes or files could not be read or written.'})
 				)
 
+				if (yield* fs.exists(path.join(directory, 'stash.db'))) {
+					yield* pipe(
+						Effect.forEach(
+							['images', 'files', 'stash.db', 'stash.db-wal', 'stash.db-shm'],
+							name => fs.remove(path.join(directory, name), {force: true, recursive: true}),
+							{concurrency: 1, discard: true}
+						),
+						storageFailed
+					)
+				}
 				yield* pipe(fs.makeDirectory(images, {mode: 0o700, recursive: true}), storageFailed)
 				yield* pipe(fs.makeDirectory(files, {mode: 0o700, recursive: true}), storageFailed)
-				const store = yield* openStore(path.join(directory, 'stash.db'))
+				const store = yield* openStore(directory)
 				const state = yield* SubscriptionRef.make(yield* store.load)
 				const definitions = yield* Ref.make(
 					Record.fromEntries(Array.map(yield* store.definitions, entry => [entry.tag, entry.definition] as const))
@@ -135,19 +145,25 @@ export class Notes extends Context.Service<
 
 				const define = Effect.fnUntraced(function* (entries: TagDefinition[]) {
 					if (Array.isReadonlyArrayEmpty(entries)) return
-					yield* store.saveDefinitions(entries)
-					yield* Ref.update(definitions, known => ({
-						...Record.fromEntries(Array.map(entries, entry => [entry.tag, entry.definition] as const)),
-						...known
-					}))
-				})
+					const next = {
+						...Record.fromEntries(
+							Array.map(
+								Array.dedupeWith(entries, (left, right) => left.tag === right.tag),
+								entry => [entry.tag, entry.definition] as const
+							)
+						),
+						...(yield* Ref.get(definitions))
+					}
+					yield* store.saveDefinitions(Array.map(Record.toEntries(next), pair => ({definition: pair[1], tag: pair[0]})))
+					yield* Ref.set(definitions, next)
+				}, Effect.uninterruptible)
 
 				function transact<A>(change: (current: Note[]) => [A, Note[]]) {
 					return Effect.uninterruptible(
 						SubscriptionRef.modifyEffect(state, current => {
 							const result = change(current)
 							if (result[1] === current) return Effect.succeed(result)
-							return Effect.as(store.save(current, result[1]), result)
+							return Effect.as(store.save(result[1]), result)
 						})
 					)
 				}
@@ -583,7 +599,7 @@ export class Notes extends Context.Service<
 		)
 }
 
-// The server's notes folder; the previous release kept the one user's notes in its `github:<id>` folder.
+// One shared notes folder.
 const notesFolder = pipe(
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem
@@ -593,19 +609,6 @@ const notesFolder = pipe(
 			Config.withDefault(path.join(yield* Config.String('HOME'), '.deslop', 'stash'))
 		)
 		yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
-		yield* Effect.forEach(
-			Array.filter(yield* fs.readDirectory(directory), String.startsWith('github:')),
-			Effect.fnUntraced(function* (user) {
-				const folder = path.join(directory, user)
-				yield* Effect.forEach(
-					yield* fs.readDirectory(folder),
-					entry => fs.rename(path.join(folder, entry), path.join(directory, entry)),
-					{concurrency: 1, discard: true}
-				)
-				yield* fs.remove(folder, {recursive: true})
-			}),
-			{concurrency: 1, discard: true}
-		)
 		return directory
 	}),
 	Effect.mapError(cause => NotesError.make({cause, message: 'The notes folder could not be read.'}))
