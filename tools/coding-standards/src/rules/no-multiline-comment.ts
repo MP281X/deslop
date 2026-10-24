@@ -5,12 +5,8 @@ import type {ESTree} from 'vite-plus/lint/plugins'
 
 import {matches} from '#rules/shared.ts'
 
-function adjacentLines(pair: {first?: ESTree.Comment; second?: ESTree.Comment}) {
-	return (
-		pair.first?.type === 'Line' &&
-		pair.second?.type === 'Line' &&
-		pair.second.loc.start.line === pair.first.loc.end.line + 1
-	)
+function adjacentLines(first?: ESTree.Comment, second?: ESTree.Comment) {
+	return first?.type === 'Line' && second?.type === 'Line' && second.loc.start.line === first.loc.end.line + 1
 }
 
 export const noMultilineComment = defineRule({
@@ -29,8 +25,7 @@ export const noMultilineComment = defineRule({
 				comments,
 				Array.filter(
 					(comment, index) =>
-						(adjacentLines({first: comment, second: comments[index + 1]}) &&
-							!adjacentLines({first: comments[index - 1], second: comment})) ||
+						(adjacentLines(comment, comments[index + 1]) && !adjacentLines(comments[index - 1], comment)) ||
 						(comment.type === 'Block' && String.includes('\n')(String.trim(comment.value)))
 				),
 				Array.forEach(comment =>

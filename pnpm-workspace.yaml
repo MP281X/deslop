@@ -20,7 +20,7 @@ overrides:
 peerDependencyRules:
   allowedVersions:
     '@tailwindcss/vite@4.3.3>vite': 1.4.0
-    '@tanstack/router-plugin@1.168.46>vite': 1.4.0
+    '@tanstack/router-plugin@1.168.48>vite': 1.4.0
     '@vitejs/plugin-react@6.1.2>vite': 1.4.0
     '@vitest/mocker@5.0.5>vite': 1.4.0
     'vitest@5.0.5>vite': 1.4.0

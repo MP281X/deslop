@@ -1,16 +1,1 @@
-{
-	"extends": "@deslop/coding-standards/tsconfig.json",
-
-	"compilerOptions": {
-		"jsx": "react-jsx",
-		"lib": ["DOM", "ESNext", "DOM.Iterable"],
-		"types": ["node", "vite-plus/client", "@deslop/coding-standards/css-properties"]
-	},
-
-	"exclude": [
-		"${configDir}/**/node_modules",
-		"${configDir}/**/dist",
-		"${configDir}/**/.output",
-		"${configDir}/tools/*/template/**/*"
-	]
-}
+{"extends": "./tsconfig.base.json", "files": ["vite.config.ts"], "include": []}

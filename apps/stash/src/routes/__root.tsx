@@ -110,8 +110,8 @@ function AppRoutes() {
 				<Suspense fallback={<ProgressView />}>
 					<HomeRoute
 						query={query}
-						tag={tag}
-						kind={kind}
+						{...Option.match(Option.fromUndefinedOr(tag), {onNone: () => ({}), onSome: value => ({tag: value})})}
+						{...Option.match(Option.fromUndefinedOr(kind), {onNone: () => ({}), onSome: value => ({kind: value})})}
 						onCompose={() => setPath(['compose'])}
 						onKind={setKind}
 						onOpen={id => setPath([id])}

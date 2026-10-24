@@ -32,7 +32,7 @@
 		"@huggingface/transformers": "latest",
 		"babel-preset-expo": "^58.0",
 		"cheerio": "latest",
-		"domhandler": "^5.0",
+		"domhandler": "latest",
 		"effect": "latest",
 		"expo-auth-session": "^58.0",
 		"expo-clipboard": "^58.0",

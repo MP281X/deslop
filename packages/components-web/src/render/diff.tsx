@@ -375,7 +375,7 @@ export function PatchDiff(props: {
 
 	function openComment(line: {lineNumber: number; side?: AnnotationSide}) {
 		if (props.onSaveComment === undefined) return
-		const location = {filePath: props.filePath, lineNumber: line.lineNumber, side: line.side}
+		const location = {filePath: props.filePath, lineNumber: line.lineNumber, side: line.side ?? 'additions'}
 
 		if (Option.isSome(draft)) return
 
@@ -421,8 +421,14 @@ export function PatchDiff(props: {
 						<CommentAnnotation
 							comment={annotation.metadata}
 							isDraft={Option.exists(draft, current => sameDiffLine(annotation.metadata, current))}
-							onSaveComment={props.onSaveComment}
-							onResolveComment={props.onResolveComment}
+							{...Option.match(Option.fromUndefinedOr(props.onSaveComment), {
+								onNone: () => ({}),
+								onSome: onSaveComment => ({onSaveComment})
+							})}
+							{...Option.match(Option.fromUndefinedOr(props.onResolveComment), {
+								onNone: () => ({}),
+								onSome: onResolveComment => ({onResolveComment})
+							})}
 							onCloseDraft={() => {
 								setDraftComment(undefined)
 							}}
@@ -456,8 +462,14 @@ export function PatchDiff(props: {
 						<CommentAnnotation
 							comment={annotation.metadata}
 							isDraft={Option.exists(draft, current => sameDiffLine(annotation.metadata, current))}
-							onSaveComment={props.onSaveComment}
-							onResolveComment={props.onResolveComment}
+							{...Option.match(Option.fromUndefinedOr(props.onSaveComment), {
+								onNone: () => ({}),
+								onSome: onSaveComment => ({onSaveComment})
+							})}
+							{...Option.match(Option.fromUndefinedOr(props.onResolveComment), {
+								onNone: () => ({}),
+								onSome: onResolveComment => ({onResolveComment})
+							})}
 							onCloseDraft={() => {
 								setDraftComment(undefined)
 							}}

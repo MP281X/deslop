@@ -21,44 +21,36 @@ function isEffectEmpty(input: {context: Context; node: ESTree.Node}) {
 	)
 }
 
-function isEmptyValue(input: {context: Context; node?: ESTree.Expression | null}) {
-	if (Predicate.isNullish(input.node)) return false
-	if (input.node.type === 'Identifier') return input.node.name === 'undefined'
-	if (input.node.type === 'Literal') return input.node.value === null || input.node.value === ''
-	if (input.node.type === 'ArrayExpression') return Array.isArrayEmpty(input.node.elements)
-	if (input.node.type === 'ObjectExpression') return Array.isArrayEmpty(input.node.properties)
-	if (input.node.type === 'TemplateLiteral') {
-		return Array.isArrayEmpty(input.node.expressions) && Array.every(input.node.quasis, quasi => quasi.value.raw === '')
+function isEmptyValue(context: Context, node?: ESTree.Expression | null) {
+	if (Predicate.isNullish(node)) return false
+	if (node.type === 'Identifier') return node.name === 'undefined'
+	if (node.type === 'Literal') return node.value === null || node.value === ''
+	if (node.type === 'ArrayExpression') return Array.isArrayEmpty(node.elements)
+	if (node.type === 'ObjectExpression') return Array.isArrayEmpty(node.properties)
+	if (node.type === 'TemplateLiteral') {
+		return Array.isArrayEmpty(node.expressions) && Array.every(node.quasis, quasi => quasi.value.raw === '')
 	}
-	return isEffectEmpty({context: input.context, node: input.node})
+	return isEffectEmpty({context, node})
 }
 
 // `Effect.void` or `Effect.succeed(<empty value>)`: a recovery that reports nothing.
-function isEmptySuccess(input: {context: Context; node?: ESTree.Expression | null}) {
-	if (Predicate.isNullish(input.node)) return false
-	if (importedMember({context: input.context, importedName: 'Effect', node: input.node, propertyName: 'void'})) {
+function isEmptySuccess(context: Context, node?: ESTree.Expression | null) {
+	if (Predicate.isNullish(node)) return false
+	if (importedMember({context, importedName: 'Effect', node, propertyName: 'void'})) {
 		return true
 	}
 	return (
-		input.node.type === 'CallExpression' &&
-		input.node.callee.type !== 'Super' &&
-		importedMember({
-			context: input.context,
-			importedName: 'Effect',
-			node: input.node.callee,
-			propertyName: 'succeed'
-		}) &&
-		Array.every(
-			input.node.arguments,
-			argument => argument.type !== 'SpreadElement' && isEmptyValue({context: input.context, node: argument})
-		)
+		node.type === 'CallExpression' &&
+		node.callee.type !== 'Super' &&
+		importedMember({context, importedName: 'Effect', node: node.callee, propertyName: 'succeed'}) &&
+		Array.every(node.arguments, argument => argument.type !== 'SpreadElement' && isEmptyValue(context, argument))
 	)
 }
 
 // Effect.orElseSucceed returns the value itself; the catch and orElse family return an Effect.
-function recoversEmpty(input: {context: Context; name: string; node?: ESTree.Expression | null}) {
-	if (input.name === 'orElseSucceed') return isEmptyValue({context: input.context, node: input.node})
-	return isEmptySuccess({context: input.context, node: input.node})
+function recoversEmpty(context: Context, name: string, node?: ESTree.Expression | null) {
+	if (name === 'orElseSucceed') return isEmptyValue(context, node)
+	return isEmptySuccess(context, node)
 }
 
 export const noEmptyRecovery = defineRule({
@@ -82,7 +74,7 @@ export const noEmptyRecovery = defineRule({
 					((callback.type === 'ArrowFunctionExpression' ||
 						callback.type === 'FunctionExpression' ||
 						callback.type === 'FunctionDeclaration') &&
-						recoversEmpty({context, name, node: returnedExpression(callback)}))
+						recoversEmpty(context, name, returnedExpression(callback)))
 				) {
 					context.report({
 						message:

@@ -33,7 +33,7 @@ const create = Command.make(
 					pipe(input.name, String.split('-'), Array.map(String.capitalize), Array.join(''))
 				),
 				String.replaceAll('@deslop/template-package', `@deslop/${input.name}`),
-				String.replaceAll('../../../tsconfig.json', '../../tsconfig.json')
+				String.replaceAll('../../../tsconfig.base.json', '../../tsconfig.base.json')
 			),
 			to: Option.getOrElse(input.directory, () => path.join(import.meta.dirname, '../../../packages', input.name))
 		})

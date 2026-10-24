@@ -1,4 +1,4 @@
-import {Config, ConfigProvider, Effect, Layer, Predicate, pipe} from 'effect'
+import {Config, ConfigProvider, Effect, Layer, Option, Predicate, pipe} from 'effect'
 
 import {createRouter} from '@tanstack/react-router'
 import type {AnyContext, AnyRoute, RouterOptions} from '@tanstack/react-router'
@@ -26,7 +26,10 @@ export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext:
 			defaultPendingComponent: Loading,
 			defaultPendingMs: 0,
 			defaultPreload: 'intent',
-			getScrollRestorationKey,
+			...Option.match(Option.fromUndefinedOr(getScrollRestorationKey), {
+				onNone: () => ({}),
+				onSome: key => ({getScrollRestorationKey: key})
+			}),
 			routeTree,
 			scrollRestoration: true
 		})

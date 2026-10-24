@@ -468,7 +468,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'declare function combine(left: string, right: string): string',
 								'declare const snapshot: {width: number}',
 								'declare namespace Ledger { export type Base = {readonly add: (value: number) => Effect.Effect<number>}; export type Shape = Base & {readonly count: Effect.Effect<number>} }',
-								'// oxlint-disable-next-line effecttsgo/deterministic-keys -- a fixture in a temporary directory has no stable key',
 								'class Ledger extends Context.Service<Ledger, Ledger.Shape>()("Ledger") {}',
 								'type User = typeof User.Type',
 								'const User = Schema.Struct({name: Schema.String})',
@@ -842,7 +841,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'declare function consume(value: number): void',
 								'type BaseShape = {count: Effect.Effect<number>}',
 								'type ServiceShape = BaseShape & {increment: Effect.Effect<void>}',
-								'// oxlint-disable-next-line effecttsgo/deterministic-keys -- a fixture in a temporary directory has no stable key',
 								'class Counter extends Context.Service<Counter, ServiceShape>()("Counter") {}',
 								'export {Counter, Tree, labelOf, sizes}',
 								'export type {Wrapper}'
@@ -877,7 +875,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 									'export type Explicit = {readonly values: readonly string[]}',
 									'export type Mapped<T> = {readonly [K in keyof T]: T[K]}',
 									'export type Frozen = Readonly<{value: string}>',
-									'// oxlint-disable-next-line effecttsgo/deterministic-keys -- a fixture in a temporary directory has no stable key',
 									'export class Clock extends Context.Service<Clock, {now: Effect.Effect<number>}>()("Clock") {}',
 									'export function sum() {',
 									'	const size = text.length + 1',
@@ -968,7 +965,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'export type Explicit = {values: string[]}',
 								'export type Mapped<T> = {[K in keyof T]: T[K]}',
 								'export type Frozen = {value: string}',
-								'// oxlint-disable-next-line effecttsgo/deterministic-keys -- a fixture in a temporary directory has no stable key',
 								"export class Clock extends Context.Service<Clock, {readonly now: Effect.Effect<number>}>()('Clock') {}",
 								'export function sum() {',
 								'	return consume((text.length + 1) * 2)',
@@ -998,7 +994,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'}',
 								'export function asserted() {',
 								'	const method = obj.method',
-								'	return method()',
+								'	return method!()',
 								'}',
 								'export function pattern() {',
 								'	obj.first()',
@@ -1781,7 +1777,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								"import {z} from 'zod'",
 								'',
 								'declare const path: {posix: {join: (...parts: string[]) => string}; join: (...parts: string[]) => string}',
-								'// oxlint-disable-next-line effecttsgo/deterministic-keys -- a fixture in a temporary directory has no stable key',
 								'class Groups extends Context.Service<Groups, {replace: (id: string) => Effect.Effect<void>}>()("Groups") {}',
 								'export const joined = path.posix.join("a", "b")',
 								'export const bytes = Buffer.concat([])',
@@ -1802,8 +1797,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							Array.filter(diagnostic => diagnostic.code === '@deslop/coding-standards(no-native-method-call)'),
 							Array.map(diagnostic => diagnostic.labels[0]?.span.line)
 						),
-						// Array and record methods belong to effecttsgo's prefer-effect-array and prefer-effect-record.
-						[13]
+						// Array and record methods belong to the Effect compiler's preferEffectArray and preferEffectRecord.
+						[12]
 					)
 				}),
 			20_000

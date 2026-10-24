@@ -3,20 +3,22 @@
 	"type": "module",
 	"scripts": {
 		"build": "vp run -r build",
-		"check": "vp check && fallow dead-code --format compact --fail-on-issues && fallow dead-code --production --format compact --fail-on-issues && fallow health --complexity --format compact",
+		"check": "vp check && vp run typecheck && fallow dead-code --format compact --fail-on-issues && fallow dead-code --production --format compact --fail-on-issues && fallow health --complexity --format compact",
 		"duplicates": "fallow dupes --format compact",
-		"fix": "vp check --fix; status=$?; vp fmt && fallow dead-code --format compact --fail-on-issues && fallow dead-code --production --format compact --fail-on-issues && fallow health --complexity --format compact && exit $status",
-		"prepare": "effect-tsgo patch --no-typescript --oxlint --force"
+		"fix": "vp check --fix; status=$?; vp fmt && vp run typecheck && fallow dead-code --format compact --fail-on-issues && fallow dead-code --production --format compact --fail-on-issues && fallow health --complexity --format compact && exit $status",
+		"prepare": "effect-tsgo patch --no-typescript --tsrs",
+		"typecheck": "sh -c 'TSRS_CHECKER_ASSIGNMENT=go tsrs --build . apps/*/tsconfig.json packages/*/tsconfig.json tools/*/tsconfig.json --noEmit --incremental false --force'"
 	},
 	"devDependencies": {
 		"@deslop/coding-standards": "workspace:*",
-		"@effect/tsgo": "latest",
+		"@effect/tsgo": "^0.57",
 		"@effect/vitest": "latest",
 		"@types/node": "latest",
 		"@types/react": "latest",
 		"@types/react-dom": "latest",
 		"effect": "latest",
 		"fallow": "latest",
+		"tsrs": "0.18.0-ts7.1.0-dev.20260929",
 		"typescript": "latest",
 		"vite": "catalog:",
 		"vite-plus": "catalog:",
@@ -25,5 +27,5 @@
 	"engines": {
 		"node": ">=26"
 	},
-	"packageManager": "pnpm@12.11.2"
+	"packageManager": "pnpm@12.15.0"
 }

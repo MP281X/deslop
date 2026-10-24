@@ -31,7 +31,7 @@ export function make(app: {bundleIdentifier: string; name: string; owner: string
 					extra: {eas: {projectId: app.projectId}, otel, scheme: variant.scheme},
 					icon: './src/routes/icon.png',
 					ios: {
-						appleTeamId: Option.getOrUndefined(team),
+						...Option.match(team, {onNone: () => ({}), onSome: appleTeamId => ({appleTeamId})}),
 						buildNumber: `${release}`,
 						bundleIdentifier: variant.bundleIdentifier,
 						config: {usesNonExemptEncryption: false},

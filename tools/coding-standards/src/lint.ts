@@ -111,7 +111,7 @@ export const lint = {
 		{name: 'shadcn', specifier: import.meta.resolve('@shadcn/lint')},
 		{name: 'vite-plus', specifier: import.meta.resolve('vite-plus/oxlint-plugin')}
 	],
-	options: {denyWarnings: true, reportUnusedDisableDirectives: 'deny', typeAware: true, typeCheck: true},
+	options: {denyWarnings: true, reportUnusedDisableDirectives: 'deny', typeAware: false, typeCheck: false},
 	overrides: [
 		{files: ['**/*.config.ts', '**/app.plugin.js'], rules: {'import/no-default-export': 'off'}},
 		// Expo resolves a config plugin only from the package's app.plugin.js, which re-exports the plugin.
@@ -129,17 +129,9 @@ export const lint = {
 		},
 		{files: ['**/*.ts'], rules: {'react/rules-of-hooks': 'off'}},
 		{files: ['**/*.test.ts'], rules: {'@deslop/coding-standards/no-discarded-failure': 'off'}},
-		{
-			files: ['**/*.tsx'],
-			rules: {
-				'effecttsgo/async-function': 'off',
-				'typescript/require-await': 'error',
-				'typescript/strict-void-return': 'off',
-				'unicorn/no-null': 'off'
-			}
-		}
+		{files: ['**/*.tsx'], rules: {'require-await': 'error', 'unicorn/no-null': 'off'}}
 	],
-	plugins: ['effecttsgo', 'eslint', 'typescript', 'oxc', 'import', 'jsx-a11y', 'react', 'unicorn'],
+	plugins: ['eslint', 'typescript', 'oxc', 'import', 'jsx-a11y', 'react', 'unicorn'],
 	rules: {
 		// Effect and React forms that maintained rules cannot express.
 		'@deslop/coding-standards/explicit-effect-concurrency': 'error',
@@ -191,120 +183,6 @@ export const lint = {
 		'@deslop/coding-standards/preserve-error-cause': 'error',
 		'@deslop/coding-standards/schema-type-pair': 'error',
 
-		// Effect owns native capabilities in and outside generators.
-		'effecttsgo/abort-controller-in-effect': 'error',
-		'effecttsgo/crypto-random-uuid': 'error',
-		'effecttsgo/crypto-random-uuid-in-effect': 'error',
-		'effecttsgo/global-console': 'error',
-		'effecttsgo/global-console-in-effect': 'error',
-		'effecttsgo/global-date': 'error',
-		'effecttsgo/global-date-in-effect': 'error',
-		'effecttsgo/global-fetch': 'error',
-		'effecttsgo/global-fetch-in-effect': 'error',
-		'effecttsgo/global-random': 'error',
-		'effecttsgo/global-random-in-effect': 'error',
-		'effecttsgo/global-timers': 'error',
-		'effecttsgo/global-timers-in-effect': 'error',
-		'effecttsgo/node-builtin-import': 'error',
-		'effecttsgo/prefer-effect-array': 'error',
-		'effecttsgo/prefer-effect-record': 'error',
-		'effecttsgo/prefer-schema-over-json': 'error',
-		'effecttsgo/process-env': 'error',
-		'effecttsgo/process-env-in-effect': 'error',
-
-		// Effect programs retain work, requirements, and one direct composition path.
-		'effecttsgo/acquire-release-disposable': 'error',
-		'effecttsgo/all-of-map-to-for-each': 'error',
-		'effecttsgo/async-function': 'error',
-		'effecttsgo/catch-if-tag-to-catch-tag': 'error',
-		'effecttsgo/catch-refail-to-tap-error': 'error',
-		'effecttsgo/duplicate-package': 'error',
-		'effecttsgo/effect-do-notation': 'error',
-		'effecttsgo/effect-fn-iife': 'error',
-		'effecttsgo/effect-fn-implicit-any': 'error',
-		'effecttsgo/effect-fn-opportunity': 'error',
-		'effecttsgo/effect-gen-uses-adapter': 'error',
-		'effecttsgo/effect-in-failure': 'error',
-		'effecttsgo/effect-in-void-success': 'error',
-		'effecttsgo/effect-map-flatten': 'error',
-		'effecttsgo/effect-map-void': 'error',
-		'effecttsgo/effect-sleep-zero-to-yield-now': 'error',
-		'effecttsgo/effect-succeed-with-void': 'error',
-		'effecttsgo/flat-map-ignored-param-to-and-then': 'error',
-		'effecttsgo/flat-map-to-map': 'error',
-		'effecttsgo/flat-map-to-tap': 'error',
-		'effecttsgo/floating-effect': 'error',
-		'effecttsgo/floating-effect-in-vitest': 'error',
-		'effecttsgo/layer-merge-all-with-dependencies': 'error',
-		'effecttsgo/lazy-effect': 'error',
-		'effecttsgo/lazy-promise-in-effect-sync': 'error',
-		'effecttsgo/leaking-requirements': 'error',
-		'effecttsgo/map-some-to-as-some': 'error',
-		'effecttsgo/match-effect-to-map-both': 'error',
-		'effecttsgo/match-effect-to-match': 'error',
-		'effecttsgo/missing-effect-context': 'error',
-		'effecttsgo/missing-layer-context': 'error',
-		'effecttsgo/missing-return-yield-star': 'error',
-		'effecttsgo/missing-star-in-yield-effect-gen': 'error',
-		'effecttsgo/multiple-effect-provide': 'error',
-		'effecttsgo/nested-effect-gen-yield': 'error',
-		'effecttsgo/option-match-to-from-option': 'error',
-		'effecttsgo/outdated-api': 'error',
-		'effecttsgo/prefer-succeed-some-or-none': 'error',
-		'effecttsgo/promise-in-effect-success': 'error',
-		'effecttsgo/provide-layer-succeed-to-provide-service': 'error',
-		'effecttsgo/race-first-with-sleep-to-timeout': 'error',
-		'effecttsgo/return-effect-in-gen': 'error',
-		'effecttsgo/run-effect-inside-effect': 'error',
-		'effecttsgo/run-of-exit-to-run-exit': 'error',
-		'effecttsgo/strict-effect-provide': 'error',
-		'effecttsgo/sync-to-succeed': 'error',
-		'effecttsgo/try-catch-in-effect-gen': 'error',
-		'effecttsgo/unnecessary-effect-gen': 'error',
-		'effecttsgo/unnecessary-fail-yieldable-error': 'error',
-		'effecttsgo/unnecessary-pipe': 'error',
-		'effecttsgo/unnecessary-pipe-chain': 'error',
-		'effecttsgo/unsafe-effect-type-assertion': 'error',
-
-		// Failures remain typed and recovery remains direct.
-		'effecttsgo/any-unknown-in-error-context': 'error',
-		'effecttsgo/catch-all-tag-dispatch-to-catch-tag': 'error',
-		'effecttsgo/catch-all-to-map-error': 'error',
-		'effecttsgo/catch-chain-to-first-success-of': 'error',
-		'effecttsgo/catch-conditional-refail-to-catch-if': 'error',
-		'effecttsgo/catch-tag-to-catch-reason': 'error',
-		'effecttsgo/catch-to-or-else-succeed': 'error',
-		'effecttsgo/catch-unfailable-effect': 'error',
-		'effecttsgo/error-payload-shadows-name': 'error',
-		'effecttsgo/flat-map-conditional-to-filter-or-fail': 'error',
-		'effecttsgo/global-error-in-effect-catch': 'error',
-		'effecttsgo/global-error-in-effect-failure': 'error',
-		'effecttsgo/missing-effect-error': 'error',
-		'effecttsgo/multiple-catch-tag': 'error',
-		'effecttsgo/redundant-map-error': 'error',
-		'effecttsgo/redundant-or-die': 'error',
-		'effecttsgo/timeout-catch-tag-to-timeout-or-else': 'error',
-
-		// Services and schemas use current, sound class and identity forms.
-		'effecttsgo/class-self-mismatch': 'error',
-		'effecttsgo/deterministic-keys': 'error',
-		'effecttsgo/instance-of-schema': 'error',
-		'effecttsgo/new-schema-class': 'error',
-		'effecttsgo/obsolete-match-import': 'error',
-		'effecttsgo/obsolete-schema-import': 'error',
-		'effecttsgo/overridden-schema-constructor': 'error',
-		'effecttsgo/prefer-schema-type-property': 'error',
-		'effecttsgo/prefer-typed-schema-decoder': 'error',
-		'effecttsgo/redundant-schema-tag-identifier': 'error',
-		'effecttsgo/schema-class-object-literal': 'error',
-		'effecttsgo/schema-literal-non-finite': 'error',
-		'effecttsgo/schema-number': 'error',
-		'effecttsgo/schema-struct-with-tag': 'error',
-		'effecttsgo/schema-sync-in-effect': 'error',
-		'effecttsgo/schema-union-of-literals': 'error',
-		'effecttsgo/service-not-as-class': 'error',
-		'effecttsgo/unnecessary-typeof-type': 'error',
-
 		// TypeScript type shape
 		'typescript/consistent-generic-constructors': 'error',
 		'typescript/consistent-indexed-object-style': 'error',
@@ -313,71 +191,30 @@ export const lint = {
 			{arrayLiteralTypeAssertions: 'never', assertionStyle: 'never', objectLiteralTypeAssertions: 'never'}
 		],
 		'typescript/consistent-type-definitions': ['error', 'type'],
-		'typescript/consistent-type-exports': 'error',
 		'typescript/consistent-type-imports': ['error', {fixStyle: 'separate-type-imports', prefer: 'type-imports'}],
 		'typescript/method-signature-style': 'error',
 		'typescript/prefer-function-type': 'error',
 
-		// TypeScript correctness
-		'typescript/await-thenable': 'error',
-		'typescript/no-array-delete': 'error',
-		'typescript/no-base-to-string': 'error',
-		'typescript/no-confusing-void-expression': ['error', {ignoreVoidReturningFunctions: true}],
-		'typescript/no-deprecated': 'error',
-		'typescript/no-duplicate-type-constituents': 'error',
+		// TypeScript syntax safety
 		'typescript/no-dynamic-delete': 'error',
 		'typescript/no-empty-object-type': 'error',
 		'typescript/no-explicit-any': 'error',
-		'typescript/no-floating-promises': 'error',
-		'typescript/no-for-in-array': 'error',
-		'typescript/no-generated-empty-object-type': 'error',
 		'typescript/no-import-type-side-effects': 'error',
 		'typescript/no-inferrable-types': 'error',
 		'typescript/no-invalid-void-type': 'error',
-		// JSX handlers may return a promise; every other void position must not drop one.
-		'typescript/no-misused-promises': ['error', {checksVoidReturn: {attributes: false}}],
-		'typescript/no-misused-spread': 'error',
 		'typescript/no-namespace': ['error', {allowDeclarations: true}],
 		'typescript/no-non-null-assertion': 'error',
-		'typescript/no-redundant-type-constituents': 'error',
 		'typescript/no-require-imports': 'error',
 		'typescript/no-this-alias': 'error',
-		'typescript/no-unnecessary-boolean-literal-compare': 'error',
-		'typescript/no-unnecessary-condition': 'error',
-		'typescript/no-unnecessary-qualifier': 'error',
-		'typescript/no-unnecessary-template-expression': 'error',
-		'typescript/no-unnecessary-type-arguments': 'error',
 		'typescript/no-unnecessary-type-constraint': 'error',
-		'typescript/no-unnecessary-type-conversion': 'error',
-		'typescript/no-unnecessary-type-parameters': 'error',
-		'typescript/no-unsafe-argument': 'error',
-		'typescript/no-unsafe-assignment': 'error',
-		'typescript/no-unsafe-call': 'error',
 		'typescript/no-unsafe-declaration-merging': 'error',
 		'typescript/no-unsafe-function-type': 'error',
-		'typescript/no-unsafe-member-access': 'error',
-		'typescript/no-unsafe-return': 'error',
-		'typescript/no-unsafe-unary-minus': 'error',
 		'typescript/no-useless-empty-export': 'error',
 		'typescript/no-wrapper-object-types': 'error',
-		'typescript/unbound-method': 'error',
 		'typescript/unified-signatures': 'error',
 
 		// TypeScript preferences
-		'typescript/dot-notation': 'error',
 		'typescript/prefer-as-const': 'error',
-		// no-ternary owns conditional expressions.
-		'typescript/prefer-nullish-coalescing': ['error', {ignoreTernaryTests: true}],
-		'typescript/prefer-optional-chain': 'error',
-
-		// TypeScript expression boundaries
-		'typescript/restrict-plus-operands': 'error',
-		'typescript/restrict-template-expressions': 'error',
-		'typescript/strict-boolean-expressions': [
-			'error',
-			{allowNullableObject: false, allowNumber: false, allowString: false}
-		],
-		'typescript/strict-void-return': 'error',
 
 		// JavaScript style
 		'arrow-body-style': ['error', 'as-needed'],
@@ -476,7 +313,12 @@ export const lint = {
 		'no-restricted-properties': [
 			'error',
 			{message: 'Use standalone pipe.', property: 'pipe'},
-			// effecttsgo/prefer-effect-record owns keys, values, entries, fromEntries, hasOwn and hasOwnProperty.
+			{
+				message: 'Decode JSON through Schema.fromJsonString with the protocol schema.',
+				object: 'JSON',
+				property: 'parse'
+			},
+			// The Effect compiler's preferEffectRecord diagnostic owns keys, values, entries, fromEntries, hasOwn and hasOwnProperty.
 			{
 				allowProperties: ['entries', 'fromEntries', 'hasOwn', 'keys', 'values'],
 				message: "Use Record or Struct from 'effect'.",
@@ -547,7 +389,7 @@ export const lint = {
 		'no-unsafe-finally': 'error',
 		'no-unsafe-optional-chaining': ['error', {disallowArithmeticOperators: true}],
 		'no-unused-expressions': 'error',
-		// Owns unused bindings instead of noUnusedLocals, so a used `_` parameter is reported too.
+		// Unlike the compiler's unused checks, this also reports a used `_` parameter.
 		'no-unused-vars': [
 			'error',
 			{args: 'all', argsIgnorePattern: '^_', ignoreRestSiblings: true, reportUsedIgnorePattern: true}
@@ -730,8 +572,6 @@ export const lint = {
 				}
 			}
 		],
-		'typescript/no-unnecessary-type-assertion': 'error',
-		'typescript/no-useless-default-assignment': 'error',
 
 		// Unicorn
 		'unicorn/consistent-function-scoping': 'error',

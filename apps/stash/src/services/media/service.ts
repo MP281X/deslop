@@ -60,7 +60,6 @@ const detectLanguage = Effect.fnUntraced(function* (
 	samples: Float32Array
 ) {
 	const features = yield* pipe(
-		// oxlint-disable-next-line typescript/no-unsafe-return -- transformers.js types the processor's answer as any; the schema below decodes it.
 		Effect.tryPromise(() => recognize.processor(samples.subarray(0, 30 * 16_000))),
 		Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({input_features: Schema.instanceOf(Tensor)})))
 	)
@@ -203,10 +202,10 @@ export class Media extends Context.Service<
 								yield* Effect.tryPromise(() =>
 									recognize(samples, {
 										chunk_length_s: 30,
-										language: Boolean.match(english, {
-											onFalse: () => Option.getOrUndefined(heard),
-											onTrue: () => undefined
-										}),
+										...Option.match(
+											Option.filter(heard, () => !english),
+											{onNone: () => ({}), onSome: language => ({language})}
+										),
 										return_timestamps: true,
 										stride_length_s: 5
 									})
