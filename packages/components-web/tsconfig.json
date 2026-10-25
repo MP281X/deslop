@@ -12,9 +12,6 @@
 					}
 				]
 			}
-		],
-		"jsx": "react-jsx",
-		"lib": ["DOM", "ESNext", "DOM.Iterable"],
-		"types": ["node", "vite-plus/client", "@deslop/coding-standards/css-properties"]
+		]
 	}
 }

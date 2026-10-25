@@ -1,6 +1,9 @@
 {
 	"compilerOptions": {
 		"strict": true,
+		"jsx": "react-jsx",
+		"lib": ["DOM", "ESNext", "DOM.Iterable"],
+		"types": ["node", "vite-plus/client", "@deslop/coding-standards/css-properties"],
 		"allowJs": true,
 		"checkJs": true,
 		"noImplicitReturns": true,

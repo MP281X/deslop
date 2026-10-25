@@ -1,1 +1,1 @@
-{"extends": "@deslop/coding-standards/tsconfig.json", "compilerOptions": {"lib": ["ESNext"], "types": ["node"]}}
+{"extends": "@deslop/coding-standards/tsconfig.json"}
