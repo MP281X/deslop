@@ -527,17 +527,16 @@ const xThread = Effect.fnUntraced(function* (url: URL) {
 	const replies = conversation.replies ?? []
 	const byId = HashMap.fromIterable(Array.map(Array.reverse(replies), post => [post.id, post] as const))
 	// The author's follow-ups answer the saved post or an earlier follow-up; the author's answers to readers stay replies.
-	const followUps = Array.reduce(
+	const followUps = pipe(
 		Array.sort(
 			Array.filter(replies, post => post.author.id === status.author.id),
 			byTime
 		),
-		Array.empty<FxPost>(),
-		(chain, post) =>
-			Boolean.match(
-				Array.contains([status.id, ...Array.map(chain, earlier => earlier.id)], post.replying_to?.status ?? ''),
-				{onFalse: () => chain, onTrue: () => [...chain, post]}
-			)
+		Array.mapAccum(HashSet.make(status.id), (chain, post) => {
+			if (!HashSet.has(chain, post.replying_to?.status ?? '')) return [chain, Option.none<FxPost>()] as const
+			return [HashSet.add(chain, post.id), Option.some(post)] as const
+		}),
+		result => Array.getSomes(result[1])
 	)
 	const earlier = Array.sort(
 		Array.filter(conversation.thread ?? [], post => post.id !== status.id),

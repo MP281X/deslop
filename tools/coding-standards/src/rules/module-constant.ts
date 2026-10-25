@@ -1,4 +1,4 @@
-import {Array, Equivalence, Function, Option, Predicate, String, pipe} from 'effect'
+import {Array, Function, Option, Predicate, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer, Variable} from 'vite-plus/lint/plugins'
@@ -103,9 +103,14 @@ function check(input: {
 export const moduleConstant = defineRule({
 	create: context => ({
 		Program: program => {
-			const leading = Array.takeWhile(
+			const leadingEnd = pipe(
 				program.body,
-				statement => statement.type === 'ImportDeclaration' || Option.isSome(literalConstant(statement))
+				Array.takeWhile(
+					statement => statement.type === 'ImportDeclaration' || Option.isSome(literalConstant(statement))
+				),
+				Array.last,
+				Option.map(statement => statement.range[1]),
+				Option.getOrElse(() => 0)
 			)
 			for (const statement of program.body) {
 				pipe(
@@ -123,15 +128,7 @@ export const moduleConstant = defineRule({
 					),
 					Option.match({
 						onNone: Function.constVoid,
-						onSome: match =>
-							check({
-								...match,
-								context,
-								leading: Array.containsWith(Equivalence.strictEqual<ESTree.Statement | ESTree.ModuleDeclaration>())(
-									leading,
-									statement
-								)
-							})
+						onSome: match => check({...match, context, leading: statement.range[1] <= leadingEnd})
 					})
 				)
 			}

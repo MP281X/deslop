@@ -113,7 +113,7 @@ function inlined(input: {
 }
 
 // A value that runs code must run before anything that runs before its new place, such as a getter on the way to the read.
-function executes(node: ESTree.Node): boolean {
+function executes(context: Context, node: ESTree.Node): boolean {
 	if (
 		Array.contains(
 			[
@@ -131,7 +131,7 @@ function executes(node: ESTree.Node): boolean {
 		return true
 	}
 	if (Array.contains(['ArrowFunctionExpression', 'FunctionDeclaration', 'FunctionExpression'], node.type)) return false
-	return Array.some(childNodes(node), executes)
+	return Array.some(childNodes(context, node), child => executes(context, child))
 }
 
 // The read is the object a method is called on, as `client` in `client.trace(id)`.
@@ -144,10 +144,10 @@ function receiver(read: ESTree.Node) {
 	)
 }
 
-function suspends(node: ESTree.Node): boolean {
+function suspends(context: Context, node: ESTree.Node): boolean {
 	if (node.type === 'YieldExpression' || node.type === 'AwaitExpression') return true
 	if (Array.contains(['ArrowFunctionExpression', 'FunctionDeclaration', 'FunctionExpression'], node.type)) return false
-	return Array.some(childNodes(node), suspends)
+	return Array.some(childNodes(context, node), child => suspends(context, child))
 }
 
 // Between the slot and its statement only markup, a declaration or a yield may stand, so the moved value is not buried in an expression.
@@ -183,7 +183,7 @@ function surface(node: ESTree.Node): boolean {
 function readable(input: {context: Context; init: ESTree.Expression; read: ESTree.Node}) {
 	if (!pipe(input.context.sourceCode.getText(input.init), String.includes('\n'))) return true
 	const slot = outermost(input.read)
-	if (Predicate.isNullish(slot.parent) || suspends(input.init)) return false
+	if (Predicate.isNullish(slot.parent) || suspends(input.context, input.init)) return false
 	if (slot.parent.type === 'JSXExpressionContainer' || slot.parent.type === 'ReturnStatement') return true
 	return (
 		Predicate.isNotNullish(slot.parent.parent) &&
@@ -225,7 +225,7 @@ function report(input: {context: Context; effects: ESTree.Node[]; node: ESTree.V
 						// Inlining a conditional value into another conditional would nest ternaries, which lint forbids.
 						!(init.type === 'ConditionalExpression' && insideConditional({node: read, statement: next})) &&
 						// `yield* client.trace(id)` reads better than `yield* (yield* RpcClient.make(Rpcs)).trace(id)`.
-						!(suspends(init) && receiver(outermost(read))) &&
+						!(suspends(input.context, init) && receiver(outermost(read))) &&
 						// A pipe moved into another pipe must stay within no-deep-pipe's nesting limit.
 						!nestsTooDeep({context: input.context, read, value: init}) &&
 						// Moving the value past code that runs first would change what it reads or reorder effects.
@@ -241,7 +241,7 @@ function report(input: {context: Context; effects: ESTree.Node[]; node: ESTree.V
 					fix: fixer => {
 						if (
 							!fixable({init, read: found.read}) ||
-							(executes(init) &&
+							(executes(input.context, init) &&
 								!Array.every(input.context.sourceCode.getTokensBetween(declaration, found.read), inert))
 						) {
 							return []

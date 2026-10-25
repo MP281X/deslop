@@ -32,7 +32,7 @@ function enclosingPipes(context: Context, node: ESTree.Node): number {
 // How many pipes enclose each pipe call inside `node` once `node` stands where `enclosing` pipes enclose it.
 function pipeDepths(input: {context: Context; enclosing: number; node: ESTree.Node}): number[] {
 	if (Array.contains(FUNCTIONS, input.node.type)) return []
-	const nested = Array.flatMap(childNodes(input.node), child =>
+	const nested = Array.flatMap(childNodes(input.context, input.node), child =>
 		pipeDepths({
 			context: input.context,
 			enclosing: Boolean.match(pipeArgument({child, context: input.context, parent: input.node}), {

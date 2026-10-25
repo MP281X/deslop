@@ -18,7 +18,8 @@ const REPLACEMENTS: Record.ReadonlyRecord<string, string> = {
 	fill: 'Array.replicate or Array.makeBy',
 	finally: 'Effect.ensuring',
 	flat: 'Array.flatten',
-	includes: 'Array.contains or String.includes',
+	includes:
+		'Array.contains for structural equality, Array.containsWith(Equivalence.strictEqual()) for identity, or String.includes',
 	indexOf: 'Array.findFirstIndex or String.indexOf',
 	keys: 'Record.keys or HashMap.keys',
 	lastIndexOf: 'Array.findLastIndex or String.lastIndexOf',

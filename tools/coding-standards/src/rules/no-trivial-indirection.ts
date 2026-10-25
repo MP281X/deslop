@@ -332,7 +332,7 @@ function identityCallback(node: ESTree.ArrowFunctionExpression) {
 		node.params[0]?.type === 'Identifier' &&
 		node.params[0].typeAnnotation === null &&
 		node.parent.type === 'CallExpression' &&
-		Array.contains(node.parent.arguments, node) &&
+		node.parent.callee !== node &&
 		isIdentity(node)
 	)
 }

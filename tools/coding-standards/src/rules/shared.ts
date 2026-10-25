@@ -423,14 +423,20 @@ function isNode(value: unknown): value is ESTree.Node {
 	return Predicate.hasProperty(value, 'type') && Predicate.isString(value.type)
 }
 
-export function childNodes(node: unknown) {
-	if (!Predicate.isReadonlyObject(node)) return Array.empty<ESTree.Node>()
-	return pipe(Record.values(Record.remove(node, 'parent')), Array.flatMap(Array.ensure), Array.filter(isNode))
+export function childNodes(context: Context, node: ESTree.Node) {
+	return pipe(
+		context.sourceCode.visitorKeys[node.type] ?? [],
+		Array.flatMap(key => {
+			if (!Predicate.hasProperty(node, key)) return []
+			return Array.ensure(node[key])
+		}),
+		Array.filter(isNode)
+	)
 }
 
 function suspendSeeds(input: {context: Context; node: ESTree.Node}): string[] {
 	const seeds = pipe(
-		childNodes(input.node),
+		childNodes(input.context, input.node),
 		Array.flatMap(child => suspendSeeds({context: input.context, node: child}))
 	)
 	if (input.node.type !== 'CallExpression') return seeds
@@ -440,21 +446,21 @@ function suspendSeeds(input: {context: Context; node: ESTree.Node}): string[] {
 	)
 }
 
-function referenceNames(node: ESTree.Node): string[] {
+function referenceNames(context: Context, node: ESTree.Node): string[] {
 	const nested = pipe(
-		childNodes(node),
+		childNodes(context, node),
 		Array.filter(
 			child =>
 				!(node.type === 'Property' && !node.computed && child === node.key) &&
 				!(node.type === 'MemberExpression' && !node.computed && child === node.property)
 		),
-		Array.flatMap(referenceNames)
+		Array.flatMap(child => referenceNames(context, child))
 	)
 	if (node.type !== 'Identifier') return nested
 	return Array.prepend(nested, node.name)
 }
 
-function schemaEdges(statement: ESTree.Statement | ESTree.ModuleDeclaration) {
+function schemaEdges(context: Context, statement: ESTree.Statement | ESTree.ModuleDeclaration) {
 	const declaration = statementDeclaration(statement)
 	if (declaration?.type === 'TSTypeAliasDeclaration') {
 		if (isInferredType({name: declaration.id.name, node: declaration.typeAnnotation})) return Array.empty<NameEdges>()
@@ -463,14 +469,34 @@ function schemaEdges(statement: ESTree.Statement | ESTree.ModuleDeclaration) {
 	if (declaration?.type !== 'VariableDeclaration' || declaration.kind !== 'const') return Array.empty<NameEdges>()
 	return Array.flatMap(declaration.declarations, declarator => {
 		if (declarator.id.type !== 'Identifier' || declarator.init === null) return Array.empty<NameEdges>()
-		return [{name: declarator.id.name, targets: referenceNames(declarator.init)}]
+		return [{name: declarator.id.name, targets: referenceNames(context, declarator.init)}]
 	})
 }
 
 export function schemaCycleNames(input: {context: Context; program: ESTree.Program}) {
+	if (
+		!Array.some(
+			input.program.body,
+			statement =>
+				statement.type === 'ImportDeclaration' &&
+				statement.source.value === 'effect' &&
+				Array.some(
+					statement.specifiers,
+					specifier =>
+						specifier.type === 'ImportSpecifier' &&
+						specifier.imported.type === 'Identifier' &&
+						specifier.imported.name === 'Schema'
+				)
+		)
+	) {
+		return Array.empty<string>()
+	}
 	const seeds = suspendSeeds({context: input.context, node: input.program})
 	if (Array.isArrayEmpty(seeds)) return Array.empty<string>()
-	const edges = pipe(input.program.body, Array.flatMap(schemaEdges))
+	const edges = pipe(
+		input.program.body,
+		Array.flatMap(statement => schemaEdges(input.context, statement))
+	)
 	const names = pipe(
 		edges,
 		Array.map(edge => edge.name),

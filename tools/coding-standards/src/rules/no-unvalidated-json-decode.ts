@@ -27,9 +27,7 @@ function unknownJsonSchema(context: Context, node: ESTree.Node) {
 	)
 }
 
-function schemaDecoder(context: Context, node: ESTree.Node) {
-	if (node.type !== 'CallExpression' || node.callee.type === 'Super') return false
-	const callee = resolveBinding(context, node.callee)
+function schemaDecoder(context: Context, callee: ESTree.Node) {
 	return (
 		callee.type === 'MemberExpression' &&
 		importedMember({context, importedName: 'Schema', node: callee}) &&
@@ -41,7 +39,7 @@ function protocolDecoder(context: Context, node: ESTree.Node) {
 	const decoder = resolveBinding(context, node)
 	return (
 		decoder.type === 'CallExpression' &&
-		schemaDecoder(context, decoder) &&
+		schemaDecoder(context, resolveBinding(context, decoder.callee)) &&
 		decoder.arguments[0] !== undefined &&
 		!unknownSchema(context, decoder.arguments[0]) &&
 		!unknownJsonSchema(context, decoder.arguments[0])
@@ -104,7 +102,7 @@ export const noUnvalidatedJsonDecode = defineRule({
 			if (schema === undefined || node.callee.type === 'Super') return
 			const callee = resolveBinding(context, node.callee)
 			const unvalidated =
-				(schemaDecoder(context, node) && unknownJsonSchema(context, schema)) ||
+				(schemaDecoder(context, callee) && unknownJsonSchema(context, schema)) ||
 				(httpDecoder(context, callee) && unknownSchema(context, schema))
 			if (!unvalidated || validatesResult(context, node)) return
 			context.report({message: 'Replace Schema.Unknown with the protocol Schema at this JSON boundary.', node})
