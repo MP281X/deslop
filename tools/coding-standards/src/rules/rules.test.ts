@@ -20,9 +20,7 @@ const OxlintOutput = Schema.Struct({
 const lintSource = Effect.fnUntraced(function* (input: Record<string, string>, flags: string[] = []) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
-	const fixtures = path.resolve(import.meta.dirname, '../../.fixtures')
-	yield* fs.makeDirectory(fixtures, {recursive: true})
-	const directory = yield* fs.makeTempDirectoryScoped({directory: fixtures, prefix: 'fixture-'})
+	const directory = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-lint-'})
 	yield* Effect.forEach(
 		Record.toEntries(input),
 		entry =>
@@ -190,7 +188,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'/* Explains the next line\n   across two lines */',
 								'// oxlint-disable-next-line eqeqeq',
 								'const loose = source == "ready"',
-								'// oxlint-disable-next-line sort-keys -- the fixture keeps its order',
+								'// oxlint-disable-next-line sort-keys -- this input keeps its order',
 								'const unsortedKeys = {b: 1, a: 2}',
 								'// @effect-diagnostics-next-line floatingEffect:off',
 								'export {AssertString, Clock, clockLayers, Codecs, NonEmpty, PipedNonEmpty, PipedTrimmed, absent, Fallback, Input, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, asyncConstant, callbacks, decode, decoded, decoders, deepPipe, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, greet, handlers, input, isRecord, isText, makeBox, labelled, logName, loose, kind, mappedValues, measured, keyed, lazy, described, namesA, namesB, namespaceRef, noValues, present, slotLength, slotPair, notFound, operations, ready, recipients, ref, run, stateNamespace, succeed, unsortedKeys, unwrapped, withHead, wrapped}',
@@ -360,10 +358,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'@deslop/coding-standards(no-trivial-indirection)',
 						'@deslop/coding-standards(no-trivial-indirection)'
 					])
-					assert.deepStrictEqual(
-						Array.filter(result.stdout.diagnostics, diagnostic => String.startsWith('typescript(')(diagnostic.code)),
-						[]
-					)
 				}),
 			20_000
 		)
@@ -468,7 +462,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'declare function combine(left: string, right: string): string',
 								'declare const snapshot: {width: number}',
 								'declare namespace Ledger { export type Base = {readonly add: (value: number) => Effect.Effect<number>}; export type Shape = Base & {readonly count: Effect.Effect<number>} }',
-								'// oxlint-disable-next-line effecttsgo/deterministic-keys -- a fixture in a temporary directory has no stable key',
 								'class Ledger extends Context.Service<Ledger, Ledger.Shape>()("Ledger") {}',
 								'type User = typeof User.Type',
 								'const User = Schema.Struct({name: Schema.String})',
@@ -553,14 +546,14 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'function curried(left: string, right: string) { return factory(left)(right) }',
 								'function annotate(annotations: Parameters<typeof Schema.String.annotate>[0]) { return Schema.String.annotate(annotations) }',
 								'function annotateString(annotations: Parameters<typeof String.annotate>[0]) { return String.annotate(annotations) }',
-								'// oxlint-disable-next-line typescript/no-restricted-types -- the fixture forwards to a Promise API',
+								'// oxlint-disable-next-line typescript/no-restricted-types -- this input forwards to a Promise API',
 								'declare function fetchName(id: string): Promise<string>',
 								'async function loadName(id: string) { return fetchName(id) }',
 								'function* echo(value: string) { return transform(value) }',
 								'declare class Missing { _tag: "Missing" }',
 								'const missing = Effect.fail(new Missing())',
 								'const nestedFailure = Effect.fn("nestedFailure")(function* (id: string) { return yield* pipe(Effect.succeed(id), Effect.flatMap(() => Effect.fail(new Missing()))) })',
-								'// oxlint-disable-next-line eqeqeq -- the fixture keeps a reasoned disable',
+								'// oxlint-disable-next-line eqeqeq -- this input keeps a reasoned disable',
 								'const loose = snapshot.width == 1',
 								'declare const db: {insert: (table: string) => {values: (row: {id: number}) => void}}',
 								'db.insert("user").values({id: 1})',
@@ -842,7 +835,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'declare function consume(value: number): void',
 								'type BaseShape = {count: Effect.Effect<number>}',
 								'type ServiceShape = BaseShape & {increment: Effect.Effect<void>}',
-								'// oxlint-disable-next-line effecttsgo/deterministic-keys -- a fixture in a temporary directory has no stable key',
 								'class Counter extends Context.Service<Counter, ServiceShape>()("Counter") {}',
 								'export {Counter, Tree, labelOf, sizes}',
 								'export type {Wrapper}'
@@ -877,7 +869,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 									'export type Explicit = {readonly values: readonly string[]}',
 									'export type Mapped<T> = {readonly [K in keyof T]: T[K]}',
 									'export type Frozen = Readonly<{value: string}>',
-									'// oxlint-disable-next-line effecttsgo/deterministic-keys -- a fixture in a temporary directory has no stable key',
 									'export class Clock extends Context.Service<Clock, {now: Effect.Effect<number>}>()("Clock") {}',
 									'export function sum() {',
 									'	const size = text.length + 1',
@@ -968,7 +959,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'export type Explicit = {values: string[]}',
 								'export type Mapped<T> = {[K in keyof T]: T[K]}',
 								'export type Frozen = {value: string}',
-								'// oxlint-disable-next-line effecttsgo/deterministic-keys -- a fixture in a temporary directory has no stable key',
 								"export class Clock extends Context.Service<Clock, {readonly now: Effect.Effect<number>}>()('Clock') {}",
 								'export function sum() {',
 								'	return consume((text.length + 1) * 2)',
@@ -998,7 +988,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'}',
 								'export function asserted() {',
 								'	const method = obj.method',
-								'	return method()',
+								'	return method!()',
 								'}',
 								'export function pattern() {',
 								'	obj.first()',
@@ -1511,7 +1501,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'export const important = "duration-500!"',
 								'export const themed = "dark:starting:scale-50"',
 								'export const faded = "bg-linear-to-b from-muted to-background"',
-								// oxlint-disable-next-line @deslop/coding-standards/no-gradient -- the fixture holds the class the rule rejects
+								// oxlint-disable-next-line @deslop/coding-standards/no-gradient -- this input holds the class the rule rejects
 								'export const painted = "bg-[radial-gradient(circle,var(--muted),transparent)]"',
 								'export const calm = "transition-opacity duration-200 animate-in zoom-in-95 starting:scale-95 bg-card"'
 							],
@@ -1781,7 +1771,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								"import {z} from 'zod'",
 								'',
 								'declare const path: {posix: {join: (...parts: string[]) => string}; join: (...parts: string[]) => string}',
-								'// oxlint-disable-next-line effecttsgo/deterministic-keys -- a fixture in a temporary directory has no stable key',
 								'class Groups extends Context.Service<Groups, {replace: (id: string) => Effect.Effect<void>}>()("Groups") {}',
 								'export const joined = path.posix.join("a", "b")',
 								'export const bytes = Buffer.concat([])',
@@ -1802,8 +1791,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							Array.filter(diagnostic => diagnostic.code === '@deslop/coding-standards(no-native-method-call)'),
 							Array.map(diagnostic => diagnostic.labels[0]?.span.line)
 						),
-						// Array and record methods belong to effecttsgo's prefer-effect-array and prefer-effect-record.
-						[13]
+						// Array and record methods belong to the Effect compiler's preferEffectArray and preferEffectRecord.
+						[12]
 					)
 				}),
 			20_000

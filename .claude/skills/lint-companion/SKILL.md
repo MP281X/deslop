@@ -1,63 +1,35 @@
 ---
 name: lint-companion
-description: "Companion to the @deslop/coding-standards linter: the shapes to write first so lint passes on the first Verify. Use before writing or changing code, tests or configuration, and before running the repository's fix, check or test."
+description: "Choose the intended code shape before the first edit and resolve cross-rule traps without workarounds. Use before writing or changing code, tests or configuration, and before running the repository's fix, check or test."
 ---
 
 # Lint companion
 
-Lint owns every mechanical form and its message names the fix; this skill holds only what makes those fixes converge. The repository's `AGENTS.md` and `CODING_STANDARDS.md` win over it.
+Choose the target before writing, not a sequence of spellings that pass lint. Diagnostics own mechanical fixes; this skill owns the cross-rule decisions that otherwise force a rewrite.
 
-## Verify once
+## Target before code
 
-Run the repository's static gate and tests, chained bare at the root, on a stable state after the whole change and each round of fixes. Preserve the failing step's exit status and diagnostics; fix from that run, the first error in each file first. Keep autofixes for the next run, never discard them to make later checks pass.
-
-```bash
-<static gate> && <test>
-# not: <gate> 2>&1 | tail -5 && <test>, where test runs after a failed gate
-```
+- **Reference.** Read `CODING_STANDARDS.md` and the canonical examples `AGENTS.md` names before choosing a shape. Use the active preset for mechanical forms; a nearby file or an older guide is not precedent when the preset rejects it. Repository-specific judgement and documented outside contracts stay with their owners.
+- **Owners first.** Trace the input to its schema, service/failure boundary and state owner before editing. Reuse that path; add an owner only for a capability it lacks. Passing lint does not establish that the boundary or abstraction belongs there.
+- **Incremental adoption.** Warning and off scopes are migration debt, not permission to copy the old shape. New and rewritten code follows the target; new or split files start clean. Preserve unrelated legacy code and documented generated/public API exceptions rather than widening the refactor or its exemptions.
 
 ## Write these shapes first
 
-The tempting fix for each trips another rule or reshapes the code; every other diagnostic is fixed in place as its message says.
-
-- **Make illegal states unrepresentable.** `type Kind = typeof Kind.Type` immediately above `const Kind = Schema.Literals([...])`, subset `Kind.pick`; export each half only when consumers use it. Recursive schemas hand-write their type, `readonly` as `Schema.Array` decodes it, and annotate the `suspend` thunk; other shapes mutable, `readonly` only on service properties.
-- **Type the boundary.** Decode an `any` or `unknown` with the protocol schema, before any `?.`, cast or disable could touch it.
-- **Adapt the failure contract, not the return syntax.** A rejecting Promise takes `Effect.tryPromise`; `Effect.promise` means rejection is a defect, not a typed failure. Finalizers need an explicit release-failure policy rather than a mechanical rewrite to a fallible release. Keep plain values plain when the host already accepts them; an Effect runtime around a literal owns no work.
-- **Separate reasons from wording.** Retry and recovery consume a stable tagged error or literal reason; messages remain display copy. Add only distinctions a caller actually uses, and preserve causes rather than replacing them with their messages.
-- **One home per type.** The library's type or `ReturnType<typeof make>` in the signature rather than a module alias; import from the defining module.
-- **Reset by key.** Atoms at module level or in an `Atom.family` keyed by their input, built on the runtime the repository's canonical example or `CODING_STANDARDS.md` names; `key` resets state when a prop changes, render derives a value, `useRef` holds lifecycle state, and effects never set state. Components read atoms and never run an Effect; the screen's owner wraps one `Suspense` and one error boundary.
+- **Schema and value.** Define the boundary schema once and derive its ordinary type; export either half only when consumed. A recursive schema needs a hand-written type with the decoder's `readonly` arrays and an annotated `suspend` thunk, not a new convention for ordinary data.
+- **Boundary before access.** Decode dependency-provided `any` or `unknown` at its protocol owner before accessing fields. Optional chaining, a cast or a wider type cannot validate it; callers should not each invent a second schema for the same input.
+- **Async contract.** Trace who observes an SDK Promise and its rejection; an Effect-heavy caller does not make a discarded native Promise safe. Keep receiver-dependent calls inside their adapter. Decide expected failures, defects and finalizer-release policy before choosing the Effect constructor; add tagged reasons only when a caller distinguishes them. Plain values stay plain when the host accepts them.
+- **Service as namespace.** Put the service's Layer and public helpers on its named class. Preserve published namespace contracts without copying that shape internally.
+- **Screen owner.** Use the application's runtime for server-state atoms, not a component runtime or a second provider. Choose the reset and loading owner before wiring hooks: reset by `key`, derive display values during render, and keep Suspense/error boundaries at the screen that owns the state.
 
 ```ts
-export const load = Effect.fn('Notes.load')(
-	function* (path: string) {
-		const fs = yield* FileSystem.FileSystem
-		yield* pipe(fs.remove(`${path}.lock`), Effect.ignore({log: 'Warn', message: 'Lock not removed'}))
-		return yield* fs.readFileString(path)
-	},
-	Effect.mapError(cause => NotesError.make({cause, message: 'Cannot read the note'}))
-)
-export const loadAll = Effect.fn('Notes.loadAll')(function* (paths: string[]) {
-	return yield* Effect.forEach(paths, load, {concurrency: 'unbounded'})
-})
-// not: Effect.catch(() => Effect.void), Effect.orDie, mapError(cause => X.make({message})), Effect.provide inside a service
-```
-
-```ts
-function label(entry: Entry) {
-	if (entry.done) return 'Done'
-	return 'Running'
+export class Notes extends Context.Service<
+	Notes,
+	{readonly load: (path: string) => Effect.Effect<string, NotesError>}
+>()('@app/Notes') {
+	static readonly layer = Layer.effect(this, make)
 }
-export function summarize(entries: Entry[]) {
-	return {
-		labels: pipe(
-			entries,
-			Array.filter(entry => entry.open),
-			Array.map(label)
-		),
-		total: Array.reduce(entries, 0, (sum, entry) => sum + entry.tokens)
-	} satisfies Summary
-}
-// not: a ? b : c, continue, let total, const open = entries.filter(…), const label = (entry) => …, summarize(): Summary
+// Consumers: yield* Notes; Notes.layer.
+// Not: a self-reexport, import * as Notes from './notes.ts', or layer as notesLayer.
 ```
 
 ### Local collectors
@@ -67,21 +39,20 @@ export function summarize(entries: Entry[]) {
 -MutableRef.update(items, Array.append(entry))
 +const items = MutableList.make<Entry>()
 +MutableList.append(items, entry)
- // Consume once, after collection.
 +const entries = MutableList.toArray(items)
 ```
 
-- `MutableList`: local, append-only; no observed intermediate array identity.
-- `MutableRef`: replacement or observed current value, not a blanket collection wrapper.
+Choose the accumulator before the loop. Consume once after collection; keep `MutableRef` for replacement or an observed intermediate value, not as a mutation-rule workaround.
 
-## Rules
+## Gate
 
-- **Rule bug.** A diagnostic on code the rules allow, or two rules that reject each other's fix, is a rule bug: fix the rule with a rejected and an accepted case from the real code.
-- **Same correction twice** becomes impossible at the highest level that works: an owner component or type, then a lint rule whose message names the one fix.
-- **Disables** name an outside contract in their `--` reason.
+Use `AGENTS.md`'s editing and finished-change commands for this checkout. A focused pass guides the edit but does not check unchanged consumers of an exported type. Chain the required stages bare with `&&`, preserving their exit status and diagnostics.
 
-## Repository analysis
+Keep autofixes and formatting. Read the first remaining error in each file together with the checks its fix touches; repair that coherent batch before rerunning. A second spelling failure is a signal to revisit the owner, not add another layer.
 
-Keep the full Fallow scan and a production-reachability scan: tests are roots in the full scan, so a test import does not prove shipping use. Trace a finding before removal; a helper still called locally needs its export removed, not its implementation deleted, and unique behavior stays covered through the production seam. Published APIs and framework entrypoints are outside contracts, not blanket tooling exceptions.
+## Repair the owner, not the spelling
 
-Duplication stays advisory: matching syntax is not proof of shared ownership. Complexity failures need simpler ownership or control flow, not wrappers that relocate the score; retain an exact function ceiling only when the current shape is clearer. Architecture zones follow canonical schema and helper names before server implementation defaults, not an enumeration of every existing service.
+- **Combined policy.** No wrapper, fake use, extra export, prop spread, wider type or file split solely to silence a diagnostic. Choose the domain predicate instead of a truthiness constructor and a direct branch instead of a combinator that only hides one. Judge the result against all checks together: preserve evaluation order, receiver binding, resource lifetime and failure behavior, not merely the last diagnostic's suggested spelling.
+- **Deletion.** An unused export does not make its locally used implementation dead. Test-only imports do not prove shipping use, and a published API is an outside consumer. Trace callers before removing behavior. Complexity needs simpler ownership or control flow, not wrappers that move the score.
+- **Exemptions.** An inline disable names the real outside contract in its `--` reason. Never enlarge warning/off/ignore scopes to make the implementation pass; fix placement or ownership instead. A shared value belongs in the repository's shared-code location, not a server module with a boundary exception for its client.
+- **Rule conflict.** Demonstrate the intended form and a genuinely invalid counterexample before changing policy. Fix an owned rule's detection or message so its advice converges with the other rules; report an upstream conflict rather than contorting the application or weakening checks around it.

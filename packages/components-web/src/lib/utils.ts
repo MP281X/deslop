@@ -32,14 +32,3 @@ export const formatError = pipe(
 	),
 	Match.orElse(() => 'Unknown Error' as const)
 )
-
-export function toSentenceCase(value: string) {
-	return pipe(
-		value,
-		String.replaceAll(/[-_]+/gu, ' '),
-		String.replaceAll(/([a-z0-9])([A-Z])/gu, '$1 $2'),
-		String.trim,
-		String.toLowerCase,
-		String.capitalize
-	)
-}

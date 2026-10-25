@@ -1,4 +1,4 @@
-import {InfoIcon, OctagonAlert} from 'lucide-react'
+import {OctagonAlert} from 'lucide-react'
 
 import {Alert, AlertDescription, AlertTitle} from '#components/ui/alert.tsx'
 import {Button} from '#components/ui/button.tsx'
@@ -44,16 +44,5 @@ export function Error(props: {error: unknown; reset: () => void}) {
 				<AlertDescription className="wrap-break-word whitespace-pre-wrap">{message}</AlertDescription>
 			</Alert>
 		</Button>
-	)
-}
-
-export function Fallback(props: {message: string}) {
-	return (
-		<div className="flex h-full w-full items-center justify-center p-4 select-text">
-			<Alert className="w-fit max-w-lg">
-				<InfoIcon />
-				<AlertDescription className="wrap-break-word whitespace-pre-wrap">{props.message}</AlertDescription>
-			</Alert>
-		</div>
 	)
 }

@@ -10,7 +10,7 @@ export default defineConfig({
 		]
 	},
 	fmt: {
-		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/svgs/**', 'packages/components-web/src/ui/**'],
+		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/ui/**'],
 
 		arrowParens: 'avoid',
 		bracketSpacing: false,
@@ -56,23 +56,32 @@ export default defineConfig({
 		env: {browser: true, builtin: true, node: true},
 		extends: [lint],
 		// An extended config's ignorePatterns do not carry over, so the preset's generated-file ignore repeats here.
-		ignorePatterns: [
-			'**/*.gen.ts',
-			'tools/*/template/**',
-			'packages/components-web/src/svgs/**',
-			'packages/components-web/src/ui/**'
-		]
+		ignorePatterns: ['**/*.gen.ts', 'tools/*/template/**', 'packages/components-web/src/ui/**']
 	},
 	run: {
 		tasks: {
-			// The rule tests write lint fixtures while they run; tracked, those writes invalidate the task's own cache.
-			test: {cache: {input: [{auto: true}, '!tools/coding-standards/.fixtures/**']}, command: 'vp test'}
+			check: ['vp run lint', 'vp run typecheck', 'vp run fallow'],
+			fallow: {
+				cache: {input: [{auto: true}, '!.fallow/**', '!**/*.tsbuildinfo'], output: []},
+				command: [
+					'fallow dead-code --format compact --fail-on-issues',
+					'fallow dead-code --production --format compact --fail-on-issues',
+					'fallow health --complexity --format compact'
+				]
+			},
+			fix: {cache: false, command: 'vp lint --fix --format agent; status=$?; vp fmt && exit $status'},
+			lint: ['vp fmt --list-different', 'vp lint --format agent'],
+			test: 'vp test',
+			typecheck: {
+				cache: {input: [{auto: true}, '!**/*.tsbuildinfo'], output: []},
+				command:
+					"sh -c 'TSRS_CHECKER_ASSIGNMENT=go tsrs --build apps/*/tsconfig.json packages/*/tsconfig.json tools/*/tsconfig.json --force --pretty false'"
+			}
 		}
 	},
 	test: {
-		environment: 'node',
 		include: ['apps/*/src/**/*.test.ts', 'packages/*/src/**/*.test.ts', 'tools/*/src/**/*.test.ts'],
-		passWithNoTests: true,
-		pool: 'forks'
+		reporters: ['dot'],
+		silent: 'passed-only'
 	}
 })

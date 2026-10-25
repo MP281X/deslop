@@ -5,7 +5,7 @@ import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
 import {matches, memberName, variableFor} from '#rules/shared.ts'
 
-// effecttsgo/prefer-effect-array owns the typed array methods it maps: map, filter, find, reduce, join, toSorted and the rest.
+// The compiler owns mapped array methods such as map and toSorted; this rule keeps mutating methods and ambiguous string/array names.
 const REPLACEMENTS: Record.ReadonlyRecord<string, string> = {
 	at: 'Array.get or String.at',
 	catch: 'Effect.tryPromise and Effect.catchTag',

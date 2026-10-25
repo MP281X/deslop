@@ -13,6 +13,8 @@ catalog:
 
 overrides:
   vite: 'catalog:'
+  # Fallow's optional TypeScript checker is unused; tsrs owns type checking.
+  'fallow>fallow-type-aware': '-'
   # apple-targets 5.0.0 pins the SDK 55 config loader, which needs TypeScript 5; SDK 58's loader works the same.
   '@bacons/apple-targets>@expo/prebuild-config': ^58.0
 
@@ -20,13 +22,17 @@ overrides:
 peerDependencyRules:
   allowedVersions:
     '@tailwindcss/vite@4.3.3>vite': 1.4.0
-    '@tanstack/router-plugin@1.168.46>vite': 1.4.0
+    '@tanstack/router-plugin@1.168.48>vite': 1.4.0
     '@vitejs/plugin-react@6.1.2>vite': 1.4.0
     '@vitest/mocker@5.0.5>vite': 1.4.0
     'vitest@5.0.5>vite': 1.4.0
 
-# apple-targets 5.0.0 loads these without declaring them.
 packageExtensions:
+  # The published Node bundle imports Tensor without declaring its package.
+  '@huggingface/transformers@4.3.1':
+    dependencies:
+      onnxruntime-common: ^1.30
+  # apple-targets 5.0.0 loads these without declaring them.
   '@bacons/apple-targets':
     dependencies:
       '@expo/image-utils': ^0.12

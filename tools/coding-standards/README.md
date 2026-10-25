@@ -1,13 +1,12 @@
 # @deslop/coding-standards
 
-A strict Vite+ lint preset, and three skills for Claude Code and Codex: `lint-companion` (the shapes to write first so the preset passes on the first run), `delivery` and `review`. `review` judges a diff against the repository's `CODING_STANDARDS.md`.
+A syntax-only Vite+ lint preset, a strict compiler configuration with Effect diagnostics, and three skills for Claude Code and Codex: `lint-companion`, `delivery` and `review`.
 
-Requires Vite+ 1.3 or newer. Vite+ owns the linter, type-aware engine and plugin authoring APIs; do not install standalone `oxlint`, `oxlint-tsgolint` or `@oxlint/plugins`.
+Vite+ owns syntax linting and plugin authoring APIs; Effect-patched tsrs owns compiler diagnostics.
 
 ```bash
-vpx @deslop/coding-standards@latest                   # copy the skills into the repository's .claude, .codex or .agents
-vp add -D @deslop/coding-standards @effect/tsgo
-vp exec effect-tsgo patch --no-typescript --oxlint    # patch Vite+'s bundled linter; keep this in `prepare`
+vpx @deslop/coding-standards@latest
+vp add -D @deslop/coding-standards@latest @effect/tsgo@latest tsrs@latest
 ```
 
 ```ts
@@ -18,6 +17,20 @@ import {lint} from '@deslop/coding-standards'
 export default defineConfig({lint: {extends: [lint]}})
 ```
 
-To migrate from the standalone preset, replace the `oxlint` import with `lint` and remove the standalone dependencies. Put project-specific settings alongside `extends`; its `ignorePatterns` do not carry over, so repeat `**/*.gen.ts` in your own ignores.
+```jsonc
+// package.json
+{
+	"scripts": {
+		"prepare": "effect-tsgo patch --no-typescript --tsrs",
+		"typecheck": "tsrs --noEmit --checkerAssignment go",
+		"check": "vp check && vp run typecheck"
+	}
+}
+```
 
-The preset's fixes leave work for the formatter, so run `vp fmt` after `vp check --fix`.
+```jsonc
+// tsconfig.json
+{"extends": "@deslop/coding-standards/tsconfig.json"}
+```
+
+Put project-specific lint settings alongside `extends`; its `ignorePatterns` do not carry over, so repeat `**/*.gen.ts` in your own ignores.

@@ -11,7 +11,7 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 
 ## Commands
 
-- **Verify** is `vp run -w fix && vp run -w test`. `fix` is the whole static gate (lint fixes, types, format, Fallow), which CI runs without writes as `check`; test runs after it because rule tests create fixtures that a concurrent type scan reads.
+- **Verify** is `vp run -w fix && vp run -w check && vp run -w test`. `fix` applies lint fixes and formatting only; `check` is the non-writing static gate (format, lint, types, Fallow).
 - **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. Before the first mobile push, follow environment's Deslop reference, **Publish an iOS app**.
 - **Agent configuration.** `.claude/agents/pair.md` and `.codex/instructions.md` are identical from `# Work` down. Team skills live in `tools/coding-standards/skills/`, and `node tools/coding-standards/src/install.ts` refreshes their copies in `.claude/skills` and `.codex/skills`. The personal skills in `.claude/skills` (orchestrator, environment, patterns, retrospective) load globally through the workers' links.
 

@@ -60,7 +60,6 @@ const detectLanguage = Effect.fnUntraced(function* (
 	samples: Float32Array
 ) {
 	const features = yield* pipe(
-		// oxlint-disable-next-line typescript/no-unsafe-return -- transformers.js types the processor's answer as any; the schema below decodes it.
 		Effect.tryPromise(() => recognize.processor(samples.subarray(0, 30 * 16_000))),
 		Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({input_features: Schema.instanceOf(Tensor)})))
 	)
