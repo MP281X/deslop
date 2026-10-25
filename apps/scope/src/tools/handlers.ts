@@ -24,7 +24,7 @@ export const ToolHandlers = Tools.toLayer(
 			find_logs: filters => Effect.flatMap(query(filters), telemetry.logs),
 			find_spans: filters => Effect.flatMap(query(filters), telemetry.spans),
 			find_traces: filters => Effect.flatMap(query(filters), telemetry.traces),
-			list_services: () => Effect.map(telemetry.services(), services => ({services})),
+			list_services: () => telemetry.services(),
 			measure_latency: filters => Effect.flatMap(query(filters), telemetry.stats),
 			read_trace: input => telemetry.trace(input.id)
 		})

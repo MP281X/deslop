@@ -3,10 +3,17 @@ import {createServer} from 'node:http'
 
 import {NodeHttpClient, NodeHttpServer, NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {ByteSize, Config, Effect, FileSystem, Layer, Path, String, pipe} from 'effect'
+import {Array, ByteSize, Config, Effect, FileSystem, Layer, Path, String, pipe} from 'effect'
 
 import {McpServer} from 'effect/ai'
-import {HttpIncomingMessage, HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
+import {
+	HttpIncomingMessage,
+	HttpMiddleware,
+	HttpRouter,
+	HttpServerError,
+	HttpServerRequest,
+	HttpServerResponse
+} from 'effect/http'
 
 import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
 import * as ServerRuntime from '@deslop/runtime/server'
@@ -66,6 +73,28 @@ const receiver = HttpRouter.use(router =>
 	})
 )
 
+// Count rejected exports, not normal MCP OAuth challenges. Headers and bodies are never recorded.
+const observe = HttpMiddleware.make(app =>
+	pipe(
+		app,
+		HttpMiddleware.decompression(),
+		Effect.onExit(exit =>
+			Effect.gen(function* () {
+				const request = yield* HttpServerRequest.HttpServerRequest
+				const route = Array.headNonEmpty(String.split(request.url, '?'))
+				const status = HttpServerError.exitResponse(exit).status
+				if ((route !== '/v1/traces' && route !== '/v1/logs') || status < 400) return
+				function credential() {
+					if (request.headers['authorization'] !== undefined) return 'authorization' as const
+					if (request.headers['cookie'] !== undefined) return 'cookie' as const
+					return 'none' as const
+				}
+				yield* (yield* Telemetry).reject({credential: credential(), route, status})
+			})
+		)
+	)
+)
+
 // Public MCP clients authorize through the shared auth app.
 const mcp = pipe(
 	McpServer.toolkit(Tools),
@@ -73,7 +102,7 @@ const mcp = pipe(
 	Layer.provide(
 		ServerRuntime.layerMcp({
 			instructions:
-				"Scope is the debugger for the user's Effect apps: each app's web, mobile and server code exports its traces and logs here, and Scope keeps only the current run of each app. Use it to see what the code actually did instead of guessing: reproduce the action, then list_services, find_traces and read_trace; find_logs for what the app said; measure_latency before and after a change to prove it got faster.",
+				"Scope is the debugger for the user's Effect apps. Start with list_services for ingestion freshness and rejected exports, then reproduce the action and use find_traces/read_trace or find_logs. Searches default to each service's latest process/page load/app launch; runs: all includes retained earlier runs in the lookback. read_trace always opens the whole stored trace. Use measure_latency on the same operation before and after a change. If tools are missing, check the client's MCP connection/authentication; stored OAuth credentials alone do not prove a working connection.",
 			name: 'scope',
 			version: packageJson.version
 		})
@@ -111,7 +140,7 @@ NodeRuntime.runMain(
 							credentials: true
 						})
 					),
-					{disableLogger: true, middleware: HttpMiddleware.decompression()}
+					{disableLogger: true, middleware: observe}
 				),
 				Layer.provide(ServerRuntime.layerNodeHttpServer)
 			),
@@ -119,7 +148,7 @@ NodeRuntime.runMain(
 			pipe(
 				HttpRouter.serve(Layer.merge(Layer.fresh(receiver), HttpRouter.cors({allowedHeaders: ['content-type']})), {
 					disableLogger: true,
-					middleware: HttpMiddleware.decompression()
+					middleware: observe
 				}),
 				Layer.provide(
 					NodeHttpServer.layerConfig(createServer, {

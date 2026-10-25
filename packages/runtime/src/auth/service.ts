@@ -1,6 +1,14 @@
 import {Array, Config, Context, Effect, Layer, Option, Result, Schema, pipe} from 'effect'
 
-import {Headers, HttpClient, HttpClientResponse, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
+import {
+	Headers,
+	HttpClient,
+	HttpClientError,
+	HttpClientResponse,
+	HttpRouter,
+	HttpServerRequest,
+	HttpServerResponse
+} from 'effect/http'
 
 import {AUTH_URL, CurrentUser, RpcAuth} from '#auth/lib/utils.ts'
 import {AuthError, Resource, User} from '#auth/schema.ts'
@@ -8,9 +16,25 @@ import {AuthError, Resource, User} from '#auth/schema.ts'
 function rejected(message: string) {
 	return Effect.mapError(cause => {
 		if (Schema.is(AuthError)(cause)) return cause
-		return AuthError.make({cause, message})
+		if (
+			HttpClientError.isHttpClientError(cause) &&
+			cause.reason._tag === 'StatusCodeError' &&
+			cause.reason.response.status === 401
+		) {
+			return AuthError.make({cause, message})
+		}
+		return AuthError.make({
+			cause,
+			error: 'temporarily_unavailable',
+			message: 'The authorization service is temporarily unavailable'
+		})
 	})
 }
+
+const unavailable = HttpServerResponse.text('The authorization service is temporarily unavailable; retry later', {
+	headers: {'retry-after': '5'},
+	status: 503
+})
 
 export class Auth extends Context.Service<
 	Auth,
@@ -81,7 +105,10 @@ export const HttpAuth = HttpRouter.middleware<{provides: CurrentUser}>()(
 		return app =>
 			Effect.gen(function* () {
 				const user = yield* Effect.result(auth.user((yield* HttpServerRequest.HttpServerRequest).headers))
-				if (Result.isFailure(user)) return HttpServerResponse.text('Sign in first', {status: 401})
+				if (Result.isFailure(user)) {
+					if (user.failure.error === 'temporarily_unavailable') return unavailable
+					return HttpServerResponse.text('Sign in first', {status: 401})
+				}
 				return yield* Effect.provideService(app, CurrentUser, user.success)
 			})
 	})
@@ -93,12 +120,19 @@ export function layerMcpAuth(resource: string) {
 			const auth = yield* Auth
 			return app =>
 				Effect.gen(function* () {
-					const user = yield* Effect.result(auth.access((yield* HttpServerRequest.HttpServerRequest).headers, resource))
+					const headers = (yield* HttpServerRequest.HttpServerRequest).headers
+					const challenge = `Bearer resource_metadata="${new URL('/.well-known/oauth-protected-resource/mcp', resource).href}", scope="deslop"`
+					if (Option.isNone(Headers.get(headers, 'authorization'))) {
+						return HttpServerResponse.text('OAuth authorization required; sign in with your MCP client', {
+							headers: {'www-authenticate': challenge},
+							status: 401
+						})
+					}
+					const user = yield* Effect.result(auth.access(headers, resource))
 					if (Result.isFailure(user)) {
-						return HttpServerResponse.text('Authorization required', {
-							headers: {
-								'www-authenticate': `Bearer resource_metadata="${new URL('/.well-known/oauth-protected-resource/mcp', resource).href}", scope="deslop"`
-							},
+						if (user.failure.error === 'temporarily_unavailable') return unavailable
+						return HttpServerResponse.text('The access token was rejected; sign in again with your MCP client', {
+							headers: {'www-authenticate': `${challenge}, error="invalid_token"`},
 							status: 401
 						})
 					}

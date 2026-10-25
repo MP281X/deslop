@@ -10,6 +10,8 @@ import {
 	Layer,
 	Option,
 	Order,
+	Record,
+	Ref,
 	String,
 	SynchronizedRef,
 	pipe
@@ -26,11 +28,11 @@ import {
 	logMessage,
 	orderEntries,
 	serviceName,
-	services,
+	serviceStatuses,
 	summary,
 	traceView
 } from '#services/telemetry/lib/utils.ts'
-import type {LogsRequest, Query, TraceSummary, TracesRequest} from '#services/telemetry/schema.ts'
+import type {LogsRequest, Query, Rejection, TraceSummary, TracesRequest} from '#services/telemetry/schema.ts'
 import {Entry, TelemetryError} from '#services/telemetry/schema.ts'
 
 const failed = Effect.mapError((cause: unknown) =>
@@ -42,6 +44,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		const fs = yield* FileSystem.FileSystem
 		const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Entry)
 		const crypto = yield* Crypto.Crypto
+		const since = yield* Clock.currentTimeMillis
+		const rejections = yield* Ref.make(Record.empty<string, Rejection>())
 		const saved = yield* Effect.forEach(
 			Array.filter(yield* fs.readDirectory(directory), file => !String.endsWith('.tmp')(file)),
 			file =>
@@ -55,6 +59,11 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			HashMap.fromIterable(Array.map(Array.getSomes(saved), entry => [entry.id, entry] as const))
 		)
 		const read = Effect.map(SynchronizedRef.get(state), entries => Array.fromIterable(HashMap.values(entries)))
+		const selected = Effect.fnUntraced(function* (runs: Query['runs']) {
+			const entries = yield* read
+			if (runs === 'all') return entries
+			return currentEntries(entries)
+		})
 		const save = Effect.fnUntraced(function* (entries: Entry[]) {
 			yield* Effect.uninterruptible(
 				SynchronizedRef.updateEffect(state, current =>
@@ -66,7 +75,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			)
 		}, failed)
 		const page = Effect.fnUntraced(function* (query: Query, signal: Entry['signal']) {
-			const entries = orderEntries(filterEntries(currentEntries(yield* read), query, signal), query.sort)
+			const entries = orderEntries(filterEntries(yield* selected(query.runs), query, signal), query.sort)
 			return {entries: Array.take(Array.drop(entries, query.offset), query.limit), total: entries.length}
 		})
 		return {
@@ -127,14 +136,21 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			logs: Effect.fn('Telemetry.logs')(function* (query: Query) {
 				return yield* page(query, 'log')
 			}),
+			reject: Effect.fnUntraced(function* (input: Pick<Rejection, 'credential' | 'route' | 'status'>) {
+				const now = yield* Clock.currentTimeMillis
+				const key = `${input.route}:${input.status}:${input.credential}`
+				yield* Ref.update(rejections, current =>
+					Record.set(current, key, {...input, count: (current[key]?.count ?? 0) + 1, lastAt: now})
+				)
+			}),
 			services: Effect.fn('Telemetry.services')(function* () {
-				return services(currentEntries(yield* read))
+				return {rejections: Record.values(yield* Ref.get(rejections)), services: serviceStatuses(yield* read), since}
 			}),
 			spans: Effect.fn('Telemetry.spans')(function* (query: Query) {
 				return yield* page(query, 'trace')
 			}),
 			stats: Effect.fn('Telemetry.stats')(function* (query: Query) {
-				return summary(filterEntries(currentEntries(yield* read), query, 'trace'), query)
+				return summary(filterEntries(yield* selected(query.runs), query, 'trace'), query)
 			}),
 			trace: Effect.fn('Telemetry.trace')(function* (id: string) {
 				const entries = yield* read
@@ -142,12 +158,12 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					return yield* TelemetryError.make({message: 'No telemetry received for this trace.'})
 				}
 				return traceView(
-					Array.filter(currentEntries(entries), entry => entry.traceId === String.toLowerCase(id)),
+					Array.filter(entries, entry => entry.traceId === String.toLowerCase(id)),
 					id
 				)
 			}),
 			traces: Effect.fn('Telemetry.traces')(function* (query: Query) {
-				const active = currentEntries(yield* read)
+				const active = yield* selected(query.runs)
 				const byTrace = Array.groupBy(active, entry => entry.traceId)
 				const entries = Array.map(
 					Array.dedupe(

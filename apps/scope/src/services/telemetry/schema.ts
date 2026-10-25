@@ -159,6 +159,7 @@ export const Query = Schema.Struct({
 	limit: pipe(Schema.Int, Schema.check(Schema.isBetween({maximum: 1000, minimum: 1}))),
 	offset: Schema.Natural,
 	operation: Schema.String,
+	runs: Schema.Literals(['current', 'all']),
 	service: Schema.String,
 	sort: Schema.Literals(['recent', 'slowest']),
 	text: Schema.String,
@@ -174,6 +175,30 @@ export const Runtime = Schema.Literals(['web', 'mobile', 'server', 'unknown'])
 
 export type Service = typeof Service.Type
 export const Service = Schema.Struct({name: Schema.String, runtime: Runtime})
+
+export type ServiceStatus = typeof ServiceStatus.Type
+export const ServiceStatus = Schema.Struct({
+	...Service.fields,
+	entries: Schema.Natural,
+	lastEventAt: Nano,
+	runStartedAt: Nano
+})
+
+export type Rejection = typeof Rejection.Type
+export const Rejection = Schema.Struct({
+	count: Schema.Natural,
+	credential: Schema.Literals(['authorization', 'cookie', 'none']),
+	lastAt: Schema.Finite,
+	route: Schema.Literals(['/v1/traces', '/v1/logs']),
+	status: Schema.Int
+})
+
+export type IngestionStatus = typeof IngestionStatus.Type
+export const IngestionStatus = Schema.Struct({
+	rejections: Schema.Array(Rejection),
+	services: Schema.Array(ServiceStatus),
+	since: Schema.Finite
+})
 
 export type TraceSummary = typeof TraceSummary.Type
 export const TraceSummary = Schema.Struct({
@@ -233,6 +258,14 @@ export const Filters = Schema.Struct({
 		Query.fields.operation,
 		Schema.withDecodingDefaultTypeKey(Effect.succeed('')),
 		Schema.annotateEncoded({description: 'Exact span name.'})
+	),
+	runs: pipe(
+		Query.fields.runs,
+		Schema.withDecodingDefaultTypeKey(Effect.succeed('current' as const)),
+		Schema.annotateEncoded({
+			description:
+				'"current" searches the latest process/page load/app launch per service. "all" includes retained earlier runs in the lookback.'
+		})
 	),
 	service: pipe(
 		Query.fields.service,

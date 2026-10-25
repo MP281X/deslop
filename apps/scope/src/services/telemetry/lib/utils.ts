@@ -1,7 +1,7 @@
 import {Array, Boolean, HashSet, Number, Option, Order, Record, Schema, String, pipe} from 'effect'
 
 import {Nano, Runtime} from '#services/telemetry/schema.ts'
-import type {Entry, Query, Resource, Service, Stats, Trace} from '#services/telemetry/schema.ts'
+import type {Entry, Query, Resource, Stats, Trace} from '#services/telemetry/schema.ts'
 
 function resourceString(resource: Resource, key: string) {
 	return pipe(
@@ -27,15 +27,17 @@ function started(resource: Resource) {
 	return 0n
 }
 
+function latestEntry(entries: Array.NonEmptyReadonlyArray<Entry>) {
+	return Array.reduce(entries, Array.headNonEmpty(entries), (current, entry) => {
+		if (started(entry.resource) > started(current.resource)) return entry
+		return current
+	})
+}
+
 export function currentEntries(entries: Entry[]) {
 	const latest = Record.map(
 		Array.groupBy(entries, entry => entry.service),
-		group =>
-			Array.reduce(group, 0n, (current, entry) => {
-				const start = started(entry.resource)
-				if (start > current) return start
-				return current
-			})
+		group => started(latestEntry(group).resource)
 	)
 	const stale = HashSet.fromIterable(
 		Array.map(
@@ -117,10 +119,24 @@ export function orderEntries(entries: Entry[], sort: Query['sort']) {
 	)
 }
 
-export function services(entries: Entry[]) {
-	return Array.dedupeWith(
-		Array.map(entries, entry => ({name: entry.service, runtime: runtime(entry.resource)})),
-		(left: Service, right: Service) => left.name === right.name
+export function serviceStatuses(entries: Entry[]) {
+	return Record.collect(
+		Array.groupBy(entries, entry => entry.service),
+		(name, group) => {
+			const latest = latestEntry(group)
+			const run = started(latest.resource)
+			const current = Array.filter(group, entry => started(entry.resource) === run)
+			return {
+				entries: current.length,
+				lastEventAt: Array.reduce(current, '0', (time, entry) => {
+					if (BigInt(entry.time) > BigInt(time)) return entry.time
+					return time
+				}),
+				name,
+				runStartedAt: `${run}`,
+				runtime: runtime(latest.resource)
+			}
+		}
 	)
 }
 
@@ -176,7 +192,10 @@ export function traceView(entries: Entry[], id: string) {
 		durationMs: Array.reduce(nodes, 0, (end, node) => Number.max(end, node.value.offsetMs + node.value.durationMs)),
 		id,
 		logs: Array.filter(logs, log => !Record.has(byId, log.spanId)),
-		services: services([...tree, ...logs]),
+		services: Array.dedupeWith(
+			Array.map([...tree, ...logs], entry => ({name: entry.service, runtime: runtime(entry.resource)})),
+			(left, right) => left.name === right.name
+		),
 		spans: tree
 	} satisfies Trace
 }
