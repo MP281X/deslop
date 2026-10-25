@@ -20,4 +20,3 @@ apps/*/android
 
 # tools
 .fallow
-tools/coding-standards/.fixtures

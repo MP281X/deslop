@@ -73,7 +73,7 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 			const login = String.replace('Bearer ', '')(request.headers['authorization'] ?? '')
 			return HttpClientResponse.fromWeb(
 				request,
-				Response.json({id: GITHUB_IDS[login] ?? 1, login, name: `${login} fixture`})
+				Response.json({id: GITHUB_IDS[login] ?? 1, login, name: `${login} example`})
 			)
 		})
 	)
@@ -165,8 +165,8 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 								ConfigProvider.fromUnknown({
 									AUTH_URL: AUTH,
 									GITHUB_ADMINS: '42',
-									GITHUB_CLIENT_ID: 'fixture',
-									GITHUB_CLIENT_SECRET: 'fixture',
+									GITHUB_CLIENT_ID: 'example',
+									GITHUB_CLIENT_SECRET: 'example',
 									HOME: directory,
 									NODE_ENV: 'production'
 								})
@@ -274,7 +274,7 @@ const authorize = Effect.fnUntraced(function* (
 				resource: resources,
 				response_type: 'code',
 				scope: 'deslop offline_access',
-				state: 'fixture-state'
+				state: 'example-state'
 			})
 		)}`
 	)
@@ -473,7 +473,7 @@ it.layer(NodeServices.layer)(test => {
 				}
 			})
 			const found = yield* lookup(String.toLowerCase(`${String.slice(0, 4)(first.id)}-${String.slice(4)(first.id)}`))
-			assert.isFalse(String.includes('fixture-state')(found.body))
+			assert.isFalse(String.includes('example-state')(found.body))
 			assert.isFalse(String.includes('challenge')(found.body))
 			assert.isFalse(String.includes(first.clientId)(found.body))
 			// One code reads one sign-in: the other waiting one stays out of the answer, and an unknown code reads nothing.
@@ -641,7 +641,7 @@ it.layer(NodeServices.layer)(test => {
 			assert.strictEqual((yield* send(web.issuer, `/auth/request?request=${request.id}`)).status, 400)
 			const callback = yield* consent(web.issuer, request, true)
 			assert.strictEqual(callback.searchParams.get('iss'), `${AUTH}/api/auth`)
-			assert.strictEqual(callback.searchParams.get('state'), 'fixture-state')
+			assert.strictEqual(callback.searchParams.get('state'), 'example-state')
 			const code = callback.searchParams.get('code') ?? ''
 			assert.strictEqual(
 				(yield* send(web.issuer, '/api/auth/oauth2/token', {

@@ -29,7 +29,7 @@ export class Notes extends Context.Service<
 	static readonly layer = Layer.effect(this, make)
 }
 // Consumers: yield* Notes; Notes.layer.
-// Not: export * as Notes from './notes.ts', import * as Notes, or layer as notesLayer.
+// Not: a self-reexport, import * as Notes from './notes.ts', or layer as notesLayer.
 ```
 
 ### Local collectors
@@ -48,7 +48,7 @@ Consume once after collection. Keep `MutableRef` for replacement or an observed 
 
 Use `AGENTS.md`'s editing, finished-change and delivery commands for this checkout. A focused file pass does not check unchanged consumers of an exported type or replace the finished-change gate. Chain the required stages bare with `&&`; no pipe to `tail` that hides the failing exit status.
 
-After the coherent change, run that gate and tests on stable source, not concurrently with fixture-writing tests. Keep autofixes and their formatting; fix the first remaining error in each file, then rerun after the batch, not after every diagnostic.
+After the coherent change, run the required stages on stable source. Keep autofixes and their formatting; fix the first remaining error in each file, then rerun after the batch, not after every diagnostic.
 
 ## Repair the owner, not the spelling
 

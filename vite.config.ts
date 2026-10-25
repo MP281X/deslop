@@ -76,8 +76,7 @@ export default defineConfig({
 			},
 			fix: {cache: false, command: 'vp lint --fix --format agent; status=$?; vp fmt && exit $status'},
 			lint: ['vp fmt --list-different', 'vp lint --format agent'],
-			// The rule tests write lint fixtures while they run; tracked, those writes invalidate the task's own cache.
-			test: {cache: {input: [{auto: true}, '!tools/coding-standards/.fixtures/**']}, command: 'vp test'},
+			test: 'vp test',
 			typecheck: {
 				cache: {input: [{auto: true}, '!**/*.tsbuildinfo'], output: []},
 				command:
