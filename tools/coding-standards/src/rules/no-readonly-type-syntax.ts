@@ -1,4 +1,4 @@
-import {Array, Equivalence, MutableList, Option, String, pipe} from 'effect'
+import {Array, HashSet, MutableHashSet, MutableList, Option, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
@@ -58,7 +58,7 @@ function typeDeclarations(input: {context: Context; name: ESTree.TSTypeName}): E
 
 function shapeLiterals(input: {
 	context: Context
-	seen: ESTree.TSTypeAliasDeclaration[]
+	seen: MutableHashSet.MutableHashSet<number>
 	type: ESTree.TSType
 }): ESTree.TSType[] {
 	if (input.type.type === 'TSTypeLiteral') return [input.type]
@@ -70,10 +70,11 @@ function shapeLiterals(input: {
 	return pipe(
 		typeDeclarations({context: input.context, name: input.type.typeName}),
 		Array.filter(declaration => declaration.type === 'TSTypeAliasDeclaration'),
-		Array.filter(
-			alias => !Array.containsWith(Equivalence.strictEqual<ESTree.TSTypeAliasDeclaration>())(input.seen, alias)
-		),
-		Array.flatMap(alias => shapeLiterals({...input, seen: Array.append(input.seen, alias), type: alias.typeAnnotation}))
+		Array.flatMap(alias => {
+			if (MutableHashSet.has(input.seen, alias.range[0])) return []
+			MutableHashSet.add(input.seen, alias.range[0])
+			return shapeLiterals({...input, type: alias.typeAnnotation})
+		})
 	)
 }
 
@@ -108,12 +109,15 @@ export const noReadonlyTypeSyntax = defineRule({
 				}
 			},
 			'Program:exit': () => {
+				const seen = MutableHashSet.empty<number>()
 				const literals = pipe(
 					MutableList.toArray(shapes),
-					Array.flatMap(shape => shapeLiterals({context, seen: [], type: shape}))
+					Array.flatMap(shape => shapeLiterals({context, seen, type: shape})),
+					Array.map(literal => literal.range[0]),
+					HashSet.fromIterable
 				)
-				function inShape(node: ESTree.Node) {
-					return Array.some(literals, literal => literal === node.parent)
+				function inShape(node: ESTree.TSPropertySignature | ESTree.TSMethodSignature) {
+					return HashSet.has(literals, node.parent.range[0])
 				}
 				for (const node of MutableList.toArray(properties)) {
 					if (inShape(node) && !node.readonly) {

@@ -34,3 +34,16 @@ export default defineConfig({lint: {extends: [lint]}})
 ```
 
 Put project-specific lint settings alongside `extends`; its `ignorePatterns` do not carry over, so repeat `**/*.gen.ts` in your own ignores.
+
+## Collection performance
+
+`no-accumulating-copy` checks inline Effect `Array.reduce`/`reduceRight` callbacks, including captured accumulator reads in nested callbacks:
+
+```diff
+-Array.reduce(items, [], (all, item) => [...all, transform(item)])
++Array.map(items, transform)
+```
+
+It also recognizes Effect array append/prepend operations, `Record.set` and computed-key record spreads. Stateful selection can use `Array.mapAccum`; local collectors use `MutableList`/`MutableHashMap`. Scalar folds, persistent `HashMap.set` and noncomputed object-property updates stay valid. Intentional snapshots, bounded windows or bounded key sets need a reasoned inline disable; the rule does not infer growth or rewrite semantics.
+
+`Array.contains` uses structural equality. For object identity, use `Array.containsWith(Equivalence.strictEqual())`; the syntax-only preset cannot infer which equality a caller intends.

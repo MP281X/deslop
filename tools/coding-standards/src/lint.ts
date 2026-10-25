@@ -7,6 +7,7 @@ import type {Plugin} from 'vite-plus/lint/plugins'
 import {explicitEffectConcurrency} from '#rules/explicit-effect-concurrency.ts'
 import {moduleConstant} from '#rules/module-constant.ts'
 import {motionLimits} from '#rules/motion-limits.ts'
+import {noAccumulatingCopy} from '#rules/no-accumulating-copy.ts'
 import {noBarrelModule} from '#rules/no-barrel-module.ts'
 import {noCompilerOptOut} from '#rules/no-compiler-opt-out.ts'
 import {noComponentAtomAllocation} from '#rules/no-component-atom-allocation.ts'
@@ -138,6 +139,7 @@ export const lint: OxlintConfig = {
 		'@deslop/coding-standards/explicit-effect-concurrency': 'error',
 		'@deslop/coding-standards/module-constant': 'error',
 		'@deslop/coding-standards/motion-limits': 'error',
+		'@deslop/coding-standards/no-accumulating-copy': 'error',
 		'@deslop/coding-standards/no-barrel-module': 'error',
 		'@deslop/coding-standards/no-compiler-opt-out': 'error',
 		'@deslop/coding-standards/no-component-atom-allocation': 'error',
@@ -407,7 +409,7 @@ export const lint: OxlintConfig = {
 		'no-void': 'error',
 		'object-shorthand': 'error',
 
-		// Oxc: no-accumulating-spread and no-map-spread fire only on the native reduce and map prefer-effect-array owns, and advise the Object.assign no-restricted-properties rejects.
+		// no-accumulating-copy covers Effect folds; Oxc's spread rules only recognize native methods and suggest Object.assign.
 		'oxc/bad-comparison-sequence': 'error',
 		'oxc/bad-object-literal-comparison': 'error',
 		'oxc/branches-sharing-code': 'error',
@@ -606,6 +608,7 @@ const plugin: Plugin = definePlugin({
 		'explicit-effect-concurrency': explicitEffectConcurrency,
 		'module-constant': moduleConstant,
 		'motion-limits': motionLimits,
+		'no-accumulating-copy': noAccumulatingCopy,
 		'no-barrel-module': noBarrelModule,
 		'no-compiler-opt-out': noCompilerOptOut,
 		'no-component-atom-allocation': noComponentAtomAllocation,

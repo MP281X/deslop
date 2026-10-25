@@ -97,14 +97,13 @@ function needsAlias(input: {context: Context; declaration: ESTree.VariableDeclar
 		node: pathTop(read),
 		text: input.context.sourceCode.getText(pathTop(read))
 	}))
+	const callbacks = Array.filter(paths, path => path.callback)
+	if (Array.isArrayEmpty(callbacks)) return false
 	return Array.some(
 		paths,
 		checked =>
 			tested(checked.node) &&
-			Array.some(
-				paths,
-				read => read.callback && (read.text === checked.text || String.startsWith(`${checked.text}.`)(read.text))
-			)
+			Array.some(callbacks, read => read.text === checked.text || String.startsWith(`${checked.text}.`)(read.text))
 	)
 }
 
@@ -154,6 +153,7 @@ function report(input: {
 		Array.map(reference => reference.identifier)
 	)
 	const text = input.context.sourceCode.getText(input.init)
+	const aliasRequired = needsAlias({context: input.context, declaration: input.declaration, reads})
 	pipe(
 		rootName(input.init),
 		Option.filter(
@@ -163,8 +163,7 @@ function report(input: {
 					const used = outermost(read)
 					return (
 						read.parent.type !== 'ExportSpecifier' &&
-						(!needsAlias({context: input.context, declaration: input.declaration, reads}) ||
-							!enclosed({block: input.declaration.parent, node: read, types: FUNCTIONS})) &&
+						(!aliasRequired || !enclosed({block: input.declaration.parent, node: read, types: FUNCTIONS})) &&
 						!deferred({block: input.declaration.parent, node: read}) &&
 						// A called alias is a detached method, which runs without `this`.
 						!(used.parent?.type === 'CallExpression' && used.parent.callee === used) &&

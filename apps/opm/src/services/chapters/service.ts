@@ -231,18 +231,22 @@ export class Chapters extends Context.Service<
 					const now = yield* Clock.currentTimeMillis
 					const found = yield* Effect.forEach(
 						// The first post of a new chapter, or a later explicit revision of a known one with other pages.
-						Array.reduce(posts, Array.empty<Post>(), (chosen, post) => {
-							const existing = HashMap.get(known, post.number)
-							const fresh = Option.isNone(existing) && !Array.some(chosen, item => item.number === post.number)
-							const revision =
-								post.revised &&
-								Option.exists(
-									existing,
-									item => post.postedAt > (item.revisedAt ?? item.postedAt) && item.source !== post.link
-								)
-							if (fresh || revision) return Array.append(chosen, post)
-							return chosen
-						}),
+						pipe(
+							posts,
+							Array.mapAccum(HashSet.empty<number>(), (chosen, post) => {
+								const existing = HashMap.get(known, post.number)
+								const fresh = Option.isNone(existing) && !HashSet.has(chosen, post.number)
+								const revision =
+									post.revised &&
+									Option.exists(
+										existing,
+										item => post.postedAt > (item.revisedAt ?? item.postedAt) && item.source !== post.link
+									)
+								if (fresh || revision) return [HashSet.add(chosen, post.number), Option.some(post)] as const
+								return [chosen, Option.none<Post>()] as const
+							}),
+							result => Array.getSomes(result[1])
+						),
 						post =>
 							pipe(
 								resolve(post),

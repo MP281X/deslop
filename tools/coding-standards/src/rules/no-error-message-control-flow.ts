@@ -33,7 +33,7 @@ function inspect(context: Context, node: ESTree.Node, name: string): void {
 			node
 		})
 	}
-	Array.forEach(childNodes(node), child => inspect(context, child, name))
+	Array.forEach(childNodes(context, node), child => inspect(context, child, name))
 }
 
 function inspectPredicate(context: Context, node?: ESTree.Node) {

@@ -32,7 +32,7 @@ function referencesFailure(context: Context, node: ESTree.Node, parameter: ESTre
 			failure => Array.some(failure.references, reference => reference.identifier === node && reference.isRead())
 		)
 	}
-	return Array.some(childNodes(node), child => referencesFailure(context, child, parameter))
+	return Array.some(childNodes(context, node), child => referencesFailure(context, child, parameter))
 }
 
 function dropsCause(context: Context, argument: ESTree.Node, thrown = false) {

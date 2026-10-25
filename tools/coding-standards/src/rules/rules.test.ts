@@ -73,6 +73,100 @@ function customCodes(output: OxlintOutput) {
 describe('deslop Oxlint plugin', {concurrent: true}, () => {
 	it.layer(NodeServices.layer)(testApi => {
 		testApi.effect(
+			'rejects copying fold accumulators while keeping scalar, persistent and fixed-shape folds',
+			() =>
+				Effect.gen(function* () {
+					const source = [
+						"import {Array, Boolean, HashMap, MutableList, Record, pipe} from 'effect'",
+						'',
+						'declare const items: string[]',
+						'export const badSpread = Array.reduce(items, [], (all, item) => [...all, item])',
+						'export const badPrepend = Array.reduceRight(items, [], (all, item) => [item, ...all])',
+						'export const badRecord = Array.reduce(items, {}, (all, item) => ({...all, [item]: item}))',
+						'export const badAppend = Array.reduce(items, [], (all, item) => Array.append(all, item))',
+						'export const badOptionalCopy = Array.reduce(items, [], (all, item) => Array.append?.(all, item))',
+						'export const badAppendAll = Array.reduce(items, [], (all, item) => Array.appendAll(all, [item]))',
+						'export const badPrependAll = Array.reduce(items, [], (all, item) => Array.prependAll(all, [item]))',
+						'export const badRightAppendAll = Array.reduce(items, [], (all, item) => Array.appendAll([item], all))',
+						'export const badRightPrependAll = Array.reduce(items, [], (all, item) => Array.prependAll([item], all))',
+						'export const badCurriedAppendAll = Array.reduce(items, [], (all, item) => Array.appendAll(all)([item]))',
+						'export const badCurriedPrependAll = Array.reduce(items, [], (all, item) => Array.prependAll(all)([item]))',
+						'export const badPipedAppendAll = Array.reduce(items, [], (all, item) => pipe([item], Array.appendAll(all)))',
+						'export const badPipedPrependAll = Array.reduce(items, [], (all, item) => pipe([item], Array.prependAll(all)))',
+						'export const badSet = Array.reduce(items, {}, (all, item) => Record.set(all, item, item))',
+						'export const badCurried = pipe(items, Array.reduce([], (all, item) => Array.prepend(item)(all)))',
+						'export const badPipe = Array.reduce(items, [], (all, item) => pipe(all, Array.append(item)))',
+						'export const badCurriedSet = Array.reduce(items, {}, (all, item) => Record.set(item, item)(all))',
+						'export const badFunction = Array.reduce(items, [], function (all, item) { return [...all, item] })',
+						'export const badBranch = Array.reduce(items, [], (all, item) => Boolean.match(item.length > 0, {onFalse: () => all, onTrue: () => [...all, item]}))',
+						'export const badDuplicate = Array.reduce(items, [], (all, item) => [...all, ...all, item])',
+						'export const goodScalar = Array.reduce(items, 0, (all, item) => all + item.length)',
+						'export const goodPersistent = Array.reduce(items, HashMap.empty(), (all, item) => HashMap.set(all, item, item))',
+						'export const goodFixed = Array.reduce(items, {count: 0}, (all, item) => ({...all, count: all.count + item.length}))',
+						'export const goodCollector = Array.reduce(items, MutableList.make(), (all, item) => { MutableList.append(all, item); return all })',
+						'export const goodElement = Array.reduce(items, [], (all, item) => [all, item])',
+						'export const goodAppendElement = Array.reduce(items, [], (all, item) => Array.append([item], all))',
+						'export const goodPrependElement = Array.reduce(items, [], (all, item) => Array.prepend([item], all))',
+						'export const goodCurriedElement = Array.reduce(items, [], (all, item) => Array.append(all)([item]))',
+						'export const goodPipedElement = Array.reduce(items, [], (all, item) => pipe([item], Array.prepend(all)))',
+						'export const goodRecordValue = Array.reduce(items, {}, (all, item) => Record.set({}, item, all))',
+						'export const goodBareAppendAll = Array.reduce(items, Array.empty<unknown>(), (all, item) => [item, Array.appendAll(all)])',
+						'export const goodBarePrependAll = Array.reduce(items, Array.empty<unknown>(), (all, item) => [item, Array.prependAll(all)])',
+						'export const goodShadow = Array.reduce(items, [], (all, item) => { const copy = (all: string[]) => [...all, item]; return [all, copy(items)] })',
+						'export const goodOther = Array.reduce(items, [], (all, item) => [...items, item])',
+						'export const goodReset = Array.reduce(items, [], (all, item) => pipe(all, () => [], Array.append(item)))',
+						'export function goodLocal(Array: {reduce: Function}) { return Array.reduce(items, [], (all, item) => [...all, item]) }'
+					]
+					const result = yield* lintSource({'copies.ts': Array.join(source, '\n')})
+					assert.strictEqual(result.stderr, '')
+					assert.deepStrictEqual(
+						pipe(
+							result.stdout.diagnostics,
+							Array.filter(diagnostic => diagnostic.code === '@deslop/coding-standards(no-accumulating-copy)'),
+							Array.map(diagnostic => source[(diagnostic.labels[0]?.span.line ?? 0) - 1] ?? ''),
+							Array.sort(String.Order)
+						),
+						pipe(source, Array.filter(String.startsWith('export const bad')), Array.sort(String.Order))
+					)
+				}),
+			20_000
+		)
+
+		testApi.effect(
+			'keeps service properties through shared and cyclic aliases',
+			() =>
+				Effect.gen(function* () {
+					const result = yield* lintSource({
+						'shared-shapes.ts': pipe(
+							[
+								"import {Context, Effect} from 'effect'",
+								'type Base = {readonly read: Effect.Effect<string>}',
+								...Array.makeBy(18, index => {
+									if (index === 0) return 'type Shape0 = Base & Base'
+									return `type Shape${index} = Shape${index - 1} & Shape${index - 1}`
+								}),
+								'type Cycle = Cycle | Shape17',
+								'export class First extends Context.Service<First, Cycle>()("First") {}',
+								'export class Second extends Context.Service<Second, Shape17>()("Second") {}',
+								'export type Ordinary = {readonly name: string}'
+							],
+							Array.join('\n')
+						)
+					})
+					assert.strictEqual(result.stderr, '')
+					assert.deepStrictEqual(
+						pipe(
+							result.stdout.diagnostics,
+							Array.filter(diagnostic => diagnostic.code === '@deslop/coding-standards(no-readonly-type-syntax)'),
+							Array.map(diagnostic => diagnostic.labels[0]?.span.line)
+						),
+						[25]
+					)
+				}),
+			20_000
+		)
+
+		testApi.effect(
 			'reports every project-specific invalid state',
 			() =>
 				Effect.gen(function* () {

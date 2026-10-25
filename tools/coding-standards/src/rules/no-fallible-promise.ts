@@ -55,7 +55,7 @@ function rejects(context: Context, node: ESTree.Node) {
 function containsRejection(context: Context, node: ESTree.Node): boolean {
 	if (rejects(context, node)) return true
 	if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') return false
-	return Array.some(childNodes(node), child => containsRejection(context, child))
+	return Array.some(childNodes(context, node), child => containsRejection(context, child))
 }
 
 export const noFalliblePromise = defineRule({
