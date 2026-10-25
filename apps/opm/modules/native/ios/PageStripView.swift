@@ -454,30 +454,6 @@ enum PageLoader {
         kCGImageSourceThumbnailMaxPixelSize: size,
       ] as CFDictionary
     guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else { return nil }
-    return UIImage(cgImage: trimmed(image))
-  }
-
-  // Scans alternate their binding margin. Remove only entirely blank side columns, never artwork or page numbers.
-  private static func trimmed(_ image: CGImage) -> CGImage {
-    let width = image.width
-    let height = image.height
-    var pixels = [UInt8](repeating: 0, count: width * height * 4)
-    return pixels.withUnsafeMutableBytes { bytes in
-      guard let context = CGContext(
-        data: bytes.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
-        space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue)
-      else { return image }
-      context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-      func blank(_ x: Int) -> Bool {
-        stride(from: x * 4, to: bytes.count, by: width * 4).allSatisfy { index in
-          bytes[index] > 245 && bytes[index + 1] > 245 && bytes[index + 2] > 245
-        }
-      }
-      let limit = width / 10
-      let left = (0..<limit).first { !blank($0) } ?? limit
-      let right = (0..<limit).first { !blank(width - $0 - 1) } ?? limit
-      guard left + right > 0 else { return image }
-      return image.cropping(to: CGRect(x: left, y: 0, width: width - left - right, height: height)) ?? image
-    }
+    return UIImage(cgImage: image)
   }
 }
