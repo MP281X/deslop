@@ -2,26 +2,50 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Option} from 'effect'
 
-import {nameOf, pagesOf, postFrom, resumeOf, seriesOf} from '#services/chapters/lib/utils.ts'
+import {nameOf, notificationOf, pagesOf, postFrom, resumeOf, seriesOf} from '#services/chapters/lib/utils.ts'
 import type {Reading} from '#services/chapters/schema.ts'
 import {ChapterItem} from '#services/chapters/schema.ts'
 
 const LINK = '<a href="https://cubari.moe/read/imgchest/abc123xyz/1/1/">[link]</a>'
 
-it('reads English chapter posts and skips raws, the webcomic and posts without a reader link', () => {
+it('routes series-qualified notifications and keeps previously delivered manga targets', () => {
+	assert.deepStrictEqual(notificationOf({path: 'webcomic:161'}), Option.some({number: 161, series: 'webcomic'}))
+	assert.deepStrictEqual(notificationOf({path: 'manga:44.5'}), Option.some({number: 44.5, series: 'manga'}))
+	assert.deepStrictEqual(notificationOf({chapter: 161}), Option.some({number: 161, series: 'manga'}))
+	assert.deepStrictEqual(notificationOf({path: 'unknown:161'}), Option.none())
+	assert.deepStrictEqual(notificationOf(undefined), Option.none())
+})
+
+it('classifies English manga and webcomic releases, preserving revisions and skipping raws and discussion', () => {
 	assert.deepStrictEqual(
 		Array.map(
 			[
 				{content: LINK, title: 'Chapter 242 [English]'},
 				{content: LINK, title: '[Revised] Chapter 211 [English]'},
 				{content: LINK, title: '[Webcomic] Chapter 160 [English]'},
+				{content: LINK, title: '[Webcomic] [Revised] Chapter 159 [English]'},
+				{content: LINK, title: '[Webcomic] Chapter 160 [RAW]'},
+				{content: LINK, title: '[OC] Webcomic Chapter 160'},
 				{content: LINK, title: 'RAW 243'},
 				{content: 'no link here', title: 'Chapter 241 [English]'}
 			],
 			post =>
-				Option.map(postFrom({...post, published: '2026-10-21T15:27:52+00:00'}), found => [found.number, found.revised])
+				Option.map(postFrom({...post, published: '2026-10-21T15:27:52+00:00'}), found => [
+					found.series,
+					found.number,
+					found.revised
+				])
 		),
-		[Option.some([242, false]), Option.some([211, true]), Option.none(), Option.none(), Option.none()]
+		[
+			Option.some(['manga', 242, false]),
+			Option.some(['manga', 211, true]),
+			Option.some(['webcomic', 160, false]),
+			Option.some(['webcomic', 159, true]),
+			Option.none(),
+			Option.none(),
+			Option.none(),
+			Option.none()
+		]
 	)
 	assert.deepStrictEqual(
 		seriesOf('https://cubari.moe/read/gist/OPM/225/1/'),
@@ -44,10 +68,12 @@ it('unwraps pages of the dead image proxy and drops its error texts', () => {
 	assert.strictEqual(nameOf('Chapter 225: New Blood 3'), 'New Blood 3')
 	assert.strictEqual(nameOf('One Punch Man Chapter 242'), '')
 	assert.strictEqual(nameOf('Translated'), '')
+	assert.strictEqual(nameOf('OPM WC 160'), '')
+	assert.strictEqual(nameOf('OPM (Webcomic) - Chapter 158 - The Koi Pond'), 'The Koi Pond')
 })
 
 function unread(number: number) {
-	return ChapterItem.make({number, pages: [], postedAt: 0, source: '', title: ''})
+	return ChapterItem.make({number, pages: [], postedAt: 0, series: 'manga', source: '', title: ''})
 }
 
 function read(number: number, reading: Reading) {

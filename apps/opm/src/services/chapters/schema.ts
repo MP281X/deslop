@@ -1,4 +1,4 @@
-import {Schema, Struct} from 'effect'
+import {Effect, Schema, Struct, pipe} from 'effect'
 
 export class ChaptersError extends Schema.TaggedError<ChaptersError>()('ChaptersError', {
 	cause: Schema.optional(Schema.Defect()),
@@ -8,6 +8,12 @@ export class ChaptersError extends Schema.TaggedError<ChaptersError>()('Chapters
 // How far the one reader got in a chapter; `at` orders chapters by when they were last read.
 export type Reading = typeof Reading.Type
 export const Reading = Schema.Struct({at: Schema.Finite, done: Schema.Boolean, page: Schema.Finite})
+
+export type Series = typeof Series.Type
+export const Series = Schema.Literals(['manga', 'webcomic'])
+
+export type ChapterPath = typeof ChapterPath.Type
+export const ChapterPath = Schema.TemplateLiteralParser([Series, ':', Schema.FiniteFromString])
 
 export type Chapter = typeof Chapter.Type
 export const Chapter = Schema.Struct({
@@ -20,6 +26,8 @@ export const Chapter = Schema.Struct({
 	reading: Schema.optionalKey(Reading),
 	// When the revision that supplied the current pages was posted; only a later revision replaces them.
 	revisedAt: Schema.optionalKey(Schema.Finite),
+	// The previous release stored manga only, on the server and in the iPhone's cache.
+	series: pipe(Series, Schema.withDecodingDefaultKey(Effect.succeed('manga'))),
 	// The cubari reader link the pages came from; a revision of the same chapter replaces it.
 	source: Schema.String,
 	// The chapter's name where the source has one, such as "Fury"; empty otherwise.
@@ -42,8 +50,16 @@ export const ReadingUpdate = Schema.Struct({
 	done: Schema.Boolean,
 	number: Schema.Finite,
 	opened: Schema.Boolean,
-	page: Schema.Finite
+	page: Schema.Finite,
+	series: Series
 })
+
+export type ChapterNotification = typeof ChapterNotification.Type
+export const ChapterNotification = Schema.Struct({path: ChapterPath})
+
+export type MangaNotification = typeof MangaNotification.Type
+// Chapter-only notifications already delivered by the previous release always refer to manga.
+export const MangaNotification = Schema.Struct({chapter: Schema.Finite})
 
 export type PushToken = typeof PushToken.Type
 export const PushToken = Schema.String.check(Schema.isPattern(/^Expo(?:nent)?PushToken\[[\w-]{10,64}\]$/u))
@@ -70,7 +86,8 @@ export const Post = Schema.Struct({
 	link: Schema.String,
 	number: Schema.Finite,
 	postedAt: Schema.Finite,
-	revised: Schema.Boolean
+	revised: Schema.Boolean,
+	series: Series
 })
 
 // Expo's answer to a push batch, one ticket per message in order.

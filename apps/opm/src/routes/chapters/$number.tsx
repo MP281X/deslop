@@ -11,14 +11,14 @@ import {colors} from '@deslop/components-mobile/theme'
 import {readAtom} from '#lib/utils.ts'
 import {PageStrip} from '#modules/native/index.ts'
 import {byNumber} from '#services/chapters/lib/utils.ts'
-import type {ChapterList} from '#services/chapters/schema.ts'
+import type {ChapterList, Series} from '#services/chapters/schema.ts'
 
 // The strip grows into the next chapter as it is reached; no separate reading mode or navigation button.
-export function ReaderRoute(props: {chapters: ChapterList; number: number; start?: number}) {
+export function ReaderRoute(props: {chapters: ChapterList; number: number; series: Series; start?: number}) {
 	const read = useAtomSet(readAtom)
 	const following = pipe(
 		Array.sort(props.chapters, byNumber),
-		Array.filter(chapter => chapter.number >= props.number)
+		Array.filter(chapter => chapter.series === props.series && chapter.number >= props.number)
 	)
 	// The continuous strip grows one chapter at a time as the reader reaches the last one in it.
 	const [length, setLength] = useState(2)
@@ -73,7 +73,13 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; start
 										onNone: () => undefined,
 										onSome: before => {
 											MutableHashSet.add(finished, before.number)
-											read({done: true, number: before.number, opened: true, page: before.pages.length - 1})
+											read({
+												done: true,
+												number: before.number,
+												opened: true,
+												page: before.pages.length - 1,
+												series: before.series
+											})
 										}
 									}
 								)
@@ -82,7 +88,13 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; start
 								if (page === chapter.pages.length - 1 || chapter.reading?.done === true) {
 									MutableHashSet.add(finished, chapter.number)
 								}
-								read({done: MutableHashSet.has(finished, chapter.number), number: chapter.number, opened: true, page})
+								read({
+									done: MutableHashSet.has(finished, chapter.number),
+									number: chapter.number,
+									opened: true,
+									page,
+									series: chapter.series
+								})
 								setScrolledTo(Option.some(chapter.number))
 								if (chapter.number === Array.lastNonEmpty(shown).number && length < following.length) {
 									setLength(length + 1)
