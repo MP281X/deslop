@@ -88,6 +88,7 @@
 		"@expo-google-fonts/jetbrains-mono",
 		"expo-font",
 		"expo-updates",
+		"onnxruntime-common",
 		"onnxruntime-node",
 		// The typecheck task uses sh for glob expansion; Fallow does not inspect its command string.
 		"tsrs"
