@@ -30,7 +30,6 @@
 		"@effect/platform-node": "latest",
 		"@expo/ui": "^58.0",
 		"@huggingface/transformers": "latest",
-		"babel-preset-expo": "^58.0",
 		"cheerio": "latest",
 		"domhandler": "latest",
 		"effect": "latest",
@@ -40,7 +39,6 @@
 		"expo-file-system": "^58.0",
 		"expo-updates": "^58.0",
 		"expo-web-browser": "^58.0",
-		"onnxruntime-common": "latest",
 		"onnxruntime-node": "latest",
 		"sharp": "latest"
 	},

@@ -1,17 +1,6 @@
 {
 	"extends": "@deslop/coding-standards/tsconfig.json",
 	"compilerOptions": {
-		"paths": {"#lib": ["./src/lib"], "#lib/*": ["./src/lib/*"], "#components": ["./src"], "#components/*": ["./src/*"]},
-		"plugins": [
-			{
-				"name": "@effect/language-service",
-				"overrides": [
-					{
-						"include": ["src/ui/**/*"],
-						"options": {"diagnosticSeverity": {"preferEffectArray": "off", "strictBooleanExpressions": "off"}}
-					}
-				]
-			}
-		]
+		"paths": {"#lib": ["./src/lib"], "#lib/*": ["./src/lib/*"], "#components": ["./src"], "#components/*": ["./src/*"]}
 	}
 }

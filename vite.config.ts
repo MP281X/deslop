@@ -10,7 +10,7 @@ export default defineConfig({
 		]
 	},
 	fmt: {
-		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/svgs/**', 'packages/components-web/src/ui/**'],
+		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/ui/**'],
 
 		arrowParens: 'avoid',
 		bracketSpacing: false,
@@ -56,12 +56,7 @@ export default defineConfig({
 		env: {browser: true, builtin: true, node: true},
 		extends: [lint],
 		// An extended config's ignorePatterns do not carry over, so the preset's generated-file ignore repeats here.
-		ignorePatterns: [
-			'**/*.gen.ts',
-			'tools/*/template/**',
-			'packages/components-web/src/svgs/**',
-			'packages/components-web/src/ui/**'
-		]
+		ignorePatterns: ['**/*.gen.ts', 'tools/*/template/**', 'packages/components-web/src/ui/**']
 	},
 	run: {
 		tasks: {
@@ -80,15 +75,12 @@ export default defineConfig({
 			typecheck: {
 				cache: {input: [{auto: true}, '!**/*.tsbuildinfo'], output: []},
 				command:
-					"sh -c 'TSRS_CHECKER_ASSIGNMENT=go tsrs --build . apps/*/tsconfig.json packages/*/tsconfig.json tools/*/tsconfig.json --noEmit --incremental false --force --pretty false'"
+					"sh -c 'TSRS_CHECKER_ASSIGNMENT=go tsrs --build apps/*/tsconfig.json packages/*/tsconfig.json tools/*/tsconfig.json --force --pretty false'"
 			}
 		}
 	},
 	test: {
-		environment: 'node',
 		include: ['apps/*/src/**/*.test.ts', 'packages/*/src/**/*.test.ts', 'tools/*/src/**/*.test.ts'],
-		passWithNoTests: true,
-		pool: 'forks',
 		reporters: ['dot'],
 		silent: 'passed-only'
 	}
