@@ -7,7 +7,7 @@ import {
 	useAtomValue
 } from '@effect/atom-react'
 
-import {Array, Cause, Number, Option} from 'effect'
+import {Array, Cause, Option, Schema} from 'effect'
 
 import {
 	Button,
@@ -43,6 +43,9 @@ import {chaptersAtom, diagnosticsAtom, openedAtom, pushAtom, sessionAtom, signIn
 import {ChaptersRoute} from '#routes/(home)/index.tsx'
 import {ReaderRoute} from '#routes/chapters/$number.tsx'
 import icon from '#routes/icon.png'
+import {keyOf} from '#services/chapters/lib/utils.ts'
+import {ChapterPath} from '#services/chapters/schema.ts'
+import type {Series} from '#services/chapters/schema.ts'
 
 // The spinner fills the screen, so it sits in the middle of it on the app's background.
 function Loading() {
@@ -153,22 +156,26 @@ function AppRoutes() {
 	useAtomMount(diagnosticsAtom)
 	const loaded = useAtomSuspense(chaptersAtom, {includeFailure: true})
 	const opened = useAtomValue(openedAtom)
+	const [series, setSeries] = useState<Series>(() =>
+		Option.match(opened, {onNone: () => 'manga', onSome: chapter => chapter.series})
+	)
 	const [resumePage, setResumePage] = useState<number>()
 	const [path, setPath] = useState(() =>
-		Option.match(opened, {onNone: () => Array.empty<string>(), onSome: number => [`${number}`]})
+		Option.match(opened, {onNone: () => Array.empty<string>(), onSome: chapter => [keyOf(chapter)]})
 	)
 	useAtomSubscribe(openedAtom, tapped =>
 		Option.match(tapped, {
 			onNone: () => undefined,
-			onSome: number => {
+			onSome: chapter => {
 				setResumePage(undefined)
-				setPath([`${number}`])
+				setSeries(chapter.series)
+				setPath([keyOf(chapter)])
 			}
 		})
 	)
 	function open(number: number, page?: number) {
 		setResumePage(page)
-		setPath([`${number}`])
+		setPath([keyOf({number, series})])
 	}
 	if (AsyncResult.isFailure(loaded)) return <Failed cause={loaded.cause} />
 	const chapters = loaded.value
@@ -181,17 +188,23 @@ function AppRoutes() {
 				onPathChange={setPath}
 				modifiers={[tint(colors.foreground), background(colors.background)]}
 			>
-				<ChaptersRoute chapters={chapters} onOpen={open} />
-				{Array.map(path, number => (
-					<NavigationDestination key={number} value={number}>
-						<ReaderRoute
-							key={number}
-							chapters={chapters}
-							number={Option.getOrElse(Number.parse(number), () => 0)}
-							start={resumePage}
-						/>
-					</NavigationDestination>
-				))}
+				<ChaptersRoute
+					key={series}
+					chapters={Array.filter(chapters, chapter => chapter.series === series)}
+					onOpen={open}
+					series={series}
+					onSeries={setSeries}
+				/>
+				{Array.map(path, value =>
+					Option.match(Schema.decodeUnknownOption(ChapterPath)(value), {
+						onNone: () => undefined,
+						onSome: target => (
+							<NavigationDestination key={value} value={value}>
+								<ReaderRoute key={value} chapters={chapters} number={target[2]} series={target[0]} start={resumePage} />
+							</NavigationDestination>
+						)
+					})
+				)}
 			</NavigationStack>
 		</Host>
 	)

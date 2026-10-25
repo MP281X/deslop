@@ -6,6 +6,7 @@ import {
 	Clock,
 	Config,
 	Context,
+	DateTime,
 	Effect,
 	FileSystem,
 	HashMap,
@@ -29,9 +30,9 @@ import * as cheerio from 'cheerio'
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 
 import {openStore} from '#services/chapters/lib/store.ts'
-import {byNumber, nameOf, pagesOf, postFrom, seriesOf} from '#services/chapters/lib/utils.ts'
+import {byNumber, keyOf, nameOf, pagesOf, postFrom, seriesOf, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
 import type {Chapter, ChaptersEvent, Post, PushToken, ReadingUpdate} from '#services/chapters/schema.ts'
-import {ChaptersError, CubariSeries, PushTickets} from '#services/chapters/schema.ts'
+import {ChaptersError, CubariSeries, PushTickets, Series} from '#services/chapters/schema.ts'
 
 // Reddit's JSON answers 403 to servers even through the proxy; its Atom search feed answers.
 const FEED =
@@ -39,7 +40,18 @@ const FEED =
 const BROWSER =
 	'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'
 
-const INDEX = 'https://cubari.moe/read/gist/OPM/'
+const INDEXES = {manga: 'OPM', webcomic: 'JYHJU'}
+
+// The main feed misses this release and the archive's pages are broken: https://www.reddit.com/r/OPMFolk/comments/1sbfbrf/webcomic_chapter_158_english/
+const ARCHIVE_POSTS: Post[] = [
+	{
+		link: 'https://cubari.moe/read/imgchest/qe4gz2dzk7j/1/1/',
+		number: 158,
+		postedAt: DateTime.toEpochMillis(DateTime.makeUnsafe('2026-04-03T00:00:00Z')),
+		revised: false,
+		series: 'webcomic'
+	}
+]
 
 const newestFirst = Order.flip(byNumber)
 
@@ -47,18 +59,18 @@ function failed(message: string) {
 	return Effect.mapError((cause: unknown) => ChaptersError.make({cause, message}))
 }
 
-function fromIndex(chapter: Chapter) {
-	return String.startsWith(INDEX)(chapter.source)
+function indexUrl(series: Series) {
+	return `https://cubari.moe/read/gist/${INDEXES[series]}/`
 }
 
 // A chapter joins the list once; only an explicit revision replaces its pages, so a second translation never moves a reader's page.
 function merge(current: Chapter[], chapter: Chapter) {
 	return Option.match(
-		Array.findFirst(current, item => item.number === chapter.number),
+		Array.findFirst(current, item => keyOf(item) === keyOf(chapter)),
 		{
 			onNone: () => Array.sort([...current, chapter], newestFirst),
 			onSome: found =>
-				change(current, found.number, item => ({
+				change(current, keyOf(found), item => ({
 					...item,
 					pages: chapter.pages,
 					revisedAt: chapter.postedAt,
@@ -68,17 +80,17 @@ function merge(current: Chapter[], chapter: Chapter) {
 	)
 }
 
-function change(chapters: Chapter[], number: number, update: (chapter: Chapter) => Chapter) {
+function change(chapters: Chapter[], key: string, update: (chapter: Chapter) => Chapter) {
 	return Array.map(chapters, item =>
-		Boolean.match(item.number === number, {onFalse: () => item, onTrue: () => update(item)})
+		Boolean.match(keyOf(item) === key, {onFalse: () => item, onTrue: () => update(item)})
 	)
 }
 
 function changed(chapters: Chapter[], before: Chapter[]) {
-	const previous = HashMap.fromIterable(Array.map(before, chapter => [chapter.number, chapter] as const))
+	const previous = HashMap.fromIterable(Array.map(before, chapter => [keyOf(chapter), chapter] as const))
 	return Array.filter(
 		chapters,
-		chapter => !Option.exists(HashMap.get(previous, chapter.number), item => item === chapter)
+		chapter => !Option.exists(HashMap.get(previous, keyOf(chapter)), item => item === chapter)
 	)
 }
 
@@ -167,6 +179,7 @@ export class Chapters extends Context.Service<
 						number: post.number,
 						pages: yield* Effect.fromOption(pagesOf(answer, target.chapter)),
 						postedAt: post.postedAt,
+						series: post.series,
 						source: post.link,
 						title: nameOf(answer.chapters[target.chapter]?.title ?? '')
 					} satisfies Chapter
@@ -183,9 +196,9 @@ export class Chapters extends Context.Service<
 					)
 				}
 
-				// The community's index of every chapter up to 230; Reddit holds the ones after it.
-				const backfill = Effect.gen(function* () {
-					const index = yield* series('https://cubari.moe/read/api/gist/series/OPM/')
+				// The community's back catalogues; Reddit supplies the newer releases.
+				const backfill = Effect.fnUntraced(function* (kind: Series) {
+					const index = yield* series(`https://cubari.moe/read/api/gist/series/${INDEXES[kind]}/`)
 					const chapters = pipe(
 						Record.toEntries(index.chapters),
 						Array.map(entry =>
@@ -194,13 +207,18 @@ export class Chapters extends Context.Service<
 									number: Number.parse(entry[0]),
 									pages: pagesOf(index, entry[0]),
 									postedAt: Option.some(
-										Option.getOrElse(Array.head(Record.values(entry[1].release_date ?? {})), () => 0) * 1000
+										Boolean.match(kind === 'webcomic', {
+											onFalse: () =>
+												Option.getOrElse(Array.head(Record.values(entry[1].release_date ?? {})), () => 0) * 1000,
+											onTrue: () => 0
+										})
 									)
 								}),
 								Option.map(found => ({
 									...found,
 									notified: true,
-									source: `${INDEX}${entry[0]}/1/`,
+									series: kind,
+									source: `${indexUrl(kind)}${entry[0]}/1/`,
 									title: nameOf(entry[1].title ?? '')
 								}))
 							)
@@ -209,40 +227,56 @@ export class Chapters extends Context.Service<
 					)
 					// Only the numbers still missing: a chapter Reddit already supplied keeps its pages.
 					yield* save(current => {
-						const numbers = HashSet.fromIterable(Array.map(current, chapter => chapter.number))
+						const numbers = HashSet.fromIterable(Array.map(current, keyOf))
 						return Array.reduce(
-							Array.filter(chapters, chapter => !HashSet.has(numbers, chapter.number)),
+							Array.filter(chapters, chapter => !HashSet.has(numbers, keyOf(chapter))),
 							current,
 							merge
 						)
 					})
-					yield* Effect.logInfo(`Backfilled ${chapters.length} chapters from the community index`)
+					yield* Effect.logInfo(`Backfilled ${chapters.length} ${kind} chapters from the community index`)
 				})
 
 				const sync = Effect.gen(function* () {
 					// The index fills the back catalogue once; a failed read is tried again next round.
-					if (!Array.some(yield* SubscriptionRef.get(state), fromIndex)) {
-						yield* pipe(backfill, Effect.ignore({log: 'Warn', message: 'The community index was not read'}))
-					}
-					const posts = postsOf(yield* feed)
+					yield* Effect.forEach(
+						Series.literals,
+						kind =>
+							Effect.gen(function* () {
+								if (
+									!Array.some(
+										yield* SubscriptionRef.get(state),
+										chapter => chapter.series === kind && String.startsWith(indexUrl(kind))(chapter.source)
+									)
+								) {
+									yield* pipe(
+										backfill(kind),
+										Effect.ignore({log: 'Warn', message: `The ${kind} community index was not read`})
+									)
+								}
+							}),
+						{concurrency: 1, discard: true}
+					)
+					const posts = [...ARCHIVE_POSTS, ...postsOf(yield* feed)]
 					const known = HashMap.fromIterable(
-						Array.map(yield* SubscriptionRef.get(state), chapter => [chapter.number, chapter] as const)
+						Array.map(yield* SubscriptionRef.get(state), chapter => [keyOf(chapter), chapter] as const)
 					)
 					const now = yield* Clock.currentTimeMillis
 					const found = yield* Effect.forEach(
 						// The first post of a new chapter, or a later explicit revision of a known one with other pages.
 						pipe(
 							posts,
-							Array.mapAccum(HashSet.empty<number>(), (chosen, post) => {
-								const existing = HashMap.get(known, post.number)
-								const fresh = Option.isNone(existing) && !HashSet.has(chosen, post.number)
+							Array.mapAccum(HashSet.empty<string>(), (chosen, post) => {
+								const key = keyOf(post)
+								const existing = HashMap.get(known, key)
+								const fresh = Option.isNone(existing) && !HashSet.has(chosen, key)
 								const revision =
 									post.revised &&
 									Option.exists(
 										existing,
 										item => post.postedAt > (item.revisedAt ?? item.postedAt) && item.source !== post.link
 									)
-								if (fresh || revision) return [HashSet.add(chosen, post.number), Option.some(post)] as const
+								if (fresh || revision) return [HashSet.add(chosen, key), Option.some(post)] as const
 								return [chosen, Option.none<Post>()] as const
 							}),
 							result => Array.getSomes(result[1])
@@ -273,10 +307,10 @@ export class Chapters extends Context.Service<
 									onFalse: () => `${chapter.pages.length} pages, out now`,
 									onTrue: () => chapter.title
 								}),
-								data: {chapter: chapter.number},
+								data: {path: keyOf(chapter)},
 								sound: 'default',
-								threadId: 'chapters',
-								title: `Chapter ${chapter.number}`,
+								threadId: chapter.series,
+								title: `${SERIES_NAMES[chapter.series]} · Chapter ${chapter.number}`,
 								to
 							}))
 						),
@@ -320,7 +354,7 @@ export class Chapters extends Context.Service<
 									concurrency: 1,
 									discard: true
 								}),
-								Effect.andThen(save(chapters => change(chapters, chapter.number, item => ({...item, notified: true})))),
+								Effect.andThen(save(chapters => change(chapters, keyOf(chapter), item => ({...item, notified: true})))),
 								Effect.andThen(Effect.logInfo(`Announced chapter ${chapter.number} to ${tokens.length} iPhones`)),
 								Effect.ignore({log: 'Warn', message: `Chapter ${chapter.number} was not announced yet`})
 							),
@@ -363,7 +397,7 @@ export class Chapters extends Context.Service<
 					read: Effect.fn('Chapters.read')(function* (update) {
 						const at = yield* Clock.currentTimeMillis
 						yield* save(chapters =>
-							change(chapters, update.number, item => ({
+							change(chapters, keyOf(update), item => ({
 								...item,
 								reading: {
 									at: Boolean.match(update.opened, {onFalse: () => item.reading?.at ?? 0, onTrue: () => at}),

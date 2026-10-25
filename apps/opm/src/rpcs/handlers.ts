@@ -8,8 +8,8 @@ export const RpcHandlers = RpcContracts.toLayer(
 		const chapters = yield* Chapters
 		return RpcContracts.of({
 			'chapters.read': input => chapters.read(input),
-			'chapters.watch': () => chapters.changes,
-			'devices.register': input => chapters.register(input.token)
+			'devices.register': input => chapters.register(input.token),
+			'library.watch': () => chapters.changes
 		})
 	})
 )

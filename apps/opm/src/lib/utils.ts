@@ -30,7 +30,7 @@ import * as MobileRuntime from '@deslop/runtime/mobile'
 
 import {OpmNative} from '#modules/native/index.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
-import {byNumber} from '#services/chapters/lib/utils.ts'
+import {byNumber, keyOf, notificationOf} from '#services/chapters/lib/utils.ts'
 import type {ChapterItem, ChaptersEvent, ReadingUpdate} from '#services/chapters/schema.ts'
 import {ChapterList} from '#services/chapters/schema.ts'
 
@@ -161,9 +161,9 @@ const chaptersFile = new File(Paths.document, 'chapters.json')
 
 function apply(chapters: ChapterList, event: ChaptersEvent) {
 	if (event.reset) return Array.copy(event.upserted)
-	const replaced = HashSet.fromIterable(Array.map(event.upserted, chapter => chapter.number))
+	const replaced = HashSet.fromIterable(Array.map(event.upserted, keyOf))
 	return Array.sort(
-		[...Array.filter(chapters, chapter => !HashSet.has(replaced, chapter.number)), ...event.upserted],
+		[...Array.filter(chapters, chapter => !HashSet.has(replaced, keyOf(chapter))), ...event.upserted],
 		Order.flip(byNumber)
 	)
 }
@@ -189,7 +189,7 @@ export const chaptersAtom = Atom.keepAlive(
 					// A page turn changes one chapter, so the copy is written once the reader pauses, off the scroll.
 					const writes = yield* FiberHandle.make()
 					return pipe(
-						(yield* RpcClient)('chapters.watch', undefined),
+						(yield* RpcClient)('library.watch', undefined),
 						Stream.scan(Array.empty<ChapterItem>, apply),
 						Stream.drop(1),
 						Stream.tap(chapters =>
@@ -320,24 +320,13 @@ export const diagnosticsAtom = RpcClient.runtime.atom(get =>
 	)
 )
 
-type ChapterData = typeof ChapterData.Type
-const ChapterData = Schema.Struct({chapter: Schema.Finite})
-
-function chapterOf(response: Notifications.NotificationResponse | null) {
-	return pipe(
-		Option.fromNullishOr(response?.notification.request.content.data),
-		Option.flatMap(Schema.decodeUnknownOption(ChapterData)),
-		Option.map(data => data.chapter)
-	)
-}
-
 // The chapter of the notification the user tapped, also when it launched the app.
 export const openedAtom = Atom.keepAlive(
 	Atom.make(get => {
 		const subscription = Notifications.addNotificationResponseReceivedListener(response =>
-			get.setSelf(chapterOf(response))
+			get.setSelf(notificationOf(response.notification.request.content.data))
 		)
 		get.addFinalizer(() => subscription.remove())
-		return chapterOf(Notifications.getLastNotificationResponse())
+		return notificationOf(Notifications.getLastNotificationResponse()?.notification.request.content.data)
 	})
 )

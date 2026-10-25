@@ -8,6 +8,8 @@ import {
 	ContentUnavailableView,
 	HStack,
 	List,
+	Menu,
+	Picker,
 	SwipeActions,
 	Text,
 	Toolbar,
@@ -25,6 +27,7 @@ import {
 	frame,
 	labelStyle,
 	lineLimit,
+	menuOrder,
 	listRowBackground,
 	listRowInsets,
 	listRowSeparator,
@@ -33,9 +36,11 @@ import {
 	navigationTitle,
 	onTapGesture,
 	opacity,
+	pickerStyle,
 	scrollContentBackground,
 	searchable,
 	shapes,
+	tag,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {useState} from 'react'
@@ -47,11 +52,13 @@ import {bottomBarSearch} from '@deslop/components-mobile/utils'
 import {readAtom} from '#lib/utils.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
 import icon from '#routes/icon.png'
-import {byNumber, nameOf, resumeOf} from '#services/chapters/lib/utils.ts'
+import {byNumber, nameOf, resumeOf, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
 import type {ChapterItem, ChapterList} from '#services/chapters/schema.ts'
+import {Series} from '#services/chapters/schema.ts'
 
 // "21 Oct" this year, "21 Oct 2025" before it.
 function postedOn(postedAt: number) {
+	if (postedAt <= 0) return ''
 	const posted = DateTime.makeUnsafe(postedAt)
 	return DateTime.formatLocal(
 		posted,
@@ -106,7 +113,13 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 							{`Chapter ${props.chapter.number}`}
 						</Text>
 					</HStack>
-					<Text modifiers={[mono('subheadline', 13), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
+					<Text
+						modifiers={[
+							mono('subheadline', 13),
+							foregroundStyle(colors.mutedForeground),
+							lineLimit(1, {reservesSpace: true})
+						]}
+					>
 						{Array.join(
 							Array.filter([nameOf(props.chapter.title), postedOn(props.chapter.postedAt)], String.isNonEmpty),
 							' · '
@@ -140,7 +153,11 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 							done: !done,
 							number: props.chapter.number,
 							opened: false,
-							page: Boolean.match(done, {onFalse: () => Number.max(props.chapter.pages.length - 1, 0), onTrue: () => 0})
+							page: Boolean.match(done, {
+								onFalse: () => Number.max(props.chapter.pages.length - 1, 0),
+								onTrue: () => 0
+							}),
+							series: props.chapter.series
 						})
 					}
 					modifiers={[tint(colors.primary)]}
@@ -157,7 +174,12 @@ function matches(chapter: ChapterItem, query: string) {
 	)
 }
 
-export function ChaptersRoute(props: {chapters: ChapterList; onOpen: (number: number, page?: number) => void}) {
+export function ChaptersRoute(props: {
+	chapters: ChapterList
+	onOpen: (number: number, page?: number) => void
+	onSeries: (series: Series) => void
+	series: Series
+}) {
 	const query = useNativeState('')
 	const [searched, setSearched] = useState('')
 	const text = String.toLowerCase(String.trim(searched))
@@ -177,7 +199,12 @@ export function ChaptersRoute(props: {chapters: ChapterList; onOpen: (number: nu
 			modifiers={[navigationTitle('opm'), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
 		>
 			{/* Search and its explicit bottom-bar item share the same SwiftUI owner. */}
-			<Toolbar modifiers={[searchable(query, {onChange: setSearched, prompt: 'Search'}), bottomBarSearch]}>
+			<Toolbar
+				modifiers={[
+					searchable(query, {onChange: setSearched, prompt: `Search ${SERIES_NAMES[props.series]}`}),
+					bottomBarSearch
+				]}
+			>
 				{Array.match(shown, {
 					onEmpty: () =>
 						Boolean.match(String.isEmpty(text), {
@@ -222,6 +249,26 @@ export function ChaptersRoute(props: {chapters: ChapterList; onOpen: (number: nu
 			<Toolbar.Content>
 				<ToolbarItem placement="principal">
 					<AppTitle logo={icon} name="opm" />
+				</ToolbarItem>
+				<ToolbarItem placement="bottomBar">
+					<Menu
+						label={SERIES_NAMES[props.series]}
+						systemImage="books.vertical"
+						modifiers={[labelStyle('iconOnly'), menuOrder('fixed')]}
+					>
+						<Picker<Series>
+							label="Series"
+							selection={props.series}
+							onSelectionChange={props.onSeries}
+							modifiers={[pickerStyle('inline')]}
+						>
+							{Array.map(Series.literals, series => (
+								<Text key={series} modifiers={[tag(series)]}>
+									{SERIES_NAMES[series]}
+								</Text>
+							))}
+						</Picker>
+					</Menu>
 				</ToolbarItem>
 			</Toolbar.Content>
 		</Toolbar>
