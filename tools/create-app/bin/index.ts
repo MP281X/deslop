@@ -37,8 +37,7 @@ const create = Command.make(
 			from: path.join(import.meta.dirname, '../template', input.kind),
 			rewrite: flow(
 				String.replaceAll('@deslop/template-app', `@deslop/${input.name}`),
-				String.replaceAll('template-app', input.name),
-				String.replaceAll('../../../../tsconfig.base.json', '../../tsconfig.base.json')
+				String.replaceAll('template-app', input.name)
 			),
 			to: root
 		})

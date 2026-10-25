@@ -1,6 +1,8 @@
 {
 	"compilerOptions": {
 		"strict": true,
+		"allowJs": true,
+		"checkJs": true,
 		"noImplicitReturns": true,
 		"noErrorTruncation": true,
 		"allowUnusedLabels": false,
@@ -162,12 +164,26 @@
 				},
 				"ignoreEffectErrorsInTscExitCode": false,
 				"ignoreEffectWarningsInTscExitCode": false,
-				"ignoreEffectSuggestionsInTscExitCode": false
+				"ignoreEffectSuggestionsInTscExitCode": false,
+				"overrides": [
+					{
+						// Absolute globs survive extends; the explicit dot component also covers hidden worktrees.
+						"include": ["/**/*.tsx", "/**/.*/**/*.tsx"],
+						"options": {"diagnosticSeverity": {"asyncFunction": "off"}}
+					}
+				]
 			}
 		],
-		"exactOptionalPropertyTypes": true,
 		"noUnusedLocals": true,
 		"noUnusedParameters": true
 	},
-	"exclude": ["${configDir}/node_modules", "${configDir}/dist", "${configDir}/.fixtures", "${configDir}/template"]
+	"exclude": [
+		"${configDir}/**/node_modules",
+		"${configDir}/**/dist",
+		"${configDir}/**/.output",
+		"${configDir}/**/.fixtures",
+		"${configDir}/template",
+		"${configDir}/ios",
+		"${configDir}/android"
+	]
 }

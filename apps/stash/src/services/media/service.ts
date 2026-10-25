@@ -202,10 +202,10 @@ export class Media extends Context.Service<
 								yield* Effect.tryPromise(() =>
 									recognize(samples, {
 										chunk_length_s: 30,
-										...Option.match(
-											Option.filter(heard, () => !english),
-											{onNone: () => ({}), onSome: language => ({language})}
-										),
+										language: Boolean.match(english, {
+											onFalse: () => Option.getOrUndefined(heard),
+											onTrue: () => undefined
+										}),
 										return_timestamps: true,
 										stride_length_s: 5
 									})

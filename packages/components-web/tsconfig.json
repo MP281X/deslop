@@ -1,6 +1,20 @@
 {
-	"extends": ["../../tsconfig.base.json"],
+	"extends": "@deslop/coding-standards/tsconfig.json",
 	"compilerOptions": {
-		"paths": {"#lib": ["./src/lib"], "#lib/*": ["./src/lib/*"], "#components": ["./src"], "#components/*": ["./src/*"]}
+		"paths": {"#lib": ["./src/lib"], "#lib/*": ["./src/lib/*"], "#components": ["./src"], "#components/*": ["./src/*"]},
+		"plugins": [
+			{
+				"name": "@effect/language-service",
+				"overrides": [
+					{
+						"include": ["src/ui/**/*"],
+						"options": {"diagnosticSeverity": {"preferEffectArray": "off", "strictBooleanExpressions": "off"}}
+					}
+				]
+			}
+		],
+		"jsx": "react-jsx",
+		"lib": ["DOM", "ESNext", "DOM.Iterable"],
+		"types": ["node", "vite-plus/client", "@deslop/coding-standards/css-properties"]
 	}
 }

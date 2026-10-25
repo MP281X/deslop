@@ -38,8 +38,6 @@
 		"oxlint-plugin-react-doctor": "latest"
 	},
 	"peerDependencies": {
-		"@effect/tsgo": "^0.57",
-		"tsrs": "0.18.0-ts7.1.0-dev.20260929",
 		"vite-plus": "^1.3"
 	}
 }

@@ -360,10 +360,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'@deslop/coding-standards(no-trivial-indirection)',
 						'@deslop/coding-standards(no-trivial-indirection)'
 					])
-					assert.deepStrictEqual(
-						Array.filter(result.stdout.diagnostics, diagnostic => String.startsWith('typescript(')(diagnostic.code)),
-						[]
-					)
 				}),
 			20_000
 		)

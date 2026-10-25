@@ -2,6 +2,7 @@ import {Array} from 'effect'
 
 import type {OxlintConfig} from 'vite-plus/lint'
 import {definePlugin} from 'vite-plus/lint/plugins'
+import type {Plugin} from 'vite-plus/lint/plugins'
 
 import {explicitEffectConcurrency} from '#rules/explicit-effect-concurrency.ts'
 import {moduleConstant} from '#rules/module-constant.ts'
@@ -94,7 +95,7 @@ const RUNNERS = [
 const SET_MESSAGE =
 	'Use HashSet, or MutableHashSet for local mutation; for identity keys, wrap objects the code owns in Equal.byReferenceUnsafe, which marks them reference-compared globally.'
 
-export const lint = {
+export const lint: OxlintConfig = {
 	categories: {
 		correctness: 'off',
 		nursery: 'off',
@@ -261,7 +262,6 @@ export const lint = {
 		],
 
 		// JavaScript correctness
-		'getter-return': 'error',
 		'max-depth': ['error', 3],
 		'max-nested-callbacks': ['error', 6],
 		'no-cond-assign': 'error',
@@ -272,7 +272,6 @@ export const lint = {
 		'no-control-regex': 'error',
 		'no-debugger': 'error',
 		'no-dupe-else-if': 'error',
-		'no-dupe-keys': 'error',
 		'no-else-return': 'error',
 		'no-empty-function': ['error', {allow: ['arrowFunctions']}],
 		'no-eval': 'error',
@@ -384,12 +383,11 @@ export const lint = {
 		'no-throw-literal': 'error',
 		'no-unexpected-multiline': 'error',
 		'no-unmodified-loop-condition': 'error',
-		'no-unreachable': 'error',
 		'no-unreachable-loop': 'error',
 		'no-unsafe-finally': 'error',
 		'no-unsafe-optional-chaining': ['error', {disallowArithmeticOperators: true}],
 		'no-unused-expressions': 'error',
-		// Unlike the compiler's unused checks, this also reports a used `_` parameter.
+		// Lint also rejects a used `_` parameter; the compiler additionally checks private members and lint-ignored files.
 		'no-unused-vars': [
 			'error',
 			{args: 'all', argsIgnorePattern: '^_', ignoreRestSiblings: true, reportUsedIgnorePattern: true}
@@ -600,10 +598,9 @@ export const lint = {
 		react: {version: '19.0'},
 		shadcn: {ui: ['@deslop/components-web/ui', '@dual/ui/components']}
 	}
-} satisfies OxlintConfig
+}
 
-// oxlint-disable-next-line import/no-default-export -- Vite+ loads a lint plugin from its module's default export.
-export default definePlugin({
+const plugin: Plugin = definePlugin({
 	meta: {name: '@deslop/coding-standards'},
 	rules: {
 		'explicit-effect-concurrency': explicitEffectConcurrency,
@@ -656,3 +653,6 @@ export default definePlugin({
 		'schema-type-pair': schemaTypePair
 	}
 })
+
+// oxlint-disable-next-line import/no-default-export -- Vite+ loads a lint plugin from its module's default export.
+export default plugin

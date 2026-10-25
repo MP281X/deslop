@@ -1,4 +1,4 @@
-import {Boolean, Option} from 'effect'
+import {Boolean} from 'effect'
 
 import {Button} from '@expo/ui/swift-ui'
 import {
@@ -27,10 +27,7 @@ export function Chip(props: {
 	return (
 		<Button
 			label={props.label}
-			{...Option.match(Option.fromUndefinedOr(props.systemImage), {
-				onNone: () => ({}),
-				onSome: systemImage => ({systemImage})
-			})}
+			systemImage={props.systemImage}
 			onPress={props.onPress}
 			modifiers={[
 				buttonStyle(look.style),

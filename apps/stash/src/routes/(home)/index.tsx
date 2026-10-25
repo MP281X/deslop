@@ -248,7 +248,7 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 			<Divider />
 			<Picker<Kind>
 				label="Show"
-				{...Option.match(Option.fromUndefinedOr(props.kind), {onNone: () => ({}), onSome: selection => ({selection})})}
+				selection={props.kind}
 				onSelectionChange={props.onKind}
 				modifiers={[pickerStyle('inline')]}
 			>
@@ -455,10 +455,7 @@ export function HomeRoute(props: {
 					<PasteSheet />
 				</ToolbarItem>
 				<ToolbarItem placement="bottomBar">
-					<FilterMenu
-						{...Option.match(Option.fromUndefinedOr(props.kind), {onNone: () => ({}), onSome: kind => ({kind})})}
-						onKind={props.onKind}
-					/>
+					<FilterMenu kind={props.kind} onKind={props.onKind} />
 				</ToolbarItem>
 			</Toolbar.Content>
 		</Toolbar>

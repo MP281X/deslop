@@ -1,4 +1,4 @@
-import {Array, Match, Option, pipe} from 'effect'
+import {Array, Match, pipe} from 'effect'
 
 import DOMPurify from 'dompurify'
 import {Marked} from 'marked'
@@ -26,7 +26,7 @@ export function Markdown(props: {children: string; className?: string}) {
 						<Code
 							key={`${token.type}:${index}:${code.lang ?? ''}:${code.text}`}
 							className="border-border border"
-							{...Option.match(Option.fromUndefinedOr(code.lang), {onNone: () => ({}), onSome: lang => ({lang})})}
+							lang={code.lang}
 						>
 							{code.text}
 						</Code>

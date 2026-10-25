@@ -297,7 +297,7 @@ function EditorPlugin<TValue extends RichTextArea.Value>(props: {
 			  ) => HashMap.HashMap<string, RichTextArea.Token<TValue>>)
 	) => void
 	isMenuOpen: () => boolean
-	onSubmit?: RichTextArea.Props<TValue>['onSubmit']
+	onSubmit?: (snapshot: RichTextArea.Snapshot<TValue>) => void
 	setEditor: (editor: Lexical.LexicalEditor | null) => void
 }) {
 	const [editor] = useLexicalComposerContext()
@@ -375,7 +375,7 @@ function EditorPlugin<TValue extends RichTextArea.Value>(props: {
 }
 
 function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
-	children?: RichTextArea.Props<TValue>['children']
+	children?: (entry: RichTextArea.Entry<TValue>) => React.ReactNode
 	menuBoxRef: React.RefObject<HTMLDivElement | null>
 	onClose: () => void
 	onOpen: () => void
@@ -385,7 +385,7 @@ function TypeaheadPlugin<TValue extends RichTextArea.Value>(props: {
 			current: HashMap.HashMap<string, RichTextArea.Token<TValue>>
 		) => HashMap.HashMap<string, RichTextArea.Token<TValue>>
 	) => void
-	options?: RichTextArea.Props<TValue>['options']
+	options?: Record<string, {color: string; values: TValue[]}>
 }) {
 	const [editor] = useLexicalComposerContext()
 	const [search, setSearch] = useState<{trigger: string; query: string}>()

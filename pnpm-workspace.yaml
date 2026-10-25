@@ -13,6 +13,8 @@ catalog:
 
 overrides:
   vite: 'catalog:'
+  # Fallow's optional TypeScript checker is unused; tsrs owns type checking.
+  'fallow>fallow-type-aware': '-'
   # apple-targets 5.0.0 pins the SDK 55 config loader, which needs TypeScript 5; SDK 58's loader works the same.
   '@bacons/apple-targets>@expo/prebuild-config': ^58.0
 

@@ -231,10 +231,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 							<ContentUnavailableView
 								title="Couldn’t Read This Link"
 								systemImage="exclamationmark.triangle"
-								{...Option.match(Option.fromUndefinedOr(props.note.issue), {
-									onNone: () => ({}),
-									onSome: description => ({description})
-								})}
+								description={props.note.issue}
 							/>
 							<Button
 								label="Try Again"

@@ -188,7 +188,7 @@ function AppRoutes() {
 							key={number}
 							chapters={chapters}
 							number={Option.getOrElse(Number.parse(number), () => 0)}
-							{...Option.match(Option.fromUndefinedOr(resumePage), {onNone: () => ({}), onSome: start => ({start})})}
+							start={resumePage}
 						/>
 					</NavigationDestination>
 				))}
