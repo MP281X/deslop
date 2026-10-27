@@ -15,33 +15,19 @@ export class PushError extends Schema.TaggedError<PushError>()('PushError', {
 	message: Schema.String
 }) {}
 
-// The release app and the Simulator build; the server pushes to no other app.
+// The release app, on Apple's production push service, and the Simulator build, on its sandbox; the server pushes to no other app.
 export type Bundle = typeof Bundle.Type
 export const Bundle = Schema.Literals(['xyz.mp281x.trips', 'xyz.mp281x.trips.dev'])
-
-// The APNs environment the signed app reports, which picks Apple's sandbox or production host.
-export type ApnsEnvironment = typeof ApnsEnvironment.Type
-export const ApnsEnvironment = Schema.Literals(['development', 'production'])
 
 export type ApnsToken = typeof ApnsToken.Type
 export const ApnsToken = pipe(Schema.String, Schema.check(Schema.isPattern(/^[0-9a-f]{32,512}$/iu)))
 
 // A device token for ordinary notifications, or the token that lets the server start a Live Activity.
 export type Device = typeof Device.Type
-export const Device = Schema.Struct({
-	bundle: Bundle,
-	environment: ApnsEnvironment,
-	kind: Schema.Literals(['alert', 'start']),
-	token: ApnsToken
-})
+export const Device = Schema.Struct({bundle: Bundle, kind: Schema.Literals(['alert', 'start']), token: ApnsToken})
 
 export type ActivityClaim = typeof ActivityClaim.Type
-export const ActivityClaim = Schema.Struct({
-	bookingId: BookingId,
-	bundle: Bundle,
-	environment: ApnsEnvironment,
-	leg: Leg
-})
+export const ActivityClaim = Schema.Struct({bookingId: BookingId, bundle: Bundle, leg: Leg})
 
 export type ActivityToken = typeof ActivityToken.Type
 export const ActivityToken = Schema.Struct({...ActivityClaim.fields, token: ApnsToken})
@@ -54,7 +40,6 @@ export const ActivityRecord = Schema.Struct({
 	channel: Schema.optionalKey(Schema.String),
 	claimedAt: Schema.Finite,
 	endedAt: Schema.optionalKey(Schema.Finite),
-	environment: ApnsEnvironment,
 	leg: Leg,
 	// The JSON last shown, so only a change is pushed.
 	props: Schema.optionalKey(Schema.String),

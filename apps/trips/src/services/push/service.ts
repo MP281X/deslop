@@ -42,30 +42,24 @@ import {
 import type {Alert} from '#services/bookings/lib/utils.ts'
 import type {ActivityProps, Booking, BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
-import type {
-	ActivityClaim,
-	ActivityRecord,
-	ActivityToken,
-	ApnsEnvironment,
-	Bundle,
-	Device
-} from '#services/push/schema.ts'
+import type {ActivityClaim, ActivityRecord, ActivityToken, Bundle, Device} from '#services/push/schema.ts'
 import {ActivityPropsJson, ApnsReason, JwtPart, PushError, PushState} from '#services/push/schema.ts'
 
-type Apns = {bundle: Bundle; environment: ApnsEnvironment}
+type Apns = {bundle: Bundle}
 type Answer = {channel: Option.Option<string>; reason: Option.Option<string>; status: number}
 type LegOf = Pick<ActivityRecord, 'bookingId' | 'bundle' | 'leg'>
 type Span = {end: number; start: number}
 // One journey leg to show in its current window.
 type Showing = {journey: Flight | Train; leg: Leg; now: number; props: ActivityProps; window: Span}
 
-function host(environment: ApnsEnvironment) {
-	if (environment === 'production') return 'https://api.push.apple.com'
+// The store build pushes through production and the Simulator build through the sandbox; a TestFlight app cannot report it.
+function host(bundle: Bundle) {
+	if (bundle === 'xyz.mp281x.trips') return 'https://api.push.apple.com'
 	return 'https://api.sandbox.push.apple.com'
 }
 
-function channels(environment: ApnsEnvironment) {
-	if (environment === 'production') return 'https://api-manage-broadcast.push.apple.com:2196'
+function channels(bundle: Bundle) {
+	if (bundle === 'xyz.mp281x.trips') return 'https://api-manage-broadcast.push.apple.com:2196'
 	return 'https://api-manage-broadcast.sandbox.push.apple.com:2195'
 }
 
@@ -79,6 +73,11 @@ function deadToken(answer: Answer) {
 
 function accepted(answer: Answer) {
 	return answer.status >= 200 && answer.status < 300
+}
+
+// Throttling and Apple's own failures pass; any other refusal, such as a wrong topic, fails the same way every time.
+function retryable(answer: Answer) {
+	return answer.status === 429 || answer.status >= 500
 }
 
 function seconds(time: number) {
@@ -243,7 +242,7 @@ export class Push extends Context.Service<
 			) {
 				return Effect.flatMap(
 					HttpClientRequest.bodyJson(
-						HttpClientRequest.post(`${host(target.environment)}/3/device/${target.token}`, {
+						HttpClientRequest.post(`${host(target.bundle)}/3/device/${target.token}`, {
 							headers: {
 								'apns-priority': `${priority}`,
 								'apns-push-type': type,
@@ -264,7 +263,7 @@ export class Push extends Context.Service<
 				const answer = yield* send(
 					yield* failed('The channel request could not be written.')(
 						HttpClientRequest.bodyJson(
-							HttpClientRequest.post(`${channels(target.environment)}/1/apps/${target.bundle}/channels`),
+							HttpClientRequest.post(`${channels(target.bundle)}/1/apps/${target.bundle}/channels`),
 							{'message-storage-policy': 1, 'push-type': 'LiveActivity'}
 						)
 					)
@@ -277,7 +276,7 @@ export class Push extends Context.Service<
 			function deleteChannel(target: Apns & {channel: string}) {
 				return Effect.ignore(
 					send(
-						HttpClientRequest.delete(`${channels(target.environment)}/1/apps/${target.bundle}/channels`, {
+						HttpClientRequest.delete(`${channels(target.bundle)}/1/apps/${target.bundle}/channels`, {
 							headers: {'apns-channel-id': target.channel}
 						})
 					),
@@ -292,7 +291,7 @@ export class Push extends Context.Service<
 				if (record.channel !== undefined) {
 					return Effect.flatMap(
 						HttpClientRequest.bodyJson(
-							HttpClientRequest.post(`${host(record.environment)}/4/broadcasts/apps/${record.bundle}`, {
+							HttpClientRequest.post(`${host(record.bundle)}/4/broadcasts/apps/${record.bundle}`, {
 								headers: {
 									'apns-channel-id': record.channel,
 									// The channel stores the latest message for a phone offline in flight, as long as an activity lives.
@@ -347,7 +346,7 @@ export class Push extends Context.Service<
 				)
 			}
 
-			// Accepted, the start is a channel the server updates; refused, the channel goes and a dead token leaves.
+			// Accepted, the start is a channel the server updates; refused, the channel goes, and a token Apple will refuse again leaves until the app registers it anew.
 			const pushStart = Effect.fnUntraced(function* (target: Device, showing: Showing) {
 				const channel = yield* createChannel(target)
 				const json = yield* Schema.encodeEffect(ActivityPropsJson)(showing.props)
@@ -373,15 +372,15 @@ export class Push extends Context.Service<
 					),
 					() => deleteChannel({...target, channel})
 				)
-				if (accepted(answer)) return Option.some({channel, json})
+				if (accepted(answer)) return Result.succeed({channel, json})
 				yield* deleteChannel({...target, channel})
-				if (deadToken(answer)) {
+				if (!retryable(answer)) {
 					yield* save(current => ({
 						...current,
 						devices: Array.filter(current.devices, found => found.token !== target.token)
 					}))
 				}
-				return Option.none<{channel: string; json: string}>()
+				return Result.fail(answer)
 			})
 
 			// The server starts an activity the app has not, through the push-to-start token and a channel for its updates.
@@ -390,21 +389,19 @@ export class Push extends Context.Service<
 					bookingId: showing.journey.id,
 					bundle: target.bundle,
 					claimedAt: showing.now,
-					environment: target.environment,
 					leg: showing.leg
 				} satisfies ActivityRecord
 				if (!(yield* reserve(reserved, showing.window))) return
-				yield* Option.match(yield* Effect.onError(pushStart(target, showing), () => release(reserved)), {
-					onNone: () => release(reserved),
-					onSome: started =>
-						save(current => ({
-							...current,
-							activities: Array.map(current.activities, item => {
-								if (!sameLeg(item, reserved) || item.claimedAt !== reserved.claimedAt) return item
-								return {...item, channel: started.channel, props: started.json}
-							})
-						}))
-				})
+				const started = yield* Effect.onError(pushStart(target, showing), () => release(reserved))
+				// A refused start leaves the leg free, so the app can still start it when opened.
+				if (Result.isFailure(started)) return yield* release(reserved)
+				yield* save(current => ({
+					...current,
+					activities: Array.map(current.activities, item => {
+						if (!sameLeg(item, reserved) || item.claimedAt !== reserved.claimedAt) return item
+						return {...item, channel: started.success.channel, props: started.success.json}
+					})
+				}))
 			})
 
 			const finish = Effect.fnUntraced(function* (record: ActivityRecord, now: number) {
@@ -431,7 +428,7 @@ export class Push extends Context.Service<
 				}))
 			})
 
-			// Only a change APNs took is remembered, so a refused one is sent again next round.
+			// A change APNs took or will always refuse is remembered; a throttled one is sent again next round.
 			const refresh = Effect.fnUntraced(function* (record: ActivityRecord, props: ActivityProps, now: number) {
 				const json = yield* Schema.encodeEffect(ActivityPropsJson)(props)
 				if (json === record.props) return
@@ -445,7 +442,7 @@ export class Push extends Context.Service<
 					Boolean.match(urgent, {onFalse: () => 5 as const, onTrue: () => 10 as const}),
 					now
 				)
-				if (!accepted(answer) && !deadToken(answer)) return
+				if (retryable(answer)) return
 				// A token the activity no longer holds means the person ended it; a record replaced meanwhile keeps its own state.
 				yield* save(current => ({
 					...current,
@@ -531,7 +528,8 @@ export class Push extends Context.Service<
 					10
 				)
 				if (accepted(answer)) return 'accepted' as const
-				if (!deadToken(answer)) return 'retry' as const
+				if (retryable(answer)) return 'retry' as const
+				if (!deadToken(answer)) return 'refused' as const
 				yield* save(current => ({
 					...current,
 					devices: Array.filter(current.devices, found => found.token !== device.token)
@@ -625,7 +623,14 @@ export class Push extends Context.Service<
 					const now = yield* Clock.currentTimeMillis
 					yield* save(current => ({
 						...current,
-						activities: [...Array.filter(current.activities, item => !sameLeg(item, input)), {...input, claimedAt: now}]
+						activities: [
+							...Array.filter(current.activities, item => !sameLeg(item, input)),
+							// A rotated token keeps the activity's start, which bounds its eight hours, and the state it last showed.
+							Option.match(
+								Array.findFirst(current.activities, item => sameLeg(item, input)),
+								{onNone: () => ({...input, claimedAt: now}), onSome: existing => ({...existing, ...input})}
+							)
+						]
 					}))
 				}),
 				// The app may start an activity itself only for a leg nobody started in its current window.
