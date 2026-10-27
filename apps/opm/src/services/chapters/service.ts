@@ -18,6 +18,7 @@ import {
 	Path,
 	Random,
 	Record,
+	Result,
 	Schedule,
 	Stream,
 	String,
@@ -31,27 +32,38 @@ import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 
 import {openStore} from '#services/chapters/lib/store.ts'
 import {byNumber, keyOf, nameOf, pagesOf, postFrom, seriesOf, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
-import type {Chapter, ChaptersEvent, Post, PushToken, ReadingUpdate} from '#services/chapters/schema.ts'
-import {ChaptersError, CubariSeries, PushTickets, Series} from '#services/chapters/schema.ts'
+import type {Chapter, ChaptersEvent, PushToken, ReadingUpdate} from '#services/chapters/schema.ts'
+import {ChaptersError, CubariSeries, Post, PushTickets, Series} from '#services/chapters/schema.ts'
 
-// Reddit's JSON answers 403 to servers even through the proxy; its Atom search feed answers.
-const FEED =
-	'https://www.reddit.com/r/OnePunchMan/search.rss?q=title%3Achapter+english&restrict_sr=1&sort=new&limit=100'
+// Reddit's JSON answers 403 to servers even through the proxy; its Atom search feed answers. A release can be posted on either subreddit only.
+const FEEDS = [
+	'https://www.reddit.com/r/OnePunchMan/search.rss?q=title%3Achapter+english&restrict_sr=1&sort=new&limit=100',
+	'https://www.reddit.com/r/OPMFolk/search.rss?q=title%3Achapter+english&restrict_sr=1&sort=new&limit=100'
+]
 const BROWSER =
 	'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'
 
 const INDEXES = {manga: 'OPM', webcomic: 'JYHJU'}
 
-// The main feed misses this release and the archive's pages are broken: https://www.reddit.com/r/OPMFolk/comments/1sbfbrf/webcomic_chapter_158_english/
-const ARCHIVE_POSTS: Post[] = [
-	{
-		link: 'https://cubari.moe/read/imgchest/qe4gz2dzk7j/1/1/',
-		number: 158,
-		postedAt: DateTime.toEpochMillis(DateTime.makeUnsafe('2026-04-03T00:00:00Z')),
-		revised: false,
-		series: 'webcomic'
-	}
-]
+// Releases whose posts link only dead readers, with a translation that still loads: webcomic 158 from https://www.reddit.com/r/OPMFolk/comments/1sbfbrf/, manga 233 from its r/OPMFolk post, and 234 to 237 from @Floppysterino's gist, which numbers them two lower.
+const ARCHIVE_POSTS = Array.map(
+	[
+		{number: 158, postedAt: '2026-04-03T00:00:00Z', series: 'webcomic', slug: 'qe4gz2dzk7j'},
+		{number: 233, postedAt: '2026-06-17T16:11:12Z', series: 'manga', slug: 'ne7bjjlnm45'},
+		{number: 234, postedAt: '2026-07-01T21:47:46Z', series: 'manga', slug: 'na7kblmpm78'},
+		{number: 235, postedAt: '2026-07-15T18:08:27Z', series: 'manga', slug: 'qb4zovevv7j'},
+		{number: 236, postedAt: '2026-07-29T21:13:30Z', series: 'manga', slug: 'n87wo5da3yx'},
+		{number: 237, postedAt: '2026-08-12T19:06:58Z', series: 'manga', slug: '9249q2bzmyn'}
+	] as const,
+	release =>
+		Post.make({
+			links: [`https://cubari.moe/read/imgchest/${release.slug}/1/1/`],
+			number: release.number,
+			postedAt: DateTime.toEpochMillis(DateTime.makeUnsafe(release.postedAt)),
+			revised: false,
+			series: release.series
+		})
+)
 
 const newestFirst = Order.flip(byNumber)
 
@@ -61,23 +73,6 @@ function failed(message: string) {
 
 function indexUrl(series: Series) {
 	return `https://cubari.moe/read/gist/${INDEXES[series]}/`
-}
-
-// A chapter joins the list once; only an explicit revision replaces its pages, so a second translation never moves a reader's page.
-function merge(current: Chapter[], chapter: Chapter) {
-	return Option.match(
-		Array.findFirst(current, item => keyOf(item) === keyOf(chapter)),
-		{
-			onNone: () => Array.sort([...current, chapter], newestFirst),
-			onSome: found =>
-				change(current, keyOf(found), item => ({
-					...item,
-					pages: chapter.pages,
-					revisedAt: chapter.postedAt,
-					source: chapter.source
-				}))
-		}
-	)
 }
 
 function change(chapters: Chapter[], key: string, update: (chapter: Chapter) => Chapter) {
@@ -105,8 +100,7 @@ function postsOf(feed: string) {
 				title: $(entry).children('title').text()
 			})
 		),
-		Array.getSomes,
-		Array.sort(Order.mapInput(Order.Number, (post: Post) => post.postedAt))
+		Array.getSomes
 	)
 }
 
@@ -116,7 +110,6 @@ export class Chapters extends Context.Service<
 		readonly changes: Stream.Stream<ChaptersEvent>
 		readonly read: (update: ReadingUpdate) => Effect.Effect<void, ChaptersError>
 		readonly register: (token: PushToken) => Effect.Effect<void, ChaptersError>
-		readonly sync: Effect.Effect<void, ChaptersError>
 	}
 >()('@deslop/opm/services/chapters/service/Chapters') {
 	static readonly layer = (directory: string) =>
@@ -137,42 +130,8 @@ export class Chapters extends Context.Service<
 					)
 				}
 
-				// A residential exit can be offline or flagged by Reddit, so each try leaves from another address.
-				const feed = pipe(
-					Effect.gen(function* () {
-						const session = `${yield* Random.nextIntBetween(10_000_000, 99_999_999)}`
-						return yield* pipe(
-							HttpClient.get(FEED, {headers: {'user-agent': BROWSER}}),
-							Effect.flatMap(HttpClientResponse.filterStatusOk),
-							Effect.flatMap(response => response.text),
-							Effect.timeout('20 seconds'),
-							// @effect-diagnostics-next-line strictEffectProvide:off -- Each try owns an agent pinned to one proxy session.
-							Effect.provide(
-								Option.match(exit, {
-									onNone: () => Layer.succeed(HttpClient.HttpClient, client),
-									onSome: proxy =>
-										pipe(
-											NodeHttpClient.layerNodeHttpNoAgent,
-											Layer.provide(
-												NodeHttpClient.layerAgentOptions({
-													proxyEnv: {
-														HTTP_PROXY: String.replaceAll('{session}', session)(proxy),
-														HTTPS_PROXY: String.replaceAll('{session}', session)(proxy),
-														NODE_ENV: 'production'
-													}
-												})
-											)
-										)
-								})
-							)
-						)
-					}),
-					Effect.retry({times: 3}),
-					failed('Reddit did not answer.')
-				)
-
-				const resolve = Effect.fnUntraced(function* (post: Post) {
-					const target = yield* Effect.fromOption(seriesOf(post.link))
+				const resolve = Effect.fnUntraced(function* (post: Post, link: string) {
+					const target = yield* Effect.fromOption(seriesOf(link))
 					const answer = yield* series(target.api)
 					return {
 						notified: false,
@@ -180,7 +139,7 @@ export class Chapters extends Context.Service<
 						pages: yield* Effect.fromOption(pagesOf(answer, target.chapter)),
 						postedAt: post.postedAt,
 						series: post.series,
-						source: post.link,
+						source: link,
 						title: nameOf(answer.chapters[target.chapter]?.title ?? '')
 					} satisfies Chapter
 				})
@@ -228,10 +187,9 @@ export class Chapters extends Context.Service<
 					// Only the numbers still missing: a chapter Reddit already supplied keeps its pages.
 					yield* save(current => {
 						const numbers = HashSet.fromIterable(Array.map(current, keyOf))
-						return Array.reduce(
-							Array.filter(chapters, chapter => !HashSet.has(numbers, keyOf(chapter))),
-							current,
-							merge
+						return Array.sort(
+							[...current, ...Array.filter(chapters, chapter => !HashSet.has(numbers, keyOf(chapter)))],
+							newestFirst
 						)
 					})
 					yield* Effect.logInfo(`Backfilled ${chapters.length} ${kind} chapters from the community index`)
@@ -257,45 +215,112 @@ export class Chapters extends Context.Service<
 							}),
 						{concurrency: 1, discard: true}
 					)
-					const posts = [...ARCHIVE_POSTS, ...postsOf(yield* feed)]
+					// One subreddit that does not answer leaves the other's releases for this round.
+					const feeds = yield* Effect.forEach(
+						FEEDS,
+						url =>
+							pipe(
+								// A residential exit can be offline or flagged by Reddit, so each try leaves from another address.
+								Effect.gen(function* () {
+									const session = `${yield* Random.nextIntBetween(10_000_000, 99_999_999)}`
+									return yield* pipe(
+										HttpClient.get(url, {headers: {'user-agent': BROWSER}}),
+										Effect.flatMap(HttpClientResponse.filterStatusOk),
+										Effect.flatMap(response => response.text),
+										Effect.timeout('20 seconds'),
+										// @effect-diagnostics-next-line strictEffectProvide:off -- Each try owns an agent pinned to one proxy session.
+										Effect.provide(
+											Option.match(exit, {
+												onNone: () => Layer.succeed(HttpClient.HttpClient, client),
+												onSome: proxy =>
+													pipe(
+														NodeHttpClient.layerNodeHttpNoAgent,
+														Layer.provide(
+															NodeHttpClient.layerAgentOptions({
+																proxyEnv: {
+																	HTTP_PROXY: String.replaceAll('{session}', session)(proxy),
+																	HTTPS_PROXY: String.replaceAll('{session}', session)(proxy),
+																	NODE_ENV: 'production'
+																}
+															})
+														)
+													)
+											})
+										)
+									)
+								}),
+								Effect.retry({times: 3}),
+								Effect.map(postsOf),
+								Effect.tapError(error => Effect.logWarning(`Reddit did not answer ${url}`, error)),
+								Effect.option
+							),
+						{concurrency: 1}
+					)
+					if (Array.every(feeds, Option.isNone)) return yield* ChaptersError.make({message: 'Reddit did not answer.'})
+					const posts = Array.sort(
+						[...ARCHIVE_POSTS, ...Array.flatten(Array.getSomes(feeds))],
+						Order.mapInput(Order.Number, (post: Post) => post.postedAt)
+					)
 					const known = HashMap.fromIterable(
 						Array.map(yield* SubscriptionRef.get(state), chapter => [keyOf(chapter), chapter] as const)
 					)
 					const now = yield* Clock.currentTimeMillis
+					// A new chapter's posts, oldest first, or later explicit revisions of a known one, each with the links not already read.
+					const candidates = Array.filterMap(posts, post =>
+						Array.match(
+							Array.filter(post.links, link =>
+								Option.match(HashMap.get(known, keyOf(post)), {
+									onNone: () => true,
+									onSome: item =>
+										post.revised && post.postedAt > (item.revisedAt ?? item.postedAt) && link !== item.source
+								})
+							),
+							{onEmpty: () => Result.failVoid, onNonEmpty: links => Result.succeed({links, post})}
+						)
+					)
+					// The first link that loads wins: a release's best translation can be gone while another still reads.
 					const found = yield* Effect.forEach(
-						// The first post of a new chapter, or a later explicit revision of a known one with other pages.
-						pipe(
-							posts,
-							Array.mapAccum(HashSet.empty<string>(), (chosen, post) => {
-								const key = keyOf(post)
-								const existing = HashMap.get(known, key)
-								const fresh = Option.isNone(existing) && !HashSet.has(chosen, key)
-								const revision =
-									post.revised &&
-									Option.exists(
-										existing,
-										item => post.postedAt > (item.revisedAt ?? item.postedAt) && item.source !== post.link
-									)
-								if (fresh || revision) return [HashSet.add(chosen, key), Option.some(post)] as const
-								return [chosen, Option.none<Post>()] as const
-							}),
-							result => Array.getSomes(result[1])
-						),
-						post =>
+						Record.toEntries(Array.groupBy(candidates, candidate => keyOf(candidate.post))),
+						entry =>
 							pipe(
-								resolve(post),
+								Effect.firstSuccessOf(
+									Array.flatMap(entry[1], candidate =>
+										Array.map(candidate.links, link => resolve(candidate.post, link))
+									)
+								),
 								Effect.asSome,
-								Effect.tapError(error => Effect.logWarning(`Chapter ${post.number} has no readable pages`, error)),
+								Effect.tapError(error => Effect.logWarning(`Chapter ${entry[0]} has no readable pages`, error)),
 								Effect.orElseSucceed(Option.none<Chapter>)
 							),
 						{concurrency: 1}
 					)
-					// Only a post from the last day is news; the backlog and a link that loads late stay quiet.
-					yield* save(current =>
-						Array.reduce(Array.getSomes(found), current, (chapters, chapter) =>
-							merge(chapters, {...chapter, notified: now - chapter.postedAt > 86_400_000})
-						)
+					const loaded = HashMap.fromIterable(
+						Array.map(Array.getSomes(found), chapter => [keyOf(chapter), chapter] as const)
 					)
+					// A known chapter takes only an explicit revision's pages, so a second translation never moves a reader's page.
+					yield* save(current => {
+						const revised = Array.map(current, item =>
+							Option.match(HashMap.get(loaded, keyOf(item)), {
+								onNone: () => item,
+								onSome: chapter => ({
+									...item,
+									pages: chapter.pages,
+									revisedAt: chapter.postedAt,
+									source: chapter.source
+								})
+							})
+						)
+						const present = HashSet.fromIterable(Array.map(current, keyOf))
+						// Only a post from the last day is news; the backlog and a link that loads late stay quiet.
+						const added = Array.map(
+							Array.filter(
+								Array.fromIterable(HashMap.values(loaded)),
+								chapter => !HashSet.has(present, keyOf(chapter))
+							),
+							chapter => ({...chapter, notified: now - chapter.postedAt > 86_400_000})
+						)
+						return Array.sort([...revised, ...added], newestFirst)
+					})
 				})
 
 				const send = Effect.fnUntraced(function* (chapter: Chapter, tokens: string[]) {
@@ -355,8 +380,8 @@ export class Chapters extends Context.Service<
 									discard: true
 								}),
 								Effect.andThen(save(chapters => change(chapters, keyOf(chapter), item => ({...item, notified: true})))),
-								Effect.andThen(Effect.logInfo(`Announced chapter ${chapter.number} to ${tokens.length} iPhones`)),
-								Effect.ignore({log: 'Warn', message: `Chapter ${chapter.number} was not announced yet`})
+								Effect.andThen(Effect.logInfo(`Announced chapter ${keyOf(chapter)} to ${tokens.length} iPhones`)),
+								Effect.ignore({log: 'Warn', message: `Chapter ${keyOf(chapter)} was not announced yet`})
 							),
 						{concurrency: 1, discard: true}
 					)
@@ -409,8 +434,7 @@ export class Chapters extends Context.Service<
 					}),
 					register: Effect.fn('Chapters.register')(function* (token) {
 						yield* store.addDevice(token)
-					}),
-					sync
+					})
 				})
 			})
 		)

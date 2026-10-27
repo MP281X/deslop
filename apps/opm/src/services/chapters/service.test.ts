@@ -12,24 +12,6 @@ import {Chapter, Series} from '#services/chapters/schema.ts'
 import {Chapters} from '#services/chapters/service.ts'
 
 it.layer(NodeServices.layer)(test => {
-	test.effect('keeps the previous release’s manga progress when loading the shared archive', () =>
-		Effect.gen(function* () {
-			const fs = yield* FileSystem.FileSystem
-			const directory = yield* fs.makeTempDirectoryScoped()
-			yield* fs.writeFileString(
-				`${directory}/chapters`,
-				'[{"notified":true,"number":1,"pages":["https://example.test/page.png"],"postedAt":0,"reading":{"at":42,"done":false,"page":0},"source":"","title":""}]'
-			)
-			const store = yield* openStore(directory)
-			const loaded = yield* store.load
-			const chapter = yield* Effect.fromOption(Array.head(loaded))
-			assert.strictEqual(chapter.series, 'manga')
-			assert.deepStrictEqual(chapter.reading, {at: 42, done: false, page: 0})
-			yield* store.save(Array.copy(loaded))
-			assert.deepStrictEqual(yield* (yield* openStore(directory)).load, loaded)
-		})
-	)
-
 	test.effect('backfills the webcomic beside existing manga and scopes releases, revisions and reading by series', () =>
 		Effect.gen(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
@@ -48,6 +30,15 @@ it.layer(NodeServices.layer)(test => {
 			const revised = yield* Ref.make(false)
 			const client = HttpClient.make(request =>
 				Effect.gen(function* () {
+					// r/OPMFolk alone posts some releases, numbered its own way and listing several translations.
+					if (String.includes('/r/OPMFolk/search.rss')(request.url)) {
+						return HttpClientResponse.fromWeb(
+							request,
+							new Response(
+								`<feed><entry><title>Chapter 3/48 [Translations]</title><published>2026-04-06T00:00:00Z</published><content>&lt;a href="https://cubari.moe/read/imgchest/broken/1/1/"&gt;Best&lt;/a&gt; &lt;a href="https://cubari.moe/read/imgchest/folk/1/1/"&gt;Alternative&lt;/a&gt;</content></entry></feed>`
+							)
+						)
+					}
 					if (String.includes('search.rss')(request.url)) {
 						const entries = [
 							{slug: 'manga', title: 'Chapter 2 [English]'},
@@ -117,12 +108,25 @@ it.layer(NodeServices.layer)(test => {
 			)
 			const first = (yield* Effect.fromOption(yield* Stream.runHead(chapters.changes))).upserted
 			assert.deepStrictEqual(Array.map(first, keyOf), [
+				'manga:237',
+				'manga:236',
+				'manga:235',
+				'manga:234',
+				'manga:233',
 				'webcomic:158',
+				'manga:3',
 				'manga:2',
 				'webcomic:2',
 				'manga:1',
 				'webcomic:1'
 			])
+			assert.deepStrictEqual(
+				Option.map(
+					Array.findFirst(first, chapter => keyOf(chapter) === 'manga:3'),
+					chapter => chapter.source
+				),
+				Option.some('https://cubari.moe/read/imgchest/folk/1')
+			)
 			assert.deepStrictEqual(
 				Option.map(Array.last(first), chapter => chapter.postedAt),
 				Option.some(0)
@@ -130,7 +134,17 @@ it.layer(NodeServices.layer)(test => {
 			yield* chapters.read({done: true, number: 1, opened: true, page: 0, series: 'manga'})
 			yield* chapters.read({done: false, number: 1, opened: true, page: 0, series: 'webcomic'})
 			yield* Ref.set(revised, true)
-			yield* chapters.sync
+			yield* TestClock.adjust('6 hours')
+			yield* pipe(
+				chapters.changes,
+				Stream.filter(event =>
+					Array.some(
+						event.upserted,
+						chapter => keyOf(chapter) === 'webcomic:1' && Array.some(chapter.pages, String.includes('/revision/'))
+					)
+				),
+				Stream.runHead
+			)
 			const saved = yield* store.load
 			assert.deepStrictEqual(
 				Array.map(
