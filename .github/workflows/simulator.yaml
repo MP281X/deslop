@@ -4,7 +4,7 @@ name: Simulator
 on:
   push:
     branches-ignore: [main]
-    paths: [apps/stash/**, apps/opm/**, packages/**, pnpm-lock.yaml, .github/workflows/simulator.yaml]
+    paths: [apps/stash/**, apps/opm/**, apps/trips/**, packages/**, pnpm-lock.yaml, .github/workflows/simulator.yaml]
 
 # A newer push to the same branch replaces the older run.
 concurrency:
@@ -38,7 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           apps=()
-          for app in stash opm; do
+          for app in stash opm trips; do
             hash=$(cd "apps/$app" && $EAS fingerprint:generate --platform ios --build-profile simulator --json --non-interactive | jq -r .hash)
             built=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$app-simulator-$hash" --jq '[.artifacts[] | select(.expired | not)] | length > 0')
             [[ $built == true ]] || apps+=("$(jq -cn --arg app "$app" --arg name "$app-simulator-$hash" '{$app, $name}')")
