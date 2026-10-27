@@ -103,7 +103,14 @@ function allowedRedirect(redirect: string) {
 	// The iOS apps in their release and Simulator builds, or a loopback callback of a desktop agent.
 	return (
 		Array.contains(
-			['stash://auth/callback', 'stash-dev://auth/callback', 'opm://auth/callback', 'opm-dev://auth/callback'],
+			[
+				'stash://auth/callback',
+				'stash-dev://auth/callback',
+				'opm://auth/callback',
+				'opm-dev://auth/callback',
+				'trips://auth/callback',
+				'trips-dev://auth/callback'
+			],
 			redirect
 		) ||
 		Result.match(Url.fromString(redirect), {
@@ -711,7 +718,7 @@ export class Authorizations extends Context.Service<
 								rejected('Invalid client registration')
 							)
 							if (!Array.every(params.redirect_uris, allowedRedirect)) {
-								return yield* AuthError.make({message: 'Use a Codex, Claude Code, Stash or opm callback'})
+								return yield* AuthError.make({message: 'Use a Codex, Claude Code, Stash, opm or Trips callback'})
 							}
 							return HttpServerResponse.jsonUnsafe(
 								{
