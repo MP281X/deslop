@@ -1,4 +1,3 @@
-// @effect-diagnostics-next-line nodeBuiltinImport:off -- Expo runs config plugins in Node and needs file paths.
 import {fileURLToPath} from 'node:url'
 
 import type {ExpoConfig} from 'expo/config'

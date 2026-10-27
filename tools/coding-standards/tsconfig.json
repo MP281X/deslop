@@ -1,25 +1,21 @@
 {
 	"compilerOptions": {
-		"strict": true,
 		"jsx": "react-jsx",
-		"lib": ["DOM", "ESNext", "DOM.Iterable"],
+		"lib": ["DOM", "ESNext"],
 		"types": ["node", "vite-plus/client", "@deslop/coding-standards/css-properties"],
 		"allowJs": true,
 		"checkJs": true,
 		"noImplicitReturns": true,
 		"noErrorTruncation": true,
-		"allowUnusedLabels": false,
 		"noImplicitOverride": true,
 		"allowUnreachableCode": false,
 		"noUncheckedIndexedAccess": true,
-		"noFallthroughCasesInSwitch": true,
 		"noPropertyAccessFromIndexSignature": true,
 		"target": "ESNext",
 		"module": "ESNext",
 		"moduleDetection": "force",
 		"moduleResolution": "bundler",
 		"skipLibCheck": true,
-		"esModuleInterop": true,
 		"isolatedModules": true,
 		"resolveJsonModule": true,
 		"erasableSyntaxOnly": true,
@@ -70,6 +66,7 @@
 					"experimentalApiUsage": "off",
 					"extendsNativeError": "off",
 					"flatMapConditionalToFilterOrFail": "error",
+					"flatMapIdentityToFlatten": "error",
 					"flatMapIgnoredParamToAndThen": "error",
 					"flatMapToMap": "error",
 					"flatMapToTap": "error",
@@ -93,6 +90,7 @@
 					"lazyEffect": "error",
 					"lazyPromiseInEffectSync": "error",
 					"leakingRequirements": "error",
+					"mapConstToAs": "error",
 					"mapSomeToAsSome": "error",
 					"matchEffectToMapBoth": "error",
 					"matchEffectToMatch": "error",
@@ -119,7 +117,7 @@
 					"preferBarrelImport": "off",
 					"preferEffectArray": "error",
 					"preferEffectRecord": "error",
-					"preferEffectString": "off",
+					"preferEffectString": "error",
 					"preferNamespaceImport": "off",
 					"preferSchemaOverJson": "error",
 					"preferSchemaTaggedError": "off",
@@ -163,7 +161,7 @@
 					"unnecessaryTypeofType": "error",
 					"unsafeEffectTypeAssertion": "error",
 					"unstableApiUsage": "off",
-					"unusedDirective": "off"
+					"unusedDirective": "error"
 				},
 				"ignoreEffectErrorsInTscExitCode": false,
 				"ignoreEffectWarningsInTscExitCode": false,
@@ -173,6 +171,11 @@
 						// Absolute globs survive extends; the explicit dot component also covers hidden worktrees.
 						"include": ["/**/*.tsx", "/**/.*/**/*.tsx"],
 						"options": {"diagnosticSeverity": {"asyncFunction": "off"}}
+					},
+					{
+						// The directive scan reads string literals too, and test fixtures hold source text with directives.
+						"include": ["/**/*.test.ts", "/**/.*/**/*.test.ts"],
+						"options": {"diagnosticSeverity": {"unusedDirective": "off"}}
 					}
 				]
 			}

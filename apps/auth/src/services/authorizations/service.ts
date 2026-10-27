@@ -460,13 +460,13 @@ export class Authorizations extends Context.Service<
 				}
 				// A waiting sign-in is read only by its code, in any case and with or without the dash, so no account lists anyone else's.
 				const pendingRequest = Effect.fnUntraced(function* (typed: string) {
-					return yield* Option.match(yield* requestRow(String.toUpperCase(String.replaceAll(/[^a-z]/giu, '')(typed))), {
-						onNone: () => Effect.succeedNone,
-						onSome: Effect.fnUntraced(function* (row) {
+					return Option.flatMap(
+						yield* requestRow(String.toUpperCase(String.replaceAll(/[^a-z]/giu, '')(typed))),
+						row => {
 							if (row.payload._tag !== 'Request' || row.payload.decision._tag !== 'Pending') return Option.none()
 							return Option.some(publicRequest(row.payload, row.expiresAt))
-						})
-					})
+						}
+					)
 				})
 				const lookup = Effect.fnUntraced(function* (code: string, headers: Headers.Headers) {
 					yield* session(headers)
@@ -542,7 +542,7 @@ export class Authorizations extends Context.Service<
 									}
 								)
 							}))
-							return yield* mint({_tag: 'Session', user}, 365 * 86400, draft)
+							return yield* mint({_tag: 'Session', user}, 365 * 86_400, draft)
 						})
 					)
 					yield* PubSub.publish(changes, true)
@@ -653,7 +653,7 @@ export class Authorizations extends Context.Service<
 									} else {
 										target.searchParams.set('error', 'access_denied')
 									}
-									const expiresAt = (yield* Clock.currentTimeMillis) + 60000
+									const expiresAt = (yield* Clock.currentTimeMillis) + 60_000
 									yield* Ref.update(draft, current => ({
 										...current,
 										tokens: {
@@ -686,7 +686,7 @@ export class Authorizations extends Context.Service<
 								draft
 							),
 							expires_in: seconds,
-							refresh_token: yield* mint({...grant, _tag: 'Refresh'}, 30 * 86400, draft),
+							refresh_token: yield* mint({...grant, _tag: 'Refresh'}, 30 * 86_400, draft),
 							scope: 'deslop',
 							token_type: 'Bearer'
 						},
@@ -739,7 +739,7 @@ export class Authorizations extends Context.Service<
 										Effect.gen(function* () {
 											const token = yield* mint(
 												{_tag: 'Client', name: params.client_name ?? 'Unknown client', redirects: params.redirect_uris},
-												365 * 86400,
+												365 * 86_400,
 												draft
 											)
 											yield* Ref.update(draft, current => ({...current, tokens: newestClients(current.tokens)}))

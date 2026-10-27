@@ -63,6 +63,7 @@ function timeLimit(duration: Duration.Input, message: string, reason?: NotesErro
 	return Effect.timeoutOrElse({duration, orElse: () => Effect.fail(NotesError.make({message, reason}))})
 }
 
+// fallow-ignore-next-line complexity -- the public IPv4 exclusions stay together for security review.
 function isPublic(address: NetAddress.Ipv4Address) {
 	const octets = NetAddress.ipv4ToOctets(address)
 	return (
