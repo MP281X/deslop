@@ -56,7 +56,7 @@ jobs:
 
           # Each image reuses the unchanged layers of the last one, such as Stash's ffmpeg and ONNX Runtime.
           echo "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          for app in auth portfolio scope stash opm; do
+          for app in auth portfolio scope stash opm trips; do
             image="ghcr.io/${GITHUB_REPOSITORY,,}-$app"
             docker build "apps/$app" --cache-from "$image:latest" --build-arg BUILDKIT_INLINE_CACHE=1 --tag "$image:latest" --tag "$image:$GITHUB_SHA"
             docker push --all-tags "$image"
@@ -89,7 +89,7 @@ jobs:
         run: |
           set -euo pipefail
           native=()
-          for app in stash opm; do
+          for app in stash opm trips; do
             cd "$GITHUB_WORKSPACE/apps/$app"
             group=$($EAS update:list --branch production --limit 1 --json --non-interactive | jq -r '.currentPage[0].group // empty')
             released=$([[ -n $group ]] && $EAS update:view "$group" --json | jq -r '.[0].gitCommitHash' || true)

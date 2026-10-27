@@ -12,7 +12,7 @@
 					"apps/*/index.html",
 					"apps/*/src/main.client.tsx",
 					"apps/*/src/routes/**",
-					"apps/*/src/lib/{utils.ts,components.tsx}",
+					"apps/*/src/lib/{utils.ts,components.tsx,activities.tsx}",
 					"apps/portfolio/src/lib/profile.ts",
 					"apps/*/modules/native/index.ts",
 					"packages/components-*/src/**",

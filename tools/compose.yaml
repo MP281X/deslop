@@ -69,6 +69,17 @@ services:
       traefik.http.routers.opm.rule: Host(`opm.mp281x.xyz`)
       traefik.http.services.opm.loadbalancer.server.port: '5000'
 
+  trips:
+    <<: *service
+    image: ghcr.io/mp281x/deslop-trips:${REVISION:-latest}
+    env_file: ${HOME}/.deslop/trips.env
+    environment: {VITE_OTEL_URL: http://scope:4318}
+    volumes: ['${HOME}/.deslop/trips:/home/node/.deslop/trips']
+    labels:
+      traefik.enable: 'true'
+      traefik.http.routers.trips.rule: Host(`trips.mp281x.xyz`)
+      traefik.http.services.trips.loadbalancer.server.port: '5000'
+
   scope:
     <<: *service
     image: ghcr.io/mp281x/deslop-scope:${REVISION:-latest}
