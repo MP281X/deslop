@@ -8,8 +8,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# The bundle leaves out ONNX Runtime and sharp, which load native binaries.
-RUN npm install --no-save onnxruntime-node sharp && npm cache clean --force
+# The bundle leaves out ONNX Runtime and sharp, which load native binaries; Whisper runs on the CPU, so ONNX Runtime skips its CUDA download.
+RUN ONNXRUNTIME_NODE_INSTALL=skip npm install --no-save onnxruntime-node sharp && npm cache clean --force
 
 COPY dist ./dist
 
