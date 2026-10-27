@@ -16,7 +16,8 @@ NodeRuntime.runMain(
 		HttpRouter.serve(
 			Layer.mergeAll(
 				pipe(
-					RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
+					// Every visitor sends a move each 50 ms; a span per move would bury Scope.
+					RpcServer.layerHttp({disableTracing: true, group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
 					Layer.provide(RpcHandlers)
 				),
 				ServerRuntime.layerStaticFiles
