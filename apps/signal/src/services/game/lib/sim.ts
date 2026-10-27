@@ -1,12 +1,16 @@
-import {Array, MutableHashMap, MutableList, Number, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Boolean, MutableHashMap, MutableList, Number, Option, Order, Record, String, pipe} from 'effect'
 import type {Types} from 'effect'
 
+import {route} from '#services/game/lib/path.ts'
 import {
+	makeTerrain,
+	stride,
 	CHUNK,
 	CODES,
 	CHUNK_TILES,
 	FLAG_CARGO,
 	FLAG_CONTROLLED,
+	FLAG_WORKING,
 	STATS,
 	STRIDE,
 	TEAM_COLORS,
@@ -69,10 +73,19 @@ const STARTING_FLEET = Array.map(
 )
 const byDistance = Order.mapInput(Order.Number, (candidate: {distance: number}) => candidate.distance)
 const byRecent = Order.mapInput(Order.Number, (entry: MemoryEntry) => -entry.updatedAt)
-
-function water(x: number, z: number) {
-	return tileAt(Math.floor(x), Math.floor(z)).kind === TILE.Water
-}
+const byMarked = Order.mapInput(Order.Number, (unit: {markedAt: number}) => unit.markedAt)
+// Tile offsets within 28 tiles, nearest first: where a landing looks for its first deposits.
+const NEAR = Array.sort(
+	Array.filter(
+		Array.map(Array.cartesian(Array.range(-28, 28), Array.range(-28, 28)), pair => ({
+			distance: Math.hypot(pair[0], pair[1]),
+			x: pair[0],
+			z: pair[1]
+		})),
+		offset => offset.distance <= 28
+	),
+	byDistance
+)
 
 type Task = {phase: 'none' | 'travel' | 'work' | 'deliver'; ref: number; since: number; x: number; z: number}
 
@@ -87,6 +100,7 @@ type Entity = {
 	kind: EntityKind
 	markX: number
 	markZ: number
+	markedAt: number
 	owner: string
 	routine: Routine
 	steerUntil: number
@@ -134,6 +148,10 @@ function toward(from: {x: number; z: number}, target: {x: number; z: number}, sp
 	if (distance < 0.05) return {distance, x: 0, z: 0}
 	const scale = (speed * Number.min(1, distance / slow)) / distance
 	return {distance, x: (target.x - from.x) * scale, z: (target.z - from.z) * scale}
+}
+
+function reachKey(kind: EntityKind, from: Point, to: Point) {
+	return `${kind}:${Math.floor(from.x)},${Math.floor(from.z)}>${Math.floor(to.x)},${Math.floor(to.z)}`
 }
 
 function cell(x: number, z: number) {
@@ -186,7 +204,16 @@ export function makeWorld(saved: Option.Option<Saved>) {
 	const claims = MutableHashMap.empty<string, number>()
 	const ores = MutableHashMap.empty<string, number[]>()
 	const events = MutableList.make<WorldEvent>()
-	const counters = {connection: 0, depletion: 0, id: 1, random: 0x9e_37_79_b9, shot: 0, tick: 0}
+	const terrain = makeTerrain()
+	// Ground units follow tile centres to their goal; no points means the goal is out of their reach.
+	const paths = MutableHashMap.empty<
+		number,
+		{goal: Point; near: number; points: Option.Option<Point[]>; progressAt: number; searches: number}
+	>()
+	// Whether a kind gets from one tile to another, kept until the cache fills.
+	const reachCache = MutableHashMap.empty<string, boolean>()
+	// routes is how many path searches the current tick may still afford; the rest wait for a later tick.
+	const counters = {connection: 0, depletion: 0, id: 1, random: 0x9e_37_79_b9, routes: 0, shot: 0, tick: 0}
 	const recent = {
 		cells: Record.empty<string, Entity[]>(),
 		depletions: Array.empty<{at: Point; seq: number}>(),
@@ -273,6 +300,7 @@ export function makeWorld(saved: Option.Option<Saved>) {
 			kind,
 			markX: Infinity,
 			markZ: Infinity,
+			markedAt: 0,
 			owner,
 			routine,
 			steerUntil: 0,
@@ -316,7 +344,94 @@ export function makeWorld(saved: Option.Option<Saved>) {
 
 	function remove(id: number) {
 		MutableHashMap.remove(entities, id)
+		MutableHashMap.remove(paths, id)
 		recent.stale = true
+	}
+
+	function water(x: number, z: number) {
+		return terrain.tile(Math.floor(x), Math.floor(z)).kind === TILE.Water
+	}
+
+	// Whether a unit of this kind can get from one place to another over the ground; fliers always can. None means the tick's search budget is spent: ask again next tick.
+	function reaches(kind: EntityKind, from: Point, to: Point) {
+		if (STATS[kind].climb >= 99) return Option.some(true)
+		const cached = MutableHashMap.get(reachCache, reachKey(kind, from, to))
+		if (Option.isSome(cached) || counters.routes <= 0) return cached
+		counters.routes -= 1
+		if (MutableHashMap.size(reachCache) > 20_000) MutableHashMap.clear(reachCache)
+		const found = Option.isSome(route(terrain, kind, from, to, 4000))
+		MutableHashMap.set(reachCache, reachKey(kind, from, to), found)
+		return Option.some(found)
+	}
+
+	// Steers toward a target: fliers straight, ground units along a path around what they cannot cross; stuck means the target is out of reach.
+	function head(drone: Entity, target: Point, speed: number, slow: number) {
+		const step = toward(drone, target, speed, slow)
+		if (STATS[drone.kind].climb >= 99 || step.distance < 1.2) return {...step, stuck: false}
+		const previous = Option.filter(
+			MutableHashMap.get(paths, drone.id),
+			path => Math.hypot(path.goal.x - target.x, path.goal.z - target.z) < 2
+		)
+		// A path holds while the drone keeps closing on its next waypoint; two seconds without progress search again, and the fourth search in a row without progress gives up.
+		const kept = Option.filter(previous, path => Option.isNone(path.points) || counters.tick - path.progressAt < 40)
+		if (Option.isNone(kept) && counters.routes <= 0) return {...step, stuck: false}
+		const path = Option.getOrElse(kept, () => {
+			counters.routes -= 1
+			return {
+				goal: target,
+				near: Infinity,
+				points: route(terrain, drone.kind, drone, target, 6000),
+				progressAt: counters.tick,
+				searches:
+					Option.getOrElse(
+						Option.map(previous, last => last.searches),
+						() => 0
+					) + 1
+			}
+		})
+		if (path.searches > 4) {
+			MutableHashMap.remove(paths, drone.id)
+			return {distance: step.distance, stuck: true, x: 0, z: 0}
+		}
+		return Option.match(path.points, {
+			onNone: () => {
+				MutableHashMap.set(paths, drone.id, path)
+				return {distance: step.distance, stuck: true, x: 0, z: 0}
+			},
+			onSome: points => {
+				const ahead = Array.dropWhile(points, point => Math.hypot(point.x - drone.x, point.z - drone.z) < 0.5)
+				const next = Option.getOrElse(Array.head(ahead), () => target)
+				const gap = Math.hypot(next.x - drone.x, next.z - drone.z)
+				const advanced = ahead.length < points.length
+				const record = {...path, near: Number.min(gap, path.near), points: Option.some(ahead)}
+				// near is the closest the drone has come to its current waypoint.
+				if (advanced) record.near = gap
+				if (advanced || gap < path.near - 0.05) {
+					record.progressAt = counters.tick
+					record.searches = 0
+				}
+				MutableHashMap.set(paths, drone.id, record)
+				const direction = toward(drone, next, 1, 0.01)
+				const pace = speed * Number.min(1, step.distance / slow)
+				return {distance: step.distance, stuck: false, x: direction.x * pace, z: direction.z * pace}
+			}
+		})
+	}
+
+	// A ground drone that cannot reach its goal stops and says so, rather than pushing against a cliff.
+	function stranded(drone: Entity, target: Point, now: number) {
+		MutableHashMap.set(reachCache, reachKey(drone.kind, drone, target), false)
+		log(teamOf(drone.owner), {
+			at: target,
+			drone: drone.id,
+			text: `${CODES[drone.kind]}-${drone.id} cannot get there: ${Boolean.match(STATS[drone.kind].floats, {
+				onFalse: () => 'water or a cliff is in the way',
+				onTrue: () => 'a cliff is in the way'
+			})}`,
+			time: now,
+			tone: 'alert'
+		})
+		return {routine: {_tag: 'Idle'}, x: 0, z: 0} satisfies Intent
 	}
 
 	function nearby(x: number, z: number, radius: number) {
@@ -332,8 +447,8 @@ export function makeWorld(saved: Option.Option<Saved>) {
 		)
 	}
 
-	// Marks a sight disc row by row, looking each chunk up once per run of tiles; ground the team fully knows is skipped.
-	function markExplored(teamId: string, center: Point, radius: number) {
+	// Marks what a unit sees: rays out to its sight radius, each hiding the ground that nearer high ground blocks from its eye, which stands eye levels above its tile. Each chunk is looked up once per run of tiles; ground the team fully knows is skipped.
+	function markExplored(teamId: string, center: Point, radius: number, eye: number) {
 		const target = team(teamId)
 		const x = Math.floor(center.x)
 		const z = Math.floor(center.z)
@@ -348,25 +463,39 @@ export function makeWorld(saved: Option.Option<Saved>) {
 		if (known) return
 		target.seq += 1
 		const cursor: {chunk?: Explore; cx: number; cz: number} = {cx: Infinity, cz: Infinity}
-		for (const dz of Array.range(-radius, radius)) {
-			const half = Math.floor(Math.sqrt(radius * radius - dz * dz))
-			for (const tx of Array.range(x - half, x + half)) {
-				if (cursor.chunk === undefined || cursor.cx !== chunkOf(tx) || cursor.cz !== chunkOf(z + dz)) {
-					cursor.cx = chunkOf(tx)
-					cursor.cz = chunkOf(z + dz)
-					cursor.chunk = Option.getOrElse(MutableHashMap.get(target.chunks, chunkKey(cursor.cx, cursor.cz)), () => {
-						const created = {bits: new Uint8Array(CHUNK_TILES / 8), count: 0, cx: cursor.cx, cz: cursor.cz, version: 0}
-						MutableHashMap.set(target.chunks, chunkKey(cursor.cx, cursor.cz), created)
-						return created
-					})
-				}
-				const tile = tileIndex(tx, z + dz)
-				const current = cursor.chunk.bits[tile >> 3] ?? 0
-				if ((current & (1 << (tile & 7))) === 0) {
-					cursor.chunk.bits.set([current | (1 << (tile & 7))], tile >> 3)
-					cursor.chunk.count += 1
-					cursor.chunk.version = target.seq
-				}
+		function reveal(tx: number, tz: number) {
+			if (cursor.chunk === undefined || cursor.cx !== chunkOf(tx) || cursor.cz !== chunkOf(tz)) {
+				cursor.cx = chunkOf(tx)
+				cursor.cz = chunkOf(tz)
+				cursor.chunk = Option.getOrElse(MutableHashMap.get(target.chunks, chunkKey(cursor.cx, cursor.cz)), () => {
+					const created = {bits: new Uint8Array(CHUNK_TILES / 8), count: 0, cx: cursor.cx, cz: cursor.cz, version: 0}
+					MutableHashMap.set(target.chunks, chunkKey(cursor.cx, cursor.cz), created)
+					return created
+				})
+			}
+			const tile = tileIndex(tx, tz)
+			const current = cursor.chunk.bits[tile >> 3] ?? 0
+			if ((current & (1 << (tile & 7))) === 0) {
+				cursor.chunk.bits.set([current | (1 << (tile & 7))], tile >> 3)
+				cursor.chunk.count += 1
+				cursor.chunk.version = target.seq
+			}
+		}
+		const height = terrain.tile(x, z).level + eye
+		// Enough rays that neighbouring ones are under a tile apart at the edge of sight; the unit's next mark fills any gap.
+		const rays = Math.ceil(radius * 6.3)
+		reveal(x, z)
+		for (const ray of Array.range(0, rays - 1)) {
+			const dx = Math.sin((ray / rays) * Math.PI * 2)
+			const dz = Math.cos((ray / rays) * Math.PI * 2)
+			// The steepest sightline so far along the ray, in levels per tile; ground that falls below it is out of view.
+			const horizon = {slope: -Infinity}
+			for (const step of Array.range(1, radius)) {
+				const tx = Math.floor(center.x + dx * step)
+				const tz = Math.floor(center.z + dz * step)
+				const slope = (terrain.tile(tx, tz).level - height) / step
+				if (slope >= horizon.slope - 0.15) reveal(tx, tz)
+				horizon.slope = Number.max(horizon.slope, slope)
 			}
 		}
 	}
@@ -426,7 +555,15 @@ export function makeWorld(saved: Option.Option<Saved>) {
 					Math.sqrt(YIELD[tileAt(tile.x, tile.z).kind] ?? 1)
 			})),
 			Array.sort(byDistance),
-			Array.head
+			// The nearest deposit the miner can walk to; deposits across water or up a cliff wait for another route. A deposit not yet searched this tick stops the scan, unready, and the miner asks again next tick.
+			Array.take(48),
+			Array.findFirst(tile =>
+				Option.getOrElse(reaches(miner.kind, miner, {x: tile.x + 0.5, z: tile.z + 0.5}), () => true)
+			),
+			Option.map(tile => ({
+				...tile,
+				ready: Option.isSome(reaches(miner.kind, miner, {x: tile.x + 0.5, z: tile.z + 0.5}))
+			}))
 		)
 	}
 
@@ -507,25 +644,30 @@ export function makeWorld(saved: Option.Option<Saved>) {
 		)
 	}
 
-	function mineIntent(miner: Entity, speed: number) {
+	function mineIntent(miner: Entity, speed: number, now: number) {
 		const capacity = STATS[miner.kind].cargo
 		if (miner.task.phase === 'deliver') {
-			const step = toward(miner, baseOf(miner), speed, 3)
+			const step = head(miner, baseOf(miner), speed, 3)
+			if (step.stuck) return stranded(miner, baseOf(miner), now)
 			if (step.distance > dock(miner)) return step
 			deposit(miner.owner, miner.cargo)
 			update(miner.id, {cargo: 0})
 			return {task: {...miner.task, phase: 'none'}, x: 0, z: 0} satisfies Intent
 		}
 		if (miner.cargo >= capacity) {
-			// Haulers collect from full miners; a miner nobody visits for 30 seconds carries its own load.
+			// Haulers collect from a full miner they can reach from the base; a miner nobody visits for 30 seconds carries its own load.
 			const waited = counters.tick - miner.task.since > 600
-			if (Array.some(owned(miner.owner), other => other.routine._tag === 'Haul') && !waited) return {x: 0, z: 0}
+			const served =
+				Array.some(owned(miner.owner), other => other.routine._tag === 'Haul') &&
+				Option.getOrElse(reaches('hauler', baseOf(miner), miner), () => true)
+			if (served && !waited) return {x: 0, z: 0}
 			return {task: {...miner.task, phase: 'deliver'}, x: 0, z: 0} satisfies Intent
 		}
 		if (miner.task.phase === 'none') {
 			return Option.match(nearestOre(miner, baseOf(miner)), {
 				onNone: () => ({routine: {_tag: 'Idle' as const}, x: 0, z: 0}),
 				onSome: ore => {
+					if (!ore.ready) return {x: 0, z: 0}
 					MutableHashMap.set(claims, `${ore.x},${ore.z}`, miner.id)
 					return {
 						task: {phase: 'travel' as const, ref: 0, since: counters.tick, x: ore.x + 0.5, z: ore.z + 0.5},
@@ -535,7 +677,13 @@ export function makeWorld(saved: Option.Option<Saved>) {
 				}
 			})
 		}
-		const step = toward(miner, miner.task, speed, 2)
+		const step = head(miner, miner.task, speed, 2)
+		// A deposit that turns out to be out of reach is let go; the reach cache keeps the miner from picking it again.
+		if (step.stuck) {
+			MutableHashMap.set(reachCache, reachKey(miner.kind, miner, miner.task), false)
+			MutableHashMap.remove(claims, `${Math.floor(miner.task.x)},${Math.floor(miner.task.z)}`)
+			return {task: {...miner.task, phase: 'none'}, x: 0, z: 0} satisfies Intent
+		}
 		if (step.distance > 0.6) return step
 		update(miner.id, {
 			cargo: Number.min(
@@ -549,28 +697,36 @@ export function makeWorld(saved: Option.Option<Saved>) {
 		return {task: {...miner.task, phase: 'work', since: counters.tick}, x: 0, z: 0} satisfies Intent
 	}
 
-	function haulIntent(hauler: Entity, speed: number) {
+	function haulIntent(hauler: Entity, speed: number, now: number) {
 		if (hauler.task.phase === 'deliver' || hauler.cargo >= STATS.hauler.cargo * 0.8) {
-			const step = toward(hauler, baseOf(hauler), speed, 3)
+			const step = head(hauler, baseOf(hauler), speed, 3)
+			if (step.stuck) return stranded(hauler, baseOf(hauler), now)
 			if (step.distance > dock(hauler)) return {...step, task: {...hauler.task, phase: 'deliver'}} satisfies Intent
 			deposit(hauler.owner, hauler.cargo)
 			update(hauler.id, {cargo: 0})
 			return {task: {...hauler.task, phase: 'none'}, x: 0, z: 0} satisfies Intent
 		}
+		// Reach is judged from the base, where every hauler's trips start, so the answer holds while the hauler moves.
 		const miner = pipe(
 			owned(hauler.owner),
 			Array.filter(other => other.kind === 'miner' && other.cargo >= 3),
 			Array.map(other => ({distance: Math.hypot(other.x - hauler.x, other.z - hauler.z) - other.cargo * 4, other})),
 			Array.sort(byDistance),
-			Array.head,
+			Array.findFirst(found =>
+				Option.getOrElse(reaches(hauler.kind, baseOf(hauler), found.other), () => found.other.id === hauler.task.ref)
+			),
 			Option.map(found => found.other),
 			Option.getOrUndefined
 		)
 		if (miner === undefined && hauler.cargo > 0) {
 			return {task: {...hauler.task, phase: 'deliver'}, x: 0, z: 0} satisfies Intent
 		}
-		if (miner === undefined) return toward(hauler, {x: baseOf(hauler).x + 4, z: baseOf(hauler).z + 4}, speed, 3)
-		const step = toward(hauler, miner, speed, 3)
+		if (miner === undefined) return head(hauler, {x: baseOf(hauler).x + 4, z: baseOf(hauler).z + 4}, speed, 3)
+		const step = head(hauler, miner, speed, 3)
+		if (step.stuck) {
+			MutableHashMap.set(reachCache, reachKey(hauler.kind, baseOf(hauler), miner), false)
+			return {x: 0, z: 0}
+		}
 		if (step.distance > 1.6) {
 			return {...step, task: {...hauler.task, phase: 'travel', ref: miner.id, x: miner.x, z: miner.z}} satisfies Intent
 		}
@@ -671,8 +827,9 @@ export function makeWorld(saved: Option.Option<Saved>) {
 	}
 
 	// A drone has arrived within reach, or nearby once others crowding the spot hold it still.
-	function arrive(drone: Entity, target: Point, speed: number, reach: number) {
-		const step = toward(drone, target, speed, 3)
+	function arrive(drone: Entity, target: Point, speed: number, reach: number, now: number) {
+		const step = head(drone, target, speed, 3)
+		if (step.stuck) return stranded(drone, target, now)
 		if (step.distance < reach || (step.distance < reach + 3 && Math.hypot(drone.vx, drone.vz) < 0.4)) {
 			return {routine: {_tag: 'Idle'}, x: 0, z: 0} satisfies Intent
 		}
@@ -688,14 +845,14 @@ export function makeWorld(saved: Option.Option<Saved>) {
 	}
 
 	function routineIntent(drone: Entity, speed: number, routine: Routine, now: number) {
-		if (routine._tag === 'Goto') return arrive(drone, routine.target, speed, 1.5)
-		if (routine._tag === 'Return') return arrive(drone, baseOf(drone), speed, dock(drone))
+		if (routine._tag === 'Goto') return arrive(drone, routine.target, speed, 1.5, now)
+		if (routine._tag === 'Return') return arrive(drone, baseOf(drone), speed, dock(drone), now)
 		if (routine._tag === 'Explore') return roam(drone, speed, () => frontier(drone, baseOf(drone)))
 		if (routine._tag === 'Search') return roam(drone, speed, () => searchPoint(baseOf(drone), drone.task.since))
 		if (routine._tag === 'Track') return trackIntent(drone, speed, routine.player)
 		if (routine._tag === 'Patrol') return roam(drone, speed, () => patrolPoint(routine))
-		if (routine._tag === 'Mine') return mineIntent(drone, speed)
-		if (routine._tag === 'Haul') return haulIntent(drone, speed)
+		if (routine._tag === 'Mine') return mineIntent(drone, speed, now)
+		if (routine._tag === 'Haul') return haulIntent(drone, speed, now)
 		if (routine._tag === 'Escort') return escortIntent(drone, speed, routine.group)
 		if (routine._tag === 'Build') return buildIntent(drone, speed, routine, now)
 		return {x: 0, z: 0}
@@ -895,9 +1052,14 @@ export function makeWorld(saved: Option.Option<Saved>) {
 	function sightings(now: number) {
 		for (const unit of Array.fromIterable(MutableHashMap.values(entities))) {
 			const teamId = teamOf(unit.owner)
+			// A stranger behind a ridge, on ground the team has never seen, is not sighted.
 			const strangers = Array.filter(
 				nearby(unit.x, unit.z, STATS[unit.kind].sight),
-				other => unit.owner !== '' && other.owner !== '' && teamOf(other.owner) !== teamId
+				other =>
+					unit.owner !== '' &&
+					other.owner !== '' &&
+					teamOf(other.owner) !== teamId &&
+					isExplored(teamId, Math.floor(other.x), Math.floor(other.z))
 			)
 			for (const other of strangers) sighted(teamId, unit, other, now)
 		}
@@ -912,8 +1074,10 @@ export function makeWorld(saved: Option.Option<Saved>) {
 		target.vx += (wanted.x - target.vx) * (1 - Math.exp(-7 / 20))
 		target.vz += (wanted.z - target.vz) * (1 - Math.exp(-7 / 20))
 		const give = bit(STATS[target.kind].speed > 0)
-		target.x += (target.vx / 20) * give
-		target.z += (target.vz / 20) * give
+		// Every step goes through the terrain: a ground unit slides along a cliff or shore it cannot cross.
+		const stepped = stride(terrain, target.kind, target, (target.vx / 20) * give, (target.vz / 20) * give)
+		target.x = stepped.x
+		target.z = stepped.z
 		// After its step a moving unit parts from whatever it overlaps, so nothing stacks or sits inside the core.
 		const push = separation(
 			{id, mobile: true, size: STATS[target.kind].size, x: target.x, z: target.z},
@@ -925,38 +1089,75 @@ export function makeWorld(saved: Option.Option<Saved>) {
 				z: other.z
 			}))
 		)
-		target.x += push.x * give
-		target.z += push.z * give
+		const parted = stride(terrain, target.kind, target, push.x * give, push.z * give)
+		target.x = parted.x
+		target.z = parted.z
 		if (Math.hypot(target.vx, target.vz) > 0.3) target.heading = Math.atan2(target.vx, target.vz)
-		// The flown drone sees twice as far; sight is re-marked after a quarter radius, which leaves no gaps.
-		const sight = STATS[target.kind].sight * (1 + bit(target.steerUntil > now))
-		const moved = Math.hypot(target.x - target.markX, target.z - target.markZ)
-		if (target.owner === '' || moved <= Number.max(1.5, sight / 4)) return
-		target.markX = target.x
-		target.markZ = target.z
-		markExplored(teamOf(target.owner), target, sight)
 	}
 
-	// A base lands on the nearest dry 9 by 9 square whose 33 by 33 surroundings are at most a tenth water.
+	// The flown drone sees twice as far.
+	function sightOf(unit: Entity, now: number) {
+		return STATS[unit.kind].sight * (1 + bit(unit.steerUntil > now))
+	}
+
+	// Sight is cast for 24 units a tick that have moved a quarter of their sight since their last cast, longest-waiting first, and always for a flown drone.
+	function look(now: number) {
+		const due = pipe(
+			Array.fromIterable(MutableHashMap.values(entities)),
+			Array.filter(
+				unit =>
+					unit.owner !== '' &&
+					Math.hypot(unit.x - unit.markX, unit.z - unit.markZ) > Number.max(1.5, sightOf(unit, now) / 4)
+			),
+			Array.sort(byMarked)
+		)
+		for (const unit of Array.dedupe([...Array.filter(due, flown => flown.steerUntil > now), ...Array.take(due, 24)])) {
+			unit.markX = unit.x
+			unit.markZ = unit.z
+			unit.markedAt = counters.tick
+			// Fliers look from a few levels up and see over most relief; ground units lose what lies behind a ridge.
+			markExplored(teamOf(unit.owner), unit, sightOf(unit, now), 1.5 + 2.5 * bit(STATS[unit.kind].climb >= 99))
+		}
+	}
+
+	// A base lands on the nearest flat dry 9 by 9 square whose 33 by 33 surroundings are at most a tenth water, with a deposit its miners can walk to; failing that, on the nearest flat dry square.
 	function landing(inviter?: Player) {
 		const chosen = site(inviter)
 		const square = Array.cartesian(Array.range(-4, 4), Array.range(-4, 4))
-		return Option.getOrElse(
+		const candidates = Array.flatMap(Array.range(0, 50), ring =>
+			Array.makeBy(Number.max(1, ring * 6), step => {
+				const angle = (step / Number.max(1, ring * 6)) * Math.PI * 2
+				return {
+					x: Math.floor(chosen.x + Math.sin(angle) * ring * 4) + 0.5,
+					z: Math.floor(chosen.z + Math.cos(angle) * ring * 4) + 0.5
+				}
+			})
+		)
+		function flat(point: Point) {
+			return Array.every(
+				square,
+				offset =>
+					!water(point.x + offset[0], point.z + offset[1]) &&
+					terrain.tile(Math.floor(point.x + offset[0]), Math.floor(point.z + offset[1])).level ===
+						terrain.tile(Math.floor(point.x), Math.floor(point.z)).level
+			)
+		}
+		return pipe(
 			Array.findFirst(
-				Array.flatMap(Array.range(0, 50), ring =>
-					Array.makeBy(Number.max(1, ring * 6), step => {
-						const angle = (step / Number.max(1, ring * 6)) * Math.PI * 2
-						return {
-							x: Math.floor(chosen.x + Math.sin(angle) * ring * 4) + 0.5,
-							z: Math.floor(chosen.z + Math.cos(angle) * ring * 4) + 0.5
-						}
-					})
-				),
+				candidates,
 				point =>
-					Array.every(square, offset => !water(point.x + offset[0], point.z + offset[1])) &&
-					Array.length(Array.filter(square, offset => water(point.x + offset[0] * 4, point.z + offset[1] * 4))) <= 8
+					flat(point) &&
+					Array.length(Array.filter(square, offset => water(point.x + offset[0] * 4, point.z + offset[1] * 4))) <= 8 &&
+					pipe(
+						NEAR,
+						Array.map(offset => ({x: Math.floor(point.x) + offset.x, z: Math.floor(point.z) + offset.z})),
+						Array.filter(tile => (YIELD[terrain.tile(tile.x, tile.z).kind] ?? 0) > 0),
+						Array.take(4),
+						Array.some(tile => Option.isSome(route(terrain, 'miner', point, {x: tile.x + 0.5, z: tile.z + 0.5}, 3000)))
+					)
 			),
-			() => chosen
+			Option.orElse(() => Array.findFirst(candidates, flat)),
+			Option.getOrElse(() => chosen)
 		)
 	}
 
@@ -1004,7 +1205,7 @@ export function makeWorld(saved: Option.Option<Saved>) {
 		for (const connection of MutableHashMap.values(connections)) {
 			if (connection.player === player.id) connection.explored = 0
 		}
-		markExplored(inviter.team, target, 24)
+		markExplored(inviter.team, target, 24, 6)
 		log(inviter.team, {at: target, text: `${player.name} joined`, time: now, tone: 'info'})
 	}
 
@@ -1054,7 +1255,8 @@ export function makeWorld(saved: Option.Option<Saved>) {
 				DEFAULT_ROUTINES[start.kind].routine
 			)
 		}
-		markExplored(teamId, base, 24)
+		// The core is a tower: it looks over the land around it.
+		markExplored(teamId, base, 24, 6)
 		log(teamId, {at: base, text: `${user.name} landed`, time: now, tone: 'info'})
 		return player
 	}
@@ -1062,8 +1264,11 @@ export function makeWorld(saved: Option.Option<Saved>) {
 	function visible(teamId: string) {
 		const units = teamEntities(teamId)
 		const seen = MutableHashMap.fromIterable(Array.map(units, unit => [unit.id, unit] as const))
+		// Others show within sight on ground the team has seen, so the terrain that hides land hides what stands on it.
 		for (const unit of units) {
-			for (const other of nearby(unit.x, unit.z, STATS[unit.kind].sight)) MutableHashMap.set(seen, other.id, other)
+			for (const other of nearby(unit.x, unit.z, STATS[unit.kind].sight)) {
+				if (isExplored(teamId, Math.floor(other.x), Math.floor(other.z))) MutableHashMap.set(seen, other.id, other)
+			}
 		}
 		return Array.fromIterable(MutableHashMap.values(seen))
 	}
@@ -1121,7 +1326,9 @@ export function makeWorld(saved: Option.Option<Saved>) {
 					entity.z,
 					entity.heading,
 					entity.health / STATS[entity.kind].health,
-					bit(entity.cargo > 0) * FLAG_CARGO + bit(entity.steerUntil > now) * FLAG_CONTROLLED
+					bit(entity.cargo > 0) * FLAG_CARGO +
+						bit(entity.steerUntil > now) * FLAG_CONTROLLED +
+						bit(entity.task.phase === 'work' && counters.tick - entity.task.since < 10) * FLAG_WORKING
 				],
 				index * STRIDE
 			)
@@ -1309,7 +1516,7 @@ export function makeWorld(saved: Option.Option<Saved>) {
 			core.x = target.x
 			core.z = target.z
 		}
-		markExplored(player.team, target, 24)
+		markExplored(player.team, target, 24, 6)
 		log(player.team, {at: target, text: 'base relocated', time: now, tone: 'info'})
 		return {ok: true, summary: 'base relocated'}
 	}
@@ -1470,9 +1677,9 @@ export function makeWorld(saved: Option.Option<Saved>) {
 	return {
 		act,
 		// CORE's reroute: miners keep away from this route from now on and pick new ore.
-		avoid(owner: string, route: string, now: number) {
+		avoid(owner: string, key: string, now: number) {
 			const player = playerOf(owner)
-			const known = memoryOf(player?.team ?? '', route)
+			const known = memoryOf(player?.team ?? '', key)
 			if (player === undefined || known?._tag !== 'RouteAssaulted') return
 			remember(player.team, {...known, avoid: true, updatedAt: now})
 			for (const miner of owned(owner)) {
@@ -1567,8 +1774,12 @@ export function makeWorld(saved: Option.Option<Saved>) {
 			drone.steerX = input.x * scale
 			drone.steerZ = input.z * scale
 			drone.steerUntil = now + 450
-			// The client predicts its controlled drone; its position wins while it stays within reach of the server's.
-			if (Math.hypot(input.px - drone.x, input.pz - drone.z) < STATS[drone.kind].speed * 0.6) {
+			// The client predicts its controlled drone; its position wins while it stays within reach of the server's and the drone could have walked there unblocked.
+			const walked = stride(terrain, drone.kind, drone, input.px - drone.x, input.pz - drone.z)
+			if (
+				Math.hypot(input.px - drone.x, input.pz - drone.z) < STATS[drone.kind].speed * 0.6 &&
+				Math.hypot(walked.x - input.px, walked.z - input.pz) < 0.001
+			) {
 				drone.x = input.px
 				drone.z = input.pz
 			}
@@ -1577,8 +1788,10 @@ export function makeWorld(saved: Option.Option<Saved>) {
 		},
 		step(now: number) {
 			counters.tick += 1
+			counters.routes = 12
 			reindex()
 			for (const id of Array.fromIterable(MutableHashMap.keys(entities))) move(id, now)
+			look(now)
 			combat(1 / 20, now)
 			if (counters.tick % 10 === 0) sightings(now)
 			if (counters.tick % 20 === 0) raids(now)

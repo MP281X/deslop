@@ -22,31 +22,24 @@ import {
 	chunkOf,
 	chunkTiles,
 	explored,
+	FLAG_WORKING,
 	hash,
+	makeTerrain,
 	separation,
-	tileAt
+	stride,
+	tileIndex
 } from '#services/game/lib/utils.ts'
 import {EntityKind} from '#services/game/schema.ts'
 import type {EntityInfo, Hud, MemoryEntry} from '#services/game/schema.ts'
 
-// Tile colors by kind, from the approved mock: water, shore, plain, highland, rock, ore ground, ruin.
-const TILE_COLORS = [0x161a20, 0x2e2d2a, 0x27292a, 0x34322f, 0x9c9ca3, 0x342e2a, 0x45454d, 0x2c2a36, 0x30291f]
-// What stands on each tile kind, by kind index: reeds on shores, shrubs and grass on plains, boulders on highland, spires on rock, pale ore crystals, ruin pillars, violet crystal seams and rusted scrap.
-const DECOR: Decor[][] = [
-	[],
-	[
-		{chance: 0.3, color: 0x4f5548, form: 'spike', height: 0.45, size: 0.03},
-		{chance: 0.25, color: 0x5a6152, form: 'spike', height: 0.35, size: 0.03}
-	],
-	[
-		{chance: 0.12, color: 0x394037, form: 'spike', height: 0.22, size: 0.17},
-		{chance: 0.22, color: 0x454c41, form: 'spike', height: 0.3, size: 0.035}
-	],
-	[
-		{chance: 0.14, color: 0x4d4944, form: 'block', height: 0.24, size: 0.22},
-		{chance: 0.08, color: 0x3c4038, form: 'spike', height: 0.25, size: 0.15}
-	],
-	[{chance: 0.12, color: 0xb9b9c0, form: 'spike', height: 1, size: 0.15}],
+// Tile colors by biome (moss, mesa, frost), then by kind: water, shore, plain, highland, rock, ore ground, ruin, crystal ground, scrap ground.
+const TILE_COLORS = [
+	[0x132029, 0x34372c, 0x253024, 0x2f3627, 0x6f7468, 0x2f2d27, 0x45464a, 0x2c2a36, 0x30291f],
+	[0x1b1a1e, 0x3d2f25, 0x3a271e, 0x4a2e21, 0x8a5a42, 0x3c2a22, 0x50433d, 0x342a36, 0x3a2a1c],
+	[0x1b2a36, 0x47505a, 0x3b434d, 0x56606c, 0xc9d1dc, 0x3f4148, 0x5a5f69, 0x3a3850, 0x40382e]
+]
+// Deposits and ruins look alike in every biome: pale ore crystals, ruin pillars, violet crystal seams and rusted scrap.
+const DEPOSIT_DECOR: Decor[][] = [
 	[
 		{chance: 0.8, color: 0xd4d8e4, form: 'spike', height: 0.5, size: 0.13},
 		{chance: 0.2, color: 0xc4c8d4, form: 'spike', height: 0.35, size: 0.1}
@@ -62,7 +55,62 @@ const DECOR: Decor[][] = [
 		{chance: 0.7, color: 0x5b5b63, form: 'block', height: 0.32, size: 0.13}
 	]
 ]
+// What grows or stands on open ground, by biome then kind: moss has reeds, grass and shrubs; the mesa dry grass, rubble and red hoodoos; frost ice shards, snow mounds and dark pines.
+const DECOR: Decor[][][] = [
+	[
+		[],
+		[
+			{chance: 0.35, color: 0x4f6a44, form: 'spike', height: 0.45, size: 0.03},
+			{chance: 0.3, color: 0x5b7650, form: 'spike', height: 0.35, size: 0.03}
+		],
+		[
+			{chance: 0.14, color: 0x2f4a2a, form: 'spike', height: 0.24, size: 0.18},
+			{chance: 0.3, color: 0x3f5a35, form: 'spike', height: 0.3, size: 0.035}
+		],
+		[
+			{chance: 0.14, color: 0x4d4944, form: 'block', height: 0.24, size: 0.22},
+			{chance: 0.1, color: 0x2c4430, form: 'spike', height: 0.5, size: 0.16}
+		],
+		[{chance: 0.12, color: 0x9a9aa0, form: 'spike', height: 1, size: 0.15}]
+	],
+	[
+		[],
+		[{chance: 0.25, color: 0x7a5a3a, form: 'spike', height: 0.3, size: 0.03}],
+		[
+			{chance: 0.1, color: 0x5a3a2a, form: 'block', height: 0.18, size: 0.2},
+			{chance: 0.05, color: 0x4f5a3a, form: 'spike', height: 0.55, size: 0.06}
+		],
+		[
+			{chance: 0.12, color: 0x7a4a34, form: 'spike', height: 0.9, size: 0.2},
+			{chance: 0.12, color: 0x5a3a2a, form: 'block', height: 0.22, size: 0.22}
+		],
+		[{chance: 0.16, color: 0xa0644a, form: 'spike', height: 1.3, size: 0.2}]
+	],
+	[
+		[],
+		[{chance: 0.25, color: 0xaac4d8, form: 'spike', height: 0.3, size: 0.06}],
+		[
+			{chance: 0.16, color: 0xd8e0ea, form: 'block', height: 0.12, size: 0.28},
+			{chance: 0.06, color: 0x22332e, form: 'spike', height: 0.9, size: 0.18}
+		],
+		[
+			{chance: 0.22, color: 0x22332e, form: 'spike', height: 1.1, size: 0.2},
+			{chance: 0.1, color: 0xd8e0ea, form: 'block', height: 0.16, size: 0.26}
+		],
+		[{chance: 0.14, color: 0xe6eef6, form: 'spike', height: 1.1, size: 0.16}]
+	]
+]
 const UNKNOWN = 0x0e0e10
+const NEIGHBOURS = [
+	{x: -1, z: -1},
+	{x: 0, z: -1},
+	{x: 1, z: -1},
+	{x: -1, z: 0},
+	{x: 1, z: 0},
+	{x: -1, z: 1},
+	{x: 0, z: 1},
+	{x: 1, z: 1}
+]
 const SHADOW_CORNERS = [
 	{x: 0.35, z: 0.35},
 	{x: -0.35, z: 0.35},
@@ -77,6 +125,8 @@ const MAX_TRACERS = 512
 const BUILD = {quads: 0}
 const TRACERS = {next: 0}
 const STRANGER = '#5ec8e5'
+const FOG = new THREE.Color(UNKNOWN)
+const TERRAIN = makeTerrain()
 export const MARKS = {Note: '·', Place: '□', RouteAssaulted: '✕', Sighting: '◇', Standing: '◆'} satisfies Record<
 	MemoryEntry['_tag'],
 	string
@@ -98,6 +148,7 @@ const QUAD_INDICES = Uint32Array.from(Array.range(0, MAX_QUADS * 6 - 1), index =
 const TRACER_POSITIONS = new Float32Array(MAX_TRACERS * 6)
 const TRACER_LIFE = new Float32Array(MAX_TRACERS)
 const EVERYTHING = Uint8Array.from(Array.makeBy(CHUNK_TILES / 8, () => 255))
+const NOTHING = new Uint8Array(CHUNK_TILES / 8)
 const FLASH = new THREE.Color('#f08a4b')
 const WHITE = new THREE.Color('#ffffff')
 const TINT = new THREE.Color()
@@ -109,6 +160,7 @@ const LOCAL = new THREE.Matrix4()
 const WORLD = new THREE.Matrix4()
 const SPIN = new THREE.Quaternion()
 const UP = new THREE.Vector3(0, 1, 0)
+const FORWARD = new THREE.Vector3(0, 0, 1)
 const OFFSET = new THREE.Vector3()
 const SIZE = new THREE.Vector3()
 const PROJECTED = new THREE.Vector3()
@@ -148,7 +200,10 @@ type Snapshot = {at: number; x: number; z: number}
 // trail holds the last server positions by server time; a body is drawn between the two around the render time.
 type Body = {
 	bank: number
+	flags: number
 	flash: number
+	// The walk cycle's phase, advanced by the distance actually covered, so feet never slide.
+	gait: number
 	heading: number
 	health: number
 	id: number
@@ -168,7 +223,8 @@ type Body = {
 	z: number
 }
 
-type Chunk = {bits?: Uint8Array; cx: number; cz: number; depleted: number; mesh: THREE.Mesh}
+// around holds the 8 neighbouring chunks' exploration, which the fog fade at this chunk's edges reads.
+type Chunk = {around: Uint8Array[]; bits: Uint8Array; cx: number; cz: number; depleted: number; mesh: THREE.Mesh}
 
 type Marker = {at: {x: number; z: number}; group: THREE.Group; label: Label; stamp: number}
 
@@ -278,15 +334,14 @@ const MODELS = {
 		lights: [strip(0.5, 0.24, 0.495), strip(0.56, 0, -0.53)],
 		rotors: []
 	},
-	// A walking mining robot: a torso on two legs with a drill held forward.
+	// A walking mining robot: a torso with a drill arm; its legs and drill bit are separate meshes that swing and spin.
 	miner: {
 		altitude: 0,
 		hull: [
 			{color: 0x8a8a92, geometry: box(0.5, 0.34, 0.42), y: 0.62},
 			{color: 0x6b6b74, geometry: box(0.26, 0.14, 0.22), y: 0.86, z: 0.06},
-			{color: 0x3f3f46, geometry: box(0.11, 0.46, 0.13), x: -0.16, y: 0.23},
-			{color: 0x3f3f46, geometry: box(0.11, 0.46, 0.13), x: 0.16, y: 0.23},
-			{color: 0x52525b, geometry: new THREE.ConeGeometry(0.08, 0.36, 6), tilt: Math.PI / 2, y: 0.52, z: 0.38}
+			{color: 0x3f3f46, geometry: box(0.36, 0.08, 0.16), y: 0.45},
+			{color: 0x52525b, geometry: box(0.1, 0.1, 0.2), y: 0.52, z: 0.26}
 		],
 		lights: [strip(0.4, 0.66, 0.215), {color: 0xffffff, geometry: box(0.18, 0.03, 0.03), y: 0.88, z: 0.175}],
 		rotors: []
@@ -335,7 +390,7 @@ function surface(kind: number, level: number) {
 }
 
 function groundAt(x: number, z: number) {
-	const tile = tileAt(Math.floor(x), Math.floor(z))
+	const tile = TERRAIN.tile(Math.floor(x), Math.floor(z))
 	return surface(tile.kind, tile.level)
 }
 
@@ -440,12 +495,42 @@ function heightsOf(cx: number, cz: number, tiles: ReturnType<typeof chunkTiles>)
 	return heights
 }
 
-// Unexplored ground keeps its shape but stays near black and bare, so the unknown reads as dark land, not holes.
-function buildChunk(cx: number, cz: number, depleted: HashSet.HashSet<string>, bits?: Uint8Array) {
+function decorOf(biome: number, kind: number) {
+	if (kind >= TILE.Ore) return DEPOSIT_DECOR[kind - TILE.Ore] ?? []
+	return DECOR[biome]?.[kind] ?? []
+}
+
+// How much of the 5 by 5 tiles around each tile the team knows, from a known-grid with a two-tile border, so the edge of the known world fades over a few tiles instead of cutting a sharp line.
+function nearness(cx: number, cz: number, knownAt: (x: number, z: number) => boolean) {
+	const span = CHUNK + 4
+	const grid = Uint8Array.from(Array.range(0, span * span - 1), cell =>
+		bit(knownAt(cx * CHUNK + (cell % span) - 2, cz * CHUNK + Math.floor(cell / span) - 2))
+	)
+	return Float32Array.from(Array.range(0, CHUNK_TILES - 1), index => {
+		const origin = Math.floor(index / CHUNK) * span + (index % CHUNK)
+		return (
+			Array.reduce(
+				Array.range(0, 24),
+				0,
+				(sum, offset) => sum + (grid[origin + Math.floor(offset / 5) * span + (offset % 5)] ?? 0)
+			) / 25
+		)
+	})
+}
+
+// Unexplored ground keeps its shape in a faint tint of its biome, brightening toward what the team knows; it stays bare, so the unknown reads as dark land, not holes.
+function buildChunk(
+	cx: number,
+	cz: number,
+	depleted: HashSet.HashSet<string>,
+	knownAt: (x: number, z: number) => boolean,
+	bits?: Uint8Array
+) {
 	BUILD.quads = 0
 	const tiles = chunkTiles(cx, cz)
 	const color = new THREE.Color()
 	const heights = heightsOf(cx, cz, tiles)
+	const near = nearness(cx, cz, knownAt)
 	for (const index of Array.range(0, CHUNK_TILES - 1)) {
 		const x = cx * CHUNK + (index % CHUNK)
 		const z = cz * CHUNK + Math.floor(index / CHUNK)
@@ -456,8 +541,12 @@ function buildChunk(cx: number, cz: number, depleted: HashSet.HashSet<string>, b
 		const kind =
 			generated - bit((YIELD[generated] ?? 0) > 0 && HashSet.has(depleted, chunkKey(x, z))) * (generated - TILE.Plain)
 		const top = heights[cell] ?? 0
-		color.setHex(UNKNOWN)
-		if (known) color.setHex(TILE_COLORS[kind] ?? UNKNOWN).multiplyScalar(0.94 + (((x * 73) ^ (z * 19)) & 7) / 70)
+		const level = tiles.levels[index] ?? 0
+		// Higher ground is lighter, so plateaus and terraces read at a glance.
+		color
+			.setHex(TILE_COLORS[tiles.biomes[index] ?? 0]?.[kind] ?? UNKNOWN)
+			.multiplyScalar((0.82 + level * 0.05) * (0.94 + (((x * 73) ^ (z * 19)) & 7) / 70))
+		if (!known) color.lerpColors(FOG, color, 0.12 + (near[index] ?? 0) * 0.35)
 		quad(
 			[
 				[x, top, z],
@@ -470,7 +559,7 @@ function buildChunk(cx: number, cz: number, depleted: HashSet.HashSet<string>, b
 			bit(known)
 		)
 		walls(x, z, color, heights, cell)
-		Array.forEach(DECOR[kind] ?? [], (decor, slot) => {
+		Array.forEach(decorOf(tiles.biomes[index] ?? 0, kind), (decor, slot) => {
 			if (known && hash(20 + slot * 5, x, z) < decor.chance) prop(x, z, top, decor, 21 + slot * 5)
 		})
 	}
@@ -694,6 +783,17 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 		hullMaterial,
 		MAX_BLADES
 	)
+	// A miner's legs hang from the hip, so a rotation about x swings them; the drill bit points forward along z and spins about it.
+	const legs = instanced(
+		merge([{color: 0x3f3f46, geometry: box(0.11, 0.46, 0.13), y: -0.23}]),
+		hullMaterial,
+		MAX_INSTANCES * 2
+	)
+	const drills = instanced(
+		merge([{color: 0x71717a, geometry: new THREE.ConeGeometry(0.08, 0.36, 6), tilt: Math.PI / 2, z: 0.18}]),
+		hullMaterial,
+		MAX_INSTANCES
+	)
 	const shadows = instanced(
 		new THREE.CircleGeometry(0.35, 20).rotateX(-Math.PI / 2),
 		new THREE.MeshBasicMaterial({color: '#000000', depthWrite: false, opacity: 0.35, transparent: true}),
@@ -740,7 +840,7 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 	const bodies = MutableHashMap.empty<number, Body>()
 	// Per-frame instance counters, reset at the start of every draw.
 	const counts = MutableHashMap.empty<EntityKind, number>()
-	const extras = {blades: 0, pulses: 0, shadows: 0}
+	const extras = {blades: 0, drills: 0, legs: 0, pulses: 0, shadows: 0}
 	const markers = MutableHashMap.empty<string, Marker>()
 	const keys = MutableHashSet.empty<string>()
 	const state: {
@@ -936,7 +1036,9 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 		if (body === undefined) {
 			MutableHashMap.set(bodies, id, {
 				bank: 0,
+				flags: record[5] ?? 0,
 				flash: 0,
+				gait: 0,
 				heading,
 				health,
 				id,
@@ -959,6 +1061,7 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 		}
 		const predicted = state.controlled && state.drone === id
 		body.flash = Number.max(body.flash, bit(health < body.health - 0.001))
+		body.flags = record[5] ?? 0
 		body.health = health
 		body.info = info
 		body.seen = frame
@@ -1052,6 +1155,22 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 		})
 	}
 
+	// Without a HUD nobody is signed in, so the whole world shows as a flyover behind the sign-in panel.
+	function bitsOf(key: string) {
+		return Option.getOrElse(
+			Option.map(
+				Option.filter(Option.fromUndefinedOr(state.view), current => Option.isSome(current.hud)),
+				current => Option.getOrElse(HashMap.get(current.explored, key), () => NOTHING)
+			),
+			() => EVERYTHING
+		)
+	}
+
+	function knownAt(x: number, z: number) {
+		const bits = bitsOf(chunkKey(chunkOf(x), chunkOf(z)))
+		return bits !== undefined && explored(bits, tileIndex(x, z))
+	}
+
 	function syncChunks(radius: number) {
 		const cx = chunkOf(state.cameraX)
 		const cz = chunkOf(state.cameraZ)
@@ -1063,30 +1182,27 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 		const budget = {deadline: performance.now() + 3, first: true}
 		for (const pair of wanted) {
 			const key = chunkKey(pair[0], pair[1])
-			// Without a HUD nobody is signed in, so the whole world shows as a flyover behind the sign-in panel.
-			const bits = Option.getOrElse(
-				Option.map(
-					Option.filter(Option.fromUndefinedOr(state.view), current => Option.isSome(current.hud)),
-					current => Option.getOrUndefined(HashMap.get(current.explored, key))
-				),
-				() => EVERYTHING
-			)
+			const bits = bitsOf(key)
 			const depleted = Option.getOrElse(
 				Option.flatMap(Option.fromUndefinedOr(state.view), current => HashMap.get(current.depletedChunks, key)),
 				() => 0
 			)
 			const chunk = Option.getOrUndefined(MutableHashMap.get(chunks, key))
+			const around = Array.map(NEIGHBOURS, offset => bitsOf(chunkKey(pair[0] + offset.x, pair[1] + offset.z)))
 			if (
-				(chunk === undefined || chunk.bits !== bits || chunk.depleted !== depleted) &&
+				(chunk === undefined ||
+					chunk.bits !== bits ||
+					chunk.depleted !== depleted ||
+					Array.some(around, (neighbour, index) => chunk.around[index] !== neighbour)) &&
 				(budget.first || performance.now() < budget.deadline)
 			) {
 				budget.first = false
-				const geometry = buildChunk(pair[0], pair[1], state.view?.depleted ?? HashSet.empty(), bits)
+				const geometry = buildChunk(pair[0], pair[1], state.view?.depleted ?? HashSet.empty(), knownAt, bits)
 				chunk?.mesh.geometry.dispose()
 				const mesh = chunk?.mesh ?? new THREE.Mesh(geometry, terrain)
 				mesh.geometry = geometry
 				scene.add(mesh)
-				MutableHashMap.set(chunks, key, {bits, cx: pair[0], cz: pair[1], depleted, mesh})
+				MutableHashMap.set(chunks, key, {around, bits, cx: pair[0], cz: pair[1], depleted, mesh})
 			}
 		}
 		for (const chunk of Array.fromIterable(MutableHashMap.values(chunks))) {
@@ -1121,8 +1237,12 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 				})
 			)
 		)
-		body.x += state.velocityX * dt + push.x
-		body.z += state.velocityZ * dt + push.z
+		// The terrain stops the prediction where it stops the server: a miner at a cliff or shore slides along it.
+		const moved = stride(TERRAIN, body.info.kind, body, state.velocityX * dt + push.x, state.velocityZ * dt + push.z)
+		state.velocityX *= bit(moved.x !== body.x || Math.abs(state.velocityX * dt + push.x) < 1e-6)
+		state.velocityZ *= bit(moved.z !== body.z || Math.abs(state.velocityZ * dt + push.z) < 1e-6)
+		body.x = moved.x
+		body.z = moved.z
 		body.targetX = body.x
 		body.targetZ = body.z
 		if (Math.hypot(state.velocityX, state.velocityZ) > 0.2) {
@@ -1232,6 +1352,8 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 		const az = (vz - body.vz) * damp(8, dt)
 		body.vx += ax
 		body.vz += az
+		// Half a walk cycle, one footfall, every 0.45 tiles covered.
+		body.gait += (Math.hypot(body.vx, body.vz) * dt * Math.PI) / 0.45
 		const rate = 1 / Number.max(dt, 0.001)
 		const forward = (Math.sin(body.heading) * ax + Math.cos(body.heading) * az) * rate
 		const lateral = (Math.cos(body.heading) * ax - Math.sin(body.heading) * az) * rate
@@ -1247,10 +1369,15 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 		lift(id, dt)
 	}
 
-	// Height follows a critically damped spring toward the highest ground under the body and along its next half second, so a drone starts climbing before a step and never cuts into it.
+	// A walker's feet stay on the tile under it, stepping up or down a level in a few frames. A flier's height follows a critically damped spring toward the highest ground under it and along its next half second, so it starts climbing before a step and never cuts into it.
 	function lift(id: number, dt: number) {
 		const body = bodyOf(id)
 		if (body === undefined) return
+		if (body.info.kind === 'miner') {
+			body.y += (groundAt(body.x, body.z) - body.y) * damp(25, dt)
+			body.vy = 0
+			return
+		}
 		const ground = Array.reduce(
 			LOOKAHEAD,
 			Array.reduce(SHADOW_CORNERS, groundAt(body.x, body.z), (top, corner) =>
@@ -1268,14 +1395,24 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 		const model: Model = MODELS[body.info.kind]
 		const ground = groundAt(body.x, body.z)
 		const flying = bit(model.altitude > 0)
-		// Fliers hover and lean; walkers bob and sway with each stride, more the faster they go.
-		const stride = Math.sin(time * 0.014 + body.id) * Number.min(1, Math.hypot(body.vx, body.vz) / 2) * (1 - flying)
+		const walker = bit(body.info.kind === 'miner')
+		const working = bit((body.flags & FLAG_WORKING) !== 0)
+		// Fliers hover and lean. A walker dips at each footfall and rolls toward the planted foot; at work it shudders with the drill.
+		const pace = Number.min(1, Math.hypot(body.vx, body.vz) / 1.5)
+		const shudder = Math.sin(time * 0.06 + body.id) * 0.012 * working
 		DUMMY.position.set(
 			body.x,
-			body.y + flying * Math.sin(time * 0.0026 + body.x) * 0.04 + Math.abs(stride) * 0.07,
+			body.y +
+				flying * Math.sin(time * 0.0026 + body.x) * 0.04 +
+				walker * (Math.abs(Math.cos(body.gait)) * 0.05 * pace + shudder),
 			body.z
 		)
-		DUMMY.rotation.set(body.pitch * flying, body.heading, -body.bank * flying + stride * 0.08, 'YXZ')
+		DUMMY.rotation.set(
+			body.pitch * flying + walker * (pace * 0.12 + working * 0.18),
+			body.heading,
+			-body.bank * flying + walker * Math.sin(body.gait) * 0.06 * pace,
+			'YXZ'
+		)
 		if (body.info.kind === 'glitch') DUMMY.rotation.set(0, time * 0.002 + body.id, 0)
 		DUMMY.updateMatrix()
 		const index = Option.getOrElse(MutableHashMap.get(counts, body.info.kind), () => 0)
@@ -1295,6 +1432,17 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 			)
 			if (extras.blades < MAX_BLADES) blades.setMatrixAt(extras.blades, WORLD.multiplyMatrices(DUMMY.matrix, LOCAL))
 			extras.blades += 1
+		}
+		if (walker === 1 && extras.legs < MAX_INSTANCES * 2 - 1) {
+			// The legs swing opposite each other through the gait, a stride a little under a tile.
+			for (const side of [-1, 1]) {
+				LOCAL.makeRotationX(Math.sin(body.gait) * 0.55 * side * pace).setPosition(side * 0.16, 0.46, 0)
+				legs.setMatrixAt(extras.legs, WORLD.multiplyMatrices(DUMMY.matrix, LOCAL))
+				extras.legs += 1
+			}
+			LOCAL.compose(OFFSET.set(0, 0.52, 0.36), SPIN.setFromAxisAngle(FORWARD, time * 0.03 * working), SIZE.setScalar(1))
+			drills.setMatrixAt(extras.drills, WORLD.multiplyMatrices(DUMMY.matrix, LOCAL))
+			extras.drills += 1
 		}
 		if (flying === 1 && extras.shadows < MAX_INSTANCES) {
 			// The shadow lies on the highest tile under it, so a step beside the drone never cuts it.
@@ -1347,6 +1495,8 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 	function draw(time: number, dt: number) {
 		MutableHashMap.clear(counts)
 		extras.blades = 0
+		extras.drills = 0
+		extras.legs = 0
 		extras.pulses = 0
 		extras.shadows = 0
 		for (const id of Array.fromIterable(MutableHashMap.keys(bodies))) {
@@ -1363,9 +1513,11 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 			}
 		}
 		blades.count = Number.min(extras.blades, MAX_BLADES)
+		drills.count = extras.drills
+		legs.count = extras.legs
 		shadows.count = extras.shadows
 		pulses.count = extras.pulses
-		for (const mesh of [blades, shadows, pulses]) mesh.instanceMatrix.needsUpdate = true
+		for (const mesh of [blades, drills, legs, shadows, pulses]) mesh.instanceMatrix.needsUpdate = true
 		if (pulses.instanceColor !== null) pulses.instanceColor.needsUpdate = true
 	}
 
