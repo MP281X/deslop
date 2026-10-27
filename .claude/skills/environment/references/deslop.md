@@ -51,12 +51,19 @@ Use the Simulator for iteration, TestFlight for distribution; neither a green bu
    ```
 
 4. **Bootstrap before the app's PR merges.** Its merge is the first main release, and CI runs it non-interactively: `plan` stops when the project has no `production` branch, and the Mac's build and submit stop without credentials or an `ascAppId`. Have all four in place first, on the team's existing certificate and keys:
-   - **Signing:** an App Store profile for the app and each extension target. For a new app, `APP_VARIANT=production npx --yes eas-cli@latest credentials -p ios` is interactive and signs in to Apple, so it is the user's step: give them that command for the worker, in `apps/<name>`.
+   - **Signing:** an App Store profile for the app and each extension target, from `credentials -p ios`.
    - **Submission key:** the team's App Store Connect API key (`XPDBFL4L6T`, which opm and Stash use) set as the app's key for submissions.
-   - **App record:** Apple's API cannot create apps. The user adds it at https://appstoreconnect.apple.com/apps (+ → New App, with the config's name and bundle identifier and the slug as SKU). Read its ID from the key's `remoteAppStoreConnectApps` in EAS GraphQL into `submit.production.ios.ascAppId` in `eas.json`.
-   - **Channel:** `npx --yes eas-cli@latest channel:create production`, which also creates the `production` branch.
+   - **App record:** only an interactive `submit` creates it, because Apple's API cannot. It needs an archive but never inspects it before creating the record, so pass any existing file; CI submits the real build. It prints the `ASC App ID` for `submit.production.ios.ascAppId` in `eas.json`. Stop it once that is printed.
+   - **Channel:** `channel:create production`, which also creates the `production` branch.
 
-   Do every other step yourself. Ask only for blocked account authentication, 2FA, legal or payment steps, with the exact URL and expected result. Paid cloud builds need approval.
+   Run the interactive commands yourself in a terminal fed through a pipe, then read the output and answer each prompt into the pipe. The Apple session that the user's last sign-in cached in `~/.app-store/auth` answers Apple's prompts. When it has expired, the user signs in again with the same command:
+
+   ```bash
+   mkfifo /tmp/<task>/in && exec 3<>/tmp/<task>/in && APP_VARIANT=production script -qfc 'npx --yes eas-cli@latest submit -p ios --profile production --path <any file>' /tmp/<task>/out <&3   # in the background
+   printf '\r' > /tmp/<task>/in   # accepts the prefilled Apple ID
+   ```
+
+   Ask only for blocked account authentication, 2FA, legal or payment steps, with the exact URL and expected result. Paid cloud builds need approval.
 
 5. **Release and follow through.** Subsequent main releases use compatible EAS Updates or build a changed native fingerprint on CI's Mac and submit it. The user's MacBook is the Simulator host, not a release builder. Inspect `submit:view <submission-id> --platform ios --json`, then `submit:status --platform ios --profile production --json --non-interactive`, with the production environment above, through to the intended tester group's access. Distinguish queued, uploaded, Apple processing and available. Return the submission URL and `https://appstoreconnect.apple.com/apps/<ascAppId>/testflight/ios`. CI's `--no-wait` proves scheduling only; inaccessible Apple status is unverified availability. Public TestFlight invitations and App Store release are separate outward actions, not implied by an upload. See the [EAS CLI reference](https://docs.expo.dev/eas/cli/#eas-submitstatus).
 
