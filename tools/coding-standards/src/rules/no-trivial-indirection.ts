@@ -170,7 +170,7 @@ function singleCallerWrapper(input: {context: Context; node: ESTree.Function | E
 	)
 }
 
-function redundantConstAlias(input: {context: Context; node: ESTree.VariableDeclarator}) {
+export function redundantConstAlias(input: {context: Context; node: ESTree.VariableDeclarator}) {
 	if (
 		input.node.parent.type !== 'VariableDeclaration' ||
 		input.node.parent.kind !== 'const' ||

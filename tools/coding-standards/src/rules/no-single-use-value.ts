@@ -4,6 +4,7 @@ import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
 import {nestsTooDeep} from '#rules/no-deep-pipe.ts'
+import {redundantConstAlias} from '#rules/no-trivial-indirection.ts'
 import {
 	childNodes,
 	inert,
@@ -71,7 +72,8 @@ function candidate(context: Context, node: ESTree.VariableDeclarator) {
 		node.id.type === 'Identifier' &&
 		node.id.typeAnnotation === null &&
 		node.init !== null &&
-		// Functions belong to the indirection check, property chains to the alias check, plain literals to the literal check, elements to no-stored-jsx and Schema operations to no-stored-schema-operation.
+		// Functions and aliases belong to the indirection check, property chains to the alias check, plain literals to the literal check, elements to no-stored-jsx and Schema operations to no-stored-schema-operation.
+		!redundantConstAlias({context, node}) &&
 		!Array.contains(
 			['ArrowFunctionExpression', 'FunctionExpression', 'JSXElement', 'JSXFragment'],
 			unwrapped(node.init).type
