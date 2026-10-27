@@ -101,11 +101,6 @@ const telemetry = Layer.unwrap(
 		const path = yield* Path.Path
 		const directory = path.join(yield* Config.String('HOME'), '.deslop', 'scope')
 		yield* fs.makeDirectory(directory, {recursive: true})
-		yield* Effect.forEach(
-			['telemetry.sqlite', 'telemetry.sqlite-wal', 'telemetry.sqlite-shm'],
-			name => fs.remove(path.join(directory, name), {force: true}),
-			{concurrency: 1, discard: true}
-		)
 		return Telemetry.layer(path.join(directory, 'entries'))
 	})
 )

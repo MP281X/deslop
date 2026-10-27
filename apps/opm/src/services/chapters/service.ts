@@ -449,11 +449,6 @@ const dataFolder = pipe(
 			Config.withDefault(path.join(yield* Config.String('HOME'), '.deslop', 'opm'))
 		)
 		yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
-		yield* Effect.forEach(
-			['opm.db', 'opm.db-wal', 'opm.db-shm'],
-			name => fs.remove(path.join(directory, name), {force: true}),
-			{concurrency: 1, discard: true}
-		)
 		return directory
 	}),
 	failed('The chapters folder could not be read.')

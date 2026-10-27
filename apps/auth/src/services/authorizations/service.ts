@@ -1109,11 +1109,6 @@ export class Authorizations extends Context.Service<
 					const path = yield* Path.Path
 					const directory = path.join(yield* Config.String('HOME'), '.deslop', 'auth')
 					yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
-					yield* Effect.forEach(
-						['auth.sqlite', 'auth.sqlite-wal', 'auth.sqlite-shm'],
-						name => fs.remove(path.join(directory, name), {force: true}),
-						{concurrency: 1, discard: true}
-					)
 					return layerKeyValueStore(directory)
 				})
 			)
