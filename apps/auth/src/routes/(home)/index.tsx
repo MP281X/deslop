@@ -10,7 +10,8 @@ import {Loading} from '@deslop/components-web/fallbacks'
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
 
 import {RequestCard} from '#lib/components.tsx'
-import {accountAtom, applicationName, consentAtom, linkedCode, lookupAtom, typedCode} from '#lib/utils.ts'
+import {accountAtom, applicationName, consentAtom, linkedCode, lookupAtom} from '#lib/utils.ts'
+import {typedCode} from '#services/authorizations/lib/utils.ts'
 
 const CODE_LENGTH = 8
 

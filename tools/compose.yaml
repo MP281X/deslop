@@ -5,6 +5,10 @@ x-service: &service
   networks: [deslop]
   logging: {driver: local, options: {max-file: '3', max-size: 10m}}
 
+# Servers export to Scope, and the signed-in ones check each sign-in with the auth app, inside this network, skipping the public TLS round trip.
+x-environment: &environment {VITE_OTEL_URL: http://scope:4318}
+x-signed: &signed {AUTH_URL: http://auth:5000, VITE_OTEL_URL: http://scope:4318}
+
 services:
   traefik:
     <<: *service
@@ -28,7 +32,7 @@ services:
   portfolio:
     <<: *service
     image: ghcr.io/mp281x/deslop-portfolio:${REVISION:-latest}
-    environment: {VITE_OTEL_URL: http://scope:4318}
+    environment: *environment
     ports: [127.0.0.1:4320:5000]
     labels:
       traefik.enable: 'true'
@@ -39,7 +43,7 @@ services:
     <<: *service
     image: ghcr.io/mp281x/deslop-auth:${REVISION:-latest}
     env_file: ${HOME}/.deslop/auth.env
-    environment: {VITE_OTEL_URL: http://scope:4318}
+    environment: *environment
     volumes: ['${HOME}/.deslop/auth:/home/node/.deslop/auth']
     labels:
       traefik.enable: 'true'
@@ -50,7 +54,7 @@ services:
     <<: *service
     image: ghcr.io/mp281x/deslop-stash:${REVISION:-latest}
     env_file: ${HOME}/.deslop/stash.env
-    environment: {VITE_OTEL_URL: http://scope:4318}
+    environment: *signed
     volumes: ['${HOME}/.deslop/stash:/home/node/.deslop/stash']
     ports: [127.0.0.1:4319:5000]
     labels:
@@ -62,7 +66,7 @@ services:
     <<: *service
     image: ghcr.io/mp281x/deslop-opm:${REVISION:-latest}
     env_file: ${HOME}/.deslop/opm.env
-    environment: {VITE_OTEL_URL: http://scope:4318}
+    environment: *signed
     volumes: ['${HOME}/.deslop/opm:/home/node/.deslop/opm']
     labels:
       traefik.enable: 'true'
@@ -73,7 +77,7 @@ services:
     <<: *service
     image: ghcr.io/mp281x/deslop-trips:${REVISION:-latest}
     env_file: ${HOME}/.deslop/trips.env
-    environment: {VITE_OTEL_URL: http://scope:4318}
+    environment: *signed
     volumes: ['${HOME}/.deslop/trips:/home/node/.deslop/trips']
     labels:
       traefik.enable: 'true'
@@ -83,7 +87,8 @@ services:
   scope:
     <<: *service
     image: ghcr.io/mp281x/deslop-scope:${REVISION:-latest}
-    environment: {HOST: 0.0.0.0}
+    # Scope receives telemetry itself, so it exports none.
+    environment: {AUTH_URL: http://auth:5000, HOST: 0.0.0.0}
     volumes: ['${HOME}/.deslop/scope:/home/node/.deslop/scope']
     ports: [127.0.0.1:4318:4318]
     labels:
