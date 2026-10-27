@@ -1,13 +1,13 @@
-import {Array, Effect, FiberHandle, HashSet, Layer, Option, Order, Schema, Stream, pipe} from 'effect'
+import {Array, Effect, HashSet, Layer, Option, Order, Schema, Stream, pipe} from 'effect'
 
 import {FetchHttpClient} from 'effect/http'
-import {AsyncResult, AtomRpc, Atom} from 'effect/reactivity'
+import {AtomRpc, Atom} from 'effect/reactivity'
 import Constants from 'expo-constants'
 import {File, Paths} from 'expo-file-system'
 import * as Notifications from 'expo-notifications'
 import * as SecureStore from 'expo-secure-store'
 
-import {alert, writeAtomically} from '@deslop/components-mobile/utils'
+import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 import * as MobileSession from '@deslop/runtime/mobile/session'
@@ -15,8 +15,8 @@ import * as MobileSession from '@deslop/runtime/mobile/session'
 import {OpmNative} from '#modules/native/index.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {byNumber, keyOf, notificationOf} from '#services/chapters/lib/utils.ts'
-import type {ChapterItem, ChaptersEvent, ReadingUpdate} from '#services/chapters/schema.ts'
-import {ChapterList} from '#services/chapters/schema.ts'
+import type {ChaptersEvent, ChapterList, ReadingUpdate} from '#services/chapters/schema.ts'
+import {ChapterItem} from '#services/chapters/schema.ts'
 
 const SERVER = 'https://opm.mp281x.xyz'
 const SESSION = 'session'
@@ -44,8 +44,6 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/opm/lib/utils/RpcC
 
 // Chapters
 
-type ChaptersJson = typeof ChaptersJson.Type
-const ChaptersJson = Schema.fromJsonString(ChapterList)
 const chaptersFile = new File(Paths.document, 'chapters.json')
 
 function apply(chapters: ChapterList, event: ChaptersEvent) {
@@ -61,45 +59,15 @@ function apply(chapters: ChapterList, event: ChaptersEvent) {
 export const chaptersAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get => {
 		if (!session.signedIn(get)) return Stream.succeed(Array.empty<ChapterItem>())
-		// The empty list shown while the session loads is not a list on screen.
-		const shown = Option.exists(
-			get.self<AsyncResult.AsyncResult<ChapterList>>(),
-			result => AsyncResult.isSuccess(result) && Array.isReadonlyArrayNonEmpty(result.value)
-		)
-		return Stream.concat(
-			// Only a cold start reads the copy; a return from the background keeps the list on screen, which is newer.
+		// A page turn changes one chapter, and the copy is written once the reader pauses.
+		return cachedList(
+			get,
+			chaptersFile,
+			ChapterItem,
 			pipe(
-				Effect.try(() => chaptersFile.textSync()),
-				Effect.flatMap(Schema.decodeEffect(ChaptersJson)),
-				Effect.option,
-				Stream.fromEffect,
-				Stream.flatMap(cached =>
-					Stream.fromIterable(Option.toArray(Option.filter(cached, Array.isReadonlyArrayNonEmpty)))
-				),
-				Stream.when(Effect.succeed(!shown))
-			),
-			pipe(
-				Effect.gen(function* () {
-					// A page turn changes one chapter, so the copy is written once the reader pauses, off the scroll.
-					const writes = yield* FiberHandle.make()
-					return pipe(
-						(yield* RpcClient)('library.watch', undefined),
-						Stream.scan(Array.empty<ChapterItem>, apply),
-						Stream.drop(1),
-						Stream.tap(chapters =>
-							FiberHandle.run(
-								writes,
-								pipe(
-									Schema.encodeEffect(ChaptersJson)(chapters),
-									Effect.flatMap(json => Effect.try(() => writeAtomically(chaptersFile, json))),
-									Effect.delay('2 seconds'),
-									Effect.ignore({log: 'Warn', message: 'The chapter list could not be kept on this iPhone'})
-								)
-							)
-						)
-					)
-				}),
-				Stream.unwrap,
+				Stream.unwrap(Effect.map(RpcClient, client => client('library.watch', undefined))),
+				Stream.scan(Array.empty<ChapterItem>, apply),
+				Stream.drop(1),
 				session.renewing
 			)
 		)

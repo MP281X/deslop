@@ -3,7 +3,6 @@ import {
 	Boolean,
 	DateTime,
 	Effect,
-	FiberHandle,
 	HashSet,
 	Layer,
 	Number,
@@ -30,7 +29,7 @@ import type {LiveActivity} from 'expo-widgets'
 import {DynamicColorIOS, Linking} from 'react-native'
 
 import {colors} from '@deslop/components-mobile/theme'
-import {alert, writeAtomically} from '@deslop/components-mobile/utils'
+import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 import * as MobileSession from '@deslop/runtime/mobile/session'
@@ -53,15 +52,15 @@ import {
 } from '#services/bookings/lib/utils.ts'
 import type {
 	ActivityProps,
-	Booking,
 	BookingsEvent,
 	Flight,
 	Place,
 	Stay,
 	Tone,
-	Train
+	Train,
+	BookingList
 } from '#services/bookings/schema.ts'
-import {BookingList, BookingsError, Leg} from '#services/bookings/schema.ts'
+import {Booking, BookingsError, Leg} from '#services/bookings/schema.ts'
 import {ApnsEnvironment, Bundle} from '#services/push/schema.ts'
 
 const SERVER = 'https://trips.mp281x.xyz'
@@ -101,8 +100,6 @@ function linkOf(bookingId: string) {
 
 // Bookings
 
-type BookingsJson = typeof BookingsJson.Type
-const BookingsJson = Schema.fromJsonString(BookingList)
 const bookingsFile = new File(Paths.document, 'bookings.json')
 
 function apply(bookings: BookingList, event: BookingsEvent) {
@@ -118,40 +115,14 @@ function apply(bookings: BookingList, event: BookingsEvent) {
 export const bookingsAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get => {
 		if (!session.signedIn(get)) return Stream.succeed(Array.empty<Booking>())
-		const shown = Option.exists(
-			get.self<AsyncResult.AsyncResult<BookingList>>(),
-			result => AsyncResult.isSuccess(result) && Array.isReadonlyArrayNonEmpty(result.value)
-		)
-		return Stream.concat(
+		return cachedList(
+			get,
+			bookingsFile,
+			Booking,
 			pipe(
-				Effect.try(() => bookingsFile.textSync()),
-				Effect.flatMap(Schema.decodeEffect(BookingsJson)),
-				Effect.option,
-				Stream.fromEffect,
-				Stream.flatMap(cached => Stream.fromIterable(Option.toArray(cached))),
-				Stream.when(Effect.succeed(!shown))
-			),
-			pipe(
-				Effect.gen(function* () {
-					const writes = yield* FiberHandle.make()
-					return pipe(
-						(yield* RpcClient)('bookings.watch', undefined),
-						Stream.scan(Array.empty<Booking>, apply),
-						Stream.drop(1),
-						Stream.tap(bookings =>
-							FiberHandle.run(
-								writes,
-								pipe(
-									Schema.encodeEffect(BookingsJson)(bookings),
-									Effect.flatMap(json => Effect.try(() => writeAtomically(bookingsFile, json))),
-									Effect.delay('2 seconds'),
-									Effect.ignore({log: 'Warn', message: 'The bookings could not be kept on this iPhone'})
-								)
-							)
-						)
-					)
-				}),
-				Stream.unwrap,
+				Stream.unwrap(Effect.map(RpcClient, client => client('bookings.watch', undefined))),
+				Stream.scan(Array.empty<Booking>, apply),
+				Stream.drop(1),
 				session.renewing
 			)
 		)
