@@ -51,7 +51,17 @@ export class Auth extends Context.Service<
 				RpcAuth.of((effect, request) =>
 					pipe(
 						auth.user(request.headers),
-						Effect.flatMap(user => Effect.provideService(effect, CurrentUser, user))
+						Effect.flatMap(user =>
+							Effect.raceFirst(
+								Effect.provideService(effect, CurrentUser, user),
+								// A watch outlives its token, so it ends once the credentials expire or are revoked; an auth restart does not end it.
+								pipe(
+									Effect.delay(auth.user(request.headers), '5 minutes'),
+									Effect.retry({while: error => error.error === 'temporarily_unavailable'}),
+									Effect.forever
+								)
+							)
+						)
 					)
 				)
 			)

@@ -4,10 +4,10 @@ import {fileURLToPath} from 'node:url'
 
 import {NodeHttpServer} from '@effect/platform-node'
 
-import {Config, Effect, FileSystem, Layer, Path, Predicate, Semaphore, Struct, pipe} from 'effect'
+import {ByteSize, Config, Effect, FileSystem, Layer, Path, Predicate, Semaphore, Struct, pipe} from 'effect'
 
 import {McpProtocol, McpServer} from 'effect/ai'
-import {HttpRouter, HttpServerResponse, HttpStaticServer} from 'effect/http'
+import {HttpIncomingMessage, HttpRouter, HttpServerResponse, HttpStaticServer} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 import {RpcSerialization} from 'effect/rpc'
 
@@ -63,7 +63,9 @@ export function layer(applicationName: string) {
 				layerOtlp(`${applicationName}-server`, url, 'server')
 			)
 		),
-		RpcSerialization.layerSchemaBinary()
+		RpcSerialization.layerSchemaBinary(),
+		// Public endpoints such as client registration read their body before any sign-in; streamed uploads keep their own limit.
+		Layer.succeed(HttpIncomingMessage.MaxBodySize)(ByteSize.mebibytes(10))
 	)
 }
 

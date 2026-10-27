@@ -13,7 +13,10 @@ const authorizationFields = {
 export type Registration = typeof Registration.Type
 export const Registration = Schema.Struct({
 	client_name: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(100))),
-	redirect_uris: Schema.NonEmptyArray(Schema.NonEmptyString),
+	// Anyone can register, and every client stays in the saved state, so a registration stays small.
+	redirect_uris: Schema.NonEmptyArray(Schema.NonEmptyString.check(Schema.isMaxLength(200))).check(
+		Schema.isMaxLength(4)
+	),
 	token_endpoint_auth_method: Schema.optionalKey(Schema.Literal('none'))
 })
 
@@ -70,7 +73,11 @@ export const Stored = Schema.TaggedUnion({
 	Client: {name: Schema.optionalKey(Schema.String), redirects: Schema.NonEmptyArray(Schema.NonEmptyString)},
 	Code: {...authorizationFields, user: User},
 	Delivered: {id: Schema.NonEmptyString, url: Schema.NonEmptyString},
-	Login: {request: Schema.optionalKey(Schema.NonEmptyString), verifier: Schema.NonEmptyString},
+	Login: {
+		code: Schema.optionalKey(Schema.NonEmptyString),
+		request: Schema.optionalKey(Schema.NonEmptyString),
+		verifier: Schema.NonEmptyString
+	},
 	Refresh: {
 		clientId: Schema.NonEmptyString,
 		family: Schema.NonEmptyString,
@@ -95,7 +102,11 @@ export type CodeParams = typeof CodeParams.Type
 export const CodeParams = Schema.Struct({code: Schema.NonEmptyString})
 
 export type SignInParams = typeof SignInParams.Type
-export const SignInParams = Schema.Struct({request: Schema.optionalKey(Schema.NonEmptyString)})
+export const SignInParams = Schema.Struct({
+	// The approve link's code, kept through GitHub sign-in on a phone that was signed out.
+	code: Schema.optionalKey(Schema.NonEmptyString.check(Schema.isMaxLength(20))),
+	request: Schema.optionalKey(Schema.NonEmptyString)
+})
 
 export type ConsentParams = typeof ConsentParams.Type
 export const ConsentParams = Schema.Struct({...RequestParams.fields, accept: Schema.Boolean})

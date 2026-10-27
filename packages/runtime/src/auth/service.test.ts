@@ -1,11 +1,44 @@
 import {assert, it} from '@effect/vitest'
 
 import type {Schema} from 'effect'
-import {Boolean, Effect, Layer, Ref, pipe} from 'effect'
+import {Boolean, Context, Effect, Exit, Fiber, Layer, Ref, pipe} from 'effect'
 
-import {HttpClient, HttpClientResponse, HttpRouter, HttpServerResponse} from 'effect/http'
+import {Headers, HttpClient, HttpClientResponse, HttpRouter, HttpServerResponse} from 'effect/http'
+import {Rpc, RpcMessage} from 'effect/rpc'
+import {TestClock} from 'effect/testing'
 
 import {Auth, HttpAuth, layerMcpAuth} from './service.ts'
+
+import {RpcAuth} from '#auth/lib/utils.ts'
+import {AuthError} from '#auth/schema.ts'
+
+it.effect('ends a running RPC once its credentials are rejected, not while the issuer is down', () =>
+	Effect.scoped(
+		Effect.gen(function* () {
+			const verdict = yield* Ref.make<AuthError['error'] | 'valid'>('valid')
+			const user = Effect.flatMap(Ref.get(verdict), current => {
+				if (current === 'valid') return Effect.succeed({id: 'github:42', name: 'octocat'})
+				return Effect.fail(AuthError.make({error: current, message: 'rejected'}))
+			})
+			const watch = yield* Effect.forkScoped(
+				Context.get(Auth.makeContext(Auth.of({access: () => user, user: () => user})), RpcAuth)(Effect.never, {
+					client: new Rpc.ServerClient(0),
+					headers: Headers.empty,
+					payload: undefined,
+					requestId: RpcMessage.RequestId(0),
+					rpc: Rpc.make('watch')
+				})
+			)
+			yield* TestClock.adjust('5 minutes')
+			yield* Ref.set(verdict, 'temporarily_unavailable')
+			yield* TestClock.adjust('5 minutes')
+			assert.isUndefined(watch.pollUnsafe())
+			yield* Ref.set(verdict, 'invalid_grant')
+			yield* TestClock.adjust('5 minutes')
+			assert.isTrue(Exit.hasFails(yield* Fiber.await(watch)))
+		})
+	)
+)
 
 it.effect('distinguishes OAuth discovery, rejected credentials and an unavailable issuer', () =>
 	Effect.gen(function* () {
