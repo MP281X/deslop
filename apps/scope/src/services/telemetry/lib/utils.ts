@@ -1,4 +1,18 @@
-import {Array, Boolean, HashSet, Number, Option, Order, Record, Schema, String, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Function,
+	HashSet,
+	Number,
+	Option,
+	Order,
+	Predicate,
+	Record,
+	Schema,
+	String,
+	Struct,
+	pipe
+} from 'effect'
 
 import {Nano, Runtime} from '#services/telemetry/schema.ts'
 import type {Entry, Query, Resource, Stats, Trace} from '#services/telemetry/schema.ts'
@@ -27,27 +41,34 @@ function started(resource: Resource) {
 	return 0n
 }
 
-function latestEntry(entries: Array.NonEmptyReadonlyArray<Entry>) {
+// Each entry's run, read once per query: finding the marker searches the resource's attributes.
+function runsOf(entries: Entry[]) {
+	const runs = Record.fromEntries(Array.map(entries, entry => [entry.id, started(entry.resource)] as const))
+	return (entry: Entry) => runs[entry.id] ?? 0n
+}
+
+function latestEntry(entries: Array.NonEmptyReadonlyArray<Entry>, run: (entry: Entry) => bigint) {
 	return Array.reduce(entries, Array.headNonEmpty(entries), (current, entry) => {
-		if (started(entry.resource) > started(current.resource)) return entry
+		if (run(entry) > run(current)) return entry
 		return current
 	})
 }
 
 export function currentEntries(entries: Entry[]) {
+	const run = runsOf(entries)
 	const latest = Record.map(
 		Array.groupBy(entries, entry => entry.service),
-		group => started(latestEntry(group).resource)
+		group => run(latestEntry(group, run))
 	)
 	const stale = HashSet.fromIterable(
 		Array.map(
-			Array.filter(entries, entry => entry.traceId !== '' && started(entry.resource) < (latest[entry.service] ?? 0n)),
+			Array.filter(entries, entry => entry.traceId !== '' && run(entry) < (latest[entry.service] ?? 0n)),
 			entry => entry.traceId
 		)
 	)
 	return Array.filter(
 		entries,
-		entry => started(entry.resource) === (latest[entry.service] ?? 0n) && !HashSet.has(stale, entry.traceId)
+		entry => run(entry) === (latest[entry.service] ?? 0n) && !HashSet.has(stale, entry.traceId)
 	)
 }
 
@@ -57,13 +78,16 @@ export function serviceName(resource: Resource) {
 	return 'unknown'
 }
 
-function displayValue(value: unknown) {
-	return JSON.stringify(value, undefined, 2)
+// The words and numbers of an OTLP value, keys included: `Effect.log('saved', note)` sends an array of its arguments.
+function leaves(value: Schema.Json): string[] {
+	if (Array.isArray<Schema.Json>(value)) return Array.flatMap(value, leaves)
+	if (String.isString(value) || Predicate.isNumber(value) || Predicate.isBoolean(value)) return [`${value}`]
+	if (value === null) return []
+	return Array.flatMap(Record.values(value), leaves)
 }
 
 export function logMessage(body: Schema.JsonObject) {
-	if (String.isString(body['stringValue'])) return body['stringValue']
-	return displayValue(body)
+	return Array.join(leaves(body), ' ')
 }
 
 export function durationMs(start: string, end: string) {
@@ -94,6 +118,8 @@ export function summary(entries: Entry[], query: Query) {
 }
 
 export function filterEntries(entries: Entry[], query: Query, signal: Entry['signal'] | 'all') {
+	const text = String.toLowerCase(query.text)
+	const traceId = String.toLowerCase(query.traceId)
 	return Array.filter(entries, entry => {
 		const milliseconds = pipe(Number.parse(`${BigInt(entry.time) / 1_000_000n}`), Option.getOrThrow)
 		return (
@@ -102,30 +128,40 @@ export function filterEntries(entries: Entry[], query: Query, signal: Entry['sig
 			milliseconds <= query.to &&
 			(query.service === '' || entry.service === query.service) &&
 			(query.operation === '' || entry.name === query.operation) &&
-			(query.traceId === '' || entry.traceId === String.toLowerCase(query.traceId)) &&
+			(traceId === '' || entry.traceId === traceId) &&
 			(!query.errors || entry.status === 2) &&
-			String.includes(String.toLowerCase(query.text))(String.toLowerCase(displayValue(entry)))
+			// Text searches the span name or log message, attributes, status and events, not ids, times or the resource.
+			(text === '' ||
+				String.includes(text)(
+					String.toLowerCase(
+						Array.join(
+							[entry.name, ...leaves(Struct.pick(entry.payload, ['attributes', 'body', 'events', 'status']))],
+							' '
+						)
+					)
+				))
 		)
 	})
 }
 
-export function orderEntries(entries: Entry[], sort: Query['sort']) {
+export function orderEntries<A extends {durationMs: number; time: string}>(entries: A[], sort: Query['sort']) {
 	return Array.sort(
 		entries,
 		Boolean.match(sort === 'slowest', {
-			onFalse: () => Order.flip(Order.mapInput(Order.BigInt, (entry: Entry) => BigInt(entry.time))),
-			onTrue: () => Order.flip(Order.mapInput(Order.Number, (entry: Entry) => entry.durationMs))
+			onFalse: () => Order.flip(Order.mapInput(Order.BigInt, (entry: A) => BigInt(entry.time))),
+			onTrue: () => Order.flip(Order.mapInput(Order.Number, (entry: A) => entry.durationMs))
 		})
 	)
 }
 
 export function serviceStatuses(entries: Entry[]) {
+	const runOf = runsOf(entries)
 	return Record.collect(
 		Array.groupBy(entries, entry => entry.service),
 		(name, group) => {
-			const latest = latestEntry(group)
-			const run = started(latest.resource)
-			const current = Array.filter(group, entry => started(entry.resource) === run)
+			const latest = latestEntry(group, runOf)
+			const run = runOf(latest)
+			const current = Array.filter(group, entry => runOf(entry) === run)
 			return {
 				entries: current.length,
 				lastEventAt: Array.reduce(current, '0', (time, entry) => {
@@ -140,6 +176,23 @@ export function serviceStatuses(entries: Entry[]) {
 	)
 }
 
+// A trace's start and length, without assembling its tree.
+export function traceTiming(records: Entry[]) {
+	const spans = Array.filter(records, entry => entry.signal === 'trace')
+	const start = Array.match(Array.match(spans, {onEmpty: () => records, onNonEmpty: Function.identity}), {
+		onEmpty: () => '0',
+		onNonEmpty: timed =>
+			Array.min(
+				Array.map(timed, entry => entry.time),
+				Order.mapInput(Order.BigInt, (time: string) => BigInt(time))
+			)
+	})
+	return {
+		durationMs: Array.reduce(spans, 0, (end, span) => Number.max(end, durationMs(start, span.time) + span.durationMs)),
+		time: start
+	}
+}
+
 function parentId(entry: Entry) {
 	if (String.isString(entry.payload['parentSpanId'])) return String.toLowerCase(entry.payload['parentSpanId'])
 	return ''
@@ -152,44 +205,40 @@ export function traceView(entries: Entry[], id: string) {
 		(entry, index) => ({entry, index})
 	)
 	const byId = Record.fromEntries(Array.map(spans, span => [span.entry.spanId, span] as const))
-	const start = pipe(
-		Array.head(Array.map(spans, span => span.entry)),
-		Option.orElse(() => Array.head(ordered)),
-		Option.match({onNone: () => '0', onSome: entry => entry.time})
-	)
+	const timing = traceTiming(entries)
 	const logs = Array.filter(ordered, entry => entry.signal === 'log')
 	const bySpan = Array.groupBy(logs, log => log.spanId)
-	const nodes = Array.map(spans, span => {
-		const ancestors = Array.reverse(
-			Array.unfold({entry: span.entry, seen: HashSet.make(span.entry.spanId)}, current =>
-				pipe(
-					Record.get(byId, parentId(current.entry)),
-					Option.filter(parent => !HashSet.has(current.seen, parent.entry.spanId)),
-					Option.map(
-						parent => [parent, {entry: parent.entry, seen: HashSet.add(current.seen, parent.entry.spanId)}] as const
+
+	const tree = pipe(
+		Array.map(spans, span => {
+			const ancestors = Array.reverse(
+				Array.unfold({entry: span.entry, seen: HashSet.make(span.entry.spanId)}, current =>
+					pipe(
+						Record.get(byId, parentId(current.entry)),
+						Option.filter(parent => !HashSet.has(current.seen, parent.entry.spanId)),
+						Option.map(
+							parent => [parent, {entry: parent.entry, seen: HashSet.add(current.seen, parent.entry.spanId)}] as const
+						)
 					)
 				)
 			)
-		)
-		return {
-			path: [...Array.map(ancestors, parent => parent.index), span.index],
-			value: {
-				...span.entry,
-				depth: ancestors.length,
-				logs: Option.getOrElse(Record.get(bySpan, span.entry.spanId), () => []),
-				offsetMs: durationMs(start, span.entry.time),
-				parentSpanId: parentId(span.entry),
-				runtime: runtime(span.entry.resource)
+			return {
+				path: [...Array.map(ancestors, parent => parent.index), span.index],
+				value: {
+					...span.entry,
+					depth: ancestors.length,
+					logs: Option.getOrElse(Record.get(bySpan, span.entry.spanId), () => []),
+					offsetMs: durationMs(timing.time, span.entry.time),
+					parentSpanId: parentId(span.entry),
+					runtime: runtime(span.entry.resource)
+				}
 			}
-		}
-	})
-	const tree = pipe(
-		nodes,
+		}),
 		Array.sort(Order.Struct({path: Order.Array(Order.Number)})),
 		Array.map(node => node.value)
 	)
 	return {
-		durationMs: Array.reduce(nodes, 0, (end, node) => Number.max(end, node.value.offsetMs + node.value.durationMs)),
+		durationMs: timing.durationMs,
 		id,
 		logs: Array.filter(logs, log => !Record.has(byId, log.spanId)),
 		services: Array.dedupeWith(

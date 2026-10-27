@@ -1,7 +1,9 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Context, Effect, FileSystem, Layer, String, pipe} from 'effect'
+import {Array, Context, Effect, Exit, FileSystem, Layer, String, pipe} from 'effect'
+
+import {TestClock} from 'effect/testing'
 
 import {LogsRequest, Query, TracesRequest} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
@@ -9,9 +11,11 @@ import {Telemetry} from '#services/telemetry/service.ts'
 const TRACE_ID = '1234567890abcdef1234567890abcdef'
 
 it.layer(NodeServices.layer)(test => {
-	test.effect('keeps ingested spans readable after restarting storage', () =>
+	test.effect('keeps ingested spans across restarts for three days, past a broken entry file', () =>
 		Effect.gen(function* () {
-			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const fs = yield* FileSystem.FileSystem
+			const directory = yield* fs.makeTempDirectoryScoped()
+			yield* TestClock.setTime(1_781_870_000_000)
 			yield* Effect.scoped(
 				Effect.gen(function* () {
 					const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
@@ -35,8 +39,18 @@ it.layer(NodeServices.layer)(test => {
 					})
 				})
 			)
+			yield* fs.writeFileString(`${directory}/broken`, '{')
+			yield* TestClock.adjust('2 days')
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+					assert.strictEqual((yield* telemetry.trace(TRACE_ID)).spans[0]?.name, 'persisted')
+				})
+			)
+			assert.isFalse(yield* fs.exists(`${directory}/broken`))
+			yield* TestClock.adjust('2 days')
 			const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
-			assert.strictEqual((yield* telemetry.trace(TRACE_ID)).spans[0]?.name, 'persisted')
+			assert.isTrue(Exit.isFailure(yield* Effect.exit(telemetry.trace(TRACE_ID))))
 		})
 	)
 })
@@ -293,6 +307,9 @@ it.layer(layer)(test => {
 				),
 				['']
 			)
+			// Text searches what the entry says, not its ids: an array or key-value body reads as its words.
+			assert.strictEqual((yield* telemetry.logs({...query, service: 'logging', text: 'BYTES aae='})).total, 1)
+			assert.strictEqual((yield* telemetry.logs({...query, service: 'logging', text: 'aaaaaaaa'})).total, 0)
 			yield* telemetry.ingestTraces(
 				TracesRequest.make({
 					resourceSpans: [

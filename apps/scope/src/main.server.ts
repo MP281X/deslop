@@ -3,6 +3,7 @@ import {createServer} from 'node:http'
 
 import {NodeHttpClient, NodeHttpServer, NodeRuntime, NodeServices} from '@effect/platform-node'
 
+import type {Schema} from 'effect'
 import {Array, ByteSize, Config, Effect, FileSystem, Layer, Path, String, pipe} from 'effect'
 
 import {McpServer} from 'effect/ai'
@@ -20,55 +21,41 @@ import * as ServerRuntime from '@deslop/runtime/server'
 
 import packageJson from '#package.json' with {type: 'json'}
 
+import type {TelemetryError} from '#services/telemetry/schema.ts'
 import {LogsRequest, TracesRequest} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
 import {Tools} from '#tools/contracts.ts'
 import {ToolHandlers} from '#tools/handlers.ts'
 
+// OTLP/HTTP JSON: the status codes and `code` values are the protocol's own.
+function ingest<A, I>(schema: Schema.Codec<A, I>, save: (payload: A) => Effect.Effect<void, TelemetryError>) {
+	return (request: HttpServerRequest.HttpServerRequest) => {
+		if (!String.startsWith('application/json')(request.headers['content-type'] ?? '')) {
+			return Effect.succeed(HttpServerResponse.empty({status: 415}))
+		}
+		return pipe(
+			HttpServerRequest.schemaBodyJson(schema),
+			Effect.flatMap(save),
+			Effect.as(HttpServerResponse.text('{}', {contentType: 'application/json'})),
+			Effect.catchTags({
+				HttpServerError: () =>
+					Effect.succeed(HttpServerResponse.jsonUnsafe({code: 3, message: 'Invalid OTLP JSON body'}, {status: 400})),
+				SchemaError: error =>
+					Effect.succeed(HttpServerResponse.jsonUnsafe({code: 3, message: error.message}, {status: 400})),
+				TelemetryError: () =>
+					Effect.succeed(
+						HttpServerResponse.jsonUnsafe({code: 14, message: 'Telemetry storage unavailable'}, {status: 503})
+					)
+			})
+		)
+	}
+}
+
 const receiver = HttpRouter.use(router =>
 	Effect.gen(function* () {
 		const telemetry = yield* Telemetry
-		const ack = HttpServerResponse.text('{}', {contentType: 'application/json'})
-		yield* router.add('POST', '/v1/traces', request => {
-			if (!String.startsWith('application/json')(request.headers['content-type'] ?? '')) {
-				return Effect.succeed(HttpServerResponse.empty({status: 415}))
-			}
-			return pipe(
-				HttpServerRequest.schemaBodyJson(TracesRequest),
-				Effect.flatMap(payload => telemetry.ingestTraces(payload)),
-				Effect.as(ack),
-				Effect.catchTags({
-					HttpServerError: () =>
-						Effect.succeed(HttpServerResponse.jsonUnsafe({code: 3, message: 'Invalid OTLP JSON body'}, {status: 400})),
-					SchemaError: error =>
-						Effect.succeed(HttpServerResponse.jsonUnsafe({code: 3, message: error.message}, {status: 400})),
-					TelemetryError: () =>
-						Effect.succeed(
-							HttpServerResponse.jsonUnsafe({code: 14, message: 'Telemetry storage unavailable'}, {status: 503})
-						)
-				})
-			)
-		})
-		yield* router.add('POST', '/v1/logs', request => {
-			if (!String.startsWith('application/json')(request.headers['content-type'] ?? '')) {
-				return Effect.succeed(HttpServerResponse.empty({status: 415}))
-			}
-			return pipe(
-				HttpServerRequest.schemaBodyJson(LogsRequest),
-				Effect.flatMap(payload => telemetry.ingestLogs(payload)),
-				Effect.as(ack),
-				Effect.catchTags({
-					HttpServerError: () =>
-						Effect.succeed(HttpServerResponse.jsonUnsafe({code: 3, message: 'Invalid OTLP JSON body'}, {status: 400})),
-					SchemaError: error =>
-						Effect.succeed(HttpServerResponse.jsonUnsafe({code: 3, message: error.message}, {status: 400})),
-					TelemetryError: () =>
-						Effect.succeed(
-							HttpServerResponse.jsonUnsafe({code: 14, message: 'Telemetry storage unavailable'}, {status: 503})
-						)
-				})
-			)
-		})
+		yield* router.add('POST', '/v1/traces', ingest(TracesRequest, telemetry.ingestTraces))
+		yield* router.add('POST', '/v1/logs', ingest(LogsRequest, telemetry.ingestLogs))
 		yield* router.add('GET', '/health', HttpServerResponse.text('ready'))
 	})
 )
@@ -77,7 +64,6 @@ const receiver = HttpRouter.use(router =>
 const observe = HttpMiddleware.make(app =>
 	pipe(
 		app,
-		HttpMiddleware.decompression(),
 		Effect.onExit(exit =>
 			Effect.gen(function* () {
 				const request = yield* HttpServerRequest.HttpServerRequest

@@ -31,7 +31,7 @@ The public `/.well-known/oauth-protected-resource/mcp` document names the author
 
 `find_traces`, `find_spans`, `find_logs` and `measure_latency` take `service`, `operation`, `traceId`, `text`, `errors`, `since` (`"10 minutes"` by default) and `runs`. Paged tools add `limit` and `offset`; trace/span searches add `sort`.
 
-Searches default to `runs: "current"`: the latest process, page load or app launch per service. When a service exports a newer run, default searches hide every older trace it took part in. Use `{"runs":"all","since":"1 hour"}` to investigate across restarts or deployments. `read_trace` opens the complete retained trace by ID regardless of run. Entries persist under `~/.deslop/scope/entries/`; this change adds no migration or reset.
+Searches default to `runs: "current"`: the latest process, page load or app launch per service. When a service exports a newer run, default searches hide every older trace it took part in. Use `{"runs":"all","since":"1 hour"}` to investigate across restarts or deployments. `read_trace` opens the complete retained trace by ID regardless of run. Entries persist under `~/.deslop/scope/entries/` for three days, by their exporter time. `text` searches span names, log messages, attributes, status and events, not ids or resources; pages hold 20 entries unless `limit` says otherwise.
 
 ## Ingestion health
 
