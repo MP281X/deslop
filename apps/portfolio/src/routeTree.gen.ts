@@ -9,8 +9,14 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as CvRouteImport } from './routes/cv'
 import { Route as homeIndexRouteImport } from './routes/(home)/index'
 
+const CvRoute = CvRouteImport.update({
+  id: '/cv',
+  path: '/cv',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const homeIndexRoute = homeIndexRouteImport.update({
   id: '/(home)/',
   path: '/',
@@ -18,29 +24,40 @@ const homeIndexRoute = homeIndexRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
+  '/cv': typeof CvRoute
   '/': typeof homeIndexRoute
 }
 export interface FileRoutesByTo {
+  '/cv': typeof CvRoute
   '/': typeof homeIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/cv': typeof CvRoute
   '/(home)/': typeof homeIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/cv' | '/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/(home)/'
+  to: '/cv' | '/'
+  id: '__root__' | '/cv' | '/(home)/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  CvRoute: typeof CvRoute
   homeIndexRoute: typeof homeIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/cv': {
+      id: '/cv'
+      path: '/cv'
+      fullPath: '/cv'
+      preLoaderRoute: typeof CvRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/(home)/': {
       id: '/(home)/'
       path: '/'
@@ -52,6 +69,7 @@ declare module '@tanstack/react-router' {
 }
 
 const rootRouteChildren: RootRouteChildren = {
+  CvRoute: CvRoute,
   homeIndexRoute: homeIndexRoute,
 }
 export const routeTree = rootRouteImport

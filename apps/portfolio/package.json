@@ -18,6 +18,7 @@
 		"@deslop/runtime": "workspace:*",
 		"@effect/atom-react": "latest",
 		"@effect/platform-node": "latest",
+		"@fontsource-variable/ibm-plex-sans": "latest",
 		"@tanstack/react-hotkeys": "latest",
 		"@tanstack/react-router": "latest",
 		"effect": "latest",

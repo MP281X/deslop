@@ -1,0 +1,181 @@
+import {Array, Predicate, String, pipe} from 'effect'
+
+import {createFileRoute} from '@tanstack/react-router'
+import {Printer} from 'lucide-react'
+
+import {Button} from '@deslop/components-web/ui/button'
+
+import {contacts, education, experience, languages, profile, projects, skills, summary} from '#lib/profile.ts'
+
+export const Route = createFileRoute('/cv')({
+	component: CvRoute,
+	head: () => ({meta: [{title: `${profile.firstName} ${profile.lastName} – CV`}]})
+})
+
+function Link(input: {contact: {href: string; value: string}}) {
+	return (
+		<a href={input.contact.href} className="hover:text-primary">
+			{input.contact.value}
+		</a>
+	)
+}
+
+function CvSection(input: {title: string; children: React.ReactNode}) {
+	return (
+		<section className="flex flex-col gap-1">
+			<h2 className="text-primary text-label tracking-label font-mono font-bold uppercase">{input.title}</h2>
+			{input.children}
+		</section>
+	)
+}
+
+// ATS parsers read the PDF's text, not its layout: fields are split by a visible character, never by a gap alone.
+function Entry(input: {title: string; details: string[]; aside: string; children?: React.ReactNode}) {
+	return (
+		<div className="flex break-inside-avoid flex-col gap-0.5">
+			<div className="flex flex-wrap items-baseline justify-between gap-x-4">
+				<h3>
+					<strong className="font-semibold">{input.title}</strong>
+					{Array.map(input.details, detail => (
+						<span key={detail} className="text-foreground/70">
+							{' · '}
+							{detail}
+						</span>
+					))}
+				</h3>
+				<span className="text-foreground/70 text-label font-mono whitespace-nowrap">{input.aside}</span>
+			</div>
+			{input.children}
+		</div>
+	)
+}
+
+function Bullets(input: {items: string[]}) {
+	return (
+		<ul className="flex flex-col gap-0.5">
+			{Array.map(input.items, item => (
+				<li key={item} className="flex gap-2.5">
+					<span aria-hidden className="border-primary mt-1.75 size-1 shrink-0 border-2" />
+					<span>{item}</span>
+				</li>
+			))}
+		</ul>
+	)
+}
+
+function CvRoute() {
+	return (
+		<div className="min-h-0 flex-1 overflow-y-auto px-6 py-12 select-text print:overflow-visible print:p-0">
+			<Button
+				variant="outline"
+				size="icon"
+				aria-label="Print or save as PDF"
+				onClick={() => {
+					print()
+				}}
+				className="fixed top-3 right-3 print:hidden"
+			>
+				<Printer />
+			</Button>
+
+			<article
+				lang="en"
+				className="font-document text-document print:min-h-printed-page trail-grid-width mx-auto flex flex-col gap-3"
+			>
+				<header
+					className="trail-grid border-primary relative flex h-52.5 flex-col justify-between border-b-2 pt-4 pb-3 font-mono sm:h-39.5"
+					style={{'--trail-grid-strength': '7%'}}
+				>
+					<h1 className="tracking-name text-2xl leading-none font-extrabold uppercase">
+						{profile.firstName}{' '}
+						<span className="text-foreground/55 tracking-label mt-0.5 block text-xl font-medium">
+							{profile.lastName}
+						</span>
+					</h1>
+					<div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
+						<p className="text-label tracking-label flex items-center gap-2 whitespace-nowrap uppercase">
+							<span aria-hidden className="border-primary size-2 border-4" />
+							{profile.title}
+						</p>
+						<address className="text-foreground/70 text-label whitespace-nowrap not-italic sm:text-right">
+							{profile.location} · <Link contact={contacts.phone} />
+							<br />
+							<Link contact={contacts.email} />
+							<br />
+							<Link contact={contacts.github} /> ·{' '}
+							<Link contact={{href: `https://${profile.portfolio}`, value: profile.portfolio}} />
+						</address>
+					</div>
+				</header>
+
+				<CvSection title="Professional Summary">
+					<p>{summary}</p>
+				</CvSection>
+
+				<CvSection title="Technical Skills">
+					<dl className="flex flex-col gap-0.5">
+						{Array.map(skills, skill => (
+							<div key={skill.area} className="flex">
+								<dt className="w-32 shrink-0 font-semibold">{skill.area}:</dt>
+								<dd>{skill.items}</dd>
+							</div>
+						))}
+					</dl>
+				</CvSection>
+
+				<CvSection title="Work Experience">
+					<div className="flex flex-col gap-1.5">
+						{Array.map(experience, job => (
+							<Entry
+								key={job.company}
+								title={job.company}
+								details={Array.filter([job.role, job.note, job.location], Predicate.isNotUndefined)}
+								aside={job.period}
+							>
+								<Bullets items={job.highlights} />
+							</Entry>
+						))}
+					</div>
+				</CvSection>
+
+				<CvSection title="Projects">
+					<div className="flex flex-col gap-1.5">
+						{Array.map(projects, project => (
+							<Entry
+								key={project.name}
+								title={project.name}
+								details={[project.role]}
+								aside={pipe(project.href, String.replace('https://', ''))}
+							>
+								<p>{project.description}</p>
+							</Entry>
+						))}
+					</div>
+				</CvSection>
+
+				<CvSection title="Education & Languages">
+					{Array.map(education, entry => (
+						<Entry
+							key={entry.school}
+							title={entry.degree}
+							details={Array.filter([entry.school, entry.grade], Predicate.isNotUndefined)}
+							aside={entry.period}
+						/>
+					))}
+					<p>
+						<strong className="font-semibold">Languages:</strong>{' '}
+						{pipe(
+							languages,
+							Array.map(entry => `${entry.language} (${entry.level})`),
+							Array.join(' · ')
+						)}
+					</p>
+				</CvSection>
+
+				<footer className="text-foreground/55 text-label mt-auto">
+					I authorise the processing of my personal data under Regulation (EU) 2016/679 (GDPR) and D.Lgs. 196/2003.
+				</footer>
+			</article>
+		</div>
+	)
+}

@@ -13,6 +13,7 @@
 					"apps/*/src/main.client.tsx",
 					"apps/*/src/routes/**",
 					"apps/*/src/lib/{utils.ts,components.tsx}",
+					"apps/portfolio/src/lib/profile.ts",
 					"apps/*/modules/native/index.ts",
 					"packages/components-*/src/**",
 					"packages/runtime/src/{web,mobile}/client.ts",
