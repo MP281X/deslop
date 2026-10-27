@@ -30,7 +30,7 @@ Two headless Debian workers in one tailnet, same user, paths and agent configura
 
 ## Resource budget
 
-The worker is shared with the user's other threads. Before a heavy gate, build, install or render, inspect RAM, swapping and heavy processes (`free -h`, `vmstat 1 3`, `ps -eo pid,ppid,comm,rss,pcpu --sort=-rss`). Run this thread's heavy commands serially and reuse its preview. Under memory pressure, defer and do bounded read-only work; never multiply workers, raise heap limits or retry into the same pressure. Inspect a process's checkout before attributing it, and stop only processes this thread started, never another thread's processes or preview. No custom scheduler, lock files or background polling loops.
+The worker is shared with the user's other threads. Before a heavy gate, build, install or render, inspect RAM, swapping and heavy processes (`free -h`, `vmstat 1 3`, `ps -eo pid,ppid,comm,rss,pcpu --sort=-rss`). Run this thread's heavy commands serially and reuse its preview. Under memory pressure, defer and do bounded read-only work; never multiply workers, raise heap limits or retry into the same pressure. Inspect a process's checkout before attributing it, and stop only processes this thread started, never another thread's processes or preview. No scheduler, lock files, polling loops or messages to other threads to share capacity; inspect again before the next heavy step.
 
 ## Previews
 

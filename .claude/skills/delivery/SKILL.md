@@ -79,6 +79,8 @@ Every auth change touched both a shared package and its server. Now the auth app
 
 ## Commands
 
+**Uploads.** Captures go through `--attach`, never the hosts' upload APIs.
+
 ```bash
 gh pr edit <n> --title '<title>' --body-file - <<'EOF'            # the body inline through stdin; the quoted EOF keeps backticks literal
 <body>

@@ -13,10 +13,14 @@ function emptinessPredicate(context: Context, node: ESTree.BinaryExpression) {
 		node.right.type === 'Literal' &&
 		node.right.value === 0
 	if (comparesLength && node.operator === '===') {
-		return Option.some('Array.isArrayEmpty, Array.isReadonlyArrayEmpty, or String.isEmpty')
+		return Option.some(
+			'Array.isArrayEmpty for a mutable array, Array.isReadonlyArrayEmpty for a readonly one, String.isEmpty for a string'
+		)
 	}
 	if (comparesLength && node.operator === '>') {
-		return Option.some('Array.isArrayNonEmpty, Array.isReadonlyArrayNonEmpty, or String.isNonEmpty')
+		return Option.some(
+			'Array.isArrayNonEmpty for a mutable array, Array.isReadonlyArrayNonEmpty for a readonly one, String.isNonEmpty for a string'
+		)
 	}
 	return Option.none()
 }
