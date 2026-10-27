@@ -384,8 +384,6 @@ export function HomeRoute(props: {
 									showsIndicators={false}
 									modifiers={[
 										listRowBackground(colors.background),
-										listRowSeparatorTint(colors.border),
-										listRowInsets({bottom: 10, leading: 16, top: 10, trailing: 16}),
 										listRowSeparator('hidden'),
 										listRowInsets({bottom: 6, leading: 16, top: 4, trailing: 16})
 									]}
