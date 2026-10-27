@@ -9,7 +9,14 @@ import {contacts, education, experience, languages, profile, projects, skills, s
 
 export const Route = createFileRoute('/cv')({
 	component: CvRoute,
-	head: () => ({meta: [{title: `${profile.firstName} ${profile.lastName} – CV`}]})
+	// The title names the PDF a browser saves, and the file a recruiter downloads.
+	head: () => ({
+		meta: [
+			{title: `${profile.firstName} ${profile.lastName} CV`},
+			{content: `${profile.firstName} ${profile.lastName}`, name: 'author'},
+			{content: `${profile.title}. ${summary}`, name: 'description'}
+		]
+	})
 })
 
 function Link(input: {contact: {href: string; value: string}}) {
@@ -80,10 +87,10 @@ function CvRoute() {
 
 			<article
 				lang="en"
-				className="font-document text-document print:min-h-printed-page trail-grid-width mx-auto flex flex-col gap-3"
+				className="font-document text-document print:min-h-printed-page trail-grid-width mx-auto flex flex-col gap-3 print:justify-between"
 			>
 				<header
-					className="trail-grid border-primary relative flex h-52.5 flex-col justify-between border-b-2 pt-4 pb-3 font-mono sm:h-39.5"
+					className="trail-grid border-primary relative flex h-65.5 flex-col justify-between border-b-2 pt-4 pb-3 font-mono sm:h-46"
 					style={{'--trail-grid-strength': '7%'}}
 				>
 					<h1 className="tracking-name text-2xl leading-none font-extrabold uppercase">
@@ -93,24 +100,24 @@ function CvRoute() {
 						</span>
 					</h1>
 					<div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
-						<p className="text-label tracking-label flex items-center gap-2 whitespace-nowrap uppercase">
-							<span aria-hidden className="border-primary size-2 border-4" />
-							{profile.title}
-						</p>
+						<div className="flex flex-col gap-1">
+							<p className="text-label tracking-label flex items-center gap-2 whitespace-nowrap uppercase">
+								<span aria-hidden className="border-primary size-2 border-4" />
+								{profile.title}
+							</p>
+							<p className="font-document text-document">{summary}</p>
+						</div>
 						<address className="text-foreground/70 text-label whitespace-nowrap not-italic sm:text-right">
 							{profile.location} · <Link contact={contacts.phone} />
 							<br />
-							<Link contact={contacts.email} />
+							<Link contact={contacts.email} /> · <Link contact={contacts.github} />
 							<br />
-							<Link contact={contacts.github} /> ·{' '}
+							PEC <Link contact={contacts.pec} /> · VAT {profile.vat}
+							<br />
 							<Link contact={{href: `https://${profile.portfolio}`, value: profile.portfolio}} />
 						</address>
 					</div>
 				</header>
-
-				<CvSection title="Professional Summary">
-					<p>{summary}</p>
-				</CvSection>
 
 				<CvSection title="Technical Skills">
 					<dl className="flex flex-col gap-0.5">
@@ -171,10 +178,6 @@ function CvRoute() {
 						)}
 					</p>
 				</CvSection>
-
-				<footer className="text-foreground/55 text-label mt-auto">
-					I authorise the processing of my personal data under Regulation (EU) 2016/679 (GDPR) and D.Lgs. 196/2003.
-				</footer>
 			</article>
 		</div>
 	)

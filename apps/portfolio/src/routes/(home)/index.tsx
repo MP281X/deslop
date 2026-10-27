@@ -33,7 +33,7 @@ import {contacts, education, experience, languages, profile, projects, skills, s
 import {RpcClient} from '#lib/utils.ts'
 import type {PortfolioVisitor, PortfolioVisitors} from '#services/presence/schema.ts'
 
-const SECTION_KEYS = ['1', '2', '3', '4', '5', '6', '7'] as const
+const SECTION_KEYS = ['1', '2', '3', '4', '5', '6'] as const
 
 type Scene = {trails: PortfolioVisitors; visitors: PortfolioVisitors}
 
@@ -186,7 +186,16 @@ function Panel(input: {className?: string; children: React.ReactNode}) {
 	)
 }
 
-export const Route = createFileRoute('/(home)/')({component: PortfolioRoute})
+export const Route = createFileRoute('/(home)/')({
+	component: PortfolioRoute,
+	head: () => ({
+		meta: [
+			{title: `${profile.firstName} ${profile.lastName} – ${profile.title}`},
+			{content: `${profile.firstName} ${profile.lastName}`, name: 'author'},
+			{content: summary, name: 'description'}
+		]
+	})
+})
 
 function TrailCanvas(input: {trails: PortfolioVisitors; viewport: {width: number; height: number}}) {
 	const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -329,7 +338,7 @@ function Section(input: {className?: string; children: React.ReactNode}) {
 	return (
 		<section
 			className={cn(
-				'relative z-10 flex flex-col items-center overflow-hidden px-4 py-20 sm:px-6 sm:py-24',
+				'relative z-10 flex flex-col items-center overflow-hidden px-3 py-6 sm:px-6 sm:py-10',
 				input.className
 			)}
 		>
@@ -340,9 +349,9 @@ function Section(input: {className?: string; children: React.ReactNode}) {
 
 function SectionLabel(input: {title: string}) {
 	return (
-		<div className="mb-6 flex w-full max-w-5xl items-center gap-4 sm:mb-8">
+		<div className="mb-3 flex w-full max-w-5xl items-center gap-3 sm:mb-4">
 			<div className="bg-primary/25 h-px flex-1" />
-			<h2 className="border-primary/30 bg-background/88 text-primary border px-5 py-2 font-mono text-xs font-bold tracking-[0.35em] uppercase backdrop-blur-sm sm:text-sm">
+			<h2 className="border-primary/30 bg-background/88 text-primary border px-4 py-1.5 font-mono text-xs font-bold tracking-[0.35em] uppercase backdrop-blur-sm sm:text-sm">
 				{input.title}
 			</h2>
 			<div className="bg-primary/25 h-px flex-1" />
@@ -352,8 +361,8 @@ function SectionLabel(input: {title: string}) {
 
 function HeroSection() {
 	return (
-		<Section className="min-h-dvh justify-center py-16">
-			<Panel className="flex w-full max-w-5xl flex-col items-center gap-6 p-8 sm:gap-8 sm:p-12">
+		<Section className="pt-10 sm:pt-16">
+			<Panel className="flex w-full max-w-5xl flex-col items-center gap-4 p-6 sm:gap-6 sm:p-8">
 				<div className="space-y-1 text-center">
 					<h1 className="text-foreground font-mono text-4xl font-black tracking-[0.15em] uppercase sm:text-5xl md:text-6xl">
 						{profile.firstName}
@@ -367,30 +376,11 @@ function HeroSection() {
 					{profile.title}
 				</p>
 
-				<div className="text-muted-foreground/60 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-center font-mono text-xs">
-					<span>{profile.location}</span>
-					<span className="text-border/60">|</span>
-					<span>{profile.stack}</span>
+				<div className="flex flex-col items-center gap-2 text-center font-mono">
+					<p className="text-foreground/90 text-sm leading-6 sm:text-base">{summary}</p>
+					<p className="text-muted-foreground/60 text-xs">{profile.location}</p>
 				</div>
 			</Panel>
-
-			<div className="text-muted-foreground/35 absolute bottom-8 flex flex-col items-center gap-1">
-				<span className="font-mono text-xs tracking-[0.3em] uppercase">scroll</span>
-				<span className="text-sm">↓</span>
-			</div>
-		</Section>
-	)
-}
-
-function AboutSection() {
-	return (
-		<Section>
-			<SectionLabel title="About" />
-			<div className="flex w-full max-w-5xl flex-col gap-4">
-				<Panel className="p-5 sm:p-6">
-					<p className="text-foreground/90 font-mono text-sm leading-7 sm:text-base">{summary}</p>
-				</Panel>
-			</div>
 		</Section>
 	)
 }
@@ -399,16 +389,16 @@ function SkillsSection() {
 	return (
 		<Section>
 			<SectionLabel title="Skills" />
-			<div className="grid w-full max-w-5xl grid-cols-1 gap-4 sm:grid-cols-2">
+			<div className="grid w-full max-w-5xl grid-cols-1 gap-3 sm:grid-cols-2">
 				{Array.map(skills, skill => (
-					<Panel key={skill.area} className="p-4 sm:p-5">
-						<div className="mb-3 flex items-center gap-3">
+					<Panel key={skill.area} className="p-3 sm:p-4">
+						<div className="mb-2 flex items-center gap-3">
 							<skill.icon className="text-primary size-4" />
 							<h3 className="text-foreground font-mono text-sm font-semibold tracking-[0.18em] uppercase">
 								{skill.area}
 							</h3>
 						</div>
-						<p className="text-muted-foreground font-mono text-xs leading-6 sm:text-sm">{skill.items}</p>
+						<p className="text-muted-foreground font-mono text-xs leading-5 sm:text-sm sm:leading-6">{skill.items}</p>
 					</Panel>
 				))}
 			</div>
@@ -418,12 +408,10 @@ function SkillsSection() {
 
 function ProjectCard(input: {project: {description: string; href: string; name: string; role: string; stack: string}}) {
 	return (
-		<Panel className="flex h-full flex-col p-4 sm:p-5">
+		<Panel className="flex h-full flex-col p-3 sm:p-4">
 			<div className="flex items-start justify-between gap-3">
 				<div>
-					<h3 className="text-foreground font-mono text-sm font-semibold tracking-widest uppercase">
-						{input.project.name}
-					</h3>
+					<h3 className="text-foreground font-mono text-sm font-semibold tracking-widest">{input.project.name}</h3>
 					<p className="text-muted-foreground mt-1 font-mono text-xs">{input.project.role}</p>
 				</div>
 				<a
@@ -436,8 +424,10 @@ function ProjectCard(input: {project: {description: string; href: string; name: 
 					<ArrowUpRight className="size-4" />
 				</a>
 			</div>
-			<p className="text-foreground/90 mt-4 font-mono text-xs leading-6 sm:text-sm">{input.project.description}</p>
-			<p className="text-muted-foreground/80 mt-auto pt-4 font-mono text-xs">{input.project.stack}</p>
+			<p className="text-foreground/90 mt-2 font-mono text-xs leading-5 sm:text-sm sm:leading-6">
+				{input.project.description}
+			</p>
+			<p className="text-muted-foreground/80 mt-auto pt-2 font-mono text-xs">{input.project.stack}</p>
 		</Panel>
 	)
 }
@@ -446,7 +436,7 @@ function ProjectsSection() {
 	return (
 		<Section>
 			<SectionLabel title="Personal Projects" />
-			<div className="flex w-full max-w-5xl flex-col gap-4">
+			<div className="flex w-full max-w-5xl flex-col gap-3">
 				{Array.map(projects, project => (
 					<ProjectCard key={project.name} project={project} />
 				))}
@@ -459,11 +449,11 @@ function ExperienceSection() {
 	return (
 		<Section>
 			<SectionLabel title="Experience" />
-			<div className="flex w-full max-w-5xl flex-col gap-4">
+			<div className="flex w-full max-w-5xl flex-col gap-3">
 				{Array.map(experience, job => (
-					<Panel key={job.company} className="px-4 py-4 sm:px-5">
-						<div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-							<div className="space-y-1">
+					<Panel key={job.company} className="p-3 sm:p-4">
+						<div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+							<div className="space-y-0.5">
 								<p className="text-foreground font-mono text-sm font-semibold tracking-widest uppercase">
 									{job.company}
 								</p>
@@ -476,11 +466,11 @@ function ExperienceSection() {
 								{pipe([job.period, job.location], Array.filter(Predicate.isNotUndefined), Array.join(' · '))}
 							</p>
 						</div>
-						<ul className="mt-3 flex flex-col gap-1.5">
+						<ul className="mt-2 flex flex-col gap-1">
 							{Array.map(job.highlights, highlight => (
 								<li
 									key={highlight}
-									className="text-foreground/85 flex items-start gap-2 font-mono text-xs leading-6 sm:text-sm"
+									className="text-foreground/85 flex items-start gap-2 font-mono text-xs leading-5 sm:text-sm sm:leading-6"
 								>
 									<span className="bg-foreground/50 mt-2 size-1 shrink-0 rounded-full" aria-hidden="true" />
 									<span>{highlight}</span>
@@ -498,9 +488,9 @@ function EducationSection() {
 	return (
 		<Section>
 			<SectionLabel title="Education & Languages" />
-			<div className="flex w-full max-w-5xl flex-col gap-4">
+			<div className="flex w-full max-w-5xl flex-col gap-3">
 				{Array.map(education, entry => (
-					<Panel key={entry.school} className="px-4 py-4 sm:px-5">
+					<Panel key={entry.school} className="p-3 sm:p-4">
 						<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
 							<div className="flex flex-wrap items-baseline gap-x-3">
 								<span className="text-foreground font-mono text-sm font-semibold">{entry.school}</span>
@@ -513,14 +503,14 @@ function EducationSection() {
 						</div>
 					</Panel>
 				))}
-				<div className="grid gap-3 sm:grid-cols-3">
+				<Panel className="flex flex-wrap gap-x-6 gap-y-1 p-3 sm:p-4">
 					{Array.map(languages, lang => (
-						<Panel key={lang.language} className="px-4 py-3">
-							<span className="text-foreground font-mono text-xs font-semibold">{lang.language}</span>
-							<span className="text-muted-foreground/80 ml-2 font-mono text-xs">{lang.level}</span>
-						</Panel>
+						<span key={lang.language} className="font-mono text-xs">
+							<span className="text-foreground font-semibold">{lang.language}</span>
+							<span className="text-muted-foreground/80 ml-2">{lang.level}</span>
+						</span>
 					))}
-				</div>
+				</Panel>
 			</div>
 		</Section>
 	)
@@ -530,10 +520,11 @@ function ContactSection() {
 	return (
 		<Section>
 			<SectionLabel title="Contact" />
-			<div className="flex w-full max-w-5xl flex-col gap-3">
+			<div className="flex w-full max-w-5xl flex-col gap-2">
 				{Array.map(
 					[
 						contacts.email,
+						contacts.pec,
 						contacts.phone,
 						contacts.github,
 						{href: '/cv', label: 'CV', value: `${profile.portfolio}/cv`}
@@ -542,7 +533,7 @@ function ContactSection() {
 						<a
 							key={item.label}
 							href={item.href}
-							className="border-border/70 bg-background/90 hover:border-primary/50 hover:text-primary flex flex-col gap-2 border p-4 font-mono text-xs backdrop-blur-sm transition-colors sm:flex-row sm:items-center sm:justify-between sm:text-sm"
+							className="border-border/70 bg-background/90 hover:border-primary/50 hover:text-primary flex flex-col gap-1 border p-3 font-mono text-xs backdrop-blur-sm transition-colors sm:flex-row sm:items-center sm:justify-between sm:text-sm"
 							target="_blank"
 							rel="noopener noreferrer"
 						>
@@ -552,8 +543,8 @@ function ContactSection() {
 					)
 				)}
 			</div>
-			<p className="text-muted-foreground/70 mt-6 font-mono text-xs">
-				© 2026 {profile.firstName} {profile.lastName} · {profile.location}
+			<p className="text-muted-foreground/70 mt-4 font-mono text-xs">
+				© 2026 {profile.firstName} {profile.lastName} · VAT {profile.vat}
 			</p>
 		</Section>
 	)
@@ -571,7 +562,7 @@ function ShortcutsOverlay(input: {open: boolean; onOpenChange: (open: boolean) =
 				<div className="text-muted-foreground grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-xs sm:gap-x-8">
 					<span className="text-foreground">j / k</span>
 					<span>next / prev section</span>
-					<span className="text-foreground">1 – 7</span>
+					<span className="text-foreground">1 – 6</span>
 					<span>jump to section</span>
 					<span className="text-foreground">r</span>
 					<span>change cursor color</span>
@@ -741,7 +732,6 @@ function PortfolioRoute() {
 			}}
 		>
 			<HeroSection />
-			<AboutSection />
 			<SkillsSection />
 			<ExperienceSection />
 			<ProjectsSection />
