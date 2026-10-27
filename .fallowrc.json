@@ -15,7 +15,8 @@
 					"apps/*/src/lib/{utils.ts,components.tsx}",
 					"apps/*/modules/native/index.ts",
 					"packages/components-*/src/**",
-					"packages/runtime/src/{web,mobile}/client.ts"
+					"packages/runtime/src/{web,mobile}/client.ts",
+					"packages/runtime/src/mobile/session.ts"
 				]
 			},
 			{
@@ -86,6 +87,8 @@
 	},
 	"ignoreDependencies": [
 		"@expo-google-fonts/jetbrains-mono",
+		// The runtime's session imports it; each app keeps it so autolinking builds its native modules.
+		"expo-auth-session",
 		"expo-font",
 		"expo-updates",
 		"onnxruntime-common",
