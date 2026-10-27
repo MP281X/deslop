@@ -1,4 +1,4 @@
-import {Array, Function, MutableList, Option, Predicate, String, pipe} from 'effect'
+import {Array, Function, MutableList, Option, Predicate, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -10,7 +10,9 @@ import {
 	inert,
 	isSchemaOperationCall,
 	outermost,
+	readable,
 	rootName,
+	suspends,
 	typeWrapped,
 	variableFromScope
 } from '#rules/shared.ts'
@@ -143,55 +145,6 @@ function receiver(read: ESTree.Node) {
 		read.parent.object === read &&
 		read.parent.parent.type === 'CallExpression' &&
 		read.parent.parent.callee === read.parent
-	)
-}
-
-function suspends(context: Context, node: ESTree.Node): boolean {
-	if (node.type === 'YieldExpression' || node.type === 'AwaitExpression') return true
-	if (Array.contains(['ArrowFunctionExpression', 'FunctionDeclaration', 'FunctionExpression'], node.type)) return false
-	return Array.some(childNodes(context, node), child => suspends(context, child))
-}
-
-// Between the slot and its statement only markup, a declaration or a yield may stand, so the moved value is not buried in an expression.
-function surface(node: ESTree.Node): boolean {
-	if (
-		Array.contains(['ExpressionStatement', 'ReturnStatement', 'VariableDeclaration'], node.type) ||
-		(node.type === 'ArrowFunctionExpression' && node.expression)
-	) {
-		return true
-	}
-	if (
-		Predicate.isNullish(node.parent) ||
-		!Array.contains(
-			[
-				'AwaitExpression',
-				'JSXAttribute',
-				'JSXElement',
-				'JSXExpressionContainer',
-				'JSXFragment',
-				'JSXOpeningElement',
-				'VariableDeclarator',
-				'YieldExpression'
-			],
-			node.type
-		)
-	) {
-		return false
-	}
-	return surface(node.parent)
-}
-
-// A value spanning several lines reads well inlined only as a whole slot near the surface of its statement (an argument, a JSX child, a returned value), and never when it waits on a step of its own.
-function readable(input: {context: Context; init: ESTree.Expression; read: ESTree.Node}) {
-	if (!pipe(input.context.sourceCode.getText(input.init), String.includes('\n'))) return true
-	const slot = outermost(input.read)
-	if (Predicate.isNullish(slot.parent) || suspends(input.context, input.init)) return false
-	if (slot.parent.type === 'JSXExpressionContainer' || slot.parent.type === 'ReturnStatement') return true
-	return (
-		Predicate.isNotNullish(slot.parent.parent) &&
-		((slot.parent.type === 'CallExpression' && slot.parent.callee !== slot) ||
-			slot.parent.type === 'ArrayExpression') &&
-		surface(slot.parent.parent)
 	)
 }
 

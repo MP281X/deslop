@@ -5,15 +5,11 @@ import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
 import {matches, memberName, variableFor} from '#rules/shared.ts'
 
-// The compiler owns mapped array methods such as map and toSorted; this rule keeps mutating methods and ambiguous string/array names.
+// The compiler's preferEffectArray and preferEffectString own string methods and mapped array methods such as map; this rule keeps the array methods they skip and Promise chains.
 const REPLACEMENTS: Record.ReadonlyRecord<string, string> = {
 	at: 'Array.get or String.at',
 	catch: 'Effect.tryPromise and Effect.catchTag',
-	charAt: 'String.charAt',
-	charCodeAt: 'String.charCodeAt',
-	codePointAt: 'String.codePointAt',
 	concat: 'Array.appendAll or String.concat',
-	endsWith: 'String.endsWith',
 	entries: 'Array.map(items, (item, index) => [index, item]), Record.toEntries or HashMap.entries',
 	fill: 'Array.replicate or Array.makeBy',
 	finally: 'Effect.ensuring',
@@ -23,35 +19,16 @@ const REPLACEMENTS: Record.ReadonlyRecord<string, string> = {
 	indexOf: 'Array.findFirstIndex or String.indexOf',
 	keys: 'Record.keys or HashMap.keys',
 	lastIndexOf: 'Array.findLastIndex or String.lastIndexOf',
-	localeCompare: 'String.localeCompare',
-	match: 'String.match',
-	matchAll: 'String.matchAll',
-	normalize: 'String.normalize',
-	padEnd: 'String.padEnd',
-	padStart: 'String.padStart',
 	pop: 'Array.last and Array.dropRight',
 	push: 'Array.append, or MutableList.append for a local append-only collector consumed at the end',
-	repeat: 'String.repeat',
-	replace: 'String.replace',
-	replaceAll: 'String.replaceAll',
 	reverse: 'Array.reverse',
 	shift: 'Array.head and Array.drop',
 	slice: 'Array.take, Array.drop or String.slice',
 	sort: 'Array.sort(items, Order.mapInput(...))',
 	splice: 'Array.remove or Array.insertAt',
-	split: 'String.split',
-	startsWith: 'String.startsWith',
-	substring: 'String.substring',
 	// oxlint-disable-next-line unicorn/no-thenable -- a lookup key naming Promise#then, never awaited.
 	then: 'Effect.tryPromise and Effect.map',
-	toLocaleLowerCase: 'String.toLowerCase',
-	toLocaleUpperCase: 'String.toUpperCase',
-	toLowerCase: 'String.toLowerCase',
 	toSpliced: 'Array.remove or Array.insertAt',
-	toUpperCase: 'String.toUpperCase',
-	trim: 'String.trim',
-	trimEnd: 'String.trimEnd',
-	trimStart: 'String.trimStart',
 	unshift: 'Array.prepend',
 	values: 'Record.values or HashMap.values',
 	with: 'Array.replace'

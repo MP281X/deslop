@@ -2,6 +2,15 @@ import {Array, Graph, Option, Predicate, Record, String, pipe} from 'effect'
 
 import type {Context, ESTree, Fix, Fixer, Scope, Token, Variable} from 'vite-plus/lint/plugins'
 
+const LENGTH_TESTS: Record.ReadonlyRecord<string, 'empty' | 'nonEmpty'> = {
+	'!== 0': 'nonEmpty',
+	'< 1': 'empty',
+	'<= 0': 'empty',
+	'=== 0': 'empty',
+	'> 0': 'nonEmpty',
+	'>= 1': 'nonEmpty'
+}
+
 // Names, literals and the openings of calls, arrays and objects run no code, so a getter cannot run before a moved read.
 export function inert(token: Token) {
 	if (Array.contains(['Boolean', 'Identifier', 'Null', 'Numeric', 'String'], token.type)) return true
@@ -254,6 +263,12 @@ export function isFilteredCount(input: {context: Context; node: ESTree.Node}) {
 		}) &&
 		!isWriteTarget(target)
 	)
+}
+
+// Whether a comparison of a length with a literal asks for emptiness; eqeqeq and yoda leave the length on the left.
+export function lengthTest(node: ESTree.BinaryExpression | ESTree.PrivateInExpression) {
+	if (node.right.type !== 'Literal' || !Predicate.isNumber(node.right.value)) return Option.none()
+	return Record.get(LENGTH_TESTS, `${node.operator} ${node.right.value}`)
 }
 
 export function matches(regExp: RegExp) {
@@ -526,6 +541,55 @@ export function schemaCycleNames(input: {context: Context; program: ESTree.Progr
 	)
 }
 
+export function suspends(context: Context, node: ESTree.Node): boolean {
+	if (node.type === 'YieldExpression' || node.type === 'AwaitExpression') return true
+	if (Array.contains(['ArrowFunctionExpression', 'FunctionDeclaration', 'FunctionExpression'], node.type)) return false
+	return Array.some(childNodes(context, node), child => suspends(context, child))
+}
+
+// Between the slot and its statement only markup, a declaration or a yield may stand, so the moved value is not buried in an expression.
+function surface(node: ESTree.Node): boolean {
+	if (
+		Array.contains(['ExpressionStatement', 'ReturnStatement', 'VariableDeclaration'], node.type) ||
+		(node.type === 'ArrowFunctionExpression' && node.expression)
+	) {
+		return true
+	}
+	if (
+		Predicate.isNullish(node.parent) ||
+		!Array.contains(
+			[
+				'AwaitExpression',
+				'JSXAttribute',
+				'JSXElement',
+				'JSXExpressionContainer',
+				'JSXFragment',
+				'JSXOpeningElement',
+				'VariableDeclarator',
+				'YieldExpression'
+			],
+			node.type
+		)
+	) {
+		return false
+	}
+	return surface(node.parent)
+}
+
+// A value spanning several lines reads well inlined only as a whole slot near the surface of its statement (an argument, a JSX child, a returned value), and never when it waits on a step of its own.
+export function readable(input: {context: Context; init: ESTree.Node; read: ESTree.Node}) {
+	if (!pipe(input.context.sourceCode.getText(input.init), String.includes('\n'))) return true
+	const slot = outermost(input.read)
+	if (Predicate.isNullish(slot.parent) || suspends(input.context, input.init)) return false
+	if (slot.parent.type === 'JSXExpressionContainer' || slot.parent.type === 'ReturnStatement') return true
+	return (
+		Predicate.isNotNullish(slot.parent.parent) &&
+		((slot.parent.type === 'CallExpression' && slot.parent.callee !== slot) ||
+			slot.parent.type === 'ArrayExpression') &&
+		surface(slot.parent.parent)
+	)
+}
+
 function hasSingleStatementExpression(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
 	if (node.body === null) return false
 	if (node.body.type !== 'BlockStatement') return true
@@ -546,7 +610,7 @@ export function bindingName(node: ESTree.Function | ESTree.ArrowFunctionExpressi
 
 export function singleUseThunk(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
 	if (
-		input.node.params.length !== 0 ||
+		Array.isReadonlyArrayNonEmpty(input.node.params) ||
 		input.node.typeParameters !== null ||
 		!hasSingleStatementExpression(input.node)
 	) {

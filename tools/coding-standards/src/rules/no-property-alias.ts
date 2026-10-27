@@ -220,7 +220,7 @@ function report(input: {
 							...Array.map(reads, read => fixer.replaceText(read, replacement({name: input.name, read, text})))
 						]
 					},
-					message: `Read ${text} where it is used; this name adds no value.`,
+					message: `Read ${text} where it is used; TypeScript narrows the property path just as it narrows the alias.`,
 					node: input.node
 				})
 		})

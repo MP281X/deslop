@@ -256,6 +256,7 @@ export const lint: OxlintConfig = {
 		eqeqeq: 'error',
 		'func-names': ['error', 'as-needed', {generators: 'never'}],
 		'func-style': ['error', 'declaration'],
+		yoda: 'error',
 
 		// Imports
 		'import/first': 'error',
