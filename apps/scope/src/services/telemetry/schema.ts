@@ -1,4 +1,4 @@
-import {Duration, Effect, Schema, pipe} from 'effect'
+import {Duration, Effect, Schema, Struct, pipe} from 'effect'
 
 export class TelemetryError extends Schema.TaggedError<TelemetryError>()('TelemetryError', {
 	cause: Schema.optional(Schema.Defect()),
@@ -152,6 +152,10 @@ export const Entry = Schema.Struct({
 	traceId: Schema.String
 })
 
+// What the tools answer for an entry: `service` already names its resource, so a page stays small enough to read.
+type EntryItem = typeof EntryItem.Type
+const EntryItem = Entry.mapFields(Struct.omit(['resource', 'resourceSchemaUrl', 'scope', 'scopeSchemaUrl']))
+
 export type Query = typeof Query.Type
 export const Query = Schema.Struct({
 	errors: Schema.Boolean,
@@ -168,7 +172,7 @@ export const Query = Schema.Struct({
 })
 
 export type Page = typeof Page.Type
-export const Page = Schema.Struct({entries: Schema.Array(Entry), total: Schema.Int})
+export const Page = Schema.Struct({entries: Schema.Array(EntryItem), total: Schema.Int})
 
 export type Runtime = typeof Runtime.Type
 export const Runtime = Schema.Literals(['web', 'mobile', 'server', 'unknown'])
@@ -229,9 +233,9 @@ export const Stats = Schema.Struct({
 
 type TraceSpan = typeof TraceSpan.Type
 const TraceSpan = Schema.Struct({
-	...Entry.fields,
+	...EntryItem.fields,
 	depth: Schema.Natural,
-	logs: Schema.Array(Entry),
+	logs: Schema.Array(EntryItem),
 	offsetMs: Schema.Finite,
 	parentSpanId: Schema.String,
 	runtime: Runtime
@@ -241,7 +245,7 @@ export type Trace = typeof Trace.Type
 export const Trace = Schema.Struct({
 	durationMs: Schema.Finite,
 	id: TraceId,
-	logs: Schema.Array(Entry),
+	logs: Schema.Array(EntryItem),
 	services: Schema.Array(Service),
 	spans: Schema.Array(TraceSpan)
 })
@@ -295,7 +299,7 @@ export const PageFilters = Schema.Struct({
 	...Filters.fields,
 	limit: pipe(
 		Query.fields.limit,
-		Schema.withDecodingDefaultTypeKey(Effect.succeed(100)),
+		Schema.withDecodingDefaultTypeKey(Effect.succeed(20)),
 		Schema.annotateEncoded({description: 'Page size, 1 to 1000.'})
 	),
 	offset: pipe(

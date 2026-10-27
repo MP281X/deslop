@@ -18,7 +18,7 @@ import {
 export const Tools = Toolkit.make(
 	Tool.make('list_services', {
 		description:
-			'Check ingestion first: every stored service, its runtime, latest run, last event time and entry count. Event/run times use the exporter clock (Unix nanoseconds), not receiver arrival time. Rejected OTLP requests are grouped by route, HTTP status and credential-header presence, never attributed to an app. Rejection counters and since (Unix milliseconds) reset when Scope restarts. Missing services have never sent retained telemetry.',
+			'Check ingestion first: every stored service, its runtime, latest run, last event time and entry count. Event/run times use the exporter clock (Unix nanoseconds), not receiver arrival time. Rejected OTLP requests are grouped by route, HTTP status and credential-header presence, never attributed to an app. Rejection counters and since (Unix milliseconds) reset when Scope restarts. Missing services sent no telemetry in the last three days.',
 		failure: TelemetryError,
 		success: IngestionStatus
 	}).annotate(Tool.Readonly, true),
