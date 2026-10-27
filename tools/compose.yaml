@@ -69,6 +69,17 @@ services:
       traefik.http.routers.opm.rule: Host(`opm.mp281x.xyz`)
       traefik.http.services.opm.loadbalancer.server.port: '5000'
 
+  signal:
+    <<: *service
+    image: ghcr.io/mp281x/deslop-signal:${REVISION:-latest}
+    env_file: ${HOME}/.deslop/signal.env
+    environment: {VITE_OTEL_URL: http://scope:4318}
+    volumes: ['${HOME}/.deslop/signal:/home/node/.deslop/signal']
+    labels:
+      traefik.enable: 'true'
+      traefik.http.routers.signal.rule: Host(`signal.mp281x.xyz`)
+      traefik.http.services.signal.loadbalancer.server.port: '5000'
+
   scope:
     <<: *service
     image: ghcr.io/mp281x/deslop-scope:${REVISION:-latest}

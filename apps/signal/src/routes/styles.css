@@ -1,0 +1,18 @@
+@import '@deslop/components-web/theme.css';
+@source '../../../../packages/components-web/src/**/*.tsx';
+
+/* The game is always dark: the HUD floats over the night-lit map whatever the system theme. */
+:root {
+	color-scheme: dark;
+	--background: oklch(0.18 0.006 285.885);
+	--foreground: oklch(0.965 0.002 285.823);
+	--primary: oklch(0.7214 0.1337 49.9802);
+	--primary-foreground: oklch(0.1797 0.0043 308.1928);
+	--muted: oklch(0.25 0.006 286.033);
+	--muted-foreground: oklch(0.75 0.012 286.067);
+	--accent: oklch(0.31 0.007 286.033);
+	--accent-foreground: oklch(0.965 0.002 285.823);
+	--destructive: oklch(0.704 0.191 22.216);
+	--border: oklch(1 0 0 / 12%);
+	--input: oklch(1 0 0 / 18%);
+}
