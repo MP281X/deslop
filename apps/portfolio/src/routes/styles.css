@@ -1,2 +1,51 @@
 @import '@deslop/components-web/theme.css';
+@import '@fontsource-variable/ibm-plex-sans';
 @source '../../../../packages/components-web/src/**/*.tsx';
+
+/* The CV reads in a proportional face; the app's monospace stays for its labels, dates and header. */
+@theme {
+	--font-document: 'IBM Plex Sans Variable', ui-sans-serif, system-ui, sans-serif;
+	--text-document: 0.75rem;
+	--text-document--line-height: 1.45;
+	--text-label: 0.65625rem;
+	--text-label--line-height: 1.5;
+	--tracking-label: 0.18em;
+	--tracking-name: 0.14em;
+	/* A printed CV fills the page so its consent line sits at the foot. A4 minus the 10mm margins is 277mm, but Safari
+	   prints each CSS pixel at 0.8pt instead of 0.75pt, so its page holds only about 260 CSS millimetres. */
+	--spacing-printed-page: 256mm;
+}
+
+/* The 26px grid behind the home page's trails and the CV header, drawn under the element's content, which must be
+   positioned. An SVG tile, because Safari prints 1px gradient lines blurred into a flat tint and drops CSS masks. */
+@utility trail-grid {
+	isolation: isolate;
+
+	&::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		z-index: -1;
+		opacity: var(--trail-grid-strength, 3%);
+		background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26'%3E%3Cpath d='M.5 0v26M0 .5h26' stroke='black'/%3E%3C/svg%3E")
+			0 0 / 26px 26px;
+		-webkit-print-color-adjust: exact;
+		print-color-adjust: exact;
+	}
+
+	@media screen and (prefers-color-scheme: dark) {
+		&::before {
+			background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26'%3E%3Cpath d='M.5 0v26M0 .5h26' stroke='white'/%3E%3C/svg%3E");
+		}
+	}
+}
+
+/* The CV's width, up to 48rem, snapped to whole trail-grid cells plus 1px so the closing line on the right shows. */
+@utility trail-grid-width {
+	width: calc(round(down, min(100%, 48rem) - 1px, 26px) + 1px);
+}
+
+@page {
+	size: A4;
+	margin: 10mm;
+}

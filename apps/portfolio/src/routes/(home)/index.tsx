@@ -1,4 +1,4 @@
-/* oxlint-disable shadcn/no-arbitrary-values -- The page's 0.15-0.35em letter-spacing sits beyond tracking-widest, and its 26px trail grid, the grid's line gradient, and the auto/1fr shortcut columns have no scale step. */
+/* oxlint-disable shadcn/no-arbitrary-values -- The page's 0.15-0.35em letter-spacing sits beyond tracking-widest, and the auto/1fr shortcut columns have no scale step. */
 import {useAtomSet, useAtomSuspense} from '@effect/atom-react'
 
 import {
@@ -21,7 +21,7 @@ import {
 import {useHotkeys} from '@tanstack/react-hotkeys'
 import {createFileRoute} from '@tanstack/react-router'
 import {Atom} from 'effect/reactivity'
-import {ArrowUpRight, Boxes, Database, FlaskConical, Monitor, MousePointer2, Server, Sparkles} from 'lucide-react'
+import {ArrowUpRight, MousePointer2} from 'lucide-react'
 import {Suspense, useEffect, useRef, useState, useSyncExternalStore} from 'react'
 
 import {Button} from '@deslop/components-web/ui/button'
@@ -29,6 +29,7 @@ import {Dialog, DialogContent, DialogHeader, DialogTitle} from '@deslop/componen
 import {cn} from '@deslop/components-web/utils'
 
 import {hasMeaningfulMove, portfolioPalette} from '#lib/portfolio.ts'
+import {contacts, education, experience, languages, profile, projects, skills, summary} from '#lib/profile.ts'
 import {RpcClient} from '#lib/utils.ts'
 import type {PortfolioVisitor, PortfolioVisitors} from '#services/presence/schema.ts'
 
@@ -355,21 +356,21 @@ function HeroSection() {
 			<Panel className="flex w-full max-w-5xl flex-col items-center gap-6 p-8 sm:gap-8 sm:p-12">
 				<div className="space-y-1 text-center">
 					<h1 className="text-foreground font-mono text-4xl font-black tracking-[0.15em] uppercase sm:text-5xl md:text-6xl">
-						Matteo
+						{profile.firstName}
 					</h1>
 					<h2 className="text-foreground/50 font-mono text-2xl tracking-[0.25em] uppercase sm:text-3xl md:text-4xl">
-						Paludgnach
+						{profile.lastName}
 					</h2>
 				</div>
 
 				<p className="text-foreground/70 text-center font-mono text-xs tracking-[0.25em] uppercase sm:text-sm sm:tracking-[0.3em]">
-					Full-Stack TypeScript Developer
+					{profile.title}
 				</p>
 
 				<div className="text-muted-foreground/60 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-center font-mono text-xs">
-					<span>Moimacco (UD), Italy</span>
+					<span>{profile.location}</span>
 					<span className="text-border/60">|</span>
-					<span>React · TypeScript · Effect · Real-time</span>
+					<span>{profile.stack}</span>
 				</div>
 			</Panel>
 
@@ -387,19 +388,7 @@ function AboutSection() {
 			<SectionLabel title="About" />
 			<div className="flex w-full max-w-5xl flex-col gap-4">
 				<Panel className="p-5 sm:p-6">
-					<div className="flex flex-col gap-4">
-						{Array.map(
-							[
-								"I'm a full-stack TypeScript developer specializing in Effect, React, and AI agents, with experience building and shipping full-stack applications.",
-								'Currently, I’m focusing on building stable, reusable primitives that coding agents can compose to build high-quality applications with minimal effort, while specialized skills, lint rules, and feedback loops steer the agent toward consistent patterns and rigorous review.'
-							],
-							line => (
-								<p key={line} className="text-foreground/90 font-mono text-sm leading-7 sm:text-base">
-									{line}
-								</p>
-							)
-						)}
-					</div>
+					<p className="text-foreground/90 font-mono text-sm leading-7 sm:text-base">{summary}</p>
 				</Panel>
 			</div>
 		</Section>
@@ -410,36 +399,24 @@ function SkillsSection() {
 	return (
 		<Section>
 			<SectionLabel title="Skills" />
-			<div className="grid w-full max-w-5xl grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-				{Array.map(
-					[
-						{area: 'Frontend', icon: Monitor, items: 'React, TypeScript, TanStack (Router, Table, Form), Tailwind CSS'},
-						{area: 'Backend', icon: Server, items: 'Effect, Node.js, type-safe RPC, REST APIs'},
-						{area: 'Data & Real-Time', icon: Database, items: 'PostgreSQL, Redis, WebSockets, SSE'},
-						{area: 'DevOps', icon: Boxes, items: 'Docker, GitHub Actions, Git, Linux'},
-						{area: 'Testing', icon: FlaskConical, items: 'Type-safe APIs, End-to-end testing, Unit testing'},
-						{area: 'AI Tooling', icon: Sparkles, items: 'Codex, OpenCode, Github Copilot, Claude Code'}
-					],
-					skill => (
-						<Panel key={skill.area} className="p-4 sm:p-5">
-							<div className="mb-3 flex items-center gap-3">
-								<skill.icon className="text-primary size-4" />
-								<h3 className="text-foreground font-mono text-sm font-semibold tracking-[0.18em] uppercase">
-									{skill.area}
-								</h3>
-							</div>
-							<p className="text-muted-foreground font-mono text-xs leading-6 sm:text-sm">{skill.items}</p>
-						</Panel>
-					)
-				)}
+			<div className="grid w-full max-w-5xl grid-cols-1 gap-4 sm:grid-cols-2">
+				{Array.map(skills, skill => (
+					<Panel key={skill.area} className="p-4 sm:p-5">
+						<div className="mb-3 flex items-center gap-3">
+							<skill.icon className="text-primary size-4" />
+							<h3 className="text-foreground font-mono text-sm font-semibold tracking-[0.18em] uppercase">
+								{skill.area}
+							</h3>
+						</div>
+						<p className="text-muted-foreground font-mono text-xs leading-6 sm:text-sm">{skill.items}</p>
+					</Panel>
+				))}
 			</div>
 		</Section>
 	)
 }
 
-function ProjectCard(input: {
-	project: {currentWork?: string; description: string; href: string; name: string; role: string; stack: string}
-}) {
+function ProjectCard(input: {project: {description: string; href: string; name: string; role: string; stack: string}}) {
 	return (
 		<Panel className="flex h-full flex-col p-4 sm:p-5">
 			<div className="flex items-start justify-between gap-3">
@@ -460,11 +437,6 @@ function ProjectCard(input: {
 				</a>
 			</div>
 			<p className="text-foreground/90 mt-4 font-mono text-xs leading-6 sm:text-sm">{input.project.description}</p>
-			{Predicate.isNotUndefined(input.project.currentWork) && (
-				<p className="text-muted-foreground mt-4 font-mono text-xs leading-5">
-					<span className="text-foreground/80">Working on:</span> {input.project.currentWork}
-				</p>
-			)}
 			<p className="text-muted-foreground/80 mt-auto pt-4 font-mono text-xs">{input.project.stack}</p>
 		</Panel>
 	)
@@ -475,44 +447,9 @@ function ProjectsSection() {
 		<Section>
 			<SectionLabel title="Personal Projects" />
 			<div className="flex w-full max-w-5xl flex-col gap-4">
-				<ProjectCard
-					project={{
-						currentWork:
-							'An orchestration workflow that uses GPT-5.6 and Fable to plan with the user, then delegates implementation, testing, blind review, and publication to cheaper models, with self-improvement loops that learn from failures.',
-						description:
-							'A full-stack TypeScript monorepo that brings my applications, shared packages, and development tooling into one workspace.',
-						href: 'https://github.com/MP281X/deslop',
-						name: 'deslop',
-						role: 'Full-Stack TypeScript Monorepo',
-						stack: 'Effect · React · TypeScript · WebSockets · PostgreSQL · Docker'
-					}}
-				/>
-
-				<div className="grid gap-4 md:grid-cols-2">
-					{Array.map(
-						[
-							{
-								description:
-									'A starter for React and Kotlin/Spring applications with generated API types, PostgreSQL migrations, real-time sync, authentication, and reusable UI components.',
-								href: 'https://github.com/MP281X/kotlin-react-template',
-								name: 'Kotlin React Template',
-								role: 'Full-Stack Starter',
-								stack: 'React · Kotlin · Spring · Effect · PostgreSQL · ElectricSQL'
-							},
-							{
-								description:
-									'An open-source video platform with FFmpeg/HLS processing, background jobs, real-time upload progress, PostgreSQL, Redis, S3-compatible storage, and Kubernetes deployment.',
-								href: 'https://github.com/MP281X/blixter_video',
-								name: 'Blixter',
-								role: 'Video Streaming Platform',
-								stack: 'TypeScript · FFmpeg · PostgreSQL · Redis · Kubernetes'
-							}
-						],
-						project => (
-							<ProjectCard key={project.name} project={project} />
-						)
-					)}
-				</div>
+				{Array.map(projects, project => (
+					<ProjectCard key={project.name} project={project} />
+				))}
 			</div>
 		</Section>
 	)
@@ -523,96 +460,35 @@ function ExperienceSection() {
 		<Section>
 			<SectionLabel title="Experience" />
 			<div className="flex w-full max-w-5xl flex-col gap-4">
-				{Array.map(
-					[
-						{
-							company: 'Humans.Tech',
-							highlights: [
-								'Built the shared frontend foundation used to start new products, defining reusable architecture, tooling, and development conventions',
-								'Developed reusable messaging interfaces for person-to-person and AI-agent conversations',
-								'Created reusable data-display primitives, including tables and virtualized lists for large datasets',
-								'Collaborated closely with backend engineers to design, integrate, and refine product functionality',
-								'Introduced AI-assisted development workflows that accelerated implementation for both individual and team delivery'
-							],
-							location: 'Frosinone, Italy',
-							note: '',
-							period: 'Apr 2026 – Jul 2026',
-							role: 'Frontend Developer'
-						},
-						{
-							company: 'Tinexta Cyber',
-							highlights: [
-								'Developed a real-time network inventory application for a major telecommunications company',
-								'Built the real-time frontend in React with ElectricSQL for live updates across all users',
-								'Implemented a custom type-safe RPC-like client from the Kotlin backend OpenAPI schema',
-								'Gathered requirements directly from end users and iterated through feedback rounds',
-								'Containerized and deployed multiple services using Docker with Jenkins CI/CD',
-								'Used AI coding agents daily with project-specific guidelines for development'
-							],
-							location: 'Udine, Italy',
-							note: '',
-							period: 'Oct 2024 – Mar 2026',
-							role: 'Full-Stack Developer'
-						},
-						{
-							company: 'Altitudo',
-							highlights: [
-								'Migrated the build system from Create React App to Vite',
-								'Improved rendering performance by adding proper memoization',
-								'Migrated legacy class components to modern functional components using React hooks',
-								'Recreated and restyled multiple pages using React and Tailwind CSS'
-							],
-							location: 'Salzburg, Austria',
-							note: 'Erasmus Internship',
-							period: 'Jan 2024 – Mar 2024',
-							role: 'Frontend Developer'
-						},
-						{
-							company: 'BizAway',
-							highlights: [
-								'Developed a type-safe E2E testing framework on top of the OpenAPI schema using Playwright',
-								'Built a type-safe email template framework using TSX-style components',
-								'Migrated API endpoints from the old OpenAPI version to the new specification',
-								'Built and updated multiple Angular components and features'
-							],
-							location: 'Spilimbergo, Italy',
-							note: 'Internship',
-							period: 'Jun 2023 – Aug 2023',
-							role: 'Backend Developer'
-						}
-					],
-					job => (
-						<Panel key={job.company} className="px-4 py-4 sm:px-5">
-							<div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-								<div className="space-y-1">
-									<p className="text-foreground font-mono text-sm font-semibold tracking-widest uppercase">
-										{job.company}
-									</p>
-									<div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs sm:text-sm">
-										<span>{job.role}</span>
-										{String.isNonEmpty(job.note) && <span className="text-muted-foreground/80">· {job.note}</span>}
-									</div>
-								</div>
-								<p className="text-muted-foreground font-mono text-xs sm:text-right">
-									{job.period} · {job.location}
+				{Array.map(experience, job => (
+					<Panel key={job.company} className="px-4 py-4 sm:px-5">
+						<div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+							<div className="space-y-1">
+								<p className="text-foreground font-mono text-sm font-semibold tracking-widest uppercase">
+									{job.company}
 								</p>
+								<div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs sm:text-sm">
+									<span>{job.role}</span>
+									{Predicate.isNotUndefined(job.note) && <span className="text-muted-foreground/80">· {job.note}</span>}
+								</div>
 							</div>
-							{Array.isReadonlyArrayNonEmpty(job.highlights) && (
-								<ul className="mt-3 flex flex-col gap-1.5">
-									{Array.map(job.highlights, highlight => (
-										<li
-											key={highlight}
-											className="text-foreground/85 flex items-start gap-2 font-mono text-xs leading-6 sm:text-sm"
-										>
-											<span className="bg-foreground/50 mt-2 size-1 shrink-0 rounded-full" aria-hidden="true" />
-											<span>{highlight}</span>
-										</li>
-									))}
-								</ul>
-							)}
-						</Panel>
-					)
-				)}
+							<p className="text-muted-foreground font-mono text-xs sm:text-right">
+								{pipe([job.period, job.location], Array.filter(Predicate.isNotUndefined), Array.join(' · '))}
+							</p>
+						</div>
+						<ul className="mt-3 flex flex-col gap-1.5">
+							{Array.map(job.highlights, highlight => (
+								<li
+									key={highlight}
+									className="text-foreground/85 flex items-start gap-2 font-mono text-xs leading-6 sm:text-sm"
+								>
+									<span className="bg-foreground/50 mt-2 size-1 shrink-0 rounded-full" aria-hidden="true" />
+									<span>{highlight}</span>
+								</li>
+							))}
+						</ul>
+					</Panel>
+				))}
 			</div>
 		</Section>
 	)
@@ -623,54 +499,27 @@ function EducationSection() {
 		<Section>
 			<SectionLabel title="Education & Languages" />
 			<div className="flex w-full max-w-5xl flex-col gap-4">
-				{Array.map(
-					[
-						{
-							degree: 'Cloud Developer Diploma',
-							description:
-								'Cloud-native architectures, CI/CD, Docker & Kubernetes, full-stack web application development.',
-							grade: '95/100',
-							period: '2022 – 2024',
-							school: 'ITS Alto Adriatico'
-						},
-						{
-							degree: 'High School Diploma – IT and Telecommunications',
-							description: 'Telecommunications, electronics, networking fundamentals, and programming foundations.',
-							grade: '',
-							period: '2017 – 2022',
-							school: 'ISIS A. Malignani'
-						}
-					],
-					entry => (
-						<Panel key={entry.school} className="px-4 py-4 sm:px-5">
-							<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-								<div className="flex flex-wrap items-baseline gap-x-3">
-									<span className="text-foreground font-mono text-sm font-semibold">{entry.school}</span>
-									<span className="text-muted-foreground font-mono text-xs sm:text-sm">{entry.degree}</span>
-									{String.isNonEmpty(entry.grade) && (
-										<span className="text-muted-foreground/80 font-mono text-xs">({entry.grade})</span>
-									)}
-								</div>
-								<span className="text-muted-foreground/80 font-mono text-xs">{entry.period}</span>
+				{Array.map(education, entry => (
+					<Panel key={entry.school} className="px-4 py-4 sm:px-5">
+						<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+							<div className="flex flex-wrap items-baseline gap-x-3">
+								<span className="text-foreground font-mono text-sm font-semibold">{entry.school}</span>
+								<span className="text-muted-foreground font-mono text-xs sm:text-sm">{entry.degree}</span>
+								{Predicate.isNotUndefined(entry.grade) && (
+									<span className="text-muted-foreground/80 font-mono text-xs">({entry.grade})</span>
+								)}
 							</div>
-							<p className="text-foreground/85 mt-2 font-mono text-xs leading-6 sm:text-sm">{entry.description}</p>
-						</Panel>
-					)
-				)}
+							<span className="text-muted-foreground/80 font-mono text-xs">{entry.period}</span>
+						</div>
+					</Panel>
+				))}
 				<div className="grid gap-3 sm:grid-cols-3">
-					{Array.map(
-						[
-							{language: 'Italian', level: 'Native'},
-							{language: 'English', level: 'C1'},
-							{language: 'Spanish', level: 'Basic'}
-						],
-						lang => (
-							<Panel key={lang.language} className="px-4 py-3">
-								<span className="text-foreground font-mono text-xs font-semibold">{lang.language}</span>
-								<span className="text-muted-foreground/80 ml-2 font-mono text-xs">{lang.level}</span>
-							</Panel>
-						)
-					)}
+					{Array.map(languages, lang => (
+						<Panel key={lang.language} className="px-4 py-3">
+							<span className="text-foreground font-mono text-xs font-semibold">{lang.language}</span>
+							<span className="text-muted-foreground/80 ml-2 font-mono text-xs">{lang.level}</span>
+						</Panel>
+					))}
 				</div>
 			</div>
 		</Section>
@@ -684,9 +533,10 @@ function ContactSection() {
 			<div className="flex w-full max-w-5xl flex-col gap-3">
 				{Array.map(
 					[
-						{href: 'mailto:paludgnachmatteo.dev@gmail.com', label: 'Email', value: 'paludgnachmatteo.dev@gmail.com'},
-						{href: 'tel:+393518853376', label: 'Phone', value: '+39 351 885 3376'},
-						{href: 'https://github.com/MP281X', label: 'GitHub', value: 'github.com/MP281X'}
+						contacts.email,
+						contacts.phone,
+						contacts.github,
+						{href: '/cv', label: 'CV', value: `${profile.portfolio}/cv`}
 					],
 					item => (
 						<a
@@ -702,7 +552,9 @@ function ContactSection() {
 					)
 				)}
 			</div>
-			<p className="text-muted-foreground/70 mt-6 font-mono text-xs">© 2026 Matteo Paludgnach · Moimacco (UD), Italy</p>
+			<p className="text-muted-foreground/70 mt-6 font-mono text-xs">
+				© 2026 {profile.firstName} {profile.lastName} · {profile.location}
+			</p>
 		</Section>
 	)
 }
@@ -738,8 +590,7 @@ function RealtimeLayer(input: {viewport: {width: number; height: number}}) {
 
 	return (
 		<>
-			{/* oxlint-disable-next-line @deslop/coding-standards/no-gradient -- hard color stops draw the 1px trail grid's lines; nothing fades */}
-			<div className="pointer-events-none fixed inset-0 z-1 bg-[linear-gradient(to_right,color-mix(in_oklch,var(--color-foreground)_3%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklch,var(--color-foreground)_3%,transparent)_1px,transparent_1px)] bg-size-[26px_26px]" />
+			<div className="trail-grid pointer-events-none fixed inset-0 z-1" />
 			<TrailCanvas trails={portfolio.value.trails} viewport={input.viewport} />
 
 			{Array.map(portfolio.value.visitors, cursor => {
@@ -892,8 +743,8 @@ function PortfolioRoute() {
 			<HeroSection />
 			<AboutSection />
 			<SkillsSection />
-			<ProjectsSection />
 			<ExperienceSection />
+			<ProjectsSection />
 			<EducationSection />
 			<ContactSection />
 
