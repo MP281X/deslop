@@ -91,6 +91,11 @@ jobs:
           native=()
           for app in stash opm trips; do
             cd "$GITHUB_WORKSPACE/apps/$app"
+            # A new app's first build and submission are made by hand, which also creates its production branch.
+            if ! $EAS branch:view production --json --non-interactive >/dev/null 2>&1; then
+              echo "::warning::$app has no production release yet"
+              continue
+            fi
             group=$($EAS update:list --branch production --limit 1 --json --non-interactive | jq -r '.currentPage[0].group // empty')
             released=$([[ -n $group ]] && $EAS update:view "$group" --json | jq -r '.[0].gitCommitHash' || true)
             if [[ -n $released ]] && git cat-file -e "$released^{commit}" 2>/dev/null && git diff --quiet "$released" -- . ../../packages ../../pnpm-lock.yaml; then continue; fi
