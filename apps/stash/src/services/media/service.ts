@@ -24,14 +24,11 @@ import {Tensor, env, pipeline} from '@huggingface/transformers'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
 import {sourceProxy, sticky} from '#services/media/lib/proxy.ts'
-import {captionTranscript, clock, speechOnly} from '#services/media/lib/utils.ts'
+import {captionTranscript, clock, isBlocked, speechOnly} from '#services/media/lib/utils.ts'
 import type {Comment, Still} from '#services/media/schema.ts'
 import {MediaError, Metadata, Transcription} from '#services/media/schema.ts'
 
 const MAX_WHISPER_SECONDS = 2 * 60 * 60
-
-const BLOCKED_ANSWER =
-	/not a bot|requir(?:es|ing) login|login required|CONNECT tunnel failed|ProxyError|HTTP Error (?:403|429|5\d\d)|Requested format is not available|timed out/iu
 
 const YOUTUBE = /^https?:\/\/(?:[\w-]+\.)?(?:youtube\.com|youtu\.be)\//u
 
@@ -129,7 +126,7 @@ export class Media extends Context.Service<
 					}),
 					{
 						times: Boolean.match(Option.isSome(exit), {onFalse: () => 0, onTrue: () => 2}),
-						while: result => result.exitCode !== 0 && Option.isSome(String.match(BLOCKED_ANSWER)(result.stderr))
+						while: result => result.exitCode !== 0 && isBlocked(result.stderr)
 					}
 				)
 			})

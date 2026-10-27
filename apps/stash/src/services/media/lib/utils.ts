@@ -1,5 +1,13 @@
 import {Array, Duration, Number, Option, String, pipe} from 'effect'
 
+const BLOCKED =
+	/not a bot|requir(?:es|ing) login|login required|CONNECT tunnel failed|unable to connect to proxy|tunnel connection failed|ProxyError|HTTP Error (?:403|429|5\d\d)|Requested format is not available|timed out/iu
+
+// yt-dlp's stderr when the residential exit is offline, flagged or throttled, so another exit may answer.
+export function isBlocked(stderr: string) {
+	return Option.isSome(String.match(BLOCKED)(stderr))
+}
+
 export function clock(seconds: number) {
 	const parts = Duration.parts(Duration.seconds(seconds))
 	return `${pipe(`${(parts.days * 24 + parts.hours) * 60 + parts.minutes}`, String.padStart(2, '0'))}:${pipe(`${parts.seconds}`, String.padStart(2, '0'))}`

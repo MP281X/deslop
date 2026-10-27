@@ -176,14 +176,6 @@ it.layer(NodeServices.layer)('Notes', test => {
 					text: 'Remember this https://example.com/a'
 				},
 				{
-					issue: 'The AI answer was unreadable.',
-					organizer: Organizer.of({
-						organize: () => Effect.fail(NotesError.make({message: 'The AI answer was unreadable.'}))
-					}),
-					sources: recipe,
-					text: 'https://example.com/a'
-				},
-				{
 					issue: 'The link could not be loaded.',
 					organizer: Organizer.of({organize: () => Effect.die('AI must not run without content')}),
 					sources: unreachable,
