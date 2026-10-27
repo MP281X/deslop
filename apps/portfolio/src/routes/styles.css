@@ -11,9 +11,17 @@
 	--text-label--line-height: 1.5;
 	--tracking-label: 0.18em;
 	--tracking-name: 0.14em;
-	/* A printed CV fills the page so its consent line sits at the foot. A4 minus the 10mm margins is 277mm, but Safari
-	   prints each CSS pixel at 0.8pt instead of 0.75pt, so its page holds only about 260 CSS millimetres. */
-	--spacing-printed-page: 256mm;
+	/* A printed CV spreads its sections down the page, so the bottom margin matches the top and sides. Chrome resolves vh
+	   to the printed page area. */
+	--spacing-printed-page: 100vh;
+}
+
+/* WebKit, the only engine with this font keyword, prints each CSS pixel at 0.8pt instead of 0.75pt, so its A4 page
+   holds only about 260 CSS millimetres; it keeps the height measured there. */
+@supports (font: -apple-system-body) {
+	:root {
+		--spacing-printed-page: 256mm;
+	}
 }
 
 /* The 26px grid behind the home page's trails and the CV header, drawn under the element's content, which must be
