@@ -115,16 +115,6 @@ export class Notes extends Context.Service<
 					NotesError.make({cause, message: 'The notes or files could not be read or written.'})
 				)
 
-				if (yield* fs.exists(path.join(directory, 'stash.db'))) {
-					yield* pipe(
-						Effect.forEach(
-							['images', 'files', 'stash.db', 'stash.db-wal', 'stash.db-shm'],
-							name => fs.remove(path.join(directory, name), {force: true, recursive: true}),
-							{concurrency: 1, discard: true}
-						),
-						storageFailed
-					)
-				}
 				yield* pipe(fs.makeDirectory(images, {mode: 0o700, recursive: true}), storageFailed)
 				yield* pipe(fs.makeDirectory(files, {mode: 0o700, recursive: true}), storageFailed)
 				const store = yield* openStore(directory)
