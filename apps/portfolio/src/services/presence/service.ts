@@ -2,14 +2,11 @@ import {
 	Array,
 	Clock,
 	Context,
-	Duration,
 	Effect,
 	HashMap,
 	Layer,
 	Number,
 	Option,
-	Ref,
-	Schedule,
 	Semaphore,
 	Stream,
 	SubscriptionRef,
@@ -17,8 +14,9 @@ import {
 	pipe
 } from 'effect'
 
-import {appendPortfolioTrail, portfolioPalette, removePortfolioVisitor, upsertPortfolioVisitor} from '#lib/portfolio.ts'
-import {PortfolioState, PortfolioTrail, PortfolioVisitor} from '#services/presence/schema.ts'
+import {hasMeaningfulMove, portfolioPalette, removePortfolioVisitor, upsertPortfolioVisitor} from '#lib/portfolio.ts'
+import type {PortfolioVisitors} from '#services/presence/schema.ts'
+import {PortfolioVisitor} from '#services/presence/schema.ts'
 
 const SERVER_BOTS = [
 	{
@@ -41,146 +39,104 @@ const SERVER_BOTS = [
 	}
 ] as const
 
-function hasMeaningfulMove(current: {x: number; y: number}, next: {x: number; y: number}) {
-	const deltaX = next.x - current.x
-	const deltaY = next.y - current.y
-
-	return deltaX * deltaX + deltaY * deltaY >= 0.0025 * 0.0025
-}
-
-function findVisitor(visitors: PortfolioState['visitors'], id: string) {
-	return pipe(
-		visitors,
-		Array.findFirst(visitor => visitor.id === id),
-		Option.getOrUndefined
-	)
-}
-
-function moveVisitor(state: PortfolioState, visitor: PortfolioVisitor) {
-	return PortfolioState.make({
-		trails: appendPortfolioTrail(
-			state.trails,
-			PortfolioTrail.make({color: visitor.color, visitorId: visitor.id, x: visitor.x, y: visitor.y})
-		),
-		visitors: upsertPortfolioVisitor(state.visitors, visitor)
-	})
-}
-
 export class Presence extends Context.Service<
 	Presence,
 	{
-		readonly join: (payload: Pick<PortfolioVisitor, 'color' | 'id' | 'name'>) => Stream.Stream<PortfolioState>
+		readonly join: (payload: Pick<PortfolioVisitor, 'color' | 'id' | 'name'>) => Stream.Stream<PortfolioVisitors>
 		readonly move: (payload: Pick<PortfolioVisitor, 'color' | 'id' | 'x' | 'y'>) => Effect.Effect<void>
 	}
 >()('@deslop/portfolio/services/presence/service/Presence') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
-			const state = yield* SubscriptionRef.make(PortfolioState.make({}))
-			const connections = yield* Ref.make(HashMap.empty<string, number>())
+			const visitors = yield* SubscriptionRef.make<PortfolioVisitors>([])
+			// Open connections per visitor id; a reload or a second tab shares one cursor.
+			const connections = yield* SubscriptionRef.make(HashMap.empty<string, number>())
 			const lifecycle = yield* Semaphore.make(1)
 
 			const start = yield* Clock.currentTimeMillis
-			for (const bot of SERVER_BOTS) {
-				yield* Effect.forkScoped(
-					Effect.repeat(
-						Effect.gen(function* () {
-							const t = ((yield* Clock.currentTimeMillis) - start) / 1000
-							const pos = {
+			const moveBots = Effect.gen(function* () {
+				const t = ((yield* Clock.currentTimeMillis) - start) / 1000
+				yield* SubscriptionRef.update(visitors, current =>
+					Array.reduce(SERVER_BOTS, current, (moved, bot) =>
+						upsertPortfolioVisitor(
+							moved,
+							PortfolioVisitor.make({
+								color: bot.color,
+								id: bot.id,
+								name: bot.name,
 								x: Number.clamp({maximum: 0.995, minimum: 0.005})(0.5 + 0.4 * Math.sin(t * bot.xFreq + bot.xPhase)),
 								y: Number.clamp({maximum: 0.995, minimum: 0.005})(0.5 + 0.4 * Math.cos(t * bot.yFreq + bot.yPhase))
-							}
-							const visitor = PortfolioVisitor.make({color: bot.color, id: bot.id, name: bot.name, x: pos.x, y: pos.y})
-							yield* SubscriptionRef.modifySome(state, currentState => {
-								const currentBot = findVisitor(currentState.visitors, bot.id)
-								if (currentBot !== undefined && !hasMeaningfulMove(currentBot, pos)) {
-									return Tuple.make(undefined, Option.none())
-								}
-
-								return Tuple.make(undefined, Option.some(moveVisitor(currentState, visitor)))
 							})
-						}),
-						Schedule.spaced(Duration.millis(55))
+						)
 					)
 				)
-			}
+			})
+
+			// The bots wander only while someone is watching, and leave with the last visitor so the next one sees no jump.
+			yield* pipe(
+				SubscriptionRef.changes(connections),
+				Stream.map(HashMap.isEmpty),
+				Stream.changes,
+				Stream.switchMap(idle => {
+					if (idle) {
+						return Stream.fromEffect(
+							SubscriptionRef.update(visitors, current =>
+								Array.filter(current, visitor => !Array.some(SERVER_BOTS, bot => bot.id === visitor.id))
+							)
+						)
+					}
+					return pipe(
+						Stream.tick('55 millis'),
+						Stream.mapEffect(() => moveBots)
+					)
+				}),
+				Stream.runDrain,
+				Effect.forkScoped
+			)
 
 			return Presence.of({
 				join: payload =>
 					Stream.unwrap(
 						Effect.gen(function* () {
 							yield* Effect.logInfo('Portfolio client connected')
-							const visitor = PortfolioVisitor.make({
-								color: payload.color,
-								id: payload.id,
-								name: payload.name,
-								x: 0.5,
-								y: 0.5
-							})
+							const visitor = PortfolioVisitor.make({...payload, x: 0.5, y: 0.5})
 							yield* Effect.acquireRelease(
 								lifecycle.withPermit(
 									Effect.gen(function* () {
-										yield* Ref.update(
+										yield* SubscriptionRef.update(visitors, current => upsertPortfolioVisitor(current, visitor))
+										yield* SubscriptionRef.update(
 											connections,
-											HashMap.modifyAt(payload.id, count =>
-												Option.some(
-													pipe(
-														count,
-														Option.getOrElse(() => 0)
-													) + 1
-												)
-											)
-										)
-										yield* SubscriptionRef.update(state, currentState =>
-											PortfolioState.make({
-												trails: currentState.trails,
-												visitors: upsertPortfolioVisitor(currentState.visitors, visitor)
-											})
+											HashMap.modifyAt(payload.id, count => Option.some(Option.getOrElse(count, () => 0) + 1))
 										)
 									})
 								),
 								() =>
 									lifecycle.withPermit(
 										Effect.gen(function* () {
-											const remove = yield* Ref.modify(connections, current => {
-												const count = pipe(
-													HashMap.get(current, payload.id),
-													Option.getOrElse(() => 0)
-												)
-												if (count <= 1) return [true, HashMap.remove(current, payload.id)] as const
-												return [false, HashMap.set(current, payload.id, count - 1)] as const
+											const remaining = yield* SubscriptionRef.modify(connections, current => {
+												const count = Option.getOrElse(HashMap.get(current, payload.id), () => 0) - 1
+												if (count <= 0) return Tuple.make(0, HashMap.remove(current, payload.id))
+												return Tuple.make(count, HashMap.set(current, payload.id, count))
 											})
-											if (!remove) return
-
-											yield* SubscriptionRef.update(state, latestState => {
-												const visitors = removePortfolioVisitor(latestState.visitors, payload.id)
-												if (visitors === latestState.visitors) return latestState
-												return PortfolioState.make({trails: latestState.trails, visitors})
-											})
+											if (remaining > 0) return
+											yield* SubscriptionRef.update(visitors, current => removePortfolioVisitor(current, payload.id))
 										})
 									)
 							)
 
-							return SubscriptionRef.changes(state)
+							// A slow page skips to the latest positions instead of queueing every step.
+							return Stream.buffer(SubscriptionRef.changes(visitors), {capacity: 1, strategy: 'sliding'})
 						})
 					),
-				move: Effect.fn('Presence.move')(function* (payload) {
-					yield* SubscriptionRef.modifySome(state, currentState => {
-						const found = findVisitor(currentState.visitors, payload.id)
-						if (found === undefined || (found.color === payload.color && !hasMeaningfulMove(found, payload))) {
-							return Tuple.make(undefined, Option.none())
-						}
-
-						const nextVisitor = PortfolioVisitor.make({
-							color: payload.color,
-							id: payload.id,
-							name: found.name,
-							x: payload.x,
-							y: payload.y
-						})
-						return Tuple.make(undefined, Option.some(moveVisitor(currentState, nextVisitor)))
-					})
-				})
+				move: payload =>
+					SubscriptionRef.updateSome(visitors, current =>
+						pipe(
+							Array.findFirst(current, visitor => visitor.id === payload.id),
+							Option.filter(found => found.color !== payload.color || hasMeaningfulMove(found, payload)),
+							Option.map(found => upsertPortfolioVisitor(current, PortfolioVisitor.make({...found, ...payload})))
+						)
+					)
 			})
 		})
 	)

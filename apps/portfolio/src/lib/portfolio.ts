@@ -1,6 +1,6 @@
 import {Array, Option, pipe} from 'effect'
 
-import type {PortfolioState, PortfolioTrail, PortfolioVisitor} from '#services/presence/schema.ts'
+import type {PortfolioVisitor, PortfolioVisitors} from '#services/presence/schema.ts'
 
 export const portfolioPalette = [
 	'oklch(0.74 0.19 118)',
@@ -25,17 +25,21 @@ export const portfolioPalette = [
 	'oklch(0.72 0.2 352)'
 ] as const
 
-export function appendPortfolioTrail(trails: PortfolioState['trails'], trail: PortfolioTrail) {
-	return Array.takeRight(Array.append(trails, trail), 180)
+// Moves under a quarter of a percent of the viewport are neither sent nor drawn.
+export function hasMeaningfulMove(current: {x: number; y: number}, next: {x: number; y: number}) {
+	const deltaX = next.x - current.x
+	const deltaY = next.y - current.y
+
+	return deltaX * deltaX + deltaY * deltaY >= 0.0025 * 0.0025
 }
 
-export function removePortfolioVisitor(visitors: PortfolioState['visitors'], id: string) {
+export function removePortfolioVisitor(visitors: PortfolioVisitors, id: string) {
 	const next = Array.filter(visitors, visitor => visitor.id !== id)
 	if (Array.length(next) === Array.length(visitors)) return visitors
 	return next
 }
 
-export function upsertPortfolioVisitor(visitors: PortfolioState['visitors'], visitor: PortfolioVisitor) {
+export function upsertPortfolioVisitor(visitors: PortfolioVisitors, visitor: PortfolioVisitor) {
 	return pipe(
 		Array.findFirstIndex(visitors, current => current.id === visitor.id),
 		Option.flatMap(index => Array.replace(visitors, index, visitor)),
