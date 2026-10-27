@@ -2,7 +2,6 @@ import type {Record} from 'effect'
 import {
 	Array,
 	Boolean,
-	Clock,
 	Effect,
 	FiberHandle,
 	Layer,
@@ -10,25 +9,23 @@ import {
 	Option,
 	Order,
 	Predicate,
-	Schedule,
 	Schema,
 	Stream,
 	String,
 	pipe
 } from 'effect'
 
-import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
+import {FetchHttpClient} from 'effect/http'
 import {AsyncResult, AtomRpc, Atom} from 'effect/reactivity'
-import {AuthRequest, makeRedirectUri} from 'expo-auth-session'
 import * as Clipboard from 'expo-clipboard'
 import * as Crypto from 'expo-crypto'
 import {Directory, File, Paths} from 'expo-file-system'
 
 import {brands} from '@deslop/components-mobile/icons'
 import {alert, writeAtomically} from '@deslop/components-mobile/utils'
-import {AuthError, ClientRegistration, Credentials, TokenResponse} from '@deslop/runtime/auth/schema'
-import {AUTH_URL, RpcAuth} from '@deslop/runtime/auth/utils'
+import {RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
+import * as MobileSession from '@deslop/runtime/mobile/session'
 
 import {native} from '#modules/native/index.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -37,122 +34,27 @@ import type {Kind, Note, NotesEvent} from '#services/notes/schema.ts'
 import {Brand, NoteItem, NotesError} from '#services/notes/schema.ts'
 
 const SERVER = 'https://stash.mp281x.xyz'
-const TELEMETRY = 'https://otel.mp281x.xyz'
-const DISCOVERY = {
-	authorizationEndpoint: `${AUTH_URL}/api/auth/oauth2/authorize`,
-	tokenEndpoint: `${AUTH_URL}/api/auth/oauth2/token`
-}
-const authRuntime = Atom.runtime(FetchHttpClient.layer)
-const sessionLock = Effect.acquireRelease(
-	Effect.tryPromise(() => native.lockSession()),
-	lock => Effect.promise(() => native.unlockSession(lock))
-)
 
 const listFile = new File(Paths.document, 'list.json')
 
-const readSession = Effect.gen(function* () {
-	const text = yield* Effect.try(() => native.getSession())
-	if (String.isEmpty(text)) return Option.none<Credentials>()
-	return Option.some(yield* Schema.decodeEffect(Schema.fromJsonString(Credentials))(text))
-})
-export const sessionAtom = Atom.keepAlive(authRuntime.atom(readSession))
-
-const saveSession = Effect.fnUntraced(function* (clientId: string, response: TokenResponse) {
-	const credentials = {
-		accessToken: response.access_token,
-		clientId,
-		expiresAt: (yield* Clock.currentTimeMillis) + response.expires_in * 1000,
-		refreshToken: response.refresh_token
-	}
-	const text = yield* Schema.encodeEffect(Schema.fromJsonString(Credentials))(credentials)
-	yield* Effect.try(() => native.setSession(text))
-	return credentials.accessToken
+// The share extension refreshes the same Keychain credentials, so a refresh holds the lock both processes take.
+export const session = MobileSession.make('Stash', SERVER, {
+	clear: Effect.try(() => native.clearSession()),
+	lock: Effect.acquireRelease(
+		Effect.tryPromise(() => native.lockSession()),
+		lock => Effect.promise(() => native.unlockSession(lock))
+	),
+	read: Effect.try(() => native.getSession()),
+	write: text => Effect.try(() => native.setSession(text))
 })
 
-const tokenRequest = Effect.fnUntraced(function* (clientId: string, params: Record<string, string>) {
-	const response = yield* (yield* HttpClient.HttpClient).execute(
-		pipe(
-			HttpClientRequest.post(DISCOVERY.tokenEndpoint),
-			HttpClientRequest.bodyUrlParams({...params, client_id: clientId, resource: [SERVER, TELEMETRY]})
-		)
-	)
-	if (response.status === 400 || response.status === 401) {
-		yield* Effect.try(() => native.clearSession())
-		return yield* AuthError.make({message: 'Sign in to Stash again'})
-	}
-	return yield* saveSession(clientId, yield* HttpClientResponse.schemaBodyJson(TokenResponse)(response))
-}, Effect.timeout('10 seconds'))
-
-const sessionToken = Effect.fnUntraced(
-	function* (refresh: boolean) {
-		yield* sessionLock
-		const credentials = yield* Effect.fromOption(yield* readSession)
-		if (!refresh && credentials.expiresAt > (yield* Clock.currentTimeMillis) + 60_000) return credentials.accessToken
-		return yield* tokenRequest(credentials.clientId, {
-			grant_type: 'refresh_token',
-			refresh_token: credentials.refreshToken
-		})
-	},
-	Effect.scoped,
-	Effect.mapError(cause => AuthError.make({cause, message: 'Sign in to Stash'}))
-)
-
-const accessToken = sessionToken(false)
-
-export const signInAtom = authRuntime.fn(() =>
-	pipe(
-		Effect.gen(function* () {
-			const redirectUri = makeRedirectUri({path: 'auth/callback', scheme: MobileRuntime.extra.scheme})
-			const client = yield* HttpClient.HttpClient
-			const registration = yield* pipe(
-				HttpClientRequest.post(`${AUTH_URL}/api/auth/oauth2/register`),
-				HttpClientRequest.bodyJson({
-					application_type: 'native',
-					client_name: 'Stash',
-					grant_types: ['authorization_code', 'refresh_token'],
-					redirect_uris: [redirectUri],
-					response_types: ['code'],
-					token_endpoint_auth_method: 'none'
-				}),
-				Effect.flatMap(request => client.execute(request)),
-				Effect.flatMap(HttpClientResponse.schemaBodyJson(ClientRegistration))
-			)
-			const request = new AuthRequest({
-				clientId: registration.client_id,
-				extraParams: {resource: SERVER},
-				redirectUri,
-				scopes: ['deslop', 'offline_access']
-			})
-			const url = new URL(yield* Effect.tryPromise(() => request.makeAuthUrlAsync(DISCOVERY)))
-			url.searchParams.append('resource', TELEMETRY)
-			const result = yield* Effect.tryPromise(() => request.promptAsync(DISCOVERY, {url: url.href}))
-			if (result.type !== 'success') return yield* AuthError.make({message: 'Sign-in was not completed'})
-			if (result.params['iss'] !== `${AUTH_URL}/api/auth`) {
-				return yield* AuthError.make({message: 'The sign-in issuer did not match'})
-			}
-			yield* Effect.scoped(
-				Effect.andThen(
-					sessionLock,
-					tokenRequest(registration.client_id, {
-						code: result.params['code'] ?? '',
-						code_verifier: request.codeVerifier ?? '',
-						grant_type: 'authorization_code',
-						redirect_uri: redirectUri
-					})
-				)
-			)
-			yield* Atom.refresh(sessionAtom)
-		}),
-		Effect.mapError(cause => AuthError.make({cause, message: 'Cannot sign in to Stash'})),
-		alert('Not Signed In')
-	)
-)
+export const signInAtom = session.runtime.fn(() => pipe(session.signIn, alert('Not Signed In')))
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/stash/lib/utils/RpcClient', {
 	group: RpcContracts,
 	protocol: pipe(
-		MobileRuntime.layer('@deslop/stash', accessToken)(SERVER),
-		Layer.provideMerge(RpcAuth.layerClient(accessToken)),
+		MobileRuntime.layer('@deslop/stash', session.accessToken)(SERVER),
+		Layer.provideMerge(RpcAuth.layerClient(session.accessToken)),
 		Layer.provide(FetchHttpClient.layer)
 	)
 }) {}
@@ -218,19 +120,21 @@ function apply(items: NoteItem[], event: NotesEvent) {
 // The copy on the iPhone shows the list while the server is out of reach.
 export const notesAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get => {
-		const session = get(sessionAtom)
-		if (!AsyncResult.isSuccess(session) || Option.isNone(session.value)) return Stream.succeed(Array.empty<NoteItem>())
-		get(MobileRuntime.activationsAtom)
+		if (!session.signedIn(get)) return Stream.succeed(Array.empty<NoteItem>())
+		// The empty list shown while the session loads is not a list on screen.
+		const shown = Option.exists(
+			get.self<AsyncResult.AsyncResult<NoteItem[]>>(),
+			result => AsyncResult.isSuccess(result) && Array.isReadonlyArrayNonEmpty(result.value)
+		)
 		return Stream.concat(
-			Stream.flatMap(
-				Stream.fromEffect(
-					pipe(
-						Effect.try(() => listFile.textSync()),
-						Effect.flatMap(Schema.decodeEffect(ListJson)),
-						Effect.option
-					)
-				),
-				cached => Stream.fromIterable(Option.toArray(cached))
+			// Only a cold start reads the copy; a return from the background keeps the list on screen, which is newer.
+			pipe(
+				Effect.try(() => listFile.textSync()),
+				Effect.flatMap(Schema.decodeEffect(ListJson)),
+				Effect.option,
+				Stream.fromEffect,
+				Stream.flatMap(cached => Stream.fromIterable(Option.toArray(cached))),
+				Stream.when(Effect.succeed(!shown))
 			),
 			pipe(
 				Effect.gen(function* () {
@@ -254,27 +158,7 @@ export const notesAtom = Atom.keepAlive(
 					)
 				}),
 				Stream.unwrap,
-				// A server can forget an unexpired bearer; only a refused refresh clears the saved session.
-				Stream.tapError(error =>
-					pipe(
-						Effect.gen(function* () {
-							if (Schema.is(AuthError)(error)) {
-								yield* pipe(
-									Effect.flatMap(get.result(authRuntime), context =>
-										Effect.provideContext(sessionToken(true), context)
-									),
-									Effect.ignore({log: 'Warn', message: 'The session could not be renewed'})
-								)
-							}
-						}),
-						Effect.andThen(readSession),
-						Effect.flatMap(saved =>
-							Option.match(saved, {onNone: () => Atom.refresh(sessionAtom), onSome: () => Effect.void})
-						),
-						Effect.ignore({log: 'Warn', message: 'The session could not be read'})
-					)
-				),
-				Stream.retry(Schedule.spaced('2 seconds'))
+				session.renewing
 			)
 		)
 	})
@@ -302,12 +186,12 @@ const images = new Directory(Paths.cache, 'downloads')
 
 // SwiftUI images read local files, so each note's preview is downloaded once into the cache; a failed download stays failed until the app restarts.
 export const imageAtom = Atom.family((id: Note['id']) =>
-	authRuntime.atom(
+	session.runtime.atom(
 		Effect.gen(function* () {
 			const file = new File(images, id)
 			if (file.exists) return file.uri
 			images.create({idempotent: true, intermediates: true})
-			const token = yield* accessToken
+			const token = yield* session.accessToken
 			const downloaded = yield* Effect.tryPromise(() =>
 				File.downloadFileAsync(new URL(`/api/images/${id}`, SERVER).href, file, {
 					headers: {authorization: `Bearer ${token}`}
@@ -395,7 +279,7 @@ export const offerAtom = Atom.keepAlive(
 )
 
 const saveImage = Effect.fnUntraced(function* () {
-	const token = yield* accessToken
+	const token = yield* session.accessToken
 	const image = yield* Effect.tryPromise({
 		catch: cause => NotesError.make({cause, message: 'The copied image could not be read.'}),
 		try: () => Clipboard.getImageAsync({format: 'jpeg', jpegQuality: 0.85})
@@ -440,7 +324,7 @@ const saveLink = Effect.gen(function* () {
 })
 
 const saveAtom = Atom.keepAlive(
-	authRuntime.fn((kind: Offer['kind'], get) =>
+	session.runtime.fn((kind: Offer['kind'], get) =>
 		pipe(
 			Boolean.match(kind === 'image', {onFalse: () => withClient(get, saveLink), onTrue: () => saveImage()}),
 			alert('Not Saved')

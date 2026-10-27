@@ -1,32 +1,16 @@
-import {
-	Array,
-	Clock,
-	Effect,
-	FiberHandle,
-	HashSet,
-	Layer,
-	Option,
-	Order,
-	Schedule,
-	Schema,
-	Semaphore,
-	Stream,
-	String,
-	pipe
-} from 'effect'
+import {Array, Effect, FiberHandle, HashSet, Layer, Option, Order, Schema, Stream, pipe} from 'effect'
 
-import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
+import {FetchHttpClient} from 'effect/http'
 import {AsyncResult, AtomRpc, Atom} from 'effect/reactivity'
-import {AuthRequest, makeRedirectUri} from 'expo-auth-session'
 import Constants from 'expo-constants'
 import {File, Paths} from 'expo-file-system'
 import * as Notifications from 'expo-notifications'
 import * as SecureStore from 'expo-secure-store'
 
 import {alert, writeAtomically} from '@deslop/components-mobile/utils'
-import {AuthError, ClientRegistration, Credentials, TokenResponse} from '@deslop/runtime/auth/schema'
-import {AUTH_URL, RpcAuth} from '@deslop/runtime/auth/utils'
+import {RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
+import * as MobileSession from '@deslop/runtime/mobile/session'
 
 import {OpmNative} from '#modules/native/index.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -35,120 +19,25 @@ import type {ChapterItem, ChaptersEvent, ReadingUpdate} from '#services/chapters
 import {ChapterList} from '#services/chapters/schema.ts'
 
 const SERVER = 'https://opm.mp281x.xyz'
-const TELEMETRY = 'https://otel.mp281x.xyz'
 const SESSION = 'session'
-const DISCOVERY = {
-	authorizationEndpoint: `${AUTH_URL}/api/auth/oauth2/authorize`,
-	tokenEndpoint: `${AUTH_URL}/api/auth/oauth2/token`
-}
-const authRuntime = Atom.runtime(FetchHttpClient.layer)
-// Two sockets refreshing an expired token at once would spend the same refresh token twice.
-const refreshing = Semaphore.makeUnsafe(1)
 
 // Auth
 
-// A failed read reaches React as a thrown error and closes the app, so a locked Keychain is read again and bad JSON signs out.
-const readSession = pipe(
-	Effect.try(() => SecureStore.getItem(SESSION) ?? ''),
-	Effect.retry(Schedule.spaced('1 second')),
-	Effect.map(text =>
-		Option.flatMap(
-			Option.liftPredicate(text, String.isNonEmpty),
-			Schema.decodeUnknownOption(Schema.fromJsonString(Credentials))
-		)
-	)
-)
-export const sessionAtom = Atom.keepAlive(authRuntime.atom(readSession))
-
-const tokenRequest = Effect.fnUntraced(function* (clientId: string, params: Record<string, string>) {
-	const response = yield* (yield* HttpClient.HttpClient).execute(
-		pipe(
-			HttpClientRequest.post(DISCOVERY.tokenEndpoint),
-			HttpClientRequest.bodyUrlParams({...params, client_id: clientId, resource: [SERVER, TELEMETRY]})
-		)
-	)
-	if (response.status === 400 || response.status === 401) {
-		yield* Effect.tryPromise(() => SecureStore.deleteItemAsync(SESSION))
-		return yield* AuthError.make({message: 'Sign in again'})
-	}
-	const token = yield* HttpClientResponse.schemaBodyJson(TokenResponse)(response)
-	const text = yield* Schema.encodeEffect(Schema.fromJsonString(Credentials))({
-		accessToken: token.access_token,
-		clientId,
-		expiresAt: (yield* Clock.currentTimeMillis) + token.expires_in * 1000,
-		refreshToken: token.refresh_token
-	})
+export const session = MobileSession.make('opm', SERVER, {
+	clear: Effect.tryPromise(() => SecureStore.deleteItemAsync(SESSION)),
+	read: Effect.try(() => SecureStore.getItem(SESSION) ?? ''),
 	// Readable from the first unlock after a restart, so a socket that reconnects while the iPhone is locked finds it.
-	yield* Effect.try(() => SecureStore.setItem(SESSION, text, {keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK}))
-	return token.access_token
-}, Effect.timeout('10 seconds'))
+	write: text =>
+		Effect.try(() => SecureStore.setItem(SESSION, text, {keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK}))
+})
 
-const sessionToken = Effect.fnUntraced(
-	function* (refresh: boolean) {
-		const credentials = yield* Effect.fromOption(yield* readSession)
-		if (!refresh && credentials.expiresAt > (yield* Clock.currentTimeMillis) + 60_000) return credentials.accessToken
-		return yield* tokenRequest(credentials.clientId, {
-			grant_type: 'refresh_token',
-			refresh_token: credentials.refreshToken
-		})
-	},
-	Semaphore.withPermit(refreshing),
-	Effect.mapError(cause => AuthError.make({cause, message: 'Sign in to opm'}))
-)
-
-const accessToken = sessionToken(false)
-
-export const signInAtom = authRuntime.fn(() =>
-	pipe(
-		Effect.gen(function* () {
-			const redirectUri = makeRedirectUri({path: 'auth/callback', scheme: MobileRuntime.extra.scheme})
-			const client = yield* HttpClient.HttpClient
-			const registration = yield* pipe(
-				HttpClientRequest.post(`${AUTH_URL}/api/auth/oauth2/register`),
-				HttpClientRequest.bodyJson({
-					application_type: 'native',
-					client_name: 'opm',
-					grant_types: ['authorization_code', 'refresh_token'],
-					redirect_uris: [redirectUri],
-					response_types: ['code'],
-					token_endpoint_auth_method: 'none'
-				}),
-				Effect.flatMap(request => client.execute(request)),
-				Effect.flatMap(HttpClientResponse.schemaBodyJson(ClientRegistration))
-			)
-			const request = new AuthRequest({
-				clientId: registration.client_id,
-				extraParams: {resource: SERVER},
-				redirectUri,
-				scopes: ['deslop', 'offline_access']
-			})
-			const url = new URL(yield* Effect.tryPromise(() => request.makeAuthUrlAsync(DISCOVERY)))
-			url.searchParams.append('resource', TELEMETRY)
-			const result = yield* Effect.tryPromise(() => request.promptAsync(DISCOVERY, {url: url.href}))
-			if (result.type !== 'success') return yield* AuthError.make({message: 'Sign-in was not completed'})
-			if (result.params['iss'] !== `${AUTH_URL}/api/auth`) {
-				return yield* AuthError.make({message: 'The sign-in issuer did not match'})
-			}
-			yield* refreshing.withPermit(
-				tokenRequest(registration.client_id, {
-					code: result.params['code'] ?? '',
-					code_verifier: request.codeVerifier ?? '',
-					grant_type: 'authorization_code',
-					redirect_uri: redirectUri
-				})
-			)
-			yield* Atom.refresh(sessionAtom)
-		}),
-		Effect.mapError(cause => AuthError.make({cause, message: 'Cannot sign in to opm'})),
-		alert('Not Signed In')
-	)
-)
+export const signInAtom = session.runtime.fn(() => pipe(session.signIn, alert('Not Signed In')))
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/opm/lib/utils/RpcClient', {
 	group: RpcContracts,
 	protocol: pipe(
-		MobileRuntime.layer('@deslop/opm', accessToken)(SERVER),
-		Layer.provideMerge(RpcAuth.layerClient(accessToken)),
+		MobileRuntime.layer('@deslop/opm', session.accessToken)(SERVER),
+		Layer.provideMerge(RpcAuth.layerClient(session.accessToken)),
 		Layer.provide(FetchHttpClient.layer)
 	)
 }) {}
@@ -171,9 +60,7 @@ function apply(chapters: ChapterList, event: ChaptersEvent) {
 // The copy on the iPhone opens the app at once; without one the app waits for the server rather than open on nothing.
 export const chaptersAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get => {
-		const session = get(sessionAtom)
-		if (session._tag !== 'Success' || Option.isNone(session.value)) return Stream.succeed(Array.empty<ChapterItem>())
-		get(MobileRuntime.activationsAtom)
+		if (!session.signedIn(get)) return Stream.succeed(Array.empty<ChapterItem>())
 		// The empty list shown while the session loads is not a list on screen.
 		const shown = Option.exists(
 			get.self<AsyncResult.AsyncResult<ChapterList>>(),
@@ -213,26 +100,7 @@ export const chaptersAtom = Atom.keepAlive(
 					)
 				}),
 				Stream.unwrap,
-				// A server can forget an unexpired bearer; only a refused refresh clears the saved session.
-				Stream.tapError(error =>
-					pipe(
-						Effect.gen(function* () {
-							if (Schema.is(AuthError)(error)) {
-								yield* pipe(
-									Effect.flatMap(get.result(authRuntime), context =>
-										Effect.provideContext(sessionToken(true), context)
-									),
-									Effect.ignore({log: 'Warn', message: 'The session could not be renewed'})
-								)
-							}
-						}),
-						Effect.andThen(readSession),
-						Effect.flatMap(saved =>
-							Option.match(saved, {onNone: () => Atom.refresh(sessionAtom), onSome: () => Effect.void})
-						)
-					)
-				),
-				Stream.retry(Schedule.spaced('2 seconds'))
+				session.renewing
 			)
 		)
 	})
@@ -273,9 +141,7 @@ Notifications.setNotificationHandler({
 export const pushAtom = RpcClient.runtime.atom(get =>
 	pipe(
 		Effect.gen(function* () {
-			const session = get(sessionAtom)
-			if (session._tag !== 'Success' || Option.isNone(session.value)) return
-			get(MobileRuntime.activationsAtom)
+			if (!session.signedIn(get)) return
 			yield* Effect.tryPromise(() => Notifications.setBadgeCountAsync(0))
 			if (!(yield* Effect.tryPromise(() => Notifications.requestPermissionsAsync())).granted) return
 			const extra = yield* Schema.decodeUnknownEffect(Schema.Struct({eas: Schema.Struct({projectId: Schema.String})}))(
@@ -313,9 +179,7 @@ ErrorUtils.setGlobalHandler((error, fatal) => {
 export const diagnosticsAtom = RpcClient.runtime.atom(get =>
 	pipe(
 		Effect.gen(function* () {
-			const session = get(sessionAtom)
-			if (session._tag !== 'Success' || Option.isNone(session.value)) return
-			get(MobileRuntime.activationsAtom)
+			if (!session.signedIn(get)) return
 			if (crashFile.exists) {
 				yield* Effect.logError('A JavaScript error closed the app on an earlier run', crashFile.textSync())
 				crashFile.delete()

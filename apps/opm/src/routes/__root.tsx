@@ -39,7 +39,7 @@ import {colors, mono} from '@deslop/components-mobile/theme'
 import {assetAtom} from '@deslop/components-mobile/utils'
 import {updateAtom} from '@deslop/runtime/mobile'
 
-import {chaptersAtom, diagnosticsAtom, openedAtom, pushAtom, sessionAtom, signInAtom} from '#lib/utils.ts'
+import {chaptersAtom, diagnosticsAtom, openedAtom, pushAtom, session, signInAtom} from '#lib/utils.ts'
 import {ChaptersRoute} from '#routes/(home)/index.tsx'
 import {ReaderRoute} from '#routes/chapters/$number.tsx'
 import icon from '#routes/icon.png'
@@ -59,7 +59,6 @@ function Loading() {
 
 // A failure thrown while rendering is fatal in React Native and closes the app, so the root reads it as a value and offers a retry.
 function Failed(props: {cause: Cause.Cause<unknown>}) {
-	const refreshSession = useAtomRefresh(sessionAtom)
 	const refreshChapters = useAtomRefresh(chaptersAtom)
 	return (
 		// oxlint-disable-next-line shadcn/no-inline-styles -- The native SwiftUI host fills the React Native screen.
@@ -78,7 +77,6 @@ function Failed(props: {cause: Cause.Cause<unknown>}) {
 				</Text>
 				<Button
 					onPress={() => {
-						refreshSession()
 						refreshChapters()
 					}}
 					modifiers={[buttonStyle('glassProminent'), tint(colors.primary), foregroundStyle(colors.primaryForeground)]}
@@ -100,11 +98,10 @@ export function RootRoute() {
 }
 
 function SessionRoute() {
-	const session = useAtomSuspense(sessionAtom, {includeFailure: true})
+	const saved = useAtomSuspense(session.atom).value
 	const [signIn, start] = useAtom(signInAtom)
 	const iconUri = useAtomSuspense(assetAtom(icon)).value
-	if (AsyncResult.isFailure(session)) return <Failed cause={session.cause} />
-	if (Option.isSome(session.value)) {
+	if (Option.isSome(saved)) {
 		return (
 			<Suspense fallback={<Loading />}>
 				<AppRoutes />

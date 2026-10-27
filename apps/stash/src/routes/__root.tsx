@@ -31,7 +31,7 @@ import {colors, mono} from '@deslop/components-mobile/theme'
 import {assetAtom} from '@deslop/components-mobile/utils'
 import {updateAtom} from '@deslop/runtime/mobile'
 
-import {queryAtom, sessionAtom, signInAtom} from '#lib/utils.ts'
+import {queryAtom, session, signInAtom} from '#lib/utils.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
 import {ComposeRoute} from '#routes/compose.tsx'
 import logo from '#routes/logo.png'
@@ -55,10 +55,10 @@ export function RootRoute() {
 }
 
 function SessionRoute() {
-	const session = useAtomSuspense(sessionAtom).value
+	const saved = useAtomSuspense(session.atom).value
 	const [signIn, start] = useAtom(signInAtom)
 	const logoUri = useAtomSuspense(assetAtom(logo)).value
-	if (Option.isSome(session)) return <AppRoutes />
+	if (Option.isSome(saved)) return <AppRoutes />
 	return (
 		// oxlint-disable-next-line shadcn/no-inline-styles -- The native SwiftUI host fills the React Native screen.
 		<Host style={{flex: 1}}>
