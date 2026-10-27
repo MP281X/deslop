@@ -76,12 +76,6 @@
 				"functions": ["isPublic"],
 				"maxCyclomatic": 22,
 				"reason": "Keep the public IPv4 exclusions together for security review."
-			},
-			{
-				"files": ["apps/portfolio/src/routes/(home)/index.tsx"],
-				"functions": ["PortfolioRoute"],
-				"maxCognitive": 24,
-				"reason": "The score counts 23 hook calls; moving them into a wrapper does not simplify the screen's state ownership."
 			}
 		]
 	},
