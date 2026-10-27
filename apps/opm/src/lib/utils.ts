@@ -16,7 +16,7 @@ import {
 } from 'effect'
 
 import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
-import {AtomRpc, Atom} from 'effect/reactivity'
+import {AsyncResult, AtomRpc, Atom} from 'effect/reactivity'
 import {AuthRequest, makeRedirectUri} from 'expo-auth-session'
 import Constants from 'expo-constants'
 import {File, Paths} from 'expo-file-system'
@@ -174,7 +174,13 @@ export const chaptersAtom = Atom.keepAlive(
 		const session = get(sessionAtom)
 		if (session._tag !== 'Success' || Option.isNone(session.value)) return Stream.succeed(Array.empty<ChapterItem>())
 		get(MobileRuntime.activationsAtom)
+		// The empty list shown while the session loads is not a list on screen.
+		const shown = Option.exists(
+			get.self<AsyncResult.AsyncResult<ChapterList>>(),
+			result => AsyncResult.isSuccess(result) && Array.isReadonlyArrayNonEmpty(result.value)
+		)
 		return Stream.concat(
+			// Only a cold start reads the copy; a return from the background keeps the list on screen, which is newer.
 			pipe(
 				Effect.try(() => chaptersFile.textSync()),
 				Effect.flatMap(Schema.decodeEffect(ChaptersJson)),
@@ -182,7 +188,8 @@ export const chaptersAtom = Atom.keepAlive(
 				Stream.fromEffect,
 				Stream.flatMap(cached =>
 					Stream.fromIterable(Option.toArray(Option.filter(cached, Array.isReadonlyArrayNonEmpty)))
-				)
+				),
+				Stream.when(Effect.succeed(!shown))
 			),
 			pipe(
 				Effect.gen(function* () {
@@ -232,6 +239,9 @@ export const chaptersAtom = Atom.keepAlive(
 )
 
 // Reading
+
+// A chapter the list still lacks ten seconds after the reader opened it is out of reach, such as offline.
+export const unreachableAtom = Atom.family((_key: string) => Atom.make(Effect.as(Effect.sleep('10 seconds'), true)))
 
 // Concurrent, so finishing one chapter while opening the next never cancels either write; the client is read once so a reconnect replays none.
 export const readAtom = Atom.keepAlive(

@@ -1,14 +1,15 @@
-import {useAtomSet} from '@effect/atom-react'
+import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, MutableHashSet, Number, Option, pipe} from 'effect'
 
-import {ContentUnavailableView, Toolbar} from '@expo/ui/swift-ui'
-import {background, navigationBarTitleDisplayMode, navigationTitle} from '@expo/ui/swift-ui/modifiers'
+import {ContentUnavailableView, ProgressView, Toolbar} from '@expo/ui/swift-ui'
+import {background, frame, navigationBarTitleDisplayMode, navigationTitle} from '@expo/ui/swift-ui/modifiers'
+import {AsyncResult} from 'effect/reactivity'
 import {useRef, useState} from 'react'
 
 import {colors} from '@deslop/components-mobile/theme'
 
-import {readAtom} from '#lib/utils.ts'
+import {readAtom, unreachableAtom} from '#lib/utils.ts'
 import {PageStrip} from '#modules/native/index.ts'
 import {byNumber} from '#services/chapters/lib/utils.ts'
 import type {ChapterList, Series} from '#services/chapters/schema.ts'
@@ -29,13 +30,26 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; serie
 	const shown = Array.take(following, length)
 	// Where each chapter's first page sits in the strip.
 	const starts = Array.scan(shown, 0, (total, chapter) => total + chapter.pages.length)
+	const gaveUp = AsyncResult.isSuccess(useAtomValue(unreachableAtom(`${props.series}:${props.number}`)))
 
+	// A notification can open a chapter the copy on the iPhone does not have yet; the server's list brings it, unless it is out of reach.
 	if (!Array.isReadonlyArrayNonEmpty(shown)) {
+		if (gaveUp) {
+			return (
+				<ContentUnavailableView
+					title="Chapter Unavailable"
+					systemImage="book.closed"
+					modifiers={[navigationTitle(''), background(colors.background)]}
+				/>
+			)
+		}
 		return (
-			<ContentUnavailableView
-				title="Chapter Unavailable"
-				systemImage="book.closed"
-				modifiers={[navigationTitle(''), background(colors.background)]}
+			<ProgressView
+				modifiers={[
+					navigationTitle(''),
+					frame({maxHeight: Infinity, maxWidth: Infinity}),
+					background(colors.background)
+				]}
 			/>
 		)
 	}

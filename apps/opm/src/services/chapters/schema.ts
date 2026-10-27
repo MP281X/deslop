@@ -1,4 +1,4 @@
-import {Effect, Schema, Struct, pipe} from 'effect'
+import {Schema, Struct} from 'effect'
 
 export class ChaptersError extends Schema.TaggedError<ChaptersError>()('ChaptersError', {
 	cause: Schema.optional(Schema.Defect()),
@@ -26,8 +26,7 @@ export const Chapter = Schema.Struct({
 	reading: Schema.optionalKey(Reading),
 	// When the revision that supplied the current pages was posted; only a later revision replaces them.
 	revisedAt: Schema.optionalKey(Schema.Finite),
-	// The previous release stored manga only, on the server and in the iPhone's cache.
-	series: pipe(Series, Schema.withDecodingDefaultKey(Effect.succeed('manga'))),
+	series: Series,
 	// The cubari reader link the pages came from; a revision of the same chapter replaces it.
 	source: Schema.String,
 	// The chapter's name where the source has one, such as "Fury"; empty otherwise.
@@ -57,10 +56,6 @@ export const ReadingUpdate = Schema.Struct({
 export type ChapterNotification = typeof ChapterNotification.Type
 export const ChapterNotification = Schema.Struct({path: ChapterPath})
 
-export type MangaNotification = typeof MangaNotification.Type
-// Chapter-only notifications already delivered by the previous release always refer to manga.
-export const MangaNotification = Schema.Struct({chapter: Schema.Finite})
-
 export type PushToken = typeof PushToken.Type
 export const PushToken = Schema.String.check(Schema.isPattern(/^Expo(?:nent)?PushToken\[[\w-]{10,64}\]$/u))
 
@@ -75,15 +70,16 @@ export const CubariSeries = Schema.Struct({
 				Schema.Array(Schema.Union([Schema.String, Schema.Struct({src: Schema.String})]))
 			),
 			release_date: Schema.optionalKey(Schema.Record(Schema.String, Schema.Finite)),
-			title: Schema.optionalKey(Schema.String)
+			// imgchest albums without a name answer null.
+			title: Schema.optionalKey(Schema.NullOr(Schema.String))
 		})
 	)
 })
 
-// One Reddit post that links a chapter translation.
+// One Reddit post that links a chapter's translations, best first.
 export type Post = typeof Post.Type
 export const Post = Schema.Struct({
-	link: Schema.String,
+	links: Schema.NonEmptyArray(Schema.String),
 	number: Schema.Finite,
 	postedAt: Schema.Finite,
 	revised: Schema.Boolean,

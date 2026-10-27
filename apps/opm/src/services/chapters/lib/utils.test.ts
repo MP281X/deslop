@@ -8,10 +8,9 @@ import {ChapterItem} from '#services/chapters/schema.ts'
 
 const LINK = '<a href="https://cubari.moe/read/imgchest/abc123xyz/1/1/">[link]</a>'
 
-it('routes series-qualified notifications and keeps previously delivered manga targets', () => {
+it('routes series-qualified notifications', () => {
 	assert.deepStrictEqual(notificationOf({path: 'webcomic:161'}), Option.some({number: 161, series: 'webcomic'}))
 	assert.deepStrictEqual(notificationOf({path: 'manga:44.5'}), Option.some({number: 44.5, series: 'manga'}))
-	assert.deepStrictEqual(notificationOf({chapter: 161}), Option.some({number: 161, series: 'manga'}))
 	assert.deepStrictEqual(notificationOf({path: 'unknown:161'}), Option.none())
 	assert.deepStrictEqual(notificationOf(undefined), Option.none())
 })
@@ -24,6 +23,8 @@ it('classifies English manga and webcomic releases, preserving revisions and ski
 				{content: LINK, title: '[Revised] Chapter 211 [English]'},
 				{content: LINK, title: '[Webcomic] Chapter 160 [English]'},
 				{content: LINK, title: '[Webcomic] [Revised] Chapter 159 [English]'},
+				{content: LINK, title: 'Chapter 237/282 [English]'},
+				{content: LINK, title: 'Chapter 242/287 [Translations]'},
 				{content: LINK, title: '[Webcomic] Chapter 160 [RAW]'},
 				{content: LINK, title: '[OC] Webcomic Chapter 160'},
 				{content: LINK, title: 'RAW 243'},
@@ -41,6 +42,8 @@ it('classifies English manga and webcomic releases, preserving revisions and ski
 			Option.some(['manga', 211, true]),
 			Option.some(['webcomic', 160, false]),
 			Option.some(['webcomic', 159, true]),
+			Option.some(['manga', 237, false]),
+			Option.some(['manga', 242, false]),
 			Option.none(),
 			Option.none(),
 			Option.none(),
@@ -68,6 +71,7 @@ it('unwraps pages of the dead image proxy and drops its error texts', () => {
 	assert.strictEqual(nameOf('Chapter 225: New Blood 3'), 'New Blood 3')
 	assert.strictEqual(nameOf('One Punch Man Chapter 242'), '')
 	assert.strictEqual(nameOf('Translated'), '')
+	assert.strictEqual(nameOf('ONE PUNCH MAN CHAPTER 233 - ENGLISH TRANSLATIONS'), '')
 	assert.strictEqual(nameOf('OPM WC 160'), '')
 	assert.strictEqual(nameOf('OPM (Webcomic) - Chapter 158 - The Koi Pond'), 'The Koi Pond')
 })

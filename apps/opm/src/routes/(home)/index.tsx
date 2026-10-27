@@ -52,7 +52,7 @@ import {bottomBarSearch} from '@deslop/components-mobile/utils'
 import {readAtom} from '#lib/utils.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
 import icon from '#routes/icon.png'
-import {byNumber, nameOf, resumeOf, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
+import {byNumber, resumeOf, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
 import type {ChapterItem, ChapterList} from '#services/chapters/schema.ts'
 import {Series} from '#services/chapters/schema.ts'
 
@@ -121,7 +121,7 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 						]}
 					>
 						{Array.join(
-							Array.filter([nameOf(props.chapter.title), postedOn(props.chapter.postedAt)], String.isNonEmpty),
+							Array.filter([props.chapter.title, postedOn(props.chapter.postedAt)], String.isNonEmpty),
 							' · '
 						)}
 					</Text>
@@ -169,9 +169,7 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 
 // A query matches a chapter's number from its start, or any part of its name.
 function matches(chapter: ChapterItem, query: string) {
-	return (
-		String.startsWith(query)(`${chapter.number}`) || String.includes(query)(String.toLowerCase(nameOf(chapter.title)))
-	)
+	return String.startsWith(query)(`${chapter.number}`) || String.includes(query)(String.toLowerCase(chapter.title))
 }
 
 export function ChaptersRoute(props: {
