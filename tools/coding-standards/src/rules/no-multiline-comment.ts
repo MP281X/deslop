@@ -30,7 +30,8 @@ export const noMultilineComment = defineRule({
 				),
 				Array.forEach(comment =>
 					context.report({
-						message: 'A comment is one line that states an outside constraint; rename or split the code instead.',
+						message:
+							'Keep one short line that states an outside constraint, or delete the comment and rename or split the code; joining the lines into one long line is not a fix.',
 						node: comment
 					})
 				)

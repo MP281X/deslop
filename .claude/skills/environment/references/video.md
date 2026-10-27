@@ -15,7 +15,7 @@ A proof video is a short motion piece the user wants to watch; a raw recording o
   })()
   ```
 
-- **Compose** in a scratch HyperFrames project, portrait for a phone recording and landscape only for a layout that exists only on desktop, with the recordings re-encoded below (a side that is not a multiple of 16 renders a black strip) and the app's font in `assets/`; `vpx hyperframes@0.8.141 docs <topic>` holds the composition contract. Never run HyperFrames feedback, publish or cloud commands. Every video keeps this look, in the app's font, primary and radius:
+- **Compose** in a scratch HyperFrames project in the app's primary orientation, landscape for a desktop web app such as Dual and portrait for a phone app, with the recordings re-encoded below (a side that is not a multiple of 16 renders a black strip) and the app's font in `assets/`; `vpx hyperframes@0.8.141 docs <topic>` holds the composition contract. Never run HyperFrames feedback, publish or cloud commands. Every video keeps this look, in the app's font, primary and radius:
   - **Layout.** On the app's foreground hue darkened to near black, top to bottom: the progress, the caption, then the recording in a frame with the app's radius; margins of 6 % and a caption of 5 % of the short side. Nothing covers the recording but the touch marker and the reveal: no scrim, no caption over it.
   - **Progress.** One 6 px segment per chapter, filling with the primary over its chapter.
   - **Captions.** Weight 650; words rise into focus one after another (blur 12 px to 0, 0.45 s, 0.035 s stagger) and leave before the next caption.
@@ -27,7 +27,7 @@ A proof video is a short motion piece the user wants to watch; a raw recording o
 
 ```bash
 export HYPERFRAMES_NO_TELEMETRY=1 HYPERFRAMES_SKIP_SKILLS=1 HYPERFRAMES_BROWSER_PATH=$(ls -d ~/.t3/tools/chrome-headless-shell/linux64/*/chrome-headless-shell | tail -1)
-vpx hyperframes@0.8.141 init <claim> --example blank --resolution portrait --non-interactive && mkdir <claim>/assets
+vpx hyperframes@0.8.141 init <claim> --example blank --resolution <landscape|portrait> --non-interactive && mkdir <claim>/assets
 ffmpeg -i <recording> -vf 'crop=trunc(iw/16)*16:trunc(ih/16)*16:0:0' -r 30 -force_key_frames 'expr:gte(t,n_forced)' -c:v libx264 -pix_fmt yuv420p <claim>/assets/chapter-<n>.mp4
 vpx hyperframes@0.8.141 check && vpx hyperframes@0.8.141 render --quality delivery --output <claim>.mp4 # inside <claim>/
 ffmpeg -ss <second> -i <claim>.mp4 -frames:v 1 -vf scale=390:-1 <frame>.png # read each chapter's frame at phone size

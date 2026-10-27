@@ -46,7 +46,12 @@ Choose the accumulator before the loop. Consume once after collection; keep `Mut
 
 ## Gate
 
-Use `AGENTS.md`'s editing and finished-change commands for this checkout. A focused pass guides the edit but does not check unchanged consumers of an exported type. Chain the required stages bare with `&&`, preserving their exit status and diagnostics.
+Apply the whole change, then loop `AGENTS.md`'s fix, check and test from the root until they pass; no per-file or per-edit pass. Run them bare, so every diagnostic and the real exit status show:
+
+```bash
+<fix> && <check> && <test>
+# not: <check> 2>&1 | rg error | head -20, which hides the next error and the exit status
+```
 
 Keep autofixes and formatting. Read the first remaining error in each file together with the checks its fix touches; repair that coherent batch before rerunning. A second spelling failure is a signal to revisit the owner, not add another layer.
 
