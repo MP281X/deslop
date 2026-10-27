@@ -16,6 +16,16 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/auth/lib/utils/Rpc
 	protocol: WebRuntime.layer('@deslop/auth')
 }) {}
 
+// A watch opens again after the socket drops; its other failures reach the screen.
+function reconnecting<A, E extends {_tag: string}, R>(stream: Stream.Stream<A, E, R>) {
+	return Stream.retry(stream, $ =>
+		pipe(
+			$(Schedule.spaced('1 second')),
+			Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
+		)
+	)
+}
+
 // Live, so an account waiting for an admin moves on once allowed; a declined or removed account is signed out and reads None.
 export const accountAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(
@@ -23,12 +33,7 @@ export const accountAtom = Atom.keepAlive(
 			RpcClient,
 			Effect.map(client => client('auth.account', undefined)),
 			Stream.unwrap,
-			Stream.retry($ =>
-				pipe(
-					$(Schedule.spaced('1 second')),
-					Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
-				)
-			),
+			reconnecting,
 			Stream.map(Option.some),
 			Stream.catchTag('AuthError', () => Stream.make(Option.none<Account>()))
 		)
@@ -42,12 +47,7 @@ export const lookupAtom = Atom.family((code: string) =>
 			RpcClient,
 			Effect.map(client => client('auth.lookup', {code})),
 			Stream.unwrap,
-			Stream.retry($ =>
-				pipe(
-					$(Schedule.spaced('1 second')),
-					Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
-				)
-			)
+			reconnecting
 		)
 	)
 )
@@ -58,12 +58,7 @@ export const peopleAtom = Atom.keepAlive(
 			RpcClient,
 			Effect.map(client => client('auth.people', undefined)),
 			Stream.unwrap,
-			Stream.retry($ =>
-				pipe(
-					$(Schedule.spaced('1 second')),
-					Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
-				)
-			)
+			reconnecting
 		)
 	)
 )
@@ -84,12 +79,7 @@ export const requestAtom = Atom.family((request: string) =>
 			RpcClient,
 			Effect.map(client => client('auth.wait', {request})),
 			Stream.unwrap,
-			Stream.retry($ =>
-				pipe(
-					$(Schedule.spaced('1 second')),
-					Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
-				)
-			),
+			reconnecting,
 			Stream.tap(status =>
 				pipe(
 					Match.value(status),
@@ -116,7 +106,10 @@ export function approveLink(id: string) {
 	return `${location.origin}/?code=${id}`
 }
 
-export const linkedCode = typedCode(new URLSearchParams(location.search).get('code') ?? '')
+// Read when the approve page opens, so returning to it from People does not bring back an answered code.
+export function linkedCode() {
+	return typedCode(new URLSearchParams(location.search).get('code') ?? '')
+}
 
 export function applicationName(request: PendingAuthorization) {
 	return Array.match(

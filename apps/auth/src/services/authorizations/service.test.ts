@@ -227,8 +227,12 @@ function cookie(response: Response) {
 	)
 }
 
-const signIn = Effect.fnUntraced(function* (web: Effect.Success<ReturnType<typeof servers>>['issuer'], login: string) {
-	const start = yield* send(web, '/auth/github')
+const signIn = Effect.fnUntraced(function* (
+	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
+	login: string,
+	search = ''
+) {
+	const start = yield* send(web, `/auth/github${search}`)
 	const target = new URL(start.headers.get('location') ?? '')
 	return yield* send(
 		web,
@@ -479,6 +483,12 @@ it.layer(NodeServices.layer)(test => {
 			// One code reads one sign-in: the other waiting one stays out of the answer, and an unknown code reads nothing.
 			assert.deepStrictEqual(found.ids, [first.id])
 			assert.deepStrictEqual((yield* lookup('BCDFGHJK')).ids, [])
+			// A phone that opens the approve link signed out keeps the code through GitHub sign-in.
+			assert.strictEqual(
+				(yield* signIn(web.issuer, 'octocat', `?code=${first.id}`)).headers.get('location'),
+				`/?code=${first.id}`
+			)
+			assert.strictEqual((yield* signIn(web.issuer, 'octocat')).headers.get('location'), '/')
 			assert.strictEqual(
 				(yield* send(web.issuer, `/auth/request?request=${first.id}`, {headers: {cookie: session}})).status,
 				400
@@ -614,6 +624,17 @@ it.layer(NodeServices.layer)(test => {
 		Effect.gen(function* () {
 			const web = yield* servers()
 			assert.strictEqual((yield* send(web.app, '/me')).status, 401)
+			// Registration is public, so a client names only a few short callbacks.
+			assert.strictEqual(
+				(yield* send(web.issuer, '/api/auth/oauth2/register', {
+					body: yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
+						redirect_uris: Array.replicate('http://127.0.0.1:34567/callback', 5)
+					}),
+					headers: {'content-type': 'application/json'},
+					method: 'POST'
+				})).status,
+				400
+			)
 			const session = cookie(yield* signIn(web.issuer, 'octocat'))
 			assert.strictEqual((yield* send(web.issuer, '/me', {headers: {cookie: session}})).status, 200)
 			assert.strictEqual(
@@ -688,7 +709,7 @@ it.layer(NodeServices.layer)(test => {
 		})
 	)
 
-	test.effect('rotates refresh tokens, revokes a reused family, and revokes active access at sign-out', () =>
+	test.effect('rotates refresh tokens, revokes a reused or revoked family, and ends the session at sign-out', () =>
 		Effect.gen(function* () {
 			const web = yield* servers()
 			const session = cookie(yield* signIn(web.issuer, 'octocat'))

@@ -7,6 +7,7 @@ import {
 	Crypto,
 	Effect,
 	FileSystem,
+	HashSet,
 	Layer,
 	Match,
 	Number,
@@ -118,6 +119,19 @@ function allowedRedirect(redirect: string) {
 	)
 }
 
+// Anyone can register a client, so only the newest stay; an agent whose client was dropped registers again.
+function newestClients(tokens: AuthState['tokens']) {
+	const kept = pipe(
+		Record.toEntries(tokens),
+		Array.filter(pair => pair[1].payload._tag === 'Client'),
+		Array.sort(Order.flip(Order.mapInput(Order.Number, (pair: [string, {expiresAt: number}]) => pair[1].expiresAt))),
+		Array.take(200),
+		Array.map(pair => pair[0]),
+		HashSet.fromIterable
+	)
+	return Record.filter(tokens, (entry, key) => entry.payload._tag !== 'Client' || HashSet.has(kept, key))
+}
+
 function revokeFamily(family: string, draft: Ref.Ref<AuthState>) {
 	return Ref.update(draft, current => ({
 		...current,
@@ -223,9 +237,6 @@ export class Authorizations extends Context.Service<
 					}))
 					return token
 				})
-				function save(payload: Stored, seconds: number) {
-					return transact(draft => mint(payload, seconds, draft))
-				}
 				const load = Effect.fnUntraced(function* (token: string, draft: Ref.Ref<AuthState> = state) {
 					const now = yield* Clock.currentTimeMillis
 					return yield* pipe(
@@ -284,7 +295,8 @@ export class Authorizations extends Context.Service<
 								HttpClientRequest.get(`https://api.github.com/user/${id}`),
 								HttpClientRequest.setHeaders({accept: 'application/vnd.github+json', 'user-agent': '@deslop/auth'}),
 								request => client.execute(request),
-								Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubUser))
+								Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubUser)),
+								Effect.timeout('10 seconds')
 							)
 							const since = yield* Clock.currentTimeMillis
 							yield* transact(draft =>
@@ -703,9 +715,16 @@ export class Authorizations extends Context.Service<
 							}
 							return HttpServerResponse.jsonUnsafe(
 								{
-									client_id: yield* save(
-										{_tag: 'Client', name: params.client_name ?? 'Unknown client', redirects: params.redirect_uris},
-										365 * 86400
+									client_id: yield* transact(draft =>
+										Effect.gen(function* () {
+											const token = yield* mint(
+												{_tag: 'Client', name: params.client_name ?? 'Unknown client', redirects: params.redirect_uris},
+												365 * 86400,
+												draft
+											)
+											yield* Ref.update(draft, current => ({...current, tokens: newestClients(current.tokens)}))
+											return token
+										})
 									),
 									grant_types: ['authorization_code', 'refresh_token'],
 									redirect_uris: params.redirect_uris,
@@ -853,13 +872,13 @@ export class Authorizations extends Context.Service<
 									const key = yield* hash(params.refresh_token)
 									yield* Ref.update(draft, current => ({
 										...current,
-										tokens: Record.map(current.tokens, (entry, savedKey) => {
-											if (key !== savedKey) return entry
-											return {
+										tokens: pipe(
+											Record.modify(current.tokens, key, entry => ({
 												...entry,
 												payload: {_tag: 'UsedRefresh' as const, clientId: refresh.clientId, family: refresh.family}
-											}
-										})
+											})),
+											Option.getOrElse(() => current.tokens)
+										)
 									}))
 									return yield* grantTokens(refresh, resources, draft)
 								})
@@ -930,7 +949,7 @@ export class Authorizations extends Context.Service<
 								yield* receiver(params.request, (yield* HttpServerRequest.HttpServerRequest).headers)
 							}
 							const verifier = Base64Url.encode(yield* random.randomBytes(32))
-							const loginState = yield* save({_tag: 'Login', ...params, verifier}, 600)
+							const loginState = yield* transact(draft => mint({_tag: 'Login', ...params, verifier}, 600, draft))
 							const authorize = new URL('https://github.com/login/oauth/authorize')
 							authorize.search = UrlParams.toString(
 								UrlParams.fromInput({
@@ -981,23 +1000,26 @@ export class Authorizations extends Context.Service<
 									redirect_uri: `${url}/auth/github/callback`
 								}),
 								request => client.execute(request),
-								Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubToken))
+								Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubToken)),
+								Effect.timeout('10 seconds')
 							)
 							const github = yield* pipe(
 								HttpClientRequest.get('https://api.github.com/user'),
 								HttpClientRequest.bearerToken(token.access_token),
 								HttpClientRequest.setHeaders({accept: 'application/vnd.github+json', 'user-agent': '@deslop/auth'}),
 								request => client.execute(request),
-								Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubUser))
+								Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubUser)),
+								Effect.timeout('10 seconds')
 							)
 							const signedInToken = yield* register(github)
 							return HttpServerResponse.setCookieUnsafe(
 								HttpServerResponse.expireCookieUnsafe(
 									HttpServerResponse.redirect(
-										Boolean.match(flow.request === undefined, {
-											onFalse: () => `/?request=${flow.request}`,
-											onTrue: () => '/'
-										})
+										pipe(
+											UrlParams.toString(UrlParams.fromInput({code: flow.code, request: flow.request})),
+											Option.liftPredicate(String.isNonEmpty),
+											Option.match({onNone: () => '/', onSome: search => `/?${search}`})
+										)
 									),
 									LOGIN_COOKIE,
 									COOKIE
@@ -1033,6 +1055,8 @@ export class Authorizations extends Context.Service<
 							yield* sameOrigin
 							const token = (yield* HttpServerRequest.HttpServerRequest).cookies[SESSION_COOKIE] ?? ''
 							yield* transact(draft => remove(token, draft))
+							// The browser's other open pages watch the account and show it signed out.
+							yield* PubSub.publish(changes, true)
 							return HttpServerResponse.expireCookieUnsafe(HttpServerResponse.empty(), SESSION_COOKIE, {
 								...COOKIE,
 								domain: pipe(new URL(url).hostname, String.split('.'), Array.drop(1), Array.join('.'))
