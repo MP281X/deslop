@@ -104,11 +104,21 @@ export const viewAtom = Atom.family((invite: string) =>
 
 export const steerAtom = RpcClient.mutation('signal.steer')
 export const actAtom = RpcClient.mutation('signal.act')
-// Holds CORE's answer so far, waiting until the stream ends.
-export const askAtom = RpcClient.runtime.fn((payload: {drone?: number; text: string}) =>
-	Stream.unwrap(Effect.map(RpcClient, client => client('signal.ask', payload)))
-)
-
 // The renderer publishes which drone the signal is on; the HUD asks it to jump to another.
 export const focusAtom = Atom.keepAlive(Atom.make<Focus>({controlled: false, overview: false}))
 export const jumpAtom = Atom.keepAlive(Atom.make({at: 0, drone: 0}))
+
+// Holds CORE's reply so far, waiting until the stream ends; an order for the drone you fly hands it back, as jumping to it does.
+export const askAtom = RpcClient.runtime.fn((payload: {drone?: number; text: string}, get) =>
+	pipe(
+		Stream.unwrap(Effect.map(RpcClient, client => client('signal.ask', payload))),
+		Stream.tap(reply =>
+			Effect.sync(() => {
+				const focus = get(focusAtom)
+				if (reply.done && focus.controlled && focus.drone !== undefined && Array.contains(reply.drones, focus.drone)) {
+					get.set(jumpAtom, {at: get(jumpAtom).at + 1, drone: focus.drone})
+				}
+			})
+		)
+	)
+)

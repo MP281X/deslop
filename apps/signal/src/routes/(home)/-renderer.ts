@@ -143,12 +143,12 @@ type Model = {altitude: number; hull: Part[]; lights: Part[]; rotors: [number, n
 
 type Label = {bar: HTMLElement; element: HTMLElement; name: HTMLElement}
 
-// A body moves from where it was drawn when the last frame arrived (from) to the server's position (target) over span ms from start.
+type Snapshot = {at: number; x: number; z: number}
+
+// trail holds the last server positions by server time; a body is drawn between the two around the render time.
 type Body = {
 	bank: number
 	flash: number
-	fromX: number
-	fromZ: number
 	heading: number
 	health: number
 	id: number
@@ -156,9 +156,8 @@ type Body = {
 	label: Label
 	pitch: number
 	seen: number
-	span: number
-	start: number
 	targetHeading: number
+	trail: Snapshot[]
 	targetX: number
 	targetZ: number
 	vx: number
@@ -534,6 +533,28 @@ function locate(entry: MemoryEntry) {
 	return entry.at
 }
 
+// Where a trail puts a body at a server time: between the snapshots around it, or up to 120 ms past the last at its last speed.
+function sample(trail: Snapshot[], at: number) {
+	const index = Number.clamp(
+		Option.getOrElse(
+			Array.findFirstIndex(trail, snapshot => snapshot.at >= at),
+			() => trail.length
+		),
+		{maximum: Number.max(1, trail.length - 1), minimum: 1}
+	)
+	const from = trail[index - 1] ?? trail[0] ?? {at, x: 0, z: 0}
+	const to = trail[index] ?? from
+	const span = Number.max(to.at - from.at, 1)
+	const progress = Number.clamp((at - from.at) / span, {maximum: 1 + 120 / span, minimum: 0})
+	const moving = bit(progress < 1 + 120 / span)
+	return {
+		vx: (((to.x - from.x) * 1000) / span) * moving,
+		vz: (((to.z - from.z) * 1000) / span) * moving,
+		x: from.x + (to.x - from.x) * progress,
+		z: from.z + (to.z - from.z) * progress
+	}
+}
+
 function damp(rate: number, dt: number) {
 	return 1 - Math.exp(-rate * dt)
 }
@@ -726,6 +747,7 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 		buttons: boolean[]
 		cameraVelocity: THREE.Vector3
 		cameraX: number
+		cameraY: number
 		cameraZ: number
 		controlled: boolean
 		distance: number
@@ -740,8 +762,7 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 		raf: number
 		sentX: number
 		sentZ: number
-		serverAt: number
-		span: number
+		offset?: number
 		velocityX: number
 		velocityZ: number
 		view?: View
@@ -750,6 +771,7 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 		buttons: [],
 		cameraVelocity: new THREE.Vector3(),
 		cameraX: 0,
+		cameraY: 0,
 		cameraZ: 0,
 		controlled: false,
 		distance: 40,
@@ -762,8 +784,6 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 		raf: 0,
 		sentX: 0,
 		sentZ: 0,
-		serverAt: 0,
-		span: 115,
 		velocityX: 0,
 		velocityZ: 0,
 		zoom: 1
@@ -906,7 +926,7 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 		return pad
 	}
 
-	function upsert(info: EntityInfo, record: Float32Array, frame: number, time: number) {
+	function upsert(info: EntityInfo, record: Float32Array, frame: number, at: number) {
 		const id = record[0] ?? 0
 		const x = record[1] ?? 0
 		const z = record[2] ?? 0
@@ -917,8 +937,6 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 			MutableHashMap.set(bodies, id, {
 				bank: 0,
 				flash: 0,
-				fromX: x,
-				fromZ: z,
 				heading,
 				health,
 				id,
@@ -926,11 +944,10 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 				label: label(controls.labels, `${CODES[info.kind]}-${id}`),
 				pitch: 0,
 				seen: frame,
-				span: state.span,
-				start: time,
 				targetHeading: heading,
 				targetX: x,
 				targetZ: z,
+				trail: [{at, x, z}],
 				vx: 0,
 				vy: 0,
 				vz: 0,
@@ -945,17 +962,15 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 		body.health = health
 		body.info = info
 		body.seen = frame
+		// A cut (a respawn, a relocated base) restarts the trail instead of sliding across the map.
+		const cut = Math.hypot(x - body.targetX, z - body.targetZ) > 24
+		body.trail = Array.append(Array.takeRight(body.trail, 7 * bit(!cut)), {at, x, z})
 		// The controlled drone is predicted locally; the server only wins when it disagrees by more than a few tiles.
 		if (predicted && Math.hypot(x - body.x, z - body.z) <= 6) return
-		// A cut (a respawn, a relocated base, a correction) jumps instead of sliding across the map.
-		if (predicted || Math.hypot(x - body.x, z - body.z) > 24) {
+		if (predicted || cut) {
 			body.x = x
 			body.z = z
 		}
-		body.fromX = body.x
-		body.fromZ = body.z
-		body.span = state.span
-		body.start = time
 		body.targetHeading = heading
 		body.targetX = x
 		body.targetZ = z
@@ -1012,13 +1027,12 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 		}
 	}
 
-	// Each frame's positions are reached over the server time since the previous frame, plus 15% slack for network jitter.
+	// The server clock is the client clock plus the largest offset seen, the frame that came fastest; it decays 1 ms a frame to follow drift.
 	function applyView(view: View, time: number) {
-		state.span = Number.clamp((view.at - state.serverAt) * 1.15, {maximum: 300, minimum: 50})
-		state.serverAt = view.at
+		state.offset = Number.max(view.at - time, (state.offset ?? view.at - time) - 1)
 		for (const offset of Array.range(0, view.positions.length / STRIDE - 1)) {
 			const record = view.positions.subarray(offset * STRIDE, offset * STRIDE + STRIDE)
-			Option.map(HashMap.get(view.info, record[0] ?? 0), info => upsert(info, record, view.frame, time))
+			Option.map(HashMap.get(view.info, record[0] ?? 0), info => upsert(info, record, view.frame, view.at))
 		}
 		for (const body of Array.fromIterable(MutableHashMap.values(bodies))) {
 			if (body.seen !== view.frame) {
@@ -1091,17 +1105,24 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 		state.velocityZ += (input.z * STATS[body.info.kind].speed - state.velocityZ) * damp(7, dt)
 		// The prediction parts from other units the way the server does, so the two stay in agreement.
 		const push = separation(
-			{id, size: STATS[body.info.kind].size, x: body.x, z: body.z},
+			{id, mobile: true, size: STATS[body.info.kind].size, x: body.x, z: body.z},
 			Array.map(
 				Array.filter(
 					Array.fromIterable(MutableHashMap.values(bodies)),
 					other => Math.abs(other.x - body.x) < 4 && Math.abs(other.z - body.z) < 4
 				),
-				other => ({id: other.id, size: STATS[other.info.kind].size, x: other.x, z: other.z})
+				other => ({
+					id: other.id,
+					// Others do not yield to a predicted drone, so it takes the whole overlap.
+					mobile: false,
+					size: STATS[other.info.kind].size,
+					x: other.x,
+					z: other.z
+				})
 			)
 		)
-		body.x += state.velocityX * dt + push.x * damp(6.6, dt)
-		body.z += state.velocityZ * dt + push.z * damp(6.6, dt)
+		body.x += state.velocityX * dt + push.x
+		body.z += state.velocityZ * dt + push.z
 		body.targetX = body.x
 		body.targetZ = body.z
 		if (Math.hypot(state.velocityX, state.velocityZ) > 0.2) {
@@ -1126,9 +1147,16 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 		const anchor = bodyOf(state.drone) ?? Option.getOrUndefined(Array.head(fleet))
 		// Signed out, the camera circles a dry stretch of highland, rock and ore found by probing the seeded world.
 		if (anchor === undefined) {
-			return {distance: 46, x: -400 + Math.sin(time * 0.00003) * 40, z: -176 + Math.cos(time * 0.00003) * 30}
+			return {
+				distance: 46,
+				follow: false,
+				x: -400 + Math.sin(time * 0.00003) * 40,
+				y: groundAt(-400, -176),
+				z: -176 + Math.cos(time * 0.00003) * 30
+			}
 		}
-		if (!state.overview) return {distance: 15 * state.zoom, x: anchor.x, z: anchor.z}
+		// Following a drone, the camera looks at the drone itself, so it stays centred at any zoom and altitude.
+		if (!state.overview) return {distance: 15 * state.zoom, follow: true, x: anchor.x, y: anchor.y, z: anchor.z}
 		const cluster = Array.filter(fleet, body => Math.hypot(body.x - anchor.x, body.z - anchor.z) < 40)
 		const xs = Array.map(cluster, body => body.x)
 		const zs = Array.map(cluster, body => body.z)
@@ -1146,15 +1174,18 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 					),
 					{maximum: 95, minimum: 20}
 				) * state.zoom,
+			follow: false,
 			x: (left + right) / 2,
+			y: Number.max(0, groundAt((left + right) / 2, (top + bottom) / 2)),
 			z: (top + bottom) / 2
 		}
 	}
 
-	// A critically damped spring moves the camera; a jump of more than 24 tiles cuts instead of panning.
+	// A critically damped spring pans the camera between targets; once it has arrived on a followed drone it locks on, so a fast drone never drifts off centre. A jump of more than 24 tiles cuts.
 	function frameCamera(time: number, dt: number) {
 		const target = aim(time)
-		if (Math.hypot(target.x - state.cameraX, target.z - state.cameraZ) > 24 || state.frame < 2) {
+		const gap = Math.hypot(target.x - state.cameraX, target.z - state.cameraZ)
+		if (gap > 24 || state.frame < 2 || (target.follow && gap < 0.5)) {
 			state.cameraX = target.x
 			state.cameraZ = target.z
 			state.cameraVelocity.set(0, 0, 0)
@@ -1163,12 +1194,12 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 		state.cameraVelocity.z += ((target.z - state.cameraZ) * 70 - state.cameraVelocity.z * 2 * Math.sqrt(70)) * dt
 		state.cameraX += state.cameraVelocity.x * dt
 		state.cameraZ += state.cameraVelocity.z * dt
+		state.cameraY += (target.y - state.cameraY) * damp(10, dt)
 		state.distanceVelocity +=
 			((target.distance - state.distance) * 45 - state.distanceVelocity * 2 * Math.sqrt(45)) * dt
 		state.distance += state.distanceVelocity * dt
-		const ground = Number.max(0, groundAt(state.cameraX, state.cameraZ))
-		camera.position.set(state.cameraX, ground, state.cameraZ).addScaledVector(VIEW_DIRECTION, state.distance)
-		camera.lookAt(state.cameraX, ground + 0.4, state.cameraZ)
+		camera.position.set(state.cameraX, state.cameraY, state.cameraZ).addScaledVector(VIEW_DIRECTION, state.distance)
+		camera.lookAt(state.cameraX, state.cameraY, state.cameraZ)
 		sun.position.set(state.cameraX - 8, 24, state.cameraZ + 10)
 		sun.target.position.set(state.cameraX, 0, state.cameraZ)
 	}
@@ -1184,17 +1215,18 @@ export function createRenderer(canvas: HTMLCanvasElement, controls: Controls) {
 		)
 	}
 
-	// Other bodies move at constant speed from frame to frame; the controlled one moves by local prediction in steer.
+	// Other bodies are drawn where their trail puts them 160 ms of server time ago, so a late frame never stalls them; the controlled one moves by local prediction in steer.
 	function glide(id: number, time: number, dt: number) {
 		const body = bodyOf(id)
 		if (body === undefined) return
 		const remote = bit(!(state.controlled && body.id === state.drone))
-		const alpha = Number.clamp((time - body.start) / body.span, {maximum: 1, minimum: 0})
-		body.x += (body.fromX + (body.targetX - body.fromX) * alpha - body.x) * remote
-		body.z += (body.fromZ + (body.targetZ - body.fromZ) * alpha - body.z) * remote
-		const moving = bit(alpha < 1)
-		const vx = ((body.targetX - body.fromX) * 1000 * moving * remote) / body.span + state.velocityX * (1 - remote)
-		const vz = ((body.targetZ - body.fromZ) * 1000 * moving * remote) / body.span + state.velocityZ * (1 - remote)
+		const now = sample(body.trail, time + (state.offset ?? 0) - 160)
+		body.x += (now.x - body.x) * remote
+		body.z += (now.z - body.z) * remote
+		const vx = now.vx * remote + state.velocityX * (1 - remote)
+		const vz = now.vz * remote + state.velocityZ * (1 - remote)
+		// A moving body faces where it is drawn going, not where the newer server heading points.
+		if (remote === 1 && Math.hypot(vx, vz) > 0.3) body.targetHeading = Math.atan2(vx, vz)
 		// Bank into turns and pitch into acceleration, from the eased change in velocity across and along the heading.
 		const ax = (vx - body.vx) * damp(8, dt)
 		const az = (vz - body.vz) * damp(8, dt)

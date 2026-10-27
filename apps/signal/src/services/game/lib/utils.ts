@@ -4,6 +4,7 @@ import type {MemoryEntry, Routine} from '#services/game/schema.ts'
 
 // The world is a pure function of the seed: server and client generate the same tiles, so terrain never crosses the network.
 const WORLD_SEED = 0x51_6e_41_4c
+const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
 export const CHUNK = 32
 export const CHUNK_TILES = 1024
 export const TICK_HZ = 20
@@ -18,7 +19,7 @@ export const YIELD = [0, 0, 0, 0, 0, 1, 0, 3, 2]
 // size is the radius a unit keeps clear around itself.
 export const STATS = {
 	builder: {cargo: 0, cost: 40, damage: 0, health: 60, range: 0, sight: 7, size: 0.55, speed: 5},
-	core: {cargo: 0, cost: 0, damage: 0, health: 600, range: 0, sight: 16, size: 1.8, speed: 0},
+	core: {cargo: 0, cost: 0, damage: 0, health: 600, range: 0, sight: 16, size: 2.4, speed: 0},
 	glitch: {cargo: 0, cost: 0, damage: 9, health: 45, range: 2.5, sight: 12, size: 0.45, speed: 7.5},
 	guard: {cargo: 0, cost: 45, damage: 14, health: 100, range: 8, sight: 11, size: 0.6, speed: 7},
 	hauler: {cargo: 24, cost: 35, damage: 0, health: 80, range: 0, sight: 7, size: 0.7, speed: 6},
@@ -47,7 +48,15 @@ export function bit(flag: boolean) {
 	return 0
 }
 
-type Disc = {id: number; size: number; x: number; z: number}
+type Disc = {id: number; mobile: boolean; size: number; x: number; z: number}
+
+// Places read as distance and compass bearing from a point of view, never as raw coordinates; north is -z.
+export function whereFrom(origin: {x: number; z: number}, target: {x: number; z: number}) {
+	const distance = Math.hypot(target.x - origin.x, target.z - origin.z)
+	if (distance < 3) return 'here'
+	const sector = Number.round(Math.atan2(target.x - origin.x, origin.z - target.z) / (Math.PI / 4), 0)
+	return `${Number.round(distance, 0)} m ${COMPASS[(sector + 8) % 8] ?? 'N'}`
+}
 
 // How far to move a unit out of the others it overlaps, along the line between centres; server and client prediction share it.
 export function separation(unit: Disc, others: Disc[]) {
@@ -55,7 +64,8 @@ export function separation(unit: Disc, others: Disc[]) {
 	for (const other of others) {
 		const dx = unit.x - other.x
 		const dz = unit.z - other.z
-		const depth = unit.size + other.size - Math.hypot(dx, dz)
+		// A unit takes the whole overlap with something that cannot move and half of it with another mover, which takes the other half.
+		const depth = (unit.size + other.size - Math.hypot(dx, dz)) * (1 - 0.5 * bit(other.mobile))
 		if (other.id !== unit.id && depth > 0) {
 			// Units on the same spot part along a direction their ids pick.
 			const angle = Math.atan2(dx, dz) + unit.id * 2.4 * bit(dx === 0 && dz === 0)

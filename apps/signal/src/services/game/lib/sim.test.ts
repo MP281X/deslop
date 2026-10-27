@@ -3,7 +3,7 @@ import {assert, it} from '@effect/vitest'
 import {Array, Number, Option, String} from 'effect'
 
 import {makeWorld} from '#services/game/lib/sim.ts'
-import {STRIDE} from '#services/game/lib/utils.ts'
+import {STATS, STRIDE} from '#services/game/lib/utils.ts'
 
 const ALICE = {id: '1', name: 'alice'}
 const BOB = {id: '2', name: 'bob'}
@@ -113,16 +113,34 @@ it('keeps drones sent to one spot apart from each other and from the core', () =
 	const frame = world.frame(alice, 15_100, CORE)
 	assert.isDefined(frame)
 	const records = Array.chunksOf(Array.fromIterable(new Float32Array(Uint8Array.from(frame.positions).buffer)), STRIDE)
+	function size(id: number) {
+		return Option.getOrElse(
+			Option.map(
+				Array.findFirst(frame?.entities ?? [], entity => entity.id === id),
+				entity => STATS[entity.kind].size
+			),
+			() => 0
+		)
+	}
+	// The closest pair, as a fraction of the distance their sizes keep between them.
 	assert.isAbove(
 		Array.reduce(Array.cartesian(records, records), 99, (nearest, pair) => {
 			if (pair[0][0] === pair[1][0]) return nearest
 			return Number.min(
 				nearest,
-				Math.hypot((pair[0][1] ?? 0) - (pair[1][1] ?? 0), (pair[0][2] ?? 0) - (pair[1][2] ?? 0))
+				Math.hypot((pair[0][1] ?? 0) - (pair[1][1] ?? 0), (pair[0][2] ?? 0) - (pair[1][2] ?? 0)) /
+					(size(pair[0][0] ?? 0) + size(pair[1][0] ?? 0))
 			)
 		}),
-		0.8
+		0.9
 	)
+})
+
+it('brings mined ore home to the base the drones crowd around', () => {
+	const world = makeWorld(Option.none())
+	const alice = world.connect(ALICE, 0)
+	for (const tick of Array.range(1, 4800)) world.step(tick * 50)
+	assert.isAbove(seen(world, alice, 240_100).hud?.ore ?? 0, 120)
 })
 
 it('restores fleets, memory and explored ground from a snapshot', () => {

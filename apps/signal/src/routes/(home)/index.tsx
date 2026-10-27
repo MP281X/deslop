@@ -15,11 +15,10 @@ import {MARKS, createRenderer} from './-renderer.ts'
 
 import {actAtom, askAtom, focusAtom, jumpAtom, steerAtom, viewAtom} from '#lib/utils.ts'
 import type {Focus, View} from '#lib/utils.ts'
-import {CODES, STATS, STRIDE} from '#services/game/lib/utils.ts'
+import {CODES, STATS, STRIDE, bit, whereFrom} from '#services/game/lib/utils.ts'
 import {DroneKind, MemoryEntry} from '#services/game/schema.ts'
-import type {EntityInfo, Hud, LogEntry, Point} from '#services/game/schema.ts'
+import type {EntityInfo, Hud, LogEntry, Point, Turn} from '#services/game/schema.ts'
 
-const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
 const KEYS = [
 	['Tab', 'next drone'],
 	['F', 'fly it'],
@@ -131,14 +130,6 @@ function Bar(props: {alert?: boolean; filled: number; of: number}) {
 	)
 }
 
-// Places read as distance and compass bearing from what you are looking at, never as raw coordinates; north is -z.
-function whereFrom(origin: Point, at: Point) {
-	const distance = Math.hypot(at.x - origin.x, at.z - origin.z)
-	if (distance < 3) return 'here'
-	const sector = Number.round(Math.atan2(at.x - origin.x, origin.z - at.z) / (Math.PI / 4), 0)
-	return `${Number.round(distance, 0)} m ${COMPASS[(sector + 8) % 8] ?? 'N'}`
-}
-
 function ago(time: number, now: number) {
 	const seconds = Number.max(0, Number.round((now - time) / 1000, 0))
 	if (seconds < 60) return `${seconds}s`
@@ -238,7 +229,7 @@ function Overlay(props: {hud: Hud; view: View}) {
 				<Readout base={props.hud.base} focus={focus} info={focused} unit={unit} />
 			)}
 			{focus.overview && <Intel hud={props.hud} now={props.view.at} origin={origin} />}
-			<Ask drone={focus.drone} offline={props.hud.core.planner === 'offline'} />
+			<Ask chat={props.hud.chat} drone={focus.drone} offline={props.hud.core.planner === 'offline'} />
 			<Hints focus={focus} />
 		</>
 	)
@@ -305,36 +296,57 @@ function Rail(props: {
 	units: HashMap.HashMap<number, Unit>
 }) {
 	const jump = useAtomSet(jumpAtom)
+	// Drones that work together share a group, so each group reads as one crew with what each member is doing.
 	return (
-		<nav aria-label="Fleet" className="bg-background/85 absolute top-1/2 left-4 flex -translate-y-1/2 flex-col py-1">
-			{Array.map(props.fleet, member => {
-				const health = Option.getOrElse(
-					Option.map(HashMap.get(props.units, member.id), unit => unit.health),
-					() => 1
+		<nav
+			aria-label="Fleet"
+			className="bg-background/85 absolute top-1/2 left-4 flex w-56 -translate-y-1/2 flex-col py-1"
+		>
+			{Array.map(
+				Array.match(props.fleet, {
+					onEmpty: () => [],
+					onNonEmpty: fleet => Array.groupWith(fleet, (first, second) => first.group === second.group)
+				}),
+				crew => (
+					<section key={crew[0].group} className="flex flex-col pb-1">
+						<h2 className="text-muted-foreground px-2 pt-1 tracking-widest uppercase">
+							{crew[0].group} <span className="text-foreground/40">{crew.length}</span>
+						</h2>
+						{Array.map(crew, member => {
+							const health = Option.getOrElse(
+								Option.map(HashMap.get(props.units, member.id), unit => unit.health),
+								() => 1
+							)
+							return (
+								<Button
+									key={member.id}
+									variant="ghost"
+									size="xs"
+									title={`${member.kind} · ${member.routine}`}
+									className={cn('justify-start gap-2 px-2', member.id === props.focused && 'text-primary')}
+									onClick={() => jump(current => ({at: current.at + 1, drone: member.id}))}
+								>
+									<span className="w-2">{member.id === props.focused && '▸'}</span>
+									<span className="w-10 text-left">
+										{CODES[member.kind]}-{member.id}
+									</span>
+									<span className="text-muted-foreground flex-1 truncate text-left">
+										{String.toLowerCase(member.routine)}
+										{STATS[member.kind].cargo > 0 && ` ${Number.round(member.cargo, 0)}/${STATS[member.kind].cargo}`}
+									</span>
+									<Bar alert={health < 0.35} filled={Math.ceil(health * 5)} of={5} />
+									<span
+										className={cn(
+											'bg-destructive size-1.5 rounded-full',
+											!troubled(member.id, health, props.log, props.now) && 'invisible'
+										)}
+									/>
+								</Button>
+							)
+						})}
+					</section>
 				)
-				return (
-					<Button
-						key={member.id}
-						variant="ghost"
-						size="xs"
-						title={`${member.kind} · ${member.routine}`}
-						className={cn('justify-start gap-2 px-2', member.id === props.focused && 'text-primary')}
-						onClick={() => jump(current => ({at: current.at + 1, drone: member.id}))}
-					>
-						<span className="w-2">{member.id === props.focused && '▸'}</span>
-						<span className="w-10 text-left">
-							{CODES[member.kind]}-{member.id}
-						</span>
-						<Bar alert={health < 0.35} filled={Math.ceil(health * 5)} of={5} />
-						<span
-							className={cn(
-								'bg-destructive size-1.5 rounded-full',
-								!troubled(member.id, health, props.log, props.now) && 'invisible'
-							)}
-						/>
-					</Button>
-				)
-			})}
+			)}
 		</nav>
 	)
 }
@@ -565,10 +577,46 @@ function Hints(props: {focus: Focus}) {
 	)
 }
 
-// CORE's reply streams above the box: a status line until words arrive, then the words with a caret, then what it ordered.
-function Ask(props: {drone?: number; offline: boolean}) {
+function Line(props: {streaming: boolean; turn: Turn}) {
+	return (
+		<li className={cn('flex flex-col gap-0.5', props.turn.by === 'you' && 'items-end')}>
+			<p
+				className={cn(
+					'max-w-full leading-relaxed',
+					props.turn.by === 'you' && 'bg-foreground/5 text-muted-foreground px-2 py-0.5'
+				)}
+			>
+				{props.turn.by === 'core' && <span className="text-primary">CORE › </span>}
+				{props.turn.text}
+				{props.streaming && (
+					<span className="bg-primary ml-0.5 inline-block h-3 w-1.5 align-middle motion-safe:animate-pulse" />
+				)}
+			</p>
+			{Array.isReadonlyArrayNonEmpty([...props.turn.orders, ...props.turn.refused]) && (
+				<ul className="flex flex-wrap gap-x-3 gap-y-0.5">
+					{Array.map(props.turn.orders, order => (
+						<li key={order} className="text-muted-foreground">
+							<span className="text-primary">✓ </span>
+							{order}
+						</li>
+					))}
+					{Array.map(props.turn.refused, order => (
+						<li key={order} className="text-destructive">
+							✕ {order}
+						</li>
+					))}
+				</ul>
+			)}
+		</li>
+	)
+}
+
+// The conversation sits above the box: all of it while you type, the last exchange otherwise. A reply streams in at the bottom, a status line until its first words, then the words with a caret.
+function Ask(props: {chat: Hud['chat']; drone?: number; offline: boolean}) {
 	const [reply, ask] = useAtom(askAtom)
 	const [text, setText] = useState('')
+	const [asked, setAsked] = useState('')
+	const [open, setOpen] = useState(false)
 	const [hidden, setHidden] = useState(true)
 	const input = useRef<HTMLInputElement>(null)
 	useEffect(() => {
@@ -582,51 +630,56 @@ function Ask(props: {drone?: number; offline: boolean}) {
 		return () => removeEventListener('keydown', onKeyDown)
 	}, [])
 	const waiting = AsyncResult.isWaiting(reply)
-	// While a new question waits for its first words, the atom still holds the last finished reply.
-	const fresh = Option.filter(AsyncResult.value(reply), value => !waiting || !value.done)
+	const last = Array.last(props.chat)
+	// While a new question waits for its first words, the atom still holds the last finished reply; a finished reply leaves once its line arrives with the HUD.
+	const live = Option.filter(
+		AsyncResult.value(reply),
+		value =>
+			(!waiting || !value.done) &&
+			!Option.exists(last, turn => value.done && turn.by === 'core' && turn.text === value.answer)
+	)
+	const pending = waiting && !Option.exists(last, turn => turn.by === 'you' && turn.text === asked)
+	const failure = Option.filter(
+		AsyncResult.error(reply),
+		error => !waiting && !Option.exists(last, turn => turn.text === error.message)
+	)
+	const shown = Boolean.match(open, {
+		onFalse: () => Array.takeRight(props.chat, 2 * bit(!hidden)),
+		onTrue: () => props.chat
+	})
 	return (
 		<div className="absolute bottom-4 left-1/2 flex w-full max-w-xl -translate-x-1/2 flex-col gap-px px-4">
-			{!hidden && (
-				<section aria-label="CORE" aria-live="polite" className="bg-background/85 flex flex-col gap-1 px-3 py-2.5">
-					<p className="text-primary flex justify-between tracking-widest uppercase">
+			{(Array.isReadonlyArrayNonEmpty(shown) || pending || Option.isSome(live) || Option.isSome(failure)) && (
+				<section aria-label="Conversation with CORE" aria-live="polite" className="bg-background/85 flex flex-col">
+					<p className="text-muted-foreground flex justify-between px-3 pt-2 tracking-widest uppercase">
 						CORE
-						<span className="text-muted-foreground normal-case">esc dismiss</span>
+						<span className="normal-case">
+							esc {Boolean.match(open, {onFalse: () => 'dismiss', onTrue: () => 'close'})}
+						</span>
 					</p>
-					{Option.match(AsyncResult.error(reply), {
-						onNone: () => null,
-						onSome: error => <p className="text-destructive">{error.message}</p>
-					})}
-					{waiting && Option.isNone(fresh) && (
-						<p className="text-muted-foreground motion-safe:animate-pulse">reading the fleet…</p>
-					)}
-					{Option.match(fresh, {
-						onNone: () => null,
-						onSome: value => (
-							<>
-								<p className="leading-relaxed">
-									{value.answer}
-									{!value.done && (
-										<span className="bg-primary ml-0.5 inline-block h-3 w-1.5 align-middle motion-safe:animate-pulse" />
-									)}
-								</p>
-								{value.done && (
-									<ul className="flex flex-wrap gap-x-3 gap-y-0.5">
-										{Array.map(value.orders, order => (
-											<li key={order} className="text-muted-foreground">
-												<span className="text-primary">✓ </span>
-												{order}
-											</li>
-										))}
-										{Array.map(value.refused, order => (
-											<li key={order} className="text-destructive">
-												✕ {order}
-											</li>
-										))}
-									</ul>
-								)}
-							</>
-						)
-					})}
+					{/* Reversed so the scroll rests on the newest line. */}
+					<ol className="flex max-h-72 flex-col-reverse gap-2 overflow-auto px-3 py-2 select-text">
+						{Option.match(failure, {
+							onNone: () => null,
+							onSome: error => <li className="text-destructive">{error.message}</li>
+						})}
+						{Option.match(live, {
+							onNone: () => null,
+							onSome: value => (
+								<Line
+									streaming={!value.done}
+									turn={{at: 0, by: 'core', orders: value.orders, refused: value.refused, text: value.answer}}
+								/>
+							)
+						})}
+						{waiting && Option.isNone(live) && (
+							<li className="text-muted-foreground motion-safe:animate-pulse">CORE › reading the fleet…</li>
+						)}
+						{pending && <Line streaming={false} turn={{at: 0, by: 'you', orders: [], refused: [], text: asked}} />}
+						{Array.map(Array.reverse(shown), turn => (
+							<Line key={`${turn.at}${turn.by}`} streaming={false} turn={turn} />
+						))}
+					</ol>
 				</section>
 			)}
 			<form
@@ -640,6 +693,7 @@ function Ask(props: {drone?: number; offline: boolean}) {
 							onSome: drone => ({drone, text})
 						})
 					)
+					setAsked(text)
 					setHidden(false)
 					setText('')
 				}}
@@ -656,6 +710,8 @@ function Ask(props: {drone?: number; offline: boolean}) {
 					disabled={props.offline}
 					value={text}
 					onChange={event => setText(event.target.value)}
+					onFocus={() => setOpen(true)}
+					onBlur={() => setOpen(false)}
 					onKeyDown={event => {
 						if (event.key !== 'Escape') return
 						setHidden(true)

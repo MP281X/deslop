@@ -23,7 +23,7 @@ import {toCodecOpenAI} from 'effect/ai/OpenAiStructuredOutput'
 import {EncounterResponse, Plan, RaidResponse} from '#services/core/schema.ts'
 import type {Draft, ModelId} from '#services/core/schema.ts'
 import {STATS} from '#services/game/lib/utils.ts'
-import type {CoreStatus} from '#services/game/schema.ts'
+import type {CoreStatus, Turn} from '#services/game/schema.ts'
 import {GameError} from '#services/game/schema.ts'
 
 const PLANNER: ModelId = 'deepseek/deepseek-v4.1-flash-1017'
@@ -56,7 +56,7 @@ const INSTRUCTIONS = `You are CORE, the supervisor of one player's drone fleet i
 - Players are named by GitHub login. Search sends scouts looking at random; Track follows a player the team has sighted.
 
 # Orders
-- Assign: give drones a routine. selector must set ids, group or kind (an empty selector is refused), and count limits how many. group renames the selected drones into a group.
+- Assign: give drones a routine. selector must set ids, group or kind (an empty selector is refused); its fields must all match, so name specific drones by ids alone. count limits how many. group renames the selected drones into a group. Drones of different kinds get one Assign each when their routines differ.
   Routines: Idle, Return (to base), Goto {target}, Explore, Search {player}, Track {player}, Mine, Haul, Escort {group: the group whose haulers to protect}, Patrol {center, radius}, Build {structure, at}.
 - Fabricate {kind, count}: build drones at the base if ore allows.
 - Remember: save a fact the live state cannot tell later. With player and stance it records a hostile or friendly standing (hostile players are attacked on sight); with name and at it saves a place; otherwise a note. Never remember drone positions, health or routines: the live state already has them.
@@ -64,7 +64,11 @@ const INSTRUCTIONS = `You are CORE, the supervisor of one player's drone fleet i
 - Relocate {target}: move the base to a known location (costs 100 ore).
 
 # Answer
-answer: one plain sentence for the player, what you do or why you cannot. Write it before the orders. No orders when the request is a question or impossible.`
+answer: what you do or why you cannot, written before the orders, in one or two short plain sentences.
+- Name drones by code (SC-2, MN-4), never "scout 2" or bare ids.
+- Say where things are with the distance and direction the context gives in parentheses ("140 m NE"). Never write coordinates or numbers like 42,-88 in the answer; coordinates go only into orders.
+- Earlier lines of the conversation are context: "it", "them", "there" and "again" refer back to them.
+- No orders when the request is a question or impossible.`
 
 const structured = toCodecOpenAI(Plan)
 
@@ -85,7 +89,29 @@ function unreachable(cause: unknown) {
 	})
 }
 
-type Request = {autonomous: boolean; context: string; text: string}
+type Request = {autonomous: boolean; context: string; history: Turn[]; text: string}
+
+// Earlier lines go to the model as the conversation so far; CORE's carry what its orders did.
+function spoken(turn: Turn) {
+	if (turn.by === 'you') return {content: turn.text, role: 'user' as const}
+	return {
+		content: Array.join(
+			[
+				turn.text,
+				...Array.map(
+					Array.filter([turn.orders], Array.isReadonlyArrayNonEmpty),
+					orders => `Done: ${Array.join(orders, '; ')}`
+				),
+				...Array.map(
+					Array.filter([turn.refused], Array.isReadonlyArrayNonEmpty),
+					refused => `Refused: ${Array.join(refused, '; ')}`
+				)
+			],
+			'\n'
+		),
+		role: 'assistant' as const
+	}
+}
 
 export class Core extends Context.Service<
 	Core,
@@ -165,6 +191,7 @@ export class Core extends Context.Service<
 									max_tokens: 1200,
 									messages: [
 										{content: INSTRUCTIONS, role: 'system'},
+										...Array.map(input.history, spoken),
 										{
 											content: `${input.context}\n\n${Boolean.match(input.autonomous, {
 												onFalse: () => 'Player',

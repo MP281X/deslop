@@ -22,7 +22,8 @@ import {
 	describeMemory,
 	explored,
 	routineLabel,
-	separation
+	separation,
+	whereFrom
 } from '#services/game/lib/utils.ts'
 import type {
 	Action,
@@ -37,7 +38,8 @@ import type {
 	Routine,
 	Saved,
 	SavedPlayer,
-	Selector
+	Selector,
+	Turn
 } from '#services/game/schema.ts'
 
 const ORE_PER_TILE = 40
@@ -151,6 +153,11 @@ function parseKey(key: string) {
 	return {cx, cz}
 }
 
+// How close to the core a unit counts as at the base: touching it, with room for a crowd at the door.
+function dock(unit: {kind: EntityKind}) {
+	return STATS.core.size + STATS[unit.kind].size + 1.2
+}
+
 function moving(kind: EntityKind) {
 	return kind !== 'glitch' && STATS[kind].speed > 0
 }
@@ -169,6 +176,8 @@ function destinations(routine: Routine) {
 export function makeWorld(saved: Option.Option<Saved>) {
 	const entities = MutableHashMap.empty<number, Entity>()
 	const players = MutableHashMap.empty<string, Player>()
+	// Each player's recent conversation with CORE; like the event log, it does not survive a restart.
+	const chats = MutableHashMap.empty<string, Turn[]>()
 	const teams = MutableHashMap.empty<string, Team>()
 	const connections = MutableHashMap.empty<number, Connection>()
 	const depleted = MutableHashMap.empty<string, number>()
@@ -502,7 +511,7 @@ export function makeWorld(saved: Option.Option<Saved>) {
 		const capacity = STATS[miner.kind].cargo
 		if (miner.task.phase === 'deliver') {
 			const step = toward(miner, baseOf(miner), speed, 3)
-			if (step.distance > 3) return step
+			if (step.distance > dock(miner)) return step
 			deposit(miner.owner, miner.cargo)
 			update(miner.id, {cargo: 0})
 			return {task: {...miner.task, phase: 'none'}, x: 0, z: 0} satisfies Intent
@@ -543,7 +552,7 @@ export function makeWorld(saved: Option.Option<Saved>) {
 	function haulIntent(hauler: Entity, speed: number) {
 		if (hauler.task.phase === 'deliver' || hauler.cargo >= STATS.hauler.cargo * 0.8) {
 			const step = toward(hauler, baseOf(hauler), speed, 3)
-			if (step.distance > 3) return {...step, task: {...hauler.task, phase: 'deliver'}} satisfies Intent
+			if (step.distance > dock(hauler)) return {...step, task: {...hauler.task, phase: 'deliver'}} satisfies Intent
 			deposit(hauler.owner, hauler.cargo)
 			update(hauler.id, {cargo: 0})
 			return {task: {...hauler.task, phase: 'none'}, x: 0, z: 0} satisfies Intent
@@ -661,9 +670,12 @@ export function makeWorld(saved: Option.Option<Saved>) {
 		return {x: base.x + Math.sin(angle) * distance, z: base.z + Math.cos(angle) * distance}
 	}
 
-	function arrive(drone: Entity, target: Point, speed: number) {
+	// A drone has arrived within reach, or nearby once others crowding the spot hold it still.
+	function arrive(drone: Entity, target: Point, speed: number, reach: number) {
 		const step = toward(drone, target, speed, 3)
-		if (step.distance < 1.5) return {routine: {_tag: 'Idle'}, x: 0, z: 0} satisfies Intent
+		if (step.distance < reach || (step.distance < reach + 3 && Math.hypot(drone.vx, drone.vz) < 0.4)) {
+			return {routine: {_tag: 'Idle'}, x: 0, z: 0} satisfies Intent
+		}
 		return step
 	}
 
@@ -676,8 +688,8 @@ export function makeWorld(saved: Option.Option<Saved>) {
 	}
 
 	function routineIntent(drone: Entity, speed: number, routine: Routine, now: number) {
-		if (routine._tag === 'Goto') return arrive(drone, routine.target, speed)
-		if (routine._tag === 'Return') return arrive(drone, baseOf(drone), speed)
+		if (routine._tag === 'Goto') return arrive(drone, routine.target, speed, 1.5)
+		if (routine._tag === 'Return') return arrive(drone, baseOf(drone), speed, dock(drone))
 		if (routine._tag === 'Explore') return roam(drone, speed, () => frontier(drone, baseOf(drone)))
 		if (routine._tag === 'Search') return roam(drone, speed, () => searchPoint(baseOf(drone), drone.task.since))
 		if (routine._tag === 'Track') return trackIntent(drone, speed, routine.player)
@@ -899,19 +911,22 @@ export function makeWorld(saved: Option.Option<Saved>) {
 		target.task = wanted.task ?? target.task
 		target.vx += (wanted.x - target.vx) * (1 - Math.exp(-7 / 20))
 		target.vz += (wanted.z - target.vz) * (1 - Math.exp(-7 / 20))
-		// Moving units part from whatever they overlap, a third of the way per tick, so nothing stacks or sits inside the core.
+		const give = bit(STATS[target.kind].speed > 0)
+		target.x += (target.vx / 20) * give
+		target.z += (target.vz / 20) * give
+		// After its step a moving unit parts from whatever it overlaps, so nothing stacks or sits inside the core.
 		const push = separation(
-			{id, size: STATS[target.kind].size, x: target.x, z: target.z},
-			Array.map(nearby(target.x, target.z, 4), other => ({
+			{id, mobile: true, size: STATS[target.kind].size, x: target.x, z: target.z},
+			Array.map(nearby(target.x, target.z, 5), other => ({
 				id: other.id,
+				mobile: STATS[other.kind].speed > 0,
 				size: STATS[other.kind].size,
 				x: other.x,
 				z: other.z
 			}))
 		)
-		const give = 0.33 * bit(STATS[target.kind].speed > 0)
-		target.x += target.vx / 20 + push.x * give
-		target.z += target.vz / 20 + push.z * give
+		target.x += push.x * give
+		target.z += push.z * give
 		if (Math.hypot(target.vx, target.vz) > 0.3) target.heading = Math.atan2(target.vx, target.vz)
 		// The flown drone sees twice as far; sight is re-marked after a quarter radius, which leaves no gaps.
 		const sight = STATS[target.kind].sight * (1 + bit(target.steerUntil > now))
@@ -1069,6 +1084,7 @@ export function makeWorld(saved: Option.Option<Saved>) {
 		const target = team(player.team)
 		return {
 			base: player.base,
+			chat: Option.getOrElse(MutableHashMap.get(chats, player.id), () => []),
 			core,
 			invite: player.team,
 			log: target.log,
@@ -1159,8 +1175,9 @@ export function makeWorld(saved: Option.Option<Saved>) {
 			owned(owner),
 			drone =>
 				moving(drone.kind) &&
-				(selector.ids === undefined || Array.contains(selector.ids, drone.id)) &&
-				(selector.group === undefined || drone.group === selector.group) &&
+				// Models fill unused selector fields with empty values; those select nothing.
+				(Array.isReadonlyArrayEmpty(selector.ids ?? []) || Array.contains(selector.ids ?? [], drone.id)) &&
+				(String.isEmpty(selector.group ?? '') || drone.group === selector.group) &&
 				(selector.kind === undefined || drone.kind === selector.kind)
 		)
 		return Array.take(matched, selector.count ?? matched.length)
@@ -1181,24 +1198,48 @@ export function makeWorld(saved: Option.Option<Saved>) {
 
 	function assign(player: Player, action: Extract<Action, {_tag: 'Assign'}>) {
 		if (Array.some(destinations(action.routine), point => !reachable(player.team, point))) {
-			return {ok: false, summary: 'that location is unknown to the team'}
+			return {ids: [], ok: false, summary: 'that location is unknown to the team'}
 		}
-		// An empty selector would match the whole fleet, which no single order means.
-		if (
-			action.selector.ids === undefined &&
-			action.selector.group === undefined &&
-			action.selector.kind === undefined
-		) {
-			return {ok: false, summary: 'name the drones by ids, group or kind'}
+		// The selector's set fields, as the player would read them; an empty selector would match the whole fleet, which no single order means.
+		const named = [
+			...Array.map(
+				Array.filter([action.selector.ids ?? []], Array.isReadonlyArrayNonEmpty),
+				ids =>
+					`id ${Array.join(
+						Array.map(ids, id => `${id}`),
+						'/'
+					)}`
+			),
+			...Option.toArray(Option.fromUndefinedOr(action.selector.kind)),
+			...Array.map(Array.filter([action.selector.group ?? ''], String.isNonEmpty), group => `in ${group}`)
+		]
+		if (Array.isArrayEmpty(named)) return {ids: [], ok: false, summary: 'name the drones by ids, group or kind'}
+		const matched = select(player.id, action.selector)
+		if (!Array.isReadonlyArrayNonEmpty(matched)) {
+			return {ids: [], ok: false, summary: `no drone is ${Array.join(named, ' and ')}`}
 		}
-		const chosen = Array.filter(select(player.id, action.selector), drone =>
+		const chosen = Array.filter(matched, drone =>
 			Array.contains(['Idle', 'Return', 'Goto', ...ROLES[drone.kind]], action.routine._tag)
 		)
 		if (!Array.isReadonlyArrayNonEmpty(chosen)) {
-			return {ok: false, summary: `no selected drone can ${routineLabel(action.routine)}`}
+			return {ids: [], ok: false, summary: `no selected drone can ${routineLabel(action.routine)}`}
 		}
-		for (const drone of chosen) update(drone.id, {group: action.group ?? drone.group, routine: action.routine})
-		return {ok: true, summary: `${chosen.length} drones → ${routineLabel(action.routine)}`}
+		// An order hands a drone you are flying back to its routine.
+		for (const drone of chosen) {
+			update(drone.id, {group: action.group ?? drone.group, routine: action.routine})
+			drone.steerUntil = 0
+		}
+		return {
+			ids: Array.map(chosen, drone => drone.id),
+			ok: true,
+			summary: `${Array.join(
+				Array.map(Array.take(chosen, 4), drone => `${CODES[drone.kind]}-${drone.id}`),
+				', '
+			)}${Array.join(
+				Array.filter([` +${chosen.length - 4}`], () => chosen.length > 4),
+				''
+			)} → ${String.toLowerCase(routineLabel(action.routine))}`
+		}
 	}
 
 	function fabricate(owner: string, action: Extract<Action, {_tag: 'Fabricate'}>, now: number) {
@@ -1273,17 +1314,18 @@ export function makeWorld(saved: Option.Option<Saved>) {
 		return {ok: true, summary: 'base relocated'}
 	}
 
+	// ids are the drones an order moved.
 	function act(owner: string, action: Action, now: number) {
 		const player = playerOf(owner)
-		if (player === undefined) return {ok: false, summary: 'unknown player'}
+		if (player === undefined) return {ids: [], ok: false, summary: 'unknown player'}
 		if (action._tag === 'Assign') return assign(player, action)
-		if (action._tag === 'Fabricate') return fabricate(owner, action, now)
-		if (action._tag === 'Remember') return rememberAction(player, action, now)
-		if (action._tag === 'Relocate') return relocate(owner, action.target, now)
+		if (action._tag === 'Fabricate') return {ids: [], ...fabricate(owner, action, now)}
+		if (action._tag === 'Remember') return {ids: [], ...rememberAction(player, action, now)}
+		if (action._tag === 'Relocate') return {ids: [], ...relocate(owner, action.target, now)}
 		const removed = MutableHashMap.has(team(player.team).memory, action.key)
 		MutableHashMap.remove(team(player.team).memory, action.key)
 		team(player.team).seq += 1
-		return {ok: removed, summary: `forgot ${action.key}`}
+		return {ids: [], ok: removed, summary: `forgot ${action.key}`}
 	}
 
 	// The farthest explored tile each way: real destinations for "go north", since screen up is -z.
@@ -1305,6 +1347,9 @@ export function makeWorld(saved: Option.Option<Saved>) {
 	function summary(owner: string, drone?: number) {
 		const player = playerOf(owner)
 		if (player === undefined) return ''
+		const viewer = Option.filter(Option.fromUndefinedOr(entityOf(drone ?? -1)), unit => unit.owner === owner)
+		// Directions in the context count from the drone the player is on, so CORE can answer in the player's frame.
+		const origin = Option.getOrElse(viewer, () => player.base)
 		const groups = pipe(
 			owned(owner),
 			Array.filter(unit => moving(unit.kind)),
@@ -1312,20 +1357,21 @@ export function makeWorld(saved: Option.Option<Saved>) {
 			Record.toEntries,
 			Array.map(
 				entry =>
-					`- ${entry[0]} ×${entry[1].length} (id@x,z ${Array.join(
-						Array.map(Array.take(entry[1], 8), unit => `${unit.id}@${Math.floor(unit.x)},${Math.floor(unit.z)}`),
-						' '
-					)})`
+					`- ${entry[0]} ×${entry[1].length}: ${Array.join(
+						Array.map(
+							Array.take(entry[1], 8),
+							unit =>
+								`${CODES[unit.kind]}-${unit.id} (id ${unit.id}) at ${Math.floor(unit.x)},${Math.floor(unit.z)}, ${whereFrom(origin, unit)}`
+						),
+						'; '
+					)}`
 			)
 		)
-		const focused = Option.match(
-			Option.filter(Option.fromUndefinedOr(entityOf(drone ?? -1)), unit => unit.owner === owner),
-			{
-				onNone: () => 'The player is looking at the base.',
-				onSome: unit =>
-					`The player is on ${unit.kind} ${unit.id} at ${Math.floor(unit.x)},${Math.floor(unit.z)} (${routineLabel(unit.routine)}). "Here", "this drone" and "me" mean it and its position.`
-			}
-		)
+		const focused = Option.match(viewer, {
+			onNone: () => 'The player is looking at the base; directions count from it.',
+			onSome: unit =>
+				`The player is on ${CODES[unit.kind]}-${unit.id} (${unit.kind}, id ${unit.id}) at ${Math.floor(unit.x)},${Math.floor(unit.z)}, ${routineLabel(unit.routine)}, ${whereFrom(player.base, unit)} from base. "Here", "this drone" and "me" mean it; directions count from it.`
+		})
 		const structures = Array.map(
 			Array.filter(owned(owner), structure => !moving(structure.kind)),
 			structure => `${structure.kind} at ${Math.floor(structure.x)},${Math.floor(structure.z)}`
@@ -1334,10 +1380,13 @@ export function makeWorld(saved: Option.Option<Saved>) {
 		const edge = farthest(player.team, player.base)
 		return Array.join(
 			[
-				`You: ${player.name}, ore ${player.ore}, base at ${Math.floor(player.base.x)},${Math.floor(player.base.z)}`,
+				`You: ${player.name}, ore ${player.ore}, base at ${Math.floor(player.base.x)},${Math.floor(player.base.z)} (${whereFrom(origin, player.base)})`,
 				focused,
 				`Farthest explored: ${Array.join(
-					Array.map(Record.toEntries(edge), entry => `${entry[0]} ${Math.floor(entry[1].x)},${Math.floor(entry[1].z)}`),
+					Array.map(
+						Record.toEntries(edge),
+						entry => `${entry[0]} ${Math.floor(entry[1].x)},${Math.floor(entry[1].z)} (${whereFrom(origin, entry[1])})`
+					),
 					'; '
 				)}`,
 				`Fleet:\n${Array.join(groups, '\n')}`,
@@ -1430,6 +1479,8 @@ export function makeWorld(saved: Option.Option<Saved>) {
 				if (miner.routine._tag === 'Mine') update(miner.id, {routine: miner.routine})
 			}
 		},
+		// The last 20 lines of a player's conversation with CORE, which its next answer reads.
+		chat: (owner: string) => Option.getOrElse(MutableHashMap.get(chats, owner), () => []),
 		connect(user: User, now: number, invite?: string) {
 			const player = join(user, now, invite)
 			player.connections += 1
@@ -1459,6 +1510,19 @@ export function makeWorld(saved: Option.Option<Saved>) {
 		frame,
 		idleHours: (owner: string, now: number) => (now - (playerOf(owner)?.activeAt ?? now)) / 3_600_000,
 		restore: (now: number) => Option.map(saved, state => restore(state, now)),
+		say(owner: string, turn: Turn) {
+			MutableHashMap.set(
+				chats,
+				owner,
+				Array.append(
+					Array.takeRight(
+						Option.getOrElse(MutableHashMap.get(chats, owner), () => []),
+						19
+					),
+					turn
+				)
+			)
+		},
 		snapshot() {
 			return {
 				depleted: Array.fromIterable(MutableHashMap.keys(depleted)),

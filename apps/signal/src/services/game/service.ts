@@ -75,6 +75,7 @@ export class Game extends Context.Service<
 				const results = Array.map(actions, action => world.act(owner, action, now))
 				yield* Effect.annotateCurrentSpan({actions: Array.map(results, result => result.summary)})
 				return {
+					drones: Array.flatMap(results, result => result.ids),
 					orders: Array.map(
 						Array.filter(results, result => result.ok),
 						result => result.summary
@@ -84,6 +85,14 @@ export class Game extends Context.Service<
 						result => result.summary
 					)
 				}
+			})
+
+			// A finished answer applies its orders and joins the conversation with what they did.
+			const settle = Effect.fn('Game.settle')(function* (owner: string, question: string, plan: Plan, now: number) {
+				yield* Effect.annotateCurrentSpan({answer: plan.answer, question})
+				const results = yield* apply(owner, plan.orders)
+				world.say(owner, {at: now, by: 'core', orders: results.orders, refused: results.refused, text: plan.answer})
+				return {answer: plan.answer, done: true, ...results} satisfies Reply
 			})
 
 			// Every model call CORE makes on its own slows as the player goes quiet: its interval doubles per 12 idle hours and stops at 72.
@@ -151,7 +160,7 @@ export class Game extends Context.Service<
 			const review = Effect.fn('Game.review')(function* (event: WorldEvent) {
 				if (!paced(reviews, event.player, 120_000, yield* Clock.currentTimeMillis)) return
 				const last = yield* Stream.runLast(
-					core.plan({autonomous: true, context: world.summary(event.player), text: `${event._tag} event`})
+					core.plan({autonomous: true, context: world.summary(event.player), history: [], text: `${event._tag} event`})
 				)
 				yield* Option.match(
 					Option.flatMap(last, draft => draft.plan),
@@ -192,23 +201,27 @@ export class Game extends Context.Service<
 					if (!result.ok) return yield* GameError.make({message: result.summary})
 					return result.summary
 				}),
-				// The answer streams as the planner writes it; once the plan is whole its orders apply, and the reply lists which went through and which the world refused.
+				// The answer streams as the planner writes it, reading the conversation so far; once the plan is whole its orders apply, and the reply lists which went through and which the world refused.
 				ask: (user, input) =>
 					Stream.unwrap(
 						Effect.map(Clock.currentTimeMillis, now => {
 							world.touch(user.id, now)
-							return Stream.mapEffect(
-								core.plan({autonomous: false, context: world.summary(user.id, input.drone), text: input.text}),
-								draft =>
+							const history = Array.fromIterable(world.chat(user.id))
+							world.say(user.id, {at: now, by: 'you', orders: [], refused: [], text: input.text})
+							return pipe(
+								core.plan({autonomous: false, context: world.summary(user.id, input.drone), history, text: input.text}),
+								Stream.mapEffect(draft =>
 									Option.match(draft.plan, {
-										onNone: () => Effect.succeed<Reply>({answer: draft.answer, done: false, orders: [], refused: []}),
-										onSome: plan =>
-											Effect.map(apply(user.id, plan.orders), results => ({
-												answer: plan.answer,
-												done: true,
-												...results
-											}))
+										onNone: () =>
+											Effect.succeed<Reply>({answer: draft.answer, done: false, drones: [], orders: [], refused: []}),
+										onSome: plan => settle(user.id, input.text, plan, now)
 									})
+								),
+								Stream.tapError(error =>
+									Effect.sync(() =>
+										world.say(user.id, {at: now, by: 'core', orders: [], refused: [], text: error.message})
+									)
+								)
 							)
 						})
 					),

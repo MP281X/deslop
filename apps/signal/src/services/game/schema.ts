@@ -75,13 +75,24 @@ export const Member = Schema.Struct({color: Schema.Finite, name: Schema.String, 
 export type CoreStatus = typeof CoreStatus.Type
 export const CoreStatus = Schema.Struct({planner: Schema.Literals(['ready', 'slowed', 'asleep', 'offline'])})
 
-// CORE's answer so far; once done, the orders it carried out and the ones the world refused.
+// CORE's answer so far; once done, the orders it carried out, the drones they moved and the orders the world refused.
 export type Reply = typeof Reply.Type
 export const Reply = Schema.Struct({
 	answer: Schema.String,
 	done: Schema.Boolean,
+	drones: Schema.Array(Schema.Finite),
 	orders: Schema.Array(Schema.String),
 	refused: Schema.Array(Schema.String)
+})
+
+// One line of a player's conversation with CORE; CORE's lines carry the orders that went through and the refused ones.
+export type Turn = typeof Turn.Type
+export const Turn = Schema.Struct({
+	at: Schema.Finite,
+	by: Schema.Literals(['you', 'core']),
+	orders: Schema.Array(Schema.String),
+	refused: Schema.Array(Schema.String),
+	text: Schema.String
 })
 
 // An event for the team; the HUD jumps to its drone and shows its place relative to what you are looking at.
@@ -97,6 +108,7 @@ export const LogEntry = Schema.Struct({
 export type Hud = typeof Hud.Type
 export const Hud = Schema.Struct({
 	base: Point,
+	chat: Schema.Array(Turn),
 	core: CoreStatus,
 	invite: Schema.String,
 	log: Schema.Array(LogEntry),
