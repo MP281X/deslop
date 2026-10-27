@@ -4,13 +4,14 @@ Dual's `AGENTS.md` owns its commands, production data, app and coding standards;
 
 ## Workers
 
-- **Cache.** Checks, builds, tests and previews share one Turbo cache per worker, `~/dual/.turbo/cache`, across every worktree; the agent environment sets `TURBO_SCM_BASE=origin/master` for `--affected`.
+- **Cache.** Vite+ keeps task results per worktree in `node_modules/.vite`, so a new worktree's first gate runs cold; `vp run -v <task>` shows hits and misses.
 - **Accounts.** Writes go only to GitHub `MP281X`, GitLab `matteopaludgnach` and the user's Discord test channel. Saved preview tokens are read-only; write tokens come from `gh auth token` and the `glab` configuration.
-- **Preview** through the T3 `preview` project script, which runs `bun run preview` in its unit. Live webhooks: funnel the API port's `/api/webhooks` per environment's Previews, with a temporary callback URL override reverted before the push.
+- **Merge requests** are squash-merged, stacks included; restack per delivery after each merge.
+- **Preview** through the T3 `preview` project script: `bun run preview` runs the worktree's own database, sandbox, API, worker and app without `.env` files, AWS or model keys, and prints its URL and the login `admin@dual.local` / `preview-password`. Restart it after changing a published package; `settle` destroys its data. Live webhooks: funnel `/api/webhooks` to the preview port, which proxies `/api` to the API, per environment's Previews. Google OAuth needs the printed origin plus `/api/connections/auth/callback` registered.
 
 ## Jira
 
-Project `DOS`, board 1053, on `datapizza.atlassian.net`; the user's account ID is `712020:87e4f57e-6b5d-40ab-8dfa-faf159ead71a`. On these workers Jira goes through the `dual` MCP server, in place of the `acli` that Dual's `AGENTS.md` names.
+Project `DOS`, board 1053, on `datapizza.atlassian.net`; the user's account ID is `712020:87e4f57e-6b5d-40ab-8dfa-faf159ead71a`. On these workers Jira goes through the `dual` MCP server, in place of the `acli` that Dual's `docs/agents/issue-tracker.md` names.
 
 - **Picking.** When the user asks what to work on: rank only unassigned `To Do` tickets by priority (`P1` highest), size and fit with the code. Rank Epics, Tasks, Stories and Bugs, not Areas or Initiatives. After the user approves, assign each ticket to the user and move it to `Doing`; these are the only Jira writes.
 - **Page.** A ticket key links to `https://datapizza.atlassian.net/browse/<key>`.
@@ -114,7 +115,7 @@ curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
 
 ## Tracing
 
-For development, `packages/saas/src/Observability.ts` sends the OTLP/HTTP JSON that deslop's Scope receives, and merges `OTEL_RESOURCE_ATTRIBUTES`. Compute the startup timestamp at every launch, so a restarted service hides its previous traces. From `packages/saas`, with its development environment configured:
+`packages/saas/src/Observability.ts` sends the OTLP/HTTP JSON that deslop's Scope receives, with `OTEL_RESOURCE_ATTRIBUTES` merged into its resource. The preview clears its environment, so it exports nothing; trace a development launch instead. Compute the startup timestamp at every launch, so a restarted service hides its previous traces. After `vp run build:runtime` at the root, from `packages/saas` with its development environment configured:
 
 ```bash
 OTEL_RESOURCE_ATTRIBUTES="scope.runtime=server,scope.run.started_unix_nano=$(date +%s%N)" \
