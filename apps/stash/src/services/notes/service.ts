@@ -270,23 +270,32 @@ export class Notes extends Context.Service<
 						Effect.asSome,
 						optional('The video could not be read', Option.none)
 					)
-					const transcript = yield* pipe(
-						Option.filter(read, () => note.transcript === undefined),
-						Option.map(details => pipe(details.transcript, optional('No transcript', Option.none<string>))),
-						Effect.transposeOption,
-						Effect.map(Option.flatten)
+					// The transcript and the stills each run yt-dlp, so they run side by side; the note shows its transcript before the stills finish.
+					const [, frames] = yield* Effect.all(
+						[
+							pipe(
+								Option.filter(read, () => note.transcript === undefined),
+								Option.map(details => pipe(details.transcript, optional('No transcript', Option.none<string>))),
+								Effect.transposeOption,
+								Effect.map(Option.flatten),
+								Effect.flatMap(transcript =>
+									updateNote(note.id, item => ({
+										...Option.match(
+											Option.filter(read, () => sourceFor(input.url) !== 'X' || input.useInfo),
+											{
+												onNone: () => item,
+												onSome: details => ({...Struct.omit(item, ['issue']), content: details.info})
+											}
+										),
+										...Option.match(transcript, {onNone: () => ({}), onSome: text => ({transcript: text})})
+									}))
+								)
+							),
+							pipe(media.frames(input.video), optional('No video frames', Array.empty<Still>))
+						],
+						{concurrency: 2}
 					)
-					yield* updateNote(note.id, item => ({
-						...Option.match(
-							Option.filter(read, () => sourceFor(input.url) !== 'X' || input.useInfo),
-							{onNone: () => item, onSome: details => ({...Struct.omit(item, ['issue']), content: details.info})}
-						),
-						...Option.match(transcript, {onNone: () => ({}), onSome: text => ({transcript: text})})
-					}))
-					yield* tag(note.id, [
-						...input.slides,
-						...Array.map(yield* pipe(media.frames(input.video), optional('No video frames', Array.empty<Still>)), still)
-					])
+					yield* tag(note.id, [...input.slides, ...Array.map(frames, still)])
 				})
 
 				const organizeLink = Effect.fnUntraced(function* (note: Note, link: string) {

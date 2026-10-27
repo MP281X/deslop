@@ -2,7 +2,7 @@ import {assert, describe, it} from '@effect/vitest'
 
 import {Option} from 'effect'
 
-import {captionTranscript, clock, speechOnly} from '#services/media/lib/utils.ts'
+import {captionTranscript, clock, isBlocked, speechOnly} from '#services/media/lib/utils.ts'
 
 describe('captionTranscript', () => {
 	it('reads cue settings, markup and escapes', () => {
@@ -56,6 +56,24 @@ describe('captionTranscript', () => {
 				vtt: 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nYes.\n\n00:00:02.000 --> 00:00:03.000\nYes.'
 			}),
 			'[00:01] Yes.\n[00:02] Yes.\n'
+		)
+	})
+})
+
+describe('isBlocked', () => {
+	it('retries an exit that is offline, refused or throttled', () => {
+		assert.isTrue(
+			isBlocked(
+				"ERROR: [youtube] dQw4w9WgXcQ: Unable to download API page: ('Unable to connect to proxy', OSError('Tunnel connection failed: 502 Bad Gateway'))"
+			)
+		)
+		assert.isTrue(isBlocked("ERROR: [youtube] dQw4w9WgXcQ: Sign in to confirm you're not a bot"))
+		assert.isTrue(isBlocked('ERROR: unable to download video data: HTTP Error 429: Too Many Requests'))
+	})
+
+	it('keeps a failure no other exit can fix', () => {
+		assert.isFalse(
+			isBlocked('ERROR: [youtube] dQw4w9WgXcQ: Video unavailable. This video has been removed by the uploader')
 		)
 	})
 })
