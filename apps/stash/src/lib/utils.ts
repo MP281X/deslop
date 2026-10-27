@@ -1,28 +1,14 @@
 import type {Record} from 'effect'
-import {
-	Array,
-	Boolean,
-	Effect,
-	FiberHandle,
-	Layer,
-	HashSet,
-	Option,
-	Order,
-	Predicate,
-	Schema,
-	Stream,
-	String,
-	pipe
-} from 'effect'
+import {Array, Boolean, Effect, Layer, HashSet, Option, Order, Predicate, Schema, Stream, String, pipe} from 'effect'
 
 import {FetchHttpClient} from 'effect/http'
-import {AsyncResult, AtomRpc, Atom} from 'effect/reactivity'
+import {AtomRpc, Atom} from 'effect/reactivity'
 import * as Clipboard from 'expo-clipboard'
 import * as Crypto from 'expo-crypto'
 import {Directory, File, Paths} from 'expo-file-system'
 
 import {brands} from '@deslop/components-mobile/icons'
-import {alert, writeAtomically} from '@deslop/components-mobile/utils'
+import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 import * as MobileSession from '@deslop/runtime/mobile/session'
@@ -106,9 +92,6 @@ export function appOf(note: NoteItem) {
 
 // Notes
 
-type ListJson = typeof ListJson.Type
-const ListJson = Schema.fromJsonString(Schema.Array(NoteItem))
-
 const newestFirst = Order.flip(Order.mapInput(Order.Number, (item: NoteItem) => item.createdAt))
 
 function apply(items: NoteItem[], event: NotesEvent) {
@@ -121,43 +104,14 @@ function apply(items: NoteItem[], event: NotesEvent) {
 export const notesAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get => {
 		if (!session.signedIn(get)) return Stream.succeed(Array.empty<NoteItem>())
-		// The empty list shown while the session loads is not a list on screen.
-		const shown = Option.exists(
-			get.self<AsyncResult.AsyncResult<NoteItem[]>>(),
-			result => AsyncResult.isSuccess(result) && Array.isReadonlyArrayNonEmpty(result.value)
-		)
-		return Stream.concat(
-			// Only a cold start reads the copy; a return from the background keeps the list on screen, which is newer.
+		return cachedList(
+			get,
+			listFile,
+			NoteItem,
 			pipe(
-				Effect.try(() => listFile.textSync()),
-				Effect.flatMap(Schema.decodeEffect(ListJson)),
-				Effect.option,
-				Stream.fromEffect,
-				Stream.flatMap(cached => Stream.fromIterable(Option.toArray(cached))),
-				Stream.when(Effect.succeed(!shown))
-			),
-			pipe(
-				Effect.gen(function* () {
-					// The copy is written once the list settles, off the path that shows each change.
-					const writes = yield* FiberHandle.make()
-					return pipe(
-						(yield* RpcClient)('notes.watch', undefined),
-						Stream.scan(Array.empty<NoteItem>, apply),
-						Stream.drop(1),
-						Stream.tap(items =>
-							FiberHandle.run(
-								writes,
-								pipe(
-									Schema.encodeEffect(ListJson)(items),
-									Effect.flatMap(json => Effect.try(() => writeAtomically(listFile, json))),
-									Effect.delay('2 seconds'),
-									Effect.ignore({log: 'Warn', message: 'The list could not be kept on this iPhone'})
-								)
-							)
-						)
-					)
-				}),
-				Stream.unwrap,
+				Stream.unwrap(Effect.map(RpcClient, client => client('notes.watch', undefined))),
+				Stream.scan(Array.empty<NoteItem>, apply),
+				Stream.drop(1),
 				session.renewing
 			)
 		)
