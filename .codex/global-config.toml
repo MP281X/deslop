@@ -63,7 +63,7 @@ timeout = 5
 trusted_hash = "sha256:e963292c7825ded13e242a454d027809ac0c8eb1cabdb193f215e9e095109f5a"
 
 [shell_environment_policy]
-set = { GLAB_PAGER = "cat", NO_COLOR = "1", TURBO_SCM_BASE = "origin/master" }
+set = { GLAB_PAGER = "cat", NO_COLOR = "1" }
 
 [projects."/home/mp281x/deslop"]
 trust_level = "trusted"

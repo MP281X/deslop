@@ -48,8 +48,7 @@
 		"CLAUDE_CODE_SILENT_TURN_REMINDER": "0",
 		"CLAUDE_CODE_THRIFTY_SONIC": "0",
 		"GLAB_PAGER": "cat",
-		"NO_COLOR": "1",
-		"TURBO_SCM_BASE": "origin/master"
+		"NO_COLOR": "1"
 	},
 	"permissions": {
 		"deny": [

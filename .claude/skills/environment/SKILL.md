@@ -23,7 +23,7 @@ Two headless Debian workers in one tailnet, same user, paths and agent configura
 
 | Reference                                | For                                                                         |
 | ---------------------------------------- | --------------------------------------------------------------------------- |
-| [Dual](references/dual.md)               | Turbo cache, accounts, preview, Jira, Google, VPN, tracing                  |
+| [Dual](references/dual.md)               | Cache, accounts, merges, preview, Jira, Google, VPN, tracing                |
 | [Deslop](references/deslop.md)           | Apps on dev, Simulator, npm and iOS publishing, TestFlight, tracing, deploy |
 | [Maintenance](references/maintenance.md) | Machines, setup, agent links, T3 history and settings, updates, clean       |
 | [Video](references/video.md)             | Proof videos: camera targets, HyperFrames composition and look              |
