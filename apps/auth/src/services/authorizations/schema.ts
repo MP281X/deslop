@@ -75,6 +75,7 @@ export const Stored = Schema.TaggedUnion({
 	Delivered: {id: Schema.NonEmptyString, url: Schema.NonEmptyString},
 	Login: {
 		code: Schema.optionalKey(Schema.NonEmptyString),
+		next: Schema.optionalKey(Schema.NonEmptyString),
 		request: Schema.optionalKey(Schema.NonEmptyString),
 		verifier: Schema.NonEmptyString
 	},
@@ -105,6 +106,7 @@ export type SignInParams = typeof SignInParams.Type
 export const SignInParams = Schema.Struct({
 	// The approve link's code, kept through GitHub sign-in on a phone that was signed out.
 	code: Schema.optionalKey(Schema.NonEmptyString.check(Schema.isMaxLength(20))),
+	next: Schema.optionalKey(Schema.NonEmptyString.check(Schema.isMaxLength(2048))),
 	request: Schema.optionalKey(Schema.NonEmptyString)
 })
 

@@ -620,6 +620,29 @@ it.layer(NodeServices.layer)(test => {
 		})
 	)
 
+	test.effect('returns a web sign-in to the page that started it only on its own domain, after any approve link', () =>
+		Effect.gen(function* () {
+			const web = yield* servers()
+			const landing = Effect.fnUntraced(function* (search: Record<string, string>) {
+				return (yield* signIn(
+					web.issuer,
+					'octocat',
+					`?${UrlParams.toString(UrlParams.fromInput(search))}`
+				)).headers.get('location')
+			})
+			assert.deepStrictEqual(
+				[
+					yield* landing({next: 'https://signal.example.test/?invite=abc'}),
+					yield* landing({next: 'https://evil.test/'}),
+					yield* landing({next: 'http://signal.example.test/'}),
+					yield* landing({code: 'WDJB-MJHT', next: 'https://signal.example.test/'}),
+					yield* landing({})
+				],
+				['https://signal.example.test/?invite=abc', '/', '/', '/?code=WDJB-MJHT', '/']
+			)
+		})
+	)
+
 	test.effect('binds consent and one-use PKCE codes to the browser, client, callback and resources', () =>
 		Effect.gen(function* () {
 			const web = yield* servers()

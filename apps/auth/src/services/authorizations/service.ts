@@ -126,6 +126,19 @@ function allowedRedirect(redirect: string) {
 	)
 }
 
+// A web sign-in returns to the page that started it only over https on the auth app's own domain or a subdomain.
+function returnable(next: string, url: string) {
+	const domain = pipe(new URL(url).hostname, String.split('.'), Array.drop(1), Array.join('.'))
+	return Result.match(Url.fromString(next), {
+		onFailure: () => false,
+		onSuccess: target =>
+			target.protocol === 'https:' &&
+			(target.hostname === domain || String.endsWith(`.${domain}`)(target.hostname)) &&
+			String.isEmpty(target.username) &&
+			String.isEmpty(target.password)
+	})
+}
+
 // Anyone can register a client, so only the newest stay; an agent whose client was dropped registers again.
 function newestClients(tokens: AuthState['tokens']) {
 	const kept = pipe(
@@ -1025,7 +1038,14 @@ export class Authorizations extends Context.Service<
 										pipe(
 											UrlParams.toString(UrlParams.fromInput({code: flow.code, request: flow.request})),
 											Option.liftPredicate(String.isNonEmpty),
-											Option.match({onNone: () => '/', onSome: search => `/?${search}`})
+											Option.match({
+												onNone: () =>
+													Option.getOrElse(
+														Option.filter(Option.fromUndefinedOr(flow.next), next => returnable(next, url)),
+														() => '/'
+													),
+												onSome: search => `/?${search}`
+											})
 										)
 									),
 									LOGIN_COOKIE,
