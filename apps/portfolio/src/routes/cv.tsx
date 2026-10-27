@@ -21,7 +21,7 @@ export const Route = createFileRoute('/cv')({
 
 function Link(input: {contact: {href: string; value: string}}) {
 	return (
-		<a href={input.contact.href} className="hover:text-primary">
+		<a href={input.contact.href} className="hover:underline">
 			{input.contact.value}
 		</a>
 	)
@@ -30,7 +30,7 @@ function Link(input: {contact: {href: string; value: string}}) {
 function CvSection(input: {title: string; children: React.ReactNode}) {
 	return (
 		<section className="flex flex-col gap-1">
-			<h2 className="text-primary text-label tracking-label font-mono font-bold uppercase">{input.title}</h2>
+			<h2 className="text-foreground text-label tracking-label font-mono font-bold uppercase">{input.title}</h2>
 			{input.children}
 		</section>
 	)
@@ -62,11 +62,35 @@ function Bullets(input: {items: string[]}) {
 		<ul className="flex flex-col gap-0.5">
 			{Array.map(input.items, item => (
 				<li key={item} className="flex gap-2.5">
-					<span aria-hidden className="border-primary mt-1.75 size-1 shrink-0 border-2" />
+					<span aria-hidden className="border-foreground/75 mt-1.75 size-1 shrink-0 border-2" />
 					<span>{item}</span>
 				</li>
 			))}
 		</ul>
+	)
+}
+
+// Drawn line by line: PDF viewers render a tiled background unevenly and drop some of its lines.
+function HeaderGrid() {
+	return (
+		<svg
+			aria-hidden
+			className="text-foreground pointer-events-none absolute inset-0 -z-1 size-full border-r border-current opacity-7"
+		>
+			{Array.makeBy(31, column => (
+				<line
+					key={`column-${column}`}
+					x1={column * 26 + 0.5}
+					x2={column * 26 + 0.5}
+					y1={0}
+					y2="100%"
+					stroke="currentColor"
+				/>
+			))}
+			{Array.makeBy(11, row => (
+				<line key={`row-${row}`} x1={0} x2="100%" y1={row * 26 + 0.5} y2={row * 26 + 0.5} stroke="currentColor" />
+			))}
+		</svg>
 	)
 }
 
@@ -89,10 +113,8 @@ function CvRoute() {
 				lang="en"
 				className="font-document text-document print:min-h-printed-page trail-grid-width mx-auto flex flex-col gap-3 print:justify-between"
 			>
-				<header
-					className="trail-grid border-primary relative flex h-65.5 flex-col justify-between border-b-2 pt-4 pb-3 font-mono sm:h-46"
-					style={{'--trail-grid-strength': '7%'}}
-				>
+				<header className="border-foreground relative isolate flex h-65.5 flex-col justify-between border-b-2 pt-4 pb-3 font-mono sm:h-46">
+					<HeaderGrid />
 					<h1 className="tracking-name text-2xl leading-none font-extrabold uppercase">
 						{profile.firstName}{' '}
 						<span className="text-foreground/55 tracking-label mt-0.5 block text-xl font-medium">
@@ -102,7 +124,7 @@ function CvRoute() {
 					<div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
 						<div className="flex flex-col gap-1">
 							<p className="text-label tracking-label flex items-center gap-2 whitespace-nowrap uppercase">
-								<span aria-hidden className="border-primary size-2 border-4" />
+								<span aria-hidden className="border-foreground size-2 border-4" />
 								{profile.title}
 							</p>
 							<p className="font-document text-document">{summary}</p>
@@ -112,9 +134,9 @@ function CvRoute() {
 							<br />
 							<Link contact={contacts.email} /> · <Link contact={contacts.github} />
 							<br />
-							PEC <Link contact={contacts.pec} /> · VAT {profile.vat}
+							PEC <Link contact={contacts.pec} />
 							<br />
-							<Link contact={{href: `https://${profile.portfolio}`, value: profile.portfolio}} />
+							<Link contact={{href: `https://${profile.portfolio}`, value: profile.portfolio}} /> · VAT {profile.vat}
 						</address>
 					</div>
 				</header>

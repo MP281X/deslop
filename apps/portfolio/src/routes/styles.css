@@ -24,8 +24,7 @@
 	}
 }
 
-/* The 26px grid behind the home page's trails and the CV header, drawn under the element's content, which must be
-   positioned. An SVG tile, because Safari prints 1px gradient lines blurred into a flat tint and drops CSS masks. */
+/* The 26px grid behind the home page's trails, drawn under the element's content, which must be positioned. */
 @utility trail-grid {
 	isolation: isolate;
 
@@ -37,8 +36,6 @@
 		opacity: var(--trail-grid-strength, 3%);
 		background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26'%3E%3Cpath d='M.5 0v26M0 .5h26' stroke='black'/%3E%3C/svg%3E")
 			0 0 / 26px 26px;
-		-webkit-print-color-adjust: exact;
-		print-color-adjust: exact;
 	}
 
 	@media screen and (prefers-color-scheme: dark) {
@@ -48,7 +45,7 @@
 	}
 }
 
-/* The CV's width, up to 48rem, snapped to whole trail-grid cells plus 1px so the closing line on the right shows. */
+/* The CV's width, up to 48rem, snapped to whole 26px grid cells plus 1px so the closing line on the right shows. */
 @utility trail-grid-width {
 	width: calc(round(down, min(100%, 48rem) - 1px, 26px) + 1px);
 }
