@@ -105,10 +105,6 @@ const cli = pipe(
 
 			for (const directory of targets) {
 				yield* fs.makeDirectory(path.join(root, directory, 'skills'), {recursive: true})
-				// Retired skills; installed copies of them would contradict lint-companion.
-				for (const name of ['architecture', 'build', 'design', 'engineering', 'testing']) {
-					yield* fs.remove(path.join(root, directory, 'skills', name), {force: true, recursive: true})
-				}
 				for (const name of names) {
 					const target = path.join(root, directory, 'skills', name)
 					yield* fs.remove(target, {force: true, recursive: true})

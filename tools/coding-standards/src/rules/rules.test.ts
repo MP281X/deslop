@@ -12,7 +12,8 @@ const OxlintOutput = Schema.Struct({
 	diagnostics: Schema.Array(
 		Schema.Struct({
 			code: Schema.String,
-			labels: Schema.Array(Schema.Struct({span: Schema.Struct({line: Schema.Finite})}))
+			labels: Schema.Array(Schema.Struct({span: Schema.Struct({line: Schema.Finite})})),
+			message: Schema.String
 		})
 	)
 })
@@ -525,6 +526,14 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							{code: '@deslop/coding-standards(prefer-effect-count-by)', line: 31}
 						]
 					)
+					assert.deepStrictEqual(
+						pipe(
+							result.stdout.diagnostics,
+							Array.filter(diagnostic => String.includes('Array.some')(diagnostic.message)),
+							Array.map(diagnostic => diagnostic.labels[0]?.span.line)
+						),
+						[6, 7]
+					)
 				}),
 			20_000
 		)
@@ -800,6 +809,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'export const fallback = maybe === undefined ? "none" : maybe',
 								'export const predicateFallback = Predicate.isNullish(maybe) ? "none" : maybe',
 								'export const choice = consume(1) > 0 ? "some" : "none"',
+								'export function aliased(input: string) { const value = input; return consume(value.length) }',
 								// Inlining `p` would nest a pipe four deep, which no-deep-pipe rejects.
 								'export function deep() { const p = pipe(items, Array.appendAll(pipe(items, Array.appendAll(pipe(items, Array.take(1)))))); return pipe(p, Array.take(2)) }'
 							],
@@ -821,6 +831,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'@deslop/coding-standards(no-single-use-value)',
 						'@deslop/coding-standards(no-single-use-value)',
 						'@deslop/coding-standards(no-single-use-value)',
+						'@deslop/coding-standards(no-trivial-indirection)',
 						'@deslop/coding-standards(no-trivial-indirection)'
 					])
 				}),
