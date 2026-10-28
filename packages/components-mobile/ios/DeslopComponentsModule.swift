@@ -8,14 +8,11 @@ public class DeslopComponentsModule: Module {
   public func definition() -> ModuleDefinition {
     Name("DeslopComponents")
 
+    // Never unregistered: after an update reload the old module is destroyed after the new one registered, and would remove it.
     OnCreate {
       ViewModifierRegistry.register("bottomBarSearch") { params, appContext, _ in
         try BottomBarSearch(from: params, appContext: appContext)
       }
-    }
-
-    OnDestroy {
-      ViewModifierRegistry.unregister("bottomBarSearch")
     }
 
     ExpoUIView(Logo.self)
