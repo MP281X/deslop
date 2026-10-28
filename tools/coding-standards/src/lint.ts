@@ -150,15 +150,14 @@ const RULES = {
 
 export const lint: OxlintConfig = {
 	categories: {
-		correctness: 'off',
+		correctness: 'error',
 		nursery: 'off',
 		pedantic: 'off',
 		perf: 'off',
 		restriction: 'off',
 		style: 'off',
-		suspicious: 'off'
+		suspicious: 'error'
 	},
-	ignorePatterns: ['**/node_modules/**', '**/dist/**', '**/*.gen.ts'],
 	jsPlugins: [
 		{name: '@deslop/coding-standards', specifier: import.meta.url},
 		{name: 'react-doctor', specifier: import.meta.resolve('oxlint-plugin-react-doctor')},
@@ -185,10 +184,38 @@ export const lint: OxlintConfig = {
 		{files: ['**/*.test.ts'], rules: {'@deslop/coding-standards/no-discarded-failure': 'off'}},
 		{files: ['**/*.tsx'], rules: {'require-await': 'error', 'unicorn/no-null': 'off'}}
 	],
-	plugins: ['eslint', 'typescript', 'oxc', 'import', 'jsx-a11y', 'react', 'unicorn'],
+	plugins: ['eslint', 'typescript', 'oxc', 'import', 'jsx-a11y', 'react', 'unicorn', 'vitest'],
 	rules: {
 		// Effect and React forms that maintained rules cannot express.
 		...Record.mapEntries(RULES, (_, name) => [`@deslop/coding-standards/${name}`, 'error' as const]),
+
+		// Category rules that misread this stack: Effect's Array.sort and TaggedError, the automatic JSX runtime, `_tag`, style imports.
+		'eslint/no-underscore-dangle': 'off',
+		'import/no-unassigned-import': ['error', {allow: ['**/*.css']}],
+		'jsx-a11y/aria-role': ['error', {ignoreNonDOM: true}],
+		'jsx-a11y/no-autofocus': ['error', {ignoreNonDOM: true}],
+		// An inline SVG is role="img", and a live message is role="status" in its own element.
+		'jsx-a11y/prefer-tag-over-role': 'off',
+		'react/no-unstable-nested-components': 'off',
+		'react/react-in-jsx-scope': 'off',
+		'unicorn/no-array-sort': 'off',
+		'unicorn/throw-new-error': 'off',
+
+		// React Compiler reports each component it skips; the compiler is the only memoization.
+		'react/capitalized-calls': 'error',
+		'react/hooks': 'error',
+		'react/invariant': 'error',
+		'react/syntax': 'error',
+		'react/todo': 'error',
+		'react/unsupported-syntax': 'error',
+
+		// Tests
+		'vitest/no-commented-out-tests': 'error',
+		'vitest/no-conditional-tests': 'error',
+		'vitest/no-disabled-tests': 'error',
+		'vitest/no-focused-tests': 'error',
+		'vitest/no-identical-title': 'error',
+		'vitest/valid-title': 'error',
 
 		// TypeScript type shape
 		'typescript/consistent-generic-constructors': 'error',
@@ -267,9 +294,7 @@ export const lint: OxlintConfig = {
 			}
 		],
 
-		// JavaScript correctness
-		'max-depth': ['error', 3],
-		'max-nested-callbacks': ['error', 6],
+		// JavaScript correctness; Fallow's complexity check owns nesting depth.
 		'no-cond-assign': 'error',
 		'no-constant-binary-expression': 'error',
 		'no-constant-condition': 'error',
@@ -279,16 +304,20 @@ export const lint: OxlintConfig = {
 		'no-debugger': 'error',
 		'no-dupe-else-if': 'error',
 		'no-else-return': 'error',
+		'no-empty': 'error',
 		'no-empty-function': ['error', {allow: ['arrowFunctions']}],
 		'no-eval': 'error',
 		'no-extend-native': 'error',
 		'no-extra-bind': 'error',
 		'no-extra-boolean-cast': 'error',
+		'no-implicit-coercion': 'error',
 		'no-implied-eval': 'error',
+		'no-inline-comments': 'error',
 		'no-invalid-regexp': 'error',
 		'no-iterator': 'error',
 		'no-labels': 'error',
 		'no-lonely-if': 'error',
+		'no-loop-func': 'error',
 		'no-loss-of-precision': 'error',
 		'no-misleading-character-class': 'error',
 		'no-multi-assign': 'error',
@@ -296,6 +325,7 @@ export const lint: OxlintConfig = {
 		'no-new': 'error',
 		'no-param-reassign': ['error', {props: true}],
 		'no-plusplus': 'error',
+		'no-promise-executor-return': 'error',
 		'no-proto': 'error',
 		'no-restricted-exports': ['error', {restrictedNamedExportsPattern: 'Live$'}],
 		'no-restricted-globals': [
@@ -380,6 +410,7 @@ export const lint: OxlintConfig = {
 		'no-return-assign': 'error',
 		'no-self-assign': 'error',
 		'no-self-compare': 'error',
+		'no-sequences': 'error',
 		'no-shadow': [
 			'error',
 			{allow: ['Array', 'Boolean', 'Console', 'Effect', 'HashMap', 'Number', 'Option', 'Schema', 'String']}
@@ -411,6 +442,8 @@ export const lint: OxlintConfig = {
 		'no-useless-return': 'error',
 		'no-var': 'error',
 		'no-void': 'error',
+		// An agent's TODO or FIXME is unfinished work: finish it or leave it out.
+		'no-warning-comments': 'error',
 		'object-shorthand': 'error',
 
 		// no-accumulating-copy covers Effect folds; Oxc's spread rules only recognize native methods and suggest Object.assign.
@@ -590,10 +623,15 @@ export const lint: OxlintConfig = {
 		'unicorn/no-process-exit': 'error',
 		'unicorn/no-static-only-class': 'error',
 		'unicorn/no-useless-fallback-in-spread': 'error',
+		'unicorn/no-useless-promise-resolve-reject': 'error',
 		'unicorn/no-useless-spread': 'error',
+		'unicorn/numeric-separators-style': 'error',
 		'unicorn/prefer-bigint-literals': 'error',
+		'unicorn/prefer-number-properties': 'error',
 		'unicorn/prefer-optional-catch-binding': 'error',
+		'unicorn/prefer-regexp-test': 'error',
 		'unicorn/prefer-string-replace-all': 'error',
+		'unicorn/prefer-type-error': 'error',
 
 		// JavaScript globals
 		'use-isnan': 'error',

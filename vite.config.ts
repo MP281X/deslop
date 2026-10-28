@@ -55,8 +55,21 @@ export default defineConfig({
 	lint: {
 		env: {browser: true, builtin: true, node: true},
 		extends: [lint],
-		// An extended config's ignorePatterns do not carry over, so the preset's generated-file ignore repeats here.
-		ignorePatterns: ['**/*.gen.ts', 'tools/*/template/**', 'packages/components-web/src/ui/**']
+		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/ui/**'],
+		overrides: [
+			{
+				// React Native styles are objects with no Tailwind classes to check.
+				files: ['apps/{opm,stash,trips}/**', 'packages/components-mobile/**', 'tools/create-app/template/mobile/**'],
+				rules: {
+					'shadcn/no-arbitrary-values': 'off',
+					'shadcn/no-inline-styles': 'off',
+					'shadcn/no-raw-colors': 'off',
+					'shadcn/no-restyle': 'off',
+					'shadcn/no-unknown-classes': 'off',
+					'shadcn/require-static-classes': 'off'
+				}
+			}
+		]
 	},
 	run: {
 		tasks: {
@@ -66,11 +79,14 @@ export default defineConfig({
 				command: [
 					'fallow dead-code --format compact --fail-on-issues',
 					'fallow dead-code --production --format compact --fail-on-issues',
-					'fallow health --complexity --format compact'
+					'fallow health --complexity --format human --quiet'
 				]
 			},
 			fix: {cache: false, command: 'vp lint --fix --format agent; status=$?; vp fmt && exit $status'},
-			lint: ['vp fmt --list-different', 'vp lint --format agent'],
+			lint: {
+				cache: {input: [{auto: true}, '!**/*.tsbuildinfo'], output: []},
+				command: ['vp fmt --list-different', 'vp lint --format agent']
+			},
 			test: 'vp test',
 			typecheck: {
 				cache: {input: [{auto: true}, '!**/*.tsbuildinfo'], output: []},

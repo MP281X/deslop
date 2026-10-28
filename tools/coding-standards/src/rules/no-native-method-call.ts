@@ -42,6 +42,7 @@ const REPLACEMENTS: Record.ReadonlyRecord<string, string> = {
 	split: 'String.split',
 	startsWith: 'String.startsWith',
 	substring: 'String.substring',
+	// oxlint-disable-next-line unicorn/no-thenable -- a lookup key naming Promise#then, never awaited.
 	then: 'Effect.tryPromise and Effect.map',
 	toLocaleLowerCase: 'String.toLowerCase',
 	toLocaleUpperCase: 'String.toUpperCase',

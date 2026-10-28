@@ -167,10 +167,10 @@ export class Media extends Context.Service<
 				}
 				const samples = Float32Array.from(
 					new Int16Array(pcm.stdout.buffer, pcm.stdout.byteOffset, pcm.stdout.byteLength / 2),
-					sample => sample / 32768
+					sample => sample / 32_768
 				)
-				if (samples.length / 16000 > MAX_WHISPER_SECONDS) {
-					yield* Effect.logInfo(`${clock(samples.length / 16000)} of audio is too long for Whisper`)
+				if (samples.length / 16_000 > MAX_WHISPER_SECONDS) {
+					yield* Effect.logInfo(`${clock(samples.length / 16_000)} of audio is too long for Whisper`)
 					return Option.none()
 				}
 				if (samples.length < 16_000) return Option.none()
@@ -184,7 +184,7 @@ export class Media extends Context.Service<
 				const transcription = yield* whisper.withPermit(
 					Effect.scoped(
 						Effect.gen(function* () {
-							yield* Effect.logInfo(`Transcribing ${clock(samples.length / 16000)} of audio with ${model}`)
+							yield* Effect.logInfo(`Transcribing ${clock(samples.length / 16_000)} of audio with ${model}`)
 							const recognize = yield* Effect.acquireRelease(
 								Effect.tryPromise(() => pipeline('automatic-speech-recognition', model, {device: 'cpu', dtype: 'q8'})),
 								loaded => Effect.promise(() => loaded.dispose())

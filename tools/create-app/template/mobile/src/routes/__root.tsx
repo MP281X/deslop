@@ -12,7 +12,6 @@ import {HomeRoute} from '#routes/(home)/index.tsx'
 export function RootRoute() {
 	useAtomMount(updateAtom)
 	return (
-		// oxlint-disable-next-line shadcn/no-inline-styles -- The SwiftUI host is a React Native view and fills the screen through its style.
 		<Host style={{flex: 1}}>
 			<NavigationStack modifiers={[tint(colors.foreground), background(colors.background)]}>
 				<Suspense fallback={<ProgressView />}>

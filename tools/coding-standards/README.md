@@ -33,7 +33,7 @@ export default defineConfig({lint: {extends: [lint]}})
 {"extends": "@deslop/coding-standards/tsconfig.json"}
 ```
 
-Put project-specific lint settings alongside `extends`; its `ignorePatterns` do not carry over, so repeat `**/*.gen.ts` in your own ignores.
+Put project-specific lint settings alongside `extends`; the preset ignores nothing, so add `**/*.gen.ts` to your own ignores.
 
 ## Collection performance
 

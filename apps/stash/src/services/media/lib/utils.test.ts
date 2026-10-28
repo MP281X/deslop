@@ -81,7 +81,7 @@ describe('isBlocked', () => {
 describe('clock', () => {
 	it('counts minutes past an hour and a day', () => {
 		assert.strictEqual(clock(3725), '62:05')
-		assert.strictEqual(clock(90061), '1501:01')
+		assert.strictEqual(clock(90_061), '1501:01')
 	})
 })
 
