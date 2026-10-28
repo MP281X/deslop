@@ -3,10 +3,12 @@ import {Array, Function, Option, Predicate, pipe} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
+import {nestsTooDeep} from '#rules/no-deep-pipe.ts'
 import {
 	importedMember,
 	matches,
 	memberName,
+	readable,
 	returnedExpression,
 	rootName,
 	singleUseThunk,
@@ -140,33 +142,34 @@ function unexportedBindingName(node: ESTree.Function | ESTree.ArrowFunctionExpre
 	return Option.none()
 }
 
+// The wrapper's call is its only read, and its body inlined there stays readable and within no-deep-pipe's limit, whose message suggests a named function.
 function singleCallerWrapper(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
 	const names = pipe(input.node.params, Array.map(parameterName), Array.getSomes)
+	const returned = returnedExpression(input.node)
 	if (
 		input.node.async ||
 		input.node.generator ||
 		input.node.returnType?.typeAnnotation.type === 'TSTypePredicate' ||
 		Array.isArrayEmpty(names) ||
 		names.length !== input.node.params.length ||
-		returnedExpression(input.node)?.type !== 'CallExpression'
+		returned?.type !== 'CallExpression'
 	) {
 		return false
 	}
 	return pipe(
 		unexportedBindingName(input.node),
 		Option.flatMap(name => variableFromScope({name, scope: input.context.sourceCode.getScope(input.node)})),
-		Option.exists(variable => {
-			const reads = Array.filter(variable.references, reference => reference.isRead())
-			return (
-				reads.length === 1 &&
-				Array.every(
-					reads,
-					reference =>
-						reference.identifier.parent.type === 'CallExpression' &&
-						reference.identifier.parent.callee === reference.identifier
-				)
-			)
-		})
+		Option.map(variable => Array.filter(variable.references, reference => reference.isRead())),
+		Option.filter(reads => reads.length === 1),
+		Option.flatMap(Array.head),
+		Option.map(reference => reference.identifier),
+		Option.exists(
+			read =>
+				read.parent.type === 'CallExpression' &&
+				read.parent.callee === read &&
+				readable({context: input.context, init: returned, read: read.parent}) &&
+				!nestsTooDeep({context: input.context, read: read.parent, value: returned})
+		)
 	)
 }
 

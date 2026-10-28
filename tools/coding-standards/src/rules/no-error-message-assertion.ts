@@ -1,4 +1,4 @@
-import {Array, Option} from 'effect'
+import {Option} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -54,22 +54,7 @@ function isErrorMessage(context: Context, node?: ESTree.Node | null) {
 	)
 }
 
-function expectsErrorMessage(context: Context, node: ESTree.Node) {
-	return (
-		node.type === 'CallExpression' &&
-		node.callee.type === 'Identifier' &&
-		node.callee.name === 'expect' &&
-		isErrorMessage(context, node.arguments[0])
-	)
-}
-
-function expectsMessage(context: Context, node: ESTree.MemberExpression) {
-	if (node.object.type === 'MemberExpression' && Option.contains(memberName(node.object), 'not')) {
-		return expectsErrorMessage(context, node.object.object)
-	}
-	return expectsErrorMessage(context, node.object)
-}
-
+// The preset bans expect, so assert is the only assertion API.
 function assertsMessage(context: Context, node: ESTree.CallExpression) {
 	const [actual, expected] = node.arguments
 	return (
@@ -84,18 +69,7 @@ function assertsMessage(context: Context, node: ESTree.CallExpression) {
 export const noErrorMessageAssertion = defineRule({
 	create: context => ({
 		CallExpression: node => {
-			if (assertsMessage(context, node)) {
-				context.report({message: ASSERT_IDENTITY, node})
-				return
-			}
-			if (
-				node.callee.type === 'MemberExpression' &&
-				(node.arguments[0]?.type === 'Literal' || node.arguments[0]?.type === 'TemplateLiteral') &&
-				(Option.exists(memberName(node.callee), name => Array.contains(['toThrow', 'toThrowError'], name)) ||
-					expectsMessage(context, node.callee))
-			) {
-				context.report({message: ASSERT_IDENTITY, node})
-			}
+			if (assertsMessage(context, node)) context.report({message: ASSERT_IDENTITY, node})
 		}
 	}),
 	meta: {type: 'problem'}

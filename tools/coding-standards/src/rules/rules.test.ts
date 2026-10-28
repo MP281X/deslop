@@ -492,7 +492,14 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'for (Array.filter(values, String.isNonEmpty).length of [0]) {}',
 						'for (Array.filter(values, String.isNonEmpty).length in {zero: 0}) {}',
 						'export function defaultRead() { const [count = Array.filter(values, String.isNonEmpty).length] = []; return [count, count] }',
-						'export function keyRead(input: Record<number, string>) { const {[Array.filter(values, String.isNonEmpty).length]: value} = input; return [value, value] }'
+						'export function keyRead(input: Record<number, string>) { const {[Array.filter(values, String.isNonEmpty).length]: value} = input; return [value, value] }',
+						'export const someNonZero = Array.filter(values, String.isNonEmpty).length !== 0',
+						'export const someAtLeastOne = Array.filter(values, String.isNonEmpty).length >= 1',
+						'export const noneBelowOne = Array.filter(values, String.isNonEmpty).length < 1',
+						'export const nonZero = values.length !== 0',
+						'export const atLeastOne = values.length >= 1',
+						'export const belowOne = values.length < 1',
+						'export const single = values.length === 1'
 					]
 					const result = yield* lintSource({'counts.ts': Array.join(source, '\n')})
 					assert.strictEqual(result.stderr, '')
@@ -523,16 +530,23 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							{code: '@deslop/coding-standards(prefer-effect-count-by)', line: 8},
 							{code: '@deslop/coding-standards(prefer-effect-count-by)', line: 9},
 							{code: '@deslop/coding-standards(prefer-effect-count-by)', line: 30},
-							{code: '@deslop/coding-standards(prefer-effect-count-by)', line: 31}
+							{code: '@deslop/coding-standards(prefer-effect-count-by)', line: 31},
+							{code: '@deslop/coding-standards(prefer-effect-count-by)', line: 32},
+							{code: '@deslop/coding-standards(prefer-effect-count-by)', line: 33},
+							{code: '@deslop/coding-standards(prefer-effect-count-by)', line: 34},
+							{code: '@deslop/coding-standards(no-native-emptiness-check)', line: 35},
+							{code: '@deslop/coding-standards(no-native-emptiness-check)', line: 36},
+							{code: '@deslop/coding-standards(no-native-emptiness-check)', line: 37}
 						]
 					)
 					assert.deepStrictEqual(
 						pipe(
 							result.stdout.diagnostics,
 							Array.filter(diagnostic => String.includes('Array.some')(diagnostic.message)),
-							Array.map(diagnostic => diagnostic.labels[0]?.span.line)
+							Array.map(diagnostic => diagnostic.labels[0]?.span.line ?? 0),
+							Array.sort(Order.Number)
 						),
-						[6, 7]
+						[6, 7, 32, 33, 34]
 					)
 				}),
 			20_000
@@ -643,6 +657,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'const pang = Effect.fnUntraced(function* (value: number): Effect.fn.Return<number> { if (value <= 0) return 0; return yield* ping(value - 1) })',
 								'class Walker { walk(value: number): number { if (value <= 0) return 0; return this.walk(value - 1) + 1 } }',
 								'const counter = Array.map([3], function count(value: number): number { if (value <= 0) return 0; return count(value - 1) + 1 })',
+								'function grow(items: string[]) { return pipe(items, Array.appendAll(pipe(items, Array.take(1)))) }',
+								'const grown = pipe(names, Array.appendAll(pipe(names, Array.appendAll(grow(names)))))',
 								'declare const receiver: {parse: (value: string) => number}',
 								'function parseWith(value: string) { return receiver.parse(value) }',
 								'declare function factory(left: string): (right: string) => string',
@@ -668,7 +684,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'declare function createRoute(options: {validateSearch: (value: unknown) => User}): void',
 								'createRoute({validateSearch: Schema.decodeUnknownSync(User)})',
 								'const added = Effect.fn("added")(function* (value: number) { const ledger = yield* Ledger; return yield* ledger.add(value) })',
-								'export {added, Annotated, CallStep, hasWindow, route, stubs, CodeStep, Decoded, DefaultInput, Encoded, Formatter, Ledger, LinearIssue, Listed, Normalized, Step, circle, circles, constants, countdown, counter, counts, curried, annotate, annotateString, decoded, decodedMany, echo, encoded, ensured, flags, depth, first, identify, isCall, isUser, labels, layers, limits, loadName, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, annotatedName, nickname, noUser, payload, odd, parseWith, ping, readSnapshot, singleName, snapshots, swap, test, thunks, Walker, transform, tuple, version, versionPatterns, withDefault}'
+								'export {added, Annotated, CallStep, hasWindow, route, stubs, CodeStep, Decoded, DefaultInput, Encoded, Formatter, Ledger, LinearIssue, Listed, Normalized, Step, circle, circles, constants, countdown, counter, counts, curried, annotate, annotateString, decoded, decodedMany, echo, encoded, ensured, flags, depth, first, grown, identify, isCall, isUser, labels, layers, limits, loadName, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, annotatedName, nickname, noUser, payload, odd, parseWith, ping, readSnapshot, singleName, snapshots, swap, test, thunks, Walker, transform, tuple, version, versionPatterns, withDefault}'
 							],
 							Array.join('\n')
 						)
@@ -692,14 +708,9 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'declare const value: unknown',
 								'declare const failure: {message: string}',
 								'declare const assert: {strictEqual: (actual: unknown, expected: unknown) => void}',
-								'declare function expect(value: unknown): {not: {toContain: (expected: string) => void}; toBe: (expected: unknown) => void; toThrow: (expected?: string) => void}',
 								"const isText = typeof value === 'string'",
 								"if (typeof properties === 'object') Predicate.isNotNull(properties)",
-								"expect(() => Predicate.isNotNull(value)).toThrow('negative')",
-								"expect(failure.message).toBe('negative')",
-								"expect(failure.message).not.toContain('negative')",
 								"assert.strictEqual(failure.message, 'negative')",
-								'expect(() => Predicate.isNotNull(value)).toThrow()',
 								'export {isText}'
 							],
 							Array.join('\n')
@@ -709,9 +720,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						customCodes(result.stdout),
 						pipe(
 							[
-								'@deslop/coding-standards(no-error-message-assertion)',
-								'@deslop/coding-standards(no-error-message-assertion)',
-								'@deslop/coding-standards(no-error-message-assertion)',
 								'@deslop/coding-standards(no-error-message-assertion)',
 								'@deslop/coding-standards(no-typeof)',
 								'@deslop/coding-standards(no-typeof)'
@@ -1882,7 +1890,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'export const trimmed = z.string().trim()',
 								'export const replaced = Effect.gen(function* () { const groups = yield* Groups; return yield* groups.replace("a") })',
 								'export const listed = Array.map(["a"], value => value).join(",")',
-								'export const split = path.join("a").split("/")',
+								'export const first = path.join("a").at(0)',
 								'export const keys = Object.keys({a: 1})',
 								'declare const pending: Effect.Effect<string[]>',
 								'export const mapped = Effect.gen(function* () { const values = yield* pending; return values.map(value => value) })'
@@ -1896,7 +1904,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							Array.filter(diagnostic => diagnostic.code === '@deslop/coding-standards(no-native-method-call)'),
 							Array.map(diagnostic => diagnostic.labels[0]?.span.line)
 						),
-						// Array and record methods belong to the Effect compiler's preferEffectArray and preferEffectRecord.
+						// String, mapped array and record methods belong to the Effect compiler's preferEffectString, preferEffectArray and preferEffectRecord.
 						[12]
 					)
 				}),

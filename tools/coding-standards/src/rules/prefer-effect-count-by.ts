@@ -1,17 +1,13 @@
+import {Option} from 'effect'
+
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {ESTree} from 'vite-plus/lint/plugins'
 
-import {isFilteredCount} from '#rules/shared.ts'
+import {isFilteredCount, lengthTest} from '#rules/shared.ts'
 
 // `filtered.length === 0` and `filtered.length > 0` ask whether anything matches, not how many do.
 function testsPresence(node: ESTree.MemberExpression) {
-	return (
-		node.parent.type === 'BinaryExpression' &&
-		node.parent.left === node &&
-		(node.parent.operator === '===' || node.parent.operator === '>') &&
-		node.parent.right.type === 'Literal' &&
-		node.parent.right.value === 0
-	)
+	return node.parent.type === 'BinaryExpression' && node.parent.left === node && Option.isSome(lengthTest(node.parent))
 }
 
 export const preferEffectCountBy = defineRule({
