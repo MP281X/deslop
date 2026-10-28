@@ -1,6 +1,6 @@
 # @deslop/coding-standards
 
-A syntax-only Vite+ lint preset, a strict compiler configuration with Effect diagnostics, and three skills for Claude Code and Codex: `lint-companion`, `delivery` and `review`.
+A syntax-only Vite+ lint preset, a strict compiler configuration with Effect diagnostics, and three skills for Claude Code and Codex: `writing-code`, `pull-requests` and `review`.
 
 Vite+ owns syntax linting and plugin authoring APIs; Effect-patched tsrs owns compiler diagnostics.
 

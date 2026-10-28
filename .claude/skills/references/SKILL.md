@@ -1,16 +1,13 @@
 ---
-name: patterns
-description: Find canonical code and UI patterns or resolve unfamiliar library APIs. Use when choosing an unfamiliar implementation shape or filling a reference gap; start with the repository's named examples.
+name: references
+description: Load before writing a shape the repository has no canonical example of, before calling a library API you have not read the source of in this thread, and before designing or changing a screen.
 ---
 
-# Code patterns and references
+# References
 
-Find the relevant precedent, not a new workflow. The repository's named examples lead; external references fill a specific gap. Stop when the implementation shape or API question is settled; review owns evaluation.
+The repository's canonical examples (`AGENTS.md`) lead; these fill a gap. Reuse a clone under `/tmp/repos/<name>` after checking its remote and revision, or `git clone --depth 1 <url> /tmp/repos/<name>`; read it at the default branch and never edit, build or install it. Copy the structure into the repository's style, and take every Effect name from the installed `effect` package's source, since reference versions differ.
 
-## Sources, in order
-
-1. **The repository's own style.** The canonical examples its `AGENTS.md` names, then its `CODING_STANDARDS.md`. Read the owning module's exports and real consumers: a name or a screenshot alone does not establish its pattern. In a repository being cleaned up, an unnamed nearest file is code to replace.
-2. **References** for a shape the repository has no canonical example of: reuse a matching clone under `/tmp/repos/<name>` after checking its remote and revision, or `git clone --depth 1 <url> /tmp/repos/<name>`. Read the relevant paths at the default branch; a reference clone is never edited, built or installed. Copy the structure into the repository's style; take every Effect name from the installed `effect` package's source, since reference versions differ.
+## Sources
 
 | Shape                                       | Repository                                     | Open                                                                                                    |
 | ------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -35,7 +32,7 @@ Find the relevant precedent, not a new workflow. The repository's named examples
 | Skill packaging and evaluation              | https://github.com/anthropics/skills           | `skills/skill-creator/`                                                                                 |
 | Effect knowledge for agents                 | https://github.com/Effect-TS/skills            | `skills/effect-ts/`                                                                                     |
 
-**Screens.** When a Mobbin tool is available, search its screens or flows for the screen's job and build from the relevant hits; otherwise from the repository's own screens and the references above. Color, radius, type, spacing and shadow live in the theme the repository's `components.json` names.
+**Screens.** Search Mobbin's screens or flows for the screen's job and build from the relevant hits, beside the repository's own screens and the references above. Color, radius, type, spacing and shadow live in the theme the repository's `components.json` names.
 
 ## Ground
 
@@ -46,6 +43,6 @@ rg -on '^export (const|function) (decodeUnknown\w*|fromJsonString|parseJson)\b' 
 # → decodeUnknownEffect decodeUnknownExit decodeUnknownOption … fromJsonString   (Effect 3's decodeUnknown and parseJson are gone)
 ```
 
-**Probe.** One question, one inline script against the public interface or real data through the repository's runner, such as `vp node -e '<script>'`. Shrink a reproduction until every input is needed; repeated failed fixes call for testing their shared premise.
+**Probe.** One question, one inline script through the repository's runner, such as `vp node -e '<script>'`; repeated failed fixes call for testing their shared premise.
 
 **Visual taste.** For this user's screens, avoid gradients or glows, colored side stripes, a bordered card per section, equal prominence everywhere, a color per tile, generic copy, content waiting on an entrance animation and the hero/feature-grid/logo-row skeleton. The user's picked reference wins.

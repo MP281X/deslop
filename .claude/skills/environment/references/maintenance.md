@@ -1,6 +1,6 @@
 # Maintenance
 
-Setup, upkeep and rebuild of the machines. Do established upkeep without asking; report failures and what Clean removed.
+Setup, upkeep and rebuild of the machines.
 
 ## Machines
 
@@ -22,9 +22,9 @@ Setup, upkeep and rebuild of the machines. Do established upkeep without asking;
 
 ## Agent configuration
 
-Every worker runs the same configuration from the deslop repository. `.codex/global-config.toml` has that name so the CLI does not load it a second time as deslop's project config. The personal skills, orchestrator, environment, patterns and retrospective, are global; lint-companion, delivery and review belong to coding-standards and install into each repository. A variable only agents need goes in `.claude/settings.json` `env` and `.codex/global-config.toml` `shell_environment_policy.set`, never in `~/.bashrc`.
+Every worker runs the same configuration from the deslop repository. `.codex/global-config.toml` has that name so the CLI does not load it a second time as deslop's project config. A variable only agents need goes in `.claude/settings.json` `env` and `.codex/global-config.toml` `shell_environment_policy.set`, never in `~/.bashrc`.
 
-Each installed path is a symlink into the main checkout `~/deslop`, so a worker runs the configuration on `origin/main`: Claude's `SessionStart` hook fast-forwards `~/deslop` in the background (`git pull --ff-only`), so the session after a merge loads it. T3's own automatic pull does not cover this: it pulls a checkout only while something refreshes that checkout's Git status. Never edit an installed path, and never switch `~/deslop` off `main`: both change every thread's configuration. Running threads keep the configuration they started with.
+Each installed path is a symlink into the main checkout `~/deslop`, so a worker runs the configuration on `origin/main`: Claude's `SessionStart` hook fast-forwards `~/deslop` in the background (`git pull --ff-only`), so the session after a merge loads it. Never edit an installed path, and never switch `~/deslop` off `main`: both change every thread's configuration. Running threads keep the configuration they started with.
 
 | Installed path                      | Links to `~/deslop/…`       |
 | ----------------------------------- | --------------------------- |
@@ -43,20 +43,20 @@ r=~/deslop
 mkdir -p ~/.claude/agents ~/.claude/skills ~/.codex/rules ~/.codex/skills
 ln -sfn $r/.claude/settings.json ~/.claude/settings.json
 ln -sfn $r/.claude/agents/pair.md ~/.claude/agents/pair.md
-for s in orchestrator environment patterns retrospective; do ln -sfn $r/.claude/skills/$s ~/.claude/skills/$s; ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done
+for s in planning environment references retrospective; do ln -sfn $r/.claude/skills/$s ~/.claude/skills/$s; ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done
 ln -sfn $r/.codex/global-config.toml ~/.codex/config.toml
 ln -sfn $r/.codex/instructions.md ~/.codex/instructions.md
 ln -sfn $r/.codex/rules/deny.rules ~/.codex/rules/deny.rules
 codex execpolicy check --rules ~/.codex/rules/deny.rules true
 ```
 
-**Skill renames.** Stage new discovery links on both workers before merging, targeting the future path in `~/deslop`, never a review worktree; leave the active old links untouched. The new links become readable when main fast-forwards. After that, retire only old links owned by this setup; preserve unrelated skills and real directories. No compatibility skill or startup hook is needed.
+**Skill renames.** Stage new discovery links on both workers before merging, targeting the future path in `~/deslop`, never a review worktree; leave the active old links untouched. The new links become readable when main fast-forwards. After that, retire only old links owned by this setup; preserve unrelated skills and real directories.
 
 **Check** with `find ~/.claude/settings.json ~/.claude/agents/pair.md ~/.codex/config.toml ~/.codex/instructions.md ~/.codex/rules/deny.rules ~/.claude/skills/* ~/.codex/skills/* -maxdepth 0 ! -type l` (prints a link a harness replaced) and `git -C ~/deslop status --short` (a harness that wrote through a link; carry the write into a PR, then `git -C ~/deslop restore` it, because a dirty checkout stops the automatic pull).
 
 ## T3 history
 
-Search with `t3_thread_search` first. Each worker stores only its own threads: query both, the other through `ssh mp281x@<worker>`. Use `sqlite3 -readonly ~/.t3/userdata/statev2.sqlite`, selecting only needed fields; current records are in `orchestration_v2_projection_*` (`_threads`, `_messages`, `_turn_items`, `_runs`, `_subagents`). Native transcripts with every tool call: `~/.claude/projects/*/*.jsonl`, `~/.codex/sessions/**`.
+Each worker stores only its own threads. For counts across many threads, `sqlite3 -readonly ~/.t3/userdata/statev2.sqlite` on each worker, the other through `ssh mp281x@<worker>`, selecting only needed fields; current records are in `orchestration_v2_projection_*` (`_threads`, `_messages`, `_turn_items`, `_runs`, `_subagents`). Native transcripts with every tool call: `~/.claude/projects/*/*.jsonl`, `~/.codex/sessions/**`.
 
 ## T3 settings
 
@@ -77,45 +77,38 @@ new=$(jq --argjson src "$(sqlite3 -readonly -json ~/.t3/userdata/statev2.sqlite 
 ```
 
 - **Claude launch arguments.** `providerInstances.claudeAgent.config.launchArgs` is `--system-prompt-snapshot off --thinking-display omitted --autocompact 500k`. T3 passes them to new Claude processes; never restart T3 or stop threads to apply them.
-- **Project scripts** live in `projectSettingsOverrides.<project id>.defaultProjectScripts`, which T3 reads before the legacy `projectScriptOverrides` (left unset) and the project's own scripts. `install` runs on worktree creation and `settle` on settle; agents run `preview` per environment's Previews, and the user can run `preview` and `stop` from the script menu. Each preview is the unit `preview-<worktree name>` and prints its URL only once it answers, or exits 1 when the unit dies; deslop's port comes from the worktree path, Dual's from its `Preview ready:` line. Dual's `settle` destroys a preview's data only where one ran.
+- **Project scripts** live only in `projectSettingsOverrides.<project id>.defaultProjectScripts`; the legacy `projectScriptOverrides` and a checked-in `t3.json` stay unset, so the scripts stay the user's own. `install` runs on worktree creation and holds the agent until it exits (`async: false`); the script flagged `runOnSettle` runs on settle; the user runs `preview` and `stop` from the script menu. Deslop's port comes from the worktree path, Dual's from its `Preview ready:` line.
 
 ```bash
 # deslop
-install: vp install --frozen-lockfile
+install: vp install --frozen-lockfile                                      # async: false
 preview: u=preview-${PWD##*/} p=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)); systemctl --user stop $u 2>/dev/null; systemd-run --user -G -d -u $u -E PATH="$HOME/.vite-plus/bin:$PATH" -E HOST=127.0.0.1 -E PORT=$p vp run --filter @deslop/portfolio preview && until curl -fso /dev/null http://127.0.0.1:$p; do systemctl --user is-active -q $u || exit 1; sleep 2; done && sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null && echo https://$(hostname -s).tailnet-8c4c.ts.net:$p
-stop: systemctl --user stop preview-${PWD##*/}; sudo tailscale serve --https=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)) off 2>/dev/null || true
-settle: systemctl --user stop preview-${PWD##*/}; sudo tailscale serve --https=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)) off 2>/dev/null || true
+stop: systemctl --user stop preview-${PWD##*/}; sudo tailscale serve --https=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)) off 2>/dev/null || true   # runOnSettle
 
 # dual
-install: vp install --frozen-lockfile && vpx @deslop/coding-standards@latest
+install: vp install --frozen-lockfile                                      # async: false
 preview: u=preview-${PWD##*/} h=$(hostname -s).tailnet-8c4c.ts.net; systemctl --user stop $u 2>/dev/null; systemd-run --user -G -d -u $u -p KillSignal=SIGINT -E PATH="$HOME/.vite-plus/bin:$PATH" -E DUAL_PREVIEW_HOST=$h bun run preview && until p=$(journalctl --user _SYSTEMD_INVOCATION_ID=$(systemctl --user show -p InvocationID --value $u) -o cat | grep -oPm1 'Preview ready: \S+:\K[0-9]+'); do systemctl --user is-active -q $u || exit 1; sleep 5; done && sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null && echo https://$h:$p && echo 'Login: admin@dual.local / preview-password'
 stop: u=preview-${PWD##*/}; p=$(journalctl --user -u $u -o cat | grep -oP 'Preview ready: \S+:\K[0-9]+' | tail -1); systemctl --user stop $u; [ -z "$p" ] || sudo tailscale serve --https=$p off 2>/dev/null || true
-settle: u=preview-${PWD##*/}; p=$(journalctl --user -u $u -o cat | grep -oP 'Preview ready: \S+:\K[0-9]+' | tail -1); systemctl --user stop $u; [ -z "$p" ] || sudo tailscale serve --https=$p off 2>/dev/null || true; [ ! -d infra/saas/.alchemy ] || bun run preview:destroy
+settle: u=preview-${PWD##*/}; p=$(journalctl --user -u $u -o cat | grep -oP 'Preview ready: \S+:\K[0-9]+' | tail -1); systemctl --user stop $u; [ -z "$p" ] || sudo tailscale serve --https=$p off 2>/dev/null || true; [ ! -d infra/saas/.alchemy ] || bun run preview:destroy   # runOnSettle
 ```
 
-- **Review guides.** `reviewGuidesEnabled` is `true`, `reviewGuideModelSelection` is Codex `gpt-6.1-sol`, and `reviewGuideInstructions` holds exactly:
+## Upkeep
 
-```text
-The reader is a tired reviewer who wants to finish fast and must not miss a risk.
-Open with the stop that can break something: a migration, a changed contract or schema, a permission change, removed behavior or a new dependency. Put the risk in its attention note.
-Then follow what a user or caller sees change, then the interfaces, then the implementation.
-Spend words only on choices a maintainer must agree with: a new abstraction, option, fallback, retry, special case, compatibility alias or comment. Name each one and what breaks without it.
-Put generated files, lockfiles, formatting, renames and moves in one closing skim stop.
-Use at most five stops of two short sentences each, in plain words. No praise, no restated diff, no test counts or pipeline results.
-```
+"Maintenance" runs Update, Clean and Check on dev, desktop (when on) and the Mac, without asking; the reply shows each machine's disk before and after, what Clean removed, failures, and what still needs the user.
 
 ## Update
 
-1. **Update.** `sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get autoremove -y && sudo apt-get clean`, `vp upgrade`, `gh extension upgrade --all`. glab: when `curl -fsSL https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, install its `glab_<version>_linux_amd64.deb`.
-2. **T3** runs the nightly channel as the `t3code.service` user unit: `vp install -g t3@nightly`, `t3 service install`, `t3 connect link --headless` (show the user the link), `t3 connect publish`, then `t3 service restart` with no run active.
+1. **Packages.** `sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get autoremove -y && sudo apt-get clean`, `vp upgrade`, `gh extension upgrade --all` (`gh-stack` lags per worker). glab: when `curl -fsSL https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, install `https://gitlab.com/gitlab-org/cli/-/releases/<tag>/downloads/glab_<version>_linux_amd64.deb` with `dpkg -i`.
+2. **T3** runs the nightly channel as the `t3code.service` user unit: with no run active, `t3 update --yes`; with runs active, leave the downloaded version for the user's update. A new worker first runs `vp install -g t3@nightly`, `t3 service install`, `t3 connect link --headless` (show the user the link) and `t3 connect publish`.
+3. **Mac.** The agent steps under [Mac](#mac); a pending macOS update is the user's, with its label from `softwareupdate -l`.
 
 ## Clean
 
-Remove rebuildable data, never unsettled work. A worktree is disposable only when every owning thread is settled, no run is queued and no process uses it. Find owners through `orchestration_v2_projection_threads.payload_json` (`worktreePath`, `settledAt`, `settledOverride`) and the latest `_runs` row. A missing path or owner starts an investigation, never a deletion. Unknown owners, stopped containers, unattached volumes and the production `deslop` project stay.
+Remove rebuildable data and settled work; keep what a working or unsettled thread uses. Find a worktree's owners through `orchestration_v2_projection_threads.payload_json` (`worktreePath`, `settledAt`) with `archived_at` and `deleted_at`, judging delegated children by their root thread; a process whose `/proc/<pid>/cwd` is inside it also owns it. Stopped containers of unknown owners, unattached volumes and the production `deslop` project stay.
 
-1. **Orphans.** Compose projects whose `com.docker.compose.project.working_dir` is gone, processes with a deleted working directory, Serve mappings without a backend, `~/.deslop/<worktree>` without a checkout (keep `~/.deslop/deploy`): remove when every owner is settled.
-2. **Settled worktrees.** Run the settle script from the worktree, remove a remaining Compose project, then `git worktree remove --force --force <path>` only when clean; list dirty ones for the user.
-3. **Branches.** In `~/deslop` and `~/dual`, delete local branches no worktree uses whose PR merged; list branches without an open or merged PR. Delete legacy `refs/t3/checkpoints/*`; keep `refs/t3/orchestration-v2/`.
+1. **Orphans.** Compose projects whose `com.docker.compose.project.working_dir` is gone, processes with a deleted working directory, Serve mappings whose backend no longer answers (`tailscale serve status --json`, then `sudo tailscale serve --https=<port> off`), `preview-*` units of removed worktrees, a `~/.deslop/<name>` whose worktree is gone and that is neither `deploy` nor a `tools/compose.yaml` service's data directory or env file.
+2. **Settled worktrees.** Every worktree whose root threads are all settled, archived or deleted goes, uncommitted changes included: run its settle script, remove a remaining Compose project, then `git worktree remove --force --force <path>` and `git worktree prune`. A worktree no thread owns goes when its branch's PR merged; otherwise list it.
+3. **Branches.** In `~/deslop` and `~/dual`, delete local branches no worktree uses whose PR merged; list branches without an open or merged PR.
 
    ```bash
    git fetch -q --prune origin
@@ -132,12 +125,21 @@ Remove rebuildable data, never unsettled work. A worktree is disposable only whe
        *) echo "keep $b: ${state:-no pull request}" ;;
      esac
    done
-   git for-each-ref --format='delete %(refname)' refs/t3/checkpoints | git update-ref --stdin
    ```
 
-4. **Caches.** With no build running: `docker image prune -a -f`, `docker builder prune -a -f`. With no install running: `vp pm cache clean` in both repositories, identified caches under `~/.npm` and `~/.cache`, unused Vite+, Node, Codex and Claude Code versions, `journalctl --vacuum-size=100M`. Never a blanket Docker system or volume prune. Keep `claude-*` and `codex*` folders in `/tmp`.
-5. **T3 releases.** Skip while `~/.t3/runtime/service-state.json` shows an uncommitted update. After a self-update, install the CLI at the active version (`vp install -g t3@<version>`); with no run active run `t3 service install`, otherwise point `ExecStart` in `~/.config/systemd/user/t3code.service` at it and `systemctl --user daemon-reload`. Delete unused versions.
-6. **Report** `df -h /` before and after, what each step removed, and the ten largest folders (`du -xh --max-depth=2 ~ /tmp /var/lib/docker | sort -h | tail`).
+4. **Caches.** With no build running: `docker image prune -a -f`, `docker builder prune -a -f` (the build cache reaches tens of GB). With no install running: `vp pm cache clean` in both repositories, `bun pm cache rm`, `npm cache clean --force`, `journalctl --vacuum-size=100M`. Never a blanket Docker system or volume prune.
+5. **Versions.** Keep only the current `~/.vite-plus/<version>` (`readlink ~/.vite-plus/current`), the Node runtimes under `~/.vite-plus/js_runtime/node` that a running process uses plus the newest patch of each major, and the Claude Code version `claude --version` reports under `~/.local/share/claude/versions`.
+6. **T3 releases.** Skip while `~/.t3/runtime/service-state.json` shows an uncommitted update. Delete every `~/.t3/runtime/versions/<version>` except `service-state.json`'s `activeVersion`, the version `ExecStart` names in `~/.config/systemd/user/t3code.service`, and a newer downloaded one.
+7. **Scratch.** Top-level `/tmp` entries of this user older than a day, except `claude-*`, `codex*`, `/tmp/repos` and the `/tmp/<name>` paths that unsettled threads' turn items mention (`rg -o '/tmp/[A-Za-z0-9._-]+'` over their `payload_json`).
+
+## Check
+
+Fix what fails, then rerun the check:
+
+- `systemctl --failed` and `systemctl --user --failed` are empty.
+- Agent configuration per its **Check**, plus no dangling link under `~/.claude/skills` and `~/.codex/skills` except those staged for an unmerged rename; `~/deslop` is clean on `main` and current with `origin/main`.
+- The project scripts match on both workers (`jq '.projectSettingsOverrides'`, mapped by workspace root); otherwise copy per [T3 settings](#t3-settings).
+- `git config --global --get-regexp '^(rebase|push|fetch|rerere|diff|merge|init)\.'` lists the git defaults.
 
 ## Set up a worker
 
@@ -170,14 +172,14 @@ T3's desktop app and the iOS Simulator; it builds nothing, the simulator app com
 
 **Device host.**
 
-1. `curl -fsSL https://vite.plus | bash`; `~/.zshenv` holds `export PATH="$HOME/.vite-plus/bin:$PATH"` and `export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
+1. `curl -fsSL https://vite.plus | bash`; `~/.zshenv` holds `export PATH="$HOME/.local/bin:$HOME/.vite-plus/bin:$PATH"` and `export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
 2. `open "macappstore://apps.apple.com/app/id497799835"`; guide: Get, open Xcode once, accept the license, download the iOS platform.
-3. Over SSH: `xcrun simctl list runtimes` lists iOS and `node --version` is 22.12 or newer; boot the iPhone Air simulator once with `xcrun simctl boot <udid>`.
+3. Over SSH: `xcrun simctl list runtimes` lists iOS and `node --version` is 22.12 or newer.
 4. Guide: T3 Settings, Integrations, Devices, the worker's environment, turn on Device hub and Agent device access, add `matteopaludgnach@macbook-pro`, test. Copy the settings to the other worker.
 
 ## MCP sign-in
 
-Codex reads `dual`, `scope`, `stash` and `mobbin` from the installed configuration and keeps OAuth sign-ins in the Secret Service keyring. Claude keeps locally registered MCP servers in `~/.claude.json`; register the following on each worker once the installed `.claude/settings.json` allows them. Mobbin uses the shared Claude connector instead.
+Codex reads `dual`, `scope`, `stash`, `auth` and `mobbin` from the installed configuration and keeps OAuth sign-ins in the Secret Service keyring. Claude keeps locally registered MCP servers in `~/.claude.json`; register the following on each worker once the installed `.claude/settings.json` allows them. Mobbin uses the shared Claude connector instead.
 
 ```bash
 sudo apt-get install -y gnome-keyring libsecret-tools
@@ -192,9 +194,7 @@ claude mcp add --transport http --scope user stash https://stash.mp281x.xyz/mcp
 claude mcp add --transport http --scope user auth https://auth.mp281x.xyz/mcp
 ```
 
-After the public-auth release, remove each old Claude registration with `claude mcp remove --scope user <name>` before adding its public URL above. Codex URLs update with the installed configuration. Do this on each worker; never copy OAuth credentials between machines.
-
-**Scope and Stash.** Run the native login on its worker and open its printed authorization URL in that worker's T3 preview. Leave that page waiting; the user signs in at https://auth.mp281x.xyz in their own browser, matches the displayed request ID against the thread, and approves the pending request. The inbox updates live. The original worker page completes the local callback without the user signing in there or copying codes. Repeat separately for each client and worker, replacing `scope` with `stash` and `auth`. Once `auth` is logged in, the agent approves later logins itself with its `answer_request`.
+**Scope, Stash and Auth.** Run the native login on its worker and open its printed authorization URL in that worker's T3 preview. Leave that page waiting: it shows a QR code and a code, which the user scans with a phone where they are signed in or enters at https://auth.mp281x.xyz. The waiting page then completes the local callback. Repeat separately for each client and worker, replacing `scope` with `stash` and `auth`.
 
 ```bash
 codex mcp login --no-browser scope
@@ -203,24 +203,22 @@ claude mcp login --no-browser scope
 
 Keep the waiting page on the worker running the CLI: `127.0.0.1` in another machine's browser is not its callback. If the CLI has timed out or the request expired, start a new login; never approve a request the thread did not start. The client name is self-reported, not a verified worker identity.
 
-**Dual and other external issuers.** In each worker's T3 terminal run the lines below one at a time, open each printed URL and approve access; the browser then fails to load `http://127.0.0.1:…/callback?…`, so copy that full address from the address bar and paste it into the terminal. The callback carries a one-use authorization code, not a reusable API token; no port forwarding is required. External issuers do not use the Deslop approval inbox.
+**Dual and other external issuers.** In each worker's T3 terminal run the lines below one at a time, open each printed URL and approve access; the browser then fails to load `http://127.0.0.1:…/callback?…`, so copy that full address from the address bar and paste it into the terminal. The callback carries a one-use authorization code, not a reusable API token; no port forwarding is required.
 
 ```bash
 codex mcp login --no-browser dual
 claude mcp login --no-browser dual
 ```
 
-**Mobbin in Claude.** Connect the [verified connector](https://claude.ai/directory/connectors/mobbin) to the paid Mobbin account, then use `claude auth login` on each worker with that same Claude account. Subscription-authenticated Claude Code and T3 Claude sessions fetch the connector automatically; no separate Mobbin CLI OAuth or local server is needed. If a local `mobbin` entry already exists, remove it with `claude mcp remove mobbin --scope user`: a local server at the same URL shadows the shared connector. API-key and `claude setup-token` sessions do not import it. [Recommended Mobbin setup](https://docs.mobbin.com/mcp/clients/claude-code-cli), [Claude connector authentication](https://code.claude.com/docs/en/mcp#use-mcp-servers-from-claudeai).
+**Mobbin in Claude.** Connect the [verified connector](https://claude.ai/directory/connectors/mobbin) to the paid Mobbin account and sign each worker in with `claude auth login` on that Claude account; API-key and `claude setup-token` sessions do not import it. A local `mobbin` entry shadows the connector: `claude mcp remove mobbin --scope user`.
 
-The installed settings must not set `disableClaudeAiConnectors: true` in any scope; a project-level `false` cannot override it. The URL allowlist admits Mobbin and the existing services, not unrelated cloud connectors. Once any `serverUrl` entry exists, every remote server needs a URL rule, including T3's HTTP endpoint at `http://127.0.0.1:<port>/mcp`; name rules no longer admit remote servers. Skill and plugin synchronization stay disabled. After merging configuration changes, start a new session. Check `/mcp` for `claude.ai Mobbin` with status `connected`; `claude mcp list` alone does not prove a shared connector loaded. [Allowlist matching](https://code.claude.com/docs/en/managed-mcp#match-servers-by-url-command-or-name).
+The installed settings must not set `disableClaudeAiConnectors: true` in any scope. Once any `serverUrl` entry exists, every remote server needs a URL rule, including T3's `http://127.0.0.1:<port>/mcp`. `claude mcp list` shows `claude.ai Mobbin: ✔ Connected` when the connector loaded.
 
-**Mobbin in Codex.** Authorize `https://api.mobbin.com/mcp` separately on each worker with `codex mcp login --no-browser mobbin` and the callback procedure above; Claude's connector authorization does not transfer to Codex. Never copy credentials between workers. [Official setup](https://docs.mobbin.com/mcp/introduction).
+**Mobbin in Codex.** Authorize `https://api.mobbin.com/mcp` separately on each worker with `codex mcp login --no-browser mobbin` and the callback procedure above; Claude's connector authorization does not transfer to Codex.
 
-Keep `features.mcp_2026_07_28 = false`: in Codex 0.163.0, an authenticated Mobbin server exposed no tools with stateless MCP enabled; the same headless standard search succeeded with it disabled. This switch is global, not per-server; verify discovery for Dual, Scope and Stash when changing it. Check each worker's Mobbin sign-in with `codex mcp list`: `OAuth` means credentials are stored, `Not logged in` requires that worker's own authorization. Verify a real tool call separately.
+`features.mcp_2026_07_28` (why in `.codex/global-config.toml`) is global: verify discovery for Dual, Scope and Stash when changing it. Check each worker's Mobbin sign-in with `codex mcp list`: `OAuth` means credentials are stored, `Not logged in` requires that worker's own authorization. Verify a real tool call separately.
 
-Verify with a standard screen search for `iOS saved notes search filters` and a flow search for `workflow run failure details`. Inspect returned preview images and preserve the product names and Mobbin links; a connected server alone does not prove search or image access. Standard searches, `search_flows` and `search_sections` use no AI credits; only successful `search_screens` calls with `mode: "deep"` consume credits. [Tools and images](https://docs.mobbin.com/mcp/features), [credit rules](https://docs.mobbin.com/ai-credits).
-
-If direct client registration or discovery returns a Vercel `HTTP 403` challenge, keep OAuth success separate from tool availability and report the failing step to [Mobbin support](https://help.mobbin.com/en/contact-us). For Claude, use the recommended shared connector rather than retrying direct registration.
+Verify Mobbin with one `search_screens` call with `mode: "standard"`; the default, `deep`, spends AI credits.
 
 ## Git identity
 
