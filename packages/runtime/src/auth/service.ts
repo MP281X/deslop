@@ -70,10 +70,11 @@ export class Auth extends Context.Service<
 	static readonly layer = (resource: string) =>
 		Layer.effectContext(
 			Effect.gen(function* () {
+				// Where this server reaches the auth app: inside the deploy, its container address.
 				const url = yield* pipe(Config.String('AUTH_URL'), Config.withDefault(AUTH_URL))
 				const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 				const origins = [
-					new URL(url).origin,
+					AUTH_URL,
 					'https://portfolio.mp281x.xyz',
 					...Array.map(Resource.literals, identifier => new URL(identifier).origin)
 				]

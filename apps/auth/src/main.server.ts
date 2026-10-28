@@ -1,6 +1,6 @@
 import {NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {Config, Effect, Layer, pipe} from 'effect'
+import {Effect, Layer, pipe} from 'effect'
 
 import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 import {RpcServer} from 'effect/rpc'
@@ -14,16 +14,14 @@ import {Authorizations} from '#services/authorizations/service.ts'
 import {layerMcp} from '#tools/handlers.ts'
 
 const RpcOrigin = HttpRouter.middleware()(
-	Effect.gen(function* () {
-		const origin = new URL(yield* pipe(Config.String('AUTH_URL'), Config.withDefault(AUTH_URL))).origin
-		return app =>
-			Effect.gen(function* () {
-				if ((yield* HttpServerRequest.HttpServerRequest).headers['origin'] !== origin) {
-					return HttpServerResponse.text('The request comes from another origin', {status: 403})
-				}
-				return yield* app
-			})
-	})
+	Effect.succeed(app =>
+		Effect.gen(function* () {
+			if ((yield* HttpServerRequest.HttpServerRequest).headers['origin'] !== AUTH_URL) {
+				return HttpServerResponse.text('The request comes from another origin', {status: 403})
+			}
+			return yield* app
+		})
+	)
 )
 
 NodeRuntime.runMain(
