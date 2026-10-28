@@ -207,6 +207,22 @@ export const schemaTypePair = defineRule({
 					}
 				}
 			}
+		},
+		// `typeof Note.Type` outside its pair repeats the derivation the alias names.
+		TSTypeQuery: node => {
+			if (
+				node.exprName.type !== 'TSQualifiedName' ||
+				node.exprName.left.type !== 'Identifier' ||
+				node.exprName.right.name !== 'Type' ||
+				!matches(/^[A-Z]/u)(node.exprName.left.name) ||
+				(node.parent.type === 'TSTypeAliasDeclaration' && isInferredType({name: node.parent.id.name, node}))
+			) {
+				return
+			}
+			context.report({
+				message: `Read the type ${node.exprName.left.name}, declared as \`type ${node.exprName.left.name} = typeof ${node.exprName.left.name}.Type\` beside its Schema.`,
+				node
+			})
 		}
 	}),
 	meta: {fixable: 'code', type: 'problem'}
