@@ -61,7 +61,7 @@ import type {
 	BookingList
 } from '#services/bookings/schema.ts'
 import {Booking, BookingsError, Leg} from '#services/bookings/schema.ts'
-import {ApnsEnvironment, Bundle} from '#services/push/schema.ts'
+import {Bundle} from '#services/push/schema.ts'
 
 const SERVER = 'https://trips.mp281x.xyz'
 const SESSION = 'session'
@@ -223,18 +223,7 @@ export const nowAtom = Atom.make(get => {
 
 // Push
 
-const apns = Effect.gen(function* () {
-	return {
-		bundle: yield* Schema.decodeUnknownEffect(Bundle)(Application.applicationId),
-		// The Simulator reports no environment; its tokens come from the sandbox.
-		environment: Option.getOrElse(
-			Schema.decodeUnknownOption(ApnsEnvironment)(
-				yield* Effect.tryPromise(() => Application.getIosPushNotificationServiceEnvironmentAsync())
-			),
-			() => 'development' as const
-		)
-	}
-})
+const apns = Effect.map(Schema.decodeUnknownEffect(Bundle)(Application.applicationId), bundle => ({bundle}))
 
 Notifications.setNotificationHandler({
 	handleNotification: () =>
