@@ -138,10 +138,11 @@ export const searchAtom = RpcClient.runtime.atom(get => {
 
 const images = new Directory(Paths.cache, 'downloads')
 
-// SwiftUI images read local files, so each note's preview is downloaded once into the cache; a failed download stays failed until the app restarts.
+// SwiftUI images read local files, so each note's preview is downloaded once into the cache; a failed download tries again on the next return to the app.
 export const imageAtom = Atom.family((id: Note['id']) =>
-	session.runtime.atom(
-		Effect.gen(function* () {
+	session.runtime.atom(get => {
+		get(MobileRuntime.activationsAtom)
+		return Effect.gen(function* () {
 			const file = new File(images, id)
 			if (file.exists) return file.uri
 			images.create({idempotent: true, intermediates: true})
@@ -153,7 +154,7 @@ export const imageAtom = Atom.family((id: Note['id']) =>
 			)
 			return downloaded.uri
 		})
-	)
+	})
 )
 
 // Actions stay alive, so leaving the screen does not interrupt the request.

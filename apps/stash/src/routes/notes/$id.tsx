@@ -153,14 +153,18 @@ function Body(props: {text: string}) {
 				(line, index) =>
 					pipe(
 						Match.value(line),
-						Match.when(String.startsWith('#'), () => (
-							<Text
-								key={index}
-								modifiers={[mono('headline', 17), foregroundStyle(colors.foreground), padding({top: 10})]}
-							>
-								{String.replace(/^#+\s*/u, '')(line)}
-							</Text>
-						)),
+						// A heading's hashes are followed by a space; a line opening with a #hashtag is text.
+						Match.when(
+							text => Option.isSome(String.match(/^#+\s/u)(text)),
+							() => (
+								<Text
+									key={index}
+									modifiers={[mono('headline', 17), foregroundStyle(colors.foreground), padding({top: 10})]}
+								>
+									{String.replace(/^#+\s*/u, '')(line)}
+								</Text>
+							)
+						),
 						Match.when(
 							text => Option.isSome(String.match(/^(?:[-*•]|\d+\.)\s/u)(text)),
 							() => (
