@@ -41,7 +41,6 @@ import {updateAtom} from '@deslop/runtime/mobile'
 
 import {activitiesAtom, bookingsAtom, calendarAtom, openedAtom, pushAtom, session, signInAtom} from '#lib/utils.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
-import {AddRoute} from '#routes/add.tsx'
 import {BookingRoute} from '#routes/bookings/$id.tsx'
 import icon from '#routes/icon.png'
 import type {BookingList} from '#services/bookings/schema.ts'
@@ -82,9 +81,8 @@ function Failed(props: {cause: Cause.Cause<unknown>}) {
 	)
 }
 
-// A pushed screen: the add form, or a booking by its id.
+// A pushed booking by its id.
 function Destination(props: {bookings: BookingList; onClose: () => void; value: string}) {
-	if (props.value === 'add') return <AddRoute onDone={props.onClose} />
 	return <BookingRoute key={props.value} bookings={props.bookings} id={props.value} onClose={props.onClose} />
 }
 
@@ -108,7 +106,7 @@ function AppRoutes() {
 				onPathChange={setPath}
 				modifiers={[tint(colors.foreground), background(colors.background)]}
 			>
-				<HomeRoute bookings={loaded.value} onAdd={() => setPath(['add'])} onOpen={id => setPath([id])} />
+				<HomeRoute bookings={loaded.value} onOpen={id => setPath([id])} />
 				{Array.map(path, value => (
 					<NavigationDestination key={value} value={value}>
 						<Destination bookings={loaded.value} value={value} onClose={() => setPath([])} />

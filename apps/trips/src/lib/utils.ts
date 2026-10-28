@@ -20,6 +20,7 @@ import {FetchHttpClient} from 'effect/http'
 import {AsyncResult, AtomRpc, Atom} from 'effect/reactivity'
 import * as Application from 'expo-application'
 import * as Calendar from 'expo-calendar'
+import * as Clipboard from 'expo-clipboard'
 import {File, Paths} from 'expo-file-system'
 import * as Location from 'expo-location'
 import * as Notifications from 'expo-notifications'
@@ -29,7 +30,7 @@ import type {LiveActivity} from 'expo-widgets'
 import {DynamicColorIOS, Linking} from 'react-native'
 
 import {colors} from '@deslop/components-mobile/theme'
-import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
+import {alert, cachedList, clipboardChangeCount, writeAtomically} from '@deslop/components-mobile/utils'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 import * as MobileSession from '@deslop/runtime/mobile/session'
@@ -58,9 +59,10 @@ import type {
 	Stay,
 	Tone,
 	Train,
-	BookingList
+	BookingList,
+	BookingSource
 } from '#services/bookings/schema.ts'
-import {Booking, BookingsError, Leg} from '#services/bookings/schema.ts'
+import {Booking, BookingsError, IMAGE_BYTES, Leg} from '#services/bookings/schema.ts'
 import {Bundle} from '#services/push/schema.ts'
 
 const SERVER = 'https://trips.mp281x.xyz'
@@ -129,33 +131,83 @@ export const bookingsAtom = Atom.keepAlive(
 	})
 )
 
-const draftFile = new File(Paths.document, 'draft.txt')
+// Clipboard
 
-// The pasted text survives leaving the sheet, switching apps and an update, until it is saved.
-export const draftAtom = Atom.writable(
-	() => Boolean.match(draftFile.exists, {onFalse: () => '', onTrue: () => draftFile.textSync()}),
-	(context, text: string) => {
-		writeAtomically(draftFile, text)
-		context.setSelf(text)
-	}
+const clipboardFile = new File(Paths.document, 'clipboard.txt')
+type Offer = {count: string; kind: 'image' | 'text'}
+
+// Only metadata is inspected on entry; the contents stay private until Add booking.
+export const offerAtom = Atom.keepAlive(
+	Atom.make(get => {
+		get(MobileRuntime.activationsAtom)
+		return Effect.gen(function* () {
+			const count = `${clipboardChangeCount()}`
+			if (clipboardFile.exists && clipboardFile.textSync() === count) return Option.none<Offer>()
+			if (yield* Effect.promise(() => Clipboard.hasImageAsync())) return Option.some<Offer>({count, kind: 'image'})
+			if (yield* Effect.promise(() => Clipboard.hasStringAsync())) return Option.some<Offer>({count, kind: 'text'})
+			return Option.none<Offer>()
+		})
+	})
 )
 
-export const saveAtom = Atom.keepAlive(
-	Atom.fn((text: string, get) =>
-		pipe(
-			withClient(
-				get,
-				Effect.flatMap(RpcClient, client => client('bookings.save', {text: String.trim(text)}))
-			),
-			// Text typed since this save started stays.
-			Effect.tap(() =>
-				Effect.sync(() => {
-					if (get(draftAtom) === text) get.set(draftAtom, '')
-				})
-			),
-			alert('Not Saved')
+const readClipboard = Effect.fnUntraced(function* (offer: Offer) {
+	if (`${clipboardChangeCount()}` !== offer.count) {
+		return yield* BookingsError.make({message: 'The clipboard changed. Reopen Trips to add the new copy.'})
+	}
+	if (offer.kind === 'image') {
+		const copied = yield* Effect.tryPromise({
+			catch: cause => BookingsError.make({cause, message: 'The copied screenshot could not be read.'}),
+			try: () => Clipboard.getImageAsync({format: 'jpeg', jpegQuality: 0.85})
+		})
+		if (copied === null) return yield* BookingsError.make({message: 'The clipboard no longer holds an image.'})
+		const image = yield* pipe(
+			Schema.decodeEffect(Schema.Uint8ArrayFromBase64)(String.replace(/^data:[^,]*,/u, '')(copied.data)),
+			Effect.mapError(() => BookingsError.make({message: 'The copied screenshot could not be read.'}))
 		)
+		if (image.byteLength === 0 || image.byteLength > IMAGE_BYTES) {
+			return yield* BookingsError.make({message: 'Copy a screenshot smaller than 4 MB and try again.'})
+		}
+		return {image} satisfies BookingSource
+	}
+	const text = pipe(
+		yield* Effect.tryPromise({
+			catch: cause => BookingsError.make({cause, message: 'The copied text could not be read.'}),
+			try: () => Clipboard.getStringAsync()
+		}),
+		String.trim,
+		String.slice(0, 60_000)
 	)
+	if (String.isEmpty(text)) return yield* BookingsError.make({message: 'The clipboard no longer holds text.'})
+	return {text} satisfies BookingSource
+})
+
+export const answerAtom = Atom.keepAlive(
+	Atom.fn((answer: {offer: Offer; save: boolean}, get) => {
+		const handled = Effect.try({
+			catch: cause => BookingsError.make({cause, message: 'The answer could not be kept on this iPhone.'}),
+			try: () => {
+				writeAtomically(clipboardFile, answer.offer.count)
+				get.refresh(offerAtom)
+			}
+		})
+		return pipe(
+			Effect.gen(function* () {
+				if (answer.save) {
+					const source = yield* readClipboard(answer.offer)
+					yield* withClient(
+						get,
+						Effect.flatMap(RpcClient, client => client('bookings.save', source))
+					)
+				}
+			}),
+			// A refused booking is handled, but a lost connection offers the same copy on the next return.
+			Effect.tapErrorTag('BookingsError', () => handled),
+			Effect.andThen(handled),
+			alert('Not saved'),
+			Effect.ignore({log: 'Warn', message: 'The clipboard booking was not saved'}),
+			Effect.as(answer.offer)
+		)
+	})
 )
 
 // The booking deleted last, which the list offers to put back for a few seconds.

@@ -13,7 +13,7 @@ export const ToolHandlers = Tools.toLayer(
 				const now = yield* Clock.currentTimeMillis
 				return {bookings: Array.filter(yield* bookings.list, booking => endOf(booking) > now - 7 * DAY)}
 			}),
-			save_booking: input => Effect.map(bookings.text(input.text), saved => ({bookings: saved}))
+			save_booking: input => Effect.map(bookings.save(input), saved => ({bookings: saved}))
 		})
 	})
 )
