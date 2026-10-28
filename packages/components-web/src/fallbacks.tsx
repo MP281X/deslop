@@ -29,20 +29,23 @@ export function Error(props: {error: unknown; reset: () => void}) {
 	const message = formatError(props.error)
 
 	return (
-		<Button
-			variant="ghost"
-			onClick={async () => {
-				props.reset()
-				await navigator.clipboard.writeText(message)
-			}}
-			// oxlint-disable-next-line shadcn/no-restyle -- the whole error area is the copy target and insets its alert, and Button has no size that fills its parent.
-			className="flex h-full w-full cursor-pointer p-4 select-text"
-		>
-			<Alert variant="destructive" className="w-full max-w-lg">
+		<div className="flex flex-1 flex-col items-center justify-center gap-4 p-4">
+			<Alert variant="destructive" className="w-full max-w-lg select-text">
 				<OctagonAlert />
 				<AlertTitle>Something went wrong</AlertTitle>
 				<AlertDescription className="wrap-break-word whitespace-pre-wrap">{message}</AlertDescription>
 			</Alert>
-		</Button>
+			<div className="flex gap-2">
+				<Button
+					variant="ghost"
+					onClick={async () => {
+						await navigator.clipboard.writeText(message)
+					}}
+				>
+					Copy error
+				</Button>
+				<Button onClick={props.reset}>Try again</Button>
+			</div>
+		</div>
 	)
 }
