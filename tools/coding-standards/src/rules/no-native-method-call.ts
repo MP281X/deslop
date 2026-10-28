@@ -3,7 +3,7 @@ import {Array, Option, Predicate, Record, String, pipe} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {matches, memberName, variableFor} from '#rules/shared.ts'
+import {matches, memberName, memberRoot, variableFor} from '#rules/shared.ts'
 
 // The compiler's preferEffectArray and preferEffectString own string methods and mapped array methods such as map; this rule keeps the array methods they skip and Promise chains.
 const REPLACEMENTS: Record.ReadonlyRecord<string, string> = {
@@ -50,12 +50,6 @@ function freshRegExpFlags(input: {context: Context; node: ESTree.Expression}) {
 	if (flags === undefined) return Option.some(Option.some(''))
 	if (flags.type !== 'Literal' || !Predicate.isString(flags.value)) return Option.some(Option.none<string>())
 	return Option.some(Option.some(flags.value))
-}
-
-// The object a property chain starts from: `path` in `path.posix`.
-function memberRoot(node: ESTree.Expression): ESTree.Expression {
-	if (node.type === 'MemberExpression') return memberRoot(node.object)
-	return node
 }
 
 // The identifier a receiver chain starts from, through calls: `z` in `z.string().trim`.

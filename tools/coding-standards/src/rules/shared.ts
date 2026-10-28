@@ -198,6 +198,12 @@ export function rootName(node: ESTree.Node): Option.Option<string> {
 	return Option.none()
 }
 
+// The object a property chain starts from: `path` in `path.posix`.
+export function memberRoot(node: ESTree.Expression): ESTree.Expression {
+	if (node.type === 'MemberExpression') return memberRoot(node.object)
+	return node
+}
+
 export function memberName(node: ESTree.MemberExpression) {
 	if (!node.computed && node.property.type === 'Identifier') return Option.some(node.property.name)
 	if (node.computed && node.property.type === 'Literal' && Predicate.isString(node.property.value)) {

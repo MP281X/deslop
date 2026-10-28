@@ -23,6 +23,7 @@ import {noErrorMessageControlFlow} from '#rules/no-error-message-control-flow.ts
 import {noFakeRefState} from '#rules/no-fake-ref-state.ts'
 import {noFalliblePromise} from '#rules/no-fallible-promise.ts'
 import {noFloatingDerivedType} from '#rules/no-floating-derived-type.ts'
+import {noFocusedEffectTest} from '#rules/no-focused-effect-test.ts'
 import {noGradient} from '#rules/no-gradient.ts'
 import {noHandWrittenGuard} from '#rules/no-hand-written-guard.ts'
 import {noInOperator} from '#rules/no-in-operator.ts'
@@ -116,6 +117,7 @@ const RULES = {
 	'no-fake-ref-state': noFakeRefState,
 	'no-fallible-promise': noFalliblePromise,
 	'no-floating-derived-type': noFloatingDerivedType,
+	'no-focused-effect-test': noFocusedEffectTest,
 	'no-gradient': noGradient,
 	'no-hand-written-guard': noHandWrittenGuard,
 	'no-in-operator': noInOperator,

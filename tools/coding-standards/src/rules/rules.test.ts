@@ -212,6 +212,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'type InlineType = typeof InlineType.Type',
 								'const InlineType = Schema.Struct({name: Schema.String})',
 								'export {type InlineType}',
+								'export function publicName(value: typeof Public.Type) { return value.name }',
 								'type Explicit = {readonly values: readonly string[]}',
 								'type Mapped<T> = {readonly [K in keyof T]: T[K]}',
 								'type Frozen = Readonly<{value: string}>',
@@ -373,6 +374,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'@deslop/coding-standards(schema-type-pair)',
 								'@deslop/coding-standards(schema-type-pair)',
 								'@deslop/coding-standards(schema-type-pair)',
+								'@deslop/coding-standards(schema-type-pair)',
 								'@deslop/coding-standards(schema-type-pair)'
 							],
 							Array.sort(String.Order)
@@ -451,7 +453,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'@deslop/coding-standards(no-trivial-indirection)',
 						'@deslop/coding-standards(no-trivial-indirection)',
 						'@deslop/coding-standards(no-trivial-indirection)',
-						'@deslop/coding-standards(no-trivial-indirection)'
+						'@deslop/coding-standards(no-trivial-indirection)',
+						'@deslop/coding-standards(schema-type-pair)'
 					])
 				}),
 			20_000
@@ -1465,7 +1468,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'@deslop/coding-standards(no-type-from-value)',
 						'@deslop/coding-standards(no-type-from-value)',
 						'@deslop/coding-standards(no-type-from-value)',
-						'@deslop/coding-standards(no-type-from-value)'
+						'@deslop/coding-standards(no-type-from-value)',
+						'@deslop/coding-standards(schema-type-pair)'
 					])
 				}),
 			20_000
@@ -1868,6 +1872,37 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							Array.sort(String.Order)
 						),
 						pipe(source, Array.filter(String.startsWith('export const bad')), Array.sort(String.Order))
+					)
+				}),
+			20_000
+		)
+
+		testApi.effect(
+			'reports focused and skipped Effect tests',
+			() =>
+				Effect.gen(function* () {
+					const result = yield* lintSource({
+						'focus.test.ts': pipe(
+							[
+								"import {it} from '@effect/vitest'",
+								'',
+								"import {Effect, Layer} from 'effect'",
+								'',
+								"it.effect.only('runs alone', () => Effect.void)",
+								"it.scoped.skip('never runs', () => Effect.void)",
+								"it.effect('runs', () => Effect.void)",
+								"it.layer(Layer.empty)(test => { test.effect.only('runs alone in its layer', () => Effect.void) })"
+							],
+							Array.join('\n')
+						)
+					})
+					assert.deepStrictEqual(
+						pipe(
+							result.stdout.diagnostics,
+							Array.filter(diagnostic => diagnostic.code === '@deslop/coding-standards(no-focused-effect-test)'),
+							Array.map(diagnostic => diagnostic.labels[0]?.span.line)
+						),
+						[5, 6, 8]
 					)
 				}),
 			20_000
