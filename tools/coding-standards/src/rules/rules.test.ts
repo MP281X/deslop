@@ -217,7 +217,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'type Frozen = Readonly<{value: string}>',
 								'type Index = {readonly [key: string]: string}',
 								'class Input { readonly field = "value"; constructor(readonly value: string) {} }',
-								'class Clock extends Context.Service<Clock, {now: Effect.Effect<number>; tick(): Effect.Effect<void>}>()("Clock") {}',
+								'class Clock extends Context.Service<Clock, {now: Effect.Effect<number>; get tick(): Effect.Effect<void>}>()("Clock") {}',
 								'const makeClock = Effect.gen(function* () { return {now: Effect.succeed(1), tick: () => Effect.void} })',
 								'declare const ClockLive: {layer: Layer.Layer<Clock>}',
 								'const clockService = ClockLive.layer',
