@@ -23,7 +23,7 @@ it.effect('streams every cursor, keeps a visitor through a second tab and drops 
 		const seen = yield* SubscriptionRef.make<PortfolioVisitors>([])
 		function watch(id: string) {
 			return pipe(
-				presence.join({color: 'oklch(0.7 0.2 120)', id, name: id}),
+				presence.join({color: 'oklch(0.74 0.19 118)', id, name: id}),
 				Stream.runForEach(visitors => SubscriptionRef.set(seen, visitors)),
 				Effect.forkScoped
 			)
@@ -46,13 +46,13 @@ it.effect('streams every cursor, keeps a visitor through a second tab and drops 
 			'server-beta'
 		])
 
-		yield* presence.move({color: 'oklch(0.7 0.2 120)', id: 'guest', x: 0.2, y: 0.3})
+		yield* presence.move({color: 'oklch(0.74 0.19 118)', id: 'guest', x: 0.2, y: 0.3})
 		yield* until(guestAt(0.2, 0.3))
 
 		const secondTab = yield* watch('guest')
 		yield* until(guestAt(0.5, 0.5))
 		yield* Fiber.interrupt(firstTab)
-		yield* presence.move({color: 'oklch(0.7 0.2 120)', id: 'guest', x: 0.7, y: 0.7})
+		yield* presence.move({color: 'oklch(0.74 0.19 118)', id: 'guest', x: 0.7, y: 0.7})
 		yield* until(guestAt(0.7, 0.7))
 
 		yield* Fiber.interrupt(secondTab)

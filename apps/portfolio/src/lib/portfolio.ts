@@ -2,29 +2,6 @@ import {Array, Option, pipe} from 'effect'
 
 import type {PortfolioVisitor, PortfolioVisitors} from '#services/presence/schema.ts'
 
-export const portfolioPalette = [
-	'oklch(0.74 0.19 118)',
-	'oklch(0.76 0.2 128)',
-	'oklch(0.75 0.18 138)',
-	'oklch(0.73 0.17 150)',
-	'oklch(0.74 0.18 162)',
-	'oklch(0.76 0.17 174)',
-	'oklch(0.75 0.18 186)',
-	'oklch(0.73 0.19 198)',
-	'oklch(0.72 0.2 210)',
-	'oklch(0.74 0.18 222)',
-	'oklch(0.71 0.18 234)',
-	'oklch(0.73 0.19 246)',
-	'oklch(0.75 0.19 258)',
-	'oklch(0.74 0.2 270)',
-	'oklch(0.73 0.21 282)',
-	'oklch(0.74 0.2 296)',
-	'oklch(0.75 0.19 310)',
-	'oklch(0.74 0.18 324)',
-	'oklch(0.73 0.19 338)',
-	'oklch(0.72 0.2 352)'
-] as const
-
 // Moves under a quarter of a percent of the viewport are neither sent nor drawn.
 export function hasMeaningfulMove(current: {x: number; y: number}, next: {x: number; y: number}) {
 	const deltaX = next.x - current.x

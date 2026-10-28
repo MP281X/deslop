@@ -14,13 +14,13 @@ import {
 	pipe
 } from 'effect'
 
-import {hasMeaningfulMove, portfolioPalette, removePortfolioVisitor, upsertPortfolioVisitor} from '#lib/portfolio.ts'
+import {hasMeaningfulMove, removePortfolioVisitor, upsertPortfolioVisitor} from '#lib/portfolio.ts'
 import type {PortfolioVisitors} from '#services/presence/schema.ts'
-import {PortfolioVisitor} from '#services/presence/schema.ts'
+import {PortfolioColor, PortfolioVisitor} from '#services/presence/schema.ts'
 
 const SERVER_BOTS = [
 	{
-		color: portfolioPalette[3],
+		color: PortfolioColor.literals[3],
 		id: 'server-alpha',
 		name: 'server-alpha',
 		xFreq: 0.47,
@@ -29,7 +29,7 @@ const SERVER_BOTS = [
 		yPhase: 0
 	},
 	{
-		color: portfolioPalette[17],
+		color: PortfolioColor.literals[17],
 		id: 'server-beta',
 		name: 'server-beta',
 		xFreq: 0.83,
