@@ -603,10 +603,7 @@ const notesFolder = pipe(
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem
 		const path = yield* Path.Path
-		const directory = yield* pipe(
-			Config.String('STASH_DATA_DIR'),
-			Config.withDefault(path.join(yield* Config.String('HOME'), '.deslop', 'stash'))
-		)
+		const directory = path.join(yield* Config.String('HOME'), '.deslop', 'stash')
 		yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
 		return directory
 	}),

@@ -1,7 +1,6 @@
 import {
 	Array,
 	Boolean,
-	Config,
 	Context,
 	Effect,
 	FileSystem,
@@ -109,7 +108,6 @@ export class Media extends Context.Service<
 			const fs = yield* FileSystem.FileSystem
 			const path = yield* Path.Path
 			const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
-			const cache = path.join(yield* pipe(Config.String('TMPDIR'), Config.withDefault('/tmp')), 'deslop', 'stash')
 			const whisper = yield* Semaphore.make(1)
 			const ytDlpArgs = ['--js-runtimes', 'node', '--no-progress', '--no-warnings', '--no-playlist']
 			const exit = yield* sourceProxy
@@ -176,7 +174,7 @@ export class Media extends Context.Service<
 					return Option.none()
 				}
 				if (samples.length < 16_000) return Option.none()
-				env.cacheDir = path.join(cache, 'models')
+				env.cacheDir = '/tmp/deslop/stash/models'
 				const spoken = Option.map(input.language, language => pipe(language, String.split('-'), Array.headNonEmpty))
 				const english = Option.contains(spoken, 'en')
 				const model = Boolean.match(english, {

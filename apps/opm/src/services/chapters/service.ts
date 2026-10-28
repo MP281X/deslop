@@ -444,10 +444,7 @@ const dataFolder = pipe(
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem
 		const path = yield* Path.Path
-		const directory = yield* pipe(
-			Config.String('OPM_DATA_DIR'),
-			Config.withDefault(path.join(yield* Config.String('HOME'), '.deslop', 'opm'))
-		)
+		const directory = path.join(yield* Config.String('HOME'), '.deslop', 'opm')
 		yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
 		return directory
 	}),

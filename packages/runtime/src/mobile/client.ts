@@ -12,16 +12,17 @@ import {layerOtlp} from '#telemetry.ts'
 
 import type {AuthError} from '#auth/schema.ts'
 
-export const extra = Schema.decodeUnknownSync(Schema.Struct({otel: Schema.String, scheme: Schema.String}))(
-	Constants.expoConfig?.extra
-)
+// The public receiver; Scope's private port is out of a phone's reach.
+export const TELEMETRY = 'https://otel.mp281x.xyz'
+
+export const extra = Schema.decodeUnknownSync(Schema.Struct({scheme: Schema.String}))(Constants.expoConfig?.extra)
 
 // Telemetry starts once; the socket is built per server. JSON frames, because binary ones failed to reopen a cancelled watch on iOS.
 export function layer(
 	applicationName: string,
 	authorization?: Effect.Effect<string, AuthError, HttpClient.HttpClient>
 ) {
-	Atom.runtime.addGlobalLayer(layerOtlp(`${applicationName}-ios`, extra.otel, 'mobile', authorization))
+	Atom.runtime.addGlobalLayer(layerOtlp(`${applicationName}-ios`, TELEMETRY, 'mobile', authorization))
 	return (server: string) =>
 		pipe(
 			// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
