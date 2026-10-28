@@ -17,6 +17,16 @@ import {
 import {Nano, Runtime} from '#services/telemetry/schema.ts'
 import type {Entry, Query, Resource, Stats, Trace} from '#services/telemetry/schema.ts'
 
+// A log's own time, else when the exporter saw it; OTLP sends 0 for a time it does not know.
+export function logTime(log: {observedTimeUnixNano?: string; timeUnixNano?: string}, now: string) {
+	return pipe(
+		Array.filter([log.timeUnixNano, log.observedTimeUnixNano], time => time !== undefined && time !== '0'),
+		Array.head,
+		Option.flatMap(Option.fromUndefinedOr),
+		Option.getOrElse(() => now)
+	)
+}
+
 function resourceString(resource: Resource, key: string) {
 	return pipe(
 		resource.attributes ?? [],

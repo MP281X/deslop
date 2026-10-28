@@ -28,6 +28,7 @@ import {
 	durationMs,
 	filterEntries,
 	logMessage,
+	logTime,
 	orderEntries,
 	serviceName,
 	serviceStatuses,
@@ -129,7 +130,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 								signal: 'log' as const,
 								spanId: String.toLowerCase(item.log.spanId ?? ''),
 								status: Boolean.match((item.log.severityNumber ?? 0) >= 17, {onFalse: () => 0, onTrue: () => 2}),
-								time: item.log.timeUnixNano ?? item.log.observedTimeUnixNano ?? now,
+								time: logTime(item.log, now),
 								traceId: String.toLowerCase(item.log.traceId ?? '')
 							})),
 						{concurrency: 1}
