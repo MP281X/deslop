@@ -8,7 +8,7 @@ import * as Crypto from 'expo-crypto'
 import {Directory, File, Paths} from 'expo-file-system'
 
 import {brands} from '@deslop/components-mobile/icons'
-import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
+import {alert, cachedList, clipboardChangeCount, writeAtomically} from '@deslop/components-mobile/utils'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 import * as MobileSession from '@deslop/runtime/mobile/session'
@@ -224,7 +224,7 @@ export const offerAtom = Atom.keepAlive(
 	Atom.make(get =>
 		Effect.gen(function* () {
 			get(MobileRuntime.activationsAtom)
-			const count = `${native.changeCount()}`
+			const count = `${clipboardChangeCount()}`
 			if (clipboardFile.exists && clipboardFile.textSync() === count) return Option.none<Offer>()
 			if (yield* Effect.promise(() => Clipboard.hasImageAsync())) return Option.some<Offer>({count, kind: 'image'})
 			if (yield* Effect.promise(() => native.hasLink())) return Option.some<Offer>({count, kind: 'link'})

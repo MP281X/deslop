@@ -20,7 +20,7 @@ import {KeyValueStore} from 'effect/persistence'
 import {Extractor} from '#services/bookings/lib/extraction.ts'
 import {Places} from '#services/bookings/lib/places.ts'
 import {byStart, diff, instantOf, upsert} from '#services/bookings/lib/utils.ts'
-import type {Booking, BookingsEvent, ExtractedItem, LocalTime} from '#services/bookings/schema.ts'
+import type {Booking, BookingSource, BookingsEvent, ExtractedItem, LocalTime} from '#services/bookings/schema.ts'
 import {BookingList, BookingsError, Flight, Place, Stay, Train} from '#services/bookings/schema.ts'
 
 function at(time: LocalTime, timeZone: string) {
@@ -38,7 +38,7 @@ export class Bookings extends Context.Service<
 		readonly list: Effect.Effect<BookingList>
 		readonly remove: (id: Booking['id']) => Effect.Effect<void, BookingsError>
 		readonly restore: (booking: Booking) => Effect.Effect<void, BookingsError>
-		readonly text: (text: string) => Effect.Effect<BookingList, BookingsError>
+		readonly save: (source: BookingSource) => Effect.Effect<BookingList, BookingsError>
 		readonly update: (id: Booking['id'], change: (booking: Booking) => Booking) => Effect.Effect<void, BookingsError>
 	}
 >()('@deslop/trips/services/bookings/service/Bookings') {
@@ -184,10 +184,12 @@ export class Bookings extends Context.Service<
 						return Tuple.make(undefined, [...current, booking])
 					})
 				}),
-				text: Effect.fn('Bookings.text')(function* (text) {
-					const items = yield* extractor.text(text)
+				save: Effect.fn('Bookings.save')(function* (source) {
+					const items = yield* extractor.read(source)
 					if (Array.isReadonlyArrayEmpty(items)) {
-						return yield* BookingsError.make({message: 'No flight, train or stay in this text.'})
+						return yield* BookingsError.make({
+							message: 'No booking found. Copy a confirmation or boarding pass and try again.'
+						})
 					}
 					// Every segment or none, so a ticket is never half saved; the failure names the place to fix.
 					const resolved = yield* Effect.forEach(items, item => Effect.result(resolve(item)), {concurrency: 1})

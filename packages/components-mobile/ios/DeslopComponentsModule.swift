@@ -8,6 +8,11 @@ public class DeslopComponentsModule: Module {
   public func definition() -> ModuleDefinition {
     Name("DeslopComponents")
 
+    // Metadata only: iOS asks for paste permission when the user chooses to read the content.
+    Function("clipboardChangeCount") { () -> Int in
+      UIPasteboard.general.changeCount
+    }
+
     // Never unregistered: after an update reload the old module is destroyed after the new one registered, and would remove it.
     OnCreate {
       ViewModifierRegistry.register("bottomBarSearch") { params, appContext, _ in

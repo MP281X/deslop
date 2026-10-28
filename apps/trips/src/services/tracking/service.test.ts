@@ -61,7 +61,7 @@ function bookingsAt(state: Ref.Ref<BookingList>) {
 		list: Ref.get(state),
 		remove: () => Effect.void,
 		restore: () => Effect.void,
-		text: () => Ref.get(state),
+		save: () => Ref.get(state),
 		update: (id, change) =>
 			Ref.update(
 				state,

@@ -16,7 +16,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 			'bookings.refresh': input => tracker.refresh(input.id),
 			'bookings.remove': input => bookings.remove(input.id),
 			'bookings.restore': input => bookings.restore(input),
-			'bookings.save': input => bookings.text(input.text),
+			'bookings.save': input => bookings.save(input),
 			'bookings.watch': () => bookings.events,
 			'devices.register': input => push.register(input)
 		})

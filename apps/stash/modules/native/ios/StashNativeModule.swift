@@ -6,11 +6,6 @@ public class StashNativeModule: Module {
   public func definition() -> ModuleDefinition {
     Name("StashNative")
 
-    // Asking what the clipboard holds reads nothing, so iOS shows no paste banner.
-    Function("changeCount") { () -> Int in
-      UIPasteboard.general.changeCount
-    }
-
     AsyncFunction("hasLink") { (promise: Promise) in
       let board = UIPasteboard.general
       if board.hasURLs {

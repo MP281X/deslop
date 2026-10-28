@@ -5,6 +5,14 @@ export class BookingsError extends Schema.TaggedError<BookingsError>()('Bookings
 	message: Schema.String
 }) {}
 
+export const IMAGE_BYTES = 4_000_000
+
+export type BookingSource = typeof BookingSource.Type
+export const BookingSource = Schema.Union([
+	Schema.Struct({text: pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(60_000)))}),
+	Schema.Struct({image: pipe(Schema.Uint8Array, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(IMAGE_BYTES)))})
+])
+
 export type BookingId = typeof BookingId.Type
 export const BookingId = pipe(Schema.String, Schema.check(Schema.isUUID()))
 

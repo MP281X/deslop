@@ -1,13 +1,15 @@
-import {useAtomSet, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, DateTime, Option, Record} from 'effect'
+import {Array, Boolean, DateTime, Option, Record, pipe} from 'effect'
 
 import {
 	Button,
+	BottomSheet,
 	ContentUnavailableView,
 	HStack,
 	Image,
 	List,
+	ProgressView,
 	Section,
 	SwipeActions,
 	Text,
@@ -18,6 +20,8 @@ import {
 import {
 	accessibilityElement,
 	background,
+	buttonStyle,
+	controlSize,
 	contentShape,
 	foregroundStyle,
 	frame,
@@ -30,6 +34,7 @@ import {
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	onTapGesture,
+	padding,
 	scrollContentBackground,
 	shapes,
 	tint
@@ -40,7 +45,18 @@ import {useState} from 'react'
 import {colors, mono} from '@deslop/components-mobile/theme'
 import {AppTitle} from '@deslop/components-mobile/title'
 
-import {dayAt, deletedAtom, nowAtom, removeAtom, restoreAtom, statusOf, timeAt, tones} from '#lib/utils.ts'
+import {
+	answerAtom,
+	dayAt,
+	deletedAtom,
+	nowAtom,
+	offerAtom,
+	removeAtom,
+	restoreAtom,
+	statusOf,
+	timeAt,
+	tones
+} from '#lib/utils.ts'
 import icon from '#routes/icon.png'
 import {DAY, endOf, HOUR, routeOf, startOf, titleOf} from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingList} from '#services/bookings/schema.ts'
@@ -119,12 +135,77 @@ function BookingRow(props: {booking: Booking; now: number; onOpen: (id: string) 
 	)
 }
 
+// Like Stash, the sheet hangs off the title without adding a paste control to the screen.
+function PasteSheet() {
+	const offer = pipe(useAtomValue(offerAtom), AsyncResult.getOrElse(Option.none))
+	const [answered, respond] = useAtom(answerAtom)
+	const open = Option.filter(
+		offer,
+		current => !AsyncResult.isWaiting(answered) && !Option.exists(AsyncResult.value(answered), last => last === current)
+	)
+	const image = Option.exists(offer, current => current.kind === 'image')
+	function answer(save: boolean) {
+		Option.map(open, current => respond({offer: current, save}))
+	}
+	return (
+		<BottomSheet
+			anchor={<AppTitle logo={icon} name="trips" />}
+			isPresented={Option.isSome(open)}
+			onIsPresentedChange={presented => {
+				if (!presented) answer(false)
+			}}
+			fitToContents
+		>
+			<VStack
+				spacing={14}
+				modifiers={[
+					padding({bottom: 8, leading: 24, top: 28, trailing: 24}),
+					frame({maxWidth: Infinity}),
+					background(colors.background)
+				]}
+			>
+				<Image systemName="ticket" size={24} modifiers={[foregroundStyle(colors.foreground)]} />
+				<Text modifiers={[mono('headline', 17), foregroundStyle(colors.foreground)]}>Add from clipboard?</Text>
+				<Text modifiers={[mono('body', 14), foregroundStyle(colors.mutedForeground)]}>
+					{Boolean.match(image, {onFalse: () => 'Copied text', onTrue: () => 'Copied screenshot'})}
+				</Text>
+				<VStack spacing={4} modifiers={[padding({top: 6})]}>
+					<Button
+						onPress={() => answer(true)}
+						modifiers={[
+							buttonStyle('glassProminent'),
+							controlSize('large'),
+							tint(colors.primary),
+							foregroundStyle(colors.primaryForeground)
+						]}
+					>
+						<Text modifiers={[mono('headline', 16), frame({maxWidth: Infinity})]}>Add booking</Text>
+					</Button>
+					<Button onPress={() => answer(false)} modifiers={[buttonStyle('plain'), controlSize('large')]}>
+						<Text
+							modifiers={[
+								mono('body', 15),
+								foregroundStyle(colors.mutedForeground),
+								padding({vertical: 12}),
+								frame({maxWidth: Infinity})
+							]}
+						>
+							Not now
+						</Text>
+					</Button>
+				</VStack>
+			</VStack>
+		</BottomSheet>
+	)
+}
+
 // Now, then the days ahead, then the last month folded away.
-export function HomeRoute(props: {bookings: BookingList; onAdd: () => void; onOpen: (id: string) => void}) {
+export function HomeRoute(props: {bookings: BookingList; onOpen: (id: string) => void}) {
 	const [pastOpen, setPastOpen] = useState(false)
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
 	const deleted = useAtomValue(deletedAtom)
 	const restore = useAtomSet(restoreAtom)
+	const importing = AsyncResult.isWaiting(useAtomValue(answerAtom))
 	const current = Array.filter(
 		props.bookings,
 		booking => startOf(booking) - 6 * HOUR <= now && endOf(booking) + HOUR >= now
@@ -144,9 +225,9 @@ export function HomeRoute(props: {bookings: BookingList; onAdd: () => void; onOp
 		>
 			{Array.isReadonlyArrayEmpty(props.bookings) && (
 				<ContentUnavailableView
-					title="No Trips Yet"
-					systemImage="airplane"
-					description="Paste a confirmation with +, or ask an agent to save one."
+					title="No bookings"
+					systemImage="ticket"
+					description="Copy a confirmation or screenshot, then open Trips."
 				/>
 			)}
 			{Array.isReadonlyArrayNonEmpty(props.bookings) &&
@@ -154,9 +235,9 @@ export function HomeRoute(props: {bookings: BookingList; onAdd: () => void; onOp
 				Array.isReadonlyArrayEmpty(ahead) &&
 				Array.isReadonlyArrayEmpty(past) && (
 					<ContentUnavailableView
-						title="No Upcoming Trips"
-						systemImage="airplane"
-						description="Trips from more than a month ago are hidden; paste a new confirmation with +."
+						title="No upcoming bookings"
+						systemImage="ticket"
+						description="Copy a confirmation or screenshot, then open Trips. Bookings older than a month are hidden."
 					/>
 				)}
 			{Array.isReadonlyArrayNonEmpty([...current, ...ahead, ...past]) && (
@@ -186,11 +267,15 @@ export function HomeRoute(props: {bookings: BookingList; onAdd: () => void; onOp
 			)}
 			<Toolbar.Content>
 				<ToolbarItem placement="principal">
-					<AppTitle logo={icon} name="trips" />
+					<PasteSheet />
 				</ToolbarItem>
-				<ToolbarItem placement="topBarTrailing">
-					<Button label="Add Booking" systemImage="plus" onPress={props.onAdd} modifiers={[labelStyle('iconOnly')]} />
-				</ToolbarItem>
+				{importing && (
+					<ToolbarItem placement="bottomBar">
+						<ProgressView>
+							<Text modifiers={[mono('caption', 12)]}>Reading booking…</Text>
+						</ProgressView>
+					</ToolbarItem>
+				)}
 				{Option.match(deleted, {
 					onNone: () => undefined,
 					onSome: booking => (

@@ -2,9 +2,14 @@ import {Array, Effect, FiberHandle, Option, Schema, Stream, pipe} from 'effect'
 
 import {createModifier} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult, Atom} from 'effect/reactivity'
+import {requireNativeModule} from 'expo'
 import {Asset} from 'expo-asset'
 import {File} from 'expo-file-system'
 import {Alert} from 'react-native'
+
+export function clipboardChangeCount() {
+	return requireNativeModule<{clipboardChangeCount: () => number}>('DeslopComponents').clipboardChangeCount()
+}
 
 export function alert(title: string) {
 	return <A, E extends {message: string}, R>(effect: Effect.Effect<A, E, R>) =>
