@@ -182,7 +182,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'declare const source: string',
 								'declare const values: string[]',
 								'const mappedValues = values.map(value => value.length)',
-								'const deepPipe = pipe(values, Array.appendAll(pipe(values, Array.appendAll(pipe(values, Array.appendAll(pipe(values, Array.take(1))))))))',
 								'const decode =Schema.decodeUnknownSync(Schema.String)',
 								'const operations = {decode: Schema.decodeUnknownSync(Schema.String)}',
 								'export const frozen = Object.freeze({decode: Schema.decodeUnknownSync(Schema.String)})',
@@ -287,7 +286,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'// oxlint-disable-next-line sort-keys -- this input keeps its order',
 								'const unsortedKeys = {b: 1, a: 2}',
 								'// @effect-diagnostics-next-line floatingEffect:off',
-								'export {AssertString, Clock, clockLayers, Codecs, NonEmpty, PipedNonEmpty, PipedTrimmed, absent, Fallback, Input, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, asyncConstant, callbacks, decode, decoded, decoders, deepPipe, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, greet, handlers, input, isRecord, isText, makeBox, labelled, logName, loose, kind, mappedValues, measured, keyed, lazy, described, namesA, namesB, namespaceRef, noValues, present, slotLength, slotPair, notFound, operations, ready, recipients, ref, run, stateNamespace, succeed, unsortedKeys, unwrapped, withHead, wrapped}',
+								'export {AssertString, Clock, clockLayers, Codecs, NonEmpty, PipedNonEmpty, PipedTrimmed, absent, Fallback, Input, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, asyncConstant, callbacks, decode, decoded, decoders, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, greet, handlers, input, isRecord, isText, makeBox, labelled, logName, loose, kind, mappedValues, measured, keyed, lazy, described, namesA, namesB, namespaceRef, noValues, present, slotLength, slotPair, notFound, operations, ready, recipients, ref, run, stateNamespace, succeed, unsortedKeys, unwrapped, withHead, wrapped}',
 								'export type {Explicit, Frozen, Index, Mapped}'
 							],
 							Array.join('\n')
@@ -300,7 +299,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							[
 								'@deslop/coding-standards(module-constant)',
 								'@deslop/coding-standards(no-constant-function)',
-								'@deslop/coding-standards(no-deep-pipe)',
 								'@deslop/coding-standards(no-effect-property-arrow)',
 								'@deslop/coding-standards(no-effect-property-arrow)',
 								'@deslop/coding-standards(no-double-nullish-check)',
@@ -650,9 +648,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'function even(value: number): boolean { if (value === 0) return true; return odd(value - 1) }',
 								'function odd(value: number): boolean { if (value === 0) return false; return even(value - 1) }',
 								'const countdown = Effect.fnUntraced(function* (value: number): Effect.fn.Return<number> { if (value <= 0) return 0; return yield* countdown(value - 1) })',
-								'function first(value: number): number { if (value <= 0) return 0; return second(value - 1) }',
-								'function second(value: number): number { return third(value) + 1 }',
-								'function third(value: number): number { return first(value) * 2 }',
 								'// oxlint-disable-next-line no-use-before-define -- a cycle of constants has no order',
 								'const ping = Effect.fnUntraced(function* (value: number): Effect.fn.Return<number> { return yield* pong(value) })',
 								'// oxlint-disable-next-line no-use-before-define -- a cycle of constants has no order',
@@ -660,8 +655,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'const pang = Effect.fnUntraced(function* (value: number): Effect.fn.Return<number> { if (value <= 0) return 0; return yield* ping(value - 1) })',
 								'class Walker { walk(value: number): number { if (value <= 0) return 0; return this.walk(value - 1) + 1 } }',
 								'const counter = Array.map([3], function count(value: number): number { if (value <= 0) return 0; return count(value - 1) + 1 })',
-								'function grow(items: string[]) { return pipe(items, Array.appendAll(pipe(items, Array.take(1)))) }',
-								'const grown = pipe(names, Array.appendAll(pipe(names, Array.appendAll(grow(names)))))',
 								'declare const receiver: {parse: (value: string) => number}',
 								'function parseWith(value: string) { return receiver.parse(value) }',
 								'declare function factory(left: string): (right: string) => string',
@@ -687,7 +680,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'declare function createRoute(options: {validateSearch: (value: unknown) => User}): void',
 								'createRoute({validateSearch: Schema.decodeUnknownSync(User)})',
 								'const added = Effect.fn("added")(function* (value: number) { const ledger = yield* Ledger; return yield* ledger.add(value) })',
-								'export {added, Annotated, CallStep, hasWindow, route, stubs, CodeStep, Decoded, DefaultInput, Encoded, Formatter, Ledger, LinearIssue, Listed, Normalized, Step, circle, circles, constants, countdown, counter, counts, curried, annotate, annotateString, decoded, decodedMany, echo, encoded, ensured, flags, depth, first, grown, identify, isCall, isUser, labels, layers, limits, loadName, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, annotatedName, nickname, noUser, payload, odd, parseWith, ping, readSnapshot, singleName, snapshots, swap, test, thunks, Walker, transform, tuple, version, versionPatterns, withDefault}'
+								'export {added, Annotated, CallStep, hasWindow, route, stubs, CodeStep, Decoded, DefaultInput, Encoded, Formatter, Ledger, LinearIssue, Listed, Normalized, Step, circle, circles, constants, countdown, counter, counts, curried, annotate, annotateString, decoded, decodedMany, echo, encoded, ensured, flags, depth, identify, isCall, isUser, labels, layers, limits, loadName, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, annotatedName, nickname, noUser, payload, odd, parseWith, ping, readSnapshot, singleName, snapshots, swap, test, thunks, Walker, transform, tuple, version, versionPatterns, withDefault}'
 							],
 							Array.join('\n')
 						)
@@ -820,9 +813,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'export const fallback = maybe === undefined ? "none" : maybe',
 								'export const predicateFallback = Predicate.isNullish(maybe) ? "none" : maybe',
 								'export const choice = consume(1) > 0 ? "some" : "none"',
-								'export function aliased(input: string) { const value = input; return consume(value.length) }',
-								// Inlining `p` would nest a pipe four deep, which no-deep-pipe rejects.
-								'export function deep() { const p = pipe(items, Array.appendAll(pipe(items, Array.appendAll(pipe(items, Array.take(1)))))); return pipe(p, Array.take(2)) }'
+								'export function aliased(input: string) { const value = input; return consume(value.length) }'
 							],
 							Array.join('\n')
 						)
@@ -927,7 +918,50 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							Array.filter(diagnostic => diagnostic.code === '@deslop/coding-standards(no-destructured-parameter)'),
 							Array.map(diagnostic => diagnostic.labels[0]?.span.line)
 						),
-						[7, 8, 9, 12]
+						[7, 8, 9, 12, 13]
+					)
+				}),
+			20_000
+		)
+
+		testApi.effect(
+			'inlines one-line functions read once and keeps one name per export',
+			() =>
+				Effect.gen(function* () {
+					const result = yield* lintSource({
+						'single.ts': pipe(
+							[
+								"import {Array} from 'effect'",
+								'declare const entries: {tag: string}[]',
+								'declare const first: {tag: string}',
+								'declare function load(): {tag: string}',
+								'function tagLine(entry: {tag: string}) { return `- ${entry.tag}` }',
+								'function once(entry: {tag: string}) { return `- ${entry.tag}` }',
+								// Inlining would call load() twice.
+								'function twice(entry: {tag: string}) { return `${entry.tag}${entry.tag}` }',
+								'function shown(entry: {tag: string}) { return `- ${entry.tag}` }',
+								'export const lines = Array.map(entries, tagLine)',
+								'export const single = once(first)',
+								'export const doubled = twice(load())',
+								'export const repeated = [shown(first), shown(first)]',
+								'export {entries as allEntries}',
+								"export {first as 'module.exports'}"
+							],
+							Array.join('\n')
+						)
+					})
+					assert.deepStrictEqual(
+						pipe(
+							result.stdout.diagnostics,
+							Array.filter(diagnostic =>
+								Array.contains(
+									['@deslop/coding-standards(no-renamed-import)', '@deslop/coding-standards(no-trivial-indirection)'],
+									diagnostic.code
+								)
+							),
+							Array.map(diagnostic => diagnostic.labels[0]?.span.line)
+						),
+						[6, 7, 14]
 					)
 				}),
 			20_000
@@ -1652,6 +1686,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'motion-limits',
 								'motion-limits',
 								'motion-limits',
+								'no-barrel-module',
 								'no-barrel-module',
 								'no-barrel-module',
 								'no-compiler-opt-out',

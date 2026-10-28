@@ -378,6 +378,14 @@ function suspendedTypeName(input: {context: Context; node: ESTree.CallExpression
 	)
 }
 
+function memberType(member: ESTree.TSSignature) {
+	if (member.type === 'TSIndexSignature') return Option.some(member.typeAnnotation.typeAnnotation)
+	if (member.type === 'TSPropertySignature') {
+		return Option.map(Option.fromNullishOr(member.typeAnnotation), annotation => annotation.typeAnnotation)
+	}
+	return Option.map(Option.fromNullishOr(member.returnType), annotation => annotation.typeAnnotation)
+}
+
 // fallow-ignore-next-line complexity -- one recursive visitor follows TypeScript's finite type-node variants.
 function referencedTypeNames(node: ESTree.TSType | ESTree.TSTupleElement): string[] {
 	if (node.type === 'TSTypeReference') {
@@ -421,22 +429,10 @@ function referencedTypeNames(node: ESTree.TSType | ESTree.TSTupleElement): strin
 			Array.flatMap(referencedTypeNames)
 		)
 	}
-	if (node.type === 'TSTypeLiteral') return pipe(node.members, Array.flatMap(memberTypeNames))
+	if (node.type === 'TSTypeLiteral') {
+		return pipe(node.members, Array.map(memberType), Array.getSomes, Array.flatMap(referencedTypeNames))
+	}
 	return Array.empty<string>()
-}
-
-function annotationTypeNames(annotation?: ESTree.TSTypeAnnotation | null) {
-	return pipe(
-		Option.fromNullishOr(annotation),
-		Option.map(present => referencedTypeNames(present.typeAnnotation)),
-		Option.getOrElse(() => Array.empty<string>())
-	)
-}
-
-function memberTypeNames(member: ESTree.TSSignature): string[] {
-	if (member.type === 'TSIndexSignature') return referencedTypeNames(member.typeAnnotation.typeAnnotation)
-	if (member.type === 'TSPropertySignature') return annotationTypeNames(member.typeAnnotation)
-	return annotationTypeNames(member.returnType)
 }
 
 type NameEdges = {name: string; targets: string[]}

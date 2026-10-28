@@ -7,18 +7,6 @@ import {Button} from '@deslop/components-web/ui/button'
 
 import {contacts, education, experience, languages, profile, projects, skills, summary} from '#lib/profile.ts'
 
-export const Route = createFileRoute('/cv')({
-	component: CvRoute,
-	// The title names the PDF a browser saves, and the file a recruiter downloads.
-	head: () => ({
-		meta: [
-			{title: `${profile.firstName} ${profile.lastName} CV`},
-			{content: `${profile.firstName} ${profile.lastName}`, name: 'author'},
-			{content: `${profile.title}. ${summary}`, name: 'description'}
-		]
-	})
-})
-
 function Link(input: {contact: {href: string; value: string}}) {
 	return (
 		<a href={input.contact.href} className="hover:underline">
@@ -204,3 +192,15 @@ function CvRoute() {
 		</div>
 	)
 }
+
+export const Route = createFileRoute('/cv')({
+	component: CvRoute,
+	// The title names the PDF a browser saves, and the file a recruiter downloads.
+	head: () => ({
+		meta: [
+			{title: `${profile.firstName} ${profile.lastName} CV`},
+			{content: `${profile.firstName} ${profile.lastName}`, name: 'author'},
+			{content: `${profile.title}. ${summary}`, name: 'description'}
+		]
+	})
+})

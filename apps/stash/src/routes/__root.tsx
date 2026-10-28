@@ -38,58 +38,6 @@ import logo from '#routes/logo.png'
 import {NoteRoute} from '#routes/notes/$id.tsx'
 import type {Kind} from '#services/notes/schema.ts'
 
-export function RootRoute() {
-	useAtomMount(updateAtom)
-	return (
-		<Suspense
-			fallback={
-				<Host style={{flex: 1}}>
-					<ProgressView />
-				</Host>
-			}
-		>
-			<SessionRoute />
-		</Suspense>
-	)
-}
-
-function SessionRoute() {
-	const saved = useAtomSuspense(session.atom).value
-	const [signIn, start] = useAtom(signInAtom)
-	const logoUri = useAtomSuspense(assetAtom(logo)).value
-	if (Option.isSome(saved)) return <AppRoutes />
-	return (
-		<Host style={{flex: 1}}>
-			<VStack
-				spacing={20}
-				// The padding comes first so the colour behind it reaches every edge of the screen.
-				modifiers={[
-					padding({all: 24}),
-					frame({maxHeight: Infinity, maxWidth: Infinity}),
-					background(colors.background)
-				]}
-			>
-				<Image
-					uiImage={logoUri}
-					modifiers={[resizable(), frame({height: 64, width: 64}), frame({maxHeight: Infinity}), padding({bottom: 64})]}
-				/>
-				<Button
-					onPress={() => start()}
-					modifiers={[
-						buttonStyle('glassProminent'),
-						controlSize('large'),
-						tint(colors.primary),
-						foregroundStyle(colors.primaryForeground),
-						disabled(AsyncResult.isWaiting(signIn))
-					]}
-				>
-					<Text modifiers={[mono('headline', 16), frame({maxWidth: Infinity})]}>Sign in with GitHub</Text>
-				</Button>
-			</VStack>
-		</Host>
-	)
-}
-
 function AppRoutes() {
 	const [path, setPath] = useState<string[]>([])
 	const setQuery = useAtomSet(queryAtom)
@@ -136,5 +84,57 @@ function AppRoutes() {
 				))}
 			</NavigationStack>
 		</Host>
+	)
+}
+
+function SessionRoute() {
+	const saved = useAtomSuspense(session.atom).value
+	const [signIn, start] = useAtom(signInAtom)
+	const logoUri = useAtomSuspense(assetAtom(logo)).value
+	if (Option.isSome(saved)) return <AppRoutes />
+	return (
+		<Host style={{flex: 1}}>
+			<VStack
+				spacing={20}
+				// The padding comes first so the colour behind it reaches every edge of the screen.
+				modifiers={[
+					padding({all: 24}),
+					frame({maxHeight: Infinity, maxWidth: Infinity}),
+					background(colors.background)
+				]}
+			>
+				<Image
+					uiImage={logoUri}
+					modifiers={[resizable(), frame({height: 64, width: 64}), frame({maxHeight: Infinity}), padding({bottom: 64})]}
+				/>
+				<Button
+					onPress={() => start()}
+					modifiers={[
+						buttonStyle('glassProminent'),
+						controlSize('large'),
+						tint(colors.primary),
+						foregroundStyle(colors.primaryForeground),
+						disabled(AsyncResult.isWaiting(signIn))
+					]}
+				>
+					<Text modifiers={[mono('headline', 16), frame({maxWidth: Infinity})]}>Sign in with GitHub</Text>
+				</Button>
+			</VStack>
+		</Host>
+	)
+}
+
+export function RootRoute() {
+	useAtomMount(updateAtom)
+	return (
+		<Suspense
+			fallback={
+				<Host style={{flex: 1}}>
+					<ProgressView />
+				</Host>
+			}
+		>
+			<SessionRoute />
+		</Suspense>
 	)
 }

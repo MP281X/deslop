@@ -497,10 +497,6 @@ function photosOf(post: FxPost) {
 	]
 }
 
-function linksOf(post: FxPost) {
-	return Array.getSomes(Array.map(post.raw_text?.facets ?? [], facet => Option.fromUndefinedOr(facet.replacement)))
-}
-
 // A linked article or repository often holds what the post only points at.
 function readLinked(url: URL) {
 	return pipe(
@@ -548,7 +544,11 @@ const xThread = Effect.fnUntraced(function* (url: URL) {
 	const context = [...shown, ...earlier]
 	const contextIds = HashSet.fromIterable(Array.map(context, post => post.id))
 	const followUpIds = HashSet.fromIterable(Array.map(followUps, post => post.id))
-	const links = Array.dedupe(Array.flatMap(context, linksOf))
+	const links = Array.dedupe(
+		Array.flatMap(context, post =>
+			Array.getSomes(Array.map(post.raw_text?.facets ?? [], facet => Option.fromUndefinedOr(facet.replacement)))
+		)
+	)
 	const linked = yield* Effect.all(
 		{
 			pages: Effect.forEach(

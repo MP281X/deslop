@@ -49,80 +49,6 @@ import type {Note, NoteItem} from '#services/notes/schema.ts'
 
 const prose = [font({textStyle: 'body'}), lineSpacing(4), foregroundStyle(colors.foreground), textSelection(true)]
 
-export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (tag: string) => void}) {
-	const remove = useAtomSet(removeAtom)
-	const regenerate = useAtomSet(regenerateAtom)
-	return Option.match(
-		Array.findFirst(useAtomSuspense(notesAtom).value, item => item.id === props.id),
-		{
-			onNone: () => (
-				<ContentUnavailableView
-					title="Note Deleted"
-					systemImage="trash"
-					modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
-				/>
-			),
-			onSome: item => (
-				<Toolbar
-					modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
-				>
-					<Detail note={item} onRetry={() => regenerate(item.id)} onTag={props.onTag} />
-					<Toolbar.Content>
-						{Option.match(Option.fromNullishOr(item.url), {
-							onNone: () => undefined,
-							onSome: url => (
-								<ToolbarItem placement="topBarTrailing">
-									{Option.match(brandOf(item), {
-										onNone: () => (
-											<Button
-												label="Open Link"
-												systemImage="arrow.up.right"
-												onPress={() => Linking.openURL(url)}
-												modifiers={[labelStyle('iconOnly')]}
-											/>
-										),
-										onSome: brand => (
-											<Button
-												onPress={() => Linking.openURL(url)}
-												modifiers={[
-													accessibilityLabel(
-														Option.match(appOf(item), {onNone: () => 'Open Link', onSome: name => `Open in ${name}`})
-													)
-												]}
-											>
-												<BrandLogo brand={kinds[brand].logo} size={20} />
-											</Button>
-										)
-									})}
-								</ToolbarItem>
-							)
-						})}
-						<ToolbarItem placement="topBarTrailing">
-							<Menu label="More" systemImage="ellipsis" modifiers={[labelStyle('iconOnly')]}>
-								{Option.match(Option.fromNullishOr(item.url), {
-									onNone: () => undefined,
-									onSome: url => <ShareLink item={url} />
-								})}
-								<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => regenerate(item.id)} />
-								<Button
-									label="Delete"
-									systemImage="trash"
-									role="destructive"
-									onPress={() => {
-										remove(item.id)
-										props.onClose()
-									}}
-									modifiers={[tint(colors.destructive)]}
-								/>
-							</Menu>
-						</ToolbarItem>
-					</Toolbar.Content>
-				</Toolbar>
-			)
-		}
-	)
-}
-
 function Cover(props: {note: NoteItem}) {
 	const image = useAtomValue(imageAtom(props.note.id))
 	if (!AsyncResult.isSuccess(image)) return undefined
@@ -276,5 +202,79 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 				)}
 			</VStack>
 		</ScrollView>
+	)
+}
+
+export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (tag: string) => void}) {
+	const remove = useAtomSet(removeAtom)
+	const regenerate = useAtomSet(regenerateAtom)
+	return Option.match(
+		Array.findFirst(useAtomSuspense(notesAtom).value, item => item.id === props.id),
+		{
+			onNone: () => (
+				<ContentUnavailableView
+					title="Note Deleted"
+					systemImage="trash"
+					modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
+				/>
+			),
+			onSome: item => (
+				<Toolbar
+					modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
+				>
+					<Detail note={item} onRetry={() => regenerate(item.id)} onTag={props.onTag} />
+					<Toolbar.Content>
+						{Option.match(Option.fromNullishOr(item.url), {
+							onNone: () => undefined,
+							onSome: url => (
+								<ToolbarItem placement="topBarTrailing">
+									{Option.match(brandOf(item), {
+										onNone: () => (
+											<Button
+												label="Open Link"
+												systemImage="arrow.up.right"
+												onPress={() => Linking.openURL(url)}
+												modifiers={[labelStyle('iconOnly')]}
+											/>
+										),
+										onSome: brand => (
+											<Button
+												onPress={() => Linking.openURL(url)}
+												modifiers={[
+													accessibilityLabel(
+														Option.match(appOf(item), {onNone: () => 'Open Link', onSome: name => `Open in ${name}`})
+													)
+												]}
+											>
+												<BrandLogo brand={kinds[brand].logo} size={20} />
+											</Button>
+										)
+									})}
+								</ToolbarItem>
+							)
+						})}
+						<ToolbarItem placement="topBarTrailing">
+							<Menu label="More" systemImage="ellipsis" modifiers={[labelStyle('iconOnly')]}>
+								{Option.match(Option.fromNullishOr(item.url), {
+									onNone: () => undefined,
+									onSome: url => <ShareLink item={url} />
+								})}
+								<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => regenerate(item.id)} />
+								<Button
+									label="Delete"
+									systemImage="trash"
+									role="destructive"
+									onPress={() => {
+										remove(item.id)
+										props.onClose()
+									}}
+									modifiers={[tint(colors.destructive)]}
+								/>
+							</Menu>
+						</ToolbarItem>
+					</Toolbar.Content>
+				</Toolbar>
+			)
+		}
 	)
 }

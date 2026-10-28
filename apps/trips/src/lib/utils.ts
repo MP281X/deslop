@@ -427,6 +427,11 @@ function notesOf(journey: Flight | Train) {
 	return Array.join(Array.getSomes([...known, labelled('Coach', journey.coach)]), '\n')
 }
 
+// The full name with its city, which Maps can place for Time to Leave.
+export function placeLine(place: Place) {
+	return Array.join(Array.filter([place.name, place.address ?? place.city ?? ''], String.isNonEmpty), ', ')
+}
+
 function eventOf(booking: Booking) {
 	if (booking._tag === 'stay') {
 		return {
@@ -449,11 +454,6 @@ function eventOf(booking: Booking) {
 		timeZone: booking.from.timeZone ?? 'UTC',
 		title: `${titleOf(booking)} ${booking.from.code ?? booking.from.name} → ${booking.to.code ?? booking.to.name}`
 	}
-}
-
-// The full name with its city, which Maps can place for Time to Leave.
-export function placeLine(place: Place) {
-	return Array.join(Array.filter([place.name, place.address ?? place.city ?? ''], String.isNonEmpty), ', ')
 }
 
 function sameTime(left: DateTime.DateTime.Input, right: DateTime.DateTime.Input) {

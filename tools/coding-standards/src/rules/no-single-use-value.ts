@@ -3,7 +3,6 @@ import {Array, Function, MutableList, Option, Predicate, pipe} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {nestsTooDeep} from '#rules/no-deep-pipe.ts'
 import {redundantConstAlias} from '#rules/no-trivial-indirection.ts'
 import {
 	childNodes,
@@ -28,41 +27,41 @@ const REPEATING = [
 	'WhileStatement'
 ]
 
-// Loops, callbacks, conditionals, short-circuits and optional chains can repeat or skip the read.
-function runsOnce(input: {child: ESTree.Node; node: ESTree.Node; statement: ESTree.Node}): boolean {
+// Loops, callbacks, conditionals, short-circuits and optional chains can repeat or skip the read; a loop's iterable, a test and a short-circuit's left side run once.
+function climb(input: {node: ESTree.Node; statement: ESTree.Node}): boolean {
+	if (input.node === input.statement) return true
+	if (Predicate.isNullish(input.node.parent)) return false
 	if (
-		((input.node.type === 'ForOfStatement' || input.node.type === 'ForInStatement') &&
-			input.node.right === input.child) ||
-		(input.node.type === 'IfStatement' && input.node.test === input.child) ||
-		(input.node.type === 'ConditionalExpression' && input.node.test === input.child) ||
-		(input.node.type === 'LogicalExpression' && input.node.left === input.child)
+		((input.node.parent.type === 'ForOfStatement' || input.node.parent.type === 'ForInStatement') &&
+			input.node.parent.right === input.node) ||
+		(input.node.parent.type === 'IfStatement' && input.node.parent.test === input.node) ||
+		(input.node.parent.type === 'ConditionalExpression' && input.node.parent.test === input.node) ||
+		(input.node.parent.type === 'LogicalExpression' && input.node.parent.left === input.node)
 	) {
-		return climb({...input, node: input.node})
+		return climb({...input, node: input.node.parent})
 	}
 	if (
-		Array.contains(REPEATING, input.node.type) ||
-		input.node.type === 'IfStatement' ||
-		input.node.type === 'ConditionalExpression' ||
-		input.node.type === 'LogicalExpression' ||
-		input.node.type === 'ChainExpression' ||
-		input.node.type === 'SwitchStatement' ||
-		input.node.type === 'TryStatement'
+		Array.contains(REPEATING, input.node.parent.type) ||
+		input.node.parent.type === 'IfStatement' ||
+		input.node.parent.type === 'ConditionalExpression' ||
+		input.node.parent.type === 'LogicalExpression' ||
+		input.node.parent.type === 'ChainExpression' ||
+		input.node.parent.type === 'SwitchStatement' ||
+		input.node.parent.type === 'TryStatement'
 	) {
 		return false
 	}
-	return climb({...input, node: input.node})
-}
-
-function climb(input: {node: ESTree.Node; statement: ESTree.Node}) {
-	if (input.node === input.statement) return true
-	if (Predicate.isNullish(input.node.parent)) return false
-	return runsOnce({child: input.node, node: input.node.parent, statement: input.statement})
+	return climb({...input, node: input.node.parent})
 }
 
 function insideConditional(input: {node: ESTree.Node; statement: ESTree.Node}): boolean {
 	if (input.node === input.statement) return false
 	if (input.node.type === 'ConditionalExpression') return true
 	return Predicate.isNotNullish(input.node.parent) && insideConditional({...input, node: input.node.parent})
+}
+
+function unwrapped(node: ESTree.Node): ESTree.Node {
+	return pipe(typeWrapped(node), Option.match({onNone: () => node, onSome: unwrapped}))
 }
 
 function candidate(context: Context, node: ESTree.VariableDeclarator) {
@@ -85,10 +84,6 @@ function candidate(context: Context, node: ESTree.VariableDeclarator) {
 		!(node.init.type === 'Literal' && !Predicate.hasProperty(node.init, 'regex')) &&
 		!(node.init.type === 'TemplateLiteral' && Array.isArrayEmpty(node.init.expressions))
 	)
-}
-
-function unwrapped(node: ESTree.Node): ESTree.Node {
-	return pipe(typeWrapped(node), Option.match({onNone: () => node, onSome: unwrapped}))
 }
 
 // A detached method keeps no receiver, and an anonymous class takes its name from the binding.
@@ -181,8 +176,6 @@ function report(input: {context: Context; effects: ESTree.Node[]; node: ESTree.V
 						!(init.type === 'ConditionalExpression' && insideConditional({node: read, statement: next})) &&
 						// `yield* client.trace(id)` reads better than `yield* (yield* RpcClient.make(Rpcs)).trace(id)`.
 						!(suspends(input.context, init) && receiver(outermost(read))) &&
-						// A pipe moved into another pipe must stay within no-deep-pipe's nesting limit.
-						!nestsTooDeep({context: input.context, read, value: init}) &&
 						// Moving the value past code that runs first would change what it reads or reorder effects.
 						!Array.some(input.effects, effect => effect.range[0] >= next.range[0] && effect.range[1] <= read.range[0])
 				),

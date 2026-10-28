@@ -198,17 +198,6 @@ function Panel(input: {className?: string; children: React.ReactNode}) {
 	)
 }
 
-export const Route = createFileRoute('/(home)/')({
-	component: PortfolioRoute,
-	head: () => ({
-		meta: [
-			{title: `${profile.firstName} ${profile.lastName} – ${profile.title}`},
-			{content: `${profile.firstName} ${profile.lastName}`, name: 'author'},
-			{content: summary, name: 'description'}
-		]
-	})
-})
-
 function TrailCanvas(input: {trails: PortfolioVisitors; viewport: {width: number; height: number}}) {
 	const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -772,3 +761,14 @@ function PortfolioRoute() {
 		</div>
 	)
 }
+
+export const Route = createFileRoute('/(home)/')({
+	component: PortfolioRoute,
+	head: () => ({
+		meta: [
+			{title: `${profile.firstName} ${profile.lastName} – ${profile.title}`},
+			{content: `${profile.firstName} ${profile.lastName}`, name: 'author'},
+			{content: summary, name: 'description'}
+		]
+	})
+})

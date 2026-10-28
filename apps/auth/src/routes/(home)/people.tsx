@@ -13,18 +13,6 @@ import {Avatar} from '#lib/components.tsx'
 import {accountAtom, admitAtom, dayLabel, peopleAtom, removeAtom} from '#lib/utils.ts'
 import type {Person} from '#services/authorizations/schema.ts'
 
-export const Route = createFileRoute('/(home)/people')({component: People})
-
-// Admins manage people here; anyone else who opens it goes back to their sign-ins.
-function People() {
-	if (!Option.exists(useAtomSuspense(accountAtom).value, signed => signed.role === 'Admin')) return <Navigate to="/" />
-	return (
-		<Suspense fallback={<Loading />}>
-			<Directory />
-		</Suspense>
-	)
-}
-
 function AskingCard(props: {person: Person}) {
 	const [admit, answer] = useAtom(admitAtom)
 	return (
@@ -129,3 +117,15 @@ function Directory() {
 		</>
 	)
 }
+
+// Admins manage people here; anyone else who opens it goes back to their sign-ins.
+function People() {
+	if (!Option.exists(useAtomSuspense(accountAtom).value, signed => signed.role === 'Admin')) return <Navigate to="/" />
+	return (
+		<Suspense fallback={<Loading />}>
+			<Directory />
+		</Suspense>
+	)
+}
+
+export const Route = createFileRoute('/(home)/people')({component: People})

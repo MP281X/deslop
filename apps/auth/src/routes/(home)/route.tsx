@@ -24,8 +24,6 @@ import {
 } from '#lib/utils.ts'
 import type {Account, PendingAuthorization} from '#services/authorizations/schema.ts'
 
-export const Route = createFileRoute('/(home)')({component: HomeLayout})
-
 // icon.png's 11×18 pixels as vectors, so its outline follows the theme instead of a white box.
 function Logo() {
 	return (
@@ -39,18 +37,6 @@ function Logo() {
 				d="M13 0h1v1h-1zM3 1h1v1h-1zM7 1h1v1h-1zM12 1h1v1h-1zM6 2h1v1h-1zM12 2h1v1h-1zM5 3h1v1h-1zM11 3h1v1h-1zM4 4h1v1h-1zM11 4h1v1h-1zM10 5h1v1h-1zM10 6h1v1h-1zM9 7h1v1h-1zM9 8h1v1h-1zM13 9h1v1h-1zM12 10h1v1h-1zM11 11h1v1h-1zM10 12h1v1h-1zM9 13h1v1h-1zM8 14h1v1h-1zM12 14h1v1h-1zM7 15h1v1h-1zM11 15h1v1h-1zM6 16h1v1h-1zM10 16h1v1h-1zM5 17h1v1h-1zM13 17h1v1h-1z"
 			/>
 		</svg>
-	)
-}
-
-function HomeLayout() {
-	return (
-		<main className="flex flex-1 justify-center overflow-y-auto px-4 py-8 md:py-24">
-			<div className="flex w-full max-w-md flex-col gap-5">
-				<Suspense fallback={<Loading />}>
-					<Shell />
-				</Suspense>
-			</div>
-		</main>
 	)
 }
 
@@ -230,3 +216,17 @@ function Shell() {
 		</>
 	)
 }
+
+function HomeLayout() {
+	return (
+		<main className="flex flex-1 justify-center overflow-y-auto px-4 py-8 md:py-24">
+			<div className="flex w-full max-w-md flex-col gap-5">
+				<Suspense fallback={<Loading />}>
+					<Shell />
+				</Suspense>
+			</div>
+		</main>
+	)
+}
+
+export const Route = createFileRoute('/(home)')({component: HomeLayout})

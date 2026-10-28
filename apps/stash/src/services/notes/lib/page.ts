@@ -24,21 +24,6 @@ const BLOCK_TAGS = [
 
 const BY_SIZE = Order.mapInput(Order.flip(Order.Number), (icon: {href: string; size: number}) => icon.size)
 
-function markdown($: cheerio.CheerioAPI, node: AnyNode, base: URL): string {
-	if (node.nodeType === 3) return String.replaceAll(/\s+/gu, ' ')(node.data)
-	if (!Predicate.hasProperty(node, 'tagName')) return ''
-	const inner = pipe(
-		$(node).contents().toArray(),
-		Array.map(child => markdown($, child, base)),
-		Array.join('')
-	)
-	return pipe(
-		Array.findFirstIndex(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'], heading => heading === node.tagName),
-		Option.map(index => `\n\n${String.repeat(index + 1)('#')} ${String.trim(inner)}\n\n`),
-		Option.getOrElse(() => element($, {base, inner, node, tag: node.tagName}))
-	)
-}
-
 function element($: cheerio.CheerioAPI, input: {base: URL; inner: string; node: AnyNode; tag: string}) {
 	const text = String.trim(input.inner)
 	return pipe(
@@ -71,6 +56,21 @@ function element($: cheerio.CheerioAPI, input: {base: URL; inner: string; node: 
 			() => `\n\n${text}\n\n`
 		),
 		Match.orElse(() => input.inner)
+	)
+}
+
+function markdown($: cheerio.CheerioAPI, node: AnyNode, base: URL): string {
+	if (node.nodeType === 3) return String.replaceAll(/\s+/gu, ' ')(node.data)
+	if (!Predicate.hasProperty(node, 'tagName')) return ''
+	const inner = pipe(
+		$(node).contents().toArray(),
+		Array.map(child => markdown($, child, base)),
+		Array.join('')
+	)
+	return pipe(
+		Array.findFirstIndex(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'], heading => heading === node.tagName),
+		Option.map(index => `\n\n${String.repeat(index + 1)('#')} ${String.trim(inner)}\n\n`),
+		Option.getOrElse(() => element($, {base, inner, node, tag: node.tagName}))
 	)
 }
 

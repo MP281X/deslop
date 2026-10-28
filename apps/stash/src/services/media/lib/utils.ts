@@ -76,6 +76,10 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 
 const spoken = String.replace(/^\[[^\]]+\] /u, '')
 
+function wordsOf(text: string) {
+	return pipe(text, String.toLowerCase, String.split(/[^\p{L}\p{N}']+/u), Array.filter(String.isNonEmpty))
+}
+
 // Whisper hears music as looping or invented words, so only a talking pace of 40 words a minute counts as speech.
 export function speechOnly(transcript: string) {
 	const lines = pipe(
@@ -104,8 +108,4 @@ export function speechOnly(transcript: string) {
 			''
 		)
 	)
-}
-
-function wordsOf(text: string) {
-	return pipe(text, String.toLowerCase, String.split(/[^\p{L}\p{N}']+/u), Array.filter(String.isNonEmpty))
 }

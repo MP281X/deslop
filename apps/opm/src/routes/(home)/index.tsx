@@ -167,11 +167,6 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 	)
 }
 
-// A query matches a chapter's number from its start, or any part of its name.
-function matches(chapter: ChapterItem, query: string) {
-	return String.startsWith(query)(`${chapter.number}`) || String.includes(query)(String.toLowerCase(chapter.title))
-}
-
 export function ChaptersRoute(props: {
 	chapters: ChapterList
 	onOpen: (number: number, page?: number) => void
@@ -188,9 +183,13 @@ export function ChaptersRoute(props: {
 		Array.match({onEmpty: Option.none<number>, onNonEmpty: numbers => Option.some(Array.max(numbers, Order.Number))})
 	)
 	const resume = resumeOf(props.chapters)
+	// A query matches a chapter's number from its start, or any part of its name.
 	const shown = pipe(
 		Array.sort(props.chapters, Order.flip(byNumber)),
-		Array.filter(chapter => matches(chapter, text))
+		Array.filter(
+			chapter =>
+				String.startsWith(text)(`${chapter.number}`) || String.includes(text)(String.toLowerCase(chapter.title))
+		)
 	)
 	return (
 		<Toolbar

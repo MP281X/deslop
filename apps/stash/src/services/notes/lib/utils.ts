@@ -45,6 +45,13 @@ function youTubeId(url: URL) {
 	)
 }
 
+export function sourceFor(url: string) {
+	const host = new URL(url).hostname
+	if (Array.contains(X_HOSTS, host) || host === 't.co') return 'X'
+	if (host === 'tiktok.com' || String.endsWith('.tiktok.com')(host)) return 'TikTok'
+	return 'Website'
+}
+
 function withoutTracking(link: string) {
 	const url = new URL(link)
 	if (Array.contains(X_HOSTS, url.hostname)) url.hostname = 'x.com'
@@ -74,13 +81,6 @@ export function captureUrl(text: string) {
 	)
 }
 
-export function sourceFor(url: string) {
-	const host = new URL(url).hostname
-	if (Array.contains(X_HOSTS, host) || host === 't.co') return 'X'
-	if (host === 'tiktok.com' || String.endsWith('.tiktok.com')(host)) return 'TikTok'
-	return 'Website'
-}
-
 export function isYouTube(url: string) {
 	return Option.isSome(String.match(/(?:^|\.)(?:youtube\.com|youtu\.be)$/u)(new URL(url).hostname))
 }
@@ -93,12 +93,12 @@ export function hasVideo(url: string) {
 	)
 }
 
-export function commentFor(text: string) {
-	return pipe(text, String.replaceAll(new RegExp(URL_PATTERN.source, 'giu'), ''), plainText)
-}
-
 export function plainText(text: string) {
 	return pipe(text, String.replaceAll(/\s+/gu, ' '), String.trim)
+}
+
+export function commentFor(text: string) {
+	return pipe(text, String.replaceAll(new RegExp(URL_PATTERN.source, 'giu'), ''), plainText)
 }
 
 export function normalizeTags(tags: Note['tags']) {

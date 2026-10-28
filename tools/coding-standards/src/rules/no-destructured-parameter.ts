@@ -108,7 +108,21 @@ export const noDestructuredParameter = defineRule({
 			ForInStatement: reportLoopVariable,
 			ForOfStatement: reportLoopVariable,
 			FunctionDeclaration: reportParameters,
-			FunctionExpression: reportParameters
+			FunctionExpression: reportParameters,
+			// Array patterns stay: no-undestructured-use-state requires the useState and useAtom tuples.
+			VariableDeclarator: node => {
+				if (
+					node.id.type !== 'ObjectPattern' ||
+					node.parent.parent?.type === 'ForOfStatement' ||
+					node.parent.parent?.type === 'ForInStatement'
+				) {
+					return
+				}
+				context.report({
+					message: 'Read the fields from the value where they are used instead of destructuring them into local names.',
+					node: node.id
+				})
+			}
 		}
 	},
 	meta: {type: 'problem'}

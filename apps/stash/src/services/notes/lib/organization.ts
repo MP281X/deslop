@@ -79,10 +79,6 @@ function bounded(text: string) {
 	return text
 }
 
-function tagLine(entry: TagEntry) {
-	return `- ${entry.tag} (${entry.count}): ${entry.definition ?? 'no definition yet'}`
-}
-
 export class Organizer extends Context.Service<
 	Organizer,
 	{
@@ -122,7 +118,15 @@ export class Organizer extends Context.Service<
 								`Tags in use:\n${pipe(
 									Array.take(input.tags, 150),
 									Option.liftPredicate(Array.isReadonlyArrayNonEmpty),
-									Option.map(entries => Array.join(Array.map(entries, tagLine), '\n')),
+									Option.map(entries =>
+										Array.join(
+											Array.map(
+												entries,
+												tag => `- ${tag.tag} (${tag.count}): ${tag.definition ?? 'no definition yet'}`
+											),
+											'\n'
+										)
+									),
 									Option.getOrElse(() => 'none')
 								)}`,
 								`Link title: ${input.note.title}`,

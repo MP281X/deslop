@@ -152,6 +152,18 @@ function Thumbnail(props: {id: Note['id']}) {
 	)
 }
 
+function DeleteButton(props: {onPress: () => void}) {
+	return (
+		<Button
+			label="Delete"
+			systemImage="trash"
+			role="destructive"
+			onPress={props.onPress}
+			modifiers={[tint(colors.destructive)]}
+		/>
+	)
+}
+
 function NoteRow(props: {
 	note: NoteItem
 	onAppear: () => void
@@ -215,16 +227,17 @@ function NoteRow(props: {
 	)
 }
 
-function DeleteButton(props: {onPress: () => void}) {
-	return (
-		<Button
-			label="Delete"
-			systemImage="trash"
-			role="destructive"
-			onPress={props.onPress}
-			modifiers={[tint(colors.destructive)]}
-		/>
-	)
+function KindLabel(props: {kind: Kind}) {
+	if (Schema.is(Brand)(props.kind)) {
+		return (
+			<Label
+				title={kinds[props.kind].label}
+				icon={<BrandIcon brand={kinds[props.kind].logo} />}
+				modifiers={[tag(props.kind)]}
+			/>
+		)
+	}
+	return <Label title={kinds[props.kind].label} systemImage={kinds[props.kind].symbol} modifiers={[tag(props.kind)]} />
 }
 
 // A picker row's tag is a string or a number, so "All Notes", which clears the filter, is a toggle beside it.
@@ -258,19 +271,6 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 			</Picker>
 		</Menu>
 	)
-}
-
-function KindLabel(props: {kind: Kind}) {
-	if (Schema.is(Brand)(props.kind)) {
-		return (
-			<Label
-				title={kinds[props.kind].label}
-				icon={<BrandIcon brand={kinds[props.kind].logo} />}
-				modifiers={[tag(props.kind)]}
-			/>
-		)
-	}
-	return <Label title={kinds[props.kind].label} systemImage={kinds[props.kind].symbol} modifiers={[tag(props.kind)]} />
 }
 
 // The sheet hangs off the title in the bar, so it adds nothing to the layout.
