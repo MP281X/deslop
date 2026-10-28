@@ -56,7 +56,7 @@ export class Tracker extends Context.Service<
 				const month = String.slice(0, 7)(iso(yield* Clock.currentTimeMillis))
 				const current = Option.getOrElse(
 					Option.filter(
-						yield* Effect.orElseSucceed(usage.get('aeroapi'), Option.none<Usage>),
+						yield* failed('The lookup count could not be read.')(usage.get('aeroapi')),
 						saved => saved.month === month
 					),
 					() => ({calls: 0, month})
@@ -152,8 +152,8 @@ export class Tracker extends Context.Service<
 						onNone: () => Effect.void,
 						onSome: live =>
 							bookings.update(booking.id, item => {
-								if (item._tag !== 'flight') return item
-								return {...item, live}
+								if (item !== booking) return item
+								return {...booking, live}
 							})
 					})
 				}
@@ -161,8 +161,8 @@ export class Tracker extends Context.Service<
 					onNone: () => Effect.void,
 					onSome: live =>
 						bookings.update(booking.id, item => {
-							if (item._tag !== 'train') return item
-							return {...item, live}
+							if (item !== booking) return item
+							return {...booking, live}
 						})
 				})
 			})
