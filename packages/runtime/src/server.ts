@@ -85,9 +85,9 @@ export function layerMcp(options: {instructions: string; name: string; version: 
 		HttpRouter.add(
 			'GET',
 			'/.well-known/oauth-protected-resource/mcp',
-			Effect.map(pipe(Config.String('AUTH_URL'), Config.withDefault(AUTH_URL)), url =>
+			Effect.succeed(
 				HttpServerResponse.jsonUnsafe({
-					authorization_servers: [`${url}/api/auth`],
+					authorization_servers: [`${AUTH_URL}/api/auth`],
 					bearer_methods_supported: ['header'],
 					resource,
 					scopes_supported: ['deslop']

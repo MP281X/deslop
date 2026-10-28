@@ -37,7 +37,6 @@ import {
 	HttpRouter,
 	HttpServerRequest,
 	HttpServerResponse,
-	Url,
 	UrlParams
 } from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
@@ -47,6 +46,7 @@ import {Auth} from '@deslop/runtime/auth/service'
 import {AUTH_URL} from '@deslop/runtime/auth/utils'
 import {layerKeyValueStore} from '@deslop/runtime/server'
 
+import {allowedRedirect, cookieDomain, returnable, typedCode} from '#services/authorizations/lib/utils.ts'
 import type {AdmitParams, PendingAuthorization, Role, MemberRow, Stored} from '#services/authorizations/schema.ts'
 import {
 	Account,
@@ -57,6 +57,7 @@ import {
 	ConsentParams,
 	GitHubToken,
 	GitHubUser,
+	LoginState,
 	Person,
 	Registration,
 	RevokeParams,
@@ -99,44 +100,27 @@ function publicRequest(request: typeof Stored.cases.Request.Type, expiresAt: num
 	return {...pipe(request, Struct.pick(['clientName', 'createdAt', 'id', 'redirectUri', 'resources'])), expiresAt}
 }
 
-function allowedRedirect(redirect: string) {
-	// The iOS apps in their release and Simulator builds, or a loopback callback of a desktop agent.
-	return (
-		Array.contains(
-			[
-				'stash://auth/callback',
-				'stash-dev://auth/callback',
-				'opm://auth/callback',
-				'opm-dev://auth/callback',
-				'trips://auth/callback',
-				'trips-dev://auth/callback'
-			],
-			redirect
-		) ||
-		Result.match(Url.fromString(redirect), {
-			onFailure: () => false,
-			onSuccess: target =>
-				target.protocol === 'http:' &&
-				(target.hostname === '127.0.0.1' || target.hostname === 'localhost') &&
-				String.isEmpty(target.username) &&
-				String.isEmpty(target.password) &&
-				String.isEmpty(target.search) &&
-				String.isEmpty(target.hash)
-		})
+// A cancelled or failed GitHub step returns to the waiting sign-in, so the page can start it again.
+function githubFailed(cause: unknown, flow: Option.Option<typeof Stored.cases.Login.Type>) {
+	return Effect.as(
+		Effect.logWarning('GitHub sign-in failed', cause),
+		HttpServerResponse.expireCookieUnsafe(
+			HttpServerResponse.redirect(
+				`/?${UrlParams.toString(
+					UrlParams.fromInput({
+						error: 'github',
+						...pipe(
+							flow,
+							Option.map(Struct.pick(['code', 'request'])),
+							Option.getOrElse(() => ({}))
+						)
+					})
+				)}`
+			),
+			LOGIN_COOKIE,
+			COOKIE
+		)
 	)
-}
-
-// A web sign-in returns to the page that started it only over https on the auth app's own domain or a subdomain.
-function returnable(next: string, url: string) {
-	const domain = pipe(new URL(url).hostname, String.split('.'), Array.drop(1), Array.join('.'))
-	return Result.match(Url.fromString(next), {
-		onFailure: () => false,
-		onSuccess: target =>
-			target.protocol === 'https:' &&
-			(target.hostname === domain || String.endsWith(`.${domain}`)(target.hostname)) &&
-			String.isEmpty(target.username) &&
-			String.isEmpty(target.password)
-	})
 }
 
 // Anyone can register a client, so only the newest stay; an agent whose client was dropped registers again.
@@ -234,8 +218,7 @@ export class Authorizations extends Context.Service<
 				const changes = yield* PubSub.sliding<true>(1)
 				const router = yield* HttpRouter.HttpRouter
 				const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
-				const url = yield* pipe(Config.String('AUTH_URL'), Config.withDefault(AUTH_URL))
-				const issuer = `${url}/api/auth`
+				const issuer = `${AUTH_URL}/api/auth`
 				const provider = yield* Config.all({
 					admins: Config.Array(Schema.String, 'GITHUB_ADMINS'),
 					clientId: Config.String('GITHUB_CLIENT_ID'),
@@ -384,7 +367,7 @@ export class Authorizations extends Context.Service<
 					return yield* allowed(stored.user)
 				}, rejected('Sign in first'))
 				const checkOrigin = Effect.fnUntraced(function* (headers: Headers.Headers) {
-					if (headers['origin'] !== new URL(url).origin) {
+					if (headers['origin'] !== AUTH_URL) {
 						return yield* AuthError.make({error: 'access_denied', message: 'The request comes from another origin'})
 					}
 				})
@@ -460,13 +443,10 @@ export class Authorizations extends Context.Service<
 				}
 				// A waiting sign-in is read only by its code, in any case and with or without the dash, so no account lists anyone else's.
 				const pendingRequest = Effect.fnUntraced(function* (typed: string) {
-					return Option.flatMap(
-						yield* requestRow(String.toUpperCase(String.replaceAll(/[^a-z]/giu, '')(typed))),
-						row => {
-							if (row.payload._tag !== 'Request' || row.payload.decision._tag !== 'Pending') return Option.none()
-							return Option.some(publicRequest(row.payload, row.expiresAt))
-						}
-					)
+					return Option.flatMap(yield* requestRow(typedCode(typed)), row => {
+						if (row.payload._tag !== 'Request' || row.payload.decision._tag !== 'Pending') return Option.none()
+						return Option.some(publicRequest(row.payload, row.expiresAt))
+					})
 				})
 				const lookup = Effect.fnUntraced(function* (code: string, headers: Headers.Headers) {
 					yield* session(headers)
@@ -976,7 +956,7 @@ export class Authorizations extends Context.Service<
 									client_id: provider.clientId,
 									code_challenge: yield* hash(verifier),
 									code_challenge_method: 'S256',
-									redirect_uri: `${url}/auth/github/callback`,
+									redirect_uri: `${AUTH_URL}/auth/github/callback`,
 									state: loginState
 								})
 							)
@@ -989,6 +969,65 @@ export class Authorizations extends Context.Service<
 						})
 					)
 				)
+				// The sign-in GitHub's callback belongs to, read once.
+				const takeLogin = Effect.fnUntraced(function* (loginState: string) {
+					return yield* transact(draft =>
+						Effect.gen(function* () {
+							const stored = yield* load(loginState, draft)
+							if (stored._tag !== 'Login') return yield* AuthError.make({message: 'The sign-in expired'})
+							yield* remove(loginState, draft)
+							return stored
+						})
+					)
+				})
+				const signIn = Effect.fnUntraced(function* (code: string, flow: typeof Stored.cases.Login.Type) {
+					const token = yield* pipe(
+						HttpClientRequest.post('https://github.com/login/oauth/access_token'),
+						HttpClientRequest.acceptJson,
+						HttpClientRequest.bodyUrlParams({
+							client_id: provider.clientId,
+							client_secret: Redacted.value(provider.secret),
+							code,
+							code_verifier: flow.verifier,
+							redirect_uri: `${AUTH_URL}/auth/github/callback`
+						}),
+						request => client.execute(request),
+						Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubToken)),
+						Effect.timeout('10 seconds')
+					)
+					const github = yield* pipe(
+						HttpClientRequest.get('https://api.github.com/user'),
+						HttpClientRequest.bearerToken(token.access_token),
+						HttpClientRequest.setHeaders({accept: 'application/vnd.github+json', 'user-agent': '@deslop/auth'}),
+						request => client.execute(request),
+						Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubUser)),
+						Effect.timeout('10 seconds')
+					)
+					const signedInToken = yield* register(github)
+					return HttpServerResponse.setCookieUnsafe(
+						HttpServerResponse.expireCookieUnsafe(
+							HttpServerResponse.redirect(
+								pipe(
+									UrlParams.toString(UrlParams.fromInput({code: flow.code, request: flow.request})),
+									Option.liftPredicate(String.isNonEmpty),
+									Option.match({
+										onNone: () =>
+											Option.getOrElse(
+												Option.filter(Option.fromUndefinedOr(flow.next), next => returnable(next, AUTH_URL)),
+												() => '/'
+											),
+										onSome: search => `/?${search}`
+									})
+								)
+							),
+							LOGIN_COOKIE,
+							COOKIE
+						),
+						SESSION_COOKIE,
+						signedInToken,
+						{...COOKIE, domain: cookieDomain(AUTH_URL), maxAge: '365 days'}
+					)
+				})
 				yield* router.add(
 					'GET',
 					'/auth/github/callback',
@@ -1001,76 +1040,17 @@ export class Authorizations extends Context.Service<
 							if ((yield* HttpServerRequest.HttpServerRequest).cookies[LOGIN_COOKIE] !== params.state) {
 								return yield* AuthError.make({message: 'The sign-in state does not match'})
 							}
-							const flow = yield* transact(draft =>
-								Effect.gen(function* () {
-									const stored = yield* load(params.state, draft)
-									if (stored._tag !== 'Login') return yield* AuthError.make({message: 'The sign-in expired'})
-									yield* remove(params.state, draft)
-									return stored
-								})
-							)
-							const token = yield* pipe(
-								HttpClientRequest.post('https://github.com/login/oauth/access_token'),
-								HttpClientRequest.acceptJson,
-								HttpClientRequest.bodyUrlParams({
-									client_id: provider.clientId,
-									client_secret: Redacted.value(provider.secret),
-									code: params.code,
-									code_verifier: flow.verifier,
-									redirect_uri: `${url}/auth/github/callback`
-								}),
-								request => client.execute(request),
-								Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubToken)),
-								Effect.timeout('10 seconds')
-							)
-							const github = yield* pipe(
-								HttpClientRequest.get('https://api.github.com/user'),
-								HttpClientRequest.bearerToken(token.access_token),
-								HttpClientRequest.setHeaders({accept: 'application/vnd.github+json', 'user-agent': '@deslop/auth'}),
-								request => client.execute(request),
-								Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubUser)),
-								Effect.timeout('10 seconds')
-							)
-							const signedInToken = yield* register(github)
-							return HttpServerResponse.setCookieUnsafe(
-								HttpServerResponse.expireCookieUnsafe(
-									HttpServerResponse.redirect(
-										pipe(
-											UrlParams.toString(UrlParams.fromInput({code: flow.code, request: flow.request})),
-											Option.liftPredicate(String.isNonEmpty),
-											Option.match({
-												onNone: () =>
-													Option.getOrElse(
-														Option.filter(Option.fromUndefinedOr(flow.next), next => returnable(next, url)),
-														() => '/'
-													),
-												onSome: search => `/?${search}`
-											})
-										)
-									),
-									LOGIN_COOKIE,
-									COOKIE
-								),
-								SESSION_COOKIE,
-								signedInToken,
-								{
-									...COOKIE,
-									domain: pipe(new URL(url).hostname, String.split('.'), Array.drop(1), Array.join('.')),
-									maxAge: '365 days'
-								}
-							)
+							const flow = yield* takeLogin(params.state)
+							return yield* Effect.catch(signIn(params.code, flow), cause => githubFailed(cause, Option.some(flow)))
 						}),
-						Effect.catch(
-							Effect.fnUntraced(function* (cause) {
-								yield* Effect.logWarning('GitHub sign-in failed', cause)
-								return HttpServerResponse.expireCookieUnsafe(
-									HttpServerResponse.redirect(
-										`/?${UrlParams.toString(UrlParams.fromInput({error: 'github', request: undefined}))}`
-									),
-									LOGIN_COOKIE,
-									COOKIE
-								)
-							})
+						// A cancelled GitHub step sends no code, only the state of the sign-in it belonged to.
+						Effect.catch(cause =>
+							Effect.flatMap(
+								Effect.option(
+									Effect.flatMap(HttpServerRequest.schemaSearchParams(LoginState), found => takeLogin(found.state))
+								),
+								flow => githubFailed(cause, flow)
+							)
 						)
 					)
 				)
@@ -1086,7 +1066,7 @@ export class Authorizations extends Context.Service<
 							yield* PubSub.publish(changes, true)
 							return HttpServerResponse.expireCookieUnsafe(HttpServerResponse.empty(), SESSION_COOKIE, {
 								...COOKIE,
-								domain: pipe(new URL(url).hostname, String.split('.'), Array.drop(1), Array.join('.'))
+								domain: cookieDomain(AUTH_URL)
 							})
 						})
 					)

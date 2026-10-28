@@ -26,7 +26,7 @@ import {TestClock} from 'effect/testing'
 import type {Resource} from '@deslop/runtime/auth/schema'
 import {ClientRegistration, TokenResponse, User} from '@deslop/runtime/auth/schema'
 import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
-import {CurrentUser} from '@deslop/runtime/auth/utils'
+import {AUTH_URL, CurrentUser} from '@deslop/runtime/auth/utils'
 
 import {
 	AuthorizationStatus,
@@ -40,7 +40,6 @@ import {
 import {Authorizations} from '#services/authorizations/service.ts'
 import {layerMcp} from '#tools/handlers.ts'
 
-const AUTH = 'https://auth.example.test'
 const API = 'https://stash.mp281x.xyz'
 const APPROVALS = 'https://auth.mp281x.xyz/mcp'
 const GITHUB_IDS: Record<string, number> = {drifter: 9, octocat: 42, stranger: 7}
@@ -163,7 +162,6 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 							Layer.succeed(HttpClient.HttpClient, github),
 							ConfigProvider.layer(
 								ConfigProvider.fromUnknown({
-									AUTH_URL: AUTH,
 									GITHUB_ADMINS: '42',
 									GITHUB_CLIENT_ID: 'example',
 									GITHUB_CLIENT_SECRET: 'example',
@@ -203,7 +201,7 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 									)
 								)
 							),
-							ConfigProvider.layer(ConfigProvider.fromUnknown({AUTH_URL: AUTH, NODE_ENV: 'production'}))
+							ConfigProvider.layer(ConfigProvider.fromUnknown({NODE_ENV: 'production'}))
 						)
 					)
 				),
@@ -216,7 +214,7 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 })
 
 function send(web: Effect.Success<ReturnType<typeof servers>>['issuer'], path: string, init?: RequestInit) {
-	return Effect.promise(() => web.handler(new Request(new URL(path, AUTH), init)))
+	return Effect.promise(() => web.handler(new Request(new URL(path, AUTH_URL), init)))
 }
 
 function cookie(response: Response) {
@@ -286,7 +284,7 @@ const authorize = Effect.fnUntraced(function* (
 	return {
 		clientId: registration.client_id,
 		cookie: pipe([session, cookie(request)], Array.filter(String.isNonEmpty), Array.join('; ')),
-		id: new URL(request.headers.get('location') ?? '', AUTH).searchParams.get('request') ?? '',
+		id: new URL(request.headers.get('location') ?? '', AUTH_URL).searchParams.get('request') ?? '',
 		redirect,
 		resources
 	}
@@ -299,7 +297,7 @@ const consent = Effect.fnUntraced(function* (
 ) {
 	const response = yield* send(web, '/api/auth/oauth2/consent', {
 		body: yield* Schema.encodeEffect(Schema.fromJsonString(ConsentParams))({accept, request: request.id}),
-		headers: {'content-type': 'application/json', cookie: request.cookie, origin: AUTH},
+		headers: {'content-type': 'application/json', cookie: request.cookie, origin: AUTH_URL},
 		method: 'POST'
 	})
 	assert.strictEqual(response.status, 204)
@@ -499,7 +497,7 @@ it.layer(NodeServices.layer)(test => {
 			)
 			const decision = yield* send(web.issuer, '/api/auth/oauth2/consent', {
 				body: yield* Schema.encodeEffect(Schema.fromJsonString(ConsentParams))({accept: true, request: first.id}),
-				headers: {'content-type': 'application/json', cookie: session, origin: AUTH},
+				headers: {'content-type': 'application/json', cookie: session, origin: AUTH_URL},
 				method: 'POST'
 			})
 			assert.strictEqual(decision.status, 204)
@@ -570,7 +568,7 @@ it.layer(NodeServices.layer)(test => {
 			assert.strictEqual(
 				(yield* send(web.issuer, '/api/auth/oauth2/consent', {
 					body: yield* Schema.encodeEffect(Schema.fromJsonString(ConsentParams))({accept: true, request: request.id}),
-					headers: {'content-type': 'application/json', cookie: session, origin: AUTH},
+					headers: {'content-type': 'application/json', cookie: session, origin: AUTH_URL},
 					method: 'POST'
 				})).status,
 				400
@@ -597,7 +595,7 @@ it.layer(NodeServices.layer)(test => {
 							accept: decision.accept,
 							request: request.id
 						}),
-						headers: {'content-type': 'application/json', cookie: decision.session, origin: AUTH},
+						headers: {'content-type': 'application/json', cookie: decision.session, origin: AUTH_URL},
 						method: 'POST'
 					})
 				}),
@@ -632,14 +630,35 @@ it.layer(NodeServices.layer)(test => {
 			})
 			assert.deepStrictEqual(
 				[
-					yield* landing({next: 'https://signal.example.test/?invite=abc'}),
+					yield* landing({next: 'https://signal.mp281x.xyz/?invite=abc'}),
 					yield* landing({next: 'https://evil.test/'}),
-					yield* landing({next: 'http://signal.example.test/'}),
-					yield* landing({code: 'WDJB-MJHT', next: 'https://signal.example.test/'}),
+					yield* landing({next: 'http://signal.mp281x.xyz/'}),
+					yield* landing({code: 'WDJB-MJHT', next: 'https://signal.mp281x.xyz/'}),
 					yield* landing({})
 				],
-				['https://signal.example.test/?invite=abc', '/', '/', '/?code=WDJB-MJHT', '/']
+				['https://signal.mp281x.xyz/?invite=abc', '/', '/', '/?code=WDJB-MJHT', '/']
 			)
+		})
+	)
+
+	test.effect('returns a cancelled GitHub step to the sign-in it started from', () =>
+		Effect.gen(function* () {
+			const web = yield* servers()
+			const start = yield* send(
+				web.issuer,
+				`/auth/github?${UrlParams.toString(UrlParams.fromInput({code: 'WDJB-MJHT'}))}`
+			)
+			const cancelled = yield* send(
+				web.issuer,
+				`/auth/github/callback?${UrlParams.toString(
+					UrlParams.fromInput({
+						error: 'access_denied',
+						state: new URL(start.headers.get('location') ?? '').searchParams.get('state') ?? ''
+					})
+				)}`,
+				{headers: {cookie: cookie(start)}}
+			)
+			assert.strictEqual(cancelled.headers.get('location'), '/?error=github&code=WDJB-MJHT')
 		})
 	)
 
@@ -684,7 +703,7 @@ it.layer(NodeServices.layer)(test => {
 			)
 			assert.strictEqual((yield* send(web.issuer, `/auth/request?request=${request.id}`)).status, 400)
 			const callback = yield* consent(web.issuer, request, true)
-			assert.strictEqual(callback.searchParams.get('iss'), `${AUTH}/api/auth`)
+			assert.strictEqual(callback.searchParams.get('iss'), `${AUTH_URL}/api/auth`)
 			assert.strictEqual(callback.searchParams.get('state'), 'example-state')
 			const code = callback.searchParams.get('code') ?? ''
 			assert.strictEqual(
@@ -790,7 +809,8 @@ it.layer(NodeServices.layer)(test => {
 				401
 			)
 			assert.strictEqual(
-				(yield* send(web.issuer, '/auth/sign-out', {headers: {cookie: session, origin: AUTH}, method: 'POST'})).status,
+				(yield* send(web.issuer, '/auth/sign-out', {headers: {cookie: session, origin: AUTH_URL}, method: 'POST'}))
+					.status,
 				204
 			)
 			assert.strictEqual((yield* send(web.issuer, '/me', {headers: {cookie: session}})).status, 401)

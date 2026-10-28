@@ -119,6 +119,9 @@ export const RevokeParams = Schema.Struct({client_id: Schema.NonEmptyString, tok
 export type CallbackParams = typeof CallbackParams.Type
 export const CallbackParams = Schema.Struct({code: Schema.NonEmptyString, state: Schema.NonEmptyString})
 
+export type LoginState = typeof LoginState.Type
+export const LoginState = Schema.Struct({state: Schema.NonEmptyString})
+
 export type GitHubToken = typeof GitHubToken.Type
 export const GitHubToken = Schema.Struct({access_token: Schema.NonEmptyString})
 

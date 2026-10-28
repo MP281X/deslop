@@ -7,6 +7,7 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
+import {typedCode} from '#services/authorizations/lib/utils.ts'
 import type {Account, AdmitParams, PendingAuthorization} from '#services/authorizations/schema.ts'
 
 const authRuntime = Atom.runtime(FetchHttpClient.layer)
@@ -94,11 +95,6 @@ export const requestAtom = Atom.family((request: string) =>
 // WDJBMJHT reads WDJB-MJHT.
 export function requestCode(id: string) {
 	return `${String.slice(0, 4)(id)}-${String.slice(4)(id)}`
-}
-
-// What someone typed, as the id it names: letters only, in capitals.
-export function typedCode(text: string) {
-	return String.toUpperCase(String.replaceAll(/[^a-z]/giu, '')(text))
 }
 
 // The link RFC 8628 calls verification_uri_complete: it opens the approve page with the code filled in.
