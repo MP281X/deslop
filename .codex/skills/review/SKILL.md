@@ -1,15 +1,15 @@
 ---
 name: review
-description: 'Use for any review, audit, critique or review round of code, a PR, a design, agent instructions or a PR body.'
+description: 'Load when asked to review, audit or critique code, a PR, a design, agent instructions or a PR body, and when a brief names you a reviewer.'
 ---
 
 # Review
 
-**One complete pass.** Build the strongest case that the work is wrong from raw evidence (the code, real runs, data, the references), never the author's summary, and report every class of defect now: a later round checks only the fixes and the contracts they touch. Judge against the repository's `CODING_STANDARDS.md`, `AGENTS.md` and rules.
+**One complete pass.** Build the strongest case that the work is wrong from raw evidence (the code, real runs, data, the references), never the author's summary, and report every class of defect now: a later round checks only the fixes. Judge against the repository's `CODING_STANDARDS.md`, `AGENTS.md` and rules.
 
 ## Findings
 
-Each finding: severity, `path:line`, the reaching input, actual and required outcome, the artifact that showed it (probe output, request, trace, capture, source line), the smallest fix.
+Each finding: severity, `path:line`, the reaching input, actual and required outcome, the artifact that showed it, the smallest fix.
 
 | Severity | Meaning                                                                                                                            |
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -17,44 +17,29 @@ Each finding: severity, `path:line`, the reaching input, actual and required out
 | P2       | Wrong owner, boundary or shape against its reference, rule violation, duplicated or dead code, or a part the request does not need |
 | P3       | Naming, wording or style                                                                                                           |
 
-- **Keep** a finding the change made or relies on, with a reachable input and concrete harm or a shape that departs from its reference, resting on no unstated assumption. Taste without a rule or reference, inputs no caller sends and what lint reports are not findings.
+- **Keep** a finding the change made or relies on, with a reachable input and concrete harm or a shape that departs from its reference. Taste without a rule or reference, inputs no caller sends and what lint reports are not findings.
+- **Pre-existing.** A defect the change neither made nor relies on goes in a separate `Pre-existing` list with its `path:line`, never in the findings to fix.
 - **Every instance.** Each class once, with every instance's `path:line`, across every layer.
-- **Rank honestly.** P1 first; "Clean" with the covered scope when nothing reaches P2; no padding with P3.
-- **Probe** a suspicion inline against the public interface; a read-only review never starts a service or test suite.
+- **Clean** with the covered scope when nothing reaches P2; no padding with P3.
 
 ## Code
 
 - **Architecture first.** Rebuild the change from the request and its references alone: owners, boundaries, files, data flow. Where its shape differs from the reference's or the simplest idiomatic one, report that shape as the fix, even when every line is correct.
-- **Depth.** Read every hand-written changed line, and for generated output the generator change and a sample; trace each contract through its real consumers, failure paths, concurrency, resource ownership and the previous release's persisted data.
-- **Claims.** Check each claim in the PR body, comments and messages against its artifact; a false or unsupported one is a P1.
-- **Requirements.** Map each accepted requirement, public names and paths included, to the implementation and its evidence, reading an approval against the proposal it approved rather than the author's summary; a cosmetic substitute or an unapproved deviation is a finding.
-- **Committed state.** Read the supplied immutable base/head pairs, `git show <head>:<path>` or the pushed heads (`gh pr diff <n>`, `glab mr diff <n>`), never the working tree; judge related PRs together and each slice on its actual base.
-- **Browser.** Inspect the existing preview, captures, console and requests without changing page state.
-
-## Lenses
-
-**Contracts** (callers, data, migrations, failure paths), **shape** (references, owners, what can be deleted) and **proof** (claims and requirements against artifacts): a reviewer given one lens applies the rest of this skill through it. The lead merges duplicates and applies Keep.
+- **Claims and requirements.** Check each claim in the PR body against its artifact, and map each accepted requirement, public names included, to the implementation, reading an approval against the proposal it approved; a cosmetic substitute or an unapproved deviation is a finding.
+- **Committed state.** Read the supplied immutable base/head pairs or the pushed heads (`gh pr diff <n>`, `glab mr diff <n>`), never the working tree; judge each slice on its actual base.
+- **Read-only.** Probe a suspicion inline against the public interface; never start a service or test suite, change code or drive the preview. Name missing proof instead.
 
 ## Evaluate
 
-Apply the questions the change touches, existing evidence first, and report defects, not passed checks. A read-only reviewer names missing proof rather than running checks, changing code or driving the preview. Use the repository's policy and supported targets, not invented budgets, a fixed device matrix or personal taste.
-
-| Question                                                              | Deciding evidence                                                                                                                                                                                                      |
-| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Does the demonstration prove the requested journey, not a proxy?      | Per delivery, real input through each changed outcome and relevant failure; a same-input baseline when the claim is a difference. A health check, clean exit or green suite proves only its own stage.                 |
-| Does each boundary reduce reading cost?                               | Callers and imports against the repository's Layout policy, including configuration; judge what a reader must understand, not file or line counts.                                                                     |
-| What required behavior is missing from existing owners or primitives? | Their exports and real consumers against the repository's Layout policy; name the capability that reuse cannot supply.                                                                                                 |
-| Does the shipped result match its agreed reference and conventions?   | Same-data captures, element boxes and frames across a transition: type, sizing, alignment, clipping, hierarchy and connector joins match the reference and theme.                                                      |
-| Does each persistent test protect reachable, owned behavior?          | The repository's test policy, reaching input and assertion: it catches incorrect behavior without freezing equivalent implementations or re-testing libraries and types; a sensitivity probe only when needed.         |
-| Is interaction responsive on first load, navigation and revisit?      | A real interaction recording, requests and traces against the baseline: input stays responsive, still-valid content stays visible and loading feedback belongs to the affected region. Cosmetic progress is not speed. |
-| Are async work and data scoped to the current need?                   | Request payloads, counts and resource lifetimes on representative data: obsolete work stops, no redundant subscriptions or loading boundaries, and a small interaction fetches no unrelated corpus.                    |
-| Are relevant states and failure paths reachable and correct?          | Changed empty, loading, partial, stale, error, success and long-content paths, with evidence fit for each, not a capture per hypothetical combination.                                                                 |
-| Does every added part serve the final requirement?                    | A reachable requirement or consumer across the related PR set; no superseded approach, unused variant or unrelated cleanup kept because it was already built.                                                          |
+- **Proof.** The capture shows real input through each changed outcome, with a same-input baseline when the claim is a difference; a green suite proves only its own stage.
+- **Reference.** Same-data captures and element boxes match the agreed pick and theme.
+- **Speed.** A real interaction recording, requests and traces against the baseline: input stays responsive, still-valid content stays visible, loading feedback belongs to the affected region, and a small interaction fetches no unrelated data.
+- **Need.** Every added part serves a reachable requirement across the related PR set; no superseded approach, unused variant or unrelated cleanup kept because it was already built.
 
 ## Instructions
 
-Read the affected prompts, skills, references and settings whole, as one system, and rank by how much agent behavior each finding changes: contradictions; one fact in two places; a rule in the wrong owner; a no-op the model does by default; a non-obvious rule without its reason; a prohibition without the behavior to do; stale names, paths and models; a rule that assumes tool behavior it lacks.
+Read the affected prompts, skills, references and settings whole, as one system, and rank by how much agent behavior each finding changes: contradictions; one fact in two places; a rule in the wrong owner; a no-op the model does by default; a stale name, path or model; a rule that assumes tool behavior it lacks.
 
 ## Body reader
 
-Read the published body, captures and head without the chat, as the reviewer delivery's Body writes for. Flag a missing why, decision or risk; repeated visual meaning, restated diff or work history; unsupported claims; a missing baseline for a claimed difference; unreadable captures. Keep material verification limits.
+Read the published body and captures without the chat, against the repository's PR template. Flag a missing why or merge danger; leftover template comments or empty sections; restated diff, work history or prose a capture already shows; unsupported claims; unreadable captures; a behavior change without a capture.

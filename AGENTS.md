@@ -1,11 +1,11 @@
 # Deslop
 
-Personal software for one user on two workers: Effect apps, their MCP tools and the shared `@deslop/coding-standards`. Judgement calls live in [CODING_STANDARDS.md](CODING_STANDARDS.md): read it before an unfamiliar shape; review cites it.
+Personal software for one user on two workers: Effect apps, their MCP tools and the shared `@deslop/coding-standards`.
 
 ## Scope
 
 - No issue tracker: the request is the whole task.
-- No portability, multi-user or compatibility code: one user on these two workers. Apps and MCP endpoints are public, with shared authentication through `auth.mp281x.xyz`. `GITHUB_ADMINS` lists the admins, who let other GitHub accounts in from the auth app; that is access, not an invitation to add multi-user data, so everyone with access shares each app's data.
+- One user's software on these two workers: no portability, multi-user or compatibility code. Apps and MCP endpoints are public behind the shared sign-in at `auth.mp281x.xyz`; admins in `GITHUB_ADMINS` let other GitHub accounts in, and everyone with access shares each app's data.
 - Releases are linear and squash-merged; a newer merge cancels an older release run, so a data change covers everything since the last successful deploy.
 - Local data is disposable. Preserve production data only from the immediately previous release; delete obsolete data.
 
@@ -13,7 +13,7 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 
 - **Verify** is `vp run -w fix && vp run -w check && vp run -w test`. `fix` applies lint fixes and formatting only; `check` is the non-writing static gate (format, lint, types, Fallow).
 - **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. Before the first mobile push, follow environment's Deslop reference, **Publish an iOS app**.
-- **Agent configuration.** `.claude/agents/pair.md` and `.codex/instructions.md` are identical from `# Work` down. Team skills live in `tools/coding-standards/skills/`, and `node tools/coding-standards/src/install.ts` refreshes their copies in `.claude/skills` and `.codex/skills`. The personal skills in `.claude/skills` (orchestrator, environment, patterns, retrospective) load globally through the workers' links.
+- **Agent configuration.** `.claude/agents/pair.md` and `.codex/instructions.md` are identical from `# Work` down. Team skills live in `tools/coding-standards/skills/`, and `node tools/coding-standards/src/install.ts` refreshes their copies in `.claude/skills` and `.codex/skills`. The personal skills in `.claude/skills` (planning, environment, references, retrospective) load globally through the workers' links.
 
 ## Patterns
 

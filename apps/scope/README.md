@@ -14,9 +14,9 @@ Trusted local exporters use `http://127.0.0.1:4318/v1/traces` and `/v1/logs` wit
 
 ## Connection diagnostics
 
-Stored OAuth credentials do not prove the MCP connection works. Check the client's MCP status and tool discovery: Scope exposes the six tools below. If startup reports `OAuth authorization required`, sign in again with that client's login command above. An auth-store reset invalidates previously saved credentials.
+Stored OAuth credentials do not prove the MCP connection works. Check the client's MCP status and tool discovery: Scope exposes the tools below. If startup reports `OAuth authorization required`, sign in again with that client's login command above. An auth-store reset invalidates previously saved credentials.
 
-Open the printed authorization URL in a browser on the same worker as the client. Leave it waiting; sign in at https://auth.mp281x.xyz in your own browser and approve the matching request. The worker's browser completes its localhost callback. Do not move the callback to the phone.
+Open the printed authorization URL in a browser on the same worker as the client. Leave it waiting: it shows a QR code and a code, which you scan with a phone where you are signed in or enter at https://auth.mp281x.xyz. The worker's browser completes its localhost callback. Do not move the callback to the phone.
 
 The public `/.well-known/oauth-protected-resource/mcp` document names the authorization server. A request without credentials gets a 401 discovery challenge; a rejected bearer adds `error="invalid_token"` and requires sign-in again. An unavailable authorization server returns 503 with `Retry-After`, not a false invalid-token challenge.
 
@@ -29,9 +29,7 @@ The public `/.well-known/oauth-protected-resource/mcp` document names the author
 | `measure_latency` | Span count, errors and p50, p95 and max latency over the whole window                                      |
 | `read_trace`      | One stored trace whole, including earlier runs, with parent order, offsets and logs                        |
 
-`find_traces`, `find_spans`, `find_logs` and `measure_latency` take `service`, `operation`, `traceId`, `text`, `errors`, `since` (`"10 minutes"` by default) and `runs`. Paged tools add `limit` and `offset`; trace/span searches add `sort`.
-
-Searches default to `runs: "current"`: the latest process, page load or app launch per service. When a service exports a newer run, default searches hide every older trace it took part in. Use `{"runs":"all","since":"1 hour"}` to investigate across restarts or deployments. `read_trace` opens the complete retained trace by ID regardless of run. Entries persist under `~/.deslop/scope/entries/` for three days, by their exporter time. `text` searches span names, log messages, attributes, status and events, not ids or resources; pages hold 20 entries unless `limit` says otherwise.
+Entries persist under `~/.deslop/scope/entries/` for three days, by their exporter time.
 
 ## Ingestion health
 
