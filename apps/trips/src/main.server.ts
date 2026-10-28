@@ -26,10 +26,7 @@ const layerStorage = Layer.unwrap(
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem
 		const path = yield* Path.Path
-		const directory = yield* pipe(
-			Config.String('TRIPS_DATA_DIR'),
-			Config.withDefault(path.join(yield* Config.String('HOME'), '.deslop', 'trips'))
-		)
+		const directory = path.join(yield* Config.String('HOME'), '.deslop', 'trips')
 		yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
 		return ServerRuntime.layerKeyValueStore(directory)
 	})

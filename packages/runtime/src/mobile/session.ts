@@ -7,9 +7,8 @@ import {AuthRequest, makeRedirectUri} from 'expo-auth-session'
 
 import {AUTH_URL} from '#auth/lib/utils.ts'
 import {AuthError, ClientRegistration, Credentials, TokenResponse} from '#auth/schema.ts'
-import {activationsAtom, extra} from '#mobile/client.ts'
+import {TELEMETRY, activationsAtom, extra} from '#mobile/client.ts'
 
-const TELEMETRY = 'https://otel.mp281x.xyz'
 const DISCOVERY = {
 	authorizationEndpoint: `${AUTH_URL}/api/auth/oauth2/authorize`,
 	tokenEndpoint: `${AUTH_URL}/api/auth/oauth2/token`

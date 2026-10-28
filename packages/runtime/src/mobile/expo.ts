@@ -9,7 +9,6 @@ export function make(app: {bundleIdentifier: string; name: string; owner: string
 		Effect.gen(function* () {
 			const release = yield* pipe(Config.Int('RELEASE_NUMBER'), Config.withDefault(0))
 			const team = yield* Config.option(Config.String('APPLE_TEAM_ID'))
-			const otel = yield* pipe(Config.String('OTEL_URL'), Config.withDefault('https://otel.mp281x.xyz'))
 			const production =
 				(yield* pipe(
 					Config.Literals(['development', 'production'], 'APP_VARIANT'),
@@ -28,7 +27,7 @@ export function make(app: {bundleIdentifier: string; name: string; owner: string
 				config: {
 					// The compiler memoizes components, as on the web, so a changed row re-renders without the rest of its list.
 					experiments: {reactCompiler: true},
-					extra: {eas: {projectId: app.projectId}, otel, scheme: variant.scheme},
+					extra: {eas: {projectId: app.projectId}, scheme: variant.scheme},
 					icon: './src/routes/icon.png',
 					ios: {
 						appleTeamId: Option.getOrUndefined(team),

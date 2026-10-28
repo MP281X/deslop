@@ -28,6 +28,9 @@ import {Bookings} from '#services/bookings/service.ts'
 import {flightTracking, pickFlight, trainTracking} from '#services/tracking/lib/utils.ts'
 import {FaFlights, Usage, VtRun, VtStatus} from '#services/tracking/schema.ts'
 
+// FlightAware's personal plan includes $5 a month, a thousand lookups.
+const MONTHLY_LOOKUPS = 1000
+
 function failed(message: string) {
 	return Effect.mapError((cause: unknown) => BookingsError.make({cause, message}))
 }
@@ -47,8 +50,6 @@ export class Tracker extends Context.Service<
 			const bookings = yield* Bookings
 			const client = yield* HttpClient.HttpClient
 			const key = yield* Config.option(Config.Redacted('AEROAPI_KEY'))
-			// FlightAware's personal plan includes $5 a month, a thousand lookups.
-			const budget = yield* pipe(Config.Int('AEROAPI_MONTHLY_CALLS'), Config.withDefault(1000))
 			const usage = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Usage)
 
 			const spend = Effect.gen(function* () {
@@ -60,8 +61,10 @@ export class Tracker extends Context.Service<
 					),
 					() => ({calls: 0, month})
 				)
-				if (current.calls >= budget) {
-					return yield* BookingsError.make({message: `FlightAware's ${budget} lookups for ${month} are used up.`})
+				if (current.calls >= MONTHLY_LOOKUPS) {
+					return yield* BookingsError.make({
+						message: `FlightAware's ${MONTHLY_LOOKUPS} lookups for ${month} are used up.`
+					})
 				}
 				yield* failed('The lookup count could not be saved.')(usage.set('aeroapi', {calls: current.calls + 1, month}))
 			})
