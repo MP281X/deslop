@@ -95,7 +95,7 @@ export const noReadonlyTypeSyntax = defineRule({
 		const cycleNames = schemaCycleNames({context, program: context.sourceCode.ast})
 		const shapes = MutableList.make<ESTree.TSType>()
 		const properties = MutableList.make<ESTree.TSPropertySignature>()
-		const methods = MutableList.make<ESTree.TSMethodSignature>()
+		const accessors = MutableList.make<ESTree.TSMethodSignature>()
 		function exempt(node: ESTree.Node) {
 			return insideCycleType({cycleNames, node})
 		}
@@ -135,9 +135,9 @@ export const noReadonlyTypeSyntax = defineRule({
 						})
 					}
 				}
-				for (const node of MutableList.toArray(methods)) {
+				for (const node of MutableList.toArray(accessors)) {
 					if (inShape(node)) {
-						context.report({message: 'Write this service method as a readonly property holding a function.', node})
+						context.report({message: 'Write this service accessor as a readonly property.', node})
 					}
 				}
 			},
@@ -160,7 +160,7 @@ export const noReadonlyTypeSyntax = defineRule({
 				}
 			},
 			TSMethodSignature: node => {
-				MutableList.append(methods, node)
+				if (node.kind !== 'method') MutableList.append(accessors, node)
 			},
 			TSPropertySignature: node => {
 				MutableList.append(properties, node)

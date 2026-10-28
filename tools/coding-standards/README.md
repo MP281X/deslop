@@ -35,6 +35,10 @@ export default defineConfig({lint: {extends: [lint]}})
 
 Put project-specific lint settings alongside `extends`; the preset ignores nothing, so add `**/*.gen.ts` to your own ignores.
 
+Native rules are explicitly enabled by name, with every category off. Tool upgrades do not opt the project into new category members. Deslop rules are enabled from the local plugin registry, without a second list of names. Native rules own checks they can express; custom rules cover the remaining Effect and React contracts.
+
+The `typescript` plugin includes syntax-only rules such as `no-explicit-any`, `consistent-type-imports` and `method-signature-style`; these run without type information. `typeAware: false` disables rules requiring inferred types, such as `no-floating-promises`. `typeCheck: false` leaves compiler errors to the separate Effect-patched `tsrs` check. The preset does not select inactive type-aware rules.
+
 ## Collection performance
 
 `no-accumulating-copy` checks inline Effect `Array.reduce`/`reduceRight` callbacks, including captured accumulator reads in nested callbacks:
