@@ -11,8 +11,6 @@ import {AUTH_URL} from '@deslop/runtime/auth/utils'
 
 import {RpcClient} from '#lib/utils.ts'
 
-export const Route = createFileRoute('/(home)/')({component: Home})
-
 // Every RPC requires a Deslop sign-in; GitHub returns here once it is done.
 function Home() {
 	return AsyncResult.match(useAtomValue(RpcClient.query('app.name', undefined)), {
@@ -35,3 +33,5 @@ function Home() {
 		onSuccess: name => name.value
 	})
 }
+
+export const Route = createFileRoute('/(home)/')({component: Home})

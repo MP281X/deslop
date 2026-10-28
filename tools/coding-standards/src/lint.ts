@@ -12,7 +12,6 @@ import {noBarrelModule} from '#rules/no-barrel-module.ts'
 import {noCompilerOptOut} from '#rules/no-compiler-opt-out.ts'
 import {noComponentAtomAllocation} from '#rules/no-component-atom-allocation.ts'
 import {noConstantFunction} from '#rules/no-constant-function.ts'
-import {noDeepPipe} from '#rules/no-deep-pipe.ts'
 import {noDestructuredParameter} from '#rules/no-destructured-parameter.ts'
 import {noDiscardedFailure} from '#rules/no-discarded-failure.ts'
 import {noDoubleNullishCheck} from '#rules/no-double-nullish-check.ts'
@@ -106,7 +105,6 @@ const RULES = {
 	'no-compiler-opt-out': noCompilerOptOut,
 	'no-component-atom-allocation': noComponentAtomAllocation,
 	'no-constant-function': noConstantFunction,
-	'no-deep-pipe': noDeepPipe,
 	'no-destructured-parameter': noDestructuredParameter,
 	'no-discarded-failure': noDiscardedFailure,
 	'no-double-nullish-check': noDoubleNullishCheck,
@@ -432,7 +430,7 @@ export const lint: OxlintConfig = {
 			'error',
 			{args: 'all', argsIgnorePattern: '^_', ignoreRestSiblings: true, reportUsedIgnorePattern: true}
 		],
-		'no-use-before-define': ['error', {classes: false, functions: false, typedefs: false, variables: true}],
+		'no-use-before-define': ['error', {classes: true, functions: true, typedefs: false, variables: true}],
 		'no-useless-assignment': 'error',
 		'no-useless-backreference': 'error',
 		'no-useless-call': 'error',

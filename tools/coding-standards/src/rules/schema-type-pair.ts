@@ -47,10 +47,6 @@ function schemaDefinitionMember(node: ESTree.Expression): Option.Option<ESTree.M
 	return Option.none()
 }
 
-function isSchemaDefinitionName(name: string) {
-	return !isSchemaOperationName(name) && !matches(/^(?:is|to)[A-Z]/u)(name) && !matches(/^makeFilter(?:Group)?$/u)(name)
-}
-
 function isSchemaDefinition(input: {context: Context; node: ESTree.Expression}): boolean {
 	if (
 		input.node.type === 'CallExpression' &&
@@ -77,7 +73,15 @@ function isSchemaDefinition(input: {context: Context; node: ESTree.Expression}):
 		schemaDefinitionMember(input.node),
 		Option.exists(member => {
 			if (!importedMember({context: input.context, importedName: 'Schema', node: member})) return false
-			return pipe(memberName(member), Option.exists(isSchemaDefinitionName))
+			return pipe(
+				memberName(member),
+				Option.exists(
+					name =>
+						!isSchemaOperationName(name) &&
+						!matches(/^(?:is|to)[A-Z]/u)(name) &&
+						!matches(/^makeFilter(?:Group)?$/u)(name)
+				)
+			)
 		})
 	)
 }

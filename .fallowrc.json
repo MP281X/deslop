@@ -84,5 +84,12 @@
 		{"exports": ["*"], "file": "apps/*/src/services/*/schema.ts"},
 		{"exports": ["*"], "file": "packages/components-web/src/ui/**/*.tsx"}
 	],
-	"rules": {"policy-violation": "off", "require-suppression-reason": "error", "unlisted-dependencies": "error"}
+	"rules": {
+		"policy-violation": "off",
+		"private-type-leaks": "error",
+		"prop-drilling": "error",
+		"require-suppression-reason": "error",
+		"thin-wrapper": "error",
+		"unlisted-dependencies": "error"
+	}
 }

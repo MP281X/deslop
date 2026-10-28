@@ -6,17 +6,17 @@ import * as WebRuntime from '@deslop/runtime/web'
 
 import {routeTree} from './routeTree.gen.ts'
 
-const {root, router} = WebRuntime.makeRouter(routeTree)
+const app = WebRuntime.makeRouter(routeTree)
 
 declare module '@tanstack/react-router' {
 	// oxlint-disable-next-line typescript/consistent-type-definitions -- TanStack Router augments this interface by name.
 	interface Register {
-		router: typeof router
+		router: typeof app.router
 	}
 }
 
-createRoot(root).render(
+createRoot(app.root).render(
 	<StrictMode>
-		<RouterProvider router={router} />
+		<RouterProvider router={app.router} />
 	</StrictMode>
 )

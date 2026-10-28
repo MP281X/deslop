@@ -14,8 +14,6 @@ import {accountAtom, applicationName, consentAtom, linkedCode, lookupAtom, typed
 
 const CODE_LENGTH = 8
 
-export const Route = createFileRoute('/(home)/')({component: Approve})
-
 function Found(props: {code: string}) {
 	const account = useAtomSuspense(accountAtom).value
 	const waiting = useAtomSuspense(lookupAtom(props.code)).value
@@ -93,3 +91,5 @@ function Approve() {
 		</section>
 	)
 }
+
+export const Route = createFileRoute('/(home)/')({component: Approve})

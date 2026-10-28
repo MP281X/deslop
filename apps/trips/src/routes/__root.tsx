@@ -82,12 +82,40 @@ function Failed(props: {cause: Cause.Cause<unknown>}) {
 	)
 }
 
-export function RootRoute() {
-	useAtomMount(updateAtom)
+// A pushed screen: the add form, or a booking by its id.
+function Destination(props: {bookings: BookingList; onClose: () => void; value: string}) {
+	if (props.value === 'add') return <AddRoute onDone={props.onClose} />
+	return <BookingRoute key={props.value} bookings={props.bookings} id={props.value} onClose={props.onClose} />
+}
+
+// The app opens on the trip list; an island, a calendar event or a notification opens its booking.
+function AppRoutes() {
+	useAtomMount(pushAtom)
+	useAtomMount(activitiesAtom)
+	useAtomMount(calendarAtom)
+	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
+	const opened = useAtomValue(openedAtom)
+	const [path, setPath] = useState(() =>
+		Option.match(AsyncResult.value(opened), {onNone: () => Array.empty<string>(), onSome: id => [id]})
+	)
+	useAtomSubscribe(openedAtom, tapped => Option.map(AsyncResult.value(tapped), id => setPath([id])))
+	if (AsyncResult.isFailure(loaded)) return <Failed cause={loaded.cause} />
+
 	return (
-		<Suspense fallback={<Loading />}>
-			<SessionRoute />
-		</Suspense>
+		<Host style={{flex: 1}}>
+			<NavigationStack
+				path={path}
+				onPathChange={setPath}
+				modifiers={[tint(colors.foreground), background(colors.background)]}
+			>
+				<HomeRoute bookings={loaded.value} onAdd={() => setPath(['add'])} onOpen={id => setPath([id])} />
+				{Array.map(path, value => (
+					<NavigationDestination key={value} value={value}>
+						<Destination bookings={loaded.value} value={value} onClose={() => setPath([])} />
+					</NavigationDestination>
+				))}
+			</NavigationStack>
+		</Host>
 	)
 }
 
@@ -140,39 +168,11 @@ function SessionRoute() {
 	)
 }
 
-// A pushed screen: the add form, or a booking by its id.
-function Destination(props: {bookings: BookingList; onClose: () => void; value: string}) {
-	if (props.value === 'add') return <AddRoute onDone={props.onClose} />
-	return <BookingRoute key={props.value} bookings={props.bookings} id={props.value} onClose={props.onClose} />
-}
-
-// The app opens on the trip list; an island, a calendar event or a notification opens its booking.
-function AppRoutes() {
-	useAtomMount(pushAtom)
-	useAtomMount(activitiesAtom)
-	useAtomMount(calendarAtom)
-	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
-	const opened = useAtomValue(openedAtom)
-	const [path, setPath] = useState(() =>
-		Option.match(AsyncResult.value(opened), {onNone: () => Array.empty<string>(), onSome: id => [id]})
-	)
-	useAtomSubscribe(openedAtom, tapped => Option.map(AsyncResult.value(tapped), id => setPath([id])))
-	if (AsyncResult.isFailure(loaded)) return <Failed cause={loaded.cause} />
-
+export function RootRoute() {
+	useAtomMount(updateAtom)
 	return (
-		<Host style={{flex: 1}}>
-			<NavigationStack
-				path={path}
-				onPathChange={setPath}
-				modifiers={[tint(colors.foreground), background(colors.background)]}
-			>
-				<HomeRoute bookings={loaded.value} onAdd={() => setPath(['add'])} onOpen={id => setPath([id])} />
-				{Array.map(path, value => (
-					<NavigationDestination key={value} value={value}>
-						<Destination bookings={loaded.value} value={value} onClose={() => setPath([])} />
-					</NavigationDestination>
-				))}
-			</NavigationStack>
-		</Host>
+		<Suspense fallback={<Loading />}>
+			<SessionRoute />
+		</Suspense>
 	)
 }

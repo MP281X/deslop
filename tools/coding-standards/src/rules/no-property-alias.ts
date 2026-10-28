@@ -31,6 +31,17 @@ function pathTop(node: ESTree.Node): ESTree.Node {
 	return node
 }
 
+// `isText`, `Predicate.isString`, `Option.isSome` and the curried `Schema.is(Schema.String)` read as predicates.
+function predicate(callee: ESTree.Node): boolean {
+	if (callee.type === 'CallExpression') return predicate(callee.callee)
+	if (callee.type === 'Identifier') return matches(/^(?:has|is)(?:[A-Z]|$)/u)(callee.name)
+	return (
+		callee.type === 'MemberExpression' &&
+		callee.property.type === 'Identifier' &&
+		matches(/^(?:has|is)(?:[A-Z]|$)/u)(callee.property.name)
+	)
+}
+
 // A comparison, a negation, a condition or a predicate call on a path narrows it; the right side of `a && b` passes its value on to whatever tests it.
 function tested(node: ESTree.Node): boolean {
 	if (Predicate.isNullish(node.parent)) return false
@@ -54,17 +65,6 @@ function tested(node: ESTree.Node): boolean {
 	)
 }
 
-// `isText`, `Predicate.isString`, `Option.isSome` and the curried `Schema.is(Schema.String)` read as predicates.
-function predicate(callee: ESTree.Node): boolean {
-	if (callee.type === 'CallExpression') return predicate(callee.callee)
-	if (callee.type === 'Identifier') return matches(/^(?:has|is)(?:[A-Z]|$)/u)(callee.name)
-	return (
-		callee.type === 'MemberExpression' &&
-		callee.property.type === 'Identifier' &&
-		matches(/^(?:has|is)(?:[A-Z]|$)/u)(callee.property.name)
-	)
-}
-
 // A callback that is not passed straight to a call may run after the property changes, so its alias is a snapshot.
 function deferred(input: {block: ESTree.Node; node: ESTree.Node}): boolean {
 	if (Predicate.isNullish(input.node.parent) || input.node.parent === input.block) return false
@@ -76,6 +76,12 @@ function deferred(input: {block: ESTree.Node; node: ESTree.Node}): boolean {
 		return true
 	}
 	return deferred({...input, node: parent})
+}
+
+function enclosed(input: {block: ESTree.Node; node: ESTree.Node; types: string[]}): boolean {
+	if (Predicate.isNullish(input.node.parent) || input.node.parent === input.block) return false
+	if (Array.contains(input.types, input.node.parent.type)) return true
+	return enclosed({...input, node: input.node.parent})
 }
 
 // TypeScript keeps a narrowed alias inside a callback but drops a narrowed property path, so the alias is needed only when a callback reads a path that a check narrowed, or when a check before the alias narrowed its property.
@@ -105,12 +111,6 @@ function needsAlias(input: {context: Context; declaration: ESTree.VariableDeclar
 			tested(checked.node) &&
 			Array.some(callbacks, read => read.text === checked.text || String.startsWith(`${checked.text}.`)(read.text))
 	)
-}
-
-function enclosed(input: {block: ESTree.Node; node: ESTree.Node; types: string[]}): boolean {
-	if (Predicate.isNullish(input.node.parent) || input.node.parent === input.block) return false
-	if (Array.contains(input.types, input.node.parent.type)) return true
-	return enclosed({...input, node: input.node.parent})
 }
 
 function between(input: {declaration: ESTree.Node; node: ESTree.Node; read: ESTree.Node}) {

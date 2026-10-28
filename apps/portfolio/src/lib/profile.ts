@@ -54,9 +54,7 @@ export const projects = [
 	}
 ]
 
-type Job = {company: string; highlights: string[]; location?: string; note?: string; period: string; role: string}
-
-export const experience: Job[] = [
+export const experience = [
 	{
 		company: 'Datapizza',
 		highlights: [
@@ -114,9 +112,7 @@ export const experience: Job[] = [
 	}
 ]
 
-type Education = {degree: string; grade?: string; period: string; school: string}
-
-export const education: Education[] = [
+export const education = [
 	{degree: 'Cloud Developer Diploma', grade: '95/100', period: '2022 – 2024', school: 'ITS Alto Adriatico'}
 ]
 

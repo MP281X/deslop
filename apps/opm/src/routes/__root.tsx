@@ -86,64 +86,6 @@ function Failed(props: {cause: Cause.Cause<unknown>}) {
 	)
 }
 
-export function RootRoute() {
-	useAtomMount(updateAtom)
-	return (
-		<Suspense fallback={<Loading />}>
-			<SessionRoute />
-		</Suspense>
-	)
-}
-
-function SessionRoute() {
-	const saved = useAtomSuspense(session.atom).value
-	const [signIn, start] = useAtom(signInAtom)
-	const iconUri = useAtomSuspense(assetAtom(icon)).value
-	if (Option.isSome(saved)) {
-		return (
-			<Suspense fallback={<Loading />}>
-				<AppRoutes />
-			</Suspense>
-		)
-	}
-	return (
-		<Host style={{flex: 1}}>
-			<VStack
-				spacing={20}
-				// The padding comes first so the colour behind it reaches every edge of the screen.
-				modifiers={[
-					padding({all: 24}),
-					frame({maxHeight: Infinity, maxWidth: Infinity}),
-					background(colors.background)
-				]}
-			>
-				<Image
-					uiImage={iconUri}
-					modifiers={[
-						resizable(),
-						frame({height: 64, width: 64}),
-						clipShape('roundedRectangle', 14),
-						frame({maxHeight: Infinity}),
-						padding({bottom: 64})
-					]}
-				/>
-				<Button
-					onPress={() => start()}
-					modifiers={[
-						buttonStyle('glassProminent'),
-						controlSize('large'),
-						tint(colors.primary),
-						foregroundStyle(colors.primaryForeground),
-						disabled(AsyncResult.isWaiting(signIn))
-					]}
-				>
-					<Text modifiers={[mono('headline', 16), frame({maxWidth: Infinity})]}>Sign in with GitHub</Text>
-				</Button>
-			</VStack>
-		</Host>
-	)
-}
-
 // The app opens on the list; a tapped notification opens its chapter.
 function AppRoutes() {
 	useAtomMount(pushAtom)
@@ -200,5 +142,63 @@ function AppRoutes() {
 				)}
 			</NavigationStack>
 		</Host>
+	)
+}
+
+function SessionRoute() {
+	const saved = useAtomSuspense(session.atom).value
+	const [signIn, start] = useAtom(signInAtom)
+	const iconUri = useAtomSuspense(assetAtom(icon)).value
+	if (Option.isSome(saved)) {
+		return (
+			<Suspense fallback={<Loading />}>
+				<AppRoutes />
+			</Suspense>
+		)
+	}
+	return (
+		<Host style={{flex: 1}}>
+			<VStack
+				spacing={20}
+				// The padding comes first so the colour behind it reaches every edge of the screen.
+				modifiers={[
+					padding({all: 24}),
+					frame({maxHeight: Infinity, maxWidth: Infinity}),
+					background(colors.background)
+				]}
+			>
+				<Image
+					uiImage={iconUri}
+					modifiers={[
+						resizable(),
+						frame({height: 64, width: 64}),
+						clipShape('roundedRectangle', 14),
+						frame({maxHeight: Infinity}),
+						padding({bottom: 64})
+					]}
+				/>
+				<Button
+					onPress={() => start()}
+					modifiers={[
+						buttonStyle('glassProminent'),
+						controlSize('large'),
+						tint(colors.primary),
+						foregroundStyle(colors.primaryForeground),
+						disabled(AsyncResult.isWaiting(signIn))
+					]}
+				>
+					<Text modifiers={[mono('headline', 16), frame({maxWidth: Infinity})]}>Sign in with GitHub</Text>
+				</Button>
+			</VStack>
+		</Host>
+	)
+}
+
+export function RootRoute() {
+	useAtomMount(updateAtom)
+	return (
+		<Suspense fallback={<Loading />}>
+			<SessionRoute />
+		</Suspense>
 	)
 }

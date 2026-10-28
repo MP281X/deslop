@@ -1,9 +1,8 @@
-import {Array, Function, Option, Predicate, pipe} from 'effect'
+import {Array, Function, Option, Predicate, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {nestsTooDeep} from '#rules/no-deep-pipe.ts'
 import {
 	importedMember,
 	matches,
@@ -120,7 +119,7 @@ function indirectionMessage(input: {context: Context; node: ESTree.Function | ES
 	if (exactForwardingFunction(input) && returned?.type === 'CallExpression') {
 		return `Use ${input.context.sourceCode.getText(returned.callee)} directly; this function only passes its parameters on.`
 	}
-	return 'Inline this function at its only use site.'
+	return 'Inline this function at its only use: write its body where it is called, or pass `parameter => body` where it is passed; rename a parameter that would shadow.'
 }
 
 function isExport(node: ESTree.Node | null) {
@@ -142,20 +141,42 @@ function unexportedBindingName(node: ESTree.Function | ESTree.ArrowFunctionExpre
 	return Option.none()
 }
 
-// The wrapper's call is its only read, and its body inlined there stays readable and within no-deep-pipe's limit, whose message suggests a named function.
-function singleCallerWrapper(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
+// Inlining a call copies each argument into every use of its parameter, so only a name or a literal may be read twice.
+function copiesSafely(input: {
+	call: ESTree.CallExpression
+	context: Context
+	names: string[]
+	returned: ESTree.Expression
+}) {
+	return Array.every(input.names, (name, index) => {
+		const argument = input.call.arguments[index]
+		return (
+			argument?.type === 'Identifier' ||
+			argument?.type === 'Literal' ||
+			Option.exists(
+				variableFromScope({name, scope: input.context.sourceCode.getScope(input.returned)}),
+				variable => variable.references.length <= 1
+			)
+		)
+	})
+}
+
+// A function read once, as a call or an argument, reads better as its body there: one line anywhere, a longer call only where readable allows it.
+function singleUseFunction(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
 	const names = pipe(input.node.params, Array.map(parameterName), Array.getSomes)
 	const returned = returnedExpression(input.node)
 	if (
 		input.node.async ||
 		input.node.generator ||
+		input.node.typeParameters !== null ||
 		input.node.returnType?.typeAnnotation.type === 'TSTypePredicate' ||
 		Array.isArrayEmpty(names) ||
 		names.length !== input.node.params.length ||
-		returned?.type !== 'CallExpression'
+		Predicate.isNullish(returned)
 	) {
 		return false
 	}
+	const oneLine = !pipe(input.context.sourceCode.getText(returned), String.includes('\n'))
 	return pipe(
 		unexportedBindingName(input.node),
 		Option.flatMap(name => variableFromScope({name, scope: input.context.sourceCode.getScope(input.node)})),
@@ -163,13 +184,18 @@ function singleCallerWrapper(input: {context: Context; node: ESTree.Function | E
 		Option.filter(reads => reads.length === 1),
 		Option.flatMap(Array.head),
 		Option.map(reference => reference.identifier),
-		Option.exists(
-			read =>
-				read.parent.type === 'CallExpression' &&
-				read.parent.callee === read &&
-				readable({context: input.context, init: returned, read: read.parent}) &&
-				!nestsTooDeep({context: input.context, read: read.parent, value: returned})
-		)
+		Option.filter(read => read.range[0] < input.node.range[0] || read.range[0] > input.node.range[1]),
+		Option.exists(read => {
+			if (read.parent.type !== 'CallExpression') return false
+			if (read.parent.callee !== read) {
+				return oneLine && Array.some(read.parent.arguments, argument => argument === read)
+			}
+			if (!copiesSafely({call: read.parent, context: input.context, names, returned})) return false
+			return (
+				oneLine ||
+				(returned.type === 'CallExpression' && readable({context: input.context, init: returned, read: read.parent}))
+			)
+		})
 	)
 }
 
@@ -323,7 +349,7 @@ function reportsIndirection(input: {context: Context; node: ESTree.Function | ES
 				input.node.parent.override !== true)) &&
 		!isComponent(input.node) &&
 		!isCatchHandler(input.node) &&
-		(exactForwardingFunction(input) || singleUseThunk(input) || singleCallerWrapper(input))
+		(exactForwardingFunction(input) || singleUseThunk(input) || singleUseFunction(input))
 	)
 }
 

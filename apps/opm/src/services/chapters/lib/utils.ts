@@ -30,6 +30,11 @@ export function notificationOf(data: unknown) {
 	}))
 }
 
+function seriesFromTags(tags: string) {
+	if (String.includes('webcomic')(String.toLowerCase(tags))) return 'webcomic' as const
+	return 'manga' as const
+}
+
 // A Reddit post that links one English chapter; raws and discussion posts are not releases.
 export function postFrom(entry: {content: string; published: string; title: string}) {
 	return pipe(
@@ -49,23 +54,12 @@ export function postFrom(entry: {content: string; published: string; title: stri
 	) satisfies Option.Option<Post>
 }
 
-function seriesFromTags(tags: string) {
-	if (String.includes('webcomic')(String.toLowerCase(tags))) return 'webcomic' as const
-	return 'manga' as const
-}
-
 // Where cubari answers with a link's pages, and which chapter of that answer the link means.
 export function seriesOf(link: string) {
 	return Option.map(Option.fromNullishOr(CUBARI.exec(link)?.groups), groups => ({
 		api: `https://cubari.moe/read/api/${groups['source']}/series/${groups['slug']}/`,
 		chapter: groups['chapter'] ?? '1'
 	}))
-}
-
-// A page link cubari can still load: the dead proxy's links unwrap to the file they point at, and its error texts drop.
-function pageLink(page: CubariSeries['chapters'][string]['groups'][string][number]) {
-	if (Predicate.isString(page)) return unwrapped(page)
-	return unwrapped(page.src)
 }
 
 function unwrapped(link: string) {
@@ -77,6 +71,12 @@ function unwrapped(link: string) {
 				Option.filter(String.startsWith('https://'))
 			)
 	})
+}
+
+// A page link cubari can still load: the dead proxy's links unwrap to the file they point at, and its error texts drop.
+function pageLink(page: CubariSeries['chapters'][string]['groups'][string][number]) {
+	if (Predicate.isString(page)) return unwrapped(page)
+	return unwrapped(page.src)
 }
 
 // The first group's pages of one chapter of a cubari answer, when every page still loads.
