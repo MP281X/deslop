@@ -50,7 +50,6 @@ import type {Series} from '#services/chapters/schema.ts'
 // The spinner fills the screen, so it sits in the middle of it on the app's background.
 function Loading() {
 	return (
-		// oxlint-disable-next-line shadcn/no-inline-styles -- The native SwiftUI host fills the React Native screen.
 		<Host style={{flex: 1}}>
 			<ProgressView modifiers={[frame({maxHeight: Infinity, maxWidth: Infinity}), background(colors.background)]} />
 		</Host>
@@ -61,7 +60,6 @@ function Loading() {
 function Failed(props: {cause: Cause.Cause<unknown>}) {
 	const refreshChapters = useAtomRefresh(chaptersAtom)
 	return (
-		// oxlint-disable-next-line shadcn/no-inline-styles -- The native SwiftUI host fills the React Native screen.
 		<Host style={{flex: 1}}>
 			<VStack
 				spacing={12}
@@ -109,7 +107,6 @@ function SessionRoute() {
 		)
 	}
 	return (
-		// oxlint-disable-next-line shadcn/no-inline-styles -- The native SwiftUI host fills the React Native screen.
 		<Host style={{flex: 1}}>
 			<VStack
 				spacing={20}
@@ -178,7 +175,6 @@ function AppRoutes() {
 	const chapters = loaded.value
 
 	return (
-		// oxlint-disable-next-line shadcn/no-inline-styles -- The SwiftUI host is a React Native view and fills the screen through its style.
 		<Host style={{flex: 1}}>
 			<NavigationStack
 				path={path}

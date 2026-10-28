@@ -171,6 +171,16 @@ function syncCursorMotion(
 	return {...motion, targetX: target.x, targetY: target.y}
 }
 
+// React Compiler skips a component whose function schedules itself, so the frame loop lives outside it.
+function eachFrame(step: () => boolean, onFrame: (frame: number) => void) {
+	onFrame(
+		requestAnimationFrame(() => {
+			if (step()) eachFrame(step, onFrame)
+			else onFrame(0)
+		})
+	)
+}
+
 function subscribeToResize(onStoreChange: () => void) {
 	addEventListener('resize', onStoreChange)
 	return () => {
@@ -663,18 +673,14 @@ function PortfolioRoute() {
 		send(pointerRef.current ?? lastSentPointerRef.current ?? {x: 0.5, y: 0.5})
 	}
 
-	// At most one move per 50 ms, carrying the latest pointer position.
+	// At most one move per 50 ms, carrying the latest pointer position; true waits for the next frame.
 	function flushPointer() {
-		pointerFrameRef.current = 0
-		if (pointerRef.current === null) return
-		if (lastSentPointerRef.current !== null) {
-			if (!hasMeaningfulMove(lastSentPointerRef.current, pointerRef.current)) return
-			if (performance.now() - lastSentPointerRef.current.sentAt < 50) {
-				pointerFrameRef.current = requestAnimationFrame(flushPointer)
-				return
-			}
+		if (pointerRef.current !== null && lastSentPointerRef.current !== null) {
+			if (!hasMeaningfulMove(lastSentPointerRef.current, pointerRef.current)) return false
+			if (performance.now() - lastSentPointerRef.current.sentAt < 50) return true
 		}
-		send(pointerRef.current)
+		if (pointerRef.current !== null) send(pointerRef.current)
+		return false
 	}
 
 	function updatePointer(event: React.PointerEvent<HTMLDivElement>) {
@@ -683,10 +689,14 @@ function PortfolioRoute() {
 		if (viewport.width === 0 || viewport.height === 0) return
 
 		pointerRef.current = {
-			x: Number.clamp({maximum: 0.999_999, minimum: 0})(event.clientX / viewport.width),
-			y: Number.clamp({maximum: 0.999_999, minimum: 0})(event.clientY / viewport.height)
+			x: Number.clamp({maximum: 0.999999, minimum: 0})(event.clientX / viewport.width),
+			y: Number.clamp({maximum: 0.999999, minimum: 0})(event.clientY / viewport.height)
 		}
-		if (pointerFrameRef.current === 0) pointerFrameRef.current = requestAnimationFrame(flushPointer)
+		if (pointerFrameRef.current === 0) {
+			eachFrame(flushPointer, frame => {
+				pointerFrameRef.current = frame
+			})
+		}
 	}
 
 	useHotkeys([

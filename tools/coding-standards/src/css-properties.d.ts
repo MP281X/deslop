@@ -1,3 +1,4 @@
+// oxlint-disable-next-line unicorn/require-module-specifiers -- the empty export makes this a module, so the block below augments React's types instead of replacing them.
 export {}
 
 declare module 'react' {

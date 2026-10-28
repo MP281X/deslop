@@ -64,21 +64,7 @@
 	},
 	"health": {
 		// No production coverage exists: estimated CRAP must not masquerade as measured risk.
-		"maxCrap": 0,
-		"thresholdOverrides": [
-			{
-				"files": ["tools/coding-standards/src/rules/shared.ts"],
-				"functions": ["referencedTypeNames"],
-				"maxCognitive": 17,
-				"reason": "One recursive visitor follows TypeScript's finite type-node variants."
-			},
-			{
-				"files": ["apps/stash/src/services/notes/lib/extraction.ts"],
-				"functions": ["isPublic"],
-				"maxCyclomatic": 22,
-				"reason": "Keep the public IPv4 exclusions together for security review."
-			}
-		]
+		"maxCrap": 0
 	},
 	"ignoreDependencies": [
 		"@expo-google-fonts/jetbrains-mono",
@@ -87,9 +73,7 @@
 		"expo-font",
 		"expo-updates",
 		"onnxruntime-common",
-		"onnxruntime-node",
-		// The typecheck task uses sh for glob expansion; Fallow does not inspect its command string.
-		"tsrs"
+		"onnxruntime-node"
 	],
 	"ignorePatterns": ["**/*.gen.ts", "tools/*/template/**"],
 	"ignoreExports": [

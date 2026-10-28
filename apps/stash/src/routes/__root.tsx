@@ -43,7 +43,6 @@ export function RootRoute() {
 	return (
 		<Suspense
 			fallback={
-				// oxlint-disable-next-line shadcn/no-inline-styles -- The native SwiftUI host fills the React Native screen.
 				<Host style={{flex: 1}}>
 					<ProgressView />
 				</Host>
@@ -60,7 +59,6 @@ function SessionRoute() {
 	const logoUri = useAtomSuspense(assetAtom(logo)).value
 	if (Option.isSome(saved)) return <AppRoutes />
 	return (
-		// oxlint-disable-next-line shadcn/no-inline-styles -- The native SwiftUI host fills the React Native screen.
 		<Host style={{flex: 1}}>
 			<VStack
 				spacing={20}
@@ -100,7 +98,6 @@ function AppRoutes() {
 	const query = useNativeState('')
 
 	return (
-		// oxlint-disable-next-line shadcn/no-inline-styles -- The SwiftUI host is a React Native view and fills the screen through its style.
 		<Host style={{flex: 1}}>
 			<NavigationStack
 				path={path}

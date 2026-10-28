@@ -103,7 +103,7 @@ export const Organization = Schema.Struct({
 	summary: pipe(Schema.String, Schema.check(Schema.isMaxLength(400))),
 	tags: pipe(Schema.Array(Tag), Schema.check(Schema.isMinLength(1), Schema.isMaxLength(3))),
 	title: pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(90))),
-	topics: pipe(Schema.String, Schema.check(Schema.isMaxLength(1_000)))
+	topics: pipe(Schema.String, Schema.check(Schema.isMaxLength(1000)))
 })
 
 // What the sources answer.

@@ -357,6 +357,7 @@ function suspendedTypeName(input: {context: Context; node: ESTree.CallExpression
 	)
 }
 
+// fallow-ignore-next-line complexity -- one recursive visitor follows TypeScript's finite type-node variants.
 function referencedTypeNames(node: ESTree.TSType | ESTree.TSTupleElement): string[] {
 	if (node.type === 'TSTypeReference') {
 		const argumentNames = pipe(
