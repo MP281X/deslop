@@ -180,7 +180,7 @@ T3's desktop app and the iOS Simulator; it builds nothing, the simulator app com
 
 ## MCP sign-in
 
-Codex reads `dual`, `scope`, `stash`, `auth` and `mobbin` from the installed configuration and keeps OAuth sign-ins in the Secret Service keyring. Claude keeps locally registered MCP servers in `~/.claude.json`; register the following on each worker once the installed `.claude/settings.json` allows them. Mobbin uses the shared Claude connector instead.
+Codex reads `dual`, `scope`, `stash`, `auth` and `mobbin` from the installed configuration and keeps OAuth sign-ins in the Secret Service keyring. D-Bus starts that keyring only through its unit: Debian's default activation starts a locked daemon whose unlock prompt cannot open headless, and every Codex start then waits on it forever. Claude keeps locally registered MCP servers in `~/.claude.json`; register the following on each worker once the installed `.claude/settings.json` allows them. Mobbin uses the shared Claude connector instead.
 
 ```bash
 sudo apt-get install -y gnome-keyring libsecret-tools
@@ -188,6 +188,10 @@ mkdir -p ~/.config/systemd/user
 printf '%s\n' '[Unit]' 'Description=Secret Service for headless CLI sign-ins' '[Service]' \
   "ExecStart=/bin/sh -c 'printf headless | exec /usr/bin/gnome-keyring-daemon --foreground --replace --unlock --components=secrets'" \
   'Restart=on-failure' '[Install]' 'WantedBy=default.target' > ~/.config/systemd/user/secret-service.service
+mkdir -p ~/.local/share/dbus-1/services
+printf '%s\n' '[D-BUS Service]' 'Name=org.freedesktop.secrets' 'Exec=/bin/false' 'SystemdService=secret-service.service' \
+  > ~/.local/share/dbus-1/services/org.freedesktop.secrets.service
+busctl --user call org.freedesktop.DBus / org.freedesktop.DBus ReloadConfig
 systemctl --user daemon-reload && systemctl --user enable --now secret-service.service
 claude mcp add --transport http --scope user dual https://app.dualos.ai/mcp
 claude mcp add --transport http --scope user scope https://scope.mp281x.xyz/mcp
