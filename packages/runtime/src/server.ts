@@ -97,11 +97,20 @@ export function layerMcp(options: {instructions: string; name: string; version: 
 	)
 }
 
-export const layerStaticFiles = HttpStaticServer.layer({
-	index: 'index.html',
-	root: fileURLToPath(new URL('./client', import.meta.url)),
-	spa: true
-})
+// Vite names every asset by its content hash, so a browser keeps it until a deploy changes index.html, which it always revalidates.
+export const layerStaticFiles = Layer.mergeAll(
+	HttpStaticServer.layer({
+		cacheControl: 'public, max-age=31536000, immutable',
+		prefix: '/assets',
+		root: fileURLToPath(new URL('./client/assets', import.meta.url))
+	}),
+	HttpStaticServer.layer({
+		cacheControl: 'no-cache',
+		index: 'index.html',
+		root: fileURLToPath(new URL('./client', import.meta.url)),
+		spa: true
+	})
+)
 
 export const layerNodeHttpServer = NodeHttpServer.layerConfig(createServer, {
 	gracefulShutdownTimeout: Config.succeed('1500 millis'),

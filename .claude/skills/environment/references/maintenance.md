@@ -17,7 +17,8 @@ Setup, upkeep and rebuild of the machines.
 - **Repositories.** `~/dual` uses the credential helper `!glab auth git-credential` for `https://git.datapizza.tech`; GitHub uses `gh auth setup-git`. Identities follow [Git identity](#git-identity).
 - **Updates.** `unattended-upgrades` runs daily. `desktop` has only local IPv6, so `/etc/apt/apt.conf.d/99force-ipv4` holds `Acquire::ForceIPv4 "true";`.
 - **Git defaults:** `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled`, `diff.algorithm histogram`, `merge.conflictStyle zdiff3`, `init.defaultBranch main`.
-- **Firewall.** Tailscale's `ts-input` chain accepts tailnet traffic before ufw. On dev, `/etc/sysctl.d/90-quiet-console.conf` keeps `[UFW BLOCK]` off the console.
+- **Firewall.** Tailscale's `ts-input` chain accepts tailnet traffic before ufw. On dev, `/etc/sysctl.d/90-quiet-console.conf` keeps `[UFW BLOCK]` off the console. Docker publishes Traefik's ports, UDP 443 for HTTP/3 included, past ufw.
+- **TCP on dev.** `/etc/sysctl.d/90-tcp.conf` sets `fq`, `bbr` and `tcp_slow_start_after_idle = 0`, so phones on lossy links and idle keep-alive or WebSocket connections send at full speed.
 - **Access.** Every machine holds the user's one ED25519 pair as `~/.ssh/id_ed25519`; `authorized_keys` holds only its public key; no `~/.ssh/config`. `known_hosts` comes from `ssh-keyscan -H dev desktop macbook-pro`. Disable a login method only after the remaining one worked from another machine. T3 shows `PRETTY_HOSTNAME`: `sudo hostnamectl set-hostname --pretty <name>`, then restart T3.
 
 ## Agent configuration

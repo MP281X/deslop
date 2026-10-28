@@ -14,13 +14,19 @@ services:
       - --entrypoints.web.address=:80
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http3
       - --entrypoints.websecure.http.tls.certresolver=letsencrypt
+      - --entrypoints.websecure.http.middlewares=compress@file
       # The default 60-second read timeout cuts off a video the share extension uploads over a slow network.
       - --entrypoints.websecure.transport.respondingTimeouts.readTimeout=1h
       - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      # The default RSA4096 costs 3.5 ms of signing per handshake; EC256 under 0.1 ms.
+      - --certificatesresolvers.letsencrypt.acme.keytype=EC256
       - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
       - --providers.docker.exposedbydefault=false
-    ports: ['0.0.0.0:80:80', '[::]:80:80', '0.0.0.0:443:443', '[::]:443:443']
+      - --providers.file.filename=/etc/traefik/dynamic.yaml
+    ports: ['0.0.0.0:80:80', '[::]:80:80', '0.0.0.0:443:443', '[::]:443:443', '0.0.0.0:443:443/udp', '[::]:443:443/udp']
+    configs: [{source: traefik, target: /etc/traefik/dynamic.yaml}]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${HOME}/.deslop/deploy/acme:/acme
@@ -112,6 +118,16 @@ services:
             docker compose --project-name deslop --file compose.yaml up --detach --remove-orphans $$(docker compose --file compose.yaml config --services | grep -vx deploy)
           sleep 60
         done
+
+configs:
+  traefik:
+    # Only whole documents: a compressor buffers its first kilobyte, which would hold back MCP's event streams.
+    content: |
+      http:
+        middlewares:
+          compress:
+            compress:
+              includedContentTypes: [text/html, text/css, text/javascript, application/json, image/svg+xml]
 
 networks:
   deslop:
