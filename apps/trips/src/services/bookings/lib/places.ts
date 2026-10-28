@@ -74,20 +74,18 @@ export class Places extends Context.Service<
 				return index
 			})
 
-			const index = yield* Effect.cached(
-				Effect.gen(function* () {
-					const saved = yield* Effect.orElseSucceed(store.get('airports'), Option.none<AirportIndex>)
-					const now = yield* Clock.currentTimeMillis
-					return yield* Option.match(
-						Option.filter(saved, found => now - found.fetchedAt < 30 * DAY),
-						{
-							// A stale copy still answers when GitHub does not.
-							onNone: () => Effect.catch(download, error => Effect.mapError(Effect.fromOption(saved), () => error)),
-							onSome: Effect.succeed
-						}
-					)
-				})
-			)
+			const index = Effect.gen(function* () {
+				const saved = yield* Effect.orElseSucceed(store.get('airports'), Option.none<AirportIndex>)
+				const now = yield* Clock.currentTimeMillis
+				return yield* Option.match(
+					Option.filter(saved, found => now - found.fetchedAt < 30 * DAY),
+					{
+						// A stale copy still answers when GitHub does not.
+						onNone: () => Effect.catch(download, error => Effect.mapError(Effect.fromOption(saved), () => error)),
+						onSome: Effect.succeed
+					}
+				)
+			})
 
 			const lookup = Effect.fnUntraced(function* (name: string, key: string) {
 				const matches = yield* pipe(
