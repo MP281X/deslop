@@ -28,9 +28,10 @@ import {Button} from '@deslop/components-web/ui/button'
 import {Dialog, DialogContent, DialogHeader, DialogTitle} from '@deslop/components-web/ui/dialog'
 import {cn} from '@deslop/components-web/utils'
 
-import {hasMeaningfulMove, portfolioPalette} from '#lib/portfolio.ts'
+import {hasMeaningfulMove} from '#lib/portfolio.ts'
 import {contacts, education, experience, languages, profile, projects, skills, summary} from '#lib/profile.ts'
 import {RpcClient} from '#lib/utils.ts'
+import {PortfolioColor} from '#services/presence/schema.ts'
 import type {PortfolioVisitor, PortfolioVisitors} from '#services/presence/schema.ts'
 
 const SECTION_KEYS = ['1', '2', '3', '4', '5', '6'] as const
@@ -49,15 +50,16 @@ function randomSeed() {
 	)
 }
 
-function pickNextCursorColor(currentColor: string) {
-	const nextPalette = Array.filter(portfolioPalette, color => color !== currentColor)
-	return nextPalette[randomIndex(Array.length(nextPalette))] ?? portfolioPalette[0]
+function pickNextCursorColor(currentColor: PortfolioColor) {
+	const nextPalette = Array.filter(PortfolioColor.literals, color => color !== currentColor)
+	return nextPalette[randomIndex(Array.length(nextPalette))] ?? PortfolioColor.literals[0]
 }
 
 function getIdentity() {
 	const existingId = sessionStorage.getItem('portfolio.id')
 	const existingName = sessionStorage.getItem('portfolio.name')
-	const color = portfolioPalette[randomIndex(Array.length(portfolioPalette))] ?? portfolioPalette[0]
+	const color =
+		PortfolioColor.literals[randomIndex(Array.length(PortfolioColor.literals))] ?? PortfolioColor.literals[0]
 
 	if (Predicate.isNotNullish(existingId) && Predicate.isNotNullish(existingName)) {
 		return {color, id: existingId, name: existingName}
@@ -631,7 +633,7 @@ function PortfolioRoute() {
 	const pointerRef = useRef<{x: number; y: number}>(null)
 	const lastSentPointerRef = useRef<{sentAt: number; x: number; y: number}>(null)
 	// The colour this page last sent; the server's echo can lag behind a recolour.
-	const colorRef = useRef<string>(identity.color)
+	const colorRef = useRef(identity.color)
 	const [showShortcuts, setShowShortcuts] = useState(false)
 
 	useEffect(
