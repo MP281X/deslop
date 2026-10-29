@@ -107,7 +107,16 @@ function ownsMethod(input: {context: Context; receiver: ESTree.Expression}) {
 export const noNativeMethodCall = defineRule({
 	create: context => ({
 		CallExpression: node => {
-			if (node.callee.type !== 'MemberExpression' || ownsMethod({context, receiver: node.callee.object})) return
+			if (
+				node.callee.type !== 'MemberExpression' ||
+				!Option.exists(
+					memberName(node.callee),
+					name => Record.has(REPLACEMENTS, name) || name === 'test' || name === 'exec'
+				) ||
+				ownsMethod({context, receiver: node.callee.object})
+			) {
+				return
+			}
 			const regExpFlags = freshRegExpFlags({context, node: node.callee.object})
 			if (
 				Option.isSome(regExpFlags) &&

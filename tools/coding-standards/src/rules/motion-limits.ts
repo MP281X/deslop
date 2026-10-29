@@ -5,6 +5,9 @@ import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
 import {matches} from '#rules/shared.ts'
 
+// Every limited utility names one of these, so other strings skip the per-token parse.
+const MOTION_UTILITY = /duration-|zoom-|scale-/u
+
 function amount(token: string, pattern: RegExp) {
 	return pipe(
 		token,
@@ -46,6 +49,7 @@ function violation(token: string) {
 }
 
 function check(context: Context, node: ESTree.Node, text: string) {
+	if (!MOTION_UTILITY.test(text)) return
 	pipe(
 		String.split(text, /\s+/u),
 		Array.findFirst(violation),

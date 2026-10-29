@@ -285,7 +285,13 @@ function singleUseLayerPart(input: {context: Context; node: ESTree.VariableDecla
 		isExport(input.node.parent.parent) ||
 		input.node.id.type !== 'Identifier' ||
 		input.node.id.typeAnnotation !== null ||
-		init === null
+		init === null ||
+		// Only a `.layer` read or an `Effect.gen` call can be a layer part; checking that first skips scope analysis.
+		!(
+			(init.type === 'MemberExpression' && Option.contains(memberName(init), 'layer')) ||
+			(init.type === 'CallExpression' &&
+				importedMember({context: input.context, importedName: 'Effect', node: init.callee, propertyName: 'gen'}))
+		)
 	) {
 		return false
 	}
@@ -297,19 +303,16 @@ function singleUseLayerPart(input: {context: Context; node: ESTree.VariableDecla
 			if (reads.length !== 1 || consumer?.type !== 'CallExpression') return false
 			if (init.type === 'MemberExpression') {
 				return (
-					Option.contains(memberName(init), 'layer') &&
-					(importedMember({context: input.context, importedName: 'Layer', node: consumer.callee}) ||
-						importedMember({
-							context: input.context,
-							importedName: 'Effect',
-							node: consumer.callee,
-							propertyName: 'provide'
-						}))
+					importedMember({context: input.context, importedName: 'Layer', node: consumer.callee}) ||
+					importedMember({
+						context: input.context,
+						importedName: 'Effect',
+						node: consumer.callee,
+						propertyName: 'provide'
+					})
 				)
 			}
 			return (
-				init.type === 'CallExpression' &&
-				importedMember({context: input.context, importedName: 'Effect', node: init.callee, propertyName: 'gen'}) &&
 				consumer.arguments[1] === reads[0]?.identifier &&
 				importedMember({context: input.context, importedName: 'Layer', node: consumer.callee, propertyName: 'effect'})
 			)

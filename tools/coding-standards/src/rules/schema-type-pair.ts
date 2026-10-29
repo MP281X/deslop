@@ -13,6 +13,7 @@ import {
 	schemaCycleNames,
 	schemaSchemaType,
 	statementDeclaration,
+	suspendedTypeName,
 	typeAlias,
 	variableFromScope
 } from '#rules/shared.ts'
@@ -233,9 +234,13 @@ function reportSchemaVariable(input: {
 export const schemaTypePair = defineRule({
 	create: context => {
 		const queries = MutableList.make<ESTree.TSTypeQuery>()
+		const seeds = MutableList.make<string>()
 		return {
+			CallExpression: node => {
+				Option.map(suspendedTypeName({context, node}), name => MutableList.append(seeds, name))
+			},
 			'Program:exit': program => {
-				const cycleNames = schemaCycleNames({context, program})
+				const cycleNames = schemaCycleNames({context, program, seeds: MutableList.toArray(seeds)})
 				const collected = MutableList.toArray(queries)
 				for (const statement of program.body) {
 					const declaration = statementDeclaration(statement)

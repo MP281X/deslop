@@ -96,17 +96,21 @@ function httpDecoder(context: Context, callee: ESTree.Node) {
 }
 
 export const noUnvalidatedJsonDecode = defineRule({
-	create: context => ({
-		CallExpression: node => {
-			const schema = node.arguments[0]
-			if (schema === undefined || node.callee.type === 'Super') return
-			const callee = resolveBinding(context, node.callee)
-			const unvalidated =
-				(schemaDecoder(context, callee) && unknownJsonSchema(context, schema)) ||
-				(httpDecoder(context, callee) && unknownSchema(context, schema))
-			if (!unvalidated || validatesResult(context, node)) return
-			context.report({message: 'Replace Schema.Unknown with the protocol Schema at this JSON boundary.', node})
+	create: context => {
+		// Every reported schema is Schema.Unknown or Schema.UnknownFromJsonString, written in this file.
+		if (!pipe(context.sourceCode.text, String.includes('Unknown'))) return {}
+		return {
+			CallExpression: node => {
+				const schema = node.arguments[0]
+				if (schema === undefined || node.callee.type === 'Super') return
+				const callee = resolveBinding(context, node.callee)
+				const unvalidated =
+					(schemaDecoder(context, callee) && unknownJsonSchema(context, schema)) ||
+					(httpDecoder(context, callee) && unknownSchema(context, schema))
+				if (!unvalidated || validatesResult(context, node)) return
+				context.report({message: 'Replace Schema.Unknown with the protocol Schema at this JSON boundary.', node})
+			}
 		}
-	}),
+	},
 	meta: {type: 'problem'}
 })
