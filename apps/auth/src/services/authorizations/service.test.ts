@@ -1,11 +1,10 @@
-import {NodeServices} from '@effect/platform-node'
+import {NodeCrypto, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
 import {
 	Array,
 	Clock,
 	ConfigProvider,
-	Crypto,
 	Effect,
 	FileSystem,
 	Fiber,
@@ -19,6 +18,7 @@ import {
 	pipe
 } from 'effect'
 
+import {Digest} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientResponse, HttpRouter, HttpServerRequest, HttpServerResponse, UrlParams} from 'effect/http'
 import {TestClock} from 'effect/testing'
@@ -54,7 +54,7 @@ const me = pipe(
 
 const servers = Effect.fnUntraced(function* (home?: string) {
 	const directory = home ?? (yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped())
-	const random = yield* Crypto.Crypto
+	const digest = yield* Digest.Digest
 	const clock = yield* Clock.Clock
 	const ready = yield* Queue.make<true>()
 	const github = HttpClient.make(request =>
@@ -64,7 +64,7 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 				const [login, challenge] = String.split(form.get('code') ?? '', '.')
 				if (
 					Base64Url.encode(
-						yield* Effect.orDie(random.digest('SHA-256', new TextEncoder().encode(form.get('code_verifier') ?? '')))
+						yield* digest.digest(Digest.sha256, new TextEncoder().encode(form.get('code_verifier') ?? ''))
 					) !== challenge
 				) {
 					return HttpClientResponse.fromWeb(request, Response.json({error: 'bad_verification_code'}))
@@ -184,6 +184,7 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 					Layer.provideMerge(Authorizations.layer),
 					Layer.provide(
 						Layer.mergeAll(
+							NodeCrypto.layer,
 							NodeServices.layer,
 							Layer.succeed(HttpClient.HttpClient, github),
 							ConfigProvider.layer(
@@ -295,7 +296,7 @@ const authorize = Effect.fnUntraced(function* (
 			UrlParams.fromInput({
 				client_id: registration.client_id,
 				code_challenge: Base64Url.encode(
-					yield* (yield* Crypto.Crypto).digest('SHA-256', new TextEncoder().encode(VERIFIER))
+					yield* (yield* Digest.Digest).digest(Digest.sha256, new TextEncoder().encode(VERIFIER))
 				),
 				code_challenge_method: 'S256',
 				redirect_uri: redirect,
@@ -430,7 +431,7 @@ const people = Effect.fnUntraced(function* (web: Effect.Success<ReturnType<typeo
 	)
 })
 
-it.layer(NodeServices.layer)(test => {
+it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 	test.effect('keeps sessions, rotated tokens and revocations across restarts', () =>
 		Effect.gen(function* () {
 			const home = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
@@ -875,7 +876,7 @@ it.layer(NodeServices.layer)(test => {
 			)(yield* Effect.promise(() => registered.text()))
 			assert.strictEqual(registration.client_name, 'codex')
 			const challenge = Base64Url.encode(
-				yield* (yield* Crypto.Crypto).digest('SHA-256', new TextEncoder().encode(VERIFIER))
+				yield* (yield* Digest.Digest).digest(Digest.sha256, new TextEncoder().encode(VERIFIER))
 			)
 			const start = Effect.fnUntraced(function* (search: Record<string, string>) {
 				return yield* send(

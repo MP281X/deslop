@@ -1,4 +1,4 @@
-import {NodeDns, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
+import {NodeCrypto, NodeDns, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
 
 import {Array, Effect, Layer, Option, Schema, String, pipe} from 'effect'
 
@@ -87,18 +87,13 @@ const rpc = pipe(
 	Layer.provide(RpcSerialization.layerJson)
 )
 
-const mcp = pipe(
-	McpServer.toolkit(Tools),
-	Layer.provide(ToolHandlers),
-	Layer.provide(
-		ServerRuntime.layerMcp({
-			instructions:
-				'Stash is the reading list of articles, videos and posts the user saved: it reads each link, transcribes its video and tags it. Use it when the user refers to something they saved or read, or asks to keep a link: search_notes or list_notes, read one whole with read_note, keep a link or text with save_note.',
-			name: 'stash',
-			version: packageJson.version
-		})
-	)
-)
+const mcp = ServerRuntime.layerMcp({
+	instructions:
+		'Stash is the reading list of articles, videos and posts the user saved: it reads each link, transcribes its video and tags it. Use it when the user refers to something they saved or read, or asks to keep a link: search_notes or list_notes, read one whole with read_note, keep a link or text with save_note.',
+	name: 'stash',
+	registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers)),
+	version: packageJson.version
+})
 
 NodeRuntime.runMain(
 	pipe(
@@ -109,7 +104,7 @@ NodeRuntime.runMain(
 		Layer.provide(Auth.layer('https://stash.mp281x.xyz')),
 		Layer.provide(layerNotes),
 		Layer.provide(Layer.mergeAll(Sources.layer, Media.layer, Organizer.layer)),
-		Layer.provide(Layer.mergeAll(NodeDns.layer, NodeHttpClient.layerFetch, NodeServices.layer)),
+		Layer.provide(Layer.mergeAll(NodeCrypto.layer, NodeDns.layer, NodeHttpClient.layerFetch, NodeServices.layer)),
 		Layer.provide(ServerRuntime.layer('@deslop/stash')),
 		Layer.provide(ServerRuntime.layerNodeHttpServer),
 		Layer.launch

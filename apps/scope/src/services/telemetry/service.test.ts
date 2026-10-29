@@ -1,4 +1,4 @@
-import {NodeServices} from '@effect/platform-node'
+import {NodeCrypto, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
 import {Array, Context, Effect, Exit, FileSystem, Layer, String, pipe} from 'effect'
@@ -10,7 +10,9 @@ import {Telemetry} from '#services/telemetry/service.ts'
 
 const TRACE_ID = '1234567890abcdef1234567890abcdef'
 
-it.layer(NodeServices.layer)(test => {
+const platform = Layer.merge(NodeCrypto.layer, NodeServices.layer)
+
+it.layer(platform)(test => {
 	test.effect('keeps ingested spans across restarts for three days, past a broken entry file', () =>
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem
@@ -62,7 +64,7 @@ const layer = pipe(
 			Telemetry.layer
 		)
 	),
-	Layer.provide(NodeServices.layer)
+	Layer.provide(platform)
 )
 const query = Query.make({
 	errors: false,

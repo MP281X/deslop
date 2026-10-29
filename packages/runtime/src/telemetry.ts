@@ -32,14 +32,14 @@ export function layerOtlp(
 								return pipe(
 									authorization,
 									Effect.provideService(HttpClient.HttpClient, raw),
-									Effect.map(token => HttpClientRequest.bearerToken(request, token)),
-									Effect.mapError(
+									Effect.mapBoth({
 										// oxlint-disable-next-line @deslop/coding-standards/preserve-error-cause -- HttpClientError carries its original cause in reason.cause, not a top-level field.
-										cause =>
+										onFailure: cause =>
 											new HttpClientError.HttpClientError({
 												reason: new HttpClientError.TransportError({cause, request})
-											})
-									)
+											}),
+										onSuccess: token => HttpClientRequest.bearerToken(request, token)
+									})
 								)
 							}
 						)

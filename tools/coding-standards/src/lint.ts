@@ -198,6 +198,7 @@ export const lint: OxlintConfig = {
 		'eslint/func-names': ['error', 'as-needed', {generators: 'never'}],
 		'eslint/func-style': ['error', 'declaration'],
 		'eslint/getter-return': 'error',
+		'eslint/no-alert': 'error',
 		'eslint/no-async-promise-executor': 'error',
 		'eslint/no-caller': 'error',
 		'eslint/no-class-assign': 'error',
@@ -243,6 +244,7 @@ export const lint: OxlintConfig = {
 		'eslint/no-multi-assign': 'error',
 		'eslint/no-negated-condition': 'error',
 		'eslint/no-new': 'error',
+		'eslint/no-new-func': 'error',
 		'eslint/no-new-native-nonconstructor': 'error',
 		'eslint/no-nonoctal-decimal-escape': 'error',
 		'eslint/no-obj-calls': 'error',
@@ -256,6 +258,7 @@ export const lint: OxlintConfig = {
 			{message: 'Interrupt through Effect: a fiber, Effect.timeout, or a Scope.', name: 'AbortController'},
 			{message: "Import Array from 'effect'.", name: 'Array'},
 			{message: "Import Boolean from 'effect'.", name: 'Boolean'},
+			{message: 'Use the effect/crypto services: SecureRandom, Digest, Signature.', name: 'crypto'},
 			{message: 'Define a Schema.TaggedError and fail with it.', name: 'Error'},
 			{message: MAP_MESSAGE, name: 'Map'},
 			{message: "Import Number from 'effect'.", name: 'Number'},
@@ -282,9 +285,19 @@ export const lint: OxlintConfig = {
 				patterns: [
 					{message: 'Prove a screen in the browser; no UI tests.', regex: '^(?:@testing-library/|jsdom$|happy-dom$)'},
 					{message: 'Use public package exports.', regex: '^@[^/]+/[^/]+/(?:src|lib)(?:/|$)'},
-					{message: 'Use glob from the FileSystem service.', regex: '^glob(?:/|$)'},
+					{
+						message: 'Use glob from the FileSystem service.',
+						regex: '^(?:glob|fast-glob|globby|minimatch|picomatch|micromatch)(?:/|$)'
+					},
+					{message: 'Use Schema.', regex: '^(?:zod|valibot|yup|io-ts)(?:/|$)'},
+					{message: 'Use Csv from effect/encoding.', regex: '^(?:papaparse|csv-parse|csv-stringify)(?:/|$)'},
+					{message: 'Use Yaml from effect/encoding.', regex: '^(?:yaml|js-yaml)(?:/|$)'},
+					{message: 'Use Toml from effect/encoding.', regex: '^(?:smol-toml|@iarna/toml|toml)(?:/|$)'},
+					{message: 'Use Ini from effect/encoding.', regex: '^ini(?:/|$)'},
+					{message: 'Use Xml from effect/encoding.', regex: '^(?:fast-xml-parser|xml2js|sax)(?:/|$)'},
+					{message: 'Use Zip or Tar from effect/encoding.', regex: '^(?:jszip|fflate|adm-zip|tar|tar-stream)(?:/|$)'},
 					{message: 'Use effect/cli.', regex: '^(?:commander|yargs)(?:/|$)'},
-					{message: 'Use randomUUIDv4 from the Crypto service.', regex: '^uuid(?:/|$)'},
+					{message: 'Use uuidV4 from the SecureRandom service in effect/crypto.', regex: '^uuid(?:/|$)'},
 					{message: 'Use HttpClient.', regex: '^(?:axios|node-fetch)(?:/|$)'},
 					{message: 'Use Config.', regex: '^dotenv(?:/|$)'},
 					{message: 'Use ChildProcess from effect/process.', regex: '^execa(?:/|$)'},
@@ -350,7 +363,7 @@ export const lint: OxlintConfig = {
 				property
 			})),
 			{message: 'Use Console.', object: 'window', property: 'console'},
-			{message: 'Use the Crypto service.', object: 'window', property: 'crypto'},
+			{message: 'Use the effect/crypto services.', object: 'window', property: 'crypto'},
 			{message: 'Use HttpClient.', object: 'window', property: 'fetch'},
 			{message: 'Use Clock.', object: 'window', property: 'performance'}
 		],
@@ -433,6 +446,7 @@ export const lint: OxlintConfig = {
 
 		// Accessibility
 		'jsx-a11y/alt-text': 'error',
+		'jsx-a11y/anchor-ambiguous-text': 'error',
 		'jsx-a11y/anchor-has-content': 'error',
 		'jsx-a11y/anchor-is-valid': 'error',
 		'jsx-a11y/aria-activedescendant-has-tabindex': 'error',

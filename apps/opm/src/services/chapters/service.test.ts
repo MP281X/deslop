@@ -131,6 +131,8 @@ it.layer(NodeServices.layer)(test => {
 				Option.map(Array.last(first), chapter => chapter.postedAt),
 				Option.some(0)
 			)
+			// The next round's six-hour wait starts only once this round has announced its new chapters.
+			yield* Effect.repeat(store.load, {until: saved => Array.every(saved, chapter => chapter.notified)})
 			yield* chapters.read({done: true, number: 1, opened: true, page: 0, series: 'manga'})
 			yield* chapters.read({done: false, number: 1, opened: true, page: 0, series: 'webcomic'})
 			yield* Ref.set(revised, true)

@@ -1,4 +1,4 @@
-import {NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
+import {NodeCrypto, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
 
 import {Effect, Layer, pipe} from 'effect'
 
@@ -41,7 +41,7 @@ NodeRuntime.runMain(
 			),
 			{disableLogger: true}
 		),
-		Layer.provide(Layer.mergeAll(NodeHttpClient.layerFetch, NodeServices.layer)),
+		Layer.provide(Layer.mergeAll(NodeCrypto.layer, NodeHttpClient.layerFetch, NodeServices.layer)),
 		Layer.provide(ServerRuntime.layer('@deslop/auth')),
 		Layer.provide(ServerRuntime.layerNodeHttpServer),
 		Layer.launch
