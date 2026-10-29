@@ -19,7 +19,7 @@ Each finding: severity, `path:line`, the input that reaches it, actual and requi
 | P2       | Wrong owner, boundary or shape for its reference, a rule violation, duplicated or dead code, or a part the request did not ask for |
 | P3       | Naming, wording or style                                                                                                           |
 
-- **Report** what the change made or relies on, with a reachable input and concrete harm or a departure from its reference. Taste without a rule, inputs no caller sends and anything lint already reports are not findings.
+- **Keep** what the change made or relies on, with a reachable input and concrete harm or a departure from its reference. Taste without a rule, inputs no caller sends and anything lint already reports are not findings.
 - **Every instance** of a class, once, each with its `path:line`.
 - **Pre-existing** defects go in a separate list, never among the findings to fix.
 - **Clean** names the covered scope when nothing reaches P2.
