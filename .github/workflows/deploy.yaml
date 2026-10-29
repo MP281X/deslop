@@ -13,8 +13,8 @@ permissions:
   contents: read
 
 env:
-  # npm, because pnpm applies the workspace's strict peer checks to the EAS CLI's own dependencies.
-  EAS: npx --yes eas-cli@latest
+  # Installed once per job with npm, because pnpm applies the workspace's strict peer checks to the EAS CLI's own dependencies.
+  EAS: eas
 
 jobs:
   check:
@@ -83,31 +83,50 @@ jobs:
         with: {fetch-depth: 0}
       - uses: voidzero-dev/setup-vp@v1
         with: {node-version: '26', cache: true, run-install: true}
+      - run: npm install --global eas-cli@latest
 
+      # The apps release side by side; each prints its log once all are done.
       - name: Release
         id: release
         run: |
           set -euo pipefail
-          native=()
-          for app in stash opm trips; do
-            cd "$GITHUB_WORKSPACE/apps/$app"
+          release() {
+            cd "$GITHUB_WORKSPACE/apps/$1"
             group=$($EAS update:list --branch production --limit 1 --json --non-interactive | jq -r '.currentPage[0].group // empty')
             released=$([[ -n $group ]] && $EAS update:view "$group" --json | jq -r '.[0].gitCommitHash' || true)
-            if [[ -n $released ]] && git cat-file -e "$released^{commit}" 2>/dev/null && git diff --quiet "$released" -- . ../../packages ../../pnpm-lock.yaml; then continue; fi
+            if [[ -n $released ]] && git cat-file -e "$released^{commit}" 2>/dev/null && git diff --quiet "$released" -- . ../../packages ../../pnpm-lock.yaml; then return; fi
             hash=$($EAS fingerprint:generate --platform ios --build-profile production --json --non-interactive | jq -r .hash)
             # An update exists for a fingerprint only once its build has shipped, so a failed build is tried again next release.
             if [[ $($EAS update:list --branch production --runtime-version "$hash" --limit 1 --json --non-interactive | jq '.currentPage | length > 0') != true ]]; then
-              native+=("$app")
-              continue
+              touch "$RUNNER_TEMP/native-$1"
+              return
             fi
             $EAS update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"
+          }
+          apps=(stash opm trips)
+          pids=()
+          for app in "${apps[@]}"; do
+            release "$app" > "$RUNNER_TEMP/$app.log" 2>&1 &
+            pids+=($!)
           done
+          failed=0
+          for index in "${!apps[@]}"; do
+            wait "${pids[$index]}" || failed=1
+            echo "::group::${apps[$index]}"
+            cat "$RUNNER_TEMP/${apps[$index]}.log"
+            echo "::endgroup::"
+          done
+          native=()
+          for app in "${apps[@]}"; do [[ -e $RUNNER_TEMP/native-$app ]] && native+=("$app"); done
           echo "native=$(jq -cn '$ARGS.positional' --args "${native[@]}")" >> "$GITHUB_OUTPUT"
+          exit $failed
 
   ios:
     needs: plan
     if: needs.plan.outputs.native != '[]'
+    # One app's failed build leaves the others to ship.
     strategy:
+      fail-fast: false
       matrix:
         app: ${{ fromJSON(needs.plan.outputs.native) }}
     concurrency: ios-${{ matrix.app }}
@@ -127,6 +146,9 @@ jobs:
       - uses: actions/checkout@v5
       - uses: voidzero-dev/setup-vp@v1
         with: {node-version: '26', cache: true, run-install: true}
+      - run: npm install --global eas-cli@latest
+      # CocoaPods and the Hermes tarball download with curl to files: a reset or a stalled transfer retries instead of failing the release or hanging for minutes. After setup-vp, whose installer streams into bash, where a retry would append a second script.
+      - run: printf '%s\n' 'retry = 5' 'retry-all-errors' 'connect-timeout = 15' 'speed-limit = 10000' 'speed-time = 30' > ~/.curlrc
       # One cache for every app: their pods come from the same lockfile, and the Hermes tarball's mirror often stalls.
       - uses: actions/cache@v4
         with:
