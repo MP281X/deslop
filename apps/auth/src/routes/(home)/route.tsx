@@ -164,7 +164,7 @@ function Shell() {
 					onSome: signed => (
 						<>
 							<Avatar id={signed.id} name={signed.name} />
-							<span className="max-w-32 truncate text-sm">{signed.fullName ?? signed.name}</span>
+							<span className="hidden max-w-32 truncate text-sm sm:inline">{signed.fullName ?? signed.name}</span>
 							<Button
 								variant="ghost"
 								size="icon-sm"

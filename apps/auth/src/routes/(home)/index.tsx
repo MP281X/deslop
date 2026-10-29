@@ -1,6 +1,6 @@
 import {useAtom, useAtomSubscribe, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Option} from 'effect'
+import {Array, Boolean, Option, Order, Record, String, pipe} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
@@ -10,18 +10,22 @@ import {Suspense, useState} from 'react'
 import {Loading} from '@deslop/components-web/fallbacks'
 import {Button} from '@deslop/components-web/ui/button'
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
+import {cn} from '@deslop/components-web/utils'
 
 import {Review} from '#lib/components.tsx'
 import {
 	accountAtom,
-	agoLabel,
+	ageLabel,
 	appNames,
 	appsAtom,
+	clientLabel,
 	consentAtom,
 	disconnectAtom,
 	linkedCode,
 	lookupAtom,
-	minuteAtom
+	minuteAtom,
+	minutesSince,
+	newest
 } from '#lib/utils.ts'
 import {typedCode} from '#services/authorizations/lib/utils.ts'
 import type {PendingAuthorization, SignedInApp} from '#services/authorizations/schema.ts'
@@ -147,46 +151,123 @@ function Approve() {
 	)
 }
 
-function AppRow(props: {app: SignedInApp; now: number}) {
+function machines(count: number) {
+	if (count === 1) return '1 machine'
+	return `${count} machines`
+}
+
+// A first tap arms the cell, a second signs that client out of that app; leaving the cell disarms it.
+function Cell(props: {app: string; client: string; now: number; signIns: SignedInApp[]}) {
 	const [disconnection, disconnect] = useAtom(disconnectAtom)
-	return (
-		<li className="bg-card flex items-center gap-3 p-4">
-			<div className="flex min-w-0 grow flex-col">
-				<span className="truncate text-sm">{props.app.clientName}</span>
-				<span className="text-muted-foreground truncate text-xs">
-					{Array.join([...appNames(props.app.resources), agoLabel(props.app.lastActive, props.now)], ' · ')}
-				</span>
-			</div>
-			<Button
-				size="sm"
-				variant="secondary"
-				disabled={AsyncResult.isWaiting(disconnection)}
-				onClick={() => disconnect(props.app.family)}
+	const [armed, setArmed] = useState(false)
+	if (Array.isArrayEmpty(props.signIns)) {
+		return (
+			<td
+				className="text-muted-foreground/40 text-center"
+				aria-label={`${props.client} is not signed in to ${props.app}`}
 			>
-				Disconnect
+				·
+			</td>
+		)
+	}
+	const minutes = minutesSince(newest(props.signIns), props.now)
+	return (
+		<td className="p-0.5">
+			<Button
+				size="lg"
+				variant={Boolean.match(armed, {onFalse: () => 'secondary' as const, onTrue: () => 'destructive' as const})}
+				className="w-full flex-col gap-1 text-xs tabular-nums"
+				aria-label={Boolean.match(armed, {
+					onFalse: () =>
+						`${props.client} in ${props.app} on ${machines(props.signIns.length)}, active ${ageLabel(minutes)} ago; tap twice to sign out`,
+					onTrue: () => `Sign ${props.client} out of ${props.app}`
+				})}
+				disabled={AsyncResult.isWaiting(disconnection)}
+				onBlur={() => setArmed(false)}
+				onClick={() => {
+					if (armed) disconnect(Array.map(props.signIns, signIn => signIn.family))
+					setArmed(!armed)
+				}}
+			>
+				{Boolean.match(armed, {
+					// One square per machine, lit while it was active in the last hour.
+					onFalse: () => (
+						<>
+							{ageLabel(minutes)}
+							<span className="flex gap-0.5" aria-hidden="true">
+								{Array.map(props.signIns, signIn => (
+									<span
+										key={signIn.family}
+										className={cn(
+											'size-1',
+											minutesSince(signIn.lastActive, props.now) < 60 && 'bg-primary',
+											minutesSince(signIn.lastActive, props.now) >= 60 && 'bg-muted-foreground/50'
+										)}
+									/>
+								))}
+							</span>
+						</>
+					),
+					onTrue: () => <X />
+				})}
 			</Button>
-		</li>
+		</td>
 	)
 }
 
-// Each app or agent this account signed in to, last active first; disconnecting one makes it sign in again.
+// Clients down, apps across, last active first; each cell holds one client's sign-ins to one app, from any machine.
 function Apps() {
 	const apps = useAtomSuspense(appsAtom).value
 	const now = useAtomSuspense(minuteAtom).value
 	const [disconnection] = useAtom(disconnectAtom)
+	const columns = Array.sort(Array.dedupe(Array.flatMap(apps, app => appNames(app.resources))), String.Order)
 	return (
-		<section className="flex flex-col gap-3" aria-label="Signed in">
-			<h2 className="text-muted-foreground text-xs tracking-wider uppercase">Signed in · {apps.length}</h2>
-			{Array.match(apps, {
-				onEmpty: () => <p className="text-muted-foreground bg-card p-4 text-sm">No apps signed in</p>,
-				onNonEmpty: rows => (
-					<ul className="flex flex-col gap-2">
-						{Array.map(rows, app => (
-							<AppRow key={app.family} app={app} now={now} />
-						))}
-					</ul>
-				)
-			})}
+		<section className="flex flex-col gap-2" aria-label="Signed in">
+			<h2 className="text-muted-foreground text-xs tracking-wider uppercase">Signed in</h2>
+			{Array.match(
+				pipe(
+					Array.groupBy(apps, clientLabel),
+					Record.toEntries,
+					Array.sort(Order.flip(Order.mapInput(Order.Number, (entry: [string, SignedInApp[]]) => newest(entry[1]))))
+				),
+				{
+					onEmpty: () => <p className="text-muted-foreground text-sm">No apps signed in</p>,
+					onNonEmpty: rows => (
+						<table className="w-full table-fixed border-collapse text-sm">
+							<thead>
+								<tr>
+									<th className="w-28">
+										<span className="sr-only">Client</span>
+									</th>
+									{Array.map(columns, column => (
+										<th key={column} scope="col" className="text-muted-foreground pb-1 text-xs font-normal">
+											{column}
+										</th>
+									))}
+								</tr>
+							</thead>
+							<tbody>
+								{Array.map(rows, row => (
+									<tr key={row[0]}>
+										<th scope="row" className="truncate pr-2 text-left font-normal">
+											{row[0]}
+										</th>
+										{Array.map(columns, column => (
+											<Cell
+												key={column}
+												app={column}
+												client={row[0]}
+												now={now}
+												signIns={Array.filter(row[1], app => Array.contains(appNames(app.resources), column))}
+											/>
+										))}
+									</tr>
+								))}
+							</tbody>
+						</table>
+					)
+				}
+			)}
 			{Option.match(AsyncResult.error(disconnection), {
 				onNone: () => null,
 				onSome: failure => (

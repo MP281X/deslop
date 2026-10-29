@@ -13,6 +13,7 @@ import {
 	Option,
 	Order,
 	Path,
+	Predicate,
 	PubSub,
 	Record,
 	Redacted,
@@ -28,9 +29,9 @@ import {
 
 import {Digest, SecureRandom} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
-import type {Headers} from 'effect/http'
 import {
 	Cookies,
+	Headers,
 	HttpClient,
 	HttpClientRequest,
 	HttpClientResponse,
@@ -165,6 +166,17 @@ function newestClients(tokens: AuthState['tokens'], inUse: HashSet.HashSet<strin
 	return Record.filter(
 		tokens,
 		(entry, key) => entry.payload._tag !== 'Client' || HashSet.has(kept, key) || HashSet.has(inUse, key)
+	)
+}
+
+// The address the client connects from: Traefik appends it as the last X-Forwarded-For entry, earlier ones are the client's word.
+function clientAddress(request: HttpServerRequest.HttpServerRequest) {
+	return pipe(
+		Headers.get(request.headers, 'x-forwarded-for'),
+		Option.flatMap(forwarded => Array.last(String.split(',')(forwarded))),
+		Option.map(String.trim),
+		Option.filter(String.isNonEmpty),
+		Option.orElse(() => request.remoteAddress)
 	)
 }
 
@@ -662,6 +674,45 @@ export class Authorizations extends Context.Service<
 					yield* PubSub.publish(changes, true)
 					return person
 				}, rejected('Cannot remove this account'))
+				const clientName = Effect.fnUntraced(function* (clientId: string, tokens: AuthState['tokens']) {
+					return pipe(
+						Record.get(tokens, yield* hash(clientId)),
+						Option.flatMap(entry => {
+							if (entry.payload._tag !== 'Client') return Option.none()
+							return Option.fromUndefinedOr(entry.payload.name)
+						}),
+						Option.getOrElse(() => 'Unknown client')
+					)
+				})
+				// Each client registers anew per sign-in, so a second sign-in of the same client, apps and address replaces the first instead of adding a row.
+				const replaceSignIns = Effect.fnUntraced(function* (
+					grant: typeof Stored.cases.Refresh.Type,
+					draft: Ref.Ref<AuthState>
+				) {
+					if (Predicate.isUndefined(grant.address)) return
+					const current = yield* Ref.get(draft)
+					const name = yield* clientName(grant.clientId, current.tokens)
+					const sameApps = Array.makeEquivalence(String.Equivalence)
+					const replaced = yield* Effect.filter(
+						Array.flatMap(Record.values(current.tokens), entry => {
+							if (
+								entry.payload._tag !== 'Refresh' ||
+								entry.payload.user.id !== grant.user.id ||
+								entry.payload.address !== grant.address ||
+								!sameApps(Array.sort(entry.payload.resources, String.Order), Array.sort(grant.resources, String.Order))
+							) {
+								return []
+							}
+							return [entry.payload]
+						}),
+						earlier => Effect.map(clientName(earlier.clientId, current.tokens), earlierName => earlierName === name)
+					)
+					yield* Effect.forEach(
+						Array.dedupe(Array.map(replaced, earlier => earlier.family)),
+						family => revokeFamily(family, draft),
+						{concurrency: 1, discard: true}
+					)
+				})
 				// Each app sign-in is one refresh-token family whose live token was minted at its last refresh, newest first.
 				const listApps = Effect.fn('Authorizations.listApps')(function* (user: User) {
 					const now = yield* Clock.currentTimeMillis
@@ -674,12 +725,8 @@ export class Authorizations extends Context.Service<
 							return [{expiresAt: entry.expiresAt, grant: entry.payload}]
 						}),
 						Effect.fnUntraced(function* (row) {
-							const name = Option.flatMap(Record.get(current.tokens, yield* hash(row.grant.clientId)), entry => {
-								if (entry.payload._tag !== 'Client') return Option.none()
-								return Option.fromUndefinedOr(entry.payload.name)
-							})
 							return {
-								clientName: Option.getOrElse(name, () => 'Unknown client'),
+								clientName: yield* clientName(row.grant.clientId, current.tokens),
 								family: row.grant.family,
 								lastActive: row.expiresAt - REFRESH_SECONDS * 1000,
 								resources: row.grant.resources
@@ -1013,6 +1060,7 @@ export class Authorizations extends Context.Service<
 								HttpServerRequest.schemaBodyUrlParams(TokenParams),
 								rejected('Invalid token request')
 							)
+							const address = clientAddress(yield* HttpServerRequest.HttpServerRequest)
 							const response = yield* transact(draft =>
 								Effect.gen(function* () {
 									if (params.grant_type === 'authorization_code') {
@@ -1037,11 +1085,16 @@ export class Authorizations extends Context.Service<
 										const resources = yield* tokenResources(params, code.resources)
 										const family = Base64Url.encode(yield* random.randomBytes(32))
 										yield* retire(params.code, {_tag: 'UsedCode', clientId: code.clientId, family}, draft)
-										return yield* grantTokens(
-											{_tag: 'Refresh', clientId: code.clientId, family, resources: code.resources, user: code.user},
-											resources,
-											draft
-										)
+										const signIn = {
+											_tag: 'Refresh' as const,
+											clientId: code.clientId,
+											family,
+											resources: code.resources,
+											user: code.user,
+											...Option.match(address, {onNone: () => ({}), onSome: value => ({address: value})})
+										}
+										yield* replaceSignIns(signIn, draft)
+										return yield* grantTokens(signIn, resources, draft)
 									}
 									const refresh = yield* load(params.refresh_token, draft)
 									if (refresh._tag === 'UsedRefresh') {
