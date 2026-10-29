@@ -48,7 +48,7 @@ Measures, each with its counted member:
 **Owner**, one per fix:
 
 - **Lint rule:** a code form; its message names one fix that satisfies every other rule, proved by a probe.
-- **`writing-code` Write these shapes first:** only a rule whose wrong fix restructures code or trips another rule; the rest stays lint-only.
+- **`lint-companion` Fix the owner:** only a diagnostic family whose wrong fix restructures code or trips another rule; the rest stays in the rule's message.
 - **Repository `CODING_STANDARDS.md`:** a judgement call no lint rule can check, read at review.
 - **`references` Sources:** a shape agents got wrong whose good version lives in an Effect 4 repository; a directory at its default branch, never a commit.
 - **Team skill:** practice every teammate's repository shares; no person, machine, path or T3 tool name.

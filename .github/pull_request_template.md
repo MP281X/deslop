@@ -1,3 +1,8 @@
+<!--
+Describe the head for a reviewer who was not in the conversation. Delete every
+comment and every empty section, then read the rendered body back.
+-->
+
 ## Summary
 
 <!--
@@ -11,7 +16,10 @@ Mermaid for a flow. No walkthrough, inventory, history or test list.
 <!--
 One line per claim, its capture under it: real input → result where it is
 consumed. A screenshot per state, a video per sequence, a request or trace for
-backend. Before/after on the same data only when the claim is a difference.
+backend; command output supports a capture, never replaces it. Before/after on
+the same data only when the claim is a difference.
+Captures use representative data at the app's primary viewport and theme,
+native apps from a simulator, taken after a condition holds rather than a delay.
 -->
 
 ## Merge danger
