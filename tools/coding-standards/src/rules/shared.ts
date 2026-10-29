@@ -39,12 +39,34 @@ export function variableFor(context: Context, node: ESTree.IdentifierReference) 
 	return variableFromScope({name: node.name, scope: context.sourceCode.getScope(node)})
 }
 
+// The names a file's imports bind, read once per file so a name no import binds skips scope analysis.
+const importedNames = new WeakMap<ESTree.Program, string[]>()
+
+function readImportedNames(program: ESTree.Program) {
+	const names = Array.flatMap(program.body, statement => {
+		if (statement.type !== 'ImportDeclaration') return []
+		return Array.map(statement.specifiers, specifier => specifier.local.name)
+	})
+	importedNames.set(program, names)
+	return names
+}
+
+function bindsImport(context: Context, name: string) {
+	return Array.contains(
+		Option.getOrElse(Option.fromNullishOr(importedNames.get(context.sourceCode.ast)), () =>
+			readImportedNames(context.sourceCode.ast)
+		),
+		name
+	)
+}
+
 export function isImportBinding(input: {
 	context: Context
 	importedName?: string
 	node: ESTree.IdentifierReference
 	source: string | RegExp
 }) {
+	if (!bindsImport(input.context, input.node.name)) return false
 	return pipe(
 		variableFor(input.context, input.node),
 		Option.exists(variable =>
@@ -128,6 +150,7 @@ export function effectImport(input: {context: Context; fixer: Fixer; name: strin
 }
 
 export function isNamespaceImport(input: {context: Context; node: ESTree.IdentifierReference; source: string}) {
+	if (!bindsImport(input.context, input.node.name)) return false
 	return pipe(
 		variableFor(input.context, input.node),
 		Option.exists(variable =>
@@ -237,13 +260,13 @@ export function importedMember(input: {
 	return (
 		input.node.type === 'MemberExpression' &&
 		input.node.object.type === 'Identifier' &&
+		(input.propertyName === undefined || Option.contains(memberName(input.node), input.propertyName)) &&
 		isImportBinding({
 			context: input.context,
 			importedName: input.importedName,
 			node: input.node.object,
 			source: 'effect'
-		}) &&
-		(input.propertyName === undefined || Option.contains(memberName(input.node), input.propertyName))
+		})
 	)
 }
 
@@ -376,7 +399,8 @@ function typeArgumentName(node: ESTree.TSType) {
 	)
 }
 
-function suspendedTypeName(input: {context: Context; node: ESTree.CallExpression}) {
+// The type a `Schema.suspend((): Schema.Codec<T> => ...)` thunk names, which seeds the search for recursive schemas.
+export function suspendedTypeName(input: {context: Context; node: ESTree.CallExpression}) {
 	if (
 		input.node.callee.type === 'Super' ||
 		!importedMember({context: input.context, importedName: 'Schema', node: input.node.callee, propertyName: 'suspend'})
@@ -468,18 +492,6 @@ export function childNodes(context: Context, node: ESTree.Node) {
 	)
 }
 
-function suspendSeeds(input: {context: Context; node: ESTree.Node}): string[] {
-	const seeds = pipe(
-		childNodes(input.context, input.node),
-		Array.flatMap(child => suspendSeeds({context: input.context, node: child}))
-	)
-	if (input.node.type !== 'CallExpression') return seeds
-	return pipe(
-		suspendedTypeName({context: input.context, node: input.node}),
-		Option.match({onNone: () => seeds, onSome: name => Array.prepend(seeds, name)})
-	)
-}
-
 function referenceNames(context: Context, node: ESTree.Node): string[] {
 	const nested = pipe(
 		childNodes(context, node),
@@ -507,8 +519,9 @@ function schemaEdges(context: Context, statement: ESTree.Statement | ESTree.Modu
 	})
 }
 
-export function schemaCycleNames(input: {context: Context; program: ESTree.Program}) {
+export function schemaCycleNames(input: {context: Context; program: ESTree.Program; seeds: string[]}) {
 	if (
+		Array.isArrayEmpty(input.seeds) ||
 		!Array.some(
 			input.program.body,
 			statement =>
@@ -525,8 +538,6 @@ export function schemaCycleNames(input: {context: Context; program: ESTree.Progr
 	) {
 		return Array.empty<string>()
 	}
-	const seeds = suspendSeeds({context: input.context, node: input.program})
-	if (Array.isArrayEmpty(seeds)) return Array.empty<string>()
 	const edges = pipe(
 		input.program.body,
 		Array.flatMap(statement => schemaEdges(input.context, statement))
@@ -553,7 +564,7 @@ export function schemaCycleNames(input: {context: Context; program: ESTree.Progr
 			component =>
 				(component.length > 1 ||
 					Array.some(edges, edge => Array.contains(component, edge.name) && Array.contains(edge.targets, edge.name))) &&
-				Array.some(component, name => Array.contains(seeds, name))
+				Array.some(component, name => Array.contains(input.seeds, name))
 		),
 		Array.flatten
 	)

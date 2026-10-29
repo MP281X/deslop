@@ -54,14 +54,14 @@ function isFunction(context: Context, node?: ESTree.Node) {
 export const explicitEffectConcurrency = defineRule({
 	create: context => ({
 		CallExpression: node => {
+			if (node.callee.type !== 'MemberExpression') return
+			const name = memberName(node.callee)
 			if (
-				node.callee.type !== 'MemberExpression' ||
+				!Option.exists(name, method => method === 'all' || method === 'forEach') ||
 				!importedMember({context, importedName: 'Effect', node: node.callee})
 			) {
 				return
 			}
-			const name = memberName(node.callee)
-			if (!Option.exists(name, method => method === 'all' || method === 'forEach')) return
 			// Effect.all(effects, options), Effect.forEach(items, f, options), or a data-last forEach(f, options) with an inline f or literal options.
 			const index = Boolean.match(
 				Option.contains(name, 'all') ||
