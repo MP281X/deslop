@@ -84,13 +84,14 @@ export class Presence extends Context.Service<
 						Room.Occupied({
 							tabs: {
 								...transition.state.tabs,
-								[transition.event.visitor.id]: (transition.state.tabs[transition.event.visitor.id] ?? 0) + 1
+								[transition.event.visitor.id]:
+									Option.getOrElse(Record.get(transition.state.tabs, transition.event.visitor.id), () => 0) + 1
 							}
 						})
 					)
 				)
 				.on(Room.Occupied, RoomEvent.Left, transition => {
-					const open = (transition.state.tabs[transition.event.id] ?? 1) - 1
+					const open = Option.getOrElse(Record.get(transition.state.tabs, transition.event.id), () => 1) - 1
 					if (open > 0) return Room.Occupied({tabs: {...transition.state.tabs, [transition.event.id]: open}})
 					const tabs = Record.remove(transition.state.tabs, transition.event.id)
 					const left = SubscriptionRef.update(visitors, current => removePortfolioVisitor(current, transition.event.id))

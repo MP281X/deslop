@@ -33,6 +33,7 @@
 		"cheerio": "latest",
 		"domhandler": "latest",
 		"effect": "latest",
+		"effect-machine": "latest",
 		"expo-auth-session": "^58.0",
 		"expo-clipboard": "^58.0",
 		"expo-crypto": "^58.0",

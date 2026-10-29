@@ -238,7 +238,7 @@ export function HomeRoute(props: {bookings: BookingList; onOpen: (id: string) =>
 						<Button
 							label={`Undo Delete ${titleOf(undo.booking)}`}
 							systemImage="arrow.uturn.backward"
-							onPress={() => restore(undo.booking)}
+							onPress={() => restore(undo)}
 							modifiers={[labelStyle('titleAndIcon'), lineLimit(1)]}
 						/>
 					</ToolbarItem>

@@ -439,6 +439,9 @@ importers:
       effect:
         specifier: latest
         version: 4.1.0
+      effect-machine:
+        specifier: latest
+        version: 0.32.0(effect@4.1.0)
       expo-auth-session:
         specifier: ^58.0
         version: 58.0.16(expo@58.0.21)(react-native@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)

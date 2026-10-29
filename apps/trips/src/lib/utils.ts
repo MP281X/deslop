@@ -1,6 +1,7 @@
 import {
 	Array,
 	Boolean,
+	Clock,
 	DateTime,
 	Effect,
 	HashSet,
@@ -205,19 +206,18 @@ export const answerAtom = Atom.keepAlive(
 	})
 )
 
-// The booking deleted last, which the list offers to put back for eight seconds; a later delete takes its place.
-const Undo = State({Idle: {}, Offered: {booking: Booking}})
-const UndoEvent = Event({Deleted: {booking: Booking}, Expired: {}, Restored: {id: Schema.String}})
+// The booking deleted last, which the list offers to put back for eight seconds; a later delete takes its place, and a restore ends only its own offer.
+type Deletion = {at: number; booking: Booking}
+const Undo = State({Idle: {}, Offered: {at: Schema.Finite, booking: Booking}})
+const UndoEvent = Event({Deleted: {at: Schema.Finite, booking: Booking}, Expired: {}, Restored: {at: Schema.Finite}})
 
 export const undoAtom = actorAtom(
 	Machine.make({event: UndoEvent, initial: Undo.Idle, state: Undo})
-		.reenter([Undo.Idle, Undo.Offered], UndoEvent.Deleted, transition =>
-			Undo.Offered({booking: transition.event.booking})
-		)
+		.reenter([Undo.Idle, Undo.Offered], UndoEvent.Deleted, transition => Undo.Offered(transition.event))
 		.when(
 			Undo.Offered,
 			UndoEvent.Restored,
-			transition => transition.state.booking.id === transition.event.id,
+			transition => transition.state.at === transition.event.at,
 			() => Undo.Idle
 		)
 		.on(Undo.Offered, UndoEvent.Expired, () => Undo.Idle)
@@ -232,7 +232,8 @@ export const removeAtom = Atom.keepAlive(
 					get,
 					Effect.flatMap(RpcClient, client => client('bookings.remove', {id: booking.id}))
 				),
-				Effect.tap(() => Effect.sync(() => get.set(undoAtom, UndoEvent.Deleted({booking})))),
+				Effect.andThen(Clock.currentTimeMillis),
+				Effect.tap(at => Effect.sync(() => get.set(undoAtom, UndoEvent.Deleted({at, booking})))),
 				alert('Not Deleted')
 			),
 		// A second swipe deletes its booking too instead of interrupting the first.
@@ -241,13 +242,13 @@ export const removeAtom = Atom.keepAlive(
 )
 
 export const restoreAtom = Atom.keepAlive(
-	Atom.fn((booking: Booking, get) =>
+	Atom.fn((deletion: Deletion, get) =>
 		pipe(
 			withClient(
 				get,
-				Effect.flatMap(RpcClient, client => client('bookings.restore', booking))
+				Effect.flatMap(RpcClient, client => client('bookings.restore', deletion.booking))
 			),
-			Effect.tap(() => Effect.sync(() => get.set(undoAtom, UndoEvent.Restored({id: booking.id})))),
+			Effect.tap(() => Effect.sync(() => get.set(undoAtom, UndoEvent.Restored({at: deletion.at})))),
 			alert('Not Restored')
 		)
 	)

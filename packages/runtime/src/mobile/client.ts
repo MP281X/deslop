@@ -78,6 +78,8 @@ const updatesAtom = actorAtom(
 					Boolean.match(fetched, {onFalse: () => UpdateEvent.Settled, onTrue: () => UpdateEvent.Fetched})
 			}
 		)
+		// A return while a check hangs, such as one iOS suspended mid-download, starts it over.
+		.reenter(Update.Checking, UpdateEvent.Returned, () => Update.Checking)
 		.on(Update.Checking, UpdateEvent.Fetched, () => Update.Downloaded)
 		.on(Update.Checking, UpdateEvent.Settled, () => Update.Idle)
 		.when(
