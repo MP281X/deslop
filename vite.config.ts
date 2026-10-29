@@ -82,7 +82,12 @@ export default defineConfig({
 					'fallow health --complexity --format human --quiet'
 				]
 			},
-			fix: {cache: false, command: 'vp lint --fix --format agent; status=$?; vp fmt && exit $status'},
+			// One lint pass applies one fix per spot, and a fix that adds an import holds the import line, so passes repeat until the report settles.
+			fix: {
+				cache: false,
+				command:
+					'sh -c \'last=; for pass in 1 2 3 4 5 6 7 8; do report=$(vp lint --fix --format agent); status=$?; [ "$report" = "$last" ] && break; last=$report; done; printf "%s\\n" "$report"; vp fmt && exit $status\''
+			},
 			lint: {
 				cache: {input: [{auto: true}, '!**/*.tsbuildinfo'], output: []},
 				command: ['vp fmt --list-different', 'vp lint --format agent']

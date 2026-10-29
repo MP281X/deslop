@@ -33,26 +33,43 @@ const lintSource = Effect.fnUntraced(function* (input: Record<string, string>, f
 	)
 	const files = Array.map(Record.keys(input), name => path.join(directory, name))
 	const root = path.resolve(import.meta.dirname, '../../../..')
-	const handle = yield* ChildProcess.make('vp', ['lint', ...files, '--format=json', ...flags], {
-		cwd: root,
-		stderr: 'pipe',
-		stdout: 'pipe'
-	})
-	const result = yield* Effect.all(
-		{
-			exitCode: handle.exitCode,
-			stderr: Stream.mkString(Stream.decodeText(handle.stderr)),
-			stdout: Stream.mkString(Stream.decodeText(handle.stdout))
-		},
-		{concurrency: 'unbounded'}
+	const read = Effect.forEach(files, file => fs.readFileString(file), {concurrency: 'unbounded'})
+	const lint = Effect.scoped(
+		Effect.flatMap(
+			ChildProcess.make('vp', ['lint', ...files, '--format=json', ...flags], {
+				cwd: root,
+				stderr: 'pipe',
+				stdout: 'pipe'
+			}),
+			handle =>
+				Effect.all(
+					{
+						exitCode: handle.exitCode,
+						stderr: Stream.mkString(Stream.decodeText(handle.stderr)),
+						stdout: Stream.mkString(Stream.decodeText(handle.stdout))
+					},
+					{concurrency: 'unbounded'}
+				)
+		)
 	)
+	// As the repository's fix command does, lint fixes repeat until the sources settle: one pass applies one fix per spot.
+	const pass = Effect.gen(function* () {
+		const before = yield* read
+		const linted = yield* lint
+		const after = yield* read
+		return {
+			linted,
+			settled: !Array.contains(flags, '--fix') || Array.makeEquivalence(String.Equivalence)(before, after)
+		}
+	})
+	const result = (yield* Effect.repeat(pass, {times: 9, until: outcome => outcome.settled})).linted
 	// The repository's fix command formats after the lint fixes, so a fixed source is compared as the formatter leaves it.
 	if (Array.contains(flags, '--fix')) {
 		yield* Effect.flatMap(ChildProcess.make('vp', ['fmt', ...files], {cwd: root}), formatter => formatter.exitCode)
 	}
 	return {
 		exitCode: result.exitCode,
-		sources: yield* Effect.forEach(files, file => fs.readFileString(file), {concurrency: 'unbounded'}),
+		sources: yield* read,
 		stderr: result.stderr,
 		stdout: yield* Schema.decodeEffect(Schema.fromJsonString(OxlintOutput))(result.stdout)
 	}
@@ -297,6 +314,9 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						customCodes(result.stdout),
 						pipe(
 							[
+								...Array.replicate('@deslop/coding-standards(function-declaration)', 6),
+								'@deslop/coding-standards(no-pipe-method)',
+								...Array.replicate('@deslop/coding-standards(no-ternary)', 3),
 								'@deslop/coding-standards(module-constant)',
 								'@deslop/coding-standards(no-constant-function)',
 								'@deslop/coding-standards(no-effect-property-arrow)',
@@ -833,11 +853,99 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'@deslop/coding-standards(no-single-use-value)',
 						'@deslop/coding-standards(no-single-use-value)',
 						'@deslop/coding-standards(no-single-use-value)',
+						...Array.replicate('@deslop/coding-standards(no-ternary)', 7),
 						'@deslop/coding-standards(no-trivial-indirection)',
 						'@deslop/coding-standards(no-trivial-indirection)'
 					])
 				}),
 			20_000
+		)
+
+		testApi.effect(
+			'fixes pipe methods, dropped causes, function bindings, returned ternaries, regex flags, in checks, empty arrays and renamed imports',
+			() =>
+				Effect.gen(function* () {
+					const result = yield* lintSource(
+						{
+							'fixes.ts': Array.join(
+								[
+									"import {Effect, Option as Maybe, Schema} from 'effect'",
+									"class Failed extends Schema.TaggedErrorClass<Failed>()('Failed', {cause: Schema.Defect, message: Schema.String}) {}",
+									'declare const work: Effect.Effect<number, string>',
+									'declare const value: object',
+									'declare const maybe: Maybe.Option<string>',
+									'export const piped = Effect.succeed(1).pipe(Effect.map(n => n + 1)).pipe(Effect.asVoid)',
+									"export const decoded = Schema.decodeUnknownEffect(Schema.String)(value).pipe(Effect.mapError(() => Failed.make({message: 'bad'})))",
+									"export const absent = Effect.mapError(Effect.fromOption(maybe), () => Failed.make({message: 'none'}))",
+									'export const named = Effect.mapError(work, error => new Failed({message: error}))',
+									"export const caught = Effect.tryPromise({catch: () => Failed.make({message: 'down'}), try: () => fetch('/')})",
+									'export const read = (path: string): Effect.Effect<string> => Effect.succeed(path)',
+									'export function pick(flag: boolean, other: boolean) {',
+									"	return flag ? 'a' : other ? 'b' : 'c'",
+									'}',
+									"export const label = (done: boolean) => (done ? 'Done' : 'Running')",
+									'export const kept = (flag: boolean) => ({value: flag ? 1 : 2})',
+									'export const pattern = /a.b/i',
+									"export const keyed = 'key' in value",
+									'export const empties: string[] = []',
+									'export const wrapped = {Maybe}'
+								],
+								'\n'
+							)
+						},
+						['--fix']
+					)
+					assert.deepStrictEqual(result.sources, [
+						Array.join(
+							[
+								"import {Array, Effect, Option, Predicate, Schema, pipe} from 'effect'",
+								'',
+								"class Failed extends Schema.TaggedErrorClass<Failed>()('Failed', {cause: Schema.Defect, message: Schema.String}) {}",
+								'declare const work: Effect.Effect<number, string>',
+								'declare const value: object',
+								'declare const maybe: Option.Option<string>',
+								'export const piped = pipe(',
+								'	Effect.succeed(1),',
+								'	Effect.map(n => n + 1),',
+								'	Effect.asVoid',
+								')',
+								'export const decoded = pipe(',
+								'	Schema.decodeUnknownEffect(Schema.String)(value),',
+								"	Effect.mapError(cause => Failed.make({cause, message: 'bad'}))",
+								')',
+								"export const absent = Effect.mapError(Effect.fromOption(maybe), () => Failed.make({message: 'none'}))",
+								'export const named = Effect.mapError(work, error => new Failed({cause: error, message: error}))',
+								"export const caught = Effect.tryPromise({catch: cause => Failed.make({cause, message: 'down'}), try: () => fetch('/')})",
+								'export function read(path: string) {',
+								'	return Effect.succeed(path)',
+								'}',
+								'export function pick(flag: boolean, other: boolean) {',
+								"	if (flag) return 'a'",
+								"	if (other) return 'b'",
+								"	return 'c'",
+								'}',
+								'export function label(done: boolean) {',
+								"	if (done) return 'Done'",
+								"	return 'Running'",
+								'}',
+								'export function kept(flag: boolean) {',
+								'	return {value: flag ? 1 : 2}',
+								'}',
+								'export const pattern = /a.b/iu',
+								"export const keyed = Predicate.hasProperty(value, 'key')",
+								'export const empties = Array.empty<string>()',
+								'export const wrapped = {Maybe: Option}',
+								''
+							],
+							'\n'
+						)
+					])
+					assert.deepStrictEqual(customCodes(result.stdout), [
+						'@deslop/coding-standards(no-ternary)',
+						'@deslop/coding-standards(no-trivial-indirection)'
+					])
+				}),
+			60_000
 		)
 
 		testApi.effect(
@@ -993,6 +1101,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						)
 					})
 					assert.deepStrictEqual(customCodes(result.stdout), [
+						'@deslop/coding-standards(function-declaration)',
 						'@deslop/coding-standards(no-destructured-parameter)',
 						'@deslop/coding-standards(no-destructured-parameter)',
 						'@deslop/coding-standards(no-destructured-parameter)',

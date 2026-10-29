@@ -162,7 +162,7 @@ const readClipboard = Effect.fnUntraced(function* (offer: Offer) {
 		if (copied === null) return yield* BookingsError.make({message: 'The clipboard no longer holds an image.'})
 		const image = yield* pipe(
 			Schema.decodeEffect(Schema.Uint8ArrayFromBase64)(String.replace(/^data:[^,]*,/u, '')(copied.data)),
-			Effect.mapError(() => BookingsError.make({message: 'The copied screenshot could not be read.'}))
+			Effect.mapError(cause => BookingsError.make({cause, message: 'The copied screenshot could not be read.'}))
 		)
 		if (image.byteLength === 0 || image.byteLength > IMAGE_BYTES) {
 			return yield* BookingsError.make({message: 'Copy a screenshot smaller than 4 MB and try again.'})

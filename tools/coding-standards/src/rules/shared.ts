@@ -27,6 +27,14 @@ export function variableFromScope(input: {name: string; scope: Scope | null}): O
 	)
 }
 
+// A name the code declares or reads; a built-in global such as Option that the file never reads is free to take.
+export function boundVariable(input: {name: string; scope: Scope | null}) {
+	return Option.filter(
+		variableFromScope(input),
+		variable => Array.isArrayNonEmpty(variable.defs) || Array.isArrayNonEmpty(variable.references)
+	)
+}
+
 export function variableFor(context: Context, node: ESTree.IdentifierReference) {
 	return variableFromScope({name: node.name, scope: context.sourceCode.getScope(node)})
 }
@@ -60,10 +68,12 @@ function importedName(specifier: ESTree.ImportDeclarationSpecifier) {
 	return specifier.imported.name
 }
 
-// A fix that calls Predicate uses the file's Predicate import, or adds Predicate in its sorted place to the file's named import from 'effect', which makes the fix span from the import to the call, so the file's other Predicate fixes follow on the next fix run; with neither import, there is no fix.
-export function predicateImport(input: {context: Context; fixer: Fixer; node: ESTree.Node}) {
+// A fix that calls an Effect module such as Predicate uses the file's import of it, or adds it in its sorted place to the file's named import from 'effect', or a new import before the first statement, which makes the fix span from the import to the call, so the file's other fixes needing it follow on the next fix run; a name bound to something else has no fix.
+export function effectImport(input: {context: Context; fixer: Fixer; name: string; node: ESTree.Node}) {
 	return pipe(
-		variableFromScope({name: 'Predicate', scope: input.context.sourceCode.getScope(input.node)}),
+		variableFromScope({name: input.name, scope: input.context.sourceCode.getScope(input.node)}),
+		// A built-in global such as Array is the one the preset replaces with Effect's.
+		Option.filter(variable => Array.isArrayNonEmpty(variable.defs)),
 		Option.match({
 			onNone: () =>
 				pipe(
@@ -78,18 +88,24 @@ export function predicateImport(input: {context: Context; fixer: Fixer; node: ES
 					Option.flatMap(statement => {
 						if (statement.type !== 'ImportDeclaration') return Option.none()
 						return pipe(
-							Array.findFirst(
-								statement.specifiers,
-								specifier => String.Order(importedName(specifier), 'Predicate') > 0
-							),
-							Option.map(specifier => input.fixer.insertTextBefore(specifier, 'Predicate, ')),
+							Array.findFirst(statement.specifiers, specifier => String.Order(importedName(specifier), input.name) > 0),
+							Option.map(specifier => input.fixer.insertTextBefore(specifier, `${input.name}, `)),
 							Option.orElse(() =>
 								Option.map(Array.last(statement.specifiers), specifier =>
-									input.fixer.insertTextAfter(specifier, ', Predicate')
+									input.fixer.insertTextAfter(specifier, `, ${input.name}`)
 								)
 							)
 						)
 					}),
+					Option.orElse(() =>
+						Option.map(
+							Array.findFirst(
+								input.context.sourceCode.ast.body,
+								statement => statement.type !== 'ExpressionStatement' || Predicate.isNullish(statement.directive)
+							),
+							statement => input.fixer.insertTextBefore(statement, `import {${input.name}} from 'effect'\n`)
+						)
+					),
 					Option.map(Array.of)
 				),
 			onSome: variable =>
@@ -104,7 +120,7 @@ export function predicateImport(input: {context: Context; fixer: Fixer; node: ES
 							definition.node.type === 'ImportSpecifier' &&
 							definition.node.importKind !== 'type' &&
 							definition.node.imported.type === 'Identifier' &&
-							definition.node.imported.name === 'Predicate'
+							definition.node.imported.name === input.name
 					)
 				)
 		})

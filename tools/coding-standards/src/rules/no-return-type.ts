@@ -103,12 +103,14 @@ export const noReturnType = defineRule({
 			) {
 				return
 			}
+			const returnType = node.returnType
 			context.report({
+				fix: fixer => fixer.remove(returnType),
 				message: 'Drop the return type and let inference supply it; check a returned object with satisfies.',
-				node: node.returnType
+				node: returnType
 			})
 		}
 		return {ArrowFunctionExpression: check, FunctionDeclaration: check, FunctionExpression: check}
 	},
-	meta: {type: 'problem'}
+	meta: {fixable: 'code', type: 'problem'}
 })
