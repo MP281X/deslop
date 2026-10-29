@@ -4,7 +4,7 @@ import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
 
 import {replaceableGuard} from '#rules/no-hand-written-guard.ts'
-import {predicateImport, variableFor} from '#rules/shared.ts'
+import {effectImport, variableFor} from '#rules/shared.ts'
 
 const GUARDS: Record<string, string> = {
 	bigint: 'isBigInt',
@@ -58,8 +58,9 @@ function fix(input: {context: Context; fixer: Fixer; node: ESTree.UnaryExpressio
 		`${NEGATIONS[input.node.parent.operator]}Predicate.${guard}(${input.node.argument.name})`
 	)
 	return Option.getOrElse(
-		Option.map(predicateImport({context: input.context, fixer: input.fixer, node: input.node}), imports =>
-			Array.append(imports, replacement)
+		Option.map(
+			effectImport({context: input.context, fixer: input.fixer, name: 'Predicate', node: input.node}),
+			imports => Array.append(imports, replacement)
 		),
 		() => []
 	)

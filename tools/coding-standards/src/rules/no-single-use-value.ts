@@ -86,11 +86,12 @@ function candidate(context: Context, node: ESTree.VariableDeclarator) {
 	)
 }
 
-// A detached method keeps no receiver, and an anonymous class takes its name from the binding.
+// A detached method keeps no receiver, an anonymous class takes its name from the binding, and an object literal moved into a typed position meets TypeScript's excess-property check.
 function fixable(input: {init: ESTree.Expression; read: ESTree.Node}) {
 	const read = outermost(input.read)
 	return !(
 		unwrapped(input.init).type === 'ClassExpression' ||
+		unwrapped(input.init).type === 'ObjectExpression' ||
 		(read.parent?.type === 'CallExpression' && read.parent.callee === read) ||
 		(read.parent?.type === 'TaggedTemplateExpression' && read.parent.tag === read)
 	)

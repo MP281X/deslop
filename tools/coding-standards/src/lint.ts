@@ -5,6 +5,7 @@ import {definePlugin} from 'vite-plus/lint/plugins'
 import type {Plugin} from 'vite-plus/lint/plugins'
 
 import {explicitEffectConcurrency} from '#rules/explicit-effect-concurrency.ts'
+import {functionDeclaration} from '#rules/function-declaration.ts'
 import {moduleConstant} from '#rules/module-constant.ts'
 import {motionLimits} from '#rules/motion-limits.ts'
 import {noAccumulatingCopy} from '#rules/no-accumulating-copy.ts'
@@ -32,8 +33,8 @@ import {noNativeControl} from '#rules/no-native-control.ts'
 import {noNativeEmptinessCheck} from '#rules/no-native-emptiness-check.ts'
 import {noNativeMethodCall} from '#rules/no-native-method-call.ts'
 import {noOptionValueAccess} from '#rules/no-option-value-access.ts'
+import {noPipeMethod} from '#rules/no-pipe-method.ts'
 import {noPropertyAlias} from '#rules/no-property-alias.ts'
-import {noReadonlyTypeSyntax} from '#rules/no-readonly-type-syntax.ts'
 import {noRedundantStateType} from '#rules/no-redundant-state-type.ts'
 import {noRedundantUseRefNullType} from '#rules/no-redundant-use-ref-null-type.ts'
 import {noRedundantVariableAnnotation} from '#rules/no-redundant-variable-annotation.ts'
@@ -44,6 +45,7 @@ import {noSingleUseValue} from '#rules/no-single-use-value.ts'
 import {noStoredJsx} from '#rules/no-stored-jsx.ts'
 import {noStoredSchemaOperation} from '#rules/no-stored-schema-operation.ts'
 import {noSwitchStatement} from '#rules/no-switch-statement.ts'
+import {noTernary} from '#rules/no-ternary.ts'
 import {noTrivialIndirection} from '#rules/no-trivial-indirection.ts'
 import {noTypeFromValue} from '#rules/no-type-from-value.ts'
 import {noTypeof} from '#rules/no-typeof.ts'
@@ -52,6 +54,7 @@ import {noUnexplainedDisable} from '#rules/no-unexplained-disable.ts'
 import {noUnvalidatedJsonDecode} from '#rules/no-unvalidated-json-decode.ts'
 import {preferEffectCountBy} from '#rules/prefer-effect-count-by.ts'
 import {preserveErrorCause} from '#rules/preserve-error-cause.ts'
+import {requireUnicodeRegexp} from '#rules/require-unicode-regexp.ts'
 import {schemaTypePair} from '#rules/schema-type-pair.ts'
 
 const REACT_LEGACY_APIS = ['Component', 'PureComponent', 'createRef', 'forwardRef', 'memo', 'useCallback', 'useMemo']
@@ -98,6 +101,7 @@ const SET_MESSAGE =
 
 const RULES = {
 	'explicit-effect-concurrency': explicitEffectConcurrency,
+	'function-declaration': functionDeclaration,
 	'module-constant': moduleConstant,
 	'motion-limits': motionLimits,
 	'no-accumulating-copy': noAccumulatingCopy,
@@ -125,8 +129,8 @@ const RULES = {
 	'no-native-emptiness-check': noNativeEmptinessCheck,
 	'no-native-method-call': noNativeMethodCall,
 	'no-option-value-access': noOptionValueAccess,
+	'no-pipe-method': noPipeMethod,
 	'no-property-alias': noPropertyAlias,
-	'no-readonly-type-syntax': noReadonlyTypeSyntax,
 	'no-redundant-state-type': noRedundantStateType,
 	'no-redundant-use-ref-null-type': noRedundantUseRefNullType,
 	'no-redundant-variable-annotation': noRedundantVariableAnnotation,
@@ -137,6 +141,7 @@ const RULES = {
 	'no-stored-jsx': noStoredJsx,
 	'no-stored-schema-operation': noStoredSchemaOperation,
 	'no-switch-statement': noSwitchStatement,
+	'no-ternary': noTernary,
 	'no-trivial-indirection': noTrivialIndirection,
 	'no-type-from-value': noTypeFromValue,
 	'no-typeof': noTypeof,
@@ -145,6 +150,7 @@ const RULES = {
 	'no-unvalidated-json-decode': noUnvalidatedJsonDecode,
 	'prefer-effect-count-by': preferEffectCountBy,
 	'preserve-error-cause': preserveErrorCause,
+	'require-unicode-regexp': requireUnicodeRegexp,
 	'schema-type-pair': schemaTypePair
 }
 
@@ -196,7 +202,6 @@ export const lint: OxlintConfig = {
 		'eslint/eqeqeq': 'error',
 		'eslint/for-direction': 'error',
 		'eslint/func-names': ['error', 'as-needed', {generators: 'never'}],
-		'eslint/func-style': ['error', 'declaration'],
 		'eslint/getter-return': 'error',
 		'eslint/no-alert': 'error',
 		'eslint/no-async-promise-executor': 'error',
@@ -307,7 +312,6 @@ export const lint: OxlintConfig = {
 		],
 		'eslint/no-restricted-properties': [
 			'error',
-			{message: 'Use standalone pipe.', property: 'pipe'},
 			{
 				message: 'Decode JSON through Schema.fromJsonString with the protocol schema.',
 				object: 'JSON',
@@ -378,7 +382,6 @@ export const lint: OxlintConfig = {
 		],
 		'eslint/no-shadow-restricted-names': 'error',
 		'eslint/no-sparse-arrays': 'error',
-		'eslint/no-ternary': 'error',
 		'eslint/no-this-before-super': 'error',
 		'eslint/no-throw-literal': 'error',
 		'eslint/no-unassigned-vars': 'error',
@@ -419,7 +422,6 @@ export const lint: OxlintConfig = {
 		'eslint/prefer-const': ['error', {destructuring: 'all'}],
 		'eslint/prefer-template': 'error',
 		'eslint/preserve-caught-error': 'error',
-		'eslint/require-unicode-regexp': 'error',
 		'eslint/require-yield': 'error',
 		'eslint/sort-keys': ['error', 'asc', {allowLineSeparatedGroups: true, natural: true}],
 		'eslint/use-isnan': 'error',
@@ -654,7 +656,8 @@ export const lint: OxlintConfig = {
 		'typescript/no-extraneous-class': 'error',
 		'typescript/no-import-type-side-effects': 'error',
 		'typescript/no-inferrable-types': 'error',
-		'typescript/no-invalid-void-type': 'error',
+		// Off: Oxlint rejects void as a call's type argument, so Deferred.make<void>() fails while no-restricted-types rejects undefined, and agents fall back to a boolean.
+		'typescript/no-invalid-void-type': 'off',
 		'typescript/no-misused-new': 'error',
 		'typescript/no-namespace': ['error', {allowDeclarations: true}],
 		'typescript/no-non-null-asserted-optional-chain': 'error',
@@ -671,7 +674,7 @@ export const lint: OxlintConfig = {
 					Iterable: 'Use T[].',
 					Map: MAP_MESSAGE,
 					Promise: 'Use Effect.',
-					ReadonlyArray: 'Use T[].',
+					ReadonlyArray: 'Use readonly T[].',
 					ReadonlyMap: MAP_MESSAGE,
 					ReadonlySet: SET_MESSAGE,
 					Set: SET_MESSAGE,

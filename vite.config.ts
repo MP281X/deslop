@@ -77,8 +77,8 @@ export default defineConfig({
 			fallow: {
 				cache: {input: [{auto: true}, '!.fallow/**', '!**/*.tsbuildinfo'], output: []},
 				command: [
-					'fallow dead-code --format compact --fail-on-issues',
-					'fallow dead-code --production --format compact --fail-on-issues',
+					'fallow dead-code --format compact --fail-on-issues --quiet',
+					'fallow dead-code --production --format compact --fail-on-issues --quiet',
 					'fallow health --complexity --format human --quiet'
 				]
 			},

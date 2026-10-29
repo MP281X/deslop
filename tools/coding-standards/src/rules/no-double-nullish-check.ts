@@ -3,7 +3,7 @@ import {Array, Option, Result, pipe} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
 
-import {predicateImport, variableFor} from '#rules/shared.ts'
+import {effectImport, variableFor} from '#rules/shared.ts'
 
 const VARIANTS = {
 	'&&': {comparison: '!==', guard: 'isNotNullish', message: 'Use Predicate.isNotNullish.'},
@@ -60,7 +60,7 @@ function guardCall(input: {checks: [Check, Check]; context: Context; fixer: Fixe
 		return Option.none()
 	}
 	return Option.map(
-		predicateImport({context: input.context, fixer: input.fixer, node: input.checks[0].node}),
+		effectImport({context: input.context, fixer: input.fixer, name: 'Predicate', node: input.checks[0].node}),
 		imports =>
 			Array.append(
 				imports,

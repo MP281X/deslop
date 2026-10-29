@@ -33,26 +33,43 @@ const lintSource = Effect.fnUntraced(function* (input: Record<string, string>, f
 	)
 	const files = Array.map(Record.keys(input), name => path.join(directory, name))
 	const root = path.resolve(import.meta.dirname, '../../../..')
-	const handle = yield* ChildProcess.make('vp', ['lint', ...files, '--format=json', ...flags], {
-		cwd: root,
-		stderr: 'pipe',
-		stdout: 'pipe'
-	})
-	const result = yield* Effect.all(
-		{
-			exitCode: handle.exitCode,
-			stderr: Stream.mkString(Stream.decodeText(handle.stderr)),
-			stdout: Stream.mkString(Stream.decodeText(handle.stdout))
-		},
-		{concurrency: 'unbounded'}
+	const read = Effect.forEach(files, file => fs.readFileString(file), {concurrency: 'unbounded'})
+	const lint = Effect.scoped(
+		Effect.flatMap(
+			ChildProcess.make('vp', ['lint', ...files, '--format=json', ...flags], {
+				cwd: root,
+				stderr: 'pipe',
+				stdout: 'pipe'
+			}),
+			handle =>
+				Effect.all(
+					{
+						exitCode: handle.exitCode,
+						stderr: Stream.mkString(Stream.decodeText(handle.stderr)),
+						stdout: Stream.mkString(Stream.decodeText(handle.stdout))
+					},
+					{concurrency: 'unbounded'}
+				)
+		)
 	)
+	// A fix that edits an import and its use spans both, so overlapping fixes land on the next `fix` run; the test asserts where those runs settle.
+	const pass = Effect.gen(function* () {
+		const before = yield* read
+		const linted = yield* lint
+		const after = yield* read
+		return {
+			linted,
+			settled: !Array.contains(flags, '--fix') || Array.makeEquivalence(String.Equivalence)(before, after)
+		}
+	})
+	const result = (yield* Effect.repeat(pass, {times: 9, until: outcome => outcome.settled})).linted
 	// The repository's fix command formats after the lint fixes, so a fixed source is compared as the formatter leaves it.
 	if (Array.contains(flags, '--fix')) {
 		yield* Effect.flatMap(ChildProcess.make('vp', ['fmt', ...files], {cwd: root}), formatter => formatter.exitCode)
 	}
 	return {
 		exitCode: result.exitCode,
-		sources: yield* Effect.forEach(files, file => fs.readFileString(file), {concurrency: 'unbounded'}),
+		sources: yield* read,
 		stderr: result.stderr,
 		stdout: yield* Schema.decodeEffect(Schema.fromJsonString(OxlintOutput))(result.stdout)
 	}
@@ -134,40 +151,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 
 		testApi.effect(
-			'keeps service properties through shared and cyclic aliases',
-			() =>
-				Effect.gen(function* () {
-					const result = yield* lintSource({
-						'shared-shapes.ts': pipe(
-							[
-								"import {Context, Effect} from 'effect'",
-								'type Base = {readonly read: Effect.Effect<string>}',
-								...Array.makeBy(18, index => {
-									if (index === 0) return 'type Shape0 = Base & Base'
-									return `type Shape${index} = Shape${index - 1} & Shape${index - 1}`
-								}),
-								'type Cycle = Cycle | Shape17',
-								'export class First extends Context.Service<First, Cycle>()("First") {}',
-								'export class Second extends Context.Service<Second, Shape17>()("Second") {}',
-								'export type Ordinary = {readonly name: string}'
-							],
-							Array.join('\n')
-						)
-					})
-					assert.strictEqual(result.stderr, '')
-					assert.deepStrictEqual(
-						pipe(
-							result.stdout.diagnostics,
-							Array.filter(diagnostic => diagnostic.code === '@deslop/coding-standards(no-readonly-type-syntax)'),
-							Array.map(diagnostic => diagnostic.labels[0]?.span.line)
-						),
-						[25]
-					)
-				}),
-			20_000
-		)
-
-		testApi.effect(
 			'reports every project-specific invalid state',
 			() =>
 				Effect.gen(function* () {
@@ -212,11 +195,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'const InlineType = Schema.Struct({name: Schema.String})',
 								'export {type InlineType}',
 								'export function publicName(value: typeof Public.Type) { return value.name }',
-								'type Explicit = {readonly values: readonly string[]}',
-								'type Mapped<T> = {readonly [K in keyof T]: T[K]}',
-								'type Frozen = Readonly<{value: string}>',
-								'type Index = {readonly [key: string]: string}',
-								'class Input { readonly field = "value"; constructor(readonly value: string) {} }',
 								'class Clock extends Context.Service<Clock, {now: Effect.Effect<number>; get tick(): Effect.Effect<void>}>()("Clock") {}',
 								'const makeClock = Effect.gen(function* () { return {now: Effect.succeed(1), tick: () => Effect.void} })',
 								'declare const ClockLive: {layer: Layer.Layer<Clock>}',
@@ -286,8 +264,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'// oxlint-disable-next-line sort-keys -- this input keeps its order',
 								'const unsortedKeys = {b: 1, a: 2}',
 								'// @effect-diagnostics-next-line floatingEffect:off',
-								'export {AssertString, Clock, clockLayers, Codecs, NonEmpty, PipedNonEmpty, PipedTrimmed, absent, Fallback, Input, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, asyncConstant, callbacks, decode, decoded, decoders, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, greet, handlers, input, isRecord, isText, makeBox, labelled, logName, loose, kind, mappedValues, measured, keyed, lazy, described, namesA, namesB, namespaceRef, noValues, present, slotLength, slotPair, notFound, operations, ready, recipients, ref, run, stateNamespace, succeed, unsortedKeys, unwrapped, withHead, wrapped}',
-								'export type {Explicit, Frozen, Index, Mapped}'
+								'export {AssertString, Clock, clockLayers, Codecs, NonEmpty, PipedNonEmpty, PipedTrimmed, absent, Fallback, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, asyncConstant, callbacks, decode, decoded, decoders, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, greet, handlers, input, isRecord, isText, makeBox, labelled, logName, loose, kind, mappedValues, measured, keyed, lazy, described, namesA, namesB, namespaceRef, noValues, present, slotLength, slotPair, notFound, operations, ready, recipients, ref, run, stateNamespace, succeed, unsortedKeys, unwrapped, withHead, wrapped}'
 							],
 							Array.join('\n')
 						)
@@ -297,6 +274,9 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						customCodes(result.stdout),
 						pipe(
 							[
+								...Array.replicate('@deslop/coding-standards(function-declaration)', 6),
+								'@deslop/coding-standards(no-pipe-method)',
+								...Array.replicate('@deslop/coding-standards(no-ternary)', 3),
 								'@deslop/coding-standards(module-constant)',
 								'@deslop/coding-standards(no-constant-function)',
 								'@deslop/coding-standards(no-effect-property-arrow)',
@@ -314,13 +294,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'@deslop/coding-standards(no-native-emptiness-check)',
 								'@deslop/coding-standards(no-option-value-access)',
 								'@deslop/coding-standards(no-option-value-access)',
-								'@deslop/coding-standards(no-readonly-type-syntax)',
-								'@deslop/coding-standards(no-readonly-type-syntax)',
-								'@deslop/coding-standards(no-readonly-type-syntax)',
-								'@deslop/coding-standards(no-readonly-type-syntax)',
-								'@deslop/coding-standards(no-readonly-type-syntax)',
-								'@deslop/coding-standards(no-readonly-type-syntax)',
-								'@deslop/coding-standards(no-readonly-type-syntax)',
 								'@deslop/coding-standards(no-return-type)',
 								'@deslop/coding-standards(no-return-type)',
 								'@deslop/coding-standards(no-return-type)',
@@ -833,11 +806,182 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'@deslop/coding-standards(no-single-use-value)',
 						'@deslop/coding-standards(no-single-use-value)',
 						'@deslop/coding-standards(no-single-use-value)',
+						...Array.replicate('@deslop/coding-standards(no-ternary)', 7),
 						'@deslop/coding-standards(no-trivial-indirection)',
 						'@deslop/coding-standards(no-trivial-indirection)'
 					])
 				}),
 			20_000
+		)
+
+		testApi.effect(
+			'fixes pipe methods, dropped causes, function bindings, returned ternaries, regex flags, empty arrays and renamed imports only where types still check',
+			() =>
+				Effect.gen(function* () {
+					const result = yield* lintSource(
+						{
+							'fixes.ts': Array.join(
+								[
+									"import {Array, Effect, Option as Maybe, Schema} from 'effect'",
+									"class Failed extends Schema.TaggedErrorClass<Failed>()('Failed', {cause: Schema.Defect, message: Schema.String}) {}",
+									'declare const work: Effect.Effect<number, string>',
+									'declare const value: object',
+									'declare const maybe: Maybe.Option<string>',
+									'declare const socket: {pipe: (target: unknown) => unknown}',
+									'export const piped = Effect.succeed(1).pipe(Effect.map(n => n + 1)).pipe(',
+									'	Effect.asVoid,',
+									')',
+									'export const streamed = socket.pipe(value)',
+									"export const decoded = Schema.decodeUnknownEffect(Schema.String)(value).pipe(Effect.mapError(() => Failed.make({message: 'bad'})))",
+									"export const absent = Effect.mapError(Effect.fromOption(maybe), () => Failed.make({message: 'none'}))",
+									'export const named = Effect.mapError(work, error => new Failed({message: error}))',
+									"export const caught = Effect.tryPromise({catch: () => Failed.make({message: 'down'}), try: () => fetch('/')})",
+									'export const read = (path: string): Effect.Effect<string> => Effect.succeed(path)',
+									'export const next = (count: number): number => count + 1',
+									'export function shown(panel: string | null) {',
+									"	if (panel === null) return ''",
+									'	const show = () => panel.length',
+									'	return show()',
+									'}',
+									'export function pick(flag: boolean, other: boolean) {',
+									"	return flag ? 'a' : other ? 'b' : 'c'",
+									'}',
+									"export const label = (done: boolean) => (done ? 'Done' : 'Running')",
+									'export const kept = (flag: boolean) => ({value: flag ? 1 : 2})',
+									'export const pattern = /a.b/i',
+									"export const keyed = 'key' in value",
+									'export const empties: string[] = []',
+									'export const wrapped = {Maybe}',
+									'export const titles = (notes: (typeof Note.Type)[]) => Array.map(notes, note => note.title)',
+									'export const Note = Schema.Struct({title: Schema.String})'
+								],
+								'\n'
+							),
+							// Every fix here would change types or evaluation order, so each stays reported only.
+							'kept.ts': Array.join(
+								[
+									"import {Array, Effect, Schema} from 'effect'",
+									"class Narrow extends Schema.TaggedErrorClass<Narrow>()('Narrow', {cause: Schema.String, message: Schema.String}) {}",
+									'declare const loaded: string | undefined',
+									'declare function step(): <A>(self: A) => A',
+									"if (loaded === undefined) throw new Error('missing')",
+									'export const size = () => loaded.length',
+									'export const frozen: readonly string[] = []',
+									'export const Label = Schema.String',
+									'export function shadowed(Label: typeof Schema.Number) {',
+									'	const parsed: typeof Label.Type = 1',
+									'	return Array.of(parsed)',
+									'}',
+									'export const ordered = Effect.succeed(2).pipe(Effect.asVoid).pipe(step())',
+									"export const narrowed = Effect.mapError(Effect.fail(1), () => Narrow.make({message: 'bad'}))",
+									'export const inherited = new RegExp(/a/u)'
+								],
+								'\n'
+							)
+						},
+						['--fix']
+					)
+					assert.deepStrictEqual(result.sources, [
+						Array.join(
+							[
+								"import {Array, Effect, Option, Schema, pipe} from 'effect'",
+								'',
+								"class Failed extends Schema.TaggedErrorClass<Failed>()('Failed', {cause: Schema.Defect, message: Schema.String}) {}",
+								'declare const work: Effect.Effect<number, string>',
+								'declare const value: object',
+								'declare const maybe: Option.Option<string>',
+								'declare const socket: {pipe: (target: unknown) => unknown}',
+								'export const piped = pipe(',
+								'	Effect.succeed(1),',
+								'	Effect.map(n => n + 1),',
+								'	Effect.asVoid',
+								')',
+								'export const streamed = socket.pipe(value)',
+								'export const decoded = pipe(',
+								'	Schema.decodeUnknownEffect(Schema.String)(value),',
+								"	Effect.mapError(cause => Failed.make({cause, message: 'bad'}))",
+								')',
+								"export const absent = Effect.mapError(Effect.fromOption(maybe), () => Failed.make({message: 'none'}))",
+								'export const named = Effect.mapError(work, error => new Failed({cause: error, message: error}))',
+								"export const caught = Effect.tryPromise({catch: cause => Failed.make({cause, message: 'down'}), try: () => fetch('/')})",
+								'export function read(path: string): Effect.Effect<string> {',
+								'	return Effect.succeed(path)',
+								'}',
+								'export function next(count: number) {',
+								'	return count + 1',
+								'}',
+								'export function shown(panel: string | null) {',
+								"	if (panel === null) return ''",
+								'	const show = () => panel.length',
+								'	return show()',
+								'}',
+								'export function pick(flag: boolean, other: boolean) {',
+								"	if (flag) return 'a'",
+								"	if (other) return 'b'",
+								"	return 'c'",
+								'}',
+								'export function label(done: boolean) {',
+								"	if (done) return 'Done'",
+								"	return 'Running'",
+								'}',
+								'export function kept(flag: boolean) {',
+								'	return {value: flag ? 1 : 2}',
+								'}',
+								'export const pattern = /a.b/iu',
+								"export const keyed = 'key' in value",
+								'export const empties = Array.empty<string>()',
+								'export const wrapped = {Maybe: Option}',
+								'export function titles(notes: Note[]) {',
+								'	return Array.map(notes, note => note.title)',
+								'}',
+								'export type Note = typeof Note.Type',
+								'export const Note = Schema.Struct({title: Schema.String})',
+								''
+							],
+							'\n'
+						),
+						Array.join(
+							[
+								"import {Array, Effect, Schema} from 'effect'",
+								'',
+								"class Narrow extends Schema.TaggedErrorClass<Narrow>()('Narrow', {cause: Schema.String, message: Schema.String}) {}",
+								'declare const loaded: string | undefined',
+								'declare function step(): <A>(self: A) => A',
+								"if (loaded === undefined) throw new Error('missing')",
+								'export const size = () => loaded.length',
+								'export const frozen: readonly string[] = []',
+								'export type Label = typeof Label.Type',
+								'export const Label = Schema.String',
+								'export function shadowed(Label: typeof Schema.Number) {',
+								'	const parsed: typeof Label.Type = 1',
+								'	return Array.of(parsed)',
+								'}',
+								'export const ordered = Effect.succeed(2).pipe(Effect.asVoid).pipe(step())',
+								"export const narrowed = Effect.mapError(Effect.fail(1), () => Narrow.make({message: 'bad'}))",
+								'export const inherited = new RegExp(/a/u)',
+								''
+							],
+							'\n'
+						)
+					])
+					// Left to the agent: a Node stream's pipe, a nested function, an `in` check, a typed return and kept.ts.
+					assert.deepStrictEqual(customCodes(result.stdout), [
+						'@deslop/coding-standards(function-declaration)',
+						'@deslop/coding-standards(function-declaration)',
+						'@deslop/coding-standards(no-in-operator)',
+						'@deslop/coding-standards(no-pipe-method)',
+						'@deslop/coding-standards(no-pipe-method)',
+						'@deslop/coding-standards(no-pipe-method)',
+						'@deslop/coding-standards(no-redundant-variable-annotation)',
+						'@deslop/coding-standards(no-return-type)',
+						'@deslop/coding-standards(no-ternary)',
+						'@deslop/coding-standards(no-trivial-indirection)',
+						'@deslop/coding-standards(no-trivial-indirection)',
+						'@deslop/coding-standards(preserve-error-cause)',
+						'@deslop/coding-standards(schema-type-pair)'
+					])
+				}),
+			60_000
 		)
 
 		testApi.effect(
@@ -968,44 +1112,35 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 
 		testApi.effect(
-			'follows cycles, alias chains, and destructured parameters',
+			'reports destructured parameters',
 			() =>
 				Effect.gen(function* () {
 					const result = yield* lintSource({
-						'cycles.ts': pipe(
+						'destructured.ts': pipe(
 							[
-								"import {Array, Context, Effect, Schema} from 'effect'",
+								"import {Array} from 'effect'",
 								'',
-								'type Tree = {readonly children: readonly Tree[]}',
-								'const Tree = Schema.Struct({Wrapper: Schema.String, children: Schema.Array(Schema.suspend((): Schema.Codec<Tree> => Tree))})',
-								'type Wrapper = {readonly tree: Tree}',
 								'const sizes = Array.map([[1, 2]], ([width]) => width)',
 								'for (const {length} of ["a"]) consume(length)',
 								'const labelOf = ({ref, label}: {ref: string; label: string}) => [ref, label]',
 								'declare function consume(value: number): void',
-								'type BaseShape = {count: Effect.Effect<number>}',
-								'type ServiceShape = BaseShape & {increment: Effect.Effect<void>}',
-								'class Counter extends Context.Service<Counter, ServiceShape>()("Counter") {}',
-								'export {Counter, Tree, labelOf, sizes}',
-								'export type {Wrapper}'
+								'export {labelOf, sizes}'
 							],
 							Array.join('\n')
 						)
 					})
 					assert.deepStrictEqual(customCodes(result.stdout), [
+						'@deslop/coding-standards(function-declaration)',
 						'@deslop/coding-standards(no-destructured-parameter)',
 						'@deslop/coding-standards(no-destructured-parameter)',
-						'@deslop/coding-standards(no-destructured-parameter)',
-						'@deslop/coding-standards(no-readonly-type-syntax)',
-						'@deslop/coding-standards(no-readonly-type-syntax)',
-						'@deslop/coding-standards(no-readonly-type-syntax)'
+						'@deslop/coding-standards(no-destructured-parameter)'
 					])
 				}),
 			20_000
 		)
 
 		testApi.effect(
-			'fixes readonly syntax, single-use values and property aliases without changing behavior',
+			'fixes single-use values and property aliases without changing behavior',
 			() =>
 				Effect.gen(function* () {
 					const result = yield* lintSource(
@@ -1016,9 +1151,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 									"import type {Effect} from 'effect'",
 									'declare const text: string',
 									'declare function consume(...values: unknown[]): number',
-									'export type Explicit = {readonly values: readonly string[]}',
-									'export type Mapped<T> = {readonly [K in keyof T]: T[K]}',
-									'export type Frozen = Readonly<{value: string}>',
 									'export class Clock extends Context.Service<Clock, {now: Effect.Effect<number>}>()("Clock") {}',
 									'export function sum() {',
 									'	const size = text.length + 1',
@@ -1029,7 +1161,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 									'	return consume({label})',
 									'}',
 									'declare const obj: {method: () => number; first: () => number; second: number; p: number; make: () => {Component: new () => object}}',
-									'export type Union = Readonly<string | number>[]',
 									'export function detached() {',
 									'	const method = obj.method',
 									'	return method()',
@@ -1106,10 +1237,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'',
 								'declare const text: string',
 								'declare function consume(...values: unknown[]): number',
-								'export type Explicit = {values: string[]}',
-								'export type Mapped<T> = {[K in keyof T]: T[K]}',
-								'export type Frozen = {value: string}',
-								"export class Clock extends Context.Service<Clock, {readonly now: Effect.Effect<number>}>()('Clock') {}",
+								"export class Clock extends Context.Service<Clock, {now: Effect.Effect<number>}>()('Clock') {}",
 								'export function sum() {',
 								'	return consume((text.length + 1) * 2)',
 								'}',
@@ -1123,7 +1251,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'	p: number',
 								'	make: () => {Component: new () => object}',
 								'}',
-								'export type Union = (string | number)[]',
 								'export function detached() {',
 								'	const method = obj.method',
 								'	return method()',
