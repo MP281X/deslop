@@ -376,7 +376,8 @@ const callTool = Effect.fnUntraced(function* (
 const exchange = Effect.fnUntraced(function* (
 	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
 	request: Effect.Success<ReturnType<typeof authorize>>,
-	code: string
+	code: string,
+	forwardedFor = '203.0.113.7'
 ) {
 	return yield* send(web, '/api/auth/oauth2/token', {
 		body: UrlParams.toString(
@@ -389,7 +390,7 @@ const exchange = Effect.fnUntraced(function* (
 				resource: request.resources
 			})
 		),
-		headers: {'content-type': 'application/x-www-form-urlencoded'},
+		headers: {'content-type': 'application/x-www-form-urlencoded', 'x-forwarded-for': forwardedFor},
 		method: 'POST'
 	})
 })
@@ -1279,5 +1280,44 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			assert.strictEqual((yield* refresh(web.issuer, request.clientId, next.refresh_token)).status, 400)
 		})
+	)
+
+	test.effect(
+		'replaces a sign-in of the same client and apps from the same address, and keeps one from elsewhere',
+		() =>
+			Effect.gen(function* () {
+				const web = yield* servers()
+				const admin = cookie(yield* signIn(web.issuer, 'octocat'))
+				const signInFrom = Effect.fnUntraced(function* (forwardedFor: string) {
+					const request = yield* authorize(web.issuer, admin, 'http://127.0.0.1:34567/callback', [
+						'https://scope.mp281x.xyz/mcp'
+					])
+					const exchanged = yield* exchange(
+						web.issuer,
+						request,
+						(yield* consent(web.issuer, request, true)).searchParams.get('code') ?? '',
+						forwardedFor
+					)
+					return {
+						clientId: request.clientId,
+						tokens: yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
+							yield* Effect.promise(() => exchanged.text())
+						)
+					}
+				})
+				const apps = Effect.flatMap(send(web.issuer, '/apps', {headers: {cookie: admin}}), response =>
+					Effect.flatMap(
+						Effect.promise(() => response.text()),
+						Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp)))
+					)
+				)
+				// Traefik appends the connecting address last; the entry before it is whatever the client sent.
+				const first = yield* signInFrom('198.51.100.1, 203.0.113.7')
+				yield* signInFrom('203.0.113.7')
+				assert.strictEqual((yield* apps).length, 1)
+				assert.strictEqual((yield* refresh(web.issuer, first.clientId, first.tokens.refresh_token)).status, 400)
+				yield* signInFrom('198.51.100.1')
+				assert.strictEqual((yield* apps).length, 2)
+			})
 	)
 })

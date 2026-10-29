@@ -1,4 +1,4 @@
-import {Array, Clock, DateTime, Duration, Effect, Match, Option, Schedule, Stream, String, pipe} from 'effect'
+import {Array, Clock, DateTime, Duration, Effect, Match, Number, Option, Schedule, Stream, String, pipe} from 'effect'
 
 import {FetchHttpClient, HttpClient, HttpClientRequest} from 'effect/http'
 import {Atom, AtomRpc} from 'effect/reactivity'
@@ -8,7 +8,7 @@ import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {typedCode} from '#services/authorizations/lib/utils.ts'
-import type {Account, AdmitParams, PendingAuthorization} from '#services/authorizations/schema.ts'
+import type {Account, AdmitParams, PendingAuthorization, SignedInApp} from '#services/authorizations/schema.ts'
 
 const authRuntime = Atom.runtime(FetchHttpClient.layer)
 
@@ -76,8 +76,11 @@ export const appsAtom = Atom.keepAlive(
 	)
 )
 
-export const disconnectAtom = RpcClient.runtime.fn((family: string) =>
-	Effect.flatMap(RpcClient, client => client('auth.disconnect', {family}))
+// One grid cell can hold the sign-ins of a client on several machines; signing out of it ends them all.
+export const disconnectAtom = RpcClient.runtime.fn((families: string[]) =>
+	Effect.flatMap(RpcClient, client =>
+		Effect.forEach(families, family => client('auth.disconnect', {family}), {concurrency: 'unbounded', discard: true})
+	)
 )
 
 export const admitAtom = RpcClient.runtime.fn((input: AdmitParams) =>
@@ -146,7 +149,7 @@ export function timeLabel(time: number) {
 	return pipe(DateTime.makeUnsafe(time), DateTime.formatLocal({hour: '2-digit', minute: '2-digit'}))
 }
 
-// The time once a minute, so "4 min ago" labels keep counting on an idle page.
+// The time once a minute, so "4m" labels keep counting on an idle page.
 export const minuteAtom = Atom.make(
 	pipe(
 		Stream.tick('1 minute'),
@@ -154,13 +157,24 @@ export const minuteAtom = Atom.make(
 	)
 )
 
-export function agoLabel(time: number, now: number) {
-	const minutes = Math.floor(Duration.toMinutes(DateTime.distance(DateTime.makeUnsafe(time), DateTime.makeUnsafe(now))))
-	if (minutes < 1) return 'just now'
-	if (minutes < 60) return `${minutes} min ago`
-	if (minutes < 1440) return `${Math.floor(minutes / 60)} h ago`
-	if (minutes < 2880) return 'yesterday'
-	return `${Math.floor(minutes / 1440)} days ago`
+export function minutesSince(time: number, now: number) {
+	return Math.floor(Duration.toMinutes(DateTime.distance(DateTime.makeUnsafe(time), DateTime.makeUnsafe(now))))
+}
+
+export function ageLabel(minutes: number) {
+	if (minutes < 1) return 'now'
+	if (minutes < 60) return `${minutes}m`
+	if (minutes < 1440) return `${Math.floor(minutes / 60)}h`
+	return `${Math.floor(minutes / 1440)}d`
+}
+
+// Claude Code names each MCP client after its server, "Claude Code (scope)"; the grid's column already says which.
+export function clientLabel(app: {clientName: string}) {
+	return String.trim(String.replace(/\s*\([^)]*\)$/u, '')(app.clientName))
+}
+
+export function newest(apps: SignedInApp[]) {
+	return Array.reduce(apps, 0, (latest, app) => Number.max(latest, app.lastActive))
 }
 
 export function dayLabel(time: number) {

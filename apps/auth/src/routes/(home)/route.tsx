@@ -1,16 +1,25 @@
 import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Option, pipe} from 'effect'
+import {Array, Boolean, Match, Option, String, pipe} from 'effect'
 
 import {Link, Outlet, createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {LoaderCircle, LogOut} from 'lucide-react'
+import {LoaderCircle} from 'lucide-react'
 import {Suspense} from 'react'
 
 import {Loading} from '@deslop/components-web/fallbacks'
 import {Button} from '@deslop/components-web/ui/button'
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuGroup,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger
+} from '@deslop/components-web/ui/dropdown-menu'
 
-import {Avatar, GitHubIcon, QrCode, Review} from '#lib/components.tsx'
+import {Avatar, GitHubIcon, QrCode, SignedInGrid} from '#lib/components.tsx'
 import {
 	accountAtom,
 	approveLink,
@@ -85,7 +94,11 @@ function Waiting(props: {account: Option.Option<Account>; id: string}) {
 					Option.filter(props.account, signed => signed.role !== 'Waiting'),
 					{
 						onNone: () => <CodeCard request={value.request} />,
-						onSome: signed => <Review account={signed} request={value.request} />
+						onSome: () => (
+							<Suspense fallback={<Loading />}>
+								<SignedInGrid pending={Option.some(value.request)} />
+							</Suspense>
+						)
 					}
 				)
 		})
@@ -162,19 +175,30 @@ function Shell() {
 				{Option.match(account, {
 					onNone: () => null,
 					onSome: signed => (
-						<>
-							<Avatar id={signed.id} name={signed.name} />
-							<span className="max-w-32 truncate text-sm">{signed.fullName ?? signed.name}</span>
-							<Button
-								variant="ghost"
-								size="icon-sm"
-								aria-label="Sign out"
-								disabled={AsyncResult.isWaiting(signOut)}
-								onClick={() => endSession()}
+						<DropdownMenu>
+							<DropdownMenuTrigger
+								aria-label="Account"
+								className="focus-visible:ring-ring outline-none focus-visible:ring-2"
 							>
-								<LogOut />
-							</Button>
-						</>
+								<Avatar id={signed.id} name={signed.name} />
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end" className="w-auto min-w-48">
+								<DropdownMenuGroup>
+									<DropdownMenuLabel>
+										<span className="text-foreground block text-sm">{signed.fullName ?? signed.name}</span>
+										{`@${signed.name} · ${String.toLowerCase(signed.role)}`}
+									</DropdownMenuLabel>
+								</DropdownMenuGroup>
+								<DropdownMenuSeparator />
+								<DropdownMenuItem
+									variant="destructive"
+									disabled={AsyncResult.isWaiting(signOut)}
+									onClick={() => endSession()}
+								>
+									Sign out
+								</DropdownMenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
 					)
 				})}
 			</header>

@@ -1,14 +1,29 @@
-import {useAtom} from '@effect/atom-react'
+import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Option, pipe} from 'effect'
+import {Array, Boolean, Option, Order, Record, String, pipe} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
+import {X} from 'lucide-react'
+import {useState} from 'react'
 import {toQR} from 'toqr'
 
 import {Button} from '@deslop/components-web/ui/button'
+import {cn} from '@deslop/components-web/utils'
 
-import {appNames, avatarUrl, consentAtom, requestCode, timeLabel} from '#lib/utils.ts'
-import type {Account, PendingAuthorization} from '#services/authorizations/schema.ts'
+import {
+	ageLabel,
+	appNames,
+	appsAtom,
+	avatarUrl,
+	clientLabel,
+	consentAtom,
+	disconnectAtom,
+	minuteAtom,
+	minutesSince,
+	newest,
+	timeLabel
+} from '#lib/utils.ts'
+import type {PendingAuthorization, SignedInApp} from '#services/authorizations/schema.ts'
 
 // The link as a QR code, one square per dark module, inside the quiet zone scanners need.
 export function QrCode(props: {className?: string; text: string}) {
@@ -44,64 +59,216 @@ export function GitHubIcon(props: {className?: string}) {
 	)
 }
 
-// An account's provider picture, with the provider's mark in its corner; GitHub is the only provider so far.
 export function Avatar(props: {id: string; name: string}) {
+	return <img src={avatarUrl(props.id)} alt={props.name} className="bg-muted size-6 shrink-0" />
+}
+
+function machines(count: number) {
+	if (count === 1) return '1 machine'
+	return `${count} machines`
+}
+
+// A first tap arms the cell, a second signs that client out of that app; leaving the cell disarms it.
+function Cell(props: {app: string; client: string; now: number; signIns: SignedInApp[]}) {
+	const [disconnection, disconnect] = useAtom(disconnectAtom)
+	const [armed, setArmed] = useState(false)
+	if (Array.isArrayEmpty(props.signIns)) {
+		return (
+			<td
+				className="text-muted-foreground/40 text-center"
+				aria-label={`${props.client} is not signed in to ${props.app}`}
+			>
+				·
+			</td>
+		)
+	}
+	const minutes = minutesSince(newest(props.signIns), props.now)
 	return (
-		<span className="relative size-8 shrink-0">
-			<img src={avatarUrl(props.id)} alt="" className="bg-muted size-8" />
-			<span className="bg-background text-foreground absolute -right-1 -bottom-1 grid size-4 place-items-center">
-				<GitHubIcon className="size-3" />
-			</span>
-			<span className="sr-only">{props.name} on GitHub</span>
-		</span>
+		<td className="p-0.5">
+			<Button
+				size="lg"
+				variant={Boolean.match(armed, {onFalse: () => 'secondary' as const, onTrue: () => 'destructive' as const})}
+				className="w-full flex-col gap-1 text-xs tabular-nums"
+				aria-label={Boolean.match(armed, {
+					onFalse: () =>
+						`${props.client} in ${props.app} on ${machines(props.signIns.length)}, active ${ageLabel(minutes)} ago; tap twice to sign out`,
+					onTrue: () => `Sign ${props.client} out of ${props.app}`
+				})}
+				disabled={AsyncResult.isWaiting(disconnection)}
+				onBlur={() => setArmed(false)}
+				onClick={() => {
+					if (armed) disconnect(Array.map(props.signIns, signIn => signIn.family))
+					setArmed(!armed)
+				}}
+			>
+				{Boolean.match(armed, {
+					// One square per machine, lit while it was active in the last hour.
+					onFalse: () => (
+						<>
+							{ageLabel(minutes)}
+							<span className="flex gap-0.5" aria-hidden="true">
+								{Array.map(props.signIns, signIn => (
+									<span
+										key={signIn.family}
+										className={cn(
+											'size-1',
+											minutesSince(signIn.lastActive, props.now) < 60 && 'bg-primary',
+											minutesSince(signIn.lastActive, props.now) >= 60 && 'bg-muted-foreground/50'
+										)}
+									/>
+								))}
+							</span>
+						</>
+					),
+					onTrue: () => <X />
+				})}
+			</Button>
+		</td>
 	)
 }
 
-// A waiting sign-in: which client, the apps it reaches and the account it signs in as, answered here; a failed answer stays to retry.
-export function Review(props: {account: Account; request: PendingAuthorization}) {
+// The waiting sign-in as the grid's top row: an outlined cell for each app it asks for.
+function PendingRow(props: {columns: string[]; request: PendingAuthorization}) {
+	const asked = appNames(props.request.resources)
+	return (
+		<tr>
+			<th scope="row" className="text-primary truncate pr-2 text-left text-xs font-normal">
+				{clientLabel(props.request)}
+			</th>
+			{Array.map(props.columns, column =>
+				Boolean.match(Array.contains(asked, column), {
+					onFalse: () => (
+						<td
+							key={column}
+							className="text-muted-foreground/40 text-center"
+							aria-label={`${clientLabel(props.request)} does not ask for ${column}`}
+						>
+							·
+						</td>
+					),
+					onTrue: () => (
+						<td key={column} className="p-0.5" aria-label={`${clientLabel(props.request)} asks for ${column}`}>
+							<span className="border-primary text-primary flex h-9 items-center justify-center border text-xs">
+								new
+							</span>
+						</td>
+					)
+				})
+			)}
+		</tr>
+	)
+}
+
+// A failed answer stays under the grid to retry.
+function Answer(props: {request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
 	return (
-		<section className="flex flex-col gap-3" aria-label="Sign-in request">
-			<h2 className="text-muted-foreground text-xs tracking-wider uppercase tabular-nums">
-				Sign-in request · {requestCode(props.request.id)}
-			</h2>
-			<div className="bg-card flex flex-col gap-3 p-4">
-				<div className="flex min-w-0 flex-col">
-					<span className="truncate text-sm">{props.request.clientName}</span>
-					<span className="text-muted-foreground truncate text-xs tabular-nums">
-						{Array.join(appNames(props.request.resources), ' · ')} · until {timeLabel(props.request.expiresAt)}
-					</span>
-				</div>
-				<p className="text-muted-foreground flex items-center gap-2 text-xs">
-					<Avatar id={props.account.id} name={props.account.name} />
-					as <span className="text-foreground truncate">{props.account.fullName ?? props.account.name}</span>
-				</p>
-				{Option.match(AsyncResult.error(consent), {
+		<>
+			{Option.match(AsyncResult.error(consent), {
+				onNone: () => null,
+				onSome: failure => (
+					<p className="text-destructive text-xs" role="alert">
+						{failure.message}
+					</p>
+				)
+			})}
+			<div className="grid grid-cols-2 gap-1.5 text-xs">
+				<Button
+					size="lg"
+					disabled={AsyncResult.isWaiting(consent)}
+					onClick={() => respond({accept: true, request: props.request})}
+				>
+					Approve {clientLabel(props.request)}
+				</Button>
+				<Button
+					size="lg"
+					variant="secondary"
+					disabled={AsyncResult.isWaiting(consent)}
+					onClick={() => respond({accept: false, request: props.request})}
+				>
+					Deny
+				</Button>
+			</div>
+		</>
+	)
+}
+
+// Clients down, apps across, last active first; a waiting sign-in sits on top, answered under the grid.
+export function SignedInGrid(props: {pending: Option.Option<PendingAuthorization>}) {
+	const apps = useAtomSuspense(appsAtom).value
+	const now = useAtomSuspense(minuteAtom).value
+	const [disconnection] = useAtom(disconnectAtom)
+	const asked = Option.match(props.pending, {onNone: () => [], onSome: request => appNames(request.resources)})
+	const columns = Array.sort(
+		Array.dedupe([...Array.flatMap(apps, app => appNames(app.resources)), ...asked]),
+		String.Order
+	)
+	const rows = pipe(
+		Array.groupBy(apps, clientLabel),
+		Record.toEntries,
+		Array.sort(Order.flip(Order.mapInput(Order.Number, (entry: [string, SignedInApp[]]) => newest(entry[1]))))
+	)
+	return (
+		<section className="flex flex-col gap-2" aria-label="Signed in">
+			<h2 className="text-muted-foreground flex justify-between text-xs tracking-wider uppercase">
+				Signed in
+				{Option.match(props.pending, {
 					onNone: () => null,
-					onSome: failure => (
-						<p className="text-destructive text-xs" role="alert">
-							{failure.message}
-						</p>
+					onSome: request => (
+						<span className="tracking-normal normal-case tabular-nums">until {timeLabel(request.expiresAt)}</span>
 					)
 				})}
-				<div className="grid grid-cols-2 gap-2">
-					<Button
-						size="lg"
-						disabled={AsyncResult.isWaiting(consent)}
-						onClick={() => respond({accept: true, request: props.request})}
-					>
-						Approve
-					</Button>
-					<Button
-						size="lg"
-						variant="secondary"
-						disabled={AsyncResult.isWaiting(consent)}
-						onClick={() => respond({accept: false, request: props.request})}
-					>
-						Deny
-					</Button>
-				</div>
-			</div>
+			</h2>
+			{Boolean.match(Array.isArrayEmpty(rows) && Option.isNone(props.pending), {
+				onFalse: () => (
+					<table className="w-full table-fixed border-collapse text-sm">
+						<thead>
+							<tr>
+								<th className="w-28">
+									<span className="sr-only">Client</span>
+								</th>
+								{Array.map(columns, column => (
+									<th key={column} scope="col" className="text-muted-foreground pb-1 text-xs font-normal">
+										{column}
+									</th>
+								))}
+							</tr>
+						</thead>
+						<tbody>
+							{Option.match(props.pending, {
+								onNone: () => null,
+								onSome: request => <PendingRow columns={columns} request={request} />
+							})}
+							{Array.map(rows, row => (
+								<tr key={row[0]}>
+									<th scope="row" className="text-muted-foreground truncate pr-2 text-left text-xs font-normal">
+										{row[0]}
+									</th>
+									{Array.map(columns, column => (
+										<Cell
+											key={column}
+											app={column}
+											client={row[0]}
+											now={now}
+											signIns={Array.filter(row[1], app => Array.contains(appNames(app.resources), column))}
+										/>
+									))}
+								</tr>
+							))}
+						</tbody>
+					</table>
+				),
+				onTrue: () => <p className="text-muted-foreground text-xs">No apps signed in</p>
+			})}
+			{Option.match(props.pending, {onNone: () => null, onSome: request => <Answer request={request} />})}
+			{Option.match(AsyncResult.error(disconnection), {
+				onNone: () => null,
+				onSome: failure => (
+					<p className="text-destructive text-xs" role="alert">
+						{failure.message}
+					</p>
+				)
+			})}
 		</section>
 	)
 }

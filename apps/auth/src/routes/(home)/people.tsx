@@ -1,6 +1,6 @@
 import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Option} from 'effect'
+import {Array, Boolean, Option} from 'effect'
 
 import {Navigate, createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
@@ -13,36 +13,40 @@ import {Avatar} from '#lib/components.tsx'
 import {accountAtom, admitAtom, dayLabel, peopleAtom, removeAtom} from '#lib/utils.ts'
 import type {Person} from '#services/authorizations/schema.ts'
 
-function AskingCard(props: {person: Person}) {
+function Identity(props: {detail: string; person: Person}) {
+	return (
+		<>
+			<Avatar id={props.person.id} name={props.person.name} />
+			<div className="flex min-w-0 grow flex-col">
+				<span className="truncate">{props.person.fullName ?? props.person.name}</span>
+				<span className="text-muted-foreground truncate">
+					@{props.person.name} · {props.detail}
+				</span>
+			</div>
+		</>
+	)
+}
+
+function AskingRow(props: {person: Person}) {
 	const [admit, answer] = useAtom(admitAtom)
 	return (
-		<li className="bg-card flex flex-col gap-3 p-4">
-			<div className="flex items-center gap-3">
-				<Avatar id={props.person.id} name={props.person.name} />
-				<div className="flex min-w-0 flex-col">
-					<span className="truncate text-sm">{props.person.fullName ?? props.person.name}</span>
-					<span className="text-muted-foreground truncate text-xs">
-						@{props.person.name} · asked {dayLabel(props.person.since)}
-					</span>
-				</div>
-			</div>
-			<div className="grid grid-cols-2 gap-2">
-				<Button
-					size="lg"
-					disabled={AsyncResult.isWaiting(admit)}
-					onClick={() => answer({allow: true, id: props.person.id})}
-				>
-					Allow
-				</Button>
-				<Button
-					size="lg"
-					variant="secondary"
-					disabled={AsyncResult.isWaiting(admit)}
-					onClick={() => answer({allow: false, id: props.person.id})}
-				>
-					Decline
-				</Button>
-			</div>
+		<li className="flex items-center gap-3 text-xs">
+			<Identity person={props.person} detail={dayLabel(props.person.since)} />
+			<Button
+				size="sm"
+				disabled={AsyncResult.isWaiting(admit)}
+				onClick={() => answer({allow: true, id: props.person.id})}
+			>
+				Allow
+			</Button>
+			<Button
+				size="sm"
+				variant="secondary"
+				disabled={AsyncResult.isWaiting(admit)}
+				onClick={() => answer({allow: false, id: props.person.id})}
+			>
+				Decline
+			</Button>
 		</li>
 	)
 }
@@ -50,18 +54,14 @@ function AskingCard(props: {person: Person}) {
 function MemberRow(props: {person: Person}) {
 	const [removal, remove] = useAtom(removeAtom)
 	return (
-		<li className="bg-card flex items-center gap-3 p-4">
-			<Avatar id={props.person.id} name={props.person.name} />
-			<div className="flex min-w-0 grow flex-col">
-				<span className="flex items-center gap-1.5 text-sm">
-					<span className="truncate">{props.person.fullName ?? props.person.name}</span>
-					{props.person.role === 'Admin' && <span className="bg-secondary text-primary px-1.5 text-xs">admin</span>}
-				</span>
-				<span className="text-muted-foreground truncate text-xs">
-					@{props.person.name}
-					{props.person.role === 'Member' && ` · since ${dayLabel(props.person.since)}`}
-				</span>
-			</div>
+		<li className="flex items-center gap-3 text-xs">
+			<Identity
+				person={props.person}
+				detail={Boolean.match(props.person.role === 'Admin', {
+					onFalse: () => `since ${dayLabel(props.person.since)}`,
+					onTrue: () => 'admin'
+				})}
+			/>
 			{props.person.role === 'Member' && (
 				<Button
 					size="sm"
@@ -85,22 +85,22 @@ function Directory() {
 	const error = Option.orElse(AsyncResult.error(admit), () => AsyncResult.error(removal))
 	return (
 		<>
-			<section className="flex flex-col gap-3" aria-label="Asking for access">
-				<h2 className="text-muted-foreground text-xs tracking-wider uppercase">Asking for access · {asking.length}</h2>
+			<section className="flex flex-col gap-2" aria-label="Asking for access">
+				<h2 className="text-muted-foreground text-xs tracking-wider uppercase">Asking · {asking.length}</h2>
 				{Array.match(asking, {
-					onEmpty: () => <p className="text-muted-foreground bg-card p-4 text-sm">No one is asking</p>,
+					onEmpty: () => <p className="text-muted-foreground text-xs">No one is asking</p>,
 					onNonEmpty: waiting => (
-						<ul className="flex flex-col gap-2">
+						<ul className="flex flex-col gap-3">
 							{Array.map(waiting, person => (
-								<AskingCard key={person.id} person={person} />
+								<AskingRow key={person.id} person={person} />
 							))}
 						</ul>
 					)
 				})}
 			</section>
-			<section className="flex flex-col gap-3" aria-label="With access">
+			<section className="flex flex-col gap-2" aria-label="With access">
 				<h2 className="text-muted-foreground text-xs tracking-wider uppercase">With access · {members.length}</h2>
-				<ul className="flex flex-col gap-2">
+				<ul className="flex flex-col gap-3">
 					{Array.map(members, person => (
 						<MemberRow key={person.id} person={person} />
 					))}

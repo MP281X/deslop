@@ -93,6 +93,7 @@ export const Stored = Schema.TaggedUnion({
 		verifier: Schema.NonEmptyString
 	},
 	Refresh: {
+		address: Schema.optionalKey(Schema.String),
 		clientId: Schema.NonEmptyString,
 		family: Schema.NonEmptyString,
 		resources: Schema.Array(Resource),
