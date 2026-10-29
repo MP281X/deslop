@@ -70,7 +70,12 @@ export function layer(applicationName: string) {
 }
 
 // Codex speaks MCP's stateless 2026-07-28 revision; Claude still opens a session, which it ends with DELETE.
-export function layerMcp(options: {instructions: string; name: string; version: string}) {
+export function layerMcp<RA, RE, RR>(options: {
+	instructions: string
+	name: string
+	registrations: Layer.Layer<RA, RE, RR>
+	version: string
+}) {
 	const resource = `https://${options.name}.mp281x.xyz/mcp`
 	return Layer.mergeAll(
 		pipe(

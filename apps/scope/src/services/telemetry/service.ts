@@ -3,7 +3,6 @@ import {
 	Boolean,
 	Clock,
 	Context,
-	Crypto,
 	Duration,
 	Effect,
 	FileSystem,
@@ -19,6 +18,7 @@ import {
 	pipe
 } from 'effect'
 
+import {SecureRandom} from 'effect/crypto'
 import {KeyValueStore} from 'effect/persistence'
 
 import {layerKeyValueStore} from '@deslop/runtime/server'
@@ -50,7 +50,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		const fs = yield* FileSystem.FileSystem
 		const path = yield* Path.Path
 		const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Entry)
-		const crypto = yield* Crypto.Crypto
+		const random = yield* SecureRandom.SecureRandom
 		const since = yield* Clock.currentTimeMillis
 		const rejections = yield* Ref.make(Record.empty<string, Rejection>())
 		const saved = yield* Effect.forEach(
@@ -117,7 +117,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 							)
 						),
 						item =>
-							Effect.map(pipe(crypto.randomUUIDv4(), failed), id => ({
+							Effect.map(random.uuidV4(), id => ({
 								durationMs: 0,
 								id,
 								name: logMessage(item.log.body ?? {}),

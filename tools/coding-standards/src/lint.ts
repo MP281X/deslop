@@ -284,7 +284,7 @@ export const lint: OxlintConfig = {
 					{message: 'Use public package exports.', regex: '^@[^/]+/[^/]+/(?:src|lib)(?:/|$)'},
 					{message: 'Use glob from the FileSystem service.', regex: '^glob(?:/|$)'},
 					{message: 'Use effect/cli.', regex: '^(?:commander|yargs)(?:/|$)'},
-					{message: 'Use randomUUIDv4 from the Crypto service.', regex: '^uuid(?:/|$)'},
+					{message: 'Use uuidV4 from the SecureRandom service in effect/crypto.', regex: '^uuid(?:/|$)'},
 					{message: 'Use HttpClient.', regex: '^(?:axios|node-fetch)(?:/|$)'},
 					{message: 'Use Config.', regex: '^dotenv(?:/|$)'},
 					{message: 'Use ChildProcess from effect/process.', regex: '^execa(?:/|$)'},
@@ -350,7 +350,7 @@ export const lint: OxlintConfig = {
 				property
 			})),
 			{message: 'Use Console.', object: 'window', property: 'console'},
-			{message: 'Use the Crypto service.', object: 'window', property: 'crypto'},
+			{message: 'Use the effect/crypto services.', object: 'window', property: 'crypto'},
 			{message: 'Use HttpClient.', object: 'window', property: 'fetch'},
 			{message: 'Use Clock.', object: 'window', property: 'performance'}
 		],

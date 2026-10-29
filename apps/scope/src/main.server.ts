@@ -1,7 +1,7 @@
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- NodeHttpServer requires the native server constructor at the application boundary.
 import {createServer} from 'node:http'
 
-import {NodeHttpClient, NodeHttpServer, NodeRuntime, NodeServices} from '@effect/platform-node'
+import {NodeCrypto, NodeHttpClient, NodeHttpServer, NodeRuntime, NodeServices} from '@effect/platform-node'
 
 import type {Schema} from 'effect'
 import {Array, ByteSize, Config, Effect, FileSystem, Layer, Path, String, pipe} from 'effect'
@@ -82,18 +82,13 @@ const observe = HttpMiddleware.make(app =>
 )
 
 // Public MCP clients authorize through the shared auth app.
-const mcp = pipe(
-	McpServer.toolkit(Tools),
-	Layer.provide(ToolHandlers),
-	Layer.provide(
-		ServerRuntime.layerMcp({
-			instructions:
-				"Scope is the debugger for the user's Effect apps. Start with list_services for ingestion freshness and rejected exports, then reproduce the action and use find_traces/read_trace or find_logs. Searches default to each service's latest process/page load/app launch; runs: all includes retained earlier runs in the lookback. read_trace always opens the whole stored trace. Use measure_latency on the same operation before and after a change. If tools are missing, check the client's MCP connection/authentication; stored OAuth credentials alone do not prove a working connection.",
-			name: 'scope',
-			version: packageJson.version
-		})
-	)
-)
+const mcp = ServerRuntime.layerMcp({
+	instructions:
+		"Scope is the debugger for the user's Effect apps. Start with list_services for ingestion freshness and rejected exports, then reproduce the action and use find_traces/read_trace or find_logs. Searches default to each service's latest process/page load/app launch; runs: all includes retained earlier runs in the lookback. read_trace always opens the whole stored trace. Use measure_latency on the same operation before and after a change. If tools are missing, check the client's MCP connection/authentication; stored OAuth credentials alone do not prove a working connection.",
+	name: 'scope',
+	registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers)),
+	version: packageJson.version
+})
 
 const telemetry = Layer.unwrap(
 	Effect.gen(function* () {
@@ -142,7 +137,7 @@ NodeRuntime.runMain(
 		Layer.provide(Auth.layer('https://otel.mp281x.xyz')),
 		Layer.provide(NodeHttpClient.layerFetch),
 		Layer.provide(telemetry),
-		Layer.provide(NodeServices.layer),
+		Layer.provide(Layer.merge(NodeCrypto.layer, NodeServices.layer)),
 		Layer.provide(Layer.succeed(HttpIncomingMessage.MaxBodySize)(ByteSize.mebibytes(10))),
 		Layer.launch
 	)

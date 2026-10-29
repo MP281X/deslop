@@ -4,7 +4,6 @@ import {
 	Clock,
 	Config,
 	Context,
-	Crypto,
 	Effect,
 	FileSystem,
 	HashSet,
@@ -27,6 +26,7 @@ import {
 	pipe
 } from 'effect'
 
+import {Digest, SecureRandom} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import type {Headers} from 'effect/http'
 import {
@@ -257,7 +257,8 @@ export class Authorizations extends Context.Service<
 						)
 					)
 				}
-				const random = yield* Crypto.Crypto
+				const random = yield* SecureRandom.SecureRandom
+				const digest = yield* Digest.Digest
 				const changes = yield* PubSub.sliding<true>(1)
 				const router = yield* HttpRouter.HttpRouter
 				const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
@@ -268,7 +269,7 @@ export class Authorizations extends Context.Service<
 					secret: Config.Redacted('GITHUB_CLIENT_SECRET')
 				})
 				const hash = Effect.fnUntraced(function* (value: string) {
-					return Base64Url.encode(yield* random.digest('SHA-256', new TextEncoder().encode(value)))
+					return Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(value)))
 				})
 				const mint = Effect.fnUntraced(function* (payload: Stored, seconds: number, draft: Ref.Ref<AuthState>) {
 					const token = Base64Url.encode(yield* random.randomBytes(32))

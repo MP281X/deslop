@@ -3,7 +3,6 @@ import {
 	Boolean,
 	Clock,
 	Context,
-	Crypto,
 	Effect,
 	HashSet,
 	Layer,
@@ -15,6 +14,7 @@ import {
 	pipe
 } from 'effect'
 
+import {SecureRandom} from 'effect/crypto'
 import {KeyValueStore} from 'effect/persistence'
 
 import {Extractor} from '#services/bookings/lib/extraction.ts'
@@ -47,7 +47,7 @@ export class Bookings extends Context.Service<
 		Effect.gen(function* () {
 			const places = yield* Places
 			const extractor = yield* Extractor
-			const crypto = yield* Crypto.Crypto
+			const random = yield* SecureRandom.SecureRandom
 			const kv = yield* KeyValueStore.KeyValueStore
 			const failed = Effect.mapError((cause: unknown) =>
 				BookingsError.make({cause, message: 'The trips storage failed.'})
@@ -71,11 +71,6 @@ export class Bookings extends Context.Service<
 				)
 			}
 
-			const id = pipe(
-				crypto.randomUUIDv4(),
-				Effect.mapError(cause => BookingsError.make({cause, message: 'No booking id.'}))
-			)
-
 			// Saved with its zone; an unplaced station of an Italian operator falls back to Italy's, another railway's fails the save.
 			const stationFor = Effect.fnUntraced(function* (name: string, operator: Train['operator']) {
 				const found = yield* Effect.option(places.station(name))
@@ -96,7 +91,7 @@ export class Bookings extends Context.Service<
 			const resolve = Effect.fnUntraced(function* (item: ExtractedItem) {
 				const base = {
 					createdAt: yield* Clock.currentTimeMillis,
-					id: yield* id,
+					id: yield* random.uuidV4(),
 					sources: ['pasted'],
 					status: item.status
 				}

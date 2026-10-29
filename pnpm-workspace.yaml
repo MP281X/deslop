@@ -29,7 +29,7 @@ peerDependencyRules:
 
 packageExtensions:
   # The published Node bundle imports Tensor without declaring its package.
-  '@huggingface/transformers@4.3.1':
+  '@huggingface/transformers@4.3.2':
     dependencies:
       onnxruntime-common: ^1.30
   # apple-targets 5.0.0 loads these without declaring them.

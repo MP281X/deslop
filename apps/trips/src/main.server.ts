@@ -1,4 +1,4 @@
-import {NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
+import {NodeCrypto, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
 
 import {Config, Effect, FileSystem, Layer, Path, pipe} from 'effect'
 
@@ -32,18 +32,13 @@ const layerStorage = Layer.unwrap(
 	})
 )
 
-const mcp = pipe(
-	McpServer.toolkit(Tools),
-	Layer.provide(ToolHandlers),
-	Layer.provide(
-		ServerRuntime.layerMcp({
-			instructions:
-				"Trips tracks the user's flights, trains and stays with live gates, delays, platforms and baggage belts. Use list_bookings for their travel plans or a journey's status; save_booking adds a confirmation, e-ticket or itinerary text they give you.",
-			name: 'trips',
-			version: packageJson.version
-		})
-	)
-)
+const mcp = ServerRuntime.layerMcp({
+	instructions:
+		"Trips tracks the user's flights, trains and stays with live gates, delays, platforms and baggage belts. Use list_bookings for their travel plans or a journey's status; save_booking adds a confirmation, e-ticket or itinerary text they give you.",
+	name: 'trips',
+	registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers)),
+	version: packageJson.version
+})
 
 NodeRuntime.runMain(
 	pipe(
@@ -63,7 +58,7 @@ NodeRuntime.runMain(
 		Layer.provide(Bookings.layer),
 		Layer.provide(Layer.mergeAll(Places.layer, Extractor.layer)),
 		Layer.provide(layerStorage),
-		Layer.provide(Layer.mergeAll(NodeHttpClient.layerFetch, NodeServices.layer)),
+		Layer.provide(Layer.mergeAll(NodeCrypto.layer, NodeHttpClient.layerFetch, NodeServices.layer)),
 		Layer.provide(ServerRuntime.layer('@deslop/trips')),
 		Layer.provide(ServerRuntime.layerNodeHttpServer),
 		Layer.launch

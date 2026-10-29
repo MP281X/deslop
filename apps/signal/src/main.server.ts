@@ -18,17 +18,12 @@ import {Game} from '#services/game/service.ts'
 import {Tools} from '#tools/contracts.ts'
 import {ToolHandlers} from '#tools/handlers.ts'
 
-const mcp = pipe(
-	McpServer.toolkit(Tools),
-	Layer.provide(ToolHandlers),
-	Layer.provide(
-		ServerRuntime.layerMcp({
-			instructions: "Read the app's name with name.",
-			name: 'signal',
-			version: packageJson.version
-		})
-	)
-)
+const mcp = ServerRuntime.layerMcp({
+	instructions: "Read the app's name with name.",
+	name: 'signal',
+	registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers)),
+	version: packageJson.version
+})
 
 NodeRuntime.runMain(
 	pipe(
