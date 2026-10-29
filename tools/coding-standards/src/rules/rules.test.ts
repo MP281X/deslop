@@ -332,8 +332,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'@deslop/coding-standards(no-trivial-indirection)',
 								'@deslop/coding-standards(no-trivial-indirection)',
 								'@deslop/coding-standards(no-trivial-indirection)',
-								'@deslop/coding-standards(no-undestructured-use-state)',
-								'@deslop/coding-standards(no-undestructured-use-state)',
 								'@deslop/coding-standards(no-unexplained-disable)',
 								'@deslop/coding-standards(no-unexplained-disable)',
 								'@deslop/coding-standards(no-unexplained-disable)',

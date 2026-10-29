@@ -1,6 +1,6 @@
 import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, MutableHashSet, Number, Option, pipe} from 'effect'
+import {Array, HashSet, Number, Option, pipe} from 'effect'
 
 import {ContentUnavailableView, ProgressView, Toolbar} from '@expo/ui/swift-ui'
 import {background, frame, navigationBarTitleDisplayMode, navigationTitle} from '@expo/ui/swift-ui/modifiers'
@@ -14,6 +14,9 @@ import {PageStrip} from '#modules/native/index.ts'
 import {byNumber} from '#services/chapters/lib/utils.ts'
 import type {ChapterList, Series} from '#services/chapters/schema.ts'
 
+// Immutable, so every reader starts from this one value and replaces it as chapters finish.
+const NOTHING_FINISHED = HashSet.empty<number>()
+
 // The strip grows into the next chapter as it is reached; no separate reading mode or navigation button.
 export function ReaderRoute(props: {chapters: ChapterList; number: number; series: Series; start?: number}) {
 	const read = useAtomSet(readAtom)
@@ -26,7 +29,7 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; serie
 	const [scrolledTo, setScrolledTo] = useState(Option.none<number>)
 	const previous = useRef(props.number)
 	// What this reader finished, so a page turn before the server's copy of the list arrives cannot unfinish it.
-	const [finished] = useState(MutableHashSet.empty<number>)
+	const finished = useRef(NOTHING_FINISHED)
 	const shown = Array.take(following, length)
 	// Where each chapter's first page sits in the strip.
 	const starts = Array.scan(shown, 0, (total, chapter) => total + chapter.pages.length)
@@ -86,7 +89,7 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; serie
 									{
 										onNone: () => undefined,
 										onSome: before => {
-											MutableHashSet.add(finished, before.number)
+											finished.current = HashSet.add(finished.current, before.number)
 											read({
 												done: true,
 												number: before.number,
@@ -100,10 +103,10 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; serie
 								previous.current = chapter.number
 								// A finished chapter stays finished while it is read again; only "Unread" in the list starts it over.
 								if (page === chapter.pages.length - 1 || chapter.reading?.done === true) {
-									MutableHashSet.add(finished, chapter.number)
+									finished.current = HashSet.add(finished.current, chapter.number)
 								}
 								read({
-									done: MutableHashSet.has(finished, chapter.number),
+									done: HashSet.has(finished.current, chapter.number),
 									number: chapter.number,
 									opened: true,
 									page,

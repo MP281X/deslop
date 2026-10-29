@@ -109,7 +109,7 @@ export const noDestructuredParameter = defineRule({
 			ForOfStatement: reportLoopVariable,
 			FunctionDeclaration: reportParameters,
 			FunctionExpression: reportParameters,
-			// Array patterns stay: no-undestructured-use-state requires the useState and useAtom tuples.
+			// Array patterns stay: react/hook-use-state requires the useState tuple, and useAtom's has the same shape.
 			VariableDeclarator: node => {
 				if (
 					node.id.type !== 'ObjectPattern' ||

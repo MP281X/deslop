@@ -22,7 +22,7 @@ import {useHotkeys} from '@tanstack/react-hotkeys'
 import {createFileRoute} from '@tanstack/react-router'
 import {Atom} from 'effect/reactivity'
 import {ArrowUpRight, MousePointer2} from 'lucide-react'
-import {Suspense, useEffect, useRef, useState, useSyncExternalStore} from 'react'
+import {Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react'
 
 import {Button} from '@deslop/components-web/ui/button'
 import {Dialog, DialogContent, DialogHeader, DialogTitle} from '@deslop/components-web/ui/dialog'
@@ -35,6 +35,8 @@ import {PortfolioColor} from '#services/presence/schema.ts'
 import type {PortfolioVisitor, PortfolioVisitors} from '#services/presence/schema.ts'
 
 const SECTION_KEYS = ['1', '2', '3', '4', '5', '6'] as const
+// A cursor not yet on screen: its empty viewport makes the first sync place it at its target instead of gliding there.
+const UNPLACED_MOTION = {lastFrameAt: 0, targetX: 0, targetY: 0, viewportHeight: 0, viewportWidth: 0, x: 0, y: 0}
 
 type Scene = {trails: PortfolioVisitors; visitors: PortfolioVisitors}
 
@@ -276,17 +278,13 @@ function CursorLabel(input: {label: string}) {
 // Another visitor's cursor glides behind the page towards each position the server reports.
 function VisitorCursor(input: {cursor: PortfolioVisitor; viewport: {width: number; height: number}}) {
 	const nodeRef = useRef<HTMLDivElement>(null)
-	const [initialMotion] = useState(() =>
-		createCursorMotion(
-			{x: input.cursor.x * input.viewport.width, y: input.cursor.y * input.viewport.height},
-			input.viewport
-		)
-	)
-	const motionRef = useRef(initialMotion)
+	const motionRef = useRef(UNPLACED_MOTION)
 	const animationFrameRef = useRef(0)
 
-	useEffect(() => {
+	// Before paint, so the cursor's first frame is already where the server put it.
+	useLayoutEffect(() => {
 		motionRef.current = syncCursorMotion(motionRef.current, input.cursor, input.viewport)
+		if (nodeRef.current !== null) setCursorTransform(nodeRef.current, motionRef.current.x, motionRef.current.y)
 
 		function tick(now: number) {
 			if (nodeRef.current === null) return
@@ -309,10 +307,7 @@ function VisitorCursor(input: {cursor: PortfolioVisitor; viewport: {width: numbe
 			ref={nodeRef}
 			aria-hidden
 			className="pointer-events-none fixed top-0 left-0 z-5 transform-(--cursor-transform) will-change-transform"
-			style={{
-				'--cursor-color': input.cursor.color,
-				'--cursor-transform': `translate3d(${initialMotion.x}px, ${initialMotion.y}px, 0)`
-			}}
+			style={{'--cursor-color': input.cursor.color}}
 		>
 			<CursorLabel label={input.cursor.name} />
 		</div>
