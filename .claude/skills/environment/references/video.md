@@ -27,7 +27,7 @@ A proof video is a short motion piece the user wants to watch; a raw recording o
 
 ```bash
 hf='vpx hyperframes@latest'
-export HYPERFRAMES_NO_TELEMETRY=1 HYPERFRAMES_SKIP_SKILLS=1 HYPERFRAMES_BROWSER_PATH=$(ls -d ~/.t3/tools/chrome-headless-shell/linux64/*/chrome-headless-shell | tail -1)
+export HYPERFRAMES_NO_TELEMETRY=1 HYPERFRAMES_SKIP_SKILLS=1 HYPERFRAMES_BROWSER_PATH=$(ls -d ~/.t3/tools/chrome-headless-shell/linux64/*/chrome-headless-shell | awk 'END {print}')
 $hf init <claim> --example blank --resolution <landscape|portrait> --non-interactive && mkdir <claim>/assets
 ffmpeg -i <recording> -vf 'crop=trunc(iw/16)*16:trunc(ih/16)*16:0:0' -r 30 -force_key_frames 'expr:gte(t,n_forced)' -c:v libx264 -pix_fmt yuv420p <claim>/assets/chapter-<n>.mp4
 $hf check && $hf render --quality delivery --output <claim>.mp4 # inside <claim>/
