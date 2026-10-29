@@ -72,8 +72,6 @@
 			"SendUserFile",
 			"ShareOnboardingGuide",
 			"EndConversation",
-			"Bash(python *)",
-			"Bash(python3 *)",
 			"Bash(sed -i*)",
 			"Bash(sed -E -i*)",
 			"Bash(sed --in-place*)",
