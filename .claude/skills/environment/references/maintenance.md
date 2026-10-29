@@ -11,6 +11,7 @@ Setup, upkeep and rebuild of the machines.
 | Hardware | VPS, 8 cores, 23 GB, 15 GB swap                           | Ryzen 9 9900X, 30 GB, 31 GB swap, 1 TB NVMe            |
 | Network  | Always on, public `77.237.236.132`; ufw allows 80 and 443 | On demand, home LAN on `eno1`; ufw denies all incoming |
 | GitLab   | Through the VPN; advertises the route to the tailnet      | Through dev's route (`--accept-routes`)                |
+| GPU      | None                                                      | NVIDIA GeForce RTX 5070, 12 GB; [setup](#desktop-gpu)  |
 
 - **Toolchain.** Docker with Compose and Buildx, `gh` with `github/gh-stack`, `glab`, git, build tools, rsync, ripgrep, jq, sqlite3, lsof, ffmpeg, ImageMagick, `dig`, `psql`. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code is in `~/.local/bin`. The first lines of `~/.bashrc`, above its interactive guard, put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`.
 - **Sign-ins.** Each worker signs in on its own: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login`, `codex login --device-auth`, and [MCP](#mcp-sign-in). Show each sign-in link to the user.
@@ -141,6 +142,7 @@ Fix what fails, then rerun the check:
 - Agent configuration per its **Check**, plus no dangling link under `~/.claude/skills` and `~/.codex/skills` except those staged for an unmerged rename; `~/deslop` is clean on `main` and current with `origin/main`.
 - The project scripts match on both workers (`jq '.projectSettingsOverrides'`, mapped by workspace root); otherwise copy per [T3 settings](#t3-settings).
 - `git config --global --get-regexp '^(rebase|push|fetch|rerere|diff|merge|init)\.'` lists the git defaults.
+- On desktop, run the [GPU check](#desktop-gpu), including after kernel or driver updates.
 
 ## Set up a worker
 
@@ -154,6 +156,7 @@ Start from a Debian netinst image with only the SSH server task.
 6. GitHub, GitLab, Claude and Codex sign-ins, `gh extension install github/gh-stack`, Git identity, clone both repositories and `t3 project add --title <name> <path>`. On dev, deploy.
 7. Install the agent configuration, copy the T3 settings from another worker, then MCP sign-in.
 8. After a key login from another machine works, write `/etc/ssh/sshd_config.d/10-keys-only.conf` with `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no`, `X11Forwarding no`, then `sudo sshd -t && sudo systemctl reload ssh`.
+9. Desktop only: configure the [GPU](#desktop-gpu).
 
 ```bash
 command -v tailscale >/dev/null || {
@@ -166,6 +169,25 @@ sudo tailscale up --accept-routes --advertise-routes=$R
 ```
 
 Show the user the `tailscale up` sign-in URL; the user disables key expiry and approves an advertised route at https://login.tailscale.com/admin/machines.
+
+## Desktop GPU
+
+**Driver.** The RTX 5070 (Blackwell) uses NVIDIA's open kernel modules, not Nouveau or Debian 13's stock 550 driver. Follow [NVIDIA's Debian guide](https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/debian.html) for its Debian 13 APT repository and headless compute packages; keep the text-mode worker free of a desktop stack and the full CUDA toolkit.
+
+```bash
+curl -fsSLo /tmp/cuda-keyring_1.1-1_all.deb https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64/cuda-keyring_1.1-1_all.deb
+sudo dpkg -i /tmp/cuda-keyring_1.1-1_all.deb
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends linux-headers-amd64 "linux-headers-$(uname -r)" nvidia-driver-cuda nvidia-kernel-open-dkms
+```
+
+**Secure Boot.** Keep it enabled. DKMS signs modules with `/var/lib/dkms/mok.key` and `/var/lib/dkms/mok.pub`; preserve that pair across updates. Check `sudo mokutil --sb-state` and `sudo mokutil --test-key /var/lib/dkms/mok.pub`. If the key is already enrolled, skip enrollment. Otherwise [MOK enrollment](https://wiki.debian.org/SecureBoot) needs physical confirmation before Linux boots; SSH cannot do it. Desktop normally has no monitor or keyboard: arrange a temporary pair or remote KVM before queuing enrollment and coordinate the restart with the user.
+
+1. Obtain a one-time password through `request_secret` with file delivery; feed it twice on stdin to `sudo mokutil --import /var/lib/dkms/mok.pub` without exposing it. Confirm the request with `sudo mokutil --list-new`.
+2. If the user needs to connect the monitor, power off, not reboot. Once connected, boot; at “Press any key to perform MOK management”, press a key promptly, then **Enroll MOK → Continue → Yes → temporary password → Reboot**.
+3. If enrollment is deferred, cancel the queued request with `sudo mokutil --revoke-import`; requeue it before the agreed boot. If the prompt was missed, check `--list-new` and requeue if empty before retrying.
+
+**Check.** After the agreed boot, `nvidia-smi` must list the RTX 5070 and `lspci -nnk -d 10de:` must show `Kernel driver in use: nvidia`. `sudo dkms status` must report the module installed for `uname -r`, the MOK test must report enrolled, and `systemctl --failed` must be empty. Inspect `sudo journalctl -k -b` for NVIDIA initialization failures or Xid errors. A successful package install or DKMS build alone is not an active driver; `Key was rejected by service` means enrollment is still missing. After updates, compare `sudo modinfo -F version nvidia` with `nvidia-smi`; coordinate a reboot when the loaded driver or running kernel lags the installed one, then recheck. `nvidia-smi`'s CUDA version describes driver compatibility, not an installed toolkit or a tested compute workload.
 
 ## Mac
 
