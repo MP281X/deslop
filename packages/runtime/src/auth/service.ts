@@ -142,10 +142,10 @@ export function layerMcpAuth(resource: string) {
 					const user = yield* Effect.result(auth.access(headers, resource))
 					if (Result.isFailure(user)) {
 						if (user.failure.error === 'temporarily_unavailable') return unavailable
-						return HttpServerResponse.text('The access token was rejected; sign in again with your MCP client', {
-							headers: {'www-authenticate': `${challenge}, error="invalid_token"`},
-							status: 401
-						})
+						return HttpServerResponse.text(
+							'The access token is invalid or expired; your MCP client refreshes it, and asks you to sign in again only if refreshing fails',
+							{headers: {'www-authenticate': `${challenge}, error="invalid_token"`}, status: 401}
+						)
 					}
 					return yield* Effect.provideService(app, CurrentUser, user.success)
 				})

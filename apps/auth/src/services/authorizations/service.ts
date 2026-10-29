@@ -546,7 +546,11 @@ export class Authorizations extends Context.Service<
 						yield* pendingRequest(params.request),
 						Effect.fromOption,
 						Effect.mapError(cause =>
-							AuthError.make({cause, message: 'No waiting sign-in has this code; start it again'})
+							AuthError.make({
+								cause,
+								message:
+									'No waiting sign-in has this code: it is mistyped, already answered or expired after 4 minutes. Read the code again from the page that is still waiting; start a new sign-in only if none is.'
+							})
 						)
 					)
 					yield* decide({accept: params.accept, request: request.id}, user)
