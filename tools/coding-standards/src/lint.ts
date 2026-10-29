@@ -49,7 +49,6 @@ import {noTernary} from '#rules/no-ternary.ts'
 import {noTrivialIndirection} from '#rules/no-trivial-indirection.ts'
 import {noTypeFromValue} from '#rules/no-type-from-value.ts'
 import {noTypeof} from '#rules/no-typeof.ts'
-import {noUndestructuredUseState} from '#rules/no-undestructured-use-state.ts'
 import {noUnexplainedDisable} from '#rules/no-unexplained-disable.ts'
 import {noUnvalidatedJsonDecode} from '#rules/no-unvalidated-json-decode.ts'
 import {preferEffectCountBy} from '#rules/prefer-effect-count-by.ts'
@@ -147,7 +146,6 @@ const RULES = {
 	'no-trivial-indirection': noTrivialIndirection,
 	'no-type-from-value': noTypeFromValue,
 	'no-typeof': noTypeof,
-	'no-undestructured-use-state': noUndestructuredUseState,
 	'no-unexplained-disable': noUnexplainedDisable,
 	'no-unvalidated-json-decode': noUnvalidatedJsonDecode,
 	'prefer-effect-count-by': preferEffectCountBy,
@@ -483,6 +481,7 @@ export const lint: OxlintConfig = {
 		'react/exhaustive-deps': 'error',
 		'react/exhaustive-effect-dependencies': 'error',
 		'react/globals': 'error',
+		'react/hook-use-state': 'error',
 		'react/hooks': 'error',
 		'react/iframe-missing-sandbox': 'error',
 		'react/immutability': 'error',
