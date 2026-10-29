@@ -3,7 +3,6 @@ import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-r
 import {Array, Boolean, HashSet, Match, Option, Schema, String, pipe} from 'effect'
 
 import {
-	BottomSheet,
 	Button,
 	ContentUnavailableView,
 	ContextMenu,
@@ -31,10 +30,8 @@ import {
 	alignmentGuide,
 	aspectRatio,
 	background,
-	buttonStyle,
 	clipShape,
 	contentShape,
-	controlSize,
 	font,
 	foregroundStyle,
 	frame,
@@ -50,7 +47,6 @@ import {
 	navigationTitle,
 	onAppear,
 	onTapGesture,
-	padding,
 	pickerStyle,
 	redacted,
 	resizable,
@@ -66,6 +62,7 @@ import {Linking} from 'react-native'
 
 import {Chip} from '@deslop/components-mobile/chip'
 import {BrandIcon} from '@deslop/components-mobile/icons'
+import {ClipboardSheet} from '@deslop/components-mobile/sheet'
 import {colors, mono} from '@deslop/components-mobile/theme'
 import {AppTitle} from '@deslop/components-mobile/title'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
@@ -273,7 +270,6 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 	)
 }
 
-// The sheet hangs off the title in the bar, so it adds nothing to the layout.
 function PasteSheet() {
 	const offer = pipe(useAtomValue(offerAtom), AsyncResult.getOrElse(Option.none))
 	const [answered, respond] = useAtom(answerAtom)
@@ -287,51 +283,14 @@ function PasteSheet() {
 		Option.match(open, {onNone: () => undefined, onSome: current => respond({...current, save})})
 	}
 	return (
-		<BottomSheet
+		<ClipboardSheet
 			anchor={<AppTitle logo={logo} name="stash" />}
-			isPresented={Option.isSome(open)}
-			onIsPresentedChange={presented => {
-				if (!presented) answer(false)
-			}}
-			fitToContents
-		>
-			<VStack
-				spacing={14}
-				modifiers={[
-					padding({bottom: 8, leading: 24, top: 28, trailing: 24}),
-					frame({maxWidth: Infinity}),
-					background(colors.background)
-				]}
-			>
-				<Image systemName={OFFERS[kind].symbol} size={24} modifiers={[foregroundStyle(colors.foreground)]} />
-				<Text modifiers={[mono('headline', 17), foregroundStyle(colors.foreground)]}>{OFFERS[kind].question}</Text>
-				<VStack spacing={4} modifiers={[padding({top: 6})]}>
-					<Button
-						onPress={() => answer(true)}
-						modifiers={[
-							buttonStyle('glassProminent'),
-							controlSize('large'),
-							tint(colors.primary),
-							foregroundStyle(colors.primaryForeground)
-						]}
-					>
-						<Text modifiers={[mono('headline', 16), frame({maxWidth: Infinity})]}>Save</Text>
-					</Button>
-					<Button onPress={() => answer(false)} modifiers={[buttonStyle('plain'), controlSize('large')]}>
-						<Text
-							modifiers={[
-								mono('body', 15),
-								foregroundStyle(colors.mutedForeground),
-								padding({vertical: 12}),
-								frame({maxWidth: Infinity})
-							]}
-						>
-							Not Now
-						</Text>
-					</Button>
-				</VStack>
-			</VStack>
-		</BottomSheet>
+			confirm="Save"
+			onAnswer={answer}
+			open={Option.isSome(open)}
+			question={OFFERS[kind].question}
+			symbol={OFFERS[kind].symbol}
+		/>
 	)
 }
 

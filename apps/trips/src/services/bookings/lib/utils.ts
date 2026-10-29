@@ -1,4 +1,4 @@
-import {Array, Boolean, DateTime, HashMap, HashSet, Number, Option, Order, Record, String, Struct, pipe} from 'effect'
+import {Array, Boolean, DateTime, Number, Option, Order, Record, String, Struct, pipe} from 'effect'
 
 import {ActivityProps} from '#services/bookings/schema.ts'
 import type {
@@ -220,19 +220,6 @@ export function upsert(current: BookingList, incoming: BookingList) {
 			}
 		)
 	)
-}
-
-// The bookings that changed identity or left, for the stream to the iPhone.
-export function diff(previous: BookingList, next: BookingList) {
-	const before = HashMap.fromIterable(Array.map(previous, booking => [booking.id, booking] as const))
-	const ids = HashSet.fromIterable(Array.map(next, booking => booking.id))
-	return {
-		removed: Array.filter(
-			Array.map(previous, booking => booking.id),
-			id => !HashSet.has(ids, id)
-		),
-		upserted: Array.filter(next, booking => !Option.exists(HashMap.get(before, booking.id), old => old === booking))
-	}
 }
 
 // Live checks

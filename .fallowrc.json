@@ -17,7 +17,7 @@
 					"apps/*/modules/native/index.ts",
 					"packages/components-*/src/**",
 					"packages/runtime/src/{web,mobile}/client.ts",
-					"packages/runtime/src/mobile/session.ts"
+					"packages/runtime/src/mobile/{session,keychain}.ts"
 				]
 			},
 			{
@@ -62,14 +62,17 @@
 			]
 		}
 	},
+	// Below these, the clones are imports, schema fields and SwiftUI modifier lists: shapes, not shared logic.
+	"duplicates": {"minTokens": 100, "minLines": 10},
 	"health": {
 		// No production coverage exists: estimated CRAP must not masquerade as measured risk.
 		"maxCrap": 0
 	},
 	"ignoreDependencies": [
 		"@expo-google-fonts/jetbrains-mono",
-		// The runtime's session imports it; each app keeps it so autolinking builds its native modules.
+		// The runtime's session and keychain import these two; each app keeps them so autolinking builds their native modules.
 		"expo-auth-session",
+		"expo-secure-store",
 		"expo-font",
 		"expo-updates",
 		"onnxruntime-common",

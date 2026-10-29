@@ -1,4 +1,4 @@
-import {Array, Function, HashMap, HashSet, Option, Order, Predicate, Record, String, pipe} from 'effect'
+import {Array, Function, Option, Order, Predicate, Record, String, pipe} from 'effect'
 
 import type {Note, NotesEvent} from '#services/notes/schema.ts'
 
@@ -140,18 +140,6 @@ export function tagCounts(notes: NotesEvent['upserted']) {
 			)
 		)
 	)
-}
-
-export function diff(previous: Note[], next: Note[]) {
-	const before = HashMap.fromIterable(Array.map(previous, note => [note.id, note] as const))
-	const ids = HashSet.fromIterable(Array.map(next, note => note.id))
-	return {
-		removed: Array.filter(
-			Array.map(previous, note => note.id),
-			id => !HashSet.has(ids, id)
-		),
-		upserted: Array.filter(next, note => !Option.exists(HashMap.get(before, note.id), old => old === note))
-	}
 }
 
 export function findNotes(notes: Note[], query: string) {

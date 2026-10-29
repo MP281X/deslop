@@ -1,25 +1,14 @@
-import {
-	Array,
-	Boolean,
-	Clock,
-	Context,
-	Effect,
-	HashSet,
-	Layer,
-	Option,
-	Stream,
-	Struct,
-	SubscriptionRef,
-	Tuple,
-	pipe
-} from 'effect'
+import type {Stream} from 'effect'
+import {Array, Boolean, Clock, Context, Effect, HashSet, Layer, Option, Struct, SubscriptionRef, Tuple} from 'effect'
 
 import {SecureRandom} from 'effect/crypto'
 import {KeyValueStore} from 'effect/persistence'
 
+import {listEvents} from '@deslop/runtime/server'
+
 import {Extractor} from '#services/bookings/lib/extraction.ts'
 import {Places} from '#services/bookings/lib/places.ts'
-import {byStart, diff, instantOf, upsert} from '#services/bookings/lib/utils.ts'
+import {byStart, instantOf, upsert} from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingSource, BookingsEvent, ExtractedItem, LocalTime} from '#services/bookings/schema.ts'
 import {BookingList, BookingsError, Flight, Place, Stay, Train} from '#services/bookings/schema.ts'
 
@@ -142,26 +131,7 @@ export class Bookings extends Context.Service<
 
 			return Bookings.of({
 				changes: SubscriptionRef.changes(state),
-				events: pipe(
-					SubscriptionRef.changes(state),
-					Stream.mapAccum(
-						() => Option.none<BookingList>(),
-						(previous, current: BookingList) =>
-							[
-								Option.some(current),
-								Option.match(previous, {
-									onNone: () => Array.of<BookingsEvent>({removed: [], reset: true, upserted: current}),
-									onSome: before => {
-										const changes = diff(before, current)
-										if (Array.isReadonlyArrayEmpty(changes.upserted) && Array.isReadonlyArrayEmpty(changes.removed)) {
-											return []
-										}
-										return Array.of<BookingsEvent>({...changes, reset: false})
-									}
-								})
-							] as const
-					)
-				),
+				events: listEvents(SubscriptionRef.changes(state)),
 				list: SubscriptionRef.get(state),
 				remove: Effect.fn('Bookings.remove')(function* (bookingId) {
 					yield* transact(current => {

@@ -79,6 +79,7 @@ export default defineConfig({
 				command: [
 					'fallow dead-code --format compact --fail-on-issues --quiet',
 					'fallow dead-code --production --format compact --fail-on-issues --quiet',
+					'fallow dupes --format compact --fail-on-issues --quiet',
 					'fallow health --complexity --format human --quiet'
 				]
 			},

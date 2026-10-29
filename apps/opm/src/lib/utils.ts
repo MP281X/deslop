@@ -5,11 +5,11 @@ import {AtomRpc, Atom} from 'effect/reactivity'
 import Constants from 'expo-constants'
 import {File, Paths} from 'expo-file-system'
 import * as Notifications from 'expo-notifications'
-import * as SecureStore from 'expo-secure-store'
 
 import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
+import {keychain} from '@deslop/runtime/mobile/keychain'
 import * as MobileSession from '@deslop/runtime/mobile/session'
 
 import {OpmNative} from '#modules/native/index.ts'
@@ -19,17 +19,10 @@ import type {ChaptersEvent, ChapterList, ReadingUpdate} from '#services/chapters
 import {ChapterItem} from '#services/chapters/schema.ts'
 
 const SERVER = 'https://opm.mp281x.xyz'
-const SESSION = 'session'
 
 // Auth
 
-export const session = MobileSession.make('opm', SERVER, {
-	clear: Effect.tryPromise(() => SecureStore.deleteItemAsync(SESSION)),
-	read: Effect.try(() => SecureStore.getItem(SESSION) ?? ''),
-	// Readable from the first unlock after a restart, so a socket that reconnects while the iPhone is locked finds it.
-	write: text =>
-		Effect.try(() => SecureStore.setItem(SESSION, text, {keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK}))
-})
+export const session = MobileSession.make('opm', SERVER, keychain)
 
 export const signInAtom = session.runtime.fn(() => pipe(session.signIn, alert('Not Signed In')))
 
