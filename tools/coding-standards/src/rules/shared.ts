@@ -42,11 +42,21 @@ export function variableFor(context: Context, node: ESTree.IdentifierReference) 
 // The names a file's imports bind, read once per file so a name no import binds skips scope analysis.
 const importedNames = new WeakMap<ESTree.Program, string[]>()
 
-function readImportedNames(program: ESTree.Program) {
-	const names = Array.flatMap(program.body, statement => {
-		if (statement.type !== 'ImportDeclaration') return []
-		return Array.map(statement.specifiers, specifier => specifier.local.name)
+// An ambient `declare module 'name' {}` block can hold imports of its own.
+function importNames(statements: ESTree.Statement[]): string[] {
+	return Array.flatMap(statements, statement => {
+		if (statement.type === 'ImportDeclaration') {
+			return Array.map(statement.specifiers, specifier => specifier.local.name)
+		}
+		if (statement.type === 'TSModuleDeclaration' && statement.body?.type === 'TSModuleBlock') {
+			return importNames(statement.body.body)
+		}
+		return []
 	})
+}
+
+function readImportedNames(program: ESTree.Program) {
+	const names = importNames(program.body)
 	importedNames.set(program, names)
 	return names
 }
