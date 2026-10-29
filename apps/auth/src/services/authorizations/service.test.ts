@@ -723,6 +723,94 @@ it.layer(NodeServices.layer)(test => {
 				})).status,
 				400
 			)
+			const response = yield* exchange(web.issuer, request, code)
+			const token = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
+				yield* Effect.promise(() => response.text())
+			)
+			assert.strictEqual(token.expires_in, 90_000)
+			// The scheme is case-insensitive and may be followed by several spaces.
+			assert.strictEqual(
+				(yield* send(web.app, '/me', {headers: {authorization: `bearer  ${token.access_token}`}})).status,
+				200
+			)
+			assert.strictEqual(
+				(yield* send(web.issuer, '/auth/verify?resource=https://scope.mp281x.xyz/mcp', {
+					headers: {authorization: `Bearer ${token.access_token}`}
+				})).status,
+				401
+			)
+			// A second redemption of the code revokes what the first one got.
+			assert.strictEqual((yield* exchange(web.issuer, request, code)).status, 400)
+			assert.strictEqual(
+				(yield* send(web.app, '/me', {headers: {authorization: `Bearer ${token.access_token}`}})).status,
+				401
+			)
+			assert.strictEqual((yield* refresh(web.issuer, request.clientId, token.refresh_token)).status, 400)
+		})
+	)
+
+	test.effect('keeps clients that are signed in or waiting when public registrations fill the client list', () =>
+		Effect.gen(function* () {
+			const web = yield* servers()
+			const session = cookie(yield* signIn(web.issuer, 'octocat'))
+			const request = yield* authorize(web.issuer, session, 'opm://auth/callback', [API])
+			const granted = yield* exchange(
+				web.issuer,
+				request,
+				(yield* consent(web.issuer, request, true)).searchParams.get('code') ?? ''
+			)
+			const token = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
+				yield* Effect.promise(() => granted.text())
+			)
+			const waiting = yield* authorize(web.issuer, session, 'trips://auth/callback', ['https://trips.mp281x.xyz'])
+			yield* Effect.forEach(
+				Array.range(1, 201),
+				() =>
+					send(web.issuer, '/api/auth/oauth2/register', {
+						body: '{"redirect_uris":["http://127.0.0.1:1/callback"]}',
+						headers: {'content-type': 'application/json'},
+						method: 'POST'
+					}),
+				{concurrency: 1, discard: true}
+			)
+			assert.strictEqual((yield* refresh(web.issuer, request.clientId, token.refresh_token)).status, 200)
+			// Its only callback stands in for a redirect_uri left out.
+			assert.match(
+				(yield* send(
+					web.issuer,
+					`/api/auth/oauth2/authorize?${UrlParams.toString(
+						UrlParams.fromInput({
+							client_id: request.clientId,
+							code_challenge: 'x',
+							code_challenge_method: 'S256',
+							resource: API,
+							response_type: 'code'
+						})
+					)}`
+				)).headers.get('location') ?? '',
+				/^\/\?request=/u
+			)
+			assert.strictEqual(
+				(yield* exchange(
+					web.issuer,
+					waiting,
+					(yield* consent(web.issuer, waiting, true)).searchParams.get('code') ?? ''
+				)).status,
+				200
+			)
+		})
+	)
+
+	test.effect('redeems a code once under concurrent exchanges and revokes what it gave', () =>
+		Effect.gen(function* () {
+			const web = yield* servers()
+			const request = yield* authorize(
+				web.issuer,
+				cookie(yield* signIn(web.issuer, 'octocat')),
+				'opm://auth/callback',
+				[API]
+			)
+			const code = (yield* consent(web.issuer, request, true)).searchParams.get('code') ?? ''
 			const responses = yield* Effect.all([exchange(web.issuer, request, code), exchange(web.issuer, request, code)], {
 				concurrency: 'unbounded'
 			})
@@ -733,21 +821,190 @@ it.layer(NodeServices.layer)(test => {
 				),
 				[200, 400]
 			)
-			const response = yield* Effect.fromOption(Array.findFirst(responses, item => item.status === 200))
+			const winner = yield* Effect.fromOption(Array.findFirst(responses, response => response.status === 200))
 			const token = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
-				yield* Effect.promise(() => response.text())
+				yield* Effect.promise(() => winner.text())
 			)
-			assert.strictEqual(token.expires_in, 90_000)
 			assert.strictEqual(
 				(yield* send(web.app, '/me', {headers: {authorization: `Bearer ${token.access_token}`}})).status,
-				200
-			)
-			assert.strictEqual(
-				(yield* send(web.issuer, '/auth/verify?resource=https://scope.mp281x.xyz/mcp', {
-					headers: {authorization: `Bearer ${token.access_token}`}
-				})).status,
 				401
 			)
+		})
+	)
+
+	test.effect('accepts what OAuth 2.1 leaves optional and answers errors where the client listens', () =>
+		Effect.gen(function* () {
+			const web = yield* servers()
+			const session = cookie(yield* signIn(web.issuer, 'octocat'))
+			const registered = yield* send(web.issuer, '/api/auth/oauth2/register', {
+				body: yield* Schema.encodeEffect(Schema.fromJsonString(Registration))({
+					client_name: 'codex',
+					redirect_uris: ['http://127.0.0.1:1455/callback', 'http://[::1]:1455/callback']
+				}),
+				headers: {'content-type': 'application/json'},
+				method: 'POST'
+			})
+			const registration = yield* Schema.decodeEffect(
+				Schema.fromJsonString(Schema.Struct({client_id: Schema.String, client_name: Schema.String}))
+			)(yield* Effect.promise(() => registered.text()))
+			assert.strictEqual(registration.client_name, 'codex')
+			const challenge = Base64Url.encode(
+				yield* (yield* Crypto.Crypto).digest('SHA-256', new TextEncoder().encode(VERIFIER))
+			)
+			const start = Effect.fnUntraced(function* (search: Record<string, string>) {
+				return yield* send(
+					web.issuer,
+					`/api/auth/oauth2/authorize?${UrlParams.toString(
+						UrlParams.fromInput({
+							client_id: registration.client_id,
+							code_challenge: challenge,
+							code_challenge_method: 'S256',
+							redirect_uri: 'http://127.0.0.1:1455/callback',
+							resource: 'https://scope.mp281x.xyz/mcp',
+							response_type: 'code',
+							...search
+						})
+					)}`
+				)
+			})
+			const location = Effect.fnUntraced(function* (search: Record<string, string>) {
+				return (yield* start(search)).headers.get('location') ?? ''
+			})
+			// A loopback callback may come back on another port, IPv6 too, and a request with an empty or no state still signs in.
+			assert.deepStrictEqual(
+				Array.map(
+					[
+						yield* location({redirect_uri: 'http://[::1]:61000/callback', state: ''}),
+						yield* location({redirect_uri: 'http://127.0.0.1:61000/callback'})
+					],
+					String.startsWith('/?request=')
+				),
+				[true, true]
+			)
+			// Anything else in the callback must match as written.
+			assert.deepStrictEqual(
+				[
+					(yield* start({redirect_uri: 'http://127.1:50123/callback'})).status,
+					(yield* start({redirect_uri: 'http://127.0.0.1:50123/other/../callback'})).status,
+					(yield* start({redirect_uri: ''})).status
+				],
+				[400, 400, 400]
+			)
+			const moved = yield* start({redirect_uri: 'http://127.0.0.1:50123/callback'})
+			assert.strictEqual(moved.status, 302)
+			const resources: Resource[] = ['https://scope.mp281x.xyz/mcp']
+			const callback = yield* consent(
+				web.issuer,
+				{
+					clientId: registration.client_id,
+					cookie: `${session}; ${cookie(moved)}`,
+					id: new URL(moved.headers.get('location') ?? '', AUTH_URL).searchParams.get('request') ?? '',
+					redirect: 'http://127.0.0.1:50123/callback',
+					resources
+				},
+				true
+			)
+			assert.strictEqual(callback.port, '50123')
+			assert.isFalse(callback.searchParams.has('state'))
+			const token = Effect.fnUntraced(function* (params: Record<string, string>) {
+				return yield* send(web.issuer, '/api/auth/oauth2/token', {
+					body: UrlParams.toString(UrlParams.fromInput(params)),
+					headers: {'content-type': 'application/x-www-form-urlencoded'},
+					method: 'POST'
+				})
+			})
+			const code = {
+				client_id: registration.client_id,
+				code: callback.searchParams.get('code') ?? '',
+				code_verifier: VERIFIER,
+				grant_type: 'authorization_code'
+			}
+			// A sent redirect_uri must match; left out, as OAuth 2.1 allows, the code still redeems.
+			assert.strictEqual((yield* token({...code, redirect_uri: 'http://127.0.0.1:9/elsewhere'})).status, 400)
+			const granted = yield* token({...code, redirect_uri: ''})
+			assert.strictEqual(granted.status, 200)
+			const refreshToken = (yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
+				yield* Effect.promise(() => granted.text())
+			)).refresh_token
+			// A sent client_id must match; left out, a public client still refreshes.
+			assert.deepStrictEqual(
+				[
+					(yield* token({client_id: 'another', grant_type: 'refresh_token', refresh_token: refreshToken})).status,
+					(yield* token({grant_type: 'refresh_token', refresh_token: refreshToken})).status
+				],
+				[400, 200]
+			)
+			// Once the client and callback check out, a bad request returns to the callback with its state and issuer.
+			const failed = new URL(yield* location({scope: 'admin', state: 'kept'}))
+			assert.deepStrictEqual(
+				[
+					failed.origin,
+					failed.searchParams.get('error'),
+					failed.searchParams.get('state'),
+					failed.searchParams.get('iss'),
+					String.isNonEmpty(failed.searchParams.get('error_description') ?? '')
+				],
+				['http://127.0.0.1:1455', 'invalid_scope', 'kept', `${AUTH_URL}/api/auth`, true]
+			)
+			const returned = Effect.fnUntraced(function* (search: Record<string, string>) {
+				return new URL(yield* location(search)).searchParams.get('error')
+			})
+			assert.deepStrictEqual(
+				[
+					yield* returned({response_type: 'token'}),
+					yield* returned({response_type: ''}),
+					yield* returned({resource: 'https://evil.test'})
+				],
+				['unsupported_response_type', 'invalid_request', 'invalid_target']
+			)
+			// An unknown client, a foreign callback or a left-out one among several never gets a redirect.
+			assert.deepStrictEqual(
+				[
+					(yield* start({redirect_uri: 'http://evil.test/callback'})).status,
+					(yield* send(
+						web.issuer,
+						`/api/auth/oauth2/authorize?${UrlParams.toString(
+							UrlParams.fromInput({client_id: registration.client_id, response_type: 'code'})
+						)}`
+					)).status
+				],
+				[400, 400]
+			)
+			const unknown = yield* send(web.issuer, '/api/auth/oauth2/authorize?client_id=unknown')
+			assert.strictEqual(unknown.status, 400)
+			const errors = yield* Effect.forEach(
+				[
+					send(web.issuer, '/api/auth/oauth2/token', {
+						body: 'grant_type=password',
+						headers: {'content-type': 'application/x-www-form-urlencoded'},
+						method: 'POST'
+					}),
+					send(web.issuer, '/api/auth/oauth2/register', {
+						body: '{"redirect_uris":["https://evil.test/callback"]}',
+						headers: {'content-type': 'application/json'},
+						method: 'POST'
+					}),
+					send(web.issuer, '/api/auth/oauth2/register', {
+						body: '{"redirect_uris":[]}',
+						headers: {'content-type': 'application/json'},
+						method: 'POST'
+					}),
+					Effect.succeed(unknown)
+				],
+				Effect.fnUntraced(function* (pending) {
+					const response = yield* pending
+					return (yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Struct({error: Schema.String})))(
+						yield* Effect.promise(() => response.text())
+					)).error
+				}),
+				{concurrency: 1}
+			)
+			assert.deepStrictEqual(errors, [
+				'unsupported_grant_type',
+				'invalid_redirect_uri',
+				'invalid_client_metadata',
+				'invalid_client'
+			])
 		})
 	)
 

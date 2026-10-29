@@ -41,17 +41,25 @@ import {
 } from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
-import {AuthError, User} from '@deslop/runtime/auth/schema'
+import {AuthError, Resource, User} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 import {AUTH_URL} from '@deslop/runtime/auth/utils'
 import {layerKeyValueStore} from '@deslop/runtime/server'
 
-import {allowedRedirect, cookieDomain, returnable, typedCode} from '#services/authorizations/lib/utils.ts'
+import {
+	allowedRedirect,
+	cookieDomain,
+	given,
+	matchingRedirect,
+	returnable,
+	typedCode
+} from '#services/authorizations/lib/utils.ts'
 import type {AdmitParams, PendingAuthorization, Role, MemberRow, Stored} from '#services/authorizations/schema.ts'
 import {
 	Account,
 	AuthState,
 	AuthorizationStatus,
+	AuthorizeClient,
 	AuthorizeParams,
 	CallbackParams,
 	ConsentParams,
@@ -62,6 +70,7 @@ import {
 	Registration,
 	RevokeParams,
 	SignInParams,
+	TokenGrant,
 	TokenParams,
 	VerificationParams
 } from '#services/authorizations/schema.ts'
@@ -123,17 +132,32 @@ function githubFailed(cause: unknown, flow: Option.Option<typeof Stored.cases.Lo
 	)
 }
 
-// Anyone can register a client, so only the newest stay; an agent whose client was dropped registers again.
-function newestClients(tokens: AuthState['tokens']) {
+// The clients a waiting sign-in, an unredeemed code or a live refresh token still belongs to.
+function clientsInUse(tokens: AuthState['tokens']) {
+	return Array.dedupe(
+		Array.flatMap(Record.values(tokens), entry => {
+			if (entry.payload._tag === 'Request' || entry.payload._tag === 'Code' || entry.payload._tag === 'Refresh') {
+				return [entry.payload.clientId]
+			}
+			return []
+		})
+	)
+}
+
+// Anyone can register a client, so only the newest stay besides those in use; an agent whose idle client was dropped registers again.
+function newestClients(tokens: AuthState['tokens'], inUse: HashSet.HashSet<string>) {
 	const kept = pipe(
 		Record.toEntries(tokens),
-		Array.filter(pair => pair[1].payload._tag === 'Client'),
+		Array.filter(pair => pair[1].payload._tag === 'Client' && !HashSet.has(inUse, pair[0])),
 		Array.sort(Order.flip(Order.mapInput(Order.Number, (pair: [string, {expiresAt: number}]) => pair[1].expiresAt))),
 		Array.take(200),
 		Array.map(pair => pair[0]),
 		HashSet.fromIterable
 	)
-	return Record.filter(tokens, (entry, key) => entry.payload._tag !== 'Client' || HashSet.has(kept, key))
+	return Record.filter(
+		tokens,
+		(entry, key) => entry.payload._tag !== 'Client' || HashSet.has(kept, key) || HashSet.has(inUse, key)
+	)
 }
 
 function revokeFamily(family: string, draft: Ref.Ref<AuthState>) {
@@ -145,11 +169,20 @@ function revokeFamily(family: string, draft: Ref.Ref<AuthState>) {
 				!(
 					(entry.payload._tag === 'Access' ||
 						entry.payload._tag === 'Refresh' ||
+						entry.payload._tag === 'UsedCode' ||
 						entry.payload._tag === 'UsedRefresh') &&
 					entry.payload.family === family
 				)
 		)
 	}))
+}
+
+// A replayed grant still changes state, revoking its family, so it answers instead of failing the transaction.
+function invalidGrant(message: string) {
+	return HttpServerResponse.jsonUnsafe(
+		{error: 'invalid_grant', error_description: message},
+		{headers: {'cache-control': 'no-store'}, status: 400}
+	)
 }
 
 // Removing an account signs it out everywhere: its session, its app tokens and any sign-in it approved but did not deliver.
@@ -256,6 +289,21 @@ export class Authorizations extends Context.Service<
 					const key = yield* hash(token)
 					yield* Ref.update(draft, current => ({...current, tokens: Record.remove(current.tokens, key)}))
 				})
+				// A redeemed grant keeps its expiry as a marker of its family, so its replay is caught.
+				const retire = Effect.fnUntraced(function* (
+					token: string,
+					payload: typeof Stored.cases.UsedCode.Type | typeof Stored.cases.UsedRefresh.Type,
+					draft: Ref.Ref<AuthState>
+				) {
+					const key = yield* hash(token)
+					yield* Ref.update(draft, current => ({
+						...current,
+						tokens: pipe(
+							Record.modify(current.tokens, key, entry => ({...entry, payload})),
+							Option.getOrElse(() => current.tokens)
+						)
+					}))
+				})
 				function isAdmin(id: string) {
 					return Array.contains(provider.admins, String.replace('github:', '')(id))
 				}
@@ -358,9 +406,15 @@ export class Authorizations extends Context.Service<
 					return yield* allowed(yield* signedIn(headers))
 				})
 				const access = Effect.fn('Auth.access')(function* (headers: Headers.Headers, resource: string) {
-					const authorization = headers['authorization'] ?? ''
-					if (!String.startsWith('Bearer ')(authorization)) return yield* AuthError.make({message: 'Sign in first'})
-					const stored = yield* load(String.slice(7)(authorization))
+					// RFC 9110 auth schemes are case-insensitive and may be followed by more than one space.
+					const stored = yield* pipe(
+						Option.flatMapNullishOr(
+							String.match(/^bearer +(?<token>\S+) *$/iu)(headers['authorization'] ?? ''),
+							found => found.groups?.['token']
+						),
+						Effect.fromOption,
+						Effect.flatMap(token => load(token))
+					)
 					if (stored._tag !== 'Access' || !Array.some(stored.resources, value => value === resource)) {
 						return yield* AuthError.make({message: 'The token is not valid for this app'})
 					}
@@ -612,7 +666,7 @@ export class Authorizations extends Context.Service<
 										})
 									}
 									const target = new URL(row.payload.redirectUri)
-									target.searchParams.set('state', row.payload.state)
+									if (row.payload.state !== undefined) target.searchParams.set('state', row.payload.state)
 									target.searchParams.set('iss', issuer)
 									if (row.payload.decision._tag === 'Approved') {
 										target.searchParams.set(
@@ -683,6 +737,80 @@ export class Authorizations extends Context.Service<
 					}
 					return params.resource
 				})
+				// A checked authorization request becomes a waiting sign-in under a fresh code, in this browser's cookie.
+				const waitingSignIn = Effect.fnUntraced(function* (
+					asked: AuthorizeClient,
+					registration: typeof Stored.cases.Client.Type,
+					redirectUri: string,
+					draft: Ref.Ref<AuthState>
+				) {
+					const params = yield* pipe(
+						HttpServerRequest.schemaSearchParams(AuthorizeParams),
+						rejected('Invalid authorization request')
+					)
+					if (Option.isNone(given(params.response_type))) {
+						return yield* AuthError.make({message: 'Send response_type=code'})
+					}
+					if (params.response_type !== 'code') {
+						return yield* AuthError.make({
+							error: 'unsupported_response_type',
+							message: 'Only response_type=code is supported'
+						})
+					}
+					if (params.code_challenge === undefined || params.code_challenge_method !== 'S256') {
+						return yield* AuthError.make({message: 'Send a PKCE code_challenge with code_challenge_method=S256'})
+					}
+					if (
+						!Array.every(
+							Array.filter(String.split(params.scope ?? '', ' '), String.isNonEmpty),
+							scope => scope === 'deslop' || scope === 'offline_access'
+						)
+					) {
+						return yield* AuthError.make({error: 'invalid_scope', message: 'Only the deslop scope is supported'})
+					}
+					const resources = yield* pipe(
+						Schema.decodeUnknownEffect(Schema.NonEmptyArray(Resource))(params.resource ?? []),
+						Effect.mapError(cause =>
+							AuthError.make({cause, error: 'invalid_target', message: 'Name a Deslop app with the resource parameter'})
+						)
+					)
+					const id = Array.join(
+						Array.map(Array.fromIterable(yield* random.randomBytes(8)), byte =>
+							pipe(
+								CODE_LETTERS,
+								String.charAt(byte % CODE_LETTERS.length),
+								Option.getOrElse(() => '')
+							)
+						),
+						''
+					)
+					// Two live sign-ins never share a code; one in about 10^10 draws repeats one, and its app simply starts again.
+					if (Option.isSome(yield* requestRow(id, draft))) {
+						return yield* AuthError.make({error: 'temporarily_unavailable', message: 'Start the sign-in again'})
+					}
+					const token = yield* mint(
+						{
+							_tag: 'Request',
+							challenge: params.code_challenge,
+							clientId: asked.client_id,
+							clientName: registration.name ?? 'Unknown client',
+							createdAt: yield* Clock.currentTimeMillis,
+							decision: {_tag: 'Pending'},
+							id,
+							redirectUri,
+							resources,
+							...Option.match(given(asked.state), {onNone: () => ({}), onSome: sent => ({state: sent})})
+						},
+						240,
+						draft
+					)
+					return HttpServerResponse.setCookieUnsafe(
+						HttpServerResponse.redirect(`/?request=${id}`),
+						`${REQUEST_COOKIE}${id}`,
+						token,
+						{...COOKIE, maxAge: '5 minutes'}
+					)
+				})
 
 				yield* router.add(
 					'GET',
@@ -708,24 +836,40 @@ export class Authorizations extends Context.Service<
 						Effect.gen(function* () {
 							const params = yield* pipe(
 								HttpServerRequest.schemaBodyJson(Registration),
-								rejected('Invalid client registration')
+								Effect.mapError(cause =>
+									AuthError.make({
+										cause,
+										error: 'invalid_client_metadata',
+										message: 'Send up to 4 redirect_uris of at most 200 characters and a client_name of at most 100'
+									})
+								)
 							)
 							if (!Array.every(params.redirect_uris, allowedRedirect)) {
-								return yield* AuthError.make({message: 'Use a Codex, Claude Code, Stash, opm or Trips callback'})
+								return yield* AuthError.make({
+									error: 'invalid_redirect_uri',
+									message: 'Use a loopback http://127.0.0.1 callback or a Stash, opm or Trips app callback'
+								})
 							}
+							const name = params.client_name ?? 'Unknown client'
 							return HttpServerResponse.jsonUnsafe(
 								{
 									client_id: yield* transact(draft =>
 										Effect.gen(function* () {
 											const token = yield* mint(
-												{_tag: 'Client', name: params.client_name ?? 'Unknown client', redirects: params.redirect_uris},
+												{_tag: 'Client', name, redirects: params.redirect_uris},
 												365 * 86_400,
 												draft
 											)
-											yield* Ref.update(draft, current => ({...current, tokens: newestClients(current.tokens)}))
+											const inUse = HashSet.fromIterable(
+												yield* Effect.forEach(clientsInUse((yield* Ref.get(draft)).tokens), hash, {
+													concurrency: 'unbounded'
+												})
+											)
+											yield* Ref.update(draft, current => ({...current, tokens: newestClients(current.tokens, inUse)}))
 											return token
 										})
 									),
+									client_name: name,
 									grant_types: ['authorization_code', 'refresh_token'],
 									redirect_uris: params.redirect_uris,
 									response_types: ['code'],
@@ -743,61 +887,34 @@ export class Authorizations extends Context.Service<
 						pipe(
 							transact(draft =>
 								Effect.gen(function* () {
-									const params = yield* pipe(
-										HttpServerRequest.schemaSearchParams(AuthorizeParams),
-										rejected('Invalid authorization request')
+									// Until the client and its callback check out, an error stays on this page: RFC 9700 §4.11 forbids redirecting it.
+									const asked = yield* pipe(
+										HttpServerRequest.schemaSearchParams(AuthorizeClient),
+										rejected('The authorization request names no client_id')
 									)
-									const registration = yield* load(params.client_id, draft)
-									if (registration._tag !== 'Client' || !Array.contains(registration.redirects, params.redirect_uri)) {
-										return yield* AuthError.make({
-											error: 'invalid_client',
-											message: 'The callback does not match the registered client'
-										})
-									}
-									if (
-										!Array.every(
-											String.split(params.scope ?? 'deslop', ' '),
-											scope => scope === 'deslop' || scope === 'offline_access'
+									const unregistered = AuthError.make({
+										error: 'invalid_client',
+										message: 'This client is not registered; start the sign-in again in the app'
+									})
+									const registration = yield* Effect.mapError(load(asked.client_id, draft), () => unregistered)
+									if (registration._tag !== 'Client') return yield* unregistered
+									const redirectUri = yield* pipe(
+										matchingRedirect(registration, given(asked.redirect_uri)),
+										Effect.fromOption,
+										Effect.mapError(cause =>
+											AuthError.make({cause, message: 'The callback does not match the registered client'})
 										)
-									) {
-										return yield* AuthError.make({error: 'invalid_scope', message: 'Only Deslop access is supported'})
-									}
-									const now = yield* Clock.currentTimeMillis
-									const id = Array.join(
-										Array.map(Array.fromIterable(yield* random.randomBytes(8)), byte =>
-											pipe(
-												CODE_LETTERS,
-												String.charAt(byte % CODE_LETTERS.length),
-												Option.getOrElse(() => '')
-											)
-										),
-										''
 									)
-									// Two live sign-ins never share a code; one in about 10^10 draws repeats one, and its app simply starts again.
-									if (Option.isSome(yield* requestRow(id, draft))) {
-										return yield* AuthError.make({message: 'Start the sign-in again'})
-									}
-									const token = yield* mint(
-										{
-											_tag: 'Request',
-											challenge: params.code_challenge,
-											clientId: params.client_id,
-											clientName: registration.name ?? 'Unknown client',
-											createdAt: now,
-											decision: {_tag: 'Pending'},
-											id,
-											redirectUri: params.redirect_uri,
-											resources: params.resource,
-											state: params.state
-										},
-										240,
-										draft
-									)
-									return HttpServerResponse.setCookieUnsafe(
-										HttpServerResponse.redirect(`/?request=${id}`),
-										`${REQUEST_COOKIE}${id}`,
-										token,
-										{...COOKIE, maxAge: '5 minutes'}
+									return yield* pipe(
+										waitingSignIn(asked, registration, redirectUri, draft),
+										Effect.catchIf(Schema.is(AuthError), failure => {
+											const target = new URL(redirectUri)
+											target.searchParams.set('error', failure.error ?? 'invalid_request')
+											target.searchParams.set('error_description', failure.message)
+											Option.map(given(asked.state), sent => target.searchParams.set('state', sent))
+											target.searchParams.set('iss', issuer)
+											return Effect.succeed(HttpServerResponse.redirect(target.href))
+										})
 									)
 								})
 							),
@@ -824,6 +941,16 @@ export class Authorizations extends Context.Service<
 					'/api/auth/oauth2/token',
 					oauth(
 						Effect.gen(function* () {
+							const grant = yield* pipe(
+								HttpServerRequest.schemaBodyUrlParams(TokenGrant),
+								rejected('Send a grant_type')
+							)
+							if (grant.grant_type !== 'authorization_code' && grant.grant_type !== 'refresh_token') {
+								return yield* AuthError.make({
+									error: 'unsupported_grant_type',
+									message: 'Use grant_type authorization_code or refresh_token'
+								})
+							}
 							const params = yield* pipe(
 								HttpServerRequest.schemaBodyUrlParams(TokenParams),
 								rejected('Invalid token request')
@@ -832,27 +959,28 @@ export class Authorizations extends Context.Service<
 								Effect.gen(function* () {
 									if (params.grant_type === 'authorization_code') {
 										const code = yield* load(params.code, draft)
+										if (code._tag === 'UsedCode') {
+											yield* revokeFamily(code.family, draft)
+											return invalidGrant(
+												'This authorization code was already used, so the tokens it gave are revoked; sign in again'
+											)
+										}
 										if (
 											code._tag !== 'Code' ||
 											code.clientId !== params.client_id ||
-											code.redirectUri !== params.redirect_uri ||
+											Option.exists(given(params.redirect_uri), sent => sent !== code.redirectUri) ||
 											code.challenge !== (yield* hash(params.code_verifier))
 										) {
 											return yield* AuthError.make({
 												error: 'invalid_grant',
-												message: 'The authorization code or verifier is invalid'
+												message: 'The authorization code, its client, callback or verifier do not match'
 											})
 										}
 										const resources = yield* tokenResources(params, code.resources)
-										yield* remove(params.code, draft)
+										const family = Base64Url.encode(yield* random.randomBytes(32))
+										yield* retire(params.code, {_tag: 'UsedCode', clientId: code.clientId, family}, draft)
 										return yield* grantTokens(
-											{
-												_tag: 'Refresh',
-												clientId: code.clientId,
-												family: Base64Url.encode(yield* random.randomBytes(32)),
-												resources: code.resources,
-												user: code.user
-											},
+											{_tag: 'Refresh', clientId: code.clientId, family, resources: code.resources, user: code.user},
 											resources,
 											draft
 										)
@@ -860,26 +988,23 @@ export class Authorizations extends Context.Service<
 									const refresh = yield* load(params.refresh_token, draft)
 									if (refresh._tag === 'UsedRefresh') {
 										yield* revokeFamily(refresh.family, draft)
-										return HttpServerResponse.jsonUnsafe(
-											{error: 'invalid_grant', error_description: 'Sign in again'},
-											{status: 400}
-										)
+										return invalidGrant('This refresh token was already used, so its sign-in is revoked; sign in again')
 									}
-									if (refresh._tag !== 'Refresh' || refresh.clientId !== params.client_id) {
-										return yield* AuthError.make({error: 'invalid_grant', message: 'The refresh token is invalid'})
+									if (
+										refresh._tag !== 'Refresh' ||
+										Option.exists(given(params.client_id), sent => sent !== refresh.clientId)
+									) {
+										return yield* AuthError.make({
+											error: 'invalid_grant',
+											message: 'The refresh token belongs to another client'
+										})
 									}
 									const resources = yield* tokenResources(params, refresh.resources)
-									const key = yield* hash(params.refresh_token)
-									yield* Ref.update(draft, current => ({
-										...current,
-										tokens: pipe(
-											Record.modify(current.tokens, key, entry => ({
-												...entry,
-												payload: {_tag: 'UsedRefresh' as const, clientId: refresh.clientId, family: refresh.family}
-											})),
-											Option.getOrElse(() => current.tokens)
-										)
-									}))
+									yield* retire(
+										params.refresh_token,
+										{_tag: 'UsedRefresh', clientId: refresh.clientId, family: refresh.family},
+										draft
+									)
 									return yield* grantTokens(refresh, resources, draft)
 								})
 							)

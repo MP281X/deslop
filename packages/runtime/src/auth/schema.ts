@@ -7,9 +7,13 @@ export class AuthError extends Schema.TaggedError<AuthError>()('AuthError', {
 		Schema.Literals([
 			'invalid_request',
 			'invalid_client',
+			'invalid_client_metadata',
+			'invalid_redirect_uri',
 			'invalid_grant',
 			'invalid_target',
 			'invalid_scope',
+			'unsupported_grant_type',
+			'unsupported_response_type',
 			'access_denied',
 			'temporarily_unavailable'
 		])
