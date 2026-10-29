@@ -1,4 +1,4 @@
-import {Array, Option, Predicate, pipe} from 'effect'
+import {Array, MutableList, Option, Predicate, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -123,10 +123,25 @@ function pairable(input: {
 	)
 }
 
+// `typeof Note.Type` outside its pair repeats the derivation the alias names.
+function queriedSchema(node: ESTree.TSTypeQuery) {
+	if (
+		node.exprName.type !== 'TSQualifiedName' ||
+		node.exprName.left.type !== 'Identifier' ||
+		node.exprName.right.name !== 'Type' ||
+		!matches(/^[A-Z]/u)(node.exprName.left.name) ||
+		(node.parent.type === 'TSTypeAliasDeclaration' && isInferredType({name: node.parent.id.name, node}))
+	) {
+		return Option.none()
+	}
+	return Option.some(node.exprName.left.name)
+}
+
 function reportSchemaVariable(input: {
 	context: Context
 	cycleNames: string[]
 	program: ESTree.Program
+	queries: ESTree.TSTypeQuery[]
 	statement: ESTree.Statement
 	variable: ESTree.VariableDeclarator
 }) {
@@ -174,10 +189,16 @@ function reportSchemaVariable(input: {
 					Array.head,
 					Option.getOrElse(() => input.statement)
 				).range[0]
+				// The file's other `typeof Name.Type` queries read the new alias in the same edit, so no pass leaves a query for it to flag.
 				return [
 					fixer.insertTextBeforeRange(
 						[start, start],
 						`${EXPORT_PREFIXES[input.statement.type] ?? ''}type ${name} = typeof ${name}.Type\n`
+					),
+					...pipe(
+						input.queries,
+						Array.filter(query => Option.contains(queriedSchema(query), name)),
+						Array.map(query => fixer.replaceText(query, name))
 					)
 				]
 			},
@@ -200,34 +221,48 @@ function reportSchemaVariable(input: {
 }
 
 export const schemaTypePair = defineRule({
-	createOnce: context => ({
-		'Program:exit': program => {
-			const cycleNames = schemaCycleNames({context, program})
-			for (const statement of program.body) {
-				const declaration = statementDeclaration(statement)
-				if (declaration?.type === 'VariableDeclaration') {
-					for (const variable of declaration.declarations) {
-						reportSchemaVariable({context, cycleNames, program, statement, variable})
+	create: context => {
+		const queries = MutableList.make<ESTree.TSTypeQuery>()
+		return {
+			'Program:exit': program => {
+				const cycleNames = schemaCycleNames({context, program})
+				const collected = MutableList.toArray(queries)
+				for (const statement of program.body) {
+					const declaration = statementDeclaration(statement)
+					if (declaration?.type === 'VariableDeclaration') {
+						for (const variable of declaration.declarations) {
+							reportSchemaVariable({context, cycleNames, program, queries: collected, statement, variable})
+						}
 					}
 				}
+				// A query is rewritten on its own only once the file already declares the alias.
+				const aliased = Array.flatMap(program.body, statement => {
+					const named = statementDeclaration(statement)
+					if (
+						named?.type !== 'TSTypeAliasDeclaration' ||
+						!isInferredType({name: named.id.name, node: named.typeAnnotation})
+					) {
+						return []
+					}
+					return [named.id.name]
+				})
+				for (const query of collected) {
+					Option.map(queriedSchema(query), name =>
+						context.report({
+							fix: fixer => {
+								if (!Array.contains(aliased, name)) return []
+								return fixer.replaceText(query, name)
+							},
+							message: `Read the type ${name}, declared as \`type ${name} = typeof ${name}.Type\` beside its Schema.`,
+							node: query
+						})
+					)
+				}
+			},
+			TSTypeQuery: node => {
+				MutableList.append(queries, node)
 			}
-		},
-		// `typeof Note.Type` outside its pair repeats the derivation the alias names.
-		TSTypeQuery: node => {
-			if (
-				node.exprName.type !== 'TSQualifiedName' ||
-				node.exprName.left.type !== 'Identifier' ||
-				node.exprName.right.name !== 'Type' ||
-				!matches(/^[A-Z]/u)(node.exprName.left.name) ||
-				(node.parent.type === 'TSTypeAliasDeclaration' && isInferredType({name: node.parent.id.name, node}))
-			) {
-				return
-			}
-			context.report({
-				message: `Read the type ${node.exprName.left.name}, declared as \`type ${node.exprName.left.name} = typeof ${node.exprName.left.name}.Type\` beside its Schema.`,
-				node
-			})
 		}
-	}),
+	},
 	meta: {fixable: 'code', type: 'problem'}
 })

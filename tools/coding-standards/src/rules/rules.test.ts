@@ -898,7 +898,9 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 									'export const pattern = /a.b/i',
 									"export const keyed = 'key' in value",
 									'export const empties: string[] = []',
-									'export const wrapped = {Maybe}'
+									'export const wrapped = {Maybe}',
+									'export const titles = (notes: (typeof Note.Type)[]) => Array.map(notes, note => note.title)',
+									'export const Note = Schema.Struct({title: Schema.String})'
 								],
 								'\n'
 							)
@@ -955,6 +957,11 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								"export const keyed = 'key' in value",
 								'export const empties = Array.empty<string>()',
 								'export const wrapped = {Maybe: Option}',
+								'export function titles(notes: Note[]) {',
+								'	return Array.map(notes, note => note.title)',
+								'}',
+								'export type Note = typeof Note.Type',
+								'export const Note = Schema.Struct({title: Schema.String})',
 								''
 							],
 							'\n'
