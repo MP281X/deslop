@@ -107,22 +107,23 @@ export function linkedCode() {
 	return typedCode(new URLSearchParams(location.search).get('code') ?? '')
 }
 
-export function applicationName(request: PendingAuthorization) {
-	return Array.match(
-		Array.dedupe(
-			Array.map(
-				Array.filter(request.resources, resource => resource !== 'https://otel.mp281x.xyz'),
-				resource =>
-					pipe(
-						new URL(resource).hostname,
-						String.split('.'),
-						Array.head,
-						Option.getOrElse(() => '')
-					)
-			)
-		),
-		{onEmpty: () => 'Tracing', onNonEmpty: found => Array.join(Array.map(found, String.capitalize), ' + ')}
+// The apps a sign-in reaches, by name; tracing rides along with every app, so it shows only alone.
+export function appNames(request: PendingAuthorization) {
+	const names = Array.dedupe(
+		Array.map(
+			Array.filter(request.resources, resource => resource !== 'https://otel.mp281x.xyz'),
+			resource =>
+				pipe(
+					new URL(resource).hostname,
+					String.split('.'),
+					Array.head,
+					Option.getOrElse(() => ''),
+					String.capitalize
+				)
+		)
 	)
+	if (Array.isReadonlyArrayEmpty(names)) return ['Tracing']
+	return names
 }
 
 export function timeLabel(time: number) {

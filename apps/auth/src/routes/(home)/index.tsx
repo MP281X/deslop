@@ -1,55 +1,41 @@
-import {useAtomSubscribe, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomSubscribe, useAtomSuspense} from '@effect/atom-react'
 
 import {Array, Boolean, Option} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
+import {Check, X} from 'lucide-react'
 import {Suspense, useState} from 'react'
 
-import {Loading} from '@deslop/components-web/fallbacks'
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
 
-import {RequestCard} from '#lib/components.tsx'
-import {accountAtom, applicationName, consentAtom, linkedCode, lookupAtom} from '#lib/utils.ts'
+import {Review} from '#lib/components.tsx'
+import {accountAtom, consentAtom, linkedCode, lookupAtom} from '#lib/utils.ts'
 import {typedCode} from '#services/authorizations/lib/utils.ts'
+import type {PendingAuthorization} from '#services/authorizations/schema.ts'
 
 const CODE_LENGTH = 8
 
-function Found(props: {code: string}) {
-	const account = useAtomSuspense(accountAtom).value
-	const waiting = useAtomSuspense(lookupAtom(props.code)).value
-	return Option.match(
-		Option.flatMap(account, signed => Option.map(waiting, request => ({request, signed}))),
-		{
-			onNone: () => (
-				<p className="text-destructive text-sm" role="alert">
-					No waiting sign-in has this code. Check it, or start the sign-in again.
-				</p>
-			),
-			onSome: found => <RequestCard account={found.signed} request={found.request} />
-		}
-	)
-}
+type Answer = {accept: boolean; request: PendingAuthorization}
 
-// The code the sign-in screen shows, typed or opened from its link, proves the request is yours: RFC 8628's device flow.
-function Approve() {
-	const consent = useAtomValue(consentAtom)
-	const [typed, setTyped] = useState(linkedCode)
-	// Only an answer that went through clears the code; a failed one keeps the card to try again.
-	useAtomSubscribe(consentAtom, result => {
-		if (AsyncResult.isSuccess(result)) setTyped('')
-	})
+// The last answer stays as one line under an empty code, ready for the next sign-in.
+function Enter(props: {
+	answered: Option.Option<Answer>
+	onType: (code: string) => void
+	state: 'Checking' | 'Missing' | 'Typing'
+	typed: string
+}) {
 	return (
-		<section className="flex flex-col gap-3" aria-label="Approve a sign-in">
+		<section className="flex flex-col gap-3">
 			<label htmlFor="code" className="text-muted-foreground text-xs tracking-wider uppercase">
-				Code from the sign-in screen
+				Enter a code
 			</label>
 			<InputOTP
 				id="code"
 				maxLength={CODE_LENGTH}
-				value={typed}
+				value={props.typed}
 				onChange={value => {
-					setTyped(typedCode(value))
+					props.onType(typedCode(value))
 				}}
 				pasteTransformer={typedCode}
 				pattern="^[A-Za-z]+$"
@@ -57,39 +43,95 @@ function Approve() {
 				autoFocus
 				autoComplete="off"
 				autoCapitalize="characters"
-				containerClassName="justify-center gap-2"
+				disabled={props.state === 'Checking'}
+				aria-invalid={props.state === 'Missing'}
+				aria-describedby="code-error"
+				containerClassName="gap-2"
 			>
-				<InputOTPGroup>
+				<InputOTPGroup className="flex-1">
 					{Array.map(Array.range(0, 3), index => (
-						<InputOTPSlot key={index} index={index} className="h-12 w-10 text-lg font-semibold" />
+						<InputOTPSlot
+							key={index}
+							index={index}
+							aria-invalid={props.state === 'Missing'}
+							className="h-12 flex-1 text-lg font-semibold"
+						/>
 					))}
 				</InputOTPGroup>
 				<InputOTPSeparator />
-				<InputOTPGroup>
+				<InputOTPGroup className="flex-1">
 					{Array.map(Array.range(4, 7), index => (
-						<InputOTPSlot key={index} index={index} className="h-12 w-10 text-lg font-semibold" />
+						<InputOTPSlot
+							key={index}
+							index={index}
+							aria-invalid={props.state === 'Missing'}
+							className="h-12 flex-1 text-lg font-semibold"
+						/>
 					))}
 				</InputOTPGroup>
 			</InputOTP>
-			{typed.length === CODE_LENGTH && (
-				<Suspense fallback={<Loading />}>
-					<Found key={typed} code={typed} />
-				</Suspense>
+			{props.state === 'Missing' && (
+				<p id="code-error" className="text-destructive text-xs" role="alert">
+					No waiting sign-in has this code.
+				</p>
 			)}
-			<p className="text-muted-foreground text-xs" role="status">
-				{Option.match(
-					Option.filter(AsyncResult.value(consent), () => AsyncResult.isSuccess(consent)),
-					{
-						onNone: () => '',
-						onSome: answered =>
-							`${applicationName(answered.request)} ${Boolean.match(answered.accept, {
-								onFalse: () => 'denied',
-								onTrue: () => 'approved'
-							})}`
-					}
-				)}
-			</p>
+			{Option.match(props.answered, {
+				onNone: () => null,
+				onSome: answer => (
+					<p className="text-muted-foreground flex items-center gap-1.5 text-xs" role="status">
+						{Boolean.match(answer.accept, {
+							onFalse: () => (
+								<>
+									<X className="size-3.5" />
+									{answer.request.clientName} denied
+								</>
+							),
+							onTrue: () => (
+								<>
+									<Check className="text-primary size-3.5" />
+									{answer.request.clientName} approved
+								</>
+							)
+						})}
+					</p>
+				)
+			})}
 		</section>
+	)
+}
+
+// A full code reads its sign-in, live, so a request answered elsewhere or expired goes back to the code.
+function Found(props: {code: string; onType: (code: string) => void}) {
+	const account = useAtomSuspense(accountAtom).value
+	const waiting = useAtomSuspense(lookupAtom(props.code)).value
+	return Option.match(
+		Option.flatMap(account, signed => Option.map(waiting, request => ({request, signed}))),
+		{
+			onNone: () => <Enter answered={Option.none()} onType={props.onType} state="Missing" typed={props.code} />,
+			onSome: found => <Review account={found.signed} request={found.request} />
+		}
+	)
+}
+
+// The code the waiting page shows, typed or opened from its link, proves the request is yours: RFC 8628's device flow.
+function Approve() {
+	const [typed, setTyped] = useState<string>(linkedCode)
+	const [answered, setAnswered] = useState(() => Option.none<Answer>())
+	// While the next answer is sent, the atom still holds the previous success, marked waiting.
+	useAtomSubscribe(consentAtom, result => {
+		if (!AsyncResult.isSuccess(result) || AsyncResult.isWaiting(result)) return
+		setAnswered(Option.some(result.value))
+		setTyped('')
+	})
+	function type(code: string) {
+		setAnswered(Option.none())
+		setTyped(code)
+	}
+	if (typed.length < CODE_LENGTH) return <Enter answered={answered} onType={type} state="Typing" typed={typed} />
+	return (
+		<Suspense fallback={<Enter answered={Option.none()} onType={type} state="Checking" typed={typed} />}>
+			<Found key={typed} code={typed} onType={type} />
+		</Suspense>
 	)
 }
 

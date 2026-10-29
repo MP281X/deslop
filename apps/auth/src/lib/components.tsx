@@ -1,13 +1,13 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Array, Option, String, pipe} from 'effect'
+import {Array, Option, pipe} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
 import {toQR} from 'toqr'
 
 import {Button} from '@deslop/components-web/ui/button'
 
-import {applicationName, avatarUrl, consentAtom, timeLabel} from '#lib/utils.ts'
+import {appNames, avatarUrl, consentAtom, requestCode, timeLabel} from '#lib/utils.ts'
 import type {Account, PendingAuthorization} from '#services/authorizations/schema.ts'
 
 // The link as a QR code, one square per dark module, inside the quiet zone scanners need.
@@ -57,52 +57,51 @@ export function Avatar(props: {id: string; name: string}) {
 	)
 }
 
-// A waiting sign-in with the account it signs in as, answered here; a failed answer stays on the card to retry.
-export function RequestCard(props: {account: Account; request: PendingAuthorization}) {
+// A waiting sign-in: which client, the apps it reaches and the account it signs in as, answered here; a failed answer stays to retry.
+export function Review(props: {account: Account; request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
-	function answer(accept: boolean) {
-		respond({accept, request: props.request})
-	}
 	return (
-		<div className="bg-card flex flex-col gap-3 p-4">
-			<div className="flex items-start gap-3">
-				<div className="flex min-w-0 grow flex-col">
-					<span className="truncate text-sm font-medium">
-						{Array.join(
-							Array.dedupeWith([applicationName(props.request), props.request.clientName], (left, right) =>
-								String.Equivalence(String.toLowerCase(left), String.toLowerCase(right))
-							),
-							' · '
-						)}
+		<section className="flex flex-col gap-3" aria-label="Sign-in request">
+			<h2 className="text-muted-foreground text-xs tracking-wider uppercase tabular-nums">
+				Sign-in request · {requestCode(props.request.id)}
+			</h2>
+			<div className="bg-card flex flex-col gap-3 p-4">
+				<div className="flex min-w-0 flex-col">
+					<span className="truncate text-sm">{props.request.clientName}</span>
+					<span className="text-muted-foreground truncate text-xs tabular-nums">
+						{Array.join(appNames(props.request), ' · ')} · until {timeLabel(props.request.expiresAt)}
 					</span>
-					<span className="text-muted-foreground truncate text-xs">{props.request.redirectUri}</span>
 				</div>
-				<span className="text-muted-foreground shrink-0 text-xs tabular-nums">
-					until {timeLabel(props.request.expiresAt)}
-				</span>
+				<p className="text-muted-foreground flex items-center gap-2 text-xs">
+					<Avatar id={props.account.id} name={props.account.name} />
+					as <span className="text-foreground truncate">{props.account.fullName ?? props.account.name}</span>
+				</p>
+				{Option.match(AsyncResult.error(consent), {
+					onNone: () => null,
+					onSome: failure => (
+						<p className="text-destructive text-xs" role="alert">
+							{failure.message}
+						</p>
+					)
+				})}
+				<div className="grid grid-cols-2 gap-2">
+					<Button
+						size="lg"
+						disabled={AsyncResult.isWaiting(consent)}
+						onClick={() => respond({accept: true, request: props.request})}
+					>
+						Approve
+					</Button>
+					<Button
+						size="lg"
+						variant="secondary"
+						disabled={AsyncResult.isWaiting(consent)}
+						onClick={() => respond({accept: false, request: props.request})}
+					>
+						Deny
+					</Button>
+				</div>
 			</div>
-			<div className="text-muted-foreground flex items-center gap-2 text-xs">
-				<Avatar id={props.account.id} name={props.account.name} />
-				<span className="truncate">
-					Signs in as <span className="text-foreground">{props.account.fullName ?? props.account.name}</span>
-				</span>
-			</div>
-			<div className="grid grid-cols-2 gap-2">
-				<Button size="lg" disabled={AsyncResult.isWaiting(consent)} onClick={() => answer(true)}>
-					Approve
-				</Button>
-				<Button size="lg" variant="secondary" disabled={AsyncResult.isWaiting(consent)} onClick={() => answer(false)}>
-					Deny
-				</Button>
-			</div>
-			{Option.match(AsyncResult.error(consent), {
-				onNone: () => null,
-				onSome: failure => (
-					<p className="text-destructive text-xs" role="alert">
-						{failure.message}
-					</p>
-				)
-			})}
-		</div>
+		</section>
 	)
 }
