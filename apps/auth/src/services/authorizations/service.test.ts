@@ -32,10 +32,12 @@ import {
 	AuthorizationStatus,
 	CodeParams,
 	ConsentParams,
+	FamilyParams,
 	PendingAuthorization,
 	Person,
 	Registration,
-	RequestParams
+	RequestParams,
+	SignedInApp
 } from '#services/authorizations/schema.ts'
 import {Authorizations} from '#services/authorizations/service.ts'
 import {layerMcp} from '#tools/handlers.ts'
@@ -105,7 +107,31 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 							)
 						),
 						pipe(
-							Layer.merge(
+							Layer.mergeAll(
+								HttpRouter.add(
+									'GET',
+									'/apps',
+									Effect.gen(function* () {
+										return yield* HttpServerResponse.schemaJson(Schema.Array(SignedInApp))(
+											yield* Effect.flatMap(
+												Stream.runHead((yield* Authorizations).apps(yield* CurrentUser)),
+												Effect.fromOption
+											)
+										)
+									})
+								),
+								HttpRouter.add(
+									'POST',
+									'/disconnect',
+									pipe(
+										Effect.gen(function* () {
+											const params = yield* HttpServerRequest.schemaSearchParams(FamilyParams)
+											yield* (yield* Authorizations).disconnect(params.family, yield* CurrentUser)
+											return HttpServerResponse.empty()
+										}),
+										Effect.catchTag('AuthError', () => Effect.succeed(HttpServerResponse.empty({status: 400})))
+									)
+								),
 								HttpRouter.add(
 									'GET',
 									'/lookup',
@@ -1195,6 +1221,62 @@ it.layer(NodeServices.layer)(test => {
 				401
 			)
 			assert.deepStrictEqual(yield* people(web.issuer, admin), ['octocat:Admin'])
+		})
+	)
+
+	test.effect('lists each app an account signed in to by its last refresh and disconnects only its own', () =>
+		Effect.gen(function* () {
+			const web = yield* servers()
+			const admin = cookie(yield* signIn(web.issuer, 'octocat'))
+			const request = yield* authorize(web.issuer, admin, 'http://127.0.0.1:34567/callback', [
+				'https://scope.mp281x.xyz/mcp'
+			])
+			const exchanged = yield* exchange(
+				web.issuer,
+				request,
+				(yield* consent(web.issuer, request, true)).searchParams.get('code') ?? ''
+			)
+			const granted = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
+				yield* Effect.promise(() => exchanged.text())
+			)
+			const apps = Effect.fnUntraced(function* (session: string) {
+				const response = yield* send(web.issuer, '/apps', {headers: {cookie: session}})
+				return yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp)))(
+					yield* Effect.promise(() => response.text())
+				)
+			})
+			const signedIn = yield* apps(admin)
+			assert.deepStrictEqual(
+				Array.map(signedIn, app => [app.clientName, app.resources]),
+				[['opencode', ['https://scope.mp281x.xyz/mcp']]]
+			)
+			yield* TestClock.adjust('1 hour')
+			const rotated = yield* refresh(web.issuer, request.clientId, granted.refresh_token)
+			const next = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
+				yield* Effect.promise(() => rotated.text())
+			)
+			const refreshed = yield* apps(admin)
+			assert.strictEqual(refreshed[0]?.lastActive, (signedIn[0]?.lastActive ?? 0) + 3_600_000)
+			const family = refreshed[0]?.family ?? ''
+			// Another account sees none of these and cannot disconnect them.
+			const agent = yield* agentToken(web.issuer, admin)
+			const stranger = cookie(yield* signIn(web.issuer, 'stranger'))
+			yield* callTool(web.issuer, agent, 'answer_access_request', {allow: true, login: 'stranger'})
+			assert.deepStrictEqual(yield* apps(stranger), [])
+			assert.strictEqual(
+				(yield* send(web.issuer, `/disconnect?family=${family}`, {headers: {cookie: stranger}, method: 'POST'})).status,
+				400
+			)
+			assert.strictEqual(
+				(yield* send(web.issuer, `/disconnect?family=${family}`, {headers: {cookie: admin}, method: 'POST'})).status,
+				204
+			)
+			// The agent's own sign-in stays; the disconnected app has to sign in again.
+			assert.deepStrictEqual(
+				Array.map(yield* apps(admin), app => app.resources),
+				[['https://auth.mp281x.xyz/mcp']]
+			)
+			assert.strictEqual((yield* refresh(web.issuer, request.clientId, next.refresh_token)).status, 400)
 		})
 	)
 })

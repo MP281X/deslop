@@ -1,4 +1,4 @@
-import {Array, DateTime, Effect, Match, Option, Schedule, Stream, String, pipe} from 'effect'
+import {Array, Clock, DateTime, Duration, Effect, Match, Option, Schedule, Stream, String, pipe} from 'effect'
 
 import {FetchHttpClient, HttpClient, HttpClientRequest} from 'effect/http'
 import {Atom, AtomRpc} from 'effect/reactivity'
@@ -64,6 +64,22 @@ export const peopleAtom = Atom.keepAlive(
 	)
 )
 
+// Live, so a new sign-in, each refresh and a disconnect from another page show here.
+export const appsAtom = Atom.keepAlive(
+	RpcClient.runtime.atom(
+		pipe(
+			RpcClient,
+			Effect.map(client => client('auth.apps', undefined)),
+			Stream.unwrap,
+			reconnecting
+		)
+	)
+)
+
+export const disconnectAtom = RpcClient.runtime.fn((family: string) =>
+	Effect.flatMap(RpcClient, client => client('auth.disconnect', {family}))
+)
+
 export const admitAtom = RpcClient.runtime.fn((input: AdmitParams) =>
 	Effect.flatMap(RpcClient, client => client('auth.admit', input))
 )
@@ -108,10 +124,10 @@ export function linkedCode() {
 }
 
 // The apps a sign-in reaches, by name; tracing rides along with every app, so it shows only alone.
-export function appNames(request: PendingAuthorization) {
+export function appNames(resources: PendingAuthorization['resources']) {
 	const names = Array.dedupe(
 		Array.map(
-			Array.filter(request.resources, resource => resource !== 'https://otel.mp281x.xyz'),
+			Array.filter(resources, resource => resource !== 'https://otel.mp281x.xyz'),
 			resource =>
 				pipe(
 					new URL(resource).hostname,
@@ -128,6 +144,23 @@ export function appNames(request: PendingAuthorization) {
 
 export function timeLabel(time: number) {
 	return pipe(DateTime.makeUnsafe(time), DateTime.formatLocal({hour: '2-digit', minute: '2-digit'}))
+}
+
+// The time once a minute, so "4 min ago" labels keep counting on an idle page.
+export const minuteAtom = Atom.make(
+	pipe(
+		Stream.tick('1 minute'),
+		Stream.mapEffect(() => Clock.currentTimeMillis)
+	)
+)
+
+export function agoLabel(time: number, now: number) {
+	const minutes = Math.floor(Duration.toMinutes(DateTime.distance(DateTime.makeUnsafe(time), DateTime.makeUnsafe(now))))
+	if (minutes < 1) return 'just now'
+	if (minutes < 60) return `${minutes} min ago`
+	if (minutes < 1440) return `${Math.floor(minutes / 60)} h ago`
+	if (minutes < 2880) return 'yesterday'
+	return `${Math.floor(minutes / 1440)} days ago`
 }
 
 export function dayLabel(time: number) {

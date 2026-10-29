@@ -54,7 +54,14 @@ import {
 	returnable,
 	typedCode
 } from '#services/authorizations/lib/utils.ts'
-import type {AdmitParams, PendingAuthorization, Role, MemberRow, Stored} from '#services/authorizations/schema.ts'
+import type {
+	AdmitParams,
+	PendingAuthorization,
+	Role,
+	MemberRow,
+	SignedInApp,
+	Stored
+} from '#services/authorizations/schema.ts'
 import {
 	Account,
 	AuthState,
@@ -82,6 +89,7 @@ const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as con
 const ROLE_ORDER = {Admin: 0, Member: 2, Waiting: 1} satisfies Record<Role, number>
 // A request's id is the code its sign-in page shows, in RFC 8628's user-code letters: no vowels and no letters that read alike.
 const CODE_LETTERS = 'BCDFGHJKLMNPQRSTVWXZ'
+const REFRESH_SECONDS = 30 * 86_400
 
 function rejected(message: string) {
 	return Effect.mapError(cause => {
@@ -212,6 +220,8 @@ export class Authorizations extends Context.Service<
 		readonly account: (headers: Headers.Headers) => Stream.Stream<Account, AuthError>
 		readonly admit: (params: AdmitParams, user: User) => Effect.Effect<Person, AuthError>
 		readonly answer: (params: ConsentParams, user: User) => Effect.Effect<{clientName: string}, AuthError>
+		readonly apps: (user: User) => Stream.Stream<SignedInApp[], AuthError>
+		readonly disconnect: (family: string, user: User) => Effect.Effect<void, AuthError>
 		readonly listPeople: (user: User) => Effect.Effect<Person[], AuthError>
 		readonly lookup: (
 			code: string,
@@ -651,6 +661,49 @@ export class Authorizations extends Context.Service<
 					yield* PubSub.publish(changes, true)
 					return person
 				}, rejected('Cannot remove this account'))
+				// Each app sign-in is one refresh-token family whose live token was minted at its last refresh, newest first.
+				const listApps = Effect.fn('Authorizations.listApps')(function* (user: User) {
+					const now = yield* Clock.currentTimeMillis
+					const current = yield* Ref.get(state)
+					const apps = yield* Effect.forEach(
+						Array.flatMap(Record.values(current.tokens), entry => {
+							if (entry.expiresAt <= now || entry.payload._tag !== 'Refresh' || entry.payload.user.id !== user.id) {
+								return []
+							}
+							return [{expiresAt: entry.expiresAt, grant: entry.payload}]
+						}),
+						Effect.fnUntraced(function* (row) {
+							const name = Option.flatMap(Record.get(current.tokens, yield* hash(row.grant.clientId)), entry => {
+								if (entry.payload._tag !== 'Client') return Option.none()
+								return Option.fromUndefinedOr(entry.payload.name)
+							})
+							return {
+								clientName: Option.getOrElse(name, () => 'Unknown client'),
+								family: row.grant.family,
+								lastActive: row.expiresAt - REFRESH_SECONDS * 1000,
+								resources: row.grant.resources
+							} satisfies SignedInApp
+						}),
+						{concurrency: 'unbounded'}
+					)
+					return Array.sort(apps, Order.flip(Order.mapInput(Order.Number, (app: SignedInApp) => app.lastActive)))
+				}, rejected('Cannot read the signed-in apps'))
+				const disconnect = Effect.fn('Authorizations.disconnect')(function* (family: string, user: User) {
+					yield* transact(draft =>
+						Effect.gen(function* () {
+							const owned = Array.some(
+								Record.values((yield* Ref.get(draft)).tokens),
+								entry =>
+									entry.payload._tag === 'Refresh' &&
+									entry.payload.family === family &&
+									entry.payload.user.id === user.id
+							)
+							if (!owned) return yield* AuthError.make({message: 'This app is already disconnected'})
+							yield* revokeFamily(family, draft)
+						})
+					)
+					yield* PubSub.publish(changes, true)
+				}, rejected('Cannot disconnect this app'))
 				const receive = Effect.fnUntraced(function* (id: string, headers: Headers.Headers) {
 					return yield* transact(draft =>
 						Effect.flatMap(receiver(id, headers, draft), result =>
@@ -724,7 +777,7 @@ export class Authorizations extends Context.Service<
 								draft
 							),
 							expires_in: seconds,
-							refresh_token: yield* mint({...grant, _tag: 'Refresh'}, 30 * 86_400, draft),
+							refresh_token: yield* mint({...grant, _tag: 'Refresh'}, REFRESH_SECONDS, draft),
 							scope: 'deslop',
 							token_type: 'Bearer'
 						},
@@ -959,7 +1012,7 @@ export class Authorizations extends Context.Service<
 								HttpServerRequest.schemaBodyUrlParams(TokenParams),
 								rejected('Invalid token request')
 							)
-							return yield* transact(draft =>
+							const response = yield* transact(draft =>
 								Effect.gen(function* () {
 									if (params.grant_type === 'authorization_code') {
 										const code = yield* load(params.code, draft)
@@ -1012,6 +1065,8 @@ export class Authorizations extends Context.Service<
 									return yield* grantTokens(refresh, resources, draft)
 								})
 							)
+							yield* PubSub.publish(changes, true)
+							return response
 						})
 					)
 				)
@@ -1024,7 +1079,7 @@ export class Authorizations extends Context.Service<
 								HttpServerRequest.schemaBodyUrlParams(RevokeParams),
 								rejected('Invalid revocation request')
 							)
-							return yield* transact(draft =>
+							yield* transact(draft =>
 								Effect.gen(function* () {
 									const token = yield* Effect.result(load(params.token, draft))
 									if (
@@ -1034,9 +1089,10 @@ export class Authorizations extends Context.Service<
 									) {
 										yield* revokeFamily(token.success.family, draft)
 									}
-									return HttpServerResponse.empty()
 								})
 							)
+							yield* PubSub.publish(changes, true)
+							return HttpServerResponse.empty()
 						})
 					)
 				)
@@ -1215,6 +1271,14 @@ export class Authorizations extends Context.Service<
 							account: headers => watch(account(headers), () => Infinity),
 							admit,
 							answer,
+							apps: user =>
+								watch(listApps(user), apps =>
+									pipe(
+										Array.map(apps, app => app.lastActive + REFRESH_SECONDS * 1000),
+										Array.reduce(Infinity, Number.min)
+									)
+								),
+							disconnect,
 							listPeople,
 							lookup: (code, headers) =>
 								watch(lookup(code, headers), found =>

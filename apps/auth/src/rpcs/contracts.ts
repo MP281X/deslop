@@ -10,10 +10,12 @@ import {
 	AdmitParams,
 	AuthorizationStatus,
 	CodeParams,
+	FamilyParams,
 	PendingAuthorization,
 	Person,
 	PersonParams,
-	RequestParams
+	RequestParams,
+	SignedInApp
 } from '#services/authorizations/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
@@ -25,7 +27,9 @@ export class RpcContracts extends RpcGroup.make(
 	}),
 	Rpc.make('auth.people', {error: AuthError, stream: true, success: Schema.Array(Person)}),
 	Rpc.make('auth.admit', {error: AuthError, payload: AdmitParams, success: Person}),
-	Rpc.make('auth.remove', {error: AuthError, payload: PersonParams, success: Person})
+	Rpc.make('auth.remove', {error: AuthError, payload: PersonParams, success: Person}),
+	Rpc.make('auth.apps', {error: AuthError, stream: true, success: Schema.Array(SignedInApp)}),
+	Rpc.make('auth.disconnect', {error: AuthError, payload: FamilyParams})
 )
 	.middleware(RpcAuth)
 	.merge(
