@@ -19,7 +19,8 @@ env:
   EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   APP_VARIANT: development
-  EAS: npx --yes eas-cli@latest
+  # Installed once per job with npm, because pnpm applies the workspace's strict peer checks to the EAS CLI's own dependencies.
+  EAS: eas
 
 jobs:
   # Each native fingerprint builds once for the iOS Simulator; agents replace its JavaScript bundle with their branch's.
@@ -32,6 +33,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: voidzero-dev/setup-vp@v1
         with: {node-version: '26', cache: true, run-install: true}
+      - run: npm install --global eas-cli@latest
 
       - name: Fingerprint
         id: fingerprint
@@ -62,8 +64,11 @@ jobs:
       GYM_XCARGS: ARCHS=arm64
     steps:
       - uses: actions/checkout@v5
+      # The Vite+ installer, CocoaPods and the Hermes tarball download with curl: a reset or a stalled transfer retries instead of failing the build or hanging for minutes.
+      - run: printf '%s\n' 'retry = 5' 'retry-all-errors' 'connect-timeout = 15' 'speed-limit = 10000' 'speed-time = 30' > ~/.curlrc
       - uses: voidzero-dev/setup-vp@v1
         with: {node-version: '26', cache: true, run-install: true}
+      - run: npm install --global eas-cli@latest
       # One cache for every app: their pods come from the same lockfile, and the Hermes tarball's mirror often stalls.
       - uses: actions/cache@v4
         with:

@@ -32,7 +32,7 @@ import {
 	tileKey,
 	tileOf
 } from '#services/world/lib/utils.ts'
-import type {Chunk, Field, Mover} from '#services/world/lib/utils.ts'
+import type {Chunk, Field, Ground, Mover} from '#services/world/lib/utils.ts'
 import {Material} from '#services/world/schema.ts'
 import type {Edit, TileChange} from '#services/world/schema.ts'
 
@@ -291,7 +291,7 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 	const home = places.home
 	const dock = {x: home.x, z: home.z + 2.5}
 	const silo = {x: home.x - 1, z: home.z}
-	const blocked = staticTiles(spawn)
+	const blocked = MutableHashSet.fromIterable(staticTiles(spawn))
 	const chunks = MutableHashMap.empty<number, Chunk>()
 	const fields = MutableHashMap.empty<number, Option.Option<Field>>()
 	const amounts = MutableHashMap.empty<number, number>()
@@ -386,13 +386,31 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 	// What one straight step costs a unit kind: roads are quick, mud slows wheels, buildings and impassable ground stop it.
 	function walker(kind: UnitKind) {
 		const mover = MOVERS[STATS[kind].mover]
-		return (x: number, z: number, dx: number, dz: number) => {
-			if (Array.contains(blocked, tileKey(x + dx, z + dz))) return Infinity
-			const to = ground(x + dx, z + dz)
-			if (!crossable(mover, ground(x, z), to, dx, dz)) return Infinity
+		// A search asks for each step up to five times, and nothing edits the ground while it runs.
+		const seen = MutableHashMap.empty<number, Ground>()
+		const costs = MutableHashMap.empty<number, number>()
+		function at(x: number, z: number) {
+			return Option.getOrElse(MutableHashMap.get(seen, tileKey(x, z)), () => {
+				const tile = ground(x, z)
+				MutableHashMap.set(seen, tileKey(x, z), tile)
+				return tile
+			})
+		}
+		function cost(x: number, z: number, dx: number, dz: number) {
+			if (MutableHashSet.has(blocked, tileKey(x + dx, z + dz))) return Infinity
+			const to = at(x + dx, z + dz)
+			if (!crossable(mover, at(x, z), to, dx, dz)) return Infinity
 			if (to.road) return 0.6
 			if (STATS[kind].mover === 'wheels' && Array.contains(MUD, to.ground)) return 2.5
 			return 1
+		}
+		return (x: number, z: number, dx: number, dz: number) => {
+			const key = tileKey(x, z) * 9 + (dx + 1) * 3 + (dz + 1)
+			return Option.getOrElse(MutableHashMap.get(costs, key), () => {
+				const found = cost(x, z, dx, dz)
+				MutableHashMap.set(costs, key, found)
+				return found
+			})
 		}
 	}
 
@@ -546,7 +564,7 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 		if (from.x === to.x && from.z === to.z) return moved
 		const open =
 			Math.abs(to.x - from.x) + Math.abs(to.z - from.z) === 1 &&
-			!Array.contains(blocked, tileKey(to.x, to.z)) &&
+			!MutableHashSet.has(blocked, tileKey(to.x, to.z)) &&
 			crossable(mover, ground(from.x, from.z), ground(to.x, to.z), to.x - from.x, to.z - from.z)
 		if (open) return moved
 		return at
@@ -1112,7 +1130,7 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 	// One straight step on legs: onto ground they stand on, over an edge they climb, never into a building.
 	function legStep(x: number, z: number, dx: number, dz: number) {
 		return (
-			!Array.contains(blocked, tileKey(x + dx, z + dz)) &&
+			!MutableHashSet.has(blocked, tileKey(x + dx, z + dz)) &&
 			standable(MOVERS.legs, ground(x + dx, z + dz)) &&
 			crossable(MOVERS.legs, ground(x, z), ground(x + dx, z + dz), dx, dz)
 		)
