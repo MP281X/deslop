@@ -1,4 +1,4 @@
-import {Array, MutableHashMap, MutableList, Number, Option, Record, String, Tuple} from 'effect'
+import {Array, MutableHashMap, MutableList, Number, Option, Record, Schema, String, Tuple} from 'effect'
 
 import * as THREE from 'three'
 import type {GLTF} from 'three/addons/loaders/GLTFLoader.js'
@@ -7,13 +7,13 @@ import {clone} from 'three/addons/utils/SkeletonUtils.js'
 
 import type {Renderer} from './-renderer.ts'
 
-import {RESEARCH} from '#services/game/lib/utils.ts'
+import {CREATURES, HOME_SIGHT, RESEARCH, STATS} from '#services/game/lib/utils.ts'
 import type {Act, Frame, Hud, UnitView} from '#services/game/schema.ts'
 import {ORES} from '#services/world/lib/utils.ts'
 
-// The clip each state plays, in order of preference: units idle, move and work; loaders fly and carry; hostiles idle, move and attack.
+// The clip each state plays, in order of preference: units idle, move and work; loaders fly and carry; hostiles idle, move and attack; creatures graze, walk, take off and flee.
 const CLIPS = {
-	alarm: ['move', 'fly', 'idle'],
+	alarm: ['flee', 'move', 'fly', 'idle'],
 	attack: ['attack', 'idle'],
 	die: ['idle', 'fly'],
 	idle: ['idle', 'fly'],
@@ -21,6 +21,8 @@ const CLIPS = {
 	work: ['work', 'carry', 'attack', 'idle']
 } satisfies Record<Act, string[]>
 const FLIERS = ['loader', 'rotor']
+// Creatures that stay level on any slope, and fish, which school at the water's surface.
+const UPRIGHT = ['fireflies', 'beetles', 'moths', 'jellies', 'fish', 'bird', 'heron']
 const MODELS = [
 	'burrower',
 	'cart',
@@ -41,7 +43,8 @@ const MODELS = [
 	'skiff',
 	'skimmer',
 	'strider',
-	'worker'
+	'worker',
+	...Record.keys(CREATURES)
 ]
 
 // Model files by name, as Vite serves them.
@@ -49,6 +52,8 @@ const URLS = import.meta.glob<string>('./-models/*.glb', {eager: true, import: '
 const TRACER = new THREE.MeshBasicMaterial({color: '#ffd98a', toneMapped: false})
 const POLE = new THREE.MeshStandardMaterial({color: '#8d8681', roughness: 0.6})
 const CLOTH = new THREE.MeshStandardMaterial({color: '#f4b860', roughness: 0.8, side: THREE.DoubleSide})
+const BOX = new THREE.BoxGeometry(0.4, 0.3, 0.5)
+const BOX_SKIN = new THREE.MeshStandardMaterial({color: '#e9e2d5'})
 
 type Actor = {
 	actions: MutableHashMap.MutableHashMap<string, THREE.AnimationAction>
@@ -56,6 +61,7 @@ type Actor = {
 	clip: string
 	dressed: boolean
 	fallen: number
+	ground: Option.Option<THREE.Object3D>
 	id: number
 	kind: string
 	mixer: Option.Option<THREE.AnimationMixer>
@@ -110,8 +116,66 @@ function nodesOf(root: THREE.Object3D) {
 	return MutableList.toArray(found)
 }
 
+// A soft round light, for the halos glowing creatures carry.
+function haloTexture() {
+	const size = 64
+	const data = new Uint8Array(size * size * 4)
+	for (const index of Array.range(0, size * size - 1)) {
+		const alpha =
+			Number.clamp(
+				1 - Math.hypot((index % size) - size / 2 + 0.5, Math.floor(index / size) - size / 2 + 0.5) / (size / 2),
+				{maximum: 1, minimum: 0}
+			) ** 2
+		data.set([255, 255, 255, Number.round(alpha * 255, 0)], index * 4)
+	}
+	const texture = new THREE.DataTexture(data, size, size)
+	texture.needsUpdate = true
+	return texture
+}
+
+const HALO = haloTexture()
+
+// The baked `glow_N` nodes become additive halos of their colour and size, from the extras the bake left on them.
+function halos(root: THREE.Object3D) {
+	for (const node of nodesOf(root)) {
+		Option.match(
+			Schema.decodeUnknownOption(Schema.Struct({color: Schema.String, opacity: Schema.Finite, size: Schema.Finite}))(
+				node.userData['glow']
+			),
+			{
+				onNone: () => undefined,
+				onSome: glow => {
+					const sprite = new THREE.Sprite(
+						new THREE.SpriteMaterial({
+							blending: THREE.AdditiveBlending,
+							color: glow.color,
+							depthWrite: false,
+							map: HALO,
+							opacity: glow.opacity,
+							toneMapped: false,
+							transparent: true
+						})
+					)
+					sprite.scale.setScalar(glow.size * 2)
+					sprite.userData['noAO'] = true
+					node.add(sprite)
+				}
+			}
+		)
+	}
+	return root
+}
+
+// The materials an actor made for itself, its cargo tint and halos, go with it; the models' shared geometry and materials stay.
+function release(actor: Actor) {
+	Option.match(actor.tint, {onNone: () => undefined, onSome: material => material.dispose()})
+	for (const node of nodesOf(actor.object)) {
+		if (node instanceof THREE.Sprite) node.material.dispose()
+	}
+}
+
 function placeholder() {
-	const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, 0.5), new THREE.MeshStandardMaterial({color: '#e9e2d5'}))
+	const mesh = new THREE.Mesh(BOX, BOX_SKIN)
 	mesh.position.y = 0.15
 	const group = new THREE.Group()
 	group.add(mesh)
@@ -139,6 +203,7 @@ export function createCast(view: Renderer) {
 		built: '',
 		count: 0,
 		flags: '',
+		home: Option.none<{x: number; z: number}>(),
 		ingots: Array.empty<THREE.Object3D>(),
 		mixers: Array.empty<THREE.AnimationMixer>(),
 		research: 0,
@@ -170,8 +235,14 @@ export function createCast(view: Renderer) {
 		if (actor === undefined || actor.dressed) return
 		const gltf = Option.getOrUndefined(MutableHashMap.get(models, actor.kind))
 		if (gltf === undefined) return
-		const object = shaded(clone(gltf.scene))
+		const object = halos(shaded(clone(gltf.scene)))
 		const mixer = new THREE.AnimationMixer(object)
+		// A creature's baked ground (a fish's pond, a bird's perch) stays behind: fish swim in the world's water, and a bird keeps its perch only while it sits.
+		actor.ground = Option.fromNullishOr(object.getObjectByName('ground'))
+		Option.match(
+			Option.filter(actor.ground, () => actor.kind === 'fish'),
+			{onNone: () => undefined, onSome: ground => ground.scale.setScalar(0)}
+		)
 		object.position.copy(actor.object.position)
 		view.scene.remove(actor.object)
 		view.scene.add(object)
@@ -196,6 +267,7 @@ export function createCast(view: Renderer) {
 			clip: '',
 			dressed: false,
 			fallen: 0,
+			ground: Option.none(),
 			id: unit.id,
 			kind: unit.kind,
 			mixer: Option.none(),
@@ -236,6 +308,8 @@ export function createCast(view: Renderer) {
 		if (at === undefined) return actor.object.position.y
 		if (Array.contains(FLIERS, actor.kind)) return at.ground + 1.1 + Math.sin(state.seconds * 1.7 + actor.id) * 0.04
 		if (actor.kind === 'skiff' && at.liquid > 0) return Number.max(at.ground, at.surface) + 0.05
+		// Fish school just under the surface.
+		if (actor.kind === 'fish') return Number.max(at.ground, at.surface - 0.19)
 		return at.ground
 	}
 
@@ -262,7 +336,9 @@ export function createCast(view: Renderer) {
 		)
 		actor.object.rotation.set(0, 0, 0)
 		actor.object.rotateY(actor.yaw)
-		if (Array.contains(FLIERS, actor.kind)) return
+		const perch = Option.getOrUndefined(Option.filter(actor.ground, () => actor.kind !== 'fish'))
+		if (perch !== undefined) perch.visible = actor.target.act === 'idle'
+		if (Array.contains(FLIERS, actor.kind) || Array.contains(UPRIGHT, actor.kind)) return
 		actor.object.rotateX(pitch * 0.8)
 		actor.object.rotateZ(roll * 0.8 + actor.fallen * 1.2)
 	}
@@ -294,6 +370,18 @@ export function createCast(view: Renderer) {
 			// A unit that is down holds still.
 			Option.match(actor.mixer, {onNone: () => undefined, onSome: mixer => mixer.update(delta * (1 - actor.fallen))})
 		}
+		// The fog clears round Home and round each of the colony's units where it is drawn now.
+		view.sight([
+			...Option.toArray(Option.map(state.home, home => ({radius: HOME_SIGHT, x: home.x, z: home.z}))),
+			...Array.flatMap(Array.fromIterable(MutableHashMap.values(actors)), actor =>
+				Option.toArray(
+					Option.map(
+						Array.findFirst(Record.toEntries(STATS), entry => entry[0] === actor.kind),
+						entry => ({radius: entry[1].sight, x: actor.x, z: actor.z})
+					)
+				)
+			)
+		])
 		for (const mixer of state.mixers) mixer.update(delta)
 		for (const tracer of Array.filter(state.tracers, entry => entry.until < seconds)) {
 			tracer.mesh.removeFromParent()
@@ -346,6 +434,7 @@ export function createCast(view: Renderer) {
 		for (const actor of Array.fromIterable(MutableHashMap.values(actors))) {
 			if (actor.seen < state.count) {
 				view.scene.remove(actor.object)
+				release(actor)
 				MutableHashMap.remove(actors, actor.id)
 			}
 		}
@@ -379,6 +468,7 @@ export function createCast(view: Renderer) {
 
 	// Home and the lab stand where the HUD says, once their models load; flags mark waypoints; the lab's shelf shows research.
 	function places(hud: Hud) {
+		state.home = Option.some(hud.home)
 		state.research = Option.match(
 			Option.all({left: Option.fromUndefinedOr(hud.research.left), tier: Array.get(RESEARCH, hud.research.tier - 1)}),
 			{onNone: () => 0, onSome: running => 1 - running.left / running.tier.seconds}
@@ -438,9 +528,14 @@ export function createCast(view: Renderer) {
 		)
 	}
 
+	// Where a unit is drawn now, eased between the server's frames: what the camera follows.
+	function positionOf(id: number) {
+		return Option.map(MutableHashMap.get(actors, id), actor => ({x: actor.x, y: actor.object.position.y, z: actor.z}))
+	}
+
 	view.onFrame(animate)
 
-	return {frame, pick, places, screenOf}
+	return {frame, pick, places, positionOf, screenOf}
 }
 
 export type Cast = ReturnType<typeof createCast>

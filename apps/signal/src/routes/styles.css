@@ -1,2 +1,16 @@
 @import '@deslop/components-web/theme.css';
 @source '../../../../packages/components-web/src/**/*.tsx';
+
+/* CORE's thinking bar: a segment sweeping across while it plans. */
+@theme {
+	--animate-sweep: sweep 1.3s ease-in-out infinite;
+
+	@keyframes sweep {
+		from {
+			translate: -100% 0;
+		}
+		to {
+			translate: 260% 0;
+		}
+	}
+}

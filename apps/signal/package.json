@@ -24,7 +24,6 @@
 		"@tanstack/react-router": "latest",
 		"@types/three": "latest",
 		"effect": "latest",
-		"lucide-react": "latest",
 		"react": "latest",
 		"react-dom": "latest",
 		"three": "latest"

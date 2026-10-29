@@ -16,7 +16,7 @@ export const UnitKind = Schema.Literals([
 	'rotor'
 ])
 
-// One hostile kind per biome, in Biome order.
+// The hostiles: each biome sends one of these (ENEMIES in the game's utils).
 export type EnemyKind = typeof EnemyKind.Type
 export const EnemyKind = Schema.Literals([
 	'scrapdog',
@@ -30,7 +30,23 @@ export const EnemyKind = Schema.Literals([
 	'glitch'
 ])
 
-// What a model shows: one loop per state.
+// Wildlife: passive creatures that graze, wander, perch or drift, and run from the colony's units.
+export type MobKind = typeof MobKind.Type
+export const MobKind = Schema.Literals([
+	'grazer',
+	'bird',
+	'heron',
+	'fireflies',
+	'lizard',
+	'yak',
+	'hare',
+	'beetles',
+	'moths',
+	'jellies',
+	'fish'
+])
+
+// What a model shows: one loop per state; `alarm` is a unit fleeing an attack or a creature running from one.
 export type Act = typeof Act.Type
 export const Act = Schema.Literals(['idle', 'move', 'work', 'alarm', 'attack', 'die'])
 
@@ -81,7 +97,7 @@ export const UnitView = Schema.Struct({
 	doing: Schema.String,
 	health: Schema.Finite,
 	id: Schema.Int,
-	kind: Schema.Union([UnitKind, EnemyKind]),
+	kind: Schema.Union([UnitKind, EnemyKind, MobKind]),
 	load: Schema.Finite,
 	x: Schema.Finite,
 	yaw: Schema.Finite,
@@ -151,11 +167,16 @@ export const Hud = Schema.Struct({
 	you: Schema.String
 })
 
-// One server frame for one connection: every unit, the tiles that changed since its last frame, shots fired, and the HUD when it changed. The first frame carries the world's seed and generator revision.
+// The tiles of one chunk the colony has seen, a bit per tile in row order.
+export type Explored = typeof Explored.Type
+export const Explored = Schema.Struct({bits: Schema.Uint8Array, cx: Schema.Int, cz: Schema.Int})
+
+// One server frame for one connection: the colony's units and what they see, the tiles that changed and the chunks explored since its last frame, shots fired, and the HUD when it changed. The first frame carries the world's seed and generator revision.
 export type Frame = typeof Frame.Type
 export const Frame = Schema.Struct({
 	at: Schema.Finite,
 	changes: Schema.Array(TileChange),
+	explored: Schema.Array(Explored),
 	hud: Schema.optional(Hud),
 	shots: Schema.Array(Schema.Struct({from: Schema.Int, to: Schema.Int})),
 	units: Schema.Array(UnitView),
@@ -184,6 +205,7 @@ export const Saved = Schema.Struct({
 	amounts: Schema.Array(Schema.Tuple([Schema.Int, Schema.Int, Schema.Finite])),
 	chat: Schema.Array(Turn),
 	edits: Schema.Array(Schema.Struct({edit: Edit, x: Schema.Int, z: Schema.Int})),
+	explored: Schema.optionalKey(Schema.Array(Explored)),
 	generator: Schema.Int,
 	jobs: Schema.Array(Job),
 	line: Schema.Array(UnitKind),
