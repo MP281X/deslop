@@ -32,7 +32,7 @@ Apply the whole change, then run `AGENTS.md`'s fix, check and test from the root
 
 ## Repair the owner, not the spelling
 
-No wrapper, fake use, extra export, prop spread, wider type, stand-in type or file split solely to silence a diagnostic. A second failed spelling means the owner is wrong.
+No wrapper, fake use, extra export, prop spread, wider type, stand-in type or file split solely to silence a diagnostic, and every rewrite keeps evaluation order, receiver binding (`sdk.send` stays inside its adapter), resource lifetime and failure behavior. A second failed spelling means the owner is wrong.
 
 ```tsx
 // rejected: the ternary removed by widening the prop, the void by a boolean nobody reads
