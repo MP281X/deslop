@@ -12,8 +12,9 @@ import {Chapter, Series} from '#services/chapters/schema.ts'
 import {Chapters} from '#services/chapters/service.ts'
 
 it.layer(NodeServices.layer)(test => {
-	test.effect('backfills the webcomic beside existing manga and scopes releases, revisions and reading by series', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'backfills the webcomic beside existing manga and scopes releases, revisions and reading by series',
+		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
 			const store = yield* openStore(directory)
 			yield* store.save([
@@ -162,8 +163,9 @@ it.layer(NodeServices.layer)(test => {
 		})
 	)
 
-	test.effect('persists shared reading and concurrent device changes without treating list marks as visits', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'persists shared reading and concurrent device changes without treating list marks as visits',
+		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
 			const first = 'ExpoPushToken[device00000001]'
 			const second = 'ExpoPushToken[device00000002]'

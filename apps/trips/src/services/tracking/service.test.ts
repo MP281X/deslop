@@ -76,8 +76,9 @@ function bookingsAt(state: Ref.Ref<BookingList>) {
 it.layer(
 	Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvider.fromUnknown({AEROAPI_KEY: 'test'})))
 )(test => {
-	test.effect('discards flight and train answers after rebooking, but saves an unchanged reservation', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'discards flight and train answers after rebooking, but saves an unchanged reservation',
+		Effect.fnUntraced(function* () {
 			yield* TestClock.adjust('1 hour')
 			for (const booking of [FLIGHT, TRAIN]) {
 				const state = yield* Ref.make<BookingList>([])
@@ -153,8 +154,9 @@ it.layer(
 		})
 	)
 
-	test.effect('keeps a corrupt lookup counter intact and makes no paid request', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'keeps a corrupt lookup counter intact and makes no paid request',
+		Effect.fnUntraced(function* () {
 			yield* TestClock.adjust('1 hour')
 			const store = yield* KeyValueStore.KeyValueStore
 			yield* store.set('aeroapi', 'corrupt')

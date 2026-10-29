@@ -13,8 +13,9 @@ const TRACE_ID = '1234567890abcdef1234567890abcdef'
 const platform = Layer.merge(NodeCrypto.layer, NodeServices.layer)
 
 it.layer(platform)(test => {
-	test.effect('keeps ingested spans across restarts for three days, past a broken entry file', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'keeps ingested spans across restarts for three days, past a broken entry file',
+		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const directory = yield* fs.makeTempDirectoryScoped()
 			yield* TestClock.setTime(1_781_870_000_000)
@@ -81,8 +82,9 @@ const query = Query.make({
 })
 
 it.layer(layer)(test => {
-	test.effect('keeps default searches current while allowing complete historical traces', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'keeps default searches current while allowing complete historical traces',
+		Effect.fnUntraced(function* () {
 			const telemetry = yield* Telemetry
 			const oldId = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
 			const newId = 'cccccccccccccccccccccccccccccccc'
@@ -161,8 +163,9 @@ it.layer(layer)(test => {
 		})
 	)
 
-	test.effect('reports rejected exports by credential presence without inventing service attribution', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'reports rejected exports by credential presence without inventing service attribution',
+		Effect.fnUntraced(function* () {
 			const telemetry = yield* Telemetry
 			yield* telemetry.reject({credential: 'authorization', route: '/v1/traces', status: 401})
 			yield* telemetry.reject({credential: 'authorization', route: '/v1/traces', status: 401})
@@ -176,8 +179,9 @@ it.layer(layer)(test => {
 		})
 	)
 
-	test.effect('assembles late parents, replaces repeated spans and preserves exact OTLP data', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'assembles late parents, replaces repeated spans and preserves exact OTLP data',
+		Effect.fnUntraced(function* () {
 			const telemetry = yield* Telemetry
 			const child = TracesRequest.make({
 				resourceSpans: [
@@ -272,8 +276,9 @@ it.layer(layer)(test => {
 		})
 	)
 
-	test.effect('keeps standalone logs searchable and correlates logs without requiring a stored span', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'keeps standalone logs searchable and correlates logs without requiring a stored span',
+		Effect.fnUntraced(function* () {
 			const telemetry = yield* Telemetry
 			yield* telemetry.ingestLogs(
 				LogsRequest.make({

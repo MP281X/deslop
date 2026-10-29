@@ -433,8 +433,9 @@ const people = Effect.fnUntraced(function* (web: Effect.Success<ReturnType<typeo
 })
 
 it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
-	test.effect('keeps sessions, rotated tokens and revocations across restarts', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'keeps sessions, rotated tokens and revocations across restarts',
+		Effect.fnUntraced(function* () {
 			const home = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
 			const saved = yield* Effect.scoped(
 				Effect.gen(function* () {
@@ -480,8 +481,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 
-	test.effect('approves from a separate session while only the originating browser receives the callback', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'approves from a separate session while only the originating browser receives the callback',
+		Effect.fnUntraced(function* () {
 			const web = yield* servers()
 			const session = cookie(yield* signIn(web.issuer, 'octocat'))
 			const first = yield* authorize(web.issuer, '', 'http://127.0.0.1:34567/callback', [
@@ -561,8 +563,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 
-	test.effect('streams a typed code until its sign-in expires and rejects decisions after expiry', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'streams a typed code until its sign-in expires and rejects decisions after expiry',
+		Effect.fnUntraced(function* () {
 			const web = yield* servers()
 			const session = cookie(yield* signIn(web.issuer, 'octocat'))
 			const request = yield* authorize(web.issuer, '', 'http://127.0.0.1:34567/callback', [
@@ -604,8 +607,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 
-	test.effect('accepts one decision across concurrent approving and denying sessions', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'accepts one decision across concurrent approving and denying sessions',
+		Effect.fnUntraced(function* () {
 			const web = yield* servers()
 			const first = cookie(yield* signIn(web.issuer, 'octocat'))
 			const second = cookie(yield* signIn(web.issuer, 'octocat'))
@@ -646,8 +650,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 
-	test.effect('returns a web sign-in to the page that started it only on its own domain, after any approve link', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'returns a web sign-in to the page that started it only on its own domain, after any approve link',
+		Effect.fnUntraced(function* () {
 			const web = yield* servers()
 			const landing = Effect.fnUntraced(function* (search: Record<string, string>) {
 				return (yield* signIn(
@@ -669,8 +674,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 
-	test.effect('returns a cancelled GitHub step to the sign-in it started from', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'returns a cancelled GitHub step to the sign-in it started from',
+		Effect.fnUntraced(function* () {
 			const web = yield* servers()
 			const start = yield* send(
 				web.issuer,
@@ -690,8 +696,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 
-	test.effect('binds consent and one-use PKCE codes to the browser, client, callback and resources', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'binds consent and one-use PKCE codes to the browser, client, callback and resources',
+		Effect.fnUntraced(function* () {
 			const web = yield* servers()
 			assert.strictEqual((yield* send(web.app, '/me')).status, 401)
 			// Registration is public, so a client names only a few short callbacks.
@@ -777,8 +784,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 
-	test.effect('keeps clients that are signed in or waiting when public registrations fill the client list', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'keeps clients that are signed in or waiting when public registrations fill the client list',
+		Effect.fnUntraced(function* () {
 			const web = yield* servers()
 			const session = cookie(yield* signIn(web.issuer, 'octocat'))
 			const request = yield* authorize(web.issuer, session, 'opm://auth/callback', [API])
@@ -829,8 +837,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 
-	test.effect('redeems a code once under concurrent exchanges and revokes what it gave', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'redeems a code once under concurrent exchanges and revokes what it gave',
+		Effect.fnUntraced(function* () {
 			const web = yield* servers()
 			const request = yield* authorize(
 				web.issuer,
@@ -860,8 +869,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 
-	test.effect('accepts what OAuth 2.1 leaves optional and answers errors where the client listens', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'accepts what OAuth 2.1 leaves optional and answers errors where the client listens',
+		Effect.fnUntraced(function* () {
 			const web = yield* servers()
 			const session = cookie(yield* signIn(web.issuer, 'octocat'))
 			const registered = yield* send(web.issuer, '/api/auth/oauth2/register', {
@@ -1036,8 +1046,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 
-	test.effect('rotates refresh tokens, revokes a reused or revoked family, and ends the session at sign-out', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'rotates refresh tokens, revokes a reused or revoked family, and ends the session at sign-out',
+		Effect.fnUntraced(function* () {
 			const web = yield* servers()
 			const session = cookie(yield* signIn(web.issuer, 'octocat'))
 			const request = yield* authorize(web.issuer, session, 'http://127.0.0.1:34567/callback', [
@@ -1102,8 +1113,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 
-	test.effect('denies access without issuing a code and expires a code before exchange', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'denies access without issuing a code and expires a code before exchange',
+		Effect.fnUntraced(function* () {
 			const web = yield* servers()
 			const session = cookie(yield* signIn(web.issuer, 'octocat'))
 			const denied = yield* consent(
@@ -1120,8 +1132,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 
-	test.effect('lets an agent answer a waiting sign-in by its code as the browser does', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'lets an agent answer a waiting sign-in by its code as the browser does',
+		Effect.fnUntraced(function* () {
 			const web = yield* servers()
 			const token = yield* agentToken(web.issuer, cookie(yield* signIn(web.issuer, 'octocat')))
 			const simulator = yield* authorize(web.issuer, '', 'opm-dev://auth/callback', [
@@ -1185,8 +1198,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 
-	test.effect('lets only an admin allow, decline and remove GitHub accounts, which sign them in and out', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'lets only an admin allow, decline and remove GitHub accounts, which sign them in and out',
+		Effect.fnUntraced(function* () {
 			const web = yield* servers()
 			const admin = yield* agentToken(web.issuer, cookie(yield* signIn(web.issuer, 'octocat')))
 			const stranger = cookie(yield* signIn(web.issuer, 'stranger'))
@@ -1226,8 +1240,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 
-	test.effect('lists each app an account signed in to by its last refresh and disconnects only its own', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'lists each app an account signed in to by its last refresh and disconnects only its own',
+		Effect.fnUntraced(function* () {
 			const web = yield* servers()
 			const admin = cookie(yield* signIn(web.issuer, 'octocat'))
 			const request = yield* authorize(web.issuer, admin, 'http://127.0.0.1:34567/callback', [
@@ -1284,40 +1299,39 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 
 	test.effect(
 		'replaces a sign-in of the same client and apps from the same address, and keeps one from elsewhere',
-		() =>
-			Effect.gen(function* () {
-				const web = yield* servers()
-				const admin = cookie(yield* signIn(web.issuer, 'octocat'))
-				const signInFrom = Effect.fnUntraced(function* (forwardedFor: string) {
-					const request = yield* authorize(web.issuer, admin, 'http://127.0.0.1:34567/callback', [
-						'https://scope.mp281x.xyz/mcp'
-					])
-					const exchanged = yield* exchange(
-						web.issuer,
-						request,
-						(yield* consent(web.issuer, request, true)).searchParams.get('code') ?? '',
-						forwardedFor
-					)
-					return {
-						clientId: request.clientId,
-						tokens: yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
-							yield* Effect.promise(() => exchanged.text())
-						)
-					}
-				})
-				const apps = Effect.flatMap(send(web.issuer, '/apps', {headers: {cookie: admin}}), response =>
-					Effect.flatMap(
-						Effect.promise(() => response.text()),
-						Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp)))
-					)
+		Effect.fnUntraced(function* () {
+			const web = yield* servers()
+			const admin = cookie(yield* signIn(web.issuer, 'octocat'))
+			const signInFrom = Effect.fnUntraced(function* (forwardedFor: string) {
+				const request = yield* authorize(web.issuer, admin, 'http://127.0.0.1:34567/callback', [
+					'https://scope.mp281x.xyz/mcp'
+				])
+				const exchanged = yield* exchange(
+					web.issuer,
+					request,
+					(yield* consent(web.issuer, request, true)).searchParams.get('code') ?? '',
+					forwardedFor
 				)
-				// Traefik appends the connecting address last; the entry before it is whatever the client sent.
-				const first = yield* signInFrom('198.51.100.1, 203.0.113.7')
-				yield* signInFrom('203.0.113.7')
-				assert.strictEqual((yield* apps).length, 1)
-				assert.strictEqual((yield* refresh(web.issuer, first.clientId, first.tokens.refresh_token)).status, 400)
-				yield* signInFrom('198.51.100.1')
-				assert.strictEqual((yield* apps).length, 2)
+				return {
+					clientId: request.clientId,
+					tokens: yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
+						yield* Effect.promise(() => exchanged.text())
+					)
+				}
 			})
+			const apps = Effect.flatMap(send(web.issuer, '/apps', {headers: {cookie: admin}}), response =>
+				Effect.flatMap(
+					Effect.promise(() => response.text()),
+					Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp)))
+				)
+			)
+			// Traefik appends the connecting address last; the entry before it is whatever the client sent.
+			const first = yield* signInFrom('198.51.100.1, 203.0.113.7')
+			yield* signInFrom('203.0.113.7')
+			assert.strictEqual((yield* apps).length, 1)
+			assert.strictEqual((yield* refresh(web.issuer, first.clientId, first.tokens.refresh_token)).status, 400)
+			yield* signInFrom('198.51.100.1')
+			assert.strictEqual((yield* apps).length, 2)
+		})
 	)
 })
