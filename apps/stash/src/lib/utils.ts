@@ -1,14 +1,17 @@
 import type {Record} from 'effect'
 import {Array, Boolean, Effect, Layer, HashSet, Option, Order, Predicate, Schema, Stream, String, pipe} from 'effect'
 
+import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {FetchHttpClient} from 'effect/http'
 import {AtomRpc, Atom} from 'effect/reactivity'
 import * as Clipboard from 'expo-clipboard'
 import * as Crypto from 'expo-crypto'
 import {Directory, File, Paths} from 'expo-file-system'
 
+import {ClipboardOffer, clipboardMachine} from '@deslop/components-mobile/clipboard'
+import type {ClipboardKind} from '@deslop/components-mobile/clipboard'
 import {brands} from '@deslop/components-mobile/icons'
-import {alert, cachedList, clipboardChangeCount, writeAtomically} from '@deslop/components-mobile/utils'
+import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 import * as MobileSession from '@deslop/runtime/mobile/session'
@@ -215,21 +218,7 @@ export const writeAtom = Atom.keepAlive(
 
 const clipboardFile = new File(Paths.document, 'clipboard.txt')
 
-type Offer = {count: string; kind: 'image' | 'link'}
-
-// Asking what the clipboard holds reads nothing, so iOS shows its paste banner only after Save.
-export const offerAtom = Atom.keepAlive(
-	Atom.make(get =>
-		Effect.gen(function* () {
-			get(MobileRuntime.activationsAtom)
-			const count = `${clipboardChangeCount()}`
-			if (clipboardFile.exists && clipboardFile.textSync() === count) return Option.none<Offer>()
-			if (yield* Effect.promise(() => Clipboard.hasImageAsync())) return Option.some<Offer>({count, kind: 'image'})
-			if (yield* Effect.promise(() => native.hasLink())) return Option.some<Offer>({count, kind: 'link'})
-			return Option.none<Offer>()
-		})
-	)
-)
+type Offer = {count: string; kind: ClipboardKind}
 
 const saveImage = Effect.fnUntraced(function* () {
 	const token = yield* session.accessToken
@@ -276,29 +265,50 @@ const saveLink = Effect.gen(function* () {
 	yield* capture(link)
 })
 
-const saveAtom = Atom.keepAlive(
-	session.runtime.fn((kind: Offer['kind'], get) =>
-		pipe(
-			Boolean.match(kind === 'image', {onFalse: () => withClient(get, saveLink), onTrue: () => saveImage()}),
-			alert('Not Saved')
+// A copy is offered once: the change count it was answered at is kept, so the next return offers only a newer copy.
+export const clipboardAtom = AtomMachine.bind(
+	Atom.runtime(get =>
+		Layer.succeed(
+			ClipboardOffer,
+			ClipboardOffer.of({
+				// The sheet closes at once; the note arrives in the list when the server has it.
+				answer: Effect.fnUntraced(function* (answer: Offer & {save: boolean}) {
+					yield* pipe(
+						Effect.try({
+							catch: cause => NotesError.make({cause, message: 'The answer could not be kept on this iPhone.'}),
+							try: () => writeAtomically(clipboardFile, answer.count)
+						}),
+						Effect.andThen(
+							Boolean.match(answer.save, {
+								onFalse: () => Effect.void,
+								onTrue: () =>
+									Boolean.match(answer.kind === 'image', {
+										onFalse: () =>
+											Effect.flatMap(get.result(RpcClient.runtime), context =>
+												Effect.provideContext(saveLink, context)
+											),
+										// @effect-diagnostics-next-line strictEffectProvide:off -- The RPC runtime exposes only its client, so the upload brings its own fetch.
+										onTrue: () => Effect.provide(saveImage(), FetchHttpClient.layer)
+									})
+							})
+						),
+						alert('Not Saved'),
+						Effect.ignore({log: 'Warn', message: 'The clipboard note was not saved'})
+					)
+				}),
+				detect: Effect.gen(function* () {
+					if (yield* Effect.promise(() => Clipboard.hasImageAsync())) return Option.some<ClipboardKind>('image')
+					if (yield* Effect.promise(() => native.hasLink())) return Option.some<ClipboardKind>('link')
+					return Option.none<ClipboardKind>()
+				}),
+				file: clipboardFile
+			})
 		)
 	)
-)
+).make(clipboardMachine)
 
-export const answerAtom = Atom.keepAlive(
-	Atom.fn((answer: Offer & {save: boolean}, get) =>
-		pipe(
-			Effect.try({
-				catch: cause => NotesError.make({cause, message: 'The answer could not be kept on this iPhone.'}),
-				try: () => writeAtomically(clipboardFile, answer.count)
-			}),
-			Effect.andThen(
-				Effect.sync(() => {
-					if (answer.save) get.set(saveAtom, answer.kind)
-				})
-			),
-			Effect.as(answer.count),
-			alert('Not Saved')
-		)
-	)
-)
+// Each return from the background looks at the clipboard again.
+export const clipboardReturnsAtom = Atom.make(get => {
+	get(MobileRuntime.activationsAtom)
+	get.set(clipboardAtom.send, {_tag: 'Returned'})
+})

@@ -9,12 +9,14 @@
 		"./*": "./src/*.tsx",
 		"./theme": "./src/theme.ts",
 		"./utils": "./src/lib/utils.ts",
+		"./clipboard": "./src/lib/clipboard.ts",
 		"./app.plugin.js": "./app.plugin.js"
 	},
 	"dependencies": {
 		"@effect/atom-react": "latest",
 		"@expo-google-fonts/jetbrains-mono": "latest",
 		"@expo/ui": "^58.0",
+		"@typeonce/effect-machine": "latest",
 		"@typeonce/effect-machine-react": "latest",
 		"effect": "latest",
 		"expo-asset": "^58.0",

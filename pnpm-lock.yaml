@@ -420,7 +420,7 @@ importers:
         version: 4.1.0(effect@4.1.0)
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.28.0)
+        version: 4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0)
       '@effect/platform-node':
         specifier: latest
         version: 4.1.0(effect@4.1.0)(redis@6.3.0)
@@ -430,6 +430,12 @@ importers:
       '@huggingface/transformers':
         specifier: latest
         version: 4.3.2(@types/node@26.6.6)
+      '@typeonce/effect-machine':
+        specifier: latest
+        version: 0.46.0(effect@4.1.0)
+      '@typeonce/effect-machine-react':
+        specifier: latest
+        version: 0.46.0(@effect/atom-react@4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0))(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0)
       cheerio:
         specifier: latest
         version: 1.2.0
@@ -551,6 +557,9 @@ importers:
       '@expo/ui':
         specifier: ^58.0
         version: 58.0.25(@babel/core@7.29.7(supports-color@8.1.1))(expo@58.0.21)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
+      '@typeonce/effect-machine':
+        specifier: latest
+        version: 0.46.0(effect@4.1.0)
       '@typeonce/effect-machine-react':
         specifier: latest
         version: 0.46.0(@effect/atom-react@4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0))(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0)

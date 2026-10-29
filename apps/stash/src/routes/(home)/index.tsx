@@ -1,4 +1,4 @@
-import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomMount, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, HashSet, Match, Option, Schema, String, pipe} from 'effect'
 
@@ -56,6 +56,8 @@ import {
 	tag,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
+import {useMachineResult} from '@typeonce/effect-machine-react'
+import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 import {Linking} from 'react-native'
@@ -69,14 +71,14 @@ import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
 import {Byline} from '#lib/components.tsx'
 import {
-	answerAtom,
 	appOf,
 	brandOf,
+	clipboardAtom,
+	clipboardReturnsAtom,
 	imageAtom,
 	kindOf,
 	kinds,
 	notesAtom,
-	offerAtom,
 	queryAtom,
 	regenerateAtom,
 	removeAtom,
@@ -87,9 +89,11 @@ import {tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 import {Brand, Kind} from '#services/notes/schema.ts'
 
+// Stash detects a link where Trips takes any text.
 const OFFERS = {
 	image: {question: 'Save the copied image?', symbol: 'photo'},
-	link: {question: 'Save the copied link?', symbol: 'link'}
+	link: {question: 'Save the copied link?', symbol: 'link'},
+	text: {question: 'Save the copied link?', symbol: 'link'}
 } as const
 
 function Lines(props: {note: NoteItem}) {
@@ -271,23 +275,16 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 }
 
 function PasteSheet() {
-	const offer = pipe(useAtomValue(offerAtom), AsyncResult.getOrElse(Option.none))
-	const [answered, respond] = useAtom(answerAtom)
+	useAtomMount(clipboardReturnsAtom)
+	const offer = pipe(useMachineResult(AtomMachine.select(clipboardAtom, 'Offered')), AsyncResult.getOrElse(Option.none))
+	const send = useAtomSet(clipboardAtom.send)
 	const kind = Option.match(offer, {onNone: () => 'link' as const, onSome: open => open.kind})
-	const open = Option.filter(
-		offer,
-		current =>
-			!AsyncResult.isWaiting(answered) && !Option.exists(AsyncResult.value(answered), count => count === current.count)
-	)
-	function answer(save: boolean) {
-		Option.match(open, {onNone: () => undefined, onSome: current => respond({...current, save})})
-	}
 	return (
 		<ClipboardSheet
 			anchor={<AppTitle logo={logo} name="stash" />}
 			confirm="Save"
-			onAnswer={answer}
-			open={Option.isSome(open)}
+			onAnswer={save => send({_tag: 'Answered', save})}
+			open={Option.isSome(offer)}
 			question={OFFERS[kind].question}
 			symbol={OFFERS[kind].symbol}
 		/>

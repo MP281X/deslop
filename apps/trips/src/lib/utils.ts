@@ -30,6 +30,8 @@ import {addPushToStartTokenListener} from 'expo-widgets'
 import type {LiveActivity} from 'expo-widgets'
 import {DynamicColorIOS, Linking} from 'react-native'
 
+import {ClipboardOffer, clipboardMachine} from '@deslop/components-mobile/clipboard'
+import type {ClipboardKind} from '@deslop/components-mobile/clipboard'
 import {colors} from '@deslop/components-mobile/theme'
 import {alert, cachedList, clipboardChangeCount, writeAtomically} from '@deslop/components-mobile/utils'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
@@ -127,21 +129,7 @@ export const bookingsAtom = Atom.keepAlive(
 // Clipboard
 
 const clipboardFile = new File(Paths.document, 'clipboard.txt')
-type Offer = {count: string; kind: 'image' | 'text'}
-
-// Only metadata is inspected on entry; the contents stay private until Add booking.
-export const offerAtom = Atom.keepAlive(
-	Atom.make(get => {
-		get(MobileRuntime.activationsAtom)
-		return Effect.gen(function* () {
-			const count = `${clipboardChangeCount()}`
-			if (clipboardFile.exists && clipboardFile.textSync() === count) return Option.none<Offer>()
-			if (yield* Effect.promise(() => Clipboard.hasImageAsync())) return Option.some<Offer>({count, kind: 'image'})
-			if (yield* Effect.promise(() => Clipboard.hasStringAsync())) return Option.some<Offer>({count, kind: 'text'})
-			return Option.none<Offer>()
-		})
-	})
-)
+type Offer = {count: string; kind: ClipboardKind}
 
 const readClipboard = Effect.fnUntraced(function* (offer: Offer) {
 	if (`${clipboardChangeCount()}` !== offer.count) {
@@ -174,34 +162,48 @@ const readClipboard = Effect.fnUntraced(function* (offer: Offer) {
 	return {text} satisfies BookingSource
 })
 
-export const answerAtom = Atom.keepAlive(
-	Atom.fn((answer: {offer: Offer; save: boolean}, get) => {
-		const handled = Effect.try({
-			catch: cause => BookingsError.make({cause, message: 'The answer could not be kept on this iPhone.'}),
-			try: () => {
-				writeAtomically(clipboardFile, answer.offer.count)
-				get.refresh(offerAtom)
-			}
-		})
-		return pipe(
-			Effect.gen(function* () {
-				if (answer.save) {
-					const source = yield* readClipboard(answer.offer)
-					yield* withClient(
-						get,
-						Effect.flatMap(RpcClient, client => client('bookings.save', source))
+export const clipboardAtom = AtomMachine.bind(
+	Atom.runtime(get =>
+		Layer.succeed(
+			ClipboardOffer,
+			ClipboardOffer.of({
+				answer: Effect.fnUntraced(function* (answer: Offer & {save: boolean}) {
+					const handled = Effect.try({
+						catch: cause => BookingsError.make({cause, message: 'The answer could not be kept on this iPhone.'}),
+						try: () => writeAtomically(clipboardFile, answer.count)
+					})
+					yield* pipe(
+						Effect.gen(function* () {
+							if (!answer.save) return
+							const source = yield* readClipboard(answer)
+							yield* Effect.provideContext(
+								Effect.flatMap(RpcClient, client => client('bookings.save', source)),
+								yield* get.result(RpcClient.runtime)
+							)
+						}),
+						// A refused booking is handled, but a lost connection offers the same copy on the next return.
+						Effect.tapErrorTag('BookingsError', () => handled),
+						Effect.andThen(handled),
+						alert('Not saved'),
+						Effect.ignore({log: 'Warn', message: 'The clipboard booking was not saved'})
 					)
-				}
-			}),
-			// A refused booking is handled, but a lost connection offers the same copy on the next return.
-			Effect.tapErrorTag('BookingsError', () => handled),
-			Effect.andThen(handled),
-			alert('Not saved'),
-			Effect.ignore({log: 'Warn', message: 'The clipboard booking was not saved'}),
-			Effect.as(answer.offer)
+				}),
+				detect: Effect.gen(function* () {
+					if (yield* Effect.promise(() => Clipboard.hasImageAsync())) return Option.some<ClipboardKind>('image')
+					if (yield* Effect.promise(() => Clipboard.hasStringAsync())) return Option.some<ClipboardKind>('text')
+					return Option.none<ClipboardKind>()
+				}),
+				file: clipboardFile
+			})
 		)
-	})
-)
+	)
+).make(clipboardMachine)
+
+// Each return from the background looks at the clipboard again.
+export const clipboardReturnsAtom = Atom.make(get => {
+	get(MobileRuntime.activationsAtom)
+	get.set(clipboardAtom.send, {_tag: 'Returned'})
+})
 
 // The booking deleted last, which the list offers to put back for eight seconds; a later delete takes its place, and a restore ends only its own offer.
 export const undoAtom = AtomMachine.make(
