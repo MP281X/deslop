@@ -33,7 +33,7 @@ The repository's canonical examples (`AGENTS.md`) lead; these fill a gap. Reuse 
 | Skill packaging and evaluation              | https://github.com/anthropics/skills           | `skills/skill-creator/`                                                                                     |
 | Effect knowledge for agents                 | https://github.com/Effect-TS/skills            | `skills/effect-ts/`                                                                                         |
 
-**Screens.** Search Mobbin's screens or flows for the screen's job and build from the relevant hits, beside the repository's own screens and the references above. Color, radius, type, spacing and shadow live in the theme the repository's `components.json` names.
+**Screens.** Start from the screen's job and its fewest concepts. Search Mobbin's screens or flows for that job, beside the repository's own screens and the references above, and borrow an interaction only when it removes a concept, an action or an ambiguity, never because it is the standard. Color, radius, type, spacing and shadow live in the theme the repository's `components.json` names.
 
 ## Ground
 
