@@ -11,7 +11,7 @@ import {Loading} from '@deslop/components-web/fallbacks'
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
 
 import {SignedInGrid} from '#lib/components.tsx'
-import {CODE_LENGTH, clientLabel, codeAtom, linkedCodeAtom} from '#lib/utils.ts'
+import {CODE_LENGTH, clientLabel, codeAtom, consentAtom, linkedCodeAtom} from '#lib/utils.ts'
 import {typedCode} from '#services/authorizations/lib/utils.ts'
 import type {PendingAuthorization} from '#services/authorizations/schema.ts'
 
@@ -119,6 +119,8 @@ function Page(props: {
 
 function SignIns() {
 	useAtomMount(linkedCodeAtom)
+	// The answer outlives the card: the lookup can drop its request before the consent response arrives.
+	useAtomMount(consentAtom)
 	const send = useAtomSet(codeAtom.send)
 	function type(typed: string) {
 		send({_tag: 'Typed', typed})

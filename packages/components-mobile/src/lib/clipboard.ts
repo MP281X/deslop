@@ -1,4 +1,4 @@
-import {Context, Effect, Option, Schema} from 'effect'
+import {Boolean, Context, Effect, Option, Schema} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import type {File} from 'expo-file-system'
@@ -26,7 +26,10 @@ export class ClipboardOffer extends Context.Service<
 
 // A copy is offered once: the change count it was answered at stays in the app's file, so a return offers only a newer copy.
 export const clipboardMachine = Machine.make({
-	branches: {inspected: {idle: {target: 'Idle'}, offered: {target: 'Offered'}}},
+	branches: {
+		answered: {checking: {target: 'Checking'}, idle: {target: 'Idle'}},
+		inspected: {idle: {target: 'Idle'}, offered: {target: 'Offered'}}
+	},
 	effects: {
 		answer: Effect.fnUntraced(function* (answer: Answer) {
 			return yield* (yield* ClipboardOffer).answer(answer)
@@ -41,7 +44,8 @@ export const clipboardMachine = Machine.make({
 	events: Machine.events({Answered: {save: Schema.Boolean}, Returned: {}}),
 	root: Machine.state({
 		states: {
-			Answering: {fields: {count: Schema.String, kind: ClipboardKind, save: Schema.Boolean}},
+			// `returned` records a return during the answer, whose new copy is looked at once the answer is done.
+			Answering: {fields: {count: Schema.String, kind: ClipboardKind, returned: Schema.Boolean, save: Schema.Boolean}},
 			Checking: {},
 			Idle: {},
 			Offered: {fields: {count: Schema.String, kind: ClipboardKind}}
@@ -50,7 +54,32 @@ export const clipboardMachine = Machine.make({
 }).handle({
 	initial: {target: 'Idle'},
 	states: {
-		Answering: {invoke: {input: transition => transition.state, onDone: {target: 'Idle'}, src: 'answer'}},
+		Answering: {
+			invoke: {
+				input: transition => transition.state,
+				onDone: {
+					branches: 'answered',
+					resolve: transition =>
+						Boolean.match(transition.state.returned, {
+							onFalse: () => transition.select.idle(),
+							onTrue: () => transition.select.checking()
+						})
+				},
+				src: 'answer'
+			},
+			on: {
+				Returned: {
+					data: transition => ({
+						count: transition.state.count,
+						kind: transition.state.kind,
+						returned: true,
+						save: transition.state.save
+					}),
+					update: 'Answering'
+				}
+			}
+		},
+		// A return while iOS suspended the inspection starts it over.
 		Checking: {
 			invoke: {
 				onDone: {
@@ -62,7 +91,8 @@ export const clipboardMachine = Machine.make({
 						})
 				},
 				src: 'inspect'
-			}
+			},
+			on: {Returned: {reenter: true, target: 'Checking'}}
 		},
 		Idle: {on: {Returned: {target: 'Checking'}}},
 		Offered: {
@@ -71,6 +101,7 @@ export const clipboardMachine = Machine.make({
 					data: transition => ({
 						count: transition.state.count,
 						kind: transition.state.kind,
+						returned: false,
 						save: transition.event.save
 					}),
 					target: 'Answering'
