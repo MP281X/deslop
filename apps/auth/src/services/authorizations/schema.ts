@@ -7,7 +7,7 @@ const authorizationFields = {
 	clientId: Schema.NonEmptyString,
 	redirectUri: Schema.NonEmptyString,
 	resources: Schema.Array(Resource),
-	state: Schema.NonEmptyString
+	state: Schema.optionalKey(Schema.NonEmptyString)
 }
 
 export type Registration = typeof Registration.Type
@@ -37,18 +37,31 @@ export const AuthorizationStatus = Schema.TaggedUnion({
 	Waiting: {request: PendingAuthorization}
 })
 
-export type AuthorizeParams = typeof AuthorizeParams.Type
-export const AuthorizeParams = Schema.Struct({
+// What an authorization request must carry before the server may send any answer to its callback.
+export type AuthorizeClient = typeof AuthorizeClient.Type
+export const AuthorizeClient = Schema.Struct({
 	client_id: Schema.NonEmptyString,
-	code_challenge: Schema.NonEmptyString,
-	code_challenge_method: Schema.Literal('S256'),
-	redirect_uri: Schema.NonEmptyString,
-	resource: Schema.ArrayEnsure(Resource).check(Schema.isMinLength(1)),
-	response_type: Schema.Literal('code'),
-	scope: Schema.optionalKey(Schema.NonEmptyString),
-	state: Schema.NonEmptyString
+	redirect_uri: Schema.optionalKey(Schema.String),
+	state: Schema.optionalKey(Schema.String)
 })
 
+// The rest is checked field by field, so each failure returns its own OAuth error to the callback.
+export type AuthorizeParams = typeof AuthorizeParams.Type
+export const AuthorizeParams = Schema.Struct({
+	code_challenge: Schema.optionalKey(Schema.NonEmptyString),
+	code_challenge_method: Schema.optionalKey(Schema.String),
+	resource: Schema.optionalKey(Schema.ArrayEnsure(Schema.String)),
+	response_type: Schema.optionalKey(Schema.String),
+	scope: Schema.optionalKey(Schema.String)
+})
+
+export type TokenGrant = typeof TokenGrant.Type
+export const TokenGrant = Schema.Struct({grant_type: Schema.String})
+
+type TokenResources = typeof TokenResources.Type
+const TokenResources = Schema.optionalKey(Schema.ArrayEnsure(Resource).check(Schema.isMinLength(1)))
+
+// OAuth 2.1 drops redirect_uri from the code exchange, and a public client may leave client_id out of a refresh; each is checked when sent.
 export type TokenParams = typeof TokenParams.Type
 export const TokenParams = Schema.Union([
 	Schema.Struct({
@@ -56,14 +69,14 @@ export const TokenParams = Schema.Union([
 		code: Schema.NonEmptyString,
 		code_verifier: Schema.NonEmptyString,
 		grant_type: Schema.Literal('authorization_code'),
-		redirect_uri: Schema.NonEmptyString,
-		resource: Schema.optionalKey(Schema.ArrayEnsure(Resource).check(Schema.isMinLength(1)))
+		redirect_uri: Schema.optionalKey(Schema.String),
+		resource: TokenResources
 	}),
 	Schema.Struct({
-		client_id: Schema.NonEmptyString,
+		client_id: Schema.optionalKey(Schema.String),
 		grant_type: Schema.Literal('refresh_token'),
 		refresh_token: Schema.NonEmptyString,
-		resource: Schema.optionalKey(Schema.ArrayEnsure(Resource).check(Schema.isMinLength(1)))
+		resource: TokenResources
 	})
 ])
 
@@ -93,6 +106,8 @@ export const Stored = Schema.TaggedUnion({
 		id: Schema.NonEmptyString
 	},
 	Session: {user: User},
+	// A redeemed code stays until it would have expired, so a second redemption revokes the tokens the first one got.
+	UsedCode: {clientId: Schema.NonEmptyString, family: Schema.NonEmptyString},
 	UsedRefresh: {clientId: Schema.NonEmptyString, family: Schema.NonEmptyString}
 })
 
