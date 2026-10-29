@@ -169,7 +169,7 @@ export function ageLabel(minutes: number) {
 }
 
 // Claude Code names each MCP client after its server, "Claude Code (scope)"; the grid's column already says which.
-export function clientLabel(app: SignedInApp) {
+export function clientLabel(app: {clientName: string}) {
 	return String.trim(String.replace(/\s*\([^)]*\)$/u, '')(app.clientName))
 }
 

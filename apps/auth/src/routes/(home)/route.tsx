@@ -19,7 +19,7 @@ import {
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
 
-import {Avatar, GitHubIcon, QrCode, Review} from '#lib/components.tsx'
+import {Avatar, GitHubIcon, QrCode, SignedInGrid} from '#lib/components.tsx'
 import {
 	accountAtom,
 	approveLink,
@@ -92,7 +92,14 @@ function Waiting(props: {account: Option.Option<Account>; id: string}) {
 			Waiting: value =>
 				Option.match(
 					Option.filter(props.account, signed => signed.role !== 'Waiting'),
-					{onNone: () => <CodeCard request={value.request} />, onSome: () => <Review request={value.request} />}
+					{
+						onNone: () => <CodeCard request={value.request} />,
+						onSome: () => (
+							<Suspense fallback={<Loading />}>
+								<SignedInGrid pending={Option.some(value.request)} />
+							</Suspense>
+						)
+					}
 				)
 		})
 	)
