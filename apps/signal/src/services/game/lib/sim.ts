@@ -80,7 +80,7 @@ const HAULERS = ['cart', 'strider', 'skiff'] satisfies UnitKind[]
 const GUARDS = ['sentry', 'rotor'] satisfies UnitKind[]
 const NEEDS_ROAD = 'carts cannot reach the field: it needs a road or a ramp'
 // Wet ground wheels crawl over.
-const MUD = [GROUND.mud, GROUND.mud2, GROUND.marsh, GROUND.reeds]
+const MUD = [GROUND.mud, GROUND.mud2, GROUND.marsh, GROUND.reeds, GROUND.paddymud]
 
 type Unit = {
 	act: Act
@@ -281,10 +281,9 @@ function percent(share: number) {
 	return `${Number.round(share * 100, 0)}%`
 }
 
-// A colony from its save when the world generator is unchanged, else a fresh one on the world `fresh` seeds.
+// A colony from its save, on its own seed's world, else a fresh one on the world `fresh` seeds.
 export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number) {
-	const restored = Option.filter(saved, previous => previous.generator === GENERATOR)
-	const seed = Option.match(restored, {onNone: () => fresh, onSome: previous => previous.seed})
+	const seed = Option.match(saved, {onNone: () => fresh, onSome: previous => previous.seed})
 	const world = makeWorld(seed)
 	const spawn = world.spawn()
 	const places = buildings(spawn)
@@ -1833,26 +1832,59 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 		)
 	}
 
-	function restore(previous: Saved) {
-		for (const entry of previous.amounts) MutableHashMap.set(amounts, tileKey(entry[0], entry[1]), entry[2])
-		for (const entry of previous.edits) MutableHashMap.set(edits, tileKey(entry.x, entry.z), entry.edit)
-		for (const unit of previous.units) {
-			MutableHashMap.set(units, unit.id, {
-				...newUnit(unit.id, unit.kind, unit),
-				cargo: unit.cargo,
-				health: unit.health,
-				job: Option.fromUndefinedOr(unit.job),
-				material: Option.fromUndefinedOr(unit.material)
-			})
+	// On a newer generator's world the units come back empty-handed, so what they carried goes into Home's stock.
+	function bankCargo(carriers: Saved['units']) {
+		for (const unit of carriers) {
+			if (unit.material !== undefined) {
+				state.stock = {...state.stock, [unit.material]: state.stock[unit.material] + unit.cargo}
+			}
 		}
-		for (const job of previous.jobs) {
-			MutableHashMap.set(jobs, job.id, {
-				...job,
-				blocked: Option.none(),
-				crew: [...job.crew],
-				spot: Option.none(),
-				tile: Option.none()
-			})
+	}
+
+	// A ring of places four tiles round Home, one per unit.
+	function ring(count: number, index: number) {
+		const angle = (index / count) * Math.PI * 2
+		return {x: home.x + Math.sin(angle) * 4, z: home.z + Math.cos(angle) * 4}
+	}
+
+	// The colony as saved: on the same world everything comes back; on a newer generator's world the ground changed under it, so its edits, ore left and jobs go, and its units come back round Home with the stock, research and conversation.
+	function restore(previous: Saved) {
+		const same = previous.generator === GENERATOR
+		if (same) {
+			for (const entry of previous.amounts) MutableHashMap.set(amounts, tileKey(entry[0], entry[1]), entry[2])
+			for (const entry of previous.edits) MutableHashMap.set(edits, tileKey(entry.x, entry.z), entry.edit)
+			for (const job of previous.jobs) {
+				MutableHashMap.set(jobs, job.id, {
+					...job,
+					blocked: Option.none(),
+					crew: [...job.crew],
+					spot: Option.none(),
+					tile: Option.none()
+				})
+			}
+		}
+		for (const entry of Array.map(previous.units, (unit, index) => ({index, unit}))) {
+			const unit = entry.unit
+			MutableHashMap.set(
+				units,
+				unit.id,
+				Option.match(
+					Option.liftPredicate(unit, () => same),
+					{
+						onNone: () => ({
+							...newUnit(unit.id, unit.kind, ring(previous.units.length, entry.index)),
+							health: unit.health
+						}),
+						onSome: kept => ({
+							...newUnit(kept.id, kept.kind, kept),
+							cargo: kept.cargo,
+							health: kept.health,
+							job: Option.fromUndefinedOr(kept.job),
+							material: Option.fromUndefinedOr(kept.material)
+						})
+					}
+				)
+			)
 		}
 		state.chat = [...previous.chat]
 		state.line = [...previous.line]
@@ -1860,15 +1892,13 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 		state.research = previous.research
 		state.stock = {...state.stock, ...previous.stock}
 		state.waypoints = [...previous.waypoints]
+		if (!same) bankCargo(previous.units)
 	}
 
-	Option.match(restored, {
+	Option.match(saved, {
 		onNone: () => {
-			for (const entry of Array.map(START_FLEET, (kind, index) => ({
-				angle: (index / START_FLEET.length) * Math.PI * 2,
-				kind
-			}))) {
-				spawnUnit(entry.kind, {x: home.x + Math.sin(entry.angle) * 4, z: home.z + Math.cos(entry.angle) * 4})
+			for (const entry of Array.map(START_FLEET, (kind, index) => ({index, kind}))) {
+				spawnUnit(entry.kind, ring(START_FLEET.length, entry.index))
 			}
 		},
 		onSome: restore

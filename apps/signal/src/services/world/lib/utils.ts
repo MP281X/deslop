@@ -44,30 +44,95 @@ const GROUND_KINDS = [
 	{colour: '#efdcb4', lip: false, name: 'saltochre'},
 	{colour: '#5a524f', lip: false, name: 'flow'},
 	{colour: '#5f5753', lip: false, name: 'flow2'},
-	{colour: '#80776f', lip: false, name: 'weathered'}
+	{colour: '#80776f', lip: false, name: 'weathered'},
+	{colour: '#efe2c4', lip: false, name: 'glasssand'},
+	{colour: '#a5dccf', lip: false, name: 'glass'},
+	{colour: '#86c9bb', lip: false, name: 'glass2'},
+	{colour: '#f4ecdc', lip: false, name: 'travertine'},
+	{colour: '#ecc59a', lip: false, name: 'travrust'},
+	{colour: '#bfe6df', lip: false, name: 'springbed'},
+	{colour: '#b7d98a', lip: true, name: 'paddy'},
+	{colour: '#a3cd7c', lip: true, name: 'paddy2'},
+	{colour: '#9fb27e', lip: false, name: 'paddymud'},
+	{colour: '#f6ecd6', lip: false, name: 'coralsand'},
+	{colour: '#f2a7a0', lip: true, name: 'coralpink'},
+	{colour: '#f4b77c', lip: true, name: 'coralorange'},
+	{colour: '#c8a6e0', lip: true, name: 'coralviolet'},
+	{colour: '#bfe9e0', lip: false, name: 'lagoonbed'},
+	{colour: '#cf6e57', lip: false, name: 'crimson'},
+	{colour: '#bf604c', lip: false, name: 'crimson2'},
+	{colour: '#e7b083', lip: false, name: 'canyonfloor'},
+	{colour: '#e9eff7', lip: true, name: 'prism'},
+	{colour: '#dde6f2', lip: true, name: 'prism2'},
+	{colour: '#e4dcf3', lip: true, name: 'prismlilac'},
+	{colour: '#bdb894', lip: true, name: 'tundra'},
+	{colour: '#adaa86', lip: true, name: 'tundra2'},
+	{colour: '#cdd6bb', lip: true, name: 'frostmoss'},
+	{colour: '#9aa38c', lip: false, name: 'trough'},
+	{colour: '#d8c98c', lip: true, name: 'autumn'},
+	{colour: '#cfbd7d', lip: true, name: 'autumn2'},
+	{colour: '#e6ad6c', lip: true, name: 'litter'}
 ]
-// Per biome, in Biome order: its place on the climate map (biomes near on it clump), its ground relative to the rest in levels, the step its flat ground keeps, how much of the land's swell and of the ridges it keeps, and its ground kinds.
+// Per biome, in Biome order: its place on the climate map (temperature, moisture and strangeness: biomes near on it clump; the strange half of the map holds the newer, odder biomes), its ground relative to the rest in levels, the step its flat ground keeps, how much of the land's swell and of the ridges it keeps, and its ground kinds.
 const BIOME_SHAPE = [
-	{elevation: 0, grounds: ['grass', 'grass2', 'shore'], macro: 1, moist: 0.62, ridge: 0.7, step: 1, temp: 0.48},
-	{elevation: -2, grounds: ['marsh', 'mud', 'mud2', 'reeds'], macro: 0.6, moist: 0.92, ridge: 0, step: 1, temp: 0.52},
-	{elevation: 4, grounds: ['redsand', 'sand', 'sand2'], macro: 1, moist: 0.28, ridge: 1, step: 2, temp: 0.78},
-	{elevation: 6, grounds: ['snow', 'snow2'], macro: 1, moist: 0.45, ridge: 1, step: 3, temp: 0.2},
+	{
+		elevation: 0,
+		grounds: ['grass', 'grass2', 'shore'],
+		macro: 1,
+		moist: 0.62,
+		odd: 0.25,
+		ridge: 0.7,
+		step: 1,
+		temp: 0.48
+	},
+	{
+		elevation: -2,
+		grounds: ['marsh', 'mud', 'mud2', 'reeds'],
+		macro: 0.6,
+		moist: 0.92,
+		odd: 0.25,
+		ridge: 0,
+		step: 1,
+		temp: 0.52
+	},
+	{
+		elevation: 4,
+		grounds: ['redsand', 'sand', 'sand2'],
+		macro: 1,
+		moist: 0.28,
+		odd: 0.25,
+		ridge: 1,
+		step: 2,
+		temp: 0.78
+	},
+	{elevation: 6, grounds: ['snow', 'snow2'], macro: 1, moist: 0.45, odd: 0.25, ridge: 1, step: 3, temp: 0.2},
 	{
 		elevation: 2,
 		grounds: ['basalt', 'basalt2', 'ash', 'crust', 'cinder', 'tuff', 'flow', 'flow2', 'weathered'],
 		macro: 1,
 		moist: 0.62,
+		odd: 0.25,
 		ridge: 0.6,
 		step: 3,
 		temp: 0.88
 	},
-	{elevation: 2, grounds: ['ruingrass', 'concrete'], macro: 1, moist: 0.48, ridge: 0.6, step: 3, temp: 0.62},
-	{elevation: 0, grounds: ['mauve', 'mauve2', 'moss', 'lilac'], macro: 1, moist: 0.86, ridge: 0.8, step: 1, temp: 0.3},
+	{elevation: 2, grounds: ['ruingrass', 'concrete'], macro: 1, moist: 0.48, odd: 0.25, ridge: 0.6, step: 3, temp: 0.62},
+	{
+		elevation: 0,
+		grounds: ['mauve', 'mauve2', 'moss', 'lilac'],
+		macro: 1,
+		moist: 0.86,
+		odd: 0.25,
+		ridge: 0.8,
+		step: 1,
+		temp: 0.3
+	},
 	{
 		elevation: 3,
 		grounds: ['karstgrass', 'pave', 'rock', 'karstmoss'],
 		macro: 0.3,
 		moist: 0.25,
+		odd: 0.25,
 		ridge: 0.7,
 		step: 2,
 		temp: 0.35
@@ -77,9 +142,90 @@ const BIOME_SHAPE = [
 		grounds: ['salt', 'salt2', 'saltpink', 'saltfloor', 'saltcrack', 'saltochre'],
 		macro: 0.2,
 		moist: 0.06,
+		odd: 0.25,
 		ridge: 0.3,
 		step: 2,
 		temp: 0.66
+	},
+	{
+		elevation: 3,
+		grounds: ['glasssand', 'glass', 'glass2'],
+		macro: 0.5,
+		moist: 0.2,
+		odd: 0.78,
+		ridge: 0.2,
+		step: 1,
+		temp: 0.82
+	},
+	{
+		elevation: 4,
+		grounds: ['travertine', 'travrust', 'springbed'],
+		macro: 0.6,
+		moist: 0.55,
+		odd: 0.8,
+		ridge: 0.3,
+		step: 1,
+		temp: 0.62
+	},
+	{
+		elevation: 1,
+		grounds: ['paddy', 'paddy2', 'paddymud'],
+		macro: 1,
+		moist: 0.85,
+		odd: 0.78,
+		ridge: 0.2,
+		step: 1,
+		temp: 0.6
+	},
+	{
+		elevation: -2,
+		grounds: ['coralsand', 'coralpink', 'coralorange', 'coralviolet', 'lagoonbed'],
+		macro: 0.3,
+		moist: 0.8,
+		odd: 0.75,
+		ridge: 0,
+		step: 1,
+		temp: 0.85
+	},
+	{
+		elevation: 6,
+		grounds: ['crimson', 'crimson2', 'canyonfloor'],
+		macro: 0.6,
+		moist: 0.35,
+		odd: 0.8,
+		ridge: 0.5,
+		step: 2,
+		temp: 0.7
+	},
+	{
+		elevation: 3,
+		grounds: ['prism', 'prism2', 'prismlilac'],
+		macro: 0.6,
+		moist: 0.3,
+		odd: 0.8,
+		ridge: 0.6,
+		step: 1,
+		temp: 0.25
+	},
+	{
+		elevation: 0,
+		grounds: ['tundra', 'tundra2', 'frostmoss', 'trough'],
+		macro: 0.5,
+		moist: 0.75,
+		odd: 0.75,
+		ridge: 0.2,
+		step: 1,
+		temp: 0.12
+	},
+	{
+		elevation: 2,
+		grounds: ['autumn', 'autumn2', 'litter'],
+		macro: 1,
+		moist: 0.6,
+		odd: 0.72,
+		ridge: 0.8,
+		step: 1,
+		temp: 0.38
 	}
 ]
 // What each biome holds, in Biome order: common materials lie in big lean fields, rare ones in small rich ones.
@@ -128,6 +274,46 @@ const DEPOSITS: Deposit[][] = [
 		{abundance: 6000, material: 'salt', site: 'high'},
 		{abundance: 1200, material: 'potash', site: 'any'},
 		{abundance: 700, material: 'lithium', site: 'low'}
+	],
+	[
+		{abundance: 1400, material: 'glass', site: 'high'},
+		{abundance: 900, material: 'quartz', site: 'low'},
+		{abundance: 3500, material: 'sand', site: 'any'}
+	],
+	[
+		{abundance: 900, material: 'sulfur', site: 'wet'},
+		{abundance: 600, material: 'lithium', site: 'low'},
+		{abundance: 2500, material: 'limestone', site: 'any'}
+	],
+	[
+		{abundance: 1800, material: 'clay', site: 'wet'},
+		{abundance: 420, material: 'jade', site: 'high'},
+		{abundance: 1500, material: 'peat', site: 'any'}
+	],
+	[
+		{abundance: 1600, material: 'coral', site: 'any'},
+		{abundance: 2500, material: 'salt', site: 'low'},
+		{abundance: 3000, material: 'sand', site: 'any'}
+	],
+	[
+		{abundance: 380, material: 'garnet', site: 'low'},
+		{abundance: 1600, material: 'iron', site: 'high'},
+		{abundance: 1400, material: 'copper', site: 'any'}
+	],
+	[
+		{abundance: 450, material: 'crystal', site: 'any'},
+		{abundance: 700, material: 'fluorite', site: 'high'},
+		{abundance: 1100, material: 'quartz', site: 'low'}
+	],
+	[
+		{abundance: 1800, material: 'peat', site: 'wet'},
+		{abundance: 900, material: 'cobalt', site: 'any'},
+		{abundance: 1100, material: 'coal', site: 'low'}
+	],
+	[
+		{abundance: 500, material: 'amber', site: 'any'},
+		{abundance: 1300, material: 'iron', site: 'high'},
+		{abundance: 1100, material: 'coal', site: 'low'}
 	]
 ]
 // The start basin's fields, one per starter material round the base.
@@ -160,6 +346,14 @@ const RUINS = 5
 const FUNGAL = 6
 const KARST = 7
 const SALT = 8
+const GLASS = 9
+const SPRINGS = 10
+const PADDIES = 11
+const CORAL = 12
+const CANYON = 13
+const PRISM = 14
+const TUNDRA = 15
+const AUTUMN = 16
 const NEIGHBOURS = [
 	{x: 1, z: 0},
 	{x: -1, z: 0},
@@ -177,11 +371,12 @@ const EDGES = [
 	{dx: 0, dz: -1, mine: [0, 1], theirs: [2, 3]}
 ]
 
-export const GENERATOR = 4
+export {BIOME_SHAPE}
+export const GENERATOR = 5
 export const CHUNK = 32
 // One height level in world units; a tile is one unit wide.
 export const LEVEL = 0.4
-export const LIQUID = {brine: 5, ice: 3, lava: 2, none: 0, sulfur: 4, water: 1}
+export const LIQUID = {brine: 5, ice: 3, lagoon: 7, lava: 2, none: 0, spring: 6, sulfur: 4, water: 1}
 // How each way of moving copes with ground, in levels: the steepest tile it crosses, the highest step between touching edges and the deepest liquid it fords. Hover crosses any liquid but lava; fly ignores the ground.
 export const MOVERS = {
 	fly: {ford: 99, slope: 99, step: 99},
@@ -194,26 +389,47 @@ export const MOVERS = {
 // Each ground kind's id: its index in GROUND_KINDS.
 export const GROUND = {
 	ash: 16,
+	autumn: 64,
+	autumn2: 65,
 	basalt: 14,
 	basalt2: 15,
 	bed: 32,
+	canyonfloor: 56,
 	cinder: 33,
 	concrete: 19,
+	coralorange: 51,
+	coralpink: 50,
+	coralsand: 49,
+	coralviolet: 52,
+	crimson: 54,
+	crimson2: 55,
 	crust: 17,
 	flow: 37,
 	flow2: 38,
+	frostmoss: 62,
+	glass: 41,
+	glass2: 42,
+	glasssand: 40,
 	grass: 0,
 	grass2: 1,
 	karstgrass: 24,
 	karstmoss: 27,
+	lagoonbed: 53,
 	lilac: 23,
+	litter: 66,
 	marsh: 4,
 	mauve: 20,
 	mauve2: 21,
 	moss: 22,
 	mud: 5,
 	mud2: 6,
+	paddy: 46,
+	paddy2: 47,
+	paddymud: 48,
 	pave: 25,
+	prism: 57,
+	prism2: 58,
+	prismlilac: 59,
 	redsand: 8,
 	reeds: 7,
 	road: 3,
@@ -231,7 +447,13 @@ export const GROUND = {
 	snow: 11,
 	snow2: 12,
 	snowroad: 13,
+	springbed: 45,
+	travertine: 43,
+	travrust: 44,
+	trough: 63,
 	tuff: 34,
+	tundra: 60,
+	tundra2: 61,
 	weathered: 39
 }
 // Cliff strata per biome, one colour per level.
@@ -244,19 +466,32 @@ export const STRATA = [
 	['#d9d2c5', '#cbc3b4', '#e2dccf', '#c2baab', '#d4ccbe'],
 	['#b9a4a0', '#a8918d', '#c7b2ad', '#9c8783', '#b19a96'],
 	['#e2ded0', '#c4bfae', '#eeeadd', '#b2ac9b', '#d8d2c1'],
-	['#f6f0e6', '#efc9c0', '#e9d4a8', '#f3e3d6', '#d9a99a', '#e2c58f']
+	['#f6f0e6', '#efc9c0', '#e9d4a8', '#f3e3d6', '#d9a99a', '#e2c58f'],
+	['#f0e3c6', '#e4d2ae', '#a9dccf', '#ecdcb9', '#8fcfbf', '#dfcaa3'],
+	['#f5eddd', '#efd9b8', '#f8f1e4', '#e7bf92', '#f2e4cc', '#e3ae80'],
+	['#b8a07e', '#a68d6c', '#c2ab89', '#9b8263', '#b09676'],
+	['#f5e6cf', '#f0c7b4', '#f7eedf', '#eab49b', '#f2dcc1'],
+	['#c8634c', '#b3543f', '#d9805f', '#a8483a', '#e19a72', '#bd5d47', '#cf7356'],
+	['#e6eef8', '#cfdcef', '#f2f6fb', '#bccbe6', '#dbd1f0', '#c6d8ee'],
+	['#9c8f74', '#8a7e66', '#a89b80', '#7f735d', '#958870'],
+	['#cdb48c', '#bea27a', '#d8c19a', '#b3966f', '#c7ac83']
 ]
 // Each material's look: its ore's colour (in outcrops and a cart's bed) and whether it glows, its outcrop's shape, and the stain it leaves on the ground.
 export const ORES = {
+	amber: {colour: '#f2a33c', glow: false, shape: 'orb', tint: '#e0902c'},
 	bauxite: {colour: '#d47552', glow: false, shape: 'blob', tint: '#c9643f'},
 	clay: {colour: '#de9d78', glow: false, shape: 'blob', tint: '#d48d68'},
 	coal: {colour: '#5d5955', glow: false, shape: 'chunk', tint: '#5d5955'},
 	cobalt: {colour: '#6a8ee0', glow: false, shape: 'oct', tint: '#5c7fd0'},
 	copper: {colour: '#e39561', glow: false, shape: 'oct', tint: '#d98a55'},
+	coral: {colour: '#f49a8a', glow: false, shape: 'blob', tint: '#e9867a'},
 	crystal: {colour: '#8fe3f2', glow: true, shape: 'prism', tint: '#4fbfdc'},
 	electronics: {colour: '#7cc79a', glow: false, shape: 'chunk', tint: '#5fae80'},
 	fluorite: {colour: '#bb9ef0', glow: true, shape: 'prism', tint: '#a58ae0'},
+	garnet: {colour: '#b8324a', glow: false, shape: 'oct', tint: '#a32a40'},
+	glass: {colour: '#9fe0d2', glow: false, shape: 'prism', tint: '#7fcfbf'},
 	iron: {colour: '#c98a6a', glow: false, shape: 'chunk', tint: '#b06a4c'},
+	jade: {colour: '#6fc39a', glow: false, shape: 'chunk', tint: '#5aae86'},
 	limestone: {colour: '#f1ede1', glow: false, shape: 'boulder', tint: '#d8d2c0'},
 	lithium: {colour: '#9eeee3', glow: true, shape: 'prism', tint: '#7fdcd0'},
 	lumen: {colour: '#b6f2dc', glow: true, shape: 'orb', tint: '#8fe0c6'},
@@ -290,7 +525,13 @@ const SPARSE = [
 	{base: 1, below: 0.05, biome: RUINS, kind: 'shrub', spread: 1},
 	{base: 1, below: 0.05, biome: FUNGAL, kind: 'shrub', spread: 1},
 	{base: 1.2, below: 0.02, biome: KARST, kind: 'shrub', spread: 0.6},
-	{base: 1, below: 0.012, biome: SALT, kind: 'spire', spread: 0.6}
+	{base: 1, below: 0.012, biome: SALT, kind: 'spire', spread: 0.6},
+	{base: 0.8, below: 0.014, biome: GLASS, kind: 'shard', spread: 0.7},
+	{base: 0.09, below: 0.01, biome: SPRINGS, kind: 'rock', spread: 0.06},
+	{base: 0.8, below: 0.02, biome: CANYON, kind: 'hoodoo', spread: 0.7},
+	{base: 0.9, below: 0.045, biome: CANYON, kind: 'shrubDry', spread: 0.5},
+	{base: 0.8, below: 0.03, biome: TUNDRA, kind: 'shrub', spread: 0.5},
+	{base: 0.1, below: 0.036, biome: TUNDRA, kind: 'rock', spread: 0.1}
 ]
 // The biome each ground kind belongs to, so props change species across a border with the colours.
 const GROUND_BIOME = Array.map(GROUND_KINDS, kind =>
@@ -687,6 +928,38 @@ function withGround(draft: Draft, ground: number) {
 	return {...draft, ground}
 }
 
+// One spring's terraces at a point: rings stepping down a level from the vent, each a pool behind a dry rim.
+function springRing(h: Here, f: {base: number; rings: number; s: number; w: number; x: number; z: number}) {
+	const d = Math.hypot(h.x - f.x, h.z - f.z) / f.w + 0.4 * (fbm(f.s, h.x / 2.2, h.z / 2.2) - 0.5)
+	const ring = Math.floor(d)
+	if (ring > f.rings) return undefined
+	const level = f.base + f.rings - ring
+	if (ring === 0 && d < 0.45) return flat(level + 1, G.travrust)
+	if (d - ring > 0.68 || ring === f.rings) {
+		return flat(level, byNoise(fbm(f.s + 1, h.x / 2, h.z / 2), 0.55, G.travrust, G.travertine))
+	}
+	return wet(LIQUID.spring, level - 0.14, level - 0.5, G.springbed)
+}
+
+// Paddies: every contour of the hills is a flooded field behind a grass bund on its downhill edge; the knolls stay dry.
+function paddiesTile(h: Here) {
+	// Bunds also split each terrace into fields a few tiles across.
+	const across = (h.x + 2 * fbm(h.hs + 9, h.x / 6, h.z / 6)) / 5
+	const along = (h.z + 2 * fbm(h.hs + 10, h.x / 6, h.z / 6)) / 6
+	if (h.s0 - h.p < -0.22 || across - Math.floor(across) < 0.2 || along - Math.floor(along) < 0.17) {
+		return flat(h.p, G.paddy2, false)
+	}
+	if (fbm(h.hs + 8, h.x / 9, h.z / 9) > 0.56) return plain(-1)
+	return wet(LIQUID.water, h.p - 0.12, h.p - 0.4, G.paddymud)
+}
+
+// Distance to a hexagonal column's axis in its own radii, its faces turned by `turn`.
+function hexDistance(dx: number, dz: number, turn: number) {
+	return Array.reduce([0, Math.PI / 3, (2 * Math.PI) / 3], 0, (far, angle) =>
+		Number.max(far, Math.abs(dx * Math.cos(turn + angle) + dz * Math.sin(turn + angle)))
+	)
+}
+
 function startBiome(isStart: boolean, biome: number) {
 	if (isStart) return MEADOW
 	return biome
@@ -952,8 +1225,8 @@ export function makeWorld(seed: number) {
 		gap: seeded(seed, 16),
 		macro: seeded(seed, 9),
 		moist: seeded(seed, 4),
+		odd: seeded(seed, 6),
 		ore: seeded(seed, 14),
-		pin: seeded(seed, 412),
 		prop: seeded(seed, 8),
 		ridge: seeded(seed, 10),
 		river: seeded(seed, 11),
@@ -971,7 +1244,7 @@ export function makeWorld(seed: number) {
 	const lastNear = Array.empty<Near>()
 	const lastAt = {x: Infinity, z: Infinity}
 	const sum = {n: 0, ridge: 0, s: 0}
-	const weights = new Float64Array(9)
+	const weights = new Float64Array(BIOME_SHAPE.length)
 
 	// A cell's place and biome on the climate map.
 	function climate(ci: number, cj: number) {
@@ -983,8 +1256,9 @@ export function makeWorld(seed: number) {
 		const z = (cj + 0.25 + 0.5 * r(2)) * CELL
 		const t = clamp((fbm(S.temp, x / 250, z / 250) - 0.5) * 2.6 + 0.5 + (r(3) - 0.5) * 0.35, 0, 1)
 		const m = clamp((fbm(S.moist, x / 250, z / 250) - 0.5) * 2.6 + 0.5 + (r(4) - 0.5) * 0.35, 0, 1)
+		const o = clamp((fbm(S.odd, x / 190, z / 190) - 0.5) * 3 + 0.56 + (r(12) - 0.5) * 0.3, 0, 1)
 		const nearest = Array.reduce(BIOME_SHAPE, {best: 1e9, biome: 0, index: 0}, (acc, shape) => {
-			const d = (t - shape.temp) ** 2 + (m - shape.moist) ** 2
+			const d = (t - shape.temp) ** 2 + (m - shape.moist) ** 2 + (o - shape.odd) ** 2
 			if (d < acc.best) return {best: d, biome: acc.index, index: acc.index + 1}
 			return {...acc, index: acc.index + 1}
 		})
@@ -1091,6 +1365,18 @@ export function makeWorld(seed: number) {
 		if (b === LAVA) return 3 + 8 * (fbm(c.ns + 1, x / 26, z / 26) - 0.5)
 		if (b === SALT) return 7 + 4 * (fbm(c.ns + 1, x / 30, z / 30) - 0.5)
 		if (b === RUINS) return 5
+		if (b === GLASS) return 6 + 3 * (fbm(c.ns + 1, x / 40, z / 40) - 0.5)
+		if (b === SPRINGS) return 7 + 3 * (fbm(c.ns + 1, x / 30, z / 30) - 0.5)
+		// Paddy hills: a level every few tiles, so each contour is a terrace a field wide.
+		if (b === PADDIES) {
+			return 5 + 14 * (fbm(c.ns + 1, x / 44, z / 44) - 0.5) + 2 * (noise(c.ns + 2, x / 12, z / 12) - 0.5)
+		}
+		if (b === CORAL) return 2.5 + 1.2 * (noise(c.ns + 1, x / 12, z / 12) - 0.5)
+		if (b === PRISM) return 6 + 3 * (fbm(c.ns + 1, x / 30, z / 30) - 0.5)
+		if (b === TUNDRA) return 3 + 1.6 * (noise(c.ns + 1, x / 16, z / 16) - 0.5)
+		if (b === AUTUMN) {
+			return 5 + 3 * (noise(c.ns + 1, x / 12, z / 12) - 0.5) + 7 * (fbm(c.ns + 2, x / 34, z / 34) - 0.5)
+		}
 		return 9
 	}
 
@@ -1138,7 +1424,7 @@ export function makeWorld(seed: number) {
 	// Colour weights per biome at a point, jittered so a border breaks into drifts and patches.
 	function colourWeights(x: number, z: number) {
 		const nr = near(x, z)
-		weights.set([0, 0, 0, 0, 0, 0, 0, 0, 0])
+		weights.set(Array.replicate(0, BIOME_SHAPE.length))
 		const total = Array.reduce(nr.block, 0, (acc, c, index) => {
 			const e = Math.exp(-((nr.dists[index] ?? 0) - nr.min) / 0.06)
 			if (e < 0.004) return acc
@@ -1250,7 +1536,29 @@ export function makeWorld(seed: number) {
 		return byNoise(found.id, 0.5, G.salt, G.salt2)
 	}
 
+	// Glass dunes: sand fused to glass in streaks along the wind.
+	function glassGround(x: number, z: number) {
+		const fused = fbm(S.dither + 90, x / 7, z / 3)
+		if (fused > 0.63) return G.glass
+		if (fused > 0.57) return G.glass2
+		return G.glasssand
+	}
+
+	// The plain ground of the strange half of the climate map's biomes, from glass on.
+	function strangeGround(b: number, x: number, z: number) {
+		const n = fbm(S.dither + 50 + b, x / 2.6, z / 2.6)
+		if (b === GLASS) return glassGround(x, z)
+		if (b === SPRINGS) return byNoise(fbm(S.dither + 91, x / 5, z / 5), 0.6, G.travrust, G.travertine)
+		if (b === PADDIES) return byNoise(n, 0.5, G.paddy, G.paddy2)
+		if (b === CORAL) return G.coralsand
+		if (b === CANYON) return byNoise(n, 0.5, G.crimson, G.crimson2)
+		if (b === PRISM) return byNoise(n, 0.62, G.prismlilac, byNoise(n, 0.45, G.prism, G.prism2))
+		if (b === TUNDRA) return byNoise(n, 0.6, G.frostmoss, byNoise(n, 0.45, G.tundra, G.tundra2))
+		return byNoise(fbm(S.dither + 96, x / 4, z / 4), 0.6, G.litter, byNoise(n, 0.5, G.autumn, G.autumn2))
+	}
+
 	function plainGround(b: number, x: number, z: number) {
+		if (b >= GLASS) return strangeGround(b, x, z)
 		const n = fbm(S.dither + 50 + b, x / 2.6, z / 2.6)
 		if (b === MEADOW) return byNoise(n, 0.5, G.grass, G.grass2)
 		if (b === MARSH) return byNoise(n, 0.42, G.marsh, byNoise(n, 0.32, G.reeds, G.mud2))
@@ -1434,6 +1742,56 @@ export function makeWorld(seed: number) {
 		tier: 0.5,
 		up: q => byNoise(0.5, q, 4, 6)
 	})
+	// Tower karst: a main tower and up to two smaller ones leaning on it, each a stack of a mossy foot, a shoulder and a grassy top.
+	const towers = grid(296, 11, false, (r, fx, fz, nn) => {
+		if (!(r(3) < 0.62 && interior(nn, KARST, 0.12) && away(nn, fx, fz, 10))) return Option.none()
+		return Option.some({
+			s: (r(5) * MILLION) | 0,
+			spires: Array.map(Array.range(0, Math.floor(r(4) * 3)), q => {
+				const angle = r(30 + q) * TAU
+				const reach = flag(q > 0) * (2 + 1.2 * r(40 + q))
+				return {
+					r: mix(1.8, 1.15, flag(q > 0)) + 0.8 * r(10 + q),
+					top: mix(12, 7, flag(q > 0)) + 2 * Math.floor(r(20 + q) * 3),
+					x: fx + Math.cos(angle) * reach,
+					z: fz + Math.sin(angle) * reach
+				}
+			}),
+			x: fx,
+			z: fz
+		})
+	})
+	// Hot springs: travertine terraces stepping down from a vent, a turquoise pool behind every rim.
+	const springs = grid(281, 19, false, (r, fx, fz, nn) => {
+		if (!(r(3) < 0.6 && interior(nn, SPRINGS, 0.12) && away(nn, fx, fz, 20))) return Option.none()
+		return Option.some({
+			base: round(blendS(fx, fz)),
+			rings: 2 + Math.floor(r(4) * 3),
+			s: (r(5) * MILLION) | 0,
+			w: 1.7 + 0.7 * r(6),
+			x: fx,
+			z: fz
+		})
+	})
+	// Crystal stands: hexagonal columns of different heights packed together, like a geode turned inside out.
+	const crystals = grid(291, 10, false, (r, fx, fz, nn) => {
+		if (!(r(3) < 0.55 && interior(nn, PRISM, 0.1) && away(nn, fx, fz, 12))) return Option.none()
+		return Option.some({
+			columns: Array.map(Array.range(0, 1 + Math.floor(r(4) * 4)), q => {
+				const angle = r(30 + q) * TAU
+				const reach = flag(q > 0) * (1.3 + 1.1 * r(40 + q))
+				return {
+					r: 0.8 + 0.9 * r(10 + q) + 0.5 * flag(q === 0),
+					top: 3 + Math.floor(r(20 + q) * 7) + 3 * flag(q === 0),
+					x: fx + Math.cos(angle) * reach,
+					z: fz + Math.sin(angle) * reach
+				}
+			}),
+			turn: r(6) * TAU,
+			x: fx,
+			z: fz
+		})
+	})
 
 	// The landmarks, one per cell: parameterised versions of the atlas dioramas.
 	const meadowHero = cellCache(c => {
@@ -1608,9 +1966,9 @@ export function makeWorld(seed: number) {
 		})
 	}
 
-	// Rivers: a long meandering line through every biome but basalt and salt, carved a little into the ground; frozen in frost.
+	// Rivers: a long meandering line through every biome but the dry and the drowned ones, carved a little into the ground; frozen in frost.
 	function river(t: Draft, h: Here) {
-		if (h.b === LAVA || h.b === SALT || !plainDraft(t)) return t
+		if (Array.contains([LAVA, SALT, GLASS, CORAL, CANYON], h.b) || !plainDraft(t)) return t
 		const d = zeroDist(S.river, 190, h.x, h.z, 0.025)
 		if (d > 2.6 || basinW(h.x, h.z) > 0.05 || ridgeAt(near(h.x, h.z), h.x, h.z) > 1.5) return t
 		if (d < 1.05 && h.b === FROST) return wet(LIQUID.ice, h.p - 0.2, h.p - 1, G.snow)
@@ -2031,6 +2389,21 @@ export function makeWorld(seed: number) {
 		)
 	}
 
+	// The tallest of a karst cluster's towers over a point: a grassy top, a shoulder a few levels down, a mossy foot two levels up from the plain.
+	function towerAt(h: Here) {
+		return eachFeature(towers, h.x, h.z, f => {
+			const found = Array.reduce(f.spires, {ground: G.rock, level: h.p}, (best, spire, q) => {
+				const d = Math.hypot(h.x - spire.x, h.z - spire.z) / spire.r + 0.32 * (fbm(f.s + q, h.x / 1.7, h.z / 1.7) - 0.5)
+				if (d < 0.66 && h.p + spire.top > best.level) return {ground: G.karstgrass, level: h.p + spire.top}
+				if (d < 1 && h.p + spire.top - 4 > best.level) return {ground: G.karstmoss, level: h.p + spire.top - 4}
+				if (d < 1.4 && h.p + 2 > best.level) return {ground: G.karstmoss, level: h.p + 2}
+				return best
+			})
+			if (found.level === h.p) return undefined
+			return flat(found.level, found.ground)
+		})
+	}
+
 	function karstTile(h: Here) {
 		if (h.fade > 0.9) {
 			const H = karstHero(h.c)
@@ -2039,6 +2412,8 @@ export function makeWorld(seed: number) {
 			if (dh < H.r) return flat(h.p - 3, G.rock)
 			if (segDist(h.u, h.v, H.chan).d < 1) return wet(LIQUID.water, h.p - 0.4, h.p - 1)
 		}
+		const tower = towerAt(h)
+		if (tower !== undefined) return tower
 		const hole = eachFeature(holes, h.x, h.z, f => {
 			const d = Math.hypot(h.x - f.x, h.z - f.z) + 0.55 * (fbm(f.s, h.x / 1.7, h.z / 1.7) - 0.5)
 			if (d >= f.r) return undefined
@@ -2105,7 +2480,124 @@ export function makeWorld(seed: number) {
 		return withGround(raised, ground)
 	}
 
+	// Glass dunes: crescent ridges two levels high marching across one wind per region, a gentle windward climb and a sheer lee; a fulgurite crater, a fused glass bowl in a raised rim, for landmark.
+	function glassTile(h: Here) {
+		if (h.fade > 0.9) {
+			const d = Math.hypot(h.u, h.v) / h.k + 0.8 * (fbm(h.hs + 3, h.x / 2.4, h.z / 2.4) - 0.5)
+			if (d < 4.5) return flat(h.frame.plain - 3, G.glass2)
+			if (d < 6.2) return flat(h.frame.plain + 2, G.glass)
+			if (d < 7.6) return flat(h.frame.plain + 1, G.glasssand)
+		}
+		const a = flowAngle + 1.2 * (noise(S.flow + 31, h.x / 200, h.z / 200) - 0.5)
+		const along = (h.x * Math.cos(a) + h.z * Math.sin(a)) / 8 + 1.1 * fbm(S.flow + 32, h.x / 14, h.z / 14)
+		const crest = along - Math.floor(along)
+		const dune = round((2 + flag(fbm(S.flow + 33, h.x / 22, h.z / 22) > 0.55)) * smoothstep(0.15, 0.9, crest))
+		return flat(h.p + dune, glassGround(h.x, h.z), dune > 0)
+	}
+
+	// Hot springs: the landmark is a great terraced mound, the plain is dotted with small ones.
+	function springsTile(h: Here) {
+		if (h.fade > 0.9) {
+			const hero = springRing(h, {base: h.frame.plain, rings: 6, s: h.hs + 5, w: 2.4 * h.k, x: h.c.x, z: h.c.z})
+			if (hero !== undefined) return hero
+		}
+		return eachFeature(springs, h.x, h.z, f => springRing(h, f)) ?? plain(-1)
+	}
+
+	// Coral reef: coral heads one to three levels out of a turquoise lagoon, sand banks between; an atoll's ring for landmark.
+	function coralTile(h: Here) {
+		const reef = fbm(h.hs + 11, h.x / 6, h.z / 6)
+		const hue = hash(h.hs + 12, Math.floor(h.x / 3), Math.floor(h.z / 3))
+		const coral = byNoise(hue, 0.66, G.coralviolet, byNoise(hue, 0.33, G.coralorange, G.coralpink))
+		if (h.fade > 0.9) {
+			const d = Math.hypot(h.u, h.v) / h.k + 1.2 * (fbm(h.hs + 3, h.x / 3, h.z / 3) - 0.5)
+			if (d < 2.4) return flat(h.frame.plain + 2, G.coralsand)
+			if (d < 7) return wet(LIQUID.lagoon, h.frame.plain - 0.5, h.frame.plain - 1.4, G.lagoonbed)
+			if (d < 9.5) return flat(h.frame.plain + 1 + flag(reef > 0.55), byNoise(reef, 0.5, coral, G.coralsand))
+		}
+		if (reef > 0.62) return flat(h.p + 1 + round((reef - 0.62) * 9), coral)
+		if (fbm(S.dither + 95, h.x / 14, h.z / 14) > 0.56) return flat(h.p, G.coralsand, false)
+		return wet(LIQUID.lagoon, h.p - 0.12, h.p - 0.45, G.lagoonbed)
+	}
+
+	// Crimson maze: a high plateau cut by a net of slot canyons six levels deep with a ledge halfway down; where a wall broke, rubble treads lead down.
+	function canyonTile(h: Here) {
+		const d = zeroDist(S.creek + 40, 26, h.x, h.z, 0.1)
+		const w = 1.3 + 1.1 * noise(S.creek + 42, h.x / 11, h.z / 11)
+		if (d >= w + 1.3) return flat(h.p, plainGround(CANYON, h.x, h.z), false)
+		if (gapAt(h.x, h.z)) {
+			return flat(h.p - round(6 * clamp(1 - (d - w * 0.4) / (w + 1.5), 0, 1)), G.canyonfloor)
+		}
+		if (d < w) return flat(h.p - 6, G.canyonfloor)
+		return flat(h.p - 3, G.crimson2)
+	}
+
+	// Prism fields: hexagonal crystal columns standing out of pale frost-blue ground; the landmark is one great cluster.
+	function prismTile(h: Here) {
+		if (h.fade > 0.9) {
+			const d = hexDistance(h.u, h.v, 0) / h.k + 0.3 * (fbm(h.hs + 3, h.x / 2, h.z / 2) - 0.5)
+			if (d < 2.6) return flat(h.frame.plain + 18, G.prismlilac)
+			if (d < 4.2) return flat(h.frame.plain + 11, G.prism)
+			if (d < 5.8) return flat(h.frame.plain + 5, G.prism2)
+		}
+		const column = eachFeature(crystals, h.x, h.z, f => {
+			const top = Array.reduce(f.columns, 0, (best, spar) => {
+				if (hexDistance(h.x - spar.x, h.z - spar.z, f.turn) / spar.r < 0.87) return Number.max(best, spar.top)
+				return best
+			})
+			if (top === 0) return undefined
+			return flat(h.p + top, byNoise(hash(f.x, top, 3), 0.5, G.prismlilac, G.prism))
+		})
+		return column ?? plain(-1)
+	}
+
+	// Tundra: ice-wedge polygons, plates a few tiles across with frozen seams a quarter level down, thaw ponds in the hollows; a pingo, an ice-cored hill with a pond in its top, for landmark.
+	function tundraTile(h: Here) {
+		if (h.fade > 0.9) {
+			const d = Math.hypot(h.u, h.v) / h.k + 0.6 * (fbm(h.hs + 3, h.x / 2.5, h.z / 2.5) - 0.5)
+			if (d < 1.6) return wet(LIQUID.water, h.frame.plain + 5.6, h.frame.plain + 5, G.trough)
+			if (d < 8) return flat(h.frame.plain + round(7 * (1 - d / 8) + 0.6), byNoise(d, 5, G.tundra, G.frostmoss))
+		}
+		if (fbm(h.hs + 9, h.x / 10, h.z / 10) > 0.7) return wet(LIQUID.water, h.p - 0.2, h.p - 0.8, G.trough)
+		const gx = Math.floor(h.x / 7)
+		const gz = Math.floor(h.z / 7)
+		const seam = Array.reduce(OFFSETS, {d1: 9, d2: 9, id: 0}, (acc, o) => {
+			const d = Math.hypot(
+				h.x - (gx + o.x + hash(S.dither + 97, gx + o.x, gz + o.z)) * 7,
+				h.z - (gz + o.z + hash(S.dither + 98, gx + o.x, gz + o.z)) * 7
+			)
+			if (d < acc.d1) return {d1: d, d2: acc.d1, id: hash(S.dither + 99, gx + o.x, gz + o.z)}
+			if (d < acc.d2) return {...acc, d2: d}
+			return acc
+		})
+		if (seam.d2 - seam.d1 < 0.7) return flat(h.p, G.trough, false)
+		// A plate heaved a level up by the ice under it, here and there.
+		return flat(h.p + flag(seam.id > 0.82), plainGround(TUNDRA, h.x, h.z), false)
+	}
+
+	// Autumn highlands: rolling maple hills, with the high meadow's cliff, river and lake for landmark.
+	function autumnTile(h: Here) {
+		if (h.fade > 0.9) {
+			const hero = meadowLandmark(h)
+			if (hero !== undefined) return withGround(hero, plainGround(AUTUMN, h.x, h.z))
+		}
+		return plain(-1)
+	}
+
+	// The strange half of the climate map's biomes, from glass on.
+	function strangeTile(h: Here) {
+		if (h.b === GLASS) return glassTile(h)
+		if (h.b === SPRINGS) return springsTile(h)
+		if (h.b === PADDIES) return paddiesTile(h)
+		if (h.b === CORAL) return coralTile(h)
+		if (h.b === CANYON) return canyonTile(h)
+		if (h.b === PRISM) return prismTile(h)
+		if (h.b === TUNDRA) return tundraTile(h)
+		return autumnTile(h)
+	}
+
 	function biomeTile(h: Here) {
+		if (h.b >= GLASS) return strangeTile(h)
 		if (h.b === MEADOW) return meadowTile(h)
 		if (h.b === MARSH) return marshTile(h)
 		if (h.b === MESA) return mesaTile(h)
@@ -2233,6 +2725,19 @@ export function makeWorld(seed: number) {
 		if (b === FUNGAL && p < 0.035) {
 			return {glow: r(7) < 0.3, hue: Math.floor(r(6) * 3), kind: 'cap', s: 1.1 + 2.3 * s * s}
 		}
+		if (b === AUTUMN) {
+			return groveProp(p, s, {
+				lone: 0.975,
+				rock: 0.985,
+				tree: 'maple',
+				trees: byNoise(fbm(S.prop + 3, gx / 12, gz / 12), 0.5, 0.42, 0.05)
+			})
+		}
+		if (b === PADDIES && p < byNoise(fbm(S.prop + 4, gx / 9, gz / 9), 0.6, 0.35, 0.01)) {
+			return {kind: 'bamboo', s: 0.8 + 0.5 * s}
+		}
+		if (b === CORAL && g !== G.coralsand && p < 0.3) return {hue: Math.floor(r(6) * 3), kind: 'coral', s: 0.7 + 0.6 * s}
+		if (b === PRISM && p < 0.03) return {hue: Math.floor(r(6) * 3), kind: 'crystal', s: 0.6 + 0.8 * s}
 		return Option.getOrUndefined(
 			Option.map(
 				Array.findFirst(SPARSE, row => row.biome === b && p < row.below),
@@ -2291,54 +2796,30 @@ export function makeWorld(seed: number) {
 		}
 	}
 
-	function pinnacles(cx: number, cz: number, ore: Uint8Array) {
+	// A geyser on the vent of every hot spring in a chunk, the landmarks' great mounds included.
+	function vents(cx: number, cz: number) {
 		const x0 = cx * CHUNK
 		const z0 = cz * CHUNK
-		return Array.flatMap(
-			Array.flatMap(Array.range(Math.floor(z0 / 8) - 1, Math.floor((z0 + CHUNK) / 8) + 1), gz =>
-				Array.map(Array.range(Math.floor(x0 / 8) - 1, Math.floor((x0 + CHUNK) / 8) + 1), gx => ({gx, gz}))
+		const small = Array.flatMap(
+			Array.flatMap(Array.range(Math.floor(z0 / 19) - 1, Math.floor((z0 + CHUNK) / 19) + 1), gz =>
+				Array.map(Array.range(Math.floor(x0 / 19) - 1, Math.floor((x0 + CHUNK) / 19) + 1), gx => ({gx, gz}))
 			),
-			slot => {
-				function r(k: number) {
-					return hash(S.pin + k * 977, slot.gx, slot.gz)
-				}
-				const x = (slot.gx + 0.2 + 0.6 * r(1)) * 8
-				const z = (slot.gz + 0.2 + 0.6 * r(2)) * 8
-				if (!inChunk(x, z, x0, z0) || r(3) > 0.42 || ore[Math.floor(z - z0) * CHUNK + Math.floor(x - x0)] !== 0) {
-					return []
-				}
-				const t = tileAt(Math.floor(x) + 0.5, Math.floor(z) + 0.5)
-				if (t.biome !== KARST || t.ramp || t.level !== round(blendS(x, z)) || t.liquid !== LIQUID.none) return []
-				const radius = 0.65 + 0.45 * r(4)
-				const reach = radius + 0.8
-				const clear = Array.every(
-					[
-						{x: reach, z: 0},
-						{x: -reach, z: 0},
-						{x: 0, z: reach},
-						{x: 0, z: -reach},
-						{x: 0.7 * reach, z: 0.7 * reach},
-						{x: -0.7 * reach, z: 0.7 * reach},
-						{x: 0.7 * reach, z: -0.7 * reach},
-						{x: -0.7 * reach, z: -0.7 * reach}
-					],
-					o => {
-						const q = tileAt(Math.floor(x + o.x) + 0.5, Math.floor(z + o.z) + 0.5)
-						return !q.ramp && q.level === t.level && q.liquid === LIQUID.none
-					}
-				)
-				if (!clear) return []
+			slot => Option.toArray(springs.feature(slot.gx, slot.gz))
+		)
+		return Array.flatMap(
+			[...small, ...Array.filter(near(x0 + CHUNK / 2, z0 + CHUNK / 2).block, c => c.biome === SPRINGS && frame(c).on)],
+			(at: {x: number; z: number}, n) => {
+				if (!inChunk(at.x, at.z, x0, z0)) return []
+				const t = tileCached(at.x, at.z)
+				if (t.biome !== SPRINGS || t.liquid !== LIQUID.none || t.ramp) return []
 				return [
 					{
-						h: 5.5 + 4 * r(6),
-						id: ((cx * 92_821) ^ (cz * 68_917)) * 1024 + 2000 + (Math.floor(x) % 97) * 7 + (Math.floor(z) % 89),
-						kind: 'pinnacle',
-						r: radius,
+						id: ((cx * 92_821) ^ (cz * 68_917)) * 1024 + 2000 + n,
+						kind: 'geyser',
 						s: 1,
-						seed: Math.floor(r(7) * 1e5),
-						x,
-						yaw: r(5) * TAU,
-						z
+						x: Math.floor(at.x) + 0.5,
+						yaw: 0,
+						z: Math.floor(at.z) + 0.5
 					} satisfies Prop
 				]
 			}
@@ -2697,8 +3178,7 @@ export function makeWorld(seed: number) {
 			const house = ruinHouse(x0 + (lot % 8) * 4, z0 + Math.floor(lot / 8) * 4, ring, ore)
 			if (house !== undefined) MutableList.append(props, {...house, id: idBase + 1000 + lot})
 		})
-		// Karst pinnacles: on a grid of their own, standing on the plain clear of every hole.
-		Array.forEach(pinnacles(cx, cz, ore), pin => MutableList.append(props, pin))
+		Array.forEach(vents(cx, cz), vent => MutableList.append(props, vent))
 		return MutableList.toArray(props)
 	}
 

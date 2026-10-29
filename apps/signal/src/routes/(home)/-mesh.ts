@@ -3,6 +3,7 @@ import {Array, MutableHashMap, MutableList, Number, Option, Record, String} from
 import * as THREE from 'three'
 
 import {
+	BIOME_SHAPE,
 	CHUNK,
 	GROUND,
 	GROUND_COLOR,
@@ -68,10 +69,23 @@ const BARK = '#a88c6f'
 const CAP_HUES = ['#e6a6c4', '#b9a3e3', '#9fd6cf']
 // Room for the densest chunk's vertices: one scratch buffer per sink, copied out per build.
 const CAPACITY = 900_000
-const PLANTS = ['tree', 'pine', 'shrub', 'shrubDry']
-const TUFTY = [GROUND.grass, GROUND.grass2, GROUND.ruingrass, GROUND.karstgrass, GROUND.marsh, GROUND.karstmoss]
+const PLANTS = ['tree', 'pine', 'shrub', 'shrubDry', 'maple']
+const TUFTY = [
+	GROUND.grass,
+	GROUND.grass2,
+	GROUND.ruingrass,
+	GROUND.karstgrass,
+	GROUND.marsh,
+	GROUND.karstmoss,
+	GROUND.paddy,
+	GROUND.paddy2,
+	GROUND.autumn,
+	GROUND.autumn2,
+	GROUND.tundra,
+	GROUND.frostmoss
+]
 const REEDY = [GROUND.reeds, GROUND.mud2]
-const WET = [GROUND.mud, GROUND.marsh, GROUND.moss]
+const WET = [GROUND.mud, GROUND.marsh, GROUND.moss, GROUND.paddy2]
 const SALTY = [GROUND.salt, GROUND.salt2, GROUND.saltpink, GROUND.saltochre]
 const SNOWY = [GROUND.snow, GROUND.snow2, GROUND.snowroad]
 
@@ -81,7 +95,7 @@ type Shape = {colors: Float32Array; normals: Float32Array; positions: Float32Arr
 type Sink = 'glow' | 'props' | 'terrain'
 type Piece = {colour: string; geometry: THREE.BufferGeometry; shade?: (y: number, ny: number) => number}
 type Side = {ax: number; az: number; bx: number; bz: number; dx: number; dz: number}
-type Species = 'acacia' | 'birch' | 'bush' | 'fir' | 'oak' | 'poplar' | 'shrub' | 'spruce'
+type Species = 'acacia' | 'birch' | 'bush' | 'fir' | 'maple' | 'oak' | 'poplar' | 'shrub' | 'spruce'
 type Area = {
 	amount: Float32Array
 	biome: Uint8Array
@@ -133,8 +147,7 @@ const ORE_TINTS = Array.map(Material.literals, material => rgb(ORES[material].ti
 const ROAD = rgb('#e6d6b6')
 const WORKED = rgb('#6e5c4c')
 const MOSS = rgb('#a9c58e')
-const KARST_TOP = rgb('#eef0e4')
-const KARST_MOSS = rgb('#a6c98c')
+const EVERY_BIOME = Array.range(0, BIOME_SHAPE.length - 1)
 const WHITE = rgb('#ffffff')
 const SCRATCH = {glow: sink(60_000), props: sink(CAPACITY), terrain: sink(CAPACITY)}
 const SHAPES = MutableHashMap.empty<string, Shape>()
@@ -322,10 +335,10 @@ function heightAt(area: Area, px: number, pz: number) {
 /* ───────── cliff colours: each wall's palette is the biomes' share over the 9 × 9 tiles round it ───────── */
 
 function biomeShares(area: Area) {
-	const rows = new Float32Array(CELLS * 9)
-	const shares = new Float32Array(CELLS * 9)
+	const rows = new Float32Array(CELLS * BIOME_SHAPE.length)
+	const shares = new Float32Array(CELLS * BIOME_SHAPE.length)
 	function addShares(span: {at: number; count: number; from: number}) {
-		for (const biome of Array.range(0, 8)) {
+		for (const biome of EVERY_BIOME) {
 			shares[span.at + biome] = (shares[span.at + biome] ?? 0) + (rows[span.from + biome] ?? 0) / span.count
 		}
 	}
@@ -333,7 +346,7 @@ function biomeShares(area: Area) {
 		for (const i of ROWS) {
 			const span = Array.filter(Array.range(i - 4, i + 4), a => a >= 0 && a < SIZE)
 			for (const a of span) {
-				const at = (j * SIZE + i) * 9 + (area.biome[j * SIZE + a] ?? 0)
+				const at = (j * SIZE + i) * BIOME_SHAPE.length + (area.biome[j * SIZE + a] ?? 0)
 				rows[at] = (rows[at] ?? 0) + 1 / span.length
 			}
 		}
@@ -341,7 +354,13 @@ function biomeShares(area: Area) {
 	for (const j of ROWS) {
 		for (const i of ROWS) {
 			const span = Array.filter(Array.range(j - 4, j + 4), b => b >= 0 && b < SIZE)
-			for (const b of span) addShares({at: (j * SIZE + i) * 9, count: span.length, from: (b * SIZE + i) * 9})
+			for (const b of span) {
+				addShares({
+					at: (j * SIZE + i) * BIOME_SHAPE.length,
+					count: span.length,
+					from: (b * SIZE + i) * BIOME_SHAPE.length
+				})
+			}
 		}
 	}
 	return shares
@@ -661,8 +680,8 @@ function wallBands(paint: Paint, piece: {k: number; lip: number; shape: Wall; xm
 				// The biomes' rock bands at this level, weighted by their share round the wall.
 
 				const colour = scaled(
-					Array.reduce(Array.range(0, 8), [0, 0, 0] satisfies Rgb, (sum, biome) => {
-						const share = paint.shares[piece.k * 9 + biome] ?? 0
+					Array.reduce(EVERY_BIOME, [0, 0, 0] satisfies Rgb, (sum, biome) => {
+						const share = paint.shares[piece.k * BIOME_SHAPE.length + biome] ?? 0
 						if (share < 0.002) return sum
 						const band = bandColour(biome, level, piece.xm)
 						return [sum[0] + band[0] * share, sum[1] + band[1] * share, sum[2] + band[2] * share] satisfies Rgb
@@ -842,8 +861,9 @@ function liquidTile(area: Area, lists: LiquidLists, i: number, j: number) {
 
 function liquids(area: Area) {
 	return Array.map(
-		Array.filter([LIQUID.water, LIQUID.lava, LIQUID.ice, LIQUID.sulfur, LIQUID.brine], kind =>
-			Array.some(INNER, j => Array.some(INNER, i => area.liquid[j * SIZE + i] === kind))
+		Array.filter(
+			Array.filter(Record.values(LIQUID), kind => kind !== LIQUID.none),
+			kind => Array.some(INNER, j => Array.some(INNER, i => area.liquid[j * SIZE + i] === kind))
 		),
 		kind => {
 			const lists = {
@@ -1141,6 +1161,29 @@ const SPECIES: Record<Species, (seed: number, snow: string) => Piece[]> = {
 			)
 		)
 	],
+	// A maple in autumn: a broad, layered crown in one of the season's colours, a leaf or two of the next.
+	maple: (seed: number) => {
+		const random = randomOf(seed)
+		const hues = ['#e8743f', '#f0a040', '#d9553a', '#f2c14e']
+		const main = Array.getUnsafe(hues, Math.abs(seed) % hues.length)
+		return [
+			{colour: '#8f7560', geometry: limb({at: [0, 0, 0], bottom: 0.06, height: 0.46, segments: 7, top: 0.04})},
+			{
+				colour: '#8f7560',
+				geometry: limb({at: [0, 0.32, 0], bottom: 0.028, height: 0.24, rz: -0.7, segments: 5, top: 0.02})
+			},
+			leaves(main, 1.1, {at: [0, 0.72, 0], radius: 0.34, scale: [1.15, 0.8, 1.15], seed}),
+			...Array.map(Array.range(0, 3), k => {
+				const angle = (k / 4) * TAU + random() * 0.8
+				return leaves(Array.getUnsafe(hues, Math.abs(seed + k * flag(random() > 0.7)) % hues.length), 1.1, {
+					at: [Math.cos(angle) * 0.22, 0.58 + random() * 0.16, Math.sin(angle) * 0.22],
+					radius: 0.2 + random() * 0.05,
+					scale: [1, 0.8, 1],
+					seed: seed + k + 1
+				})
+			})
+		]
+	},
 	oak: (seed: number) => {
 		const random = randomOf(seed)
 		return [
@@ -1222,6 +1265,7 @@ function speciesOf(area: Area, prop: Prop, k: number) {
 	if (prop.kind === 'pine') return 'fir'
 	if (prop.kind === 'shrub') return 'bush'
 	if (prop.kind === 'shrubDry') return 'shrub'
+	if (prop.kind === 'maple') return 'maple'
 	const biome = area.biome[k] ?? 0
 	if (biome === 2 || biome === 8 || biome === 4) return 'acacia'
 	const u = fbm(prop.x * 0.6, prop.z * 0.6, 21)
@@ -1381,132 +1425,103 @@ function ruin(place: THREE.Matrix4, prop: Prop) {
 	overgrowth(place, house)
 }
 
-type Spike = {h: number; k: number; lx: number; lz: number; ph: number; r: number; x: number; z: number}
-
-function flute(spike: Spike, angle: number, u: number) {
-	return (0.5 + 0.5 * Math.cos(spike.k * angle + spike.ph + u * 0.9)) ** 5
-}
-
-function spikeRadius(spike: Spike, angle: number, y: number) {
-	const u = Number.max(0, y / spike.h)
-	if (u >= 1) return 0
-
-	return (
-		spike.r *
-		(1 - 0.3 * u) *
-		Number.min(1, ((1 - u) / 0.5) ** 0.9) *
-		(1 + 0.14 * Math.exp(-u * 16)) *
-		(1 + 0.07 * Math.sin(2 * angle + spike.ph) + 0.04 * Math.sin(3 * angle + 2 * spike.ph)) *
-		(1 - 0.2 * flute(spike, angle, u))
-	)
-}
-
-function karst(level: number) {
-	const list = STRATA_RGB[7] ?? []
-	return list[((level % list.length) + list.length) % list.length] ?? ROAD
-}
-
-function spikeQuad(
-	ring: Vec[][],
-	at: {at: {seed: number; y: number}; i: number; j: number; rows: number[]; sides: number; spike: Spike}
-) {
-	const middle = ((at.rows[at.j] ?? 0) + (at.rows[at.j + 1] ?? 0)) / 2
-	const angle = ((at.i + 0.5) / at.sides) * TAU
-	const exact = (at.at.y + middle) / LEVEL
-	const level = Math.floor(exact)
-	const u = middle / at.spike.h
-	const a = ring[at.j]?.[at.i]
-	const b = ring[at.j]?.[at.i + 1]
-	const d = ring[at.j + 1]?.[at.i]
-	const e = ring[at.j + 1]?.[at.i + 1]
-	if (a === undefined || b === undefined || d === undefined || e === undefined) return
-	// Banded rock, a pale cap toward the tip and moss creeping up the foot; each blend is zero outside its band.
-	const colour = blend(
-		blend(
-			scaled(
-				blend(karst(level), karst(level + 1), 0.35),
-				(1 - 0.1 * flag(exact - level > 0.82)) *
-					(1 - 0.1 * flute(at.spike, angle, u)) *
-					(1 + (dither(level, at.i * 0.37 + at.spike.ph) - 0.5) * 0.03)
-			),
-			KARST_TOP,
-			smoothstep(0.82, 0.97, u) * 0.8
-		),
-		KARST_MOSS,
-		(1 - smoothstep(0.05, 0.35, middle)) * smoothstep(0.4, 0.62, fbm(a[0] * 2.3, a[2] * 2.3, at.at.seed))
-	)
-	triangle('props', [a, d, b], [colour, colour, colour])
-	triangle('props', [b, d, e], [colour, colour, colour])
-}
-
-function spikeMesh(at: {seed: number; x: number; y: number; z: number}, spike: Spike) {
-	const sides = 36
-	const heights = Array.sort(
-		Array.dedupe([
-			...Array.map(Array.range(0, Math.ceil((spike.h + 0.3) / 0.16) - 1), n => Number.round(-0.3 + n * 0.16, 4)),
-			...Array.flatMap(Array.range(Math.floor((at.y - 0.3) / LEVEL), Math.ceil((at.y + spike.h) / LEVEL)), level =>
-				Array.filter(
-					Array.map([0, 0.82], f => Number.round((level + f) * LEVEL - at.y, 4)),
-					y => y > -0.3 && y < spike.h
-				)
-			)
-		]),
-		(a: number, b: number) => Number.sign(a - b)
-	)
-	const rows = [...Array.filter(heights, y => y < spike.h), spike.h]
-	const ring = Array.map(rows, y =>
-		Array.map(Array.range(0, sides), i => {
-			const angle = (i / sides) * TAU
-			const radius = spikeRadius(spike, angle, y)
-			const u = Number.max(0, y) / spike.h
-			return [
-				at.x + spike.x + spike.lx * u * u * spike.h * 0.2 + Math.cos(angle) * radius,
-				at.y + y,
-				at.z + spike.z + spike.lz * u * u * spike.h * 0.2 + Math.sin(angle) * radius
-			] satisfies Vec
+// Glass shards: a few fused blades leaning out of the sand, catching the light.
+function shard(place: THREE.Matrix4, size: number) {
+	const blade = primitive('blade', () => new THREE.OctahedronGeometry(1, 0).scale(0.05, 0.5, 0.12).translate(0, 0.5, 0))
+	for (const k of Array.range(0, 3)) {
+		const angle = k * 2.1 + size
+		part(place, blade, Array.getUnsafe(['#a9e3d6', '#c5efe6', '#8fd2c4'], k % 3), {
+			position: [Math.cos(angle) * 0.07, 0, Math.sin(angle) * 0.07],
+			rotation: [Math.cos(angle) * 0.35, angle, Math.sin(angle) * 0.35],
+			scale: [1, (0.5 + dither(k, size) * 0.6) * size, 1]
 		})
-	)
-	for (const j of Array.range(0, rows.length - 2)) {
-		for (const i of Array.range(0, sides - 1)) spikeQuad(ring, {at, i, j, rows, sides, spike})
 	}
 }
 
-// A limestone pinnacle, fluted and banded, built straight into the chunk's props mesh.
-function pinnacle(prop: Prop, y: number) {
-	const at = {
-		height: (prop.h ?? 1) * LEVEL * 1.45,
-		radius: (prop.r ?? 1) + 0.3,
-		seed: prop.seed ?? 1,
-		x: prop.x,
-		y,
-		z: prop.z
+// A geyser: a cone of travertine round a steaming turquoise eye.
+function geyser(place: THREE.Matrix4) {
+	part(place, cylinder(0.16, 0.42, 0.18, 10), '#efe3cf', {position: [0, 0.09, 0]})
+	part(place, cylinder(0.1, 0.16, 0.1, 10), '#e7c39a', {position: [0, 0.22, 0]})
+	part(place, cylinder(0.08, 0.08, 0.02, 10), '#9ff0ea', {position: [0, 0.27, 0], target: 'glow'})
+	for (const k of Array.range(0, 2)) {
+		part(place, sphere(0.09 + k * 0.03, 8, 6), '#ffffff', {position: [k * 0.03, 0.42 + k * 0.17, -k * 0.02]})
 	}
-	const random = randomOf(at.seed)
-	const main = {
-		h: at.height,
-		k: 12 + Math.floor(random() * 3),
-		lx: (random() - 0.5) * 0.25,
-		lz: (random() - 0.5) * 0.25,
-		ph: random() * TAU,
-		r: at.radius,
-		x: 0,
-		z: 0
-	}
-	const sides = Array.map(Array.range(0, flag(random() > 0.35)), n => {
-		const angle = n * 2.2 + random() * 1.2
-		const distance = at.radius * (0.55 + random() * 0.12)
-		return {
-			h: at.height * (0.42 + random() * 0.2),
-			k: 8 + Math.floor(random() * 3),
-			lx: Math.cos(angle) * 0.4,
-			lz: Math.sin(angle) * 0.4,
-			ph: random() * TAU,
-			r: at.radius * (0.45 + random() * 0.1),
-			x: Math.cos(angle) * distance,
-			z: Math.sin(angle) * distance
+}
+
+// A bamboo clump: green canes of different heights, ringed at their joints, a few leaves at the top.
+function bamboo(place: THREE.Matrix4, size: number) {
+	const random = randomOf(Math.floor(size * 1000))
+	for (const k of Array.range(0, 5)) {
+		const angle = k * 1.3 + random()
+		const distance = 0.04 + random() * 0.12
+		const tall = (0.7 + random() * 0.6) * size
+		const lean: Vec = [(random() - 0.5) * 0.12, 0, (random() - 0.5) * 0.12]
+		// A point a share of the way up the leaning cane.
+		function up(share: number) {
+			return [
+				Math.cos(angle) * distance - lean[2] * tall * share,
+				tall * share,
+				Math.sin(angle) * distance + lean[0] * tall * share
+			] satisfies Vec
 		}
-	})
-	for (const spike of [main, ...sides]) spikeMesh(at, spike)
+		part(place, cylinder(0.018, 0.022, 1, 6), Array.getUnsafe(['#8fbf5a', '#a3cc6a'], k % 2), {
+			position: up(0.5),
+			rotation: lean,
+			scale: [1, tall, 1]
+		})
+		for (const joint of [0.25, 0.5, 0.75]) {
+			part(place, cylinder(0.024, 0.024, 0.012, 6), '#6f9a45', {position: up(joint), rotation: lean})
+		}
+		part(place, sphere(0.08, 6, 4), '#9fd06a', {position: up(1), scale: [1.4, 0.5, 1]})
+	}
+}
+
+// Coral: branching fingers or a fan in one of the reef's colours.
+function coral(place: THREE.Matrix4, prop: Prop) {
+	const colour = Array.getUnsafe(['#f29a8c', '#f5b071', '#c39be0'], prop.hue ?? 0)
+	const random = randomOf(prop.id)
+	if (random() < 0.4) {
+		part(place, sphere(0.2, 10, 6), colour, {position: [0, 0.18, 0], scale: [1, 0.85, 0.25]})
+		part(place, cylinder(0.02, 0.03, 0.1, 5), colour, {position: [0, 0.03, 0]})
+		return
+	}
+	for (const k of Array.range(0, 5)) {
+		const angle = k * 1.25 + random()
+		const tall = 0.18 + random() * 0.2
+		part(place, cylinder(0.022, 0.03, 1, 6), colour, {
+			position: [Math.cos(angle) * 0.05, tall / 2, Math.sin(angle) * 0.05],
+			rotation: [Math.sin(angle) * 0.5, 0, -Math.cos(angle) * 0.5],
+			scale: [1, tall, 1]
+		})
+		part(place, sphere(0.032, 6, 4), colour, {
+			position: [Math.cos(angle) * (0.05 + tall * 0.48), tall * 0.9, Math.sin(angle) * (0.05 + tall * 0.48)]
+		})
+	}
+}
+
+// A hoodoo: a column of banded red rock under a harder pale cap.
+function hoodoo(place: THREE.Matrix4, size: number) {
+	const tall = 0.5 * size
+	part(place, cylinder(0.08, 0.13, 1, 7), '#c8634c', {position: [0, tall * 0.35, 0], scale: [size, tall * 0.7, size]})
+	part(place, cylinder(0.06, 0.08, 1, 7), '#d9805f', {position: [0, tall * 0.82, 0], scale: [size, tall * 0.3, size]})
+	part(place, cylinder(0.12, 0.1, 0.06, 7), '#efd9c0', {position: [0, tall * 0.98, 0], scale: [size, 1, size]})
+}
+
+// A glowing crystal: a cluster of hexagonal prisms with pointed tips.
+function crystal(place: THREE.Matrix4, prop: Prop) {
+	const colour = Array.getUnsafe(['#bfe9ff', '#d9c8ff', '#a6f0e4'], prop.hue ?? 0)
+	const prism = primitive('prism', () => new THREE.CylinderGeometry(0.05, 0.05, 0.3, 6).translate(0, 0.15, 0))
+	const tip = primitive('prismtip', () => new THREE.ConeGeometry(0.05, 0.1, 6).translate(0, 0.35, 0))
+	for (const k of Array.range(0, 3)) {
+		const angle = k * 2.1
+		const at = {
+			position: [Math.cos(angle) * 0.05 * flag(k > 0), 0, Math.sin(angle) * 0.05 * flag(k > 0)] satisfies Vec,
+			rotation: [Math.cos(angle) * 0.4 * flag(k > 0), 0, Math.sin(angle) * 0.4 * flag(k > 0)] satisfies Vec,
+			scale: [prop.s, prop.s * (1 - 0.3 * flag(k > 0)), prop.s] satisfies Vec
+		}
+		part(place, prism, colour, at)
+		part(place, tip, colour, {...at, target: 'glow'})
+	}
 }
 
 function boulder(prop: Prop, y: number) {
@@ -1533,7 +1548,12 @@ function generatorProp(area: Area, prop: Prop) {
 	if (prop.kind === 'vent') vent(placement(prop.x, y, prop.z, 0, 1), prop.s)
 	if (prop.kind === 'ruin') ruin(upright, prop)
 	if (prop.kind === 'rock') boulder(prop, y)
-	if (prop.kind === 'pinnacle') pinnacle(prop, y)
+	if (prop.kind === 'shard') shard(upright, prop.s)
+	if (prop.kind === 'geyser') geyser(upright)
+	if (prop.kind === 'bamboo') bamboo(upright, prop.s)
+	if (prop.kind === 'coral') coral(place, prop)
+	if (prop.kind === 'hoodoo') hoodoo(upright, prop.s)
+	if (prop.kind === 'crystal') crystal(upright, prop)
 }
 
 // Bridges the player built: a plank deck at its level with a kerb each side.
@@ -1746,8 +1766,8 @@ function icicles(lists: Lists, at: {i: number; j: number; side: Side; top: numbe
 function wallProps(area: Area, shares: Float32Array, lists: Lists, k: number) {
 	const i = k % SIZE
 	const j = Math.floor(k / SIZE)
-	const basalt = (shares[k * 9 + 4] ?? 0) > 0.6
-	const ice = (shares[k * 9 + 3] ?? 0) > 0.6
+	const basalt = (shares[k * BIOME_SHAPE.length + 4] ?? 0) > 0.6
+	const ice = (shares[k * BIOME_SHAPE.length + 3] ?? 0) > 0.6
 	if (!basalt && !ice) return
 	for (const side of SIDES) {
 		const ta = facing(side, side.ax, side.az)

@@ -48,7 +48,7 @@ export class Game extends Context.Service<
 				Context.get(yield* Layer.build(layerKeyValueStore(directory)), KeyValueStore.KeyValueStore),
 				Saved
 			)
-			// A save from an older world model or generator does not decode or is set aside: the colony starts over.
+			// A save from an older world model does not decode, and the colony starts over; one from an older generator carries over onto the new world.
 			const saved = yield* pipe(
 				store.get('colony'),
 				Effect.catch(cause =>

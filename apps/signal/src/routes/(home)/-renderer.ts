@@ -99,7 +99,7 @@ function fallMaterial(time: Clock, mode: number, colours: {a: string; b: string;
 	})
 }
 
-// Each liquid kind's surface and falls, all on one clock: water, lava, ice, sulfur and brine.
+// Each liquid kind's surface and falls, all on one clock: water, lava, ice, sulfur, brine, hot springs and lagoons.
 function liquidMaterials(time: Clock) {
 	return [
 		{
@@ -145,6 +145,16 @@ function liquidMaterials(time: Clock) {
 			fall: fallMaterial(time, 0, {a: '#c8f3ec', b: '#7ed6cf', foam: '#ffffff'}),
 			kind: 5,
 			surface: waterMaterial(time, {deep: '#7ed6cf', foam: '#ffffff', shallow: '#c8f3ec'})
+		},
+		{
+			fall: fallMaterial(time, 0, {a: '#bff3f0', b: '#5fd0d6', foam: '#fbf3e4'}),
+			kind: 6,
+			surface: waterMaterial(time, {deep: '#45c3d3', foam: '#fbf3e4', shallow: '#a6ece6'})
+		},
+		{
+			fall: fallMaterial(time, 0, {a: '#b9f1e6', b: '#6fd8cf', foam: '#ffffff'}),
+			kind: 7,
+			surface: waterMaterial(time, {deep: '#5cc9cf', foam: '#ffffff', shallow: '#b5efe2'})
 		}
 	]
 }
