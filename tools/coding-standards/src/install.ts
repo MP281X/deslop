@@ -122,7 +122,7 @@ const cli = pipe(
 		})
 	),
 	Command.withDescription(
-		'Install the package’s writing-code, pull-requests and review skills at the Git repository root, including linked worktrees. Copy into each existing .agents, .claude and .codex skills directory, always .claude, and .agents when no .codex exists. Replace only package-owned names; preserve other skills and global configuration. Reject destinations outside the repository before copying. Refer to skills by name. Run the latest CLI transiently without adding a dependency. These skills belong in repositories, not global configuration.'
+		'Install the package’s lint-companion, pull-requests and review skills at the Git repository root, including linked worktrees. Copy into each existing .agents, .claude and .codex skills directory, always .claude, and .agents when no .codex exists. Replace only package-owned names; preserve other skills and global configuration. Reject destinations outside the repository before copying. Refer to skills by name. Run the latest CLI transiently without adding a dependency. These skills belong in repositories, not global configuration.'
 	),
 	Command.withExamples([
 		{
