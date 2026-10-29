@@ -8,7 +8,7 @@ import {toQR} from 'toqr'
 import {Button} from '@deslop/components-web/ui/button'
 
 import {appNames, avatarUrl, consentAtom, requestCode, timeLabel} from '#lib/utils.ts'
-import type {Account, PendingAuthorization} from '#services/authorizations/schema.ts'
+import type {PendingAuthorization} from '#services/authorizations/schema.ts'
 
 // The link as a QR code, one square per dark module, inside the quiet zone scanners need.
 export function QrCode(props: {className?: string; text: string}) {
@@ -44,63 +44,51 @@ export function GitHubIcon(props: {className?: string}) {
 	)
 }
 
-// An account's provider picture, with the provider's mark in its corner; GitHub is the only provider so far.
 export function Avatar(props: {id: string; name: string}) {
-	return (
-		<span className="relative size-8 shrink-0">
-			<img src={avatarUrl(props.id)} alt="" className="bg-muted size-8" />
-			<span className="bg-background text-foreground absolute -right-1 -bottom-1 grid size-4 place-items-center">
-				<GitHubIcon className="size-3" />
-			</span>
-			<span className="sr-only">{props.name} on GitHub</span>
-		</span>
-	)
+	return <img src={avatarUrl(props.id)} alt={props.name} className="bg-muted size-6 shrink-0" />
 }
 
-// A waiting sign-in: which client, the apps it reaches and the account it signs in as, answered here; a failed answer stays to retry.
-export function Review(props: {account: Account; request: PendingAuthorization}) {
+// A waiting sign-in: which client and the apps it reaches, answered here; a failed answer stays to retry.
+export function Review(props: {request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
 	return (
-		<section className="flex flex-col gap-3" aria-label="Sign-in request">
+		<section className="flex flex-col gap-2" aria-label="Sign-in request">
 			<h2 className="text-muted-foreground text-xs tracking-wider uppercase tabular-nums">
 				Sign-in request · {requestCode(props.request.id)}
 			</h2>
-			<div className="bg-card flex flex-col gap-3 p-4">
-				<div className="flex min-w-0 flex-col">
-					<span className="truncate text-sm">{props.request.clientName}</span>
-					<span className="text-muted-foreground truncate text-xs tabular-nums">
-						{Array.join(appNames(props.request.resources), ' · ')} · until {timeLabel(props.request.expiresAt)}
-					</span>
-				</div>
-				<p className="text-muted-foreground flex items-center gap-2 text-xs">
-					<Avatar id={props.account.id} name={props.account.name} />
-					as <span className="text-foreground truncate">{props.account.fullName ?? props.account.name}</span>
-				</p>
-				{Option.match(AsyncResult.error(consent), {
-					onNone: () => null,
-					onSome: failure => (
-						<p className="text-destructive text-xs" role="alert">
-							{failure.message}
-						</p>
-					)
-				})}
-				<div className="grid grid-cols-2 gap-2">
-					<Button
-						size="lg"
-						disabled={AsyncResult.isWaiting(consent)}
-						onClick={() => respond({accept: true, request: props.request})}
-					>
-						Approve
-					</Button>
-					<Button
-						size="lg"
-						variant="secondary"
-						disabled={AsyncResult.isWaiting(consent)}
-						onClick={() => respond({accept: false, request: props.request})}
-					>
-						Deny
-					</Button>
-				</div>
+			<p className="truncate text-sm">{props.request.clientName}</p>
+			<ul className="flex flex-wrap gap-1" aria-label="Apps">
+				{Array.map(appNames(props.request.resources), app => (
+					<li key={app} className="bg-secondary px-2.5 py-1.5 text-xs">
+						{app}
+					</li>
+				))}
+			</ul>
+			<p className="text-muted-foreground text-xs tabular-nums">until {timeLabel(props.request.expiresAt)}</p>
+			{Option.match(AsyncResult.error(consent), {
+				onNone: () => null,
+				onSome: failure => (
+					<p className="text-destructive text-xs" role="alert">
+						{failure.message}
+					</p>
+				)
+			})}
+			<div className="mt-2 grid grid-cols-2 gap-1.5 text-xs">
+				<Button
+					size="lg"
+					disabled={AsyncResult.isWaiting(consent)}
+					onClick={() => respond({accept: true, request: props.request})}
+				>
+					Approve
+				</Button>
+				<Button
+					size="lg"
+					variant="secondary"
+					disabled={AsyncResult.isWaiting(consent)}
+					onClick={() => respond({accept: false, request: props.request})}
+				>
+					Deny
+				</Button>
 			</div>
 		</section>
 	)

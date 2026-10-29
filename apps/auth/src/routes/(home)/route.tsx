@@ -92,10 +92,7 @@ function Waiting(props: {account: Option.Option<Account>; id: string}) {
 			Waiting: value =>
 				Option.match(
 					Option.filter(props.account, signed => signed.role !== 'Waiting'),
-					{
-						onNone: () => <CodeCard request={value.request} />,
-						onSome: signed => <Review account={signed} request={value.request} />
-					}
+					{onNone: () => <CodeCard request={value.request} />, onSome: () => <Review request={value.request} />}
 				)
 		})
 	)

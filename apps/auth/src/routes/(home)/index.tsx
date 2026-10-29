@@ -121,10 +121,10 @@ function Found(props: {code: string; onType: (code: string) => void}) {
 	const account = useAtomSuspense(accountAtom).value
 	const waiting = useAtomSuspense(lookupAtom(props.code)).value
 	return Option.match(
-		Option.flatMap(account, signed => Option.map(waiting, request => ({request, signed}))),
+		Option.flatMap(account, () => waiting),
 		{
 			onNone: () => <Enter answered={Option.none()} onType={props.onType} state="Missing" typed={props.code} />,
-			onSome: found => <Review account={found.signed} request={found.request} />
+			onSome: request => <Review request={request} />
 		}
 	)
 }
@@ -231,7 +231,7 @@ function Apps() {
 					Array.sort(Order.flip(Order.mapInput(Order.Number, (entry: [string, SignedInApp[]]) => newest(entry[1]))))
 				),
 				{
-					onEmpty: () => <p className="text-muted-foreground text-sm">No apps signed in</p>,
+					onEmpty: () => <p className="text-muted-foreground text-xs">No apps signed in</p>,
 					onNonEmpty: rows => (
 						<table className="w-full table-fixed border-collapse text-sm">
 							<thead>
@@ -249,7 +249,7 @@ function Apps() {
 							<tbody>
 								{Array.map(rows, row => (
 									<tr key={row[0]}>
-										<th scope="row" className="truncate pr-2 text-left font-normal">
+										<th scope="row" className="text-muted-foreground truncate pr-2 text-left text-xs font-normal">
 											{row[0]}
 										</th>
 										{Array.map(columns, column => (
