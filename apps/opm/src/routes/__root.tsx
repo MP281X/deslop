@@ -11,7 +11,7 @@ import {FailureScreen, LoadingScreen, SessionGate} from '@deslop/components-mobi
 import {colors} from '@deslop/components-mobile/theme'
 import {updateAtom} from '@deslop/runtime/mobile'
 
-import {chaptersAtom, diagnosticsAtom, openedAtom, pushAtom, session, signInAtom} from '#lib/utils.ts'
+import {chaptersAtom, diagnosticsAtom, openedAtom, pushAtom, session} from '#lib/utils.ts'
 import {ChaptersRoute} from '#routes/(home)/index.tsx'
 import {ReaderRoute} from '#routes/chapters/$number.tsx'
 import icon from '#routes/icon.png'
@@ -83,7 +83,7 @@ export function RootRoute() {
 	useAtomMount(updateAtom)
 	return (
 		<Suspense fallback={<LoadingScreen />}>
-			<SessionGate logo={icon} saved={session.atom} signIn={signInAtom}>
+			<SessionGate logo={icon} session={session.machine}>
 				<Suspense fallback={<LoadingScreen />}>
 					<AppRoutes />
 				</Suspense>

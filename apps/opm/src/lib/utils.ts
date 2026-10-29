@@ -6,7 +6,7 @@ import Constants from 'expo-constants'
 import {File, Paths} from 'expo-file-system'
 import * as Notifications from 'expo-notifications'
 
-import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
+import {cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 import {keychain} from '@deslop/runtime/mobile/keychain'
@@ -23,8 +23,6 @@ const SERVER = 'https://opm.mp281x.xyz'
 // Auth
 
 export const session = MobileSession.make('opm', SERVER, keychain)
-
-export const signInAtom = session.runtime.fn(() => pipe(session.signIn, alert('Not Signed In')))
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/opm/lib/utils/RpcClient', {
 	group: RpcContracts,

@@ -34,8 +34,6 @@ export const session = MobileSession.make('Stash', SERVER, {
 	write: text => Effect.try(() => native.setSession(text))
 })
 
-export const signInAtom = session.runtime.fn(() => pipe(session.signIn, alert('Not Signed In')))
-
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/stash/lib/utils/RpcClient', {
 	group: RpcContracts,
 	protocol: pipe(

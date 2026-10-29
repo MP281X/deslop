@@ -1,9 +1,12 @@
 import type {Cause, Scope} from 'effect'
 import {Clock, Effect, Fiber, Option, Schedule, Schema, Semaphore, Stream, String, pipe} from 'effect'
 
+import {Machine} from '@typeonce/effect-machine'
+import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {AuthRequest, makeRedirectUri} from 'expo-auth-session'
+import {Alert} from 'react-native'
 
 import {AUTH_URL} from '#auth/lib/utils.ts'
 import {AuthError, ClientRegistration, Credentials, TokenResponse} from '#auth/schema.ts'
@@ -34,9 +37,6 @@ export function make(name: string, server: string, storage: Storage) {
 	const read = Effect.map(storage.read, text =>
 		Option.flatMap(Option.liftPredicate(text, String.isNonEmpty), Schema.decodeUnknownOption(CredentialsJson))
 	)
-
-	// A locked Keychain is read again each second instead of reaching React as an error.
-	const atom = Atom.keepAlive(runtime.atom(Effect.retry(read, Schedule.spaced('1 second'))))
 
 	// The server revokes a family whose rotated refresh token comes back, so a refresh and its write outlive their callers.
 	function exclusive<A, E>(effect: Effect.Effect<A, E, HttpClient.HttpClient>) {
@@ -150,14 +150,73 @@ export function make(name: string, server: string, storage: Storage) {
 					redirect_uri: redirectUri
 				})
 			)
-			yield* Atom.refresh(atom)
 		}),
-		Effect.mapError(cause => AuthError.make({cause, message: `Cannot sign in to ${name}`}))
+		Effect.mapError(cause => AuthError.make({cause, message: `Cannot sign in to ${name}`})),
+		Effect.tapError(error => Effect.sync(() => Alert.alert('Not Signed In', error.message)))
 	)
+
+	// The Keychain stays the truth, shared with a share extension; the machine knows only whether it holds a session.
+	const machine = AtomMachine.bind(runtime).make(
+		Machine.make({
+			branches: {read: {signedIn: {target: 'SignedIn'}, signedOut: {target: 'SignedOut'}}},
+			effects: {
+				// A locked Keychain is read again each second instead of reaching React as an error.
+				read: Effect.retry(read, Schedule.spaced('1 second')),
+				signIn
+			},
+			events: Machine.events({Changed: {}, SignIn: {}}),
+			root: Machine.state({
+				states: {Reading: {}, SignedIn: {states: {Checking: {}, Idle: {}}}, SignedOut: {}, SigningIn: {}}
+			})
+		}).handle({
+			initial: {target: 'Reading'},
+			states: {
+				Reading: {
+					invoke: {
+						onDone: {
+							branches: 'read',
+							resolve: transition =>
+								Option.match(transition.output, {
+									onNone: () => transition.select.signedOut(),
+									onSome: () => transition.select.signedIn()
+								})
+						},
+						onFailure: {target: 'SignedOut'},
+						src: 'read'
+					}
+				},
+				// A check keeps the app on screen while it reads the Keychain again.
+				SignedIn: {
+					initial: {target: 'SignedIn.Idle'},
+					on: {Changed: {target: 'SignedIn.Checking'}},
+					states: {
+						Checking: {
+							invoke: {
+								onDone: {
+									branches: 'read',
+									resolve: transition =>
+										Option.match(transition.output, {
+											onNone: () => transition.select.signedOut(),
+											onSome: () => transition.select.signedIn()
+										})
+								},
+								onFailure: {target: 'SignedIn.Idle'},
+								src: 'read'
+							}
+						},
+						Idle: {}
+					}
+				},
+				SignedOut: {on: {SignIn: {target: 'SigningIn'}}},
+				SigningIn: {invoke: {onDone: {target: 'SignedIn'}, onFailure: {target: 'SignedOut'}, src: 'signIn'}}
+			}
+		})
+	)
+	const signedIn = AtomMachine.matches(machine, 'SignedIn')
 
 	return {
 		accessToken: sessionToken(false),
-		atom,
+		machine,
 		// A refused stream renews the session before it opens again; only a refused refresh signs out.
 		renewing: <A, E, R>(live: Stream.Stream<A, E, R>) =>
 			pipe(
@@ -174,19 +233,21 @@ export function make(name: string, server: string, storage: Storage) {
 							}
 						}),
 						Effect.andThen(read),
-						Effect.flatMap(saved => Option.match(saved, {onNone: () => Atom.refresh(atom), onSome: () => Effect.void})),
+						Effect.flatMap(saved =>
+							Option.match(saved, {onNone: () => Atom.set(machine.send, {_tag: 'Changed'}), onSome: () => Effect.void})
+						),
 						Effect.ignore({log: 'Warn', message: 'The session could not be read'})
 					)
 				),
 				Stream.retry(Schedule.spaced('2 seconds'))
 			),
 		runtime,
-		signIn,
 		// Reading it also starts the caller over on each return from the background, when iOS has closed its sockets.
 		signedIn: (get: Atom.AtomContext) => {
-			const session = get(atom)
 			get(activationsAtom)
-			return AsyncResult.isSuccess(session) && Option.isSome(session.value)
+			return AsyncResult.getOrElse(get(signedIn), () => false)
 		}
 	}
 }
+
+export type Session = ReturnType<typeof make>['machine']

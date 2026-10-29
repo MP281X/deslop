@@ -74,8 +74,6 @@ const CALENDAR = 'Trips'
 
 export const session = MobileSession.make('Trips', SERVER, keychain)
 
-export const signInAtom = session.runtime.fn(() => pipe(session.signIn, alert('Not Signed In')))
-
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/trips/lib/utils/RpcClient', {
 	group: RpcContracts,
 	protocol: pipe(
