@@ -1636,6 +1636,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'export const tried = Effect.tryPromise({catch: failure => Failed.make({message: "Cannot download"}), try: download})',
 								'export const kept = Effect.mapError(load(1), cause => Failed.make({cause, message: "Cannot load"}))',
 								'export const spread = Effect.mapError(load(1), failure => Failed.make({...{message: "Cannot load"}}))',
+								'export const both = Effect.mapBoth(load(1), {onFailure: failure => Failed.make({message: "Cannot load"}), onSuccess: value => value})',
+								'export const bothKept = Effect.mapBoth(load(1), {onFailure: cause => Failed.make({cause, message: "Cannot load"}), onSuccess: value => value})',
 								'export const emptied = Effect.orElseSucceed(load(1), () => [])',
 								'export const emptyArray = Effect.orElseSucceed(load(1), () => Array.empty<number>())',
 								'export const described = Effect.catch(load(1), failure => Effect.succeed(`${failure}`))',
@@ -1697,6 +1699,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'no-empty-recovery',
 								'no-gradient',
 								'no-gradient',
+								'preserve-error-cause',
 								'preserve-error-cause',
 								'preserve-error-cause',
 								'preserve-error-cause'

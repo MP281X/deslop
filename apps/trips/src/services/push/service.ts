@@ -23,6 +23,7 @@ import {
 	pipe
 } from 'effect'
 
+import {KeyFormat, Signature} from 'effect/crypto'
 import {Base64, Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
@@ -180,23 +181,16 @@ export class Push extends Context.Service<
 						Base64.decode(String.replaceAll(/-----[^-]+-----|\\n|\s/gu, '')(Redacted.value(found.privateKey))),
 						{onFailure: Effect.fail, onSuccess: Effect.succeed}
 					)
-					return yield* Effect.tryPromise(() =>
-						crypto.subtle.importKey('pkcs8', Uint8Array.from(der), {name: 'ECDSA', namedCurve: 'P-256'}, false, [
-							'sign'
-						])
-					)
+					return yield* KeyFormat.decodePrivate(KeyFormat.pkcs8, Signature.ecdsaP256, der)
 				})
 			)
+			const signature = yield* Signature.Signature
 			const bearer = yield* Ref.make(Option.none<{at: number; token: string}>())
 
 			const sign = Effect.fnUntraced(function* (now: number) {
 				const found = yield* Effect.fromOption(signer)
 				const input = `${Base64Url.encode(yield* Schema.encodeEffect(JwtPart)({alg: 'ES256', kid: found.keyId}))}.${Base64Url.encode(yield* Schema.encodeEffect(JwtPart)({iat: seconds(now), iss: found.teamId}))}`
-				const key = yield* signingKey
-				const signature = yield* Effect.tryPromise(() =>
-					crypto.subtle.sign({hash: 'SHA-256', name: 'ECDSA'}, key, new TextEncoder().encode(input))
-				)
-				const token = `${input}.${Base64Url.encode(new Uint8Array(signature))}`
+				const token = `${input}.${Base64Url.encode(yield* signature.sign(yield* signingKey, new TextEncoder().encode(input)))}`
 				yield* Ref.set(bearer, Option.some({at: now, token}))
 				return token
 			})
