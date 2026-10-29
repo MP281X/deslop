@@ -405,7 +405,9 @@ export class Notes extends Context.Service<
 					{concurrency: 1, discard: true}
 				)
 
-				const missing = Effect.mapError(() => NotesError.make({message: 'This note no longer exists.'}))
+				const missing = Effect.mapError(() =>
+					NotesError.make({message: 'No note has this id; find its id with search_notes or list_notes.'})
+				)
 
 				const receive = Effect.fnUntraced(function* (input: {
 					body: Stream.Stream<Uint8Array, unknown>

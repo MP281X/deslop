@@ -40,13 +40,14 @@ export const Tools = Toolkit.make(
 	}).annotate(Tool.Readonly, true),
 	Tool.make('save_note', {
 		description:
-			'Save a link or a text. A link saved before returns its existing note. A new note returns at once with status "organizing"; reading, transcribing and tagging take seconds to minutes, so read it again until its status is "ready".',
+			'Save a link or a text. A link saved before returns its existing note. A new note returns at once with status "organizing"; reading, transcribing and tagging take seconds to minutes. Read it again with read_note, waiting between reads, until its status is "ready" or "failed"; a failed note says why in issue, and reprocess_note retries it.',
 		failure: NotesError,
 		parameters: Schema.Struct({text: Capture.fields.text}),
 		success: Note
 	}).annotate(Tool.Destructive, false),
 	Tool.make('reprocess_note', {
-		description: 'Read, transcribe and tag a note again from its source, when its summary or tags are wrong.',
+		description:
+			'Read, transcribe and tag a note again from its source, when it failed or its summary or tags are wrong. It returns once the work starts; follow it with read_note until the status is "ready" or "failed".',
 		failure: NotesError,
 		parameters: Schema.Struct({id: NoteId})
 	}),

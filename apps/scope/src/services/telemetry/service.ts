@@ -184,7 +184,10 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				const traceId = String.toLowerCase(id)
 				const records = Array.filter(yield* read, entry => entry.traceId === traceId)
 				if (Array.isReadonlyArrayEmpty(records)) {
-					return yield* TelemetryError.make({message: 'No telemetry received for this trace.'})
+					return yield* TelemetryError.make({
+						message:
+							'No kept telemetry has this trace id: check the id, check ingestion with list_services, or reproduce it if it is older than three days.'
+					})
 				}
 				return traceView(records, traceId)
 			}),
