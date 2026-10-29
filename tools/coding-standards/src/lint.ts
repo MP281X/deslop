@@ -35,7 +35,6 @@ import {noNativeMethodCall} from '#rules/no-native-method-call.ts'
 import {noOptionValueAccess} from '#rules/no-option-value-access.ts'
 import {noPipeMethod} from '#rules/no-pipe-method.ts'
 import {noPropertyAlias} from '#rules/no-property-alias.ts'
-import {noReadonlyTypeSyntax} from '#rules/no-readonly-type-syntax.ts'
 import {noRedundantStateType} from '#rules/no-redundant-state-type.ts'
 import {noRedundantUseRefNullType} from '#rules/no-redundant-use-ref-null-type.ts'
 import {noRedundantVariableAnnotation} from '#rules/no-redundant-variable-annotation.ts'
@@ -132,7 +131,6 @@ const RULES = {
 	'no-option-value-access': noOptionValueAccess,
 	'no-pipe-method': noPipeMethod,
 	'no-property-alias': noPropertyAlias,
-	'no-readonly-type-syntax': noReadonlyTypeSyntax,
 	'no-redundant-state-type': noRedundantStateType,
 	'no-redundant-use-ref-null-type': noRedundantUseRefNullType,
 	'no-redundant-variable-annotation': noRedundantVariableAnnotation,
@@ -676,7 +674,7 @@ export const lint: OxlintConfig = {
 					Iterable: 'Use T[].',
 					Map: MAP_MESSAGE,
 					Promise: 'Use Effect.',
-					ReadonlyArray: 'Use T[].',
+					ReadonlyArray: 'Use readonly T[].',
 					ReadonlyMap: MAP_MESSAGE,
 					ReadonlySet: SET_MESSAGE,
 					Set: SET_MESSAGE,

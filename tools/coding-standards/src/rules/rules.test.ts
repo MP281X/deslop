@@ -151,40 +151,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 
 		testApi.effect(
-			'keeps service properties through shared and cyclic aliases',
-			() =>
-				Effect.gen(function* () {
-					const result = yield* lintSource({
-						'shared-shapes.ts': pipe(
-							[
-								"import {Context, Effect} from 'effect'",
-								'type Base = {readonly read: Effect.Effect<string>}',
-								...Array.makeBy(18, index => {
-									if (index === 0) return 'type Shape0 = Base & Base'
-									return `type Shape${index} = Shape${index - 1} & Shape${index - 1}`
-								}),
-								'type Cycle = Cycle | Shape17',
-								'export class First extends Context.Service<First, Cycle>()("First") {}',
-								'export class Second extends Context.Service<Second, Shape17>()("Second") {}',
-								'export type Ordinary = {readonly name: string}'
-							],
-							Array.join('\n')
-						)
-					})
-					assert.strictEqual(result.stderr, '')
-					assert.deepStrictEqual(
-						pipe(
-							result.stdout.diagnostics,
-							Array.filter(diagnostic => diagnostic.code === '@deslop/coding-standards(no-readonly-type-syntax)'),
-							Array.map(diagnostic => diagnostic.labels[0]?.span.line)
-						),
-						[25]
-					)
-				}),
-			20_000
-		)
-
-		testApi.effect(
 			'reports every project-specific invalid state',
 			() =>
 				Effect.gen(function* () {
@@ -229,11 +195,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'const InlineType = Schema.Struct({name: Schema.String})',
 								'export {type InlineType}',
 								'export function publicName(value: typeof Public.Type) { return value.name }',
-								'type Explicit = {readonly values: readonly string[]}',
-								'type Mapped<T> = {readonly [K in keyof T]: T[K]}',
-								'type Frozen = Readonly<{value: string}>',
-								'type Index = {readonly [key: string]: string}',
-								'class Input { readonly field = "value"; constructor(readonly value: string) {} }',
 								'class Clock extends Context.Service<Clock, {now: Effect.Effect<number>; get tick(): Effect.Effect<void>}>()("Clock") {}',
 								'const makeClock = Effect.gen(function* () { return {now: Effect.succeed(1), tick: () => Effect.void} })',
 								'declare const ClockLive: {layer: Layer.Layer<Clock>}',
@@ -303,8 +264,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'// oxlint-disable-next-line sort-keys -- this input keeps its order',
 								'const unsortedKeys = {b: 1, a: 2}',
 								'// @effect-diagnostics-next-line floatingEffect:off',
-								'export {AssertString, Clock, clockLayers, Codecs, NonEmpty, PipedNonEmpty, PipedTrimmed, absent, Fallback, Input, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, asyncConstant, callbacks, decode, decoded, decoders, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, greet, handlers, input, isRecord, isText, makeBox, labelled, logName, loose, kind, mappedValues, measured, keyed, lazy, described, namesA, namesB, namespaceRef, noValues, present, slotLength, slotPair, notFound, operations, ready, recipients, ref, run, stateNamespace, succeed, unsortedKeys, unwrapped, withHead, wrapped}',
-								'export type {Explicit, Frozen, Index, Mapped}'
+								'export {AssertString, Clock, clockLayers, Codecs, NonEmpty, PipedNonEmpty, PipedTrimmed, absent, Fallback, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, asyncConstant, callbacks, decode, decoded, decoders, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, greet, handlers, input, isRecord, isText, makeBox, labelled, logName, loose, kind, mappedValues, measured, keyed, lazy, described, namesA, namesB, namespaceRef, noValues, present, slotLength, slotPair, notFound, operations, ready, recipients, ref, run, stateNamespace, succeed, unsortedKeys, unwrapped, withHead, wrapped}'
 							],
 							Array.join('\n')
 						)
@@ -334,13 +294,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'@deslop/coding-standards(no-native-emptiness-check)',
 								'@deslop/coding-standards(no-option-value-access)',
 								'@deslop/coding-standards(no-option-value-access)',
-								'@deslop/coding-standards(no-readonly-type-syntax)',
-								'@deslop/coding-standards(no-readonly-type-syntax)',
-								'@deslop/coding-standards(no-readonly-type-syntax)',
-								'@deslop/coding-standards(no-readonly-type-syntax)',
-								'@deslop/coding-standards(no-readonly-type-syntax)',
-								'@deslop/coding-standards(no-readonly-type-syntax)',
-								'@deslop/coding-standards(no-readonly-type-syntax)',
 								'@deslop/coding-standards(no-return-type)',
 								'@deslop/coding-standards(no-return-type)',
 								'@deslop/coding-standards(no-return-type)',
@@ -1019,7 +972,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'@deslop/coding-standards(no-pipe-method)',
 						'@deslop/coding-standards(no-pipe-method)',
 						'@deslop/coding-standards(no-pipe-method)',
-						'@deslop/coding-standards(no-readonly-type-syntax)',
 						'@deslop/coding-standards(no-redundant-variable-annotation)',
 						'@deslop/coding-standards(no-return-type)',
 						'@deslop/coding-standards(no-ternary)',
@@ -1160,26 +1112,19 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 
 		testApi.effect(
-			'follows cycles, alias chains, and destructured parameters',
+			'reports destructured parameters',
 			() =>
 				Effect.gen(function* () {
 					const result = yield* lintSource({
-						'cycles.ts': pipe(
+						'destructured.ts': pipe(
 							[
-								"import {Array, Context, Effect, Schema} from 'effect'",
+								"import {Array} from 'effect'",
 								'',
-								'type Tree = {readonly children: readonly Tree[]}',
-								'const Tree = Schema.Struct({Wrapper: Schema.String, children: Schema.Array(Schema.suspend((): Schema.Codec<Tree> => Tree))})',
-								'type Wrapper = {readonly tree: Tree}',
 								'const sizes = Array.map([[1, 2]], ([width]) => width)',
 								'for (const {length} of ["a"]) consume(length)',
 								'const labelOf = ({ref, label}: {ref: string; label: string}) => [ref, label]',
 								'declare function consume(value: number): void',
-								'type BaseShape = {count: Effect.Effect<number>}',
-								'type ServiceShape = BaseShape & {increment: Effect.Effect<void>}',
-								'class Counter extends Context.Service<Counter, ServiceShape>()("Counter") {}',
-								'export {Counter, Tree, labelOf, sizes}',
-								'export type {Wrapper}'
+								'export {labelOf, sizes}'
 							],
 							Array.join('\n')
 						)
@@ -1188,17 +1133,14 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'@deslop/coding-standards(function-declaration)',
 						'@deslop/coding-standards(no-destructured-parameter)',
 						'@deslop/coding-standards(no-destructured-parameter)',
-						'@deslop/coding-standards(no-destructured-parameter)',
-						'@deslop/coding-standards(no-readonly-type-syntax)',
-						'@deslop/coding-standards(no-readonly-type-syntax)',
-						'@deslop/coding-standards(no-readonly-type-syntax)'
+						'@deslop/coding-standards(no-destructured-parameter)'
 					])
 				}),
 			20_000
 		)
 
 		testApi.effect(
-			'fixes readonly syntax, single-use values and property aliases without changing behavior',
+			'fixes single-use values and property aliases without changing behavior',
 			() =>
 				Effect.gen(function* () {
 					const result = yield* lintSource(
@@ -1209,9 +1151,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 									"import type {Effect} from 'effect'",
 									'declare const text: string',
 									'declare function consume(...values: unknown[]): number',
-									'export type Explicit = {readonly values: readonly string[]}',
-									'export type Mapped<T> = {readonly [K in keyof T]: T[K]}',
-									'export type Frozen = Readonly<{value: string}>',
 									'export class Clock extends Context.Service<Clock, {now: Effect.Effect<number>}>()("Clock") {}',
 									'export function sum() {',
 									'	const size = text.length + 1',
@@ -1222,7 +1161,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 									'	return consume({label})',
 									'}',
 									'declare const obj: {method: () => number; first: () => number; second: number; p: number; make: () => {Component: new () => object}}',
-									'export type Union = Readonly<string | number>[]',
 									'export function detached() {',
 									'	const method = obj.method',
 									'	return method()',
@@ -1299,10 +1237,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'',
 								'declare const text: string',
 								'declare function consume(...values: unknown[]): number',
-								'export type Explicit = {readonly values: readonly string[]}',
-								'export type Mapped<T> = {readonly [K in keyof T]: T[K]}',
-								'export type Frozen = Readonly<{value: string}>',
-								"export class Clock extends Context.Service<Clock, {readonly now: Effect.Effect<number>}>()('Clock') {}",
+								"export class Clock extends Context.Service<Clock, {now: Effect.Effect<number>}>()('Clock') {}",
 								'export function sum() {',
 								'	return consume((text.length + 1) * 2)',
 								'}',
@@ -1316,7 +1251,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'	p: number',
 								'	make: () => {Component: new () => object}',
 								'}',
-								'export type Union = Readonly<string | number>[]',
 								'export function detached() {',
 								'	const method = obj.method',
 								'	return method()',
