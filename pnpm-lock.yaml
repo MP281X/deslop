@@ -330,6 +330,9 @@ importers:
       effect:
         specifier: latest
         version: 4.1.0
+      effect-machine:
+        specifier: latest
+        version: 0.32.0(effect@4.1.0)
       lucide-react:
         specifier: latest
         version: 1.64.0(@types/react@19.3.0)(react@19.3.1)
@@ -497,6 +500,9 @@ importers:
       effect:
         specifier: latest
         version: 4.1.0
+      effect-machine:
+        specifier: latest
+        version: 0.32.0(effect@4.1.0)
       expo-application:
         specifier: ^58.0
         version: 58.1.2(expo@58.0.21)
@@ -621,6 +627,9 @@ importers:
       effect:
         specifier: latest
         version: 4.1.0
+      effect-machine:
+        specifier: latest
+        version: 0.32.0(effect@4.1.0)
     devDependencies:
       '@tailwindcss/vite':
         specifier: latest
@@ -3503,6 +3512,11 @@ packages:
 
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
+
+  effect-machine@0.32.0:
+    resolution: {integrity: sha512-wpIkLj6HAKk/OgrRgvyEmlBL01/wZ15rxrubVJJX0b3bdFaAvwRGZgkSpnKmxXc+qT8Qd8yarsPw9bQFcS/gQA==}
+    peerDependencies:
+      effect: '>=4.0.0 <5'
 
   effect@4.1.0:
     resolution: {integrity: sha512-lGx2MJJyrXA8RZb2UpQ/0Nkb5Utaimby7oD92+18noBxLPE85IFOvptdzau8dvcxAOwfwHo9iqapbKeFzqQM/Q==}
@@ -8343,6 +8357,10 @@ snapshots:
   eastasianwidth@0.2.0: {}
 
   ee-first@1.1.1: {}
+
+  effect-machine@0.32.0(effect@4.1.0):
+    dependencies:
+      effect: 4.1.0
 
   effect@4.1.0: {}
 

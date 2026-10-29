@@ -29,6 +29,7 @@
 		"@effect/platform-node": "latest",
 		"@expo/ui": "^58.0",
 		"effect": "latest",
+		"effect-machine": "latest",
 		"expo-application": "^58.0",
 		"expo-auth-session": "^58.0",
 		"expo-calendar": "^58.0",

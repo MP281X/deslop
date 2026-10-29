@@ -45,14 +45,14 @@ import {AppTitle} from '@deslop/components-mobile/title'
 import {
 	answerAtom,
 	dayAt,
-	deletedAtom,
 	nowAtom,
 	offerAtom,
 	removeAtom,
 	restoreAtom,
 	statusOf,
 	timeAt,
-	tones
+	tones,
+	undoAtom
 } from '#lib/utils.ts'
 import icon from '#routes/icon.png'
 import {DAY, endOf, HOUR, routeOf, startOf, titleOf} from '#services/bookings/lib/utils.ts'
@@ -160,7 +160,7 @@ function PasteSheet() {
 export function HomeRoute(props: {bookings: BookingList; onOpen: (id: string) => void}) {
 	const [pastOpen, setPastOpen] = useState(false)
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
-	const deleted = useAtomValue(deletedAtom)
+	const undo = useAtomValue(undoAtom)
 	const restore = useAtomSet(restoreAtom)
 	const importing = AsyncResult.isWaiting(useAtomValue(answerAtom))
 	const current = Array.filter(
@@ -233,19 +233,16 @@ export function HomeRoute(props: {bookings: BookingList; onOpen: (id: string) =>
 						</ProgressView>
 					</ToolbarItem>
 				)}
-				{Option.match(deleted, {
-					onNone: () => undefined,
-					onSome: booking => (
-						<ToolbarItem placement="bottomBar">
-							<Button
-								label={`Undo Delete ${titleOf(booking)}`}
-								systemImage="arrow.uturn.backward"
-								onPress={() => restore(booking)}
-								modifiers={[labelStyle('titleAndIcon'), lineLimit(1)]}
-							/>
-						</ToolbarItem>
-					)
-				})}
+				{undo._tag === 'Offered' && (
+					<ToolbarItem placement="bottomBar">
+						<Button
+							label={`Undo Delete ${titleOf(undo.booking)}`}
+							systemImage="arrow.uturn.backward"
+							onPress={() => restore(undo.booking)}
+							modifiers={[labelStyle('titleAndIcon'), lineLimit(1)]}
+						/>
+					</ToolbarItem>
+				)}
 			</Toolbar.Content>
 		</Toolbar>
 	)

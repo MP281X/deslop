@@ -3,20 +3,21 @@ import {
 	Clock,
 	Context,
 	Effect,
-	HashMap,
 	Layer,
 	Number,
 	Option,
-	Semaphore,
+	Record,
+	Schedule,
 	Stream,
 	SubscriptionRef,
-	Tuple,
 	pipe
 } from 'effect'
 
+import {Machine} from 'effect-machine'
+
 import {hasMeaningfulMove, removePortfolioVisitor, upsertPortfolioVisitor} from '#lib/portfolio.ts'
 import type {PortfolioVisitors} from '#services/presence/schema.ts'
-import {PortfolioColor, PortfolioVisitor} from '#services/presence/schema.ts'
+import {PortfolioColor, PortfolioVisitor, Room, RoomEvent} from '#services/presence/schema.ts'
 
 const SERVER_BOTS = [
 	{
@@ -50,9 +51,6 @@ export class Presence extends Context.Service<
 		this,
 		Effect.gen(function* () {
 			const visitors = yield* SubscriptionRef.make<PortfolioVisitors>([])
-			// Open connections per visitor id; a reload or a second tab shares one cursor.
-			const connections = yield* SubscriptionRef.make(HashMap.empty<string, number>())
-			const lifecycle = yield* Semaphore.make(1)
 
 			const start = yield* Clock.currentTimeMillis
 			const moveBots = Effect.gen(function* () {
@@ -73,56 +71,57 @@ export class Presence extends Context.Service<
 				)
 			})
 
-			// The bots wander only while someone is watching, and leave with the last visitor so the next one sees no jump.
-			yield* pipe(
-				SubscriptionRef.changes(connections),
-				Stream.map(HashMap.isEmpty),
-				Stream.changes,
-				Stream.switchMap(idle => {
-					if (idle) {
-						return Stream.fromEffect(
-							SubscriptionRef.update(visitors, current =>
-								Array.filter(current, visitor => !Array.some(SERVER_BOTS, bot => bot.id === visitor.id))
-							)
-						)
-					}
-					return pipe(
-						Stream.tick('55 millis'),
-						Stream.mapEffect(() => moveBots)
+			const room = Machine.make({event: RoomEvent, initial: Room.Empty, state: Room})
+				.on(Room.Empty, RoomEvent.Joined, transition =>
+					Effect.as(
+						SubscriptionRef.update(visitors, current => upsertPortfolioVisitor(current, transition.event.visitor)),
+						Room.Occupied({tabs: {[transition.event.visitor.id]: 1}})
 					)
-				}),
-				Stream.runDrain,
-				Effect.forkScoped
-			)
+				)
+				.on(Room.Occupied, RoomEvent.Joined, transition =>
+					Effect.as(
+						SubscriptionRef.update(visitors, current => upsertPortfolioVisitor(current, transition.event.visitor)),
+						Room.Occupied({
+							tabs: {
+								...transition.state.tabs,
+								[transition.event.visitor.id]: (transition.state.tabs[transition.event.visitor.id] ?? 0) + 1
+							}
+						})
+					)
+				)
+				.on(Room.Occupied, RoomEvent.Left, transition => {
+					const open = (transition.state.tabs[transition.event.id] ?? 1) - 1
+					if (open > 0) return Room.Occupied({tabs: {...transition.state.tabs, [transition.event.id]: open}})
+					const tabs = Record.remove(transition.state.tabs, transition.event.id)
+					const left = SubscriptionRef.update(visitors, current => removePortfolioVisitor(current, transition.event.id))
+					if (Record.isEmptyRecord(tabs)) return Effect.as(left, Room.Empty)
+					return Effect.as(left, Room.Occupied({tabs}))
+				})
+				// The bots wander only while someone is watching, and leave with the last visitor so the next one sees no jump.
+				.spawn(
+					Room.Occupied,
+					() =>
+						Effect.gen(function* () {
+							yield* Effect.addFinalizer(() =>
+								SubscriptionRef.update(visitors, current =>
+									Array.filter(current, visitor => !Array.some(SERVER_BOTS, bot => bot.id === visitor.id))
+								)
+							)
+							yield* Effect.repeat(moveBots, Schedule.spaced('55 millis'))
+						}),
+					{name: 'wander'}
+				)
+			const actor = yield* Machine.scoped(Machine.spawn(room))
+			yield* actor.start
 
 			return Presence.of({
 				join: payload =>
 					Stream.unwrap(
 						Effect.gen(function* () {
 							yield* Effect.logInfo('Portfolio client connected')
-							const visitor = PortfolioVisitor.make({...payload, x: 0.5, y: 0.5})
 							yield* Effect.acquireRelease(
-								lifecycle.withPermit(
-									Effect.gen(function* () {
-										yield* SubscriptionRef.update(visitors, current => upsertPortfolioVisitor(current, visitor))
-										yield* SubscriptionRef.update(
-											connections,
-											HashMap.modifyAt(payload.id, count => Option.some(Option.getOrElse(count, () => 0) + 1))
-										)
-									})
-								),
-								() =>
-									lifecycle.withPermit(
-										Effect.gen(function* () {
-											const remaining = yield* SubscriptionRef.modify(connections, current => {
-												const count = Option.getOrElse(HashMap.get(current, payload.id), () => 0) - 1
-												if (count <= 0) return Tuple.make(0, HashMap.remove(current, payload.id))
-												return Tuple.make(count, HashMap.set(current, payload.id, count))
-											})
-											if (remaining > 0) return
-											yield* SubscriptionRef.update(visitors, current => removePortfolioVisitor(current, payload.id))
-										})
-									)
+								actor.call(RoomEvent.Joined({visitor: PortfolioVisitor.make({...payload, x: 0.5, y: 0.5})})),
+								() => actor.call(RoomEvent.Left({id: payload.id}))
 							)
 
 							// A slow page skips to the latest positions instead of queueing every step.

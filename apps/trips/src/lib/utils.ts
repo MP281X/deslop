@@ -16,6 +16,7 @@ import {
 	pipe
 } from 'effect'
 
+import {Event, Machine, State} from 'effect-machine'
 import {FetchHttpClient} from 'effect/http'
 import {AsyncResult, AtomRpc, Atom} from 'effect/reactivity'
 import * as Application from 'expo-application'
@@ -31,6 +32,7 @@ import {DynamicColorIOS, Linking} from 'react-native'
 import {colors} from '@deslop/components-mobile/theme'
 import {alert, cachedList, clipboardChangeCount, writeAtomically} from '@deslop/components-mobile/utils'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
+import {actorAtom} from '@deslop/runtime/machine'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 import {keychain} from '@deslop/runtime/mobile/keychain'
 import * as MobileSession from '@deslop/runtime/mobile/session'
@@ -203,8 +205,24 @@ export const answerAtom = Atom.keepAlive(
 	})
 )
 
-// The booking deleted last, which the list offers to put back for a few seconds.
-export const deletedAtom = Atom.keepAlive(Atom.make(Option.none<Booking>()))
+// The booking deleted last, which the list offers to put back for eight seconds; a later delete takes its place.
+const Undo = State({Idle: {}, Offered: {booking: Booking}})
+const UndoEvent = Event({Deleted: {booking: Booking}, Expired: {}, Restored: {id: Schema.String}})
+
+export const undoAtom = actorAtom(
+	Machine.make({event: UndoEvent, initial: Undo.Idle, state: Undo})
+		.reenter([Undo.Idle, Undo.Offered], UndoEvent.Deleted, transition =>
+			Undo.Offered({booking: transition.event.booking})
+		)
+		.when(
+			Undo.Offered,
+			UndoEvent.Restored,
+			transition => transition.state.booking.id === transition.event.id,
+			() => Undo.Idle
+		)
+		.on(Undo.Offered, UndoEvent.Expired, () => Undo.Idle)
+		.timeout(Undo.Offered, {duration: '8 seconds', event: UndoEvent.Expired})
+)
 
 export const removeAtom = Atom.keepAlive(
 	Atom.fn(
@@ -214,16 +232,10 @@ export const removeAtom = Atom.keepAlive(
 					get,
 					Effect.flatMap(RpcClient, client => client('bookings.remove', {id: booking.id}))
 				),
-				Effect.tap(() => Effect.sync(() => get.set(deletedAtom, Option.some(booking)))),
-				alert('Not Deleted'),
-				Effect.andThen(Effect.sleep('8 seconds')),
-				Effect.andThen(
-					Effect.sync(() => {
-						if (Option.exists(get(deletedAtom), found => found === booking)) get.set(deletedAtom, Option.none())
-					})
-				)
+				Effect.tap(() => Effect.sync(() => get.set(undoAtom, UndoEvent.Deleted({booking})))),
+				alert('Not Deleted')
 			),
-		// Each delete keeps its own offer; a later one does not interrupt it.
+		// A second swipe deletes its booking too instead of interrupting the first.
 		{concurrent: true}
 	)
 )
@@ -235,11 +247,7 @@ export const restoreAtom = Atom.keepAlive(
 				get,
 				Effect.flatMap(RpcClient, client => client('bookings.restore', booking))
 			),
-			Effect.tap(() =>
-				Effect.sync(() => {
-					if (Option.exists(get(deletedAtom), found => found === booking)) get.set(deletedAtom, Option.none())
-				})
-			),
+			Effect.tap(() => Effect.sync(() => get.set(undoAtom, UndoEvent.Restored({id: booking.id})))),
 			alert('Not Restored')
 		)
 	)

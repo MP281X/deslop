@@ -1,5 +1,6 @@
-import {DateTime, Duration, Effect, Layer, Option, Schema, String, pipe} from 'effect'
+import {Boolean, DateTime, Duration, Effect, Layer, Option, Schema, String, pipe} from 'effect'
 
+import {Event, Machine, State} from 'effect-machine'
 import type {HttpClient} from 'effect/http'
 import {Atom} from 'effect/reactivity'
 import {RpcClient, RpcSerialization} from 'effect/rpc'
@@ -8,6 +9,7 @@ import Constants from 'expo-constants'
 import * as Updates from 'expo-updates'
 import {AppState} from 'react-native'
 
+import {actorAtom} from '#machine.ts'
 import {layerOtlp} from '#telemetry.ts'
 
 import type {AuthError} from '#auth/schema.ts'
@@ -53,22 +55,51 @@ export const activationsAtom = Atom.make(get => {
 	return 0
 })
 
-const downloadedAtom = Atom.keepAlive(Atom.make(false))
+const Update = State({Checking: {}, Downloaded: {}, Idle: {}, Reloading: {}})
+const UpdateEvent = Event({Fetched: {}, Returned: {away: Schema.Finite}, Settled: {}})
 
-// A reload looks like a crash to someone switching apps for a moment, so a downloaded update starts on the next launch or on a return after ten minutes away; mount it only where a reload loses nothing.
-export const updateAtom = Atom.make(get =>
-	pipe(
-		Effect.gen(function* () {
-			get(activationsAtom)
-			if (!Updates.isEnabled) return
-			if (get.once(downloadedAtom)) {
-				if (get.once(awayAtom) < Duration.toMillis(Duration.minutes(10))) return
-				return yield* Effect.tryPromise(() => Updates.reloadAsync())
+// A reload looks like a crash to someone switching apps for a moment, so a downloaded update starts on the next launch or on a return after ten minutes away.
+const updatesAtom = actorAtom(
+	Machine.make({event: UpdateEvent, initial: Update.Idle, state: Update})
+		.on(Update.Idle, UpdateEvent.Returned, () => Update.Checking)
+		.task(
+			Update.Checking,
+			() =>
+				pipe(
+					Effect.gen(function* () {
+						if (!(yield* Effect.tryPromise(() => Updates.checkForUpdateAsync())).isAvailable) return false
+						return (yield* Effect.tryPromise(() => Updates.fetchUpdateAsync())).isNew
+					}),
+					Effect.tapError(error => Effect.logWarning('The app update check failed', error))
+				),
+			{
+				onFailure: () => UpdateEvent.Settled,
+				onSuccess: fetched =>
+					Boolean.match(fetched, {onFalse: () => UpdateEvent.Settled, onTrue: () => UpdateEvent.Fetched})
 			}
-			if (!(yield* Effect.tryPromise(() => Updates.checkForUpdateAsync())).isAvailable) return
-			if (!(yield* Effect.tryPromise(() => Updates.fetchUpdateAsync())).isNew) return
-			get.set(downloadedAtom, true)
-		}),
-		Effect.ignore({log: 'Warn', message: 'The app update check failed'})
-	)
+		)
+		.on(Update.Checking, UpdateEvent.Fetched, () => Update.Downloaded)
+		.on(Update.Checking, UpdateEvent.Settled, () => Update.Idle)
+		.when(
+			Update.Downloaded,
+			UpdateEvent.Returned,
+			transition => transition.event.away >= Duration.toMillis(Duration.minutes(10)),
+			() => Update.Reloading
+		)
+		.task(
+			Update.Reloading,
+			() =>
+				Effect.ignore(
+					Effect.tryPromise(() => Updates.reloadAsync()),
+					{log: 'Warn', message: 'The app update did not start'}
+				),
+			{onSuccess: () => UpdateEvent.Settled}
+		)
+		.on(Update.Reloading, UpdateEvent.Settled, () => Update.Downloaded)
 )
+
+// Checks on launch and on each return from the background; mount it only where a reload loses nothing.
+export const updateAtom = Atom.make(get => {
+	get(activationsAtom)
+	if (Updates.isEnabled) get.set(updatesAtom, UpdateEvent.Returned({away: get.once(awayAtom)}))
+})

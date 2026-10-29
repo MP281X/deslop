@@ -9,6 +9,7 @@
 		"./auth/schema": "./src/auth/schema.ts",
 		"./auth/service": "./src/auth/service.ts",
 		"./auth/utils": "./src/auth/lib/utils.ts",
+		"./machine": "./src/machine.ts",
 		"./mobile": "./src/mobile/client.ts",
 		"./mobile/session": "./src/mobile/session.ts",
 		"./mobile/keychain": "./src/mobile/keychain.ts",
@@ -21,7 +22,8 @@
 		"@deslop/components-web": "workspace:*",
 		"@effect/platform-node": "latest",
 		"@tanstack/react-router": "latest",
-		"effect": "latest"
+		"effect": "latest",
+		"effect-machine": "latest"
 	},
 	"devDependencies": {
 		"@tailwindcss/vite": "latest",
