@@ -1,5 +1,21 @@
-import {Array, Clock, DateTime, Duration, Effect, Match, Number, Option, Schedule, Stream, String, pipe} from 'effect'
+import {
+	Array,
+	Clock,
+	DateTime,
+	Duration,
+	Effect,
+	Match,
+	Number,
+	Option,
+	Schedule,
+	Schema,
+	Stream,
+	String,
+	pipe
+} from 'effect'
 
+import {Machine} from '@typeonce/effect-machine'
+import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {FetchHttpClient, HttpClient, HttpClientRequest} from 'effect/http'
 import {Atom, AtomRpc} from 'effect/reactivity'
 
@@ -8,7 +24,8 @@ import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {typedCode} from '#services/authorizations/lib/utils.ts'
-import type {Account, AdmitParams, PendingAuthorization, SignedInApp} from '#services/authorizations/schema.ts'
+import type {Account, AdmitParams, SignedInApp} from '#services/authorizations/schema.ts'
+import {PendingAuthorization} from '#services/authorizations/schema.ts'
 
 const authRuntime = Atom.runtime(FetchHttpClient.layer)
 
@@ -41,17 +58,76 @@ export const accountAtom = Atom.keepAlive(
 	)
 )
 
-// Live, so the card goes away once the sign-in is answered elsewhere or expires.
-export const lookupAtom = Atom.family((code: string) =>
-	RpcClient.runtime.atom(
-		pipe(
-			RpcClient,
-			Effect.map(client => client('auth.lookup', {code})),
-			Stream.unwrap,
-			reconnecting
-		)
-	)
+export const CODE_LENGTH = 8
+
+const Answered = {accept: Schema.Boolean, request: PendingAuthorization}
+
+// The code the waiting page shows, typed or opened from its link, proves the request is yours: RFC 8628's device flow.
+export const codeAtom = AtomMachine.bind(RpcClient.runtime).make(
+	Machine.make({
+		branches: {looked: {found: {target: 'Code.Found'}, missing: {target: 'Code.Missing'}}},
+		events: Machine.events({Answered, Typed: {typed: Schema.String}}),
+		root: Machine.state({
+			states: {
+				// A full code reads its sign-in live, so a request answered elsewhere or expired leaves the grid.
+				Code: {
+					fields: {code: Schema.String},
+					states: {Found: {fields: {request: PendingAuthorization}}, Looking: {}, Missing: {}}
+				},
+				// The last answer stays as one line under an empty code, ready for the next sign-in.
+				Typing: {fields: {answered: Schema.optionalKey(Schema.Struct(Answered)), typed: Schema.String}}
+			}
+		}),
+		streams: {
+			lookup: (code: string) =>
+				reconnecting(Stream.unwrap(Effect.map(RpcClient, client => client('auth.lookup', {code}))))
+		}
+	}).handle({
+		initial: {data: {typed: ''}, target: 'Typing'},
+		on: {
+			Answered: {
+				data: transition => ({
+					answered: {accept: transition.event.accept, request: transition.event.request},
+					typed: ''
+				}),
+				target: 'Typing'
+			},
+			Typed: {data: transition => ({typed: transition.event.typed}), target: 'Typing'}
+		},
+		states: {
+			Code: {
+				initial: {target: 'Code.Looking'},
+				invoke: {
+					input: transition => transition.state.code,
+					onDone: {none: true},
+					onElement: {
+						branches: 'looked',
+						resolve: transition =>
+							Option.match(transition.element, {
+								onNone: () => transition.select.missing(),
+								onSome: request => transition.select.found({data: {request}})
+							})
+					},
+					onFailure: {target: 'Code.Missing'},
+					src: 'lookup'
+				},
+				states: {Found: {}, Looking: {}, Missing: {}}
+			},
+			Typing: {
+				always: {
+					data: transition => ({code: transition.state.typed}),
+					guard: transition => String.length(transition.state.typed) >= CODE_LENGTH,
+					target: 'Code'
+				}
+			}
+		}
+	})
 )
+
+// Read each time the approve page opens, so returning to it from People does not bring back an answered code.
+export const linkedCodeAtom = Atom.make(get => {
+	get.set(codeAtom.send, {_tag: 'Typed', typed: typedCode(new URLSearchParams(location.search).get('code') ?? '')})
+})
 
 export const peopleAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(
@@ -121,11 +197,6 @@ export function approveLink(id: string) {
 	return `${location.origin}/?code=${id}`
 }
 
-// Read when the approve page opens, so returning to it from People does not bring back an answered code.
-export function linkedCode() {
-	return typedCode(new URLSearchParams(location.search).get('code') ?? '')
-}
-
 // The apps a sign-in reaches, by name; tracing rides along with every app, so it shows only alone.
 export function appNames(resources: PendingAuthorization['resources']) {
 	const names = Array.dedupe(
@@ -186,12 +257,12 @@ export function avatarUrl(id: string) {
 	return `https://avatars.githubusercontent.com/u/${String.replace('github:', '')(id)}?s=96`
 }
 
-export const consentAtom = authRuntime.fn((input: {accept: boolean; request: PendingAuthorization}) =>
+export const consentAtom = authRuntime.fn((input: {accept: boolean; request: PendingAuthorization}, get) =>
 	pipe(
 		HttpClientRequest.post('/api/auth/oauth2/consent'),
 		HttpClientRequest.bodyJson({accept: input.accept, request: input.request.id}),
 		Effect.flatMap(request => HttpClient.HttpClient.use(client => HttpClient.filterStatusOk(client).execute(request))),
-		Effect.as(input),
+		Effect.andThen(Effect.sync(() => get.set(codeAtom.send, {_tag: 'Answered', ...input}))),
 		Effect.mapError(cause =>
 			AuthError.make({
 				cause,

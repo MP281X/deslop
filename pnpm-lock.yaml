@@ -226,13 +226,19 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.28.0)
+        version: 4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0)
       '@effect/platform-node':
         specifier: latest
         version: 4.1.0(effect@4.1.0)(redis@6.3.0)
       '@tanstack/react-router':
         specifier: latest
         version: 1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@typeonce/effect-machine':
+        specifier: latest
+        version: 0.46.0(effect@4.1.0)
+      '@typeonce/effect-machine-react':
+        specifier: latest
+        version: 0.46.0(@effect/atom-react@4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0))(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0)
       effect:
         specifier: latest
         version: 4.1.0
