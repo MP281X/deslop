@@ -3,7 +3,6 @@
 	"type": "module",
 	"scripts": {
 		"build": "vp run -r build",
-		"duplicates": "fallow dupes --format compact",
 		"prepare": "effect-tsgo patch --no-typescript --tsrs"
 	},
 	"devDependencies": {

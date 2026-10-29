@@ -26,6 +26,8 @@ import {
 	pipe
 } from 'effect'
 
+import {listEvents} from '@deslop/runtime/server'
+
 import {clock} from '#services/media/lib/utils.ts'
 import type {Still} from '#services/media/schema.ts'
 import {Media} from '#services/media/service.ts'
@@ -35,7 +37,6 @@ import {openStore} from '#services/notes/lib/store.ts'
 import {
 	captureUrl,
 	commentFor,
-	diff,
 	findNotes,
 	hasVideo,
 	normalizeTags,
@@ -527,23 +528,7 @@ export class Notes extends Context.Service<
 						SubscriptionRef.changes(state),
 						Stream.groupedWithin(10_000, '400 millis'),
 						Stream.flatMap(group => Stream.fromIterable(Array.takeRight(group, 1))),
-						Stream.mapAccum(
-							() => Option.none<Note[]>(),
-							(previous, current: Note[]) =>
-								[
-									Option.some(current),
-									Option.match(previous, {
-										onNone: () => Array.of<NotesEvent>({removed: [], reset: true, upserted: current}),
-										onSome: before => {
-											const changes = diff(before, current)
-											if (Array.isReadonlyArrayEmpty(changes.upserted) && Array.isReadonlyArrayEmpty(changes.removed)) {
-												return []
-											}
-											return Array.of<NotesEvent>({...changes, reset: false})
-										}
-									})
-								] as const
-						)
+						listEvents
 					),
 					get: Effect.fn('Notes.get')(function* (input) {
 						return yield* pipe(findNote(input.id), Effect.flatMap(Effect.fromOption), missing)

@@ -4,7 +4,6 @@ import {Array, Boolean, DateTime, Option, Record, pipe} from 'effect'
 
 import {
 	Button,
-	BottomSheet,
 	ContentUnavailableView,
 	HStack,
 	Image,
@@ -20,8 +19,6 @@ import {
 import {
 	accessibilityElement,
 	background,
-	buttonStyle,
-	controlSize,
 	contentShape,
 	foregroundStyle,
 	frame,
@@ -34,7 +31,6 @@ import {
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	onTapGesture,
-	padding,
 	scrollContentBackground,
 	shapes,
 	tint
@@ -42,6 +38,7 @@ import {
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 
+import {ClipboardSheet} from '@deslop/components-mobile/sheet'
 import {colors, mono} from '@deslop/components-mobile/theme'
 import {AppTitle} from '@deslop/components-mobile/title'
 
@@ -135,7 +132,6 @@ function BookingRow(props: {booking: Booking; now: number; onOpen: (id: string) 
 	)
 }
 
-// Like Stash, the sheet hangs off the title without adding a paste control to the screen.
 function PasteSheet() {
 	const offer = pipe(useAtomValue(offerAtom), AsyncResult.getOrElse(Option.none))
 	const [answered, respond] = useAtom(answerAtom)
@@ -148,54 +144,15 @@ function PasteSheet() {
 		Option.map(open, current => respond({offer: current, save}))
 	}
 	return (
-		<BottomSheet
+		<ClipboardSheet
 			anchor={<AppTitle logo={icon} name="trips" />}
-			isPresented={Option.isSome(open)}
-			onIsPresentedChange={presented => {
-				if (!presented) answer(false)
-			}}
-			fitToContents
-		>
-			<VStack
-				spacing={14}
-				modifiers={[
-					padding({bottom: 8, leading: 24, top: 28, trailing: 24}),
-					frame({maxWidth: Infinity}),
-					background(colors.background)
-				]}
-			>
-				<Image systemName="ticket" size={24} modifiers={[foregroundStyle(colors.foreground)]} />
-				<Text modifiers={[mono('headline', 17), foregroundStyle(colors.foreground)]}>Add from clipboard?</Text>
-				<Text modifiers={[mono('body', 14), foregroundStyle(colors.mutedForeground)]}>
-					{Boolean.match(image, {onFalse: () => 'Copied text', onTrue: () => 'Copied screenshot'})}
-				</Text>
-				<VStack spacing={4} modifiers={[padding({top: 6})]}>
-					<Button
-						onPress={() => answer(true)}
-						modifiers={[
-							buttonStyle('glassProminent'),
-							controlSize('large'),
-							tint(colors.primary),
-							foregroundStyle(colors.primaryForeground)
-						]}
-					>
-						<Text modifiers={[mono('headline', 16), frame({maxWidth: Infinity})]}>Add booking</Text>
-					</Button>
-					<Button onPress={() => answer(false)} modifiers={[buttonStyle('plain'), controlSize('large')]}>
-						<Text
-							modifiers={[
-								mono('body', 15),
-								foregroundStyle(colors.mutedForeground),
-								padding({vertical: 12}),
-								frame({maxWidth: Infinity})
-							]}
-						>
-							Not now
-						</Text>
-					</Button>
-				</VStack>
-			</VStack>
-		</BottomSheet>
+			confirm="Add booking"
+			detail={Boolean.match(image, {onFalse: () => 'Copied text', onTrue: () => 'Copied screenshot'})}
+			onAnswer={answer}
+			open={Option.isSome(open)}
+			question="Add from clipboard?"
+			symbol="ticket"
+		/>
 	)
 }
 

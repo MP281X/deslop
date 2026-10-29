@@ -4,7 +4,23 @@ import {fileURLToPath} from 'node:url'
 
 import {NodeHttpServer} from '@effect/platform-node'
 
-import {ByteSize, Config, Effect, FileSystem, Layer, Path, Predicate, Semaphore, Struct, pipe} from 'effect'
+import {
+	Array,
+	ByteSize,
+	Config,
+	Effect,
+	FileSystem,
+	HashMap,
+	HashSet,
+	Layer,
+	Option,
+	Path,
+	Predicate,
+	Semaphore,
+	Stream,
+	Struct,
+	pipe
+} from 'effect'
 
 import {McpProtocol, McpServer} from 'effect/ai'
 import {HttpIncomingMessage, HttpRouter, HttpServerResponse, HttpStaticServer} from 'effect/http'
@@ -53,6 +69,34 @@ export function layerKeyValueStore(directory: string) {
 			})
 		),
 		Layer.provide(KeyValueStore.layerFileSystem(directory))
+	)
+}
+
+// A live list as the events its clients apply: the whole list once, then the items each update added or replaced by identity and the ids it removed.
+export function listEvents<A extends {id: string}, E, R>(lists: Stream.Stream<readonly A[], E, R>) {
+	return Stream.mapAccum(
+		lists,
+		() => Option.none<readonly A[]>(),
+		(previous, current) => {
+			const events = Option.match(previous, {
+				onNone: () => [{removed: Array.empty<A['id']>(), reset: true, upserted: current}],
+				onSome: before => {
+					const kept = HashMap.fromIterable(Array.map(before, item => [item.id, item] as const))
+					const ids = HashSet.fromIterable(Array.map(current, item => item.id))
+					const removed = Array.filter(
+						Array.map(before, item => item.id),
+						id => !HashSet.has(ids, id)
+					)
+					const upserted = Array.filter(
+						current,
+						item => !Option.exists(HashMap.get(kept, item.id), old => old === item)
+					)
+					if (Array.isArrayEmpty(removed) && Array.isArrayEmpty(upserted)) return []
+					return [{removed, reset: false, upserted}]
+				}
+			})
+			return [Option.some(current), events] as const
+		}
 	)
 }
 

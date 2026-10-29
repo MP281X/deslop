@@ -24,7 +24,6 @@ import * as Clipboard from 'expo-clipboard'
 import {File, Paths} from 'expo-file-system'
 import * as Location from 'expo-location'
 import * as Notifications from 'expo-notifications'
-import * as SecureStore from 'expo-secure-store'
 import {addPushToStartTokenListener} from 'expo-widgets'
 import type {LiveActivity} from 'expo-widgets'
 import {DynamicColorIOS, Linking} from 'react-native'
@@ -33,6 +32,7 @@ import {colors} from '@deslop/components-mobile/theme'
 import {alert, cachedList, clipboardChangeCount, writeAtomically} from '@deslop/components-mobile/utils'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
+import {keychain} from '@deslop/runtime/mobile/keychain'
 import * as MobileSession from '@deslop/runtime/mobile/session'
 
 import {JourneyActivity} from '#lib/activities.tsx'
@@ -66,18 +66,11 @@ import {Booking, BookingsError, IMAGE_BYTES, Leg} from '#services/bookings/schem
 import {Bundle} from '#services/push/schema.ts'
 
 const SERVER = 'https://trips.mp281x.xyz'
-const SESSION = 'session'
 const CALENDAR = 'Trips'
 
 // Auth
 
-export const session = MobileSession.make('Trips', SERVER, {
-	clear: Effect.tryPromise(() => SecureStore.deleteItemAsync(SESSION)),
-	read: Effect.try(() => SecureStore.getItem(SESSION) ?? ''),
-	// Readable from the first unlock after a restart, so a socket that reconnects while the iPhone is locked finds it.
-	write: text =>
-		Effect.try(() => SecureStore.setItem(SESSION, text, {keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK}))
-})
+export const session = MobileSession.make('Trips', SERVER, keychain)
 
 export const signInAtom = session.runtime.fn(() => pipe(session.signIn, alert('Not Signed In')))
 
