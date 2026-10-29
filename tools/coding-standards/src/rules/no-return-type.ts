@@ -5,6 +5,9 @@ import type {Context, ESTree, Reference, Variable} from 'vite-plus/lint/plugins'
 
 import {bindingName, importedMember, matches, variableFromScope} from '#rules/shared.ts'
 
+// Not boolean: without its annotation, `return part.type === 'text'` is inferred as a type predicate that narrows callers.
+const KEYWORD_TYPES = ['TSBigIntKeyword', 'TSNumberKeyword', 'TSStringKeyword']
+
 type FunctionNode = ESTree.ArrowFunctionExpression | ESTree.Function
 
 // A function wrapped in a call such as Effect.fn takes its name from the binding that holds the call.
@@ -105,7 +108,11 @@ export const noReturnType = defineRule({
 			}
 			const returnType = node.returnType
 			context.report({
-				fix: fixer => fixer.remove(returnType),
+				// Inference widens a returned literal back to these keyword types; any other annotation can be the contextual type that returned objects and callbacks need.
+				fix: fixer => {
+					if (!Array.contains(KEYWORD_TYPES, returnType.typeAnnotation.type)) return []
+					return fixer.remove(returnType)
+				},
 				message: 'Drop the return type and let inference supply it; check a returned object with satisfies.',
 				node: returnType
 			})

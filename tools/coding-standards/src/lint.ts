@@ -658,7 +658,8 @@ export const lint: OxlintConfig = {
 		'typescript/no-extraneous-class': 'error',
 		'typescript/no-import-type-side-effects': 'error',
 		'typescript/no-inferrable-types': 'error',
-		'typescript/no-invalid-void-type': 'error',
+		// Off: Oxlint rejects void as a call's type argument, so Deferred.make<void>() fails while no-restricted-types rejects undefined, and agents fall back to a boolean.
+		'typescript/no-invalid-void-type': 'off',
 		'typescript/no-misused-new': 'error',
 		'typescript/no-namespace': ['error', {allowDeclarations: true}],
 		'typescript/no-non-null-asserted-optional-chain': 'error',

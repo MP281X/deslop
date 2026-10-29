@@ -23,13 +23,13 @@ function lexical(context: Context, node: ESTree.Node): boolean {
 	return Array.some(childNodes(context, node), child => lexical(context, child))
 }
 
+// Only at module level: a hoisted declaration inside a function loses the narrowing (`if (!panel) return`) that the arrow saw.
 function placed(declaration: ESTree.VariableDeclaration) {
 	return (
 		declaration.parent.type === 'Program' ||
-		declaration.parent.type === 'BlockStatement' ||
-		declaration.parent.type === 'StaticBlock' ||
-		declaration.parent.type === 'TSModuleBlock' ||
-		(declaration.parent.type === 'ExportNamedDeclaration' && declaration.parent.declaration === declaration)
+		(declaration.parent.type === 'ExportNamedDeclaration' &&
+			declaration.parent.declaration === declaration &&
+			declaration.parent.parent.type === 'Program')
 	)
 }
 

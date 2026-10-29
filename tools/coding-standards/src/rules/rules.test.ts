@@ -52,7 +52,7 @@ const lintSource = Effect.fnUntraced(function* (input: Record<string, string>, f
 				)
 		)
 	)
-	// As the repository's fix command does, lint fixes repeat until the sources settle: one pass applies one fix per spot.
+	// A fix that edits an import and its use spans both, so overlapping fixes land on the next `fix` run; the test asserts where those runs settle.
 	const pass = Effect.gen(function* () {
 		const before = yield* read
 		const linted = yield* lint
@@ -862,24 +862,34 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 
 		testApi.effect(
-			'fixes pipe methods, dropped causes, function bindings, returned ternaries, regex flags, in checks, empty arrays and renamed imports',
+			'fixes pipe methods, dropped causes, function bindings, returned ternaries, regex flags, empty arrays and renamed imports only where types still check',
 			() =>
 				Effect.gen(function* () {
 					const result = yield* lintSource(
 						{
 							'fixes.ts': Array.join(
 								[
-									"import {Effect, Option as Maybe, Schema} from 'effect'",
+									"import {Array, Effect, Option as Maybe, Schema} from 'effect'",
 									"class Failed extends Schema.TaggedErrorClass<Failed>()('Failed', {cause: Schema.Defect, message: Schema.String}) {}",
 									'declare const work: Effect.Effect<number, string>',
 									'declare const value: object',
 									'declare const maybe: Maybe.Option<string>',
-									'export const piped = Effect.succeed(1).pipe(Effect.map(n => n + 1)).pipe(Effect.asVoid)',
+									'declare const socket: {pipe: (target: unknown) => unknown}',
+									'export const piped = Effect.succeed(1).pipe(Effect.map(n => n + 1)).pipe(',
+									'	Effect.asVoid,',
+									')',
+									'export const streamed = socket.pipe(value)',
 									"export const decoded = Schema.decodeUnknownEffect(Schema.String)(value).pipe(Effect.mapError(() => Failed.make({message: 'bad'})))",
 									"export const absent = Effect.mapError(Effect.fromOption(maybe), () => Failed.make({message: 'none'}))",
 									'export const named = Effect.mapError(work, error => new Failed({message: error}))',
 									"export const caught = Effect.tryPromise({catch: () => Failed.make({message: 'down'}), try: () => fetch('/')})",
 									'export const read = (path: string): Effect.Effect<string> => Effect.succeed(path)',
+									'export const next = (count: number): number => count + 1',
+									'export function shown(panel: string | null) {',
+									"	if (panel === null) return ''",
+									'	const show = () => panel.length',
+									'	return show()',
+									'}',
 									'export function pick(flag: boolean, other: boolean) {',
 									"	return flag ? 'a' : other ? 'b' : 'c'",
 									'}',
@@ -898,17 +908,19 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					assert.deepStrictEqual(result.sources, [
 						Array.join(
 							[
-								"import {Array, Effect, Option, Predicate, Schema, pipe} from 'effect'",
+								"import {Array, Effect, Option, Schema, pipe} from 'effect'",
 								'',
 								"class Failed extends Schema.TaggedErrorClass<Failed>()('Failed', {cause: Schema.Defect, message: Schema.String}) {}",
 								'declare const work: Effect.Effect<number, string>',
 								'declare const value: object',
 								'declare const maybe: Option.Option<string>',
+								'declare const socket: {pipe: (target: unknown) => unknown}',
 								'export const piped = pipe(',
 								'	Effect.succeed(1),',
 								'	Effect.map(n => n + 1),',
 								'	Effect.asVoid',
 								')',
+								'export const streamed = socket.pipe(value)',
 								'export const decoded = pipe(',
 								'	Schema.decodeUnknownEffect(Schema.String)(value),',
 								"	Effect.mapError(cause => Failed.make({cause, message: 'bad'}))",
@@ -916,8 +928,16 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								"export const absent = Effect.mapError(Effect.fromOption(maybe), () => Failed.make({message: 'none'}))",
 								'export const named = Effect.mapError(work, error => new Failed({cause: error, message: error}))',
 								"export const caught = Effect.tryPromise({catch: cause => Failed.make({cause, message: 'down'}), try: () => fetch('/')})",
-								'export function read(path: string) {',
+								'export function read(path: string): Effect.Effect<string> {',
 								'	return Effect.succeed(path)',
+								'}',
+								'export function next(count: number) {',
+								'	return count + 1',
+								'}',
+								'export function shown(panel: string | null) {',
+								"	if (panel === null) return ''",
+								'	const show = () => panel.length',
+								'	return show()',
 								'}',
 								'export function pick(flag: boolean, other: boolean) {',
 								"	if (flag) return 'a'",
@@ -932,7 +952,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'	return {value: flag ? 1 : 2}',
 								'}',
 								'export const pattern = /a.b/iu',
-								"export const keyed = Predicate.hasProperty(value, 'key')",
+								"export const keyed = 'key' in value",
 								'export const empties = Array.empty<string>()',
 								'export const wrapped = {Maybe: Option}',
 								''
@@ -940,8 +960,14 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'\n'
 						)
 					])
+					// Left to the agent: a Node stream's pipe, a nested function that relies on narrowing, an `in` check, a non-keyword return type.
 					assert.deepStrictEqual(customCodes(result.stdout), [
+						'@deslop/coding-standards(function-declaration)',
+						'@deslop/coding-standards(no-in-operator)',
+						'@deslop/coding-standards(no-pipe-method)',
+						'@deslop/coding-standards(no-return-type)',
 						'@deslop/coding-standards(no-ternary)',
+						'@deslop/coding-standards(no-trivial-indirection)',
 						'@deslop/coding-standards(no-trivial-indirection)'
 					])
 				}),
@@ -1215,9 +1241,9 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'',
 								'declare const text: string',
 								'declare function consume(...values: unknown[]): number',
-								'export type Explicit = {values: string[]}',
-								'export type Mapped<T> = {[K in keyof T]: T[K]}',
-								'export type Frozen = {value: string}',
+								'export type Explicit = {readonly values: readonly string[]}',
+								'export type Mapped<T> = {readonly [K in keyof T]: T[K]}',
+								'export type Frozen = Readonly<{value: string}>',
 								"export class Clock extends Context.Service<Clock, {readonly now: Effect.Effect<number>}>()('Clock') {}",
 								'export function sum() {',
 								'	return consume((text.length + 1) * 2)',
@@ -1232,7 +1258,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'	p: number',
 								'	make: () => {Component: new () => object}',
 								'}',
-								'export type Union = (string | number)[]',
+								'export type Union = Readonly<string | number>[]',
 								'export function detached() {',
 								'	const method = obj.method',
 								'	return method()',

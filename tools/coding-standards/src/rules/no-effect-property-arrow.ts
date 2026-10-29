@@ -29,7 +29,11 @@ export const noEffectPropertyArrow = defineRule({
 				(node.value.body.callee.type === 'MemberExpression' &&
 					importedMember({context, importedName: 'Effect', node: node.value.body.callee, propertyName: 'tryPromise'}))
 			) {
-				context.report({message: 'Define this property with Effect.fn or Effect.fnUntraced instead of an arrow.', node})
+				context.report({
+					message:
+						'Define this property as a generator: Effect.fnUntraced(function* (input) { yield* step; return value }), or Effect.fn("Name")(function* …) for a traced span; the wrapper takes a generator, not an arrow returning a pipe.',
+					node
+				})
 			}
 		}
 	}),

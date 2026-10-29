@@ -1,7 +1,7 @@
-import {Array, HashSet, MutableHashSet, MutableList, Option, String, pipe} from 'effect'
+import {Array, HashSet, MutableHashSet, MutableList, Option, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
-import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
+import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
 import {importedMember, schemaCycleNames, statementDeclaration, variableFromScope} from '#rules/shared.ts'
 
@@ -78,18 +78,6 @@ function shapeLiterals(input: {
 	)
 }
 
-function removeLeading(input: {context: Context; node: ESTree.Node; pattern: RegExp}) {
-	return (fixer: Fixer) =>
-		pipe(
-			input.context.sourceCode.getText(input.node),
-			String.match(input.pattern),
-			Option.map(match =>
-				fixer.replaceTextRange([input.node.range[0], input.node.range[0] + match[0].length], match[1] ?? '')
-			),
-			Option.getOrUndefined
-		)
-}
-
 export const noReadonlyTypeSyntax = defineRule({
 	create: context => {
 		const cycleNames = schemaCycleNames({context, program: context.sourceCode.ast})
@@ -128,11 +116,7 @@ export const noReadonlyTypeSyntax = defineRule({
 						})
 					}
 					if (!inShape(node) && node.readonly && !exempt(node)) {
-						context.report({
-							fix: removeLeading({context, node, pattern: /^readonly\s+/u}),
-							message: 'Remove the readonly property modifier.',
-							node
-						})
+						context.report({message: 'Remove the readonly property modifier.', node})
 					}
 				}
 				for (const node of MutableList.toArray(accessors)) {
@@ -142,21 +126,11 @@ export const noReadonlyTypeSyntax = defineRule({
 				}
 			},
 			TSIndexSignature: node => {
-				if (node.readonly) {
-					context.report({
-						fix: removeLeading({context, node, pattern: /^readonly\s+/u}),
-						message: 'Remove the readonly index modifier.',
-						node
-					})
-				}
+				if (node.readonly) context.report({message: 'Remove the readonly index modifier.', node})
 			},
 			TSMappedType: node => {
 				if (node.readonly === true || node.readonly === '+') {
-					context.report({
-						fix: removeLeading({context, node, pattern: /^(\{\s*)\+?readonly\s+/u}),
-						message: 'Remove the readonly mapped-type modifier.',
-						node
-					})
+					context.report({message: 'Remove the readonly mapped-type modifier.', node})
 				}
 			},
 			TSMethodSignature: node => {
@@ -165,28 +139,15 @@ export const noReadonlyTypeSyntax = defineRule({
 			TSPropertySignature: node => {
 				MutableList.append(properties, node)
 			},
+			// No removal fix: a readonly array is not assignable to a mutable one, a `unique symbol` key must stay readonly, an aliased condition (`const known = row.id !== null`) narrows only readonly properties, and exact type tests compare the modifier.
 			TSTypeOperator: node => {
 				if (node.operator === 'readonly' && !exempt(node)) {
-					context.report({
-						fix: fixer => fixer.replaceText(node, context.sourceCode.getText(node.typeAnnotation)),
-						message: 'Use a mutable type shape.',
-						node
-					})
+					context.report({message: 'Use a mutable type shape.', node})
 				}
 			},
 			TSTypeReference: node => {
 				if (node.typeName.type === 'Identifier' && node.typeName.name === 'Readonly' && !exempt(node)) {
-					context.report({
-						// The formatter that runs after the fix drops redundant parentheses.
-						fix: fixer =>
-							pipe(
-								Option.fromNullishOr(node.typeArguments?.params[0]),
-								Option.map(shape => fixer.replaceText(node, `(${context.sourceCode.getText(shape)})`)),
-								Option.getOrUndefined
-							),
-						message: 'Use a mutable type shape.',
-						node
-					})
+					context.report({message: 'Use a mutable type shape.', node})
 				}
 			}
 		}

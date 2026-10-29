@@ -3,7 +3,7 @@ import {Array, Option, Predicate, String} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
 
-import {effectImport, memberName} from '#rules/shared.ts'
+import {effectImport, matches, memberName} from '#rules/shared.ts'
 
 const MESSAGE = 'Use standalone pipe: pipe(value, f, g) instead of value.pipe(f, g).'
 
@@ -30,17 +30,58 @@ function chain(node: PipeCall): PipeCall[] {
 	return [node]
 }
 
-// The source between a call's parentheses, comments included.
+// The source between a call's parentheses, comments included and a trailing comma left out.
 function argumentsText(context: Context, node: ESTree.CallExpression) {
 	const open = context.sourceCode.getTokenAfter(node.callee)
 	if (open === null) return ''
-	return String.trim(String.slice(open.range[1], node.range[1] - 1)(context.sourceCode.text))
+	function text(start: number, end: number) {
+		return String.slice(start, end)(context.sourceCode.text)
+	}
+	return String.trim(
+		Option.match(
+			Option.flatMap(Array.last(node.arguments), last =>
+				Option.filter(Option.fromNullishOr(context.sourceCode.getTokenAfter(last)), token => token.value === ',')
+			),
+			{
+				onNone: () => text(open.range[1], node.range[1] - 1),
+				onSome: comma => `${text(open.range[1], comma.range[0])}${text(comma.range[1], node.range[1] - 1)}`
+			}
+		)
+	)
+}
+
+// `Effect.map(f)`, `Schema.decode(S)` or an arrow: a step that shows the call is Effect's pipe, not a Node stream's.
+function operator(node: ESTree.Node): boolean {
+	if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') return true
+	if (node.type === 'CallExpression') return operator(node.callee)
+	return node.type === 'MemberExpression' && node.object.type === 'Identifier' && matches(/^[A-Z]/u)(node.object.name)
+}
+
+function rewritable(calls: PipeCall[]) {
+	const steps = Array.flatMap(calls, call => call.arguments)
+	return (
+		Array.some(steps, operator) &&
+		!Array.some(
+			steps,
+			step =>
+				step.type === 'SpreadElement' ||
+				step.type === 'ObjectExpression' ||
+				step.type === 'NewExpression' ||
+				// `Schema.withDecodingDefaultKey(Effect.succeed('group'))` keeps its literal only when the receiver's type is known first.
+				(step.type === 'CallExpression' &&
+					Array.some(
+						step.arguments,
+						argument =>
+							argument.type === 'CallExpression' && Array.some(argument.arguments, inner => inner.type === 'Literal')
+					))
+		)
+	)
 }
 
 // `value.pipe(f).pipe(g)` becomes one `pipe(value, f, g)`.
 function fix(input: {context: Context; fixer: Fixer; node: PipeCall}) {
 	const calls = chain(input.node)
-	if (Array.some(calls, call => Array.some(call.arguments, argument => argument.type === 'SpreadElement'))) return []
+	if (!rewritable(calls)) return []
 	const steps = Array.filter(
 		Array.map(calls, call => argumentsText(input.context, call)),
 		text => String.isNonEmpty(text)

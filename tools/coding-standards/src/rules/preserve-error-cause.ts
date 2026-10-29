@@ -9,6 +9,7 @@ import {
 	memberName,
 	resolveBinding,
 	returnedExpression,
+	variableFor,
 	variableFromScope
 } from '#rules/shared.ts'
 
@@ -128,12 +129,52 @@ function insertField(input: {field: string; fields: ESTree.ObjectExpression; fix
 	)
 }
 
+function constructedClass(node?: ESTree.Node | null) {
+	if (node?.type === 'NewExpression' && node.callee.type === 'Identifier') return Option.some(node.callee)
+	if (
+		node?.type === 'CallExpression' &&
+		node.callee.type === 'MemberExpression' &&
+		node.callee.object.type === 'Identifier'
+	) {
+		return Option.some(node.callee.object)
+	}
+	return Option.none()
+}
+
+function hasCauseField(context: Context, node: ESTree.Node): boolean {
+	if (node.type === 'ObjectExpression' && Array.some(node.properties, causeKey)) return true
+	return Array.some(childNodes(context, node), child => hasCauseField(context, child))
+}
+
+// The error is declared in this file with a `cause` field; an imported one, or one without the field, is left to a person.
+function declaresCause(context: Context, node?: ESTree.Node | null) {
+	return Option.exists(constructedClass(node), name =>
+		Option.exists(variableFor(context, name), variable =>
+			Array.some(
+				variable.defs,
+				definition =>
+					(definition.node.type === 'ClassDeclaration' &&
+						Predicate.isNotNullish(definition.node.superClass) &&
+						hasCauseField(context, definition.node.superClass)) ||
+					(definition.node.type === 'VariableDeclarator' &&
+						Predicate.isNotNullish(definition.node.init) &&
+						hasCauseField(context, definition.node.init))
+			)
+		)
+	)
+}
+
 // `failure => X.make({message})` becomes `failure => X.make({cause: failure, message})`, `() => …` takes the failure as `cause`.
 function fix(input: {context: Context; fixer: Fixer; node: ESTree.Node}) {
 	if (input.node.type !== 'ArrowFunctionExpression' || input.node.async) return []
 	const node = input.node
 	const parameter = node.params[0]
-	if (Predicate.isNotNullish(parameter) && parameter.type !== 'Identifier') return []
+	if (
+		(Predicate.isNotNullish(parameter) && parameter.type !== 'Identifier') ||
+		!declaresCause(input.context, returnedExpression(node))
+	) {
+		return []
+	}
 	return Option.getOrElse(
 		Option.flatMap(constructedFields(returnedExpression(node)), fields => {
 			if (Array.some(fields.properties, property => property.type === 'SpreadElement' || causeKey(property))) {
