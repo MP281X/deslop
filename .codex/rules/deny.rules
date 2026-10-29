@@ -13,13 +13,6 @@ PUSH_FLAGS = ["-f", "--force", "--force-with-lease", "--force-if-includes", "-u"
 WRITE_METHODS = ["POST", "PUT", "PATCH", "DELETE"]
 
 prefix_rule(
-    pattern = [["python", "python3"]],
-    decision = "forbidden",
-    justification = "Edit with apply_patch; query data with jq or an inline vp node script.",
-    match = ["python3 -c 'print(1)'", "python script.py"],
-    not_match = ["node -e 1"],
-)
-prefix_rule(
     pattern = ["sed", ["-i", "-i.bak", "--in-place", "--in-place=.bak"]],
     decision = "forbidden",
     justification = "Edit with apply_patch.",
