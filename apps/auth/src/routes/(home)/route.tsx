@@ -10,17 +10,17 @@ import {Suspense} from 'react'
 import {Loading} from '@deslop/components-web/fallbacks'
 import {Button} from '@deslop/components-web/ui/button'
 
-import {Avatar, GitHubIcon, QrCode, RequestCard} from '#lib/components.tsx'
+import {Avatar, GitHubIcon, QrCode, Review} from '#lib/components.tsx'
 import {
 	accountAtom,
-	applicationName,
 	approveLink,
 	peopleAtom,
 	requestAtom,
 	requestCode,
 	requestId,
 	signInAtom,
-	signOutAtom
+	signOutAtom,
+	timeLabel
 } from '#lib/utils.ts'
 import type {Account, PendingAuthorization} from '#services/authorizations/schema.ts'
 
@@ -44,24 +44,21 @@ function Logo() {
 function CodeCard(props: {request: PendingAuthorization}) {
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	return (
-		<section className="flex flex-col items-center gap-4 pt-4 text-center">
-			<h2 className="text-muted-foreground text-xs tracking-wider uppercase">
-				{applicationName(props.request)} wants to sign in
-			</h2>
-			<a href={approveLink(props.request.id)} aria-label="Approve this sign-in" className="border p-3">
-				<QrCode text={approveLink(props.request.id)} className="size-36" />
+		<section className="flex flex-1 flex-col items-center gap-6 pt-6 text-center" aria-label="Waiting sign-in">
+			<h2 className="text-xl font-semibold">{props.request.clientName}</h2>
+			<a href={approveLink(props.request.id)} aria-label="Approve this sign-in" className="bg-foreground p-3">
+				<QrCode text={approveLink(props.request.id)} className="text-background size-44" />
 			</a>
-			<p className="text-2xl font-semibold tracking-widest tabular-nums">{requestCode(props.request.id)}</p>
-			<p className="text-muted-foreground max-w-72 text-xs">
-				Scan with a phone where you are signed in, or enter the code at{' '}
-				<span className="text-foreground">{location.host}</span>.
-			</p>
-			<p className="text-muted-foreground flex items-center gap-2 text-xs" role="status">
+			<div className="flex flex-col gap-1">
+				<p className="text-3xl font-semibold tracking-widest tabular-nums">{requestCode(props.request.id)}</p>
+				<p className="text-muted-foreground text-xs">{location.host}</p>
+			</div>
+			<p className="text-muted-foreground mt-auto flex items-center gap-2 text-xs tabular-nums" role="status">
 				<span className="bg-primary size-2 motion-safe:animate-pulse" aria-hidden="true" />
-				Waiting for approval
+				Waiting · until {timeLabel(props.request.expiresAt)}
 			</p>
-			<Button variant="link" size="sm" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
-				Sign in with GitHub on this device
+			<Button variant="ghost" size="sm" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
+				Approve on this device
 			</Button>
 		</section>
 	)
@@ -88,7 +85,7 @@ function Waiting(props: {account: Option.Option<Account>; id: string}) {
 					Option.filter(props.account, signed => signed.role !== 'Waiting'),
 					{
 						onNone: () => <CodeCard request={value.request} />,
-						onSome: signed => <RequestCard account={signed} request={value.request} />
+						onSome: signed => <Review account={signed} request={value.request} />
 					}
 				)
 		})
