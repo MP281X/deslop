@@ -1,7 +1,5 @@
 import {Schema, pipe} from 'effect'
 
-import {Event, State} from 'effect-machine'
-
 export type PortfolioColor = typeof PortfolioColor.Type
 export const PortfolioColor = Schema.Literals([
 	'oklch(0.74 0.19 118)',
@@ -38,10 +36,3 @@ export const PortfolioVisitor = Schema.Struct({
 
 export type PortfolioVisitors = typeof PortfolioVisitors.Type
 export const PortfolioVisitors = Schema.Array(PortfolioVisitor)
-
-// Open tabs per visitor id; a reload or a second tab shares one cursor.
-export type Room = typeof Room.Type
-export const Room = State({Empty: {}, Occupied: {tabs: Schema.Record(Schema.String, Schema.Int)}})
-
-export type RoomEvent = typeof RoomEvent.Type
-export const RoomEvent = Event({Joined: {visitor: PortfolioVisitor}, Left: {id: Schema.String}})

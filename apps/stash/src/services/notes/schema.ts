@@ -1,7 +1,5 @@
 import {Schema, Struct, pipe} from 'effect'
 
-import {Event, State} from 'effect-machine'
-
 export class NotesError extends Schema.TaggedError<NotesError>()('NotesError', {
 	cause: Schema.optional(Schema.Defect()),
 	message: Schema.String,
@@ -58,26 +56,6 @@ export const Note = Schema.Struct({
 	topics: Schema.optionalKey(Schema.String),
 	transcript: Schema.optionalKey(Schema.String),
 	url: Schema.optionalKey(Schema.String)
-})
-
-// Where reading and tagging a note stands; a note stores it as `status` and `issue`, so only a failed or still organizing note has an issue.
-export type NoteStatus = typeof NoteStatus.Type
-export const NoteStatus = State({
-	Failed: {issue: Schema.String},
-	Organizing: {issue: Schema.optionalKey(Schema.String)},
-	Ready: {}
-})
-
-export type NoteEvent = typeof NoteEvent.Type
-export const NoteEvent = Event({
-	// Nothing to read: no text, transcript, comment or picture.
-	Empty: {},
-	Read: {},
-	Refused: {issue: Schema.String},
-	Regenerate: {},
-	Stopped: {},
-	Tagged: {},
-	Unread: {issue: Schema.String}
 })
 
 export type NoteItem = typeof NoteItem.Type

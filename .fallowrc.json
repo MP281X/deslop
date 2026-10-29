@@ -17,7 +17,6 @@
 					"apps/*/modules/native/index.ts",
 					"packages/components-*/src/**",
 					"packages/runtime/src/{web,mobile}/client.ts",
-					"packages/runtime/src/machine.ts",
 					"packages/runtime/src/mobile/{session,keychain}.ts"
 				]
 			},

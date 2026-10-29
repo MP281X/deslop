@@ -21,8 +21,8 @@
 		"@fontsource-variable/ibm-plex-sans": "latest",
 		"@tanstack/react-hotkeys": "latest",
 		"@tanstack/react-router": "latest",
+		"@typeonce/effect-machine": "latest",
 		"effect": "latest",
-		"effect-machine": "latest",
 		"lucide-react": "latest",
 		"react": "latest",
 		"react-dom": "latest"

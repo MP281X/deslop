@@ -1,7 +1,6 @@
 import {
 	Array,
 	Boolean,
-	Clock,
 	DateTime,
 	Effect,
 	HashSet,
@@ -17,7 +16,8 @@ import {
 	pipe
 } from 'effect'
 
-import {Event, Machine, State} from 'effect-machine'
+import {Machine} from '@typeonce/effect-machine'
+import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {FetchHttpClient} from 'effect/http'
 import {AsyncResult, AtomRpc, Atom} from 'effect/reactivity'
 import * as Application from 'expo-application'
@@ -33,7 +33,6 @@ import {DynamicColorIOS, Linking} from 'react-native'
 import {colors} from '@deslop/components-mobile/theme'
 import {alert, cachedList, clipboardChangeCount, writeAtomically} from '@deslop/components-mobile/utils'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
-import {actorAtom} from '@deslop/runtime/machine'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 import {keychain} from '@deslop/runtime/mobile/keychain'
 import * as MobileSession from '@deslop/runtime/mobile/session'
@@ -206,22 +205,42 @@ export const answerAtom = Atom.keepAlive(
 	})
 )
 
-// The booking deleted last, which the list offers to put back for eight seconds; a later delete takes its place, and a restore ends only its own offer.
-type Deletion = {at: number; booking: Booking}
-const Undo = State({Idle: {}, Offered: {at: Schema.Finite, booking: Booking}})
-const UndoEvent = Event({Deleted: {at: Schema.Finite, booking: Booking}, Expired: {}, Restored: {at: Schema.Finite}})
-
-export const undoAtom = actorAtom(
-	Machine.make({event: UndoEvent, initial: Undo.Idle, state: Undo})
-		.reenter([Undo.Idle, Undo.Offered], UndoEvent.Deleted, transition => Undo.Offered(transition.event))
-		.when(
-			Undo.Offered,
-			UndoEvent.Restored,
-			transition => transition.state.at === transition.event.at,
-			() => Undo.Idle
-		)
-		.on(Undo.Offered, UndoEvent.Expired, () => Undo.Idle)
-		.timeout(Undo.Offered, {duration: '8 seconds', event: UndoEvent.Expired})
+// The booking deleted last, which the list offers to put back for eight seconds; a later delete takes its place.
+export const undoAtom = AtomMachine.bind(RpcClient.runtime).make(
+	Machine.make({
+		effects: {
+			restore: Effect.fnUntraced(function* (booking: Booking) {
+				const client = yield* RpcClient
+				return yield* alert('Not Restored')(client('bookings.restore', booking))
+			})
+		},
+		events: Machine.events({Deleted: {booking: Booking}, Restore: {}}),
+		root: Machine.state({
+			states: {Idle: {}, Offered: {fields: {booking: Booking}}, Restoring: {fields: {booking: Booking}}}
+		}),
+		timers: {expire: '8 seconds'}
+	}).handle({
+		initial: {target: 'Idle'},
+		states: {
+			Idle: {on: {Deleted: {data: transition => ({booking: transition.event.booking}), target: 'Offered'}}},
+			Offered: {
+				invoke: {onDone: {target: 'Idle'}, src: 'expire'},
+				on: {
+					Deleted: {data: transition => ({booking: transition.event.booking}), reenter: true, target: 'Offered'},
+					Restore: {data: transition => ({booking: transition.state.booking}), target: 'Restoring'}
+				}
+			},
+			Restoring: {
+				invoke: {
+					input: transition => transition.state.booking,
+					onDone: {target: 'Idle'},
+					// The offer comes back so the booking is not lost to a dropped connection.
+					onFailure: {data: transition => ({booking: transition.state.booking}), target: 'Offered'},
+					src: 'restore'
+				}
+			}
+		}
+	})
 )
 
 export const removeAtom = Atom.keepAlive(
@@ -232,25 +251,11 @@ export const removeAtom = Atom.keepAlive(
 					get,
 					Effect.flatMap(RpcClient, client => client('bookings.remove', {id: booking.id}))
 				),
-				Effect.andThen(Clock.currentTimeMillis),
-				Effect.tap(at => Effect.sync(() => get.set(undoAtom, UndoEvent.Deleted({at, booking})))),
+				Effect.tap(() => Effect.sync(() => get.set(undoAtom.send, {_tag: 'Deleted', booking}))),
 				alert('Not Deleted')
 			),
 		// A second swipe deletes its booking too instead of interrupting the first.
 		{concurrent: true}
-	)
-)
-
-export const restoreAtom = Atom.keepAlive(
-	Atom.fn((deletion: Deletion, get) =>
-		pipe(
-			withClient(
-				get,
-				Effect.flatMap(RpcClient, client => client('bookings.restore', deletion.booking))
-			),
-			Effect.tap(() => Effect.sync(() => get.set(undoAtom, UndoEvent.Restored({at: deletion.at})))),
-			alert('Not Restored')
-		)
 	)
 )
 

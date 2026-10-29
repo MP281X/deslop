@@ -35,6 +35,7 @@ import {
 	shapes,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
+import {MachineState} from '@typeonce/effect-machine-react'
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 
@@ -42,18 +43,7 @@ import {ClipboardSheet} from '@deslop/components-mobile/sheet'
 import {colors, mono} from '@deslop/components-mobile/theme'
 import {AppTitle} from '@deslop/components-mobile/title'
 
-import {
-	answerAtom,
-	dayAt,
-	nowAtom,
-	offerAtom,
-	removeAtom,
-	restoreAtom,
-	statusOf,
-	timeAt,
-	tones,
-	undoAtom
-} from '#lib/utils.ts'
+import {answerAtom, dayAt, nowAtom, offerAtom, removeAtom, statusOf, timeAt, tones, undoAtom} from '#lib/utils.ts'
 import icon from '#routes/icon.png'
 import {DAY, endOf, HOUR, routeOf, startOf, titleOf} from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingList} from '#services/bookings/schema.ts'
@@ -160,8 +150,7 @@ function PasteSheet() {
 export function HomeRoute(props: {bookings: BookingList; onOpen: (id: string) => void}) {
 	const [pastOpen, setPastOpen] = useState(false)
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
-	const undo = useAtomValue(undoAtom)
-	const restore = useAtomSet(restoreAtom)
+	const send = useAtomSet(undoAtom.send)
 	const importing = AsyncResult.isWaiting(useAtomValue(answerAtom))
 	const current = Array.filter(
 		props.bookings,
@@ -233,16 +222,18 @@ export function HomeRoute(props: {bookings: BookingList; onOpen: (id: string) =>
 						</ProgressView>
 					</ToolbarItem>
 				)}
-				{undo._tag === 'Offered' && (
-					<ToolbarItem placement="bottomBar">
-						<Button
-							label={`Undo Delete ${titleOf(undo.booking)}`}
-							systemImage="arrow.uturn.backward"
-							onPress={() => restore(undo)}
-							modifiers={[labelStyle('titleAndIcon'), lineLimit(1)]}
-						/>
-					</ToolbarItem>
-				)}
+				<MachineState machine={undoAtom} path="Offered">
+					{offered => (
+						<ToolbarItem placement="bottomBar">
+							<Button
+								label={`Undo Delete ${titleOf(offered.value.booking)}`}
+								systemImage="arrow.uturn.backward"
+								onPress={() => send({_tag: 'Restore'})}
+								modifiers={[labelStyle('titleAndIcon'), lineLimit(1)]}
+							/>
+						</ToolbarItem>
+					)}
+				</MachineState>
 			</Toolbar.Content>
 		</Toolbar>
 	)

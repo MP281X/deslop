@@ -9,9 +9,7 @@ import {
 	Effect,
 	FiberMap,
 	FileSystem,
-	Function,
 	Layer,
-	Match,
 	Option,
 	Path,
 	Random,
@@ -27,8 +25,6 @@ import {
 	Tuple,
 	pipe
 } from 'effect'
-
-import {Machine} from 'effect-machine'
 
 import {listEvents} from '@deslop/runtime/server'
 
@@ -50,10 +46,7 @@ import {
 	tagCounts
 } from '#services/notes/lib/utils.ts'
 import type {Capture, Extraction, FileType, Image, NotesEvent, Picture, TagDefinition} from '#services/notes/schema.ts'
-import {ImageType, Note, NoteEvent, NotesError, NoteStatus, TagEntry} from '#services/notes/schema.ts'
-
-// How each status is stored on a note.
-const STORED = {Failed: 'failed', Organizing: 'organizing', Ready: 'ready'} as const
+import {ImageType, Note, NotesError, TagEntry} from '#services/notes/schema.ts'
 
 function withWords(note: Note, text: string) {
 	const known = pipe(note.text, String.toLowerCase, String.split(/\s+/u))
@@ -74,36 +67,6 @@ const isVideo = String.startsWith('video/')
 
 function changeNote(notes: Note[], id: Note['id'], change: (note: Note) => Note) {
 	return Array.map(notes, note => Boolean.match(note.id === id, {onFalse: () => note, onTrue: () => change(note)}))
-}
-
-const organizing = Machine.make({event: NoteEvent, initial: NoteStatus.Organizing({}), state: NoteStatus})
-	.on(NoteStatus.Organizing, NoteEvent.Read, () => NoteStatus.Organizing({}))
-	// An unreadable link is kept as the reason in case nothing else of the note can be read.
-	.on(NoteStatus.Organizing, NoteEvent.Unread, transition => NoteStatus.Organizing({issue: transition.event.issue}))
-	.on(NoteStatus.Organizing, NoteEvent.Empty, transition =>
-		NoteStatus.Failed({
-			issue: Option.getOrElse(Option.fromUndefinedOr(transition.state.issue), () => 'Nothing to read at this link.')
-		})
-	)
-	.on(NoteStatus.Organizing, NoteEvent.Tagged, () => NoteStatus.Ready)
-	.on(NoteStatus.Organizing, NoteEvent.Refused, transition => NoteStatus.Failed({issue: transition.event.issue}))
-	.on(NoteStatus.Organizing, NoteEvent.Stopped, () => NoteStatus.Failed({issue: 'Tagging stopped before it finished.'}))
-	.on([NoteStatus.Organizing, NoteStatus.Ready, NoteStatus.Failed], NoteEvent.Regenerate, () =>
-		NoteStatus.Organizing({})
-	)
-
-function statusOf(note: Note) {
-	return pipe(
-		Match.value(note.status),
-		Match.when('ready', () => NoteStatus.Ready),
-		Match.when('failed', () => NoteStatus.Failed({issue: note.issue ?? ''})),
-		Match.when('organizing', () =>
-			NoteStatus.Organizing(
-				Option.match(Option.fromUndefinedOr(note.issue), {onNone: () => ({}), onSome: issue => ({issue})})
-			)
-		),
-		Match.exhaustive
-	)
 }
 
 function optional<B>(message: string, fallback: () => B) {
@@ -200,38 +163,6 @@ export class Notes extends Context.Service<
 					return transact(current => Tuple.make(undefined, changeNote(current, id, change)))
 				}
 
-				// Steps a note's status through `organizing` in the same write as the change; an event the note's status does not take changes nothing.
-				function advance(
-					id: Note['id'],
-					event: (note: Note) => Option.Option<NoteEvent>,
-					change: (note: Note) => Note = Function.identity
-				) {
-					return Effect.uninterruptible(
-						SubscriptionRef.modifyEffect(state, current =>
-							Effect.gen(function* () {
-								const next = yield* Effect.forEach(
-									current,
-									note => {
-										if (note.id !== id) return Effect.succeed(note)
-										return Effect.map(
-											Machine.replay(organizing, Option.toArray(event(note)), {from: statusOf(note)}),
-											status =>
-												({
-													...Struct.omit(change(note), ['issue']),
-													...Struct.omit(status, ['_tag']),
-													status: STORED[status._tag]
-												}) satisfies Note
-										)
-									},
-									{concurrency: 1}
-								)
-								yield* store.save(next)
-								return Tuple.make(undefined, next)
-							})
-						)
-					)
-				}
-
 				function findNote(id: Note['id']) {
 					return Effect.map(SubscriptionRef.get(state), notes => Array.findFirst(notes, note => note.id === id))
 				}
@@ -261,7 +192,11 @@ export class Notes extends Context.Service<
 						String.isEmpty(commentFor(note.text)) &&
 						Array.isReadonlyArrayEmpty(pictures)
 					) {
-						return yield* advance(note.id, () => Option.some(NoteEvent.Empty))
+						return yield* updateNote(note.id, item => ({
+							...item,
+							issue: item.issue ?? 'Nothing to read at this link.',
+							status: 'failed'
+						}))
 					}
 					const entries = yield* tagEntries
 					const known = yield* Ref.get(definitions)
@@ -287,17 +222,12 @@ export class Notes extends Context.Service<
 						}
 					)
 					yield* Result.match(organized, {onFailure: () => Effect.void, onSuccess: found => define(found.definitions)})
-					yield* advance(
-						note.id,
-						() =>
-							Option.some(
-								Result.match(organized, {
-									onFailure: error => NoteEvent.Refused({issue: error.message}),
-									onSuccess: () => NoteEvent.Tagged
-								})
-							),
-						item =>
-							Result.match(organized, {onFailure: () => item, onSuccess: found => ({...item, ...found.organization})})
+					yield* updateNote(note.id, item =>
+						Result.match(organized, {
+							onFailure: error => ({...item, issue: error.message, status: 'failed' as const}),
+							// A ready note has no issue, including the one reading left on it.
+							onSuccess: found => ({...Struct.omit(item, ['issue']), ...found.organization, status: 'ready' as const})
+						})
 					)
 				})
 
@@ -350,18 +280,18 @@ export class Notes extends Context.Service<
 								Option.map(details => pipe(details.transcript, optional('No transcript', Option.none<string>))),
 								Effect.transposeOption,
 								Effect.map(Option.flatten),
-								Effect.flatMap(transcript => {
-									const info = Option.filter(read, () => sourceFor(input.url) !== 'X' || input.useInfo)
-									return advance(
-										note.id,
-										() => Option.as(info, NoteEvent.Read),
-										item => ({
-											...item,
-											...Option.match(info, {onNone: () => ({}), onSome: details => ({content: details.info})}),
-											...Option.match(transcript, {onNone: () => ({}), onSome: text => ({transcript: text})})
-										})
-									)
-								})
+								Effect.flatMap(transcript =>
+									updateNote(note.id, item => ({
+										...Option.match(
+											Option.filter(read, () => sourceFor(input.url) !== 'X' || input.useInfo),
+											{
+												onNone: () => item,
+												onSome: details => ({...Struct.omit(item, ['issue']), content: details.info})
+											}
+										),
+										...Option.match(transcript, {onNone: () => ({}), onSome: text => ({transcript: text})})
+									}))
+								)
 							),
 							pipe(media.frames(input.video), optional('No video frames', Array.empty<Still>))
 						],
@@ -372,34 +302,26 @@ export class Notes extends Context.Service<
 
 				const organizeLink = Effect.fnUntraced(function* (note: Note, link: string) {
 					const extraction = yield* Effect.result(sources.extract(link))
-					yield* advance(
-						note.id,
-						item =>
-							Result.match(extraction, {
-								// A regenerated note keeps the content it already read.
-								onFailure: error =>
-									Option.as(
-										Option.liftPredicate(item.content, String.isEmpty),
-										NoteEvent.Unread({issue: error.message})
-									),
-								onSuccess: () => Option.some(NoteEvent.Read)
-							}),
-						item =>
-							Result.match(extraction, {
-								onFailure: () => item,
-								onSuccess: page => ({
-									...item,
-									...Option.match(Option.filter(page.author, String.isNonEmpty), {
-										onNone: () => ({}),
-										onSome: author => ({author})
-									}),
-									content: page.text,
-									title: Boolean.match(String.isNonEmpty(page.title) && item.title === item.url, {
-										onFalse: () => item.title,
-										onTrue: () => page.title
-									})
+					yield* updateNote(note.id, item =>
+						Result.match(extraction, {
+							onFailure: error =>
+								Boolean.match(String.isEmpty(item.content), {
+									onFalse: () => item,
+									onTrue: () => ({...item, issue: error.message})
+								}),
+							onSuccess: page => ({
+								...Struct.omit(item, ['issue']),
+								...Option.match(Option.filter(page.author, String.isNonEmpty), {
+									onNone: () => ({}),
+									onSome: author => ({author})
+								}),
+								content: page.text,
+								title: Boolean.match(String.isNonEmpty(page.title) && item.title === item.url, {
+									onFalse: () => item.title,
+									onTrue: () => page.title
 								})
 							})
+						})
 					)
 					const slides = yield* Result.match(extraction, {
 						onFailure: () => Effect.succeed(Array.empty<Picture>()),
@@ -458,9 +380,18 @@ export class Notes extends Context.Service<
 						Effect.tapCause(cause =>
 							Boolean.match(Cause.hasInterruptsOnly(cause), {
 								onFalse: () =>
-									Effect.ignore(
-										advance(note.id, () => Option.some(NoteEvent.Stopped)),
-										{log: 'Warn', message: 'A stopped tagging run could not be recorded'}
+									pipe(
+										updateNote(note.id, item =>
+											Boolean.match(item.status === 'organizing', {
+												onFalse: () => item,
+												onTrue: () => ({
+													...item,
+													issue: 'Tagging stopped before it finished.',
+													status: 'failed' as const
+												})
+											})
+										),
+										Effect.ignore({log: 'Warn', message: 'A stopped tagging run could not be recorded'})
 									),
 								onTrue: () => Effect.void
 							})
@@ -615,12 +546,22 @@ export class Notes extends Context.Service<
 					list: SubscriptionRef.get(state),
 					regenerate: Effect.fn('Notes.regenerate')(function* (input) {
 						yield* FiberMap.remove(runs, input.id)
-						yield* advance(
-							input.id,
-							() => Option.some(NoteEvent.Regenerate),
-							note => Struct.omit(note, ['transcript'])
+						const reset = yield* transact(current =>
+							Option.match(
+								Array.findFirst(current, note => note.id === input.id),
+								{
+									onNone: () => Tuple.make(Option.none<Note>(), current),
+									onSome: found => {
+										const next = {...Struct.omit(found, ['issue', 'transcript']), status: 'organizing' as const}
+										return Tuple.make(
+											Option.some(next),
+											changeNote(current, input.id, () => next)
+										)
+									}
+								}
+							)
 						)
-						yield* pipe(findNote(input.id), Effect.flatMap(Effect.fromOption), missing, Effect.flatMap(start))
+						yield* pipe(Effect.fromOption(reset), missing, Effect.flatMap(start))
 					}),
 					remove: Effect.fn('Notes.remove')(function* (input) {
 						yield* FiberMap.remove(runs, input.id)

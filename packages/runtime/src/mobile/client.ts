@@ -1,6 +1,7 @@
 import {Boolean, DateTime, Duration, Effect, Layer, Option, Schema, String, pipe} from 'effect'
 
-import {Event, Machine, State} from 'effect-machine'
+import {Machine} from '@typeonce/effect-machine'
+import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import type {HttpClient} from 'effect/http'
 import {Atom} from 'effect/reactivity'
 import {RpcClient, RpcSerialization} from 'effect/rpc'
@@ -9,7 +10,6 @@ import Constants from 'expo-constants'
 import * as Updates from 'expo-updates'
 import {AppState} from 'react-native'
 
-import {actorAtom} from '#machine.ts'
 import {layerOtlp} from '#telemetry.ts'
 
 import type {AuthError} from '#auth/schema.ts'
@@ -55,53 +55,62 @@ export const activationsAtom = Atom.make(get => {
 	return 0
 })
 
-const Update = State({Checking: {}, Downloaded: {}, Idle: {}, Reloading: {}})
-const UpdateEvent = Event({Fetched: {}, Returned: {away: Schema.Finite}, Settled: {}})
-
 // A reload looks like a crash to someone switching apps for a moment, so a downloaded update starts on the next launch or on a return after ten minutes away.
-const updatesAtom = actorAtom(
-	Machine.make({event: UpdateEvent, initial: Update.Idle, state: Update})
-		.on(Update.Idle, UpdateEvent.Returned, () => Update.Checking)
-		.task(
-			Update.Checking,
-			() =>
-				pipe(
-					Effect.gen(function* () {
-						if (!(yield* Effect.tryPromise(() => Updates.checkForUpdateAsync())).isAvailable) return false
-						return (yield* Effect.tryPromise(() => Updates.fetchUpdateAsync())).isNew
-					}),
-					Effect.tapError(error => Effect.logWarning('The app update check failed', error))
-				),
-			{
-				onFailure: () => UpdateEvent.Settled,
-				onSuccess: fetched =>
-					Boolean.match(fetched, {onFalse: () => UpdateEvent.Settled, onTrue: () => UpdateEvent.Fetched})
-			}
-		)
-		// A return while a check hangs, such as one iOS suspended mid-download, starts it over.
-		.reenter(Update.Checking, UpdateEvent.Returned, () => Update.Checking)
-		.on(Update.Checking, UpdateEvent.Fetched, () => Update.Downloaded)
-		.on(Update.Checking, UpdateEvent.Settled, () => Update.Idle)
-		.when(
-			Update.Downloaded,
-			UpdateEvent.Returned,
-			transition => transition.event.away >= Duration.toMillis(Duration.minutes(10)),
-			() => Update.Reloading
-		)
-		.task(
-			Update.Reloading,
-			() =>
-				Effect.ignore(
-					Effect.tryPromise(() => Updates.reloadAsync()),
-					{log: 'Warn', message: 'The app update did not start'}
-				),
-			{onSuccess: () => UpdateEvent.Settled}
-		)
-		.on(Update.Reloading, UpdateEvent.Settled, () => Update.Downloaded)
+const updates = AtomMachine.make(
+	Machine.make({
+		branches: {fetched: {downloaded: {target: 'Downloaded'}, idle: {target: 'Idle'}}},
+		effects: {
+			fetch: pipe(
+				Effect.gen(function* () {
+					if (!(yield* Effect.tryPromise(() => Updates.checkForUpdateAsync())).isAvailable) return false
+					return (yield* Effect.tryPromise(() => Updates.fetchUpdateAsync())).isNew
+				}),
+				Effect.tapError(error => Effect.logWarning('The app update check failed', error))
+			),
+			reload: Effect.ignore(
+				Effect.tryPromise(() => Updates.reloadAsync()),
+				{log: 'Warn', message: 'The app update did not start'}
+			)
+		},
+		events: Machine.events({Returned: {away: Schema.Finite}}),
+		root: Machine.state({states: {Checking: {}, Downloaded: {}, Idle: {}, Reloading: {}}})
+	}).handle({
+		initial: {target: 'Idle'},
+		states: {
+			Checking: {
+				invoke: {
+					onDone: {
+						branches: 'fetched',
+						resolve: transition =>
+							Boolean.match(transition.output, {
+								onFalse: () => transition.select.idle(),
+								onTrue: () => transition.select.downloaded()
+							})
+					},
+					onFailure: {target: 'Idle'},
+					src: 'fetch'
+				},
+				// A return while a check hangs, such as one iOS suspended mid-download, starts it over.
+				on: {Returned: {reenter: true, target: 'Checking'}}
+			},
+			Downloaded: {
+				on: {
+					Returned: {
+						guard: transition => transition.event.away >= Duration.toMillis(Duration.minutes(10)),
+						target: 'Reloading'
+					}
+				}
+			},
+			Idle: {on: {Returned: {target: 'Checking'}}},
+			Reloading: {invoke: {onDone: {target: 'Downloaded'}, src: 'reload'}}
+		}
+	})
 )
 
 // Checks on launch and on each return from the background; mount it only where a reload loses nothing.
 export const updateAtom = Atom.make(get => {
 	get(activationsAtom)
-	if (Updates.isEnabled) get.set(updatesAtom, UpdateEvent.Returned({away: get.once(awayAtom)}))
+	if (!Updates.isEnabled) return
+	get.mount(updates.ref)
+	get.set(updates.send, {_tag: 'Returned', away: get.once(awayAtom)})
 })
