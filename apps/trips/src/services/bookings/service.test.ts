@@ -36,8 +36,9 @@ const places = Layer.succeed(
 )
 
 it.layer(Layer.merge(NodeCrypto.layer, KeyValueStore.layerMemory))(test => {
-	test.effect('saves text and screenshots through the same reservation merge and persists the result', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'saves text and screenshots through the same reservation merge and persists the result',
+		Effect.fnUntraced(function* () {
 			const seen = yield* Ref.make<BookingSource[]>([])
 			const extractor = Extractor.of({
 				read: Effect.fnUntraced(function* (source: BookingSource) {
@@ -63,8 +64,9 @@ it.layer(Layer.merge(NodeCrypto.layer, KeyValueStore.layerMemory))(test => {
 		})
 	)
 
-	test.effect('never saves half a screenshot and leaves existing bookings intact on extraction failure', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'never saves half a screenshot and leaves existing bookings intact on extraction failure',
+		Effect.fnUntraced(function* () {
 			const items = yield* Ref.make<ExtractedItems>([FLIGHT])
 			const rejected = yield* Ref.make(false)
 			const failure = BookingsError.make({message: 'The screenshot could not be read.'})

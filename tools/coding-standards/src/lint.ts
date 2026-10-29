@@ -16,6 +16,7 @@ import {noConstantFunction} from '#rules/no-constant-function.ts'
 import {noDestructuredParameter} from '#rules/no-destructured-parameter.ts'
 import {noDiscardedFailure} from '#rules/no-discarded-failure.ts'
 import {noDoubleNullishCheck} from '#rules/no-double-nullish-check.ts'
+import {noEffectGenCallback} from '#rules/no-effect-gen-callback.ts'
 import {noEffectPropertyArrow} from '#rules/no-effect-property-arrow.ts'
 import {noEmptyRecovery} from '#rules/no-empty-recovery.ts'
 import {noErrorMessageAssertion} from '#rules/no-error-message-assertion.ts'
@@ -113,6 +114,7 @@ const RULES = {
 	'no-destructured-parameter': noDestructuredParameter,
 	'no-discarded-failure': noDiscardedFailure,
 	'no-double-nullish-check': noDoubleNullishCheck,
+	'no-effect-gen-callback': noEffectGenCallback,
 	'no-effect-property-arrow': noEffectPropertyArrow,
 	'no-empty-recovery': noEmptyRecovery,
 	'no-error-message-assertion': noErrorMessageAssertion,

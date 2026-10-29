@@ -17,8 +17,9 @@ function idsOf(visitors: PortfolioVisitors) {
 	)
 }
 
-it.effect('streams every cursor, keeps a visitor through a second tab and drops it with the last one', () =>
-	Effect.gen(function* () {
+it.effect(
+	'streams every cursor, keeps a visitor through a second tab and drops it with the last one',
+	Effect.fnUntraced(function* () {
 		const presence = Context.get(yield* Layer.build(Presence.layer), Presence)
 		const seen = yield* SubscriptionRef.make<PortfolioVisitors>([])
 		function watch(id: string) {

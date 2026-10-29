@@ -112,8 +112,9 @@ function counting(calls: Ref.Ref<number>) {
 }
 
 it.layer(NodeServices.layer)('Notes', test => {
-	test.effect('saves the original first, tags it once, and keeps the result across a restart', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'saves the original first, tags it once, and keeps the result across a restart',
+		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
 			const calls = yield* Ref.make(0)
 			yield* Effect.scoped(
@@ -158,8 +159,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
-	test.effect('keeps the note untagged and says why when the link or the AI fails, or no key is set', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'keeps the note untagged and says why when the link or the AI fails, or no key is set',
+		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const unreachable = Sources.of({
 				...recipe,
@@ -199,8 +201,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
-	test.effect('keeps the first definition of each tag, takes a variant as the tag in use, and remembers both', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'keeps the first definition of each tag, takes a variant as the tag in use, and remembers both',
+		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
 			const seen = yield* Ref.make(Array.empty<TagEntry[]>())
 			const answers = [
@@ -259,8 +262,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
-	test.effect('keeps what a video says and shows the AI its labeled preview and stills', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'keeps what a video says and shows the AI its labeled preview and stills',
+		Effect.fnUntraced(function* () {
 			const seen = yield* Ref.make<
 				Option.Option<{images: Uint8Array[]; labels: string[]; transcript: Note['transcript']}>
 			>(Option.none())
@@ -308,8 +312,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
-	test.effect('reads a video through yt-dlp when its page refuses the reader', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'reads a video through yt-dlp when its page refuses the reader',
+		Effect.fnUntraced(function* () {
 			const notes = yield* open({
 				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
 				media: Media.of({
@@ -331,8 +336,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
-	test.effect('shows the AI every slide of a photo post after its preview', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'shows the AI every slide of a photo post after its preview',
+		Effect.fnUntraced(function* () {
 			const seen = yield* Ref.make(Array.empty<Uint8Array>())
 			const tagger = counting(yield* Ref.make(0))
 			const notes = yield* open({
@@ -370,8 +376,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
-	test.effect('resolves a short link before saving, so another share of the post joins the saved note', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'resolves a short link before saving, so another share of the post joins the saved note',
+		Effect.fnUntraced(function* () {
 			const calls = yield* Ref.make(0)
 			const notes = yield* open({
 				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
@@ -389,8 +396,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
-	test.effect('joins a share to a note saved under an older form of its link', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'joins a share to a note saved under an older form of its link',
+		Effect.fnUntraced(function* () {
 			// The first save stands in for the release that stored youtu.be links as shared.
 			const older = yield* Ref.make(Option.some('https://youtu.be/USeyDcWyVCc'))
 			const notes = yield* open({
@@ -414,8 +422,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
-	test.effect('tags a note again when a shutdown interrupted its tagging', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'tags a note again when a shutdown interrupted its tagging',
+		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
 			const tagging = yield* Latch.make()
 			yield* Effect.scoped(
@@ -442,8 +451,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
-	test.effect('sends watchers the list once, then only the changes, without the long texts', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'sends watchers the list once, then only the changes, without the long texts',
+		Effect.fnUntraced(function* () {
 			const notes = yield* open({
 				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
 				organizer: counting(yield* Ref.make(0)),
@@ -481,8 +491,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
-	test.effect('reads and tags a note again when asked to regenerate it', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'reads and tags a note again when asked to regenerate it',
+		Effect.fnUntraced(function* () {
 			const calls = yield* Ref.make(0)
 			const notes = yield* open({
 				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
@@ -498,8 +509,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
-	test.effect('starts a regenerated note over while its first read still runs', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'starts a regenerated note over while its first read still runs',
+		Effect.fnUntraced(function* () {
 			const calls = yield* Ref.make(0)
 			const release = yield* Latch.make()
 			const notes = yield* open({
@@ -515,8 +527,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
-	test.effect('keeps no preview for a note deleted while its image downloads', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'keeps no preview for a note deleted while its image downloads',
+		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const directory = yield* fs.makeTempDirectoryScoped()
 			const downloading = yield* Latch.make()
@@ -539,8 +552,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
-	test.effect('keeps words shared while the link loads, and removes a note with its preview', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'keeps words shared while the link loads, and removes a note with its preview',
+		Effect.fnUntraced(function* () {
 			const release = yield* Latch.make()
 			const notes = yield* open({
 				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
@@ -560,8 +574,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
-	test.effect('keeps an uploaded photo as its own preview, once per id', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'keeps an uploaded photo as its own preview, once per id',
+		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const directory = yield* fs.makeTempDirectoryScoped()
 			const calls = yield* Ref.make(0)
@@ -584,8 +599,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
-	test.effect("takes a video upload's first still as its preview and its speech as the transcript", () =>
-		Effect.gen(function* () {
+	test.effect(
+		"takes a video upload's first still as its preview and its speech as the transcript",
+		Effect.fnUntraced(function* () {
 			const still = new Uint8Array([255, 216, 255, 1])
 			const notes = yield* open({
 				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
@@ -611,8 +627,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
-	test.effect('leaves no note and no file behind when an upload breaks off', () =>
-		Effect.gen(function* () {
+	test.effect(
+		'leaves no note and no file behind when an upload breaks off',
+		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const directory = yield* fs.makeTempDirectoryScoped()
 			const notes = yield* open({directory, organizer: counting(yield* Ref.make(0)), sources: recipe})

@@ -177,8 +177,8 @@ export class Game extends Context.Service<
 							)
 							return pipe(
 								Stream.tick(`${1000 / FRAME_HZ} millis`),
-								Stream.mapEffect(() =>
-									Effect.gen(function* () {
+								Stream.mapEffect(
+									Effect.fnUntraced(function* () {
 										const now = yield* Clock.currentTimeMillis
 										return sim.frame(id, now, yield* core.status(sim.idleHours(now)))
 									})

@@ -40,8 +40,9 @@ it.effect('ends a running RPC once its credentials are rejected, not while the i
 	)
 )
 
-it.effect('distinguishes OAuth discovery, rejected credentials and an unavailable issuer', () =>
-	Effect.gen(function* () {
+it.effect(
+	'distinguishes OAuth discovery, rejected credentials and an unavailable issuer',
+	Effect.fnUntraced(function* () {
 		const upstream = yield* Ref.make<{status: number; body: Schema.JsonObject}>({body: {}, status: 401})
 		const calls = yield* Ref.make(0)
 		const client = HttpClient.make(request =>
