@@ -1,5 +1,6 @@
 import {Array, Record} from 'effect'
 
+import {recommended} from '@typeonce/oxlint-plugin-effect-machine/recommended'
 import type {OxlintConfig} from 'vite-plus/lint'
 import {definePlugin} from 'vite-plus/lint/plugins'
 import type {Plugin} from 'vite-plus/lint/plugins'
@@ -168,6 +169,7 @@ export const lint: OxlintConfig = {
 	},
 	jsPlugins: [
 		{name: '@deslop/coding-standards', specifier: import.meta.url},
+		{name: 'effect-machine', specifier: import.meta.resolve('@typeonce/oxlint-plugin-effect-machine')},
 		{name: 'react-doctor', specifier: import.meta.resolve('oxlint-plugin-react-doctor')},
 		{name: 'shadcn', specifier: import.meta.resolve('@shadcn/lint')},
 		{name: 'vite-plus', specifier: import.meta.resolve('vite-plus/oxlint-plugin')}
@@ -457,6 +459,9 @@ export const lint: OxlintConfig = {
 		'jsx-a11y/role-supports-aria-props': 'error',
 		'jsx-a11y/scope': 'error',
 		'jsx-a11y/tabindex-no-positive': 'error',
+
+		// Effect Machine
+		...recommended,
 
 		// Oxc
 		'oxc/approx-constant': 'error',

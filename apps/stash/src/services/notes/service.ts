@@ -225,7 +225,8 @@ export class Notes extends Context.Service<
 					yield* updateNote(note.id, item =>
 						Result.match(organized, {
 							onFailure: error => ({...item, issue: error.message, status: 'failed' as const}),
-							onSuccess: found => ({...item, ...found.organization, status: 'ready' as const})
+							// A ready note has no issue, including the one reading left on it.
+							onSuccess: found => ({...Struct.omit(item, ['issue']), ...found.organization, status: 'ready' as const})
 						})
 					)
 				})

@@ -26,6 +26,7 @@
 	"devDependencies": {
 		"@tailwindcss/vite": "latest",
 		"@tanstack/router-plugin": "latest",
+		"@typeonce/effect-machine": "latest",
 		"@vitejs/plugin-react": "latest",
 		"expo": "^58.0",
 		"expo-auth-session": "^58.0",

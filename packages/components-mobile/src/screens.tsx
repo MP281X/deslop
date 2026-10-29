@@ -1,6 +1,6 @@
-import {useAtom, useAtomSuspense} from '@effect/atom-react'
+import {useAtomSet, useAtomSuspense} from '@effect/atom-react'
 
-import {Cause, Option} from 'effect'
+import {Cause} from 'effect'
 
 import {Button, Host, Image, ProgressView, Text, VStack} from '@expo/ui/swift-ui'
 import {
@@ -16,9 +16,10 @@ import {
 	resizable,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
-import {AsyncResult} from 'effect/reactivity'
-import type {Atom} from 'effect/reactivity'
+import {MachineState} from '@typeonce/effect-machine-react'
 import type {ReactNode} from 'react'
+
+import type {Session} from '@deslop/runtime/mobile/session'
 
 import {colors, mono} from './theme.ts'
 
@@ -92,14 +93,22 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; waiti
 }
 
 // The app once its saved session exists, its sign-in screen until then.
-export function SessionGate<A, E, F>(props: {
-	children: ReactNode
-	logo: number | string
-	saved: Atom.Atom<AsyncResult.AsyncResult<Option.Option<A>, E>>
-	signIn: Atom.Writable<AsyncResult.AsyncResult<void, F>, void>
-}) {
-	const saved = useAtomSuspense(props.saved).value
-	const [signIn, start] = useAtom(props.signIn)
-	if (Option.isSome(saved)) return props.children
-	return <SignInScreen logo={props.logo} onSignIn={() => start()} waiting={AsyncResult.isWaiting(signIn)} />
+export function SessionGate(props: {children: ReactNode; logo: number | string; session: Session}) {
+	const send = useAtomSet(props.session.send)
+	return (
+		<>
+			<MachineState machine={props.session} path="Reading" pending={<LoadingScreen />}>
+				{() => <LoadingScreen />}
+			</MachineState>
+			<MachineState machine={props.session} path="SignedOut">
+				{() => <SignInScreen logo={props.logo} onSignIn={() => send({_tag: 'SignIn'})} waiting={false} />}
+			</MachineState>
+			<MachineState machine={props.session} path="SigningIn">
+				{() => <SignInScreen logo={props.logo} onSignIn={() => undefined} waiting />}
+			</MachineState>
+			<MachineState machine={props.session} path="SignedIn">
+				{() => props.children}
+			</MachineState>
+		</>
+	)
 }

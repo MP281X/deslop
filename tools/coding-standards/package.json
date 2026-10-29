@@ -34,6 +34,7 @@
 	"dependencies": {
 		"@effect/platform-node": "latest",
 		"@shadcn/lint": "latest",
+		"@typeonce/oxlint-plugin-effect-machine": "latest",
 		"effect": "latest",
 		"oxlint-plugin-react-doctor": "latest"
 	},

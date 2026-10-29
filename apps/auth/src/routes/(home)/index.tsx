@@ -1,21 +1,19 @@
-import {useAtomSubscribe, useAtomSuspense} from '@effect/atom-react'
+import {useAtomMount, useAtomSet} from '@effect/atom-react'
 
 import {Array, Boolean, Option} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
-import {AsyncResult} from 'effect/reactivity'
+import {MachineState} from '@typeonce/effect-machine-react'
 import {Check, X} from 'lucide-react'
-import {Suspense, useState} from 'react'
+import {Suspense} from 'react'
 
 import {Loading} from '@deslop/components-web/fallbacks'
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
 
 import {SignedInGrid} from '#lib/components.tsx'
-import {clientLabel, consentAtom, linkedCode, lookupAtom} from '#lib/utils.ts'
+import {CODE_LENGTH, clientLabel, codeAtom, consentAtom, linkedCodeAtom} from '#lib/utils.ts'
 import {typedCode} from '#services/authorizations/lib/utils.ts'
 import type {PendingAuthorization} from '#services/authorizations/schema.ts'
-
-const CODE_LENGTH = 8
 
 type Answer = {accept: boolean; request: PendingAuthorization}
 
@@ -119,43 +117,67 @@ function Page(props: {
 	)
 }
 
-// A full code reads its sign-in, live, so a request answered elsewhere or expired leaves the grid.
-function Found(props: {code: string; onType: (code: string) => void}) {
-	const waiting = useAtomSuspense(lookupAtom(props.code)).value
-	return (
-		<Page
-			answered={Option.none()}
-			onType={props.onType}
-			pending={waiting}
-			state={Option.match(waiting, {onNone: () => 'Missing' as const, onSome: () => 'Found' as const})}
-			typed={props.code}
-		/>
-	)
-}
-
-// The code the waiting page shows, typed or opened from its link, proves the request is yours: RFC 8628's device flow.
 function SignIns() {
-	const [typed, setTyped] = useState<string>(linkedCode)
-	const [answered, setAnswered] = useState(() => Option.none<Answer>())
-	// While the next answer is sent, the atom still holds the previous success, marked waiting.
-	useAtomSubscribe(consentAtom, result => {
-		if (!AsyncResult.isSuccess(result) || AsyncResult.isWaiting(result)) return
-		setAnswered(Option.some(result.value))
-		setTyped('')
-	})
-	function type(code: string) {
-		setAnswered(Option.none())
-		setTyped(code)
-	}
-	if (typed.length < CODE_LENGTH) {
-		return <Page answered={answered} onType={type} pending={Option.none()} state="Typing" typed={typed} />
+	useAtomMount(linkedCodeAtom)
+	// The answer outlives the card: the lookup can drop its request before the consent response arrives.
+	useAtomMount(consentAtom)
+	const send = useAtomSet(codeAtom.send)
+	function type(typed: string) {
+		send({_tag: 'Typed', typed})
 	}
 	return (
-		<Suspense
-			fallback={<Page answered={Option.none()} onType={type} pending={Option.none()} state="Checking" typed={typed} />}
-		>
-			<Found key={typed} code={typed} onType={type} />
-		</Suspense>
+		<>
+			<MachineState machine={codeAtom} path="Typing">
+				{typing => (
+					<Page
+						answered={Option.fromUndefinedOr(typing.value.answered)}
+						onType={type}
+						pending={Option.none()}
+						state="Typing"
+						typed={typing.value.typed}
+					/>
+				)}
+			</MachineState>
+			<MachineState machine={codeAtom} path="Code">
+				{code => (
+					<>
+						<MachineState machine={codeAtom} path="Code.Looking">
+							{() => (
+								<Page
+									answered={Option.none()}
+									onType={type}
+									pending={Option.none()}
+									state="Checking"
+									typed={code.value.code}
+								/>
+							)}
+						</MachineState>
+						<MachineState machine={codeAtom} path="Code.Found">
+							{found => (
+								<Page
+									answered={Option.none()}
+									onType={type}
+									pending={Option.some(found.value.request)}
+									state="Found"
+									typed={code.value.code}
+								/>
+							)}
+						</MachineState>
+						<MachineState machine={codeAtom} path="Code.Missing">
+							{() => (
+								<Page
+									answered={Option.none()}
+									onType={type}
+									pending={Option.none()}
+									state="Missing"
+									typed={code.value.code}
+								/>
+							)}
+						</MachineState>
+					</>
+				)}
+			</MachineState>
+		</>
 	)
 }
 

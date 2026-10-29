@@ -1,4 +1,4 @@
-import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
+import {useAtomMount, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, DateTime, Option, Record, pipe} from 'effect'
 
@@ -35,6 +35,8 @@ import {
 	shapes,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
+import {MachineState, useMachineResult} from '@typeonce/effect-machine-react'
+import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 
@@ -43,16 +45,16 @@ import {colors, mono} from '@deslop/components-mobile/theme'
 import {AppTitle} from '@deslop/components-mobile/title'
 
 import {
-	answerAtom,
+	clipboardAtom,
+	clipboardReturnsAtom,
 	dayAt,
-	deletedAtom,
 	nowAtom,
-	offerAtom,
 	removeAtom,
 	restoreAtom,
 	statusOf,
 	timeAt,
-	tones
+	tones,
+	undoAtom
 } from '#lib/utils.ts'
 import icon from '#routes/icon.png'
 import {DAY, endOf, HOUR, routeOf, startOf, titleOf} from '#services/bookings/lib/utils.ts'
@@ -133,23 +135,19 @@ function BookingRow(props: {booking: Booking; now: number; onOpen: (id: string) 
 }
 
 function PasteSheet() {
-	const offer = pipe(useAtomValue(offerAtom), AsyncResult.getOrElse(Option.none))
-	const [answered, respond] = useAtom(answerAtom)
-	const open = Option.filter(
-		offer,
-		current => !AsyncResult.isWaiting(answered) && !Option.exists(AsyncResult.value(answered), last => last === current)
-	)
-	const image = Option.exists(offer, current => current.kind === 'image')
-	function answer(save: boolean) {
-		Option.map(open, current => respond({offer: current, save}))
-	}
+	useAtomMount(clipboardReturnsAtom)
+	const offer = pipe(useMachineResult(AtomMachine.select(clipboardAtom, 'Offered')), AsyncResult.getOrElse(Option.none))
+	const send = useAtomSet(clipboardAtom.send)
 	return (
 		<ClipboardSheet
 			anchor={<AppTitle logo={icon} name="trips" />}
 			confirm="Add booking"
-			detail={Boolean.match(image, {onFalse: () => 'Copied text', onTrue: () => 'Copied screenshot'})}
-			onAnswer={answer}
-			open={Option.isSome(open)}
+			detail={Boolean.match(
+				Option.exists(offer, current => current.kind === 'image'),
+				{onFalse: () => 'Copied text', onTrue: () => 'Copied screenshot'}
+			)}
+			onAnswer={save => send({_tag: 'Answered', save})}
+			open={Option.isSome(offer)}
 			question="Add from clipboard?"
 			symbol="ticket"
 		/>
@@ -160,9 +158,7 @@ function PasteSheet() {
 export function HomeRoute(props: {bookings: BookingList; onOpen: (id: string) => void}) {
 	const [pastOpen, setPastOpen] = useState(false)
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
-	const deleted = useAtomValue(deletedAtom)
 	const restore = useAtomSet(restoreAtom)
-	const importing = AsyncResult.isWaiting(useAtomValue(answerAtom))
 	const current = Array.filter(
 		props.bookings,
 		booking => startOf(booking) - 6 * HOUR <= now && endOf(booking) + HOUR >= now
@@ -226,26 +222,29 @@ export function HomeRoute(props: {bookings: BookingList; onOpen: (id: string) =>
 				<ToolbarItem placement="principal">
 					<PasteSheet />
 				</ToolbarItem>
-				{importing && (
-					<ToolbarItem placement="bottomBar">
-						<ProgressView>
-							<Text modifiers={[mono('caption', 12)]}>Reading booking…</Text>
-						</ProgressView>
-					</ToolbarItem>
-				)}
-				{Option.match(deleted, {
-					onNone: () => undefined,
-					onSome: booking => (
+				<MachineState machine={clipboardAtom} path="Answering">
+					{answering =>
+						answering.value.save && (
+							<ToolbarItem placement="bottomBar">
+								<ProgressView>
+									<Text modifiers={[mono('caption', 12)]}>Reading booking…</Text>
+								</ProgressView>
+							</ToolbarItem>
+						)
+					}
+				</MachineState>
+				<MachineState machine={undoAtom} path="Offered">
+					{offered => (
 						<ToolbarItem placement="bottomBar">
 							<Button
-								label={`Undo Delete ${titleOf(booking)}`}
+								label={`Undo Delete ${titleOf(offered.value.booking)}`}
 								systemImage="arrow.uturn.backward"
-								onPress={() => restore(booking)}
+								onPress={() => restore(offered.value.booking)}
 								modifiers={[labelStyle('titleAndIcon'), lineLimit(1)]}
 							/>
 						</ToolbarItem>
-					)
-				})}
+					)}
+				</MachineState>
 			</Toolbar.Content>
 		</Toolbar>
 	)

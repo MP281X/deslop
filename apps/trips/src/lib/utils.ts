@@ -16,6 +16,8 @@ import {
 	pipe
 } from 'effect'
 
+import {Machine} from '@typeonce/effect-machine'
+import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {FetchHttpClient} from 'effect/http'
 import {AsyncResult, AtomRpc, Atom} from 'effect/reactivity'
 import * as Application from 'expo-application'
@@ -28,6 +30,8 @@ import {addPushToStartTokenListener} from 'expo-widgets'
 import type {LiveActivity} from 'expo-widgets'
 import {DynamicColorIOS, Linking} from 'react-native'
 
+import {ClipboardOffer, clipboardMachine} from '@deslop/components-mobile/clipboard'
+import type {ClipboardKind} from '@deslop/components-mobile/clipboard'
 import {colors} from '@deslop/components-mobile/theme'
 import {alert, cachedList, clipboardChangeCount, writeAtomically} from '@deslop/components-mobile/utils'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
@@ -71,8 +75,6 @@ const CALENDAR = 'Trips'
 // Auth
 
 export const session = MobileSession.make('Trips', SERVER, keychain)
-
-export const signInAtom = session.runtime.fn(() => pipe(session.signIn, alert('Not Signed In')))
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/trips/lib/utils/RpcClient', {
 	group: RpcContracts,
@@ -127,21 +129,7 @@ export const bookingsAtom = Atom.keepAlive(
 // Clipboard
 
 const clipboardFile = new File(Paths.document, 'clipboard.txt')
-type Offer = {count: string; kind: 'image' | 'text'}
-
-// Only metadata is inspected on entry; the contents stay private until Add booking.
-export const offerAtom = Atom.keepAlive(
-	Atom.make(get => {
-		get(MobileRuntime.activationsAtom)
-		return Effect.gen(function* () {
-			const count = `${clipboardChangeCount()}`
-			if (clipboardFile.exists && clipboardFile.textSync() === count) return Option.none<Offer>()
-			if (yield* Effect.promise(() => Clipboard.hasImageAsync())) return Option.some<Offer>({count, kind: 'image'})
-			if (yield* Effect.promise(() => Clipboard.hasStringAsync())) return Option.some<Offer>({count, kind: 'text'})
-			return Option.none<Offer>()
-		})
-	})
-)
+type Offer = {count: string; kind: ClipboardKind}
 
 const readClipboard = Effect.fnUntraced(function* (offer: Offer) {
 	if (`${clipboardChangeCount()}` !== offer.count) {
@@ -174,37 +162,69 @@ const readClipboard = Effect.fnUntraced(function* (offer: Offer) {
 	return {text} satisfies BookingSource
 })
 
-export const answerAtom = Atom.keepAlive(
-	Atom.fn((answer: {offer: Offer; save: boolean}, get) => {
-		const handled = Effect.try({
-			catch: cause => BookingsError.make({cause, message: 'The answer could not be kept on this iPhone.'}),
-			try: () => {
-				writeAtomically(clipboardFile, answer.offer.count)
-				get.refresh(offerAtom)
-			}
-		})
-		return pipe(
-			Effect.gen(function* () {
-				if (answer.save) {
-					const source = yield* readClipboard(answer.offer)
-					yield* withClient(
-						get,
-						Effect.flatMap(RpcClient, client => client('bookings.save', source))
+export const clipboardAtom = AtomMachine.bind(
+	Atom.runtime(get =>
+		Layer.succeed(
+			ClipboardOffer,
+			ClipboardOffer.of({
+				answer: Effect.fnUntraced(function* (answer: Offer & {save: boolean}) {
+					const handled = Effect.try({
+						catch: cause => BookingsError.make({cause, message: 'The answer could not be kept on this iPhone.'}),
+						try: () => writeAtomically(clipboardFile, answer.count)
+					})
+					yield* pipe(
+						Effect.gen(function* () {
+							if (!answer.save) return
+							const source = yield* readClipboard(answer)
+							yield* Effect.provideContext(
+								Effect.flatMap(RpcClient, client => client('bookings.save', source)),
+								yield* get.result(RpcClient.runtime)
+							)
+						}),
+						// A refused booking is handled, but a lost connection offers the same copy on the next return.
+						Effect.tapErrorTag('BookingsError', () => handled),
+						Effect.andThen(handled),
+						alert('Not saved'),
+						Effect.ignore({log: 'Warn', message: 'The clipboard booking was not saved'})
 					)
-				}
-			}),
-			// A refused booking is handled, but a lost connection offers the same copy on the next return.
-			Effect.tapErrorTag('BookingsError', () => handled),
-			Effect.andThen(handled),
-			alert('Not saved'),
-			Effect.ignore({log: 'Warn', message: 'The clipboard booking was not saved'}),
-			Effect.as(answer.offer)
+				}),
+				detect: Effect.gen(function* () {
+					if (yield* Effect.promise(() => Clipboard.hasImageAsync())) return Option.some<ClipboardKind>('image')
+					if (yield* Effect.promise(() => Clipboard.hasStringAsync())) return Option.some<ClipboardKind>('text')
+					return Option.none<ClipboardKind>()
+				}),
+				file: clipboardFile
+			})
 		)
+	)
+).make(clipboardMachine)
+
+// Each return from the background looks at the clipboard again.
+export const clipboardReturnsAtom = Atom.make(get => {
+	get(MobileRuntime.activationsAtom)
+	get.set(clipboardAtom.send, {_tag: 'Returned'})
+})
+
+// The booking deleted last, which the list offers to put back for eight seconds; a later delete takes its place, and a restore ends only its own offer.
+export const undoAtom = AtomMachine.make(
+	Machine.make({
+		events: Machine.events({Deleted: {booking: Booking}, Restored: {id: Schema.String}}),
+		root: Machine.state({states: {Idle: {}, Offered: {fields: {booking: Booking}}}}),
+		timers: {expire: '8 seconds'}
+	}).handle({
+		initial: {target: 'Idle'},
+		states: {
+			Idle: {on: {Deleted: {data: transition => ({booking: transition.event.booking}), target: 'Offered'}}},
+			Offered: {
+				invoke: {onDone: {target: 'Idle'}, src: 'expire'},
+				on: {
+					Deleted: {data: transition => ({booking: transition.event.booking}), reenter: true, target: 'Offered'},
+					Restored: {guard: transition => transition.state.booking.id === transition.event.id, target: 'Idle'}
+				}
+			}
+		}
 	})
 )
-
-// The booking deleted last, which the list offers to put back for a few seconds.
-export const deletedAtom = Atom.keepAlive(Atom.make(Option.none<Booking>()))
 
 export const removeAtom = Atom.keepAlive(
 	Atom.fn(
@@ -214,16 +234,10 @@ export const removeAtom = Atom.keepAlive(
 					get,
 					Effect.flatMap(RpcClient, client => client('bookings.remove', {id: booking.id}))
 				),
-				Effect.tap(() => Effect.sync(() => get.set(deletedAtom, Option.some(booking)))),
-				alert('Not Deleted'),
-				Effect.andThen(Effect.sleep('8 seconds')),
-				Effect.andThen(
-					Effect.sync(() => {
-						if (Option.exists(get(deletedAtom), found => found === booking)) get.set(deletedAtom, Option.none())
-					})
-				)
+				Effect.tap(() => Effect.sync(() => get.set(undoAtom.send, {_tag: 'Deleted', booking}))),
+				alert('Not Deleted')
 			),
-		// Each delete keeps its own offer; a later one does not interrupt it.
+		// A second swipe deletes its booking too instead of interrupting the first.
 		{concurrent: true}
 	)
 )
@@ -235,11 +249,7 @@ export const restoreAtom = Atom.keepAlive(
 				get,
 				Effect.flatMap(RpcClient, client => client('bookings.restore', booking))
 			),
-			Effect.tap(() =>
-				Effect.sync(() => {
-					if (Option.exists(get(deletedAtom), found => found === booking)) get.set(deletedAtom, Option.none())
-				})
-			),
+			Effect.tap(() => Effect.sync(() => get.set(undoAtom.send, {_tag: 'Restored', id: booking.id}))),
 			alert('Not Restored')
 		)
 	)
