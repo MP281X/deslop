@@ -272,10 +272,10 @@ export const lint: OxlintConfig = {
 				paths: [
 					{importNames: REACT_LEGACY_APIS, message: REACT_LEGACY_MESSAGE, name: 'react'},
 					{message: 'Read and write data through Effect Atom.', name: '@tanstack/react-query'},
-					{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name: 'vitest'},
-					{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name: '@effect/vitest'},
-					{importNames: ['expect'], message: 'Use assert from @effect/vitest.', name: 'vitest'},
-					{importNames: ['expect'], message: 'Use assert from @effect/vitest.', name: '@effect/vitest'},
+					...Array.flatMap(['vitest', 'vite-plus/test', '@effect/vitest'], name => [
+						{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name},
+						{importNames: ['expect'], message: 'Use assert from @effect/vitest.', name}
+					]),
 					{importNames: RUNNERS, message: RUN_MESSAGE, name: 'effect/Effect'}
 				],
 				patterns: [
@@ -640,6 +640,7 @@ export const lint: OxlintConfig = {
 		'unicorn/no-empty-file': 'error',
 		'unicorn/no-immediate-mutation': 'error',
 		'unicorn/no-instanceof-builtins': 'error',
+		'unicorn/no-invalid-fetch-options': 'error',
 		'unicorn/no-invalid-remove-event-listener': 'error',
 		'unicorn/no-null': 'error',
 		'unicorn/no-object-as-default-parameter': 'error',
@@ -652,6 +653,8 @@ export const lint: OxlintConfig = {
 		'unicorn/prefer-add-event-listener': 'error',
 		'unicorn/prefer-bigint-literals': 'error',
 		'unicorn/prefer-optional-catch-binding': 'error',
+		// The compiler's preferEffectString moves native string methods to Effect's String, whose replace with a global pattern this still turns into replaceAll.
+		'unicorn/prefer-string-replace-all': 'error',
 		'unicorn/require-module-specifiers': 'error',
 		'unicorn/require-post-message-target-origin': 'error',
 
