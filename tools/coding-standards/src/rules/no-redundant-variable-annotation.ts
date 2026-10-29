@@ -5,17 +5,10 @@ import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
 
 import {effectImport, variableFromScope} from '#rules/shared.ts'
 
-// The element type of `T[]`, `readonly T[]`, `Array<T>` or `ReadonlyArray<T>`.
-function elementType(node: ESTree.TSType): Option.Option<ESTree.TSType> {
+// The element type of `T[]` or `Array<T>`; a readonly array is left alone, since Array.empty<T>() is mutable and a later readonly value would no longer assign.
+function elementType(node: ESTree.TSType) {
 	if (node.type === 'TSArrayType') return Option.some(node.elementType)
-	if (node.type === 'TSTypeOperator' && node.operator === 'readonly' && Predicate.isNotNullish(node.typeAnnotation)) {
-		return elementType(node.typeAnnotation)
-	}
-	if (
-		node.type === 'TSTypeReference' &&
-		node.typeName.type === 'Identifier' &&
-		Array.contains(['Array', 'ReadonlyArray'], node.typeName.name)
-	) {
+	if (node.type === 'TSTypeReference' && node.typeName.type === 'Identifier' && node.typeName.name === 'Array') {
 		return Option.fromNullishOr(node.typeArguments?.params[0])
 	}
 	return Option.none()

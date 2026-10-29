@@ -141,12 +141,26 @@ function constructedClass(node?: ESTree.Node | null) {
 	return Option.none()
 }
 
+// `cause: Schema.Defect` takes any failure; a narrower field may reject the one being mapped.
 function hasCauseField(context: Context, node: ESTree.Node): boolean {
-	if (node.type === 'ObjectExpression' && Array.some(node.properties, causeKey)) return true
+	if (
+		node.type === 'ObjectExpression' &&
+		Array.some(
+			node.properties,
+			property =>
+				causeKey(property) &&
+				property.type === 'Property' &&
+				property.value.type === 'MemberExpression' &&
+				importedMember({context, importedName: 'Schema', node: property.value}) &&
+				Option.exists(memberName(property.value), name => name === 'Defect' || name === 'Unknown')
+		)
+	) {
+		return true
+	}
 	return Array.some(childNodes(context, node), child => hasCauseField(context, child))
 }
 
-// The error is declared in this file with a `cause` field; an imported one, or one without the field, is left to a person.
+// The error is declared in this file with a `cause: Schema.Defect` field; an imported one, or one with another field, is left to a person.
 function declaresCause(context: Context, node?: ESTree.Node | null) {
 	return Option.exists(constructedClass(node), name =>
 		Option.exists(variableFor(context, name), variable =>

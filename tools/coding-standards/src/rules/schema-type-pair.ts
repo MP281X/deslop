@@ -137,6 +137,14 @@ function queriedSchema(node: ESTree.TSTypeQuery) {
 	return Option.some(node.exprName.left.name)
 }
 
+// The query's name reaches the module's own binding: no parameter, local or type parameter of that name sits in between.
+function readsModuleBinding(context: Context, query: ESTree.TSTypeQuery, name: string) {
+	return Option.exists(
+		variableFromScope({name, scope: context.sourceCode.getScope(query)}),
+		variable => variable.scope.block.type === 'Program'
+	)
+}
+
 function reportSchemaVariable(input: {
 	context: Context
 	cycleNames: string[]
@@ -197,7 +205,9 @@ function reportSchemaVariable(input: {
 					),
 					...pipe(
 						input.queries,
-						Array.filter(query => Option.contains(queriedSchema(query), name)),
+						Array.filter(
+							query => Option.contains(queriedSchema(query), name) && readsModuleBinding(input.context, query, name)
+						),
 						Array.map(query => fixer.replaceText(query, name))
 					)
 				]
@@ -250,7 +260,7 @@ export const schemaTypePair = defineRule({
 					Option.map(queriedSchema(query), name =>
 						context.report({
 							fix: fixer => {
-								if (!Array.contains(aliased, name)) return []
+								if (!Array.contains(aliased, name) || !readsModuleBinding(context, query, name)) return []
 								return fixer.replaceText(query, name)
 							},
 							message: `Read the type ${name}, declared as \`type ${name} = typeof ${name}.Type\` beside its Schema.`,

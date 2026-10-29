@@ -903,6 +903,27 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 									'export const Note = Schema.Struct({title: Schema.String})'
 								],
 								'\n'
+							),
+							// Every fix here would change types or evaluation order, so each stays reported only.
+							'kept.ts': Array.join(
+								[
+									"import {Array, Effect, Schema} from 'effect'",
+									"class Narrow extends Schema.TaggedErrorClass<Narrow>()('Narrow', {cause: Schema.String, message: Schema.String}) {}",
+									'declare const loaded: string | undefined',
+									'declare function step(): <A>(self: A) => A',
+									"if (loaded === undefined) throw new Error('missing')",
+									'export const size = () => loaded.length',
+									'export const frozen: readonly string[] = []',
+									'export const Label = Schema.String',
+									'export function shadowed(Label: typeof Schema.Number) {',
+									'	const parsed: typeof Label.Type = 1',
+									'	return Array.of(parsed)',
+									'}',
+									'export const ordered = Effect.succeed(2).pipe(Effect.asVoid).pipe(step())',
+									"export const narrowed = Effect.mapError(Effect.fail(1), () => Narrow.make({message: 'bad'}))",
+									'export const inherited = new RegExp(/a/u)'
+								],
+								'\n'
 							)
 						},
 						['--fix']
@@ -965,17 +986,47 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								''
 							],
 							'\n'
+						),
+						Array.join(
+							[
+								"import {Array, Effect, Schema} from 'effect'",
+								'',
+								"class Narrow extends Schema.TaggedErrorClass<Narrow>()('Narrow', {cause: Schema.String, message: Schema.String}) {}",
+								'declare const loaded: string | undefined',
+								'declare function step(): <A>(self: A) => A',
+								"if (loaded === undefined) throw new Error('missing')",
+								'export const size = () => loaded.length',
+								'export const frozen: readonly string[] = []',
+								'export type Label = typeof Label.Type',
+								'export const Label = Schema.String',
+								'export function shadowed(Label: typeof Schema.Number) {',
+								'	const parsed: typeof Label.Type = 1',
+								'	return Array.of(parsed)',
+								'}',
+								'export const ordered = Effect.succeed(2).pipe(Effect.asVoid).pipe(step())',
+								"export const narrowed = Effect.mapError(Effect.fail(1), () => Narrow.make({message: 'bad'}))",
+								'export const inherited = new RegExp(/a/u)',
+								''
+							],
+							'\n'
 						)
 					])
-					// Left to the agent: a Node stream's pipe, a nested function that relies on narrowing, an `in` check, a non-keyword return type.
+					// Left to the agent: a Node stream's pipe, a nested function, an `in` check, a typed return and kept.ts.
 					assert.deepStrictEqual(customCodes(result.stdout), [
+						'@deslop/coding-standards(function-declaration)',
 						'@deslop/coding-standards(function-declaration)',
 						'@deslop/coding-standards(no-in-operator)',
 						'@deslop/coding-standards(no-pipe-method)',
+						'@deslop/coding-standards(no-pipe-method)',
+						'@deslop/coding-standards(no-pipe-method)',
+						'@deslop/coding-standards(no-readonly-type-syntax)',
+						'@deslop/coding-standards(no-redundant-variable-annotation)',
 						'@deslop/coding-standards(no-return-type)',
 						'@deslop/coding-standards(no-ternary)',
 						'@deslop/coding-standards(no-trivial-indirection)',
-						'@deslop/coding-standards(no-trivial-indirection)'
+						'@deslop/coding-standards(no-trivial-indirection)',
+						'@deslop/coding-standards(preserve-error-cause)',
+						'@deslop/coding-standards(schema-type-pair)'
 					])
 				}),
 			60_000

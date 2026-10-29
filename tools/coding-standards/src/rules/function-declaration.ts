@@ -1,9 +1,23 @@
-import {Array, Option, Predicate, String} from 'effect'
+import {Array, Option, Predicate, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
 
 import {childNodes} from '#rules/shared.ts'
+
+// Statements that cannot narrow a binding the function reads.
+const DECLARATIONS = [
+	'ClassDeclaration',
+	'ExportAllDeclaration',
+	'FunctionDeclaration',
+	'ImportDeclaration',
+	'TSDeclareFunction',
+	'TSEnumDeclaration',
+	'TSInterfaceDeclaration',
+	'TSModuleDeclaration',
+	'TSTypeAliasDeclaration',
+	'VariableDeclaration'
+]
 
 type Bound = ESTree.ArrowFunctionExpression | ESTree.Function
 
@@ -23,13 +37,26 @@ function lexical(context: Context, node: ESTree.Node): boolean {
 	return Array.some(childNodes(context, node), child => lexical(context, child))
 }
 
-// Only at module level: a hoisted declaration inside a function loses the narrowing (`if (!panel) return`) that the arrow saw.
+function declarative(statement: ESTree.Node): boolean {
+	if (statement.type === 'ExportNamedDeclaration' || statement.type === 'ExportDefaultDeclaration') {
+		return Predicate.isNullish(statement.declaration) || declarative(statement.declaration)
+	}
+	return Array.contains(DECLARATIONS, statement.type)
+}
+
+function topStatement(declaration: ESTree.VariableDeclaration) {
+	if (declaration.parent.type === 'ExportNamedDeclaration') return declaration.parent
+	return declaration
+}
+
+// Only at module level after declarations alone: a hoisted declaration loses the narrowing (`if (!panel) throw …`) that the arrow saw.
 function placed(declaration: ESTree.VariableDeclaration) {
-	return (
-		declaration.parent.type === 'Program' ||
-		(declaration.parent.type === 'ExportNamedDeclaration' &&
-			declaration.parent.declaration === declaration &&
-			declaration.parent.parent.type === 'Program')
+	const statement = topStatement(declaration)
+	if (statement.parent.type !== 'Program') return false
+	const program = statement.parent
+	return pipe(
+		Array.findFirstIndex(program.body, node => node === statement),
+		Option.exists(index => Array.every(Array.take(program.body, index), declarative))
 	)
 }
 
@@ -80,7 +107,12 @@ export const functionDeclaration = defineRule({
 		VariableDeclarator: node => {
 			const init = node.init
 			if (init?.type !== 'ArrowFunctionExpression' && init?.type !== 'FunctionExpression') return
-			if (init.type === 'ArrowFunctionExpression' && lexical(context, init.body)) return
+			if (
+				init.type === 'ArrowFunctionExpression' &&
+				Array.some([init.body, ...init.params], part => lexical(context, part))
+			) {
+				return
+			}
 			const declaration = node.parent
 			context.report({
 				fix: fixer => {

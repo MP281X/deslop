@@ -3,9 +3,11 @@ import {Array, Option, Predicate, String} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
 
-import {effectImport, matches, memberName} from '#rules/shared.ts'
+import {effectImport, isImportBinding, memberName} from '#rules/shared.ts'
 
 const MESSAGE = 'Use standalone pipe: pipe(value, f, g) instead of value.pipe(f, g).'
+
+const EFFECT_SOURCE = /^(?:effect|@effect\/)/u
 
 type PipeCall = ESTree.CallExpression & {callee: ESTree.MemberExpression}
 
@@ -50,38 +52,68 @@ function argumentsText(context: Context, node: ESTree.CallExpression) {
 	)
 }
 
-// `Effect.map(f)`, `Schema.decode(S)` or an arrow: a step that shows the call is Effect's pipe, not a Node stream's.
-function operator(node: ESTree.Node): boolean {
-	if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') return true
-	if (node.type === 'CallExpression') return operator(node.callee)
-	return node.type === 'MemberExpression' && node.object.type === 'Identifier' && matches(/^[A-Z]/u)(node.object.name)
+// A member of a namespace imported from Effect, such as `Effect.map` or `Schema.decode`.
+function effectMember(context: Context, node: ESTree.Node): boolean {
+	if (node.type !== 'MemberExpression' || node.computed) return false
+	if (node.object.type === 'MemberExpression') return effectMember(context, node.object)
+	return node.object.type === 'Identifier' && isImportBinding({context, node: node.object, source: EFFECT_SOURCE})
 }
 
-function rewritable(calls: PipeCall[]) {
+// A function, or an Effect operator such as `Effect.map(f)`: steps that make the call a function pipe, not a Node stream's.
+function operator(context: Context, node: ESTree.Node) {
+	if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') return true
+	if (node.type === 'CallExpression') return effectMember(context, node.callee)
+	return effectMember(context, node)
+}
+
+// Building it runs nothing of the program's own, so it may move ahead of an earlier step.
+function inert(context: Context, node: ESTree.Node): boolean {
+	if (
+		node.type === 'Literal' ||
+		node.type === 'Identifier' ||
+		node.type === 'ArrowFunctionExpression' ||
+		node.type === 'FunctionExpression'
+	) {
+		return true
+	}
+	if (node.type === 'MemberExpression') return effectMember(context, node)
+	return (
+		node.type === 'CallExpression' &&
+		effectMember(context, node.callee) &&
+		Array.every(node.arguments, argument => inert(context, argument))
+	)
+}
+
+function rewritable(context: Context, calls: PipeCall[]) {
 	const steps = Array.flatMap(calls, call => call.arguments)
 	return (
-		Array.some(steps, operator) &&
+		Array.every(steps, step => operator(context, step)) &&
+		// `value.pipe(f).pipe(make())` applies f before make() runs; one flat pipe would evaluate make() first.
+		Array.every(Array.drop(calls, 1), call => Array.every(call.arguments, argument => inert(context, argument))) &&
+		// `Schema.withDecodingDefaultKey(Effect.succeed('group'))` keeps its literal only when the receiver's type is known first.
 		!Array.some(
 			steps,
 			step =>
-				step.type === 'SpreadElement' ||
-				step.type === 'ObjectExpression' ||
-				step.type === 'NewExpression' ||
-				// `Schema.withDecodingDefaultKey(Effect.succeed('group'))` keeps its literal only when the receiver's type is known first.
-				(step.type === 'CallExpression' &&
-					Array.some(
-						step.arguments,
-						argument =>
-							argument.type === 'CallExpression' && Array.some(argument.arguments, inner => inner.type === 'Literal')
-					))
+				step.type === 'CallExpression' &&
+				Array.some(
+					step.arguments,
+					argument =>
+						argument.type === 'CallExpression' && Array.some(argument.arguments, inner => inner.type === 'Literal')
+				)
 		)
 	)
+}
+
+// `(first(), value).pipe(f)` keeps its parentheses as an argument.
+function receiverText(context: Context, node: ESTree.Expression) {
+	if (node.type === 'SequenceExpression') return `(${context.sourceCode.getText(node)})`
+	return context.sourceCode.getText(node)
 }
 
 // `value.pipe(f).pipe(g)` becomes one `pipe(value, f, g)`.
 function fix(input: {context: Context; fixer: Fixer; node: PipeCall}) {
 	const calls = chain(input.node)
-	if (!rewritable(calls)) return []
+	if (!rewritable(input.context, calls)) return []
 	const steps = Array.filter(
 		Array.map(calls, call => argumentsText(input.context, call)),
 		text => String.isNonEmpty(text)
@@ -93,7 +125,7 @@ function fix(input: {context: Context; fixer: Fixer; node: PipeCall}) {
 					imports,
 					input.fixer.replaceTextRange(
 						input.node.range,
-						`pipe(${Array.join([input.context.sourceCode.getText(innermost.callee.object), ...steps], ', ')})`
+						`pipe(${Array.join([receiverText(input.context, innermost.callee.object), ...steps], ', ')})`
 					)
 				)
 			)
