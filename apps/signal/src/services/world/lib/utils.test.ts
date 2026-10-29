@@ -13,15 +13,24 @@ it('generates the same chunks whatever order they are asked in', () => {
 	assert.deepStrictEqual(first.chunk(1, 0), ahead)
 })
 
-it('opens every start field round the base', () => {
+it('opens three far-apart starts, each with the same start fields round its base', () => {
 	for (const seed of [1, 42, 9001]) {
 		const world = makeWorld(seed)
-		const spawn = world.spawn()
-		assert.isTrue(Array.isArrayNonEmpty(spawn.fields))
-		for (const id of spawn.fields) {
-			const field = Option.getOrThrow(world.field(id))
-			assert.isAbove(field.total, 0)
-			assert.isAtMost(Math.hypot(field.x - spawn.x, field.z - spawn.z), spawn.radius)
+		const spawns = world.spawns()
+		assert.strictEqual(spawns.length, 3)
+		assert.deepStrictEqual(
+			Array.map(spawns, spawn =>
+				Array.map(spawn.fields, id => {
+					const field = Option.getOrThrow(world.field(id))
+					assert.isAbove(field.total, 0)
+					assert.isAtMost(Math.hypot(field.x - spawn.x, field.z - spawn.z), spawn.radius)
+					return field.material
+				})
+			),
+			Array.replicate(['stone', 'iron', 'copper', 'coal'], 3)
+		)
+		for (const pair of Array.zip(spawns, [...Array.drop(spawns, 1), ...Array.take(spawns, 1)])) {
+			assert.isAbove(Math.hypot(pair[0].x - pair[1].x, pair[0].z - pair[1].z), 350)
 		}
 	}
 })

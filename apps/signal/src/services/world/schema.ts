@@ -29,31 +29,13 @@ export const Material = Schema.Literals([
 	'stone',
 	'coal',
 	'peat',
-	'clay',
 	'sulfur',
 	'bauxite',
 	'quartz',
-	'sand',
 	'crystal',
 	'cobalt',
 	'tungsten',
-	'obsidian',
-	'scrap',
-	'electronics',
-	'mycelium',
-	'resin',
-	'lumen',
-	'limestone',
-	'fluorite',
-	'zinc',
-	'salt',
-	'potash',
-	'lithium',
-	'glass',
-	'jade',
-	'coral',
-	'garnet',
-	'amber'
+	'lumen'
 ])
 
 // Where a material's fields sit: high on tops, low in hollows, wet by water, anywhere on the plain, along a cliff's foot, or on the start basin's floor.

@@ -1,14 +1,13 @@
-import type {Option} from 'effect'
 import {Schema} from 'effect'
 
-import {Action} from '#services/game/schema.ts'
+import {Command} from '#services/game/schema.ts'
 
-export type ModelId = typeof ModelId.Type
-export const ModelId = Schema.Literals(['deepseek/deepseek-v4.1-flash-1017'])
-
-export type Plan = typeof Plan.Type
-// The answer comes first so it streams to the player while the orders are still being written; a bounded list keeps a looping model from spending its whole output budget on one repeated order.
-export const Plan = Schema.Struct({answer: Schema.String, orders: Schema.Array(Action).check(Schema.isMaxLength(6))})
-
-// The answer so far while the plan streams; the last draft carries the whole plan.
-export type Draft = {answer: string; plan: Option.Option<Plan>}
+// What a team's model decided in a round: what it said and thought, the commands it gave, and the tool calls that did not decode.
+export type Decision = typeof Decision.Type
+export const Decision = Schema.Struct({
+	commands: Schema.Array(Command),
+	invalid: Schema.Array(Schema.String),
+	reasoning: Schema.optionalKey(Schema.String),
+	text: Schema.String,
+	tokens: Schema.optionalKey(Schema.Struct({input: Schema.Int, output: Schema.Int}))
+})

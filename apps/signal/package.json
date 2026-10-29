@@ -22,6 +22,7 @@
 		"@effect/atom-react": "latest",
 		"@effect/platform-node": "latest",
 		"@tanstack/react-router": "latest",
+		"@typeonce/effect-machine": "latest",
 		"@types/three": "latest",
 		"effect": "latest",
 		"react": "latest",

@@ -238,13 +238,13 @@ const DEPOSITS: Deposit[][] = [
 	],
 	[
 		{abundance: 2100, material: 'peat', site: 'any'},
-		{abundance: 1500, material: 'clay', site: 'wet'},
-		{abundance: 600, material: 'sulfur', site: 'wet'}
+		{abundance: 900, material: 'sulfur', site: 'wet'},
+		{abundance: 700, material: 'coal', site: 'low'}
 	],
 	[
 		{abundance: 2400, material: 'bauxite', site: 'high'},
 		{abundance: 700, material: 'quartz', site: 'low'},
-		{abundance: 5000, material: 'sand', site: 'any'}
+		{abundance: 3000, material: 'stone', site: 'any'}
 	],
 	[
 		{abundance: 320, material: 'crystal', site: 'high'},
@@ -253,56 +253,57 @@ const DEPOSITS: Deposit[][] = [
 	],
 	[
 		{abundance: 650, material: 'tungsten', site: 'high'},
-		{abundance: 900, material: 'obsidian', site: 'any'},
-		{abundance: 400, material: 'sulfur', site: 'low'}
+		{abundance: 1500, material: 'stone', site: 'any'},
+		{abundance: 700, material: 'sulfur', site: 'low'}
+	],
+	// The ruins' fields are salvage: old iron and copper.
+	[
+		{abundance: 1400, material: 'iron', site: 'any'},
+		{abundance: 900, material: 'copper', site: 'high'}
 	],
 	[
-		{abundance: 1400, material: 'scrap', site: 'any'},
-		{abundance: 260, material: 'electronics', site: 'high'}
-	],
-	[
-		{abundance: 1600, material: 'mycelium', site: 'high'},
-		{abundance: 800, material: 'resin', site: 'any'},
+		{abundance: 1600, material: 'peat', site: 'high'},
+		{abundance: 800, material: 'coal', site: 'any'},
 		{abundance: 450, material: 'lumen', site: 'low'}
 	],
 	[
-		{abundance: 4000, material: 'limestone', site: 'any'},
-		{abundance: 500, material: 'fluorite', site: 'low'},
-		{abundance: 900, material: 'zinc', site: 'any'}
+		{abundance: 4000, material: 'stone', site: 'any'},
+		{abundance: 500, material: 'coal', site: 'low'},
+		{abundance: 900, material: 'iron', site: 'any'}
 	],
 	[
-		{abundance: 6000, material: 'salt', site: 'high'},
-		{abundance: 1200, material: 'potash', site: 'any'},
-		{abundance: 700, material: 'lithium', site: 'low'}
+		{abundance: 4000, material: 'stone', site: 'high'},
+		{abundance: 1200, material: 'cobalt', site: 'any'},
+		{abundance: 700, material: 'quartz', site: 'low'}
 	],
 	[
-		{abundance: 1400, material: 'glass', site: 'high'},
-		{abundance: 900, material: 'quartz', site: 'low'},
-		{abundance: 3500, material: 'sand', site: 'any'}
+		{abundance: 1400, material: 'quartz', site: 'high'},
+		{abundance: 400, material: 'crystal', site: 'low'},
+		{abundance: 3500, material: 'stone', site: 'any'}
 	],
 	[
 		{abundance: 900, material: 'sulfur', site: 'wet'},
-		{abundance: 600, material: 'lithium', site: 'low'},
-		{abundance: 2500, material: 'limestone', site: 'any'}
+		{abundance: 600, material: 'cobalt', site: 'low'},
+		{abundance: 2500, material: 'stone', site: 'any'}
 	],
 	[
-		{abundance: 1800, material: 'clay', site: 'wet'},
-		{abundance: 420, material: 'jade', site: 'high'},
-		{abundance: 1500, material: 'peat', site: 'any'}
+		{abundance: 1800, material: 'peat', site: 'wet'},
+		{abundance: 900, material: 'copper', site: 'high'},
+		{abundance: 700, material: 'coal', site: 'any'}
 	],
 	[
-		{abundance: 1600, material: 'coral', site: 'any'},
-		{abundance: 2500, material: 'salt', site: 'low'},
-		{abundance: 3000, material: 'sand', site: 'any'}
+		{abundance: 1600, material: 'stone', site: 'any'},
+		{abundance: 600, material: 'sulfur', site: 'low'},
+		{abundance: 3000, material: 'quartz', site: 'any'}
 	],
 	[
-		{abundance: 380, material: 'garnet', site: 'low'},
+		{abundance: 600, material: 'coal', site: 'low'},
 		{abundance: 1600, material: 'iron', site: 'high'},
 		{abundance: 1400, material: 'copper', site: 'any'}
 	],
 	[
 		{abundance: 450, material: 'crystal', site: 'any'},
-		{abundance: 700, material: 'fluorite', site: 'high'},
+		{abundance: 500, material: 'cobalt', site: 'high'},
 		{abundance: 1100, material: 'quartz', site: 'low'}
 	],
 	[
@@ -311,7 +312,7 @@ const DEPOSITS: Deposit[][] = [
 		{abundance: 1100, material: 'coal', site: 'low'}
 	],
 	[
-		{abundance: 500, material: 'amber', site: 'any'},
+		{abundance: 500, material: 'copper', site: 'any'},
 		{abundance: 1300, material: 'iron', site: 'high'},
 		{abundance: 1100, material: 'coal', site: 'low'}
 	]
@@ -324,8 +325,10 @@ const START: Deposit[] = [
 	{abundance: 900, material: 'coal', site: 'start'}
 ]
 const CELL = 60
-// The start basin: a valley floor round the base, RB tiles to where the land is its own again.
+// A start basin: a valley floor round a team's base, RB tiles to where the land is its own again; one basin a team, SPREAD tiles from the origin.
 const RB = 80
+const BASINS = 3
+const SPREAD = 260
 // Start field ids sit in a slot column no ordinary field uses, some 590 000 tiles west.
 const START_GX = -32_768
 // Ore field slots: one candidate field per FS tiles, reaching at most FR tiles from its point, FMIN to FMAX tiles large.
@@ -372,7 +375,7 @@ const EDGES = [
 ]
 
 export {BIOME_SHAPE}
-export const GENERATOR = 5
+export const GENERATOR = 7
 export const CHUNK = 32
 // One height level in world units; a tile is one unit wide.
 export const LEVEL = 0.4
@@ -478,36 +481,18 @@ export const STRATA = [
 ]
 // Each material's look: its ore's colour (in outcrops and a cart's bed) and whether it glows, its outcrop's shape, and the stain it leaves on the ground.
 export const ORES = {
-	amber: {colour: '#f2a33c', glow: false, shape: 'orb', tint: '#e0902c'},
 	bauxite: {colour: '#d47552', glow: false, shape: 'blob', tint: '#c9643f'},
-	clay: {colour: '#de9d78', glow: false, shape: 'blob', tint: '#d48d68'},
 	coal: {colour: '#5d5955', glow: false, shape: 'chunk', tint: '#5d5955'},
 	cobalt: {colour: '#6a8ee0', glow: false, shape: 'oct', tint: '#5c7fd0'},
 	copper: {colour: '#e39561', glow: false, shape: 'oct', tint: '#d98a55'},
-	coral: {colour: '#f49a8a', glow: false, shape: 'blob', tint: '#e9867a'},
 	crystal: {colour: '#8fe3f2', glow: true, shape: 'prism', tint: '#4fbfdc'},
-	electronics: {colour: '#7cc79a', glow: false, shape: 'chunk', tint: '#5fae80'},
-	fluorite: {colour: '#bb9ef0', glow: true, shape: 'prism', tint: '#a58ae0'},
-	garnet: {colour: '#b8324a', glow: false, shape: 'oct', tint: '#a32a40'},
-	glass: {colour: '#9fe0d2', glow: false, shape: 'prism', tint: '#7fcfbf'},
 	iron: {colour: '#c98a6a', glow: false, shape: 'chunk', tint: '#b06a4c'},
-	jade: {colour: '#6fc39a', glow: false, shape: 'chunk', tint: '#5aae86'},
-	limestone: {colour: '#f1ede1', glow: false, shape: 'boulder', tint: '#d8d2c0'},
-	lithium: {colour: '#9eeee3', glow: true, shape: 'prism', tint: '#7fdcd0'},
 	lumen: {colour: '#b6f2dc', glow: true, shape: 'orb', tint: '#8fe0c6'},
-	mycelium: {colour: '#f1e8f6', glow: false, shape: 'blob', tint: '#f4ecf8'},
-	obsidian: {colour: '#4a4052', glow: false, shape: 'prism', tint: '#4a4052'},
 	peat: {colour: '#8f6e53', glow: false, shape: 'slab', tint: '#7a5a42'},
-	potash: {colour: '#f0a493', glow: false, shape: 'chunk', tint: '#e08a78'},
 	quartz: {colour: '#f7e8f0', glow: false, shape: 'prism', tint: '#e8d6e2'},
-	resin: {colour: '#f1b65c', glow: false, shape: 'orb', tint: '#e0a048'},
-	salt: {colour: '#fdfbf6', glow: false, shape: 'cube', tint: '#c9bcae'},
-	sand: {colour: '#f1d6a6', glow: false, shape: 'dune', tint: '#e8c48a'},
-	scrap: {colour: '#c4906c', glow: false, shape: 'scrap', tint: '#a87553'},
 	stone: {colour: '#e3dccf', glow: false, shape: 'boulder', tint: '#bdb5a6'},
 	sulfur: {colour: '#f2d55c', glow: false, shape: 'oct', tint: '#e8cc3e'},
-	tungsten: {colour: '#a2a8b0', glow: false, shape: 'chunk', tint: '#8d939c'},
-	zinc: {colour: '#bfcad0', glow: false, shape: 'chunk', tint: '#a3b0b8'}
+	tungsten: {colour: '#a2a8b0', glow: false, shape: 'chunk', tint: '#8d939c'}
 } satisfies Record<Material, {colour: string; glow: boolean; shape: string; tint: string}>
 
 const TAU = Math.PI * 2
@@ -640,7 +625,7 @@ export type Prop = {
 	z: number
 }
 // An ore field: its tiles' positions and starting amounts, and their bounds.
-export type Field = {
+type Field = {
 	amts: Uint16Array
 	biome: Biome
 	id: number
@@ -1215,6 +1200,27 @@ function lavaProp(g: number, p: number, s: number) {
 	return undefined
 }
 
+// A mesa tile's ground and level under the buttes standing on its cell.
+function mesaButtes(h: Here, list: ReturnType<typeof butte>[], start: number) {
+	const ground = byNoise(fbm(h.hs + 3, h.x / 3.5, h.z / 3.5), 0.5, G.sand, G.sand2)
+	if (h.fade <= 0.05) return {ground, level: start}
+	return Array.reduce(list, {ground, level: start}, (acc, b, q) => {
+		const d = Math.hypot(h.u - b.u, h.v - b.v) + 0.45 * (fbm(h.hs + 10 + q, h.x / 1.7, h.z / 1.7) - 0.5)
+		if (d < b.r) return {ground: G.redsand, level: Number.max(acc.level, h.frame.plain + round(b.top * h.fade))}
+		// A shoulder ring four levels under the butte's top.
+		if (d < b.r + 1.5 * h.k) {
+			return {ground: G.redsand, level: Number.max(acc.level, h.frame.plain + round((b.top - 4) * h.fade))}
+		}
+		return acc
+	})
+}
+
+function smoothLevel(t: Smooth, h: Here) {
+	if (t.height !== undefined) return round(t.height(h.x, h.z, h.s0))
+	if (t.offset !== 0) return round(h.s0 + t.offset)
+	return h.p
+}
+
 export function makeWorld(seed: number) {
 	const S = {
 		basin: seeded(seed, 15),
@@ -1265,29 +1271,52 @@ export function makeWorld(seed: number) {
 		return {biome: nearest.biome, r, x, z}
 	}
 
-	// The start: the meadow cell nearest the origin within eight cells, or the origin's own cell turned to meadow; its centre is the base.
-	const startCell = Array.reduce(
-		Array.flatMap(Array.range(-8, 8), cj => Array.map(Array.range(-8, 8), ci => ({ci, cj}))),
-		{ci: 0, cj: 0, d: 1e9},
-		(best, at) => {
-			const c = climate(at.ci, at.cj)
-			const d = Math.hypot(c.x, c.z)
-			if (c.biome !== MEADOW || d >= best.d) return best
-			return {ci: at.ci, cj: at.cj, d}
+	// The starts, one a team, a third of a turn apart on a ring SPREAD tiles round the origin: each the meadow cell nearest its place within a cell, or the cell under its place turned to meadow; its centre is the base. Every start's fields are laid out alike round it.
+	const turn = hash(S.basin, 1, 2) * TAU
+	const SP = Array.map(Array.range(0, BASINS - 1), b => {
+		const want = {x: Math.cos(turn + (b * TAU) / BASINS) * SPREAD, z: Math.sin(turn + (b * TAU) / BASINS) * SPREAD}
+		const around = {ci: Number.round(want.x / CELL, 0), cj: Number.round(want.z / CELL, 0)}
+		const meadow = Array.reduce(
+			Array.flatMap(Array.range(-1, 1), dj =>
+				Array.map(Array.range(-1, 1), di => ({ci: around.ci + di, cj: around.cj + dj}))
+			),
+			{ci: around.ci, cj: around.cj, d: 1e9},
+			(best, at) => {
+				const c = climate(at.ci, at.cj)
+				const d = Math.hypot(c.x - want.x, c.z - want.z)
+				if (c.biome !== MEADOW || d >= best.d) return best
+				return {ci: at.ci, cj: at.cj, d}
+			}
+		)
+		const centre = climate(meadow.ci, meadow.cj)
+		return {
+			a0: turn + b * 1.3,
+			ci: meadow.ci,
+			cj: meadow.cj,
+			x: Math.floor(centre.x) + 0.5,
+			z: Math.floor(centre.z) + 0.5
 		}
-	)
-	const startClimate = climate(startCell.ci, startCell.cj)
-	const SP = {
-		a0: hash(S.basin, 1, 2) * TAU,
-		ci: startCell.ci,
-		cj: startCell.cj,
-		x: Math.floor(startClimate.x) + 0.5,
-		z: Math.floor(startClimate.z) + 0.5
+	})
+	// The start whose base is nearest a point.
+	function startOf(x: number, z: number) {
+		return Array.reduce(SP, 0, (best, start, b) => {
+			const kept = SP[best] ?? start
+			if (Math.hypot(x - start.x, z - start.z) < Math.hypot(x - kept.x, z - kept.z)) return b
+			return best
+		})
+	}
+	function baseOf(b: number) {
+		return SP[b] ?? {a0: 0, ci: 0, cj: 0, x: 0.5, z: 0.5}
+	}
+	// How far a point is from the nearest base.
+	function fromBase(x: number, z: number) {
+		const start = baseOf(startOf(x, z))
+		return Math.hypot(x - start.x, z - start.z)
 	}
 	function cell(ci: number, cj: number) {
 		return cells(pack(ci, cj), () => {
 			const at = climate(ci, cj)
-			const isStart = ci === SP.ci && cj === SP.cj
+			const isStart = Array.some(SP, start => start.ci === ci && start.cj === cj)
 			const biome = startBiome(isStart, at.biome)
 			const angle = at.r(5) * TAU
 			const hs = (at.r(11) * INT) | 0
@@ -1298,10 +1327,7 @@ export function makeWorld(seed: number) {
 				cj,
 				elevation: (BIOME_SHAPE[biome]?.elevation ?? 0) + terraceShift(BIOME_SHAPE[biome]?.step ?? 1, at.r(9)),
 				// No landmark in or by the start basin: its floor stays open.
-				heroOn:
-					!isStart &&
-					Math.hypot(at.x - SP.x, at.z - SP.z) > RB * 1.1 &&
-					((ci === 0 && cj === 0) || hash(hs, 7, 3) < 0.62),
+				heroOn: !isStart && fromBase(at.x, at.z) > RB * 1.1 && ((ci === 0 && cj === 0) || hash(hs, 7, 3) < 0.62),
 				hs,
 				key: pack(ci, cj),
 				ns: (at.r(10) * INT) | 0,
@@ -1347,9 +1373,10 @@ export function makeWorld(seed: number) {
 		return found
 	}
 
-	// How much of the start basin's floor a point is: 1 on the floor, falling to 0 RB tiles out, its rim wobbled by noise.
+	// How much of a start basin's floor a point is: 1 on the floor, falling to 0 RB tiles out, its rim wobbled by noise.
 	function basinW(x: number, z: number) {
-		const d2 = (x - SP.x) ** 2 + (z - SP.z) ** 2
+		const start = baseOf(startOf(x, z))
+		const d2 = (x - start.x) ** 2 + (z - start.z) ** 2
 		if (d2 > RB * RB * 1.5) return 0
 		return 1 - smoothstep(0.5, 1, (Math.sqrt(d2) / RB) * (1 + 0.4 * (fbm(S.basin, x / 24, z / 24) - 0.5)))
 	}
@@ -1410,14 +1437,17 @@ export function makeWorld(seed: number) {
 		return sum.s / sum.n + (sum.ridge / sum.n) * heroHold(nr) * ridgeAt(nr, x, z)
 	}
 
-	// The basin floor's level: the land's own at the base, on a multiple of six so every biome's step rounds it alike.
-	const startLevel = 6 * round(blendLand(SP.x, SP.z) / 6)
+	// Each basin floor's level: the land's own at its base, on a multiple of six so every biome's step rounds it alike.
+	const floors = Array.map(SP, start => 6 * round(blendLand(start.x, start.z) / 6))
+	function floorAt(x: number, z: number) {
+		return floors[startOf(x, z)] ?? 0
+	}
 
-	// The blended base at a point; the start basin pulls the land to its floor's level.
+	// The blended base at a point; a start basin pulls the land to its floor's level.
 	function blendS(x: number, z: number) {
 		const land = blendLand(x, z)
 		const w = basinW(x, z)
-		if (w > 0) return land + (startLevel - land) * w
+		if (w > 0) return land + (floorAt(x, z) - land) * w
 		return land
 	}
 
@@ -1571,12 +1601,15 @@ export function makeWorld(seed: number) {
 		return saltCrust(x, z)
 	}
 
-	// The start basin's fields: one per starter material round the base, 15 to 26 tiles out on the floor, each owning the floor nearest its own point.
-	function startPt(i: number) {
-		const a = SP.a0 + (i * TAU) / START.length + (hash(S.ore + 500 + 7919, i, 3) - 0.5) * 0.5
+	// A start basin's fields: one per starter material round its base, 15 to 26 tiles out on the floor, each owning the floor nearest its own point; start field n is basin n / START.length's.
+	function startPt(n: number) {
+		const start = baseOf(Math.floor(n / START.length))
+		const i = n % START.length
+		const a = start.a0 + (i * TAU) / START.length + (hash(S.ore + 500 + 7919, i, 3) - 0.5) * 0.5
 		const d = 15 + 11 * hash(S.ore + 500 + 2 * 7919, i, 3)
-		return {x: Math.floor(SP.x + Math.cos(a) * d) + 0.5, z: Math.floor(SP.z + Math.sin(a) * d) + 0.5}
+		return {x: Math.floor(start.x + Math.cos(a) * d) + 0.5, z: Math.floor(start.z + Math.sin(a) * d) + 0.5}
 	}
+	const STARTS = Array.range(0, BASINS * START.length - 1)
 
 	function grid<F>(
 		kind: number,
@@ -1597,9 +1630,9 @@ export function makeWorld(seed: number) {
 					// The start basin's floor keeps only meadow tables and ponds, clear of the base and of its start fields.
 					const clear =
 						open &&
-						Math.hypot(x - SP.x, z - SP.z) > 16 &&
-						Array.every(START, (_, i) => {
-							const q = startPt(i)
+						fromBase(x, z) > 16 &&
+						Array.every(STARTS, n => {
+							const q = startPt(n)
 							return Math.hypot(x - q.x, z - q.z) > 16
 						})
 					if (basinW(x, z) < 0.15 || clear) return make(r, x, z, near(x, z))
@@ -2093,20 +2126,6 @@ export function makeWorld(seed: number) {
 		}
 		if (h.n.gap > 0.06 && cr.d < cr.w + 1.6) return flat(h.p, G.reeds, false)
 		return plain(-1)
-	}
-
-	function mesaButtes(h: Here, list: ReturnType<typeof butte>[], start: number) {
-		const ground = byNoise(fbm(h.hs + 3, h.x / 3.5, h.z / 3.5), 0.5, G.sand, G.sand2)
-		if (h.fade <= 0.05) return {ground, level: start}
-		return Array.reduce(list, {ground, level: start}, (acc, b, q) => {
-			const d = Math.hypot(h.u - b.u, h.v - b.v) + 0.45 * (fbm(h.hs + 10 + q, h.x / 1.7, h.z / 1.7) - 0.5)
-			if (d < b.r) return {ground: G.redsand, level: Number.max(acc.level, h.frame.plain + round(b.top * h.fade))}
-			// A shoulder ring four levels under the butte's top.
-			if (d < b.r + 1.5 * h.k) {
-				return {ground: G.redsand, level: Number.max(acc.level, h.frame.plain + round((b.top - 4) * h.fade))}
-			}
-			return acc
-		})
 	}
 
 	function mesaTile(h: Here) {
@@ -2609,12 +2628,6 @@ export function makeWorld(seed: number) {
 		return saltTile(h)
 	}
 
-	function smoothLevel(t: Smooth, h: Here) {
-		if (t.height !== undefined) return round(t.height(h.x, h.z, h.s0))
-		if (t.offset !== 0) return round(h.s0 + t.offset)
-		return h.p
-	}
-
 	// Every surface but a ruin's stair settles flat on the level under its centre.
 	function fin(t: Draft, h: Here) {
 		if (t.kind === 'ramp') {
@@ -2765,7 +2778,7 @@ export function makeWorld(seed: number) {
 		if (tj >= CHUNK || ti >= CHUNK) return undefined
 		const t = ring[(tj + 1) * RING + ti + 1]
 		// None on the start basin's floor near the base, which stays open for building.
-		if (t === undefined || t.biome !== RUINS || ore[tj * CHUNK + ti] !== 0 || Math.hypot(x - SP.x, z - SP.z) < 34) {
+		if (t === undefined || t.biome !== RUINS || ore[tj * CHUNK + ti] !== 0 || fromBase(x, z) < 34) {
 			return undefined
 		}
 		if (r(5) > 0.85 || (!t.feature && r(5) > 0.22)) return undefined
@@ -2871,7 +2884,7 @@ export function makeWorld(seed: number) {
 		if (site === 'high') return level >= anchor
 		if (site === 'low') return level <= anchor
 		if (site === 'cliff') return level === anchor && cliffBy(x, z, level)
-		if (site === 'start') return level === startLevel
+		if (site === 'start') return level === floorAt(x, z)
 		return Math.abs(level - anchor) <= step
 	}
 
@@ -2986,7 +2999,7 @@ export function makeWorld(seed: number) {
 					const z = Math.floor(o.pz + (o.r(40 + q) - 0.5) * search) + 0.5
 					if (!o.own(x, z)) return best
 					const t = tileCached(x, z)
-					if (!dry(t) || (o.site === 'start' && t.level !== startLevel)) return best
+					if (!dry(t) || (o.site === 'start' && t.level !== floorAt(x, z))) return best
 					const candidate = {
 						level: t.level,
 						score: -Math.hypot(x - o.px, z - o.pz) * 0.1 + siteScore(o.site, t.level, x, z),
@@ -3006,18 +3019,20 @@ export function makeWorld(seed: number) {
 		)
 	}
 
-	function startField(i: number) {
-		const at = startPt(i)
+	function startField(n: number) {
+		const at = startPt(n)
+		const i = n % START.length
+		const first = n - i
 		return Option.flatMap(Array.get(START, i), entry =>
 			grow({
 				...entry,
 				b: MEADOW,
-				key: slotKey(START_GX, i),
+				key: slotKey(START_GX, n),
 				own: (x, z) => {
-					if (Math.hypot(x - SP.x, z - SP.z) < 8) return false
-					return Array.every(START, (_, q) => {
+					if (fromBase(x, z) < 8) return false
+					return Array.every(Array.range(first, first + START.length - 1), q => {
 						const other = startPt(q)
-						return q === i || Math.hypot(x - other.x, z - other.z) >= Math.hypot(x - at.x, z - at.z)
+						return q === n || Math.hypot(x - other.x, z - other.z) >= Math.hypot(x - at.x, z - at.z)
 					})
 				},
 				px: at.x,
@@ -3037,7 +3052,7 @@ export function makeWorld(seed: number) {
 		const at = slotPt(gx, gz)
 		// Ordinary fields keep out of the start basin's floor, which holds its own; the region's richness makes some land thick with fields, some sparse, nowhere bare for long.
 		const rich = noise(S.ore + 3, at.x / 170, at.z / 170)
-		if (Math.hypot(at.x - SP.x, at.z - SP.z) < 46 || r(1) > 0.3 + 0.62 * rich) return Option.none<Field>()
+		if (fromBase(at.x, at.z) < 46 || r(1) > 0.3 + 0.62 * rich) return Option.none<Field>()
 		const b = near(at.x, at.z).dom.biome
 		const list = DEPOSITS[b] ?? []
 		const pick = Array.reduce(
@@ -3088,7 +3103,7 @@ export function makeWorld(seed: number) {
 						gz
 					}))
 				),
-				...Array.map(START, (_, i) => ({at: startPt(i), gx: START_GX, gz: i}))
+				...Array.map(STARTS, n => ({at: startPt(n), gx: START_GX, gz: n}))
 			],
 			slot => {
 				if (
@@ -3271,14 +3286,15 @@ export function makeWorld(seed: number) {
 		chunk,
 		// A field's whole record with its tiles, by id (CORE names a field by it).
 		field: (id: number) => oreField(((id >>> 16) << 16) >> 16, ((id & 0xff_ff) << 16) >> 16),
-		// Where the base stands and the start fields round it.
-		spawn: () => ({
-			fields: Array.map(START, (_, i) => slotKey(START_GX, i)),
-			level: startLevel,
-			radius: RB,
-			x: Math.floor(SP.x),
-			z: Math.floor(SP.z)
-		}),
+		// Where each team's base stands and the start fields round it.
+		spawns: () =>
+			Array.map(SP, (start, b) => ({
+				fields: Array.map(Array.range(b * START.length, (b + 1) * START.length - 1), n => slotKey(START_GX, n)),
+				level: floors[b] ?? 0,
+				radius: RB,
+				x: Math.floor(start.x),
+				z: Math.floor(start.z)
+			})),
 		tileAt
 	}
 }
