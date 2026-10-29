@@ -43,17 +43,7 @@ Read the first remaining error in each file together with the checks its fix tou
 
 ## Repair the owner, not the spelling
 
-- **Combined policy.** No wrapper, fake use, extra export, prop spread, wider type, stand-in type or file split solely to silence a diagnostic. Judge the result against all checks together: preserve evaluation order, receiver binding, resource lifetime and failure behavior.
-
-```tsx
-// rejected: removing a ternary by widening the prop, then by a boolean nobody reads
-details: (string | undefined)[]
-Deferred.make<boolean>()
-// accepted: the caller builds the value the contract already takes
-details={Array.filter([job.company, job.note], Predicate.isNotUndefined)}
-Deferred.make<void>()
-```
-
+- **Combined policy.** No wrapper, fake use, extra export, prop spread, wider type or file split solely to silence a diagnostic. Judge the result against all checks together: preserve evaluation order, receiver binding, resource lifetime and failure behavior.
 - **Deletion.** An unused export does not make its locally used implementation dead; test-only imports do not prove shipping use, and a published API is an outside consumer.
 - **Scopes.** Never enlarge warning/off/ignore scopes to make the implementation pass; fix placement or ownership instead.
 - **Rule conflict.** Show the intended form and a genuinely invalid counterexample before changing policy. Fix an owned rule's detection or message so its advice converges with the other rules; report an upstream conflict rather than contorting the application.
