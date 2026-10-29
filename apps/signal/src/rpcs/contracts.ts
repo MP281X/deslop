@@ -4,15 +4,25 @@ import {Rpc, RpcGroup} from 'effect/rpc'
 
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 
-import {Frame, GameError, Reply} from '#services/game/schema.ts'
+import {Entry, Frame, GameError, Timeline} from '#services/game/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
 	Rpc.make('signal.join', {error: GameError, stream: true, success: Frame}),
-	// CORE's reply, growing as it streams.
-	Rpc.make('signal.ask', {
+	// The world as it was from a tick on, at a multiple of real time; 0 holds it still.
+	Rpc.make('signal.replay', {
 		error: GameError,
-		payload: Schema.Struct({text: Schema.NonEmptyString.check(Schema.isMaxLength(400))}),
+		payload: Schema.Struct({
+			from: Schema.Natural,
+			speed: Schema.Int.check(Schema.isBetween({maximum: 60, minimum: 0}))
+		}),
 		stream: true,
-		success: Reply
-	})
+		success: Frame
+	}),
+	// A team's thread: what its model read, thought and did each round, a page of rounds before `before` or the latest.
+	Rpc.make('signal.thread', {
+		error: GameError,
+		payload: Schema.Struct({before: Schema.optionalKey(Schema.Int), team: Schema.Int}),
+		success: Schema.Array(Entry)
+	}),
+	Rpc.make('signal.timeline', {success: Timeline})
 ).middleware(RpcAuth) {}

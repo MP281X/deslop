@@ -1,32 +1,41 @@
-import {Array, Effect, Option, Record, Schedule, Stream, Tuple, pipe} from 'effect'
+import {Array, Effect, Number, Option, Record, Schedule, Stream, String, Tuple, pipe} from 'effect'
 
-import {Atom, AtomRpc} from 'effect/reactivity'
+import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
 
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import type {Frame, Hud} from '#services/game/schema.ts'
+import type {Frame} from '#services/game/schema.ts'
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/signal/lib/utils/RpcClient', {
 	group: RpcContracts,
 	protocol: WebRuntime.layer('@deslop/signal')
 }) {}
 
-// What the client knows: the latest frame, every chunk the colony explored by chunk key, the HUD as last sent and the world's seed from the connection's first frame.
+// What the client knows: the latest frame, every chunk explored and prop cleared so far, the buildings, teams and zones as last sent, and the world's seed from the stream's first frame. `count` starts over with each stream, so its first frame tells the world view to start over too.
 export type View = {
+	buildings: NonNullable<Frame['buildings']>
+	// Every tile change so far, by tile.
+	changes: Record<string, Frame['changes'][number]>
+	cleared: Frame['cleared']
 	count: number
 	explored: Record<string, Frame['explored'][number]>
 	frame: Frame
-	hud: Option.Option<Hud>
+	teams: NonNullable<Frame['teams']>
 	world: Option.Option<{generator: number; seed: number}>
+	zones: NonNullable<Frame['zones']>
 }
 
-const EMPTY: View = {
+export const EMPTY: View = {
+	buildings: [],
+	changes: {},
+	cleared: [],
 	count: 0,
 	explored: {},
-	frame: {at: 0, changes: [], explored: [], shots: [], units: []},
-	hud: Option.none(),
-	world: Option.none()
+	frame: {at: 0, changes: [], cleared: [], explored: [], shots: [], tick: 0, units: []},
+	teams: [],
+	world: Option.none(),
+	zones: []
 }
 
 // A frame's newly explored chunks over the ones known; most frames bring none.
@@ -35,22 +44,45 @@ function merged(known: View['explored'], chunks: Frame['explored']) {
 	return {...known, ...Record.fromEntries(Array.map(chunks, chunk => Tuple.make(`${chunk.cx},${chunk.cz}`, chunk)))}
 }
 
+function changed(known: View['changes'], changes: Frame['changes']) {
+	if (Array.isReadonlyArrayEmpty(changes)) return known
+	return {...known, ...Record.fromEntries(Array.map(changes, change => Tuple.make(`${change.x},${change.z}`, change)))}
+}
+
+function appended(known: View['cleared'], more: Frame['cleared']) {
+	if (Array.isReadonlyArrayEmpty(more)) return known
+	return [...known, ...more]
+}
+
 function fold(view: View, frame: Frame) {
 	return {
+		buildings: frame.buildings ?? view.buildings,
+		changes: changed(view.changes, frame.changes),
+		cleared: appended(view.cleared, frame.cleared),
 		count: view.count + 1,
 		explored: merged(view.explored, frame.explored),
 		frame,
-		hud: Option.orElse(Option.fromUndefinedOr(frame.hud), () => view.hud),
-		world: Option.orElse(Option.fromUndefinedOr(frame.world), () => view.world)
-	}
+		teams: frame.teams ?? view.teams,
+		world: Option.orElse(Option.fromUndefinedOr(frame.world), () => view.world),
+		zones: frame.zones ?? view.zones
+	} satisfies View
 }
 
-// The live view: frames fold into it, and a dropped socket rejoins and gets everything again.
+// What the screen shows: the live world, or a replay from a tick at a speed.
+export type Source = Option.Option<{from: number; speed: number}>
+export const sourceAtom = Atom.keepAlive(Atom.make<Source>(Option.none()))
+
+// The view of the source: frames fold into it, and a dropped socket rejoins and gets everything again.
 export const viewAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(
+	RpcClient.runtime.atom(get =>
 		pipe(
 			RpcClient,
-			Effect.map(client => client('signal.join', undefined)),
+			Effect.map(client =>
+				Option.match(get(sourceAtom), {
+					onNone: () => client('signal.join', undefined),
+					onSome: replay => client('signal.replay', replay)
+				})
+			),
 			Stream.unwrap,
 			Stream.scan(() => EMPTY, fold),
 			Stream.retry($ =>
@@ -63,15 +95,54 @@ export const viewAtom = Atom.keepAlive(
 	)
 )
 
-// CORE's reply so far, growing as the planner writes it.
-export const askAtom = RpcClient.runtime.fn((text: string) =>
-	Stream.unwrap(Effect.map(RpcClient, client => client('signal.ask', {text})))
+// The world's seed, kept while the view's stream starts over, as a replay begins or ends.
+export const seedAtom = Atom.keepAlive(
+	Atom.make(get =>
+		Option.orElse(
+			Option.map(
+				Option.flatMap(AsyncResult.value(get(viewAtom)), view => view.world),
+				world => world.seed
+			),
+			() => Option.flatten(get.self<Option.Option<number>>())
+		)
+	)
 )
+
+// The run's marks and span, kept fresh.
+export const timelineAtom = Atom.keepAlive(
+	RpcClient.runtime.atom(
+		pipe(
+			Stream.tick('10 seconds'),
+			Stream.mapEffect(() => Effect.flatMap(RpcClient, client => client('signal.timeline', undefined)))
+		)
+	)
+)
+
+// A team's latest rounds, kept fresh.
+export const liveThreadAtom = Atom.family((team: number) =>
+	RpcClient.runtime.atom(
+		pipe(
+			Stream.tick('5 seconds'),
+			Stream.mapEffect(() => Effect.flatMap(RpcClient, client => client('signal.thread', {team})))
+		)
+	)
+)
+
+// A team's rounds before a replay's, by `team:round`.
+export const pastThreadAtom = Atom.family((key: string) => {
+	const [team = 0, before = 0] = Array.map(String.split(':')(key), part =>
+		Option.getOrElse(Number.parse(part), () => 0)
+	)
+	return RpcClient.runtime.atom(Effect.flatMap(RpcClient, client => client('signal.thread', {before, team})))
+})
 
 // What the pointer is over, published by the world view for the hover card.
 type Hover = {id: string; x: number; y: number}
 export const hoverAtom = Atom.keepAlive(Atom.make(Option.none<Hover>()))
 
-// What the camera follows: one of the colony's units, and while the overview is on, the frame round it and the units in it.
-export type Follow = {id: Option.Option<number>; overview: Option.Option<{x: number; z: number; zoom: number}>}
-export const followAtom = Atom.keepAlive(Atom.make<Follow>({id: Option.none(), overview: Option.none()}))
+// What the camera follows: a unit, or a place the player left it at; the overview zooms out over the team with the fog off.
+export type Follow = {free: Option.Option<{x: number; z: number}>; id: Option.Option<number>; overview: boolean}
+export const followAtom = Atom.keepAlive(Atom.make<Follow>({free: Option.none(), id: Option.none(), overview: false}))
+
+// The team whose thread and units the sidebar shows.
+export const teamAtom = Atom.keepAlive(Atom.make(0))

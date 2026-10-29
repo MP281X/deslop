@@ -381,6 +381,9 @@ importers:
       '@tanstack/react-router':
         specifier: latest
         version: 1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@typeonce/effect-machine':
+        specifier: latest
+        version: 0.46.0(effect@4.1.0)
       '@types/three':
         specifier: latest
         version: 0.186.0

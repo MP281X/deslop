@@ -1,4 +1,4 @@
-import {Array, MutableHashMap, MutableList, Number, Option, Record, String} from 'effect'
+import {Array, MutableHashMap, MutableHashSet, MutableList, Number, Option, Record, String} from 'effect'
 
 import * as THREE from 'three'
 
@@ -114,9 +114,10 @@ type Stain = {density: Float32Array; ores: Uint8Array; worked: Float32Array; x0:
 type Wall = {bottoms: number[]; polygon: [number, number][]; tops: number[]}
 type Lists = MutableHashMap.MutableHashMap<string, MutableList.MutableList<number>>
 
-// What a chunk's builder knows beyond the generator: edits and the ore left, by tile key.
+// What a chunk's builder knows beyond the generator: edits and the ore left, by tile key, and the props the colonies cleared, by id.
 export type Overlay = {
 	amounts: MutableHashMap.MutableHashMap<number, number>
+	cleared: MutableHashSet.MutableHashSet<number>
 	edits: MutableHashMap.MutableHashMap<number, Edit>
 }
 
@@ -273,7 +274,7 @@ function loadArea(chunkAt: (cx: number, cz: number) => Chunk, overlay: Overlay, 
 		ground: new Uint8Array(CELLS),
 		liquid: new Uint8Array(CELLS),
 		ore: new Uint8Array(CELLS),
-		props: chunkAt(cx, cz).props,
+		props: Array.filter(chunkAt(cx, cz).props, prop => !MutableHashSet.has(overlay.cleared, prop.id)),
 		surface: new Float32Array(CELLS),
 		wear: new Float32Array(CELLS),
 		x0: cx * CHUNK - PAD,
@@ -1595,14 +1596,7 @@ function outcrop(shape: string, at: {s: number; tilt: number; x: number; y: numb
 	if (shape === 'prism') {
 		return [at.x, at.y, at.z, at.tilt, at.yaw, at.tilt * 0.8, 0.11 * at.s, 0.34 * at.s, 0.11 * at.s]
 	}
-	if (shape === 'cube') {
-		return [at.x, at.y, at.z, at.tilt * 0.5, at.yaw, at.tilt * 0.4, 0.14 * at.s, 0.14 * at.s, 0.14 * at.s]
-	}
 	if (shape === 'slab') return [at.x, at.y, at.z, 0, at.yaw, 0, 0.32 * at.s, 0.09 * at.s, 0.17 * at.s]
-	if (shape === 'dune') return [at.x, at.y, at.z, 0, at.yaw, 0, 0.28 * at.s, 0.28 * at.s, 0.28 * at.s]
-	if (shape === 'scrap') {
-		return [at.x, at.y + 0.03, at.z, at.tilt * 0.6, at.yaw, at.tilt * 0.5, 0.3 * at.s, 0.035, 0.2 * at.s]
-	}
 	if (shape === 'orb') return [at.x, at.y + 0.08 * at.s, at.z, 0, at.yaw, 0, 0.075 * at.s, 0.075 * at.s, 0.075 * at.s]
 	return [at.x, at.y, at.z, 0, at.yaw, 0, 0.15 * at.s, 0.15 * at.s, 0.15 * at.s]
 }
