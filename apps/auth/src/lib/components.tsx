@@ -69,7 +69,7 @@ export function Review(props: {account: Account; request: PendingAuthorization})
 				<div className="flex min-w-0 flex-col">
 					<span className="truncate text-sm">{props.request.clientName}</span>
 					<span className="text-muted-foreground truncate text-xs tabular-nums">
-						{Array.join(appNames(props.request), ' · ')} · until {timeLabel(props.request.expiresAt)}
+						{Array.join(appNames(props.request.resources), ' · ')} · until {timeLabel(props.request.expiresAt)}
 					</span>
 				</div>
 				<p className="text-muted-foreground flex items-center gap-2 text-xs">

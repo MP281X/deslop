@@ -111,6 +111,18 @@ export const Stored = Schema.TaggedUnion({
 	UsedRefresh: {clientId: Schema.NonEmptyString, family: Schema.NonEmptyString}
 })
 
+// One app or agent the account signed in to: its refresh-token family, and when it last refreshed.
+export type SignedInApp = typeof SignedInApp.Type
+export const SignedInApp = Schema.Struct({
+	clientName: Schema.String,
+	family: Schema.NonEmptyString,
+	lastActive: Schema.Finite,
+	resources: Schema.Array(Resource)
+})
+
+export type FamilyParams = typeof FamilyParams.Type
+export const FamilyParams = Schema.Struct({family: Schema.NonEmptyString})
+
 export type RequestParams = typeof RequestParams.Type
 export const RequestParams = Schema.Struct({request: Schema.NonEmptyString})
 

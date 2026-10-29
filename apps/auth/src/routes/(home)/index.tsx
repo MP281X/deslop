@@ -1,4 +1,4 @@
-import {useAtomSubscribe, useAtomSuspense} from '@effect/atom-react'
+import {useAtom, useAtomSubscribe, useAtomSuspense} from '@effect/atom-react'
 
 import {Array, Boolean, Option} from 'effect'
 
@@ -7,12 +7,24 @@ import {AsyncResult} from 'effect/reactivity'
 import {Check, X} from 'lucide-react'
 import {Suspense, useState} from 'react'
 
+import {Loading} from '@deslop/components-web/fallbacks'
+import {Button} from '@deslop/components-web/ui/button'
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
 
 import {Review} from '#lib/components.tsx'
-import {accountAtom, consentAtom, linkedCode, lookupAtom} from '#lib/utils.ts'
+import {
+	accountAtom,
+	agoLabel,
+	appNames,
+	appsAtom,
+	consentAtom,
+	disconnectAtom,
+	linkedCode,
+	lookupAtom,
+	minuteAtom
+} from '#lib/utils.ts'
 import {typedCode} from '#services/authorizations/lib/utils.ts'
-import type {PendingAuthorization} from '#services/authorizations/schema.ts'
+import type {PendingAuthorization, SignedInApp} from '#services/authorizations/schema.ts'
 
 const CODE_LENGTH = 8
 
@@ -135,4 +147,67 @@ function Approve() {
 	)
 }
 
-export const Route = createFileRoute('/(home)/')({component: Approve})
+function AppRow(props: {app: SignedInApp; now: number}) {
+	const [disconnection, disconnect] = useAtom(disconnectAtom)
+	return (
+		<li className="bg-card flex items-center gap-3 p-4">
+			<div className="flex min-w-0 grow flex-col">
+				<span className="truncate text-sm">{props.app.clientName}</span>
+				<span className="text-muted-foreground truncate text-xs">
+					{Array.join([...appNames(props.app.resources), agoLabel(props.app.lastActive, props.now)], ' · ')}
+				</span>
+			</div>
+			<Button
+				size="sm"
+				variant="secondary"
+				disabled={AsyncResult.isWaiting(disconnection)}
+				onClick={() => disconnect(props.app.family)}
+			>
+				Disconnect
+			</Button>
+		</li>
+	)
+}
+
+// Each app or agent this account signed in to, last active first; disconnecting one makes it sign in again.
+function Apps() {
+	const apps = useAtomSuspense(appsAtom).value
+	const now = useAtomSuspense(minuteAtom).value
+	const [disconnection] = useAtom(disconnectAtom)
+	return (
+		<section className="flex flex-col gap-3" aria-label="Signed in">
+			<h2 className="text-muted-foreground text-xs tracking-wider uppercase">Signed in · {apps.length}</h2>
+			{Array.match(apps, {
+				onEmpty: () => <p className="text-muted-foreground bg-card p-4 text-sm">No apps signed in</p>,
+				onNonEmpty: rows => (
+					<ul className="flex flex-col gap-2">
+						{Array.map(rows, app => (
+							<AppRow key={app.family} app={app} now={now} />
+						))}
+					</ul>
+				)
+			})}
+			{Option.match(AsyncResult.error(disconnection), {
+				onNone: () => null,
+				onSome: failure => (
+					<p className="text-destructive text-sm" role="alert">
+						{failure.message}
+					</p>
+				)
+			})}
+		</section>
+	)
+}
+
+function SignIns() {
+	return (
+		<>
+			<Approve />
+			<Suspense fallback={<Loading />}>
+				<Apps />
+			</Suspense>
+		</>
+	)
+}
+
+export const Route = createFileRoute('/(home)/')({component: SignIns})

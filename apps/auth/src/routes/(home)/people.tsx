@@ -50,7 +50,7 @@ function AskingCard(props: {person: Person}) {
 function MemberRow(props: {person: Person}) {
 	const [removal, remove] = useAtom(removeAtom)
 	return (
-		<li className="flex items-center gap-3 py-2.5">
+		<li className="bg-card flex items-center gap-3 p-4">
 			<Avatar id={props.person.id} name={props.person.name} />
 			<div className="flex min-w-0 grow flex-col">
 				<span className="flex items-center gap-1.5 text-sm">
@@ -100,7 +100,7 @@ function Directory() {
 			</section>
 			<section className="flex flex-col gap-3" aria-label="With access">
 				<h2 className="text-muted-foreground text-xs tracking-wider uppercase">With access · {members.length}</h2>
-				<ul className="bg-card flex flex-col px-4 py-1">
+				<ul className="flex flex-col gap-2">
 					{Array.map(members, person => (
 						<MemberRow key={person.id} person={person} />
 					))}
