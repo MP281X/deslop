@@ -45,14 +45,28 @@ it('hauls a field’s last part-bite home and frees its crew', {timeout: 120_000
 	assert.deepStrictEqual(hud?.jobs, [])
 })
 
+it('sends a connection each explored chunk once, until its units see more of it', {timeout: 60_000}, () => {
+	const sim = makeSim(Option.none(), START, 7)
+	const connection = sim.connect('player', START)
+	assert.isTrue(
+		Array.isReadonlyArrayNonEmpty(Option.getOrThrow(sim.frame(connection, START, {planner: 'ready'})).explored)
+	)
+	assert.deepStrictEqual(Option.getOrThrow(sim.frame(connection, START + 100, {planner: 'ready'})).explored, [])
+	sim.act({_tag: 'Mine', field: Option.getOrThrow(Array.head(makeWorld(sim.seed).spawn().fields))}, START)
+	assert.isTrue(
+		Array.isReadonlyArrayNonEmpty(Option.getOrThrow(sim.frame(connection, run(sim, 60), {planner: 'ready'})).explored)
+	)
+})
+
 it('carries a colony from an older generator onto the new world, round Home', {timeout: 60_000}, () => {
 	const sim = makeSim(Option.none(), START, 7)
 	sim.act({_tag: 'Mine', field: Option.getOrThrow(Array.head(makeWorld(sim.seed).spawn().fields))}, START)
 	const before = sim.snapshot()
-	// The previous release's save: an older generator, no stock of materials it did not have, and each unit carrying copper.
-	const previous = Schema.decodeSync(Schema.fromJsonString(Saved))(
+	// The previous release's save: an older generator, no explored map or stock of materials it did not have, and each unit carrying copper.
+	const previous = Schema.decodeSync(Schema.fromJsonString(Schema.toCodecJson(Saved)))(
 		JSON.stringify({
 			...before,
+			explored: undefined,
 			generator: before.generator - 1,
 			stock: {copper: 20, iron: 40, stone: 60},
 			units: Array.map(before.units, unit => ({...unit, cargo: 10, material: 'copper'}))
@@ -78,7 +92,7 @@ it('restores a saved colony as it was', {timeout: 60_000}, () => {
 	sim.act({_tag: 'Mine', field: Option.getOrThrow(Array.head(makeWorld(sim.seed).spawn().fields))}, START)
 	const end = run(sim, 60)
 	// Through the save's schema as JSON, as the colony goes to disk.
-	const disk = Schema.fromJsonString(Saved)
+	const disk = Schema.fromJsonString(Schema.toCodecJson(Saved))
 	assert.deepStrictEqual(
 		makeSim(Option.some(Schema.decodeSync(disk)(Schema.encodeSync(disk)(sim.snapshot()))), end, 0).snapshot(),
 		sim.snapshot()

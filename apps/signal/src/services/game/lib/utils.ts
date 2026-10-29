@@ -1,6 +1,6 @@
 import {Array, Number, Option, String} from 'effect'
 
-import type {Point, UnitKind} from '#services/game/schema.ts'
+import type {EnemyKind, MobKind, Point, UnitKind} from '#services/game/schema.ts'
 import {tileKey} from '#services/world/lib/utils.ts'
 import type {Material} from '#services/world/schema.ts'
 
@@ -8,17 +8,17 @@ import type {Material} from '#services/world/schema.ts'
 export const TICK_HZ = 20
 export const FRAME_HZ = 10
 
-// Each unit's way of moving, speed in tiles a second, cargo it carries, health, body radius for collisions and the research tier it needs.
+// Each unit's way of moving, speed in tiles a second, cargo it carries, health, body radius for collisions, how far it sees in tiles and the research tier it needs.
 export const STATS = {
-	cart: {cargo: 40, health: 80, mover: 'wheels', radius: 0.36, speed: 1.6, tier: 1},
-	digger: {cargo: 20, health: 120, mover: 'tracks', radius: 0.42, speed: 0.7, tier: 1},
-	dozer: {cargo: 0, health: 120, mover: 'tracks', radius: 0.4, speed: 0.65, tier: 1},
-	loader: {cargo: 10, health: 40, mover: 'fly', radius: 0.2, speed: 2.2, tier: 1},
-	rotor: {cargo: 0, health: 50, mover: 'fly', radius: 0.3, speed: 2.6, tier: 4},
-	sentry: {cargo: 0, health: 100, mover: 'tracks', radius: 0.36, speed: 0.75, tier: 1},
-	skiff: {cargo: 30, health: 70, mover: 'hover', radius: 0.38, speed: 1.4, tier: 3},
-	strider: {cargo: 20, health: 90, mover: 'stride', radius: 0.38, speed: 1, tier: 2},
-	worker: {cargo: 10, health: 60, mover: 'legs', radius: 0.26, speed: 0.9, tier: 1}
+	cart: {cargo: 40, health: 80, mover: 'wheels', radius: 0.36, sight: 7, speed: 1.6, tier: 1},
+	digger: {cargo: 20, health: 120, mover: 'tracks', radius: 0.42, sight: 6, speed: 0.7, tier: 1},
+	dozer: {cargo: 0, health: 120, mover: 'tracks', radius: 0.4, sight: 6, speed: 0.65, tier: 1},
+	loader: {cargo: 10, health: 40, mover: 'fly', radius: 0.2, sight: 8, speed: 2.2, tier: 1},
+	rotor: {cargo: 0, health: 50, mover: 'fly', radius: 0.3, sight: 14, speed: 2.6, tier: 4},
+	sentry: {cargo: 0, health: 100, mover: 'tracks', radius: 0.36, sight: 10, speed: 0.75, tier: 1},
+	skiff: {cargo: 30, health: 70, mover: 'hover', radius: 0.38, sight: 8, speed: 1.4, tier: 3},
+	strider: {cargo: 20, health: 90, mover: 'stride', radius: 0.38, sight: 9, speed: 1, tier: 2},
+	worker: {cargo: 10, health: 60, mover: 'legs', radius: 0.26, sight: 7, speed: 0.9, tier: 1}
 } satisfies Record<
 	UnitKind,
 	{
@@ -26,10 +26,113 @@ export const STATS = {
 		health: number
 		mover: 'fly' | 'hover' | 'legs' | 'stride' | 'tracks' | 'wheels'
 		radius: number
+		sight: number
 		speed: number
 		tier: number
 	}
 >
+
+// How far Home sees, in tiles.
+export const HOME_SIGHT = 14
+
+// The hostile each biome sends, in Biome order.
+export const ENEMIES = [
+	'scrapdog',
+	'skimmer',
+	'burrower',
+	'golem',
+	'crawler',
+	'ruinsentry',
+	'drifter',
+	'lurker',
+	'skimmer',
+	'skimmer',
+	'golem',
+	'glitch',
+	'lurker',
+	'burrower',
+	'golem',
+	'golem',
+	'scrapdog'
+] satisfies EnemyKind[]
+
+// How each creature lives: walkers wander and bolt, fliers take off and land elsewhere, swarms and fish stay at their spot; speeds in tiles a second, the name its card shows and what it does when left alone.
+export const CREATURES = {
+	beetles: {flee: 0, life: 'swarm', name: 'Heat beetles', rest: 'basking at a vent', walk: 0},
+	bird: {flee: 1.5, life: 'flier', name: 'Bird drone', rest: 'pecking at the ground', walk: 0},
+	fireflies: {flee: 0, life: 'swarm', name: 'Fireflies', rest: 'blinking over the grass', walk: 0},
+	fish: {flee: 0, life: 'fish', name: 'Leaping fish', rest: 'schooling under the surface', walk: 0},
+	grazer: {flee: 1.7, life: 'walker', name: 'Grazer', rest: 'grazing', walk: 0.48},
+	hare: {flee: 1.35, life: 'walker', name: 'Snow hare', rest: 'sitting still, ears up', walk: 0.34},
+	heron: {flee: 1.1, life: 'flier', name: 'Heron', rest: 'stalking the shallows', walk: 0},
+	jellies: {flee: 0, life: 'swarm', name: 'Glow jellies', rest: 'drifting and pulsing', walk: 0},
+	lizard: {flee: 1.8, life: 'walker', name: 'Rock lizard', rest: 'basking, doing push-ups', walk: 1.2},
+	moths: {flee: 0, life: 'swarm', name: 'Ruin moths', rest: 'circling an old lamp', walk: 0},
+	yak: {flee: 0.8, life: 'walker', name: 'Frost yak', rest: 'standing in the snow', walk: 0.27}
+} satisfies Record<
+	MobKind,
+	{flee: number; life: 'fish' | 'flier' | 'swarm' | 'walker'; name: string; rest: string; walk: number}
+>
+
+// The wildlife of each biome, in Biome order: per 16-tile patch of land, the chance of a group and how many in it.
+export const WILDLIFE: {chance: number; kind: MobKind; most: number}[][] = [
+	[
+		{chance: 0.3, kind: 'grazer', most: 4},
+		{chance: 0.2, kind: 'bird', most: 1}
+	],
+	[
+		{chance: 0.25, kind: 'heron', most: 1},
+		{chance: 0.25, kind: 'fireflies', most: 1},
+		{chance: 0.25, kind: 'fish', most: 1}
+	],
+	[{chance: 0.35, kind: 'lizard', most: 2}],
+	[
+		{chance: 0.3, kind: 'yak', most: 3},
+		{chance: 0.25, kind: 'hare', most: 2}
+	],
+	[{chance: 0.35, kind: 'beetles', most: 1}],
+	[
+		{chance: 0.3, kind: 'moths', most: 1},
+		{chance: 0.2, kind: 'bird', most: 1}
+	],
+	[{chance: 0.35, kind: 'jellies', most: 1}],
+	[
+		{chance: 0.25, kind: 'bird', most: 1},
+		{chance: 0.25, kind: 'lizard', most: 1}
+	],
+	[{chance: 0.3, kind: 'lizard', most: 2}],
+	[{chance: 0.35, kind: 'lizard', most: 2}],
+	[
+		{chance: 0.25, kind: 'heron', most: 1},
+		{chance: 0.2, kind: 'bird', most: 1}
+	],
+	[
+		{chance: 0.3, kind: 'heron', most: 1},
+		{chance: 0.25, kind: 'fireflies', most: 1},
+		{chance: 0.2, kind: 'fish', most: 1}
+	],
+	[
+		{chance: 0.4, kind: 'fish', most: 1},
+		{chance: 0.2, kind: 'heron', most: 1}
+	],
+	[
+		{chance: 0.3, kind: 'lizard', most: 2},
+		{chance: 0.2, kind: 'bird', most: 1}
+	],
+	[
+		{chance: 0.3, kind: 'jellies', most: 1},
+		{chance: 0.25, kind: 'hare', most: 2}
+	],
+	[
+		{chance: 0.3, kind: 'yak', most: 3},
+		{chance: 0.3, kind: 'hare', most: 2}
+	],
+	[
+		{chance: 0.3, kind: 'grazer', most: 3},
+		{chance: 0.25, kind: 'bird', most: 1},
+		{chance: 0.2, kind: 'hare', most: 1}
+	]
+]
 
 // What each unit costs off Home's line.
 export const COSTS = {

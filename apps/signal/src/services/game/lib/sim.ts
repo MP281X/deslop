@@ -2,12 +2,27 @@ import {Array, MutableHashMap, MutableHashSet, MutableList, Number, Option, Orde
 import type {Types} from 'effect'
 
 import {route} from '#services/game/lib/path.ts'
-import {COSTS, RESEARCH, STATS, bearing, buildings, nameOf, staticTiles} from '#services/game/lib/utils.ts'
+import {
+	COSTS,
+	CREATURES,
+	ENEMIES,
+	HOME_SIGHT,
+	RESEARCH,
+	STATS,
+	WILDLIFE,
+	bearing,
+	buildings,
+	nameOf,
+	staticTiles
+} from '#services/game/lib/utils.ts'
 import type {
 	Act,
 	Action,
+	EnemyKind,
+	Explored,
 	Hud,
 	Job,
+	MobKind,
 	Point,
 	Saved,
 	Stock,
@@ -16,8 +31,8 @@ import type {
 	UnitView,
 	Waypoint
 } from '#services/game/schema.ts'
-import {EnemyKind} from '#services/game/schema.ts'
 import {
+	CHUNK,
 	GENERATOR,
 	GROUND,
 	LIQUID,
@@ -26,6 +41,7 @@ import {
 	chunkOf,
 	crossable,
 	hash,
+	lowest,
 	makeWorld,
 	standable,
 	tileGround,
@@ -79,8 +95,15 @@ const START_FLEET = [
 const HAULERS = ['cart', 'strider', 'skiff'] satisfies UnitKind[]
 const GUARDS = ['sentry', 'rotor'] satisfies UnitKind[]
 const NEEDS_ROAD = 'carts cannot reach the field: it needs a road or a ramp'
+// Wildlife lives in 16-tile patches: a patch comes alive within WILD_NEAR tiles of a unit, and is cleared once no unit is within 60.
+const PATCH = 16
+const WILD_NEAR = 40
 // Wet ground wheels crawl over.
 const MUD = [GROUND.mud, GROUND.mud2, GROUND.marsh, GROUND.reeds, GROUND.paddymud]
+// Water fish school in.
+const SWIMMABLE = [LIQUID.water, LIQUID.lagoon, LIQUID.spring]
+// A chunk's explored tiles, a bit each.
+const CHUNK_BYTES = (CHUNK * CHUNK) / 8
 
 type Unit = {
 	act: Act
@@ -103,12 +126,15 @@ type Unit = {
 	planned: number
 	recycle: boolean
 	route: string
+	// Where the unit last looked round it.
+	sighted: Point
 	timer: number
 	x: number
 	yaw: number
 	z: number
 }
 
+// A hostile: a raider sent after one unit (patch -1), or a roamer living in a wildlife patch round its spot until a unit comes near.
 type Enemy = {
 	act: Act
 	dead: number
@@ -116,7 +142,26 @@ type Enemy = {
 	health: number
 	id: number
 	kind: EnemyKind
+	patch: number
+	spot: Point
 	target: number
+	timer: number
+	x: number
+	yaw: number
+	z: number
+}
+
+// A creature: it rests at its spot, wanders round it or flies off, and bolts from whatever comes near.
+type Mob = {
+	act: Act
+	doing: string
+	from: Point
+	id: number
+	kind: MobKind
+	patch: number
+	scared: number
+	spot: Point
+	target: Option.Option<Point>
 	timer: number
 	x: number
 	yaw: number
@@ -129,7 +174,15 @@ type JobState = Types.Mutable<Job> & {
 	tile: Option.Option<number>
 }
 
-type Connection = {hud: string; id: number; revision: number; sent: boolean; user: string}
+// A client: the HUD and tile revision it has, and the version of each explored chunk it was sent.
+type Connection = {
+	explored: MutableHashMap.MutableHashMap<number, number>
+	hud: string
+	id: number
+	revision: number
+	sent: boolean
+	user: string
+}
 
 type Cost = Partial<Record<Material, number>>
 
@@ -142,6 +195,8 @@ type Colony = {
 	connection: number
 	draws: number
 	edits: number
+	// Bumped each time units look round; a chunk keeps the value it last changed at.
+	explored: number
 	lastActive: number
 	line: UnitKind[]
 	lineTimer: number
@@ -153,6 +208,7 @@ type Colony = {
 	shots: {from: number; to: number}[]
 	stock: Stock
 	waypoints: Waypoint[]
+	wildId: number
 }
 
 // Events CORE may want to react to on its own.
@@ -266,11 +322,37 @@ function newUnit(id: number, kind: UnitKind, at: Point) {
 		planned: -99,
 		recycle: false,
 		route: '',
+		sighted: {x: Infinity, z: Infinity},
 		timer: 0,
 		x: at.x,
 		yaw: 0,
 		z: at.z
 	} satisfies Unit
+}
+
+function chunkKey(cx: number, cz: number) {
+	return (cx + 4096) * 8192 + (cz + 4096)
+}
+
+function chunkFrom(key: number) {
+	return {cx: Math.floor(key / 8192) - 4096, cz: (key % 8192) - 4096}
+}
+
+function patchCentre(key: number) {
+	return {x: (Math.floor(key / 65_536) - 32_768 + 0.5) * PATCH, z: ((key % 65_536) - 32_768 + 0.5) * PATCH}
+}
+
+// The keys of the patches whose middle lies within WILD_NEAR tiles of a point, a patch's key packing its column and row.
+function patchesNear(at: Point) {
+	const span = Math.ceil(WILD_NEAR / PATCH)
+	const px = Math.floor(at.x / PATCH)
+	const pz = Math.floor(at.z / PATCH)
+	return Array.filter(
+		Array.flatMap(Array.range(-span, span), dz =>
+			Array.map(Array.range(-span, span), dx => (px + dx + 32_768) * 65_536 + (pz + dz + 32_768))
+		),
+		key => distance(patchCentre(key), at) <= WILD_NEAR
+	)
 }
 
 function fieldTiles(field: Field) {
@@ -297,6 +379,11 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 	const edits = MutableHashMap.empty<number, Edit>()
 	const units = MutableHashMap.empty<number, Unit>()
 	const enemies = MutableHashMap.empty<number, Enemy>()
+	const mobs = MutableHashMap.empty<number, Mob>()
+	// Live wildlife patches, by patch key: whatever lives in each.
+	const patches = MutableHashMap.empty<number, number[]>()
+	// The tiles the colony has seen, a bit each, per chunk, with the explore count it last changed at.
+	const explored = MutableHashMap.empty<number, {bits: Uint8Array; version: number}>()
 	const jobs = MutableHashMap.empty<number, JobState>()
 	const connections = MutableHashMap.empty<number, Connection>()
 	const log = MutableList.make<{key: number; revision: number}>()
@@ -309,6 +396,7 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 		connection: 0,
 		draws: 0,
 		edits: 0,
+		explored: 0,
 		lastActive: now,
 		line: [],
 		lineTimer: 0,
@@ -320,7 +408,9 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 		shots: [],
 		// Every material at zero, then the starting stock.
 		stock: {...Record.map(ORES, () => 0), ...START_STOCK},
-		waypoints: []
+		waypoints: [],
+		// Wildlife ids count up from here, apart from the colony's own.
+		wildId: 1_000_000_000
 	}
 
 	// The colony's own dice, seeded by its world so a replay of the same ticks rolls the same.
@@ -332,7 +422,7 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 	/* ───────── the world as units see it: generated chunks, edits and ore left ───────── */
 
 	function chunkAt(cx: number, cz: number) {
-		const key = (cx + 4096) * 8192 + (cz + 4096)
+		const key = chunkKey(cx, cz)
 		return Option.getOrElse(MutableHashMap.get(chunks, key), () => {
 			if (MutableHashMap.size(chunks) > 600) MutableHashMap.clear(chunks)
 			const chunk = world.chunk(cx, cz)
@@ -463,12 +553,12 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 		MutableList.append(events, {at: entry.at, text: entry.text})
 	}
 
-	function threatNear(point: Point, radius: number) {
+	function threatNear(point: Point, radius: number, include: (enemy: Enemy) => boolean = () => true) {
 		return Option.map(
 			Array.head(
 				Array.sort(
 					Array.map(
-						Array.filter(allEnemies(), enemy => enemy.dead === 0 && distance(enemy, point) <= radius),
+						Array.filter(allEnemies(), enemy => enemy.dead === 0 && distance(enemy, point) <= radius && include(enemy)),
 						enemy => ({distance: distance(enemy, point), enemy})
 					),
 					byDistance
@@ -1072,9 +1162,13 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 
 	/* ───────── raids and sentries ───────── */
 
+	function biomeAt(at: Point) {
+		const tile = chunkOf(Math.floor(at.x), Math.floor(at.z))
+		return chunkAt(tile.cx, tile.cz).biome[tile.index] ?? 0
+	}
+
 	function ambush(prey: Unit) {
-		const at = chunkOf(Math.floor(prey.x), Math.floor(prey.z))
-		const kind = EnemyKind.literals[chunkAt(at.cx, at.cz).biome[at.index] ?? 0] ?? 'glitch'
+		const kind = ENEMIES[biomeAt(prey)] ?? 'glitch'
 		const turn = random()
 		const spots = Array.map(Array.range(0, 15), n => {
 			const angle = ((n + turn) / 16) * Math.PI * 2
@@ -1099,6 +1193,8 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 						health: 60,
 						id,
 						kind,
+						patch: -1,
+						spot,
 						target: prey.id,
 						timer: 0,
 						x: spot.x,
@@ -1147,22 +1243,79 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 		)
 	}
 
-	function prowl(id: number, to: Point) {
-		const enemy = enemyOf(id)
-		if (enemy === undefined) return
-		const gap = distance(enemy, to)
-		enemy.act = 'move'
-		enemy.yaw = angleTo(enemy, to)
-		if (gap < 1e-3) return
+	// One tick of a hostile or creature (their ids never meet) on legs toward a point at a speed, never over ground legs cannot take; false when it is blocked or there.
+	function stride(id: number, to: Point, speed: number) {
+		const body = Option.getOrUndefined(
+			Option.orElse(MutableHashMap.get(enemies, id), () => MutableHashMap.get(mobs, id))
+		)
+		if (body === undefined) return false
+		const gap = distance(body, to)
+		body.act = 'move'
+		if (gap < 0.05) return false
+		body.yaw = angleTo(body, to)
 		const next = {
-			x: enemy.x + ((to.x - enemy.x) / gap) * 1.05 * TICK,
-			z: enemy.z + ((to.z - enemy.z) / gap) * 1.05 * TICK
+			x: body.x + ((to.x - body.x) / gap) * Number.min(gap, speed * TICK),
+			z: body.z + ((to.z - body.z) / gap) * Number.min(gap, speed * TICK)
 		}
-		if (!legsCross({x: Math.floor(enemy.x), z: Math.floor(enemy.z)}, {x: Math.floor(next.x), z: Math.floor(next.z)})) {
-			return
+		if (!legsCross({x: Math.floor(body.x), z: Math.floor(body.z)}, {x: Math.floor(next.x), z: Math.floor(next.z)})) {
+			return false
 		}
-		enemy.x = next.x
-		enemy.z = next.z
+		body.x = next.x
+		body.z = next.z
+		return true
+	}
+
+	// A point within a radius of another, by the colony's dice.
+	function roundAbout(at: Point, radius: number) {
+		const angle = random() * Math.PI * 2
+		const far = radius * Math.sqrt(random())
+		return {x: at.x + Math.sin(angle) * far, z: at.z + Math.cos(angle) * far}
+	}
+
+	// A roamer with no prey wanders round its spot and goes for the nearest unit on the ground within 7 tiles; a prey led more than 22 tiles from its spot is let go.
+	function roam(id: number) {
+		const enemy = enemyOf(id)
+		if (enemy === undefined) return undefined
+		const prey = Option.getOrUndefined(Option.filter(MutableHashMap.get(units, enemy.target), unit => unit.health > 0))
+		if (prey !== undefined && distance(prey, enemy.spot) < 22) return prey
+		enemy.target = 0
+		Option.match(
+			Array.head(
+				Array.sort(
+					Array.map(
+						Array.filter(
+							allUnits(),
+							unit => unit.health > 0 && STATS[unit.kind].mover !== 'fly' && distance(unit, enemy) <= 7
+						),
+						unit => ({distance: distance(unit, enemy), unit})
+					),
+					byDistance
+				)
+			),
+			{
+				onNone: () => {
+					enemy.doing = 'prowling'
+					if (stride(id, enemy.spot, 0.6)) return
+					enemy.act = 'idle'
+					enemy.timer += TICK
+					// Every few seconds it sets off for another spot in its patch.
+					if (enemy.timer > 4 + 5 * random()) {
+						enemy.spot = roundAbout(patchCentre(enemy.patch), 6)
+						enemy.timer = 0
+					}
+				},
+				onSome: entry => {
+					enemy.target = entry.unit.id
+					enemy.doing = 'hunting'
+				}
+			}
+		)
+		return undefined
+	}
+
+	function preyOf(enemy: Enemy) {
+		if (enemy.patch >= 0) return roam(enemy.id)
+		return Option.getOrUndefined(Option.filter(MutableHashMap.get(units, enemy.target), unit => unit.health > 0))
 	}
 
 	function hunt(id: number) {
@@ -1173,18 +1326,19 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 			if (state.clock - enemy.dead > 3) MutableHashMap.remove(enemies, id)
 			return
 		}
-		const prey = Option.getOrUndefined(Option.filter(MutableHashMap.get(units, enemy.target), unit => unit.health > 0))
-		// Once its prey is down it slinks off, away from Home, and is gone a little later.
+		const prey = preyOf(enemy)
+		if (enemy.patch >= 0 && prey === undefined) return
+		// Once its prey is down a raider slinks off, away from Home, and is gone a little later.
 		if (prey === undefined) {
 			enemy.timer += TICK
 			enemy.doing = 'leaving'
-			prowl(id, {x: enemy.x * 2 - home.x, z: enemy.z * 2 - home.z})
+			stride(id, {x: enemy.x * 2 - home.x, z: enemy.z * 2 - home.z}, 1.05)
 			if (enemy.timer > 20) MutableHashMap.remove(enemies, id)
 			return
 		}
 		enemy.yaw = angleTo(enemy, prey)
 		if (distance(enemy, prey) > 1.1) {
-			prowl(id, prey)
+			stride(id, prey, 1.05)
 			return
 		}
 		enemy.act = 'attack'
@@ -1228,7 +1382,13 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 		const sentry = unitOf(id)
 		if (sentry === undefined) return false
 		const foe = Option.getOrUndefined(
-			Option.orElse(threatNear(sentry, 14), () => Option.filter(threatNear(home, 40), () => Option.isNone(sentry.job)))
+			Option.orElse(threatNear(sentry, 14), () =>
+				// A free sentry rides out to anything hunting within 40 tiles of Home, not to roamers minding their own patch.
+				Option.filter(
+					threatNear(home, 40, enemy => enemy.target !== 0),
+					() => Option.isNone(sentry.job)
+				)
+			)
 		)
 		if (foe === undefined) return false
 		sentry.aim = angleTo(sentry, foe) - sentry.yaw
@@ -1297,6 +1457,286 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 		unit.doing = 'fleeing an attack'
 		goTo(id, refuge.to, refuge.near)
 		unit.act = 'alarm'
+	}
+
+	/* ───────── wildlife: creatures and roaming hostiles in patches round the colony's units ───────── */
+
+	// Ground a creature can stand on: dry and open on legs, or for fish water deep enough to school in.
+	function habitable(kind: MobKind, x: number, z: number) {
+		const tile = ground(x, z)
+		if (Array.contains(blocked, tileKey(x, z)) || distance({x, z}, home) < 8) return false
+		if (CREATURES[kind].life === 'fish') {
+			return Array.contains(SWIMMABLE, tile.liquid) && tile.surface - lowest(tile.corners) >= 0.3
+		}
+		return tile.liquid === LIQUID.none && standable(MOVERS.legs, tile)
+	}
+
+	// A patch's own spot for a group, found the same way every time it comes alive.
+	function spotIn(key: number, row: number, kind: MobKind) {
+		const centre = patchCentre(key)
+		return Option.map(
+			Array.findFirst(
+				Array.map(Array.range(0, 9), n => ({
+					x: Math.floor(centre.x + (hash(seed + row * 31 + n, key, 3) - 0.5) * PATCH),
+					z: Math.floor(centre.z + (hash(seed + row * 37 + n, key, 5) - 0.5) * PATCH)
+				})),
+				at => habitable(kind, at.x, at.z)
+			),
+			at => ({x: at.x + 0.5, z: at.z + 0.5})
+		)
+	}
+
+	function spawnMob(kind: MobKind, key: number, at: Point) {
+		state.wildId += 1
+		MutableHashMap.set(mobs, state.wildId, {
+			act: 'idle',
+			doing: CREATURES[kind].rest,
+			from: at,
+			id: state.wildId,
+			kind,
+			patch: key,
+			scared: -99,
+			spot: at,
+			target: Option.none(),
+			timer: 2 + random() * 6,
+			x: at.x,
+			yaw: random() * Math.PI * 2,
+			z: at.z
+		})
+		return state.wildId
+	}
+
+	function spawnRoamer(kind: EnemyKind, key: number, at: Point) {
+		const id = state.nextId
+		state.nextId += 1
+		MutableHashMap.set(enemies, id, {
+			act: 'idle',
+			dead: 0,
+			doing: 'prowling',
+			health: 60,
+			id,
+			kind,
+			patch: key,
+			spot: at,
+			target: 0,
+			timer: 0,
+			x: at.x,
+			yaw: random() * Math.PI * 2,
+			z: at.z
+		})
+		return id
+	}
+
+	// What lives in a patch: its biome's groups by their chances, and now and then a pair of hostiles away from Home.
+	function populate(key: number) {
+		const centre = patchCentre(key)
+		const biome = biomeAt(centre)
+		const px = Math.floor(key / 65_536)
+		const pz = key % 65_536
+		const groups = Array.flatMap(WILDLIFE[biome] ?? [], (row, n) => {
+			if (hash(seed + 101 + n, px, pz) >= row.chance) return []
+			return Option.match(spotIn(key, n, row.kind), {
+				onNone: () => [],
+				onSome: at =>
+					Array.map(Array.range(1, 1 + Math.floor(hash(seed + 151 + n, px, pz) * row.most)), q =>
+						spawnMob(row.kind, key, {x: at.x + (q - 1) * 0.6, z: at.z + ((q * 7) % 3) * 0.5})
+					)
+			})
+		})
+		// Hostiles roam only more than 28 tiles from Home.
+		const hostile = distance(centre, home) > 28 && hash(seed + 199, px, pz) < 0.12
+		const roamers = Option.match(
+			Option.filter(spotIn(key, 9, 'grazer'), () => hostile),
+			{
+				onNone: () => [],
+				onSome: at =>
+					Array.map(Array.range(1, 1 + Math.floor(hash(seed + 211, px, pz) * 2)), q =>
+						spawnRoamer(ENEMIES[biome] ?? 'glitch', key, {x: at.x + q * 0.8, z: at.z})
+					)
+			}
+		)
+		MutableHashMap.set(patches, key, [...groups, ...roamers])
+	}
+
+	// Once a second: patches within reach of a unit come alive, patches no unit is near any more are cleared, hostiles in a fight excepted.
+	function wildlife() {
+		const alive = Array.filter(allUnits(), unit => unit.health > 0)
+		for (const key of Array.dedupe(Array.flatMap(alive, patchesNear))) {
+			if (!MutableHashMap.has(patches, key)) populate(key)
+		}
+		const forgotten = Array.filter(Array.fromIterable(patches), entry =>
+			Array.every(alive, unit => distance(unit, patchCentre(entry[0])) > 60)
+		)
+		for (const entry of forgotten) {
+			for (const id of entry[1]) MutableHashMap.remove(mobs, id)
+			for (const id of Array.filter(entry[1], member =>
+				Option.exists(MutableHashMap.get(enemies, member), enemy => enemy.target === 0)
+			)) {
+				MutableHashMap.remove(enemies, id)
+			}
+			MutableHashMap.remove(patches, entry[0])
+		}
+	}
+
+	function mobOf(id: number) {
+		return Option.getOrUndefined(MutableHashMap.get(mobs, id))
+	}
+
+	// A flier crosses anything: straight at its speed, true once there.
+	function glide(id: number, to: Point, speed: number) {
+		const mob = mobOf(id)
+		if (mob === undefined) return true
+		const gap = distance(mob, to)
+		mob.act = 'move'
+		if (gap <= speed * TICK) {
+			mob.x = to.x
+			mob.z = to.z
+			return true
+		}
+		mob.yaw = angleTo(mob, to)
+		mob.x += ((to.x - mob.x) / gap) * speed * TICK
+		mob.z += ((to.z - mob.z) / gap) * speed * TICK
+		return false
+	}
+
+	function fly(id: number) {
+		const mob = mobOf(id)
+		if (mob === undefined) return
+		const life = CREATURES[mob.kind]
+		Option.match(mob.target, {
+			onNone: () => {
+				mob.act = 'idle'
+				mob.doing = life.rest
+				mob.timer -= TICK
+				// Now and then it moves on to another spot of its patch.
+				if (mob.timer > 0) return
+				mob.timer = 15 + random() * 25
+				mob.target = Option.filter(Option.some(roundAbout(patchCentre(mob.patch), 7)), at =>
+					habitable(mob.kind, Math.floor(at.x), Math.floor(at.z))
+				)
+			},
+			onSome: to => {
+				mob.doing = 'flying'
+				if (glide(id, to, life.flee)) mob.target = Option.none()
+			}
+		})
+	}
+
+	function wander(id: number) {
+		const mob = mobOf(id)
+		if (mob === undefined) return
+		const life = CREATURES[mob.kind]
+		Option.match(mob.target, {
+			onNone: () => {
+				mob.act = 'idle'
+				mob.doing = life.rest
+				mob.timer -= TICK
+				if (mob.timer > 0) return
+				mob.timer = 3 + random() * 6
+				mob.target = Option.filter(Option.some(roundAbout(mob.spot, 5)), at =>
+					habitable(mob.kind, Math.floor(at.x), Math.floor(at.z))
+				)
+			},
+			onSome: to => {
+				mob.doing = 'wandering'
+				if (!stride(id, to, life.walk)) mob.target = Option.none()
+			}
+		})
+	}
+
+	// A creature bolts for a few seconds from the nearest unit or hostile within 3.5 tiles (a flier to another spot), then goes back to its life.
+	function creature(id: number) {
+		const mob = mobOf(id)
+		if (mob === undefined) return
+		const life = CREATURES[mob.kind]
+		if (life.life === 'swarm' || life.life === 'fish') {
+			mob.act = 'idle'
+			return
+		}
+		Option.match(
+			Array.head(
+				Array.sort(
+					Array.filter(
+						[
+							...Array.map(allUnits(), unit => ({at: {x: unit.x, z: unit.z}, distance: distance(unit, mob)})),
+							...Array.map(
+								Array.filter(allEnemies(), enemy => enemy.dead === 0),
+								enemy => ({at: {x: enemy.x, z: enemy.z}, distance: distance(enemy, mob)})
+							)
+						],
+						entry => entry.distance <= 3.5
+					),
+					byDistance
+				)
+			),
+			{
+				onNone: () => undefined,
+				onSome: threat => {
+					if (state.clock - mob.scared > 2.5 && life.life === 'flier') {
+						const away = awayOf(threat.at, mob)
+						mob.target = Option.some({x: mob.x + away.x * 10, z: mob.z + away.z * 10})
+					}
+					mob.scared = state.clock
+					mob.from = threat.at
+				}
+			}
+		)
+		if (life.life === 'flier') {
+			fly(id)
+			return
+		}
+		if (state.clock - mob.scared < 2.5) {
+			const away = awayOf(mob.from, mob)
+			mob.target = Option.none()
+			mob.doing = 'running off'
+			stride(id, {x: mob.x + away.x * 2, z: mob.z + away.z * 2}, life.flee)
+			mob.act = 'alarm'
+			return
+		}
+		wander(id)
+	}
+
+	/* ───────── exploration: what the colony's units have seen ───────── */
+
+	function see(x: number, z: number) {
+		const at = chunkOf(x, z)
+		const key = chunkKey(at.cx, at.cz)
+		const entry = Option.getOrElse(MutableHashMap.get(explored, key), () => {
+			const created = {bits: new Uint8Array(CHUNK_BYTES), version: 0}
+			MutableHashMap.set(explored, key, created)
+			return created
+		})
+		const byte = at.index >> 3
+		const bit = 1 << (at.index & 7)
+		if (((entry.bits[byte] ?? 0) & bit) !== 0) return
+		entry.bits[byte] = (entry.bits[byte] ?? 0) | bit
+		entry.version = state.explored
+	}
+
+	function lookRound(at: Point, radius: number) {
+		const span = Math.ceil(radius)
+		for (const dz of Array.range(-span, span)) {
+			for (const dx of Array.range(-span, span)) {
+				if (dx * dx + dz * dz <= radius * radius) see(Math.floor(at.x) + dx, Math.floor(at.z) + dz)
+			}
+		}
+	}
+
+	// Twice a second every unit that moved half a tile looks round it as far as it sees.
+	function explore() {
+		state.explored += 1
+		for (const unit of Array.filter(allUnits(), entry => distance(entry, entry.sighted) >= 0.5)) {
+			unit.sighted = {x: unit.x, z: unit.z}
+			lookRound(unit, STATS[unit.kind].sight)
+		}
+	}
+
+	// Whether Home or any of the colony's units sees a point.
+	function sighted(at: Point) {
+		return (
+			distance(home, at) <= HOME_SIGHT ||
+			Array.some(allUnits(), unit => distance(unit, at) <= STATS[unit.kind].sight + 1)
+		)
 	}
 
 	/* ───────── one tick ───────── */
@@ -1437,7 +1877,11 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 		for (const job of Array.fromIterable(MutableHashMap.values(jobs))) work(job.id)
 		unload()
 		for (const enemy of allEnemies()) hunt(enemy.id)
+		for (const id of Array.fromIterable(MutableHashMap.keys(mobs))) creature(id)
 		separate()
+		const count = Number.round(state.clock / TICK, 0)
+		if (count % 10 === 0) explore()
+		if (count % 20 === 0) wildlife()
 		state.raidAt -= TICK
 		if (state.raidAt <= 0) {
 			state.raidAt = RAID_EVERY + random() * RAID_EVERY * 0.5
@@ -1596,6 +2040,29 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 		} satisfies UnitView
 	}
 
+	function mobView(mob: Mob) {
+		return {
+			act: mob.act,
+			doing: mob.doing,
+			health: 1,
+			id: mob.id,
+			kind: mob.kind,
+			load: 0,
+			x: mob.x,
+			yaw: mob.yaw,
+			z: mob.z
+		} satisfies UnitView
+	}
+
+	// The chunks a client has not been sent since they last changed.
+	function exploredFor(connection: Connection) {
+		return Array.flatMap(Array.fromIterable(explored), entry => {
+			if (Option.getOrElse(MutableHashMap.get(connection.explored, entry[0]), () => -1) >= entry[1].version) return []
+			MutableHashMap.set(connection.explored, entry[0], entry[1].version)
+			return [{bits: Uint8Array.from(entry[1].bits), ...chunkFrom(entry[0])} satisfies Explored]
+		})
+	}
+
 	function enemyView(enemy: Enemy) {
 		return {
 			act: enemy.act,
@@ -1723,9 +2190,15 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 		return Option.some({
 			at,
 			changes,
+			explored: exploredFor(connection),
 			hud: Option.getOrUndefined(Option.liftPredicate(view, () => moved)),
 			shots: state.shots,
-			units: [...Array.map(allUnits(), unitView), ...Array.map(allEnemies(), enemyView)],
+			// Hostiles and wildlife show only where a unit sees them.
+			units: [
+				...Array.map(allUnits(), unitView),
+				...Array.map(Array.filter(allEnemies(), sighted), enemyView),
+				...Array.map(Array.filter(Array.fromIterable(MutableHashMap.values(mobs)), sighted), mobView)
+			],
 			world: Option.getOrUndefined(Option.liftPredicate({generator: GENERATOR, seed}, () => first))
 		})
 	}
@@ -1821,7 +2294,7 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 				`Threats: ${
 					Array.join(
 						Array.map(
-							Array.filter(allEnemies(), enemy => enemy.dead === 0),
+							Array.filter(allEnemies(), enemy => enemy.dead === 0 && sighted(enemy)),
 							enemy => `a ${enemy.kind} ${bearing(home, enemy)} of Home`
 						),
 						'; '
@@ -1847,7 +2320,7 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 		return {x: home.x + Math.sin(angle) * 4, z: home.z + Math.cos(angle) * 4}
 	}
 
-	// The colony as saved: on the same world everything comes back; on a newer generator's world the ground changed under it, so its edits, ore left and jobs go, and its units come back round Home with the stock, research and conversation.
+	// The colony as saved: on the same world everything comes back; on a newer generator's world the ground changed under it, so its edits, ore left, jobs and map go, and its units come back round Home with the stock, research and conversation.
 	function restore(previous: Saved) {
 		const same = previous.generator === GENERATOR
 		if (same) {
@@ -1861,6 +2334,9 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 					spot: Option.none(),
 					tile: Option.none()
 				})
+			}
+			for (const chunk of previous.explored ?? []) {
+				MutableHashMap.set(explored, chunkKey(chunk.cx, chunk.cz), {bits: Uint8Array.from(chunk.bits), version: 0})
 			}
 		}
 		for (const entry of Array.map(previous.units, (unit, index) => ({index, unit}))) {
@@ -1903,6 +2379,8 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 		},
 		onSome: restore
 	})
+	// The colony starts knowing the ground round Home.
+	lookRound(home, HOME_SIGHT)
 
 	return {
 		act: (action: Action, at: number) => {
@@ -1913,7 +2391,14 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 		connect: (user: string, at: number) => {
 			state.lastActive = at
 			state.connection += 1
-			MutableHashMap.set(connections, state.connection, {hud: '', id: state.connection, revision: 0, sent: false, user})
+			MutableHashMap.set(connections, state.connection, {
+				explored: MutableHashMap.empty(),
+				hud: '',
+				id: state.connection,
+				revision: 0,
+				sent: false,
+				user
+			})
 			return state.connection
 		},
 		disconnect: (id: number) => {
@@ -1939,6 +2424,10 @@ export function makeSim(saved: Option.Option<Saved>, now: number, fresh: number)
 				),
 				chat: Array.takeRight(state.chat, 40),
 				edits: Array.map(Array.fromIterable(edits), entry => ({edit: entry[1], ...tileOf(entry[0])})),
+				explored: Array.map(Array.fromIterable(explored), entry => ({
+					bits: Uint8Array.from(entry[1].bits),
+					...chunkFrom(entry[0])
+				})),
 				generator: GENERATOR,
 				jobs: Array.map(Array.fromIterable(MutableHashMap.values(jobs)), job => ({
 					action: job.action,
