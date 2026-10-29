@@ -144,11 +144,11 @@ jobs:
       EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: 1
     steps:
       - uses: actions/checkout@v5
-      # The Vite+ installer, CocoaPods and the Hermes tarball download with curl: a reset or a stalled transfer retries instead of failing the release or hanging for minutes.
-      - run: printf '%s\n' 'retry = 5' 'retry-all-errors' 'connect-timeout = 15' 'speed-limit = 10000' 'speed-time = 30' > ~/.curlrc
       - uses: voidzero-dev/setup-vp@v1
         with: {node-version: '26', cache: true, run-install: true}
       - run: npm install --global eas-cli@latest
+      # CocoaPods and the Hermes tarball download with curl to files: a reset or a stalled transfer retries instead of failing the release or hanging for minutes. After setup-vp, whose installer streams into bash, where a retry would append a second script.
+      - run: printf '%s\n' 'retry = 5' 'retry-all-errors' 'connect-timeout = 15' 'speed-limit = 10000' 'speed-time = 30' > ~/.curlrc
       # One cache for every app: their pods come from the same lockfile, and the Hermes tarball's mirror often stalls.
       - uses: actions/cache@v4
         with:
