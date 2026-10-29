@@ -205,19 +205,11 @@ export const answerAtom = Atom.keepAlive(
 	})
 )
 
-// The booking deleted last, which the list offers to put back for eight seconds; a later delete takes its place.
-export const undoAtom = AtomMachine.bind(RpcClient.runtime).make(
+// The booking deleted last, which the list offers to put back for eight seconds; a later delete takes its place, and a restore ends only its own offer.
+export const undoAtom = AtomMachine.make(
 	Machine.make({
-		effects: {
-			restore: Effect.fnUntraced(function* (booking: Booking) {
-				const client = yield* RpcClient
-				return yield* alert('Not Restored')(client('bookings.restore', booking))
-			})
-		},
-		events: Machine.events({Deleted: {booking: Booking}, Restore: {}}),
-		root: Machine.state({
-			states: {Idle: {}, Offered: {fields: {booking: Booking}}, Restoring: {fields: {booking: Booking}}}
-		}),
+		events: Machine.events({Deleted: {booking: Booking}, Restored: {id: Schema.String}}),
+		root: Machine.state({states: {Idle: {}, Offered: {fields: {booking: Booking}}}}),
 		timers: {expire: '8 seconds'}
 	}).handle({
 		initial: {target: 'Idle'},
@@ -227,16 +219,7 @@ export const undoAtom = AtomMachine.bind(RpcClient.runtime).make(
 				invoke: {onDone: {target: 'Idle'}, src: 'expire'},
 				on: {
 					Deleted: {data: transition => ({booking: transition.event.booking}), reenter: true, target: 'Offered'},
-					Restore: {data: transition => ({booking: transition.state.booking}), target: 'Restoring'}
-				}
-			},
-			Restoring: {
-				invoke: {
-					input: transition => transition.state.booking,
-					onDone: {target: 'Idle'},
-					// The offer comes back so the booking is not lost to a dropped connection.
-					onFailure: {data: transition => ({booking: transition.state.booking}), target: 'Offered'},
-					src: 'restore'
+					Restored: {guard: transition => transition.state.booking.id === transition.event.id, target: 'Idle'}
 				}
 			}
 		}
@@ -256,6 +239,19 @@ export const removeAtom = Atom.keepAlive(
 			),
 		// A second swipe deletes its booking too instead of interrupting the first.
 		{concurrent: true}
+	)
+)
+
+export const restoreAtom = Atom.keepAlive(
+	Atom.fn((booking: Booking, get) =>
+		pipe(
+			withClient(
+				get,
+				Effect.flatMap(RpcClient, client => client('bookings.restore', booking))
+			),
+			Effect.tap(() => Effect.sync(() => get.set(undoAtom.send, {_tag: 'Restored', id: booking.id}))),
+			alert('Not Restored')
+		)
 	)
 )
 
