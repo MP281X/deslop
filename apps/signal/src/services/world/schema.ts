@@ -1,7 +1,25 @@
 import {Schema} from 'effect'
 
 export type Biome = typeof Biome.Type
-export const Biome = Schema.Literals(['meadow', 'marsh', 'mesa', 'frost', 'lava', 'ruins', 'fungal', 'karst', 'salt'])
+export const Biome = Schema.Literals([
+	'meadow',
+	'marsh',
+	'mesa',
+	'frost',
+	'lava',
+	'ruins',
+	'fungal',
+	'karst',
+	'salt',
+	'glass',
+	'springs',
+	'paddies',
+	'coral',
+	'canyon',
+	'prism',
+	'tundra',
+	'autumn'
+])
 
 // Every material the world holds, in ore id order: ore id 0 is bare ground, id n is the nth material here.
 export type Material = typeof Material.Type
@@ -30,7 +48,12 @@ export const Material = Schema.Literals([
 	'zinc',
 	'salt',
 	'potash',
-	'lithium'
+	'lithium',
+	'glass',
+	'jade',
+	'coral',
+	'garnet',
+	'amber'
 ])
 
 // Where a material's fields sit: high on tops, low in hollows, wet by water, anywhere on the plain, along a cliff's foot, or on the start basin's floor.

@@ -190,7 +190,8 @@ export const Saved = Schema.Struct({
 	nextId: Schema.Int,
 	research: Research,
 	seed: Schema.Int,
-	stock: Stock,
+	// A save from before a material existed has none of it.
+	stock: Schema.Record(Material, Schema.optionalKey(Schema.Finite)),
 	units: Schema.Array(SavedUnit),
 	waypoints: Schema.Array(Waypoint)
 })

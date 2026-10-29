@@ -45,6 +45,34 @@ it('hauls a field’s last part-bite home and frees its crew', {timeout: 120_000
 	assert.deepStrictEqual(hud?.jobs, [])
 })
 
+it('carries a colony from an older generator onto the new world, round Home', {timeout: 60_000}, () => {
+	const sim = makeSim(Option.none(), START, 7)
+	sim.act({_tag: 'Mine', field: Option.getOrThrow(Array.head(makeWorld(sim.seed).spawn().fields))}, START)
+	const before = sim.snapshot()
+	// The previous release's save: an older generator, no stock of materials it did not have, and each unit carrying copper.
+	const previous = Schema.decodeSync(Schema.fromJsonString(Saved))(
+		JSON.stringify({
+			...before,
+			generator: before.generator - 1,
+			stock: {copper: 20, iron: 40, stone: 60},
+			units: Array.map(before.units, unit => ({...unit, cargo: 10, material: 'copper'}))
+		})
+	)
+	const after = makeSim(Option.some(previous), run(sim, 30), 0).snapshot()
+	assert.strictEqual(after.seed, before.seed)
+	assert.deepStrictEqual(
+		[after.stock.copper, after.stock.iron, after.stock.glass],
+		[20 + 10 * before.units.length, 40, 0]
+	)
+	assert.isTrue(Array.every(after.units, unit => unit.cargo === 0))
+	assert.deepStrictEqual(
+		Array.map(after.units, unit => unit.kind),
+		Array.map(before.units, unit => unit.kind)
+	)
+	assert.deepStrictEqual(after.jobs, [])
+	assert.deepStrictEqual(after.edits, [])
+})
+
 it('restores a saved colony as it was', {timeout: 60_000}, () => {
 	const sim = makeSim(Option.none(), START, 7)
 	sim.act({_tag: 'Mine', field: Option.getOrThrow(Array.head(makeWorld(sim.seed).spawn().fields))}, START)
