@@ -59,7 +59,8 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 	)
 	const pending = MutableList.make<Experience>()
 	MutableList.appendAll(pending, unarchived)
-	const state = {sequence: saved?.sequence ?? 0}
+	const state = {pollution: Array.some(saved?.traces ?? [], trace => trace.smog > 0), sequence: saved?.sequence ?? 0}
+	const air = MutableHashMap.empty<string, number>()
 
 	function core(team: number) {
 		return Option.getOrElse(MutableHashMap.get(cores, team), () => {
@@ -200,7 +201,7 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 				...Option.match(Option.fromUndefinedOr(order), {onNone: () => ({}), onSome: objective => ({order: objective})})
 			}
 		]
-		own.next = Number.min(own.next, tick)
+		own.next = Number.min(own.next, tick - TICK_HZ * 120)
 		event(body, tick, 'message', `A message from #${from} was delivered; not yet read.`)
 	}
 
@@ -264,6 +265,28 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 			x,
 			yaw: body.yaw,
 			z
+		})
+	}
+
+	function smogAt(at: Point) {
+		if (!state.pollution) return 0
+		const key = `${Math.floor(at.x)},${Math.floor(at.z)}`
+		return Option.getOrElse(MutableHashMap.get(air, key), () => {
+			const amount = Number.sumAll(
+				Array.flatMap(Array.range(-8, 8), dz =>
+					Array.map(Array.range(-8, 8), dx =>
+						Option.getOrElse(
+							Option.map(
+								MutableHashMap.get(traces, `${Math.floor(at.x) + dx},${Math.floor(at.z) + dz}`),
+								trace => trace.smog
+							),
+							() => 0
+						)
+					)
+				)
+			)
+			MutableHashMap.set(air, key, amount)
+			return amount
 		})
 	}
 
@@ -354,15 +377,7 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 							'Choose movement, rest and encounters from local conditions, not an automatic aggression rule.',
 						onTrue: () => 'Naturally active at night; rest or shelter during bright daylight.'
 					}),
-					smog: Number.sumAll(
-						Array.map(
-							Array.filter(
-								Array.fromIterable(MutableHashMap.values(traces)),
-								trace => Math.hypot(body.x - trace.x, body.z - trace.z) < 8
-							),
-							trace => trace.smog
-						)
-					)
+					smog: smogAt(body)
 				},
 				facts: relevant,
 				guidance: own.guidance,
@@ -402,11 +417,28 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 		observe,
 		person,
 		pollute(at: Point, amount: number, tick: number) {
-			const x = Math.floor(at.x)
-			const z = Math.floor(at.z)
-			const key = `${x},${z}`
-			const before = Option.getOrElse(MutableHashMap.get(traces, key), () => ({smog: 0, tick, wear: 0, x, yaw: 0, z}))
-			MutableHashMap.set(traces, key, {...before, smog: Number.min(1, before.smog + amount)})
+			if (amount <= 0) return
+			state.pollution = true
+			MutableHashMap.clear(air)
+			for (const dz of Array.range(-3, 3)) {
+				for (const dx of Array.range(-3, 3)) {
+					const x = Math.floor(at.x) + dx
+					const z = Math.floor(at.z) + dz
+					const key = `${x},${z}`
+					const before = Option.getOrElse(MutableHashMap.get(traces, key), () => ({
+						smog: 0,
+						tick,
+						wear: 0,
+						x,
+						yaw: 0,
+						z
+					}))
+					MutableHashMap.set(traces, key, {
+						...before,
+						smog: Number.min(1, before.smog + amount / (1 + dx * dx + dz * dz))
+					})
+				}
+			}
 		},
 		read,
 		report,
@@ -429,7 +461,9 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 				})
 			}))
 		},
+		visibility: (at: Point, tick: number) => daylightAt(tick) / (1 + smogAt(at) * 0.08),
 		weather(tick: number) {
+			MutableHashMap.clear(air)
 			for (const entry of traces) {
 				const trace = entry[1]
 				trace.impressions = Array.filter(

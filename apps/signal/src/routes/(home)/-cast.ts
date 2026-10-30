@@ -7,7 +7,7 @@ import {clone} from 'three/addons/utils/SkeletonUtils.js'
 
 import type {Renderer} from './-renderer.ts'
 
-import {CREATURES, HOME_SIGHT, ORE_ITEM, TEAMS} from '#services/game/lib/utils.ts'
+import {HOME_SIGHT, ORE_ITEM, TEAMS} from '#services/game/lib/utils.ts'
 import type {Act, BuildingView, Frame, ItemId, UnitView} from '#services/game/schema.ts'
 import {ORES} from '#services/world/lib/utils.ts'
 
@@ -25,30 +25,12 @@ const FLIERS = ['loader', 'rotor']
 const PORTRAIT = 96
 // Creatures that stay level on any slope, and fish, which school at the water's surface.
 const UPRIGHT = ['fireflies', 'beetles', 'moths', 'jellies', 'fish', 'bird', 'heron']
-const MODELS = [
-	'burrower',
-	'cart',
-	'crawler',
-	'digger',
-	'dozer',
-	'drifter',
-	'glitch',
-	'golem',
-	'loader',
-	'lurker',
-	'rotor',
-	'ruinsentry',
-	'scrapdog',
-	'sentry',
-	'skiff',
-	'skimmer',
-	'strider',
-	'worker',
-	...Record.keys(CREATURES)
-]
-
 // Model files by name, as Vite serves them.
-const URLS = import.meta.glob<string>('./-models/*.glb', {eager: true, import: 'default', query: '?url'})
+const URLS = import.meta.glob<string>(['./-models/*.glb', '!**/home.glb', '!**/lab.glb', '!**/pad.glb'], {
+	eager: true,
+	import: 'default',
+	query: '?url'
+})
 const TRACER = new THREE.MeshBasicMaterial({color: '#ffd98a', toneMapped: false})
 const BOX = new THREE.BoxGeometry(0.4, 0.3, 0.5)
 const BOX_SKIN = new THREE.MeshStandardMaterial({color: '#e9e2d5'})
@@ -563,12 +545,11 @@ export function createCast(view: Renderer) {
 	const itemPaints = MutableHashMap.empty<ItemId, THREE.Material>()
 	const hulls = Array.map(TEAMS, team => hullMaterial(team.color))
 	const state = {
+		closed: false,
 		count: 0,
+		daylight: 1,
 		fading: Array.empty<{action: THREE.AnimationAction; at: number}>(),
 		homes: Array.empty<{x: number; z: number}>(),
-		models: 0,
-		// The buildings last drawn, and how many models had loaded then: a model that loads since redraws them.
-		placed: {list: Option.none<NonNullable<Frame['buildings']>>(), models: 0},
 		seconds: 0,
 		tracers: Array.empty<{mesh: THREE.Mesh; until: number}>()
 	}
@@ -582,15 +563,18 @@ export function createCast(view: Renderer) {
 	painter.outputColorSpace = THREE.SRGBColorSpace
 	painter.toneMapping = THREE.NeutralToneMapping
 	painter.setClearColor(0x00_00_00, 0)
-	for (const name of MODELS) {
+	const requested = MutableHashMap.empty<string, boolean>()
+	function loadModel(name: string) {
+		if (MutableHashMap.has(requested, name)) return
+		MutableHashMap.set(requested, name, true)
 		Option.match(Record.get(URLS, `./-models/${name}.glb`), {
 			onNone: () => undefined,
 			onSome: url =>
 				loader.load(
 					url,
 					gltf => {
+						if (state.closed) return
 						MutableHashMap.set(models, name, gltf)
-						state.models += 1
 						MutableHashMap.set(portraits.painted, name, portraitOf(gltf, painter))
 						for (const listener of portraits.listeners) listener()
 					},
@@ -622,6 +606,7 @@ export function createCast(view: Renderer) {
 	function dress(id: number) {
 		const actor = actorOf(id)
 		if (actor === undefined || actor.dressed) return
+		loadModel(actor.kind)
 		const gltf = Option.getOrUndefined(MutableHashMap.get(models, actor.kind))
 		if (gltf === undefined) return
 		const object = halos(shaded(clone(gltf.scene)))
@@ -788,6 +773,7 @@ export function createCast(view: Renderer) {
 
 	function frame(next: Frame) {
 		state.count += 1
+		state.daylight = next.environment?.daylight ?? 1
 		for (const unit of next.units) {
 			const actor = actorOf(unit.id)
 			// A refitted unit is drawn as its new model, from scratch.
@@ -835,7 +821,6 @@ export function createCast(view: Renderer) {
 
 	// The buildings as last sent: each one redrawn only when what it shows changed, Home's where every Home's sight is.
 	function places(list: NonNullable<Frame['buildings']>) {
-		state.placed = {list: Option.some(list), models: state.models}
 		state.homes = Array.map(
 			Array.filter(list, building => building.kind === 'home'),
 			home => ({x: home.x + home.w / 2, z: home.z + home.d / 2})
@@ -848,7 +833,7 @@ export function createCast(view: Renderer) {
 			}
 		}
 		for (const building of list) {
-			const signature = `${building.kind}:${Number.round(building.built, 2)}:${state.models}`
+			const signature = `${building.kind}:${Number.round(building.built, 2)}`
 			const before = Option.getOrUndefined(MutableHashMap.get(drawn, building.id))
 			if (before !== undefined && before.signature === signature) {
 				if (before.view.item !== building.item) {
@@ -916,23 +901,28 @@ export function createCast(view: Renderer) {
 		state.fading = Array.filter(state.fading, entry => entry.at > seconds)
 		const ease = 1 - Math.exp(-delta * 10)
 		for (const actor of MutableHashMap.values(actors)) {
-			dress(actor.id)
 			actor.x += (actor.target.x - actor.x) * ease
 			actor.z += (actor.target.z - actor.z) * ease
 			actor.yaw += shortestTurn(actor.yaw, actor.target.yaw) * ease
-			seat(actor.id, delta)
-			play(actor.id)
-			drive(actor.id, ease)
-			// A unit that is down holds still.
-			Option.match(actor.mixer, {onNone: () => undefined, onSome: mixer => mixer.update(delta * (1 - actor.fallen))})
+			actor.object.visible = view.near(actor.x, actor.z)
+			if (actor.object.visible) {
+				dress(actor.id)
+				seat(actor.id, delta)
+				play(actor.id)
+				drive(actor.id, ease)
+				Option.match(actor.mixer, {onNone: () => undefined, onSome: mixer => mixer.update(delta * (1 - actor.fallen))})
+			}
 		}
 		// The fog clears round every Home and every team's unit where it is drawn now.
 		view.sight([
-			...Array.map(state.homes, home => ({radius: HOME_SIGHT, x: home.x, z: home.z})),
+			...Array.map(state.homes, home => ({radius: HOME_SIGHT * state.daylight, x: home.x, z: home.z})),
 			...Array.map(
-				Array.filter(Array.fromIterable(MutableHashMap.values(actors)), actor => actor.target.team !== undefined),
+				Array.filter(
+					Array.fromIterable(MutableHashMap.values(actors)),
+					actor => actor.target.team !== undefined && actor.target.health > 0
+				),
 				// A unit sees nine tiles round it.
-				actor => ({radius: 9, x: actor.x, z: actor.z})
+				actor => ({radius: 12 * state.daylight, x: actor.x, z: actor.z})
 			)
 		])
 		for (const tracer of Array.filter(state.tracers, entry => entry.until < seconds)) {
@@ -940,13 +930,13 @@ export function createCast(view: Renderer) {
 			tracer.mesh.geometry.dispose()
 		}
 		state.tracers = Array.filter(state.tracers, entry => entry.until >= seconds)
-		if (state.placed.models !== state.models) Option.map(state.placed.list, places)
 		// Buildings settle onto the ground as it loads.
 		for (const child of buildings.children) {
-			Option.match(view.heightAt(child.position.x, child.position.z), {
-				onNone: () => undefined,
-				onSome: at => child.position.setY(at.ground)
-			})
+			child.visible = view.near(child.position.x, child.position.z)
+			Option.match(
+				Option.filter(view.heightAt(child.position.x, child.position.z), () => child.visible),
+				{onNone: () => undefined, onSome: at => child.position.setY(at.ground)}
+			)
 		}
 	}
 
@@ -954,6 +944,7 @@ export function createCast(view: Renderer) {
 
 	return {
 		dispose() {
+			state.closed = true
 			painter.dispose()
 		},
 		frame,

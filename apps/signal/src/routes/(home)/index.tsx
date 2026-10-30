@@ -1293,7 +1293,7 @@ function World(props: {seed: number; view: View}) {
 				info: Option.liftPredicate(answer, entry => entry.field !== undefined || entry.prop !== undefined)
 			}))
 		)
-		const seen: {count: number; zones: View['zones']} = {count: 0, zones: []}
+		const seen: {count: number; traces: View['traces']; zones: View['zones']} = {count: 0, traces: {}, zones: []}
 		const frames = registry.subscribe(
 			viewAtom,
 			result => {
@@ -1323,6 +1323,11 @@ function World(props: {seed: number; view: View}) {
 						view.zones,
 						Array.map(TEAMS, entry => entry.color)
 					)
+				}
+				renderer.daylight(view.frame.environment?.daylight ?? 1)
+				if (seen.traces !== view.traces) {
+					seen.traces = view.traces
+					renderer.traces(Record.values(view.traces))
 				}
 				cast.frame(view.frame)
 				// A replay that caught up with the live world is the live world.

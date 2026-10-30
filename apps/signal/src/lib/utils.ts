@@ -19,6 +19,7 @@ export type View = {
 	changes: Record<string, Frame['changes'][number]>
 	cleared: Frame['cleared']
 	count: number
+	traces: Record<string, NonNullable<Frame['traces']>[number]>
 	explored: Record<string, Frame['explored'][number]>
 	frame: Frame
 	explorationRevision: number
@@ -36,6 +37,7 @@ export const EMPTY: View = {
 	explored: {},
 	frame: {at: 0, changes: [], cleared: [], explored: [], shots: [], tick: 0, units: []},
 	teams: [],
+	traces: {},
 	world: Option.none(),
 	zones: []
 }
@@ -56,6 +58,17 @@ function appended(known: View['cleared'], more: Frame['cleared']) {
 	return [...known, ...more]
 }
 
+function trails(known: View['traces'], more: Frame['traces']) {
+	if (more === undefined || Array.isReadonlyArrayEmpty(more)) return known
+	const updates: View['traces'] = Record.fromEntries(
+		Array.map(more, trace => [`${trace.x},${trace.z}`, trace] as const)
+	)
+	return {
+		...Record.filter(known, (_trace, key) => !Record.has(updates, key)),
+		...Record.filter(updates, trace => trace.fresh > 0 || trace.smog > 0 || trace.wear > 0)
+	}
+}
+
 function fold(view: View, frame: Frame) {
 	return {
 		buildings: frame.buildings ?? view.buildings,
@@ -66,6 +79,7 @@ function fold(view: View, frame: Frame) {
 		explored: merged(view.explored, frame.explored),
 		frame,
 		teams: frame.teams ?? view.teams,
+		traces: trails(view.traces, frame.traces),
 		world: Option.orElse(Option.fromUndefinedOr(frame.world), () => view.world),
 		zones: frame.zones ?? view.zones
 	} satisfies View
