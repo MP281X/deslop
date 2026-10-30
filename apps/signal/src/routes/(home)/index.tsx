@@ -1,9 +1,9 @@
 import {RegistryContext, useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Number, Option, Predicate, Record, String} from 'effect'
+import {Array, Boolean, Number, Option, Predicate, Record, String, Struct} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
-import {AsyncResult} from 'effect/reactivity'
+import {AsyncResult, Atom} from 'effect/reactivity'
 import type {PointerEvent, ReactNode, WheelEvent} from 'react'
 import {createContext, useContext, useEffect, useRef, useState} from 'react'
 
@@ -21,6 +21,8 @@ import {
 	EMPTY,
 	followAtom,
 	hoverAtom,
+	historyAtom,
+	hudAtom,
 	liveThreadAtom,
 	pastThreadAtom,
 	seedAtom,
@@ -31,8 +33,9 @@ import {
 } from '#lib/utils.ts'
 import type {Follow, Source, View} from '#lib/utils.ts'
 import {ROUND, TEAMS, TICK_HZ} from '#services/game/lib/utils.ts'
-import type {BuildingView, Entry, Mark, TeamView, Timeline, UnitView} from '#services/game/schema.ts'
+import type {BuildingView, Entry, Experience, Mark, TeamView, Timeline, UnitView} from '#services/game/schema.ts'
 import {UnitKind} from '#services/game/schema.ts'
+import {tileOf} from '#services/world/lib/utils.ts'
 
 const ZOOM_STEP = 1.25
 // The replay speeds, in multiples of real time.
@@ -41,6 +44,7 @@ const SPEEDS = [1, 10, 30]
 const MAP = {height: 220, width: 376}
 // A chunk's side in tiles, as the minimap draws explored ground at two tiles a pixel.
 const CHUNK = 32
+const groundAtom = Atom.make({at: Option.none<{x: number; z: number}>(), info: Option.none<Inspected>(), x: 0, y: 0})
 
 type Key =
 	| 'in'
@@ -116,13 +120,65 @@ function symbolKey(key: string) {
 // What a key does: letters by their place on the keyboard, symbols by what they type, so both read the same on any layout.
 function keyOf(event: KeyboardEvent) {
 	if (event.metaKey || event.ctrlKey || event.altKey) return Option.none<Key>()
-	if (event.key === 'Tab' && event.shiftKey) return Option.some<Key>('previous')
-	if (event.key === 'Tab') return Option.some<Key>('next')
+	if (event.code === 'BracketLeft') return Option.some<Key>('previous')
+	if (event.code === 'BracketRight') return Option.some<Key>('next')
 	return Option.orElse(letterKey(event.code, event.repeat), () => symbolKey(event.key))
 }
 
 // Each model's portrait, painted by the cast as the models load.
 const Portraits = createContext<Record<string, string>>({})
+
+const Navigation = createContext<{
+	entity: (id: number, tick: number) => void
+	place: (x: number, z: number, tick: number) => void
+	time: (tick: number) => void
+}>({entity: () => undefined, place: () => undefined, time: () => undefined})
+
+function References(props: {text: string; tick: number}) {
+	const navigate = useContext(Navigation)
+	return (
+		<>
+			{Array.map(String.split(/(#-?\d+|\(-?\d+(?:\.\d+)?,\s*-?\d+(?:\.\d+)?\))/u)(props.text), (part, index) => {
+				if (String.startsWith('#')(part)) {
+					return (
+						<Button
+							variant="link"
+							key={index}
+							className="text-foreground underline decoration-dotted underline-offset-4"
+							onClick={() =>
+								navigate.entity(
+									Option.getOrElse(Number.parse(String.slice(1)(part)), () => 0),
+									props.tick
+								)
+							}
+						>
+							{part}
+						</Button>
+					)
+				}
+				return Option.match(String.match(/^\((-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)\)$/u)(part), {
+					onNone: () => <span key={index}>{part}</span>,
+					onSome: found => (
+						<Button
+							variant="link"
+							key={index}
+							className="underline decoration-dotted underline-offset-4"
+							onClick={() =>
+								navigate.place(
+									Option.getOrElse(Number.parse(found[1] ?? ''), () => 0),
+									Option.getOrElse(Number.parse(found[2] ?? ''), () => 0),
+									props.tick
+								)
+							}
+						>
+							{part}
+						</Button>
+					)
+				})
+			})}
+		</>
+	)
+}
 
 function Portrait(props: {className?: string; kind: string}) {
 	return Option.match(Record.get(useContext(Portraits), props.kind), {
@@ -143,17 +199,13 @@ function Swatch(props: {className?: string; team: number}) {
 	)
 }
 
-function Pips(props: {hostile?: boolean; value: number}) {
+function Pips(props: {value: number}) {
 	return (
 		<span className="grid h-1 grid-cols-5 gap-px" aria-label={`${percent(props.value)} health`}>
 			{Array.map(Array.range(0, 4), index => (
 				<i key={index} className="bg-input relative">
 					<i
-						className={cn(
-							'absolute inset-y-0 left-0 w-(--fill)',
-							props.hostile === true && 'bg-destructive',
-							props.hostile !== true && 'bg-foreground'
-						)}
+						className="bg-foreground absolute inset-y-0 left-0 w-(--fill)"
 						style={{'--fill': percent(props.value * 5 - index)}}
 					/>
 				</i>
@@ -267,58 +319,70 @@ function Notice(props: {text: string}) {
 	})
 }
 
-function Outcome(props: {outcome: Entry['commands'][number]}) {
+function Outcome(props: {outcome: Entry['commands'][number]; tick: number}) {
+	const navigate = useContext(Navigation)
 	return (
-		<li className="flex flex-col gap-1">
-			<span className="flex gap-2">
-				<span className={cn('w-3 flex-none text-center', !props.outcome.ok && 'text-destructive')}>
-					{Boolean.match(props.outcome.ok, {onFalse: () => '✕', onTrue: () => '✓'})}
-				</span>
-				<span className={cn(!props.outcome.ok && 'text-destructive')}>
-					{/* What the command asked for, in a few words. */}
-					{Match.valueTags(props.outcome.command, {
-						Advance: () => 'Pay the next milestone',
-						Build: build => `Build ${String.replaceAll('_', ' ')(build.kind)} at (${build.x}, ${build.z})`,
-						Cancel: cancel => `Cancel #${cancel.building}`,
-						Craft: craft => `Craft ${craft.count} × ${String.replaceAll('_', ' ')(craft.recipe)}`,
-						Make: make => `Make a ${make.unit}`,
-						Message: message => `Message ${teamName(message.team)}`,
-						Note: () => 'Update notes',
-						Order: order =>
-							`${order.order._tag} ${Array.join(
-								Array.map(order.units, id => `#${id}`),
-								' '
-							)}`,
-						Recipe: recipe => `Set #${recipe.building} to ${String.replaceAll('_', ' ')(recipe.recipe)}`,
-						Upgrade: upgrade => `Upgrade #${upgrade.unit}`
-					})}
-					<span className="text-muted-foreground"> · {props.outcome.text}</span>
-				</span>
-			</span>
-			{props.outcome.command._tag === 'Message' && (
-				<span className="ml-5 border px-3 py-2 leading-relaxed">
-					<span className="mb-1 flex items-center gap-1.5">
-						→ <Swatch team={props.outcome.command.team} />
-						{teamName(props.outcome.command.team)}
-					</span>
-					{props.outcome.command.text}
-				</span>
-			)}
+		<li>
+			<details>
+				<summary className={cn('cursor-pointer py-1', !props.outcome.ok && 'text-destructive')}>
+					{Boolean.match(props.outcome.ok, {onFalse: () => '✕', onTrue: () => '✓'})} {props.outcome.command._tag}
+				</summary>
+				<dl className="grid grid-cols-3 gap-x-3 gap-y-2 py-2">
+					{Array.map(Record.toEntries(Struct.omit(props.outcome.command, ['_tag'])), field => (
+						<div key={field[0]} className="contents">
+							<dt className="text-muted-foreground">{field[0]}</dt>
+							<dd className="col-span-2 min-w-0 break-words">
+								{Boolean.match(
+									Predicate.isNumber(field[1]) &&
+										Array.contains(['building', 'unit', 'target', 'from', 'to'], field[0]),
+									{
+										onFalse: () => <References text={JSON.stringify(field[1])} tick={props.tick} />,
+										onTrue: () => <References text={`#${field[1]}`} tick={props.tick} />
+									}
+								)}
+							</dd>
+						</div>
+					))}
+				</dl>
+				{props.outcome.command._tag === 'Build' && (
+					<Button
+						variant="link"
+						className="underline underline-offset-4"
+						onClick={() => {
+							if (props.outcome.command._tag === 'Build') {
+								navigate.place(props.outcome.command.x, props.outcome.command.z, props.tick)
+							}
+						}}
+					>
+						Locate plan
+					</Button>
+				)}
+				<p className="pb-2 leading-relaxed break-words whitespace-pre-wrap">
+					<References text={props.outcome.text} tick={props.tick} />
+				</p>
+			</details>
 		</li>
 	)
 }
-
 // One round of a team's thread: when, what it was told, what it thought and said, and what each command did.
 function Round(props: {entry: Entry}) {
+	const navigate = useContext(Navigation)
 	return (
 		<li className="flex flex-col gap-2 border-t pt-3">
 			<header className="text-muted-foreground flex items-center gap-2">
-				<span>{clockOf(props.entry.tick)}</span>
+				<Button variant="link" className="underline decoration-dotted" onClick={() => navigate.time(props.entry.tick)}>
+					{clockOf(props.entry.tick)}
+				</Button>
 				<span>round {props.entry.round}</span>
 				{props.entry.status !== 'done' && <span className="text-destructive">{props.entry.status}</span>}
 				{Option.getOrUndefined(
 					Option.map(Option.fromUndefinedOr(props.entry.tokens), tokens => (
-						<span className="ml-auto">{Number.round((tokens.input + tokens.output) / 1000, 1)}k tok</span>
+						<span className="ml-auto">
+							{Boolean.match(tokens.input !== undefined && tokens.output !== undefined, {
+								onFalse: () => 'Tokens unreported',
+								onTrue: () => `${Number.round(((tokens.input ?? 0) + (tokens.output ?? 0)) / 1000, 1)}k tok`
+							})}
+						</span>
 					))
 				)}
 			</header>
@@ -331,37 +395,57 @@ function Round(props: {entry: Entry}) {
 			)}
 			{Option.getOrUndefined(
 				Option.map(Option.filter(Option.fromUndefinedOr(props.entry.reasoning), String.isNonEmpty), reasoning => (
-					<p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">{String.trim(reasoning)}</p>
+					<details>
+						<summary className="text-muted-foreground cursor-pointer">Reasoning</summary>
+						<p className="text-muted-foreground mt-2 leading-relaxed whitespace-pre-wrap">
+							<References text={String.trim(reasoning)} tick={props.entry.tick} />
+						</p>
+					</details>
 				))
 			)}
 			{String.isNonEmpty(String.trim(props.entry.text)) && (
-				<p className="leading-relaxed whitespace-pre-wrap">{String.trim(props.entry.text)}</p>
+				<p className="leading-relaxed whitespace-pre-wrap">
+					<References text={String.trim(props.entry.text)} tick={props.entry.tick} />
+				</p>
 			)}
 			{Array.isReadonlyArrayNonEmpty(props.entry.commands) && (
 				<ul className="flex flex-col gap-1">
 					{Array.map(props.entry.commands, (outcome, index) => (
-						<Outcome key={index} outcome={outcome} />
+						<Outcome key={index} outcome={outcome} tick={props.entry.tick} />
 					))}
 				</ul>
 			)}
 			<details>
 				<summary className="text-muted-foreground cursor-pointer">What it read</summary>
 				<pre className="text-muted-foreground mt-2 font-mono leading-relaxed whitespace-pre-wrap">
-					{props.entry.observation}
+					<References text={props.entry.observation} tick={props.entry.tick} />
 				</pre>
 			</details>
+			{props.entry.tokens !== undefined && (
+				<details>
+					<summary className="text-muted-foreground cursor-pointer">
+						Usage ·{' '}
+						{Boolean.match(props.entry.tokens.cost !== undefined, {
+							onFalse: () => 'cost not reported',
+							onTrue: () => `$${Number.round(props.entry.tokens?.cost ?? 0, 5)}`
+						})}
+					</summary>
+					<pre className="break-words whitespace-pre-wrap">{JSON.stringify(props.entry.tokens, undefined, 2)}</pre>
+				</details>
+			)}
 		</li>
 	)
 }
 
 // A team's thread, read-only: newest at the bottom, pinned there while the reader is. Live, it keeps fresh; in a replay, it ends at the replay's round.
-function Thread(props: {replaying: boolean; status?: TeamView['status']; team: number; tick: number}) {
+function Thread(props: {before?: number; replaying: boolean; status?: TeamView['status']; team: number; tick: number}) {
 	const list = useRef<HTMLOListElement>(null)
-	const pinned = useRef(true)
+	const pinned = useRef(props.before === undefined)
+	const [older, setOlder] = useState(() => Option.none<number>())
 	const result = useAtomValue(
-		Boolean.match(props.replaying, {
+		Boolean.match(props.replaying || props.before !== undefined, {
 			onFalse: () => liveThreadAtom(props.team),
-			onTrue: () => pastThreadAtom(`${props.team}:${Math.floor(props.tick / ROUND) + 1}`)
+			onTrue: () => pastThreadAtom(`${props.team}:${props.before ?? Math.floor(props.tick / ROUND) + 1}`)
 		})
 	)
 	const entries = Option.getOrElse(AsyncResult.value(result), () => [])
@@ -378,10 +462,36 @@ function Thread(props: {replaying: boolean; status?: TeamView['status']; team: n
 			}}
 			className="flex flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-4 pb-4 select-text"
 		>
+			{Option.match(older, {
+				onNone: () =>
+					Option.getOrUndefined(
+						Option.map(
+							Option.filter(Array.head(entries), entry => entry.round > 1),
+							first => (
+								<li>
+									<Button
+										variant="ghost"
+										onClick={() => {
+											pinned.current = false
+											setOlder(Option.some(first.round))
+										}}
+									>
+										Earlier decisions
+									</Button>
+								</li>
+							)
+						)
+					),
+				onSome: before => (
+					<li>
+						<Thread before={before} team={props.team} tick={props.tick} replaying={props.replaying} />
+					</li>
+				)
+			})}
 			{Array.isReadonlyArrayEmpty(entries) && (
 				<li className="text-muted-foreground pt-3">
 					{Boolean.match(AsyncResult.isWaiting(result), {
-						onFalse: () => 'Nothing yet: the first round ends 30 seconds in.',
+						onFalse: () => 'No decisions in this part of the recording.',
 						onTrue: () => 'Loading…'
 					})}
 				</li>
@@ -399,39 +509,146 @@ function Thread(props: {replaying: boolean; status?: TeamView['status']; team: n
 	)
 }
 
-// The left column: the teams, then the picked team's thread.
-function Sidebar(props: {onPick: (team: number) => void; replaying: boolean; team: number; view: View}) {
+function IndividualHistory(props: {actor: number; at?: number; before?: number}) {
+	const result = useAtomValue(historyAtom(`${props.actor}:${props.before ?? 0}:${props.at ?? -1}`))
+	const entries = Option.getOrElse(AsyncResult.value(result), () => [])
+	const [older, setOlder] = useState(() => Option.none<number>())
+	const navigate = useContext(Navigation)
+	return (
+		<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 select-text">
+			<p className="text-muted-foreground py-3">
+				Individual experience · not shared team knowledge. Locations show where each event was recorded.
+			</p>
+			{Option.match(older, {
+				onNone: () =>
+					Option.getOrUndefined(
+						Option.map(
+							Option.filter(Array.head(entries), () => entries.length === 100),
+							first => (
+								<Button variant="ghost" onClick={() => setOlder(Option.some(first.id))}>
+									Earlier history
+								</Button>
+							)
+						)
+					),
+				onSome: before => <IndividualHistory actor={props.actor} at={props.at} before={before} />
+			})}
+			{AsyncResult.isFailure(result) && <p role="alert">History could not be read.</p>}
+			{Array.isReadonlyArrayEmpty(entries) && (
+				<p className="text-muted-foreground py-3">
+					{Boolean.match(AsyncResult.isWaiting(result), {
+						onFalse: () => 'No individual recording here yet.',
+						onTrue: () => 'Loading history…'
+					})}
+				</p>
+			)}
+			<ol className="flex flex-col gap-4">
+				{Array.map(entries, (entry: Experience) => (
+					<li key={entry.id}>
+						<Button
+							variant="link"
+							className="text-muted-foreground underline decoration-dotted"
+							onClick={() => navigate.place(entry.x, entry.z, entry.tick)}
+						>
+							{clockOf(entry.tick)} · {entry.kind} · ({Number.round(entry.x, 1)}, {Number.round(entry.z, 1)})
+						</Button>
+						<p className="mt-1 leading-relaxed">
+							<References text={entry.text} tick={entry.tick} />
+						</p>
+						{entry.context !== undefined && (
+							<details>
+								<summary className="text-muted-foreground cursor-pointer">Decision input and usage</summary>
+								<pre className="break-words whitespace-pre-wrap">
+									{entry.context}
+									{'\n'}
+									{JSON.stringify(entry.tokens, undefined, 2)}
+								</pre>
+							</details>
+						)}
+					</li>
+				))}
+			</ol>
+		</div>
+	)
+}
+
+// A button's look: filled when it names what plays now.
+function variantOf(on: boolean) {
+	if (on) return 'default'
+	return 'outline'
+}
+
+function Sidebar(props: {
+	actor: Option.Option<number>
+	close: () => void
+	panel: 'core' | 'history'
+	onPanel: (panel: 'core' | 'history') => void
+	onPick: (team: number) => void
+	replaying: boolean
+	team: number
+	view: View
+}) {
 	const picked = Array.findFirst(props.view.teams, team => team.id === props.team)
 	return (
-		<aside className="bg-popover text-popover-foreground absolute inset-y-0 left-0 flex w-96 flex-col border-r">
-			<header className="flex h-10 flex-none items-center gap-2 border-b px-4">
+		<aside className="bg-popover text-popover-foreground absolute inset-x-0 bottom-0 flex h-1/2 min-h-0 flex-col border-t md:inset-y-0 md:right-auto md:h-auto md:w-96 md:border-t-0 md:border-r">
+			<header className="flex h-12 flex-none items-center gap-2 border-b px-4">
 				<span className="font-medium">Signal</span>
-				<span className="text-muted-foreground">{props.view.teams.length} teams</span>
+				<Button size="sm" variant={variantOf(props.panel === 'core')} onClick={() => props.onPanel('core')}>
+					Core
+				</Button>
+				<Button size="sm" variant={variantOf(props.panel === 'history')} onClick={() => props.onPanel('history')}>
+					History
+				</Button>
 				<span className="text-muted-foreground ml-auto tabular-nums">{clockOf(props.view.frame.tick)}</span>
+				<Button size="icon-sm" aria-label="Close inspector" variant="ghost" onClick={props.close}>
+					×
+				</Button>
 			</header>
-			<div className="flex-none border-b">
-				<Teams teams={props.view.teams} picked={props.team} onPick={props.onPick} />
-			</div>
-			<header className="flex h-9 flex-none items-center gap-2 px-4">
-				<Swatch team={props.team} />
-				<span>{teamName(props.team)}</span>
-				<span className="text-muted-foreground">thread</span>
-				{Option.getOrUndefined(
-					Option.map(picked, team => <span className="text-muted-foreground ml-auto">next: {team.gate}</span>)
-				)}
-			</header>
-			<Thread
-				key={`${props.team}:${props.replaying}`}
-				team={props.team}
-				tick={props.view.frame.tick}
-				replaying={props.replaying}
-				status={Option.getOrUndefined(
-					Option.map(
-						Option.filter(picked, () => !props.replaying),
-						team => team.status
+			{props.panel === 'core' && (
+				<>
+					<div className="flex-none border-b">
+						<Teams teams={props.view.teams} picked={props.team} onPick={props.onPick} />
+					</div>
+					<header className="flex h-9 flex-none items-center gap-2 px-4">
+						<Swatch team={props.team} />
+						<span>{teamName(props.team)}</span>
+						<span className="text-muted-foreground">thread</span>
+						{Option.getOrUndefined(
+							Option.map(picked, team => <span className="text-muted-foreground ml-auto">next: {team.gate}</span>)
+						)}
+					</header>
+					<Thread
+						key={`${props.team}:${props.replaying}`}
+						team={props.team}
+						tick={props.view.frame.tick}
+						replaying={props.replaying}
+						status={Option.getOrUndefined(
+							Option.map(
+								Option.filter(picked, () => !props.replaying),
+								team => team.status
+							)
+						)}
+					/>
+				</>
+			)}
+			{props.panel === 'history' &&
+				Option.match(props.actor, {
+					onNone: () => (
+						<p className="text-muted-foreground p-4">
+							Select any individual on the map to inspect its lifetime history.
+						</p>
+					),
+					onSome: actor => (
+						<>
+							<header className="px-4 py-2">Individual #{actor}</header>
+							<IndividualHistory
+								key={`${actor}:${props.replaying}`}
+								actor={actor}
+								at={Option.getOrUndefined(Option.filter(Option.some(props.view.frame.tick), () => props.replaying))}
+							/>
+						</>
 					)
-				)}
-			/>
+				})}
 		</aside>
 	)
 }
@@ -468,7 +685,6 @@ function Minimap(props: {
 }) {
 	const canvas = useRef<HTMLCanvasElement>(null)
 	const ground = useRef({canvas: document.createElement('canvas'), key: '', x0: 0, z0: 0})
-	const keys = Record.keys(props.view.explored)
 	const bounds = Array.reduce(
 		[
 			...Array.map(Record.values(props.view.explored), chunk => ({x: chunk.cx * CHUNK, z: chunk.cz * CHUNK})),
@@ -497,7 +713,7 @@ function Minimap(props: {
 		const context = canvas.current?.getContext('2d')
 		if (Predicate.isNullish(context) || bounds.x0 === Infinity) return
 		// The explored ground redraws only when another chunk is explored or one grows.
-		const key = `${keys.length}:${Array.reduce(Record.values(props.view.explored), 0, (sum, chunk) => sum + (chunk.bits[0] ?? 0) + (chunk.bits[64] ?? 0))}`
+		const key = `${props.view.explorationRevision}`
 		if (key !== ground.current.key) {
 			ground.current = {canvas: exploredLayer(props.view.explored, bounds), key, x0: bounds.x0, z0: bounds.z0}
 		}
@@ -571,7 +787,7 @@ function Hints() {
 			{Array.map(
 				[
 					{does: 'overview', key: 'Q'},
-					{does: 'follow', key: 'Tab'},
+					{does: 'follow', key: ']'},
 					{does: 'free', key: 'Esc'},
 					{does: 'play', key: 'Space'}
 				],
@@ -615,12 +831,6 @@ function shownTick(source: Source, tick: number) {
 	return Option.match(source, {onNone: () => tick, onSome: replay => Number.max(replay.from, tick)})
 }
 
-// A button's look: filled when it names what plays now.
-function variantOf(on: boolean) {
-	if (on) return 'default'
-	return 'outline'
-}
-
 // Where a mark sits on the timeline and how it looks: a milestone a square of its team's colour, a contact a diamond, a message a dot, a unit down a cross.
 function MarkGlyph(props: {mark: Mark; span: Timeline}) {
 	return (
@@ -646,7 +856,13 @@ function MarkGlyph(props: {mark: Mark; span: Timeline}) {
 }
 
 // The run from its first moment to now: its marks, where the screen is, play and pause, the replay's speed and the way back to live.
-function TimelineBar(props: {source: Source; tick: number; timeline: Timeline; onSource: (source: Source) => void}) {
+function TimelineBar(props: {
+	inspecting: boolean
+	source: Source
+	tick: number
+	timeline: Timeline
+	onSource: (source: Source) => void
+}) {
 	const live = Option.isNone(props.source)
 	const span = {...props.timeline, live: Number.max(props.timeline.live, props.tick)}
 	const length = Number.max(1, span.live - span.start)
@@ -654,15 +870,16 @@ function TimelineBar(props: {source: Source; tick: number; timeline: Timeline; o
 		Option.map(props.source, replay => replay.speed),
 		() => 1
 	)
-	function seek(event: PointerEvent<HTMLDivElement>) {
-		const box = event.currentTarget.getBoundingClientRect()
-		const share = Number.clamp((event.clientX - box.left) / box.width, {maximum: 1, minimum: 0})
-		if (share > 0.995) props.onSource(Option.none())
-		else props.onSource(Option.some({from: Number.round(span.start + share * length, 0), speed: Number.max(1, speed)}))
-	}
 	return (
-		<Panel label="Timeline" className="right-4 bottom-4 left-100 px-3 pt-2 pb-2">
-			<div className="relative h-5 cursor-pointer" onPointerDown={seek}>
+		<Panel
+			label="Timeline"
+			className={cn(
+				'right-2 left-2 px-3 pt-2 pb-2 md:right-4 md:bottom-4 md:left-100',
+				props.inspecting && 'bottom-1/2 mb-2 md:mb-0',
+				!props.inspecting && 'bottom-2'
+			)}
+		>
+			<div className="relative h-5">
 				{Array.map(props.timeline.marks, (mark, index) => (
 					<MarkGlyph key={index} mark={mark} span={span} />
 				))}
@@ -672,7 +889,16 @@ function TimelineBar(props: {source: Source; tick: number; timeline: Timeline; o
 					style={{'--at': percent((props.tick - span.start) / length)}}
 				/>
 			</div>
-			<div className="mt-2 flex items-center gap-2">
+			<input
+				className="w-full"
+				aria-label="Replay time"
+				type="range"
+				min={span.start}
+				max={span.live}
+				value={props.tick}
+				onChange={event => props.onSource(Option.some({from: event.currentTarget.valueAsNumber, speed: 0}))}
+			/>
+			<div className="mt-1 flex flex-wrap items-center gap-2">
 				<Button
 					variant="outline"
 					size="xs"
@@ -691,7 +917,7 @@ function TimelineBar(props: {source: Source; tick: number; timeline: Timeline; o
 						{entry}×
 					</Button>
 				))}
-				<span className="ml-auto tabular-nums">
+				<span className="ml-auto tabular-nums max-sm:hidden">
 					{clockOf(props.tick)}
 					<span className="text-muted-foreground">
 						{' '}
@@ -704,6 +930,24 @@ function TimelineBar(props: {source: Source; tick: number; timeline: Timeline; o
 					live
 				</Button>
 			</div>
+			<details>
+				<summary className="text-muted-foreground cursor-pointer py-1">
+					Recent events · {props.timeline.marks.length}
+				</summary>
+				<ol className="max-h-40 overflow-y-auto py-2">
+					{Array.map(Array.reverse(Array.takeRight(props.timeline.marks, 40)), (mark, index) => (
+						<li key={index}>
+							<Button
+								variant="link"
+								className="py-2 text-left"
+								onClick={() => props.onSource(Option.some({from: mark.tick, speed: 0}))}
+							>
+								{clockOf(mark.tick)} · {teamName(mark.team)} · {mark.kind}
+							</Button>
+						</li>
+					))}
+				</ol>
+			</details>
 		</Panel>
 	)
 }
@@ -719,7 +963,7 @@ function Card(props: {unit: UnitView}) {
 					{doingOf(props.unit)}
 				</p>
 				<Meter value={percent(props.unit.health)}>
-					<Pips value={props.unit.health} hostile={props.unit.team === undefined} />
+					<Pips value={props.unit.health} />
 				</Meter>
 			</div>
 		</div>
@@ -858,13 +1102,10 @@ function aimOf(follow: Follow, team: number, view: View, world: {cast: Cast; ren
 }
 
 // Over the world: health pips over hurt units, the hover card over the unit under the pointer, else the ground card under it. The world view moves each into place every frame.
-function Overlay(props: {
-	buildings: View['buildings']
-	ground: {at: Option.Option<{x: number; z: number}>; info: Option.Option<Inspected>; x: number; y: number}
-	units: View['frame']['units']
-}) {
+function Overlay(props: {buildings: View['buildings']; units: View['frame']['units']}) {
+	const ground = useAtomValue(groundAtom)
 	const hover = useAtomValue(hoverAtom)
-	const hovered = Option.flatMap(props.ground.at, at => buildingAt(props.buildings, at))
+	const hovered = Option.flatMap(ground.at, at => buildingAt(props.buildings, at))
 	return (
 		<div className="pointer-events-none absolute inset-0 overflow-hidden">
 			{Array.map(
@@ -872,7 +1113,7 @@ function Overlay(props: {
 				unit => (
 					<div key={unit.id} data-follow={unit.id} data-pips hidden className="absolute top-0 left-0">
 						<div className="bg-popover/90 -mt-5 -ml-5 w-10 border p-0.5">
-							<Pips value={unit.health} hostile={unit.team === undefined} />
+							<Pips value={unit.health} />
 						</div>
 					</div>
 				)
@@ -887,16 +1128,137 @@ function Overlay(props: {
 					)
 				)
 			)}
-			{(Option.isSome(hovered) || Option.isSome(props.ground.info)) && Option.isNone(hover) && (
+			{(Option.isSome(hovered) || Option.isSome(ground.info)) && Option.isNone(hover) && (
 				<div
 					className="absolute top-(--y) left-(--x)"
-					style={{'--x': `${props.ground.x}px`, '--y': `${props.ground.y}px`}}
+					style={{'--x': `clamp(132px, ${ground.x}px, calc(100% - 132px))`, '--y': `${Number.max(120, ground.y)}px`}}
 				>
-					<GroundCard building={hovered} info={props.ground.info} />
+					<GroundCard building={hovered} info={ground.info} />
 				</div>
 			)}
 		</div>
 	)
+}
+
+function useMapGestures(props: {
+	world: Option.Option<{cast: Cast; renderer: Renderer}>
+	view: View
+	onPick: (id: number) => void
+	onGround: (at: Option.Option<{x: number; z: number}>, x: number, y: number) => void
+}) {
+	const setHover = useAtomSet(hoverAtom)
+	// A press on the world: how far it has dragged and where the pointer was; -1 while nothing is pressed.
+	const drag = useRef({moved: -1, x: 0, y: 0})
+	const pointers = useRef<Record<string, {x: number; y: number}>>({})
+	// A press starts a drag that pans the view; let go without dragging, it is a click.
+	function down(event: PointerEvent<HTMLCanvasElement>) {
+		if (event.button !== 0) return
+		event.currentTarget.focus()
+		event.currentTarget.setPointerCapture(event.pointerId)
+		pointers.current[event.pointerId] = {x: event.clientX, y: event.clientY}
+		drag.current = {
+			moved: Boolean.match(Record.keys(pointers.current).length > 1, {onFalse: () => 0, onTrue: () => 5}),
+			x: event.clientX,
+			y: event.clientY
+		}
+	}
+
+	function up(event: PointerEvent<HTMLCanvasElement>) {
+		const dragged = drag.current.moved > 4
+		pointers.current = Record.remove(pointers.current, `${event.pointerId}`)
+		drag.current = Option.match(Array.head(Record.values(pointers.current)), {
+			onNone: () => ({moved: -1, x: 0, y: 0}),
+			onSome: point => ({moved: 5, ...point})
+		})
+		if (dragged) return
+		// A click on a team's unit follows it.
+		Option.match(
+			Option.filter(
+				Option.flatMap(props.world, active => active.cast.pick(event.clientX, event.clientY)),
+				id => Array.some(props.view.frame.units, unit => unit.id === id)
+			),
+			{
+				onNone: () =>
+					Option.match(props.world, {
+						onNone: () => undefined,
+						onSome: active =>
+							props.onGround(active.renderer.inspect(event.clientX, event.clientY), event.clientX, event.clientY)
+					}),
+				onSome: props.onPick
+			}
+		)
+	}
+
+	function move(event: PointerEvent<HTMLCanvasElement>) {
+		if (Record.keys(pointers.current).length > 1) {
+			const before = Record.values(pointers.current)
+			pointers.current[event.pointerId] = {x: event.clientX, y: event.clientY}
+			const after = Record.values(pointers.current)
+			const first = before[0],
+				second = before[1],
+				nextFirst = after[0],
+				nextSecond = after[1]
+			if (first !== undefined && second !== undefined && nextFirst !== undefined && nextSecond !== undefined) {
+				Option.match(props.world, {
+					onNone: () => undefined,
+					onSome: active =>
+						active.renderer.zoomBy(
+							Math.hypot(first.x - second.x, first.y - second.y) /
+								Number.max(1, Math.hypot(nextFirst.x - nextSecond.x, nextFirst.y - nextSecond.y))
+						)
+				})
+			}
+			drag.current.moved = 5
+			return
+		}
+		if (drag.current.moved >= 0) {
+			pointers.current[event.pointerId] = {x: event.clientX, y: event.clientY}
+			const dx = event.clientX - drag.current.x
+			const dy = event.clientY - drag.current.y
+			drag.current = {moved: drag.current.moved + Math.hypot(dx, dy), x: event.clientX, y: event.clientY}
+			Option.match(props.world, {onNone: () => undefined, onSome: active => active.renderer.pan(dx, dy)})
+			return
+		}
+		Option.match(props.world, {
+			onNone: () => undefined,
+			onSome: active => {
+				const picked = active.cast.pick(event.clientX, event.clientY)
+				setHover(Option.map(picked, id => ({id: `${id}`, x: event.clientX, y: event.clientY})))
+				// Off the units, the ground under the pointer: the building on it from the frames, the rest from the chunk worker.
+				props.onGround(
+					Option.filter(active.renderer.inspect(event.clientX, event.clientY), () => Option.isNone(picked)),
+					event.clientX,
+					event.clientY
+				)
+			}
+		})
+	}
+
+	function wheel(event: WheelEvent<HTMLCanvasElement>) {
+		Option.match(props.world, {
+			onNone: () => undefined,
+			onSome: active => active.renderer.zoomBy(Math.exp(event.deltaY * wheelRate(event.ctrlKey)))
+		})
+	}
+
+	return {
+		cancel: () => {
+			pointers.current = {}
+			drag.current = {moved: -1, x: 0, y: 0}
+		},
+		down,
+		leave: () => {
+			setHover(Option.none())
+			props.onGround(Option.none(), 0, 0)
+		},
+		lost: (event: PointerEvent<HTMLCanvasElement>) => {
+			pointers.current = Record.remove(pointers.current, `${event.pointerId}`)
+			if (Array.isArrayEmpty(Record.keys(pointers.current))) drag.current.moved = -1
+		},
+		move,
+		up,
+		wheel
+	}
 }
 
 // The world view and everything over it: the canvas belongs to the renderer, and frames reach it through the registry, not React.
@@ -904,20 +1266,14 @@ function World(props: {seed: number; view: View}) {
 	const registry = useContext(RegistryContext)
 	const canvas = useRef<HTMLCanvasElement>(null)
 	const [world, setWorld] = useState(Option.none<{cast: Cast; renderer: Renderer}>)
-	const setHover = useAtomSet(hoverAtom)
 	// The tile under the pointer, what the chunk worker said lies on it, and the pointer's place on screen.
-	const [ground, setGround] = useState({
-		at: Option.none<{x: number; z: number}>(),
-		info: Option.none<Inspected>(),
-		x: 0,
-		y: 0
-	})
+	const setGround = useAtomSet(groundAtom)
 	const [follow, setFollow] = useAtom(followAtom)
 	const [team, setTeam] = useAtom(teamAtom)
 	const [source, setSource] = useAtom(sourceAtom)
+	const [panel, setPanel] = useState(() => Option.some<'core' | 'history'>('core'))
 	const timeline = useAtomValue(timelineAtom)
-	// A press on the world: how far it has dragged and where the pointer was; -1 while nothing is pressed.
-	const drag = useRef({moved: -1, x: 0, y: 0})
+
 	const [portraits, setPortraits] = useState<Record<string, string>>({})
 	// What the key handler and the camera read, kept current outside render.
 	const latest = useRef({source, view: props.view})
@@ -943,6 +1299,7 @@ function World(props: {seed: number; view: View}) {
 			result => {
 				const view = Option.getOrUndefined(AsyncResult.value(result))
 				if (view === undefined || view.count === 0) return
+				latest.current.view = view
 				// A stream's first frame starts the world over; a view joined midway starts from all it has.
 				if (view.count === 1 || seen.count === 0 || view.count < seen.count) {
 					if (seen.count > 0) {
@@ -968,12 +1325,6 @@ function World(props: {seed: number; view: View}) {
 					)
 				}
 				cast.frame(view.frame)
-				// The camera always has a unit of the team to follow unless the player set it free: the first, or the next once the followed one is gone.
-				const current = registry.get(followAtom)
-				const own = unitsOf(view.frame.units, registry.get(teamAtom))
-				if (Option.isNone(current.free) && !Array.some(own, unit => Option.contains(current.id, unit.id))) {
-					registry.set(followAtom, {...current, id: Option.map(Array.head(own), unit => unit.id)})
-				}
 				// A replay that caught up with the live world is the live world.
 				Option.match(registry.get(sourceAtom), {
 					onNone: () => undefined,
@@ -1060,6 +1411,7 @@ function World(props: {seed: number; view: View}) {
 			team2: () => pick(2)
 		} satisfies Record<Key, () => void>
 		function keys(event: KeyboardEvent) {
+			if (event.target !== canvas.current) return
 			Option.match(keyOf(event), {
 				onNone: () => undefined,
 				onSome: key => {
@@ -1076,140 +1428,190 @@ function World(props: {seed: number; view: View}) {
 			cast.dispose()
 			renderer.dispose()
 		}
-	}, [registry, props.seed])
+	}, [registry, props.seed, setGround])
 
 	function followUnit(id: number) {
 		const unit = Option.getOrUndefined(Array.findFirst(props.view.frame.units, entry => entry.id === id))
-		if (unit?.team === undefined) return
-		setTeam(unit.team)
+		if (unit?.team !== undefined) setTeam(unit.team)
 		setFollow({free: Option.none(), id: Option.some(id), overview: false})
+		setPanel(Option.some('history'))
 		Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.centre()})
 	}
 
-	// A press starts a drag that pans the view; let go without dragging, it is a click.
-	function down(event: PointerEvent<HTMLCanvasElement>) {
-		event.currentTarget.setPointerCapture(event.pointerId)
-		drag.current = {moved: 0, x: event.clientX, y: event.clientY}
-	}
+	const gestures = useMapGestures({
+		onGround: (at, x, y) =>
+			setGround(before => ({at, info: Option.filter(before.info, () => Option.isSome(at)), x, y})),
+		onPick: followUnit,
+		view: props.view,
+		world
+	})
 
-	function up(event: PointerEvent<HTMLCanvasElement>) {
-		const dragged = drag.current.moved > 4
-		drag.current = {moved: -1, x: 0, y: 0}
-		if (dragged) return
-		// A click on a team's unit follows it.
-		Option.match(
-			Option.filter(
-				Option.flatMap(world, active => active.cast.pick(event.clientX, event.clientY)),
-				id => Array.some(props.view.frame.units, unit => unit.id === id && unit.team !== undefined)
-			),
-			{onNone: () => undefined, onSome: followUnit}
-		)
-	}
-
-	function move(event: PointerEvent<HTMLCanvasElement>) {
-		if (drag.current.moved >= 0) {
-			const dx = event.clientX - drag.current.x
-			const dy = event.clientY - drag.current.y
-			drag.current = {moved: drag.current.moved + Math.hypot(dx, dy), x: event.clientX, y: event.clientY}
-			Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.pan(dx, dy)})
-			return
+	function locateEntity(id: number, tick: number) {
+		if (id < 0) {
+			setFollow({free: Option.some(tileOf(-1 - id)), id: Option.none(), overview: false})
+		} else {
+			const building = Array.findFirst(props.view.buildings, entry => entry.id === id)
+			setFollow({
+				free: Option.map(building, entry => ({x: entry.x + entry.w / 2, z: entry.z + entry.d / 2})),
+				id: Option.filter(Option.some(id), () => Option.isNone(building)),
+				overview: false
+			})
 		}
-		Option.match(world, {
-			onNone: () => undefined,
-			onSome: active => {
-				const picked = active.cast.pick(event.clientX, event.clientY)
-				setHover(Option.map(picked, id => ({id: `${id}`, x: event.clientX, y: event.clientY})))
-				// Off the units, the ground under the pointer: the building on it from the frames, the rest from the chunk worker.
-				const at = Option.filter(active.renderer.inspect(event.clientX, event.clientY), () => Option.isNone(picked))
-				setGround(before => ({
-					at,
-					info: Option.filter(before.info, () => Option.isSome(at)),
-					x: event.clientX,
-					y: event.clientY
-				}))
-			}
-		})
-	}
-
-	function wheel(event: WheelEvent<HTMLCanvasElement>) {
-		Option.match(world, {
-			onNone: () => undefined,
-			onSome: active => active.renderer.zoomBy(Math.exp(event.deltaY * wheelRate(event.ctrlKey)))
-		})
+		if (id > 0 && !Array.some(props.view.buildings, entry => entry.id === id)) {
+			setPanel(Option.some('history'))
+		}
+		if (tick !== props.view.frame.tick) setSource(Option.some({from: tick, speed: 0}))
+		Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.centre()})
 	}
 
 	return (
-		<Portraits value={portraits}>
-			<div className="absolute inset-0">
-				<canvas
-					ref={canvas}
-					aria-label="Signal"
-					className="absolute inset-0 size-full touch-none"
-					onPointerDown={down}
-					onPointerUp={up}
-					onPointerMove={move}
-					onPointerLeave={() => {
-						setHover(Option.none())
-						setGround(before => ({...before, at: Option.none(), info: Option.none()}))
-					}}
-					onWheel={wheel}
-				/>
-				<Overlay ground={ground} buildings={props.view.buildings} units={props.view.frame.units} />
-				<Sidebar
-					view={props.view}
-					team={team}
-					replaying={Option.isSome(source)}
-					onPick={next => {
-						setTeam(next)
-						setFollow({free: Option.none(), id: Option.none(), overview: follow.overview})
-					}}
-				/>
-				<Panel label="Map" className="top-4 right-4 w-94.5">
+		<Navigation
+			value={{
+				entity: locateEntity,
+				place: (x, z, tick) => {
+					setFollow({free: Option.some({x, z}), id: follow.id, overview: false})
+					if (tick !== props.view.frame.tick) setSource(Option.some({from: tick, speed: 0}))
+					Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.centre()})
+				},
+				time: tick => setSource(Option.some({from: tick, speed: 0}))
+			}}
+		>
+			<Portraits value={portraits}>
+				<div className="absolute inset-0">
+					<canvas
+						ref={canvas}
+						aria-label="Signal"
+						tabIndex={0}
+						className="absolute inset-0 size-full touch-none"
+						onPointerDown={gestures.down}
+						onPointerUp={gestures.up}
+						onPointerMove={gestures.move}
+						onPointerCancel={gestures.cancel}
+						onLostPointerCapture={gestures.lost}
+						onPointerLeave={gestures.leave}
+						onWheel={gestures.wheel}
+					/>
+					<Overlay buildings={props.view.buildings} units={props.view.frame.units} />
 					{Option.getOrUndefined(
-						Option.map(world, active => (
-							<Minimap
+						Option.map(panel, pickedPanel => (
+							<Sidebar
+								actor={follow.id}
+								panel={pickedPanel}
+								onPanel={next => setPanel(Option.some(next))}
+								close={() => setPanel(Option.none())}
 								view={props.view}
-								looking={active.renderer.looking}
-								onGo={at => setFollow({free: Option.some(at), id: Option.none(), overview: false})}
+								team={team}
+								replaying={Option.isSome(source)}
+								onPick={next => {
+									setTeam(next)
+									setFollow({free: Option.none(), id: Option.none(), overview: follow.overview})
+								}}
 							/>
 						))
 					)}
+					<Panel label="Map controls" className="top-2 left-2 flex items-center gap-1 px-2 md:top-4 md:left-100">
+						<Button
+							aria-label="Open inspector"
+							variant="ghost"
+							size="icon"
+							onClick={() => setPanel(Option.some('core'))}
+						>
+							☰
+						</Button>
+						<Button
+							aria-label="Zoom in"
+							variant="ghost"
+							size="icon"
+							onClick={() =>
+								Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.zoomBy(1 / ZOOM_STEP)})
+							}
+						>
+							+
+						</Button>
+						<Button
+							aria-label="Zoom out"
+							variant="ghost"
+							size="icon"
+							onClick={() =>
+								Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.zoomBy(ZOOM_STEP)})
+							}
+						>
+							−
+						</Button>
+						<Button
+							aria-label="Rotate map"
+							variant="ghost"
+							size="icon"
+							onClick={() => Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.turn(1)})}
+						>
+							↻
+						</Button>
+						<Button
+							aria-label="Team overview"
+							variant="ghost"
+							size="icon"
+							onClick={() => setFollow({...follow, overview: !follow.overview})}
+						>
+							⌖
+						</Button>
+						<span className="text-muted-foreground pl-2">
+							{Boolean.match(props.view.frame.paused === true, {onFalse: () => 'Spectator', onTrue: () => 'Stopped'})}
+						</span>
+					</Panel>
+					<Panel label="Map" className="top-4 right-4 hidden w-94.5 lg:block">
+						{Option.getOrUndefined(
+							Option.map(world, active => (
+								<Minimap
+									view={props.view}
+									looking={active.renderer.looking}
+									onGo={at => setFollow({free: Option.some(at), id: Option.none(), overview: false})}
+								/>
+							))
+						)}
+						{Option.getOrUndefined(
+							Option.map(
+								Array.findFirst(props.view.frame.units, unit => Option.contains(follow.id, unit.id)),
+								unit => <Followed unit={unit} />
+							)
+						)}
+						<Hints />
+					</Panel>
 					{Option.getOrUndefined(
-						Option.map(
-							Array.findFirst(props.view.frame.units, unit => Option.contains(follow.id, unit.id)),
-							unit => <Followed unit={unit} />
-						)
+						Option.map(source, replay => (
+							<Panel className="top-16 left-2 px-3 py-1.5 md:left-100">
+								Replay {clockOf(props.view.frame.tick)}
+								<span className="text-muted-foreground"> · {replay.speed}×</span>
+							</Panel>
+						))
 					)}
-					<Hints />
-				</Panel>
-				{Option.getOrUndefined(
-					Option.map(source, replay => (
-						<Panel className="top-4 left-1/2 ml-48 -translate-x-1/2 px-3 py-1.5">
-							Replay {clockOf(props.view.frame.tick)}
-							<span className="text-muted-foreground"> · {replay.speed}×</span>
-						</Panel>
-					))
-				)}
-				{Option.getOrUndefined(
-					Option.map(AsyncResult.value(timeline), entry => (
-						<TimelineBar
-							timeline={entry}
-							tick={shownTick(source, props.view.frame.tick)}
-							source={source}
-							onSource={setSource}
-						/>
-					))
-				)}
-				{props.view.count === 0 && <Status>Loading the replay</Status>}
-			</div>
-		</Portraits>
+					{Option.getOrUndefined(
+						Option.map(AsyncResult.value(timeline), entry => (
+							<TimelineBar
+								inspecting={Option.isSome(panel)}
+								timeline={entry}
+								tick={shownTick(source, props.view.frame.tick)}
+								source={source}
+								onSource={setSource}
+							/>
+						))
+					)}
+					{props.view.count === 0 && <Status>Loading the replay</Status>}
+				</div>
+			</Portraits>
+		</Navigation>
 	)
 }
 
 function Signal() {
-	const result = useAtomValue(viewAtom)
+	const result = useAtomValue(hudAtom)
 	return (
 		<main className="relative h-dvh w-dvw overflow-hidden font-mono text-xs select-none">
+			{Option.getOrUndefined(
+				Option.map(
+					Option.flatMap(AsyncResult.value(result), view => Option.fromUndefinedOr(view.frame.problem)),
+					text => <Status>{text}</Status>
+				)
+			)}
 			{/* The world stays on screen while its stream starts over, as a replay begins or ends. */}
 			{Option.match(useAtomValue(seedAtom), {
 				onNone: () =>
@@ -1224,7 +1626,12 @@ function Signal() {
 								})
 						}
 					),
-				onSome: known => <World seed={known} view={Option.getOrElse(AsyncResult.value(result), () => EMPTY)} />
+				onSome: known => (
+					<>
+						<World seed={known} view={Option.getOrElse(AsyncResult.value(result), () => EMPTY)} />
+						{Option.getOrUndefined(Option.map(AsyncResult.error(result), error => <Status>{error.message}</Status>))}
+					</>
+				)
 			})}
 		</main>
 	)

@@ -4,9 +4,18 @@ import {Rpc, RpcGroup} from 'effect/rpc'
 
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 
-import {Entry, Frame, GameError, Timeline} from '#services/game/schema.ts'
+import {Entry, Frame, GameError, HistoryPage, Timeline} from '#services/game/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
+	Rpc.make('signal.history', {
+		error: GameError,
+		payload: Schema.Struct({
+			actor: Schema.Int,
+			at: Schema.optionalKey(Schema.Natural),
+			before: Schema.optionalKey(Schema.Int)
+		}),
+		success: HistoryPage
+	}),
 	Rpc.make('signal.join', {error: GameError, stream: true, success: Frame}),
 	// The world as it was from a tick on, at a multiple of real time; 0 holds it still.
 	Rpc.make('signal.replay', {

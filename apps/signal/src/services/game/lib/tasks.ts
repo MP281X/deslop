@@ -2,7 +2,23 @@ import {Effect, Schema} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 
-import {Job} from '#services/game/schema.ts'
+import {Job, Point} from '#services/game/schema.ts'
+
+export const Creatures = Machine.make({
+	events: Machine.events({Attack: {target: Schema.Int}, Down: {}, Move: {to: Point}, Rest: {}}),
+	root: Machine.state({
+		states: {Attacking: {fields: {target: Schema.Int}}, Down: {}, Moving: {fields: {to: Point}}, Resting: {}}
+	})
+}).handle({
+	initial: {target: 'Resting'},
+	on: {
+		Attack: {data: transition => ({target: transition.event.target}), target: 'Attacking'},
+		Down: {target: 'Down'},
+		Move: {data: transition => ({to: transition.event.to}), target: 'Moving'},
+		Rest: {target: 'Resting'}
+	}
+})
+export type Creature = Machine.Snapshot<typeof Creatures>
 
 // Where a unit is in its step: choosing the next, on its way, at work, finished (the world then applies what it did) or stuck for a while.
 export const Tasks = Machine.make({
@@ -119,6 +135,7 @@ export const START_STATES = Effect.gen(function* () {
 			seconds: 0
 		})).next,
 		clearing,
+		creature: (yield* Machine.planInitial(Creatures)).state,
 		planning: (yield* Machine.planInitial(Tasks)).state
 	}
 })

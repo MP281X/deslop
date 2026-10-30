@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Effect, MutableHashMap, Number, Option, Predicate, Record, Schema, String} from 'effect'
+import {Array, Effect, MutableHashMap, Option, Predicate, Record, Schema} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 
@@ -9,15 +9,26 @@ import {Sites} from '#services/game/lib/tasks.ts'
 import {CREATURES, capsuleOf, nearestPair} from '#services/game/lib/utils.ts'
 import {Frame, Saved, UnitKind} from '#services/game/schema.ts'
 import type {Command, UnitView} from '#services/game/schema.ts'
+import {makeWorld} from '#services/world/lib/utils.ts'
 
 type Sim = Effect.Success<ReturnType<typeof makeSim>>
 
-// Runs the world a second at a time until a condition holds; if it never did within the seconds given, fails with what team 0 sees.
+// Only fixture failures expose spectator diagnostics; agents never receive these observations.
 function until<E>(sim: Sim, seconds: number, holds: Effect.Effect<boolean, E>) {
 	return Effect.flatMap(
 		Effect.repeat(Effect.andThen(sim.run(20), holds), {times: seconds - 1, until: Predicate.isTruthy}),
 		held => {
-			if (!held) assert.fail(sim.observe(0).text)
+			if (!held) {
+				assert.fail(
+					`${sim.observe(0).text}\nSpectator units:\n${Array.join(
+						Array.map(sim.units(), unit => `#${unit.id} ${unit.doing} at (${unit.x}, ${unit.z}); load ${unit.load}`),
+						'\n'
+					)}\nRecent individual events:\n${Array.join(
+						Array.map(sim.individual(2).recent, event => `${event.tick}: ${event.text}`),
+						'\n'
+					)}`
+				)
+			}
 			return Effect.succeed(held)
 		}
 	)
@@ -44,18 +55,47 @@ const builderOrder = Effect.fnUntraced(function* (sim: Sim, id: number) {
 })
 
 function command(sim: Sim, given: Command) {
-	return Option.getOrThrow(Array.head(sim.apply(0, [given])))
+	const result = Option.getOrThrow(Array.head(sim.apply(0, [given])))
+	// This factory scenario supplies cooperative local-model decisions; delivery alone is tested separately.
+	if (given._tag === 'Order') {
+		for (const unit of given.units) {
+			sim.decide(unit, 'read')
+			sim.decide(unit, 'accept')
+		}
+	}
+	return result
 }
 
-// A number caught by a pattern's first group.
-function caught(text: string, pattern: RegExp, group: number) {
-	return Option.getOrThrow(
-		Option.flatMap(
-			Option.flatMap(String.match(pattern)(text), found => Option.fromUndefinedOr(found[group])),
-			Number.parse
+// Cooperative fixture decisions still travel, inspect and stake through the public simulation interface.
+const propose = Effect.fnUntraced(function* (
+	sim: Sim,
+	kind: Extract<Command, {_tag: 'Build'}>['kind'],
+	points: {x: number; z: number}[]
+) {
+	const builder = Option.getOrThrow(Array.findFirst((yield* sim.snapshot).units, unit => unit.team === 0))
+	for (const point of points) {
+		const before = Array.map((yield* sim.snapshot).buildings, building => building.id)
+		assert.isTrue(command(sim, {_tag: 'Build', kind, ...point}).ok)
+		sim.decide(builder.id, 'read')
+		sim.decide(builder.id, 'accept')
+		yield* Effect.repeat(
+			Effect.andThen(
+				sim.run(20),
+				Effect.map(
+					sim.snapshot,
+					saved =>
+						Array.some(saved.buildings, building => !Array.contains(before, building.id)) ||
+						Array.some(saved.units, unit => unit.id === builder.id && unit.order._tag !== 'Build')
+				)
+			),
+			{times: 119, until: Predicate.isTruthy}
 		)
-	)
-}
+		const found = Array.findFirst((yield* sim.snapshot).buildings, building => !Array.contains(before, building.id))
+		if (Option.isSome(found)) return Option.getOrThrow(found).id
+		command(sim, {_tag: 'Order', order: {_tag: 'Auto'}, units: [builder.id]})
+	}
+	return assert.fail(`No locally suitable ${kind} foundation in the fixture.`)
+})
 
 it.effect(
 	'takes a team from Home and one Builder to a furnace, a miner and a second Builder, by hand',
@@ -66,12 +106,11 @@ it.effect(
 		const builder = Option.getOrThrow(Array.findFirst(saved.units, unit => unit.team === 0)).id
 		assert.deepStrictEqual(home.stock, {})
 		const at = {x: home.x + 1, z: home.z + 1}
-		const fields = Option.getOrThrow(
-			Array.findFirst(String.split('\n')(sim.observe(0).text), String.startsWith('Ore fields seen'))
-		)
+		const world = makeWorld(42)
+		const fields = Array.getSomes(Array.map(Option.getOrThrow(Array.head(world.spawns())).fields, world.field))
 		function fieldAt(material: string) {
-			const pattern = new RegExp(`${material} field at \\((-?\\d+), (-?\\d+)\\)`, 'u')
-			return {x: caught(fields, pattern, 1), z: caught(fields, pattern, 2)}
+			const field = Option.getOrThrow(Array.findFirst(fields, entry => entry.material === material))
+			return {x: field.x, z: field.z}
 		}
 		const iron = fieldAt('iron')
 		function stocked(item: 'iron_ingot' | 'iron_ore' | 'stone' | 'wood', count: number) {
@@ -82,17 +121,17 @@ it.effect(
 			command(sim, {_tag: 'Order', order: {_tag: 'Gather', item: 'stone', ...fieldAt('stone')}, units: [builder]}).ok
 		)
 		assert.isTrue(yield* until(sim, 900, stocked('stone', 14)))
-		const furnace = Option.getOrThrow(
-			Array.findFirst(
-				Array.flatMap(Array.range(-8, 8), dz => Array.map(Array.range(-8, 8), dx => ({x: at.x + dx, z: at.z + dz}))),
-				spot =>
-					Option.liftPredicate(command(sim, {_tag: 'Build', kind: 'furnace', x: spot.x, z: spot.z}), entry => entry.ok)
-			)
+		const furnaceId = yield* propose(
+			sim,
+			'furnace',
+			Array.flatMap(Array.range(-8, 8), dz => Array.map(Array.range(-8, 8), dx => ({x: at.x + dx, z: at.z + dz})))
 		)
-		const furnaceId = caught(furnace.text, /#(\d+)/u, 1)
 		assert.isTrue(command(sim, {_tag: 'Order', order: {_tag: 'Auto'}, units: [builder]}).ok)
 		assert.isTrue(yield* until(sim, 600, built(sim, furnaceId)))
 		assert.isTrue(command(sim, {_tag: 'Recipe', building: furnaceId, recipe: 'furnace_iron_wood'}).ok)
+		sim.decide(builder, 'read')
+		sim.decide(builder, 'accept')
+		yield* sim.run(2400)
 		// Wood and iron ore by hand, then into the furnace and its ingots back Home.
 		assert.isTrue(
 			command(sim, {_tag: 'Order', order: {_tag: 'Gather', item: 'wood', x: at.x, z: at.z}, units: [builder]}).ok
@@ -129,19 +168,11 @@ it.effect(
 		assert.isTrue(yield* until(sim, 900, stocked('iron_ingot', 24)))
 		// A miner on the iron field, and a second Builder off Home's line.
 		assert.isTrue(command(sim, {_tag: 'Order', order: {_tag: 'Auto'}, units: [builder]}).ok)
-		const miner = Option.getOrThrow(
-			Array.findFirst(
-				Array.flatMap(Array.range(-6, 6), dz =>
-					Array.map(Array.range(-6, 6), dx => ({x: iron.x + dx, z: iron.z + dz}))
-				),
-				spot =>
-					Option.liftPredicate(
-						command(sim, {_tag: 'Build', kind: 'miner_mk1', x: spot.x, z: spot.z}),
-						entry => entry.ok
-					)
-			)
+		const minerId = yield* propose(
+			sim,
+			'miner_mk1',
+			Array.flatMap(Array.range(-6, 6), dz => Array.map(Array.range(-6, 6), dx => ({x: iron.x + dx, z: iron.z + dz})))
 		)
-		const minerId = caught(miner.text, /#(\d+)/u, 1)
 		assert.isTrue(command(sim, {_tag: 'Craft', count: 4, recipe: 'bench_iron_plate'}).ok)
 		assert.isTrue(command(sim, {_tag: 'Craft', count: 4, recipe: 'bench_iron_rod'}).ok)
 		assert.isTrue(command(sim, {_tag: 'Make', unit: 'builder'}).ok)
@@ -173,14 +204,171 @@ it.effect(
 		const sim = yield* makeSim(Option.none(), 7)
 		const home = yield* buildingOf(sim, (yield* team0(sim)).home)
 		assert.isFalse(command(sim, {_tag: 'Build', kind: 'smelter', x: home.x + 4, z: home.z}).ok)
-		assert.isFalse(command(sim, {_tag: 'Build', kind: 'furnace', x: home.x + 400, z: home.z}).ok)
+		assert.isTrue(command(sim, {_tag: 'Build', kind: 'furnace', x: home.x + 400, z: home.z}).ok)
+		assert.strictEqual((yield* sim.snapshot).buildings.length, 3)
 		assert.isFalse(command(sim, {_tag: 'Message', team: 1, text: 'hello'}).ok)
 		assert.isFalse(command(sim, {_tag: 'Advance'}).ok)
 		assert.match(sim.observe(0).text, /Next: t1 Workshop, paid at Home: 10 iron_plate, 10 iron_rod/u)
 	})
 )
 
+it.effect(
+	'keeps remote encounters private and radio positions independent of life or obedience',
+	Effect.fnUntraced(function* () {
+		const saved = yield* (yield* makeSim(Option.none(), 42)).snapshot
+		const home = Option.getOrThrow(Array.head(saved.buildings))
+		const at = {x: home.x + 50, z: home.z + 3}
+		const encountered = yield* makeSim(
+			Option.some({
+				...saved,
+				units: Array.map(saved.units, unit => {
+					if (unit.id === 2) return {...unit, ...at}
+					if (unit.id === 4) return {...unit, x: at.x + 2, z: at.z}
+					return unit
+				})
+			}),
+			0
+		)
+		encountered.decide(2, 'rest')
+		encountered.decide(4, 'rest')
+		yield* encountered.run(40)
+		assert.deepStrictEqual(encountered.individual(2).contacts, [1])
+		assert.isFalse(command(encountered, {_tag: 'Message', team: 1, text: 'Do not leak a private encounter.'}).ok)
+		assert.isFalse(command(encountered, {_tag: 'Ping', unit: 2}).ok)
+		const previous = yield* encountered.snapshot
+		const silent = yield* makeSim(
+			Option.some({
+				...previous,
+				units: Array.map(previous.units, unit => {
+					if (unit.id !== 2) return unit
+					return {...unit, health: 0, x: home.x + 30, z: home.z + 3}
+				})
+			}),
+			0
+		)
+		const ping = command(silent, {_tag: 'Ping', unit: 2})
+		assert.isTrue(ping.ok)
+		assert.include(ping.text, 'does not establish life or health')
+		assert.notInclude(silent.observe(0).text, 'down')
+		assert.isFalse(command(silent, {_tag: 'Message', team: 1, text: 'Still unknown to this Core.'}).ok)
+		assert.isFalse(command(silent, {_tag: 'Build', kind: 'road', to: {x: 1, z: 1}, x: 0, z: 0}).ok)
+	})
+)
+
+it.effect(
+	'does not reveal whether an inaccessible building ID exists',
+	Effect.fnUntraced(function* () {
+		const saved = yield* (yield* makeSim(Option.none(), 42)).snapshot
+		const home = Option.getOrThrow(Array.head(saved.buildings))
+		const sim = yield* makeSim(
+			Option.some({
+				...saved,
+				buildings: [...saved.buildings, {...home, id: 324, kind: 'crate_mk1', x: home.x + 100}],
+				nextId: 325
+			}),
+			0
+		)
+		assert.deepStrictEqual(command(sim, {_tag: 'Cancel', building: 324}), {
+			...command(sim, {_tag: 'Cancel', building: 325}),
+			command: {_tag: 'Cancel', building: 324}
+		})
+	})
+)
+
+it.effect(
+	'lets an individual take unknown-team storage and keep the cargo until it chooses to deposit it',
+	Effect.fnUntraced(function* () {
+		const saved = yield* (yield* makeSim(Option.none(), 42)).snapshot
+		const unit = Option.getOrThrow(Array.findFirst(saved.units, body => body.id === 2))
+		const sim = yield* makeSim(
+			Option.some({
+				...saved,
+				buildings: [
+					...saved.buildings,
+					{
+						...Option.getOrThrow(Array.head(saved.buildings)),
+						id: 324,
+						kind: 'crate_mk1',
+						stock: {iron_plate: 24},
+						team: 1,
+						x: Math.floor(unit.x) + 1,
+						z: Math.floor(unit.z)
+					}
+				],
+				nextId: 325
+			}),
+			0
+		)
+		sim.decide(2, 'rest')
+		yield* sim.run(40)
+		sim.decide(2, 'take:324')
+		yield* sim.run(200)
+		assert.strictEqual((yield* buildingOf(sim, 324)).stock.iron_plate, 14)
+		assert.strictEqual(
+			Option.getOrThrow(Array.findFirst((yield* sim.snapshot).units, body => body.id === 2)).cargo.iron_plate,
+			10
+		)
+		assert.deepStrictEqual(sim.individual(2).contacts, [])
+		assert.notInclude(sim.observe(1).text, '#324')
+		sim.decide(2, 'deposit:324')
+		yield* sim.run(100)
+		assert.strictEqual((yield* buildingOf(sim, 324)).stock.iron_plate, 24)
+		assert.deepStrictEqual(
+			Option.getOrThrow(Array.findFirst((yield* sim.snapshot).units, body => body.id === 2)).cargo,
+			{}
+		)
+	})
+)
+
 // How far a body turned, in radians, over a stretch in which it got less than a third of a tile anywhere.
+it.effect(
+	'enforces refit eligibility physically and releases a withdrawn paid refit without blocking production',
+	Effect.fnUntraced(function* () {
+		const saved = yield* (yield* makeSim(Option.none(), 42)).snapshot
+		for (const mark of [0, 2]) {
+			const sim = yield* makeSim(Option.some({...saved, units: Array.map(saved.units, unit => ({...unit, mark}))}), 0)
+			command(sim, {_tag: 'Order', order: {_tag: 'Refit'}, units: [2]})
+			yield* sim.run(1200)
+			assert.deepStrictEqual((yield* team0(sim)).line, [])
+			assert.strictEqual(
+				Option.getOrThrow(Array.findFirst((yield* sim.snapshot).units, unit => unit.id === 2)).mark,
+				mark
+			)
+		}
+		const home = Option.getOrThrow(Array.head(saved.buildings))
+		const sim = yield* makeSim(
+			Option.some({
+				...saved,
+				buildings: Array.map(saved.buildings, building => ({...building, stock: {iron_plate: 8, iron_rod: 4}})),
+				teams: Array.map(saved.teams, team => ({
+					...team,
+					gates: [...team.gates, 't4' as const],
+					line: [{class: 'builder' as const, mark: 1, unit: 2}],
+					lineProgress: 10
+				})),
+				units: Array.map(saved.units, unit => ({...unit, upgrade: false}))
+			}),
+			0
+		)
+		assert.isTrue(command(sim, {_tag: 'Make', unit: 'builder'}).ok)
+		yield* sim.run(1)
+		assert.deepStrictEqual((yield* buildingOf(sim, home.id)).stock, {
+			circuit: 2,
+			iron_plate: 8,
+			iron_rod: 4,
+			motor: 2,
+			steel_beam: 4
+		})
+		yield* sim.run(500)
+		assert.strictEqual(
+			Array.countBy((yield* sim.snapshot).units, unit => unit.team === 0),
+			2
+		)
+		assert.deepStrictEqual((yield* team0(sim)).line, [])
+	}),
+	{timeout: 15_000}
+)
+
 function swayOf(track: {x: number; yaw: number; z: number}[]) {
 	const first = Option.getOrThrow(Array.head(track))
 	const last = Option.getOrThrow(Array.last(track))
@@ -213,6 +401,8 @@ it.effect(
 					units: [unit.id]
 				}
 			])
+			sim.decide(unit.id, 'read')
+			sim.decide(unit.id, 'accept')
 		}
 		const connection = sim.connect()
 		const tracks = MutableHashMap.empty<number, {tenth: number; x: number; yaw: number; z: number}[]>()
@@ -275,7 +465,7 @@ it.effect(
 		const wire = Schema.toCodecJson(Frame)
 		yield* Effect.forEach(
 			Array.range(1, 5),
-			() => Effect.andThen(sim.run(20), () => Schema.encodeEffect(wire)(Option.getOrThrow(sim.frame(connection, 0)))),
+			() => Effect.andThen(sim.run(2), () => Schema.encodeEffect(wire)(Option.getOrThrow(sim.frame(connection, 0)))),
 			{concurrency: 1, discard: true}
 		)
 		assert.isTrue(Schema.is(Frame)(Option.getOrThrow(sim.frame(connection, 0))))
@@ -294,6 +484,8 @@ it.effect(
 					units: [unit.id]
 				}
 			])
+			first.decide(unit.id, 'read')
+			first.decide(unit.id, 'accept')
 		}
 		yield* first.run(1200)
 		// Through the save's schema as JSON, as the world goes to disk.

@@ -109,6 +109,7 @@ export const StructureKind = Schema.Literals([
 	'belt_mk2',
 	'lift',
 	'pylon',
+	'antenna',
 	'belt_mk3'
 ])
 
@@ -149,11 +150,28 @@ export const RecipeId = Schema.Literals([
 	'make_signal_core'
 ])
 
+type Tile = typeof Tile.Type
+const Tile = Schema.Int.check(Schema.isBetween({maximum: 30_000, minimum: -30_000}))
+
+// Which way a belt carries or a ramp rises: north is −z.
+export type Direction = typeof Direction.Type
+export const Direction = Schema.Literals(['north', 'east', 'south', 'west'])
+
+type Blueprint = typeof Blueprint.Type
+const Blueprint = Schema.Struct({
+	dir: Schema.optionalKey(Direction),
+	kind: Schema.Union([BuildingKind, StructureKind]),
+	to: Schema.optionalKey(Schema.Struct({x: Tile, z: Tile})),
+	x: Tile,
+	z: Tile
+})
+
 // One step of a unit's standing order: where it goes and what it does there.
 export type Job = typeof Job.Type
 export const Job = Schema.TaggedUnion({
 	// Clear a tree or rock out of the way, or for its wood or stone.
 	Clear: {prop: Schema.Int, x: Schema.Finite, z: Schema.Finite},
+	Configure: {building: Schema.Int, recipe: RecipeId, x: Schema.Finite, z: Schema.Finite},
 	// Raise a construction site whose items are all there.
 	Construct: {site: Schema.Int},
 	// Empty its cargo into a building.
@@ -162,14 +180,16 @@ export const Job = Schema.TaggedUnion({
 	Gather: {item: ItemId, x: Schema.Int, z: Schema.Int},
 	// Drive to a place and stay: guarding, waiting or parked.
 	Hold: {x: Schema.Finite, z: Schema.Finite},
+	Inspect: {building: Schema.Int, x: Schema.Finite, z: Schema.Finite},
 	// Take items out of a building.
 	Pickup: {building: Schema.Int, count: Schema.Int, item: ItemId},
 	// Be refitted at Home into the next mark.
 	Refit: {},
 	// Patch up a teammate that is down.
-	Repair: {unit: Schema.Int},
+	Repair: {unit: Schema.Int, x: Schema.optionalKey(Schema.Finite), z: Schema.optionalKey(Schema.Finite)},
 	// Look round unseen ground.
-	Scout: {x: Schema.Finite, z: Schema.Finite}
+	Scout: {x: Schema.Finite, z: Schema.Finite},
+	Stake: {...Blueprint.fields}
 })
 
 // The unit models: each class and mark is drawn as one of these (KINDS in the game's utils).
@@ -228,54 +248,80 @@ export class GameError extends Schema.TaggedError<GameError>()('GameError', {
 export type Point = typeof Point.Type
 export const Point = Schema.Struct({x: Schema.Finite, z: Schema.Finite})
 
+type Impression = typeof Impression.Type
+const Impression = Schema.Struct({
+	kind: Schema.Literals(['feet', 'wheels', 'treads']),
+	tick: Schema.Int,
+	wear: Schema.Finite
+})
+
 type Count = typeof Count.Type
 const Count = Schema.Int.check(Schema.isBetween({maximum: 1000, minimum: 1}))
-type Tile = typeof Tile.Type
-const Tile = Schema.Int.check(Schema.isBetween({maximum: 30_000, minimum: -30_000}))
-
-// Which way a belt carries or a ramp rises: north is −z.
-export type Direction = typeof Direction.Type
-export const Direction = Schema.Literals(['north', 'east', 'south', 'west'])
 
 export type Items = typeof Items.Type
-export const Items = Schema.Record(ItemId, Schema.optionalKey(Schema.Int))
+export const Items = Schema.Record(ItemId, Schema.optionalKey(Schema.Finite))
 
-// What a unit keeps doing until it gets another order. Auto: a Builder raises and supplies the team's construction sites, any other unit waits by Home. Gather: a Builder digs a raw item by hand (ore from a field, wood from trees, stone from rocks) round a place and carries it to the nearest storage. Haul: carries items from one building's output (or a crate or Home) to another building, `count` items in all or for good. Explore: flies or drives to the nearest unseen ground, again and again. Guard: holds a place and fights what comes near. Go: drives to a place and waits there.
+// Accepted objectives persist, but local decisions can interrupt them. Auto only resumes personally known construction projects.
 export type Standing = typeof Standing.Type
 export const Standing = Schema.TaggedUnion({
+	Attack: {target: Schema.Int},
 	Auto: {},
+	Build: {...Blueprint.fields},
+	Configure: {building: Schema.Int, recipe: RecipeId},
+	Construct: {building: Schema.Int},
+	Deposit: {building: Schema.Int},
 	Explore: {},
 	Gather: {item: ItemId, x: Tile, z: Tile},
 	Go: {x: Tile, z: Tile},
 	Guard: {x: Tile, z: Tile},
-	Haul: {count: Schema.optionalKey(Count), from: Schema.Int, item: Schema.optionalKey(ItemId), to: Schema.Int}
+	Haul: {count: Schema.optionalKey(Count), from: Schema.Int, item: Schema.optionalKey(ItemId), to: Schema.Int},
+	Inspect: {building: Schema.Int},
+	Investigate: {x: Tile, z: Tile},
+	Loot: {building: Schema.Int},
+	Refit: {},
+	Repair: {unit: Schema.Int}
 })
 
-// A team's command for the next round. Build: a construction site for a building whose north-west tile is (x, z). Order: standing orders for units. Recipe: what a machine makes. Craft: Home's bench makes a recipe's output `count` times. Make: Home's line makes a mark 1 unit. Upgrade: a unit drives Home and comes out a mark better. Advance: Home (a tier) or the Beacon (a phase or Signal cycle) takes the next milestone's items from what it holds. Cancel: a site is dropped, or a building taken down; what went into it goes back to Home. Message: a line to a team met. Note: the team's own notes, carried from round to round, replaced whole.
+// Core commands produce local actions or communication attempts, never forced remote obedience.
 export type Command = typeof Command.Type
 export const Command = Schema.TaggedUnion({
 	Advance: {},
 	// A structure (belt, pipe, pole, road…) is laid on every tile of the straight line from (x, z) to `to`, running that way; a single one runs `dir`.
-	Build: {
-		dir: Schema.optionalKey(Direction),
-		kind: Schema.Union([BuildingKind, StructureKind]),
-		to: Schema.optionalKey(Schema.Struct({x: Tile, z: Tile})),
-		x: Tile,
-		z: Tile
-	},
+	Build: {...Blueprint.fields, units: Schema.optionalKey(Schema.Array(Schema.Int))},
 	Cancel: {building: Schema.Int},
+	Catalog: {section: Schema.Literals(['buildings', 'structures', 'recipes', 'units', 'milestones'])},
 	Craft: {count: Schema.Int.check(Schema.isBetween({maximum: 50, minimum: 1})), recipe: RecipeId},
+	Inspect: {building: Schema.Int},
 	Make: {unit: UnitClass},
-	Message: {team: Schema.Int, text: Schema.String.check(Schema.isMaxLength(400))},
-	Note: {text: Schema.String.check(Schema.isMaxLength(2000))},
-	Order: {order: Standing, units: Schema.Array(Schema.Int).check(Schema.isMinLength(1), Schema.isMaxLength(40))},
+	Message: {
+		ids: Schema.optionalKey(Schema.Array(Schema.Int)),
+		team: Schema.Int,
+		text: Schema.String.check(Schema.isMaxLength(400))
+	},
+	Order: {
+		facts: Schema.optionalKey(Schema.Array(Schema.Int)),
+		order: Standing,
+		units: Schema.Array(Schema.Int).check(Schema.isMinLength(1), Schema.isMaxLength(40))
+	},
+	Ping: {unit: Schema.Int},
+	Recall: {before: Schema.Int.check(Schema.isGreaterThan(1)), offset: Schema.optionalKey(Schema.Natural)},
 	Recipe: {building: Schema.Int, recipe: RecipeId},
+	Tell: {
+		facts: Schema.optionalKey(Schema.Array(Schema.Int)),
+		ids: Schema.optionalKey(Schema.Array(Schema.Int)),
+		text: Schema.String.check(Schema.isMaxLength(2000)),
+		units: Schema.Array(Schema.Int)
+	},
 	Upgrade: {unit: Schema.Int}
 })
 
 // What a command did, in plain words for the model's next round.
 export type Outcome = typeof Outcome.Type
-export const Outcome = Schema.Struct({command: Command, ok: Schema.Boolean, text: Schema.String})
+export const Outcome = Schema.Struct({
+	command: Schema.Union([Command, Schema.TaggedStruct('Note', {text: Schema.String})]),
+	ok: Schema.Boolean,
+	text: Schema.String
+})
 
 // A body as every client draws it, ten times a second: a team's unit, a hostile or a creature.
 export type UnitView = typeof UnitView.Type
@@ -347,12 +393,28 @@ export const Frame = Schema.Struct({
 	buildings: Schema.optional(Schema.Array(BuildingView)),
 	changes: Schema.Array(TileChange),
 	cleared: Schema.Array(Schema.Int),
+	environment: Schema.optionalKey(Schema.Struct({day: Schema.Int, daylight: Schema.Finite})),
 	explored: Schema.Array(Explored),
 	// In a replay, the live world's tick.
 	live: Schema.optionalKey(Schema.Int),
+	paused: Schema.optionalKey(Schema.Boolean),
+	problem: Schema.optional(Schema.String),
 	shots: Schema.Array(Schema.Struct({from: Schema.Int, to: Schema.Int})),
 	teams: Schema.optional(Schema.Array(TeamView)),
 	tick: Schema.Int,
+	traces: Schema.optional(
+		Schema.Array(
+			Schema.Struct({
+				fresh: Schema.Finite,
+				impressions: Schema.optionalKey(Schema.Array(Impression)),
+				smog: Schema.Finite,
+				wear: Schema.Finite,
+				x: Schema.Int,
+				yaw: Schema.Finite,
+				z: Schema.Int
+			})
+		)
+	),
 	units: Schema.Array(UnitView),
 	world: Schema.optional(Schema.Struct({generator: Schema.Int, seed: Schema.Int})),
 	zones: Schema.optional(Schema.Array(Zone))
@@ -367,19 +429,20 @@ export const Mark = Schema.Struct({
 	tick: Schema.Int
 })
 
-// What one round's boundary did, for replays: each team's commands in the order they applied, and the round's marks.
-export type Journal = typeof Journal.Type
-export const Journal = Schema.Struct({
-	applied: Schema.Array(Schema.Struct({commands: Schema.Array(Command), team: Schema.Int})),
-	marks: Schema.Array(Mark),
-	round: Schema.Int
-})
-
 // The whole run for the timeline: its first tick, the live tick and every mark.
 export type Timeline = typeof Timeline.Type
 export const Timeline = Schema.Struct({live: Schema.Int, marks: Schema.Array(Mark), start: Schema.Int})
 
 // One round of a team's thread: what it was told, what it thought and said, the commands it gave and what each did.
+export type Usage = typeof Usage.Type
+export const Usage = Schema.Struct({
+	cached: Schema.optional(Schema.Int),
+	cost: Schema.optional(Schema.Finite),
+	input: Schema.optional(Schema.Int),
+	output: Schema.optional(Schema.Int),
+	written: Schema.optional(Schema.Int)
+})
+
 export type Entry = typeof Entry.Type
 export const Entry = Schema.Struct({
 	commands: Schema.Array(Outcome),
@@ -392,20 +455,136 @@ export const Entry = Schema.Struct({
 	team: Schema.Int,
 	text: Schema.String,
 	tick: Schema.Int,
-	tokens: Schema.optionalKey(Schema.Struct({input: Schema.Int, output: Schema.Int}))
+	tokens: Schema.optionalKey(Schema.Struct({...Usage.fields, compaction: Schema.optional(Usage)}))
 })
+
+export type Experience = typeof Experience.Type
+export const Experience = Schema.Struct({
+	actor: Schema.Int,
+	context: Schema.optionalKey(Schema.String),
+	id: Schema.Int,
+	kind: Schema.Literals(['born', 'observe', 'decision', 'action', 'report', 'message', 'ping', 'damage', 'down']),
+	subject: Schema.optionalKey(Schema.Int),
+	text: Schema.String,
+	tick: Schema.Int,
+	tokens: Entry.fields.tokens,
+	x: Schema.Finite,
+	z: Schema.Finite
+})
+
+export type Fact = typeof Fact.Type
+export const Fact = Schema.Struct({
+	form: Schema.optionalKey(Schema.Union([BuildingKind, StructureKind])),
+	id: Schema.Int,
+	items: Schema.optionalKey(Items),
+	kind: Schema.String,
+	source: Schema.Int,
+	stage: Schema.optionalKey(Schema.Literals(['Clearing', 'Supplying', 'Constructing', 'Complete', 'Missing'])),
+	text: Schema.String,
+	tick: Schema.Int,
+	via: Schema.optionalKey(Schema.Array(Schema.Struct({from: Schema.Int, tick: Schema.Int}))),
+	x: Schema.Finite,
+	z: Schema.Finite
+})
+
+export type Individual = typeof Individual.Type
+export const Individual = Schema.Struct({
+	born: Schema.Int,
+	contacts: Schema.Array(Schema.Int),
+	explored: Schema.optionalKey(Schema.Array(Explored)),
+	facts: Schema.Array(Fact),
+	foe: Schema.optional(Schema.Int),
+	guidance: Schema.String,
+	health: Schema.Finite,
+	id: Schema.Int,
+	inbox: Schema.Array(
+		Schema.Struct({
+			facts: Schema.optionalKey(Schema.Array(Fact)),
+			from: Schema.Int,
+			ids: Schema.Array(Schema.Int),
+			order: Schema.optionalKey(Standing),
+			text: Schema.String
+		})
+	),
+	intent: Schema.Literals([
+		'continue',
+		'rest',
+		'explore',
+		'approach',
+		'flee',
+		'attack',
+		'report',
+		'read',
+		'inspect',
+		'investigate'
+	]),
+	next: Schema.Int,
+	pending: Schema.optional(Standing),
+	projects: Schema.optionalKey(Schema.Array(Schema.Int)),
+	recent: Schema.Array(Experience),
+	target: Schema.optional(Point),
+	unrecorded: Schema.optionalKey(Schema.Array(Experience))
+})
+
+export type Life = typeof Life.Type
+export const Life = Schema.Struct({
+	cores: Schema.Array(Schema.Struct({contacts: Schema.Array(Schema.Int), facts: Schema.Array(Fact), team: Schema.Int})),
+	individuals: Schema.Array(Individual),
+	sequence: Schema.Int,
+	traces: Schema.Array(
+		Schema.Struct({
+			impressions: Schema.optionalKey(Schema.Array(Impression)),
+			smog: Schema.Finite,
+			tick: Schema.Int,
+			wear: Schema.Finite,
+			x: Schema.Int,
+			yaw: Schema.Finite,
+			z: Schema.Int
+		})
+	)
+})
+
+export type LocalDecision = typeof LocalDecision.Type
+export const LocalDecision = Schema.Struct({
+	actor: Schema.Int,
+	choices: Schema.Record(Schema.String, Schema.String),
+	experience: Schema.optionalKey(Schema.Array(Experience)),
+	instructions: Schema.optionalKey(Schema.String),
+	state: Schema.String,
+	tick: Schema.Int
+})
+
+// Replay retains launches, original decision inputs, responses and failures, not just successful choices.
+export type Journal = typeof Journal.Type
+export const Journal = Schema.Struct({
+	applied: Schema.Array(Schema.Struct({commands: Schema.Array(Outcome.fields.command), team: Schema.Int})),
+	locals: Schema.optionalKey(
+		Schema.Array(
+			Schema.Struct({
+				actor: Schema.Int,
+				choice: Schema.optionalKey(Schema.String),
+				context: Schema.optionalKey(Schema.String),
+				failure: Schema.optionalKey(Schema.String),
+				next: Schema.optionalKey(Schema.Int),
+				request: Schema.optionalKey(LocalDecision),
+				tick: Schema.Int,
+				tokens: Schema.optionalKey(Usage)
+			})
+		)
+	),
+	marks: Schema.Array(Mark),
+	observed: Schema.optionalKey(Schema.Array(Schema.Int)),
+	round: Schema.Int
+})
+
+export type HistoryIndex = typeof HistoryIndex.Type
+export const HistoryIndex = Schema.Record(Schema.String, Schema.Int)
+export type HistoryPage = typeof HistoryPage.Type
+export const HistoryPage = Schema.Array(Experience)
 
 /* ───────── the world on disk: everything that decides what happens next ───────── */
 
-const Body = {
-	act: Act,
-	doing: Schema.String,
-	id: Schema.Int,
-	timer: Schema.Finite,
-	x: Schema.Finite,
-	yaw: Schema.Finite,
-	z: Schema.Finite
-}
+const Body = {act: Act, doing: Schema.String, id: Schema.Int, x: Schema.Finite, yaw: Schema.Finite, z: Schema.Finite}
 
 type MachineSnapshot = typeof MachineSnapshot.Type
 // A state machine's snapshot as the machine encodes it for a save: its active state paths, each with its value; the machine decodes the rest.
@@ -418,7 +597,6 @@ export type SavedUnit = typeof SavedUnit.Type
 export const SavedUnit = Schema.Struct({
 	...Body,
 	aim: Schema.Finite,
-	alarm: Schema.Finite,
 	anchor: Point,
 	anchored: Schema.Finite,
 	cargo: Items,
@@ -449,14 +627,10 @@ export const SavedBuilding = Schema.Struct({
 	// MJ left in the item a generator burns.
 	fuel: Schema.Finite,
 	id: Schema.Int,
-	// Items on their way to its construction.
-	incoming: Items,
 	kind: Schema.Union([BuildingKind, StructureKind]),
 	output: Items,
 	progress: Schema.Finite,
 	recipe: Schema.optionalKey(RecipeId),
-	// Items in its stock that units set out to take.
-	reserved: Items,
 	// Its construction, as the site machine in the game's tasks encodes it.
 	site: MachineSnapshot,
 	stock: Items,
@@ -469,7 +643,7 @@ export type SavedTeam = typeof SavedTeam.Type
 export const SavedTeam = Schema.Struct({
 	bench: Schema.Array(Schema.Struct({left: Schema.Int, recipe: RecipeId})),
 	benchProgress: Schema.Finite,
-	contacts: Schema.Array(Schema.Int),
+	contacts: Schema.optionalKey(Schema.Array(Schema.Int)),
 	cycles: Schema.Int,
 	explored: Schema.Array(Explored),
 	gates: Schema.Array(GateId),
@@ -478,31 +652,20 @@ export const SavedTeam = Schema.Struct({
 	inbox: Schema.Array(Schema.String),
 	line: Schema.Array(Schema.Struct({class: UnitClass, mark: Schema.Int, unit: Schema.optionalKey(Schema.Int)})),
 	lineProgress: Schema.Finite,
-	note: Schema.String,
+	note: Schema.optionalKey(Schema.String),
 	outcomes: Schema.Array(Outcome)
 })
 
 export type SavedEnemy = typeof SavedEnemy.Type
 export const SavedEnemy = Schema.Struct({
 	...Body,
-	dead: Schema.Finite,
 	health: Schema.Finite,
 	kind: EnemyKind,
-	patch: Schema.Finite,
-	spot: Point,
-	target: Schema.Int
+	task: Schema.optionalKey(MachineSnapshot)
 })
 
 export type SavedMob = typeof SavedMob.Type
-export const SavedMob = Schema.Struct({
-	...Body,
-	from: Point,
-	kind: MobKind,
-	patch: Schema.Finite,
-	scared: Schema.Finite,
-	spot: Point,
-	target: Schema.optional(Point)
-})
+export const SavedMob = Schema.Struct({...Body, kind: MobKind, task: Schema.optionalKey(MachineSnapshot)})
 
 // The world at one tick: its seed and generator, every change to the ground, every body, building and team, the dice's position and what the steering remembers.
 export type Saved = typeof Saved.Type
@@ -515,12 +678,14 @@ export const Saved = Schema.Struct({
 	enemies: Schema.Array(SavedEnemy),
 	generator: Schema.Int,
 	jams: Schema.Array(Schema.Tuple([Schema.Int, Schema.Finite])),
+	life: Schema.optionalKey(Life),
 	mobs: Schema.Array(SavedMob),
 	nextId: Schema.Int,
 	patches: Schema.Array(Schema.Tuple([Schema.Int, Schema.Array(Schema.Int)])),
+	pendingExperiences: Schema.optionalKey(Schema.Array(Experience)),
 	// Each pipe network holding fluid: one of its pipes, the fluid and how much.
 	pipes: Schema.Array(Schema.Tuple([Schema.Int, ItemId, Schema.Finite])),
-	raidAt: Schema.Finite,
+	rules: Schema.optionalKey(Schema.Int),
 	seed: Schema.Int,
 	sides: Schema.Array(Schema.Tuple([Schema.Int, Schema.Finite, Point])),
 	stalls: Schema.Array(Schema.Tuple([Schema.Int, Schema.Finite, Schema.Finite, Point])),

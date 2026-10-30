@@ -34,7 +34,6 @@ const MODELS = [
 	'drifter',
 	'glitch',
 	'golem',
-	'home',
 	'loader',
 	'lurker',
 	'rotor',
@@ -56,6 +55,8 @@ const BOX_SKIN = new THREE.MeshStandardMaterial({color: '#e9e2d5'})
 
 // The paint buildings are made of: walls, roofs, metal, the dark of belts and machinery, timber, and the pale ghost of a site not yet built.
 const PAINT = {
+	alloy: new THREE.MeshStandardMaterial({color: '#253440', metalness: 0.6, roughness: 0.4}),
+	circuit: new THREE.MeshBasicMaterial({color: '#a4eced', toneMapped: false}),
 	dark: new THREE.MeshStandardMaterial({color: '#4f4b47', roughness: 0.7}),
 	ghost: new THREE.MeshStandardMaterial({
 		color: '#ffffff',
@@ -73,7 +74,7 @@ const PAINT = {
 // What a building is made of, in tiles from its footprint's north-west corner: boxes and cylinders of a paint, `x`, `z` their middle, `y` their foot.
 type Part = {
 	h: number
-	paint: 'dark' | 'ghost' | 'metal' | 'road' | 'roof' | 'team' | 'timber' | 'wall'
+	paint: 'alloy' | 'circuit' | 'dark' | 'ghost' | 'metal' | 'road' | 'roof' | 'team' | 'timber' | 'wall'
 	round?: boolean
 	w: number
 	d: number
@@ -402,6 +403,11 @@ function machine(w: number, d: number) {
 
 // Each building and structure as a few boxes and cylinders on its footprint, `w` by `d` tiles.
 const SHAPES = {
+	antenna: () =>
+		[
+			{d: 0.12, h: 3, paint: 'metal', round: true, w: 0.12, x: 0.5, y: 0, z: 0.5},
+			{d: 0.6, h: 0.08, paint: 'metal', round: true, w: 0.6, x: 0.5, y: 2.6, z: 0.5}
+		] satisfies Part[],
 	assembler: machine,
 	beacon: (w: number, d: number) =>
 		marked(
@@ -425,7 +431,47 @@ const SHAPES = {
 	foundry: kiln,
 	furnace: kiln,
 	home: (w: number, d: number) =>
-		marked([{d: d - 0.1, h: 0.04, paint: 'road', w: w - 0.1, x: w / 2, y: 0, z: d / 2}], 1.8),
+		[
+			{d: d - 0.25, h: 0.16, paint: 'alloy', w: w - 0.25, x: w / 2, y: 0, z: d / 2},
+			{d: 1.5, h: 0.35, paint: 'metal', w: 1.5, x: w / 2, y: 0.16, z: d / 2},
+			{d: 0.95, h: 2.65, paint: 'alloy', w: 0.95, x: w / 2, y: 0.51, z: d / 2},
+			{d: 1.12, h: 0.14, paint: 'metal', w: 1.12, x: w / 2, y: 3.16, z: d / 2},
+			{d: 0.06, h: 0.65, paint: 'metal', w: 0.06, x: w / 2, y: 3.3, z: d / 2},
+			...Array.flatMap(
+				[-1, 1],
+				side =>
+					[
+						{d: 0.2, h: 2.05, paint: 'alloy', w: 0.18, x: w / 2 + side * 0.75, y: 0.51, z: d / 2},
+						{d: 0.08, h: 1.7, paint: 'circuit', w: 0.035, x: w / 2 + side * 0.85, y: 0.7, z: d / 2},
+						{d: 0.3, h: 0.12, paint: 'metal', w: 0.4, x: w / 2 + side * 0.6, y: 0.7, z: d / 2},
+						...Array.flatMap(
+							[-1, 1],
+							face =>
+								[
+									{d: 0.025, h: 2.2, paint: 'team', w: 0.09, x: w / 2 + side * 0.32, y: 0.7, z: d / 2 + face * 0.49},
+									{
+										d: 0.025,
+										h: 0.045,
+										paint: 'circuit',
+										w: 0.18,
+										x: w / 2 + side * 0.18,
+										y: 1.5,
+										z: d / 2 + face * 0.49
+									},
+									{
+										d: 0.025,
+										h: 0.045,
+										paint: 'circuit',
+										w: 0.18,
+										x: w / 2 + side * 0.18,
+										y: 1.7,
+										z: d / 2 + face * 0.49
+									}
+								] satisfies Part[]
+						)
+					] satisfies Part[]
+			)
+		] satisfies Part[],
 	junction: hub,
 	lift: belt,
 	manufacturer: machine,
@@ -770,23 +816,6 @@ export function createCast(view: Renderer) {
 		for (const shot of next.shots) shoot(shot)
 	}
 
-	// Home is its model once loaded; everything else is drawn from parts.
-	function objectOf(building: BuildingView) {
-		return Option.match(
-			Option.filter(MutableHashMap.get(models, 'home'), () => building.kind === 'home' && building.built >= 1),
-			{
-				onNone: () => buildingObject(building, teamPaints[building.team] ?? PAINT.roof),
-				onSome: gltf => {
-					const object = shaded(clone(gltf.scene))
-					for (const mesh of meshesOf(object)) mesh.userData['shared'] = true
-					const group = new THREE.Group()
-					group.add(object, buildingObject(building, teamPaints[building.team] ?? PAINT.roof))
-					return group
-				}
-			}
-		)
-	}
-
 	// A belt's item rides on it as a small block of its colour.
 	function itemOn(building: BuildingView) {
 		return Option.map(Option.fromUndefinedOr(building.item), item => {
@@ -830,7 +859,7 @@ export function createCast(view: Renderer) {
 				}
 			} else {
 				if (before !== undefined) disposeObject(before.object)
-				const object = objectOf(building)
+				const object = buildingObject(building, teamPaints[building.team] ?? PAINT.roof)
 				object.position.set(
 					building.x + building.w / 2,
 					view.ground(building.x + building.w / 2, building.z + building.d / 2),
