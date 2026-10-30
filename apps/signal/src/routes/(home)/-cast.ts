@@ -55,6 +55,8 @@ const BOX_SKIN = new THREE.MeshStandardMaterial({color: '#e9e2d5'})
 
 // The paint buildings are made of: walls, roofs, metal, the dark of belts and machinery, timber, and the pale ghost of a site not yet built.
 const PAINT = {
+	alloy: new THREE.MeshStandardMaterial({color: '#253440', metalness: 0.6, roughness: 0.4}),
+	circuit: new THREE.MeshBasicMaterial({color: '#a4eced', toneMapped: false}),
 	dark: new THREE.MeshStandardMaterial({color: '#4f4b47', roughness: 0.7}),
 	ghost: new THREE.MeshStandardMaterial({
 		color: '#ffffff',
@@ -72,7 +74,7 @@ const PAINT = {
 // What a building is made of, in tiles from its footprint's north-west corner: boxes and cylinders of a paint, `x`, `z` their middle, `y` their foot.
 type Part = {
 	h: number
-	paint: 'dark' | 'ghost' | 'metal' | 'road' | 'roof' | 'team' | 'timber' | 'wall'
+	paint: 'alloy' | 'circuit' | 'dark' | 'ghost' | 'metal' | 'road' | 'roof' | 'team' | 'timber' | 'wall'
 	round?: boolean
 	w: number
 	d: number
@@ -429,14 +431,23 @@ const SHAPES = {
 	foundry: kiln,
 	furnace: kiln,
 	home: (w: number, d: number) =>
-		marked(
-			[
-				{d: d - 0.1, h: 0.12, paint: 'road', w: w - 0.1, x: w / 2, y: 0, z: d / 2},
-				{d: 0.85, h: 3.4, paint: 'wall', w: 0.85, x: w / 2, y: 0.12, z: d / 2},
-				{d: 1.15, h: 0.2, paint: 'metal', w: 1.15, x: w / 2, y: 3.2, z: d / 2}
-			],
-			3.5
-		),
+		[
+			{d: d - 0.25, h: 0.16, paint: 'alloy', w: w - 0.25, x: w / 2, y: 0, z: d / 2},
+			{d: 1.5, h: 0.35, paint: 'metal', w: 1.5, x: w / 2, y: 0.16, z: d / 2},
+			{d: 0.95, h: 2.65, paint: 'alloy', w: 0.95, x: w / 2, y: 0.51, z: d / 2},
+			{d: 1.12, h: 0.14, paint: 'metal', w: 1.12, x: w / 2, y: 3.16, z: d / 2},
+			{d: 0.06, h: 0.65, paint: 'metal', w: 0.06, x: w / 2, y: 3.3, z: d / 2},
+			...Array.flatMap([-1, 1], side => [
+				{d: 0.2, h: 2.05, paint: 'alloy', w: 0.18, x: w / 2 + side * 0.75, y: 0.51, z: d / 2},
+				{d: 0.08, h: 1.7, paint: 'circuit', w: 0.035, x: w / 2 + side * 0.85, y: 0.7, z: d / 2},
+				{d: 0.3, h: 0.12, paint: 'metal', w: 0.4, x: w / 2 + side * 0.6, y: 0.7, z: d / 2},
+				...Array.flatMap([-1, 1], face => [
+					{d: 0.025, h: 2.2, paint: 'team', w: 0.09, x: w / 2 + side * 0.32, y: 0.7, z: d / 2 + face * 0.49},
+					{d: 0.025, h: 0.045, paint: 'circuit', w: 0.18, x: w / 2 + side * 0.18, y: 1.5, z: d / 2 + face * 0.49},
+					{d: 0.025, h: 0.045, paint: 'circuit', w: 0.18, x: w / 2 + side * 0.18, y: 1.7, z: d / 2 + face * 0.49}
+				])
+			])
+		] satisfies Part[],
 	junction: hub,
 	lift: belt,
 	manufacturer: machine,
