@@ -551,7 +551,7 @@ function Thread(props: {replaying: boolean; status?: TeamView['status']; team: n
 				pinned.current =
 					event.currentTarget.scrollHeight - event.currentTarget.scrollTop - event.currentTarget.clientHeight < 24
 			}}
-			className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 pb-4 select-text"
+			className="flex min-h-0 flex-col gap-4 overflow-y-auto overscroll-contain px-3 pb-3 select-text"
 		>
 			<ThreadPage
 				team={props.team}
@@ -867,17 +867,15 @@ function Followed(props: {unit: UnitView}) {
 }
 
 function Sidebar(props: {
-	actor: Option.Option<number>
 	onActor: () => void
 	close: () => void
-	panel: 'core' | 'history' | 'usage'
+	selection: Inspection
 	onPick: (team: number) => void
 	source: Source
 	team: number
 	view: View
 }) {
 	const picked = Array.findFirst(props.view.teams, team => team.id === props.team)
-	const individual = Option.flatMap(props.actor, id => Array.findFirst(props.view.frame.units, unit => unit.id === id))
 	return (
 		<div className="pointer-events-none absolute inset-0 z-20 flex items-end md:items-start md:justify-end md:pt-16 md:pr-4 md:pb-4">
 			<aside
@@ -885,20 +883,25 @@ function Sidebar(props: {
 				className="bg-popover text-popover-foreground pointer-events-auto flex max-h-1/2 min-h-0 w-full flex-col md:max-h-full md:w-88"
 			>
 				<header className="flex min-h-11 flex-none items-center gap-2 px-3">
-					{props.panel === 'core' && <Teams teams={props.view.teams} picked={props.team} onPick={props.onPick} />}
-					{props.panel === 'history' && (
+					{props.selection.kind === 'core' && (
+						<Teams teams={props.view.teams} picked={props.team} onPick={props.onPick} />
+					)}
+					{props.selection.kind === 'history' && (
 						<>
 							<span>
-								{Option.match(props.actor, {onNone: () => 'World history', onSome: actor => `Individual #${actor}`})}
+								{Option.match(props.selection.actor, {
+									onNone: () => 'World history',
+									onSome: actor => `Individual #${actor}`
+								})}
 							</span>
-							{Option.isSome(props.actor) && (
+							{Option.isSome(props.selection.actor) && (
 								<Button variant="ghost" size="sm" className="text-muted-foreground" onClick={props.onActor}>
 									World events
 								</Button>
 							)}
 						</>
 					)}
-					{props.panel === 'usage' && <span>Provider usage</span>}
+					{props.selection.kind === 'usage' && <span>Provider usage</span>}
 					<Button
 						className="ml-auto min-h-11 min-w-11"
 						size="icon-sm"
@@ -909,7 +912,7 @@ function Sidebar(props: {
 						×
 					</Button>
 				</header>
-				{props.panel === 'core' && (
+				{props.selection.kind === 'core' && (
 					<Thread
 						key={`${props.team}:${Option.getOrElse(
 							Option.map(props.source, replay => replay.from),
@@ -926,15 +929,22 @@ function Sidebar(props: {
 						)}
 					/>
 				)}
-				{props.panel === 'history' && (
+				{props.selection.kind === 'history' && (
 					<>
-						{Option.getOrUndefined(Option.map(individual, unit => <Followed unit={unit} />))}
+						{Option.getOrUndefined(
+							Option.map(
+								Option.flatMap(props.selection.actor, id =>
+									Array.findFirst(props.view.frame.units, unit => unit.id === id)
+								),
+								unit => <Followed unit={unit} />
+							)
+						)}
 						<Chronicle
-							key={`${Option.getOrElse(props.actor, () => 'all')}:${Option.getOrElse(
+							key={`${Option.getOrElse(props.selection.actor, () => 'all')}:${Option.getOrElse(
 								Option.map(props.source, replay => replay.from),
 								() => 'live'
 							)}`}
-							actor={Option.getOrElse(props.actor, () => 'all' as const)}
+							actor={Option.getOrElse(props.selection.actor, () => 'all' as const)}
 							at={Option.getOrUndefined(
 								Option.map(props.source, replay => {
 									if (replay.speed === 0) return Number.max(replay.from, props.view.frame.tick)
@@ -944,7 +954,7 @@ function Sidebar(props: {
 						/>
 					</>
 				)}
-				{props.panel === 'usage' && (
+				{props.selection.kind === 'usage' && (
 					<div className="min-h-0 overflow-y-auto px-3">
 						<UsageTotals />
 					</div>
@@ -1550,6 +1560,115 @@ function useMapGestures(props: {
 }
 
 // The world view and everything over it: the canvas belongs to the renderer, and frames reach it through the registry, not React.
+function MapControls(props: {
+	follow: Follow
+	onFollow: (follow: Follow) => void
+	onInspect: (inspection: Inspection) => void
+	panel: Option.Option<Inspection>
+	paused: boolean
+	view: View
+	world: Option.Option<{cast: Cast; renderer: Renderer}>
+}) {
+	const [mapOpen, setMapOpen] = useState(false)
+	return (
+		<>
+			<nav
+				aria-label="Map controls"
+				className="bg-popover absolute top-2 right-2 z-30 flex items-center md:top-4 md:right-4"
+			>
+				<Button
+					variant="ghost"
+					className="min-h-11 px-3"
+					aria-pressed={Option.contains(
+						Option.map(props.panel, entry => entry.kind),
+						'core'
+					)}
+					onClick={() => props.onInspect({kind: 'core'})}
+				>
+					Core
+				</Button>
+				<Button
+					variant="ghost"
+					className="min-h-11 px-3"
+					aria-pressed={Option.contains(
+						Option.map(props.panel, entry => entry.kind),
+						'history'
+					)}
+					onClick={() => props.onInspect({actor: Option.none(), kind: 'history'})}
+				>
+					History
+				</Button>
+				<DropdownMenu>
+					<DropdownMenuTrigger aria-label="View options" className="min-h-11 min-w-11 px-3">
+						···
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end" className="min-w-48">
+						<DropdownMenuItem disabled>
+							{Boolean.match(props.paused, {onFalse: () => 'Simulation running', onTrue: () => 'Simulation stopped'})}
+						</DropdownMenuItem>
+						<DropdownMenuItem
+							className="min-h-11"
+							onClick={() =>
+								Option.match(props.world, {
+									onNone: () => undefined,
+									onSome: active => active.renderer.zoomBy(1 / ZOOM_STEP)
+								})
+							}
+						>
+							Zoom in
+						</DropdownMenuItem>
+						<DropdownMenuItem
+							className="min-h-11"
+							onClick={() =>
+								Option.match(props.world, {
+									onNone: () => undefined,
+									onSome: active => active.renderer.zoomBy(ZOOM_STEP)
+								})
+							}
+						>
+							Zoom out
+						</DropdownMenuItem>
+						<DropdownMenuItem
+							className="min-h-11"
+							onClick={() =>
+								Option.match(props.world, {onNone: () => undefined, onSome: active => active.renderer.turn(1)})
+							}
+						>
+							Rotate map
+						</DropdownMenuItem>
+						<DropdownMenuItem
+							className="min-h-11"
+							onClick={() => props.onFollow({...props.follow, overview: !props.follow.overview})}
+						>
+							Team overview
+						</DropdownMenuItem>
+						<DropdownMenuItem className="min-h-11" onClick={() => setMapOpen(!mapOpen)}>
+							{Boolean.match(mapOpen, {onFalse: () => 'Show minimap', onTrue: () => 'Hide minimap'})}
+						</DropdownMenuItem>
+						<DropdownMenuItem className="min-h-11" onClick={() => props.onInspect({kind: 'usage'})}>
+							Provider usage
+						</DropdownMenuItem>
+					</DropdownMenuContent>
+				</DropdownMenu>
+			</nav>
+			{mapOpen && (
+				<Panel label="Map" className="top-16 right-2 left-2 z-10 md:right-auto md:left-4">
+					{Option.getOrUndefined(
+						Option.map(props.world, active => (
+							<Minimap
+								view={props.view}
+								looking={active.renderer.looking}
+								onGo={at => props.onFollow({free: Option.some(at), id: Option.none(), overview: false})}
+							/>
+						))
+					)}
+					<Hints />
+				</Panel>
+			)}
+		</>
+	)
+}
+
 function World(props: {seed: number; view: View}) {
 	const registry = useContext(RegistryContext)
 	const canvas = useRef<HTMLCanvasElement>(null)
@@ -1560,7 +1679,6 @@ function World(props: {seed: number; view: View}) {
 	const [team, setTeam] = useAtom(teamAtom)
 	const [source, setSource] = useAtom(sourceAtom)
 	const [panel, setPanel] = useState(Option.none<Inspection>)
-	const [mapOpen, setMapOpen] = useState(false)
 	const timeline = useAtomValue(timelineAtom)
 
 	const [portraits, setPortraits] = useState<Record<string, string>>({})
@@ -1796,115 +1914,21 @@ function World(props: {seed: number; view: View}) {
 						/>
 						<Overlay buildings={props.view.buildings} units={props.view.frame.units} />
 						<Panel className="top-2 left-2 flex min-h-11 items-center px-3 md:top-4 md:left-4">Signal</Panel>
-						<nav
-							aria-label="Map controls"
-							className="bg-popover absolute top-2 right-2 z-30 flex items-center md:top-4 md:right-4"
-						>
-							<Button
-								variant="ghost"
-								className="min-h-11 px-3"
-								aria-pressed={Option.contains(
-									Option.map(panel, entry => entry.kind),
-									'core'
-								)}
-								onClick={() => setPanel(Option.some({kind: 'core'}))}
-							>
-								Core
-							</Button>
-							<Button
-								variant="ghost"
-								className="min-h-11 px-3"
-								aria-pressed={Option.contains(
-									Option.map(panel, entry => entry.kind),
-									'history'
-								)}
-								onClick={() => setPanel(Option.some({actor: Option.none(), kind: 'history'}))}
-							>
-								History
-							</Button>
-							<DropdownMenu>
-								<DropdownMenuTrigger aria-label="View options" className="min-h-11 min-w-11 px-3">
-									···
-								</DropdownMenuTrigger>
-								<DropdownMenuContent align="end" className="min-w-48">
-									<DropdownMenuItem disabled>
-										{Boolean.match(props.view.frame.paused === true, {
-											onFalse: () => 'Simulation running',
-											onTrue: () => 'Simulation stopped'
-										})}
-									</DropdownMenuItem>
-									<DropdownMenuItem
-										className="min-h-11"
-										onClick={() =>
-											Option.match(world, {
-												onNone: () => undefined,
-												onSome: active => active.renderer.zoomBy(1 / ZOOM_STEP)
-											})
-										}
-									>
-										Zoom in
-									</DropdownMenuItem>
-									<DropdownMenuItem
-										className="min-h-11"
-										onClick={() =>
-											Option.match(world, {
-												onNone: () => undefined,
-												onSome: active => active.renderer.zoomBy(ZOOM_STEP)
-											})
-										}
-									>
-										Zoom out
-									</DropdownMenuItem>
-									<DropdownMenuItem
-										className="min-h-11"
-										onClick={() =>
-											Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.turn(1)})
-										}
-									>
-										Rotate map
-									</DropdownMenuItem>
-									<DropdownMenuItem
-										className="min-h-11"
-										onClick={() => setFollow({...follow, overview: !follow.overview})}
-									>
-										Team overview
-									</DropdownMenuItem>
-									<DropdownMenuItem className="min-h-11" onClick={() => setMapOpen(!mapOpen)}>
-										{Boolean.match(mapOpen, {onFalse: () => 'Show minimap', onTrue: () => 'Hide minimap'})}
-									</DropdownMenuItem>
-									<DropdownMenuItem className="min-h-11" onClick={() => setPanel(Option.some({kind: 'usage'}))}>
-										Provider usage
-									</DropdownMenuItem>
-								</DropdownMenuContent>
-							</DropdownMenu>
-						</nav>
-						{mapOpen && (
-							<Panel label="Map" className="top-16 right-2 left-2 z-10 md:right-auto md:left-4">
-								{Option.getOrUndefined(
-									Option.map(world, active => (
-										<Minimap
-											view={props.view}
-											looking={active.renderer.looking}
-											onGo={at => setFollow({free: Option.some(at), id: Option.none(), overview: false})}
-										/>
-									))
-								)}
-								<Hints />
-							</Panel>
-						)}
+						<MapControls
+							follow={follow}
+							onFollow={setFollow}
+							onInspect={inspection => setPanel(Option.some(inspection))}
+							panel={panel}
+							paused={props.view.frame.paused === true}
+							view={props.view}
+							world={world}
+						/>
 						{props.view.count === 0 && <Status>Loading the replay</Status>}
 						{Option.getOrUndefined(
 							Option.map(panel, pickedPanel => (
 								<Sidebar
-									actor={Boolean.match(pickedPanel.kind === 'history', {
-										onFalse: () => Option.none<number>(),
-										onTrue: () => {
-											if (pickedPanel.kind === 'history') return pickedPanel.actor
-											return Option.none<number>()
-										}
-									})}
+									selection={pickedPanel}
 									onActor={() => setPanel(Option.some({actor: Option.none(), kind: 'history'}))}
-									panel={pickedPanel.kind}
 									close={() => setPanel(Option.none())}
 									view={props.view}
 									team={team}
