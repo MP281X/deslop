@@ -106,15 +106,18 @@ NodeRuntime.runMain(
 		Layer.merge(
 			pipe(
 				HttpRouter.serve(
-					Layer.mergeAll(
-						pipe(Layer.fresh(receiver), Layer.provide(HttpAuth.layer)),
-						mcp,
-						HttpRouter.cors({
-							allowedHeaders: ['authorization', 'content-type'],
-							allowedMethods: ['POST', 'OPTIONS'],
-							allowedOrigins: ['https://portfolio.mp281x.xyz', 'https://auth.mp281x.xyz', 'https://stash.mp281x.xyz'],
-							credentials: true
-						})
+					pipe(
+						Layer.mergeAll(
+							pipe(Layer.fresh(receiver), Layer.provide(HttpAuth.layer)),
+							mcp,
+							HttpRouter.cors({
+								allowedHeaders: ['authorization', 'content-type'],
+								allowedMethods: ['POST', 'OPTIONS'],
+								allowedOrigins: ['https://portfolio.mp281x.xyz', 'https://auth.mp281x.xyz', 'https://stash.mp281x.xyz'],
+								credentials: true
+							})
+						),
+						Layer.provide(Auth.layer('https://otel.mp281x.xyz'))
 					),
 					{disableLogger: true, middleware: observe}
 				),
@@ -134,7 +137,6 @@ NodeRuntime.runMain(
 				)
 			)
 		),
-		Layer.provide(Auth.layer('https://otel.mp281x.xyz')),
 		Layer.provide(NodeHttpClient.layerFetch),
 		Layer.provide(telemetry),
 		Layer.provide(Layer.merge(NodeCrypto.layer, NodeServices.layer)),

@@ -16,17 +16,19 @@ import {Game} from '#services/game/service.ts'
 NodeRuntime.runMain(
 	pipe(
 		HttpRouter.serve(
-			Layer.mergeAll(
-				pipe(
-					RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
-					Layer.provide(RpcHandlers)
+			pipe(
+				Layer.mergeAll(
+					pipe(
+						RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
+						Layer.provide(RpcHandlers)
+					),
+					ServerRuntime.layerStaticFiles
 				),
-				ServerRuntime.layerStaticFiles
+				Layer.provide(Auth.layer('https://signal.mp281x.xyz'))
 			),
 			{disableLogger: true}
 		),
 		Layer.provide(ServerRuntime.layer('@deslop/signal')),
-		Layer.provide(Auth.layer('https://signal.mp281x.xyz')),
 		Layer.provide(Game.layer),
 		Layer.provide(Core.layer),
 		Layer.provide(

@@ -2,6 +2,8 @@ import {Array, Option, Result, String, pipe} from 'effect'
 
 import {Url} from 'effect/http'
 
+import {previewOrigin} from '@deslop/runtime/auth/utils'
+
 import type {Stored} from '#services/authorizations/schema.ts'
 
 // What someone typed, as the request id it names: letters only, in capitals.
@@ -35,7 +37,16 @@ export function allowedRedirect(redirect: string) {
 				'trips-dev://auth/callback'
 			],
 			redirect
-		) || Option.isSome(loopback(redirect))
+		) ||
+		Option.isSome(loopback(redirect)) ||
+		Option.exists(
+			Result.getSuccess(Url.fromString(redirect)),
+			target =>
+				Option.isSome(previewOrigin(redirect)) &&
+				target.pathname === '/auth/callback' &&
+				target.search === '' &&
+				target.hash === ''
+		)
 	)
 }
 

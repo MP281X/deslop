@@ -26,18 +26,20 @@ const mcp = ServerRuntime.layerMcp({
 NodeRuntime.runMain(
 	pipe(
 		HttpRouter.serve(
-			Layer.merge(
-				pipe(
-					RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
-					Layer.provide(RpcHandlers),
-					Layer.provide(RpcSerialization.layerJson)
+			pipe(
+				Layer.merge(
+					pipe(
+						RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
+						Layer.provide(RpcHandlers),
+						Layer.provide(RpcSerialization.layerJson)
+					),
+					mcp
 				),
-				mcp
+				Layer.provide(Auth.layer('https://template-app.mp281x.xyz'))
 			),
 			{disableLogger: true}
 		),
 		Layer.provide(ServerRuntime.layer('@deslop/template-app')),
-		Layer.provide(Auth.layer('https://template-app.mp281x.xyz')),
 		Layer.provide(NodeHttpClient.layerFetch),
 		Layer.provide(ServerRuntime.layerNodeHttpServer),
 		Layer.launch
