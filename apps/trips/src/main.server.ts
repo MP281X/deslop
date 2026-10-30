@@ -43,17 +43,19 @@ const mcp = ServerRuntime.layerMcp({
 NodeRuntime.runMain(
 	pipe(
 		HttpRouter.serve(
-			Layer.merge(
-				pipe(
-					RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
-					Layer.provide(RpcHandlers),
-					Layer.provide(RpcSerialization.layerJson)
+			pipe(
+				Layer.merge(
+					pipe(
+						RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
+						Layer.provide(RpcHandlers),
+						Layer.provide(RpcSerialization.layerJson)
+					),
+					mcp
 				),
-				mcp
+				Layer.provide(Auth.layer('https://trips.mp281x.xyz'))
 			),
 			{disableLogger: true}
 		),
-		Layer.provide(Auth.layer('https://trips.mp281x.xyz')),
 		Layer.provide(Layer.mergeAll(Push.layer, Tracker.layer)),
 		Layer.provide(Bookings.layer),
 		Layer.provide(Layer.mergeAll(Places.layer, Extractor.layer)),

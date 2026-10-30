@@ -97,11 +97,13 @@ const mcp = ServerRuntime.layerMcp({
 
 NodeRuntime.runMain(
 	pipe(
-		HttpRouter.serve(Layer.mergeAll(rpc, pipe(routes, Layer.provide(HttpAuth.layer)), mcp), {
-			disableLogger: true,
-			middleware: sameOrigin
-		}),
-		Layer.provide(Auth.layer('https://stash.mp281x.xyz')),
+		HttpRouter.serve(
+			pipe(
+				Layer.mergeAll(rpc, pipe(routes, Layer.provide(HttpAuth.layer)), mcp),
+				Layer.provide(Auth.layer('https://stash.mp281x.xyz'))
+			),
+			{disableLogger: true, middleware: sameOrigin}
+		),
 		Layer.provide(layerNotes),
 		Layer.provide(Layer.mergeAll(Sources.layer, Media.layer, Organizer.layer)),
 		Layer.provide(Layer.mergeAll(NodeCrypto.layer, NodeDns.layer, NodeHttpClient.layerFetch, NodeServices.layer)),

@@ -39,6 +39,7 @@
 					"apps/*/src/services/**",
 					"apps/*/src/{rpcs,tools}/handlers.ts",
 					"packages/runtime/src/auth/service.ts",
+					"packages/runtime/src/auth/lib/preview.ts",
 					"packages/runtime/src/server.ts"
 				]
 			}

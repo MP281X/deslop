@@ -18,11 +18,11 @@ NodeRuntime.runMain(
 			pipe(
 				RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
 				Layer.provide(RpcHandlers),
-				Layer.provide(RpcSerialization.layerJson)
+				Layer.provide(RpcSerialization.layerJson),
+				Layer.provide(Auth.layer('https://opm.mp281x.xyz'))
 			),
 			{disableLogger: true}
 		),
-		Layer.provide(Auth.layer('https://opm.mp281x.xyz')),
 		Layer.provide(layerChapters),
 		Layer.provide(Layer.mergeAll(NodeHttpClient.layerFetch, NodeServices.layer)),
 		Layer.provide(ServerRuntime.layer('@deslop/opm')),

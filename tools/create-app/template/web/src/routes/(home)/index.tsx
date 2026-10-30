@@ -7,7 +7,7 @@ import {AsyncResult} from 'effect/reactivity'
 
 import {Error, Loading} from '@deslop/components-web/fallbacks'
 import {buttonVariants} from '@deslop/components-web/ui/button'
-import {AUTH_URL} from '@deslop/runtime/auth/utils'
+import {signInUrl} from '@deslop/runtime/auth/utils'
 
 import {RpcClient} from '#lib/utils.ts'
 
@@ -20,10 +20,7 @@ function Home() {
 			}
 			return (
 				<div className="flex flex-1 items-center justify-center">
-					<a
-						className={buttonVariants()}
-						href={`${AUTH_URL}/auth/github?${new URLSearchParams({next: location.href})}`}
-					>
+					<a className={buttonVariants()} href={signInUrl(location.href)}>
 						Sign in with GitHub
 					</a>
 				</div>

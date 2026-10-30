@@ -16,6 +16,7 @@ import {
 } from '@deslop/components-web/ui/dropdown-menu'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {cn} from '@deslop/components-web/utils'
+import {signInUrl} from '@deslop/runtime/auth/utils'
 
 import {createCast} from './-cast.ts'
 import type {Cast} from './-cast.ts'
@@ -1300,12 +1301,7 @@ function SignIn() {
 					className="w-full"
 					size="lg"
 					nativeButton={false}
-					render={
-						<a
-							aria-label="Sign in with GitHub"
-							href={`https://auth.mp281x.xyz/auth/github?${new URLSearchParams({next: location.href})}`}
-						/>
-					}
+					render={<a aria-label="Sign in with GitHub" href={signInUrl(location.href)} />}
 				>
 					Sign in with GitHub
 				</Button>

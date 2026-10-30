@@ -55,3 +55,12 @@ export const TokenResponse = Schema.Struct({
 	expires_in: Schema.Finite,
 	refresh_token: Schema.NonEmptyString
 })
+
+export type PreviewLogin = typeof PreviewLogin.Type
+export const PreviewLogin = Schema.Struct({next: Schema.optionalKey(Schema.String)})
+export type PreviewCallback = typeof PreviewCallback.Type
+export const PreviewCallback = Schema.Struct({
+	code: Schema.NonEmptyString,
+	iss: Schema.NonEmptyString,
+	state: Schema.NonEmptyString
+})
