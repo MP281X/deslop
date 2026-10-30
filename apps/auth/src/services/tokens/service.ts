@@ -137,9 +137,8 @@ export class Tokens extends Context.Service<
 		Tokens,
 		Effect.gen(function* () {
 			const kv = yield* KeyValueStore.KeyValueStore
-			// The previous release kept people and tokens in these; this one starts over, so they are deleted.
+			// The previous release kept people and tokens in `state`; this one starts over, so it is deleted.
 			yield* kv.remove('state')
-			yield* kv.remove('tokens')
 			const store = KeyValueStore.toSchemaStore(kv, Grants)
 			const grants = yield* SubscriptionRef.make<Grants>(Option.getOrElse(yield* store.get('grants'), () => ({})))
 			const codes = yield* Ref.make(HashMap.empty<string, Code>())

@@ -186,8 +186,11 @@ export const mcpDisconnectAtom = Atom.family((id: string) =>
 	RpcClient.runtime.fn(() => Effect.flatMap(RpcClient, client => client('auth.mcp.disconnect', {id})))
 )
 export const mcpHideAtom = Atom.family((id: string) =>
-	RpcClient.runtime.fn((change: {hidden: boolean; tool: string}) =>
-		Effect.flatMap(RpcClient, client => client('auth.mcp.hide', {...change, id}))
+	// Concurrent, so a second toggle while the first is in flight does not interrupt it.
+	RpcClient.runtime.fn(
+		(change: {hidden: boolean; tool: string}) =>
+			Effect.flatMap(RpcClient, client => client('auth.mcp.hide', {...change, id})),
+		{concurrent: true}
 	)
 )
 export const mcpRemoveAtom = Atom.family((id: string) =>

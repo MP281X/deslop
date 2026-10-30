@@ -108,8 +108,8 @@ export class Connections extends Context.Service<
 		yield* kv.remove('connections')
 		const store = KeyValueStore.toSchemaStore(kv, ConnectionStore)
 		const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('servers'), () => ({})))
-		// One refresh per provider at a time, so concurrent calls never spend the same refresh token twice.
-		const refreshing = yield* Semaphore.make(1)
+		// Each server's token is read and refreshed one call at a time, so concurrent calls never spend its refresh token twice.
+		const locks = yield* Cache.make<string, Semaphore.Semaphore>({capacity: 256, lookup: () => Semaphore.make(1)})
 		const people = yield* People
 		const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 		const fetch = yield* FetchHttpClient.Fetch
@@ -239,42 +239,46 @@ export class Connections extends Context.Service<
 			}))
 			return next.access_token
 		})
-		const token = Effect.fn('Connections.token')(
-			function* (id: ServerId, generation: string, rejectedToken?: string) {
-				const connection = yield* get(id)
-				if (connection.generation !== generation) {
-					return yield* AuthError.make({message: 'This MCP connection was replaced.'})
-				}
-				const now = yield* Clock.currentTimeMillis
-				const notConnected = AuthError.make({message: `Connect ${connection.name} on ${AUTH_URL}/mcp-servers`})
-				const oauth = yield* Effect.mapError(
-					Effect.fromOption(Option.fromUndefinedOr(connection.oauth)),
-					() => notConnected
-				)
-				return yield* Match.valueTags(connection.link, {
-					Authorized: link => {
-						// A token that can be refreshed is renewed 30 seconds early; one that cannot is used to its end.
-						const margin = Option.match(Option.fromUndefinedOr(link.token.refresh_token), {
-							onNone: () => 0,
-							onSome: () => 30_000
-						})
-						if (link.token.access_token !== rejectedToken && link.expiresAt > now + margin) {
-							return Effect.succeed(link.token.access_token)
+		const token = Effect.fn('Connections.token')(function* (id: ServerId, generation: string, rejectedToken?: string) {
+			// The connection is read under its server's lock, so a call that waited sees the token the one before it saved.
+			return yield* Semaphore.withPermit(
+				yield* Cache.get(locks, id),
+				pipe(
+					Effect.gen(function* () {
+						const connection = yield* get(id)
+						if (connection.generation !== generation) {
+							return yield* AuthError.make({message: 'This MCP connection was replaced.'})
 						}
-						return Option.match(Option.fromUndefinedOr(link.token.refresh_token), {
-							onNone: () =>
-								Effect.fail(AuthError.make({message: `Reconnect ${connection.name}; its authorization expired`})),
-							onSome: refresh => exchange(connection, oauth, {grant_type: 'refresh_token', refresh_token: refresh})
+						const now = yield* Clock.currentTimeMillis
+						const notConnected = AuthError.make({message: `Connect ${connection.name} on ${AUTH_URL}/mcp-servers`})
+						const oauth = yield* Effect.mapError(
+							Effect.fromOption(Option.fromUndefinedOr(connection.oauth)),
+							() => notConnected
+						)
+						return yield* Match.valueTags(connection.link, {
+							Authorized: link => {
+								// A token that can be refreshed is renewed 30 seconds early; one that cannot is used to its end.
+								const margin = Option.match(Option.fromUndefinedOr(link.token.refresh_token), {
+									onNone: () => 0,
+									onSome: () => 30_000
+								})
+								if (link.token.access_token !== rejectedToken && link.expiresAt > now + margin) {
+									return Effect.succeed(link.token.access_token)
+								}
+								return Option.match(Option.fromUndefinedOr(link.token.refresh_token), {
+									onNone: () =>
+										Effect.fail(AuthError.make({message: `Reconnect ${connection.name}; its authorization expired`})),
+									onSome: refresh => exchange(connection, oauth, {grant_type: 'refresh_token', refresh_token: refresh})
+								})
+							},
+							Connected: () => Effect.fail(notConnected),
+							Disconnected: () => Effect.fail(notConnected)
 						})
-					},
-					Connected: () => Effect.fail(notConnected),
-					Disconnected: () => Effect.fail(notConnected)
-				})
-			},
-			Semaphore.withPermit(refreshing),
-			Effect.timeout('20 seconds'),
-			failed('Cannot refresh this MCP; reconnect it from the MCP page')
-		)
+					}),
+					Effect.timeout('20 seconds')
+				)
+			)
+		}, failed('Cannot refresh this MCP; reconnect it from the MCP page'))
 		const discover = Effect.fnUntraced(function* (initial: Connection) {
 			if (Schema.is(Resource)(initial.url) && String.endsWith('/mcp')(initial.url)) return initial
 			const probe = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
