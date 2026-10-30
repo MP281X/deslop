@@ -1783,11 +1783,16 @@ function World(props: {seed: number; view: View}) {
 				Array.findFirstIndex(own, unit => Option.contains(current.id, unit.id)),
 				() => -step
 			)
-			registry.set(followAtom, {
-				free: Option.none(),
-				id: Option.map(Array.get(own, (((index + step) % own.length) + own.length) % own.length), unit => unit.id),
-				overview: false
-			})
+			const id = Option.map(Array.get(own, (((index + step) % own.length) + own.length) % own.length), unit => unit.id)
+			registry.set(followAtom, {free: Option.none(), id, overview: false})
+			if (Option.isSome(id)) {
+				setPanel(before =>
+					Option.map(before, inspection => {
+						if (inspection.kind !== 'history' || Option.isNone(inspection.actor)) return inspection
+						return {...inspection, actor: id}
+					})
+				)
+			}
 			renderer.centre()
 		}
 		// Esc steps back one thing: out of the overview, else frees the camera where it looks, else follows the team again.
