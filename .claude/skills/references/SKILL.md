@@ -1,11 +1,11 @@
 ---
 name: references
-description: Load before writing a shape the repository has no canonical example of, before calling a library API you have not read the source of in this thread, and before designing or changing a screen.
+description: Load for unfamiliar APIs, architecture without a canonical example, or screen design.
 ---
 
 # References
 
-The repository's canonical examples (`AGENTS.md`) lead; these fill a gap. Reuse a clone under `/tmp/repos/<name>` after checking its remote and revision, or `git clone --depth 1 <url> /tmp/repos/<name>`; read it at the default branch and never edit, build or install it. Copy the structure into the repository's style, and take every Effect name from the installed `effect` package's source, since reference versions differ.
+The repository's canonical examples (`AGENTS.md`) lead; these fill a gap. Keep reference clones read-only under `/tmp/repos/<name>`, checking their remote and revision before reuse. Resolve API uncertainty from the installed dependency's source: reference versions can differ, especially Effect 3 versus 4.
 
 ## Sources
 
@@ -35,15 +35,6 @@ The repository's canonical examples (`AGENTS.md`) lead; these fill a gap. Reuse 
 
 **Screens.** Start from the screen's job and its fewest concepts. Search Mobbin's screens or flows for that job, beside the repository's own screens and the references above, and borrow an interaction only when it removes a concept, an action or an ambiguity, never because it is the standard. Color, radius, type, spacing and shadow live in the theme the repository's `components.json` names.
 
-## Ground
-
-**Grounded claims.** A name, signature, behavior, limit, price or spec comes from an artifact read or run in this session: the source at the installed version, a probe's output, a real request or a trace. Name it beside the claim; with none, write "unverified" instead of the claim.
-
-```bash
-rg -on '^export (const|function) (decodeUnknown\w*|fromJsonString|parseJson)\b' /tmp/repos/effect/packages/effect/src/Schema.ts
-# → decodeUnknownEffect decodeUnknownExit decodeUnknownOption … fromJsonString   (Effect 3's decodeUnknown and parseJson are gone)
-```
-
-**Probe.** One question, one inline script through the repository's runner, such as `vp node -e '<script>'`; repeated failed fixes call for testing their shared premise.
+**Evidence.** Ground consequential claims in the deciding source, trace or probe; name what remains unverified.
 
 **Visual taste.** For this user's screens, avoid gradients or glows, colored side stripes, a bordered card per section, equal prominence everywhere, a color per tile, generic copy, content waiting on an entrance animation and the hero/feature-grid/logo-row skeleton. The user's picked reference wins.

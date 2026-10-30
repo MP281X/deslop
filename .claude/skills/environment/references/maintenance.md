@@ -24,7 +24,7 @@ Setup, upkeep and rebuild of the machines.
 
 ## Agent configuration
 
-Every worker runs the same configuration from the deslop repository. `.codex/global-config.toml` has that name so the CLI does not load it a second time as deslop's project config. A variable only agents need goes in `.claude/settings.json` `env` and `.codex/global-config.toml` `shell_environment_policy.set`, never in `~/.bashrc`.
+Every worker runs the same configuration from the deslop repository. The user's curated prompts replace the provider defaults through Claude's `agent: pair` and Codex's `model_instructions_file`. Borrow useful official prompt mechanics; keep one policy per behavior. `.codex/global-config.toml` avoids loading the global config a second time as project config. Agent-only variables go in `.claude/settings.json` `env` and `.codex/global-config.toml` `shell_environment_policy.set`, never in `~/.bashrc`.
 
 Each installed path is a symlink into the main checkout `~/deslop`, so a worker runs the configuration on `origin/main`: Claude's `SessionStart` hook fast-forwards `~/deslop` in the background (`git pull --ff-only`), so the session after a merge loads it. Never edit an installed path, and never switch `~/deslop` off `main`: both change every thread's configuration. Running threads keep the configuration they started with.
 
@@ -45,20 +45,29 @@ r=~/deslop
 mkdir -p ~/.claude/agents ~/.claude/skills ~/.codex/rules ~/.codex/skills
 ln -sfn $r/.claude/settings.json ~/.claude/settings.json
 ln -sfn $r/.claude/agents/pair.md ~/.claude/agents/pair.md
-for s in planning environment references retrospective; do ln -sfn $r/.claude/skills/$s ~/.claude/skills/$s; ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done
+for s in planning environment references; do ln -sfn $r/.claude/skills/$s ~/.claude/skills/$s; ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done
 ln -sfn $r/.codex/global-config.toml ~/.codex/config.toml
 ln -sfn $r/.codex/instructions.md ~/.codex/instructions.md
 ln -sfn $r/.codex/rules/deny.rules ~/.codex/rules/deny.rules
 codex execpolicy check --rules ~/.codex/rules/deny.rules true
 ```
 
-**Skill renames.** Stage new discovery links on both workers before merging, targeting the future path in `~/deslop`, never a review worktree; leave the active old links untouched. The new links become readable when main fast-forwards. After that, retire only old links owned by this setup; preserve unrelated skills and real directories.
+**Discovery changes.** Stage new instruction or skill links on both workers before merging, targeting the future path in `~/deslop`, never a review worktree; leave active old links untouched. The new links become readable when main fast-forwards. After that, retire only old links owned by this setup; preserve unrelated skills and real directories.
 
 **Check** with `find ~/.claude/settings.json ~/.claude/agents/pair.md ~/.codex/config.toml ~/.codex/instructions.md ~/.codex/rules/deny.rules ~/.claude/skills/* ~/.codex/skills/* -maxdepth 0 ! -type l` (prints a link a harness replaced) and `git -C ~/deslop status --short` (a harness that wrote through a link; carry the write into a PR, then `git -C ~/deslop restore` it, because a dirty checkout stops the automatic pull).
 
 ## T3 history
 
-Each worker stores only its own threads. For counts across many threads, `sqlite3 -readonly ~/.t3/userdata/statev2.sqlite` on each worker, the other through `ssh mp281x@<worker>`, selecting only needed fields; current records are in `orchestration_v2_projection_*` (`_threads`, `_messages`, `_turn_items`, `_runs`, `_subagents`). Native transcripts with every tool call: `~/.claude/projects/*/*.jsonl`, `~/.codex/sessions/**`.
+**Tools first.** Use `t3_thread_search` / `t3_thread_list` to locate a thread, then `t3_thread_read`: `messages` for decisions, `activity` for commands and tool results. Other workers use the same tools with `environmentId` from `t3_environment_links`. Read a known thread directly; search is not an exhaustive inventory.
+
+```text
+t3_thread_read({ environmentId, threadId, view: "messages", limit: 20, maxCharsPerItem: 3000 })
+// More items: afterPosition = nextPosition
+// Cut-off item: itemId + textOffset = nextTextOffset
+// Missing tool result: view = "activity", then read its itemId
+```
+
+**Compaction.** Recover the deciding exchange or tool result, not the whole history. Keep the user's actual approval, rejected alternatives and still-valid proof; do not reopen a settled area merely because its rationale left context.
 
 ## T3 settings
 
@@ -221,7 +230,7 @@ claude mcp add --transport http --scope user stash https://stash.mp281x.xyz/mcp
 claude mcp add --transport http --scope user auth https://auth.mp281x.xyz/mcp
 ```
 
-**Scope, Stash and Auth.** Run the native login on its worker and open its printed authorization URL in that worker's T3 preview. Leave that page waiting: it shows a QR code and a code, which the user scans with a phone where they are signed in or enters at https://auth.mp281x.xyz. The waiting page then completes the local callback. Repeat separately for each client and worker, replacing `scope` with `stash` and `auth`.
+**Scope, Stash and Auth.** Run the native login on its worker and open its printed authorization URL in that worker's T3 preview. Read the page's code and approve the sign-in through the Auth MCP. If Auth itself needs its initial sign-in, the user scans the QR or enters the code at https://auth.mp281x.xyz. The waiting page completes the local callback. Repeat separately for each client and worker, replacing `scope` with `stash` and `auth`.
 
 ```bash
 codex mcp login --no-browser scope

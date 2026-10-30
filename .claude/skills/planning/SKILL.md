@@ -1,68 +1,37 @@
 ---
 name: planning
-description: Load at the start of every task, at each user message that changes, extends or approves the direction, before choosing between approaches or showing mocks, and before starting a child.
+description: Load at task start, when the user changes direction, before design choices or delegation.
 ---
 
 # Planning
 
-## Decide
+## Outcome
 
-- **Outcome.** An exploratory question is answered within the boundary the user names; an implementation fixes the cause of a bug and its siblings, the whole journey rather than one screen. A larger outcome beyond the request is a proposal. A repository named only for analysis stays read-only: no branch, PR, MR or ticket.
-- **Expert depth.** Resolve a consequential uncertainty with the deciding trace, profile, query, reference or real interaction, per environment's Diagnostics and the references skill; analysis without evidence stays a hypothesis. Compare runnable options on the same input; a benchmark reports before and after medians of wall time, CPU time and peak RAM. A hard target stays solvable until a measurement proves the limit.
-- **Oracle**, when the user asks for a second opinion: one read-only child from the other model family with the request, the planned files, signatures and data flow, and the evidence so far. It returns objections and the alternative it would pick; you decide.
-- **Done.** Before a long or open-ended run, state the exit condition as a checkable predicate; stop when it holds, not when progress plateaus, and never relax it to declare victory.
-- **Screens.** A new screen or an open visual or mental-model direction gets distinct variants side by side through `html_render` before any UI code, one with the fewest concepts, on realistic data and copy, in the app's own theme and components, not T3's; let the user try the deciding journey before implementation. An agreed direction or local correction needs no new choice. Before handback, put the built deciding journey beside the pick on the same data and viewport, and resolve every difference in primitives, alignment, spacing and interaction.
-- **Tripwire.** Expanding scope, repeated failed fixes or a new mechanism (script, daemon, store, wrapper, protocol, reimplementation) prompts a check against the requested outcome before more implementation.
-- **Process stays prose.** A step agents must take lives in the instruction that names it; the user rejected hooks, stamp files, generators and sync checks for it.
-- **Active contract.** The thread's goal, accepted requirements and approved proposals in the user's words, rejected directions and order. Reconcile each user message against it clause by clause before the next consequential step: a replacement drops the named direction and its unmerged code, keeping valid work and proof; a short acceptance approves the actual proposal with its names and contracts, not adjacent improvements; a stated goal covers every instance found later. Reversing non-default configuration someone set on purpose is discussed point by point first. One implementation, no flags for hypothetical revisions.
-- **Side notes.** A side note's constraint on the main task applies at once; its extra work is kept and done after the main task.
+Keep one active contract: the user's goal, accepted choices, rejected directions and order. A steer updates it; an approval accepts the proposal actually shown. Side-note constraints apply immediately; extra work follows the main task. Discuss deliberate configuration reversals before making them.
 
-## Build
+Resolve consequential uncertainty early and define a checkable finish for open-ended work. Preserve the agreed scope and quality; choose the investigation and implementation strategy yourself. Reuse valid evidence across batches and compaction, carrying pending work and IDs; recover missing decisions from the thread rather than guessing.
 
-Implement a coherent batch, prove it through the same interface and input, Verify, review, fix in a batch, Verify and publish per pull-requests. Reuse evidence whose covered state is unchanged; never rerun research, gates or captures to narrate progress.
+For performance claims, compare the same workload and environment across repeated runs. Report representative timings and the resource costs relevant to the change.
 
-## PR set
+For an open screen design, show distinct usable variants with `html_render`, including the fewest-concepts option, in the app's theme on realistic data. An agreed direction needs no new choice. Validate the built journey against the pick at the same viewport.
 
-Plan the PR set at task start as one implementation split into review slices per pull-requests' Branches, and reshape it as the work changes.
+## Delivery
 
-- **Reshape.** Remove a rejected approach from every unmerged slice rather than adding and removing it across slices. Reuse existing PRs and branches; close only one the new shape makes redundant.
-- **Top.** The preview runs the stack's top; a ref moved to an already-verified commit needs no local rerun, while a rebase that brings in new commits reruns Verify.
-- **After merges.** Restack and republish per pull-requests, and unlink merged PRs from the thread with `unlink_pull_request`.
+Implement, prove the actual journey, Verify, review and publish per pull-requests. Fix related findings in a batch and revalidate what changed. Process belongs in prose, not hooks, stamps or coordination machinery.
 
-## Review
+One complete independent review before the first push covers the unmerged PR set and accepted requirements at immutable base/head pairs. Use one reviewer unless distinct risks need different expertise. Triage findings yourself; fix kept P1, P2 and trivial P3 findings. Pre-existing defects stay separate. Follow-up reviews cover changed contracts, not another full search; repeated substantial findings call for rethinking the approach.
 
-- **One complete round** on the verified unmerged PR set before the first push: one reviewer child by default, more only for distinct risks or expertise. Each brief holds the goal, checkout, every slice's immutable base/head pair, the combined head, the user's requirements and approved proposals in their own words, and unresolved deviations. Reuse review and captures across retargets or hash-only rewrites only when patches and trees are unchanged; required CI still runs.
-- **Triage** each finding against review's Keep yourself, since you hold the context the reviewer lacks; reject the rest with a one-line reason that a follow-up's brief carries. Fix every kept P1, P2 and trivial P3 in one batch, each slice in its own layer. Pre-existing findings go in the reply for the user to pick up later, never into this PR set.
-- **Follow-up**, when the fixes need independent validation: only the PRs whose head changed, each against its parent, and only the fixes and the contracts they touch. A second follow-up that still finds a P1 or P2 means the approach is wrong: rethink it with the user instead of patching again.
+## Delegation
 
-## Delegate
+Use `delegate_task`. Delegate bounded independent work when it saves time or adds judgment. Give the question, user constraints, evidence and stopping condition, without your verdict; reviewers also need immutable revisions and "Load the review skill." Keep parent and child investigations disjoint.
 
-**Workspace.** If the thread's checkout is `~/deslop`, whose `main` every worker's installed agent configuration links to (environment's Maintenance), first make one parent-only `t3_worktree_handoff` before editing. Then keep implementation, branches, preview and browser tab in that checkout on one worker.
+**Models.** Match cost to the work; use the parent's provider by default and the other family for second opinions. The user's provider/model or quota steer persists until changed. These are starting choices, not capability limits.
 
-**Economics.** Delegate a bounded read-only lookup, inventory, research, thread history, review, probe or mock only when it saves more than briefing and joining it, or adds independent judgment. One child per independent question, related questions batched in one child; parent and children never duplicate an investigation. Model IDs from `orchestrator_capabilities`, reasoning `high`. A provider steer for quota ("use claude code subagents") replaces the table for every later child in the thread until the user lifts it.
+| Work                                                 | Codex         | Claude Code        | Effort   |
+| ---------------------------------------------------- | ------------- | ------------------ | -------- |
+| Exploration, lookup, inventory, evidence collection  | `gpt-6-luna`  | `claude-haiku-5-5` | `medium` |
+| Reasoning, architecture, difficult debugging, review | `gpt-6.1-sol` | `claude-opus-5-5`  | `high`   |
 
-| Work                                     | Model                                                               |
-| ---------------------------------------- | ------------------------------------------------------------------- |
-| Oracle                                   | The other family: GPT-6.1 Sol from Claude, Claude Opus 5.5 from GPT |
-| Review, audit, critique, thread history  | GPT-6.1 Sol                                                         |
-| Research, reference lookups, comparisons | Claude Sonnet 5.5                                                   |
-| Probes, inventories, long commands       | GPT-6 Luna or Claude Haiku 5.5                                      |
-| Runner-up screen mocks                   | Claude Sonnet 5.5                                                   |
+**Council.** When uncertain about an answer or approach, run an independent council automatically: `gpt-6-luna`, `claude-haiku-5-5`, `gpt-6.1-sol` and `claude-opus-5-5`, at their table efforts. Give each the same concise question, options, raw evidence and decision criteria, without your preferred answer or the other members' conclusions. Each returns tradeoffs, objections and its recommendation. Weigh the evidence and choose; do not vote or ask the user to settle a technical uncertainty. User-only product/taste choices and approvals remain theirs.
 
-**Brief.** Open with this block, then one labeled line per part with a blank line between parts and one instruction per line:
-
-```text
-**Child.** Read-only per Work: no source edits, fixes, checks, tests, builds, installs, commits or pushes. Scratch only under /tmp/repos/ and /tmp/<task>/. No delegation, preview, thread messages, questions or report files. Answer inline with deciding file, command or URL evidence; mark unverified claims.
-
-**Goal.** <question and the decision it serves>
-
-**User.** "<the user's words verbatim>"
-
-**Scope.** <exact files, lines and commands you already checked; counted items; immutable base/head>
-
-**Stop.** <when the question is settled>
-
-**Return.** <shape>
-```
-
-A review or oracle brief adds "Load the review skill." and no author verdict. A mock brief names its hypothesis, the pick's, the shared data, states and copy, the reference files and the output path.
+If working in `~/deslop`, hand off to a task worktree with `t3_worktree_handoff` before editing: that main checkout supplies every thread's installed configuration.
