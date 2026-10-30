@@ -55,6 +55,7 @@ import {
 	returnable,
 	typedCode
 } from '#services/authorizations/lib/utils.ts'
+import {waitForChange} from '#services/authorizations/lib/watch.ts'
 import type {
 	AdmitParams,
 	PendingAuthorization,
@@ -233,6 +234,8 @@ export class Authorizations extends Context.Service<
 		readonly admit: (params: AdmitParams, user: User) => Effect.Effect<Person, AuthError>
 		readonly answer: (params: ConsentParams, user: User) => Effect.Effect<{clientName: string}, AuthError>
 		readonly apps: (user: User) => Stream.Stream<SignedInApp[], AuthError>
+		readonly admin: (user: User) => Effect.Effect<void, AuthError>
+		readonly delegate: (headers: Headers.Headers, resource: Resource) => Effect.Effect<string, AuthError>
 		readonly disconnect: (family: string, user: User) => Effect.Effect<void, AuthError>
 		readonly listPeople: (user: User) => Effect.Effect<Person[], AuthError>
 		readonly lookup: (
@@ -497,20 +500,7 @@ export class Authorizations extends Context.Service<
 							const subscription = yield* PubSub.subscribe(changes)
 							return Stream.unfold(Option.none<number>(), previous =>
 								Effect.gen(function* () {
-									yield* Option.match(previous, {
-										onNone: () => Effect.void,
-										onSome: expiresAt =>
-											Effect.raceFirst(
-												PubSub.take(subscription),
-												Boolean.match(expiresAt === Infinity, {
-													onFalse: () =>
-														Effect.flatMap(Clock.currentTimeMillis, now =>
-															Effect.sleep(Number.max(0, expiresAt - now))
-														),
-													onTrue: () => Effect.never
-												})
-											)
-									})
+									yield* waitForChange(subscription, previous)
 									const value = yield* read
 									return [value, Option.some(expires(value))] as const
 								})
@@ -1323,6 +1313,7 @@ export class Authorizations extends Context.Service<
 						Authorizations,
 						Authorizations.of({
 							account: headers => watch(account(headers), () => Infinity),
+							admin,
 							admit,
 							answer,
 							apps: user =>
@@ -1332,6 +1323,18 @@ export class Authorizations extends Context.Service<
 										Array.reduce(Infinity, Number.min)
 									)
 								),
+							delegate: Effect.fn('Authorizations.delegate')(function* (headers: Headers.Headers, resource: Resource) {
+								yield* access(headers, 'https://auth.mp281x.xyz/mcp')
+								const bearer = headers['authorization'] ?? ''
+								const token = String.trim(String.replace(/^bearer +/iu, '')(bearer))
+								return yield* transact(draft =>
+									Effect.gen(function* () {
+										const source = yield* load(token, draft)
+										if (source._tag !== 'Access') return yield* AuthError.make({message: 'Sign in first'})
+										return yield* mint({...source, resources: [resource]}, 60, draft)
+									})
+								)
+							}, rejected('Cannot authorize the upstream MCP')),
 							disconnect,
 							listPeople,
 							lookup: (code, headers) =>

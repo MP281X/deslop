@@ -11,6 +11,9 @@ import * as ServerRuntime from '@deslop/runtime/server'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Authorizations} from '#services/authorizations/service.ts'
+import {Connections} from '#services/connections/service.ts'
+import {Gateway} from '#services/gateway/service.ts'
+import {layerPublicFetch} from '#services/network/service.ts'
 import {layerMcp} from '#tools/handlers.ts'
 
 const RpcOrigin = HttpRouter.middleware()(
@@ -37,11 +40,15 @@ NodeRuntime.runMain(
 					layerMcp,
 					ServerRuntime.layerStaticFiles
 				),
+				Layer.provide(Gateway.layer),
+				Layer.provide(Connections.layer),
 				Layer.provide(Authorizations.layer)
 			),
 			{disableLogger: true}
 		),
 		Layer.provide(Layer.mergeAll(NodeCrypto.layer, NodeHttpClient.layerFetch, NodeServices.layer)),
+		Layer.provide(Layer.succeed(NodeHttpClient.RequestInit, {redirect: 'error'})),
+		Layer.provide(layerPublicFetch),
 		Layer.provide(ServerRuntime.layer('@deslop/auth')),
 		Layer.provide(ServerRuntime.layerNodeHttpServer),
 		Layer.launch

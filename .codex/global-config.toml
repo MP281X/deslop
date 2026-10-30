@@ -19,8 +19,7 @@ enabled = false
 enabled = false
 
 [features]
-# Mobbin exposes no tools through Codex 0.163.0's stateless MCP mode.
-mcp_2026_07_28 = false
+mcp_2026_07_28 = true
 skill_mcp_dependency_install = false
 skill_search = false
 tool_suggest = false
@@ -32,24 +31,8 @@ plugins = false
 goals = false
 
 # Threads run without approval prompts, so an MCP tool that asks for approval is rejected.
-[mcp_servers.dual]
-url = "https://app.dualos.ai/mcp"
-default_tools_approval_mode = "approve"
-
-[mcp_servers.scope]
-url = "https://scope.mp281x.xyz/mcp"
-default_tools_approval_mode = "approve"
-
-[mcp_servers.stash]
-url = "https://stash.mp281x.xyz/mcp"
-default_tools_approval_mode = "approve"
-
 [mcp_servers.auth]
 url = "https://auth.mp281x.xyz/mcp"
-default_tools_approval_mode = "approve"
-
-[mcp_servers.mobbin]
-url = "https://api.mobbin.com/mcp"
 default_tools_approval_mode = "approve"
 
 [[hooks.SessionStart]]

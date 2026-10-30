@@ -1,0 +1,96 @@
+diff --git a/dist/ai/McpServer.d.ts b/dist/ai/McpServer.d.ts
+index 9b44304855d1f239799b9ed5e161ff152c83bb44..14bdd614d283e73ba0e66cb6fc2274386d786592 100644
+--- a/dist/ai/McpServer.d.ts
++++ b/dist/ai/McpServer.d.ts
+@@ -409,6 +409,7 @@ declare const McpServer_base: Context.ServiceClass<McpServer, "effect/ai/McpServ
+         readonly tool: McpTool;
+         readonly annotations: Context.Context<never>;
+     }>;
++    readonly removeTool: (name: string) => Effect.Effect<void>;
+     readonly addTool: (options: {
+         readonly tool: McpTool;
+         readonly annotations: Context.Context<never>;
+@@ -483,6 +484,7 @@ export declare class McpServer extends McpServer_base {
+             readonly tool: McpTool;
+             readonly annotations: Context.Context<never>;
+         }>;
++        readonly removeTool: (name: string) => Effect.Effect<void>;
+         readonly addTool: (options: {
+             readonly tool: McpTool;
+             readonly annotations: Context.Context<never>;
+diff --git a/dist/ai/McpServer.js b/dist/ai/McpServer.js
+index cbf6087db7b02da3bb8f202099857248a8191f4e..e8c913007c007d2833376606a2b9ec7f1b594d88 100644
+--- a/dist/ai/McpServer.js
++++ b/dist/ai/McpServer.js
+@@ -560,6 +560,13 @@ export class McpServer extends /*#__PURE__*/Context.Service()("effect/ai/McpServ
+       get tools() {
+         return tools;
+       },
++      removeTool: Effect.fnUntraced(function* (name) {
++        const index = tools.findIndex(({ tool }) => tool.name === name);
++        if (index === -1) return;
++        tools.splice(index, 1);
++        yield* internalCore.tools.unregister(name);
++        yield* notifications.client["notifications/tools/list_changed"]({});
++      }),
+       addTool: Effect.fnUntraced(function* (options) {
+         const existingIndex = tools.findIndex(({
+           tool
+diff --git a/dist/ai/internal/mcpCore.js b/dist/ai/internal/mcpCore.js
+index f4fc4b97898eb5026c3241b54aac3300114a8a1c..027cc8f2751491a87542336ef816d4df96a51217 100644
+--- a/dist/ai/internal/mcpCore.js
++++ b/dist/ai/internal/mcpCore.js
+@@ -79,6 +79,7 @@ export const make = /*#__PURE__*/Effect.sync(() => {
+   const completionRegistrations = new Map();
+   const filterList = (registrations, invocation) => Effect.map(Effect.filter(Arr.filter(registrations, entry => entry.isVisible(invocation.protocol)), entry => entry.visible === undefined ? Effect.succeed(true) : entry.visible(invocation)), entries => entries.map(entry => entry.descriptor));
+   const tools = {
++    unregister: name => Effect.sync(() => { registrations.delete(name); }),
+     register: registration => Effect.sync(() => {
+       registrations.set(registration.descriptor.name, registration);
+     }),
+diff --git a/src/ai/McpServer.ts b/src/ai/McpServer.ts
+index d49cb9eefae443f9f03b4dc51d11e963a6ee1741..ba2a23039dbb4fe3f4a97d948ca897372082dcb1 100644
+--- a/src/ai/McpServer.ts
++++ b/src/ai/McpServer.ts
+@@ -939,6 +939,7 @@ export class McpServer extends Context.Service<McpServer, {
+     readonly tool: McpTool
+     readonly annotations: Context.Context<never>
+   }>
++  readonly removeTool: (name: string) => Effect.Effect<void>
+   readonly addTool: (options: {
+     readonly tool: McpTool
+     readonly annotations: Context.Context<never>
+@@ -1146,6 +1147,13 @@ export class McpServer extends Context.Service<McpServer, {
+       get tools() {
+         return tools
+       },
++      removeTool: Effect.fnUntraced(function*(name) {
++        const index = tools.findIndex(({ tool }) => tool.name === name)
++        if (index === -1) return
++        tools.splice(index, 1)
++        yield* internalCore.tools.unregister(name)
++        yield* notifications.client["notifications/tools/list_changed"]({})
++      }),
+       addTool: Effect.fnUntraced(function*(options) {
+         const existingIndex = tools.findIndex(({ tool }) => tool.name === options.tool.name)
+         if (existingIndex === -1) {
+diff --git a/src/ai/internal/mcpCore.ts b/src/ai/internal/mcpCore.ts
+index 65f748da9c86bb01979bb5e2d308908be45425c5..b36d59a0e491bc12824cd39aacfc963af5870936 100644
+--- a/src/ai/internal/mcpCore.ts
++++ b/src/ai/internal/mcpCore.ts
+@@ -196,6 +196,7 @@ export interface ToolRegistration {
+  * @internal
+  */
+ export interface Tools {
++  readonly unregister: (name: string) => Effect.Effect<void>
+   readonly register: (
+     registration: ToolRegistration
+   ) => Effect.Effect<void>
+@@ -471,6 +472,7 @@ export const make: Effect.Effect<McpCore> = Effect.sync(() => {
+     )
+ 
+   const tools: Tools = {
++    unregister: (name) => Effect.sync(() => { registrations.delete(name) }),
+     register: (registration) =>
+       Effect.sync(() => {
+         registrations.set(registration.descriptor.name, registration)
