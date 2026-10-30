@@ -2050,7 +2050,13 @@ export const makeSim = Effect.fnUntraced(
 						body,
 						state.tick,
 						'observe',
-						`Tracks near ${place2(trace)}: wear ${Number.round(trace.wear, 2)}, freshness ${Number.round(trace.fresh, 2)}; direction ${Number.round(trace.yaw, 1)}. Overlapping impressions: ${JSON.stringify(trace.impressions ?? [])}. Maker unknown; latest direction and freshness do not date every impression.`
+						`Tracks near ${place2(trace)}: wear ${Number.round(trace.wear, 2)}, freshness ${Number.round(trace.fresh, 2)}; direction ${Number.round(trace.yaw, 1)}. Overlapping impressions: ${Array.join(
+							Array.map(
+								trace.impressions ?? [],
+								impression => `${impression.kind} (wear ${Number.round(impression.wear, 2)})`
+							),
+							', '
+						)}. Maker unknown; latest direction and freshness do not date every impression.`
 					)
 				}),
 				Match.when('work', () => {

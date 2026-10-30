@@ -215,7 +215,7 @@ export class Core extends Context.Service<
 							const criteria = {...request.choices}
 							if (continuation.conversation.archive !== undefined) {
 								criteria['recall'] =
-									`Retrieve your own original experience before turn ${continuation.conversation.archive.before}, characters ${continuation.conversation.archive.offset} onward. No action will be executed during retrieval.`
+									`Retrieve your own original experience before turn ${continuation.conversation.archive.before}, characters ${continuation.conversation.archive.offset} onward. Your current activity continues; retrieval does not start a new physical objective.`
 							}
 							const context = Array.join(
 								[
