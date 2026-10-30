@@ -16,7 +16,7 @@ Factory production, logistics, resource depletion, exploration and wildlife belo
 - Units are independent. They act on local perceptions, experiences, received information and guidance. They need not have the same knowledge as the Core or one another, and they do not receive the team's full history.
 - The Core can update the information and guidance available to particular units. It cannot rewrite their experiences or silently update units that did not receive or read the communication. It can overlook something, deem information unimportant or choose not to share it.
 - Use decision models such as Jev heavily for bounded local decisions, reducing routine work for the longer-running team agents. State machines carry out actions between decisions; movement and production do not require inference on every tick. Models should receive only the knowledge available to the individual making the decision.
-- The Core's desired physical identity is a pillar or similar structure, not the current house-like presentation. The precise visual design remains open.
+- The Core is a technological/cyberpunk coordination structure: dark alloy, visible circuitry and antennas, not a house or an old stone tower. Its exact detailing remains open.
 
 ## Reality, knowledge and memory
 
@@ -75,6 +75,8 @@ Consequences are local but shared: resource depletion, smog and a creature's rea
 
 The spectator experience should make an evolving world understandable, including after hours away:
 
+- World first: the user wants to visualize the simulation, not read a dashboard. The map owns the screen by default; inspecting an individual or opening a conversation reveals a contextual, dismissible panel. Do not reserve half the screen for an unopened inspector or show a permanent team statistics table.
+- Keep historical navigation visible in a compact timeline matching the app's square, technical visual style. Scrubbing and event selection change the spectator's view, not the authoritative simulation. Avoid repeated clocks/statuses, rows of speed buttons and observation/usage clutter; secondary controls and detailed text are requested explicitly.
 - Rework the timeline/replay experience around understanding what happened; do not preserve the current implementation merely because it exists.
 - Allow inspection of each individual unit or mob from its beginning, including its decisions, actions and outcomes, with navigation to the relevant place and time.
 - Keep world events and what each participant knew or believed distinguishable. The spectator can inspect the truth and individual perspectives without leaking omniscient data into agent contexts.
