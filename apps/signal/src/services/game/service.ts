@@ -18,6 +18,7 @@ import {
 	Record,
 	Schedule,
 	Schema,
+	Semaphore,
 	Stream,
 	String,
 	pipe
@@ -216,8 +217,9 @@ export class Game extends Context.Service<
 				{maximum: 4, minimum: 0}
 			)
 
+			const clock = yield* Semaphore.make(1)
 			const save = pipe(
-				Effect.flatMap(sim.snapshot, saved => worlds.set('world', saved)),
+				Effect.flatMap(clock.withPermit(sim.snapshot), saved => worlds.set('world', saved)),
 				Effect.mapError(cause => GameError.make({cause, message: 'Simulation stopped: the world could not be saved.'}))
 			)
 
@@ -266,7 +268,6 @@ export class Game extends Context.Service<
 
 			const keepHistory = Effect.fn('Game.keepHistory')(
 				function* () {
-					yield* save
 					const committed = MutableRef.get(historyIndex)
 					const pending = sim.experiences()
 					const updated = MutableHashMap.fromIterable(Record.toEntries(committed))
@@ -495,71 +496,91 @@ export class Game extends Context.Service<
 				if (round % CHECKPOINT === 0) yield* checkpoint(round)
 			})
 
-			const tickOnce = Effect.gen(function* () {
-				yield* sim.run(1)
-				if (sim.tick() % TICK_HZ === 0) {
-					const completed = Array.filter(Array.fromIterable(local), entry => entry[1].fiber.pollUnsafe() !== undefined)
-					const applied = MutableList.make<NonNullable<Journal['locals']>[number]>()
-					for (const entry of completed) {
-						const result = entry[1].fiber.pollUnsafe()
-						MutableHashMap.remove(local, entry[0])
-						if (result !== undefined && Exit.isSuccess(result)) {
-							sim.decide(entry[0], result.value.choice, entry[1].request)
-							const context = yield* Option.match(Option.fromUndefinedOr(result.value.context), {
-								onNone: () => Schema.encodeEffect(Schema.fromJsonString(LocalDecision))(entry[1].request),
-								onSome: Effect.succeed
-							})
-							const tokens = {cost: result.value.cost, input: result.value.input, output: result.value.output}
-							sim.evidence(entry[0], context, tokens)
-							MutableList.append(applied, {
-								actor: entry[0],
-								choice: result.value.choice,
-								context,
-								request: entry[1].request,
-								tick: sim.tick(),
-								tokens
-							})
-						} else if (result !== undefined) {
-							const failure = Cause.pretty(result.cause)
-							sim.evidence(entry[0], entry[1].request.state, {}, failure)
-							MutableList.append(applied, {actor: entry[0], context: entry[1].request.state, failure, tick: sim.tick()})
-							yield* Effect.logWarning('A local decision failed; existing action continues', result)
-						}
-					}
-					for (const request of Array.getSomes(
-						Array.map(
-							Array.take(
-								Array.sortWith(
-									Array.filter(sim.due(), actor => !MutableHashMap.has(local, actor)),
-									(actor: number) => sim.individual(actor).next,
-									Number.Order
-								),
-								Number.min(localBudget, Number.max(0, 4 - MutableHashMap.size(local)))
-							),
-							sim.decision
-						)
-					)) {
-						const deadline = sim.tick() + 60 * TICK_HZ
-						sim.defer(request.actor, deadline)
-						MutableList.append(applied, {actor: request.actor, next: deadline, tick: sim.tick()})
-						MutableHashMap.set(local, request.actor, {
-							fiber: yield* Effect.forkIn(core.choose(sim.seed, request), scope),
-							request
-						})
-					}
+			const tickOnce = pipe(
+				clock.withPermit(
+					Effect.uninterruptible(
+						Effect.gen(function* () {
+							yield* sim.run(1)
+							if (sim.tick() % TICK_HZ === 0) {
+								const completed = Array.filter(
+									Array.fromIterable(local),
+									entry => entry[1].fiber.pollUnsafe() !== undefined
+								)
+								const applied = MutableList.make<NonNullable<Journal['locals']>[number]>()
+								for (const entry of completed) {
+									const result = entry[1].fiber.pollUnsafe()
+									MutableHashMap.remove(local, entry[0])
+									if (result !== undefined && Exit.isSuccess(result)) {
+										sim.decide(entry[0], result.value.choice, entry[1].request)
+										const context = yield* Option.match(Option.fromUndefinedOr(result.value.context), {
+											onNone: () => Schema.encodeEffect(Schema.fromJsonString(LocalDecision))(entry[1].request),
+											onSome: Effect.succeed
+										})
+										const tokens = {cost: result.value.cost, input: result.value.input, output: result.value.output}
+										sim.evidence(entry[0], context, tokens)
+										MutableList.append(applied, {
+											actor: entry[0],
+											choice: result.value.choice,
+											context,
+											request: entry[1].request,
+											tick: sim.tick(),
+											tokens
+										})
+									} else if (result !== undefined) {
+										const failure = Cause.pretty(result.cause)
+										sim.evidence(entry[0], entry[1].request.state, {}, failure)
+										MutableList.append(applied, {
+											actor: entry[0],
+											context: entry[1].request.state,
+											failure,
+											tick: sim.tick()
+										})
+										yield* Effect.logWarning('A local decision failed; existing action continues', result)
+									}
+								}
+								for (const request of Array.getSomes(
+									Array.map(
+										Array.take(
+											Array.sortWith(
+												Array.filter(sim.due(), actor => !MutableHashMap.has(local, actor)),
+												(actor: number) => sim.individual(actor).next,
+												Number.Order
+											),
+											Number.min(localBudget, Number.max(0, 4 - MutableHashMap.size(local)))
+										),
+										sim.decision
+									)
+								)) {
+									const deadline = sim.tick() + 60 * TICK_HZ
+									sim.defer(request.actor, deadline)
+									MutableList.append(applied, {actor: request.actor, next: deadline, tick: sim.tick()})
+									MutableHashMap.set(local, request.actor, {
+										fiber: yield* Effect.forkIn(core.choose(sim.seed, request), scope),
+										request
+									})
+								}
 
-					if (Array.isArrayNonEmpty(MutableList.toArray(applied))) {
-						yield* journals.set(replayKey('local', sim.tick()), {
-							applied: [],
-							locals: MutableList.toArray(applied),
-							marks: [],
-							round: Math.floor(sim.tick() / ROUND)
+								if (Array.isArrayNonEmpty(MutableList.toArray(applied))) {
+									yield* journals.set(replayKey('local', sim.tick()), {
+										applied: [],
+										locals: MutableList.toArray(applied),
+										marks: [],
+										round: Math.floor(sim.tick() / ROUND)
+									})
+								}
+								if (sim.tick() % ROUND === 0) yield* boundary(sim.tick() / ROUND)
+							}
 						})
-					}
-					if (sim.tick() % ROUND === 0) yield* boundary(sim.tick() / ROUND)
-					yield* keepHistory()
-				}
-			})
+					)
+				),
+				Effect.andThen(
+					Effect.suspend(() => {
+						if (sim.tick() % TICK_HZ !== 0) return Effect.void
+						if (sim.tick() % (15 * TICK_HZ) === 0) return pipe(save, Effect.andThen(keepHistory()))
+						return keepHistory()
+					})
+				)
+			)
 
 			// The world keeps time with the wall clock in whole ticks; a server that fell more than two seconds behind skips the rest rather than racing to catch up.
 			const advance = Effect.gen(function* () {
@@ -616,11 +637,14 @@ export class Game extends Context.Service<
 							message: 'This time predates the current simulation rules; original histories remain available.'
 						})
 					}
+					const current = yield* clock.withPermit(
+						Effect.suspend(() => {
+							if (from !== sim.tick()) return Effect.succeedNone
+							return Effect.asSome(sim.snapshot)
+						})
+					)
 					const start = Option.filter(
-						yield* Option.match(
-							Option.filter(Option.some(from), tick => tick === sim.tick()),
-							{onNone: () => checkpointBefore(from), onSome: () => Effect.asSome(sim.snapshot)}
-						),
+						yield* Option.match(current, {onNone: () => checkpointBefore(from), onSome: Effect.succeedSome}),
 						found => found.generator === GENERATOR
 					)
 					if (Option.isNone(start)) {

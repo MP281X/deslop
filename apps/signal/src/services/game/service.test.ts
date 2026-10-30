@@ -243,4 +243,78 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 			}
 		})
 	)
+
+	test.effect(
+		'recovers committed natural simulation progress beyond the periodic snapshot without inference',
+		Effect.fnUntraced(function* () {
+			const kv = yield* KeyValueStore.KeyValueStore
+			yield* kv.clear
+			yield* KeyValueStore.toSchemaStore(kv, Saved).set('world', yield* (yield* makeSim(Option.none(), 42)).snapshot)
+			const calls = MutableList.make<number>()
+			const deny = Effect.fnUntraced(function* (seed: number) {
+				MutableList.append(calls, seed)
+				return yield* GameError.make({message: 'Inference is forbidden in recovery.'})
+			})
+			const strategy = Layer.succeed(
+				Core,
+				Core.of({choose: deny, decide: deny, recall: () => Effect.succeed(''), usage: Effect.succeed({groups: {}})})
+			)
+			const live = yield* Effect.scoped(
+				Effect.gen(function* () {
+					const game = Context.get(
+						yield* Layer.build(
+							pipe(
+								Game.layer,
+								Layer.provide(strategy),
+								Layer.provide(
+									ConfigProvider.layer(
+										ConfigProvider.fromUnknown({SIGNAL_LOCAL_DECISIONS_PER_SECOND: '0', SIGNAL_RUN: 'running'})
+									)
+								),
+								Layer.provide(
+									Layer.succeed(
+										KeyValueStore.KeyValueStore,
+										KeyValueStore.make({
+											...kv,
+											set: (key, value) => {
+												if (key === 'world') {
+													return Effect.fail(
+														new KeyValueStore.KeyValueStoreError({
+															key,
+															message: 'Simulated loss of the final snapshot.',
+															method: 'set'
+														})
+													)
+												}
+												return kv.set(key, value)
+											}
+										})
+									)
+								)
+							)
+						),
+						Game
+					)
+					yield* Effect.repeat(TestClock.adjust('1 second'), {times: 4})
+					return {
+						frame: Option.getOrThrow(yield* Stream.runHead(game.join)),
+						history: yield* game.history(2, Option.none())
+					}
+				})
+			)
+			assert.strictEqual(live.frame.paused, false)
+			assert.strictEqual(live.frame.tick, 100)
+			assert.strictEqual(Option.getOrThrow(yield* KeyValueStore.toSchemaStore(kv, Saved).get('world')).tick, 0)
+			assert.strictEqual(
+				Option.getOrThrow(yield* KeyValueStore.toSchemaStore(kv, HistoryIndex).get('history/index'))['@tick'],
+				100
+			)
+			const recovered = Context.get(yield* Layer.build(pipe(Game.layer, Layer.provide(strategy))), Game)
+			const frame = Option.getOrThrow(yield* Stream.runHead(recovered.join))
+			assert.strictEqual(frame.tick, live.frame.tick)
+			assert.deepStrictEqual(frame.units, live.frame.units)
+			assert.deepStrictEqual(yield* recovered.history(2, Option.none()), live.history)
+			assert.strictEqual(calls.length, 0)
+		})
+	)
 })
