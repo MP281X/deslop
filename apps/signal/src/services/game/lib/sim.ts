@@ -2467,7 +2467,7 @@ export const makeSim = Effect.fnUntraced(
 				})
 			}
 			if (Schema.is(StructureKind)(site.kind) && Array.contains(['road', 'ramp', 'bridge'], site.kind)) return
-			if (gapTo(site, homeAt(site.team)) <= HOME_SIGHT * daylightAt(state.tick)) {
+			if (gapTo(site, homeAt(site.team)) <= HOME_SIGHT * life.visibility(homeAt(site.team), state.tick)) {
 				notify(site.team, `${buildingName(site)} at (${site.x}, ${site.z}) is built.`)
 			}
 		}
@@ -3585,7 +3585,9 @@ export const makeSim = Effect.fnUntraced(
 			if (
 				!Array.some(
 					life.core(team.id).facts,
-					fact => fact.id === command.building && distance(fact, homeAt(team.id)) <= HOME_SIGHT * daylightAt(state.tick)
+					fact =>
+						fact.id === command.building &&
+						distance(fact, homeAt(team.id)) <= HOME_SIGHT * life.visibility(homeAt(team.id), state.tick)
 				)
 			) {
 				const builder = Option.getOrUndefined(Array.head(unitsOf(team.id)))
@@ -3656,7 +3658,7 @@ export const makeSim = Effect.fnUntraced(
 					building =>
 						building.kind === 'beacon' &&
 						complete(building) &&
-						gapTo(building, homeAt(team)) <= HOME_SIGHT * daylightAt(state.tick)
+						gapTo(building, homeAt(team)) <= HOME_SIGHT * life.visibility(homeAt(team), state.tick)
 				)
 			)
 		}
@@ -3726,7 +3728,7 @@ export const makeSim = Effect.fnUntraced(
 			if (
 				building === undefined ||
 				building.team !== team.id ||
-				gapTo(building, homeAt(team.id)) > HOME_SIGHT * daylightAt(state.tick)
+				gapTo(building, homeAt(team.id)) > HOME_SIGHT * life.visibility(homeAt(team.id), state.tick)
 			) {
 				return outcome(command, false, 'No locally accessible building of yours to dismantle.')
 			}
@@ -3780,7 +3782,7 @@ export const makeSim = Effect.fnUntraced(
 					const building = buildingOf(command.building)
 					if (
 						building === undefined ||
-						distance(homeAt(teamId), centreOf(building)) > HOME_SIGHT * daylightAt(state.tick)
+						distance(homeAt(teamId), centreOf(building)) > HOME_SIGHT * life.visibility(homeAt(teamId), state.tick)
 					) {
 						return outcome(command, false, 'The Core cannot open that storage remotely; send a unit to inspect it.')
 					}
