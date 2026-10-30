@@ -225,7 +225,7 @@ it.layer(KeyValueStore.layerMemory)(test => {
 	)
 
 	test.effect(
-		'refuses a truncated compaction without overwriting the continuation or attempting a strategy call',
+		'keeps the incoming report and prior continuation when compaction is truncated, without a strategy call',
 		Effect.fnUntraced(function* () {
 			const conversations = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Conversation)
 			yield* conversations.set('conversation/12/0/active', ORIGINAL)
@@ -260,7 +260,11 @@ it.layer(KeyValueStore.layerMemory)(test => {
 				)
 			)
 			assert.strictEqual(calls.length, 1)
-			assert.deepStrictEqual(Option.getOrThrow(yield* conversations.get('conversation/12/0/active')), ORIGINAL)
+			const retained = Option.getOrThrow(yield* conversations.get('conversation/12/0/active'))
+			assert.strictEqual(retained.summary, ORIGINAL.summary)
+			assert.deepStrictEqual(Array.take(retained.turns, 12), ORIGINAL.turns)
+			assert.strictEqual(Option.getOrThrow(Array.last(retained.turns)).content, 'A new observation.')
+			assert.strictEqual(retained.sequence, 13)
 		})
 	)
 })

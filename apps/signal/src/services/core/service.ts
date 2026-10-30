@@ -165,7 +165,7 @@ export class Core extends Context.Service<
 						...Array.filter([{content: `Previous checkpoint: ${active.summary}`, role: 'user' as const}], () =>
 							String.isNonEmpty(active.summary)
 						),
-						...active.turns
+						...Array.map(active.turns, turn => ({content: turn.content, role: turn.role}))
 					]
 					yield* account('compaction', model)
 					const [compacted] = yield* pipe(
@@ -209,7 +209,7 @@ export class Core extends Context.Service<
 					active.summary = `Archived through turn ${active.sequence}. Use Recall with before to retrieve older originals.\n${summary.message.content}`
 					active.turns = Array.takeRight(
 						active.turns,
-						Boolean.match(owner === 'Core', {onFalse: () => 0, onTrue: () => 4})
+						Boolean.match(owner === 'Core', {onFalse: () => 0, onTrue: () => 5})
 					)
 					active.archive = active.archive ?? {before: active.sequence + 1, offset: 0}
 					active.archived = active.sequence
@@ -393,6 +393,22 @@ export class Core extends Context.Service<
 										'\nYou have learned that other teams exist. Communication is available only to addresses learned through direct encounters or disclosed by known correspondents. Agreements do not prevent betrayal; judge claims and actions from evidence.'
 								})
 
+							const input: Turn = {
+								content:
+									String.slice(0, 6000)(observation) +
+									Boolean.match(observation.length > 6000, {
+										onFalse: () => '',
+										onTrue: () =>
+											`\n[Observation abbreviated. The complete original is archived: Recall before=${previous.sequence + 2}, offset=6000.]`
+									}),
+								role: 'user',
+								sequence: previous.sequence + 1
+							}
+							previous.sequence = input.sequence
+							previous.turns = [...previous.turns, input]
+							yield* conversations.set(key, previous)
+							yield* turns.set(turnKey(seed, team, input.sequence), {...input, content: observation})
+
 							const continuation = yield* Option.match(
 								Option.liftPredicate(
 									previous,
@@ -411,17 +427,6 @@ export class Core extends Context.Service<
 							)
 
 							const active = continuation.conversation
-							const input: Turn = {
-								content:
-									String.slice(0, 6000)(observation) +
-									Boolean.match(observation.length > 6000, {
-										onFalse: () => '',
-										onTrue: () =>
-											`\n[Observation abbreviated. The complete original is archived: Recall before=${active.sequence + 2}, offset=6000.]`
-									}),
-								role: 'user',
-								sequence: active.sequence + 1
-							}
 							yield* account('strategy', model)
 							const [body] = yield* pipe(
 								client.createChatCompletion({
@@ -431,8 +436,7 @@ export class Core extends Context.Service<
 										...Array.filter([{content: active.summary, role: 'user' as const}], () =>
 											String.isNonEmpty(active.summary)
 										),
-										...Array.map(active.turns, turn => ({content: turn.content, role: turn.role})),
-										{content: input.content, role: input.role}
+										...Array.map(active.turns, turn => ({content: turn.content, role: turn.role}))
 									],
 									model,
 									parallel_tool_calls: true,
@@ -489,13 +493,12 @@ export class Core extends Context.Service<
 								role: 'assistant',
 								sequence: input.sequence + 1
 							}
-							yield* turns.set(turnKey(seed, team, input.sequence), {...input, content: observation})
 							yield* turns.set(turnKey(seed, team, output.sequence), output)
 							yield* conversations.set(key, {
 								measured: body.usage?.prompt_tokens ?? 0,
 								sequence: output.sequence,
 								summary: active.summary,
-								turns: [...active.turns, input, output]
+								turns: [...active.turns, output]
 							})
 
 							return {
