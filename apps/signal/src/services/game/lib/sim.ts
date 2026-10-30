@@ -1740,6 +1740,8 @@ export const makeSim = Effect.fnUntraced(
 				body.act = 'attack'
 				if (!attack(view, body.task.state.value.target, 4)) {
 					own.intent = 'rest'
+					own.next = state.tick
+					life.event(view, state.tick, 'action', 'Stopped the pursuit; no active target is visible.')
 					MutableHashSet.add(dirtyWild, id)
 				}
 			} else if (body.task.state.path === 'Moving') {
@@ -1747,7 +1749,17 @@ export const makeSim = Effect.fnUntraced(
 				body.doing = 'investigating the surroundings'
 
 				if (!moveCreature(id, to, 0.8) || distance(body, to) < 0.5) {
+					life.event(
+						{...view, x: body.x, z: body.z},
+						state.tick,
+						'action',
+						Boolean.match(distance(body, to) < 0.5, {
+							onFalse: () => `Movement toward ${place2(to)} was blocked here.`,
+							onTrue: () => `Reached ${place2(to)}.`
+						})
+					)
 					own.target = undefined
+					own.next = state.tick
 					MutableHashSet.add(dirtyWild, id)
 				}
 			} else {
@@ -1975,8 +1987,11 @@ export const makeSim = Effect.fnUntraced(
 					own.pending = undefined
 					own.intent = 'continue'
 				}),
-				Match.whenOr('continue', 'rest', intent => {
-					own.intent = intent
+				Match.when('rest', () => {
+					own.intent = 'rest'
+				}),
+				Match.when('resume', () => {
+					own.intent = 'continue'
 				}),
 				Match.when('attack', () => {
 					own.intent = 'attack'
@@ -2878,20 +2893,41 @@ export const makeSim = Effect.fnUntraced(
 				return Effect.void
 			}
 			const own = life.person(id, state.tick)
-			if (own.intent === 'rest') return Effect.void
+			if (own.intent === 'rest') {
+				unit.doing = 'resting and observing'
+				return Effect.void
+			}
 			if (own.intent === 'attack' && own.foe !== undefined) {
-				attack(living(unit), own.foe, 4 * (markOf(unit).damage ?? 0.5))
+				if (!attack(living(unit), own.foe, 4 * (markOf(unit).damage ?? 0.5))) {
+					own.intent = 'continue'
+					own.foe = undefined
+					own.next = state.tick
+					unit.doing = 'pursuit ended; awaiting a local decision'
+					life.event(living(unit), state.tick, 'action', 'Stopped the pursuit; no active target is visible.')
+				}
 				return Effect.void
 			}
 			if (own.intent === 'explore' && own.target !== undefined) {
-				if (goTo(id, own.target, 0.5)) {
+				const destination = own.target
+				if (goTo(id, destination, 0.5) || unit.lost) {
+					life.event(
+						living(unit),
+						state.tick,
+						'action',
+						Boolean.match(unit.lost, {
+							onFalse: () => `Reached ${place2(destination)}.`,
+							onTrue: () => `No route to ${place2(destination)} from here.`
+						})
+					)
 					own.target = undefined
 					own.intent = 'continue'
 					own.next = state.tick
+					unit.lost = false
 				}
 				return Effect.void
 			}
 			if (unit.order._tag === 'Attack') {
+				unit.doing = 'target not currently visible'
 				attack(living(unit), unit.order.target, 4 * (markOf(unit).damage ?? 0.5))
 				return Effect.void
 			}

@@ -246,6 +246,9 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 			west: 'Explore unfamiliar ground to the west.'
 		}
 		if (body.team !== undefined) choices['work'] = 'Resume your own known construction and logistics work.'
+		if (body.team !== undefined && own.intent === 'rest') {
+			choices['resume'] = 'Resume your accepted standing objective after resting.'
+		}
 		Array.forEach(relevant, fact => {
 			choices[`approach:${fact.id}`] = `Approach remembered #${fact.id} (${fact.kind}), seen at tick ${fact.tick}.`
 			if (
