@@ -152,7 +152,7 @@ const MUD = [GROUND.mud, GROUND.mud2, GROUND.marsh, GROUND.reeds, GROUND.paddymu
 const SWIMMABLE = [LIQUID.water, LIQUID.lagoon, LIQUID.spring]
 // A chunk's explored tiles, a bit each.
 const CHUNK_BYTES = (CHUNK * CHUNK) / 8
-export const SIMULATION = 1
+export const SIMULATION = 2
 
 // A unit and a building as the world runs them: their step and construction as machine snapshots, encoded only in a save.
 type Unit = Types.Mutable<Omit<SavedUnit, 'task'>> & {task: Task}
