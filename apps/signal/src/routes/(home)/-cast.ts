@@ -859,7 +859,7 @@ export function createCast(view: Renderer) {
 	}
 
 	// The unit under a pixel: the nearest middle within a few dozen pixels.
-	function pick(clientX: number, clientY: number) {
+	function pick(x: number, y: number) {
 		return Option.map(
 			Array.head(
 				Array.sort(
@@ -870,7 +870,7 @@ export function createCast(view: Renderer) {
 								actor.object.position.y + 0.3,
 								actor.object.position.z
 							)
-							return {distance: Math.hypot(point.x - clientX, point.y - clientY), id: actor.id}
+							return {distance: Math.hypot(point.x - x, point.y - y), id: actor.id}
 						}),
 						entry => entry.distance < 36
 					),

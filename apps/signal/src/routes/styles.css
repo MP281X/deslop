@@ -1,11 +1,44 @@
 @import '@deslop/components-web/theme.css';
 @source '../../../../packages/components-web/src/**/*.tsx';
 
+.signal-time {
+	appearance: none;
+	background: transparent;
+}
+.signal-time::-webkit-slider-runnable-track {
+	height: 2px;
+	background: transparent;
+}
+.signal-time::-moz-range-track {
+	height: 2px;
+	background: transparent;
+}
+.signal-time::-webkit-slider-thumb {
+	appearance: none;
+	width: 8px;
+	height: 16px;
+	margin-top: -7px;
+	border: 1px solid var(--foreground);
+	border-radius: 0;
+	background: var(--primary);
+}
+.signal-time::-moz-range-thumb {
+	width: 8px;
+	height: 16px;
+	border: 1px solid var(--foreground);
+	border-radius: 0;
+	background: var(--primary);
+}
+.signal-time:focus-visible {
+	outline: 1px solid var(--ring);
+	outline-offset: -1px;
+}
+
 @media (pointer: coarse) {
-	button {
+	button:not([data-slot='button']) {
 		min-width: 44px;
 	}
-	button,
+	button:not([data-slot='button']),
 	summary,
 	input[type='range'] {
 		min-height: 44px;
