@@ -54,6 +54,7 @@ const CHUNK = 32
 const groundAtom = Atom.make({at: Option.none<{x: number; z: number}>(), info: Option.none<Inspected>(), x: 0, y: 0})
 
 type Key = 'in' | 'leave' | 'left' | 'next' | 'out' | 'overview' | 'play' | 'previous' | 'right'
+type Inspection = {kind: 'core' | 'usage'} | {actor: Option.Option<number>; kind: 'history'}
 
 function percent(share: number) {
 	return `${Number.round(Number.clamp(share, {maximum: 1, minimum: 0}) * 100, 0)}%`
@@ -250,74 +251,26 @@ function StatusDot(props: {status: TeamView['status']}) {
 	)
 }
 
-// The teams side by side: milestones paid, buildings standing, units and whether its model is thinking. A row picks the team the thread and camera follow.
 function Teams(props: {onPick: (team: number) => void; picked: number; teams: View['teams']}) {
 	return (
-		<>
-			<div className="px-4 md:hidden">
-				<DropdownMenu>
-					<DropdownMenuTrigger className="flex min-h-11 w-full items-center gap-2 text-left" aria-label="Choose team">
-						<Swatch team={props.picked} />
-						{teamName(props.picked)}
-						<span className="text-muted-foreground ml-auto">Change ▾</span>
-					</DropdownMenuTrigger>
-					<DropdownMenuContent>
-						{Array.map(props.teams, team => (
-							<DropdownMenuItem key={team.id} className="min-h-11" onClick={() => props.onPick(team.id)}>
-								<Swatch team={team.id} />
-								{team.name}
-								<span className="text-muted-foreground ml-auto">
-									{team.units} units · {team.gates + team.cycles} milestones
-								</span>
-							</DropdownMenuItem>
-						))}
-					</DropdownMenuContent>
-				</DropdownMenu>
-			</div>
-			<table className="hidden w-full tabular-nums md:table">
-				<thead className="text-muted-foreground">
-					<tr className="border-b">
-						<th className="py-1.5 pl-4 text-left font-normal">Team</th>
-						<th className="px-2 text-right font-normal" title="Milestones paid">
-							Tier
-						</th>
-						<th className="px-2 text-right font-normal">Bldg</th>
-						<th className="px-2 text-right font-normal">Units</th>
-						<th className="pr-4">
-							<span className="sr-only">Status</span>
-						</th>
-					</tr>
-				</thead>
-				<tbody>
-					{Array.map(props.teams, team => (
-						<tr
-							key={team.id}
-							title={`${team.model} · next: ${team.gate}`}
-							className={cn('hover:bg-accent cursor-pointer', team.id === props.picked && 'bg-accent')}
-						>
-							<td className="py-1.5 pl-4">
-								<Button
-									variant="ghost"
-									className="min-h-11 w-full justify-start gap-2 px-0"
-									aria-pressed={team.id === props.picked}
-									onClick={() => props.onPick(team.id)}
-								>
-									<Swatch team={team.id} />
-									{team.name}
-									<kbd className="text-muted-foreground">{team.id + 1}</kbd>
-								</Button>
-							</td>
-							<td className="px-2 text-right">{team.gates + team.cycles}</td>
-							<td className="px-2 text-right">{team.buildings}</td>
-							<td className="px-2 text-right">{team.units}</td>
-							<td className="pr-4 text-right">
-								<StatusDot status={team.status} />
-							</td>
-						</tr>
-					))}
-				</tbody>
-			</table>
-		</>
+		<DropdownMenu>
+			<DropdownMenuTrigger className="flex min-h-11 items-center gap-2" aria-label="Choose team">
+				<Swatch team={props.picked} />
+				{teamName(props.picked)}
+				<span className="text-muted-foreground">▾</span>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent className="min-w-48">
+				{Array.map(props.teams, team => (
+					<DropdownMenuItem key={team.id} className="min-h-11" onClick={() => props.onPick(team.id)}>
+						<Swatch team={team.id} />
+						{team.name}
+						<span className="ml-auto">
+							<StatusDot status={team.status} />
+						</span>
+					</DropdownMenuItem>
+				))}
+			</DropdownMenuContent>
+		</DropdownMenu>
 	)
 }
 
@@ -621,7 +574,7 @@ function Thread(props: {replaying: boolean; status?: TeamView['status']; team: n
 	)
 }
 
-function HistoryGroup(props: {entries: readonly Experience[]}) {
+function HistoryGroup(props: {compact?: boolean; entries: readonly Experience[]}) {
 	const first = Option.getOrThrow(Array.head(props.entries))
 	const navigate = useContext(Navigation)
 	const observations = Array.filter(props.entries, entry => entry.context === undefined && entry.kind === 'observe')
@@ -635,27 +588,31 @@ function HistoryGroup(props: {entries: readonly Experience[]}) {
 				>
 					{clockOf(first.tick)}
 				</Button>
-				<Button
-					variant="link"
-					className="px-1 underline decoration-dotted"
-					onClick={() => navigate.entity(first.actor, first.tick)}
-				>
-					#{first.actor}
-				</Button>
-				<span>
-					({Number.round(first.x, 1)}, {Number.round(first.z, 1)})
-				</span>
+				{props.compact !== true && (
+					<Button
+						variant="link"
+						className="px-1 underline decoration-dotted"
+						onClick={() => navigate.entity(first.actor, first.tick)}
+					>
+						#{first.actor}
+					</Button>
+				)}
+				{props.compact !== true && (
+					<span>
+						({Number.round(first.x, 1)}, {Number.round(first.z, 1)})
+					</span>
+				)}
 			</div>
 			{Array.map(
 				Array.filter(props.entries, entry => entry.context === undefined && entry.kind !== 'observe'),
 				entry => (
 					<p key={entry.id} className="leading-relaxed break-words">
-						<span className="text-muted-foreground">{entry.kind} · </span>
+						{props.compact !== true && <span className="text-muted-foreground">{entry.kind} · </span>}
 						<References text={entry.text} tick={entry.tick} />
 					</p>
 				)
 			)}
-			{Array.isReadonlyArrayNonEmpty(observations) && (
+			{props.compact !== true && Array.isReadonlyArrayNonEmpty(observations) && (
 				<details>
 					<summary className="text-muted-foreground cursor-pointer">Observations · {observations.length}</summary>
 					<ul className="flex flex-col gap-2 pt-2">
@@ -667,20 +624,21 @@ function HistoryGroup(props: {entries: readonly Experience[]}) {
 					</ul>
 				</details>
 			)}
-			{Array.map(
-				Array.filter(props.entries, entry => entry.context !== undefined),
-				entry => (
-					<details key={entry.id}>
-						<summary className="text-muted-foreground cursor-pointer">Decision input and usage</summary>
-						<p className="py-2">{entry.text}</p>
-						<pre className="break-words whitespace-pre-wrap">
-							{entry.context}
-							{'\n'}
-							{JSON.stringify(entry.tokens, undefined, 2)}
-						</pre>
-					</details>
-				)
-			)}
+			{props.compact !== true &&
+				Array.map(
+					Array.filter(props.entries, entry => entry.context !== undefined),
+					entry => (
+						<details key={entry.id}>
+							<summary className="text-muted-foreground cursor-pointer">Decision input and usage</summary>
+							<p className="py-2">{entry.text}</p>
+							<pre className="break-words whitespace-pre-wrap">
+								{entry.context}
+								{'\n'}
+								{JSON.stringify(entry.tokens, undefined, 2)}
+							</pre>
+						</details>
+					)
+				)}
 		</li>
 	)
 }
@@ -689,6 +647,7 @@ function HistoryPage(props: {
 	actor: number | 'all'
 	at?: number
 	before?: number
+	compact?: boolean
 	onEarlier: () => void
 	onLatest: () => void
 	onRead: () => void
@@ -703,63 +662,75 @@ function HistoryPage(props: {
 		)
 	)
 	const entries = Option.getOrElse(AsyncResult.value(result), () => [])
+	const shown = Boolean.match(props.compact === true, {
+		onFalse: () => entries,
+		onTrue: () =>
+			Option.match(
+				Array.last(Array.filter(entries, entry => entry.kind !== 'observe' && entry.context === undefined)),
+				{
+					onNone: () => [],
+					onSome: last => Array.filter(entries, entry => entry.actor === last.actor && entry.tick === last.tick)
+				}
+			)
+	})
 	useEffect(() => {
 		if (props.before === undefined) props.onRead()
 	})
 	return (
 		<>
-			{Option.match(expanded, {
-				onNone: () =>
-					Option.getOrUndefined(
-						Option.map(
-							Option.filter(Array.head(entries), () => entries.length === 100),
-							first => (
+			{props.compact !== true &&
+				Option.match(expanded, {
+					onNone: () =>
+						Option.getOrUndefined(
+							Option.map(
+								Option.filter(Array.head(entries), () => entries.length === 100),
+								first => (
+									<li>
+										<Button
+											variant="ghost"
+											onClick={() => {
+												props.onEarlier()
+												setExpanded(
+													Option.some({
+														at: props.at,
+														before: first.id,
+														upper: Option.getOrThrow(Array.last(entries)).id + 1
+													})
+												)
+											}}
+										>
+											Earlier events
+										</Button>
+									</li>
+								)
+							)
+						),
+					onSome: page => (
+						<>
+							{props.before === undefined && (
 								<li>
 									<Button
 										variant="ghost"
 										onClick={() => {
-											props.onEarlier()
-											setExpanded(
-												Option.some({
-													at: props.at,
-													before: first.id,
-													upper: Option.getOrThrow(Array.last(entries)).id + 1
-												})
-											)
+											setExpanded(Option.none())
+											props.onLatest()
 										}}
 									>
-										Earlier events
+										Latest events
 									</Button>
 								</li>
-							)
-						)
-					),
-				onSome: page => (
-					<>
-						{props.before === undefined && (
-							<li>
-								<Button
-									variant="ghost"
-									onClick={() => {
-										setExpanded(Option.none())
-										props.onLatest()
-									}}
-								>
-									Latest events
-								</Button>
-							</li>
-						)}
-						<HistoryPage
-							actor={props.actor}
-							at={page.at}
-							before={page.before}
-							onEarlier={props.onEarlier}
-							onLatest={props.onLatest}
-							onRead={props.onRead}
-						/>
-					</>
-				)
-			})}
+							)}
+							<HistoryPage
+								actor={props.actor}
+								at={page.at}
+								before={page.before}
+								onEarlier={props.onEarlier}
+								onLatest={props.onLatest}
+								onRead={props.onRead}
+							/>
+						</>
+					)
+				})}
 			{AsyncResult.isFailure(result) && <li role="alert">History could not be read.</li>}
 			{Array.isReadonlyArrayEmpty(entries) && (
 				<li className="text-muted-foreground py-3">
@@ -769,8 +740,12 @@ function HistoryPage(props: {
 					})}
 				</li>
 			)}
-			{Array.map(Record.values(Array.groupBy(entries, entry => `${entry.actor}:${entry.tick}`)), entriesInTick => (
-				<HistoryGroup key={Option.getOrThrow(Array.head(entriesInTick)).id} entries={entriesInTick} />
+			{Array.map(Record.values(Array.groupBy(shown, entry => `${entry.actor}:${entry.tick}`)), entriesInTick => (
+				<HistoryGroup
+					key={Option.getOrThrow(Array.head(entriesInTick)).id}
+					compact={props.compact}
+					entries={entriesInTick}
+				/>
 			))}
 		</>
 	)
@@ -779,6 +754,7 @@ function HistoryPage(props: {
 function Chronicle(props: {actor: number | 'all'; at?: number}) {
 	const list = useRef<HTMLDivElement>(null)
 	const pinned = useRef(true)
+	const [full, setFull] = useState(() => props.actor === 'all')
 	return (
 		<div
 			ref={list}
@@ -786,20 +762,18 @@ function Chronicle(props: {actor: number | 'all'; at?: number}) {
 				pinned.current =
 					event.currentTarget.scrollHeight - event.currentTarget.scrollTop - event.currentTarget.clientHeight < 24
 			}}
-			className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 select-text"
+			aria-label={Boolean.match(props.actor === 'all', {
+				onFalse: () => 'Private individual history',
+				onTrue: () => 'World history'
+			})}
+			className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-3 select-text"
 		>
-			<p className="text-muted-foreground py-3">
-				{Boolean.match(props.actor === 'all', {
-					onFalse: () => 'Private individual experience · not shared team knowledge.',
-					onTrue: () =>
-						'World events · spectator truth, not shared knowledge. Select an individual for its complete lifetime.'
-				})}
-				{props.at !== undefined && ` Through ${clockOf(props.at)}.`}
-			</p>
 			<ol className="flex flex-col gap-4">
 				<HistoryPage
+					key={`${full}`}
 					actor={props.actor}
 					at={props.at}
+					compact={!full}
 					onEarlier={() => {
 						pinned.current = false
 					}}
@@ -811,6 +785,11 @@ function Chronicle(props: {actor: number | 'all'; at?: number}) {
 					}}
 				/>
 			</ol>
+			{!full && (
+				<Button variant="ghost" className="mt-2 min-h-11 px-0" onClick={() => setFull(true)}>
+					View full history →
+				</Button>
+			)}
 		</div>
 	)
 }
@@ -867,69 +846,70 @@ function UsageTotals() {
 	)
 }
 
-function ProviderUsage() {
-	const [open, setOpen] = useState(false)
-	return (
-		<details className="flex-none px-4" onToggle={event => setOpen(event.currentTarget.open)}>
-			<summary className="text-muted-foreground cursor-pointer py-2">Provider usage</summary>
-			{open && <UsageTotals />}
-		</details>
-	)
-}
-
-// A button's look: filled when it names what plays now.
-function variantOf(on: boolean) {
-	if (on) return 'default'
-	return 'outline'
-}
-
 // The tick on screen: a replay still loading shows nothing yet, so it is at the replay's start.
 function shownTick(source: Source, tick: number) {
 	return Option.match(source, {onNone: () => tick, onSome: replay => Number.max(replay.from, tick)})
+}
+
+// The followed unit: its portrait beside what it does and its health.
+function Followed(props: {unit: UnitView}) {
+	return (
+		<div className="flex flex-none items-center gap-3 px-3 pb-2">
+			<Portrait kind={props.unit.kind} className="size-9" />
+			<div className="min-w-0 flex-1">
+				<p className="flex items-center gap-1.5 first-letter:uppercase">{doingOf(props.unit)}</p>
+				<Meter value={percent(props.unit.health)}>
+					<Pips value={props.unit.health} />
+				</Meter>
+			</div>
+		</div>
+	)
 }
 
 function Sidebar(props: {
 	actor: Option.Option<number>
 	onActor: () => void
 	close: () => void
-	panel: 'core' | 'history'
-	onPanel: (panel: 'core' | 'history') => void
+	panel: 'core' | 'history' | 'usage'
 	onPick: (team: number) => void
 	source: Source
 	team: number
 	view: View
 }) {
 	const picked = Array.findFirst(props.view.teams, team => team.id === props.team)
+	const individual = Option.flatMap(props.actor, id => Array.findFirst(props.view.frame.units, unit => unit.id === id))
 	return (
-		<aside className="bg-popover text-popover-foreground order-last flex h-1/2 min-h-0 flex-none flex-col border-t md:order-first md:h-full md:w-96 md:border-t-0 md:border-r">
-			<header className="flex h-12 flex-none items-center gap-2 border-b px-4">
-				<span className="font-medium">Signal</span>
-				<Button size="sm" variant={variantOf(props.panel === 'core')} onClick={() => props.onPanel('core')}>
-					Core
-				</Button>
-				<Button size="sm" variant={variantOf(props.panel === 'history')} onClick={() => props.onPanel('history')}>
-					Chronicle
-				</Button>
-				<span className="text-muted-foreground ml-auto tabular-nums">
-					{clockOf(shownTick(props.source, props.view.frame.tick))}
-				</span>
-				<Button size="icon-sm" aria-label="Close inspector" variant="ghost" onClick={props.close}>
-					×
-				</Button>
-			</header>
-			{props.panel === 'core' && (
-				<>
-					<div className="flex-none border-b">
-						<Teams teams={props.view.teams} picked={props.team} onPick={props.onPick} />
-					</div>
-					<header className="flex h-9 flex-none items-center gap-2 px-4">
-						<Swatch team={props.team} />
-						<span>{teamName(props.team)}</span>
-						<span className="text-muted-foreground">thread</span>
-						{Option.getOrUndefined(
-							Option.map(picked, team => <span className="text-muted-foreground ml-auto">next: {team.gate}</span>)
-						)}
-					</header>
+		<div className="pointer-events-none absolute inset-0 z-20 flex items-end md:items-start md:justify-end md:pt-16 md:pr-4 md:pb-4">
+			<aside
+				aria-label="Inspector"
+				className="bg-popover text-popover-foreground pointer-events-auto flex max-h-1/2 min-h-0 w-full flex-col md:max-h-full md:w-88"
+			>
+				<header className="flex min-h-11 flex-none items-center gap-2 px-3">
+					{props.panel === 'core' && <Teams teams={props.view.teams} picked={props.team} onPick={props.onPick} />}
+					{props.panel === 'history' && (
+						<>
+							<span>
+								{Option.match(props.actor, {onNone: () => 'World history', onSome: actor => `Individual #${actor}`})}
+							</span>
+							{Option.isSome(props.actor) && (
+								<Button variant="ghost" size="sm" className="text-muted-foreground" onClick={props.onActor}>
+									World events
+								</Button>
+							)}
+						</>
+					)}
+					{props.panel === 'usage' && <span>Provider usage</span>}
+					<Button
+						className="ml-auto min-h-11 min-w-11"
+						size="icon-sm"
+						aria-label="Close inspector"
+						variant="ghost"
+						onClick={props.close}
+					>
+						×
+					</Button>
+				</header>
+				{props.panel === 'core' && (
 					<Thread
 						key={`${props.team}:${Option.getOrElse(
 							Option.map(props.source, replay => replay.from),
@@ -940,42 +920,37 @@ function Sidebar(props: {
 						replaying={Option.isSome(props.source)}
 						status={Option.getOrUndefined(
 							Option.map(
-								Option.filter(picked, () => !Option.isSome(props.source)),
+								Option.filter(picked, () => Option.isNone(props.source)),
 								team => team.status
 							)
 						)}
 					/>
-					<ProviderUsage />
-				</>
-			)}
-			{props.panel === 'history' && (
-				<>
-					<header className="flex min-h-11 flex-none items-center gap-2 px-4">
-						<span>
-							{Option.match(props.actor, {onNone: () => 'World events', onSome: actor => `Individual #${actor}`})}
-						</span>
-						{Option.isSome(props.actor) && (
-							<Button variant="ghost" className="ml-auto" onClick={() => props.onActor()}>
-								World events
-							</Button>
-						)}
-					</header>
-					<Chronicle
-						key={`${Option.getOrElse(props.actor, () => 'all')}:${Option.getOrElse(
-							Option.map(props.source, replay => replay.from),
-							() => 'live'
-						)}`}
-						actor={Option.getOrElse(props.actor, () => 'all' as const)}
-						at={Option.getOrUndefined(
-							Option.map(props.source, replay => {
-								if (replay.speed === 0) return Number.max(replay.from, props.view.frame.tick)
-								return Number.max(replay.from, Math.floor(props.view.frame.tick / (5 * TICK_HZ)) * 5 * TICK_HZ)
-							})
-						)}
-					/>
-				</>
-			)}
-		</aside>
+				)}
+				{props.panel === 'history' && (
+					<>
+						{Option.getOrUndefined(Option.map(individual, unit => <Followed unit={unit} />))}
+						<Chronicle
+							key={`${Option.getOrElse(props.actor, () => 'all')}:${Option.getOrElse(
+								Option.map(props.source, replay => replay.from),
+								() => 'live'
+							)}`}
+							actor={Option.getOrElse(props.actor, () => 'all' as const)}
+							at={Option.getOrUndefined(
+								Option.map(props.source, replay => {
+									if (replay.speed === 0) return Number.max(replay.from, props.view.frame.tick)
+									return Number.max(replay.from, Math.floor(props.view.frame.tick / (5 * TICK_HZ)) * 5 * TICK_HZ)
+								})
+							)}
+						/>
+					</>
+				)}
+				{props.panel === 'usage' && (
+					<div className="min-h-0 overflow-y-auto px-3">
+						<UsageTotals />
+					</div>
+				)}
+			</aside>
+		</div>
 	)
 }
 
@@ -1095,12 +1070,12 @@ function Minimap(props: {
 			width={MAP.width}
 			height={MAP.height}
 			aria-label="Map"
-			className="block cursor-pointer"
+			className="block max-w-full cursor-pointer"
 			onClick={event => {
 				const box = event.currentTarget.getBoundingClientRect()
 				props.onGo({
-					x: middle.x + (event.clientX - box.left - MAP.width / 2) / scale,
-					z: middle.z + (event.clientY - box.top - MAP.height / 2) / scale
+					x: middle.x + (((event.clientX - box.left) / box.width) * MAP.width - MAP.width / 2) / scale,
+					z: middle.z + (((event.clientY - box.top) / box.height) * MAP.height - MAP.height / 2) / scale
 				})
 			}}
 		/>
@@ -1124,23 +1099,6 @@ function Hints() {
 				)
 			)}
 		</p>
-	)
-}
-
-// The followed unit: its portrait beside what it does and its health.
-function Followed(props: {unit: UnitView}) {
-	return (
-		<div className="flex items-center gap-3 border-t p-3">
-			<Portrait kind={props.unit.kind} className="size-9" />
-			<div className="min-w-0 flex-1">
-				<p className="flex items-center gap-1.5 first-letter:uppercase">
-					{props.unit.team !== undefined && <Swatch team={props.unit.team} />}#{props.unit.id} {doingOf(props.unit)}
-				</p>
-				<Meter value={percent(props.unit.health)}>
-					<Pips value={props.unit.health} />
-				</Meter>
-			</div>
-		</div>
 	)
 }
 
@@ -1186,64 +1144,67 @@ function TimelineBar(props: {source: Source; tick: number; timeline: Timeline; o
 		() => 1
 	)
 	return (
-		<section aria-label="Timeline" className="bg-popover flex-none border-t px-3 py-2">
-			<details>
-				<summary className="text-muted-foreground cursor-pointer">
-					Replay · {clockOf(props.tick)} / {clockOf(span.live)}
-					{!live && ` · ${clockOf(span.live - props.tick)} behind`}
-				</summary>
-				<div className="relative h-5">
+		<section aria-label="Timeline" className="bg-popover flex h-12 flex-none items-center gap-1 px-2">
+			<Button
+				variant="ghost"
+				size="icon"
+				className="min-h-11 min-w-11"
+				aria-label={Boolean.match(live || speed > 0, {onFalse: () => 'Play', onTrue: () => 'Pause'})}
+				onClick={() => props.onSource(toggled(props.source, props.tick))}
+			>
+				{Boolean.match(live || speed > 0, {onFalse: () => '▶', onTrue: () => '❚❚'})}
+			</Button>
+			<span className="text-muted-foreground tabular-nums" aria-live="off">
+				{clockOf(props.tick)}
+			</span>
+			<div className="relative mx-2 h-11 min-w-4 flex-1">
+				<div className="bg-border pointer-events-none absolute inset-x-1 top-1/2 h-0.5">
+					<div
+						className="bg-primary h-full w-(--fill)"
+						style={{'--fill': percent((props.tick - span.start) / length)}}
+					/>
+				</div>
+				<div className="pointer-events-none absolute inset-x-1 top-1">
 					{Array.map(props.timeline.marks, (mark, index) => (
 						<MarkGlyph key={index} mark={mark} span={span} />
 					))}
-					<span className="bg-foreground absolute inset-x-0 bottom-0 h-px" />
-					<span
-						className="bg-foreground absolute bottom-0 left-(--at) h-3 w-0.5 -translate-x-1/2"
-						style={{'--at': percent((props.tick - span.start) / length)}}
-					/>
 				</div>
 				<input
-					className="w-full"
+					className="signal-time absolute inset-0 m-0 h-11 w-full cursor-ew-resize"
 					aria-label="Replay time"
+					aria-valuetext={`${clockOf(props.tick)} of ${clockOf(span.live)}`}
 					type="range"
 					min={span.start}
 					max={span.live}
 					value={props.tick}
 					onChange={event => props.onSource(Option.some({from: event.currentTarget.valueAsNumber, speed: 0}))}
 				/>
-			</details>
-			<div className="mt-1 flex flex-wrap items-center gap-2">
-				<Button
-					variant="outline"
-					size="xs"
-					aria-label={Boolean.match(live || speed > 0, {onFalse: () => 'Play', onTrue: () => 'Pause'})}
-					onClick={() => props.onSource(toggled(props.source, props.tick))}
-				>
-					{Boolean.match(live || speed > 0, {onFalse: () => '▶', onTrue: () => '❚❚'})}
-				</Button>
-				{Array.map(SPEEDS, entry => (
-					<Button
-						key={entry}
-						variant={variantOf(!live && speed === entry)}
-						size="xs"
-						onClick={() => props.onSource(Option.some({from: props.tick, speed: entry}))}
-					>
-						{entry}×
-					</Button>
-				))}
-				<span className="ml-auto tabular-nums max-sm:hidden">
-					{clockOf(props.tick)}
-					<span className="text-muted-foreground">
-						{' '}
-						/ {clockOf(span.live)}
-						{!live && ` · ${clockOf(span.live - props.tick)} behind`}
-					</span>
-				</span>
-				<Button variant={variantOf(live)} size="xs" onClick={() => props.onSource(Option.none())}>
-					<i className={cn('size-1.5 rounded-full', live && 'bg-destructive', !live && 'bg-muted-foreground')} />
-					live
-				</Button>
 			</div>
+			<Button
+				variant="ghost"
+				size="sm"
+				className={cn('min-h-11', live && 'text-primary')}
+				onClick={() => props.onSource(Option.none())}
+				aria-label="Back to latest"
+			>
+				Latest
+			</Button>
+			<DropdownMenu>
+				<DropdownMenuTrigger aria-label="Replay speed" className="text-muted-foreground min-h-11 min-w-11">
+					{speed}×
+				</DropdownMenuTrigger>
+				<DropdownMenuContent align="end">
+					{Array.map(SPEEDS, entry => (
+						<DropdownMenuItem
+							key={entry}
+							className="min-h-11"
+							onClick={() => props.onSource(Option.some({from: props.tick, speed: entry}))}
+						>
+							{entry}×
+						</DropdownMenuItem>
+					))}
+				</DropdownMenuContent>
+			</DropdownMenu>
 		</section>
 	)
 }
@@ -1598,7 +1559,8 @@ function World(props: {seed: number; view: View}) {
 	const [follow, setFollow] = useAtom(followAtom)
 	const [team, setTeam] = useAtom(teamAtom)
 	const [source, setSource] = useAtom(sourceAtom)
-	const [panel, setPanel] = useState(() => Option.some<'core' | 'history'>('core'))
+	const [panel, setPanel] = useState(Option.none<Inspection>)
+	const [mapOpen, setMapOpen] = useState(false)
 	const timeline = useAtomValue(timelineAtom)
 
 	const [portraits, setPortraits] = useState<Record<string, string>>({})
@@ -1774,7 +1736,7 @@ function World(props: {seed: number; view: View}) {
 		const unit = Option.getOrUndefined(Array.findFirst(props.view.frame.units, entry => entry.id === id))
 		if (unit?.team !== undefined) setTeam(unit.team)
 		setFollow({free: Option.none(), id: Option.some(id), overview: false})
-		setPanel(Option.some('history'))
+		setPanel(Option.some({actor: Option.some(id), kind: 'history'}))
 		Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.centre()})
 	}
 
@@ -1798,7 +1760,7 @@ function World(props: {seed: number; view: View}) {
 			setFollow({free: Option.none(), id: Option.some(id), overview: false})
 		}
 		if (id > 0 && !Array.some(props.view.buildings, entry => entry.id === id)) {
-			setPanel(Option.some('history'))
+			setPanel(Option.some({actor: Option.some(id), kind: 'history'}))
 		}
 		if (tick !== props.view.frame.tick) setSource(Option.some({from: tick, speed: 0}))
 		Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.centre()})
@@ -1817,82 +1779,107 @@ function World(props: {seed: number; view: View}) {
 			}}
 		>
 			<Portraits value={portraits}>
-				<div className="absolute inset-0 flex flex-col md:flex-row">
-					<div className="flex min-h-0 min-w-0 flex-1 flex-col">
-						<div className="relative min-h-0 flex-1">
-							<canvas
-								ref={canvas}
-								aria-label="Signal"
-								tabIndex={0}
-								className="absolute inset-0 size-full touch-none"
-								onPointerDown={gestures.down}
-								onPointerUp={gestures.up}
-								onPointerMove={gestures.move}
-								onPointerCancel={gestures.cancel}
-								onLostPointerCapture={gestures.lost}
-								onPointerLeave={gestures.leave}
-								onWheel={gestures.wheel}
-							/>
-							<Overlay buildings={props.view.buildings} units={props.view.frame.units} />
-
-							<Panel label="Map controls" className="top-2 left-2 flex items-center gap-1 px-2 md:top-4 md:left-4">
-								<Button
-									aria-label="Open inspector"
-									variant="ghost"
-									size="icon"
-									onClick={() => setPanel(Option.some('core'))}
-								>
-									☰
-								</Button>
-								<Button
-									aria-label="Zoom in"
-									variant="ghost"
-									size="icon"
-									onClick={() =>
-										Option.match(world, {
-											onNone: () => undefined,
-											onSome: active => active.renderer.zoomBy(1 / ZOOM_STEP)
-										})
-									}
-								>
-									+
-								</Button>
-								<Button
-									aria-label="Zoom out"
-									variant="ghost"
-									size="icon"
-									onClick={() =>
-										Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.zoomBy(ZOOM_STEP)})
-									}
-								>
-									−
-								</Button>
-								<Button
-									aria-label="Rotate map"
-									variant="ghost"
-									size="icon"
-									onClick={() =>
-										Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.turn(1)})
-									}
-								>
-									↻
-								</Button>
-								<Button
-									aria-label="Team overview"
-									variant="ghost"
-									size="icon"
-									onClick={() => setFollow({...follow, overview: !follow.overview})}
-								>
-									⌖
-								</Button>
-								<span className="text-muted-foreground pl-2">
-									{Boolean.match(props.view.frame.paused === true, {
-										onFalse: () => 'Spectator',
-										onTrue: () => 'Stopped'
-									})}
-								</span>
-							</Panel>
-							<Panel label="Map" className="top-4 right-4 hidden w-94.5 lg:block">
+				<div className="absolute inset-0 flex flex-col">
+					<div className="relative min-h-0 flex-1">
+						<canvas
+							ref={canvas}
+							aria-label="Signal"
+							tabIndex={0}
+							className="absolute inset-0 size-full touch-none"
+							onPointerDown={gestures.down}
+							onPointerUp={gestures.up}
+							onPointerMove={gestures.move}
+							onPointerCancel={gestures.cancel}
+							onLostPointerCapture={gestures.lost}
+							onPointerLeave={gestures.leave}
+							onWheel={gestures.wheel}
+						/>
+						<Overlay buildings={props.view.buildings} units={props.view.frame.units} />
+						<Panel className="top-2 left-2 flex min-h-11 items-center px-3 md:top-4 md:left-4">Signal</Panel>
+						<nav
+							aria-label="Map controls"
+							className="bg-popover absolute top-2 right-2 z-30 flex items-center md:top-4 md:right-4"
+						>
+							<Button
+								variant="ghost"
+								className="min-h-11 px-3"
+								aria-pressed={Option.contains(
+									Option.map(panel, entry => entry.kind),
+									'core'
+								)}
+								onClick={() => setPanel(Option.some({kind: 'core'}))}
+							>
+								Core
+							</Button>
+							<Button
+								variant="ghost"
+								className="min-h-11 px-3"
+								aria-pressed={Option.contains(
+									Option.map(panel, entry => entry.kind),
+									'history'
+								)}
+								onClick={() => setPanel(Option.some({actor: Option.none(), kind: 'history'}))}
+							>
+								History
+							</Button>
+							<DropdownMenu>
+								<DropdownMenuTrigger aria-label="View options" className="min-h-11 min-w-11 px-3">
+									···
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="end" className="min-w-48">
+									<DropdownMenuItem disabled>
+										{Boolean.match(props.view.frame.paused === true, {
+											onFalse: () => 'Simulation running',
+											onTrue: () => 'Simulation stopped'
+										})}
+									</DropdownMenuItem>
+									<DropdownMenuItem
+										className="min-h-11"
+										onClick={() =>
+											Option.match(world, {
+												onNone: () => undefined,
+												onSome: active => active.renderer.zoomBy(1 / ZOOM_STEP)
+											})
+										}
+									>
+										Zoom in
+									</DropdownMenuItem>
+									<DropdownMenuItem
+										className="min-h-11"
+										onClick={() =>
+											Option.match(world, {
+												onNone: () => undefined,
+												onSome: active => active.renderer.zoomBy(ZOOM_STEP)
+											})
+										}
+									>
+										Zoom out
+									</DropdownMenuItem>
+									<DropdownMenuItem
+										className="min-h-11"
+										onClick={() =>
+											Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.turn(1)})
+										}
+									>
+										Rotate map
+									</DropdownMenuItem>
+									<DropdownMenuItem
+										className="min-h-11"
+										onClick={() => setFollow({...follow, overview: !follow.overview})}
+									>
+										Team overview
+									</DropdownMenuItem>
+									<DropdownMenuItem className="min-h-11" onClick={() => setMapOpen(!mapOpen)}>
+										{Boolean.match(mapOpen, {onFalse: () => 'Show minimap', onTrue: () => 'Hide minimap'})}
+									</DropdownMenuItem>
+									<DropdownMenuItem className="min-h-11" onClick={() => setPanel(Option.some({kind: 'usage'}))}>
+										Provider usage
+									</DropdownMenuItem>
+								</DropdownMenuContent>
+							</DropdownMenu>
+						</nav>
+						{mapOpen && (
+							<Panel label="Map" className="top-16 right-2 left-2 z-10 md:right-auto md:left-4">
 								{Option.getOrUndefined(
 									Option.map(world, active => (
 										<Minimap
@@ -1902,51 +1889,41 @@ function World(props: {seed: number; view: View}) {
 										/>
 									))
 								)}
-								{Option.getOrUndefined(
-									Option.map(
-										Array.findFirst(props.view.frame.units, unit => Option.contains(follow.id, unit.id)),
-										unit => <Followed unit={unit} />
-									)
-								)}
 								<Hints />
 							</Panel>
-							{Option.getOrUndefined(
-								Option.map(source, replay => (
-									<Panel className="top-16 left-2 px-3 py-1.5 md:left-4">
-										Replay {clockOf(shownTick(source, props.view.frame.tick))}
-										<span className="text-muted-foreground"> · {replay.speed}×</span>
-									</Panel>
-								))
-							)}
-
-							{props.view.count === 0 && <Status>Loading the replay</Status>}
-						</div>
+						)}
+						{props.view.count === 0 && <Status>Loading the replay</Status>}
 						{Option.getOrUndefined(
-							Option.map(AsyncResult.value(timeline), entry => (
-								<TimelineBar
-									timeline={entry}
-									tick={shownTick(source, props.view.frame.tick)}
+							Option.map(panel, pickedPanel => (
+								<Sidebar
+									actor={Boolean.match(pickedPanel.kind === 'history', {
+										onFalse: () => Option.none<number>(),
+										onTrue: () => {
+											if (pickedPanel.kind === 'history') return pickedPanel.actor
+											return Option.none<number>()
+										}
+									})}
+									onActor={() => setPanel(Option.some({actor: Option.none(), kind: 'history'}))}
+									panel={pickedPanel.kind}
+									close={() => setPanel(Option.none())}
+									view={props.view}
+									team={team}
 									source={source}
-									onSource={setSource}
+									onPick={next => {
+										setTeam(next)
+										setFollow({free: Option.none(), id: Option.none(), overview: follow.overview})
+									}}
 								/>
 							))
 						)}
 					</div>
 					{Option.getOrUndefined(
-						Option.map(panel, pickedPanel => (
-							<Sidebar
-								actor={follow.id}
-								onActor={() => setFollow({...follow, id: Option.none()})}
-								panel={pickedPanel}
-								onPanel={next => setPanel(Option.some(next))}
-								close={() => setPanel(Option.none())}
-								view={props.view}
-								team={team}
+						Option.map(AsyncResult.value(timeline), entry => (
+							<TimelineBar
+								timeline={entry}
+								tick={shownTick(source, props.view.frame.tick)}
 								source={source}
-								onPick={next => {
-									setTeam(next)
-									setFollow({free: Option.none(), id: Option.none(), overview: follow.overview})
-								}}
+								onSource={setSource}
 							/>
 						))
 					)}
