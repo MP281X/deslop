@@ -232,15 +232,18 @@ export class Game extends Context.Service<
 			}
 
 			const record = Effect.fn('Game.record')(function* (entry: Entry) {
+				yield* pipe(
+					entries.set(keyOf(entry.team, entry.round), entry),
+					Effect.mapError(cause =>
+						GameError.make({cause, message: 'Simulation stopped: a Core conversation could not be archived.'})
+					),
+					Effect.tapError(error => Effect.sync(() => MutableRef.set(fault, Option.some(error))))
+				)
 				MutableHashMap.set(
 					recent,
 					entry.team,
 					Array.takeRight([...Option.getOrElse(MutableHashMap.get(recent, entry.team), () => []), entry], 60)
 				)
-				yield* Effect.ignore(entries.set(keyOf(entry.team, entry.round), entry), {
-					log: 'Warn',
-					message: 'Signal could not keep a thread entry'
-				})
 				MutableRef.update(threadKeys, keys =>
 					Array.sort(Array.dedupe([...keys, keyOf(entry.team, entry.round)]), String.Order)
 				)
@@ -253,7 +256,9 @@ export class Game extends Context.Service<
 					const old = round - 720
 					if (old > 0 && old % 40 !== 0) yield* kv.remove(replayKey('checkpoint', old))
 				},
-				Effect.catch(cause => Effect.logError('Signal could not keep a checkpoint', cause))
+				Effect.mapError(cause =>
+					GameError.make({cause, message: 'Simulation stopped: a replay checkpoint could not be saved.'})
+				)
 			)
 
 			// A team's decision at the first boundary after it came, within three rounds of being asked: a team still thinking keeps thinking and is not asked again; past the third round its decision is recorded as late (a failed one was recorded when it failed). The thread keeps it under the round it applied at, so a replay never shows a decision before it was made. What applied goes back for the journal.
@@ -454,7 +459,13 @@ export class Game extends Context.Service<
 
 			// The world keeps time with the wall clock in whole ticks; a server that fell more than two seconds behind skips the rest rather than racing to catch up.
 			const advance = Effect.gen(function* () {
-				if (Option.isSome(MutableRef.get(fault))) return
+				if (Option.isSome(MutableRef.get(fault))) {
+					for (const pending of MutableHashMap.values(local)) yield* Fiber.interrupt(pending.fiber)
+					for (const pending of MutableHashMap.values(thinking)) yield* Fiber.interrupt(pending.fiber)
+					MutableHashMap.clear(local)
+					MutableHashMap.clear(thinking)
+					return
+				}
 				const now = yield* Clock.currentTimeMillis
 				const from = MutableRef.get(started)
 				const due = from.tick + Math.floor((now - from.at) / (TICK * 1000)) - sim.tick()
@@ -467,6 +478,7 @@ export class Game extends Context.Service<
 
 			// A fresh world keeps its first moment, so the timeline starts there.
 			if (running) {
+				yield* Effect.addFinalizer(() => Effect.ignore(save, {log: 'Error', message: 'Final Signal save failed'}))
 				yield* checkpoint(Math.floor(sim.tick() / ROUND))
 				yield* Effect.forkScoped(
 					Effect.repeat(
@@ -481,7 +493,6 @@ export class Game extends Context.Service<
 						Schedule.spaced(`${TICK * 1000} millis`)
 					)
 				)
-				yield* Effect.addFinalizer(() => Effect.ignore(save, {log: 'Error', message: 'Final Signal save failed'}))
 			}
 
 			// The latest checkpoint at or before a round, searching back on the checkpoint rounds.

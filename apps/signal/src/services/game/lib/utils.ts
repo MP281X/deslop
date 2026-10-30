@@ -373,7 +373,7 @@ export const UNITS: Record<UnitClass, {job: string; marks: [Mark, Mark, Mark]}> 
 		]
 	},
 	guard: {
-		job: 'fights wildlife and raiders at a held place',
+		job: 'can hold a position or choose to attack a visible entity; no automatic enemy classification',
 		marks: [
 			{
 				cargo: 0,

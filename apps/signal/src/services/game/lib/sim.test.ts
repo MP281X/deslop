@@ -255,6 +255,51 @@ it.effect(
 	})
 )
 
+it.effect(
+	'lets an individual take unknown-team storage and keep the cargo until it chooses to deposit it',
+	Effect.fnUntraced(function* () {
+		const saved = yield* (yield* makeSim(Option.none(), 42)).snapshot
+		const unit = Option.getOrThrow(Array.findFirst(saved.units, body => body.id === 2))
+		const sim = yield* makeSim(
+			Option.some({
+				...saved,
+				buildings: [
+					...saved.buildings,
+					{
+						...Option.getOrThrow(Array.head(saved.buildings)),
+						id: 324,
+						kind: 'crate_mk1',
+						stock: {iron_plate: 24},
+						team: 1,
+						x: Math.floor(unit.x) + 1,
+						z: Math.floor(unit.z)
+					}
+				],
+				nextId: 325
+			}),
+			0
+		)
+		sim.decide(2, 'rest')
+		yield* sim.run(40)
+		sim.decide(2, 'take:324')
+		yield* sim.run(200)
+		assert.strictEqual((yield* buildingOf(sim, 324)).stock.iron_plate, 14)
+		assert.strictEqual(
+			Option.getOrThrow(Array.findFirst((yield* sim.snapshot).units, body => body.id === 2)).cargo.iron_plate,
+			10
+		)
+		assert.deepStrictEqual(sim.individual(2).contacts, [])
+		assert.notInclude(sim.observe(1).text, '#324')
+		sim.decide(2, 'deposit:324')
+		yield* sim.run(100)
+		assert.strictEqual((yield* buildingOf(sim, 324)).stock.iron_plate, 24)
+		assert.deepStrictEqual(
+			Option.getOrThrow(Array.findFirst((yield* sim.snapshot).units, body => body.id === 2)).cargo,
+			{}
+		)
+	})
+)
+
 // How far a body turned, in radians, over a stretch in which it got less than a third of a tile anywhere.
 function swayOf(track: {x: number; yaw: number; z: number}[]) {
 	const first = Option.getOrThrow(Array.head(track))

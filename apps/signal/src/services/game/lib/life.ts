@@ -1,7 +1,8 @@
-import {Array, Boolean, MutableHashMap, MutableList, Number, Option, Order, String, Struct} from 'effect'
+import {Array, Boolean, MutableHashMap, MutableList, Number, Option, Order, Schema, String, Struct} from 'effect'
 import type {Types} from 'effect'
 
 import {TICK_HZ} from '#services/game/lib/utils.ts'
+import {UnitKind} from '#services/game/schema.ts'
 import type {Experience, Fact, Individual, Life, LocalDecision, Point, Standing} from '#services/game/schema.ts'
 
 const DAY = 24 * 60 * TICK_HZ
@@ -22,6 +23,8 @@ export type Body = Point & {
 	act: string
 	cargo?: number
 	capacity?: number
+	class?: string
+	objective?: Standing
 }
 
 // Private experience and shared physical traces have different owners; only explicit reports cross that boundary.
@@ -140,7 +143,7 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 
 	function inspect(body: Body, target: Omit<Fact, 'tick' | 'source'>, tick: number) {
 		const previous = Array.findFirst(person(body.id, tick).facts, fact => fact.id === target.id)
-		learn(body.id, tick, {...target, source: body.id, tick})
+		learn(body.id, tick, {...Struct.omit(target, ['via']), source: body.id, tick})
 		if (!Option.exists(previous, fact => fact.text === target.text && fact.stage === target.stage)) {
 			event(body, tick, 'observe', target.text, target.id)
 		}
@@ -154,17 +157,29 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 			incoming =>
 				!Array.some(recipient.facts, remembered => remembered.id === incoming.id && remembered.tick > incoming.tick)
 		)) {
-			recipient.facts = [...Array.filter(recipient.facts, known => known.id !== fact.id), {...fact, source: body.id}]
+			recipient.facts = [
+				...Array.filter(recipient.facts, known => known.id !== fact.id),
+				{...fact, via: [...(fact.via ?? []), {from: body.id, tick}]}
+			]
 		}
 		recipient.contacts = Array.dedupe([...recipient.contacts, ...ids])
 		return event(body, tick, 'report', summary)
 	}
 
-	function send(body: Body, from: number, tick: number, text: string, order?: Standing, ids: number[] = []) {
+	function send(
+		body: Body,
+		from: number,
+		tick: number,
+		text: string,
+		order?: Standing,
+		ids: readonly number[] = [],
+		facts: readonly Fact[] = []
+	) {
 		const own = person(body.id, tick)
 		own.inbox = [
 			...own.inbox,
 			{
+				facts: Array.map(facts, fact => ({...fact, via: [...(fact.via ?? []), {from, tick}]})),
 				from,
 				ids,
 				text,
@@ -183,6 +198,9 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 			own.guidance = message.text
 			if (message.order !== undefined) own.pending = message.order
 			own.contacts = Array.dedupe([...own.contacts, ...message.ids])
+			for (const fact of message.facts ?? []) {
+				if (!Array.some(own.facts, known => known.id === fact.id && known.tick >= fact.tick)) learn(body.id, tick, fact)
+			}
 			event(body, tick, 'action', `Read #${message.from}: ${message.text}`)
 		}
 	}
@@ -227,18 +245,16 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 			south: 'Explore unfamiliar ground to the south.',
 			west: 'Explore unfamiliar ground to the west.'
 		}
+		if (body.team !== undefined) choices['work'] = 'Resume your own known construction and logistics work.'
 		Array.forEach(relevant, fact => {
 			choices[`approach:${fact.id}`] = `Approach remembered #${fact.id} (${fact.kind}), seen at tick ${fact.tick}.`
-			if (fact.kind === 'storage' && body.team !== undefined) {
-				if (fact.stage !== undefined && fact.stage !== 'Complete' && fact.stage !== 'Missing') {
-					choices[`build:${fact.id}`] =
-						`Choose to help construct remembered site #${fact.id}. Its condition and supplies may have changed.`
-				}
-				choices[`inspect:${fact.id}`] = `Open container #${fact.id}; remembered contents may be stale.`
-				if ((body.capacity ?? 0) > (body.cargo ?? 0)) {
-					choices[`take:${fact.id}`] =
-						`Visit container #${fact.id} and take accessible items. Ownership does not protect contents; do not notify its owner.`
-				}
+			if (
+				body.class === 'builder' &&
+				Schema.is(UnitKind)(fact.kind) &&
+				String.includes('a body lies here')(fact.text)
+			) {
+				choices[`repair:${fact.id}`] =
+					`Visit last observed unit #${fact.id} and attempt a physical repair if it is still down.`
 			}
 			if (
 				fact.kind !== 'storage' &&
@@ -252,6 +268,25 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 				choices[`report:${fact.id}`] = `Report only this observation about #${fact.id}, preserving its source and age.`
 			}
 		})
+		Array.forEach(
+			Array.filter(relevant, fact => fact.kind === 'storage' && fact.stage !== 'Missing'),
+			fact => {
+				if (body.team === undefined) return
+				if (body.class === 'builder' && fact.stage !== undefined && fact.stage !== 'Complete') {
+					choices[`build:${fact.id}`] =
+						`Choose to help construct remembered site #${fact.id}. Its condition and supplies may have changed.`
+				}
+				choices[`inspect:${fact.id}`] = `Open container #${fact.id}; remembered contents may be stale.`
+				if ((body.cargo ?? 0) > 0) {
+					choices[`deposit:${fact.id}`] = `Carry your cargo to #${fact.id} and deposit accessible items, then hold.`
+				}
+				if ((body.capacity ?? 0) > (body.cargo ?? 0)) {
+					choices[`take:${fact.id}`] =
+						`Visit container #${fact.id} and take accessible items. Ownership does not protect contents; do not notify its owner.`
+				}
+			}
+		)
+
 		if (Array.isReadonlyArrayNonEmpty(own.inbox)) choices['read'] = 'Read delivered messages. Reading is not obedience.'
 		if (own.pending !== undefined) {
 			choices['accept'] = `Accept the previously read objective: ${JSON.stringify(own.pending)}.`
@@ -259,7 +294,8 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 		if (connected && body.team !== undefined) {
 			choices['survey'] =
 				'Send your personally observed resources to the Core, preserving source and age, without sending other private experiences.'
-			choices['report'] = 'Report a short activity summary, without sharing every private observation.'
+			choices['report'] =
+				'Report a short activity summary and your learned communication addresses, without sharing every private observation.'
 			if (Array.isReadonlyArrayNonEmpty(own.contacts)) {
 				choices['addresses'] = 'Report the communication addresses you have learned.'
 			}
@@ -297,10 +333,12 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 				self: {
 					capacity: body.capacity,
 					cargo: body.cargo,
+					class: body.class,
 					doing: body.doing,
 					health: body.health,
 					id: body.id,
 					kind: body.kind,
+					objective: body.objective,
 					x: body.x,
 					z: body.z
 				}

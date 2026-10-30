@@ -39,11 +39,11 @@ const TOOLS: Record<Command['_tag'], string> = {
 	Make: 'Queue a new independent unit at the Core using its local stock.',
 	Message: 'Send a message to a known communication address. ids can disclose other known addresses.',
 	Order:
-		'Transmit a standing objective to individuals in radio coverage. They choose whether to read it and act; this is not direct remote control.',
+		'Transmit a standing objective to individuals in radio coverage. facts selects known observation IDs to forward with it. Reading and acceptance remain voluntary. Deposit carries existing cargo to storage; Repair visits a remembered downed unit.',
 	Ping: 'Request a radio position in coverage. Even an incapacitated unit can answer; a position says nothing about its health.',
 	Recall: 'Retrieve original archived conversation turns before a sequence number recorded in a compaction.',
 	Recipe: 'Request a production recipe for a machine.',
-	Tell: 'Transmit information or priorities to selected individuals in coverage. Delivery is not reading or compliance.',
+	Tell: 'Transmit information to selected individuals in coverage. facts selects known observations and ids selects known communication addresses. Delivery is not reading or compliance.',
 	Upgrade: 'Request a unit refit at the Core.'
 }
 

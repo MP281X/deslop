@@ -55,6 +55,31 @@ it('distinguishes delivery, reading and accepting and does not silently discard 
 	life.read(UNIT, 4)
 	assert.deepStrictEqual(life.person(2, 4).pending, {_tag: 'Go', x: 10, z: 10})
 	assert.strictEqual(life.person(2, 4).guidance, 'Use caution.')
+	life.send(
+		UNIT,
+		1,
+		5,
+		'Reported storage, not a live inventory.',
+		undefined,
+		[],
+		[{id: 7, items: {wood: 4}, kind: 'storage', source: 9, text: 'Four wood reported.', tick: 2, x: 10, z: 10}]
+	)
+	assert.deepStrictEqual(life.person(2, 5).facts, [])
+	life.read(UNIT, 6)
+	assert.strictEqual(Option.getOrThrow(Array.head(life.person(2, 6).facts)).source, 9)
+	assert.deepStrictEqual(Option.getOrThrow(Array.head(life.person(2, 6).facts)).via, [{from: 1, tick: 5}])
+	life.inspect(UNIT, {id: 7, items: {}, kind: 'storage', text: 'Opened and found empty.', x: 10, z: 10}, 7)
+	life.send(
+		UNIT,
+		1,
+		8,
+		'Stale report repeated.',
+		undefined,
+		[],
+		[{id: 7, items: {wood: 4}, kind: 'storage', source: 9, text: 'Four wood reported.', tick: 2, x: 10, z: 10}]
+	)
+	life.read(UNIT, 9)
+	assert.deepStrictEqual(Option.getOrThrow(Array.head(life.person(2, 9).facts)).items, {})
 })
 
 it('accumulates anonymous overlapping passage, preserves its age when pollution changes and lets it fade', () => {
