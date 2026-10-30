@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as homeRouteRouteImport } from './routes/(home)/route'
 import { Route as homeIndexRouteImport } from './routes/(home)/index'
+import { Route as homeMcpServersRouteImport } from './routes/(home)/mcp-servers'
 import { Route as homePeopleRouteImport } from './routes/(home)/people'
 
 const homeRouteRoute = homeRouteRouteImport.update({
@@ -22,6 +23,11 @@ const homeIndexRoute = homeIndexRouteImport.update({
   path: '/',
   getParentRoute: () => homeRouteRoute,
 } as any)
+const homeMcpServersRoute = homeMcpServersRouteImport.update({
+  id: '/mcp-servers',
+  path: '/mcp-servers',
+  getParentRoute: () => homeRouteRoute,
+} as any)
 const homePeopleRoute = homePeopleRouteImport.update({
   id: '/people',
   path: '/people',
@@ -29,25 +35,33 @@ const homePeopleRoute = homePeopleRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
+  '/mcp-servers': typeof homeMcpServersRoute
   '/people': typeof homePeopleRoute
   '/': typeof homeIndexRoute
 }
 export interface FileRoutesByTo {
+  '/mcp-servers': typeof homeMcpServersRoute
   '/people': typeof homePeopleRoute
   '/': typeof homeIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/(home)': typeof homeRouteRouteWithChildren
+  '/(home)/mcp-servers': typeof homeMcpServersRoute
   '/(home)/people': typeof homePeopleRoute
   '/(home)/': typeof homeIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/people' | '/'
+  fullPaths: '/mcp-servers' | '/people' | '/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/people' | '/'
-  id: '__root__' | '/(home)' | '/(home)/people' | '/(home)/'
+  to: '/mcp-servers' | '/people' | '/'
+  id:
+    | '__root__'
+    | '/(home)'
+    | '/(home)/mcp-servers'
+    | '/(home)/people'
+    | '/(home)/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -70,6 +84,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof homeIndexRouteImport
       parentRoute: typeof homeRouteRoute
     }
+    '/(home)/mcp-servers': {
+      id: '/(home)/mcp-servers'
+      path: '/mcp-servers'
+      fullPath: '/mcp-servers'
+      preLoaderRoute: typeof homeMcpServersRouteImport
+      parentRoute: typeof homeRouteRoute
+    }
     '/(home)/people': {
       id: '/(home)/people'
       path: '/people'
@@ -81,11 +102,13 @@ declare module '@tanstack/react-router' {
 }
 
 interface homeRouteRouteChildren {
+  homeMcpServersRoute: typeof homeMcpServersRoute
   homePeopleRoute: typeof homePeopleRoute
   homeIndexRoute: typeof homeIndexRoute
 }
 
 const homeRouteRouteChildren: homeRouteRouteChildren = {
+  homeMcpServersRoute: homeMcpServersRoute,
   homePeopleRoute: homePeopleRoute,
   homeIndexRoute: homeIndexRoute,
 }

@@ -26,6 +26,11 @@ import {RpcContracts} from '#rpcs/contracts.ts'
 import {typedCode} from '#services/authorizations/lib/utils.ts'
 import type {Account, AdmitParams, SignedInApp} from '#services/authorizations/schema.ts'
 import {PendingAuthorization} from '#services/authorizations/schema.ts'
+import {ServerUrl} from '#services/connections/schema.ts'
+
+export function mcpConnectUrl(id: string) {
+	return `/auth/mcp/connect?${new URLSearchParams({id})}`
+}
 
 const authRuntime = Atom.runtime(FetchHttpClient.layer)
 
@@ -165,6 +170,83 @@ export const admitAtom = RpcClient.runtime.fn((input: AdmitParams) =>
 
 export const removeAtom = RpcClient.runtime.fn((id: string) =>
 	Effect.flatMap(RpcClient, client => client('auth.remove', {id}))
+)
+
+export const mcpServersAtom = Atom.keepAlive(
+	RpcClient.runtime.atom(
+		pipe(
+			RpcClient,
+			Effect.map(client => client('auth.mcp.servers', undefined)),
+			Stream.unwrap,
+			reconnecting
+		)
+	)
+)
+
+export const mcpDisconnectAtom = Atom.family((id: string) =>
+	RpcClient.runtime.fn(() => Effect.flatMap(RpcClient, client => client('auth.mcp.disconnect', {id})))
+)
+export const mcpRemoveAtom = Atom.family((id: string) =>
+	RpcClient.runtime.fn(() => Effect.flatMap(RpcClient, client => client('auth.mcp.remove', {id})))
+)
+
+export const mcpAddAtom = AtomMachine.bind(RpcClient.runtime).make(
+	Machine.make({
+		effects: {
+			add: Effect.fnUntraced(function* (url: string) {
+				yield* pipe(
+					Schema.decodeEffect(ServerUrl)(url),
+					Effect.mapError(cause =>
+						AuthError.make({
+							cause,
+							message: 'Enter a public HTTPS MCP URL without credentials or a fragment, outside Auth itself.'
+						})
+					)
+				)
+				const server = yield* (yield* RpcClient)('auth.mcp.add', {url})
+				if (!server.connected) location.assign(mcpConnectUrl(server.id))
+			})
+		},
+		events: Machine.events({Cancel: {}, Open: {}, Submit: {}, Typed: {url: Schema.String}}),
+		root: Machine.state({
+			states: {
+				Adding: {fields: {url: Schema.String}},
+				Closed: {},
+				Editing: {fields: {error: Schema.String, url: Schema.String}}
+			}
+		})
+	}).handle({
+		initial: {target: 'Closed'},
+		states: {
+			Adding: {
+				invoke: {
+					input: transition => transition.state.url,
+					onDone: {target: 'Closed'},
+					onFailure: {
+						data: transition => ({error: transition.error.message, url: transition.state.url}),
+						target: 'Editing'
+					},
+					src: 'add'
+				}
+			},
+			Closed: {on: {Open: {data: {error: '', url: ''}, target: 'Editing'}}},
+			Editing: {
+				on: {
+					Cancel: {target: 'Closed'},
+					Submit: {data: transition => ({url: transition.state.url}), target: 'Adding'},
+					Typed: {data: transition => ({error: '', url: transition.event.url}), update: 'Editing'}
+				}
+			}
+		}
+	})
+)
+
+export const copyGatewayAtom = Atom.fn(() =>
+	Effect.tryPromise({
+		catch: cause =>
+			AuthError.make({cause, message: 'Cannot copy the gateway endpoint. Select and copy its URL instead.'}),
+		try: () => navigator.clipboard.writeText('https://auth.mp281x.xyz/mcp')
+	})
 )
 
 export const requestId = Option.fromNullishOr(new URLSearchParams(location.search).get('request'))

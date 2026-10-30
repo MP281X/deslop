@@ -175,6 +175,9 @@ overrides:
 
 packageExtensionsChecksum: sha256-txXfNI7P+1kSDOS3yT/qZEe4XNlr/iBmSXOIvDJ7fS8=
 
+patchedDependencies:
+  effect@4.1.0: e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056
+
 importers:
 
   .:
@@ -187,7 +190,7 @@ importers:
         version: 0.63.0
       '@effect/vitest':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(vitest@5.0.5)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(vitest@5.0.5)
       '@types/node':
         specifier: latest
         version: 26.6.6
@@ -199,7 +202,7 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       effect:
         specifier: latest
-        version: 4.1.0
+        version: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
       fallow:
         specifier: latest
         version: 3.37.0
@@ -226,25 +229,31 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.27.0)
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(redis@6.3.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(redis@6.3.0)
+      '@modelcontextprotocol/client':
+        specifier: latest
+        version: 2.4.0
       '@tanstack/react-router':
         specifier: latest
         version: 1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@typeonce/effect-machine':
         specifier: latest
-        version: 0.46.0(effect@4.1.0)
+        version: 0.46.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))
       '@typeonce/effect-machine-react':
         specifier: latest
-        version: 0.46.0(@effect/atom-react@4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0))(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0)
+        version: 0.46.0(@effect/atom-react@4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.27.0))(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.27.0)
       effect:
         specifier: latest
-        version: 4.1.0
+        version: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
+      ipaddr.js:
+        specifier: latest
+        version: 2.5.0
       lucide-react:
         specifier: latest
-        version: 1.64.0(@types/react@19.3.0)(react@19.3.1)
+        version: 1.65.0(@types/react@19.3.0)(react@19.3.1)
       react:
         specifier: latest
         version: 19.3.1
@@ -275,10 +284,10 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.28.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.28.0)
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(redis@6.3.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(redis@6.3.0)
       '@expo/ui':
         specifier: ^58.0
         version: 58.0.25(@babel/core@7.29.7(supports-color@8.1.1))(expo@58.0.21)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
@@ -287,7 +296,7 @@ importers:
         version: 1.2.0
       effect:
         specifier: latest
-        version: 4.1.0
+        version: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
       expo-auth-session:
         specifier: ^58.0
         version: 58.0.16(expo@58.0.21)(react-native@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
@@ -320,10 +329,10 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.28.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.28.0)
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(redis@6.3.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(redis@6.3.0)
       '@fontsource-variable/ibm-plex-sans':
         specifier: latest
         version: 5.3.0
@@ -335,13 +344,13 @@ importers:
         version: 1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@typeonce/effect-machine':
         specifier: latest
-        version: 0.46.0(effect@4.1.0)
+        version: 0.46.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))
       effect:
         specifier: latest
-        version: 4.1.0
+        version: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
       lucide-react:
         specifier: latest
-        version: 1.64.0(@types/react@19.3.0)(react@19.3.1)
+        version: 1.65.0(@types/react@19.3.0)(react@19.3.1)
       react:
         specifier: latest
         version: 19.3.1
@@ -356,10 +365,10 @@ importers:
         version: link:../../packages/runtime
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(redis@6.3.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(redis@6.3.0)
       effect:
         specifier: latest
-        version: 4.1.0
+        version: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
 
   apps/signal:
     devDependencies:
@@ -371,25 +380,25 @@ importers:
         version: link:../../packages/runtime
       '@effect/ai-openrouter':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.28.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.28.0)
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(redis@6.3.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(redis@6.3.0)
       '@tanstack/react-router':
         specifier: latest
         version: 1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@typeonce/effect-machine':
         specifier: latest
-        version: 0.46.0(effect@4.1.0)
+        version: 0.46.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))
       '@types/three':
         specifier: latest
         version: 0.186.0
       effect:
         specifier: latest
-        version: 4.1.0
+        version: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
       react:
         specifier: latest
         version: 19.3.1
@@ -398,7 +407,7 @@ importers:
         version: 19.3.1(react@19.3.1)
       three:
         specifier: latest
-        version: 0.186.1
+        version: 0.187.0
 
   apps/stash:
     dependencies:
@@ -423,13 +432,13 @@ importers:
         version: link:../../packages/runtime
       '@effect/ai-anthropic':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.27.0)
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(redis@6.3.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(redis@6.3.0)
       '@expo/ui':
         specifier: ^58.0
         version: 58.0.25(@babel/core@7.29.7(supports-color@8.1.1))(expo@58.0.21)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
@@ -438,10 +447,10 @@ importers:
         version: 4.3.2(@types/node@26.6.6)
       '@typeonce/effect-machine':
         specifier: latest
-        version: 0.46.0(effect@4.1.0)
+        version: 0.46.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))
       '@typeonce/effect-machine-react':
         specifier: latest
-        version: 0.46.0(@effect/atom-react@4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0))(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0)
+        version: 0.46.0(@effect/atom-react@4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.27.0))(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.27.0)
       cheerio:
         specifier: latest
         version: 1.2.0
@@ -450,7 +459,7 @@ importers:
         version: 6.0.1
       effect:
         specifier: latest
-        version: 4.1.0
+        version: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
       expo-auth-session:
         specifier: ^58.0
         version: 58.0.16(expo@58.0.21)(react-native@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
@@ -499,25 +508,25 @@ importers:
         version: link:../../packages/runtime
       '@effect/ai-anthropic':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.27.0)
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(redis@6.3.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(redis@6.3.0)
       '@expo/ui':
         specifier: ^58.0
         version: 58.0.25(@babel/core@7.29.7(supports-color@8.1.1))(expo@58.0.21)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
       '@typeonce/effect-machine':
         specifier: latest
-        version: 0.46.0(effect@4.1.0)
+        version: 0.46.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))
       '@typeonce/effect-machine-react':
         specifier: latest
-        version: 0.46.0(@effect/atom-react@4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0))(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0)
+        version: 0.46.0(@effect/atom-react@4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.27.0))(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.27.0)
       effect:
         specifier: latest
-        version: 4.1.0
+        version: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
       expo-application:
         specifier: ^58.0
         version: 58.1.2(expo@58.0.21)
@@ -556,7 +565,7 @@ importers:
     dependencies:
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.27.0)
       '@expo-google-fonts/jetbrains-mono':
         specifier: latest
         version: 0.4.1
@@ -565,13 +574,13 @@ importers:
         version: 58.0.25(@babel/core@7.29.7(supports-color@8.1.1))(expo@58.0.21)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
       '@typeonce/effect-machine':
         specifier: latest
-        version: 0.46.0(effect@4.1.0)
+        version: 0.46.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))
       '@typeonce/effect-machine-react':
         specifier: latest
-        version: 0.46.0(@effect/atom-react@4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0))(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0)
+        version: 0.46.0(@effect/atom-react@4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.27.0))(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.27.0)
       effect:
         specifier: latest
-        version: 4.1.0
+        version: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
       expo-asset:
         specifier: ^58.0
         version: 58.0.19(expo@58.0.21)(react-native@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
@@ -611,13 +620,13 @@ importers:
         version: 2.1.1
       effect:
         specifier: latest
-        version: 4.1.0
+        version: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
       input-otp:
         specifier: latest
         version: 1.5.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       lucide-react:
         specifier: latest
-        version: 1.64.0(@types/react@19.3.0)(react@19.3.1)
+        version: 1.65.0(@types/react@19.3.0)(react@19.3.1)
       react:
         specifier: ^19
         version: 19.3.1
@@ -644,13 +653,13 @@ importers:
         version: link:../components-web
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(redis@6.3.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(redis@6.3.0)
       '@tanstack/react-router':
         specifier: latest
         version: 1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       effect:
         specifier: latest
-        version: 4.1.0
+        version: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
     devDependencies:
       '@tailwindcss/vite':
         specifier: latest
@@ -660,7 +669,7 @@ importers:
         version: 1.168.48(@tanstack/react-router@1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/node@26.6.6)(jiti@2.7.0)(supports-color@8.1.1)(terser@5.51.2)
       '@typeonce/effect-machine':
         specifier: latest
-        version: 0.46.0(effect@4.1.0)
+        version: 0.46.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))
       '@vitejs/plugin-react':
         specifier: latest
         version: 6.1.2(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(jiti@2.7.0)(terser@5.51.2))(babel-plugin-react-compiler@1.0.0)(oxc-transform-react@0.152.0)
@@ -693,7 +702,7 @@ importers:
     dependencies:
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(redis@6.3.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(redis@6.3.0)
       '@shadcn/lint':
         specifier: latest
         version: 0.2.3
@@ -702,7 +711,7 @@ importers:
         version: 0.46.0(oxlint@1.89.0(oxlint-tsgolint@7.0.2004)(vite-plus@1.4.0(@types/node@26.6.6)(@vitest/ui@5.0.5)(jiti@2.7.0)(terser@5.51.2)))
       effect:
         specifier: latest
-        version: 4.1.0
+        version: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
       oxlint-plugin-react-doctor:
         specifier: latest
         version: 0.9.18
@@ -717,22 +726,22 @@ importers:
         version: link:../create-package
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(redis@6.3.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(redis@6.3.0)
       '@tanstack/router-generator':
         specifier: latest
         version: 1.167.46(supports-color@8.1.1)
       effect:
         specifier: latest
-        version: 4.1.0
+        version: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
 
   tools/create-package:
     dependencies:
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.0(effect@4.1.0)(redis@6.3.0)
+        version: 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(redis@6.3.0)
       effect:
         specifier: latest
-        version: 4.1.0
+        version: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
 
 packages:
 
@@ -1705,6 +1714,10 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@modelcontextprotocol/client@2.4.0':
+    resolution: {integrity: sha512-LgrD2OphHuG12vfKFKz6SOnq7bKHQmhGJIAYdD+MZBn2npHEyry6uD8zvktodtl5CQM85MO0anUyD9JwmUmxww==}
+    engines: {node: '>=20'}
 
   '@modelcontextprotocol/core@2.4.0':
     resolution: {integrity: sha512-z8QBKqdfXLPzkLQuG4xp8hrVEMm1PZ1IgxMN2sMbJiFiAKOWXnAzogXn2W4aqIBlP1ea6U5yiqVquvUNM1Cj6Q==}
@@ -3676,6 +3689,14 @@ packages:
     resolution: {integrity: sha512-i/2XbnSz/uxRCU6+NdVJgKWDTM427+MqYbkQzD321DuCQJUqOuJKIA0IM2+W2xtYHdKOmZ4dR6fExsd4SXL+WQ==}
     engines: {node: '>=6'}
 
+  eventsource-parser@3.1.1:
+    resolution: {integrity: sha512-EKN1vKAMcZ8MlYMpaNuxN6R9yakzH6uajHcHVTqWJzvu5pWw9DyhbP35HH8MVBQ+dZjAfDxk+A8NiR9KWaXiyQ==}
+    engines: {node: '>=18.0.0'}
+
+  eventsource@3.0.7:
+    resolution: {integrity: sha512-CRT1WTyuQoD771GW56XEZFQ/ZoSfWid1alKGDYMmkt2yl8UXrVR4pspqWNEcqKvVIzg6PAltWjxcSSPrboA4iA==}
+    engines: {node: '>=18.0.0'}
+
   execa@5.1.1:
     resolution: {integrity: sha512-8uSpZZocAZRBAPIEINJj3Lo9HyGitllczc27Eh5YYojjMFMn8yHMDMaUHE2Jqfq05D/wucwI4JGURyXt1vchyg==}
     engines: {node: '>=10'}
@@ -4124,6 +4145,10 @@ packages:
     resolution: {integrity: sha512-t2v0rkILYv9WXmSL7TpAaU3HXgaFYOPUcH3QHgwQ++gpJuH3bqyMy4Fvt/DJCTKwzH3Cf+bAp5W/mFL39KPLzA==}
     engines: {node: '>= 12'}
 
+  ipaddr.js@2.5.0:
+    resolution: {integrity: sha512-aq+t5NAc+cS6rZQQVWC2x98CPqGtKKTMDd4Gaodv0wShnItdKg/51djkGJ1hqH+Oy0ivDftCbSLCQob8zso01w==}
+    engines: {node: '>= 10'}
+
   is-core-module@2.17.0:
     resolution: {integrity: sha512-J/vG0zBCbIKOQFfufSwyXdMrsohyJIUNkrnmo6WZGzoM7tr/lsbfW5b2BvisL6zsyMzK9UxV9L6c7AoFbyXHOA==}
     engines: {node: '>= 0.4'}
@@ -4243,6 +4268,9 @@ packages:
   jiti@2.7.0:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
+
+  jose@6.2.14:
+    resolution: {integrity: sha512-3JasLuki1NRLQvY4wCoC37KZk4qxoBx2k2aFqLxT84IezqW0bkJKnNtxnZj/Fu1xsQivoc/lytxaRHJoGLjJ1A==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -4472,8 +4500,8 @@ packages:
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
 
-  lucide-react@1.64.0:
-    resolution: {integrity: sha512-v626F/bcLNvFom6vzztHILtG9tUgXXbgA5AGkd82YkV401+Ko/NHyrWafbPwGofa+6p/EgDJcvEkIwsMH9098w==}
+  lucide-react@1.65.0:
+    resolution: {integrity: sha512-roSdtzudEY39i2hn5LLjA8toYfhF2z4S10WSqZF4ubXpHlOmNTvaxMxZLdJfQDi6pEifQWX+cRmYihKSsvAxfA==}
     peerDependencies:
       '@types/react': '*'
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -4947,6 +4975,10 @@ packages:
     resolution: {integrity: sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==}
     engines: {node: '>=12'}
 
+  pkce-challenge@5.0.1:
+    resolution: {integrity: sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ==}
+    engines: {node: '>=16.20.0'}
+
   pkg-up@3.1.0:
     resolution: {integrity: sha512-nDywThFk1i4BQK4twPQ6TA4RT8bDY96yeuCVBWL3ePARCiEKDRSrNGbFIgUJpLp+XeIR65v8ra7WuJOFUBtkMA==}
     engines: {node: '>=8'}
@@ -5376,8 +5408,8 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
-  three@0.186.1:
-    resolution: {integrity: sha512-blFeqb49wRCSGUGj7gtpfnSGHy2lwDk94RhUmS1c/hTby70kvChbWpkJ4Pm1390LqzzvTmzgXKHPEafJwCb8jA==}
+  three@0.187.0:
+    resolution: {integrity: sha512-Qiu7R+Cmh8CstZsY1uJOSWnVlfo7ZtNLV7mF8Jltk3LB3AtDu9cRZlcnRKkAk8Y4z6KKw35z7Y7Urd7jWY8etA==}
 
   throat@5.0.0:
     resolution: {integrity: sha512-fcwX4mndzpLQKBS1DVYhGAcYaYt7vsHNIvQV+WXMvnow5cgjPphq5CaayLaGsjRdSCKZFNGt7/GYAuXaNOiYCA==}
@@ -6290,39 +6322,39 @@ snapshots:
 
   '@dotenvx/primitives@0.8.0': {}
 
-  '@effect/ai-anthropic@4.1.0(effect@4.1.0)':
+  '@effect/ai-anthropic@4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))':
     dependencies:
-      effect: 4.1.0
+      effect: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
 
-  '@effect/ai-openrouter@4.1.0(effect@4.1.0)':
+  '@effect/ai-openrouter@4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))':
     dependencies:
-      effect: 4.1.0
+      effect: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
 
-  '@effect/atom-react@4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0)':
+  '@effect/atom-react@4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.27.0)':
     dependencies:
-      effect: 4.1.0
+      effect: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
       react: 19.3.1
       scheduler: 0.27.0
 
-  '@effect/atom-react@4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.28.0)':
+  '@effect/atom-react@4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.28.0)':
     dependencies:
-      effect: 4.1.0
+      effect: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
       react: 19.3.1
       scheduler: 0.28.0
 
-  '@effect/platform-node-shared@4.1.0(effect@4.1.0)':
+  '@effect/platform-node-shared@4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))':
     dependencies:
       '@types/ws': 8.18.2
-      effect: 4.1.0
+      effect: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
       ws: 8.22.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@4.1.0(effect@4.1.0)(redis@6.3.0)':
+  '@effect/platform-node@4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(redis@6.3.0)':
     dependencies:
-      '@effect/platform-node-shared': 4.1.0(effect@4.1.0)
-      effect: 4.1.0
+      '@effect/platform-node-shared': 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))
+      effect: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
       redis: 6.3.0
       undici: 8.12.3
     transitivePeerDependencies:
@@ -6360,9 +6392,9 @@ snapshots:
       '@effect/tsgo-win32-arm64': 0.63.0
       '@effect/tsgo-win32-x64': 0.63.0
 
-  '@effect/vitest@4.1.0(effect@4.1.0)(vitest@5.0.5)':
+  '@effect/vitest@4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(vitest@5.0.5)':
     dependencies:
-      effect: 4.1.0
+      effect: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
       vitest: 5.0.5(@types/node@26.6.6)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(jiti@2.7.0)(terser@5.51.2))
 
   '@emnapi/runtime@1.11.3':
@@ -6980,6 +7012,16 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
+
+  '@modelcontextprotocol/client@2.4.0':
+    dependencies:
+      '@modelcontextprotocol/core': 2.4.0
+      cross-spawn: 7.0.6
+      eventsource: 3.0.7
+      eventsource-parser: 3.1.1
+      jose: 6.2.14
+      pkce-challenge: 5.0.1
+      zod: 4.6.7
 
   '@modelcontextprotocol/core@2.4.0':
     dependencies:
@@ -7672,17 +7714,17 @@ snapshots:
 
   '@tweenjs/tween.js@23.1.3': {}
 
-  '@typeonce/effect-machine-react@0.46.0(@effect/atom-react@4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0))(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0)':
+  '@typeonce/effect-machine-react@0.46.0(@effect/atom-react@4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.27.0))(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.27.0)':
     dependencies:
-      '@effect/atom-react': 4.1.0(effect@4.1.0)(react@19.3.1)(scheduler@0.27.0)
-      '@typeonce/effect-machine': 0.46.0(effect@4.1.0)
-      effect: 4.1.0
+      '@effect/atom-react': 4.1.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))(react@19.3.1)(scheduler@0.27.0)
+      '@typeonce/effect-machine': 0.46.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))
+      effect: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
       react: 19.3.1
       scheduler: 0.27.0
 
-  '@typeonce/effect-machine@0.46.0(effect@4.1.0)':
+  '@typeonce/effect-machine@0.46.0(effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056))':
     dependencies:
-      effect: 4.1.0
+      effect: 4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056)
 
   '@typeonce/oxlint-plugin-effect-machine@0.46.0(oxlint@1.89.0(oxlint-tsgolint@7.0.2004)(vite-plus@1.4.0(@types/node@26.6.6)(@vitest/ui@5.0.5)(jiti@2.7.0)(terser@5.51.2)))':
     dependencies:
@@ -8433,7 +8475,7 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  effect@4.1.0: {}
+  effect@4.1.0(patch_hash=e9fe2053166d38a8acf4a194a2421246c7f51f9eb7ae5286da389986e427f056): {}
 
   electron-to-chromium@1.5.467: {}
 
@@ -8512,6 +8554,12 @@ snapshots:
   etag@1.8.1: {}
 
   event-target-shim@5.0.1: {}
+
+  eventsource-parser@3.1.1: {}
+
+  eventsource@3.0.7:
+    dependencies:
+      eventsource-parser: 3.1.1
 
   execa@5.1.1:
     dependencies:
@@ -9024,6 +9072,8 @@ snapshots:
 
   ip-address@10.7.5: {}
 
+  ipaddr.js@2.5.0: {}
+
   is-core-module@2.17.0:
     dependencies:
       hasown: 2.0.4
@@ -9116,6 +9166,8 @@ snapshots:
   jimp-compact@0.16.1: {}
 
   jiti@2.7.0: {}
+
+  jose@6.2.14: {}
 
   js-tokens@4.0.0: {}
 
@@ -9277,7 +9329,7 @@ snapshots:
     dependencies:
       yallist: 3.1.1
 
-  lucide-react@1.64.0(@types/react@19.3.0)(react@19.3.1):
+  lucide-react@1.65.0(@types/react@19.3.0)(react@19.3.1):
     dependencies:
       react: 19.3.1
     optionalDependencies:
@@ -10013,6 +10065,8 @@ snapshots:
 
   picomatch@4.0.7: {}
 
+  pkce-challenge@5.0.1: {}
+
   pkg-up@3.1.0:
     dependencies:
       find-up: 3.0.0
@@ -10508,7 +10562,7 @@ snapshots:
       commander: 2.20.3
       source-map-support: 0.5.21
 
-  three@0.186.1: {}
+  three@0.187.0: {}
 
   throat@5.0.0: {}
 

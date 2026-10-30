@@ -17,8 +17,13 @@ import {
 	RequestParams,
 	SignedInApp
 } from '#services/authorizations/schema.ts'
+import {AddServer, ConnectionInfo, ServerParams} from '#services/connections/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
+	Rpc.make('auth.mcp.servers', {error: AuthError, stream: true, success: Schema.Array(ConnectionInfo)}),
+	Rpc.make('auth.mcp.add', {error: AuthError, payload: AddServer, success: ConnectionInfo}),
+	Rpc.make('auth.mcp.disconnect', {error: AuthError, payload: ServerParams}),
+	Rpc.make('auth.mcp.remove', {error: AuthError, payload: ServerParams}),
 	Rpc.make('auth.lookup', {
 		error: AuthError,
 		payload: CodeParams,

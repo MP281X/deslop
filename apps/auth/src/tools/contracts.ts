@@ -6,9 +6,32 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import {CurrentUser} from '@deslop/runtime/auth/utils'
 
 import {Person} from '#services/authorizations/schema.ts'
+import {ServerParams} from '#services/connections/schema.ts'
+import {ServerStatus} from '#services/gateway/schema.ts'
 
 // Every tool acts as the signed-in caller, which the MCP sign-in middleware provides per request.
 export const Tools = Toolkit.make(
+	Tool.make('list_mcp_connections', {
+		description:
+			'Read the combined gateway’s provider connections, tool counts and discovery errors. All allowed Deslop accounts share the connected providers. Refresh the MCP tool list after connecting or disconnecting a provider.',
+		success: Schema.Struct({servers: Schema.Array(ServerStatus)})
+	}).annotate(Tool.Readonly, true),
+	Tool.make('connect_mcp', {
+		dependencies: [CurrentUser],
+		description:
+			'For an admin: get the browser link to connect an MCP from list_mcp_connections once centrally. Add new servers on the MCP page in Auth. Open the link in the user’s signed-in browser; authorization is shared by all allowed accounts and harnesses. Then refresh the MCP tool list.',
+		failure: AuthError,
+		parameters: ServerParams,
+		success: Schema.Struct({url: Schema.String})
+	}),
+	Tool.make('disconnect_mcp', {
+		dependencies: [CurrentUser],
+		description:
+			'For an admin: remove a shared provider connection from the gateway on every machine and harness. It does not revoke the grant at the provider; revoke it there too if needed.',
+		failure: AuthError,
+		parameters: ServerParams,
+		success: Schema.Void
+	}).annotate(Tool.Destructive, true),
 	Tool.make('answer_request', {
 		dependencies: [CurrentUser],
 		description:

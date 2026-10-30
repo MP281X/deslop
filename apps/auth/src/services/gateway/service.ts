@@ -1,0 +1,346 @@
+import {
+	Array,
+	Clock,
+	Context,
+	Effect,
+	Equal,
+	Fiber,
+	HashSet,
+	Layer,
+	MutableList,
+	Option,
+	Ref,
+	Record,
+	Result,
+	Schema,
+	Semaphore,
+	String,
+	Struct,
+	pipe
+} from 'effect'
+
+import {Client, StreamableHTTPClientTransport} from '@modelcontextprotocol/client'
+import {McpSchema, McpServer} from 'effect/ai'
+import {Digest} from 'effect/crypto'
+import {Base64Url} from 'effect/encoding'
+import type {Headers} from 'effect/http'
+import {FetchHttpClient, HttpRouter, HttpServerRequest} from 'effect/http'
+
+import {AuthError, Resource} from '@deslop/runtime/auth/schema'
+import {Auth} from '@deslop/runtime/auth/service'
+
+import {Authorizations} from '#services/authorizations/service.ts'
+import {connectionInfo} from '#services/connections/lib/utils.ts'
+import type {Connection} from '#services/connections/schema.ts'
+import {Connections} from '#services/connections/service.ts'
+import type {ServerStatus} from '#services/gateway/schema.ts'
+import {RemoteTools, ToolArguments, ToolRequest} from '#services/gateway/schema.ts'
+
+type Server = Pick<Connection, 'id' | 'generation' | 'name' | 'mode'>
+
+function rejected(server: Pick<Connection, 'name'>) {
+	return AuthError.make({
+		message: `${server.name} is unavailable. Check its connection on https://auth.mp281x.xyz/mcp-servers.`
+	})
+}
+
+export class Gateway extends Context.Service<
+	Gateway,
+	{
+		readonly status: Effect.Effect<ServerStatus[]>
+		readonly refresh: (headers: Headers.Headers, registry: typeof McpServer.McpServer.Service) => Effect.Effect<void>
+	}
+>()('@deslop/auth/services/gateway/service/Gateway') {
+	static readonly layer = Layer.effect(Gateway)(
+		Effect.gen(function* () {
+			const auth = yield* Auth
+			const authorizations = yield* Authorizations
+			const connections = yield* Connections
+			const fetch = yield* FetchHttpClient.Fetch
+			const digest = yield* Digest.Digest
+			const namespaced = Effect.fnUntraced(function* (fullName: string) {
+				if (
+					fullName.length <= 64 &&
+					Option.isSome(String.match(/^[a-zA-Z0-9_-]+$/u)(fullName)) &&
+					!String.includes('__encoded_')(fullName)
+				) {
+					return fullName
+				}
+				return `${String.slice(0, 41)(String.replaceAll(/[^a-zA-Z0-9_-]/gu, '_')(fullName))}__encoded_${String.slice(0, 12)(Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(fullName))))}`
+			})
+			const status = yield* Ref.make<ServerStatus[]>([])
+			const visible = yield* Ref.make(HashSet.empty<string>())
+			const installed = yield* Ref.make<Record<string, {fingerprint: string; id: string; generation: string}>>({})
+			const refreshes = yield* Semaphore.make(1)
+			const scope = yield* Effect.scope
+			const remove = Effect.fnUntraced(function* (name: string, registry: typeof McpServer.McpServer.Service) {
+				yield* Ref.update(installed, Record.remove(name))
+				yield* Ref.update(visible, HashSet.remove(name))
+				yield* registry.removeTool(name)
+			})
+			const prune = Effect.fnUntraced(function* (registry: typeof McpServer.McpServer.Service) {
+				const definitions = yield* connections.definitions
+				for (const entry of Record.toEntries(yield* Ref.get(installed))) {
+					if (
+						!Array.some(
+							definitions,
+							server => server.id === entry[1].id && server.generation === entry[1].generation && server.enabled
+						)
+					) {
+						yield* remove(entry[0], registry)
+					}
+				}
+			})
+			const updateVisible = Effect.fnUntraced(function* (
+				server: Connection,
+				names: HashSet.HashSet<string>,
+				registry: typeof McpServer.McpServer.Service
+			) {
+				const changed = yield* Ref.modify(visible, current => {
+					const next = HashSet.union(
+						HashSet.filter(current, name => !String.startsWith(`${server.id}__`)(name)),
+						names
+					)
+					return [!Equal.equals(current, next), next]
+				})
+				if (changed) yield* registry.notifications['notifications/tools/list_changed']({})
+				for (const entry of Record.toEntries(yield* Ref.get(installed))) {
+					if (entry[1].id === server.id && !HashSet.has(names, entry[0])) yield* remove(entry[0], registry)
+				}
+			})
+			const services = yield* Layer.build(
+				McpServer.visibility(options =>
+					Effect.gen(function* () {
+						if (!HashSet.has(yield* Ref.get(visible), options.target)) return false
+						const entry = (yield* Ref.get(installed))[options.target]
+						if (entry === undefined) return false
+						const current = yield* Effect.option(connections.get(entry.id))
+						const now = yield* Clock.currentTimeMillis
+						return Option.exists(
+							current,
+							found => found.generation === entry.generation && connectionInfo(found, now).connected
+						)
+					})
+				).layer
+			)
+			const upstreamFor = Effect.fnUntraced(function* (server: Server, headers: Headers.Headers) {
+				const current = yield* connections.get(server.id)
+				if (
+					current.generation !== server.generation ||
+					!connectionInfo(current, yield* Clock.currentTimeMillis).connected
+				) {
+					return yield* rejected(server)
+				}
+				if (current.mode === 'oauth') {
+					return {token: yield* connections.token(server.id, server.generation), url: current.url}
+				}
+				if (current.mode === 'public') return {token: undefined, url: current.url}
+				return {
+					token: yield* authorizations.delegate(headers, yield* Schema.decodeUnknownEffect(Resource)(current.url)),
+					url: current.url
+				}
+			})
+			function withClient<A>(
+				server: Server,
+				headers: Headers.Headers,
+				run: (client: Client) => Effect.Effect<A, AuthError>
+			) {
+				return pipe(
+					Effect.gen(function* () {
+						const upstream = yield* upstreamFor(server, headers)
+						const context = yield* Effect.context<never>()
+						const transport = new StreamableHTTPClientTransport(new URL(upstream.url), {
+							authProvider: {
+								onUnauthorized: () =>
+									// oxlint-disable-next-line no-restricted-properties -- The MCP SDK's AuthProvider contract requires a Promise<void>.
+									Effect.runPromise(
+										pipe(
+											Effect.gen(function* () {
+												if (server.mode === 'oauth') {
+													upstream.token = yield* connections.token(server.id, server.generation, upstream.token)
+												} else {
+													upstream.token = (yield* upstreamFor(server, headers)).token
+												}
+											}),
+											Effect.provideContext(context)
+										)
+									),
+								token: () =>
+									// oxlint-disable-next-line no-restricted-properties -- The MCP SDK's AuthProvider.token contract requires a Promise<string>.
+									Effect.runPromise(Effect.succeed(upstream.token))
+							},
+							fetch,
+							requestInit: {redirect: 'error'}
+						})
+						const client = yield* Effect.acquireRelease(
+							Effect.sync(
+								() => new Client({name: 'Deslop MCP gateway', version: '0.1.0'}, {versionNegotiation: {mode: 'auto'}})
+							),
+							acquired =>
+								pipe(
+									Effect.tryPromise(() => transport.terminateSession()),
+									Effect.timeout('3 seconds'),
+									Effect.ignore({log: 'Warn', message: 'Cannot terminate the upstream MCP session'}),
+									Effect.andThen(Effect.tryPromise(() => acquired.close())),
+									Effect.ignore({log: 'Warn', message: 'Cannot close the upstream MCP client'})
+								)
+						)
+						yield* Effect.tryPromise({
+							catch: () => rejected(server),
+							try: signal => client.connect(transport, {signal})
+						})
+						return yield* run(client)
+					}),
+					Effect.mapError(() => rejected(server)),
+					Effect.scoped
+				)
+			}
+			const call = Effect.fn('Gateway.call')(
+				function* (server: Server, tool: string, input: unknown) {
+					const request = yield* Effect.flatMap(
+						Effect.serviceOption(HttpServerRequest.HttpServerRequest),
+						Effect.fromOption
+					)
+					yield* auth.access(request.headers, 'https://auth.mp281x.xyz/mcp')
+					const args = yield* Schema.decodeUnknownEffect(ToolArguments)(input ?? {})
+					return yield* withClient(server, request.headers, client =>
+						pipe(
+							Effect.tryPromise({
+								catch: () => rejected(server),
+								try: signal => client.callTool({arguments: args, name: tool}, {signal})
+							}),
+							Effect.flatMap(Schema.decodeUnknownEffect(McpSchema.CallToolResult)),
+							Effect.mapError(() => rejected(server))
+						)
+					)
+				},
+				Effect.orElseSucceed(() =>
+					McpSchema.CallToolResult.make({
+						content: [
+							{
+								text: 'The provider call failed. Check list_mcp_connections or reconnect the provider with connect_mcp.',
+								type: 'text'
+							}
+						],
+						isError: true
+					})
+				)
+			)
+			const discover = Effect.fnUntraced(function* (
+				server: Connection,
+				headers: Headers.Headers,
+				registry: typeof McpServer.McpServer.Service
+			) {
+				if (!connectionInfo(server, yield* Clock.currentTimeMillis).connected) {
+					yield* updateVisible(server, HashSet.empty(), registry)
+					return connectionInfo(server, yield* Clock.currentTimeMillis)
+				}
+				const tools = yield* pipe(
+					withClient(server, headers, client =>
+						pipe(
+							Effect.tryPromise({catch: () => rejected(server), try: signal => client.listTools(undefined, {signal})}),
+							Effect.flatMap(result =>
+								Schema.decodeUnknownEffect(RemoteTools)(
+									Array.filter(result.tools, tool => tool.execution?.taskSupport !== 'required')
+								)
+							),
+							Effect.mapError(() => rejected(server))
+						)
+					),
+					Effect.timeout('20 seconds')
+				)
+				const latest = yield* connections.get(server.id)
+				if (latest.generation !== server.generation || !latest.enabled) return yield* rejected(server)
+				const reference = Struct.pick(server, ['id', 'generation', 'name', 'mode'])
+				const names = MutableList.make<string>()
+				for (const tool of tools) {
+					const upstreamName = tool.name
+					const name = yield* namespaced(`${server.id}__${tool.name}`)
+					const fingerprint = yield* Schema.encodeEffect(Schema.fromJsonString(McpSchema.Tool))(tool)
+					if (Option.isNone(String.match(/^[a-zA-Z0-9_-]{1,64}$/u)(name))) return yield* rejected(server)
+					if ((yield* Ref.get(installed))[name]?.fingerprint !== `${server.generation}:${fingerprint}`) {
+						yield* registry.addTool({
+							annotations: Context.empty(),
+							handle: Effect.fnUntraced(function* (input: unknown) {
+								return yield* call(reference, upstreamName, input)
+							}),
+							services,
+							tool: McpSchema.Tool.make({...tool, name})
+						})
+						yield* Ref.update(installed, current => ({
+							...current,
+							[name]: {fingerprint: `${server.generation}:${fingerprint}`, generation: server.generation, id: server.id}
+						}))
+					}
+					MutableList.append(names, name)
+				}
+				yield* updateVisible(server, HashSet.fromIterable(MutableList.toArray(names)), registry)
+				yield* connections.report(server.id, server.generation, tools.length)
+				return {...connectionInfo(server, yield* Clock.currentTimeMillis), tools: tools.length}
+			})
+			return Gateway.of({
+				refresh: Effect.fn('Gateway.refresh')(function* (
+					headers: Headers.Headers,
+					registry: typeof McpServer.McpServer.Service
+				) {
+					const worker = yield* Effect.forkIn(
+						refreshes.withPermitsIfAvailable(1)(
+							pipe(
+								prune(registry),
+								Effect.andThen(
+									Effect.gen(function* () {
+										return yield* Effect.forEach(
+											yield* connections.definitions,
+											server =>
+												pipe(
+													discover(server, headers, registry),
+													Effect.orElseSucceed(() => ({...connectionInfo(server, 0), error: rejected(server).message}))
+												),
+											{concurrency: 6}
+										)
+									})
+								),
+								Effect.tap(() => prune(registry)),
+								Effect.flatMap(results => Ref.set(status, results))
+							)
+						),
+						scope
+					)
+					yield* pipe(Fiber.join(worker), Effect.timeoutOption('2 seconds'))
+				}),
+				status: Effect.gen(function* () {
+					const errors = Record.fromEntries(Array.map(yield* Ref.get(status), row => [row.id, row.error]))
+					return Array.map(yield* connections.list, row => ({
+						...row,
+						...Option.match(Option.fromUndefinedOr(errors[row.id]), {onNone: () => ({}), onSome: error => ({error})})
+					}))
+				})
+			})
+		})
+	)
+}
+
+// This memoized registry is also provided to layerMcp. Slow refreshes outlive the request, not the server.
+export const GatewayDiscovery = HttpRouter.middleware()(
+	Effect.gen(function* () {
+		const gateway = yield* Gateway
+		const auth = yield* Auth
+		const registry = yield* McpServer.McpServer
+		return app =>
+			Effect.gen(function* () {
+				const request = yield* HttpServerRequest.HttpServerRequest
+				if (
+					request.method === 'POST' &&
+					request.url === '/mcp' &&
+					request.headers['origin'] === undefined &&
+					Result.isSuccess(yield* Effect.result(auth.access(request.headers, 'https://auth.mp281x.xyz/mcp')))
+				) {
+					const body = yield* Effect.result(request.json)
+					if (Result.isSuccess(body) && Schema.is(ToolRequest)(body.success)) {
+						yield* gateway.refresh(request.headers, registry)
+					}
+				}
+				return yield* app
+			})
+	})
+)
