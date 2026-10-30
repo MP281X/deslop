@@ -62,6 +62,7 @@ import type {
 	Entry,
 	Explored,
 	Fact,
+	Frame,
 	Job,
 	LocalDecision,
 	Mark,
@@ -151,7 +152,7 @@ const MUD = [GROUND.mud, GROUND.mud2, GROUND.marsh, GROUND.reeds, GROUND.paddymu
 const SWIMMABLE = [LIQUID.water, LIQUID.lagoon, LIQUID.spring]
 // A chunk's explored tiles, a bit each.
 const CHUNK_BYTES = (CHUNK * CHUNK) / 8
-export const SIMULATION = 1
+export const SIMULATION = 2
 
 // A unit and a building as the world runs them: their step and construction as machine snapshots, encoded only in a save.
 type Unit = Types.Mutable<Omit<SavedUnit, 'task'>> & {task: Task}
@@ -996,10 +997,10 @@ export const makeSim = Effect.fnUntraced(
 						)
 					),
 					state.tick,
-					12 * daylightAt(state.tick)
+					12 * life.visibility(body, state.tick)
 				)
 				if (body.team !== undefined) {
-					for (const fact of resourcesAt(body, 12 * daylightAt(state.tick), body.id)) {
+					for (const fact of resourcesAt(body, 12 * life.visibility(body, state.tick), body.id)) {
 						if (
 							!Array.some(
 								life.person(body.id, state.tick).facts,
@@ -1012,7 +1013,7 @@ export const makeSim = Effect.fnUntraced(
 				}
 				for (const store of Array.filter(
 					allBuildings(),
-					candidate => gapTo(candidate, body) < 8 * daylightAt(state.tick)
+					candidate => gapTo(candidate, body) < 8 * life.visibility(body, state.tick)
 				)) {
 					if (!Array.some(life.person(body.id, state.tick).facts, fact => fact.id === store.id)) {
 						life.inspect(
@@ -1680,7 +1681,9 @@ export const makeSim = Effect.fnUntraced(
 		}
 		function attack(body: Body, target: number, strength: number) {
 			const to = Option.getOrUndefined(entity(target))
-			if (to === undefined || to.health <= 0 || distance(body, to) > 12 * daylightAt(state.tick)) return false
+			if (to === undefined || to.health <= 0 || distance(body, to) > 12 * life.visibility(body, state.tick)) {
+				return false
+			}
 			const attacker = unitOf(body.id)
 			if (attacker !== undefined) {
 				attacker.aim = Math.atan2(to.x - body.x, to.z - body.z)
@@ -1947,7 +1950,9 @@ export const makeSim = Effect.fnUntraced(
 				own.unrecorded = Array.filter(own.unrecorded ?? [], entry => entry.id > remembered)
 			}
 			if (unit === undefined) MutableHashSet.add(dirtyWild, id)
-			own.next = state.tick + TICK_HZ * 20
+			own.next =
+				state.tick +
+				TICK_HZ * Boolean.match(choice === 'rest' || choice === 'continue', {onFalse: () => 20, onTrue: () => 120})
 			life.event(body, state.tick, 'decision', `Chose ${choice}: ${offered.choices[choice] ?? ''}`)
 			const action = String.split(':')(choice)[0] ?? ''
 			const target = Array.findFirst(own.facts, fact => choice === `${action}:${fact.id}`)
@@ -2462,7 +2467,7 @@ export const makeSim = Effect.fnUntraced(
 				})
 			}
 			if (Schema.is(StructureKind)(site.kind) && Array.contains(['road', 'ramp', 'bridge'], site.kind)) return
-			if (gapTo(site, homeAt(site.team)) <= HOME_SIGHT * daylightAt(state.tick)) {
+			if (gapTo(site, homeAt(site.team)) <= HOME_SIGHT * life.visibility(homeAt(site.team), state.tick)) {
 				notify(site.team, `${buildingName(site)} at (${site.x}, ${site.z}) is built.`)
 			}
 		}
@@ -3580,7 +3585,9 @@ export const makeSim = Effect.fnUntraced(
 			if (
 				!Array.some(
 					life.core(team.id).facts,
-					fact => fact.id === command.building && distance(fact, homeAt(team.id)) <= HOME_SIGHT * daylightAt(state.tick)
+					fact =>
+						fact.id === command.building &&
+						distance(fact, homeAt(team.id)) <= HOME_SIGHT * life.visibility(homeAt(team.id), state.tick)
 				)
 			) {
 				const builder = Option.getOrUndefined(Array.head(unitsOf(team.id)))
@@ -3651,7 +3658,7 @@ export const makeSim = Effect.fnUntraced(
 					building =>
 						building.kind === 'beacon' &&
 						complete(building) &&
-						gapTo(building, homeAt(team)) <= HOME_SIGHT * daylightAt(state.tick)
+						gapTo(building, homeAt(team)) <= HOME_SIGHT * life.visibility(homeAt(team), state.tick)
 				)
 			)
 		}
@@ -3721,7 +3728,7 @@ export const makeSim = Effect.fnUntraced(
 			if (
 				building === undefined ||
 				building.team !== team.id ||
-				gapTo(building, homeAt(team.id)) > HOME_SIGHT * daylightAt(state.tick)
+				gapTo(building, homeAt(team.id)) > HOME_SIGHT * life.visibility(homeAt(team.id), state.tick)
 			) {
 				return outcome(command, false, 'No locally accessible building of yours to dismantle.')
 			}
@@ -3775,7 +3782,7 @@ export const makeSim = Effect.fnUntraced(
 					const building = buildingOf(command.building)
 					if (
 						building === undefined ||
-						distance(homeAt(teamId), centreOf(building)) > HOME_SIGHT * daylightAt(state.tick)
+						distance(homeAt(teamId), centreOf(building)) > HOME_SIGHT * life.visibility(homeAt(teamId), state.tick)
 					) {
 						return outcome(command, false, 'The Core cannot open that storage remotely; send a unit to inspect it.')
 					}
@@ -3920,12 +3927,12 @@ export const makeSim = Effect.fnUntraced(
 			if (team === undefined) return {notices: [], text: ''}
 			const at = homeAt(teamId)
 			const knowledge = life.core(teamId)
-			for (const fact of resourcesAt(at, HOME_SIGHT * daylightAt(state.tick), team.home)) {
+			for (const fact of resourcesAt(at, HOME_SIGHT * life.visibility(at, state.tick), team.home)) {
 				knowledge.facts = [...Array.filter(knowledge.facts, remembered => remembered.id !== fact.id), fact]
 			}
 			for (const building of Array.filter(
 				allBuildings(),
-				candidate => gapTo(candidate, at) <= HOME_SIGHT * daylightAt(state.tick)
+				candidate => gapTo(candidate, at) <= HOME_SIGHT * life.visibility(at, state.tick)
 			)) {
 				if (!Array.some(knowledge.facts, fact => fact.id === building.id)) {
 					knowledge.facts = [
@@ -3944,7 +3951,7 @@ export const makeSim = Effect.fnUntraced(
 			}
 			for (const body of Array.filter(
 				entities(),
-				candidate => distance(candidate, at) <= HOME_SIGHT * daylightAt(state.tick)
+				candidate => distance(candidate, at) <= HOME_SIGHT * life.visibility(at, state.tick)
 			)) {
 				if (body.team !== undefined && body.team !== teamId) {
 					knowledge.contacts = Array.dedupe([...knowledge.contacts, body.team])
@@ -4105,6 +4112,52 @@ export const makeSim = Effect.fnUntraced(
 			} satisfies TeamView
 		}
 
+		const traceCache = {
+			at: -1,
+			keys: MutableHashSet.empty<number>(),
+			values: Array.empty<NonNullable<Frame['traces']>[number]>()
+		}
+		function traceFrame(connection: {
+			sent: boolean
+			tracesAt: number
+			traces: MutableHashMap.MutableHashMap<number, string>
+		}) {
+			const at = Math.floor(state.tick / TICK_HZ)
+			if (connection.sent && connection.tracesAt === at) return undefined
+			if (traceCache.at !== at) {
+				traceCache.at = at
+				traceCache.values = Array.filter(
+					Array.map(life.traces(state.tick), trace => ({
+						fresh: Number.round(trace.fresh, 2),
+						smog: Number.round(trace.smog, 2),
+						wear: Number.round(trace.wear, 2),
+						x: trace.x,
+						yaw: Number.round(trace.yaw, 1),
+						z: trace.z
+					})),
+					trace => trace.fresh > 0 || trace.smog > 0 || trace.wear > 0
+				)
+				MutableHashSet.clear(traceCache.keys)
+				for (const trace of traceCache.values) MutableHashSet.add(traceCache.keys, tileKey(trace.x, trace.z))
+			}
+			const changes = MutableList.make<NonNullable<Frame['traces']>[number]>()
+			for (const trace of traceCache.values) {
+				const key = tileKey(trace.x, trace.z)
+				const signature = `${trace.fresh}:${trace.smog}:${trace.wear}:${trace.yaw}`
+				if (!Option.contains(MutableHashMap.get(connection.traces, key), signature)) {
+					MutableHashMap.set(connection.traces, key, signature)
+					MutableList.append(changes, trace)
+				}
+			}
+			for (const key of Array.fromIterable(MutableHashMap.keys(connection.traces))) {
+				if (!MutableHashSet.has(traceCache.keys, key)) {
+					MutableHashMap.remove(connection.traces, key)
+					MutableList.append(changes, {...tileOf(key), fresh: 0, smog: 0, wear: 0, yaw: 0})
+				}
+			}
+			return MutableList.toArray(changes)
+		}
+
 		// A spectator: the revisions of the tiles, props, buildings, teams and zones it has, and the version of each explored chunk it was sent.
 		const connections = MutableHashMap.empty<
 			number,
@@ -4114,6 +4167,8 @@ export const makeSim = Effect.fnUntraced(
 				props: number
 				sent: boolean
 				teams: string
+				tracesAt: number
+				traces: MutableHashMap.MutableHashMap<number, string>
 				tiles: number
 				zones: number
 			}
@@ -4196,10 +4251,7 @@ export const makeSim = Effect.fnUntraced(
 					onTrue: () => teamViews
 				}),
 				tick: state.tick,
-				traces: Boolean.match(state.tick % 20 === 0 || first, {
-					onFalse: () => undefined,
-					onTrue: () => life.traces(state.tick)
-				}),
+				traces: traceFrame(connection),
 				units: [
 					...Array.map(allUnits(), unitView),
 					...Array.map(Array.filter(allEnemies(), knownAny), enemyView),
@@ -4217,6 +4269,7 @@ export const makeSim = Effect.fnUntraced(
 			connection.props = revision.props
 			connection.buildings = revision.buildings
 			connection.teams = teamsText
+			connection.tracesAt = Math.floor(state.tick / TICK_HZ)
 			connection.zones = revision.zones
 			return Option.some(result)
 		}
@@ -4398,14 +4451,16 @@ export const makeSim = Effect.fnUntraced(
 					sent: false,
 					teams: '',
 					tiles: 0,
+					traces: MutableHashMap.empty(),
+					tracesAt: -1,
 					zones: -1
 				})
 				return counter.connection
 			},
 			decide: localDecision,
-			decisions: () =>
-				Array.map(
-					Array.filter(entities(), body => body.health > 0 && life.person(body.id, state.tick).next <= state.tick),
+			decision: (id: number) =>
+				Option.map(
+					Option.filter(entity(id), body => body.health > 0),
 					body => {
 						const unit = unitOf(body.id)
 						return life.local(body, state.tick, unit !== undefined && connected(unit))
@@ -4418,6 +4473,11 @@ export const makeSim = Effect.fnUntraced(
 				MutableHashMap.remove(connections, id)
 			},
 			discovered: (team: number) => Array.isReadonlyArrayNonEmpty(life.core(team).contacts),
+			due: () =>
+				Array.map(
+					Array.filter(entities(), body => body.health > 0 && life.person(body.id, state.tick).next <= state.tick),
+					body => body.id
+				),
 			evidence: (id: number, context: string, tokens: NonNullable<Entry['tokens']>, failure?: string) => {
 				const body = Option.getOrUndefined(entity(id))
 				if (body !== undefined) {

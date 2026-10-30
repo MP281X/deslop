@@ -1,4 +1,17 @@
-import {Array, MutableHashMap, MutableList, Number, Option, Order, Predicate, Record, String, Tuple, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	MutableHashMap,
+	MutableList,
+	Number,
+	Option,
+	Order,
+	Predicate,
+	Record,
+	String,
+	Tuple,
+	pipe
+} from 'effect'
 
 import * as THREE from 'three'
 import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js'
@@ -498,17 +511,20 @@ function fromAfter(distance: Float32Array, x: number, z: number) {
 }
 
 // Beside each texel's explored bit, how many tiles it lies from the nearest explored one: a chamfer pass down the window and one back up, stored at a quarter tile and saturating at 63.
-function reach(explored: Uint8Array, known: Uint8Array) {
-	const distance = Float32Array.from(explored, unexplored)
-	const down = Array.range(0, FOG_SIZE - 1)
-	for (const z of down) {
-		for (const x of down) fromBefore(distance, x, z)
+function reach(
+	explored: Uint8Array,
+	known: Uint8Array,
+	distance: Float32Array,
+	indices: {down: readonly number[]; up: readonly number[]; pixels: readonly number[]}
+) {
+	for (const index of indices.pixels) distance[index] = unexplored(explored[index] ?? 0)
+	for (const z of indices.down) {
+		for (const x of indices.down) fromBefore(distance, x, z)
 	}
-	const up = Array.reverse(down)
-	for (const z of up) {
-		for (const x of up) fromAfter(distance, x, z)
+	for (const z of indices.up) {
+		for (const x of indices.up) fromAfter(distance, x, z)
 	}
-	for (const index of Array.range(0, FOG_SIZE * FOG_SIZE - 1)) {
+	for (const index of indices.pixels) {
 		known[index * 2] = explored[index] ?? 0
 		known[index * 2 + 1] = Number.min(255, (distance[index] ?? 1e4) * 4)
 	}
@@ -518,18 +534,27 @@ function reach(explored: Uint8Array, known: Uint8Array) {
 // The world view: chunks streamed from a worker round the camera, fogged where the colony has not looked; an isometric camera that follows its subject, turned in quarter turns, in soft diorama light.
 export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 	const renderer = new THREE.WebGLRenderer({antialias: false, canvas, powerPreference: 'high-performance'})
-	renderer.setPixelRatio(Number.min(window.devicePixelRatio, 2))
+	const coarse = window.matchMedia('(pointer: coarse)').matches
+	renderer.setPixelRatio(
+		Number.min(window.devicePixelRatio, Boolean.match(coarse, {onFalse: () => 2, onTrue: () => 1.5}))
+	)
 	renderer.outputColorSpace = THREE.SRGBColorSpace
 	renderer.toneMapping = THREE.NeutralToneMapping
 	renderer.shadowMap.enabled = true
 	renderer.shadowMap.type = THREE.PCFShadowMap
 	const scene = new THREE.Scene()
 	scene.background = new THREE.Color('#f2f2f4')
+	const down = Array.range(0, FOG_SIZE - 1)
+	const fogIndices = {down, pixels: Array.range(0, FOG_SIZE * FOG_SIZE - 1), up: Array.reverse(down)}
+	const fogDistance = new Float32Array(FOG_SIZE * FOG_SIZE)
 	const exploredData = new Uint8Array(FOG_SIZE * FOG_SIZE)
 	const knownData = new Uint8Array(FOG_SIZE * FOG_SIZE * 2)
 	const knownTexture = windowTexture(knownData)
 
-	const envTexture = windowTexture(new Uint8Array(FOG_SIZE * FOG_SIZE * 2))
+	const emptyEnvironment = new Uint8Array(FOG_SIZE * FOG_SIZE * 2)
+	const envData = new Uint8Array(FOG_SIZE * FOG_SIZE * 2)
+	const envTexture = windowTexture(envData)
+	const atmosphere = {fog: {value: 0}, samples: Array.empty<NonNullable<Frame['traces']>[number]>(), smog: {value: 0}}
 	// The texture keeps its array, so a reset copies this unbuilt window into it.
 	const unbuilt = Uint16Array.from(Array.replicate(UNBUILT, FOG_SIZE * FOG_SIZE))
 	// The ground's height over the window, a texel a tile: the volumes stand on the ground, so a tree rises through them rather than lifting them.
@@ -556,15 +581,20 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 	const decor = decorations(env)
 	const sun = new THREE.DirectionalLight('#fff0dc', 2.5)
 	sun.castShadow = true
-	sun.shadow.mapSize.set(4096, 4096)
+	const shadowSize = Boolean.match(coarse, {onFalse: () => 4096, onTrue: () => 2048})
+	sun.shadow.mapSize.set(shadowSize, shadowSize)
 	sun.shadow.bias = -0.0006
 	sun.shadow.normalBias = 0.03
 	sun.shadow.radius = 4
-	scene.add(sun, sun.target, new THREE.HemisphereLight('#eef4ff', '#d9c6ae', 1.35))
+	const sky = new THREE.HemisphereLight('#eef4ff', '#d9c6ae', 1.35)
+	scene.add(sun, sun.target, sky)
 	const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 600)
 	const composer = new EffectComposer(
 		renderer,
-		new THREE.WebGLRenderTarget(1, 1, {samples: 4, type: THREE.HalfFloatType})
+		new THREE.WebGLRenderTarget(1, 1, {
+			samples: Boolean.match(coarse, {onFalse: () => 4, onTrue: () => 2}),
+			type: THREE.HalfFloatType
+		})
 	)
 	composer.addPass(new RenderPass(scene, camera))
 	const occlusion = new Occlusion(scene, camera)
@@ -598,11 +628,11 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 					tDiffuse: {value: undefined},
 					uDir: {value: facing},
 					uFogOn: fogOn,
-					uFogStyle: {value: 0},
+					uFogStyle: atmosphere.fog,
 					uGround: {value: groundTexture},
 					uInv: {value: inverse},
 					uKnown: {value: knownTexture},
-					uSmogStyle: {value: 0},
+					uSmogStyle: atmosphere.smog,
 					uT: time,
 					uZones: {value: zoneTexture}
 				},
@@ -904,18 +934,23 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		})
 	}
 
+	const streamed = {key: '', wanted: Array.empty<{cx: number; cz: number}>()}
 	function stream() {
 		const near = visibleChunks(0)
-		const wanted = Array.sort(
-			Array.flatMap(Array.range(near.cz0, near.cz1), cz =>
-				Array.map(Array.range(near.cx0, near.cx1), cx => ({cx, cz}))
-			),
-			(a: {cx: number; cz: number}, b: {cx: number; cz: number}) =>
-				Number.sign(distanceTo(a.cx, a.cz) - distanceTo(b.cx, b.cz))
-		)
-		for (const chunk of wanted) request(chunk.cx, chunk.cz)
 		const keep = visibleChunks(2)
-		for (const key of Array.fromIterable(MutableHashMap.keys(chunks))) dropIfFar(key, keep)
+		const key = `${view.epoch}:${near.cx0}:${near.cx1}:${near.cz0}:${near.cz1}:${keep.cx0}:${keep.cx1}:${keep.cz0}:${keep.cz1}`
+		if (streamed.key !== key) {
+			streamed.key = key
+			streamed.wanted = Array.sort(
+				Array.flatMap(Array.range(near.cz0, near.cz1), cz =>
+					Array.map(Array.range(near.cx0, near.cx1), cx => ({cx, cz}))
+				),
+				(a: {cx: number; cz: number}, b: {cx: number; cz: number}) =>
+					Number.sign(distanceTo(a.cx, a.cz) - distanceTo(b.cx, b.cz))
+			)
+		}
+		for (const chunk of streamed.wanted) request(chunk.cx, chunk.cz)
+		for (const chunkKeyToCheck of Array.fromIterable(MutableHashMap.keys(chunks))) dropIfFar(chunkKeyToCheck, keep)
 	}
 
 	function place() {
@@ -952,6 +987,22 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		sun.shadow.camera.updateProjectionMatrix()
 	}
 
+	function paintEnvironment() {
+		envData.set(emptyEnvironment)
+		atmosphere.smog.value = 0
+		for (const trace of atmosphere.samples) {
+			const x = trace.x - fogCorner.x
+			const z = trace.z - fogCorner.z
+			if (x >= 0 && z >= 0 && x < FOG_SIZE && z < FOG_SIZE) {
+				const offset = (z * FOG_SIZE + x) * 2
+				envData[offset] = Number.round(trace.smog * 255, 0)
+				envData[offset + 1] = Number.round(Number.min(1, trace.wear + trace.fresh * 0.2) * 255, 0)
+				if (trace.smog > 0) atmosphere.smog.value = 1
+			}
+		}
+		envTexture.needsUpdate = true
+	}
+
 	// The fog window recentres on the camera once it comes within a quarter of its edge, and redraws from every chunk explored so far.
 	function recentre() {
 		const half = FOG_SIZE / 2
@@ -964,11 +1015,12 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		fogCorner.x = Math.floor(view.target.x) - half
 		fogCorner.z = Math.floor(view.target.z) - half
 		env.uWindow.value.set(fogCorner.x, fogCorner.z, FOG_SIZE)
+		paintEnvironment()
 		exploredData.set(new Uint8Array(exploredData.length))
 		MutableHashMap.forEach(explored, (bits, key) =>
 			stamp(exploredData, fogCorner, Math.floor(key / 8192) - 4096, (key % 8192) - 4096, bits)
 		)
-		reach(exploredData, knownData)
+		reach(exploredData, knownData, fogDistance, fogIndices)
 		knownTexture.needsUpdate = true
 		groundData.set(unbuilt)
 		MutableHashMap.forEach(chunks, (_, key) => paintGround(Math.floor(key / 8192) - 4096, (key % 8192) - 4096))
@@ -1054,6 +1106,11 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		cleared(ids: Frame['cleared']) {
 			if (Array.isReadonlyArrayNonEmpty(ids)) tell({_tag: 'Cleared', ids})
 		},
+		daylight(level: number) {
+			sun.intensity = 0.15 + 2.35 * level
+			sky.intensity = 0.25 + 1.1 * level
+			atmosphere.fog.value = Boolean.match(level < 0.4, {onFalse: () => 0, onTrue: () => 1})
+		},
 		dispose() {
 			// oxlint-disable-next-line unicorn/no-null -- three's setAnimationLoop stops only on null.
 			renderer.setAnimationLoop(null)
@@ -1069,7 +1126,7 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 				stamp(exploredData, fogCorner, chunk.cx, chunk.cz, chunk.bits)
 			}
 			if (Array.isReadonlyArrayNonEmpty(seen)) {
-				reach(exploredData, knownData)
+				reach(exploredData, knownData, fogDistance, fogIndices)
 				knownTexture.needsUpdate = true
 			}
 		},
@@ -1128,6 +1185,12 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			return {x: view.target.x, z: view.target.z}
 		},
 		// Runs once the camera has moved each frame, for what sits on screen over the world.
+		near(x: number, z: number) {
+			return (
+				Math.hypot(x - view.target.x, z - view.target.z) <
+				view.zoom * Number.max(1, view.size.width / Number.max(1, view.size.height)) * 4 + CHUNK
+			)
+		},
 		onDrawn(listener: () => void) {
 			listeners.drawn = [...listeners.drawn, listener]
 		},
@@ -1156,13 +1219,15 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		},
 		// The world as generated again, for a stream that starts over: no chunk, explored tile, change or cleared prop kept.
 		reset() {
+			atmosphere.samples = []
+			paintEnvironment()
 			view.epoch += 1
 			tell({_tag: 'Reset'})
 			MutableHashMap.forEach(chunks, loaded => disposeGroup(loaded.group))
 			MutableHashMap.clear(chunks)
 			MutableHashMap.clear(explored)
 			exploredData.set(new Uint8Array(exploredData.length))
-			reach(exploredData, knownData)
+			reach(exploredData, knownData, fogDistance, fogIndices)
 			knownTexture.needsUpdate = true
 			groundData.set(unbuilt)
 			groundTexture.needsUpdate = true
@@ -1191,6 +1256,10 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		// Half the view's height in tiles: how far out the camera is.
 		span() {
 			return view.zoom
+		},
+		traces(samples: NonNullable<Frame['traces']>) {
+			atmosphere.samples = [...samples]
+			paintEnvironment()
 		},
 		turn(quarters: number) {
 			view.quarter += quarters

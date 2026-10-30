@@ -103,9 +103,11 @@ it('accumulates anonymous overlapping passage, preserves its age when pollution 
 
 it('does not invent footprints for pollution or flying bodies and keeps provider metadata out of private experience', () => {
 	const life = makeLife()
+	assert.strictEqual(life.visibility(UNIT, 0), 1)
 	life.pollute(UNIT, 0.5, 100)
+	assert.isBelow(life.visibility(UNIT, 0), 1)
 	life.stamp({...UNIT, kind: 'bird', x: 2}, 100)
-	assert.strictEqual(life.traces(100).length, 1)
+	assert.strictEqual(life.traces(100).length, 49)
 	assert.strictEqual(Option.getOrThrow(Array.head(life.traces(100))).fresh, 0)
 	life.event(UNIT, 101, 'damage', 'An unidentified impact.', 7)
 	for (const tick of Array.range(102, 140)) {

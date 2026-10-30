@@ -429,13 +429,18 @@ export class Game extends Context.Service<
 							yield* Effect.logWarning('A local decision failed; existing action continues', result)
 						}
 					}
-					for (const request of Array.take(
-						Array.sortWith(
-							Array.filter(sim.decisions(), candidate => !MutableHashMap.has(local, candidate.actor)),
-							(candidate: LocalDecision) => sim.individual(candidate.actor).next,
-							Number.Order
-						),
-						Number.min(localBudget, Number.max(0, 4 - MutableHashMap.size(local)))
+					for (const request of Array.getSomes(
+						Array.map(
+							Array.take(
+								Array.sortWith(
+									Array.filter(sim.due(), actor => !MutableHashMap.has(local, actor)),
+									(actor: number) => sim.individual(actor).next,
+									Number.Order
+								),
+								Number.min(localBudget, Number.max(0, 4 - MutableHashMap.size(local)))
+							),
+							sim.decision
+						)
 					)) {
 						const deadline = sim.tick() + 60 * TICK_HZ
 						sim.defer(request.actor, deadline)
