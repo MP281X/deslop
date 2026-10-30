@@ -70,3 +70,24 @@ it('accumulates anonymous overlapping passage, preserves its age when pollution 
 	assert.isBelow(faded.smog, 0.001)
 	assert.strictEqual(faded.fresh, 0)
 })
+
+it('does not invent footprints for pollution or flying bodies and keeps provider metadata out of private experience', () => {
+	const life = makeLife()
+	life.pollute(UNIT, 0.5, 100)
+	life.stamp({...UNIT, kind: 'bird', x: 2}, 100)
+	assert.strictEqual(life.traces(100).length, 1)
+	assert.strictEqual(Option.getOrThrow(Array.head(life.traces(100))).fresh, 0)
+	life.event(UNIT, 101, 'damage', 'An unidentified impact.', 7)
+	for (const tick of Array.range(102, 140)) {
+		life.event(UNIT, tick, 'decision', 'Chose continue: Continue the current task.')
+	}
+	life.event(UNIT, 141, 'decision', 'Provider accounting only.', undefined, {
+		context: 'private provider input',
+		tokens: {cost: 0.1}
+	})
+	assert.notInclude(life.local(UNIT, 141, true).state, 'Provider accounting only')
+	assert.include(life.local(UNIT, 141, true).state, 'An unidentified impact.')
+	const restored = makeLife(life.snapshot(), life.drain())
+	assert.deepStrictEqual(restored.drain(), life.drain())
+	assert.strictEqual(Option.getOrThrow(Array.last(restored.drain())).tokens?.cost, 0.1)
+})

@@ -118,7 +118,7 @@ export const hudAtom = Atom.keepAlive(
 )
 
 export const historyAtom = Atom.family((key: string) => {
-	const [actor = 0, before = 0] = Array.map(String.split(':')(key), part =>
+	const [actor = 0, before = 0, at = -1] = Array.map(String.split(':')(key), part =>
 		Option.getOrElse(Number.parse(part), () => 0)
 	)
 	return RpcClient.runtime.atom(
@@ -128,6 +128,10 @@ export const historyAtom = Atom.family((key: string) => {
 				Effect.flatMap(RpcClient, client =>
 					client('signal.history', {
 						actor,
+						...Option.match(
+							Option.filter(Option.some(at), value => value >= 0),
+							{onNone: () => ({}), onSome: tick => ({at: tick})}
+						),
 						...Option.match(
 							Option.filter(Option.some(before), value => value > 0),
 							{onNone: () => ({}), onSome: cursor => ({before: cursor})}

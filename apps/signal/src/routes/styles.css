@@ -2,6 +2,9 @@
 @source '../../../../packages/components-web/src/**/*.tsx';
 
 @media (pointer: coarse) {
+	button {
+		min-width: 44px;
+	}
 	button,
 	summary,
 	input[type='range'] {

@@ -212,6 +212,49 @@ it.effect(
 	})
 )
 
+it.effect(
+	'keeps remote encounters private and radio positions independent of life or obedience',
+	Effect.fnUntraced(function* () {
+		const saved = yield* (yield* makeSim(Option.none(), 42)).snapshot
+		const home = Option.getOrThrow(Array.head(saved.buildings))
+		const at = {x: home.x + 50, z: home.z + 3}
+		const encountered = yield* makeSim(
+			Option.some({
+				...saved,
+				units: Array.map(saved.units, unit => {
+					if (unit.id === 2) return {...unit, ...at}
+					if (unit.id === 4) return {...unit, x: at.x + 2, z: at.z}
+					return unit
+				})
+			}),
+			0
+		)
+		encountered.decide(2, 'rest')
+		encountered.decide(4, 'rest')
+		yield* encountered.run(40)
+		assert.deepStrictEqual(encountered.individual(2).contacts, [1])
+		assert.isFalse(command(encountered, {_tag: 'Message', team: 1, text: 'Do not leak a private encounter.'}).ok)
+		assert.isFalse(command(encountered, {_tag: 'Ping', unit: 2}).ok)
+		const previous = yield* encountered.snapshot
+		const silent = yield* makeSim(
+			Option.some({
+				...previous,
+				units: Array.map(previous.units, unit => {
+					if (unit.id !== 2) return unit
+					return {...unit, health: 0, x: home.x + 30, z: home.z + 3}
+				})
+			}),
+			0
+		)
+		const ping = command(silent, {_tag: 'Ping', unit: 2})
+		assert.isTrue(ping.ok)
+		assert.include(ping.text, 'does not establish life or health')
+		assert.notInclude(silent.observe(0).text, 'down')
+		assert.isFalse(command(silent, {_tag: 'Message', team: 1, text: 'Still unknown to this Core.'}).ok)
+		assert.isFalse(command(silent, {_tag: 'Build', kind: 'road', to: {x: 1, z: 1}, x: 0, z: 0}).ok)
+	})
+)
+
 // How far a body turned, in radians, over a stretch in which it got less than a third of a tile anywhere.
 function swayOf(track: {x: number; yaw: number; z: number}[]) {
 	const first = Option.getOrThrow(Array.head(track))

@@ -9,7 +9,11 @@ import {Entry, Frame, GameError, HistoryPage, Timeline} from '#services/game/sch
 export class RpcContracts extends RpcGroup.make(
 	Rpc.make('signal.history', {
 		error: GameError,
-		payload: Schema.Struct({actor: Schema.Int, before: Schema.optionalKey(Schema.Int)}),
+		payload: Schema.Struct({
+			actor: Schema.Int,
+			at: Schema.optionalKey(Schema.Natural),
+			before: Schema.optionalKey(Schema.Int)
+		}),
 		success: HistoryPage
 	}),
 	Rpc.make('signal.join', {error: GameError, stream: true, success: Frame}),

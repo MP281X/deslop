@@ -33,7 +33,7 @@ export const LocalChoice = Schema.Struct({
 	choice: Schema.String,
 	confidence: Schema.optionalKey(Schema.Finite),
 	cost: Schema.optionalKey(Schema.Finite),
-	input: Schema.Int,
-	output: Schema.Int,
+	input: Schema.optional(Schema.Int),
+	output: Schema.optional(Schema.Int),
 	tick: Schema.Int
 })

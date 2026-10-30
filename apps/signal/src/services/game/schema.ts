@@ -261,6 +261,7 @@ export const Standing = Schema.TaggedUnion({
 	Auto: {},
 	Build: {...Blueprint.fields},
 	Configure: {building: Schema.Int, recipe: RecipeId},
+	Construct: {building: Schema.Int},
 	Explore: {},
 	Gather: {item: ItemId, x: Tile, z: Tile},
 	Go: {x: Tile, z: Tile},
@@ -379,6 +380,7 @@ export const Frame = Schema.Struct({
 	// In a replay, the live world's tick.
 	live: Schema.optionalKey(Schema.Int),
 	paused: Schema.optionalKey(Schema.Boolean),
+	problem: Schema.optionalKey(Schema.String),
 	shots: Schema.Array(Schema.Struct({from: Schema.Int, to: Schema.Int})),
 	teams: Schema.optional(Schema.Array(TeamView)),
 	tick: Schema.Int,
@@ -408,15 +410,6 @@ export const Mark = Schema.Struct({
 	tick: Schema.Int
 })
 
-// What one round's boundary did, for replays: each team's commands in the order they applied, and the round's marks.
-export type Journal = typeof Journal.Type
-export const Journal = Schema.Struct({
-	applied: Schema.Array(Schema.Struct({commands: Schema.Array(Command), team: Schema.Int})),
-	locals: Schema.optionalKey(Schema.Array(Schema.Struct({actor: Schema.Int, choice: Schema.String, tick: Schema.Int}))),
-	marks: Schema.Array(Mark),
-	round: Schema.Int
-})
-
 // The whole run for the timeline: its first tick, the live tick and every mark.
 export type Timeline = typeof Timeline.Type
 export const Timeline = Schema.Struct({live: Schema.Int, marks: Schema.Array(Mark), start: Schema.Int})
@@ -426,8 +419,8 @@ export type Usage = typeof Usage.Type
 export const Usage = Schema.Struct({
 	cached: Schema.optional(Schema.Int),
 	cost: Schema.optional(Schema.Finite),
-	input: Schema.Int,
-	output: Schema.Int,
+	input: Schema.optional(Schema.Int),
+	output: Schema.optional(Schema.Int),
 	written: Schema.optional(Schema.Int)
 })
 
@@ -467,6 +460,7 @@ export const Fact = Schema.Struct({
 	items: Schema.optionalKey(Items),
 	kind: Schema.String,
 	source: Schema.Int,
+	stage: Schema.optionalKey(Schema.Literals(['Clearing', 'Supplying', 'Constructing', 'Complete', 'Missing'])),
 	text: Schema.String,
 	tick: Schema.Int,
 	x: Schema.Finite,
@@ -505,7 +499,9 @@ export const Individual = Schema.Struct({
 	]),
 	next: Schema.Int,
 	pending: Schema.optional(Standing),
+	projects: Schema.optionalKey(Schema.Array(Schema.Int)),
 	recent: Schema.Array(Experience),
+	retained: Schema.optionalKey(Schema.Array(Experience)),
 	target: Schema.optional(Point)
 })
 
@@ -532,6 +528,28 @@ export const LocalDecision = Schema.Struct({
 	choices: Schema.Record(Schema.String, Schema.String),
 	state: Schema.String,
 	tick: Schema.Int
+})
+
+// Replay retains launches, original decision inputs, responses and failures, not just successful choices.
+export type Journal = typeof Journal.Type
+export const Journal = Schema.Struct({
+	applied: Schema.Array(Schema.Struct({commands: Schema.Array(Outcome.fields.command), team: Schema.Int})),
+	locals: Schema.optionalKey(
+		Schema.Array(
+			Schema.Struct({
+				actor: Schema.Int,
+				choice: Schema.optionalKey(Schema.String),
+				context: Schema.optionalKey(Schema.String),
+				failure: Schema.optionalKey(Schema.String),
+				next: Schema.optionalKey(Schema.Int),
+				request: Schema.optionalKey(LocalDecision),
+				tick: Schema.Int,
+				tokens: Schema.optionalKey(Usage)
+			})
+		)
+	),
+	marks: Schema.Array(Mark),
+	round: Schema.Int
 })
 
 export type HistoryIndex = typeof HistoryIndex.Type
@@ -593,14 +611,10 @@ export const SavedBuilding = Schema.Struct({
 	// MJ left in the item a generator burns.
 	fuel: Schema.Finite,
 	id: Schema.Int,
-	// Items on their way to its construction.
-	incoming: Items,
 	kind: Schema.Union([BuildingKind, StructureKind]),
 	output: Items,
 	progress: Schema.Finite,
 	recipe: Schema.optionalKey(RecipeId),
-	// Items in its stock that units set out to take.
-	reserved: Items,
 	// Its construction, as the site machine in the game's tasks encodes it.
 	site: MachineSnapshot,
 	stock: Items,
@@ -665,9 +679,11 @@ export const Saved = Schema.Struct({
 	mobs: Schema.Array(SavedMob),
 	nextId: Schema.Int,
 	patches: Schema.Array(Schema.Tuple([Schema.Int, Schema.Array(Schema.Int)])),
+	pendingExperiences: Schema.optionalKey(Schema.Array(Experience)),
 	// Each pipe network holding fluid: one of its pipes, the fluid and how much.
 	pipes: Schema.Array(Schema.Tuple([Schema.Int, ItemId, Schema.Finite])),
 	raidAt: Schema.Finite,
+	rules: Schema.optionalKey(Schema.Int),
 	seed: Schema.Int,
 	sides: Schema.Array(Schema.Tuple([Schema.Int, Schema.Finite, Point])),
 	stalls: Schema.Array(Schema.Tuple([Schema.Int, Schema.Finite, Schema.Finite, Point])),

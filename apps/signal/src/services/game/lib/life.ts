@@ -25,7 +25,7 @@ export type Body = Point & {
 }
 
 // Private experience and shared physical traces have different owners; only explicit reports cross that boundary.
-export function makeLife(saved?: Life) {
+export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 	const people = MutableHashMap.fromIterable<number, Person>(
 		Array.map(saved?.individuals ?? [], individual => [individual.id, {...individual}] as const)
 	)
@@ -36,6 +36,7 @@ export function makeLife(saved?: Life) {
 		Array.map(saved?.traces ?? [], trace => [`${trace.x},${trace.z}`, {...trace}] as const)
 	)
 	const pending = MutableList.make<Experience>()
+	MutableList.appendAll(pending, unarchived)
 	const state = {sequence: saved?.sequence ?? 0}
 
 	function core(team: number) {
@@ -86,7 +87,16 @@ export function makeLife(saved?: Life) {
 			...Option.match(Option.fromUndefinedOr(subject), {onNone: () => ({}), onSome: found => ({subject: found})})
 		}
 		const own = person(body.id, tick)
-		own.recent = Array.takeRight([...own.recent, Struct.omit(entry, ['context', 'tokens'])], 16)
+		if (detail?.context === undefined) {
+			const experience = Struct.omit(entry, ['context', 'tokens'])
+			own.recent = Array.takeRight([...own.recent, experience], 16)
+			if (kind !== 'decision' || !String.startsWith('Chose continue:')(text)) {
+				own.retained = Array.takeRight(
+					[...Array.filter(own.retained ?? [], prior => prior.kind !== kind || prior.subject !== subject), experience],
+					48
+				)
+			}
+		}
 		MutableList.append(pending, entry)
 		return entry
 	}
@@ -129,8 +139,11 @@ export function makeLife(saved?: Life) {
 	}
 
 	function inspect(body: Body, target: Omit<Fact, 'tick' | 'source'>, tick: number) {
+		const previous = Array.findFirst(person(body.id, tick).facts, fact => fact.id === target.id)
 		learn(body.id, tick, {...target, source: body.id, tick})
-		event(body, tick, 'observe', target.text, target.id)
+		if (!Option.exists(previous, fact => fact.text === target.text && fact.stage === target.stage)) {
+			event(body, tick, 'observe', target.text, target.id)
+		}
 	}
 
 	function report(body: Body, tick: number, summary: string, facts: Fact[] = [], ids: number[] = []) {
@@ -176,6 +189,14 @@ export function makeLife(saved?: Life) {
 
 	function stamp(body: Body, tick: number) {
 		if (body.health <= 0) return
+		if (
+			Array.contains(
+				['bird', 'heron', 'fireflies', 'moths', 'jellies', 'fish', 'skimmer', 'drifter', 'rotor'],
+				body.kind
+			)
+		) {
+			return
+		}
 		const x = Math.floor(body.x)
 		const z = Math.floor(body.z)
 		const key = `${x},${z}`
@@ -209,6 +230,10 @@ export function makeLife(saved?: Life) {
 		Array.forEach(relevant, fact => {
 			choices[`approach:${fact.id}`] = `Approach remembered #${fact.id} (${fact.kind}), seen at tick ${fact.tick}.`
 			if (fact.kind === 'storage' && body.team !== undefined) {
+				if (fact.stage !== undefined && fact.stage !== 'Complete' && fact.stage !== 'Missing') {
+					choices[`build:${fact.id}`] =
+						`Choose to help construct remembered site #${fact.id}. Its condition and supplies may have changed.`
+				}
 				choices[`inspect:${fact.id}`] = `Open container #${fact.id}; remembered contents may be stale.`
 				if ((body.capacity ?? 0) > (body.cargo ?? 0)) {
 					choices[`take:${fact.id}`] =
@@ -233,7 +258,7 @@ export function makeLife(saved?: Life) {
 		}
 		if (connected && body.team !== undefined) {
 			choices['survey'] =
-				'Send your personally surveyed terrain and resource observations to the Core, without sending other private experiences.'
+				'Send your personally observed resources to the Core, preserving source and age, without sending other private experiences.'
 			choices['report'] = 'Report a short activity summary, without sharing every private observation.'
 			if (Array.isReadonlyArrayNonEmpty(own.contacts)) {
 				choices['addresses'] = 'Report the communication addresses you have learned.'
@@ -265,6 +290,10 @@ export function makeLife(saved?: Life) {
 				guidance: own.guidance,
 				messagesWaiting: own.inbox.length,
 				recent: Array.takeRight(own.recent, 8),
+				retained: Array.takeRight(
+					Array.filter(own.retained ?? [], prior => !Array.some(own.recent, latest => latest.id === prior.id)),
+					12
+				),
 				self: {
 					capacity: body.capacity,
 					cargo: body.cargo,
@@ -318,7 +347,10 @@ export function makeLife(saved?: Life) {
 		traces(tick: number) {
 			return Array.map(Array.fromIterable(MutableHashMap.values(traces)), trace => ({
 				...trace,
-				fresh: Number.max(0, 1 - (tick - trace.tick) / TRAIL_LIFE)
+				fresh: Boolean.match(trace.wear > 0, {
+					onFalse: () => 0,
+					onTrue: () => Number.max(0, 1 - (tick - trace.tick) / TRAIL_LIFE)
+				})
 			}))
 		},
 		weather(tick: number) {

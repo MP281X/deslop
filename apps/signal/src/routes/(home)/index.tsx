@@ -3,7 +3,7 @@ import {RegistryContext, useAtom, useAtomSet, useAtomValue} from '@effect/atom-r
 import {Array, Boolean, Number, Option, Predicate, Record, String, Struct} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
-import {AsyncResult} from 'effect/reactivity'
+import {AsyncResult, Atom} from 'effect/reactivity'
 import type {PointerEvent, ReactNode, WheelEvent} from 'react'
 import {createContext, useContext, useEffect, useRef, useState} from 'react'
 
@@ -35,6 +35,7 @@ import type {Follow, Source, View} from '#lib/utils.ts'
 import {ROUND, TEAMS, TICK_HZ} from '#services/game/lib/utils.ts'
 import type {BuildingView, Entry, Experience, Mark, TeamView, Timeline, UnitView} from '#services/game/schema.ts'
 import {UnitKind} from '#services/game/schema.ts'
+import {tileOf} from '#services/world/lib/utils.ts'
 
 const ZOOM_STEP = 1.25
 // The replay speeds, in multiples of real time.
@@ -43,6 +44,7 @@ const SPEEDS = [1, 10, 30]
 const MAP = {height: 220, width: 376}
 // A chunk's side in tiles, as the minimap draws explored ground at two tiles a pixel.
 const CHUNK = 32
+const groundAtom = Atom.make({at: Option.none<{x: number; z: number}>(), info: Option.none<Inspected>(), x: 0, y: 0})
 
 type Key =
 	| 'in'
@@ -197,17 +199,13 @@ function Swatch(props: {className?: string; team: number}) {
 	)
 }
 
-function Pips(props: {hostile?: boolean; value: number}) {
+function Pips(props: {value: number}) {
 	return (
 		<span className="grid h-1 grid-cols-5 gap-px" aria-label={`${percent(props.value)} health`}>
 			{Array.map(Array.range(0, 4), index => (
 				<i key={index} className="bg-input relative">
 					<i
-						className={cn(
-							'absolute inset-y-0 left-0 w-(--fill)',
-							props.hostile === true && 'bg-destructive',
-							props.hostile !== true && 'bg-foreground'
-						)}
+						className="bg-foreground absolute inset-y-0 left-0 w-(--fill)"
 						style={{'--fill': percent(props.value * 5 - index)}}
 					/>
 				</i>
@@ -379,7 +377,12 @@ function Round(props: {entry: Entry}) {
 				{props.entry.status !== 'done' && <span className="text-destructive">{props.entry.status}</span>}
 				{Option.getOrUndefined(
 					Option.map(Option.fromUndefinedOr(props.entry.tokens), tokens => (
-						<span className="ml-auto">{Number.round((tokens.input + tokens.output) / 1000, 1)}k tok</span>
+						<span className="ml-auto">
+							{Boolean.match(tokens.input !== undefined && tokens.output !== undefined, {
+								onFalse: () => 'Tokens unreported',
+								onTrue: () => `${Number.round(((tokens.input ?? 0) + (tokens.output ?? 0)) / 1000, 1)}k tok`
+							})}
+						</span>
 					))
 				)}
 			</header>
@@ -506,8 +509,8 @@ function Thread(props: {before?: number; replaying: boolean; status?: TeamView['
 	)
 }
 
-function IndividualHistory(props: {actor: number; before?: number}) {
-	const result = useAtomValue(historyAtom(`${props.actor}:${props.before ?? 0}`))
+function IndividualHistory(props: {actor: number; at?: number; before?: number}) {
+	const result = useAtomValue(historyAtom(`${props.actor}:${props.before ?? 0}:${props.at ?? -1}`))
 	const entries = Option.getOrElse(AsyncResult.value(result), () => [])
 	const [older, setOlder] = useState(() => Option.none<number>())
 	const navigate = useContext(Navigation)
@@ -528,7 +531,7 @@ function IndividualHistory(props: {actor: number; before?: number}) {
 							)
 						)
 					),
-				onSome: before => <IndividualHistory actor={props.actor} before={before} />
+				onSome: before => <IndividualHistory actor={props.actor} at={props.at} before={before} />
 			})}
 			{AsyncResult.isFailure(result) && <p role="alert">History could not be read.</p>}
 			{Array.isReadonlyArrayEmpty(entries) && (
@@ -588,7 +591,7 @@ function Sidebar(props: {
 	const picked = Array.findFirst(props.view.teams, team => team.id === props.team)
 	return (
 		<aside className="bg-popover text-popover-foreground absolute inset-x-0 bottom-0 flex h-1/2 min-h-0 flex-col border-t md:inset-y-0 md:right-auto md:h-auto md:w-96 md:border-t-0 md:border-r">
-			<header className="flex h-10 flex-none items-center gap-2 border-b px-4">
+			<header className="flex h-12 flex-none items-center gap-2 border-b px-4">
 				<span className="font-medium">Signal</span>
 				<Button size="sm" variant={variantOf(props.panel === 'core')} onClick={() => props.onPanel('core')}>
 					Core
@@ -638,7 +641,11 @@ function Sidebar(props: {
 					onSome: actor => (
 						<>
 							<header className="px-4 py-2">Individual #{actor}</header>
-							<IndividualHistory key={actor} actor={actor} />
+							<IndividualHistory
+								key={`${actor}:${props.replaying}`}
+								actor={actor}
+								at={Option.getOrUndefined(Option.filter(Option.some(props.view.frame.tick), () => props.replaying))}
+							/>
 						</>
 					)
 				})}
@@ -956,7 +963,7 @@ function Card(props: {unit: UnitView}) {
 					{doingOf(props.unit)}
 				</p>
 				<Meter value={percent(props.unit.health)}>
-					<Pips value={props.unit.health} hostile={props.unit.team === undefined} />
+					<Pips value={props.unit.health} />
 				</Meter>
 			</div>
 		</div>
@@ -1095,13 +1102,10 @@ function aimOf(follow: Follow, team: number, view: View, world: {cast: Cast; ren
 }
 
 // Over the world: health pips over hurt units, the hover card over the unit under the pointer, else the ground card under it. The world view moves each into place every frame.
-function Overlay(props: {
-	buildings: View['buildings']
-	ground: {at: Option.Option<{x: number; z: number}>; info: Option.Option<Inspected>; x: number; y: number}
-	units: View['frame']['units']
-}) {
+function Overlay(props: {buildings: View['buildings']; units: View['frame']['units']}) {
+	const ground = useAtomValue(groundAtom)
 	const hover = useAtomValue(hoverAtom)
-	const hovered = Option.flatMap(props.ground.at, at => buildingAt(props.buildings, at))
+	const hovered = Option.flatMap(ground.at, at => buildingAt(props.buildings, at))
 	return (
 		<div className="pointer-events-none absolute inset-0 overflow-hidden">
 			{Array.map(
@@ -1109,7 +1113,7 @@ function Overlay(props: {
 				unit => (
 					<div key={unit.id} data-follow={unit.id} data-pips hidden className="absolute top-0 left-0">
 						<div className="bg-popover/90 -mt-5 -ml-5 w-10 border p-0.5">
-							<Pips value={unit.health} hostile={unit.team === undefined} />
+							<Pips value={unit.health} />
 						</div>
 					</div>
 				)
@@ -1124,12 +1128,12 @@ function Overlay(props: {
 					)
 				)
 			)}
-			{(Option.isSome(hovered) || Option.isSome(props.ground.info)) && Option.isNone(hover) && (
+			{(Option.isSome(hovered) || Option.isSome(ground.info)) && Option.isNone(hover) && (
 				<div
 					className="absolute top-(--y) left-(--x)"
-					style={{'--x': `${props.ground.x}px`, '--y': `${props.ground.y}px`}}
+					style={{'--x': `clamp(132px, ${ground.x}px, calc(100% - 132px))`, '--y': `${Number.max(120, ground.y)}px`}}
 				>
-					<GroundCard building={hovered} info={props.ground.info} />
+					<GroundCard building={hovered} info={ground.info} />
 				</div>
 			)}
 		</div>
@@ -1173,7 +1177,15 @@ function useMapGestures(props: {
 				Option.flatMap(props.world, active => active.cast.pick(event.clientX, event.clientY)),
 				id => Array.some(props.view.frame.units, unit => unit.id === id)
 			),
-			{onNone: () => undefined, onSome: props.onPick}
+			{
+				onNone: () =>
+					Option.match(props.world, {
+						onNone: () => undefined,
+						onSome: active =>
+							props.onGround(active.renderer.inspect(event.clientX, event.clientY), event.clientX, event.clientY)
+					}),
+				onSome: props.onPick
+			}
 		)
 	}
 
@@ -1255,12 +1267,7 @@ function World(props: {seed: number; view: View}) {
 	const canvas = useRef<HTMLCanvasElement>(null)
 	const [world, setWorld] = useState(Option.none<{cast: Cast; renderer: Renderer}>)
 	// The tile under the pointer, what the chunk worker said lies on it, and the pointer's place on screen.
-	const [ground, setGround] = useState({
-		at: Option.none<{x: number; z: number}>(),
-		info: Option.none<Inspected>(),
-		x: 0,
-		y: 0
-	})
+	const setGround = useAtomSet(groundAtom)
 	const [follow, setFollow] = useAtom(followAtom)
 	const [team, setTeam] = useAtom(teamAtom)
 	const [source, setSource] = useAtom(sourceAtom)
@@ -1421,7 +1428,7 @@ function World(props: {seed: number; view: View}) {
 			cast.dispose()
 			renderer.dispose()
 		}
-	}, [registry, props.seed])
+	}, [registry, props.seed, setGround])
 
 	function followUnit(id: number) {
 		const unit = Option.getOrUndefined(Array.findFirst(props.view.frame.units, entry => entry.id === id))
@@ -1439,15 +1446,28 @@ function World(props: {seed: number; view: View}) {
 		world
 	})
 
+	function locateEntity(id: number, tick: number) {
+		if (id < 0) {
+			setFollow({free: Option.some(tileOf(-1 - id)), id: Option.none(), overview: false})
+		} else {
+			const building = Array.findFirst(props.view.buildings, entry => entry.id === id)
+			setFollow({
+				free: Option.map(building, entry => ({x: entry.x + entry.w / 2, z: entry.z + entry.d / 2})),
+				id: Option.filter(Option.some(id), () => Option.isNone(building)),
+				overview: false
+			})
+		}
+		if (id > 0 && !Array.some(props.view.buildings, entry => entry.id === id)) {
+			setPanel(Option.some('history'))
+		}
+		if (tick !== props.view.frame.tick) setSource(Option.some({from: tick, speed: 0}))
+		Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.centre()})
+	}
+
 	return (
 		<Navigation
 			value={{
-				entity: (id, tick) => {
-					setFollow({free: Option.none(), id: Option.some(id), overview: false})
-					setPanel(Option.some('history'))
-					if (tick !== props.view.frame.tick) setSource(Option.some({from: tick, speed: 0}))
-					Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.centre()})
-				},
+				entity: locateEntity,
 				place: (x, z, tick) => {
 					setFollow({free: Option.some({x, z}), id: follow.id, overview: false})
 					if (tick !== props.view.frame.tick) setSource(Option.some({from: tick, speed: 0}))
@@ -1471,7 +1491,7 @@ function World(props: {seed: number; view: View}) {
 						onPointerLeave={gestures.leave}
 						onWheel={gestures.wheel}
 					/>
-					<Overlay ground={ground} buildings={props.view.buildings} units={props.view.frame.units} />
+					<Overlay buildings={props.view.buildings} units={props.view.frame.units} />
 					{Option.getOrUndefined(
 						Option.map(panel, pickedPanel => (
 							<Sidebar
@@ -1535,10 +1555,7 @@ function World(props: {seed: number; view: View}) {
 							⌖
 						</Button>
 						<span className="text-muted-foreground pl-2">
-							{Boolean.match(props.view.frame.paused === true, {
-								onFalse: () => 'Spectator',
-								onTrue: () => 'Simulation stopped'
-							})}
+							{Boolean.match(props.view.frame.paused === true, {onFalse: () => 'Spectator', onTrue: () => 'Stopped'})}
 						</span>
 					</Panel>
 					<Panel label="Map" className="top-4 right-4 hidden w-94.5 lg:block">
@@ -1589,6 +1606,12 @@ function Signal() {
 	const result = useAtomValue(hudAtom)
 	return (
 		<main className="relative h-dvh w-dvw overflow-hidden font-mono text-xs select-none">
+			{Option.getOrUndefined(
+				Option.map(
+					Option.flatMap(AsyncResult.value(result), view => Option.fromUndefinedOr(view.frame.problem)),
+					text => <Status>{text}</Status>
+				)
+			)}
 			{/* The world stays on screen while its stream starts over, as a replay begins or ends. */}
 			{Option.match(useAtomValue(seedAtom), {
 				onNone: () =>
@@ -1603,7 +1626,12 @@ function Signal() {
 								})
 						}
 					),
-				onSome: known => <World seed={known} view={Option.getOrElse(AsyncResult.value(result), () => EMPTY)} />
+				onSome: known => (
+					<>
+						<World seed={known} view={Option.getOrElse(AsyncResult.value(result), () => EMPTY)} />
+						{Option.getOrUndefined(Option.map(AsyncResult.error(result), error => <Status>{error.message}</Status>))}
+					</>
+				)
 			})}
 		</main>
 	)

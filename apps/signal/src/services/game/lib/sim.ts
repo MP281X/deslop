@@ -63,6 +63,7 @@ import type {
 	Explored,
 	Fact,
 	Job,
+	LocalDecision,
 	Mark,
 	MobKind,
 	Outcome,
@@ -150,6 +151,7 @@ const MUD = [GROUND.mud, GROUND.mud2, GROUND.marsh, GROUND.reeds, GROUND.paddymu
 const SWIMMABLE = [LIQUID.water, LIQUID.lagoon, LIQUID.spring]
 // A chunk's explored tiles, a bit each.
 const CHUNK_BYTES = (CHUNK * CHUNK) / 8
+export const SIMULATION = 1
 
 // A unit and a building as the world runs them: their step and construction as machine snapshots, encoded only in a save.
 type Unit = Types.Mutable<Omit<SavedUnit, 'task'>> & {task: Task}
@@ -524,11 +526,9 @@ function newBuilding(id: number, team: number, kind: Kind, at: Point, dir: Direc
 		dir,
 		fuel: 0,
 		id,
-		incoming: {},
 		kind,
 		output: {},
 		progress: -1,
-		reserved: {},
 		site,
 		stock: {},
 		team,
@@ -543,7 +543,7 @@ export const makeSim = Effect.fnUntraced(
 		const start = yield* START_STATES
 		const seed = Option.match(saved, {onNone: () => fresh, onSome: previous => previous.seed})
 		const world = makeWorld(seed)
-		const life = makeLife(Option.getOrUndefined(saved)?.life)
+		const life = makeLife(Option.getOrUndefined(saved)?.life, Option.getOrUndefined(saved)?.pendingExperiences)
 		const spawns = world.spawns()
 		const state = {draws: 0, nextId: 1, raidAt: 360, searches: 0, tick: 0, wildId: 1_000_000_000}
 		const units = MutableHashMap.empty<number, Unit>()
@@ -939,6 +939,7 @@ export const makeSim = Effect.fnUntraced(
 					form: building.kind,
 					id: building.id,
 					kind: 'storage',
+					stage: building.site.state.path,
 					...centreOf(building),
 					items: Record.fromEntries(
 						Array.map(Array.dedupe([...itemsIn(building.stock), ...itemsIn(building.output)]), item => [
@@ -1022,6 +1023,7 @@ export const makeSim = Effect.fnUntraced(
 								form: store.kind,
 								id: store.id,
 								kind: 'storage',
+								stage: store.site.state.path,
 								...centreOf(store),
 								text: `An uninspected ${store.kind} #${store.id}. Contents unknown.`
 							},
@@ -1670,6 +1672,12 @@ export const makeSim = Effect.fnUntraced(
 		function attack(body: Body, target: number, strength: number) {
 			const to = Option.getOrUndefined(entity(target))
 			if (to === undefined || to.health <= 0 || distance(body, to) > 12 * daylightAt(state.tick)) return false
+			const attacker = unitOf(body.id)
+			if (attacker !== undefined) {
+				attacker.aim = Math.atan2(to.x - body.x, to.z - body.z)
+				attacker.act = 'attack'
+				attacker.doing = `confronting #${target}`
+			}
 			if (distance(body, to) > 2.5) {
 				if (unitOf(body.id) === undefined) {
 					moveCreature(body.id, to, 0.9)
@@ -1859,17 +1867,8 @@ export const makeSim = Effect.fnUntraced(
 			})
 		}
 
-		// How many of an item can be taken out of a building: a store's stock but what is set aside, anything else's output.
-		function availableIn(building: Building, item: ItemId) {
-			if (!complete(building)) return 0
-			if (Schema.is(BuildingKind)(building.kind) && Array.contains(STORES, building.kind)) {
-				return Number.max(0, countOf(building.stock, item) - countOf(building.reserved, item))
-			}
-			return countOf(building.output, item)
-		}
-
 		// Moves a count of an item in or out of one of a building's tallies.
-		function adjust(id: number, tally: 'incoming' | 'output' | 'reserved' | 'stock', item: ItemId, by: number) {
+		function adjust(id: number, tally: 'output' | 'stock', item: ItemId, by: number) {
 			const building = buildingOf(id)
 			if (building !== undefined) building[tally] = withItem(building[tally], item, by)
 		}
@@ -1895,24 +1894,6 @@ export const makeSim = Effect.fnUntraced(
 			return fromOutput + fromStock
 		}
 
-		function storesOf(team: number) {
-			return Array.filter(
-				buildingsOf(team),
-				building =>
-					Schema.is(BuildingKind)(building.kind) && Array.contains(STORES, building.kind) && complete(building)
-			)
-		}
-
-		function nearestBuilding(from: Point, among: Building[]) {
-			return Option.map(
-				nearest(
-					from,
-					Array.map(among, building => ({...centreOf(building), building}))
-				),
-				entry => entry.building
-			)
-		}
-
 		/* ───────── units: standing orders, the steps they take and what each step does ───────── */
 
 		function cargoOf(unit: Unit) {
@@ -1927,21 +1908,17 @@ export const makeSim = Effect.fnUntraced(
 		function release(id: number) {
 			const unit = unitOf(id)
 			if (unit === undefined) return
-			if (unit.claim !== undefined) {
-				adjust(unit.claim.site, 'incoming', unit.claim.item, -unit.claim.count)
-				if (unit.claim.from !== undefined) adjust(unit.claim.from, 'reserved', unit.claim.item, -unit.claim.count)
-			}
 			unit.claim = undefined
 			for (const entry of Array.filter(Array.fromIterable(clearing), pair => pair[1] === id)) {
 				MutableHashMap.remove(clearing, entry[0])
 			}
 		}
 
-		function localDecision(id: number, choice: string) {
+		function localDecision(id: number, choice: string, request?: LocalDecision) {
 			const body = Option.getOrUndefined(entity(id))
 			if (body === undefined || body.health <= 0) return
 			const unit = unitOf(id)
-			const offered = life.local(body, state.tick, unit !== undefined && connected(unit))
+			const offered = request ?? life.local(body, state.tick, unit !== undefined && connected(unit))
 			if (!Record.has(offered.choices, choice)) return
 			const own = life.person(id, state.tick)
 			if (unit === undefined) MutableHashSet.add(dirtyWild, id)
@@ -1953,19 +1930,13 @@ export const makeSim = Effect.fnUntraced(
 				Match.value(action),
 				Match.when('survey', () => {
 					if (unit === undefined || !connected(unit)) return
-					for (const entry of exploredOf(-id)) {
-						bitsOf(exploredOf(unit.team), entry[0]).bits = Uint8Array.from(
-							bitsOf(exploredOf(unit.team), entry[0]).bits,
-							(byte, index) => byte | (entry[1].bits[index] ?? 0)
-						)
-					}
 					life.report(
 						body,
 						state.tick,
-						'Shared a terrain survey and its resource observations.',
+						'Shared personally observed resources, preserving their age.',
 						Array.filter(own.facts, fact => fact.kind === 'resource')
 					)
-					notify(unit.team, `Terrain survey received from #${id}; its observations may be stale.`)
+					notify(unit.team, `Resource survey received from #${id}; its observations may be stale.`)
 				}),
 				Match.whenOr('report', 'addresses', mode => {
 					if (unit === undefined || !connected(unit)) return
@@ -1996,7 +1967,10 @@ export const makeSim = Effect.fnUntraced(
 					if (unit === undefined || own.pending === undefined) return
 					release(id)
 					unit.order = own.pending
-					if (unit.order._tag === 'Refit') unit.upgrade = true
+					unit.upgrade = unit.order._tag === 'Refit'
+					if (unit.order._tag === 'Construct') {
+						own.projects = Array.dedupe([...(own.projects ?? []), unit.order.building])
+					}
 					unit.path = []
 					unit.task = start.planning
 					own.pending = undefined
@@ -2042,13 +2016,18 @@ export const makeSim = Effect.fnUntraced(
 						`Tracks near ${place2(trace)}: wear ${Number.round(trace.wear, 2)}, freshness ${Number.round(trace.fresh, 2)}; direction ${Number.round(trace.yaw, 1)}. Maker unknown.`
 					)
 				}),
-				Match.whenOr('inspect', 'take', intent => {
+				Match.whenOr('inspect', 'take', 'build', intent => {
 					if (unit === undefined || Option.isNone(target)) return
 					release(id)
-					unit.order = Boolean.match(intent === 'take', {
-						onFalse: () => ({_tag: 'Inspect' as const, building: Option.getOrThrow(target).id}),
-						onTrue: () => ({_tag: 'Loot' as const, building: Option.getOrThrow(target).id})
-					})
+					const building = Option.getOrThrow(target).id
+					unit.order = pipe(
+						Match.value(intent),
+						Match.when('take', () => ({_tag: 'Loot' as const, building})),
+						Match.when('build', () => ({_tag: 'Construct' as const, building})),
+						Match.orElse(() => ({_tag: 'Inspect' as const, building}))
+					)
+					if (intent === 'build') own.projects = Array.dedupe([...(own.projects ?? []), building])
+					unit.upgrade = false
 					unit.path = []
 					unit.task = start.planning
 					own.intent = 'continue'
@@ -2059,15 +2038,16 @@ export const makeSim = Effect.fnUntraced(
 
 		// Its cargo into the nearest store that takes it.
 		function unload(unit: Unit) {
-			const item = Option.getOrUndefined(Array.head(itemsIn(unit.cargo)))
-			if (item === undefined) return wait('nothing to unload')
 			return Option.match(
-				nearestBuilding(
+				nearest(
 					unit,
-					Array.filter(storesOf(unit.team), store => roomFor(store, item) > 0)
+					Array.filter(
+						life.person(unit.id, state.tick).facts,
+						fact => fact.form !== undefined && Array.contains(STORES, fact.form) && fact.stage !== 'Missing'
+					)
 				),
 				{
-					onNone: () => wait(`no store has room for ${item}`),
+					onNone: () => wait('No remembered storage; observe a container before delivering.'),
 					onSome: store => job({_tag: 'Dropoff', building: store.id})
 				}
 			)
@@ -2101,103 +2081,56 @@ export const makeSim = Effect.fnUntraced(
 			)
 		}
 
-		// What a site still lacks that nobody is bringing.
-		function lacking(site: Building) {
-			const cost = costOf(site.kind)
-			return Array.filter(
-				Array.map(itemsIn(cost), item => ({
-					count: countOf(cost, item) - countOf(site.stock, item) - countOf(site.incoming, item),
-					item
-				})),
-				entry => entry.count > 0
-			)
-		}
-
-		// A Builder with nothing ordered keeps the team's sites going: it brings back what it carries, repairs a teammate that is down, clears a site's footprint, brings a site what it lacks from a store, and builds a site whose items are all there; else it waits by Home.
+		// A private construction plan uses remembered sites and inspected supplies, never shared reservations.
 		function construct(id: number) {
 			const unit = unitOf(id)
 			if (unit === undefined) return wait('gone')
-			const carried = Option.getOrUndefined(
-				Option.flatMap(Option.fromUndefinedOr(unit.claim), claim =>
-					Option.filter(Option.fromUndefinedOr(buildingOf(claim.site)), site => !complete(site))
-				)
-			)
-			if (carried !== undefined && cargoOf(unit) > 0) return job({_tag: 'Dropoff', building: carried.id})
+			if (unit.claim !== undefined && cargoOf(unit) > 0) return job({_tag: 'Dropoff', building: unit.claim.site})
 			if (cargoOf(unit) > 0) return unload(unit)
-			const down = Option.getOrUndefined(
+			const own = life.person(id, state.tick)
+			const project = Option.getOrUndefined(
 				nearest(
 					unit,
 					Array.filter(
-						unitsOf(unit.team),
-						other => other.health <= 0 && distance(other, unit) < markOf(unit).sight * daylightAt(state.tick)
+						own.facts,
+						fact => Array.contains(own.projects ?? [], fact.id) && fact.stage !== 'Complete' && fact.stage !== 'Missing'
 					)
 				)
 			)
-			if (down !== undefined) return job({_tag: 'Repair', unit: down.id})
-			const open = Array.map(
-				Array.sort(
-					Array.map(
-						Array.filter(
-							buildingsOf(unit.team),
-							building =>
-								!complete(building) &&
-								(Array.some(life.person(id, state.tick).facts, fact => fact.id === building.id) ||
-									gapTo(building, unit) <= markOf(unit).sight * daylightAt(state.tick))
-						),
-						site => ({distance: distance(centreOf(site), unit), site})
-					),
-					byDistance
-				),
-				entry => entry.site
-			)
-			const first = Option.getOrUndefined(Array.head(open))
-			if (first !== undefined && gapTo(first, unit) > 1.5) {
-				return job({_tag: 'Inspect', building: first.id, ...centreOf(first)})
+			if (project === undefined) return park(unit)
+			const site = buildingOf(project.id)
+			if (site === undefined || gapTo(site, unit) > 1.5) {
+				return job({_tag: 'Inspect', building: project.id, x: project.x, z: project.z})
 			}
-			const prop = Option.getOrUndefined(
+			inspectStorage(living(unit), site)
+			if (complete(site)) return wait('The inspected project is already built.')
+			const obstacle = Option.getOrUndefined(Array.head(propsOn(site)))
+			if (obstacle !== undefined) return job({_tag: 'Clear', prop: obstacle.id, x: obstacle.x, z: obstacle.z})
+			if (Sites.root.matches(site.site, 'Constructing')) return job({_tag: 'Construct', site: site.id})
+			const need = Option.getOrUndefined(
 				Array.findFirst(
-					Array.flatMap(
-						Array.filter(open, (site: Building) => Sites.root.matches(site.site, 'Clearing')),
-						propsOn
-					),
-					entry =>
-						Option.match(MutableHashMap.get(clearing, entry.id), {onNone: () => true, onSome: holder => holder === id})
+					itemsIn(costOf(site.kind)),
+					candidate => countOf(site.stock, candidate) < countOf(costOf(site.kind), candidate)
 				)
 			)
-			if (prop !== undefined) {
-				MutableHashMap.set(clearing, prop.id, id)
-				return job({_tag: 'Clear', prop: prop.id, x: prop.x, z: prop.z})
-			}
-			const supply = Option.getOrUndefined(
-				Array.findFirst(
-					Array.flatMap(
-						Array.filter(open, site => Sites.root.matches(site.site, 'Supplying')),
-						(site: Building) => Array.map(lacking(site), need => ({need, site}))
-					),
-					entry =>
-						Option.map(
-							nearestBuilding(
-								centreOf(entry.site),
-								Array.filter(storesOf(unit.team), store => availableIn(store, entry.need.item) > 0)
-							),
-							store => ({...entry, store})
-						)
+			if (need === undefined) return wait('Waiting for the supplied site to be ready.')
+			const source = Option.getOrUndefined(
+				nearest(
+					unit,
+					Array.filter(
+						own.facts,
+						fact =>
+							fact.id !== site.id &&
+							fact.kind === 'storage' &&
+							fact.stage !== 'Missing' &&
+							(fact.items === undefined || countOf(fact.items, need) > 0)
+					)
 				)
 			)
-			if (supply !== undefined) {
-				const count = Number.min(
-					Number.min(supply.need.count, markOf(unit).cargo),
-					availableIn(supply.store, supply.need.item)
-				)
-				adjust(supply.site.id, 'incoming', supply.need.item, count)
-				adjust(supply.store.id, 'reserved', supply.need.item, count)
-				unit.claim = {count, from: supply.store.id, item: supply.need.item, site: supply.site.id}
-				return job({_tag: 'Pickup', building: supply.store.id, count, item: supply.need.item})
-			}
-			return Option.match(
-				Array.findFirst(open, site => Sites.root.matches(site.site, 'Constructing')),
-				{onNone: () => park(unit), onSome: site => job({_tag: 'Construct', site: site.id})}
-			)
+			if (source === undefined) return wait(`No remembered supply of ${need}; inspect storage or gather resources.`)
+			const count = Number.min(markOf(unit).cargo, countOf(costOf(site.kind), need) - countOf(site.stock, need))
+			unit.claim = {count, from: source.id, item: need, site: site.id}
+			return job({_tag: 'Pickup', building: source.id, count, item: need})
 		}
 
 		// The nearest thing a Builder digs or clears for an item round a place: ore on a field tile, a tree for wood, a rock or a stone tile for stone.
@@ -2339,6 +2272,7 @@ export const makeSim = Effect.fnUntraced(
 				},
 				Build: plan => job({_tag: 'Stake', ...Struct.omit(plan, ['_tag'])}),
 				Configure: order => rememberedInspection(unit, order.building, order.recipe),
+				Construct: () => construct(unit.id),
 				Explore: () =>
 					Option.match(frontier(unit), {
 						onNone: () => wait('nothing unseen in reach'),
@@ -2445,8 +2379,6 @@ export const makeSim = Effect.fnUntraced(
 		function built(id: number) {
 			const site = buildingOf(id)
 			if (site === undefined) return
-			site.stock = {}
-			site.incoming = {}
 			revision.buildings += 1
 			if (site.kind === 'road') setEdit(site.x, site.z, {_tag: 'Road'})
 			if (site.kind === 'bridge') {
@@ -2478,9 +2410,7 @@ export const makeSim = Effect.fnUntraced(
 			const inspected = buildingOf(step.building)
 			if (inspected !== undefined) inspectStorage(living(unit), inspected)
 			life.event(living(unit), state.tick, 'action', `Took ${got} ${step.item} from #${step.building}.`, step.building)
-			if (unit.claim !== undefined && unit.claim.from === step.building && buildingOf(step.building) !== undefined) {
-				adjust(step.building, 'reserved', unit.claim.item, -unit.claim.count)
-				adjust(unit.claim.site, 'incoming', unit.claim.item, got - unit.claim.count)
+			if (unit.claim !== undefined && unit.claim.from === step.building) {
 				unit.claim = {count: got, item: unit.claim.item, site: unit.claim.site}
 			}
 		}
@@ -2490,15 +2420,24 @@ export const makeSim = Effect.fnUntraced(
 			const unit = unitOf(id)
 			const container = buildingOf(building)
 			if (unit === undefined || container === undefined || gapTo(container, unit) > 1.5) return
+			const requested = Option.getOrUndefined(Option.filter(Option.some(unit.order), order => order._tag === 'Haul'))
 			const delivered = Array.reduce(itemsIn(unit.cargo), 0, (sum, item) => {
 				const given = put(building, item, countOf(unit.cargo, item))
 				unit.cargo = withItem(unit.cargo, item, -given)
-				return sum + given
+				return (
+					sum +
+					Boolean.match(
+						requested === undefined ||
+							requested._tag !== 'Haul' ||
+							requested.item === undefined ||
+							requested.item === item,
+						{onFalse: () => 0, onTrue: () => given}
+					)
+				)
 			})
 			inspectStorage(living(unit), container)
 			life.event(living(unit), state.tick, 'action', `Delivered ${delivered} items into #${building}.`, building)
 			if (unit.claim !== undefined && unit.claim.site === building) {
-				adjust(building, 'incoming', unit.claim.item, -unit.claim.count)
 				unit.claim = undefined
 			}
 			if (unit.order._tag === 'Haul' && unit.order.count !== undefined) {
@@ -2695,6 +2634,8 @@ export const makeSim = Effect.fnUntraced(
 						const placed = place(unit.team, blueprint.kind, blueprint, blueprint.dir ?? 'east')
 						const site = buildingOf(placed.id)
 						if (site !== undefined) {
+							const own = life.person(id, state.tick)
+							own.projects = Array.dedupe([...(own.projects ?? []), site.id])
 							life.inspect(
 								living(unit),
 								{
@@ -2702,6 +2643,7 @@ export const makeSim = Effect.fnUntraced(
 									id: site.id,
 									items: {},
 									kind: 'storage',
+									stage: site.site.state.path,
 									text: `Staked ${site.kind}; initially empty construction stock.`,
 									...centreOf(site)
 								},
@@ -2858,6 +2800,9 @@ export const makeSim = Effect.fnUntraced(
 					yield* advanceSite(site.id, {_tag: 'Cleared'})
 				}
 				if (site.site.state.path === 'Supplying' && covers(site.stock, costOf(site.kind))) {
+					for (const item of itemsIn(costOf(site.kind))) {
+						site.stock = withItem(site.stock, item, -countOf(costOf(site.kind), item))
+					}
 					yield* advanceSite(site.id, {_tag: 'Supplied', seconds: buildSeconds(site.kind)})
 					revision.buildings += 1
 				}
@@ -3235,6 +3180,11 @@ export const makeSim = Effect.fnUntraced(
 		}
 
 		// Home's line makes or refits one unit at a time, taking its items when it starts.
+		function presentForRefit(id: number, home: Building) {
+			const candidate = unitOf(id)
+			return candidate !== undefined && candidate.health > 0 && candidate.upgrade && gapTo(home, candidate) <= 2.5
+		}
+
 		function line(id: number) {
 			const team = teamOf(id)
 			if (team === undefined) return
@@ -3244,6 +3194,7 @@ export const makeSim = Effect.fnUntraced(
 				team.lineProgress = -1
 				return
 			}
+			if (head.unit !== undefined && !presentForRefit(head.unit, home)) return
 			const spec = UNITS[head.class].marks[head.mark] ?? UNITS[head.class].marks[0]
 			if (team.lineProgress < 0) {
 				if (!covers(home.stock, spec.cost)) return
@@ -3335,6 +3286,9 @@ export const makeSim = Effect.fnUntraced(
 					false,
 					`${command.kind} unlocks with ${tierOf(command.kind)} (${GATES[tierOf(command.kind)].name})`
 				)
+			}
+			if (command.to !== undefined && command.to.x !== command.x && command.to.z !== command.z) {
+				return outcome(command, false, 'A construction line must be straight along x or z.')
 			}
 			const laid = Option.match(Option.fromUndefinedOr(command.to), {
 				onNone: () => ({dir: command.dir ?? 'east', tiles: [{x: command.x, z: command.z}]}),
@@ -3530,7 +3484,7 @@ export const makeSim = Effect.fnUntraced(
 
 		// What taking a building down gives back: a built one's cost, a site's delivered items.
 		function refundOf(building: Building) {
-			if (complete(building)) return costOf(building.kind)
+			if (complete(building) || Sites.root.matches(building.site, 'Constructing')) return costOf(building.kind)
 			return building.stock
 		}
 
@@ -3562,16 +3516,6 @@ export const makeSim = Effect.fnUntraced(
 				return outcome(command, false, 'a built road, ramp or bridge stays')
 			}
 			const back = refundOf(building)
-			for (const unit of Array.filter(
-				unitsOf(team.id),
-				entry =>
-					entry.claim?.site === building.id ||
-					(entry.order._tag === 'Haul' && (entry.order.from === building.id || entry.order.to === building.id))
-			)) {
-				release(unit.id)
-				if (unit.order._tag === 'Haul') unit.order = {_tag: 'Auto'}
-				unit.task = start.planning
-			}
 			refund(team.id, building, back)
 			vacate(building)
 			MutableHashMap.remove(buildings, building.id)
@@ -4242,10 +4186,10 @@ export const makeSim = Effect.fnUntraced(
 				MutableHashMap.remove(connections, id)
 			},
 			discovered: (team: number) => Array.isReadonlyArrayNonEmpty(life.core(team).contacts),
-			evidence: (id: number, context: string, tokens: NonNullable<Entry['tokens']>) => {
+			evidence: (id: number, context: string, tokens: NonNullable<Entry['tokens']>, failure?: string) => {
 				const body = Option.getOrUndefined(entity(id))
 				if (body !== undefined) {
-					life.event(body, state.tick, 'decision', 'Local decision model response recorded.', undefined, {
+					life.event(body, state.tick, 'decision', failure ?? 'Local decision model response recorded.', undefined, {
 						context,
 						tokens
 					})
@@ -4325,6 +4269,7 @@ export const makeSim = Effect.fnUntraced(
 						mobs: saving.mobs,
 						nextId: state.nextId,
 						patches: Array.fromIterable(patches),
+						pendingExperiences: life.drain(),
 						pipes: Array.getSomes(
 							Array.map(pipes.nets, net =>
 								Option.zipWith(
@@ -4335,6 +4280,7 @@ export const makeSim = Effect.fnUntraced(
 							)
 						),
 						raidAt: state.raidAt,
+						rules: SIMULATION,
 						seed,
 						sides: Array.map(
 							Array.fromIterable(sides),

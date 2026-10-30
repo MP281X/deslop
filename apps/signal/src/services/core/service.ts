@@ -186,11 +186,11 @@ export class Core extends Context.Service<
 							yield* Effect.annotateCurrentSpan({
 								actor: request.actor,
 								cost: response.metadata.openrouter?.cost,
-								input: response.usage.inputTokens ?? 0,
+								input: response.usage.inputTokens,
 								kind: 'local',
 								mode,
 								model: response.modelId ?? 'typesafe/jev-1.14',
-								output: response.usage.outputTokens ?? 0,
+								output: response.usage.outputTokens,
 								seed
 							})
 							return {
@@ -198,8 +198,8 @@ export class Core extends Context.Service<
 								choice: response.answers.action.label,
 								confidence: response.answers.action.confidence,
 								cost: response.metadata.openrouter?.cost,
-								input: response.usage.inputTokens ?? 0,
-								output: response.usage.outputTokens ?? 0,
+								input: response.usage.inputTokens,
+								output: response.usage.outputTokens,
 								tick: request.tick
 							}
 						},
@@ -326,6 +326,7 @@ export class Core extends Context.Service<
 								tokens: Option.getOrUndefined(usage)
 							} satisfies Thought
 						},
+						Effect.timeout('85 seconds'),
 						Effect.mapError(cause =>
 							GameError.make({cause, message: 'The Core decision or durable conversation could not complete.'})
 						)

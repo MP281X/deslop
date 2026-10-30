@@ -1,6 +1,7 @@
 import {
 	Array,
 	Clock,
+	Cause,
 	Config,
 	Context,
 	Effect,
@@ -25,10 +26,11 @@ import {KeyValueStore} from 'effect/persistence'
 
 import type {Thought, LocalChoice} from '#services/core/schema.ts'
 import {Core} from '#services/core/service.ts'
-import {makeSim} from '#services/game/lib/sim.ts'
+import {makeSim, SIMULATION} from '#services/game/lib/sim.ts'
 import {FRAME_HZ, ROUND, TICK, TICK_HZ} from '#services/game/lib/utils.ts'
-import type {Command, Experience, Frame} from '#services/game/schema.ts'
+import type {Experience, Frame} from '#services/game/schema.ts'
 import {
+	Command,
 	Entry,
 	GameError,
 	HistoryIndex,
@@ -62,7 +64,11 @@ export class Game extends Context.Service<
 		// A team's thread, newest last: the rounds before `before`, or the latest.
 		readonly thread: (team: number, before: Option.Option<number>) => Effect.Effect<Entry[], GameError>
 		readonly timeline: Effect.Effect<Timeline>
-		readonly history: (actor: number, before: Option.Option<number>) => Effect.Effect<Experience[], GameError>
+		readonly history: (
+			actor: number,
+			before: Option.Option<number>,
+			at?: number
+		) => Effect.Effect<Experience[], GameError>
 	}
 >()('@deslop/signal/services/game/service/Game') {
 	static readonly layer = Layer.effect(
@@ -94,6 +100,7 @@ export class Game extends Context.Service<
 				yield* Effect.ignore(kv.clear, {log: 'Warn', message: 'Signal could not clear the old world'})
 			}
 			const sim = yield* Option.match(restored, {onNone: () => makeSim(Option.none(), fresh), onSome: Effect.succeed})
+			const fault = MutableRef.make(Option.none<GameError>())
 			const core = yield* Core
 			const scope = yield* Effect.scope
 			// Each team's decision under way, for the round it was asked in; and the entry its round opened with.
@@ -114,7 +121,13 @@ export class Game extends Context.Service<
 				{maximum: 4, minimum: 0}
 			)
 
+			const save = pipe(
+				Effect.flatMap(sim.snapshot, saved => worlds.set('world', saved)),
+				Effect.mapError(cause => GameError.make({cause, message: 'Simulation stopped: the world could not be saved.'}))
+			)
+
 			const keepHistory = Effect.fn('Game.keepHistory')(function* () {
+				yield* save
 				const events = sim.experiences()
 				for (const group of Record.toEntries(Array.groupBy(events, entry => `${entry.actor}`))) {
 					const actor = group[0]
@@ -155,6 +168,11 @@ export class Game extends Context.Service<
 				}))
 			)
 
+			const resumed = Option.getOrUndefined(yield* worlds.get('world'))
+			if (resumed?.rules !== SIMULATION) {
+				MutableRef.update(timeline, previous => ({...previous, live: sim.tick(), start: sim.tick()}))
+			}
+
 			const record = Effect.fn('Game.record')(function* (entry: Entry) {
 				MutableHashMap.set(
 					recent,
@@ -169,11 +187,6 @@ export class Game extends Context.Service<
 					Array.sort(Array.dedupe([...keys, keyOf(entry.team, entry.round)]), String.Order)
 				)
 			})
-
-			const save = pipe(
-				Effect.flatMap(sim.snapshot, saved => worlds.set('world', saved)),
-				Effect.catch(cause => Effect.logError('Signal could not save the world', cause))
-			)
 
 			// The world as a boundary leaves it, for replays to start from; the one six hours (720 rounds) older goes unless it is one of every forty kept for good.
 			const checkpoint = Effect.fn('Game.checkpoint')(
@@ -325,29 +338,31 @@ export class Game extends Context.Service<
 				yield* sim.run(1)
 				if (sim.tick() % TICK_HZ === 0) {
 					const completed = Array.filter(Array.fromIterable(local), entry => entry[1].fiber.pollUnsafe() !== undefined)
-					const applied = MutableList.make<{actor: number; choice: string; tick: number}>()
+					const applied = MutableList.make<NonNullable<Journal['locals']>[number]>()
 					for (const entry of completed) {
 						const result = entry[1].fiber.pollUnsafe()
 						MutableHashMap.remove(local, entry[0])
 						if (result !== undefined && Exit.isSuccess(result)) {
-							sim.decide(entry[0], result.value.choice)
+							sim.decide(entry[0], result.value.choice, entry[1].request)
 							sim.evidence(
 								entry[0],
 								yield* Schema.encodeEffect(Schema.fromJsonString(LocalDecision))(entry[1].request),
 								result.value
 							)
-							MutableList.append(applied, {actor: entry[0], choice: result.value.choice, tick: sim.tick()})
+							MutableList.append(applied, {
+								actor: entry[0],
+								choice: result.value.choice,
+								context: yield* Schema.encodeEffect(Schema.fromJsonString(LocalDecision))(entry[1].request),
+								request: entry[1].request,
+								tick: sim.tick(),
+								tokens: result.value
+							})
 						} else if (result !== undefined) {
+							const failure = Cause.pretty(result.cause)
+							sim.evidence(entry[0], entry[1].request.state, {}, failure)
+							MutableList.append(applied, {actor: entry[0], context: entry[1].request.state, failure, tick: sim.tick()})
 							yield* Effect.logWarning('A local decision failed; existing action continues', result)
 						}
-					}
-					if (Array.isArrayNonEmpty(MutableList.toArray(applied))) {
-						yield* journals.set(`local/${padded(sim.tick())}`, {
-							applied: [],
-							locals: MutableList.toArray(applied),
-							marks: [],
-							round: Math.floor(sim.tick() / ROUND)
-						})
 					}
 					for (const request of Array.take(
 						Array.sortWith(
@@ -357,13 +372,23 @@ export class Game extends Context.Service<
 						),
 						Number.min(localBudget, Number.max(0, 4 - MutableHashMap.size(local)))
 					)) {
-						sim.individual(request.actor).next = sim.tick() + 20 * TICK_HZ
+						const deadline = sim.tick() + 60 * TICK_HZ
+						sim.individual(request.actor).next = deadline
+						MutableList.append(applied, {actor: request.actor, next: deadline, tick: sim.tick()})
 						MutableHashMap.set(local, request.actor, {
 							fiber: yield* Effect.forkIn(core.choose(sim.seed, request), scope),
 							request
 						})
 					}
 
+					if (Array.isArrayNonEmpty(MutableList.toArray(applied))) {
+						yield* journals.set(`local/${padded(sim.tick())}`, {
+							applied: [],
+							locals: MutableList.toArray(applied),
+							marks: [],
+							round: Math.floor(sim.tick() / ROUND)
+						})
+					}
 					yield* keepHistory()
 				}
 				if (sim.tick() % ROUND === 0) yield* boundary(sim.tick() / ROUND)
@@ -371,6 +396,7 @@ export class Game extends Context.Service<
 
 			// The world keeps time with the wall clock in whole ticks; a server that fell more than two seconds behind skips the rest rather than racing to catch up.
 			const advance = Effect.gen(function* () {
+				if (Option.isSome(MutableRef.get(fault))) return
 				const now = yield* Clock.currentTimeMillis
 				const from = MutableRef.get(started)
 				const due = from.tick + Math.floor((now - from.at) / (TICK * 1000)) - sim.tick()
@@ -383,17 +409,28 @@ export class Game extends Context.Service<
 
 			// A fresh world keeps its first moment, so the timeline starts there.
 			if (running) {
-				if (sim.tick() === 0) yield* checkpoint(0)
-				yield* Effect.forkScoped(Effect.repeat(advance, Schedule.spaced(`${TICK * 1000} millis`)))
-				yield* Effect.forkScoped(Effect.repeat(save, Schedule.spaced('15 seconds')))
-				yield* Effect.addFinalizer(() => save)
+				yield* checkpoint(Math.floor(sim.tick() / ROUND))
+				yield* Effect.forkScoped(
+					Effect.repeat(
+						Effect.catch(advance, error =>
+							Effect.gen(function* () {
+								MutableRef.set(fault, Option.some(error))
+								for (const pending of MutableHashMap.values(local)) yield* Fiber.interrupt(pending.fiber)
+								for (const pending of MutableHashMap.values(thinking)) yield* Fiber.interrupt(pending.fiber)
+								yield* Effect.logError('Simulation stopped after a persistence or simulation failure', error)
+							})
+						),
+						Schedule.spaced(`${TICK * 1000} millis`)
+					)
+				)
+				yield* Effect.addFinalizer(() => Effect.ignore(save, {log: 'Error', message: 'Final Signal save failed'}))
 			}
 
 			// The latest checkpoint at or before a round, searching back on the checkpoint rounds.
-			const checkpointBefore = Effect.fnUntraced(function* (round: number) {
-				for (const at of Array.reverse(Array.range(0, Math.floor(round / CHECKPOINT)))) {
+			const checkpointBefore = Effect.fnUntraced(function* (from: number) {
+				for (const at of Array.reverse(Array.range(0, Math.floor(from / ROUND / CHECKPOINT)))) {
 					const found = yield* worlds.get(`checkpoint/${padded(at * CHECKPOINT)}`)
-					if (Option.isSome(found)) return found
+					if (Option.exists(found, saved => saved.tick <= from && saved.rules === SIMULATION)) return found
 				}
 				return Option.none<Saved>()
 			})
@@ -401,14 +438,29 @@ export class Game extends Context.Service<
 			// A replay's own world: the checkpoint before `from`, run on with the journal's commands at each boundary.
 			const replayFrom = Effect.fnUntraced(
 				function* (from: number) {
+					if (from < MutableRef.get(timeline).start) {
+						return yield* GameError.make({
+							message: 'This time predates the current simulation rules; original histories remain available.'
+						})
+					}
 					const start = Option.filter(
-						yield* checkpointBefore(Math.floor(from / ROUND)),
+						yield* Option.match(
+							Option.filter(Option.some(from), tick => tick === sim.tick()),
+							{onNone: () => checkpointBefore(from), onSome: () => Effect.asSome(sim.snapshot)}
+						),
 						found => found.generator === GENERATOR
 					)
 					if (Option.isNone(start)) {
 						return yield* GameError.make({message: 'The replay has no checkpoint that early.'})
 					}
 					const replayed = yield* makeSim(start, 0)
+					function playLocal(choice: NonNullable<Journal['locals']>[number]) {
+						if (choice.choice !== undefined) replayed.decide(choice.actor, choice.choice, choice.request)
+						if (choice.context !== undefined) {
+							replayed.evidence(choice.actor, choice.context, choice.tokens ?? {}, choice.failure)
+						}
+						if (choice.next !== undefined) replayed.individual(choice.actor).next = choice.next
+					}
 					const step = Effect.gen(function* () {
 						yield* replayed.run(1)
 						// Every hundred ticks it yields while it catches up, so the live world keeps time.
@@ -418,7 +470,7 @@ export class Game extends Context.Service<
 								onNone: () => [],
 								onSome: found => found.locals ?? []
 							})) {
-								replayed.decide(choice.actor, choice.choice)
+								playLocal(choice)
 							}
 						}
 						if (replayed.tick() % ROUND !== 0) return
@@ -426,7 +478,7 @@ export class Game extends Context.Service<
 							onNone: () => [],
 							onSome: found => found.applied
 						})) {
-							replayed.apply(entry.team, [...entry.commands])
+							replayed.apply(entry.team, Array.filter(entry.commands, Schema.is(Command)))
 						}
 						// The models' notices are not part of the replay.
 						for (const team of replayed.teams()) replayed.observe(team)
@@ -447,7 +499,7 @@ export class Game extends Context.Service<
 
 			return Game.of({
 				history: Effect.fn('Game.history')(
-					function* (actor: number, before: Option.Option<number>) {
+					function* (actor: number, before: Option.Option<number>, at = 9_007_199_254_740_991) {
 						const count = MutableRef.get(historyIndex)[`${actor}`] ?? 0
 						const found = MutableList.make<Experience>()
 						MutableList.appendAll(
@@ -455,15 +507,31 @@ export class Game extends Context.Service<
 							Array.filter(
 								sim.experiences(),
 								entry =>
-									entry.actor === actor && Option.match(before, {onNone: () => true, onSome: id => entry.id < id})
+									entry.actor === actor &&
+									entry.tick <= at &&
+									Option.match(before, {onNone: () => true, onSome: id => entry.id < id})
 							)
 						)
-						for (const page of Array.reverse(Array.range(0, Math.floor(Number.max(0, count - 1) / 100)))) {
+						const bounds = {high: Math.floor(Number.max(0, count - 1) / 100), low: 0}
+						while (bounds.low < bounds.high) {
+							const middle = Math.ceil((bounds.low + bounds.high) / 2)
+							if (
+								Option.exists(
+									Array.head(Option.getOrElse(yield* histories.get(`history/${actor}/${padded(middle)}`), () => [])),
+									entry => entry.tick > at || Option.exists(before, cursor => entry.id >= cursor)
+								)
+							) {
+								bounds.high = middle - 1
+							} else {
+								bounds.low = middle
+							}
+						}
+						for (const page of Array.reverse(Array.range(0, bounds.low))) {
 							MutableList.prependAll(
 								found,
 								Array.filter(
 									Option.getOrElse(yield* histories.get(`history/${actor}/${padded(page)}`), () => []),
-									entry => Option.match(before, {onNone: () => true, onSome: id => entry.id < id})
+									entry => entry.tick <= at && Option.match(before, {onNone: () => true, onSome: id => entry.id < id})
 								)
 							)
 							if (found.length >= 100) return Array.takeRight(MutableList.toArray(found), 100)
@@ -483,7 +551,11 @@ export class Game extends Context.Service<
 							Stream.tick(`${1000 / FRAME_HZ} millis`),
 							Stream.mapEffect(() =>
 								Effect.map(Clock.currentTimeMillis, now =>
-									Option.map(sim.frame(id, now), frame => ({...frame, paused: !running}))
+									Option.map(sim.frame(id, now), frame => ({
+										...frame,
+										paused: !running || Option.isSome(MutableRef.get(fault)),
+										problem: Option.getOrUndefined(Option.map(MutableRef.get(fault), error => error.message))
+									}))
 								)
 							),
 							Stream.flatMap(frame => Stream.fromIterable(Option.toArray(frame)))
