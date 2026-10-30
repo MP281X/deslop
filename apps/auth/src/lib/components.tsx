@@ -15,6 +15,7 @@ import {
 	appNames,
 	appsAtom,
 	avatarUrl,
+	clientKey,
 	clientLabel,
 	consentAtom,
 	disconnectAtom,
@@ -130,10 +131,11 @@ function Cell(props: {app: string; client: string; now: number; signIns: SignedI
 // The waiting sign-in as the grid's top row: an outlined cell for each app it asks for.
 function PendingRow(props: {columns: string[]; request: PendingAuthorization}) {
 	const asked = appNames(props.request.resources)
+	const client = clientLabel(props.request)
 	return (
 		<tr>
-			<th scope="row" className="text-primary truncate pr-2 text-left text-xs font-normal">
-				{clientLabel(props.request)}
+			<th scope="row" className="text-primary pr-2 text-left text-xs font-normal wrap-anywhere">
+				{client}
 			</th>
 			{Array.map(props.columns, column =>
 				Boolean.match(Array.contains(asked, column), {
@@ -141,13 +143,13 @@ function PendingRow(props: {columns: string[]; request: PendingAuthorization}) {
 						<td
 							key={column}
 							className="text-muted-foreground/40 text-center"
-							aria-label={`${clientLabel(props.request)} does not ask for ${column}`}
+							aria-label={`${client} does not ask for ${column}`}
 						>
 							·
 						</td>
 					),
 					onTrue: () => (
-						<td key={column} className="p-0.5" aria-label={`${clientLabel(props.request)} asks for ${column}`}>
+						<td key={column} className="p-0.5" aria-label={`${client} asks for ${column}`}>
 							<span className="border-primary text-primary flex h-9 items-center justify-center border text-xs">
 								new
 							</span>
@@ -175,10 +177,11 @@ function Answer(props: {request: PendingAuthorization}) {
 			<div className="grid grid-cols-2 gap-1.5 text-xs">
 				<Button
 					size="lg"
+					aria-label={`Approve ${clientLabel(props.request)}`}
 					disabled={AsyncResult.isWaiting(consent)}
 					onClick={() => respond({accept: true, request: props.request})}
 				>
-					Approve {clientLabel(props.request)}
+					Approve
 				</Button>
 				<Button
 					size="lg"
@@ -204,7 +207,7 @@ export function SignedInGrid(props: {pending: Option.Option<PendingAuthorization
 		String.Order
 	)
 	const rows = pipe(
-		Array.groupBy(apps, clientLabel),
+		Array.groupBy(apps, clientKey),
 		Record.toEntries,
 		Array.sort(Order.flip(Order.mapInput(Order.Number, (entry: [string, SignedInApp[]]) => newest(entry[1]))))
 	)
@@ -241,14 +244,14 @@ export function SignedInGrid(props: {pending: Option.Option<PendingAuthorization
 							})}
 							{Array.map(rows, row => (
 								<tr key={row[0]}>
-									<th scope="row" className="text-muted-foreground truncate pr-2 text-left text-xs font-normal">
-										{row[0]}
+									<th scope="row" className="text-muted-foreground pr-2 text-left text-xs font-normal wrap-anywhere">
+										{clientLabel({clientName: row[0]})}
 									</th>
 									{Array.map(columns, column => (
 										<Cell
 											key={column}
 											app={column}
-											client={row[0]}
+											client={clientLabel({clientName: row[0]})}
 											now={now}
 											signIns={Array.filter(row[1], app => Array.contains(appNames(app.resources), column))}
 										/>
