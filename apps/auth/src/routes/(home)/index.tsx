@@ -11,9 +11,9 @@ import {Loading} from '@deslop/components-web/fallbacks'
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
 
 import {SignedInGrid} from '#lib/components.tsx'
-import {CODE_LENGTH, clientLabel, codeAtom, consentAtom, linkedCodeAtom} from '#lib/utils.ts'
-import {typedCode} from '#services/authorizations/lib/utils.ts'
-import type {PendingAuthorization} from '#services/authorizations/schema.ts'
+import {clientLabel, codeAtom, consentAtom, linkedCodeAtom} from '#lib/utils.ts'
+import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
+import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 
 type Answer = {accept: boolean; request: PendingAuthorization}
 

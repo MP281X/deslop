@@ -53,6 +53,8 @@ export type Connection = typeof Connection.Type
 export const Connection = Schema.Struct({
 	clientId: Schema.optionalKey(Schema.NonEmptyString),
 	enabled: Schema.Boolean,
+	// Why the last connection or discovery failed, until one succeeds.
+	error: Schema.optionalKey(Schema.String),
 	expiresAt: Schema.Finite,
 	generation: Schema.NonEmptyString,
 	id: ServerId,
@@ -68,12 +70,17 @@ export const Connection = Schema.Struct({
 export type ConnectionInfo = typeof ConnectionInfo.Type
 export const ConnectionInfo = Schema.Struct({
 	connected: Schema.Boolean,
+	error: Schema.optionalKey(Schema.String),
 	id: ServerId,
 	name: Schema.NonEmptyString,
 	status: Schema.Literals(['Connected', 'Not connected', 'Expired']),
 	tools: Schema.optionalKey(Schema.Int),
 	url: ServerUrl
 })
+
+// What a discovery found: the tool count clears an earlier failure; a failure keeps the last count.
+export type Discovery = typeof Discovery.Type
+export const Discovery = Schema.TaggedUnion({Discovered: {tools: Schema.Int}, Failed: {error: Schema.String}})
 
 export type Pending = typeof Pending.Type
 export const Pending = Schema.Struct({

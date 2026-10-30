@@ -113,7 +113,8 @@ export const previewAuth = Effect.fnUntraced(function* (
 				if (next.origin !== origin || next.username !== '' || next.password !== '') return yield* expired()
 				if (Option.isNone(address(request.headers))) {
 					if (request.headers['host'] !== new URL(resource).host) return yield* expired()
-					return HttpServerResponse.redirect(`${AUTH_URL}/auth/github?${new URLSearchParams({next: next.href})}`)
+					// Auth offers GitHub or a code another device approves, then returns here.
+					return HttpServerResponse.redirect(`${AUTH_URL}/?${new URLSearchParams({next: next.href})}`)
 				}
 				const callback = `${origin}/auth/callback`
 				const registration = yield* pipe(

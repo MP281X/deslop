@@ -211,7 +211,7 @@ T3's desktop app and the iOS Simulator; it builds nothing, the simulator app com
 
 ## MCP sign-in
 
-Codex reads `dual`, `scope`, `stash`, `auth` and `mobbin` from the installed configuration and keeps OAuth sign-ins in the Secret Service keyring. D-Bus starts that keyring only through its unit: Debian's default activation starts a locked daemon whose unlock prompt cannot open headless, and every Codex start then waits on it forever. Claude keeps locally registered MCP servers in `~/.claude.json`; register the following on each worker once the installed `.claude/settings.json` allows them. Mobbin uses the shared Claude connector instead.
+Every harness registers one MCP server, Auth's combined gateway at `https://auth.mp281x.xyz/mcp`. Provider servers (Scope, Stash, Trips, Dual, Mobbin) live on its [MCP page](https://auth.mp281x.xyz/mcp-servers), each connected once for every worker and harness; `list_mcp_connections` names why a connection or discovery failed. Codex reads `auth` from the installed configuration and keeps OAuth sign-ins in the Secret Service keyring. D-Bus starts that keyring only through its unit: Debian's default activation starts a locked daemon whose unlock prompt cannot open headless, and every Codex start then waits on it forever. Claude keeps locally registered MCP servers in `~/.claude.json`; register Auth on each worker.
 
 ```bash
 sudo apt-get install -y gnome-keyring libsecret-tools
@@ -224,37 +224,22 @@ printf '%s\n' '[D-BUS Service]' 'Name=org.freedesktop.secrets' 'Exec=/bin/false'
   > ~/.local/share/dbus-1/services/org.freedesktop.secrets.service
 busctl --user call org.freedesktop.DBus / org.freedesktop.DBus ReloadConfig
 systemctl --user daemon-reload && systemctl --user enable --now secret-service.service
-claude mcp add --transport http --scope user dual https://app.dualos.ai/mcp
-claude mcp add --transport http --scope user scope https://scope.mp281x.xyz/mcp
-claude mcp add --transport http --scope user stash https://stash.mp281x.xyz/mcp
 claude mcp add --transport http --scope user auth https://auth.mp281x.xyz/mcp
 ```
 
-**Scope, Stash and Auth.** Run the native login on its worker and open its printed authorization URL in that worker's T3 preview. Read the page's code and approve the sign-in through the Auth MCP. If Auth itself needs its initial sign-in, the user scans the QR or enters the code at https://auth.mp281x.xyz. The waiting page completes the local callback. Repeat separately for each client and worker, replacing `scope` with `stash` and `auth`.
+**Harness sign-in** needs no browser and no tunnel. On the worker running the CLI, start the login in the background, read its code from the authorize redirect, then wait for the answer with the same cookie; the wait answers 408 every 50 seconds until the sign-in is answered, and then follows to the CLI's loopback callback. A sign-in lives 10 minutes.
 
 ```bash
-codex mcp login --no-browser scope
-claude mcp login --no-browser scope
+codex mcp login --no-browser auth   # in the background; prints the authorize URL
+mkdir -p /tmp/<task> && curl -s -c /tmp/<task>/jar -o /dev/null -w '%{redirect_url}\n' '<authorize URL>'   # …/?request=WDJBMJHT
+curl -s -b /tmp/<task>/jar -L --retry 12 --retry-delay 1 -o /dev/null 'https://auth.mp281x.xyz/auth/continue?request=WDJBMJHT'   # in the background
 ```
 
-Keep the waiting page on the worker running the CLI: `127.0.0.1` in another machine's browser is not its callback. If the CLI has timed out or the request expired, start a new login; never approve a request the thread did not start. The client name is self-reported, not a verified worker identity.
+Approve with `answer_request` from any harness that already has Auth, since this thread started the sign-in; otherwise give the user only the code, to approve at https://auth.mp281x.xyz from any signed-in browser or phone. Repeat for `claude mcp login --no-browser auth` and on each worker. Never approve a request the thread did not start: the client name is self-reported, not a verified worker identity.
 
-**Dual and other external issuers.** In each worker's T3 terminal run the lines below one at a time, open each printed URL and approve access; the browser then fails to load `http://127.0.0.1:…/callback?…`, so copy that full address from the address bar and paste it into the terminal. The callback carries a one-use authorization code, not a reusable API token; no port forwarding is required.
+**Browser sign-in.** A browser profile without the user's GitHub, such as the Datapizza work profile, uses **Sign in with a code** at https://auth.mp281x.xyz and is approved the same way; every Deslop app sends signed-out browsers there. A provider whose own account lives in that profile, such as Dual, is then connected from its row on the MCP page in that profile.
 
-```bash
-codex mcp login --no-browser dual
-claude mcp login --no-browser dual
-```
-
-**Mobbin in Claude.** Connect the [verified connector](https://claude.ai/directory/connectors/mobbin) to the paid Mobbin account and sign each worker in with `claude auth login` on that Claude account; API-key and `claude setup-token` sessions do not import it. A local `mobbin` entry shadows the connector: `claude mcp remove mobbin --scope user`.
-
-The installed settings must not set `disableClaudeAiConnectors: true` in any scope. Once any `serverUrl` entry exists, every remote server needs a URL rule, including T3's `http://127.0.0.1:<port>/mcp`. `claude mcp list` shows `claude.ai Mobbin: ✔ Connected` when the connector loaded.
-
-**Mobbin in Codex.** Authorize `https://api.mobbin.com/mcp` separately on each worker with `codex mcp login --no-browser mobbin` and the callback procedure above; Claude's connector authorization does not transfer to Codex.
-
-`features.mcp_2026_07_28` (why in `.codex/global-config.toml`) is global: verify discovery for Dual, Scope and Stash when changing it. Check each worker's Mobbin sign-in with `codex mcp list`: `OAuth` means credentials are stored, `Not logged in` requires that worker's own authorization. Verify a real tool call separately.
-
-Verify Mobbin with one `search_screens` call with `mode: "standard"`; the default, `deep`, spends AI credits.
+Once any `serverUrl` entry exists, every remote server needs a URL rule, including T3's `http://127.0.0.1:<port>/mcp`. Check each worker's sign-in with `codex mcp list` and `claude mcp list`, and verify a real tool call separately; `features.mcp_2026_07_28` (why in `.codex/global-config.toml`) is global, so verify Auth's tool list when changing it. Verify Mobbin with one `mobbin__search_screens` call with `mode: "standard"`; the default, `deep`, spends AI credits.
 
 ## Git identity
 

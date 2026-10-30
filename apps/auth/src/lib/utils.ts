@@ -16,17 +16,18 @@ import {
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
-import {FetchHttpClient, HttpClient, HttpClientRequest} from 'effect/http'
+import {FetchHttpClient, HttpClient} from 'effect/http'
 import {Atom, AtomRpc} from 'effect/reactivity'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import {typedCode} from '#services/authorizations/lib/utils.ts'
-import type {Account, AdmitParams, SignedInApp} from '#services/authorizations/schema.ts'
-import {PendingAuthorization} from '#services/authorizations/schema.ts'
 import {ServerUrl} from '#services/connections/schema.ts'
+import type {Account, AdmitParams} from '#services/people/schema.ts'
+import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
+import {PendingAuthorization} from '#services/sign-ins/schema.ts'
+import type {SignedInApp} from '#services/tokens/schema.ts'
 
 export function mcpConnectUrl(id: string) {
 	return `/auth/mcp/connect?${new URLSearchParams({id})}`
@@ -62,8 +63,6 @@ export const accountAtom = Atom.keepAlive(
 		)
 	)
 )
-
-export const CODE_LENGTH = 8
 
 const Answered = {accept: Schema.Boolean, request: PendingAuthorization}
 
@@ -251,6 +250,7 @@ export const copyGatewayAtom = Atom.fn(() =>
 
 export const requestId = Option.fromNullishOr(new URLSearchParams(location.search).get('request'))
 
+// Once answered, the page continues where the answer is delivered: the app's callback, or this browser's session.
 export const requestAtom = Atom.family((request: string) =>
 	RpcClient.runtime.atom(
 		pipe(
@@ -261,7 +261,9 @@ export const requestAtom = Atom.family((request: string) =>
 			Stream.tap(status =>
 				pipe(
 					Match.value(status),
-					Match.tag('Completed', result => Effect.sync(() => location.assign(result.url))),
+					Match.tag('Decided', () =>
+						Effect.sync(() => location.assign(`/auth/continue?${new URLSearchParams({request})}`))
+					),
 					Match.orElse(() => Effect.void)
 				)
 			)
@@ -347,25 +349,34 @@ export function avatarUrl(id: string) {
 	return `https://avatars.githubusercontent.com/u/${String.replace('github:', '')(id)}?s=96`
 }
 
-export const consentAtom = authRuntime.fn((input: {accept: boolean; request: PendingAuthorization}, get) =>
+export const consentAtom = RpcClient.runtime.fn((input: {accept: boolean; request: PendingAuthorization}, get) =>
 	pipe(
-		HttpClientRequest.post('/api/auth/oauth2/consent'),
-		HttpClientRequest.bodyJson({accept: input.accept, request: input.request.id}),
-		Effect.flatMap(request => HttpClient.HttpClient.use(client => HttpClient.filterStatusOk(client).execute(request))),
-		Effect.andThen(Effect.sync(() => get.set(codeAtom.send, {_tag: 'Answered', ...input}))),
-		Effect.mapError(cause =>
-			AuthError.make({
-				cause,
-				message: 'Cannot answer the authorization request. It may have expired or already been answered.'
-			})
-		)
+		RpcClient,
+		Effect.flatMap(client => client('auth.answer', {accept: input.accept, request: input.request.id})),
+		Effect.andThen(Effect.sync(() => get.set(codeAtom.send, {_tag: 'Answered', ...input})))
 	)
 )
+
+// The page an app sent this browser to sign in from, carried through either way of signing in.
+const next = Option.fromNullishOr(new URLSearchParams(location.search).get('next'))
 
 export const signInAtom = Atom.fn(() =>
 	Effect.try({
 		catch: cause => AuthError.make({cause, message: 'Cannot start GitHub sign-in'}),
 		try: () => location.assign(`/auth/github${location.search}`)
+	})
+)
+
+export const codeSignInAtom = Atom.fn(() =>
+	Effect.try({
+		catch: cause => AuthError.make({cause, message: 'Cannot start the sign-in'}),
+		try: () =>
+			location.assign(
+				Option.match(next, {
+					onNone: () => '/auth/code',
+					onSome: page => `/auth/code?${new URLSearchParams({next: page})}`
+				})
+			)
 	})
 )
 

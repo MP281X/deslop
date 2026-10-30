@@ -24,6 +24,7 @@ import {
 	accountAtom,
 	approveLink,
 	clientLabel,
+	codeSignInAtom,
 	peopleAtom,
 	requestAtom,
 	requestCode,
@@ -32,7 +33,8 @@ import {
 	signOutAtom,
 	timeLabel
 } from '#lib/utils.ts'
-import type {Account, PendingAuthorization} from '#services/authorizations/schema.ts'
+import type {Account} from '#services/people/schema.ts'
+import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 
 // icon.png's 11×18 pixels as vectors, so its outline follows the theme instead of a white box.
 function Logo() {
@@ -55,7 +57,12 @@ function CodeCard(props: {request: PendingAuthorization}) {
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	return (
 		<section className="flex flex-1 flex-col items-center gap-6 pt-6 text-center" aria-label="Waiting sign-in">
-			<h2 className="text-xl font-semibold wrap-anywhere">{clientLabel(props.request)}</h2>
+			<h2 className="text-xl font-semibold wrap-anywhere">
+				{Boolean.match(props.request.kind === 'Browser', {
+					onFalse: () => clientLabel(props.request),
+					onTrue: () => 'Sign in this browser'
+				})}
+			</h2>
 			<a href={approveLink(props.request.id)} aria-label="Approve this sign-in" className="bg-foreground p-3">
 				<QrCode text={approveLink(props.request.id)} className="text-background size-44" />
 			</a>
@@ -67,9 +74,12 @@ function CodeCard(props: {request: PendingAuthorization}) {
 				<span className="bg-primary size-2 motion-safe:animate-pulse" aria-hidden="true" />
 				Waiting · until {timeLabel(props.request.expiresAt)}
 			</p>
-			<Button variant="ghost" size="sm" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
-				Approve on this device
-			</Button>
+			{props.request.kind === 'App' && (
+				<Button variant="ghost" size="sm" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
+					<GitHubIcon />
+					Approve here with GitHub
+				</Button>
+			)}
 		</section>
 	)
 }
@@ -80,9 +90,9 @@ function Waiting(props: {account: Option.Option<Account>; id: string}) {
 		useAtomSuspense(requestAtom(props.id)).value,
 		Match.value,
 		Match.tagsExhaustive({
-			Completed: () => (
+			Decided: () => (
 				<p className="text-muted-foreground text-sm" role="status">
-					Returning to the app…
+					Continuing…
 				</p>
 			),
 			Expired: () => (
@@ -167,8 +177,13 @@ function Signed(props: {account: Account}) {
 function Shell() {
 	const account = useAtomSuspense(accountAtom).value
 	const [signIn, startSignIn] = useAtom(signInAtom)
+	const [codeSignIn, startCodeSignIn] = useAtom(codeSignInAtom)
 	const [signOut, endSession] = useAtom(signOutAtom)
-	const error = Option.orElse(AsyncResult.error(signIn), () => AsyncResult.error(signOut))
+	const error = pipe(
+		AsyncResult.error(signIn),
+		Option.orElse(() => AsyncResult.error(codeSignIn)),
+		Option.orElse(() => AsyncResult.error(signOut))
+	)
 	return (
 		<>
 			<header className="flex items-center gap-2.5">
@@ -206,16 +221,26 @@ function Shell() {
 			</header>
 			{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting account={account} id={id} />})}
 			{Option.match(account, {
-				// A waiting sign-in offers GitHub as its last step, under the code.
+				// Without GitHub here, a code approved from another browser, a phone or an agent signs this browser in.
 				onNone: () =>
 					Option.isNone(requestId) && (
-						<Button size="lg" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
-							{Boolean.match(AsyncResult.isWaiting(signIn), {
-								onFalse: () => <GitHubIcon />,
-								onTrue: () => <LoaderCircle className="motion-safe:animate-spin" />
-							})}
-							Sign in with GitHub
-						</Button>
+						<div className="flex flex-col gap-2">
+							<Button size="lg" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
+								{Boolean.match(AsyncResult.isWaiting(signIn), {
+									onFalse: () => <GitHubIcon />,
+									onTrue: () => <LoaderCircle className="motion-safe:animate-spin" />
+								})}
+								Sign in with GitHub
+							</Button>
+							<Button
+								size="lg"
+								variant="secondary"
+								disabled={AsyncResult.isWaiting(codeSignIn)}
+								onClick={() => startCodeSignIn()}
+							>
+								Sign in with a code
+							</Button>
+						</div>
 					),
 				onSome: signed =>
 					Boolean.match(Option.isSome(requestId) && signed.role !== 'Waiting', {

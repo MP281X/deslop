@@ -41,21 +41,24 @@ import {ClientRegistration, TokenResponse, User} from '@deslop/runtime/auth/sche
 import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
 import {AUTH_URL, CurrentUser} from '@deslop/runtime/auth/utils'
 
-import {
-	AuthorizationStatus,
-	CodeParams,
-	ConsentParams,
-	FamilyParams,
-	PendingAuthorization,
-	Person,
-	Registration,
-	RequestParams,
-	SignedInApp
-} from '#services/authorizations/schema.ts'
-import {Authorizations} from '#services/authorizations/service.ts'
+import {HttpHandlers} from '#http/handlers.ts'
+import {Changes} from '#services/changes/service.ts'
 import {AddServer, ConnectionInfo, ServerParams} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway} from '#services/gateway/service.ts'
+import {GitHub} from '#services/github/service.ts'
+import {Members, Person} from '#services/people/schema.ts'
+import {People} from '#services/people/service.ts'
+import {
+	AnswerParams,
+	AuthorizationStatus,
+	CodeParams,
+	PendingAuthorization,
+	RequestParams
+} from '#services/sign-ins/schema.ts'
+import {SignIns} from '#services/sign-ins/service.ts'
+import {FamilyParams, Registration, SignedInApp, TokenState} from '#services/tokens/schema.ts'
+import {Tokens, layerStore} from '#services/tokens/service.ts'
 import {layerMcp} from '#tools/handlers.ts'
 
 const API = 'https://stash.mp281x.xyz'
@@ -325,6 +328,7 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 				pipe(
 					Layer.mergeAll(
 						me,
+						HttpHandlers,
 						layerMcp,
 						pipe(
 							HttpRouter.add(
@@ -338,6 +342,7 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 							),
 							Layer.provide(McpServer.McpServer.layer)
 						),
+						// What the waiting page's watch reads first.
 						HttpRouter.add(
 							'GET',
 							'/auth/request',
@@ -347,10 +352,7 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 									return yield* HttpServerResponse.schemaJson(AuthorizationStatus)(
 										yield* Effect.flatMap(
 											Stream.runHead(
-												(yield* Authorizations).wait(
-													params.request,
-													(yield* HttpServerRequest.HttpServerRequest).headers
-												)
+												(yield* SignIns).status(params.request, (yield* HttpServerRequest.HttpServerRequest).headers)
 											),
 											Effect.fromOption
 										)
@@ -423,10 +425,7 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 									'/apps',
 									Effect.gen(function* () {
 										return yield* HttpServerResponse.schemaJson(Schema.Array(SignedInApp))(
-											yield* Effect.flatMap(
-												Stream.runHead((yield* Authorizations).apps(yield* CurrentUser)),
-												Effect.fromOption
-											)
+											yield* Effect.flatMap(Stream.runHead((yield* Tokens).apps(yield* CurrentUser)), Effect.fromOption)
 										)
 									})
 								),
@@ -436,7 +435,20 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 									pipe(
 										Effect.gen(function* () {
 											const params = yield* HttpServerRequest.schemaSearchParams(FamilyParams)
-											yield* (yield* Authorizations).disconnect(params.family, yield* CurrentUser)
+											yield* (yield* Tokens).disconnect(params.family, yield* CurrentUser)
+											return HttpServerResponse.empty()
+										}),
+										Effect.catchTag('AuthError', () => Effect.succeed(HttpServerResponse.empty({status: 400})))
+									)
+								),
+								// The page's `auth.answer` RPC.
+								HttpRouter.add(
+									'POST',
+									'/answer',
+									pipe(
+										Effect.gen(function* () {
+											const input = yield* HttpServerRequest.schemaBodyJson(AnswerParams)
+											yield* (yield* SignIns).answer(input, yield* CurrentUser)
 											return HttpServerResponse.empty()
 										}),
 										Effect.catchTag('AuthError', () => Effect.succeed(HttpServerResponse.empty({status: 400})))
@@ -449,15 +461,7 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 										const params = yield* HttpServerRequest.schemaSearchParams(CodeParams)
 										return yield* HttpServerResponse.schemaJson(Schema.Array(PendingAuthorization))(
 											Option.toArray(
-												yield* Effect.flatMap(
-													Stream.runHead(
-														(yield* Authorizations).lookup(
-															params.code,
-															(yield* HttpServerRequest.HttpServerRequest).headers
-														)
-													),
-													Effect.fromOption
-												)
+												yield* Effect.flatMap(Stream.runHead((yield* SignIns).lookup(params.code)), Effect.fromOption)
 											)
 										)
 									})
@@ -469,10 +473,7 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 										const params = yield* HttpServerRequest.schemaSearchParams(CodeParams)
 										return HttpServerResponse.stream(
 											pipe(
-												(yield* Authorizations).lookup(
-													params.code,
-													(yield* HttpServerRequest.HttpServerRequest).headers
-												),
+												(yield* SignIns).lookup(params.code),
 												Stream.take(2),
 												Stream.mapEffect((found, index) =>
 													Effect.gen(function* () {
@@ -491,9 +492,12 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 							Layer.provide(HttpAuth.layer)
 						)
 					),
-					Layer.provideMerge(Gateway.layer),
+					Layer.provideMerge(Layer.merge(Gateway.layer, SignIns.layer)),
 					Layer.provideMerge(Connections.layer),
-					Layer.provideMerge(Authorizations.layer),
+					Layer.provideMerge(People.layer),
+					Layer.provideMerge(Layer.merge(Tokens.layer, GitHub.layer)),
+					Layer.provideMerge(Changes.layer),
+					Layer.provide(layerStore),
 					Layer.provide(
 						Layer.mergeAll(
 							NodeCrypto.layer,
@@ -658,24 +662,37 @@ const authorize = Effect.fnUntraced(function* (
 	}
 })
 
+// An approval as the page sends it, by the signed-in session in `session`.
+const answer = Effect.fnUntraced(function* (
+	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
+	session: string,
+	request: string,
+	accept: boolean
+) {
+	return yield* send(web, '/answer', {
+		body: yield* Schema.encodeEffect(Schema.fromJsonString(AnswerParams))({accept, request}),
+		headers: {'content-type': 'application/json', cookie: session},
+		method: 'POST'
+	})
+})
+
+// The answer, delivered to the browser or command that holds the sign-in's cookie.
+const delivered = Effect.fnUntraced(function* (
+	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
+	request: {cookie: string; id: string}
+) {
+	const response = yield* send(web, `/auth/continue?request=${request.id}`, {headers: {cookie: request.cookie}})
+	assert.strictEqual(response.status, 302)
+	return new URL(response.headers.get('location') ?? '', AUTH_URL)
+})
+
 const consent = Effect.fnUntraced(function* (
 	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
 	request: Effect.Success<ReturnType<typeof authorize>>,
 	accept: boolean
 ) {
-	const response = yield* send(web, '/api/auth/oauth2/consent', {
-		body: yield* Schema.encodeEffect(Schema.fromJsonString(ConsentParams))({accept, request: request.id}),
-		headers: {'content-type': 'application/json', cookie: request.cookie, origin: AUTH_URL},
-		method: 'POST'
-	})
-	assert.strictEqual(response.status, 204)
-	const receiver = yield* send(web, `/auth/request?request=${request.id}`, {headers: {cookie: request.cookie}})
-	const status = yield* Schema.decodeEffect(Schema.fromJsonString(AuthorizationStatus))(
-		yield* Effect.promise(() => receiver.text())
-	)
-	assert.strictEqual(status._tag, 'Completed')
-	if (status._tag !== 'Completed') return yield* Effect.die('Expected a completed authorization')
-	return new URL(status.url)
+	assert.strictEqual((yield* answer(web, request.cookie, request.id, accept)).status, 204)
+	return yield* delivered(web, request)
 })
 
 // An MCP client's initialize, then the tool call with the session it got.
@@ -1020,7 +1037,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					const callback = `/auth/mcp/callback?${new URLSearchParams({code: 'provider-code', iss: PROVIDERS.mobbin.issuer, state: target.searchParams.get('state') ?? ''})}`
 					assert.strictEqual(
 						(yield* send(web.issuer, callback, {headers: {cookie: session}})).headers.get('location'),
-						'/mcp-servers?mcpError=connect'
+						'/mcp-servers'
 					)
 					assert.strictEqual(web.grants.length, 0)
 					assert.strictEqual(
@@ -1208,7 +1225,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* addMcp(web.issuer, admin, PROVIDERS.mobbin.url)
 			assert.strictEqual(
 				(yield* send(web.issuer, '/auth/mcp/connect?id=mobbin', {headers: {cookie: stranger}})).headers.get('location'),
-				'/mcp-servers?mcpError=connect'
+				'/mcp-servers'
 			)
 			const start = yield* send(web.issuer, '/auth/mcp/connect?id=mobbin', {headers: {cookie: admin}})
 
@@ -1223,6 +1240,17 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				302
 			)
 			assert.strictEqual(web.grants.length, 0)
+			// The MCP page names why the connection failed.
+			const listed = yield* send(web.issuer, '/servers', {headers: {cookie: admin}})
+			assert.deepStrictEqual(
+				Array.map(
+					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(ConnectionInfo)))(
+						yield* Effect.promise(() => listed.text())
+					),
+					server => server.error
+				),
+				['The answer came from another authorization server']
+			)
 			params.set('iss', PROVIDERS.mobbin.issuer)
 			assert.strictEqual(
 				(yield* send(web.issuer, `/auth/mcp/callback?${params}`, {headers: {cookie: `${admin}; ${cookie(start)}`}}))
@@ -1333,32 +1361,28 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				(yield* send(web.issuer, `/auth/request?request=${second.id}`, {headers: {cookie: first.cookie}})).status,
 				400
 			)
-			const decision = yield* send(web.issuer, '/api/auth/oauth2/consent', {
-				body: yield* Schema.encodeEffect(Schema.fromJsonString(ConsentParams))({accept: true, request: first.id}),
-				headers: {'content-type': 'application/json', cookie: session, origin: AUTH_URL},
-				method: 'POST'
-			})
-			assert.strictEqual(decision.status, 204)
-			assert.strictEqual(yield* Effect.promise(() => decision.text()), '')
-			const callbackResponse = yield* send(web.issuer, `/auth/request?request=${first.id}`, {
+			assert.strictEqual((yield* answer(web.issuer, session, first.id, true)).status, 204)
+			const decided = yield* send(web.issuer, `/auth/request?request=${first.id}`, {
 				headers: {cookie: `${first.cookie}; ${second.cookie}`}
 			})
-			const callback = yield* Schema.decodeEffect(Schema.fromJsonString(AuthorizationStatus))(
-				yield* Effect.promise(() => callbackResponse.text())
-			)
-			assert.strictEqual(callback._tag, 'Completed')
-			if (callback._tag !== 'Completed') return yield* Effect.die('Expected a callback')
-			const repeated = yield* send(web.issuer, `/auth/request?request=${first.id}`, {headers: {cookie: first.cookie}})
 			assert.deepStrictEqual(
 				yield* Schema.decodeEffect(Schema.fromJsonString(AuthorizationStatus))(
-					yield* Effect.promise(() => repeated.text())
+					yield* Effect.promise(() => decided.text())
 				),
-				callback
+				{_tag: 'Decided'}
 			)
+			// Only the browser holding the sign-in's cookie collects the answer, and only once.
 			assert.strictEqual(
-				(yield* exchange(web.issuer, first, new URL(callback.url).searchParams.get('code') ?? '')).status,
-				200
+				(yield* send(web.issuer, `/auth/continue?request=${first.id}`, {headers: {cookie: session}})).status,
+				400
 			)
+			const callback = yield* delivered(web.issuer, {cookie: `${first.cookie}; ${second.cookie}`, id: first.id})
+			assert.strictEqual(callback.origin, 'http://127.0.0.1:34567')
+			assert.strictEqual(
+				(yield* send(web.issuer, `/auth/continue?request=${first.id}`, {headers: {cookie: first.cookie}})).status,
+				400
+			)
+			assert.strictEqual((yield* exchange(web.issuer, first, callback.searchParams.get('code') ?? '')).status, 200)
 			const waiting = yield* send(web.issuer, `/auth/request?request=${second.id}`, {
 				headers: {cookie: `${first.cookie}; ${second.cookie}`}
 			})
@@ -1385,7 +1409,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				Effect.forkScoped
 			)
 			yield* Queue.take(web.ready)
-			yield* TestClock.adjust('241 seconds')
+			yield* TestClock.adjust('601 seconds')
 			const expired = yield* Effect.forEach(
 				pipe(yield* Fiber.join(expirations), String.trim, String.split('\n')),
 				line => Schema.decodeEffect(Schema.fromJsonString(Schema.Array(PendingAuthorization)))(line),
@@ -1404,14 +1428,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				),
 				{_tag: 'Expired'}
 			)
-			assert.strictEqual(
-				(yield* send(web.issuer, '/api/auth/oauth2/consent', {
-					body: yield* Schema.encodeEffect(Schema.fromJsonString(ConsentParams))({accept: true, request: request.id}),
-					headers: {'content-type': 'application/json', cookie: session, origin: AUTH_URL},
-					method: 'POST'
-				})).status,
-				400
-			)
+			assert.strictEqual((yield* answer(web.issuer, session, request.id, true)).status, 400)
 		})
 	)
 
@@ -1429,16 +1446,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					{accept: true, session: first},
 					{accept: false, session: second}
 				],
-				Effect.fnUntraced(function* (decision) {
-					return yield* send(web.issuer, '/api/auth/oauth2/consent', {
-						body: yield* Schema.encodeEffect(Schema.fromJsonString(ConsentParams))({
-							accept: decision.accept,
-							request: request.id
-						}),
-						headers: {'content-type': 'application/json', cookie: decision.session, origin: AUTH_URL},
-						method: 'POST'
-					})
-				}),
+				decision => answer(web.issuer, decision.session, request.id, decision.accept),
 				{concurrency: 'unbounded'}
 			)
 			assert.deepStrictEqual(
@@ -1536,14 +1544,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				401
 			)
 			const request = yield* authorize(web.issuer, session, 'stash://auth/callback', [API, 'https://otel.mp281x.xyz'])
-			assert.strictEqual(
-				(yield* send(web.issuer, '/api/auth/oauth2/consent', {
-					body: yield* Schema.encodeEffect(Schema.fromJsonString(ConsentParams))({accept: true, request: request.id}),
-					headers: {'content-type': 'application/json', cookie: request.cookie, origin: 'https://evil.test'},
-					method: 'POST'
-				})).status,
-				400
-			)
 			assert.strictEqual((yield* send(web.issuer, `/auth/request?request=${request.id}`)).status, 400)
 			const callback = yield* consent(web.issuer, request, true)
 			assert.strictEqual(callback.searchParams.get('iss'), `${AUTH_URL}/api/auth`)
@@ -1970,14 +1970,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const callbacks = yield* Effect.forEach(
 				[simulator, desktop, release],
 				Effect.fnUntraced(function* (request) {
-					const receiver = yield* send(web.issuer, `/auth/request?request=${request.id}`, {
-						headers: {cookie: request.cookie}
-					})
-					const status = yield* Schema.decodeEffect(Schema.fromJsonString(AuthorizationStatus))(
-						yield* Effect.promise(() => receiver.text())
-					)
-					if (status._tag !== 'Completed') return yield* Effect.die('Expected every sign-in to be answered')
-					const params = new URL(status.url).searchParams
+					const params = (yield* delivered(web.issuer, request)).searchParams
 					return {code: params.get('code') ?? '', error: params.get('error') ?? ''}
 				}),
 				{concurrency: 1}
@@ -2140,6 +2133,101 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.strictEqual((yield* refresh(web.issuer, first.clientId, first.tokens.refresh_token)).status, 400)
 			yield* signInFrom('198.51.100.1')
 			assert.strictEqual((yield* apps).length, 2)
+		})
+	)
+
+	test.effect(
+		'signs a browser in with a code another device approves and returns it to its page on this domain',
+		Effect.fnUntraced(function* () {
+			const web = yield* servers()
+			const token = yield* agentToken(web.issuer, cookie(yield* signIn(web.issuer, 'octocat')))
+			const start = Effect.fnUntraced(function* (next: string) {
+				const started = yield* send(web.issuer, `/auth/code?${UrlParams.toString(UrlParams.fromInput({next}))}`)
+				return {
+					cookie: cookie(started),
+					id: new URL(started.headers.get('location') ?? '', AUTH_URL).searchParams.get('request') ?? ''
+				}
+			})
+			const browser = yield* start('https://signal.mp281x.xyz/world')
+			const waiting = yield* send(web.issuer, `/auth/request?request=${browser.id}`, {
+				headers: {cookie: browser.cookie}
+			})
+			const status = yield* Schema.decodeEffect(Schema.fromJsonString(AuthorizationStatus))(
+				yield* Effect.promise(() => waiting.text())
+			)
+			if (status._tag !== 'Waiting') return yield* Effect.die('Expected a waiting browser sign-in')
+			assert.deepStrictEqual([status.request.kind, status.request.resources], ['Browser', []])
+			yield* callTool(web.issuer, token, 'answer_request', {accept: true, request: browser.id})
+			const signedIn = yield* send(web.issuer, `/auth/continue?request=${browser.id}`, {
+				headers: {cookie: browser.cookie}
+			})
+			assert.strictEqual(signedIn.headers.get('location'), 'https://signal.mp281x.xyz/world')
+			assert.strictEqual((yield* send(web.issuer, '/auth/session', {headers: {cookie: cookie(signedIn)}})).status, 200)
+			// A page elsewhere is dropped, and a denied browser gets no session.
+			const elsewhere = yield* start('https://evil.test/')
+			yield* callTool(web.issuer, token, 'answer_request', {accept: false, request: elsewhere.id})
+			const denied = yield* send(web.issuer, `/auth/continue?request=${elsewhere.id}`, {
+				headers: {cookie: elsewhere.cookie}
+			})
+			assert.strictEqual(denied.headers.get('location'), '/')
+			assert.isFalse(String.includes('__Secure-session=')(cookie(denied)))
+		})
+	)
+
+	test.effect(
+		'delivers a command’s sign-in to its loopback callback once approved, answering 408 while it waits',
+		Effect.fnUntraced(function* () {
+			const web = yield* servers()
+			const session = cookie(yield* signIn(web.issuer, 'octocat'))
+			const command = yield* authorize(web.issuer, '', 'http://127.0.0.1:34571/callback', [APPROVALS])
+			const early = yield* Effect.forkScoped(
+				send(web.issuer, `/auth/continue?request=${command.id}`, {headers: {cookie: command.cookie}})
+			)
+			yield* TestClock.withLive(Effect.sleep('100 millis'))
+			yield* TestClock.adjust('50 seconds')
+			assert.strictEqual((yield* Fiber.join(early)).status, 408)
+			const waiting = yield* Effect.forkScoped(delivered(web.issuer, command))
+			yield* TestClock.withLive(Effect.sleep('100 millis'))
+			assert.strictEqual((yield* answer(web.issuer, session, command.id, true)).status, 204)
+			const callback = yield* Fiber.join(waiting)
+			assert.strictEqual(`${callback.origin}${callback.pathname}`, 'http://127.0.0.1:34571/callback')
+			assert.strictEqual((yield* exchange(web.issuer, command, callback.searchParams.get('code') ?? '')).status, 200)
+		})
+	)
+
+	test.effect(
+		'keeps the members and sign-ins the previous release saved in one value',
+		Effect.fnUntraced(function* () {
+			const fs = yield* FileSystem.FileSystem
+			const home = yield* fs.makeTempDirectoryScoped()
+			const directory = `${home}/.deslop/auth`
+			const session = yield* Effect.scoped(
+				Effect.gen(function* () {
+					return cookie(yield* signIn((yield* servers(home)).issuer, 'octocat'))
+				})
+			)
+			yield* fs.writeFileString(
+				`${directory}/state`,
+				yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
+					members: yield* Schema.decodeEffect(Schema.fromJsonString(Members))(
+						yield* fs.readFileString(`${directory}/members`)
+					),
+					// The previous release also kept a sign-in in progress among its tokens.
+					tokens: {
+						...(yield* Schema.decodeEffect(Schema.fromJsonString(TokenState))(
+							yield* fs.readFileString(`${directory}/tokens`)
+						)),
+						waiting: {expiresAt: 4e15, payload: {_tag: 'Request', id: 'WDJBMJHT'}}
+					}
+				})
+			)
+			yield* fs.remove(`${directory}/members`)
+			yield* fs.remove(`${directory}/tokens`)
+			assert.strictEqual(
+				(yield* send((yield* servers(home)).issuer, '/auth/session', {headers: {cookie: session}})).status,
+				200
+			)
+			assert.isFalse(yield* fs.exists(`${directory}/state`))
 		})
 	)
 })

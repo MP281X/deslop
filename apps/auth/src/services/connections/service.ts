@@ -7,13 +7,12 @@ import {
 	Effect,
 	FileSystem,
 	Layer,
+	Match,
 	Number,
 	Option,
 	Path,
-	PubSub,
 	Record,
 	Ref,
-	Result,
 	Schema,
 	Semaphore,
 	Stream,
@@ -30,42 +29,26 @@ import {
 } from '@modelcontextprotocol/client'
 import {Digest, SecureRandom} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
-import {
-	Cookies,
-	FetchHttpClient,
-	HttpClient,
-	HttpClientRequest,
-	HttpClientResponse,
-	HttpRouter,
-	HttpServerRequest,
-	HttpServerResponse
-} from 'effect/http'
+import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
 import type {User} from '@deslop/runtime/auth/schema'
 import {AuthError, Resource} from '@deslop/runtime/auth/schema'
-import {Auth} from '@deslop/runtime/auth/service'
 import {AUTH_URL} from '@deslop/runtime/auth/utils'
 import {layerKeyValueStore} from '@deslop/runtime/server'
 
-import {waitForChange} from '#services/authorizations/lib/watch.ts'
-import {Authorizations} from '#services/authorizations/service.ts'
-import {connectionInfo, serverName} from '#services/connections/lib/utils.ts'
-import type {Connection, ConnectionInfo, ServerId} from '#services/connections/schema.ts'
-import {
-	Callback,
-	ConnectionState,
-	Metadata,
-	Registration,
-	ServerParams,
-	ServerUrl,
-	Token
-} from '#services/connections/schema.ts'
+import {Changes} from '#services/changes/service.ts'
+import {connectionInfo, describe, serverName} from '#services/connections/lib/utils.ts'
+import type {Callback, Connection, ConnectionInfo, Discovery, ServerId} from '#services/connections/schema.ts'
+import {ConnectionState, Metadata, Registration, ServerUrl, Token} from '#services/connections/schema.ts'
+import {People} from '#services/people/service.ts'
 
-const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 const CALLBACK = `${AUTH_URL}/auth/mcp/callback`
 const CLIENT_METADATA = `${AUTH_URL}/auth/mcp/client.json`
-const CLIENT = {
+
+// Auth's client metadata document, for providers that accept one instead of a registration.
+export const CLIENT = {
+	client_id: CLIENT_METADATA,
 	client_name: 'Deslop MCP gateway',
 	grant_types: ['authorization_code', 'refresh_token'],
 	redirect_uris: [CALLBACK],
@@ -76,7 +59,7 @@ const CLIENT = {
 function failed(message: string) {
 	return Effect.mapError((cause: unknown) => {
 		if (Schema.is(AuthError)(cause)) return cause
-		return AuthError.make({message})
+		return AuthError.make({cause, message: `${message}: ${describe(cause)}`})
 	})
 }
 
@@ -92,27 +75,20 @@ function validMetadata(metadata: Metadata) {
 	)
 }
 
-function page<E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
-	return pipe(
-		handler,
-		Effect.timeout('30 seconds'),
-		Effect.orElseSucceed(() => HttpServerResponse.redirect('/mcp-servers?mcpError=connect')),
-		Effect.map(HttpServerResponse.setHeader('cache-control', 'no-store'))
-	)
-}
-
 export class Connections extends Context.Service<
 	Connections,
 	{
 		readonly add: (url: string, user: User) => Effect.Effect<ConnectionInfo, AuthError>
-		readonly get: (id: ServerId) => Effect.Effect<Connection, AuthError>
+		readonly begin: (id: ServerId, user: User) => Effect.Effect<{state: Option.Option<string>; url: string}, AuthError>
+		readonly complete: (params: Callback, user: User) => Effect.Effect<void, AuthError>
 		readonly definitions: Effect.Effect<Connection[]>
-		readonly token: (id: ServerId, generation: string, rejectedToken?: string) => Effect.Effect<string, AuthError>
-		readonly list: Effect.Effect<ConnectionInfo[]>
-		readonly watch: (user: User) => Stream.Stream<ConnectionInfo[], AuthError>
 		readonly disconnect: (id: ServerId, user: User) => Effect.Effect<void, AuthError>
+		readonly get: (id: ServerId) => Effect.Effect<Connection, AuthError>
+		readonly list: Effect.Effect<ConnectionInfo[]>
 		readonly remove: (id: ServerId, user: User) => Effect.Effect<void, AuthError>
-		readonly report: (id: ServerId, generation: string, tools: number) => Effect.Effect<void>
+		readonly report: (id: ServerId, generation: string, outcome: Discovery) => Effect.Effect<void>
+		readonly token: (id: ServerId, generation: string, rejectedToken?: string) => Effect.Effect<string, AuthError>
+		readonly watch: (user: User) => Stream.Stream<ConnectionInfo[], AuthError>
 	}
 >()('@deslop/auth/services/connections/service/Connections') {
 	static readonly make = Effect.gen(function* () {
@@ -120,22 +96,19 @@ export class Connections extends Context.Service<
 		const state = yield* Ref.make<ConnectionState>(
 			Option.getOrElse(yield* store.get('connections'), () => ({connections: {}, pending: {}}))
 		)
-		const changes = yield* PubSub.sliding<true>(1)
+		const changes = yield* Changes
 		const writes = yield* Semaphore.make(1)
-		const auth = yield* Auth
-		const authorizations = yield* Authorizations
+		const people = yield* People
 		const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 		const fetch = yield* FetchHttpClient.Fetch
 		const random = yield* SecureRandom.SecureRandom
 		const digest = yield* Digest.Digest
-		const router = yield* HttpRouter.HttpRouter
 		const nonce = Effect.map(random.randomBytes(32), Base64Url.encode)
 		function save(next: ConnectionState) {
 			return pipe(
 				store.set('connections', next),
 				Effect.andThen(Ref.set(state, next)),
-				Effect.andThen(PubSub.publish(changes, true)),
-				Effect.asVoid,
+				Effect.andThen(changes.publish),
 				Effect.uninterruptible
 			)
 		}
@@ -209,7 +182,7 @@ export class Connections extends Context.Service<
 				Effect.timeout('20 seconds')
 			)
 			const next = {
-				...connection,
+				...Struct.omit(connection, ['error']),
 				enabled: true,
 				expiresAt: (yield* Clock.currentTimeMillis) + (token.expires_in ?? 3600) * 1000,
 				token: Boolean.match(params['grant_type'] === 'refresh_token', {
@@ -333,7 +306,7 @@ export class Connections extends Context.Service<
 		})
 		const add = Effect.fn('Connections.add')(
 			function* (input: string, user: User) {
-				yield* authorizations.admin(user)
+				yield* people.admin(user)
 				yield* Schema.decodeEffect(ServerUrl)(input)
 				const url = new URL(input).href
 				return yield* writes.withPermit(
@@ -367,121 +340,111 @@ export class Connections extends Context.Service<
 			Effect.timeout('20 seconds'),
 			failed('Cannot add this MCP. Check its public HTTPS URL and OAuth discovery support.')
 		)
-		yield* router.add(
-			'GET',
-			'/auth/mcp/client.json',
-			HttpServerResponse.jsonUnsafe({...CLIENT, client_id: CLIENT_METADATA})
-		)
-		yield* router.add(
-			'GET',
-			'/auth/mcp/connect',
-			page(
+		// Records why a step failed on its row, so the MCP page shows it; the failure still reaches the caller.
+		const fail = Effect.fnUntraced(function* (id: ServerId, cause: unknown) {
+			const message = describe(cause)
+			yield* pipe(
 				Effect.gen(function* () {
-					const request = yield* HttpServerRequest.HttpServerRequest
-					const signedIn = yield* Effect.result(auth.user(request.headers))
-					if (Result.isFailure(signedIn)) {
-						return HttpServerResponse.redirect(`/auth/github?next=${encodeURIComponent(`${AUTH_URL}${request.url}`)}`)
-					}
-					yield* authorizations.admin(signedIn.success)
-					const params = yield* HttpServerRequest.schemaSearchParams(ServerParams)
-					return yield* writes.withPermit(
-						Effect.gen(function* () {
-							const initial = yield* get(params.id)
-							if (initial.mode !== 'oauth') {
-								yield* put({...initial, enabled: true})
-								return HttpServerResponse.redirect('/mcp-servers')
-							}
-							const connection = yield* registration(initial)
-							if (connection.metadata === undefined || connection.clientId === undefined) {
-								return yield* AuthError.make({message: 'Missing OAuth registration'})
-							}
-							const stateId = yield* nonce
-							const verifier = yield* nonce
-							const now = yield* Clock.currentTimeMillis
-							const current = yield* Ref.get(state)
-							yield* save({
-								...current,
-								pending: {
-									...Record.filter(current.pending, entry => entry.expiresAt > now && entry.id !== params.id),
-									[stateId]: {expiresAt: now + 600_000, id: params.id, userId: signedIn.success.id, verifier}
-								}
-							})
-							const url = new URL(connection.metadata.authorization_endpoint)
-							url.search = new URLSearchParams({
-								client_id: connection.clientId,
-								code_challenge: Base64Url.encode(
-									yield* digest.digest(Digest.sha256, new TextEncoder().encode(verifier))
-								),
-								code_challenge_method: 'S256',
-								redirect_uri: CALLBACK,
-								resource: connection.url,
-								response_type: 'code',
-								scope: connection.scope,
-								state: stateId
-							}).toString()
-							return HttpServerResponse.setCookieUnsafe(
-								HttpServerResponse.redirect(url.href),
-								`__Host-mcp-${stateId}`,
-								stateId,
-								{...COOKIE, maxAge: '10 minutes'}
-							)
-						})
-					)
-				})
+					const current = (yield* Ref.get(state)).connections[id]
+					if (current !== undefined && current.error !== message) yield* put({...current, error: message})
+				}),
+				writes.withPermit,
+				Effect.ignore({log: 'Warn', message: 'Cannot save the MCP failure'})
 			)
-		)
-		yield* router.add(
-			'GET',
-			'/auth/mcp/callback',
-			page(
+			return yield* AuthError.make({cause, message})
+		})
+		const begin = Effect.fn('Connections.begin')(function* (id: ServerId, user: User) {
+			yield* people.admin(user)
+			return yield* pipe(
+				writes.withPermit(
+					Effect.gen(function* () {
+						const initial = yield* get(id)
+						if (initial.mode !== 'oauth') {
+							yield* put({...Struct.omit(initial, ['error']), enabled: true})
+							return {state: Option.none<string>(), url: '/mcp-servers'}
+						}
+						const connection = yield* registration(initial)
+						if (connection.metadata === undefined || connection.clientId === undefined) {
+							return yield* AuthError.make({message: 'Missing OAuth registration'})
+						}
+						const stateId = yield* nonce
+						const verifier = yield* nonce
+						const now = yield* Clock.currentTimeMillis
+						const current = yield* Ref.get(state)
+						yield* save({
+							...current,
+							pending: {
+								...Record.filter(current.pending, entry => entry.expiresAt > now && entry.id !== id),
+								[stateId]: {expiresAt: now + 600_000, id, userId: user.id, verifier}
+							}
+						})
+						const url = new URL(connection.metadata.authorization_endpoint)
+						url.search = new URLSearchParams({
+							client_id: connection.clientId,
+							code_challenge: Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(verifier))),
+							code_challenge_method: 'S256',
+							redirect_uri: CALLBACK,
+							resource: connection.url,
+							response_type: 'code',
+							scope: connection.scope,
+							state: stateId
+						}).toString()
+						return {state: Option.some(stateId), url: url.href}
+					})
+				),
+				Effect.timeout('30 seconds'),
+				Effect.catch(cause => fail(id, cause))
+			)
+		})
+		const complete = Effect.fn('Connections.complete')(function* (params: Callback, user: User) {
+			yield* people.admin(user)
+			// The flow is taken once, whatever the provider answered.
+			const pending = yield* pipe(
 				Effect.gen(function* () {
-					const user = yield* auth.user((yield* HttpServerRequest.HttpServerRequest).headers)
-					yield* authorizations.admin(user)
-					const params = yield* HttpServerRequest.schemaSearchParams(Callback)
-					const cookie = `__Host-mcp-${params.state}`
-					if (
-						Cookies.parseHeader((yield* HttpServerRequest.HttpServerRequest).headers['cookie'] ?? '')[cookie] !==
-						params.state
-					) {
-						return yield* AuthError.make({message: 'The connection belongs to another browser'})
+					const current = yield* Ref.get(state)
+					const found = current.pending[params.state]
+					if (found === undefined || found.userId !== user.id || found.expiresAt <= (yield* Clock.currentTimeMillis)) {
+						return yield* AuthError.make({message: 'The connection expired; connect it again'})
 					}
-					yield* writes.withPermit(
-						Effect.gen(function* () {
-							const current = yield* Ref.get(state)
-							const pending = current.pending[params.state]
-							if (
-								pending === undefined ||
-								pending.userId !== user.id ||
-								pending.expiresAt <= (yield* Clock.currentTimeMillis)
-							) {
-								return yield* AuthError.make({message: 'The connection expired'})
-							}
-							const connection = yield* get(pending.id)
-							yield* save({...current, pending: Record.remove(current.pending, params.state)})
-							if (
-								connection.metadata === undefined ||
-								params.error !== undefined ||
-								params.code === undefined ||
-								(params.iss !== undefined && params.iss !== connection.metadata.issuer) ||
-								(connection.metadata.authorization_response_iss_parameter_supported === true &&
-									params.iss !== connection.metadata.issuer)
-							) {
-								return yield* AuthError.make({message: 'The provider did not approve this connection'})
-							}
-							yield* exchange(connection, {
-								code: params.code,
-								code_verifier: pending.verifier,
-								grant_type: 'authorization_code',
-								redirect_uri: CALLBACK
-							})
-						})
-					)
-					return HttpServerResponse.expireCookieUnsafe(HttpServerResponse.redirect('/mcp-servers'), cookie, COOKIE)
-				})
+					yield* save({...current, pending: Record.remove(current.pending, params.state)})
+					return found
+				}),
+				writes.withPermit,
+				failed('Cannot finish the connection')
 			)
-		)
+			yield* pipe(
+				writes.withPermit(
+					Effect.gen(function* () {
+						const connection = yield* get(pending.id)
+						if (connection.metadata === undefined) {
+							return yield* AuthError.make({message: 'Invalid stored authorization server'})
+						}
+						if (params.error !== undefined || params.code === undefined) {
+							return yield* AuthError.make({
+								message: `The provider declined the connection (${params.error ?? 'no code'})`
+							})
+						}
+						if (
+							(params.iss !== undefined && params.iss !== connection.metadata.issuer) ||
+							(connection.metadata.authorization_response_iss_parameter_supported === true &&
+								params.iss !== connection.metadata.issuer)
+						) {
+							return yield* AuthError.make({message: 'The answer came from another authorization server'})
+						}
+						yield* exchange(connection, {
+							code: params.code,
+							code_verifier: pending.verifier,
+							grant_type: 'authorization_code',
+							redirect_uri: CALLBACK
+						})
+					})
+				),
+				Effect.timeout('30 seconds'),
+				Effect.catch(cause => fail(pending.id, cause))
+			)
+		})
 		const change = Effect.fnUntraced(function* (id: ServerId, user: User, remove: boolean) {
-			yield* authorizations.admin(user)
+			yield* people.admin(user)
 			yield* writes.withPermit(
 				Effect.gen(function* () {
 					const connection = yield* get(id)
@@ -490,7 +453,7 @@ export class Connections extends Context.Service<
 						connections: Boolean.match(remove, {
 							onFalse: () => ({
 								...current.connections,
-								[id]: {...Struct.omit(connection, ['token', 'tools']), enabled: false}
+								[id]: {...Struct.omit(connection, ['error', 'token', 'tools']), enabled: false}
 							}),
 							onTrue: () => Record.remove(current.connections, id)
 						}),
@@ -501,36 +464,41 @@ export class Connections extends Context.Service<
 		}, failed('Cannot change this MCP connection'))
 		return Connections.of({
 			add,
+			begin,
+			complete,
 			definitions: Effect.map(Ref.get(state), current => Record.values(current.connections)),
 			disconnect: (id, user) => change(id, user, false),
 			get,
 			list,
 			remove: (id, user) => change(id, user, true),
-			report: Effect.fnUntraced(function* (id, generation, tools) {
+			// A discovery's outcome: its tool count clears an earlier failure, a failure keeps the last count.
+			report: Effect.fnUntraced(function* (id, generation, outcome) {
 				return yield* pipe(
 					writes.withPermit(
 						Effect.gen(function* () {
 							const current = (yield* Ref.get(state)).connections[id]
-							if (current?.generation === generation && current.enabled && current.tools !== tools) {
-								yield* put({...current, tools})
-							}
+							if (current?.generation !== generation || !current.enabled) return
+							const next: Connection = Match.valueTags(outcome, {
+								Discovered: found => ({...Struct.omit(current, ['error']), tools: found.tools}),
+								Failed: failure => ({...current, error: failure.error})
+							})
+							if (next.tools !== current.tools || next.error !== current.error) yield* put(next)
 						})
 					),
-					Effect.ignore({log: 'Warn', message: 'Cannot save the MCP tool count'})
+					Effect.ignore({log: 'Warn', message: 'Cannot save the MCP discovery outcome'})
 				)
 			}),
 			token,
 			watch: user =>
-				Stream.unwrap(
-					Effect.gen(function* () {
-						const subscription = yield* PubSub.subscribe(changes)
-						return Stream.unfold(Option.none<number>(), previous =>
-							Effect.gen(function* () {
-								yield* waitForChange(subscription, previous)
-								yield* authorizations.admin(user)
-								const now = yield* Clock.currentTimeMillis
-								const definitions = Record.values((yield* Ref.get(state)).connections)
-								const nextExpiry = Array.reduce(
+				pipe(
+					changes.watch(
+						Effect.gen(function* () {
+							yield* people.admin(user)
+							const now = yield* Clock.currentTimeMillis
+							const definitions = Record.values((yield* Ref.get(state)).connections)
+							return {
+								// A connection without a refresh token turns Expired on its own, so the list is read again then.
+								expiresAt: Array.reduce(
 									Array.filter(
 										definitions,
 										row =>
@@ -542,11 +510,13 @@ export class Connections extends Context.Service<
 									),
 									Infinity,
 									(earliest, row) => Number.min(earliest, row.expiresAt)
-								)
-								return [Array.map(definitions, row => connectionInfo(row, now)), Option.some(nextExpiry)] as const
-							})
-						)
-					})
+								),
+								list: Array.map(definitions, row => connectionInfo(row, now))
+							}
+						}),
+						read => read.expiresAt
+					),
+					Stream.map(read => read.list)
 				)
 		})
 	})

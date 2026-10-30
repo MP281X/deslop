@@ -145,14 +145,13 @@ it.effect(
 		assert.strictEqual((yield* send('/auth/sign-out', cookie, ORIGIN, 'POST', 'https://evil.test')).status, 400)
 		assert.strictEqual((yield* send('/auth/sign-out', cookie, ORIGIN, 'POST')).status, 204)
 		assert.strictEqual((yield* send('/private', cookie)).status, 401)
-		assert.strictEqual(
-			new URL(
-				(yield* send(signInUrl('https://signal.mp281x.xyz/?inspect=2'), '', 'https://signal.mp281x.xyz')).headers.get(
-					'location'
-				) ?? ''
-			).pathname,
-			'/auth/github'
+		const deployed = new URL(
+			(yield* send(signInUrl('https://signal.mp281x.xyz/?inspect=2'), '', 'https://signal.mp281x.xyz')).headers.get(
+				'location'
+			) ?? ''
 		)
+		assert.strictEqual(deployed.pathname, '/')
+		assert.strictEqual(deployed.searchParams.get('next'), 'https://signal.mp281x.xyz/?inspect=2')
 		assert.strictEqual((yield* send(signInUrl('/'), '', 'https://evil.test')).status, 400)
 	})
 )

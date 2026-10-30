@@ -8,12 +8,17 @@ import {RpcServer} from 'effect/rpc'
 import {AUTH_URL} from '@deslop/runtime/auth/utils'
 import * as ServerRuntime from '@deslop/runtime/server'
 
+import {HttpHandlers} from '#http/handlers.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
-import {Authorizations} from '#services/authorizations/service.ts'
+import {Changes} from '#services/changes/service.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway} from '#services/gateway/service.ts'
+import {GitHub} from '#services/github/service.ts'
 import {layerPublicFetch} from '#services/network/service.ts'
+import {People} from '#services/people/service.ts'
+import {SignIns} from '#services/sign-ins/service.ts'
+import {Tokens, layerStore} from '#services/tokens/service.ts'
 import {layerMcp} from '#tools/handlers.ts'
 
 const RpcOrigin = HttpRouter.middleware()(
@@ -27,11 +32,22 @@ const RpcOrigin = HttpRouter.middleware()(
 	)
 )
 
+// Each service builds on the ones below it: tokens, then people (who may use them), sign-ins and connections, then the gateway.
+const layerServices = pipe(
+	Layer.mergeAll(Gateway.layer, SignIns.layer),
+	Layer.provideMerge(Connections.layer),
+	Layer.provideMerge(People.layer),
+	Layer.provideMerge(Layer.merge(Tokens.layer, GitHub.layer)),
+	Layer.provideMerge(Changes.layer),
+	Layer.provide(layerStore)
+)
+
 NodeRuntime.runMain(
 	pipe(
 		HttpRouter.serve(
 			pipe(
 				Layer.mergeAll(
+					HttpHandlers,
 					pipe(
 						RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
 						Layer.provide(RpcHandlers),
@@ -40,9 +56,7 @@ NodeRuntime.runMain(
 					layerMcp,
 					ServerRuntime.layerStaticFiles
 				),
-				Layer.provide(Gateway.layer),
-				Layer.provide(Connections.layer),
-				Layer.provide(Authorizations.layer)
+				Layer.provide(layerServices)
 			),
 			{disableLogger: true}
 		),

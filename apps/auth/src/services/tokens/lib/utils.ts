@@ -1,15 +1,12 @@
-import {Array, Option, Result, String, pipe} from 'effect'
+import {Array, Effect, Option, Record, Result, Schema, String, pipe} from 'effect'
 
 import {Url} from 'effect/http'
 
-import {previewOrigin} from '@deslop/runtime/auth/utils'
+import {AuthError, Resource} from '@deslop/runtime/auth/schema'
+import {AUTH_URL, previewOrigin} from '@deslop/runtime/auth/utils'
 
-import type {Stored} from '#services/authorizations/schema.ts'
-
-// What someone typed, as the request id it names: letters only, in capitals.
-export function typedCode(text: string) {
-	return String.toUpperCase(String.replaceAll(/[^a-z]/giu, '')(text))
-}
+import type {AuthorizeClient, AuthorizeParams, Stored} from '#services/tokens/schema.ts'
+import {ClientRequest} from '#services/tokens/schema.ts'
 
 function loopback(redirect: string) {
 	return Option.filter(
@@ -81,6 +78,54 @@ export function matchingRedirect(client: typeof Stored.cases.Client.Type, reques
 // A parameter sent empty counts as left out, as OAuth 2.1 §3.1 requires.
 export function given(value?: string) {
 	return Option.filter(Option.fromUndefinedOr(value), String.isNonEmpty)
+}
+
+// The rest of an authorization request, checked once its client and callback are known, so each failure can go to that callback.
+export const clientRequest = Effect.fnUntraced(function* (
+	asked: AuthorizeClient,
+	client: {clientName: string; redirectUri: string},
+	params: AuthorizeParams
+) {
+	if (Option.isNone(given(params.response_type))) {
+		return yield* AuthError.make({message: 'Send response_type=code'})
+	}
+	if (params.response_type !== 'code') {
+		return yield* AuthError.make({error: 'unsupported_response_type', message: 'Only response_type=code is supported'})
+	}
+	if (params.code_challenge === undefined || params.code_challenge_method !== 'S256') {
+		return yield* AuthError.make({message: 'Send a PKCE code_challenge with code_challenge_method=S256'})
+	}
+	if (
+		!Array.every(
+			Array.filter(String.split(params.scope ?? '', ' '), String.isNonEmpty),
+			scope => scope === 'deslop' || scope === 'offline_access'
+		)
+	) {
+		return yield* AuthError.make({error: 'invalid_scope', message: 'Only the deslop scope is supported'})
+	}
+	const resources = yield* pipe(
+		Schema.decodeUnknownEffect(Schema.NonEmptyArray(Resource))(params.resource ?? []),
+		Effect.mapError(cause =>
+			AuthError.make({cause, error: 'invalid_target', message: 'Name a Deslop app with the resource parameter'})
+		)
+	)
+	return ClientRequest.make({
+		challenge: params.code_challenge,
+		clientId: asked.client_id,
+		clientName: client.clientName,
+		redirectUri: client.redirectUri,
+		resources,
+		...Option.match(given(asked.state), {onNone: () => ({}), onSome: state => ({state})})
+	})
+})
+
+// Where an authorization answer goes: the client's callback with its state and this issuer.
+export function callbackUrl(request: {redirectUri: string; state?: string}, answer: Record<string, string>) {
+	const target = new URL(request.redirectUri)
+	for (const entry of Record.toEntries(answer)) target.searchParams.set(entry[0], entry[1])
+	Option.map(given(request.state), sent => target.searchParams.set('state', sent))
+	target.searchParams.set('iss', `${AUTH_URL}/api/auth`)
+	return target.href
 }
 
 // The session cookie is shared with every app on the auth app's parent domain.

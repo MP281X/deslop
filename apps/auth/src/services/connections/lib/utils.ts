@@ -1,4 +1,8 @@
-import {Array, Boolean, Option, String, pipe} from 'effect'
+import {Array, Boolean, Option, Predicate, Schema, String, pipe} from 'effect'
+
+import {HttpClientError} from 'effect/http'
+
+import {AuthError} from '@deslop/runtime/auth/schema'
 
 import type {Connection, ConnectionInfo} from '#services/connections/schema.ts'
 
@@ -11,6 +15,7 @@ export function connectionInfo(connection: Connection, now: number) {
 	const connected = connection.enabled && !expired && (connection.mode !== 'oauth' || connection.token !== undefined)
 	return {
 		connected,
+		...Option.match(Option.fromUndefinedOr(connection.error), {onNone: () => ({}), onSome: error => ({error})}),
 		id: connection.id,
 		name: connection.name,
 		status: Boolean.match(connected, {
@@ -24,6 +29,26 @@ export function connectionInfo(connection: Connection, now: number) {
 		),
 		url: connection.url
 	} satisfies ConnectionInfo
+}
+
+// Why a provider step failed, in the words the MCP page and tool results show: the innermost cause that names it.
+export function describe(cause: unknown): string {
+	if (Schema.is(AuthError)(cause)) return cause.message
+	if (Predicate.isTagged(cause, 'TimeoutError')) return 'It did not answer in time'
+	if (HttpClientError.isHttpClientError(cause) && cause.reason._tag === 'StatusCodeError') {
+		return `It answered HTTP ${cause.reason.response.status}`
+	}
+	if (
+		Predicate.hasProperty(cause, 'cause') &&
+		Predicate.isNotUndefined(cause.cause) &&
+		Predicate.isTagged(cause, 'UnknownError')
+	) {
+		return describe(cause.cause)
+	}
+	if (Predicate.hasProperty(cause, 'message') && Predicate.isString(cause.message)) {
+		return String.slice(0, 300)(cause.message)
+	}
+	return 'It failed for an unknown reason'
 }
 
 export function serverName(url: string) {

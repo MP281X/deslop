@@ -24,7 +24,8 @@ import {
 	newest,
 	timeLabel
 } from '#lib/utils.ts'
-import type {PendingAuthorization, SignedInApp} from '#services/authorizations/schema.ts'
+import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
+import type {SignedInApp} from '#services/tokens/schema.ts'
 
 // The link as a QR code, one square per dark module, inside the quiet zone scanners need.
 export function QrCode(props: {className?: string; text: string}) {
@@ -161,11 +162,21 @@ function PendingRow(props: {columns: string[]; request: PendingAuthorization}) {
 	)
 }
 
-// A failed answer stays under the grid to retry.
+// A failed answer stays under the grid to retry. Where the sign-in started tells a stranger's code from one's own.
 function Answer(props: {request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
 	return (
 		<>
+			<p className="text-muted-foreground text-xs">
+				{Boolean.match(props.request.kind === 'Browser', {
+					onFalse: () => `${clientLabel(props.request)} asks for the apps marked new`,
+					onTrue: () => 'A browser asks to sign in as you'
+				})}
+				{Option.match(Option.fromUndefinedOr(props.request.address), {
+					onNone: () => '',
+					onSome: address => ` · from ${address}`
+				})}
+			</p>
 			{Option.match(AsyncResult.error(consent), {
 				onNone: () => null,
 				onSome: failure => (
@@ -201,7 +212,9 @@ export function SignedInGrid(props: {pending: Option.Option<PendingAuthorization
 	const apps = useAtomSuspense(appsAtom).value
 	const now = useAtomSuspense(minuteAtom).value
 	const [disconnection] = useAtom(disconnectAtom)
-	const asked = Option.match(props.pending, {onNone: () => [], onSome: request => appNames(request.resources)})
+	// A browser asks for no app, only the session, so it adds no row.
+	const pendingApp = Option.filter(props.pending, request => request.kind === 'App')
+	const asked = Option.match(pendingApp, {onNone: () => [], onSome: request => appNames(request.resources)})
 	const columns = Array.sort(
 		Array.dedupe([...Array.flatMap(apps, app => appNames(app.resources)), ...asked]),
 		String.Order
@@ -222,7 +235,7 @@ export function SignedInGrid(props: {pending: Option.Option<PendingAuthorization
 					)
 				})}
 			</h2>
-			{Boolean.match(Array.isArrayEmpty(rows) && Option.isNone(props.pending), {
+			{Boolean.match(Array.isArrayEmpty(rows) && Option.isNone(pendingApp), {
 				onFalse: () => (
 					<table className="w-full table-fixed border-collapse text-sm">
 						<thead>
@@ -238,7 +251,7 @@ export function SignedInGrid(props: {pending: Option.Option<PendingAuthorization
 							</tr>
 						</thead>
 						<tbody>
-							{Option.match(props.pending, {
+							{Option.match(pendingApp, {
 								onNone: () => null,
 								onSome: request => <PendingRow columns={columns} request={request} />
 							})}

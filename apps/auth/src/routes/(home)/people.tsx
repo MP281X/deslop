@@ -11,7 +11,7 @@ import {Button} from '@deslop/components-web/ui/button'
 
 import {Avatar} from '#lib/components.tsx'
 import {accountAtom, admitAtom, dayLabel, peopleAtom, removeAtom} from '#lib/utils.ts'
-import type {Person} from '#services/authorizations/schema.ts'
+import type {Person} from '#services/people/schema.ts'
 
 function Identity(props: {detail: string; person: Person}) {
 	return (

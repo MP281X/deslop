@@ -52,6 +52,10 @@ function ServerRow(props: {server: ConnectionInfo}) {
 						})}
 					</span>
 				</span>
+				{Option.match(Option.fromUndefinedOr(props.server.error), {
+					onNone: () => null,
+					onSome: error => <span className="text-destructive break-words">{error}</span>
+				})}
 				{Option.match(AsyncResult.error(disconnecting), {
 					onNone: () => null,
 					onSome: failure => (
@@ -206,12 +210,6 @@ function Directory() {
 					</p>
 				)
 			})}
-			{new URLSearchParams(location.search).has('mcpError') && (
-				<p className="text-destructive text-xs" role="alert">
-					Cannot connect this MCP. Try again from its menu; the provider may not support automatic OAuth registration or
-					may have declined access.
-				</p>
-			)}
 		</>
 	)
 }
