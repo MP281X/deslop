@@ -1,4 +1,4 @@
-import {Array, Effect, Number, Option, Record, Schedule, Stream, String, Tuple, pipe} from 'effect'
+import {Array, Boolean, Effect, Number, Option, Record, Schedule, Stream, String, Tuple, pipe} from 'effect'
 
 import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
 
@@ -134,30 +134,46 @@ export const hudAtom = Atom.keepAlive(
 )
 
 export const historyAtom = Atom.family((key: string) => {
-	const [actor = 0, before = 0, at = -1] = Array.map(String.split(':')(key), part =>
-		Option.getOrElse(Number.parse(part), () => 0)
-	)
-	return RpcClient.runtime.atom(
-		pipe(
-			Stream.tick('5 seconds'),
-			Stream.mapEffect(() =>
-				Effect.flatMap(RpcClient, client =>
-					client('signal.history', {
-						actor,
-						...Option.match(
-							Option.filter(Option.some(at), value => value >= 0),
-							{onNone: () => ({}), onSome: tick => ({at: tick})}
-						),
-						...Option.match(
-							Option.filter(Option.some(before), value => value > 0),
-							{onNone: () => ({}), onSome: cursor => ({before: cursor})}
-						)
-					})
-				)
+	const [actor = 'all', encodedBefore = '0', encodedAt = '-1'] = String.split(':')(key)
+	const before = Option.getOrElse(Number.parse(encodedBefore), () => 0)
+	const at = Option.getOrElse(Number.parse(encodedAt), () => -1)
+	const request = Effect.flatMap(RpcClient, client =>
+		client('signal.history', {
+			actor: Boolean.match(actor === 'all', {
+				onFalse: () => Option.getOrElse(Number.parse(actor), () => 0),
+				onTrue: () => 'all' as const
+			}),
+			...Option.match(
+				Option.filter(Option.some(at), value => value >= 0),
+				{onNone: () => ({}), onSome: tick => ({at: tick})}
+			),
+			...Option.match(
+				Option.filter(Option.some(before), value => value > 0),
+				{onNone: () => ({}), onSome: cursor => ({before: cursor})}
 			)
-		)
+		})
+	)
+	if (before > 0 || at >= 0) return RpcClient.runtime.atom(request)
+	return Atom.setIdleTTL(
+		RpcClient.runtime.atom(
+			pipe(
+				Stream.tick('5 seconds'),
+				Stream.mapEffect(() => request)
+			)
+		),
+		0
 	)
 })
+
+export const usageAtom = Atom.setIdleTTL(
+	RpcClient.runtime.atom(
+		pipe(
+			Stream.tick('30 seconds'),
+			Stream.mapEffect(() => Effect.flatMap(RpcClient, client => client('signal.usage', undefined)))
+		)
+	),
+	0
+)
 
 // The world's seed, kept while the view's stream starts over, as a replay begins or ends.
 export const seedAtom = Atom.keepAlive(
@@ -184,11 +200,14 @@ export const timelineAtom = Atom.keepAlive(
 
 // A team's latest rounds, kept fresh.
 export const liveThreadAtom = Atom.family((team: number) =>
-	RpcClient.runtime.atom(
-		pipe(
-			Stream.tick('5 seconds'),
-			Stream.mapEffect(() => Effect.flatMap(RpcClient, client => client('signal.thread', {team})))
-		)
+	Atom.setIdleTTL(
+		RpcClient.runtime.atom(
+			pipe(
+				Stream.tick('5 seconds'),
+				Stream.mapEffect(() => Effect.flatMap(RpcClient, client => client('signal.thread', {team})))
+			)
+		),
+		0
 	)
 )
 

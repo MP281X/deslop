@@ -1111,6 +1111,10 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			sky.intensity = 0.25 + 1.1 * level
 			atmosphere.fog.value = Boolean.match(level < 0.4, {onFalse: () => 0, onTrue: () => 1})
 		},
+		detach() {
+			glide.zoom.follow = view.zoom
+			return {x: view.target.x, z: view.target.z}
+		},
 		dispose() {
 			// oxlint-disable-next-line unicorn/no-null -- three's setAnimationLoop stops only on null.
 			renderer.setAnimationLoop(null)
