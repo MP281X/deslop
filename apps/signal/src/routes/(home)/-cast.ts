@@ -34,7 +34,6 @@ const MODELS = [
 	'drifter',
 	'glitch',
 	'golem',
-	'home',
 	'loader',
 	'lurker',
 	'rotor',
@@ -402,6 +401,11 @@ function machine(w: number, d: number) {
 
 // Each building and structure as a few boxes and cylinders on its footprint, `w` by `d` tiles.
 const SHAPES = {
+	antenna: () =>
+		[
+			{d: 0.12, h: 3, paint: 'metal', round: true, w: 0.12, x: 0.5, y: 0, z: 0.5},
+			{d: 0.6, h: 0.08, paint: 'metal', round: true, w: 0.6, x: 0.5, y: 2.6, z: 0.5}
+		] satisfies Part[],
 	assembler: machine,
 	beacon: (w: number, d: number) =>
 		marked(
@@ -425,7 +429,14 @@ const SHAPES = {
 	foundry: kiln,
 	furnace: kiln,
 	home: (w: number, d: number) =>
-		marked([{d: d - 0.1, h: 0.04, paint: 'road', w: w - 0.1, x: w / 2, y: 0, z: d / 2}], 1.8),
+		marked(
+			[
+				{d: d - 0.1, h: 0.12, paint: 'road', w: w - 0.1, x: w / 2, y: 0, z: d / 2},
+				{d: 0.85, h: 3.4, paint: 'wall', w: 0.85, x: w / 2, y: 0.12, z: d / 2},
+				{d: 1.15, h: 0.2, paint: 'metal', w: 1.15, x: w / 2, y: 3.2, z: d / 2}
+			],
+			3.5
+		),
 	junction: hub,
 	lift: belt,
 	manufacturer: machine,
@@ -770,23 +781,6 @@ export function createCast(view: Renderer) {
 		for (const shot of next.shots) shoot(shot)
 	}
 
-	// Home is its model once loaded; everything else is drawn from parts.
-	function objectOf(building: BuildingView) {
-		return Option.match(
-			Option.filter(MutableHashMap.get(models, 'home'), () => building.kind === 'home' && building.built >= 1),
-			{
-				onNone: () => buildingObject(building, teamPaints[building.team] ?? PAINT.roof),
-				onSome: gltf => {
-					const object = shaded(clone(gltf.scene))
-					for (const mesh of meshesOf(object)) mesh.userData['shared'] = true
-					const group = new THREE.Group()
-					group.add(object, buildingObject(building, teamPaints[building.team] ?? PAINT.roof))
-					return group
-				}
-			}
-		)
-	}
-
 	// A belt's item rides on it as a small block of its colour.
 	function itemOn(building: BuildingView) {
 		return Option.map(Option.fromUndefinedOr(building.item), item => {
@@ -830,7 +824,7 @@ export function createCast(view: Renderer) {
 				}
 			} else {
 				if (before !== undefined) disposeObject(before.object)
-				const object = objectOf(building)
+				const object = buildingObject(building, teamPaints[building.team] ?? PAINT.roof)
 				object.position.set(
 					building.x + building.w / 2,
 					view.ground(building.x + building.w / 2, building.z + building.d / 2),

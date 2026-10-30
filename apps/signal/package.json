@@ -8,8 +8,7 @@
 		"#package.*": "./package.*",
 		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
-		"#services/*": "./src/services/*",
-		"#tools/*": "./src/tools/*"
+		"#services/*": "./src/services/*"
 	},
 	"scripts": {
 		"build": "rm -rf dist && vp build && vp pack",

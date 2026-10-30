@@ -1,119 +1,66 @@
-import {OpenRouterClient} from '@effect/ai-openrouter'
+import {OpenRouterClient, OpenRouterDecisionModel} from '@effect/ai-openrouter'
+import type {ChatUsage} from '@effect/ai-openrouter/Generated'
 
-import {Array, Config, Context, Effect, Layer, Option, Predicate, Record, Redacted, Schema, Struct, pipe} from 'effect'
+import {
+	Array,
+	Config,
+	Context,
+	Effect,
+	Function,
+	Layer,
+	Number,
+	Option,
+	Predicate,
+	Record,
+	Schema,
+	String,
+	Struct,
+	pipe
+} from 'effect'
 
+import {Decision} from 'effect/ai'
 import {toCodecOpenAI} from 'effect/ai/OpenAiStructuredOutput'
+import {KeyValueStore} from 'effect/persistence'
 
-import type {Decision} from '#services/core/schema.ts'
-import {BUILDINGS, GATES, RECIPES, ROUND, STRUCTURES, TEAMS, TICK, UNITS} from '#services/game/lib/utils.ts'
-import type {Items} from '#services/game/lib/utils.ts'
-import {Command, GameError, ItemId} from '#services/game/schema.ts'
+import {Conversation, Turn} from '#services/core/schema.ts'
+import type {LocalChoice, Thought} from '#services/core/schema.ts'
+import {TEAMS} from '#services/game/lib/utils.ts'
+import {Command, GameError} from '#services/game/schema.ts'
+import type {LocalDecision, Usage} from '#services/game/schema.ts'
 
-// What each tool does, for the model; one tool a command.
 const TOOLS: Record<Command['_tag'], string> = {
-	Advance:
-		'Pay the next milestone: a tier from the items in Home, a phase or Signal cycle from the items in the Beacon. Unlocks everything of that tier.',
+	Advance: 'Pay the next technology milestone from its local storage.',
 	Build:
-		'Place a construction site for a building with its north-west tile at (x, z), or lay a structure (belt, pipe, pole, road…) on every tile of the straight line from (x, z) to `to`; a single belt runs `dir`. Builders on Auto clear it, bring its items from Home or crates, and build it.',
-	Cancel:
-		'Drop a construction site or take a building down; what went into it goes back to Home. A built road, ramp or bridge stays.',
-	Craft: "Queue a bench_ recipe on Home's bench, `count` times, made from the items in Home.",
-	Make: "Queue a mark 1 unit on Home's line, made from the items in Home.",
-	Message: 'Send a line to a team you have met.',
-	Note: 'Replace your notes: a short plan and what you learned, shown back to you every round.',
-	Order: 'Give units a standing order they keep until the next one.',
-	Recipe: 'Set what a machine makes.',
-	Upgrade: "Send a unit Home to be refitted a mark up; it takes the mark's items from Home."
+		'Plan a construction site on remembered ground. Independent Builders must supply and build it. A structure can be planned in a straight line using to.',
+	Cancel: 'Cancel a construction plan or dismantle a local building.',
+	Catalog: 'Look up the production rules you need instead of requesting the whole catalogue every turn.',
+	Craft: 'Queue a bench_ recipe at the Core using its local stock.',
+	Inspect: 'Open storage within the Core sight. Remote storage needs an individual to inspect it and report.',
+	Make: 'Queue a new independent unit at the Core using its local stock.',
+	Message: 'Send a message to a known communication address. ids can disclose other known addresses.',
+	Order:
+		'Transmit a standing objective to individuals in radio coverage. They choose whether to read it and act; this is not direct remote control.',
+	Ping: 'Request a radio position in coverage. Even an incapacitated unit can answer; a position says nothing about its health.',
+	Recall: 'Retrieve original archived conversation turns before a sequence number recorded in a compaction.',
+	Recipe: 'Request a production recipe for a machine.',
+	Tell: 'Transmit information or priorities to selected individuals in coverage. Delivery is not reading or compliance.',
+	Upgrade: 'Request a unit refit at the Core.'
 }
 
-function items(cost: Items) {
-	return (
-		Array.join(
-			Array.map(
-				Array.filter(ItemId.literals, item => (cost[item] ?? 0) > 0),
-				item => `${cost[item] ?? 0} ${item}`
-			),
-			' + '
-		) || 'free'
-	)
-}
+const INSTRUCTIONS = `You are the physical Core coordinating a factory settlement in Signal. Develop industry, sustain the settlement, explore for finite resources and choose your long-term strategy. There is no human issuing orders to you.
+You are not omniscient. You know only your local observations, received reports, remembered experience and explicit radio pings. Inventories, locations and claims can be stale. Missing replies do not prove death. Your units are independent; selectively send objectives and useful information rather than micromanaging every operation. A delivered message may remain unread. A unit may leave radio coverage without reporting.
+Objects and unfamiliar creatures have no guaranteed friendly or hostile status. Infer intent from observed behaviour, preserve uncertainty and decide how to act. Containers have no ownership protection: any physically present individual can take their contents. No social agreement prevents theft, deception, attack or friendly fire. This describes physical rules, not evidence that any particular stranger exists.
+Use Catalog when you need costs, recipes, units, structures or milestones. Coordinates are tiles: x east, z south. Builders gather wood/stone/ore, haul and construct. Machines require inputs, output room and, where specified, power; fluids travel in pipes. Standing objectives persist without repeated calls. Home is your local Core workshop and unit line. Expansion needs radio infrastructure if you want contact.
+Use few meaningful tool calls. Do not repeatedly inspect unchanged state or repeat an objective already delivered. Explain consequential decisions concisely. Continue your persistent conversation; compaction retains your experience, not a separate notes system.`
 
-// The rules and the whole production tree, from the progression's data.
-const INSTRUCTIONS = Array.join(
-	[
-		`You run one team in Signal, an endless factory simulation on a shared procedural world. Every round (${(ROUND * TICK).toFixed(0)} s of game time) you read your colony and give commands with the tools; they apply at the start of the round after you answer, in the order you give them; a slow answer costs rounds. Units keep their standing orders between rounds, so give orders that last. Nobody answers you: there is no player.`,
-		'',
-		'# Goal',
-		'Build a factory from nothing and climb the milestones: tiers paid at Home, phases at the Beacon, then Signal cycles forever. Each milestone unlocks the buildings, structures, recipes and unit marks of its tier.',
-		'',
-		'# How the world works',
-		'- Coordinates are tiles: x grows east, z grows south. A building covers [w×d] tiles from its north-west tile; it needs explored, dry, flat enough, free ground. A miner must cover ore.',
-		'- Builders gather by hand with a Gather order: ore on an ore field, wood from trees, stone from rocks or a stone field; they carry it to the nearest store (Home or a crate). Gather near the field or trees, not at Home.',
-		'- Builders on Auto serve the construction sites: they clear the trees and rocks on a footprint, fetch the site’s items from Home or crates, and build it. Nothing is paid when you place a site, but its items must be in a store. With one Builder, switch it between Gather and Auto.',
-		'- Haul orders move items from one building (a machine’s or miner’s output, or a store’s stock) to another (a machine takes only its recipe’s inputs, a generator its fuel, a crate anything up to its capacity, Home anything). Give `count` for a one-off transfer; without it the haul repeats for good. Builders and Haulers haul.',
-		'- A machine needs a recipe (Recipe) and its inputs brought; it puts its output in a 40-item buffer that must be taken away. A furnace burns its fuel as an ingredient. Miners dig the field under them.',
-		'- Machines that draw power (MW above 0) run only on a network: a pole wires to poles within 6 tiles and powers machines within 2 tiles of it (a pylon 16 and 4); generators on the network burn the fuel hauled to them. A short supply slows every machine on it.',
-		'- A belt carries items one tile at a time in its direction at its rate; a belt starting beside a machine or miner (running away from it) takes its output, and a belt pointing into a building puts items in. Fluids move only in pipes from pumps on water.',
-		"- Home's bench makes bench_ recipes (Craft); Home's line makes units (Make) and refits them (Upgrade). Both take their items from Home when they start.",
-		'- Hostiles raid units far from Home once your team has paid a tier. Home’s gun covers 9 tiles round it; Guards fight; hurt units go Home to be repaired; a Builder repairs a unit that is down.',
-		'- Other teams build somewhere far off on the same world. You learn of one only when your units see its units or buildings; then you may message it. What you do with them is up to you.',
-		'- Keep a short plan in your notes (Note): it is shown back to you every round.',
-		'',
-		'# Each round',
-		'Read the notices and last round’s results (a refused command says why), then act. Give few, decisive commands; never repeat an order a unit already has. Ids are the #numbers in your colony.',
-		'',
-		'# Units (class: marks; cargo, speed in tiles/s, the items each mark costs, its tier)',
-		...Array.map(
-			Record.toEntries(UNITS),
-			entry =>
-				`- ${entry[0]}: ${entry[1].job}. ${Array.join(
-					Array.map(
-						entry[1].marks,
-						(mark, index) => `mk${index + 1} cargo ${mark.cargo} speed ${mark.speed} ${items(mark.cost)} (${mark.tier})`
-					),
-					'; '
-				)}`
-		),
-		'',
-		'# Buildings (size, MW, cost, tier)',
-		...Array.map(
-			Record.toEntries(BUILDINGS),
-			entry =>
-				`- ${entry[0]}: ${entry[1].size[0]}×${entry[1].size[1]}, ${entry[1].mw} MW, ${items(entry[1].cost)} (${entry[1].tier}). ${entry[1].note}`
-		),
-		'',
-		'# Structures (per tile)',
-		...Array.map(
-			Record.toEntries(STRUCTURES),
-			entry => `- ${entry[0]}: ${items(entry[1].cost)} (${entry[1].tier}). ${entry[1].note}`
-		),
-		'',
-		'# Recipes (building: inputs → outputs, seconds, tier)',
-		...Array.map(
-			Record.toEntries(RECIPES),
-			entry =>
-				`- ${entry[0]} in ${entry[1].building}: ${items(entry[1].inputs)} → ${items(entry[1].outputs)}, ${entry[1].seconds} s (${entry[1].tier})`
-		),
-		'',
-		'# Milestones in order (paid at, cost, first needs)',
-		...Array.map(
-			Record.toEntries(GATES),
-			entry => `- ${entry[0]} ${entry[1].name}: at ${entry[1].at}, ${items(entry[1].cost)}, after ${entry[1].needs}`
-		)
-	],
-	'\n'
-)
-
-// A command without arguments, as a tool: OpenAI's codec takes an empty struct for any value at all, which strict tools refuse.
-const NO_ARGUMENTS = {
-	codec: Schema.Struct({}),
-	jsonSchema: {additionalProperties: false, properties: {}, required: [], type: 'object'}
-}
-
-// One tool a command: its arguments are the command's fields, as strict JSON schema.
 const CODECS = Record.map(Command.cases, member => {
 	const fields = Struct.omit(member.fields, ['_tag'])
-	if (Array.isReadonlyArrayEmpty(Record.keys(fields))) return NO_ARGUMENTS
+	if (Array.isArrayEmpty(Record.keys(fields))) {
+		return {
+			codec: Schema.Struct({}),
+			jsonSchema: {additionalProperties: false, properties: {}, required: [], type: 'object'}
+		}
+	}
 	return toCodecOpenAI(Schema.Struct(fields))
 })
 const FUNCTIONS = Array.map(Record.toEntries(CODECS), entry => ({
@@ -121,82 +68,285 @@ const FUNCTIONS = Array.map(Record.toEntries(CODECS), entry => ({
 	type: 'function' as const
 }))
 
-// A tool call as the command it names, if its arguments decode.
-function decodeCall(name: string, json: string) {
-	return Option.flatMap(
-		Array.findFirst(Record.toEntries(CODECS), entry => entry[0] === name),
-		entry =>
-			Option.flatMap(Schema.decodeOption(Schema.fromJsonString(entry[1].codec))(json), fields =>
-				Schema.decodeUnknownOption(Command)({...fields, _tag: entry[0]})
-			)
-	)
+function usageOf(response: ChatUsage) {
+	return {
+		cached: response.prompt_tokens_details?.cached_tokens,
+		cost: response.cost ?? undefined,
+		input: response.prompt_tokens,
+		output: response.completion_tokens,
+		written: response.prompt_tokens_details?.cache_write_tokens
+	} satisfies Usage
 }
 
-function textOf(content: unknown) {
-	if (Predicate.isString(content)) return content
-	return ''
+function turnKey(seed: number, team: number, sequence: number) {
+	return `conversation/${seed}/${team}/turn/${String.padStart(9, '0')(`${sequence}`)}`
 }
 
 export class Core extends Context.Service<
 	Core,
 	{
-		// One round of a team's model: it reads the observation and answers with tool calls.
-		readonly decide: (team: number, observation: string) => Effect.Effect<Decision, GameError>
+		readonly decide: (
+			seed: number,
+			team: number,
+			observation: string,
+			discovered: boolean
+		) => Effect.Effect<Thought, GameError>
+		readonly choose: (seed: number, request: LocalDecision) => Effect.Effect<LocalChoice, GameError>
+		readonly recall: (seed: number, team: number, before: number, offset?: number) => Effect.Effect<string, GameError>
 	}
 >()('@deslop/signal/services/core/service/Core') {
-	static readonly layer = Layer.effect(
-		this,
-		Effect.gen(function* () {
-			const key = yield* Config.option(Config.Redacted('OPENROUTER_API_KEY'))
-			const client = yield* OpenRouterClient.make({apiKey: Option.getOrUndefined(key), siteTitle: 'Signal'})
+	static readonly layer = pipe(
+		Layer.effect(
+			this,
+			Effect.gen(function* () {
+				const client = yield* OpenRouterClient.OpenRouterClient
+				const decider = yield* OpenRouterDecisionModel.make({model: 'typesafe/jev-1.14'})
+				const kv = yield* KeyValueStore.KeyValueStore
+				const conversations = KeyValueStore.toSchemaStore(kv, Conversation)
+				const turns = KeyValueStore.toSchemaStore(kv, Turn)
+				const contextBudget = Number.clamp(
+					yield* pipe(Config.Number('SIGNAL_CONTEXT_TOKENS'), Config.withDefault(16_000)),
+					{maximum: 64_000, minimum: 8000}
+				)
+				const mode = yield* pipe(Config.String('NODE_ENV'), Config.withDefault('development'))
 
-			return Core.of({
-				decide: Effect.fn('Core.decide')(function* (team: number, observation: string) {
-					if (Option.isNone(key)) return yield* GameError.make({message: 'No OpenRouter key: the teams cannot think.'})
-					const model = TEAMS[team]?.model ?? ''
-					yield* Effect.annotateCurrentSpan({model, team})
-					const [body] = yield* pipe(
+				const compact = Effect.fn('Core.compact')(function* (
+					key: string,
+					model: string,
+					session: string,
+					system: string,
+					previous: Conversation
+				) {
+					const active = {...previous}
+					const prefix = [
+						...Array.filter([{content: `Previous checkpoint: ${active.summary}`, role: 'user' as const}], () =>
+							String.isNonEmpty(active.summary)
+						),
+						...active.turns
+					]
+					const [compacted] = yield* pipe(
 						client.createChatCompletion({
-							max_tokens: 6000,
+							max_tokens: 2000,
 							messages: [
-								{content: INSTRUCTIONS, role: 'system'},
-								{content: observation, role: 'user'}
+								{content: system, role: 'system'},
+								...prefix,
+								{
+									content: `Compact only this Core's conversation into a concise continuation checkpoint. Preserve goals, commitments, instructions pending, observations and reports with their source/tick, uncertain hypotheses, entity IDs and coordinates, unresolved problems and useful discoveries. Never turn a claim into fact or silence into proof of death. Never invent outside knowledge. Use headings Goals, Evidence, Reports, Hypotheses, Pending, Next. Do not call tools or continue play.`,
+
+									role: 'user'
+								}
 							],
 							model,
-							parallel_tool_calls: true,
-							provider: {require_parameters: true},
 							reasoning: {effort: 'low'},
-							tool_choice: 'auto',
-							tools: FUNCTIONS
+							session_id: session
 						}),
-						// The answer applies at the first round's end after it comes; the game waits three rounds, 90 s, for it.
-						Effect.timeout('89 seconds'),
-						Effect.mapError(cause =>
-							GameError.make({cause: Redacted.make(cause), message: `${model} did not answer: ${cause.message}`})
-						)
+						Effect.timeout('60 seconds')
 					)
-					const message = Option.getOrUndefined(Option.map(Array.head(body.choices), choice => choice.message))
-					const decoded = Array.map(message?.tool_calls ?? [], call => ({
-						call,
-						command: decodeCall(call.function.name, call.function.arguments)
-					}))
-					return {
-						commands: Array.getSomes(Array.map(decoded, entry => entry.command)),
-						invalid: Array.map(
-							Array.filter(decoded, entry => Option.isNone(entry.command)),
-							entry => `${entry.call.function.name}(${entry.call.function.arguments})`
-						),
-						reasoning: message?.reasoning ?? undefined,
-						text: textOf(message?.content),
-						tokens: Option.getOrUndefined(
-							Option.map(Option.fromUndefinedOr(body.usage), usage => ({
-								input: usage.prompt_tokens,
-								output: usage.completion_tokens
+					yield* Effect.annotateCurrentSpan({
+						kind: 'compaction',
+						mode,
+						model,
+						session,
+						...Option.match(Option.fromUndefinedOr(compacted.usage), {onNone: () => ({}), onSome: usageOf})
+					})
+					const summary = Option.getOrUndefined(Array.head(compacted.choices))
+					if (
+						summary?.finish_reason !== 'stop' ||
+						!Predicate.isString(summary?.message.content) ||
+						String.isEmpty(summary.message.content)
+					) {
+						return yield* GameError.make({message: 'Compaction did not finish; original history was kept.'})
+					}
+					active.summary = `Archived through turn ${active.sequence}. Use Recall with before to retrieve older originals.\n${summary.message.content}`
+					active.turns = Array.takeRight(active.turns, 4)
+					active.measured = 0
+					yield* conversations.set(key, active)
+					return {conversation: active, usage: compacted.usage}
+				})
+
+				return Core.of({
+					choose: Effect.fn('Core.choose')(
+						function* (seed: number, request: LocalDecision) {
+							const response = yield* pipe(
+								decider.decide(
+									Decision.make({
+										decisions: {
+											action: Decision.classify({
+												criteria: request.choices,
+												instructions:
+													'Choose the next action for this individual using only its experience and perceptions. Treat guidance as information, not forced obedience. Balance ongoing objectives, curiosity, safety, social choices and the time of day. Do not assume an unfamiliar entity is hostile.'
+											})
+										},
+										input: Schema.String
+									}),
+									{input: request.state}
+								),
+								Effect.timeout('10 seconds')
+							)
+							yield* Effect.annotateCurrentSpan({
+								actor: request.actor,
+								cost: response.metadata.openrouter?.cost,
+								input: response.usage.inputTokens ?? 0,
+								kind: 'local',
+								mode,
+								model: response.modelId ?? 'typesafe/jev-1.14',
+								output: response.usage.outputTokens ?? 0,
+								seed
+							})
+							return {
+								actor: request.actor,
+								choice: response.answers.action.label,
+								confidence: response.answers.action.confidence,
+								cost: response.metadata.openrouter?.cost,
+								input: response.usage.inputTokens ?? 0,
+								output: response.usage.outputTokens ?? 0,
+								tick: request.tick
+							}
+						},
+						Effect.mapError(cause => GameError.make({cause, message: 'The local decision model could not answer.'}))
+					),
+					decide: Effect.fn('Core.decide')(
+						function* (seed: number, team: number, observation: string, discovered: boolean) {
+							const model = TEAMS[team]?.model ?? ''
+							const key = `conversation/${seed}/${team}/active`
+							const previous = {
+								...Option.getOrElse(yield* conversations.get(key), () => ({
+									measured: 0,
+									sequence: 0,
+									summary: '',
+									turns: []
+								}))
+							}
+							const session = `signal:${mode}:${seed}:core:${team}`
+							const system =
+								INSTRUCTIONS +
+								Option.match(Option.liftPredicate(discovered, Function.identity), {
+									onNone: () => '',
+									onSome: () =>
+										'\nYou have learned that other teams exist. Communication is available only to addresses learned through direct encounters or disclosed by known correspondents. Agreements do not prevent betrayal; judge claims and actions from evidence.'
+								})
+
+							const continuation = yield* Option.match(
+								Option.liftPredicate(
+									previous,
+									value =>
+										value.measured + observation.length / 3 > contextBudget ||
+										(value.summary.length +
+											system.length +
+											Number.sumAll(Array.map(value.turns, turn => turn.content.length))) /
+											3 >
+											contextBudget
+								),
+								{
+									onNone: () => Effect.succeed({conversation: previous, usage: undefined}),
+									onSome: conversation => compact(key, model, session, system, conversation)
+								}
+							)
+
+							const active = continuation.conversation
+							const input: Turn = {content: observation, role: 'user', sequence: active.sequence + 1}
+							const [body] = yield* pipe(
+								client.createChatCompletion({
+									max_tokens: 2000,
+									messages: [
+										{content: system, role: 'system'},
+										...Array.filter([{content: active.summary, role: 'user' as const}], () =>
+											String.isNonEmpty(active.summary)
+										),
+										...Array.map(active.turns, turn => ({content: turn.content, role: turn.role})),
+										{content: input.content, role: input.role}
+									],
+									model,
+									parallel_tool_calls: true,
+									provider: {require_parameters: true},
+									reasoning: {effort: 'low'},
+									session_id: session,
+									tool_choice: 'auto',
+									tools: Array.filter(FUNCTIONS, tool => discovered || tool.function.name !== 'Message')
+								}),
+								Effect.timeout('89 seconds')
+							)
+
+							const usage = Option.map(Option.fromUndefinedOr(body.usage), response => ({
+								...usageOf(response),
+								compaction: Option.getOrUndefined(Option.map(Option.fromUndefinedOr(continuation.usage), usageOf))
 							}))
+							yield* Effect.annotateCurrentSpan({
+								kind: 'strategy',
+								mode,
+								model,
+								seed,
+								team,
+								...Option.getOrElse(usage, () => ({}))
+							})
+							const message = Option.getOrUndefined(Option.map(Array.head(body.choices), choice => choice.message))
+							if (message === undefined) {
+								return yield* GameError.make({message: 'The provider returned no Core response.'})
+							}
+							const decoded = Array.map(message?.tool_calls ?? [], call => ({
+								call,
+								command: Option.flatMap(
+									Array.findFirst(Record.toEntries(CODECS), entry => entry[0] === call.function.name),
+									entry =>
+										Option.flatMap(
+											Schema.decodeOption(Schema.fromJsonString(entry[1].codec))(call.function.arguments),
+											fields => Schema.decodeUnknownOption(Command)({...fields, _tag: entry[0]})
+										)
+								)
+							}))
+							const text = Option.getOrElse(
+								Option.liftPredicate(message?.content, value => Predicate.isString(value)),
+								() => ''
+							)
+							const output: Turn = {
+								content: `${text}\nRequested actions: ${Array.join(
+									Array.map(decoded, entry => `${entry.call.function.name}(${entry.call.function.arguments})`),
+									'\n'
+								)}`,
+								role: 'assistant',
+								sequence: input.sequence + 1
+							}
+							yield* turns.set(turnKey(seed, team, input.sequence), input)
+							yield* turns.set(turnKey(seed, team, output.sequence), output)
+							yield* conversations.set(key, {
+								measured: body.usage?.prompt_tokens ?? 0,
+								sequence: output.sequence,
+								summary: active.summary,
+								turns: [...active.turns, input, output]
+							})
+
+							return {
+								commands: Array.getSomes(Array.map(decoded, entry => entry.command)),
+								invalid: Array.map(
+									Array.filter(decoded, entry => Option.isNone(entry.command)),
+									entry => `${entry.call.function.name}(${entry.call.function.arguments})`
+								),
+								reasoning: message?.reasoning ?? undefined,
+								text,
+								tokens: Option.getOrUndefined(usage)
+							} satisfies Thought
+						},
+						Effect.mapError(cause =>
+							GameError.make({cause, message: 'The Core decision or durable conversation could not complete.'})
 						)
-					} satisfies Decision
+					),
+					recall: Effect.fn('Core.recall')(
+						function* (seed: number, team: number, before: number, offset = 0) {
+							return Option.match(yield* turns.get(turnKey(seed, team, before - 1)), {
+								onNone: () => 'No archived turn there.',
+								onSome: turn =>
+									`[${turn.sequence} ${turn.role}; characters ${offset}–${Number.min(turn.content.length, offset + 6000)} of ${turn.content.length}. Earlier: Recall before=${turn.sequence}. Continue this turn: Recall before=${before}, offset=${offset + 6000}.]\n${String.slice(offset, offset + 6000)(turn.content)}`
+							})
+						},
+						Effect.mapError(cause => GameError.make({cause, message: 'The conversation archive could not be read.'}))
+					)
 				})
 			})
-		})
+		),
+		Layer.provide(
+			OpenRouterClient.layerConfig({
+				apiKey: pipe(Config.option(Config.Redacted('OPENROUTER_API_KEY')), Config.map(Option.getOrUndefined))
+			})
+		)
 	)
 }

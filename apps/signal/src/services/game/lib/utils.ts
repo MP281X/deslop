@@ -232,22 +232,12 @@ export const WILDLIFE: {chance: number; kind: MobKind; most: number}[][] = [
 	]
 ]
 
-// How far and which way a place lies from another: "20 tiles NE".
-export function bearing(from: Point, to: Point) {
-	// Degrees clockwise from north (−z), in eight sectors.
-	const sector = Number.round((((Math.atan2(to.x - from.x, from.z - to.z) * 180) / Math.PI + 360) % 360) / 45, 0) % 8
-	return `${Number.round(Math.hypot(to.x - from.x, to.z - from.z), 0)} tiles ${Option.getOrElse(Array.get(['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'], sector), () => 'N')}`
-}
-
 // Props a Builder clears for wood, and those for stone; how much each gives at full size.
 export const TIMBER = ['tree', 'pine', 'maple', 'snag', 'bamboo', 'cactus']
 export const BOULDERS = ['rock', 'spire', 'hoodoo', 'crystal', 'coral', 'shard']
 export function yieldOf(prop: {kind: string; s: number}) {
 	return Number.max(2, Number.round(3 * prop.s, 0))
 }
-
-// How far round its Home a team has seen when it starts: the floor of its basin, with the start fields on it.
-export const START_SIGHT = 32
 
 // Signal's production tree: what teams gather, make, build and pay to move up. Footprints are tiles [across, deep], power is MW, rates are items a second, fluids are units (u) and u/s, time is seconds.
 
@@ -675,6 +665,11 @@ export const BUILDINGS: Record<BuildingKind, Building> = {
 
 // Laid a tile or a piece at a time by a Builder, at `cost` each. A belt's `rate` is items a second, a pipe's u/s.
 export const STRUCTURES: Record<StructureKind, {cost: Items; note: string; rate?: number; tier: GateId}> = {
+	antenna: {
+		cost: {iron_rod: 8, wire: 12},
+		note: 'Radio repeater: links within 80 tiles of Core or another connected antenna, covers 40 tiles.',
+		tier: 't1'
+	},
 	belt_mk1: {cost: {iron_plate: 1}, note: '1 item/s.', rate: 1, tier: 't2'},
 	belt_mk2: {cost: {iron_plate: 1, steel_pipe: 1}, note: '2 items/s.', rate: 2, tier: 't4'},
 	belt_mk3: {cost: {plastic: 1, steel_beam: 1}, note: '4.5 items/s.', rate: 4.5, tier: 't6'},

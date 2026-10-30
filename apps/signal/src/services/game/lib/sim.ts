@@ -11,15 +11,20 @@ import {
 	Order,
 	Record,
 	Schema,
-	Tuple
+	String,
+	Struct,
+	Tuple,
+	pipe
 } from 'effect'
 import type {Types} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 
+import {daylightAt, makeLife} from '#services/game/lib/life.ts'
+import type {Body} from '#services/game/lib/life.ts'
 import {route} from '#services/game/lib/path.ts'
-import {START_STATES, Sites, Tasks} from '#services/game/lib/tasks.ts'
-import type {Site, SiteEvent, Task, TaskEvent} from '#services/game/lib/tasks.ts'
+import {Creatures, START_STATES, Sites, Tasks} from '#services/game/lib/tasks.ts'
+import type {Creature, Site, SiteEvent, Task, TaskEvent} from '#services/game/lib/tasks.ts'
 import {
 	BOULDERS,
 	BUILDINGS,
@@ -31,16 +36,14 @@ import {
 	KINDS,
 	ORE_ITEM,
 	RECIPES,
-	ROUND,
 	START,
-	START_SIGHT,
 	STRUCTURES,
 	TEAMS,
 	TICK,
+	TICK_HZ,
 	TIMBER,
 	UNITS,
 	WILDLIFE,
-	bearing,
 	capsuleOf,
 	cycleCost,
 	markOf,
@@ -56,12 +59,15 @@ import type {
 	Command,
 	Direction,
 	EnemyKind,
+	Entry,
 	Explored,
+	Fact,
 	Job,
 	Mark,
 	MobKind,
 	Outcome,
 	Point,
+	RecipeId,
 	Saved,
 	SavedBuilding,
 	SavedEnemy,
@@ -96,9 +102,6 @@ import type {Edit, TileChange} from '#services/world/schema.ts'
 
 // The most a body turns in one tick, in radians.
 const TURN = 0.3
-// Seconds between raids at the least; raids come only for units this far from their Home.
-const RAID_EVERY = 240
-const RAID_DISTANCE = 16
 // Items a machine's output buffer holds.
 const BUFFER = 40
 // How far round a gather point a Builder looks for what it digs or clears.
@@ -152,13 +155,13 @@ const CHUNK_BYTES = (CHUNK * CHUNK) / 8
 type Unit = Types.Mutable<Omit<SavedUnit, 'task'>> & {task: Task}
 type Building = Types.Mutable<Omit<SavedBuilding, 'site'>> & {site: Site}
 type Team = Types.Mutable<Omit<SavedTeam, 'explored'>>
-type Enemy = Types.Mutable<SavedEnemy>
-type Mob = Types.Mutable<SavedMob>
+type Enemy = Types.Mutable<Omit<SavedEnemy, 'task'>> & {task: Creature}
+type Mob = Types.Mutable<Omit<SavedMob, 'task'>> & {task: Creature}
 type Kind = BuildingKind | StructureKind
 type Bits = {bits: Uint8Array; version: number}
 type Plan = {job: Option.Option<Job>; reason: string}
 // A body in the crowd grid: where it is, what it is, its place in the listing and whether it blocks now.
-type Body = {
+type CrowdBody = {
 	at: {act: string; id: number; x: number; yaw: number; z: number}
 	kind: string
 	order: number
@@ -170,10 +173,6 @@ const byId = Order.mapInput(Order.Number, (entry: {id: number}) => entry.id)
 
 function distance(a: Point, b: Point) {
 	return Math.hypot(a.x - b.x, a.z - b.z)
-}
-
-function angleTo(from: Point, to: Point) {
-	return Math.atan2(to.x - from.x, to.z - from.z)
 }
 
 /* ───────── items ───────── */
@@ -374,12 +373,6 @@ function capsuleAt(body: {at: {x: number; yaw: number; z: number}; kind: string}
 	return capsuleOf({kind: body.kind, x: body.at.x, yaw: body.at.yaw, z: body.at.z})
 }
 
-// A point some tiles to one side of the line from one point to another, square to it.
-function aside(from: Point, to: Point, side: number) {
-	const gap = distance(from, to)
-	return {x: from.x + ((to.z - from.z) / gap) * side, z: from.z - ((to.x - from.x) / gap) * side}
-}
-
 // How far a pole wires to the next and powers buildings round it.
 function reachOf(pole: Building) {
 	if (pole.kind === 'pylon') return POLES.pylon
@@ -387,11 +380,21 @@ function reachOf(pole: Building) {
 }
 
 // Where a unit stands to work at a building: by its edge.
-function beside(building: Option.Option<Building>) {
-	return Option.map(building, entry => ({
-		near: Number.max(sizeOf(entry.kind).w, sizeOf(entry.kind).d) / 2 + 0.9,
-		to: centreOf(entry)
-	}))
+function beside(building: Option.Option<Point & {kind: Kind}>, from: Point) {
+	return Option.flatMap(building, entry => {
+		const size = sizeOf(entry.kind)
+		const x = Number.clamp(from.x, {maximum: entry.x + size.w - 0.5, minimum: entry.x + 0.5})
+		const z = Number.clamp(from.z, {maximum: entry.z + size.d - 0.5, minimum: entry.z + 0.5})
+		return Option.map(
+			nearest(from, [
+				{x, z: entry.z - 0.5},
+				{x, z: entry.z + size.d + 0.5},
+				{x: entry.x - 0.5, z},
+				{x: entry.x + size.w + 0.5, z}
+			]),
+			to => ({near: 0, to})
+		)
+	})
 }
 
 // How far up a ramp facing a direction a tile corner sits, 0 at its foot and 1 at its top.
@@ -433,13 +436,6 @@ function builtOf(building: Building) {
 		return 0.5 + 0.5 * (1 - building.site.state.value.left / buildSeconds(building.kind))
 	}
 	return 0.5 * Number.min(1, totalOf(building.stock) / Number.max(1, totalOf(costOf(building.kind))))
-}
-
-// A Home queue's state: working, waiting for what it lacks, or idle.
-function queueText(progress: number, queued: boolean, lacking: string) {
-	if (progress >= 0) return ' (working)'
-	if (queued) return ` (waiting for ${lacking} at Home)`
-	return ''
 }
 
 function nextGate(team: Team) {
@@ -547,6 +543,7 @@ export const makeSim = Effect.fnUntraced(
 		const start = yield* START_STATES
 		const seed = Option.match(saved, {onNone: () => fresh, onSome: previous => previous.seed})
 		const world = makeWorld(seed)
+		const life = makeLife(Option.getOrUndefined(saved)?.life)
 		const spawns = world.spawns()
 		const state = {draws: 0, nextId: 1, raidAt: 360, searches: 0, tick: 0, wildId: 1_000_000_000}
 		const units = MutableHashMap.empty<number, Unit>()
@@ -554,6 +551,7 @@ export const makeSim = Effect.fnUntraced(
 		const teams = MutableList.make<Team>()
 		const enemies = MutableHashMap.empty<number, Enemy>()
 		const mobs = MutableHashMap.empty<number, Mob>()
+		const dirtyWild = MutableHashSet.empty<number>()
 		// Live wildlife patches, by patch key: whatever lives in each.
 		const patches = MutableHashMap.empty<number, number[]>()
 		// The way and side each body last swerved, which it keeps to round the same obstacle.
@@ -788,16 +786,43 @@ export const makeSim = Effect.fnUntraced(
 			return Option.getOrUndefined(MutableHashMap.get(buildings, id))
 		}
 
+		const listings = {
+			buildings: {list: Array.empty<Building>(), revision: -1, size: -1},
+			enemies: {list: Array.empty<Enemy>(), size: -1},
+			units: {list: Array.empty<Unit>(), size: -1}
+		}
 		function allUnits() {
-			return Array.sort(Array.fromIterable(MutableHashMap.values(units)), byId)
+			if (listings.units.size !== MutableHashMap.size(units)) {
+				listings.units = {
+					list: Array.sort(Array.fromIterable(MutableHashMap.values(units)), byId),
+					size: MutableHashMap.size(units)
+				}
+			}
+			return listings.units.list
 		}
 
 		function allBuildings() {
-			return Array.sort(Array.fromIterable(MutableHashMap.values(buildings)), byId)
+			if (
+				listings.buildings.size !== MutableHashMap.size(buildings) ||
+				listings.buildings.revision !== revision.buildings
+			) {
+				listings.buildings = {
+					list: Array.sort(Array.fromIterable(MutableHashMap.values(buildings)), byId),
+					revision: revision.buildings,
+					size: MutableHashMap.size(buildings)
+				}
+			}
+			return listings.buildings.list
 		}
 
 		function allEnemies() {
-			return Array.sort(Array.fromIterable(MutableHashMap.values(enemies)), byId)
+			if (listings.enemies.size !== MutableHashMap.size(enemies)) {
+				listings.enemies = {
+					list: Array.sort(Array.fromIterable(MutableHashMap.values(enemies)), byId),
+					size: MutableHashMap.size(enemies)
+				}
+			}
+			return listings.enemies.list
 		}
 
 		function allTeams() {
@@ -820,6 +845,191 @@ export const makeSim = Effect.fnUntraced(
 
 		function homes() {
 			return Array.map(allTeams(), team => homeAt(team.id))
+		}
+
+		function living(unit: Unit) {
+			return {
+				act: unit.act,
+				capacity: markOf(unit).cargo,
+				cargo: totalOf(unit.cargo),
+				doing: unit.doing,
+				health: unit.health / markOf(unit).health,
+				id: unit.id,
+				kind: kindOf(unit),
+				team: unit.team,
+				x: unit.x,
+				yaw: unit.yaw,
+				z: unit.z
+			} satisfies Body
+		}
+
+		function entities() {
+			return [
+				...Array.map<Unit[], Body>(allUnits(), living),
+				...Array.map<Enemy[], Body>(allEnemies(), enemy => ({
+					act: enemy.act,
+					doing: enemy.doing,
+					health: enemy.health / 60,
+					id: enemy.id,
+					kind: enemy.kind,
+					x: enemy.x,
+					yaw: enemy.yaw,
+					z: enemy.z
+				})),
+				...Array.map<Mob[], Body>(Array.fromIterable(MutableHashMap.values(mobs)), mob => ({
+					act: mob.act,
+					doing: mob.doing,
+					health: life.person(mob.id, state.tick).health,
+					id: mob.id,
+					kind: mob.kind,
+					x: mob.x,
+					yaw: mob.yaw,
+					z: mob.z
+				}))
+			]
+		}
+
+		function entity(id: number) {
+			const unit = unitOf(id)
+			if (unit !== undefined) return Option.some<Body>(living(unit))
+			const enemy = Option.getOrUndefined(MutableHashMap.get(enemies, id))
+			if (enemy !== undefined) return Option.some<Body>({...enemy, health: enemy.health / 60})
+			return Option.map<Mob, Body>(MutableHashMap.get(mobs, id), mob => ({
+				...mob,
+				health: life.person(id, state.tick).health
+			}))
+		}
+
+		const radio = {revision: -1, stations: Array.empty<{team: number; x: number; z: number}>()}
+		function recordBirth(id: number) {
+			Option.match(entity(id), {
+				onNone: () => undefined,
+				onSome: body => life.event(body, state.tick, 'born', `${body.kind} began here.`)
+			})
+		}
+		function connected(unit: Unit) {
+			if (radio.revision !== revision.buildings) {
+				radio.revision = revision.buildings
+				radio.stations = Array.map(allTeams(), team => ({team: team.id, ...homeAt(team.id)}))
+				const antennas = Array.filter(
+					allBuildings(),
+					building => building.kind === 'antenna' && Sites.root.matches(building.site, 'Complete')
+				)
+				Array.forEach(antennas, () => {
+					for (const antenna of antennas) {
+						if (
+							!Array.some(
+								radio.stations,
+								station => station.team === antenna.team && distance(station, antenna) < 0.1
+							) &&
+							Array.some(radio.stations, station => station.team === antenna.team && distance(station, antenna) <= 80)
+						) {
+							radio.stations = [...radio.stations, {team: antenna.team, x: antenna.x, z: antenna.z}]
+						}
+					}
+				})
+			}
+			return Array.some(radio.stations, station => station.team === unit.team && distance(station, unit) <= 40)
+		}
+
+		function inspectStorage(body: Body, building: Building) {
+			life.inspect(
+				body,
+				{
+					form: building.kind,
+					id: building.id,
+					kind: 'storage',
+					...centreOf(building),
+					items: Record.fromEntries(
+						Array.map(Array.dedupe([...itemsIn(building.stock), ...itemsIn(building.output)]), item => [
+							item,
+							countOf(building.stock, item) + countOf(building.output, item)
+						])
+					),
+					text: `#${building.id} ${building.kind} inspected: stock ${itemsText(building.stock)}; output ${itemsText(building.output)}.`
+				},
+				state.tick
+			)
+		}
+
+		function resourcesAt(at: Point, radius: number, source: number) {
+			const visible = Array.flatMap(Array.range(-Math.ceil(radius), Math.ceil(radius)), dz =>
+				Array.flatMap(Array.range(-Math.ceil(radius), Math.ceil(radius)), dx => {
+					if (dx * dx + dz * dz > radius * radius) return []
+					const x = Math.floor(at.x) + dx
+					const z = Math.floor(at.z) + dz
+					return Option.toArray(Option.map(materialAt(x, z), material => ({material, x, z})))
+				})
+			)
+			return Array.flatMap(Material.literals, material =>
+				Option.toArray(
+					Option.map(
+						nearest(
+							at,
+							Array.filter(visible, tile => tile.material === material)
+						),
+						tile =>
+							({
+								id: -1 - tileKey(tile.x, tile.z),
+								kind: 'resource',
+								source,
+								text: `${material} field at ${place2(tile)}: ${oreAt(tile.x, tile.z)} on this observed tile. Other tiles not surveyed.`,
+								tick: state.tick,
+								x: tile.x,
+								z: tile.z
+							}) satisfies Fact
+					)
+				)
+			)
+		}
+
+		function perceive() {
+			const all = entities()
+			const cells = Array.groupBy(all, body => `${Math.floor(body.x / 16)},${Math.floor(body.z / 16)}`)
+			Array.forEach(all, body => {
+				if (body.health <= 0) return
+				life.observe(
+					body,
+					Array.flatMap(Array.range(-1, 1), dz =>
+						Array.flatMap(
+							Array.range(-1, 1),
+							dx => cells[`${Math.floor(body.x / 16) + dx},${Math.floor(body.z / 16) + dz}`] ?? []
+						)
+					),
+					state.tick,
+					12 * daylightAt(state.tick)
+				)
+				if (body.team !== undefined) {
+					for (const fact of resourcesAt(body, 12 * daylightAt(state.tick), body.id)) {
+						if (
+							!Array.some(
+								life.person(body.id, state.tick).facts,
+								remembered => remembered.id === fact.id && remembered.text === fact.text
+							)
+						) {
+							life.inspect(body, fact, state.tick)
+						}
+					}
+				}
+				for (const store of Array.filter(
+					allBuildings(),
+					candidate => gapTo(candidate, body) < 8 * daylightAt(state.tick)
+				)) {
+					if (!Array.some(life.person(body.id, state.tick).facts, fact => fact.id === store.id)) {
+						life.inspect(
+							body,
+							{
+								form: store.kind,
+								id: store.id,
+								kind: 'storage',
+								...centreOf(store),
+								text: `An uninspected ${store.kind} #${store.id}. Contents unknown.`
+							},
+							state.tick
+						)
+					}
+				}
+			})
 		}
 
 		function unitsOf(team: number) {
@@ -862,24 +1072,6 @@ export const makeSim = Effect.fnUntraced(
 			)
 		}
 
-		function threatNear(point: Point, radius: number, include: (enemy: Enemy) => boolean = () => true) {
-			return Option.map(
-				Array.head(
-					Array.sort(
-						Array.map(
-							Array.filter(
-								allEnemies(),
-								enemy => enemy.dead === 0 && distance(enemy, point) <= radius && include(enemy)
-							),
-							enemy => ({distance: distance(enemy, point), enemy})
-						),
-						byDistance
-					)
-				),
-				entry => entry.enemy
-			)
-		}
-
 		/* ───────── movement ───────── */
 
 		// Searches a route for a unit; false when this tick's searches are spent or no way exists.
@@ -897,7 +1089,7 @@ export const makeSim = Effect.fnUntraced(
 		}
 
 		// The bodies that can collide, in 4-tile cells, sorted once a tick; each is read live, so a body that moved or fell since still answers as it is now.
-		const crowd: {cells: Record<string, Body[]>; tick: number} = {cells: {}, tick: -1}
+		const crowd: {cells: Record<string, CrowdBody[]>; tick: number} = {cells: {}, tick: -1}
 
 		function bodyGrid() {
 			if (crowd.tick === state.tick) return crowd.cells
@@ -948,7 +1140,7 @@ export const makeSim = Effect.fnUntraced(
 						!(body.at.act === 'idle' && MutableHashMap.has(units, body.at.id)) &&
 						distance(body.at, self) < 2.6
 				),
-				(body: Body) => {
+				(body: CrowdBody) => {
 					const capsule = capsuleAt(body)
 					return Array.map([capsule.back, nearestOn(capsule.back, capsule.front, body.at), capsule.front], at => ({
 						radius: capsule.radius,
@@ -1257,13 +1449,6 @@ export const makeSim = Effect.fnUntraced(
 			return true
 		}
 
-		// A point within a radius of another, by the world's dice.
-		function roundAbout(at: Point, radius: number) {
-			const angle = random() * Math.PI * 2
-			const far = radius * Math.sqrt(random())
-			return {x: at.x + Math.sin(angle) * far, z: at.z + Math.cos(angle) * far}
-		}
-
 		/* ───────── raids, roamers and guards ───────── */
 
 		function biomeAt(at: Point) {
@@ -1283,150 +1468,14 @@ export const makeSim = Effect.fnUntraced(
 				patch,
 				spot: at,
 				target,
+				task: start.creature,
 				timer: 0,
 				x: at.x,
 				yaw: random() * Math.PI * 2,
 				z: at.z
 			})
+			recordBirth(id)
 			return id
-		}
-
-		function ambush(prey: Unit) {
-			const kind = ENEMIES[biomeAt(prey)] ?? 'glitch'
-			const turn = random()
-			Option.match(
-				Array.findFirst(
-					Array.map(Array.range(0, 15), n => {
-						const angle = ((n + turn) / 16) * Math.PI * 2
-						return {
-							x: Math.floor(prey.x + Math.sin(angle) * 13) + 0.5,
-							z: Math.floor(prey.z + Math.cos(angle) * 13) + 0.5
-						}
-					}),
-					spot =>
-						standable(MOVERS.legs, ground(Math.floor(spot.x), Math.floor(spot.z))) &&
-						Array.every(homes(), home => distance(spot, home) > RAID_DISTANCE - 4)
-				),
-				{
-					onNone: () => undefined,
-					onSome: spot => {
-						spawnEnemy(kind, -1, spot, prey.id)
-						notify(
-							prey.team,
-							`A ${kind} is hunting ${unitName(prey)} at (${Math.floor(prey.x)}, ${Math.floor(prey.z)}).`
-						)
-					}
-				}
-			)
-		}
-
-		// A hostile of the prey's biome comes for a unit far from its Home, a hauler first; a team is left alone until it has paid its first tier.
-		function raid() {
-			const exposed = Array.filter(
-				allUnits(),
-				unit =>
-					moverOf(unit) !== 'fly' &&
-					unit.health > 0 &&
-					distance(unit, homeAt(unit.team)) > RAID_DISTANCE &&
-					Option.exists(Option.fromUndefinedOr(teamOf(unit.team)), team => Array.isReadonlyArrayNonEmpty(team.gates))
-			)
-			Option.match(
-				Option.orElse(
-					Array.findFirst(exposed, unit => unit.class === 'hauler'),
-					() => Array.get(exposed, Math.floor(random() * exposed.length))
-				),
-				{onNone: () => undefined, onSome: ambush}
-			)
-		}
-
-		// A roamer with no prey wanders round its spot and goes for the nearest unit on the ground within 7 tiles; a prey led more than 22 tiles from its spot is let go.
-		function roam(id: number) {
-			const enemy = Option.getOrUndefined(MutableHashMap.get(enemies, id))
-			if (enemy === undefined) return undefined
-			const prey = Option.getOrUndefined(
-				Option.filter(MutableHashMap.get(units, enemy.target), unit => unit.health > 0)
-			)
-			if (prey !== undefined && distance(prey, enemy.spot) < 22) return prey
-			enemy.target = 0
-			Option.match(
-				Array.head(
-					Array.sort(
-						Array.map(
-							Array.filter(
-								allUnits(),
-								unit => unit.health > 0 && moverOf(unit) !== 'fly' && distance(unit, enemy) <= 7
-							),
-							unit => ({distance: distance(unit, enemy), unit})
-						),
-						byDistance
-					)
-				),
-				{
-					onNone: () => {
-						enemy.doing = 'prowling'
-						if (stride(enemy.id, enemy.spot, 0.6)) return
-						enemy.act = 'idle'
-						enemy.timer += TICK
-						// Every few seconds it sets off for another spot in its patch.
-						if (enemy.timer > 4 + 5 * random()) {
-							enemy.spot = roundAbout(patchCentre(enemy.patch), 6)
-							enemy.timer = 0
-						}
-					},
-					onSome: entry => {
-						enemy.target = entry.unit.id
-						enemy.doing = 'hunting'
-					}
-				}
-			)
-			return undefined
-		}
-
-		function preyOf(enemy: Enemy) {
-			if (enemy.patch >= 0) return roam(enemy.id)
-			return Option.getOrUndefined(Option.filter(MutableHashMap.get(units, enemy.target), unit => unit.health > 0))
-		}
-
-		function hunt(id: number) {
-			const enemy = Option.getOrUndefined(MutableHashMap.get(enemies, id))
-			if (enemy === undefined) return
-			if (enemy.dead > 0) {
-				enemy.act = 'die'
-				if (clock() - enemy.dead > 3) MutableHashMap.remove(enemies, enemy.id)
-				return
-			}
-			const prey = preyOf(enemy)
-			if (enemy.patch >= 0 && prey === undefined) return
-			// Once its prey is down a raider slinks off, away from the prey's Home, and is gone a little later.
-			if (prey === undefined) {
-				enemy.timer += TICK
-				enemy.doing = 'leaving'
-				const away = homeAt(
-					Option.getOrElse(
-						Option.map(MutableHashMap.get(units, enemy.target), unit => unit.team),
-						() => 0
-					)
-				)
-				stride(enemy.id, {x: enemy.x * 2 - away.x, z: enemy.z * 2 - away.z}, 1.05)
-				if (enemy.timer > 20) MutableHashMap.remove(enemies, enemy.id)
-				return
-			}
-			if (distance(enemy, prey) > 1.1) {
-				stride(enemy.id, prey, 1.05)
-				return
-			}
-			enemy.yaw = faced(enemy.yaw, {x: prey.x - enemy.x, z: prey.z - enemy.z})
-			enemy.act = 'attack'
-			enemy.timer += TICK
-			if (enemy.timer < 1.5) return
-			enemy.timer = 0
-			prey.health = Number.max(0, prey.health - 6)
-			if (clock() - prey.alarm > 10) notify(prey.team, `${unitName(prey)} is under attack by a ${enemy.kind}.`)
-			prey.alarm = clock()
-			if (prey.health === 0) {
-				notify(prey.team, `${unitName(prey)} is down and needs a Builder to repair it.`)
-				mark('down', prey.team)
-			}
 		}
 
 		// Whether a shot from a body to a target passes clear of every other body and trunk on the way.
@@ -1448,103 +1497,6 @@ export const makeSim = Effect.fnUntraced(
 					return Math.abs((obstacle.x - from.x) * way.z - (obstacle.z - from.z) * way.x) >= obstacle.radius + 0.08
 				}
 			)
-		}
-
-		// A guard that sees a hostile within 14 tiles (or, holding nothing, anything hunting within 40 of its Home) drives into range, turns its turret and fires; true while it is busy with one.
-		function engaged(id: number) {
-			const guard = unitOf(id)
-			if (guard === undefined) return false
-			const foe = Option.getOrUndefined(
-				Option.orElse(threatNear(guard, 14), () =>
-					Option.filter(
-						threatNear(homeAt(guard.team), 40, enemy => enemy.target !== 0),
-						() => guard.order._tag === 'Auto'
-					)
-				)
-			)
-			if (foe === undefined) return false
-			guard.aim = angleTo(guard, foe) - guard.yaw
-			if (distance(guard, foe) > 4.5) {
-				guard.doing = `chasing a ${foe.kind}`
-				goTo(id, foe, 3)
-				return true
-			}
-			// A ground gun fires only along a clear line: with a body or a trunk in the way it steps aside to the nearer side that clears, or closes in.
-			if (moverOf(guard) !== 'fly' && !clearShot(guard, foe)) {
-				guard.doing = `moving for a clear shot at a ${foe.kind}`
-				Option.match(
-					Array.findFirst([1.4, -1.4, 2.6, -2.6], side => clearShot({id: guard.id, ...aside(guard, foe, side)}, foe)),
-					{onNone: () => goTo(id, foe, 1.5), onSome: side => goTo(id, aside(guard, foe, side), 0)}
-				)
-				return true
-			}
-			guard.doing = `firing at a ${foe.kind}`
-			guard.act = 'work'
-			guard.timer += TICK
-			if (guard.timer < 0.8) return true
-			guard.timer = 0
-			foe.health -= 6 * (markOf(guard).damage ?? 1)
-			MutableList.append(shots, {from: guard.id, to: foe.id})
-			if (foe.health <= 0) {
-				foe.dead = clock()
-				foe.doing = 'down'
-				notify(guard.team, `${unitName(guard)} stopped a ${foe.kind}.`)
-			}
-			return true
-		}
-
-		// Home's gun fires at the nearest hostile within 9 tiles, so a unit that runs Home is safe there.
-		function defend(team: number) {
-			const home = homeOf(team)
-			if (home === undefined) return
-			const foe = Option.getOrUndefined(threatNear(centreOf(home), 9))
-			if (foe === undefined) return
-			foe.health -= 6
-			MutableList.append(shots, {from: home.id, to: foe.id})
-			if (foe.health > 0) return
-			foe.dead = clock()
-			foe.doing = 'down'
-			notify(team, `Home's gun stopped a ${foe.kind}.`)
-		}
-
-		// An attacked unit drops what it was doing and runs to the nearest guard of its team, or Home.
-		function flee(id: number) {
-			const unit = unitOf(id)
-			if (unit === undefined) return
-			const refuge = Option.match(
-				Array.head(
-					Array.sort(
-						Array.map(
-							Array.filter(unitsOf(unit.team), other => other.class === 'guard' && other.health > 0),
-							other => ({distance: distance(other, unit), unit: other})
-						),
-						byDistance
-					)
-				),
-				{
-					onNone: () => ({near: 2.5, to: homeAt(unit.team)}),
-					onSome: entry => ({near: 1, to: {x: entry.unit.x, z: entry.unit.z}})
-				}
-			)
-			unit.doing = 'fleeing an attack'
-			goTo(id, refuge.to, refuge.near)
-			unit.act = 'alarm'
-		}
-
-		// Hurt units go Home to be patched up: a working one only once badly hurt, a waiting one near Home until whole.
-		function repairing(id: number) {
-			const unit = unitOf(id)
-			if (unit === undefined) return false
-			const full = markOf(unit).health
-			const home = homeAt(unit.team)
-			const topUp = distance(unit, home) < 4 && unit.health < full && unit.order._tag === 'Auto'
-			// Below 55% of its health a unit leaves its work.
-			if (unit.health >= full * 0.55 && !topUp) return false
-			unit.doing = 'going Home for repairs'
-			if (!goTo(id, home, 2.5)) return true
-			unit.doing = 'being repaired at Home'
-			unit.health = Number.min(full, unit.health + 8 * TICK)
-			return true
 		}
 
 		/* ───────── wildlife: creatures and roaming hostiles in patches round the teams' units ───────── */
@@ -1585,12 +1537,14 @@ export const makeSim = Effect.fnUntraced(
 				patch: key,
 				scared: -99,
 				spot: at,
+				task: start.creature,
 				timer: 2 + random() * 6,
 				x: at.x,
 				// A group stands side by side, facing much the same way.
 				yaw: (random() - 0.5) * 0.6,
 				z: at.z
 			})
+			recordBirth(state.wildId)
 			return state.wildId
 		}
 
@@ -1612,9 +1566,11 @@ export const makeSim = Effect.fnUntraced(
 				})
 			})
 			// Hostiles roam only more than 28 tiles from every Home.
-			const hostile = Array.every(homes(), home => distance(centre, home) > 28) && hash(seed + 199, px, pz) < 0.12
 			const roamers = Option.match(
-				Option.filter(spotIn(key, 9, 'grazer'), () => hostile),
+				Option.filter(
+					spotIn(key, 9, 'grazer'),
+					() => Array.every(homes(), home => distance(centre, home) > 28) && hash(seed + 199, px, pz) < 0.12
+				),
 				{
 					onNone: () => [],
 					onSome: at =>
@@ -1633,21 +1589,13 @@ export const makeSim = Effect.fnUntraced(
 
 		// Once a second: patches within reach of a unit come alive, patches no unit is within 80 tiles of any more are cleared, hostiles in a fight excepted.
 		function wildlife() {
-			const alive = Array.filter(allUnits(), unit => unit.health > 0)
-			for (const key of Array.dedupe(Array.flatMap(alive, patchesNear))) {
+			for (const key of Array.dedupe(
+				Array.flatMap(
+					Array.filter(allUnits(), unit => unit.health > 0),
+					patchesNear
+				)
+			)) {
 				if (!MutableHashMap.has(patches, key)) populate(key)
-			}
-			const forgotten = Array.filter(Array.fromIterable(patches), entry =>
-				Array.every(alive, unit => distance(unit, patchCentre(entry[0])) > 80)
-			)
-			for (const entry of forgotten) {
-				for (const id of entry[1]) MutableHashMap.remove(mobs, id)
-				for (const id of Array.filter(entry[1], member =>
-					Option.exists(MutableHashMap.get(enemies, member), enemy => enemy.target === 0)
-				)) {
-					MutableHashMap.remove(enemies, id)
-				}
-				MutableHashMap.remove(patches, entry[0])
 			}
 			for (const id of Array.filter(Array.fromIterable(MutableHashMap.keys(sides)), gone)) {
 				MutableHashMap.remove(sides, id)
@@ -1675,100 +1623,129 @@ export const makeSim = Effect.fnUntraced(
 				mob.z = to.z
 				return true
 			}
-			mob.yaw = angleTo(mob, to)
+			mob.yaw = Math.atan2(to.x - mob.x, to.z - mob.z)
 			mob.x += ((to.x - mob.x) / gap) * speed * TICK
 			mob.z += ((to.z - mob.z) / gap) * speed * TICK
 			return false
 		}
 
-		// A creature at rest a while, then off to another spot round `around` within `radius`, or on its way to one.
-		function rest(id: number, around: Point, radius: number, pause: {least: number; more: number}) {
-			const mob = mobOf(id)
-			if (mob === undefined) return
-			mob.act = 'idle'
-			mob.doing = CREATURES[mob.kind].rest
-			mob.timer -= TICK
-			if (mob.timer > 0) return
-			mob.timer = pause.least + random() * pause.more
-			mob.target = Option.getOrUndefined(
-				Option.filter(Option.some(roundAbout(around, radius)), at =>
-					habitable(mob.kind, Math.floor(at.x), Math.floor(at.z))
-				)
+		function damage(from: Body, id: number, by: number) {
+			const target = Option.getOrUndefined(entity(id))
+			if (target === undefined || target.health <= 0) return
+			const unit = unitOf(id)
+			const enemy = Option.getOrUndefined(MutableHashMap.get(enemies, id))
+			const own = life.person(id, state.tick)
+			if (unit !== undefined) {
+				unit.health = Number.max(0, unit.health - by)
+				unit.alarm = clock()
+			} else if (enemy === undefined) {
+				own.health = Number.max(0, own.health - by / 40)
+			} else {
+				enemy.health = Number.max(0, enemy.health - by)
+				if (enemy.health <= 0) enemy.dead = clock()
+			}
+			if (unit === undefined) MutableHashSet.add(dirtyWild, id)
+			const identified = distance(target, from) <= 12 * daylightAt(state.tick) && clearShot(target, from)
+			life.event(
+				target,
+				state.tick,
+				'damage',
+				Boolean.match(identified, {onFalse: () => 'Hit; source not identified.', onTrue: () => `Hit by #${from.id}.`}),
+				Option.getOrUndefined(Option.filter(Option.some(from.id), () => identified))
 			)
+			own.next = state.tick
+			if ((unit?.health ?? enemy?.health ?? own.health) <= 0) {
+				life.event(target, state.tick, 'down', 'Fell here; nobody else is automatically informed.')
+			}
 		}
 
-		// A flier sits, and now and then moves on to another spot of its patch.
-		function fly(id: number) {
+		function moveCreature(id: number, to: Point, speed: number) {
 			const mob = mobOf(id)
-			if (mob === undefined) return
-			if (mob.target === undefined) {
-				rest(id, patchCentre(mob.patch), 7, {least: 15, more: 25})
-				return
+			if (mob !== undefined && CREATURES[mob.kind].life !== 'walker') {
+				if (!habitable(mob.kind, Math.floor(to.x), Math.floor(to.z))) return false
+				return !glide(id, to, speed)
 			}
-			mob.doing = 'flying'
-			if (glide(id, mob.target, CREATURES[mob.kind].flee)) mob.target = undefined
+			return stride(id, to, speed)
 		}
-
-		function wander(id: number) {
-			const mob = mobOf(id)
-			if (mob === undefined) return
-			if (mob.target === undefined) {
-				rest(id, mob.spot, 5, {least: 3, more: 6})
-				return
-			}
-			mob.doing = 'wandering'
-			if (!stride(id, mob.target, CREATURES[mob.kind].walk)) mob.target = undefined
-		}
-
-		// A creature bolts for a few seconds from the nearest unit or hostile within 3.5 tiles (a flier to another spot), then goes back to its life.
-		function creature(id: number) {
-			const mob = mobOf(id)
-			if (mob === undefined) return
-			const life = CREATURES[mob.kind]
-			if (life.life === 'swarm' || life.life === 'fish') {
-				mob.act = 'idle'
-				return
-			}
-			const threat = Option.getOrUndefined(
-				Array.head(
-					Array.sort(
-						Array.filter(
-							Array.map(
-								Array.filter(
-									crowdNear(mob),
-									body =>
-										MutableHashMap.has(units, body.at.id) ||
-										Option.exists(MutableHashMap.get(enemies, body.at.id), enemy => enemy.dead === 0)
-								),
-								body => ({at: {x: body.at.x, z: body.at.z}, distance: distance(body.at, mob)})
-							),
-							entry => entry.distance <= 3.5
-						),
-						byDistance
-					)
-				)
-			)
-			if (threat !== undefined) {
-				if (clock() - mob.scared > 2.5 && life.life === 'flier') {
-					const away = awayOf(threat.at, mob)
-					mob.target = {x: mob.x + away.x * 10, z: mob.z + away.z * 10}
+		function attack(body: Body, target: number, strength: number) {
+			const to = Option.getOrUndefined(entity(target))
+			if (to === undefined || to.health <= 0 || distance(body, to) > 12 * daylightAt(state.tick)) return false
+			if (distance(body, to) > 2.5) {
+				if (unitOf(body.id) === undefined) {
+					moveCreature(body.id, to, 0.9)
+				} else {
+					goTo(body.id, to, 1)
 				}
-				mob.scared = clock()
-				mob.from = threat.at
+				return true
 			}
-			if (life.life === 'flier') {
-				fly(id)
+			if (state.tick % 20 === 0 && clearShot(body, to)) {
+				damage(body, target, strength)
+				MutableList.append(shots, {from: body.id, to: target})
+				life.event(body, state.tick, 'action', `Attacked #${target}.`, target)
+			}
+			return true
+		}
+
+		const transitionWild = Effect.fnUntraced(function* (id: number) {
+			const body = Option.getOrUndefined(MutableHashMap.get(enemies, id)) ?? mobOf(id)
+			if (body === undefined) return
+			const own = life.person(id, state.tick)
+			if (Option.exists(entity(id), found => found.health <= 0)) {
+				if (body.task.state.path !== 'Down') {
+					body.task = (yield* Machine.plan(Creatures, body.task, {_tag: 'Down'})).next
+				}
+				body.act = 'die'
+				body.doing = 'a body lies here'
 				return
 			}
-			if (clock() - mob.scared < 2.5) {
-				const away = awayOf(mob.from, mob)
-				mob.target = undefined
-				mob.doing = 'running off'
-				stride(id, {x: mob.x + away.x * 2, z: mob.z + away.z * 2}, life.flee)
-				mob.act = 'alarm'
+			if (own.intent === 'attack' && own.foe !== undefined) {
+				if (body.task.state.path !== 'Attacking' || body.task.state.value.target !== own.foe) {
+					body.task = (yield* Machine.plan(Creatures, body.task, {_tag: 'Attack', target: own.foe})).next
+				}
 				return
 			}
-			wander(id)
+			if (own.target !== undefined && own.intent === 'explore') {
+				body.task = (yield* Machine.plan(Creatures, body.task, {_tag: 'Move', to: own.target})).next
+				return
+			}
+			if (body.task.state.path !== 'Resting') {
+				body.task = (yield* Machine.plan(Creatures, body.task, {_tag: 'Rest'})).next
+			}
+		})
+		function wildStep(id: number) {
+			const body = Option.getOrUndefined(MutableHashMap.get(enemies, id)) ?? mobOf(id)
+			const view = Option.getOrUndefined(entity(id))
+			if (body === undefined || view === undefined) return
+			const own = life.person(id, state.tick)
+
+			if (view.health <= 0) {
+				body.act = 'die'
+				body.doing = 'a body lies here'
+				return
+			}
+
+			body.act = 'idle'
+			if (body.task.state.path === 'Attacking') {
+				body.doing = `confronting #${body.task.state.value.target}`
+				body.act = 'attack'
+				if (!attack(view, body.task.state.value.target, 4)) {
+					own.intent = 'rest'
+					MutableHashSet.add(dirtyWild, id)
+				}
+			} else if (body.task.state.path === 'Moving') {
+				const to = body.task.state.value.to
+				body.doing = 'investigating the surroundings'
+
+				if (!moveCreature(id, to, 0.8) || distance(body, to) < 0.5) {
+					own.target = undefined
+					MutableHashSet.add(dirtyWild, id)
+				}
+			} else {
+				body.doing = 'resting and observing'
+			}
+			if (state.tick % 10 === 0 && distance(view, body) > 0.001) {
+				life.stamp({...view, x: body.x, yaw: body.yaw, z: body.z}, state.tick)
+			}
 		}
 
 		/* ───────── sight: what each team has seen, where it went and whom it met ───────── */
@@ -1831,56 +1808,13 @@ export const makeSim = Effect.fnUntraced(
 			)
 		}
 
-		// Whether a team's Home or units see a point now.
-		function sighted(team: number, at: Point) {
-			return (
-				distance(homeAt(team), at) <= HOME_SIGHT ||
-				Array.some(unitsOf(team), unit => unit.health > 0 && distance(unit, at) <= markOf(unit).sight + 1)
-			)
-		}
-
-		// Two teams meet when one's units see the other's units or buildings; from then on each knows the other and they may write.
-		function contacts() {
-			for (const first of allTeams()) {
-				for (const second of Array.filter(
-					allTeams(),
-					other => other.id > first.id && !Array.contains(first.contacts, other.id)
-				)) {
-					const met = Option.getOrUndefined(
-						Option.orElse(
-							Array.findFirst([...unitsOf(second.id), ...Array.map(buildingsOf(second.id), centreOf)], at =>
-								sighted(first.id, at)
-							),
-							() =>
-								Array.findFirst([...unitsOf(first.id), ...Array.map(buildingsOf(first.id), centreOf)], at =>
-									sighted(second.id, at)
-								)
-						)
-					)
-					if (met !== undefined) {
-						first.contacts = [...first.contacts, second.id]
-						second.contacts = [...second.contacts, first.id]
-						revision.teams += 1
-						notify(
-							first.id,
-							`Contact: you met team ${second.id} (${nameOf(second.id)}) at ${place2(met)}. You may now message them.`
-						)
-						notify(
-							second.id,
-							`Contact: you met team ${first.id} (${nameOf(first.id)}) at ${place2(met)}. You may now message them.`
-						)
-						mark('contact', first.id, Option.some(second.id))
-					}
-				}
-			}
-		}
-
 		// Twice a second every unit that moved half a tile looks round it as far as it sees, and marks the chunk it is in.
 		function explore() {
 			revision.explored += 1
-			for (const unit of Array.filter(allUnits(), entry => distance(entry, entry.sighted) >= 0.5)) {
+			for (const unit of Array.filter(allUnits(), entry => entry.health > 0 && distance(entry, entry.sighted) >= 0.5)) {
 				unit.sighted = {x: unit.x, z: unit.z}
-				lookRound(unit.team, unit, markOf(unit).sight)
+				lookRound(-unit.id, unit, markOf(unit).sight * daylightAt(state.tick))
+				life.stamp(living(unit), state.tick)
 				const at = chunkOf(Math.floor(unit.x), Math.floor(unit.z))
 				const key = chunkKey(at.cx, at.cz)
 				const before = Option.getOrElse(MutableHashMap.get(visited, key), () => 0)
@@ -2003,6 +1937,126 @@ export const makeSim = Effect.fnUntraced(
 			}
 		}
 
+		function localDecision(id: number, choice: string) {
+			const body = Option.getOrUndefined(entity(id))
+			if (body === undefined || body.health <= 0) return
+			const unit = unitOf(id)
+			const offered = life.local(body, state.tick, unit !== undefined && connected(unit))
+			if (!Record.has(offered.choices, choice)) return
+			const own = life.person(id, state.tick)
+			if (unit === undefined) MutableHashSet.add(dirtyWild, id)
+			own.next = state.tick + TICK_HZ * 20
+			life.event(body, state.tick, 'decision', `Chose ${choice}: ${offered.choices[choice] ?? ''}`)
+			const action = String.split(':')(choice)[0] ?? ''
+			const target = Array.findFirst(own.facts, fact => choice === `${action}:${fact.id}`)
+			return pipe(
+				Match.value(action),
+				Match.when('survey', () => {
+					if (unit === undefined || !connected(unit)) return
+					for (const entry of exploredOf(-id)) {
+						bitsOf(exploredOf(unit.team), entry[0]).bits = Uint8Array.from(
+							bitsOf(exploredOf(unit.team), entry[0]).bits,
+							(byte, index) => byte | (entry[1].bits[index] ?? 0)
+						)
+					}
+					life.report(
+						body,
+						state.tick,
+						'Shared a terrain survey and its resource observations.',
+						Array.filter(own.facts, fact => fact.kind === 'resource')
+					)
+					notify(unit.team, `Terrain survey received from #${id}; its observations may be stale.`)
+				}),
+				Match.whenOr('report', 'addresses', mode => {
+					if (unit === undefined || !connected(unit)) return
+					const facts = Option.toArray(Option.filter(target, () => mode === 'report'))
+					const ids = Array.filter(own.contacts, () => mode === 'addresses')
+					const summary = Array.join(
+						[
+							...Array.map(facts, fact => `Observed at tick ${fact.tick}: ${fact.text} at ${place2(fact)}.`),
+							...Array.map(
+								ids,
+								address => `Communication address ${address} learned through encounter or received claim.`
+							),
+							...Array.filter(
+								Array.map(Array.takeRight(own.recent, 8), entry => `${entry.tick}: ${entry.text}`),
+								() => choice === 'report'
+							)
+						],
+						'\n'
+					)
+					life.report(body, state.tick, summary, facts, ids)
+					notify(unit.team, `Report from #${id} at ${place2(body)}: ${summary}`)
+				}),
+				Match.when('read', () => {
+					life.read(body, state.tick)
+					own.next = state.tick
+				}),
+				Match.when('accept', () => {
+					if (unit === undefined || own.pending === undefined) return
+					release(id)
+					unit.order = own.pending
+					if (unit.order._tag === 'Refit') unit.upgrade = true
+					unit.path = []
+					unit.task = start.planning
+					own.pending = undefined
+					own.intent = 'continue'
+				}),
+				Match.whenOr('continue', 'rest', intent => {
+					own.intent = intent
+				}),
+				Match.when('attack', () => {
+					own.intent = 'attack'
+					own.foe = Option.getOrUndefined(Option.map(target, fact => fact.id))
+				}),
+				Match.whenOr('north', 'east', 'south', 'west', direction => {
+					own.intent = 'explore'
+					own.target = {x: body.x + STEP[direction].x * 10, z: body.z + STEP[direction].z * 10}
+				}),
+				Match.when('approach', () => {
+					own.intent = 'explore'
+					own.target = Option.getOrUndefined(Option.map(target, fact => ({x: fact.x, z: fact.z})))
+				}),
+				Match.when('flee', () => {
+					const disturbance = Option.getOrElse(Array.last(own.facts), () => ({x: body.x - 3, z: body.z}))
+					own.intent = 'explore'
+					own.target = {x: body.x * 2 - disturbance.x, z: body.z * 2 - disturbance.z}
+				}),
+				Match.when('investigate', () => {
+					const trace = Option.getOrUndefined(
+						nearest(
+							body,
+							Array.filter(
+								life.traces(state.tick),
+								entry => entry.fresh > 0 && distance(body, entry) < 12 * daylightAt(state.tick)
+							)
+						)
+					)
+					if (trace === undefined) return
+					own.intent = 'explore'
+					own.target = {x: trace.x + Math.sin(trace.yaw) * 4, z: trace.z + Math.cos(trace.yaw) * 4}
+					life.event(
+						body,
+						state.tick,
+						'observe',
+						`Tracks near ${place2(trace)}: wear ${Number.round(trace.wear, 2)}, freshness ${Number.round(trace.fresh, 2)}; direction ${Number.round(trace.yaw, 1)}. Maker unknown.`
+					)
+				}),
+				Match.whenOr('inspect', 'take', intent => {
+					if (unit === undefined || Option.isNone(target)) return
+					release(id)
+					unit.order = Boolean.match(intent === 'take', {
+						onFalse: () => ({_tag: 'Inspect' as const, building: Option.getOrThrow(target).id}),
+						onTrue: () => ({_tag: 'Loot' as const, building: Option.getOrThrow(target).id})
+					})
+					unit.path = []
+					unit.task = start.planning
+					own.intent = 'continue'
+				}),
+				Match.orElse(() => undefined)
+			)
+		}
+
 		// Its cargo into the nearest store that takes it.
 		function unload(unit: Unit) {
 			const item = Option.getOrUndefined(Array.head(itemsIn(unit.cargo)))
@@ -2073,20 +2127,33 @@ export const makeSim = Effect.fnUntraced(
 			const down = Option.getOrUndefined(
 				nearest(
 					unit,
-					Array.filter(unitsOf(unit.team), other => other.health <= 0 && distance(other, unit) < 60)
+					Array.filter(
+						unitsOf(unit.team),
+						other => other.health <= 0 && distance(other, unit) < markOf(unit).sight * daylightAt(state.tick)
+					)
 				)
 			)
 			if (down !== undefined) return job({_tag: 'Repair', unit: down.id})
 			const open = Array.map(
 				Array.sort(
 					Array.map(
-						Array.filter(buildingsOf(unit.team), building => !complete(building)),
+						Array.filter(
+							buildingsOf(unit.team),
+							building =>
+								!complete(building) &&
+								(Array.some(life.person(id, state.tick).facts, fact => fact.id === building.id) ||
+									gapTo(building, unit) <= markOf(unit).sight * daylightAt(state.tick))
+						),
 						site => ({distance: distance(centreOf(site), unit), site})
 					),
 					byDistance
 				),
 				entry => entry.site
 			)
+			const first = Option.getOrUndefined(Array.head(open))
+			if (first !== undefined && gapTo(first, unit) > 1.5) {
+				return job({_tag: 'Inspect', building: first.id, ...centreOf(first)})
+			}
 			const prop = Option.getOrUndefined(
 				Array.findFirst(
 					Array.flatMap(
@@ -2135,12 +2202,14 @@ export const makeSim = Effect.fnUntraced(
 
 		// The nearest thing a Builder digs or clears for an item round a place: ore on a field tile, a tree for wood, a rock or a stone tile for stone.
 		function gatherAt(unit: Unit, item: ItemId, at: Point) {
+			if (distance(unit, at) > markOf(unit).sight * daylightAt(state.tick)) return job({_tag: 'Scout', ...at})
 			const prop = Option.getOrUndefined(
 				nearest(
 					unit,
 					Array.filter(
 						propsNear(at, NEAR),
 						entry =>
+							distance(unit, entry) <= markOf(unit).sight * daylightAt(state.tick) &&
 							Array.contains(clearedFor(item), entry.kind) &&
 							Option.match(MutableHashMap.get(clearing, entry.id), {
 								onNone: () => true,
@@ -2159,7 +2228,7 @@ export const makeSim = Effect.fnUntraced(
 				),
 				tile =>
 					Option.exists(materialAt(tile.x, tile.z), material => ORE_ITEM[material] === item) &&
-					known(unit.team, tile) &&
+					known(-unit.id, tile) &&
 					!blocked(tile.x, tile.z)
 			)
 			return Option.match(
@@ -2183,43 +2252,33 @@ export const makeSim = Effect.fnUntraced(
 		}
 
 		function haul(unit: Unit, order: Extract<Standing, {_tag: 'Haul'}>) {
-			const from = buildingOf(order.from)
-			const to = buildingOf(order.to)
-			if (from === undefined || to === undefined) return wait('a stop of the haul is gone')
-			if (cargoOf(unit) > 0) {
-				if (Array.some(itemsIn(unit.cargo), item => roomFor(to, item) > 0)) {
-					return job({_tag: 'Dropoff', building: to.id})
-				}
-				return wait(`${buildingName(to)} is full`)
-			}
-			const item = Option.orElse(Option.fromUndefinedOr(order.item), () =>
-				Array.findFirst(
-					itemsIn({...from.output, ...from.stock}),
-					entry => availableIn(from, entry) > 0 && roomFor(to, entry) > 0
-				)
+			const stop = Boolean.match(cargoOf(unit) > 0, {onFalse: () => order.from, onTrue: () => order.to})
+			const remembered = Option.getOrUndefined(
+				Array.findFirst(life.person(unit.id, state.tick).facts, fact => fact.id === stop)
 			)
+			if (remembered === undefined) return wait(`location of #${stop} unknown; observe it or obtain directions`)
+			if (cargoOf(unit) > 0) return job({_tag: 'Dropoff', building: stop})
+			const source = buildingOf(order.from)
+			if (source === undefined || gapTo(source, unit) > 1.5) {
+				return job({_tag: 'Inspect', building: stop, x: remembered.x, z: remembered.z})
+			}
+			inspectStorage(living(unit), source)
 			return Option.match(
-				Option.filter(item, entry => availableIn(from, entry) > 0 && roomFor(to, entry) > 0),
+				Option.orElse(Option.fromUndefinedOr(order.item), () =>
+					Array.findFirst(itemsIn({...source.stock, ...source.output}), candidate => !Array.contains(FLUIDS, candidate))
+				),
 				{
-					onNone: () =>
-						Option.match(
-							Option.filter(item, entry => availableIn(from, entry) > 0),
-							{
-								onNone: () => wait(`nothing at ${buildingName(from)} that ${buildingName(to)} takes`),
-								onSome: entry => wait(`${buildingName(to)} has no room for more ${entry}`)
-							}
-						),
-					onSome: entry =>
-						job({
+					onNone: () => wait(`No accessible items observed at #${source.id}.`),
+					onSome: item => {
+						const available = countOf(source.stock, item) + countOf(source.output, item)
+						if (available <= 0) return wait(`No ${item} observed at #${source.id}.`)
+						return job({
 							_tag: 'Pickup',
-							building: from.id,
-							count: Array.reduce(
-								[availableIn(from, entry), roomFor(to, entry), order.count ?? Infinity],
-								spaceOf(unit),
-								(least, value) => Number.min(least, value)
-							),
-							item: entry
+							building: source.id,
+							count: Number.min(spaceOf(unit), Number.min(available, order.count ?? Infinity)),
+							item
 						})
+					}
 				}
 			)
 		}
@@ -2235,11 +2294,34 @@ export const makeSim = Effect.fnUntraced(
 						z: unit.z + Math.cos(((turn + (unit.id % 7)) / 24) * Math.PI * 2) * (sight + ring * 6)
 					}))
 				),
-				at => !known(unit.team, at) && standable(mover, ground(Math.floor(at.x), Math.floor(at.z)))
+				at => !known(-unit.id, at) && standable(mover, ground(Math.floor(at.x), Math.floor(at.z)))
+			)
+		}
+
+		function rememberedInspection(unit: Unit, building: number, recipe?: RecipeId) {
+			return Option.match(
+				Array.findFirst(life.person(unit.id, state.tick).facts, fact => fact.id === building),
+				{
+					onNone: () => wait('container location unknown'),
+					onSome: fact =>
+						job(
+							Option.match(Option.fromUndefinedOr(recipe), {
+								onNone: () => ({_tag: 'Inspect' as const, building: fact.id, x: fact.x, z: fact.z}),
+								onSome: selected => ({
+									_tag: 'Configure' as const,
+									building: fact.id,
+									recipe: selected,
+									x: fact.x,
+									z: fact.z
+								})
+							})
+						)
+				}
 			)
 		}
 
 		// The next step of a unit's standing order.
+
 		function next(unit: Unit) {
 			const home = homeAt(unit.team)
 			if (unit.upgrade) {
@@ -2248,45 +2330,61 @@ export const makeSim = Effect.fnUntraced(
 				}
 				return job({_tag: 'Refit'})
 			}
-			if (unit.order._tag === 'Gather') return gather(unit, unit.order)
-			if (unit.order._tag === 'Haul') return haul(unit, unit.order)
-			if (cargoOf(unit) > 0 && unit.class !== 'builder') return unload(unit)
-			if (unit.order._tag === 'Explore') {
-				return Option.match(frontier(unit), {
-					onNone: () => wait('nothing unseen in reach'),
-					onSome: to => job({_tag: 'Scout', x: to.x, z: to.z})
-				})
-			}
-			if (unit.order._tag === 'Go' || unit.order._tag === 'Guard') {
-				return job({_tag: 'Hold', x: unit.order.x + 0.5, z: unit.order.z + 0.5})
-			}
-			if (unit.class === 'builder') return construct(unit.id)
-			return park(unit)
+			return Match.valueTags(unit.order, {
+				Attack: () => wait('target not currently visible'),
+				Auto: () => {
+					if (cargoOf(unit) > 0 && unit.class !== 'builder') return unload(unit)
+					if (unit.class === 'builder') return construct(unit.id)
+					return park(unit)
+				},
+				Build: plan => job({_tag: 'Stake', ...Struct.omit(plan, ['_tag'])}),
+				Configure: order => rememberedInspection(unit, order.building, order.recipe),
+				Explore: () =>
+					Option.match(frontier(unit), {
+						onNone: () => wait('nothing unseen in reach'),
+						onSome: to => job({_tag: 'Scout', x: to.x, z: to.z})
+					}),
+				Gather: order => gather(unit, order),
+				Go: order => job({_tag: 'Hold', x: order.x + 0.5, z: order.z + 0.5}),
+				Guard: order => job({_tag: 'Hold', x: order.x + 0.5, z: order.z + 0.5}),
+				Haul: order => haul(unit, order),
+				Inspect: order => rememberedInspection(unit, order.building),
+				Investigate: order => job({_tag: 'Scout', x: order.x, z: order.z}),
+				Loot: order => rememberedInspection(unit, order.building),
+				Refit: () => job({_tag: 'Refit'})
+			})
 		}
 
 		// Where a step takes a unit, and how near it must get.
-		function targetOf(unit: Unit, step: Job) {
-			if (step._tag === 'Pickup' || step._tag === 'Dropoff') return beside(MutableHashMap.get(buildings, step.building))
-			if (step._tag === 'Construct') return beside(MutableHashMap.get(buildings, step.site))
-			if (step._tag === 'Clear') return Option.some({near: 0.9, to: {x: step.x, z: step.z}})
-			if (step._tag === 'Gather') return Option.some({near: 0.4, to: {x: step.x + 0.5, z: step.z + 0.5}})
-			if (step._tag === 'Repair') {
-				return Option.map(Option.fromUndefinedOr(unitOf(step.unit)), other => ({near: 1, to: {x: other.x, z: other.z}}))
+		function inspectionTarget(unit: Unit, building: number, at: Point) {
+			const remembered = Option.getOrUndefined(
+				Array.findFirst(life.person(unit.id, state.tick).facts, fact => fact.id === building)
+			)
+			if (remembered?.form !== undefined) {
+				const size = sizeOf(remembered.form)
+				return beside(
+					Option.some({kind: remembered.form, x: remembered.x - size.w / 2, z: remembered.z - size.d / 2}),
+					unit
+				)
 			}
-			if (step._tag === 'Refit') return Option.some({near: 2.5, to: homeAt(unit.team)})
-			if (step._tag === 'Scout') return Option.some({near: 1, to: {x: step.x, z: step.z}})
-			return Option.some({near: 0, to: {x: step.x, z: step.z}})
+			const found = buildingOf(building)
+			if (found !== undefined && gapTo(found, unit) <= 12 * daylightAt(state.tick)) {
+				return beside(Option.some(found), unit)
+			}
+			if (distance(unit, at) > 12 * daylightAt(state.tick)) return Option.some({near: 0.5, to: at})
+			return beside(MutableHashMap.get(buildings, building), unit)
+		}
+
+		function storageTarget(unit: Unit, building: number) {
+			return Option.flatMap(
+				Array.findFirst(life.person(unit.id, state.tick).facts, fact => fact.id === building),
+				fact => inspectionTarget(unit, building, fact)
+			)
 		}
 
 		// Whether a step can still be done: what it goes for is still there.
 		function valid(unit: Unit, step: Job) {
-			if (step._tag === 'Pickup') {
-				return Option.exists(
-					Option.fromUndefinedOr(buildingOf(step.building)),
-					building => countOf({...building.output, ...building.stock}, step.item) > 0
-				)
-			}
-			if (step._tag === 'Dropoff') return buildingOf(step.building) !== undefined
+			if (step._tag === 'Pickup' || step._tag === 'Dropoff') return true
 			if (step._tag === 'Construct') {
 				return Option.exists(Option.fromUndefinedOr(buildingOf(step.site)), site =>
 					Sites.root.matches(site.site, 'Constructing')
@@ -2304,25 +2402,28 @@ export const makeSim = Effect.fnUntraced(
 		// How long a step takes once there.
 		function secondsOf(unit: Unit, step: Job) {
 			const rates = markOf(unit)
-			if (step._tag === 'Pickup' || step._tag === 'Dropoff') return 0.6
-			if (step._tag === 'Construct') return 1
-			if (
-				step._tag === 'Clear' &&
-				Array.some(
-					propsNear({x: step.x, z: step.z}, 0.5),
-					entry => entry.id === step.prop && Array.contains(BOULDERS, entry.kind)
-				)
-			) {
-				return rates.clear?.rock ?? 12
-			}
-			if (step._tag === 'Clear') return rates.clear?.tree ?? 6
-			if (step._tag === 'Gather') return rates.gather ?? 2
-			if (step._tag === 'Repair') return 6
-			if (step._tag === 'Hold' && unit.order._tag === 'Auto') return 2
-			if (step._tag === 'Hold') return 5
-			return 0
+			return Match.valueTags(step, {
+				Clear: obstacle =>
+					Boolean.match(
+						Array.some(
+							propsNear(obstacle, 0.5),
+							entry => entry.id === obstacle.prop && Array.contains(BOULDERS, entry.kind)
+						),
+						{onFalse: () => rates.clear?.tree ?? 6, onTrue: () => rates.clear?.rock ?? 12}
+					),
+				Configure: () => 1,
+				Construct: () => 1,
+				Dropoff: () => 0.6,
+				Gather: () => rates.gather ?? 2,
+				Hold: () => Boolean.match(unit.order._tag === 'Auto', {onFalse: () => 5, onTrue: () => 2}),
+				Inspect: () => 1,
+				Pickup: () => 0.6,
+				Refit: () => 0,
+				Repair: () => 6,
+				Scout: () => 0,
+				Stake: () => 1
+			})
 		}
-
 		function describe(unit: Unit, step: Job) {
 			if (step._tag === 'Pickup') return `fetching ${step.count} ${step.item} from #${step.building}`
 			if (step._tag === 'Dropoff') return `bringing ${itemsText(unit.cargo)} to #${step.building}`
@@ -2330,6 +2431,9 @@ export const makeSim = Effect.fnUntraced(
 			if (step._tag === 'Clear') return 'clearing a tree or rock'
 			if (step._tag === 'Gather') return `digging ${step.item}`
 			if (step._tag === 'Repair') return `repairing #${step.unit}`
+			if (step._tag === 'Inspect') return `inspecting #${step.building}`
+			if (step._tag === 'Configure') return `configuring #${step.building}`
+			if (step._tag === 'Stake') return `staking ${step.kind} at ${place2(step)}`
 			if (step._tag === 'Refit') return 'going Home to be refitted'
 			if (step._tag === 'Scout') return 'exploring'
 			if (unit.order._tag === 'Guard') return 'guarding'
@@ -2358,15 +2462,22 @@ export const makeSim = Effect.fnUntraced(
 				})
 			}
 			if (Schema.is(StructureKind)(site.kind) && Array.contains(['road', 'ramp', 'bridge'], site.kind)) return
-			notify(site.team, `${buildingName(site)} at (${site.x}, ${site.z}) is built.`)
+			if (distance(homeAt(site.team), site) < HOME_SIGHT) {
+				notify(site.team, `${buildingName(site)} at (${site.x}, ${site.z}) is built.`)
+			}
 		}
 
 		// A finished pickup: the items move into the cargo bed, and a claim on them shrinks to what came.
 		function pickedUp(id: number, step: Extract<Job, {_tag: 'Pickup'}>) {
 			const unit = unitOf(id)
 			if (unit === undefined) return
+			const container = buildingOf(step.building)
+			if (container === undefined || gapTo(container, unit) > 1.5) return
 			const got = take(step.building, step.item, Number.min(step.count, spaceOf(unit)))
 			unit.cargo = withItem(unit.cargo, step.item, got)
+			const inspected = buildingOf(step.building)
+			if (inspected !== undefined) inspectStorage(living(unit), inspected)
+			life.event(living(unit), state.tick, 'action', `Took ${got} ${step.item} from #${step.building}.`, step.building)
 			if (unit.claim !== undefined && unit.claim.from === step.building && buildingOf(step.building) !== undefined) {
 				adjust(step.building, 'reserved', unit.claim.item, -unit.claim.count)
 				adjust(unit.claim.site, 'incoming', unit.claim.item, got - unit.claim.count)
@@ -2377,12 +2488,15 @@ export const makeSim = Effect.fnUntraced(
 		// A finished dropoff: the cargo goes in, a claim delivered there ends, and a counted haul counts down.
 		function droppedOff(id: number, building: number) {
 			const unit = unitOf(id)
-			if (unit === undefined || buildingOf(building) === undefined) return
+			const container = buildingOf(building)
+			if (unit === undefined || container === undefined || gapTo(container, unit) > 1.5) return
 			const delivered = Array.reduce(itemsIn(unit.cargo), 0, (sum, item) => {
 				const given = put(building, item, countOf(unit.cargo, item))
 				unit.cargo = withItem(unit.cargo, item, -given)
 				return sum + given
 			})
+			inspectStorage(living(unit), container)
+			life.event(living(unit), state.tick, 'action', `Delivered ${delivered} items into #${building}.`, building)
 			if (unit.claim !== undefined && unit.claim.site === building) {
 				adjust(building, 'incoming', unit.claim.item, -unit.claim.count)
 				unit.claim = undefined
@@ -2418,12 +2532,122 @@ export const makeSim = Effect.fnUntraced(
 			if (Option.exists(Option.fromUndefinedOr(buildingOf(id)), complete)) built(id)
 		})
 
+		function minedTiles(miner: Building) {
+			return Array.flatMap(Array.range(miner.z - 1, miner.z + 2), z =>
+				Array.map(Array.range(miner.x - 1, miner.x + 2), x => ({x, z}))
+			)
+		}
+
+		// Whether a team may build on a tile: seen, dry, flat enough to stand on, and free.
+		function buildable(kind: Kind, x: number, z: number) {
+			const tile = ground(x, z)
+			if (MutableHashMap.has(footprint, tileKey(x, z))) return 'a tile already built on'
+			if (kind === 'pump' && !Array.contains(SWIMMABLE, tile.liquid)) return 'a pump stands on water'
+			if (kind === 'pump') return ''
+			if (kind === 'bridge' && tile.liquid === LIQUID.none) return 'a bridge crosses water'
+			if (kind === 'bridge') return ''
+			if (tile.liquid !== LIQUID.none && tile.liquid !== LIQUID.ice) return 'water or lava'
+			if (!standable(MOVERS.legs, tile)) return 'ground too steep'
+			if (
+				Array.some(
+					propsNear({x: x + 0.5, z: z + 0.5}, 0.5),
+					prop => prop.kind === 'ruin' && Math.floor(prop.x) === x && Math.floor(prop.z) === z
+				)
+			) {
+				return 'a ruin'
+			}
+			return ''
+		}
+
+		function occupy(building: Building) {
+			const size = sizeOf(building.kind)
+			for (const dz of Array.range(0, size.d - 1)) {
+				for (const dx of Array.range(0, size.w - 1)) {
+					MutableHashMap.set(footprint, tileKey(building.x + dx, building.z + dz), building.id)
+				}
+			}
+		}
+
+		function place(team: number, kind: Kind, at: Point, dir: Direction) {
+			const size = sizeOf(kind)
+			const problem = Option.getOrUndefined(
+				Array.findFirst(
+					Array.flatMap(Array.range(0, size.d - 1), dz =>
+						Array.map(Array.range(0, size.w - 1), dx => ({x: at.x + dx, z: at.z + dz}))
+					),
+					tile => Option.liftPredicate(buildable(kind, tile.x, tile.z), reason => reason !== '')
+				)
+			)
+			if (problem !== undefined) return {id: 0, reason: problem}
+			if (
+				(kind === 'miner_mk1' || kind === 'miner_mk2' || kind === 'miner_mk3') &&
+				!Array.some(minedTiles({...newBuilding(0, team, kind, at, dir, start.clearing)}), tile =>
+					Option.isSome(materialAt(tile.x, tile.z))
+				)
+			) {
+				return {id: 0, reason: 'a miner stands on an ore field'}
+			}
+			const id = nextId()
+			const building = newBuilding(id, team, kind, at, dir, start.clearing)
+			// Grass, shrubs and pebbles go at once; trees and rocks wait for a Builder.
+			for (const prop of Array.filter(
+				propsNear(centreOf(building), Number.max(size.w, size.d)),
+				entry =>
+					!Record.has(SOLID, entry.kind) &&
+					entry.x >= at.x &&
+					entry.x < at.x + size.w &&
+					entry.z >= at.z &&
+					entry.z < at.z + size.d
+			)) {
+				clearProp(prop.id, prop)
+			}
+			MutableHashMap.set(buildings, id, building)
+			occupy(building)
+			revision.buildings += 1
+			return {id, reason: ''}
+		}
+
+		function configure(id: number, recipe: RecipeId) {
+			const machine = buildingOf(id)
+			if (machine === undefined) return
+			// A batch under way is undone: its inputs go back.
+			const running = Option.getOrUndefined(recipeOf(machine))
+			if (running !== undefined && machine.progress >= 0) {
+				for (const item of itemsIn(running.inputs)) {
+					machine.stock = withItem(machine.stock, item, countOf(running.inputs, item))
+				}
+			}
+			machine.recipe = recipe
+			machine.progress = -1
+			revision.buildings += 1
+		}
+
 		// What a finished step does to the world.
 		function finish(id: number, step: Job) {
 			const unit = unitOf(id)
 			if (unit === undefined) return Effect.void
 			return Match.valueTags(step, {
 				Clear: clear => Effect.sync(() => clearedBy(id, clear)),
+				Configure: setup =>
+					Effect.sync(() => {
+						const machine = buildingOf(setup.building)
+						if (
+							machine !== undefined &&
+							gapTo(machine, unit) <= 1.5 &&
+							RECIPES[setup.recipe].building === machine.kind &&
+							unlocked(unit.team, RECIPES[setup.recipe].tier)
+						) {
+							configure(machine.id, setup.recipe)
+							life.event(
+								living(unit),
+								state.tick,
+								'action',
+								`Configured #${machine.id} for ${setup.recipe}.`,
+								machine.id
+							)
+						}
+						unit.order = {_tag: 'Auto'}
+					}),
 				Construct: raising => raise(raising.site),
 				Dropoff: dropoff => Effect.sync(() => droppedOff(id, dropoff.building)),
 				Gather: dig =>
@@ -2432,6 +2656,25 @@ export const makeSim = Effect.fnUntraced(
 						unit.cargo = withItem(unit.cargo, dig.item, 1)
 					}),
 				Hold: () => Effect.void,
+				Inspect: inspected =>
+					Effect.sync(() => {
+						const container = buildingOf(inspected.building)
+						if (container !== undefined && gapTo(container, unit) <= 1.5) {
+							inspectStorage(living(unit), container)
+							if (unit.order._tag === 'Loot') {
+								for (const item of Array.filter(
+									itemsIn({...container.stock, ...container.output}),
+									candidate => !Array.contains(FLUIDS, candidate)
+								)) {
+									pickedUp(id, {_tag: 'Pickup', building: container.id, count: spaceOf(unit), item})
+								}
+							}
+						}
+						if (unit.order._tag === 'Inspect' || unit.order._tag === 'Loot') {
+							unit.order = {_tag: 'Auto'}
+						}
+						life.person(id, state.tick).next = state.tick
+					}),
 				Pickup: pickup => Effect.sync(() => pickedUp(id, pickup)),
 				Refit: () =>
 					Effect.sync(() => {
@@ -2445,7 +2688,48 @@ export const makeSim = Effect.fnUntraced(
 						other.health = markOf(other).health * 0.4
 						other.alarm = -99
 					}),
-				Scout: () => Effect.void
+				Scout: () => Effect.void,
+				Stake: blueprint =>
+					Effect.sync(() => {
+						lookRound(-id, unit, markOf(unit).sight * daylightAt(state.tick))
+						const placed = place(unit.team, blueprint.kind, blueprint, blueprint.dir ?? 'east')
+						const site = buildingOf(placed.id)
+						if (site !== undefined) {
+							life.inspect(
+								living(unit),
+								{
+									form: site.kind,
+									id: site.id,
+									items: {},
+									kind: 'storage',
+									text: `Staked ${site.kind}; initially empty construction stock.`,
+									...centreOf(site)
+								},
+								state.tick
+							)
+						}
+						life.event(
+							living(unit),
+							state.tick,
+							'action',
+							Boolean.match(placed.id > 0, {
+								onFalse: () => `Construction proposal refused here: ${placed.reason}.`,
+								onTrue: () => `Staked ${blueprint.kind} #${placed.id}.`
+							}),
+							Option.getOrUndefined(Option.filter(Option.some(placed.id), found => found > 0))
+						)
+						if (blueprint.to !== undefined && (blueprint.to.x !== blueprint.x || blueprint.to.z !== blueprint.z)) {
+							const direction = lineTiles(blueprint, blueprint.to).dir
+							unit.order = {
+								_tag: 'Build',
+								...Struct.omit(blueprint, ['_tag']),
+								x: blueprint.x + STEP[direction].x,
+								z: blueprint.z + STEP[direction].z
+							}
+						} else {
+							unit.order = {_tag: 'Auto'}
+						}
+					})
 			})
 		}
 
@@ -2493,7 +2777,23 @@ export const makeSim = Effect.fnUntraced(
 				unit.act = 'work'
 				return send(id, {_tag: 'Work', seconds: TICK})
 			}
-			const target = Option.getOrUndefined(targetOf(unit, task.value.job))
+			const target = Option.getOrUndefined(
+				Match.valueTags(task.value.job, {
+					Clear: obstacle => Option.some({near: 0.9, to: {x: obstacle.x, z: obstacle.z}}),
+					Configure: setup => inspectionTarget(unit, setup.building, setup),
+					Construct: site => beside(MutableHashMap.get(buildings, site.site), unit),
+					Dropoff: drop => storageTarget(unit, drop.building),
+					Gather: dig => Option.some({near: 0.4, to: {x: dig.x + 0.5, z: dig.z + 0.5}}),
+					Hold: hold => Option.some({near: 0, to: {x: hold.x, z: hold.z}}),
+					Inspect: inspect => inspectionTarget(unit, inspect.building, inspect),
+					Pickup: pickup => storageTarget(unit, pickup.building),
+					Refit: () => Option.some({near: 2.5, to: homeAt(unit.team)}),
+					Repair: repair =>
+						Option.map(Option.fromUndefinedOr(unitOf(repair.unit)), other => ({near: 1, to: {x: other.x, z: other.z}})),
+					Scout: scout => Option.some({near: 1, to: {x: scout.x, z: scout.z}}),
+					Stake: stake => Option.some({near: 1.5, to: {x: stake.x + 0.5, z: stake.z + 0.5}})
+				})
+			)
 			if (target === undefined) {
 				release(id)
 				return send(id, {_tag: 'Reset'})
@@ -2518,25 +2818,28 @@ export const makeSim = Effect.fnUntraced(
 				unit.path = []
 				return Effect.void
 			}
-			if (unit.class === 'guard' && engaged(id)) return Effect.void
-			if (clock() - unit.alarm < 6 && unit.class !== 'guard') {
-				flee(id)
+			const own = life.person(id, state.tick)
+			if (own.intent === 'rest') return Effect.void
+			if (unit.order._tag === 'Attack') {
+				attack(living(unit), unit.order.target, 4 * (markOf(unit).damage ?? 0.5))
 				return Effect.void
 			}
-			if (repairing(id)) return Effect.void
+			if (own.intent === 'attack' && own.foe !== undefined) {
+				attack(living(unit), own.foe, 4 * (markOf(unit).damage ?? 0.5))
+				return Effect.void
+			}
+			if (own.intent === 'explore' && own.target !== undefined) {
+				if (goTo(id, own.target, 0.5)) {
+					own.target = undefined
+					own.intent = 'continue'
+					own.next = state.tick
+				}
+				return Effect.void
+			}
 			return pursue(id)
 		}
 
 		/* ───────── buildings: sites, power, production ───────── */
-
-		function occupy(building: Building) {
-			const size = sizeOf(building.kind)
-			for (const dz of Array.range(0, size.d - 1)) {
-				for (const dx of Array.range(0, size.w - 1)) {
-					MutableHashMap.set(footprint, tileKey(building.x + dx, building.z + dz), building.id)
-				}
-			}
-		}
 
 		function vacate(building: Building) {
 			const size = sizeOf(building.kind)
@@ -2670,11 +2973,6 @@ export const makeSim = Effect.fnUntraced(
 		}
 
 		// The ore tiles a miner digs: under it and the ring round it.
-		function minedTiles(miner: Building) {
-			return Array.flatMap(Array.range(miner.z - 1, miner.z + 2), z =>
-				Array.map(Array.range(miner.x - 1, miner.x + 2), x => ({x, z}))
-			)
-		}
 
 		function mine(id: number) {
 			const miner = buildingOf(id)
@@ -2818,20 +3116,20 @@ export const makeSim = Effect.fnUntraced(
 			const groups = Array.reduce(
 				Array.filter(allBuildings(), building => building.kind === 'pipe' && complete(building)),
 				Array.empty<Building[]>(),
-				(found, pipe: Building) => {
+				(found, conduit: Building) => {
 					const joined = Array.filter(found, group =>
-						Array.some(group, other => Math.abs(other.x - pipe.x) + Math.abs(other.z - pipe.z) === 1)
+						Array.some(group, other => Math.abs(other.x - conduit.x) + Math.abs(other.z - conduit.z) === 1)
 					)
-					return [...Array.filter(found, group => !Array.contains(joined, group)), [pipe, ...Array.flatten(joined)]]
+					return [...Array.filter(found, group => !Array.contains(joined, group)), [conduit, ...Array.flatten(joined)]]
 				}
 			)
 			const previous = pipes.nets
 			pipes.nets = Array.map(groups, group => {
 				const members = Array.dedupe(
-					Array.flatMap(group, pipe =>
+					Array.flatMap(group, conduit =>
 						Array.getSomes(
 							Array.map(DIRECTIONS, dir => {
-								const at = ahead(pipe, dir)
+								const at = ahead(conduit, dir)
 								return Option.map(
 									Option.filter(buildingAt(at.x, at.z), building =>
 										Array.contains(['pump', 'refinery', 'steam_generator', 'core_generator'], building.kind)
@@ -2842,7 +3140,7 @@ export const makeSim = Effect.fnUntraced(
 						)
 					)
 				)
-				const ids = Array.map(group, pipe => pipe.id)
+				const ids = Array.map(group, conduit => conduit.id)
 				const before = inherited(previous, ids)
 				return {
 					fluid: before.fluid,
@@ -2969,14 +3267,25 @@ export const makeSim = Effect.fnUntraced(
 					newUnit(made, id, head.class, head.mark, {x: at.x, z: at.z + 2.5}, start.planning)
 				)
 				notify(id, `Home made #${made} ${head.class} mk${head.mark + 1}.`)
+				recordBirth(made)
 				return
 			}
 			unit.mark = head.mark
 			unit.health = markOf(unit).health
 			unit.upgrade = false
+			if (unit.order._tag === 'Refit') unit.order = {_tag: 'Auto'}
 			release(unit.id)
 			unit.task = start.planning
 			notify(id, `${unitName(unit)} is refitted.`)
+		}
+
+		function emit(building: Building) {
+			if (
+				(Array.contains(MAKERS, building.kind) && building.progress > 0) ||
+				((building.kind === 'burner_generator' || building.kind === 'steam_generator') && building.fuel > 0)
+			) {
+				life.pollute(centreOf(building), 0.025, state.tick)
+			}
 		}
 
 		/* ───────── one tick ───────── */
@@ -2986,96 +3295,34 @@ export const makeSim = Effect.fnUntraced(
 			state.searches = 0
 			MutableList.clear(shots)
 			for (const unit of allUnits()) yield* behave(unit.id)
-			for (const enemy of allEnemies()) hunt(enemy.id)
-			for (const mob of Array.fromIterable(MutableHashMap.values(mobs))) creature(mob.id)
+			for (const id of Array.fromIterable(dirtyWild)) yield* transitionWild(id)
+			MutableHashSet.clear(dirtyWild)
+			for (const body of [...allEnemies(), ...Array.fromIterable(MutableHashMap.values(mobs))]) wildStep(body.id)
 			separate()
 			if (state.tick % 10 === 0) {
 				explore()
-				contacts()
+				if (state.tick % 40 === 0) perceive()
 			}
-			if (state.tick % 20 === 0) wildlife()
-			state.raidAt -= TICK
-			if (state.raidAt <= 0) {
-				state.raidAt = RAID_EVERY + random() * RAID_EVERY * 0.5
-				raid()
+			if (state.tick % 20 === 0) {
+				wildlife()
+				life.weather(state.tick)
 			}
 			yield* sites()
 			power()
 			for (const building of Array.filter(allBuildings(), complete)) {
 				mine(building.id)
 				if (Schema.is(BuildingKind)(building.kind) && Array.contains(MAKERS, building.kind)) make(building.id)
+				if (state.tick % TICK_HZ === 0) emit(building)
 			}
 			belts()
 			fluids()
 			for (const team of allTeams()) {
 				bench(team.id)
 				line(team.id)
-				if (state.tick % 16 === 0) defend(team.id)
 			}
 		})
 
 		/* ───────── commands: what each team's model asks for, at a round's start ───────── */
-
-		// Whether a team may build on a tile: seen, dry, flat enough to stand on, and free.
-		function buildable(team: number, kind: Kind, x: number, z: number) {
-			const tile = ground(x, z)
-			if (!known(team, {x: x + 0.5, z: z + 0.5})) return 'ground the team has not explored'
-			if (MutableHashMap.has(footprint, tileKey(x, z))) return 'a tile already built on'
-			if (kind === 'pump' && !Array.contains(SWIMMABLE, tile.liquid)) return 'a pump stands on water'
-			if (kind === 'pump') return ''
-			if (kind === 'bridge' && tile.liquid === LIQUID.none) return 'a bridge crosses water'
-			if (kind === 'bridge') return ''
-			if (tile.liquid !== LIQUID.none && tile.liquid !== LIQUID.ice) return 'water or lava'
-			if (!standable(MOVERS.legs, tile)) return 'ground too steep'
-			if (
-				Array.some(
-					propsNear({x: x + 0.5, z: z + 0.5}, 0.5),
-					prop => prop.kind === 'ruin' && Math.floor(prop.x) === x && Math.floor(prop.z) === z
-				)
-			) {
-				return 'a ruin'
-			}
-			return ''
-		}
-
-		function place(team: number, kind: Kind, at: Point, dir: Direction) {
-			const size = sizeOf(kind)
-			const problem = Option.getOrUndefined(
-				Array.findFirst(
-					Array.flatMap(Array.range(0, size.d - 1), dz =>
-						Array.map(Array.range(0, size.w - 1), dx => ({x: at.x + dx, z: at.z + dz}))
-					),
-					tile => Option.liftPredicate(buildable(team, kind, tile.x, tile.z), reason => reason !== '')
-				)
-			)
-			if (problem !== undefined) return {id: 0, reason: problem}
-			if (
-				(kind === 'miner_mk1' || kind === 'miner_mk2' || kind === 'miner_mk3') &&
-				!Array.some(minedTiles({...newBuilding(0, team, kind, at, dir, start.clearing)}), tile =>
-					Option.isSome(materialAt(tile.x, tile.z))
-				)
-			) {
-				return {id: 0, reason: 'a miner stands on an ore field'}
-			}
-			const id = nextId()
-			const building = newBuilding(id, team, kind, at, dir, start.clearing)
-			// Grass, shrubs and pebbles go at once; trees and rocks wait for a Builder.
-			for (const prop of Array.filter(
-				propsNear(centreOf(building), Number.max(size.w, size.d)),
-				entry =>
-					!Record.has(SOLID, entry.kind) &&
-					entry.x >= at.x &&
-					entry.x < at.x + size.w &&
-					entry.z >= at.z &&
-					entry.z < at.z + size.d
-			)) {
-				clearProp(prop.id, prop)
-			}
-			MutableHashMap.set(buildings, id, building)
-			occupy(building)
-			revision.buildings += 1
-			return {id, reason: ''}
-		}
 
 		function commandBuild(team: Team, command: Extract<Command, {_tag: 'Build'}>) {
 			if (command.kind === 'home') return outcome(command, false, 'each team has one Home')
@@ -3096,23 +3343,28 @@ export const makeSim = Effect.fnUntraced(
 			if (Schema.is(BuildingKind)(command.kind) && laid.tiles.length > 1) {
 				return outcome(command, false, 'only structures are laid in a line')
 			}
-			const placed = Array.map(laid.tiles, tile => place(team.id, command.kind, tile, command.dir ?? laid.dir))
-			const ids = Array.filter(placed, entry => entry.id > 0)
-			const refused = Array.filter(placed, entry => entry.id === 0)
-			if (Array.isArrayEmpty(ids)) {
-				return outcome(command, false, `cannot build there: ${refused[0]?.reason ?? 'no tile'}`)
+			const builder = Option.getOrUndefined(
+				Array.head(
+					Array.filter(
+						unitsOf(team.id),
+						unit => unit.class === 'builder' && (command.units === undefined || Array.contains(command.units, unit.id))
+					)
+				)
+			)
+			if (builder === undefined) return outcome(command, false, 'No registered Builder selected.')
+			if (connected(builder)) {
+				life.send(
+					living(builder),
+					team.home,
+					state.tick,
+					`Construction proposal: ${command.kind} at ${place2(command)}. Choose whether to read and accept it.`,
+					{_tag: 'Build', ...Struct.omit(command, ['_tag', 'units'])}
+				)
 			}
-			const refusals = Option.match(Array.head(refused), {
-				onNone: () => '',
-				onSome: first => `; ${refused.length} tiles refused (${first.reason})`
-			})
 			return outcome(
 				command,
 				true,
-				`site ${Array.join(
-					Array.map(ids, entry => `#${entry.id}`),
-					', '
-				)} for ${command.kind} placed; Builders on Auto will clear it, bring ${itemsText(costOf(command.kind))} each and build it${refusals}`
+				`Blueprint transmission attempted to #${builder.id}; no physical site exists until an individual accepts, visits and stakes it. Ground and resource suitability are not remotely verified.`
 			)
 		}
 
@@ -3132,11 +3384,6 @@ export const makeSim = Effect.fnUntraced(
 				return outcome(command, false, `${command.order.item} is not gathered by hand`)
 			}
 			if (command.order._tag === 'Haul') {
-				const from = buildingOf(command.order.from)
-				const to = buildingOf(command.order.to)
-				if (from === undefined || to === undefined || from.team !== team.id || to.team !== team.id) {
-					return outcome(command, false, 'no such building in your team')
-				}
 				if (Array.some(chosen, unit => markOf(unit).cargo === 0)) {
 					return outcome(command, false, 'only Builders and Haulers carry')
 				}
@@ -3145,11 +3392,15 @@ export const makeSim = Effect.fnUntraced(
 				}
 			}
 			for (const unit of chosen) {
-				release(unit.id)
-				unit.order = command.order
-				unit.path = []
-				unit.lost = false
-				unit.task = start.planning
+				if (connected(unit)) {
+					life.send(
+						living(unit),
+						team.home,
+						state.tick,
+						`Requested ${orderText(command.order)}. Choose whether to read and follow it.`,
+						command.order
+					)
+				}
 			}
 			return outcome(
 				command,
@@ -3157,11 +3408,29 @@ export const makeSim = Effect.fnUntraced(
 				`${Array.join(
 					Array.map(chosen, unit => `#${unit.id}`),
 					', '
-				)} now ${command.order._tag}`
+				)}: transmission attempted; delivery depends on coverage, not proof of reading or compliance`
 			)
 		}
 
 		function commandRecipe(team: Team, command: Extract<Command, {_tag: 'Recipe'}>) {
+			if (
+				!Array.some(
+					life.core(team.id).facts,
+					fact => fact.id === command.building && distance(fact, homeAt(team.id)) <= HOME_SIGHT * daylightAt(state.tick)
+				)
+			) {
+				const builder = Option.getOrUndefined(Array.head(unitsOf(team.id)))
+				if (builder === undefined) return outcome(command, false, 'No registered individual can receive a proposal.')
+				return outcome(
+					command,
+					true,
+					commandOrder(team, {
+						_tag: 'Order',
+						order: {_tag: 'Configure', building: command.building, recipe: command.recipe},
+						units: [builder.id]
+					}).text
+				)
+			}
 			const machine = buildingOf(command.building)
 			const recipe = RECIPES[command.recipe]
 			if (machine === undefined || machine.team !== team.id) {
@@ -3173,16 +3442,7 @@ export const makeSim = Effect.fnUntraced(
 			if (!unlocked(team.id, recipe.tier)) {
 				return outcome(command, false, `${command.recipe} unlocks with ${recipe.tier}`)
 			}
-			// A batch under way is undone: its inputs go back.
-			const running = Option.getOrUndefined(recipeOf(machine))
-			if (running !== undefined && machine.progress >= 0) {
-				for (const item of itemsIn(running.inputs)) {
-					machine.stock = withItem(machine.stock, item, countOf(running.inputs, item))
-				}
-			}
-			machine.recipe = command.recipe
-			machine.progress = -1
-			revision.buildings += 1
+			configure(machine.id, command.recipe)
 			return outcome(
 				command,
 				true,
@@ -3214,10 +3474,7 @@ export const makeSim = Effect.fnUntraced(
 			if (!unlocked(team.id, refit.tier)) {
 				return outcome(command, false, `mark ${unit.mark + 2} unlocks with ${refit.tier}`)
 			}
-			release(unit.id)
-			unit.upgrade = true
-			unit.task = start.planning
-			return outcome(command, true, `${unitName(unit)} goes Home to be refitted (${itemsText(refit.cost)})`)
+			return outcome(command, true, commandOrder(team, {_tag: 'Order', order: {_tag: 'Refit'}, units: [unit.id]}).text)
 		}
 
 		// The building a milestone is paid from: Home, or the team's built Beacon.
@@ -3240,6 +3497,9 @@ export const makeSim = Effect.fnUntraced(
 			const store = payerOf(id, milestone.at)
 			if (store === undefined) {
 				return outcome(command, false, 'the next milestone is paid at the Beacon, which the team has not built')
+			}
+			if (gapTo(store, homeAt(id)) > HOME_SIGHT * daylightAt(state.tick)) {
+				return outcome(command, false, 'The payer is not locally accessible to the Core; arrange a local payment site.')
 			}
 			if (!covers(store.stock, milestone.cost)) {
 				const short = Array.filter(
@@ -3293,6 +3553,9 @@ export const makeSim = Effect.fnUntraced(
 			if (building === undefined || building.team !== team.id) {
 				return outcome(command, false, 'no such building in your team')
 			}
+			if (gapTo(building, homeAt(team.id)) > HOME_SIGHT * daylightAt(state.tick)) {
+				return outcome(command, false, 'The Core cannot dismantle an unseen remote building.')
+			}
 			if (building.kind === 'home') return outcome(command, false, 'Home stays')
 			// A built road, ramp or bridge is part of the ground now.
 			if (complete(building) && Array.contains(['road', 'ramp', 'bridge'], building.kind)) {
@@ -3317,35 +3580,106 @@ export const makeSim = Effect.fnUntraced(
 		}
 
 		function commandMessage(team: Team, command: Extract<Command, {_tag: 'Message'}>) {
-			if (!Array.contains(team.contacts, command.team)) {
+			if (!Array.contains(life.core(team.id).contacts, command.team)) {
 				return outcome(command, false, 'you can only message a team you have met')
 			}
+			const recipient = life.core(command.team)
+			recipient.contacts = Array.dedupe([
+				...recipient.contacts,
+				team.id,
+				...Array.filter(command.ids ?? [], id => Array.contains(life.core(team.id).contacts, id))
+			])
 			notify(command.team, `Message from team ${team.id} (${nameOf(team.id)}): ${command.text}`)
 			mark('message', team.id, Option.some(command.team))
 			return outcome(command, true, `sent to team ${command.team}`)
 		}
 
-		function apply(teamId: number, command: Command) {
+		function apply(teamId: number, given: Command) {
 			const team = teamOf(teamId)
-			if (team === undefined) return outcome(command, false, 'no such team')
-			if (command._tag === 'Build') return commandBuild(team, command)
-			if (command._tag === 'Order') return commandOrder(team, command)
-			if (command._tag === 'Recipe') return commandRecipe(team, command)
-			if (command._tag === 'Craft') return commandCraft(teamId, command)
-			if (command._tag === 'Make') {
-				team.line = [...team.line, {class: command.unit, mark: 0}]
-				return outcome(
-					command,
-					true,
-					`Home's line queued a ${command.unit} mk1 (${itemsText(UNITS[command.unit].marks[0].cost)})`
-				)
-			}
-			if (command._tag === 'Upgrade') return commandUpgrade(team, command)
-			if (command._tag === 'Advance') return commandAdvance(teamId, command)
-			if (command._tag === 'Cancel') return commandCancel(team, command)
-			if (command._tag === 'Message') return commandMessage(team, command)
-			team.note = command.text
-			return outcome(command, true, 'notes kept')
+			if (team === undefined) return outcome(given, false, 'no such team')
+			return Match.valueTags(given, {
+				Advance: command => commandAdvance(teamId, command),
+				Build: command => commandBuild(team, command),
+				Cancel: command => commandCancel(team, command),
+				Catalog: command => {
+					const catalog = {
+						buildings: BUILDINGS,
+						milestones: GATES,
+						recipes: RECIPES,
+						structures: STRUCTURES,
+						units: UNITS
+					}
+					return outcome(command, true, JSON.stringify(catalog[command.section]))
+				},
+				Craft: command => commandCraft(teamId, command),
+				Inspect: command => {
+					const building = buildingOf(command.building)
+					if (
+						building === undefined ||
+						distance(homeAt(teamId), centreOf(building)) > HOME_SIGHT * daylightAt(state.tick)
+					) {
+						return outcome(command, false, 'The Core cannot open that storage remotely; send a unit to inspect it.')
+					}
+					const knowledge = life.core(teamId)
+					const fact = {
+						id: building.id,
+						kind: 'storage',
+						...centreOf(building),
+						items: Record.fromEntries(
+							Array.map(Array.dedupe([...itemsIn(building.stock), ...itemsIn(building.output)]), item => [
+								item,
+								countOf(building.stock, item) + countOf(building.output, item)
+							])
+						),
+						source: team.home,
+						text: `Inspected #${building.id}: stock ${itemsText(building.stock)}; output ${itemsText(building.output)}.`,
+						tick: state.tick
+					}
+					knowledge.facts = [...Array.filter(knowledge.facts, remembered => remembered.id !== building.id), fact]
+					return outcome(command, true, fact.text)
+				},
+				Make: command => {
+					team.line = [...team.line, {class: command.unit, mark: 0}]
+					return outcome(
+						command,
+						true,
+						`Home's line queued a ${command.unit} mk1 (${itemsText(UNITS[command.unit].marks[0].cost)})`
+					)
+				},
+				Message: command => commandMessage(team, command),
+				Order: command => commandOrder(team, command),
+				Ping: command => {
+					const unit = unitOf(command.unit)
+					if (unit === undefined || unit.team !== teamId || !connected(unit)) {
+						return outcome(command, false, 'No location response; cause unknown.')
+					}
+					const knowledge = life.core(teamId)
+					const fact = {
+						id: unit.id,
+						kind: kindOf(unit),
+						source: team.home,
+						text: `Radio position ping for #${unit.id}; condition unknown.`,
+						tick: state.tick,
+						x: unit.x,
+						z: unit.z
+					}
+					knowledge.facts = [...Array.filter(knowledge.facts, remembered => remembered.id !== unit.id), fact]
+					life.event(living(unit), state.tick, 'ping', 'Radio answered a location ping, independently of conversation.')
+					return outcome(command, true, `#${unit.id} at ${place2(unit)}. This does not establish life or health.`)
+				},
+				Recall: command => outcome(command, false, 'Conversation retrieval is handled by the durable archive.'),
+				Recipe: command => commandRecipe(team, command),
+				Tell: command => {
+					for (const id of command.units) {
+						const unit = unitOf(id)
+						if (unit !== undefined && unit.team === teamId && connected(unit)) {
+							life.send(living(unit), team.home, state.tick, command.text)
+						}
+					}
+					return outcome(command, true, 'Transmission attempted; no reply or compliance is implied.')
+				},
+				Upgrade: command => commandUpgrade(team, command)
+			})
 		}
 
 		/* ───────── what a team's model sees ───────── */
@@ -3408,167 +3742,96 @@ export const makeSim = Effect.fnUntraced(
 			)}`
 		}
 
-		// The fields the team has seen tiles of, nearest its Home first.
-		function knownFields(team: number) {
-			const home = homeAt(team)
-			const keys = Array.filter(Array.fromIterable(MutableHashMap.keys(exploredOf(team))), key => {
-				const at = chunkFrom(key)
-				return Math.hypot(at.cx * CHUNK - home.x, at.cz * CHUNK - home.z) < 260
-			})
-			const ids = Array.dedupe(
-				Array.flatMap(keys, key => Array.map(chunkAt(chunkFrom(key).cx, chunkFrom(key).cz).fields, field => field.id))
-			)
-			return Array.take(
-				Array.sort(
-					Array.filter(
-						Array.map(Array.getSomes(Array.map(ids, id => world.field(id))), field => ({
-							distance: distance(field, home),
-							field
-						})),
-						entry => known(team, entry.field)
-					),
-					byDistance
-				),
-				14
-			)
-		}
-
-		function fieldLeft(field: {tiles: number; xs: Int32Array; zs: Int32Array}) {
-			return Array.reduce(
-				Array.range(0, field.tiles - 1),
-				0,
-				(sum, n) => sum + oreAt(field.xs[n] ?? 0, field.zs[n] ?? 0)
-			)
-		}
-
-		// What the team's model reads at the start of a round: its notices, then its colony as it stands, then what it has seen. Reading it empties the notices.
 		function observe(teamId: number) {
 			const team = teamOf(teamId)
 			if (team === undefined) return {notices: [], text: ''}
-			const home = homeOf(teamId)
 			const at = homeAt(teamId)
+			const knowledge = life.core(teamId)
+			for (const fact of resourcesAt(at, HOME_SIGHT * daylightAt(state.tick), team.home)) {
+				knowledge.facts = [...Array.filter(knowledge.facts, remembered => remembered.id !== fact.id), fact]
+			}
+			for (const building of Array.filter(
+				allBuildings(),
+				candidate => gapTo(candidate, at) <= HOME_SIGHT * daylightAt(state.tick)
+			)) {
+				if (!Array.some(knowledge.facts, fact => fact.id === building.id)) {
+					knowledge.facts = [
+						...knowledge.facts,
+						{
+							id: building.id,
+							kind: 'storage',
+							source: team.home,
+							text: `Visible ${building.kind}; contents unknown until opened.`,
+							tick: state.tick,
+							...centreOf(building)
+						}
+					]
+				}
+			}
+			for (const body of Array.filter(
+				entities(),
+				candidate => distance(candidate, at) <= HOME_SIGHT * daylightAt(state.tick)
+			)) {
+				if (body.team !== undefined && body.team !== teamId) {
+					knowledge.contacts = Array.dedupe([...knowledge.contacts, body.team])
+				}
+				knowledge.facts = [
+					...Array.filter(knowledge.facts, fact => fact.id !== body.id),
+					{
+						id: body.id,
+						kind: body.kind,
+						source: team.home,
+						text: `Visible here: #${body.id} ${body.kind}, ${body.act}.`,
+						tick: state.tick,
+						x: body.x,
+						z: body.z
+					}
+				]
+			}
 			const notices = team.inbox
 			team.inbox = []
+			const outcomes = team.outcomes
+			team.outcomes = []
 			const milestone = Option.match(nextGate(team), {
-				onNone: () => `Signal cycle ${team.cycles + 1} at the Beacon: ${itemsText(cycleCost(team.cycles + 1))}`,
-				onSome: id =>
-					`${id} ${GATES[id].name}, paid at ${PAYERS[GATES[id].at]}: ${itemsText(GATES[id].cost)}${Boolean.match(
-						Array.contains(team.gates, GATES[id].needs) || GATES[id].needs === 't0',
-						{onFalse: () => ` (first ${GATES[id].needs})`, onTrue: () => ''}
-					)}`
+				onNone: () => `Signal cycle ${team.cycles + 1}`,
+				onSome: gate => `${gate} ${GATES[gate].name}, paid at ${PAYERS[GATES[gate].at]}: ${itemsText(GATES[gate].cost)}`
 			})
-			const timber = Array.filter(propsNear(at, 24), prop => Array.contains(TIMBER, prop.kind) && known(teamId, prop))
-			const rocks = Array.filter(propsNear(at, 24), prop => Array.contains(BOULDERS, prop.kind) && known(teamId, prop))
-			const others = Array.flatMap(team.contacts, id => {
-				const sightings = Array.filter(unitsOf(id), unit => sighted(teamId, unit))
-				const places = Array.filter(buildingsOf(id), building => sighted(teamId, centreOf(building)))
-				if (Array.isArrayEmpty(sightings) && Array.isArrayEmpty(places)) return []
-				return [
-					`team ${id} (${nameOf(id)}): ${sightings.length} units and ${places.length} buildings in sight, nearest at ${place2(sightings[0] ?? centreOf(places[0] ?? {kind: 'home', x: 0, z: 0}))}`
-				]
-			})
-			const threats = Array.filter(allEnemies(), enemy => enemy.dead === 0 && sighted(teamId, enemy))
-			const structures = Array.filter(
-				buildingsOf(teamId),
-				building => Schema.is(StructureKind)(building.kind) && complete(building)
-			)
-			const text = Array.join(
-				[
-					`Round ${Math.floor(state.tick / ROUND)}, tick ${state.tick} (${Math.floor(clock() / 60)} min). You are team ${teamId} (${nameOf(teamId)}).`,
-					`Milestones done: ${Array.join(team.gates, ', ') || 'none'}${Boolean.match(team.cycles > 0, {
-						onFalse: () => '',
-						onTrue: () => `; Signal cycles: ${team.cycles}`
-					})}. Next: ${milestone}.`,
-					`Home #${home?.id ?? 0} at ${place2(at)} holds: ${itemsText(home?.stock ?? {})}${Boolean.match(
-						Array.isArrayEmpty(itemsIn(home?.reserved ?? {})),
-						{onFalse: () => ` (set aside for sites: ${itemsText(home?.reserved ?? {})})`, onTrue: () => ''}
-					)}.`,
-					`Home's bench: ${
-						Array.join(
-							Array.map(team.bench, entry => `${entry.recipe} × ${entry.left}`),
-							', '
-						) || 'idle'
-					}${queueText(team.benchProgress, Array.isReadonlyArrayNonEmpty(team.bench), 'inputs')}. Home's line: ${
-						Array.join(
+			return {
+				notices,
+				text: Array.join(
+					[
+						`Tick ${state.tick}. Your Core is #${team.home} at ${place2(at)}. Daylight ${Number.round(daylightAt(state.tick) * 100, 0)}%.`,
+						`Next: ${milestone}. Home production queues: ${JSON.stringify({bench: team.bench, line: team.line})}.`,
+						`Ore fields seen here: ${Array.join(
 							Array.map(
-								team.line,
-								entry =>
-									`${entry.class} mk${entry.mark + 1}${Option.match(Option.fromUndefinedOr(entry.unit), {onNone: () => '', onSome: unit => ` refit of #${unit}`})}`
+								Array.filter(knowledge.facts, fact => fact.kind === 'resource'),
+								fact => fact.text
 							),
-							', '
-						) || 'idle'
-					}${queueText(team.lineProgress, Array.isReadonlyArrayNonEmpty(team.line), 'items')}.`,
-					'Units:',
-					...Array.map(
-						unitsOf(teamId),
-						unit =>
-							`- #${unit.id} ${unit.class} mk${unit.mark + 1} at ${place2(unit)}, health ${Number.round((unit.health / markOf(unit).health) * 100, 0)}%, order ${orderText(unit.order)}, ${unit.doing}${Boolean.match(
-								cargoOf(unit) > 0,
-								{onFalse: () => '', onTrue: () => `, carrying ${itemsText(unit.cargo)}`}
-							)}`
-					),
-					'Buildings:',
-					...Array.map(
-						Array.filter(
-							buildingsOf(teamId),
-							building => !Schema.is(StructureKind)(building.kind) || !complete(building)
+							'; '
+						)}`,
+						'Knowledge is last observed or reported, not live telemetry. Source and tick identify who learned it and when:',
+						...Array.map(
+							knowledge.facts,
+							fact => `#${fact.id} at ${place2(fact)} [tick ${fact.tick}, source #${fact.source}]: ${fact.text}`
 						),
-						building => `- ${buildingLine(building)}`
-					),
-					...Boolean.match(Array.isArrayEmpty(structures), {
-						onFalse: () => [
-							`Structures built: ${Array.join(
-								Array.map(
-									Array.dedupe(Array.map(structures, entry => entry.kind)),
-									kind => `${Array.countBy(structures, entry => entry.kind === kind)} ${kind}`
-								),
-								', '
-							)}.`
-						],
-						onTrue: () => []
-					}),
-					`Ore fields seen: ${
-						Array.join(
-							Array.map(
-								knownFields(teamId),
-								entry =>
-									`${entry.field.material} field at (${entry.field.x}, ${entry.field.z}) ${bearing(at, entry.field)} of Home, ${fieldLeft(entry.field)} left over ${entry.field.tiles} tiles`
-							),
-							'; '
-						) || 'none'
-					}.`,
-					`Within 24 tiles of Home: ${timber.length} trees (nearest at ${Option.match(nearest(at, timber), {onNone: () => 'none', onSome: place2})}), ${rocks.length} rocks (nearest at ${Option.match(nearest(at, rocks), {onNone: () => 'none', onSome: place2})}).`,
-					`Explored: ${MutableHashMap.size(exploredOf(teamId))} chunks of 32×32 tiles.`,
-					`Hostiles in sight: ${
-						Array.join(
-							Array.map(threats, enemy => `${enemy.kind} at ${place2(enemy)}`),
-							'; '
-						) || 'none'
-					}.`,
-					`Teams met: ${
-						Array.join(
-							Array.map(team.contacts, id => `team ${id} (${nameOf(id)})`),
-							', '
-						) || 'none yet'
-					}.${Boolean.match(Array.isArrayEmpty(others), {
-						onFalse: () => ` In sight: ${Array.join(others, '; ')}.`,
-						onTrue: () => ''
-					})}`,
-					`Your notes: ${team.note || '(none)'}`,
-					`Last round's commands: ${
-						Array.join(
-							Array.map(
-								team.outcomes,
-								entry =>
-									`${entry.command._tag} ${Boolean.match(entry.ok, {onFalse: () => 'REFUSED', onTrue: () => 'ok'})}: ${entry.text}`
-							),
-							'; '
-						) || 'none'
-					}.`
-				],
-				'\n'
-			)
-			return {notices, text}
+						...Array.filter(
+							[
+								`Known communication addresses: ${Array.join(
+									Array.map(knowledge.contacts, id => `${id}`),
+									', '
+								)}. You can pass known addresses in a message.`
+							],
+							() => Array.isReadonlyArrayNonEmpty(knowledge.contacts)
+						),
+						...Array.map(
+							outcomes,
+							result =>
+								`${result.command._tag}: ${Boolean.match(result.ok, {onFalse: () => 'refused', onTrue: () => 'ok'})}: ${result.text}`
+						)
+					],
+					'\n'
+				)
+			}
 		}
 
 		/* ───────── views: frames for spectators ───────── */
@@ -3594,7 +3857,7 @@ export const makeSim = Effect.fnUntraced(
 			return {
 				act: mob.act,
 				doing: mob.doing,
-				health: 1,
+				health: life.person(mob.id, state.tick).health,
 				id: mob.id,
 				kind: mob.kind,
 				load: 0,
@@ -3646,7 +3909,7 @@ export const makeSim = Effect.fnUntraced(
 					building => Schema.is(BuildingKind)(building.kind) && complete(building)
 				),
 				color: TEAMS[team.id]?.color ?? '#888888',
-				contacts: team.contacts,
+				contacts: life.core(team.id).contacts,
 				cycles: team.cycles,
 				gate: Option.match(nextGate(team), {
 					onNone: () => `Signal cycle ${team.cycles + 1}`,
@@ -3745,6 +4008,7 @@ export const makeSim = Effect.fnUntraced(
 				),
 				changes,
 				cleared: props,
+				environment: life.environment(state.tick),
 				explored: newChunks,
 				shots: MutableList.toArray(shots),
 				teams: Boolean.match(first || connection.teams !== teamsText, {
@@ -3752,6 +4016,10 @@ export const makeSim = Effect.fnUntraced(
 					onTrue: () => teamViews
 				}),
 				tick: state.tick,
+				traces: Boolean.match(state.tick % 20 === 0 || first, {
+					onFalse: () => undefined,
+					onTrue: () => life.traces(state.tick)
+				}),
 				units: [
 					...Array.map(allUnits(), unitView),
 					...Array.map(Array.filter(allEnemies(), knownAny), enemyView),
@@ -3774,6 +4042,17 @@ export const makeSim = Effect.fnUntraced(
 		}
 
 		/* ───────── saves ───────── */
+
+		function restoreSight(owner: number, surveyed: readonly Explored[]) {
+			for (const chunk of surveyed) {
+				MutableHashMap.set(exploredOf(owner), chunkKey(chunk.cx, chunk.cz), {
+					bits: Uint8Array.from(chunk.bits),
+					version: 0
+				})
+				const all = bitsOf(seen, chunkKey(chunk.cx, chunk.cz))
+				all.bits = Uint8Array.from(all.bits, (byte, index) => byte | (chunk.bits[index] ?? 0))
+			}
+		}
 
 		const restore = Effect.fnUntraced(function* (previous: Saved) {
 			state.draws = previous.draws
@@ -3813,8 +4092,24 @@ export const makeSim = Effect.fnUntraced(
 				})
 			}
 			Array.forEach(allBuildings(), occupy)
-			Array.forEach(previous.enemies, enemy => MutableHashMap.set(enemies, enemy.id, {...enemy}))
-			Array.forEach(previous.mobs, mob => MutableHashMap.set(mobs, mob.id, {...mob}))
+			for (const enemy of previous.enemies) {
+				MutableHashMap.set(enemies, enemy.id, {
+					...enemy,
+					task: yield* Option.match(Option.fromUndefinedOr(enemy.task), {
+						onNone: () => Effect.succeed(start.creature),
+						onSome: task => Machine.decodeSnapshot(Creatures, task)
+					})
+				})
+			}
+			for (const mob of previous.mobs) {
+				MutableHashMap.set(mobs, mob.id, {
+					...mob,
+					task: yield* Option.match(Option.fromUndefinedOr(mob.task), {
+						onNone: () => Effect.succeed(start.creature),
+						onSome: task => Machine.decodeSnapshot(Creatures, task)
+					})
+				})
+			}
 			for (const team of previous.teams) {
 				MutableList.append(teams, {
 					bench: [...team.bench],
@@ -3824,19 +4119,36 @@ export const makeSim = Effect.fnUntraced(
 					gates: [...team.gates],
 					home: team.home,
 					id: team.id,
-					inbox: [...team.inbox],
+					inbox: [
+						...team.inbox,
+						...Option.toArray(
+							Option.map(
+								Option.filter(Option.fromUndefinedOr(team.note), () => previous.life === undefined),
+								note =>
+									`Previous Core continuation checkpoint, retained from the earlier release. Treat its statements as remembered claims, not new observations: ${note}`
+							)
+						)
+					],
 					line: [...team.line],
 					lineProgress: team.lineProgress,
-					note: team.note,
 					outcomes: [...team.outcomes]
 				})
-				const map = exploredOf(team.id)
-				for (const chunk of team.explored) {
-					MutableHashMap.set(map, chunkKey(chunk.cx, chunk.cz), {bits: Uint8Array.from(chunk.bits), version: 0})
-					const all = bitsOf(seen, chunkKey(chunk.cx, chunk.cz))
-					all.bits = Uint8Array.from(all.bits, (byte, index) => byte | (chunk.bits[index] ?? 0))
-				}
+				if (previous.life === undefined) life.core(team.id).contacts = [...team.contacts]
+				restoreSight(team.id, team.explored)
 			}
+			if (previous.life === undefined) {
+				Array.forEach(entities(), body =>
+					life.event(
+						body,
+						state.tick,
+						'observe',
+						'Individual recording begins from the previous release. Earlier individual decisions were not recorded; this is not a birth event.'
+					)
+				)
+			}
+			Array.forEach(previous.life?.individuals ?? [], individual =>
+				restoreSight(-individual.id, individual.explored ?? [])
+			)
 			// Who clears which prop follows from the units' steps.
 			for (const unit of allUnits()) {
 				if (
@@ -3873,7 +4185,6 @@ export const makeSim = Effect.fnUntraced(
 								inbox: ['The colony is founded: Home and one Builder. Everything else you gather, smelt and build.'],
 								line: [],
 								lineProgress: -1,
-								note: '',
 								outcomes: []
 							})
 							Array.forEach(START.units, (unitClass, n) => {
@@ -3883,20 +4194,26 @@ export const makeSim = Effect.fnUntraced(
 									id,
 									newUnit(id, index, unitClass, 0, {x: spawn.x + 0.5 + n, z: spawn.z + 3}, start.planning)
 								)
+								recordBirth(id)
 							})
-							lookRound(index, {x: spawn.x + 0.5, z: spawn.z + 0.5}, START_SIGHT)
+							lookRound(index, {x: spawn.x + 0.5, z: spawn.z + 0.5}, HOME_SIGHT)
 						})
 					}),
 				onSome: restore
 			}
 		)
 
+		Array.forEach([...allEnemies(), ...Array.fromIterable(MutableHashMap.values(mobs))], body =>
+			MutableHashSet.add(dirtyWild, body.id)
+		)
+
 		return {
+			acknowledge: (through: number) => life.acknowledge(through),
 			// Applies one team's commands in order; what each did goes into its next observation.
 			apply: (team: number, commands: Command[]) => {
 				const results = Array.map(commands, command => apply(team, command))
 				const entry = teamOf(team)
-				if (entry !== undefined) entry.outcomes = results
+				if (entry !== undefined) entry.outcomes = [...entry.outcomes, ...results]
 				return results
 			},
 			connect: () => {
@@ -3912,10 +4229,31 @@ export const makeSim = Effect.fnUntraced(
 				})
 				return counter.connection
 			},
+			decide: localDecision,
+			decisions: () =>
+				Array.map(
+					Array.filter(entities(), body => body.health > 0 && life.person(body.id, state.tick).next <= state.tick),
+					body => {
+						const unit = unitOf(body.id)
+						return life.local(body, state.tick, unit !== undefined && connected(unit))
+					}
+				),
 			disconnect: (id: number) => {
 				MutableHashMap.remove(connections, id)
 			},
+			discovered: (team: number) => Array.isReadonlyArrayNonEmpty(life.core(team).contacts),
+			evidence: (id: number, context: string, tokens: NonNullable<Entry['tokens']>) => {
+				const body = Option.getOrUndefined(entity(id))
+				if (body !== undefined) {
+					life.event(body, state.tick, 'decision', 'Local decision model response recorded.', undefined, {
+						context,
+						tokens
+					})
+				}
+			},
+			experiences: () => life.drain(),
 			frame,
+			individual: (id: number) => life.person(id, state.tick),
 			// The timeline's marks since the last call.
 			marks: () => {
 				const taken = MutableList.toArray(marks)
@@ -3923,6 +4261,10 @@ export const makeSim = Effect.fnUntraced(
 				return taken
 			},
 			observe,
+			receive: (team: number, result: Outcome) => {
+				const entry = teamOf(team)
+				if (entry !== undefined) entry.outcomes = [...entry.outcomes, result]
+			},
 			// Advances the world a number of ticks.
 			run: (ticks: number) =>
 				Effect.mapError(
@@ -3942,6 +4284,16 @@ export const makeSim = Effect.fnUntraced(
 							building => Effect.map(Machine.encodeSnapshot(Sites, building.site), site => ({...building, site})),
 							{concurrency: 1}
 						),
+						enemies: yield* Effect.forEach(
+							allEnemies(),
+							enemy => Effect.map(Machine.encodeSnapshot(Creatures, enemy.task), task => ({...enemy, task})),
+							{concurrency: 1}
+						),
+						mobs: yield* Effect.forEach(
+							Array.sort(Array.fromIterable(MutableHashMap.values(mobs)), byId),
+							mob => Effect.map(Machine.encodeSnapshot(Creatures, mob.task), task => ({...mob, task})),
+							{concurrency: 1}
+						),
 						units: yield* Effect.forEach(
 							allUnits(),
 							unit => Effect.map(Machine.encodeSnapshot(Tasks, unit.task), task => ({...unit, task})),
@@ -3957,10 +4309,20 @@ export const makeSim = Effect.fnUntraced(
 						cleared: Array.sort(Array.fromIterable(cleared), Order.Number),
 						draws: state.draws,
 						edits: Array.map(Array.fromIterable(edits), entry => ({edit: entry[1], ...tileOf(entry[0])})),
-						enemies: allEnemies(),
+						enemies: saving.enemies,
 						generator: GENERATOR,
 						jams: Array.fromIterable(jams),
-						mobs: Array.sort(Array.fromIterable(MutableHashMap.values(mobs)), byId),
+						life: {
+							...life.snapshot(),
+							individuals: Array.map(life.snapshot().individuals, individual => ({
+								...individual,
+								explored: Array.map(Array.fromIterable(exploredOf(-individual.id)), entry => ({
+									bits: Uint8Array.from(entry[1].bits),
+									...chunkFrom(entry[0])
+								}))
+							}))
+						},
+						mobs: saving.mobs,
 						nextId: state.nextId,
 						patches: Array.fromIterable(patches),
 						pipes: Array.getSomes(
@@ -3968,7 +4330,7 @@ export const makeSim = Effect.fnUntraced(
 								Option.zipWith(
 									Option.filter(net.fluid, () => net.stock > 0),
 									Array.head(net.pipes),
-									(fluid, pipe) => [pipe, fluid, net.stock] satisfies [number, ItemId, number]
+									(fluid, conduit) => [conduit, fluid, net.stock] satisfies [number, ItemId, number]
 								)
 							)
 						),

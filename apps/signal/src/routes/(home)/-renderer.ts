@@ -79,8 +79,8 @@ void main(){
 	// Where the pixel's ray meets the ground plane: the surface under the sky, and the noise's anchor so nothing tall drags it.
 	vec3 plane = n.xyz - uDir * (n.y / uDir.y);
 	vec3 surface = mix(w.xyz, plane, sky);
-	vec2 k = max(knownAt(surface.xz), knownAt(plane.xz));
-	float seen = max(seenAt(surface.xz), seenAt(plane.xz)), known = max(k.x, seen);
+	float seen = 0.;
+	if (uFogOn > 0.) seen = max(seenAt(surface.xz), seenAt(plane.xz));
 	// Explored ground looks the same in sight or out of it: only the unexplored lies under fog.
 	vec3 base = c.rgb;
 	// With the fog off, each chunk a team has stood in takes a light wash of its colour, a little stronger at the chunk's edge.
@@ -88,6 +88,7 @@ void main(){
 	vec4 zone = texture2D(uZones, zuv) * step(0., zuv.x) * step(zuv.x, 1.) * step(0., zuv.y) * step(zuv.y, 1.);
 	float zedge = 1. - smoothstep(.0, .025, min(min(zf.x, zf.y), min(1. - zf.x, 1. - zf.y)));
 	base = mix(base, zone.rgb, zone.a * (.14 + .3 * zedge) * (1. - uFogOn) * (1. - sky));
+	if (uSmogStyle == 0 && (uFogOn == 0. || seen >= 1.)) { gl_FragColor = vec4(base, c.a); return; }
 	float smogHere = smogAt(surface.xz);
 	if (uSmogStyle == 2) base = mix(base, vec3(dot(base, vec3(.3, .55, .15))) * vec3(1., .82, .52) * .85, smoothstep(.08, .55, smogHere) * .85);
 	// Through the volumes, from the top of the tallest down to the surface; they stand on the ground under it, so whatever is tall rises through them.
@@ -111,7 +112,8 @@ void main(){
 		float mist = 0.;
 		float s = uSmogStyle == 0 ? 0. : smogAt(p.xz);
 		float smogTop = uSmogStyle == 3 ? .45 + 4.2 * s : uSmogStyle == 2 ? .3 + 1.6 * s : .4 + 3.2 * s;
-		float wisp = uSmogStyle == 3 ? fbm(vec3(p.x * .45, p.y * .22 - uT * .6, p.z * .45)) : fbm(p * .3 + vec3(uT * .22, uT * .06, uT * .15));
+		float wisp = 0.;
+		if (s > 0.) wisp = uSmogStyle == 3 ? fbm(vec3(p.x * .45, p.y * .22 - uT * .6, p.z * .45)) : fbm(p * .3 + vec3(uT * .22, uT * .06, uT * .15));
 		float smog = s * smoothstep(smogTop, smogTop - (uSmogStyle == 3 ? 2.6 : 1.2), h) * smoothstep(.2, .75, wisp + s * (uSmogStyle == 3 ? .7 : .35)) * (uSmogStyle == 2 ? 1.8 : uSmogStyle == 3 ? 4. : 3.2);
 		float sigma = fog * 1.1 + mist + smog;
 		if (sigma > .0001) {
@@ -855,6 +857,7 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 	function request(cx: number, cz: number) {
 		const key = chunkKey(cx, cz)
 		const loaded = MutableHashMap.get(chunks, key)
+		if (Option.exists(loaded, entry => entry.revision < 0 || entry.revision >= entry.wanted)) return
 		const builder = Option.getOrUndefined(
 			Array.head(
 				Array.sortWith(

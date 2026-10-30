@@ -67,8 +67,6 @@ const ROLE = {
 }
 const BARK = '#a88c6f'
 const CAP_HUES = ['#e6a6c4', '#b9a3e3', '#9fd6cf']
-// Room for the densest chunk's vertices: one scratch buffer per sink, copied out per build.
-const CAPACITY = 900_000
 const PLANTS = ['tree', 'pine', 'shrub', 'shrubDry', 'maple']
 const TUFTY = [
 	GROUND.grass,
@@ -150,7 +148,7 @@ const WORKED = rgb('#6e5c4c')
 const MOSS = rgb('#a9c58e')
 const EVERY_BIOME = Array.range(0, BIOME_SHAPE.length - 1)
 const WHITE = rgb('#ffffff')
-const SCRATCH = {glow: sink(60_000), props: sink(CAPACITY), terrain: sink(CAPACITY)}
+const SCRATCH = {glow: sink(4096), props: sink(4096), terrain: sink(4096)}
 const SHAPES = MutableHashMap.empty<string, Shape>()
 const NORMAL = new THREE.Matrix3()
 const POINT = new THREE.Vector3()
@@ -227,7 +225,20 @@ function randomOf(seed: number) {
 	}
 }
 
+function reserve(name: Sink, vertices: number) {
+	const target = SCRATCH[name]
+	const needed = (target.count + vertices) * 3
+	if (needed <= target.positions.length) return
+	const capacity = Number.max(needed, target.positions.length * 2)
+	for (const attribute of ['positions', 'normals', 'colors'] as const) {
+		const grown = new Float32Array(capacity)
+		grown.set(target[attribute])
+		target[attribute] = grown
+	}
+}
+
 function vertex(name: Sink, point: Vec, normal: Vec, colour: Rgb) {
+	reserve(name, 1)
 	const target = SCRATCH[name]
 	const at = target.count * 3
 	target.positions.set(point, at)
@@ -974,6 +985,7 @@ function matrixOf(position: Vec, rotation: Vec, scale: Vec) {
 }
 
 function stamp(name: Sink, shape: Shape, matrix: THREE.Matrix4, colour: Rgb) {
+	reserve(name, shape.positions.length / 3)
 	const target = SCRATCH[name]
 	NORMAL.getNormalMatrix(matrix)
 	const flip = flag(matrix.determinant() < 0)

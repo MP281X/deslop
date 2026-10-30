@@ -21,6 +21,7 @@ export type View = {
 	count: number
 	explored: Record<string, Frame['explored'][number]>
 	frame: Frame
+	explorationRevision: number
 	teams: NonNullable<Frame['teams']>
 	world: Option.Option<{generator: number; seed: number}>
 	zones: NonNullable<Frame['zones']>
@@ -31,6 +32,7 @@ export const EMPTY: View = {
 	changes: {},
 	cleared: [],
 	count: 0,
+	explorationRevision: 0,
 	explored: {},
 	frame: {at: 0, changes: [], cleared: [], explored: [], shots: [], tick: 0, units: []},
 	teams: [],
@@ -60,6 +62,7 @@ function fold(view: View, frame: Frame) {
 		changes: changed(view.changes, frame.changes),
 		cleared: appended(view.cleared, frame.cleared),
 		count: view.count + 1,
+		explorationRevision: view.explorationRevision + frame.explored.length,
 		explored: merged(view.explored, frame.explored),
 		frame,
 		teams: frame.teams ?? view.teams,
@@ -94,6 +97,47 @@ export const viewAtom = Atom.keepAlive(
 		)
 	)
 )
+
+// Text and controls refresh twice a second; the renderer still consumes every frame.
+export const hudAtom = Atom.keepAlive(
+	Atom.make(get => {
+		const current = get(viewAtom)
+		const previous = Option.getOrUndefined(get.self<typeof current>())
+		if (
+			previous !== undefined &&
+			AsyncResult.isSuccess(previous) &&
+			AsyncResult.isSuccess(current) &&
+			current.value.count >= previous.value.count &&
+			Math.floor(current.value.frame.tick / 10) === Math.floor(previous.value.frame.tick / 10) &&
+			current.value.teams === previous.value.teams
+		) {
+			return previous
+		}
+		return current
+	})
+)
+
+export const historyAtom = Atom.family((key: string) => {
+	const [actor = 0, before = 0] = Array.map(String.split(':')(key), part =>
+		Option.getOrElse(Number.parse(part), () => 0)
+	)
+	return RpcClient.runtime.atom(
+		pipe(
+			Stream.tick('5 seconds'),
+			Stream.mapEffect(() =>
+				Effect.flatMap(RpcClient, client =>
+					client('signal.history', {
+						actor,
+						...Option.match(
+							Option.filter(Option.some(before), value => value > 0),
+							{onNone: () => ({}), onSome: cursor => ({before: cursor})}
+						)
+					})
+				)
+			)
+		)
+	)
+})
 
 // The world's seed, kept while the view's stream starts over, as a replay begins or ends.
 export const seedAtom = Atom.keepAlive(
