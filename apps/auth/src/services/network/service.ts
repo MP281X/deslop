@@ -1,6 +1,6 @@
 import {lookup} from 'node:dns'
 
-import {NodeHttpClient} from '@effect/platform-node'
+import {Agent} from '@effect/platform-node/Undici'
 
 import {Array, Effect, Layer, String} from 'effect'
 
@@ -22,24 +22,34 @@ function publicAddress(address: string) {
 export const layerPublicFetch = Layer.effect(FetchHttpClient.Fetch)(
 	Effect.gen(function* () {
 		const fetch = yield* FetchHttpClient.Fetch
-		const dispatcher = yield* NodeHttpClient.makeDispatcherOptions({
-			connect: {
-				lookup: (hostname, options, callback) => {
-					lookup(hostname, {all: true}, (error, addresses) => {
-						if (
-							error !== null ||
-							Array.isArrayEmpty(addresses) ||
-							!Array.every(addresses, entry => publicAddress(entry.address))
-						) {
-							callback(error ?? AuthError.make({message: 'MCP endpoints must resolve to public addresses'}), '', 4)
-							return
+		const dispatcher = yield* Effect.acquireRelease(
+			Effect.sync(
+				() =>
+					new Agent({
+						connect: {
+							lookup: (hostname, options, callback) => {
+								lookup(hostname, {all: true}, (error, addresses) => {
+									if (
+										error !== null ||
+										Array.isArrayEmpty(addresses) ||
+										!Array.every(addresses, entry => publicAddress(entry.address))
+									) {
+										callback(
+											error ?? AuthError.make({message: 'MCP endpoints must resolve to public addresses'}),
+											'',
+											4
+										)
+										return
+									}
+									if (options.all === true) callback(error, addresses)
+									else callback(error, addresses[0]?.address ?? '', addresses[0]?.family ?? 4)
+								})
+							}
 						}
-						if (options.all === true) callback(error, addresses)
-						else callback(error, addresses[0]?.address ?? '', addresses[0]?.family ?? 4)
 					})
-				}
-			}
-		})
+			),
+			agent => Effect.promise(() => agent.destroy())
+		)
 		return (input, options) => {
 			const url = requestUrl(input)
 			const hostname = String.replaceAll(/^\[|\]$/gu, '')(url.hostname)
