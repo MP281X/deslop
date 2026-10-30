@@ -140,9 +140,7 @@ export class Game extends Context.Service<
 					onSome: found => found.locals ?? []
 				})) {
 					if (choice.choice !== undefined) target.decide(choice.actor, choice.choice, choice.request)
-					if (choice.context !== undefined) {
-						target.evidence(choice.actor, choice.context, choice.tokens ?? {}, choice.failure)
-					}
+					target.evidence(choice)
 					if (choice.next !== undefined) target.defer(choice.actor, choice.next)
 				}
 			})
@@ -516,25 +514,26 @@ export class Game extends Context.Service<
 											onNone: () => Schema.encodeEffect(Schema.fromJsonString(LocalDecision))(entry[1].request),
 											onSome: Effect.succeed
 										})
-										const tokens = {cost: result.value.cost, input: result.value.input, output: result.value.output}
-										sim.evidence(entry[0], context, tokens)
-										MutableList.append(applied, {
+										const receipt = {
 											actor: entry[0],
 											choice: result.value.choice,
 											context,
 											request: entry[1].request,
 											tick: sim.tick(),
-											tokens
-										})
+											tokens: {cost: result.value.cost, input: result.value.input, output: result.value.output}
+										}
+										sim.evidence(receipt)
+										MutableList.append(applied, receipt)
 									} else if (result !== undefined) {
 										const failure = Cause.pretty(result.cause)
-										sim.evidence(entry[0], entry[1].request.state, {}, failure)
-										MutableList.append(applied, {
+										const receipt = {
 											actor: entry[0],
-											context: entry[1].request.state,
+											context: yield* Schema.encodeEffect(Schema.fromJsonString(LocalDecision))(entry[1].request),
 											failure,
 											tick: sim.tick()
-										})
+										}
+										sim.evidence(receipt)
+										MutableList.append(applied, receipt)
 										yield* Effect.logWarning('A local decision failed; existing action continues', result)
 									}
 								}
