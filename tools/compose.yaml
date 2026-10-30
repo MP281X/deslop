@@ -92,6 +92,7 @@ services:
 
   signal:
     <<: *service
+    scale: 0
     image: ghcr.io/mp281x/deslop-signal:${REVISION:-latest}
     env_file: ${HOME}/.deslop/signal.env
     environment: *signed
