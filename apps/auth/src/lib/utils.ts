@@ -239,9 +239,17 @@ export function ageLabel(minutes: number) {
 	return `${Math.floor(minutes / 1440)}d`
 }
 
-// Claude Code names each MCP client after its server, "Claude Code (scope)"; the grid's column already says which.
-export function clientLabel(app: {clientName: string}) {
+// Claude Code's server suffix is already represented by the grid's app column.
+export function clientKey(app: {clientName: string}) {
 	return String.trim(String.replace(/\s*\([^)]*\)$/u, '')(app.clientName))
+}
+
+// Keep display shortening separate from the grouping used to disconnect sign-ins.
+export function clientLabel(app: {clientName: string}) {
+	return String.replace(
+		/^([a-z0-9-]+)\.mp281x\.xyz https:\/\/(dev|desktop)\.tailnet-8c4c\.ts\.net:(\d+)$/u,
+		'$1 · $2:$3'
+	)(clientKey(app))
 }
 
 export function newest(apps: SignedInApp[]) {

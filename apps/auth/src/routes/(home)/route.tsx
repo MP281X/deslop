@@ -23,6 +23,7 @@ import {Avatar, GitHubIcon, QrCode, SignedInGrid} from '#lib/components.tsx'
 import {
 	accountAtom,
 	approveLink,
+	clientLabel,
 	peopleAtom,
 	requestAtom,
 	requestCode,
@@ -54,7 +55,7 @@ function CodeCard(props: {request: PendingAuthorization}) {
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	return (
 		<section className="flex flex-1 flex-col items-center gap-6 pt-6 text-center" aria-label="Waiting sign-in">
-			<h2 className="text-xl font-semibold">{props.request.clientName}</h2>
+			<h2 className="text-xl font-semibold wrap-anywhere">{clientLabel(props.request)}</h2>
 			<a href={approveLink(props.request.id)} aria-label="Approve this sign-in" className="bg-foreground p-3">
 				<QrCode text={approveLink(props.request.id)} className="text-background size-44" />
 			</a>
