@@ -60,7 +60,13 @@ it.layer(KeyValueStore.layerMemory)(test => {
 						return HttpClientResponse.fromWeb(
 							request,
 							Response.json({
-								answers: {action: {choice: 'recall', probabilities: {continue: 0, recall: 1}, type: 'choice'}},
+								answers: {
+									action: {
+										choice: 'recall',
+										probabilities: {continue: 0, recall: 1, 'recall-latest': 0},
+										type: 'choice'
+									}
+								},
 								model: 'typesafe/jev-1.14',
 								usage: {input_tokens: 100, output_tokens: 1}
 							})
@@ -99,6 +105,22 @@ it.layer(KeyValueStore.layerMemory)(test => {
 			)
 			yield* restarted.choose(90, {...request, tick: 51})
 			assert.include(Option.getOrThrow(Array.last(MutableList.toArray(states))), 'remains unverified')
+			yield* restarted.choose(90, {
+				...request,
+				experience: Array.map(Array.range(1, 24), id => ({
+					actor: 2,
+					id,
+					kind: 'action' as const,
+					text: `Received claim remains uncertain. ${String.repeat(600)('b')}`,
+					tick: 51,
+					x: 242,
+					z: 230
+				})),
+				tick: 52
+			})
+			const paged = Option.getOrThrow(yield* conversations.get(key))
+			assert.isTrue(Array.some(paged.turns, turn => String.includes('END-12')(turn.content)))
+			assert.deepStrictEqual(paged.archive, {before: 12, offset: 0})
 			yield* conversations.set('conversation/91/individual-2/active', ORIGINAL)
 			const failing = Context.get(
 				yield* Layer.build(

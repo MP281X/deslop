@@ -164,7 +164,8 @@ export class Core extends Context.Service<
 						active.turns,
 						Boolean.match(owner === 'Core', {onFalse: () => 0, onTrue: () => 4})
 					)
-					active.archive = {before: active.sequence + 1, offset: 0}
+					active.archive = active.archive ?? {before: active.sequence + 1, offset: 0}
+					active.archived = active.sequence
 					active.measured = 0
 					yield* conversations.set(key, active)
 					return {conversation: active, usage: compacted.usage}
@@ -213,9 +214,13 @@ export class Core extends Context.Service<
 								}
 							)
 							const criteria = {...request.choices}
-							if (continuation.conversation.archive !== undefined) {
+							if (continuation.conversation.archive !== undefined && continuation.conversation.archive.before > 1) {
 								criteria['recall'] =
 									`Retrieve your own original experience before turn ${continuation.conversation.archive.before}, characters ${continuation.conversation.archive.offset} onward. Your current activity continues; retrieval does not start a new physical objective.`
+							}
+							if (continuation.conversation.archived !== undefined) {
+								criteria['recall-latest'] =
+									`Return to your newest archived originals, through turn ${continuation.conversation.archived}. Current activity continues; no new physical objective is started.`
 							}
 							const context = Array.join(
 								[
@@ -239,23 +244,28 @@ export class Core extends Context.Service<
 							const recalled = yield* Option.match(
 								Option.filter(
 									Option.fromUndefinedOr(continuation.conversation.archive),
-									() => response.answers.action.label === 'recall'
+									() => response.answers.action.label === 'recall' || response.answers.action.label === 'recall-latest'
 								),
 								{
 									onNone: () => Effect.succeedNone,
-									onSome: cursor =>
-										Effect.map(turns.get(turnKey(seed, owner, cursor.before - 1)), turn =>
+									onSome: cursor => {
+										const page = Boolean.match(response.answers.action.label === 'recall-latest', {
+											onFalse: () => cursor,
+											onTrue: () => ({before: (continuation.conversation.archived ?? 0) + 1, offset: 0})
+										})
+										return Effect.map(turns.get(turnKey(seed, owner, page.before - 1)), turn =>
 											Option.map(turn, found => ({
 												archive: Option.match(
-													Option.liftPredicate(cursor.offset + 6000, offset => offset < found.content.length),
+													Option.liftPredicate(page.offset + 6000, offset => offset < found.content.length),
 													{
 														onNone: () => ({before: found.sequence, offset: 0}),
-														onSome: offset => ({before: cursor.before, offset})
+														onSome: offset => ({before: page.before, offset})
 													}
 												),
-												content: `Original turn ${found.sequence}, characters ${cursor.offset}–${Number.min(found.content.length, cursor.offset + 6000)}:\n${String.slice(cursor.offset, cursor.offset + 6000)(found.content)}`
+												content: `Original turn ${found.sequence}, characters ${page.offset}–${Number.min(found.content.length, page.offset + 6000)}:\n${String.slice(page.offset, page.offset + 6000)(found.content)}`
 											}))
 										)
+									}
 								}
 							)
 							const output: Turn = {
@@ -285,10 +295,10 @@ export class Core extends Context.Service<
 							})
 							return {
 								actor: request.actor,
-								choice: Boolean.match(response.answers.action.label === 'recall', {
-									onFalse: () => response.answers.action.label,
-									onTrue: () => 'continue'
-								}),
+								choice: Boolean.match(
+									response.answers.action.label === 'recall' || response.answers.action.label === 'recall-latest',
+									{onFalse: () => response.answers.action.label, onTrue: () => 'continue'}
+								),
 								confidence: response.answers.action.confidence,
 								context: yield* Schema.encodeEffect(Schema.fromJsonString(LocalDecision))({
 									...request,

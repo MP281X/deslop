@@ -22,6 +22,7 @@ export const Turn = Schema.Struct({
 export type Conversation = typeof Conversation.Type
 export const Conversation = Schema.Struct({
 	archive: Schema.optionalKey(Schema.Struct({before: Schema.Int, offset: Schema.Natural})),
+	archived: Schema.optionalKey(Schema.Natural),
 	measured: Schema.Int,
 	sequence: Schema.Int,
 	summary: Schema.String,
