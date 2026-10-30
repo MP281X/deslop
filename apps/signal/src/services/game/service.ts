@@ -28,7 +28,7 @@ import type {Thought, LocalChoice} from '#services/core/schema.ts'
 import {Core} from '#services/core/service.ts'
 import {makeSim, SIMULATION} from '#services/game/lib/sim.ts'
 import {FRAME_HZ, ROUND, TICK, TICK_HZ} from '#services/game/lib/utils.ts'
-import type {Experience, Frame} from '#services/game/schema.ts'
+import type {Experience, Frame, UsageLedger} from '#services/game/schema.ts'
 import {
 	Command,
 	Entry,
@@ -68,6 +68,7 @@ export class Game extends Context.Service<
 		// A team's thread, newest last: the rounds before `before`, or the latest.
 		readonly thread: (team: number, before: Option.Option<number>) => Effect.Effect<Entry[], GameError>
 		readonly timeline: Effect.Effect<Timeline>
+		readonly usage: Effect.Effect<UsageLedger, GameError>
 		readonly history: (
 			actor: number,
 			before: Option.Option<number>,
@@ -679,7 +680,8 @@ export class Game extends Context.Service<
 					},
 					Effect.mapError(cause => GameError.make({cause, message: 'The thread could not be read.'}))
 				),
-				timeline: Effect.sync(() => MutableRef.get(timeline))
+				timeline: Effect.sync(() => MutableRef.get(timeline)),
+				usage: core.usage
 			})
 		})
 	)

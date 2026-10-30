@@ -443,6 +443,25 @@ export const Usage = Schema.Struct({
 	written: Schema.optional(Schema.Int)
 })
 
+// Counts are attempts; totals contain only values actually reported by a provider.
+export type UsageLedger = typeof UsageLedger.Type
+export const UsageLedger = Schema.Struct({
+	groups: Schema.Record(
+		Schema.String,
+		Schema.Struct({
+			calls: Schema.Int,
+			kind: Schema.Literals(['compaction', 'local', 'strategy']),
+			mode: Schema.String,
+			model: Schema.String,
+			values: Schema.Record(
+				Schema.Literals(['cached', 'cost', 'input', 'output', 'written']),
+				Schema.Struct({reported: Schema.Int, total: Schema.Finite})
+			)
+		})
+	),
+	since: Schema.optionalKey(Schema.Int)
+})
+
 export type Entry = typeof Entry.Type
 export const Entry = Schema.Struct({
 	commands: Schema.Array(Outcome),

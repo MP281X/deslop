@@ -11,7 +11,8 @@ export const RpcHandlers = RpcContracts.toLayer(
 			'signal.join': () => game.join,
 			'signal.replay': input => game.replay(input.from, input.speed),
 			'signal.thread': input => game.thread(input.team, Option.fromUndefinedOr(input.before)),
-			'signal.timeline': () => game.timeline
+			'signal.timeline': () => game.timeline,
+			'signal.usage': () => game.usage
 		})
 	})
 )

@@ -43,7 +43,8 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 							MutableList.append(calls, seed)
 							return {commands: [], invalid: [], text: ''}
 						}),
-					recall: () => Effect.succeed('')
+					recall: () => Effect.succeed(''),
+					usage: Effect.succeed({groups: {}})
 				})
 			)
 			const game = Context.get(yield* Layer.build(pipe(Game.layer, Layer.provide(strategy))), Game)
