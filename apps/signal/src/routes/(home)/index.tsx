@@ -1303,8 +1303,10 @@ function GroundCard(props: {building: Option.Option<BuildingView>; info: Option.
 
 function Status(props: {children: ReactNode}) {
 	return (
-		<Panel className="bottom-4 left-1/2 -translate-x-1/2 px-3 py-2">
-			<p className="text-muted-foreground">{props.children}</p>
+		<Panel className="right-4 bottom-4 left-4 z-50 mx-auto w-fit max-w-full px-3 py-2">
+			<p role="status" className="text-muted-foreground">
+				{props.children}
+			</p>
 		</Panel>
 	)
 }
