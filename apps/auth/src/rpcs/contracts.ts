@@ -5,7 +5,7 @@ import {Rpc, RpcGroup} from 'effect/rpc'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 
-import {AddServer, ConnectionInfo, ServerParams} from '#services/connections/schema.ts'
+import {AddServer, ConnectionInfo, HiddenTools, ServerParams} from '#services/connections/schema.ts'
 import {Account, AdmitParams, Person, PersonParams} from '#services/people/schema.ts'
 import {
 	AnswerParams,
@@ -21,6 +21,7 @@ export class RpcContracts extends RpcGroup.make(
 	Rpc.make('auth.mcp.add', {error: AuthError, payload: AddServer, success: ConnectionInfo}),
 	Rpc.make('auth.mcp.disconnect', {error: AuthError, payload: ServerParams}),
 	Rpc.make('auth.mcp.remove', {error: AuthError, payload: ServerParams}),
+	Rpc.make('auth.mcp.hide', {error: AuthError, payload: HiddenTools}),
 	Rpc.make('auth.lookup', {
 		error: AuthError,
 		payload: CodeParams,

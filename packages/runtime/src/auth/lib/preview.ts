@@ -1,4 +1,4 @@
-import {Boolean, Cache, Clock, Effect, Option, Ref, Schema, Semaphore, pipe} from 'effect'
+import {Array, Boolean, Cache, Clock, Effect, Option, Ref, Schema, Semaphore, String, pipe} from 'effect'
 
 import {Digest, SecureRandom} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
@@ -120,7 +120,8 @@ export const previewAuth = Effect.fnUntraced(function* (
 				const registration = yield* pipe(
 					HttpClientRequest.post(`${issuerUrl}/api/auth/oauth2/register`),
 					HttpClientRequest.bodyJson({
-						client_name: `${new URL(resource).hostname} ${origin}`,
+						// Auth names the device from the callback's worker and port.
+						client_name: `${String.capitalize(Array.headNonEmpty(String.split(new URL(resource).hostname, '.')))} preview`,
 						redirect_uris: [callback],
 						token_endpoint_auth_method: 'none'
 					}),

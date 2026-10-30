@@ -19,8 +19,9 @@ export const RpcHandlers = RpcContracts.toLayer(
 			'auth.admit': Effect.fnUntraced(function* (input) {
 				return yield* people.admit(input, yield* CurrentUser)
 			}),
+			// The page's RPC runs on the signed-in browser's session cookie.
 			'auth.answer': Effect.fnUntraced(function* (input) {
-				yield* signIns.answer(input, yield* CurrentUser)
+				yield* signIns.answer(input, yield* CurrentUser, 'Session')
 			}),
 			'auth.apps': () => Stream.unwrap(Effect.map(CurrentUser, tokens.apps)),
 			'auth.disconnect': Effect.fnUntraced(function* (input) {
@@ -32,6 +33,9 @@ export const RpcHandlers = RpcContracts.toLayer(
 			}),
 			'auth.mcp.disconnect': Effect.fnUntraced(function* (input) {
 				return yield* connections.disconnect(input.id, yield* CurrentUser)
+			}),
+			'auth.mcp.hide': Effect.fnUntraced(function* (input) {
+				return yield* connections.hide(input.id, input.hidden, yield* CurrentUser)
 			}),
 			'auth.mcp.remove': Effect.fnUntraced(function* (input) {
 				return yield* connections.remove(input.id, yield* CurrentUser)

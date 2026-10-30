@@ -11,7 +11,7 @@ import {Loading} from '@deslop/components-web/fallbacks'
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
 
 import {SignedInGrid} from '#lib/components.tsx'
-import {clientLabel, codeAtom, consentAtom, linkedCodeAtom} from '#lib/utils.ts'
+import {codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/utils.ts'
 import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 
@@ -82,13 +82,13 @@ function Enter(props: {
 							onFalse: () => (
 								<>
 									<X className="size-3.5" />
-									{clientLabel(answer.request)} denied
+									{signInLabel(answer.request.clientName, answer.request.device)} denied
 								</>
 							),
 							onTrue: () => (
 								<>
 									<Check className="text-primary size-3.5" />
-									{clientLabel(answer.request)} approved
+									{signInLabel(answer.request.clientName, answer.request.device)} approved
 								</>
 							)
 						})}

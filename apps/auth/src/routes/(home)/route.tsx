@@ -23,13 +23,13 @@ import {Avatar, GitHubIcon, QrCode, SignedInGrid} from '#lib/components.tsx'
 import {
 	accountAtom,
 	approveLink,
-	clientLabel,
 	codeSignInAtom,
 	peopleAtom,
 	requestAtom,
 	requestCode,
 	requestId,
 	signInAtom,
+	signInLabel,
 	signOutAtom,
 	timeLabel
 } from '#lib/utils.ts'
@@ -59,7 +59,7 @@ function CodeCard(props: {request: PendingAuthorization}) {
 		<section className="flex flex-1 flex-col items-center gap-6 pt-6 text-center" aria-label="Waiting sign-in">
 			<h2 className="text-xl font-semibold wrap-anywhere">
 				{Boolean.match(props.request.kind === 'Browser', {
-					onFalse: () => clientLabel(props.request),
+					onFalse: () => signInLabel(props.request.clientName, props.request.device),
 					onTrue: () => 'Sign in this browser'
 				})}
 			</h2>

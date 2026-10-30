@@ -30,9 +30,10 @@ import {AuthError, Resource} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 import {AUTH_URL} from '@deslop/runtime/auth/utils'
 
-import {connectionInfo, describe} from '#services/connections/lib/utils.ts'
+import {connectionStatus, describe} from '#services/connections/lib/utils.ts'
 import type {Connection} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
+import {compact} from '#services/gateway/lib/utils.ts'
 import {RemoteTools, ToolArguments, ToolRequest} from '#services/gateway/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
@@ -68,7 +69,20 @@ export class Gateway extends Context.Service<
 				return `${String.slice(0, 41)(String.replaceAll(/[^a-zA-Z0-9_-]/gu, '_')(fullName))}__encoded_${String.slice(0, 12)(Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(fullName))))}`
 			})
 			const visible = yield* Ref.make(HashSet.empty<string>())
-			const installed = yield* Ref.make<Record<string, {fingerprint: string; id: string; generation: string}>>({})
+			const installed = yield* Ref.make<
+				Record<string, {fingerprint: string; generation: string; id: string; tool: string}>
+			>({})
+			// A server's tool counts while the server is connected and the owner has not hidden it.
+			const usable = Effect.fnUntraced(function* (id: string, generation: string, tool: string) {
+				const now = yield* Clock.currentTimeMillis
+				return Option.exists(
+					yield* Effect.option(connections.get(id)),
+					found =>
+						found.generation === generation &&
+						connectionStatus(found, now) === 'Connected' &&
+						!Array.contains(found.hidden, tool)
+				)
+			})
 			const refreshes = yield* Semaphore.make(1)
 			const scope = yield* Effect.scope
 			const remove = Effect.fnUntraced(function* (name: string, registry: typeof McpServer.McpServer.Service) {
@@ -82,7 +96,11 @@ export class Gateway extends Context.Service<
 					if (
 						!Array.some(
 							definitions,
-							server => server.id === entry[1].id && server.generation === entry[1].generation && server.enabled
+							server =>
+								server.id === entry[1].id &&
+								server.generation === entry[1].generation &&
+								server.link._tag !== 'Disconnected' &&
+								!Array.contains(server.hidden, entry[1].tool)
 						)
 					) {
 						yield* remove(entry[0], registry)
@@ -112,12 +130,7 @@ export class Gateway extends Context.Service<
 						if (!HashSet.has(yield* Ref.get(visible), options.target)) return false
 						const entry = (yield* Ref.get(installed))[options.target]
 						if (entry === undefined) return false
-						const current = yield* Effect.option(connections.get(entry.id))
-						const now = yield* Clock.currentTimeMillis
-						return Option.exists(
-							current,
-							found => found.generation === entry.generation && connectionInfo(found, now).connected
-						)
+						return yield* usable(entry.id, entry.generation, entry.tool)
 					})
 				).layer
 			)
@@ -125,7 +138,7 @@ export class Gateway extends Context.Service<
 				const current = yield* connections.get(server.id)
 				if (
 					current.generation !== server.generation ||
-					!connectionInfo(current, yield* Clock.currentTimeMillis).connected
+					connectionStatus(current, yield* Clock.currentTimeMillis) !== 'Connected'
 				) {
 					return yield* AuthError.make({
 						message: `${server.name} is not connected; connect it on ${AUTH_URL}/mcp-servers`
@@ -220,7 +233,7 @@ export class Gateway extends Context.Service<
 								McpSchema.CallToolResult.make({
 									content: [
 										{
-											text: `The provider call failed. ${rejected(server)(cause).message}. Check list_mcp_connections or reconnect the provider with connect_mcp.`,
+											text: `${rejected(server)(cause).message}. list_mcp_connections shows its state; reconnect it at ${AUTH_URL}/mcp-servers.`,
 											type: 'text'
 										}
 									],
@@ -234,10 +247,10 @@ export class Gateway extends Context.Service<
 				headers: Headers.Headers,
 				registry: typeof McpServer.McpServer.Service
 			) {
-				if (!connectionInfo(server, yield* Clock.currentTimeMillis).connected) {
+				if (connectionStatus(server, yield* Clock.currentTimeMillis) !== 'Connected') {
 					return yield* updateVisible(server, HashSet.empty(), registry)
 				}
-				const tools = yield* pipe(
+				const found = yield* pipe(
 					withClient(server, headers, client =>
 						pipe(
 							Effect.tryPromise({catch: rejected(server), try: signal => client.listTools(undefined, {signal})}),
@@ -246,18 +259,21 @@ export class Gateway extends Context.Service<
 									Array.filter(result.tools, tool => tool.execution?.taskSupport !== 'required')
 								)
 							),
-							Effect.mapError(rejected(server))
+							Effect.mapBoth({
+								onFailure: rejected(server),
+								onSuccess: tools => ({instructions: client.getInstructions(), tools})
+							})
 						)
 					),
 					Effect.timeout('20 seconds')
 				)
 				const latest = yield* connections.get(server.id)
-				if (latest.generation !== server.generation || !latest.enabled) {
+				if (latest.generation !== server.generation || latest.link._tag === 'Disconnected') {
 					return yield* AuthError.make({message: `${server.name} changed while its tools were read`})
 				}
 				const reference = Struct.pick(server, ['id', 'generation', 'name', 'mode'])
 				const names = MutableList.make<string>()
-				for (const tool of tools) {
+				for (const tool of Array.filter(found.tools, candidate => !Array.contains(latest.hidden, candidate.name))) {
 					const upstreamName = tool.name
 					const name = yield* namespaced(`${server.id}__${tool.name}`)
 					const fingerprint = yield* Schema.encodeEffect(Schema.fromJsonString(McpSchema.Tool))(tool)
@@ -273,17 +289,29 @@ export class Gateway extends Context.Service<
 								return yield* call(reference, upstreamName, input)
 							}),
 							services,
-							tool: McpSchema.Tool.make({...tool, name})
+							tool: McpSchema.Tool.make({...compact(tool), name})
 						})
 						yield* Ref.update(installed, current => ({
 							...current,
-							[name]: {fingerprint: `${server.generation}:${fingerprint}`, generation: server.generation, id: server.id}
+							[name]: {
+								fingerprint: `${server.generation}:${fingerprint}`,
+								generation: server.generation,
+								id: server.id,
+								tool: upstreamName
+							}
 						}))
 					}
 					MutableList.append(names, name)
 				}
 				yield* updateVisible(server, HashSet.fromIterable(MutableList.toArray(names)), registry)
-				yield* connections.report(server.id, server.generation, {_tag: 'Discovered', tools: tools.length})
+				yield* connections.report(server.id, server.generation, {
+					_tag: 'Discovered',
+					...Option.match(Option.fromUndefinedOr(found.instructions), {
+						onNone: () => ({}),
+						onSome: instructions => ({instructions})
+					}),
+					tools: Array.map(found.tools, tool => tool.name)
+				})
 			})
 			return Gateway.of({
 				refresh: Effect.fn('Gateway.refresh')(function* (

@@ -1,4 +1,4 @@
-import {Clock, Duration, Effect} from 'effect'
+import {Clock, Duration, Effect, Match, pipe} from 'effect'
 
 import type {Filters, Query} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
@@ -21,9 +21,16 @@ export const ToolHandlers = Tools.toLayer(
 	Effect.gen(function* () {
 		const telemetry = yield* Telemetry
 		return Tools.of({
-			find_logs: filters => Effect.flatMap(query(filters), telemetry.logs),
-			find_spans: filters => Effect.flatMap(query(filters), telemetry.spans),
-			find_traces: filters => Effect.flatMap(query(filters), telemetry.traces),
+			find: input =>
+				Effect.flatMap(query(input), filters =>
+					pipe(
+						Match.value(input.kind),
+						Match.when('traces', () => telemetry.traces(filters)),
+						Match.when('spans', () => telemetry.spans(filters)),
+						Match.when('logs', () => telemetry.logs(filters)),
+						Match.exhaustive
+					)
+				),
 			list_services: () => telemetry.services(),
 			measure_latency: filters => Effect.flatMap(query(filters), telemetry.stats),
 			read_trace: input => telemetry.trace(input.id)

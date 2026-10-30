@@ -22,7 +22,7 @@ it('accepts exact worker preview callbacks without widening cookie returns or lo
 	]) {
 		assert.isFalse(allowedRedirect(invalid), invalid)
 	}
-	const client = {_tag: 'Client', redirects: [callback]} as const
+	const client = {name: 'Stash preview', redirects: [callback]} as const
 	assert.isTrue(Option.isSome(matchingRedirect(client, Option.some(callback))))
 	assert.isTrue(
 		Option.isNone(matchingRedirect(client, Option.some('https://dev.tailnet-8c4c.ts.net:26494/auth/callback')))

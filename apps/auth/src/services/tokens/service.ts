@@ -1,4 +1,3 @@
-import type {Stream} from 'effect'
 import {
 	Array,
 	Boolean,
@@ -7,20 +6,19 @@ import {
 	Context,
 	Effect,
 	FileSystem,
-	HashSet,
+	HashMap,
 	Layer,
+	Match,
 	Number,
 	Option,
 	Order,
 	Path,
-	Predicate,
 	Record,
 	Ref,
-	Result,
 	Schema,
-	Semaphore,
+	Stream,
 	String,
-	Struct,
+	SubscriptionRef,
 	pipe
 } from 'effect'
 
@@ -35,24 +33,31 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import {AUTH_URL} from '@deslop/runtime/auth/utils'
 import {layerKeyValueStore} from '@deslop/runtime/server'
 
-import {Changes} from '#services/changes/service.ts'
-import {MemberRow, Members} from '#services/people/schema.ts'
-import {given, matchingRedirect} from '#services/tokens/lib/utils.ts'
+import {browserLabel, clientLabel, clientOf, deviceLabel, given, matchingRedirect} from '#services/tokens/lib/utils.ts'
 import type {
 	AuthorizeClient,
 	ClientRequest,
-	Registration,
+	Grant,
+	Origin,
 	RevokeParams,
 	SignedInApp,
-	Stored,
 	TokenParams
 } from '#services/tokens/schema.ts'
-import {Exchange, LegacyState, TokenEntry, TokenState} from '#services/tokens/schema.ts'
-
-const REFRESH_SECONDS = 30 * 86_400
-const SESSION_SECONDS = 365 * 86_400
+import {Exchange, Grants} from '#services/tokens/schema.ts'
 
 export const SESSION_COOKIE = '__Secure-session'
+
+// A GitHub sign-in is the owner's own browser; a code may have been approved for someone else's, so it ends sooner.
+type SessionVia = typeof SessionVia.Type
+const SessionVia = Schema.Literals(['Code', 'GitHub'])
+
+// An authorization code lives 60 seconds in memory; once redeemed it names the family it gave, so a replay ends it.
+type Code = {
+	expiresAt: number
+	state: {_tag: 'Fresh'; request: ClientRequest; user: User} | {_tag: 'Used'; family: string}
+}
+// A delegated token lets the gateway call one of the owner's MCP servers as the caller, for 60 seconds.
+type Delegated = {expiresAt: number; resource: Resource; user: User}
 
 function rejected(message: string) {
 	return Effect.mapError(cause => {
@@ -61,100 +66,43 @@ function rejected(message: string) {
 	})
 }
 
-function bearer(headers: Headers.Headers) {
-	// RFC 9110 auth schemes are case-insensitive and may be followed by more than one space.
-	return Option.flatMapNullishOr(
-		String.match(/^bearer +(?<token>\S+) *$/iu)(headers['authorization'] ?? ''),
-		found => found.groups?.['token']
-	)
-}
+const expired = AuthError.make({error: 'invalid_grant', message: 'The authorization expired. Sign in again.'})
 
-// The clients an unredeemed code or a live refresh token still belongs to.
-function clientsInUse(tokens: TokenState) {
-	return Array.dedupe(
-		Array.flatMap(Record.values(tokens), entry => {
-			if (entry.payload._tag === 'Code' || entry.payload._tag === 'Refresh') return [entry.payload.clientId]
-			return []
+// A token is its grant's family, a dot and its secret; a refresh token also names its generation.
+function parts(token: string) {
+	return Option.map(
+		String.match(/^(?<family>[\w-]{16,64})\.(?:(?<generation>\d{1,9})\.)?(?<secret>[\w-]{16,64})$/u)(token),
+		found => ({
+			family: found.groups?.['family'] ?? '',
+			generation: Option.getOrElse(Number.parse(found.groups?.['generation'] ?? ''), () => -1),
+			secret: found.groups?.['secret'] ?? ''
 		})
 	)
 }
 
-// Anyone can register a client, so only the newest stay besides those in use; an agent whose idle client was dropped registers again.
-function newestClients(tokens: TokenState, inUse: HashSet.HashSet<string>) {
-	const kept = pipe(
-		Record.toEntries(tokens),
-		Array.filter(pair => pair[1].payload._tag === 'Client' && !HashSet.has(inUse, pair[0])),
-		Array.sort(Order.flip(Order.mapInput(Order.Number, (pair: [string, TokenEntry]) => pair[1].expiresAt))),
-		Array.take(200),
-		Array.map(pair => pair[0]),
-		HashSet.fromIterable
-	)
-	return Record.filter(
-		tokens,
-		(entry, key) => entry.payload._tag !== 'Client' || HashSet.has(kept, key) || HashSet.has(inUse, key)
-	)
-}
-
-function withoutFamily(tokens: TokenState, family: string) {
-	return Record.filter(
-		tokens,
-		entry =>
-			!(
-				(entry.payload._tag === 'Access' ||
-					entry.payload._tag === 'Refresh' ||
-					entry.payload._tag === 'Session' ||
-					entry.payload._tag === 'UsedCode' ||
-					entry.payload._tag === 'UsedRefresh') &&
-				entry.payload.family === family
-			)
+// The grants still alive, each with only its unexpired access tokens.
+function live(grants: Grants, now: number) {
+	return Record.map(
+		Record.filter(grants, grant => grant.credential.expiresAt > now),
+		grant =>
+			Match.valueTags(grant.credential, {
+				App: app => ({
+					...grant,
+					credential: {...app, access: Array.filter(app.access, entry => entry.expiresAt > now)}
+				}),
+				Browser: () => grant
+			})
 	)
 }
 
-// A browser that signed in with a code, as a signed-in app any of the account's pages can sign out.
-function browserSignIn(entry: TokenEntry, user: User, now: number) {
-	const session = entry.payload
-	if (entry.expiresAt <= now || session._tag !== 'Session' || session.user.id !== user.id) return []
-	return Option.match(Option.fromUndefinedOr(session.family), {
-		onNone: () => [],
-		onSome: family => [
-			{
-				clientName: `Browser (${session.address ?? 'unknown address'})`,
-				family,
-				lastActive: entry.expiresAt - SESSION_SECONDS * 1000,
-				resources: []
-			} satisfies SignedInApp
-		]
-	})
-}
-
-// Members and tokens live under ~/.deslop/auth; the previous release kept both in one `state` value, split here once.
+// Signed-in apps and browsers live under ~/.deslop/auth; codes, delegated tokens and sign-ins in progress stay in memory.
 export const layerStore = Layer.unwrap(
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem
 		const path = yield* Path.Path
 		const directory = path.join(yield* Config.String('HOME'), '.deslop', 'auth')
 		yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
-		return Layer.tap(layerKeyValueStore(directory), context =>
-			Effect.gen(function* () {
-				const store = Context.get(context, KeyValueStore.KeyValueStore)
-				// Sign-ins in progress, GitHub steps and codes no longer live here; they end with the release.
-				const split = Effect.fnUntraced(function* (legacy: LegacyState) {
-					yield* KeyValueStore.toSchemaStore(store, Members).set(
-						'members',
-						Array.getSomes(Array.map(legacy.members, row => Schema.decodeUnknownOption(MemberRow)(row)))
-					)
-					yield* KeyValueStore.toSchemaStore(store, TokenState).set(
-						'tokens',
-						Record.getSomes(Record.map(legacy.tokens, entry => Schema.decodeUnknownOption(TokenEntry)(entry)))
-					)
-					yield* store.remove('state')
-				})
-				yield* Option.match(yield* KeyValueStore.toSchemaStore(store, LegacyState).get('state'), {
-					onNone: () => Effect.void,
-					onSome: split
-				})
-			})
-		)
+		return layerKeyValueStore(directory)
 	})
 )
 
@@ -163,6 +111,8 @@ export class Tokens extends Context.Service<
 	{
 		readonly access: (headers: Headers.Headers, resource: string) => Effect.Effect<User, AuthError>
 		readonly apps: (user: User) => Stream.Stream<SignedInApp[], AuthError>
+		// Each saved change to the signed-in apps and browsers, starting with the current state.
+		readonly changes: Stream.Stream<void>
 		readonly client: (asked: AuthorizeClient) => Effect.Effect<{clientName: string; redirectUri: string}, AuthError>
 		readonly delegate: (headers: Headers.Headers, resource: Resource) => Effect.Effect<string, AuthError>
 		readonly disconnect: (family: string, user: User) => Effect.Effect<void, AuthError>
@@ -170,400 +120,448 @@ export class Tokens extends Context.Service<
 		// Tokens go only to an account `allowed` still accepts, so a removal between approval and exchange takes effect.
 		readonly exchange: (
 			params: TokenParams,
-			address: Option.Option<string>,
+			origin: Origin,
 			allowed: (user: User) => Effect.Effect<User, AuthError>
 		) => Effect.Effect<Exchange, AuthError>
 		readonly forget: (id: string) => Effect.Effect<void, AuthError>
 		readonly issue: (request: ClientRequest, user: User) => Effect.Effect<string, AuthError>
-		readonly register: (registration: Registration) => Effect.Effect<string, AuthError>
 		readonly revoke: (params: RevokeParams) => Effect.Effect<void, AuthError>
 		readonly session: (headers: Headers.Headers) => Effect.Effect<User, AuthError>
-		// A session from a code records where it was approved for, so it is listed and can be signed out elsewhere.
-		readonly startSession: (user: User, codeFrom: Option.Option<string>) => Effect.Effect<string, AuthError>
+		readonly startSession: (
+			user: User,
+			origin: Origin,
+			via: SessionVia
+		) => Effect.Effect<{seconds: number; token: string}, AuthError>
 	}
 >()('@deslop/auth/services/tokens/service/Tokens') {
 	static readonly layer = Layer.effect(
 		Tokens,
 		Effect.gen(function* () {
-			const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, TokenState)
-			const state = yield* Ref.make<TokenState>(Option.getOrElse(yield* store.get('tokens'), () => ({})))
-			const writes = yield* Semaphore.make(1)
-			const changes = yield* Changes
+			const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Grants)
+			const grants = yield* SubscriptionRef.make<Grants>(Option.getOrElse(yield* store.get('grants'), () => ({})))
+			const codes = yield* Ref.make(HashMap.empty<string, Code>())
+			const delegated = yield* Ref.make(HashMap.empty<string, Delegated>())
 			const random = yield* SecureRandom.SecureRandom
 			const digest = yield* Digest.Digest
-			// Every change reads and writes the whole map under one permit, so a decision and its effects apply together.
-			const transact = Effect.fnUntraced(
-				function* <A, E>(change: (draft: Ref.Ref<TokenState>) => Effect.Effect<A, E>) {
-					const before = yield* Ref.get(state)
-					const draft = yield* Ref.make(before)
-					const result = yield* change(draft)
-					const after = yield* Ref.get(draft)
-					if (after !== before) {
-						yield* store.set('tokens', after)
-						yield* Ref.set(state, after)
-						yield* changes.publish
-					}
-					return result
-				},
-				Effect.uninterruptible,
-				writes.withPermit
-			)
+			function secret(bytes: number) {
+				return Effect.map(random.randomBytes(bytes), Base64Url.encode)
+			}
 			const hash = Effect.fnUntraced(function* (value: string) {
 				return Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(value)))
 			})
-			const mint = Effect.fnUntraced(function* (payload: Stored, seconds: number, draft: Ref.Ref<TokenState>) {
-				const token = Base64Url.encode(yield* random.randomBytes(32))
-				const now = yield* Clock.currentTimeMillis
-				const key = yield* hash(token)
-				yield* Ref.update(draft, current => ({
-					...Record.filter(current, entry => entry.expiresAt > now),
-					[key]: {expiresAt: now + seconds * 1000, payload}
-				}))
-				return token
-			})
-			const load = Effect.fnUntraced(function* (token: string, draft: Ref.Ref<TokenState> = state) {
-				const now = yield* Clock.currentTimeMillis
-				return yield* pipe(
-					Record.get(yield* Ref.get(draft), yield* hash(token)),
-					Option.filter(entry => entry.expiresAt > now),
-					Option.map(entry => entry.payload),
-					Effect.fromOption,
-					Effect.mapError(cause =>
-						AuthError.make({cause, error: 'invalid_grant', message: 'The authorization expired. Sign in again.'})
-					)
-				)
-			})
-			const remove = Effect.fnUntraced(function* (token: string, draft: Ref.Ref<TokenState>) {
-				yield* Ref.update(draft, Record.remove(yield* hash(token)))
-			})
-			// A redeemed grant keeps its expiry as a marker of its family, so its replay is caught.
-			const retire = Effect.fnUntraced(function* (
-				token: string,
-				payload: typeof Stored.cases.UsedCode.Type | typeof Stored.cases.UsedRefresh.Type,
-				draft: Ref.Ref<TokenState>
+			// Every change saves the next grants before memory and the live views see them.
+			const change = Effect.fnUntraced(function* <A, E>(
+				update: (current: Grants, now: number) => Effect.Effect<readonly [A, Grants], E>
 			) {
-				const key = yield* hash(token)
-				yield* Ref.update(draft, current =>
-					pipe(
-						Record.modify(current, key, entry => ({...entry, payload})),
-						Option.getOrElse(() => current)
-					)
+				return yield* SubscriptionRef.modifyEffect(grants, current =>
+					Effect.gen(function* () {
+						const now = yield* Clock.currentTimeMillis
+						const [result, next] = yield* update(live(current, now), now)
+						yield* store.set('grants', next)
+						return [result, next] as const
+					})
 				)
-			})
-			const access = Effect.fn('Tokens.access')(function* (headers: Headers.Headers, resource: string) {
-				const stored = yield* Effect.flatMap(Effect.fromOption(bearer(headers)), token => load(token))
-				if (stored._tag !== 'Access' || !Array.some(stored.resources, value => value === resource)) {
-					return yield* AuthError.make({message: 'The token is not valid for this app'})
+			}, Effect.uninterruptible)
+			const grantOf = Effect.fnUntraced(function* (token: string) {
+				const found = yield* Effect.fromOption(parts(token))
+				const now = yield* Clock.currentTimeMillis
+				return {
+					...found,
+					grant: yield* Effect.fromOption(Record.get(live(yield* SubscriptionRef.get(grants), now), found.family)),
+					hash: yield* hash(found.secret),
+					now
 				}
-				return stored.user
-			}, rejected('Sign in first'))
+			})
 			const session = Effect.fn('Tokens.session')(function* (headers: Headers.Headers) {
-				const stored = yield* load(Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE] ?? '')
-				if (stored._tag !== 'Session') return yield* AuthError.make({message: 'Sign in first'})
-				return stored.user
-			}, rejected('Sign in first'))
-			const clientName = Effect.fnUntraced(function* (refresh: typeof Stored.cases.Refresh.Type, tokens: TokenState) {
-				if (refresh.clientName !== undefined) return refresh.clientName
-				return pipe(
-					Record.get(tokens, yield* hash(refresh.clientId)),
-					Option.flatMap(entry => {
-						if (entry.payload._tag !== 'Client') return Option.none()
-						return Option.fromUndefinedOr(entry.payload.name)
-					}),
-					Option.getOrElse(() => 'Unknown client')
-				)
-			})
-			// Each client registers anew per sign-in, so a second sign-in of the same client, apps and address replaces the first instead of adding a row.
-			const replaceSignIns = Effect.fnUntraced(function* (
-				grant: typeof Stored.cases.Refresh.Type,
-				draft: Ref.Ref<TokenState>
-			) {
-				if (Predicate.isUndefined(grant.address)) return
-				const current = yield* Ref.get(draft)
-				const name = yield* clientName(grant, current)
-				const sameApps = Array.makeEquivalence(String.Equivalence)
-				const replaced = yield* Effect.filter(
-					Array.flatMap(Record.values(current), entry => {
-						if (
-							entry.payload._tag !== 'Refresh' ||
-							entry.payload.user.id !== grant.user.id ||
-							entry.payload.address !== grant.address ||
-							!sameApps(Array.sort(entry.payload.resources, String.Order), Array.sort(grant.resources, String.Order))
-						) {
-							return []
-						}
-						return [entry.payload]
-					}),
-					earlier => Effect.map(clientName(earlier, current), earlierName => earlierName === name),
-					{concurrency: 'unbounded'}
-				)
-				for (const family of Array.dedupe(Array.map(replaced, earlier => earlier.family))) {
-					yield* Ref.update(draft, tokens => withoutFamily(tokens, family))
+				const found = yield* grantOf(Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE] ?? '')
+				if (found.grant.credential._tag !== 'Browser' || found.grant.credential.hash !== found.hash) {
+					return yield* AuthError.make({message: 'Sign in first'})
 				}
-			})
-			const grant = Effect.fnUntraced(function* (
-				refresh: typeof Stored.cases.Refresh.Type,
-				resources: typeof Stored.cases.Access.Type.resources,
-				draft: Ref.Ref<TokenState>
+				return found.grant.user
+			}, rejected('Sign in first'))
+			const access = Effect.fn('Tokens.access')(function* (headers: Headers.Headers, resource: string) {
+				// RFC 9110 auth schemes are case-insensitive and may be followed by more than one space.
+				const token = yield* Effect.fromOption(
+					Option.flatMapNullishOr(
+						String.match(/^bearer +(?<token>\S+) *$/iu)(headers['authorization'] ?? ''),
+						found => found.groups?.['token']
+					)
+				)
+				const now = yield* Clock.currentTimeMillis
+				const invalid = AuthError.make({message: 'The token is not valid for this app'})
+				return yield* Option.match(HashMap.get(yield* Ref.get(delegated), yield* hash(token)), {
+					onNone: () =>
+						Effect.flatMap(grantOf(token), found => {
+							if (
+								found.grant.credential._tag !== 'App' ||
+								!Array.some(
+									found.grant.credential.access,
+									entry => entry.hash === found.hash && Array.contains(entry.resources, resource)
+								)
+							) {
+								return Effect.fail(invalid)
+							}
+							return Effect.succeed(found.grant.user)
+						}),
+					onSome: forwarded => {
+						if (forwarded.expiresAt <= now || forwarded.resource !== resource) return Effect.fail(invalid)
+						return Effect.succeed(forwarded.user)
+					}
+				})
+			}, rejected('Sign in first'))
+			const mint = Effect.fnUntraced(function* (
+				family: string,
+				generation: number,
+				resources: readonly Resource[],
+				now: number
 			) {
+				const accessSecret = yield* secret(32)
+				const refreshSecret = yield* secret(32)
 				// A queued iOS upload cannot refresh its bearer after the share sheet closes.
 				const seconds = Boolean.match(Array.contains(resources, 'https://stash.mp281x.xyz'), {
 					onFalse: () => 900,
 					onTrue: () => 90_000
 				})
-				return Exchange.cases.Granted.make({
+				return {
+					access: {expiresAt: now + seconds * 1000, hash: yield* hash(accessSecret), resources},
+					// A refresh token lasts 30 days from its last use.
+					refresh: {expiresAt: now + 30 * 86_400_000, hash: yield* hash(refreshSecret)},
 					tokens: {
-						access_token: yield* mint(
-							{_tag: 'Access', family: refresh.family, resources, user: refresh.user},
-							seconds,
-							draft
-						),
+						access_token: `${family}.${accessSecret}`,
 						expires_in: seconds,
-						refresh_token: yield* mint(refresh, REFRESH_SECONDS, draft),
-						scope: 'deslop',
-						token_type: 'Bearer'
+						refresh_token: `${family}.${generation}.${refreshSecret}`,
+						scope: 'deslop' as const,
+						token_type: 'Bearer' as const
 					}
-				})
+				}
 			})
-			const tokenResources = Effect.fnUntraced(function* (
-				params: TokenParams,
-				granted: typeof Stored.cases.Access.Type.resources
-			) {
+			const tokenResources = Effect.fnUntraced(function* (params: TokenParams, granted: readonly Resource[]) {
 				if (params.resource === undefined) return granted
 				if (!Array.every(params.resource, value => Array.contains(granted, value))) {
 					return yield* AuthError.make({error: 'invalid_target', message: 'The resource was not authorized'})
 				}
 				return params.resource
 			})
+			const redeem = Effect.fnUntraced(function* (
+				params: Extract<TokenParams, {grant_type: 'authorization_code'}>,
+				origin: Origin,
+				allowed: (user: User) => Effect.Effect<User, AuthError>
+			) {
+				const key = yield* hash(params.code)
+				const verifier = yield* hash(params.code_verifier)
+				const family = yield* secret(16)
+				// Redemption runs inside one change, so of two concurrent ones the second sees the code used and ends what the first gave.
+				return yield* change<Exchange, AuthError>((current, now) =>
+					Effect.gen(function* () {
+						const code = yield* pipe(
+							HashMap.get(yield* Ref.get(codes), key),
+							Option.filter(entry => entry.expiresAt > now),
+							Effect.fromOption,
+							Effect.mapError(() => expired)
+						)
+						if (code.state._tag === 'Used') {
+							return [
+								Exchange.cases.Replayed.make({
+									message: 'This authorization code was already used, so the tokens it gave are revoked; sign in again'
+								}),
+								Record.remove(current, code.state.family)
+							] as const
+						}
+						const fresh = code.state
+						if (
+							fresh.request.clientId !== params.client_id ||
+							Option.exists(given(params.redirect_uri), sent => sent !== fresh.request.redirectUri) ||
+							fresh.request.challenge !== verifier
+						) {
+							return yield* AuthError.make({
+								error: 'invalid_grant',
+								message: 'The authorization code, its client, callback or verifier do not match'
+							})
+						}
+						yield* allowed(fresh.user)
+						const resources = yield* tokenResources(params, fresh.request.resources)
+						yield* Ref.update(codes, entries =>
+							HashMap.set(entries, key, {expiresAt: code.expiresAt, state: {_tag: 'Used' as const, family}})
+						)
+						const minted = yield* mint(family, 0, resources, now)
+						const grant: Grant = {
+							client: clientLabel(fresh.request.clientName),
+							createdAt: now,
+							credential: {
+								_tag: 'App',
+								access: [minted.access],
+								clientId: fresh.request.clientId,
+								generation: 0,
+								resources: fresh.request.resources,
+								...minted.refresh
+							},
+							device: deviceLabel(origin, Option.some(fresh.request.redirectUri)),
+							lastActive: now,
+							origin,
+							user: fresh.user
+						}
+						// Each sign-in registers anew, so a second one of the same client, device and apps replaces the first.
+						return [
+							Exchange.cases.Granted.make({tokens: minted.tokens}),
+							{
+								...Record.filter(
+									current,
+									other =>
+										!(
+											other.user.id === grant.user.id &&
+											other.client === grant.client &&
+											other.device === grant.device &&
+											other.credential._tag === 'App' &&
+											Array.makeEquivalence(String.Equivalence)(
+												Array.sort(other.credential.resources, String.Order),
+												Array.sort(fresh.request.resources, String.Order)
+											)
+										)
+								),
+								[family]: grant
+							}
+						] as const
+					})
+				)
+			})
+			const rotate = Effect.fnUntraced(function* (
+				params: Extract<TokenParams, {grant_type: 'refresh_token'}>,
+				origin: Origin,
+				allowed: (user: User) => Effect.Effect<User, AuthError>
+			) {
+				const presented = yield* Effect.mapError(Effect.fromOption(parts(params.refresh_token)), () => expired)
+				const presentedHash = yield* hash(presented.secret)
+				return yield* change<Exchange, AuthError>((current, now) =>
+					Effect.gen(function* () {
+						const grant = yield* Effect.mapError(
+							Effect.fromOption(Record.get(current, presented.family)),
+							() => expired
+						)
+						const credential = grant.credential
+						if (
+							credential._tag !== 'App' ||
+							Option.exists(given(params.client_id), sent => sent !== credential.clientId)
+						) {
+							return yield* AuthError.make({
+								error: 'invalid_grant',
+								message: 'The refresh token belongs to another client'
+							})
+						}
+						if (presented.generation >= 0 && presented.generation < credential.generation) {
+							return [
+								Exchange.cases.Replayed.make({
+									message: 'This refresh token was already used, so its sign-in is revoked; sign in again'
+								}),
+								Record.remove(current, presented.family)
+							] as const
+						}
+						if (presented.generation !== credential.generation || presentedHash !== credential.hash) {
+							return yield* expired
+						}
+						yield* allowed(grant.user)
+						const minted = yield* mint(
+							presented.family,
+							credential.generation + 1,
+							yield* tokenResources(params, credential.resources),
+							now
+						)
+						return [
+							Exchange.cases.Granted.make({tokens: minted.tokens}),
+							{
+								...current,
+								[presented.family]: {
+									...grant,
+									credential: {
+										...credential,
+										access: [...credential.access, minted.access],
+										generation: credential.generation + 1,
+										...minted.refresh
+									},
+									lastActive: now,
+									origin
+								}
+							}
+						] as const
+					})
+				)
+			})
 			const listApps = Effect.fnUntraced(function* (user: User) {
 				const now = yield* Clock.currentTimeMillis
-				const current = yield* Ref.get(state)
-				const apps = yield* Effect.forEach(
-					Array.flatMap(Record.values(current), entry => {
-						if (entry.expiresAt <= now || entry.payload._tag !== 'Refresh' || entry.payload.user.id !== user.id) {
-							return []
-						}
-						return [{expiresAt: entry.expiresAt, refresh: entry.payload}]
-					}),
-					Effect.fnUntraced(function* (row) {
-						return {
-							clientName: yield* clientName(row.refresh, current),
-							family: row.refresh.family,
-							lastActive: row.expiresAt - REFRESH_SECONDS * 1000,
-							resources: row.refresh.resources
-						} satisfies SignedInApp
-					}),
-					{concurrency: 'unbounded'}
-				)
-				return Array.sort(
-					[...apps, ...Array.flatMap(Record.values(current), entry => browserSignIn(entry, user, now))],
-					Order.flip(Order.mapInput(Order.Number, (app: SignedInApp) => app.lastActive))
+				return pipe(
+					Record.toEntries(live(yield* SubscriptionRef.get(grants), now)),
+					Array.filter(entry => entry[1].user.id === user.id),
+					Array.map(
+						entry =>
+							({
+								client: entry[1].client,
+								device: entry[1].device,
+								family: entry[0],
+								kind: entry[1].credential._tag,
+								lastActive: entry[1].lastActive,
+								resources: Boolean.match(entry[1].credential._tag === 'App', {
+									onFalse: () => [],
+									onTrue: () => {
+										if (entry[1].credential._tag === 'App') return entry[1].credential.resources
+										return []
+									}
+								}),
+								...Option.match(Option.fromUndefinedOr(entry[1].origin.address), {
+									onNone: () => ({}),
+									onSome: address => ({address})
+								})
+							}) satisfies SignedInApp
+					),
+					Array.sort(Order.flip(Order.mapInput(Order.Number, (app: SignedInApp) => app.lastActive)))
 				)
 			})
 
 			return Tokens.of({
 				access,
-				// Each app sign-in is one refresh-token family whose live token was minted at its last refresh, newest first.
+				// The list is read again on each change and once a minute, so expired sign-ins leave it.
 				apps: user =>
-					changes.watch(listApps(user), apps =>
-						pipe(
-							Array.map(apps, app => app.lastActive + REFRESH_SECONDS * 1000),
-							Array.reduce(Infinity, Number.min)
-						)
+					pipe(
+						Stream.merge(SubscriptionRef.changes(grants), Stream.drop(Stream.tick('1 minute'), 1)),
+						Stream.mapEffect(() => listApps(user))
 					),
+				changes: Stream.map(SubscriptionRef.changes(grants), () => undefined),
 				client: Effect.fn('Tokens.client')(function* (asked: AuthorizeClient) {
-					const unregistered = AuthError.make({
-						error: 'invalid_client',
-						message: 'This client is not registered; start the sign-in again in the app'
-					})
-					const registration = yield* Effect.mapError(load(asked.client_id), () => unregistered)
-					if (registration._tag !== 'Client') return yield* unregistered
+					const client = yield* pipe(
+						clientOf(asked.client_id),
+						Effect.fromOption,
+						Effect.mapError(() =>
+							AuthError.make({
+								error: 'invalid_client',
+								message: 'This client is not registered; start the sign-in again in the app'
+							})
+						)
+					)
 					const redirectUri = yield* pipe(
-						matchingRedirect(registration, given(asked.redirect_uri)),
+						matchingRedirect(client, given(asked.redirect_uri)),
 						Effect.fromOption,
 						Effect.mapError(cause =>
 							AuthError.make({cause, message: 'The callback does not match the registered client'})
 						)
 					)
-					return {clientName: registration.name ?? 'Unknown client', redirectUri}
+					return {clientName: client.name, redirectUri}
 				}),
 				delegate: Effect.fn('Tokens.delegate')(function* (headers: Headers.Headers, resource: Resource) {
-					yield* access(headers, `${AUTH_URL}/mcp`)
-					return yield* transact(draft =>
-						Effect.gen(function* () {
-							const source = yield* Effect.flatMap(Effect.fromOption(bearer(headers)), token => load(token, draft))
-							if (source._tag !== 'Access') return yield* AuthError.make({message: 'Sign in first'})
-							return yield* mint({...source, resources: [resource]}, 60, draft)
-						})
+					const user = yield* access(headers, `${AUTH_URL}/mcp`)
+					const token = yield* secret(32)
+					const key = yield* hash(token)
+					const now = yield* Clock.currentTimeMillis
+					yield* Ref.update(delegated, current =>
+						HashMap.set(
+							HashMap.filter(current, entry => entry.expiresAt > now),
+							key,
+							{expiresAt: now + 60_000, resource, user}
+						)
 					)
+					return token
 				}, rejected('Cannot authorize the upstream MCP')),
 				disconnect: Effect.fn('Tokens.disconnect')(function* (family: string, user: User) {
-					yield* transact(draft =>
+					yield* change(current =>
 						Effect.gen(function* () {
-							const owned = Array.some(
-								Record.values(yield* Ref.get(draft)),
-								entry =>
-									(entry.payload._tag === 'Refresh' || entry.payload._tag === 'Session') &&
-									entry.payload.family === family &&
-									entry.payload.user.id === user.id
-							)
-							if (!owned) return yield* AuthError.make({message: 'This app is already disconnected'})
-							yield* Ref.update(draft, tokens => withoutFamily(tokens, family))
+							if (!Option.exists(Record.get(current, family), grant => grant.user.id === user.id)) {
+								return yield* AuthError.make({message: 'This sign-in has already ended'})
+							}
+							return [undefined, Record.remove(current, family)] as const
 						})
 					)
-				}, rejected('Cannot disconnect this app')),
+				}, rejected('Cannot sign this out')),
 				endSession: Effect.fn('Tokens.endSession')(function* (headers: Headers.Headers) {
-					yield* transact(draft => remove(Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE] ?? '', draft))
+					const found = yield* Effect.option(
+						grantOf(Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE] ?? '')
+					)
+					yield* Option.match(
+						Option.filter(found, current => current.grant.credential.hash === current.hash),
+						{
+							onNone: () => Effect.void,
+							onSome: own => change(saved => Effect.succeed([undefined, Record.remove(saved, own.family)] as const))
+						}
+					)
 				}, rejected('Cannot sign out')),
 				exchange: Effect.fn('Tokens.exchange')(function* (
 					params: TokenParams,
-					address: Option.Option<string>,
+					origin: Origin,
 					allowed: (user: User) => Effect.Effect<User, AuthError>
 				) {
-					return yield* transact(draft =>
-						Effect.gen(function* () {
-							if (params.grant_type === 'authorization_code') {
-								const code = yield* load(params.code, draft)
-								if (code._tag === 'UsedCode') {
-									yield* Ref.update(draft, tokens => withoutFamily(tokens, code.family))
-									return Exchange.cases.Replayed.make({
-										message:
-											'This authorization code was already used, so the tokens it gave are revoked; sign in again'
-									})
-								}
-								if (
-									code._tag !== 'Code' ||
-									code.clientId !== params.client_id ||
-									Option.exists(given(params.redirect_uri), sent => sent !== code.redirectUri) ||
-									code.challenge !== (yield* hash(params.code_verifier))
-								) {
-									return yield* AuthError.make({
-										error: 'invalid_grant',
-										message: 'The authorization code, its client, callback or verifier do not match'
-									})
-								}
-								yield* allowed(code.user)
-								const resources = yield* tokenResources(params, code.resources)
-								const family = Base64Url.encode(yield* random.randomBytes(32))
-								yield* retire(params.code, {_tag: 'UsedCode', clientId: code.clientId, family}, draft)
-								const refresh = {
-									_tag: 'Refresh' as const,
-									...Struct.pick(code, ['clientId', 'clientName', 'resources', 'user']),
-									family,
-									...Option.match(address, {onNone: () => ({}), onSome: value => ({address: value})})
-								}
-								yield* replaceSignIns(refresh, draft)
-								return yield* grant(refresh, resources, draft)
-							}
-							const refresh = yield* load(params.refresh_token, draft)
-							if (refresh._tag === 'UsedRefresh') {
-								yield* Ref.update(draft, tokens => withoutFamily(tokens, refresh.family))
-								return Exchange.cases.Replayed.make({
-									message: 'This refresh token was already used, so its sign-in is revoked; sign in again'
-								})
-							}
-							if (
-								refresh._tag !== 'Refresh' ||
-								Option.exists(given(params.client_id), sent => sent !== refresh.clientId)
-							) {
-								return yield* AuthError.make({
-									error: 'invalid_grant',
-									message: 'The refresh token belongs to another client'
-								})
-							}
-							yield* allowed(refresh.user)
-							const resources = yield* tokenResources(params, refresh.resources)
-							yield* retire(
-								params.refresh_token,
-								{_tag: 'UsedRefresh', clientId: refresh.clientId, family: refresh.family},
-								draft
-							)
-							return yield* grant(refresh, resources, draft)
-						})
-					)
+					if (params.grant_type === 'authorization_code') return yield* redeem(params, origin, allowed)
+					return yield* rotate(params, origin, allowed)
 				}, rejected('Invalid token request')),
-				// Removing an account signs it out everywhere: its sessions, its app tokens and its undelivered codes; a sign-in it approved but not yet delivered checks the account at delivery.
+				// Removing an account signs it out everywhere; a sign-in it approved but not yet delivered checks the account at delivery.
 				forget: Effect.fn('Tokens.forget')(function* (id: string) {
-					yield* transact(draft =>
-						Ref.update(draft, current =>
-							Record.filter(
-								current,
-								entry =>
-									!(
-										(entry.payload._tag === 'Access' ||
-											entry.payload._tag === 'Code' ||
-											entry.payload._tag === 'Refresh' ||
-											entry.payload._tag === 'Session') &&
-										entry.payload.user.id === id
-									)
-							)
-						)
+					yield* change(current =>
+						Effect.succeed([undefined, Record.filter(current, grant => grant.user.id !== id)] as const)
+					)
+					yield* Ref.update(
+						codes,
+						HashMap.filter(entry => entry.state._tag === 'Used' || entry.state.user.id !== id)
+					)
+					yield* Ref.update(
+						delegated,
+						HashMap.filter(entry => entry.user.id !== id)
 					)
 				}, rejected('Cannot sign this account out')),
 				issue: Effect.fn('Tokens.issue')(function* (request: ClientRequest, user: User) {
-					return yield* transact(draft =>
-						mint(
-							{
-								_tag: 'Code',
-								...Struct.pick(request, ['challenge', 'clientId', 'clientName', 'redirectUri', 'resources', 'state']),
-								user
-							},
-							60,
-							draft
+					const code = yield* secret(32)
+					const key = yield* hash(code)
+					const now = yield* Clock.currentTimeMillis
+					yield* Ref.update(codes, current =>
+						HashMap.set(
+							HashMap.filter(current, entry => entry.expiresAt > now),
+							key,
+							{expiresAt: now + 60_000, state: {_tag: 'Fresh', request, user}}
 						)
 					)
+					return code
 				}, rejected('Cannot issue the authorization code')),
-				register: Effect.fn('Tokens.register')(function* (registration: Registration) {
-					return yield* transact(draft =>
-						Effect.gen(function* () {
-							const token = yield* mint(
-								{
-									_tag: 'Client',
-									name: registration.client_name ?? 'Unknown client',
-									redirects: registration.redirect_uris
-								},
-								365 * 86_400,
-								draft
-							)
-							const inUse = HashSet.fromIterable(
-								yield* Effect.forEach(clientsInUse(yield* Ref.get(draft)), clientId => hash(clientId), {
-									concurrency: 'unbounded'
-								})
-							)
-							yield* Ref.update(draft, current => newestClients(current, inUse))
-							return token
-						})
-					)
-				}, rejected('Cannot register the client')),
 				revoke: Effect.fn('Tokens.revoke')(function* (params: RevokeParams) {
-					yield* transact(draft =>
-						Effect.gen(function* () {
-							const token = yield* Effect.result(load(params.token, draft))
-							if (
-								Result.isSuccess(token) &&
-								(token.success._tag === 'Refresh' || token.success._tag === 'UsedRefresh') &&
-								token.success.clientId === params.client_id
-							) {
-								const family = token.success.family
-								yield* Ref.update(draft, tokens => withoutFamily(tokens, family))
-							}
-						})
-					)
+					yield* Option.match(parts(params.token), {
+						onNone: () => Effect.void,
+						onSome: found =>
+							change(current =>
+								Effect.succeed([
+									undefined,
+									Boolean.match(
+										Option.exists(
+											Record.get(current, found.family),
+											grant => grant.credential._tag === 'App' && grant.credential.clientId === params.client_id
+										),
+										{onFalse: () => current, onTrue: () => Record.remove(current, found.family)}
+									)
+								] as const)
+							)
+					})
 				}, rejected('Cannot revoke the token')),
 				session,
-				startSession: Effect.fn('Tokens.startSession')(function* (user: User, codeFrom: Option.Option<string>) {
-					const family = Base64Url.encode(yield* random.randomBytes(32))
-					return yield* transact(draft =>
-						mint(
-							{
-								_tag: 'Session',
-								user,
-								...Option.match(codeFrom, {onNone: () => ({}), onSome: address => ({address, family})})
-							},
-							SESSION_SECONDS,
-							draft
-						)
+				startSession: Effect.fn('Tokens.startSession')(function* (user: User, origin: Origin, via: SessionVia) {
+					const family = yield* secret(16)
+					const sessionSecret = yield* secret(32)
+					const seconds = pipe(
+						Match.value(via),
+						Match.when('Code', () => 30 * 86_400),
+						Match.when('GitHub', () => 365 * 86_400),
+						Match.exhaustive
 					)
+					const sessionHash = yield* hash(sessionSecret)
+					yield* change((current, now) =>
+						Effect.succeed([
+							undefined,
+							{
+								...current,
+								[family]: {
+									client: browserLabel(origin),
+									createdAt: now,
+									credential: {_tag: 'Browser' as const, expiresAt: now + seconds * 1000, hash: sessionHash},
+									device: deviceLabel(origin, Option.none()),
+									lastActive: now,
+									origin,
+									user
+								}
+							}
+						] as const)
+					)
+					return {seconds, token: `${family}.${sessionSecret}`}
 				}, rejected('Cannot start the session'))
 			})
 		})

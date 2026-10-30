@@ -23,9 +23,7 @@ The public `/.well-known/oauth-protected-resource/mcp` document names the author
 | Tool              | Returns                                                                                                    |
 | ----------------- | ---------------------------------------------------------------------------------------------------------- |
 | `list_services`   | Every stored service's latest run, runtime, last event time and entry count, plus rejected-export counters |
-| `find_traces`     | Matching traces, newest or slowest first, with the total match count                                       |
-| `find_spans`      | Matching spans with their original OTLP fields                                                             |
-| `find_logs`       | Matching logs, standalone or attached to a span                                                            |
+| `find`            | Matching traces, spans with their OTLP fields, or logs, newest or slowest first, with the total count      |
 | `measure_latency` | Span count, errors and p50, p95 and max latency over the whole window                                      |
 | `read_trace`      | One stored trace whole, including earlier runs, with parent order, offsets and logs                        |
 

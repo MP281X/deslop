@@ -408,7 +408,7 @@ export class Notes extends Context.Service<
 				)
 
 				const missing = Effect.mapError(() =>
-					NotesError.make({message: 'No note has this id; find its id with search_notes or list_notes.'})
+					NotesError.make({message: 'No note has this id; find its id with search_notes.'})
 				)
 
 				const receive = Effect.fnUntraced(function* (input: {

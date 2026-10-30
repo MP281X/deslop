@@ -13,8 +13,12 @@ import {Button} from '@deslop/components-web/ui/button'
 import {Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle} from '@deslop/components-web/ui/dialog'
 import {
 	DropdownMenu,
+	DropdownMenuCheckboxItem,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuSub,
+	DropdownMenuSubContent,
+	DropdownMenuSubTrigger,
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
 import {Input} from '@deslop/components-web/ui/input'
@@ -25,6 +29,7 @@ import {
 	mcpAddAtom,
 	mcpConnectUrl,
 	mcpDisconnectAtom,
+	mcpHideAtom,
 	mcpRemoveAtom,
 	mcpServersAtom
 } from '#lib/utils.ts'
@@ -33,22 +38,21 @@ import type {ConnectionInfo} from '#services/connections/schema.ts'
 function ServerRow(props: {server: ConnectionInfo}) {
 	const [disconnecting, disconnect] = useAtom(mcpDisconnectAtom(props.server.id))
 	const [removing, remove] = useAtom(mcpRemoveAtom(props.server.id))
+	const [hiding, hide] = useAtom(mcpHideAtom(props.server.id))
 	const [confirm, setConfirm] = useState(false)
-	const busy = AsyncResult.isWaiting(disconnecting) || AsyncResult.isWaiting(removing)
+	const busy = AsyncResult.isWaiting(disconnecting) || AsyncResult.isWaiting(removing) || AsyncResult.isWaiting(hiding)
+	const connected = props.server.status === 'Connected'
+	const shown = Array.filter(props.server.tools, tool => !Array.contains(props.server.hidden, tool))
 	return (
 		<li className="flex items-center gap-3 text-xs">
 			<div className="flex min-w-0 grow flex-col">
 				<span className="truncate">{props.server.name}</span>
 				<span className="text-muted-foreground break-words">
 					{new URL(props.server.url).hostname} ·{' '}
-					<span className={Boolean.match(props.server.connected, {onFalse: () => 'text-primary', onTrue: () => ''})}>
-						{Boolean.match(props.server.connected, {
+					<span className={Boolean.match(connected, {onFalse: () => 'text-primary', onTrue: () => ''})}>
+						{Boolean.match(connected && Array.isReadonlyArrayNonEmpty(props.server.tools), {
 							onFalse: () => props.server.status,
-							onTrue: () =>
-								Option.match(Option.fromUndefinedOr(props.server.tools), {
-									onNone: () => 'Connected',
-									onSome: tools => `${tools} tools`
-								})
+							onTrue: () => `${shown.length} of ${props.server.tools.length} tools`
 						})}
 					</span>
 				</span>
@@ -73,12 +77,36 @@ function ServerRow(props: {server: ConnectionInfo}) {
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end" className="w-auto min-w-36">
 					<DropdownMenuItem onClick={() => location.assign(mcpConnectUrl(props.server.id))}>
-						{Boolean.match(props.server.connected || props.server.status === 'Expired', {
-							onFalse: () => 'Connect',
-							onTrue: () => 'Reconnect'
+						{Boolean.match(props.server.status === 'Not connected', {
+							onFalse: () => 'Reconnect',
+							onTrue: () => 'Connect'
 						})}
 					</DropdownMenuItem>
-					{props.server.connected && <DropdownMenuItem onClick={() => disconnect()}>Disconnect</DropdownMenuItem>}
+					{connected && <DropdownMenuItem onClick={() => disconnect()}>Disconnect</DropdownMenuItem>}
+					{/* Agents see only the checked tools. */}
+					{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
+						<DropdownMenuSub>
+							<DropdownMenuSubTrigger>Tools</DropdownMenuSubTrigger>
+							<DropdownMenuSubContent>
+								{Array.map(props.server.tools, tool => (
+									<DropdownMenuCheckboxItem
+										key={tool}
+										checked={!Array.contains(props.server.hidden, tool)}
+										onCheckedChange={visible =>
+											hide(
+												Boolean.match(visible, {
+													onFalse: () => [...props.server.hidden, tool],
+													onTrue: () => Array.filter(props.server.hidden, name => name !== tool)
+												})
+											)
+										}
+									>
+										{tool}
+									</DropdownMenuCheckboxItem>
+								))}
+							</DropdownMenuSubContent>
+						</DropdownMenuSub>
+					)}
 					<DropdownMenuItem variant="destructive" onClick={() => setConfirm(true)}>
 						Remove
 					</DropdownMenuItem>

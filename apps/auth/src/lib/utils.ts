@@ -185,6 +185,9 @@ export const mcpServersAtom = Atom.keepAlive(
 export const mcpDisconnectAtom = Atom.family((id: string) =>
 	RpcClient.runtime.fn(() => Effect.flatMap(RpcClient, client => client('auth.mcp.disconnect', {id})))
 )
+export const mcpHideAtom = Atom.family((id: string) =>
+	RpcClient.runtime.fn((hidden: string[]) => Effect.flatMap(RpcClient, client => client('auth.mcp.hide', {hidden, id})))
+)
 export const mcpRemoveAtom = Atom.family((id: string) =>
 	RpcClient.runtime.fn(() => Effect.flatMap(RpcClient, client => client('auth.mcp.remove', {id})))
 )
@@ -203,7 +206,7 @@ export const mcpAddAtom = AtomMachine.bind(RpcClient.runtime).make(
 					)
 				)
 				const server = yield* (yield* RpcClient)('auth.mcp.add', {url})
-				if (!server.connected) location.assign(mcpConnectUrl(server.id))
+				if (server.status !== 'Connected') location.assign(mcpConnectUrl(server.id))
 			})
 		},
 		events: Machine.events({Cancel: {}, Open: {}, Submit: {}, Typed: {url: Schema.String}}),
@@ -324,17 +327,9 @@ export function ageLabel(minutes: number) {
 	return `${Math.floor(minutes / 1440)}d`
 }
 
-// Claude Code's server suffix is already represented by the grid's app column.
-export function clientKey(app: {clientName: string}) {
-	return String.trim(String.replace(/\s*\([^)]*\)$/u, '')(app.clientName))
-}
-
-// Keep display shortening separate from the grouping used to disconnect sign-ins.
-export function clientLabel(app: {clientName: string}) {
-	return String.replace(
-		/^([a-z0-9-]+)\.mp281x\.xyz https:\/\/(dev|desktop)\.tailnet-8c4c\.ts\.net:(\d+)$/u,
-		'$1 · $2:$3'
-	)(clientKey(app))
+// A sign-in as the lists name it: the app or browser, then where it runs.
+export function signInLabel(client: string, device: string) {
+	return `${client} · ${device}`
 }
 
 export function newest(apps: SignedInApp[]) {

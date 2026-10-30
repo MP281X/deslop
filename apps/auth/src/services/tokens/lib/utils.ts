@@ -1,12 +1,79 @@
 import {Array, Effect, Option, Record, Result, Schema, String, pipe} from 'effect'
 
+import {Base64Url} from 'effect/encoding'
 import {Url} from 'effect/http'
+import ipaddr from 'ipaddr.js'
 
 import {AuthError, Resource} from '@deslop/runtime/auth/schema'
 import {AUTH_URL, previewOrigin} from '@deslop/runtime/auth/utils'
 
-import type {AuthorizeClient, AuthorizeParams, Stored} from '#services/tokens/schema.ts'
-import {ClientRequest} from '#services/tokens/schema.ts'
+import type {AuthorizeClient, AuthorizeParams, Origin} from '#services/tokens/schema.ts'
+import {ClientInfo, ClientRequest} from '#services/tokens/schema.ts'
+
+// The workers by their public and tailnet addresses; Traefik runs on dev, so dev's own requests may also arrive from a private one.
+const WORKERS: Record<string, string> = {
+	'77.237.236.132': 'dev',
+	'100.68.201.107': 'dev',
+	'100.97.120.3': 'desktop',
+	'100.115.207.60': 'macbook-pro'
+}
+const LOCAL_RANGES = ['linkLocal', 'loopback', 'private', 'uniqueLocal']
+
+// Whoever holds an IPv6 address holds its whole /64, so limits count the /64.
+export function addressGroup(address: string) {
+	if (!ipaddr.isValid(address)) return address
+	const parsed = ipaddr.process(address)
+	if (parsed.kind() === 'ipv4') return parsed.toString()
+	return Array.join(Array.take(String.split(parsed.toNormalizedString(), ':'), 4), ':')
+}
+
+// A client id is its registration, encoded: anyone may register, and the callbacks are checked again at authorize.
+export function clientIdOf(client: ClientInfo) {
+	return Base64Url.encode(Schema.encodeSync(Schema.fromJsonString(ClientInfo))(client))
+}
+
+// "Claude Code (auth)" reads Claude Code, "codex" Codex: the app, as the signed-in list names it.
+export function clientLabel(name: string) {
+	return pipe(name, String.replace(/\s*\([^)]*\)$/u, ''), String.trim, String.capitalize)
+}
+
+function platform(userAgent: string) {
+	if (String.includes('iPhone')(userAgent)) return Option.some('iPhone')
+	if (String.includes('iPad')(userAgent)) return Option.some('iPad')
+	if (String.includes('Android')(userAgent)) return Option.some('Android')
+	if (String.includes('Macintosh')(userAgent)) return Option.some('Mac')
+	if (String.includes('Windows')(userAgent)) return Option.some('Windows')
+	if (String.includes('Linux')(userAgent)) return Option.some('Linux')
+	return Option.none()
+}
+
+// A browser as GitHub and Google list it: its name from the User-Agent.
+export function browserLabel(origin: Origin) {
+	const agent = origin.userAgent ?? ''
+	if (String.includes('Edg/')(agent)) return 'Edge'
+	if (String.includes('Firefox/')(agent)) return 'Firefox'
+	if (String.includes('Chrome/')(agent)) return 'Chrome'
+	if (String.includes('Safari/')(agent)) return 'Safari'
+	return 'Browser'
+}
+
+// Where a sign-in runs: a worker preview's host, a known worker, the platform its User-Agent names, or its address.
+export function deviceLabel(origin: Origin, redirectUri: Option.Option<string>) {
+	return pipe(
+		Option.flatMap(redirectUri, previewOrigin),
+		Option.map(preview => pipe(new URL(preview), url => `${String.split(url.hostname, '.')[0] ?? ''}:${url.port}`)),
+		Option.orElse(() =>
+			Option.flatMap(Option.fromUndefinedOr(origin.address), address => {
+				if (ipaddr.isValid(address) && Array.contains(LOCAL_RANGES, ipaddr.process(address).range())) {
+					return Option.some('dev')
+				}
+				return Record.get(WORKERS, address)
+			})
+		),
+		Option.orElse(() => Option.flatMap(Option.fromUndefinedOr(origin.userAgent), platform)),
+		Option.getOrElse(() => origin.address ?? 'unknown')
+	)
+}
 
 function loopback(redirect: string) {
 	return Option.filter(
@@ -47,6 +114,15 @@ export function allowedRedirect(redirect: string) {
 	)
 }
 
+export function clientOf(clientId: string) {
+	return pipe(
+		Base64Url.decodeString(clientId),
+		Result.getSuccess,
+		Option.flatMap(Schema.decodeUnknownOption(Schema.fromJsonString(ClientInfo))),
+		Option.filter(client => Array.every(client.redirects, allowedRedirect))
+	)
+}
+
 // A loopback callback as written, without its port: RFC 8252 §8.4 compares everything else exactly.
 function portless(redirect: string) {
 	return Option.map(
@@ -59,7 +135,7 @@ function portless(redirect: string) {
 }
 
 // The callback a request names, or a client's only one when it names none; a loopback callback may use any port, as RFC 8252 §7.3 requires.
-export function matchingRedirect(client: typeof Stored.cases.Client.Type, requested: Option.Option<string>) {
+export function matchingRedirect(client: ClientInfo, requested: Option.Option<string>) {
 	return Option.match(requested, {
 		onNone: () => Option.filter(Array.head(client.redirects), () => client.redirects.length === 1),
 		onSome: asked =>

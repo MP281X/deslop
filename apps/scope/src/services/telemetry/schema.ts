@@ -161,7 +161,7 @@ export const Query = Schema.Struct({
 	errors: Schema.Boolean,
 	from: Schema.Finite,
 	limit: pipe(Schema.Int, Schema.check(Schema.isBetween({maximum: 1000, minimum: 1}))),
-	offset: Schema.Natural,
+	offset: pipe(Schema.Int, Schema.check(Schema.isBetween({maximum: 100_000, minimum: 0}))),
 	operation: Schema.String,
 	runs: Schema.Literals(['current', 'all']),
 	service: Schema.String,

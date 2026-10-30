@@ -34,20 +34,20 @@ import {
 	HttpServerResponse,
 	UrlParams
 } from 'effect/http'
+import {RateLimiter} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
 import type {Resource} from '@deslop/runtime/auth/schema'
-import {ClientRegistration, TokenResponse, User} from '@deslop/runtime/auth/schema'
+import {AuthError, ClientRegistration, TokenResponse, User} from '@deslop/runtime/auth/schema'
 import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
 import {AUTH_URL, CurrentUser} from '@deslop/runtime/auth/utils'
 
 import {HttpHandlers} from '#http/handlers.ts'
-import {Changes} from '#services/changes/service.ts'
-import {AddServer, ConnectionInfo, ServerParams} from '#services/connections/schema.ts'
+import {AddServer, ConnectionInfo, HiddenTools, ServerParams} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway} from '#services/gateway/service.ts'
 import {GitHub} from '#services/github/service.ts'
-import {Members, Person} from '#services/people/schema.ts'
+import {AdmitParams, Person, PersonParams} from '#services/people/schema.ts'
 import {People} from '#services/people/service.ts'
 import {
 	AnswerParams,
@@ -57,13 +57,15 @@ import {
 	RequestParams
 } from '#services/sign-ins/schema.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
-import {FamilyParams, Registration, SignedInApp, TokenState} from '#services/tokens/schema.ts'
+import {FamilyParams, Registration, SignedInApp} from '#services/tokens/schema.ts'
 import {Tokens, layerStore} from '#services/tokens/service.ts'
 import {layerMcp} from '#tools/handlers.ts'
 
 const API = 'https://stash.mp281x.xyz'
 const APPROVALS = 'https://auth.mp281x.xyz/mcp'
 const GITHUB_IDS: Record<string, number> = {drifter: 9, octocat: 42, stranger: 7}
+const IPHONE_SAFARI =
+	'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'
 const PROVIDERS = {
 	dual: {
 		issuer: 'https://app.dualos.ai',
@@ -86,10 +88,27 @@ function discoveryResponse(url: string) {
 		})
 	}
 	if (!String.includes('/.well-known/')(url)) return undefined
+	// A provider that neither registers clients nor names itself in its answers.
+	if (String.includes('silent.example.com')(url)) {
+		if (String.includes('oauth-protected-resource')(url)) {
+			return Response.json({
+				authorization_servers: ['https://silent.example.com'],
+				resource: 'https://silent.example.com/mcp'
+			})
+		}
+		return Response.json({
+			authorization_endpoint: 'https://silent.example.com/oauth/authorize',
+			client_id_metadata_document_supported: true,
+			issuer: 'https://silent.example.com',
+			response_types_supported: ['code'],
+			token_endpoint: 'https://silent.example.com/oauth/token'
+		})
+	}
 	if (String.includes('challenge.example.com')(url)) return new Response(undefined, {status: 404})
 	if (String.includes('identity.example.com')(url)) {
 		return Response.json({
 			authorization_endpoint: 'https://identity.example.com/oauth/authorize',
+			authorization_response_iss_parameter_supported: true,
 			client_id_metadata_document_supported: true,
 			issuer: 'https://identity.example.com',
 			response_types_supported: ['code'],
@@ -123,6 +142,13 @@ const me = pipe(
 	HttpRouter.add('GET', '/me', Effect.flatMap(CurrentUser, HttpServerResponse.schemaJson(User))),
 	Layer.provide(HttpAuth.layer)
 )
+
+// A test route answers a refusal with its message, as the page shows it.
+function refused<E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
+	return Effect.catchIf(handler, Schema.is(AuthError), failure =>
+		Effect.succeed(HttpServerResponse.text(failure.message, {status: 400}))
+	)
+}
 
 function getUpstream(url: string) {
 	if (url === 'https://challenge.example.com/mcp') {
@@ -397,6 +423,67 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 								),
 								HttpRouter.add(
 									'POST',
+									'/servers/disconnect',
+									pipe(
+										Effect.gen(function* () {
+											const input = yield* HttpServerRequest.schemaBodyJson(ServerParams)
+											yield* (yield* Connections).disconnect(input.id, yield* CurrentUser)
+											return HttpServerResponse.empty()
+										}),
+										refused
+									)
+								),
+								HttpRouter.add(
+									'POST',
+									'/servers/hide',
+									pipe(
+										Effect.gen(function* () {
+											const input = yield* HttpServerRequest.schemaBodyJson(HiddenTools)
+											yield* (yield* Connections).hide(input.id, input.hidden, yield* CurrentUser)
+											return HttpServerResponse.empty()
+										}),
+										refused
+									)
+								),
+								// The People page's RPCs.
+								HttpRouter.add(
+									'GET',
+									'/people',
+									pipe(
+										Effect.gen(function* () {
+											return yield* HttpServerResponse.schemaJson(Schema.Array(Person))(
+												yield* (yield* People).list(yield* CurrentUser)
+											)
+										}),
+										refused
+									)
+								),
+								HttpRouter.add(
+									'POST',
+									'/admit',
+									pipe(
+										Effect.gen(function* () {
+											const input = yield* HttpServerRequest.schemaBodyJson(AdmitParams)
+											yield* (yield* People).admit(input, yield* CurrentUser)
+											return HttpServerResponse.empty()
+										}),
+										refused
+									)
+								),
+								HttpRouter.add(
+									'POST',
+									'/remove-person',
+									pipe(
+										Effect.gen(function* () {
+											const input = yield* HttpServerRequest.schemaBodyJson(PersonParams)
+											yield* (yield* People).remove(input.id, yield* CurrentUser)
+											return HttpServerResponse.empty()
+										}),
+										refused
+									)
+								),
+								HttpRouter.add(
+									'POST',
 									'/servers',
 									pipe(
 										Effect.gen(function* () {
@@ -448,10 +535,10 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 									pipe(
 										Effect.gen(function* () {
 											const input = yield* HttpServerRequest.schemaBodyJson(AnswerParams)
-											yield* (yield* SignIns).answer(input, yield* CurrentUser)
+											yield* (yield* SignIns).answer(input, yield* CurrentUser, 'Session')
 											return HttpServerResponse.empty()
 										}),
-										Effect.catchTag('AuthError', () => Effect.succeed(HttpServerResponse.empty({status: 400})))
+										refused
 									)
 								),
 								HttpRouter.add(
@@ -492,11 +579,10 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 							Layer.provide(HttpAuth.layer)
 						)
 					),
-					Layer.provideMerge(Layer.merge(Gateway.layer, SignIns.layer)),
+					Layer.provideMerge(Layer.mergeAll(Gateway.layer, SignIns.layer, RateLimiter.layer)),
 					Layer.provideMerge(Connections.layer),
 					Layer.provideMerge(People.layer),
-					Layer.provideMerge(Layer.merge(Tokens.layer, GitHub.layer)),
-					Layer.provideMerge(Changes.layer),
+					Layer.provideMerge(Layer.mergeAll(Tokens.layer, GitHub.layer, RateLimiter.layerStoreMemory)),
 					Layer.provide(layerStore),
 					Layer.provide(
 						Layer.mergeAll(
@@ -735,7 +821,7 @@ const exchange = Effect.fnUntraced(function* (
 	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
 	request: Effect.Success<ReturnType<typeof authorize>>,
 	code: string,
-	forwardedFor = '203.0.113.7'
+	forwardedFor = '93.184.216.34'
 ) {
 	return yield* send(web, '/api/auth/oauth2/token', {
 		body: UrlParams.toString(
@@ -778,14 +864,29 @@ const agentToken = Effect.fnUntraced(function* (
 		.access_token
 })
 
-const people = Effect.fnUntraced(function* (web: Effect.Success<ReturnType<typeof servers>>['issuer'], token: string) {
-	const response = yield* callTool(web, token, 'list_people', {})
+// A JSON body, posted by the signed-in session in `session`.
+const post = Effect.fnUntraced(function* (
+	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
+	path: string,
+	session: string,
+	body: unknown
+) {
+	return yield* send(web, path, {
+		body: yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(body),
+		headers: {'content-type': 'application/json', cookie: session},
+		method: 'POST'
+	})
+})
+
+const people = Effect.fnUntraced(function* (
+	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
+	session: string
+) {
+	const response = yield* send(web, '/people', {headers: {cookie: session}})
 	return Array.map(
-		(yield* Schema.decodeEffect(
-			Schema.fromJsonString(
-				Schema.Struct({result: Schema.Struct({structuredContent: Schema.Struct({people: Schema.Array(Person)})})})
-			)
-		)(yield* Effect.promise(() => response.text()))).result.structuredContent.people,
+		yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(Person)))(
+			yield* Effect.promise(() => response.text())
+		),
 		person => `${person.name}:${person.role}`
 	)
 })
@@ -827,23 +928,35 @@ const modern = Effect.fnUntraced(function* (
 
 it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 	test.effect(
-		'discovers challenge-only metadata and authorizes with a client metadata document',
+		'discovers challenge-only metadata and authorizes with a client metadata document only when the answer names its issuer',
 		Effect.fnUntraced(function* () {
 			const web = yield* servers()
 			const session = cookie(yield* signIn(web.issuer, 'octocat'))
 			const added = yield* addMcp(web.issuer, session, 'https://challenge.example.com/mcp')
-			assert.isFalse(added.connected)
-			const start = yield* send(web.issuer, `/auth/mcp/connect?id=${added.id}`, {headers: {cookie: session}})
-			const target = new URL(start.headers.get('location') ?? '')
-			assert.strictEqual(target.searchParams.get('client_id'), `${AUTH_URL}/auth/mcp/client.json`)
-			assert.strictEqual(target.searchParams.get('scope'), 'items:read')
-			const callback = yield* send(
-				web.issuer,
-				`/auth/mcp/callback?${new URLSearchParams({code: 'approved', iss: 'https://identity.example.com', state: target.searchParams.get('state') ?? ''})}`,
-				{headers: {cookie: `${session}; ${cookie(start)}`}}
+			assert.strictEqual(added.status, 'Not connected')
+			const answerWith = Effect.fnUntraced(function* (search: Record<string, string>) {
+				const start = yield* send(web.issuer, `/auth/mcp/connect?id=${added.id}`, {headers: {cookie: session}})
+				const target = new URL(start.headers.get('location') ?? '')
+				assert.strictEqual(target.searchParams.get('client_id'), `${AUTH_URL}/auth/mcp/client.json`)
+				assert.strictEqual(target.searchParams.get('scope'), 'items:read')
+				return yield* send(
+					web.issuer,
+					`/auth/mcp/callback?${new URLSearchParams({code: 'approved', ...search, state: target.searchParams.get('state') ?? ''})}`,
+					{headers: {cookie: `${session}; ${cookie(start)}`}}
+				)
+			})
+			// RFC 9700 §4.4.2: without `iss`, an answer to the shared callback could come from any provider.
+			assert.strictEqual((yield* answerWith({})).headers.get('location'), '/mcp-servers')
+			assert.strictEqual(web.grants.length, 0)
+			assert.strictEqual(
+				(yield* answerWith({iss: 'https://identity.example.com'})).headers.get('location'),
+				'/mcp-servers'
 			)
-			assert.strictEqual(callback.headers.get('location'), '/mcp-servers')
 			assert.strictEqual(web.grants.length, 1)
+			assert.strictEqual(
+				(yield* post(web.issuer, '/servers', session, {url: 'https://silent.example.com/mcp'})).status,
+				400
+			)
 		})
 	)
 	test.effect(
@@ -902,6 +1015,56 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 	test.effect(
+		'keeps the tools an admin unchecks out of agents’ lists and calls',
+		Effect.fnUntraced(function* () {
+			const web = yield* servers()
+			const session = cookie(yield* signIn(web.issuer, 'octocat'))
+			const token = yield* agentToken(web.issuer, session)
+			yield* Ref.set(web.toolNames, ['search', 'delete'])
+			const added = yield* addMcp(web.issuer, session, 'https://public.example.com/mcp')
+			assert.deepStrictEqual(added.tools, ['search', 'delete'])
+			assert.strictEqual(
+				(yield* post(web.issuer, '/servers/hide', session, {hidden: ['delete'], id: added.id})).status,
+				204
+			)
+			const listed = yield* modern(web.issuer, token, 'tools/list')
+			const names = yield* Effect.promise(() => listed.text())
+			assert.isTrue(String.includes(`${added.id}__search`)(names))
+			assert.isFalse(String.includes(`${added.id}__delete`)(names))
+			const called = yield* modern(web.issuer, token, 'tools/call', {
+				arguments: {query: 'hidden'},
+				name: `${added.id}__delete`
+			})
+			assert.isTrue(String.includes('error')(yield* Effect.promise(() => called.text())))
+			assert.isFalse(
+				Array.some(MutableList.toArray(web.upstreamRequests), request =>
+					Schema.is(
+						Schema.Struct({
+							method: Schema.Literal('tools/call'),
+							params: Schema.Struct({name: Schema.Literal('delete')})
+						})
+					)(request.body)
+				)
+			)
+			// An agent reads only how many tools it can call.
+			const connections = yield* callTool(web.issuer, token, 'list_mcp_connections', {})
+			assert.deepStrictEqual(
+				(yield* Schema.decodeEffect(
+					Schema.fromJsonString(
+						Schema.Struct({
+							result: Schema.Struct({
+								structuredContent: Schema.Struct({
+									servers: Schema.Array(Schema.Struct({id: Schema.String, tools: Schema.Int}))
+								})
+							})
+						})
+					)
+				)(yield* Effect.promise(() => connections.text()))).result.structuredContent.servers,
+				[{id: added.id, tools: 1}]
+			)
+		})
+	)
+	test.effect(
 		'never retries an old URL with a removed and replaced connection’s credentials',
 		Effect.fnUntraced(function* () {
 			const web = yield* servers()
@@ -912,7 +1075,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				const start = yield* send(web.issuer, '/auth/mcp/connect?id=mobbin', {headers: {cookie: session}})
 				yield* send(
 					web.issuer,
-					`/auth/mcp/callback?${new URLSearchParams({code: 'approved', iss: PROVIDERS.mobbin.issuer, state: new URL(start.headers.get('location') ?? '').searchParams.get('state') ?? ''})}`,
+					`/auth/mcp/callback/mobbin?${new URLSearchParams({code: 'approved', iss: PROVIDERS.mobbin.issuer, state: new URL(start.headers.get('location') ?? '').searchParams.get('state') ?? ''})}`,
 					{headers: {cookie: `${session}; ${cookie(start)}`}}
 				)
 			})
@@ -957,14 +1120,14 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				[]
 			)
 			const publicServer = yield* addMcp(web.issuer, session, 'https://public.example.com/mcp')
-			assert.isTrue(publicServer.connected)
-			assert.strictEqual(publicServer.tools, 1)
+			assert.strictEqual(publicServer.status, 'Connected')
+			assert.deepStrictEqual(publicServer.tools, ['search'])
 			assert.strictEqual(MutableHashMap.size(web.sessions), 0)
 			const external = yield* addMcp(web.issuer, session, 'https://mcp.example.com/mcp')
 			const collision = yield* addMcp(web.issuer, session, 'https://mcp.example.net/mcp')
 			assert.strictEqual(external.id, 'example')
 			assert.match(collision.id, /^example_[a-z0-9_-]{6}$/u)
-			assert.isFalse(external.connected)
+			assert.strictEqual(external.status, 'Not connected')
 			const token = yield* agentToken(web.issuer, session)
 			const before = yield* modern(web.issuer, token, 'tools/list')
 			const beforeText = yield* Effect.promise(() => before.text())
@@ -1001,7 +1164,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				400
 			)
 			const stranger = cookie(yield* signIn(web.issuer, 'stranger'))
-			yield* callTool(web.issuer, token, 'answer_access_request', {allow: true, login: 'stranger'})
+			yield* post(web.issuer, '/admit', session, {allow: true, id: 'github:7'})
 			assert.strictEqual(
 				(yield* send(web.issuer, '/servers', {
 					body: yield* Schema.encodeEffect(Schema.fromJsonString(AddServer))({url: 'https://another.example.com/mcp'}),
@@ -1034,7 +1197,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					const target = new URL(start.headers.get('location') ?? '')
 					assert.strictEqual(target.searchParams.get('code_challenge_method'), 'S256')
 					assert.strictEqual(target.searchParams.get('resource'), PROVIDERS.mobbin.url)
-					const callback = `/auth/mcp/callback?${new URLSearchParams({code: 'provider-code', iss: PROVIDERS.mobbin.issuer, state: target.searchParams.get('state') ?? ''})}`
+					// A registered client answers at its own server's callback, so another provider's answer cannot land there.
+					assert.strictEqual(target.searchParams.get('redirect_uri'), `${AUTH_URL}/auth/mcp/callback/mobbin`)
+					const callback = `/auth/mcp/callback/mobbin?${new URLSearchParams({code: 'provider-code', iss: PROVIDERS.mobbin.issuer, state: target.searchParams.get('state') ?? ''})}`
 					assert.strictEqual(
 						(yield* send(web.issuer, callback, {headers: {cookie: session}})).headers.get('location'),
 						'/mcp-servers'
@@ -1142,10 +1307,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* TestClock.adjust('2 seconds')
 			const partial = yield* Fiber.join(slowList)
 			const partialText = yield* Effect.promise(() => partial.text())
-			assert.isTrue(String.includes('connect_mcp')(partialText))
+			assert.isTrue(String.includes('list_mcp_connections')(partialText))
 			assert.isTrue(String.includes('stash__search')(partialText))
 			assert.strictEqual((yield* modern(web.issuer, saved.token, 'tools/list')).status, 200)
-			yield* callTool(web.issuer, secondToken, 'disconnect_mcp', {id: 'mobbin'})
+			assert.strictEqual((yield* post(web.issuer, '/servers/disconnect', saved.session, {id: 'mobbin'})).status, 204)
 			const disconnected = yield* modern(web.issuer, saved.token, 'tools/call', {
 				arguments: {query: 'blocked'},
 				name: 'mobbin__search'
@@ -1173,7 +1338,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				assert.strictEqual(
 					(yield* send(
 						web.issuer,
-						`/auth/mcp/callback?${new URLSearchParams({code, iss: PROVIDERS.mobbin.issuer, state: new URL(start.headers.get('location') ?? '').searchParams.get('state') ?? ''})}`,
+						`/auth/mcp/callback/mobbin?${new URLSearchParams({code, iss: PROVIDERS.mobbin.issuer, state: new URL(start.headers.get('location') ?? '').searchParams.get('state') ?? ''})}`,
 						{headers: {cookie: `${session}; ${cookie(start)}`}}
 					)).status,
 					302
@@ -1192,7 +1357,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				Effect.forkScoped
 			)
 			yield* Queue.take(web.ready)
-			yield* TestClock.adjust('31 seconds')
+			// The list is read again each minute, so the token's end at 30 seconds shows by the next read.
+			yield* TestClock.adjust('61 seconds')
 			assert.deepStrictEqual(
 				yield* Effect.forEach(
 					pipe(yield* Fiber.join(updates), String.trim, String.split('\n')),
@@ -1219,24 +1385,32 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		Effect.fnUntraced(function* () {
 			const web = yield* servers()
 			const admin = cookie(yield* signIn(web.issuer, 'octocat'))
-			const token = yield* agentToken(web.issuer, admin)
 			const stranger = cookie(yield* signIn(web.issuer, 'stranger'))
-			yield* callTool(web.issuer, token, 'answer_access_request', {allow: true, login: 'stranger'})
+			yield* post(web.issuer, '/admit', admin, {allow: true, id: 'github:7'})
 			yield* addMcp(web.issuer, admin, PROVIDERS.mobbin.url)
 			assert.strictEqual(
 				(yield* send(web.issuer, '/auth/mcp/connect?id=mobbin', {headers: {cookie: stranger}})).headers.get('location'),
 				'/mcp-servers'
 			)
+			// A registered client's answer at the shared callback is another provider's, even when it names this issuer.
+			const shared = yield* send(web.issuer, '/auth/mcp/connect?id=mobbin', {headers: {cookie: admin}})
+			const misrouted = new URLSearchParams({
+				code: 'attacker-code',
+				iss: PROVIDERS.mobbin.issuer,
+				state: new URL(shared.headers.get('location') ?? '').searchParams.get('state') ?? ''
+			})
+			yield* send(web.issuer, `/auth/mcp/callback?${misrouted}`, {headers: {cookie: `${admin}; ${cookie(shared)}`}})
+			assert.strictEqual(web.grants.length, 0)
 			const start = yield* send(web.issuer, '/auth/mcp/connect?id=mobbin', {headers: {cookie: admin}})
-
 			const params = new URLSearchParams({
 				code: 'attacker-code',
 				iss: 'https://evil.test',
 				state: new URL(start.headers.get('location') ?? '').searchParams.get('state') ?? ''
 			})
 			assert.strictEqual(
-				(yield* send(web.issuer, `/auth/mcp/callback?${params}`, {headers: {cookie: `${admin}; ${cookie(start)}`}}))
-					.status,
+				(yield* send(web.issuer, `/auth/mcp/callback/mobbin?${params}`, {
+					headers: {cookie: `${admin}; ${cookie(start)}`}
+				})).status,
 				302
 			)
 			assert.strictEqual(web.grants.length, 0)
@@ -1253,8 +1427,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			params.set('iss', PROVIDERS.mobbin.issuer)
 			assert.strictEqual(
-				(yield* send(web.issuer, `/auth/mcp/callback?${params}`, {headers: {cookie: `${admin}; ${cookie(start)}`}}))
-					.status,
+				(yield* send(web.issuer, `/auth/mcp/callback/mobbin?${params}`, {
+					headers: {cookie: `${admin}; ${cookie(start)}`}
+				})).status,
 				302
 			)
 			assert.strictEqual(web.grants.length, 0)
@@ -1593,32 +1768,44 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 	)
 
 	test.effect(
-		'keeps clients that are signed in or waiting when public registrations fill the client list',
+		'answers 429 past an address’s budget per minute and accepts it again after the window',
 		Effect.fnUntraced(function* () {
 			const web = yield* servers()
-			const session = cookie(yield* signIn(web.issuer, 'octocat'))
-			const request = yield* authorize(web.issuer, session, 'opm://auth/callback', [API])
-			const granted = yield* exchange(
+			const register = Effect.fnUntraced(function* (forwardedFor: string) {
+				return yield* send(web.issuer, '/api/auth/oauth2/register', {
+					body: '{"redirect_uris":["http://127.0.0.1:1/callback"]}',
+					headers: {'content-type': 'application/json', 'x-forwarded-for': forwardedFor},
+					method: 'POST'
+				})
+			})
+			const statuses = yield* Effect.forEach(
+				Array.range(1, 11),
+				() => Effect.map(register('2001:db8:1:2::1'), response => response.status),
+				{concurrency: 1}
+			)
+			assert.deepStrictEqual(Array.dedupe(Array.take(statuses, 10)), [201])
+			// Another address in the same IPv6 /64 shares the budget; an address elsewhere does not.
+			const limited = yield* register('2001:db8:1:2::ffff')
+			assert.deepStrictEqual(
+				[statuses[10], limited.status, String.isNonEmpty(limited.headers.get('retry-after') ?? '')],
+				[429, 429, true]
+			)
+			assert.strictEqual((yield* register('2001:db8:9::1')).status, 201)
+			yield* TestClock.adjust('61 seconds')
+			assert.strictEqual((yield* register('2001:db8:1:2::1')).status, 201)
+		})
+	)
+
+	test.effect(
+		'redirects a request without redirect_uri to the client’s only callback',
+		Effect.fnUntraced(function* () {
+			const web = yield* servers()
+			const request = yield* authorize(
 				web.issuer,
-				request,
-				(yield* consent(web.issuer, request, true)).searchParams.get('code') ?? ''
+				cookie(yield* signIn(web.issuer, 'octocat')),
+				'opm://auth/callback',
+				[API]
 			)
-			const token = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
-				yield* Effect.promise(() => granted.text())
-			)
-			const waiting = yield* authorize(web.issuer, session, 'trips://auth/callback', ['https://trips.mp281x.xyz'])
-			yield* Effect.forEach(
-				Array.range(1, 201),
-				() =>
-					send(web.issuer, '/api/auth/oauth2/register', {
-						body: '{"redirect_uris":["http://127.0.0.1:1/callback"]}',
-						headers: {'content-type': 'application/json'},
-						method: 'POST'
-					}),
-				{concurrency: 1, discard: true}
-			)
-			assert.strictEqual((yield* refresh(web.issuer, request.clientId, token.refresh_token)).status, 200)
-			// Its only callback stands in for a redirect_uri left out.
 			assert.match(
 				(yield* send(
 					web.issuer,
@@ -1637,8 +1824,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.strictEqual(
 				(yield* exchange(
 					web.issuer,
-					waiting,
-					(yield* consent(web.issuer, waiting, true)).searchParams.get('code') ?? ''
+					request,
+					(yield* consent(web.issuer, request, true)).searchParams.get('code') ?? ''
 				)).status,
 				200
 			)
@@ -2003,7 +2190,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'lets only an admin allow, decline and remove GitHub accounts, which sign them in and out',
 		Effect.fnUntraced(function* () {
 			const web = yield* servers()
-			const admin = yield* agentToken(web.issuer, cookie(yield* signIn(web.issuer, 'octocat')))
+			const admin = cookie(yield* signIn(web.issuer, 'octocat'))
 			const stranger = cookie(yield* signIn(web.issuer, 'stranger'))
 			const drifter = cookie(yield* signIn(web.issuer, 'drifter'))
 			const status = Effect.fnUntraced(function* (session: string) {
@@ -2014,22 +2201,22 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			})
 			assert.deepStrictEqual([yield* status(stranger), yield* status(drifter)], [401, 401])
 			assert.deepStrictEqual(yield* people(web.issuer, admin), ['octocat:Admin', 'drifter:Waiting', 'stranger:Waiting'])
-			yield* callTool(web.issuer, admin, 'answer_access_request', {allow: true, login: 'Stranger'})
-			yield* callTool(web.issuer, admin, 'answer_access_request', {allow: false, login: 'drifter'})
+			yield* post(web.issuer, '/admit', admin, {allow: true, id: 'github:7'})
+			yield* post(web.issuer, '/admit', admin, {allow: false, id: 'github:9'})
 			assert.deepStrictEqual([yield* status(stranger), yield* status(drifter)], [200, 401])
 			assert.deepStrictEqual(yield* people(web.issuer, admin), ['octocat:Admin', 'stranger:Member'])
 			const member = yield* agentToken(web.issuer, stranger)
 			assert.isTrue(
 				String.includes('Only an admin can manage people')(
-					yield* text(yield* callTool(web.issuer, member, 'remove_person', {login: 'octocat'}))
+					yield* text(yield* post(web.issuer, '/remove-person', stranger, {id: 'github:42'}))
 				)
 			)
 			assert.isTrue(
 				String.includes('cannot be removed here')(
-					yield* text(yield* callTool(web.issuer, admin, 'remove_person', {login: 'octocat'}))
+					yield* text(yield* post(web.issuer, '/remove-person', admin, {id: 'github:42'}))
 				)
 			)
-			yield* callTool(web.issuer, admin, 'remove_person', {login: 'stranger'})
+			yield* post(web.issuer, '/remove-person', admin, {id: 'github:7'})
 			assert.strictEqual(yield* status(stranger), 401)
 			assert.strictEqual(
 				(yield* send(web.issuer, '/auth/verify?resource=https://auth.mp281x.xyz/mcp', {
@@ -2057,16 +2244,20 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const granted = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
 				yield* Effect.promise(() => exchanged.text())
 			)
+			// The account's browsers are listed too; these checks read its apps.
 			const apps = Effect.fnUntraced(function* (session: string) {
 				const response = yield* send(web.issuer, '/apps', {headers: {cookie: session}})
-				return yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp)))(
-					yield* Effect.promise(() => response.text())
+				return Array.filter(
+					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp)))(
+						yield* Effect.promise(() => response.text())
+					),
+					app => app.kind === 'App'
 				)
 			})
 			const signedIn = yield* apps(admin)
 			assert.deepStrictEqual(
-				Array.map(signedIn, app => [app.clientName, app.resources]),
-				[['opencode', ['https://scope.mp281x.xyz/mcp']]]
+				Array.map(signedIn, app => [app.client, app.device, app.resources]),
+				[['Opencode', '93.184.216.34', ['https://scope.mp281x.xyz/mcp']]]
 			)
 			yield* TestClock.adjust('1 hour')
 			const rotated = yield* refresh(web.issuer, request.clientId, granted.refresh_token)
@@ -2079,7 +2270,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			// Another account sees none of these and cannot disconnect them.
 			const agent = yield* agentToken(web.issuer, admin)
 			const stranger = cookie(yield* signIn(web.issuer, 'stranger'))
-			yield* callTool(web.issuer, agent, 'answer_access_request', {allow: true, login: 'stranger'})
+			yield* post(web.issuer, '/admit', admin, {allow: true, id: 'github:7'})
 			assert.deepStrictEqual(yield* apps(stranger), [])
 			assert.strictEqual(
 				(yield* send(web.issuer, `/disconnect?family=${family}`, {headers: {cookie: stranger}, method: 'POST'})).status,
@@ -2093,6 +2284,12 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.deepStrictEqual(
 				Array.map(yield* apps(admin), app => app.resources),
 				[['https://auth.mp281x.xyz/mcp']]
+			)
+			assert.strictEqual(
+				(yield* send(web.issuer, '/auth/verify?resource=https://auth.mp281x.xyz/mcp', {
+					headers: {authorization: `Bearer ${agent}`}
+				})).status,
+				200
 			)
 			assert.strictEqual((yield* refresh(web.issuer, request.clientId, next.refresh_token)).status, 400)
 		})
@@ -2121,18 +2318,30 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				}
 			})
 			const apps = Effect.flatMap(send(web.issuer, '/apps', {headers: {cookie: admin}}), response =>
-				Effect.flatMap(
-					Effect.promise(() => response.text()),
-					Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp)))
+				Effect.map(
+					Effect.flatMap(
+						Effect.promise(() => response.text()),
+						Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp)))
+					),
+					Array.filter(app => app.kind === 'App')
 				)
 			)
 			// Traefik appends the connecting address last; the entry before it is whatever the client sent.
-			const first = yield* signInFrom('198.51.100.1, 203.0.113.7')
-			yield* signInFrom('203.0.113.7')
+			const first = yield* signInFrom('1.1.1.1, 93.184.216.34')
+			yield* signInFrom('93.184.216.34')
 			assert.strictEqual((yield* apps).length, 1)
 			assert.strictEqual((yield* refresh(web.issuer, first.clientId, first.tokens.refresh_token)).status, 400)
-			yield* signInFrom('198.51.100.1')
-			assert.strictEqual((yield* apps).length, 2)
+			yield* signInFrom('1.1.1.1')
+			assert.deepStrictEqual(
+				Array.sort(
+					Array.map(yield* apps, app => app.device),
+					String.Order
+				),
+				['1.1.1.1', '93.184.216.34']
+			)
+			// A worker's private address reads as the worker.
+			yield* signInFrom('100.68.201.107')
+			assert.isTrue(Array.some(yield* apps, app => app.device === 'dev'))
 		})
 	)
 
@@ -2143,7 +2352,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const admin = cookie(yield* signIn(web.issuer, 'octocat'))
 			const token = yield* agentToken(web.issuer, admin)
 			const start = Effect.fnUntraced(function* (next: string) {
-				const started = yield* send(web.issuer, `/auth/code?${UrlParams.toString(UrlParams.fromInput({next}))}`)
+				const started = yield* send(web.issuer, `/auth/code?${UrlParams.toString(UrlParams.fromInput({next}))}`, {
+					headers: {'user-agent': IPHONE_SAFARI}
+				})
 				return {
 					cookie: cookie(started),
 					id: new URL(started.headers.get('location') ?? '', AUTH_URL).searchParams.get('request') ?? ''
@@ -2157,13 +2368,26 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				yield* Effect.promise(() => waiting.text())
 			)
 			if (status._tag !== 'Waiting') return yield* Effect.die('Expected a waiting browser sign-in')
-			assert.deepStrictEqual([status.request.kind, status.request.resources], ['Browser', []])
-			yield* callTool(web.issuer, token, 'answer_request', {accept: true, request: browser.id})
+			assert.deepStrictEqual(
+				[status.request.kind, status.request.clientName, status.request.device, status.request.resources],
+				['Browser', 'Safari', 'iPhone', []]
+			)
+			// A session in a browser grants every app, so an agent's token cannot approve one.
+			const byAgent = yield* callTool(web.issuer, token, 'answer_request', {accept: true, request: browser.id})
+			assert.isTrue(String.includes('only from a signed-in browser')(yield* Effect.promise(() => byAgent.text())))
+			assert.strictEqual((yield* answer(web.issuer, admin, browser.id, true)).status, 204)
 			const signedIn = yield* send(web.issuer, `/auth/continue?request=${browser.id}`, {
 				headers: {cookie: browser.cookie}
 			})
 			assert.strictEqual(signedIn.headers.get('location'), 'https://signal.mp281x.xyz/world')
 			assert.strictEqual((yield* send(web.issuer, '/auth/session', {headers: {cookie: cookie(signedIn)}})).status, 200)
+			// A code may have been approved for another person's browser, so its session lasts 30 days, not a year.
+			assert.isTrue(
+				Array.some(
+					signedIn.headers.getSetCookie(),
+					value => String.startsWith('__Secure-session=')(value) && String.includes('Max-Age=2592000')(value)
+				)
+			)
 			// The approved browser is listed among the account's sign-ins, and signing it out there ends its session.
 			const listed = yield* send(web.issuer, '/apps', {headers: {cookie: admin}})
 			const browserApp = yield* Effect.fromOption(
@@ -2171,7 +2395,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp)))(
 						yield* Effect.promise(() => listed.text())
 					),
-					app => String.startsWith('Browser (')(app.clientName)
+					app => app.client === 'Safari' && app.device === 'iPhone'
 				)
 			)
 			assert.strictEqual(
@@ -2182,16 +2406,16 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.strictEqual((yield* send(web.issuer, '/auth/session', {headers: {cookie: cookie(signedIn)}})).status, 401)
 			// An approver removed before delivery delivers a denial.
 			const stranger = cookie(yield* signIn(web.issuer, 'stranger'))
-			yield* callTool(web.issuer, token, 'answer_access_request', {allow: true, login: 'stranger'})
+			yield* post(web.issuer, '/admit', admin, {allow: true, id: 'github:7'})
 			const late = yield* start('https://signal.mp281x.xyz/world')
 			assert.strictEqual((yield* answer(web.issuer, stranger, late.id, true)).status, 204)
-			yield* callTool(web.issuer, token, 'remove_person', {login: 'stranger'})
-			const refused = yield* send(web.issuer, `/auth/continue?request=${late.id}`, {headers: {cookie: late.cookie}})
-			assert.strictEqual(refused.headers.get('location'), '/')
-			assert.isFalse(String.includes('__Secure-session=')(cookie(refused)))
+			yield* post(web.issuer, '/remove-person', admin, {id: 'github:7'})
+			const declined = yield* send(web.issuer, `/auth/continue?request=${late.id}`, {headers: {cookie: late.cookie}})
+			assert.strictEqual(declined.headers.get('location'), '/')
+			assert.isFalse(String.includes('__Secure-session=')(cookie(declined)))
 			// A page elsewhere is dropped, and a denied browser gets no session.
 			const elsewhere = yield* start('https://evil.test/')
-			yield* callTool(web.issuer, token, 'answer_request', {accept: false, request: elsewhere.id})
+			assert.strictEqual((yield* answer(web.issuer, admin, elsewhere.id, false)).status, 204)
 			const denied = yield* send(web.issuer, `/auth/continue?request=${elsewhere.id}`, {
 				headers: {cookie: elsewhere.cookie}
 			})
@@ -2218,76 +2442,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const callback = yield* Fiber.join(waiting)
 			assert.strictEqual(`${callback.origin}${callback.pathname}`, 'http://127.0.0.1:34571/callback')
 			assert.strictEqual((yield* exchange(web.issuer, command, callback.searchParams.get('code') ?? '')).status, 200)
-		})
-	)
-
-	test.effect(
-		'keeps the members and sign-ins the previous release saved in one value',
-		Effect.fnUntraced(function* () {
-			const fs = yield* FileSystem.FileSystem
-			const home = yield* fs.makeTempDirectoryScoped()
-			const directory = `${home}/.deslop/auth`
-			const session = yield* Effect.scoped(
-				Effect.gen(function* () {
-					return cookie(yield* signIn((yield* servers(home)).issuer, 'octocat'))
-				})
-			)
-			const hashed = Effect.fnUntraced(function* (value: string) {
-				return Base64Url.encode(yield* (yield* Digest.Digest).digest(Digest.sha256, new TextEncoder().encode(value)))
-			})
-			const user = {id: 'github:42', name: 'octocat'}
-			yield* fs.writeFileString(
-				`${directory}/state`,
-				yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
-					members: yield* Schema.decodeEffect(Schema.fromJsonString(Members))(
-						yield* fs.readFileString(`${directory}/members`)
-					),
-					// The previous release's shapes: a harness whose refresh token names no client, and entries that no longer live here.
-					tokens: {
-						...(yield* Schema.decodeEffect(Schema.fromJsonString(TokenState))(
-							yield* fs.readFileString(`${directory}/tokens`)
-						)),
-						[yield* hashed('legacy-client')]: {
-							expiresAt: 4e15,
-							payload: {_tag: 'Client', name: 'Old harness', redirects: ['http://127.0.0.1:1/callback']}
-						},
-						[yield* hashed('legacy-refresh')]: {
-							expiresAt: 4e15,
-							payload: {_tag: 'Refresh', clientId: 'legacy-client', family: 'legacy', resources: [APPROVALS], user}
-						},
-						code: {
-							expiresAt: 4e15,
-							payload: {
-								_tag: 'Code',
-								challenge: 'x',
-								clientId: 'legacy-client',
-								redirectUri: 'http://127.0.0.1:1/callback',
-								resources: [APPROVALS],
-								user
-							}
-						},
-						delivered: {expiresAt: 4e15, payload: {_tag: 'Delivered', id: 'WDJBMJHT', url: 'http://127.0.0.1:1/'}},
-						login: {expiresAt: 4e15, payload: {_tag: 'Login', verifier: 'x'}},
-						waiting: {expiresAt: 4e15, payload: {_tag: 'Request', id: 'WDJBMJHT'}}
-					}
-				})
-			)
-			yield* fs.remove(`${directory}/members`)
-			yield* fs.remove(`${directory}/tokens`)
-			const web = yield* servers(home)
-			assert.strictEqual((yield* send(web.issuer, '/auth/session', {headers: {cookie: session}})).status, 200)
-			assert.isFalse(yield* fs.exists(`${directory}/state`))
-			assert.strictEqual((yield* refresh(web.issuer, 'legacy-client', 'legacy-refresh')).status, 200)
-			const apps = yield* send(web.issuer, '/apps', {headers: {cookie: session}})
-			assert.deepStrictEqual(
-				Array.map(
-					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp)))(
-						yield* Effect.promise(() => apps.text())
-					),
-					app => app.clientName
-				),
-				['Old harness']
-			)
 		})
 	)
 })

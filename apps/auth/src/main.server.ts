@@ -2,7 +2,8 @@ import {NodeCrypto, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/pla
 
 import {Effect, Layer, pipe} from 'effect'
 
-import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
+import {HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
+import {RateLimiter} from 'effect/persistence'
 import {RpcServer} from 'effect/rpc'
 
 import {AUTH_URL} from '@deslop/runtime/auth/utils'
@@ -11,7 +12,6 @@ import * as ServerRuntime from '@deslop/runtime/server'
 import {HttpHandlers} from '#http/handlers.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
-import {Changes} from '#services/changes/service.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway} from '#services/gateway/service.ts'
 import {GitHub} from '#services/github/service.ts'
@@ -32,13 +32,17 @@ const RpcOrigin = HttpRouter.middleware()(
 	)
 )
 
+// No other site may frame Auth's pages, so its Approve button cannot be clicked through a disguise.
+const frameAncestors = HttpMiddleware.make(app =>
+	Effect.map(app, HttpServerResponse.setHeader('content-security-policy', "frame-ancestors 'none'"))
+)
+
 // Each service builds on the ones below it: tokens, then people (who may use them), sign-ins and connections, then the gateway.
 const layerServices = pipe(
-	Layer.mergeAll(Gateway.layer, SignIns.layer),
+	Layer.mergeAll(Gateway.layer, SignIns.layer, RateLimiter.layer),
 	Layer.provideMerge(Connections.layer),
 	Layer.provideMerge(People.layer),
-	Layer.provideMerge(Layer.merge(Tokens.layer, GitHub.layer)),
-	Layer.provideMerge(Changes.layer),
+	Layer.provideMerge(Layer.mergeAll(Tokens.layer, GitHub.layer, RateLimiter.layerStoreMemory)),
 	Layer.provide(layerStore)
 )
 
@@ -58,7 +62,7 @@ NodeRuntime.runMain(
 				),
 				Layer.provide(layerServices)
 			),
-			{disableLogger: true}
+			{disableLogger: true, middleware: frameAncestors}
 		),
 		Layer.provide(Layer.mergeAll(NodeCrypto.layer, NodeHttpClient.layerFetch, NodeServices.layer)),
 		Layer.provide(Layer.succeed(NodeHttpClient.RequestInit, {redirect: 'error'})),

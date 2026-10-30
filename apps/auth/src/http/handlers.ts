@@ -1,6 +1,7 @@
-import {Array, Effect, Match, Option, Schema, String, pipe} from 'effect'
+import {Array, Duration, Effect, Match, Option, Schema, String, pipe} from 'effect'
 
 import {Headers, HttpRouter, HttpServerRequest, HttpServerResponse, UrlParams} from 'effect/http'
+import {RateLimiter} from 'effect/persistence'
 
 import {AuthError, User} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
@@ -14,7 +15,15 @@ import {People} from '#services/people/service.ts'
 import {typedCode} from '#services/sign-ins/lib/utils.ts'
 import {BrowserParams, RequestParams} from '#services/sign-ins/schema.ts'
 import {REQUEST_COOKIE, SignIns} from '#services/sign-ins/service.ts'
-import {allowedRedirect, callbackUrl, clientRequest, cookieDomain, returnable} from '#services/tokens/lib/utils.ts'
+import {
+	addressGroup,
+	allowedRedirect,
+	callbackUrl,
+	clientIdOf,
+	clientRequest,
+	cookieDomain,
+	returnable
+} from '#services/tokens/lib/utils.ts'
 import {
 	AuthorizeClient,
 	AuthorizeParams,
@@ -29,7 +38,11 @@ import {SESSION_COOKIE, Tokens} from '#services/tokens/service.ts'
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 const LOGIN_COOKIE = '__Host-login'
 const ISSUER = `${AUTH_URL}/api/auth`
-const SESSION = {...COOKIE, domain: cookieDomain(AUTH_URL), maxAge: '365 days'} as const
+
+// The shared session reaches every app on the parent domain, for as long as its grant lasts.
+function session(seconds: number) {
+	return {...COOKIE, domain: cookieDomain(AUTH_URL), maxAge: `${seconds} seconds` as const}
+}
 
 function rejected(message: string) {
 	return Effect.mapError(cause => {
@@ -63,6 +76,17 @@ function clientAddress(request: HttpServerRequest.HttpServerRequest) {
 		Option.filter(String.isNonEmpty),
 		Option.orElse(() => request.remoteAddress)
 	)
+}
+
+// Where a request comes from, as the signed-in list names it.
+function originOf(request: HttpServerRequest.HttpServerRequest) {
+	return {
+		...Option.match(clientAddress(request), {onNone: () => ({}), onSome: address => ({address})}),
+		...Option.match(Headers.get(request.headers, 'user-agent'), {
+			onNone: () => ({}),
+			onSome: agent => ({userAgent: String.slice(0, 200)(agent)})
+		})
+	}
 }
 
 // A started sign-in shows its code at /?request=; the cookie binds its answer to this browser or command.
@@ -119,6 +143,36 @@ export const HttpHandlers = HttpRouter.use(router =>
 		const people = yield* People
 		const signIns = yield* SignIns
 		const tokens = yield* Tokens
+		const limiter = yield* RateLimiter.RateLimiter
+		// Anyone may call these, so each address (an IPv6 /64) and everyone together get a budget per minute; past it, 429.
+		function limited(route: string, perAddress: number) {
+			return Effect.fnUntraced(function* <E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
+				const address = pipe(
+					clientAddress(yield* HttpServerRequest.HttpServerRequest),
+					Option.map(addressGroup),
+					Option.getOrElse(() => 'unknown')
+				)
+				return yield* pipe(
+					limiter.consume({key: `${route}:${address}`, limit: perAddress, onExceeded: 'fail', window: '1 minute'}),
+					Effect.andThen(limiter.consume({key: route, limit: perAddress * 20, onExceeded: 'fail', window: '1 minute'})),
+					Effect.matchEffect({
+						onFailure: failure =>
+							Effect.succeed(
+								HttpServerResponse.text('Too many requests; retry later', {
+									headers: {
+										'retry-after': Match.valueTags(failure.reason, {
+											RateLimitExceeded: exceeded => `${Math.ceil(Duration.toSeconds(exceeded.retryAfter))}`,
+											RateLimitStoreError: () => '5'
+										})
+									},
+									status: 429
+								})
+							),
+						onSuccess: () => handler
+					})
+				)
+			})
+		}
 
 		yield* router.add(
 			'GET',
@@ -140,100 +194,116 @@ export const HttpHandlers = HttpRouter.use(router =>
 		yield* router.add(
 			'POST',
 			'/api/auth/oauth2/register',
-			oauth(
-				Effect.gen(function* () {
-					const params = yield* pipe(
-						HttpServerRequest.schemaBodyJson(Registration),
-						Effect.mapError(cause =>
-							AuthError.make({
-								cause,
-								error: 'invalid_client_metadata',
-								message: 'Send up to 4 redirect_uris of at most 200 characters and a client_name of at most 100'
-							})
+			limited(
+				'register',
+				10
+			)(
+				oauth(
+					Effect.gen(function* () {
+						const params = yield* pipe(
+							HttpServerRequest.schemaBodyJson(Registration),
+							Effect.mapError(cause =>
+								AuthError.make({
+									cause,
+									error: 'invalid_client_metadata',
+									message: 'Send up to 4 redirect_uris of at most 200 characters and a client_name of at most 100'
+								})
+							)
 						)
-					)
-					if (!Array.every(params.redirect_uris, allowedRedirect)) {
-						return yield* AuthError.make({
-							error: 'invalid_redirect_uri',
-							message: 'Use a loopback http://127.0.0.1 callback or a Stash, opm or Trips app callback'
-						})
-					}
-					return HttpServerResponse.jsonUnsafe(
-						{
-							client_id: yield* tokens.register(params),
-							client_name: params.client_name ?? 'Unknown client',
-							grant_types: ['authorization_code', 'refresh_token'],
-							redirect_uris: params.redirect_uris,
-							response_types: ['code'],
-							token_endpoint_auth_method: 'none'
-						},
-						{status: 201}
-					)
-				})
+						if (!Array.every(params.redirect_uris, allowedRedirect)) {
+							return yield* AuthError.make({
+								error: 'invalid_redirect_uri',
+								message: 'Use a loopback http://127.0.0.1 callback or a Stash, opm or Trips app callback'
+							})
+						}
+						const name = params.client_name ?? 'Unknown client'
+						return HttpServerResponse.jsonUnsafe(
+							{
+								client_id: clientIdOf({name, redirects: params.redirect_uris}),
+								client_name: name,
+								grant_types: ['authorization_code', 'refresh_token'],
+								redirect_uris: params.redirect_uris,
+								response_types: ['code'],
+								token_endpoint_auth_method: 'none'
+							},
+							{status: 201}
+						)
+					})
+				)
 			)
 		)
 		// An app's sign-in becomes a waiting sign-in under a fresh code, answered by an approval and delivered at /auth/continue.
 		yield* router.add(
 			'GET',
 			'/api/auth/oauth2/authorize',
-			oauth(
-				Effect.gen(function* () {
-					const request = yield* HttpServerRequest.HttpServerRequest
-					// Until the client and its callback check out, an error stays on this page: RFC 9700 §4.11 forbids redirecting it.
-					const asked = yield* pipe(
-						HttpServerRequest.schemaSearchParams(AuthorizeClient),
-						rejected('The authorization request names no client_id')
-					)
-					const client = yield* tokens.client(asked)
-					return yield* pipe(
-						HttpServerRequest.schemaSearchParams(AuthorizeParams),
-						rejected('Invalid authorization request'),
-						Effect.flatMap(params => clientRequest(asked, client, params)),
-						Effect.flatMap(checked => signIns.start({_tag: 'Client', request: checked}, clientAddress(request))),
-						Effect.map(waitingAt),
-						Effect.catchIf(Schema.is(AuthError), failure =>
-							Effect.succeed(
-								HttpServerResponse.redirect(
-									callbackUrl(
-										{redirectUri: client.redirectUri, state: asked.state},
-										{error: failure.error ?? 'invalid_request', error_description: failure.message}
+			limited(
+				'authorize',
+				20
+			)(
+				oauth(
+					Effect.gen(function* () {
+						const request = yield* HttpServerRequest.HttpServerRequest
+						// Until the client and its callback check out, an error stays on this page: RFC 9700 §4.11 forbids redirecting it.
+						const asked = yield* pipe(
+							HttpServerRequest.schemaSearchParams(AuthorizeClient),
+							rejected('The authorization request names no client_id')
+						)
+						const client = yield* tokens.client(asked)
+						return yield* pipe(
+							HttpServerRequest.schemaSearchParams(AuthorizeParams),
+							rejected('Invalid authorization request'),
+							Effect.flatMap(params => clientRequest(asked, client, params)),
+							Effect.flatMap(checked => signIns.start({_tag: 'Client', request: checked}, originOf(request))),
+							Effect.map(waitingAt),
+							Effect.catchIf(Schema.is(AuthError), failure =>
+								Effect.succeed(
+									HttpServerResponse.redirect(
+										callbackUrl(
+											{redirectUri: client.redirectUri, state: asked.state},
+											{error: failure.error ?? 'invalid_request', error_description: failure.message}
+										)
 									)
 								)
 							)
 						)
-					)
-				})
+					})
+				)
 			)
 		)
 		yield* router.add(
 			'POST',
 			'/api/auth/oauth2/token',
-			oauth(
-				Effect.gen(function* () {
-					const grant = yield* pipe(HttpServerRequest.schemaBodyUrlParams(TokenGrant), rejected('Send a grant_type'))
-					if (grant.grant_type !== 'authorization_code' && grant.grant_type !== 'refresh_token') {
-						return yield* AuthError.make({
-							error: 'unsupported_grant_type',
-							message: 'Use grant_type authorization_code or refresh_token'
-						})
-					}
-					return Match.valueTags(
-						yield* tokens.exchange(
-							yield* pipe(HttpServerRequest.schemaBodyUrlParams(TokenParams), rejected('Invalid token request')),
-							clientAddress(yield* HttpServerRequest.HttpServerRequest),
-							people.allowed
-						),
-						{
-							Granted: granted => HttpServerResponse.jsonUnsafe(granted.tokens),
-							// A replayed grant still revoked its family, so it answers instead of failing.
-							Replayed: replayed =>
-								HttpServerResponse.jsonUnsafe(
-									{error: 'invalid_grant', error_description: replayed.message},
-									{status: 400}
-								)
+			limited(
+				'token',
+				60
+			)(
+				oauth(
+					Effect.gen(function* () {
+						const grant = yield* pipe(HttpServerRequest.schemaBodyUrlParams(TokenGrant), rejected('Send a grant_type'))
+						if (grant.grant_type !== 'authorization_code' && grant.grant_type !== 'refresh_token') {
+							return yield* AuthError.make({
+								error: 'unsupported_grant_type',
+								message: 'Use grant_type authorization_code or refresh_token'
+							})
 						}
-					)
-				})
+						return Match.valueTags(
+							yield* tokens.exchange(
+								yield* pipe(HttpServerRequest.schemaBodyUrlParams(TokenParams), rejected('Invalid token request')),
+								originOf(yield* HttpServerRequest.HttpServerRequest),
+								people.allowed
+							),
+							{
+								Granted: granted => HttpServerResponse.jsonUnsafe(granted.tokens),
+								// A replayed grant still revoked its family, so it answers instead of failing.
+								Replayed: replayed =>
+									HttpServerResponse.jsonUnsafe(
+										{error: 'invalid_grant', error_description: replayed.message},
+										{status: 400}
+									)
+							}
+						)
+					})
+				)
 			)
 		)
 		yield* router.add(
@@ -273,18 +343,23 @@ export const HttpHandlers = HttpRouter.use(router =>
 		yield* router.add(
 			'GET',
 			'/auth/github',
-			oauth(
-				Effect.gen(function* () {
-					const started = yield* github.start(
-						yield* pipe(HttpServerRequest.schemaSearchParams(SignInParams), rejected('Invalid sign-in request'))
-					)
-					return HttpServerResponse.setCookieUnsafe(
-						HttpServerResponse.redirect(started.url),
-						LOGIN_COOKIE,
-						started.state,
-						{...COOKIE, maxAge: '10 minutes'}
-					)
-				})
+			limited(
+				'github',
+				10
+			)(
+				oauth(
+					Effect.gen(function* () {
+						const started = yield* github.start(
+							yield* pipe(HttpServerRequest.schemaSearchParams(SignInParams), rejected('Invalid sign-in request'))
+						)
+						return HttpServerResponse.setCookieUnsafe(
+							HttpServerResponse.redirect(started.url),
+							LOGIN_COOKIE,
+							started.state,
+							{...COOKIE, maxAge: '10 minutes'}
+						)
+					})
+				)
 			)
 		)
 		yield* router.add(
@@ -299,15 +374,16 @@ export const HttpHandlers = HttpRouter.use(router =>
 					if ((yield* HttpServerRequest.HttpServerRequest).cookies[LOGIN_COOKIE] !== params.state) {
 						return yield* AuthError.make({message: 'The sign-in state does not match'})
 					}
+					const request = yield* HttpServerRequest.HttpServerRequest
 					const finished = yield* github.finish(params.code, params.state)
 					return yield* pipe(
 						people.register(finished.profile),
-						Effect.flatMap(user => tokens.startSession(user, Option.none())),
-						Effect.map(token =>
+						Effect.flatMap(user => tokens.startSession(user, originOf(request), 'GitHub')),
+						Effect.map(started =>
 							pipe(
 								HttpServerResponse.redirect(returnTo(finished.flow)),
 								HttpServerResponse.expireCookieUnsafe(LOGIN_COOKIE, COOKIE),
-								HttpServerResponse.setCookieUnsafe(SESSION_COOKIE, token, SESSION)
+								HttpServerResponse.setCookieUnsafe(SESSION_COOKIE, started.token, session(started.seconds))
 							)
 						),
 						Effect.catch(cause => githubFailed(cause, Option.some(finished.flow)))
@@ -328,26 +404,31 @@ export const HttpHandlers = HttpRouter.use(router =>
 		yield* router.add(
 			'GET',
 			'/auth/code',
-			oauth(
-				Effect.gen(function* () {
-					const next = (yield* pipe(
-						HttpServerRequest.schemaSearchParams(BrowserParams),
-						rejected('Invalid sign-in request')
-					)).next
-					return waitingAt(
-						yield* signIns.start(
-							{
-								_tag: 'Browser',
-								...pipe(
-									Option.fromUndefinedOr(next),
-									Option.filter(page => returnable(page, AUTH_URL)),
-									Option.match({onNone: () => ({}), onSome: page => ({next: page})})
-								)
-							},
-							clientAddress(yield* HttpServerRequest.HttpServerRequest)
+			limited(
+				'code',
+				20
+			)(
+				oauth(
+					Effect.gen(function* () {
+						const next = (yield* pipe(
+							HttpServerRequest.schemaSearchParams(BrowserParams),
+							rejected('Invalid sign-in request')
+						)).next
+						return waitingAt(
+							yield* signIns.start(
+								{
+									_tag: 'Browser',
+									...pipe(
+										Option.fromUndefinedOr(next),
+										Option.filter(page => returnable(page, AUTH_URL)),
+										Option.match({onNone: () => ({}), onSome: page => ({next: page})})
+									)
+								},
+								originOf(yield* HttpServerRequest.HttpServerRequest)
+							)
 						)
-					)
-				})
+					})
+				)
 			)
 		)
 		// Delivers an answered sign-in to the browser or command holding its cookie; a command repeats it on 408 until it is answered.
@@ -367,7 +448,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 							pipe(
 								HttpServerResponse.redirect(found.next ?? '/'),
 								HttpServerResponse.expireCookieUnsafe(cookie, COOKIE),
-								HttpServerResponse.setCookieUnsafe(SESSION_COOKIE, found.token, SESSION)
+								HttpServerResponse.setCookieUnsafe(SESSION_COOKIE, found.token, session(found.seconds))
 							),
 						Waiting: () =>
 							HttpServerResponse.text('Waiting for approval; repeat this request', {
@@ -433,27 +514,30 @@ export const HttpHandlers = HttpRouter.use(router =>
 				Effect.map(HttpServerResponse.setHeader('cache-control', 'no-store'))
 			)
 		)
+		// A provider Auth registered with answers at its server's own callback; one using Auth's metadata document at the shared one.
+		const callback = Effect.fnUntraced(
+			function* (route: Option.Option<string>) {
+				const request = yield* HttpServerRequest.HttpServerRequest
+				const user = yield* auth.user(request.headers)
+				const params = yield* HttpServerRequest.schemaSearchParams(Callback)
+				if (request.cookies[`__Host-mcp-${params.state}`] !== params.state) {
+					return yield* AuthError.make({message: 'The connection belongs to another browser'})
+				}
+				yield* connections.complete(params, route, user)
+				return HttpServerResponse.expireCookieUnsafe(
+					HttpServerResponse.redirect('/mcp-servers'),
+					`__Host-mcp-${params.state}`,
+					COOKIE
+				)
+			},
+			Effect.orElseSucceed(() => HttpServerResponse.redirect('/mcp-servers')),
+			Effect.map(HttpServerResponse.setHeader('cache-control', 'no-store'))
+		)
+		yield* router.add('GET', '/auth/mcp/callback', callback(Option.none()))
 		yield* router.add(
 			'GET',
-			'/auth/mcp/callback',
-			pipe(
-				Effect.gen(function* () {
-					const request = yield* HttpServerRequest.HttpServerRequest
-					const user = yield* auth.user(request.headers)
-					const params = yield* HttpServerRequest.schemaSearchParams(Callback)
-					if (request.cookies[`__Host-mcp-${params.state}`] !== params.state) {
-						return yield* AuthError.make({message: 'The connection belongs to another browser'})
-					}
-					yield* connections.complete(params, user)
-					return HttpServerResponse.expireCookieUnsafe(
-						HttpServerResponse.redirect('/mcp-servers'),
-						`__Host-mcp-${params.state}`,
-						COOKIE
-					)
-				}),
-				Effect.orElseSucceed(() => HttpServerResponse.redirect('/mcp-servers')),
-				Effect.map(HttpServerResponse.setHeader('cache-control', 'no-store'))
-			)
+			'/auth/mcp/callback/:id',
+			Effect.flatMap(HttpRouter.params, params => callback(Option.fromUndefinedOr(params['id'])))
 		)
 	})
 )

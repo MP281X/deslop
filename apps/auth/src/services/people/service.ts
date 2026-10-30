@@ -1,4 +1,3 @@
-import type {Stream} from 'effect'
 import {
 	Array,
 	Boolean,
@@ -10,11 +9,11 @@ import {
 	Number,
 	Option,
 	Order,
-	Ref,
 	Schema,
-	Semaphore,
+	Stream,
 	String,
 	Struct,
+	SubscriptionRef,
 	pipe
 } from 'effect'
 
@@ -25,7 +24,6 @@ import type {User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 
-import {Changes} from '#services/changes/service.ts'
 import {GitHub} from '#services/github/service.ts'
 import type {AdmitParams, GitHubUser, MemberRow, Role} from '#services/people/schema.ts'
 import {Account, Members, Person} from '#services/people/schema.ts'
@@ -65,23 +63,18 @@ export class People extends Context.Service<
 	static readonly layer = Layer.effectContext(
 		Effect.gen(function* () {
 			const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Members)
-			const state = yield* Ref.make<Members>(Option.getOrElse(yield* store.get('members'), () => []))
-			const writes = yield* Semaphore.make(1)
-			const changes = yield* Changes
+			const state = yield* SubscriptionRef.make<Members>(Option.getOrElse(yield* store.get('members'), () => []))
 			const tokens = yield* Tokens
 			const github = yield* GitHub
 			const admins = yield* Config.Array(Schema.String, 'GITHUB_ADMINS')
-			const transact = Effect.fnUntraced(
-				function* <A, E>(change: (current: Members) => Effect.Effect<readonly [A, Members], E>) {
-					const [result, next] = yield* change(yield* Ref.get(state))
-					yield* store.set('members', next)
-					yield* Ref.set(state, next)
-					yield* changes.publish
-					return result
-				},
-				Effect.uninterruptible,
-				writes.withPermit
-			)
+			// Every change saves the next members before memory and the live views see them.
+			const transact = Effect.fnUntraced(function* <A, E>(
+				change: (current: Members) => Effect.Effect<readonly [A, Members], E>
+			) {
+				return yield* SubscriptionRef.modifyEffect(state, current =>
+					Effect.tap(change(current), result => store.set('members', result[1]))
+				)
+			}, Effect.uninterruptible)
 			function roleOf(id: string, row: Option.Option<MemberRow>) {
 				if (Array.contains(admins, String.replace('github:', '')(id))) return 'Admin' as const
 				if (Option.exists(row, found => found.status === 'Allowed')) return 'Member' as const
@@ -98,7 +91,7 @@ export class People extends Context.Service<
 				})
 			}
 			const allowed = Effect.fnUntraced(function* (user: User) {
-				if (roleOf(user.id, member(user.id, yield* Ref.get(state))) === 'Waiting') {
+				if (roleOf(user.id, member(user.id, yield* SubscriptionRef.get(state))) === 'Waiting') {
 					return yield* AuthError.make({
 						error: 'access_denied',
 						message: 'An admin has not allowed this GitHub account yet'
@@ -115,7 +108,7 @@ export class People extends Context.Service<
 			const list = Effect.fn('People.list')(function* (user: User) {
 				yield* admin(user)
 				const known = pipe(
-					yield* Ref.get(state),
+					yield* SubscriptionRef.get(state),
 					Array.reverse,
 					Array.sort(Order.flip(Order.mapInput(Order.Number, (row: MemberRow) => row.since))),
 					Array.map(personOf)
@@ -137,7 +130,7 @@ export class People extends Context.Service<
 				Effect.forEach(
 					admins,
 					Effect.fnUntraced(function* (id) {
-						if (Option.isSome(member(`github:${id}`, yield* Ref.get(state)))) return
+						if (Option.isSome(member(`github:${id}`, yield* SubscriptionRef.get(state)))) return
 						const profile = yield* github.profile(id)
 						const since = yield* Clock.currentTimeMillis
 						yield* transact(current => {
@@ -154,19 +147,25 @@ export class People extends Context.Service<
 			)
 
 			const people = People.of({
+				// Read again when the account's role or its sessions change, so a sign-out elsewhere or an admission shows here.
 				account: headers =>
-					changes.watch(
-						pipe(
-							Effect.gen(function* () {
-								const user = yield* tokens.session(headers)
-								return Option.match(member(user.id, yield* Ref.get(state)), {
-									onNone: () => Account.make({...user, role: roleOf(user.id, Option.none())}),
-									onSome: row => Account.make(Struct.omit(personOf(row), ['since']))
-								})
-							}),
-							rejected('Cannot read the account')
+					pipe(
+						Stream.merge(
+							Stream.map(SubscriptionRef.changes(state), () => undefined),
+							tokens.changes
 						),
-						() => Infinity
+						Stream.mapEffect(() =>
+							pipe(
+								Effect.gen(function* () {
+									const user = yield* tokens.session(headers)
+									return Option.match(member(user.id, yield* SubscriptionRef.get(state)), {
+										onNone: () => Account.make({...user, role: roleOf(user.id, Option.none())}),
+										onSome: row => Account.make(Struct.omit(personOf(row), ['since']))
+									})
+								}),
+								rejected('Cannot read the account')
+							)
+						)
 					),
 				admin,
 				// Each answer reads and changes the account in one transaction, so two answers to the same account cannot both apply.
@@ -195,7 +194,7 @@ export class People extends Context.Service<
 				}, rejected('Cannot answer the access request')),
 				allowed: Effect.fn('People.allowed')(allowed),
 				list,
-				people: user => changes.watch(list(user), () => Infinity),
+				people: user => Stream.mapEffect(SubscriptionRef.changes(state), () => list(user)),
 				// Every GitHub sign-in is recorded: an admin as allowed, anyone else as asking for access until an admin answers.
 				register: Effect.fn('People.register')(function* (profile: GitHubUser) {
 					const since = yield* Clock.currentTimeMillis
@@ -226,7 +225,7 @@ export class People extends Context.Service<
 					if (roleOf(id, Option.none()) === 'Admin') {
 						return yield* AuthError.make({message: 'Admins come from GITHUB_ADMINS, so they cannot be removed here'})
 					}
-					const found = personOf(yield* Effect.fromOption(member(id, yield* Ref.get(state))))
+					const found = personOf(yield* Effect.fromOption(member(id, yield* SubscriptionRef.get(state))))
 					// Access ends first, so no token or sign-in can be issued to the account between the two steps.
 					yield* transact(current => Effect.succeed([undefined, Array.filter(current, row => row.id !== id)] as const))
 					yield* tokens.forget(id)

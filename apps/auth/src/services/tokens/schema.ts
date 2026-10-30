@@ -5,17 +5,20 @@ import {Resource, User} from '@deslop/runtime/auth/schema'
 export type Registration = typeof Registration.Type
 export const Registration = Schema.Struct({
 	client_name: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(100))),
-	// Anyone can register, and every client stays in the saved state, so a registration stays small.
 	redirect_uris: Schema.NonEmptyArray(Schema.NonEmptyString.check(Schema.isMaxLength(200))).check(
 		Schema.isMaxLength(4)
 	),
 	token_endpoint_auth_method: Schema.optionalKey(Schema.Literal('none'))
 })
 
+// A registered client is its own id: the name and callbacks it registered, so registration stores nothing.
+export type ClientInfo = typeof ClientInfo.Type
+export const ClientInfo = Schema.Struct({name: Schema.String, redirects: Registration.fields.redirect_uris})
+
 // What an authorization request must carry before the server may send any answer to its callback.
 export type AuthorizeClient = typeof AuthorizeClient.Type
 export const AuthorizeClient = Schema.Struct({
-	client_id: Schema.NonEmptyString,
+	client_id: Schema.NonEmptyString.check(Schema.isMaxLength(2048)),
 	redirect_uri: Schema.optionalKey(Schema.String),
 	state: Schema.optionalKey(Schema.String)
 })
@@ -79,47 +82,50 @@ export const TokenResponse = Schema.Struct({
 export type Exchange = typeof Exchange.Type
 export const Exchange = Schema.TaggedUnion({Granted: {tokens: TokenResponse}, Replayed: {message: Schema.String}})
 
-export type Stored = typeof Stored.Type
-export const Stored = Schema.TaggedUnion({
-	Access: {family: Schema.NonEmptyString, resources: Schema.Array(Resource), user: User},
-	Client: {name: Schema.optionalKey(Schema.String), redirects: Schema.NonEmptyArray(Schema.NonEmptyString)},
-	Code: {
-		challenge: Schema.NonEmptyString,
-		clientId: Schema.NonEmptyString,
-		clientName: Schema.String,
-		redirectUri: Schema.NonEmptyString,
-		resources: Schema.Array(Resource),
-		state: Schema.optionalKey(Schema.NonEmptyString),
-		user: User
-	},
-	// A sign-in keeps the name its client registered, so pruning idle registrations never renames it; the previous release saved none.
-	Refresh: {
-		address: Schema.optionalKey(Schema.String),
-		clientId: Schema.NonEmptyString,
-		clientName: Schema.optionalKey(Schema.String),
-		family: Schema.NonEmptyString,
-		resources: Schema.Array(Resource),
-		user: User
-	},
-	// A browser signed in with a code is listed among the signed-in apps by its family, so it can be signed out from elsewhere.
-	Session: {address: Schema.optionalKey(Schema.String), family: Schema.optionalKey(Schema.NonEmptyString), user: User},
-	// A redeemed code stays until it would have expired, so a second redemption revokes the tokens the first one got.
-	UsedCode: {clientId: Schema.NonEmptyString, family: Schema.NonEmptyString},
-	UsedRefresh: {clientId: Schema.NonEmptyString, family: Schema.NonEmptyString}
+// Where a request came from, as Traefik and the client report it; it names a sign-in, it never proves one.
+export type Origin = typeof Origin.Type
+export const Origin = Schema.Struct({
+	address: Schema.optionalKey(Schema.String),
+	userAgent: Schema.optionalKey(Schema.String)
 })
 
-export type TokenEntry = typeof TokenEntry.Type
-export const TokenEntry = Schema.Struct({expiresAt: Schema.Finite, payload: Stored})
+// A secret is stored only as its SHA-256.
+export type Access = typeof Access.Type
+export const Access = Schema.Struct({expiresAt: Schema.Finite, hash: Schema.String, resources: Schema.Array(Resource)})
 
-// Keyed by the SHA-256 of each token, so the saved state holds no usable credential.
-export type TokenState = typeof TokenState.Type
-export const TokenState = Schema.Record(Schema.String, TokenEntry)
+// One signed-in app or browser, keyed by its family: what the signed-in list shows and what signing it out removes.
+export type Grant = typeof Grant.Type
+export const Grant = Schema.Struct({
+	client: Schema.String,
+	createdAt: Schema.Finite,
+	credential: Schema.TaggedUnion({
+		// A refresh token names its generation, so presenting an earlier one is a replay that ends the family.
+		App: {
+			access: Schema.Array(Access),
+			clientId: Schema.NonEmptyString,
+			expiresAt: Schema.Finite,
+			generation: Schema.Int,
+			hash: Schema.String,
+			resources: Schema.Array(Resource)
+		},
+		Browser: {expiresAt: Schema.Finite, hash: Schema.String}
+	}),
+	device: Schema.String,
+	lastActive: Schema.Finite,
+	origin: Origin,
+	user: User
+})
 
-// One app or agent the account signed in to: its refresh-token family, and when it last refreshed.
+export type Grants = typeof Grants.Type
+export const Grants = Schema.Record(Schema.String, Grant)
+
 export type SignedInApp = typeof SignedInApp.Type
 export const SignedInApp = Schema.Struct({
-	clientName: Schema.String,
+	address: Schema.optionalKey(Schema.String),
+	client: Schema.String,
+	device: Schema.String,
 	family: Schema.NonEmptyString,
+	kind: Schema.Literals(['App', 'Browser']),
 	lastActive: Schema.Finite,
 	resources: Schema.Array(Resource)
 })
@@ -132,10 +138,3 @@ export const RevokeParams = Schema.Struct({client_id: Schema.NonEmptyString, tok
 
 export type VerificationParams = typeof VerificationParams.Type
 export const VerificationParams = Schema.Struct({resource: Resource})
-
-// The previous release kept members and tokens in one value, with sign-ins in progress among the tokens.
-export type LegacyState = typeof LegacyState.Type
-export const LegacyState = Schema.Struct({
-	members: Schema.Array(Schema.Unknown),
-	tokens: Schema.Record(Schema.String, Schema.Unknown)
-})

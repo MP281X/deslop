@@ -2,7 +2,7 @@ import {Schema} from 'effect'
 
 import {Tool, Toolkit} from 'effect/ai'
 
-import {Booking, BookingId, BookingsError} from '#services/bookings/schema.ts'
+import {Booking, BookingsError} from '#services/bookings/schema.ts'
 
 export const Tools = Toolkit.make(
 	Tool.make('list_bookings', {
@@ -16,10 +16,5 @@ export const Tools = Toolkit.make(
 		failure: BookingsError,
 		parameters: Schema.Struct({text: Schema.NonEmptyString}),
 		success: Schema.Struct({bookings: Schema.Array(Booking)})
-	}).annotate(Tool.Destructive, false),
-	Tool.make('delete_booking', {
-		description: 'Delete a booking, such as a duplicate or one read wrongly.',
-		failure: BookingsError,
-		parameters: Schema.Struct({id: BookingId})
-	})
+	}).annotate(Tool.Destructive, false)
 )

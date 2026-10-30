@@ -1,4 +1,4 @@
-import {Array, Boolean, Option, Predicate, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Match, Option, Predicate, Schema, String, Struct, pipe} from 'effect'
 
 import {HttpClientError} from 'effect/http'
 
@@ -6,29 +6,35 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 
 import type {Connection, ConnectionInfo} from '#services/connections/schema.ts'
 
+// A provider token without a refresh token cannot be renewed once it expires.
+export function connectionStatus(connection: Connection, now: number) {
+	return Match.valueTags(connection.link, {
+		Authorized: link =>
+			Boolean.match(link.expiresAt <= now && link.token.refresh_token === undefined, {
+				onFalse: () => 'Connected' as const,
+				onTrue: () => 'Expired' as const
+			}),
+		Connected: () => 'Connected' as const,
+		Disconnected: () => 'Not connected' as const
+	})
+}
+
 export function connectionInfo(connection: Connection, now: number) {
-	const expired =
-		connection.mode === 'oauth' &&
-		connection.token !== undefined &&
-		connection.expiresAt <= now &&
-		connection.token.refresh_token === undefined
-	const connected = connection.enabled && !expired && (connection.mode !== 'oauth' || connection.token !== undefined)
 	return {
-		connected,
 		...Option.match(Option.fromUndefinedOr(connection.error), {onNone: () => ({}), onSome: error => ({error})}),
-		id: connection.id,
-		name: connection.name,
-		status: Boolean.match(connected, {
-			onFalse: () =>
-				Boolean.match(expired, {onFalse: () => 'Not connected' as const, onTrue: () => 'Expired' as const}),
-			onTrue: () => 'Connected' as const
-		}),
-		...Option.match(
-			Option.filter(Option.fromUndefinedOr(connection.tools), () => connected),
-			{onNone: () => ({}), onSome: tools => ({tools})}
-		),
-		url: connection.url
+		...Struct.pick(connection, ['hidden', 'id', 'name', 'tools', 'url']),
+		status: connectionStatus(connection, now)
 	} satisfies ConnectionInfo
+}
+
+// A server's line in the gateway's instructions: the first sentence of its own, short.
+export function summary(connection: Connection) {
+	return pipe(
+		Option.fromUndefinedOr(connection.instructions),
+		Option.flatMap(text => Option.fromUndefinedOr(String.split(text, /(?<=\.)\s/u)[0])),
+		Option.map(String.slice(0, 160)),
+		Option.getOrElse(() => connection.name)
+	)
 }
 
 // Why a provider step failed, in the words the MCP page and tool results show: the innermost cause that names it.

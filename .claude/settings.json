@@ -2,6 +2,7 @@
 	"disableBundledSkills": true,
 	"syncClaudeAiSkills": false,
 	"syncClaudeAiPlugins": false,
+	"disableClaudeAiConnectors": true,
 	"allowedMcpServers": [{"serverUrl": "http://127.0.0.1:*/mcp"}, {"serverUrl": "https://auth.mp281x.xyz/mcp"}],
 	"enabledPlugins": {
 		"plugin-authoring@builtin": false,

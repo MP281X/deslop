@@ -1,5 +1,4 @@
 import {
-	Array,
 	Clock,
 	Context,
 	Effect,
@@ -8,13 +7,12 @@ import {
 	Layer,
 	Match,
 	Option,
-	Ref,
 	Schema,
 	Scope,
 	Semaphore,
 	Stream,
-	String,
 	Struct,
+	SubscriptionRef,
 	pipe
 } from 'effect'
 
@@ -23,16 +21,16 @@ import {Digest, SecureRandom} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import {Cookies} from 'effect/http'
 import type {Headers} from 'effect/http'
-import ipaddr from 'ipaddr.js'
 
 import {AuthError, User} from '@deslop/runtime/auth/schema'
+import {AUTH_URL} from '@deslop/runtime/auth/utils'
 
-import {Changes} from '#services/changes/service.ts'
 import {People} from '#services/people/service.ts'
 import {CODE_LENGTH, codeFrom, typedCode} from '#services/sign-ins/lib/utils.ts'
 import type {AnswerParams, Delivery} from '#services/sign-ins/schema.ts'
-import {AuthorizationStatus, Collected, PendingAuthorization} from '#services/sign-ins/schema.ts'
-import {callbackUrl} from '#services/tokens/lib/utils.ts'
+import {AuthorizationStatus, Collected, PendingAuthorization, SignInInput} from '#services/sign-ins/schema.ts'
+import {addressGroup, browserLabel, callbackUrl, deviceLabel} from '#services/tokens/lib/utils.ts'
+import type {Origin} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
 export const REQUEST_COOKIE = '__Host-request-'
@@ -44,45 +42,101 @@ function rejected(message: string) {
 	})
 }
 
-// Whoever holds an IPv6 address holds its whole /64, so the limit on waiting sign-ins counts the /64.
-function addressGroup(address: string) {
-	if (!ipaddr.isValid(address)) return address
-	const parsed = ipaddr.process(address)
-	if (parsed.kind() === 'ipv4') return parsed.toString()
-	return Array.join(Array.take(String.split(parsed.toNormalizedString(), ':'), 4), ':')
-}
-
 const expired = AuthError.make({message: 'This sign-in expired. Start it again in the app.'})
 const notWaiting = AuthError.make({
 	message:
 		'No waiting sign-in has this code: it is mistyped, already answered or expired after 10 minutes. Read the code again from the page or command that is still waiting; start a new sign-in only if none is.'
 })
 
+// The answer, delivered: an app's code at its callback, or a session for the waiting browser; a removed approver delivers a denial.
+const deliver = Effect.fnUntraced(function* (input: {delivery: Delivery; origin: Origin; user?: User}) {
+	const tokens = yield* Tokens
+	const people = yield* People
+	const approver = yield* Effect.option(
+		Effect.flatMap(Effect.fromOption(Option.fromUndefinedOr(input.user)), people.allowed)
+	)
+	return yield* Match.valueTags(input.delivery, {
+		Browser: browser =>
+			Option.match(approver, {
+				onNone: () => Effect.succeed(Collected.cases.Redirect.make({url: '/'})),
+				onSome: user =>
+					Effect.map(tokens.startSession(user, input.origin, 'Code'), started =>
+						Collected.cases.Session.make({...started, ...Struct.pick(browser, ['next'])})
+					)
+			}),
+		Client: client =>
+			Option.match(approver, {
+				onNone: () =>
+					Effect.succeed(Collected.cases.Redirect.make({url: callbackUrl(client.request, {error: 'access_denied'})})),
+				onSome: user =>
+					Effect.map(tokens.issue(client.request, user), code =>
+						Collected.cases.Redirect.make({url: callbackUrl(client.request, {code})})
+					)
+			})
+	})
+})
+
 const SignInStates = Machine.state({
 	states: {
-		Collected: {type: 'final'},
+		Delivered: {fields: {collected: Collected}, type: 'final'},
 		Expired: {type: 'final'},
-		Open: {states: {Approved: {fields: {user: User}}, Denied: {}, Waiting: {}}}
+		Open: {
+			fields: SignInInput.fields,
+			states: {
+				Approved: {fields: {user: User}},
+				Delivering: {fields: {user: Schema.optionalKey(User)}},
+				Denied: {},
+				Failed: {fields: {message: Schema.String, user: Schema.optionalKey(User)}},
+				Waiting: {}
+			}
+		}
 	}
 })
 
-// A sign-in waits for one answer, which /auth/continue collects once; either way it ends ten minutes after it started.
+// A sign-in waits for one answer; /auth/continue then delivers it once, and any step ends ten minutes after the start.
 const SignIn = Machine.make({
 	branches: {answered: {approved: {target: 'Open.Approved'}, denied: {target: 'Open.Denied'}}},
-	events: Machine.events({Answered: {accept: Schema.Boolean, user: User}, Collected: {}}),
+	effects: {deliver},
+	events: Machine.events({Answered: {accept: Schema.Boolean, user: User}, Collect: {}}),
+	input: SignInInput,
 	root: SignInStates,
 	timers: {lifetime: '10 minutes'}
 }).handle({
-	initial: {target: 'Open'},
+	initial: {data: transition => transition.input, target: 'Open'},
 	states: {
-		Collected: {},
+		Delivered: {},
 		Expired: {},
 		Open: {
 			initial: {target: 'Open.Waiting'},
 			invoke: {onDone: {target: 'Expired'}, src: 'lifetime'},
 			states: {
-				Approved: {on: {Collected: {target: 'Collected'}}},
-				Denied: {on: {Collected: {target: 'Collected'}}},
+				Approved: {on: {Collect: {data: transition => ({user: transition.state.user}), target: 'Open.Delivering'}}},
+				Delivering: {
+					invoke: {
+						input: transition => ({
+							...Struct.pick(transition.ancestors.Open, ['delivery', 'origin']),
+							...Struct.pick(transition.state, ['user'])
+						}),
+						onDone: {data: transition => ({collected: transition.output}), target: 'Delivered'},
+						onFailure: {
+							data: transition => ({...Struct.pick(transition.state, ['user']), message: transition.error.message}),
+							target: 'Open.Failed'
+						},
+						src: 'deliver'
+					}
+				},
+				Denied: {on: {Collect: {data: () => ({}), target: 'Open.Delivering'}}},
+				Failed: {
+					on: {
+						Collect: {
+							data: transition => {
+								if (transition.state.user === undefined) return {}
+								return {user: transition.state.user}
+							},
+							target: 'Open.Delivering'
+						}
+					}
+				},
 				Waiting: {
 					on: {
 						Answered: {
@@ -99,28 +153,25 @@ const SignIn = Machine.make({
 	}
 })
 
-function run() {
-	return Machine.start(SignIn)
+function run(input: SignInInput) {
+	return Machine.start(SignIn, input)
 }
 
-// A started sign-in: what it asks for, how its answer is delivered, the browser it is bound to, and its process.
-type Open = {
-	delivery: Delivery
-	pending: PendingAuthorization
-	receiver: string
-	ref: Effect.Success<ReturnType<typeof run>>
-}
+// A started sign-in: what the approver sees, the browser or command it is bound to, and its process.
+type Open = {pending: PendingAuthorization; receiver: string; ref: Effect.Success<ReturnType<typeof run>>}
 
 export class SignIns extends Context.Service<
 	SignIns,
 	{
-		readonly answer: (params: AnswerParams, user: User) => Effect.Effect<{clientName: string}, AuthError>
+		// A browser sign-in is approved only from a signed-in browser, never with a token an agent holds.
+		readonly answer: (
+			params: AnswerParams,
+			user: User,
+			via: 'Session' | 'Token'
+		) => Effect.Effect<{clientName: string}, AuthError>
 		readonly collect: (code: string, headers: Headers.Headers) => Effect.Effect<Collected, AuthError>
-		readonly lookup: (code: string) => Stream.Stream<Option.Option<PendingAuthorization>, AuthError>
-		readonly start: (
-			delivery: Delivery,
-			address: Option.Option<string>
-		) => Effect.Effect<{code: string; receiver: string}, AuthError>
+		readonly lookup: (code: string) => Stream.Stream<Option.Option<PendingAuthorization>>
+		readonly start: (delivery: Delivery, origin: Origin) => Effect.Effect<{code: string; receiver: string}, AuthError>
 		readonly status: (code: string, headers: Headers.Headers) => Stream.Stream<AuthorizationStatus, AuthError>
 	}
 >()('@deslop/auth/services/sign-ins/service/SignIns') {
@@ -130,177 +181,175 @@ export class SignIns extends Context.Service<
 		Effect.gen(function* () {
 			const tokens = yield* Tokens
 			const people = yield* People
-			const changes = yield* Changes
 			const random = yield* SecureRandom.SecureRandom
 			const digest = yield* Digest.Digest
 			const scope = yield* Effect.scope
-			const open = yield* Ref.make(HashMap.empty<string, Open>())
-			// Answers and collections are decided one at a time, so a sign-in takes one answer and delivers it once.
-			const decisions = yield* Semaphore.make(1)
+			const open = yield* SubscriptionRef.make(HashMap.empty<string, Open>())
+			const answering = yield* Semaphore.make(1)
 			const hash = Effect.fnUntraced(function* (value: string) {
 				return Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(value)))
 			})
 			function find(code: string) {
-				return Effect.map(Ref.get(open), HashMap.get(typedCode(code)))
+				return Effect.map(SubscriptionRef.get(open), HashMap.get(typedCode(code)))
 			}
-			const waiting = Effect.fnUntraced(function* (found: Open) {
-				return SignInStates.matches((yield* found.ref.snapshot).state, 'Open.Waiting')
-			})
+			// Each sign-in's snapshots while it is open, and None once it has ended.
+			function watch(code: string) {
+				return Stream.switchMap(SubscriptionRef.changes(open), current =>
+					Option.match(HashMap.get(current, typedCode(code)), {
+						onNone: () =>
+							Stream.succeed(Option.none<{signIn: Open; state: Effect.Success<Open['ref']['snapshot']>['state']}>()),
+						onSome: signIn => Stream.map(signIn.ref.changes, snapshot => Option.some({signIn, state: snapshot.state}))
+					})
+				)
+			}
 			// Only the browser or command that started a sign-in, holding its cookie, receives the answer.
-			const received = Effect.fnUntraced(function* (code: string, headers: Headers.Headers) {
-				const found = yield* Effect.mapError(Effect.fromOption(yield* find(code)), () => expired)
-				const token = Cookies.parseHeader(headers['cookie'] ?? '')[`${REQUEST_COOKIE}${found.pending.id}`]
+			const received = Effect.fnUntraced(function* (signIn: Open, headers: Headers.Headers) {
+				const token = Cookies.parseHeader(headers['cookie'] ?? '')[`${REQUEST_COOKIE}${signIn.pending.id}`]
 				if (token === undefined) return yield* AuthError.make({message: 'Open the sign-in link again'})
-				if ((yield* hash(token)) !== found.receiver) {
+				if ((yield* hash(token)) !== signIn.receiver) {
 					return yield* AuthError.make({message: 'The sign-in belongs to another browser'})
 				}
-				return found
-			})
-			const deliver = Effect.fnUntraced(function* (found: Open, user: Option.Option<User>) {
-				return yield* Match.valueTags(found.delivery, {
-					Browser: browser =>
-						Option.match(user, {
-							onNone: () => Effect.succeed(Collected.cases.Redirect.make({url: '/'})),
-							onSome: approver =>
-								Effect.map(
-									tokens.startSession(approver, Option.some(found.pending.address ?? 'unknown address')),
-									token => Collected.cases.Session.make({...Struct.pick(browser, ['next']), token})
-								)
-						}),
-					Client: client =>
-						Option.match(user, {
-							onNone: () =>
-								Effect.succeed(
-									Collected.cases.Redirect.make({url: callbackUrl(client.request, {error: 'access_denied'})})
-								),
-							onSome: approver =>
-								Effect.map(tokens.issue(client.request, approver), code =>
-									Collected.cases.Redirect.make({url: callbackUrl(client.request, {code})})
-								)
-						})
-				})
+				return signIn
 			})
 
 			return SignIns.of({
-				answer: Effect.fn('SignIns.answer')(function* (params: AnswerParams, user: User) {
+				answer: Effect.fn('SignIns.answer')(function* (params: AnswerParams, user: User, via: 'Session' | 'Token') {
 					yield* people.allowed(user)
-					return yield* decisions.withPermit(
+					const signIn = yield* Effect.mapError(Effect.fromOption(yield* find(params.request)), () => notWaiting)
+					if (via === 'Token' && signIn.pending.kind === 'Browser') {
+						return yield* AuthError.make({
+							message: `A browser sign-in is approved only from a signed-in browser: ask the user to approve it at ${AUTH_URL}`
+						})
+					}
+					// Answers take turns until the machine leaves Waiting, so the one that finds it waiting is the one it takes.
+					yield* Semaphore.withPermit(
+						answering,
 						Effect.gen(function* () {
-							const found = yield* Effect.mapError(Effect.fromOption(yield* find(params.request)), () => notWaiting)
-							if (!(yield* waiting(found))) return yield* notWaiting
-							yield* found.ref.send({_tag: 'Answered', accept: params.accept, user})
-							yield* changes.publish
-							return {clientName: found.pending.clientName}
+							if (!SignInStates.matches((yield* signIn.ref.snapshot).state, 'Open.Waiting')) return yield* notWaiting
+							yield* signIn.ref.send({_tag: 'Answered', accept: params.accept, user})
+							yield* Machine.waitFor(signIn.ref, snapshot => !SignInStates.matches(snapshot.state, 'Open.Waiting'))
 						})
 					)
+					return {clientName: signIn.pending.clientName}
 				}, rejected('Cannot answer the sign-in')),
 				// Waits up to 50 seconds for the answer, below the proxy's timeout; a command repeats the request until it arrives.
 				collect: Effect.fn('SignIns.collect')(function* (code: string, headers: Headers.Headers) {
-					const found = yield* received(code, headers)
+					const signIn = yield* received(
+						yield* Effect.mapError(Effect.fromOption(yield* find(code)), () => expired),
+						headers
+					)
 					const decided = yield* pipe(
-						Machine.waitFor(found.ref, snapshot => !SignInStates.matches(snapshot.state, 'Open.Waiting')),
+						Machine.waitFor(signIn.ref, snapshot => !SignInStates.matches(snapshot.state, 'Open.Waiting')),
 						Effect.timeoutOption('50 seconds'),
 						Effect.mapError(() => expired)
 					)
-					if (Option.isNone(decided)) return Collected.cases.Waiting.make({})
-					return yield* decisions.withPermit(
-						Effect.gen(function* () {
-							const state = (yield* found.ref.snapshot).state
-							const approved = SignInStates.get(state, 'Open.Approved')
-							if (Option.isNone(approved) && !SignInStates.matches(state, 'Open.Denied')) return yield* expired
-							// An approver removed since approving delivers a denial; a failed delivery leaves the answer to collect again.
-							const delivered = yield* deliver(
-								found,
-								yield* Effect.option(
-									Effect.flatMap(Effect.fromOption(Option.map(approved, value => value.user)), people.allowed)
-								)
-							)
-							yield* found.ref.send({_tag: 'Collected'})
-							return delivered
+					if (!Option.exists(decided, snapshot => SignInStates.matches(snapshot.state, 'Open'))) {
+						return yield* Option.match(decided, {
+							onNone: () => Effect.succeed(Collected.cases.Waiting.make({})),
+							onSome: () => Effect.fail(expired)
 						})
+					}
+					yield* signIn.ref.send({_tag: 'Collect'})
+					const done = yield* pipe(
+						Machine.waitFor(
+							signIn.ref,
+							snapshot =>
+								!SignInStates.matches(snapshot.state, 'Open') || SignInStates.matches(snapshot.state, 'Open.Failed')
+						),
+						Effect.mapError(() => expired)
 					)
+					return yield* Option.match(SignInStates.get(done.state, 'Delivered'), {
+						onNone: () =>
+							Option.match(SignInStates.get(done.state, 'Open.Failed'), {
+								onNone: () => Effect.fail(expired),
+								onSome: failed => Effect.fail(AuthError.make({message: failed.message}))
+							}),
+						onSome: delivered => Effect.succeed(delivered.collected)
+					})
 				}, rejected('Cannot complete the sign-in')),
 				lookup: code =>
-					changes.watch(
-						Effect.flatMap(find(code), found =>
-							Option.match(found, {
-								onNone: () => Effect.succeedNone,
-								onSome: signIn =>
-									Effect.map(waiting(signIn), isWaiting => Option.liftPredicate(signIn.pending, () => isWaiting))
-							})
-						),
-						found => Option.match(found, {onNone: () => Infinity, onSome: request => request.expiresAt})
+					Stream.map(watch(code), found =>
+						Option.flatMap(found, current =>
+							Option.liftPredicate(current.signIn.pending, () => SignInStates.matches(current.state, 'Open.Waiting'))
+						)
 					),
-				start: Effect.fn('SignIns.start')(function* (delivery: Delivery, address: Option.Option<string>) {
+				start: Effect.fn('SignIns.start')(function* (delivery: Delivery, origin: Origin) {
 					const code = codeFrom(yield* random.randomBytes(CODE_LENGTH))
-					const current = yield* Ref.get(open)
-					// Anyone can start a sign-in, so one address keeps at most 20 waiting and everyone 1000; one in about 10^10 draws repeats a live code, and its app starts again.
-					if (
-						HashMap.size(current) >= 1000 ||
-						HashMap.size(
-							HashMap.filter(current, found =>
-								Option.exists(address, value => addressGroup(value) === addressGroup(found.pending.address ?? ''))
-							)
-						) >= 20 ||
-						HashMap.has(current, code)
-					) {
-						return yield* AuthError.make({error: 'temporarily_unavailable', message: 'Start the sign-in again'})
-					}
 					const now = yield* Clock.currentTimeMillis
 					const receiver = Base64Url.encode(yield* random.randomBytes(32))
 					const owned = yield* Scope.fork(scope)
-					const ref = yield* Scope.provide(run(), owned)
-					yield* Ref.update(
-						open,
-						HashMap.set(code, {
-							delivery,
-							pending: PendingAuthorization.make({
-								...Option.match(address, {onNone: () => ({}), onSome: value => ({address: value})}),
-								...Match.valueTags(delivery, {
-									Browser: () => ({clientName: 'Browser', kind: 'Browser' as const, resources: []}),
-									Client: client => ({
-										clientName: client.request.clientName,
-										kind: 'App' as const,
-										resources: client.request.resources
-									})
-								}),
-								createdAt: now,
-								// The machine's lifetime timer.
-								expiresAt: now + 10 * 60_000,
-								id: code
-							}),
-							receiver: yield* hash(receiver),
-							ref
-						})
+					const ref = yield* pipe(
+						run({delivery, origin}),
+						Effect.provideService(Tokens, tokens),
+						Effect.provideService(People, people),
+						Scope.provide(owned)
 					)
+					const signIn = {
+						pending: PendingAuthorization.make({
+							...Option.match(Option.fromUndefinedOr(origin.address), {
+								onNone: () => ({}),
+								onSome: address => ({address})
+							}),
+							...Match.valueTags(delivery, {
+								Browser: () => ({
+									clientName: browserLabel(origin),
+									device: deviceLabel(origin, Option.none()),
+									kind: 'Browser' as const,
+									resources: []
+								}),
+								Client: client => ({
+									clientName: client.request.clientName,
+									device: deviceLabel(origin, Option.some(client.request.redirectUri)),
+									kind: 'App' as const,
+									resources: client.request.resources
+								})
+							}),
+							createdAt: now,
+							// The machine's lifetime timer.
+							expiresAt: now + 10 * 60_000,
+							id: code
+						}),
+						receiver: yield* hash(receiver),
+						ref
+					}
+					// Anyone can start a sign-in, so one address (an IPv6 /64) keeps at most 20 waiting and everyone 1000; checked and taken in one step.
+					const admitted = yield* SubscriptionRef.modify(open, current => {
+						// Sign-ins without a known address share one group.
+						const group = addressGroup(origin.address ?? 'unknown')
+						const fromGroup = HashMap.size(
+							HashMap.filter(current, other => addressGroup(other.pending.address ?? 'unknown') === group)
+						)
+						if (HashMap.size(current) >= 1000 || fromGroup >= 20 || HashMap.has(current, code)) return [false, current]
+						return [true, HashMap.set(current, code, signIn)]
+					})
+					if (!admitted) {
+						yield* Scope.close(owned, Exit.void)
+						return yield* AuthError.make({error: 'temporarily_unavailable', message: 'Start the sign-in again'})
+					}
 					yield* pipe(
 						ref.join,
 						Effect.ignore({log: 'Warn', message: 'A sign-in stopped before it ended'}),
-						Effect.andThen(Ref.update(open, HashMap.remove(code))),
-						Effect.andThen(changes.publish),
+						Effect.andThen(SubscriptionRef.update(open, HashMap.remove(code))),
 						Effect.ensuring(Scope.close(owned, Exit.void)),
 						Effect.forkIn(scope)
 					)
-					yield* changes.publish
 					return {code, receiver}
 				}, rejected('Cannot start the sign-in')),
 				status: (code, headers) =>
 					pipe(
-						changes.watch(
-							Effect.gen(function* () {
-								if (Option.isNone(yield* find(code))) return AuthorizationStatus.cases.Expired.make({})
-								const found = yield* received(code, headers)
-								const state = (yield* found.ref.snapshot).state
-								if (SignInStates.matches(state, 'Open.Waiting')) {
-									return AuthorizationStatus.cases.Waiting.make({request: found.pending})
-								}
-								if (SignInStates.matches(state, 'Open')) return AuthorizationStatus.cases.Decided.make({})
-								return AuthorizationStatus.cases.Expired.make({})
-							}),
-							status => {
-								if (status._tag === 'Waiting') return status.request.expiresAt
-								return Infinity
-							}
+						watch(code),
+						Stream.mapEffect(found =>
+							Option.match(found, {
+								onNone: () => Effect.succeed(AuthorizationStatus.cases.Expired.make({})),
+								onSome: current =>
+									Effect.map(received(current.signIn, headers), signIn => {
+										if (SignInStates.matches(current.state, 'Open.Waiting')) {
+											return AuthorizationStatus.cases.Waiting.make({request: signIn.pending})
+										}
+										if (SignInStates.matches(current.state, 'Open')) return AuthorizationStatus.cases.Decided.make({})
+										return AuthorizationStatus.cases.Expired.make({})
+									})
+							})
 						),
 						Stream.takeUntil(status => status._tag !== 'Waiting')
 					)
