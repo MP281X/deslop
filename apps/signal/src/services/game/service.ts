@@ -125,6 +125,7 @@ export class Game extends Context.Service<
 					})
 				}
 				for (const entry of recorded.applied) target.apply(entry.team, Array.filter(entry.commands, Schema.is(Command)))
+				target.marks()
 				for (const team of recorded.observed ?? []) target.observe(team)
 			})
 			const advanceRecorded = Effect.fnUntraced(function* (
@@ -592,16 +593,25 @@ export class Game extends Context.Service<
 							Effect.sync(() => sim.connect()),
 							connection => Effect.sync(() => sim.disconnect(connection))
 						)
+						const sent = MutableRef.make(Option.none<string>())
 						return pipe(
 							Stream.tick(`${1000 / FRAME_HZ} millis`),
 							Stream.mapEffect(() =>
-								Effect.map(Clock.currentTimeMillis, now =>
-									Option.map(sim.frame(id, now), frame => ({
-										...frame,
-										paused: !running || Option.isSome(MutableRef.get(fault)),
-										problem: Option.getOrUndefined(Option.map(MutableRef.get(fault), error => error.message))
-									}))
-								)
+								Effect.suspend(() => {
+									const version = `${sim.tick()}:${Option.getOrElse(
+										Option.map(MutableRef.get(fault), error => error.message),
+										() => ''
+									)}`
+									if (Option.contains(MutableRef.get(sent), version)) return Effect.succeedNone
+									MutableRef.set(sent, Option.some(version))
+									return Effect.map(Clock.currentTimeMillis, now =>
+										Option.map(sim.frame(id, now), frame => ({
+											...frame,
+											paused: !running || Option.isSome(MutableRef.get(fault)),
+											problem: Option.getOrUndefined(Option.map(MutableRef.get(fault), error => error.message))
+										}))
+									)
+								})
 							),
 							Stream.flatMap(frame => Stream.fromIterable(Option.toArray(frame)))
 						)
@@ -611,7 +621,11 @@ export class Game extends Context.Service<
 					Stream.unwrap(
 						Effect.gen(function* () {
 							const replay = yield* replayFrom(Number.min(from, sim.tick()))
-							const id = replay.sim.connect()
+							const id = yield* Effect.acquireRelease(
+								Effect.sync(() => replay.sim.connect()),
+								connection => Effect.sync(() => replay.sim.disconnect(connection))
+							)
+							const sent = MutableRef.make(-1)
 							return pipe(
 								Stream.tick(`${1000 / FRAME_HZ} millis`),
 								Stream.mapEffect(
@@ -623,6 +637,8 @@ export class Game extends Context.Service<
 											),
 											cause => GameError.make({cause, message: 'The replay could not go on.'})
 										)
+										if (MutableRef.get(sent) === replay.sim.tick()) return Option.none<Frame>()
+										MutableRef.set(sent, replay.sim.tick())
 										return Option.map(replay.sim.frame(id, yield* Clock.currentTimeMillis), frame => ({
 											...frame,
 											live: sim.tick()

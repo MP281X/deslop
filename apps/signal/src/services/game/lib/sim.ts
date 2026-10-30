@@ -2442,7 +2442,7 @@ export const makeSim = Effect.fnUntraced(
 				})
 			}
 			if (Schema.is(StructureKind)(site.kind) && Array.contains(['road', 'ramp', 'bridge'], site.kind)) return
-			if (distance(homeAt(site.team), site) < HOME_SIGHT) {
+			if (gapTo(site, homeAt(site.team)) <= HOME_SIGHT * daylightAt(state.tick)) {
 				notify(site.team, `${buildingName(site)} at (${site.x}, ${site.z}) is built.`)
 			}
 		}
@@ -3586,7 +3586,13 @@ export const makeSim = Effect.fnUntraced(
 		function payerOf(team: number, at: 'beacon' | 'home') {
 			if (at === 'home') return homeOf(team)
 			return Option.getOrUndefined(
-				Array.findFirst(buildingsOf(team), building => building.kind === 'beacon' && complete(building))
+				Array.findFirst(
+					buildingsOf(team),
+					building =>
+						building.kind === 'beacon' &&
+						complete(building) &&
+						gapTo(building, homeAt(team)) <= HOME_SIGHT * daylightAt(state.tick)
+				)
 			)
 		}
 
@@ -3601,10 +3607,7 @@ export const makeSim = Effect.fnUntraced(
 			})
 			const store = payerOf(id, milestone.at)
 			if (store === undefined) {
-				return outcome(command, false, 'the next milestone is paid at the Beacon, which the team has not built')
-			}
-			if (gapTo(store, homeAt(id)) > HOME_SIGHT * daylightAt(state.tick)) {
-				return outcome(command, false, 'The payer is not locally accessible to the Core; arrange a local payment site.')
+				return outcome(command, false, 'No locally accessible payment site; arrange one near the Core.')
 			}
 			if (!covers(store.stock, milestone.cost)) {
 				const short = Array.filter(
@@ -3655,11 +3658,12 @@ export const makeSim = Effect.fnUntraced(
 
 		function commandCancel(team: Team, command: Extract<Command, {_tag: 'Cancel'}>) {
 			const building = buildingOf(command.building)
-			if (building === undefined || building.team !== team.id) {
-				return outcome(command, false, 'no such building in your team')
-			}
-			if (gapTo(building, homeAt(team.id)) > HOME_SIGHT * daylightAt(state.tick)) {
-				return outcome(command, false, 'The Core cannot dismantle an unseen remote building.')
+			if (
+				building === undefined ||
+				building.team !== team.id ||
+				gapTo(building, homeAt(team.id)) > HOME_SIGHT * daylightAt(state.tick)
+			) {
+				return outcome(command, false, 'No locally accessible building of yours to dismantle.')
 			}
 			if (building.kind === 'home') return outcome(command, false, 'Home stays')
 			// A built road, ramp or bridge is part of the ground now.

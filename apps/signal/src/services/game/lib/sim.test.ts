@@ -256,6 +256,26 @@ it.effect(
 )
 
 it.effect(
+	'does not reveal whether an inaccessible building ID exists',
+	Effect.fnUntraced(function* () {
+		const saved = yield* (yield* makeSim(Option.none(), 42)).snapshot
+		const home = Option.getOrThrow(Array.head(saved.buildings))
+		const sim = yield* makeSim(
+			Option.some({
+				...saved,
+				buildings: [...saved.buildings, {...home, id: 324, kind: 'crate_mk1', x: home.x + 100}],
+				nextId: 325
+			}),
+			0
+		)
+		assert.deepStrictEqual(command(sim, {_tag: 'Cancel', building: 324}), {
+			...command(sim, {_tag: 'Cancel', building: 325}),
+			command: {_tag: 'Cancel', building: 324}
+		})
+	})
+)
+
+it.effect(
 	'lets an individual take unknown-team storage and keep the cargo until it chooses to deposit it',
 	Effect.fnUntraced(function* () {
 		const saved = yield* (yield* makeSim(Option.none(), 42)).snapshot

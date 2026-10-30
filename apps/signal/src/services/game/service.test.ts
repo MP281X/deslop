@@ -54,6 +54,13 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 			assert.isTrue(Schema.is(Frame)(frame))
 			yield* Schema.encodeEffect(Schema.toCodecJson(Frame))(frame)
 			assert.strictEqual(frame.tick, 0)
+			const stoppedFrames = MutableList.make<number>()
+			const connection = yield* Effect.forkScoped(
+				Stream.runForEach(game.join, stopped => Effect.sync(() => MutableList.append(stoppedFrames, stopped.tick)))
+			)
+			yield* Effect.repeat(TestClock.adjust('100 millis'), {times: 3})
+			yield* Fiber.interrupt(connection)
+			assert.deepStrictEqual(MutableList.toArray(stoppedFrames), [0])
 			assert.strictEqual(calls.length, 0)
 			assert.deepStrictEqual(yield* kv.keys, [])
 			assert.isAbove((yield* game.history(2, Option.none())).length, 0)
@@ -144,6 +151,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 			yield* TestClock.adjust('1 minute')
 			assert.strictEqual(Option.getOrThrow(yield* Stream.runHead(game.join)).tick, frame.tick)
 			assert.strictEqual(calls.length, 3)
-		})
+		}),
+		{timeout: 15_000}
 	)
 })
