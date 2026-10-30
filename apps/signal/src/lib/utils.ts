@@ -123,6 +123,8 @@ export const hudAtom = Atom.keepAlive(
 			AsyncResult.isSuccess(current) &&
 			current.value.count >= previous.value.count &&
 			Math.floor(current.value.frame.tick / 10) === Math.floor(previous.value.frame.tick / 10) &&
+			current.value.frame.paused === previous.value.frame.paused &&
+			current.value.frame.problem === previous.value.frame.problem &&
 			current.value.teams === previous.value.teams
 		) {
 			return previous
