@@ -35,7 +35,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 				return yield* connections.disconnect(input.id, yield* CurrentUser)
 			}),
 			'auth.mcp.hide': Effect.fnUntraced(function* (input) {
-				return yield* connections.hide(input.id, input.hidden, yield* CurrentUser)
+				return yield* connections.hide(input, yield* CurrentUser)
 			}),
 			'auth.mcp.remove': Effect.fnUntraced(function* (input) {
 				return yield* connections.remove(input.id, yield* CurrentUser)

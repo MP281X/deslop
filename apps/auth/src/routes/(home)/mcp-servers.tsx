@@ -60,14 +60,17 @@ function ServerRow(props: {server: ConnectionInfo}) {
 					onNone: () => null,
 					onSome: error => <span className="text-destructive break-words">{error}</span>
 				})}
-				{Option.match(AsyncResult.error(disconnecting), {
-					onNone: () => null,
-					onSome: failure => (
-						<span className="text-destructive" role="alert">
-							{failure.message}
-						</span>
-					)
-				})}
+				{Option.match(
+					Option.orElse(AsyncResult.error(disconnecting), () => AsyncResult.error(hiding)),
+					{
+						onNone: () => null,
+						onSome: failure => (
+							<span className="text-destructive" role="alert">
+								{failure.message}
+							</span>
+						)
+					}
+				)}
 			</div>
 			<DropdownMenu>
 				<DropdownMenuTrigger
@@ -92,14 +95,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 									<DropdownMenuCheckboxItem
 										key={tool}
 										checked={!Array.contains(props.server.hidden, tool)}
-										onCheckedChange={visible =>
-											hide(
-												Boolean.match(visible, {
-													onFalse: () => [...props.server.hidden, tool],
-													onTrue: () => Array.filter(props.server.hidden, name => name !== tool)
-												})
-											)
-										}
+										onCheckedChange={visible => hide({hidden: !visible, tool})}
 									>
 										{tool}
 									</DropdownMenuCheckboxItem>

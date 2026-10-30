@@ -48,8 +48,7 @@ import {Exchange, Grants} from '#services/tokens/schema.ts'
 export const SESSION_COOKIE = '__Secure-session'
 
 // A GitHub sign-in is the owner's own browser; a code may have been approved for someone else's, so it ends sooner.
-type SessionVia = typeof SessionVia.Type
-const SessionVia = Schema.Literals(['Code', 'GitHub'])
+type SessionVia = 'Code' | 'GitHub'
 
 // An authorization code lives 60 seconds in memory; once redeemed it names the family it gave, so a replay ends it.
 type Code = {
@@ -137,7 +136,11 @@ export class Tokens extends Context.Service<
 	static readonly layer = Layer.effect(
 		Tokens,
 		Effect.gen(function* () {
-			const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Grants)
+			const kv = yield* KeyValueStore.KeyValueStore
+			// The previous release kept people and tokens in these; this one starts over, so they are deleted.
+			yield* kv.remove('state')
+			yield* kv.remove('tokens')
+			const store = KeyValueStore.toSchemaStore(kv, Grants)
 			const grants = yield* SubscriptionRef.make<Grants>(Option.getOrElse(yield* store.get('grants'), () => ({})))
 			const codes = yield* Ref.make(HashMap.empty<string, Code>())
 			const delegated = yield* Ref.make(HashMap.empty<string, Delegated>())
@@ -347,7 +350,8 @@ export class Tokens extends Context.Service<
 								message: 'The refresh token belongs to another client'
 							})
 						}
-						if (presented.generation >= 0 && presented.generation < credential.generation) {
+						// Only the replaced token itself proves a replay; a guess at the family ends nothing.
+						if (presented.generation === credential.generation - 1 && presentedHash === credential.replaced) {
 							return [
 								Exchange.cases.Replayed.make({
 									message: 'This refresh token was already used, so its sign-in is revoked; sign in again'
@@ -375,6 +379,7 @@ export class Tokens extends Context.Service<
 										...credential,
 										access: [...credential.access, minted.access],
 										generation: credential.generation + 1,
+										replaced: credential.hash,
 										...minted.refresh
 									},
 									lastActive: now,
@@ -516,21 +521,28 @@ export class Tokens extends Context.Service<
 					return code
 				}, rejected('Cannot issue the authorization code')),
 				revoke: Effect.fn('Tokens.revoke')(function* (params: RevokeParams) {
+					// RFC 7009: the client's own refresh or live access token ends its sign-in; anything else changes nothing.
 					yield* Option.match(parts(params.token), {
 						onNone: () => Effect.void,
-						onSome: found =>
-							change(current =>
+						onSome: Effect.fnUntraced(function* (found) {
+							const presented = yield* hash(found.secret)
+							yield* change(current =>
 								Effect.succeed([
 									undefined,
 									Boolean.match(
 										Option.exists(
 											Record.get(current, found.family),
-											grant => grant.credential._tag === 'App' && grant.credential.clientId === params.client_id
+											grant =>
+												grant.credential._tag === 'App' &&
+												grant.credential.clientId === params.client_id &&
+												(grant.credential.hash === presented ||
+													Array.some(grant.credential.access, entry => entry.hash === presented))
 										),
 										{onFalse: () => current, onTrue: () => Record.remove(current, found.family)}
 									)
 								] as const)
 							)
+						})
 					})
 				}, rejected('Cannot revoke the token')),
 				session,

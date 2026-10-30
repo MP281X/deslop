@@ -99,13 +99,14 @@ export const Grant = Schema.Struct({
 	client: Schema.String,
 	createdAt: Schema.Finite,
 	credential: Schema.TaggedUnion({
-		// A refresh token names its generation, so presenting an earlier one is a replay that ends the family.
+		// A refresh token names its generation; presenting the one it replaced is a replay that ends the family.
 		App: {
 			access: Schema.Array(Access),
 			clientId: Schema.NonEmptyString,
 			expiresAt: Schema.Finite,
 			generation: Schema.Int,
 			hash: Schema.String,
+			replaced: Schema.optionalKey(Schema.String),
 			resources: Schema.Array(Resource)
 		},
 		Browser: {expiresAt: Schema.Finite, hash: Schema.String}

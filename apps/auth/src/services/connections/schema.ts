@@ -28,8 +28,9 @@ export type AddServer = typeof AddServer.Type
 export const AddServer = Schema.Struct({url: ServerUrl})
 export type ServerParams = typeof ServerParams.Type
 export const ServerParams = Schema.Struct({id: ServerId})
-export type HiddenTools = typeof HiddenTools.Type
-export const HiddenTools = Schema.Struct({hidden: Schema.Array(Schema.String), id: ServerId})
+// One tool's visibility, so two quick toggles each change only their own tool.
+export type ToolVisibility = typeof ToolVisibility.Type
+export const ToolVisibility = Schema.Struct({hidden: Schema.Boolean, id: ServerId, tool: Schema.NonEmptyString})
 
 export type Metadata = typeof Metadata.Type
 export const Metadata = Schema.Struct({

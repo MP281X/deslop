@@ -12,6 +12,7 @@ import {
 	Path,
 	Record,
 	Schema,
+	Semaphore,
 	Stream,
 	String,
 	Struct,
@@ -36,7 +37,15 @@ import {AUTH_URL} from '@deslop/runtime/auth/utils'
 import {layerKeyValueStore} from '@deslop/runtime/server'
 
 import {connectionInfo, describe, serverName} from '#services/connections/lib/utils.ts'
-import type {Callback, Connection, ConnectionInfo, Discovery, OAuth, ServerId} from '#services/connections/schema.ts'
+import type {
+	Callback,
+	Connection,
+	ConnectionInfo,
+	Discovery,
+	OAuth,
+	ServerId,
+	ToolVisibility
+} from '#services/connections/schema.ts'
 import {ConnectionStore, Metadata, Registration, ServerUrl, Token} from '#services/connections/schema.ts'
 import {People} from '#services/people/service.ts'
 
@@ -85,7 +94,7 @@ export class Connections extends Context.Service<
 		readonly definitions: Effect.Effect<Connection[]>
 		readonly disconnect: (id: ServerId, user: User) => Effect.Effect<void, AuthError>
 		readonly get: (id: ServerId) => Effect.Effect<Connection, AuthError>
-		readonly hide: (id: ServerId, hidden: readonly string[], user: User) => Effect.Effect<void, AuthError>
+		readonly hide: (visibility: ToolVisibility, user: User) => Effect.Effect<void, AuthError>
 		readonly list: Effect.Effect<ConnectionInfo[]>
 		readonly remove: (id: ServerId, user: User) => Effect.Effect<void, AuthError>
 		readonly report: (id: ServerId, generation: string, outcome: Discovery) => Effect.Effect<void>
@@ -94,8 +103,13 @@ export class Connections extends Context.Service<
 	}
 >()('@deslop/auth/services/connections/service/Connections') {
 	static readonly make = Effect.gen(function* () {
-		const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, ConnectionStore)
-		const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('connections'), () => ({})))
+		const kv = yield* KeyValueStore.KeyValueStore
+		// The previous release's servers and pending sign-ins; this one starts over, so they are deleted.
+		yield* kv.remove('connections')
+		const store = KeyValueStore.toSchemaStore(kv, ConnectionStore)
+		const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('servers'), () => ({})))
+		// One refresh per provider at a time, so concurrent calls never spend the same refresh token twice.
+		const refreshing = yield* Semaphore.make(1)
 		const people = yield* People
 		const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 		const fetch = yield* FetchHttpClient.Fetch
@@ -112,7 +126,7 @@ export class Connections extends Context.Service<
 			update: (current: ConnectionStore) => Effect.Effect<readonly [A, ConnectionStore], E>
 		) {
 			return yield* SubscriptionRef.modifyEffect(state, current =>
-				Effect.tap(update(current), result => store.set('connections', result[1]))
+				Effect.tap(update(current), result => store.set('servers', result[1]))
 			)
 		}, Effect.uninterruptible)
 		const get = Effect.fnUntraced(function* (id: ServerId) {
@@ -171,14 +185,18 @@ export class Connections extends Context.Service<
 			oauth: OAuth,
 			params: Record<string, string>
 		) {
-			// A provider that rejects the refresh token ended the grant: the row shows Expired until it is connected again.
+			// A provider that rejects the refresh token it still holds ended the grant: the row shows Expired until it is connected again.
 			const ended = Effect.fnUntraced(function* () {
-				if (params['grant_type'] !== 'refresh_token' || connection.link._tag !== 'Authorized') return
-				const token = Struct.omit(connection.link.token, ['refresh_token'])
-				yield* update(connection.id, connection.generation, found => ({
-					...found,
-					link: {_tag: 'Authorized', expiresAt: 0, token}
-				}))
+				if (params['grant_type'] !== 'refresh_token') return
+				yield* update(connection.id, connection.generation, found => {
+					if (found.link._tag !== 'Authorized' || found.link.token.refresh_token !== params['refresh_token']) {
+						return found
+					}
+					return {
+						...found,
+						link: {_tag: 'Authorized', expiresAt: 0, token: Struct.omit(found.link.token, ['refresh_token'])}
+					}
+				})
 			})
 			const token = yield* pipe(
 				HttpClientRequest.post(oauth.metadata.token_endpoint),
@@ -193,7 +211,10 @@ export class Connections extends Context.Service<
 				request => client.execute(request),
 				Effect.flatMap(HttpClientResponse.schemaBodyJson(Token)),
 				Effect.tapErrorTag('HttpClientError', cause => {
-					if (cause.reason._tag !== 'StatusCodeError' || cause.reason.response.status >= 500) return Effect.void
+					// Only 400 and 401 reject the grant itself; a rate limit or a timeout leaves it to the next try.
+					if (cause.reason._tag !== 'StatusCodeError' || !Array.contains([400, 401], cause.reason.response.status)) {
+						return Effect.void
+					}
 					return ended()
 				}),
 				Effect.timeout('20 seconds')
@@ -250,6 +271,7 @@ export class Connections extends Context.Service<
 					Disconnected: () => Effect.fail(notConnected)
 				})
 			},
+			Semaphore.withPermit(refreshing),
 			Effect.timeout('20 seconds'),
 			failed('Cannot refresh this MCP; reconnect it from the MCP page')
 		)
@@ -390,7 +412,13 @@ export class Connections extends Context.Service<
 						tools: [],
 						url
 					})
-					yield* change(latest => Effect.succeed([undefined, {...latest, [id]: connection}] as const))
+					// Discovery takes seconds, so the URL and id are checked again where the server is saved.
+					yield* change(latest => {
+						if (Record.has(latest, id) || Array.some(Record.values(latest), row => row.url === url)) {
+							return Effect.fail(AuthError.make({message: 'This MCP has already been added.'}))
+						}
+						return Effect.succeed([undefined, {...latest, [id]: connection}] as const)
+					})
 					return connectionInfo(connection, yield* Clock.currentTimeMillis)
 				},
 				Effect.scoped,
@@ -480,7 +508,16 @@ export class Connections extends Context.Service<
 					Option.some({...Struct.omit(found, ['error']), link: {_tag: 'Disconnected' as const}, tools: []})
 				),
 			get,
-			hide: (id, hidden, user) => admin(id, user, found => Option.some({...found, hidden: [...hidden]})),
+			hide: (visibility, user) =>
+				admin(visibility.id, user, found =>
+					Option.some({
+						...found,
+						hidden: [
+							...Array.filter(found.hidden, tool => tool !== visibility.tool),
+							...Array.filter([visibility.tool], () => visibility.hidden)
+						]
+					})
+				),
 			list,
 			remove: (id, user) => admin(id, user, () => Option.none()),
 			// A discovery's outcome: its tools and instructions clear an earlier failure, a failure keeps the last ones.

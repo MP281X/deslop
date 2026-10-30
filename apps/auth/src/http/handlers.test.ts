@@ -43,7 +43,7 @@ import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
 import {AUTH_URL, CurrentUser} from '@deslop/runtime/auth/utils'
 
 import {HttpHandlers} from '#http/handlers.ts'
-import {AddServer, ConnectionInfo, HiddenTools, ServerParams} from '#services/connections/schema.ts'
+import {AddServer, ConnectionInfo, ServerParams, ToolVisibility} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway} from '#services/gateway/service.ts'
 import {GitHub} from '#services/github/service.ts'
@@ -438,8 +438,8 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 									'/servers/hide',
 									pipe(
 										Effect.gen(function* () {
-											const input = yield* HttpServerRequest.schemaBodyJson(HiddenTools)
-											yield* (yield* Connections).hide(input.id, input.hidden, yield* CurrentUser)
+											const input = yield* HttpServerRequest.schemaBodyJson(ToolVisibility)
+											yield* (yield* Connections).hide(input, yield* CurrentUser)
 											return HttpServerResponse.empty()
 										}),
 										refused
@@ -1023,9 +1023,18 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* Ref.set(web.toolNames, ['search', 'delete'])
 			const added = yield* addMcp(web.issuer, session, 'https://public.example.com/mcp')
 			assert.deepStrictEqual(added.tools, ['search', 'delete'])
-			assert.strictEqual(
-				(yield* post(web.issuer, '/servers/hide', session, {hidden: ['delete'], id: added.id})).status,
-				204
+			// Each toggle changes only its own tool, so a quick second one keeps the first.
+			yield* Effect.forEach(
+				[
+					{hidden: true, tool: 'delete'},
+					{hidden: true, tool: 'search'},
+					{hidden: false, tool: 'search'}
+				],
+				change =>
+					Effect.map(post(web.issuer, '/servers/hide', session, {...change, id: added.id}), response =>
+						assert.strictEqual(response.status, 204)
+					),
+				{concurrency: 1, discard: true}
 			)
 			const listed = yield* modern(web.issuer, token, 'tools/list')
 			const names = yield* Effect.promise(() => listed.text())
@@ -1488,6 +1497,24 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					headers: {authorization: `Bearer ${saved.token.access_token}`}
 				})).status,
 				401
+			)
+		})
+	)
+
+	test.effect(
+		'starts over the previous release’s storage and deletes it',
+		Effect.fnUntraced(function* () {
+			const fs = yield* FileSystem.FileSystem
+			const home = yield* fs.makeTempDirectoryScoped()
+			const directory = `${home}/.deslop/auth`
+			yield* fs.makeDirectory(`${directory}/mcp`, {recursive: true})
+			// The shapes the previous release saved, which this one cannot read.
+			yield* fs.writeFileString(`${directory}/state`, '{"members":[],"tokens":{}}')
+			yield* fs.writeFileString(`${directory}/mcp/connections`, '{"connections":{},"pending":{}}')
+			assert.strictEqual((yield* signIn((yield* servers(home)).issuer, 'octocat')).status, 302)
+			assert.deepStrictEqual(
+				[yield* fs.exists(`${directory}/state`), yield* fs.exists(`${directory}/mcp/connections`)],
+				[false, false]
 			)
 		})
 	)
@@ -2063,6 +2090,28 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				yield* Effect.promise(() => second.text())
 			)
 			assert.notStrictEqual(rotated.refresh_token, token.refresh_token)
+			// The family is the public prefix of every bearer, so it alone revokes nothing and proves no replay.
+			const family = String.split(token.access_token, '.')[0] ?? ''
+			assert.strictEqual(
+				(yield* send(web.issuer, '/api/auth/oauth2/revoke', {
+					body: UrlParams.toString(
+						UrlParams.fromInput({client_id: request.clientId, token: `${family}.${String.repeat(43)('A')}`})
+					),
+					headers: {'content-type': 'application/x-www-form-urlencoded'},
+					method: 'POST'
+				})).status,
+				204
+			)
+			assert.strictEqual(
+				(yield* refresh(web.issuer, request.clientId, `${family}.0.${String.repeat(43)('A')}`)).status,
+				400
+			)
+			assert.strictEqual(
+				(yield* send(web.issuer, '/auth/verify?resource=https://scope.mp281x.xyz/mcp', {
+					headers: {authorization: `Bearer ${rotated.access_token}`}
+				})).status,
+				200
+			)
 			assert.strictEqual(
 				(yield* send(web.issuer, '/auth/verify?resource=https://scope.mp281x.xyz/mcp', {
 					headers: {authorization: `Bearer ${rotated.access_token}`}

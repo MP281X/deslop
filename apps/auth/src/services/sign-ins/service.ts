@@ -29,7 +29,7 @@ import {People} from '#services/people/service.ts'
 import {CODE_LENGTH, codeFrom, typedCode} from '#services/sign-ins/lib/utils.ts'
 import type {AnswerParams, Delivery} from '#services/sign-ins/schema.ts'
 import {AuthorizationStatus, Collected, PendingAuthorization, SignInInput} from '#services/sign-ins/schema.ts'
-import {addressGroup, browserLabel, callbackUrl, deviceLabel} from '#services/tokens/lib/utils.ts'
+import {addressGroup, browserLabel, callbackUrl, clientLabel, deviceLabel} from '#services/tokens/lib/utils.ts'
 import type {Origin} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
@@ -298,7 +298,8 @@ export class SignIns extends Context.Service<
 									resources: []
 								}),
 								Client: client => ({
-									clientName: client.request.clientName,
+									// Named as its row will be once signed in.
+									clientName: clientLabel(client.request.clientName),
 									device: deviceLabel(origin, Option.some(client.request.redirectUri)),
 									kind: 'App' as const,
 									resources: client.request.resources

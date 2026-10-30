@@ -144,7 +144,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		const signIns = yield* SignIns
 		const tokens = yield* Tokens
 		const limiter = yield* RateLimiter.RateLimiter
-		// Anyone may call these, so each address (an IPv6 /64) and everyone together get a budget per minute; past it, 429.
+		// Anyone may call these, so each address (an IPv6 /64) gets a budget per minute; past it, 429. No shared budget, which one sender could spend for everyone.
 		function limited(route: string, perAddress: number) {
 			return Effect.fnUntraced(function* <E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
 				const address = pipe(
@@ -154,7 +154,6 @@ export const HttpHandlers = HttpRouter.use(router =>
 				)
 				return yield* pipe(
 					limiter.consume({key: `${route}:${address}`, limit: perAddress, onExceeded: 'fail', window: '1 minute'}),
-					Effect.andThen(limiter.consume({key: route, limit: perAddress * 20, onExceeded: 'fail', window: '1 minute'})),
 					Effect.matchEffect({
 						onFailure: failure =>
 							Effect.succeed(
@@ -309,13 +308,18 @@ export const HttpHandlers = HttpRouter.use(router =>
 		yield* router.add(
 			'POST',
 			'/api/auth/oauth2/revoke',
-			oauth(
-				Effect.gen(function* () {
-					yield* tokens.revoke(
-						yield* pipe(HttpServerRequest.schemaBodyUrlParams(RevokeParams), rejected('Invalid revocation request'))
-					)
-					return HttpServerResponse.empty()
-				})
+			limited(
+				'revoke',
+				60
+			)(
+				oauth(
+					Effect.gen(function* () {
+						yield* tokens.revoke(
+							yield* pipe(HttpServerRequest.schemaBodyUrlParams(RevokeParams), rejected('Invalid revocation request'))
+						)
+						return HttpServerResponse.empty()
+					})
+				)
 			)
 		)
 		// Apps read the session cookie and verify bearers here, through `Auth.layer`.

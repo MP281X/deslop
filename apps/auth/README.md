@@ -6,7 +6,7 @@ The shared sign-in server and combined MCP gateway at `https://auth.mp281x.xyz/m
 
 Every sign-in is one waiting code. It is approved from a signed-in browser, a phone or an agent's `answer_request`, and delivered once at `/auth/continue` to the browser or command holding its cookie. An app or harness gets an OAuth code at its callback. A browser that chose **Sign in with a code** gets a 30-day session and returns to its page; only a signed-in browser can approve one, never an agent's token. A GitHub sign-in's session lasts a year. A sign-in lives 10 minutes, in memory: a restart ends the waiting ones. Workers' harness sign-in steps are in the environment skill's Maintenance reference.
 
-Client ids are the registration itself, encoded, so registering stores nothing. The signed-in list names each sign-in `Client · Device`: the device is a worker preview's host, a known worker, the platform its User-Agent names, or its address. Signed-in apps and browsers live in `~/.deslop/auth/`; authorization codes and the gateway's delegated tokens stay in memory. Registration, authorization, token, GitHub and code sign-in requests have a per-minute budget per address (an IPv6 /64) and overall, and answer 429 past it.
+Client ids are the registration itself, encoded, so registering stores nothing. The signed-in list names each sign-in `Client · Device`: the device is a worker preview's host, a known worker, the platform its User-Agent names, or its address. Signed-in apps and browsers live in `~/.deslop/auth/`; authorization codes and the gateway's delegated tokens stay in memory. Registration, authorization, token, revocation, GitHub and code sign-in requests have a per-minute budget per address (an IPv6 /64), and answer 429 past it.
 
 ## MCP gateway
 
