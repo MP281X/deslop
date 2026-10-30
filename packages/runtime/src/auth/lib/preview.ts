@@ -119,7 +119,7 @@ export const previewAuth = Effect.fnUntraced(function* (
 				const registration = yield* pipe(
 					HttpClientRequest.post(`${issuerUrl}/api/auth/oauth2/register`),
 					HttpClientRequest.bodyJson({
-						client_name: `${new URL(resource).hostname} preview`,
+						client_name: `${new URL(resource).hostname} ${origin}`,
 						redirect_uris: [callback],
 						token_endpoint_auth_method: 'none'
 					}),
