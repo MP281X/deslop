@@ -879,6 +879,11 @@ function variantOf(on: boolean) {
 	return 'outline'
 }
 
+// The tick on screen: a replay still loading shows nothing yet, so it is at the replay's start.
+function shownTick(source: Source, tick: number) {
+	return Option.match(source, {onNone: () => tick, onSome: replay => Number.max(replay.from, tick)})
+}
+
 function Sidebar(props: {
 	actor: Option.Option<number>
 	onActor: () => void
@@ -901,7 +906,9 @@ function Sidebar(props: {
 				<Button size="sm" variant={variantOf(props.panel === 'history')} onClick={() => props.onPanel('history')}>
 					Chronicle
 				</Button>
-				<span className="text-muted-foreground ml-auto tabular-nums">{clockOf(props.view.frame.tick)}</span>
+				<span className="text-muted-foreground ml-auto tabular-nums">
+					{clockOf(shownTick(props.source, props.view.frame.tick))}
+				</span>
 				<Button size="icon-sm" aria-label="Close inspector" variant="ghost" onClick={props.close}>
 					×
 				</Button>
@@ -925,7 +932,7 @@ function Sidebar(props: {
 							() => 'live'
 						)}`}
 						team={props.team}
-						tick={props.view.frame.tick}
+						tick={shownTick(props.source, props.view.frame.tick)}
 						replaying={Option.isSome(props.source)}
 						status={Option.getOrUndefined(
 							Option.map(
@@ -957,8 +964,8 @@ function Sidebar(props: {
 						actor={Option.getOrElse(props.actor, () => 'all' as const)}
 						at={Option.getOrUndefined(
 							Option.map(props.source, replay => {
-								if (replay.speed === 0) return props.view.frame.tick
-								return Math.floor(props.view.frame.tick / (5 * TICK_HZ)) * 5 * TICK_HZ
+								if (replay.speed === 0) return Number.max(replay.from, props.view.frame.tick)
+								return Number.max(replay.from, Math.floor(props.view.frame.tick / (5 * TICK_HZ)) * 5 * TICK_HZ)
 							})
 						)}
 					/>
@@ -1139,11 +1146,6 @@ function toggled(source: Source, tick: number) {
 		return Option.some({from: tick, speed: 0}) satisfies Source
 	}
 	return Option.some({from: tick, speed: 1}) satisfies Source
-}
-
-// The tick on screen: a replay still loading shows nothing yet, so it is at the replay's start.
-function shownTick(source: Source, tick: number) {
-	return Option.match(source, {onNone: () => tick, onSome: replay => Number.max(replay.from, tick)})
 }
 
 // Where a mark sits on the timeline and how it looks: a milestone a square of its team's colour, a contact a diamond, a message a dot, a unit down a cross.
@@ -1907,7 +1909,7 @@ function World(props: {seed: number; view: View}) {
 							{Option.getOrUndefined(
 								Option.map(source, replay => (
 									<Panel className="top-16 left-2 px-3 py-1.5 md:left-4">
-										Replay {clockOf(props.view.frame.tick)}
+										Replay {clockOf(shownTick(source, props.view.frame.tick))}
 										<span className="text-muted-foreground"> · {replay.speed}×</span>
 									</Panel>
 								))
