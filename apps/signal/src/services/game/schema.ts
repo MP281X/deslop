@@ -480,6 +480,7 @@ export const Entry = Schema.Struct({
 export type Experience = typeof Experience.Type
 export const Experience = Schema.Struct({
 	actor: Schema.Int,
+	actorKind: Schema.optionalKey(Schema.String),
 	context: Schema.optionalKey(Schema.String),
 	id: Schema.Int,
 	kind: Schema.Literals(['born', 'observe', 'decision', 'action', 'report', 'message', 'ping', 'damage', 'down']),
@@ -597,9 +598,15 @@ export const Journal = Schema.Struct({
 })
 
 export type HistoryIndex = typeof HistoryIndex.Type
+// Actor IDs map to committed counts. Reserved @activity, @through, @tick and @rules commit the shared chronicle and recovery frontier together.
 export const HistoryIndex = Schema.Record(Schema.String, Schema.Int)
 export type HistoryPage = typeof HistoryPage.Type
 export const HistoryPage = Schema.Array(Experience)
+
+export type ActivityPage = typeof ActivityPage.Type
+export const ActivityPage = Schema.Array(
+	Schema.Struct({actor: Schema.Int, id: Schema.Int, page: Schema.Natural, tick: Schema.Int})
+)
 
 /* ───────── the world on disk: everything that decides what happens next ───────── */
 

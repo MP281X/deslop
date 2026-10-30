@@ -10,7 +10,7 @@ export class RpcContracts extends RpcGroup.make(
 	Rpc.make('signal.history', {
 		error: GameError,
 		payload: Schema.Struct({
-			actor: Schema.Int,
+			actor: Schema.Union([Schema.Int, Schema.Literal('all')]),
 			at: Schema.optionalKey(Schema.Natural),
 			before: Schema.optionalKey(Schema.Int)
 		}),

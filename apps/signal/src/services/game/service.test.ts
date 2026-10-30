@@ -21,7 +21,7 @@ import {TestClock} from 'effect/testing'
 
 import {Core} from '#services/core/service.ts'
 import {makeSim, SIMULATION} from '#services/game/lib/sim.ts'
-import {Frame, GameError, Journal, Saved} from '#services/game/schema.ts'
+import {ActivityPage, Frame, GameError, HistoryIndex, HistoryPage, Journal, Saved} from '#services/game/schema.ts'
 import {Game} from '#services/game/service.ts'
 
 it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvider.fromUnknown({}))))(test => {
@@ -115,7 +115,8 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 										MutableList.append(calls, seed)
 										return yield* GameError.make({message: 'Offline provider failure.'})
 									}),
-									recall: () => Effect.succeed('')
+									recall: () => Effect.succeed(''),
+									usage: Effect.succeed({groups: {}})
 								})
 							)
 						),
@@ -154,5 +155,92 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 			assert.strictEqual(calls.length, 3)
 		}),
 		{timeout: 15_000}
+	)
+
+	test.effect(
+		'pages canonical individual and world history without duplicating a restored pending tail',
+		Effect.fnUntraced(function* () {
+			const kv = yield* KeyValueStore.KeyValueStore
+			yield* kv.clear
+			const saved = yield* (yield* makeSim(Option.none(), 42)).snapshot
+			const rows = Array.map(
+				Array.range(0, 120),
+				sequence =>
+					({
+						actor: 2,
+						actorKind: 'worker',
+						id: 1000 + sequence,
+						kind: 'action',
+						text: `Gathered stone ${sequence}.`,
+						tick: sequence * 20,
+						x: 10,
+						z: 10
+					}) satisfies HistoryPage[number]
+			)
+			yield* KeyValueStore.toSchemaStore(kv, Saved).set('world', {
+				...saved,
+				life: {...Option.getOrThrow(Option.fromUndefinedOr(saved.life)), sequence: 1120},
+				pendingExperiences: Array.takeRight(rows, 11),
+				tick: 2420
+			})
+			for (const chunk of Array.map(Array.chunksOf(rows, 100), (entries, page) => ({entries, page}))) {
+				yield* KeyValueStore.toSchemaStore(kv, HistoryPage).set(
+					`history/2/${String.padStart(9, '0')(`${chunk.page}`)}`,
+					chunk.entries
+				)
+			}
+			const references = Array.map(rows, (entry, index) => ({
+				actor: entry.actor,
+				id: entry.id,
+				page: Math.floor(index / 100),
+				tick: entry.tick
+			}))
+			for (const chunk of Array.map(Array.chunksOf(references, 100), (entries, page) => ({entries, page}))) {
+				yield* KeyValueStore.toSchemaStore(kv, ActivityPage).set(
+					`activity/${String.padStart(9, '0')(`${chunk.page}`)}`,
+					chunk.entries
+				)
+			}
+			yield* KeyValueStore.toSchemaStore(kv, HistoryIndex).set('history/index', {
+				'@activity': references.length,
+				'@rules': SIMULATION,
+				'@through': 1120,
+				'@tick': 2420,
+				'2': rows.length
+			})
+			const game = Context.get(
+				yield* Layer.build(
+					pipe(
+						Game.layer,
+						Layer.provide(
+							Layer.succeed(
+								Core,
+								Core.of({
+									choose: () => Effect.fail(GameError.make({message: 'No inference in history queries.'})),
+									decide: () => Effect.fail(GameError.make({message: 'No inference in history queries.'})),
+									recall: () => Effect.succeed(''),
+									usage: Effect.succeed({groups: {}})
+								})
+							)
+						)
+					)
+				),
+				Game
+			)
+			for (const actor of [2, 'all'] as const) {
+				assert.deepStrictEqual(
+					Array.map(yield* game.history(actor, Option.none()), entry => entry.id),
+					Array.range(1021, 1120)
+				)
+				assert.deepStrictEqual(
+					Array.map(yield* game.history(actor, Option.some(1021)), entry => entry.id),
+					Array.range(1000, 1020)
+				)
+				assert.deepStrictEqual(
+					Array.map(yield* game.history(actor, Option.none(), 1000), entry => entry.id),
+					Array.range(1000, 1050)
+				)
+			}
+		})
 	)
 })

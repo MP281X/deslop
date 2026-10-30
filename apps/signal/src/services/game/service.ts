@@ -1,5 +1,6 @@
 import {
 	Array,
+	Boolean,
 	Clock,
 	Cause,
 	Config,
@@ -30,6 +31,7 @@ import {makeSim, SIMULATION} from '#services/game/lib/sim.ts'
 import {FRAME_HZ, ROUND, TICK, TICK_HZ} from '#services/game/lib/utils.ts'
 import type {Experience, Frame, UsageLedger} from '#services/game/schema.ts'
 import {
+	ActivityPage,
 	Command,
 	Entry,
 	GameError,
@@ -38,7 +40,8 @@ import {
 	Journal,
 	LocalDecision,
 	Saved,
-	Timeline
+	Timeline,
+	UnitKind
 } from '#services/game/schema.ts'
 import {GENERATOR} from '#services/world/lib/utils.ts'
 
@@ -59,6 +62,26 @@ function keyOf(team: number, round: number) {
 	return `thread/${team}/${padded(round)}`
 }
 
+function notable(entry: Experience) {
+	if (entry.context !== undefined) return false
+	const unit = Schema.is(UnitKind)(entry.actorKind)
+	if (entry.kind === 'born') return unit
+	if (entry.kind === 'decision') {
+		if (String.startsWith('Chose continue:')(entry.text) || String.startsWith('Chose rest:')(entry.text)) {
+			return false
+		}
+		return (
+			unit ||
+			String.startsWith('Chose attack:')(entry.text) ||
+			String.startsWith('Chose flee:')(entry.text) ||
+			String.startsWith('Chose investigate:')(entry.text)
+		)
+	}
+	if (entry.kind === 'observe') return unit || String.includes('a body lies here')(entry.text)
+	if (entry.kind === 'action') return unit || entry.subject !== undefined
+	return true
+}
+
 export class Game extends Context.Service<
 	Game,
 	{
@@ -70,7 +93,7 @@ export class Game extends Context.Service<
 		readonly timeline: Effect.Effect<Timeline>
 		readonly usage: Effect.Effect<UsageLedger, GameError>
 		readonly history: (
-			actor: number,
+			actor: number | 'all',
 			before: Option.Option<number>,
 			at?: number
 		) => Effect.Effect<Experience[], GameError>
@@ -86,6 +109,7 @@ export class Game extends Context.Service<
 			const journals = KeyValueStore.toSchemaStore(kv, Journal)
 			const timelines = KeyValueStore.toSchemaStore(kv, Timeline)
 			const histories = KeyValueStore.toSchemaStore(kv, HistoryPage)
+			const activity = KeyValueStore.toSchemaStore(kv, ActivityPage)
 			const indexes = KeyValueStore.toSchemaStore(kv, HistoryIndex)
 			// A save from an older world model does not decode or restore, and the world starts over with nothing of the old one kept.
 			const fresh = yield* Random.nextIntBetween(0, 2_000_000_000)
@@ -105,6 +129,9 @@ export class Game extends Context.Service<
 				yield* Effect.ignore(kv.clear, {log: 'Warn', message: 'Signal could not clear the old world'})
 			}
 			const sim = yield* Option.match(restored, {onNone: () => makeSim(Option.none(), fresh), onSome: Effect.succeed})
+			const historyIndex = MutableRef.make(
+				Option.getOrElse(yield* indexes.get('history/index'), () => Record.empty<string, number>())
+			)
 
 			const replayLocal = Effect.fnUntraced(function* (target: Effect.Success<ReturnType<typeof makeSim>>) {
 				for (const choice of Option.match(yield* journals.get(replayKey('local', target.tick())), {
@@ -147,18 +174,28 @@ export class Game extends Context.Service<
 			})
 			const resumed = Option.getOrUndefined(yield* worlds.get('world'))
 			if (resumed?.rules === SIMULATION) {
-				const through = Array.reduce(yield* kv.keys, sim.tick(), (latest, key) => {
-					const [kind, rules, encoded = ''] = String.split('/')(key)
-					if (rules !== `${SIMULATION}` || (kind !== 'local' && kind !== 'journal')) return latest
-					return Number.max(
-						latest,
-						Option.getOrElse(Number.parse(encoded), () => 0) *
-							Option.match(
-								Option.filter(Option.some(kind), value => value === 'journal'),
-								{onNone: () => 1, onSome: () => ROUND}
-							)
-					)
-				})
+				const through = Array.reduce(
+					yield* kv.keys,
+					Number.max(
+						sim.tick(),
+						Boolean.match(MutableRef.get(historyIndex)['@rules'] === SIMULATION, {
+							onFalse: () => 0,
+							onTrue: () => MutableRef.get(historyIndex)['@tick'] ?? 0
+						})
+					),
+					(latest, key) => {
+						const [kind, rules, encoded = ''] = String.split('/')(key)
+						if (rules !== `${SIMULATION}` || (kind !== 'local' && kind !== 'journal')) return latest
+						return Number.max(
+							latest,
+							Option.getOrElse(Number.parse(encoded), () => 0) *
+								Option.match(
+									Option.filter(Option.some(kind), value => value === 'journal'),
+									{onNone: () => 1, onSome: () => ROUND}
+								)
+						)
+					}
+				)
 				yield* advanceRecorded(sim, through - sim.tick())
 			}
 			const fault = MutableRef.make(Option.none<GameError>())
@@ -173,9 +210,6 @@ export class Game extends Context.Service<
 					String.Order
 				)
 			)
-			const historyIndex = MutableRef.make(
-				Option.getOrElse(yield* indexes.get('history/index'), () => Record.empty<string, number>())
-			)
 			const local = MutableHashMap.empty<number, {fiber: Fiber.Fiber<LocalChoice, GameError>; request: LocalDecision}>()
 			const localBudget = Number.clamp(
 				Math.floor(yield* pipe(Config.Number('SIGNAL_LOCAL_DECISIONS_PER_SECOND'), Config.withDefault(2))),
@@ -187,39 +221,101 @@ export class Game extends Context.Service<
 				Effect.mapError(cause => GameError.make({cause, message: 'Simulation stopped: the world could not be saved.'}))
 			)
 
-			const keepHistory = Effect.fn('Game.keepHistory')(function* () {
-				yield* save
-				const events = sim.experiences()
-				for (const group of Record.toEntries(Array.groupBy(events, entry => `${entry.actor}`))) {
-					const actor = group[0]
-					const page = Math.floor((MutableRef.get(historyIndex)[actor] ?? 0) / 100)
-					const previous = Option.getOrElse(yield* histories.get(`history/${actor}/${padded(page)}`), () => [])
-					const last = Option.getOrElse(
-						yield* histories.get(
-							`history/${actor}/${padded(Math.floor(Number.max(0, (MutableRef.get(historyIndex)[actor] ?? 0) - 1) / 100))}`
-						),
-						() => []
-					)
-					const through = Option.getOrElse(
-						Option.map(Array.last(last), entry => entry.id),
-						() => 0
-					)
-					const combined = Array.dedupeWith<Experience>(
-						[...previous, ...Array.filter(group[1], entry => entry.id > through)],
-						(a, b) => a.id === b.id
-					)
-					for (const chunk of Array.map(Array.chunksOf(combined, 100), (entriesInPage, offset) => ({
-						entriesInPage,
-						offset
-					}))) {
-						yield* histories.set(`history/${actor}/${padded(page + chunk.offset)}`, chunk.entriesInPage)
-					}
-					const updated = {...MutableRef.get(historyIndex), [actor]: page * 100 + combined.length}
-					yield* indexes.set('history/index', updated)
-					MutableRef.set(historyIndex, updated)
+			const actorPage = Effect.fn('Game.actorPage')(function* (actor: string, page: number, index: HistoryIndex) {
+				const expected = Number.clamp((index[actor] ?? 0) - page * 100, {maximum: 100, minimum: 0})
+				if (expected === 0) return Array.empty<Experience>()
+				const entriesInPage = Option.getOrElse(yield* histories.get(`history/${actor}/${padded(page)}`), () => [])
+				if (entriesInPage.length < expected) {
+					return yield* GameError.make({message: 'A committed individual history page is missing or incomplete.'})
 				}
-				if (Array.isArrayNonEmpty(events)) sim.acknowledge(Option.getOrThrow(Array.last(events)).id)
+				return Array.take(entriesInPage, expected)
 			})
+
+			const appendHistory = Effect.fn('Game.appendHistory')(function* (
+				actor: string,
+				incoming: readonly Experience[],
+				index: HistoryIndex
+			) {
+				const count = index[actor] ?? 0
+				const page = Math.floor(count / 100)
+				const prefix = yield* actorPage(actor, page, index)
+				const through = yield* Option.match(Array.last(prefix), {
+					onNone: () =>
+						Effect.map(actorPage(actor, Math.floor(Number.max(0, count - 1) / 100), index), rows =>
+							Option.getOrElse(
+								Option.map(Array.last(rows), entry => entry.id),
+								() => 0
+							)
+						),
+					onSome: entry => Effect.succeed(entry.id)
+				})
+				const novel = Array.filter(incoming, entry => entry.id > through)
+				const references = MutableList.make<ActivityPage[number]>()
+				for (const chunk of Array.map(Array.chunksOf([...prefix, ...novel], 100), (rows, offset) => ({offset, rows}))) {
+					yield* histories.set(`history/${actor}/${padded(page + chunk.offset)}`, chunk.rows)
+					MutableList.appendAll(
+						references,
+						Array.map(
+							Array.filter(chunk.rows, entry => entry.id > through && notable(entry)),
+							entry => ({actor: entry.actor, id: entry.id, page: page + chunk.offset, tick: entry.tick})
+						)
+					)
+				}
+				return {count: count + novel.length, references: MutableList.toArray(references)}
+			})
+
+			const keepHistory = Effect.fn('Game.keepHistory')(
+				function* () {
+					yield* save
+					const committed = MutableRef.get(historyIndex)
+					const pending = sim.experiences()
+					const updated = MutableHashMap.fromIterable(Record.toEntries(committed))
+					const references = MutableList.make<ActivityPage[number]>()
+					for (const group of Record.toEntries(
+						Array.groupBy(
+							Array.filter(pending, entry => entry.id > (committed['@through'] ?? 0)),
+							entry => `${entry.actor}`
+						)
+					)) {
+						const appended = yield* appendHistory(group[0], group[1], committed)
+						MutableHashMap.set(updated, group[0], appended.count)
+						MutableList.appendAll(references, appended.references)
+					}
+					const count = committed['@activity'] ?? 0
+					const page = Math.floor(count / 100)
+					const prefix = Array.take(
+						Option.getOrElse(yield* activity.get(`activity/${padded(page)}`), () => []),
+						count % 100
+					)
+					if (prefix.length !== count % 100) {
+						return yield* GameError.make({message: 'A committed world chronicle page is missing or incomplete.'})
+					}
+					const novel = Array.sortWith(MutableList.toArray(references), entry => entry.id, Number.Order)
+					for (const chunk of Array.map(Array.chunksOf([...prefix, ...novel], 100), (rows, offset) => ({
+						offset,
+						rows
+					}))) {
+						yield* activity.set(`activity/${padded(page + chunk.offset)}`, chunk.rows)
+					}
+					const index = {
+						...Record.fromEntries(updated),
+						'@activity': count + novel.length,
+						'@rules': SIMULATION,
+						'@through': Option.getOrElse(
+							Option.map(Array.last(pending), entry => entry.id),
+							() => committed['@through'] ?? 0
+						),
+						'@tick': sim.tick()
+					}
+					// Every canonical page and reference is durable before the one visible frontier advances.
+					yield* indexes.set('history/index', index)
+					MutableRef.set(historyIndex, index)
+					if (Array.isArrayNonEmpty(pending)) sim.acknowledge(Option.getOrThrow(Array.last(pending)).id)
+				},
+				Effect.mapError(cause =>
+					GameError.make({cause, message: 'Simulation stopped: history could not be committed.'})
+				)
+			)
 			const started = MutableRef.make({at: yield* Clock.currentTimeMillis, tick: sim.tick()})
 			const timeline = MutableRef.make(
 				Option.getOrElse(yield* Effect.orElseSucceed(timelines.get('timeline'), () => Option.none()), () => ({
@@ -552,25 +648,63 @@ export class Game extends Context.Service<
 
 			return Game.of({
 				history: Effect.fn('Game.history')(
-					function* (actor: number, before: Option.Option<number>, at = 9_007_199_254_740_991) {
-						const count = MutableRef.get(historyIndex)[`${actor}`] ?? 0
-						const found = MutableList.make<Experience>()
-						MutableList.appendAll(
-							found,
-							Array.filter(
-								sim.experiences(),
-								entry =>
-									entry.actor === actor &&
-									entry.tick <= at &&
-									Option.match(before, {onNone: () => true, onSome: id => entry.id < id})
+					function* (actor: number | 'all', before: Option.Option<number>, at = 9_007_199_254_740_991) {
+						const index = MutableRef.get(historyIndex)
+						const count =
+							index[Boolean.match(actor === 'all', {onFalse: () => `${actor}`, onTrue: () => '@activity'})] ?? 0
+						function matches(entry: {id: number; tick: number}) {
+							return entry.tick <= at && Option.match(before, {onNone: () => true, onSome: id => entry.id < id})
+						}
+						const found = MutableHashMap.fromIterable(
+							Array.map(
+								Array.filter(
+									sim.experiences(),
+									entry => (entry.actor === actor || (actor === 'all' && notable(entry))) && matches(entry)
+								),
+								entry => [entry.id, entry] as const
 							)
 						)
-						const bounds = {high: Math.floor(Number.max(0, count - 1) / 100), low: 0}
+						const cached = MutableHashMap.empty<string, readonly Experience[]>()
+						const read = Effect.fnUntraced(function* (page: number) {
+							if (actor === 'all') {
+								const expected = Number.min(100, count - page * 100)
+								const rows = Option.getOrElse(yield* activity.get(`activity/${padded(page)}`), () => [])
+								if (rows.length < expected) {
+									return yield* GameError.make({message: 'A committed world chronicle page is missing or incomplete.'})
+								}
+								return Array.take(rows, expected)
+							}
+							const rows = yield* actorPage(`${actor}`, page, index)
+							MutableHashMap.set(cached, `${actor}:${page}`, rows)
+							return Array.map(rows, entry => ({actor: entry.actor, id: entry.id, page, tick: entry.tick}))
+						})
+						const resolve = Effect.fnUntraced(function* (reference: ActivityPage[number]) {
+							const key = `${reference.actor}:${reference.page}`
+							const rows = yield* Option.match(MutableHashMap.get(cached, key), {
+								onNone: () =>
+									pipe(
+										actorPage(`${reference.actor}`, reference.page, index),
+										Effect.tap(entriesInPage => Effect.sync(() => MutableHashMap.set(cached, key, entriesInPage)))
+									),
+								onSome: Effect.succeed
+							})
+							return yield* Effect.fromOption(
+								Array.findFirst(rows, entry => entry.id === reference.id),
+								() => GameError.make({message: 'A world chronicle reference has no canonical individual event.'})
+							)
+						})
+						if (count === 0 || MutableHashMap.size(found) >= 100) {
+							return Array.takeRight(
+								Array.sortWith(Array.fromIterable(MutableHashMap.values(found)), entry => entry.id, Number.Order),
+								100
+							)
+						}
+						const bounds = {high: Math.floor((count - 1) / 100), low: 0}
 						while (bounds.low < bounds.high) {
 							const middle = Math.ceil((bounds.low + bounds.high) / 2)
 							if (
 								Option.exists(
-									Array.head(Option.getOrElse(yield* histories.get(`history/${actor}/${padded(middle)}`), () => [])),
+									Array.head(yield* read(middle)),
 									entry => entry.tick > at || Option.exists(before, cursor => entry.id >= cursor)
 								)
 							) {
@@ -580,18 +714,18 @@ export class Game extends Context.Service<
 							}
 						}
 						for (const page of Array.reverse(Array.range(0, bounds.low))) {
-							MutableList.prependAll(
-								found,
-								Array.filter(
-									Option.getOrElse(yield* histories.get(`history/${actor}/${padded(page)}`), () => []),
-									entry => entry.tick <= at && Option.match(before, {onNone: () => true, onSome: id => entry.id < id})
-								)
-							)
-							if (found.length >= 100) return Array.takeRight(MutableList.toArray(found), 100)
+							for (const reference of Array.filter(yield* read(page), matches)) {
+								const entry = yield* resolve(reference)
+								MutableHashMap.set(found, entry.id, entry)
+							}
+							if (MutableHashMap.size(found) >= 100) break
 						}
-						return MutableList.toArray(found)
+						return Array.takeRight(
+							Array.sortWith(Array.fromIterable(MutableHashMap.values(found)), entry => entry.id, Number.Order),
+							100
+						)
 					},
-					Effect.mapError(cause => GameError.make({cause, message: 'The individual history could not be read.'}))
+					Effect.mapError(cause => GameError.make({cause, message: 'The chronicle could not be read.'}))
 				),
 
 				join: Stream.unwrap(
