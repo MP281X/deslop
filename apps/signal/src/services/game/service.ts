@@ -761,21 +761,23 @@ export class Game extends Context.Service<
 						return pipe(
 							Stream.tick(`${1000 / FRAME_HZ} millis`),
 							Stream.mapEffect(() =>
-								Effect.suspend(() => {
-									const version = `${sim.tick()}:${Option.getOrElse(
-										Option.map(MutableRef.get(fault), error => error.message),
-										() => ''
-									)}`
-									if (Option.contains(MutableRef.get(sent), version)) return Effect.succeedNone
-									MutableRef.set(sent, Option.some(version))
-									return Effect.map(Clock.currentTimeMillis, now =>
-										Option.map(sim.frame(id, now), frame => ({
-											...frame,
-											paused: !running || Option.isSome(MutableRef.get(fault)),
-											problem: Option.getOrUndefined(Option.map(MutableRef.get(fault), error => error.message))
-										}))
-									)
-								})
+								clock.withPermit(
+									Effect.suspend(() => {
+										const version = `${sim.tick()}:${Option.getOrElse(
+											Option.map(MutableRef.get(fault), error => error.message),
+											() => ''
+										)}`
+										if (Option.contains(MutableRef.get(sent), version)) return Effect.succeedNone
+										MutableRef.set(sent, Option.some(version))
+										return Effect.map(Clock.currentTimeMillis, now =>
+											Option.map(sim.frame(id, now), frame => ({
+												...frame,
+												paused: !running || Option.isSome(MutableRef.get(fault)),
+												problem: Option.getOrUndefined(Option.map(MutableRef.get(fault), error => error.message))
+											}))
+										)
+									})
+								)
 							),
 							Stream.flatMap(frame => Stream.fromIterable(Option.toArray(frame)))
 						)
