@@ -1,6 +1,6 @@
 ---
 name: environment
-description: Load before the first command of every thread, and before a preview, the Simulator, a trace, a deploy, a publish, a sign-in, a proof video, work on the other worker or machine upkeep.
+description: Load before worker operations, previews, devices, tracing, deployment, publishing or sign-in, and when analyzing agent failures or changing instructions.
 ---
 
 # Environment
@@ -20,12 +20,13 @@ Two headless Debian workers in one tailnet, same user, paths and agent configura
 - **Git refs.** T3 keeps checkpoint commits under `refs/t3/`; search history with `--branches --remotes`.
 - **Services** run as temporary containers, not host installs.
 
-| Reference                                | For                                                                         |
-| ---------------------------------------- | --------------------------------------------------------------------------- |
-| [Dual](references/dual.md)               | Accounts, merges, preview, Jira, Google, VPN, tracing                       |
-| [Deslop](references/deslop.md)           | Apps on dev, Simulator, npm and iOS publishing, TestFlight, tracing, deploy |
-| [Maintenance](references/maintenance.md) | Machines, setup, agent links, T3 history and settings, updates, clean       |
-| [Video](references/video.md)             | Proof videos: camera targets, HyperFrames composition and look              |
+| Reference                                    | For                                                                         |
+| -------------------------------------------- | --------------------------------------------------------------------------- |
+| [Dual](references/dual.md)                   | Accounts, merges, preview, Jira, Google, VPN, tracing                       |
+| [Deslop](references/deslop.md)               | Apps on dev, Simulator, npm and iOS publishing, TestFlight, tracing, deploy |
+| [Maintenance](references/maintenance.md)     | Machines, setup, agent links, T3 history and settings, updates, clean       |
+| [Video](references/video.md)                 | Proof videos: camera targets, HyperFrames composition and look              |
+| [Retrospective](references/retrospective.md) | When analyzing agent failures or changing prompts, skills or lint policy    |
 
 ## Previews
 
@@ -38,12 +39,11 @@ Two headless Debian workers in one tailnet, same user, paths and agent configura
   ```
 
 - **Share** only after the URL loads sign-in, assets and API calls.
-- **Simulator.** A native app runs on `macbook-pro` through the launcher and flags `device_open` returns: `open <bundle id>` before `snapshot -i`, `screenshot <path> --pixel-density 3` or `record start <path>`.
 - **Keep** a started preview on the latest code at the end of every turn: deslop's serves a production build, so rerun `preview` after edits.
 - **Webhooks.** Funnel exposes a whole port: pick a free one of 443, 8443, 10000 and run `sudo tailscale funnel --bg --https=<port> --set-path <path> http://127.0.0.1:<api port><path>`; remove it with `... --set-path <path> off`.
 
 ## Diagnostics
 
-- **Scope first.** A slow load, a failed request or a wrong result starts with its trace in `scope`, before reading code. Deslop's apps export from previews on dev and from deploys; Dual only from a development launch (Dual reference, Tracing).
-- **Layout:** `preview_snapshot` returns every element's box, the console and the network requests; a clipped, overflowing or misaligned element shows in its box against its container's.
-- **Slow input:** a `PerformanceObserver` for `event`, `long-animation-frame` and `layout-shift` through `preview_evaluate`, read after the real input.
+Use Scope traces and logs when the failing operation exports them; otherwise use the reproduction's output and source. Deslop exports from previews on dev and from deploys; Dual only from a development launch (Dual reference, Tracing).
+
+Validate web journeys in T3 at the app's theme and primary viewport: desktop 1440×900, phone `iphone-12-pro`. Capture the real input through its outcome after the deciding condition holds.

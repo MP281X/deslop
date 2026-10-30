@@ -9,14 +9,12 @@ Commands, Verify and the agent configuration live in the repository's `AGENTS.md
 
 ## Simulator builds
 
-The Simulator workflow builds each mobile app in `simulator.yaml` once per native fingerprint as the artifact `<app>-simulator-<fingerprint>`, on a branch push that changes what the native build reads; `<fingerprint>` is `(cd apps/<app> && APP_VARIANT=development npx --yes eas-cli@latest fingerprint:generate --platform ios --build-profile simulator --json --non-interactive | jq -r .hash)`. The app holds the JavaScript of the commit that built it, so embed the branch's bundle before you install it; `device_open` returns the `agent-device` command and its flags. A Swift change compiles first in that CI build.
+The Simulator workflow builds each mobile app in `simulator.yaml` once per native fingerprint as the artifact `<app>-simulator-<fingerprint>`, on a branch push that changes what the native build reads; `<fingerprint>` is `(cd apps/<app> && APP_VARIANT=development npx --yes eas-cli@latest fingerprint:generate --platform ios --build-profile simulator --json --non-interactive | jq -r .hash)`. The app holds the JavaScript of the commit that built it, so embed the branch's bundle before installing through T3's device session. A Swift change compiles first in that CI build.
 
 ```bash
 run=$(gh api "repos/MP281X/deslop/actions/artifacts?name=stash-simulator-<fingerprint>" --jq '[.artifacts[] | select(.expired | not)][0].workflow_run.id')
 gh run download $run --name stash-simulator-<fingerprint> --dir /tmp/stash-sim && tar -xzf /tmp/stash-sim/simulator.tar.gz -C /tmp/stash-sim
 APP_VARIANT=development vp -C apps/stash exec expo export:embed --platform ios --dev false --bundle-output /tmp/stash-sim/stashdev.app/main.jsbundle --assets-dest /tmp/stash-sim/stashdev.app
-<agent-device> install xyz.mp281x.stash.dev /tmp/stash-sim/stashdev.app <flags>
-<agent-device> open xyz.mp281x.stash.dev <flags>
 vp -C apps/stash exec expo prebuild --platform ios --no-install --clean && rm -rf apps/stash/ios   # config check before a native change
 ```
 

@@ -9,8 +9,8 @@ description: 'Load before the first commit of a task, before changing code to fi
 
 - **Review units.** Each PR is coherent and runnable on its target, with generated files beside their source.
 - **Stacks.** PRs that depend on each other, change the same thing or merge together form one stack: one branch per layer on the layer below, each readable alone. Only unrelated PRs branch from the default branch. Restack with the host's stack commands, never by retargeting by hand.
-- **Owning layer.** A fix goes in the layer that introduced the line; the layers above restack.
-- **Current.** Restack onto the latest default branch before each push, since CI checks the pushed branch, not its merge.
+- **Reshape.** Remove a rejected approach from every unmerged layer; reuse the surviving PRs rather than introducing it below and undoing it above.
+- **Integration.** Batch corrections into their owning layers, then restack onto the latest default branch before final proof, Verify and review. Publish that integrated state; revalidate if it changes.
 - **Baseline first.** Reproduce a bug, or capture the state a difference is claimed against, before changing code.
 
 ## Publish

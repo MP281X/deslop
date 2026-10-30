@@ -13,7 +13,7 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 
 - **Verify** is `vp run -w fix && vp run -w check && vp run -w test`. `fix` applies lint fixes and formatting only; `check` is the non-writing static gate (format, lint, types, Fallow).
 - **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. Before the first mobile push, follow environment's Deslop reference, **Publish an iOS app**.
-- **Agent configuration.** `.claude/agents/pair.md` and `.codex/instructions.md` are identical from `# Work` down. Team skills live in `tools/coding-standards/skills/`, and `node tools/coding-standards/src/install.ts` refreshes their copies in `.claude/skills` and `.codex/skills`. The personal skills in `.claude/skills` (planning, environment, references, retrospective) load globally through the workers' links.
+- **Agent configuration.** `.claude/agents/pair.md` and `.codex/instructions.md` replace the provider prompts, borrowing useful mechanics without importing conflicting policies; they are identical from `# Work` down. Team skills live in `tools/coding-standards/skills/`, and `node tools/coding-standards/src/install.ts` refreshes their copies in `.claude/skills` and `.codex/skills`. The personal skills in `.claude/skills` (planning, environment, references) load globally through the workers' links; retrospective guidance is an environment reference.
 
 ## Patterns
 
