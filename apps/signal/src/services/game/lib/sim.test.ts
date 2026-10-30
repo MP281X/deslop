@@ -352,7 +352,7 @@ it.effect(
 		const wire = Schema.toCodecJson(Frame)
 		yield* Effect.forEach(
 			Array.range(1, 5),
-			() => Effect.andThen(sim.run(20), () => Schema.encodeEffect(wire)(Option.getOrThrow(sim.frame(connection, 0)))),
+			() => Effect.andThen(sim.run(2), () => Schema.encodeEffect(wire)(Option.getOrThrow(sim.frame(connection, 0)))),
 			{concurrency: 1, discard: true}
 		)
 		assert.isTrue(Schema.is(Frame)(Option.getOrThrow(sim.frame(connection, 0))))

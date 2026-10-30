@@ -380,11 +380,11 @@ export const Frame = Schema.Struct({
 	// In a replay, the live world's tick.
 	live: Schema.optionalKey(Schema.Int),
 	paused: Schema.optionalKey(Schema.Boolean),
-	problem: Schema.optionalKey(Schema.String),
+	problem: Schema.optional(Schema.String),
 	shots: Schema.Array(Schema.Struct({from: Schema.Int, to: Schema.Int})),
 	teams: Schema.optional(Schema.Array(TeamView)),
 	tick: Schema.Int,
-	traces: Schema.optionalKey(
+	traces: Schema.optional(
 		Schema.Array(
 			Schema.Struct({
 				fresh: Schema.Finite,

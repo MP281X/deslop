@@ -10,6 +10,7 @@ import {
 	Layer,
 	MutableList,
 	Option,
+	Schema,
 	Stream,
 	String,
 	pipe
@@ -20,7 +21,7 @@ import {TestClock} from 'effect/testing'
 
 import {Core} from '#services/core/service.ts'
 import {makeSim, SIMULATION} from '#services/game/lib/sim.ts'
-import {Journal, Saved} from '#services/game/schema.ts'
+import {Frame, Journal, Saved} from '#services/game/schema.ts'
 import {Game} from '#services/game/service.ts'
 
 it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvider.fromUnknown({}))))(test => {
@@ -50,6 +51,8 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 			yield* TestClock.adjust('1 hour')
 			const frame = Option.getOrThrow(yield* Fiber.join(waiting))
 			assert.strictEqual(frame.paused, true)
+			assert.isTrue(Schema.is(Frame)(frame))
+			yield* Schema.encodeEffect(Schema.toCodecJson(Frame))(frame)
 			assert.strictEqual(frame.tick, 0)
 			assert.strictEqual(calls.length, 0)
 			assert.deepStrictEqual(yield* kv.keys, [])
