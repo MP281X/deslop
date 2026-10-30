@@ -28,33 +28,33 @@ import {FetchHttpClient, HttpRouter, HttpServerRequest} from 'effect/http'
 
 import {AuthError, Resource} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
+import {AUTH_URL} from '@deslop/runtime/auth/utils'
 
-import {Authorizations} from '#services/authorizations/service.ts'
-import {connectionInfo} from '#services/connections/lib/utils.ts'
+import {connectionStatus, describe} from '#services/connections/lib/utils.ts'
 import type {Connection} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
-import type {ServerStatus} from '#services/gateway/schema.ts'
+import {compact} from '#services/gateway/lib/utils.ts'
 import {RemoteTools, ToolArguments, ToolRequest} from '#services/gateway/schema.ts'
+import {Tokens} from '#services/tokens/service.ts'
 
 type Server = Pick<Connection, 'id' | 'generation' | 'name' | 'mode'>
 
+// The failure keeps its cause for traces and names it for the MCP page and the calling agent.
 function rejected(server: Pick<Connection, 'name'>) {
-	return AuthError.make({
-		message: `${server.name} is unavailable. Check its connection on https://auth.mp281x.xyz/mcp-servers.`
-	})
+	return (cause: unknown) => {
+		if (Schema.is(AuthError)(cause)) return cause
+		return AuthError.make({cause, message: `${server.name}: ${describe(cause)}`})
+	}
 }
 
 export class Gateway extends Context.Service<
 	Gateway,
-	{
-		readonly status: Effect.Effect<ServerStatus[]>
-		readonly refresh: (headers: Headers.Headers, registry: typeof McpServer.McpServer.Service) => Effect.Effect<void>
-	}
+	{readonly refresh: (headers: Headers.Headers, registry: typeof McpServer.McpServer.Service) => Effect.Effect<void>}
 >()('@deslop/auth/services/gateway/service/Gateway') {
 	static readonly layer = Layer.effect(Gateway)(
 		Effect.gen(function* () {
 			const auth = yield* Auth
-			const authorizations = yield* Authorizations
+			const tokens = yield* Tokens
 			const connections = yield* Connections
 			const fetch = yield* FetchHttpClient.Fetch
 			const digest = yield* Digest.Digest
@@ -68,9 +68,21 @@ export class Gateway extends Context.Service<
 				}
 				return `${String.slice(0, 41)(String.replaceAll(/[^a-zA-Z0-9_-]/gu, '_')(fullName))}__encoded_${String.slice(0, 12)(Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(fullName))))}`
 			})
-			const status = yield* Ref.make<ServerStatus[]>([])
 			const visible = yield* Ref.make(HashSet.empty<string>())
-			const installed = yield* Ref.make<Record<string, {fingerprint: string; id: string; generation: string}>>({})
+			const installed = yield* Ref.make<
+				Record<string, {fingerprint: string; generation: string; id: string; tool: string}>
+			>({})
+			// A server's tool counts while the server is connected and the owner has not hidden it.
+			const usable = Effect.fnUntraced(function* (id: string, generation: string, tool: string) {
+				const now = yield* Clock.currentTimeMillis
+				return Option.exists(
+					yield* Effect.option(connections.get(id)),
+					found =>
+						found.generation === generation &&
+						connectionStatus(found, now) === 'Connected' &&
+						!Array.contains(found.hidden, tool)
+				)
+			})
 			const refreshes = yield* Semaphore.make(1)
 			const scope = yield* Effect.scope
 			const remove = Effect.fnUntraced(function* (name: string, registry: typeof McpServer.McpServer.Service) {
@@ -84,7 +96,11 @@ export class Gateway extends Context.Service<
 					if (
 						!Array.some(
 							definitions,
-							server => server.id === entry[1].id && server.generation === entry[1].generation && server.enabled
+							server =>
+								server.id === entry[1].id &&
+								server.generation === entry[1].generation &&
+								server.link._tag !== 'Disconnected' &&
+								!Array.contains(server.hidden, entry[1].tool)
 						)
 					) {
 						yield* remove(entry[0], registry)
@@ -114,12 +130,7 @@ export class Gateway extends Context.Service<
 						if (!HashSet.has(yield* Ref.get(visible), options.target)) return false
 						const entry = (yield* Ref.get(installed))[options.target]
 						if (entry === undefined) return false
-						const current = yield* Effect.option(connections.get(entry.id))
-						const now = yield* Clock.currentTimeMillis
-						return Option.exists(
-							current,
-							found => found.generation === entry.generation && connectionInfo(found, now).connected
-						)
+						return yield* usable(entry.id, entry.generation, entry.tool)
 					})
 				).layer
 			)
@@ -127,16 +138,18 @@ export class Gateway extends Context.Service<
 				const current = yield* connections.get(server.id)
 				if (
 					current.generation !== server.generation ||
-					!connectionInfo(current, yield* Clock.currentTimeMillis).connected
+					connectionStatus(current, yield* Clock.currentTimeMillis) !== 'Connected'
 				) {
-					return yield* rejected(server)
+					return yield* AuthError.make({
+						message: `${server.name} is not connected; connect it on ${AUTH_URL}/mcp-servers`
+					})
 				}
 				if (current.mode === 'oauth') {
 					return {token: yield* connections.token(server.id, server.generation), url: current.url}
 				}
 				if (current.mode === 'public') return {token: undefined, url: current.url}
 				return {
-					token: yield* authorizations.delegate(headers, yield* Schema.decodeUnknownEffect(Resource)(current.url)),
+					token: yield* tokens.delegate(headers, yield* Schema.decodeUnknownEffect(Resource)(current.url)),
 					url: current.url
 				}
 			})
@@ -185,13 +198,10 @@ export class Gateway extends Context.Service<
 									Effect.ignore({log: 'Warn', message: 'Cannot close the upstream MCP client'})
 								)
 						)
-						yield* Effect.tryPromise({
-							catch: () => rejected(server),
-							try: signal => client.connect(transport, {signal})
-						})
+						yield* Effect.tryPromise({catch: rejected(server), try: signal => client.connect(transport, {signal})})
 						return yield* run(client)
 					}),
-					Effect.mapError(() => rejected(server)),
+					Effect.mapError(rejected(server)),
 					Effect.scoped
 				)
 			}
@@ -201,63 +211,77 @@ export class Gateway extends Context.Service<
 						Effect.serviceOption(HttpServerRequest.HttpServerRequest),
 						Effect.fromOption
 					)
-					yield* auth.access(request.headers, 'https://auth.mp281x.xyz/mcp')
+					yield* auth.access(request.headers, `${AUTH_URL}/mcp`)
 					const args = yield* Schema.decodeUnknownEffect(ToolArguments)(input ?? {})
 					return yield* withClient(server, request.headers, client =>
 						pipe(
 							Effect.tryPromise({
-								catch: () => rejected(server),
+								catch: rejected(server),
 								try: signal => client.callTool({arguments: args, name: tool}, {signal})
 							}),
 							Effect.flatMap(Schema.decodeUnknownEffect(McpSchema.CallToolResult)),
-							Effect.mapError(() => rejected(server))
+							Effect.mapError(rejected(server))
 						)
 					)
 				},
-				Effect.orElseSucceed(() =>
-					McpSchema.CallToolResult.make({
-						content: [
-							{
-								text: 'The provider call failed. Check list_mcp_connections or reconnect the provider with connect_mcp.',
-								type: 'text'
-							}
-						],
-						isError: true
-					})
-				)
+				// The agent reads the failure as a tool result; the trace keeps its cause.
+				(effect, server) =>
+					Effect.catch(
+						Effect.tapCause(effect, cause => Effect.logWarning(`${server.name} call failed`, cause)),
+						cause =>
+							Effect.succeed(
+								McpSchema.CallToolResult.make({
+									content: [
+										{
+											text: `${rejected(server)(cause).message}. list_mcp_connections shows its state; reconnect it at ${AUTH_URL}/mcp-servers.`,
+											type: 'text'
+										}
+									],
+									isError: true
+								})
+							)
+					)
 			)
 			const discover = Effect.fnUntraced(function* (
 				server: Connection,
 				headers: Headers.Headers,
 				registry: typeof McpServer.McpServer.Service
 			) {
-				if (!connectionInfo(server, yield* Clock.currentTimeMillis).connected) {
-					yield* updateVisible(server, HashSet.empty(), registry)
-					return connectionInfo(server, yield* Clock.currentTimeMillis)
+				if (connectionStatus(server, yield* Clock.currentTimeMillis) !== 'Connected') {
+					return yield* updateVisible(server, HashSet.empty(), registry)
 				}
-				const tools = yield* pipe(
+				const found = yield* pipe(
 					withClient(server, headers, client =>
 						pipe(
-							Effect.tryPromise({catch: () => rejected(server), try: signal => client.listTools(undefined, {signal})}),
+							Effect.tryPromise({catch: rejected(server), try: signal => client.listTools(undefined, {signal})}),
 							Effect.flatMap(result =>
 								Schema.decodeUnknownEffect(RemoteTools)(
 									Array.filter(result.tools, tool => tool.execution?.taskSupport !== 'required')
 								)
 							),
-							Effect.mapError(() => rejected(server))
+							Effect.mapBoth({
+								onFailure: rejected(server),
+								onSuccess: tools => ({instructions: client.getInstructions(), tools})
+							})
 						)
 					),
 					Effect.timeout('20 seconds')
 				)
 				const latest = yield* connections.get(server.id)
-				if (latest.generation !== server.generation || !latest.enabled) return yield* rejected(server)
+				if (latest.generation !== server.generation || latest.link._tag === 'Disconnected') {
+					return yield* AuthError.make({message: `${server.name} changed while its tools were read`})
+				}
 				const reference = Struct.pick(server, ['id', 'generation', 'name', 'mode'])
 				const names = MutableList.make<string>()
-				for (const tool of tools) {
+				for (const tool of Array.filter(found.tools, candidate => !Array.contains(latest.hidden, candidate.name))) {
 					const upstreamName = tool.name
 					const name = yield* namespaced(`${server.id}__${tool.name}`)
 					const fingerprint = yield* Schema.encodeEffect(Schema.fromJsonString(McpSchema.Tool))(tool)
-					if (Option.isNone(String.match(/^[a-zA-Z0-9_-]{1,64}$/u)(name))) return yield* rejected(server)
+					if (Option.isNone(String.match(/^[a-zA-Z0-9_-]{1,64}$/u)(name))) {
+						return yield* AuthError.make({
+							message: `${server.name} has a tool name that cannot be namespaced: ${tool.name}`
+						})
+					}
 					if ((yield* Ref.get(installed))[name]?.fingerprint !== `${server.generation}:${fingerprint}`) {
 						yield* registry.addTool({
 							annotations: Context.empty(),
@@ -265,18 +289,29 @@ export class Gateway extends Context.Service<
 								return yield* call(reference, upstreamName, input)
 							}),
 							services,
-							tool: McpSchema.Tool.make({...tool, name})
+							tool: McpSchema.Tool.make({...compact(tool), name})
 						})
 						yield* Ref.update(installed, current => ({
 							...current,
-							[name]: {fingerprint: `${server.generation}:${fingerprint}`, generation: server.generation, id: server.id}
+							[name]: {
+								fingerprint: `${server.generation}:${fingerprint}`,
+								generation: server.generation,
+								id: server.id,
+								tool: upstreamName
+							}
 						}))
 					}
 					MutableList.append(names, name)
 				}
 				yield* updateVisible(server, HashSet.fromIterable(MutableList.toArray(names)), registry)
-				yield* connections.report(server.id, server.generation, tools.length)
-				return {...connectionInfo(server, yield* Clock.currentTimeMillis), tools: tools.length}
+				yield* connections.report(server.id, server.generation, {
+					_tag: 'Discovered',
+					...Option.match(Option.fromUndefinedOr(found.instructions), {
+						onNone: () => ({}),
+						onSome: instructions => ({instructions})
+					}),
+					tools: Array.map(found.tools, tool => tool.name)
+				})
 			})
 			return Gateway.of({
 				refresh: Effect.fn('Gateway.refresh')(function* (
@@ -287,33 +322,30 @@ export class Gateway extends Context.Service<
 						refreshes.withPermitsIfAvailable(1)(
 							pipe(
 								prune(registry),
-								Effect.andThen(
-									Effect.gen(function* () {
-										return yield* Effect.forEach(
-											yield* connections.definitions,
-											server =>
-												pipe(
-													discover(server, headers, registry),
-													Effect.orElseSucceed(() => ({...connectionInfo(server, 0), error: rejected(server).message}))
-												),
-											{concurrency: 6}
-										)
-									})
+								Effect.andThen(connections.definitions),
+								Effect.flatMap(definitions =>
+									Effect.forEach(
+										definitions,
+										server =>
+											pipe(
+												discover(server, headers, registry),
+												Effect.tapCause(cause => Effect.logWarning(`${server.name} discovery failed`, cause)),
+												Effect.catch(cause =>
+													connections.report(server.id, server.generation, {
+														_tag: 'Failed',
+														error: rejected(server)(cause).message
+													})
+												)
+											),
+										{concurrency: 6, discard: true}
+									)
 								),
-								Effect.tap(() => prune(registry)),
-								Effect.flatMap(results => Ref.set(status, results))
+								Effect.andThen(prune(registry))
 							)
 						),
 						scope
 					)
 					yield* pipe(Fiber.join(worker), Effect.timeoutOption('2 seconds'))
-				}),
-				status: Effect.gen(function* () {
-					const errors = Record.fromEntries(Array.map(yield* Ref.get(status), row => [row.id, row.error]))
-					return Array.map(yield* connections.list, row => ({
-						...row,
-						...Option.match(Option.fromUndefinedOr(errors[row.id]), {onNone: () => ({}), onSome: error => ({error})})
-					}))
 				})
 			})
 		})
@@ -333,7 +365,7 @@ export const GatewayDiscovery = HttpRouter.middleware()(
 					request.method === 'POST' &&
 					request.url === '/mcp' &&
 					request.headers['origin'] === undefined &&
-					Result.isSuccess(yield* Effect.result(auth.access(request.headers, 'https://auth.mp281x.xyz/mcp')))
+					Result.isSuccess(yield* Effect.result(auth.access(request.headers, `${AUTH_URL}/mcp`)))
 				) {
 					const body = yield* Effect.result(request.json)
 					if (Result.isSuccess(body) && Schema.is(ToolRequest)(body.success)) {

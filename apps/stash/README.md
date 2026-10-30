@@ -11,12 +11,8 @@ codex mcp login --no-browser stash
 
 The server runs from `tools/compose.yaml`; its image carries ffmpeg, yt-dlp and the Whisper runtime. The API and MCP require a Deslop sign-in through `auth.mp281x.xyz`, as in Scope's [connection diagnostics](../scope/README.md#connection-diagnostics). `STASH_PROXY` sends video downloads through a proxy.
 
-| Tool             | Does                                                                          |
-| ---------------- | ----------------------------------------------------------------------------- |
-| `list_notes`     | Notes newest first, without their long texts                                  |
-| `search_notes`   | Notes holding every word of the query; a `#word` must be a tag                |
-| `list_tags`      | Tags in use with their note counts and what belongs under each                |
-| `read_note`      | One note whole, with its source text and its transcript in `[mm:ss]` sections |
-| `save_note`      | Saves a link or text; the note is done once its status is `ready`             |
-| `reprocess_note` | Reads and tags a note again                                                   |
-| `delete_note`    | Deletes a note with its files                                                 |
+| Tool           | Does                                                                                      |
+| -------------- | ----------------------------------------------------------------------------------------- |
+| `search_notes` | Notes holding every word of the query, a `#word` being a tag; without a query, the newest |
+| `read_note`    | One note whole, with its source text and its transcript in `[mm:ss]` sections             |
+| `save_note`    | Saves a link or text, or retries one that failed; done once its status is `ready`         |

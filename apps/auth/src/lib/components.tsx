@@ -15,16 +15,16 @@ import {
 	appNames,
 	appsAtom,
 	avatarUrl,
-	clientKey,
-	clientLabel,
 	consentAtom,
 	disconnectAtom,
 	minuteAtom,
 	minutesSince,
 	newest,
+	signInLabel,
 	timeLabel
 } from '#lib/utils.ts'
-import type {PendingAuthorization, SignedInApp} from '#services/authorizations/schema.ts'
+import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
+import type {SignedInApp} from '#services/tokens/schema.ts'
 
 // The link as a QR code, one square per dark module, inside the quiet zone scanners need.
 export function QrCode(props: {className?: string; text: string}) {
@@ -131,7 +131,7 @@ function Cell(props: {app: string; client: string; now: number; signIns: SignedI
 // The waiting sign-in as the grid's top row: an outlined cell for each app it asks for.
 function PendingRow(props: {columns: string[]; request: PendingAuthorization}) {
 	const asked = appNames(props.request.resources)
-	const client = clientLabel(props.request)
+	const client = signInLabel(props.request.clientName, props.request.device)
 	return (
 		<tr>
 			<th scope="row" className="text-primary pr-2 text-left text-xs font-normal wrap-anywhere">
@@ -161,11 +161,23 @@ function PendingRow(props: {columns: string[]; request: PendingAuthorization}) {
 	)
 }
 
-// A failed answer stays under the grid to retry.
+// A failed answer stays under the grid to retry. Where the sign-in started tells a stranger's code from one's own.
 function Answer(props: {request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
 	return (
 		<>
+			<p className="text-muted-foreground text-xs">
+				{Boolean.match(props.request.kind === 'Browser', {
+					onFalse: () => `${signInLabel(props.request.clientName, props.request.device)} asks for the apps marked new`,
+					onTrue: () =>
+						`Signs in ${signInLabel(props.request.clientName, props.request.device)} as you to every mp281x.xyz app for 30 days, including approving sign-ins`
+				})}
+				{Option.match(Option.fromUndefinedOr(props.request.address), {
+					onNone: () => '',
+					onSome: address => ` · from ${address}`
+				})}
+				. Approve only a code you started yourself.
+			</p>
 			{Option.match(AsyncResult.error(consent), {
 				onNone: () => null,
 				onSome: failure => (
@@ -177,7 +189,7 @@ function Answer(props: {request: PendingAuthorization}) {
 			<div className="grid grid-cols-2 gap-1.5 text-xs">
 				<Button
 					size="lg"
-					aria-label={`Approve ${clientLabel(props.request)}`}
+					aria-label={`Approve ${signInLabel(props.request.clientName, props.request.device)}`}
 					disabled={AsyncResult.isWaiting(consent)}
 					onClick={() => respond({accept: true, request: props.request})}
 				>
@@ -201,13 +213,15 @@ export function SignedInGrid(props: {pending: Option.Option<PendingAuthorization
 	const apps = useAtomSuspense(appsAtom).value
 	const now = useAtomSuspense(minuteAtom).value
 	const [disconnection] = useAtom(disconnectAtom)
-	const asked = Option.match(props.pending, {onNone: () => [], onSome: request => appNames(request.resources)})
+	// A browser asks for no app, only the session, so it adds no row.
+	const pendingApp = Option.filter(props.pending, request => request.kind === 'App')
+	const asked = Option.match(pendingApp, {onNone: () => [], onSome: request => appNames(request.resources)})
 	const columns = Array.sort(
 		Array.dedupe([...Array.flatMap(apps, app => appNames(app.resources)), ...asked]),
 		String.Order
 	)
 	const rows = pipe(
-		Array.groupBy(apps, clientKey),
+		Array.groupBy(apps, app => signInLabel(app.client, app.device)),
 		Record.toEntries,
 		Array.sort(Order.flip(Order.mapInput(Order.Number, (entry: [string, SignedInApp[]]) => newest(entry[1]))))
 	)
@@ -222,7 +236,7 @@ export function SignedInGrid(props: {pending: Option.Option<PendingAuthorization
 					)
 				})}
 			</h2>
-			{Boolean.match(Array.isArrayEmpty(rows) && Option.isNone(props.pending), {
+			{Boolean.match(Array.isArrayEmpty(rows) && Option.isNone(pendingApp), {
 				onFalse: () => (
 					<table className="w-full table-fixed border-collapse text-sm">
 						<thead>
@@ -238,20 +252,20 @@ export function SignedInGrid(props: {pending: Option.Option<PendingAuthorization
 							</tr>
 						</thead>
 						<tbody>
-							{Option.match(props.pending, {
+							{Option.match(pendingApp, {
 								onNone: () => null,
 								onSome: request => <PendingRow columns={columns} request={request} />
 							})}
 							{Array.map(rows, row => (
 								<tr key={row[0]}>
 									<th scope="row" className="text-muted-foreground pr-2 text-left text-xs font-normal wrap-anywhere">
-										{clientLabel({clientName: row[0]})}
+										{row[0]}
 									</th>
 									{Array.map(columns, column => (
 										<Cell
 											key={column}
 											app={column}
-											client={clientLabel({clientName: row[0]})}
+											client={row[0]}
 											now={now}
 											signIns={Array.filter(row[1], app => Array.contains(appNames(app.resources), column))}
 										/>

@@ -33,8 +33,7 @@ const layerStorage = Layer.unwrap(
 )
 
 const mcp = ServerRuntime.layerMcp({
-	instructions:
-		"Trips tracks the user's flights, trains and stays with live gates, delays, platforms and baggage belts. Use list_bookings for their travel plans or a journey's status; save_booking adds a confirmation, e-ticket or itinerary text they give you.",
+	instructions: "Trips tracks the user's flights, trains and stays with live gates, delays and platforms.",
 	name: 'trips',
 	registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers)),
 	version: packageJson.version

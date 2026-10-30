@@ -4,6 +4,7 @@
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
+		"#http/*": "./src/http/*",
 		"#lib/*": "./src/lib/*",
 		"#package.*": "./package.*",
 		"#rpcs/*": "./src/rpcs/*",

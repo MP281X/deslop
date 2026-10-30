@@ -2,14 +2,8 @@
 	"disableBundledSkills": true,
 	"syncClaudeAiSkills": false,
 	"syncClaudeAiPlugins": false,
-	"allowedMcpServers": [
-		{"serverUrl": "http://127.0.0.1:*/mcp"},
-		{"serverUrl": "https://app.dualos.ai/mcp"},
-		{"serverUrl": "https://scope.mp281x.xyz/mcp"},
-		{"serverUrl": "https://stash.mp281x.xyz/mcp"},
-		{"serverUrl": "https://auth.mp281x.xyz/mcp"},
-		{"serverUrl": "https://api.mobbin.com/mcp"}
-	],
+	"disableClaudeAiConnectors": true,
+	"allowedMcpServers": [{"serverUrl": "http://127.0.0.1:*/mcp"}, {"serverUrl": "https://auth.mp281x.xyz/mcp"}],
 	"enabledPlugins": {
 		"plugin-authoring@builtin": false,
 		"mods-guide@builtin": false,

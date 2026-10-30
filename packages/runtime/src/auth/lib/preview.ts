@@ -1,4 +1,4 @@
-import {Boolean, Cache, Clock, Effect, Option, Ref, Schema, Semaphore, pipe} from 'effect'
+import {Array, Boolean, Cache, Clock, Effect, Option, Ref, Schema, Semaphore, String, pipe} from 'effect'
 
 import {Digest, SecureRandom} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
@@ -113,13 +113,15 @@ export const previewAuth = Effect.fnUntraced(function* (
 				if (next.origin !== origin || next.username !== '' || next.password !== '') return yield* expired()
 				if (Option.isNone(address(request.headers))) {
 					if (request.headers['host'] !== new URL(resource).host) return yield* expired()
-					return HttpServerResponse.redirect(`${AUTH_URL}/auth/github?${new URLSearchParams({next: next.href})}`)
+					// Auth offers GitHub or a code another device approves, then returns here.
+					return HttpServerResponse.redirect(`${AUTH_URL}/?${new URLSearchParams({next: next.href})}`)
 				}
 				const callback = `${origin}/auth/callback`
 				const registration = yield* pipe(
 					HttpClientRequest.post(`${issuerUrl}/api/auth/oauth2/register`),
 					HttpClientRequest.bodyJson({
-						client_name: `${new URL(resource).hostname} ${origin}`,
+						// Auth names the device from the callback's worker and port.
+						client_name: `${String.capitalize(Array.headNonEmpty(String.split(new URL(resource).hostname, '.')))} preview`,
 						redirect_uris: [callback],
 						token_endpoint_auth_method: 'none'
 					}),

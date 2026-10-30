@@ -6,7 +6,6 @@ import {
 	Filters,
 	IngestionStatus,
 	Page,
-	PageFilters,
 	SortFilters,
 	Stats,
 	TelemetryError,
@@ -18,43 +17,31 @@ import {
 export const Tools = Toolkit.make(
 	Tool.make('list_services', {
 		description:
-			'Check ingestion first: every stored service, its runtime, latest run, last event time and entry count. Event/run times use the exporter clock (Unix nanoseconds), not receiver arrival time. Rejected OTLP requests are grouped by route, HTTP status and credential-header presence, never attributed to an app. Rejection counters and since (Unix milliseconds) reset when Scope restarts. A missing service has no telemetry kept from the last three days: check the rejections above and its exporter before concluding it sent nothing.',
+			'Start here: each service with its latest run, last event and entry count, plus rejected exports. A service missing here sent nothing in the last three days.',
 		failure: TelemetryError,
 		success: IngestionStatus
 	}).annotate(Tool.Readonly, true),
-	Tool.make('find_traces', {
+	Tool.make('find', {
 		description:
-			'Find traces, each one request or user action across client and server, newest or slowest first. Call it after reproducing a bug, or with sort "slowest" before claiming an action is fast; then open one with read_trace.',
-		failure: TelemetryError,
-		parameters: SortFilters,
-		success: TracesPage
-	}).annotate(Tool.Readonly, true),
-	Tool.make('read_trace', {
-		description:
-			'Read one stored trace whole, including earlier runs: every span in parent order with its depth, start offset, runtime and logs. Shows where an action spent its time and which span failed.',
+			'Find traces (one request or action each), single spans with their attributes, or logs, newest or slowest first; searches the latest run of each service unless runs is "all". Open a trace with read_trace.',
 		failure: TelemetryError,
 		parameters: Schema.Struct({
-			id: pipe(TraceId, Schema.annotateEncoded({description: 'The 32-character id from find_traces or a span.'}))
+			...SortFilters.fields,
+			kind: Schema.Literals(['traces', 'spans', 'logs']).annotate({description: 'What to find.'})
+		}),
+		success: Schema.Union([TracesPage, Page])
+	}).annotate(Tool.Readonly, true),
+	Tool.make('read_trace', {
+		description: 'One trace whole: every span in order with its depth, offset, duration and logs.',
+		failure: TelemetryError,
+		parameters: Schema.Struct({
+			id: pipe(TraceId, Schema.annotateEncoded({description: 'The 32-character id from find.'}))
 		}),
 		success: Trace
 	}).annotate(Tool.Readonly, true),
-	Tool.make('find_logs', {
-		description:
-			'Find what the apps logged, newest first, with or without a span; errors: true keeps only failures. Call it to see what happened during a reproduced bug.',
-		failure: TelemetryError,
-		parameters: PageFilters,
-		success: Page
-	}).annotate(Tool.Readonly, true),
-	Tool.make('find_spans', {
-		description:
-			'Find single spans with their original OTLP attributes and events, when one operation matters more than its trace, such as every failed call to one endpoint.',
-		failure: TelemetryError,
-		parameters: SortFilters,
-		success: Page
-	}).annotate(Tool.Readonly, true),
 	Tool.make('measure_latency', {
 		description:
-			'Count, errors and p50, p95 and max latency of the matching spans over the lookback. Run it on the same operation before and after a change to prove it got faster.',
+			'Count, errors and p50, p95 and max milliseconds of the matching spans; run it before and after a change to compare.',
 		failure: TelemetryError,
 		parameters: Filters,
 		success: Stats

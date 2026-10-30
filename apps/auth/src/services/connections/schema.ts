@@ -28,6 +28,9 @@ export type AddServer = typeof AddServer.Type
 export const AddServer = Schema.Struct({url: ServerUrl})
 export type ServerParams = typeof ServerParams.Type
 export const ServerParams = Schema.Struct({id: ServerId})
+// One tool's visibility, so two quick toggles each change only their own tool.
+export type ToolVisibility = typeof ToolVisibility.Type
+export const ToolVisibility = Schema.Struct({hidden: Schema.Boolean, id: ServerId, tool: Schema.NonEmptyString})
 
 export type Metadata = typeof Metadata.Type
 export const Metadata = Schema.Struct({
@@ -49,44 +52,58 @@ export const Token = Schema.Struct({
 	token_type: Schema.String.check(Schema.isPattern(/^Bearer$/iu))
 })
 
+// How Auth signs in to a provider: a client it registered there with its own callback, or Auth's client metadata document, which needs the provider to name itself in every answer.
+export type OAuth = typeof OAuth.Type
+export const OAuth = Schema.Struct({
+	client: Schema.TaggedUnion({Document: {}, Registered: {clientId: Schema.NonEmptyString}}),
+	metadata: Metadata,
+	scope: Schema.String
+})
+
+// The owner's apps take a token Auth delegates per call, public servers none, providers the token Auth holds.
+export type Link = typeof Link.Type
+export const Link = Schema.TaggedUnion({
+	Authorized: {expiresAt: Schema.Finite, token: Token},
+	Connected: {},
+	Disconnected: {}
+})
+
 export type Connection = typeof Connection.Type
 export const Connection = Schema.Struct({
-	clientId: Schema.optionalKey(Schema.NonEmptyString),
-	enabled: Schema.Boolean,
-	expiresAt: Schema.Finite,
+	// Why the last connection or discovery failed, until one succeeds.
+	error: Schema.optionalKey(Schema.String),
 	generation: Schema.NonEmptyString,
+	hidden: Schema.Array(Schema.String),
 	id: ServerId,
-	metadata: Schema.optionalKey(Metadata),
+	// The server's own instructions from its last discovery: the first sentence is its line in the gateway's instructions.
+	instructions: Schema.optionalKey(Schema.String),
+	link: Link,
 	mode: Schema.Literals(['deslop', 'oauth', 'public']),
 	name: Schema.NonEmptyString,
-	scope: Schema.String,
-	token: Schema.optionalKey(Token),
-	tools: Schema.optionalKey(Schema.Int),
+	oauth: Schema.optionalKey(OAuth),
+	tools: Schema.Array(Schema.String),
 	url: ServerUrl
 })
+
+export type ConnectionStore = typeof ConnectionStore.Type
+export const ConnectionStore = Schema.Record(Schema.String, Connection)
 
 export type ConnectionInfo = typeof ConnectionInfo.Type
 export const ConnectionInfo = Schema.Struct({
-	connected: Schema.Boolean,
+	error: Schema.optionalKey(Schema.String),
+	hidden: Schema.Array(Schema.String),
 	id: ServerId,
 	name: Schema.NonEmptyString,
 	status: Schema.Literals(['Connected', 'Not connected', 'Expired']),
-	tools: Schema.optionalKey(Schema.Int),
+	tools: Schema.Array(Schema.String),
 	url: ServerUrl
 })
 
-export type Pending = typeof Pending.Type
-export const Pending = Schema.Struct({
-	expiresAt: Schema.Finite,
-	id: ServerId,
-	userId: Schema.NonEmptyString,
-	verifier: Schema.NonEmptyString
-})
-
-export type ConnectionState = typeof ConnectionState.Type
-export const ConnectionState = Schema.Struct({
-	connections: Schema.Record(Schema.String, Connection),
-	pending: Schema.Record(Schema.String, Pending)
+// What a discovery found: its tools and instructions clear an earlier failure; a failure keeps the last ones.
+export type Discovery = typeof Discovery.Type
+export const Discovery = Schema.TaggedUnion({
+	Discovered: {instructions: Schema.optionalKey(Schema.String), tools: Schema.Array(Schema.String)},
+	Failed: {error: Schema.String}
 })
 
 export type Callback = typeof Callback.Type
