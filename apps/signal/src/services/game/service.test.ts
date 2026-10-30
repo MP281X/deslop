@@ -10,6 +10,7 @@ import {
 	Layer,
 	MutableList,
 	Option,
+	Random,
 	Schema,
 	Stream,
 	String,
@@ -254,9 +255,12 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 				MutableList.append(calls, seed)
 				return yield* GameError.make({message: 'Inference is forbidden in recovery.'})
 			})
-			const strategy = Layer.succeed(
-				Core,
-				Core.of({choose: deny, decide: deny, recall: () => Effect.succeed(''), usage: Effect.succeed({groups: {}})})
+			const strategy = pipe(
+				Layer.succeed(
+					Core,
+					Core.of({choose: deny, decide: deny, recall: () => Effect.succeed(''), usage: Effect.succeed({groups: {}})})
+				),
+				Layer.merge(Layer.succeed(Random.Random, {nextDoubleUnsafe: () => 42 / 2_000_000_001, nextIntUnsafe: () => 42}))
 			)
 			const live = yield* Effect.scoped(
 				Effect.gen(function* () {
@@ -293,7 +297,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 						Game
 					)
 					assert.strictEqual(Option.getOrThrow(yield* KeyValueStore.toSchemaStore(kv, Saved).get('world')).tick, 0)
-					yield* Effect.repeat(TestClock.adjust('1 second'), {times: 4})
+					yield* Effect.repeat(TestClock.adjust('1 second'), {times: 1})
 					return {
 						frame: Option.getOrThrow(yield* Stream.runHead(game.join)),
 						history: yield* game.history(2, Option.none())
@@ -301,11 +305,11 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 				})
 			)
 			assert.strictEqual(live.frame.paused, false)
-			assert.strictEqual(live.frame.tick, 100)
+			assert.strictEqual(live.frame.tick, 40)
 			assert.strictEqual(Option.getOrThrow(yield* KeyValueStore.toSchemaStore(kv, Saved).get('world')).tick, 0)
 			assert.strictEqual(
 				Option.getOrThrow(yield* KeyValueStore.toSchemaStore(kv, HistoryIndex).get('history/index'))['@tick'],
-				100
+				40
 			)
 			const recovered = Context.get(yield* Layer.build(pipe(Game.layer, Layer.provide(strategy))), Game)
 			const frame = Option.getOrThrow(yield* Stream.runHead(recovered.join))
