@@ -4,13 +4,13 @@ import {Rpc, RpcGroup} from 'effect/rpc'
 
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 
-import {Entry, Frame, GameError, HistoryPage, Timeline} from '#services/game/schema.ts'
+import {Entry, Frame, GameError, HistoryPage, Timeline, UsageLedger} from '#services/game/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
 	Rpc.make('signal.history', {
 		error: GameError,
 		payload: Schema.Struct({
-			actor: Schema.Int,
+			actor: Schema.Union([Schema.Int, Schema.Literal('all')]),
 			at: Schema.optionalKey(Schema.Natural),
 			before: Schema.optionalKey(Schema.Int)
 		}),
@@ -33,5 +33,6 @@ export class RpcContracts extends RpcGroup.make(
 		payload: Schema.Struct({before: Schema.optionalKey(Schema.Int), team: Schema.Int}),
 		success: Schema.Array(Entry)
 	}),
-	Rpc.make('signal.timeline', {success: Timeline})
+	Rpc.make('signal.timeline', {success: Timeline}),
+	Rpc.make('signal.usage', {error: GameError, success: UsageLedger})
 ).middleware(RpcAuth) {}

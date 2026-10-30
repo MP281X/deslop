@@ -10,6 +10,7 @@ import {
 	Layer,
 	MutableList,
 	Option,
+	Random,
 	Schema,
 	Stream,
 	String,
@@ -21,7 +22,7 @@ import {TestClock} from 'effect/testing'
 
 import {Core} from '#services/core/service.ts'
 import {makeSim, SIMULATION} from '#services/game/lib/sim.ts'
-import {Frame, GameError, Journal, Saved} from '#services/game/schema.ts'
+import {ActivityPage, Frame, GameError, HistoryIndex, HistoryPage, Journal, Saved} from '#services/game/schema.ts'
 import {Game} from '#services/game/service.ts'
 
 it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvider.fromUnknown({}))))(test => {
@@ -43,7 +44,8 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 							MutableList.append(calls, seed)
 							return {commands: [], invalid: [], text: ''}
 						}),
-					recall: () => Effect.succeed('')
+					recall: () => Effect.succeed(''),
+					usage: Effect.succeed({groups: {}})
 				})
 			)
 			const game = Context.get(yield* Layer.build(pipe(Game.layer, Layer.provide(strategy))), Game)
@@ -114,7 +116,8 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 										MutableList.append(calls, seed)
 										return yield* GameError.make({message: 'Offline provider failure.'})
 									}),
-									recall: () => Effect.succeed('')
+									recall: () => Effect.succeed(''),
+									usage: Effect.succeed({groups: {}})
 								})
 							)
 						),
@@ -151,6 +154,205 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 			yield* TestClock.adjust('1 minute')
 			assert.strictEqual(Option.getOrThrow(yield* Stream.runHead(game.join)).tick, frame.tick)
 			assert.strictEqual(calls.length, 3)
+		}),
+		{timeout: 15_000}
+	)
+
+	test.effect(
+		'pages canonical individual and world history without duplicating a restored pending tail',
+		Effect.fnUntraced(function* () {
+			const kv = yield* KeyValueStore.KeyValueStore
+			yield* kv.clear
+			const saved = yield* (yield* makeSim(Option.none(), 42)).snapshot
+			const rows = Array.map(
+				Array.range(0, 120),
+				sequence =>
+					({
+						actor: 2,
+						actorKind: 'worker',
+						id: 1000 + sequence,
+						kind: 'action',
+						text: `Gathered stone ${sequence}.`,
+						tick: sequence * 20,
+						x: 10,
+						z: 10
+					}) satisfies HistoryPage[number]
+			)
+			yield* KeyValueStore.toSchemaStore(kv, Saved).set('world', {
+				...saved,
+				life: {...Option.getOrThrow(Option.fromUndefinedOr(saved.life)), sequence: 1120},
+				pendingExperiences: Array.takeRight(rows, 11),
+				tick: 2420
+			})
+			for (const chunk of Array.map(Array.chunksOf(rows, 100), (entries, page) => ({entries, page}))) {
+				yield* KeyValueStore.toSchemaStore(kv, HistoryPage).set(
+					`history/2/${String.padStart(9, '0')(`${chunk.page}`)}`,
+					chunk.entries
+				)
+			}
+			const references = Array.map(rows, (entry, index) => ({
+				actor: entry.actor,
+				id: entry.id,
+				page: Math.floor(index / 100),
+				tick: entry.tick
+			}))
+			for (const chunk of Array.map(Array.chunksOf(references, 100), (entries, page) => ({entries, page}))) {
+				yield* KeyValueStore.toSchemaStore(kv, ActivityPage).set(
+					`activity/${String.padStart(9, '0')(`${chunk.page}`)}`,
+					chunk.entries
+				)
+			}
+			yield* KeyValueStore.toSchemaStore(kv, HistoryIndex).set('history/index', {
+				'@activity': references.length,
+				'@rules': SIMULATION,
+				'@through': 1120,
+				'@tick': 2420,
+				'2': rows.length
+			})
+			const game = Context.get(
+				yield* Layer.build(
+					pipe(
+						Game.layer,
+						Layer.provide(
+							Layer.succeed(
+								Core,
+								Core.of({
+									choose: () => Effect.fail(GameError.make({message: 'No inference in history queries.'})),
+									decide: () => Effect.fail(GameError.make({message: 'No inference in history queries.'})),
+									recall: () => Effect.succeed(''),
+									usage: Effect.succeed({groups: {}})
+								})
+							)
+						)
+					)
+				),
+				Game
+			)
+			for (const actor of [2, 'all'] as const) {
+				assert.deepStrictEqual(
+					Array.map(yield* game.history(actor, Option.none()), entry => entry.id),
+					Array.range(1021, 1120)
+				)
+				assert.deepStrictEqual(
+					Array.map(yield* game.history(actor, Option.some(1021)), entry => entry.id),
+					Array.range(1000, 1020)
+				)
+				assert.deepStrictEqual(
+					Array.map(yield* game.history(actor, Option.none(), 1000), entry => entry.id),
+					Array.range(1000, 1050)
+				)
+			}
+		})
+	)
+
+	test.effect(
+		'recovers committed natural simulation progress beyond the periodic snapshot without inference',
+		Effect.fnUntraced(function* () {
+			const kv = yield* KeyValueStore.KeyValueStore
+			yield* kv.clear
+			const calls = MutableList.make<number>()
+			const deny = Effect.fnUntraced(function* (seed: number) {
+				MutableList.append(calls, seed)
+				return yield* GameError.make({message: 'Inference is forbidden in recovery.'})
+			})
+			const strategy = pipe(
+				Layer.succeed(
+					Core,
+					Core.of({choose: deny, decide: deny, recall: () => Effect.succeed(''), usage: Effect.succeed({groups: {}})})
+				),
+				Layer.merge(Layer.succeed(Random.Random, {nextDoubleUnsafe: () => 42 / 2_000_000_001, nextIntUnsafe: () => 42}))
+			)
+			const live = yield* Effect.scoped(
+				Effect.gen(function* () {
+					const game = Context.get(
+						yield* Layer.build(
+							pipe(
+								Game.layer,
+								Layer.provide(strategy),
+								Layer.provide(
+									ConfigProvider.layer(
+										ConfigProvider.fromUnknown({SIGNAL_LOCAL_DECISIONS_PER_SECOND: '0', SIGNAL_RUN: 'running'})
+									)
+								),
+								Layer.provide(
+									Layer.succeed(
+										KeyValueStore.KeyValueStore,
+										KeyValueStore.make({
+											...kv,
+											set: Effect.fnUntraced(function* (key: string, value: string | Uint8Array) {
+												if (key === 'world' && (yield* kv.has(key))) {
+													return yield* new KeyValueStore.KeyValueStoreError({
+														key,
+														message: 'Simulated loss of the final snapshot.',
+														method: 'set'
+													})
+												}
+												yield* kv.set(key, value)
+											})
+										})
+									)
+								)
+							)
+						),
+						Game
+					)
+					assert.strictEqual(Option.getOrThrow(yield* KeyValueStore.toSchemaStore(kv, Saved).get('world')).tick, 0)
+					yield* Effect.repeat(TestClock.adjust('1 second'), {times: 1})
+					return {
+						frame: Option.getOrThrow(yield* Stream.runHead(game.join)),
+						history: yield* game.history(2, Option.none())
+					}
+				})
+			)
+			assert.strictEqual(live.frame.paused, false)
+			assert.strictEqual(live.frame.tick, 40)
+			assert.strictEqual(Option.getOrThrow(yield* KeyValueStore.toSchemaStore(kv, Saved).get('world')).tick, 0)
+			assert.strictEqual(
+				Option.getOrThrow(yield* KeyValueStore.toSchemaStore(kv, HistoryIndex).get('history/index'))['@tick'],
+				40
+			)
+			const recovered = Context.get(yield* Layer.build(pipe(Game.layer, Layer.provide(strategy))), Game)
+			const frame = Option.getOrThrow(yield* Stream.runHead(recovered.join))
+			assert.strictEqual(frame.tick, live.frame.tick)
+			assert.deepStrictEqual(frame.units, live.frame.units)
+			assert.deepStrictEqual(yield* recovered.history(2, Option.none()), live.history)
+			assert.strictEqual(calls.length, 0)
+		})
+	)
+
+	test.effect(
+		'keeps the observation timestamp when a Core answer is applied at a later boundary',
+		Effect.fnUntraced(function* () {
+			yield* (yield* KeyValueStore.KeyValueStore).clear
+			const game = Context.get(
+				yield* Layer.build(
+					pipe(
+						Game.layer,
+						Layer.provide(
+							Layer.succeed(
+								Core,
+								Core.of({
+									choose: () => Effect.fail(GameError.make({message: 'No local inference in this fixture.'})),
+									decide: () => Effect.succeed({commands: [], invalid: [], text: 'A considered response.'}),
+									recall: () => Effect.succeed(''),
+									usage: Effect.succeed({groups: {}})
+								})
+							)
+						),
+						Layer.provide(
+							ConfigProvider.layer(
+								ConfigProvider.fromUnknown({SIGNAL_LOCAL_DECISIONS_PER_SECOND: '0', SIGNAL_RUN: 'running'})
+							)
+						)
+					)
+				),
+				Game
+			)
+			yield* Effect.repeat(TestClock.adjust('1 second'), {times: 59})
+			const entry = Option.getOrThrow(Array.last(yield* game.thread(0, Option.none())))
+			assert.strictEqual(entry.status, 'done')
+			assert.strictEqual(entry.observed, 600)
+			assert.strictEqual(entry.tick, 1200)
 		}),
 		{timeout: 15_000}
 	)

@@ -3,8 +3,9 @@ import type {ChatUsage} from '@effect/ai-openrouter/Generated'
 
 import {
 	Array,
-	Boolean,
 	Config,
+	Boolean,
+	Clock,
 	Context,
 	Effect,
 	Function,
@@ -14,6 +15,7 @@ import {
 	Predicate,
 	Record,
 	Schema,
+	Semaphore,
 	String,
 	Struct,
 	pipe
@@ -26,8 +28,7 @@ import {KeyValueStore} from 'effect/persistence'
 import {Conversation, Turn} from '#services/core/schema.ts'
 import type {LocalChoice, Thought} from '#services/core/schema.ts'
 import {TEAMS} from '#services/game/lib/utils.ts'
-import {Command, GameError, LocalDecision} from '#services/game/schema.ts'
-import type {Usage} from '#services/game/schema.ts'
+import {Command, GameError, LocalDecision, UsageLedger, Usage} from '#services/game/schema.ts'
 
 const TOOLS: Record<Command['_tag'], string> = {
 	Advance: 'Pay the next technology milestone from its local storage.',
@@ -93,6 +94,7 @@ export class Core extends Context.Service<
 			discovered: boolean
 		) => Effect.Effect<Thought, GameError>
 		readonly choose: (seed: number, request: LocalDecision) => Effect.Effect<LocalChoice, GameError>
+		readonly usage: Effect.Effect<UsageLedger, GameError>
 		readonly recall: (seed: number, team: number, before: number, offset?: number) => Effect.Effect<string, GameError>
 	}
 >()('@deslop/signal/services/core/service/Core') {
@@ -101,7 +103,6 @@ export class Core extends Context.Service<
 			this,
 			Effect.gen(function* () {
 				const client = yield* OpenRouterClient.OpenRouterClient
-				const decider = yield* OpenRouterDecisionModel.make({model: 'typesafe/jev-1.14'})
 				const kv = yield* KeyValueStore.KeyValueStore
 				const conversations = KeyValueStore.toSchemaStore(kv, Conversation)
 				const turns = KeyValueStore.toSchemaStore(kv, Turn)
@@ -110,6 +111,45 @@ export class Core extends Context.Service<
 					{maximum: 64_000, minimum: 8000}
 				)
 				const mode = yield* pipe(Config.String('NODE_ENV'), Config.withDefault('development'))
+
+				const decider = yield* OpenRouterDecisionModel.make({
+					config: {session_id: `signal:${mode}:local`},
+					model: 'typesafe/jev-1.14'
+				})
+				const ledger = KeyValueStore.toSchemaStore(kv, UsageLedger)
+				const accounting = yield* Semaphore.make(1)
+				const account = Effect.fn('Core.account')(function* (
+					kind: UsageLedger['groups'][string]['kind'],
+					model: string,
+					values?: Usage
+				) {
+					yield* accounting.withPermit(
+						Effect.gen(function* () {
+							const previous: UsageLedger = Option.getOrElse(yield* ledger.get('usage'), () => ({groups: {}}))
+							const key = `${mode}:${kind}:${model}`
+							const group = previous.groups[key]
+							yield* ledger.set('usage', {
+								groups: {
+									...previous.groups,
+									[key]: {
+										calls:
+											(group?.calls ?? 0) + Boolean.match(values === undefined, {onFalse: () => 0, onTrue: () => 1}),
+										kind,
+										mode,
+										model,
+										values: Record.map(Usage.fields, (_schema, field) => ({
+											reported:
+												(group?.values[field].reported ?? 0) +
+												Boolean.match(values?.[field] !== undefined, {onFalse: () => 0, onTrue: () => 1}),
+											total: (group?.values[field].total ?? 0) + (values?.[field] ?? 0)
+										}))
+									}
+								},
+								since: previous.since ?? (yield* Clock.currentTimeMillis)
+							})
+						})
+					)
+				})
 
 				const compact = Effect.fn('Core.compact')(function* (
 					key: string,
@@ -124,8 +164,9 @@ export class Core extends Context.Service<
 						...Array.filter([{content: `Previous checkpoint: ${active.summary}`, role: 'user' as const}], () =>
 							String.isNonEmpty(active.summary)
 						),
-						...active.turns
+						...Array.map(active.turns, turn => ({content: turn.content, role: turn.role}))
 					]
+					yield* account('compaction', model)
 					const [compacted] = yield* pipe(
 						client.createChatCompletion({
 							max_tokens: 2000,
@@ -151,6 +192,11 @@ export class Core extends Context.Service<
 						session,
 						...Option.match(Option.fromUndefinedOr(compacted.usage), {onNone: () => ({}), onSome: usageOf})
 					})
+					yield* account(
+						'compaction',
+						model,
+						Option.match(Option.fromUndefinedOr(compacted.usage), {onNone: () => ({}), onSome: usageOf})
+					)
 					const summary = Option.getOrUndefined(Array.head(compacted.choices))
 					if (
 						summary?.finish_reason !== 'stop' ||
@@ -162,7 +208,7 @@ export class Core extends Context.Service<
 					active.summary = `Archived through turn ${active.sequence}. Use Recall with before to retrieve older originals.\n${summary.message.content}`
 					active.turns = Array.takeRight(
 						active.turns,
-						Boolean.match(owner === 'Core', {onFalse: () => 0, onTrue: () => 4})
+						Boolean.match(owner === 'Core', {onFalse: () => 0, onTrue: () => 5})
 					)
 					active.archive = active.archive ?? {before: active.sequence + 1, offset: 0}
 					active.archived = active.sequence
@@ -231,6 +277,7 @@ export class Core extends Context.Service<
 								'\n'
 							)
 							const instructions = `${system} Balance ongoing objectives, curiosity, safety, social choices and the time of day. Do not assume an unfamiliar entity is hostile. Use recall when the continuation lacks relevant older details.`
+							yield* account('local', 'typesafe/jev-1.14')
 							const response = yield* pipe(
 								decider.decide(
 									Decision.make({
@@ -293,6 +340,11 @@ export class Core extends Context.Service<
 								output: response.usage.outputTokens,
 								seed
 							})
+							yield* account('local', 'typesafe/jev-1.14', {
+								cost: response.metadata.openrouter?.cost,
+								input: response.usage.inputTokens,
+								output: response.usage.outputTokens
+							})
 							return {
 								actor: request.actor,
 								choice: Boolean.match(
@@ -340,11 +392,27 @@ export class Core extends Context.Service<
 										'\nYou have learned that other teams exist. Communication is available only to addresses learned through direct encounters or disclosed by known correspondents. Agreements do not prevent betrayal; judge claims and actions from evidence.'
 								})
 
+							const input: Turn = {
+								content:
+									String.slice(0, 6000)(observation) +
+									Boolean.match(observation.length > 6000, {
+										onFalse: () => '',
+										onTrue: () =>
+											`\n[Observation abbreviated. The complete original is archived: Recall before=${previous.sequence + 2}, offset=6000.]`
+									}),
+								role: 'user',
+								sequence: previous.sequence + 1
+							}
+							previous.sequence = input.sequence
+							previous.turns = [...previous.turns, input]
+							yield* conversations.set(key, previous)
+							yield* turns.set(turnKey(seed, team, input.sequence), {...input, content: observation})
+
 							const continuation = yield* Option.match(
 								Option.liftPredicate(
 									previous,
 									value =>
-										value.measured + observation.length / 3 > contextBudget ||
+										value.measured + Number.min(6200, observation.length) / 3 > contextBudget ||
 										(value.summary.length +
 											system.length +
 											Number.sumAll(Array.map(value.turns, turn => turn.content.length))) /
@@ -358,7 +426,7 @@ export class Core extends Context.Service<
 							)
 
 							const active = continuation.conversation
-							const input: Turn = {content: observation, role: 'user', sequence: active.sequence + 1}
+							yield* account('strategy', model)
 							const [body] = yield* pipe(
 								client.createChatCompletion({
 									max_tokens: 2000,
@@ -367,8 +435,7 @@ export class Core extends Context.Service<
 										...Array.filter([{content: active.summary, role: 'user' as const}], () =>
 											String.isNonEmpty(active.summary)
 										),
-										...Array.map(active.turns, turn => ({content: turn.content, role: turn.role})),
-										{content: input.content, role: input.role}
+										...Array.map(active.turns, turn => ({content: turn.content, role: turn.role}))
 									],
 									model,
 									parallel_tool_calls: true,
@@ -393,6 +460,11 @@ export class Core extends Context.Service<
 								team,
 								...Option.getOrElse(usage, () => ({}))
 							})
+							yield* account(
+								'strategy',
+								model,
+								Option.match(Option.fromUndefinedOr(body.usage), {onNone: () => ({}), onSome: usageOf})
+							)
 							const message = Option.getOrUndefined(Option.map(Array.head(body.choices), choice => choice.message))
 							if (message === undefined) {
 								return yield* GameError.make({message: 'The provider returned no Core response.'})
@@ -420,13 +492,12 @@ export class Core extends Context.Service<
 								role: 'assistant',
 								sequence: input.sequence + 1
 							}
-							yield* turns.set(turnKey(seed, team, input.sequence), input)
 							yield* turns.set(turnKey(seed, team, output.sequence), output)
 							yield* conversations.set(key, {
 								measured: body.usage?.prompt_tokens ?? 0,
 								sequence: output.sequence,
 								summary: active.summary,
-								turns: [...active.turns, input, output]
+								turns: [...active.turns, output]
 							})
 
 							return {
@@ -454,6 +525,13 @@ export class Core extends Context.Service<
 							})
 						},
 						Effect.mapError(cause => GameError.make({cause, message: 'The conversation archive could not be read.'}))
+					),
+					usage: pipe(
+						ledger.get('usage'),
+						Effect.mapBoth({
+							onFailure: cause => GameError.make({cause, message: 'Provider usage could not be read.'}),
+							onSuccess: found => Option.getOrElse(found, () => ({groups: {}}))
+						})
 					)
 				})
 			})

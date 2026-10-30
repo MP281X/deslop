@@ -2,7 +2,7 @@ import {ChatRequest} from '@effect/ai-openrouter/Generated'
 import type {ChatResult} from '@effect/ai-openrouter/Generated'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Context, Effect, Exit, Layer, MutableList, Option, Schema, String, pipe} from 'effect'
+import {Array, Context, Effect, Exit, Layer, MutableList, Option, Record, Schema, String, pipe} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
@@ -196,7 +196,25 @@ it.layer(KeyValueStore.layerMemory)(test => {
 			)
 			assert.notInclude(yield* core.recall(11, 0, 2), 'END-1')
 			assert.include(yield* core.recall(11, 0, 2, 6000), 'END-1')
-			yield* core.decide(11, 0, 'A later observation.', false)
+			yield* core.decide(11, 0, `${String.repeat(12_000)('x')} END-OBS`, false)
+			assert.include(Option.getOrThrow(yield* turns.get('conversation/11/0/turn/000000015')).content, 'END-OBS')
+			assert.isBelow(
+				Option.getOrThrow(
+					Array.findFirst(
+						Option.getOrThrow(yield* conversations.get('conversation/11/0/active')).turns,
+						turn => turn.sequence === 15
+					)
+				).content.length,
+				6500
+			)
+			const strategy = Option.getOrThrow(
+				Array.findFirst(Record.values((yield* core.usage).groups), group => group.kind === 'strategy')
+			)
+			assert.strictEqual(strategy.calls, 2)
+			assert.strictEqual(strategy.values.cost.total, 0.002)
+			assert.strictEqual(strategy.values.cost.reported, 2)
+			assert.strictEqual(strategy.values.cached.total, 1600)
+			assert.strictEqual(strategy.values.written.reported, 0)
 			const requests = MutableList.toArray(calls)
 			const previous = Option.getOrThrow(Array.get(requests, 1))
 			const next = Option.getOrThrow(Array.get(requests, 2))
@@ -207,7 +225,7 @@ it.layer(KeyValueStore.layerMemory)(test => {
 	)
 
 	test.effect(
-		'refuses a truncated compaction without overwriting the continuation or attempting a strategy call',
+		'keeps the incoming report and prior continuation when compaction is truncated, without a strategy call',
 		Effect.fnUntraced(function* () {
 			const conversations = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Conversation)
 			yield* conversations.set('conversation/12/0/active', ORIGINAL)
@@ -242,7 +260,11 @@ it.layer(KeyValueStore.layerMemory)(test => {
 				)
 			)
 			assert.strictEqual(calls.length, 1)
-			assert.deepStrictEqual(Option.getOrThrow(yield* conversations.get('conversation/12/0/active')), ORIGINAL)
+			const retained = Option.getOrThrow(yield* conversations.get('conversation/12/0/active'))
+			assert.strictEqual(retained.summary, ORIGINAL.summary)
+			assert.deepStrictEqual(Array.take(retained.turns, 12), ORIGINAL.turns)
+			assert.strictEqual(Option.getOrThrow(Array.last(retained.turns)).content, 'A new observation.')
+			assert.strictEqual(retained.sequence, 13)
 		})
 	)
 })

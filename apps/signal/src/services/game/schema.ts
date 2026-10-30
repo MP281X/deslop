@@ -443,12 +443,32 @@ export const Usage = Schema.Struct({
 	written: Schema.optional(Schema.Int)
 })
 
+// Counts are attempts; totals contain only values actually reported by a provider.
+export type UsageLedger = typeof UsageLedger.Type
+export const UsageLedger = Schema.Struct({
+	groups: Schema.Record(
+		Schema.String,
+		Schema.Struct({
+			calls: Schema.Int,
+			kind: Schema.Literals(['compaction', 'local', 'strategy']),
+			mode: Schema.String,
+			model: Schema.String,
+			values: Schema.Record(
+				Schema.Literals(['cached', 'cost', 'input', 'output', 'written']),
+				Schema.Struct({reported: Schema.Int, total: Schema.Finite})
+			)
+		})
+	),
+	since: Schema.optionalKey(Schema.Int)
+})
+
 export type Entry = typeof Entry.Type
 export const Entry = Schema.Struct({
 	commands: Schema.Array(Outcome),
 	// The notices the round's observation opened with: contacts, messages, finished work, losses.
 	notices: Schema.Array(Schema.String),
 	observation: Schema.String,
+	observed: Schema.optionalKey(Schema.Int),
 	reasoning: Schema.optionalKey(Schema.String),
 	round: Schema.Int,
 	status: Schema.Literals(['done', 'late', 'failed']),
@@ -461,6 +481,7 @@ export const Entry = Schema.Struct({
 export type Experience = typeof Experience.Type
 export const Experience = Schema.Struct({
 	actor: Schema.Int,
+	actorKind: Schema.optionalKey(Schema.String),
 	context: Schema.optionalKey(Schema.String),
 	id: Schema.Int,
 	kind: Schema.Literals(['born', 'observe', 'decision', 'action', 'report', 'message', 'ping', 'damage', 'down']),
@@ -578,9 +599,15 @@ export const Journal = Schema.Struct({
 })
 
 export type HistoryIndex = typeof HistoryIndex.Type
+// Actor IDs map to committed counts. Reserved @activity, @through, @tick and @rules commit the shared chronicle and recovery frontier together.
 export const HistoryIndex = Schema.Record(Schema.String, Schema.Int)
 export type HistoryPage = typeof HistoryPage.Type
 export const HistoryPage = Schema.Array(Experience)
+
+export type ActivityPage = typeof ActivityPage.Type
+export const ActivityPage = Schema.Array(
+	Schema.Struct({actor: Schema.Int, id: Schema.Int, page: Schema.Natural, tick: Schema.Int})
+)
 
 /* ───────── the world on disk: everything that decides what happens next ───────── */
 

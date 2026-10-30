@@ -59,7 +59,7 @@ import type {
 	Command,
 	Direction,
 	EnemyKind,
-	Entry,
+	Journal,
 	Explored,
 	Fact,
 	Frame,
@@ -3983,24 +3983,6 @@ export const makeSim = Effect.fnUntraced(
 					[
 						`Tick ${state.tick}. Your Core is #${team.home} at ${place2(at)}. Daylight ${Number.round(daylightAt(state.tick) * 100, 0)}%.`,
 						`Next: ${milestone}. Home production queues: ${JSON.stringify({bench: team.bench, line: team.line})}.`,
-						`Ore fields seen here: ${Array.join(
-							Array.map(
-								Array.filter(knowledge.facts, fact => fact.kind === 'resource'),
-								fact => fact.text
-							),
-							'; '
-						)}`,
-						'Knowledge is last observed or reported, not live telemetry. Source and tick identify who learned it and when:',
-						...Array.map(
-							knowledge.facts,
-							fact =>
-								`#${fact.id} at ${place2(fact)} [observed tick ${fact.tick}, source #${fact.source}; ${
-									Array.join(
-										Array.map(fact.via ?? [], relay => `reported by #${relay.from} at tick ${relay.tick}`),
-										'; '
-									) || 'direct observation'
-								}]: ${fact.text}`
-						),
 						...Array.filter(
 							[
 								`Known communication addresses: ${Array.join(
@@ -4014,6 +3996,17 @@ export const makeSim = Effect.fnUntraced(
 							outcomes,
 							result =>
 								`${result.command._tag}: ${Boolean.match(result.ok, {onFalse: () => 'refused', onTrue: () => 'ok'})}: ${result.text}`
+						),
+						'Knowledge is last observed or reported, not live telemetry. Source and tick identify who learned it and when:',
+						...Array.map(
+							Array.reverse(Array.sortWith(knowledge.facts, fact => fact.tick, Number.Order)),
+							fact =>
+								`#${fact.id} at ${place2(fact)} [observed tick ${fact.tick}, source #${fact.source}; ${
+									Array.join(
+										Array.map(fact.via ?? [], relay => `reported by #${relay.from} at tick ${relay.tick}`),
+										'; '
+									) || 'direct observation'
+								}]: ${fact.text}`
 						)
 					],
 					'\n'
@@ -4478,13 +4471,18 @@ export const makeSim = Effect.fnUntraced(
 					Array.filter(entities(), body => body.health > 0 && life.person(body.id, state.tick).next <= state.tick),
 					body => body.id
 				),
-			evidence: (id: number, context: string, tokens: NonNullable<Entry['tokens']>, failure?: string) => {
-				const body = Option.getOrUndefined(entity(id))
+			evidence: (receipt: NonNullable<Journal['locals']>[number]) => {
+				if (receipt.context === undefined) return
+				const body = Option.getOrUndefined(entity(receipt.actor))
 				if (body !== undefined) {
-					life.event(body, state.tick, 'decision', failure ?? 'Local decision model response recorded.', undefined, {
-						context,
-						tokens
-					})
+					life.event(
+						body,
+						receipt.tick,
+						'decision',
+						receipt.failure ?? `Model returned ${receipt.choice ?? 'no choice'}; a response does not prove execution.`,
+						undefined,
+						{context: receipt.context, tokens: receipt.tokens ?? {}}
+					)
 				}
 			},
 			experiences: () => life.drain(),
