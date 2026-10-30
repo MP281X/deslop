@@ -322,16 +322,20 @@ function Teams(props: {onPick: (team: number) => void; picked: number; teams: Vi
 }
 
 // A notice a team's model read: a message from another team in a box of its colour, the rest as plain lines.
-function Notice(props: {text: string}) {
+function Notice(props: {text: string; tick: number}) {
 	return Option.match(String.match(/^Message from team (\d+) \([^)]*\): ([\s\S]*)$/u)(props.text), {
-		onNone: () => <li className="text-muted-foreground">{props.text}</li>,
+		onNone: () => (
+			<li className="text-muted-foreground">
+				<References text={props.text} tick={props.tick} />
+			</li>
+		),
 		onSome: found => (
 			<li className="bg-muted/60 px-3 py-2 leading-relaxed">
 				<span className="mb-1 flex items-center gap-1.5">
 					<Swatch team={Option.getOrElse(Number.parse(found[1] ?? ''), () => 0)} />
 					{teamName(Option.getOrElse(Number.parse(found[1] ?? ''), () => 0))}
 				</span>
-				{found[2]}
+				<References text={found[2] ?? ''} tick={props.tick} />
 			</li>
 		)
 	})
@@ -444,7 +448,7 @@ function Round(props: {entry: Entry}) {
 			{Array.isReadonlyArrayNonEmpty(props.entry.notices) && (
 				<ul className="flex flex-col gap-1">
 					{Array.map(props.entry.notices, (notice, index) => (
-						<Notice key={index} text={notice} />
+						<Notice key={index} text={notice} tick={props.entry.observed ?? props.entry.tick} />
 					))}
 				</ul>
 			)}
@@ -475,7 +479,7 @@ function Round(props: {entry: Entry}) {
 					Original observation · active request may be abbreviated
 				</summary>
 				<pre className="text-muted-foreground mt-2 font-mono leading-relaxed whitespace-pre-wrap">
-					<References text={props.entry.observation} tick={props.entry.tick} />
+					<References text={props.entry.observation} tick={props.entry.observed ?? props.entry.tick} />
 				</pre>
 			</details>
 			{props.entry.tokens !== undefined && (
