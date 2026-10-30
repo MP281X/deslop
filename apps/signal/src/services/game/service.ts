@@ -446,6 +446,7 @@ export class Game extends Context.Service<
 							commands: [],
 							notices: seen.notices,
 							observation: seen.text,
+							observed: sim.tick(),
 							round,
 							status: 'failed',
 							team,
@@ -602,6 +603,7 @@ export class Game extends Context.Service<
 
 			// A fresh world keeps its first moment, so the timeline starts there.
 			if (running) {
+				if (Option.isNone(restored)) yield* save
 				yield* Effect.addFinalizer(() => Effect.ignore(save, {log: 'Error', message: 'Final Signal save failed'}))
 				yield* checkpoint(Math.floor(sim.tick() / ROUND))
 				yield* Effect.forkScoped(

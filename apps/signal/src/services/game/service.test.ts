@@ -249,7 +249,6 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 		Effect.fnUntraced(function* () {
 			const kv = yield* KeyValueStore.KeyValueStore
 			yield* kv.clear
-			yield* KeyValueStore.toSchemaStore(kv, Saved).set('world', yield* (yield* makeSim(Option.none(), 42)).snapshot)
 			const calls = MutableList.make<number>()
 			const deny = Effect.fnUntraced(function* (seed: number) {
 				MutableList.append(calls, seed)
@@ -276,18 +275,16 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 										KeyValueStore.KeyValueStore,
 										KeyValueStore.make({
 											...kv,
-											set: (key, value) => {
-												if (key === 'world') {
-													return Effect.fail(
-														new KeyValueStore.KeyValueStoreError({
-															key,
-															message: 'Simulated loss of the final snapshot.',
-															method: 'set'
-														})
-													)
+											set: Effect.fnUntraced(function* (key: string, value: string | Uint8Array) {
+												if (key === 'world' && (yield* kv.has(key))) {
+													return yield* new KeyValueStore.KeyValueStoreError({
+														key,
+														message: 'Simulated loss of the final snapshot.',
+														method: 'set'
+													})
 												}
-												return kv.set(key, value)
-											}
+												yield* kv.set(key, value)
+											})
 										})
 									)
 								)
@@ -295,6 +292,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 						),
 						Game
 					)
+					assert.strictEqual(Option.getOrThrow(yield* KeyValueStore.toSchemaStore(kv, Saved).get('world')).tick, 0)
 					yield* Effect.repeat(TestClock.adjust('1 second'), {times: 4})
 					return {
 						frame: Option.getOrThrow(yield* Stream.runHead(game.join)),
@@ -316,5 +314,42 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 			assert.deepStrictEqual(yield* recovered.history(2, Option.none()), live.history)
 			assert.strictEqual(calls.length, 0)
 		})
+	)
+
+	test.effect(
+		'keeps the observation timestamp when a Core answer is applied at a later boundary',
+		Effect.fnUntraced(function* () {
+			yield* (yield* KeyValueStore.KeyValueStore).clear
+			const game = Context.get(
+				yield* Layer.build(
+					pipe(
+						Game.layer,
+						Layer.provide(
+							Layer.succeed(
+								Core,
+								Core.of({
+									choose: () => Effect.fail(GameError.make({message: 'No local inference in this fixture.'})),
+									decide: () => Effect.succeed({commands: [], invalid: [], text: 'A considered response.'}),
+									recall: () => Effect.succeed(''),
+									usage: Effect.succeed({groups: {}})
+								})
+							)
+						),
+						Layer.provide(
+							ConfigProvider.layer(
+								ConfigProvider.fromUnknown({SIGNAL_LOCAL_DECISIONS_PER_SECOND: '0', SIGNAL_RUN: 'running'})
+							)
+						)
+					)
+				),
+				Game
+			)
+			yield* Effect.repeat(TestClock.adjust('1 second'), {times: 59})
+			const entry = Option.getOrThrow(Array.last(yield* game.thread(0, Option.none())))
+			assert.strictEqual(entry.status, 'done')
+			assert.strictEqual(entry.observed, 600)
+			assert.strictEqual(entry.tick, 1200)
+		}),
+		{timeout: 15_000}
 	)
 })

@@ -468,6 +468,7 @@ export const Entry = Schema.Struct({
 	// The notices the round's observation opened with: contacts, messages, finished work, losses.
 	notices: Schema.Array(Schema.String),
 	observation: Schema.String,
+	observed: Schema.optionalKey(Schema.Int),
 	reasoning: Schema.optionalKey(Schema.String),
 	round: Schema.Int,
 	status: Schema.Literals(['done', 'late', 'failed']),

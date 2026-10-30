@@ -3,7 +3,6 @@ import type {ChatUsage} from '@effect/ai-openrouter/Generated'
 
 import {
 	Array,
-	Boolean,
 	Config,
 	Boolean,
 	Clock,
