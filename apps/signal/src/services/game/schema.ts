@@ -549,6 +549,7 @@ export const Journal = Schema.Struct({
 		)
 	),
 	marks: Schema.Array(Mark),
+	observed: Schema.optionalKey(Schema.Array(Schema.Int)),
 	round: Schema.Int
 })
 

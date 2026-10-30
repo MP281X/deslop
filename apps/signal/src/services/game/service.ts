@@ -51,6 +51,10 @@ function padded(round: number) {
 	return String.padStart(9, '0')(`${round}`)
 }
 
+function replayKey(kind: 'checkpoint' | 'journal' | 'local', tick: number) {
+	return `${kind}/${SIMULATION}/${padded(tick)}`
+}
+
 function keyOf(team: number, round: number) {
 	return `thread/${team}/${padded(round)}`
 }
@@ -100,6 +104,61 @@ export class Game extends Context.Service<
 				yield* Effect.ignore(kv.clear, {log: 'Warn', message: 'Signal could not clear the old world'})
 			}
 			const sim = yield* Option.match(restored, {onNone: () => makeSim(Option.none(), fresh), onSome: Effect.succeed})
+
+			const replayLocal = Effect.fnUntraced(function* (target: Effect.Success<ReturnType<typeof makeSim>>) {
+				for (const choice of Option.match(yield* journals.get(replayKey('local', target.tick())), {
+					onNone: () => [],
+					onSome: found => found.locals ?? []
+				})) {
+					if (choice.choice !== undefined) target.decide(choice.actor, choice.choice, choice.request)
+					if (choice.context !== undefined) {
+						target.evidence(choice.actor, choice.context, choice.tokens ?? {}, choice.failure)
+					}
+					if (choice.next !== undefined) target.defer(choice.actor, choice.next)
+				}
+			})
+			const replayBoundary = Effect.fnUntraced(function* (target: Effect.Success<ReturnType<typeof makeSim>>) {
+				const recorded = Option.getOrUndefined(yield* journals.get(replayKey('journal', target.tick() / ROUND)))
+				if (recorded === undefined) {
+					return yield* GameError.make({
+						message: 'A required replay boundary is missing; Signal will not invent its events.'
+					})
+				}
+				for (const entry of recorded.applied) target.apply(entry.team, Array.filter(entry.commands, Schema.is(Command)))
+				for (const team of recorded.observed ?? []) target.observe(team)
+			})
+			const advanceRecorded = Effect.fnUntraced(function* (
+				target: Effect.Success<ReturnType<typeof makeSim>>,
+				ticks: number
+			) {
+				if (ticks <= 0) return
+				yield* Effect.forEach(
+					Array.range(1, ticks),
+					Effect.fnUntraced(function* (step) {
+						yield* target.run(1)
+						if (step % 100 === 0) yield* Effect.yieldNow
+						if (target.tick() % TICK_HZ === 0) yield* replayLocal(target)
+						if (target.tick() % ROUND === 0) yield* replayBoundary(target)
+					}),
+					{concurrency: 1, discard: true}
+				)
+			})
+			const resumed = Option.getOrUndefined(yield* worlds.get('world'))
+			if (resumed?.rules === SIMULATION) {
+				const through = Array.reduce(yield* kv.keys, sim.tick(), (latest, key) => {
+					const [kind, rules, encoded = ''] = String.split('/')(key)
+					if (rules !== `${SIMULATION}` || (kind !== 'local' && kind !== 'journal')) return latest
+					return Number.max(
+						latest,
+						Option.getOrElse(Number.parse(encoded), () => 0) *
+							Option.match(
+								Option.filter(Option.some(kind), value => value === 'journal'),
+								{onNone: () => 1, onSome: () => ROUND}
+							)
+					)
+				})
+				yield* advanceRecorded(sim, through - sim.tick())
+			}
 			const fault = MutableRef.make(Option.none<GameError>())
 			const core = yield* Core
 			const scope = yield* Effect.scope
@@ -164,11 +223,10 @@ export class Game extends Context.Service<
 				Option.getOrElse(yield* Effect.orElseSucceed(timelines.get('timeline'), () => Option.none()), () => ({
 					live: sim.tick(),
 					marks: [],
-					start: sim.tick()
+					start: resumed?.tick ?? sim.tick()
 				}))
 			)
 
-			const resumed = Option.getOrUndefined(yield* worlds.get('world'))
 			if (resumed?.rules !== SIMULATION) {
 				MutableRef.update(timeline, previous => ({...previous, live: sim.tick(), start: sim.tick()}))
 			}
@@ -191,9 +249,9 @@ export class Game extends Context.Service<
 			// The world as a boundary leaves it, for replays to start from; the one six hours (720 rounds) older goes unless it is one of every forty kept for good.
 			const checkpoint = Effect.fn('Game.checkpoint')(
 				function* (round: number) {
-					yield* worlds.set(`checkpoint/${padded(round)}`, yield* sim.snapshot)
+					yield* worlds.set(replayKey('checkpoint', round), yield* sim.snapshot)
 					const old = round - 720
-					if (old > 0 && old % 40 !== 0) yield* kv.remove(`checkpoint/${padded(old)}`)
+					if (old > 0 && old % 40 !== 0) yield* kv.remove(replayKey('checkpoint', old))
 				},
 				Effect.catch(cause => Effect.logError('Signal could not keep a checkpoint', cause))
 			)
@@ -268,20 +326,12 @@ export class Game extends Context.Service<
 				const marks = sim.marks()
 				MutableRef.update(timeline, before => ({...before, live: sim.tick(), marks: [...before.marks, ...marks]}))
 
-				yield* Effect.ignore(journals.set(`journal/${padded(round)}`, {applied, marks, round}), {
-					log: 'Warn',
-					message: 'Signal could not keep a journal entry'
-				})
-
-				yield* Effect.ignore(timelines.set('timeline', MutableRef.get(timeline)), {
-					log: 'Warn',
-					message: 'Signal could not keep the timeline'
-				})
-				if (round % CHECKPOINT === 0) yield* checkpoint(round)
+				const observed = MutableList.make<number>()
 				yield* Effect.forEach(
 					Array.filter(teams, id => !MutableHashMap.has(thinking, id)),
 					Effect.fnUntraced(function* (team) {
 						const seen = sim.observe(team)
+						MutableList.append(observed, team)
 						if (
 							round !== 1 &&
 							round % 10 !== 0 &&
@@ -332,6 +382,14 @@ export class Game extends Context.Service<
 					}),
 					{concurrency: 1, discard: true}
 				)
+				yield* journals.set(replayKey('journal', round), {
+					applied,
+					marks,
+					observed: MutableList.toArray(observed),
+					round
+				})
+				yield* timelines.set('timeline', MutableRef.get(timeline))
+				if (round % CHECKPOINT === 0) yield* checkpoint(round)
 			})
 
 			const tickOnce = Effect.gen(function* () {
@@ -373,7 +431,7 @@ export class Game extends Context.Service<
 						Number.min(localBudget, Number.max(0, 4 - MutableHashMap.size(local)))
 					)) {
 						const deadline = sim.tick() + 60 * TICK_HZ
-						sim.individual(request.actor).next = deadline
+						sim.defer(request.actor, deadline)
 						MutableList.append(applied, {actor: request.actor, next: deadline, tick: sim.tick()})
 						MutableHashMap.set(local, request.actor, {
 							fiber: yield* Effect.forkIn(core.choose(sim.seed, request), scope),
@@ -382,16 +440,16 @@ export class Game extends Context.Service<
 					}
 
 					if (Array.isArrayNonEmpty(MutableList.toArray(applied))) {
-						yield* journals.set(`local/${padded(sim.tick())}`, {
+						yield* journals.set(replayKey('local', sim.tick()), {
 							applied: [],
 							locals: MutableList.toArray(applied),
 							marks: [],
 							round: Math.floor(sim.tick() / ROUND)
 						})
 					}
+					if (sim.tick() % ROUND === 0) yield* boundary(sim.tick() / ROUND)
 					yield* keepHistory()
 				}
-				if (sim.tick() % ROUND === 0) yield* boundary(sim.tick() / ROUND)
 			})
 
 			// The world keeps time with the wall clock in whole ticks; a server that fell more than two seconds behind skips the rest rather than racing to catch up.
@@ -429,7 +487,7 @@ export class Game extends Context.Service<
 			// The latest checkpoint at or before a round, searching back on the checkpoint rounds.
 			const checkpointBefore = Effect.fnUntraced(function* (from: number) {
 				for (const at of Array.reverse(Array.range(0, Math.floor(from / ROUND / CHECKPOINT)))) {
-					const found = yield* worlds.get(`checkpoint/${padded(at * CHECKPOINT)}`)
+					const found = yield* worlds.get(replayKey('checkpoint', at * CHECKPOINT))
 					if (Option.exists(found, saved => saved.tick <= from && saved.rules === SIMULATION)) return found
 				}
 				return Option.none<Saved>()
@@ -454,47 +512,23 @@ export class Game extends Context.Service<
 						return yield* GameError.make({message: 'The replay has no checkpoint that early.'})
 					}
 					const replayed = yield* makeSim(start, 0)
-					function playLocal(choice: NonNullable<Journal['locals']>[number]) {
-						if (choice.choice !== undefined) replayed.decide(choice.actor, choice.choice, choice.request)
-						if (choice.context !== undefined) {
-							replayed.evidence(choice.actor, choice.context, choice.tokens ?? {}, choice.failure)
-						}
-						if (choice.next !== undefined) replayed.individual(choice.actor).next = choice.next
-					}
-					const step = Effect.gen(function* () {
-						yield* replayed.run(1)
-						// Every hundred ticks it yields while it catches up, so the live world keeps time.
-						if (replayed.tick() % 100 === 0) yield* Effect.yieldNow
-						if (replayed.tick() % TICK_HZ === 0) {
-							for (const choice of Option.match(yield* journals.get(`local/${padded(replayed.tick())}`), {
-								onNone: () => [],
-								onSome: found => found.locals ?? []
-							})) {
-								playLocal(choice)
-							}
-						}
-						if (replayed.tick() % ROUND !== 0) return
-						for (const entry of Option.match(yield* journals.get(`journal/${padded(replayed.tick() / ROUND)}`), {
-							onNone: () => [],
-							onSome: found => found.applied
-						})) {
-							replayed.apply(entry.team, Array.filter(entry.commands, Schema.is(Command)))
-						}
-						// The models' notices are not part of the replay.
-						for (const team of replayed.teams()) replayed.observe(team)
-					})
-					// Runs the replay on some ticks; none for a replay held still or caught up.
 					function run(ticks: number) {
-						return Effect.forEach(
-							Array.filter(Array.range(1, ticks), () => ticks > 0),
-							() => step,
-							{concurrency: 1, discard: true}
+						return Effect.tap(advanceRecorded(replayed, ticks), () =>
+							Effect.sync(() => {
+								Option.match(Array.last(replayed.experiences()), {
+									onNone: () => undefined,
+									onSome: entry => replayed.acknowledge(entry.id)
+								})
+							})
 						)
 					}
 					yield* run(from - replayed.tick())
 					return {run, sim: replayed}
 				},
-				Effect.mapError(cause => GameError.make({cause, message: 'The replay could not start.'}))
+				Effect.mapError(cause => {
+					if (Schema.is(GameError)(cause)) return cause
+					return GameError.make({cause, message: 'The replay could not start.'})
+				})
 			)
 
 			return Game.of({

@@ -4182,6 +4182,9 @@ export const makeSim = Effect.fnUntraced(
 						return life.local(body, state.tick, unit !== undefined && connected(unit))
 					}
 				),
+			defer: (id: number, until: number) => {
+				life.person(id, state.tick).next = until
+			},
 			disconnect: (id: number) => {
 				MutableHashMap.remove(connections, id)
 			},

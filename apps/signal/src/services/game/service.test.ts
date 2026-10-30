@@ -1,11 +1,26 @@
 import {assert, it} from '@effect/vitest'
 
-import {ConfigProvider, Context, Effect, Exit, Fiber, Layer, MutableList, Option, Stream, pipe} from 'effect'
+import {
+	Array,
+	ConfigProvider,
+	Context,
+	Effect,
+	Exit,
+	Fiber,
+	Layer,
+	MutableList,
+	Option,
+	Stream,
+	String,
+	pipe
+} from 'effect'
 
 import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
 import {Core} from '#services/core/service.ts'
+import {makeSim, SIMULATION} from '#services/game/lib/sim.ts'
+import {Journal, Saved} from '#services/game/schema.ts'
 import {Game} from '#services/game/service.ts'
 
 it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvider.fromUnknown({}))))(test => {
@@ -43,6 +58,29 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 			assert.isTrue(Exit.hasFails(yield* Effect.exit(Layer.build(pipe(Game.layer, Layer.provide(strategy))))))
 			assert.strictEqual(yield* kv.get('world'), 'corrupt')
 			assert.strictEqual(calls.length, 0)
+			yield* kv.clear
+			const previous = yield* (yield* makeSim(Option.none(), 42)).snapshot
+			const saves = KeyValueStore.toSchemaStore(kv, Saved)
+			yield* saves.set('world', previous)
+			yield* saves.set(`checkpoint/${SIMULATION}/000000000`, previous)
+			yield* KeyValueStore.toSchemaStore(kv, Journal).set(`local/${SIMULATION}/000000020`, {
+				applied: [],
+				locals: [{actor: 2, choice: 'rest', tick: 20}],
+				marks: [],
+				round: 0
+			})
+			const recovered = Context.get(yield* Layer.build(pipe(Game.layer, Layer.provide(strategy))), Game)
+			assert.isTrue(
+				Array.some(
+					yield* recovered.history(2, Option.none()),
+					entry => entry.tick === 20 && String.includes('Chose rest:')(entry.text)
+				)
+			)
+			assert.strictEqual(Option.getOrThrow(yield* saves.get('world')).tick, 0)
+			assert.strictEqual(calls.length, 0)
+			const historical = yield* Effect.forkScoped(Stream.runHead(recovered.replay(0, 0)))
+			yield* TestClock.adjust('100 millis')
+			assert.strictEqual(Option.getOrThrow(yield* Fiber.join(historical)).tick, 0)
 		})
 	)
 })
