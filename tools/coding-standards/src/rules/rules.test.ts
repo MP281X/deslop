@@ -1422,6 +1422,13 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'nullish.ts': fixed.sources[2] ?? ''
 				})
 				assert.deepStrictEqual(customCodes(relinted.stdout), [])
+			}),
+			20_000
+		)
+
+		testApi.effect(
+			'keeps unsafe nullish checks, typeof checks and conflicting schema types reported after fixing',
+			Effect.fnUntraced(function* () {
 				const unfixable = yield* lintSource(
 					{
 						'bare.ts': "declare const value: unknown\nexport const isText = typeof value === 'string'\n",
