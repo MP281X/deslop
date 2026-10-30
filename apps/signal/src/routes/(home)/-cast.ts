@@ -437,16 +437,40 @@ const SHAPES = {
 			{d: 0.95, h: 2.65, paint: 'alloy', w: 0.95, x: w / 2, y: 0.51, z: d / 2},
 			{d: 1.12, h: 0.14, paint: 'metal', w: 1.12, x: w / 2, y: 3.16, z: d / 2},
 			{d: 0.06, h: 0.65, paint: 'metal', w: 0.06, x: w / 2, y: 3.3, z: d / 2},
-			...Array.flatMap([-1, 1], side => [
-				{d: 0.2, h: 2.05, paint: 'alloy', w: 0.18, x: w / 2 + side * 0.75, y: 0.51, z: d / 2},
-				{d: 0.08, h: 1.7, paint: 'circuit', w: 0.035, x: w / 2 + side * 0.85, y: 0.7, z: d / 2},
-				{d: 0.3, h: 0.12, paint: 'metal', w: 0.4, x: w / 2 + side * 0.6, y: 0.7, z: d / 2},
-				...Array.flatMap([-1, 1], face => [
-					{d: 0.025, h: 2.2, paint: 'team', w: 0.09, x: w / 2 + side * 0.32, y: 0.7, z: d / 2 + face * 0.49},
-					{d: 0.025, h: 0.045, paint: 'circuit', w: 0.18, x: w / 2 + side * 0.18, y: 1.5, z: d / 2 + face * 0.49},
-					{d: 0.025, h: 0.045, paint: 'circuit', w: 0.18, x: w / 2 + side * 0.18, y: 1.7, z: d / 2 + face * 0.49}
-				] satisfies Part[])
-			] satisfies Part[])
+			...Array.flatMap(
+				[-1, 1],
+				side =>
+					[
+						{d: 0.2, h: 2.05, paint: 'alloy', w: 0.18, x: w / 2 + side * 0.75, y: 0.51, z: d / 2},
+						{d: 0.08, h: 1.7, paint: 'circuit', w: 0.035, x: w / 2 + side * 0.85, y: 0.7, z: d / 2},
+						{d: 0.3, h: 0.12, paint: 'metal', w: 0.4, x: w / 2 + side * 0.6, y: 0.7, z: d / 2},
+						...Array.flatMap(
+							[-1, 1],
+							face =>
+								[
+									{d: 0.025, h: 2.2, paint: 'team', w: 0.09, x: w / 2 + side * 0.32, y: 0.7, z: d / 2 + face * 0.49},
+									{
+										d: 0.025,
+										h: 0.045,
+										paint: 'circuit',
+										w: 0.18,
+										x: w / 2 + side * 0.18,
+										y: 1.5,
+										z: d / 2 + face * 0.49
+									},
+									{
+										d: 0.025,
+										h: 0.045,
+										paint: 'circuit',
+										w: 0.18,
+										x: w / 2 + side * 0.18,
+										y: 1.7,
+										z: d / 2 + face * 0.49
+									}
+								] satisfies Part[]
+						)
+					] satisfies Part[]
+			)
 		] satisfies Part[],
 	junction: hub,
 	lift: belt,
