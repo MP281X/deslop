@@ -211,19 +211,22 @@ export class Gateway extends Context.Service<
 						)
 					)
 				},
+				// The agent reads the failure as a tool result; the trace keeps its cause.
 				(effect, server) =>
-					Effect.catch(effect, cause =>
-						Effect.succeed(
-							McpSchema.CallToolResult.make({
-								content: [
-									{
-										text: `The provider call failed. ${rejected(server)(cause).message}. Check list_mcp_connections or reconnect the provider with connect_mcp.`,
-										type: 'text'
-									}
-								],
-								isError: true
-							})
-						)
+					Effect.catch(
+						Effect.tapCause(effect, cause => Effect.logWarning(`${server.name} call failed`, cause)),
+						cause =>
+							Effect.succeed(
+								McpSchema.CallToolResult.make({
+									content: [
+										{
+											text: `The provider call failed. ${rejected(server)(cause).message}. Check list_mcp_connections or reconnect the provider with connect_mcp.`,
+											type: 'text'
+										}
+									],
+									isError: true
+								})
+							)
 					)
 			)
 			const discover = Effect.fnUntraced(function* (

@@ -227,9 +227,9 @@ export class People extends Context.Service<
 						return yield* AuthError.make({message: 'Admins come from GITHUB_ADMINS, so they cannot be removed here'})
 					}
 					const found = personOf(yield* Effect.fromOption(member(id, yield* Ref.get(state))))
-					// Signed out first: a failure in between leaves an account with access but no sessions, never the reverse.
-					yield* tokens.forget(id)
+					// Access ends first, so no token or sign-in can be issued to the account between the two steps.
 					yield* transact(current => Effect.succeed([undefined, Array.filter(current, row => row.id !== id)] as const))
+					yield* tokens.forget(id)
 					return found
 				}, rejected('Cannot remove this account'))
 			})

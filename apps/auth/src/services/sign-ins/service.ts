@@ -1,4 +1,5 @@
 import {
+	Array,
 	Clock,
 	Context,
 	Effect,
@@ -12,6 +13,7 @@ import {
 	Scope,
 	Semaphore,
 	Stream,
+	String,
 	Struct,
 	pipe
 } from 'effect'
@@ -21,6 +23,7 @@ import {Digest, SecureRandom} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import {Cookies} from 'effect/http'
 import type {Headers} from 'effect/http'
+import ipaddr from 'ipaddr.js'
 
 import {AuthError, User} from '@deslop/runtime/auth/schema'
 
@@ -39,6 +42,14 @@ function rejected(message: string) {
 		if (Schema.is(AuthError)(cause)) return cause
 		return AuthError.make({cause, message})
 	})
+}
+
+// Whoever holds an IPv6 address holds its whole /64, so the limit on waiting sign-ins counts the /64.
+function addressGroup(address: string) {
+	if (!ipaddr.isValid(address)) return address
+	const parsed = ipaddr.process(address)
+	if (parsed.kind() === 'ipv4') return parsed.toString()
+	return Array.join(Array.take(String.split(parsed.toNormalizedString(), ':'), 4), ':')
 }
 
 const expired = AuthError.make({message: 'This sign-in expired. Start it again in the app.'})
@@ -151,8 +162,9 @@ export class SignIns extends Context.Service<
 						Option.match(user, {
 							onNone: () => Effect.succeed(Collected.cases.Redirect.make({url: '/'})),
 							onSome: approver =>
-								Effect.map(tokens.startSession(approver), token =>
-									Collected.cases.Session.make({...Struct.pick(browser, ['next']), token})
+								Effect.map(
+									tokens.startSession(approver, Option.some(found.pending.address ?? 'unknown address')),
+									token => Collected.cases.Session.make({...Struct.pick(browser, ['next']), token})
 								)
 						}),
 					Client: client =>
@@ -196,11 +208,15 @@ export class SignIns extends Context.Service<
 							const state = (yield* found.ref.snapshot).state
 							const approved = SignInStates.get(state, 'Open.Approved')
 							if (Option.isNone(approved) && !SignInStates.matches(state, 'Open.Denied')) return yield* expired
-							yield* found.ref.send({_tag: 'Collected'})
-							return yield* deliver(
+							// An approver removed since approving delivers a denial; a failed delivery leaves the answer to collect again.
+							const delivered = yield* deliver(
 								found,
-								Option.map(approved, value => value.user)
+								yield* Effect.option(
+									Effect.flatMap(Effect.fromOption(Option.map(approved, value => value.user)), people.allowed)
+								)
 							)
+							yield* found.ref.send({_tag: 'Collected'})
+							return delivered
 						})
 					)
 				}, rejected('Cannot complete the sign-in')),
@@ -221,8 +237,11 @@ export class SignIns extends Context.Service<
 					// Anyone can start a sign-in, so one address keeps at most 20 waiting and everyone 1000; one in about 10^10 draws repeats a live code, and its app starts again.
 					if (
 						HashMap.size(current) >= 1000 ||
-						HashMap.size(HashMap.filter(current, found => Option.contains(address, found.pending.address ?? ''))) >=
-							20 ||
+						HashMap.size(
+							HashMap.filter(current, found =>
+								Option.exists(address, value => addressGroup(value) === addressGroup(found.pending.address ?? ''))
+							)
+						) >= 20 ||
 						HashMap.has(current, code)
 					) {
 						return yield* AuthError.make({error: 'temporarily_unavailable', message: 'Start the sign-in again'})

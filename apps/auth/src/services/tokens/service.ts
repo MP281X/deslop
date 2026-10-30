@@ -50,6 +50,7 @@ import type {
 import {Exchange, LegacyState, TokenEntry, TokenState} from '#services/tokens/schema.ts'
 
 const REFRESH_SECONDS = 30 * 86_400
+const SESSION_SECONDS = 365 * 86_400
 
 export const SESSION_COOKIE = '__Secure-session'
 
@@ -101,11 +102,29 @@ function withoutFamily(tokens: TokenState, family: string) {
 			!(
 				(entry.payload._tag === 'Access' ||
 					entry.payload._tag === 'Refresh' ||
+					entry.payload._tag === 'Session' ||
 					entry.payload._tag === 'UsedCode' ||
 					entry.payload._tag === 'UsedRefresh') &&
 				entry.payload.family === family
 			)
 	)
+}
+
+// A browser that signed in with a code, as a signed-in app any of the account's pages can sign out.
+function browserSignIn(entry: TokenEntry, user: User, now: number) {
+	const session = entry.payload
+	if (entry.expiresAt <= now || session._tag !== 'Session' || session.user.id !== user.id) return []
+	return Option.match(Option.fromUndefinedOr(session.family), {
+		onNone: () => [],
+		onSome: family => [
+			{
+				clientName: `Browser (${session.address ?? 'unknown address'})`,
+				family,
+				lastActive: entry.expiresAt - SESSION_SECONDS * 1000,
+				resources: []
+			} satisfies SignedInApp
+		]
+	})
 }
 
 // Members and tokens live under ~/.deslop/auth; the previous release kept both in one `state` value, split here once.
@@ -148,13 +167,19 @@ export class Tokens extends Context.Service<
 		readonly delegate: (headers: Headers.Headers, resource: Resource) => Effect.Effect<string, AuthError>
 		readonly disconnect: (family: string, user: User) => Effect.Effect<void, AuthError>
 		readonly endSession: (headers: Headers.Headers) => Effect.Effect<void, AuthError>
-		readonly exchange: (params: TokenParams, address: Option.Option<string>) => Effect.Effect<Exchange, AuthError>
+		// Tokens go only to an account `allowed` still accepts, so a removal between approval and exchange takes effect.
+		readonly exchange: (
+			params: TokenParams,
+			address: Option.Option<string>,
+			allowed: (user: User) => Effect.Effect<User, AuthError>
+		) => Effect.Effect<Exchange, AuthError>
 		readonly forget: (id: string) => Effect.Effect<void, AuthError>
 		readonly issue: (request: ClientRequest, user: User) => Effect.Effect<string, AuthError>
 		readonly register: (registration: Registration) => Effect.Effect<string, AuthError>
 		readonly revoke: (params: RevokeParams) => Effect.Effect<void, AuthError>
 		readonly session: (headers: Headers.Headers) => Effect.Effect<User, AuthError>
-		readonly startSession: (user: User) => Effect.Effect<string, AuthError>
+		// A session from a code records where it was approved for, so it is listed and can be signed out elsewhere.
+		readonly startSession: (user: User, codeFrom: Option.Option<string>) => Effect.Effect<string, AuthError>
 	}
 >()('@deslop/auth/services/tokens/service/Tokens') {
 	static readonly layer = Layer.effect(
@@ -330,7 +355,10 @@ export class Tokens extends Context.Service<
 					}),
 					{concurrency: 'unbounded'}
 				)
-				return Array.sort(apps, Order.flip(Order.mapInput(Order.Number, (app: SignedInApp) => app.lastActive)))
+				return Array.sort(
+					[...apps, ...Array.flatMap(Record.values(current), entry => browserSignIn(entry, user, now))],
+					Order.flip(Order.mapInput(Order.Number, (app: SignedInApp) => app.lastActive))
+				)
 			})
 
 			return Tokens.of({
@@ -375,7 +403,7 @@ export class Tokens extends Context.Service<
 							const owned = Array.some(
 								Record.values(yield* Ref.get(draft)),
 								entry =>
-									entry.payload._tag === 'Refresh' &&
+									(entry.payload._tag === 'Refresh' || entry.payload._tag === 'Session') &&
 									entry.payload.family === family &&
 									entry.payload.user.id === user.id
 							)
@@ -387,7 +415,11 @@ export class Tokens extends Context.Service<
 				endSession: Effect.fn('Tokens.endSession')(function* (headers: Headers.Headers) {
 					yield* transact(draft => remove(Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE] ?? '', draft))
 				}, rejected('Cannot sign out')),
-				exchange: Effect.fn('Tokens.exchange')(function* (params: TokenParams, address: Option.Option<string>) {
+				exchange: Effect.fn('Tokens.exchange')(function* (
+					params: TokenParams,
+					address: Option.Option<string>,
+					allowed: (user: User) => Effect.Effect<User, AuthError>
+				) {
 					return yield* transact(draft =>
 						Effect.gen(function* () {
 							if (params.grant_type === 'authorization_code') {
@@ -410,6 +442,7 @@ export class Tokens extends Context.Service<
 										message: 'The authorization code, its client, callback or verifier do not match'
 									})
 								}
+								yield* allowed(code.user)
 								const resources = yield* tokenResources(params, code.resources)
 								const family = Base64Url.encode(yield* random.randomBytes(32))
 								yield* retire(params.code, {_tag: 'UsedCode', clientId: code.clientId, family}, draft)
@@ -438,6 +471,7 @@ export class Tokens extends Context.Service<
 									message: 'The refresh token belongs to another client'
 								})
 							}
+							yield* allowed(refresh.user)
 							const resources = yield* tokenResources(params, refresh.resources)
 							yield* retire(
 								params.refresh_token,
@@ -448,7 +482,7 @@ export class Tokens extends Context.Service<
 						})
 					)
 				}, rejected('Invalid token request')),
-				// Removing an account signs it out everywhere: its session, its app tokens and any code it approved but did not deliver.
+				// Removing an account signs it out everywhere: its sessions, its app tokens and its undelivered codes; a sign-in it approved but not yet delivered checks the account at delivery.
 				forget: Effect.fn('Tokens.forget')(function* (id: string) {
 					yield* transact(draft =>
 						Ref.update(draft, current =>
@@ -517,8 +551,19 @@ export class Tokens extends Context.Service<
 					)
 				}, rejected('Cannot revoke the token')),
 				session,
-				startSession: Effect.fn('Tokens.startSession')(function* (user: User) {
-					return yield* transact(draft => mint({_tag: 'Session', user}, 365 * 86_400, draft))
+				startSession: Effect.fn('Tokens.startSession')(function* (user: User, codeFrom: Option.Option<string>) {
+					const family = Base64Url.encode(yield* random.randomBytes(32))
+					return yield* transact(draft =>
+						mint(
+							{
+								_tag: 'Session',
+								user,
+								...Option.match(codeFrom, {onNone: () => ({}), onSome: address => ({address, family})})
+							},
+							SESSION_SECONDS,
+							draft
+						)
+					)
 				}, rejected('Cannot start the session'))
 			})
 		})

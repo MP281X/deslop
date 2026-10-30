@@ -11,6 +11,7 @@ import {CLIENT, Connections} from '#services/connections/service.ts'
 import {CallbackParams, LoginState, SignInParams} from '#services/github/schema.ts'
 import {GitHub} from '#services/github/service.ts'
 import {People} from '#services/people/service.ts'
+import {typedCode} from '#services/sign-ins/lib/utils.ts'
 import {BrowserParams, RequestParams} from '#services/sign-ins/schema.ts'
 import {REQUEST_COOKIE, SignIns} from '#services/sign-ins/service.ts'
 import {allowedRedirect, callbackUrl, clientRequest, cookieDomain, returnable} from '#services/tokens/lib/utils.ts'
@@ -219,7 +220,8 @@ export const HttpHandlers = HttpRouter.use(router =>
 					return Match.valueTags(
 						yield* tokens.exchange(
 							yield* pipe(HttpServerRequest.schemaBodyUrlParams(TokenParams), rejected('Invalid token request')),
-							clientAddress(yield* HttpServerRequest.HttpServerRequest)
+							clientAddress(yield* HttpServerRequest.HttpServerRequest),
+							people.allowed
 						),
 						{
 							Granted: granted => HttpServerResponse.jsonUnsafe(granted.tokens),
@@ -300,7 +302,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 					const finished = yield* github.finish(params.code, params.state)
 					return yield* pipe(
 						people.register(finished.profile),
-						Effect.flatMap(tokens.startSession),
+						Effect.flatMap(user => tokens.startSession(user, Option.none())),
 						Effect.map(token =>
 							pipe(
 								HttpServerResponse.redirect(returnTo(finished.flow)),
@@ -357,7 +359,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 					const request = yield* HttpServerRequest.HttpServerRequest
 					const params = yield* pipe(HttpServerRequest.schemaSearchParams(RequestParams), rejected('Name the sign-in'))
 					const collected = yield* signIns.collect(params.request, request.headers)
-					const cookie = `${REQUEST_COOKIE}${params.request}`
+					const cookie = `${REQUEST_COOKIE}${typedCode(params.request)}`
 					return Match.valueTags(collected, {
 						Redirect: found =>
 							HttpServerResponse.expireCookieUnsafe(HttpServerResponse.redirect(found.url), cookie, COOKIE),

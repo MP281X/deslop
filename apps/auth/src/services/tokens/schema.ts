@@ -101,7 +101,8 @@ export const Stored = Schema.TaggedUnion({
 		resources: Schema.Array(Resource),
 		user: User
 	},
-	Session: {user: User},
+	// A browser signed in with a code is listed among the signed-in apps by its family, so it can be signed out from elsewhere.
+	Session: {address: Schema.optionalKey(Schema.String), family: Schema.optionalKey(Schema.NonEmptyString), user: User},
 	// A redeemed code stays until it would have expired, so a second redemption revokes the tokens the first one got.
 	UsedCode: {clientId: Schema.NonEmptyString, family: Schema.NonEmptyString},
 	UsedRefresh: {clientId: Schema.NonEmptyString, family: Schema.NonEmptyString}

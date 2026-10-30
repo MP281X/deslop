@@ -2140,7 +2140,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'signs a browser in with a code another device approves and returns it to its page on this domain',
 		Effect.fnUntraced(function* () {
 			const web = yield* servers()
-			const token = yield* agentToken(web.issuer, cookie(yield* signIn(web.issuer, 'octocat')))
+			const admin = cookie(yield* signIn(web.issuer, 'octocat'))
+			const token = yield* agentToken(web.issuer, admin)
 			const start = Effect.fnUntraced(function* (next: string) {
 				const started = yield* send(web.issuer, `/auth/code?${UrlParams.toString(UrlParams.fromInput({next}))}`)
 				return {
@@ -2163,6 +2164,31 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			})
 			assert.strictEqual(signedIn.headers.get('location'), 'https://signal.mp281x.xyz/world')
 			assert.strictEqual((yield* send(web.issuer, '/auth/session', {headers: {cookie: cookie(signedIn)}})).status, 200)
+			// The approved browser is listed among the account's sign-ins, and signing it out there ends its session.
+			const listed = yield* send(web.issuer, '/apps', {headers: {cookie: admin}})
+			const browserApp = yield* Effect.fromOption(
+				Array.findFirst(
+					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp)))(
+						yield* Effect.promise(() => listed.text())
+					),
+					app => String.startsWith('Browser (')(app.clientName)
+				)
+			)
+			assert.strictEqual(
+				(yield* send(web.issuer, `/disconnect?family=${browserApp.family}`, {headers: {cookie: admin}, method: 'POST'}))
+					.status,
+				204
+			)
+			assert.strictEqual((yield* send(web.issuer, '/auth/session', {headers: {cookie: cookie(signedIn)}})).status, 401)
+			// An approver removed before delivery delivers a denial.
+			const stranger = cookie(yield* signIn(web.issuer, 'stranger'))
+			yield* callTool(web.issuer, token, 'answer_access_request', {allow: true, login: 'stranger'})
+			const late = yield* start('https://signal.mp281x.xyz/world')
+			assert.strictEqual((yield* answer(web.issuer, stranger, late.id, true)).status, 204)
+			yield* callTool(web.issuer, token, 'remove_person', {login: 'stranger'})
+			const refused = yield* send(web.issuer, `/auth/continue?request=${late.id}`, {headers: {cookie: late.cookie}})
+			assert.strictEqual(refused.headers.get('location'), '/')
+			assert.isFalse(String.includes('__Secure-session=')(cookie(refused)))
 			// A page elsewhere is dropped, and a denied browser gets no session.
 			const elsewhere = yield* start('https://evil.test/')
 			yield* callTool(web.issuer, token, 'answer_request', {accept: false, request: elsewhere.id})
@@ -2206,28 +2232,62 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					return cookie(yield* signIn((yield* servers(home)).issuer, 'octocat'))
 				})
 			)
+			const hashed = Effect.fnUntraced(function* (value: string) {
+				return Base64Url.encode(yield* (yield* Digest.Digest).digest(Digest.sha256, new TextEncoder().encode(value)))
+			})
+			const user = {id: 'github:42', name: 'octocat'}
 			yield* fs.writeFileString(
 				`${directory}/state`,
 				yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
 					members: yield* Schema.decodeEffect(Schema.fromJsonString(Members))(
 						yield* fs.readFileString(`${directory}/members`)
 					),
-					// The previous release also kept a sign-in in progress among its tokens.
+					// The previous release's shapes: a harness whose refresh token names no client, and entries that no longer live here.
 					tokens: {
 						...(yield* Schema.decodeEffect(Schema.fromJsonString(TokenState))(
 							yield* fs.readFileString(`${directory}/tokens`)
 						)),
+						[yield* hashed('legacy-client')]: {
+							expiresAt: 4e15,
+							payload: {_tag: 'Client', name: 'Old harness', redirects: ['http://127.0.0.1:1/callback']}
+						},
+						[yield* hashed('legacy-refresh')]: {
+							expiresAt: 4e15,
+							payload: {_tag: 'Refresh', clientId: 'legacy-client', family: 'legacy', resources: [APPROVALS], user}
+						},
+						code: {
+							expiresAt: 4e15,
+							payload: {
+								_tag: 'Code',
+								challenge: 'x',
+								clientId: 'legacy-client',
+								redirectUri: 'http://127.0.0.1:1/callback',
+								resources: [APPROVALS],
+								user
+							}
+						},
+						delivered: {expiresAt: 4e15, payload: {_tag: 'Delivered', id: 'WDJBMJHT', url: 'http://127.0.0.1:1/'}},
+						login: {expiresAt: 4e15, payload: {_tag: 'Login', verifier: 'x'}},
 						waiting: {expiresAt: 4e15, payload: {_tag: 'Request', id: 'WDJBMJHT'}}
 					}
 				})
 			)
 			yield* fs.remove(`${directory}/members`)
 			yield* fs.remove(`${directory}/tokens`)
-			assert.strictEqual(
-				(yield* send((yield* servers(home)).issuer, '/auth/session', {headers: {cookie: session}})).status,
-				200
-			)
+			const web = yield* servers(home)
+			assert.strictEqual((yield* send(web.issuer, '/auth/session', {headers: {cookie: session}})).status, 200)
 			assert.isFalse(yield* fs.exists(`${directory}/state`))
+			assert.strictEqual((yield* refresh(web.issuer, 'legacy-client', 'legacy-refresh')).status, 200)
+			const apps = yield* send(web.issuer, '/apps', {headers: {cookie: session}})
+			assert.deepStrictEqual(
+				Array.map(
+					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp)))(
+						yield* Effect.promise(() => apps.text())
+					),
+					app => app.clientName
+				),
+				['Old harness']
+			)
 		})
 	)
 })

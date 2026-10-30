@@ -281,8 +281,9 @@ export function approveLink(id: string) {
 	return `${location.origin}/?code=${id}`
 }
 
-// The apps a sign-in reaches, by name; tracing rides along with every app, so it shows only alone.
+// The apps a sign-in reaches, by name; tracing rides along with every app, so it shows only alone, and a browser session names no app.
 export function appNames(resources: PendingAuthorization['resources']) {
+	if (Array.isReadonlyArrayEmpty(resources)) return ['Browser']
 	const names = Array.dedupe(
 		Array.map(
 			Array.filter(resources, resource => resource !== 'https://otel.mp281x.xyz'),
