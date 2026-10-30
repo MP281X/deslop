@@ -408,18 +408,19 @@ export class Game extends Context.Service<
 						MutableHashMap.remove(local, entry[0])
 						if (result !== undefined && Exit.isSuccess(result)) {
 							sim.decide(entry[0], result.value.choice, entry[1].request)
-							sim.evidence(
-								entry[0],
-								yield* Schema.encodeEffect(Schema.fromJsonString(LocalDecision))(entry[1].request),
-								result.value
-							)
+							const context = yield* Option.match(Option.fromUndefinedOr(result.value.context), {
+								onNone: () => Schema.encodeEffect(Schema.fromJsonString(LocalDecision))(entry[1].request),
+								onSome: Effect.succeed
+							})
+							const tokens = {cost: result.value.cost, input: result.value.input, output: result.value.output}
+							sim.evidence(entry[0], context, tokens)
 							MutableList.append(applied, {
 								actor: entry[0],
 								choice: result.value.choice,
-								context: yield* Schema.encodeEffect(Schema.fromJsonString(LocalDecision))(entry[1].request),
+								context,
 								request: entry[1].request,
 								tick: sim.tick(),
-								tokens: result.value
+								tokens
 							})
 						} else if (result !== undefined) {
 							const failure = Cause.pretty(result.cause)

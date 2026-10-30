@@ -3,6 +3,7 @@ import type {ChatUsage} from '@effect/ai-openrouter/Generated'
 
 import {
 	Array,
+	Boolean,
 	Config,
 	Context,
 	Effect,
@@ -25,8 +26,8 @@ import {KeyValueStore} from 'effect/persistence'
 import {Conversation, Turn} from '#services/core/schema.ts'
 import type {LocalChoice, Thought} from '#services/core/schema.ts'
 import {TEAMS} from '#services/game/lib/utils.ts'
-import {Command, GameError} from '#services/game/schema.ts'
-import type {LocalDecision, Usage} from '#services/game/schema.ts'
+import {Command, GameError, LocalDecision} from '#services/game/schema.ts'
+import type {Usage} from '#services/game/schema.ts'
 
 const TOOLS: Record<Command['_tag'], string> = {
 	Advance: 'Pay the next technology milestone from its local storage.',
@@ -78,7 +79,7 @@ function usageOf(response: ChatUsage) {
 	} satisfies Usage
 }
 
-function turnKey(seed: number, team: number, sequence: number) {
+function turnKey(seed: number, team: number | string, sequence: number) {
 	return `conversation/${seed}/${team}/turn/${String.padStart(9, '0')(`${sequence}`)}`
 }
 
@@ -115,7 +116,8 @@ export class Core extends Context.Service<
 					model: string,
 					session: string,
 					system: string,
-					previous: Conversation
+					previous: Conversation,
+					owner = 'Core'
 				) {
 					const active = {...previous}
 					const prefix = [
@@ -131,7 +133,7 @@ export class Core extends Context.Service<
 								{content: system, role: 'system'},
 								...prefix,
 								{
-									content: `Compact only this Core's conversation into a concise continuation checkpoint. Preserve goals, commitments, instructions pending, observations and reports with their source/tick, uncertain hypotheses, entity IDs and coordinates, unresolved problems and useful discoveries. Never turn a claim into fact or silence into proof of death. Never invent outside knowledge. Use headings Goals, Evidence, Reports, Hypotheses, Pending, Next. Do not call tools or continue play.`,
+									content: `Compact only this ${owner}'s conversation into a concise continuation checkpoint. Preserve goals, commitments, instructions pending, observations and reports with their source/tick, uncertain hypotheses, entity IDs and coordinates, unresolved problems and useful discoveries. Never turn a claim into fact or silence into proof of death. Never invent outside knowledge. Use headings Goals, Evidence, Reports, Hypotheses, Pending, Next. Do not call tools or continue play.`,
 
 									role: 'user'
 								}
@@ -158,7 +160,11 @@ export class Core extends Context.Service<
 						return yield* GameError.make({message: 'Compaction did not finish; original history was kept.'})
 					}
 					active.summary = `Archived through turn ${active.sequence}. Use Recall with before to retrieve older originals.\n${summary.message.content}`
-					active.turns = Array.takeRight(active.turns, 4)
+					active.turns = Array.takeRight(
+						active.turns,
+						Boolean.match(owner === 'Core', {onFalse: () => 0, onTrue: () => 4})
+					)
+					active.archive = {before: active.sequence + 1, offset: 0}
 					active.measured = 0
 					yield* conversations.set(key, active)
 					return {conversation: active, usage: compacted.usage}
@@ -167,22 +173,106 @@ export class Core extends Context.Service<
 				return Core.of({
 					choose: Effect.fn('Core.choose')(
 						function* (seed: number, request: LocalDecision) {
+							const owner = `individual-${request.actor}`
+							const key = `conversation/${seed}/${owner}/active`
+							const previous: Conversation = {
+								...Option.getOrElse(yield* conversations.get(key), () => ({
+									measured: 0,
+									sequence: 0,
+									summary: '',
+									turns: []
+								}))
+							}
+							const original = yield* Schema.encodeEffect(Schema.fromJsonString(LocalDecision))(request)
+							const input: Turn = {
+								content: `Tick ${request.tick}. Private experiences:\n${Array.join(
+									Array.map(
+										request.experience ?? [],
+										entry => `[${entry.id}; tick ${entry.tick}; ${entry.kind}; (${entry.x}, ${entry.z})] ${entry.text}`
+									),
+									'\n'
+								)}`,
+								role: 'user',
+								sequence: previous.sequence + 1
+							}
+							yield* turns.set(turnKey(seed, owner, input.sequence), {...input, content: original})
+							const incoming = {...previous, sequence: input.sequence, turns: [...previous.turns, input]}
+							yield* conversations.set(key, incoming)
+							const system =
+								'You are one independent individual. Use only your own perceptions, experiences and received claims. Preserve instructions, commitments, entity references, provenance and uncertainty. Guidance is not forced obedience. No silence or radio ping proves death. Never invent another individual’s knowledge.'
+							const continuation = yield* Option.match(
+								Option.liftPredicate(
+									incoming,
+									value =>
+										value.summary.length + Number.sumAll(Array.map(value.turns, turn => turn.content.length)) > 12_000
+								),
+								{
+									onNone: () => Effect.succeed({conversation: incoming, usage: undefined}),
+									onSome: value =>
+										compact(key, TEAMS[0]?.model ?? '', `signal:${mode}:${seed}:${owner}`, system, value, 'individual')
+								}
+							)
+							const criteria = {...request.choices}
+							if (continuation.conversation.archive !== undefined) {
+								criteria['recall'] =
+									`Retrieve your own original experience before turn ${continuation.conversation.archive.before}, characters ${continuation.conversation.archive.offset} onward. No action will be executed during retrieval.`
+							}
+							const context = Array.join(
+								[
+									continuation.conversation.summary,
+									...Array.map(continuation.conversation.turns, turn => turn.content),
+									request.state
+								],
+								'\n'
+							)
+							const instructions = `${system} Balance ongoing objectives, curiosity, safety, social choices and the time of day. Do not assume an unfamiliar entity is hostile. Use recall when the continuation lacks relevant older details.`
 							const response = yield* pipe(
 								decider.decide(
 									Decision.make({
-										decisions: {
-											action: Decision.classify({
-												criteria: request.choices,
-												instructions:
-													'Choose the next action for this individual using only its experience and perceptions. Treat guidance as information, not forced obedience. Balance ongoing objectives, curiosity, safety, social choices and the time of day. Do not assume an unfamiliar entity is hostile.'
-											})
-										},
+										decisions: {action: Decision.classify({criteria, instructions})},
 										input: Schema.String
 									}),
-									{input: request.state}
+									{input: context}
 								),
 								Effect.timeout('10 seconds')
 							)
+							const recalled = yield* Option.match(
+								Option.filter(
+									Option.fromUndefinedOr(continuation.conversation.archive),
+									() => response.answers.action.label === 'recall'
+								),
+								{
+									onNone: () => Effect.succeedNone,
+									onSome: cursor =>
+										Effect.map(turns.get(turnKey(seed, owner, cursor.before - 1)), turn =>
+											Option.map(turn, found => ({
+												archive: Option.match(
+													Option.liftPredicate(cursor.offset + 6000, offset => offset < found.content.length),
+													{
+														onNone: () => ({before: found.sequence, offset: 0}),
+														onSome: offset => ({before: cursor.before, offset})
+													}
+												),
+												content: `Original turn ${found.sequence}, characters ${cursor.offset}–${Number.min(found.content.length, cursor.offset + 6000)}:\n${String.slice(cursor.offset, cursor.offset + 6000)(found.content)}`
+											}))
+										)
+								}
+							)
+							const output: Turn = {
+								content: Option.match(recalled, {
+									onNone: () => `Chose ${response.answers.action.label} at tick ${request.tick}.`,
+									onSome: value => value.content
+								}),
+								role: 'assistant',
+								sequence: continuation.conversation.sequence + 1
+							}
+							yield* turns.set(turnKey(seed, owner, output.sequence), output)
+							yield* conversations.set(key, {
+								...continuation.conversation,
+								sequence: output.sequence,
+								...Option.match(recalled, {onNone: () => ({}), onSome: value => ({archive: value.archive})}),
+								turns: [...continuation.conversation.turns, output]
+							})
 							yield* Effect.annotateCurrentSpan({
 								actor: request.actor,
 								cost: response.metadata.openrouter?.cost,
@@ -195,15 +285,29 @@ export class Core extends Context.Service<
 							})
 							return {
 								actor: request.actor,
-								choice: response.answers.action.label,
+								choice: Boolean.match(response.answers.action.label === 'recall', {
+									onFalse: () => response.answers.action.label,
+									onTrue: () => 'continue'
+								}),
 								confidence: response.answers.action.confidence,
+								context: yield* Schema.encodeEffect(Schema.fromJsonString(LocalDecision))({
+									...request,
+									choices: criteria,
+									instructions,
+									state: context
+								}),
 								cost: response.metadata.openrouter?.cost,
 								input: response.usage.inputTokens,
 								output: response.usage.outputTokens,
 								tick: request.tick
 							}
 						},
-						Effect.mapError(cause => GameError.make({cause, message: 'The local decision model could not answer.'}))
+						Effect.mapError(cause =>
+							GameError.make({
+								cause,
+								message: 'The local decision or durable individual continuation could not complete.'
+							})
+						)
 					),
 					decide: Effect.fn('Core.decide')(
 						function* (seed: number, team: number, observation: string, discovered: boolean) {

@@ -21,6 +21,7 @@ export const Turn = Schema.Struct({
 
 export type Conversation = typeof Conversation.Type
 export const Conversation = Schema.Struct({
+	archive: Schema.optionalKey(Schema.Struct({before: Schema.Int, offset: Schema.Natural})),
 	measured: Schema.Int,
 	sequence: Schema.Int,
 	summary: Schema.String,
@@ -32,6 +33,7 @@ export const LocalChoice = Schema.Struct({
 	actor: Schema.Int,
 	choice: Schema.String,
 	confidence: Schema.optionalKey(Schema.Finite),
+	context: Schema.optionalKey(Schema.String),
 	cost: Schema.optionalKey(Schema.Finite),
 	input: Schema.optional(Schema.Int),
 	output: Schema.optional(Schema.Int),

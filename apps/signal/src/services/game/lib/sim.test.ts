@@ -321,6 +321,54 @@ it.effect(
 )
 
 // How far a body turned, in radians, over a stretch in which it got less than a third of a tile anywhere.
+it.effect(
+	'enforces refit eligibility physically and releases a withdrawn paid refit without blocking production',
+	Effect.fnUntraced(function* () {
+		const saved = yield* (yield* makeSim(Option.none(), 42)).snapshot
+		for (const mark of [0, 2]) {
+			const sim = yield* makeSim(Option.some({...saved, units: Array.map(saved.units, unit => ({...unit, mark}))}), 0)
+			command(sim, {_tag: 'Order', order: {_tag: 'Refit'}, units: [2]})
+			yield* sim.run(1200)
+			assert.deepStrictEqual((yield* team0(sim)).line, [])
+			assert.strictEqual(
+				Option.getOrThrow(Array.findFirst((yield* sim.snapshot).units, unit => unit.id === 2)).mark,
+				mark
+			)
+		}
+		const home = Option.getOrThrow(Array.head(saved.buildings))
+		const sim = yield* makeSim(
+			Option.some({
+				...saved,
+				buildings: Array.map(saved.buildings, building => ({...building, stock: {iron_plate: 8, iron_rod: 4}})),
+				teams: Array.map(saved.teams, team => ({
+					...team,
+					gates: [...team.gates, 't4' as const],
+					line: [{class: 'builder' as const, mark: 1, unit: 2}],
+					lineProgress: 10
+				})),
+				units: Array.map(saved.units, unit => ({...unit, upgrade: false}))
+			}),
+			0
+		)
+		assert.isTrue(command(sim, {_tag: 'Make', unit: 'builder'}).ok)
+		yield* sim.run(1)
+		assert.deepStrictEqual((yield* buildingOf(sim, home.id)).stock, {
+			circuit: 2,
+			iron_plate: 8,
+			iron_rod: 4,
+			motor: 2,
+			steel_beam: 4
+		})
+		yield* sim.run(500)
+		assert.strictEqual(
+			Array.countBy((yield* sim.snapshot).units, unit => unit.team === 0),
+			2
+		)
+		assert.deepStrictEqual((yield* team0(sim)).line, [])
+	}),
+	{timeout: 15_000}
+)
+
 function swayOf(track: {x: number; yaw: number; z: number}[]) {
 	const first = Option.getOrThrow(Array.head(track))
 	const last = Option.getOrThrow(Array.last(track))

@@ -1,12 +1,31 @@
-import {Array, Boolean, MutableHashMap, MutableList, Number, Option, Order, Schema, String, Struct} from 'effect'
+import {
+	Array,
+	Boolean,
+	MutableHashMap,
+	MutableList,
+	Number,
+	Option,
+	Order,
+	Record,
+	Schema,
+	String,
+	Struct
+} from 'effect'
 import type {Types} from 'effect'
 
 import {TICK_HZ} from '#services/game/lib/utils.ts'
 import {UnitKind} from '#services/game/schema.ts'
 import type {Experience, Fact, Individual, Life, LocalDecision, Point, Standing} from '#services/game/schema.ts'
 
+const TRACKS: Record<string, NonNullable<Life['traces'][number]['impressions']>[number]['kind']> = {
+	cart: 'wheels',
+	digger: 'treads',
+	dozer: 'treads',
+	sentry: 'treads'
+}
 const DAY = 24 * 60 * TICK_HZ
 const TRAIL_LIFE = 6 * 60 * TICK_HZ
+
 type Person = Types.Mutable<Individual>
 
 export function daylightAt(tick: number) {
@@ -93,12 +112,7 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 		if (detail?.context === undefined) {
 			const experience = Struct.omit(entry, ['context', 'tokens'])
 			own.recent = Array.takeRight([...own.recent, experience], 16)
-			if (kind !== 'decision' || !String.startsWith('Chose continue:')(text)) {
-				own.retained = Array.takeRight(
-					[...Array.filter(own.retained ?? [], prior => prior.kind !== kind || prior.subject !== subject), experience],
-					48
-				)
-			}
+			own.unrecorded = [...(own.unrecorded ?? []), experience]
 		}
 		MutableList.append(pending, entry)
 		return entry
@@ -201,7 +215,12 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 			for (const fact of message.facts ?? []) {
 				if (!Array.some(own.facts, known => known.id === fact.id && known.tick >= fact.tick)) learn(body.id, tick, fact)
 			}
-			event(body, tick, 'action', `Read #${message.from}: ${message.text}`)
+			event(
+				body,
+				tick,
+				'action',
+				`Read #${message.from}: ${message.text}\nProposed objective: ${JSON.stringify(message.order)}. Disclosed addresses: ${JSON.stringify(message.ids)}. Received claims, not direct observations: ${JSON.stringify(message.facts ?? [])}.`
+			)
 		}
 	}
 
@@ -209,7 +228,7 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 		if (body.health <= 0) return
 		if (
 			Array.contains(
-				['bird', 'heron', 'fireflies', 'moths', 'jellies', 'fish', 'skimmer', 'drifter', 'rotor'],
+				['bird', 'heron', 'fireflies', 'moths', 'jellies', 'fish', 'skimmer', 'drifter', 'rotor', 'loader', 'skiff'],
 				body.kind
 			)
 		) {
@@ -219,7 +238,26 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 		const z = Math.floor(body.z)
 		const key = `${x},${z}`
 		const before = Option.getOrUndefined(MutableHashMap.get(traces, key))
+		const kind = Option.getOrElse(Record.get(TRACKS, body.kind), () => 'feet' as const)
 		MutableHashMap.set(traces, key, {
+			impressions: [
+				...Array.filter(before?.impressions ?? [], prior => prior.kind !== kind),
+				{
+					kind,
+					tick,
+					wear: Number.min(
+						1,
+						0.015 +
+							Option.getOrElse(
+								Option.map(
+									Array.findFirst(before?.impressions ?? [], prior => prior.kind === kind),
+									prior => prior.wear
+								),
+								() => 0
+							)
+					)
+				}
+			],
 			smog: before?.smog ?? 0,
 			tick,
 			wear: Number.min(1, (before?.wear ?? 0) + 0.015),
@@ -296,7 +334,7 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 		}
 		if (connected && body.team !== undefined) {
 			choices['survey'] =
-				'Send your personally observed resources to the Core, preserving source and age, without sending other private experiences.'
+				'Send your known resource observations and reports to the Core, preserving their provenance and age, without sending other private experiences.'
 			choices['report'] =
 				'Report a short activity summary and your learned communication addresses, without sharing every private observation.'
 			if (Array.isReadonlyArrayNonEmpty(own.contacts)) {
@@ -306,6 +344,7 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 		return {
 			actor: body.id,
 			choices,
+			experience: Array.take(own.unrecorded ?? own.recent, 24),
 			state: JSON.stringify({
 				connected,
 				daylight: daylightAt(tick),
@@ -329,10 +368,6 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 				guidance: own.guidance,
 				messagesWaiting: own.inbox.length,
 				recent: Array.takeRight(own.recent, 8),
-				retained: Array.takeRight(
-					Array.filter(own.retained ?? [], prior => !Array.some(own.recent, latest => latest.id === prior.id)),
-					12
-				),
 				self: {
 					capacity: body.capacity,
 					cargo: body.cargo,
@@ -397,6 +432,10 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 		weather(tick: number) {
 			for (const entry of traces) {
 				const trace = entry[1]
+				trace.impressions = Array.filter(
+					Array.map(trace.impressions ?? [], impression => ({...impression, wear: impression.wear * 0.9995})),
+					impression => tick - impression.tick <= TRAIL_LIFE || impression.wear >= 0.001
+				)
 				trace.wear *= 0.9995
 				trace.smog *= 0.99
 				if (tick - trace.tick > TRAIL_LIFE && trace.wear < 0.001 && trace.smog < 0.001) {

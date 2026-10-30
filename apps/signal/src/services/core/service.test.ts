@@ -41,6 +41,93 @@ const ORIGINAL: Conversation = {
 
 it.layer(KeyValueStore.layerMemory)(test => {
 	test.effect(
+		'compacts an individual independently, retrieves its own originals and preserves incoming experience on failure',
+		Effect.fnUntraced(function* () {
+			const kv = yield* KeyValueStore.KeyValueStore
+			const conversations = KeyValueStore.toSchemaStore(kv, Conversation)
+			const turns = KeyValueStore.toSchemaStore(kv, Turn)
+			const key = 'conversation/90/individual-2/active'
+			yield* conversations.set(key, ORIGINAL)
+			for (const turn of ORIGINAL.turns) {
+				yield* turns.set(`conversation/90/individual-2/turn/${String.padStart(9, '0')(`${turn.sequence}`)}`, turn)
+			}
+			const states = MutableList.make<string>()
+			const client = HttpClient.make(request =>
+				Effect.sync(() => {
+					if (request.body._tag !== 'Uint8Array') return assert.fail('Expected JSON.')
+					MutableList.append(states, new TextDecoder().decode(request.body.body))
+					if (String.includes('/decisions')(request.url)) {
+						return HttpClientResponse.fromWeb(
+							request,
+							Response.json({
+								answers: {action: {choice: 'recall', probabilities: {continue: 0, recall: 1}, type: 'choice'}},
+								model: 'typesafe/jev-1.14',
+								usage: {input_tokens: 100, output_tokens: 1}
+							})
+						)
+					}
+					return HttpClientResponse.fromWeb(
+						request,
+						Response.json(completion('Reports: #9 remains unverified. Preserve earlier instructions.'))
+					)
+				})
+			)
+			const core = Context.get(
+				yield* Layer.build(pipe(Core.layer, Layer.provide(Layer.succeed(HttpClient.HttpClient, client)))),
+				Core
+			)
+			const request = {
+				actor: 2,
+				choices: {continue: 'Continue.'},
+				experience: [],
+				state: 'Private present perception.',
+				tick: 50
+			}
+			assert.strictEqual((yield* core.choose(90, request)).choice, 'continue')
+			const continued = Option.getOrThrow(yield* conversations.get(key))
+			assert.include(continued.summary, 'remains unverified')
+			assert.isBelow(continued.turns.length, ORIGINAL.turns.length)
+			assert.isTrue(Array.some(continued.turns, turn => String.includes('Original turn 13')(turn.content)))
+			assert.strictEqual(
+				Option.getOrThrow(yield* turns.get('conversation/90/individual-2/turn/000000001')).content,
+				Option.getOrThrow(Array.head(ORIGINAL.turns)).content
+			)
+			assert.isTrue(Option.isNone(yield* conversations.get('conversation/90/0/active')))
+			const restarted = Context.get(
+				yield* Layer.build(pipe(Core.layer, Layer.provide(Layer.succeed(HttpClient.HttpClient, client)))),
+				Core
+			)
+			yield* restarted.choose(90, {...request, tick: 51})
+			assert.include(Option.getOrThrow(Array.last(MutableList.toArray(states))), 'remains unverified')
+			yield* conversations.set('conversation/91/individual-2/active', ORIGINAL)
+			const failing = Context.get(
+				yield* Layer.build(
+					pipe(
+						Core.layer,
+						Layer.provide(
+							Layer.succeed(
+								HttpClient.HttpClient,
+								HttpClient.make(req =>
+									Effect.succeed(HttpClientResponse.fromWeb(req, Response.json(completion('Incomplete', 'length'))))
+								)
+							)
+						)
+					)
+				),
+				Core
+			)
+			assert.isTrue(Exit.hasFails(yield* Effect.exit(failing.choose(91, request))))
+			assert.strictEqual(
+				Option.getOrThrow(yield* conversations.get('conversation/91/individual-2/active')).turns.length,
+				13
+			)
+			assert.include(
+				Option.getOrThrow(yield* turns.get('conversation/91/individual-2/turn/000000013')).content,
+				'Private present perception.'
+			)
+		})
+	)
+	test.effect(
 		'compacts a continuing conversation, preserves originals and appends to a stable cacheable prefix',
 		Effect.fnUntraced(function* () {
 			const kv = yield* KeyValueStore.KeyValueStore

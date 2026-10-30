@@ -1072,6 +1072,13 @@ export const makeSim = Effect.fnUntraced(
 			)
 		}
 
+		function refitProblem(unit: Unit) {
+			const spec = Option.getOrUndefined(Array.get(UNITS[unit.class].marks, unit.mark + 1))
+			if (spec === undefined) return `${unitName(unit)} is already at the last mark`
+			if (!unlocked(unit.team, spec.tier)) return `mark ${unit.mark + 2} unlocks with ${spec.tier}`
+			return ''
+		}
+
 		/* ───────── movement ───────── */
 
 		// Searches a route for a unit; false when this tick's searches are spent or no way exists.
@@ -1932,6 +1939,13 @@ export const makeSim = Effect.fnUntraced(
 			const offered = request ?? life.local(body, state.tick, unit !== undefined && connected(unit))
 			if (!Record.has(offered.choices, choice)) return
 			const own = life.person(id, state.tick)
+			const remembered = Option.getOrElse(
+				Option.map(Array.last(offered.experience ?? []), entry => entry.id),
+				() => 0
+			)
+			if (request !== undefined) {
+				own.unrecorded = Array.filter(own.unrecorded ?? [], entry => entry.id > remembered)
+			}
 			if (unit === undefined) MutableHashSet.add(dirtyWild, id)
 			own.next = state.tick + TICK_HZ * 20
 			life.event(body, state.tick, 'decision', `Chose ${choice}: ${offered.choices[choice] ?? ''}`)
@@ -1944,7 +1958,7 @@ export const makeSim = Effect.fnUntraced(
 					life.report(
 						body,
 						state.tick,
-						'Shared personally observed resources, preserving their age.',
+						'Shared remembered resource observations and claims, preserving their provenance and age.',
 						Array.filter(own.facts, fact => fact.kind === 'resource')
 					)
 					notify(unit.team, `Resource survey received from #${id}; its observations may be stale.`)
@@ -2036,7 +2050,7 @@ export const makeSim = Effect.fnUntraced(
 						body,
 						state.tick,
 						'observe',
-						`Tracks near ${place2(trace)}: wear ${Number.round(trace.wear, 2)}, freshness ${Number.round(trace.fresh, 2)}; direction ${Number.round(trace.yaw, 1)}. Maker unknown.`
+						`Tracks near ${place2(trace)}: wear ${Number.round(trace.wear, 2)}, freshness ${Number.round(trace.fresh, 2)}; direction ${Number.round(trace.yaw, 1)}. Overlapping impressions: ${JSON.stringify(trace.impressions ?? [])}. Maker unknown; latest direction and freshness do not date every impression.`
 					)
 				}),
 				Match.when('work', () => {
@@ -2724,7 +2738,16 @@ export const makeSim = Effect.fnUntraced(
 				Refit: () =>
 					Effect.sync(() => {
 						const team = teamOf(unit.team)
-						if (team !== undefined) team.line = [...team.line, {class: unit.class, mark: unit.mark + 1, unit: id}]
+						const problem = refitProblem(unit)
+						if (team === undefined || problem !== '') {
+							unit.upgrade = false
+							unit.order = {_tag: 'Go', x: Math.floor(unit.x), z: Math.floor(unit.z)}
+							life.event(living(unit), state.tick, 'action', `Refit refused: ${problem || 'no workshop'}.`)
+							return
+						}
+						if (!Array.some(team.line, entry => entry.unit === id)) {
+							team.line = [...team.line, {class: unit.class, mark: unit.mark + 1, unit: id}]
+						}
 					}),
 				Repair: repair =>
 					Effect.sync(() => {
@@ -3338,29 +3361,31 @@ export const makeSim = Effect.fnUntraced(
 			return candidate !== undefined && candidate.health > 0 && candidate.upgrade && gapTo(home, candidate) <= 2.5
 		}
 
-		function line(id: number) {
+		function withdrawRefit(id: number, head: Team['line'][number]) {
+			if (head.unit === undefined) return false
 			const team = teamOf(id)
-			if (team === undefined) return
 			const home = homeOf(id)
-			const head = Option.getOrUndefined(Array.head(team.line))
-			if (home === undefined || head === undefined) {
-				team.lineProgress = -1
-				return
+			if (team === undefined || home === undefined) return false
+			const candidate = unitOf(head.unit)
+			const spec = Option.getOrUndefined(Array.get(UNITS[head.class].marks, head.mark))
+			if (
+				candidate !== undefined &&
+				candidate.upgrade &&
+				candidate.health > 0 &&
+				spec !== undefined &&
+				unlocked(team.id, spec.tier)
+			) {
+				return false
 			}
-			if (head.unit !== undefined && !presentForRefit(head.unit, home)) return
-			const spec = UNITS[head.class].marks[head.mark] ?? UNITS[head.class].marks[0]
-			if (team.lineProgress < 0) {
-				if (!covers(home.stock, spec.cost)) return
-				for (const item of itemsIn(spec.cost)) {
-					home.stock = withItem(home.stock, item, -countOf(spec.cost, item))
-				}
-				team.lineProgress = 0
+			if (spec !== undefined && team.lineProgress >= 0) {
+				for (const item of itemsIn(spec.cost)) home.stock = withItem(home.stock, item, countOf(spec.cost, item))
 			}
-			team.lineProgress += TICK
-			if (team.lineProgress < spec.seconds) return
-			team.lineProgress = -1
 			team.line = Array.drop(team.line, 1)
-			revision.teams += 1
+			team.lineProgress = -1
+			return true
+		}
+
+		function finishLine(id: number, home: Building, head: Team['line'][number]) {
 			const unit = unitOf(head.unit ?? -1)
 			if (unit === undefined) {
 				const at = centreOf(home)
@@ -3381,6 +3406,38 @@ export const makeSim = Effect.fnUntraced(
 			release(unit.id)
 			unit.task = start.planning
 			notify(id, `${unitName(unit)} is refitted.`)
+		}
+
+		function line(id: number) {
+			const team = teamOf(id)
+			if (team === undefined) return
+			const home = homeOf(id)
+			const head = Option.getOrUndefined(Array.head(team.line))
+			if (home === undefined || head === undefined) {
+				team.lineProgress = -1
+				return
+			}
+			if (withdrawRefit(id, head)) return
+			const spec = Option.getOrUndefined(Array.get(UNITS[head.class].marks, head.mark))
+			if (spec === undefined) {
+				team.line = Array.drop(team.line, 1)
+				team.lineProgress = -1
+				return
+			}
+			if (head.unit !== undefined && !presentForRefit(head.unit, home)) return
+			if (team.lineProgress < 0) {
+				if (!covers(home.stock, spec.cost)) return
+				for (const item of itemsIn(spec.cost)) {
+					home.stock = withItem(home.stock, item, -countOf(spec.cost, item))
+				}
+				team.lineProgress = 0
+			}
+			team.lineProgress += TICK
+			if (team.lineProgress < spec.seconds) return
+			team.lineProgress = -1
+			team.line = Array.drop(team.line, 1)
+			revision.teams += 1
+			finishLine(id, home, head)
 		}
 
 		function emit(building: Building) {
@@ -3574,11 +3631,8 @@ export const makeSim = Effect.fnUntraced(
 		function commandUpgrade(team: Team, command: Extract<Command, {_tag: 'Upgrade'}>) {
 			const unit = unitOf(command.unit)
 			if (unit === undefined || unit.team !== team.id) return outcome(command, false, 'no such unit in your team')
-			const refit = Option.getOrUndefined(Array.get(UNITS[unit.class].marks, unit.mark + 1))
-			if (refit === undefined) return outcome(command, false, `${unitName(unit)} is already mark 3`)
-			if (!unlocked(team.id, refit.tier)) {
-				return outcome(command, false, `mark ${unit.mark + 2} unlocks with ${refit.tier}`)
-			}
+			const problem = refitProblem(unit)
+			if (problem !== '') return outcome(command, false, problem)
 			return outcome(command, true, commandOrder(team, {_tag: 'Order', order: {_tag: 'Refit'}, units: [unit.id]}).text)
 		}
 
@@ -3926,7 +3980,13 @@ export const makeSim = Effect.fnUntraced(
 						'Knowledge is last observed or reported, not live telemetry. Source and tick identify who learned it and when:',
 						...Array.map(
 							knowledge.facts,
-							fact => `#${fact.id} at ${place2(fact)} [tick ${fact.tick}, source #${fact.source}]: ${fact.text}`
+							fact =>
+								`#${fact.id} at ${place2(fact)} [observed tick ${fact.tick}, source #${fact.source}; ${
+									Array.join(
+										Array.map(fact.via ?? [], relay => `reported by #${relay.from} at tick ${relay.tick}`),
+										'; '
+									) || 'direct observation'
+								}]: ${fact.text}`
 						),
 						...Array.filter(
 							[

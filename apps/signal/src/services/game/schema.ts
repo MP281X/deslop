@@ -248,6 +248,13 @@ export class GameError extends Schema.TaggedError<GameError>()('GameError', {
 export type Point = typeof Point.Type
 export const Point = Schema.Struct({x: Schema.Finite, z: Schema.Finite})
 
+type Impression = typeof Impression.Type
+const Impression = Schema.Struct({
+	kind: Schema.Literals(['feet', 'wheels', 'treads']),
+	tick: Schema.Int,
+	wear: Schema.Finite
+})
+
 type Count = typeof Count.Type
 const Count = Schema.Int.check(Schema.isBetween({maximum: 1000, minimum: 1}))
 
@@ -399,6 +406,7 @@ export const Frame = Schema.Struct({
 		Schema.Array(
 			Schema.Struct({
 				fresh: Schema.Finite,
+				impressions: Schema.optionalKey(Schema.Array(Impression)),
 				smog: Schema.Finite,
 				wear: Schema.Finite,
 				x: Schema.Int,
@@ -514,8 +522,8 @@ export const Individual = Schema.Struct({
 	pending: Schema.optional(Standing),
 	projects: Schema.optionalKey(Schema.Array(Schema.Int)),
 	recent: Schema.Array(Experience),
-	retained: Schema.optionalKey(Schema.Array(Experience)),
-	target: Schema.optional(Point)
+	target: Schema.optional(Point),
+	unrecorded: Schema.optionalKey(Schema.Array(Experience))
 })
 
 export type Life = typeof Life.Type
@@ -525,6 +533,7 @@ export const Life = Schema.Struct({
 	sequence: Schema.Int,
 	traces: Schema.Array(
 		Schema.Struct({
+			impressions: Schema.optionalKey(Schema.Array(Impression)),
 			smog: Schema.Finite,
 			tick: Schema.Int,
 			wear: Schema.Finite,
@@ -539,6 +548,8 @@ export type LocalDecision = typeof LocalDecision.Type
 export const LocalDecision = Schema.Struct({
 	actor: Schema.Int,
 	choices: Schema.Record(Schema.String, Schema.String),
+	experience: Schema.optionalKey(Schema.Array(Experience)),
+	instructions: Schema.optionalKey(Schema.String),
 	state: Schema.String,
 	tick: Schema.Int
 })

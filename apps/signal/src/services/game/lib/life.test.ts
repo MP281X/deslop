@@ -87,8 +87,13 @@ it('accumulates anonymous overlapping passage, preserves its age when pollution 
 	for (const tick of Array.range(1, 20)) life.stamp({...UNIT, id: tick + 10}, tick)
 	const worn = Option.getOrThrow(Array.head(life.traces(20)))
 	assert.isAbove(worn.wear, 0.29)
+	life.stamp({...UNIT, kind: 'cart'}, 21)
+	assert.deepStrictEqual(
+		Array.map(Option.getOrThrow(Array.head(life.traces(21))).impressions ?? [], impression => impression.kind),
+		['feet', 'wheels']
+	)
 	life.pollute(UNIT, 0.5, 40)
-	assert.strictEqual(Option.getOrThrow(Array.head(life.traces(40))).tick, 20)
+	assert.strictEqual(Option.getOrThrow(Array.head(life.traces(40))).tick, 21)
 	for (const tick of Array.range(1, 1000)) life.weather(tick * 20)
 	const faded = Option.getOrThrow(Array.head(life.traces(20_000)))
 	assert.isBelow(faded.wear, worn.wear)
@@ -111,7 +116,9 @@ it('does not invent footprints for pollution or flying bodies and keeps provider
 		tokens: {cost: 0.1}
 	})
 	assert.notInclude(life.local(UNIT, 141, true).state, 'Provider accounting only')
-	assert.include(life.local(UNIT, 141, true).state, 'An unidentified impact.')
+	assert.isTrue(
+		Array.some(life.local(UNIT, 141, true).experience ?? [], entry => entry.text === 'An unidentified impact.')
+	)
 	const restored = makeLife(life.snapshot(), life.drain())
 	assert.deepStrictEqual(restored.drain(), life.drain())
 	assert.strictEqual(Option.getOrThrow(Array.last(restored.drain())).tokens?.cost, 0.1)
