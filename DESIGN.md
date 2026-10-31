@@ -113,7 +113,8 @@ spacing:
   4: 16px
   6: 24px
   8: 32px
-  page: 448px
+  page: 768px
+  form: 576px
 components:
   button-primary:
     backgroundColor: '{colors.primary}'
@@ -123,16 +124,16 @@ components:
     height: 28px
     padding: 0 8px
   button-outline:
-    backgroundColor: '{colors.background}'
+    backgroundColor: '{colors.muted}'
     textColor: '{colors.foreground}'
     typography: '{typography.label}'
     rounded: '{rounded.md}'
     height: 28px
     padding: 0 8px
   input:
-    backgroundColor: '{colors.card}'
+    backgroundColor: '{colors.muted}'
     textColor: '{colors.foreground}'
-    typography: '{typography.data}'
+    typography: '{typography.label}'
     rounded: '{rounded.md}'
     height: 28px
     padding: 0 8px
@@ -191,7 +192,8 @@ A new app takes a hue no app uses yet, or orange.
 
 - **Live** is the app's primary: connected, boarding, on time, now, reading. One hue means "happening, as planned".
 - **Warning** is yellow, **error** is red; both pair with a word or an icon, never color alone.
-- **Off** is muted text with a hollow dot: not connected, booked, past.
+- **Off** is muted text: a hollow dot for something switched off (not connected), a muted dot for a quiet state (booked, past).
+- **Light mode** keeps white text on every primary; on yellow it reaches only the 3:1 of large text, so it stays on large or bold labels.
 
 ## Typography
 
@@ -201,7 +203,7 @@ A new app takes a hue no app uses yet, or orange.
 ## Layout
 
 - **Rows, not cards.** Lists are hairline-separated rows of about 40px on the web and system list rows on iOS: a leading mark (favicon, countdown, dot), a title, one muted detail line, and a trailing status or action.
-- **One column.** Single-purpose web pages sit in a 448px column with 16–24px padding; tools with a list and a detail split into a fixed list pane and a detail pane.
+- **One column.** Web pages sit under the shared app bar in a column up to `page` (768px), sign-in and forms up to `form` (576px), with 16–24px padding; tools with a list and a detail split into a fixed list pane and a detail pane.
 - **Rhythm.** 4px steps: 8px inside a group, 16px between groups, 24–32px between sections.
 - **iOS** uses inline navigation titles, `listStyle('plain')`, bottom-bar search and glass controls in the toolbar.
 
@@ -236,6 +238,6 @@ The same PNG is the iOS app icon and the web favicon.
 - Do put hosts, ids, times and counts in mono.
 - Do separate rows with hairlines and group with spacing.
 - Don't add a card per section, a colored side stripe, a gradient, a glow or a shadow.
-- Don't color a tile per item or use a hue that isn't the app's primary, warning or error.
+- Don't color a tile per item or use a hue that isn't the app's primary, warning or error; the portfolio's visitor cursors, which take any app hue, are the one exception.
 - Don't uppercase or letter-space labels.
 - Don't bundle fonts on iOS or set prose in mono.

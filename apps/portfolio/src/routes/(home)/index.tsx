@@ -519,7 +519,7 @@ function ShortcutsOverlay(input: {open: boolean; onOpenChange: (open: boolean) =
 		<Dialog open={input.open} onOpenChange={input.onOpenChange}>
 			<DialogContent className="sm:max-w-md">
 				<DialogHeader>
-					<DialogTitle>Keyboard Shortcuts</DialogTitle>
+					<DialogTitle>Keyboard shortcuts</DialogTitle>
 				</DialogHeader>
 				<div className="text-muted-foreground grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-xs sm:gap-x-8">
 					<span className="text-foreground">j / k</span>

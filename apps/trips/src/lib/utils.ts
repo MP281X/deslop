@@ -523,7 +523,7 @@ export const calendarAtom = Atom.make(get =>
 						Effect.tryPromise(() => {
 							const source = Calendar.getDefaultCalendarSync().source
 							return Calendar.createCalendar({
-								color: '#f54900',
+								color: '#4385be',
 								entityType: Calendar.EntityTypes.EVENT,
 								name: CALENDAR,
 								source,

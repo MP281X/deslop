@@ -152,6 +152,18 @@ it.effect(
 		)
 		assert.strictEqual(deployed.pathname, '/')
 		assert.strictEqual(deployed.searchParams.get('next'), 'https://signal.mp281x.xyz/?inspect=2')
+		// Another Deslop app the same server answers for, such as Scope's page beside its OTLP receiver.
+		assert.strictEqual(
+			new URL(
+				(yield* send(signInUrl('https://scope.mp281x.xyz/'), '', 'https://scope.mp281x.xyz')).headers.get('location') ??
+					''
+			).searchParams.get('next'),
+			'https://scope.mp281x.xyz/'
+		)
+		assert.strictEqual(
+			(yield* send(signInUrl('https://scope.mp281x.xyz/'), '', 'https://signal.mp281x.xyz')).status,
+			400
+		)
 		assert.strictEqual((yield* send(signInUrl('/'), '', 'https://evil.test')).status, 400)
 	})
 )

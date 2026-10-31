@@ -73,7 +73,7 @@ function headingOf(booking: Booking) {
 	return `${booking.from.city ?? booking.from.name} to ${booking.to.city ?? booking.to.name}`
 }
 
-// "BGY 07:05 → STN 08:10" for a flight, "FR 9531 09:10 → 12:20" for a train, nights and check-in for a stay.
+// "FR 4512 · BGY 07:05 → STN 08:10" for a flight, "FR 9531 09:10 → 12:20" for a train, nights and check-in for a stay.
 function scheduleOf(booking: Booking) {
 	if (booking._tag === 'stay') {
 		const nights = Number.round((booking.checkOut - booking.checkIn) / DAY, 0)
@@ -82,17 +82,20 @@ function scheduleOf(booking: Booking) {
 	const departs = timeAt(startOf(booking), booking.from.timeZone)
 	const arrives = timeAt(endOf(booking), booking.to.timeZone)
 	if (booking._tag === 'train') return `${titleOf(booking)} ${departs} → ${arrives}`
-	return `${booking.from.code ?? booking.from.name} ${departs} → ${booking.to.code ?? booking.to.name} ${arrives}`
+	return `${titleOf(booking)} · ${booking.from.code ?? booking.from.name} ${departs} → ${booking.to.code ?? booking.to.name} ${arrives}`
 }
 
-// How far away a row is: "now" while it runs, the days until its day on its first row, nothing on the rest of that day.
+// How far away a row is: now, today, or days until its day on its first row; blank for the rest of that day.
 type Countdown = {_tag: 'Now'} | {_tag: 'Days'; days: number} | {_tag: 'SameDay'}
 
 function Gutter(props: {countdown: Countdown}) {
 	return (
 		<VStack spacing={1} modifiers={[frame({width: 34})]}>
 			{props.countdown._tag === 'Now' && <Text modifiers={[text.data, foregroundStyle(primary)]}>now</Text>}
-			{props.countdown._tag === 'Days' && (
+			{props.countdown._tag === 'Days' && props.countdown.days < 1 && (
+				<Text modifiers={[text.data, foregroundStyle(colors.foreground)]}>today</Text>
+			)}
+			{props.countdown._tag === 'Days' && props.countdown.days >= 1 && (
 				<>
 					<Text
 						modifiers={[

@@ -13,7 +13,7 @@ import {updateAtom} from '@deslop/runtime/mobile'
 import {primary, queryAtom, session} from '#lib/utils.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
 import {ComposeRoute} from '#routes/compose.tsx'
-import logo from '#routes/logo.png'
+import logo from '#routes/icon.png'
 import {NoteRoute} from '#routes/notes/$id.tsx'
 import type {Kind} from '#services/notes/schema.ts'
 

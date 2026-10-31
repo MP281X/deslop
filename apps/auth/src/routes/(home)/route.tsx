@@ -172,7 +172,7 @@ function AccountMenu(props: {account: Account}) {
 				</DropdownMenuGroup>
 				<DropdownMenuSeparator />
 				<DropdownMenuItem variant="destructive" disabled={AsyncResult.isWaiting(signOut)} onClick={() => endSession()}>
-					Sign Out
+					Sign out
 				</DropdownMenuItem>
 			</DropdownMenuContent>
 		</DropdownMenu>
@@ -203,7 +203,7 @@ function SignIn() {
 					disabled={AsyncResult.isWaiting(codeSignIn)}
 					onClick={() => startCodeSignIn()}
 				>
-					Sign in with a Code
+					Sign in with a code
 				</Button>
 			</div>
 		</section>

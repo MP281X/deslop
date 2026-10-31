@@ -37,7 +37,7 @@ import {
 } from '#lib/utils.ts'
 import type {ConnectionInfo} from '#services/connections/schema.ts'
 
-// The server's own favicon, never a letter tile.
+// The server's favicon through Google's favicon service, as Stash shows a source's, never a letter tile.
 function Favicon(props: {url: string}) {
 	return (
 		<img
@@ -128,26 +128,32 @@ function ServerRow(props: {server: ConnectionInfo}) {
 		<li className="border-border flex flex-col gap-1 border-b py-2.5">
 			<div className="flex items-center gap-3">
 				<Favicon url={props.server.url} />
-				<span className="shrink-0 text-sm font-medium">{props.server.name}</span>
+				<span className="max-w-48 min-w-0 truncate text-sm font-medium">{props.server.name}</span>
 				<span className="text-muted-foreground min-w-0 grow truncate font-mono text-xs">
 					{new URL(props.server.url).hostname}
 				</span>
 				<Status server={props.server} />
 				{pipe(
 					Match.value(props.server.status),
-					Match.when('Connected', () => (
-						<span className="text-muted-foreground w-12 text-right font-mono text-xs">
-							{shown.length}/{props.server.tools.length}
-						</span>
-					)),
+					Match.when('Connected', () =>
+						Array.match(props.server.tools, {
+							onEmpty: () => null,
+							onNonEmpty: tools => (
+								<span className="text-muted-foreground w-12 text-right font-mono text-xs">
+									{shown.length}/{tools.length}
+								</span>
+							)
+						})
+					),
 					Match.orElse(status => (
-						<a
-							href={connectUrl(props.server.id)}
-							className={buttonVariants({size: 'sm', variant: 'outline'})}
-							aria-disabled={busy}
+						<Button
+							size="sm"
+							variant="outline"
+							disabled={busy}
+							onClick={() => location.assign(connectUrl(props.server.id))}
 						>
 							{Boolean.match(status === 'Expired', {onFalse: () => 'Connect', onTrue: () => 'Reconnect'})}
-						</a>
+						</Button>
 					))
 				)}
 				<ServerMenu busy={busy} onRemove={() => setConfirm(true)} server={props.server} />
@@ -181,7 +187,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 					<div className="flex justify-end gap-2">
 						<DialogClose render={<Button variant="ghost" disabled={busy} />}>Cancel</DialogClose>
 						<Button variant="destructive" disabled={busy} onClick={() => remove()}>
-							Remove Server
+							Remove server
 						</Button>
 					</div>
 				</DialogContent>
@@ -222,7 +228,7 @@ function AddForm(props: {url: string; error: string; adding: boolean}) {
 					Cancel
 				</Button>
 				<Button type="submit" disabled={props.adding}>
-					{Boolean.match(props.adding, {onFalse: () => 'Add Server', onTrue: () => 'Adding…'})}
+					{Boolean.match(props.adding, {onFalse: () => 'Add server', onTrue: () => 'Adding…'})}
 				</Button>
 			</div>
 			{props.error !== '' && (
@@ -274,7 +280,7 @@ function Directory(props: {servers: readonly ConnectionInfo[]}) {
 					{() => (
 						<Button onClick={() => send({_tag: 'Open'})}>
 							<Plus />
-							Add Server
+							Add server
 						</Button>
 					)}
 				</MachineState>

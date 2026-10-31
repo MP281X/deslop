@@ -18,8 +18,9 @@ import type {ActivityProps} from '#services/bookings/schema.ts'
 // The widget runtime runs only this body, so the palette and helpers live inside it; the server words every line, and the layout only places them.
 function JourneyLayout(props: ActivityProps) {
 	'widget'
-	const palette = {bad: '#ff453a', good: '#30d158', info: '#0a84ff', plain: '#ffffff', warn: '#ffd60a'}
-	const gray = '#8e8e93'
+	// DESIGN.md's dark values: live in Trips' blue, warn yellow, bad red.
+	const palette = {bad: '#d14d41', good: '#4385be', info: '#4385be', plain: '#ededed', warn: '#d0a215'}
+	const gray = '#9a9a9a'
 
 	// The gate, belt or platform on its colour, the island's one value read at a glance.
 	function chip(size: number) {

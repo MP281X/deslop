@@ -13,7 +13,7 @@ import {Button, buttonVariants} from '@deslop/components-web/ui/button'
 import {cn} from '@deslop/components-web/utils'
 import {signInUrl} from '@deslop/runtime/auth/utils'
 
-import {ageOf, durationOf, filtersAtom, servicesAtom, traceAtom, tracesAtom} from '#lib/utils.ts'
+import {ageOf, durationOf, filtersAtom, servicesAtom, traceAtom, tracesAtom, tracesQueryAtom} from '#lib/utils.ts'
 import icon from '#routes/icon.png'
 import type {Trace, TraceSummary} from '#services/telemetry/schema.ts'
 
@@ -245,8 +245,9 @@ function Traces() {
 					className="border-border min-h-0 shrink-0 overflow-y-auto border-b md:w-80 md:border-r md:border-b-0"
 					aria-label="Traces"
 				>
-					<p className="text-muted-foreground border-border border-b px-4 py-2 font-mono text-xs">
+					<p className="text-muted-foreground border-border flex items-center gap-2 border-b px-4 py-2 font-mono text-xs">
 						{page.value.total} traces · last 3 days
+						{page.waiting && <span className="bg-primary size-1.5 rounded-full motion-safe:animate-pulse" />}
 					</p>
 					{Array.match(page.value.entries, {
 						onEmpty: () => <p className="text-muted-foreground px-4 py-6 text-sm">No traces match.</p>,
@@ -276,15 +277,27 @@ function Traces() {
 	})
 }
 
+// Asks the server again for the traces under the current filters.
+function Refresh() {
+	return (
+		<Button
+			variant="ghost"
+			size="icon-sm"
+			aria-label="Refresh traces"
+			onClick={useAtomRefresh(useAtomValue(tracesQueryAtom))}
+		>
+			<RotateCw />
+		</Button>
+	)
+}
+
 function Home() {
 	return (
 		<>
 			<AppBar icon={icon} name="scope">
 				<div className="flex min-w-0 items-center gap-2">
 					<ServiceFilter />
-					<Button variant="ghost" size="icon-sm" aria-label="Refresh traces" onClick={useAtomRefresh(tracesAtom)}>
-						<RotateCw />
-					</Button>
+					<Refresh />
 				</div>
 			</AppBar>
 			<Traces />

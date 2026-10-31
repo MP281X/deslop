@@ -84,7 +84,7 @@ import {
 	removeAtom,
 	searchAtom
 } from '#lib/utils.ts'
-import logo from '#routes/logo.png'
+import logo from '#routes/icon.png'
 import {tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 import {Brand, Kind} from '#services/notes/schema.ts'

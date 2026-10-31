@@ -1,7 +1,7 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Effect, FileSystem, String, pipe} from 'effect'
+import {Array, Effect, FileSystem, Option, String, pipe} from 'effect'
 
 import {lint} from '@google/design.md/linter'
 
@@ -34,6 +34,39 @@ it.layer(NodeServices.layer)(test => {
 					light: colors.get(`light-${color.name}`)?.hex,
 					name: color.name
 				}))
+			)
+		})
+	)
+
+	test.effect(
+		"each iOS app's primary is its hue in DESIGN.md's table",
+		Effect.fnUntraced(function* () {
+			const fs = yield* FileSystem.FileSystem
+			const root = `${import.meta.dirname}/../../..`
+			const table = Array.map(
+				Array.fromIterable(
+					String.matchAll(/^\| ([a-z]+) +\| ([a-z]+) +\|/gmu)(yield* fs.readFileString(`${root}/DESIGN.md`))
+				),
+				match => ({app: match[1] ?? '', hue: match[2] ?? ''})
+			)
+			const mobile = yield* Effect.filter(table, row => fs.exists(`${root}/apps/${row.app}/app.config.ts`))
+			assert.isNotEmpty(mobile)
+			assert.deepStrictEqual(
+				yield* Effect.forEach(
+					mobile,
+					row =>
+						Effect.map(fs.readFileString(`${root}/apps/${row.app}/src/lib/utils.ts`), source => ({
+							app: row.app,
+							hue: Option.getOrElse(
+								Option.flatMap(String.match(/export const primary = hues\.([a-z]+)/u)(source), match =>
+									Option.fromUndefinedOr(match[1])
+								),
+								() => ''
+							)
+						})),
+					{concurrency: 'unbounded'}
+				),
+				mobile
 			)
 		})
 	)

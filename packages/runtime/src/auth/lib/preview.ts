@@ -16,10 +16,12 @@ import {
 import type {HttpClient} from 'effect/http'
 
 import {AUTH_URL, previewOrigin} from '#auth/lib/utils.ts'
-import {AuthError, ClientRegistration, PreviewCallback, PreviewLogin, TokenResponse} from '#auth/schema.ts'
+import {AuthError, ClientRegistration, PreviewCallback, PreviewLogin, Resource, TokenResponse} from '#auth/schema.ts'
 import type {Credentials} from '#auth/schema.ts'
 
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
+
+const appOrigins = Array.dedupe(Array.map(Resource.literals, identifier => new URL(identifier).origin))
 
 type Flow = {clientId: string; next: string; origin: string; verifier: string}
 type Session = {credentials: Ref.Ref<Credentials>; gate: Semaphore.Semaphore; origin: string}
@@ -105,14 +107,15 @@ export const previewAuth = Effect.fnUntraced(function* (
 			Effect.gen(function* () {
 				const request = yield* HttpServerRequest.HttpServerRequest
 				const params = yield* HttpServerRequest.schemaSearchParams(PreviewLogin)
-				const origin = Option.getOrElse(address(request.headers), () => new URL(resource).origin)
+				// A deployed server can answer for more than its resource, such as Scope's page beside its OTLP receiver.
+				const origin = Option.getOrElse(address(request.headers), () => `https://${request.headers['host'] ?? ''}`)
 				const next = yield* pipe(
 					Effect.fromResult(Url.fromString(params.next ?? '/', origin)),
 					Effect.mapError(expired)
 				)
 				if (next.origin !== origin || next.username !== '' || next.password !== '') return yield* expired()
 				if (Option.isNone(address(request.headers))) {
-					if (request.headers['host'] !== new URL(resource).host) return yield* expired()
+					if (!Array.contains(appOrigins, origin)) return yield* expired()
 					// Auth offers GitHub or a code another device approves, then returns here.
 					return HttpServerResponse.redirect(`${AUTH_URL}/?${new URLSearchParams({next: next.href})}`)
 				}

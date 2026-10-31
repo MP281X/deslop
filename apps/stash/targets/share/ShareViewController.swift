@@ -1,4 +1,3 @@
-import CoreText
 import ImageIO
 import Security
 import SwiftUI
@@ -33,28 +32,16 @@ private enum Outcome {
   case queued
 }
 
-// The app's theme (packages/components-mobile/src/theme.ts) and its JetBrains Mono, which the containing app bundles.
+// DESIGN.md's colors for Stash, as packages/components-mobile/src/theme.ts has them, in system fonts.
 private enum Theme {
   static let app = Bundle(url: Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent())
-  static let background = color(dark: 0x111114, light: 0xffffff)
-  static let foreground = color(dark: 0xf3f3f5, light: 0x09090b)
-  static let muted = color(dark: 0xadadb5, light: 0x71717b)
-  static let primary = color(dark: 0xe78a53, light: 0xf54900)
-  static let destructive = color(dark: 0xff6467, light: 0xe7000b)
-  static let logo = app?.url(forResource: "assets/src/routes/logo", withExtension: "png").flatMap {
+  static let background = color(dark: 0x0a0a0a, light: 0xffffff)
+  static let foreground = color(dark: 0xededed, light: 0x0a0a0a)
+  static let muted = color(dark: 0x9a9a9a, light: 0x666666)
+  static let primary = color(dark: 0xd0a215, light: 0xad8301)
+  static let destructive = color(dark: 0xd14d41, light: 0xaf3029)
+  static let logo = app?.url(forResource: "assets/src/routes/icon", withExtension: "png").flatMap {
     UIImage(contentsOfFile: $0.path)
-  }
-
-  static func registerFonts() {
-    for name in ["JetBrainsMono_400Regular", "JetBrainsMono_600SemiBold"] {
-      if let url = app?.url(forResource: name, withExtension: "ttf") {
-        CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
-      }
-    }
-  }
-
-  static func mono(_ size: CGFloat, bold: Bool = false) -> Font {
-    .custom(bold ? "JetBrainsMono-SemiBold" : "JetBrainsMono-Regular", size: size)
   }
 
   private static func color(dark: Int, light: Int) -> Color {
@@ -74,7 +61,6 @@ private struct SaveView: View {
 
   init(context: NSExtensionContext) {
     self.context = context
-    Theme.registerFonts()
   }
 
   // iOS always presents the extension as a full-height sheet, ignoring overFullScreen and custom detents,
@@ -85,29 +71,29 @@ private struct SaveView: View {
         if let logo = Theme.logo {
           Image(uiImage: logo).resizable().interpolation(.none).frame(width: 18, height: 18)
         }
-        Text("stash").font(Theme.mono(17, bold: true)).foregroundStyle(Theme.foreground)
+        Text("stash").font(.headline).foregroundStyle(Theme.foreground)
       }
       .padding(.top, 20)
       VStack(spacing: 12) {
         switch phase {
         case .saving:
           ProgressView().controlSize(.large).tint(Theme.primary).frame(height: 44)
-          Text("Saving…").font(Theme.mono(16, bold: true)).foregroundStyle(Theme.foreground)
+          Text("Saving…").font(.headline).foregroundStyle(Theme.foreground)
         case .saved:
           Image(systemName: "checkmark").font(.system(size: 36, weight: .semibold)).foregroundStyle(Theme.primary)
             .frame(height: 44).symbolEffect(.bounce, value: phase)
-          Text("Saved").font(Theme.mono(16, bold: true)).foregroundStyle(Theme.foreground)
+          Text("Saved").font(.headline).foregroundStyle(Theme.foreground)
         case .queued:
           Image(systemName: "arrow.up").font(.system(size: 36, weight: .semibold)).foregroundStyle(Theme.primary)
             .frame(height: 44).symbolEffect(.bounce, value: phase)
-          Text("Sending…").font(Theme.mono(16, bold: true)).foregroundStyle(Theme.foreground)
-          Text("It shows up once the upload finishes.").font(Theme.mono(13)).foregroundStyle(Theme.muted)
+          Text("Sending…").font(.headline).foregroundStyle(Theme.foreground)
+          Text("It shows up once the upload finishes.").font(.footnote).foregroundStyle(Theme.muted)
         case .failed(let message):
           Image(systemName: "exclamationmark.triangle").font(.system(size: 34, weight: .semibold))
             .foregroundStyle(Theme.destructive).frame(height: 44)
-          Text("Not saved").font(Theme.mono(16, bold: true)).foregroundStyle(Theme.foreground)
-          Text(message).font(Theme.mono(13)).foregroundStyle(Theme.muted)
-          Text("Tap to close").font(Theme.mono(12)).foregroundStyle(Theme.muted).padding(.top, 8)
+          Text("Not saved").font(.headline).foregroundStyle(Theme.foreground)
+          Text(message).font(.footnote).foregroundStyle(Theme.muted)
+          Text("Tap to close").font(.caption).foregroundStyle(Theme.muted).padding(.top, 8)
         }
       }
       .multilineTextAlignment(.center)

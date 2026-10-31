@@ -1,6 +1,6 @@
 import {Duration, Number, Option, String, pipe} from 'effect'
 
-import {Atom, AtomRpc} from 'effect/reactivity'
+import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
 
 import * as WebRuntime from '@deslop/runtime/web'
 
@@ -14,22 +14,30 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/scope/lib/utils/Rp
 // What the trace list shows: one service or every one, and only failed traces when asked.
 export const filtersAtom = Atom.make({errors: false, service: ''})
 
-// The newest hundred traces of the last three days; the page's refresh reads them again, nothing polls.
-export const tracesAtom = Atom.make(get =>
-	get(
-		RpcClient.query('scope.traces', {
-			...get(filtersAtom),
-			limit: 100,
-			offset: 0,
-			operation: '',
-			runs: 'all',
-			since: Duration.days(3),
-			sort: 'recent',
-			text: '',
-			traceId: ''
-		})
-	)
+// The query for the newest hundred traces of the last three days under the filters; refreshing it asks the server again.
+export const tracesQueryAtom = Atom.make(get =>
+	RpcClient.query('scope.traces', {
+		...get(filtersAtom),
+		limit: 100,
+		offset: 0,
+		operation: '',
+		runs: 'all',
+		since: Duration.days(3),
+		sort: 'recent',
+		text: '',
+		traceId: ''
+	})
 )
+
+// A new filter's first answer keeps the previous page on screen, marked waiting, instead of blanking it.
+export const tracesAtom = Atom.make(get => {
+	const result = get(get(tracesQueryAtom))
+	if (!AsyncResult.isInitial(result)) return result
+	return Option.match(get.self<typeof result>(), {
+		onNone: () => result,
+		onSome: previous => AsyncResult.waiting(previous)
+	})
+})
 
 export const servicesAtom = RpcClient.query('scope.services', undefined)
 
