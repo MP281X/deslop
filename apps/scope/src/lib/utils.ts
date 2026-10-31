@@ -42,19 +42,21 @@ export const tracesAtom = Atom.make(get => {
 // The traces a refresh added under the same filters, so only they grow in; the first page and a new filter show at once.
 export const arrivalsAtom = Atom.make(get => {
 	const filters = get(filtersAtom)
-	const ids = AsyncResult.match(get(tracesAtom), {
-		onFailure: () => Array.empty<string>(),
-		onInitial: () => Array.empty<string>(),
-		onSuccess: page => Array.map(page.value.entries, trace => trace.id)
-	})
-	const arrived = Option.match(get.self<{arrived: string[]; filters: typeof filters; ids: string[]}>(), {
-		onNone: () => Array.empty<string>(),
-		onSome: before => {
-			if (before.filters !== filters || Array.isArrayEmpty(before.ids)) return Array.empty<string>()
-			return Array.difference(ids, before.ids)
-		}
-	})
-	return {arrived, filters, ids}
+	const result = get(tracesAtom)
+	// The last settled page and its filters; a waiting or failed answer keeps it and adds nothing.
+	const baseline = Option.flatMap(
+		get.self<{arrived: string[]; baseline: Option.Option<{filters: typeof filters; ids: string[]}>}>(),
+		before => before.baseline
+	)
+	if (!AsyncResult.isSuccess(result) || result.waiting) return {arrived: Array.empty<string>(), baseline}
+	const ids = Array.map(result.value.entries, trace => trace.id)
+	return {
+		arrived: Option.match(
+			Option.filter(baseline, last => last.filters === filters),
+			{onNone: () => Array.empty<string>(), onSome: last => Array.difference(ids, last.ids)}
+		),
+		baseline: Option.some({filters, ids})
+	}
 })
 
 export const servicesAtom = RpcClient.query('scope.services', undefined)

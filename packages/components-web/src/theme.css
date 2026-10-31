@@ -106,18 +106,6 @@
 	image-rendering: pixelated;
 }
 
-/* Reduced motion keeps fades and colour changes and drops movement. */
-@media (prefers-reduced-motion: reduce) {
-	*,
-	::before,
-	::after {
-		scroll-behavior: auto !important;
-		translate: none !important;
-		scale: none !important;
-		rotate: none !important;
-	}
-}
-
 @layer base {
 	* {
 		@apply border-border outline-none;

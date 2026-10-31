@@ -210,12 +210,12 @@ A tonal step and a hairline, never a shadow, gradient or glow. On iOS, Liquid Gl
 Motion marks a change the user caused or should notice, and never holds content back. The curves are `--ease-out`, `--ease-in-out` and `--ease-drawer` in `theme.css`.
 
 - **Gate by frequency.** Keyboard actions and anything used a hundred times a day: none. Tens of times a day (press, hover, list navigation): under 150ms or none. Occasional (dialogs, sheets, toasts): standard. Rare (first run, success): may delight. Each animation names its purpose: feedback, where something came from, a state change, or a jump it smooths.
-- **Ingredients.** `transform`, `opacity` and `clip-path` only, never `transition: all`. Nothing grows from `scale(0)`: start at 0.95 with opacity 0. Popovers grow from their trigger, dialogs from the centre. Transitions, not keyframes, for anything that can retrigger. Exit faster than enter.
+- **Ingredients.** `transform`, `opacity` and `clip-path` only, never `transition: all`; two exceptions, since nothing else can do them: a row entering a list grows its grid row with its opacity, and a chart's axis eases through a registered custom property. Nothing grows from `scale(0)`: start at 0.95 with opacity 0. Popovers grow from their trigger, dialogs from the centre. Transitions, not keyframes, for anything that can retrigger. Exit faster than enter.
 - **Curves and time.** `ease-out` to enter or leave, `ease-in-out` to move on screen, linear only for progress, never `ease-in`. Press 100–160ms, popovers 125–200ms, menus 150–250ms, dialogs and sheets 200–300ms.
 - **Press and hover.** Pressables scale to 0.97; hover motion only under `(hover: hover) and (pointer: fine)`.
 - **iOS.** Navigation, sheets and tab bars keep the system's motion, and tabs never slide. What a finger moves follows a spring (damping 1, or 0.8 after a flick). One haptic per committed action, on the same frame as its visual, never on its own.
 - **Reduced motion** drops movement and keeps fades and colour.
-- **Each app's own.** One signature motion, only when its data changes: Trips flips a changed gate, platform or time like a departures board.
+- **Each app's own.** One signature motion, only when its data changes: Trips flips a changed gate, platform or time like a departures board; Scope's waterfall eases to a new trace's scale, and traces a refresh adds grow in.
 
 ## Icons
 

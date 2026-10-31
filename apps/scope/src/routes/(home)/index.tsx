@@ -248,7 +248,15 @@ function Detail() {
 			AsyncResult.match(result, {
 				onFailure: failure => <Failure cause={failure.cause} />,
 				onInitial: () => <Loading />,
-				onSuccess: trace => <Waterfall trace={trace.value} />
+				// The previous trace stays dimmed while the picked one loads.
+				onSuccess: trace => (
+					<div
+						aria-busy={trace.waiting}
+						className={cn('transition-opacity duration-150', trace.waiting && 'opacity-50')}
+					>
+						<Waterfall trace={trace.value} />
+					</div>
+				)
 			})
 	})
 }
