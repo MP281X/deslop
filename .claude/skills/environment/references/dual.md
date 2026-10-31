@@ -4,22 +4,25 @@ Dual's `AGENTS.md` owns its commands, production data, app and coding standards;
 
 ## Workers
 
-- **Accounts.** Writes go only to GitHub `MP281X`, GitLab `matteopaludgnach` and the user's Discord test channel. Saved preview tokens are read-only; write tokens come from `gh auth token` and the `glab` configuration.
-- **Merge requests** are squash-merged, stacks included, and delete their source branch on merge; restack per pull-requests.
-- **Preview** through the T3 `preview` project script: `bun run preview` runs the worktree's own database, sandbox, API, worker and app without `.env` files, AWS or model keys, and prints its URL and the login `admin@dual.local` / `preview-password`. Restart it after changing a published package; `settle` destroys its data. Live webhooks: funnel `/api/webhooks` to the preview port, which proxies `/api` to the API, per environment's Previews. Google OAuth needs the printed origin plus `/api/connections/auth/callback` registered.
+- **Accounts.** Writes only to GitHub `MP281X`, GitLab `matteopaludgnach` and the user's Discord test channel. Saved preview tokens are read-only; write tokens from `gh auth token` and the `glab` configuration.
+- **Merge requests**: squash-merged, stacks included; source branch deleted on merge; restack per pull-requests.
+- **Preview**: the T3 `preview` script. `bun run preview` runs the worktree's own database, sandbox, API, worker and app, without `.env` files, AWS or model keys; prints its URL and login `admin@dual.local` / `preview-password`.
+  - **Restart** after changing a published package; `settle` destroys its data.
+  - **Webhooks**: funnel `/api/webhooks` to the preview port, which proxies `/api` to the API (environment, Previews).
+  - **Google OAuth**: register the printed origin plus `/api/connections/auth/callback`.
 
 ## Jira
 
-Project `DOS`, board 1053, on `datapizza.atlassian.net`; the user's account ID is `712020:87e4f57e-6b5d-40ab-8dfa-faf159ead71a`. On these workers Jira goes through the `dual` MCP server, in place of the `acli` that Dual's `docs/agents/issue-tracker.md` names.
+Project `DOS`, board 1053, `datapizza.atlassian.net`; the user's account ID `712020:87e4f57e-6b5d-40ab-8dfa-faf159ead71a`.
 
-- **Picking.** When the user asks what to work on: rank only unassigned `To Do` tickets by priority (`P1` highest), size and fit with the code. Rank Epics, Tasks, Stories and Bugs, not Areas or Initiatives. After the user approves, assign each ticket to the user and move it to `Doing`; these are the only Jira writes.
-- **Page.** A ticket key links to `https://datapizza.atlassian.net/browse/<key>`.
-- **Assigned.** A ticket key in a request, branch or commit means work the user started: read it and quote the requirements you use.
-- **Through Dual.** Jira goes through the `dual` MCP server's `execute`, which finds its own tools (`atlassian-api.*`). The connection is a service account: `currentUser()` and `@me` are not the user, so name the user by account ID. `To Do` means `status = "To Do"`; `statusCategory = "To Do"` also returns Backlog. `Doing` is transition `21`. A slow or confusing step is a Dual defect the user wants in the final reply.
+- **Through Dual**: the `dual` MCP server's `execute`, which finds its own tools (`atlassian-api.*`), in place of the `acli` Dual's `docs/agents/issue-tracker.md` names. A service account: `currentUser()` and `@me` aren't the user, so name the account ID. `To Do` is `status = "To Do"` (`statusCategory` also returns Backlog); `Doing` is transition `21`. A slow or confusing step is a Dual defect for the final reply.
+- **Picking.** On "what to work on": rank only unassigned `To Do` Epics, Tasks, Stories and Bugs by priority (`P1` highest), size and fit with the code. After approval, assign each to the user and move it to `Doing`: the only Jira writes.
+- **Assigned.** A ticket key in a request, branch or commit is work the user started: read it, quote the requirements used.
+- **Link**: `https://datapizza.atlassian.net/browse/<key>`.
 
 ## Google
 
-The same `execute` reads the user's work calendar and mail, `matteopaludgnach@datapizza.tech` (`google-api.*`, calendar `primary`), in `Europe/Rome`; it only reads them. Its sandbox has no `Intl`, so convert times by the zone's offset.
+The same `execute` reads, never writes, the user's work calendar and mail, `matteopaludgnach@datapizza.tech` (`google-api.*`, calendar `primary`), in `Europe/Rome`. No `Intl` in its sandbox: convert by the zone's offset.
 
 ## VPN
 
@@ -36,7 +39,12 @@ curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
 
 ## Tracing
 
-`packages/saas/src/Observability.ts` sends the OTLP/HTTP JSON that deslop's Scope receives, with `OTEL_RESOURCE_ATTRIBUTES` merged into its resource. The preview clears its environment, so it exports nothing; trace a development launch instead. Compute the startup timestamp at every launch, so a restarted service hides its previous traces. After `vp run build:runtime` at the root, from `packages/saas` with its development environment configured:
+- **Exporter**: `packages/saas/src/Observability.ts` sends OTLP/HTTP JSON to Scope, `OTEL_RESOURCE_ATTRIBUTES` merged into its resource.
+- **Preview** clears its environment and exports nothing: trace a development launch.
+- **Startup timestamp** fresh at every launch, so a restarted service hides its previous traces.
+- **PostHog marker**: nonempty enables the exporter, Scope ignores it; production PostHog configuration stays.
+
+After `vp run build:runtime` at the root, from `packages/saas` with its development environment configured:
 
 ```bash
 OTEL_RESOURCE_ATTRIBUTES="scope.runtime=server,scope.run.started_unix_nano=$(date +%s%N)" \
@@ -44,5 +52,3 @@ POSTHOG_PROJECT_TOKEN=scope-dev POSTHOG_OTLP_BASE_URL=https://dev.tailnet-8c4c.t
 bun --env-file .env src/dev.ts api
 # Use the same launch environment with `src/dev.ts worker` for the worker.
 ```
-
-The nonempty PostHog marker enables Dual's exporter and Scope's receiver ignores it; production PostHog configuration stays as it is.

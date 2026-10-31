@@ -4,7 +4,7 @@ Setup, upkeep and rebuild of the machines.
 
 ## Machines
 
-`dev` and `desktop` run the latest Debian stable in text mode with the same setup, as `mp281x` with passwordless sudo (`/etc/sudoers.d/99-mp281x-nopasswd`, mode 0440). Setup never copies sign-ins or machine configuration between machines; only the [T3 settings](#t3-settings) are shared.
+`dev` and `desktop`: latest Debian stable, text mode, same setup, `mp281x` with passwordless sudo (`/etc/sudoers.d/99-mp281x-nopasswd`, mode 0440). Sign-ins and machine configuration are never copied between machines; only [T3 settings](#t3-settings) are shared.
 
 | Fact     | `dev`                                                     | `desktop`                                              |
 | -------- | --------------------------------------------------------- | ------------------------------------------------------ |
@@ -13,20 +13,22 @@ Setup, upkeep and rebuild of the machines.
 | GitLab   | Through the VPN; advertises the route to the tailnet      | Through dev's route (`--accept-routes`)                |
 | GPU      | None                                                      | NVIDIA GeForce RTX 5070, 12 GB; [setup](#desktop-gpu)  |
 
-- **Toolchain.** Docker with Compose and Buildx, `gh` with `github/gh-stack`, `glab`, git, build tools, rsync, ripgrep, jq, sqlite3, lsof, btop (never htop), ffmpeg, ImageMagick, `dig`, `psql`. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code is in `~/.local/bin`. The first lines of `~/.bashrc`, above its interactive guard, put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`.
-- **Sign-ins.** Each worker signs in on its own: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login`, `codex login --device-auth`, and [MCP](#mcp-sign-in). Show each sign-in link to the user.
-- **Repositories.** `~/dual` uses the credential helper `!glab auth git-credential` for `https://git.datapizza.tech`; GitHub uses `gh auth setup-git`. Identities follow [Git identity](#git-identity).
-- **Updates.** `unattended-upgrades` runs daily. `desktop` has only local IPv6, so `/etc/apt/apt.conf.d/99force-ipv4` holds `Acquire::ForceIPv4 "true";`.
+- **Toolchain.** Docker with Compose and Buildx, `gh` with `github/gh-stack`, `glab`, git, build tools, rsync, ripgrep, jq, sqlite3, lsof, btop (never htop), ffmpeg, ImageMagick, `dig`, `psql`. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code in `~/.local/bin`. `~/.bashrc`'s first lines, above its interactive guard, put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`.
+- **Sign-ins**, per worker, link shown to the user: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login`, `codex login --device-auth`, [MCP](#mcp-sign-in).
+- **Repositories.** `~/dual`: credential helper `!glab auth git-credential` for `https://git.datapizza.tech`; GitHub: `gh auth setup-git`; [Git identity](#git-identity).
+- **Updates.** `unattended-upgrades` daily. desktop has only local IPv6: `/etc/apt/apt.conf.d/99force-ipv4` holds `Acquire::ForceIPv4 "true";`.
 - **Git defaults:** `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled`, `diff.algorithm histogram`, `merge.conflictStyle zdiff3`, `init.defaultBranch main`.
-- **Firewall.** Tailscale's `ts-input` chain accepts tailnet traffic before ufw. On dev, `/etc/sysctl.d/90-quiet-console.conf` keeps `[UFW BLOCK]` off the console. Docker publishes Traefik's ports, UDP 443 for HTTP/3 included, past ufw.
-- **TCP on dev.** `/etc/sysctl.d/90-tcp.conf` sets `fq`, `bbr` and `tcp_slow_start_after_idle = 0`, so phones on lossy links and idle keep-alive or WebSocket connections send at full speed.
-- **Access.** Every machine holds the user's one ED25519 pair as `~/.ssh/id_ed25519`; `authorized_keys` holds only its public key; no `~/.ssh/config`. `known_hosts` comes from `ssh-keyscan -H dev desktop macbook-pro`. Disable a login method only after the remaining one worked from another machine. T3 shows `PRETTY_HOSTNAME`: `sudo hostnamectl set-hostname --pretty <name>`, then restart T3.
+- **Firewall.** Tailscale's `ts-input` accepts tailnet traffic before ufw; Docker publishes Traefik's ports, UDP 443 included, past ufw. dev: `/etc/sysctl.d/90-quiet-console.conf` keeps `[UFW BLOCK]` off the console.
+- **TCP on dev.** `/etc/sysctl.d/90-tcp.conf`: `fq`, `bbr`, `tcp_slow_start_after_idle = 0`, for lossy phones and idle keep-alive or WebSocket connections.
+- **Access.** One ED25519 pair as `~/.ssh/id_ed25519` everywhere; `authorized_keys` holds only its public key; no `~/.ssh/config`; `known_hosts` from `ssh-keyscan -H dev desktop macbook-pro`. Disable a login method only after the other worked from another machine.
+- **Hostname** T3 shows: `sudo hostnamectl set-hostname --pretty <name>`, then restart T3.
 
 ## Agent configuration
 
-Every worker runs the same configuration from the deslop repository. The user's curated prompts replace the provider defaults through Claude's `agent: pair` and Codex's `model_instructions_file`. They add only what the harness, T3 and tool descriptions don't say, one policy per behavior. `.codex/global-config.toml` avoids loading the global config a second time as project config. Agent-only variables go in `.claude/settings.json` `env` and `.codex/global-config.toml` `shell_environment_policy.set`, never in `~/.bashrc`.
-
-Each installed path is a symlink into the main checkout `~/deslop`, so a worker runs the configuration on `origin/main`: Claude's `SessionStart` hook fast-forwards `~/deslop` in the background (`git pull --ff-only`), so the session after a merge loads it. Never edit an installed path, and never switch `~/deslop` off `main`: both change every thread's configuration. Running threads keep the configuration they started with.
+- **Variables** for agents only: `.claude/settings.json` `env` and `.codex/global-config.toml` `shell_environment_policy.set`, never `~/.bashrc`.
+- **`.codex/global-config.toml`** avoids loading the global config again as project config.
+- **Links** into the main checkout `~/deslop`, so workers run `origin/main`; Claude's `SessionStart` hook runs `git pull --ff-only` there in the background, and the next session loads it. Running threads keep their configuration.
+- **Never** edit an installed path or switch `~/deslop` off `main`: both change every thread.
 
 | Installed path                      | Links to `~/deslop/…`       |
 | ----------------------------------- | --------------------------- |
@@ -38,27 +40,26 @@ Each installed path is a symlink into the main checkout `~/deslop`, so a worker 
 | `~/.codex/rules/deny.rules`         | `.codex/rules/deny.rules`   |
 | `~/.codex/skills/<personal skill>`  | `~/.claude/skills/<name>`   |
 
-Set up once per worker, and again after a harness replaced a link with a file:
+Once per worker, and after a harness replaced a link with a file:
 
 ```bash
 r=~/deslop
 mkdir -p ~/.claude/agents ~/.claude/skills ~/.codex/rules ~/.codex/skills
 ln -sfn $r/.claude/settings.json ~/.claude/settings.json
 ln -sfn $r/.claude/agents/pair.md ~/.claude/agents/pair.md
-for s in planning environment references; do ln -sfn $r/.claude/skills/$s ~/.claude/skills/$s; ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done
+for s in planning environment; do ln -sfn $r/.claude/skills/$s ~/.claude/skills/$s; ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done
 ln -sfn $r/.codex/global-config.toml ~/.codex/config.toml
 ln -sfn $r/.codex/instructions.md ~/.codex/instructions.md
 ln -sfn $r/.codex/rules/deny.rules ~/.codex/rules/deny.rules
 codex execpolicy check --rules ~/.codex/rules/deny.rules true
 ```
 
-**Discovery changes.** Stage new instruction or skill links on both workers before merging, targeting the future path in `~/deslop`, never a review worktree; leave active old links untouched. The new links become readable when main fast-forwards. After that, retire only old links owned by this setup; preserve unrelated skills and real directories.
-
-**Check** with `find ~/.claude/settings.json ~/.claude/agents/pair.md ~/.codex/config.toml ~/.codex/instructions.md ~/.codex/rules/deny.rules ~/.claude/skills/* ~/.codex/skills/* -maxdepth 0 ! -type l` (prints a link a harness replaced) and `git -C ~/deslop status --short` (a harness that wrote through a link; carry the write into a PR, then `git -C ~/deslop restore` it, because a dirty checkout stops the automatic pull).
+- **New links** before merging, on both workers, to the future path in `~/deslop`, never a review worktree; they resolve once main fast-forwards. Then retire only this setup's old links; keep unrelated skills and real directories.
+- **Check.** `find ~/.claude/settings.json ~/.claude/agents/pair.md ~/.codex/config.toml ~/.codex/instructions.md ~/.codex/rules/deny.rules ~/.claude/skills/* ~/.codex/skills/* -maxdepth 0 ! -type l` prints a replaced link; `git -C ~/deslop status --short` shows a harness write through a link: carry it into a PR, then `git -C ~/deslop restore` it, since a dirty checkout stops the pull.
 
 ## T3 settings
 
-All workers share T3 settings. After the user changes one on a worker, run this there with `target=mp281x@<other worker>`; it maps project keys by workspace root and keeps the target's `environmentIcon`. T3 reloads the file.
+Shared by all workers. After the user changes one, run this on that worker with `target=mp281x@<other worker>`; it maps project keys by workspace root and keeps the target's `environmentIcon`. T3 reloads the file.
 
 ```bash
 q="SELECT project_id, workspace_root FROM projection_projects WHERE deleted_at IS NULL"
@@ -74,8 +75,8 @@ new=$(jq --argjson src "$(sqlite3 -readonly -json ~/.t3/userdata/statev2.sqlite 
 ' ~/.t3/userdata/settings.json) && ssh "$target" 'cat > ~/.t3/userdata/settings.json' <<<"$new"
 ```
 
-- **Claude launch arguments.** `providerInstances.claudeAgent.config.launchArgs` is `--system-prompt-snapshot off --thinking-display omitted --autocompact 500k`. T3 passes them to new Claude processes; never restart T3 or stop threads to apply them.
-- **Project scripts** live only in `projectSettingsOverrides.<project id>.defaultProjectScripts`; the legacy `projectScriptOverrides` and a checked-in `t3.json` stay unset, so the scripts stay the user's own. `install` runs on worktree creation and holds the agent until it exits (`async: false`); the script flagged `runOnSettle` runs on settle; the user runs `preview` and `stop` from the script menu. Deslop's port comes from the worktree path, Dual's from its `Preview ready:` line.
+- **Claude launch arguments.** `providerInstances.claudeAgent.config.launchArgs`: `--system-prompt-snapshot off --thinking-display omitted --autocompact 500k`; new Claude processes pick them up, so never restart T3 or stop threads for them.
+- **Project scripts** only in `projectSettingsOverrides.<project id>.defaultProjectScripts`; legacy `projectScriptOverrides` and a checked-in `t3.json` stay unset. `install` runs on worktree creation and blocks the agent (`async: false`); `runOnSettle` runs on settle; the user runs `preview` and `stop` from the menu. Port: deslop's from the worktree path, Dual's from its `Preview ready:` line.
 
 ```bash
 # deslop
@@ -92,21 +93,24 @@ settle: u=preview-${PWD##*/}; p=$(journalctl --user -u $u -o cat | grep -oP 'Pre
 
 ## Upkeep
 
-"Maintenance" runs Update, Clean and Check on dev, desktop (when on) and the Mac, without asking; the reply shows each machine's disk before and after, what Clean removed, failures, and what still needs the user.
+"Maintenance" runs Update, Clean and Check on dev, desktop (when on) and the Mac, without asking. Reply: each machine's disk before and after, what Clean removed, failures, what still needs the user.
 
 ## Update
 
-1. **Packages.** `sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get autoremove -y && sudo apt-get clean`, `vp upgrade`, `gh extension upgrade --all` (`gh-stack` lags per worker). glab: when `curl -fsSL https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, install `https://gitlab.com/gitlab-org/cli/-/releases/<tag>/downloads/glab_<version>_linux_amd64.deb` with `dpkg -i`.
-2. **T3** runs the nightly channel as the `t3code.service` user unit: with no run active, `t3 update --yes`; with runs active, leave the downloaded version for the user's update. A new worker first runs `vp install -g t3@nightly`, `t3 service install`, `t3 connect link --headless` (show the user the link) and `t3 connect publish`.
-3. **Mac.** The agent steps under [Mac](#mac); a pending macOS update is the user's, with its label from `softwareupdate -l`.
+1. **Packages.** `sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get autoremove -y && sudo apt-get clean`, `vp upgrade`, `gh extension upgrade --all` (`gh-stack` lags per worker). glab: when `curl -fsSL https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, `dpkg -i` `https://gitlab.com/gitlab-org/cli/-/releases/<tag>/downloads/glab_<version>_linux_amd64.deb`.
+2. **T3**, nightly, as the `t3code.service` user unit: `t3 update --yes` with no run active; otherwise leave the download for the user. New worker: `vp install -g t3@nightly`, `t3 service install`, `t3 connect link --headless` (link to the user), `t3 connect publish`.
+3. **Mac.** The agent steps under [Mac](#mac); a pending macOS update is the user's, labelled from `softwareupdate -l`.
 
 ## Clean
 
-Remove rebuildable data and settled work; keep what a working or unsettled thread uses. Find a worktree's owners through `orchestration_v2_projection_threads.payload_json` (`worktreePath`, `settledAt`) with `archived_at` and `deleted_at`, judging delegated children by their root thread; a process whose `/proc/<pid>/cwd` is inside it also owns it. Stopped containers of unknown owners, unattached volumes and the production `deslop` project stay.
+Remove rebuildable data and settled work; keep what a working or unsettled thread uses.
 
-1. **Orphans.** Compose projects whose `com.docker.compose.project.working_dir` is gone, processes with a deleted working directory, Serve mappings whose backend no longer answers (`tailscale serve status --json`, then `sudo tailscale serve --https=<port> off`), `preview-*` units of removed worktrees, a `~/.deslop/<name>` whose worktree is gone and that is neither `deploy` nor a `tools/compose.yaml` service's data directory or env file.
-2. **Settled worktrees.** Every worktree whose root threads are all settled, archived or deleted goes, uncommitted changes included: run its settle script, remove a remaining Compose project, then `git worktree remove --force --force <path>` and `git worktree prune`. A worktree no thread owns goes when its branch's PR merged; otherwise list it.
-3. **Branches.** In `~/deslop` and `~/dual`, delete local branches no worktree uses whose PR merged; list branches without an open or merged PR.
+- **Owners** of a worktree: threads in `orchestration_v2_projection_threads.payload_json` (`worktreePath`, `settledAt`) with `archived_at` and `deleted_at`, delegated children judged by their root thread; a process whose `/proc/<pid>/cwd` is inside it.
+- **Keep** stopped containers of unknown owners, unattached volumes and the production `deslop` project.
+
+1. **Orphans.** Compose projects whose `com.docker.compose.project.working_dir` is gone; processes with a deleted working directory; Serve mappings whose backend no longer answers (`tailscale serve status --json`, then `sudo tailscale serve --https=<port> off`); `preview-*` units of removed worktrees; a `~/.deslop/<name>` whose worktree is gone, unless `deploy` or a `tools/compose.yaml` service's data directory or env file.
+2. **Settled worktrees.** All root threads settled, archived or deleted: remove it, uncommitted changes included. Run its settle script, remove a remaining Compose project, `git worktree remove --force --force <path>`, `git worktree prune`. No owner: remove when its branch's PR merged, otherwise list it.
+3. **Branches.** In `~/deslop` and `~/dual`: delete unused local branches whose PR merged; list those without an open or merged PR.
 
    ```bash
    git fetch -q --prune origin
@@ -125,34 +129,34 @@ Remove rebuildable data and settled work; keep what a working or unsettled threa
    done
    ```
 
-4. **Caches.** With no build running: `docker image prune -a -f`, `docker builder prune -a -f` (the build cache reaches tens of GB). With no install running: `vp pm cache clean` in both repositories, `bun pm cache rm`, `npm cache clean --force`, `journalctl --vacuum-size=100M`. Never a blanket Docker system or volume prune.
-5. **Versions.** Keep only the current `~/.vite-plus/<version>` (`readlink ~/.vite-plus/current`), the Node runtimes under `~/.vite-plus/js_runtime/node` that a running process uses plus the newest patch of each major, and the Claude Code version `claude --version` reports under `~/.local/share/claude/versions`.
-6. **T3 releases.** Skip while `~/.t3/runtime/service-state.json` shows an uncommitted update. Delete every `~/.t3/runtime/versions/<version>` except `service-state.json`'s `activeVersion`, the version `ExecStart` names in `~/.config/systemd/user/t3code.service`, and a newer downloaded one.
-7. **Scratch.** Top-level `/tmp` entries of this user older than a day, except `claude-*`, `codex*`, `/tmp/repos` and the `/tmp/<name>` paths that unsettled threads' turn items mention (`rg -o '/tmp/[A-Za-z0-9._-]+'` over their `payload_json`).
+4. **Caches.** No build running: `docker image prune -a -f`, `docker builder prune -a -f` (tens of GB). No install running: `vp pm cache clean` in both repositories, `bun pm cache rm`, `npm cache clean --force`, `journalctl --vacuum-size=100M`. Never a blanket Docker system or volume prune.
+5. **Versions.** Keep the current `~/.vite-plus/<version>` (`readlink ~/.vite-plus/current`); Node runtimes under `~/.vite-plus/js_runtime/node` a running process uses, plus each major's newest patch; the Claude Code version `claude --version` reports under `~/.local/share/claude/versions`.
+6. **T3 releases.** Skip while `~/.t3/runtime/service-state.json` shows an uncommitted update. Delete every `~/.t3/runtime/versions/<version>` except its `activeVersion`, the one `ExecStart` names in `~/.config/systemd/user/t3code.service`, and a newer download.
+7. **Scratch.** This user's top-level `/tmp` entries older than a day, except `claude-*`, `codex*`, `/tmp/repos` and `/tmp/<name>` paths unsettled threads' turn items mention (`rg -o '/tmp/[A-Za-z0-9._-]+'` over their `payload_json`).
 
 ## Check
 
-Fix what fails, then rerun the check:
+Fix what fails, then rerun:
 
-- `systemctl --failed` and `systemctl --user --failed` are empty.
-- Agent configuration per its **Check**, plus no dangling link under `~/.claude/skills` and `~/.codex/skills` except those staged for an unmerged rename; `~/deslop` is clean on `main` and current with `origin/main`.
-- The project scripts match on both workers (`jq '.projectSettingsOverrides'`, mapped by workspace root); otherwise copy per [T3 settings](#t3-settings).
+- `systemctl --failed` and `systemctl --user --failed` empty.
+- Agent configuration per its **Check**; no dangling link under `~/.claude/skills` and `~/.codex/skills` except one staged for an unmerged rename; `~/deslop` clean on `main`, current with `origin/main`.
+- Project scripts equal on both workers (`jq '.projectSettingsOverrides'`, mapped by workspace root); otherwise copy per [T3 settings](#t3-settings).
 - `git config --global --get-regexp '^(rebase|push|fetch|rerere|diff|merge|init)\.'` lists the git defaults.
-- On desktop, run the [GPU check](#desktop-gpu), including after kernel or driver updates.
+- desktop: the [GPU check](#desktop-gpu), also after kernel or driver updates.
 
 ## Set up a worker
 
-Start from a Debian netinst image with only the SSH server task.
+From a Debian netinst image with only the SSH server task.
 
-1. Install `sudo`, `network-manager`, `ufw`. Put `/tmp` on disk: `printf 'D /tmp 1777 root root 7d\n' | sudo tee /etc/tmpfiles.d/tmp.conf && sudo systemctl mask tmp.mount`. Purge any desktop stack with `--autoremove`; keep `multi-user.target`.
-2. Write the sudoers file; add the Docker and GitHub CLI apt sources with keys in `/etc/apt/keyrings/<name>.gpg`; install the toolchain, `glab` and `unattended-upgrades`; set the git defaults; add `mp281x` to `docker`; write `/etc/docker/daemon.json` as `{"live-restore": true, "ip": "127.0.0.1", "default-network-opts": {"bridge": {"com.docker.network.bridge.host_binding_ipv4": "127.0.0.1"}}}`.
-3. Install the user's key pair. Run the Tailscale block below. After a second SSH login over the tailnet works: `ufw default deny incoming`, allow 80 and 443 only on dev, enable ufw.
-4. Dev only: install `openvpn3-client`, `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`, connect, advertise its route.
-5. `loginctl enable-linger mp281x`. As `mp281x`: Vite+ with `VP_HOME="$HOME/.vite-plus"`, the global packages, Claude Code, the `PATH` line in `~/.bashrc`; check `ssh <worker> 'command -v vp claude codex'`. Write `~/.config/pnpm/config.yaml` with `minimumReleaseAgeExclude: ["@deslop/*"]`. Run the T3 step, `t3 browser setup`, set `PRETTY_HOSTNAME`.
-6. GitHub, GitLab, Claude and Codex sign-ins, `gh extension install github/gh-stack`, Git identity, clone both repositories and `t3 project add --title <name> <path>`. On dev, deploy.
-7. Install the agent configuration, copy the T3 settings from another worker, then MCP sign-in.
-8. After a key login from another machine works, write `/etc/ssh/sshd_config.d/10-keys-only.conf` with `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no`, `X11Forwarding no`, then `sudo sshd -t && sudo systemctl reload ssh`.
-9. Desktop only: configure the [GPU](#desktop-gpu).
+1. Install `sudo`, `network-manager`, `ufw`. `/tmp` on disk: `printf 'D /tmp 1777 root root 7d\n' | sudo tee /etc/tmpfiles.d/tmp.conf && sudo systemctl mask tmp.mount`. Purge any desktop stack with `--autoremove`; keep `multi-user.target`.
+2. Sudoers file; Docker and GitHub CLI apt sources with keys in `/etc/apt/keyrings/<name>.gpg`; the toolchain, `glab`, `unattended-upgrades`; git defaults; `mp281x` in `docker`; `/etc/docker/daemon.json` as `{"live-restore": true, "ip": "127.0.0.1", "default-network-opts": {"bridge": {"com.docker.network.bridge.host_binding_ipv4": "127.0.0.1"}}}`.
+3. The user's key pair, then the Tailscale block below. After a second SSH login over the tailnet: `ufw default deny incoming`, allow 80 and 443 only on dev, enable ufw.
+4. dev only: `openvpn3-client`, `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`, connect, advertise its route.
+5. `loginctl enable-linger mp281x`. As `mp281x`: Vite+ with `VP_HOME="$HOME/.vite-plus"`, the global packages, Claude Code, the `PATH` line; check `ssh <worker> 'command -v vp claude codex'`. `~/.config/pnpm/config.yaml`: `minimumReleaseAgeExclude: ["@deslop/*"]`. The T3 step, `t3 browser setup`, the hostname.
+6. GitHub, GitLab, Claude and Codex sign-ins, `gh extension install github/gh-stack`, Git identity, clone both repositories, `t3 project add --title <name> <path>`. dev: deploy.
+7. Agent configuration, T3 settings from another worker, MCP sign-in.
+8. After a key login from another machine: `/etc/ssh/sshd_config.d/10-keys-only.conf` with `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no`, `X11Forwarding no`, then `sudo sshd -t && sudo systemctl reload ssh`.
+9. desktop only: the [GPU](#desktop-gpu).
 
 ```bash
 command -v tailscale >/dev/null || {
@@ -164,11 +168,11 @@ openvpn3 configs-list 2>/dev/null | grep -q datapizza && R=$(getent ahostsv4 git
 sudo tailscale up --accept-routes --advertise-routes=$R
 ```
 
-Show the user the `tailscale up` sign-in URL; the user disables key expiry and approves an advertised route at https://login.tailscale.com/admin/machines.
+Show the user the `tailscale up` URL; the user disables key expiry and approves an advertised route at https://login.tailscale.com/admin/machines.
 
 ## Desktop GPU
 
-**Driver.** The RTX 5070 (Blackwell) uses NVIDIA's open kernel modules, not Nouveau or Debian 13's stock 550 driver. Follow [NVIDIA's Debian guide](https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/debian.html) for its Debian 13 APT repository and headless compute packages; keep the text-mode worker free of a desktop stack and the full CUDA toolkit.
+- **Driver.** RTX 5070 (Blackwell): NVIDIA's open kernel modules, not Nouveau or Debian 13's stock 550. [NVIDIA's Debian guide](https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/debian.html), Debian 13 APT repository, headless compute packages; no desktop stack, no full CUDA toolkit.
 
 ```bash
 curl -fsSLo /tmp/cuda-keyring_1.1-1_all.deb https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64/cuda-keyring_1.1-1_all.deb
@@ -177,28 +181,34 @@ sudo apt-get update
 sudo apt-get install -y --no-install-recommends linux-headers-amd64 "linux-headers-$(uname -r)" nvidia-driver-cuda nvidia-kernel-open-dkms
 ```
 
-**Secure Boot.** Keep it enabled. DKMS signs modules with `/var/lib/dkms/mok.key` and `/var/lib/dkms/mok.pub`; preserve that pair across updates. Check `sudo mokutil --sb-state` and `sudo mokutil --test-key /var/lib/dkms/mok.pub`. If the key is already enrolled, skip enrollment. Otherwise [MOK enrollment](https://wiki.debian.org/SecureBoot) needs physical confirmation before Linux boots; SSH cannot do it. Desktop normally has no monitor or keyboard: arrange a temporary pair or remote KVM before queuing enrollment and coordinate the restart with the user.
+- **Secure Boot** stays on. DKMS signs with `/var/lib/dkms/mok.key` and `/var/lib/dkms/mok.pub`; keep that pair across updates. Check `sudo mokutil --sb-state` and `sudo mokutil --test-key /var/lib/dkms/mok.pub`; skip enrollment if enrolled. [MOK enrollment](https://wiki.debian.org/SecureBoot) needs physical confirmation before Linux boots, never over SSH; desktop has no monitor or keyboard, so arrange one or a remote KVM and the restart with the user first.
 
-1. Obtain a one-time password through `request_secret` with file delivery; feed it twice on stdin to `sudo mokutil --import /var/lib/dkms/mok.pub` without exposing it. Confirm the request with `sudo mokutil --list-new`.
-2. If the user needs to connect the monitor, power off, not reboot. Once connected, boot; at “Press any key to perform MOK management”, press a key promptly, then **Enroll MOK → Continue → Yes → temporary password → Reboot**.
-3. If enrollment is deferred, cancel the queued request with `sudo mokutil --revoke-import`; requeue it before the agreed boot. If the prompt was missed, check `--list-new` and requeue if empty before retrying.
+1. One-time password through `request_secret` with file delivery, fed twice on stdin to `sudo mokutil --import /var/lib/dkms/mok.pub` without exposing it; confirm with `sudo mokutil --list-new`.
+2. To connect a monitor, power off, not reboot. Boot; at “Press any key to perform MOK management”, press a key promptly, then **Enroll MOK → Continue → Yes → temporary password → Reboot**.
+3. Deferred: `sudo mokutil --revoke-import`, requeue before the agreed boot. Missed prompt: check `--list-new`, requeue if empty.
 
-**Check.** After the agreed boot, `nvidia-smi` must list the RTX 5070 and `lspci -nnk -d 10de:` must show `Kernel driver in use: nvidia`. `sudo dkms status` must report the module installed for `uname -r`, the MOK test must report enrolled, and `systemctl --failed` must be empty. Inspect `sudo journalctl -k -b` for NVIDIA initialization failures or Xid errors. A successful package install or DKMS build alone is not an active driver; `Key was rejected by service` means enrollment is still missing. After updates, compare `sudo modinfo -F version nvidia` with `nvidia-smi`; coordinate a reboot when the loaded driver or running kernel lags the installed one, then recheck. `nvidia-smi`'s CUDA version describes driver compatibility, not an installed toolkit or a tested compute workload.
+- **Check** after the boot: `nvidia-smi` lists the RTX 5070; `lspci -nnk -d 10de:` shows `Kernel driver in use: nvidia`; `sudo dkms status` has the module for `uname -r`; the MOK test says enrolled; `systemctl --failed` empty; `sudo journalctl -k -b` free of NVIDIA init failures and Xid errors. An install or DKMS build alone is no active driver; `Key was rejected by service` means enrollment is missing. After updates, compare `sudo modinfo -F version nvidia` with `nvidia-smi` and coordinate a reboot when the loaded driver or kernel lags. `nvidia-smi`'s CUDA version is driver compatibility, not an installed toolkit.
 
 ## Mac
 
-T3's desktop app and the iOS Simulator; it builds nothing, the simulator app comes from CI. The user's organization manages it through MDM; keep its policies. System sleep is off, so it stays reachable with the display off; a closed lid makes it unreachable: when `ssh matteopaludgnach@macbook-pro true` fails, ask the user to wake it. Sudo needs the user's password, so the user installs apps, updates and permissions from a guide. Agents run `vp upgrade`, `softwareupdate -l` and `xcrun simctl delete unavailable`, and install nothing else.
+T3's desktop app and the iOS Simulator; builds nothing, the Simulator app comes from CI.
+
+- **MDM** by the user's organization: keep its policies.
+- **Reachability.** System sleep off, so reachable with the display off; a closed lid isn't. When `ssh matteopaludgnach@macbook-pro true` fails, ask the user to wake it.
+- **Sudo** needs the user's password: apps, updates and permissions are the user's, from a guide. Agents run only `vp upgrade`, `softwareupdate -l` and `xcrun simctl delete unavailable`.
 
 **Device host.**
 
 1. `curl -fsSL https://vite.plus | bash`; `~/.zshenv` holds `export PATH="$HOME/.local/bin:$HOME/.vite-plus/bin:$PATH"` and `export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
 2. `open "macappstore://apps.apple.com/app/id497799835"`; guide: Get, open Xcode once, accept the license, download the iOS platform.
-3. Over SSH: `xcrun simctl list runtimes` lists iOS and `node --version` is 22.12 or newer.
-4. Guide: T3 Settings, Integrations, Devices, the worker's environment, turn on Device hub and Agent device access, add `matteopaludgnach@macbook-pro`, test. Copy the settings to the other worker.
+3. Over SSH: `xcrun simctl list runtimes` lists iOS; `node --version` is 22.12 or newer.
+4. Guide: T3 Settings, Integrations, Devices, the worker's environment, Device hub and Agent device access on, add `matteopaludgnach@macbook-pro`, test. Copy the settings to the other worker.
 
 ## MCP sign-in
 
-Every harness registers one MCP server, the combined gateway at `https://gateway.mp281x.xyz/mcp`, signed in through Auth. Upstream servers (Auth, Scope, Stash, Trips, Dual, Mobbin) live on [its page](https://gateway.mp281x.xyz), each connected once for every worker and harness; `list_mcp_connections` names why a connection or discovery failed. Codex reads `gateway` from the installed configuration and keeps OAuth sign-ins in the Secret Service keyring. D-Bus starts that keyring only through its unit: Debian's default activation starts a locked daemon whose unlock prompt cannot open headless, and every Codex start then waits on it forever. Claude keeps locally registered MCP servers in `~/.claude.json`; register the gateway on each worker.
+- **One server** per harness: the gateway `https://gateway.mp281x.xyz/mcp`, signed in through Auth. Upstreams (Auth, Scope, Stash, Trips, Dual, Mobbin) are connected once on [its page](https://gateway.mp281x.xyz) for every worker and harness; `list_mcp_connections` says why one failed.
+- **Codex** reads `gateway` from the installed configuration; OAuth sign-ins live in the Secret Service keyring, which D-Bus must start through its unit: Debian's default activation starts a locked daemon whose headless unlock prompt hangs every Codex start.
+- **Claude** keeps local MCP servers in `~/.claude.json`: register the gateway per worker.
 
 ```bash
 sudo apt-get install -y gnome-keyring libsecret-tools
@@ -226,11 +236,12 @@ Approve with Auth's `answer_request` (`auth__answer_request` through the gateway
 
 **Browser sign-in.** A browser profile without the user's GitHub, such as the Datapizza work profile, uses **Sign in with a code** at https://auth.mp281x.xyz; every Deslop app sends signed-out browsers there. The user approves it from a signed-in browser or phone: `answer_request` refuses browser sign-ins, since a session grants every app. A provider whose own account lives in that profile, such as Dual, is then connected from its row on the gateway's page in that profile.
 
-The installed `.claude/settings.json` sets `disableClaudeAiConnectors`, so Claude loads no claude.ai connector; Mobbin and every other provider come through the gateway. Once any `serverUrl` entry exists, every remote server needs a URL rule, including T3's `http://127.0.0.1:<port>/mcp`. Check each worker's sign-in with `codex mcp list` and `claude mcp list`, and verify a real tool call separately; `features.mcp_2026_07_28` (why in `.codex/global-config.toml`) is global, so verify the gateway's tool list when changing it. Verify Mobbin with one `mobbin__search_screens` call with `mode: "standard"`; the default, `deep`, spends AI credits.
+- **Connectors.** `.claude/settings.json` sets `disableClaudeAiConnectors`: no claude.ai connector, Mobbin included, only the gateway. Once any `serverUrl` entry exists, every remote server needs a URL rule, T3's `http://127.0.0.1:<port>/mcp` included.
+- **Check** with `codex mcp list` and `claude mcp list`, plus one real tool call. `features.mcp_2026_07_28` (why in `.codex/global-config.toml`) is global: verify the gateway's tool list when changing it. Mobbin: one `mobbin__search_screens` with `mode: "standard"`; the default, `deep`, spends AI credits.
 
 ## Git identity
 
-Git picks the identity from the remote; repositories carry no `user.*`.
+Picked from the remote; repositories carry no `user.*`.
 
 ```bash
 mkdir -p ~/.config/git

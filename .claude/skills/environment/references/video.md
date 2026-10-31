@@ -1,7 +1,11 @@
 # Video
 
-A proof video is a short motion piece the user wants to watch; a raw recording only for a single action. Storyboard first: per chapter the claim, the focal element, the input and the payoff; one chapter per claim, one dataset. It opens on the real subject with its value visible in its first frames and ends on the verified outcome, held until it reads. The camera lands on each input before it happens and holds still while the change happens; real speed for the meaningful action, accelerated footage labelled. One caption per chapter naming its benefit in a few words; frames read at 390 px wide without zoom.
+A short motion piece the user wants to watch; a raw recording only for a single action.
 
+- **Storyboard first**: per chapter the claim, focal element, input and payoff; one chapter per claim, one dataset.
+- **Open** on the real subject, its value visible in the first frames; **end** on the verified outcome, held until it reads.
+- **Camera** lands on each input before it happens, still during the change; real speed for the meaningful action, accelerated footage labelled.
+- **Captions**: one per chapter, its benefit in a few words; frames read at 390 px wide without zoom.
 - **Camera targets.** Read each input's target and the outcome's box with `preview_evaluate` right after recording starts and before each input:
 
   ```js
