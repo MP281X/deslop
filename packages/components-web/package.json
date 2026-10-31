@@ -9,6 +9,10 @@
 	"exports": {
 		"./app-bar": "./src/app-bar.tsx",
 		"./fallbacks": "./src/fallbacks.tsx",
+		"./icons": "./src/icons.tsx",
+		"./item-list": "./src/item-list.tsx",
+		"./result-error": "./src/result-error.tsx",
+		"./status-dot": "./src/status-dot.tsx",
 		"./ui/*": "./src/ui/*.tsx",
 		"./utils": "./src/lib/utils.ts",
 		"./theme.css": "./src/theme.css"

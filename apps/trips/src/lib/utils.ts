@@ -694,6 +694,15 @@ export const tones = {
 	warn: colors.warning
 } satisfies Record.ReadonlyRecord<Tone, unknown>
 
+// The same tones as a StatusDot shows them.
+export const dots = {
+	bad: 'error',
+	good: 'live',
+	info: 'live',
+	plain: 'quiet',
+	warn: 'warning'
+} as const satisfies Record.ReadonlyRecord<Tone, string>
+
 // Where to go, the gate or platform, read beside the state and never in place of it.
 type Where = {text: string; tone: Tone}
 

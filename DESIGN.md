@@ -113,6 +113,7 @@ spacing:
   4: 16px
   6: 24px
   8: 32px
+  16: 64px
   page: 768px
   form: 576px
 components:
@@ -201,8 +202,11 @@ A tonal step and a hairline, never a shadow, gradient or glow. On iOS, Liquid Gl
 
 ## Components
 
-- **Web.** shadcn `base-mira` from `packages/components-web/src/ui/`, theme tokens only.
-- **iOS.** `@expo/ui` SwiftUI primitives; system controls stay native.
+One vocabulary on both platforms: a row is an `Item`, a blank state an `Empty`, a filter a `ToggleGroup`, a status a `StatusDot`.
+
+- **Web.** shadcn `base-mira` in `packages/components-web/src/ui/`, exactly as the CLI writes it; house rules such as the press scale live in `theme.css`. Beside it: `StatusDot`, `ItemList` (hairline rows), `SignIn` and `ResultError`. Apps compose these before writing their own markup.
+- **iOS.** `packages/components-mobile/src/ui/` carries the same names and parts over `@expo/ui` SwiftUI (`Item`, `ItemMedia`, `ItemContent`, `ItemTitle`, `ItemDescription`, `ItemActions`, `ItemGroup`, `Empty…`, `ToggleGroup`, `Spinner`), taking `modifiers` where the web takes `className`. System controls stay native.
+- **Tokens only.** shadcn's lint keeps web classes on the theme; `swiftui-theme-values` does the same for SwiftUI: spacing from `space`, type from `text` or a Dynamic Type style, colours from `colors`.
 - **Favicons** are the source's own, never a letter tile.
 
 ## Motion

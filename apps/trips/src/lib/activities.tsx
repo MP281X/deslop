@@ -1,4 +1,5 @@
 // @effect-diagnostics globalDate:off -- The widget runtime serializes only the layout's body, which cannot import Effect; SwiftUI's timers take a Date.
+// oxlint-disable @deslop/coding-standards/swiftui-theme-values -- The widget runtime cannot import the theme, and a Live Activity's fixed type and spacing follow Apple's island metrics.
 import {HStack, Image, ProgressView, Spacer, Text, VStack} from '@expo/ui/swift-ui'
 import {
 	background,

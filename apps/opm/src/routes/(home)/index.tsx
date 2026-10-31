@@ -2,51 +2,41 @@ import {useAtomSet} from '@effect/atom-react'
 
 import {Array, Boolean, DateTime, Number, Option, Order, String, pipe} from 'effect'
 
+import {Button, HStack, Menu, Picker, SwipeActions, Text, Toolbar, ToolbarItem, useNativeState} from '@expo/ui/swift-ui'
 import {
-	Button,
-	Circle,
-	ContentUnavailableView,
-	HStack,
-	List,
-	Menu,
-	Picker,
-	SwipeActions,
-	Text,
-	Toolbar,
-	ToolbarItem,
-	VStack,
-	useNativeState
-} from '@expo/ui/swift-ui'
-import {
-	accessibilityElement,
 	background,
 	clipShape,
-	contentShape,
 	disabled,
 	foregroundStyle,
 	frame,
 	labelStyle,
 	lineLimit,
 	menuOrder,
-	listRowBackground,
-	listRowInsets,
 	listRowSeparator,
-	listStyle,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
-	onTapGesture,
 	opacity,
 	pickerStyle,
-	scrollContentBackground,
 	searchable,
-	shapes,
 	tag,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {useState} from 'react'
 
-import {colors, text} from '@deslop/components-mobile/theme'
+import {StatusDot} from '@deslop/components-mobile/status-dot'
+import {colors, space, text} from '@deslop/components-mobile/theme'
 import {AppTitle} from '@deslop/components-mobile/title'
+import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
+import {
+	Item,
+	ItemActions,
+	ItemContent,
+	ItemDescription,
+	ItemGroup,
+	ItemMedia,
+	ItemTitle,
+	itemRow
+} from '@deslop/components-mobile/ui/item'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
 import {primary, readAtom} from '#lib/utils.ts'
@@ -74,34 +64,22 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 	const read = useAtomSet(readAtom)
 	const done = props.chapter.reading?.done === true
 	return (
-		<SwipeActions
-			modifiers={[
-				listRowBackground(colors.background),
-				listRowSeparator('hidden'),
-				listRowInsets({bottom: 8, leading: 16, top: 8, trailing: 16})
-			]}
-		>
-			<HStack
-				spacing={14}
-				modifiers={[
-					frame({alignment: 'leading', maxWidth: Infinity}),
-					contentShape(shapes.rectangle()),
-					onTapGesture(() => props.onOpen(props.chapter.number)),
-					accessibilityElement('combine')
-				]}
-			>
-				<Cover
-					url={Option.getOrElse(Array.head(props.chapter.pages), () => '')}
-					modifiers={[
-						frame({height: 68, width: 48}),
-						clipShape('roundedRectangle', 6),
-						opacity(Boolean.match(done, {onFalse: () => 1, onTrue: () => 0.55}))
-					]}
-				/>
-				<VStack alignment="leading" spacing={4} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>
-					<HStack spacing={6}>
-						{props.fresh && <Circle modifiers={[foregroundStyle(primary), frame({height: 8, width: 8})]} />}
-						<Text
+		<SwipeActions modifiers={[...itemRow, listRowSeparator('hidden')]}>
+			<Item onPress={() => props.onOpen(props.chapter.number)}>
+				<ItemMedia>
+					<Cover
+						url={Option.getOrElse(Array.head(props.chapter.pages), () => '')}
+						modifiers={[
+							frame({height: 68, width: 48}),
+							clipShape('roundedRectangle', 6),
+							opacity(Boolean.match(done, {onFalse: () => 1, onTrue: () => 0.55}))
+						]}
+					/>
+				</ItemMedia>
+				<ItemContent>
+					<HStack spacing={space[2]}>
+						{props.fresh && <StatusDot status="live" tint={primary} />}
+						<ItemTitle
 							modifiers={[
 								Boolean.match(done, {onFalse: () => text.row, onTrue: () => text.body}),
 								foregroundStyle(
@@ -111,30 +89,32 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 							]}
 						>
 							{`Chapter ${props.chapter.number}`}
-						</Text>
+						</ItemTitle>
 					</HStack>
-					<Text modifiers={[text.detail, foregroundStyle(colors.mutedForeground), lineLimit(1, {reservesSpace: true})]}>
+					<ItemDescription modifiers={[lineLimit(1, {reservesSpace: true})]}>
 						{Array.join(
 							Array.filter([props.chapter.title, postedOn(props.chapter.postedAt)], String.isNonEmpty),
 							' · '
 						)}
-					</Text>
-				</VStack>
-				{/* The pages before the one on screen are read, so a chapter marked unread at its first page is empty. */}
-				<ChapterProgress
-					fraction={Option.match(Option.fromUndefinedOr(props.chapter.reading), {
-						onNone: () => 0,
-						onSome: reading =>
-							Boolean.match(reading.done, {
-								onFalse: () => reading.page / Number.max(props.chapter.pages.length, 1),
-								onTrue: () => 1
-							})
-					})}
-					accent={primary}
-					read={colors.foreground}
-					modifiers={[frame({height: 14, width: 14})]}
-				/>
-			</HStack>
+					</ItemDescription>
+				</ItemContent>
+				<ItemActions>
+					{/* The pages before the one on screen are read, so a chapter marked unread at its first page is empty. */}
+					<ChapterProgress
+						fraction={Option.match(Option.fromUndefinedOr(props.chapter.reading), {
+							onNone: () => 0,
+							onSome: reading =>
+								Boolean.match(reading.done, {
+									onFalse: () => reading.page / Number.max(props.chapter.pages.length, 1),
+									onTrue: () => 1
+								})
+						})}
+						accent={primary}
+						read={colors.foreground}
+						modifiers={[frame({height: 14, width: 14})]}
+					/>
+				</ItemActions>
+			</Item>
 			<SwipeActions.Actions edge="leading">
 				<Button
 					label={Boolean.match(done, {onFalse: () => 'Read', onTrue: () => 'Unread'})}
@@ -200,18 +180,25 @@ export function ChaptersRoute(props: {
 					onEmpty: () =>
 						Boolean.match(String.isEmpty(needle), {
 							onFalse: () => (
-								<ContentUnavailableView title={`No Results for “${searched}”`} systemImage="magnifyingglass" />
+								<Empty>
+									<EmptyHeader>
+										<EmptyMedia systemImage="magnifyingglass" />
+										<EmptyTitle>{`No Results for “${searched}”`}</EmptyTitle>
+									</EmptyHeader>
+								</Empty>
 							),
 							onTrue: () => (
-								<ContentUnavailableView
-									title="No Chapters Yet"
-									systemImage="book.closed"
-									description="They appear here as soon as the server has read them."
-								/>
+								<Empty>
+									<EmptyHeader>
+										<EmptyMedia systemImage="book.closed" />
+										<EmptyTitle>No Chapters Yet</EmptyTitle>
+										<EmptyDescription>They appear here as soon as the server has read them.</EmptyDescription>
+									</EmptyHeader>
+								</Empty>
 							)
 						}),
 					onNonEmpty: chapters => (
-						<List modifiers={[listStyle('plain'), scrollContentBackground('hidden'), background(colors.background)]}>
+						<ItemGroup>
 							{Array.map(chapters, chapter => (
 								<ChapterRow
 									key={chapter.number}
@@ -220,7 +207,7 @@ export function ChaptersRoute(props: {
 									onOpen={props.onOpen}
 								/>
 							))}
-						</List>
+						</ItemGroup>
 					)
 				})}
 				<Toolbar.Content>

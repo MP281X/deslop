@@ -2,14 +2,16 @@ import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
 import {Array, Boolean, Match, Option, String, pipe} from 'effect'
 
-import {Link, Outlet, createFileRoute} from '@tanstack/react-router'
+import {Link, Outlet, createFileRoute, useMatchRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {LoaderCircle} from 'lucide-react'
 import {Suspense} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
 import {Loading} from '@deslop/components-web/fallbacks'
-import {Button} from '@deslop/components-web/ui/button'
+import {GitHubIcon} from '@deslop/components-web/icons'
+import {StatusDot} from '@deslop/components-web/status-dot'
+import {Badge} from '@deslop/components-web/ui/badge'
+import {Button, buttonVariants} from '@deslop/components-web/ui/button'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -19,8 +21,10 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
+import {FieldError} from '@deslop/components-web/ui/field'
+import {Spinner} from '@deslop/components-web/ui/spinner'
 
-import {Avatar, GitHubIcon, QrCode, SignedInGrid} from '#lib/components.tsx'
+import {AccountAvatar, QrCode, SignedInGrid} from '#lib/components.tsx'
 import {
 	accountAtom,
 	approveLink,
@@ -61,7 +65,7 @@ function CodeCard(props: {request: PendingAuthorization}) {
 				<p className="text-muted-foreground font-mono text-xs">{location.host}</p>
 			</div>
 			<p className="text-muted-foreground mt-auto flex items-center gap-2 font-mono text-xs" role="status">
-				<span className="bg-primary size-1.5 rounded-full motion-safe:animate-pulse" aria-hidden="true" />
+				<StatusDot waiting />
 				Waiting · until {timeLabel(props.request.expiresAt)}
 			</p>
 			{props.request.kind === 'App' && (
@@ -85,11 +89,7 @@ function Waiting(props: {account: Option.Option<Account>; id: string}) {
 					Continuing…
 				</p>
 			),
-			Expired: () => (
-				<p className="text-destructive text-sm" role="alert">
-					This request expired. Start sign-in again in the app.
-				</p>
-			),
+			Expired: () => <FieldError>This request expired. Start sign-in again in the app.</FieldError>,
 			Waiting: value =>
 				Option.match(
 					Option.filter(props.account, signed => signed.role !== 'Waiting'),
@@ -108,6 +108,7 @@ function Waiting(props: {account: Option.Option<Account>; id: string}) {
 
 // Admins switch between sign-ins and people in the app bar; people waiting for access show as a count.
 function Tabs() {
+	const matchRoute = useMatchRoute()
 	return (
 		<nav className="flex items-center gap-1" aria-label="Sections">
 			{Array.map(
@@ -123,12 +124,16 @@ function Tabs() {
 					<Link
 						key={tab.to}
 						to={tab.to}
-						className="text-muted-foreground hover:text-foreground flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium"
-						activeProps={{className: 'bg-secondary text-foreground'}}
 						activeOptions={{exact: true}}
+						className={buttonVariants({
+							variant: Boolean.match(matchRoute({to: tab.to}) !== false, {
+								onFalse: () => 'ghost' as const,
+								onTrue: () => 'secondary' as const
+							})
+						})}
 					>
 						{tab.label}
-						{tab.count > 0 && <span className="text-primary font-mono">{tab.count}</span>}
+						{tab.count > 0 && <Badge>{tab.count}</Badge>}
 					</Link>
 				)
 			)}
@@ -142,7 +147,7 @@ function Signed(props: {account: Account}) {
 		Match.when('Waiting', () => (
 			<section className="flex flex-col gap-1" role="status">
 				<h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
-					<span className="bg-primary size-1.5 rounded-full motion-safe:animate-pulse" aria-hidden="true" />
+					<StatusDot waiting />
 					Waiting for an admin
 				</h1>
 				<p className="text-muted-foreground text-sm">Your request was sent. This page updates once you are allowed.</p>
@@ -161,7 +166,7 @@ function AccountMenu(props: {account: Account}) {
 				aria-label="Account"
 				className="focus-visible:ring-ring rounded-full outline-none focus-visible:ring-2"
 			>
-				<Avatar id={props.account.id} name={props.account.name} />
+				<AccountAvatar id={props.account.id} name={props.account.name} />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="w-auto min-w-48">
 				<DropdownMenuGroup>
@@ -191,10 +196,7 @@ function SignIn() {
 			</div>
 			<div className="flex flex-col gap-2">
 				<Button size="lg" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
-					{Boolean.match(AsyncResult.isWaiting(signIn), {
-						onFalse: () => <GitHubIcon />,
-						onTrue: () => <LoaderCircle className="motion-safe:animate-spin" />
-					})}
+					{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
 					Sign in with GitHub
 				</Button>
 				<Button
@@ -222,20 +224,9 @@ function Failures() {
 					Option.orElse(() => AsyncResult.error(codeSignIn)),
 					Option.orElse(() => AsyncResult.error(signOut))
 				),
-				{
-					onNone: () => null,
-					onSome: failure => (
-						<p className="text-destructive text-sm" role="alert">
-							{failure.message}
-						</p>
-					)
-				}
+				{onNone: () => null, onSome: failure => <FieldError>{failure.message}</FieldError>}
 			)}
-			{new URLSearchParams(location.search).has('error') && (
-				<p className="text-destructive text-sm" role="alert">
-					GitHub sign-in failed. Try again.
-				</p>
-			)}
+			{new URLSearchParams(location.search).has('error') && <FieldError>GitHub sign-in failed. Try again.</FieldError>}
 		</>
 	)
 }

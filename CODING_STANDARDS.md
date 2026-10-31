@@ -37,7 +37,7 @@ The user's choices; add a row when they pick, reject or correct one not covered 
 ## RPC and components
 
 - **Clients.** React: an `AtomRpc.Service` over `WebRuntime.layer` (Scope's page: `WebRuntime.layerProtocol`, so it never traces itself) or `MobileRuntime.layer`; a command line: a scoped `RpcClient.make`. A stream syncs one keep-alive Atom that components read; components neither subscribe nor poll.
-- **Look** from `DESIGN.md`: on the web its tokens in `packages/components-web/src/theme.css` and the shadcn components; on iOS SwiftUI primitives from `@expo/ui` with `packages/components-mobile/src/theme.ts`.
+- **Look** from `DESIGN.md`: on the web its tokens in `packages/components-web/src/theme.css` and the shadcn components; on iOS the shadcn-named components in `packages/components-mobile/src/ui/` over `@expo/ui`, with `packages/components-mobile/src/theme.ts`.
 - **Actions**: one icon entrypoint per context, no repeating text buttons; conventional icons get no tooltip.
 
 ## Tests and measurements

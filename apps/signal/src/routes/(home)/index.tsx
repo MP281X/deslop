@@ -1,12 +1,14 @@
 import {RegistryContext, useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Number, Option, Predicate, Record, String, Struct} from 'effect'
+import {Array, Boolean, DateTime, Match, Number, Option, Predicate, Record, String, Struct, pipe} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import type {PointerEvent, ReactNode, WheelEvent} from 'react'
 import {createContext, useContext, useEffect, useRef, useState} from 'react'
 
+import {GitHubIcon} from '@deslop/components-web/icons'
+import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
 import {
 	DropdownMenu,
@@ -14,6 +16,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
+import {Kbd} from '@deslop/components-web/ui/kbd'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {cn} from '@deslop/components-web/utils'
 import {signInUrl} from '@deslop/runtime/auth/utils'
@@ -238,17 +241,20 @@ function doingOf(unit: UnitView) {
 	)}`
 }
 
-function StatusDot(props: {status: TeamView['status']}) {
+// A team thinking now is live, one waiting is quiet, one that failed shows the error.
+function TeamStatus(props: {status: TeamView['status']}) {
 	return (
-		<i
-			title={props.status}
-			className={cn(
-				'inline-block size-1.5 rounded-full',
-				props.status === 'thinking' && 'bg-foreground motion-safe:animate-pulse',
-				props.status === 'waiting' && 'bg-muted-foreground/40',
-				props.status === 'failed' && 'bg-destructive'
-			)}
-		/>
+		<span title={props.status} className="inline-flex">
+			<StatusDot
+				status={pipe(
+					Match.value(props.status),
+					Match.when('thinking', () => 'live' as const),
+					Match.when('failed', () => 'error' as const),
+					Match.orElse(() => 'quiet' as const)
+				)}
+				waiting={props.status === 'thinking'}
+			/>
+		</span>
 	)
 }
 
@@ -266,7 +272,7 @@ function Teams(props: {onPick: (team: number) => void; picked: number; teams: Vi
 						<Swatch team={team.id} />
 						{team.name}
 						<span className="ml-auto">
-							<StatusDot status={team.status} />
+							<TeamStatus status={team.status} />
 						</span>
 					</DropdownMenuItem>
 				))}
@@ -1105,7 +1111,7 @@ function Hints() {
 				],
 				hint => (
 					<span key={hint.key}>
-						<kbd className="text-foreground border px-1">{hint.key}</kbd> {hint.does}
+						<Kbd>{hint.key}</Kbd> {hint.does}
 					</span>
 				)
 			)}
@@ -1303,6 +1309,7 @@ function SignIn() {
 					nativeButton={false}
 					render={<a aria-label="Sign in with GitHub" href={signInUrl(location.href)} />}
 				>
+					<GitHubIcon />
 					Sign in with GitHub
 				</Button>
 			</div>

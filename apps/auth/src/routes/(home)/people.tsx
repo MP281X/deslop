@@ -5,64 +5,85 @@ import {Array, Boolean, Option} from 'effect'
 import {Navigate, createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
+import type {ReactElement, ReactNode} from 'react'
 
 import {Loading} from '@deslop/components-web/fallbacks'
+import {ItemList} from '@deslop/components-web/item-list'
 import {Button} from '@deslop/components-web/ui/button'
+import {FieldError} from '@deslop/components-web/ui/field'
+import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 
-import {Avatar} from '#lib/components.tsx'
+import {AccountAvatar} from '#lib/components.tsx'
 import {accountAtom, admitAtom, dayLabel, peopleAtom, removeAtom} from '#lib/utils.ts'
 import type {Person} from '#services/people/schema.ts'
 
-function Identity(props: {detail: string; person: Person}) {
+function PersonItem(props: {actions?: ReactNode; detail: string; person: Person}) {
 	return (
-		<>
-			<Avatar id={props.person.id} name={props.person.name} />
-			<div className="flex min-w-0 grow flex-col">
-				<span className="truncate text-sm font-medium">{props.person.fullName ?? props.person.name}</span>
-				<span className="text-muted-foreground truncate font-mono text-xs">
+		<Item role="listitem">
+			<ItemMedia>
+				<AccountAvatar id={props.person.id} name={props.person.name} />
+			</ItemMedia>
+			<ItemContent>
+				<ItemTitle>{props.person.fullName ?? props.person.name}</ItemTitle>
+				<ItemDescription className="font-mono">
 					@{props.person.name} · {props.detail}
-				</span>
-			</div>
-		</>
+				</ItemDescription>
+			</ItemContent>
+			<ItemActions>{props.actions}</ItemActions>
+		</Item>
 	)
 }
 
-function AskingRow(props: {person: Person}) {
+function AskingItem(props: {person: Person}) {
 	const [admit, answer] = useAtom(admitAtom)
 	return (
-		<li className="border-border flex items-center gap-3 border-b py-2.5">
-			<Identity person={props.person} detail={dayLabel(props.person.since)} />
-			<Button disabled={AsyncResult.isWaiting(admit)} onClick={() => answer({allow: true, id: props.person.id})}>
-				Allow
-			</Button>
-			<Button
-				variant="outline"
-				disabled={AsyncResult.isWaiting(admit)}
-				onClick={() => answer({allow: false, id: props.person.id})}
-			>
-				Decline
-			</Button>
-		</li>
+		<PersonItem
+			person={props.person}
+			detail={dayLabel(props.person.since)}
+			actions={
+				<>
+					<Button disabled={AsyncResult.isWaiting(admit)} onClick={() => answer({allow: true, id: props.person.id})}>
+						Allow
+					</Button>
+					<Button
+						variant="outline"
+						disabled={AsyncResult.isWaiting(admit)}
+						onClick={() => answer({allow: false, id: props.person.id})}
+					>
+						Decline
+					</Button>
+				</>
+			}
+		/>
 	)
 }
 
-function MemberRow(props: {person: Person}) {
+function MemberItem(props: {person: Person}) {
 	const [removal, remove] = useAtom(removeAtom)
 	return (
-		<li className="border-border flex items-center gap-3 border-b py-2.5">
-			<Identity
-				person={props.person}
-				detail={Boolean.match(props.person.role === 'Admin', {
-					onFalse: () => `since ${dayLabel(props.person.since)}`,
-					onTrue: () => 'admin'
-				})}
-			/>
-			{props.person.role === 'Member' && (
-				<Button variant="outline" disabled={AsyncResult.isWaiting(removal)} onClick={() => remove(props.person.id)}>
-					Remove
-				</Button>
-			)}
-		</li>
+		<PersonItem
+			person={props.person}
+			detail={Boolean.match(props.person.role === 'Admin', {
+				onFalse: () => `since ${dayLabel(props.person.since)}`,
+				onTrue: () => 'admin'
+			})}
+			actions={
+				props.person.role === 'Member' && (
+					<Button variant="outline" disabled={AsyncResult.isWaiting(removal)} onClick={() => remove(props.person.id)}>
+						Remove
+					</Button>
+				)
+			}
+		/>
+	)
+}
+
+function People(props: {children: ReactElement[]; label: string; title: string}) {
+	return (
+		<section className="flex flex-col gap-2">
+			<h2 className="text-muted-foreground font-mono text-xs">{props.title}</h2>
+			<ItemList label={props.label}>{props.children}</ItemList>
+		</section>
 	)
 }
 
@@ -76,43 +97,25 @@ function Directory() {
 	return (
 		<>
 			<h1 className="text-xl font-semibold tracking-tight">People</h1>
-			<section className="flex flex-col" aria-label="Asking for access">
-				<h2 className="text-muted-foreground border-border border-b pb-2 font-mono text-xs">{asking.length} asking</h2>
-				{Array.match(asking, {
-					onEmpty: () => <p className="text-muted-foreground py-3 text-sm">No one is asking.</p>,
-					onNonEmpty: waiting => (
-						<ul className="flex flex-col">
-							{Array.map(waiting, person => (
-								<AskingRow key={person.id} person={person} />
-							))}
-						</ul>
-					)
-				})}
-			</section>
-			<section className="flex flex-col" aria-label="With access">
-				<h2 className="text-muted-foreground border-border border-b pb-2 font-mono text-xs">
-					{members.length} with access
-				</h2>
-				<ul className="flex flex-col">
-					{Array.map(members, person => (
-						<MemberRow key={person.id} person={person} />
+			{Array.isArrayNonEmpty(asking) && (
+				<People label="Asking for access" title={`${asking.length} asking`}>
+					{Array.map(asking, person => (
+						<AskingItem key={person.id} person={person} />
 					))}
-				</ul>
-			</section>
-			{Option.match(error, {
-				onNone: () => null,
-				onSome: failure => (
-					<p className="text-destructive text-sm" role="alert">
-						{failure.message}
-					</p>
-				)
-			})}
+				</People>
+			)}
+			<People label="With access" title={`${members.length} with access`}>
+				{Array.map(members, person => (
+					<MemberItem key={person.id} person={person} />
+				))}
+			</People>
+			<FieldError>{Option.getOrUndefined(Option.map(error, failure => failure.message))}</FieldError>
 		</>
 	)
 }
 
 // Admins manage people here; anyone else who opens it goes back to their sign-ins.
-function People() {
+function PeopleRoute() {
 	if (!Option.exists(useAtomSuspense(accountAtom).value, signed => signed.role === 'Admin')) return <Navigate to="/" />
 	return (
 		<Suspense fallback={<Loading />}>
@@ -121,4 +124,4 @@ function People() {
 	)
 }
 
-export const Route = createFileRoute('/(home)/people')({component: People})
+export const Route = createFileRoute('/(home)/people')({component: PeopleRoute})

@@ -5,8 +5,7 @@ import {Cause, Option} from 'effect'
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 
-import {Error, Loading} from '@deslop/components-web/fallbacks'
-import {buttonVariants} from '@deslop/components-web/ui/button'
+import {Error, Loading, SignIn} from '@deslop/components-web/fallbacks'
 import {signInUrl} from '@deslop/runtime/auth/utils'
 
 import {RpcClient} from '#lib/utils.ts'
@@ -18,13 +17,7 @@ function Home() {
 			if (!Option.exists(Cause.findErrorOption(failure.cause), error => error._tag === 'AuthError')) {
 				return <Error error={Cause.squash(failure.cause)} reset={() => location.reload()} />
 			}
-			return (
-				<div className="flex flex-1 items-center justify-center">
-					<a className={buttonVariants()} href={signInUrl(location.href)}>
-						Sign in with GitHub
-					</a>
-				</div>
-			)
+			return <SignIn description="Sign in to continue." href={signInUrl(location.href)} />
 		},
 		onInitial: () => <Loading />,
 		onSuccess: name => name.value

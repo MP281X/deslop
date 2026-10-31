@@ -26,6 +26,7 @@ import {Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalS
 
 import {Button} from '@deslop/components-web/ui/button'
 import {Dialog, DialogContent, DialogHeader, DialogTitle} from '@deslop/components-web/ui/dialog'
+import {Kbd, KbdGroup} from '@deslop/components-web/ui/kbd'
 import {cn} from '@deslop/components-web/utils'
 
 import {hasMeaningfulMove} from '#lib/portfolio.ts'
@@ -521,16 +522,21 @@ function ShortcutsOverlay(input: {open: boolean; onOpenChange: (open: boolean) =
 				<DialogHeader>
 					<DialogTitle>Keyboard shortcuts</DialogTitle>
 				</DialogHeader>
-				<div className="text-muted-foreground grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-xs sm:gap-x-8">
-					<span className="text-foreground">j / k</span>
+				<div className="text-muted-foreground grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-3 text-xs sm:gap-x-8">
+					<KbdGroup>
+						<Kbd>j</Kbd>
+						<Kbd>k</Kbd>
+					</KbdGroup>
 					<span>next / prev section</span>
-					<span className="text-foreground">1 – 6</span>
+					<KbdGroup>
+						<Kbd>1</Kbd>–<Kbd>6</Kbd>
+					</KbdGroup>
 					<span>jump to section</span>
-					<span className="text-foreground">r</span>
+					<Kbd>r</Kbd>
 					<span>change cursor color</span>
-					<span className="text-foreground">?</span>
+					<Kbd>?</Kbd>
 					<span>toggle this overlay</span>
-					<span className="text-foreground">Esc</span>
+					<Kbd>Esc</Kbd>
 					<span>close this overlay</span>
 				</div>
 			</DialogContent>

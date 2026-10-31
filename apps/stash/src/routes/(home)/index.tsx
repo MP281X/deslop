@@ -4,34 +4,26 @@ import {Array, Boolean, HashSet, Match, Option, Schema, String, pipe} from 'effe
 
 import {
 	Button,
-	ContentUnavailableView,
 	ContextMenu,
 	Divider,
-	HStack,
 	Image,
 	Label,
-	List,
 	Menu,
 	Overlay,
 	Picker,
-	ScrollView,
 	SwipeActions,
-	Text,
 	Toggle,
 	Toolbar,
-	ToolbarItem,
-	VStack
+	ToolbarItem
 } from '@expo/ui/swift-ui'
 import type {useNativeState} from '@expo/ui/swift-ui'
 import {
-	accessibilityElement,
 	accessibilityHidden,
 	accessibilityLabel,
 	alignmentGuide,
 	aspectRatio,
 	background,
 	clipShape,
-	contentShape,
 	foregroundStyle,
 	frame,
 	labelStyle,
@@ -39,19 +31,14 @@ import {
 	listRowBackground,
 	listRowInsets,
 	listRowSeparator,
-	listRowSeparatorTint,
-	listStyle,
 	menuOrder,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	onAppear,
-	onTapGesture,
 	pickerStyle,
 	redacted,
 	resizable,
-	scrollContentBackground,
 	searchable,
-	shapes,
 	tag,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
@@ -61,11 +48,21 @@ import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 import {Linking} from 'react-native'
 
-import {Chip} from '@deslop/components-mobile/chip'
 import {BrandIcon} from '@deslop/components-mobile/icons'
 import {ClipboardSheet} from '@deslop/components-mobile/sheet'
-import {colors, text} from '@deslop/components-mobile/theme'
+import {colors, space, text} from '@deslop/components-mobile/theme'
 import {AppTitle} from '@deslop/components-mobile/title'
+import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
+import {
+	Item,
+	ItemContent,
+	ItemDescription,
+	ItemGroup,
+	ItemMedia,
+	ItemTitle,
+	itemRow
+} from '@deslop/components-mobile/ui/item'
+import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
 import {Byline} from '#lib/components.tsx'
@@ -99,22 +96,14 @@ const OFFERS = {
 // The title and one line of where it is from; the summary waits in the note, so the list scans fast.
 function Lines(props: {note: NoteItem}) {
 	return (
-		<VStack alignment="leading" spacing={4} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>
-			<Text modifiers={[text.row, foregroundStyle(colors.foreground), lineLimit(2)]}>{props.note.title}</Text>
+		<ItemContent>
+			<ItemTitle>{props.note.title}</ItemTitle>
 			{pipe(
 				Match.value(props.note.status),
 				Match.when('organizing', () => (
-					<Text
-						modifiers={[
-							text.caption,
-							foregroundStyle(colors.mutedForeground),
-							lineLimit(1),
-							redacted('placeholder'),
-							accessibilityLabel('Reading')
-						]}
-					>
+					<ItemDescription modifiers={[text.caption, redacted('placeholder'), accessibilityLabel('Reading')]}>
 						Reading the source of this entry
-					</Text>
+					</ItemDescription>
 				)),
 				Match.when('failed', () => (
 					<Label
@@ -125,7 +114,7 @@ function Lines(props: {note: NoteItem}) {
 				)),
 				Match.orElse(() => <Byline note={props.note} />)
 			)}
-		</VStack>
+		</ItemContent>
 	)
 }
 
@@ -167,31 +156,20 @@ function NoteRow(props: {
 	onRemove: (id: Note['id']) => void
 }) {
 	return (
-		<SwipeActions
-			modifiers={[
-				listRowBackground(colors.background),
-				listRowSeparatorTint(colors.border),
-				listRowInsets({bottom: 10, leading: 16, top: 10, trailing: 16}),
-				tag(props.note.id)
-			]}
-		>
+		<SwipeActions modifiers={[...itemRow, tag(props.note.id)]}>
 			<ContextMenu>
 				<ContextMenu.Trigger>
-					<HStack
-						alignment="center"
-						spacing={12}
-						modifiers={[
-							alignmentGuide('listRowSeparatorLeading', 0),
-							frame({alignment: 'leading', maxWidth: Infinity}),
-							contentShape(shapes.rectangle()),
-							onAppear(props.onAppear),
-							onTapGesture(() => props.onOpen(props.note.id)),
-							accessibilityElement('combine')
-						]}
+					<Item
+						onPress={() => props.onOpen(props.note.id)}
+						modifiers={[alignmentGuide('listRowSeparatorLeading', 0), onAppear(props.onAppear)]}
 					>
-						{props.note.image !== undefined && <Thumbnail id={props.note.id} />}
+						{props.note.image !== undefined && (
+							<ItemMedia>
+								<Thumbnail id={props.note.id} />
+							</ItemMedia>
+						)}
 						<Lines note={props.note} />
-					</HStack>
+					</Item>
 				</ContextMenu.Trigger>
 				<ContextMenu.Items>
 					{Option.match(Option.fromNullishOr(props.note.url), {
@@ -320,49 +298,43 @@ export function HomeRoute(props: {
 			<Toolbar modifiers={[searchable(props.query, {onChange: props.onSearch, prompt: 'Search'}), bottomBarSearch]}>
 				{Array.match(items, {
 					onEmpty: () => (
-						<ContentUnavailableView
-							title="Nothing Saved"
-							systemImage="tray"
-							description="Share a link to stash, or copy one and open the app."
-						/>
+						<Empty>
+							<EmptyHeader>
+								<EmptyMedia systemImage="tray" />
+								<EmptyTitle>Nothing Saved</EmptyTitle>
+								<EmptyDescription>Share a link to stash, or copy one and open the app.</EmptyDescription>
+							</EmptyHeader>
+						</Empty>
 					),
 					onNonEmpty: () => (
 						// The empty state sits over the list, centered on the screen, as SwiftUI's own apps show it.
 						<Overlay>
-							<List modifiers={[listStyle('plain'), scrollContentBackground('hidden'), background(colors.background)]}>
-								<ScrollView
-									axes="horizontal"
-									showsIndicators={false}
+							<ItemGroup>
+								{/* "all" clears the tag, and choosing the chosen tag again does too. */}
+								<ToggleGroup
+									value={props.tag ?? 'all'}
+									onValueChange={value =>
+										Boolean.match(value === 'all' || value === props.tag, {
+											onFalse: () => props.onTag(value),
+											onTrue: () => props.onTag()
+										})
+									}
+									tint={primary}
 									modifiers={[
 										listRowBackground(colors.background),
 										listRowSeparator('hidden'),
-										listRowInsets({bottom: 6, leading: 16, top: 4, trailing: 16})
+										listRowInsets({bottom: space[1], leading: space[4], top: space[1], trailing: space[4]})
 									]}
 								>
-									<HStack spacing={8}>
-										<Chip
-											label="all"
-											systemImage="tray"
-											active={props.tag === undefined}
-											onPress={() => props.onTag()}
-											tint={primary}
-										/>
-										{Array.map(tags, name => (
-											<Chip
-												key={name}
-												label={name}
-												active={props.tag === name}
-												onPress={() =>
-													Boolean.match(props.tag === name, {
-														onFalse: () => props.onTag(name),
-														onTrue: () => props.onTag()
-													})
-												}
-												tint={primary}
-											/>
-										))}
-									</HStack>
-								</ScrollView>
+									<ToggleGroupItem value="all" systemImage="tray">
+										all
+									</ToggleGroupItem>
+									{Array.map(tags, name => (
+										<ToggleGroupItem key={name} value={name}>
+											{name}
+										</ToggleGroupItem>
+									))}
+								</ToggleGroup>
 								{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
 								{Array.map(Array.take(notes, limit), (note, position) => (
 									<NoteRow
@@ -376,15 +348,25 @@ export function HomeRoute(props: {
 										onRemove={id => remove(id)}
 									/>
 								))}
-							</List>
+							</ItemGroup>
 							{filtered && Array.isReadonlyArrayEmpty(notes) && (
 								<Overlay.Content>
-									<ContentUnavailableView
-										{...Boolean.match(String.isEmpty(query), {
-											onFalse: () => ({systemImage: 'magnifyingglass' as const, title: `No Results for “${query}”`}),
-											onTrue: () => ({systemImage: 'tray' as const, title: 'No Notes'})
+									<Empty>
+										{Boolean.match(String.isEmpty(query), {
+											onFalse: () => (
+												<EmptyHeader>
+													<EmptyMedia systemImage="magnifyingglass" />
+													<EmptyTitle>{`No Results for “${query}”`}</EmptyTitle>
+												</EmptyHeader>
+											),
+											onTrue: () => (
+												<EmptyHeader>
+													<EmptyMedia systemImage="tray" />
+													<EmptyTitle>No Notes</EmptyTitle>
+												</EmptyHeader>
+											)
 										})}
-									/>
+									</Empty>
 								</Overlay.Content>
 							)}
 						</Overlay>

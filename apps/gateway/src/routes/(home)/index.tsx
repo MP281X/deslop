@@ -8,8 +8,11 @@ import {AsyncResult} from 'effect/reactivity'
 import {Check, Copy, Ellipsis, Plus} from 'lucide-react'
 import {useState} from 'react'
 
-import {Error, Loading} from '@deslop/components-web/fallbacks'
-import {Button, buttonVariants} from '@deslop/components-web/ui/button'
+import {Error, Loading, SignIn} from '@deslop/components-web/fallbacks'
+import {ItemList} from '@deslop/components-web/item-list'
+import {ResultError} from '@deslop/components-web/result-error'
+import {StatusDot} from '@deslop/components-web/status-dot'
+import {Button} from '@deslop/components-web/ui/button'
 import {Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle} from '@deslop/components-web/ui/dialog'
 import {
 	DropdownMenu,
@@ -21,8 +24,10 @@ import {
 	DropdownMenuSubTrigger,
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
-import {Input} from '@deslop/components-web/ui/input'
-import {cn} from '@deslop/components-web/utils'
+import {Empty, EmptyDescription, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
+import {Field, FieldError, FieldLabel} from '@deslop/components-web/ui/field'
+import {InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput} from '@deslop/components-web/ui/input-group'
+import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {signInUrl} from '@deslop/runtime/auth/utils'
 
 import {
@@ -38,40 +43,23 @@ import {
 } from '#lib/utils.ts'
 import type {ConnectionInfo} from '#services/connections/schema.ts'
 
-// The server's favicon through Google's favicon service, as Stash shows a source's, never a letter tile.
-function Favicon(props: {url: string}) {
-	return (
-		<img
-			src={`https://www.google.com/s2/favicons?domain=${new URL(props.url).hostname}&sz=64`}
-			alt=""
-			className="size-4 shrink-0 rounded-sm"
-		/>
-	)
-}
-
 // Live in the primary, expired red, not connected hollow; like a port light it dims per tool call, a new key replaying it.
 function Status(props: {server: ConnectionInfo}) {
 	const call = useAtomValue(lastCallAtom(props.server.id))
 	return (
-		<span
-			className={cn(
-				'flex shrink-0 items-center gap-1.5 text-xs',
-				props.server.status === 'Not connected' && 'text-muted-foreground'
-			)}
-		>
-			<span
+		<ItemDescription className="flex items-center gap-1.5">
+			<StatusDot
 				key={call}
-				aria-hidden="true"
-				className={cn(
-					'size-1.5 rounded-full',
-					call >= 0 && 'port-blink',
-					props.server.status === 'Connected' && 'bg-primary',
-					props.server.status === 'Expired' && 'bg-destructive',
-					props.server.status === 'Not connected' && 'border-muted-foreground border'
+				className={Boolean.match(call >= 0, {onFalse: () => undefined, onTrue: () => 'port-blink'})}
+				status={pipe(
+					Match.value(props.server.status),
+					Match.when('Connected', () => 'live' as const),
+					Match.when('Expired', () => 'error' as const),
+					Match.orElse(() => 'off' as const)
 				)}
 			/>
 			{props.server.status}
-		</span>
+		</ItemDescription>
 	)
 }
 
@@ -119,23 +107,57 @@ function ServerMenu(props: {busy: boolean; onRemove: () => void; server: Connect
 	)
 }
 
-// One hairline row: favicon, name and host, then its state and the one action it needs.
+function RemoveDialog(props: {onOpenChange: (open: boolean) => void; open: boolean; server: ConnectionInfo}) {
+	const [removing, remove] = useAtom(removeAtom(props.server.id))
+	return (
+		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
+			<DialogContent>
+				<DialogTitle>Remove {props.server.name}?</DialogTitle>
+				<DialogDescription>
+					Its tools will no longer be available through the gateway. This does not revoke the provider’s grant.
+				</DialogDescription>
+				<ResultError result={removing} />
+				<div className="flex justify-end gap-2">
+					<DialogClose render={<Button variant="ghost" disabled={AsyncResult.isWaiting(removing)} />}>
+						Cancel
+					</DialogClose>
+					<Button variant="destructive" disabled={AsyncResult.isWaiting(removing)} onClick={() => remove()}>
+						Remove server
+					</Button>
+				</div>
+			</DialogContent>
+		</Dialog>
+	)
+}
+
+// One row: favicon, name and host, then its state and the one action it needs.
 function ServerRow(props: {server: ConnectionInfo}) {
 	const [disconnecting] = useAtom(disconnectAtom(props.server.id))
-	const [removing, remove] = useAtom(removeAtom(props.server.id))
+	const [removing] = useAtom(removeAtom(props.server.id))
 	const [hiding] = useAtom(hideAtom(props.server.id))
 	const [confirm, setConfirm] = useState(false)
 	const busy = AsyncResult.isWaiting(disconnecting) || AsyncResult.isWaiting(removing) || AsyncResult.isWaiting(hiding)
 	const shown = Array.filter(props.server.tools, tool => !Array.contains(props.server.hidden, tool))
-	const failure = Option.orElse(AsyncResult.error(disconnecting), () => AsyncResult.error(hiding))
+	const failure = pipe(
+		Option.fromUndefinedOr(props.server.error),
+		Option.orElse(() => Option.map(AsyncResult.error(disconnecting), error => error.message)),
+		Option.orElse(() => Option.map(AsyncResult.error(hiding), error => error.message))
+	)
 	return (
-		<li className="border-border flex flex-col gap-1 border-b py-2.5">
-			<div className="flex items-center gap-3">
-				<Favicon url={props.server.url} />
-				<span className="max-w-48 min-w-0 truncate text-sm font-medium">{props.server.name}</span>
-				<span className="text-muted-foreground min-w-0 grow truncate font-mono text-xs">
-					{new URL(props.server.url).hostname}
-				</span>
+		<Item role="listitem">
+			<ItemMedia>
+				{/* Google's favicon service, as Stash shows a source's, never a letter tile. */}
+				<img
+					src={`https://www.google.com/s2/favicons?domain=${new URL(props.server.url).hostname}&sz=64`}
+					alt=""
+					className="size-4 rounded-sm"
+				/>
+			</ItemMedia>
+			<ItemContent>
+				<ItemTitle>{props.server.name}</ItemTitle>
+				<ItemDescription className="font-mono">{new URL(props.server.url).hostname}</ItemDescription>
+			</ItemContent>
+			<ItemActions>
 				<Status server={props.server} />
 				{pipe(
 					Match.value(props.server.status),
@@ -143,9 +165,9 @@ function ServerRow(props: {server: ConnectionInfo}) {
 						Array.match(props.server.tools, {
 							onEmpty: () => null,
 							onNonEmpty: tools => (
-								<span className="text-muted-foreground w-12 text-right font-mono text-xs">
+								<ItemDescription className="w-12 text-right font-mono">
 									{shown.length}/{tools.length}
-								</span>
+								</ItemDescription>
 							)
 						})
 					),
@@ -161,42 +183,13 @@ function ServerRow(props: {server: ConnectionInfo}) {
 					))
 				)}
 				<ServerMenu busy={busy} onRemove={() => setConfirm(true)} server={props.server} />
-			</div>
-			{Option.match(Option.fromUndefinedOr(props.server.error), {
-				onNone: () => null,
-				onSome: error => <p className="text-destructive pl-7 text-xs break-words">{error}</p>
-			})}
+			</ItemActions>
 			{Option.match(failure, {
 				onNone: () => null,
-				onSome: error => (
-					<p className="text-destructive pl-7 text-xs" role="alert">
-						{error.message}
-					</p>
-				)
+				onSome: message => <FieldError className="basis-full break-words">{message}</FieldError>
 			})}
-			<Dialog open={confirm} onOpenChange={setConfirm}>
-				<DialogContent>
-					<DialogTitle>Remove {props.server.name}?</DialogTitle>
-					<DialogDescription>
-						Its tools will no longer be available through the gateway. This does not revoke the provider’s grant.
-					</DialogDescription>
-					{Option.match(AsyncResult.error(removing), {
-						onNone: () => null,
-						onSome: error => (
-							<p className="text-destructive text-xs" role="alert">
-								{error.message}
-							</p>
-						)
-					})}
-					<div className="flex justify-end gap-2">
-						<DialogClose render={<Button variant="ghost" disabled={busy} />}>Cancel</DialogClose>
-						<Button variant="destructive" disabled={busy} onClick={() => remove()}>
-							Remove server
-						</Button>
-					</div>
-				</DialogContent>
-			</Dialog>
-		</li>
+			<RemoveDialog open={confirm} onOpenChange={setConfirm} server={props.server} />
+		</Item>
 	)
 }
 
@@ -204,42 +197,38 @@ function AddForm(props: {url: string; error: string; adding: boolean}) {
 	const send = useAtomSet(addAtom.send)
 	return (
 		<form
-			className="flex flex-col gap-2"
 			onSubmit={event => {
 				event.preventDefault()
 				send({_tag: 'Submit'})
 			}}
 		>
-			<label className="text-muted-foreground text-xs" htmlFor="mcp-url">
-				MCP URL
-			</label>
-			<div className="flex gap-2">
-				<Input
-					id="mcp-url"
-					type="url"
-					autoComplete="url"
-					placeholder="https://example.com/mcp"
-					required
-					autoFocus
-					value={props.url}
-					disabled={props.adding}
-					onChange={event => send({_tag: 'Typed', url: event.target.value})}
-					aria-invalid={props.error !== ''}
-					aria-describedby="mcp-add-error"
-					className="font-mono"
-				/>
-				<Button variant="ghost" type="button" disabled={props.adding} onClick={() => send({_tag: 'Cancel'})}>
-					Cancel
-				</Button>
-				<Button type="submit" disabled={props.adding}>
-					{Boolean.match(props.adding, {onFalse: () => 'Add server', onTrue: () => 'Adding…'})}
-				</Button>
-			</div>
-			{props.error !== '' && (
-				<p className="text-destructive text-xs" role="alert" id="mcp-add-error">
-					{props.error}
-				</p>
-			)}
+			<Field data-invalid={props.error !== ''}>
+				<FieldLabel htmlFor="mcp-url">MCP URL</FieldLabel>
+				<InputGroup>
+					<InputGroupInput
+						id="mcp-url"
+						type="url"
+						autoComplete="url"
+						placeholder="https://example.com/mcp"
+						required
+						autoFocus
+						value={props.url}
+						disabled={props.adding}
+						onChange={event => send({_tag: 'Typed', url: event.target.value})}
+						aria-invalid={props.error !== ''}
+						aria-describedby="mcp-add-error"
+					/>
+					<InputGroupAddon align="inline-end">
+						<InputGroupButton size="sm" disabled={props.adding} onClick={() => send({_tag: 'Cancel'})}>
+							Cancel
+						</InputGroupButton>
+						<InputGroupButton size="sm" variant="default" type="submit" disabled={props.adding}>
+							{Boolean.match(props.adding, {onFalse: () => 'Add server', onTrue: () => 'Adding…'})}
+						</InputGroupButton>
+					</InputGroupAddon>
+				</InputGroup>
+				<FieldError id="mcp-add-error">{props.error}</FieldError>
+			</Field>
 		</form>
 	)
 }
@@ -248,29 +237,22 @@ function AddForm(props: {url: string; error: string; adding: boolean}) {
 function Endpoint() {
 	const [copied, copy] = useAtom(copyEndpointAtom)
 	return (
-		<div className="flex flex-col gap-1">
-			<Button
-				variant="outline"
-				onClick={() => copy()}
-				disabled={AsyncResult.isWaiting(copied)}
-				aria-label="Copy gateway endpoint"
-				className="font-mono"
-			>
-				{ENDPOINT}
-				{Boolean.match(AsyncResult.isSuccess(copied), {
-					onFalse: () => <Copy className="text-muted-foreground" />,
-					onTrue: () => <Check className="text-primary" />
-				})}
-			</Button>
-			{Option.match(AsyncResult.error(copied), {
-				onNone: () => null,
-				onSome: error => (
-					<p className="text-destructive text-xs" role="alert">
-						{error.message}
-					</p>
-				)
-			})}
-		</div>
+		<Field className="max-w-sm">
+			<InputGroup>
+				<InputGroupInput readOnly value={ENDPOINT} aria-label="Gateway endpoint" />
+				<InputGroupAddon align="inline-end">
+					<InputGroupButton
+						size="icon-xs"
+						onClick={() => copy()}
+						disabled={AsyncResult.isWaiting(copied)}
+						aria-label="Copy gateway endpoint"
+					>
+						{Boolean.match(AsyncResult.isSuccess(copied), {onFalse: () => <Copy />, onTrue: () => <Check />})}
+					</InputGroupButton>
+				</InputGroupAddon>
+			</InputGroup>
+			<ResultError result={copied} />
+		</Field>
 	)
 }
 
@@ -295,26 +277,23 @@ function Directory(props: {servers: readonly ConnectionInfo[]}) {
 			<MachineState machine={addAtom} path="Adding">
 				{state => <AddForm url={state.value.url} error="" adding />}
 			</MachineState>
-			<section className="flex flex-col" aria-label="MCP servers">
-				<h2 className="text-muted-foreground border-border border-b pb-2 font-mono text-xs">
-					{props.servers.length}{' '}
-					{Boolean.match(props.servers.length === 1, {onFalse: () => 'servers', onTrue: () => 'server'})}
-				</h2>
-				{Array.match(props.servers, {
-					onEmpty: () => (
-						<p className="text-muted-foreground py-6 text-sm">
-							No servers yet. Add one to share its tools with every agent.
-						</p>
-					),
-					onNonEmpty: rows => (
-						<ul className="flex flex-col">
-							{Array.map(rows, server => (
-								<ServerRow key={server.id} server={server} />
-							))}
-						</ul>
-					)
-				})}
-			</section>
+			{Array.match(props.servers, {
+				onEmpty: () => (
+					<Empty>
+						<EmptyHeader>
+							<EmptyTitle>No servers yet</EmptyTitle>
+							<EmptyDescription>Add one to share its tools with every agent.</EmptyDescription>
+						</EmptyHeader>
+					</Empty>
+				),
+				onNonEmpty: rows => (
+					<ItemList label="MCP servers">
+						{Array.map(rows, server => (
+							<ServerRow key={server.id} server={server} />
+						))}
+					</ItemList>
+				)
+			})}
 		</>
 	)
 }
@@ -327,12 +306,17 @@ function Servers() {
 				onNone: () => <Error error={Cause.squash(failure.cause)} reset={() => location.reload()} />,
 				onSome: error => {
 					if (error._tag !== 'AuthError') return <Error error={error} reset={() => location.reload()} />
-					if (error.error === 'access_denied') return <p className="text-muted-foreground text-sm">{error.message}</p>
-					return (
-						<a className={buttonVariants({size: 'lg'})} href={signInUrl(location.href)}>
-							Sign in with GitHub
-						</a>
-					)
+					if (error.error === 'access_denied') {
+						return (
+							<Empty>
+								<EmptyHeader>
+									<EmptyTitle>Admins only</EmptyTitle>
+									<EmptyDescription>{error.message}</EmptyDescription>
+								</EmptyHeader>
+							</Empty>
+						)
+					}
+					return <SignIn description="An admin manages the gateway’s servers." href={signInUrl(location.href)} />
 				}
 			}),
 		onInitial: () => <Loading />,

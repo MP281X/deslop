@@ -2020,6 +2020,39 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 
 		testApi.effect(
+			'keeps SwiftUI modifiers on the theme’s spacing, type and colours',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'screen.tsx': Array.join(
+						[
+							"import {VStack} from '@expo/ui/swift-ui'",
+							"import {font, foregroundStyle, frame, lineSpacing, listRowInsets, padding, strokeBorder, tint} from '@expo/ui/swift-ui/modifiers'",
+							'',
+							'declare const space: Record<number, number>',
+							'declare const colors: {foreground: string}',
+							'export const padded = [padding({all: 16})] // reported',
+							'export const sized = [font({size: 15})] // reported',
+							"export const painted = [foregroundStyle('#4385be')] // reported",
+							"export const tinted = [tint('#fff')] // reported",
+							'export const inset = [listRowInsets({leading: 20})] // reported',
+							'export const leading = [lineSpacing(4)] // reported',
+							"export const ringed = [strokeBorder({content: '#fff', shape: 'circle'})] // reported",
+							'export const spaced = [listRowInsets({leading: space[4]}), lineSpacing(space[1])]',
+							"export const themed = [padding({all: space[4]}), frame({height: 64}), font({textStyle: 'body'}), foregroundStyle(colors.foreground)]",
+							'export function Spaced() { return <VStack spacing={12} /> } // reported',
+							'export function Tight() { return <VStack spacing={0} /> }'
+						],
+						'\n'
+					),
+					// Without @expo/ui, a padding call is someone else's.
+					'utils.ts': Array.join(['declare function padding(input: {all: number}): void', 'padding({all: 16})'], '\n')
+				})
+				const lines = reportedLines(result, 'swiftui-theme-values')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
 			'reports focused, skipped, conditional and failing tests',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({

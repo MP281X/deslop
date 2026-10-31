@@ -4,7 +4,6 @@ import {Array, Boolean, DateTime, Hash, Option} from 'effect'
 
 import {
 	Button,
-	ContentUnavailableView,
 	Form,
 	HStack,
 	LabeledContent,
@@ -34,7 +33,8 @@ import {
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 
-import {colors, text} from '@deslop/components-mobile/theme'
+import {colors, space, text} from '@deslop/components-mobile/theme'
+import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
 
 import {
 	dayAt,
@@ -210,13 +210,15 @@ function StayFields(props: {stay: Stay}) {
 function Essential(props: {label: string; tone?: Tone; value?: string}) {
 	if (props.value === undefined) return undefined
 	return (
-		<VStack alignment="leading" spacing={2} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>
+		<VStack alignment="leading" spacing={space[1]} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>
 			<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>{props.label}</Text>
 			<Text
 				modifiers={[
 					font({design: 'monospaced', textStyle: 'headline'}),
 					foregroundStyle(colorOf(props.tone)),
-					lineLimit(1)
+					lineLimit(1),
+					contentTransition('numericText'),
+					animation(Animation.snappy(), Hash.string(props.value))
 				]}
 			>
 				{props.value}
@@ -238,7 +240,7 @@ function Departs(props: {journey: Flight | Train}) {
 
 function FlightEssentials(props: {flight: Flight}) {
 	return (
-		<HStack spacing={12}>
+		<HStack spacing={space[3]}>
 			<Departs journey={props.flight} />
 			<Essential
 				label="Gate"
@@ -252,7 +254,7 @@ function FlightEssentials(props: {flight: Flight}) {
 
 function TrainEssentials(props: {train: Train}) {
 	return (
-		<HStack spacing={12}>
+		<HStack spacing={space[3]}>
 			<Departs journey={props.train} />
 			<Essential
 				label="Platform"
@@ -280,7 +282,7 @@ function TrainEssentials(props: {train: Train}) {
 
 function StayEssentials(props: {stay: Stay}) {
 	return (
-		<HStack spacing={12}>
+		<HStack spacing={space[3]}>
 			<Essential label="Check-in" value={timeAt(props.stay.checkIn, props.stay.place.timeZone)} />
 			<Essential label="Check-out" value={timeAt(props.stay.checkOut, props.stay.place.timeZone)} />
 		</HStack>
@@ -320,11 +322,14 @@ export function BookingRoute(props: {bookings: BookingList; id: string; onClose:
 		Array.findFirst(props.bookings, booking => booking.id === props.id),
 		{
 			onNone: () => (
-				<ContentUnavailableView
-					title="Booking Deleted"
-					systemImage="trash"
+				<Empty
 					modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
-				/>
+				>
+					<EmptyHeader>
+						<EmptyMedia systemImage="trash" />
+						<EmptyTitle>Booking Deleted</EmptyTitle>
+					</EmptyHeader>
+				</Empty>
 			),
 			onSome: booking => {
 				const status = statusOf(booking, now)
@@ -348,8 +353,8 @@ export function BookingRoute(props: {bookings: BookingList; id: string; onClose:
 							]}
 						>
 							<Section>
-								<VStack alignment="leading" spacing={12}>
-									<VStack alignment="leading" spacing={4}>
+								<VStack alignment="leading" spacing={space[3]}>
+									<VStack alignment="leading" spacing={space[1]}>
 										<Text
 											modifiers={[font({textStyle: 'title3', weight: 'semibold'}), foregroundStyle(colors.foreground)]}
 										>

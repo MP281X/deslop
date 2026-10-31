@@ -2,38 +2,16 @@ import {useAtomMount, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, DateTime, Number, Option, pipe} from 'effect'
 
+import {Button, HStack, Section, SwipeActions, Text, Toolbar, ToolbarItem, VStack} from '@expo/ui/swift-ui'
 import {
-	Button,
-	Circle,
-	ContentUnavailableView,
-	HStack,
-	List,
-	ProgressView,
-	Section,
-	SwipeActions,
-	Text,
-	Toolbar,
-	ToolbarItem,
-	VStack
-} from '@expo/ui/swift-ui'
-import {
-	accessibilityElement,
 	background,
-	contentShape,
 	font,
 	foregroundStyle,
 	frame,
 	labelStyle,
 	lineLimit,
-	listRowBackground,
-	listRowInsets,
-	listRowSeparatorTint,
-	listStyle,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
-	onTapGesture,
-	scrollContentBackground,
-	shapes,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {MachineState, useMachineResult} from '@typeonce/effect-machine-react'
@@ -42,13 +20,26 @@ import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 
 import {ClipboardSheet} from '@deslop/components-mobile/sheet'
-import {colors, text} from '@deslop/components-mobile/theme'
+import {StatusDot} from '@deslop/components-mobile/status-dot'
+import {colors, space, text} from '@deslop/components-mobile/theme'
 import {AppTitle} from '@deslop/components-mobile/title'
+import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
+import {
+	Item,
+	ItemContent,
+	ItemDescription,
+	ItemGroup,
+	ItemMedia,
+	ItemTitle,
+	itemRow
+} from '@deslop/components-mobile/ui/item'
+import {Spinner} from '@deslop/components-mobile/ui/spinner'
 
 import {
 	clipboardAtom,
 	clipboardReturnsAtom,
 	daysUntil,
+	dots,
 	nowAtom,
 	primary,
 	removeAtom,
@@ -90,7 +81,7 @@ type Countdown = {_tag: 'Now'} | {_tag: 'Days'; days: number} | {_tag: 'SameDay'
 
 function Gutter(props: {countdown: Countdown}) {
 	return (
-		<VStack spacing={1} modifiers={[frame({width: 34})]}>
+		<VStack spacing={0} modifiers={[frame({width: 34})]}>
 			{props.countdown._tag === 'Now' && <Text modifiers={[text.data, foregroundStyle(primary)]}>now</Text>}
 			{props.countdown._tag === 'Days' && props.countdown.days < 1 && (
 				<Text modifiers={[text.data, foregroundStyle(colors.foreground)]}>today</Text>
@@ -118,33 +109,16 @@ function BookingRow(props: {booking: Booking; countdown: Countdown; now: number;
 	const remove = useAtomSet(removeAtom)
 	const status = statusOf(props.booking, props.now)
 	return (
-		<SwipeActions
-			modifiers={[
-				listRowBackground(colors.background),
-				listRowSeparatorTint(colors.border),
-				listRowInsets({bottom: 10, leading: 12, top: 10, trailing: 16})
-			]}
-		>
-			<HStack
-				alignment="top"
-				spacing={12}
-				modifiers={[
-					frame({alignment: 'leading', maxWidth: Infinity}),
-					contentShape(shapes.rectangle()),
-					onTapGesture(() => props.onOpen(props.booking.id)),
-					accessibilityElement('combine')
-				]}
-			>
-				<Gutter countdown={props.countdown} />
-				<VStack alignment="leading" spacing={3} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>
-					<Text modifiers={[text.row, foregroundStyle(colors.foreground), lineLimit(1)]}>
-						{headingOf(props.booking)}
-					</Text>
-					<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
-						{scheduleOf(props.booking)}
-					</Text>
-					<HStack spacing={6}>
-						<Circle modifiers={[foregroundStyle(tones[status.tone]), frame({height: 7, width: 7})]} />
+		<SwipeActions modifiers={itemRow}>
+			<Item alignment="top" onPress={() => props.onOpen(props.booking.id)}>
+				<ItemMedia>
+					<Gutter countdown={props.countdown} />
+				</ItemMedia>
+				<ItemContent>
+					<ItemTitle modifiers={[lineLimit(1)]}>{headingOf(props.booking)}</ItemTitle>
+					<ItemDescription modifiers={[text.data]}>{scheduleOf(props.booking)}</ItemDescription>
+					<HStack spacing={space[2]}>
+						<StatusDot status={dots[status.tone]} tint={primary} />
 						<Text modifiers={[text.detail, foregroundStyle(colors.foreground), lineLimit(1)]}>{status.label}</Text>
 						{Option.match(status.where, {
 							onNone: () => undefined,
@@ -153,8 +127,8 @@ function BookingRow(props: {booking: Booking; countdown: Countdown; now: number;
 							)
 						})}
 					</HStack>
-				</VStack>
-			</HStack>
+				</ItemContent>
+			</Item>
 			<SwipeActions.Actions edge="trailing">
 				<Button label="Delete" systemImage="trash" role="destructive" onPress={() => remove(props.booking)} />
 			</SwipeActions.Actions>
@@ -204,31 +178,30 @@ export function HomeRoute(props: {bookings: BookingList; onOpen: (id: string) =>
 			modifiers={[navigationTitle('Trips'), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
 		>
 			{Array.isReadonlyArrayEmpty(props.bookings) && (
-				<ContentUnavailableView
-					title="No bookings"
-					systemImage="ticket"
-					description="Copy a confirmation or screenshot, then open Trips."
-				/>
+				<Empty>
+					<EmptyHeader>
+						<EmptyMedia systemImage="ticket" />
+						<EmptyTitle>No bookings</EmptyTitle>
+						<EmptyDescription>Copy a confirmation or screenshot, then open Trips.</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
 			)}
 			{Array.isReadonlyArrayNonEmpty(props.bookings) &&
 				Array.isReadonlyArrayEmpty(current) &&
 				Array.isReadonlyArrayEmpty(ahead) &&
 				Array.isReadonlyArrayEmpty(past) && (
-					<ContentUnavailableView
-						title="No upcoming bookings"
-						systemImage="ticket"
-						description="Copy a confirmation or screenshot, then open Trips. Bookings older than a month are hidden."
-					/>
+					<Empty>
+						<EmptyHeader>
+							<EmptyMedia systemImage="ticket" />
+							<EmptyTitle>No upcoming bookings</EmptyTitle>
+							<EmptyDescription>
+								Copy a confirmation or screenshot, then open Trips. Bookings older than a month are hidden.
+							</EmptyDescription>
+						</EmptyHeader>
+					</Empty>
 				)}
 			{Array.isReadonlyArrayNonEmpty([...current, ...ahead, ...past]) && (
-				<List
-					modifiers={[
-						listStyle('plain'),
-						scrollContentBackground('hidden'),
-						background(colors.background),
-						tint(primary)
-					]}
-				>
+				<ItemGroup modifiers={[tint(primary)]}>
 					{Array.map(current, booking => (
 						<BookingRow key={booking.id} booking={booking} countdown={{_tag: 'Now'}} now={now} onOpen={props.onOpen} />
 					))}
@@ -261,7 +234,7 @@ export function HomeRoute(props: {bookings: BookingList; onOpen: (id: string) =>
 							))}
 						</Section>
 					)}
-				</List>
+				</ItemGroup>
 			)}
 			<Toolbar.Content>
 				<ToolbarItem placement="principal">
@@ -271,9 +244,7 @@ export function HomeRoute(props: {bookings: BookingList; onOpen: (id: string) =>
 					{answering =>
 						answering.value.save && (
 							<ToolbarItem placement="bottomBar">
-								<ProgressView>
-									<Text modifiers={[text.detail]}>Reading booking…</Text>
-								</ProgressView>
+								<Spinner label="Reading booking…" />
 							</ToolbarItem>
 						)
 					}
