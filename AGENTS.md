@@ -13,19 +13,19 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 
 - **Verify** is `vp check --fix && vp run check && vp run test`. `vp check --fix` formats, applies lint fixes and fails on what remains; the `check` task runs each package's `typecheck` and Fallow, and CI runs plain `vp check` before it; `test` runs each package's tests. Every `package.json` has the same `typecheck` and `test` scripts, and the root caches scripts, so an unchanged package replays from the local task cache.
 - **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. Before the first mobile push, follow environment's Deslop reference, **Publish an iOS app**.
-- **Agent configuration.** `.claude/agents/pair.md` and `.codex/instructions.md` replace the provider prompts, borrowing useful mechanics without importing conflicting policies; they are identical from `# Work` down. Team skills live in `tools/coding-standards/skills/`, and `node tools/coding-standards/src/install.ts` refreshes their copies in `.claude/skills` and `.codex/skills`. The personal skills in `.claude/skills` (planning, environment, references) load globally through the workers' links; retrospective guidance is an environment reference.
+- **Agent configuration.** `.claude/agents/pair.md` and `.codex/instructions.md` replace the provider prompts and complement what the harness, T3 and tool descriptions already say: goals and local facts, never a restatement; where they conflict with an injected rule, they say so. They are identical from `# Work` down. Team skills live in `tools/coding-standards/skills/`, and `node tools/coding-standards/src/install.ts` refreshes their copies in `.claude/skills` and `.codex/skills`. The personal skills in `.claude/skills` (planning, environment, references) load globally through the workers' links; retrospective guidance is an environment reference.
 
 ## Patterns
 
-| Pattern          | Owner and canonical example                                                                    | Consumers                                                                                      | Enforced by                    |
-| ---------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------ |
-| Service          | `tools/create-package/template/`, `apps/stash/src/services/notes/`                             | `rg --files -g '**/service.ts' apps packages tools`                                            | Layout, review                 |
-| Web app          | `tools/create-app/template/web/`: `apps/portfolio` behind a Deslop sign-in                     | `rg --files -g '**/index.html' apps tools/create-app/template`                                 | Generator                      |
-| Mobile app       | `tools/create-app/template/mobile/`, which mirrors `apps/stash`                                | `rg --files -g '**/app.config.ts' apps tools/create-app/template`                              | Generator                      |
-| RPC              | `apps/portfolio/src/rpcs/` and its client in `apps/portfolio/src/lib/utils.ts`                 | `rg --files -g '**/rpcs/contracts.ts' apps tools`                                              | RPC and components, review     |
-| MCP tools        | `apps/scope/src/tools/`, served by `ServerRuntime.layerMcp` in `apps/scope/src/main.server.ts` | `rg --files -g '**/tools/contracts.ts' apps tools/create-app/template`                         | Generator, review              |
-| Web UI primitive | `packages/components-web/src/ui/`, added with `vpx shadcn@latest add` there                    | `rg -l -e @deslop/components-web -e '#components/ui/' apps packages tools/create-app/template` | `shadcn/no-raw-colors`, review |
+| Pattern          | Owner and canonical example                                                                    |
+| ---------------- | ---------------------------------------------------------------------------------------------- |
+| Service          | `tools/create-package/template/`, `apps/stash/src/services/notes/`                             |
+| Web app          | `tools/create-app/template/web/`: `apps/portfolio` behind a Deslop sign-in                     |
+| Mobile app       | `tools/create-app/template/mobile/`, which mirrors `apps/stash`                                |
+| RPC              | `apps/portfolio/src/rpcs/` and its client in `apps/portfolio/src/lib/utils.ts`                 |
+| MCP tools        | `apps/scope/src/tools/`, served by `ServerRuntime.layerMcp` in `apps/scope/src/main.server.ts` |
+| Web UI primitive | `packages/components-web/src/ui/`, added with `vpx shadcn@latest add` there                    |
 
 ## Documents
 
-One source of truth per fact: the code first, lint for every mechanical form, this file for scope, commands and canonical examples, `CODING_STANDARDS.md` for judgement calls, a published package's `README.md` for its install and usage, and the environment skill with its references for the user's infrastructure (workers, deploy, tracing endpoints, accounts). Comments only for what a name cannot say.
+Each fact has one home: code, then lint, this file, `CODING_STANDARDS.md`, a published package's `README.md`, and the environment skill for the user's infrastructure; comments only for what a name cannot say.

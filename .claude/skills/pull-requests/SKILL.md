@@ -16,7 +16,7 @@ description: 'Load before the first commit of a task, before changing code to fi
 ## Publish
 
 1. **Push** a draft once Verify passes. A round of fixes is one push per affected PR, since each push cancels the previous pipeline.
-2. **Describe** with the repository's template (`.github/pull_request_template.md`, `.gitlab/merge_request_templates/Default.md`); its comments say what each section holds.
+2. **Describe** with the repository's template (`.github/pull_request_template.md`, `.gitlab/merge_request_templates/Default.md`); its comments say what each section holds. The body reads like a reply page: headings stay text, the page itself goes in as the PNGs `html_preview` saves, dark and light in one `<picture>` on GitHub and the light one on GitLab, and Mermaid carries a flow that should stay diffable text. GitHub and GitLab render tables, `<details>`, images, Mermaid and math but no CSS or JS (their docs; untested); PlantUML/Kroki on git.datapizza.tech is unknown.
 3. **Watch** the final head's pipeline; a failure, a review comment or a conflict gets a fix, Verify and one push.
 4. **Hand back** once the required jobs pass and no P1 or P2 finding is open.
 5. **Ready** only when the user asks; mark a ready PR draft again before editing its layer.
@@ -31,6 +31,9 @@ gh pr edit <n> --title '<title>' --body-file - --attach './shot.png#<alt>' <<'EO
 EOF
 gh pr edit <n> --attach './proof.mp4'    # appends the video URL: move it under its claim, alone in its paragraph
 gh api repos/<owner>/<repo>/pulls/<n> -H 'Accept: application/vnd.github.html+json' --jq .body_html
+gh pr edit <n> --attach ./dark.png --attach ./light.png    # paths inside HTML are not rewritten: copy the appended URLs into
+#   <picture><source media="(prefers-color-scheme: dark)" srcset="<dark URL>"><img alt="<page>" src="<light URL>"></picture>
+#   then write the body again without --attach
 glab mr update <n> --description-file - --attach ./shot.png <<'EOF'   # appends the reference: move it under its claim
 glab api "projects/:id/merge_requests/<n>?render_html=true" | jq -r .description_html
 glab api "projects/:id/pipelines/<pipeline>/jobs?scope[]=failed" | jq -r '.[] | "\(.id) \(.name)"'; glab ci trace <job id>

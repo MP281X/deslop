@@ -1,14 +1,16 @@
 <!--
-Describe the head for a reviewer who was not in the conversation. Delete every
-comment and every empty section, then read the rendered body back.
+Describe the head for a reviewer who was not in the conversation, in the style
+of a reply page: each point a text heading, one picture of the difference and at
+most one plain line. Delete every comment and every empty section, then read the
+rendered body back.
 -->
 
 ## Summary
 
 <!--
-One line: what changes for whom. Then one view that shows it: rejected→accepted
-code, a diff of a call, component or file tree, the capture for a screen,
-Mermaid for a flow. No walkthrough, inventory, history or test list.
+One line: what changes for whom. Then the page that shows it, as its dark and
+light screenshots in one <picture>; Mermaid for a flow that should stay diffable
+text. No walkthrough, inventory, history or test list.
 -->
 
 ## Evidence
