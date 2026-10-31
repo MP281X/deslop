@@ -24,7 +24,7 @@ import {
 import {FieldError} from '@deslop/components-web/ui/field'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 
-import {AccountAvatar, QrCode, SignedInGrid} from '#lib/components.tsx'
+import {AccountAvatar, QrCode, SignedInList} from '#lib/components.tsx'
 import {
 	accountAtom,
 	approveLink,
@@ -97,7 +97,7 @@ function Waiting(props: {account: Option.Option<Account>; id: string}) {
 						onNone: () => <CodeCard request={value.request} />,
 						onSome: () => (
 							<Suspense fallback={<Loading />}>
-								<SignedInGrid pending={Option.some(value.request)} />
+								<SignedInList pending={Option.some(value.request)} />
 							</Suspense>
 						)
 					}

@@ -12,7 +12,7 @@ import {FieldError} from '@deslop/components-web/ui/field'
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
 import {cn} from '@deslop/components-web/utils'
 
-import {SignedInGrid} from '#lib/components.tsx'
+import {SignedInList} from '#lib/components.tsx'
 import {codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/utils.ts'
 import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
@@ -100,7 +100,7 @@ function Enter(props: {
 	)
 }
 
-// The code stays in its field while the grid shows what it asks for.
+// The code stays in its field while the list shows what it asks for.
 function Page(props: {
 	answered: Option.Option<Answer>
 	onType: (code: string) => void
@@ -112,7 +112,7 @@ function Page(props: {
 		<>
 			<Enter answered={props.answered} onType={props.onType} state={props.state} typed={props.typed} />
 			<Suspense fallback={<Loading />}>
-				<SignedInGrid pending={props.pending} />
+				<SignedInList pending={props.pending} />
 			</Suspense>
 		</>
 	)

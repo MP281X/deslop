@@ -257,7 +257,12 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 							result: {
 								capabilities: {tools: {}},
 								protocolVersion: '2025-06-18',
-								serverInfo: {name: 'legacy-provider', version: '1'}
+								serverInfo: {
+									// A page shows only HTTPS and inline image icons.
+									icons: [{src: 'https://example.com/icon.png', theme: 'dark'}, {src: 'javascript:alert(1)'}],
+									name: 'legacy-provider',
+									version: '1'
+								}
 							}
 						},
 						{headers: {'mcp-session-id': session}}
@@ -992,6 +997,13 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 						upstream.url === 'https://stash.mp281x.xyz/mcp' &&
 						upstream.authorization === 'Bearer upstream-authorization_code-1'
 				)
+			)
+			assert.deepStrictEqual(
+				Array.map(
+					Array.filter(yield* listServers(gateway.web), server => server.id === added.id),
+					server => server.icons
+				),
+				[[{src: 'https://example.com/icon.png', theme: 'dark'}]]
 			)
 		})
 	)

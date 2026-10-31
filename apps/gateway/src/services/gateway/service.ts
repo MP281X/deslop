@@ -28,7 +28,7 @@ import {FetchHttpClient, HttpRouter, HttpServerRequest} from 'effect/http'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 
-import {GATEWAY_URL, connectionStatus, describe} from '#services/connections/lib/utils.ts'
+import {GATEWAY_URL, connectionStatus, describe, serverIcons} from '#services/connections/lib/utils.ts'
 import type {Connection} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
 import {compact} from '#services/gateway/lib/utils.ts'
@@ -241,7 +241,11 @@ export class Gateway extends Context.Service<
 							),
 							Effect.mapBoth({
 								onFailure: rejected(server),
-								onSuccess: tools => ({instructions: client.getInstructions(), tools})
+								onSuccess: tools => ({
+									icons: serverIcons(client.getServerVersion()),
+									instructions: client.getInstructions(),
+									tools
+								})
 							})
 						)
 					),
@@ -286,6 +290,7 @@ export class Gateway extends Context.Service<
 				yield* updateVisible(server, HashSet.fromIterable(MutableList.toArray(names)), registry)
 				yield* connections.report(server.id, server.generation, {
 					_tag: 'Discovered',
+					icons: found.icons,
 					...Option.match(Option.fromUndefinedOr(found.instructions), {
 						onNone: () => ({}),
 						onSome: instructions => ({instructions})
@@ -338,6 +343,12 @@ export const GatewayDiscovery = HttpRouter.middleware()(
 		return app =>
 			Effect.gen(function* () {
 				const request = yield* HttpServerRequest.HttpServerRequest
+				// A newly authorized server shows its tools and icon without waiting for an agent's tools/list.
+				if (request.method === 'GET' && String.startsWith('/oauth/callback')(request.url)) {
+					const response = yield* app
+					yield* Effect.forkDetach(gateway.refresh(registry))
+					return response
+				}
 				if (
 					request.method === 'POST' &&
 					request.url === '/mcp' &&

@@ -22,6 +22,7 @@ import * as ServerRuntime from '@deslop/runtime/server'
 
 import packageJson from '#package.json' with {type: 'json'}
 
+import icon from '#routes/icon.png'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import type {TelemetryError} from '#services/telemetry/schema.ts'
@@ -86,6 +87,7 @@ const observe = HttpMiddleware.make(app =>
 
 // Public MCP clients authorize through the shared auth app.
 const mcp = ServerRuntime.layerMcp({
+	icon,
 	instructions: "Scope is the debugger for the user's Effect apps: their traces, spans and logs.",
 	name: 'scope',
 	registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers)),

@@ -38,7 +38,14 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import {development} from '@deslop/runtime/auth/utils'
 import {layerKeyValueStore} from '@deslop/runtime/server'
 
-import {CALLBACK, GATEWAY_URL, connectionInfo, describe, serverName} from '#services/connections/lib/utils.ts'
+import {
+	CALLBACK,
+	GATEWAY_URL,
+	connectionInfo,
+	describe,
+	serverIcons,
+	serverName
+} from '#services/connections/lib/utils.ts'
 import type {
 	Callback,
 	ConnectionInfo,
@@ -372,6 +379,7 @@ export class Connections extends Context.Service<
 						onNone: () => ({}),
 						onSome: instructions => ({instructions})
 					}),
+					icons: serverIcons(anonymous.getServerVersion()),
 					link: {_tag: 'Connected'},
 					mode: 'public',
 					name: anonymous.getServerVersion()?.name ?? initial.name,
@@ -564,7 +572,7 @@ export class Connections extends Context.Service<
 						Match.valueTags(outcome, {
 							Discovered: discovered => ({
 								...Struct.omit(found, ['error', 'instructions']),
-								...Struct.pick(discovered, ['instructions']),
+								...Struct.pick(discovered, ['icons', 'instructions']),
 								tools: discovered.tools
 							}),
 							Failed: failure => ({...found, error: failure.error})

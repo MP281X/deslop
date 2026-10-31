@@ -7,13 +7,15 @@ import {X} from 'lucide-react'
 import {useState} from 'react'
 import {toQR} from 'toqr'
 
+import {ItemList} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
+import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
 import {Empty, EmptyDescription, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {FieldDescription} from '@deslop/components-web/ui/field'
-import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@deslop/components-web/ui/table'
+import {Item, ItemContent, ItemTitle} from '@deslop/components-web/ui/item'
 
 import {
 	ageLabel,
@@ -71,89 +73,78 @@ function machines(count: number) {
 	return `${count} machines`
 }
 
-function Absent(props: {label: string}) {
-	return (
-		<TableCell className="text-muted-foreground text-center" aria-label={props.label}>
-			·
-		</TableCell>
-	)
-}
-
-// A first tap arms the cell, a second signs that client out of that app; leaving the cell disarms it.
-function Cell(props: {app: string; client: string; now: number; signIns: SignedInApp[]}) {
+// A first tap arms the chip, a second signs that client out of that app; leaving the chip disarms it.
+function AppChip(props: {app: string; client: string; now: number; signIns: SignedInApp[]}) {
 	const [disconnection, disconnect] = useAtom(disconnectAtom)
 	const [armed, setArmed] = useState(false)
-	if (Array.isArrayEmpty(props.signIns)) return <Absent label={`${props.client} is not signed in to ${props.app}`} />
 	const minutes = minutesSince(newest(props.signIns), props.now)
 	return (
-		<TableCell>
-			<Button
-				variant={Boolean.match(armed, {onFalse: () => 'ghost' as const, onTrue: () => 'destructive' as const})}
-				className="w-full font-mono"
-				aria-label={Boolean.match(armed, {
-					onFalse: () =>
-						`${props.client} in ${props.app} on ${machines(props.signIns.length)}, active ${Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})}; tap twice to sign out`,
-					onTrue: () => `Sign ${props.client} out of ${props.app}`
-				})}
-				disabled={AsyncResult.isWaiting(disconnection)}
-				onBlur={() => setArmed(false)}
-				onClick={() => {
-					if (armed) disconnect(Array.map(props.signIns, signIn => signIn.family))
-					setArmed(!armed)
-				}}
-			>
-				{Boolean.match(armed, {
-					// One dot per machine, lit while it was active in the last hour.
-					onFalse: () => (
-						<>
-							<span className="flex gap-0.5">
-								{Array.map(props.signIns, signIn => (
-									<StatusDot
-										key={signIn.family}
-										status={Boolean.match(minutesSince(signIn.lastActive, props.now) < 60, {
-											onFalse: () => 'quiet' as const,
-											onTrue: () => 'live' as const
-										})}
-									/>
-								))}
-							</span>
-							{ageLabel(minutes)}
-						</>
-					),
-					onTrue: () => <X />
-				})}
-			</Button>
-		</TableCell>
+		<Button
+			size="sm"
+			variant={Boolean.match(armed, {onFalse: () => 'outline' as const, onTrue: () => 'destructive' as const})}
+			aria-label={Boolean.match(armed, {
+				onFalse: () =>
+					`${props.client} in ${props.app} on ${machines(props.signIns.length)}, active ${Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})}; tap twice to sign out`,
+				onTrue: () => `Sign ${props.client} out of ${props.app}`
+			})}
+			disabled={AsyncResult.isWaiting(disconnection)}
+			onBlur={() => setArmed(false)}
+			onClick={() => {
+				if (armed) disconnect(Array.map(props.signIns, signIn => signIn.family))
+				setArmed(!armed)
+			}}
+		>
+			{Boolean.match(armed, {
+				// One dot per machine, lit while it was active in the last hour.
+				onFalse: () => (
+					<>
+						<span className="flex gap-0.5">
+							{Array.map(props.signIns, signIn => (
+								<StatusDot
+									key={signIn.family}
+									status={Boolean.match(minutesSince(signIn.lastActive, props.now) < 60, {
+										onFalse: () => 'quiet' as const,
+										onTrue: () => 'live' as const
+									})}
+								/>
+							))}
+						</span>
+						{props.app}
+						<span className="text-muted-foreground font-mono">{ageLabel(minutes)}</span>
+					</>
+				),
+				onTrue: () => (
+					<>
+						<X />
+						Sign out of {props.app}
+					</>
+				)
+			})}
+		</Button>
 	)
 }
 
-// The waiting sign-in as the grid's top row: a hollow dot marked new for each app it asks for.
-function PendingRow(props: {columns: string[]; request: PendingAuthorization}) {
-	const asked = appNames(props.request.resources)
-	const client = signInLabel(props.request.clientName, props.request.device)
+// The waiting sign-in on top, each app it asks for marked new.
+function PendingItem(props: {request: PendingAuthorization}) {
 	return (
-		<TableRow>
-			<TableHead scope="row" className="text-primary wrap-anywhere whitespace-normal">
-				{client}
-			</TableHead>
-			{Array.map(props.columns, column =>
-				Boolean.match(Array.contains(asked, column), {
-					onFalse: () => <Absent key={column} label={`${client} does not ask for ${column}`} />,
-					onTrue: () => (
-						<TableCell key={column} aria-label={`${client} asks for ${column}`}>
-							<span className="text-primary flex items-center justify-center gap-1.5 font-mono">
-								<StatusDot status="off" className="border-primary" />
-								new
-							</span>
-						</TableCell>
-					)
-				})
-			)}
-		</TableRow>
+		<Item role="listitem" size="sm">
+			<ItemContent>
+				<ItemTitle className="text-primary">{signInLabel(props.request.clientName, props.request.device)}</ItemTitle>
+				<div className="flex flex-wrap gap-1">
+					{Array.map(appNames(props.request.resources), app => (
+						<Badge key={app} variant="outline" className="text-primary">
+							<StatusDot status="off" className="border-primary" />
+							{app}
+							<span className="font-mono">new</span>
+						</Badge>
+					))}
+				</div>
+			</ItemContent>
+		</Item>
 	)
 }
 
-// A failed answer stays under the grid to retry. Where the sign-in started tells a stranger's code from one's own.
+// A failed answer stays under the list to retry. Where the sign-in started tells a stranger's code from one's own.
 function Answer(props: {request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
 	return (
@@ -193,18 +184,13 @@ function Answer(props: {request: PendingAuthorization}) {
 	)
 }
 
-// Clients down, apps across, last active first; a waiting sign-in sits on top, answered under the grid.
-export function SignedInGrid(props: {pending: Option.Option<PendingAuthorization>}) {
+// One row per client, last active first, with a chip per app it holds; a waiting sign-in sits on top, answered below.
+export function SignedInList(props: {pending: Option.Option<PendingAuthorization>}) {
 	const apps = useAtomSuspense(appsAtom).value
 	const now = useAtomSuspense(minuteAtom).value
 	const [disconnection] = useAtom(disconnectAtom)
 	// A browser asks for no app, only the session, so it adds no row.
 	const pendingApp = Option.filter(props.pending, request => request.kind === 'App')
-	const asked = Option.match(pendingApp, {onNone: () => [], onSome: request => appNames(request.resources)})
-	const columns = Array.sort(
-		Array.dedupe([...Array.flatMap(apps, app => appNames(app.resources)), ...asked]),
-		String.Order
-	)
 	const rows = pipe(
 		Array.groupBy(apps, app => signInLabel(app.client, app.device)),
 		Record.toEntries,
@@ -221,46 +207,35 @@ export function SignedInGrid(props: {pending: Option.Option<PendingAuthorization
 			</h2>
 			{Boolean.match(Array.isArrayEmpty(rows) && Option.isNone(pendingApp), {
 				onFalse: () => (
-					<Table className="table-fixed">
-						<TableHeader>
-							<TableRow>
-								<TableHead className="w-32">
-									<span className="sr-only">Client</span>
-								</TableHead>
-								{Array.map(columns, column => (
-									<TableHead
-										key={column}
-										scope="col"
-										className="text-muted-foreground text-center font-mono font-normal"
-									>
-										{column}
-									</TableHead>
-								))}
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{Option.match(pendingApp, {
-								onNone: () => null,
-								onSome: request => <PendingRow columns={columns} request={request} />
-							})}
-							{Array.map(rows, row => (
-								<TableRow key={row[0]}>
-									<TableHead scope="row" className="wrap-anywhere whitespace-normal">
-										{row[0]}
-									</TableHead>
-									{Array.map(columns, column => (
-										<Cell
-											key={column}
-											app={column}
-											client={row[0]}
-											now={now}
-											signIns={Array.filter(row[1], app => Array.contains(appNames(app.resources), column))}
-										/>
-									))}
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
+					<ItemList label="Signed-in clients">
+						{[
+							...Option.match(pendingApp, {
+								onNone: () => [],
+								onSome: request => [<PendingItem key="pending" request={request} />]
+							}),
+							...Array.map(rows, row => (
+								<Item key={row[0]} role="listitem" size="sm">
+									<ItemContent>
+										<ItemTitle>{row[0]}</ItemTitle>
+										<div className="flex flex-wrap gap-1">
+											{Array.map(
+												Array.sort(Array.dedupe(Array.flatMap(row[1], app => appNames(app.resources))), String.Order),
+												app => (
+													<AppChip
+														key={app}
+														app={app}
+														client={row[0]}
+														now={now}
+														signIns={Array.filter(row[1], signIn => Array.contains(appNames(signIn.resources), app))}
+													/>
+												)
+											)}
+										</div>
+									</ItemContent>
+								</Item>
+							))
+						]}
+					</ItemList>
 				),
 				onTrue: () => (
 					<Empty>

@@ -8,6 +8,8 @@ export const pack = {
 	clean: false,
 	entry: ['src/main.server.ts'],
 	format: 'esm',
+	// An app icon imported by server code is its MCP server icon, sent inline in the server info.
+	loader: {'.png': 'dataurl'},
 	outDir: 'dist',
 	outputOptions: {entryFileNames: 'server.js'},
 	platform: 'node',

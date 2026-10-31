@@ -6,6 +6,7 @@
 	"imports": {
 		"#lib/*": "./src/lib/*",
 		"#package.*": "./package.*",
+		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
 		"#tools/*": "./src/tools/*"
 	},

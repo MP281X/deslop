@@ -68,12 +68,20 @@ export const Link = Schema.TaggedUnion({
 	Disconnected: {}
 })
 
+// An icon the server names for itself in its MCP server info, for a light or dark background, or either.
+export type ServerIcon = typeof ServerIcon.Type
+export const ServerIcon = Schema.Struct({
+	src: Schema.String,
+	theme: Schema.optionalKey(Schema.Literals(['light', 'dark']))
+})
+
 export type Connection = typeof Connection.Type
 export const Connection = Schema.Struct({
 	// Why the last connection or discovery failed, until one succeeds.
 	error: Schema.optionalKey(Schema.String),
 	generation: Schema.NonEmptyString,
 	hidden: Schema.Array(Schema.String),
+	icons: Schema.optionalKey(Schema.Array(ServerIcon)),
 	id: ServerId,
 	// The server's own instructions from its last discovery: the first sentence is its line in the gateway's instructions.
 	instructions: Schema.optionalKey(Schema.String),
@@ -92,6 +100,7 @@ export type ConnectionInfo = typeof ConnectionInfo.Type
 export const ConnectionInfo = Schema.Struct({
 	error: Schema.optionalKey(Schema.String),
 	hidden: Schema.Array(Schema.String),
+	icons: Schema.Array(ServerIcon),
 	id: ServerId,
 	name: Schema.NonEmptyString,
 	status: Schema.Literals(['Connected', 'Not connected', 'Expired']),
@@ -102,7 +111,11 @@ export const ConnectionInfo = Schema.Struct({
 // What a discovery found: its tools and instructions clear an earlier failure; a failure keeps the last ones.
 export type Discovery = typeof Discovery.Type
 export const Discovery = Schema.TaggedUnion({
-	Discovered: {instructions: Schema.optionalKey(Schema.String), tools: Schema.Array(Schema.String)},
+	Discovered: {
+		icons: Schema.Array(ServerIcon),
+		instructions: Schema.optionalKey(Schema.String),
+		tools: Schema.Array(Schema.String)
+	},
 	Failed: {error: Schema.String}
 })
 
