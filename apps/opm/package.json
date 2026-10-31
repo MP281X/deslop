@@ -1,13 +1,11 @@
 {
 	"name": "@deslop/opm",
-	"version": "0.1.0",
 	"type": "module",
 	"sideEffects": false,
 	"main": "src/main.client.tsx",
 	"imports": {
 		"#lib/*": "./src/lib/*",
 		"#modules/*": "./modules/*",
-		"#package.*": "./package.*",
 		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
 		"#services/*": "./src/services/*"

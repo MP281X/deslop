@@ -8,7 +8,6 @@
 		"#lib/*": "./src/lib/*",
 		"#package.*": "./package.*",
 		"#rpcs/*": "./src/rpcs/*",
-		"#routes/*": "./src/routes/*",
 		"#services/*": "./src/services/*",
 		"#tools/*": "./src/tools/*"
 	},

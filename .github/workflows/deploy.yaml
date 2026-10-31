@@ -1,5 +1,6 @@
-name: Deploy
+name: Release
 
+# The file keeps its name: npm trusts `deploy.yaml` to publish @deslop/coding-standards.
 on:
   push:
     branches: [main]
@@ -12,160 +13,60 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  # Installed once per job with npm, because pnpm applies the workspace's strict peer checks to the EAS CLI's own dependencies.
-  EAS: eas
-
-# Check and test run again on the merged commit, side by side: a branch behind main can merge without conflicts and still break.
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: voidzero-dev/setup-vp@v1
-        with: {node-version: '26', cache: true, run-install: true}
-      - run: vp check && vp run check
+  verify:
+    name: Verify
+    uses: ./.github/workflows/verify.yaml
 
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: voidzero-dev/setup-vp@v1
-        with: {node-version: '26', cache: true, run-install: true}
-      - run: vp run test
-
-  docker:
-    needs: [check, test]
-    runs-on: ubuntu-latest
+  publish:
+    name: Images and package
+    needs: verify
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       packages: write
       id-token: write
     steps:
-      - uses: actions/checkout@v5
-      - uses: voidzero-dev/setup-vp@v1
-        with: {node-version: '26', cache: true, run-install: true}
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
 
-      - name: Release
+      - name: Build
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_NUMBER: ${{ github.run_number }}
           VITE_OTEL_URL: https://otel.mp281x.xyz
-        # pnpm applies publishConfig while packing; npm uploads the README metadata that pnpm omits.
         run: |
-          for package in tools/coding-standards apps/scope apps/stash; do
-            vp -C $package pm version "0.1.$RELEASE_NUMBER" -- --no-git-tag-version --no-git-checks
-          done
+          vp -C tools/coding-standards pm version "0.1.${{ github.run_number }}" -- --no-git-tag-version --no-git-checks
           vp run build
 
-          # Each image reuses the unchanged layers of the last one, such as Stash's ffmpeg and ONNX Runtime.
-          echo "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Each image reuses the unchanged layers of the last one, such as Stash's ffmpeg and ONNX Runtime.
+      - name: Images
+        run: |
           for app in auth gateway portfolio scope stash opm trips signal; do
             image="ghcr.io/${GITHUB_REPOSITORY,,}-$app"
             docker build "apps/$app" --cache-from "$image:latest" --build-arg BUILDKIT_INLINE_CACHE=1 --tag "$image:latest" --tag "$image:$GITHUB_SHA"
             docker push --all-tags "$image"
           done
 
-          (cd apps/scope && npm pkg delete devDependencies)
-          for package in tools/coding-standards apps/scope; do
-            vp -C $package pm pack --pack-destination "$RUNNER_TEMP/$package"
-            npm publish "$RUNNER_TEMP/$package"/*.tgz
-          done
-
-  # JavaScript ships as an EAS Update from Linux; only an app whose native fingerprint has no build yet goes to the Mac.
-  plan:
-    needs: [check, test]
-    runs-on: ubuntu-latest
-    outputs:
-      native: ${{ steps.release.outputs.native }}
-    env:
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      APP_VARIANT: production
-      RELEASE_NUMBER: ${{ github.run_number }}
-    steps:
-      - uses: actions/checkout@v5
-        with: {fetch-depth: 0}
-      - uses: voidzero-dev/setup-vp@v1
-        with: {node-version: '26', cache: true, run-install: true}
-      - run: npm install --global eas-cli@latest
-
-      # The apps release side by side; each prints its log once all are done.
-      - name: Release
-        id: release
+      # pnpm applies publishConfig while packing; npm uploads the README metadata that pnpm omits.
+      - name: Package
         run: |
-          set -euo pipefail
-          release() {
-            cd "$GITHUB_WORKSPACE/apps/$1"
-            group=$($EAS update:list --branch production --limit 1 --json --non-interactive | jq -r '.currentPage[0].group // empty')
-            released=$([[ -n $group ]] && $EAS update:view "$group" --json | jq -r '.[0].gitCommitHash' || true)
-            if [[ -n $released ]] && git cat-file -e "$released^{commit}" 2>/dev/null && git diff --quiet "$released" -- . ../../packages ../../pnpm-lock.yaml; then return; fi
-            hash=$($EAS fingerprint:generate --platform ios --build-profile production --json --non-interactive | jq -r .hash)
-            # An update exists for a fingerprint only once its build has shipped, so a failed build is tried again next release.
-            if [[ $($EAS update:list --branch production --runtime-version "$hash" --limit 1 --json --non-interactive | jq '.currentPage | length > 0') != true ]]; then
-              touch "$RUNNER_TEMP/native-$1"
-              return
-            fi
-            $EAS update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"
-          }
-          apps=(stash opm trips)
-          pids=()
-          for app in "${apps[@]}"; do
-            release "$app" > "$RUNNER_TEMP/$app.log" 2>&1 &
-            pids+=($!)
-          done
-          failed=0
-          for index in "${!apps[@]}"; do
-            wait "${pids[$index]}" || failed=1
-            echo "::group::${apps[$index]}"
-            cat "$RUNNER_TEMP/${apps[$index]}.log"
-            echo "::endgroup::"
-          done
-          native=()
-          for app in "${apps[@]}"; do [[ -e $RUNNER_TEMP/native-$app ]] && native+=("$app"); done
-          echo "native=$(jq -cn '$ARGS.positional' --args "${native[@]}")" >> "$GITHUB_OUTPUT"
-          exit $failed
+          vp -C tools/coding-standards pm pack --pack-destination "$RUNNER_TEMP/package"
+          npm publish "$RUNNER_TEMP"/package/*.tgz
 
-  ios:
-    needs: plan
-    if: needs.plan.outputs.native != '[]'
-    # One app's failed build leaves the others to ship.
+  app:
+    name: App
+    needs: verify
+    # One app's failed release leaves the others to ship.
     strategy:
       fail-fast: false
       matrix:
-        app: ${{ fromJSON(needs.plan.outputs.native) }}
-    concurrency: ios-${{ matrix.app }}
-    runs-on: xcode-27
-    timeout-minutes: 60
-    permissions:
-      contents: read
-    defaults:
-      run:
-        working-directory: apps/${{ matrix.app }}
-    env:
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      APP_VARIANT: production
-      RELEASE_NUMBER: ${{ github.run_number }}
-      EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: 1
-    steps:
-      - uses: actions/checkout@v5
-      - uses: voidzero-dev/setup-vp@v1
-        with: {node-version: '26', cache: true, run-install: true}
-      - run: npm install --global eas-cli@latest
-      # CocoaPods and the Hermes tarball download with curl to files: a reset or a stalled transfer retries instead of failing the release or hanging for minutes. After setup-vp, whose installer streams into bash, where a retry would append a second script.
-      - run: printf '%s\n' 'retry = 5' 'retry-all-errors' 'connect-timeout = 15' 'speed-limit = 10000' 'speed-time = 30' > ~/.curlrc
-      # One cache for every app: their pods come from the same lockfile, and the Hermes tarball's mirror often stalls.
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/Library/Caches/CocoaPods
-            ~/Library/Caches/ReactNative
-          key: pods-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: pods-
-
-      - name: Release
-        run: |
-          sudo xcode-select --switch /Applications/Xcode_27.1.app
-          $EAS build --local --profile production --platform ios --non-interactive --output "$RUNNER_TEMP/app.ipa"
-          # EAS hands the build to Apple on its own servers; waiting for that kept the Mac idle for about 14 minutes.
-          $EAS submit --profile production --platform ios --non-interactive --no-wait --path "$RUNNER_TEMP/app.ipa"
-          $EAS update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"
+        app: [stash, opm, trips]
+    uses: ./.github/workflows/release-app.yaml
+    with:
+      app: ${{ matrix.app }}
+    secrets: inherit

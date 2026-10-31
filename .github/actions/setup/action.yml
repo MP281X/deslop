@@ -1,0 +1,36 @@
+name: Set up
+description: Node, Vite+ and the workspace's dependencies; on request the EAS CLI and an iOS build's downloads.
+
+inputs:
+  eas:
+    description: Install the EAS CLI as `eas`.
+    default: 'false'
+  ios:
+    description: Prepare a local iOS build.
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - uses: voidzero-dev/setup-vp@v1
+      with: {node-version: '26', cache: true, run-install: true}
+
+    # With npm, because pnpm applies the workspace's strict peer checks to the EAS CLI's own dependencies.
+    - if: inputs.eas == 'true'
+      shell: bash
+      run: npm install --global eas-cli@latest
+
+    # CocoaPods and the Hermes tarball download with curl to files: a reset or a stalled transfer retries instead of failing the build or hanging for minutes. After setup-vp, whose installer streams into bash, where a retry would append a second script.
+    - if: inputs.ios == 'true'
+      shell: bash
+      run: printf '%s\n' 'retry = 5' 'retry-all-errors' 'connect-timeout = 15' 'speed-limit = 10000' 'speed-time = 30' > ~/.curlrc
+
+    # One cache for every app: their pods come from the same lockfile, and the Hermes tarball's mirror often stalls.
+    - if: inputs.ios == 'true'
+      uses: actions/cache@v6
+      with:
+        path: |
+          ~/Library/Caches/CocoaPods
+          ~/Library/Caches/ReactNative
+        key: pods-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: pods-

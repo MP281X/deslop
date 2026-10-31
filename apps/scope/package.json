@@ -1,27 +1,12 @@
 {
 	"name": "@deslop/scope",
 	"version": "0.1.0",
-	"description": "An Effect development debugger: an OTLP/HTTP JSON receiver whose traces and logs agents query over MCP.",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/MP281X/deslop",
-		"directory": "apps/scope"
-	},
-	"bin": {
-		"scope": "./dist/server.js"
-	},
-	"files": [
-		"dist"
-	],
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
 		"#package.*": "./package.*",
 		"#services/*": "./src/services/*",
 		"#tools/*": "./src/tools/*"
-	},
-	"publishConfig": {
-		"access": "public"
 	},
 	"scripts": {
 		"build": "rm -rf dist && vp pack",
@@ -32,8 +17,5 @@
 		"@deslop/runtime": "workspace:*",
 		"@effect/platform-node": "latest",
 		"effect": "latest"
-	},
-	"engines": {
-		"node": ">=26"
 	}
 }

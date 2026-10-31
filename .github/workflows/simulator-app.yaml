@@ -1,0 +1,54 @@
+name: Simulator app
+
+# One mobile app's iOS Simulator build, once per native fingerprint; agents replace its JavaScript bundle with their branch's.
+# Linux computes the same fingerprint as the Mac, so a Mac starts only for a fingerprint without an artifact.
+on:
+  workflow_call:
+    inputs:
+      app: {type: string, required: true}
+
+env:
+  APP_VARIANT: development
+  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+jobs:
+  fingerprint:
+    name: Fingerprint
+    runs-on: ubuntu-26.04
+    outputs:
+      artifact: ${{ steps.fingerprint.outputs.artifact }}
+      built: ${{ steps.fingerprint.outputs.built }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with: {eas: 'true'}
+      - id: fingerprint
+        working-directory: apps/${{ inputs.app }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          artifact="${{ inputs.app }}-simulator-$(eas fingerprint:generate --platform ios --build-profile simulator --json --non-interactive | jq -r .hash)"
+          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
+          echo "built=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not)] | length > 0')" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build
+    needs: fingerprint
+    if: needs.fingerprint.outputs.built == 'false'
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: 1
+      # The Simulator host is Apple silicon; the default universal binary compiles every file twice.
+      GYM_XCARGS: ARCHS=arm64
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with: {eas: 'true', ios: 'true'}
+      - working-directory: apps/${{ inputs.app }}
+        run: eas build --local --profile simulator --platform ios --non-interactive --output "$RUNNER_TEMP/simulator.tar.gz"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ needs.fingerprint.outputs.artifact }}
+          path: ${{ runner.temp }}/simulator.tar.gz
+          retention-days: 90

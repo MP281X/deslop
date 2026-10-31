@@ -1,0 +1,67 @@
+name: Release app
+
+# One mobile app: its JavaScript ships as an EAS Update from Linux; a native fingerprint without a build yet goes to the Mac.
+on:
+  workflow_call:
+    inputs:
+      app: {type: string, required: true}
+
+env:
+  APP_VARIANT: production
+  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+  RELEASE_NUMBER: ${{ github.run_number }}
+
+jobs:
+  update:
+    name: Update
+    runs-on: ubuntu-26.04
+    outputs:
+      native: ${{ steps.fingerprint.outputs.native }}
+    defaults:
+      run:
+        working-directory: apps/${{ inputs.app }}
+    steps:
+      - uses: actions/checkout@v7
+        with: {fetch-depth: 0}
+      - uses: ./.github/actions/setup
+        with: {eas: 'true'}
+
+      # Nothing ships when neither the app nor what it builds from changed since its last update.
+      - id: changes
+        run: |
+          group=$(eas update:list --branch production --limit 1 --json --non-interactive | jq -r '.currentPage[0].group // empty')
+          commit=$([[ -n $group ]] && eas update:view "$group" --json | jq -r '.[0].gitCommitHash' || true)
+          changed=true
+          if [[ -n $commit ]] && git cat-file -e "$commit^{commit}" && git diff --quiet "$commit" -- . ../../packages ../../pnpm-lock.yaml; then changed=false; fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      # An update exists for a fingerprint only once its build has shipped, so a failed build is tried again next release.
+      - id: fingerprint
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          hash=$(eas fingerprint:generate --platform ios --build-profile production --json --non-interactive | jq -r .hash)
+          echo "native=$(eas update:list --branch production --runtime-version "$hash" --limit 1 --json --non-interactive | jq '.currentPage | length == 0')" >> "$GITHUB_OUTPUT"
+
+      - if: steps.fingerprint.outputs.native == 'false'
+        run: eas update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"
+
+  app-store:
+    name: App Store
+    needs: update
+    if: needs.update.outputs.native == 'true'
+    concurrency: ios-${{ inputs.app }}
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: 1
+    defaults:
+      run:
+        working-directory: apps/${{ inputs.app }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with: {eas: 'true', ios: 'true'}
+      - run: eas build --local --profile production --platform ios --non-interactive --output "$RUNNER_TEMP/app.ipa"
+      # EAS hands the build to Apple on its own servers; waiting for that kept the Mac idle for about 14 minutes.
+      - run: eas submit --profile production --platform ios --non-interactive --no-wait --path "$RUNNER_TEMP/app.ipa"
+      - run: eas update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"

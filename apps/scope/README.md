@@ -1,20 +1,12 @@
-# @deslop/scope
+# Scope
 
-An Effect development debugger: a private OTLP/HTTP JSON receiver on port 4318 whose traces and logs agents query through an OAuth-protected MCP endpoint on port 5000.
-
-```bash
-npx @deslop/scope@latest                                    # http://127.0.0.1:4318, data in ~/.deslop/scope
-claude mcp add --transport http scope https://scope.mp281x.xyz/mcp
-claude mcp login scope --no-browser
-codex mcp add scope --url https://scope.mp281x.xyz/mcp
-codex mcp login --no-browser scope
-```
+An Effect development debugger: a private OTLP/HTTP JSON receiver on port 4318 whose traces and logs agents query through an OAuth-protected MCP endpoint on port 5000. It runs on dev from `tools/compose.yaml` and keeps its data in `~/.deslop/scope`; agents reach its tools through the MCP gateway at https://gateway.mp281x.xyz/mcp.
 
 Trusted local exporters use `http://127.0.0.1:4318/v1/traces` and `/v1/logs` with `content-type: application/json`; never publish port 4318 to the internet. The public port serves MCP and authenticated ingestion. `HOST` changes the bind address; `PORT` changes the public port. Authorization uses Deslop Auth; no pasted API keys.
 
 ## Connection diagnostics
 
-Stored OAuth credentials do not prove the MCP connection works. Check the client's MCP status and tool discovery: Scope exposes the tools below. If startup reports `OAuth authorization required`, sign in again with that client's login command above. An auth-store reset invalidates previously saved credentials.
+Stored OAuth credentials do not prove the MCP connection works. Check the client's MCP status and tool discovery: Scope exposes the tools below. If startup reports `OAuth authorization required`, sign the client in to the gateway again. An auth-store reset invalidates previously saved credentials.
 
 Open the printed authorization URL in a browser on the same worker as the client. Leave it waiting: it shows a QR code and a code, which you scan with a phone where you are signed in or enter at https://auth.mp281x.xyz. The worker's browser completes its localhost callback. Do not move the callback to the phone.
 

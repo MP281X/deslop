@@ -1,12 +1,9 @@
 {
 	"name": "@deslop/signal",
-	"version": "0.1.0",
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
 		"#lib/*": "./src/lib/*",
-		"#package.*": "./package.*",
-		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
 		"#services/*": "./src/services/*"
 	},

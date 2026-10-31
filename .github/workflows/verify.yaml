@@ -1,0 +1,33 @@
+name: Verify
+
+# Every branch push, and Release on the merged commit: a branch behind main can merge without conflicts and still break.
+on:
+  push:
+    branches-ignore: [main]
+  workflow_call:
+
+# A newer push to the same branch replaces the older run.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# Check and test run side by side; neither reads the other's results.
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: vp check && vp run check
+
+  test:
+    name: Test
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: vp run test
