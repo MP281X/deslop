@@ -32,6 +32,6 @@ Delegate bounded, independent work when it saves time or adds judgment. Give the
 | Exploration, lookup, inventory, evidence collection  | `gpt-6-luna`  | `claude-haiku-5-5` | `medium` |
 | Reasoning, architecture, difficult debugging, review | `gpt-6.1-sol` | `claude-opus-5-5`  | `high`   |
 
-**Council.** For a hard-to-reverse decision whose evidence is split, ask `gpt-6-luna`, `claude-haiku-5-5`, `gpt-6.1-sol` and `claude-opus-5-5` at their table efforts the same concise question, with the options, raw evidence and decision criteria but no preferred answer. Each returns tradeoffs, objections and a recommendation; weigh them and choose. Otherwise decide, or ask one reviewer. Product, taste and approvals stay the user's.
+**Council.** For a hard-to-reverse decision whose evidence is split, ask `gpt-6-luna`, `claude-haiku-5-5`, `gpt-6.1-sol` and `claude-opus-5-5` at their table efforts the same concise question, with the options, raw evidence and decision criteria but neither your preferred answer nor the other members' conclusions. Each returns tradeoffs, objections and a recommendation; weigh them and choose. Otherwise decide, or ask one reviewer. Product, taste and approvals stay the user's.
 
 Work in `~/deslop` moves to a task worktree with `t3_worktree_handoff` before any edit: that checkout supplies every thread's installed configuration.

@@ -24,7 +24,7 @@ Setup, upkeep and rebuild of the machines.
 
 ## Agent configuration
 
-Every worker runs the same configuration from the deslop repository. The user's curated prompts replace the provider defaults through Claude's `agent: pair` and Codex's `model_instructions_file`. Borrow useful official prompt mechanics; keep one policy per behavior. `.codex/global-config.toml` avoids loading the global config a second time as project config. Agent-only variables go in `.claude/settings.json` `env` and `.codex/global-config.toml` `shell_environment_policy.set`, never in `~/.bashrc`.
+Every worker runs the same configuration from the deslop repository. The user's curated prompts replace the provider defaults through Claude's `agent: pair` and Codex's `model_instructions_file`. They add only what the harness, T3 and tool descriptions don't say, one policy per behavior. `.codex/global-config.toml` avoids loading the global config a second time as project config. Agent-only variables go in `.claude/settings.json` `env` and `.codex/global-config.toml` `shell_environment_policy.set`, never in `~/.bashrc`.
 
 Each installed path is a symlink into the main checkout `~/deslop`, so a worker runs the configuration on `origin/main`: Claude's `SessionStart` hook fast-forwards `~/deslop` in the background (`git pull --ff-only`), so the session after a merge loads it. Never edit an installed path, and never switch `~/deslop` off `main`: both change every thread's configuration. Running threads keep the configuration they started with.
 
