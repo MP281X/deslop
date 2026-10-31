@@ -64,4 +64,11 @@ The Simulator is for iteration, TestFlight for distribution.
    printf '\r' > /tmp/<task>/in   # accepts the prefilled Apple ID
    ```
 
-5. **Release and follow through.** Later main releases ship compatible EAS Updates or build a changed native fingerprint on CI's Mac and submit it. Inspect `submit:view <submission-id> --platform ios --json`, then `submit:status --platform ios --profile production --json --non-interactive`, with the production environment above, through to the intended tester group's access. Distinguish queued, uploaded, Apple processing and available. Return the submission URL and `https://appstoreconnect.apple.com/apps/<ascAppId>/testflight/ios`. CI's `--no-wait` proves scheduling only; inaccessible Apple status is unverified availability. Public TestFlight invitations and App Store release are separate outward actions, not implied by an upload. See the [EAS CLI reference](https://docs.expo.dev/eas/cli/#eas-submitstatus).
+5. **Release and follow through.** Later main releases ship compatible EAS Updates or build a changed native fingerprint on CI's Mac and submit it; the App Store job's log prints the submission URL, whose last segment is its ID. Inspect `submit:view <submission-id> --json` (an ID takes no platform flag), then `submit:status --platform ios --profile production --json --non-interactive` until a build numbered with the release run appears, with the production environment above, through to the intended tester group's access:
+
+   ```bash
+   gh api --allow-escape-sequences repos/MP281X/deslop/actions/jobs/<job-id>/logs | rg -o 'https://expo\.dev/\S+/submissions/[0-9a-f-]+'
+   APP_VARIANT=production npx --yes eas-cli@latest submit:view <submission-id> --json | jq '{status, error}'
+   ```
+
+   Distinguish queued, uploaded, Apple processing and available. Return the submission URL and `https://appstoreconnect.apple.com/apps/<ascAppId>/testflight/ios`. CI's `--no-wait` proves scheduling only; inaccessible Apple status is unverified availability. Public TestFlight invitations and App Store release are separate outward actions, not implied by an upload. See the [EAS CLI reference](https://docs.expo.dev/eas/cli/#eas-submitstatus).

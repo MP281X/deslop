@@ -4,7 +4,7 @@ import {HttpClientError} from 'effect/http'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
 
-import type {Connection, ConnectionInfo} from '#services/connections/schema.ts'
+import type {Connection, ConnectionInfo, ServerIcon} from '#services/connections/schema.ts'
 
 export const GATEWAY_URL = 'https://gateway.mp281x.xyz'
 // Where providers answer the gateway's sign-ins: `/<id>` for a client registered per server, bare for the metadata document.
@@ -27,8 +27,24 @@ export function connectionInfo(connection: Connection, now: number) {
 	return {
 		...Option.match(Option.fromUndefinedOr(connection.error), {onNone: () => ({}), onSome: error => ({error})}),
 		...Struct.pick(connection, ['hidden', 'id', 'name', 'tools', 'url']),
+		icons: connection.icons ?? [],
 		status: connectionStatus(connection, now)
 	} satisfies ConnectionInfo
+}
+
+// The icons a server names in its MCP server info, kept to a few a page can show, each small enough to stream to it.
+export function serverIcons(implementation?: {icons?: {src: string; theme?: 'dark' | 'light'}[]}) {
+	return pipe(
+		implementation?.icons ?? [],
+		Array.filter(
+			icon => Option.isSome(String.match(/^(?:https:|data:image\/)/u)(icon.src)) && icon.src.length <= 32_768
+		),
+		Array.take(2),
+		Array.map(icon => ({
+			src: icon.src,
+			...Option.match(Option.fromUndefinedOr(icon.theme), {onNone: () => ({}), onSome: theme => ({theme})})
+		}))
+	) satisfies ServerIcon[]
 }
 
 // A server's line in the gateway's instructions: the first sentence of its own, short.

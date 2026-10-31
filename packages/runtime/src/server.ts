@@ -115,6 +115,8 @@ export function layer(applicationName: string) {
 
 // Codex speaks MCP's stateless 2026-07-28 revision; Claude still opens a session, which it ends with DELETE.
 export function layerMcp<RA, RE, RR>(options: {
+	// The app's tiled icon.png, bundled as a data URL, so clients such as the gateway show its own mark on any background.
+	icon: string
 	instructions: string
 	name: string
 	registrations: Layer.Layer<RA, RE, RR>
@@ -124,8 +126,9 @@ export function layerMcp<RA, RE, RR>(options: {
 	return Layer.mergeAll(
 		pipe(
 			McpServer.layerHttp({
-				...options,
+				...Struct.omit(options, ['icon']),
 				allowSessionTermination: true,
+				icons: [{mimeType: 'image/png', sizes: ['1024x1024'], src: options.icon}],
 				path: '/mcp',
 				protocols: [McpProtocol.v2026_07_28, McpProtocol.v2025_11_25, McpProtocol.v2025_06_18]
 			}),

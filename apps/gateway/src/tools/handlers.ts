@@ -6,6 +6,7 @@ import * as ServerRuntime from '@deslop/runtime/server'
 
 import packageJson from '#package.json' with {type: 'json'}
 
+import icon from '#routes/icon.png'
 import {connectionStatus, summary} from '#services/connections/lib/utils.ts'
 import {Connections} from '#services/connections/service.ts'
 import {GatewayDiscovery} from '#services/gateway/service.ts'
@@ -39,6 +40,7 @@ export const layerMcp = Layer.unwrap(
 		const now = yield* Clock.currentTimeMillis
 		return pipe(
 			ServerRuntime.layerMcp({
+				icon,
 				instructions: Array.join(
 					[
 						"Gateway to the user's MCP servers; tools are named <server>__<tool>.",

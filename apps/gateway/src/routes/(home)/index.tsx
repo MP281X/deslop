@@ -1,11 +1,11 @@
 import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, Match, Option, pipe} from 'effect'
+import {Array, Boolean, Cause, Match, Option, Order, String, pipe} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
 import {MachineState} from '@typeonce/effect-machine-react'
 import {AsyncResult} from 'effect/reactivity'
-import {Check, Copy, Ellipsis, Plus} from 'lucide-react'
+import {Check, Copy, Ellipsis, Plus, Server} from 'lucide-react'
 import {useState} from 'react'
 
 import {Error, Loading, SignIn} from '@deslop/components-web/fallbacks'
@@ -26,6 +26,7 @@ import {
 } from '@deslop/components-web/ui/dropdown-menu'
 import {Empty, EmptyDescription, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Field, FieldError, FieldLabel} from '@deslop/components-web/ui/field'
+import {Input} from '@deslop/components-web/ui/input'
 import {InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput} from '@deslop/components-web/ui/input-group'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {signInUrl} from '@deslop/runtime/auth/utils'
@@ -130,6 +131,32 @@ function RemoveDialog(props: {onOpenChange: (open: boolean) => void; open: boole
 	)
 }
 
+// Each source in turn until one loads, then the generic glyph; never a letter tile.
+function FirstImage(props: {sources: string[]}) {
+	const [failed, setFailed] = useState(0)
+	return Option.match(Array.get(props.sources, failed), {
+		onNone: () => <Server className="text-muted-foreground size-5" />,
+		onSome: src => <img src={src} alt="" className="size-5 rounded-sm" onError={() => setFailed(failed + 1)} />
+	})
+}
+
+// Keyed by its sources, so icons a later discovery finds get their turn.
+function ServerIcon(props: {server: ConnectionInfo}) {
+	const host = new URL(props.server.url).hostname
+	const sources = Array.dedupe([
+		...Array.map(
+			Array.sort(
+				props.server.icons,
+				Order.mapInput(Order.Boolean, (icon: ConnectionInfo['icons'][number]) => icon.theme === 'dark')
+			),
+			icon => icon.src
+		),
+		`https://${host}/favicon.ico`,
+		`https://${String.replace(/^(?:api|app|mcp)\./u, '')(host)}/favicon.ico`
+	])
+	return <FirstImage key={Array.join(sources, ' ')} sources={sources} />
+}
+
 // One row: favicon, name and host, then its state and the one action it needs.
 function ServerRow(props: {server: ConnectionInfo}) {
 	const [disconnecting] = useAtom(disconnectAtom(props.server.id))
@@ -146,12 +173,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 	return (
 		<Item role="listitem">
 			<ItemMedia>
-				{/* Google's favicon service, as Stash shows a source's, never a letter tile. */}
-				<img
-					src={`https://www.google.com/s2/favicons?domain=${new URL(props.server.url).hostname}&sz=64`}
-					alt=""
-					className="size-4 rounded-sm"
-				/>
+				<ServerIcon server={props.server} />
 			</ItemMedia>
 			<ItemContent>
 				<ItemTitle>{props.server.name}</ItemTitle>
@@ -197,6 +219,7 @@ function AddForm(props: {url: string; error: string; adding: boolean}) {
 	const send = useAtomSet(addAtom.send)
 	return (
 		<form
+			className="flex flex-col gap-3"
 			onSubmit={event => {
 				event.preventDefault()
 				send({_tag: 'Submit'})
@@ -204,31 +227,30 @@ function AddForm(props: {url: string; error: string; adding: boolean}) {
 		>
 			<Field data-invalid={props.error !== ''}>
 				<FieldLabel htmlFor="mcp-url">MCP URL</FieldLabel>
-				<InputGroup>
-					<InputGroupInput
-						id="mcp-url"
-						type="url"
-						autoComplete="url"
-						placeholder="https://example.com/mcp"
-						required
-						autoFocus
-						value={props.url}
-						disabled={props.adding}
-						onChange={event => send({_tag: 'Typed', url: event.target.value})}
-						aria-invalid={props.error !== ''}
-						aria-describedby="mcp-add-error"
-					/>
-					<InputGroupAddon align="inline-end">
-						<InputGroupButton size="sm" disabled={props.adding} onClick={() => send({_tag: 'Cancel'})}>
-							Cancel
-						</InputGroupButton>
-						<InputGroupButton size="sm" variant="default" type="submit" disabled={props.adding}>
-							{Boolean.match(props.adding, {onFalse: () => 'Add server', onTrue: () => 'Adding…'})}
-						</InputGroupButton>
-					</InputGroupAddon>
-				</InputGroup>
+				<Input
+					id="mcp-url"
+					type="url"
+					autoComplete="url"
+					placeholder="https://example.com/mcp"
+					required
+					autoFocus
+					value={props.url}
+					disabled={props.adding}
+					onChange={event => send({_tag: 'Typed', url: event.target.value})}
+					aria-invalid={props.error !== ''}
+					aria-describedby="mcp-add-error"
+				/>
 				<FieldError id="mcp-add-error">{props.error}</FieldError>
 			</Field>
+			{/* Outside the Field, whose invalid state would tint every control in it red. */}
+			<div className="flex justify-end gap-2">
+				<Button variant="ghost" type="button" disabled={props.adding} onClick={() => send({_tag: 'Cancel'})}>
+					Cancel
+				</Button>
+				<Button type="submit" disabled={props.adding}>
+					{Boolean.match(props.adding, {onFalse: () => 'Add server', onTrue: () => 'Adding…'})}
+				</Button>
+			</div>
 		</form>
 	)
 }
