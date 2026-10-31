@@ -1,8 +1,9 @@
 import {lookup} from 'node:dns'
 
+import {NodeHttpClient} from '@effect/platform-node'
 import {Agent} from '@effect/platform-node/Undici'
 
-import {Array, Effect, Layer, String} from 'effect'
+import {Array, Effect, Layer, String, pipe} from 'effect'
 
 import {FetchHttpClient} from 'effect/http'
 import ipaddr from 'ipaddr.js'
@@ -19,7 +20,7 @@ function publicAddress(address: string) {
 }
 
 // Validate at socket lookup, not in a separate DNS preflight: a rebinding must never select a private address.
-export const layerPublicFetch = Layer.effect(FetchHttpClient.Fetch)(
+const layerPublicFetch = Layer.effect(FetchHttpClient.Fetch)(
 	Effect.gen(function* () {
 		const fetch = yield* FetchHttpClient.Fetch
 		const dispatcher = yield* Effect.acquireRelease(
@@ -67,4 +68,11 @@ export const layerPublicFetch = Layer.effect(FetchHttpClient.Fetch)(
 			return fetch(input, init)
 		}
 	})
+)
+
+// Fresh: a shared NodeHttpClient.layerFetch is memoized, and Auth's unguarded client would be reused here.
+export const layerUpstream = pipe(
+	Layer.fresh(NodeHttpClient.layerFetch),
+	Layer.provide(Layer.succeed(NodeHttpClient.RequestInit, {redirect: 'error'})),
+	Layer.provideMerge(layerPublicFetch)
 )

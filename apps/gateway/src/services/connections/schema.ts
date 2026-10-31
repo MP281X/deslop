@@ -1,28 +1,27 @@
 import {Schema} from 'effect'
 
-import {AUTH_URL} from '@deslop/runtime/auth/utils'
+import {GATEWAY_URL} from '#services/connections/lib/utils.ts'
 
 export type ServerId = typeof ServerId.Type
 export const ServerId = Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9_-]{0,23}$/u))
 
-export type HttpsUrl = typeof HttpsUrl.Type
-export const HttpsUrl = Schema.NonEmptyString.check(
+export type ServerUrl = typeof ServerUrl.Type
+export const ServerUrl = Schema.NonEmptyString.check(
 	Schema.isMaxLength(2048),
 	Schema.makeFilter(
 		(value: string) => {
 			if (!URL.canParse(value)) return false
 			const url = new URL(value)
-			return url.protocol === 'https:' && url.username === '' && url.password === '' && url.hash === ''
+			return (
+				url.protocol === 'https:' &&
+				url.username === '' &&
+				url.password === '' &&
+				url.hash === '' &&
+				url.origin !== GATEWAY_URL
+			)
 		},
-		{expected: 'an HTTPS URL without credentials or a fragment'}
+		{expected: 'a public HTTPS URL without credentials or a fragment, outside the gateway itself'}
 	)
-)
-// Auth's own endpoints may authorize a server, but Auth itself is never one.
-export type ServerUrl = typeof ServerUrl.Type
-export const ServerUrl = HttpsUrl.check(
-	Schema.makeFilter((value: string) => new URL(value).origin !== AUTH_URL, {
-		expected: 'a public HTTPS MCP URL outside Auth itself'
-	})
 )
 
 export type AddServer = typeof AddServer.Type
@@ -53,7 +52,7 @@ export const Token = Schema.Struct({
 	token_type: Schema.String.check(Schema.isPattern(/^Bearer$/iu))
 })
 
-// How Auth signs in to a provider: a client it registered there with its own callback, or Auth's client metadata document, which needs the provider to name itself in every answer.
+// How the gateway signs in to a provider: a client it registered there with its own callback, or its client metadata document, which needs the provider to name itself in every answer.
 export type OAuth = typeof OAuth.Type
 export const OAuth = Schema.Struct({
 	client: Schema.TaggedUnion({Document: {}, Registered: {clientId: Schema.NonEmptyString}}),
@@ -61,7 +60,7 @@ export const OAuth = Schema.Struct({
 	scope: Schema.String
 })
 
-// A public server takes no token; an OAuth server, the owner's apps included, the token Auth holds.
+// A public server takes no token; an OAuth server, the owner's apps included, the token the gateway holds.
 export type Link = typeof Link.Type
 export const Link = Schema.TaggedUnion({
 	Authorized: {expiresAt: Schema.Finite, token: Token},

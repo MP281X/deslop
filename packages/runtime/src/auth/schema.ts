@@ -26,6 +26,8 @@ export const User = Schema.Struct({id: Schema.NonEmptyString, name: Schema.NonEm
 
 export type Resource = typeof Resource.Type
 export const Resource = Schema.Literals([
+	'https://gateway.mp281x.xyz',
+	'https://gateway.mp281x.xyz/mcp',
 	'https://stash.mp281x.xyz',
 	'https://stash.mp281x.xyz/mcp',
 	'https://opm.mp281x.xyz',

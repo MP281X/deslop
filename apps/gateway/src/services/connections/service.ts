@@ -33,10 +33,9 @@ import {KeyValueStore} from 'effect/persistence'
 
 import type {User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
-import {AUTH_URL} from '@deslop/runtime/auth/utils'
 import {layerKeyValueStore} from '@deslop/runtime/server'
 
-import {CALLBACK, connectionInfo, describe, serverName} from '#services/connections/lib/utils.ts'
+import {CALLBACK, GATEWAY_URL, connectionInfo, describe, serverName} from '#services/connections/lib/utils.ts'
 import type {
 	Callback,
 	ConnectionInfo,
@@ -45,20 +44,11 @@ import type {
 	ServerId,
 	ToolVisibility
 } from '#services/connections/schema.ts'
-import {
-	Connection,
-	ConnectionStore,
-	HttpsUrl,
-	Metadata,
-	Registration,
-	ServerUrl,
-	Token
-} from '#services/connections/schema.ts'
-import {People} from '#services/people/service.ts'
+import {Connection, ConnectionStore, Metadata, Registration, ServerUrl, Token} from '#services/connections/schema.ts'
 
-const CLIENT_METADATA = `${AUTH_URL}/auth/mcp/client.json`
+const CLIENT_METADATA = `${GATEWAY_URL}/oauth/client.json`
 
-// Auth's client metadata document, for providers that accept one instead of a registration.
+// The gateway's client metadata document, for providers that accept one instead of a registration.
 export const CLIENT = {
 	client_id: CLIENT_METADATA,
 	client_name: 'Deslop MCP gateway',
@@ -69,7 +59,7 @@ export const CLIENT = {
 }
 
 // A provider sign-in in progress, for ten minutes and in memory: a restart asks to connect again.
-type Pending = {generation: string; id: ServerId; userId: string; verifier: string}
+type Pending = {client: OAuth['client']; generation: string; id: ServerId; userId: string; verifier: string}
 
 function failed(message: string) {
 	return Effect.mapError((cause: unknown) => {
@@ -86,7 +76,7 @@ function validMetadata(metadata: Metadata) {
 			metadata.token_endpoint,
 			...Option.toArray(Option.fromUndefinedOr(metadata.registration_endpoint))
 		],
-		endpoint => Schema.is(HttpsUrl)(endpoint)
+		endpoint => Schema.is(ServerUrl)(endpoint)
 	)
 }
 
@@ -107,25 +97,34 @@ export class Connections extends Context.Service<
 		readonly token: (id: ServerId, generation: string, rejectedToken?: string) => Effect.Effect<string, AuthError>
 		readonly watch: (user: User) => Stream.Stream<ConnectionInfo[], AuthError>
 	}
->()('@deslop/auth/services/connections/service/Connections') {
+>()('@deslop/gateway/services/connections/service/Connections') {
 	static readonly make = Effect.gen(function* () {
-		const kv = yield* KeyValueStore.KeyValueStore
-		// The previous release's servers and pending sign-ins; this one starts over, so they are deleted.
-		yield* kv.remove('connections')
-		const store = KeyValueStore.toSchemaStore(kv, ConnectionStore)
-		// The previous release called the owner's apps with delegated tokens; their rows are deleted, to be added again and connected by OAuth.
-		const saved = Record.filter(
-			Option.getOrElse(
-				yield* KeyValueStore.toSchemaStore(kv, Schema.Record(Schema.String, Schema.Unknown)).get('servers'),
-				() => ({})
-			),
-			Schema.is(Connection)
-		)
-		yield* store.set('servers', saved)
-		const state = yield* SubscriptionRef.make<ConnectionStore>(saved)
+		const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, ConnectionStore)
+		const fs = yield* FileSystem.FileSystem
+		// The previous release kept the servers in Auth and called the owner's apps with delegated tokens: the others move here once, those are dropped, to be added again and connected by OAuth.
+		const previous = (yield* Path.Path).join(yield* Config.String('HOME'), '.deslop', 'auth', 'mcp', 'servers')
+		if ((yield* fs.exists(previous)) && Option.isNone(yield* store.get('servers'))) {
+			yield* store.set(
+				'servers',
+				Record.filter(
+					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)))(
+						yield* fs.readFileString(previous)
+					),
+					Schema.is(Connection)
+				)
+			)
+		}
+		if (yield* fs.exists(previous)) yield* fs.remove(previous)
+		const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('servers'), () => ({})))
+		const admins = yield* Config.Array(Schema.String, 'GITHUB_ADMINS')
+		// Auth's admins, named by the same setting: only they manage the servers everyone with access shares.
+		const admin = Effect.fnUntraced(function* (user: User) {
+			if (!Array.contains(admins, String.replace('github:', '')(user.id))) {
+				return yield* AuthError.make({error: 'access_denied', message: 'Only an admin can manage MCP servers'})
+			}
+		})
 		// Each server's token is read and refreshed one call at a time, so concurrent calls never spend its refresh token twice.
 		const locks = yield* Cache.make<string, Semaphore.Semaphore>({capacity: 256, lookup: () => Semaphore.make(1)})
-		const people = yield* People
 		const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 		const fetch = yield* FetchHttpClient.Fetch
 		const random = yield* SecureRandom.SecureRandom
@@ -192,7 +191,7 @@ export class Connections extends Context.Service<
 			}
 			return yield* AuthError.make({
 				message:
-					'This provider neither registers clients nor names itself in its answers, so Auth cannot connect to it safely.'
+					'This provider neither registers clients nor names itself in its answers, so the gateway cannot connect to it safely.'
 			})
 		})
 		const exchange = Effect.fnUntraced(function* (
@@ -248,9 +247,11 @@ export class Connections extends Context.Service<
 					{onNone: () => ({}), onSome: refresh => ({refresh_token: refresh})}
 				)
 			}
+			// The tokens are saved with the client they were issued to.
 			yield* update(connection.id, connection.generation, found => ({
 				...Struct.omit(found, ['error']),
-				link: {_tag: 'Authorized', expiresAt: now + (token.expires_in ?? 3600) * 1000, token: next}
+				link: {_tag: 'Authorized', expiresAt: now + (token.expires_in ?? 3600) * 1000, token: next},
+				oauth
 			}))
 			return next.access_token
 		})
@@ -265,7 +266,7 @@ export class Connections extends Context.Service<
 							return yield* AuthError.make({message: 'This MCP connection was replaced.'})
 						}
 						const now = yield* Clock.currentTimeMillis
-						const notConnected = AuthError.make({message: `Connect ${connection.name} on ${AUTH_URL}/mcp-servers`})
+						const notConnected = AuthError.make({message: `Connect ${connection.name} on ${GATEWAY_URL}`})
 						const oauth = yield* Effect.mapError(
 							Effect.fromOption(Option.fromUndefinedOr(connection.oauth)),
 							() => notConnected
@@ -386,12 +387,12 @@ export class Connections extends Context.Service<
 			yield* update(connection.id, connection.generation, found => ({...found, error: message}))
 			return yield* AuthError.make({cause, message})
 		})
-		const admin = Effect.fnUntraced(function* (
+		const manage = Effect.fnUntraced(function* (
 			id: ServerId,
 			user: User,
 			next: (connection: Connection) => Option.Option<Connection>
 		) {
-			yield* people.admin(user)
+			yield* admin(user)
 			yield* change(current =>
 				Effect.gen(function* () {
 					const found = yield* Effect.mapError(Effect.fromOption(Record.get(current, id)), () =>
@@ -411,7 +412,7 @@ export class Connections extends Context.Service<
 		return Connections.of({
 			add: Effect.fn('Connections.add')(
 				function* (input: string, user: User) {
-					yield* people.admin(user)
+					yield* admin(user)
 					const url = new URL(yield* Schema.decodeEffect(ServerUrl)(input)).href
 					const current = yield* SubscriptionRef.get(state)
 					if (Array.some(Record.values(current), row => row.url === url)) {
@@ -442,30 +443,35 @@ export class Connections extends Context.Service<
 				failed('Cannot add this MCP. Check its public HTTPS URL and OAuth discovery support')
 			),
 			begin: Effect.fn('Connections.begin')(function* (id: ServerId, user: User) {
-				yield* people.admin(user)
+				yield* admin(user)
 				const connection = yield* get(id)
 				if (connection.oauth === undefined) {
 					yield* update(id, connection.generation, found => ({
 						...Struct.omit(found, ['error']),
 						link: {_tag: 'Connected'}
 					}))
-					return {state: Option.none<string>(), url: '/mcp-servers'}
+					return {state: Option.none<string>(), url: '/'}
 				}
+				// Each connection registers anew, so a client registered for an earlier callback is never reused; the row keeps its client until the new one has tokens.
+				const registered = yield* register(connection.oauth.metadata, id)
 				const stateId = yield* nonce
 				const verifier = yield* nonce
-				yield* Cache.set(pending, stateId, {generation: connection.generation, id, userId: user.id, verifier})
+				yield* Cache.set(pending, stateId, {
+					client: registered,
+					generation: connection.generation,
+					id,
+					userId: user.id,
+					verifier
+				})
 				const url = new URL(connection.oauth.metadata.authorization_endpoint)
 				url.search = new URLSearchParams({
-					client_id: Match.valueTags(connection.oauth.client, {
+					client_id: Match.valueTags(registered, {
 						Document: () => CLIENT_METADATA,
 						Registered: found => found.clientId
 					}),
 					code_challenge: Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(verifier))),
 					code_challenge_method: 'S256',
-					redirect_uri: Match.valueTags(connection.oauth.client, {
-						Document: () => CALLBACK,
-						Registered: () => `${CALLBACK}/${id}`
-					}),
+					redirect_uri: Match.valueTags(registered, {Document: () => CALLBACK, Registered: () => `${CALLBACK}/${id}`}),
 					resource: connection.url,
 					response_type: 'code',
 					scope: connection.oauth.scope,
@@ -478,7 +484,7 @@ export class Connections extends Context.Service<
 				route: Option.Option<string>,
 				user: User
 			) {
-				yield* people.admin(user)
+				yield* admin(user)
 				// The flow is taken once, whatever the provider answered.
 				const flow = yield* Cache.get(pending, params.state)
 				yield* Cache.invalidate(pending, params.state)
@@ -486,7 +492,7 @@ export class Connections extends Context.Service<
 				if (flow.userId !== user.id || flow.generation !== connection.generation || connection.oauth === undefined) {
 					return yield* AuthError.make({message: 'The connection expired; connect it again'})
 				}
-				const oauth = connection.oauth
+				const oauth = {...connection.oauth, client: flow.client}
 				yield* pipe(
 					Effect.gen(function* () {
 						if (params.error !== undefined || params.code === undefined) {
@@ -520,12 +526,12 @@ export class Connections extends Context.Service<
 			}, failed('Cannot finish the connection')),
 			definitions: Effect.map(SubscriptionRef.get(state), Record.values),
 			disconnect: (id, user) =>
-				admin(id, user, found =>
+				manage(id, user, found =>
 					Option.some({...Struct.omit(found, ['error']), link: {_tag: 'Disconnected' as const}, tools: []})
 				),
 			get,
 			hide: (visibility, user) =>
-				admin(visibility.id, user, found =>
+				manage(visibility.id, user, found =>
 					Option.some({
 						...found,
 						hidden: [
@@ -535,7 +541,7 @@ export class Connections extends Context.Service<
 					})
 				),
 			list,
-			remove: (id, user) => admin(id, user, () => Option.none()),
+			remove: (id, user) => manage(id, user, () => Option.none()),
 			// A discovery's outcome: its tools and instructions clear an earlier failure, a failure keeps the last ones.
 			report: Effect.fnUntraced(function* (id, generation, outcome) {
 				yield* pipe(
@@ -560,7 +566,7 @@ export class Connections extends Context.Service<
 						Stream.map(SubscriptionRef.changes(state), () => undefined),
 						Stream.drop(Stream.tick('1 minute'), 1)
 					),
-					() => Effect.andThen(people.admin(user), list)
+					() => Effect.andThen(admin(user), list)
 				)
 		})
 	})
@@ -571,7 +577,7 @@ export class Connections extends Context.Service<
 				Effect.gen(function* () {
 					const fs = yield* FileSystem.FileSystem
 					const path = yield* Path.Path
-					const directory = path.join(yield* Config.String('HOME'), '.deslop', 'auth', 'mcp')
+					const directory = path.join(yield* Config.String('HOME'), '.deslop', 'gateway')
 					yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
 					return layerKeyValueStore(directory)
 				})

@@ -12,10 +12,7 @@ import * as ServerRuntime from '@deslop/runtime/server'
 import {HttpHandlers} from '#http/handlers.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
-import {Connections} from '#services/connections/service.ts'
-import {Gateway} from '#services/gateway/service.ts'
 import {GitHub} from '#services/github/service.ts'
-import {layerPublicFetch} from '#services/network/service.ts'
 import {People} from '#services/people/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
 import {Tokens, layerStore} from '#services/tokens/service.ts'
@@ -37,10 +34,9 @@ const frameAncestors = HttpMiddleware.make(app =>
 	Effect.map(app, HttpServerResponse.setHeader('content-security-policy', "frame-ancestors 'none'"))
 )
 
-// Each service builds on the ones below it: tokens, then people (who may use them), sign-ins and connections, then the gateway.
+// Each service builds on the ones below it: tokens, then people (who may use them), then sign-ins.
 const layerServices = pipe(
-	Layer.mergeAll(Gateway.layer, SignIns.layer, RateLimiter.layer),
-	Layer.provideMerge(Connections.layer),
+	Layer.mergeAll(SignIns.layer, RateLimiter.layer),
 	Layer.provideMerge(People.layer),
 	Layer.provideMerge(Layer.mergeAll(Tokens.layer, GitHub.layer, RateLimiter.layerStoreMemory)),
 	Layer.provide(layerStore)
@@ -66,7 +62,6 @@ NodeRuntime.runMain(
 		),
 		Layer.provide(Layer.mergeAll(NodeCrypto.layer, NodeHttpClient.layerFetch, NodeServices.layer)),
 		Layer.provide(Layer.succeed(NodeHttpClient.RequestInit, {redirect: 'error'})),
-		Layer.provide(layerPublicFetch),
 		Layer.provide(ServerRuntime.layer('@deslop/auth')),
 		Layer.provide(ServerRuntime.layerNodeHttpServer),
 		Layer.launch

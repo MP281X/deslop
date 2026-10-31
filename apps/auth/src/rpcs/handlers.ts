@@ -3,14 +3,12 @@ import {Effect, Stream} from 'effect'
 import {CurrentUser} from '@deslop/runtime/auth/utils'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import {Connections} from '#services/connections/service.ts'
 import {People} from '#services/people/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
 export const RpcHandlers = RpcContracts.toLayer(
 	Effect.gen(function* () {
-		const connections = yield* Connections
 		const people = yield* People
 		const signIns = yield* SignIns
 		const tokens = yield* Tokens
@@ -28,19 +26,6 @@ export const RpcHandlers = RpcContracts.toLayer(
 				return yield* tokens.disconnect(input.family, yield* CurrentUser)
 			}),
 			'auth.lookup': input => signIns.lookup(input.code),
-			'auth.mcp.add': Effect.fnUntraced(function* (input) {
-				return yield* connections.add(input.url, yield* CurrentUser)
-			}),
-			'auth.mcp.disconnect': Effect.fnUntraced(function* (input) {
-				return yield* connections.disconnect(input.id, yield* CurrentUser)
-			}),
-			'auth.mcp.hide': Effect.fnUntraced(function* (input) {
-				return yield* connections.hide(input, yield* CurrentUser)
-			}),
-			'auth.mcp.remove': Effect.fnUntraced(function* (input) {
-				return yield* connections.remove(input.id, yield* CurrentUser)
-			}),
-			'auth.mcp.servers': () => Stream.unwrap(Effect.map(CurrentUser, connections.watch)),
 			'auth.people': () => Stream.unwrap(Effect.map(CurrentUser, people.people)),
 			'auth.remove': Effect.fnUntraced(function* (input) {
 				return yield* people.remove(input.id, yield* CurrentUser)

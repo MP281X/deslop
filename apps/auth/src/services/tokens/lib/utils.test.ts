@@ -31,16 +31,17 @@ it('accepts exact worker preview callbacks without widening cookie returns or lo
 	assert.isTrue(allowedRedirect('http://127.0.0.1:1234/callback'))
 })
 
-it('accepts the gateway’s own per-server callback and nothing around it', () => {
-	assert.isTrue(allowedRedirect('https://auth.mp281x.xyz/auth/mcp/callback/stash'))
+it('accepts the gateway’s per-server callback and nothing around it', () => {
+	assert.isTrue(allowedRedirect('https://gateway.mp281x.xyz/oauth/callback/stash'))
 	for (const invalid of [
-		'https://auth.mp281x.xyz/auth/mcp/callback',
-		'https://auth.mp281x.xyz/auth/mcp/callback/',
-		'https://auth.mp281x.xyz/auth/mcp/callback/stash/elsewhere',
-		'https://auth.mp281x.xyz/auth/mcp/callback/stash?next=elsewhere',
-		'https://auth.mp281x.xyz/auth/mcp/callback/stash#elsewhere',
-		'https://auth.mp281x.xyz.evil.test/auth/mcp/callback/stash',
-		'https://evil.test/auth/mcp/callback/stash'
+		'https://gateway.mp281x.xyz/oauth/callback',
+		'https://gateway.mp281x.xyz/oauth/callback/',
+		'https://gateway.mp281x.xyz/oauth/callback/stash/elsewhere',
+		'https://gateway.mp281x.xyz/oauth/callback/stash?next=elsewhere',
+		'https://gateway.mp281x.xyz/oauth/callback/stash#elsewhere',
+		'https://gateway.mp281x.xyz.evil.test/oauth/callback/stash',
+		'https://evil.test/oauth/callback/stash',
+		'https://auth.mp281x.xyz/oauth/callback/stash'
 	]) {
 		assert.isFalse(allowedRedirect(invalid), invalid)
 	}

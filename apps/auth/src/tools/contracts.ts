@@ -5,29 +5,8 @@ import {Tool, Toolkit} from 'effect/ai'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {CurrentUser} from '@deslop/runtime/auth/utils'
 
-import {ServerId} from '#services/connections/schema.ts'
-
-// Every tool acts as the signed-in caller, which the MCP sign-in middleware provides per request.
+// The tool acts as the signed-in caller, which the MCP sign-in middleware provides per request.
 export const Tools = Toolkit.make(
-	Tool.make('list_mcp_connections', {
-		description: "Each server's state, tool count and last failure; name a server to also read its own instructions.",
-		parameters: Schema.Struct({
-			server: Schema.optionalKey(
-				ServerId.annotate({description: 'A server id, the prefix before __ in its tool names.'})
-			)
-		}),
-		success: Schema.Struct({
-			servers: Schema.Array(
-				Schema.Struct({
-					error: Schema.optionalKey(Schema.String),
-					id: ServerId,
-					instructions: Schema.optionalKey(Schema.String),
-					status: Schema.Literals(['Connected', 'Not connected', 'Expired']),
-					tools: Schema.Int
-				})
-			)
-		})
-	}).annotate(Tool.Readonly, true),
 	Tool.make('answer_request', {
 		dependencies: [CurrentUser],
 		description:
