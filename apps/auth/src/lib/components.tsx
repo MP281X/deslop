@@ -15,6 +15,7 @@ import {Badge} from '@deslop/components-web/ui/badge'
 import {Button, buttonVariants} from '@deslop/components-web/ui/button'
 import {FieldDescription} from '@deslop/components-web/ui/field'
 import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
+import {cn} from '@deslop/components-web/utils'
 
 import {
 	APPS,
@@ -147,26 +148,26 @@ function ClientChip(props: {app: string; client: string; device: string; now: nu
 	)
 }
 
-// The app's own icon from its server; the browser session and tracing, which are no app, take a glyph on the same tile.
+// A glyph tile until the app's own icon loads, so a missing icon never draws the browser's broken image.
 function AppIcon(props: {id: string}) {
-	const [failed, setFailed] = useState(false)
-	if (!failed && Array.some(APPS, app => app.id === props.id)) {
-		return (
-			<img
-				src={`https://${props.id}.mp281x.xyz/icon`}
-				alt=""
-				className="size-8 rounded-md"
-				onError={() => setFailed(true)}
-			/>
-		)
-	}
+	const [state, setState] = useState<'failed' | 'loaded' | 'loading'>('loading')
 	return (
-		<span className="bg-secondary text-muted-foreground flex size-8 items-center justify-center rounded-md">
-			{pipe(
-				Match.value(props.id),
-				Match.when('browser', () => <Globe className="size-4" />),
-				Match.when('tracing', () => <Activity className="size-4" />),
-				Match.orElse(() => <AppWindow className="size-4" />)
+		<span className="bg-secondary text-muted-foreground relative flex size-8 items-center justify-center overflow-hidden rounded-md">
+			{state !== 'loaded' &&
+				pipe(
+					Match.value(props.id),
+					Match.when('browser', () => <Globe className="size-4" />),
+					Match.when('tracing', () => <Activity className="size-4" />),
+					Match.orElse(() => <AppWindow className="size-4" />)
+				)}
+			{state !== 'failed' && Array.some(APPS, app => app.id === props.id) && (
+				<img
+					src={`https://${props.id}.mp281x.xyz/icon`}
+					alt=""
+					className={cn('absolute inset-0 size-full', state === 'loading' && 'invisible')}
+					onLoad={() => setState('loaded')}
+					onError={() => setState('failed')}
+				/>
 			)}
 		</span>
 	)

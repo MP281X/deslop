@@ -156,6 +156,11 @@
 	min-width: 0;
 }
 
+/* A page's list rows start where its heading and fields do; a row that is a button keeps its inset for its highlight. */
+[data-slot='item-group'] > [data-slot='item'] {
+	padding-inline: 0;
+}
+
 [data-slot='item-title'],
 [data-slot='item-description'] {
 	max-width: 100%;
