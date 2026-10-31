@@ -15,7 +15,7 @@ import {
 } from '#rules/shared.ts'
 
 const TIMEOUT =
-	"Keep the project's testTimeout as the only limit: a per-test timeout or retry hides a wait that should await its milestone. A slow suite goes in a *.slow.test.ts file, which runs with the slow project's limit."
+	"Keep the project's testTimeout and hookTimeout as the only limits: a per-test timeout or retry hides a wait that should await its milestone, and a slow test needs a smaller scenario, such as one that starts from a saved state."
 const HANG_GUARD =
 	"Drop this timeout: the project's testTimeout already ends a hang, and on the TestClock it fires only when the test moves time."
 const FLAKY = 'Fix the flaky test instead of retrying it.'

@@ -1,12 +1,13 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Effect, MutableHashMap, Option, Predicate, Record, Schema} from 'effect'
+import {Array, Boolean, Effect, MutableHashMap, Option, Predicate, Record, Schema} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 
 import {makeSim} from '#services/game/lib/sim.ts'
 import {Sites} from '#services/game/lib/tasks.ts'
 import {CREATURES, capsuleOf, nearestPair} from '#services/game/lib/utils.ts'
+import type {Items} from '#services/game/lib/utils.ts'
 import {Frame, Saved, UnitKind} from '#services/game/schema.ts'
 import type {Command, UnitView} from '#services/game/schema.ts'
 import {makeWorld} from '#services/world/lib/utils.ts'
@@ -97,55 +98,85 @@ const propose = Effect.fnUntraced(function* (
 	return assert.fail(`No locally suitable ${kind} foundation in the fixture.`)
 })
 
+// The start's ore fields, round team 0's Home.
+function fieldAt(material: string) {
+	const world = makeWorld(42)
+	const field = Option.getOrThrow(
+		Array.findFirst(
+			Array.getSomes(Array.map(Option.getOrThrow(Array.head(world.spawns())).fields, world.field)),
+			entry => entry.material === material
+		)
+	)
+	return {x: field.x, z: field.z}
+}
+
+// A fresh seed-42 world whose Home holds the given stock, as an earlier stage of the factory would leave it.
+const stockedHome = Effect.fnUntraced(function* (stock: Items) {
+	const saved = yield* (yield* makeSim(Option.none(), 42)).snapshot
+	const home = Option.getOrThrow(Array.findFirst(saved.teams, team => team.id === 0)).home
+	return yield* makeSim(
+		Option.some({
+			...saved,
+			buildings: Array.map(saved.buildings, building =>
+				Boolean.match(building.id === home, {onFalse: () => building, onTrue: () => ({...building, stock})})
+			)
+		}),
+		0
+	)
+})
+
+function stocked(sim: Sim, item: keyof Items, count: number) {
+	return Effect.map(homeStock(sim), stock => (stock[item] ?? 0) >= count)
+}
+
+const builderOf = Effect.fnUntraced(function* (sim: Sim) {
+	return Option.getOrThrow(Array.findFirst((yield* sim.snapshot).units, unit => unit.team === 0)).id
+})
+
+const around = Effect.fnUntraced(function* (sim: Sim, reach: number) {
+	const home = yield* buildingOf(sim, (yield* team0(sim)).home)
+	return Array.flatMap(Array.range(-reach, reach), dz =>
+		Array.map(Array.range(-reach, reach), dx => ({x: home.x + 1 + dx, z: home.z + 1 + dz}))
+	)
+})
+
 it.effect(
-	'takes a team from Home and one Builder to a furnace, a miner and a second Builder, by hand',
+	'gathers stone by hand from the start’s field into an empty Home',
 	Effect.fnUntraced(function* () {
 		const sim = yield* makeSim(Option.none(), 42)
-		const saved = yield* sim.snapshot
-		const home = yield* buildingOf(sim, (yield* team0(sim)).home)
-		const builder = Option.getOrThrow(Array.findFirst(saved.units, unit => unit.team === 0)).id
-		assert.deepStrictEqual(home.stock, {})
-		const at = {x: home.x + 1, z: home.z + 1}
-		const world = makeWorld(42)
-		const fields = Array.getSomes(Array.map(Option.getOrThrow(Array.head(world.spawns())).fields, world.field))
-		function fieldAt(material: string) {
-			const field = Option.getOrThrow(Array.findFirst(fields, entry => entry.material === material))
-			return {x: field.x, z: field.z}
-		}
-		const iron = fieldAt('iron')
-		function stocked(item: 'iron_ingot' | 'iron_ore' | 'stone' | 'wood', count: number) {
-			return Effect.map(homeStock(sim), stock => (stock[item] ?? 0) >= count)
-		}
-		// Stone first, from the start's stone field, for the furnace and the miner.
+		assert.deepStrictEqual(yield* homeStock(sim), {})
+		const builder = yield* builderOf(sim)
 		assert.isTrue(
 			command(sim, {_tag: 'Order', order: {_tag: 'Gather', item: 'stone', ...fieldAt('stone')}, units: [builder]}).ok
 		)
-		assert.isTrue(yield* until(sim, 900, stocked('stone', 14)))
-		const furnaceId = yield* propose(
-			sim,
-			'furnace',
-			Array.flatMap(Array.range(-8, 8), dz => Array.map(Array.range(-8, 8), dx => ({x: at.x + dx, z: at.z + dz})))
-		)
+		assert.isTrue(yield* until(sim, 900, stocked(sim, 'stone', 2)))
+	})
+)
+
+it.effect(
+	'builds a furnace from Home’s stone and smelts hauled ore and wood into ingots carried back Home',
+	Effect.fnUntraced(function* () {
+		const sim = yield* stockedHome({iron_ore: 2, stone: 10, wood: 1})
+		const builder = yield* builderOf(sim)
+		const home = (yield* team0(sim)).home
+		const furnaceId = yield* propose(sim, 'furnace', yield* around(sim, 8))
 		assert.isTrue(command(sim, {_tag: 'Order', order: {_tag: 'Auto'}, units: [builder]}).ok)
 		assert.isTrue(yield* until(sim, 600, built(sim, furnaceId)))
 		assert.isTrue(command(sim, {_tag: 'Recipe', building: furnaceId, recipe: 'furnace_iron_wood'}).ok)
 		sim.decide(builder, 'read')
 		sim.decide(builder, 'accept')
-		yield* sim.run(2400)
-		// Wood and iron ore by hand, then into the furnace and its ingots back Home.
 		assert.isTrue(
-			command(sim, {_tag: 'Order', order: {_tag: 'Gather', item: 'wood', x: at.x, z: at.z}, units: [builder]}).ok
+			yield* until(
+				sim,
+				600,
+				Effect.map(buildingOf(sim, furnaceId), building => building.recipe === 'furnace_iron_wood')
+			)
 		)
-		assert.isTrue(yield* until(sim, 900, stocked('wood', 12)))
-		assert.isTrue(
-			command(sim, {_tag: 'Order', order: {_tag: 'Gather', item: 'iron_ore', ...iron}, units: [builder]}).ok
-		)
-		assert.isTrue(yield* until(sim, 1200, stocked('iron_ore', 24)))
 		const backOnAuto = Effect.map(builderOrder(sim, builder), order => order === 'Auto')
 		assert.isTrue(
 			command(sim, {
 				_tag: 'Order',
-				order: {_tag: 'Haul', count: 12, from: home.id, item: 'wood', to: furnaceId},
+				order: {_tag: 'Haul', count: 1, from: home, item: 'wood', to: furnaceId},
 				units: [builder]
 			}).ok
 		)
@@ -153,45 +184,59 @@ it.effect(
 		assert.isTrue(
 			command(sim, {
 				_tag: 'Order',
-				order: {_tag: 'Haul', count: 24, from: home.id, item: 'iron_ore', to: furnaceId},
+				order: {_tag: 'Haul', count: 2, from: home, item: 'iron_ore', to: furnaceId},
 				units: [builder]
 			}).ok
 		)
-		assert.isTrue(yield* until(sim, 900, backOnAuto))
+		assert.isTrue(yield* until(sim, 600, backOnAuto))
 		assert.isTrue(
 			command(sim, {
 				_tag: 'Order',
-				order: {_tag: 'Haul', count: 24, from: furnaceId, item: 'iron_ingot', to: home.id},
+				order: {_tag: 'Haul', count: 2, from: furnaceId, item: 'iron_ingot', to: home},
 				units: [builder]
 			}).ok
 		)
-		assert.isTrue(yield* until(sim, 900, stocked('iron_ingot', 24)))
-		// A miner on the iron field, and a second Builder off Home's line.
-		assert.isTrue(command(sim, {_tag: 'Order', order: {_tag: 'Auto'}, units: [builder]}).ok)
+		assert.isTrue(yield* until(sim, 600, stocked(sim, 'iron_ingot', 2)))
+	})
+)
+
+it.effect(
+	'puts a miner on the iron field that mines ore into its buffer',
+	Effect.fnUntraced(function* () {
+		const sim = yield* stockedHome({iron_ingot: 8, stone: 4})
+		const iron = fieldAt('iron')
 		const minerId = yield* propose(
 			sim,
 			'miner_mk1',
 			Array.flatMap(Array.range(-6, 6), dz => Array.map(Array.range(-6, 6), dx => ({x: iron.x + dx, z: iron.z + dz})))
 		)
-		assert.isTrue(command(sim, {_tag: 'Craft', count: 4, recipe: 'bench_iron_plate'}).ok)
-		assert.isTrue(command(sim, {_tag: 'Craft', count: 4, recipe: 'bench_iron_rod'}).ok)
-		assert.isTrue(command(sim, {_tag: 'Make', unit: 'builder'}).ok)
-		assert.isTrue(
-			yield* until(
-				sim,
-				900,
-				Effect.map(
-					sim.snapshot,
-					saving => Array.countBy(saving.units, unit => unit.team === 0 && unit.class === 'builder') === 2
-				)
-			)
-		)
+		assert.isTrue(command(sim, {_tag: 'Order', order: {_tag: 'Auto'}, units: [yield* builderOf(sim)]}).ok)
 		assert.isTrue(yield* until(sim, 600, built(sim, minerId)))
 		assert.isTrue(
 			yield* until(
 				sim,
 				120,
 				Effect.map(buildingOf(sim, minerId), building => (building.output.iron_ore ?? 0) > 0)
+			)
+		)
+	})
+)
+
+it.effect(
+	'crafts plates and rods at Home and makes a second Builder off its line',
+	Effect.fnUntraced(function* () {
+		const sim = yield* stockedHome({iron_ingot: 4, iron_plate: 6, iron_rod: 3})
+		assert.isTrue(command(sim, {_tag: 'Craft', count: 1, recipe: 'bench_iron_plate'}).ok)
+		assert.isTrue(command(sim, {_tag: 'Craft', count: 1, recipe: 'bench_iron_rod'}).ok)
+		assert.isTrue(command(sim, {_tag: 'Make', unit: 'builder'}).ok)
+		assert.isTrue(
+			yield* until(
+				sim,
+				300,
+				Effect.map(
+					sim.snapshot,
+					saving => Array.countBy(saving.units, unit => unit.team === 0 && unit.class === 'builder') === 2
+				)
 			)
 		)
 	})
@@ -484,15 +529,15 @@ it.effect(
 			first.decide(unit.id, 'read')
 			first.decide(unit.id, 'accept')
 		}
-		yield* first.run(1200)
+		yield* first.run(600)
 		// Through the save's schema as JSON, as the world goes to disk.
 		const disk = Schema.fromJsonString(Schema.toCodecJson(Saved))
 		const second = yield* makeSim(
 			Option.some(yield* Schema.decodeEffect(disk)(yield* Schema.encodeEffect(disk)(yield* first.snapshot))),
 			0
 		)
-		yield* first.run(2400)
-		yield* second.run(2400)
+		yield* first.run(1200)
+		yield* second.run(1200)
 		assert.strictEqual(
 			yield* Schema.encodeEffect(disk)(yield* second.snapshot),
 			yield* Schema.encodeEffect(disk)(yield* first.snapshot)

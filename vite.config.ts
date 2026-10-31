@@ -97,33 +97,11 @@ export default defineConfig({
 		}
 	},
 	test: {
-		// Each project's limits are the only ones; no-test-timeout keeps tests, hooks and layers from raising their own.
-		projects: [
-			{
-				extends: true,
-				test: {
-					exclude: ['**/*.slow.test.ts'],
-					hookTimeout: 30_000,
-					include: ['apps/*/src/**/*.test.ts', 'packages/*/src/**/*.test.ts', 'tools/*/src/**/*.test.ts'],
-					name: 'unit',
-					testTimeout: 30_000
-				}
-			},
-			{
-				extends: true,
-				test: {
-					hookTimeout: 300_000,
-					include: [
-						'apps/*/src/**/*.slow.test.ts',
-						'packages/*/src/**/*.slow.test.ts',
-						'tools/*/src/**/*.slow.test.ts'
-					],
-					name: 'slow',
-					testTimeout: 300_000
-				}
-			}
-		],
+		// The only limits: no-test-timeout keeps tests, hooks and layers from raising their own.
+		hookTimeout: 30_000,
+		include: ['apps/*/src/**/*.test.ts', 'packages/*/src/**/*.test.ts', 'tools/*/src/**/*.test.ts'],
 		reporters: ['dot'],
-		silent: 'passed-only'
+		silent: 'passed-only',
+		testTimeout: 30_000
 	}
 })
