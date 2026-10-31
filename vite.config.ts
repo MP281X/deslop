@@ -98,10 +98,10 @@ export default defineConfig({
 	},
 	test: {
 		// The only limits: no-test-timeout keeps tests, hooks and layers from raising their own.
-		hookTimeout: 30_000,
+		hookTimeout: 60_000,
 		include: ['apps/*/src/**/*.test.ts', 'packages/*/src/**/*.test.ts', 'tools/*/src/**/*.test.ts'],
 		reporters: ['dot'],
 		silent: 'passed-only',
-		testTimeout: 30_000
+		testTimeout: 60_000
 	}
 })

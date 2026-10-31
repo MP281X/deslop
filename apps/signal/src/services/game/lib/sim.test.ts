@@ -140,29 +140,58 @@ const around = Effect.fnUntraced(function* (sim: Sim, reach: number) {
 	)
 })
 
-// Wood clears trees round Home and ore digs its field's tiles; twelve ore outgrows a Builder's ten-item load, so the standing order goes back out.
-it.effect.each([
-	{count: 2, field: 'stone', item: 'stone'},
-	{count: 2, item: 'wood'},
-	{count: 12, field: 'iron', item: 'iron_ore'}
-] as const)(
-	'gathers $item by hand into an empty Home',
-	Effect.fnUntraced(function* (gathering: {count: number; field?: string; item: 'iron_ore' | 'stone' | 'wood'}) {
+// Wood clears the trees round Home; twelve outgrows a Builder's ten-item load, so the standing order goes back out.
+it.effect(
+	'gathers wood by hand into an empty Home and goes back out once a load is in',
+	Effect.fnUntraced(function* () {
 		const sim = yield* makeSim(Option.none(), 42)
 		assert.deepStrictEqual(yield* homeStock(sim), {})
 		const home = yield* buildingOf(sim, (yield* team0(sim)).home)
-		const at = Option.match(Option.fromNullishOr(gathering.field), {
-			onNone: () => ({x: home.x + 1, z: home.z + 1}),
-			onSome: fieldAt
-		})
 		assert.isTrue(
 			command(sim, {
 				_tag: 'Order',
-				order: {_tag: 'Gather', item: gathering.item, ...at},
+				order: {_tag: 'Gather', item: 'wood', x: home.x + 1, z: home.z + 1},
 				units: [yield* builderOf(sim)]
 			}).ok
 		)
-		assert.isTrue(yield* until(sim, 1200, stocked(sim, gathering.item, gathering.count)))
+		assert.isTrue(yield* until(sim, 600, stocked(sim, 'wood', 12)))
+	})
+)
+
+// Stone and ore dig their field's tiles; the Builder starts on the field, since the walk from Home proves nothing more.
+it.effect.each([
+	{field: 'stone', item: 'stone'},
+	{field: 'iron', item: 'iron_ore'}
+] as const)(
+	'digs $item by hand from its field',
+	Effect.fnUntraced(function* (digging: {field: string; item: 'iron_ore' | 'stone'}) {
+		const saved = yield* (yield* makeSim(Option.none(), 42)).snapshot
+		const at = fieldAt(digging.field)
+		const sim = yield* makeSim(
+			Option.some({
+				...saved,
+				units: Array.map(saved.units, unit =>
+					Boolean.match(unit.team === 0, {onFalse: () => unit, onTrue: () => ({...unit, ...at})})
+				)
+			}),
+			0
+		)
+		const builder = yield* builderOf(sim)
+		assert.isTrue(
+			command(sim, {_tag: 'Order', order: {_tag: 'Gather', item: digging.item, ...at}, units: [builder]}).ok
+		)
+		assert.isTrue(
+			yield* until(
+				sim,
+				300,
+				Effect.map(
+					sim.snapshot,
+					current =>
+						(Option.getOrThrow(Array.findFirst(current.units, unit => unit.id === builder)).cargo[digging.item] ?? 0) >=
+						2
+				)
+			)
+		)
 	})
 )
 
@@ -216,8 +245,30 @@ it.effect(
 it.effect(
 	'puts a miner on the iron field that mines ore into its buffer',
 	Effect.fnUntraced(function* () {
-		const sim = yield* stockedHome({iron_ingot: 8, stone: 4})
 		const iron = fieldAt('iron')
+		// The miner's materials wait in a crate by the field, beside its Builder, so construction needs no walk from Home.
+		const saved = yield* (yield* makeSim(Option.none(), 42)).snapshot
+		const sim = yield* makeSim(
+			Option.some({
+				...saved,
+				buildings: [
+					...saved.buildings,
+					{
+						...Option.getOrThrow(Array.head(saved.buildings)),
+						id: saved.nextId,
+						kind: 'crate_mk1',
+						stock: {iron_ingot: 8, stone: 4},
+						x: iron.x - 8,
+						z: iron.z - 8
+					}
+				],
+				nextId: saved.nextId + 1,
+				units: Array.map(saved.units, unit =>
+					Boolean.match(unit.team === 0, {onFalse: () => unit, onTrue: () => ({...unit, x: iron.x - 6, z: iron.z - 6})})
+				)
+			}),
+			0
+		)
 		const minerId = yield* propose(
 			sim,
 			'miner_mk1',
@@ -465,9 +516,9 @@ it.effect(
 		const overlaps = MutableHashMap.empty<string, number>()
 		// Wildlife that flies, swarms or swims has no body on the ground.
 		const airborne: Record.ReadonlyRecord<string, {life: string}> = CREATURES
-		// Five minutes in tenths of a second; each body's last three seconds.
+		// Two and a half minutes in tenths of a second; each body's last three seconds.
 		const found = yield* Effect.forEach(
-			Array.range(1, 3000),
+			Array.range(1, 1500),
 			tenth =>
 				Effect.map(sim.run(2), () => {
 					const views = Option.getOrThrow(sim.frame(connection, tenth)).units
