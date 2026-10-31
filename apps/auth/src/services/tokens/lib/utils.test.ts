@@ -2,33 +2,31 @@ import {assert, it} from '@effect/vitest'
 
 import {Option} from 'effect'
 
-import {allowedRedirect, matchingRedirect, returnable} from './utils.ts'
+import {Headers} from 'effect/http'
 
-it('accepts exact worker preview callbacks without widening cookie returns or loopback matching', () => {
-	const callback = 'https://dev.tailnet-8c4c.ts.net:26493/auth/callback'
-	assert.isTrue(allowedRedirect(callback))
-	assert.isTrue(allowedRedirect('https://desktop.tailnet-8c4c.ts.net:20000/auth/callback'))
-	assert.isTrue(allowedRedirect('https://dev.tailnet-8c4c.ts.net:29999/auth/callback'))
+import {allowedRedirect, fromAuth, matchingRedirect, returnable} from './utils.ts'
+
+it('accepts loopback callbacks on any port, and no other web callback', () => {
+	const client = {name: 'Codex', redirects: ['http://127.0.0.1:1234/callback']} as const
+	assert.isTrue(Option.isSome(matchingRedirect(client, Option.some('http://127.0.0.1:5678/callback'))))
+	assert.isTrue(Option.isNone(matchingRedirect(client, Option.some('http://127.0.0.1:5678/elsewhere'))))
 	for (const invalid of [
-		'https://dev.tailnet-8c4c.ts.net:19999/auth/callback',
-		'https://dev.tailnet-8c4c.ts.net:30000/auth/callback',
-		'http://dev.tailnet-8c4c.ts.net:26493/auth/callback',
-		'https://dev.tailnet-8c4c.ts.net.evil.test:26493/auth/callback',
-		'https://dev.other-tailnet.ts.net:26493/auth/callback',
-		'https://evil@dev.tailnet-8c4c.ts.net:26493/auth/callback',
-		'https://dev.tailnet-8c4c.ts.net:26493/elsewhere',
-		`${callback}?next=elsewhere`,
-		`${callback}#elsewhere`
+		'https://desktop.tailnet-8c4c.ts.net:23475/auth/callback',
+		'http://127.0.0.1:1234/callback?next=elsewhere',
+		'https://evil.test/auth/callback'
 	]) {
 		assert.isFalse(allowedRedirect(invalid), invalid)
 	}
-	const client = {name: 'Stash preview', redirects: [callback]} as const
-	assert.isTrue(Option.isSome(matchingRedirect(client, Option.some(callback))))
-	assert.isTrue(
-		Option.isNone(matchingRedirect(client, Option.some('https://dev.tailnet-8c4c.ts.net:26494/auth/callback')))
-	)
-	assert.isFalse(returnable(callback, 'https://auth.mp281x.xyz'))
-	assert.isTrue(allowedRedirect('http://127.0.0.1:1234/callback'))
+	assert.isFalse(returnable('https://desktop.tailnet-8c4c.ts.net:23475/', 'https://auth.mp281x.xyz'))
+})
+
+it('takes requests from Auth’s own origin, and in development from the host serving the preview', () => {
+	const preview = {host: 'desktop.tailnet-8c4c.ts.net:23475', origin: 'https://desktop.tailnet-8c4c.ts.net:23475'}
+	assert.isTrue(fromAuth(Headers.fromInput({origin: 'https://auth.mp281x.xyz'}), false))
+	assert.isFalse(fromAuth(Headers.fromInput(preview), false))
+	assert.isTrue(fromAuth(Headers.fromInput(preview), true))
+	assert.isFalse(fromAuth(Headers.fromInput({...preview, origin: 'https://evil.test'}), true))
+	assert.isFalse(fromAuth(Headers.fromInput({host: preview.host}), true))
 })
 
 it('accepts the gateway’s per-server callback and nothing around it', () => {

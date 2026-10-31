@@ -6,6 +6,7 @@ import Constants from 'expo-constants'
 import {File, Paths} from 'expo-file-system'
 import * as Notifications from 'expo-notifications'
 
+import {hues} from '@deslop/components-mobile/theme'
 import {cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
@@ -19,6 +20,8 @@ import type {ChaptersEvent, ChapterList, ReadingUpdate} from '#services/chapters
 import {ChapterItem} from '#services/chapters/schema.ts'
 
 const SERVER = 'https://opm.mp281x.xyz'
+
+export const primary = hues.orange
 
 // Auth
 

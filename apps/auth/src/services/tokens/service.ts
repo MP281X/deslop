@@ -282,7 +282,7 @@ export class Tokens extends Context.Service<
 								resources: fresh.request.resources,
 								...minted.refresh
 							},
-							device: deviceLabel(origin, Option.some(fresh.request.redirectUri)),
+							device: deviceLabel(origin),
 							lastActive: now,
 							origin,
 							user: fresh.user
@@ -531,7 +531,7 @@ export class Tokens extends Context.Service<
 									client: browserLabel(origin),
 									createdAt: now,
 									credential: {_tag: 'Browser' as const, expiresAt: now + seconds * 1000, hash: sessionHash},
-									device: deviceLabel(origin, Option.none()),
+									device: deviceLabel(origin),
 									lastActive: now,
 									origin,
 									user

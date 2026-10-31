@@ -5,7 +5,7 @@ import {RateLimiter} from 'effect/persistence'
 
 import {AuthError, User} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
-import {AUTH_URL} from '@deslop/runtime/auth/utils'
+import {AUTH_URL, development} from '@deslop/runtime/auth/utils'
 
 import {CallbackParams, LoginState, SignInParams} from '#services/github/schema.ts'
 import {GitHub} from '#services/github/service.ts'
@@ -20,6 +20,7 @@ import {
 	clientIdOf,
 	clientRequest,
 	cookieDomain,
+	fromAuth,
 	returnable
 } from '#services/tokens/lib/utils.ts'
 import {
@@ -37,9 +38,10 @@ const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as con
 const LOGIN_COOKIE = '__Host-login'
 const ISSUER = `${AUTH_URL}/api/auth`
 
-// The shared session reaches every app on the parent domain, for as long as its grant lasts.
-function session(seconds: number) {
-	return {...COOKIE, domain: cookieDomain(AUTH_URL), maxAge: `${seconds} seconds` as const}
+// The shared session reaches every app on the parent domain, for as long as its grant lasts; a preview keeps it on its own host.
+function sessionCookie(preview: boolean) {
+	if (preview) return {...COOKIE, domain: undefined}
+	return {...COOKIE, domain: cookieDomain(AUTH_URL)}
 }
 
 function rejected(message: string) {
@@ -141,6 +143,10 @@ export const HttpHandlers = HttpRouter.use(router =>
 		const signIns = yield* SignIns
 		const tokens = yield* Tokens
 		const limiter = yield* RateLimiter.RateLimiter
+		const preview = yield* development
+		function session(seconds: number) {
+			return {...sessionCookie(preview), maxAge: `${seconds} seconds` as const}
+		}
 		// Anyone may call these, so each address (an IPv6 /64) gets a budget per minute; past it, 429. No shared budget, which one sender could spend for everyone.
 		function limited(route: string, perAddress: number) {
 			return Effect.fnUntraced(function* <E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
@@ -469,14 +475,15 @@ export const HttpHandlers = HttpRouter.use(router =>
 			oauth(
 				Effect.gen(function* () {
 					const request = yield* HttpServerRequest.HttpServerRequest
-					if (request.headers['origin'] !== AUTH_URL) {
+					if (!fromAuth(request.headers, preview)) {
 						return yield* AuthError.make({error: 'access_denied', message: 'The request comes from another origin'})
 					}
 					yield* tokens.endSession(request.headers)
-					return HttpServerResponse.expireCookieUnsafe(HttpServerResponse.empty(), SESSION_COOKIE, {
-						...COOKIE,
-						domain: cookieDomain(AUTH_URL)
-					})
+					return HttpServerResponse.expireCookieUnsafe(
+						HttpServerResponse.empty(),
+						SESSION_COOKIE,
+						sessionCookie(preview)
+					)
 				})
 			)
 		)

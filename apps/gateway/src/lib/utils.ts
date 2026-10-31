@@ -1,8 +1,8 @@
-import {Effect, Schedule, Schema, Stream, pipe} from 'effect'
+import {Boolean, Effect, Option, Schedule, Schema, Stream, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
-import {Atom, AtomRpc} from 'effect/reactivity'
+import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
 import * as WebRuntime from '@deslop/runtime/web'
@@ -22,22 +22,42 @@ export function connectUrl(id: string) {
 	return `/oauth/connect?${new URLSearchParams({id})}`
 }
 
-// Live, and opened again after the socket drops; a sign-in or admin failure reaches the screen.
-export const serversAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(
+// Opened again after the socket drops; a sign-in or admin failure reaches the screen.
+function reconnecting<A, E extends {_tag: string}, R>(stream: Stream.Stream<A, E, R>) {
+	return Stream.retry(stream, $ =>
 		pipe(
-			RpcClient,
-			Effect.map(client => client('gateway.servers', undefined)),
-			Stream.unwrap,
-			stream =>
-				Stream.retry(stream, $ =>
-					pipe(
-						$(Schedule.spaced('1 second')),
-						Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
-					)
-				)
+			$(Schedule.spaced('1 second')),
+			Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
 		)
 	)
+}
+
+export const serversAtom = Atom.keepAlive(
+	RpcClient.runtime.atom(
+		reconnecting(Stream.unwrap(Effect.map(RpcClient, client => client('gateway.servers', undefined))))
+	)
+)
+
+// Every tool call through the gateway, numbered, so a server called twice in a row lights twice.
+const callsAtom = Atom.keepAlive(
+	RpcClient.runtime.atom(
+		reconnecting(
+			Stream.zipWithIndex(Stream.unwrap(Effect.map(RpcClient, client => client('gateway.calls', undefined))))
+		)
+	)
+)
+
+// The number of one server's latest call, or -1 before any; its dot dims each time it changes.
+export const lastCallAtom = Atom.family((id: string) =>
+	Atom.make(get => {
+		const previous = Option.getOrElse(get.self<number>(), () => -1)
+		return AsyncResult.match(get(callsAtom), {
+			onFailure: () => previous,
+			onInitial: () => previous,
+			onSuccess: latest =>
+				Boolean.match(latest.value[0] === id, {onFalse: () => previous, onTrue: () => latest.value[1]})
+		})
+	})
 )
 
 export const disconnectAtom = Atom.family((id: string) =>

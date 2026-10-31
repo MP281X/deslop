@@ -1,6 +1,7 @@
 import {
 	Array,
 	Boolean,
+	Duration,
 	Function,
 	HashSet,
 	Number,
@@ -15,7 +16,19 @@ import {
 } from 'effect'
 
 import {Nano, Runtime} from '#services/telemetry/schema.ts'
-import type {Entry, Query, Resource, Stats, Trace} from '#services/telemetry/schema.ts'
+import type {Entry, Filters, Query, Resource, Stats, Trace} from '#services/telemetry/schema.ts'
+
+// Filters as a query over the window ending now; stats ignores the page and order these defaults fill.
+export function queryOf(filters: Filters & Partial<Pick<Query, 'limit' | 'offset' | 'sort'>>, now: number) {
+	return {
+		limit: 1000,
+		offset: 0,
+		sort: 'recent' as const,
+		...filters,
+		from: now - Duration.toMillis(filters.since),
+		to: now
+	}
+}
 
 // A log's own time, else when the exporter saw it; OTLP sends 0 for a time it does not know.
 export function logTime(log: {observedTimeUnixNano?: string; timeUnixNano?: string}, now: string) {

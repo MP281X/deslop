@@ -15,12 +15,15 @@ import {
 	HttpServerRequest,
 	HttpServerResponse
 } from 'effect/http'
+import {RpcSerialization, RpcServer} from 'effect/rpc'
 
 import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import packageJson from '#package.json' with {type: 'json'}
 
+import {RpcContracts} from '#rpcs/contracts.ts'
+import {RpcHandlers} from '#rpcs/handlers.ts'
 import type {TelemetryError} from '#services/telemetry/schema.ts'
 import {LogsRequest, TracesRequest} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
@@ -109,6 +112,12 @@ NodeRuntime.runMain(
 						Layer.mergeAll(
 							pipe(Layer.fresh(receiver), Layer.provide(HttpAuth.layer)),
 							mcp,
+							pipe(
+								RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
+								Layer.provide(RpcHandlers),
+								Layer.provide(RpcSerialization.layerSchemaBinary())
+							),
+							ServerRuntime.layerStaticFiles,
 							HttpRouter.cors({
 								allowedHeaders: ['authorization', 'content-type'],
 								allowedMethods: ['POST', 'OPTIONS'],

@@ -4,11 +4,11 @@ import {HStack, Image, Text} from '@expo/ui/swift-ui'
 import {accessibilityElement, cornerRadius, foregroundStyle, frame, resizable} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 
-import {colors, mono} from './theme.ts'
+import {colors, text} from './theme.ts'
 
 import {assetAtom} from '#lib/utils.ts'
 
-// The app's logo and lowercase name, centered in the navigation bar of its home screen.
+// The app's icon and lowercase name, centered in the navigation bar of its home screen.
 export function AppTitle(props: {logo: number | string; name: string}) {
 	const uri = useAtomValue(assetAtom(props.logo))
 	return (
@@ -16,7 +16,7 @@ export function AppTitle(props: {logo: number | string; name: string}) {
 			{AsyncResult.isSuccess(uri) && (
 				<Image uiImage={uri.value} modifiers={[resizable(), frame({height: 18, width: 18}), cornerRadius(4)]} />
 			)}
-			<Text modifiers={[mono('headline', 17), foregroundStyle(colors.foreground)]}>{props.name}</Text>
+			<Text modifiers={[text.title, foregroundStyle(colors.foreground)]}>{props.name}</Text>
 		</HStack>
 	)
 }

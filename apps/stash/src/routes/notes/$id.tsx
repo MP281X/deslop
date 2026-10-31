@@ -41,10 +41,10 @@ import {Linking} from 'react-native'
 
 import {Chip} from '@deslop/components-mobile/chip'
 import {BrandLogo} from '@deslop/components-mobile/icons'
-import {colors, mono} from '@deslop/components-mobile/theme'
+import {colors, text} from '@deslop/components-mobile/theme'
 
 import {Byline} from '#lib/components.tsx'
-import {appOf, brandOf, imageAtom, kinds, noteAtom, notesAtom, regenerateAtom, removeAtom} from '#lib/utils.ts'
+import {appOf, brandOf, imageAtom, kinds, noteAtom, notesAtom, primary, regenerateAtom, removeAtom} from '#lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 
 const prose = [font({textStyle: 'body'}), lineSpacing(4), foregroundStyle(colors.foreground), textSelection(true)]
@@ -72,7 +72,7 @@ function Body(props: {text: string}) {
 		<VStack
 			alignment="leading"
 			spacing={10}
-			modifiers={[frame({alignment: 'leading', maxWidth: Infinity}), tint(colors.primary)]}
+			modifiers={[frame({alignment: 'leading', maxWidth: Infinity}), tint(primary)]}
 		>
 			{Array.map(
 				Array.filter(Array.map(String.split(props.text, '\n'), String.trim), String.isNonEmpty),
@@ -81,18 +81,15 @@ function Body(props: {text: string}) {
 						Match.value(line),
 						// A heading's hashes are followed by a space; a line opening with a #hashtag is text.
 						Match.when(
-							text => Option.isSome(String.match(/^#+\s/u)(text)),
+							candidate => Option.isSome(String.match(/^#+\s/u)(candidate)),
 							() => (
-								<Text
-									key={index}
-									modifiers={[mono('headline', 17), foregroundStyle(colors.foreground), padding({top: 10})]}
-								>
+								<Text key={index} modifiers={[text.title, foregroundStyle(colors.foreground), padding({top: 10})]}>
 									{String.replace(/^#+\s*/u, '')(line)}
 								</Text>
 							)
 						),
 						Match.when(
-							text => Option.isSome(String.match(/^(?:[-*•]|\d+\.)\s/u)(text)),
+							candidate => Option.isSome(String.match(/^(?:[-*•]|\d+\.)\s/u)(candidate)),
 							() => (
 								<HStack key={index} alignment="firstTextBaseline" spacing={8}>
 									<Text modifiers={[font({textStyle: 'body'}), foregroundStyle(colors.mutedForeground)]}>
@@ -149,7 +146,13 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 				spacing={16}
 				modifiers={[padding({bottom: 32, horizontal: 20, top: 8}), frame({alignment: 'leading', maxWidth: Infinity})]}
 			>
-				<Text modifiers={[mono('headline', 18), foregroundStyle(colors.foreground), textSelection(true)]}>
+				<Text
+					modifiers={[
+						font({textStyle: 'title3', weight: 'semibold'}),
+						foregroundStyle(colors.foreground),
+						textSelection(true)
+					]}
+				>
 					{props.note.title}
 				</Text>
 				{props.note.image !== undefined && <Cover note={props.note} />}
@@ -195,7 +198,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 					<ScrollView axes="horizontal" showsIndicators={false}>
 						<HStack spacing={8}>
 							{Array.map(props.note.tags, tag => (
-								<Chip key={tag} label={tag} active={false} onPress={() => props.onTag(tag)} />
+								<Chip key={tag} label={tag} active={false} onPress={() => props.onTag(tag)} tint={primary} />
 							))}
 						</HStack>
 					</ScrollView>

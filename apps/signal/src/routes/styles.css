@@ -1,6 +1,10 @@
 @import '@deslop/components-web/theme.css';
 @source '../../../../packages/components-web/src/**/*.tsx';
 
+:root {
+	--primary: var(--magenta);
+}
+
 .signal-time {
 	appearance: none;
 	background: transparent;

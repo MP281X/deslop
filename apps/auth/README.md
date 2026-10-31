@@ -14,7 +14,8 @@ Every sign-in is one waiting code, approved from a signed-in browser, a phone or
 
 - **Waiting page** shows a QR code and the code; leave it open in the client's browser, which completes the localhost callback, never on the phone.
 - **Lifetime**: 10 minutes, in memory; a restart ends the waiting ones. Workers' harness steps: environment skill, Maintenance.
-- **Clients**: the id is the encoded registration, so registering stores nothing. The signed-in list shows `Client · Device`: a worker preview's host, a known worker, the User-Agent's platform, or the address.
+- **Clients**: the id is the encoded registration, so registering stores nothing. The signed-in list shows `Client · Device`: a known worker, the User-Agent's platform, or the address.
+- **Preview**: with `NODE_ENV=development`, **Sign in with GitHub** returns at once as `dev` (`github:0`), an admin unless `GITHUB_ADMINS` says otherwise; the session stays on the preview's host. Every other app's preview needs no sign-in.
 - **Storage**: signed-in apps and browsers in `~/.deslop/auth/`; authorization codes in memory.
 - **Rate limit**: registration, authorization, token, revocation, GitHub and code sign-in requests have a per-minute budget per address (IPv6 /64), 429 past it.
 

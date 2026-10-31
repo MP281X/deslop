@@ -1,5 +1,3 @@
-import {NodeCrypto} from '@effect/platform-node'
-
 import {Array, Config, Context, Effect, Layer, Option, Result, Schema, pipe} from 'effect'
 
 import {
@@ -12,8 +10,7 @@ import {
 	HttpServerResponse
 } from 'effect/http'
 
-import {previewAuth} from '#auth/lib/preview.ts'
-import {AUTH_URL, CurrentUser, RpcAuth} from '#auth/lib/utils.ts'
+import {AUTH_URL, CurrentUser, DEVELOPER, RpcAuth, development} from '#auth/lib/utils.ts'
 import {AuthError, Resource, User} from '#auth/schema.ts'
 
 function rejected(message: string) {
@@ -32,6 +29,10 @@ function rejected(message: string) {
 			message: 'The authorization service is temporarily unavailable'
 		})
 	})
+}
+
+function developer() {
+	return Effect.succeed(DEVELOPER)
 }
 
 const unavailable = HttpServerResponse.text('The authorization service is temporarily unavailable; retry later', {
@@ -71,56 +72,44 @@ export class Auth extends Context.Service<
 		)
 
 	static readonly layer = (resource: string) =>
-		pipe(
-			Layer.effectContext(
-				Effect.gen(function* () {
-					// Where this server reaches the auth app: inside the deploy, its container address.
-					const url = yield* pipe(Config.String('AUTH_URL'), Config.withDefault(AUTH_URL))
-					const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
-					const preview = yield* previewAuth(resource, url, client)
-					const origins = [
-						AUTH_URL,
-						'https://portfolio.mp281x.xyz',
-						...Array.map(Resource.literals, identifier => new URL(identifier).origin)
-					]
-					const access = Effect.fn('Auth.access')(function* (headers: Headers.Headers, audience: string) {
-						return yield* pipe(
-							client.get(`${url}/auth/verify`, {
-								headers: {authorization: headers['authorization'] ?? ''},
-								urlParams: {resource: audience}
-							}),
-							Effect.flatMap(HttpClientResponse.schemaBodyJson(User)),
-							Effect.timeout('10 seconds')
-						)
-					}, rejected('Sign in first'))
-					return Auth.makeContext(
-						Auth.of({
-							access,
-							user: Effect.fn('Auth.user')(function* (headers: Headers.Headers) {
-								if (Option.isSome(Headers.get(headers, 'authorization'))) {
-									return yield* access(headers, resource)
-								}
-								const bearer = yield* preview(headers)
-								if (Option.isSome(bearer)) {
-									return yield* access(
-										Headers.set(headers, 'authorization', `Bearer ${Option.getOrThrow(bearer)}`),
-										resource
-									)
-								}
-								if (Option.exists(Headers.get(headers, 'origin'), origin => !Array.contains(origins, origin))) {
-									return yield* AuthError.make({message: 'The request comes from another origin'})
-								}
-								return yield* pipe(
-									client.get(`${url}/auth/session`, {headers: {cookie: headers['cookie'] ?? ''}}),
-									Effect.flatMap(HttpClientResponse.schemaBodyJson(User)),
-									Effect.timeout('10 seconds')
-								)
-							}, rejected('Sign in first'))
-						})
+		Layer.effectContext(
+			Effect.gen(function* () {
+				if (yield* development) return Auth.makeContext(Auth.of({access: developer, user: developer}))
+				// Where this server reaches the auth app: inside the deploy, its container address.
+				const url = yield* pipe(Config.String('AUTH_URL'), Config.withDefault(AUTH_URL))
+				const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
+				const origins = [
+					AUTH_URL,
+					'https://portfolio.mp281x.xyz',
+					...Array.map(Resource.literals, identifier => new URL(identifier).origin)
+				]
+				const access = Effect.fn('Auth.access')(function* (headers: Headers.Headers, audience: string) {
+					return yield* pipe(
+						client.get(`${url}/auth/verify`, {
+							headers: {authorization: headers['authorization'] ?? ''},
+							urlParams: {resource: audience}
+						}),
+						Effect.flatMap(HttpClientResponse.schemaBodyJson(User)),
+						Effect.timeout('10 seconds')
 					)
-				})
-			),
-			Layer.provide(Layer.mergeAll(NodeCrypto.layerSecureRandom, NodeCrypto.layerDigest))
+				}, rejected('Sign in first'))
+				return Auth.makeContext(
+					Auth.of({
+						access,
+						user: Effect.fn('Auth.user')(function* (headers: Headers.Headers) {
+							if (Option.isSome(Headers.get(headers, 'authorization'))) return yield* access(headers, resource)
+							if (Option.exists(Headers.get(headers, 'origin'), origin => !Array.contains(origins, origin))) {
+								return yield* AuthError.make({message: 'The request comes from another origin'})
+							}
+							return yield* pipe(
+								client.get(`${url}/auth/session`, {headers: {cookie: headers['cookie'] ?? ''}}),
+								Effect.flatMap(HttpClientResponse.schemaBodyJson(User)),
+								Effect.timeout('10 seconds')
+							)
+						}, rejected('Sign in first'))
+					})
+				)
+			})
 		)
 }
 
@@ -143,6 +132,8 @@ export function layerMcpAuth(resource: string) {
 	return HttpRouter.middleware<{provides: CurrentUser}>()(
 		Effect.gen(function* () {
 			const auth = yield* Auth
+			// A preview's MCP endpoint answers without OAuth, as its pages do.
+			if (yield* development) return app => Effect.provideService(app, CurrentUser, DEVELOPER)
 			return app =>
 				Effect.gen(function* () {
 					const headers = (yield* HttpServerRequest.HttpServerRequest).headers

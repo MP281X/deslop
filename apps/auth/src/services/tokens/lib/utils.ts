@@ -2,10 +2,11 @@ import {Array, Effect, Option, Record, Result, Schema, String, pipe} from 'effec
 
 import {Base64Url} from 'effect/encoding'
 import {Url} from 'effect/http'
+import type {Headers} from 'effect/http'
 import ipaddr from 'ipaddr.js'
 
 import {AuthError, Resource} from '@deslop/runtime/auth/schema'
-import {AUTH_URL, previewOrigin} from '@deslop/runtime/auth/utils'
+import {AUTH_URL} from '@deslop/runtime/auth/utils'
 
 import type {AuthorizeClient, AuthorizeParams, Origin} from '#services/tokens/schema.ts'
 import {ClientInfo, ClientRequest} from '#services/tokens/schema.ts'
@@ -57,22 +58,24 @@ export function browserLabel(origin: Origin) {
 	return 'Browser'
 }
 
-// Where a sign-in runs: a worker preview's host, a known worker, the platform its User-Agent names, or its address.
-export function deviceLabel(origin: Origin, redirectUri: Option.Option<string>) {
+// Where a sign-in runs: a known worker, the platform its User-Agent names, or its address.
+export function deviceLabel(origin: Origin) {
 	return pipe(
-		Option.flatMap(redirectUri, previewOrigin),
-		Option.map(preview => pipe(new URL(preview), url => `${String.split(url.hostname, '.')[0] ?? ''}:${url.port}`)),
-		Option.orElse(() =>
-			Option.flatMap(Option.fromUndefinedOr(origin.address), address => {
-				if (ipaddr.isValid(address) && Array.contains(LOCAL_RANGES, ipaddr.process(address).range())) {
-					return Option.some('dev')
-				}
-				return Record.get(WORKERS, address)
-			})
-		),
+		Option.flatMap(Option.fromUndefinedOr(origin.address), address => {
+			if (ipaddr.isValid(address) && Array.contains(LOCAL_RANGES, ipaddr.process(address).range())) {
+				return Option.some('dev')
+			}
+			return Record.get(WORKERS, address)
+		}),
 		Option.orElse(() => Option.flatMap(Option.fromUndefinedOr(origin.userAgent), platform)),
 		Option.getOrElse(() => origin.address ?? 'unknown')
 	)
+}
+
+// Auth's own pages send its origin: AUTH_URL, or in development whichever host serves the preview.
+export function fromAuth(headers: Headers.Headers, development: boolean) {
+	if (!development) return headers['origin'] === AUTH_URL
+	return Option.exists(Result.getSuccess(Url.fromString(headers['origin'] ?? '')), url => url.host === headers['host'])
 }
 
 function loopback(redirect: string) {
@@ -105,15 +108,7 @@ export function allowedRedirect(redirect: string) {
 			],
 			redirect
 		) ||
-		Option.isSome(loopback(redirect)) ||
-		Option.exists(
-			Result.getSuccess(Url.fromString(redirect)),
-			target =>
-				Option.isSome(previewOrigin(redirect)) &&
-				target.pathname === '/auth/callback' &&
-				target.search === '' &&
-				target.hash === ''
-		)
+		Option.isSome(loopback(redirect))
 	)
 }
 

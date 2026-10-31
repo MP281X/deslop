@@ -9,6 +9,7 @@ import {Suspense} from 'react'
 
 import {Loading} from '@deslop/components-web/fallbacks'
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
+import {cn} from '@deslop/components-web/utils'
 
 import {SignedInGrid} from '#lib/components.tsx'
 import {codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/utils.ts'
@@ -25,10 +26,13 @@ function Enter(props: {
 	typed: string
 }) {
 	return (
-		<section className="flex flex-col gap-3">
-			<label htmlFor="code" className="text-muted-foreground text-xs tracking-wider uppercase">
-				Enter a code
-			</label>
+		<section className="flex flex-col gap-4">
+			<div className="flex flex-col gap-1">
+				<h1 className="text-xl font-semibold tracking-tight">Approve a sign-in</h1>
+				<label htmlFor="code" className="text-muted-foreground text-sm">
+					Type the code your device shows.
+				</label>
+			</div>
 			<InputOTP
 				id="code"
 				maxLength={CODE_LENGTH}
@@ -45,7 +49,7 @@ function Enter(props: {
 				disabled={props.state === 'Checking'}
 				aria-invalid={props.state === 'Missing'}
 				aria-describedby="code-error"
-				containerClassName="gap-2"
+				containerClassName={cn('gap-2', props.state === 'Missing' && 'refuse')}
 			>
 				<InputOTPGroup className="flex-1">
 					{Array.map(Array.range(0, 3), index => (
@@ -53,7 +57,7 @@ function Enter(props: {
 							key={index}
 							index={index}
 							aria-invalid={props.state === 'Missing'}
-							className="h-12 flex-1 text-lg font-semibold"
+							className="h-11 flex-1 font-mono text-lg"
 						/>
 					))}
 				</InputOTPGroup>
@@ -64,7 +68,7 @@ function Enter(props: {
 							key={index}
 							index={index}
 							aria-invalid={props.state === 'Missing'}
-							className="h-12 flex-1 text-lg font-semibold"
+							className="h-11 flex-1 font-mono text-lg"
 						/>
 					))}
 				</InputOTPGroup>
@@ -77,7 +81,7 @@ function Enter(props: {
 			{Option.match(props.answered, {
 				onNone: () => null,
 				onSome: answer => (
-					<p className="text-muted-foreground flex items-center gap-1.5 text-xs" role="status">
+					<p className="text-muted-foreground settle-in flex items-center gap-1.5 text-xs" role="status">
 						{Boolean.match(answer.accept, {
 							onFalse: () => (
 								<>

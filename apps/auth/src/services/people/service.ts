@@ -23,6 +23,7 @@ import {KeyValueStore} from 'effect/persistence'
 import type {User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
+import {development} from '@deslop/runtime/auth/utils'
 
 import {GitHub} from '#services/github/service.ts'
 import type {AdmitParams, GitHubUser, MemberRow, Role} from '#services/people/schema.ts'
@@ -66,7 +67,12 @@ export class People extends Context.Service<
 			const state = yield* SubscriptionRef.make<Members>(Option.getOrElse(yield* store.get('members'), () => []))
 			const tokens = yield* Tokens
 			const github = yield* GitHub
-			const admins = yield* Config.Array(Schema.String, 'GITHUB_ADMINS')
+			// A preview's developer account, `github:0`, is its admin unless GITHUB_ADMINS names others.
+			const listed = Config.Array(Schema.String, 'GITHUB_ADMINS')
+			const admins = yield* Boolean.match(yield* development, {
+				onFalse: () => listed,
+				onTrue: () => Config.withDefault(listed, ['0'])
+			})
 			// Every change saves the next members before memory and the live views see them.
 			const transact = Effect.fnUntraced(function* <A, E>(
 				change: (current: Members) => Effect.Effect<readonly [A, Members], E>

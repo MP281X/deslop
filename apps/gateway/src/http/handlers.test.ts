@@ -1123,9 +1123,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				'/'
 			)
 			// A signed-out browser signs in first, then returns to the connection.
-			assert.match(
-				(yield* send(gateway.web, '/oauth/connect?id=mobbin')).headers.get('location') ?? '',
-				/^\/auth\/sign-in\?next=/u
+			assert.strictEqual(
+				(yield* send(gateway.web, '/oauth/connect?id=mobbin')).headers.get('location'),
+				`https://auth.mp281x.xyz/?${new URLSearchParams({next: 'https://gateway.mp281x.xyz/oauth/connect?id=mobbin'})}`
 			)
 			// A registered client's answer at the shared callback is another provider's, even when it names this issuer.
 			const shared = yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})

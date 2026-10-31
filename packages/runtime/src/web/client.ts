@@ -33,19 +33,20 @@ export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext:
 	}
 }
 
-export function layer(applicationName: string) {
-	const protocol = pipe(
-		// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
-		Rpc.RpcClient.layerProtocolSocket({pingTimeout: '15 seconds', retryTransientErrors: true}),
-		Layer.provide(
-			pipe(
-				Socket.layerWebSocket(Effect.sync(() => `${location.origin}/api/rpc`)),
-				Layer.provide(Socket.layerWebSocketConstructorGlobal)
-			)
-		),
-		Layer.provideMerge(Rpc.RpcSerialization.layerSchemaBinary())
-	)
+// The RPC socket alone, without the page's telemetry, so Scope's page never traces itself.
+export const layerProtocol = pipe(
+	// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
+	Rpc.RpcClient.layerProtocolSocket({pingTimeout: '15 seconds', retryTransientErrors: true}),
+	Layer.provide(
+		pipe(
+			Socket.layerWebSocket(Effect.sync(() => `${location.origin}/api/rpc`)),
+			Layer.provide(Socket.layerWebSocketConstructorGlobal)
+		)
+	),
+	Layer.provideMerge(Rpc.RpcSerialization.layerSchemaBinary())
+)
 
+export function layer(applicationName: string) {
 	Atom.runtime.addGlobalLayer(
 		pipe(
 			Layer.unwrap(
@@ -56,5 +57,5 @@ export function layer(applicationName: string) {
 			Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(import.meta.env)))
 		)
 	)
-	return protocol
+	return layerProtocol
 }

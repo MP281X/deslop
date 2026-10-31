@@ -1,6 +1,6 @@
 import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Option} from 'effect'
+import {Array, Boolean, DateTime, Hash, Option} from 'effect'
 
 import {
 	Button,
@@ -16,12 +16,15 @@ import {
 	VStack
 } from '@expo/ui/swift-ui'
 import {
+	Animation,
+	animation,
 	background,
+	contentTransition,
 	foregroundStyle,
 	frame,
 	labelStyle,
+	font,
 	lineLimit,
-	monospacedDigit,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	refreshable,
@@ -31,13 +34,14 @@ import {
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 
-import {colors, mono} from '@deslop/components-mobile/theme'
+import {colors, text} from '@deslop/components-mobile/theme'
 
 import {
 	dayAt,
 	mapsAtom,
 	nowAtom,
 	placeLine,
+	primary,
 	refreshAtom,
 	removeAtom,
 	ridesFor,
@@ -60,13 +64,19 @@ function toneIf(changed: boolean, tone: Tone) {
 	return 'plain'
 }
 
-// A value with its label, or nothing when the booking does not know it.
+// A changed gate, platform or time flips in like a departures board; SwiftUI animates when the number it watches changes.
 function Field(props: {label: string; tone?: Tone; value?: string}) {
 	if (props.value === undefined) return undefined
 	return (
 		<LabeledContent label={props.label}>
 			<Text
-				modifiers={[mono('body', 15), monospacedDigit(), foregroundStyle(colorOf(props.tone)), textSelection(true)]}
+				modifiers={[
+					text.data,
+					foregroundStyle(colorOf(props.tone)),
+					textSelection(true),
+					contentTransition('numericText'),
+					animation(Animation.snappy(), Hash.string(props.value))
+				]}
 			>
 				{props.value}
 			</Text>
@@ -164,7 +174,7 @@ function TrainFields(props: {train: Train}) {
 				title="Booking"
 				footer={
 					props.train.operator !== 'trenitalia' && (
-						<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground)]}>
+						<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>
 							Live delays and platforms come from Trenitalia; this train shows its timetable.
 						</Text>
 					)
@@ -201,8 +211,14 @@ function Essential(props: {label: string; tone?: Tone; value?: string}) {
 	if (props.value === undefined) return undefined
 	return (
 		<VStack alignment="leading" spacing={2} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>
-			<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground)]}>{props.label}</Text>
-			<Text modifiers={[mono('headline', 17), monospacedDigit(), foregroundStyle(colorOf(props.tone)), lineLimit(1)]}>
+			<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>{props.label}</Text>
+			<Text
+				modifiers={[
+					font({design: 'monospaced', textStyle: 'headline'}),
+					foregroundStyle(colorOf(props.tone)),
+					lineLimit(1)
+				]}
+			>
 				{props.value}
 			</Text>
 		</VStack>
@@ -287,9 +303,7 @@ function Rides(props: {booking: Booking; bookings: BookingList; now: number}) {
 		<>
 			{Array.map(ridesFor(props.booking, props.bookings, props.now), ride => (
 				<Section key={ride.label} title={`To ${ride.label}`}>
-					<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground)]}>
-						{placeLine(ride.place)}
-					</Text>
+					<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>{placeLine(ride.place)}</Text>
 					<Button label="Directions in Maps" systemImage="map" onPress={() => maps(ride)} />
 					<Button label="Ride with Uber" systemImage="car" onPress={() => uber(ride)} />
 				</Section>
@@ -326,7 +340,7 @@ export function BookingRoute(props: {bookings: BookingList; id: string; onClose:
 							modifiers={[
 								scrollContentBackground('hidden'),
 								background(colors.background),
-								tint(colors.primary),
+								tint(primary),
 								// A failed refresh already alerted, and the exit never rejects, so the pull ends either way.
 								refreshable(async () => {
 									await refresh(booking.id)
@@ -336,12 +350,12 @@ export function BookingRoute(props: {bookings: BookingList; id: string; onClose:
 							<Section>
 								<VStack alignment="leading" spacing={12}>
 									<VStack alignment="leading" spacing={4}>
-										<Text modifiers={[mono('headline', 20), foregroundStyle(colors.foreground)]}>
+										<Text
+											modifiers={[font({textStyle: 'title3', weight: 'semibold'}), foregroundStyle(colors.foreground)]}
+										>
 											{routeOf(booking)}
 										</Text>
-										<Text modifiers={[mono('subheadline', 14), foregroundStyle(tones[status.tone])]}>
-											{status.label}
-										</Text>
+										<Text modifiers={[text.detail, foregroundStyle(tones[status.tone])]}>{status.label}</Text>
 									</VStack>
 									{booking._tag === 'flight' && <FlightEssentials flight={booking} />}
 									{booking._tag === 'train' && <TrainEssentials train={booking} />}
@@ -351,7 +365,7 @@ export function BookingRoute(props: {bookings: BookingList; id: string; onClose:
 										onSome: updated => (
 											<Text
 												modifiers={[
-													mono('caption', 12),
+													text.caption,
 													foregroundStyle(
 														Boolean.match(updated.stale, {
 															onFalse: () => colors.mutedForeground,

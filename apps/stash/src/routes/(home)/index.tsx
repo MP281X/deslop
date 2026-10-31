@@ -32,7 +32,6 @@ import {
 	background,
 	clipShape,
 	contentShape,
-	font,
 	foregroundStyle,
 	frame,
 	labelStyle,
@@ -65,7 +64,7 @@ import {Linking} from 'react-native'
 import {Chip} from '@deslop/components-mobile/chip'
 import {BrandIcon} from '@deslop/components-mobile/icons'
 import {ClipboardSheet} from '@deslop/components-mobile/sheet'
-import {colors, mono} from '@deslop/components-mobile/theme'
+import {colors, text} from '@deslop/components-mobile/theme'
 import {AppTitle} from '@deslop/components-mobile/title'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
@@ -79,12 +78,13 @@ import {
 	kindOf,
 	kinds,
 	notesAtom,
+	primary,
 	queryAtom,
 	regenerateAtom,
 	removeAtom,
 	searchAtom
 } from '#lib/utils.ts'
-import logo from '#routes/logo.png'
+import logo from '#routes/icon.png'
 import {tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 import {Brand, Kind} from '#services/notes/schema.ts'
@@ -96,41 +96,35 @@ const OFFERS = {
 	text: {question: 'Save the copied link?', symbol: 'link'}
 } as const
 
+// The title and one line of where it is from; the summary waits in the note, so the list scans fast.
 function Lines(props: {note: NoteItem}) {
 	return (
 		<VStack alignment="leading" spacing={4} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>
-			<Text modifiers={[mono('headline', 16), foregroundStyle(colors.foreground), lineLimit(2)]}>
-				{props.note.title}
-			</Text>
+			<Text modifiers={[text.row, foregroundStyle(colors.foreground), lineLimit(2)]}>{props.note.title}</Text>
 			{pipe(
 				Match.value(props.note.status),
 				Match.when('organizing', () => (
 					<Text
 						modifiers={[
-							font({textStyle: 'subheadline'}),
+							text.caption,
 							foregroundStyle(colors.mutedForeground),
-							lineLimit(2),
+							lineLimit(1),
 							redacted('placeholder'),
 							accessibilityLabel('Reading')
 						]}
 					>
-						The main point of this entry, in one or two plain sentences that fill the row.
+						Reading the source of this entry
 					</Text>
 				)),
 				Match.when('failed', () => (
 					<Label
 						title="Couldn’t read this link"
 						systemImage="exclamationmark.triangle.fill"
-						modifiers={[font({textStyle: 'subheadline'}), foregroundStyle(colors.destructive), lineLimit(1)]}
+						modifiers={[text.caption, foregroundStyle(colors.destructive), lineLimit(1)]}
 					/>
 				)),
-				Match.orElse(() => (
-					<Text modifiers={[font({textStyle: 'subheadline'}), foregroundStyle(colors.mutedForeground), lineLimit(2)]}>
-						{props.note.summary}
-					</Text>
-				))
+				Match.orElse(() => <Byline note={props.note} />)
 			)}
-			<Byline note={props.note} />
 		</VStack>
 	)
 }
@@ -287,6 +281,7 @@ function PasteSheet() {
 			open={Option.isSome(offer)}
 			question={OFFERS[kind].question}
 			symbol={OFFERS[kind].symbol}
+			tint={primary}
 		/>
 	)
 }
@@ -350,6 +345,7 @@ export function HomeRoute(props: {
 											systemImage="tray"
 											active={props.tag === undefined}
 											onPress={() => props.onTag()}
+											tint={primary}
 										/>
 										{Array.map(tags, name => (
 											<Chip
@@ -362,6 +358,7 @@ export function HomeRoute(props: {
 														onTrue: () => props.onTag()
 													})
 												}
+												tint={primary}
 											/>
 										))}
 									</HStack>

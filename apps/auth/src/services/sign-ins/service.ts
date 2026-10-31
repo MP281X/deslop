@@ -293,14 +293,14 @@ export class SignIns extends Context.Service<
 							...Match.valueTags(delivery, {
 								Browser: () => ({
 									clientName: browserLabel(origin),
-									device: deviceLabel(origin, Option.none()),
+									device: deviceLabel(origin),
 									kind: 'Browser' as const,
 									resources: []
 								}),
 								Client: client => ({
 									// Named as its row will be once signed in.
 									clientName: clientLabel(client.request.clientName),
-									device: deviceLabel(origin, Option.some(client.request.redirectUri)),
+									device: deviceLabel(origin),
 									kind: 'App' as const,
 									resources: client.request.resources
 								})

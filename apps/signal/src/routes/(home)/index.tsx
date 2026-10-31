@@ -567,7 +567,7 @@ function Thread(props: {replaying: boolean; status?: TeamView['status']; team: n
 			/>
 			{props.status === 'thinking' && (
 				<li className="text-muted-foreground flex items-center gap-2 py-3">
-					<Spinner variant="subtle" className="size-3" />
+					<Spinner className="size-3" />
 					Thinking
 				</li>
 			)}

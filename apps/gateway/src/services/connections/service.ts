@@ -1,5 +1,6 @@
 import {
 	Array,
+	Boolean,
 	Cache,
 	Clock,
 	Config,
@@ -10,6 +11,7 @@ import {
 	Match,
 	Option,
 	Path,
+	PubSub,
 	Record,
 	Schema,
 	Semaphore,
@@ -33,6 +35,7 @@ import {KeyValueStore} from 'effect/persistence'
 
 import type {User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
+import {development} from '@deslop/runtime/auth/utils'
 import {layerKeyValueStore} from '@deslop/runtime/server'
 
 import {CALLBACK, GATEWAY_URL, connectionInfo, describe, serverName} from '#services/connections/lib/utils.ts'
@@ -85,6 +88,9 @@ export class Connections extends Context.Service<
 	{
 		readonly add: (url: string, user: User) => Effect.Effect<ConnectionInfo, AuthError>
 		readonly begin: (id: ServerId, user: User) => Effect.Effect<{state: Option.Option<string>; url: string}, AuthError>
+		// A tool call passing through, by server, for the page's port lights.
+		readonly called: (id: ServerId) => Effect.Effect<void>
+		readonly calls: (user: User) => Stream.Stream<ServerId, AuthError>
 		// `route` is the server id a registered client's callback carries; the metadata document's callback carries none.
 		readonly complete: (params: Callback, route: Option.Option<string>, user: User) => Effect.Effect<void, AuthError>
 		readonly definitions: Effect.Effect<Connection[]>
@@ -116,7 +122,14 @@ export class Connections extends Context.Service<
 		}
 		if (yield* fs.exists(previous)) yield* fs.remove(previous)
 		const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('servers'), () => ({})))
-		const admins = yield* Config.Array(Schema.String, 'GITHUB_ADMINS')
+		// A preview's developer account, `github:0`, is its admin unless GITHUB_ADMINS names others.
+		const listed = Config.Array(Schema.String, 'GITHUB_ADMINS')
+		const admins = yield* Boolean.match(yield* development, {
+			onFalse: () => listed,
+			onTrue: () => Config.withDefault(listed, ['0'])
+		})
+		// Only the latest calls matter to a light, so a slow page drops the oldest.
+		const traffic = yield* PubSub.sliding<ServerId>(64)
 		// Auth's admins, named by the same setting: only they manage the servers everyone with access shares.
 		const admin = Effect.fnUntraced(function* (user: User) {
 			if (!Array.contains(admins, String.replace('github:', '')(user.id))) {
@@ -479,6 +492,8 @@ export class Connections extends Context.Service<
 				}).toString()
 				return {state: Option.some(stateId), url: url.href}
 			}, failed('Cannot connect this MCP')),
+			called: id => Effect.asVoid(PubSub.publish(traffic, id)),
+			calls: user => Stream.unwrap(Effect.as(admin(user), Stream.fromPubSub(traffic))),
 			complete: Effect.fn('Connections.complete')(function* (
 				params: Callback,
 				route: Option.Option<string>,

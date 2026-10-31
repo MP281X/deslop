@@ -11,7 +11,7 @@ import {FailureScreen, LoadingScreen, SessionGate} from '@deslop/components-mobi
 import {colors} from '@deslop/components-mobile/theme'
 import {updateAtom} from '@deslop/runtime/mobile'
 
-import {activitiesAtom, bookingsAtom, calendarAtom, openedAtom, pushAtom, session} from '#lib/utils.ts'
+import {activitiesAtom, bookingsAtom, calendarAtom, openedAtom, primary, pushAtom, session} from '#lib/utils.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
 import {BookingRoute} from '#routes/bookings/$id.tsx'
 import icon from '#routes/icon.png'
@@ -34,7 +34,9 @@ function AppRoutes() {
 		Option.match(AsyncResult.value(opened), {onNone: () => Array.empty<string>(), onSome: id => [id]})
 	)
 	useAtomSubscribe(openedAtom, tapped => Option.map(AsyncResult.value(tapped), id => setPath([id])))
-	if (AsyncResult.isFailure(loaded)) return <FailureScreen cause={loaded.cause} name="Trips" onRetry={refresh} />
+	if (AsyncResult.isFailure(loaded)) {
+		return <FailureScreen cause={loaded.cause} name="Trips" onRetry={refresh} tint={primary} />
+	}
 
 	return (
 		<Host style={{flex: 1}}>
@@ -58,7 +60,7 @@ export function RootRoute() {
 	useAtomMount(updateAtom)
 	return (
 		<Suspense fallback={<LoadingScreen />}>
-			<SessionGate logo={icon} session={session.machine}>
+			<SessionGate logo={icon} session={session.machine} tint={primary}>
 				<Suspense fallback={<LoadingScreen />}>
 					<AppRoutes />
 				</Suspense>

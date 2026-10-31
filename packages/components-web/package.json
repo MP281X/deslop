@@ -7,6 +7,7 @@
 		"#components/*": "./src/*"
 	},
 	"exports": {
+		"./app-bar": "./src/app-bar.tsx",
 		"./fallbacks": "./src/fallbacks.tsx",
 		"./ui/*": "./src/ui/*.tsx",
 		"./utils": "./src/lib/utils.ts",
@@ -18,7 +19,8 @@
 	},
 	"dependencies": {
 		"@base-ui/react": "latest",
-		"@fontsource-variable/jetbrains-mono": "latest",
+		"@fontsource-variable/geist": "latest",
+		"@fontsource-variable/geist-mono": "latest",
 		"class-variance-authority": "latest",
 		"clsx": "latest",
 		"effect": "latest",
@@ -28,6 +30,10 @@
 		"tailwind-merge": "latest",
 		"tailwindcss": "latest",
 		"tw-animate-css": "latest"
+	},
+	"devDependencies": {
+		"@effect/platform-node": "latest",
+		"@google/design.md": "latest"
 	},
 	"peerDependencies": {
 		"react": "^19",
