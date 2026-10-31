@@ -119,6 +119,7 @@ NodeRuntime.runMain(
 								Layer.provide(RpcSerialization.layerSchemaBinary())
 							),
 							ServerRuntime.layerIcon(icon),
+							ServerRuntime.layerManifest('Scope'),
 							ServerRuntime.layerStaticFiles,
 							HttpRouter.cors({
 								allowedHeaders: ['authorization', 'content-type'],

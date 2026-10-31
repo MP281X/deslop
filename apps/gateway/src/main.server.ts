@@ -37,6 +37,7 @@ NodeRuntime.runMain(
 					),
 					layerMcp,
 					ServerRuntime.layerIcon(icon),
+					ServerRuntime.layerManifest('Gateway'),
 					ServerRuntime.layerStaticFiles
 				),
 				Layer.provide(layerServices),

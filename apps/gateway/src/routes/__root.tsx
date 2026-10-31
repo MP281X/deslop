@@ -8,7 +8,7 @@ import icon from './icon-dark.svg'
 
 export const Route = createRootRoute({
 	shellComponent: props => (
-		<div className="bg-background text-foreground flex h-dvh w-dvw flex-col">
+		<div className="bg-background text-foreground safe-area flex h-dvh w-dvw flex-col">
 			<HeadContent />
 			<Scripts />
 

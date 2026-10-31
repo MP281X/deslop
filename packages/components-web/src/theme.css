@@ -168,6 +168,11 @@
 	text-align: start;
 }
 
+/* An installed web app draws under the iPhone's status bar and home indicator, so its root keeps clear of them. */
+@utility safe-area {
+	padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
 /* Pixel art keeps its hard edges when scaled. */
 @utility pixelated {
 	image-rendering: pixelated;
