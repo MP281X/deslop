@@ -209,7 +209,7 @@ One vocabulary on both platforms: a row is an `Item`, a blank state an `Empty`, 
 - **iOS.** `packages/components-mobile/src/ui/` carries the same names and parts over `@expo/ui` SwiftUI (`Item`, `ItemMedia`, `ItemContent`, `ItemTitle`, `ItemDescription`, `ItemActions`, `ItemGroup`, `Empty…`, `ToggleGroup`, `Spinner`), taking `modifiers` where the web takes `className`. System controls stay native.
 - **Tokens only.** shadcn's lint keeps web classes on the theme; `swiftui-theme-values` does the same for SwiftUI: spacing from `space`, type from `text` or a Dynamic Type style, colours from `colors`.
 - **Favicons** are the source's own, on the `icon-tile`, never a letter tile.
-- **Loading.** The shell (app bar, headings, filters) renders at once, and data that is on its way shows as a skeleton shaped like it: `ItemListSkeleton` on the web, `ItemGroupSkeleton` (SwiftUI's placeholder redaction) on iOS. A refresh keeps the current data, dimmed. A spinner only sits inside a control the user pressed, never alone on a page; no client-side caches to hide loading.
+- **Loading.** The shell (app bar, headings, filters) renders at once, and data that is on its way shows as a skeleton shaped like it: `ItemListSkeleton` on the web, `ItemGroupSkeleton` (SwiftUI's placeholder redaction) on iOS. A skeleton fades in only after 300ms, so a fast load shows the data directly instead of a flash of placeholders. A refresh keeps the current data, dimmed. A spinner only sits inside a control the user pressed, never alone on a page; no client-side caches to hide loading.
 - **Copy.** Headings, labels and errors only; no subtitle restating what the page already shows.
 
 ## Motion
@@ -239,13 +239,13 @@ Each app is one real object in isometric pixel art: 64 cells, 2:1 pixel lines, t
 
 Pixel art ships as SVG, one cell per unit with `crispEdges`, so it stays sharp at any size in a fraction of a PNG's bytes. A raster stays only where a consumer needs one, at the smallest size and format it accepts.
 
-| File                   | Format                             | Used as                                                                   |
-| ---------------------- | ---------------------------------- | ------------------------------------------------------------------------- |
-| `icon.svg`             | SVG on `icon-tile`                 | favicon; the server's `/icon` for Auth's app list and MCP clients         |
-| `icon-dark.svg`        | SVG, transparent                   | dark favicon, the web app bar                                             |
-| `app.icon/` (iOS apps) | Icon Composer, an SVG layer        | the iOS icon over `icon-tile` or the system's dark fill; iOS derives tint |
-| `icon.png` (iOS apps)  | indexed PNG, 1024px                | the in-app title, which needs a raster                                    |
-| opm's face             | PNG in `app.icon`, WebP at `/icon` | a painting, not pixel art, so it keeps a raster                           |
+| File                   | Format                                                                                                      | Used as                                                                   |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `icon.svg`             | SVG on `icon-tile`                                                                                          | favicon; the server's `/icon` for Auth's app list and MCP clients         |
+| `icon-dark.svg`        | SVG, transparent                                                                                            | dark favicon, the web app bar                                             |
+| `app.icon/` (iOS apps) | Icon Composer, an SVG layer sized `width`/`height` 1024, since Icon Composer places a layer at its own size | the iOS icon over `icon-tile` or the system's dark fill; iOS derives tint |
+| `icon.png` (iOS apps)  | indexed PNG, 1024px                                                                                         | the in-app title, which needs a raster                                    |
+| opm's face             | PNG in `app.icon`, WebP at `/icon`                                                                          | a painting, not pixel art, so it keeps a raster                           |
 
 ## Do's and Don'ts
 
