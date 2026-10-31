@@ -13,7 +13,9 @@
 	},
 	"scripts": {
 		"build": "rm -rf dist && vp pack",
-		"preview": "vp run build && node --env-file-if-exists=.env ./dist/server.js"
+		"preview": "vp run build && node --env-file-if-exists=.env ./dist/server.js",
+		"test": "vp test --config ../../vite.config.ts",
+		"typecheck": "tsrs --checkerAssignment go --pretty false"
 	},
 	"dependencies": {
 		"expo": "^58.0",

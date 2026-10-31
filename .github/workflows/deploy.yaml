@@ -16,6 +16,7 @@ env:
   # Installed once per job with npm, because pnpm applies the workspace's strict peer checks to the EAS CLI's own dependencies.
   EAS: eas
 
+# Check and test run again on the merged commit, side by side: a branch behind main can merge without conflicts and still break.
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -23,15 +24,18 @@ jobs:
       - uses: actions/checkout@v5
       - uses: voidzero-dev/setup-vp@v1
         with: {node-version: '26', cache: true, run-install: true}
+      - run: vp check && vp run check
 
-      - name: Check
-        run: vp run check
-
-      - name: Test
-        run: vp run test
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: voidzero-dev/setup-vp@v1
+        with: {node-version: '26', cache: true, run-install: true}
+      - run: vp run test
 
   docker:
-    needs: check
+    needs: [check, test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -70,7 +74,7 @@ jobs:
 
   # JavaScript ships as an EAS Update from Linux; only an app whose native fingerprint has no build yet goes to the Mac.
   plan:
-    needs: check
+    needs: [check, test]
     runs-on: ubuntu-latest
     outputs:
       native: ${{ steps.release.outputs.native }}

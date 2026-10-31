@@ -6,6 +6,10 @@
 	"imports": {
 		"#package.*": "./package.*"
 	},
+	"scripts": {
+		"test": "vp test --config ../../vite.config.ts",
+		"typecheck": "tsrs --checkerAssignment go --pretty false"
+	},
 	"dependencies": {
 		"@deslop/create-package": "workspace:*",
 		"@effect/platform-node": "latest",

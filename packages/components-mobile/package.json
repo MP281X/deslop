@@ -12,6 +12,10 @@
 		"./clipboard": "./src/lib/clipboard.ts",
 		"./app.plugin.js": "./app.plugin.js"
 	},
+	"scripts": {
+		"test": "vp test --config ../../vite.config.ts",
+		"typecheck": "tsrs --checkerAssignment go --pretty false"
+	},
 	"dependencies": {
 		"@effect/atom-react": "latest",
 		"@expo-google-fonts/jetbrains-mono": "latest",

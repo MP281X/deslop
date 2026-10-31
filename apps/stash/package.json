@@ -14,7 +14,9 @@
 		"#tools/*": "./src/tools/*"
 	},
 	"scripts": {
-		"build": "rm -rf dist && vp pack"
+		"build": "rm -rf dist && vp pack",
+		"test": "vp test --config ../../vite.config.ts",
+		"typecheck": "tsrs --checkerAssignment go --pretty false"
 	},
 	"dependencies": {
 		"expo": "^58.0",

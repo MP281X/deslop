@@ -10,6 +10,10 @@
 	"exports": {
 		".": "./src/copy-template.ts"
 	},
+	"scripts": {
+		"test": "vp test --config ../../vite.config.ts",
+		"typecheck": "tsrs --checkerAssignment go --pretty false"
+	},
 	"dependencies": {
 		"@effect/platform-node": "latest",
 		"effect": "latest"

@@ -29,7 +29,9 @@
 		"access": "public"
 	},
 	"scripts": {
-		"build": "vp pack"
+		"build": "vp pack",
+		"test": "vp test --config ../../vite.config.ts",
+		"typecheck": "tsrs --checkerAssignment go --pretty false"
 	},
 	"dependencies": {
 		"@effect/platform-node": "latest",
