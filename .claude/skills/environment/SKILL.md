@@ -24,7 +24,7 @@ Two headless Debian workers in one tailnet, same user, paths and agent configura
 | -------------------------------------------- | --------------------------------------------------------------------------- |
 | [Dual](references/dual.md)                   | Accounts, merges, preview, Jira, Google, VPN, tracing                       |
 | [Deslop](references/deslop.md)               | Apps on dev, Simulator, npm and iOS publishing, TestFlight, tracing, deploy |
-| [Maintenance](references/maintenance.md)     | Machines, setup, agent links, T3 history and settings, updates, clean       |
+| [Maintenance](references/maintenance.md)     | Machines, setup, agent links, T3 settings, updates, clean                   |
 | [Video](references/video.md)                 | Proof videos: camera targets, HyperFrames composition and look              |
 | [Retrospective](references/retrospective.md) | When analyzing agent failures or changing prompts, skills or lint policy    |
 

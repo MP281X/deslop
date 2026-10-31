@@ -56,19 +56,6 @@ codex execpolicy check --rules ~/.codex/rules/deny.rules true
 
 **Check** with `find ~/.claude/settings.json ~/.claude/agents/pair.md ~/.codex/config.toml ~/.codex/instructions.md ~/.codex/rules/deny.rules ~/.claude/skills/* ~/.codex/skills/* -maxdepth 0 ! -type l` (prints a link a harness replaced) and `git -C ~/deslop status --short` (a harness that wrote through a link; carry the write into a PR, then `git -C ~/deslop restore` it, because a dirty checkout stops the automatic pull).
 
-## T3 history
-
-**Tools first.** Use `t3_thread_search` / `t3_thread_list` to locate a thread, then `t3_thread_read`: `messages` for decisions, `activity` for commands and tool results. Other workers use the same tools with `environmentId` from `t3_environment_links`. Read a known thread directly; search is not an exhaustive inventory.
-
-```text
-t3_thread_read({ environmentId, threadId, view: "messages", limit: 20, maxCharsPerItem: 3000 })
-// More items: afterPosition = nextPosition
-// Cut-off item: itemId + textOffset = nextTextOffset
-// Missing tool result: view = "activity", then read its itemId
-```
-
-**Compaction.** Recover the deciding exchange or tool result, not the whole history. Keep the user's actual approval, rejected alternatives and still-valid proof; do not reopen a settled area merely because its rationale left context.
-
 ## T3 settings
 
 All workers share T3 settings. After the user changes one on a worker, run this there with `target=mp281x@<other worker>`; it maps project keys by workspace root and keeps the target's `environmentIcon`. T3 reloads the file.
