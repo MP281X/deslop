@@ -1,7 +1,7 @@
 ---
 version: alpha
 name: Deslop
-description: One design system for every Deslop app, on the web and on iOS. Near-black and dark first, grayscale with hairlines, dense rows, one primary hue per app from a hand-tuned set, Geist on the web, SF Pro on iOS, and pixel-art app icons. Tokens are the dark appearance; each has a light- twin.
+description: Every Deslop app, web and iOS. Dark first, grayscale with hairlines, one Flexoki hue per app, pixel-art icons. Tokens are dark; each has a light- twin.
 colors:
   # Neutrals, dark appearance.
   background: '#0a0a0a'
@@ -154,90 +154,58 @@ components:
 
 # Deslop
 
-The visual system of every Deslop app. Its YAML tokens are the contract: `packages/components-web/src/theme.css` and `packages/components-mobile/src/theme.ts` carry the same values, and their tests fail when either drifts from this file.
+The tokens above are the contract. `packages/components-web/src/theme.css` and `packages/components-mobile/src/theme.ts` repeat them, and their tests fail on drift.
 
 ## Overview
 
-Fast tools first: Linear, Vercel, Executor and T3 Code are the references, not consumer or enterprise apps.
-
-- **Dark first.** Near-black `#0a0a0a`, hairline borders, no cards per section and no shadows. Light mode exists for every token and is never designed first.
-- **Grayscale ranks, one hue acts.** Text, muted text and hairlines carry hierarchy. The app's primary marks the one action per view, focus, selection and anything live right now.
-- **Dense and quiet.** 28px controls, 12–14px text on the web, system sizes on iOS, hairline rows instead of boxes.
-- **Machine text is mono.** Hosts, ids, times, counts, codes and keyboard shortcuts set in Geist Mono or SF Mono; prose never does.
+Fast tools, not consumer or enterprise apps: Linear, Vercel, Executor, T3 Code. Dark first; light covers every token but is never designed first.
 
 ## Colors
 
-### Neutrals
+- **Neutrals.** `background` is the page. `card` and `popover` only for what floats or groups a few controls; `secondary`, `muted` and `accent` fill chips, inputs and hover; `border` draws hairlines, `input` strokes fields.
+- **One hue per app**, from the table below: the one action per view, focus, selection and anything live. The web points `--primary` at it in the app's `styles.css`; iOS exports `primary` from `lib/utils.ts`. A new app takes an unused hue, or orange.
+- **Status.** Live is the primary. Warning is yellow and error red, each with a word or icon. Off is muted: a hollow dot when switched off, a filled one for quiet states. White on light yellow only for large or bold labels.
 
-`background` is the page; `card` and `popover` sit on it only for something that floats or groups a few controls, never for a page section. `secondary`, `muted` and `accent` are fills for chips, inputs and hover, not page backgrounds. `border` draws every hairline; `input` strokes fields.
-
-### One hue per app
-
-Every primary comes from the same hand-tuned set (Flexoki 400 in dark, 600 in light), so no app looks louder than another. An app's web stylesheet points `--primary` at its hue; an iOS app exports `primary` from its `lib/utils.ts` and passes it to the shared components that tint.
-
-| App       | Hue     | Dark      | Light     |
-| --------- | ------- | --------- | --------- |
-| portfolio | orange  | `#da702c` | `#bc5215` |
-| opm       | orange  | `#da702c` | `#bc5215` |
-| auth      | green   | `#879a39` | `#66800b` |
-| gateway   | purple  | `#8b7ec8` | `#5e409d` |
-| scope     | cyan    | `#3aa99f` | `#24837b` |
-| signal    | magenta | `#ce5d97` | `#a02f6f` |
-| stash     | yellow  | `#d0a215` | `#ad8301` |
-| trips     | blue    | `#4385be` | `#205ea6` |
-
-A new app takes a hue no app uses yet, or orange.
-
-### Status
-
-- **Live** is the app's primary: connected, boarding, on time, now, reading. One hue means "happening, as planned".
-- **Warning** is yellow, **error** is red; both pair with a word or an icon, never color alone.
-- **Off** is muted text: a hollow dot for something switched off (not connected), a muted dot for a quiet state (booked, past).
-- **Light mode** keeps white text on every primary; on yellow it reaches only the 3:1 of large text, so it stays on large or bold labels.
+| App       | Hue     |
+| --------- | ------- |
+| portfolio | orange  |
+| opm       | orange  |
+| auth      | green   |
+| gateway   | purple  |
+| scope     | cyan    |
+| signal    | magenta |
+| stash     | yellow  |
+| trips     | blue    |
 
 ## Typography
 
-- **Web.** Geist for interface and prose, Geist Mono for machine text. Titles 20px semibold with -0.02em tracking; body 14px; labels and controls 12px medium; data 12px mono. Sentence case everywhere: no uppercase, no letter-spaced labels.
-- **iOS.** SF Pro and SF Mono through font design at Dynamic Type sizes, so nothing is bundled: inline navigation titles at 17pt semibold, row titles 15pt semibold, detail 13pt, data 13pt SF Mono, captions 12pt. The `text` tokens in `packages/components-mobile/src/theme.ts` name these; screens use them rather than sizes.
+Geist on the web, SF Pro on iOS at Dynamic Type sizes through the `text` tokens in `theme.ts`, nothing bundled. Machine text (hosts, ids, times, counts, codes, shortcuts) is Geist Mono or SF Mono; prose never is. Sentence case, no uppercase or letter-spaced labels.
 
 ## Layout
 
-- **Rows, not cards.** Lists are hairline-separated rows of about 40px on the web and system list rows on iOS: a leading mark (favicon, countdown, dot), a title, one muted detail line, and a trailing status or action.
-- **One column.** Web pages sit under the shared app bar in a column up to `page` (768px), sign-in and forms up to `form` (576px), with 16–24px padding; tools with a list and a detail split into a fixed list pane and a detail pane.
-- **Rhythm.** 4px steps: 8px inside a group, 16px between groups, 24–32px between sections.
-- **iOS** uses inline navigation titles, `listStyle('plain')`, bottom-bar search and glass controls in the toolbar.
+- **Rows, not cards.** Hairline rows: a leading mark, a title, one muted line, a trailing status or action.
+- **One column** up to `page`, forms up to `form`; list-and-detail tools split into two panes. 8px inside a group, 16px between groups, 24–32px between sections.
+- **iOS.** Inline titles, plain lists, bottom search.
 
 ## Elevation & Depth
 
-Depth is a tonal step and a hairline, never a drop shadow. Dialogs and menus use `popover`. On iOS, Liquid Glass belongs to navigation and controls only; content never sits on glass.
+A tonal step and a hairline, never a shadow, gradient or glow. On iOS, Liquid Glass is for navigation and controls only.
 
 ## Shapes
 
-`--radius` is 6px: 4px controls, 6px surfaces, 10px large overlays, full circles for dots and avatars. iOS keeps the system's shapes.
+4px controls, 6px surfaces, 10px overlays, full circles for dots and avatars. iOS keeps the system's shapes.
 
 ## Components
 
-- **Web.** shadcn `base-mira` components from `packages/components-web/src/ui/`, added with `vpx shadcn@latest add`; pages compose them with theme tokens only, no raw colors or arbitrary values.
-- **iOS.** SwiftUI primitives from `@expo/ui` (navigation, toolbars, search, lists, menus, swipe actions, sheets, SF Symbols) with the theme's colors and `text` tokens; system controls stay native.
-- **Favicons** are real: a server, site or source shows its own favicon, never a letter tile or an icon pack glyph.
+- **Web.** shadcn `base-mira` from `packages/components-web/src/ui/`, theme tokens only.
+- **iOS.** `@expo/ui` SwiftUI primitives; system controls stay native.
+- **Favicons** are the source's own, never a letter tile.
 
 ## Icons
 
-Every app icon is pixel art in the style of the portfolio bolt:
-
-- **Grid.** 18×18 cells centered on a 24×24 tile, so 3 cells of margin on each side; exported at 1024×1024 with nearest-neighbour scaling, no transparency.
-- **Tile** `icon-tile`; **fill** the app's dark hue; **shadow** one `icon-shadow` cell to the right of every horizontal run; **detail** in `icon-tile` cut-outs or a 62% darker fill.
-- **One idea per glyph.** Key (auth), torii gate (gateway), waterfall bars (scope), factory (signal), bookmark with a star (stash), ticket with a plane (trips). The portfolio bolt's loose pixels take the other apps' hues.
-- **Exception.** opm keeps its Saitama face.
-
-The same PNG is the iOS app icon and the web favicon.
+One PNG is the iOS icon and the favicon: pixel art like the portfolio bolt, 18×18 cells on a 24×24 `icon-tile`, 1024px with nearest-neighbour scaling. Fill is the app's hue, one `icon-shadow` cell right of every run, detail as tile cut-outs or a 62% darker fill. opm keeps its Saitama face; the bolt's loose pixels take the other apps' hues.
 
 ## Do's and Don'ts
 
-- Do keep one primary action per view, in the app's hue.
-- Do put hosts, ids, times and counts in mono.
-- Do separate rows with hairlines and group with spacing.
-- Don't add a card per section, a colored side stripe, a gradient, a glow or a shadow.
-- Don't color a tile per item or use a hue that isn't the app's primary, warning or error; the portfolio's visitor cursors, which take any app hue, are the one exception.
-- Don't uppercase or letter-space labels.
-- Don't bundle fonts on iOS or set prose in mono.
+- Don't add a card per section, a colored side stripe or a color per item.
+- Don't use a hue beyond the app's primary, warning and error; the portfolio's visitor cursors are the one exception.

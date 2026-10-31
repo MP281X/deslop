@@ -76,12 +76,12 @@ new=$(jq --argjson src "$(sqlite3 -readonly -json ~/.t3/userdata/statev2.sqlite 
 ```
 
 - **Claude launch arguments.** `providerInstances.claudeAgent.config.launchArgs`: `--system-prompt-snapshot off --thinking-display omitted --autocompact 500k`; new Claude processes pick them up, so never restart T3 or stop threads for them.
-- **Project scripts** only in `projectSettingsOverrides.<project id>.defaultProjectScripts`; legacy `projectScriptOverrides` and a checked-in `t3.json` stay unset. `install` runs on worktree creation and blocks the agent (`async: false`); `runOnSettle` runs on settle; the user runs `preview` and `stop` from the menu. Port: deslop's from the worktree path, Dual's from its `Preview ready:` line.
+- **Project scripts** only in `projectSettingsOverrides.<project id>.defaultProjectScripts`; legacy `projectScriptOverrides` and a checked-in `t3.json` stay unset. `install` runs on worktree creation and blocks the agent (`async: false`); `runOnSettle` runs on settle; the user runs `preview` and `stop` from the menu. Port: deslop's from the worktree path, passed as `PORT` through `vp run --no-cache`, since a cached script receives only tracked variables; Dual's from its `Preview ready:` line.
 
 ```bash
 # deslop
 install: vp install --frozen-lockfile                                      # async: false
-preview: u=preview-${PWD##*/} p=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)); systemctl --user stop $u 2>/dev/null; systemd-run --user -G -d -u $u -E PATH="$HOME/.vite-plus/bin:$PATH" -E HOST=127.0.0.1 -E PORT=$p vp run --filter @deslop/portfolio preview && until curl -fso /dev/null http://127.0.0.1:$p; do systemctl --user is-active -q $u || exit 1; sleep 2; done && sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null && echo https://$(hostname -s).tailnet-8c4c.ts.net:$p
+preview: u=preview-${PWD##*/} p=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)); systemctl --user stop $u 2>/dev/null; systemd-run --user -G -d -u $u -E PATH="$HOME/.vite-plus/bin:$PATH" -E HOST=127.0.0.1 -E PORT=$p vp run --no-cache --filter @deslop/portfolio preview && until curl -fso /dev/null http://127.0.0.1:$p; do systemctl --user is-active -q $u || exit 1; sleep 2; done && sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null && echo https://$(hostname -s).tailnet-8c4c.ts.net:$p
 stop: systemctl --user stop preview-${PWD##*/}; sudo tailscale serve --https=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)) off 2>/dev/null || true   # runOnSettle
 
 # dual
