@@ -7,8 +7,8 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
-import {Loading} from '@deslop/components-web/fallbacks'
 import {GitHubIcon} from '@deslop/components-web/icons'
+import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button, buttonVariants} from '@deslop/components-web/ui/button'
@@ -22,10 +22,12 @@ import {
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
 import {FieldError} from '@deslop/components-web/ui/field'
+import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 
 import {AccountAvatar, AppList, QrCode} from '#lib/components.tsx'
 import {
+	APPS,
 	accountAtom,
 	approveLink,
 	codeSignInAtom,
@@ -96,7 +98,7 @@ function Waiting(props: {account: Option.Option<Account>; id: string}) {
 					{
 						onNone: () => <CodeCard request={value.request} />,
 						onSome: () => (
-							<Suspense fallback={<Loading />}>
+							<Suspense fallback={<ItemListSkeleton label="Apps" media rows={APPS.length} />}>
 								<AppList pending={Option.some(value.request)} />
 							</Suspense>
 						)
@@ -264,9 +266,22 @@ function Shell() {
 	)
 }
 
+// Until the account is known: the app bar and the page's shape, never a blank page with a spinner.
 function HomeLayout() {
 	return (
-		<Suspense fallback={<Loading />}>
+		<Suspense
+			fallback={
+				<>
+					<AppBar icon={icon} name="auth" />
+					<main className="flex flex-1 justify-center overflow-y-auto px-4 py-8 md:py-16">
+						<div className="flex w-full max-w-xl flex-col gap-6">
+							<Skeleton className="h-7 w-48" />
+							<ItemListSkeleton label="Apps" media rows={APPS.length} />
+						</div>
+					</main>
+				</>
+			}
+		>
 			<Shell />
 		</Suspense>
 	)

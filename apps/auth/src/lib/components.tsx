@@ -121,7 +121,7 @@ function ClientChip(props: {app: string; client: string; device: string; now: nu
 				onFalse: () => (
 					<>
 						<DeviceIcon device={props.device} />
-						{props.client}
+						{signInLabel(props.client, props.device)}
 						<span className="flex gap-0.5">
 							{Array.map(props.signIns, signIn => (
 								<StatusDot
@@ -200,7 +200,7 @@ function AppRow(props: {
 							onSome: request => (
 								<Badge variant="outline" className="text-primary h-6">
 									<DeviceIcon device={request.device} />
-									{request.clientName}
+									{signInLabel(request.clientName, request.device)}
 									<span className="font-mono">new</span>
 								</Badge>
 							)

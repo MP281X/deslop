@@ -8,8 +8,8 @@ import {AsyncResult} from 'effect/reactivity'
 import {Check, Copy, Ellipsis, Plus, Server} from 'lucide-react'
 import {useState} from 'react'
 
-import {Error, Loading, SignIn} from '@deslop/components-web/fallbacks'
-import {ItemList} from '@deslop/components-web/item-list'
+import {Error, SignIn} from '@deslop/components-web/fallbacks'
+import {ItemList, ItemListSkeleton} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
@@ -344,7 +344,7 @@ function Servers() {
 					return <SignIn href={signInUrl(location.href)} />
 				}
 			}),
-		onInitial: () => <Loading />,
+		onInitial: () => <ItemListSkeleton label="MCP servers" media rows={4} />,
 		onSuccess: servers => <Directory servers={servers.value} />
 	})
 }

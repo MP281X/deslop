@@ -6,14 +6,16 @@ import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {ChevronLeft, RotateCw} from 'lucide-react'
 import {useState} from 'react'
+import type {ReactNode} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
-import {Error, Loading, SignIn} from '@deslop/components-web/fallbacks'
-import {ItemList} from '@deslop/components-web/item-list'
+import {Error, SignIn} from '@deslop/components-web/fallbacks'
+import {ItemList, ItemListSkeleton} from '@deslop/components-web/item-list'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
 import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Item, ItemContent, ItemDescription, ItemTitle} from '@deslop/components-web/ui/item'
+import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Toggle} from '@deslop/components-web/ui/toggle'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
 import {Tooltip, TooltipContent, TooltipTrigger} from '@deslop/components-web/ui/tooltip'
@@ -254,6 +256,22 @@ function Waterfall(props: {trace: Trace}) {
 	)
 }
 
+// A trace's title, its summary line and span rows of label and bar, while the trace loads.
+function WaterfallSkeleton() {
+	return (
+		<div aria-busy="true" aria-label="Trace" role="status" className="flex flex-col gap-3">
+			<Skeleton className="h-6 w-2/3" />
+			<Skeleton className="h-4 w-1/3" />
+			{Array.map(Array.range(1, 5), row => (
+				<div key={row} className="flex items-center gap-3">
+					<Skeleton className="h-4 w-32" />
+					<Skeleton className="h-3 flex-1" />
+				</div>
+			))}
+		</div>
+	)
+}
+
 function Detail() {
 	const setSelected = useAtomSet(selectedAtom)
 	return Option.match(useAtomValue(selectedTraceAtom), {
@@ -273,7 +291,7 @@ function Detail() {
 				</Button>
 				{AsyncResult.match(result, {
 					onFailure: failure => <Failure cause={failure.cause} />,
-					onInitial: () => <Loading />,
+					onInitial: () => <WaterfallSkeleton />,
 					// The previous trace stays dimmed while the picked one loads.
 					onSuccess: trace => (
 						<div
@@ -289,60 +307,70 @@ function Detail() {
 	})
 }
 
+// A phone shows the list or the picked trace; wider screens show both side by side.
+function Panes(props: {children: ReactNode; waiting: boolean}) {
+	const selected = useAtomValue(selectedAtom)
+	return (
+		<div className="flex min-h-0 flex-1 flex-col md:flex-row">
+			<nav
+				className={cn(
+					'border-border min-h-0 flex-1 overflow-y-auto md:w-80 md:flex-none md:border-r',
+					Option.isSome(selected) && 'hidden md:block'
+				)}
+				aria-label="Traces"
+			>
+				<div className="border-border bg-background sticky top-0 z-10 flex items-center gap-2 border-b px-2 py-1.5">
+					<ServiceFilter />
+					{props.waiting && <StatusDot waiting />}
+				</div>
+				{props.children}
+			</nav>
+			<main
+				className={cn('min-h-0 flex-1 overflow-y-auto px-4 py-4 md:block md:px-6', Option.isNone(selected) && 'hidden')}
+			>
+				<Detail />
+			</main>
+		</div>
+	)
+}
+
 function Traces() {
 	const [selected, setSelected] = useAtom(selectedAtom)
 	const arrived = useAtomValue(arrivalsAtom).arrived
 	const now = DateTime.toEpochMillis(DateTime.nowUnsafe())
 	return AsyncResult.match(useAtomValue(tracesAtom), {
 		onFailure: failure => <Failure cause={failure.cause} />,
-		onInitial: () => <Loading />,
+		onInitial: () => (
+			<Panes waiting={false}>
+				<ItemListSkeleton label="Recent traces" rows={8} />
+			</Panes>
+		),
 		onSuccess: page => (
-			<div className="flex min-h-0 flex-1 flex-col md:flex-row">
-				{/* A phone shows the list or the picked trace; wider screens show both side by side. */}
-				<nav
-					className={cn(
-						'border-border min-h-0 flex-1 overflow-y-auto md:w-80 md:flex-none md:border-r',
-						Option.isSome(selected) && 'hidden md:block'
-					)}
-					aria-label="Traces"
-				>
-					<div className="border-border bg-background sticky top-0 z-10 flex items-center gap-2 border-b px-2 py-1.5">
-						<ServiceFilter />
-						{page.waiting && <StatusDot waiting />}
-					</div>
-					{Array.match(page.value.entries, {
-						onEmpty: () => (
-							<Empty>
-								<EmptyHeader>
-									<EmptyTitle>No traces match</EmptyTitle>
-								</EmptyHeader>
-							</Empty>
-						),
-						onNonEmpty: entries => (
-							<ItemList label="Recent traces">
-								{Array.map(entries, trace => (
-									<TraceRow
-										key={trace.id}
-										arrived={Array.contains(arrived, trace.id)}
-										now={now}
-										onSelect={() => setSelected(Option.some(trace.id))}
-										selected={Option.contains(selected, trace.id)}
-										trace={trace}
-									/>
-								))}
-							</ItemList>
-						)
-					})}
-				</nav>
-				<main
-					className={cn(
-						'min-h-0 flex-1 overflow-y-auto px-4 py-4 md:block md:px-6',
-						Option.isNone(selected) && 'hidden'
-					)}
-				>
-					<Detail />
-				</main>
-			</div>
+			<Panes waiting={page.waiting}>
+				{Array.match(page.value.entries, {
+					onEmpty: () => (
+						<Empty>
+							<EmptyHeader>
+								<EmptyTitle>No traces match</EmptyTitle>
+							</EmptyHeader>
+						</Empty>
+					),
+					onNonEmpty: entries => (
+						<ItemList label="Recent traces">
+							{Array.map(entries, trace => (
+								<TraceRow
+									key={trace.id}
+									arrived={Array.contains(arrived, trace.id)}
+									now={now}
+									onSelect={() => setSelected(Option.some(trace.id))}
+									selected={Option.contains(selected, trace.id)}
+									trace={trace}
+								/>
+							))}
+						</ItemList>
+					)
+				})}
+			</Panes>
 		)
 	})
 }

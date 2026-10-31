@@ -4,7 +4,6 @@ import {GitHubIcon} from '#components/icons.tsx'
 import {Alert, AlertDescription, AlertTitle} from '#components/ui/alert.tsx'
 import {Button, buttonVariants} from '#components/ui/button.tsx'
 import {Empty, EmptyContent, EmptyHeader, EmptyTitle} from '#components/ui/empty.tsx'
-import {Spinner} from '#components/ui/spinner.tsx'
 import {formatError} from '#lib/utils.ts'
 
 export function NotFound() {
@@ -19,14 +18,6 @@ export function NotFound() {
 				</a>
 			</EmptyContent>
 		</Empty>
-	)
-}
-
-export function Loading() {
-	return (
-		<div className="flex flex-1 items-center justify-center">
-			<Spinner />
-		</div>
 	)
 }
 

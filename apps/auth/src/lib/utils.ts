@@ -206,6 +206,7 @@ export const APPS = [
 	{id: 'opm', name: 'opm', url: 'opm://'},
 	{id: 'portfolio', name: 'Portfolio', url: 'https://portfolio.mp281x.xyz'},
 	{id: 'scope', name: 'Scope', url: 'https://scope.mp281x.xyz'},
+	{id: 'signal', name: 'Signal', url: 'https://signal.mp281x.xyz'},
 	{id: 'stash', name: 'Stash', url: 'stash://'},
 	{id: 'trips', name: 'Trips', url: 'trips://'}
 ] as const

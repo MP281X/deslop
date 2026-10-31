@@ -208,7 +208,9 @@ One vocabulary on both platforms: a row is an `Item`, a blank state an `Empty`, 
 - **Web.** shadcn `base-mira` in `packages/components-web/src/ui/`, exactly as the CLI writes it; house rules such as the press scale live in `theme.css`. Beside it: `StatusDot`, `ItemList` (hairline rows), `SignIn` and `ResultError`. Apps compose these before writing their own markup.
 - **iOS.** `packages/components-mobile/src/ui/` carries the same names and parts over `@expo/ui` SwiftUI (`Item`, `ItemMedia`, `ItemContent`, `ItemTitle`, `ItemDescription`, `ItemActions`, `ItemGroup`, `Empty…`, `ToggleGroup`, `Spinner`), taking `modifiers` where the web takes `className`. System controls stay native.
 - **Tokens only.** shadcn's lint keeps web classes on the theme; `swiftui-theme-values` does the same for SwiftUI: spacing from `space`, type from `text` or a Dynamic Type style, colours from `colors`.
-- **Favicons** are the source's own, never a letter tile.
+- **Favicons** are the source's own, on the `icon-tile`, never a letter tile.
+- **Loading.** The shell (app bar, headings, filters) renders at once, and data that is on its way shows as a skeleton shaped like it: `ItemListSkeleton` on the web, `ItemGroupSkeleton` (SwiftUI's placeholder redaction) on iOS. A refresh keeps the current data, dimmed. A spinner only sits inside a control the user pressed, never alone on a page; no client-side caches to hide loading.
+- **Copy.** Headings, labels and errors only; no subtitle restating what the page already shows.
 
 ## Motion
 

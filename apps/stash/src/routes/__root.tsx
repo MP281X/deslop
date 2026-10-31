@@ -2,12 +2,13 @@ import {useAtomMount, useAtomSet} from '@effect/atom-react'
 
 import {Array, Match, pipe} from 'effect'
 
-import {Host, NavigationDestination, NavigationStack, ProgressView, useNativeState} from '@expo/ui/swift-ui'
+import {Host, NavigationDestination, NavigationStack, useNativeState} from '@expo/ui/swift-ui'
 import {background, tint} from '@expo/ui/swift-ui/modifiers'
 import {Suspense, useState} from 'react'
 
 import {LoadingScreen, SessionGate} from '@deslop/components-mobile/screens'
 import {colors} from '@deslop/components-mobile/theme'
+import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {updateAtom} from '@deslop/runtime/mobile'
 
 import {primary, queryAtom, session} from '#lib/utils.ts'
@@ -31,7 +32,7 @@ function AppRoutes() {
 				onPathChange={setPath}
 				modifiers={[tint(colors.foreground), background(colors.background)]}
 			>
-				<Suspense fallback={<ProgressView />}>
+				<Suspense fallback={<ItemGroupSkeleton rows={10} />}>
 					<HomeRoute
 						query={query}
 						tag={tag}

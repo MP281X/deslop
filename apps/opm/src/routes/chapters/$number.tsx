@@ -2,13 +2,14 @@ import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, HashSet, Number, Option, pipe} from 'effect'
 
-import {ProgressView, Toolbar} from '@expo/ui/swift-ui'
-import {background, frame, navigationBarTitleDisplayMode, navigationTitle} from '@expo/ui/swift-ui/modifiers'
+import {Toolbar} from '@expo/ui/swift-ui'
+import {background, frame, navigationBarTitleDisplayMode, navigationTitle, padding} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 import {useRef, useState} from 'react'
 
-import {colors} from '@deslop/components-mobile/theme'
+import {colors, space} from '@deslop/components-mobile/theme'
 import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
+import {Skeleton} from '@deslop/components-mobile/ui/skeleton'
 
 import {readAtom, unreachableAtom} from '#lib/utils.ts'
 import {PageStrip} from '#modules/native/index.ts'
@@ -48,12 +49,14 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; serie
 				</Empty>
 			)
 		}
+		// A page-shaped block where the chapter's first page will land.
 		return (
-			<ProgressView
+			<Skeleton
 				modifiers={[
-					navigationTitle(''),
 					frame({maxHeight: Infinity, maxWidth: Infinity}),
-					background(colors.background)
+					padding({all: space[4]}),
+					background(colors.background),
+					navigationTitle('')
 				]}
 			/>
 		)
