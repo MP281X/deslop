@@ -11,7 +11,7 @@ import * as ServerRuntime from '@deslop/runtime/server'
 
 import packageJson from '#package.json' with {type: 'json'}
 
-import icon from '#routes/icon.png'
+import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Extractor} from '#services/bookings/lib/extraction.ts'
@@ -34,7 +34,6 @@ const layerStorage = Layer.unwrap(
 )
 
 const mcp = ServerRuntime.layerMcp({
-	icon,
 	instructions: "Trips tracks the user's flights, trains and stays with live gates, delays and platforms.",
 	name: 'trips',
 	registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers)),
@@ -45,13 +44,14 @@ NodeRuntime.runMain(
 	pipe(
 		HttpRouter.serve(
 			pipe(
-				Layer.merge(
+				Layer.mergeAll(
 					pipe(
 						RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
 						Layer.provide(RpcHandlers),
 						Layer.provide(RpcSerialization.layerJson)
 					),
-					mcp
+					mcp,
+					ServerRuntime.layerIcon(icon)
 				),
 				Layer.provide(Auth.layer('https://trips.mp281x.xyz'))
 			),

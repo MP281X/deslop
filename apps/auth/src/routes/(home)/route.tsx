@@ -38,7 +38,7 @@ import {
 	signOutAtom,
 	timeLabel
 } from '#lib/utils.ts'
-import icon from '#routes/icon-dark.png'
+import icon from '#routes/icon-dark.svg'
 import type {Account} from '#services/people/schema.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 

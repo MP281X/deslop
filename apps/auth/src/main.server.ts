@@ -10,6 +10,7 @@ import {development} from '@deslop/runtime/auth/utils'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import {HttpHandlers} from '#http/handlers.ts'
+import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {GitHub} from '#services/github/service.ts'
@@ -57,6 +58,7 @@ NodeRuntime.runMain(
 						Layer.provide(RpcOrigin.layer)
 					),
 					layerMcp,
+					ServerRuntime.layerIcon(icon),
 					ServerRuntime.layerStaticFiles
 				),
 				Layer.provide(layerServices)

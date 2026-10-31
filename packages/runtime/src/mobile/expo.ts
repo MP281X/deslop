@@ -28,19 +28,14 @@ export function make(app: {bundleIdentifier: string; name: string; owner: string
 					// The compiler memoizes components, as on the web, so a changed row re-renders without the rest of its list.
 					experiments: {reactCompiler: true},
 					extra: {eas: {projectId: app.projectId}, scheme: variant.scheme},
-					icon: './src/routes/icon.png',
 					ios: {
 						appleTeamId: Option.getOrUndefined(team),
 						buildNumber: `${release}`,
 						bundleIdentifier: variant.bundleIdentifier,
 						config: {usesNonExemptEncryption: false},
 						deploymentTarget: '18.0',
-						// The dark icon stands on the system's dark backdrop; the tinted one is grey for iOS to tint.
-						icon: {
-							dark: './src/routes/icon-dark.png',
-							light: './src/routes/icon.png',
-							tinted: './src/routes/icon-tinted.png'
-						},
+						// An Icon Composer package: the object over a light tile or the system's dark one, and iOS renders tinted and clear.
+						icon: './src/routes/app.icon',
 						supportsTablet: false
 					},
 					name: variant.name,

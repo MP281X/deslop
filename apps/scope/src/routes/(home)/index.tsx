@@ -31,7 +31,7 @@ import {
 	tracesAtom,
 	tracesQueryAtom
 } from '#lib/utils.ts'
-import icon from '#routes/icon-dark.png'
+import icon from '#routes/icon-dark.svg'
 import type {Trace, TraceSummary} from '#services/telemetry/schema.ts'
 
 type TraceSpan = Trace['spans'][number]

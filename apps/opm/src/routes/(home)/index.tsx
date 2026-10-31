@@ -41,7 +41,7 @@ import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
 import {primary, readAtom} from '#lib/utils.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
-import icon from '#routes/icon.png'
+import icon from '#routes/app.icon/Assets/icon.png'
 import {byNumber, resumeOf, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
 import type {ChapterItem, ChapterList} from '#services/chapters/schema.ts'
 import {Series} from '#services/chapters/schema.ts'

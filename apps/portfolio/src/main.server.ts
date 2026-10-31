@@ -7,6 +7,7 @@ import {RpcServer} from 'effect/rpc'
 
 import * as ServerRuntime from '@deslop/runtime/server'
 
+import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Presence} from '#services/presence/service.ts'
@@ -20,6 +21,7 @@ NodeRuntime.runMain(
 					RpcServer.layerHttp({disableTracing: true, group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
 					Layer.provide(RpcHandlers)
 				),
+				ServerRuntime.layerIcon(icon),
 				ServerRuntime.layerStaticFiles
 			),
 			{disableLogger: true}

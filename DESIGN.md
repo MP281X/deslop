@@ -234,13 +234,15 @@ Motion marks a change the user caused or should notice, and never holds content 
 
 Each app is one real object in isometric pixel art: 64 cells, 2:1 pixel lines, three tones per material (Flexoki 300, 400 and 600 of the app's hue, steel, near-black), light catching the top front edges, a footprint shadow and an `icon-shadow` outline, with one lit part. A lock (auth), a torii (gateway), a monitor with a trace waterfall (scope), a sawtooth factory (signal), a book with a ribbon (stash), a suitcase (trips). Exceptions: the portfolio bolt stays flat, its loose pixels in the other apps' hues, and opm keeps its Saitama face.
 
-| File              | Background  | Used as                                      |
-| ----------------- | ----------- | -------------------------------------------- |
-| `icon.png`        | `icon-tile` | iOS icon, favicon                            |
-| `icon-dark.png`   | transparent | iOS dark icon, dark favicon, the web app bar |
-| `icon-tinted.png` | transparent | iOS tinted icon, in grey                     |
+Pixel art ships as SVG, one cell per unit with `crispEdges`, so it stays sharp at any size in a fraction of a PNG's bytes. A raster stays only where a consumer needs one, at the smallest size and format it accepts.
 
-All are 1024px with nearest-neighbour scaling; the app bar shows the icon at 32px, where its cells land on whole pixels of a 2x screen.
+| File                   | Format                             | Used as                                                                   |
+| ---------------------- | ---------------------------------- | ------------------------------------------------------------------------- |
+| `icon.svg`             | SVG on `icon-tile`                 | favicon; the server's `/icon` for Auth's app list and MCP clients         |
+| `icon-dark.svg`        | SVG, transparent                   | dark favicon, the web app bar                                             |
+| `app.icon/` (iOS apps) | Icon Composer, an SVG layer        | the iOS icon over `icon-tile` or the system's dark fill; iOS derives tint |
+| `icon.png` (iOS apps)  | indexed PNG, 1024px                | the in-app title, which needs a raster                                    |
+| opm's face             | PNG in `app.icon`, WebP at `/icon` | a painting, not pixel art, so it keeps a raster                           |
 
 ## Do's and Don'ts
 

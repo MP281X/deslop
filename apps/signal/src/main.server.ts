@@ -8,6 +8,7 @@ import {RpcServer} from 'effect/rpc'
 import {Auth} from '@deslop/runtime/auth/service'
 import * as ServerRuntime from '@deslop/runtime/server'
 
+import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Core} from '#services/core/service.ts'
@@ -22,6 +23,7 @@ NodeRuntime.runMain(
 						RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
 						Layer.provide(RpcHandlers)
 					),
+					ServerRuntime.layerIcon(icon),
 					ServerRuntime.layerStaticFiles
 				),
 				Layer.provide(Auth.layer('https://signal.mp281x.xyz'))

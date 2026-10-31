@@ -9,6 +9,7 @@ import {Auth} from '@deslop/runtime/auth/service'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import {HttpHandlers} from '#http/handlers.ts'
+import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {GATEWAY_URL} from '#services/connections/lib/utils.ts'
@@ -35,6 +36,7 @@ NodeRuntime.runMain(
 						Layer.provide(RpcHandlers)
 					),
 					layerMcp,
+					ServerRuntime.layerIcon(icon),
 					ServerRuntime.layerStaticFiles
 				),
 				Layer.provide(layerServices),
