@@ -76,13 +76,7 @@ const open = Effect.fnUntraced(function* (options: {
 })
 
 const settled = Effect.fnUntraced(function* (notes: typeof Notes.Service, done: (state: Note[]) => boolean) {
-	return yield* pipe(
-		notes.changes,
-		Stream.filter(done),
-		Stream.runHead,
-		Effect.map(Option.getOrThrow),
-		Effect.timeout('5 seconds')
-	)
+	return yield* pipe(notes.changes, Stream.filter(done), Stream.runHead, Effect.map(Option.getOrThrow))
 })
 
 function isReady(state: Note[]) {
@@ -533,21 +527,24 @@ it.layer(NodeServices.layer)('Notes', test => {
 			const fs = yield* FileSystem.FileSystem
 			const directory = yield* fs.makeTempDirectoryScoped()
 			const downloading = yield* Latch.make()
-			const release = yield* Latch.make()
+			const cancelled = yield* Latch.make()
 			const notes = yield* open({
 				directory,
 				organizer: noKey,
 				sources: Sources.of({
 					...recipe,
-					image: link => Effect.andThen(Effect.andThen(downloading.open, release.await), recipe.image(link))
+					image: () =>
+						Effect.andThen(
+							downloading.open,
+							Effect.onInterrupt(Effect.never, () => cancelled.open)
+						)
 				})
 			})
 			yield* notes.capture({id: IDS[0], text: 'https://example.com/soup'})
 			yield* downloading.await
 			yield* notes.remove({id: IDS[0]})
-			yield* release.open
+			yield* cancelled.await
 			yield* settled(notes, Array.isReadonlyArrayEmpty)
-			yield* TestClock.withLive(Effect.sleep('100 millis'))
 			assert.isFalse(yield* fs.exists(`${directory}/images/${IDS[0]}`))
 		})
 	)

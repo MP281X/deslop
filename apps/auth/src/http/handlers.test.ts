@@ -1542,11 +1542,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const early = yield* Effect.forkScoped(
 				send(web.issuer, `/auth/continue?request=${command.id}`, {headers: {cookie: command.cookie}})
 			)
-			yield* TestClock.withLive(Effect.sleep('100 millis'))
 			yield* TestClock.adjust('50 seconds')
 			assert.strictEqual((yield* Fiber.join(early)).status, 408)
 			const waiting = yield* Effect.forkScoped(delivered(web.issuer, command))
-			yield* TestClock.withLive(Effect.sleep('100 millis'))
+			yield* TestClock.adjust('1 second')
 			assert.strictEqual((yield* answer(web.issuer, session, command.id, true)).status, 204)
 			const callback = yield* Fiber.join(waiting)
 			assert.strictEqual(`${callback.origin}${callback.pathname}`, 'http://127.0.0.1:34571/callback')

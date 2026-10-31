@@ -194,8 +194,7 @@ it.effect(
 				Effect.map(buildingOf(sim, minerId), building => (building.output.iron_ore ?? 0) > 0)
 			)
 		)
-	}),
-	{timeout: 240_000}
+	})
 )
 
 it.effect(
@@ -365,8 +364,7 @@ it.effect(
 			2
 		)
 		assert.deepStrictEqual((yield* team0(sim)).line, [])
-	}),
-	{timeout: 15_000}
+	})
 )
 
 function swayOf(track: {x: number; yaw: number; z: number}[]) {
@@ -453,8 +451,7 @@ it.effect(
 			{concurrency: 1}
 		)
 		assert.deepStrictEqual(Array.flatten(found), [])
-	}),
-	{timeout: 240_000}
+	})
 )
 
 it.effect(
@@ -500,6 +497,5 @@ it.effect(
 			yield* Schema.encodeEffect(disk)(yield* second.snapshot),
 			yield* Schema.encodeEffect(disk)(yield* first.snapshot)
 		)
-	}),
-	{timeout: 120_000}
+	})
 )

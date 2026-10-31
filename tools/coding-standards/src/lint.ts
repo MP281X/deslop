@@ -16,6 +16,7 @@ import {noComponentAtomAllocation} from '#rules/no-component-atom-allocation.ts'
 import {noConstantFunction} from '#rules/no-constant-function.ts'
 import {noDestructuredParameter} from '#rules/no-destructured-parameter.ts'
 import {noDiscardedFailure} from '#rules/no-discarded-failure.ts'
+import {noDomTestEnvironment} from '#rules/no-dom-test-environment.ts'
 import {noDoubleNullishCheck} from '#rules/no-double-nullish-check.ts'
 import {noEffectGenCallback} from '#rules/no-effect-gen-callback.ts'
 import {noEffectPropertyArrow} from '#rules/no-effect-property-arrow.ts'
@@ -25,7 +26,6 @@ import {noErrorMessageControlFlow} from '#rules/no-error-message-control-flow.ts
 import {noFakeRefState} from '#rules/no-fake-ref-state.ts'
 import {noFalliblePromise} from '#rules/no-fallible-promise.ts'
 import {noFloatingDerivedType} from '#rules/no-floating-derived-type.ts'
-import {noFocusedEffectTest} from '#rules/no-focused-effect-test.ts'
 import {noGradient} from '#rules/no-gradient.ts'
 import {noHandWrittenGuard} from '#rules/no-hand-written-guard.ts'
 import {noInOperator} from '#rules/no-in-operator.ts'
@@ -36,6 +36,7 @@ import {noNativeEmptinessCheck} from '#rules/no-native-emptiness-check.ts'
 import {noNativeMethodCall} from '#rules/no-native-method-call.ts'
 import {noOptionValueAccess} from '#rules/no-option-value-access.ts'
 import {noPipeMethod} from '#rules/no-pipe-method.ts'
+import {noPollingTest} from '#rules/no-polling-test.ts'
 import {noPropertyAlias} from '#rules/no-property-alias.ts'
 import {noRedundantStateType} from '#rules/no-redundant-state-type.ts'
 import {noRedundantUseRefNullType} from '#rules/no-redundant-use-ref-null-type.ts'
@@ -44,15 +45,20 @@ import {noReinventedSchema} from '#rules/no-reinvented-schema.ts'
 import {noRenamedImport} from '#rules/no-renamed-import.ts'
 import {noReturnType} from '#rules/no-return-type.ts'
 import {noSingleUseValue} from '#rules/no-single-use-value.ts'
+import {noSkippedTest} from '#rules/no-skipped-test.ts'
+import {noSleepingTest} from '#rules/no-sleeping-test.ts'
 import {noStoredJsx} from '#rules/no-stored-jsx.ts'
 import {noStoredSchemaOperation} from '#rules/no-stored-schema-operation.ts'
 import {noSwitchStatement} from '#rules/no-switch-statement.ts'
 import {noTernary} from '#rules/no-ternary.ts'
+import {noTestInLoop} from '#rules/no-test-in-loop.ts'
+import {noTestTimeout} from '#rules/no-test-timeout.ts'
 import {noTrivialIndirection} from '#rules/no-trivial-indirection.ts'
 import {noTypeFromValue} from '#rules/no-type-from-value.ts'
 import {noTypeof} from '#rules/no-typeof.ts'
 import {noUnexplainedDisable} from '#rules/no-unexplained-disable.ts'
 import {noUnvalidatedJsonDecode} from '#rules/no-unvalidated-json-decode.ts'
+import {noWallClockTest} from '#rules/no-wall-clock-test.ts'
 import {preferEffectCountBy} from '#rules/prefer-effect-count-by.ts'
 import {preserveErrorCause} from '#rules/preserve-error-cause.ts'
 import {requireUnicodeRegexp} from '#rules/require-unicode-regexp.ts'
@@ -114,6 +120,7 @@ const RULES = {
 	'no-constant-function': noConstantFunction,
 	'no-destructured-parameter': noDestructuredParameter,
 	'no-discarded-failure': noDiscardedFailure,
+	'no-dom-test-environment': noDomTestEnvironment,
 	'no-double-nullish-check': noDoubleNullishCheck,
 	'no-effect-gen-callback': noEffectGenCallback,
 	'no-effect-property-arrow': noEffectPropertyArrow,
@@ -123,7 +130,6 @@ const RULES = {
 	'no-fake-ref-state': noFakeRefState,
 	'no-fallible-promise': noFalliblePromise,
 	'no-floating-derived-type': noFloatingDerivedType,
-	'no-focused-effect-test': noFocusedEffectTest,
 	'no-gradient': noGradient,
 	'no-hand-written-guard': noHandWrittenGuard,
 	'no-in-operator': noInOperator,
@@ -134,6 +140,7 @@ const RULES = {
 	'no-native-method-call': noNativeMethodCall,
 	'no-option-value-access': noOptionValueAccess,
 	'no-pipe-method': noPipeMethod,
+	'no-polling-test': noPollingTest,
 	'no-property-alias': noPropertyAlias,
 	'no-redundant-state-type': noRedundantStateType,
 	'no-redundant-use-ref-null-type': noRedundantUseRefNullType,
@@ -142,15 +149,20 @@ const RULES = {
 	'no-renamed-import': noRenamedImport,
 	'no-return-type': noReturnType,
 	'no-single-use-value': noSingleUseValue,
+	'no-skipped-test': noSkippedTest,
+	'no-sleeping-test': noSleepingTest,
 	'no-stored-jsx': noStoredJsx,
 	'no-stored-schema-operation': noStoredSchemaOperation,
 	'no-switch-statement': noSwitchStatement,
 	'no-ternary': noTernary,
+	'no-test-in-loop': noTestInLoop,
+	'no-test-timeout': noTestTimeout,
 	'no-trivial-indirection': noTrivialIndirection,
 	'no-type-from-value': noTypeFromValue,
 	'no-typeof': noTypeof,
 	'no-unexplained-disable': noUnexplainedDisable,
 	'no-unvalidated-json-decode': noUnvalidatedJsonDecode,
+	'no-wall-clock-test': noWallClockTest,
 	'prefer-effect-count-by': preferEffectCountBy,
 	'preserve-error-cause': preserveErrorCause,
 	'require-unicode-regexp': requireUnicodeRegexp,
@@ -671,6 +683,7 @@ export const lint: OxlintConfig = {
 		'vitest/no-disabled-tests': 'error',
 		'vitest/no-focused-tests': 'error',
 		'vitest/no-identical-title': 'error',
+		'vitest/prefer-each': 'error',
 		'vitest/valid-describe-callback': 'error',
 		'vitest/valid-title': 'error',
 		'vitest/warn-todo': 'error',

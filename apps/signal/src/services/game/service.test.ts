@@ -154,8 +154,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 			yield* TestClock.adjust('1 minute')
 			assert.strictEqual(Option.getOrThrow(yield* Stream.runHead(game.join)).tick, frame.tick)
 			assert.strictEqual(calls.length, 3)
-		}),
-		{timeout: 15_000}
+		})
 	)
 
 	test.effect(
@@ -353,7 +352,6 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 			assert.strictEqual(entry.status, 'done')
 			assert.strictEqual(entry.observed, 600)
 			assert.strictEqual(entry.tick, 1200)
-		}),
-		{timeout: 15_000}
+		})
 	)
 })
