@@ -20,7 +20,7 @@ export function NotFound() {
 export function Loading() {
 	return (
 		<div className="flex flex-1 items-center justify-center">
-			<Spinner variant="subtle" />
+			<Spinner />
 		</div>
 	)
 }

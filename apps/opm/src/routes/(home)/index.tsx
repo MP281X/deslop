@@ -45,11 +45,11 @@ import {
 } from '@expo/ui/swift-ui/modifiers'
 import {useState} from 'react'
 
-import {colors, mono} from '@deslop/components-mobile/theme'
+import {colors, text} from '@deslop/components-mobile/theme'
 import {AppTitle} from '@deslop/components-mobile/title'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
-import {readAtom} from '#lib/utils.ts'
+import {primary, readAtom} from '#lib/utils.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
 import icon from '#routes/icon.png'
 import {byNumber, resumeOf, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
@@ -100,10 +100,10 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 				/>
 				<VStack alignment="leading" spacing={4} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>
 					<HStack spacing={6}>
-						{props.fresh && <Circle modifiers={[foregroundStyle(colors.primary), frame({height: 8, width: 8})]} />}
+						{props.fresh && <Circle modifiers={[foregroundStyle(primary), frame({height: 8, width: 8})]} />}
 						<Text
 							modifiers={[
-								mono(Boolean.match(done, {onFalse: () => 'headline' as const, onTrue: () => 'body' as const}), 15),
+								Boolean.match(done, {onFalse: () => text.row, onTrue: () => text.body}),
 								foregroundStyle(
 									Boolean.match(done, {onFalse: () => colors.foreground, onTrue: () => colors.mutedForeground})
 								),
@@ -113,13 +113,7 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 							{`Chapter ${props.chapter.number}`}
 						</Text>
 					</HStack>
-					<Text
-						modifiers={[
-							mono('subheadline', 13),
-							foregroundStyle(colors.mutedForeground),
-							lineLimit(1, {reservesSpace: true})
-						]}
-					>
+					<Text modifiers={[text.detail, foregroundStyle(colors.mutedForeground), lineLimit(1, {reservesSpace: true})]}>
 						{Array.join(
 							Array.filter([props.chapter.title, postedOn(props.chapter.postedAt)], String.isNonEmpty),
 							' · '
@@ -136,7 +130,7 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 								onTrue: () => 1
 							})
 					})}
-					accent={colors.primary}
+					accent={primary}
 					read={colors.foreground}
 					modifiers={[frame({height: 14, width: 14})]}
 				/>
@@ -160,7 +154,7 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 							series: props.chapter.series
 						})
 					}
-					modifiers={[tint(colors.primary)]}
+					modifiers={[tint(primary)]}
 				/>
 			</SwipeActions.Actions>
 		</SwipeActions>
@@ -175,7 +169,7 @@ export function ChaptersRoute(props: {
 }) {
 	const query = useNativeState('')
 	const [searched, setSearched] = useState('')
-	const text = String.toLowerCase(String.trim(searched))
+	const needle = String.toLowerCase(String.trim(searched))
 	// New means past the newest chapter ever opened, so the back catalogue carries no dots.
 	const reached = pipe(
 		Array.filter(props.chapters, chapter => (chapter.reading?.at ?? 0) > 0),
@@ -188,7 +182,7 @@ export function ChaptersRoute(props: {
 		Array.sort(props.chapters, Order.flip(byNumber)),
 		Array.filter(
 			chapter =>
-				String.startsWith(text)(`${chapter.number}`) || String.includes(text)(String.toLowerCase(chapter.title))
+				String.startsWith(needle)(`${chapter.number}`) || String.includes(needle)(String.toLowerCase(chapter.title))
 		)
 	)
 	return (
@@ -204,7 +198,7 @@ export function ChaptersRoute(props: {
 			>
 				{Array.match(shown, {
 					onEmpty: () =>
-						Boolean.match(String.isEmpty(text), {
+						Boolean.match(String.isEmpty(needle), {
 							onFalse: () => (
 								<ContentUnavailableView title={`No Results for “${searched}”`} systemImage="magnifyingglass" />
 							),

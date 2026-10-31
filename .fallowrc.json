@@ -55,7 +55,6 @@
 				"tools/**",
 				"**/*.config.*",
 				"**/*.test.ts",
-				"**/app.plugin.js",
 				"apps/*/fingerprint.config.js",
 				"apps/*/targets/**",
 				"packages/runtime/src/vite.ts",
@@ -70,11 +69,9 @@
 		"maxCrap": 0
 	},
 	"ignoreDependencies": [
-		"@expo-google-fonts/jetbrains-mono",
 		// The runtime's session and keychain import these two; each app keeps them so autolinking builds their native modules.
 		"expo-auth-session",
 		"expo-secure-store",
-		"expo-font",
 		"expo-updates",
 		"onnxruntime-common",
 		"onnxruntime-node"
@@ -84,7 +81,6 @@
 		{"exports": ["default"], "file": "apps/*/app.config.ts"},
 		{"exports": ["*"], "file": "apps/*/fingerprint.config.js"},
 		{"exports": ["module.exports"], "file": "apps/*/targets/*/expo-target.config.js"},
-		{"exports": ["default"], "file": "packages/*/app.plugin.js"},
 		{"exports": ["*"], "file": "apps/*/src/services/*/schema.ts"},
 		{"exports": ["*"], "file": "packages/components-web/src/ui/**/*.tsx"}
 	],

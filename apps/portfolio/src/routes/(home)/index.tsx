@@ -192,12 +192,9 @@ function subscribeToResize(onStoreChange: () => void) {
 	}
 }
 
+// The page's content over the trail grid: one opaque column, rows split by hairlines.
 function Panel(input: {className?: string; children: React.ReactNode}) {
-	return (
-		<div className={cn('border-border/70 bg-background/88 border backdrop-blur-sm', input.className)}>
-			{input.children}
-		</div>
-	)
+	return <div className={cn('bg-background', input.className)}>{input.children}</div>
 }
 
 function TrailCanvas(input: {trails: PortfolioVisitors; viewport: {width: number; height: number}}) {
@@ -268,7 +265,7 @@ function CursorLabel(input: {label: string}) {
 	return (
 		<div className="flex items-center gap-1">
 			<MousePointer2 className="size-4 text-(--cursor-color)" />
-			<span className="bg-background text-foreground border border-(--cursor-color) px-1.5 py-1 font-mono text-xs whitespace-nowrap">
+			<span className="bg-background text-foreground rounded-sm border border-(--cursor-color) px-1.5 py-0.5 font-mono text-xs whitespace-nowrap">
 				{input.label}
 			</span>
 		</div>
@@ -334,7 +331,7 @@ function Section(input: {className?: string; children: React.ReactNode}) {
 	return (
 		<section
 			className={cn(
-				'relative z-10 flex flex-col items-center overflow-hidden px-3 py-6 sm:px-6 sm:py-10',
+				'relative z-10 flex flex-col items-center overflow-hidden px-3 py-4 sm:px-6 sm:py-6',
 				input.className
 			)}
 		>
@@ -343,39 +340,26 @@ function Section(input: {className?: string; children: React.ReactNode}) {
 	)
 }
 
-function SectionLabel(input: {title: string}) {
+// A section of the column: its lowercase mono name over the rows a hairline splits.
+function SectionBody(input: {children: React.ReactNode; title: string}) {
 	return (
-		<div className="mb-3 flex w-full max-w-5xl items-center gap-3 sm:mb-4">
-			<div className="bg-primary/25 h-px flex-1" />
-			<h2 className="border-primary/30 bg-background/88 text-primary border px-4 py-1.5 font-mono text-xs font-bold tracking-[0.35em] uppercase backdrop-blur-sm sm:text-sm">
-				{input.title}
-			</h2>
-			<div className="bg-primary/25 h-px flex-1" />
-		</div>
+		<Panel className="flex w-full max-w-3xl flex-col px-4 py-3 sm:px-6">
+			<h2 className="text-muted-foreground border-border border-b pb-2 font-mono text-xs">{input.title}</h2>
+			<div className="divide-border flex flex-col divide-y">{input.children}</div>
+		</Panel>
 	)
 }
 
 function HeroSection() {
 	return (
-		<Section className="pt-10 sm:pt-16">
-			<Panel className="flex w-full max-w-5xl flex-col items-center gap-4 p-6 sm:gap-6 sm:p-8">
-				<div className="space-y-1 text-center">
-					<h1 className="text-foreground font-mono text-4xl font-black tracking-[0.15em] uppercase sm:text-5xl md:text-6xl">
-						{profile.firstName}
-					</h1>
-					<h2 className="text-foreground/50 font-mono text-2xl tracking-[0.25em] uppercase sm:text-3xl md:text-4xl">
-						{profile.lastName}
-					</h2>
-				</div>
-
-				<p className="text-foreground/70 text-center font-mono text-xs tracking-[0.25em] uppercase sm:text-sm sm:tracking-[0.3em]">
-					{profile.title}
-				</p>
-
-				<div className="flex flex-col items-center gap-2 text-center font-mono">
-					<p className="text-foreground/90 text-sm leading-6 sm:text-base">{summary}</p>
-					<p className="text-muted-foreground/60 text-xs">{profile.location}</p>
-				</div>
+		<Section className="pt-10 sm:pt-20">
+			<Panel className="flex w-full max-w-3xl flex-col gap-3 px-4 py-6 sm:px-6">
+				<h1 className="text-foreground text-4xl font-semibold tracking-tight sm:text-5xl">
+					{profile.firstName} {profile.lastName}
+				</h1>
+				<p className="text-primary font-mono text-sm">{profile.title}</p>
+				<p className="text-foreground/90 text-base">{summary}</p>
+				<p className="text-muted-foreground font-mono text-xs">{profile.location}</p>
 			</Panel>
 		</Section>
 	)
@@ -384,32 +368,29 @@ function HeroSection() {
 function SkillsSection() {
 	return (
 		<Section>
-			<SectionLabel title="Skills" />
-			<div className="grid w-full max-w-5xl grid-cols-1 gap-3 sm:grid-cols-2">
+			<SectionBody title="skills">
 				{Array.map(skills, skill => (
-					<Panel key={skill.area} className="p-3 sm:p-4">
-						<div className="mb-2 flex items-center gap-3">
+					<div key={skill.area} className="flex flex-col gap-1 py-3 sm:flex-row sm:gap-6">
+						<h3 className="flex w-40 shrink-0 items-center gap-2 text-sm font-medium">
 							<skill.icon className="text-primary size-4" />
-							<h3 className="text-foreground font-mono text-sm font-semibold tracking-[0.18em] uppercase">
-								{skill.area}
-							</h3>
-						</div>
-						<p className="text-muted-foreground font-mono text-xs leading-5 sm:text-sm sm:leading-6">{skill.items}</p>
-					</Panel>
+							{skill.area}
+						</h3>
+						<p className="text-muted-foreground text-sm">{skill.items}</p>
+					</div>
 				))}
-			</div>
+			</SectionBody>
 		</Section>
 	)
 }
 
-function ProjectCard(input: {project: {description: string; href: string; name: string; role: string; stack: string}}) {
+function ProjectRow(input: {project: {description: string; href: string; name: string; role: string; stack: string}}) {
 	return (
-		<Panel className="flex h-full flex-col p-3 sm:p-4">
-			<div className="flex items-start justify-between gap-3">
-				<div>
-					<h3 className="text-foreground font-mono text-sm font-semibold tracking-widest">{input.project.name}</h3>
-					<p className="text-muted-foreground mt-1 font-mono text-xs">{input.project.role}</p>
-				</div>
+		<div className="flex flex-col gap-1 py-3">
+			<div className="flex items-baseline justify-between gap-3">
+				<h3 className="text-sm font-medium">
+					{input.project.name}
+					<span className="text-muted-foreground ml-2 font-normal">{input.project.role}</span>
+				</h3>
 				<a
 					href={input.project.href}
 					target="_blank"
@@ -420,23 +401,20 @@ function ProjectCard(input: {project: {description: string; href: string; name: 
 					<ArrowUpRight className="size-4" />
 				</a>
 			</div>
-			<p className="text-foreground/90 mt-2 font-mono text-xs leading-5 sm:text-sm sm:leading-6">
-				{input.project.description}
-			</p>
-			<p className="text-muted-foreground/80 mt-auto pt-2 font-mono text-xs">{input.project.stack}</p>
-		</Panel>
+			<p className="text-foreground/90 text-sm">{input.project.description}</p>
+			<p className="text-muted-foreground font-mono text-xs">{input.project.stack}</p>
+		</div>
 	)
 }
 
 function ProjectsSection() {
 	return (
 		<Section>
-			<SectionLabel title="Personal Projects" />
-			<div className="flex w-full max-w-5xl flex-col gap-3">
+			<SectionBody title="projects">
 				{Array.map(projects, project => (
-					<ProjectCard key={project.name} project={project} />
+					<ProjectRow key={project.name} project={project} />
 				))}
-			</div>
+			</SectionBody>
 		</Section>
 	)
 }
@@ -444,38 +422,32 @@ function ProjectsSection() {
 function ExperienceSection() {
 	return (
 		<Section>
-			<SectionLabel title="Experience" />
-			<div className="flex w-full max-w-5xl flex-col gap-3">
+			<SectionBody title="experience">
 				{Array.map(experience, job => (
-					<Panel key={job.company} className="p-3 sm:p-4">
-						<div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
-							<div className="space-y-0.5">
-								<p className="text-foreground font-mono text-sm font-semibold tracking-widest uppercase">
-									{job.company}
-								</p>
-								<div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs sm:text-sm">
-									<span>{job.role}</span>
-									{Predicate.isNotUndefined(job.note) && <span className="text-muted-foreground/80">· {job.note}</span>}
-								</div>
-							</div>
+					<div key={job.company} className="flex flex-col gap-2 py-3">
+						<div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between">
+							<h3 className="text-sm font-medium">
+								{job.company}
+								<span className="text-muted-foreground ml-2 font-normal">
+									{job.role}
+									{Predicate.isNotUndefined(job.note) && ` · ${job.note}`}
+								</span>
+							</h3>
 							<p className="text-muted-foreground font-mono text-xs sm:text-right">
 								{pipe([job.period, job.location], Array.filter(Predicate.isNotUndefined), Array.join(' · '))}
 							</p>
 						</div>
-						<ul className="mt-2 flex flex-col gap-1">
+						<ul className="flex flex-col gap-1">
 							{Array.map(job.highlights, highlight => (
-								<li
-									key={highlight}
-									className="text-foreground/85 flex items-start gap-2 font-mono text-xs leading-5 sm:text-sm sm:leading-6"
-								>
-									<span className="bg-foreground/50 mt-2 size-1 shrink-0 rounded-full" aria-hidden="true" />
+								<li key={highlight} className="text-foreground/90 flex items-start gap-2 text-sm">
+									<span className="bg-muted-foreground mt-2 size-1 shrink-0 rounded-full" aria-hidden="true" />
 									<span>{highlight}</span>
 								</li>
 							))}
 						</ul>
-					</Panel>
+					</div>
 				))}
-			</div>
+			</SectionBody>
 		</Section>
 	)
 }
@@ -483,31 +455,28 @@ function ExperienceSection() {
 function EducationSection() {
 	return (
 		<Section>
-			<SectionLabel title="Education & Languages" />
-			<div className="flex w-full max-w-5xl flex-col gap-3">
+			<SectionBody title="education and languages">
 				{Array.map(education, entry => (
-					<Panel key={entry.school} className="p-3 sm:p-4">
-						<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-							<div className="flex flex-wrap items-baseline gap-x-3">
-								<span className="text-foreground font-mono text-sm font-semibold">{entry.school}</span>
-								<span className="text-muted-foreground font-mono text-xs sm:text-sm">{entry.degree}</span>
-								{Predicate.isNotUndefined(entry.grade) && (
-									<span className="text-muted-foreground/80 font-mono text-xs">({entry.grade})</span>
-								)}
-							</div>
-							<span className="text-muted-foreground/80 font-mono text-xs">{entry.period}</span>
-						</div>
-					</Panel>
+					<div key={entry.school} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3">
+						<h3 className="text-sm font-medium">
+							{entry.school}
+							<span className="text-muted-foreground ml-2 font-normal">
+								{entry.degree}
+								{Predicate.isNotUndefined(entry.grade) && ` (${entry.grade})`}
+							</span>
+						</h3>
+						<span className="text-muted-foreground font-mono text-xs">{entry.period}</span>
+					</div>
 				))}
-				<Panel className="flex flex-wrap gap-x-6 gap-y-1 p-3 sm:p-4">
+				<div className="flex flex-wrap gap-x-6 gap-y-1 py-3">
 					{Array.map(languages, lang => (
-						<span key={lang.language} className="font-mono text-xs">
-							<span className="text-foreground font-semibold">{lang.language}</span>
-							<span className="text-muted-foreground/80 ml-2">{lang.level}</span>
+						<span key={lang.language} className="text-sm">
+							<span className="font-medium">{lang.language}</span>
+							<span className="text-muted-foreground ml-2 font-mono text-xs">{lang.level}</span>
 						</span>
 					))}
-				</Panel>
-			</div>
+				</div>
+			</SectionBody>
 		</Section>
 	)
 }
@@ -515,8 +484,7 @@ function EducationSection() {
 function ContactSection() {
 	return (
 		<Section>
-			<SectionLabel title="Contact" />
-			<div className="flex w-full max-w-5xl flex-col gap-2">
+			<SectionBody title="contact">
 				{Array.map(
 					[
 						contacts.email,
@@ -529,17 +497,17 @@ function ContactSection() {
 						<a
 							key={item.label}
 							href={item.href}
-							className="border-border/70 bg-background/90 hover:border-primary/50 hover:text-primary flex flex-col gap-1 border p-3 font-mono text-xs backdrop-blur-sm transition-colors sm:flex-row sm:items-center sm:justify-between sm:text-sm"
+							className="hover:text-primary flex items-baseline justify-between gap-3 py-3 text-sm transition-colors"
 							target="_blank"
 							rel="noopener noreferrer"
 						>
-							<span className="text-muted-foreground text-xs tracking-[0.15em] uppercase">{item.label}</span>
-							<span className="text-foreground break-all">{item.value}</span>
+							<span className="text-muted-foreground">{item.label}</span>
+							<span className="font-mono text-xs break-all">{item.value}</span>
 						</a>
 					)
 				)}
-			</div>
-			<p className="text-muted-foreground/70 mt-4 font-mono text-xs">
+			</SectionBody>
+			<p className="text-muted-foreground mt-4 font-mono text-xs">
 				© 2026 {profile.firstName} {profile.lastName} · VAT {profile.vat}
 			</p>
 		</Section>
@@ -549,11 +517,9 @@ function ContactSection() {
 function ShortcutsOverlay(input: {open: boolean; onOpenChange: (open: boolean) => void}) {
 	return (
 		<Dialog open={input.open} onOpenChange={input.onOpenChange}>
-			<DialogContent className="border-border/70 bg-background p-6 font-mono sm:max-w-md">
+			<DialogContent className="sm:max-w-md">
 				<DialogHeader>
-					<DialogTitle className="text-foreground font-mono text-sm tracking-[0.2em] uppercase">
-						Keyboard Shortcuts
-					</DialogTitle>
+					<DialogTitle>Keyboard Shortcuts</DialogTitle>
 				</DialogHeader>
 				<div className="text-muted-foreground grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-xs sm:gap-x-8">
 					<span className="text-foreground">j / k</span>
@@ -585,9 +551,9 @@ function RealtimeLayer(input: {viewport: {width: number; height: number}}) {
 				return <VisitorCursor key={cursor.id} cursor={cursor} viewport={input.viewport} />
 			})}
 
-			<div className="border-border/70 bg-background/95 pointer-events-none fixed bottom-3 left-3 z-50 flex items-center gap-2 border px-3 py-2 font-mono text-xs backdrop-blur-sm sm:bottom-4 sm:left-4">
+			<div className="border-border bg-background pointer-events-none fixed bottom-3 left-3 z-50 flex h-7 items-center gap-2 rounded-md border px-2 font-mono text-xs sm:bottom-4 sm:left-4">
 				<span
-					className="size-2 bg-(--identity-color)"
+					className="size-1.5 rounded-full bg-(--identity-color)"
 					style={{
 						'--identity-color': pipe(
 							Array.findFirst(portfolio.value.visitors, visitor => visitor.id === identity.id),

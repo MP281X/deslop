@@ -11,6 +11,7 @@ import {Directory, File, Paths} from 'expo-file-system'
 import {ClipboardOffer, clipboardMachine} from '@deslop/components-mobile/clipboard'
 import type {ClipboardKind} from '@deslop/components-mobile/clipboard'
 import {brands} from '@deslop/components-mobile/icons'
+import {hues} from '@deslop/components-mobile/theme'
 import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
@@ -23,6 +24,8 @@ import type {Kind, Note, NotesEvent} from '#services/notes/schema.ts'
 import {Brand, NoteItem, NotesError} from '#services/notes/schema.ts'
 
 const SERVER = 'https://stash.mp281x.xyz'
+
+export const primary = hues.yellow
 
 const listFile = new File(Paths.document, 'list.json')
 

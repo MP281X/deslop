@@ -41,7 +41,7 @@ export function make(app: {bundleIdentifier: string; name: string; owner: string
 					orientation: 'portrait',
 					owner: app.owner,
 					platforms: ['ios'],
-					plugins: ['@deslop/components-mobile'],
+					plugins: [],
 					runtimeVersion: {policy: 'fingerprint'},
 					scheme: variant.scheme,
 					slug: app.slug,

@@ -61,7 +61,7 @@ export function GitHubIcon(props: {className?: string}) {
 }
 
 export function Avatar(props: {id: string; name: string}) {
-	return <img src={avatarUrl(props.id)} alt={props.name} className="bg-muted size-6 shrink-0" />
+	return <img src={avatarUrl(props.id)} alt={props.name} className="bg-muted size-6 shrink-0 rounded-full" />
 }
 
 function machines(count: number) {
@@ -85,11 +85,10 @@ function Cell(props: {app: string; client: string; now: number; signIns: SignedI
 	}
 	const minutes = minutesSince(newest(props.signIns), props.now)
 	return (
-		<td className="p-0.5">
+		<td className="py-1">
 			<Button
-				size="lg"
-				variant={Boolean.match(armed, {onFalse: () => 'secondary' as const, onTrue: () => 'destructive' as const})}
-				className="w-full flex-col gap-1 text-xs tabular-nums"
+				variant={Boolean.match(armed, {onFalse: () => 'ghost' as const, onTrue: () => 'destructive' as const})}
+				className="w-full font-mono"
 				aria-label={Boolean.match(armed, {
 					onFalse: () =>
 						`${props.client} in ${props.app} on ${machines(props.signIns.length)}, active ${ageLabel(minutes)} ago; tap twice to sign out`,
@@ -103,22 +102,22 @@ function Cell(props: {app: string; client: string; now: number; signIns: SignedI
 				}}
 			>
 				{Boolean.match(armed, {
-					// One square per machine, lit while it was active in the last hour.
+					// One dot per machine, lit while it was active in the last hour.
 					onFalse: () => (
 						<>
-							{ageLabel(minutes)}
 							<span className="flex gap-0.5" aria-hidden="true">
 								{Array.map(props.signIns, signIn => (
 									<span
 										key={signIn.family}
 										className={cn(
-											'size-1',
+											'size-1.5 rounded-full',
 											minutesSince(signIn.lastActive, props.now) < 60 && 'bg-primary',
 											minutesSince(signIn.lastActive, props.now) >= 60 && 'bg-muted-foreground/50'
 										)}
 									/>
 								))}
 							</span>
+							{ageLabel(minutes)}
 						</>
 					),
 					onTrue: () => <X />
@@ -128,13 +127,13 @@ function Cell(props: {app: string; client: string; now: number; signIns: SignedI
 	)
 }
 
-// The waiting sign-in as the grid's top row: an outlined cell for each app it asks for.
+// The waiting sign-in as the grid's top row: a hollow dot marked new for each app it asks for.
 function PendingRow(props: {columns: string[]; request: PendingAuthorization}) {
 	const asked = appNames(props.request.resources)
 	const client = signInLabel(props.request.clientName, props.request.device)
 	return (
-		<tr>
-			<th scope="row" className="text-primary pr-2 text-left text-xs font-normal wrap-anywhere">
+		<tr className="border-border border-b">
+			<th scope="row" className="text-primary py-2 pr-2 text-left text-sm font-medium wrap-anywhere">
 				{client}
 			</th>
 			{Array.map(props.columns, column =>
@@ -149,8 +148,9 @@ function PendingRow(props: {columns: string[]; request: PendingAuthorization}) {
 						</td>
 					),
 					onTrue: () => (
-						<td key={column} className="p-0.5" aria-label={`${client} asks for ${column}`}>
-							<span className="border-primary text-primary flex h-9 items-center justify-center border text-xs">
+						<td key={column} className="py-1" aria-label={`${client} asks for ${column}`}>
+							<span className="text-primary flex h-7 items-center justify-center gap-1.5 font-mono text-xs">
+								<span className="border-primary size-1.5 rounded-full border" aria-hidden="true" />
 								new
 							</span>
 						</td>
@@ -186,7 +186,7 @@ function Answer(props: {request: PendingAuthorization}) {
 					</p>
 				)
 			})}
-			<div className="grid grid-cols-2 gap-1.5 text-xs">
+			<div className="grid grid-cols-2 gap-2">
 				<Button
 					size="lg"
 					aria-label={`Approve ${signInLabel(props.request.clientName, props.request.device)}`}
@@ -197,7 +197,7 @@ function Answer(props: {request: PendingAuthorization}) {
 				</Button>
 				<Button
 					size="lg"
-					variant="secondary"
+					variant="outline"
 					disabled={AsyncResult.isWaiting(consent)}
 					onClick={() => respond({accept: false, request: props.request})}
 				>
@@ -226,26 +226,24 @@ export function SignedInGrid(props: {pending: Option.Option<PendingAuthorization
 		Array.sort(Order.flip(Order.mapInput(Order.Number, (entry: [string, SignedInApp[]]) => newest(entry[1]))))
 	)
 	return (
-		<section className="flex flex-col gap-2" aria-label="Signed in">
-			<h2 className="text-muted-foreground flex justify-between text-xs tracking-wider uppercase">
-				Signed in
+		<section className="flex flex-col gap-3" aria-label="Signed in">
+			<h2 className="text-muted-foreground flex justify-between font-mono text-xs">
+				signed in · last active
 				{Option.match(props.pending, {
 					onNone: () => null,
-					onSome: request => (
-						<span className="tracking-normal normal-case tabular-nums">until {timeLabel(request.expiresAt)}</span>
-					)
+					onSome: request => <span>request open until {timeLabel(request.expiresAt)}</span>
 				})}
 			</h2>
 			{Boolean.match(Array.isArrayEmpty(rows) && Option.isNone(pendingApp), {
 				onFalse: () => (
 					<table className="w-full table-fixed border-collapse text-sm">
 						<thead>
-							<tr>
-								<th className="w-28">
+							<tr className="border-border border-b">
+								<th className="w-32">
 									<span className="sr-only">Client</span>
 								</th>
 								{Array.map(columns, column => (
-									<th key={column} scope="col" className="text-muted-foreground pb-1 text-xs font-normal">
+									<th key={column} scope="col" className="text-muted-foreground pb-2 font-mono text-xs font-normal">
 										{column}
 									</th>
 								))}
@@ -257,8 +255,8 @@ export function SignedInGrid(props: {pending: Option.Option<PendingAuthorization
 								onSome: request => <PendingRow columns={columns} request={request} />
 							})}
 							{Array.map(rows, row => (
-								<tr key={row[0]}>
-									<th scope="row" className="text-muted-foreground pr-2 text-left text-xs font-normal wrap-anywhere">
+								<tr key={row[0]} className="border-border border-b">
+									<th scope="row" className="py-2 pr-2 text-left text-sm font-medium wrap-anywhere">
 										{row[0]}
 									</th>
 									{Array.map(columns, column => (
@@ -275,7 +273,7 @@ export function SignedInGrid(props: {pending: Option.Option<PendingAuthorization
 						</tbody>
 					</table>
 				),
-				onTrue: () => <p className="text-muted-foreground text-xs">No apps signed in</p>
+				onTrue: () => <p className="text-muted-foreground text-sm">No apps signed in.</p>
 			})}
 			{Option.match(props.pending, {onNone: () => null, onSome: request => <Answer request={request} />})}
 			{Option.match(AsyncResult.error(disconnection), {

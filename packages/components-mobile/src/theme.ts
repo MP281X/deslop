@@ -1,27 +1,31 @@
-import {Boolean} from 'effect'
-
 import {font} from '@expo/ui/swift-ui/modifiers'
 import {DynamicColorIOS} from 'react-native'
 
-// components-web's theme.css for SwiftUI views, in the iPhone's light or dark appearance.
+// DESIGN.md owns these values, in the iPhone's light or dark appearance; theme.test.ts fails when they drift.
 export const colors = {
-	background: DynamicColorIOS({dark: '#111114', light: '#ffffff'}),
-	border: DynamicColorIOS({dark: '#ffffff1f', light: '#e4e4e7'}),
-	destructive: DynamicColorIOS({dark: '#ff6467', light: '#e7000b'}),
-	foreground: DynamicColorIOS({dark: '#f3f3f5', light: '#09090b'}),
-	mutedForeground: DynamicColorIOS({dark: '#adadb5', light: '#71717b'}),
-	primary: DynamicColorIOS({dark: '#e78a53', light: '#f54900'}),
-	primaryForeground: DynamicColorIOS({dark: '#121113', light: '#fff7ed'})
+	background: DynamicColorIOS({dark: '#0a0a0a', light: '#ffffff'}),
+	border: DynamicColorIOS({dark: '#222222', light: '#e5e5e5'}),
+	card: DynamicColorIOS({dark: '#111111', light: '#fafafa'}),
+	destructive: DynamicColorIOS({dark: '#d14d41', light: '#af3029'}),
+	foreground: DynamicColorIOS({dark: '#ededed', light: '#0a0a0a'}),
+	mutedForeground: DynamicColorIOS({dark: '#9a9a9a', light: '#666666'}),
+	primaryForeground: DynamicColorIOS({dark: '#0a0a0a', light: '#ffffff'}),
+	warning: DynamicColorIOS({dark: '#d0a215', light: '#ad8301'})
 }
 
-// The app registers the JetBrains Mono files, because a package cannot add fonts to an app bundle.
-export function mono(textStyle: 'body' | 'caption' | 'headline' | 'subheadline', size: number) {
-	return font({
-		family: Boolean.match(textStyle === 'headline', {
-			onFalse: () => 'JetBrainsMono-Regular',
-			onTrue: () => 'JetBrainsMono-SemiBold'
-		}),
-		size,
-		textStyle
-	})
+// Each app's primary is one of these hues, named in DESIGN.md; it tints the app's controls, live states and icon.
+export const hues = {
+	blue: DynamicColorIOS({dark: '#4385be', light: '#205ea6'}),
+	orange: DynamicColorIOS({dark: '#da702c', light: '#bc5215'}),
+	yellow: DynamicColorIOS({dark: '#d0a215', light: '#ad8301'})
+}
+
+// System fonts at Dynamic Type sizes: SF Pro for text, SF Mono for times, codes and counts.
+export const text = {
+	body: font({textStyle: 'subheadline'}),
+	caption: font({textStyle: 'caption'}),
+	data: font({design: 'monospaced', textStyle: 'footnote'}),
+	detail: font({textStyle: 'footnote'}),
+	row: font({textStyle: 'subheadline', weight: 'semibold'}),
+	title: font({textStyle: 'headline'})
 }

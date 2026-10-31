@@ -4,18 +4,27 @@
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
+		"#lib/*": "./src/lib/*",
 		"#package.*": "./package.*",
+		"#routes/*": "./src/routes/*",
+		"#rpcs/*": "./src/rpcs/*",
 		"#services/*": "./src/services/*",
 		"#tools/*": "./src/tools/*"
 	},
 	"scripts": {
-		"build": "rm -rf dist && vp pack",
+		"build": "rm -rf dist && vp build && vp pack",
 		"test": "vp test --config ../../vite.config.ts",
 		"typecheck": "tsrs --checkerAssignment go --pretty false"
 	},
 	"devDependencies": {
+		"@deslop/components-web": "workspace:*",
 		"@deslop/runtime": "workspace:*",
+		"@effect/atom-react": "latest",
 		"@effect/platform-node": "latest",
-		"effect": "latest"
+		"@tanstack/react-router": "latest",
+		"effect": "latest",
+		"lucide-react": "latest",
+		"react": "latest",
+		"react-dom": "latest"
 	}
 }

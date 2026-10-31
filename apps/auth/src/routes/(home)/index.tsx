@@ -25,10 +25,13 @@ function Enter(props: {
 	typed: string
 }) {
 	return (
-		<section className="flex flex-col gap-3">
-			<label htmlFor="code" className="text-muted-foreground text-xs tracking-wider uppercase">
-				Enter a code
-			</label>
+		<section className="flex flex-col gap-4">
+			<div className="flex flex-col gap-1">
+				<h1 className="text-xl font-semibold tracking-tight">Approve a sign-in</h1>
+				<label htmlFor="code" className="text-muted-foreground text-sm">
+					Type the code your device shows.
+				</label>
+			</div>
 			<InputOTP
 				id="code"
 				maxLength={CODE_LENGTH}
@@ -53,7 +56,7 @@ function Enter(props: {
 							key={index}
 							index={index}
 							aria-invalid={props.state === 'Missing'}
-							className="h-12 flex-1 text-lg font-semibold"
+							className="h-11 flex-1 font-mono text-lg"
 						/>
 					))}
 				</InputOTPGroup>
@@ -64,7 +67,7 @@ function Enter(props: {
 							key={index}
 							index={index}
 							aria-invalid={props.state === 'Missing'}
-							className="h-12 flex-1 text-lg font-semibold"
+							className="h-11 flex-1 font-mono text-lg"
 						/>
 					))}
 				</InputOTPGroup>

@@ -11,7 +11,7 @@ import {FailureScreen, LoadingScreen, SessionGate} from '@deslop/components-mobi
 import {colors} from '@deslop/components-mobile/theme'
 import {updateAtom} from '@deslop/runtime/mobile'
 
-import {chaptersAtom, diagnosticsAtom, openedAtom, pushAtom, session} from '#lib/utils.ts'
+import {chaptersAtom, diagnosticsAtom, openedAtom, primary, pushAtom, session} from '#lib/utils.ts'
 import {ChaptersRoute} from '#routes/(home)/index.tsx'
 import {ReaderRoute} from '#routes/chapters/$number.tsx'
 import icon from '#routes/icon.png'
@@ -47,7 +47,9 @@ function AppRoutes() {
 		setResumePage(page)
 		setPath([keyOf({number, series})])
 	}
-	if (AsyncResult.isFailure(loaded)) return <FailureScreen cause={loaded.cause} name="opm" onRetry={refreshChapters} />
+	if (AsyncResult.isFailure(loaded)) {
+		return <FailureScreen cause={loaded.cause} name="opm" onRetry={refreshChapters} tint={primary} />
+	}
 	const chapters = loaded.value
 
 	return (
@@ -83,7 +85,7 @@ export function RootRoute() {
 	useAtomMount(updateAtom)
 	return (
 		<Suspense fallback={<LoadingScreen />}>
-			<SessionGate logo={icon} session={session.machine}>
+			<SessionGate logo={icon} session={session.machine} tint={primary}>
 				<Suspense fallback={<LoadingScreen />}>
 					<AppRoutes />
 				</Suspense>

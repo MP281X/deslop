@@ -17,7 +17,7 @@ const SERVER_BOTS = [
 		yPhase: 0
 	},
 	{
-		color: PortfolioColor.literals[17],
+		color: PortfolioColor.literals[5],
 		id: 'server-beta',
 		name: 'server-beta',
 		xFreq: 0.83,

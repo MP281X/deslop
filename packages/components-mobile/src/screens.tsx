@@ -18,10 +18,11 @@ import {
 } from '@expo/ui/swift-ui/modifiers'
 import {MachineState} from '@typeonce/effect-machine-react'
 import type {ReactNode} from 'react'
+import type {ColorValue} from 'react-native'
 
 import type {Session} from '@deslop/runtime/mobile/session'
 
-import {colors, mono} from './theme.ts'
+import {colors, text} from './theme.ts'
 
 import {assetAtom} from '#lib/utils.ts'
 
@@ -41,19 +42,24 @@ export function LoadingScreen() {
 }
 
 // A failure thrown while rendering closes a React Native app, so its root reads the failure as a value and shows it here.
-export function FailureScreen(props: {cause: Cause.Cause<unknown>; name: string; onRetry: () => void}) {
+export function FailureScreen(props: {
+	cause: Cause.Cause<unknown>
+	name: string
+	onRetry: () => void
+	tint: ColorValue
+}) {
 	return (
 		<Host style={{flex: 1}}>
 			<VStack spacing={12} modifiers={FULL_SCREEN}>
-				<Text modifiers={[mono('headline', 17), foregroundStyle(colors.foreground)]}>{props.name} hit an error</Text>
-				<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground), lineLimit(6)]}>
+				<Text modifiers={[text.title, foregroundStyle(colors.foreground)]}>{props.name} hit an error</Text>
+				<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground), lineLimit(6)]}>
 					{Cause.pretty(props.cause)}
 				</Text>
 				<Button
 					onPress={() => props.onRetry()}
-					modifiers={[buttonStyle('glassProminent'), tint(colors.primary), foregroundStyle(colors.primaryForeground)]}
+					modifiers={[buttonStyle('glassProminent'), tint(props.tint), foregroundStyle(colors.primaryForeground)]}
 				>
-					<Text modifiers={[mono('headline', 16)]}>Try Again</Text>
+					<Text modifiers={[text.title]}>Try Again</Text>
 				</Button>
 			</VStack>
 		</Host>
@@ -61,7 +67,7 @@ export function FailureScreen(props: {cause: Cause.Cause<unknown>; name: string;
 }
 
 // The app's icon in the middle of the screen and GitHub sign-in at the bottom.
-function SignInScreen(props: {logo: number | string; onSignIn: () => void; waiting: boolean}) {
+function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint: ColorValue; waiting: boolean}) {
 	return (
 		<Host style={{flex: 1}}>
 			<VStack spacing={20} modifiers={FULL_SCREEN}>
@@ -80,12 +86,12 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; waiti
 					modifiers={[
 						buttonStyle('glassProminent'),
 						controlSize('large'),
-						tint(colors.primary),
+						tint(props.tint),
 						foregroundStyle(colors.primaryForeground),
 						disabled(props.waiting)
 					]}
 				>
-					<Text modifiers={[mono('headline', 16), frame({maxWidth: Infinity})]}>Sign in with GitHub</Text>
+					<Text modifiers={[text.title, frame({maxWidth: Infinity})]}>Sign in with GitHub</Text>
 				</Button>
 			</VStack>
 		</Host>
@@ -93,7 +99,7 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; waiti
 }
 
 // The app once its saved session exists, its sign-in screen until then.
-export function SessionGate(props: {children: ReactNode; logo: number | string; session: Session}) {
+export function SessionGate(props: {children: ReactNode; logo: number | string; session: Session; tint: ColorValue}) {
 	const send = useAtomSet(props.session.send)
 	return (
 		<>
@@ -101,10 +107,12 @@ export function SessionGate(props: {children: ReactNode; logo: number | string; 
 				{() => <LoadingScreen />}
 			</MachineState>
 			<MachineState machine={props.session} path="SignedOut">
-				{() => <SignInScreen logo={props.logo} onSignIn={() => send({_tag: 'SignIn'})} waiting={false} />}
+				{() => (
+					<SignInScreen logo={props.logo} onSignIn={() => send({_tag: 'SignIn'})} tint={props.tint} waiting={false} />
+				)}
 			</MachineState>
 			<MachineState machine={props.session} path="SigningIn">
-				{() => <SignInScreen logo={props.logo} onSignIn={() => undefined} waiting />}
+				{() => <SignInScreen logo={props.logo} onSignIn={() => undefined} tint={props.tint} waiting />}
 			</MachineState>
 			<MachineState machine={props.session} path="SignedIn">
 				{() => props.children}

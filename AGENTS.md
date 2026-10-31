@@ -35,4 +35,4 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 
 ## Documents
 
-Each fact has one home: code, then lint, this file, `CODING_STANDARDS.md`, `RELEASING.md`, a published package's `README.md`, and the environment skill for the user's infrastructure; comments only for what a name cannot say.
+Each fact has one home: code, then lint, this file, `CODING_STANDARDS.md`, `DESIGN.md` for every visual token and rule, `RELEASING.md`, a published package's `README.md`, and the environment skill for the user's infrastructure; comments only for what a name cannot say.

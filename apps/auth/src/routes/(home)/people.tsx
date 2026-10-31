@@ -18,8 +18,8 @@ function Identity(props: {detail: string; person: Person}) {
 		<>
 			<Avatar id={props.person.id} name={props.person.name} />
 			<div className="flex min-w-0 grow flex-col">
-				<span className="truncate">{props.person.fullName ?? props.person.name}</span>
-				<span className="text-muted-foreground truncate">
+				<span className="truncate text-sm font-medium">{props.person.fullName ?? props.person.name}</span>
+				<span className="text-muted-foreground truncate font-mono text-xs">
 					@{props.person.name} · {props.detail}
 				</span>
 			</div>
@@ -30,18 +30,13 @@ function Identity(props: {detail: string; person: Person}) {
 function AskingRow(props: {person: Person}) {
 	const [admit, answer] = useAtom(admitAtom)
 	return (
-		<li className="flex items-center gap-3 text-xs">
+		<li className="border-border flex items-center gap-3 border-b py-2.5">
 			<Identity person={props.person} detail={dayLabel(props.person.since)} />
-			<Button
-				size="sm"
-				disabled={AsyncResult.isWaiting(admit)}
-				onClick={() => answer({allow: true, id: props.person.id})}
-			>
+			<Button disabled={AsyncResult.isWaiting(admit)} onClick={() => answer({allow: true, id: props.person.id})}>
 				Allow
 			</Button>
 			<Button
-				size="sm"
-				variant="secondary"
+				variant="outline"
 				disabled={AsyncResult.isWaiting(admit)}
 				onClick={() => answer({allow: false, id: props.person.id})}
 			>
@@ -54,7 +49,7 @@ function AskingRow(props: {person: Person}) {
 function MemberRow(props: {person: Person}) {
 	const [removal, remove] = useAtom(removeAtom)
 	return (
-		<li className="flex items-center gap-3 text-xs">
+		<li className="border-border flex items-center gap-3 border-b py-2.5">
 			<Identity
 				person={props.person}
 				detail={Boolean.match(props.person.role === 'Admin', {
@@ -63,12 +58,7 @@ function MemberRow(props: {person: Person}) {
 				})}
 			/>
 			{props.person.role === 'Member' && (
-				<Button
-					size="sm"
-					variant="secondary"
-					disabled={AsyncResult.isWaiting(removal)}
-					onClick={() => remove(props.person.id)}
-				>
+				<Button variant="outline" disabled={AsyncResult.isWaiting(removal)} onClick={() => remove(props.person.id)}>
 					Remove
 				</Button>
 			)}
@@ -85,12 +75,13 @@ function Directory() {
 	const error = Option.orElse(AsyncResult.error(admit), () => AsyncResult.error(removal))
 	return (
 		<>
-			<section className="flex flex-col gap-2" aria-label="Asking for access">
-				<h2 className="text-muted-foreground text-xs tracking-wider uppercase">Asking · {asking.length}</h2>
+			<h1 className="text-xl font-semibold tracking-tight">People</h1>
+			<section className="flex flex-col" aria-label="Asking for access">
+				<h2 className="text-muted-foreground border-border border-b pb-2 font-mono text-xs">{asking.length} asking</h2>
 				{Array.match(asking, {
-					onEmpty: () => <p className="text-muted-foreground text-xs">No one is asking</p>,
+					onEmpty: () => <p className="text-muted-foreground py-3 text-sm">No one is asking.</p>,
 					onNonEmpty: waiting => (
-						<ul className="flex flex-col gap-3">
+						<ul className="flex flex-col">
 							{Array.map(waiting, person => (
 								<AskingRow key={person.id} person={person} />
 							))}
@@ -98,9 +89,11 @@ function Directory() {
 					)
 				})}
 			</section>
-			<section className="flex flex-col gap-2" aria-label="With access">
-				<h2 className="text-muted-foreground text-xs tracking-wider uppercase">With access · {members.length}</h2>
-				<ul className="flex flex-col gap-3">
+			<section className="flex flex-col" aria-label="With access">
+				<h2 className="text-muted-foreground border-border border-b pb-2 font-mono text-xs">
+					{members.length} with access
+				</h2>
+				<ul className="flex flex-col">
 					{Array.map(members, person => (
 						<MemberRow key={person.id} person={person} />
 					))}

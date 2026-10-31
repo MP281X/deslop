@@ -28,11 +28,11 @@ import * as Location from 'expo-location'
 import * as Notifications from 'expo-notifications'
 import {addPushToStartTokenListener} from 'expo-widgets'
 import type {LiveActivity} from 'expo-widgets'
-import {DynamicColorIOS, Linking} from 'react-native'
+import {Linking} from 'react-native'
 
 import {ClipboardOffer, clipboardMachine} from '@deslop/components-mobile/clipboard'
 import type {ClipboardKind} from '@deslop/components-mobile/clipboard'
-import {colors} from '@deslop/components-mobile/theme'
+import {colors, hues} from '@deslop/components-mobile/theme'
 import {alert, cachedList, clipboardChangeCount, writeAtomically} from '@deslop/components-mobile/utils'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
@@ -673,13 +673,25 @@ export function dayAt(time: number, timeZone?: string) {
 	})
 }
 
-// The departures board's colours, the same tones the island uses on its dark background.
+// Calendar days from today to the day of `time`, both counted in the place's own zone.
+export function daysUntil(time: number, now: number, timeZone?: string) {
+	function day(at: number) {
+		return DateTime.toEpochMillis(
+			DateTime.makeUnsafe(DateTime.formatIsoDate(DateTime.makeZonedUnsafe(at, {timeZone: timeZone ?? 'UTC'})))
+		)
+	}
+	return Number.round((day(time) - day(now)) / (24 * HOUR), 0)
+}
+
+export const primary = hues.blue
+
+// The departures board's colours: a journey going to plan is live, in the app's primary.
 export const tones = {
 	bad: colors.destructive,
-	good: DynamicColorIOS({dark: '#30d158', light: '#248a3d'}),
-	info: DynamicColorIOS({dark: '#0a84ff', light: '#0071e3'}),
+	good: primary,
+	info: primary,
 	plain: colors.mutedForeground,
-	warn: DynamicColorIOS({dark: '#ffd60a', light: '#b25000'})
+	warn: colors.warning
 } satisfies Record.ReadonlyRecord<Tone, unknown>
 
 // Where to go, the gate or platform, read beside the state and never in place of it.

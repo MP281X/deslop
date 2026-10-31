@@ -4,7 +4,7 @@ import {HStack, Image, Text} from '@expo/ui/swift-ui'
 import {accessibilityElement, foregroundStyle, lineLimit} from '@expo/ui/swift-ui/modifiers'
 
 import {BrandLogo} from '@deslop/components-mobile/icons'
-import {colors, mono} from '@deslop/components-mobile/theme'
+import {colors, text} from '@deslop/components-mobile/theme'
 
 import {kindOf, kinds, siteOf} from '#lib/utils.ts'
 import type {Kind, NoteItem} from '#services/notes/schema.ts'
@@ -32,7 +32,7 @@ export function Byline(props: {note: NoteItem}) {
 	return (
 		<HStack spacing={6} modifiers={[accessibilityElement('combine')]}>
 			<SourceIcon kind={kindOf(props.note)} />
-			<Text modifiers={[mono('caption', 12), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
+			<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
 				{pipe(
 					[
 						Option.orElse(Option.fromUndefinedOr(props.note.author), () => siteOf(props.note)),
