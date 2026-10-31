@@ -31,8 +31,8 @@ plugins = false
 goals = false
 
 # Threads run without approval prompts, so an MCP tool that asks for approval is rejected.
-[mcp_servers.auth]
-url = "https://auth.mp281x.xyz/mcp"
+[mcp_servers.gateway]
+url = "https://gateway.mp281x.xyz/mcp"
 default_tools_approval_mode = "approve"
 
 [[hooks.SessionStart]]

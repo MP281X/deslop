@@ -211,7 +211,7 @@ T3's desktop app and the iOS Simulator; it builds nothing, the simulator app com
 
 ## MCP sign-in
 
-Every harness registers one MCP server, Auth's combined gateway at `https://auth.mp281x.xyz/mcp`. Provider servers (Scope, Stash, Trips, Dual, Mobbin) live on its [MCP page](https://auth.mp281x.xyz/mcp-servers), each connected once for every worker and harness; `list_mcp_connections` names why a connection or discovery failed. Codex reads `auth` from the installed configuration and keeps OAuth sign-ins in the Secret Service keyring. D-Bus starts that keyring only through its unit: Debian's default activation starts a locked daemon whose unlock prompt cannot open headless, and every Codex start then waits on it forever. Claude keeps locally registered MCP servers in `~/.claude.json`; register Auth on each worker.
+Every harness registers one MCP server, the combined gateway at `https://gateway.mp281x.xyz/mcp`, signed in through Auth. Upstream servers (Auth, Scope, Stash, Trips, Dual, Mobbin) live on [its page](https://gateway.mp281x.xyz), each connected once for every worker and harness; `list_mcp_connections` names why a connection or discovery failed. Codex reads `gateway` from the installed configuration and keeps OAuth sign-ins in the Secret Service keyring. D-Bus starts that keyring only through its unit: Debian's default activation starts a locked daemon whose unlock prompt cannot open headless, and every Codex start then waits on it forever. Claude keeps locally registered MCP servers in `~/.claude.json`; register the gateway on each worker.
 
 ```bash
 sudo apt-get install -y gnome-keyring libsecret-tools
@@ -224,22 +224,22 @@ printf '%s\n' '[D-BUS Service]' 'Name=org.freedesktop.secrets' 'Exec=/bin/false'
   > ~/.local/share/dbus-1/services/org.freedesktop.secrets.service
 busctl --user call org.freedesktop.DBus / org.freedesktop.DBus ReloadConfig
 systemctl --user daemon-reload && systemctl --user enable --now secret-service.service
-claude mcp add --transport http --scope user auth https://auth.mp281x.xyz/mcp
+claude mcp add --transport http --scope user gateway https://gateway.mp281x.xyz/mcp
 ```
 
 **Harness sign-in** needs no browser and no tunnel. On the worker running the CLI, start the login in the background, read its code from the authorize redirect, then wait for the answer with the same cookie; the wait answers 408 every 50 seconds until the sign-in is answered, and then follows to the CLI's loopback callback. A sign-in lives 10 minutes.
 
 ```bash
-codex mcp login --no-browser auth   # in the background; prints the authorize URL
+codex mcp login --no-browser gateway   # in the background; prints the authorize URL
 mkdir -p /tmp/<task> && curl -s -c /tmp/<task>/jar -o /dev/null -w '%{redirect_url}\n' '<authorize URL>'   # …/?request=WDJBMJHT
 curl -s -b /tmp/<task>/jar -L --retry 12 --retry-delay 1 -o /dev/null 'https://auth.mp281x.xyz/auth/continue?request=WDJBMJHT'   # in the background
 ```
 
-Approve with `answer_request` from any harness that already has Auth, since this thread started the sign-in; otherwise give the user only the code, to approve at https://auth.mp281x.xyz from any signed-in browser or phone. Repeat for `claude mcp login --no-browser auth` and on each worker. Never approve a request the thread did not start: the client name is self-reported, not a verified worker identity.
+Approve with Auth's `answer_request` (`auth__answer_request` through the gateway) from any harness that already has it, since this thread started the sign-in; otherwise give the user only the code, to approve at https://auth.mp281x.xyz from any signed-in browser or phone. Repeat for `claude mcp login --no-browser gateway` and on each worker. Never approve a request the thread did not start: the client name is self-reported, not a verified worker identity.
 
-**Browser sign-in.** A browser profile without the user's GitHub, such as the Datapizza work profile, uses **Sign in with a code** at https://auth.mp281x.xyz; every Deslop app sends signed-out browsers there. The user approves it from a signed-in browser or phone: `answer_request` refuses browser sign-ins, since a session grants every app. A provider whose own account lives in that profile, such as Dual, is then connected from its row on the MCP page in that profile.
+**Browser sign-in.** A browser profile without the user's GitHub, such as the Datapizza work profile, uses **Sign in with a code** at https://auth.mp281x.xyz; every Deslop app sends signed-out browsers there. The user approves it from a signed-in browser or phone: `answer_request` refuses browser sign-ins, since a session grants every app. A provider whose own account lives in that profile, such as Dual, is then connected from its row on the gateway's page in that profile.
 
-The installed `.claude/settings.json` sets `disableClaudeAiConnectors`, so Claude loads no claude.ai connector; Mobbin and every other provider come through Auth. Once any `serverUrl` entry exists, every remote server needs a URL rule, including T3's `http://127.0.0.1:<port>/mcp`. Check each worker's sign-in with `codex mcp list` and `claude mcp list`, and verify a real tool call separately; `features.mcp_2026_07_28` (why in `.codex/global-config.toml`) is global, so verify Auth's tool list when changing it. Verify Mobbin with one `mobbin__search_screens` call with `mode: "standard"`; the default, `deep`, spends AI credits.
+The installed `.claude/settings.json` sets `disableClaudeAiConnectors`, so Claude loads no claude.ai connector; Mobbin and every other provider come through the gateway. Once any `serverUrl` entry exists, every remote server needs a URL rule, including T3's `http://127.0.0.1:<port>/mcp`. Check each worker's sign-in with `codex mcp list` and `claude mcp list`, and verify a real tool call separately; `features.mcp_2026_07_28` (why in `.codex/global-config.toml`) is global, so verify the gateway's tool list when changing it. Verify Mobbin with one `mobbin__search_screens` call with `mode: "standard"`; the default, `deep`, spends AI credits.
 
 ## Git identity
 

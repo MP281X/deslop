@@ -56,6 +56,20 @@ services:
       traefik.http.routers.auth.rule: Host(`auth.mp281x.xyz`)
       traefik.http.services.auth.loadbalancer.server.port: '5000'
 
+  gateway:
+    <<: *service
+    image: ghcr.io/mp281x/deslop-gateway:${REVISION:-latest}
+    # GITHUB_ADMINS, as Auth has it: Auth's admins manage the servers.
+    env_file: ${HOME}/.deslop/gateway.env
+    environment: *signed
+    # The second volume holds the servers the previous release kept in Auth, which the gateway moves into its own once.
+    volumes:
+      ['${HOME}/.deslop/gateway:/home/node/.deslop/gateway', '${HOME}/.deslop/auth/mcp:/home/node/.deslop/auth/mcp']
+    labels:
+      traefik.enable: 'true'
+      traefik.http.routers.gateway.rule: Host(`gateway.mp281x.xyz`)
+      traefik.http.services.gateway.loadbalancer.server.port: '5000'
+
   stash:
     <<: *service
     image: ghcr.io/mp281x/deslop-stash:${REVISION:-latest}

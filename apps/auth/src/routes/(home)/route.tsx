@@ -118,7 +118,7 @@ function Waiting(props: {account: Option.Option<Account>; id: string}) {
 
 function Tabs() {
 	return (
-		<nav className="bg-card grid grid-cols-3 gap-1 p-1" aria-label="Sections">
+		<nav className="bg-card grid grid-cols-2 gap-1 p-1" aria-label="Sections">
 			{Array.map(
 				[
 					{count: 0, label: 'Sign-ins', to: '/'},
@@ -126,8 +126,7 @@ function Tabs() {
 						count: Array.countBy(useAtomSuspense(peopleAtom).value, person => person.role === 'Waiting'),
 						label: 'People',
 						to: '/people'
-					},
-					{count: 0, label: 'MCP', to: '/mcp-servers'}
+					}
 				] as const,
 				tab => (
 					<Link

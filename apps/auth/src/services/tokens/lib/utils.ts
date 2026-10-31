@@ -88,9 +88,12 @@ function loopback(redirect: string) {
 	)
 }
 
-// The iOS apps in their release and Simulator builds, or a loopback callback of a desktop agent.
+// The iOS apps in their release and Simulator builds, a loopback callback of a desktop agent, or the gateway's callback for one of its servers.
 export function allowedRedirect(redirect: string) {
 	return (
+		Option.isSome(
+			String.match(/^https:\/\/gateway\.mp281x\.xyz\/oauth\/callback\/[a-z0-9][a-z0-9_-]{0,23}$/u)(redirect)
+		) ||
 		Array.contains(
 			[
 				'stash://auth/callback',

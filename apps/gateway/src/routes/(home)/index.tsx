@@ -1,15 +1,15 @@
-import {useAtom, useAtomSet, useAtomSuspense} from '@effect/atom-react'
+import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Option} from 'effect'
+import {Array, Boolean, Cause, Option} from 'effect'
 
-import {Navigate, createFileRoute} from '@tanstack/react-router'
+import {createFileRoute} from '@tanstack/react-router'
 import {MachineState} from '@typeonce/effect-machine-react'
 import {AsyncResult} from 'effect/reactivity'
 import {Check, Copy, Ellipsis} from 'lucide-react'
-import {Suspense, useState} from 'react'
+import {useState} from 'react'
 
-import {Loading} from '@deslop/components-web/fallbacks'
-import {Button} from '@deslop/components-web/ui/button'
+import {Error, Loading} from '@deslop/components-web/fallbacks'
+import {Button, buttonVariants} from '@deslop/components-web/ui/button'
 import {Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle} from '@deslop/components-web/ui/dialog'
 import {
 	DropdownMenu,
@@ -22,23 +22,24 @@ import {
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
 import {Input} from '@deslop/components-web/ui/input'
+import {signInUrl} from '@deslop/runtime/auth/utils'
 
 import {
-	accountAtom,
-	copyGatewayAtom,
-	mcpAddAtom,
-	mcpConnectUrl,
-	mcpDisconnectAtom,
-	mcpHideAtom,
-	mcpRemoveAtom,
-	mcpServersAtom
+	ENDPOINT,
+	addAtom,
+	connectUrl,
+	copyEndpointAtom,
+	disconnectAtom,
+	hideAtom,
+	removeAtom,
+	serversAtom
 } from '#lib/utils.ts'
 import type {ConnectionInfo} from '#services/connections/schema.ts'
 
 function ServerRow(props: {server: ConnectionInfo}) {
-	const [disconnecting, disconnect] = useAtom(mcpDisconnectAtom(props.server.id))
-	const [removing, remove] = useAtom(mcpRemoveAtom(props.server.id))
-	const [hiding, hide] = useAtom(mcpHideAtom(props.server.id))
+	const [disconnecting, disconnect] = useAtom(disconnectAtom(props.server.id))
+	const [removing, remove] = useAtom(removeAtom(props.server.id))
+	const [hiding, hide] = useAtom(hideAtom(props.server.id))
 	const [confirm, setConfirm] = useState(false)
 	const busy = AsyncResult.isWaiting(disconnecting) || AsyncResult.isWaiting(removing) || AsyncResult.isWaiting(hiding)
 	const connected = props.server.status === 'Connected'
@@ -79,7 +80,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 					<Ellipsis />
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end" className="w-auto min-w-36">
-					<DropdownMenuItem onClick={() => location.assign(mcpConnectUrl(props.server.id))}>
+					<DropdownMenuItem onClick={() => location.assign(connectUrl(props.server.id))}>
 						{Boolean.match(props.server.status === 'Not connected', {
 							onFalse: () => 'Reconnect',
 							onTrue: () => 'Connect'
@@ -135,7 +136,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 }
 
 function AddForm(props: {url: string; error: string; adding: boolean}) {
-	const send = useAtomSet(mcpAddAtom.send)
+	const send = useAtomSet(addAtom.send)
 	return (
 		<form
 			className="mb-4 flex flex-col gap-2 text-xs"
@@ -177,16 +178,15 @@ function AddForm(props: {url: string; error: string; adding: boolean}) {
 	)
 }
 
-function Directory() {
-	const servers = useAtomSuspense(mcpServersAtom).value
-	const send = useAtomSet(mcpAddAtom.send)
-	const [copied, copy] = useAtom(copyGatewayAtom)
+function Directory(props: {servers: readonly ConnectionInfo[]}) {
+	const send = useAtomSet(addAtom.send)
+	const [copied, copy] = useAtom(copyEndpointAtom)
 	return (
 		<>
 			<section className="flex flex-col gap-2" aria-label="MCP servers">
 				<div className="flex h-7 items-center justify-between gap-3">
-					<h2 className="text-muted-foreground text-xs tracking-wider uppercase">Servers · {servers.length}</h2>
-					<MachineState machine={mcpAddAtom} path="Closed">
+					<h2 className="text-muted-foreground text-xs tracking-wider uppercase">Servers · {props.servers.length}</h2>
+					<MachineState machine={addAtom} path="Closed">
 						{() => (
 							<Button size="sm" variant="secondary" onClick={() => send({_tag: 'Open'})}>
 								Add
@@ -194,13 +194,13 @@ function Directory() {
 						)}
 					</MachineState>
 				</div>
-				<MachineState machine={mcpAddAtom} path="Editing">
+				<MachineState machine={addAtom} path="Editing">
 					{state => <AddForm url={state.value.url} error={state.value.error} adding={false} />}
 				</MachineState>
-				<MachineState machine={mcpAddAtom} path="Adding">
+				<MachineState machine={addAtom} path="Adding">
 					{state => <AddForm url={state.value.url} error="" adding />}
 				</MachineState>
-				{Array.match(servers, {
+				{Array.match(props.servers, {
 					onEmpty: () => <p className="text-muted-foreground text-xs">No MCP servers added</p>,
 					onNonEmpty: rows => (
 						<ul className="flex flex-col gap-3">
@@ -214,7 +214,7 @@ function Directory() {
 			<section className="mt-2 flex flex-col gap-2" aria-label="Gateway endpoint">
 				<h2 className="text-muted-foreground text-xs tracking-wider uppercase">Gateway endpoint</h2>
 				<div className="flex items-center gap-1.5">
-					<Input aria-label="Gateway endpoint" value="https://auth.mp281x.xyz/mcp" readOnly />
+					<Input aria-label="Gateway endpoint" value={ENDPOINT} readOnly />
 					<Button
 						variant="secondary"
 						size="icon"
@@ -238,13 +238,36 @@ function Directory() {
 	)
 }
 
-function McpServers() {
-	if (!Option.exists(useAtomSuspense(accountAtom).value, signed => signed.role === 'Admin')) return <Navigate to="/" />
+// The servers need a Deslop sign-in by an admin; GitHub returns here once it is done.
+function Servers() {
+	return AsyncResult.match(useAtomValue(serversAtom), {
+		onFailure: failure =>
+			Option.match(Cause.findErrorOption(failure.cause), {
+				onNone: () => <Error error={Cause.squash(failure.cause)} reset={() => location.reload()} />,
+				onSome: error => {
+					if (error._tag !== 'AuthError') return <Error error={error} reset={() => location.reload()} />
+					if (error.error === 'access_denied') return <p className="text-muted-foreground text-sm">{error.message}</p>
+					return (
+						<a className={buttonVariants({size: 'lg'})} href={signInUrl(location.href)}>
+							Sign in with GitHub
+						</a>
+					)
+				}
+			}),
+		onInitial: () => <Loading />,
+		onSuccess: servers => <Directory servers={servers.value} />
+	})
+}
+
+function Home() {
 	return (
-		<Suspense fallback={<Loading />}>
-			<Directory />
-		</Suspense>
+		<main className="flex flex-1 justify-center overflow-y-auto px-4 py-8 md:py-24">
+			<div className="flex w-full max-w-md flex-col gap-5">
+				<h1 className="text-lg font-semibold">Deslop Gateway</h1>
+				<Servers />
+			</div>
+		</main>
 	)
 }
 
-export const Route = createFileRoute('/(home)/mcp-servers')({component: McpServers})
+export const Route = createFileRoute('/(home)/')({component: Home})

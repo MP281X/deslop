@@ -30,7 +30,6 @@ import {KeyValueStore} from 'effect/persistence'
 
 import type {Resource, User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
-import {AUTH_URL} from '@deslop/runtime/auth/utils'
 import {layerKeyValueStore} from '@deslop/runtime/server'
 
 import {browserLabel, clientLabel, clientOf, deviceLabel, given, matchingRedirect} from '#services/tokens/lib/utils.ts'
@@ -55,8 +54,6 @@ type Code = {
 	expiresAt: number
 	state: {_tag: 'Fresh'; request: ClientRequest; user: User} | {_tag: 'Used'; family: string}
 }
-// A delegated token lets the gateway call one of the owner's MCP servers as the caller, for 60 seconds.
-type Delegated = {expiresAt: number; resource: Resource; user: User}
 
 function rejected(message: string) {
 	return Effect.mapError(cause => {
@@ -94,7 +91,7 @@ function live(grants: Grants, now: number) {
 	)
 }
 
-// Signed-in apps and browsers live under ~/.deslop/auth; codes, delegated tokens and sign-ins in progress stay in memory.
+// Signed-in apps and browsers live under ~/.deslop/auth; codes and sign-ins in progress stay in memory.
 export const layerStore = Layer.unwrap(
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem
@@ -113,7 +110,6 @@ export class Tokens extends Context.Service<
 		// Each saved change to the signed-in apps and browsers, starting with the current state.
 		readonly changes: Stream.Stream<void>
 		readonly client: (asked: AuthorizeClient) => Effect.Effect<{clientName: string; redirectUri: string}, AuthError>
-		readonly delegate: (headers: Headers.Headers, resource: Resource) => Effect.Effect<string, AuthError>
 		readonly disconnect: (family: string, user: User) => Effect.Effect<void, AuthError>
 		readonly endSession: (headers: Headers.Headers) => Effect.Effect<void, AuthError>
 		// Tokens go only to an account `allowed` still accepts, so a removal between approval and exchange takes effect.
@@ -142,7 +138,6 @@ export class Tokens extends Context.Service<
 			const store = KeyValueStore.toSchemaStore(kv, Grants)
 			const grants = yield* SubscriptionRef.make<Grants>(Option.getOrElse(yield* store.get('grants'), () => ({})))
 			const codes = yield* Ref.make(HashMap.empty<string, Code>())
-			const delegated = yield* Ref.make(HashMap.empty<string, Delegated>())
 			const random = yield* SecureRandom.SecureRandom
 			const digest = yield* Digest.Digest
 			function secret(bytes: number) {
@@ -189,27 +184,17 @@ export class Tokens extends Context.Service<
 						found => found.groups?.['token']
 					)
 				)
-				const now = yield* Clock.currentTimeMillis
-				const invalid = AuthError.make({message: 'The token is not valid for this app'})
-				return yield* Option.match(HashMap.get(yield* Ref.get(delegated), yield* hash(token)), {
-					onNone: () =>
-						Effect.flatMap(grantOf(token), found => {
-							if (
-								found.grant.credential._tag !== 'App' ||
-								!Array.some(
-									found.grant.credential.access,
-									entry => entry.hash === found.hash && Array.contains(entry.resources, resource)
-								)
-							) {
-								return Effect.fail(invalid)
-							}
-							return Effect.succeed(found.grant.user)
-						}),
-					onSome: forwarded => {
-						if (forwarded.expiresAt <= now || forwarded.resource !== resource) return Effect.fail(invalid)
-						return Effect.succeed(forwarded.user)
-					}
-				})
+				const found = yield* grantOf(token)
+				if (
+					found.grant.credential._tag !== 'App' ||
+					!Array.some(
+						found.grant.credential.access,
+						entry => entry.hash === found.hash && Array.contains(entry.resources, resource)
+					)
+				) {
+					return yield* AuthError.make({message: 'The token is not valid for this app'})
+				}
+				return found.grant.user
 			}, rejected('Sign in first'))
 			const mint = Effect.fnUntraced(function* (
 				family: string,
@@ -448,20 +433,6 @@ export class Tokens extends Context.Service<
 					)
 					return {clientName: client.name, redirectUri}
 				}),
-				delegate: Effect.fn('Tokens.delegate')(function* (headers: Headers.Headers, resource: Resource) {
-					const user = yield* access(headers, `${AUTH_URL}/mcp`)
-					const token = yield* secret(32)
-					const key = yield* hash(token)
-					const now = yield* Clock.currentTimeMillis
-					yield* Ref.update(delegated, current =>
-						HashMap.set(
-							HashMap.filter(current, entry => entry.expiresAt > now),
-							key,
-							{expiresAt: now + 60_000, resource, user}
-						)
-					)
-					return token
-				}, rejected('Cannot authorize the upstream MCP')),
 				disconnect: Effect.fn('Tokens.disconnect')(function* (family: string, user: User) {
 					yield* change(current =>
 						Effect.gen(function* () {
@@ -500,10 +471,6 @@ export class Tokens extends Context.Service<
 					yield* Ref.update(
 						codes,
 						HashMap.filter(entry => entry.state._tag === 'Used' || entry.state.user.id !== id)
-					)
-					yield* Ref.update(
-						delegated,
-						HashMap.filter(entry => entry.user.id !== id)
 					)
 				}, rejected('Cannot sign this account out')),
 				issue: Effect.fn('Tokens.issue')(function* (request: ClientRequest, user: User) {

@@ -1,0 +1,34 @@
+{
+	"name": "@deslop/gateway",
+	"version": "0.1.0",
+	"type": "module",
+	"sideEffects": false,
+	"imports": {
+		"#http/*": "./src/http/*",
+		"#lib/*": "./src/lib/*",
+		"#package.*": "./package.*",
+		"#routes/*": "./src/routes/*",
+		"#rpcs/*": "./src/rpcs/*",
+		"#services/*": "./src/services/*",
+		"#tools/*": "./src/tools/*"
+	},
+	"scripts": {
+		"build": "rm -rf dist && vp build && vp pack",
+		"preview": "vp run build && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js"
+	},
+	"devDependencies": {
+		"@deslop/components-web": "workspace:*",
+		"@deslop/runtime": "workspace:*",
+		"@effect/atom-react": "latest",
+		"@effect/platform-node": "latest",
+		"@modelcontextprotocol/client": "latest",
+		"@tanstack/react-router": "latest",
+		"@typeonce/effect-machine": "latest",
+		"@typeonce/effect-machine-react": "latest",
+		"effect": "latest",
+		"ipaddr.js": "latest",
+		"lucide-react": "latest",
+		"react": "latest",
+		"react-dom": "latest"
+	}
+}

@@ -1,6 +1,6 @@
 import {Schema} from 'effect'
 
-import {AUTH_URL} from '@deslop/runtime/auth/utils'
+import {GATEWAY_URL} from '#services/connections/lib/utils.ts'
 
 export type ServerId = typeof ServerId.Type
 export const ServerId = Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9_-]{0,23}$/u))
@@ -17,10 +17,10 @@ export const ServerUrl = Schema.NonEmptyString.check(
 				url.username === '' &&
 				url.password === '' &&
 				url.hash === '' &&
-				url.origin !== AUTH_URL
+				url.origin !== GATEWAY_URL
 			)
 		},
-		{expected: 'a public HTTPS MCP URL without credentials or a fragment, outside Auth itself'}
+		{expected: 'a public HTTPS URL without credentials or a fragment, outside the gateway itself'}
 	)
 )
 
@@ -52,7 +52,7 @@ export const Token = Schema.Struct({
 	token_type: Schema.String.check(Schema.isPattern(/^Bearer$/iu))
 })
 
-// How Auth signs in to a provider: a client it registered there with its own callback, or Auth's client metadata document, which needs the provider to name itself in every answer.
+// How the gateway signs in to a provider: a client it registered there with its own callback, or its client metadata document, which needs the provider to name itself in every answer.
 export type OAuth = typeof OAuth.Type
 export const OAuth = Schema.Struct({
 	client: Schema.TaggedUnion({Document: {}, Registered: {clientId: Schema.NonEmptyString}}),
@@ -60,7 +60,7 @@ export const OAuth = Schema.Struct({
 	scope: Schema.String
 })
 
-// The owner's apps take a token Auth delegates per call, public servers none, providers the token Auth holds.
+// A public server takes no token; an OAuth server, the owner's apps included, the token the gateway holds.
 export type Link = typeof Link.Type
 export const Link = Schema.TaggedUnion({
 	Authorized: {expiresAt: Schema.Finite, token: Token},
@@ -78,7 +78,7 @@ export const Connection = Schema.Struct({
 	// The server's own instructions from its last discovery: the first sentence is its line in the gateway's instructions.
 	instructions: Schema.optionalKey(Schema.String),
 	link: Link,
-	mode: Schema.Literals(['deslop', 'oauth', 'public']),
+	mode: Schema.Literals(['oauth', 'public']),
 	name: Schema.NonEmptyString,
 	oauth: Schema.optionalKey(OAuth),
 	tools: Schema.Array(Schema.String),
