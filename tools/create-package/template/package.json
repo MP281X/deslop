@@ -8,6 +8,10 @@
 	"exports": {
 		"./service": "./src/service.ts"
 	},
+	"scripts": {
+		"test": "vp test --config ../../vite.config.ts",
+		"typecheck": "tsrs --checkerAssignment go --pretty false"
+	},
 	"dependencies": {
 		"effect": "latest"
 	}

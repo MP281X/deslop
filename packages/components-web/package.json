@@ -12,6 +12,10 @@
 		"./utils": "./src/lib/utils.ts",
 		"./theme.css": "./src/theme.css"
 	},
+	"scripts": {
+		"test": "vp test --config ../../vite.config.ts",
+		"typecheck": "tsrs --checkerAssignment go --pretty false"
+	},
 	"dependencies": {
 		"@base-ui/react": "latest",
 		"@fontsource-variable/jetbrains-mono": "latest",

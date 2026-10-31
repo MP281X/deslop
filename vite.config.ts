@@ -72,10 +72,14 @@ export default defineConfig({
 		]
 	},
 	run: {
+		// Each package's typecheck and test scripts replay from the cache while their inputs are unchanged; a stopped preview server exits 130, so it is never cached.
+		cache: true,
 		tasks: {
-			check: ['vp run lint', 'vp run typecheck', 'vp run fallow'],
+			// Format and lint run before it as `vp check`, or `vp check --fix` in Verify, so nothing is checked twice. A package's typecheck and tests read its dependencies' sources, never their output, so every package starts at once.
+			check: ['vp run -r --parallel typecheck', 'vp run fallow'],
+			// Fallow judges exports and dependencies across packages, so it reads the whole workspace whichever package it reports on.
 			fallow: {
-				cache: {input: [{auto: true}, '!.fallow/**', '!**/*.tsbuildinfo'], output: []},
+				cache: {input: [{auto: true}, '!.fallow/**'], output: []},
 				command: [
 					'fallow dead-code --format compact --fail-on-issues --quiet',
 					'fallow dead-code --production --format compact --fail-on-issues --quiet',
@@ -83,23 +87,16 @@ export default defineConfig({
 					'fallow health --complexity --format human --quiet'
 				]
 			},
-			fix: {cache: false, command: 'vp lint --fix --format agent; status=$?; vp fmt && exit $status'},
-			lint: {
-				cache: {input: [{auto: true}, '!**/*.tsbuildinfo'], output: []},
-				command: ['vp fmt --list-different', 'vp lint --format agent']
-			},
-			test: 'vp test',
-			typecheck: {
-				cache: {input: [{auto: true}, '!**/*.tsbuildinfo'], output: []},
-				command:
-					"sh -c 'TSRS_CHECKER_ASSIGNMENT=go tsrs --build apps/*/tsconfig.json packages/*/tsconfig.json tools/*/tsconfig.json --force --pretty false'"
-			}
+			test: 'vp run -r --parallel test'
 		}
 	},
+	// Each package's test script runs Vitest with this config from its own directory; a package's config holds no test settings.
 	test: {
 		// The only limits: no-test-timeout keeps tests, hooks and layers from raising their own.
 		hookTimeout: 60_000,
-		include: ['apps/*/src/**/*.test.ts', 'packages/*/src/**/*.test.ts', 'tools/*/src/**/*.test.ts'],
+		// The first glob serves each package's own run, the second a run from the root, such as one test file by path.
+		include: ['src/**/*.test.ts', '{apps,packages,tools}/*/src/**/*.test.ts'],
+		passWithNoTests: true,
 		reporters: ['dot'],
 		silent: 'passed-only',
 		testTimeout: 60_000

@@ -12,6 +12,7 @@ concurrency:
 permissions:
   contents: read
 
+# Check and test run side by side; neither reads the other's results.
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -19,9 +20,12 @@ jobs:
       - uses: actions/checkout@v5
       - uses: voidzero-dev/setup-vp@v1
         with: {node-version: '26', cache: true, run-install: true}
+      - run: vp check && vp run check
 
-      - name: Check
-        run: vp run check
-
-      - name: Test
-        run: vp run test
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: voidzero-dev/setup-vp@v1
+        with: {node-version: '26', cache: true, run-install: true}
+      - run: vp run test
