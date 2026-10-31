@@ -11,8 +11,6 @@ Keep one active contract: the user's goal, accepted choices, rejected directions
 
 Settle consequential uncertainty early and give open-ended work a checkable finish. Keep the agreed scope and quality; the investigation and implementation strategy are yours. Carry valid evidence, pending work and IDs across batches and compaction; recover a missing decision from the thread rather than guessing.
 
-Performance claims compare the same workload and environment over repeated runs, with representative timings and the resource costs the change affects.
-
 An open screen design gets distinct usable variants as `html_render` mocks, the fewest-concepts option among them, in the app's theme on realistic data. An agreed direction needs no new choice; validate the built journey against the pick at the same viewport.
 
 ## Delivery
