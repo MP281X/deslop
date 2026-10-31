@@ -12,13 +12,12 @@ description: Load at task start, when the user changes direction, and before des
 - **Uncertainty.** Settle what is consequential early; give open-ended work a checkable finish. The strategy is yours, the agreed scope and quality are not.
 - **Continuity.** Carry valid evidence, pending work and IDs across batches and compaction; recover a missing decision from the thread, never guess.
 - **Evidence.** Ground consequential claims in the deciding source, trace or probe; name what stays unverified.
-- **Screens.** An open design gets distinct usable variants as `html_render` mocks, the fewest-concepts one among them, in the app's theme on realistic data. An agreed direction needs no new choice; validate the built journey against the pick at the same viewport.
 
 ## Delivery
 
-Build → prove the actual journey → Verify → one review → draft push, per pull-requests. Fix related findings in one batch and revalidate; each round is one push. Process lives in prose, not hooks, stamps or coordination machinery.
+Build → prove the actual journey → Verify → one review → draft push, per pull-requests. Fix related findings in one batch and revalidate. Process lives in prose, not hooks, stamps or coordination machinery.
 
-- **Review.** One complete independent review before the first push: the unmerged PR set and the accepted requirements at immutable base/head pairs, one reviewer unless distinct risks need different expertise.
+- **Review.** One independent review of the unmerged PR set before the first push; one reviewer unless distinct risks need different expertise.
 - **Triage.** Fix kept P1, P2 and trivial P3 findings; keep pre-existing defects separate. Follow-ups cover changed contracts only; repeated substantial findings mean rethinking the approach.
 
 ## Delegation
@@ -32,7 +31,7 @@ Bounded, independent work that saves time or adds judgment. Give the question, t
 | Exploration, lookup, inventory, evidence collection  | `gpt-6-luna`  | `claude-haiku-5-5` | `medium` |
 | Reasoning, architecture, difficult debugging, review | `gpt-6.1-sol` | `claude-opus-5-5`  | `high`   |
 
-**Council.** Only for a hard-to-reverse decision with split evidence: `gpt-6-luna`, `claude-haiku-5-5`, `gpt-6.1-sol` and `claude-opus-5-5` at their table efforts, each given the same question, options, raw evidence and criteria, never your preferred answer or another member's conclusion. Weigh their tradeoffs and choose. Otherwise decide, or ask one reviewer. Product, taste and approvals stay the user's.
+**Council.** Only for a hard-to-reverse decision with split evidence: `gpt-6-luna`, `claude-haiku-5-5`, `gpt-6.1-sol` and `claude-opus-5-5` at their table efforts, each given the same question, options, raw evidence and criteria, never your preferred answer or another member's conclusion. Weigh their tradeoffs and choose. Otherwise decide, or ask one reviewer.
 
 **`~/deslop`.** Move to a task worktree with `t3_worktree_handoff` before any edit: that checkout supplies every thread's installed configuration.
 
@@ -64,5 +63,5 @@ The repository's canonical examples lead; these fill a gap. Clones are read-only
 | Skill packaging and evaluation              | https://github.com/anthropics/skills           | `skills/skill-creator/`                                                                                     |
 | Effect knowledge for agents                 | https://github.com/Effect-TS/skills            | `skills/effect-ts/`                                                                                         |
 
-- **Screen research.** Start from the screen's job and its fewest concepts. Search Mobbin's screens or flows for that job beside the repository's screens; borrow an interaction only when it removes a concept, an action or an ambiguity. Color, radius, type, spacing and shadow come from the theme `components.json` names.
+- **Screens.** Start from the screen's job and its fewest concepts. Search Mobbin's screens or flows for that job beside the repository's screens; borrow an interaction only when it removes a concept, an action or an ambiguity. An open design gets distinct usable variants as `html_render` mocks, the fewest-concepts one among them, on realistic data; color, radius, type, spacing and shadow from the theme `components.json` names. An agreed direction needs no new choice; validate the built journey against the pick at the same viewport.
 - **Visual taste.** No gradients or glows, colored side stripes, a bordered card per section, equal prominence everywhere, a color per tile, generic copy, content waiting on an entrance animation, or the hero/feature-grid/logo-row skeleton. The user's picked reference wins.

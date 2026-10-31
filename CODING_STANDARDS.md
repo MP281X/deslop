@@ -58,8 +58,7 @@ One `tools/compose.yaml`: configs inlined, direct ports, third-party images on `
 - **Libraries** only through published releases and public API, as documented. No patches, forks, vendored copies, dependency overrides or shims, upgrades included. When a library falls short, change this design, pick another library or ask the user.
 - **Metadata exception**: a release's wrong package metadata (an undeclared dependency, a stale pin) may be corrected in `pnpm-workspace.yaml` with `packageExtensions` or an override, beside a comment naming the upstream defect, removed once a release fixes it.
 - **Lint policy** in `@deslop/coding-standards`:
-  - **Once**: each policy defined once; an upstream rule over a custom one; tests only for custom rules.
-  - **Selection**: native rules by name with every category off; custom rules from their registry.
+  - **Once**: each policy defined once; tests only for custom rules; selection per its README.
   - **No overlap**: each check in the one tool covering it best; the compiler and Effect diagnostics own theirs; no rule for a form the preset already bans.
   - **Reach**: only checks that can fire here, preventive ones included for patterns t3code and Dual already hit; type-aware lint and `exactOptionalPropertyTypes` off.
   - **Custom rules** earn their place with coverage or a safe fix no native rule offers.

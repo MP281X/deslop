@@ -20,4 +20,6 @@ Every sign-in is one waiting code, approved from a signed-in browser, a phone or
 
 ## MCP
 
-`https://auth.mp281x.xyz/mcp` has one tool, `answer_request`, reached through the [gateway](../gateway/README.md) as `auth__answer_request`. The gateway connects to Auth's MCP and every other Deslop MCP server like any OAuth provider, at `https://gateway.mp281x.xyz/oauth/callback/<id>`.
+- **Discovery**: each Deslop MCP server's `/.well-known/oauth-protected-resource/mcp` names Auth; no credentials → 401 challenge; rejected bearer → `error="invalid_token"`; Auth down → 503 with `Retry-After`.
+- **Stored credentials prove nothing**: check the client's MCP status and tool discovery. `OAuth authorization required` at startup, or after an auth-store reset: sign the client in to the gateway again.
+- **`answer_request`**: `https://auth.mp281x.xyz/mcp`'s one tool, reached through the [gateway](../gateway/README.md) as `auth__answer_request`.

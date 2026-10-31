@@ -206,7 +206,7 @@ T3's desktop app and the iOS Simulator; builds nothing, the Simulator app comes 
 
 ## MCP sign-in
 
-- **One server** per harness: the gateway `https://gateway.mp281x.xyz/mcp`, signed in through Auth. Upstreams (Auth, Scope, Stash, Trips, Dual, Mobbin) are connected once on [its page](https://gateway.mp281x.xyz) for every worker and harness; `list_mcp_connections` says why one failed.
+- **One server** per harness: the gateway (`apps/gateway/README.md`), whose upstreams are Auth, Scope, Stash, Trips, Dual and Mobbin.
 - **Codex** reads `gateway` from the installed configuration; OAuth sign-ins live in the Secret Service keyring, which D-Bus must start through its unit: Debian's default activation starts a locked daemon whose headless unlock prompt hangs every Codex start.
 - **Claude** keeps local MCP servers in `~/.claude.json`: register the gateway per worker.
 
@@ -234,7 +234,7 @@ curl -s -b /tmp/<task>/jar -L --retry 12 --retry-delay 1 -o /dev/null 'https://a
 
 Approve with Auth's `answer_request` (`auth__answer_request` through the gateway) from any harness that already has it, since this thread started the sign-in; otherwise give the user only the code, to approve at https://auth.mp281x.xyz from any signed-in browser or phone. Repeat for `claude mcp login --no-browser gateway` and on each worker. Never approve a request the thread did not start: the client name is self-reported, not a verified worker identity.
 
-**Browser sign-in.** A browser profile without the user's GitHub, such as the Datapizza work profile, uses **Sign in with a code** at https://auth.mp281x.xyz; every Deslop app sends signed-out browsers there. The user approves it from a signed-in browser or phone: `answer_request` refuses browser sign-ins, since a session grants every app. A provider whose own account lives in that profile, such as Dual, is then connected from its row on the gateway's page in that profile.
+**Browser sign-in.** A profile without the user's GitHub, such as the Datapizza work profile: **Sign in with a code** at https://auth.mp281x.xyz, which the user approves (`apps/auth/README.md`). A provider whose account lives in that profile, such as Dual, connects from its row on the gateway's page there.
 
 - **Connectors.** `.claude/settings.json` sets `disableClaudeAiConnectors`: no claude.ai connector, Mobbin included, only the gateway. Once any `serverUrl` entry exists, every remote server needs a URL rule, T3's `http://127.0.0.1:<port>/mcp` included.
 - **Check** with `codex mcp list` and `claude mcp list`, plus one real tool call. `features.mcp_2026_07_28` (why in `.codex/global-config.toml`) is global: verify the gateway's tool list when changing it. Mobbin: one `mobbin__search_screens` with `mode: "standard"`; the default, `deep`, spends AI credits.

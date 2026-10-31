@@ -13,12 +13,6 @@ An Effect development debugger: a private OTLP/HTTP JSON receiver on port 4318, 
 | `measure_latency` | Span count, errors and p50, p95 and max latency over the whole window                                      |
 | `read_trace`      | One stored trace whole, including earlier runs, with parent order, offsets and logs                        |
 
-## Connection diagnostics
-
-- **Stored credentials prove nothing**: check the client's MCP status and tool discovery.
-- **`OAuth authorization required`** at startup, or after an auth-store reset: sign the client in to the gateway again.
-- **Discovery**: `/.well-known/oauth-protected-resource/mcp` names the authorization server; no credentials → 401 challenge; rejected bearer → `error="invalid_token"`; authorization server down → 503 with `Retry-After`.
-
 ## Ingestion health
 
 Start with `list_services`.

@@ -1,6 +1,6 @@
 # Releasing
 
-How changes reach the iOS Simulator, production and npm; accounts and hosts are in the environment skill.
+How changes reach the iOS Simulator, production and npm; accounts and hosts are in the environment skill's Deslop reference.
 
 ## Simulator builds
 

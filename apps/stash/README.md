@@ -3,7 +3,7 @@
 A personal inbox for links and notes: the server reads each link, transcribes its video and tags it; agents use it through the [gateway](../gateway/README.md), the iOS app saves to it.
 
 - **Runs** from `tools/compose.yaml`; the image carries ffmpeg, yt-dlp and the Whisper runtime.
-- **API and MCP** need a Deslop sign-in, as in Scope's [connection diagnostics](../scope/README.md#connection-diagnostics).
+- **API and MCP** need a Deslop sign-in, per [Auth](../auth/README.md#mcp).
 - **`STASH_PROXY`** routes video downloads through a proxy.
 
 | Tool           | Does                                                                                      |
