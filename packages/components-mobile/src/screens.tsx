@@ -2,7 +2,7 @@ import {useAtomSet, useAtomSuspense} from '@effect/atom-react'
 
 import {Cause} from 'effect'
 
-import {Button, Host, Image, Text, VStack} from '@expo/ui/swift-ui'
+import {Button, Host, Image, Rectangle, Text, VStack} from '@expo/ui/swift-ui'
 import {
 	background,
 	buttonStyle,
@@ -34,7 +34,16 @@ const FULL_SCREEN = [
 	background(colors.background)
 ]
 
-// Data on its way shows as the list it will fill, never a spinner on an empty screen.
+// Reading the saved session is local and takes milliseconds, so it shows the empty screen rather than a skeleton that blinks.
+export function BlankScreen() {
+	return (
+		<Host style={{flex: 1}}>
+			<Rectangle modifiers={[foregroundStyle(colors.background)]} />
+		</Host>
+	)
+}
+
+// Data on its way, as the list it will fill; a Suspense fallback, so React keeps it at least 300ms and it never blinks.
 export function LoadingScreen() {
 	return (
 		<Host style={{flex: 1}}>
@@ -105,8 +114,8 @@ export function SessionGate(props: {children: ReactNode; logo: number | string; 
 	const send = useAtomSet(props.session.send)
 	return (
 		<>
-			<MachineState machine={props.session} path="Reading" pending={<LoadingScreen />}>
-				{() => <LoadingScreen />}
+			<MachineState machine={props.session} path="Reading" pending={<BlankScreen />}>
+				{() => <BlankScreen />}
 			</MachineState>
 			<MachineState machine={props.session} path="SignedOut">
 				{() => (

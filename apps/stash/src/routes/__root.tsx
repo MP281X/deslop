@@ -6,7 +6,7 @@ import {Host, NavigationDestination, NavigationStack, useNativeState} from '@exp
 import {background, tint} from '@expo/ui/swift-ui/modifiers'
 import {Suspense, useState} from 'react'
 
-import {LoadingScreen, SessionGate} from '@deslop/components-mobile/screens'
+import {BlankScreen, SessionGate} from '@deslop/components-mobile/screens'
 import {colors} from '@deslop/components-mobile/theme'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {updateAtom} from '@deslop/runtime/mobile'
@@ -70,7 +70,7 @@ function AppRoutes() {
 export function RootRoute() {
 	useAtomMount(updateAtom)
 	return (
-		<Suspense fallback={<LoadingScreen />}>
+		<Suspense fallback={<BlankScreen />}>
 			<SessionGate logo={logo} session={session.machine} tint={primary}>
 				<AppRoutes />
 			</SessionGate>

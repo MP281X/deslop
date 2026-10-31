@@ -168,19 +168,6 @@
 	text-align: start;
 }
 
-/* DESIGN.md, Loading: a skeleton fades in only after 300ms, so data that arrives sooner never flashes one. */
-@keyframes appear-late {
-	from {
-		opacity: 0;
-	}
-}
-
-[data-slot='skeleton'] {
-	animation:
-		appear-late 150ms var(--ease-out) 300ms both,
-		pulse 2s cubic-bezier(0.4, 0, 0.6, 1) 450ms infinite;
-}
-
 /* Pixel art keeps its hard edges when scaled. */
 @utility pixelated {
 	image-rendering: pixelated;
