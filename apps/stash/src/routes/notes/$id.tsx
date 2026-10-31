@@ -4,7 +4,6 @@ import {Array, Boolean, Match, Option, String, pipe} from 'effect'
 
 import {
 	Button,
-	ContentUnavailableView,
 	Divider,
 	HStack,
 	Image,
@@ -39,15 +38,28 @@ import {
 import {AsyncResult} from 'effect/reactivity'
 import {Linking} from 'react-native'
 
-import {Chip} from '@deslop/components-mobile/chip'
 import {BrandLogo} from '@deslop/components-mobile/icons'
-import {colors, text} from '@deslop/components-mobile/theme'
+import {colors, space, text} from '@deslop/components-mobile/theme'
+import {
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle
+} from '@deslop/components-mobile/ui/empty'
+import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 
 import {Byline} from '#lib/components.tsx'
 import {appOf, brandOf, imageAtom, kinds, noteAtom, notesAtom, primary, regenerateAtom, removeAtom} from '#lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 
-const prose = [font({textStyle: 'body'}), lineSpacing(4), foregroundStyle(colors.foreground), textSelection(true)]
+const prose = [
+	font({textStyle: 'body'}),
+	lineSpacing(space[1]),
+	foregroundStyle(colors.foreground),
+	textSelection(true)
+]
 
 function Cover(props: {note: NoteItem}) {
 	const image = useAtomValue(imageAtom(props.note.id))
@@ -71,7 +83,7 @@ function Body(props: {text: string}) {
 	return (
 		<VStack
 			alignment="leading"
-			spacing={10}
+			spacing={space[3]}
 			modifiers={[frame({alignment: 'leading', maxWidth: Infinity}), tint(primary)]}
 		>
 			{Array.map(
@@ -83,7 +95,10 @@ function Body(props: {text: string}) {
 						Match.when(
 							candidate => Option.isSome(String.match(/^#+\s/u)(candidate)),
 							() => (
-								<Text key={index} modifiers={[text.title, foregroundStyle(colors.foreground), padding({top: 10})]}>
+								<Text
+									key={index}
+									modifiers={[text.title, foregroundStyle(colors.foreground), padding({top: space[3]})]}
+								>
 									{String.replace(/^#+\s*/u, '')(line)}
 								</Text>
 							)
@@ -91,7 +106,7 @@ function Body(props: {text: string}) {
 						Match.when(
 							candidate => Option.isSome(String.match(/^(?:[-*•]|\d+\.)\s/u)(candidate)),
 							() => (
-								<HStack key={index} alignment="firstTextBaseline" spacing={8}>
+								<HStack key={index} alignment="firstTextBaseline" spacing={space[2]}>
 									<Text modifiers={[font({textStyle: 'body'}), foregroundStyle(colors.mutedForeground)]}>
 										{Boolean.match(String.startsWith('- ')(line), {
 											onFalse: () => String.replace(/\s.*$/u, '')(line),
@@ -108,7 +123,7 @@ function Body(props: {text: string}) {
 							<Text
 								key={index}
 								markdownEnabled
-								modifiers={[...prose, foregroundStyle(colors.mutedForeground), padding({leading: 12})]}
+								modifiers={[...prose, foregroundStyle(colors.mutedForeground), padding({leading: space[3]})]}
 							>
 								{String.slice(2)(line)}
 							</Text>
@@ -126,7 +141,7 @@ function Body(props: {text: string}) {
 
 function Placeholder() {
 	return (
-		<VStack alignment="leading" spacing={10} modifiers={[redacted('placeholder')]}>
+		<VStack alignment="leading" spacing={space[3]} modifiers={[redacted('placeholder')]}>
 			<Body
 				text={
 					'The main point of the entry, in one or two plain sentences.\n- A takeaway a developer keeps from it.\n- Another takeaway with a tool and what it does.\n- A number that matters.'
@@ -143,8 +158,11 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 		<ScrollView modifiers={[background(colors.background)]}>
 			<VStack
 				alignment="leading"
-				spacing={16}
-				modifiers={[padding({bottom: 32, horizontal: 20, top: 8}), frame({alignment: 'leading', maxWidth: Infinity})]}
+				spacing={space[4]}
+				modifiers={[
+					padding({bottom: space[8], horizontal: space[4], top: space[2]}),
+					frame({alignment: 'leading', maxWidth: Infinity})
+				]}
 			>
 				<Text
 					modifiers={[
@@ -160,22 +178,24 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 					Match.value(props.note.status),
 					Match.when('organizing', () => <Placeholder />),
 					Match.when('failed', () => (
-						<VStack spacing={12} modifiers={[frame({maxWidth: Infinity})]}>
-							<ContentUnavailableView
-								title="Couldn’t Read This Link"
-								systemImage="exclamationmark.triangle"
-								description={props.note.issue}
-							/>
-							<Button
-								label="Try Again"
-								systemImage="arrow.clockwise"
-								onPress={props.onRetry}
-								modifiers={[buttonStyle('glass')]}
-							/>
-						</VStack>
+						<Empty>
+							<EmptyHeader>
+								<EmptyMedia systemImage="exclamationmark.triangle" />
+								<EmptyTitle>Couldn’t Read This Link</EmptyTitle>
+								{props.note.issue !== undefined && <EmptyDescription>{props.note.issue}</EmptyDescription>}
+							</EmptyHeader>
+							<EmptyContent>
+								<Button
+									label="Try Again"
+									systemImage="arrow.clockwise"
+									onPress={props.onRetry}
+									modifiers={[buttonStyle('glass')]}
+								/>
+							</EmptyContent>
+						</Empty>
 					)),
 					Match.orElse(() => (
-						<VStack alignment="leading" spacing={16}>
+						<VStack alignment="leading" spacing={space[4]}>
 							<Text modifiers={prose}>{props.note.summary}</Text>
 							{AsyncResult.match(full, {
 								onFailure: () => (
@@ -194,14 +214,15 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 				)}
 				<Divider />
 				<Byline note={props.note} />
+				{/* No tag is chosen here: choosing one opens the list filtered to it. */}
 				{!Array.isReadonlyArrayEmpty(props.note.tags) && (
-					<ScrollView axes="horizontal" showsIndicators={false}>
-						<HStack spacing={8}>
-							{Array.map(props.note.tags, tag => (
-								<Chip key={tag} label={tag} active={false} onPress={() => props.onTag(tag)} tint={primary} />
-							))}
-						</HStack>
-					</ScrollView>
+					<ToggleGroup value="" onValueChange={props.onTag} tint={primary}>
+						{Array.map(props.note.tags, tag => (
+							<ToggleGroupItem key={tag} value={tag}>
+								{tag}
+							</ToggleGroupItem>
+						))}
+					</ToggleGroup>
 				)}
 			</VStack>
 		</ScrollView>
@@ -215,11 +236,14 @@ export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (t
 		Array.findFirst(useAtomSuspense(notesAtom).value, item => item.id === props.id),
 		{
 			onNone: () => (
-				<ContentUnavailableView
-					title="Note Deleted"
-					systemImage="trash"
+				<Empty
 					modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
-				/>
+				>
+					<EmptyHeader>
+						<EmptyMedia systemImage="trash" />
+						<EmptyTitle>Note Deleted</EmptyTitle>
+					</EmptyHeader>
+				</Empty>
 			),
 			onSome: item => (
 				<Toolbar

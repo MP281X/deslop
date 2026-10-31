@@ -63,6 +63,7 @@ import {preferEffectCountBy} from '#rules/prefer-effect-count-by.ts'
 import {preserveErrorCause} from '#rules/preserve-error-cause.ts'
 import {requireUnicodeRegexp} from '#rules/require-unicode-regexp.ts'
 import {schemaTypePair} from '#rules/schema-type-pair.ts'
+import {swiftuiThemeValues} from '#rules/swiftui-theme-values.ts'
 
 const REACT_LEGACY_APIS = ['Component', 'PureComponent', 'createRef', 'forwardRef', 'memo', 'useCallback', 'useMemo']
 const REACT_LEGACY_MESSAGE = 'Use React 19 function components with refs as props; React Compiler owns memoization.'
@@ -166,7 +167,8 @@ const RULES = {
 	'prefer-effect-count-by': preferEffectCountBy,
 	'preserve-error-cause': preserveErrorCause,
 	'require-unicode-regexp': requireUnicodeRegexp,
-	'schema-type-pair': schemaTypePair
+	'schema-type-pair': schemaTypePair,
+	'swiftui-theme-values': swiftuiThemeValues
 }
 
 export const lint: OxlintConfig = {

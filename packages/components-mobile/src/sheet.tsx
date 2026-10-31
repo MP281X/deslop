@@ -4,7 +4,7 @@ import {background, buttonStyle, controlSize, foregroundStyle, frame, padding, t
 import type {ReactNode} from 'react'
 import type {ColorValue} from 'react-native'
 
-import {colors, text} from './theme.ts'
+import {colors, space, text} from './theme.ts'
 
 // A yes-or-no question about what the clipboard holds; it hangs off the title in the bar, so it adds nothing to the layout.
 export function ClipboardSheet(props: {
@@ -27,9 +27,9 @@ export function ClipboardSheet(props: {
 			fitToContents
 		>
 			<VStack
-				spacing={14}
+				spacing={space[3]}
 				modifiers={[
-					padding({bottom: 8, leading: 24, top: 28, trailing: 24}),
+					padding({bottom: space[2], leading: space[6], top: space[6], trailing: space[6]}),
 					frame({maxWidth: Infinity}),
 					background(colors.background)
 				]}
@@ -39,7 +39,7 @@ export function ClipboardSheet(props: {
 				{props.detail !== undefined && (
 					<Text modifiers={[text.body, foregroundStyle(colors.mutedForeground)]}>{props.detail}</Text>
 				)}
-				<VStack spacing={4} modifiers={[padding({top: 6})]}>
+				<VStack spacing={space[1]} modifiers={[padding({top: space[2]})]}>
 					<Button
 						onPress={() => props.onAnswer(true)}
 						modifiers={[
@@ -56,7 +56,7 @@ export function ClipboardSheet(props: {
 							modifiers={[
 								text.body,
 								foregroundStyle(colors.mutedForeground),
-								padding({vertical: 12}),
+								padding({vertical: space[3]}),
 								frame({maxWidth: Infinity})
 							]}
 						>

@@ -14,7 +14,7 @@ import {
 	padding
 } from '@expo/ui/swift-ui/modifiers'
 
-import {colors} from '@deslop/components-mobile/theme'
+import {colors, space} from '@deslop/components-mobile/theme'
 
 import {draftAtom, writeAtom} from '#lib/utils.ts'
 
@@ -34,7 +34,7 @@ export function ComposeRoute(props: {onDone: () => void}) {
 				onTextChange={setDraft}
 				modifiers={[
 					foregroundStyle(colors.foreground),
-					padding({all: 16}),
+					padding({all: space[4]}),
 					frame({alignment: 'topLeading', maxHeight: Infinity, maxWidth: Infinity})
 				]}
 			/>

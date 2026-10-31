@@ -24,14 +24,15 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 
 ## Patterns
 
-| Pattern          | Owner and canonical example                                                                    |
-| ---------------- | ---------------------------------------------------------------------------------------------- |
-| Service          | `tools/create-package/template/`, `apps/stash/src/services/notes/`                             |
-| Web app          | `tools/create-app/template/web/`: `apps/portfolio` behind a Deslop sign-in                     |
-| Mobile app       | `tools/create-app/template/mobile/`, which mirrors `apps/stash`                                |
-| RPC              | `apps/portfolio/src/rpcs/` and its client in `apps/portfolio/src/lib/utils.ts`                 |
-| MCP tools        | `apps/scope/src/tools/`, served by `ServerRuntime.layerMcp` in `apps/scope/src/main.server.ts` |
-| Web UI primitive | `packages/components-web/src/ui/`, added with `vpx shadcn@latest add` there                    |
+| Pattern          | Owner and canonical example                                                                                                                                |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Service          | `tools/create-package/template/`, `apps/stash/src/services/notes/`                                                                                         |
+| Web app          | `tools/create-app/template/web/`: `apps/portfolio` behind a Deslop sign-in                                                                                 |
+| Mobile app       | `tools/create-app/template/mobile/`, which mirrors `apps/stash`                                                                                            |
+| RPC              | `apps/portfolio/src/rpcs/` and its client in `apps/portfolio/src/lib/utils.ts`                                                                             |
+| MCP tools        | `apps/scope/src/tools/`, served by `ServerRuntime.layerMcp` in `apps/scope/src/main.server.ts`                                                             |
+| Web UI primitive | `packages/components-web/src/ui/`, added with `vpx shadcn@latest add` there; point its `cn` import at `#lib/utils.ts` and drop the `cn` dependency it adds |
+| iOS UI primitive | `packages/components-mobile/src/ui/`, named and split like the shadcn component it mirrors                                                                 |
 
 ## Documents
 

@@ -3,7 +3,8 @@
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
-		"#lib/*": "./src/lib/*"
+		"#lib/*": "./src/lib/*",
+		"#components/*": "./src/*"
 	},
 	"exports": {
 		"./*": "./src/*.tsx",

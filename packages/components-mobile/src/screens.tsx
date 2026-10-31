@@ -22,13 +22,13 @@ import type {ColorValue} from 'react-native'
 
 import type {Session} from '@deslop/runtime/mobile/session'
 
-import {colors, text} from './theme.ts'
+import {colors, space, text} from './theme.ts'
 
 import {assetAtom} from '#lib/utils.ts'
 
 // The padding comes before the frame so the background behind it reaches every edge of the screen.
 const FULL_SCREEN = [
-	padding({all: 24}),
+	padding({all: space[6]}),
 	frame({maxHeight: Infinity, maxWidth: Infinity}),
 	background(colors.background)
 ]
@@ -50,7 +50,7 @@ export function FailureScreen(props: {
 }) {
 	return (
 		<Host style={{flex: 1}}>
-			<VStack spacing={12} modifiers={FULL_SCREEN}>
+			<VStack spacing={space[3]} modifiers={FULL_SCREEN}>
 				<Text modifiers={[text.title, foregroundStyle(colors.foreground)]}>{props.name} hit an error</Text>
 				<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground), lineLimit(6)]}>
 					{Cause.pretty(props.cause)}
@@ -70,7 +70,7 @@ export function FailureScreen(props: {
 function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint: ColorValue; waiting: boolean}) {
 	return (
 		<Host style={{flex: 1}}>
-			<VStack spacing={20} modifiers={FULL_SCREEN}>
+			<VStack spacing={space[6]} modifiers={FULL_SCREEN}>
 				<Image
 					uiImage={useAtomSuspense(assetAtom(props.logo)).value}
 					modifiers={[
@@ -78,7 +78,7 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 						frame({height: 64, width: 64}),
 						clipShape('roundedRectangle', 14),
 						frame({maxHeight: Infinity}),
-						padding({bottom: 64})
+						padding({bottom: space[16]})
 					]}
 				/>
 				<Button

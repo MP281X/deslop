@@ -2,12 +2,13 @@ import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, HashSet, Number, Option, pipe} from 'effect'
 
-import {ContentUnavailableView, ProgressView, Toolbar} from '@expo/ui/swift-ui'
+import {ProgressView, Toolbar} from '@expo/ui/swift-ui'
 import {background, frame, navigationBarTitleDisplayMode, navigationTitle} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 import {useRef, useState} from 'react'
 
 import {colors} from '@deslop/components-mobile/theme'
+import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
 
 import {readAtom, unreachableAtom} from '#lib/utils.ts'
 import {PageStrip} from '#modules/native/index.ts'
@@ -39,11 +40,12 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; serie
 	if (!Array.isReadonlyArrayNonEmpty(shown)) {
 		if (gaveUp) {
 			return (
-				<ContentUnavailableView
-					title="Chapter Unavailable"
-					systemImage="book.closed"
-					modifiers={[navigationTitle(''), background(colors.background)]}
-				/>
+				<Empty modifiers={[navigationTitle(''), background(colors.background)]}>
+					<EmptyHeader>
+						<EmptyMedia systemImage="book.closed" />
+						<EmptyTitle>Chapter Unavailable</EmptyTitle>
+					</EmptyHeader>
+				</Empty>
 			)
 		}
 		return (
