@@ -1968,7 +1968,7 @@ function World(props: {seed: number; view: View}) {
 function Signal() {
 	const result = useAtomValue(hudAtom)
 	return (
-		<main className="relative h-dvh w-dvw overflow-hidden font-mono text-xs select-none">
+		<main className="relative min-h-0 flex-1 overflow-hidden font-mono text-xs select-none">
 			{Option.getOrUndefined(
 				Option.map(
 					Option.flatMap(AsyncResult.value(result), view => Option.fromUndefinedOr(view.frame.problem)),

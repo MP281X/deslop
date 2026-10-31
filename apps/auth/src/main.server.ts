@@ -59,6 +59,7 @@ NodeRuntime.runMain(
 					),
 					layerMcp,
 					ServerRuntime.layerIcon(icon),
+					ServerRuntime.layerManifest('Auth'),
 					ServerRuntime.layerStaticFiles
 				),
 				Layer.provide(layerServices)

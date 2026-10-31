@@ -24,6 +24,7 @@ NodeRuntime.runMain(
 						Layer.provide(RpcHandlers)
 					),
 					ServerRuntime.layerIcon(icon),
+					ServerRuntime.layerManifest('Signal'),
 					ServerRuntime.layerStaticFiles
 				),
 				Layer.provide(Auth.layer('https://signal.mp281x.xyz'))

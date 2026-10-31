@@ -35,6 +35,7 @@ NodeRuntime.runMain(
 					),
 					mcp,
 					ServerRuntime.layerIcon(icon),
+					ServerRuntime.layerManifest('template-app'),
 					ServerRuntime.layerStaticFiles
 				),
 				Layer.provide(Auth.layer('https://template-app.mp281x.xyz'))

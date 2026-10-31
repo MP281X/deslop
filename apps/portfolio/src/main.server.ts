@@ -22,6 +22,7 @@ NodeRuntime.runMain(
 					Layer.provide(RpcHandlers)
 				),
 				ServerRuntime.layerIcon(icon),
+				ServerRuntime.layerManifest('Portfolio'),
 				ServerRuntime.layerStaticFiles
 			),
 			{disableLogger: true}

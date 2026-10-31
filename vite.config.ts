@@ -69,6 +69,11 @@ export default defineConfig({
 					'shadcn/no-unknown-classes': 'off',
 					'shadcn/require-static-classes': 'off'
 				}
+			},
+			{
+				// The web template is no workspace package, so its stylesheet cannot resolve the theme's own utilities.
+				files: ['tools/create-app/template/web/**'],
+				rules: {'shadcn/no-unknown-classes': 'off'}
 			}
 		]
 	},

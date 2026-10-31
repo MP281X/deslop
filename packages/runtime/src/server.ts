@@ -130,6 +130,33 @@ export function layerIcon(icon: string) {
 	)
 }
 
+// A web app's manifest, so a phone or desktop installs it as its own app: standalone, dark, its tiled icon.
+export function layerManifest(name: string) {
+	return HttpRouter.add(
+		'GET',
+		'/manifest.webmanifest',
+		Effect.succeed(
+			HttpServerResponse.jsonUnsafe(
+				{
+					background_color: '#0a0a0a',
+					display: 'standalone',
+					icons: [
+						{sizes: 'any', src: '/icon', type: 'image/svg+xml'},
+						{purpose: 'any', sizes: '512x512', src: '/apple-touch-icon.png', type: 'image/png'}
+					],
+					id: '/',
+					name,
+					scope: '/',
+					short_name: name,
+					start_url: '/',
+					theme_color: '#0a0a0a'
+				},
+				{contentType: 'application/manifest+json', headers: {'cache-control': 'no-cache'}}
+			)
+		)
+	)
+}
+
 // Codex speaks MCP's stateless 2026-07-28 revision; Claude still opens a session, which it ends with DELETE.
 export function layerMcp<RA, RE, RR>(options: {
 	instructions: string
