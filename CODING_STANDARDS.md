@@ -10,7 +10,6 @@ The user's choices; add a row when they pick, reject or correct one not covered 
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
 | AI calls              | The Effect AI provider module, directly in the service using it                                                                                              | A wrapper `ai` package with its own interface                                                    |
 | Identifiers           | A literal union for a closed set of ids, such as model ids                                                                                                   | `string`                                                                                         |
-| Versions              | `latest`; `^X.Y`, or the exact version, only where a peer, the Expo SDK or Vite+ fixes it                                                                    | `^X.Y.Z` and pins without a reason                                                               |
 | Function arguments    | Short, independent arguments stay positional                                                                                                                 | Wrapping every parameter list in a single object                                                 |
 | Development telemetry | A new Effect app with its own OTLP/HTTP JSON receiver                                                                                                        | A Collector dependency or every OTLP transport                                                   |
 | App storage           | Effect KeyValueStore                                                                                                                                         | SQLite and migration machinery                                                                   |
@@ -24,31 +23,43 @@ The user's choices; add a row when they pick, reject or correct one not covered 
 
 ## Layout
 
-- Every schema of a service lives in its `schema.ts`, including the answer of an outside source, such as `FxPost` in `apps/stash/src/services/*/schema.ts`. `lib/utils.ts` holds pure helpers.
-- Page-private components and helpers stay with their consumer; shared behavior has one owner. A new abstraction must supply a capability the existing owner lacks or reduce what a reader holds, not merely shorten files. Prefer direct domain names and control flow over wrappers and configuration languages; balance colocation against navigable file size.
-- A process with named states and the events that move between them, such as a sign-in, an import or a playback, is a machine from `@typeonce/effect-machine` rather than flags, timers and effects that coordinate it: states own their data and their running work, `Machine.start` in the service that owns it, `AtomMachine` for a client process, and `MachineState` from `@typeonce/effect-machine-react` to render a state.
-- Index repeated relationships once: a set for membership, a map for lookup, or `Array.groupBy` for one-to-many joins, as in Scope's telemetry views. Preserve key uniqueness, first-match semantics and reference-sensitive change detection; bounded lists and genuinely pairwise algorithms need no index merely to satisfy a metric.
-- Node subpath aliases use wildcard `imports`, such as `"#services/*": "./src/services/*"`; source specifiers include their file extension, such as `#services/notes/service.ts`. A service package exports only `./schema`, `./service` and `./utils`.
-- App data and CLI credentials live under `~/.deslop/<appname>/`, outside the checkout.
-- Defaults live in code through `Config.withDefault`, never in `.env.example`.
+- **Schemas** of a service all live in its `schema.ts`, an outside source's answer included, such as `FxPost` in `apps/stash/src/services/*/schema.ts`. `lib/utils.ts`: pure helpers.
+- **Ownership.** Page-private components and helpers stay with their consumer; shared behavior has one owner. A new abstraction adds a capability the owner lacks or lightens what a reader holds, never just shorter files.
+- **Directness.** Domain names and plain control flow over wrappers and configuration languages; colocation balanced against navigable file size.
+- **Processes** with named states and events (a sign-in, an import, a playback) are `@typeonce/effect-machine` machines, not coordinated flags, timers and effects: states own their data and running work; `Machine.start` in the owning service, `AtomMachine` on a client, `MachineState` from `@typeonce/effect-machine-react` to render.
+- **Indexes** for repeated relationships, built once: a set for membership, a map for lookup, `Array.groupBy` for one-to-many, as in Scope's telemetry views. Preserve key uniqueness, first-match semantics and reference-sensitive change detection; bounded lists and pairwise algorithms need none.
+- **Imports.** Wildcard `imports` aliases, such as `"#services/*": "./src/services/*"`; specifiers with their extension, such as `#services/notes/service.ts`. A service package exports only `./schema`, `./service`, `./utils`.
+- **App data** and CLI credentials under `~/.deslop/<appname>/`, outside the checkout.
+- **Defaults** in code through `Config.withDefault`, never in `.env.example`.
 
 ## RPC and components
 
-- React clients use an `AtomRpc.Service` over `WebRuntime.layer` or `MobileRuntime.layer`; a command line uses a scoped `RpcClient.make`. A stream syncs one keep-alive Atom that components read; components neither own subscriptions nor poll.
-- The web look lives in the shadcn theme, `packages/components-web/src/theme.css`; pages add no cards. iOS screens carry the same look through SwiftUI primitives from `@expo/ui` (navigation, toolbars, search, lists, menus, swipe actions, sheets, SF Symbols) with the mobile theme's tokens and their system sizes and behavior; glass for controls and navigation, never content; system controls stay native.
-- Each context has one icon entrypoint for an action instead of text buttons repeating it; conventional icons get no tooltip.
+- **Clients.** React: an `AtomRpc.Service` over `WebRuntime.layer` or `MobileRuntime.layer`; a command line: a scoped `RpcClient.make`. A stream syncs one keep-alive Atom that components read; components neither subscribe nor poll.
+- **Web look** in the shadcn theme, `packages/components-web/src/theme.css`; pages add no cards.
+- **iOS look**: SwiftUI primitives from `@expo/ui` (navigation, toolbars, search, lists, menus, swipe actions, sheets, SF Symbols) with the mobile theme's tokens and their system sizes and behavior; glass for controls and navigation, never content; system controls stay native.
+- **Actions**: one icon entrypoint per context, no repeating text buttons; conventional icons get no tooltip.
 
-## Tests
+## Tests and measurements
 
-Keep tests of owned runtime behavior that survive equivalent implementations, not private structure or library and type-system guarantees. Each scenario protects a distinct behavior: merge genuine subsets, preserving unique assertions, or remove repeated protection from the broader test. Similar setup is not duplication; different inputs, dependencies, timing, state or failure paths can protect different behavior. E2E proves the user's input through the outcome, including relevant failures, not merely that screens open. Use inline probes or browser proofs for one-off assumptions; a fix alone does not justify another persistent test.
+- **Keep** tests of owned runtime behavior that survive an equivalent implementation; not private structure, library or type-system guarantees.
+- **One behavior per scenario.** Merge genuine subsets, keeping unique assertions, or drop the repeat from the broader test. Similar setup isn't duplication: different inputs, dependencies, timing, state or failure paths protect different behavior.
+- **E2E** proves the user's input through its outcome, relevant failures included, not merely that screens open.
+- **One-off assumptions**: inline probes or browser proofs; a fix alone doesn't earn a persistent test.
+- **Performance claims**: same workload and environment, repeated runs, representative timings and the resource costs the change affects.
 
 ## Deploy
 
-Deploy is one `tools/compose.yaml` with configs inlined, direct ports, third-party images on `latest` and app images tagged by the deploying commit.
+One `tools/compose.yaml`: configs inlined, direct ports, third-party images on `latest`, app images tagged by the deploying commit.
 
 ## Dependencies and tooling
 
-- Keep dependencies in their owning packages; update coupled packages together and verify their real consumers. Vite+ owns its lint and test toolchain versions.
-- Use each tool through its own flags, caches and defaults; configure only where this repository deviates, never with wrapper scripts, re-declared defaults or workaround caps.
-- Use every third-party library only through its published releases and public API, the way its documentation intends. Never change a library's code or behavior from outside: no patches, forks, vendored copies, dependency overrides or shims, and none to get an upgrade through either. When a library lacks something or an upgrade breaks, change this repository's design to fit the library, choose a different library, or ask the user. The one exception is package metadata a published release gets wrong, such as an undeclared dependency or a stale version pin: `pnpm-workspace.yaml` may correct it with `packageExtensions` or an override, beside a comment naming the upstream defect, and drops the correction once a release fixes it.
-- `@deslop/coding-standards` owns compiler and lint policy: define each policy once, prefer an upstream rule to a custom one, and test only custom rules. Native rules are enabled by name with every category off; custom rules come from their registry. Each check runs in the one tool that covers it most completely, with no overlap: the compiler and Effect diagnostics own what they report, and a rule for a form the preset already bans elsewhere is not selected. Keep only checks that can fire on this code, preventive ones included for patterns comparable codebases such as t3code and Dual already hit; type-aware lint and `exactOptionalPropertyTypes` stay off. A custom rule earns its place with coverage or a safe fix no native rule offers. Judge the combined gate: intended forms stay accepted and fixes converge.
+- **Versions.** Dependencies in their owning packages on `latest`; `^X.Y` or exact only where a peer, the Expo SDK or Vite+ fixes it. Coupled packages update together, verified in their real consumers. Vite+ owns its lint and test toolchain versions.
+- **Tools** through their own flags, caches and defaults; configure only where this repository deviates; no wrapper scripts, re-declared defaults or workaround caps.
+- **Libraries** only through published releases and public API, as documented. No patches, forks, vendored copies, dependency overrides or shims, upgrades included. When a library falls short, change this design, pick another library or ask the user.
+- **Metadata exception**: a release's wrong package metadata (an undeclared dependency, a stale pin) may be corrected in `pnpm-workspace.yaml` with `packageExtensions` or an override, beside a comment naming the upstream defect, removed once a release fixes it.
+- **Lint policy** in `@deslop/coding-standards`:
+  - **Once**: each policy defined once; tests only for custom rules; selection per its README.
+  - **No overlap**: each check in the one tool covering it best; the compiler and Effect diagnostics own theirs; no rule for a form the preset already bans.
+  - **Reach**: only checks that can fire here, preventive ones included for patterns t3code and Dual already hit; type-aware lint and `exactOptionalPropertyTypes` off.
+  - **Custom rules** earn their place with coverage or a safe fix no native rule offers.
+  - **Combined gate**: intended forms stay accepted, fixes converge.

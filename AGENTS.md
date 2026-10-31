@@ -11,9 +11,16 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 
 ## Commands
 
-- **Verify** is `vp check --fix && vp run check && vp run test`. `vp check --fix` formats, applies lint fixes and fails on what remains; the `check` task runs each package's `typecheck` and Fallow, and CI runs plain `vp check` before it; `test` runs each package's tests. Every `package.json` has the same `typecheck` and `test` scripts, and the root caches scripts, so an unchanged package replays from the local task cache.
-- **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. Before the first mobile push, follow environment's Deslop reference, **Publish an iOS app**.
-- **Agent configuration.** `.claude/agents/pair.md` and `.codex/instructions.md` replace the provider prompts and complement what the harness, T3 and tool descriptions already say: goals and local facts, never a restatement; where they conflict with an injected rule, they say so. They are identical from `# Work` down. Team skills live in `tools/coding-standards/skills/`, and `node tools/coding-standards/src/install.ts` refreshes their copies in `.claude/skills` and `.codex/skills`. The personal skills in `.claude/skills` (planning, environment, references) load globally through the workers' links; retrospective guidance is an environment reference.
+- **Verify**: `vp check --fix && vp run check && vp run test`.
+  - `vp check --fix`: format and lint fixes, fails on leftovers; CI runs plain `vp check`.
+  - `check`: each package's `typecheck`, then Fallow. `test`: each package's tests.
+  - **Task cache**: same `typecheck` and `test` scripts in every `package.json`, root caches scripts; per worktree, since `vp test` and `vp check` keys hold the absolute path.
+- **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. Before the first mobile push: `RELEASING.md`, **Publish an iOS app**.
+- **Releases.** `RELEASING.md`: Simulator builds, deploy and its checks, publishing packages and iOS apps.
+- **Agent configuration.**
+  - `.claude/agents/pair.md` = `.codex/instructions.md` from `# Work` down; they replace the provider prompts with goals and local facts the harness, T3 and tool descriptions don't say, and name each injected rule they override.
+  - **Team skills**: `tools/coding-standards/skills/`; `node tools/coding-standards/src/install.ts` refreshes `.claude/skills` and `.codex/skills`.
+  - **Personal skills**: planning and environment in `.claude/skills`, loaded globally through the workers' links.
 
 ## Patterns
 
@@ -28,4 +35,4 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 
 ## Documents
 
-Each fact has one home: code, then lint, this file, `CODING_STANDARDS.md`, a published package's `README.md`, and the environment skill for the user's infrastructure; comments only for what a name cannot say.
+Each fact has one home: code, then lint, this file, `CODING_STANDARDS.md`, `RELEASING.md`, a published package's `README.md`, and the environment skill for the user's infrastructure; comments only for what a name cannot say.

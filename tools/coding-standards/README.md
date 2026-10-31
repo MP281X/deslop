@@ -33,11 +33,9 @@ export default defineConfig({lint: {extends: [lint]}})
 {"extends": "@deslop/coding-standards/tsconfig.json"}
 ```
 
-Put project-specific lint settings alongside `extends`; the preset ignores nothing, so add `**/*.gen.ts` to your own ignores.
-
-Native rules are explicitly enabled by name, with every category off. Tool upgrades do not opt the project into new category members. Deslop rules are enabled from the local plugin registry, without a second list of names. Native rules own checks they can express; custom rules cover the remaining Effect and React contracts.
-
-The `typescript` plugin includes syntax-only rules such as `no-explicit-any`, `consistent-type-imports` and `method-signature-style`; these run without type information. `typeAware: false` disables rules requiring inferred types, such as `no-floating-promises`. `typeCheck: false` leaves compiler errors to the separate Effect-patched `tsrs` check. The preset does not select inactive type-aware rules.
+- **Project settings** go beside `extends`; the preset ignores nothing, so add `**/*.gen.ts` to your own ignores.
+- **Native rules** by name, every category off: tool upgrades opt into nothing. Deslop rules come from the local plugin registry, with no second list of names. Native rules own what they can express; custom rules cover the remaining Effect and React contracts.
+- **Syntax only.** `typescript` plugin rules such as `no-explicit-any`, `consistent-type-imports` and `method-signature-style` need no type information; `typeAware: false` disables inferred-type rules such as `no-floating-promises`; `typeCheck: false` leaves compiler errors to the Effect-patched `tsrs` check.
 
 ## Collection performance
 
@@ -48,6 +46,8 @@ The `typescript` plugin includes syntax-only rules such as `no-explicit-any`, `c
 +Array.map(items, transform)
 ```
 
-It also recognizes Effect array append/prepend operations, `Record.set` and computed-key record spreads. Stateful selection can use `Array.mapAccum`; local collectors use `MutableList`/`MutableHashMap`. Scalar folds, persistent `HashMap.set` and noncomputed object-property updates stay valid. Intentional snapshots, bounded windows or bounded key sets need a reasoned inline disable; the rule does not infer growth or rewrite semantics.
-
-`Array.contains` uses structural equality. For object identity, use `Array.containsWith(Equivalence.strictEqual())`; the syntax-only preset cannot infer which equality a caller intends.
+- **Also flags** Effect array append/prepend, `Record.set` and computed-key record spreads.
+- **Instead**: `Array.mapAccum` for stateful selection; `MutableList`/`MutableHashMap` for local collectors.
+- **Valid**: scalar folds, persistent `HashMap.set`, noncomputed object-property updates.
+- **Intentional** snapshots, bounded windows or bounded key sets take a reasoned inline disable; the rule infers no growth and rewrites nothing.
+- **`Array.contains`** is structural; for identity use `Array.containsWith(Equivalence.strictEqual())`, since a syntax-only preset can't infer the intended equality.
