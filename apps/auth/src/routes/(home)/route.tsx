@@ -24,7 +24,7 @@ import {
 import {FieldError} from '@deslop/components-web/ui/field'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 
-import {AccountAvatar, QrCode, SignedInList} from '#lib/components.tsx'
+import {AccountAvatar, AppList, QrCode} from '#lib/components.tsx'
 import {
 	accountAtom,
 	approveLink,
@@ -97,7 +97,7 @@ function Waiting(props: {account: Option.Option<Account>; id: string}) {
 						onNone: () => <CodeCard request={value.request} />,
 						onSome: () => (
 							<Suspense fallback={<Loading />}>
-								<SignedInList pending={Option.some(value.request)} />
+								<AppList pending={Option.some(value.request)} />
 							</Suspense>
 						)
 					}
@@ -150,7 +150,6 @@ function Signed(props: {account: Account}) {
 					<StatusDot waiting />
 					Waiting for an admin
 				</h1>
-				<p className="text-muted-foreground text-sm">Your request was sent. This page updates once you are allowed.</p>
 			</section>
 		)),
 		Match.orElse(() => <Outlet />)
@@ -190,10 +189,7 @@ function SignIn() {
 	const [codeSignIn, startCodeSignIn] = useAtom(codeSignInAtom)
 	return (
 		<section className="flex flex-col gap-4">
-			<div className="flex flex-col gap-1">
-				<h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
-				<p className="text-muted-foreground text-sm">One account for every mp281x.xyz app.</p>
-			</div>
+			<h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
 			<div className="flex flex-col gap-2">
 				<Button size="lg" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
 					{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}

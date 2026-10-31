@@ -199,10 +199,21 @@ export function approveLink(id: string) {
 	return `${location.origin}/?code=${id}`
 }
 
-// The apps a sign-in reaches, by name; tracing rides along with every app, so it shows only alone, and a browser session names no app.
-export function appNames(resources: PendingAuthorization['resources']) {
-	if (Array.isReadonlyArrayEmpty(resources)) return ['Browser']
-	const names = Array.dedupe(
+// Each app's server serves its icon at /icon; an iOS app opens through its URL scheme.
+export const APPS = [
+	{id: 'auth', name: 'Auth', url: 'https://auth.mp281x.xyz'},
+	{id: 'gateway', name: 'Gateway', url: 'https://gateway.mp281x.xyz'},
+	{id: 'opm', name: 'opm', url: 'opm://'},
+	{id: 'portfolio', name: 'Portfolio', url: 'https://portfolio.mp281x.xyz'},
+	{id: 'scope', name: 'Scope', url: 'https://scope.mp281x.xyz'},
+	{id: 'stash', name: 'Stash', url: 'stash://'},
+	{id: 'trips', name: 'Trips', url: 'trips://'}
+] as const
+
+// The apps a sign-in reaches, by id; tracing rides along with every app, so it shows only alone, and a browser session names no app.
+export function appIds(resources: PendingAuthorization['resources']) {
+	if (Array.isReadonlyArrayEmpty(resources)) return ['browser']
+	const ids = Array.dedupe(
 		Array.map(
 			Array.filter(resources, resource => resource !== 'https://otel.mp281x.xyz'),
 			resource =>
@@ -210,13 +221,12 @@ export function appNames(resources: PendingAuthorization['resources']) {
 					new URL(resource).hostname,
 					String.split('.'),
 					Array.head,
-					Option.getOrElse(() => ''),
-					String.capitalize
+					Option.getOrElse(() => '')
 				)
 		)
 	)
-	if (Array.isReadonlyArrayEmpty(names)) return ['Tracing']
-	return names
+	if (Array.isReadonlyArrayEmpty(ids)) return ['tracing']
+	return ids
 }
 
 export function timeLabel(time: number) {

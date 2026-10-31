@@ -131,12 +131,16 @@ function RemoveDialog(props: {onOpenChange: (open: boolean) => void; open: boole
 	)
 }
 
-// Each source in turn until one loads, then the generic glyph; never a letter tile.
+// Each source in turn until one loads; the tile keeps a black favicon visible on the dark page.
 function FirstImage(props: {sources: string[]}) {
 	const [failed, setFailed] = useState(0)
 	return Option.match(Array.get(props.sources, failed), {
 		onNone: () => <Server className="text-muted-foreground size-5" />,
-		onSome: src => <img src={src} alt="" className="size-5 rounded-sm" onError={() => setFailed(failed + 1)} />
+		onSome: src => (
+			<span className="bg-icon-tile flex size-6 items-center justify-center overflow-hidden rounded-md">
+				<img src={src} alt="" className="size-4" onError={() => setFailed(failed + 1)} />
+			</span>
+		)
 	})
 }
 
@@ -304,7 +308,6 @@ function Directory(props: {servers: readonly ConnectionInfo[]}) {
 					<Empty>
 						<EmptyHeader>
 							<EmptyTitle>No servers yet</EmptyTitle>
-							<EmptyDescription>Add one to share its tools with every agent.</EmptyDescription>
 						</EmptyHeader>
 					</Empty>
 				),
@@ -338,7 +341,7 @@ function Servers() {
 							</Empty>
 						)
 					}
-					return <SignIn description="An admin manages the gateway’s servers." href={signInUrl(location.href)} />
+					return <SignIn href={signInUrl(location.href)} />
 				}
 			}),
 		onInitial: () => <Loading />,
@@ -350,10 +353,7 @@ function Home() {
 	return (
 		<main className="flex flex-1 justify-center overflow-y-auto px-4 py-8 md:py-16">
 			<div className="flex w-full max-w-3xl flex-col gap-5">
-				<div className="flex flex-col gap-1">
-					<h1 className="text-xl font-semibold tracking-tight">Servers</h1>
-					<p className="text-muted-foreground text-sm">Tools your agents reach through one endpoint.</p>
-				</div>
+				<h1 className="text-xl font-semibold tracking-tight">Servers</h1>
 				<Servers />
 			</div>
 		</main>

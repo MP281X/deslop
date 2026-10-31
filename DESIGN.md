@@ -51,9 +51,10 @@ colors:
   light-magenta: '#a02f6f'
   light-destructive: '#af3029'
   light-warning: '#ad8301'
-  # The icon tile and the icon's pixel shadow.
+  # The icon tile and the icon's pixel shadow, the same in both appearances; favicons sit on the tile too.
   icon-tile: '#fafafa'
   icon-shadow: '#0a0a0a'
+  light-icon-tile: '#fafafa'
 typography:
   title:
     fontFamily: Geist

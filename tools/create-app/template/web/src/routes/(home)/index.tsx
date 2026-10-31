@@ -17,7 +17,7 @@ function Home() {
 			if (!Option.exists(Cause.findErrorOption(failure.cause), error => error._tag === 'AuthError')) {
 				return <Error error={Cause.squash(failure.cause)} reset={() => location.reload()} />
 			}
-			return <SignIn description="Sign in to continue." href={signInUrl(location.href)} />
+			return <SignIn href={signInUrl(location.href)} />
 		},
 		onInitial: () => <Loading />,
 		onSuccess: name => name.value

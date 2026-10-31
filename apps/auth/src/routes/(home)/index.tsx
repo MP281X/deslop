@@ -12,7 +12,7 @@ import {FieldError} from '@deslop/components-web/ui/field'
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
 import {cn} from '@deslop/components-web/utils'
 
-import {SignedInList} from '#lib/components.tsx'
+import {AppList} from '#lib/components.tsx'
 import {codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/utils.ts'
 import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
@@ -28,12 +28,9 @@ function Enter(props: {
 }) {
 	return (
 		<section className="flex flex-col gap-4">
-			<div className="flex flex-col gap-1">
-				<h1 className="text-xl font-semibold tracking-tight">Approve a sign-in</h1>
-				<label htmlFor="code" className="text-muted-foreground text-sm">
-					Type the code your device shows.
-				</label>
-			</div>
+			<h1 className="text-xl font-semibold tracking-tight">
+				<label htmlFor="code">Approve a sign-in</label>
+			</h1>
 			<InputOTP
 				id="code"
 				maxLength={CODE_LENGTH}
@@ -112,7 +109,7 @@ function Page(props: {
 		<>
 			<Enter answered={props.answered} onType={props.onType} state={props.state} typed={props.typed} />
 			<Suspense fallback={<Loading />}>
-				<SignedInList pending={props.pending} />
+				<AppList pending={props.pending} />
 			</Suspense>
 		</>
 	)

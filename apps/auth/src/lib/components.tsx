@@ -1,9 +1,9 @@
 import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Boolean, Match, Option, Order, Record, String, pipe} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
-import {X} from 'lucide-react'
+import {Activity, AppWindow, ArrowUpRight, Globe, Laptop, Monitor, Server, Smartphone, Tablet, X} from 'lucide-react'
 import {useState} from 'react'
 import {toQR} from 'toqr'
 
@@ -12,14 +12,14 @@ import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
 import {Badge} from '@deslop/components-web/ui/badge'
-import {Button} from '@deslop/components-web/ui/button'
-import {Empty, EmptyDescription, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
+import {Button, buttonVariants} from '@deslop/components-web/ui/button'
 import {FieldDescription} from '@deslop/components-web/ui/field'
-import {Item, ItemContent, ItemTitle} from '@deslop/components-web/ui/item'
+import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 
 import {
+	APPS,
 	ageLabel,
-	appNames,
+	appIds,
 	appsAtom,
 	avatarUrl,
 	consentAtom,
@@ -73,8 +73,30 @@ function machines(count: number) {
 	return `${count} machines`
 }
 
+// The kind of machine a sign-in runs on, from the device its User-Agent or address names.
+function DeviceIcon(props: {device: string}) {
+	return pipe(
+		Match.value(props.device),
+		Match.when(
+			device => Array.contains(['iPhone', 'Android'], device),
+			() => <Smartphone />
+		),
+		Match.when('iPad', () => <Tablet />),
+		Match.when('Mac', () => <Laptop />),
+		Match.when(
+			device => Array.contains(['Windows', 'Linux'], device),
+			() => <Monitor />
+		),
+		Match.when(
+			device => Array.contains(['dev', 'desktop', 'macbook-pro'], device),
+			() => <Server />
+		),
+		Match.orElse(() => <Globe />)
+	)
+}
+
 // A first tap arms the chip, a second signs that client out of that app; leaving the chip disarms it.
-function AppChip(props: {app: string; client: string; now: number; signIns: SignedInApp[]}) {
+function ClientChip(props: {app: string; client: string; device: string; now: number; signIns: SignedInApp[]}) {
 	const [disconnection, disconnect] = useAtom(disconnectAtom)
 	const [armed, setArmed] = useState(false)
 	const minutes = minutesSince(newest(props.signIns), props.now)
@@ -84,8 +106,8 @@ function AppChip(props: {app: string; client: string; now: number; signIns: Sign
 			variant={Boolean.match(armed, {onFalse: () => 'outline' as const, onTrue: () => 'destructive' as const})}
 			aria-label={Boolean.match(armed, {
 				onFalse: () =>
-					`${props.client} in ${props.app} on ${machines(props.signIns.length)}, active ${Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})}; tap twice to sign out`,
-				onTrue: () => `Sign ${props.client} out of ${props.app}`
+					`${signInLabel(props.client, props.device)} in ${props.app} on ${machines(props.signIns.length)}, active ${Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})}; tap twice to sign out`,
+				onTrue: () => `Sign ${signInLabel(props.client, props.device)} out of ${props.app}`
 			})}
 			disabled={AsyncResult.isWaiting(disconnection)}
 			onBlur={() => setArmed(false)}
@@ -98,6 +120,8 @@ function AppChip(props: {app: string; client: string; now: number; signIns: Sign
 				// One dot per machine, lit while it was active in the last hour.
 				onFalse: () => (
 					<>
+						<DeviceIcon device={props.device} />
+						{props.client}
 						<span className="flex gap-0.5">
 							{Array.map(props.signIns, signIn => (
 								<StatusDot
@@ -109,14 +133,13 @@ function AppChip(props: {app: string; client: string; now: number; signIns: Sign
 								/>
 							))}
 						</span>
-						{props.app}
 						<span className="text-muted-foreground font-mono">{ageLabel(minutes)}</span>
 					</>
 				),
 				onTrue: () => (
 					<>
 						<X />
-						Sign out of {props.app}
+						Sign out
 					</>
 				)
 			})}
@@ -124,22 +147,91 @@ function AppChip(props: {app: string; client: string; now: number; signIns: Sign
 	)
 }
 
-// The waiting sign-in on top, each app it asks for marked new.
-function PendingItem(props: {request: PendingAuthorization}) {
+// The app's own icon from its server; the browser session and tracing, which are no app, take a glyph on the same tile.
+function AppIcon(props: {id: string}) {
+	const [failed, setFailed] = useState(false)
+	if (!failed && Array.some(APPS, app => app.id === props.id)) {
+		return (
+			<img
+				src={`https://${props.id}.mp281x.xyz/icon`}
+				alt=""
+				className="size-8 rounded-md"
+				onError={() => setFailed(true)}
+			/>
+		)
+	}
+	return (
+		<span className="bg-secondary text-muted-foreground flex size-8 items-center justify-center rounded-md">
+			{pipe(
+				Match.value(props.id),
+				Match.when('browser', () => <Globe className="size-4" />),
+				Match.when('tracing', () => <Activity className="size-4" />),
+				Match.orElse(() => <AppWindow className="size-4" />)
+			)}
+		</span>
+	)
+}
+
+// One app: its icon, name and a link to open it, then a chip per client signed in to it, the waiting one first.
+function AppRow(props: {
+	id: string
+	name: string
+	now: number
+	pending: Option.Option<PendingAuthorization>
+	signIns: SignedInApp[]
+	url: Option.Option<string>
+}) {
+	const clients = pipe(
+		Array.groupBy(props.signIns, signIn => signInLabel(signIn.client, signIn.device)),
+		Record.values,
+		Array.sort(Order.flip(Order.mapInput(Order.Number, newest)))
+	)
 	return (
 		<Item role="listitem" size="sm">
+			<ItemMedia>
+				<AppIcon id={props.id} />
+			</ItemMedia>
 			<ItemContent>
-				<ItemTitle className="text-primary">{signInLabel(props.request.clientName, props.request.device)}</ItemTitle>
-				<div className="flex flex-wrap gap-1">
-					{Array.map(appNames(props.request.resources), app => (
-						<Badge key={app} variant="outline" className="text-primary">
-							<StatusDot status="off" className="border-primary" />
-							{app}
-							<span className="font-mono">new</span>
-						</Badge>
-					))}
-				</div>
+				<ItemTitle>{props.name}</ItemTitle>
+				{(Option.isSome(props.pending) || Array.isArrayNonEmpty(clients)) && (
+					<div className="flex flex-wrap gap-1">
+						{Option.match(props.pending, {
+							onNone: () => null,
+							onSome: request => (
+								<Badge variant="outline" className="text-primary h-6">
+									<DeviceIcon device={request.device} />
+									{request.clientName}
+									<span className="font-mono">new</span>
+								</Badge>
+							)
+						})}
+						{Array.map(Array.filter(clients, Array.isArrayNonEmpty), signIns => (
+							<ClientChip
+								key={signIns[0].family}
+								app={props.name}
+								client={signIns[0].client}
+								device={signIns[0].device}
+								now={props.now}
+								signIns={signIns}
+							/>
+						))}
+					</div>
+				)}
 			</ItemContent>
+			{Option.match(props.url, {
+				onNone: () => null,
+				onSome: url => (
+					<ItemActions>
+						<a
+							href={url}
+							aria-label={`Open ${props.name}`}
+							className={buttonVariants({size: 'icon-sm', variant: 'ghost'})}
+						>
+							<ArrowUpRight />
+						</a>
+					</ItemActions>
+				)
+			})}
 		</Item>
 	)
 }
@@ -184,70 +276,62 @@ function Answer(props: {request: PendingAuthorization}) {
 	)
 }
 
-// One row per client, last active first, with a chip per app it holds; a waiting sign-in sits on top, answered below.
-export function SignedInList(props: {pending: Option.Option<PendingAuthorization>}) {
-	const apps = useAtomSuspense(appsAtom).value
+function holding(signIns: readonly SignedInApp[], id: string) {
+	return Array.filter(signIns, signIn => Array.contains(appIds(signIn.resources), id))
+}
+
+function asking(pending: Option.Option<PendingAuthorization>, id: string) {
+	return Option.filter(pending, request => Array.contains(appIds(request.resources), id))
+}
+
+// Every app, then the browser session and tracing when something holds them; a waiting sign-in shows on the apps it asks for.
+export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
+	const signIns = useAtomSuspense(appsAtom).value
 	const now = useAtomSuspense(minuteAtom).value
 	const [disconnection] = useAtom(disconnectAtom)
-	// A browser asks for no app, only the session, so it adds no row.
-	const pendingApp = Option.filter(props.pending, request => request.kind === 'App')
-	const rows = pipe(
-		Array.groupBy(apps, app => signInLabel(app.client, app.device)),
-		Record.toEntries,
-		Array.sort(Order.flip(Order.mapInput(Order.Number, (entry: [string, SignedInApp[]]) => newest(entry[1]))))
+	const extra = pipe(
+		[
+			...Array.flatMap(signIns, signIn => appIds(signIn.resources)),
+			...Option.match(props.pending, {onNone: () => [], onSome: request => appIds(request.resources)})
+		],
+		Array.dedupe,
+		Array.filter(id => !Array.some(APPS, app => app.id === id)),
+		Array.sort(String.Order)
 	)
 	return (
-		<section className="flex flex-col gap-3" aria-label="Signed in">
-			<h2 className="text-muted-foreground flex justify-between font-mono text-xs">
-				signed in · last active
-				{Option.match(props.pending, {
-					onNone: () => null,
-					onSome: request => <span>request open until {timeLabel(request.expiresAt)}</span>
-				})}
-			</h2>
-			{Boolean.match(Array.isArrayEmpty(rows) && Option.isNone(pendingApp), {
-				onFalse: () => (
-					<ItemList label="Signed-in clients">
-						{[
-							...Option.match(pendingApp, {
-								onNone: () => [],
-								onSome: request => [<PendingItem key="pending" request={request} />]
-							}),
-							...Array.map(rows, row => (
-								<Item key={row[0]} role="listitem" size="sm">
-									<ItemContent>
-										<ItemTitle>{row[0]}</ItemTitle>
-										<div className="flex flex-wrap gap-1">
-											{Array.map(
-												Array.sort(Array.dedupe(Array.flatMap(row[1], app => appNames(app.resources))), String.Order),
-												app => (
-													<AppChip
-														key={app}
-														app={app}
-														client={row[0]}
-														now={now}
-														signIns={Array.filter(row[1], signIn => Array.contains(appNames(signIn.resources), app))}
-													/>
-												)
-											)}
-										</div>
-									</ItemContent>
-								</Item>
-							))
-						]}
-					</ItemList>
-				),
-				onTrue: () => (
-					<Empty>
-						<EmptyHeader>
-							<EmptyTitle>No apps signed in</EmptyTitle>
-							<EmptyDescription>
-								An app you sign in to shows here, with where and when it was last used.
-							</EmptyDescription>
-						</EmptyHeader>
-					</Empty>
+		<section className="flex flex-col gap-3" aria-label="Apps">
+			{Option.match(props.pending, {
+				onNone: () => null,
+				onSome: request => (
+					<p className="text-muted-foreground font-mono text-xs">open until {timeLabel(request.expiresAt)}</p>
 				)
 			})}
+			<ItemList label="Apps">
+				{[
+					...Array.map(APPS, app => (
+						<AppRow
+							key={app.id}
+							id={app.id}
+							name={app.name}
+							now={now}
+							pending={asking(props.pending, app.id)}
+							signIns={holding(signIns, app.id)}
+							url={Option.some(app.url)}
+						/>
+					)),
+					...Array.map(extra, id => (
+						<AppRow
+							key={id}
+							id={id}
+							name={String.capitalize(id)}
+							now={now}
+							pending={asking(props.pending, id)}
+							signIns={holding(signIns, id)}
+							url={Option.none()}
+						/>
+					))
+				]}
+			</ItemList>
 			{Option.match(props.pending, {onNone: () => null, onSome: request => <Answer request={request} />})}
 			<ResultError result={disconnection} />
 		</section>

@@ -1,10 +1,10 @@
-import {useAtom, useAtomRefresh, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Cause, DateTime, Number, Option, Predicate, Record, Schema, String, pipe} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {RotateCw} from 'lucide-react'
+import {ChevronLeft, RotateCw} from 'lucide-react'
 import {useState} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
@@ -12,7 +12,7 @@ import {Error, Loading, SignIn} from '@deslop/components-web/fallbacks'
 import {ItemList} from '@deslop/components-web/item-list'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
-import {Empty, EmptyDescription, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
+import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Item, ItemContent, ItemDescription, ItemTitle} from '@deslop/components-web/ui/item'
 import {Toggle} from '@deslop/components-web/ui/toggle'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
@@ -27,6 +27,7 @@ import {
 	filtersAtom,
 	selectedAtom,
 	selectedTraceAtom,
+	serviceLabel,
 	servicesAtom,
 	tracesAtom,
 	tracesQueryAtom
@@ -47,7 +48,7 @@ function Failure(props: {cause: Cause.Cause<unknown>}) {
 		onNone: () => <Error error={Cause.squash(props.cause)} reset={() => location.reload()} />,
 		onSome: error => {
 			if (!Predicate.isTagged(error, 'AuthError')) return <Error error={error} reset={() => location.reload()} />
-			return <SignIn description="Your apps’ traces, spans and logs." href={signInUrl(location.href)} />
+			return <SignIn href={signInUrl(location.href)} />
 		}
 	})
 }
@@ -62,7 +63,7 @@ function ServiceFilter() {
 		Array.empty<string>
 	)
 	return (
-		<div className="flex min-w-0 items-center gap-1 overflow-x-auto">
+		<div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
 			<ToggleGroup
 				size="sm"
 				value={[Boolean.match(filters.service === '', {onFalse: () => filters.service, onTrue: () => 'all'})]}
@@ -80,7 +81,7 @@ function ServiceFilter() {
 				<ToggleGroupItem value="all">all</ToggleGroupItem>
 				{Array.map(services, service => (
 					<ToggleGroupItem key={service} value={service}>
-						{service}
+						{serviceLabel(service)}
 					</ToggleGroupItem>
 				))}
 			</ToggleGroup>
@@ -113,7 +114,7 @@ function TraceRow(props: {
 						type="button"
 						onClick={props.onSelect}
 						aria-current={props.selected}
-						aria-label={`${props.trace.operation}, ${props.trace.service}, ${durationOf(props.trace.durationMs)}`}
+						aria-label={`${props.trace.operation}, ${serviceLabel(props.trace.service)}, ${durationOf(props.trace.durationMs)}`}
 					/>
 				}
 			>
@@ -121,7 +122,7 @@ function TraceRow(props: {
 					<ItemTitle>{props.trace.operation}</ItemTitle>
 					<ItemDescription className="flex items-center gap-1.5 font-mono">
 						{props.trace.errors > 0 && <StatusDot status="error" />}
-						{props.trace.service}
+						{serviceLabel(props.trace.service)}
 					</ItemDescription>
 				</ItemContent>
 				<ItemContent className="items-end">
@@ -254,29 +255,37 @@ function Waterfall(props: {trace: Trace}) {
 }
 
 function Detail() {
+	const setSelected = useAtomSet(selectedAtom)
 	return Option.match(useAtomValue(selectedTraceAtom), {
 		onNone: () => (
 			<Empty>
 				<EmptyHeader>
 					<EmptyTitle>No trace picked</EmptyTitle>
-					<EmptyDescription>Pick one from the list to see its spans, attributes and logs.</EmptyDescription>
 				</EmptyHeader>
 			</Empty>
 		),
-		onSome: result =>
-			AsyncResult.match(result, {
-				onFailure: failure => <Failure cause={failure.cause} />,
-				onInitial: () => <Loading />,
-				// The previous trace stays dimmed while the picked one loads.
-				onSuccess: trace => (
-					<div
-						aria-busy={trace.waiting}
-						className={cn('transition-opacity duration-150', trace.waiting && 'opacity-50')}
-					>
-						<Waterfall trace={trace.value} />
-					</div>
-				)
-			})
+		onSome: result => (
+			<>
+				{/* On a phone the trace replaces the list, so this is the way back. */}
+				<Button variant="ghost" size="sm" className="mb-2 -ml-2 md:hidden" onClick={() => setSelected(Option.none())}>
+					<ChevronLeft />
+					Traces
+				</Button>
+				{AsyncResult.match(result, {
+					onFailure: failure => <Failure cause={failure.cause} />,
+					onInitial: () => <Loading />,
+					// The previous trace stays dimmed while the picked one loads.
+					onSuccess: trace => (
+						<div
+							aria-busy={trace.waiting}
+							className={cn('transition-opacity duration-150', trace.waiting && 'opacity-50')}
+						>
+							<Waterfall trace={trace.value} />
+						</div>
+					)
+				})}
+			</>
+		)
 	})
 }
 
@@ -289,20 +298,23 @@ function Traces() {
 		onInitial: () => <Loading />,
 		onSuccess: page => (
 			<div className="flex min-h-0 flex-1 flex-col md:flex-row">
+				{/* A phone shows the list or the picked trace; wider screens show both side by side. */}
 				<nav
-					className="border-border min-h-0 shrink-0 overflow-y-auto border-b md:w-80 md:border-r md:border-b-0"
+					className={cn(
+						'border-border min-h-0 flex-1 overflow-y-auto md:w-80 md:flex-none md:border-r',
+						Option.isSome(selected) && 'hidden md:block'
+					)}
 					aria-label="Traces"
 				>
-					<p className="text-muted-foreground border-border flex items-center gap-2 border-b px-4 py-2 font-mono text-xs">
-						{page.value.total} traces · last 3 days
+					<div className="border-border bg-background sticky top-0 z-10 flex items-center gap-2 border-b px-2 py-1.5">
+						<ServiceFilter />
 						{page.waiting && <StatusDot waiting />}
-					</p>
+					</div>
 					{Array.match(page.value.entries, {
 						onEmpty: () => (
 							<Empty>
 								<EmptyHeader>
 									<EmptyTitle>No traces match</EmptyTitle>
-									<EmptyDescription>Another service, or every one, may have some.</EmptyDescription>
 								</EmptyHeader>
 							</Empty>
 						),
@@ -322,7 +334,12 @@ function Traces() {
 						)
 					})}
 				</nav>
-				<main className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
+				<main
+					className={cn(
+						'min-h-0 flex-1 overflow-y-auto px-4 py-4 md:block md:px-6',
+						Option.isNone(selected) && 'hidden'
+					)}
+				>
 					<Detail />
 				</main>
 			</div>
@@ -355,10 +372,7 @@ function Home() {
 	return (
 		<>
 			<AppBar icon={icon} name="scope">
-				<div className="flex min-w-0 items-center gap-2">
-					<ServiceFilter />
-					<Refresh />
-				</div>
+				<Refresh />
 			</AppBar>
 			<Traces />
 		</>

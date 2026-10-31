@@ -3,7 +3,7 @@ import {OctagonAlert} from 'lucide-react'
 import {GitHubIcon} from '#components/icons.tsx'
 import {Alert, AlertDescription, AlertTitle} from '#components/ui/alert.tsx'
 import {Button, buttonVariants} from '#components/ui/button.tsx'
-import {Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle} from '#components/ui/empty.tsx'
+import {Empty, EmptyContent, EmptyHeader, EmptyTitle} from '#components/ui/empty.tsx'
 import {Spinner} from '#components/ui/spinner.tsx'
 import {formatError} from '#lib/utils.ts'
 
@@ -12,7 +12,6 @@ export function NotFound() {
 		<Empty>
 			<EmptyHeader>
 				<EmptyTitle>Page not found</EmptyTitle>
-				<EmptyDescription>Nothing lives at this address.</EmptyDescription>
 			</EmptyHeader>
 			<EmptyContent>
 				<a className={buttonVariants({variant: 'outline'})} href="/">
@@ -32,13 +31,9 @@ export function Loading() {
 }
 
 // A signed-out visitor's one way in; `href` is the app's sign-in link, which returns here.
-export function SignIn(props: {description: string; href: string}) {
+export function SignIn(props: {href: string}) {
 	return (
 		<Empty>
-			<EmptyHeader>
-				<EmptyTitle>Sign in</EmptyTitle>
-				<EmptyDescription>{props.description}</EmptyDescription>
-			</EmptyHeader>
 			<EmptyContent>
 				<a className={buttonVariants({size: 'lg'})} href={props.href}>
 					<GitHubIcon />
