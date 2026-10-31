@@ -11,7 +11,7 @@ import * as ServerRuntime from '@deslop/runtime/server'
 
 import packageJson from '#package.json' with {type: 'json'}
 
-import icon from '#routes/icon.png'
+import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Media} from '#services/media/service.ts'
@@ -89,7 +89,6 @@ const rpc = pipe(
 )
 
 const mcp = ServerRuntime.layerMcp({
-	icon,
 	instructions: 'Stash is the reading list of articles, videos and posts the user saved or asks to keep.',
 	name: 'stash',
 	registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers)),
@@ -100,7 +99,7 @@ NodeRuntime.runMain(
 	pipe(
 		HttpRouter.serve(
 			pipe(
-				Layer.mergeAll(rpc, pipe(routes, Layer.provide(HttpAuth.layer)), mcp),
+				Layer.mergeAll(rpc, pipe(routes, Layer.provide(HttpAuth.layer)), mcp, ServerRuntime.layerIcon(icon)),
 				Layer.provide(Auth.layer('https://stash.mp281x.xyz'))
 			),
 			{disableLogger: true, middleware: sameOrigin}

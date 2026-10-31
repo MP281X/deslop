@@ -18,6 +18,7 @@ import {
 	Predicate,
 	Semaphore,
 	Stream,
+	String,
 	Struct,
 	pipe
 } from 'effect'
@@ -113,10 +114,24 @@ export function layer(applicationName: string) {
 	)
 }
 
+// The app's tiled icon at a stable URL for Auth's app list and MCP clients; the pack loader passes SVG markup or a data URL.
+export function layerIcon(icon: string) {
+	const headers = {'cache-control': 'public, max-age=86400'}
+	return HttpRouter.add(
+		'GET',
+		'/icon',
+		Effect.succeed(
+			Option.match(String.match(/^data:([^;]+);base64,(.*)$/u)(icon), {
+				onNone: () => HttpServerResponse.text(icon, {contentType: 'image/svg+xml', headers}),
+				onSome: match =>
+					HttpServerResponse.uint8Array(Uint8Array.fromBase64(match[2] ?? ''), {contentType: match[1], headers})
+			})
+		)
+	)
+}
+
 // Codex speaks MCP's stateless 2026-07-28 revision; Claude still opens a session, which it ends with DELETE.
 export function layerMcp<RA, RE, RR>(options: {
-	// The app's tiled icon.png, bundled as a data URL, so clients such as the gateway show its own mark on any background.
-	icon: string
 	instructions: string
 	name: string
 	registrations: Layer.Layer<RA, RE, RR>
@@ -126,9 +141,9 @@ export function layerMcp<RA, RE, RR>(options: {
 	return Layer.mergeAll(
 		pipe(
 			McpServer.layerHttp({
-				...Struct.omit(options, ['icon']),
+				...options,
 				allowSessionTermination: true,
-				icons: [{mimeType: 'image/png', sizes: ['1024x1024'], src: options.icon}],
+				icons: [{src: `https://${options.name}.mp281x.xyz/icon`}],
 				path: '/mcp',
 				protocols: [McpProtocol.v2026_07_28, McpProtocol.v2025_11_25, McpProtocol.v2025_06_18]
 			}),

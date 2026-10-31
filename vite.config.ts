@@ -10,7 +10,8 @@ export default defineConfig({
 		]
 	},
 	fmt: {
-		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/ui/**'],
+		// Icon Composer writes and reads its own JSON layout.
+		ignorePatterns: ['**/*.gen.ts', '**/*.icon/**', 'packages/components-web/src/ui/**'],
 
 		arrowParens: 'avoid',
 		bracketSpacing: false,

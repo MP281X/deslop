@@ -4,6 +4,7 @@
 	"sideEffects": false,
 	"imports": {
 		"#lib/*": "./src/lib/*",
+		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
 		"#services/*": "./src/services/*"
 	},

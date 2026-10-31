@@ -8,6 +8,7 @@ import {RpcSerialization, RpcServer} from 'effect/rpc'
 import {Auth} from '@deslop/runtime/auth/service'
 import * as ServerRuntime from '@deslop/runtime/server'
 
+import icon from '#routes/icon.webp'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {layerChapters} from '#services/chapters/service.ts'
@@ -15,11 +16,14 @@ import {layerChapters} from '#services/chapters/service.ts'
 NodeRuntime.runMain(
 	pipe(
 		HttpRouter.serve(
-			pipe(
-				RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
-				Layer.provide(RpcHandlers),
-				Layer.provide(RpcSerialization.layerJson),
-				Layer.provide(Auth.layer('https://opm.mp281x.xyz'))
+			Layer.merge(
+				pipe(
+					RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
+					Layer.provide(RpcHandlers),
+					Layer.provide(RpcSerialization.layerJson),
+					Layer.provide(Auth.layer('https://opm.mp281x.xyz'))
+				),
+				ServerRuntime.layerIcon(icon)
 			),
 			{disableLogger: true}
 		),
