@@ -1,4 +1,4 @@
-import {Array, MutableHashMap, MutableList, Number, Option, Order, Record, Schema, String, Tuple} from 'effect'
+import {Array, Boolean, MutableHashMap, MutableList, Number, Option, Order, Record, Schema, String, Tuple} from 'effect'
 
 import * as THREE from 'three'
 import type {GLTF} from 'three/addons/loaders/GLTFLoader.js'
@@ -7,7 +7,7 @@ import {clone} from 'three/addons/utils/SkeletonUtils.js'
 
 import type {Renderer} from './-renderer.ts'
 
-import {HOME_SIGHT, ORE_ITEM, TEAMS} from '#services/game/lib/utils.ts'
+import {FRAME_HZ, HOME_SIGHT, ORE_ITEM, TEAMS} from '#services/game/lib/utils.ts'
 import type {Act, BuildingView, Frame, ItemId, UnitView} from '#services/game/schema.ts'
 import {ORES} from '#services/world/lib/utils.ts'
 
@@ -67,10 +67,13 @@ type Part = {
 
 type Actor = {
 	actions: MutableHashMap.MutableHashMap<string, THREE.AnimationAction>
+	// When the current target arrived and where the unit was drawn then: it walks from there to the target across one frame.
+	arrived: number
 	cargo: Option.Option<THREE.Object3D>
 	clip: string
 	dressed: boolean
 	fallen: number
+	from: {x: number; z: number}
 	ground: Option.Option<THREE.Object3D>
 	id: number
 	kind: string
@@ -550,6 +553,9 @@ export function createCast(view: Renderer) {
 		daylight: 1,
 		fading: Array.empty<{action: THREE.AnimationAction; at: number}>(),
 		homes: Array.empty<{x: number; z: number}>(),
+		// The seconds between the server's frames, smoothed, and when the last one came.
+		interval: 1 / FRAME_HZ,
+		lastFrame: 0,
 		seconds: 0,
 		tracers: Array.empty<{mesh: THREE.Mesh; until: number}>()
 	}
@@ -646,10 +652,12 @@ export function createCast(view: Renderer) {
 		view.scene.add(object)
 		MutableHashMap.set(actors, unit.id, {
 			actions: MutableHashMap.empty<string, THREE.AnimationAction>(),
+			arrived: state.seconds,
 			cargo: Option.none(),
 			clip: '',
 			dressed: false,
 			fallen: 0,
+			from: {x: unit.x, z: unit.z},
 			ground: Option.none(),
 			id: unit.id,
 			kind: unit.kind,
@@ -771,9 +779,17 @@ export function createCast(view: Renderer) {
 		})
 	}
 
+	// The seconds since the last frame feed the smoothed interval; a pause or a hidden tab is no measure of the frame rate.
+	function measure() {
+		const gap = state.seconds - state.lastFrame
+		if (gap < 1) state.interval = state.interval * 0.7 + Number.max(gap, 0.02) * 0.3
+		state.lastFrame = state.seconds
+	}
+
 	function frame(next: Frame) {
 		state.count += 1
 		state.daylight = next.environment?.daylight ?? 1
+		measure()
 		for (const unit of next.units) {
 			const actor = actorOf(unit.id)
 			// A refitted unit is drawn as its new model, from scratch.
@@ -784,6 +800,8 @@ export function createCast(view: Renderer) {
 			}
 			if (actor === undefined || actor.kind !== unit.kind) spawn(unit)
 			if (actor !== undefined && actor.kind === unit.kind) {
+				actor.arrived = state.seconds
+				actor.from = {x: actor.x, z: actor.z}
 				actor.target = unit
 				actor.seen = state.count
 				Option.match(Option.all({item: Option.fromUndefinedOr(unit.cargo), material: actor.tint}), {
@@ -901,8 +919,13 @@ export function createCast(view: Renderer) {
 		state.fading = Array.filter(state.fading, entry => entry.at > seconds)
 		const ease = 1 - Math.exp(-delta * 10)
 		for (const actor of MutableHashMap.values(actors)) {
-			actor.x += (actor.target.x - actor.x) * ease
-			actor.z += (actor.target.z - actor.z) * ease
+			// An even pace across the frame reads as walking, not a lurch and a stop; past 6 tiles it is a timeline jump, so it cuts.
+			const walk = Boolean.match(Math.hypot(actor.target.x - actor.from.x, actor.target.z - actor.from.z) > 6, {
+				onFalse: () => Number.clamp((seconds - actor.arrived) / state.interval, {maximum: 1, minimum: 0}),
+				onTrue: () => 1
+			})
+			actor.x = actor.from.x + (actor.target.x - actor.from.x) * walk
+			actor.z = actor.from.z + (actor.target.z - actor.from.z) * walk
 			actor.yaw += shortestTurn(actor.yaw, actor.target.yaw) * ease
 			actor.object.visible = view.near(actor.x, actor.z)
 			if (actor.object.visible) {

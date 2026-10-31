@@ -55,6 +55,17 @@ private enum Theme {
   }
 }
 
+// The tick draws itself in where iOS can draw symbols, from iOS 26.
+private struct DrawsOn: ViewModifier {
+  func body(content: Content) -> some View {
+    if #available(iOS 26.0, *) {
+      content.transition(.symbolEffect(.drawOn))
+    } else {
+      content
+    }
+  }
+}
+
 private struct SaveView: View {
   let context: NSExtensionContext
   @State private var phase = Phase.saving
@@ -81,7 +92,7 @@ private struct SaveView: View {
           Text("Saving…").font(.headline).foregroundStyle(Theme.foreground)
         case .saved:
           Image(systemName: "checkmark").font(.system(size: 36, weight: .semibold)).foregroundStyle(Theme.primary)
-            .frame(height: 44).symbolEffect(.bounce, value: phase)
+            .frame(height: 44).modifier(DrawsOn())
           Text("Saved").font(.headline).foregroundStyle(Theme.foreground)
         case .queued:
           Image(systemName: "arrow.up").font(.system(size: 36, weight: .semibold)).foregroundStyle(Theme.primary)
@@ -103,6 +114,14 @@ private struct SaveView: View {
     .background(Theme.background)
     .contentShape(Rectangle())
     .animation(.snappy, value: phase)
+    // One haptic as the outcome lands, on the same frame as its symbol.
+    .sensoryFeedback(trigger: phase) { _, next in
+      switch next {
+      case .saved: .success
+      case .failed: .error
+      default: nil
+      }
+    }
     .onTapGesture { if case .failed = phase { context.completeRequest(returningItems: nil) } }
     .task { await save() }
   }

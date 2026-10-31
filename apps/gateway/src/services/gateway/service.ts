@@ -195,6 +195,7 @@ export class Gateway extends Context.Service<
 						Effect.fromOption
 					)
 					yield* auth.access(request.headers, `${GATEWAY_URL}/mcp`)
+					yield* connections.called(server.id)
 					const args = yield* Schema.decodeUnknownEffect(ToolArguments)(input ?? {})
 					return yield* withClient(server, client =>
 						pipe(

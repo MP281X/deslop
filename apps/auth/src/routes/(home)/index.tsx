@@ -9,6 +9,7 @@ import {Suspense} from 'react'
 
 import {Loading} from '@deslop/components-web/fallbacks'
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
+import {cn} from '@deslop/components-web/utils'
 
 import {SignedInGrid} from '#lib/components.tsx'
 import {codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/utils.ts'
@@ -48,7 +49,7 @@ function Enter(props: {
 				disabled={props.state === 'Checking'}
 				aria-invalid={props.state === 'Missing'}
 				aria-describedby="code-error"
-				containerClassName="gap-2"
+				containerClassName={cn('gap-2', props.state === 'Missing' && 'refuse')}
 			>
 				<InputOTPGroup className="flex-1">
 					{Array.map(Array.range(0, 3), index => (
@@ -80,7 +81,7 @@ function Enter(props: {
 			{Option.match(props.answered, {
 				onNone: () => null,
 				onSome: answer => (
-					<p className="text-muted-foreground flex items-center gap-1.5 text-xs" role="status">
+					<p className="text-muted-foreground settle-in flex items-center gap-1.5 text-xs" role="status">
 						{Boolean.match(answer.accept, {
 							onFalse: () => (
 								<>

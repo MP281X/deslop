@@ -215,7 +215,16 @@ Motion marks a change the user caused or should notice, and never holds content 
 - **Press and hover.** Pressables scale to 0.97; hover motion only under `(hover: hover) and (pointer: fine)`.
 - **iOS.** Navigation, sheets and tab bars keep the system's motion, and tabs never slide. What a finger moves follows a spring (damping 1, or 0.8 after a flick). One haptic per committed action, on the same frame as its visual, never on its own.
 - **Reduced motion** drops movement and keeps fades and colour.
-- **Each app's own.** One signature motion, only when its data changes: Trips flips a changed gate, platform or time like a departures board; Scope's waterfall eases to a new trace's scale, and traces a refresh adds grow in.
+- **Each app's own.** One signature motion, only when its data changes:
+
+| App     | Motion                                                                         |
+| ------- | ------------------------------------------------------------------------------ |
+| Trips   | a changed gate, platform or time flips in like a departures board              |
+| Scope   | the waterfall eases to a new trace's scale; traces a refresh adds grow in      |
+| Auth    | an answer settles out of a blur; a code no sign-in has shakes once             |
+| Gateway | a server's dot dims for a moment on each tool call, like a switch port's light |
+| Stash   | the share sheet's tick draws itself in, with one success haptic                |
+| Signal  | units walk at an even pace across each frame, and cut on a timeline jump       |
 
 ## Icons
 

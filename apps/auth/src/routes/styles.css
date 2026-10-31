@@ -1,2 +1,35 @@
 @import '@deslop/components-web/theme.css';
 @source '../../../../packages/components-web/src/**/*.tsx';
+
+/* A code no sign-in has shakes once, as a lock refuses a wrong key. */
+@utility refuse {
+	animation: refuse 300ms cubic-bezier(0.23, 1, 0.32, 1);
+
+	@media (prefers-reduced-motion: reduce) {
+		animation: none;
+	}
+}
+
+@keyframes refuse {
+	25% {
+		translate: -4px;
+	}
+	50% {
+		translate: 3px;
+	}
+	75% {
+		translate: -2px;
+	}
+}
+
+/* An answer arrives out of a blur, so it reads as the approval it replaced rather than a new line. */
+@utility settle-in {
+	transition:
+		opacity 200ms ease,
+		filter 200ms ease;
+
+	@starting-style {
+		opacity: 0;
+		filter: blur(2px);
+	}
+}

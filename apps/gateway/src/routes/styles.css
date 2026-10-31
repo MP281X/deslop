@@ -4,3 +4,14 @@
 :root {
 	--primary: var(--purple);
 }
+
+/* A tool call passing through: the dot dims and comes straight back, an opacity change even under reduced motion. */
+@utility port-blink {
+	animation: port-blink 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@keyframes port-blink {
+	from {
+		opacity: 0.25;
+	}
+}

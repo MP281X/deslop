@@ -32,6 +32,7 @@ import {
 	copyEndpointAtom,
 	disconnectAtom,
 	hideAtom,
+	lastCallAtom,
 	removeAtom,
 	serversAtom
 } from '#lib/utils.ts'
@@ -48,8 +49,9 @@ function Favicon(props: {url: string}) {
 	)
 }
 
-// Live in the app's primary, expired in red, not connected hollow and muted.
+// Live in the primary, expired red, not connected hollow; like a port light it dims per tool call, a new key replaying it.
 function Status(props: {server: ConnectionInfo}) {
+	const call = useAtomValue(lastCallAtom(props.server.id))
 	return (
 		<span
 			className={cn(
@@ -58,9 +60,11 @@ function Status(props: {server: ConnectionInfo}) {
 			)}
 		>
 			<span
+				key={call}
 				aria-hidden="true"
 				className={cn(
 					'size-1.5 rounded-full',
+					call >= 0 && 'port-blink',
 					props.server.status === 'Connected' && 'bg-primary',
 					props.server.status === 'Expired' && 'bg-destructive',
 					props.server.status === 'Not connected' && 'border-muted-foreground border'
