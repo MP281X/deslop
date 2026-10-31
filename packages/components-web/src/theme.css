@@ -129,6 +129,38 @@
 	--ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
+/* DESIGN.md, Motion: a pressed button scales to 0.97 in 150ms instead of shadcn's 1px nudge. Unlayered, so it wins over the
+   utilities in ui/button.tsx, which stays exactly what the CLI writes; `group/button` comes from buttonVariants, so links
+   styled as buttons press the same way. */
+[class~='group/button'] {
+	transition-property: color, background-color, border-color, box-shadow, opacity, scale;
+	transition-duration: 150ms;
+	transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+[class~='group/button']:active {
+	translate: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	[class~='group/button']:active:not([aria-haspopup]) {
+		scale: 0.97;
+	}
+}
+
+/* DESIGN.md, Layout: a row's text gives way to its trailing status or action; a long unbroken name wraps, from the start
+   even when the row renders as a button, instead of widening the row. */
+[data-slot='item-content'] {
+	min-width: 0;
+}
+
+[data-slot='item-title'],
+[data-slot='item-description'] {
+	max-width: 100%;
+	overflow-wrap: anywhere;
+	text-align: start;
+}
+
 /* Pixel art keeps its hard edges when scaled. */
 @utility pixelated {
 	image-rendering: pixelated;

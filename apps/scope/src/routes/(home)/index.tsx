@@ -8,8 +8,15 @@ import {RotateCw} from 'lucide-react'
 import {useState} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
-import {Error, Loading} from '@deslop/components-web/fallbacks'
-import {Button, buttonVariants} from '@deslop/components-web/ui/button'
+import {Error, Loading, SignIn} from '@deslop/components-web/fallbacks'
+import {ItemList} from '@deslop/components-web/item-list'
+import {StatusDot} from '@deslop/components-web/status-dot'
+import {Button} from '@deslop/components-web/ui/button'
+import {Empty, EmptyDescription, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
+import {Item, ItemContent, ItemDescription, ItemTitle} from '@deslop/components-web/ui/item'
+import {Toggle} from '@deslop/components-web/ui/toggle'
+import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
+import {Tooltip, TooltipContent, TooltipTrigger} from '@deslop/components-web/ui/tooltip'
 import {cn} from '@deslop/components-web/utils'
 import {signInUrl} from '@deslop/runtime/auth/utils'
 
@@ -40,32 +47,12 @@ function Failure(props: {cause: Cause.Cause<unknown>}) {
 		onNone: () => <Error error={Cause.squash(props.cause)} reset={() => location.reload()} />,
 		onSome: error => {
 			if (!Predicate.isTagged(error, 'AuthError')) return <Error error={error} reset={() => location.reload()} />
-			return (
-				<div className="flex flex-1 items-center justify-center">
-					<a className={buttonVariants({size: 'lg'})} href={signInUrl(location.href)}>
-						Sign in with GitHub
-					</a>
-				</div>
-			)
+			return <SignIn description="Your apps’ traces, spans and logs." href={signInUrl(location.href)} />
 		}
 	})
 }
 
-function Toggle(props: {label: string; on: boolean; onPress: () => void}) {
-	return (
-		<Button
-			size="sm"
-			variant={Boolean.match(props.on, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
-			aria-pressed={props.on}
-			onClick={props.onPress}
-			className="font-mono"
-		>
-			{props.label}
-		</Button>
-	)
-}
-
-// One toggle per service that sent telemetry, every service at once, and only failed traces.
+// One service that sent telemetry or every one, and only failed traces.
 function ServiceFilter() {
 	const [filters, setFilters] = useAtom(filtersAtom)
 	const services = AsyncResult.getOrElse(
@@ -76,16 +63,35 @@ function ServiceFilter() {
 	)
 	return (
 		<div className="flex min-w-0 items-center gap-1 overflow-x-auto">
-			<Toggle label="all" on={filters.service === ''} onPress={() => setFilters({...filters, service: ''})} />
-			{Array.map(services, service => (
-				<Toggle
-					key={service}
-					label={service}
-					on={filters.service === service}
-					onPress={() => setFilters({...filters, service})}
-				/>
-			))}
-			<Toggle label="errors" on={filters.errors} onPress={() => setFilters({...filters, errors: !filters.errors})} />
+			<ToggleGroup
+				size="sm"
+				value={[Boolean.match(filters.service === '', {onFalse: () => filters.service, onTrue: () => 'all'})]}
+				onValueChange={(values: string[]) =>
+					Option.match(Array.last(values), {
+						onNone: () => undefined,
+						onSome: value =>
+							setFilters({
+								...filters,
+								service: Boolean.match(value === 'all', {onFalse: () => value, onTrue: () => ''})
+							})
+					})
+				}
+			>
+				<ToggleGroupItem value="all">all</ToggleGroupItem>
+				{Array.map(services, service => (
+					<ToggleGroupItem key={service} value={service}>
+						{service}
+					</ToggleGroupItem>
+				))}
+			</ToggleGroup>
+			<Toggle
+				size="sm"
+				pressed={filters.errors}
+				onPressedChange={errors => setFilters({...filters, errors})}
+				aria-label="Only failed traces"
+			>
+				errors
+			</Toggle>
 		</div>
 	)
 }
@@ -98,26 +104,32 @@ function TraceRow(props: {
 	trace: TraceSummary
 }) {
 	return (
-		<li className={cn('border-border grid border-b', props.arrived && 'grow-in')}>
-			<Button
-				variant={Boolean.match(props.selected, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
-				onClick={props.onSelect}
-				aria-current={props.selected}
-				className="h-auto w-full flex-col items-stretch gap-0.5 rounded-none px-4 py-2.5 font-normal"
+		<div role="listitem" className={cn('grid', props.arrived && 'grow-in')}>
+			<Item
+				size="sm"
+				variant={Boolean.match(props.selected, {onFalse: () => 'default' as const, onTrue: () => 'muted' as const})}
+				render={
+					<button
+						type="button"
+						onClick={props.onSelect}
+						aria-current={props.selected}
+						aria-label={`${props.trace.operation}, ${props.trace.service}, ${durationOf(props.trace.durationMs)}`}
+					/>
+				}
 			>
-				<span className="flex items-baseline justify-between gap-3">
-					<span className="truncate text-sm font-medium">{props.trace.operation}</span>
-					<span className="text-muted-foreground font-mono text-xs">{ageOf(props.trace.time, props.now)}</span>
-				</span>
-				<span className="flex items-baseline justify-between gap-3 font-mono text-xs">
-					<span className="text-muted-foreground flex min-w-0 items-center gap-1.5">
-						{props.trace.errors > 0 && <span className="bg-destructive size-1.5 shrink-0 rounded-full" />}
-						<span className="truncate">{props.trace.service}</span>
-					</span>
-					{durationOf(props.trace.durationMs)}
-				</span>
-			</Button>
-		</li>
+				<ItemContent>
+					<ItemTitle>{props.trace.operation}</ItemTitle>
+					<ItemDescription className="flex items-center gap-1.5 font-mono">
+						{props.trace.errors > 0 && <StatusDot status="error" />}
+						{props.trace.service}
+					</ItemDescription>
+				</ItemContent>
+				<ItemContent className="items-end">
+					<ItemDescription className="font-mono">{ageOf(props.trace.time, props.now)}</ItemDescription>
+					<ItemDescription className="text-foreground font-mono">{durationOf(props.trace.durationMs)}</ItemDescription>
+				</ItemContent>
+			</Item>
+		</div>
 	)
 }
 
@@ -135,7 +147,7 @@ function SpanDetail(props: {span: TraceSpan}) {
 	return (
 		<section className="border-border flex flex-col gap-2 border-t pt-3" aria-label="Span">
 			<h3 className="flex items-center gap-2 text-sm font-medium">
-				{props.span.status === 2 && <span className="bg-destructive size-1.5 rounded-full" />}
+				{props.span.status === 2 && <StatusDot status="error" />}
 				{props.span.name}
 				<span className="text-muted-foreground font-mono text-xs font-normal">{durationOf(props.span.durationMs)}</span>
 			</h3>
@@ -243,7 +255,14 @@ function Waterfall(props: {trace: Trace}) {
 
 function Detail() {
 	return Option.match(useAtomValue(selectedTraceAtom), {
-		onNone: () => <p className="text-muted-foreground text-sm">Pick a trace to see its spans.</p>,
+		onNone: () => (
+			<Empty>
+				<EmptyHeader>
+					<EmptyTitle>No trace picked</EmptyTitle>
+					<EmptyDescription>Pick one from the list to see its spans, attributes and logs.</EmptyDescription>
+				</EmptyHeader>
+			</Empty>
+		),
 		onSome: result =>
 			AsyncResult.match(result, {
 				onFailure: failure => <Failure cause={failure.cause} />,
@@ -276,12 +295,19 @@ function Traces() {
 				>
 					<p className="text-muted-foreground border-border flex items-center gap-2 border-b px-4 py-2 font-mono text-xs">
 						{page.value.total} traces · last 3 days
-						{page.waiting && <span className="bg-primary size-1.5 rounded-full motion-safe:animate-pulse" />}
+						{page.waiting && <StatusDot waiting />}
 					</p>
 					{Array.match(page.value.entries, {
-						onEmpty: () => <p className="text-muted-foreground px-4 py-6 text-sm">No traces match.</p>,
+						onEmpty: () => (
+							<Empty>
+								<EmptyHeader>
+									<EmptyTitle>No traces match</EmptyTitle>
+									<EmptyDescription>Another service, or every one, may have some.</EmptyDescription>
+								</EmptyHeader>
+							</Empty>
+						),
 						onNonEmpty: entries => (
-							<ul>
+							<ItemList label="Recent traces">
 								{Array.map(entries, trace => (
 									<TraceRow
 										key={trace.id}
@@ -292,7 +318,7 @@ function Traces() {
 										trace={trace}
 									/>
 								))}
-							</ul>
+							</ItemList>
 						)
 					})}
 				</nav>
@@ -307,14 +333,21 @@ function Traces() {
 // Asks the server again for the traces under the current filters.
 function Refresh() {
 	return (
-		<Button
-			variant="ghost"
-			size="icon-sm"
-			aria-label="Refresh traces"
-			onClick={useAtomRefresh(useAtomValue(tracesQueryAtom))}
-		>
-			<RotateCw />
-		</Button>
+		<Tooltip>
+			<TooltipTrigger
+				render={
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						aria-label="Refresh traces"
+						onClick={useAtomRefresh(useAtomValue(tracesQueryAtom))}
+					/>
+				}
+			>
+				<RotateCw />
+			</TooltipTrigger>
+			<TooltipContent>Refresh traces</TooltipContent>
+		</Tooltip>
 	)
 }
 

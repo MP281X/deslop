@@ -7,8 +7,13 @@ import {X} from 'lucide-react'
 import {useState} from 'react'
 import {toQR} from 'toqr'
 
+import {ResultError} from '@deslop/components-web/result-error'
+import {StatusDot} from '@deslop/components-web/status-dot'
+import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
 import {Button} from '@deslop/components-web/ui/button'
-import {cn} from '@deslop/components-web/utils'
+import {Empty, EmptyDescription, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
+import {FieldDescription} from '@deslop/components-web/ui/field'
+import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@deslop/components-web/ui/table'
 
 import {
 	ageLabel,
@@ -51,17 +56,14 @@ export function QrCode(props: {className?: string; text: string}) {
 	)
 }
 
-// Lucide has no brand icons; this is GitHub's mark from its Octicons.
-export function GitHubIcon(props: {className?: string}) {
+// A GitHub account's picture, or its first letter until the picture loads.
+export function AccountAvatar(props: {id: string; name: string}) {
 	return (
-		<svg viewBox="0 0 16 16" fill="currentColor" className={props.className} aria-hidden="true">
-			<path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
-		</svg>
+		<Avatar size="sm">
+			<AvatarImage src={avatarUrl(props.id)} alt={props.name} />
+			<AvatarFallback>{String.toUpperCase(String.slice(0, 1)(props.name))}</AvatarFallback>
+		</Avatar>
 	)
-}
-
-export function Avatar(props: {id: string; name: string}) {
-	return <img src={avatarUrl(props.id)} alt={props.name} className="bg-muted size-6 shrink-0 rounded-full" />
 }
 
 function machines(count: number) {
@@ -69,23 +71,22 @@ function machines(count: number) {
 	return `${count} machines`
 }
 
+function Absent(props: {label: string}) {
+	return (
+		<TableCell className="text-muted-foreground text-center" aria-label={props.label}>
+			·
+		</TableCell>
+	)
+}
+
 // A first tap arms the cell, a second signs that client out of that app; leaving the cell disarms it.
 function Cell(props: {app: string; client: string; now: number; signIns: SignedInApp[]}) {
 	const [disconnection, disconnect] = useAtom(disconnectAtom)
 	const [armed, setArmed] = useState(false)
-	if (Array.isArrayEmpty(props.signIns)) {
-		return (
-			<td
-				className="text-muted-foreground/40 text-center"
-				aria-label={`${props.client} is not signed in to ${props.app}`}
-			>
-				·
-			</td>
-		)
-	}
+	if (Array.isArrayEmpty(props.signIns)) return <Absent label={`${props.client} is not signed in to ${props.app}`} />
 	const minutes = minutesSince(newest(props.signIns), props.now)
 	return (
-		<td className="py-1">
+		<TableCell>
 			<Button
 				variant={Boolean.match(armed, {onFalse: () => 'ghost' as const, onTrue: () => 'destructive' as const})}
 				className="w-full font-mono"
@@ -105,15 +106,14 @@ function Cell(props: {app: string; client: string; now: number; signIns: SignedI
 					// One dot per machine, lit while it was active in the last hour.
 					onFalse: () => (
 						<>
-							<span className="flex gap-0.5" aria-hidden="true">
+							<span className="flex gap-0.5">
 								{Array.map(props.signIns, signIn => (
-									<span
+									<StatusDot
 										key={signIn.family}
-										className={cn(
-											'size-1.5 rounded-full',
-											minutesSince(signIn.lastActive, props.now) < 60 && 'bg-primary',
-											minutesSince(signIn.lastActive, props.now) >= 60 && 'bg-muted-foreground/50'
-										)}
+										status={Boolean.match(minutesSince(signIn.lastActive, props.now) < 60, {
+											onFalse: () => 'quiet' as const,
+											onTrue: () => 'live' as const
+										})}
 									/>
 								))}
 							</span>
@@ -123,7 +123,7 @@ function Cell(props: {app: string; client: string; now: number; signIns: SignedI
 					onTrue: () => <X />
 				})}
 			</Button>
-		</td>
+		</TableCell>
 	)
 }
 
@@ -132,32 +132,24 @@ function PendingRow(props: {columns: string[]; request: PendingAuthorization}) {
 	const asked = appNames(props.request.resources)
 	const client = signInLabel(props.request.clientName, props.request.device)
 	return (
-		<tr className="border-border border-b">
-			<th scope="row" className="text-primary py-2 pr-2 text-left text-sm font-medium wrap-anywhere">
+		<TableRow>
+			<TableHead scope="row" className="text-primary wrap-anywhere whitespace-normal">
 				{client}
-			</th>
+			</TableHead>
 			{Array.map(props.columns, column =>
 				Boolean.match(Array.contains(asked, column), {
-					onFalse: () => (
-						<td
-							key={column}
-							className="text-muted-foreground/40 text-center"
-							aria-label={`${client} does not ask for ${column}`}
-						>
-							·
-						</td>
-					),
+					onFalse: () => <Absent key={column} label={`${client} does not ask for ${column}`} />,
 					onTrue: () => (
-						<td key={column} className="py-1" aria-label={`${client} asks for ${column}`}>
-							<span className="text-primary flex h-7 items-center justify-center gap-1.5 font-mono text-xs">
-								<span className="border-primary size-1.5 rounded-full border" aria-hidden="true" />
+						<TableCell key={column} aria-label={`${client} asks for ${column}`}>
+							<span className="text-primary flex items-center justify-center gap-1.5 font-mono">
+								<StatusDot status="off" className="border-primary" />
 								new
 							</span>
-						</td>
+						</TableCell>
 					)
 				})
 			)}
-		</tr>
+		</TableRow>
 	)
 }
 
@@ -166,7 +158,7 @@ function Answer(props: {request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
 	return (
 		<>
-			<p className="text-muted-foreground text-xs">
+			<FieldDescription>
 				{Boolean.match(props.request.kind === 'Browser', {
 					onFalse: () => `${signInLabel(props.request.clientName, props.request.device)} asks for the apps marked new`,
 					onTrue: () =>
@@ -177,15 +169,8 @@ function Answer(props: {request: PendingAuthorization}) {
 					onSome: address => ` · from ${address}`
 				})}
 				. Approve only a code you started yourself.
-			</p>
-			{Option.match(AsyncResult.error(consent), {
-				onNone: () => null,
-				onSome: failure => (
-					<p className="text-destructive text-xs" role="alert">
-						{failure.message}
-					</p>
-				)
-			})}
+			</FieldDescription>
+			<ResultError result={consent} />
 			<div className="grid grid-cols-2 gap-2">
 				<Button
 					size="lg"
@@ -236,29 +221,33 @@ export function SignedInGrid(props: {pending: Option.Option<PendingAuthorization
 			</h2>
 			{Boolean.match(Array.isArrayEmpty(rows) && Option.isNone(pendingApp), {
 				onFalse: () => (
-					<table className="w-full table-fixed border-collapse text-sm">
-						<thead>
-							<tr className="border-border border-b">
-								<th className="w-32">
+					<Table className="table-fixed">
+						<TableHeader>
+							<TableRow>
+								<TableHead className="w-32">
 									<span className="sr-only">Client</span>
-								</th>
+								</TableHead>
 								{Array.map(columns, column => (
-									<th key={column} scope="col" className="text-muted-foreground pb-2 font-mono text-xs font-normal">
+									<TableHead
+										key={column}
+										scope="col"
+										className="text-muted-foreground text-center font-mono font-normal"
+									>
 										{column}
-									</th>
+									</TableHead>
 								))}
-							</tr>
-						</thead>
-						<tbody>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
 							{Option.match(pendingApp, {
 								onNone: () => null,
 								onSome: request => <PendingRow columns={columns} request={request} />
 							})}
 							{Array.map(rows, row => (
-								<tr key={row[0]} className="border-border border-b">
-									<th scope="row" className="py-2 pr-2 text-left text-sm font-medium wrap-anywhere">
+								<TableRow key={row[0]}>
+									<TableHead scope="row" className="wrap-anywhere whitespace-normal">
 										{row[0]}
-									</th>
+									</TableHead>
 									{Array.map(columns, column => (
 										<Cell
 											key={column}
@@ -268,22 +257,24 @@ export function SignedInGrid(props: {pending: Option.Option<PendingAuthorization
 											signIns={Array.filter(row[1], app => Array.contains(appNames(app.resources), column))}
 										/>
 									))}
-								</tr>
+								</TableRow>
 							))}
-						</tbody>
-					</table>
+						</TableBody>
+					</Table>
 				),
-				onTrue: () => <p className="text-muted-foreground text-sm">No apps signed in.</p>
-			})}
-			{Option.match(props.pending, {onNone: () => null, onSome: request => <Answer request={request} />})}
-			{Option.match(AsyncResult.error(disconnection), {
-				onNone: () => null,
-				onSome: failure => (
-					<p className="text-destructive text-xs" role="alert">
-						{failure.message}
-					</p>
+				onTrue: () => (
+					<Empty>
+						<EmptyHeader>
+							<EmptyTitle>No apps signed in</EmptyTitle>
+							<EmptyDescription>
+								An app you sign in to shows here, with where and when it was last used.
+							</EmptyDescription>
+						</EmptyHeader>
+					</Empty>
 				)
 			})}
+			{Option.match(props.pending, {onNone: () => null, onSome: request => <Answer request={request} />})}
+			<ResultError result={disconnection} />
 		</section>
 	)
 }

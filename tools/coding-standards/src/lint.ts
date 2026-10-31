@@ -597,7 +597,17 @@ export const lint: OxlintConfig = {
 		'shadcn/no-arbitrary-values': 'error',
 		'shadcn/no-inline-styles': 'error',
 		'shadcn/no-raw-colors': 'error',
-		'shadcn/no-restyle': ['error', {allow: ['layout']}],
+		'shadcn/no-restyle': [
+			'error',
+			{
+				allow: ['layout'],
+				// Hairline rows: Items touch, with a separator between them and no margin around it.
+				contracts: [
+					{allow: ['layout', 'gap-0'], pattern: '^ItemGroup$'},
+					{allow: ['layout', 'my-0'], pattern: '^ItemSeparator$'}
+				]
+			}
+		],
 		'shadcn/no-unknown-classes': 'error',
 		'shadcn/require-static-classes': 'error',
 

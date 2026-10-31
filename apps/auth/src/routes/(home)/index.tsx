@@ -8,6 +8,7 @@ import {Check, X} from 'lucide-react'
 import {Suspense} from 'react'
 
 import {Loading} from '@deslop/components-web/fallbacks'
+import {FieldError} from '@deslop/components-web/ui/field'
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
 import {cn} from '@deslop/components-web/utils'
 
@@ -73,11 +74,7 @@ function Enter(props: {
 					))}
 				</InputOTPGroup>
 			</InputOTP>
-			{props.state === 'Missing' && (
-				<p id="code-error" className="text-destructive text-xs" role="alert">
-					No waiting sign-in has this code.
-				</p>
-			)}
+			{props.state === 'Missing' && <FieldError id="code-error">No waiting sign-in has this code.</FieldError>}
 			{Option.match(props.answered, {
 				onNone: () => null,
 				onSome: answer => (

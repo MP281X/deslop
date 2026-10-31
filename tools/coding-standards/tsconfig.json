@@ -171,6 +171,18 @@
 						"options": {"diagnosticSeverity": {"asyncFunction": "off"}}
 					},
 					{
+						// shadcn's components stay exactly what its CLI writes, so Effect's style checks do not apply to them.
+						"include": ["/**/components-web/src/ui/*.tsx", "/**/.*/**/components-web/src/ui/*.tsx"],
+						"options": {
+							"diagnosticSeverity": {
+								"preferEffectArray": "off",
+								"preferEffectRecord": "off",
+								"preferEffectString": "off",
+								"strictBooleanExpressions": "off"
+							}
+						}
+					},
+					{
 						// The directive scan reads string literals too, and test fixtures hold source text with directives.
 						"include": ["/**/*.test.ts", "/**/.*/**/*.test.ts"],
 						"options": {"diagnosticSeverity": {"unusedDirective": "off"}}
