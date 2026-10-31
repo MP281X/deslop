@@ -1,8 +1,8 @@
 diff --git a/dist/ai/McpServer.d.ts b/dist/ai/McpServer.d.ts
-index 9b44304855d1f239799b9ed5e161ff152c83bb44..14bdd614d283e73ba0e66cb6fc2274386d786592 100644
+index 802dbdf30a7bb3ab5bb5fa974410a69e261de406..20d0b10372a83c4adf0c4a5d7a104c8833a7e111 100644
 --- a/dist/ai/McpServer.d.ts
 +++ b/dist/ai/McpServer.d.ts
-@@ -409,6 +409,7 @@ declare const McpServer_base: Context.ServiceClass<McpServer, "effect/ai/McpServ
+@@ -414,6 +414,7 @@ declare const McpServer_base: Context.ServiceClass<McpServer, "effect/ai/McpServ
          readonly tool: McpTool;
          readonly annotations: Context.Context<never>;
      }>;
@@ -10,7 +10,7 @@ index 9b44304855d1f239799b9ed5e161ff152c83bb44..14bdd614d283e73ba0e66cb6fc227438
      readonly addTool: (options: {
          readonly tool: McpTool;
          readonly annotations: Context.Context<never>;
-@@ -483,6 +484,7 @@ export declare class McpServer extends McpServer_base {
+@@ -488,6 +489,7 @@ export declare class McpServer extends McpServer_base {
              readonly tool: McpTool;
              readonly annotations: Context.Context<never>;
          }>;
@@ -19,10 +19,10 @@ index 9b44304855d1f239799b9ed5e161ff152c83bb44..14bdd614d283e73ba0e66cb6fc227438
              readonly tool: McpTool;
              readonly annotations: Context.Context<never>;
 diff --git a/dist/ai/McpServer.js b/dist/ai/McpServer.js
-index cbf6087db7b02da3bb8f202099857248a8191f4e..e8c913007c007d2833376606a2b9ec7f1b594d88 100644
+index cc55befd9eead19c8ce5be5808a780b831975bd6..2333316875e1d75bfc532de5693a2eec19f7f36d 100644
 --- a/dist/ai/McpServer.js
 +++ b/dist/ai/McpServer.js
-@@ -560,6 +560,13 @@ export class McpServer extends /*#__PURE__*/Context.Service()("effect/ai/McpServ
+@@ -598,6 +598,13 @@ export class McpServer extends /*#__PURE__*/Context.Service()("effect/ai/McpServ
        get tools() {
          return tools;
        },
@@ -37,10 +37,10 @@ index cbf6087db7b02da3bb8f202099857248a8191f4e..e8c913007c007d2833376606a2b9ec7f
          const existingIndex = tools.findIndex(({
            tool
 diff --git a/dist/ai/internal/mcpCore.js b/dist/ai/internal/mcpCore.js
-index f4fc4b97898eb5026c3241b54aac3300114a8a1c..027cc8f2751491a87542336ef816d4df96a51217 100644
+index d32e9dd1d425a4edd7c9111efc4c36cbebd07a77..0ecb7b8385f4b11677f78db0639d9ee9b566abd7 100644
 --- a/dist/ai/internal/mcpCore.js
 +++ b/dist/ai/internal/mcpCore.js
-@@ -79,6 +79,7 @@ export const make = /*#__PURE__*/Effect.sync(() => {
+@@ -96,6 +96,7 @@ export const make = /*#__PURE__*/Effect.sync(() => {
    const completionRegistrations = new Map();
    const filterList = (registrations, invocation) => Effect.map(Effect.filter(Arr.filter(registrations, entry => entry.isVisible(invocation.protocol)), entry => entry.visible === undefined ? Effect.succeed(true) : entry.visible(invocation)), entries => entries.map(entry => entry.descriptor));
    const tools = {
@@ -49,10 +49,10 @@ index f4fc4b97898eb5026c3241b54aac3300114a8a1c..027cc8f2751491a87542336ef816d4df
        registrations.set(registration.descriptor.name, registration);
      }),
 diff --git a/src/ai/McpServer.ts b/src/ai/McpServer.ts
-index d49cb9eefae443f9f03b4dc51d11e963a6ee1741..ba2a23039dbb4fe3f4a97d948ca897372082dcb1 100644
+index 20cca5449b8425e6bb24e7591395bcf65a461ebc..dd07503008af94764e8b72aa0ab02cf90257bc9c 100644
 --- a/src/ai/McpServer.ts
 +++ b/src/ai/McpServer.ts
-@@ -939,6 +939,7 @@ export class McpServer extends Context.Service<McpServer, {
+@@ -954,6 +954,7 @@ export class McpServer extends Context.Service<McpServer, {
      readonly tool: McpTool
      readonly annotations: Context.Context<never>
    }>
@@ -60,7 +60,7 @@ index d49cb9eefae443f9f03b4dc51d11e963a6ee1741..ba2a23039dbb4fe3f4a97d948ca89737
    readonly addTool: (options: {
      readonly tool: McpTool
      readonly annotations: Context.Context<never>
-@@ -1146,6 +1147,13 @@ export class McpServer extends Context.Service<McpServer, {
+@@ -1193,6 +1194,13 @@ export class McpServer extends Context.Service<McpServer, {
        get tools() {
          return tools
        },
@@ -75,10 +75,10 @@ index d49cb9eefae443f9f03b4dc51d11e963a6ee1741..ba2a23039dbb4fe3f4a97d948ca89737
          const existingIndex = tools.findIndex(({ tool }) => tool.name === options.tool.name)
          if (existingIndex === -1) {
 diff --git a/src/ai/internal/mcpCore.ts b/src/ai/internal/mcpCore.ts
-index 65f748da9c86bb01979bb5e2d308908be45425c5..b36d59a0e491bc12824cd39aacfc963af5870936 100644
+index d2285930a521ca29373124da6229cbe1683814ac..f847283a923c0f9054402344370d7b8b0ee153f9 100644
 --- a/src/ai/internal/mcpCore.ts
 +++ b/src/ai/internal/mcpCore.ts
-@@ -196,6 +196,7 @@ export interface ToolRegistration {
+@@ -197,6 +197,7 @@ export interface ToolRegistration {
   * @internal
   */
  export interface Tools {
@@ -86,7 +86,7 @@ index 65f748da9c86bb01979bb5e2d308908be45425c5..b36d59a0e491bc12824cd39aacfc963a
    readonly register: (
      registration: ToolRegistration
    ) => Effect.Effect<void>
-@@ -471,6 +472,7 @@ export const make: Effect.Effect<McpCore> = Effect.sync(() => {
+@@ -569,6 +570,7 @@ export const make: Effect.Effect<McpCore> = Effect.sync(() => {
      )
  
    const tools: Tools = {
