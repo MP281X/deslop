@@ -75,6 +75,25 @@ const lintSource = Effect.fnUntraced(function* (input: Record<string, string>, f
 	}
 })
 
+// The lines a rule reports in the first source, beside the lines that source marks `// reported`.
+function reportedLines(result: {sources: string[]; stdout: OxlintOutput}, rule: string) {
+	return {
+		marked: pipe(
+			String.split(result.sources[0] ?? '', '\n'),
+			Array.map((line, index) => ({line, number: index + 1})),
+			Array.filter(entry => String.includes('// reported')(entry.line)),
+			Array.map(entry => entry.number)
+		),
+		reported: pipe(
+			result.stdout.diagnostics,
+			Array.filter(diagnostic => diagnostic.code === `@deslop/coding-standards(${rule})`),
+			Array.map(diagnostic => diagnostic.labels[0]?.span.line ?? 0),
+			Array.dedupe,
+			Array.sort(Order.Number)
+		)
+	}
+}
+
 function customCodes(output: OxlintOutput) {
 	const codes = pipe(
 		Record.keys(plugin.rules),
@@ -145,8 +164,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					),
 					pipe(source, Array.filter(String.startsWith('export const bad')), Array.sort(String.Order))
 				)
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -348,8 +366,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					)
 				)
 				assert.strictEqual(result.stderr, '')
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -422,8 +439,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'@deslop/coding-standards(no-trivial-indirection)',
 					'@deslop/coding-standards(schema-type-pair)'
 				])
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -516,8 +532,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					),
 					[6, 7, 32, 33, 34]
 				)
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -653,8 +668,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				})
 				assert.deepStrictEqual(customCodes(result.stdout), [])
 				assert.strictEqual(result.stderr, '')
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -688,8 +702,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						Array.sort(String.Order)
 					)
 				)
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -724,8 +737,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						"import {MutableRef} from 'effect'\nexport const owner = {get cell() { return MutableRef.make(0) }, parse(value: string) { return this.prefix + value }, prefix: 'id'}"
 				})
 				assert.deepStrictEqual(customCodes(result.stdout), [])
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -800,8 +812,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'@deslop/coding-standards(no-trivial-indirection)',
 					'@deslop/coding-standards(no-trivial-indirection)'
 				])
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -969,8 +980,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'@deslop/coding-standards(preserve-error-cause)',
 					'@deslop/coding-standards(schema-type-pair)'
 				])
-			}),
-			60_000
+			})
 		)
 
 		testApi.effect(
@@ -1017,8 +1027,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'@deslop/coding-standards(no-native-control)',
 					'@deslop/coding-standards(no-native-control)'
 				])
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -1051,8 +1060,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					),
 					[7, 8, 9, 12, 13]
 				)
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -1093,8 +1101,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					),
 					[6, 7, 14]
 				)
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -1120,8 +1127,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'@deslop/coding-standards(no-destructured-parameter)',
 					'@deslop/coding-standards(no-destructured-parameter)'
 				])
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -1300,8 +1306,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						Array.join('\n')
 					)
 				])
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -1422,8 +1427,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'nullish.ts': fixed.sources[2] ?? ''
 				})
 				assert.deepStrictEqual(customCodes(relinted.stdout), [])
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -1463,8 +1467,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'@deslop/coding-standards(schema-type-pair)',
 					'@deslop/coding-standards(schema-type-pair)'
 				])
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -1584,8 +1587,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					),
 					'const MAX_SIZE = 10\nexport const sizes = {maxSize: MAX_SIZE, other: MAX_SIZE}\n'
 				])
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -1620,8 +1622,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'@deslop/coding-standards(no-type-from-value)',
 					'@deslop/coding-standards(schema-type-pair)'
 				])
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -1644,8 +1645,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					)
 				})
 				assert.deepStrictEqual(customCodes(result.stdout), [])
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -1715,8 +1715,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				})
 				assert.deepStrictEqual(customCodes(valid.stdout), [])
 				assert.strictEqual(valid.stderr, '')
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -1819,8 +1818,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						rule => `@deslop/coding-standards(${rule})`
 					)
 				)
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -1873,8 +1871,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						Array.sort(String.Order)
 					)
 				)
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -1928,8 +1925,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						Array.sort(String.Order)
 					)
 				)
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -2020,38 +2016,258 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					),
 					pipe(source, Array.filter(String.startsWith('export const bad')), Array.sort(String.Order))
 				)
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
-			'reports focused and skipped Effect tests',
+			'reports focused, skipped, conditional and failing tests',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
-					'focus.test.ts': pipe(
+					'skips.test.ts': Array.join(
 						[
-							"import {it} from '@effect/vitest'",
+							"import {describe, it} from '@effect/vitest'",
 							'',
 							"import {Effect, Layer} from 'effect'",
 							'',
-							"it.effect.only('runs alone', () => Effect.void)",
-							"it.scoped.skip('never runs', () => Effect.void)",
+							'declare const ci: boolean',
+							"it.effect.only('runs alone', () => Effect.void) // reported",
+							"it.scoped.skip('never runs', () => Effect.void) // reported",
 							"it.effect('runs', () => Effect.void)",
-							"it.layer(Layer.empty)(test => { test.effect.only('runs alone in its layer', () => Effect.void) })"
+							"it.layer(Layer.empty)(test => { test.effect.only('runs alone in its layer', () => Effect.void) }) // reported",
+							"it.layer(Layer.empty)(check => { check.skip('never runs in its layer', () => Effect.void) }) // reported",
+							"it.layer(Layer.empty)(test => { test.skip('left to the native rule', () => Effect.void) })",
+							"it.skipIf(ci)('skips on CI', () => {}) // reported",
+							"it.effect.runIf(ci)('runs only on CI', () => Effect.void) // reported",
+							"it.fails('passes by failing', () => {}) // reported",
+							"it('skips through options', {skip: true}, () => {}) // reported",
+							"describe('runs together', {concurrent: true}, () => { it('runs', () => {}) })"
 						],
-						Array.join('\n')
+						'\n'
 					)
 				})
-				assert.deepStrictEqual(
-					pipe(
+				const lines = reportedLines(result, 'no-skipped-test')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
+			'keeps per-test timeouts, retries, hang guards and flaky retries out of tests',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'limits.test.ts': Array.join(
+						[
+							"import {afterAll, beforeEach, describe, flakyTest, it} from '@effect/vitest'",
+							'',
+							"import {Effect, Layer} from 'effect'",
+							'',
+							'declare const work: Effect.Effect<void>',
+							'const LONG = 60_000',
+							'const OPTIONS = {timeout: 5_000}',
+							"it.effect('waits long', () => Effect.void, 60_000) // reported",
+							"it.effect('waits through a constant', () => Effect.void, LONG) // reported",
+							"it.effect('builds its body', Effect.fnUntraced(function* () { yield* work }), 60_000) // reported",
+							"it('times out through shared options', OPTIONS, () => {}) // reported",
+							'const scenario = () => work',
+							"it.effect('names its body', scenario, 60_000) // reported",
+							"it.prop('samples', {}, () => true, {fastCheck: {numRuns: 10}})",
+							'afterAll(() => {}, 10 * 1000) // reported',
+							"it.effect('retries', () => Effect.void, {retry: 3}) // reported",
+							"it('times out in options', {timeout: 1_000}, () => {}) // reported",
+							"describe('repeats', {repeats: 5}, () => {}) // reported",
+							'beforeEach(() => {}, 10_000) // reported',
+							"it.layer(Layer.empty, {timeout: 30_000})(test => { test.effect('runs', () => Effect.void) }) // reported",
+							"it.effect('guards a hang', () => Effect.timeout(work, '5 seconds')) // reported",
+							"it.effect('falls back', () => Effect.timeoutOption(work, '1 second')) // reported",
+							"it.effect('is flaky', () => flakyTest(work)) // reported",
+							"it.effect('is flaky through it', () => it.flakyTest(work)) // reported",
+							"describe('runs together', {concurrent: true}, () => { it.effect('runs', () => work) })",
+							'afterAll(() => {})',
+							"it.effect.each([1, 2])('runs %d', () => work)"
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(result, 'no-test-timeout')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
+			'reports real-clock waits in tests, and TestClock sleeps that nothing in the file drives',
+			Effect.fnUntraced(function* () {
+				const driven = yield* lintSource({
+					'sleeps.test.ts': Array.join(
+						[
+							"import {it} from '@effect/vitest'",
+							"import {setTimeout as wait} from 'node:timers/promises' // reported",
+							'',
+							"import {Effect, Layer, Schedule} from 'effect'",
+							'',
+							"import {TestClock} from 'effect/testing'",
+							'',
+							'declare const work: Effect.Effect<void>',
+							"it.effect('moves time', () => Effect.gen(function* () { yield* Effect.forkChild(Effect.sleep('1 minute')); yield* TestClock.adjust('1 minute') }))",
+							"it.effect('sleeps for real', () => TestClock.withLive(Effect.sleep('100 millis'))) // reported",
+							"it.effect('pipes into the live clock', () => Effect.sleep('100 millis').pipe(TestClock.withLive)) // reported",
+							"it.live('sleeps live', () => Effect.sleep('100 millis')) // reported",
+							"it.layer(Layer.empty, {excludeTestServices: true})(test => { test.effect('sleeps without test services', () => Effect.delay(work, '1 second')) }) // reported",
+							"it('waits a turn', () => new Promise(resolve => setImmediate(resolve))) // reported",
+							"it('waits on a timer the compiler reports', () => new Promise(resolve => setTimeout(resolve, 10)))",
+							"it('waits through the promise timer', () => wait(10))",
+							"it.effect('repeats on the test clock', () => Effect.repeat(work, Schedule.spaced('1 second')))"
+						],
+						'\n'
+					)
+				})
+				const drivenLines = reportedLines(driven, 'no-sleeping-test')
+				assert.deepStrictEqual(drivenLines.reported, drivenLines.marked)
+				const undriven = yield* lintSource({
+					'undriven.test.ts': Array.join(
+						[
+							"import {it} from '@effect/vitest'",
+							'',
+							"import {Effect} from 'effect'",
+							'',
+							"it.effect('never moves time', () => Effect.sleep('1 second')) // reported",
+							"it.effect('runs', () => Effect.void)"
+						],
+						'\n'
+					)
+				})
+				const undrivenLines = reportedLines(undriven, 'no-sleeping-test')
+				assert.deepStrictEqual(undrivenLines.reported, undrivenLines.marked)
+			})
+		)
+
+		testApi.effect(
+			'reports tests that poll until a condition holds, not fixed repetitions',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'polls.test.ts': Array.join(
+						[
+							"import {it} from '@effect/vitest'",
+							'',
+							"import {Effect, Queue, Schedule, pipe} from 'effect'",
+							'',
+							"import {TestClock} from 'effect/testing'",
+							'',
+							'declare const ready: Effect.Effect<boolean>',
+							'declare function flag(): boolean',
+							'declare const events: Queue.Queue<boolean>',
+							"it.effect('spins until ready', () => Effect.gen(function* () { while (!(yield* ready)) yield* Effect.sleep('20 millis') })) // reported",
+							"it.effect('yields until ready', () => Effect.gen(function* () { while (true) { if (yield* ready) return; yield* Effect.yieldNow } })) // reported",
+							"it.effect('repeats until ready', () => Effect.repeat(ready, {schedule: Schedule.spaced('10 millis'), until: done => done})) // reported",
+							"it.effect('pipes a repeat', () => pipe(Effect.sleep('1 millis'), Effect.andThen(ready), Effect.repeat({until: done => done}))) // reported",
+							"it.effect('retries eventually', () => Effect.eventually(ready)) // reported",
+							"it.effect('spins on a repeat', () => Effect.repeat(ready, {until: done => done})) // reported",
+							"it.effect('spins on a retry', () => Effect.retry(ready, {while: () => true})) // reported",
+							'const UNTIL_READY = {until: (done: boolean) => done}',
+							"it.effect('spins through shared options', () => Effect.repeat(ready, UNTIL_READY)) // reported",
+							"it.effect('takes events until one holds', () => Effect.repeat(Queue.take(events), {until: done => done}))",
+							"it('awaits ticks', async () => { while (!flag()) await Promise.resolve() }) // reported",
+							"it.effect('moves time a fixed number of times', () => Effect.repeat(TestClock.adjust('1 second'), {times: 30}))",
+							"it.effect('steps until it holds', () => Effect.repeat(ready, {times: 9, until: done => done}))",
+							"it.effect('yields a fixed number of times', () => Effect.gen(function* () { for (let step = 0; step < 3; step += 1) yield* Effect.yieldNow }))"
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(result, 'no-polling-test')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
+			'reports real time read in tests, not the TestClock or fixed instants',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'clock.test.ts': Array.join(
+						[
+							"import {it} from '@effect/vitest'",
+							'',
+							"import {Clock, DateTime} from 'effect'",
+							'',
+							"import {TestClock} from 'effect/testing'",
+							'',
+							"it('reads the time the compiler reports', () => Date.now())",
+							"it('builds today', () => Date()) // reported",
+							"it('measures', () => performance.now()) // reported",
+							"it('reads hrtime', () => process.hrtime.bigint()) // reported",
+							"it.effect('measures the live clock', () => TestClock.withLive(Clock.currentTimeMillis)) // reported",
+							"it.effect('reads the live date', () => TestClock.withLive(DateTime.now)) // reported",
+							"it.effect('pipes a read into the live clock', () => Clock.currentTimeMillis.pipe(TestClock.withLive)) // reported",
+							"it.live('reads the clock live', () => Clock.currentTimeMillis) // reported",
+							"it('reads the date anywhere', () => DateTime.nowUnsafe()) // reported",
+							"it.effect('reads the test clock', () => Clock.currentTimeMillis)",
+							"it('builds a fixed date', () => new Date(0))",
+							"it.effect('fixes the instant', () => TestClock.setTime(1_781_870_000_000))"
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(result, 'no-wall-clock-test')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
+			'reports Effect tests and per-element callbacks that register tests in a loop',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'loops.test.ts': Array.join(
+						[
+							"import {describe, it} from '@effect/vitest'",
+							'',
+							"import {Array, Effect, Layer} from 'effect'",
+							'',
+							'const cases = [1, 2]',
+							'for (const value of cases) it.effect(`runs ${value}`, () => Effect.void) // reported',
+							'for (const value of cases) it(`plain ${value}`, () => {})',
+							'for (const value of cases) it.concurrent(`concurrent ${value}`, () => {})',
+							'Array.makeBy(2, index => it(`made ${index}`, () => {})) // reported',
+							'Array.forEach(cases, value => { it(`each ${value}`, () => {}) }) // reported',
+							'cases.map(value => describe(`group ${value}`, () => {})) // reported',
+							'it.layer(Layer.empty)(test => { for (const value of cases) test.effect(`layer ${value}`, () => Effect.void) }) // reported',
+							"it.effect.each(cases)('runs %d', () => Effect.void)",
+							"it.effect('loops inside a test', () => Effect.gen(function* () { for (const value of cases) yield* Effect.log(value) }))"
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(result, 'no-test-in-loop')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+				assert.isTrue(
+					Array.some(
 						result.stdout.diagnostics,
-						Array.filter(diagnostic => diagnostic.code === '@deslop/coding-standards(no-focused-effect-test)'),
-						Array.map(diagnostic => diagnostic.labels[0]?.span.line)
-					),
-					[5, 6, 8]
+						diagnostic => diagnostic.code === 'vitest(prefer-each)' && diagnostic.labels[0]?.span.line === 7
+					)
 				)
-			}),
-			20_000
+			})
+		)
+
+		testApi.effect(
+			'reports DOM test environments set by a pragma or an option',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'dom.test.ts': Array.join(
+						[
+							// Vitest reads a pragma wherever it appears in this file's text, so the test assembles each one.
+							`// ${Array.join(['@vitest', 'environment'], '-')} jsdom // reported`,
+							"import {it} from '@effect/vitest'",
+							'',
+							`/** ${Array.join(['@jest', 'environment'], '-')} happy-dom */ // reported`,
+							`export const pragma = '${Array.join(['@vitest', 'environment'], '-')} node' // reported`,
+							"export const config = {test: {environment: 'jsdom'}} // reported",
+							"export const happy = {test: {environment: 'happy-dom'}} // reported",
+							"export const node = {test: {environment: 'node'}}",
+							"it('runs', () => {})"
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(result, 'no-dom-test-environment')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
 		)
 
 		testApi.effect(
@@ -2087,8 +2303,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					// String, mapped array and record methods belong to the Effect compiler's preferEffectString, preferEffectArray and preferEffectRecord.
 					[12]
 				)
-			}),
-			20_000
+			})
 		)
 
 		testApi.effect(
@@ -2170,8 +2385,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'\n'
 					)
 				])
-			}),
-			20_000
+			})
 		)
 	})
 })

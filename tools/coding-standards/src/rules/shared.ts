@@ -2,6 +2,8 @@ import {Array, Graph, Option, Predicate, Record, String, pipe} from 'effect'
 
 import type {Context, ESTree, Fix, Fixer, Scope, Token, Variable} from 'vite-plus/lint/plugins'
 
+const TEST_RUNNERS = /^(?:@effect\/vitest|vitest|vite-plus\/test)$/u
+
 const LENGTH_TESTS: Record.ReadonlyRecord<string, 'empty' | 'nonEmpty'> = {
 	'!== 0': 'nonEmpty',
 	'< 1': 'empty',
@@ -261,6 +263,141 @@ export function memberName(node: ESTree.MemberExpression) {
 	return Option.none()
 }
 
+type Chain = {calls: ESTree.CallExpression[]; members: string[]; root: ESTree.IdentifierReference}
+
+// The root, member names and curried calls of a chain such as `it.effect.each(cases)` or `it.layer(Live)`.
+function chainOf(node: ESTree.Expression | ESTree.Super): Option.Option<Chain> {
+	if (node.type === 'Identifier') return Option.some({calls: [], members: [], root: node})
+	if (node.type === 'MemberExpression') {
+		return Option.flatMap(memberName(node), name =>
+			Option.map(chainOf(node.object), chain => ({...chain, members: Array.append(chain.members, name)}))
+		)
+	}
+	if (node.type === 'CallExpression') {
+		return Option.map(chainOf(node.callee), chain => ({...chain, calls: Array.append(chain.calls, node)}))
+	}
+	return Option.none()
+}
+
+// A test API is a registration function imported from the test runner, or the parameter a layer passes its tests, as in `it.layer(Live)(test => …)`.
+function isTestApi(context: Context, node: ESTree.IdentifierReference): boolean {
+	if (
+		Array.some(['describe', 'it', 'layer', 'suite', 'test'], name =>
+			isImportBinding({context, importedName: name, node, source: TEST_RUNNERS})
+		)
+	) {
+		return true
+	}
+	return Option.exists(variableFor(context, node), variable =>
+		Array.some(
+			variable.defs,
+			definition =>
+				definition.type === 'Parameter' &&
+				definition.node.parent?.type === 'CallExpression' &&
+				Array.some(definition.node.parent.arguments, argument => argument === definition.node) &&
+				Option.exists(
+					chainOf(definition.node.parent.callee),
+					chain =>
+						(chain.root.name === 'layer' || Array.contains(chain.members, 'layer')) && isTestApi(context, chain.root)
+				)
+		)
+	)
+}
+
+export function testHook(context: Context, node: ESTree.Expression | ESTree.Super) {
+	return (
+		node.type === 'Identifier' &&
+		Array.some(['afterAll', 'afterEach', 'beforeAll', 'beforeEach'], name =>
+			isImportBinding({context, importedName: name, node, source: TEST_RUNNERS})
+		)
+	)
+}
+
+export function testChain(context: Context, node: ESTree.Expression | ESTree.Super) {
+	return Option.filter(chainOf(node), chain => isTestApi(context, chain.root))
+}
+
+// The native vitest rules read registrations on any root named it, test or describe, but no @effect/vitest member such as `it.effect`.
+export function hasEffectMember(members: string[]) {
+	return Array.some(members, member =>
+		Array.contains(['effect', 'flakyTest', 'layer', 'live', 'prop', 'scoped', 'scopedLive'], member)
+	)
+}
+
+export function isFunction(node: ESTree.Node) {
+	return Array.contains(['ArrowFunctionExpression', 'FunctionDeclaration', 'FunctionExpression'], node.type)
+}
+
+function propertyKey(property: ESTree.ObjectExpression['properties'][number]) {
+	if (property.type !== 'Property' || property.computed) return Option.none<string>()
+	if (property.key.type === 'Identifier') return Option.some(property.key.name)
+	if (property.key.type === 'Literal' && Predicate.isString(property.key.value)) return Option.some(property.key.value)
+	return Option.none<string>()
+}
+
+// The keys an inline options object such as `{timeout: 5_000}` sets.
+export function optionKeys(node: ESTree.Node) {
+	if (node.type !== 'ObjectExpression') return Array.empty<string>()
+	return Array.getSomes(Array.map(node.properties, propertyKey))
+}
+
+function isTestClockMember(context: Context, node: ESTree.Node, propertyName: string) {
+	return (
+		node.type === 'MemberExpression' &&
+		node.object.type === 'Identifier' &&
+		Option.contains(memberName(node), propertyName) &&
+		isImportBinding({context, importedName: 'TestClock', node: node.object, source: 'effect/testing'})
+	)
+}
+
+export function isTestClockCall(context: Context, node: ESTree.Node, propertyName: string) {
+	return node.type === 'CallExpression' && isTestClockMember(context, node.callee, propertyName)
+}
+
+// `TestClock.withLive(effect)`, or a pipe whose steps include `TestClock.withLive`.
+function runsLive(context: Context, call: ESTree.CallExpression) {
+	return (
+		isTestClockMember(context, call.callee, 'withLive') ||
+		Array.some(call.arguments, argument => isTestClockMember(context, argument, 'withLive'))
+	)
+}
+
+// `it.live`, `it.scopedLive` and a layer built with `excludeTestServices: true` leave the TestClock out.
+function liveTester(chain: Chain) {
+	return (
+		Array.some(chain.members, member => member === 'live' || member === 'scopedLive') ||
+		Array.some(chain.calls, call =>
+			Array.some(
+				call.arguments,
+				argument =>
+					argument.type === 'ObjectExpression' &&
+					Array.some(
+						argument.properties,
+						property =>
+							Option.contains(propertyKey(property), 'excludeTestServices') &&
+							property.type === 'Property' &&
+							property.value.type === 'Literal' &&
+							property.value.value === true
+					)
+			)
+		)
+	)
+}
+
+// Whether a node runs on the real clock rather than the TestClock that `it.effect` provides.
+export function onRealClock(context: Context, node: ESTree.Node): boolean {
+	if (Predicate.isNullish(node.parent)) return false
+	if (
+		node.parent.type === 'CallExpression' &&
+		(runsLive(context, node.parent) ||
+			(Array.some(node.parent.arguments, argument => argument === node) &&
+				Option.exists(testChain(context, node.parent.callee), liveTester)))
+	) {
+		return true
+	}
+	return onRealClock(context, node.parent)
+}
+
 export function importedMember(input: {
 	context: Context
 	importedName: string
@@ -499,6 +636,47 @@ export function childNodes(context: Context, node: ESTree.Node) {
 			return Array.ensure(node[key])
 		}),
 		Array.filter(isNode)
+	)
+}
+
+// Whether a node or a node below it matches; `throughFunctions` decides whether callbacks count, since a loop does not run its callbacks itself.
+export function containsNode(input: {
+	context: Context
+	matches: (node: ESTree.Node) => boolean
+	node: ESTree.Node
+	throughFunctions: boolean
+}): boolean {
+	if (input.matches(input.node)) return true
+	if (!input.throughFunctions && isFunction(input.node)) return false
+	return Array.some(childNodes(input.context, input.node), child => containsNode({...input, node: child}))
+}
+
+export function isTestFile(context: Context) {
+	return matches(/\.test\.[cm]?[jt]sx?$/u)(context.filename)
+}
+
+// A global timer such as setTimeout that no binding shadows.
+export function isTimerCall(context: Context, node: ESTree.Node) {
+	return (
+		node.type === 'CallExpression' &&
+		node.callee.type === 'Identifier' &&
+		Array.contains(['setImmediate', 'setInterval', 'setTimeout'], node.callee.name) &&
+		!Option.exists(variableFor(context, node.callee), variable => Array.isArrayNonEmpty(variable.defs))
+	)
+}
+
+// A step that waits on a clock: a timer, Effect.sleep or Effect.delay, Stream.tick, or a schedule that spaces its runs in time.
+export function isClockWait(context: Context, node: ESTree.Node) {
+	if (isTimerCall(context, node)) return true
+	if (node.type !== 'MemberExpression') return false
+	return (
+		Array.some(['delay', 'sleep'], propertyName =>
+			importedMember({context, importedName: 'Effect', node, propertyName})
+		) ||
+		importedMember({context, importedName: 'Stream', node, propertyName: 'tick'}) ||
+		Array.some(['exponential', 'fibonacci', 'fixed', 'spaced', 'windowed'], propertyName =>
+			importedMember({context, importedName: 'Schedule', node, propertyName})
+		)
 	)
 }
 
