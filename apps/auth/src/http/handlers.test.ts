@@ -6,6 +6,7 @@ import {
 	Boolean,
 	Clock,
 	ConfigProvider,
+	Deferred,
 	Effect,
 	FileSystem,
 	Fiber,
@@ -88,6 +89,15 @@ function discoveryResponse(url: string) {
 		})
 	}
 	if (!String.includes('/.well-known/')(url)) return undefined
+	// A Deslop MCP names Auth as its authorization server, as `@deslop/runtime` serves it.
+	if (url === 'https://stash.mp281x.xyz/.well-known/oauth-protected-resource/mcp') {
+		return Response.json({
+			authorization_servers: [`${AUTH_URL}/api/auth`],
+			bearer_methods_supported: ['header'],
+			resource: 'https://stash.mp281x.xyz/mcp',
+			scopes_supported: ['deslop']
+		})
+	}
 	// A provider that neither registers clients nor names itself in its answers.
 	if (String.includes('silent.example.com')(url)) {
 		if (String.includes('oauth-protected-resource')(url)) {
@@ -185,6 +195,11 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 	const upstreamRequests = MutableList.make<{url: string; method: string; authorization: string; body: unknown}>()
 	const grants = MutableList.make<{grant: string; refresh: string; resource: string}>()
 	const sessions = MutableHashMap.empty<string, string>()
+	// The gateway reaches Auth's own endpoints by their public URL, like any provider's.
+	const self = yield* Deferred.make<(request: Request) => Effect.Effect<Response>>()
+	const toSelf = Effect.fnUntraced(function* (request: Request) {
+		return yield* (yield* Deferred.await(self))(request)
+	})
 	const rejected = Effect.gen(function* () {
 		if (yield* Ref.get(pauseReject)) {
 			yield* Queue.offer(rejectReady, true)
@@ -197,6 +212,7 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 		// oxlint-disable-next-line no-restricted-properties -- The MCP SDK's FetchLike contract requires a Promise<Response>.
 		return Effect.runPromise(
 			Effect.gen(function* () {
+				if (new URL(request.url).origin === AUTH_URL) return yield* toSelf(request)
 				const metadata = upstreamHttpResponse(request)
 				if (metadata !== undefined) return metadata
 				if (request.method === 'DELETE') {
@@ -323,6 +339,11 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 	)
 	const github = HttpClient.make(request =>
 		Effect.gen(function* () {
+			if (new URL(request.url).origin === AUTH_URL) {
+				const init: RequestInit = {headers: request.headers, method: request.method}
+				if (request.body._tag === 'Uint8Array') init.body = new TextDecoder().decode(request.body.body)
+				return HttpClientResponse.fromWeb(request, yield* toSelf(new Request(request.url, init)))
+			}
 			if (
 				!String.startsWith('https://github.com/')(request.url) &&
 				!String.startsWith('https://api.github.com/')(request.url)
@@ -608,6 +629,7 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 		),
 		web => Effect.promise(() => web.dispose())
 	)
+	yield* Deferred.succeed(self, request => Effect.promise(() => issuer.handler(request)))
 	const app = yield* Effect.acquireRelease(
 		Effect.sync(() =>
 			HttpRouter.toWebHandler(
@@ -1201,7 +1223,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					assert.strictEqual((yield* modern(web.issuer, '', 'tools/list')).status, 401)
 					assert.strictEqual(web.upstreamRequests.length, 0)
 					yield* addMcp(web.issuer, session, PROVIDERS.mobbin.url)
-					yield* addMcp(web.issuer, session, 'https://stash.mp281x.xyz/mcp')
+					yield* addMcp(web.issuer, session, 'https://public.example.com/mcp')
 					const start = yield* send(web.issuer, '/auth/mcp/connect?id=mobbin', {headers: {cookie: session}})
 					const target = new URL(start.headers.get('location') ?? '')
 					assert.strictEqual(target.searchParams.get('code_challenge_method'), 'S256')
@@ -1231,7 +1253,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					assert.isTrue(
 						Array.some(tools, tool => tool.name === 'mobbin__search' && tool.annotations?.readOnlyHint === true)
 					)
-					assert.isTrue(Array.some(tools, tool => tool.name === 'stash__search'))
+					assert.isTrue(Array.some(tools, tool => tool.name === 'public__search'))
 					const result = yield* modern(web.issuer, token, 'tools/call', {
 						arguments: {query: 'onboarding'},
 						name: 'mobbin__search'
@@ -1243,25 +1265,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					assert.isFalse(String.includes('refresh-')(text))
 					assert.strictEqual((yield* callTool(web.issuer, token, 'mobbin__search', {query: 'claude'})).status, 200)
 					assert.strictEqual(MutableHashMap.size(web.sessions), 0)
-					const own = yield* Effect.fromOption(
-						Array.findFirst(
-							MutableList.toArray(web.upstreamRequests),
-							request => request.url === 'https://stash.mp281x.xyz/mcp'
-						)
-					)
-					assert.notStrictEqual(own.authorization, `Bearer ${token}`)
-					assert.strictEqual(
-						(yield* send(web.issuer, '/auth/verify?resource=https://stash.mp281x.xyz/mcp', {
-							headers: {authorization: own.authorization}
-						})).status,
-						200
-					)
-					assert.strictEqual(
-						(yield* send(web.issuer, '/auth/verify?resource=https://scope.mp281x.xyz/mcp', {
-							headers: {authorization: own.authorization}
-						})).status,
-						401
-					)
 					assert.deepStrictEqual(MutableList.toArray(web.grants), [
 						{grant: 'authorization_code', refresh: '', resource: PROVIDERS.mobbin.url}
 					])
@@ -1317,7 +1320,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const partial = yield* Fiber.join(slowList)
 			const partialText = yield* Effect.promise(() => partial.text())
 			assert.isTrue(String.includes('list_mcp_connections')(partialText))
-			assert.isTrue(String.includes('stash__search')(partialText))
+			assert.isTrue(String.includes('public__search')(partialText))
 			assert.strictEqual((yield* modern(web.issuer, saved.token, 'tools/list')).status, 200)
 			assert.strictEqual((yield* post(web.issuer, '/servers/disconnect', saved.session, {id: 'mobbin'})).status, 204)
 			const disconnected = yield* modern(web.issuer, saved.token, 'tools/call', {
@@ -1332,6 +1335,147 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* Ref.set(web.stall, false)
 			yield* TestClock.adjust('21 seconds')
 			assert.strictEqual(MutableHashMap.size(web.sessions), 0)
+		})
+	)
+
+	test.effect(
+		'connects a Deslop MCP through Auth’s own OAuth, with a token only that server accepts',
+		Effect.fnUntraced(function* () {
+			const web = yield* servers()
+			const session = cookie(yield* signIn(web.issuer, 'octocat'))
+			const token = yield* agentToken(web.issuer, session)
+			const added = yield* addMcp(web.issuer, session, 'https://stash.mp281x.xyz/mcp')
+			assert.strictEqual(added.status, 'Not connected')
+			const start = yield* send(web.issuer, `/auth/mcp/connect?id=${added.id}`, {headers: {cookie: session}})
+			const target = new URL(start.headers.get('location') ?? '')
+			assert.strictEqual(target.origin, AUTH_URL)
+			assert.strictEqual(target.searchParams.get('redirect_uri'), `${AUTH_URL}/auth/mcp/callback/${added.id}`)
+			const waiting = yield* send(web.issuer, `${target.pathname}${target.search}`, {headers: {cookie: session}})
+			assert.strictEqual(waiting.status, 302)
+			const request = {
+				cookie: `${session}; ${cookie(waiting)}`,
+				id: new URL(waiting.headers.get('location') ?? '', AUTH_URL).searchParams.get('request') ?? ''
+			}
+			assert.strictEqual((yield* answer(web.issuer, session, request.id, true)).status, 204)
+			const callback = yield* delivered(web.issuer, request)
+			assert.strictEqual(callback.searchParams.get('iss'), `${AUTH_URL}/api/auth`)
+			assert.strictEqual(
+				(yield* send(web.issuer, `${callback.pathname}${callback.search}`, {
+					headers: {cookie: `${session}; ${cookie(start)}`}
+				})).headers.get('location'),
+				'/mcp-servers'
+			)
+			assert.isTrue(
+				String.includes(`${added.id}__search`)(
+					yield* Effect.flatMap(modern(web.issuer, token, 'tools/list'), response =>
+						Effect.promise(() => response.text())
+					)
+				)
+			)
+			const own = yield* Effect.fromOption(
+				Array.findFirst(
+					MutableList.toArray(web.upstreamRequests),
+					upstream => upstream.url === 'https://stash.mp281x.xyz/mcp' && upstream.authorization !== ''
+				)
+			)
+			assert.notStrictEqual(own.authorization, `Bearer ${token}`)
+			assert.strictEqual(
+				(yield* send(web.issuer, '/auth/verify?resource=https://stash.mp281x.xyz/mcp', {
+					headers: {authorization: own.authorization}
+				})).status,
+				200
+			)
+			assert.strictEqual(
+				(yield* send(web.issuer, '/auth/verify?resource=https://scope.mp281x.xyz/mcp', {
+					headers: {authorization: own.authorization}
+				})).status,
+				401
+			)
+			const apps = yield* send(web.issuer, '/apps', {headers: {cookie: session}})
+			assert.isTrue(
+				Array.some(
+					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp)))(
+						yield* Effect.promise(() => apps.text())
+					),
+					app => app.client === 'Deslop MCP gateway' && Array.contains(app.resources, 'https://stash.mp281x.xyz/mcp')
+				)
+			)
+			// A call goes through with that token; once it nears its 15 minutes, the gateway rotates it at Auth.
+			const proxied = Effect.fnUntraced(function* (query: string) {
+				const response = yield* modern(web.issuer, token, 'tools/call', {
+					arguments: {query},
+					name: `${added.id}__search`
+				})
+				assert.isTrue(String.includes(query)(yield* Effect.promise(() => response.text())))
+				return yield* Effect.fromOption(
+					Array.findLast(
+						MutableList.toArray(web.upstreamRequests),
+						upstream => upstream.url === 'https://stash.mp281x.xyz/mcp' && upstream.method === 'tools/call'
+					)
+				)
+			})
+			assert.strictEqual((yield* proxied('first call')).authorization, own.authorization)
+			yield* TestClock.adjust('880 seconds')
+			const rotated = yield* proxied('after rotation')
+			assert.notStrictEqual(rotated.authorization, own.authorization)
+			assert.strictEqual(
+				(yield* send(web.issuer, '/auth/verify?resource=https://stash.mp281x.xyz/mcp', {
+					headers: {authorization: rotated.authorization}
+				})).status,
+				200
+			)
+		})
+	)
+	test.effect(
+		'deletes the previous release’s delegated Deslop servers and keeps the others',
+		Effect.fnUntraced(function* () {
+			const fs = yield* FileSystem.FileSystem
+			const home = yield* fs.makeTempDirectoryScoped()
+			const row = {generation: 'previous', hidden: [], link: {_tag: 'Connected'}, name: 'Example', tools: ['search']}
+			yield* fs.makeDirectory(`${home}/.deslop/auth/mcp`, {recursive: true})
+			yield* fs.writeFileString(
+				`${home}/.deslop/auth/mcp/servers`,
+				yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
+					mobbin: {
+						...row,
+						id: 'mobbin',
+						link: {
+							_tag: 'Authorized',
+							expiresAt: 0,
+							token: {access_token: 'saved-access', refresh_token: 'saved-refresh', token_type: 'Bearer'}
+						},
+						mode: 'oauth',
+						oauth: {
+							client: {_tag: 'Registered', clientId: 'gateway-client'},
+							metadata: {
+								authorization_endpoint: `${PROVIDERS.mobbin.issuer}/oauth/authorize`,
+								issuer: PROVIDERS.mobbin.issuer,
+								token_endpoint: `${PROVIDERS.mobbin.issuer}/oauth/token`
+							},
+							scope: ''
+						},
+						url: PROVIDERS.mobbin.url
+					},
+					public: {...row, id: 'public', mode: 'public', url: 'https://public.example.com/mcp'},
+					stash: {...row, id: 'stash', mode: 'deslop', url: 'https://stash.mp281x.xyz/mcp'}
+				})
+			)
+			const web = yield* servers(home)
+			const listed = yield* send(web.issuer, '/servers', {
+				headers: {cookie: cookie(yield* signIn(web.issuer, 'octocat'))}
+			})
+			assert.deepStrictEqual(
+				Array.map(
+					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(ConnectionInfo)))(
+						yield* Effect.promise(() => listed.text())
+					),
+					server => `${server.id}:${server.status}`
+				),
+				['mobbin:Connected', 'public:Connected']
+			)
+			const kept = yield* fs.readFileString(`${home}/.deslop/auth/mcp/servers`)
+			assert.isFalse(String.includes('deslop')(kept))
+			assert.isTrue(String.includes('saved-refresh')(kept))
 		})
 	)
 

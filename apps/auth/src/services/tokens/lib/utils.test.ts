@@ -30,3 +30,18 @@ it('accepts exact worker preview callbacks without widening cookie returns or lo
 	assert.isFalse(returnable(callback, 'https://auth.mp281x.xyz'))
 	assert.isTrue(allowedRedirect('http://127.0.0.1:1234/callback'))
 })
+
+it('accepts the gateway’s own per-server callback and nothing around it', () => {
+	assert.isTrue(allowedRedirect('https://auth.mp281x.xyz/auth/mcp/callback/stash'))
+	for (const invalid of [
+		'https://auth.mp281x.xyz/auth/mcp/callback',
+		'https://auth.mp281x.xyz/auth/mcp/callback/',
+		'https://auth.mp281x.xyz/auth/mcp/callback/stash/elsewhere',
+		'https://auth.mp281x.xyz/auth/mcp/callback/stash?next=elsewhere',
+		'https://auth.mp281x.xyz/auth/mcp/callback/stash#elsewhere',
+		'https://auth.mp281x.xyz.evil.test/auth/mcp/callback/stash',
+		'https://evil.test/auth/mcp/callback/stash'
+	]) {
+		assert.isFalse(allowedRedirect(invalid), invalid)
+	}
+})

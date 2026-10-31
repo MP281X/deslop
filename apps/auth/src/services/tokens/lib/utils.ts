@@ -7,6 +7,8 @@ import ipaddr from 'ipaddr.js'
 import {AuthError, Resource} from '@deslop/runtime/auth/schema'
 import {AUTH_URL, previewOrigin} from '@deslop/runtime/auth/utils'
 
+import {CALLBACK} from '#services/connections/lib/utils.ts'
+import {ServerId} from '#services/connections/schema.ts'
 import type {AuthorizeClient, AuthorizeParams, Origin} from '#services/tokens/schema.ts'
 import {ClientInfo, ClientRequest} from '#services/tokens/schema.ts'
 
@@ -88,9 +90,10 @@ function loopback(redirect: string) {
 	)
 }
 
-// The iOS apps in their release and Simulator builds, or a loopback callback of a desktop agent.
+// The iOS apps in their release and Simulator builds, a loopback callback of a desktop agent, or the gateway's per-server one.
 export function allowedRedirect(redirect: string) {
 	return (
+		(String.startsWith(`${CALLBACK}/`)(redirect) && Schema.is(ServerId)(String.slice(CALLBACK.length + 1)(redirect))) ||
 		Array.contains(
 			[
 				'stash://auth/callback',

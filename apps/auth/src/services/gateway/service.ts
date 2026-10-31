@@ -23,10 +23,9 @@ import {Client, StreamableHTTPClientTransport} from '@modelcontextprotocol/clien
 import {McpSchema, McpServer} from 'effect/ai'
 import {Digest} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
-import type {Headers} from 'effect/http'
 import {FetchHttpClient, HttpRouter, HttpServerRequest} from 'effect/http'
 
-import {AuthError, Resource} from '@deslop/runtime/auth/schema'
+import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 import {AUTH_URL} from '@deslop/runtime/auth/utils'
 
@@ -35,7 +34,6 @@ import type {Connection} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
 import {compact} from '#services/gateway/lib/utils.ts'
 import {RemoteTools, ToolArguments, ToolRequest} from '#services/gateway/schema.ts'
-import {Tokens} from '#services/tokens/service.ts'
 
 type Server = Pick<Connection, 'id' | 'generation' | 'name' | 'mode'>
 
@@ -49,12 +47,11 @@ function rejected(server: Pick<Connection, 'name'>) {
 
 export class Gateway extends Context.Service<
 	Gateway,
-	{readonly refresh: (headers: Headers.Headers, registry: typeof McpServer.McpServer.Service) => Effect.Effect<void>}
+	{readonly refresh: (registry: typeof McpServer.McpServer.Service) => Effect.Effect<void>}
 >()('@deslop/auth/services/gateway/service/Gateway') {
 	static readonly layer = Layer.effect(Gateway)(
 		Effect.gen(function* () {
 			const auth = yield* Auth
-			const tokens = yield* Tokens
 			const connections = yield* Connections
 			const fetch = yield* FetchHttpClient.Fetch
 			const digest = yield* Digest.Digest
@@ -134,7 +131,7 @@ export class Gateway extends Context.Service<
 					})
 				).layer
 			)
-			const upstreamFor = Effect.fnUntraced(function* (server: Server, headers: Headers.Headers) {
+			const upstreamFor = Effect.fnUntraced(function* (server: Server) {
 				const current = yield* connections.get(server.id)
 				if (
 					current.generation !== server.generation ||
@@ -144,23 +141,13 @@ export class Gateway extends Context.Service<
 						message: `${server.name} is not connected; connect it on ${AUTH_URL}/mcp-servers`
 					})
 				}
-				if (current.mode === 'oauth') {
-					return {token: yield* connections.token(server.id, server.generation), url: current.url}
-				}
 				if (current.mode === 'public') return {token: undefined, url: current.url}
-				return {
-					token: yield* tokens.delegate(headers, yield* Schema.decodeUnknownEffect(Resource)(current.url)),
-					url: current.url
-				}
+				return {token: yield* connections.token(server.id, server.generation), url: current.url}
 			})
-			function withClient<A>(
-				server: Server,
-				headers: Headers.Headers,
-				run: (client: Client) => Effect.Effect<A, AuthError>
-			) {
+			function withClient<A>(server: Server, run: (client: Client) => Effect.Effect<A, AuthError>) {
 				return pipe(
 					Effect.gen(function* () {
-						const upstream = yield* upstreamFor(server, headers)
+						const upstream = yield* upstreamFor(server)
 						const context = yield* Effect.context<never>()
 						const transport = new StreamableHTTPClientTransport(new URL(upstream.url), {
 							authProvider: {
@@ -171,8 +158,6 @@ export class Gateway extends Context.Service<
 											Effect.gen(function* () {
 												if (server.mode === 'oauth') {
 													upstream.token = yield* connections.token(server.id, server.generation, upstream.token)
-												} else {
-													upstream.token = (yield* upstreamFor(server, headers)).token
 												}
 											}),
 											Effect.provideContext(context)
@@ -213,7 +198,7 @@ export class Gateway extends Context.Service<
 					)
 					yield* auth.access(request.headers, `${AUTH_URL}/mcp`)
 					const args = yield* Schema.decodeUnknownEffect(ToolArguments)(input ?? {})
-					return yield* withClient(server, request.headers, client =>
+					return yield* withClient(server, client =>
 						pipe(
 							Effect.tryPromise({
 								catch: rejected(server),
@@ -242,16 +227,12 @@ export class Gateway extends Context.Service<
 							)
 					)
 			)
-			const discover = Effect.fnUntraced(function* (
-				server: Connection,
-				headers: Headers.Headers,
-				registry: typeof McpServer.McpServer.Service
-			) {
+			const discover = Effect.fnUntraced(function* (server: Connection, registry: typeof McpServer.McpServer.Service) {
 				if (connectionStatus(server, yield* Clock.currentTimeMillis) !== 'Connected') {
 					return yield* updateVisible(server, HashSet.empty(), registry)
 				}
 				const found = yield* pipe(
-					withClient(server, headers, client =>
+					withClient(server, client =>
 						pipe(
 							Effect.tryPromise({catch: rejected(server), try: signal => client.listTools(undefined, {signal})}),
 							Effect.flatMap(result =>
@@ -314,10 +295,7 @@ export class Gateway extends Context.Service<
 				})
 			})
 			return Gateway.of({
-				refresh: Effect.fn('Gateway.refresh')(function* (
-					headers: Headers.Headers,
-					registry: typeof McpServer.McpServer.Service
-				) {
+				refresh: Effect.fn('Gateway.refresh')(function* (registry: typeof McpServer.McpServer.Service) {
 					const worker = yield* Effect.forkIn(
 						refreshes.withPermitsIfAvailable(1)(
 							pipe(
@@ -328,7 +306,7 @@ export class Gateway extends Context.Service<
 										definitions,
 										server =>
 											pipe(
-												discover(server, headers, registry),
+												discover(server, registry),
 												Effect.tapCause(cause => Effect.logWarning(`${server.name} discovery failed`, cause)),
 												Effect.catch(cause =>
 													connections.report(server.id, server.generation, {
@@ -369,7 +347,7 @@ export const GatewayDiscovery = HttpRouter.middleware()(
 				) {
 					const body = yield* Effect.result(request.json)
 					if (Result.isSuccess(body) && Schema.is(ToolRequest)(body.success)) {
-						yield* gateway.refresh(request.headers, registry)
+						yield* gateway.refresh(registry)
 					}
 				}
 				return yield* app

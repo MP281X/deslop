@@ -32,24 +32,30 @@ import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from
 import {KeyValueStore} from 'effect/persistence'
 
 import type {User} from '@deslop/runtime/auth/schema'
-import {AuthError, Resource} from '@deslop/runtime/auth/schema'
+import {AuthError} from '@deslop/runtime/auth/schema'
 import {AUTH_URL} from '@deslop/runtime/auth/utils'
 import {layerKeyValueStore} from '@deslop/runtime/server'
 
-import {connectionInfo, describe, serverName} from '#services/connections/lib/utils.ts'
+import {CALLBACK, connectionInfo, describe, serverName} from '#services/connections/lib/utils.ts'
 import type {
 	Callback,
-	Connection,
 	ConnectionInfo,
 	Discovery,
 	OAuth,
 	ServerId,
 	ToolVisibility
 } from '#services/connections/schema.ts'
-import {ConnectionStore, Metadata, Registration, ServerUrl, Token} from '#services/connections/schema.ts'
+import {
+	Connection,
+	ConnectionStore,
+	HttpsUrl,
+	Metadata,
+	Registration,
+	ServerUrl,
+	Token
+} from '#services/connections/schema.ts'
 import {People} from '#services/people/service.ts'
 
-const CALLBACK = `${AUTH_URL}/auth/mcp/callback`
 const CLIENT_METADATA = `${AUTH_URL}/auth/mcp/client.json`
 
 // Auth's client metadata document, for providers that accept one instead of a registration.
@@ -80,7 +86,7 @@ function validMetadata(metadata: Metadata) {
 			metadata.token_endpoint,
 			...Option.toArray(Option.fromUndefinedOr(metadata.registration_endpoint))
 		],
-		endpoint => Schema.is(ServerUrl)(endpoint)
+		endpoint => Schema.is(HttpsUrl)(endpoint)
 	)
 }
 
@@ -107,7 +113,16 @@ export class Connections extends Context.Service<
 		// The previous release's servers and pending sign-ins; this one starts over, so they are deleted.
 		yield* kv.remove('connections')
 		const store = KeyValueStore.toSchemaStore(kv, ConnectionStore)
-		const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('servers'), () => ({})))
+		// The previous release called the owner's apps with delegated tokens; their rows are deleted, to be added again and connected by OAuth.
+		const saved = Record.filter(
+			Option.getOrElse(
+				yield* KeyValueStore.toSchemaStore(kv, Schema.Record(Schema.String, Schema.Unknown)).get('servers'),
+				() => ({})
+			),
+			Schema.is(Connection)
+		)
+		yield* store.set('servers', saved)
+		const state = yield* SubscriptionRef.make<ConnectionStore>(saved)
 		// Each server's token is read and refreshed one call at a time, so concurrent calls never spend its refresh token twice.
 		const locks = yield* Cache.make<string, Semaphore.Semaphore>({capacity: 256, lookup: () => Semaphore.make(1)})
 		const people = yield* People
@@ -279,8 +294,7 @@ export class Connections extends Context.Service<
 				)
 			)
 		}, failed('Cannot refresh this MCP; reconnect it from the MCP page'))
-		const discover = Effect.fnUntraced(function* (initial: Connection) {
-			if (Schema.is(Resource)(initial.url) && String.endsWith('/mcp')(initial.url)) return initial
+		const discover = Effect.fnUntraced(function* (initial: Omit<Connection, 'link' | 'mode'>) {
 			const probe = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
 				id: 1,
 				jsonrpc: '2.0',
@@ -410,8 +424,6 @@ export class Connections extends Context.Service<
 						generation: yield* nonce,
 						hidden: [],
 						id,
-						link: {_tag: 'Connected'},
-						mode: 'deslop',
 						name: String.capitalize(base),
 						tools: [],
 						url
