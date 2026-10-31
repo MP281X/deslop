@@ -18,10 +18,10 @@ opm and trips build the same way, with bundle `xyz.mp281x.<app>.dev`. To sign a 
 
 ## Deploy
 
-Every push to `main` runs Release (`deploy.yaml`): Verify, then the app images and `@deslop/coding-standards`, then each mobile app's EAS Update or App Store build.
+Every push to `main` runs Release (`deploy.yaml`): Verify, then side by side the app images with `@deslop/coding-standards`, and each mobile app's EAS Update, or its App Store build for a native fingerprint without one.
 
 1. **Apply.** The `deploy` service in `tools/compose.yaml` applies main's commit each minute (its comment there). Start the project, or apply a change to the `deploy` entry, from a checkout on published main: `docker compose --project-name deslop --file tools/compose.yaml up -d`.
-2. **Check.** https://portfolio.mp281x.xyz and the host's http://127.0.0.1:4318/health return 200. Unauthenticated public OTLP and MCP requests return 401; each MCP challenge names its `/.well-known/oauth-protected-resource/mcp` metadata. After browser authorization, `scope`, `stash` and `auth` tools answer on their public `/mcp` URLs. An OPTIONS preflight to otel with `Origin: https://portfolio.mp281x.xyz` allows credentialed requests; verify an actual span too.
+2. **Check.** https://portfolio.mp281x.xyz and the host's http://127.0.0.1:4318/health return 200. Unauthenticated public OTLP and MCP requests return 401; each MCP challenge names its `/.well-known/oauth-protected-resource/mcp` metadata. After browser authorization, every app serving `ServerRuntime.layerMcp` answers its tools on its public `/mcp` URL. An OPTIONS preflight to otel with `Origin: https://portfolio.mp281x.xyz` allows credentialed requests; verify an actual span too.
 
 ## Publish a package
 
@@ -43,7 +43,7 @@ Release publishes each package its Build and Package steps name as `0.1.<run>` w
 
 The Simulator is for iteration, TestFlight for distribution.
 
-1. **Register before pushing.** After the mobile generator, check `npx --yes eas-cli@latest whoami`; if needed, use `login --device` and share its URL, not a worker-local callback. The generated all-zero project ID counts as already linked: temporarily replace `app.config.ts` with a default export of only its generated `name`, `owner` and `slug`, without the runtime helper, project ID or updates URL. Run `init` in `apps/<name>`, then restore the generated config with the real UUID it prints before the first CI push. If init cannot write the dynamic config, apply its printed ID yourself, not another project creation. Add the app to the image loop and the app matrix in `deploy.yaml`, and to the app matrix and trigger paths in `simulator.yaml`. Add `<name>://auth/callback` and `<name>-dev://auth/callback` to `allowedRedirect` in `apps/auth/src/services/tokens/lib/utils.ts`.
+1. **Register before pushing.** After the mobile generator, check `npx --yes eas-cli@latest whoami`; if needed, use `login --device` and share its URL, not a worker-local callback. The generated all-zero project ID counts as already linked: temporarily replace `app.config.ts` with a default export of only its generated `name`, `owner` and `slug`, without the runtime helper, project ID or updates URL. Run `init` in `apps/<name>`, then restore the generated config with the real UUID it prints before the first CI push. If init cannot write the dynamic config, apply its printed ID yourself, not another project creation. Add the app's service to `tools/compose.yaml`, the app to the image loop and the app matrix in `deploy.yaml`, and to the app matrix and trigger paths in `simulator.yaml`. Add `<name>://auth/callback` and `<name>-dev://auth/callback` to `allowedRedirect` in `apps/auth/src/services/tokens/lib/utils.ts`.
 2. **Prove the app.** Install the branch's Simulator build per Simulator builds, sign in through both callback schemes, then complete a real app action.
 3. **Resolve production first.** Set `APP_VARIANT=production` on every standalone build, credentials, submission or metadata command; a submit profile does not inherit the build profile's environment. Set `RELEASE_NUMBER` to the intended unused release number, not the default zero. Inspect the resolved name, bundle identifier, scheme, project and version before creating Apple records:
 

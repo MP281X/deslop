@@ -37,7 +37,7 @@ The user's choices; add a row when they pick, reject or correct one not covered 
 - The web look lives in the shadcn theme, `packages/components-web/src/theme.css`; pages add no cards. iOS screens carry the same look through SwiftUI primitives from `@expo/ui` (navigation, toolbars, search, lists, menus, swipe actions, sheets, SF Symbols) with the mobile theme's tokens and their system sizes and behavior; glass for controls and navigation, never content; system controls stay native.
 - Each context has one icon entrypoint for an action instead of text buttons repeating it; conventional icons get no tooltip.
 
-## Tests
+## Tests and measurements
 
 Keep tests of owned runtime behavior that survive equivalent implementations, not private structure or library and type-system guarantees. Each scenario protects a distinct behavior: merge genuine subsets, preserving unique assertions, or remove repeated protection from the broader test. Similar setup is not duplication; different inputs, dependencies, timing, state or failure paths can protect different behavior. E2E proves the user's input through the outcome, including relevant failures, not merely that screens open. Use inline probes or browser proofs for one-off assumptions; a fix alone does not justify another persistent test.
 
