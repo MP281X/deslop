@@ -7,8 +7,7 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
-import {Loading} from '@deslop/components-web/fallbacks'
-import {ItemList} from '@deslop/components-web/item-list'
+import {ItemList, ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Button} from '@deslop/components-web/ui/button'
 import {FieldError} from '@deslop/components-web/ui/field'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
@@ -118,7 +117,14 @@ function Directory() {
 function PeopleRoute() {
 	if (!Option.exists(useAtomSuspense(accountAtom).value, signed => signed.role === 'Admin')) return <Navigate to="/" />
 	return (
-		<Suspense fallback={<Loading />}>
+		<Suspense
+			fallback={
+				<>
+					<h1 className="text-xl font-semibold tracking-tight">People</h1>
+					<ItemListSkeleton label="People" media rows={3} />
+				</>
+			}
+		>
 			<Directory />
 		</Suspense>
 	)

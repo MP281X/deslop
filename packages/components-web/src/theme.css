@@ -26,6 +26,7 @@
 	--accent: #f0f0f0;
 	--border: #e5e5e5;
 	--input: #d9d9d9;
+	--icon-tile: #fafafa;
 
 	--primary: var(--orange);
 	--destructive: var(--red);
@@ -89,6 +90,7 @@
 	--color-border: var(--border);
 	--color-destructive: var(--destructive);
 	--color-warning: var(--warning);
+	--color-icon-tile: var(--icon-tile);
 	--color-accent-foreground: var(--accent-foreground);
 	--color-accent: var(--accent);
 	--color-muted-foreground: var(--muted-foreground);
@@ -152,6 +154,11 @@
    even when the row renders as a button, instead of widening the row. */
 [data-slot='item-content'] {
 	min-width: 0;
+}
+
+/* A page's list rows start where its heading and fields do; a row that is a button keeps its inset for its highlight. */
+[data-slot='item-group'] > [data-slot='item'] {
+	padding-inline: 0;
 }
 
 [data-slot='item-title'],

@@ -5,7 +5,8 @@ import {Cause, Option} from 'effect'
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 
-import {Error, Loading, SignIn} from '@deslop/components-web/fallbacks'
+import {Error, SignIn} from '@deslop/components-web/fallbacks'
+import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {signInUrl} from '@deslop/runtime/auth/utils'
 
 import {RpcClient} from '#lib/utils.ts'
@@ -17,9 +18,9 @@ function Home() {
 			if (!Option.exists(Cause.findErrorOption(failure.cause), error => error._tag === 'AuthError')) {
 				return <Error error={Cause.squash(failure.cause)} reset={() => location.reload()} />
 			}
-			return <SignIn description="Sign in to continue." href={signInUrl(location.href)} />
+			return <SignIn href={signInUrl(location.href)} />
 		},
-		onInitial: () => <Loading />,
+		onInitial: () => <Skeleton className="h-5 w-32" />,
 		onSuccess: name => name.value
 	})
 }

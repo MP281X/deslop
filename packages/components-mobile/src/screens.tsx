@@ -2,7 +2,7 @@ import {useAtomSet, useAtomSuspense} from '@effect/atom-react'
 
 import {Cause} from 'effect'
 
-import {Button, Host, Image, ProgressView, Text, VStack} from '@expo/ui/swift-ui'
+import {Button, Host, Image, Text, VStack} from '@expo/ui/swift-ui'
 import {
 	background,
 	buttonStyle,
@@ -24,6 +24,7 @@ import type {Session} from '@deslop/runtime/mobile/session'
 
 import {colors, space, text} from './theme.ts'
 
+import {ItemGroupSkeleton} from '#components/ui/skeleton.tsx'
 import {assetAtom} from '#lib/utils.ts'
 
 // The padding comes before the frame so the background behind it reaches every edge of the screen.
@@ -33,10 +34,11 @@ const FULL_SCREEN = [
 	background(colors.background)
 ]
 
+// Data on its way shows as the list it will fill, never a spinner on an empty screen.
 export function LoadingScreen() {
 	return (
 		<Host style={{flex: 1}}>
-			<ProgressView modifiers={[frame({maxHeight: Infinity, maxWidth: Infinity}), background(colors.background)]} />
+			<ItemGroupSkeleton rows={10} />
 		</Host>
 	)
 }

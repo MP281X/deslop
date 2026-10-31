@@ -6,7 +6,7 @@ import {Atom} from 'effect/reactivity'
 import * as Rpc from 'effect/rpc'
 import {Socket} from 'effect/socket'
 
-import {Error, Loading, NotFound} from '@deslop/components-web/fallbacks'
+import {Error, NotFound} from '@deslop/components-web/fallbacks'
 
 import {layerOtlp} from '#telemetry.ts'
 
@@ -23,8 +23,6 @@ export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext:
 			context: {},
 			defaultErrorComponent: Error,
 			defaultNotFoundComponent: NotFound,
-			defaultPendingComponent: Loading,
-			defaultPendingMs: 0,
 			defaultPreload: 'intent',
 			getScrollRestorationKey,
 			routeTree,

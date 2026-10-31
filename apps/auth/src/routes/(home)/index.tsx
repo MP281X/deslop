@@ -7,13 +7,13 @@ import {MachineState} from '@typeonce/effect-machine-react'
 import {Check, X} from 'lucide-react'
 import {Suspense} from 'react'
 
-import {Loading} from '@deslop/components-web/fallbacks'
+import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {FieldError} from '@deslop/components-web/ui/field'
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
 import {cn} from '@deslop/components-web/utils'
 
-import {SignedInList} from '#lib/components.tsx'
-import {codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/utils.ts'
+import {AppList} from '#lib/components.tsx'
+import {APPS, codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/utils.ts'
 import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 
@@ -28,12 +28,9 @@ function Enter(props: {
 }) {
 	return (
 		<section className="flex flex-col gap-4">
-			<div className="flex flex-col gap-1">
-				<h1 className="text-xl font-semibold tracking-tight">Approve a sign-in</h1>
-				<label htmlFor="code" className="text-muted-foreground text-sm">
-					Type the code your device shows.
-				</label>
-			</div>
+			<h1 className="text-xl font-semibold tracking-tight">
+				<label htmlFor="code">Approve a sign-in</label>
+			</h1>
 			<InputOTP
 				id="code"
 				maxLength={CODE_LENGTH}
@@ -111,8 +108,8 @@ function Page(props: {
 	return (
 		<>
 			<Enter answered={props.answered} onType={props.onType} state={props.state} typed={props.typed} />
-			<Suspense fallback={<Loading />}>
-				<SignedInList pending={props.pending} />
+			<Suspense fallback={<ItemListSkeleton label="Apps" media rows={APPS.length} />}>
+				<AppList pending={props.pending} />
 			</Suspense>
 		</>
 	)

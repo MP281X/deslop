@@ -90,6 +90,17 @@ export function ageOf(time: string, now: number) {
 	return `${Number.round(seconds / 86_400, 0)}d`
 }
 
+// "@deslop/stash-server" reads "stash", "@deslop/auth-client" "auth web", "@deslop/trips-ios" "trips iOS".
+export function serviceLabel(service: string) {
+	return pipe(
+		service,
+		String.replace(/^@deslop\//u, ''),
+		String.replace(/-server$/u, ''),
+		String.replace(/-client$/u, ' web'),
+		String.replace(/-ios$/u, ' iOS')
+	)
+}
+
 // "412 ms" or "2.8 s".
 export function durationOf(ms: number) {
 	if (ms < 1000) return `${Number.round(ms, 0)} ms`
