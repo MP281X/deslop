@@ -1,4 +1,4 @@
-import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Cause, Match, Option, Order, String, pipe} from 'effect'
 
@@ -6,7 +6,7 @@ import {createFileRoute} from '@tanstack/react-router'
 import {MachineState} from '@typeonce/effect-machine-react'
 import {AsyncResult} from 'effect/reactivity'
 import {Check, Copy, Ellipsis, Plus, Server} from 'lucide-react'
-import {useState} from 'react'
+import {Suspense, useState} from 'react'
 
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
 import {ItemList, ItemListSkeleton} from '@deslop/components-web/item-list'
@@ -325,36 +325,36 @@ function Directory(props: {servers: readonly ConnectionInfo[]}) {
 
 // The servers need a Deslop sign-in by an admin; GitHub returns here once it is done.
 function Servers() {
-	return AsyncResult.match(useAtomValue(serversAtom), {
-		onFailure: failure =>
-			Option.match(Cause.findErrorOption(failure.cause), {
-				onNone: () => <Error error={Cause.squash(failure.cause)} reset={() => location.reload()} />,
-				onSome: error => {
-					if (error._tag !== 'AuthError') return <Error error={error} reset={() => location.reload()} />
-					if (error.error === 'access_denied') {
-						return (
-							<Empty>
-								<EmptyHeader>
-									<EmptyTitle>Admins only</EmptyTitle>
-									<EmptyDescription>{error.message}</EmptyDescription>
-								</EmptyHeader>
-							</Empty>
-						)
-					}
-					return <SignIn href={signInUrl(location.href)} />
-				}
-			}),
-		onInitial: () => <ItemListSkeleton label="MCP servers" media rows={4} />,
-		onSuccess: servers => <Directory servers={servers.value} />
+	const servers = useAtomSuspense(serversAtom, {includeFailure: true})
+	if (AsyncResult.isSuccess(servers)) return <Directory servers={servers.value} />
+	return Option.match(Cause.findErrorOption(servers.cause), {
+		onNone: () => <Error error={Cause.squash(servers.cause)} reset={() => location.reload()} />,
+		onSome: error => {
+			if (error._tag !== 'AuthError') return <Error error={error} reset={() => location.reload()} />
+			if (error.error === 'access_denied') {
+				return (
+					<Empty>
+						<EmptyHeader>
+							<EmptyTitle>Admins only</EmptyTitle>
+							<EmptyDescription>{error.message}</EmptyDescription>
+						</EmptyHeader>
+					</Empty>
+				)
+			}
+			return <SignIn href={signInUrl(location.href)} />
+		}
 	})
 }
 
+// The first load suspends to a skeleton; React keeps a shown fallback at least 300ms, so it never blinks.
 function Home() {
 	return (
 		<main className="flex flex-1 justify-center overflow-y-auto px-4 py-8 md:py-16">
 			<div className="flex w-full max-w-3xl flex-col gap-5">
 				<h1 className="text-xl font-semibold tracking-tight">Servers</h1>
-				<Servers />
+				<Suspense fallback={<ItemListSkeleton label="MCP servers" media rows={4} />}>
+					<Servers />
+				</Suspense>
 			</div>
 		</main>
 	)

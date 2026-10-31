@@ -7,7 +7,7 @@ import {background, tint} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
-import {FailureScreen, LoadingScreen, SessionGate} from '@deslop/components-mobile/screens'
+import {BlankScreen, FailureScreen, LoadingScreen, SessionGate} from '@deslop/components-mobile/screens'
 import {colors} from '@deslop/components-mobile/theme'
 import {updateAtom} from '@deslop/runtime/mobile'
 
@@ -59,7 +59,7 @@ function AppRoutes() {
 export function RootRoute() {
 	useAtomMount(updateAtom)
 	return (
-		<Suspense fallback={<LoadingScreen />}>
+		<Suspense fallback={<BlankScreen />}>
 			<SessionGate logo={icon} session={session.machine} tint={primary}>
 				<Suspense fallback={<LoadingScreen />}>
 					<AppRoutes />

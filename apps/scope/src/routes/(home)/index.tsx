@@ -1,11 +1,11 @@
-import {useAtom, useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Cause, DateTime, Number, Option, Predicate, Record, Schema, String, pipe} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {ChevronLeft, RotateCw} from 'lucide-react'
-import {useState} from 'react'
+import {Suspense, useState} from 'react'
 import type {ReactNode} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
@@ -338,41 +338,35 @@ function Traces() {
 	const [selected, setSelected] = useAtom(selectedAtom)
 	const arrived = useAtomValue(arrivalsAtom).arrived
 	const now = DateTime.toEpochMillis(DateTime.nowUnsafe())
-	return AsyncResult.match(useAtomValue(tracesAtom), {
-		onFailure: failure => <Failure cause={failure.cause} />,
-		onInitial: () => (
-			<Panes waiting={false}>
-				<ItemListSkeleton label="Recent traces" rows={8} />
-			</Panes>
-		),
-		onSuccess: page => (
-			<Panes waiting={page.waiting}>
-				{Array.match(page.value.entries, {
-					onEmpty: () => (
-						<Empty>
-							<EmptyHeader>
-								<EmptyTitle>No traces match</EmptyTitle>
-							</EmptyHeader>
-						</Empty>
-					),
-					onNonEmpty: entries => (
-						<ItemList label="Recent traces">
-							{Array.map(entries, trace => (
-								<TraceRow
-									key={trace.id}
-									arrived={Array.contains(arrived, trace.id)}
-									now={now}
-									onSelect={() => setSelected(Option.some(trace.id))}
-									selected={Option.contains(selected, trace.id)}
-									trace={trace}
-								/>
-							))}
-						</ItemList>
-					)
-				})}
-			</Panes>
-		)
-	})
+	const page = useAtomSuspense(tracesAtom, {includeFailure: true})
+	if (AsyncResult.isFailure(page)) return <Failure cause={page.cause} />
+	return (
+		<Panes waiting={page.waiting}>
+			{Array.match(page.value.entries, {
+				onEmpty: () => (
+					<Empty>
+						<EmptyHeader>
+							<EmptyTitle>No traces match</EmptyTitle>
+						</EmptyHeader>
+					</Empty>
+				),
+				onNonEmpty: entries => (
+					<ItemList label="Recent traces">
+						{Array.map(entries, trace => (
+							<TraceRow
+								key={trace.id}
+								arrived={Array.contains(arrived, trace.id)}
+								now={now}
+								onSelect={() => setSelected(Option.some(trace.id))}
+								selected={Option.contains(selected, trace.id)}
+								trace={trace}
+							/>
+						))}
+					</ItemList>
+				)
+			})}
+		</Panes>
+	)
 }
 
 // Asks the server again for the traces under the current filters.
@@ -402,7 +396,16 @@ function Home() {
 			<AppBar icon={icon} name="scope">
 				<Refresh />
 			</AppBar>
-			<Traces />
+			{/* The first load suspends to the panes with skeleton rows; React keeps a shown fallback at least 300ms. */}
+			<Suspense
+				fallback={
+					<Panes waiting={false}>
+						<ItemListSkeleton label="Recent traces" rows={8} />
+					</Panes>
+				}
+			>
+				<Traces />
+			</Suspense>
 		</>
 	)
 }
