@@ -133,6 +133,7 @@ it.layer(NodeServices.layer)(test => {
 				Option.some(0)
 			)
 			// The next round's six-hour wait starts only once this round has announced its new chapters.
+			// oxlint-disable-next-line @deslop/coding-standards/no-polling-test -- the round marks chapters announced through file writes that no event or service reports, so only the store shows it.
 			yield* Effect.repeat(store.load, {until: saved => Array.every(saved, chapter => chapter.notified)})
 			yield* chapters.read({done: true, number: 1, opened: true, page: 0, series: 'manga'})
 			yield* chapters.read({done: false, number: 1, opened: true, page: 0, series: 'webcomic'})

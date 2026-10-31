@@ -3,7 +3,7 @@ import {Array, Option, Predicate} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {containsNode, importedMember, isClockWait, isTestFile, memberName} from '#rules/shared.ts'
+import {containsNode, importedMember, isClockWait, isTestFile, memberName, optionKeys} from '#rules/shared.ts'
 
 const MESSAGE =
 	'This test polls until a condition holds, which passes or fails with the scheduler and the load: await the Deferred, Latch, Queue, Stream element or Machine.waitFor that marks the milestone.'
@@ -84,6 +84,12 @@ function pipedFrom(node: ESTree.CallExpression) {
 	return node
 }
 
+// `{until}` or `{while}` without `times` repeats until the system under test changes, like a loop with no counter.
+function untilUnbounded(argument: ESTree.Node) {
+	const keys = optionKeys(argument)
+	return (Array.contains(keys, 'until') || Array.contains(keys, 'while')) && !Array.contains(keys, 'times')
+}
+
 // A loop polls when a condition about the outside world ends it: a conditional exit in its body, or a test other than `true` or a counter.
 function polls(context: Context, loop: Loop) {
 	return (
@@ -123,12 +129,13 @@ export const noPollingTest = defineRule({
 					Array.some(['repeat', 'repeatOrElse', 'retry', 'retryOrElse'], propertyName =>
 						importedMember({context, importedName: 'Effect', node: callee, propertyName})
 					) &&
-					containsNode({
+					(containsNode({
 						context,
 						matches: child => isWait(context, child),
 						node: pipedFrom(node),
 						throughFunctions: true
-					})
+					}) ||
+						Array.some(node.arguments, untilUnbounded))
 				) {
 					context.report({message: MESSAGE, node})
 				}

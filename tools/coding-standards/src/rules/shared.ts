@@ -2,6 +2,8 @@ import {Array, Graph, Option, Predicate, Record, String, pipe} from 'effect'
 
 import type {Context, ESTree, Fix, Fixer, Scope, Token, Variable} from 'vite-plus/lint/plugins'
 
+const TEST_RUNNERS = /^(?:@effect\/vitest|vitest|vite-plus\/test)$/u
+
 const LENGTH_TESTS: Record.ReadonlyRecord<string, 'empty' | 'nonEmpty'> = {
 	'!== 0': 'nonEmpty',
 	'< 1': 'empty',
@@ -281,7 +283,7 @@ function chainOf(node: ESTree.Expression | ESTree.Super): Option.Option<Chain> {
 function isTestApi(context: Context, node: ESTree.IdentifierReference): boolean {
 	if (
 		Array.some(['describe', 'it', 'layer', 'suite', 'test'], name =>
-			isImportBinding({context, importedName: name, node, source: /^(?:@effect\/vitest|vitest|vite-plus\/test)$/u})
+			isImportBinding({context, importedName: name, node, source: TEST_RUNNERS})
 		)
 	) {
 		return true
@@ -306,13 +308,20 @@ export function testHook(context: Context, node: ESTree.Expression | ESTree.Supe
 	return (
 		node.type === 'Identifier' &&
 		Array.some(['afterAll', 'afterEach', 'beforeAll', 'beforeEach'], name =>
-			isImportBinding({context, importedName: name, node, source: /^(?:@effect\/vitest|vitest|vite-plus\/test)$/u})
+			isImportBinding({context, importedName: name, node, source: TEST_RUNNERS})
 		)
 	)
 }
 
 export function testChain(context: Context, node: ESTree.Expression | ESTree.Super) {
 	return Option.filter(chainOf(node), chain => isTestApi(context, chain.root))
+}
+
+// The native vitest rules read registrations on any root named it, test or describe, but no @effect/vitest member such as `it.effect`.
+export function hasEffectMember(members: string[]) {
+	return Array.some(members, member =>
+		Array.contains(['effect', 'flakyTest', 'layer', 'live', 'prop', 'scoped', 'scopedLive'], member)
+	)
 }
 
 export function isFunction(node: ESTree.Node) {
@@ -656,7 +665,7 @@ export function isTimerCall(context: Context, node: ESTree.Node) {
 	)
 }
 
-// A step that waits on a clock: a timer, Effect.sleep or Effect.delay, or a schedule that spaces its runs in time.
+// A step that waits on a clock: a timer, Effect.sleep or Effect.delay, Stream.tick, or a schedule that spaces its runs in time.
 export function isClockWait(context: Context, node: ESTree.Node) {
 	if (isTimerCall(context, node)) return true
 	if (node.type !== 'MemberExpression') return false
@@ -664,6 +673,7 @@ export function isClockWait(context: Context, node: ESTree.Node) {
 		Array.some(['delay', 'sleep'], propertyName =>
 			importedMember({context, importedName: 'Effect', node, propertyName})
 		) ||
+		importedMember({context, importedName: 'Stream', node, propertyName: 'tick'}) ||
 		Array.some(['exponential', 'fibonacci', 'fixed', 'spaced', 'windowed'], propertyName =>
 			importedMember({context, importedName: 'Schedule', node, propertyName})
 		)

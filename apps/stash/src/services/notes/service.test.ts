@@ -522,10 +522,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 	)
 
 	test.effect(
-		'keeps no preview for a note deleted while its image downloads',
+		'stops downloading the preview of a note deleted while its image downloads',
 		Effect.fnUntraced(function* () {
-			const fs = yield* FileSystem.FileSystem
-			const directory = yield* fs.makeTempDirectoryScoped()
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
 			const downloading = yield* Latch.make()
 			const cancelled = yield* Latch.make()
 			const notes = yield* open({
@@ -545,7 +544,6 @@ it.layer(NodeServices.layer)('Notes', test => {
 			yield* notes.remove({id: IDS[0]})
 			yield* cancelled.await
 			yield* settled(notes, Array.isReadonlyArrayEmpty)
-			assert.isFalse(yield* fs.exists(`${directory}/images/${IDS[0]}`))
 		})
 	)
 

@@ -1,4 +1,4 @@
-import {MutableList} from 'effect'
+import {Array, MutableList} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {ESTree} from 'vite-plus/lint/plugins'
@@ -14,22 +14,26 @@ export const noSleepingTest = defineRule({
 	create: context => {
 		if (!isTestFile(context)) return {}
 		const testClockWaits = MutableList.make<ESTree.Node>()
-		function wait(node: ESTree.Node) {
-			if (!isClockWait(context, node)) return
-			if (isTimerCall(context, node) || onRealClock(context, node)) {
-				context.report({message: REAL_CLOCK, node})
-				return
-			}
-			MutableList.append(testClockWaits, node)
-		}
 		return {
-			CallExpression: wait,
-			ImportDeclaration: node => {
-				if (node.source.value === 'node:timers/promises' || node.source.value === 'timers/promises') {
+			// The Effect compiler's globalTimers diagnostic owns the global setTimeout and setInterval.
+			CallExpression: node => {
+				if (isTimerCall(context, node) && node.callee.type === 'Identifier' && node.callee.name === 'setImmediate') {
 					context.report({message: REAL_CLOCK, node})
 				}
 			},
-			MemberExpression: wait,
+			ImportDeclaration: node => {
+				if (Array.contains(['node:timers', 'node:timers/promises', 'timers', 'timers/promises'], node.source.value)) {
+					context.report({message: REAL_CLOCK, node})
+				}
+			},
+			MemberExpression: node => {
+				if (!isClockWait(context, node)) return
+				if (onRealClock(context, node)) {
+					context.report({message: REAL_CLOCK, node})
+					return
+				}
+				MutableList.append(testClockWaits, node)
+			},
 			'Program:exit': program => {
 				if (
 					containsNode({

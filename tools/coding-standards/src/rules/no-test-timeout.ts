@@ -1,9 +1,18 @@
-import {Array, Option, Predicate} from 'effect'
+import {Array, Option} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
-import type {ESTree} from 'vite-plus/lint/plugins'
+import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {importedMember, isImportBinding, isTestFile, optionKeys, testChain, testHook} from '#rules/shared.ts'
+import {
+	importedMember,
+	isFunction,
+	isImportBinding,
+	isTestFile,
+	optionKeys,
+	resolveBinding,
+	testChain,
+	testHook
+} from '#rules/shared.ts'
 
 const TIMEOUT =
 	"Keep the project's testTimeout as the only limit: a per-test timeout or retry hides a wait that should await its milestone. A slow suite goes in a *.slow.test.ts file, which runs with the slow project's limit."
@@ -11,11 +20,19 @@ const HANG_GUARD =
 	"Drop this timeout: the project's testTimeout already ends a hang, and on the TestClock it fires only when the test moves time."
 const FLAKY = 'Fix the flaky test instead of retrying it.'
 
-// A numeric timeout, or options that set a timeout, retries or repeats.
-function setsLimit(argument: ESTree.Node) {
-	return (
-		(argument.type === 'Literal' && Predicate.isNumber(argument.value)) ||
-		Array.some(optionKeys(argument), key => Array.contains(['repeats', 'retry', 'timeout'], key))
+// Anything after the body (a function, or a call such as `Effect.fnUntraced(…)` that builds one) is its timeout or options; options before it, inline or bound to a constant, may set a timeout, retries or repeats.
+function setsLimit(context: Context, node: ESTree.CallExpression) {
+	const body = Array.findFirstIndex(
+		node.arguments,
+		(argument, index) => isFunction(argument) || (index > 0 && argument.type === 'CallExpression')
+	)
+	return Array.some(
+		node.arguments,
+		(argument, index) =>
+			Option.exists(body, position => index > position) ||
+			Array.some(optionKeys(resolveBinding(context, argument)), key =>
+				Array.contains(['repeats', 'retry', 'timeout'], key)
+			)
 	)
 }
 
@@ -26,7 +43,7 @@ export const noTestTimeout = defineRule({
 			CallExpression: node => {
 				if (
 					(testHook(context, node.callee) || Option.isSome(testChain(context, node.callee))) &&
-					Array.some(node.arguments, setsLimit)
+					setsLimit(context, node)
 				) {
 					context.report({message: TIMEOUT, node})
 				}

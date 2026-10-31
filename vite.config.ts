@@ -97,12 +97,13 @@ export default defineConfig({
 		}
 	},
 	test: {
-		// Each project's testTimeout is the only limit; no-test-timeout keeps tests from raising their own.
+		// Each project's limits are the only ones; no-test-timeout keeps tests, hooks and layers from raising their own.
 		projects: [
 			{
 				extends: true,
 				test: {
 					exclude: ['**/*.slow.test.ts'],
+					hookTimeout: 30_000,
 					include: ['apps/*/src/**/*.test.ts', 'packages/*/src/**/*.test.ts', 'tools/*/src/**/*.test.ts'],
 					name: 'unit',
 					testTimeout: 30_000
@@ -111,6 +112,7 @@ export default defineConfig({
 			{
 				extends: true,
 				test: {
+					hookTimeout: 300_000,
 					include: [
 						'apps/*/src/**/*.slow.test.ts',
 						'packages/*/src/**/*.slow.test.ts',
