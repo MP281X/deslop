@@ -81,10 +81,11 @@ export class Gateway extends Context.Service<
 			})
 			const refreshes = yield* Semaphore.make(1)
 			const scope = yield* Effect.scope
+			// McpServer has no removal: a removed tool stays registered, and the visibility check hides it from lists and calls.
 			const remove = Effect.fnUntraced(function* (name: string, registry: typeof McpServer.McpServer.Service) {
 				yield* Ref.update(installed, Record.remove(name))
 				yield* Ref.update(visible, HashSet.remove(name))
-				yield* registry.removeTool(name)
+				yield* registry.notifications['notifications/tools/list_changed']({})
 			})
 			const prune = Effect.fnUntraced(function* (registry: typeof McpServer.McpServer.Service) {
 				const definitions = yield* connections.definitions

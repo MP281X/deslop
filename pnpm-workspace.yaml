@@ -40,5 +40,3 @@ packageExtensions:
       chalk: ^4.1
 strictPeerDependencies: true
 minimumReleaseAge: 0
-patchedDependencies:
-  effect@4.1.0: patches/effect@4.1.0.patch

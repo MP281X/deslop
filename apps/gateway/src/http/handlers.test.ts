@@ -21,7 +21,7 @@ import {
 	pipe
 } from 'effect'
 
-import {McpSchema, McpServer} from 'effect/ai'
+import {McpSchema} from 'effect/ai'
 import {
 	Cookies,
 	FetchHttpClient,
@@ -365,18 +365,6 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 					Layer.mergeAll(
 						HttpHandlers,
 						layerMcp,
-						pipe(
-							HttpRouter.add(
-								'GET',
-								'/registry',
-								Effect.gen(function* () {
-									return HttpServerResponse.jsonUnsafe(
-										Array.map((yield* McpServer.McpServer).tools, entry => entry.tool.name)
-									)
-								})
-							),
-							Layer.provide(McpServer.McpServer.layer)
-						),
 						// The servers page's RPCs.
 						pipe(
 							Layer.mergeAll(
@@ -648,19 +636,25 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 	test.effect(
-		'encodes unsafe tool names and physically removes vanished and removed registrations',
+		'encodes unsafe tool names and keeps vanished and removed tools out of lists and calls',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
 			const added = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
 			yield* Ref.set(gateway.toolNames, ['search.docs', 'search_docs', 'search__encoded_literal'])
-			const listed = yield* modern(gateway.web, TOKEN, 'tools/list')
-			const names = Array.map(
-				(yield* Schema.decodeEffect(
-					Schema.fromJsonString(Schema.Struct({result: Schema.Struct({tools: Schema.Array(McpSchema.Tool)})}))
-				)(yield* Effect.promise(() => listed.text()))).result.tools,
-				tool => tool.name
-			)
-			const remote = Array.filter(names, String.startsWith(`${added.id}__`))
+			// The server's tools an agent lists right now.
+			const listed = Effect.fnUntraced(function* () {
+				const response = yield* modern(gateway.web, TOKEN, 'tools/list')
+				return Array.filter(
+					Array.map(
+						(yield* Schema.decodeEffect(
+							Schema.fromJsonString(Schema.Struct({result: Schema.Struct({tools: Schema.Array(McpSchema.Tool)})}))
+						)(yield* Effect.promise(() => response.text()))).result.tools,
+						tool => tool.name
+					),
+					String.startsWith(`${added.id}__`)
+				)
+			})
+			const remote = yield* listed()
 			assert.strictEqual(remote.length, 3)
 			assert.strictEqual(Array.dedupe(remote).length, 3)
 			for (const name of remote) assert.match(name, /^[a-zA-Z0-9_-]{1,64}$/u)
@@ -680,20 +674,12 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			yield* Ref.set(gateway.toolNames, ['search_docs'])
 			yield* modern(gateway.web, TOKEN, 'tools/list')
-			const registry = yield* send(gateway.web, '/registry')
-			assert.deepStrictEqual(
-				Array.filter(
-					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(Schema.String)))(
-						yield* Effect.promise(() => registry.text())
-					),
-					String.startsWith(`${added.id}__`)
-				),
-				[`${added.id}__search_docs`]
-			)
+			assert.deepStrictEqual(yield* listed(), [`${added.id}__search_docs`])
+			const vanished = yield* modern(gateway.web, TOKEN, 'tools/call', {arguments: {query: 'gone'}, name: encoded})
+			assert.isTrue(String.includes('error')(yield* Effect.promise(() => vanished.text())))
 			yield* post(gateway.web, '/servers/remove', SESSION, {id: added.id})
 			yield* modern(gateway.web, TOKEN, 'tools/list')
-			const removed = yield* send(gateway.web, '/registry')
-			assert.isFalse(String.includes(`${added.id}__`)(yield* Effect.promise(() => removed.text())))
+			assert.deepStrictEqual(yield* listed(), [])
 		})
 	)
 	test.effect(
