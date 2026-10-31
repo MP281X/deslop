@@ -140,16 +140,29 @@ const around = Effect.fnUntraced(function* (sim: Sim, reach: number) {
 	)
 })
 
-it.effect(
-	'gathers stone by hand from the start’s field into an empty Home',
-	Effect.fnUntraced(function* () {
+// Wood clears trees round Home and ore digs its field's tiles; twelve ore outgrows a Builder's ten-item load, so the standing order goes back out.
+it.effect.each([
+	{count: 2, field: 'stone', item: 'stone'},
+	{count: 2, item: 'wood'},
+	{count: 12, field: 'iron', item: 'iron_ore'}
+] as const)(
+	'gathers $item by hand into an empty Home',
+	Effect.fnUntraced(function* (gathering: {count: number; field?: string; item: 'iron_ore' | 'stone' | 'wood'}) {
 		const sim = yield* makeSim(Option.none(), 42)
 		assert.deepStrictEqual(yield* homeStock(sim), {})
-		const builder = yield* builderOf(sim)
+		const home = yield* buildingOf(sim, (yield* team0(sim)).home)
+		const at = Option.match(Option.fromNullishOr(gathering.field), {
+			onNone: () => ({x: home.x + 1, z: home.z + 1}),
+			onSome: fieldAt
+		})
 		assert.isTrue(
-			command(sim, {_tag: 'Order', order: {_tag: 'Gather', item: 'stone', ...fieldAt('stone')}, units: [builder]}).ok
+			command(sim, {
+				_tag: 'Order',
+				order: {_tag: 'Gather', item: gathering.item, ...at},
+				units: [yield* builderOf(sim)]
+			}).ok
 		)
-		assert.isTrue(yield* until(sim, 900, stocked(sim, 'stone', 2)))
+		assert.isTrue(yield* until(sim, 1200, stocked(sim, gathering.item, gathering.count)))
 	})
 )
 

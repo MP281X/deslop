@@ -20,20 +20,20 @@ const HANG_GUARD =
 	"Drop this timeout: the project's testTimeout already ends a hang, and on the TestClock it fires only when the test moves time."
 const FLAKY = 'Fix the flaky test instead of retrying it.'
 
-// Anything after the body (a function, or a call such as `Effect.fnUntraced(…)` that builds one) is its timeout or options; options before it, inline or bound to a constant, may set a timeout, retries or repeats.
+// The body is a function, inline or bound to a constant, or a call such as `Effect.fnUntraced(…)` that builds one. After it, any value but an options object is a timeout; an options object anywhere, inline or bound to a constant, may set a timeout, retries or repeats.
 function setsLimit(context: Context, node: ESTree.CallExpression) {
 	const body = Array.findFirstIndex(
 		node.arguments,
-		(argument, index) => isFunction(argument) || (index > 0 && argument.type === 'CallExpression')
-	)
-	return Array.some(
-		node.arguments,
 		(argument, index) =>
-			Option.exists(body, position => index > position) ||
-			Array.some(optionKeys(resolveBinding(context, argument)), key =>
-				Array.contains(['repeats', 'retry', 'timeout'], key)
-			)
+			isFunction(resolveBinding(context, argument)) || (index > 0 && argument.type === 'CallExpression')
 	)
+	return Array.some(node.arguments, (argument, index) => {
+		const value = resolveBinding(context, argument)
+		if (value.type === 'ObjectExpression') {
+			return Array.some(optionKeys(value), key => Array.contains(['repeats', 'retry', 'timeout'], key))
+		}
+		return Option.exists(body, position => index > position)
+	})
 }
 
 export const noTestTimeout = defineRule({

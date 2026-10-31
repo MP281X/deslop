@@ -3,7 +3,15 @@ import {Array, Option, Predicate} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {containsNode, importedMember, isClockWait, isTestFile, memberName, optionKeys} from '#rules/shared.ts'
+import {
+	containsNode,
+	importedMember,
+	isClockWait,
+	isTestFile,
+	memberName,
+	optionKeys,
+	resolveBinding
+} from '#rules/shared.ts'
 
 const MESSAGE =
 	'This test polls until a condition holds, which passes or fails with the scheduler and the load: await the Deferred, Latch, Queue, Stream element or Machine.waitFor that marks the milestone.'
@@ -85,9 +93,23 @@ function pipedFrom(node: ESTree.CallExpression) {
 }
 
 // `{until}` or `{while}` without `times` repeats until the system under test changes, like a loop with no counter.
-function untilUnbounded(argument: ESTree.Node) {
-	const keys = optionKeys(argument)
+function untilUnbounded(context: Context, argument: ESTree.Node) {
+	const keys = optionKeys(resolveBinding(context, argument))
 	return (Array.contains(keys, 'until') || Array.contains(keys, 'while')) && !Array.contains(keys, 'times')
+}
+
+// Repeating Queue.take waits for each element, which is the milestone the message asks for.
+function takesEvents(context: Context, node: ESTree.Node) {
+	return containsNode({
+		context,
+		matches: child =>
+			child.type === 'MemberExpression' &&
+			Array.some(['take', 'takeAll', 'takeN'], propertyName =>
+				importedMember({context, importedName: 'Queue', node: child, propertyName})
+			),
+		node,
+		throughFunctions: true
+	})
 }
 
 // A loop polls when a condition about the outside world ends it: a conditional exit in its body, or a test other than `true` or a counter.
@@ -135,7 +157,8 @@ export const noPollingTest = defineRule({
 						node: pipedFrom(node),
 						throughFunctions: true
 					}) ||
-						Array.some(node.arguments, untilUnbounded))
+						(Array.some(node.arguments, argument => untilUnbounded(context, argument)) &&
+							!takesEvents(context, pipedFrom(node))))
 				) {
 					context.report({message: MESSAGE, node})
 				}
