@@ -35,6 +35,12 @@ export function make(app: {bundleIdentifier: string; name: string; owner: string
 						bundleIdentifier: variant.bundleIdentifier,
 						config: {usesNonExemptEncryption: false},
 						deploymentTarget: '18.0',
+						// The dark icon stands on the system's dark backdrop; the tinted one is grey for iOS to tint.
+						icon: {
+							dark: './src/routes/icon-dark.png',
+							light: './src/routes/icon.png',
+							tinted: './src/routes/icon-tinted.png'
+						},
 						supportsTablet: false
 					},
 					name: variant.name,

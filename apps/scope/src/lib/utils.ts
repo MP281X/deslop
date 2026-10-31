@@ -1,4 +1,4 @@
-import {Duration, Number, Option, String, pipe} from 'effect'
+import {Array, Duration, Number, Option, String, pipe} from 'effect'
 
 import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
 
@@ -39,9 +39,41 @@ export const tracesAtom = Atom.make(get => {
 	})
 })
 
+// The traces a refresh added under the same filters, so only they grow in; the first page and a new filter show at once.
+export const arrivalsAtom = Atom.make(get => {
+	const filters = get(filtersAtom)
+	const ids = AsyncResult.match(get(tracesAtom), {
+		onFailure: () => Array.empty<string>(),
+		onInitial: () => Array.empty<string>(),
+		onSuccess: page => Array.map(page.value.entries, trace => trace.id)
+	})
+	const arrived = Option.match(get.self<{arrived: string[]; filters: typeof filters; ids: string[]}>(), {
+		onNone: () => Array.empty<string>(),
+		onSome: before => {
+			if (before.filters !== filters || Array.isArrayEmpty(before.ids)) return Array.empty<string>()
+			return Array.difference(ids, before.ids)
+		}
+	})
+	return {arrived, filters, ids}
+})
+
 export const servicesAtom = RpcClient.query('scope.services', undefined)
 
-export const traceAtom = Atom.family((id: string) => RpcClient.query('scope.trace', {id}))
+const traceAtom = Atom.family((id: string) => RpcClient.query('scope.trace', {id}))
+
+export const selectedAtom = Atom.make(Option.none<string>())
+
+// The picked trace; while the next one loads the previous stays on screen, marked waiting, so the axis can ease between them.
+export const selectedTraceAtom = Atom.make(get =>
+	Option.map(get(selectedAtom), id => {
+		const result = get(traceAtom(id))
+		if (!AsyncResult.isInitial(result)) return result
+		return Option.match(Option.flatten(get.self<Option.Option<typeof result>>()), {
+			onNone: () => result,
+			onSome: previous => AsyncResult.waiting(previous)
+		})
+	})
+)
 
 // "now", "40s", "12m", "3h" or "2d" since a nanosecond timestamp.
 export function ageOf(time: string, now: number) {

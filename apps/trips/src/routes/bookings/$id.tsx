@@ -1,6 +1,6 @@
 import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Option} from 'effect'
+import {Array, Boolean, DateTime, Hash, Option} from 'effect'
 
 import {
 	Button,
@@ -16,7 +16,10 @@ import {
 	VStack
 } from '@expo/ui/swift-ui'
 import {
+	Animation,
+	animation,
 	background,
+	contentTransition,
 	foregroundStyle,
 	frame,
 	labelStyle,
@@ -61,12 +64,22 @@ function toneIf(changed: boolean, tone: Tone) {
 	return 'plain'
 }
 
-// A value with its label, or nothing when the booking does not know it.
+// A changed gate, platform or time flips in like a departures board; SwiftUI animates when the number it watches changes.
 function Field(props: {label: string; tone?: Tone; value?: string}) {
 	if (props.value === undefined) return undefined
 	return (
 		<LabeledContent label={props.label}>
-			<Text modifiers={[text.data, foregroundStyle(colorOf(props.tone)), textSelection(true)]}>{props.value}</Text>
+			<Text
+				modifiers={[
+					text.data,
+					foregroundStyle(colorOf(props.tone)),
+					textSelection(true),
+					contentTransition('numericText'),
+					animation(Animation.snappy(), Hash.string(props.value))
+				]}
+			>
+				{props.value}
+			</Text>
 		</LabeledContent>
 	)
 }

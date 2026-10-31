@@ -4,7 +4,7 @@ import {HeadContent, Scripts, createRootRoute} from '@tanstack/react-router'
 
 import {AppBar} from '@deslop/components-web/app-bar'
 
-import icon from './icon.png'
+import icon from './icon-dark.png'
 
 export const Route = createRootRoute({
 	shellComponent: props => (

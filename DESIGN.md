@@ -181,6 +181,10 @@ Fast tools, not consumer or enterprise apps: Linear, Vercel, Executor, T3 Code. 
 
 Geist on the web, SF Pro on iOS at Dynamic Type sizes through the `text` tokens in `theme.ts`, nothing bundled. Machine text (hosts, ids, times, counts, codes, shortcuts) is Geist Mono or SF Mono; prose never is. Sentence case, no uppercase or letter-spaced labels.
 
+- **Numbers that change** use tabular figures, so they don't jitter.
+- **Times** read relative for a week ("3h ago"), then as a date; counts pluralize through `Intl.PluralRules`.
+- **Prose** stops at about 65 characters a line.
+
 ## Layout
 
 - **Rows, not cards.** Hairline rows: a leading mark, a title, one muted line, a trailing status or action.
@@ -201,9 +205,29 @@ A tonal step and a hairline, never a shadow, gradient or glow. On iOS, Liquid Gl
 - **iOS.** `@expo/ui` SwiftUI primitives; system controls stay native.
 - **Favicons** are the source's own, never a letter tile.
 
+## Motion
+
+Motion marks a change the user caused or should notice, and never holds content back. The curves are `--ease-out`, `--ease-in-out` and `--ease-drawer` in `theme.css`.
+
+- **Gate by frequency.** Keyboard actions and anything used a hundred times a day: none. Tens of times a day (press, hover, list navigation): under 150ms or none. Occasional (dialogs, sheets, toasts): standard. Rare (first run, success): may delight. Each animation names its purpose: feedback, where something came from, a state change, or a jump it smooths.
+- **Ingredients.** `transform`, `opacity` and `clip-path` only, never `transition: all`. Nothing grows from `scale(0)`: start at 0.95 with opacity 0. Popovers grow from their trigger, dialogs from the centre. Transitions, not keyframes, for anything that can retrigger. Exit faster than enter.
+- **Curves and time.** `ease-out` to enter or leave, `ease-in-out` to move on screen, linear only for progress, never `ease-in`. Press 100–160ms, popovers 125–200ms, menus 150–250ms, dialogs and sheets 200–300ms.
+- **Press and hover.** Pressables scale to 0.97; hover motion only under `(hover: hover) and (pointer: fine)`.
+- **iOS.** Navigation, sheets and tab bars keep the system's motion, and tabs never slide. What a finger moves follows a spring (damping 1, or 0.8 after a flick). One haptic per committed action, on the same frame as its visual, never on its own.
+- **Reduced motion** drops movement and keeps fades and colour.
+- **Each app's own.** One signature motion, only when its data changes: Trips flips a changed gate, platform or time like a departures board.
+
 ## Icons
 
-One PNG is the iOS icon and the favicon: pixel art like the portfolio bolt, 18×18 cells on a 24×24 `icon-tile`, 1024px with nearest-neighbour scaling. Fill is the app's hue, one `icon-shadow` cell right of every run, detail as tile cut-outs or a 62% darker fill. opm keeps its Saitama face; the bolt's loose pixels take the other apps' hues.
+Each app is one real object in isometric pixel art: 64 cells, 2:1 pixel lines, three tones per material (Flexoki 300, 400 and 600 of the app's hue, steel, near-black), light catching the top front edges, a footprint shadow and an `icon-shadow` outline, with one lit part. A lock (auth), a torii (gateway), a monitor with a trace waterfall (scope), a sawtooth factory (signal), a book with a ribbon (stash), a suitcase (trips). Exceptions: the portfolio bolt stays flat, its loose pixels in the other apps' hues, and opm keeps its Saitama face.
+
+| File              | Background  | Used as                                      |
+| ----------------- | ----------- | -------------------------------------------- |
+| `icon.png`        | `icon-tile` | iOS icon, favicon                            |
+| `icon-dark.png`   | transparent | iOS dark icon, dark favicon, the web app bar |
+| `icon-tinted.png` | transparent | iOS tinted icon, in grey                     |
+
+All are 1024px with nearest-neighbour scaling; the app bar shows the icon at 32px, where its cells land on whole pixels of a 2x screen.
 
 ## Do's and Don'ts
 

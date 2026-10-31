@@ -13,8 +13,18 @@ import {Button, buttonVariants} from '@deslop/components-web/ui/button'
 import {cn} from '@deslop/components-web/utils'
 import {signInUrl} from '@deslop/runtime/auth/utils'
 
-import {ageOf, durationOf, filtersAtom, servicesAtom, traceAtom, tracesAtom, tracesQueryAtom} from '#lib/utils.ts'
-import icon from '#routes/icon.png'
+import {
+	ageOf,
+	arrivalsAtom,
+	durationOf,
+	filtersAtom,
+	selectedAtom,
+	selectedTraceAtom,
+	servicesAtom,
+	tracesAtom,
+	tracesQueryAtom
+} from '#lib/utils.ts'
+import icon from '#routes/icon-dark.png'
 import type {Trace, TraceSummary} from '#services/telemetry/schema.ts'
 
 type TraceSpan = Trace['spans'][number]
@@ -80,9 +90,15 @@ function ServiceFilter() {
 	)
 }
 
-function TraceRow(props: {now: number; onSelect: () => void; selected: boolean; trace: TraceSummary}) {
+function TraceRow(props: {
+	arrived: boolean
+	now: number
+	onSelect: () => void
+	selected: boolean
+	trace: TraceSummary
+}) {
 	return (
-		<li className="border-border border-b">
+		<li className={cn('border-border grid border-b', props.arrived && 'grow-in')}>
 			<Button
 				variant={Boolean.match(props.selected, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
 				onClick={props.onSelect}
@@ -153,8 +169,8 @@ function SpanDetail(props: {span: TraceSpan}) {
 	)
 }
 
-// A span's bar on the trace's time axis: its offset and length as shares of the whole trace.
-function Bar(props: {span: TraceSpan; total: number}) {
+// A span's bar on the trace's time axis: its offset and length in milliseconds over the list's `--trace-total`.
+function Bar(props: {span: TraceSpan}) {
 	return (
 		<span className="relative h-2.5 flex-1">
 			<span
@@ -165,8 +181,8 @@ function Bar(props: {span: TraceSpan; total: number}) {
 					props.span.status !== 2 && props.span.depth > 0 && 'bg-muted-foreground/60'
 				)}
 				style={{
-					'--length': `${(props.span.durationMs / props.total) * 100}%`,
-					'--offset': `${(props.span.offsetMs / props.total) * 100}%`
+					'--length': `calc(${props.span.durationMs} / var(--trace-total) * 100%)`,
+					'--offset': `calc(${props.span.offsetMs} / var(--trace-total) * 100%)`
 				}}
 			/>
 		</span>
@@ -195,7 +211,7 @@ function Waterfall(props: {trace: Trace}) {
 					{Array.countBy(props.trace.spans, span => span.status === 2)} errors
 				</p>
 			</div>
-			<ol className="flex flex-col">
+			<ol className="trace-axis flex flex-col" style={{'--trace-total': `${Number.max(props.trace.durationMs, 1)}`}}>
 				{Array.map(props.trace.spans, span => (
 					<li key={span.spanId}>
 						<Button
@@ -212,7 +228,7 @@ function Waterfall(props: {trace: Trace}) {
 							>
 								{span.name}
 							</span>
-							<Bar span={span} total={Number.max(props.trace.durationMs, 1)} />
+							<Bar span={span} />
 							<span className="text-muted-foreground w-16 shrink-0 text-right font-mono">
 								{durationOf(span.durationMs)}
 							</span>
@@ -225,16 +241,21 @@ function Waterfall(props: {trace: Trace}) {
 	)
 }
 
-function Detail(props: {id: string}) {
-	return AsyncResult.match(useAtomValue(traceAtom(props.id)), {
-		onFailure: failure => <Failure cause={failure.cause} />,
-		onInitial: () => <Loading />,
-		onSuccess: trace => <Waterfall trace={trace.value} />
+function Detail() {
+	return Option.match(useAtomValue(selectedTraceAtom), {
+		onNone: () => <p className="text-muted-foreground text-sm">Pick a trace to see its spans.</p>,
+		onSome: result =>
+			AsyncResult.match(result, {
+				onFailure: failure => <Failure cause={failure.cause} />,
+				onInitial: () => <Loading />,
+				onSuccess: trace => <Waterfall trace={trace.value} />
+			})
 	})
 }
 
 function Traces() {
-	const [selected, setSelected] = useState<string>()
+	const [selected, setSelected] = useAtom(selectedAtom)
+	const arrived = useAtomValue(arrivalsAtom).arrived
 	const now = DateTime.toEpochMillis(DateTime.nowUnsafe())
 	return AsyncResult.match(useAtomValue(tracesAtom), {
 		onFailure: failure => <Failure cause={failure.cause} />,
@@ -256,9 +277,10 @@ function Traces() {
 								{Array.map(entries, trace => (
 									<TraceRow
 										key={trace.id}
+										arrived={Array.contains(arrived, trace.id)}
 										now={now}
-										onSelect={() => setSelected(trace.id)}
-										selected={trace.id === selected}
+										onSelect={() => setSelected(Option.some(trace.id))}
+										selected={Option.contains(selected, trace.id)}
 										trace={trace}
 									/>
 								))}
@@ -267,10 +289,7 @@ function Traces() {
 					})}
 				</nav>
 				<main className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
-					{Option.match(Option.fromUndefinedOr(selected), {
-						onNone: () => <p className="text-muted-foreground text-sm">Pick a trace to see its spans.</p>,
-						onSome: id => <Detail id={id} />
-					})}
+					<Detail />
 				</main>
 			</div>
 		)
