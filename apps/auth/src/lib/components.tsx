@@ -2,21 +2,30 @@ import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
 import {Array, Boolean, Match, Option, Order, Record, String, pipe} from 'effect'
 
+import type {NonEmptyReadonlyArray} from 'effect/Array'
 import {AsyncResult} from 'effect/reactivity'
-import {Activity, AppWindow, ArrowUpRight, Globe, Laptop, Monitor, Server, Smartphone, Tablet, X} from 'lucide-react'
+import {Activity, AppWindow, ArrowUpRight, Globe, Network, Server, X} from 'lucide-react'
 import {useState} from 'react'
 import {toQR} from 'toqr'
 
 import {ItemList} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
-import {StatusDot} from '@deslop/components-web/status-dot'
 import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button, buttonVariants} from '@deslop/components-web/ui/button'
 import {FieldDescription} from '@deslop/components-web/ui/field'
 import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
+import {Tooltip, TooltipContent, TooltipTrigger} from '@deslop/components-web/ui/tooltip'
 import {cn} from '@deslop/components-web/utils'
 
+import android from '#lib/brands/android.svg'
+import apple from '#lib/brands/apple.svg'
+import chrome from '#lib/brands/chrome.svg'
+import claude from '#lib/brands/claude.svg'
+import codex from '#lib/brands/codex.svg'
+import edge from '#lib/brands/edge.svg'
+import firefox from '#lib/brands/firefox.svg'
+import safari from '#lib/brands/safari.svg'
 import {
 	APPS,
 	ageLabel,
@@ -69,82 +78,82 @@ export function AccountAvatar(props: {id: string; name: string}) {
 	)
 }
 
-function machines(count: number) {
-	if (count === 1) return '1 machine'
-	return `${count} machines`
+const BROWSERS: Record<string, string> = {Chrome: chrome, Edge: edge, Firefox: firefox, Safari: safari}
+
+// A browser, harness or app platform's logo; `mono` marks a black one that turns white on the dark page.
+function brandOf(client: Client) {
+	if (client.kind === 'Browser') return Option.map(Record.get(BROWSERS, client.name), src => ({mono: false, src}))
+	if (Option.isSome(String.match(/claude/iu)(client.name))) return Option.some({mono: false, src: claude})
+	if (Option.isSome(String.match(/codex/iu)(client.name))) return Option.some({mono: true, src: codex})
+	if (Array.contains(['iPhone', 'iPad'], client.device)) return Option.some({mono: true, src: apple})
+	if (client.device === 'Android') return Option.some({mono: false, src: android})
+	return Option.none()
 }
 
-// The kind of machine a sign-in runs on, from the device its User-Agent or address names.
-function DeviceIcon(props: {device: string}) {
-	return pipe(
-		Match.value(props.device),
-		Match.when(
-			device => Array.contains(['iPhone', 'Android'], device),
-			() => <Smartphone />
-		),
-		Match.when('iPad', () => <Tablet />),
-		Match.when('Mac', () => <Laptop />),
-		Match.when(
-			device => Array.contains(['Windows', 'Linux'], device),
-			() => <Monitor />
-		),
-		Match.when(
-			device => Array.contains(['dev', 'desktop', 'macbook-pro'], device),
-			() => <Server />
-		),
-		Match.orElse(() => <Globe />)
-	)
+type Client = {device: string; kind: 'App' | 'Browser'; name: string}
+
+// The kind of client: its brand when it has one, else a glyph for the gateway, a browser or the machine it runs on.
+function ClientIcon(props: {client: Client}) {
+	return Option.match(brandOf(props.client), {
+		onNone: () =>
+			pipe(
+				Match.value(props.client),
+				Match.when({kind: 'Browser'}, () => <Globe />),
+				Match.when(
+					client => Option.isSome(String.match(/gateway/iu)(client.name)),
+					() => <Network />
+				),
+				Match.orElse(() => <Server />)
+			),
+		onSome: brand => <img src={brand.src} alt="" className={cn('size-3.5', brand.mono && 'dark:invert')} />
+	})
 }
 
-// A first tap arms the chip, a second signs that client out of that app; leaving the chip disarms it.
-function ClientChip(props: {app: string; client: string; device: string; now: number; signIns: SignedInApp[]}) {
+// A first tap arms the chip, a second signs that client out; leaving the chip disarms it. Its full name shows on hover.
+function ClientChip(props: {app: string; now: number; signIns: NonEmptyReadonlyArray<SignedInApp>}) {
 	const [disconnection, disconnect] = useAtom(disconnectAtom)
 	const [armed, setArmed] = useState(false)
+	const first = props.signIns[0]
+	const label = signInLabel(first.client, first.device)
 	const minutes = minutesSince(newest(props.signIns), props.now)
 	return (
-		<Button
-			size="sm"
-			variant={Boolean.match(armed, {onFalse: () => 'outline' as const, onTrue: () => 'destructive' as const})}
-			aria-label={Boolean.match(armed, {
-				onFalse: () =>
-					`${signInLabel(props.client, props.device)} in ${props.app} on ${machines(props.signIns.length)}, active ${Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})}; tap twice to sign out`,
-				onTrue: () => `Sign ${signInLabel(props.client, props.device)} out of ${props.app}`
-			})}
-			disabled={AsyncResult.isWaiting(disconnection)}
-			onBlur={() => setArmed(false)}
-			onClick={() => {
-				if (armed) disconnect(Array.map(props.signIns, signIn => signIn.family))
-				setArmed(!armed)
-			}}
-		>
-			{Boolean.match(armed, {
-				// One dot per machine, lit while it was active in the last hour.
-				onFalse: () => (
-					<>
-						<DeviceIcon device={props.device} />
-						{signInLabel(props.client, props.device)}
-						<span className="flex gap-0.5">
-							{Array.map(props.signIns, signIn => (
-								<StatusDot
-									key={signIn.family}
-									status={Boolean.match(minutesSince(signIn.lastActive, props.now) < 60, {
-										onFalse: () => 'quiet' as const,
-										onTrue: () => 'live' as const
-									})}
-								/>
-							))}
-						</span>
-						<span className="text-muted-foreground font-mono">{ageLabel(minutes)}</span>
-					</>
-				),
-				onTrue: () => (
-					<>
-						<X />
-						Sign out
-					</>
-				)
-			})}
-		</Button>
+		<Tooltip>
+			<TooltipTrigger
+				render={
+					<Button
+						size="sm"
+						variant={Boolean.match(armed, {onFalse: () => 'outline' as const, onTrue: () => 'destructive' as const})}
+						aria-label={Boolean.match(armed, {
+							onFalse: () =>
+								`${label} in ${props.app}, active ${Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})}; tap twice to sign out`,
+							onTrue: () => `Sign ${label} out`
+						})}
+						disabled={AsyncResult.isWaiting(disconnection)}
+						onBlur={() => setArmed(false)}
+						onClick={() => {
+							if (armed) disconnect(Array.map(props.signIns, signIn => signIn.family))
+							setArmed(!armed)
+						}}
+					/>
+				}
+			>
+				{Boolean.match(armed, {
+					onFalse: () => (
+						<>
+							<ClientIcon client={{device: first.device, kind: first.kind, name: first.client}} />
+							<span className="text-muted-foreground font-mono">{ageLabel(minutes)}</span>
+						</>
+					),
+					onTrue: () => (
+						<>
+							<X />
+							Sign out
+						</>
+					)
+				})}
+			</TooltipTrigger>
+			<TooltipContent>{label}</TooltipContent>
+		</Tooltip>
 	)
 }
 
@@ -187,34 +196,31 @@ function AppRow(props: {
 		Record.values,
 		Array.sort(Order.flip(Order.mapInput(Order.Number, newest)))
 	)
+	// The icon lines up with the name, and the chips wrap below it.
 	return (
-		<Item role="listitem" size="sm">
+		<Item role="listitem" size="sm" className="items-start">
 			<ItemMedia>
 				<AppIcon id={props.id} />
 			</ItemMedia>
 			<ItemContent>
-				<ItemTitle>{props.name}</ItemTitle>
+				<ItemTitle className="min-h-8">{props.name}</ItemTitle>
 				{(Option.isSome(props.pending) || Array.isArrayNonEmpty(clients)) && (
 					<div className="flex flex-wrap gap-1">
 						{Option.match(props.pending, {
 							onNone: () => null,
 							onSome: request => (
-								<Badge variant="outline" className="text-primary h-6">
-									<DeviceIcon device={request.device} />
-									{signInLabel(request.clientName, request.device)}
+								<Badge
+									variant="outline"
+									className="text-primary h-6"
+									aria-label={`${signInLabel(request.clientName, request.device)} asks for ${props.name}`}
+								>
+									<ClientIcon client={{device: request.device, kind: request.kind, name: request.clientName}} />
 									<span className="font-mono">new</span>
 								</Badge>
 							)
 						})}
-						{Array.map(Array.filter(clients, Array.isArrayNonEmpty), signIns => (
-							<ClientChip
-								key={signIns[0].family}
-								app={props.name}
-								client={signIns[0].client}
-								device={signIns[0].device}
-								now={props.now}
-								signIns={signIns}
-							/>
+						{Array.map(Array.filter(clients, Array.isReadonlyArrayNonEmpty), signIns => (
+							<ClientChip key={signIns[0].family} app={props.name} now={props.now} signIns={signIns} />
 						))}
 					</div>
 				)}
@@ -222,7 +228,7 @@ function AppRow(props: {
 			{Option.match(props.url, {
 				onNone: () => null,
 				onSome: url => (
-					<ItemActions>
+					<ItemActions className="h-8">
 						<a
 							href={url}
 							aria-label={`Open ${props.name}`}
@@ -277,15 +283,24 @@ function Answer(props: {request: PendingAuthorization}) {
 	)
 }
 
+// A browser session reaches every web app, so it counts under each one with a site.
+function reaches(resources: PendingAuthorization['resources'], id: string) {
+	const ids = appIds(resources)
+	return (
+		Array.contains(ids, id) ||
+		(Array.contains(ids, 'browser') && Array.some(APPS, app => app.id === id && String.startsWith('https://')(app.url)))
+	)
+}
+
 function holding(signIns: readonly SignedInApp[], id: string) {
-	return Array.filter(signIns, signIn => Array.contains(appIds(signIn.resources), id))
+	return Array.filter(signIns, signIn => reaches(signIn.resources, id))
 }
 
 function asking(pending: Option.Option<PendingAuthorization>, id: string) {
-	return Option.filter(pending, request => Array.contains(appIds(request.resources), id))
+	return Option.filter(pending, request => reaches(request.resources, id))
 }
 
-// Every app, then the browser session and tracing when something holds them; a waiting sign-in shows on the apps it asks for.
+// Every app, then tracing when something holds it alone; a waiting sign-in shows on the apps it asks for.
 export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 	const signIns = useAtomSuspense(appsAtom).value
 	const now = useAtomSuspense(minuteAtom).value
@@ -296,7 +311,7 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 			...Option.match(props.pending, {onNone: () => [], onSome: request => appIds(request.resources)})
 		],
 		Array.dedupe,
-		Array.filter(id => !Array.some(APPS, app => app.id === id)),
+		Array.filter(id => id !== 'browser' && !Array.some(APPS, app => app.id === id)),
 		Array.sort(String.Order)
 	)
 	return (

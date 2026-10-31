@@ -258,7 +258,7 @@ export function signInLabel(client: string, device: string) {
 	return `${client} · ${device}`
 }
 
-export function newest(apps: SignedInApp[]) {
+export function newest(apps: readonly SignedInApp[]) {
 	return Array.reduce(apps, 0, (latest, app) => Number.max(latest, app.lastActive))
 }
 
