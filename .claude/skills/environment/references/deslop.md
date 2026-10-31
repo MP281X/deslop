@@ -24,7 +24,7 @@ opm and trips build the same way, with bundle `xyz.mp281x.<app>.dev`. To sign a 
 
 Every push to `main` publishes the packages listed in `.github/workflows/deploy.yaml` as `0.1.<run>` with npm trusted publishing, which npm accepts only for a package that already exists.
 
-1. **Shape.** Copy `apps/scope/package.json`'s publish fields (`version` `0.1.0`, `files: ["dist"]`, `publishConfig.access: public`, a `bin`, the `vp pack` build, `repository.url` unchanged since provenance checks it) and `apps/scope/vite.config.ts`'s `pack.deps.alwaysBundle`: bundle everything except native-binary packages, packages sharing a module instance with them, and packages resolved by name at run time, such as lint plugins, which go in `dependencies`.
+1. **Shape.** Copy `tools/coding-standards/package.json`'s publish fields (`version` `0.1.0`, `files`, `publishConfig.access: public`, a `bin`, the `vp pack` build, `repository.url` unchanged since provenance checks it) and its `vite.config.ts`'s `pack.deps.alwaysBundle`: bundle everything except native-binary packages, packages sharing a module instance with them, and packages resolved by name at run time, such as lint plugins, which go in `dependencies`.
 2. **Prove** the packed tarball, never the source: `PACK=$(mktemp -d) && vp -C tools/<name> run build && vp -C tools/<name> pm pack --pack-destination "$PACK" && vpx --package "$PACK"/deslop-<name>-0.1.0.tgz <bin> --help`.
 3. **First publish** by hand from the branch that adds it. Each command needs a terminal, so `script` gives it one, and prints an npmjs.com URL that the user (npm `matteo_paludgnach`) approves within about five minutes: run it in the background and post the URL. The registry answers 404 for a minute or two afterwards.
 
@@ -34,13 +34,13 @@ Every push to `main` publishes the packages listed in `.github/workflows/deploy.
    script -qfc 'npm trust github @deslop/<name> --file deploy.yaml --repo MP281X/deslop --allow-publish --yes' /dev/null
    ```
 
-4. Add `tools/<name>` to both package loops in `.github/workflows/deploy.yaml`.
+4. Version and pack `tools/<name>` beside `tools/coding-standards` in the Build and Package steps of `.github/workflows/deploy.yaml`.
 
 ## Publish an iOS app
 
 Use the Simulator for iteration, TestFlight for distribution; the release path is `.github/workflows/deploy.yaml`.
 
-1. **Register before pushing.** After the mobile generator, check `npx --yes eas-cli@latest whoami`; if needed, use `login --device` and give the user its URL, not a worker-local callback. The generated all-zero project ID counts as already linked: temporarily replace `app.config.ts` with a default export of only its generated `name`, `owner` and `slug`, without the runtime helper, project ID or updates URL. Run `init` in `apps/<name>`, then restore the generated config with the real UUID it prints before the first CI push. If init cannot write the dynamic config, apply its printed ID yourself, not another project creation. Add the app to the app loops in `deploy.yaml` and `simulator.yaml`, including the simulator trigger paths. Add `<name>://auth/callback` and `<name>-dev://auth/callback` to `allowedRedirect` in `apps/auth/src/services/tokens/lib/utils.ts`.
+1. **Register before pushing.** After the mobile generator, check `npx --yes eas-cli@latest whoami`; if needed, use `login --device` and give the user its URL, not a worker-local callback. The generated all-zero project ID counts as already linked: temporarily replace `app.config.ts` with a default export of only its generated `name`, `owner` and `slug`, without the runtime helper, project ID or updates URL. Run `init` in `apps/<name>`, then restore the generated config with the real UUID it prints before the first CI push. If init cannot write the dynamic config, apply its printed ID yourself, not another project creation. Add the app to the image loop and the app matrix in `deploy.yaml`, and to the app matrix and trigger paths in `simulator.yaml`. Add `<name>://auth/callback` and `<name>-dev://auth/callback` to `allowedRedirect` in `apps/auth/src/services/tokens/lib/utils.ts`.
 2. **Prove the app.** Install the branch's Simulator build per Simulator builds, sign in through both callback schemes, then complete a real app action.
 3. **Resolve production first.** Set `APP_VARIANT=production` on every standalone build, credentials, submission or metadata command; a submit profile does not inherit the build profile's environment. Set `RELEASE_NUMBER` to the intended unused release number, not the default zero. Inspect the resolved name, bundle identifier, scheme, project and version before creating Apple records:
 

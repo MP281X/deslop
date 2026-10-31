@@ -7,7 +7,6 @@
 		"#http/*": "./src/http/*",
 		"#lib/*": "./src/lib/*",
 		"#package.*": "./package.*",
-		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
 		"#services/*": "./src/services/*",
 		"#tools/*": "./src/tools/*"

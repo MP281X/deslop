@@ -1,13 +1,6 @@
-# @deslop/stash
+# Stash
 
-A personal inbox for links and notes: the server reads each link, transcribes its video and tags it; agents use it through MCP and the iOS app saves to it.
-
-```bash
-claude mcp add --transport http stash https://stash.mp281x.xyz/mcp
-claude mcp login stash --no-browser
-codex mcp add stash --url https://stash.mp281x.xyz/mcp
-codex mcp login --no-browser stash
-```
+A personal inbox for links and notes: the server reads each link, transcribes its video and tags it; agents use it through the MCP gateway at https://gateway.mp281x.xyz/mcp, and the iOS app saves to it.
 
 The server runs from `tools/compose.yaml`; its image carries ffmpeg, yt-dlp and the Whisper runtime. The API and MCP require a Deslop sign-in through `auth.mp281x.xyz`, as in Scope's [connection diagnostics](../scope/README.md#connection-diagnostics). `STASH_PROXY` sends video downloads through a proxy.
 

@@ -1,10 +1,17 @@
-name: Simulator
+name: Simulator builds
 
 # Only a change to what the native build reads can change its fingerprint.
 on:
   push:
     branches-ignore: [main]
-    paths: [apps/stash/**, apps/opm/**, apps/trips/**, packages/**, pnpm-lock.yaml, .github/workflows/simulator.yaml]
+    paths:
+      - apps/stash/**
+      - apps/opm/**
+      - apps/trips/**
+      - packages/**
+      - pnpm-lock.yaml
+      - .github/workflows/simulator*.yaml
+      - .github/actions/setup/**
 
 # A newer push to the same branch replaces the older run.
 concurrency:
@@ -15,76 +22,13 @@ permissions:
   contents: read
   actions: read
 
-env:
-  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  APP_VARIANT: development
-  # Installed once per job with npm, because pnpm applies the workspace's strict peer checks to the EAS CLI's own dependencies.
-  EAS: eas
-
 jobs:
-  # Each native fingerprint builds once for the iOS Simulator; agents replace its JavaScript bundle with their branch's.
-  # Linux computes the same fingerprint as the Mac, so a Mac starts only for a fingerprint without an artifact.
-  plan:
-    runs-on: ubuntu-latest
-    outputs:
-      apps: ${{ steps.fingerprint.outputs.apps }}
-    steps:
-      - uses: actions/checkout@v5
-      - uses: voidzero-dev/setup-vp@v1
-        with: {node-version: '26', cache: true, run-install: true}
-      - run: npm install --global eas-cli@latest
-
-      - name: Fingerprint
-        id: fingerprint
-        run: |
-          set -euo pipefail
-          apps=()
-          for app in stash opm trips; do
-            hash=$(cd "apps/$app" && $EAS fingerprint:generate --platform ios --build-profile simulator --json --non-interactive | jq -r .hash)
-            built=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$app-simulator-$hash" --jq '[.artifacts[] | select(.expired | not)] | length > 0')
-            [[ $built == true ]] || apps+=("$(jq -cn --arg app "$app" --arg name "$app-simulator-$hash" '{$app, $name}')")
-          done
-          echo "apps=$(jq -cs . <<< "${apps[*]:-}")" >> "$GITHUB_OUTPUT"
-
-  simulator:
-    needs: plan
-    if: needs.plan.outputs.apps != '[]'
+  app:
+    name: App
     strategy:
       matrix:
-        include: ${{ fromJSON(needs.plan.outputs.apps) }}
-    runs-on: xcode-27
-    timeout-minutes: 60
-    defaults:
-      run:
-        working-directory: apps/${{ matrix.app }}
-    env:
-      EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: 1
-      # The Simulator host is Apple silicon; the default universal binary compiles every file twice.
-      GYM_XCARGS: ARCHS=arm64
-    steps:
-      - uses: actions/checkout@v5
-      - uses: voidzero-dev/setup-vp@v1
-        with: {node-version: '26', cache: true, run-install: true}
-      - run: npm install --global eas-cli@latest
-      # CocoaPods and the Hermes tarball download with curl to files: a reset or a stalled transfer retries instead of failing the build or hanging for minutes. After setup-vp, whose installer streams into bash, where a retry would append a second script.
-      - run: printf '%s\n' 'retry = 5' 'retry-all-errors' 'connect-timeout = 15' 'speed-limit = 10000' 'speed-time = 30' > ~/.curlrc
-      # One cache for every app: their pods come from the same lockfile, and the Hermes tarball's mirror often stalls.
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/Library/Caches/CocoaPods
-            ~/Library/Caches/ReactNative
-          key: pods-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: pods-
-
-      - name: Build
-        run: |
-          sudo xcode-select --switch /Applications/Xcode_27.1.app
-          $EAS build --local --profile simulator --platform ios --non-interactive --output "$RUNNER_TEMP/simulator.tar.gz"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.name }}
-          path: ${{ runner.temp }}/simulator.tar.gz
-          retention-days: 90
+        app: [stash, opm, trips]
+    uses: ./.github/workflows/simulator-app.yaml
+    with:
+      app: ${{ matrix.app }}
+    secrets: inherit
