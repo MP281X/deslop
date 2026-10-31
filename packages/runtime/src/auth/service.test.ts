@@ -1,7 +1,7 @@
 import {assert, it} from '@effect/vitest'
 
 import type {Schema} from 'effect'
-import {Boolean, Context, Effect, Exit, Fiber, Layer, Ref, pipe} from 'effect'
+import {Boolean, ConfigProvider, Context, Effect, Exit, Fiber, Layer, Ref, pipe} from 'effect'
 
 import {Headers, HttpClient, HttpClientResponse, HttpRouter, HttpServerResponse} from 'effect/http'
 import {Rpc, RpcMessage} from 'effect/rpc'
@@ -9,7 +9,7 @@ import {TestClock} from 'effect/testing'
 
 import {Auth, HttpAuth, layerMcpAuth} from './service.ts'
 
-import {RpcAuth} from '#auth/lib/utils.ts'
+import {CurrentUser, DEVELOPER, RpcAuth} from '#auth/lib/utils.ts'
 import {AuthError} from '#auth/schema.ts'
 
 it.effect('ends a running RPC once its credentials are rejected, not while the issuer is down', () =>
@@ -108,5 +108,57 @@ it.effect(
 		yield* Ref.set(upstream, {body: {id: '42', name: 'authorized'}, status: 200})
 		assert.strictEqual((yield* request('/mcp')).status, 200)
 		assert.strictEqual((yield* request('/ingest')).status, 200)
+	})
+)
+
+it.effect(
+	'signs every development request in as the developer without reaching the issuer',
+	Effect.fnUntraced(function* () {
+		const calls = yield* Ref.make(0)
+		const client = HttpClient.make(request =>
+			Effect.as(
+				Ref.update(calls, count => count + 1),
+				HttpClientResponse.fromWeb(request, new Response(undefined, {status: 401}))
+			)
+		)
+		const web = yield* Effect.acquireRelease(
+			Effect.sync(() =>
+				HttpRouter.toWebHandler(
+					pipe(
+						Layer.merge(
+							pipe(
+								HttpRouter.add(
+									'GET',
+									'/me',
+									Effect.map(CurrentUser, user => HttpServerResponse.text(user.name))
+								),
+								Layer.provide(HttpAuth.layer)
+							),
+							pipe(
+								HttpRouter.add(
+									'GET',
+									'/mcp',
+									Effect.map(CurrentUser, user => HttpServerResponse.text(user.name))
+								),
+								Layer.provide(layerMcpAuth('https://scope.mp281x.xyz/mcp'))
+							)
+						),
+						Layer.provide(Auth.layer('https://otel.mp281x.xyz')),
+						Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
+						Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({NODE_ENV: 'development'})))
+					),
+					{disableLogger: true}
+				)
+			),
+			value => Effect.promise(() => value.dispose())
+		)
+		for (const path of ['/me', '/mcp']) {
+			const response = yield* Effect.tryPromise(() =>
+				web.handler(new Request(`https://desktop.tailnet-8c4c.ts.net:23475${path}`))
+			)
+			assert.strictEqual(response.status, 200)
+			assert.strictEqual(yield* Effect.promise(() => response.text()), DEVELOPER.name)
+		}
+		assert.strictEqual(yield* Ref.get(calls), 0)
 	})
 )

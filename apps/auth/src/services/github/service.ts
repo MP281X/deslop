@@ -5,7 +5,7 @@ import {Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientRequest, HttpClientResponse, UrlParams} from 'effect/http'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
-import {AUTH_URL} from '@deslop/runtime/auth/utils'
+import {AUTH_URL, DEVELOPER, development} from '@deslop/runtime/auth/utils'
 
 import {GitHubToken} from '#services/github/schema.ts'
 import type {SignInParams} from '#services/github/schema.ts'
@@ -13,6 +13,8 @@ import {GitHubUser} from '#services/people/schema.ts'
 
 const HEADERS = {accept: 'application/vnd.github+json', 'user-agent': '@deslop/auth'}
 const CALLBACK = `${AUTH_URL}/auth/github/callback`
+// The account every app's preview signs in as, `github:0`.
+const DEVELOPER_PROFILE = GitHubUser.make({id: 0, login: DEVELOPER.name})
 
 function failed(message: string) {
 	return Effect.mapError(cause => {
@@ -37,13 +39,7 @@ export class GitHub extends Context.Service<
 	static readonly layer = Layer.effect(
 		GitHub,
 		Effect.gen(function* () {
-			const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 			const random = yield* SecureRandom.SecureRandom
-			const digest = yield* Digest.Digest
-			const provider = yield* Config.all({
-				clientId: Config.String('GITHUB_CLIENT_ID'),
-				secret: Config.Redacted('GITHUB_CLIENT_SECRET')
-			})
 			const flows = yield* Cache.make<string, SignInParams & {verifier: string}, AuthError>({
 				capacity: 256,
 				lookup: () => Effect.fail(AuthError.make({message: 'The sign-in expired'})),
@@ -55,6 +51,27 @@ export class GitHub extends Context.Service<
 				const flow = yield* Cache.get(flows, state)
 				yield* Cache.invalidate(flows, state)
 				return flow
+			})
+			// A preview has no GitHub app: its GitHub step returns at once as the developer, an admin there.
+			if (yield* development) {
+				return GitHub.of({
+					cancel: state => Effect.map(take(state), flow => Struct.omit(flow, ['verifier'])),
+					finish: Effect.fn('GitHub.finish')(function* (_code: string, state: string) {
+						return {flow: Struct.omit(yield* take(state), ['verifier']), profile: DEVELOPER_PROFILE}
+					}),
+					profile: () => Effect.succeed(DEVELOPER_PROFILE),
+					start: Effect.fn('GitHub.start')(function* (flow: SignInParams) {
+						const state = yield* nonce
+						yield* Cache.set(flows, state, {...flow, verifier: ''})
+						return {state, url: `/auth/github/callback?${new URLSearchParams({code: 'development', state})}`}
+					})
+				})
+			}
+			const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
+			const digest = yield* Digest.Digest
+			const provider = yield* Config.all({
+				clientId: Config.String('GITHUB_CLIENT_ID'),
+				secret: Config.Redacted('GITHUB_CLIENT_SECRET')
 			})
 			const user = Effect.fnUntraced(function* (request: HttpClientRequest.HttpClientRequest) {
 				return yield* pipe(

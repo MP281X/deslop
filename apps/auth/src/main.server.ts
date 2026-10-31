@@ -6,7 +6,7 @@ import {HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse} from 
 import {RateLimiter} from 'effect/persistence'
 import {RpcServer} from 'effect/rpc'
 
-import {AUTH_URL} from '@deslop/runtime/auth/utils'
+import {development} from '@deslop/runtime/auth/utils'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import {HttpHandlers} from '#http/handlers.ts'
@@ -15,17 +15,20 @@ import {RpcHandlers} from '#rpcs/handlers.ts'
 import {GitHub} from '#services/github/service.ts'
 import {People} from '#services/people/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
+import {fromAuth} from '#services/tokens/lib/utils.ts'
 import {Tokens, layerStore} from '#services/tokens/service.ts'
 import {layerMcp} from '#tools/handlers.ts'
 
 const RpcOrigin = HttpRouter.middleware()(
-	Effect.succeed(app =>
-		Effect.gen(function* () {
-			if ((yield* HttpServerRequest.HttpServerRequest).headers['origin'] !== AUTH_URL) {
-				return HttpServerResponse.text('The request comes from another origin', {status: 403})
-			}
-			return yield* app
-		})
+	Effect.map(
+		development,
+		preview => app =>
+			Effect.gen(function* () {
+				if (!fromAuth((yield* HttpServerRequest.HttpServerRequest).headers, preview)) {
+					return HttpServerResponse.text('The request comes from another origin', {status: 403})
+				}
+				return yield* app
+			})
 	)
 )
 

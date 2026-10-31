@@ -170,7 +170,7 @@ Fast tools, not consumer or enterprise apps: Linear, Vercel, Executor, T3 Code. 
 | --------- | ------- |
 | portfolio | orange  |
 | opm       | orange  |
-| auth      | green   |
+| auth      | orange  |
 | gateway   | purple  |
 | scope     | cyan    |
 | signal    | magenta |

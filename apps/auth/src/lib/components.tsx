@@ -91,7 +91,7 @@ function Cell(props: {app: string; client: string; now: number; signIns: SignedI
 				className="w-full font-mono"
 				aria-label={Boolean.match(armed, {
 					onFalse: () =>
-						`${props.client} in ${props.app} on ${machines(props.signIns.length)}, active ${ageLabel(minutes)} ago; tap twice to sign out`,
+						`${props.client} in ${props.app} on ${machines(props.signIns.length)}, active ${Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})}; tap twice to sign out`,
 					onTrue: () => `Sign ${props.client} out of ${props.app}`
 				})}
 				disabled={AsyncResult.isWaiting(disconnection)}
