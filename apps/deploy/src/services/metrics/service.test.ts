@@ -28,6 +28,10 @@ it.layer(NodeServices.layer)('Resource history', test => {
 			assert.isFalse(first.stale)
 			assert.lengthOf(first.samples, 1)
 			assert.isAbove(first.samples[0]?.memoryTotal ?? 0, 0)
+			assert.isNotEmpty(first.cpuModel ?? '')
+			assert.isAbove(first.samples[0]?.cores?.length ?? 0, 0)
+			assert.lengthOf(first.samples[0]?.load ?? [], 3)
+			assert.isAbove(first.samples[0]?.uptime ?? 0, 0)
 			yield* TestClock.adjust('30 seconds')
 			const second = yield* Effect.scoped(
 				Effect.gen(function* () {

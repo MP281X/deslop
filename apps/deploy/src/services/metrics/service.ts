@@ -43,6 +43,12 @@ export class Metrics extends Context.Service<
 					Effect.gen(function* () {
 						const fs = yield* FileSystem.FileSystem
 						const worker = String.trim(yield* fs.readFileString('/proc/sys/kernel/hostname'))
+						const cpuModel = pipe(
+							yield* fs.readFileString('/proc/cpuinfo'),
+							String.match(/model name\s*:\s*([^\n]+)/u),
+							Option.map(match => String.trim(match[1] ?? '')),
+							Option.getOrElse(() => '')
+						)
 						const base = yield* KeyValueStore.KeyValueStore
 						const store = KeyValueStore.toSchemaStore(base, Schema.Array(Sample))
 						const now = yield* Clock.currentTimeMillis
@@ -73,6 +79,7 @@ export class Metrics extends Context.Service<
 								const files = yield* Effect.all(
 									{
 										disk: fs.readFileString('/proc/diskstats'),
+										load: fs.readFileString('/proc/loadavg'),
 										memory: fs.readFileString('/proc/meminfo'),
 										network: fs.readFileString('/proc/net/dev'),
 										stat: fs.readFileString('/proc/stat'),
@@ -102,7 +109,7 @@ export class Metrics extends Context.Service<
 								)
 								const old = Option.getOrUndefined(yield* Ref.get(previous))
 								const value = yield* pipe(
-									Effect.try(() => sample(current, files.memory, files.storage, old)),
+									Effect.try(() => sample(current, files.memory, files.storage, old, files.load)),
 									Effect.flatMap(Schema.decodeEffect(Sample))
 								)
 								yield* Ref.set(previous, Option.some(current))
@@ -147,6 +154,7 @@ export class Metrics extends Context.Service<
 								const samples = yield* Ref.get(state)
 								const time = yield* Clock.currentTimeMillis
 								return MachineHistory.make({
+									cpuModel,
 									error: yield* Ref.get(error),
 									samples: history(samples, query.hours, time),
 									stale:

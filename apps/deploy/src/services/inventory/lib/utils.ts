@@ -42,7 +42,7 @@ function important(item: InventoryItem) {
 	)
 }
 
-export function ports(items: readonly InventoryItem[]) {
+function ports(items: readonly InventoryItem[]) {
 	return pipe(
 		items,
 		Array.filter(item => appPort(item) && item.http === true && !String.startsWith('stale')(item.state)),
@@ -58,7 +58,21 @@ export function ports(items: readonly InventoryItem[]) {
 }
 
 export function portLabel(item: InventoryItem) {
-	return `${item.process || 'TCP'} · :${item.port} · ${item.worker}`
+	return `${item.process || 'App'} · :${item.port}`
+}
+
+export function workloadName(item: InventoryItem) {
+	if (item.kind === 'port') return item.process || 'App'
+	if (item.kind === 'container' && String.startsWith('deslop-')(item.name)) {
+		return String.replace(/-[0-9]+$/u, '')(String.slice(7)(item.name))
+	}
+	if (String.startsWith('preview-')(item.name)) {
+		return Option.match(String.match(/@deslop\/([a-z0-9-]+)/u)(item.detail), {
+			onNone: () => item.name,
+			onSome: app => `${app[1]} preview`
+		})
+	}
+	return String.replace(/\.service$/u, '')(item.name)
 }
 
 function sameSocket(listener: InventoryItem, binding: {address: string; port: number; protocol: 'tcp' | 'udp'}) {
@@ -179,5 +193,22 @@ export function workloads(items: readonly InventoryItem[], all: boolean) {
 				)
 			}
 		}
+	)
+}
+
+export function availablePorts(items: readonly InventoryItem[]) {
+	return ports(
+		Array.flatMap(workloads(items, false), row =>
+			Array.map(
+				Array.filter(
+					row.listeners,
+					listener =>
+						(!Array.some(row.listeners, candidate => candidate.ui === true) || listener.ui === true) &&
+						Array.isReadonlyArrayEmpty(row.item.links ?? []) &&
+						!Array.some(row.exposures, exposure => exposure.port === listener.port)
+				),
+				listener => ({...listener, process: workloadName(row.item)})
+			)
+		)
 	)
 }

@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Option} from 'effect'
 
-import {counters, history, sample} from '#services/metrics/lib/utils.ts'
+import {chartWindow, counters, history, sample} from '#services/metrics/lib/utils.ts'
 
 const MEMORY = 'MemTotal: 1024 kB\nMemAvailable: 256 kB\nSwapTotal: 512 kB\nSwapFree: 128 kB'
 const STORAGE = 'Mounted on 1B-blocks Used\n/ 1000000 750000'
@@ -51,5 +51,48 @@ it('bounds history by the chosen time window and response size without synthesiz
 	assert.lengthOf(selected, 121)
 	assert.isAtMost(history(samples, 168, now).length, 481)
 	assert.strictEqual(Option.getOrThrow(Array.last(selected)).time, now)
+	assert.strictEqual(history(samples, 168, now)[0]?.time, 0)
 	assert.isEmpty(history(samples, 1, now + 2 * 3_600_000))
+})
+
+it('measures individual logical cores, memory detail, load and uptime without bridging resets', () => {
+	const first = counters('cpu 100 0 100 600 0 0 0 0\ncpu0 100 0 100 600 0 0 0 0', '', '', '100 0', 0)
+	const current = counters(
+		'cpu 150 0 150 700 0 0 0 0\ncpu0 150 0 150 700 0 0 0 0\ncpu1 10 0 10 20 0 0 0 0',
+		'',
+		'',
+		'130 0',
+		30_000
+	)
+	const value = sample(
+		current,
+		`${MEMORY}\nCached: 32 kB\nSReclaimable: 16 kB\nBuffers: 8 kB`,
+		STORAGE,
+		first,
+		'1.5 2.5 3.5 1/20 123'
+	)
+	assert.deepStrictEqual(value.cores, [
+		{id: 'cpu0', usage: 50},
+		{id: 'cpu1', usage: undefined}
+	])
+	assert.strictEqual(value.memoryCached, 48 * 1024)
+	assert.strictEqual(value.memoryAvailable, 256 * 1024)
+	assert.strictEqual(value.memoryBuffers, 8 * 1024)
+	assert.deepStrictEqual(value.load, [1.5, 2.5, 3.5])
+	assert.strictEqual(value.uptime, 130)
+	assert.isUndefined(sample({...current, uptime: 1}, MEMORY, STORAGE, first).cores[0]?.usage)
+	assert.isUndefined(sample({...current, time: 100_000}, MEMORY, STORAGE, first).cores[0]?.usage)
+	assert.isUndefined(
+		sample({...current, cores: [{id: 'cpu0', idle: 1, total: 1000}]}, MEMORY, STORAGE, first).cores[0]?.usage
+	)
+})
+
+it('uses actual recording coverage for a new agent without hiding a full selected window or fabricating timestamps', () => {
+	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '', '', '100 0', 0), MEMORY, STORAGE)
+	const fresh = Array.makeBy(21, index => ({...value, time: index * 30_000}))
+	assert.deepStrictEqual(history(fresh, 168, 600_000), fresh)
+	assert.deepStrictEqual(chartWindow(history(fresh, 168, 600_000), 168, 600_000), {end: 600_000, start: 0})
+	assert.deepStrictEqual(chartWindow([{...value, time: 3_000_000}], 1, 3_600_000), {end: 3_600_000, start: 3_000_000})
+	assert.deepStrictEqual(chartWindow([{...value, time: 0}], 1, 7_200_000), {end: 7_200_000, start: 3_600_000})
+	assert.deepStrictEqual(chartWindow([], 1, 3_600_000), {end: 3_600_000, start: 3_480_000})
 })

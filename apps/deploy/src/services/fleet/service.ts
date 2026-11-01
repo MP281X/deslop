@@ -146,6 +146,7 @@ export class Fleet extends Context.Service<
 										const time = yield* Clock.currentTimeMillis
 										const all = yield* Ref.get(lastMetrics)
 										return {
+											cpuModel: all[`${worker.name}:${query.hours}`]?.cpuModel,
 											error: `${cause}`,
 											samples: history(all[`${worker.name}:${query.hours}`]?.samples ?? [], query.hours, time),
 											stale: true,

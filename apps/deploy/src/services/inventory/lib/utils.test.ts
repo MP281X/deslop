@@ -1,6 +1,8 @@
 import {assert, it} from '@effect/vitest'
 
-import {ports, workloads} from '#services/inventory/lib/utils.ts'
+import {Array} from 'effect'
+
+import {availablePorts, workloads} from '#services/inventory/lib/utils.ts'
 import {InventoryItem} from '#services/inventory/schema.ts'
 
 const listener = InventoryItem.make({
@@ -23,7 +25,7 @@ function important(item: InventoryItem) {
 }
 
 it('keeps application listeners but excludes non-loopback, UDP, stale and privileged targets from publishing', () => {
-	assert.lengthOf(ports([listener]), 1)
+	assert.lengthOf(availablePorts([listener]), 1)
 	for (const change of [
 		{protocol: 'udp' as const},
 		{address: '100.68.201.107:5173'},
@@ -31,9 +33,9 @@ it('keeps application listeners but excludes non-loopback, UDP, stale and privil
 		{state: 'stale · LISTEN'},
 		{port: 443}
 	]) {
-		assert.isEmpty(ports([{...listener, ...change}]))
+		assert.isEmpty(availablePorts([{...listener, ...change}]))
 	}
-	assert.lengthOf(ports([{...listener, address: '0.0.0.0:5173'}]), 1)
+	assert.lengthOf(availablePorts([{...listener, address: '0.0.0.0:5173'}]), 1)
 })
 
 it('defaults to app activity and failures without hiding the complete inventory from other views', () => {
@@ -68,13 +70,42 @@ it('defaults to app activity and failures without hiding the complete inventory 
 
 it('deduplicates listening ports per worker without losing identical port numbers on other workers', () => {
 	assert.strictEqual(
-		ports([
+		availablePorts([
 			listener,
 			{...listener, address: '0.0.0.0:5173', id: 'duplicate'},
 			{...listener, id: 'remote', worker: 'desktop'}
 		]).length,
 		2
 	)
+})
+
+it('offers only unexposed frontends, across both owned and observed routes and without crossing workers', () => {
+	const service = {
+		...listener,
+		id: 'service',
+		kind: 'service' as const,
+		name: 'deslop-fixture.service',
+		scope: 'user' as const,
+		state: 'active · running'
+	}
+	const endpoint = {...listener, ui: true, unit: service.name}
+	const remote = {...endpoint, id: 'remote', worker: 'desktop'}
+	assert.lengthOf(availablePorts([service, endpoint, remote]), 2)
+	for (const owned of [false, true]) {
+		const exposed = {
+			...listener,
+			id: 'exposed',
+			kind: 'exposure' as const,
+			owned,
+			url: 'https://dev.tailnet.ts.net:5173/'
+		}
+		assert.deepStrictEqual(
+			Array.map(availablePorts([service, endpoint, remote, exposed]), item => item.worker),
+			['desktop']
+		)
+	}
+	assert.isEmpty(availablePorts([{...service, links: ['https://fixture.example.com']}, endpoint]))
+	assert.isEmpty(availablePorts([service, {...endpoint, http: false}]))
 })
 
 it('puts service listeners and their tailnet URLs on one workload without mixing machines', () => {

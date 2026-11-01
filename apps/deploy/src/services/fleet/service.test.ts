@@ -38,6 +38,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch))('Worker 
 				})
 				const snapshot = Snapshot.make({items: [item], sources: [], time: 123})
 				const history = MachineHistory.make({
+					cpuModel: 'Fixture CPU',
 					error: '',
 					samples: [Sample.make({disks: [], memoryTotal: 1024, memoryUsed: 512, swapTotal: 0, swapUsed: 0, time: 0})],
 					stale: false,
@@ -111,9 +112,11 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch))('Worker 
 				assert.strictEqual(current.items[0]?.worker, 'desktop')
 				const currentMetrics = yield* fleet.metrics({hours: 1})
 				assert.strictEqual(currentMetrics[1]?.worker, 'desktop')
+				assert.strictEqual(currentMetrics[1]?.cpuModel, 'Fixture CPU')
 				yield* Ref.set(unavailable, true)
 				const staleMetrics = yield* fleet.metrics({hours: 1})
 				assert.isTrue(staleMetrics[1]?.stale)
+				assert.strictEqual(staleMetrics[1]?.cpuModel, 'Fixture CPU')
 				assert.lengthOf(staleMetrics[1]?.samples ?? [], 1)
 				assert.include(staleMetrics[1]?.error ?? '', 'worker unavailable')
 				yield* TestClock.adjust('2 hours')

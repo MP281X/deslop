@@ -5,6 +5,7 @@ export const HistoryQuery = Schema.Struct({hours: Schema.Literals([1, 24, 168])}
 
 export type Counters = typeof Counters.Type
 export const Counters = Schema.Struct({
+	cores: Schema.optional(Schema.Array(Schema.Struct({id: Schema.String, idle: Schema.Finite, total: Schema.Finite}))),
 	cpuIdle: Schema.Finite,
 	cpuTotal: Schema.Finite,
 	diskRead: Schema.Finite,
@@ -17,21 +18,28 @@ export const Counters = Schema.Struct({
 
 export type Sample = typeof Sample.Type
 export const Sample = Schema.Struct({
+	cores: Schema.optional(Schema.Array(Schema.Struct({id: Schema.String, usage: Schema.optional(Schema.Finite)}))),
 	cpu: Schema.optional(Schema.Finite),
 	diskRead: Schema.optional(Schema.Finite),
 	diskWrite: Schema.optional(Schema.Finite),
 	disks: Schema.Array(Schema.Struct({mount: Schema.String, total: Schema.Finite, used: Schema.Finite})),
+	load: Schema.optional(Schema.Array(Schema.Finite)),
+	memoryAvailable: Schema.optional(Schema.Finite),
+	memoryBuffers: Schema.optional(Schema.Finite),
+	memoryCached: Schema.optional(Schema.Finite),
 	memoryTotal: Schema.Finite,
 	memoryUsed: Schema.Finite,
 	networkReceive: Schema.optional(Schema.Finite),
 	networkSend: Schema.optional(Schema.Finite),
 	swapTotal: Schema.Finite,
 	swapUsed: Schema.Finite,
-	time: Schema.Finite
+	time: Schema.Finite,
+	uptime: Schema.optional(Schema.Finite)
 })
 
 export type MachineHistory = typeof MachineHistory.Type
 export const MachineHistory = Schema.Struct({
+	cpuModel: Schema.optional(Schema.String),
 	error: Schema.String,
 	samples: Schema.Array(Sample),
 	stale: Schema.Boolean,
