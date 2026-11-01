@@ -235,7 +235,7 @@ Motion marks a change the user caused or should notice, and never holds content 
 
 ## Icons
 
-Each app is one real object in isometric pixel art: 64 cells, 2:1 pixel lines, three tones per material (Flexoki 300, 400 and 600 of the app's hue, steel, near-black), light catching the top front edges, a footprint shadow and an `icon-shadow` outline, with one lit part. A lock (auth), a torii (gateway), a monitor with a trace waterfall (scope), a sawtooth factory (signal), a book with a ribbon (stash), a suitcase (trips). Exceptions: the portfolio bolt stays flat, its loose pixels in the other apps' hues, and opm keeps its Saitama face.
+Each app is one real object in isometric pixel art: 64 cells, 2:1 pixel lines, three tones per material (Flexoki 300, 400 and 600 of the app's hue, steel, near-black), light catching the top front edges, a footprint shadow and an `icon-shadow` outline, with one lit part. A lock (auth), a torii (gateway), a monitor with a trace waterfall (scope), a sawtooth factory (signal), a book with a ribbon (stash), a suitcase (trips), a manga volume standing up with Saitama's face as its cover and its page block between the covers (opm). Exception: the portfolio bolt stays flat, its loose pixels in the other apps' hues.
 
 Pixel art ships as SVG, one cell per unit with `crispEdges`, so it stays sharp at any size in a fraction of a PNG's bytes. A raster stays only where a consumer needs one, at the smallest size and format it accepts.
 
@@ -247,8 +247,7 @@ Pixel art ships as SVG, one cell per unit with `crispEdges`, so it stays sharp a
 | `icon.png` (iOS apps)                    | indexed PNG, 1024px                                                                                         | the in-app title, which needs a raster                                                                              |
 | `public/apple-touch-icon.png` (web apps) | indexed PNG, ~512px, a whole multiple of the cells                                                          | the home-screen icon of the installed web app, which iOS wants as a raster                                          |
 
-Every web app installs as its own app: `ServerRuntime.layerManifest` serves a standalone, dark manifest with both icons, and the root keeps clear of the status bar and home indicator with `safe-area`.
-| opm's face | PNG in `app.icon`, WebP at `/icon` | a painting, not pixel art, so it keeps a raster |
+Every web app installs as its own app: `ServerRuntime.layerManifest` serves a standalone, dark manifest with both icons, the root keeps clear of the status bar with `safe-area`, and a scrolling page runs under the home indicator with `pb-safe` so its end scrolls clear.
 
 ## Do's and Don'ts
 

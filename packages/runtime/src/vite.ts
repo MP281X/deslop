@@ -8,8 +8,8 @@ export const pack = {
 	clean: false,
 	entry: ['src/main.server.ts'],
 	format: 'esm',
-	// The icon a server serves at /icon: an SVG as its markup, a raster as a data URL.
-	loader: {'.svg': 'text', '.webp': 'dataurl'},
+	// The icon a server serves at /icon, as its SVG markup.
+	loader: {'.svg': 'text'},
 	outDir: 'dist',
 	outputOptions: {entryFileNames: 'server.js'},
 	platform: 'node',
