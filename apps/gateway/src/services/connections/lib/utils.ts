@@ -1,4 +1,4 @@
-import {Array, Boolean, Match, Option, Predicate, Schema, String, Struct, pipe} from 'effect'
+import {Array, Boolean, Config, Match, Option, Predicate, Schema, String, Struct, pipe} from 'effect'
 
 import {HttpClientError} from 'effect/http'
 
@@ -7,8 +7,18 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import type {Connection, ConnectionInfo, ServerIcon} from '#services/connections/schema.ts'
 
 export const GATEWAY_URL = 'https://gateway.mp281x.xyz'
-// Where providers answer the gateway's sign-ins: `/<id>` for a client registered per server, bare for the metadata document.
-export const CALLBACK = `${GATEWAY_URL}/oauth/callback`
+export const gatewayUrl = pipe(Config.String('APP_URL'), Config.withDefault(GATEWAY_URL))
+
+export function clientMetadata(url: string) {
+	return {
+		client_id: `${url}/oauth/client.json`,
+		client_name: 'Deslop MCP gateway',
+		grant_types: ['authorization_code', 'refresh_token'],
+		redirect_uris: [`${url}/oauth/callback`],
+		response_types: ['code'],
+		token_endpoint_auth_method: 'none'
+	}
+}
 
 // A provider token without a refresh token cannot be renewed once it expires.
 export function connectionStatus(connection: Connection, now: number) {

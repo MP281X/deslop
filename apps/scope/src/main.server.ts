@@ -1,7 +1,7 @@
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- NodeHttpServer requires the native server constructor at the application boundary.
 import {createServer} from 'node:http'
 
-import {NodeCrypto, NodeHttpClient, NodeHttpServer, NodeRuntime, NodeServices} from '@effect/platform-node'
+import {NodeCrypto, NodeHttpClient, NodeHttpServer, NodeServices} from '@effect/platform-node'
 
 import type {Schema} from 'effect'
 import {Array, ByteSize, Config, Effect, FileSystem, Layer, Path, String, pipe} from 'effect'
@@ -18,6 +18,7 @@ import {
 import {RpcSerialization, RpcServer} from 'effect/rpc'
 
 import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
+import {runApp} from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import packageJson from '#package.json' with {type: 'json'}
@@ -104,7 +105,8 @@ const telemetry = Layer.unwrap(
 )
 
 // The receiver never exports its own spans or query traffic back into itself.
-NodeRuntime.runMain(
+runApp(
+	'scope',
 	pipe(
 		Layer.merge(
 			pipe(
@@ -128,9 +130,9 @@ NodeRuntime.runMain(
 								credentials: true
 							})
 						),
-						Layer.provide(Auth.layer('https://otel.mp281x.xyz'))
+						Layer.provide(Auth.layer('https://scope.mp281x.xyz', 'https://otel.mp281x.xyz'))
 					),
-					{disableLogger: true, middleware: observe}
+					{disableLogger: true, middleware: app => ServerRuntime.localGuardWithHosts(['otel.mp281x.xyz'])(observe(app))}
 				),
 				Layer.provide(ServerRuntime.layerNodeHttpServer)
 			),
@@ -143,7 +145,7 @@ NodeRuntime.runMain(
 				Layer.provide(
 					NodeHttpServer.layerConfig(createServer, {
 						host: pipe(Config.String('HOST'), Config.withDefault('127.0.0.1')),
-						port: Config.succeed(4318)
+						port: pipe(Config.Port('OTLP_PORT'), Config.withDefault(4318))
 					})
 				)
 			)

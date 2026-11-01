@@ -32,6 +32,7 @@ import type {Resource, User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {layerKeyValueStore} from '@deslop/runtime/server'
 
+import {Resources} from '#services/resources/service.ts'
 import {browserLabel, clientLabel, clientOf, deviceLabel, given, matchingRedirect} from '#services/tokens/lib/utils.ts'
 import type {
 	AuthorizeClient,
@@ -121,6 +122,7 @@ export class Tokens extends Context.Service<
 		readonly forget: (id: string) => Effect.Effect<void, AuthError>
 		readonly issue: (request: ClientRequest, user: User) => Effect.Effect<string, AuthError>
 		readonly revoke: (params: RevokeParams) => Effect.Effect<void, AuthError>
+		readonly resources: typeof Resources.Service
 		readonly session: (headers: Headers.Headers) => Effect.Effect<User, AuthError>
 		readonly startSession: (
 			user: User,
@@ -133,6 +135,7 @@ export class Tokens extends Context.Service<
 		Tokens,
 		Effect.gen(function* () {
 			const kv = yield* KeyValueStore.KeyValueStore
+			const resourcesRegistry = yield* Resources.make
 			// The previous release kept people and tokens in `state`; this one starts over, so it is deleted.
 			yield* kv.remove('state')
 			const store = KeyValueStore.toSchemaStore(kv, Grants)
@@ -177,6 +180,7 @@ export class Tokens extends Context.Service<
 				return found.grant.user
 			}, rejected('Sign in first'))
 			const access = Effect.fn('Tokens.access')(function* (headers: Headers.Headers, resource: string) {
+				yield* resourcesRegistry.accepted(resource)
 				// RFC 9110 auth schemes are case-insensitive and may be followed by more than one space.
 				const token = yield* Effect.fromOption(
 					Option.flatMapNullishOr(
@@ -202,6 +206,7 @@ export class Tokens extends Context.Service<
 				resources: readonly Resource[],
 				now: number
 			) {
+				yield* Effect.forEach(resources, resourcesRegistry.accepted, {concurrency: 1})
 				const accessSecret = yield* secret(32)
 				const refreshSecret = yield* secret(32)
 				// A queued iOS upload cannot refresh its bearer after the share sheet closes.
@@ -474,6 +479,7 @@ export class Tokens extends Context.Service<
 					)
 				}, rejected('Cannot sign this account out')),
 				issue: Effect.fn('Tokens.issue')(function* (request: ClientRequest, user: User) {
+					yield* Effect.forEach(request.resources, resourcesRegistry.accepted, {concurrency: 1})
 					const code = yield* secret(32)
 					const key = yield* hash(code)
 					const now = yield* Clock.currentTimeMillis
@@ -486,6 +492,7 @@ export class Tokens extends Context.Service<
 					)
 					return code
 				}, rejected('Cannot issue the authorization code')),
+				resources: resourcesRegistry,
 				revoke: Effect.fn('Tokens.revoke')(function* (params: RevokeParams) {
 					// RFC 7009: the client's own refresh or live access token ends its sign-in; anything else changes nothing.
 					yield* Option.match(parts(params.token), {

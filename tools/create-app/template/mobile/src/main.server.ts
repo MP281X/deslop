@@ -1,4 +1,4 @@
-import {NodeHttpClient, NodeRuntime} from '@effect/platform-node'
+import {NodeHttpClient} from '@effect/platform-node'
 
 import {Layer, pipe} from 'effect'
 
@@ -7,6 +7,7 @@ import {HttpRouter} from 'effect/http'
 import {RpcSerialization, RpcServer} from 'effect/rpc'
 
 import {Auth} from '@deslop/runtime/auth/service'
+import {runApp} from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import packageJson from '#package.json' with {type: 'json'}
@@ -24,7 +25,8 @@ const mcp = ServerRuntime.layerMcp({
 	version: packageJson.version
 })
 
-NodeRuntime.runMain(
+runApp(
+	'template-app',
 	pipe(
 		HttpRouter.serve(
 			pipe(
@@ -39,7 +41,7 @@ NodeRuntime.runMain(
 				),
 				Layer.provide(Auth.layer('https://template-app.mp281x.xyz'))
 			),
-			{disableLogger: true}
+			{disableLogger: true, middleware: ServerRuntime.localGuard}
 		),
 		Layer.provide(ServerRuntime.layer('@deslop/template-app')),
 		Layer.provide(NodeHttpClient.layerFetch),

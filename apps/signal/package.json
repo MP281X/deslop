@@ -1,15 +1,33 @@
 {
 	"name": "@deslop/signal",
+	"version": "0.1.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/MP281X/deslop",
+		"directory": "apps/signal"
+	},
+	"bin": {
+		"signal": "./dist/server.js"
+	},
+	"files": [
+		"dist",
+		"bin"
+	],
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
+		"#package.*": "./package.*",
 		"#lib/*": "./src/lib/*",
 		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
-		"#services/*": "./src/services/*"
+		"#services/*": "./src/services/*",
+		"#tools/*": "./src/tools/*"
+	},
+	"publishConfig": {
+		"access": "public"
 	},
 	"scripts": {
-		"build": "rm -rf dist && vp build && vp pack",
+		"build": "rm -rf dist && vp build && vp pack && node ../../packages/runtime/src/package.ts signal",
 		"preview": "NODE_ENV=development vp run build && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js",
 		"test": "vp test --config ../../vite.config.ts",
 		"typecheck": "tsrs --checkerAssignment go --pretty false"
@@ -28,5 +46,8 @@
 		"react": "latest",
 		"react-dom": "latest",
 		"three": "latest"
+	},
+	"engines": {
+		"node": ">=26"
 	}
 }

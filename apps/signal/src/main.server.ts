@@ -1,20 +1,27 @@
-import {NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
+import {NodeHttpClient, NodeServices} from '@effect/platform-node'
 
 import {Boolean, Config, Effect, Layer, Path, pipe} from 'effect'
 
+import {McpServer} from 'effect/ai'
 import {HttpRouter} from 'effect/http'
 import {RpcServer} from 'effect/rpc'
 
 import {Auth} from '@deslop/runtime/auth/service'
+import {runApp} from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
+
+import packageJson from '#package.json' with {type: 'json'}
 
 import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Core} from '#services/core/service.ts'
 import {Game} from '#services/game/service.ts'
+import {Tools} from '#tools/contracts.ts'
+import {ToolHandlers} from '#tools/handlers.ts'
 
-NodeRuntime.runMain(
+runApp(
+	'signal',
 	pipe(
 		HttpRouter.serve(
 			pipe(
@@ -24,12 +31,18 @@ NodeRuntime.runMain(
 						Layer.provide(RpcHandlers)
 					),
 					ServerRuntime.layerIcon(icon),
+					ServerRuntime.layerMcp({
+						instructions: 'Observe the Signal simulation timeline and model usage.',
+						name: 'signal',
+						registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers)),
+						version: packageJson.version
+					}),
 					ServerRuntime.layerManifest('Signal'),
 					ServerRuntime.layerStaticFiles
 				),
 				Layer.provide(Auth.layer('https://signal.mp281x.xyz'))
 			),
-			{disableLogger: true}
+			{disableLogger: true, middleware: ServerRuntime.localGuard}
 		),
 		Layer.provide(ServerRuntime.layer('@deslop/signal')),
 		Layer.provide(Game.layer),

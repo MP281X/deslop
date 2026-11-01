@@ -32,6 +32,7 @@ export class Presence extends Context.Service<
 	{
 		readonly join: (payload: Pick<PortfolioVisitor, 'color' | 'id' | 'name'>) => Stream.Stream<PortfolioVisitors>
 		readonly move: (payload: Pick<PortfolioVisitor, 'color' | 'id' | 'x' | 'y'>) => Effect.Effect<void>
+		readonly snapshot: Effect.Effect<PortfolioVisitors>
 	}
 >()('@deslop/portfolio/services/presence/service/Presence') {
 	static readonly layer = Layer.effect(
@@ -190,7 +191,13 @@ export class Presence extends Context.Service<
 							)
 						})
 					),
-				move: payload => send({_tag: 'Moved', ...payload})
+				move: payload => send({_tag: 'Moved', ...payload}),
+				snapshot: Effect.map(ref.state, state =>
+					Option.match(room.root.get(state, 'Occupied'), {
+						onNone: () => [],
+						onSome: occupied => [...occupied.visitors, ...occupied.bots]
+					})
+				)
 			})
 		})
 	)

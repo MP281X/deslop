@@ -116,6 +116,7 @@ function Tabs() {
 			{Array.map(
 				[
 					{count: 0, label: 'Sign-ins', to: '/'},
+					{count: 0, label: 'Resources', to: '/resources'},
 					{
 						count: Array.countBy(useAtomSuspense(peopleAtom).value, person => person.role === 'Waiting'),
 						label: 'People',

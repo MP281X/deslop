@@ -1,6 +1,18 @@
 {
 	"name": "@deslop/template-app",
 	"version": "0.1.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/MP281X/deslop",
+		"directory": "apps/template-app"
+	},
+	"bin": {
+		"template-app": "./dist/server.js"
+	},
+	"files": [
+		"dist",
+		"bin"
+	],
 	"type": "module",
 	"sideEffects": false,
 	"main": "src/main.client.tsx",
@@ -11,8 +23,11 @@
 		"#rpcs/*": "./src/rpcs/*",
 		"#tools/*": "./src/tools/*"
 	},
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
-		"build": "rm -rf dist && vp pack",
+		"build": "rm -rf dist && vp pack && node ../../packages/runtime/src/package.ts template-app",
 		"preview": "vp run build && node --env-file-if-exists=.env ./dist/server.js",
 		"test": "vp test --config ../../vite.config.ts",
 		"typecheck": "tsrs --checkerAssignment go --pretty false"
@@ -30,5 +45,8 @@
 		"@expo/ui": "^58.0",
 		"effect": "latest",
 		"expo-updates": "^58.0"
+	},
+	"engines": {
+		"node": ">=26"
 	}
 }

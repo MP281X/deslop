@@ -5,6 +5,9 @@
 
 # build output & cache
 **/dist
+apps/*/bin
+apps/*/package.tgz
+apps/*/release
 **/*.tsbuildinfo
 **/*.sqlite
 **/*.sqlite-shm

@@ -1,4 +1,4 @@
-import {NodeCrypto, NodeDns, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
+import {NodeCrypto, NodeDns, NodeHttpClient, NodeServices} from '@effect/platform-node'
 
 import {Array, Effect, Layer, Option, Schema, String, pipe} from 'effect'
 
@@ -7,6 +7,7 @@ import {HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse} from 
 import {RpcSerialization, RpcServer} from 'effect/rpc'
 
 import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
+import {runApp} from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import packageJson from '#package.json' with {type: 'json'}
@@ -95,14 +96,15 @@ const mcp = ServerRuntime.layerMcp({
 	version: packageJson.version
 })
 
-NodeRuntime.runMain(
+runApp(
+	'stash',
 	pipe(
 		HttpRouter.serve(
 			pipe(
 				Layer.mergeAll(rpc, pipe(routes, Layer.provide(HttpAuth.layer)), mcp, ServerRuntime.layerIcon(icon)),
 				Layer.provide(Auth.layer('https://stash.mp281x.xyz'))
 			),
-			{disableLogger: true, middleware: sameOrigin}
+			{disableLogger: true, middleware: app => ServerRuntime.localGuard(sameOrigin(app))}
 		),
 		Layer.provide(layerNotes),
 		Layer.provide(Layer.mergeAll(Sources.layer, Media.layer, Organizer.layer)),

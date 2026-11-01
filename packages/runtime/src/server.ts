@@ -18,12 +18,20 @@ import {
 	Predicate,
 	Semaphore,
 	Stream,
+	String,
 	Struct,
 	pipe
 } from 'effect'
 
 import {McpProtocol, McpServer} from 'effect/ai'
-import {HttpIncomingMessage, HttpRouter, HttpServerResponse, HttpStaticServer} from 'effect/http'
+import {
+	HttpIncomingMessage,
+	HttpMiddleware,
+	HttpRouter,
+	HttpServerRequest,
+	HttpServerResponse,
+	HttpStaticServer
+} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 import {RpcSerialization} from 'effect/rpc'
 
@@ -31,6 +39,50 @@ import {layerOtlp} from '#telemetry.ts'
 
 import {AUTH_URL} from '#auth/lib/utils.ts'
 import {layerMcpAuth} from '#auth/service.ts'
+
+export function localGuardWithHosts(aliases: string[]) {
+	return HttpMiddleware.make(app =>
+		Effect.gen(function* () {
+			const request = yield* HttpServerRequest.HttpServerRequest
+			const canonical = yield* pipe(Config.String('APP_URL'), Config.withDefault('http://127.0.0.1:5000'))
+			const host = request.headers['host'] ?? ''
+			const url = new URL(request.url, canonical)
+			const local = yield* pipe(Config.Boolean('DESLOP_LOCAL'), Config.withDefault(true))
+			if (
+				!(
+					host === new URL(canonical).host ||
+					Array.contains(aliases, host) ||
+					Option.isSome(String.match(/^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/u)(host))
+				) ||
+				(local &&
+					request.headers['origin'] !== undefined &&
+					request.headers['origin'] !== `http://${host}` &&
+					request.headers['origin'] !== `https://${host}`)
+			) {
+				return HttpServerResponse.empty({status: 403})
+			}
+			if (url.pathname === '/api/runtime' && request.method === 'GET') {
+				return HttpServerResponse.jsonUnsafe({
+					traces: yield* pipe(Config.String('VITE_OTEL_URL'), Config.withDefault('')),
+					version: yield* pipe(Config.String('APP_VERSION'), Config.withDefault('0.1.0'))
+				})
+			}
+			if (url.pathname === '/auth/sign-in' && request.method === 'GET') {
+				const issuer = yield* pipe(Config.String('AUTH_URL'), Config.withDefault(''))
+				if (issuer === '') return HttpServerResponse.redirect('/')
+				const next = yield* Effect.try({
+					catch: () => HttpServerResponse.empty({status: 400}),
+					try: () => new URL(url.searchParams.get('next') ?? canonical, canonical)
+				})
+				if (next.origin !== new URL(canonical).origin) return HttpServerResponse.empty({status: 400})
+				return HttpServerResponse.redirect(`${new URL('/', issuer).href}?${new URLSearchParams({next: next.href})}`)
+			}
+			return yield* app
+		})
+	)
+}
+
+export const localGuard = localGuardWithHosts([])
 
 // Schema stores share Effect's filesystem implementation, but replace values atomically instead of truncating them in place.
 export function layerKeyValueStore(directory: string) {
@@ -103,8 +155,14 @@ export function listEvents<A extends {id: string}, E, R>(lists: Stream.Stream<re
 export function layer(applicationName: string) {
 	return Layer.mergeAll(
 		Layer.unwrap(
-			Effect.map(pipe(Config.URL('VITE_OTEL_URL'), Config.withDefault(new URL('http://localhost:4318'))), url =>
-				layerOtlp(`${applicationName}-server`, url, 'server')
+			Effect.map(
+				Config.orElse(Config.String('SERVER_OTEL_URL'), () =>
+					pipe(Config.String('VITE_OTEL_URL'), Config.withDefault(''))
+				),
+				url => {
+					if (url === '') return Layer.empty
+					return layerOtlp(`${applicationName}-server`, url, 'server')
+				}
 			)
 		),
 		RpcSerialization.layerSchemaBinary(),
@@ -158,30 +216,38 @@ export function layerMcp<RA, RE, RR>(options: {
 	registrations: Layer.Layer<RA, RE, RR>
 	version: string
 }) {
-	const resource = `https://${options.name}.mp281x.xyz/mcp`
-	return Layer.mergeAll(
-		pipe(
-			McpServer.layerHttp({
-				...options,
-				allowSessionTermination: true,
-				icons: [{src: `https://${options.name}.mp281x.xyz/icon`}],
-				path: '/mcp',
-				protocols: [McpProtocol.v2026_07_28, McpProtocol.v2025_11_25, McpProtocol.v2025_06_18]
-			}),
-			Layer.provide(layerMcpAuth(resource))
-		),
-		HttpRouter.add(
-			'GET',
-			'/.well-known/oauth-protected-resource/mcp',
-			Effect.succeed(
-				HttpServerResponse.jsonUnsafe({
-					authorization_servers: [`${AUTH_URL}/api/auth`],
-					bearer_methods_supported: ['header'],
-					resource,
-					scopes_supported: ['deslop']
-				})
+	return Layer.unwrap(
+		Effect.gen(function* () {
+			const canonical = yield* pipe(Config.String('APP_URL'), Config.withDefault(`https://${options.name}.mp281x.xyz`))
+			const issuer = yield* pipe(Config.String('AUTH_URL'), Config.withDefault(AUTH_URL))
+			const resource = new URL('/mcp', canonical).href
+			const endpoint = pipe(
+				McpServer.layerHttp({
+					...options,
+					allowSessionTermination: true,
+					icons: [{src: new URL('/icon', canonical).href}],
+					path: '/mcp',
+					protocols: [McpProtocol.v2026_07_28, McpProtocol.v2025_11_25, McpProtocol.v2025_06_18]
+				}),
+				Layer.provide(layerMcpAuth(resource))
 			)
-		)
+			if (yield* pipe(Config.Boolean('DESLOP_LOCAL'), Config.withDefault(false))) return endpoint
+			return Layer.mergeAll(
+				endpoint,
+				HttpRouter.add(
+					'GET',
+					'/.well-known/oauth-protected-resource/mcp',
+					Effect.succeed(
+						HttpServerResponse.jsonUnsafe({
+							authorization_servers: [new URL('/api/auth', issuer).href],
+							bearer_methods_supported: ['header'],
+							resource,
+							scopes_supported: ['deslop']
+						})
+					)
+				)
+			)
+		})
 	)
 }
 
@@ -202,6 +268,6 @@ export const layerStaticFiles = Layer.mergeAll(
 
 export const layerNodeHttpServer = NodeHttpServer.layerConfig(createServer, {
 	gracefulShutdownTimeout: Config.succeed('1500 millis'),
-	host: pipe(Config.String('HOST'), Config.withDefault('0.0.0.0')),
+	host: pipe(Config.String('HOST'), Config.withDefault('127.0.0.1')),
 	port: pipe(Config.Port('PORT'), Config.withDefault(5000))
 })

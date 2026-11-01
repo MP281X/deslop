@@ -1,4 +1,4 @@
-import {NodeCrypto, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
+import {NodeCrypto, NodeHttpClient, NodeServices} from '@effect/platform-node'
 
 import {Config, Effect, FileSystem, Layer, Path, pipe} from 'effect'
 
@@ -7,6 +7,7 @@ import {HttpRouter} from 'effect/http'
 import {RpcSerialization, RpcServer} from 'effect/rpc'
 
 import {Auth} from '@deslop/runtime/auth/service'
+import {runApp} from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import packageJson from '#package.json' with {type: 'json'}
@@ -40,7 +41,8 @@ const mcp = ServerRuntime.layerMcp({
 	version: packageJson.version
 })
 
-NodeRuntime.runMain(
+runApp(
+	'trips',
 	pipe(
 		HttpRouter.serve(
 			pipe(
@@ -55,7 +57,7 @@ NodeRuntime.runMain(
 				),
 				Layer.provide(Auth.layer('https://trips.mp281x.xyz'))
 			),
-			{disableLogger: true}
+			{disableLogger: true, middleware: ServerRuntime.localGuard}
 		),
 		Layer.provide(Layer.mergeAll(Push.layer, Tracker.layer)),
 		Layer.provide(Bookings.layer),
