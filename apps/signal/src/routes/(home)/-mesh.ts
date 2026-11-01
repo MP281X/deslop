@@ -277,7 +277,7 @@ function take(name: Sink) {
 
 /* ───────── the area: the chunk and a ring of its neighbours, edits and ore left applied ───────── */
 
-export function visibleProps(props: Chunk['props'], overlay: Overlay) {
+function visibleProps(props: Chunk['props'], overlay: Overlay) {
 	return Array.filter(
 		props,
 		prop =>

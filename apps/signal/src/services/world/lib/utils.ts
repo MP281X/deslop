@@ -3295,6 +3295,11 @@ export function makeWorld(seed: number) {
 				x: Math.floor(start.x),
 				z: Math.floor(start.z)
 			})),
+		// A stair's tile.level is Infinity; terrain samples resolve its height function instead.
+		terrainAt: (x: number, z: number) => {
+			const tile = tileAt(x, z)
+			return {...tile, level: cornerHeight(tile, x, z, () => blendS(x, z))}
+		},
 		tileAt
 	}
 }

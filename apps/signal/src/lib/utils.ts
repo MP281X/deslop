@@ -293,9 +293,9 @@ export const threadFeedAtom = Atom.setIdleTTL(
 type Hover = {id: string; x: number; y: number}
 export const hoverAtom = Atom.keepAlive(Atom.make(Option.none<Hover>()))
 
-// What the camera follows: a unit or a place; the overview frames all teams.
-export type Follow = {free: Option.Option<{x: number; z: number}>; id: Option.Option<number>; overview: boolean}
-export const followAtom = Atom.keepAlive(Atom.make<Follow>({free: Option.none(), id: Option.none(), overview: false}))
+// What the camera follows: a unit or a place.
+export type Follow = {free: Option.Option<{x: number; z: number}>; id: Option.Option<number>}
+export const followAtom = Atom.keepAlive(Atom.make<Follow>({free: Option.none(), id: Option.none()}))
 
 // The team whose thread and units the sidebar shows.
 export const teamAtom = Atom.keepAlive(Atom.make(0))

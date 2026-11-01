@@ -53,10 +53,9 @@ import {tileOf} from '#services/world/lib/utils.ts'
 const ZOOM_STEP = 1.25
 // The replay speeds, in multiples of real time.
 const SPEEDS = [1, 10, 30]
-const coverageAtom = Atom.make(-1)
 const groundAtom = Atom.make({at: Option.none<{x: number; z: number}>(), info: Option.none<Inspected>(), x: 0, y: 0})
 
-type Key = 'in' | 'leave' | 'next' | 'out' | 'overview' | 'play' | 'previous'
+type Key = 'in' | 'leave' | 'next' | 'out' | 'play' | 'previous'
 type Inspection = {kind: 'thread'} | {actor: Option.Option<number>; kind: 'history'}
 
 function percent(share: number) {
@@ -104,7 +103,6 @@ function preventMapWheel(event: Event) {
 
 function letterKey(code: string, repeat: boolean) {
 	if (repeat) return Option.none<Key>()
-	if (code === 'KeyQ') return Option.some<Key>('overview')
 	if (code === 'Space') return Option.some<Key>('play')
 	return Option.none<Key>()
 }
@@ -1041,7 +1039,13 @@ function MarkGlyph(props: {mark: Mark; span: Timeline}) {
 }
 
 // The run from its first moment to now: its marks, where the screen is, play and pause, the replay's speed and the way back to live.
-function TimelineBar(props: {source: Source; tick: number; timeline: Timeline; onSource: (source: Source) => void}) {
+function TimelineBar(props: {
+	source: Source
+	tick: number
+	timeline: Timeline
+	onSource: (source: Source) => void
+	onThreads: () => void
+}) {
 	const live = Option.isNone(props.source)
 	const span = {...props.timeline, live: Number.max(props.timeline.live, props.tick)}
 	const length = Number.max(1, span.live - span.start)
@@ -1050,34 +1054,8 @@ function TimelineBar(props: {source: Source; tick: number; timeline: Timeline; o
 		() => 1
 	)
 	return (
-		<section aria-label="Timeline" className="bg-popover flex flex-none flex-wrap items-center gap-1 px-2">
-			<Button
-				variant="ghost"
-				size="icon"
-				className="min-h-11 min-w-11"
-				aria-label={Boolean.match(live, {
-					onFalse: () => Boolean.match(speed > 0, {onFalse: () => 'Play replay', onTrue: () => 'Pause replay'}),
-					onTrue: () => 'Replay from beginning'
-				})}
-				onClick={() =>
-					props.onSource(
-						Boolean.match(live, {
-							onFalse: () => toggled(props.source, props.tick),
-							onTrue: () => Option.some({from: span.start, speed: 1})
-						})
-					)
-				}
-			>
-				{Boolean.match(!live && speed > 0, {onFalse: () => '▶', onTrue: () => '❚❚'})}
-			</Button>
-
-			<span className="text-muted-foreground font-mono tabular-nums" aria-live="off">
-				{clockOf(props.tick)}
-			</span>
-			{!live && (
-				<span className="text-muted-foreground font-mono">{clockOf(Number.max(0, span.live - props.tick))} behind</span>
-			)}
-			<div className="relative order-first h-8 w-full flex-none">
+		<section aria-label="Timeline" className="bg-popover flex flex-none flex-col px-2">
+			<div className="relative h-8 w-full">
 				<div className="bg-border pointer-events-none absolute inset-x-1 top-1/2 h-0.5">
 					<div
 						className="bg-primary h-full w-(--fill)"
@@ -1100,35 +1078,70 @@ function TimelineBar(props: {source: Source; tick: number; timeline: Timeline; o
 					onChange={event => props.onSource(Option.some({from: event.currentTarget.valueAsNumber, speed: 0}))}
 				/>
 			</div>
+			<div className="flex min-w-0 items-center gap-1">
+				<Button
+					variant="ghost"
+					size="icon"
+					className="min-h-11 min-w-11"
+					aria-label={Boolean.match(live, {
+						onFalse: () => Boolean.match(speed > 0, {onFalse: () => 'Play replay', onTrue: () => 'Pause replay'}),
+						onTrue: () => 'Replay from beginning'
+					})}
+					onClick={() =>
+						props.onSource(
+							Boolean.match(live, {
+								onFalse: () => toggled(props.source, props.tick),
+								onTrue: () => Option.some({from: span.start, speed: 1})
+							})
+						)
+					}
+				>
+					{Boolean.match(!live && speed > 0, {onFalse: () => '▶', onTrue: () => '❚❚'})}
+				</Button>
 
-			<Button
-				variant="ghost"
-				size="sm"
-				className="text-primary ml-auto min-h-11"
-				onClick={() => props.onSource(Option.none())}
-				aria-label="Back to latest"
-			>
-				{Boolean.match(live, {onFalse: () => '○ Go live', onTrue: () => '● Live'})}
-			</Button>
+				<span
+					className="text-muted-foreground flex min-w-0 flex-1 gap-x-2 overflow-hidden font-mono text-xs tabular-nums"
+					aria-live="off"
+				>
+					<span>{String.replace(/^0:/u, '')(clockOf(props.tick))}</span>
+					{!live && (
+						<span title="Behind live">
+							−{String.replace(/^0:/u, '')(clockOf(Number.max(0, span.live - props.tick)))}
+						</span>
+					)}
+				</span>
 
-			{!live && (
-				<DropdownMenu>
-					<DropdownMenuTrigger aria-label="Replay speed" className="text-muted-foreground min-h-11 min-w-11">
-						{Number.max(1, speed)}×
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end">
-						{Array.map(SPEEDS, entry => (
-							<DropdownMenuItem
-								key={entry}
-								className="min-h-11"
-								onClick={() => props.onSource(Option.some({from: props.tick, speed: entry}))}
-							>
-								{entry}×
-							</DropdownMenuItem>
-						))}
-					</DropdownMenuContent>
-				</DropdownMenu>
-			)}
+				{!live && (
+					<DropdownMenu>
+						<DropdownMenuTrigger aria-label="Replay speed" className="text-muted-foreground min-h-11 min-w-11">
+							{Number.max(1, speed)}×
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end">
+							{Array.map(SPEEDS, entry => (
+								<DropdownMenuItem
+									key={entry}
+									className="min-h-11"
+									onClick={() => props.onSource(Option.some({from: props.tick, speed: entry}))}
+								>
+									{entry}×
+								</DropdownMenuItem>
+							))}
+						</DropdownMenuContent>
+					</DropdownMenu>
+				)}
+				<Button variant="ghost" size="sm" className="min-h-11 px-2" onClick={props.onThreads}>
+					Threads
+				</Button>
+				<Button
+					variant="ghost"
+					size="sm"
+					className="text-primary min-h-11 px-2"
+					onClick={() => props.onSource(Option.none())}
+					aria-label="Back to latest"
+				>
+					{Boolean.match(live, {onFalse: () => '○ Go live', onTrue: () => '● Live'})}
+				</Button>
+			</div>
 		</section>
 	)
 }
@@ -1179,15 +1192,6 @@ function GroundCard(props: {building: Option.Option<BuildingView>; info: Option.
 					)
 				)
 			)}
-			{Option.getOrUndefined(
-				Option.map(
-					Option.flatMap(
-						Option.filter(props.info, info => Option.isNone(props.building) && info.field === undefined),
-						info => Option.fromUndefinedOr(info.prop)
-					),
-					prop => <p className="first-letter:uppercase">{String.replaceAll('-', ' ')(prop)}</p>
-				)
-			)}
 		</div>
 	)
 }
@@ -1236,7 +1240,7 @@ function buildingAt(buildings: View['buildings'], at: {x: number; z: number}) {
 	)
 }
 
-// Where the camera goes this frame: the overview over the team, a place the player left it at, the followed unit as drawn, or the team's Home.
+// The camera follows a place, a unit as drawn, or the team's Home.
 function aimOf(follow: Follow, team: number, view: View, world: {cast: Cast; renderer: Renderer}) {
 	const home = Option.getOrElse(
 		Option.map(
@@ -1245,19 +1249,6 @@ function aimOf(follow: Follow, team: number, view: View, world: {cast: Cast; ren
 		),
 		() => ({x: 0, z: 0})
 	)
-	if (follow.overview) {
-		const frame = world.renderer.fit([
-			...Array.map(view.teams, entry => entry.home),
-			...Array.filter(view.frame.units, unit => unit.team !== undefined)
-		])
-		return {
-			key: 'overview',
-			x: frame.x,
-			y: world.renderer.ground(frame.x, frame.z),
-			z: frame.z,
-			zoom: Option.some(frame.zoom)
-		}
-	}
 	return Option.match(follow.free, {
 		onNone: () =>
 			Option.match(
@@ -1277,23 +1268,11 @@ function aimOf(follow: Follow, team: number, view: View, world: {cast: Cast; ren
 					)
 				),
 				{
-					onNone: () => ({
-						key: `home:${team}`,
-						x: home.x,
-						y: world.renderer.ground(home.x, home.z),
-						z: home.z,
-						zoom: Option.none()
-					}),
-					onSome: followed => ({key: `unit:${followed.id}`, ...followed.at, zoom: Option.none()})
+					onNone: () => ({key: `home:${team}`, x: home.x, y: world.renderer.ground(home.x, home.z), z: home.z}),
+					onSome: followed => ({key: `unit:${followed.id}`, ...followed.at})
 				}
 			),
-		onSome: at => ({
-			key: `free:${at.x}:${at.z}`,
-			x: at.x,
-			y: world.renderer.ground(at.x, at.z),
-			z: at.z,
-			zoom: Option.none()
-		})
+		onSome: at => ({key: `free:${at.x}:${at.z}`, x: at.x, y: world.renderer.ground(at.x, at.z), z: at.z})
 	})
 }
 
@@ -1377,8 +1356,7 @@ function useMapGestures(props: {
 			if (Array.isArrayEmpty(Record.keys(pointers.current))) {
 				Option.match(props.world, {
 					onNone: () => undefined,
-					onSome: active =>
-						setFollow(current => ({...current, free: Option.some(active.renderer.detach()), overview: false}))
+					onSome: active => setFollow(current => ({...current, free: Option.some(active.renderer.detach())}))
 				})
 			}
 			return
@@ -1478,7 +1456,7 @@ function useMapGestures(props: {
 	}
 }
 
-function WorldControl(props: {onThreads: () => void}) {
+function WorldControl() {
 	const status = useAtomValue(runStateAtom)
 	const [result, control] = useAtom(controlAtom)
 	const current = Option.getOrUndefined(AsyncResult.value(status))
@@ -1489,7 +1467,16 @@ function WorldControl(props: {onThreads: () => void}) {
 			<Button
 				variant="secondary"
 				className="min-h-11 px-3"
-				disabled={!AsyncResult.isSuccess(status) || result.waiting || current?.problem !== undefined}
+				disabled={
+					!AsyncResult.isSuccess(status) ||
+					result.waiting ||
+					current?.problem !== undefined ||
+					(current?.running !== true && current?.coreConfigured !== true)
+				}
+				title={Boolean.match(current?.coreConfigured === false, {
+					onFalse: () => '',
+					onTrue: () => 'Model key missing: configure the server before running the world.'
+				})}
 				onClick={() => control({payload: {running: current?.running !== true}})}
 			>
 				{result.waiting && <Spinner />}
@@ -1503,18 +1490,6 @@ function WorldControl(props: {onThreads: () => void}) {
 					onSome: state => Boolean.match(state.running, {onFalse: () => 'Run world', onTrue: () => 'Pause world'})
 				})}
 			</Button>
-			{current !== undefined && (!current.coreConfigured || !current.localDecisions) && (
-				<Button
-					variant="secondary"
-					onClick={props.onThreads}
-					className="bg-popover text-warning mt-1 block h-auto max-w-56 px-2 py-1 text-left text-xs whitespace-normal"
-				>
-					{!current.coreConfigured && 'Model key missing'}
-					{!current.coreConfigured && !current.localDecisions && ' · '}
-					{!current.localDecisions &&
-						Boolean.match(current.coreConfigured, {onFalse: () => 'Local off', onTrue: () => 'Local decisions off'})}
-				</Button>
-			)}
 			{problem !== undefined && (
 				<p role="alert" className="bg-popover text-destructive absolute top-full right-0 mt-1 w-64 p-2">
 					{problem}
@@ -1530,70 +1505,29 @@ function WorldControl(props: {onThreads: () => void}) {
 }
 
 // The world view and everything over it: the canvas belongs to the renderer, and frames reach it through the registry, not React.
-function MapControls(props: {
-	follow: Follow
-	onFollow: (follow: Follow) => void
-	onInspect: (inspection: Inspection) => void
-	view: View
-}) {
-	const [coverage, setCoverage] = useAtom(coverageAtom)
+function MapControls(props: {view: View; onTeam: (team: number) => void}) {
 	return (
-		<>
-			<div className="absolute top-2 left-2 z-30 flex gap-1 md:top-4 md:left-4" aria-label="Team footprints">
+		<nav
+			className="absolute inset-x-2 top-2 z-30 flex items-start justify-between gap-2 md:inset-x-4 md:top-4"
+			aria-label="Map controls"
+		>
+			<div className="flex min-w-0 gap-1 overflow-x-auto" aria-label="Teams">
 				{Array.map(props.view.teams, entry => (
 					<Button
 						key={entry.id}
 						variant="secondary"
 						size="sm"
-						className="min-h-11 text-(--team)"
+						className="min-h-11 shrink-0 px-2 text-(--team)"
 						style={{'--team': entry.color}}
-						aria-pressed={coverage === entry.id}
-						onClick={() =>
-							setCoverage(Boolean.match(coverage === entry.id, {onFalse: () => entry.id, onTrue: () => -1}))
-						}
+						onClick={() => props.onTeam(entry.id)}
 					>
 						{entry.name}
 					</Button>
 				))}
 			</div>
-			<nav
-				aria-label="Map controls"
-				className="absolute top-14 right-2 z-30 flex items-start gap-1 md:top-4 md:right-4"
-			>
-				<WorldControl onThreads={() => props.onInspect({kind: 'thread'})} />
-				<DropdownMenu>
-					<DropdownMenuTrigger aria-label="View options" className="bg-popover min-h-11 min-w-11 px-3">
-						···
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end" className="min-w-48">
-						<DropdownMenuItem className="min-h-11" onClick={() => props.onInspect({kind: 'thread'})}>
-							Threads
-						</DropdownMenuItem>
-						<DropdownMenuItem
-							className="min-h-11"
-							onClick={() => props.onFollow({...props.follow, overview: !props.follow.overview})}
-						>
-							Fit all teams
-						</DropdownMenuItem>
-					</DropdownMenuContent>
-				</DropdownMenu>
-			</nav>
-		</>
+			<WorldControl />
+		</nav>
 	)
-}
-
-function placeTeamLabels(renderer: Renderer, teams: View['teams'], root?: HTMLElement | null) {
-	for (const label of root?.querySelectorAll<HTMLElement>('[data-home]') ?? []) {
-		const team = Array.findFirst(teams, entry => `${entry.id}` === label.dataset['home'])
-		label.hidden = renderer.span() < 32 || Option.isNone(team)
-		Option.match(team, {
-			onNone: () => undefined,
-			onSome: entry => {
-				const at = renderer.project(entry.home.x, renderer.ground(entry.home.x, entry.home.z) + 3, entry.home.z)
-				label.style.transform = `translate(${at.x}px, ${at.y}px)`
-			}
-		})
-	}
 }
 
 function ReplayLoading() {
@@ -1635,7 +1569,7 @@ function World(props: {seed: number; view: View}) {
 			setGround(before => ({
 				...before,
 				info: Option.filter(
-					Option.liftPredicate(answer, entry => entry.field !== undefined || entry.prop !== undefined),
+					Option.liftPredicate(answer, entry => entry.field !== undefined),
 					() => Option.isSome(before.at)
 				)
 			}))
@@ -1701,13 +1635,11 @@ function World(props: {seed: number; view: View}) {
 					onSome: replay => replay.speed
 				})
 			)
-			renderer.coverage(registry.get(coverageAtom))
 			renderer.aim(aimOf(current, registry.get(teamAtom), latest.current.view, active))
 			renderer.focus(Option.flatMap(current.id, cast.objectOf), teamColor(registry.get(teamAtom)))
 		})
 		// Once the camera has moved: health pips and the hover card follow their units. Zoomed far out, pips only clutter, so they hide.
 		renderer.onDrawn(() => {
-			placeTeamLabels(renderer, latest.current.view.teams, canvas.current?.parentElement)
 			// Past 16 tiles above and below the view's middle, health pips hide.
 			const far = renderer.span() > 16
 			// The overlay sits beside the canvas.
@@ -1731,7 +1663,7 @@ function World(props: {seed: number; view: View}) {
 				() => -step
 			)
 			const id = Option.map(Array.get(own, (((index + step) % own.length) + own.length) % own.length), unit => unit.id)
-			registry.set(followAtom, {free: Option.none(), id, overview: false})
+			registry.set(followAtom, {free: Option.none(), id})
 			if (Option.isSome(id)) {
 				setPanel(before =>
 					Option.map(before, inspection => {
@@ -1742,20 +1674,17 @@ function World(props: {seed: number; view: View}) {
 			}
 			renderer.centre()
 		}
-		// Esc steps back one thing: out of the overview, else frees the camera where it looks, else follows the team again.
+		// Esc frees the camera where it looks, then follows the team's next unit.
 		function leave() {
-			const current = registry.get(followAtom)
-			if (current.overview) {
-				registry.set(followAtom, {...current, overview: false})
-			} else if (Option.isNone(current.free)) {
-				registry.set(followAtom, {free: Option.some(renderer.looking()), id: Option.none(), overview: false})
+			if (Option.isNone(registry.get(followAtom).free)) {
+				registry.set(followAtom, {free: Option.some(renderer.looking()), id: Option.none()})
 			} else {
 				cycle(1)
 			}
 		}
 		function pick(next: number) {
 			registry.set(teamAtom, next)
-			registry.set(followAtom, {free: Option.none(), id: Option.none(), overview: registry.get(followAtom).overview})
+			registry.set(followAtom, {free: Option.none(), id: Option.none()})
 			renderer.centre()
 		}
 		const actions = {
@@ -1763,8 +1692,6 @@ function World(props: {seed: number; view: View}) {
 			leave,
 			next: () => cycle(1),
 			out: () => renderer.zoomBy(ZOOM_STEP),
-			overview: () =>
-				registry.set(followAtom, {...registry.get(followAtom), overview: !registry.get(followAtom).overview}),
 			play: () => registry.set(sourceAtom, toggled(latest.current.source, registry.get(cursorAtom))),
 			previous: () => cycle(-1)
 		} satisfies Record<Key, () => void>
@@ -1800,7 +1727,7 @@ function World(props: {seed: number; view: View}) {
 	function followUnit(id: number) {
 		const unit = Option.getOrUndefined(Array.findFirst(props.view.frame.units, entry => entry.id === id))
 		if (unit?.team !== undefined) setTeam(unit.team)
-		setFollow({free: Option.none(), id: Option.some(id), overview: false})
+		setFollow({free: Option.none(), id: Option.some(id)})
 		setPanel(Option.some({actor: Option.some(id), kind: 'history'}))
 		Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.centre()})
 	}
@@ -1820,9 +1747,9 @@ function World(props: {seed: number; view: View}) {
 
 	function locateEntity(id: number, tick: number) {
 		if (id < 0) {
-			setFollow({free: Option.some(tileOf(-1 - id)), id: Option.none(), overview: false})
+			setFollow({free: Option.some(tileOf(-1 - id)), id: Option.none()})
 		} else {
-			setFollow({free: Option.none(), id: Option.some(id), overview: false})
+			setFollow({free: Option.none(), id: Option.some(id)})
 		}
 		if (id > 0 && !Array.some(props.view.buildings, entry => entry.id === id)) {
 			setPanel(Option.some({actor: Option.some(id), kind: 'history'}))
@@ -1836,7 +1763,7 @@ function World(props: {seed: number; view: View}) {
 			value={{
 				entity: locateEntity,
 				place: (x, z, tick) => {
-					setFollow({free: Option.some({x, z}), id: follow.id, overview: false})
+					setFollow({free: Option.some({x, z}), id: follow.id})
 					if (tick !== props.view.frame.tick) setSource(Option.some({from: tick, speed: 0}))
 					Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.centre()})
 				},
@@ -1870,20 +1797,12 @@ function World(props: {seed: number; view: View}) {
 								onWheel={gestures.wheel}
 							/>
 							<Overlay buildings={props.view.buildings} inspection={panel} units={props.view.frame.units} />
-							{Array.map(props.view.teams, entry => (
-								<div key={entry.id} hidden data-home={entry.id} className="pointer-events-none absolute top-0 left-0">
-									<span
-										className="bg-popover inline-block -translate-x-1/2 px-2 py-1 text-xs text-(--team)"
-										style={{'--team': entry.color}}
-									>
-										{entry.name}
-									</span>
-								</div>
-							))}
 							<MapControls
-								follow={follow}
-								onFollow={setFollow}
-								onInspect={inspection => setPanel(Option.some(inspection))}
+								onTeam={team => {
+									setTeam(team)
+									setFollow({free: Option.none(), id: Option.none()})
+									Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.centre()})
+								}}
 								view={props.view}
 							/>
 							<ReplayLoading />
@@ -1900,7 +1819,13 @@ function World(props: {seed: number; view: View}) {
 						</div>
 						{Option.getOrUndefined(
 							Option.map(AsyncResult.value(timeline), entry => (
-								<TimelineBar timeline={entry} tick={cursor} source={source} onSource={setSource} />
+								<TimelineBar
+									timeline={entry}
+									tick={cursor}
+									source={source}
+									onSource={setSource}
+									onThreads={() => setPanel(Option.some({kind: 'thread'}))}
+								/>
 							))
 						)}
 					</div>

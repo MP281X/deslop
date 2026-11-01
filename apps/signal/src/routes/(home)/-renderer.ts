@@ -29,8 +29,8 @@ import type {Built} from './-mesh.ts'
 import type {Frame} from '#services/game/schema.ts'
 import {CHUNK, LEVEL, ORES, chunkOf, highest, lowest} from '#services/world/lib/utils.ts'
 
-// Half the view's height in tiles: nearest, farthest the player zooms, the overview's and at the start.
-const ZOOM = {farthest: 500, nearest: 3.5, overview: 500, start: 12}
+// Half the view's height in tiles: nearest, farthest and at the start.
+const ZOOM = {farthest: 500, nearest: 3.5, start: 12}
 // The zone texture's side in chunks; its window follows the camera.
 const ZONES = 128
 // A chunk's revision as sent to a builder: the world's epoch times this, plus its own.
@@ -67,7 +67,7 @@ float wearAt(vec2 xz){ vec2 uv = (xz - uWindow.xy) / uWindow.z; return texture2D
 // The atmosphere, drawn over the finished frame from its depth. A ray from the camera to each pixel's surface marches through two volumes: fog over the unexplored, thin at the explored edge and thickening into a cloud bank the farther it lies from it, and smog where the colony has worked. Explored ground out of sight is greyed; Home's and the units' sight is clear.
 const ATMOSPHERE = `
 uniform sampler2D tDiffuse, tDepth, uKnown, uEnv, uGround, uZones; uniform mat4 uInv; uniform vec3 uDir, uWindow; uniform float uT, uFogOn;
-uniform vec3 uTeamColors[32]; uniform int uTeamCount, uCoverageTeam; uniform vec2 uZoneOrigin; uniform bool uCoverageOn;
+uniform vec3 uTeamColors[32]; uniform int uTeamCount; uniform vec2 uZoneOrigin;
 uniform vec4 uSights[${SIGHTS}]; uniform int uSightCount, uFogStyle, uSmogStyle;
 varying vec2 vUv;
 float n3(vec3 p){ float i = floor(p.y), f = fract(p.y); f = f * f * (3. - 2. * f); return mix(vn(p.xz + i * vec2(17.13, 31.71)), vn(p.xz + (i + 1.) * vec2(17.13, 31.71)), f); }
@@ -94,22 +94,23 @@ float member(vec2 uv, int team){
 	return mod(floor(value / pow(2., float(team - byteIndex * 8))), 2.);
 }
 vec3 coverage(vec3 base, vec3 surface){
-	if(!uCoverageOn) return base;
 	vec2 xz = surface.xz, guv = windowUv(xz);
 	float inWindow = step(0.,guv.x)*step(guv.x,1.)*step(0.,guv.y)*step(guv.y,1.);
-	if(inWindow>0. && surface.y>texture2D(uGround,guv).r+.15) return base;
+	float ground = texture2D(uGround,guv).r;
+	if(inWindow>0. && ground>-500. && surface.y>ground+.4) return base;
 	vec2 cell = xz / ${CHUNK.toFixed(1)}, f = fract(cell), uv = (floor(cell) - uZoneOrigin + .5) / ${ZONES.toFixed(1)};
+	float width = max(.025, max(fwidth(cell.x), fwidth(cell.y)) * 1.5);
 	float count = 0.;
-	for (int t=0;t<32;t++){if(t>=uTeamCount) break;if(uCoverageTeam<0 || t==uCoverageTeam) count += member(uv,t);}
+	for (int t=0;t<32;t++){if(t>=uTeamCount) break;count += member(uv,t);}
 	if(count<1.) return base;
 	float stripe = mod(floor((xz.x + xz.y) * 1.5), count), index = 0.;
 	for(int t=0;t<32;t++){
 		if(t>=uTeamCount) break;
-		if((uCoverageTeam<0 || t==uCoverageTeam) && member(uv,t)>0.){
+		if(member(uv,t)>0.){
 			if(index==stripe){
 				vec2 d=vec2(1. / ${ZONES.toFixed(1)},0.);
-				float edge=max(max((1.-member(uv-d.xy,t))*(1.-smoothstep(0.,.025,f.x)),(1.-member(uv+d.xy,t))*(1.-smoothstep(0.,.025,1.-f.x))),max((1.-member(uv-d.yx,t))*(1.-smoothstep(0.,.025,f.y)),(1.-member(uv+d.yx,t))*(1.-smoothstep(0.,.025,1.-f.y))));
-				return mix(base,uTeamColors[t],.12+.6*edge);
+				float edge=max(max((1.-member(uv-d.xy,t))*(1.-smoothstep(0.,width,f.x)),(1.-member(uv+d.xy,t))*(1.-smoothstep(0.,width,1.-f.x))),max((1.-member(uv-d.yx,t))*(1.-smoothstep(0.,width,f.y)),(1.-member(uv+d.yx,t))*(1.-smoothstep(0.,width,1.-f.y))));
+				return mix(base,uTeamColors[t],.38+.5*edge);
 			}
 			index+=1.;
 		}
@@ -181,7 +182,7 @@ type Loaded = {built: Option.Option<Built>; group: THREE.Group; revision: number
 type Clock = {value: number}
 type Uniforms = Record<string, THREE.IUniform>
 // Where the camera goes: a key per subject, so a new subject glides there and the same one stays locked on; a zoom when the subject sets one.
-export type Aim = {key: string; x: number; y: number; z: number; zoom: Option.Option<number>}
+export type Aim = {key: string; x: number; y: number; z: number}
 
 function waterMaterial(time: Clock, colours: {deep: string; foam: string; shallow: string}) {
 	return new THREE.ShaderMaterial({
@@ -644,8 +645,6 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 	const zoneTexture = new THREE.DataTexture(zoneData, ZONES, ZONES, THREE.RGBAFormat, THREE.UnsignedByteType)
 	zoneTexture.needsUpdate = true
 	const coverage = {
-		uCoverageOn: {value: false},
-		uCoverageTeam: {value: -1},
 		uTeamColors: {value: Array.makeBy(32, () => new THREE.Color())},
 		uTeamCount: {value: 0},
 		uZoneOrigin: {value: new THREE.Vector2(-ZONES / 2, -ZONES / 2)}
@@ -699,14 +698,14 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		target: new THREE.Vector3(0, 0, 0),
 		zoom: ZOOM.start
 	}
-	// The camera's subject, where its glide to it started and how far along it is, the zoom the player picked and the zoom of a framed subject.
+	// The camera's subject, its glide and the zoom the spectator picked.
 	const glide = {
-		aim: {key: '', x: 0, y: 0, z: 0, zoom: Option.none<number>()} satisfies Aim,
+		aim: {key: '', x: 0, y: 0, z: 0} satisfies Aim,
 		from: new THREE.Vector3(),
 		// How far the player dragged the view off its subject; a new subject starts centred.
 		offset: new THREE.Vector3(),
 		progress: 1,
-		zoom: {follow: ZOOM.start, framed: 1}
+		zoom: ZOOM.start
 	}
 	// The fog window's corner in tiles; it moves when the camera nears its edge.
 	const fogCorner = {x: -FOG_SIZE / 2, z: -FOG_SIZE / 2}
@@ -890,8 +889,7 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			}),
 			step => {
 				const point = pointAt(step)
-				const across = Number.max(1e-6, Math.hypot(ray.direction.x, ray.direction.z))
-				return {back: {x: -ray.direction.x / across, z: -ray.direction.z / across}, x: point.x, z: point.z}
+				return {x: point.x, z: point.z}
 			}
 		)
 	}
@@ -931,8 +929,8 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		const builder = Option.getOrUndefined(
 			Array.head(
 				Array.sortWith(
-					// Each builds two chunks at once at most.
-					Array.filter(builders, entry => entry.busy < 2),
+					// Keep cheap overview work queued even when a software-rendered frame is slow.
+					Array.filter(builders, entry => entry.busy < Boolean.match(view.detail, {onFalse: () => 8, onTrue: () => 2})),
 					(entry: {busy: number}) => entry.busy,
 					Order.Number
 				)
@@ -1084,11 +1082,7 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			glide.from.z + (glide.aim.z - glide.from.z) * ease
 		)
 		view.target.add(glide.offset)
-		const zoom = Option.match(glide.aim.zoom, {
-			onNone: () => glide.zoom.follow,
-			onSome: framed => framed * glide.zoom.framed
-		})
-		view.zoom += (zoom - view.zoom) * (1 - Math.exp(-delta * 9))
+		view.zoom += (glide.zoom - view.zoom) * (1 - Math.exp(-delta * 9))
 	}
 
 	function paintZones() {
@@ -1123,7 +1117,6 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		steer(delta)
 		place()
 		recentreZones()
-		coverage.uCoverageOn.value = view.zoom >= 32 || coverage.uCoverageTeam.value >= 0
 		recentre()
 		for (const listener of listeners.drawn) listener()
 		stream()
@@ -1143,7 +1136,6 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			if (glide.aim.key === '' || Math.hypot(next.x - view.target.x, next.z - view.target.z) > GLIDE.cut) {
 				glide.progress = 1
 			}
-			glide.zoom.framed = 1
 		}
 		glide.aim = next
 	}
@@ -1182,16 +1174,13 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			simulation.tick = tick
 			simulation.speed = speed
 		},
-		coverage(team: number) {
-			coverage.uCoverageTeam.value = team
-		},
 		daylight(level: number) {
 			sun.intensity = 0.15 + 2.35 * level
 			sky.intensity = 0.25 + 1.1 * level
 			atmosphere.fog.value = Boolean.match(level < 0.4, {onFalse: () => 0, onTrue: () => 1})
 		},
 		detach() {
-			glide.zoom.follow = view.zoom
+			glide.zoom = view.zoom
 			return {x: view.target.x, z: view.target.z}
 		},
 		dispose() {
@@ -1211,26 +1200,6 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			if (Array.isReadonlyArrayNonEmpty(seen)) {
 				reach(exploredData, knownData, fogDistance, fogIndices)
 				knownTexture.needsUpdate = true
-			}
-		},
-		// The place and half-height that frame a set of points on screen, with a margin, as the camera faces now: always farther out than the player zooms, at most the overview's.
-		fit(points: {x: number; z: number}[]) {
-			const right = {x: Math.cos(view.azimuth), z: -Math.sin(view.azimuth)}
-			const ahead = {x: -Math.sin(view.azimuth), z: -Math.cos(view.azimuth)}
-			const across = Array.map(points, point => point.x * right.x + point.z * right.z)
-			const along = Array.map(points, point => point.x * ahead.x + point.z * ahead.z)
-			const middle = {across: (lowest(across) + highest(across)) / 2, along: (lowest(along) + highest(along)) / 2}
-			return {
-				x: middle.across * right.x + middle.along * ahead.x,
-				z: middle.across * right.z + middle.along * ahead.z,
-				zoom: Number.clamp(
-					1.5 *
-						Number.max(
-							((highest(along) - lowest(along)) / 2) * Math.sin(ELEVATION) + 4,
-							((highest(across) - lowest(across)) / 2 + 5) / (view.size.width / Number.max(1, view.size.height))
-						),
-					{maximum: ZOOM.overview, minimum: 48}
-				)
 			}
 		},
 		// The followed unit's model, edged in its team's colour.
@@ -1358,19 +1327,9 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			Array.forEach(colors, (color, index) => coverage.uTeamColors.value[index]?.set(color))
 			paintZones()
 		},
-		// Zooms the view by a factor: the zoom the player keeps, or a framed subject's for as long as it is framed.
+		// Zooms the real world without changing its subject.
 		zoomBy(factor: number) {
-			Option.match(glide.aim.zoom, {
-				onNone: () => {
-					glide.zoom.follow = Number.clamp(glide.zoom.follow * factor, {maximum: ZOOM.farthest, minimum: ZOOM.nearest})
-				},
-				onSome: framed => {
-					glide.zoom.framed = Number.clamp(glide.zoom.framed * factor, {
-						maximum: ZOOM.overview / framed,
-						minimum: ZOOM.nearest / framed
-					})
-				}
-			})
+			glide.zoom = Number.clamp(glide.zoom * factor, {maximum: ZOOM.farthest, minimum: ZOOM.nearest})
 		}
 	}
 }

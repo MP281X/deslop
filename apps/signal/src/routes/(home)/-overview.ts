@@ -20,42 +20,77 @@ function tileHeights(corners: Float32Array, level: number, x: number, z: number,
 	}
 }
 
+type Point = readonly [number, number, number]
+
+function quad(
+	points: readonly [Point, Point, Point, Point],
+	color: THREE.Color,
+	positions: MutableList.MutableList<number>,
+	colors: MutableList.MutableList<number>
+) {
+	for (const point of [points[0], points[1], points[2], points[2], points[1], points[3]]) {
+		MutableList.appendAll(positions, point)
+		MutableList.appendAll(colors, [color.r, color.g, color.b])
+	}
+}
+
 export function overviewChunk(world: World, cx: number, cz: number) {
 	const corners = new Float32Array(CHUNK * CHUNK * 4)
 	const positions = MutableList.make<number>()
 	const colors = MutableList.make<number>()
 	const color = new THREE.Color()
 	const step = 4
-	const row = CHUNK / step + 1
-	const heights = Array.makeBy(
-		row * row,
-		index => world.tileAt(cx * CHUNK + (index % row) * step, cz * CHUNK + Math.floor(index / row) * step).level
+	const row = CHUNK / step + 2
+	const tiles = Array.makeBy(row * row, index =>
+		world.terrainAt(
+			cx * CHUNK + ((index % row) - 1) * step + step / 2,
+			cz * CHUNK + (Math.floor(index / row) - 1) * step + step / 2
+		)
 	)
 	for (const z of Array.range(0, CHUNK / step - 1)) {
 		for (const x of Array.range(0, CHUNK / step - 1)) {
 			const gx = cx * CHUNK + x * step
 			const gz = cz * CHUNK + z * step
-			const tile = world.tileAt(gx + step / 2, gz + step / 2)
+			const tile = Option.getOrThrow(Array.get(tiles, (z + 1) * row + x + 1))
 			const ground = Option.getOrElse(
 				Array.findFirstIndex(GROUND_BIOME, biome => biome === tile.biome),
 				() => 0
 			)
 			color.set(GROUND_COLOR[tile.ground] ?? GROUND_COLOR[ground] ?? '#bcd59d')
 			if (tile.liquid > 0) color.set('#79b6b3')
-			for (const offset of [
-				[0, 0],
-				[0, step],
-				[step, 0],
-				[step, 0],
-				[0, step],
-				[step, step]
+			const height = tile.level * LEVEL
+			quad(
+				[
+					[gx, height, gz],
+					[gx, height, gz + step],
+					[gx + step, height, gz],
+					[gx + step, height, gz + step]
+				],
+				color,
+				positions,
+				colors
+			)
+			for (const edge of [
+				{ax: 0, az: 0, bx: step, bz: 0, dx: 0, dz: -1},
+				{ax: step, az: 0, bx: step, bz: step, dx: 1, dz: 0},
+				{ax: step, az: step, bx: 0, bz: step, dx: 0, dz: 1},
+				{ax: 0, az: step, bx: 0, bz: 0, dx: -1, dz: 0}
 			]) {
-				MutableList.appendAll(positions, [
-					gx + (offset[0] ?? 0),
-					(heights[(z + (offset[1] ?? 0) / step) * row + x + (offset[0] ?? 0) / step] ?? tile.level) * LEVEL,
-					gz + (offset[1] ?? 0)
-				])
-				MutableList.appendAll(colors, [color.r, color.g, color.b])
+				const neighbor = Option.getOrThrow(Array.get(tiles, (z + 1 + edge.dz) * row + x + 1 + edge.dx))
+				if (neighbor.level < tile.level) {
+					const bottom = neighbor.level * LEVEL
+					quad(
+						[
+							[gx + edge.ax, height, gz + edge.az],
+							[gx + edge.bx, height, gz + edge.bz],
+							[gx + edge.ax, bottom, gz + edge.az],
+							[gx + edge.bx, bottom, gz + edge.bz]
+						],
+						color,
+						positions,
+						colors
+					)
+				}
 			}
 			tileHeights(corners, tile.level, x * step, z * step, step)
 		}

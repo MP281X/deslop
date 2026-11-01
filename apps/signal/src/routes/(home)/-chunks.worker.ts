@@ -1,6 +1,6 @@
 import {Array, Boolean, MutableHashMap, MutableHashSet, Option, Schema} from 'effect'
 
-import {buildChunk, visibleProps} from './-mesh.ts'
+import {buildChunk} from './-mesh.ts'
 import {overviewChunk} from './-overview.ts'
 
 import {CHUNK, makeWorld, tileKey} from '#services/world/lib/utils.ts'
@@ -17,13 +17,8 @@ const Request = Schema.TaggedUnion({
 	Footprints: {
 		sites: Schema.Array(Schema.Struct({d: Schema.Finite, w: Schema.Finite, x: Schema.Finite, z: Schema.Finite}))
 	},
-	// Where the pointer's ray meets the ground, and the way back along it toward the camera, over the ground.
-	Inspect: {
-		ask: Schema.Int,
-		back: Schema.Struct({x: Schema.Finite, z: Schema.Finite}),
-		x: Schema.Finite,
-		z: Schema.Finite
-	},
+	// Where the pointer's ray meets the ground.
+	Inspect: {ask: Schema.Int, x: Schema.Finite, z: Schema.Finite},
 	// Back to the world as generated, for a stream that starts over.
 	Reset: {},
 	Seed: {seed: Schema.Int}
@@ -32,12 +27,11 @@ const Request = Schema.TaggedUnion({
 // The chunks a worker built with props since cleared, for the page to rebuild.
 export type Stale = {_tag: 'Stale'; chunks: {cx: number; cz: number}[]}
 
-// The field a tile belongs to, with the ore it has left, or the prop standing on it.
+// The resource field a tile belongs to and its remaining amount.
 export type Inspected = {
 	_tag: 'Inspected'
 	ask: number
 	field?: {left: number; material: string; tiles: number; total: number}
-	prop?: string
 }
 
 const state = {
@@ -145,20 +139,7 @@ function inspect(world: World, request: Extract<Request, {_tag: 'Inspect'}>) {
 			}
 		}
 	)
-	// A tree or rock stands in front of the ground the ray meets: the first prop back along the ray, up to three tiles.
-	const near = Array.flatMap(Array.range(-1, 1), dz =>
-		Array.flatMap(Array.range(-1, 1), dx => visibleProps(chunkAt(world)(cx + dx, cz + dz).props, state.overlay))
-	)
-	const prop = Array.findFirst(Array.range(0, 15), step => {
-		const at = {x: request.x + request.back.x * step * 0.2, z: request.z + request.back.z * step * 0.2}
-		return Array.findFirst(near, entry => Math.hypot(entry.x - at.x, entry.z - at.z) < 0.45 * entry.s)
-	})
-	reply({
-		_tag: 'Inspected',
-		ask: request.ask,
-		...Option.getOrUndefined(Option.map(field, found => ({field: found}))),
-		...Option.getOrUndefined(Option.map(prop, found => ({prop: found.kind})))
-	})
+	reply({_tag: 'Inspected', ask: request.ask, ...Option.getOrUndefined(Option.map(field, found => ({field: found})))})
 }
 
 self.addEventListener('message', (event: MessageEvent) => {
