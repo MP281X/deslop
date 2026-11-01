@@ -8,7 +8,7 @@ deploy --port 5200
 deploy service install --port 5200
 ```
 
-CLI flags, optional Auth/traces, MCP attachment, credentials and automatic self-update are described in the [shared runtime guide](https://github.com/MP281X/deslop/blob/main/packages/runtime/README.md).
+CLI flags, optional Auth/traces, HTTP MCP, worker credentials and automatic self-update are described in the [shared runtime guide](https://github.com/MP281X/deslop/blob/main/packages/runtime/README.md).
 
 ## Workers
 

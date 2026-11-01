@@ -1,5 +1,7 @@
 import {Schema} from 'effect'
 
+import {OptionalAuth, SecureOrigin} from '@deslop/runtime/schema'
+
 export class DeployError extends Schema.TaggedError<DeployError>()('DeployError', {
 	cause: Schema.optional(Schema.Defect()),
 	message: Schema.String
@@ -24,7 +26,7 @@ export const Snapshot = Schema.Struct({
 })
 
 export type Worker = typeof Worker.Type
-export const Worker = Schema.Struct({auth: Schema.String, name: Schema.NonEmptyString, url: Schema.String})
+export const Worker = Schema.Struct({auth: OptionalAuth, name: Schema.NonEmptyString, url: SecureOrigin})
 
 export type Peer = typeof Peer.Type
 export const Peer = Schema.Struct({

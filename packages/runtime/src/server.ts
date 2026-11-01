@@ -35,6 +35,7 @@ import {
 import {KeyValueStore} from 'effect/persistence'
 import {RpcSerialization} from 'effect/rpc'
 
+import {RuntimeConfig} from '#schema.ts'
 import {layerOtlp} from '#telemetry.ts'
 
 import {AUTH_URL} from '#auth/lib/utils.ts'
@@ -62,8 +63,8 @@ export function localGuardWithHosts(aliases: string[]) {
 				return HttpServerResponse.empty({status: 403})
 			}
 			if (url.pathname === '/api/runtime' && request.method === 'GET') {
-				return HttpServerResponse.jsonUnsafe({
-					traces: yield* pipe(Config.String('VITE_OTEL_URL'), Config.withDefault('')),
+				return yield* HttpServerResponse.schemaJson(RuntimeConfig)({
+					traces: yield* pipe(Config.String('OTEL_URL'), Config.withDefault('')),
 					version: yield* pipe(Config.String('APP_VERSION'), Config.withDefault('0.1.0'))
 				})
 			}
@@ -156,9 +157,7 @@ export function layer(applicationName: string) {
 	return Layer.mergeAll(
 		Layer.unwrap(
 			Effect.map(
-				Config.orElse(Config.String('SERVER_OTEL_URL'), () =>
-					pipe(Config.String('VITE_OTEL_URL'), Config.withDefault(''))
-				),
+				Config.orElse(Config.String('SERVER_OTEL_URL'), () => pipe(Config.String('OTEL_URL'), Config.withDefault(''))),
 				url => {
 					if (url === '') return Layer.empty
 					return layerOtlp(`${applicationName}-server`, url, 'server')

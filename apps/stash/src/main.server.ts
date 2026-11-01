@@ -7,7 +7,7 @@ import {HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse} from 
 import {RpcSerialization, RpcServer} from 'effect/rpc'
 
 import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
-import {runApp} from '@deslop/runtime/cli'
+import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import packageJson from '#package.json' with {type: 'json'}
@@ -96,8 +96,8 @@ const mcp = ServerRuntime.layerMcp({
 	version: packageJson.version
 })
 
-runApp(
-	'stash',
+CliRuntime.runApp(
+	packageJson,
 	pipe(
 		HttpRouter.serve(
 			pipe(

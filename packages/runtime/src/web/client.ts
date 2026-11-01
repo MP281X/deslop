@@ -1,4 +1,4 @@
-import {Effect, Layer, Predicate, Schema, pipe} from 'effect'
+import {Effect, Layer, Predicate, pipe} from 'effect'
 
 import {createRouter} from '@tanstack/react-router'
 import type {AnyContext, AnyRoute, RouterOptions} from '@tanstack/react-router'
@@ -9,6 +9,7 @@ import {Socket} from 'effect/socket'
 
 import {Error, NotFound} from '@deslop/components-web/fallbacks'
 
+import {RuntimeConfig} from '#schema.ts'
 import {layerOtlp} from '#telemetry.ts'
 
 export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext: AnyContext}}>(
@@ -51,7 +52,7 @@ export function layer(applicationName: string) {
 			Layer.unwrap(
 				Effect.gen(function* () {
 					const response = yield* (yield* HttpClient.HttpClient).get('/api/runtime')
-					const config = yield* HttpClientResponse.schemaBodyJson(Schema.Struct({traces: Schema.String}))(response)
+					const config = yield* HttpClientResponse.schemaBodyJson(RuntimeConfig)(response)
 					if (config.traces === '') return Layer.empty
 					return layerOtlp(`${applicationName}-client`, config.traces, 'web')
 				})

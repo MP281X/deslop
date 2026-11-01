@@ -5,6 +5,7 @@
 
 # build output & cache
 **/dist
+# Extracted build output; canonical native archives are tracked in tools/native.
 apps/*/bin
 apps/*/package.tgz
 apps/*/release

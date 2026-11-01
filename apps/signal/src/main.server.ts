@@ -7,7 +7,7 @@ import {HttpRouter} from 'effect/http'
 import {RpcServer} from 'effect/rpc'
 
 import {Auth} from '@deslop/runtime/auth/service'
-import {runApp} from '@deslop/runtime/cli'
+import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import packageJson from '#package.json' with {type: 'json'}
@@ -20,8 +20,8 @@ import {Game} from '#services/game/service.ts'
 import {Tools} from '#tools/contracts.ts'
 import {ToolHandlers} from '#tools/handlers.ts'
 
-runApp(
-	'signal',
+CliRuntime.runApp(
+	packageJson,
 	pipe(
 		HttpRouter.serve(
 			pipe(

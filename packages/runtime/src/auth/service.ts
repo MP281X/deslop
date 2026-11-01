@@ -11,7 +11,7 @@ import {
 	HttpServerResponse
 } from 'effect/http'
 
-import {AUTH_URL, CurrentUser, DEVELOPER, RpcAuth, development} from '#auth/lib/utils.ts'
+import {AUTH_URL, CurrentUser, DEVELOPER, RpcAuth, localAuth} from '#auth/lib/utils.ts'
 import {AuthError, DEFAULT_RESOURCES, User} from '#auth/schema.ts'
 
 function rejected(message: string) {
@@ -75,7 +75,7 @@ export class Auth extends Context.Service<
 	static readonly layer = (resource: string, bearerResource?: string) =>
 		Layer.effectContext(
 			Effect.gen(function* () {
-				if (yield* pipe(Config.Boolean('DESLOP_LOCAL'), Config.withDefault(yield* development))) {
+				if (yield* localAuth) {
 					return Auth.makeContext(Auth.of({access: developer, user: developer}))
 				}
 				// Where this server reaches the auth app: inside the deploy, its container address.
@@ -154,7 +154,7 @@ export function layerMcpAuth(resource: string) {
 		Effect.gen(function* () {
 			const auth = yield* Auth
 			// A preview's MCP endpoint answers without OAuth, as its pages do.
-			if (yield* pipe(Config.Boolean('DESLOP_LOCAL'), Config.withDefault(yield* development))) {
+			if (yield* localAuth) {
 				return app => Effect.provideService(app, CurrentUser, DEVELOPER)
 			}
 			return app =>

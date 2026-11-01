@@ -13,12 +13,13 @@ scope service install --port 5100           # user systemd service
 scope service status
 scope service update                        # update its managed service from npm
 scope service uninstall                     # remove the unit, retain app data
-scope mcp                                  # stdio attachment to the running HTTP MCP
 ```
 
-`--host`, `--port`, `--url`, `--auth` and `--traces` override their environment equivalents (`HOST`, `PORT`, `APP_URL`, `AUTH_URL`, `VITE_OTEL_URL`). `--url` is the canonical HTTP(S) origin, including a nonstandard port. Set it to the HTTPS hostname before proxying an app: unknown Host headers and cross-origin unauthenticated requests are rejected. Non-loopback unauthenticated serving requires explicit `--public`; a proxy is not authentication.
+Server entrypoints use `CliRuntime.runApp(packageJson, effect)`; the executable name and version come from that package's metadata. One shared schema validates CLI/environment settings and saved service settings before enrollment or startup.
 
-No issuer or telemetry endpoint is required locally. `--traces <OTLP/HTTP endpoint>` enables server and web-client export at runtime; mobile exporters keep their own app configuration. Containers can use `SERVER_OTEL_URL` for a private server-to-Scope endpoint while the browser uses the public `VITE_OTEL_URL`.
+`--host`, `--port`, `--url`, `--auth` and `--traces` override `HOST`, `PORT`, `APP_URL`, `AUTH_URL` and `OTEL_URL`. `--url` is the canonical HTTP(S) origin, including a nonstandard port. Set it to the HTTPS hostname before proxying an app: unknown Host headers and cross-origin unauthenticated requests are rejected. Binding beyond localhost is an explicit `--host` choice, not a second `--public` flag. Without Auth, every request uses the same trusted mock user as local development—even when listening on a network address. A proxy is not authentication.
+
+No issuer or telemetry endpoint is required locally. `--traces <OTLP/HTTP endpoint>` enables server and web-client export at runtime; Effect serves browser configuration from `/api/runtime`, with no Vite prefix or rebuild. Mobile exporters keep their own app configuration. Containers can use `SERVER_OTEL_URL` for a private server-to-Scope endpoint while the browser uses the public `OTEL_URL`.
 
 Services keep immutable code under `~/.deslop/<app>/releases/` and an atomic `current` link. Unit files are under `~/.config/systemd/user/`; optional `~/.deslop/<app>.env` supplies app-specific environment/secrets. Service settings and CLI credentials stay under the app's data directory. Installing again restarts the unit with the new settings. Enable user lingering on the worker if it must survive logout. Containers run the same npm artifact in the foreground, never systemd.
 
@@ -27,7 +28,6 @@ Services keep immutable code under `~/.deslop/<app>/releases/` and an atomic `cu
 ```bash
 scope --auth https://auth.mp281x.xyz --url https://scope.example.com
 scope login --auth https://auth.mp281x.xyz --url https://scope.example.com
-scope mcp --auth https://auth.mp281x.xyz --url https://scope.example.com
 ```
 
 The server first requests protected-resource enrollment. A signed-in admin approves or denies the exact resource origin in Auth → Resources. A pending/denied resource cannot receive usable OAuth grants. Disabling it rejects existing tokens too. Previously deployed Deslop resource identifiers remain approved until explicitly disabled. Pending requests expire after ten minutes; the bounded inbox evicts its oldest pending request when full. Approvals and admin denials are durable and do not consume pending capacity; denying a request clears that pending slot without permitting re-enrollment to bypass the decision.
@@ -36,7 +36,7 @@ Enrollment is a **Deslop issuer-specific provisioning extension**, not OAuth cli
 
 `login` prints a URL and listens on an ephemeral loopback callback ([RFC 8252](https://www.rfc-editor.org/rfc/rfc8252.html)). Open it on the CLI's machine, or forward that callback port over SSH for a headless worker. Credentials are mode 0600, separated by issuer and resource origin. Logging in to a remote worker never changes the installed service's settings or updater probe target; repeat its URL/Auth flags when attaching directly. Refreshes are serialized across CLI processes; after an interrupted/crashed refresh, the error names the lock to remove only once no owner is running. Never pass bearer/refresh tokens as command-line flags.
 
-`mcp` forwards tools, concrete resources and prompts to the persistent service. It does not open the app's data, start a second server, or turn protocol logs into stdout. An unavailable service is an error, not a fallback process. Resource templates, subscriptions and remote list-change notifications are not bridged yet. Use HTTP MCP directly for those capabilities.
+MCP is HTTP-only at the running app's `/mcp` endpoint. Point the harness's HTTP MCP client there; it owns its OAuth sign-in. There is no stdio adapter or second app/data writer. The CLI's `login` command remains for Deploy's authenticated worker RPC connections, not as an MCP bridge.
 
 ## Deploy updates
 
@@ -48,4 +48,4 @@ The updater is separate from the process it restarts; it does not overwrite a ru
 
 Builds emit `release/`: the server bundle, client assets where present, native tools where needed and dependency-free npm metadata. Pack **that directory**, not an Expo/workspace manifest. The exact tarball is both published to npm and unpacked by its Docker image. Release workflow bootstrap and publication approvals live in [RELEASING.md](https://github.com/MP281X/deslop/blob/main/RELEASING.md).
 
-Linux x64 packages currently match the two workers. Stash bundles checksum-pinned FFmpeg/ffprobe and a yt-dlp PyInstaller executable (Python included); Deploy bundles checksum-pinned Caddy. These are executables, not WASM, and still rely on the host's normal Linux/glibc, libgcc and zlib baseline. Release preparation uses `tar`; runtime media processing does not require apt, pip or a separately installed Python/FFmpeg/Caddy. Native licenses and source references travel in `bin/`.
+Linux x64 packages currently match the two workers. Stash bundles FFmpeg/ffprobe and a yt-dlp PyInstaller executable (Python included); Deploy bundles Caddy. Their exact archives, checksums, licenses and source references are checked into [`tools/native`](https://github.com/MP281X/deslop/tree/main/tools/native); builds extract them without downloads. That directory's README owns deliberate updates. These are executables, not WASM, and still rely on the host's normal Linux/glibc, libgcc and zlib baseline. Release preparation uses `tar` with xz support; runtime media processing does not require apt, pip or a separately installed Python/FFmpeg/Caddy. Native licenses and source references travel in `bin/`.

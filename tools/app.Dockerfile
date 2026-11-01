@@ -15,4 +15,4 @@ ADD package.tgz /app/
 
 USER 1000:1000
 
-CMD ["./dist/server.js", "--public"]
+CMD ["./dist/server.js"]

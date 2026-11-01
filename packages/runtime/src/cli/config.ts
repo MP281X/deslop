@@ -11,7 +11,7 @@ export const savedSettings = Effect.fnUntraced(function* (name: string) {
 	const file = (yield* Path.Path).join(yield* configDirectory(name), 'cli.json')
 	if (!(yield* fs.exists(file))) return {}
 	const saved = yield* Schema.decodeEffect(Schema.fromJsonString(AppSettings))(yield* fs.readFileString(file))
-	return {APP_URL: saved.url, AUTH_URL: saved.auth, HOST: saved.host, PORT: saved.port, VITE_OTEL_URL: saved.traces}
+	return {APP_URL: saved.url, AUTH_URL: saved.auth, HOST: saved.host, OTEL_URL: saved.traces, PORT: saved.port}
 })
 
 export const saveSettings = Effect.fnUntraced(function* (name: string, config: AppSettings) {

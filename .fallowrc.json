@@ -28,6 +28,7 @@
 					"apps/portfolio/src/lib/portfolio.ts",
 					"packages/runtime/src/auth/schema.ts",
 					"packages/runtime/src/auth/lib/utils.ts",
+					"packages/runtime/src/schema.ts",
 					"packages/runtime/src/telemetry.ts"
 				]
 			},

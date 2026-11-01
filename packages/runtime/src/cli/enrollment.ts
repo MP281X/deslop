@@ -1,4 +1,4 @@
-import {Array, Effect, Schedule, Stream, Stdio, pipe} from 'effect'
+import {Effect, Schedule, Stream, Stdio, pipe} from 'effect'
 
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 
@@ -8,20 +8,7 @@ import {AppError} from '#cli/schema.ts'
 
 export const enroll = Effect.fnUntraced(function* (name: string, config: AppSettings) {
 	if (config.auth === '') return
-	const issuer = yield* Effect.try({
-		catch: cause => AppError.make({cause, message: 'Invalid authorization server URL'}),
-		try: () => new URL(config.auth)
-	})
-	if (issuer.protocol !== 'https:' && !Array.contains(['localhost', '127.0.0.1', '[::1]'], issuer.hostname)) {
-		return yield* AppError.make({message: 'Authorization servers must use HTTPS'})
-	}
-	const resource = yield* Effect.try({
-		catch: cause => AppError.make({cause, message: 'Invalid public app URL'}),
-		try: () => new URL(config.url)
-	})
-	if (resource.protocol !== 'https:') {
-		return yield* AppError.make({message: 'With --auth, set --url to the app’s canonical HTTPS URL'})
-	}
+	const issuer = new URL(config.auth)
 	const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 	const request = yield* pipe(
 		HttpClientRequest.post(new URL('/api/resources', issuer).href),

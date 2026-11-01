@@ -1,6 +1,8 @@
 // fallow-ignore-file unused-type -- Paired schema types are available to CLI/runtime consumers.
 import {Schema} from 'effect'
 
+import {AppVersion, OptionalAuth, Origin, Port, TraceEndpoint} from '#schema.ts'
+
 export class AppError extends Schema.TaggedError<AppError>()('AppError', {
 	cause: Schema.optional(Schema.Defect()),
 	message: Schema.String
@@ -8,16 +10,19 @@ export class AppError extends Schema.TaggedError<AppError>()('AppError', {
 
 export type AppSettings = typeof AppSettings.Type
 export const AppSettings = Schema.Struct({
-	auth: Schema.String,
-	host: Schema.String,
-	port: Schema.Int.check(Schema.isBetween({maximum: 65_535, minimum: 1})),
-	public: Schema.Boolean,
-	traces: Schema.String,
-	url: Schema.String
-})
+	auth: OptionalAuth,
+	host: Schema.NonEmptyString,
+	port: Port,
+	traces: TraceEndpoint,
+	url: Origin
+}).check(
+	Schema.makeFilter(value => value.auth === '' || new URL(value.url).protocol === 'https:', {
+		expected: 'a canonical HTTPS app origin when Auth is enabled'
+	})
+)
 
 export type AppManifest = typeof AppManifest.Type
-export const AppManifest = Schema.Struct({version: Schema.String.check(Schema.isPattern(/^0\.1\.\d+$/u))})
+export const AppManifest = Schema.Struct({version: AppVersion})
 
 export type OAuthDiscovery = typeof OAuthDiscovery.Type
 export const OAuthDiscovery = Schema.Struct({
@@ -33,5 +38,5 @@ export const PackageMetadata = Schema.Struct({
 	engines: Schema.Struct({node: Schema.String}),
 	name: Schema.String,
 	repository: Schema.Struct({directory: Schema.String, type: Schema.String, url: Schema.String}),
-	version: Schema.String
+	version: AppVersion
 })

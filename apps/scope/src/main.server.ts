@@ -18,7 +18,7 @@ import {
 import {RpcSerialization, RpcServer} from 'effect/rpc'
 
 import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
-import {runApp} from '@deslop/runtime/cli'
+import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import packageJson from '#package.json' with {type: 'json'}
@@ -105,8 +105,8 @@ const telemetry = Layer.unwrap(
 )
 
 // The receiver never exports its own spans or query traffic back into itself.
-runApp(
-	'scope',
+CliRuntime.runApp(
+	packageJson,
 	pipe(
 		Layer.merge(
 			pipe(

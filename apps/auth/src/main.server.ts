@@ -7,8 +7,10 @@ import {RateLimiter} from 'effect/persistence'
 import {RpcServer} from 'effect/rpc'
 
 import {development} from '@deslop/runtime/auth/utils'
-import {runApp} from '@deslop/runtime/cli'
+import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
+
+import packageJson from '#package.json' with {type: 'json'}
 
 import {HttpHandlers} from '#http/handlers.ts'
 import icon from '#routes/icon.svg'
@@ -47,8 +49,8 @@ const layerServices = pipe(
 	Layer.provide(layerStore)
 )
 
-runApp(
-	'auth',
+CliRuntime.runApp(
+	packageJson,
 	pipe(
 		HttpRouter.serve(
 			pipe(

@@ -58,14 +58,7 @@ it.layer(NodeServices.layer)('Managed update', test => {
 			)
 			function attempt() {
 				return pipe(
-					update('fixture', {
-						auth: '',
-						host: '127.0.0.1',
-						port: 5200,
-						public: false,
-						traces: '',
-						url: 'http://127.0.0.1:5200'
-					}),
+					update('fixture', {auth: '', host: '127.0.0.1', port: 5200, traces: '', url: 'http://127.0.0.1:5200'}),
 					Effect.scoped,
 					Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({HOME: home})),
 					Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),

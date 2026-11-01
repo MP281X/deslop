@@ -6,8 +6,10 @@ import {HttpRouter} from 'effect/http'
 import {RpcServer} from 'effect/rpc'
 
 import {Auth} from '@deslop/runtime/auth/service'
-import {runApp} from '@deslop/runtime/cli'
+import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
+
+import packageJson from '#package.json' with {type: 'json'}
 
 import {HttpHandlers} from '#http/handlers.ts'
 import icon from '#routes/icon.svg'
@@ -26,8 +28,8 @@ const layerServices = pipe(
 	Layer.provide(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer, layerUpstream))
 )
 
-runApp(
-	'gateway',
+CliRuntime.runApp(
+	packageJson,
 	pipe(
 		HttpRouter.serve(
 			pipe(

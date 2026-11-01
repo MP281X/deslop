@@ -6,13 +6,13 @@ x-service: &service
   logging: {driver: local, options: {max-file: '3', max-size: 10m}}
 
 # Servers export to Scope, and the signed-in ones check each sign-in with the auth app, inside this network, skipping the public TLS round trip.
-x-environment: &environment {SERVER_OTEL_URL: http://scope:4318, VITE_OTEL_URL: https://otel.mp281x.xyz}
+x-environment: &environment {SERVER_OTEL_URL: http://scope:4318, OTEL_URL: https://otel.mp281x.xyz}
 x-signed:
   &signed {
     AUTH_URL: https://auth.mp281x.xyz,
     AUTH_BACKEND_URL: http://auth:5000,
     SERVER_OTEL_URL: http://scope:4318,
-    VITE_OTEL_URL: https://otel.mp281x.xyz
+    OTEL_URL: https://otel.mp281x.xyz
   }
 
 services:

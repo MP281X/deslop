@@ -7,7 +7,7 @@ import {HttpRouter} from 'effect/http'
 import {RpcSerialization, RpcServer} from 'effect/rpc'
 
 import {Auth} from '@deslop/runtime/auth/service'
-import {runApp} from '@deslop/runtime/cli'
+import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import packageJson from '#package.json' with {type: 'json'}
@@ -25,8 +25,8 @@ const mcp = ServerRuntime.layerMcp({
 	version: packageJson.version
 })
 
-runApp(
-	'template-app',
+CliRuntime.runApp(
+	packageJson,
 	pipe(
 		HttpRouter.serve(
 			pipe(

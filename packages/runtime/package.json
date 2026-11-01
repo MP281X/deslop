@@ -7,6 +7,7 @@
 	},
 	"exports": {
 		"./cli": "./src/cli.ts",
+		"./schema": "./src/schema.ts",
 		"./native": "./src/native.ts",
 		"./oauth": "./src/cli/oauth.ts",
 		"./service": "./src/cli/service.ts",

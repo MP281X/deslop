@@ -68,13 +68,7 @@ export class Fleet extends Context.Service<
 			})
 			const remote = Effect.fnUntraced(
 				function* <A, E>(worker: Worker, use: (client: RemoteClient, headers: Headers.Input) => Effect.Effect<A, E>) {
-					const url = yield* Effect.try({
-						catch: cause => DeployError.make({cause, message: 'Invalid worker URL'}),
-						try: () => new URL('/api/rpc', worker.url)
-					})
-					if (url.protocol !== 'https:' && !Array.contains(['127.0.0.1', 'localhost', '[::1]'], url.hostname)) {
-						return yield* DeployError.make({message: 'Remote workers require HTTPS'})
-					}
+					const url = new URL('/api/rpc', worker.url)
 					url.protocol = 'wss:'
 					if (new URL(worker.url).protocol === 'http:') url.protocol = 'ws:'
 					const headers = yield* Boolean.match(worker.auth === '', {

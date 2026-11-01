@@ -19,7 +19,7 @@ it.effect('guards localhost hosts/origins and preserves a same-app sign-in desti
 									ConfigProvider.fromUnknown({
 										APP_URL: 'https://scope.example.com',
 										AUTH_URL: 'https://auth.example.com',
-										VITE_OTEL_URL: ''
+										OTEL_URL: ''
 									})
 								)
 							)

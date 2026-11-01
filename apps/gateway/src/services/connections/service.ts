@@ -35,7 +35,7 @@ import {KeyValueStore} from 'effect/persistence'
 
 import type {User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
-import {development} from '@deslop/runtime/auth/utils'
+import {localAuth} from '@deslop/runtime/auth/utils'
 import {layerKeyValueStore} from '@deslop/runtime/server'
 
 import {
@@ -122,10 +122,7 @@ export class Connections extends Context.Service<
 		const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('servers'), () => ({})))
 		// Local no-issuer installs have one trusted developer, independent of production admin settings.
 		const listed = Config.Array(Schema.String, 'GITHUB_ADMINS')
-		const admins = yield* Boolean.match(
-			yield* pipe(Config.Boolean('DESLOP_LOCAL'), Config.withDefault(yield* development)),
-			{onFalse: () => listed, onTrue: () => Effect.succeed(['0'])}
-		)
+		const admins = yield* Boolean.match(yield* localAuth, {onFalse: () => listed, onTrue: () => Effect.succeed(['0'])})
 		// Only the latest calls matter to a light, so a slow page drops the oldest.
 		const traffic = yield* PubSub.sliding<ServerId>(64)
 		// Auth's admins, named by the same setting: only they manage the servers everyone with access shares.
