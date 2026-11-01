@@ -239,13 +239,13 @@ Each app is one real object in isometric pixel art: 64 cells, 2:1 pixel lines, t
 
 Pixel art ships as SVG, one cell per unit with `crispEdges`, so it stays sharp at any size in a fraction of a PNG's bytes. A raster stays only where a consumer needs one, at the smallest size and format it accepts.
 
-| File                                     | Format                                                                                                      | Used as                                                                    |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `icon.svg`                               | SVG on `icon-tile`                                                                                          | favicon; the server's `/icon` for Auth's app list and MCP clients          |
-| `icon-dark.svg`                          | SVG, transparent                                                                                            | dark favicon, the web app bar                                              |
-| `app.icon/` (iOS apps)                   | Icon Composer, an SVG layer sized `width`/`height` 1024, since Icon Composer places a layer at its own size | the iOS icon over `icon-tile` or the system's dark fill; iOS derives tint  |
-| `icon.png` (iOS apps)                    | indexed PNG, 1024px                                                                                         | the in-app title, which needs a raster                                     |
-| `public/apple-touch-icon.png` (web apps) | indexed PNG, ~512px, a whole multiple of the cells                                                          | the home-screen icon of the installed web app, which iOS wants as a raster |
+| File                                     | Format                                                                                                      | Used as                                                                                                             |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `icon.svg`                               | SVG on `icon-tile`                                                                                          | favicon; the server's `/icon` for Auth's app list and MCP clients                                                   |
+| `icon-dark.svg`                          | SVG, transparent                                                                                            | dark favicon, the web app bar                                                                                       |
+| `app.icon/` (iOS apps)                   | Icon Composer, an SVG layer sized `width`/`height` 1024, since Icon Composer places a layer at its own size | the iOS icon: `icon.svg` with its tile, in every appearance, so it matches the installed web apps; iOS derives tint |
+| `icon.png` (iOS apps)                    | indexed PNG, 1024px                                                                                         | the in-app title, which needs a raster                                                                              |
+| `public/apple-touch-icon.png` (web apps) | indexed PNG, ~512px, a whole multiple of the cells                                                          | the home-screen icon of the installed web app, which iOS wants as a raster                                          |
 
 Every web app installs as its own app: `ServerRuntime.layerManifest` serves a standalone, dark manifest with both icons, and the root keeps clear of the status bar and home indicator with `safe-area`.
 | opm's face | PNG in `app.icon`, WebP at `/icon` | a painting, not pixel art, so it keeps a raster |

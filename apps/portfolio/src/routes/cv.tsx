@@ -84,7 +84,7 @@ function HeaderGrid() {
 
 function CvRoute() {
 	return (
-		<div className="min-h-0 flex-1 overflow-y-auto px-6 py-12 select-text print:overflow-visible print:p-0">
+		<div className="pb-safe min-h-0 flex-1 overflow-y-auto px-6 pt-12 select-text print:overflow-visible print:p-0">
 			<Button
 				variant="outline"
 				size="icon"

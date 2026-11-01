@@ -85,6 +85,8 @@ function brandOf(client: Client) {
 	if (client.kind === 'Browser') return Option.map(Record.get(BROWSERS, client.name), src => ({mono: false, src}))
 	if (Option.isSome(String.match(/claude/iu)(client.name))) return Option.some({mono: false, src: claude})
 	if (Option.isSome(String.match(/codex/iu)(client.name))) return Option.some({mono: true, src: codex})
+	// The gateway runs on a server whatever device approved it, so its glyph wins over the device's logo.
+	if (Option.isSome(String.match(/gateway/iu)(client.name))) return Option.none()
 	if (Array.contains(['iPhone', 'iPad'], client.device)) return Option.some({mono: true, src: apple})
 	if (client.device === 'Android') return Option.some({mono: false, src: android})
 	return Option.none()
@@ -243,7 +245,7 @@ function AppRow(props: {
 	)
 }
 
-// A failed answer stays under the list to retry. Where the sign-in started tells a stranger's code from one's own.
+// A failed answer stays above the list to retry. Where the sign-in started tells a stranger's code from one's own.
 function Answer(props: {request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
 	return (
@@ -316,10 +318,14 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 	)
 	return (
 		<section className="flex flex-col gap-3" aria-label="Apps">
+			{/* A waiting sign-in's answer comes first, where the approving phone sees it without scrolling. */}
 			{Option.match(props.pending, {
 				onNone: () => null,
 				onSome: request => (
-					<p className="text-muted-foreground font-mono text-xs">open until {timeLabel(request.expiresAt)}</p>
+					<>
+						<Answer request={request} />
+						<p className="text-muted-foreground font-mono text-xs">open until {timeLabel(request.expiresAt)}</p>
+					</>
 				)
 			})}
 			<ItemList label="Apps">
@@ -348,7 +354,6 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 					))
 				]}
 			</ItemList>
-			{Option.match(props.pending, {onNone: () => null, onSome: request => <Answer request={request} />})}
 			<ResultError result={disconnection} />
 		</section>
 	)
