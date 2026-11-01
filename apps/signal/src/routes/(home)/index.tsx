@@ -1061,7 +1061,7 @@ function WorldControl() {
 		<div className="relative shrink-0">
 			<Button
 				variant="secondary"
-				className="min-h-11 px-2"
+				className="min-h-11 px-1.5"
 				disabled={
 					!AsyncResult.isSuccess(status) ||
 					result.waiting ||
