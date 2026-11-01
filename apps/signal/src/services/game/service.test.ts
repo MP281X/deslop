@@ -2,6 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {
 	Array,
+	Boolean,
 	ConfigProvider,
 	Context,
 	Effect,
@@ -392,7 +393,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 	)
 
 	test.effect(
-		'pages canonical individual and world history without duplicating a restored pending tail',
+		'reindexes archived receipts and pages history without duplicating a restored pending tail',
 		Effect.fnUntraced(function* () {
 			const kv = yield* KeyValueStore.KeyValueStore
 			yield* kv.clear
@@ -403,6 +404,13 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 					({
 						actor: 2,
 						actorKind: 'worker',
+						...Boolean.match(sequence === 1, {
+							onFalse: () => ({}),
+							onTrue: () => ({
+								context: 'Archived request from the previous release.',
+								tokens: {cost: 0.001, input: 23, output: 4}
+							})
+						}),
 						id: 1000 + sequence,
 						kind: 'action',
 						text: `Gathered stone ${sequence}.`,
@@ -423,12 +431,15 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 					chunk.entries
 				)
 			}
-			const references = Array.map(rows, (entry, index) => ({
-				actor: entry.actor,
-				id: entry.id,
-				page: Math.floor(index / 100),
-				tick: entry.tick
-			}))
+			const references = Array.filter(
+				Array.map(rows, (entry, index) => ({
+					actor: entry.actor,
+					id: entry.id,
+					page: Math.floor(index / 100),
+					tick: entry.tick
+				})),
+				entry => entry.id !== 1001
+			)
 			for (const chunk of Array.map(Array.chunksOf(references, 100), (entries, page) => ({entries, page}))) {
 				yield* KeyValueStore.toSchemaStore(kv, ActivityPage).set(
 					`activity/${String.padStart(9, '0')(`${chunk.page}`)}`,
@@ -462,6 +473,11 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 				Game
 			)
 			for (const actor of [2, 'all'] as const) {
+				assert.strictEqual(
+					Option.getOrThrow(Array.findFirst(yield* game.history(actor, Option.some(1002)), entry => entry.id === 1001))
+						.tokens?.input,
+					23
+				)
 				assert.deepStrictEqual(
 					Array.map(yield* game.history(actor, Option.none()), entry => entry.id),
 					Array.range(1021, 1120)

@@ -16,8 +16,8 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/signal/lib/utils/R
 
 export const controlAtom = RpcClient.mutation('signal.control')
 
-export const feedAtom = Atom.family((at: number) => {
-	const request = Effect.flatMap(RpcClient, client =>
+function requestFeed(at: number) {
+	return Effect.flatMap(RpcClient, client =>
 		readFeed(
 			{
 				history: (before, tick) =>
@@ -39,17 +39,9 @@ export const feedAtom = Atom.family((at: number) => {
 			at
 		)
 	)
-	if (at >= 0) return RpcClient.runtime.atom(request)
-	return Atom.setIdleTTL(
-		RpcClient.runtime.atom(
-			pipe(
-				Stream.tick('5 seconds'),
-				Stream.mapEffect(() => request)
-			)
-		),
-		0
-	)
-})
+}
+
+export const feedAtom = Atom.family((at: number) => RpcClient.runtime.atom(requestFeed(at)))
 // The authoritative run state is independent of the spectator's live or historical view.
 export const runStateAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(
@@ -278,6 +270,24 @@ export const cursorAtom = Atom.make(get => {
 		}
 	})
 })
+
+// A replay's HUD can advance at 30×; only wall time schedules thread requests.
+export const threadFeedAtom = Atom.setIdleTTL(
+	RpcClient.runtime.atom(get => {
+		const source = get(sourceAtom)
+		const stopped = Option.getOrUndefined(Option.filter(source, replay => replay.speed === 0))
+		if (stopped !== undefined) return Stream.fromEffect(requestFeed(stopped.from))
+		return pipe(
+			Stream.tick('5 seconds'),
+			Stream.mapEffect(() =>
+				requestFeed(
+					Option.match(source, {onNone: () => -1, onSome: replay => Number.max(replay.from, get.once(cursorAtom))})
+				)
+			)
+		)
+	}),
+	0
+)
 
 // What the pointer is over, published by the world view for the hover card.
 type Hover = {id: string; x: number; y: number}

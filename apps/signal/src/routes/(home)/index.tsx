@@ -36,6 +36,7 @@ import {
 	historyAtom,
 	hudAtom,
 	loadingAtom,
+	threadFeedAtom,
 	runStateAtom,
 	seedAtom,
 	sourceAtom,
@@ -490,7 +491,7 @@ function EventRecord(props: {entry: Experience}) {
 	const team = historyTeam(props.entry, useContext(Membership))
 	return (
 		<li className="flex flex-col gap-1 py-1">
-			<header className="text-muted-foreground flex items-center gap-2">
+			<header className="text-muted-foreground flex flex-wrap items-center gap-2">
 				<Button
 					variant="link"
 					className="text-muted-foreground h-auto p-0 font-mono text-xs"
@@ -511,10 +512,31 @@ function EventRecord(props: {entry: Experience}) {
 					#{props.entry.actor}
 				</Button>
 				<span className="text-xs">{props.entry.kind}</span>
+				{props.entry.tokens?.cost !== undefined && (
+					<span className="text-xs">${Number.round(props.entry.tokens.cost, 5)}</span>
+				)}
+				{props.entry.tokens?.input !== undefined && <span className="text-xs">{props.entry.tokens.input} in</span>}
+				{props.entry.tokens?.output !== undefined && <span className="text-xs">{props.entry.tokens.output} out</span>}
 			</header>
 			<p className="leading-relaxed">
 				<References text={props.entry.text} tick={props.entry.tick} />
 			</p>
+			{props.entry.tokens !== undefined &&
+				Array.some(
+					['cached', 'cost', 'input', 'output', 'written', 'compaction'] as const,
+					key => props.entry.tokens?.[key] !== undefined
+				) && (
+					<details>
+						<summary className="text-muted-foreground cursor-pointer">Usage</summary>
+						<pre className="break-words whitespace-pre-wrap">{JSON.stringify(props.entry.tokens, undefined, 2)}</pre>
+					</details>
+				)}
+			{props.entry.context !== undefined && (
+				<details>
+					<summary className="text-muted-foreground cursor-pointer">Request context</summary>
+					<pre className="mt-2 break-words whitespace-pre-wrap">{props.entry.context}</pre>
+				</details>
+			)}
 		</li>
 	)
 }
@@ -535,9 +557,14 @@ function ThreadPage(props: {
 		Option.map(expanded, page => page.upper),
 		() => props.before ?? Boolean.match(props.replaying, {onFalse: () => -1, onTrue: () => props.tick})
 	)
-	const result = useAtomValue(feedAtom(before))
+	const result = useAtomValue(
+		Boolean.match(props.before === undefined && Option.isNone(expanded), {
+			onFalse: () => feedAtom(before),
+			onTrue: () => threadFeedAtom
+		})
+	)
 	const currentPage = Option.getOrElse(AsyncResult.value(result), () => ({before: -1, entries: []}))
-	const entries = currentPage.entries
+	const entries = Array.filter(currentPage.entries, entry => !props.replaying || entry.value.tick <= props.tick)
 	useEffect(() => {
 		if (props.before === undefined) props.onRead()
 	})

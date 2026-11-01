@@ -67,7 +67,7 @@ function keyOf(team: number, round: number) {
 }
 
 function notable(entry: Experience) {
-	if (entry.context !== undefined) return false
+	if (entry.context !== undefined) return true
 	const unit = Schema.is(UnitKind)(entry.actorKind)
 	if (entry.kind === 'born') return unit
 	if (entry.kind === 'decision') {
@@ -85,6 +85,34 @@ function notable(entry: Experience) {
 	if (entry.kind === 'action') return unit || entry.subject !== undefined
 	return true
 }
+
+const upgradeActivity = Effect.fn('Game.upgradeActivity')(function* <E>(
+	index: HistoryIndex,
+	read: (actor: string, page: number) => Effect.Effect<readonly Experience[], E>
+) {
+	if (index['@receipts'] === 1 || Record.size(index) === 0) return index
+	const kv = yield* KeyValueStore.KeyValueStore
+	const references = MutableList.make<ActivityPage[number]>()
+	for (const actor of Array.filter(
+		Record.toEntries(index),
+		entry => !String.startsWith('@')(entry[0]) && entry[1] > 0
+	)) {
+		for (const page of Array.range(0, Math.ceil(actor[1] / 100) - 1)) {
+			for (const entry of yield* read(actor[0], page)) {
+				if (notable(entry)) MutableList.append(references, {actor: entry.actor, id: entry.id, page, tick: entry.tick})
+			}
+		}
+	}
+	const sorted = Array.sortWith(MutableList.toArray(references), entry => entry.id, Number.Order)
+	const activity = KeyValueStore.toSchemaStore(kv, ActivityPage)
+	for (const chunk of Array.map(Array.chunksOf(sorted, 100), (rows, page) => ({page, rows}))) {
+		yield* activity.set(`activity/${padded(chunk.page)}`, chunk.rows)
+	}
+	const updated = {...index, '@activity': sorted.length, '@receipts': 1}
+	// Commit the receipt-index marker last so an interrupted upgrade retries before serving readers.
+	yield* KeyValueStore.toSchemaStore(kv, HistoryIndex).set('history/index', updated)
+	return updated
+})
 
 export class Game extends Context.Service<
 	Game,
@@ -234,6 +262,13 @@ export class Game extends Context.Service<
 				return Array.take(entriesInPage, expected)
 			})
 
+			MutableRef.set(
+				historyIndex,
+				yield* upgradeActivity(MutableRef.get(historyIndex), (actor, page) =>
+					actorPage(actor, page, MutableRef.get(historyIndex))
+				)
+			)
+
 			const appendHistory = Effect.fn('Game.appendHistory')(function* (
 				actor: string,
 				incoming: readonly Experience[],
@@ -302,6 +337,7 @@ export class Game extends Context.Service<
 					const index = {
 						...Record.fromEntries(updated),
 						'@activity': count + novel.length,
+						'@receipts': 1,
 						'@rules': SIMULATION,
 						'@through': Option.getOrElse(
 							Option.map(Array.last(pending), entry => entry.id),

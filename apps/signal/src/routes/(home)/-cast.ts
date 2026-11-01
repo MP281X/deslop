@@ -5,6 +5,7 @@ import type {GLTF} from 'three/addons/loaders/GLTFLoader.js'
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js'
 import {clone} from 'three/addons/utils/SkeletonUtils.js'
 
+import {seatPose, spatialBlend} from './-pose.ts'
 import type {Renderer} from './-renderer.ts'
 import {disposeSurveyCore, surveyCore} from './-survey-core.ts'
 
@@ -675,30 +676,17 @@ export function createCast(view: Renderer) {
 	function seat(id: number, delta: number) {
 		const actor = actorOf(id)
 		if (actor === undefined) return
-		const ahead = {x: Math.sin(actor.yaw) * 0.3, z: Math.cos(actor.yaw) * 0.3}
-		const pitch = Math.atan2(
-			heightOf(actor, actor.x - ahead.x, actor.z - ahead.z) - heightOf(actor, actor.x + ahead.x, actor.z + ahead.z),
-			0.6
+		actor.fallen = seatPose(
+			{
+				...actor,
+				down: actor.target.act === 'die',
+				level: Array.contains(FLIERS, actor.kind) || Array.contains(UPRIGHT, actor.kind)
+			},
+			delta,
+			(x, z) => heightOf(actor, x, z)
 		)
-		const roll = Math.atan2(
-			heightOf(actor, actor.x + ahead.z, actor.z - ahead.x) - heightOf(actor, actor.x - ahead.z, actor.z + ahead.x),
-			0.6
-		)
-		const y = heightOf(actor, actor.x, actor.z)
-		if (actor.target.act === 'die') actor.fallen = Number.min(1, actor.fallen + delta * 3)
-		if (actor.target.act !== 'die') actor.fallen = Number.max(0, actor.fallen - delta * 3)
-		actor.object.position.set(
-			actor.x,
-			actor.object.position.y + (y - actor.object.position.y) * (1 - Math.exp(-delta * 12)),
-			actor.z
-		)
-		actor.object.rotation.set(0, 0, 0)
-		actor.object.rotateY(actor.yaw)
 		const perch = Option.getOrUndefined(Option.filter(actor.ground, () => actor.kind !== 'fish'))
 		if (perch !== undefined) perch.visible = actor.target.act === 'idle'
-		if (Array.contains(FLIERS, actor.kind) || Array.contains(UPRIGHT, actor.kind)) return
-		actor.object.rotateX(pitch * 0.8)
-		actor.object.rotateZ(roll * 0.8 + actor.fallen * 1.2)
 	}
 
 	// The cargo a unit carries shows as full as it is, and a sentry's turret turns to its aim.
@@ -879,13 +867,16 @@ export function createCast(view: Renderer) {
 			if (entry.at <= seconds && entry.action.getEffectiveWeight() < 0.01) entry.action.stop()
 		}
 		state.fading = Array.filter(state.fading, entry => entry.at > seconds)
-		const ease = 1 - Math.exp(-delta * 10)
+		const ease = spatialBlend(delta, 10)
 		for (const actor of MutableHashMap.values(actors)) {
 			// An even pace across the frame reads as walking, not a lurch and a stop; past 6 tiles it is a timeline jump, so it cuts.
-			const walk = Boolean.match(Math.hypot(actor.target.x - actor.from.x, actor.target.z - actor.from.z) > 6, {
-				onFalse: () => Number.clamp((seconds - actor.arrived) / state.interval, {maximum: 1, minimum: 0}),
-				onTrue: () => 1
-			})
+			const walk = Boolean.match(
+				delta === 0 || Math.hypot(actor.target.x - actor.from.x, actor.target.z - actor.from.z) > 6,
+				{
+					onFalse: () => Number.clamp((seconds - actor.arrived) / state.interval, {maximum: 1, minimum: 0}),
+					onTrue: () => 1
+				}
+			)
 			actor.x = actor.from.x + (actor.target.x - actor.from.x) * walk
 			actor.z = actor.from.z + (actor.target.z - actor.from.z) * walk
 			actor.yaw += shortestTurn(actor.yaw, actor.target.yaw) * ease
