@@ -72,9 +72,7 @@
 		// The runtime's session and keychain import these two; each app keeps them so autolinking builds their native modules.
 		"expo-auth-session",
 		"expo-secure-store",
-		"expo-updates",
-		"onnxruntime-common",
-		"onnxruntime-node"
+		"expo-updates"
 	],
 	"ignorePatterns": ["**/*.gen.ts", "tools/*/template/**"],
 	"ignoreExports": [

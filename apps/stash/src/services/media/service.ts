@@ -269,14 +269,14 @@ export class Media extends Context.Service<
 					path.join(work, 'captions'),
 					link
 				])
-				if (result.exitCode !== 0) return Option.none<string>()
+				if (result.exitCode !== 0) return {blocked: isBlocked(result.stderr), transcript: Option.none<string>()}
 				for (const file of yield* fs.readDirectory(work)) {
 					if (String.endsWith('.vtt')(file)) {
 						const text = captionTranscript({
 							authored: track.authored,
 							vtt: yield* fs.readFileString(path.join(work, file))
 						})
-						if (String.isNonEmpty(String.trim(text))) return Option.some(text)
+						if (String.isNonEmpty(String.trim(text))) return {blocked: false, transcript: Option.some(text)}
 					} else if (String.endsWith('.json')(file)) {
 						const captions = yield* Schema.decodeEffect(Schema.fromJsonString(CreatorCaptions))(
 							yield* fs.readFileString(path.join(work, file))
@@ -290,18 +290,23 @@ export class Media extends Context.Service<
 							}),
 							''
 						)
-						if (String.isNonEmpty(String.trim(text))) return Option.some(text)
+						if (String.isNonEmpty(String.trim(text))) return {blocked: false, transcript: Option.some(text)}
 					}
 				}
-				return Option.none<string>()
+				return {blocked: false, transcript: Option.none<string>()}
 			})
 
 			const transcribe = Effect.fnUntraced(function* (link: string, media: Metadata, fallback?: string) {
 				const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-media-'})
 				for (const track of captionTracks(media)) {
 					// A broken authored track must not hide a working automatic or alternate-language track.
-					const captioned = Option.flatten(yield* Effect.option(captionsFor(link, track)))
-					if (Option.isSome(captioned)) return captioned
+					const captioned = yield* pipe(
+						captionsFor(link, track),
+						Effect.scoped,
+						Effect.orElseSucceed(() => ({blocked: false, transcript: Option.none<string>()}))
+					)
+					if (Option.isSome(captioned.transcript)) return captioned.transcript
+					if (captioned.blocked) break
 				}
 				if (Option.exists(Option.fromNullishOr(media.duration), seconds => seconds > MAX_WHISPER_SECONDS)) {
 					yield* Effect.logInfo('No captions, and the audio is too long for Whisper')

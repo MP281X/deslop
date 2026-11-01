@@ -15,6 +15,14 @@ export function captionTracks(media: Metadata) {
 			Option.getOrUndefined
 		)
 	const base = Option.map(Option.fromUndefinedOr(original), value => Array.headNonEmpty(String.split(value, '-')))
+	function preferred(language: string) {
+		const spoken = String.replace(/-orig$/u, '')(language)
+		return (
+			String.endsWith('-orig')(language) ||
+			(original !== undefined &&
+				(spoken === original || Option.contains(base, Array.headNonEmpty(String.split(spoken, '-')))))
+		)
+	}
 	return pipe(
 		[
 			...Array.map(Record.keys(media.subtitles ?? {}), language => ({authored: true, language})),
@@ -23,6 +31,7 @@ export function captionTracks(media: Metadata) {
 		Array.filter(
 			track =>
 				track.language !== 'live_chat' &&
+				(track.authored || original === undefined || preferred(track.language)) &&
 				Array.isReadonlyArrayNonEmpty(
 					Boolean.match(track.authored, {onFalse: () => media.automatic_captions, onTrue: () => media.subtitles})?.[
 						track.language
@@ -31,13 +40,8 @@ export function captionTracks(media: Metadata) {
 		),
 		Array.sort(
 			Order.mapInput(Order.Number, (track: {authored: boolean; language: string}) => {
-				const language = String.replace(/-orig$/u, '')(track.language)
-				const preferred =
-					String.endsWith('-orig')(track.language) ||
-					(original !== undefined &&
-						(language === original || Option.contains(base, Array.headNonEmpty(String.split(language, '-')))))
-				if (preferred && track.authored) return 0
-				if (preferred) return 1
+				if (preferred(track.language) && track.authored) return 0
+				if (preferred(track.language)) return 1
 				if (track.authored) return 2
 				return 3
 			})

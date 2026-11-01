@@ -4,7 +4,6 @@ packages:
   - tools/*
 
 allowBuilds:
-  onnxruntime-node: false
   protobufjs: false
 
 catalog:
@@ -28,10 +27,6 @@ peerDependencyRules:
     'vitest@5.0.5>vite': 1.4.0
 
 packageExtensions:
-  # The published Node bundle imports Tensor without declaring its package.
-  '@huggingface/transformers@4.3.2':
-    dependencies:
-      onnxruntime-common: ^1.30
   # apple-targets 5.0.0 loads these without declaring them.
   '@bacons/apple-targets':
     dependencies:

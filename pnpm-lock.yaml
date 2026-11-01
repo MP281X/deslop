@@ -173,7 +173,7 @@ overrides:
   fallow>fallow-type-aware: '-'
   '@bacons/apple-targets>@expo/prebuild-config': ^58.0
 
-packageExtensionsChecksum: sha256-txXfNI7P+1kSDOS3yT/qZEe4XNlr/iBmSXOIvDJ7fS8=
+packageExtensionsChecksum: sha256-H0sozbqlUTsXIJ3l/dFqqZlABythdQm0Wps+rxuCS88=
 
 importers:
 

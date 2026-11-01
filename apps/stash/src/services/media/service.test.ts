@@ -34,7 +34,7 @@ function argument(command: ChildProcess.StandardCommand, flag: string) {
 	)
 }
 
-function handle(stdout: string, exitCode = 0) {
+function handle(stdout: string, exitCode = 0, stderr = '') {
 	return ChildProcessSpawner.makeHandle({
 		all: Stream.empty,
 		exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(exitCode)),
@@ -43,7 +43,7 @@ function handle(stdout: string, exitCode = 0) {
 		isRunning: Effect.succeed(false),
 		kill: () => Effect.void,
 		pid: ChildProcessSpawner.ProcessId(1),
-		stderr: Stream.empty,
+		stderr: Stream.make(new TextEncoder().encode(stderr)),
 		stdin: Sink.drain,
 		stdout: Stream.make(new TextEncoder().encode(stdout)),
 		unref: Effect.succeed(Effect.void)
@@ -93,6 +93,38 @@ const audioSpawner = Effect.fnUntraced(function* () {
 })
 
 it.layer(NodeServices.layer)('Media fallback', test => {
+	test.effect(
+		'stops caption attempts after rate limiting and removes their temporary files before audio fallback',
+		Effect.fnUntraced(function* () {
+			const fs = yield* FileSystem.FileSystem
+			const attempts = yield* Ref.make(0)
+			const directory = yield* Ref.make('')
+			const spawner = ChildProcessSpawner.make(command =>
+				Effect.gen(function* () {
+					if (!ChildProcess.isStandardCommand(command)) return yield* Effect.die('Unexpected pipeline')
+					if (Array.contains(command.args, '--dump-single-json')) {
+						return handle('{"automatic_captions":{"en":[{}],"it":[{}],"fr":[{}]},"title":"A talk"}')
+					}
+					if (Array.contains(command.args, '--sub-langs')) {
+						yield* Ref.update(attempts, count => count + 1)
+						yield* Ref.set(directory, String.replace(/\/captions$/u, '')(argument(command, '-o')))
+						return handle('', 1, 'ERROR: HTTP Error 429: Too Many Requests')
+					}
+					if (Array.contains(command.args, '-f')) {
+						assert.isFalse(yield* fs.exists(yield* Ref.get(directory)))
+						return handle('', 1, 'audio unavailable')
+					}
+					return yield* Effect.die('Unexpected process')
+				})
+			)
+			const error = yield* Effect.flip(
+				(yield* (yield* open(spawner)).read('https://www.youtube.com/watch?v=one')).transcript
+			)
+			assert.isTrue(Schema.is(MediaError)(error))
+			assert.strictEqual(yield* Ref.get(attempts), 1)
+		})
+	)
+
 	for (const mode of ['empty', 'failed'] as const) {
 		test.effect(
 			`uses automatic captions after an ${mode} authored track`,
