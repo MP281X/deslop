@@ -646,6 +646,17 @@ function ThreadPage(props: {
 	)
 }
 
+function WorldConfiguration() {
+	const state = Option.getOrUndefined(AsyncResult.value(useAtomValue(runStateAtom)))
+	if (state === undefined || (state.coreConfigured && state.localDecisions)) return null
+	return (
+		<div role="status" className="text-warning px-3 pb-2 text-xs">
+			{!state.coreConfigured && <p>Model key missing · Run world unavailable</p>}
+			{!state.localDecisions && <p>Local decisions off · Individuals cannot request model decisions</p>}
+		</div>
+	)
+}
+
 function Thread(props: {replaying: boolean; status?: TeamView['status']; team: number; tick: number}) {
 	const list = useRef<HTMLOListElement>(null)
 	const pinned = useRef(true)
@@ -960,21 +971,24 @@ function Sidebar(props: {close: () => void; selection: Inspection; source: Sourc
 					</Button>
 				</header>
 				{props.selection.kind === 'thread' && (
-					<Thread
-						key={`${filter}:${Option.getOrElse(
-							Option.map(props.source, replay => replay.from),
-							() => 'live'
-						)}`}
-						team={filter}
-						tick={tick}
-						replaying={Option.isSome(props.source)}
-						status={Option.getOrUndefined(
-							Option.map(
-								Option.filter(picked, () => Option.isNone(props.source)),
-								team => team.status
-							)
-						)}
-					/>
+					<>
+						<WorldConfiguration />
+						<Thread
+							key={`${filter}:${Option.getOrElse(
+								Option.map(props.source, replay => replay.from),
+								() => 'live'
+							)}`}
+							team={filter}
+							tick={tick}
+							replaying={Option.isSome(props.source)}
+							status={Option.getOrUndefined(
+								Option.map(
+									Option.filter(picked, () => Option.isNone(props.source)),
+									team => team.status
+								)
+							)}
+						/>
+					</>
 				)}
 				{props.selection.kind === 'history' && (
 					<>
