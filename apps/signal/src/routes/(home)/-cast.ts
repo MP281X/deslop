@@ -5,6 +5,7 @@ import type {GLTF} from 'three/addons/loaders/GLTFLoader.js'
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js'
 import {clone} from 'three/addons/utils/SkeletonUtils.js'
 
+import {pickActor} from './-pick.ts'
 import {seatPose, spatialBlend} from './-pose.ts'
 import type {Renderer} from './-renderer.ts'
 import {disposeSurveyCore, surveyCore} from './-survey-core.ts'
@@ -33,9 +34,6 @@ const URLS = import.meta.glob<string>(['./-models/*.glb', '!**/home.glb', '!**/l
 	import: 'default',
 	query: '?url'
 })
-export const MODEL_KINDS = Array.map(Record.keys(URLS), key =>
-	String.replace(/\.glb$/u, '')(String.replace('./-models/', '')(key))
-)
 const TRACER = new THREE.MeshBasicMaterial({color: '#ffd98a', toneMapped: false})
 const BOX = new THREE.BoxGeometry(0.4, 0.3, 0.5)
 const BOX_SKIN = new THREE.MeshStandardMaterial({color: '#e9e2d5'})
@@ -626,6 +624,8 @@ export function createCast(view: Renderer) {
 
 	function spawn(unit: UnitView) {
 		const object = placeholder()
+		object.position.set(unit.x, view.ground(unit.x, unit.z), unit.z)
+		object.visible = false
 		view.scene.add(object)
 		MutableHashMap.set(actors, unit.id, {
 			actions: MutableHashMap.empty<string, THREE.AnimationAction>(),
@@ -844,30 +844,13 @@ export function createCast(view: Renderer) {
 
 	// The unit under a pixel: the nearest middle within a few dozen pixels.
 	function pick(x: number, y: number) {
-		return Option.map(
-			Array.head(
-				Array.sort(
-					Array.filter(
-						Array.map(Array.fromIterable(MutableHashMap.values(actors)), actor => {
-							const point = view.project(
-								actor.object.position.x,
-								actor.object.position.y + 0.3,
-								actor.object.position.z
-							)
-							return {distance: Math.hypot(point.x - x, point.y - y), id: actor.id}
-						}),
-						entry => entry.distance < 36
-					),
-					(a: {distance: number}, b: {distance: number}) => Number.sign(a.distance - b.distance)
-				)
-			),
-			entry => entry.id
-		)
+		return pickActor(Array.fromIterable(MutableHashMap.values(actors)), view.project, x, y)
 	}
 
 	function screenOf(id: number) {
-		return Option.map(MutableHashMap.get(actors, id), actor =>
-			view.project(actor.object.position.x, actor.object.position.y + 0.9, actor.object.position.z)
+		return Option.map(
+			Option.filter(MutableHashMap.get(actors, id), actor => actor.object.visible),
+			actor => view.project(actor.object.position.x, actor.object.position.y + 0.9, actor.object.position.z)
 		)
 	}
 

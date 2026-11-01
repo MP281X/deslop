@@ -34,12 +34,63 @@ import {
 	HistoryPage,
 	Journal,
 	RunState,
-	Saved
+	Saved,
+	Timeline
 } from '#services/game/schema.ts'
 import type {LocalDecision} from '#services/game/schema.ts'
 import {Game} from '#services/game/service.ts'
 
 it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvider.fromUnknown({}))))(test => {
+	test.effect(
+		'includes unexplored wildlife in live and frozen spectator frames without revealing it to agents',
+		Effect.fnUntraced(function* () {
+			const kv = yield* KeyValueStore.KeyValueStore
+			yield* kv.clear
+			const sim = yield* makeSim(Option.none(), 42)
+			const anchor = yield* sim.snapshot
+			yield* sim.run(40)
+			const saved = yield* sim.snapshot
+			const wild = Option.getOrThrow(
+				Array.findFirst(saved.mobs, mob =>
+					Array.every(saved.units, unit => Math.hypot(mob.x - unit.x, mob.z - unit.z) > 30)
+				)
+			)
+			const before = sim.individual(2).facts
+			assert.isFalse(Array.some(before, fact => fact.id === wild.id))
+			assert.notInclude(sim.observe(0).text, `#${wild.id}`)
+			const stores = KeyValueStore.toSchemaStore(kv, Saved)
+			yield* stores.set('world', saved)
+			yield* stores.set(`checkpoint/${SIMULATION}/000000000`, anchor)
+			yield* KeyValueStore.toSchemaStore(kv, Timeline).set('timeline', {live: 40, marks: [], start: 0})
+			const game = Context.get(
+				yield* Layer.build(
+					pipe(
+						Game.layer,
+						Layer.provide(
+							Layer.succeed(
+								Core,
+								Core.of({
+									choose: () => Effect.die('No model calls allowed'),
+									decide: () => Effect.die('No model calls allowed'),
+									recall: () => Effect.succeed(''),
+									usage: Effect.succeed({groups: {}})
+								})
+							)
+						)
+					)
+				),
+				Game
+			)
+			assert.isTrue(Array.some(Option.getOrThrow(yield* Stream.runHead(game.join)).units, unit => unit.id === wild.id))
+			const past = Option.getOrThrow(yield* Stream.runHead(game.replay(20, 0)))
+			assert.strictEqual(past.tick, 20)
+			assert.isTrue(Array.some(past.units, unit => unit.id === wild.id))
+			assert.isTrue(Array.every(yield* game.history(wild.id, Option.none()), entry => entry.actor === wild.id))
+			assert.isTrue(Array.some(yield* game.history(wild.id, Option.none()), entry => entry.kind === 'born'))
+			assert.deepStrictEqual(sim.individual(2).facts, before)
+			assert.strictEqual(Option.getOrThrow(yield* stores.get('world')).tick, 40)
+		})
+	)
 	test.effect(
 		'keeps applied Core decisions when a later unfinished decision is paused, resumed and restored',
 		Effect.fnUntraced(function* () {

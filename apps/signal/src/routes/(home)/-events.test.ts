@@ -4,15 +4,19 @@ import {Array, Option} from 'effect'
 
 import {
 	actorName,
+	actorKind,
 	decisionDetails,
 	displayEvents,
 	entityField,
-	eventModel,
 	eventSubject,
 	eventSummary,
 	eventText,
 	fieldName,
 	recordData,
+	requestMembers,
+	requestContinuation,
+	requestMemory,
+	requestState,
 	roundSummary,
 	textParts,
 	sameObservationGroup
@@ -63,14 +67,71 @@ it('keeps failures, multiple responses, other ticks/actors and unmatched receipt
 })
 
 it('uses real model identities and parses request records without treating malformed JSON as structured data', () => {
-	assert.strictEqual(eventModel({...CHOICE, text: 'grazer #42: idle'}, ['grazer']), 'grazer')
-	assert.strictEqual(eventModel(CHOICE, []), 'worker')
+	assert.strictEqual(actorKind({...CHOICE, text: 'grazer #42: idle'}, {}), 'worker')
+	assert.strictEqual(actorKind(CHOICE, {}), 'worker')
 	assert.strictEqual(actorName('worker', 2), 'Builder #2')
 	assert.strictEqual(actorName('home', 1), 'Core')
 	assert.strictEqual(fieldName('messagesWaiting'), 'Messages waiting')
 	assert.isTrue(Option.isNone(decisionDetails('{}')))
 	assert.deepStrictEqual(textParts('Unverified report.'), [{kind: 'text', text: 'Unverified report.'}])
 	assert.deepStrictEqual(textParts('{"claim":"uncertain"}'), [{kind: 'data', value: {claim: 'uncertain'}}])
+})
+
+it('keeps an observing author distinct from its subject and resolves recorded model identities', () => {
+	const observed = {
+		...CHOICE,
+		actor: 1_000_000_112,
+		actorKind: 'grazer',
+		subject: 1_000_000_109,
+		text: 'bird #1000000109: idle'
+	}
+	assert.strictEqual(actorKind(observed, {}), 'grazer')
+	assert.strictEqual(eventSubject(observed), 1_000_000_109)
+	const request = {
+		actor: 7,
+		choices: {'approach:42': 'Approach #42.'},
+		state: JSON.stringify({facts: [{id: 42, kind: 'lizard', x: 5, z: 6}], self: {id: 7, kind: 'skimmer'}}),
+		tick: 100
+	}
+	assert.deepStrictEqual(requestMembers(request)['42'], {kind: 'lizard', x: 5, z: 6})
+	assert.strictEqual(
+		actorKind({...RECEIPT, actor: 7, actorKind: undefined, context: JSON.stringify(request)}, {}),
+		'skimmer'
+	)
+})
+
+it('hides duplicate request memory without dropping fresh evidence or unresolved references', () => {
+	const fresh = {...CHOICE, text: 'Fresh claim at the same event id.'}
+	const request = {
+		actor: 2,
+		choices: {},
+		experience: [CHOICE],
+		state: JSON.stringify({recent: [CHOICE, {id: CHOICE.id}, fresh, {id: 99}]}),
+		tick: 100
+	}
+	assert.deepStrictEqual(requestMemory(request), [fresh, {id: 99}])
+	assert.deepStrictEqual(request.experience, [CHOICE])
+})
+
+it('extracts state from a real continuation receipt and retains older conversation without repeating supplied experiences', () => {
+	const state = {recent: [CHOICE], self: {id: 2, kind: 'worker', x: 10, z: 20}}
+	const request = {
+		actor: 2,
+		choices: {},
+		experience: [CHOICE],
+		state: `Earlier unverified memory.\nTick 120. Private experiences:\n[1; tick 120; decision; (10, 20)] ${CHOICE.text}\n${JSON.stringify(state)}`,
+		tick: 120
+	}
+	assert.deepStrictEqual(Option.getOrThrow(requestState(request)), state)
+	assert.strictEqual(requestMembers(request)['2']?.kind, 'worker')
+	assert.deepStrictEqual(requestMemory(request), [])
+	assert.strictEqual(requestContinuation(request), 'Earlier unverified memory.')
+	assert.strictEqual(requestContinuation({...request, state: JSON.stringify(state, undefined, 2)}), '')
+	assert.deepStrictEqual(
+		Option.getOrThrow(requestState({...request, state: JSON.stringify(state, undefined, 2)})),
+		state
+	)
+	assert.include(request.state, CHOICE.text)
 })
 
 it('extracts every labelled value from a real read-message shape without erasing claim provenance', () => {
@@ -106,6 +167,12 @@ it('retains recorded coordinates as link targets at their own tick and never tre
 	assert.isFalse(entityField('units'))
 	assert.isTrue(entityField('actor'))
 	assert.isTrue(entityField('subject'))
+	const identity = recordData({id: 42, kind: 'lizard', tokens: {cost: 0.1}, x: 3, z: 4}, 900)
+	assert.isUndefined(identity.anchor)
+	assert.deepStrictEqual(Option.getOrThrow(identity.at), {tick: 900, x: 3, z: 4})
+	assert.strictEqual(Option.getOrThrow(identity.entity).kind, 'lizard')
+	assert.deepStrictEqual(identity.fields, [])
+	assert.strictEqual(recordData({doing: 'Walking', x: 3, z: 4}, 900).anchor, 'doing')
 	assert.deepStrictEqual(Option.getOrThrow(recordData({_tag: 'Go', x: 3, z: 4}, 900).at), {tick: 900, x: 3, z: 4})
 	assert.deepStrictEqual(recordData({x: 'unknown', z: 4}, 900).fields, [
 		['x', 'unknown'],

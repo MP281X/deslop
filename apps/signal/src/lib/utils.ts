@@ -57,6 +57,16 @@ export const runStateAtom = Atom.keepAlive(
 	)
 )
 
+export const usageAtom = Atom.setIdleTTL(
+	RpcClient.runtime.atom(
+		pipe(
+			Stream.tick('30 seconds'),
+			Stream.mapEffect(() => Effect.flatMap(RpcClient, client => client('signal.usage', undefined)))
+		)
+	),
+	0
+)
+
 export const configurationAtom = Atom.make(get =>
 	Option.match(AsyncResult.value(get(runStateAtom)), {
 		onNone: () => [],
@@ -288,4 +298,4 @@ export type Follow = {
 export const followAtom = Atom.keepAlive(Atom.make<Follow>({free: Option.none(), id: Option.none()}))
 
 // The team whose thread and units the sidebar shows.
-export const teamAtom = Atom.keepAlive(Atom.make(0))
+export const teamAtom = Atom.keepAlive(Atom.make(-1))

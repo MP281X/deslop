@@ -1831,15 +1831,6 @@ export const makeSim = Effect.fnUntraced(
 			)
 		}
 
-		// Whether any team has explored the tile under a point: what lies there is drawn, so whatever walks there shows too.
-		function knownAny(at: Point) {
-			const tile = chunkOf(Math.floor(at.x), Math.floor(at.z))
-			return Option.exists(
-				MutableHashMap.get(seen, chunkKey(tile.cx, tile.cz)),
-				entry => ((entry.bits[tile.index >> 3] ?? 0) & (1 << (tile.index & 7))) !== 0
-			)
-		}
-
 		// Twice a second every unit that moved half a tile looks round it as far as it sees, and marks the chunk it is in.
 		function explore() {
 			revision.explored += 1
@@ -4247,8 +4238,8 @@ export const makeSim = Effect.fnUntraced(
 				traces: traceFrame(connection),
 				units: [
 					...Array.map(allUnits(), unitView),
-					...Array.map(Array.filter(allEnemies(), knownAny), enemyView),
-					...Array.map(Array.filter(Array.fromIterable(MutableHashMap.values(mobs)), knownAny), mobView)
+					...Array.map(allEnemies(), enemyView),
+					...Array.map(Array.fromIterable(MutableHashMap.values(mobs)), mobView)
 				],
 				world: Boolean.match(first, {onFalse: () => undefined, onTrue: () => ({generator: GENERATOR, seed})}),
 				zones: Boolean.match(first || connection.zones !== revision.zones, {

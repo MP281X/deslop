@@ -1,4 +1,4 @@
-import {Array, MutableList, Number, Option, Record, Schema, String} from 'effect'
+import {Array, Boolean, Equal, MutableList, Number, Option, Record, Schema, String} from 'effect'
 
 import type {Entry, Experience} from '#services/game/schema.ts'
 import {LocalDecision, Point} from '#services/game/schema.ts'
@@ -29,6 +29,93 @@ export function displayEvents(entries: readonly Experience[]) {
 
 export function decisionDetails(context: string) {
 	return Schema.decodeOption(Schema.fromJsonString(LocalDecision))(context)
+}
+
+type RecordedMember = typeof RecordedMember.Type
+const RecordedMember = Schema.Struct({
+	id: Schema.Int,
+	kind: Schema.String,
+	x: Schema.optionalKey(Schema.Finite),
+	z: Schema.optionalKey(Schema.Finite)
+})
+type DecisionState = typeof DecisionState.Type
+const DecisionState = Schema.Struct({
+	facts: Schema.optionalKey(Schema.Array(RecordedMember)),
+	self: Schema.optionalKey(RecordedMember)
+})
+type StateRecord = typeof StateRecord.Type
+const StateRecord = Schema.Record(Schema.String, Schema.Unknown)
+
+// Local receipts contain their full continuation followed by the recorded state on its own line.
+export function requestState(request: LocalDecision) {
+	return Option.orElse(Schema.decodeOption(Schema.fromJsonString(StateRecord))(request.state), () =>
+		Option.flatMap(Array.last(String.split('\n')(request.state)), line =>
+			Schema.decodeOption(Schema.fromJsonString(StateRecord))(line)
+		)
+	)
+}
+
+export function requestContinuation(request: LocalDecision) {
+	if (Option.isNone(requestState(request))) return ''
+	if (Option.isSome(Schema.decodeOption(Schema.fromJsonString(StateRecord))(request.state))) return ''
+	const prefix = String.slice(0, Option.getOrElse(String.lastIndexOf('\n')(request.state), () => -1) + 1)(request.state)
+	return String.trim(
+		String.replaceAll(
+			/Tick \d+\. Private experiences:\n(?=\n|$)/gu,
+			''
+		)(
+			Array.reduce(request.experience ?? [], prefix, (text, entry) =>
+				String.replaceAll(
+					`[${entry.id}; tick ${entry.tick}; ${entry.kind}; (${entry.x}, ${entry.z})] ${entry.text}\n`,
+					''
+				)(text)
+			)
+		)
+	)
+}
+
+// Only recorded identities, not the present world's membership, identify remembered subjects.
+export function requestMembers(request: LocalDecision, known: Record<string, {kind: string; team?: number}> = {}) {
+	return Option.match(Option.flatMap(requestState(request), Schema.decodeUnknownOption(DecisionState)), {
+		onNone: () => Record.empty<string, {kind: string; x?: number; z?: number}>(),
+		onSome: state =>
+			Record.fromEntries(
+				Array.map([...Option.toArray(Option.fromUndefinedOr(state.self)), ...(state.facts ?? [])], member => [
+					`${member.id}`,
+					{...known[member.id], kind: member.kind, x: member.x, z: member.z}
+				])
+			)
+	})
+}
+
+export function requestMemory(request: LocalDecision) {
+	const recent = Option.getOrUndefined(Option.flatMap(requestState(request), state => Record.get(state, 'recent')))
+	if (recent === undefined) return []
+	return Array.filter(
+		Boolean.match(Array.isArray(recent), {onFalse: () => [recent], onTrue: () => Array.ensure(recent)}),
+		entry =>
+			!Array.some(
+				request.experience ?? [],
+				experience =>
+					Equal.equals(entry, experience) ||
+					(Schema.is(Schema.Struct({id: Schema.Int}))(entry) &&
+						Record.keys(entry).length === 1 &&
+						entry.id === experience.id)
+			)
+	)
+}
+
+export function actorKind(entry: Experience, members: Record<string, {kind: string}>) {
+	return (
+		entry.actorKind ??
+		Option.getOrUndefined(
+			Option.flatMap(Option.flatMap(Option.fromUndefinedOr(entry.context), decisionDetails), request =>
+				Record.get(requestMembers(request), `${entry.actor}`)
+			)
+		)?.kind ??
+		members[entry.actor]?.kind ??
+		'individual'
+	)
 }
 
 function jsonEnd(text: string, start: number) {
@@ -74,16 +161,32 @@ export function textParts(text: string) {
 }
 
 export function recordData(value: Record<string, unknown>, tick: number) {
+	const entity = Schema.decodeUnknownOption(RecordedMember)(value)
 	const at = Option.map(
 		Schema.decodeUnknownOption(Schema.Struct({...Point.fields, tick: Schema.optionalKey(Schema.Int)}))(value),
 		point => ({...point, tick: point.tick ?? tick})
 	)
 	return {
-		anchor: Option.getOrUndefined(Array.findFirst(['text', '_tag', 'kind', 'name'], field => Record.has(value, field))),
+		anchor: Option.getOrUndefined(
+			Array.findFirst(
+				['text', 'doing', '_tag', 'kind', 'name'],
+				field => Record.has(value, field) && (Option.isNone(entity) || field !== 'kind')
+			)
+		),
 		at,
+		entity,
 		fields: Record.toEntries(
-			Record.filter(value, (field, key) => field !== undefined && (Option.isNone(at) || (key !== 'x' && key !== 'z')))
-		)
+			Record.filter(
+				value,
+				(field, key) =>
+					field !== undefined &&
+					key !== 'id' &&
+					key !== 'tokens' &&
+					(Option.isNone(entity) || key !== 'kind') &&
+					(Option.isNone(at) || (key !== 'x' && key !== 'z'))
+			)
+		),
+		reference: Record.keys(value).length === 1 && Record.has(value, 'id')
 	}
 }
 
@@ -103,16 +206,6 @@ export function actorName(kind: string, id: number) {
 	if (kind === 'worker') return `Builder #${id}`
 	if (id >= 1_000_000_000) return fieldName(kind)
 	return `${fieldName(kind)} #${id}`
-}
-
-export function eventModel(entry: Experience, models: readonly string[]) {
-	return Option.getOrElse(
-		Option.filter(
-			Option.flatMap(String.match(/^(\w+) #-?\d+:/u)(entry.text), found => Option.fromUndefinedOr(found[1])),
-			name => Array.contains(models, name)
-		),
-		() => entry.actorKind ?? 'unknown'
-	)
 }
 
 export function eventText(entry: Experience) {
