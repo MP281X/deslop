@@ -258,6 +258,27 @@ export const timelineAtom = Atom.keepAlive(
 	)
 )
 
+export const cursorAtom = Atom.make(get => {
+	const view = Option.getOrElse(AsyncResult.value(get(hudAtom)), () => EMPTY)
+	const loading = get(loadingAtom)
+	return Option.match(get(sourceAtom), {
+		onNone: () => {
+			if (!loading) return view.frame.tick
+			return Number.max(
+				view.frame.live ?? view.frame.tick,
+				Option.getOrElse(
+					Option.map(AsyncResult.value(get(timelineAtom)), timeline => timeline.live),
+					() => 0
+				)
+			)
+		},
+		onSome: replay => {
+			if (loading) return replay.from
+			return Number.max(replay.from, view.frame.tick)
+		}
+	})
+})
+
 // What the pointer is over, published by the world view for the hover card.
 type Hover = {id: string; x: number; y: number}
 export const hoverAtom = Atom.keepAlive(Atom.make(Option.none<Hover>()))

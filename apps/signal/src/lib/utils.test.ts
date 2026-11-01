@@ -4,21 +4,30 @@ import {Option} from 'effect'
 
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 
-import {EMPTY, hudAtom, loadingAtom, viewAtom} from '#lib/utils.ts'
+import {EMPTY, cursorAtom, hudAtom, loadingAtom, sourceAtom, timelineAtom, viewAtom} from '#lib/utils.ts'
 import {GameError} from '#services/game/schema.ts'
 
 const LOADED = {...EMPTY, count: 1, frame: {...EMPTY.frame, tick: 7743}}
 
 it('retains the displayed world while a historical source connects', () => {
-	const registry = AtomRegistry.make({initialValues: [[viewAtom, AsyncResult.success(LOADED), {skipInitialRun: true}]]})
+	const registry = AtomRegistry.make({
+		initialValues: [
+			[viewAtom, AsyncResult.success(LOADED), {skipInitialRun: true}],
+			[timelineAtom, AsyncResult.success({live: 7743, marks: [], start: 0}), {skipInitialRun: true}]
+		]
+	})
 	try {
 		registry.mount(hudAtom)
 		assert.strictEqual(Option.getOrThrow(AsyncResult.value(registry.get(hudAtom))), LOADED)
 		registry.ensureNode(viewAtom).setInitialValue(AsyncResult.initial())
+		registry.set(sourceAtom, Option.some({from: 1200, speed: 0}))
 		assert.isTrue(registry.get(loadingAtom))
+		assert.strictEqual(registry.get(cursorAtom), 1200)
 		assert.strictEqual(Option.getOrThrow(AsyncResult.value(registry.get(hudAtom))), LOADED)
 		registry.ensureNode(viewAtom).setInitialValue(AsyncResult.success(EMPTY))
 		assert.strictEqual(Option.getOrThrow(AsyncResult.value(registry.get(hudAtom))), LOADED)
+		registry.set(sourceAtom, Option.none())
+		assert.strictEqual(registry.get(cursorAtom), 7743)
 	} finally {
 		registry.dispose()
 	}

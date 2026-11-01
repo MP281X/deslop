@@ -30,6 +30,7 @@ import {
 	EMPTY,
 	feedAtom,
 	controlAtom,
+	cursorAtom,
 	followAtom,
 	hoverAtom,
 	historyAtom,
@@ -885,11 +886,6 @@ function Chronicle(props: {actor: number | 'all'; at?: number}) {
 	)
 }
 
-// The tick on screen: a replay still loading shows nothing yet, so it is at the replay's start.
-function shownTick(source: Source, tick: number) {
-	return Option.match(source, {onNone: () => tick, onSome: replay => Number.max(replay.from, tick)})
-}
-
 // The followed unit: its portrait beside what it does and its health.
 function Followed(props: {unit: UnitView}) {
 	return (
@@ -906,6 +902,7 @@ function Followed(props: {unit: UnitView}) {
 }
 
 function Sidebar(props: {close: () => void; selection: Inspection; source: Source; view: View}) {
+	const tick = useAtomValue(cursorAtom)
 	const [filter, setFilter] = useState(-1)
 	const picked = Array.findFirst(
 		props.view.teams,
@@ -944,7 +941,7 @@ function Sidebar(props: {close: () => void; selection: Inspection; source: Sourc
 							() => 'live'
 						)}`}
 						team={filter}
-						tick={shownTick(props.source, props.view.frame.tick)}
+						tick={tick}
 						replaying={Option.isSome(props.source)}
 						status={Option.getOrUndefined(
 							Option.map(
@@ -972,8 +969,8 @@ function Sidebar(props: {close: () => void; selection: Inspection; source: Sourc
 							actor={Option.getOrElse(props.selection.actor, () => 'all' as const)}
 							at={Option.getOrUndefined(
 								Option.map(props.source, replay => {
-									if (replay.speed === 0) return Number.max(replay.from, props.view.frame.tick)
-									return Number.max(replay.from, Math.floor(props.view.frame.tick / (5 * TICK_HZ)) * 5 * TICK_HZ)
+									if (replay.speed === 0) return tick
+									return Number.max(replay.from, Math.floor(tick / (5 * TICK_HZ)) * 5 * TICK_HZ)
 								})
 							)}
 						/>
@@ -1590,6 +1587,7 @@ function World(props: {seed: number; view: View}) {
 	const [source, setSource] = useAtom(sourceAtom)
 	const [panel, setPanel] = useState(Option.none<Inspection>)
 	const timeline = useAtomValue(timelineAtom)
+	const cursor = useAtomValue(cursorAtom)
 
 	const [portraits, setPortraits] = useState<Record<string, string>>({})
 	// What the key handler and the camera read, kept current outside render.
@@ -1740,11 +1738,7 @@ function World(props: {seed: number; view: View}) {
 			out: () => renderer.zoomBy(ZOOM_STEP),
 			overview: () =>
 				registry.set(followAtom, {...registry.get(followAtom), overview: !registry.get(followAtom).overview}),
-			play: () =>
-				registry.set(
-					sourceAtom,
-					toggled(latest.current.source, shownTick(latest.current.source, latest.current.view.frame.tick))
-				),
+			play: () => registry.set(sourceAtom, toggled(latest.current.source, registry.get(cursorAtom))),
 			previous: () => cycle(-1)
 		} satisfies Record<Key, () => void>
 		function keys(event: KeyboardEvent) {
@@ -1879,12 +1873,7 @@ function World(props: {seed: number; view: View}) {
 						</div>
 						{Option.getOrUndefined(
 							Option.map(AsyncResult.value(timeline), entry => (
-								<TimelineBar
-									timeline={entry}
-									tick={shownTick(source, props.view.frame.tick)}
-									source={source}
-									onSource={setSource}
-								/>
+								<TimelineBar timeline={entry} tick={cursor} source={source} onSource={setSource} />
 							))
 						)}
 					</div>
