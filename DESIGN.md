@@ -192,7 +192,7 @@ Geist on the web, SF Pro on iOS at Dynamic Type sizes through the `text` tokens 
 - **Rows, not cards.** Hairline rows: a leading mark, a title, one muted line, a trailing status or action.
 - **One column** up to `page`, forms up to `form`; list-and-detail tools split into two panes. 8px inside a group, 16px between groups, 24–32px between sections.
 - **iOS.** Inline titles, plain lists, bottom search.
-- **App bars.** The app icon and name lead on web and iOS; detail screens keep their native back navigation.
+- **App bars.** The app icon and name lead on web and iOS; detail screens keep their native back navigation. Signal's spectator world uses map controls instead of an app bar.
 - **Row alignment.** Center leading marks and trailing actions against the whole row, including wrapped details. Stash reserves a 64pt media square even without a preview, using the source mark as its fallback.
 - **List endings.** A closing hairline marks the last row; installed web apps keep 16px plus the home-indicator inset below it.
 
