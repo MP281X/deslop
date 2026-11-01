@@ -386,6 +386,9 @@ export const Explored = Schema.Struct({bits: Schema.Uint8Array, cx: Schema.Int, 
 export type Zone = typeof Zone.Type
 export const Zone = Schema.Struct({cx: Schema.Int, cz: Schema.Int, teams: Schema.Int})
 
+export type RunState = typeof RunState.Type
+export const RunState = Schema.Struct({problem: Schema.optional(Schema.String), running: Schema.Boolean})
+
 // One server frame for one connection: every body, the tiles changed, the props cleared and the chunks explored since its last frame, shots fired, and the buildings, teams and zones when they changed. The first frame carries the world's seed and generator revision.
 export type Frame = typeof Frame.Type
 export const Frame = Schema.Struct({

@@ -29,12 +29,14 @@ import type {Renderer} from './-renderer.ts'
 
 import {
 	EMPTY,
+	controlAtom,
 	followAtom,
 	hoverAtom,
 	historyAtom,
 	hudAtom,
 	liveThreadAtom,
 	pastThreadAtom,
+	runStateAtom,
 	seedAtom,
 	sourceAtom,
 	teamAtom,
@@ -530,9 +532,9 @@ function ThreadPage(props: {
 				)
 			})}
 			{AsyncResult.isFailure(result) && <li role="alert">Decisions could not be read.</li>}
-			{Array.isReadonlyArrayEmpty(entries) && (
+			{Array.isReadonlyArrayEmpty(entries) && !AsyncResult.isFailure(result) && (
 				<li className="text-muted-foreground py-3">
-					{Boolean.match(AsyncResult.isWaiting(result), {
+					{Boolean.match(AsyncResult.isInitial(result), {
 						onFalse: () => 'No decisions in this part of the recording.',
 						onTrue: () => 'Loading…'
 					})}
@@ -739,9 +741,9 @@ function HistoryPage(props: {
 					)
 				})}
 			{AsyncResult.isFailure(result) && <li role="alert">History could not be read.</li>}
-			{Array.isReadonlyArrayEmpty(entries) && (
+			{Array.isReadonlyArrayEmpty(entries) && !AsyncResult.isFailure(result) && (
 				<li className="text-muted-foreground py-3">
-					{Boolean.match(AsyncResult.isWaiting(result), {
+					{Boolean.match(AsyncResult.isInitial(result), {
 						onFalse: () => 'No recording here yet.',
 						onTrue: () => 'Loading history…'
 					})}
@@ -874,7 +876,6 @@ function Followed(props: {unit: UnitView}) {
 }
 
 function Sidebar(props: {
-	onActor: () => void
 	close: () => void
 	selection: Inspection
 	onPick: (team: number) => void
@@ -884,29 +885,22 @@ function Sidebar(props: {
 }) {
 	const picked = Array.findFirst(props.view.teams, team => team.id === props.team)
 	return (
-		<div className="pointer-events-none absolute inset-0 z-20 flex items-end md:items-start md:justify-end md:pt-16 md:pr-4 md:pb-4">
+		<div className="pointer-events-none absolute inset-0 z-20 flex items-end p-2 md:p-4">
 			<aside
 				aria-label="Inspector"
-				className="bg-popover text-popover-foreground pointer-events-auto flex max-h-1/2 min-h-0 w-full flex-col md:max-h-full md:w-88"
+				className="bg-popover text-popover-foreground pointer-events-auto flex max-h-1/2 min-h-0 w-full flex-col md:max-h-full md:w-80"
 			>
 				<header className="flex min-h-11 flex-none items-center gap-2 px-3">
 					{props.selection.kind === 'core' && (
 						<Teams teams={props.view.teams} picked={props.team} onPick={props.onPick} />
 					)}
 					{props.selection.kind === 'history' && (
-						<>
-							<span>
-								{Option.match(props.selection.actor, {
-									onNone: () => 'World history',
-									onSome: actor => `Individual #${actor}`
-								})}
-							</span>
-							{Option.isSome(props.selection.actor) && (
-								<Button variant="ghost" size="sm" className="text-muted-foreground" onClick={props.onActor}>
-									World events
-								</Button>
-							)}
-						</>
+						<span>
+							{Option.match(props.selection.actor, {
+								onNone: () => 'World history',
+								onSome: actor => `Individual #${actor}`
+							})}
+						</span>
 					)}
 					{props.selection.kind === 'usage' && <span>Provider usage</span>}
 					<Button
@@ -1161,17 +1155,19 @@ function TimelineBar(props: {source: Source; tick: number; timeline: Timeline; o
 		() => 1
 	)
 	return (
-		<section aria-label="Timeline" className="bg-popover flex h-12 flex-none items-center gap-1 px-2">
-			<Button
-				variant="ghost"
-				size="icon"
-				className="min-h-11 min-w-11"
-				aria-label={Boolean.match(live || speed > 0, {onFalse: () => 'Play', onTrue: () => 'Pause'})}
-				onClick={() => props.onSource(toggled(props.source, props.tick))}
-			>
-				{Boolean.match(live || speed > 0, {onFalse: () => '▶', onTrue: () => '❚❚'})}
-			</Button>
-			<span className="text-muted-foreground tabular-nums" aria-live="off">
+		<section aria-label="Timeline" className="bg-popover flex min-h-11 flex-none items-center gap-1 px-2">
+			{!live && (
+				<Button
+					variant="ghost"
+					size="icon"
+					className="min-h-11 min-w-11"
+					aria-label={Boolean.match(speed > 0, {onFalse: () => 'Play replay', onTrue: () => 'Pause replay'})}
+					onClick={() => props.onSource(toggled(props.source, props.tick))}
+				>
+					{Boolean.match(speed > 0, {onFalse: () => '▶', onTrue: () => '❚❚'})}
+				</Button>
+			)}
+			<span className="text-muted-foreground font-mono tabular-nums" aria-live="off">
 				{clockOf(props.tick)}
 			</span>
 			<div className="relative mx-2 h-11 min-w-4 flex-1">
@@ -1197,31 +1193,35 @@ function TimelineBar(props: {source: Source; tick: number; timeline: Timeline; o
 					onChange={event => props.onSource(Option.some({from: event.currentTarget.valueAsNumber, speed: 0}))}
 				/>
 			</div>
-			<Button
-				variant="ghost"
-				size="sm"
-				className={cn('min-h-11', live && 'text-primary')}
-				onClick={() => props.onSource(Option.none())}
-				aria-label="Back to latest"
-			>
-				Latest
-			</Button>
-			<DropdownMenu>
-				<DropdownMenuTrigger aria-label="Replay speed" className="text-muted-foreground min-h-11 min-w-11">
-					{speed}×
-				</DropdownMenuTrigger>
-				<DropdownMenuContent align="end">
-					{Array.map(SPEEDS, entry => (
-						<DropdownMenuItem
-							key={entry}
-							className="min-h-11"
-							onClick={() => props.onSource(Option.some({from: props.tick, speed: entry}))}
-						>
-							{entry}×
-						</DropdownMenuItem>
-					))}
-				</DropdownMenuContent>
-			</DropdownMenu>
+			{!live && (
+				<Button
+					variant="ghost"
+					size="sm"
+					className="text-primary min-h-11"
+					onClick={() => props.onSource(Option.none())}
+					aria-label="Back to latest"
+				>
+					Now
+				</Button>
+			)}
+			{!live && (
+				<DropdownMenu>
+					<DropdownMenuTrigger aria-label="Replay speed" className="text-muted-foreground min-h-11 min-w-11">
+						{Number.max(1, speed)}×
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end">
+						{Array.map(SPEEDS, entry => (
+							<DropdownMenuItem
+								key={entry}
+								className="min-h-11"
+								onClick={() => props.onSource(Option.some({from: props.tick, speed: entry}))}
+							>
+								{entry}×
+							</DropdownMenuItem>
+						))}
+					</DropdownMenuContent>
+				</DropdownMenu>
+			)}
 		</section>
 	)
 }
@@ -1388,9 +1388,20 @@ function aimOf(follow: Follow, team: number, view: View, world: {cast: Cast; ren
 }
 
 // Over the world: health pips over hurt units, the hover card over the unit under the pointer, else the ground card under it. The world view moves each into place every frame.
-function Overlay(props: {buildings: View['buildings']; units: View['frame']['units']}) {
+function Overlay(props: {
+	buildings: View['buildings']
+	inspection: Option.Option<Inspection>
+	units: View['frame']['units']
+}) {
 	const ground = useAtomValue(groundAtom)
-	const hover = useAtomValue(hoverAtom)
+	const hover = Option.filter(
+		useAtomValue(hoverAtom),
+		entry =>
+			!Option.exists(
+				props.inspection,
+				selection => selection.kind === 'history' && Option.exists(selection.actor, actor => `${actor}` === entry.id)
+			)
+	)
 	const hovered = Option.flatMap(ground.at, at => buildingAt(props.buildings, at))
 	return (
 		<div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -1562,52 +1573,71 @@ function useMapGestures(props: {
 	}
 }
 
+function WorldControl() {
+	const status = useAtomValue(runStateAtom)
+	const [result, control] = useAtom(controlAtom)
+	const current = Option.getOrUndefined(AsyncResult.value(status))
+	const problem =
+		current?.problem ?? Option.getOrUndefined(Option.map(AsyncResult.error(result), error => error.message))
+	return (
+		<div className="relative">
+			<Button
+				variant="secondary"
+				className="min-h-11 px-3"
+				disabled={!AsyncResult.isSuccess(status) || result.waiting || current?.problem !== undefined}
+				onClick={() => control({payload: {running: current?.running !== true}})}
+			>
+				{result.waiting && <Spinner />}
+				{!result.waiting && (
+					<span className="text-primary" aria-hidden="true">
+						{Boolean.match(current?.running === true, {onFalse: () => '▶', onTrue: () => 'Ⅱ'})}
+					</span>
+				)}
+				{Option.match(Option.fromUndefinedOr(current), {
+					onNone: () => 'Connecting',
+					onSome: state => Boolean.match(state.running, {onFalse: () => 'Run world', onTrue: () => 'Pause world'})
+				})}
+			</Button>
+			{problem !== undefined && (
+				<p role="alert" className="bg-popover text-destructive absolute top-full right-0 mt-1 w-64 p-2">
+					{problem}
+				</p>
+			)}
+			{AsyncResult.isFailure(status) && (
+				<p role="alert" className="bg-popover text-destructive absolute top-full right-0 mt-1 w-64 p-2">
+					World control disconnected.
+				</p>
+			)}
+		</div>
+	)
+}
+
 // The world view and everything over it: the canvas belongs to the renderer, and frames reach it through the registry, not React.
 function MapControls(props: {
 	follow: Follow
 	onFollow: (follow: Follow) => void
 	onInspect: (inspection: Inspection) => void
-	panel: Option.Option<Inspection>
-	paused: boolean
 	view: View
 	world: Option.Option<{cast: Cast; renderer: Renderer}>
 }) {
 	const [mapOpen, setMapOpen] = useState(false)
 	return (
 		<>
-			<nav
-				aria-label="Map controls"
-				className="bg-popover absolute top-2 right-2 z-30 flex items-center md:top-4 md:right-4"
-			>
-				<Button
-					variant="ghost"
-					className="min-h-11 px-3"
-					aria-pressed={Option.contains(
-						Option.map(props.panel, entry => entry.kind),
-						'core'
-					)}
-					onClick={() => props.onInspect({kind: 'core'})}
-				>
-					Core
-				</Button>
-				<Button
-					variant="ghost"
-					className="min-h-11 px-3"
-					aria-pressed={Option.contains(
-						Option.map(props.panel, entry => entry.kind),
-						'history'
-					)}
-					onClick={() => props.onInspect({actor: Option.none(), kind: 'history'})}
-				>
-					History
-				</Button>
+			<nav aria-label="Map controls" className="absolute top-2 right-2 z-30 flex items-start gap-1 md:top-4 md:right-4">
+				<WorldControl />
 				<DropdownMenu>
-					<DropdownMenuTrigger aria-label="View options" className="min-h-11 min-w-11 px-3">
+					<DropdownMenuTrigger aria-label="View options" className="bg-popover min-h-11 min-w-11 px-3">
 						···
 					</DropdownMenuTrigger>
 					<DropdownMenuContent align="end" className="min-w-48">
-						<DropdownMenuItem disabled>
-							{Boolean.match(props.paused, {onFalse: () => 'Simulation running', onTrue: () => 'Simulation stopped'})}
+						<DropdownMenuItem
+							className="min-h-11"
+							onClick={() => props.onInspect({actor: Option.none(), kind: 'history'})}
+						>
+							World events
+						</DropdownMenuItem>
+						<DropdownMenuItem className="min-h-11" onClick={() => props.onInspect({kind: 'core'})}>
+							Core conversations
 						</DropdownMenuItem>
 						<DropdownMenuItem
 							className="min-h-11"
@@ -1670,6 +1700,17 @@ function MapControls(props: {
 			)}
 		</>
 	)
+}
+
+function ReplayStatus() {
+	return Option.match(useAtomValue(sourceAtom), {
+		onNone: () => null,
+		onSome: () => (
+			<span className="bg-popover text-muted-foreground absolute top-2 left-2 px-2 py-1 md:top-4 md:left-4">
+				Viewing history
+			</span>
+		)
+	})
 }
 
 function World(props: {seed: number; view: View}) {
@@ -1920,23 +1961,20 @@ function World(props: {seed: number; view: View}) {
 							onPointerLeave={gestures.leave}
 							onWheel={gestures.wheel}
 						/>
-						<Overlay buildings={props.view.buildings} units={props.view.frame.units} />
-						<Panel className="top-2 left-2 flex min-h-11 items-center px-3 md:top-4 md:left-4">Signal</Panel>
+						<Overlay buildings={props.view.buildings} inspection={panel} units={props.view.frame.units} />
 						<MapControls
 							follow={follow}
 							onFollow={setFollow}
 							onInspect={inspection => setPanel(Option.some(inspection))}
-							panel={panel}
-							paused={props.view.frame.paused === true}
 							view={props.view}
 							world={world}
 						/>
+						<ReplayStatus />
 						{props.view.count === 0 && <Status>Loading the replay</Status>}
 						{Option.getOrUndefined(
 							Option.map(panel, pickedPanel => (
 								<Sidebar
 									selection={pickedPanel}
-									onActor={() => setPanel(Option.some({actor: Option.none(), kind: 'history'}))}
 									close={() => setPanel(Option.none())}
 									view={props.view}
 									team={team}
@@ -1968,7 +2006,7 @@ function World(props: {seed: number; view: View}) {
 function Signal() {
 	const result = useAtomValue(hudAtom)
 	return (
-		<main className="relative min-h-0 flex-1 overflow-hidden font-mono text-xs select-none">
+		<main className="relative min-h-0 flex-1 overflow-hidden text-xs select-none">
 			{Option.getOrUndefined(
 				Option.map(
 					Option.flatMap(AsyncResult.value(result), view => Option.fromUndefinedOr(view.frame.problem)),

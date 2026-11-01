@@ -12,6 +12,24 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/signal/lib/utils/R
 	protocol: WebRuntime.layer('@deslop/signal')
 }) {}
 
+export const controlAtom = RpcClient.mutation('signal.control')
+// The authoritative run state is independent of the spectator's live or historical view.
+export const runStateAtom = Atom.keepAlive(
+	RpcClient.runtime.atom(
+		pipe(
+			RpcClient,
+			Effect.map(client => client('signal.status', undefined)),
+			Stream.unwrap,
+			Stream.retry($ =>
+				pipe(
+					$(Schedule.spaced('1 second')),
+					Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
+				)
+			)
+		)
+	)
+)
+
 // What the client knows: the latest frame, every chunk explored and prop cleared so far, the buildings, teams and zones as last sent, and the world's seed from the stream's first frame. `count` starts over with each stream, so its first frame tells the world view to start over too.
 export type View = {
 	buildings: NonNullable<Frame['buildings']>
