@@ -18,7 +18,9 @@ opm and trips build the same way, with bundle `xyz.mp281x.<app>.dev`. To sign a 
 
 ## Deploy
 
-Every push to `main` runs Release (`deploy.yaml`): Verify, then side by side the app images with `@deslop/coding-standards`, and each mobile app's EAS Update, or its App Store build for a native fingerprint without one.
+Every push to `main` runs Release (`deploy.yaml`): Verify, then side by side app npm artifacts/images with `@deslop/coding-standards`, and each mobile app's EAS Update, or its App Store build for a native fingerprint without one. An app's dependency-free `release/` directory is packed once; that exact tarball goes into its container and to npm. The `npm-apps` artifact retains the packages, including those awaiting their first publication.
+
+All app images use `tools/app.Dockerfile` with `apps/<app>/package.tgz` as their build context artifact; there are no per-app runtime Dockerfiles. Native executables come from checked-in archives; deliberate updates follow `tools/native/README.md`. The first release of the npm app packages requires an owner-approved initial publish and trusted-publisher setup per **Publish a package**, using `apps/<app>/release`. Until each package exists, Release emits a warning and skips its npm upload; images and existing packages still ship. The new Deploy app is not installed in production and Traefik is not replaced by merging this PR. Install native services and migrate proxy ownership deliberately after the packages are available. Stash's bundled native-tool license/source requirements must accompany any redistributed artifact.
 
 1. **Apply.** The `deploy` service in `tools/compose.yaml` applies main's commit each minute (its comment there). Start the project, or apply a change to the `deploy` entry, from a checkout on published main: `docker compose --project-name deslop --file tools/compose.yaml up -d`.
 2. **Check.** https://portfolio.mp281x.xyz and the host's http://127.0.0.1:4318/health return 200. Unauthenticated public OTLP and MCP requests return 401; each MCP challenge names its `/.well-known/oauth-protected-resource/mcp` metadata. After browser authorization, every app serving `ServerRuntime.layerMcp` answers its tools on its public `/mcp` URL. An OPTIONS preflight to otel with `Origin: https://portfolio.mp281x.xyz` allows credentialed requests; verify an actual span too.
@@ -28,7 +30,7 @@ Every push to `main` runs Release (`deploy.yaml`): Verify, then side by side the
 Release publishes each package its Build and Package steps name as `0.1.<run>` with npm trusted publishing, which npm accepts only for a package that already exists.
 
 1. **Shape.** Copy `tools/coding-standards/package.json`'s publish fields (`version` `0.1.0`, `files`, `publishConfig.access: public`, a `bin`, the `vp pack` build, `repository.url` unchanged since provenance checks it) and its `vite.config.ts`'s `pack.deps.alwaysBundle`: bundle everything except native-binary packages, packages sharing a module instance with them, and packages resolved by name at run time, such as lint plugins, which go in `dependencies`.
-2. **Prove** the packed tarball, never the source: `PACK=$(mktemp -d) && vp -C tools/<name> run build && vp -C tools/<name> pm pack --pack-destination "$PACK" && vpx --package "$PACK"/deslop-<name>-0.1.0.tgz <bin> --help`.
+2. **Prove** the packed tarball, never the source: `PACK=$(mktemp -d) && vp -C tools/<name> run build && vp -C tools/<name> pm pack --pack-destination "$PACK" && vpx --package "$PACK"/deslop-<name>-0.1.0.tgz <bin> --help`. Apps instead build `apps/<name>` and pack `apps/<name>/release`; do not publish the Expo/workspace manifest.
 3. **First publish** by hand from the branch that adds it. Each command needs a terminal, so `script` gives it one, and prints an npmjs.com URL for the npm account owner to approve within about five minutes: run it in the background and post the URL. The registry answers 404 for a minute or two afterwards.
 
    ```bash

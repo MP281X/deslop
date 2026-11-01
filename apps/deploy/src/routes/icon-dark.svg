@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" shape-rendering="crispEdges">
+  <path fill="#0a0a0a" opacity=".35" d="m8 41 24-12 24 12-24 12z"/>
+  <path fill="#0a0a0a" d="m7 28 25-13 25 13v15L32 56 7 43z"/>
+  <path fill="#b7b5ac" d="m9 28 23-11 23 11-23 12z"/>
+  <path fill="#cecdc3" d="m11 28 21-10 21 10-21 11z"/>
+  <path fill="#878580" d="m32 41 23-12v13L32 54z"/>
+  <path fill="#575653" d="m9 29 22 12v13L9 42z"/>
+  <path fill="#dfded8" d="m9 28 23 12v2L9 30z"/>
+  <path fill="#0a0a0a" d="m12 33 4 2v5l-4-2zm6 3 4 2v5l-4-2zm6 3 4 2v5l-4-2z"/>
+  <path fill="#b7b5ac" d="m12 38 4 2v1l-4-2zm6 3 4 2v1l-4-2zm6 3 4 2v1l-4-2z"/>
+  <path fill="#66800b" d="m36 42 4-2v3l-4 2z"/>
+  <path fill="#879a39" d="m36 41 4-2v2l-4 2z"/>
+  <path fill="#a0af54" d="m36 40 4-2v1l-4 2z"/>
+  <path fill="#575653" d="m44 35 7-3v1l-7 3zm0 3 7-3v1l-7 3zm0 3 7-3v1l-7 3z"/>
+  <path fill="#878580" d="m24 24 8-4 8 4-8 4z"/>
+  <path fill="#b7b5ac" d="m26 24 6-3 6 3-6 3z"/>
+</svg>

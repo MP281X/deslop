@@ -6,8 +6,14 @@ x-service: &service
   logging: {driver: local, options: {max-file: '3', max-size: 10m}}
 
 # Servers export to Scope, and the signed-in ones check each sign-in with the auth app, inside this network, skipping the public TLS round trip.
-x-environment: &environment {VITE_OTEL_URL: http://scope:4318}
-x-signed: &signed {AUTH_URL: http://auth:5000, VITE_OTEL_URL: http://scope:4318}
+x-environment: &environment {SERVER_OTEL_URL: http://scope:4318, OTEL_URL: https://otel.mp281x.xyz}
+x-signed:
+  &signed {
+    AUTH_URL: https://auth.mp281x.xyz,
+    AUTH_BACKEND_URL: http://auth:5000,
+    SERVER_OTEL_URL: http://scope:4318,
+    OTEL_URL: https://otel.mp281x.xyz
+  }
 
 services:
   traefik:
@@ -38,7 +44,7 @@ services:
   portfolio:
     <<: *service
     image: ghcr.io/mp281x/deslop-portfolio:${REVISION:-latest}
-    environment: *environment
+    environment: {<<: *environment, APP_URL: https://portfolio.mp281x.xyz}
     ports: [127.0.0.1:4320:5000]
     labels:
       traefik.enable: 'true'
@@ -49,7 +55,7 @@ services:
     <<: *service
     image: ghcr.io/mp281x/deslop-auth:${REVISION:-latest}
     env_file: ${HOME}/.deslop/auth.env
-    environment: *environment
+    environment: {<<: *environment, APP_URL: https://auth.mp281x.xyz}
     volumes: ['${HOME}/.deslop/auth:/home/node/.deslop/auth']
     labels:
       traefik.enable: 'true'
@@ -61,7 +67,7 @@ services:
     image: ghcr.io/mp281x/deslop-gateway:${REVISION:-latest}
     # GITHUB_ADMINS, as Auth has it: Auth's admins manage the servers.
     env_file: ${HOME}/.deslop/gateway.env
-    environment: *signed
+    environment: {<<: *signed, APP_URL: https://gateway.mp281x.xyz}
     # The second volume holds the servers the previous release kept in Auth, which the gateway moves into its own once.
     volumes:
       ['${HOME}/.deslop/gateway:/home/node/.deslop/gateway', '${HOME}/.deslop/auth/mcp:/home/node/.deslop/auth/mcp']
@@ -74,7 +80,7 @@ services:
     <<: *service
     image: ghcr.io/mp281x/deslop-stash:${REVISION:-latest}
     env_file: ${HOME}/.deslop/stash.env
-    environment: *signed
+    environment: {<<: *signed, APP_URL: https://stash.mp281x.xyz}
     volumes: ['${HOME}/.deslop/stash:/home/node/.deslop/stash']
     ports: [127.0.0.1:4319:5000]
     labels:
@@ -86,7 +92,7 @@ services:
     <<: *service
     image: ghcr.io/mp281x/deslop-opm:${REVISION:-latest}
     env_file: ${HOME}/.deslop/opm.env
-    environment: *signed
+    environment: {<<: *signed, APP_URL: https://opm.mp281x.xyz}
     volumes: ['${HOME}/.deslop/opm:/home/node/.deslop/opm']
     labels:
       traefik.enable: 'true'
@@ -97,7 +103,7 @@ services:
     <<: *service
     image: ghcr.io/mp281x/deslop-trips:${REVISION:-latest}
     env_file: ${HOME}/.deslop/trips.env
-    environment: *signed
+    environment: {<<: *signed, APP_URL: https://trips.mp281x.xyz}
     volumes: ['${HOME}/.deslop/trips:/home/node/.deslop/trips']
     labels:
       traefik.enable: 'true'
@@ -108,7 +114,7 @@ services:
     <<: *service
     image: ghcr.io/mp281x/deslop-signal:${REVISION:-latest}
     env_file: ${HOME}/.deslop/signal.env
-    environment: *signed
+    environment: {<<: *signed, APP_URL: https://signal.mp281x.xyz}
     volumes: ['${HOME}/.deslop/signal:/home/node/.deslop/signal']
     labels:
       traefik.enable: 'true'
@@ -119,7 +125,8 @@ services:
     <<: *service
     image: ghcr.io/mp281x/deslop-scope:${REVISION:-latest}
     # Scope receives telemetry itself, so it exports none.
-    environment: {AUTH_URL: http://auth:5000, HOST: 0.0.0.0}
+    environment:
+      {AUTH_URL: https://auth.mp281x.xyz, AUTH_BACKEND_URL: http://auth:5000, APP_URL: https://scope.mp281x.xyz}
     volumes: ['${HOME}/.deslop/scope:/home/node/.deslop/scope']
     ports: [127.0.0.1:4318:4318]
     labels:

@@ -2,7 +2,7 @@ import {Schema} from 'effect'
 
 import {Rpc, RpcGroup} from 'effect/rpc'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
+import {AuthError, Enrollment} from '@deslop/runtime/auth/schema'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 
 import {Account, AdmitParams, Person, PersonParams} from '#services/people/schema.ts'
@@ -16,6 +16,11 @@ import {
 import {FamilyParams, SignedInApp} from '#services/tokens/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
+	Rpc.make('auth.resources', {error: AuthError, stream: true, success: Schema.Array(Enrollment)}),
+	Rpc.make('auth.resource.decide', {
+		error: AuthError,
+		payload: Schema.Struct({approve: Schema.Boolean, id: Schema.String})
+	}),
 	Rpc.make('auth.lookup', {
 		error: AuthError,
 		payload: CodeParams,

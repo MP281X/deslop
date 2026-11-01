@@ -151,6 +151,21 @@ export const appsAtom = Atom.keepAlive(
 	)
 )
 
+export const resourcesAtom = Atom.keepAlive(
+	RpcClient.runtime.atom(
+		pipe(
+			RpcClient,
+			Effect.map(client => client('auth.resources', undefined)),
+			Stream.unwrap,
+			reconnecting
+		)
+	)
+)
+
+export const decideResourceAtom = RpcClient.runtime.fn((input: {id: string; approve: boolean}) =>
+	Effect.flatMap(RpcClient, client => client('auth.resource.decide', input))
+)
+
 // One app chip can hold the sign-ins of a client on several machines; signing out of it ends them all.
 export const disconnectAtom = RpcClient.runtime.fn((families: string[]) =>
 	Effect.flatMap(RpcClient, client =>

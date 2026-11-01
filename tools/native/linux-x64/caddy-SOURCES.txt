@@ -1,0 +1,2 @@
+Caddy 2.11.7, Apache-2.0: https://github.com/caddyserver/caddy/tree/v2.11.7
+Binary: https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_linux_amd64.tar.gz

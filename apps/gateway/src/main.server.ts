@@ -1,4 +1,4 @@
-import {NodeCrypto, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
+import {NodeCrypto, NodeHttpClient, NodeServices} from '@effect/platform-node'
 
 import {Layer, pipe} from 'effect'
 
@@ -6,7 +6,10 @@ import {HttpRouter} from 'effect/http'
 import {RpcServer} from 'effect/rpc'
 
 import {Auth} from '@deslop/runtime/auth/service'
+import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
+
+import packageJson from '#package.json' with {type: 'json'}
 
 import {HttpHandlers} from '#http/handlers.ts'
 import icon from '#routes/icon.svg'
@@ -25,7 +28,8 @@ const layerServices = pipe(
 	Layer.provide(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer, layerUpstream))
 )
 
-NodeRuntime.runMain(
+CliRuntime.runApp(
+	packageJson,
 	pipe(
 		HttpRouter.serve(
 			pipe(
@@ -43,7 +47,7 @@ NodeRuntime.runMain(
 				Layer.provide(layerServices),
 				Layer.provide(Auth.layer(GATEWAY_URL))
 			),
-			{disableLogger: true}
+			{disableLogger: true, middleware: ServerRuntime.localGuard}
 		),
 		Layer.provide(ServerRuntime.layer('@deslop/gateway')),
 		Layer.provide(NodeHttpClient.layerFetch),

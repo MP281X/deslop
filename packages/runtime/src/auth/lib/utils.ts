@@ -17,9 +17,14 @@ export const development = pipe(
 )
 export const DEVELOPER = {id: 'github:0', name: 'dev'} satisfies User
 
+// The no-issuer CLI and development previews share the same trusted mock identity.
+export const localAuth = Effect.gen(function* () {
+	return yield* pipe(Config.Boolean('DESLOP_LOCAL'), Config.withDefault(yield* development))
+})
+
 // Auth offers GitHub or a code another device approves, then returns to `next` on any mp281x.xyz app.
 export function signInUrl(next: string) {
-	return `${AUTH_URL}/?${new URLSearchParams({next})}`
+	return `${new URL(next).origin}/auth/sign-in?${new URLSearchParams({next})}`
 }
 
 export class CurrentUser extends Context.Service<CurrentUser, User>()('@deslop/runtime/auth/lib/utils/CurrentUser') {}

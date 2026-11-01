@@ -3,7 +3,7 @@ import {Array, Duration, Effect, Match, Option, Schema, String, pipe} from 'effe
 import {Headers, HttpRouter, HttpServerRequest, HttpServerResponse, UrlParams} from 'effect/http'
 import {RateLimiter} from 'effect/persistence'
 
-import {AuthError, User} from '@deslop/runtime/auth/schema'
+import {AuthError, Enrollment, EnrollmentRequest, User} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 import {AUTH_URL, development} from '@deslop/runtime/auth/utils'
 
@@ -176,6 +176,36 @@ export const HttpHandlers = HttpRouter.use(router =>
 			})
 		}
 
+		// Protected-resource provisioning is issuer-specific, not OAuth client registration or a device grant.
+		yield* router.add(
+			'POST',
+			'/api/resources',
+			limited(
+				'resources',
+				10
+			)(
+				oauth(
+					Effect.gen(function* () {
+						const input = yield* HttpServerRequest.schemaBodyJson(EnrollmentRequest)
+						return yield* HttpServerResponse.schemaJson(Enrollment)(yield* tokens.resources.request(input), {
+							status: 202
+						})
+					})
+				)
+			)
+		)
+		yield* router.add(
+			'GET',
+			'/api/resources/:id',
+			oauth(
+				Effect.gen(function* () {
+					const params = yield* HttpRouter.schemaPathParams(Schema.Struct({id: Schema.String}))
+					return yield* HttpServerResponse.schemaJson(Enrollment)(yield* tokens.resources.lookup(params.id), {
+						headers: {'cache-control': 'no-store'}
+					})
+				})
+			)
+		)
 		yield* router.add(
 			'GET',
 			'/.well-known/oauth-authorization-server/api/auth',
@@ -255,6 +285,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 							HttpServerRequest.schemaSearchParams(AuthorizeParams),
 							rejected('Invalid authorization request'),
 							Effect.flatMap(params => clientRequest(asked, client, params)),
+							Effect.tap(checked => Effect.forEach(checked.resources, tokens.resources.accepted, {concurrency: 1})),
 							Effect.flatMap(checked => signIns.start({_tag: 'Client', request: checked}, originOf(request))),
 							Effect.map(waitingAt),
 							Effect.catchIf(Schema.is(AuthError), failure =>
@@ -330,7 +361,13 @@ export const HttpHandlers = HttpRouter.use(router =>
 			'GET',
 			'/auth/session',
 			pipe(
-				Effect.flatMap(HttpServerRequest.HttpServerRequest, request => auth.user(request.headers)),
+				Effect.flatMap(HttpServerRequest.HttpServerRequest, request =>
+					Effect.gen(function* () {
+						const resource = new URL(request.url, AUTH_URL).searchParams.get('resource')
+						if (resource !== null) yield* tokens.resources.accepted(resource)
+						return yield* auth.user(request.headers)
+					})
+				),
 				Effect.flatMap(user => HttpServerResponse.schemaJson(User)(user, {headers: {'cache-control': 'no-store'}})),
 				Effect.orElseSucceed(() => HttpServerResponse.empty({status: 401}))
 			)

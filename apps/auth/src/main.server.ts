@@ -1,4 +1,4 @@
-import {NodeCrypto, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
+import {NodeCrypto, NodeHttpClient, NodeServices} from '@effect/platform-node'
 
 import {Effect, Layer, pipe} from 'effect'
 
@@ -7,7 +7,10 @@ import {RateLimiter} from 'effect/persistence'
 import {RpcServer} from 'effect/rpc'
 
 import {development} from '@deslop/runtime/auth/utils'
+import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
+
+import packageJson from '#package.json' with {type: 'json'}
 
 import {HttpHandlers} from '#http/handlers.ts'
 import icon from '#routes/icon.svg'
@@ -46,7 +49,8 @@ const layerServices = pipe(
 	Layer.provide(layerStore)
 )
 
-NodeRuntime.runMain(
+CliRuntime.runApp(
+	packageJson,
 	pipe(
 		HttpRouter.serve(
 			pipe(
@@ -64,7 +68,7 @@ NodeRuntime.runMain(
 				),
 				Layer.provide(layerServices)
 			),
-			{disableLogger: true, middleware: frameAncestors}
+			{disableLogger: true, middleware: app => ServerRuntime.localGuard(frameAncestors(app))}
 		),
 		Layer.provide(Layer.mergeAll(NodeCrypto.layer, NodeHttpClient.layerFetch, NodeServices.layer)),
 		Layer.provide(Layer.succeed(NodeHttpClient.RequestInit, {redirect: 'error'})),

@@ -30,6 +30,18 @@ export const RpcHandlers = RpcContracts.toLayer(
 			'auth.remove': Effect.fnUntraced(function* (input) {
 				return yield* people.remove(input.id, yield* CurrentUser)
 			}),
+			'auth.resource.decide': Effect.fnUntraced(function* (input) {
+				const user = yield* CurrentUser
+				yield* people.admin(user)
+				yield* tokens.resources.decide(input.id, input.approve, user.id)
+			}),
+			'auth.resources': () =>
+				Stream.unwrap(
+					Effect.gen(function* () {
+						yield* people.admin(yield* CurrentUser)
+						return tokens.resources.list
+					})
+				),
 			'auth.wait': (input, options) => signIns.status(input.request, options.headers)
 		})
 	})

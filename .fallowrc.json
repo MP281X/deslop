@@ -28,6 +28,7 @@
 					"apps/portfolio/src/lib/portfolio.ts",
 					"packages/runtime/src/auth/schema.ts",
 					"packages/runtime/src/auth/lib/utils.ts",
+					"packages/runtime/src/schema.ts",
 					"packages/runtime/src/telemetry.ts"
 				]
 			},
@@ -40,7 +41,11 @@
 					"apps/*/src/{http,rpcs,tools}/handlers.ts",
 					"packages/runtime/src/auth/service.ts",
 					"packages/runtime/src/auth/lib/preview.ts",
-					"packages/runtime/src/server.ts"
+					"packages/runtime/src/server.ts",
+					"packages/runtime/src/cli.ts",
+					"packages/runtime/src/cli/**",
+					"packages/runtime/src/native.ts",
+					"packages/runtime/src/package.ts"
 				]
 			}
 		],
@@ -74,7 +79,7 @@
 		"expo-secure-store",
 		"expo-updates"
 	],
-	"ignorePatterns": ["**/*.gen.ts", "tools/*/template/**"],
+	"ignorePatterns": ["**/*.gen.ts", "tools/*/template/**", "apps/*/release/**"],
 	"ignoreExports": [
 		{"exports": ["default"], "file": "apps/*/app.config.ts"},
 		{"exports": ["*"], "file": "apps/*/fingerprint.config.js"},

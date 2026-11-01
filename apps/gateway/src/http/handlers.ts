@@ -6,9 +6,9 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 import {signInUrl} from '@deslop/runtime/auth/utils'
 
-import {GATEWAY_URL} from '#services/connections/lib/utils.ts'
+import {clientMetadata, gatewayUrl} from '#services/connections/lib/utils.ts'
 import {Callback, ServerParams} from '#services/connections/schema.ts'
-import {CLIENT, Connections} from '#services/connections/service.ts'
+import {Connections} from '#services/connections/service.ts'
 
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 
@@ -17,7 +17,8 @@ export const HttpHandlers = HttpRouter.use(router =>
 	Effect.gen(function* () {
 		const auth = yield* Auth
 		const connections = yield* Connections
-		yield* router.add('GET', '/oauth/client.json', HttpServerResponse.jsonUnsafe(CLIENT))
+		const url = yield* gatewayUrl
+		yield* router.add('GET', '/oauth/client.json', HttpServerResponse.jsonUnsafe(clientMetadata(url)))
 		yield* router.add(
 			'GET',
 			'/oauth/connect',
@@ -26,7 +27,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 					const request = yield* HttpServerRequest.HttpServerRequest
 					const params = yield* HttpServerRequest.schemaSearchParams(ServerParams)
 					return yield* Option.match(yield* Effect.option(auth.user(request.headers)), {
-						onNone: () => Effect.succeed(HttpServerResponse.redirect(signInUrl(`${GATEWAY_URL}${request.url}`))),
+						onNone: () => Effect.succeed(HttpServerResponse.redirect(signInUrl(`${url}${request.url}`))),
 						onSome: user =>
 							Effect.map(connections.begin(params.id, user), started =>
 								Option.match(started.state, {

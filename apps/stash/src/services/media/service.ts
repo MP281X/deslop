@@ -1,3 +1,5 @@
+import {execPath} from 'node:process'
+
 import {OpenRouterClient} from '@effect/ai-openrouter'
 
 import {
@@ -23,6 +25,8 @@ import {
 
 import {Base64} from 'effect/encoding'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
+
+import {nativeTool} from '@deslop/runtime/native'
 
 import {sourceProxy, sticky} from '#services/media/lib/proxy.ts'
 import {captionTracks, captionTranscript, clock, isBlocked, speechOnly} from '#services/media/lib/utils.ts'
@@ -53,7 +57,7 @@ function commentLine(comment: Comment) {
 }
 
 const run = Effect.fnUntraced(function* (command: string, args: string[]) {
-	const handle = yield* ChildProcess.make(command, args, {stderr: 'pipe', stdout: 'pipe'})
+	const handle = yield* ChildProcess.make(yield* nativeTool(command), args, {stderr: 'pipe', stdout: 'pipe'})
 	return yield* Effect.all(
 		{
 			exitCode: handle.exitCode,
@@ -85,7 +89,15 @@ export class Media extends Context.Service<
 			const whisper = yield* Semaphore.make(1)
 			const key = yield* Config.option(Config.Redacted('OPENROUTER_API_KEY'))
 			const openRouter = yield* OpenRouterClient.make({apiKey: Option.getOrUndefined(key)})
-			const ytDlpArgs = ['--js-runtimes', 'node', '--no-progress', '--no-warnings', '--no-playlist']
+			const ytDlpArgs = [
+				'--js-runtimes',
+				`node:${execPath}`,
+				'--ffmpeg-location',
+				yield* nativeTool('ffmpeg'),
+				'--no-progress',
+				'--no-warnings',
+				'--no-playlist'
+			]
 			const exit = yield* sourceProxy
 
 			// A residential exit can be offline or flagged by the site, so a blocked run retries twice, each time from another exit address.
@@ -105,10 +117,14 @@ export class Media extends Context.Service<
 				)
 			})
 
-			function withProcesses<A, E>(effect: Effect.Effect<A, E, ChildProcessSpawner.ChildProcessSpawner>) {
+			function withProcesses<A, E>(
+				effect: Effect.Effect<A, E, ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path>
+			) {
 				return pipe(
 					effect,
 					Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+					Effect.provideService(FileSystem.FileSystem, fs),
+					Effect.provideService(Path.Path, path),
 					Effect.mapError(cause =>
 						pipe(
 							Option.liftPredicate(cause, Schema.is(MediaError)),

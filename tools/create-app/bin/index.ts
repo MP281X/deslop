@@ -2,7 +2,7 @@
 
 import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {Effect, FileSystem, Option, Path, Schema, String, flow, pipe} from 'effect'
+import {Effect, Option, Path, Schema, String, flow, pipe} from 'effect'
 
 import {Generator, getConfig} from '@tanstack/router-generator'
 import {Command, Flag} from 'effect/cli'
@@ -31,18 +31,8 @@ const create = Command.make(
 		)
 	},
 	Effect.fnUntraced(function* (input) {
-		const fs = yield* FileSystem.FileSystem
 		const path = yield* Path.Path
 		const root = Option.getOrElse(input.directory, () => path.join(import.meta.dirname, '../../../apps', input.name))
-		// The auth app accepts sign-ins and browser requests only for the resources it lists.
-		const resources = path.join(import.meta.dirname, '../../../packages/runtime/src/auth/schema.ts')
-		yield* fs.writeFileString(
-			resources,
-			String.replace(
-				'Resource = Schema.Literals([',
-				`Resource = Schema.Literals([\n\t'https://${input.name}.mp281x.xyz',\n\t'https://${input.name}.mp281x.xyz/mcp',`
-			)(yield* fs.readFileString(resources))
-		)
 		yield* copyTemplate({
 			from: path.join(import.meta.dirname, '../template', input.kind),
 			rewrite: flow(

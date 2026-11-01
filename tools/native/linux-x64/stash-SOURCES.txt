@@ -1,0 +1,5 @@
+FFmpeg 9.0.2 GPL build and dependency/build recipes: https://github.com/BtbN/FFmpeg-Builds/tree/autobuild-2026-11-01-12-49
+FFmpeg source revision: https://github.com/FFmpeg/FFmpeg/tree/d7643a0fe3
+The build recipes identify/download the component sources; retain the accompanying GPL license and source access when redistributing.
+yt-dlp 2026.10.26 PyInstaller build and source: https://github.com/yt-dlp/yt-dlp/tree/2026.10.26
+Bundled Python/dependency license texts: yt-dlp-LICENSES.txt

@@ -19,7 +19,7 @@ jobs:
     uses: ./.github/workflows/verify.yaml
 
   publish:
-    name: Images and package
+    name: Images and packages
     needs: verify
     runs-on: ubuntu-26.04
     permissions:
@@ -31,11 +31,25 @@ jobs:
       - uses: ./.github/actions/setup
 
       - name: Build
-        env:
-          VITE_OTEL_URL: https://otel.mp281x.xyz
         run: |
           vp -C tools/coding-standards pm version "0.1.${{ github.run_number }}" -- --no-git-tag-version --no-git-checks
+          for app in auth deploy gateway portfolio scope stash opm trips signal; do
+            vp -C "apps/$app" pm version "0.1.${{ github.run_number }}" -- --no-git-tag-version --no-git-checks
+          done
           vp run build
+
+      - name: Pack once for npm and containers
+        run: |
+          for app in auth deploy gateway portfolio scope stash opm trips signal; do
+            mkdir -p "$RUNNER_TEMP/packages/$app"
+            vp -C "apps/$app/release" pm pack --pack-destination "$RUNNER_TEMP/packages/$app"
+            cp "$RUNNER_TEMP/packages/$app/"*.tgz "apps/$app/package.tgz"
+          done
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: npm-apps
+          path: ${{ runner.temp }}/packages
 
       - uses: docker/login-action@v4
         with:
@@ -43,12 +57,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Inline cache reuses final-image layers; Stash's native build stage runs again on a fresh runner.
       - name: Images
         run: |
-          for app in auth gateway portfolio scope stash opm trips signal; do
+          for app in auth deploy gateway portfolio scope stash opm trips signal; do
             image="ghcr.io/${GITHUB_REPOSITORY,,}-$app"
-            docker build "apps/$app" --cache-from "$image:latest" --build-arg BUILDKIT_INLINE_CACHE=1 --tag "$image:latest" --tag "$image:$GITHUB_SHA"
+            docker build --file tools/app.Dockerfile "apps/$app" --cache-from "$image:latest" --build-arg BUILDKIT_INLINE_CACHE=1 --tag "$image:latest" --tag "$image:$GITHUB_SHA"
             docker push --all-tags "$image"
           done
 
@@ -57,6 +70,17 @@ jobs:
         run: |
           vp -C tools/coding-standards pm pack --pack-destination "$RUNNER_TEMP/package"
           npm publish "$RUNNER_TEMP"/package/*.tgz
+
+      # npm requires an owner-approved first publish before trusted publishing can be configured.
+      - name: App packages
+        run: |
+          for app in auth deploy gateway portfolio scope stash opm trips signal; do
+            if npm view "@deslop/$app" version >/dev/null 2>&1; then
+              npm publish "$RUNNER_TEMP/packages/$app/"*.tgz
+            else
+              echo "::warning::@deslop/$app needs its first publish and trusted-publisher setup; use the npm-apps artifact and RELEASING.md"
+            fi
+          done
 
   app:
     name: App

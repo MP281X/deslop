@@ -24,13 +24,13 @@ export class AuthError extends Schema.TaggedError<AuthError>()('AuthError', {
 export type User = typeof User.Type
 export const User = Schema.Struct({id: Schema.NonEmptyString, name: Schema.NonEmptyString})
 
-export type Resource = typeof Resource.Type
-export const Resource = Schema.Literals([
+export const DEFAULT_RESOURCES = [
 	'https://gateway.mp281x.xyz',
 	'https://gateway.mp281x.xyz/mcp',
 	'https://stash.mp281x.xyz',
 	'https://stash.mp281x.xyz/mcp',
 	'https://opm.mp281x.xyz',
+	'https://scope.mp281x.xyz',
 	'https://scope.mp281x.xyz/mcp',
 	'https://signal.mp281x.xyz',
 	'https://signal.mp281x.xyz/mcp',
@@ -38,7 +38,25 @@ export const Resource = Schema.Literals([
 	'https://auth.mp281x.xyz/mcp',
 	'https://trips.mp281x.xyz',
 	'https://trips.mp281x.xyz/mcp'
-])
+] as const
+
+export type Resource = typeof Resource.Type
+export const Resource = Schema.String.check(Schema.isMaxLength(2048), Schema.isPattern(/^https:\/\/[^\s@?#]+$/u))
+
+export type EnrollmentRequest = typeof EnrollmentRequest.Type
+export const EnrollmentRequest = Schema.Struct({
+	name: Schema.NonEmptyString.check(Schema.isMaxLength(100)),
+	resource: Resource.check(Schema.isPattern(/^https:\/\/[^/]+$/u))
+})
+
+export type Enrollment = typeof Enrollment.Type
+export const Enrollment = Schema.Struct({
+	...EnrollmentRequest.fields,
+	approvedBy: Schema.String,
+	createdAt: Schema.Finite,
+	id: Schema.NonEmptyString,
+	status: Schema.Literals(['pending', 'approved', 'denied'])
+})
 
 export type Credentials = typeof Credentials.Type
 export const Credentials = Schema.Struct({

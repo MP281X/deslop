@@ -46,6 +46,7 @@ import {Gateway} from '#services/gateway/service.ts'
 import {layerMcp} from '#tools/handlers.ts'
 
 const ACCOUNTS: Record<string, User> = {
+	dev: {id: 'github:0', name: 'dev'},
 	octocat: {id: 'github:42', name: 'octocat'},
 	stranger: {id: 'github:7', name: 'stranger'}
 }
@@ -178,22 +179,24 @@ function account(login?: string) {
 }
 
 // Auth as the gateway sees it: an agent token for the gateway's MCP, or a browser session.
-const layerAuth = Layer.succeedContext(
-	Auth.makeContext(
-		Auth.of({
-			access: (headers, resource) => {
-				const token = String.replace(/^Bearer /u, '')(headers['authorization'] ?? '')
-				if (resource !== `${GATEWAY_URL}/mcp` || !String.startsWith('agent-')(token)) {
-					return Effect.fail(AuthError.make({message: 'Sign in first'}))
-				}
-				return account(String.split(String.slice(6)(token), '-')[0])
-			},
-			user: headers => account(Cookies.parseHeader(headers['cookie'] ?? '')['session'])
-		})
+function layerAuth(origin: string) {
+	return Layer.succeedContext(
+		Auth.makeContext(
+			Auth.of({
+				access: (headers, resource) => {
+					const token = String.replace(/^Bearer /u, '')(headers['authorization'] ?? '')
+					if (resource !== `${origin}/mcp` || !String.startsWith('agent-')(token)) {
+						return Effect.fail(AuthError.make({message: 'Sign in first'}))
+					}
+					return account(String.split(String.slice(6)(token), '-')[0])
+				},
+				user: headers => account(Cookies.parseHeader(headers['cookie'] ?? '')['session'])
+			})
+		)
 	)
-)
+}
 
-const servers = Effect.fnUntraced(function* (home?: string) {
+const servers = Effect.fnUntraced(function* (home?: string, origin = GATEWAY_URL, local = false) {
 	const directory = home ?? (yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped())
 	const clock = yield* Clock.Clock
 	const ready = yield* Queue.make<true>()
@@ -470,11 +473,17 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 							Layer.succeed(HttpClient.HttpClient, provider),
 							Layer.succeed(FetchHttpClient.Fetch, fetchUpstream),
 							ConfigProvider.layer(
-								ConfigProvider.fromUnknown({GITHUB_ADMINS: '42', HOME: directory, NODE_ENV: 'production'})
+								ConfigProvider.fromUnknown({
+									...Boolean.match(local, {onFalse: () => ({GITHUB_ADMINS: '42'}), onTrue: () => ({})}),
+									APP_URL: origin,
+									DESLOP_LOCAL: local,
+									HOME: directory,
+									NODE_ENV: 'production'
+								})
 							)
 						)
 					),
-					Layer.provideMerge(layerAuth),
+					Layer.provideMerge(layerAuth(origin)),
 					Layer.provideMerge(Layer.succeed(Clock.Clock, clock))
 				),
 				{disableLogger: true}
@@ -612,6 +621,46 @@ const modern = Effect.fnUntraced(function* (
 })
 
 it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
+	test.effect(
+		'uses the local trusted developer without production admin configuration',
+		Effect.fnUntraced(function* () {
+			assert.strictEqual(
+				(yield* post((yield* servers(undefined, 'http://127.0.0.1:5000', true)).web, '/servers', 'session=dev', {
+					url: 'https://public.example.com/mcp'
+				})).status,
+				200
+			)
+		})
+	)
+	test.effect(
+		'uses an alternate canonical origin for OAuth, client metadata, self checks and forwarded audiences',
+		Effect.fnUntraced(function* () {
+			const origin = 'https://gateway.example.com'
+			const gateway = yield* servers(undefined, origin)
+			const metadata = yield* send(gateway.web, '/oauth/client.json')
+			const document = yield* Effect.promise(() => metadata.json())
+			assert.strictEqual(document.client_id, `${origin}/oauth/client.json`)
+			assert.deepStrictEqual(document.redirect_uris, [`${origin}/oauth/callback`])
+			const added = yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
+			assert.strictEqual(
+				new URL(
+					(yield* send(gateway.web, `/oauth/connect?id=${added.id}`, {headers: {cookie: SESSION}})).headers.get(
+						'location'
+					) ?? ''
+				).searchParams.get('redirect_uri'),
+				`${origin}/oauth/callback/${added.id}`
+			)
+			assert.strictEqual((yield* post(gateway.web, '/servers', SESSION, {url: `${origin}/mcp`})).status, 400)
+			const publicServer = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
+			yield* modern(gateway.web, TOKEN, 'tools/list')
+			const called = yield* modern(gateway.web, TOKEN, 'tools/call', {
+				arguments: {query: 'alternate-origin'},
+				name: `${publicServer.id}__search`
+			})
+			assert.strictEqual(called.status, 200)
+			assert.include(yield* Effect.promise(() => called.text()), 'alternate-origin')
+		})
+	)
 	test.effect(
 		'discovers challenge-only metadata and authorizes with a client metadata document only when the answer names its issuer',
 		Effect.fnUntraced(function* () {
@@ -1137,7 +1186,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			// A signed-out browser signs in first, then returns to the connection.
 			assert.strictEqual(
 				(yield* send(gateway.web, '/oauth/connect?id=mobbin')).headers.get('location'),
-				`https://auth.mp281x.xyz/?${new URLSearchParams({next: 'https://gateway.mp281x.xyz/oauth/connect?id=mobbin'})}`
+				`https://gateway.mp281x.xyz/auth/sign-in?${new URLSearchParams({next: 'https://gateway.mp281x.xyz/oauth/connect?id=mobbin'})}`
 			)
 			// A registered client's answer at the shared callback is another provider's, even when it names this issuer.
 			const shared = yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})
