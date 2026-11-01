@@ -1161,16 +1161,14 @@ function TimelineBar(props: {
 				)}
 				<Button
 					variant="ghost"
-					size="icon"
-					className="min-h-11 min-w-11"
+					size="sm"
+					className={cn('min-h-11 min-w-11 px-1', chunks && 'text-primary')}
 					aria-label="Team chunks"
 					aria-pressed={chunks}
 					title={Boolean.match(chunks, {onFalse: () => 'Show team chunks', onTrue: () => 'Hide team chunks'})}
 					onClick={() => setChunks(shown => !shown)}
 				>
-					<span aria-hidden="true" className={cn('text-base', chunks && 'text-primary')}>
-						▦
-					</span>
+					Chunks
 				</Button>
 				<Button variant="ghost" size="sm" className="min-h-11 px-2" onClick={props.onThreads}>
 					Threads
