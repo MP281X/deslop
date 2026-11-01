@@ -199,7 +199,7 @@ function release(actor: Actor) {
 }
 
 // A model's portrait: its idle pose lit like the world and seen from the game camera's 30°, framed to what shows, on a clear ground.
-function portraitOf(gltf: GLTF, painter: THREE.WebGLRenderer) {
+function portraitOf(gltf: Pick<GLTF, 'animations' | 'scene'>, painter: THREE.WebGLRenderer) {
 	const object = clone(gltf.scene)
 	const ground = object.getObjectByName('ground')
 	if (ground !== undefined) ground.visible = false
@@ -532,6 +532,16 @@ export function createCast(view: Renderer) {
 	painter.outputColorSpace = THREE.SRGBColorSpace
 	painter.toneMapping = THREE.NeutralToneMapping
 	painter.setClearColor(0x00_00_00, 0)
+	Array.forEach(TEAMS, (team, index) => {
+		const portraitPaint = new THREE.MeshStandardMaterial({color: team.color})
+		const corePortrait = surveyCore(portraitPaint, portraitPaint, false)
+		MutableHashMap.set(portraits.painted, `home:${index}`, portraitOf({animations: [], scene: corePortrait}, painter))
+		corePortrait.traverse(object => {
+			if (object instanceof THREE.Mesh) object.geometry.dispose()
+		})
+		disposeSurveyCore(corePortrait)
+		portraitPaint.dispose()
+	})
 	const requested = MutableHashMap.empty<string, boolean>()
 	function loadModel(name: string) {
 		if (MutableHashMap.has(requested, name)) return
@@ -951,6 +961,7 @@ export function createCast(view: Renderer) {
 		// Runs each time a model's portrait is painted.
 		onPortrait(listener: () => void) {
 			portraits.listeners = [...portraits.listeners, listener]
+			listener()
 		},
 		pick,
 		places,
@@ -958,6 +969,7 @@ export function createCast(view: Renderer) {
 			return Record.fromEntries(Array.fromIterable(portraits.painted))
 		},
 		positionOf,
+		requestPortrait: loadModel,
 		// Every unit and building gone, for a stream that starts over.
 		reset,
 		screenOf

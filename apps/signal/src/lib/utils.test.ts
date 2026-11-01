@@ -4,18 +4,13 @@ import {Option} from 'effect'
 
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 
-import {EMPTY, cursorAtom, hudAtom, loadingAtom, sourceAtom, timelineAtom, viewAtom} from '#lib/utils.ts'
+import {EMPTY, cursorAtom, hudAtom, loadingAtom, sourceAtom, viewAtom} from '#lib/utils.ts'
 import {GameError} from '#services/game/schema.ts'
 
 const LOADED = {...EMPTY, count: 1, frame: {...EMPTY.frame, tick: 7743}}
 
 it('retains the displayed world while a historical source connects', () => {
-	const registry = AtomRegistry.make({
-		initialValues: [
-			[viewAtom, AsyncResult.success(LOADED), {skipInitialRun: true}],
-			[timelineAtom, AsyncResult.success({live: 7743, marks: [], start: 0}), {skipInitialRun: true}]
-		]
-	})
+	const registry = AtomRegistry.make({initialValues: [[viewAtom, AsyncResult.success(LOADED), {skipInitialRun: true}]]})
 	try {
 		registry.mount(hudAtom)
 		assert.strictEqual(Option.getOrThrow(AsyncResult.value(registry.get(hudAtom))), LOADED)

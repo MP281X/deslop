@@ -14,8 +14,6 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/signal/lib/utils/R
 	protocol: WebRuntime.layer('@deslop/signal')
 }) {}
 
-export const controlAtom = RpcClient.mutation('signal.control')
-
 function requestFeed(at: number) {
 	return Effect.flatMap(RpcClient, client =>
 		readFeed(
@@ -240,29 +238,13 @@ export const seedAtom = Atom.keepAlive(
 	)
 )
 
-// The run's marks and span, kept fresh.
-export const timelineAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(
-		pipe(
-			Stream.tick('10 seconds'),
-			Stream.mapEffect(() => Effect.flatMap(RpcClient, client => client('signal.timeline', undefined)))
-		)
-	)
-)
-
 export const cursorAtom = Atom.make(get => {
 	const view = Option.getOrElse(AsyncResult.value(get(hudAtom)), () => EMPTY)
 	const loading = get(loadingAtom)
 	return Option.match(get(sourceAtom), {
 		onNone: () => {
 			if (!loading) return view.frame.tick
-			return Number.max(
-				view.frame.live ?? view.frame.tick,
-				Option.getOrElse(
-					Option.map(AsyncResult.value(get(timelineAtom)), timeline => timeline.live),
-					() => 0
-				)
-			)
+			return view.frame.live ?? view.frame.tick
 		},
 		onSome: replay => {
 			if (loading) return replay.from
@@ -271,21 +253,14 @@ export const cursorAtom = Atom.make(get => {
 	})
 })
 
-// A replay's HUD can advance at 30×; only wall time schedules thread requests.
+// Event navigation freezes the spectator, not the live log or its paging cursors.
 export const threadFeedAtom = Atom.setIdleTTL(
-	RpcClient.runtime.atom(get => {
-		const source = get(sourceAtom)
-		const stopped = Option.getOrUndefined(Option.filter(source, replay => replay.speed === 0))
-		if (stopped !== undefined) return Stream.fromEffect(requestFeed(stopped.from))
-		return pipe(
+	RpcClient.runtime.atom(
+		pipe(
 			Stream.tick('5 seconds'),
-			Stream.mapEffect(() =>
-				requestFeed(
-					Option.match(source, {onNone: () => -1, onSome: replay => Number.max(replay.from, get.once(cursorAtom))})
-				)
-			)
+			Stream.mapEffect(() => requestFeed(-1))
 		)
-	}),
+	),
 	0
 )
 
