@@ -4,10 +4,6 @@
       "value" : {
         "solid" : "srgb:0.98039,0.98039,0.98039,1.00000"
       }
-    },
-    {
-      "appearance" : "dark",
-      "value" : "system-dark"
     }
   ],
   "groups" : [
@@ -17,7 +13,7 @@
         {
           "glass" : false,
           "hidden" : false,
-          "image-name" : "icon.png",
+          "image-name" : "icon.svg",
           "name" : "icon",
           "position" : {
             "scale" : 1,

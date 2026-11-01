@@ -18,7 +18,6 @@ import {
 	Predicate,
 	Semaphore,
 	Stream,
-	String,
 	Struct,
 	pipe
 } from 'effect'
@@ -114,18 +113,13 @@ export function layer(applicationName: string) {
 	)
 }
 
-// The app's tiled icon at a stable URL for Auth's app list and MCP clients; the pack loader passes SVG markup or a data URL.
+// The app's tiled icon at a stable URL for Auth's app list and MCP clients; the pack loader passes its SVG markup.
 export function layerIcon(icon: string) {
-	const headers = {'cache-control': 'public, max-age=86400'}
 	return HttpRouter.add(
 		'GET',
 		'/icon',
 		Effect.succeed(
-			Option.match(String.match(/^data:([^;]+);base64,(.*)$/u)(icon), {
-				onNone: () => HttpServerResponse.text(icon, {contentType: 'image/svg+xml', headers}),
-				onSome: match =>
-					HttpServerResponse.uint8Array(Uint8Array.fromBase64(match[2] ?? ''), {contentType: match[1], headers})
-			})
+			HttpServerResponse.text(icon, {contentType: 'image/svg+xml', headers: {'cache-control': 'public, max-age=86400'}})
 		)
 	)
 }
