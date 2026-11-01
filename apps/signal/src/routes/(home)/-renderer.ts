@@ -30,7 +30,7 @@ import type {Frame} from '#services/game/schema.ts'
 import {CHUNK, LEVEL, ORES, chunkOf, highest, lowest} from '#services/world/lib/utils.ts'
 
 // Half the view's height in tiles: nearest, farthest the player zooms, the overview's and at the start.
-const ZOOM = {farthest: 400, nearest: 3.5, overview: 400, start: 12}
+const ZOOM = {farthest: 500, nearest: 3.5, overview: 500, start: 12}
 // The zone texture's side in chunks; its window follows the camera.
 const ZONES = 128
 // A chunk's revision as sent to a builder: the world's epoch times this, plus its own.
@@ -427,7 +427,8 @@ function meshOf(
 ) {
 	const geometry = new THREE.BufferGeometry()
 	geometry.setAttribute('position', new THREE.BufferAttribute(data.positions, 3))
-	geometry.setAttribute('normal', new THREE.BufferAttribute(data.normals, 3))
+	if (data.normals.byteLength === 0) geometry.computeVertexNormals()
+	else geometry.setAttribute('normal', new THREE.BufferAttribute(data.normals, 3))
 	geometry.setAttribute('color', new THREE.BufferAttribute(data.colors, 3))
 	geometry.computeBoundingSphere()
 	const mesh = new THREE.Mesh(geometry, material)
@@ -1223,10 +1224,11 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 				x: middle.across * right.x + middle.along * ahead.x,
 				z: middle.across * right.z + middle.along * ahead.z,
 				zoom: Number.clamp(
-					Number.max(
-						((highest(along) - lowest(along)) / 2) * Math.sin(ELEVATION) + 4,
-						((highest(across) - lowest(across)) / 2 + 5) / (view.size.width / Number.max(1, view.size.height))
-					),
+					1.5 *
+						Number.max(
+							((highest(along) - lowest(along)) / 2) * Math.sin(ELEVATION) + 4,
+							((highest(across) - lowest(across)) / 2 + 5) / (view.size.width / Number.max(1, view.size.height))
+						),
 					{maximum: ZOOM.overview, minimum: 48}
 				)
 			}

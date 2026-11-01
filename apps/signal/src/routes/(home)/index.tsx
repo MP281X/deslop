@@ -391,7 +391,11 @@ function Round(props: {entry: Entry}) {
 				<span className="text-(--team)" style={{'--team': teamColor(props.entry.team)}}>
 					{teamName(props.entry.team)} Core
 				</span>
-				<Button variant="link" className="underline decoration-dotted" onClick={() => navigate.time(props.entry.tick)}>
+				<Button
+					variant="link"
+					className="text-muted-foreground font-mono text-xs underline decoration-dotted"
+					onClick={() => navigate.time(props.entry.tick)}
+				>
 					{clockOf(props.entry.tick)}
 				</Button>
 				{props.entry.tokens?.cost !== undefined && <span>${Number.round(props.entry.tokens.cost, 5)}</span>}
@@ -479,9 +483,13 @@ function EventRecord(props: {entry: Experience}) {
 	const navigate = useContext(Navigation)
 	const team = historyTeam(props.entry, useContext(Membership))
 	return (
-		<li className="flex flex-col gap-1 py-2">
+		<li className="flex flex-col gap-1 py-1">
 			<header className="text-muted-foreground flex items-center gap-2">
-				<Button variant="link" onClick={() => navigate.place(props.entry.x, props.entry.z, props.entry.tick)}>
+				<Button
+					variant="link"
+					className="text-muted-foreground h-auto p-0 font-mono text-xs"
+					onClick={() => navigate.place(props.entry.x, props.entry.z, props.entry.tick)}
+				>
 					{clockOf(props.entry.tick)}
 				</Button>
 				{team !== undefined && (
@@ -489,10 +497,14 @@ function EventRecord(props: {entry: Experience}) {
 						{teamName(team)}
 					</span>
 				)}
-				<Button variant="link" onClick={() => navigate.entity(props.entry.actor, props.entry.tick)}>
+				<Button
+					variant="link"
+					className="text-muted-foreground h-auto p-0 text-xs"
+					onClick={() => navigate.entity(props.entry.actor, props.entry.tick)}
+				>
 					#{props.entry.actor}
 				</Button>
-				<span>{props.entry.kind}</span>
+				<span className="text-xs">{props.entry.kind}</span>
 			</header>
 			<p className="leading-relaxed">
 				<References text={props.entry.text} tick={props.entry.tick} />
@@ -509,6 +521,7 @@ function ThreadPage(props: {
 	tick: number
 	onEarlier: () => void
 	onLatest: () => void
+	onRead: () => void
 }) {
 	const members = useContext(Membership)
 	const [expanded, setExpanded] = useState(() => Option.none<{before: number; upper: number}>())
@@ -519,6 +532,9 @@ function ThreadPage(props: {
 	const result = useAtomValue(feedAtom(before))
 	const currentPage = Option.getOrElse(AsyncResult.value(result), () => ({before: -1, entries: []}))
 	const entries = currentPage.entries
+	useEffect(() => {
+		if (props.before === undefined) props.onRead()
+	})
 	return (
 		<>
 			{Option.match(expanded, {
@@ -568,6 +584,7 @@ function ThreadPage(props: {
 							replaying={props.replaying}
 							onEarlier={props.onEarlier}
 							onLatest={props.onLatest}
+							onRead={props.onRead}
 						/>
 					</>
 				)
@@ -611,7 +628,7 @@ function Thread(props: {replaying: boolean; status?: TeamView['status']; team: n
 				pinned.current =
 					event.currentTarget.scrollHeight - event.currentTarget.scrollTop - event.currentTarget.clientHeight < 24
 			}}
-			className="flex min-h-0 flex-col gap-4 overflow-y-auto overscroll-contain px-3 pb-3 select-text"
+			className="flex min-h-0 flex-col gap-2 overflow-y-auto overscroll-contain px-3 pb-3 select-text"
 		>
 			<ThreadPage
 				team={props.team}
@@ -622,6 +639,9 @@ function Thread(props: {replaying: boolean; status?: TeamView['status']; team: n
 				}}
 				onLatest={() => {
 					pinned.current = true
+				}}
+				onRead={() => {
+					if (pinned.current) list.current?.scrollTo({top: list.current.scrollHeight})
 				}}
 			/>
 			{props.status === 'thinking' && (
@@ -1462,7 +1482,8 @@ function WorldControl(props: {onThreads: () => void}) {
 				>
 					{!current.coreConfigured && 'Model key missing'}
 					{!current.coreConfigured && !current.localDecisions && ' · '}
-					{!current.localDecisions && 'Local decisions off'}
+					{!current.localDecisions &&
+						Boolean.match(current.coreConfigured, {onFalse: () => 'Local off', onTrue: () => 'Local decisions off'})}
 				</Button>
 			)}
 			{problem !== undefined && (

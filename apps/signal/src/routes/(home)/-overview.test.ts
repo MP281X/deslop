@@ -16,9 +16,9 @@ it('builds bounded terrain LOD from the real seed without generating detailed ch
 		-3,
 		8
 	)
-	assert.strictEqual(built.terrain.positions.length, 16 * 6 * 3)
+	assert.strictEqual(built.terrain.positions.length, 64 * 6 * 3)
 	assert.strictEqual(built.props.positions.length, 0)
 	assert.deepStrictEqual(built.instances, [])
-	assert.strictEqual(built.corners[0], world.tileAt(-92, 260).level)
+	assert.strictEqual(built.corners[0], world.tileAt(-94, 258).level)
 	assert.deepStrictEqual(overviewChunk(world, -3, 8), built)
 })

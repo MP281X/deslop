@@ -24,9 +24,13 @@ export function overviewChunk(world: World, cx: number, cz: number) {
 	const corners = new Float32Array(CHUNK * CHUNK * 4)
 	const positions = MutableList.make<number>()
 	const colors = MutableList.make<number>()
-	const normals = MutableList.make<number>()
 	const color = new THREE.Color()
-	const step = 8
+	const step = 4
+	const row = CHUNK / step + 1
+	const heights = Array.makeBy(
+		row * row,
+		index => world.tileAt(cx * CHUNK + (index % row) * step, cz * CHUNK + Math.floor(index / row) * step).level
+	)
 	for (const z of Array.range(0, CHUNK / step - 1)) {
 		for (const x of Array.range(0, CHUNK / step - 1)) {
 			const gx = cx * CHUNK + x * step
@@ -46,11 +50,12 @@ export function overviewChunk(world: World, cx: number, cz: number) {
 				[0, step],
 				[step, step]
 			]) {
-				const px = gx + (offset[0] ?? 0)
-				const pz = gz + (offset[1] ?? 0)
-				MutableList.appendAll(positions, [px, world.tileAt(px, pz).level * LEVEL, pz])
+				MutableList.appendAll(positions, [
+					gx + (offset[0] ?? 0),
+					(heights[(z + (offset[1] ?? 0) / step) * row + x + (offset[0] ?? 0) / step] ?? tile.level) * LEVEL,
+					gz + (offset[1] ?? 0)
+				])
 				MutableList.appendAll(colors, [color.r, color.g, color.b])
-				MutableList.appendAll(normals, [0, 1, 0])
 			}
 			tileHeights(corners, tile.level, x * step, z * step, step)
 		}
@@ -68,7 +73,7 @@ export function overviewChunk(world: World, cx: number, cz: number) {
 		surface: new Float32Array(CHUNK * CHUNK),
 		terrain: {
 			colors: Float32Array.from(MutableList.toArray(colors)),
-			normals: Float32Array.from(MutableList.toArray(normals)),
+			normals: new Float32Array(),
 			positions: Float32Array.from(MutableList.toArray(positions))
 		}
 	} satisfies Built
