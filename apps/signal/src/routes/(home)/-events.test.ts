@@ -13,6 +13,7 @@ import {
 	eventText,
 	fieldName,
 	recordData,
+	roundSummary,
 	textParts,
 	sameObservationGroup
 } from './-events.ts'
@@ -138,6 +139,33 @@ it('focuses explicit subjects and targeted legacy choices, never an arbitrary re
 	assert.strictEqual(eventSubject({...CHOICE, text: 'Discussed #99 with #4.'}), 2)
 	assert.strictEqual(eventSubject({...CHOICE, subject: -7}), -7)
 	assert.strictEqual(eventSubject({...CHOICE, text: 'Chose rest: Rest.'}), 2)
+	for (const action of ['approach', 'attack', 'build', 'deposit', 'inspect', 'repair', 'take', 'report']) {
+		assert.strictEqual(eventSubject({...CHOICE, text: `Chose ${action}:42: Target #42.`}), 42)
+		assert.strictEqual(
+			eventSubject({...RECEIPT, text: `Model returned ${action}:42; a response does not prove execution.`}),
+			42
+		)
+	}
+})
+
+it('keeps failed commands and unreadable calls visible in otherwise completed core rounds', () => {
+	assert.deepStrictEqual(
+		roundSummary({
+			commands: [
+				{command: {_tag: 'Inspect', building: 7}, ok: true, text: 'Inspected.'},
+				{command: {_tag: 'Inspect', building: 8}, ok: false, text: 'Refused.'}
+			],
+			text: '\nUnreadable tool call: Build({"kind":"storage"})'
+		}),
+		{failed: 1, text: 'Unreadable tool call: Build(', unreadable: 1}
+	)
+})
+
+it('keeps even malformed JSON out of default summaries while retaining complete text for expanded details', () => {
+	const original = 'Unreadable tool call: Build({"kind":'
+	assert.strictEqual(roundSummary({commands: [], text: original}).text, 'Unreadable tool call: Build(')
+	assert.strictEqual(eventSummary({...CHOICE, text: original}), 'Unreadable tool call: Build(')
+	assert.strictEqual(original, 'Unreadable tool call: Build({"kind":')
 })
 
 it('bundles only adjacent same-tick routine observations, preserving actionable events and chronological boundaries', () => {

@@ -4,7 +4,19 @@ import {Array, Boolean, Match, Number, Option, Predicate, Record, Schema, String
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {ArrowUpRight, ChevronDown, Eye, Layers3, MessageCircle, Pause, Radio, Users, WifiOff, X} from 'lucide-react'
+import {
+	AlertTriangle,
+	ArrowUpRight,
+	ChevronDown,
+	Eye,
+	Layers3,
+	MessageCircle,
+	Pause,
+	Radio,
+	Users,
+	WifiOff,
+	X
+} from 'lucide-react'
 import type {PointerEvent, ReactNode, WheelEvent} from 'react'
 import {createContext, useContext, useEffect, useRef, useState} from 'react'
 
@@ -35,6 +47,7 @@ import {
 	eventText,
 	fieldName,
 	recordData,
+	roundSummary,
 	textParts,
 	sameObservationGroup
 } from './-events.ts'
@@ -543,6 +556,7 @@ function Outcome(props: {outcome: Entry['commands'][number]; tick: number}) {
 // One round of a team's thread: when, what it was told, what it thought and said, and what each command did.
 function Round(props: {entry: Entry}) {
 	const navigate = useContext(Navigation)
+	const summary = roundSummary(props.entry)
 	return (
 		<li className="relative border-t py-2">
 			<div className="relative flex items-start gap-2 pr-10">
@@ -563,9 +577,16 @@ function Round(props: {entry: Entry}) {
 						<time className="text-muted-foreground shrink-0 font-mono">{clockOf(props.entry.tick)}</time>
 					</header>
 					{props.entry.status !== 'done' && <span className="text-destructive text-xs">{props.entry.status}</span>}
+					{(summary.failed > 0 || summary.unreadable > 0) && (
+						<p className="text-destructive flex flex-wrap items-center gap-1 text-xs">
+							<AlertTriangle className="size-3" />
+							{summary.failed > 0 && <span>Failed commands: {summary.failed}</span>}
+							{summary.unreadable > 0 && <span>Unreadable calls: {summary.unreadable}</span>}
+						</p>
+					)}
 					{String.isNonEmpty(String.trim(props.entry.text)) && (
 						<div className="line-clamp-2 leading-relaxed">
-							<References text={String.trim(props.entry.text)} tick={props.entry.tick} />
+							<References text={summary.text} tick={props.entry.tick} />
 						</div>
 					)}
 				</div>

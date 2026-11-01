@@ -1,6 +1,6 @@
 import {Array, MutableList, Number, Option, Record, Schema, String} from 'effect'
 
-import type {Experience} from '#services/game/schema.ts'
+import type {Entry, Experience} from '#services/game/schema.ts'
 import {LocalDecision, Point} from '#services/game/schema.ts'
 
 function decisionKey(entry: Experience) {
@@ -139,7 +139,9 @@ export function eventSubject(entry: Experience) {
 		Option.getOrElse(
 			Option.flatMap(
 				Option.flatMap(
-					String.match(/^(?:Chose |Model returned )(?:approach|inspect|take|report):(-?\d+)(?::|;)/u)(entry.text),
+					String.match(
+						/^(?:Chose |Model returned )(?:approach|attack|build|deposit|inspect|repair|take|report):(-?\d+)(?::|;)/u
+					)(entry.text),
 					match => Option.fromUndefinedOr(match[1])
 				),
 				Number.parse
@@ -149,18 +151,33 @@ export function eventSubject(entry: Experience) {
 	)
 }
 
-export function eventSummary(entry: Experience) {
-	return (
-		String.trim(
-			Array.join(
-				Array.flatMap(textParts(Option.getOrElse(Array.head(String.split('\n')(eventText(entry))), () => '')), part => {
-					if (part.kind === 'text') return [part.text]
-					return []
-				}),
-				' '
-			)
-		) || fieldName(entry.kind)
+// A preview ends where structured arguments start, even when an unreadable call contains malformed JSON.
+function compactText(text: string) {
+	return String.trim(
+		Option.getOrElse(
+			Array.head(
+				String.split(/[[{]/u)(
+					Option.getOrElse(
+						Array.findFirst(String.split('\n')(text), line => String.isNonEmpty(String.trim(line))),
+						() => ''
+					)
+				)
+			),
+			() => ''
+		)
 	)
+}
+
+export function eventSummary(entry: Experience) {
+	return compactText(eventText(entry)) || fieldName(entry.kind)
+}
+
+export function roundSummary(entry: Pick<Entry, 'commands' | 'text'>) {
+	return {
+		failed: Array.countBy(entry.commands, outcome => !outcome.ok),
+		text: compactText(entry.text) || 'Response data',
+		unreadable: Array.countBy(String.split('\n')(entry.text), line => String.startsWith('Unreadable tool call:')(line))
+	}
 }
 
 function routineObservation(entry: Experience) {
