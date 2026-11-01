@@ -350,7 +350,7 @@ function Servers() {
 function Home() {
 	return (
 		<main className="pb-safe flex min-h-0 flex-1 justify-center overflow-y-auto px-4 pt-8 md:pt-16">
-			<div className="flex w-full max-w-3xl flex-col gap-5">
+			<div className="flex w-full max-w-3xl flex-col gap-5 self-start">
 				<h1 className="text-xl font-semibold tracking-tight">Servers</h1>
 				<Suspense fallback={<ItemListSkeleton label="MCP servers" media rows={4} />}>
 					<Servers />
