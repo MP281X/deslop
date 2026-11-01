@@ -1,4 +1,4 @@
-FROM node:26-slim AS native
+FROM node:26-trixie-slim AS native
 
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 ADD --chmod=755 https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux /usr/local/bin/yt-dlp
@@ -13,7 +13,7 @@ RUN ONNXRUNTIME_NODE_INSTALL=skip npm install --no-save onnxruntime-node sharp &
 
 # Keep the native media tools' shared libraries, not apt, npm, or their build environment.
 RUN mkdir /runtime-libs && \
-    { ldd /usr/bin/ffmpeg /usr/local/bin/yt-dlp; find node_modules -type f \( -name '*.node' -o -name '*.so*' \) -exec ldd {} \;; } | \
+    { ldd /usr/bin/ffmpeg /usr/bin/ffprobe /usr/local/bin/yt-dlp; find node_modules -type f \( -name '*.node' -o -name '*.so*' \) -exec ldd {} \;; } | \
     awk '/=> \/(lib|usr\/lib)/ {print $3} /^\/(lib|usr\/lib)/ {print $1}' | \
     sed 's@^/lib/@/usr/lib/@' | sort -u | xargs -r -I '{}' cp --parents --dereference '{}' /runtime-libs
 
@@ -27,6 +27,7 @@ ENV PATH=/nodejs/bin:/usr/local/bin:/usr/bin:/bin
 
 COPY --from=native /runtime-libs/ /
 COPY --from=native /usr/bin/ffmpeg /usr/bin/ffmpeg
+COPY --from=native /usr/bin/ffprobe /usr/bin/ffprobe
 COPY --from=native /usr/local/bin/yt-dlp /usr/local/bin/yt-dlp
 COPY --from=native /app/node_modules ./node_modules
 COPY dist ./dist
