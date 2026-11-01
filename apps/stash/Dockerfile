@@ -3,18 +3,10 @@ FROM node:26-trixie-slim AS native
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 ADD --chmod=755 https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux /usr/local/bin/yt-dlp
 
-WORKDIR /app
-
-# The bundle leaves out ONNX Runtime and sharp. Whisper needs only the target CPU binaries, not CUDA or other platforms.
-RUN ONNXRUNTIME_NODE_INSTALL=skip npm install --no-save onnxruntime-node sharp && \
-    npm cache clean --force && \
-    rm -rf node_modules/onnxruntime-node/bin/napi-v6/darwin node_modules/onnxruntime-node/bin/napi-v6/win32 && \
-    find node_modules/onnxruntime-node/bin/napi-v6/linux -mindepth 1 -maxdepth 1 ! -name "$(node -p 'process.arch')" -exec rm -rf {} +
-
 # Keep native dependencies but leave distroless's glibc and its matching loader together.
 RUN mkdir /runtime-libs && \
     dpkg-query -L libc6 | sed 's@^/lib/@/usr/lib/@' > /tmp/libc-files && \
-    { ldd /usr/bin/ffmpeg /usr/bin/ffprobe /usr/local/bin/yt-dlp; find node_modules -type f \( -name '*.node' -o -name '*.so*' \) -exec ldd {} \;; } | \
+    ldd /usr/bin/ffmpeg /usr/bin/ffprobe /usr/local/bin/yt-dlp | \
     awk '/=> \/(lib|usr\/lib)/ {print $3} /^\/(lib|usr\/lib)/ {print $1}' | \
     sed 's@^/lib/@/usr/lib/@' | grep -Fvx -f /tmp/libc-files | sort -u | xargs -r -I '{}' cp --parents --dereference '{}' /runtime-libs
 
@@ -32,7 +24,6 @@ COPY --from=native /runtime-libs/ /
 COPY --from=native /usr/bin/ffmpeg /usr/bin/ffmpeg
 COPY --from=native /usr/bin/ffprobe /usr/bin/ffprobe
 COPY --from=native /usr/local/bin/yt-dlp /usr/local/bin/yt-dlp
-COPY --from=native /app/node_modules ./node_modules
 COPY dist ./dist
 
 USER 1000:1000

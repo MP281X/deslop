@@ -54,11 +54,12 @@ it('reads the video of a TikTok, but not of its photo posts', () => {
 				'https://www.tiktok.com/@cook/photo/123',
 				'https://vm.tiktok.com/ZN8Bp9ayx/',
 				'https://x.com/jack/status/20',
+				'https://www.instagram.com/reel/not-supported/',
 				'https://example.com/read'
 			],
 			hasVideo
 		),
-		[true, false, true, true, false]
+		[true, false, true, true, false, false]
 	)
 })
 

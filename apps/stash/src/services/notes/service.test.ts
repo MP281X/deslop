@@ -307,6 +307,52 @@ it.layer(NodeServices.layer)('Notes', test => {
 	)
 
 	test.effect(
+		'looks up X captions on the post and publishes them before its direct clip finishes sampling',
+		Effect.fnUntraced(function* () {
+			const sampled = yield* Latch.make()
+			const lookups = yield* Ref.make<string[]>([])
+			const calls = yield* Ref.make(0)
+			const notes = yield* open({
+				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				media: Media.of({
+					...noVideo,
+					frames: link =>
+						Effect.andThen(
+							Ref.update(lookups, links => Array.append(links, link)),
+							Effect.as(sampled.await, [])
+						),
+					read: (link, fallback) =>
+						Effect.as(
+							Ref.update(lookups, links => Array.append(links, `${link} | ${fallback ?? ''}`)),
+							{info: 'Video metadata', transcript: Effect.succeedSome('[00:01] Read the captions from the post.\n')}
+						)
+				}),
+				organizer: counting(calls),
+				sources: Sources.of({
+					...recipe,
+					extract: link =>
+						Effect.map(recipe.extract(link), page => ({...page, video: 'https://video.twimg.com/clip.mp4'}))
+				})
+			})
+			yield* notes.capture({id: IDS[0], text: 'https://x.com/cook/status/1'})
+			assert.containsSubset(
+				(yield* settled(notes, state => Array.some(state, note => note.transcript !== undefined)))[0],
+				{
+					content: 'Lentils with cumin and tomato.',
+					status: 'organizing',
+					transcript: '[00:01] Read the captions from the post.\n'
+				}
+			)
+			yield* sampled.open
+			yield* settled(notes, isReady)
+			assert.deepStrictEqual(yield* Ref.get(lookups), [
+				'https://x.com/cook/status/1 | https://video.twimg.com/clip.mp4',
+				'https://video.twimg.com/clip.mp4'
+			])
+		})
+	)
+
+	test.effect(
 		'reads a video through yt-dlp when its page refuses the reader',
 		Effect.fnUntraced(function* () {
 			const notes = yield* open({

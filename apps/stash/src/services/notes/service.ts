@@ -268,7 +268,7 @@ export class Notes extends Context.Service<
 					input: {slides: Picture[]; url: string; useInfo: boolean; video: string}
 				) {
 					const read = yield* pipe(
-						media.read(input.video),
+						media.read(input.url, input.video),
 						Effect.asSome,
 						optional('The video could not be read', Option.none)
 					)
