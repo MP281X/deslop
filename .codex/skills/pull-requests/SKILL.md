@@ -20,7 +20,7 @@ description: 'Load before the first commit of a task, before changing code to fi
    - **Before/after side by side**: a `| Before | After |` table of images with a caption row. Only real captures of the app, never a screenshot of a rendered page.
    - **Formats over sentences**: diff or code block for the shape, table for comparisons and numbers, Mermaid for a flow, `<details>` for long output, at most one `> [!IMPORTANT]` alert for the thing a reviewer must not miss (the marker alone on its line, each following line prefixed `> `), an unchecked task-list item under its Evidence claim for what stays unverified.
    - **Bullets are fragments**, only what a reviewer must know: `**No double lint**: vp check --fix fails on leftovers`.
-   - **Cut** what the diff or the PR page already shows: history, inventory, walkthrough, test lists, Verify, check and review results.
+   - **Cut** what the diff or the PR page already shows: history, inventory, walkthrough, test lists, Verify, check and review results. Captions say what changed, not how it was captured: no viewport, pixel ratio or capture limits.
 3. **Watch** the final head's pipeline; a failure, a review comment or a conflict gets a fix, Verify and one push.
 4. **Hand back** once the required jobs pass and no P1 or P2 finding is open.
 5. **Ready** only when the user asks; mark a ready PR draft again before editing its layer.
