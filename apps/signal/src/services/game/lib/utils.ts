@@ -53,9 +53,9 @@ export const ROUND = 600
 
 // The teams, one a start basin, each run by its own model.
 export const TEAMS = [
-	{color: '#5b8def', model: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek'},
-	{color: '#e8a33d', model: 'xiaomi/mimo-v2.6-flash', name: 'MiMo'},
-	{color: '#4fb286', model: 'z-ai/glm-5.3-flash', name: 'GLM'}
+	{color: '#4d6bfe', model: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek'},
+	{color: '#ff6900', model: 'xiaomi/mimo-v2.6-flash', name: 'MiMo'},
+	{color: '#d9dce3', model: 'z-ai/glm-5.3-flash', name: 'GLM'}
 ]
 
 // The model each unit class is drawn as, by mark.

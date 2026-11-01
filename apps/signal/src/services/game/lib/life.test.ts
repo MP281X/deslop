@@ -124,4 +124,6 @@ it('does not invent footprints for pollution or flying bodies and keeps provider
 	const restored = makeLife(life.snapshot(), life.drain())
 	assert.deepStrictEqual(restored.drain(), life.drain())
 	assert.strictEqual(Option.getOrThrow(Array.last(restored.drain())).tokens?.cost, 0.1)
+	assert.strictEqual(Option.getOrThrow(Array.last(restored.drain())).team, 0)
+	assert.isTrue(Array.every(life.person(2, 141).recent, entry => entry.team === undefined))
 })

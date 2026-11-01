@@ -23,14 +23,16 @@ import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js'
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js'
 
 import type {Inspected, Stale} from './-chunks.worker.ts'
+import {animationTime} from './-clock.ts'
+import {createDrawLoop, pixelRatio} from './-draw.ts'
 import type {Built} from './-mesh.ts'
 
 import type {Frame} from '#services/game/schema.ts'
 import {CHUNK, LEVEL, ORES, chunkOf, highest, lowest} from '#services/world/lib/utils.ts'
 
-// Half the view's height in tiles: nearest, farthest the player zooms, the overview's and at the start.
-const ZOOM = {farthest: 40, nearest: 3.5, overview: 90, start: 12}
-// The zone map's side in chunks, centred on the world's origin.
+// Half the view's height in tiles: nearest, farthest and at the start.
+const ZOOM = {farthest: 500, nearest: 3.5, start: 12}
+// The zone texture's side in chunks; its window follows the camera.
 const ZONES = 128
 // A chunk's revision as sent to a builder: the world's epoch times this, plus its own.
 const EPOCH = 1_000_000
@@ -65,7 +67,7 @@ uniform sampler2D uEnv; uniform vec3 uWindow;
 float wearAt(vec2 xz){ vec2 uv = (xz - uWindow.xy) / uWindow.z; return texture2D(uEnv, uv).g * step(0., uv.x) * step(uv.x, 1.) * step(0., uv.y) * step(uv.y, 1.); }`
 // The atmosphere, drawn over the finished frame from its depth. A ray from the camera to each pixel's surface marches through two volumes: fog over the unexplored, thin at the explored edge and thickening into a cloud bank the farther it lies from it, and smog where the colony has worked. Explored ground out of sight is greyed; Home's and the units' sight is clear.
 const ATMOSPHERE = `
-uniform sampler2D tDiffuse, tDepth, uKnown, uEnv, uGround, uZones; uniform mat4 uInv; uniform vec3 uDir, uWindow; uniform float uT, uFogOn;
+uniform sampler2D tDiffuse, tDepth, uKnown, uEnv, uGround; uniform mat4 uInv; uniform vec3 uDir, uWindow; uniform float uT, uFogOn;
 uniform vec4 uSights[${SIGHTS}]; uniform int uSightCount, uFogStyle, uSmogStyle;
 varying vec2 vUv;
 float n3(vec3 p){ float i = floor(p.y), f = fract(p.y); f = f * f * (3. - 2. * f); return mix(vn(p.xz + i * vec2(17.13, 31.71)), vn(p.xz + (i + 1.) * vec2(17.13, 31.71)), f); }
@@ -96,11 +98,6 @@ void main(){
 	if (uFogOn > 0.) seen = max(seenAt(surface.xz), seenAt(plane.xz));
 	// Explored ground looks the same in sight or out of it: only the unexplored lies under fog.
 	vec3 base = c.rgb;
-	// With the fog off, each chunk a team has stood in takes a light wash of its colour, a little stronger at the chunk's edge.
-	vec2 zc = surface.xz / ${CHUNK.toFixed(1)}, zf = fract(zc), zuv = (floor(zc) + ${(ZONES / 2).toFixed(1)} + .5) / ${ZONES.toFixed(1)};
-	vec4 zone = texture2D(uZones, zuv) * step(0., zuv.x) * step(zuv.x, 1.) * step(0., zuv.y) * step(zuv.y, 1.);
-	float zedge = 1. - smoothstep(.0, .025, min(min(zf.x, zf.y), min(1. - zf.x, 1. - zf.y)));
-	base = mix(base, zone.rgb, zone.a * (.14 + .3 * zedge) * (1. - uFogOn) * (1. - sky));
 	if (uSmogStyle == 0 && (uFogOn == 0. || seen >= 1.)) { gl_FragColor = vec4(base, c.a); return; }
 	float smogHere = smogAt(surface.xz);
 	if (uSmogStyle == 2) base = mix(base, vec3(dot(base, vec3(.3, .55, .15))) * vec3(1., .82, .52) * .85, smoothstep(.08, .55, smogHere) * .85);
@@ -141,7 +138,40 @@ void main(){
 	gl_FragColor = vec4(base * T + acc, c.a);
 }`
 
-// The camera looks down 30° and turns only in the quarter turns the player asks for.
+// Tint actual terrain fragments, never a depth-reconstructed guess that spills onto low buildings or clips at steps.
+const COVERAGE = `
+uniform sampler2D uZones; uniform vec3 uTeamColors[32]; uniform int uTeamCount; uniform vec2 uZoneOrigin; uniform float uCoverageOn;
+float member(vec2 uv, int team){
+	if (uv.x < 0. || uv.y < 0. || uv.x >= 1. || uv.y >= 1.) return 0.;
+	vec4 bytes = floor(texture2D(uZones, uv) * 255. + .5);
+	int byteIndex = team / 8;
+	float value = bytes[byteIndex];
+	return mod(floor(value / pow(2., float(team - byteIndex * 8))), 2.);
+}
+vec3 coverage(vec3 base, vec3 surface){
+	if(uCoverageOn<.5) return base;
+	vec2 xz = surface.xz;
+	vec2 cell = xz / ${CHUNK.toFixed(1)}, f = fract(cell), uv = (floor(cell) - uZoneOrigin + .5) / ${ZONES.toFixed(1)};
+	float width = max(.025, max(fwidth(cell.x), fwidth(cell.y)) * 1.5);
+	float count = 0.;
+	for (int t=0;t<32;t++){if(t>=uTeamCount) break;count += member(uv,t);}
+	if(count<1.) return base;
+	float stripe = mod(floor((xz.x + xz.y) * 1.5), count), index = 0.;
+	for(int t=0;t<32;t++){
+		if(t>=uTeamCount) break;
+		if(member(uv,t)>0.){
+			if(index==stripe){
+				vec2 d=vec2(1. / ${ZONES.toFixed(1)},0.);
+				float edge=max(max((1.-member(uv-d.xy,t))*(1.-smoothstep(0.,width,f.x)),(1.-member(uv+d.xy,t))*(1.-smoothstep(0.,width,1.-f.x))),max((1.-member(uv-d.yx,t))*(1.-smoothstep(0.,width,f.y)),(1.-member(uv+d.yx,t))*(1.-smoothstep(0.,width,1.-f.y))));
+				return mix(base,uTeamColors[t],.38+.5*edge);
+			}
+			index+=1.;
+		}
+	}
+	return base;
+}`
+
+// The spectator camera keeps its 30° elevation and fixed isometric orientation.
 const ELEVATION = (30 * Math.PI) / 180
 const SUN = new THREE.Vector3(-0.35, 0.8, 0.45).normalize()
 const UP = new THREE.Vector3(0, 1, 0)
@@ -152,7 +182,7 @@ type Loaded = {built: Option.Option<Built>; group: THREE.Group; revision: number
 type Clock = {value: number}
 type Uniforms = Record<string, THREE.IUniform>
 // Where the camera goes: a key per subject, so a new subject glides there and the same one stays locked on; a zoom when the subject sets one.
-export type Aim = {key: string; x: number; y: number; z: number; zoom: Option.Option<number>}
+export type Aim = {key: string; x: number; y: number; z: number}
 
 function waterMaterial(time: Clock, colours: {deep: string; foam: string; shallow: string}) {
 	return new THREE.ShaderMaterial({
@@ -299,11 +329,19 @@ function wornMaterial<M extends THREE.Material>(material: M, env: Uniforms, part
 			shader.fragmentShader,
 			String.replace(
 				'#include <common>',
-				`#include <common>\nvarying vec3 vWearW;\nvarying float vWearUp;${NOISE}${WEAR}`
+				`#include <common>\nvarying vec3 vWearW;\nvarying float vWearUp;${NOISE}${WEAR}${Boolean.match(part === 'ground', {onFalse: () => '', onTrue: () => COVERAGE})}`
 			),
-			String.replace(wear.at, wear.glsl)
+			String.replace(
+				wear.at,
+				wear.glsl +
+					Boolean.match(part === 'ground', {
+						onFalse: () => '',
+						onTrue: () => '\ndiffuseColor.rgb = coverage(diffuseColor.rgb, vWearW);'
+					})
+			)
 		)
 	}
+	material.customProgramCacheKey = () => part
 	return material
 }
 /* oxlint-enable no-param-reassign */
@@ -398,7 +436,8 @@ function meshOf(
 ) {
 	const geometry = new THREE.BufferGeometry()
 	geometry.setAttribute('position', new THREE.BufferAttribute(data.positions, 3))
-	geometry.setAttribute('normal', new THREE.BufferAttribute(data.normals, 3))
+	if (data.normals.byteLength === 0) geometry.computeVertexNormals()
+	else geometry.setAttribute('normal', new THREE.BufferAttribute(data.normals, 3))
 	geometry.setAttribute('color', new THREE.BufferAttribute(data.colors, 3))
 	geometry.computeBoundingSphere()
 	const mesh = new THREE.Mesh(geometry, material)
@@ -535,9 +574,7 @@ function reach(
 export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 	const renderer = new THREE.WebGLRenderer({antialias: false, canvas, powerPreference: 'high-performance'})
 	const coarse = window.matchMedia('(pointer: coarse)').matches
-	renderer.setPixelRatio(
-		Number.min(window.devicePixelRatio, Boolean.match(coarse, {onFalse: () => 2, onTrue: () => 1.5}))
-	)
+	renderer.setPixelRatio(pixelRatio(window.devicePixelRatio, coarse, import.meta.env.DEV, location.search))
 	renderer.outputColorSpace = THREE.SRGBColorSpace
 	renderer.toneMapping = THREE.NeutralToneMapping
 	renderer.shadowMap.enabled = true
@@ -570,11 +607,6 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		uSights: {value: Array.map(Array.range(1, SIGHTS), () => new THREE.Vector4())}
 	}
 	const explored = MutableHashMap.empty<number, Uint8Array>()
-	const terrainMaterial = wornMaterial(
-		new THREE.MeshStandardMaterial({metalness: 0, roughness: 0.92, vertexColors: true}),
-		env,
-		'ground'
-	)
 	const propMaterial = new THREE.MeshStandardMaterial({metalness: 0, roughness: 0.82, vertexColors: true})
 	const glowMaterial = new THREE.MeshBasicMaterial({vertexColors: true})
 	const liquids = liquidMaterials(time)
@@ -609,12 +641,24 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 	outline.edgeThickness = 1
 	outline.edgeGlow = 0
 	composer.addPass(outline)
-	// The zones teams have stood in, a texel a chunk: their colours mixed, and how much shows.
+	// Four bytes retain the simulation's full team bitmask, without averaging team colours.
 	const zoneData = new Uint8Array(ZONES * ZONES * 4)
 	const zoneTexture = new THREE.DataTexture(zoneData, ZONES, ZONES, THREE.RGBAFormat, THREE.UnsignedByteType)
-	zoneTexture.colorSpace = THREE.SRGBColorSpace
 	zoneTexture.needsUpdate = true
-	const fogOn = {value: 1}
+	const coverage = {
+		uCoverageOn: {value: 1},
+		uTeamColors: {value: Array.makeBy(32, () => new THREE.Color())},
+		uTeamCount: {value: 0},
+		uZoneOrigin: {value: new THREE.Vector2(-ZONES / 2, -ZONES / 2)},
+		uZones: {value: zoneTexture}
+	}
+	const terrainMaterial = wornMaterial(
+		new THREE.MeshStandardMaterial({metalness: 0, roughness: 0.92, vertexColors: true}),
+		{...env, ...coverage},
+		'ground'
+	)
+	const zoneState = {zones: Array.empty<NonNullable<Frame['zones']>[number]>()}
+	const fogOn = {value: 0}
 	const inverse = new THREE.Matrix4()
 	const facing = new THREE.Vector3(0, -1, 0)
 	composer.addPass(
@@ -633,8 +677,7 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 					uInv: {value: inverse},
 					uKnown: {value: knownTexture},
 					uSmogStyle: atmosphere.smog,
-					uT: time,
-					uZones: {value: zoneTexture}
+					uT: time
 				},
 				vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`
 			})
@@ -654,25 +697,28 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 	const chunks = MutableHashMap.empty<number, Loaded>()
 	const view = {
 		azimuth: Math.PI / 4,
+		closed: false,
+		detail: true,
 		// How many times the world started over; a chunk's revision carries the one it was asked in.
 		epoch: 0,
-		quarter: 0,
+		framing: {x: 0.5, y: 0.5},
 		size: {height: 1, width: 1},
 		target: new THREE.Vector3(0, 0, 0),
 		zoom: ZOOM.start
 	}
-	// The camera's subject, where its glide to it started and how far along it is, the zoom the player picked and the zoom of a framed subject.
+	// The camera's subject, its glide and the zoom the spectator picked.
 	const glide = {
-		aim: {key: '', x: 0, y: 0, z: 0, zoom: Option.none<number>()} satisfies Aim,
+		aim: {key: '', x: 0, y: 0, z: 0} satisfies Aim,
 		from: new THREE.Vector3(),
 		// How far the player dragged the view off its subject; a new subject starts centred.
 		offset: new THREE.Vector3(),
 		progress: 1,
-		zoom: {follow: ZOOM.start, framed: 1}
+		zoom: ZOOM.start
 	}
 	// The fog window's corner in tiles; it moves when the camera nears its edge.
 	const fogCorner = {x: -FOG_SIZE / 2, z: -FOG_SIZE / 2}
-	const clock = new THREE.Clock()
+	const simulation = {previous: 0, speed: 0, tick: 0}
+	const footprints = {key: ''}
 	const listeners = {all: Array.empty<(seconds: number, delta: number) => void>(), drawn: Array.empty<() => void>()}
 	const raycaster = new THREE.Raycaster()
 	const direction = new THREE.Vector3()
@@ -793,43 +839,6 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		})
 	}
 
-	// The workers are this page's own module: what one posts is a built chunk with the revision it was built from, the chunks it built with props since cleared, or what lies on a tile asked about.
-	function received(from: number, message: (Built & {revision: number}) | Inspected | Stale) {
-		if (Predicate.hasProperty(message, '_tag')) {
-			if (message._tag === 'Stale') {
-				for (const chunk of message.chunks) stale(chunk.cx, chunk.cz)
-			}
-			if (message._tag === 'Inspected' && message.ask === inspection.ask) {
-				for (const listener of inspection.listeners) listener(message)
-			}
-			return
-		}
-		const builder = builders[from]
-		if (builder !== undefined) builder.busy = Number.max(0, builder.busy - 1)
-		// A chunk asked for before the world started over is of the old world.
-		if (Math.floor(message.revision / EPOCH) !== view.epoch) return
-		const key = chunkKey(message.cx, message.cz)
-		Option.match(MutableHashMap.get(chunks, key), {
-			onNone: () => undefined,
-			onSome: loaded => {
-				disposeGroup(loaded.group)
-				MutableHashMap.set(chunks, key, {
-					built: Option.some(message),
-					group: attach(message),
-					revision: message.revision % EPOCH,
-					wanted: loaded.wanted
-				})
-				paintGround(message.cx, message.cz)
-			}
-		})
-	}
-	Array.forEach(builders, (builder, index) => {
-		builder.worker.addEventListener(
-			'message',
-			(event: MessageEvent<(Built & {revision: number}) | Inspected | Stale>) => received(index, event.data)
-		)
-	})
-
 	// Where the pointer's ray meets the ground: down the camera's ray from the highest terrace, a fifth of a tile at a time, to the first point at or under the ground.
 	function groundUnder(clientX: number, clientY: number) {
 		const box = renderer.domElement.getBoundingClientRect()
@@ -850,8 +859,7 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			}),
 			step => {
 				const point = pointAt(step)
-				const across = Number.max(1e-6, Math.hypot(ray.direction.x, ray.direction.z))
-				return {back: {x: -ray.direction.x / across, z: -ray.direction.z / across}, x: point.x, z: point.z}
+				return {x: point.x, z: point.z}
 			}
 		)
 	}
@@ -891,8 +899,8 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		const builder = Option.getOrUndefined(
 			Array.head(
 				Array.sortWith(
-					// Each builds two chunks at once at most.
-					Array.filter(builders, entry => entry.busy < 2),
+					// Keep cheap overview work queued even when a software-rendered frame is slow.
+					Array.filter(builders, entry => entry.busy < Boolean.match(view.detail, {onFalse: () => 8, onTrue: () => 2})),
 					(entry: {busy: number}) => entry.busy,
 					Order.Number
 				)
@@ -916,7 +924,7 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		})
 		builder.busy += 1
 		// oxlint-disable-next-line unicorn/require-post-message-target-origin -- a Worker's postMessage takes no target origin.
-		builder.worker.postMessage({_tag: 'Build', cx, cz, revision: view.epoch * EPOCH + wanted})
+		builder.worker.postMessage({_tag: 'Build', cx, cz, detail: view.detail, revision: view.epoch * EPOCH + wanted})
 	}
 
 	// Drops a chunk that lies two chunks or more outside the view.
@@ -936,6 +944,13 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 
 	const streamed = {key: '', wanted: Array.empty<{cx: number; cz: number}>()}
 	function stream() {
+		const detail = view.zoom < 48
+		if (detail !== view.detail) {
+			view.detail = detail
+			view.epoch += 1
+			MutableHashMap.forEach(chunks, loaded => disposeGroup(loaded.group))
+			MutableHashMap.clear(chunks)
+		}
 		const near = visibleChunks(0)
 		const keep = visibleChunks(2)
 		const key = `${view.epoch}:${near.cx0}:${near.cx1}:${near.cz0}:${near.cz1}:${keep.cx0}:${keep.cx1}:${keep.cz0}:${keep.cz1}`
@@ -964,14 +979,15 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			Math.sin(ELEVATION),
 			Math.cos(view.azimuth) * Math.cos(ELEVATION)
 		)
-		camera.position.copy(view.target).addScaledVector(direction, 200)
+		camera.position.copy(view.target).addScaledVector(direction, Number.max(200, view.zoom * 5))
+		camera.far = Number.max(600, view.zoom * 10)
 		camera.up.set(0, 1, 0)
 		camera.lookAt(view.target)
 		const aspect = view.size.width / Number.max(1, view.size.height)
-		camera.top = view.zoom
-		camera.bottom = -view.zoom
-		camera.left = -view.zoom * aspect
-		camera.right = view.zoom * aspect
+		camera.top = view.zoom * 2 * view.framing.y
+		camera.bottom = -view.zoom * 2 * (1 - view.framing.y)
+		camera.left = -view.zoom * aspect * 2 * view.framing.x
+		camera.right = view.zoom * aspect * 2 * (1 - view.framing.x)
 		camera.updateProjectionMatrix()
 		camera.updateMatrixWorld()
 		// The sun's shadow covers the view and follows it.
@@ -1036,34 +1052,109 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			glide.from.z + (glide.aim.z - glide.from.z) * ease
 		)
 		view.target.add(glide.offset)
-		const zoom = Option.match(glide.aim.zoom, {
-			onNone: () => glide.zoom.follow,
-			onSome: framed => framed * glide.zoom.framed
-		})
-		view.zoom += (zoom - view.zoom) * (1 - Math.exp(-delta * 9))
+		view.zoom += (glide.zoom - view.zoom) * (1 - Math.exp(-delta * 9))
+		if (Math.abs(glide.zoom - view.zoom) < 0.001) view.zoom = glide.zoom
 	}
 
-	function frame() {
-		const delta = Number.min(clock.getDelta(), 0.1)
-		const goal = Math.PI / 4 + (view.quarter * Math.PI) / 2
-		view.azimuth += (goal - view.azimuth) * (1 - Math.exp(-delta * 12))
-		if (Math.abs(goal - view.azimuth) < 1e-4) view.azimuth = goal
-		time.value = clock.elapsedTime
-		for (const listener of listeners.all) listener(clock.elapsedTime, delta)
+	function paintZones() {
+		zoneData.set(new Uint8Array(zoneData.length))
+		for (const zone of zoneState.zones) {
+			const x = zone.cx - coverage.uZoneOrigin.value.x
+			const z = zone.cz - coverage.uZoneOrigin.value.y
+			if (x >= 0 && z >= 0 && x < ZONES && z < ZONES) {
+				zoneData.set(
+					[zone.teams & 255, (zone.teams >>> 8) & 255, (zone.teams >>> 16) & 255, (zone.teams >>> 24) & 255],
+					(z * ZONES + x) * 4
+				)
+			}
+		}
+		zoneTexture.needsUpdate = true
+	}
+
+	function recentreZones() {
+		const x = Math.floor(view.target.x / CHUNK / 16) * 16 - ZONES / 2
+		const z = Math.floor(view.target.z / CHUNK / 16) * 16 - ZONES / 2
+		if (coverage.uZoneOrigin.value.x === x && coverage.uZoneOrigin.value.y === z) return
+		coverage.uZoneOrigin.value.set(x, z)
+		paintZones()
+	}
+
+	function frame(delta: number) {
+		time.value = animationTime(time.value, simulation.tick, simulation.speed, delta)
+		const elapsed = Number.clamp(time.value - simulation.previous, {maximum: 0.1, minimum: 0})
+		simulation.previous = time.value
+		for (const listener of listeners.all) listener(time.value, elapsed)
 		steer(delta)
 		place()
+		recentreZones()
 		recentre()
 		for (const listener of listeners.drawn) listener()
 		stream()
 		inverse.multiplyMatrices(camera.matrixWorld, camera.projectionMatrixInverse)
 		camera.getWorldDirection(facing)
 		composer.render()
+		return (
+			elapsed > 0 ||
+			animationTime(time.value, simulation.tick, simulation.speed, 0.1) !== time.value ||
+			glide.progress < 1 ||
+			view.zoom !== glide.zoom
+		)
 	}
 
-	renderer.setAnimationLoop(frame)
+	const drawing = createDrawLoop(frame, {
+		cancel: cancelAnimationFrame.bind(window),
+		request: requestAnimationFrame.bind(window)
+	})
+	// A reply wakes drawing even when obsolete: it frees a builder slot needed by the current view.
+	function received(from: number, message: (Built & {revision: number}) | Inspected | Stale) {
+		if (view.closed) return
+		if (Predicate.hasProperty(message, '_tag')) {
+			if (message._tag === 'Stale') {
+				for (const chunk of message.chunks) stale(chunk.cx, chunk.cz)
+				drawing.invalidate()
+			}
+			if (message._tag === 'Inspected' && message.ask === inspection.ask) {
+				for (const listener of inspection.listeners) listener(message)
+			}
+			return
+		}
+		const builder = builders[from]
+		if (builder !== undefined) builder.busy = Number.max(0, builder.busy - 1)
+		drawing.invalidate()
+		if (Math.floor(message.revision / EPOCH) !== view.epoch) return
+		const key = chunkKey(message.cx, message.cz)
+		Option.match(MutableHashMap.get(chunks, key), {
+			onNone: () => undefined,
+			onSome: loaded => {
+				disposeGroup(loaded.group)
+				MutableHashMap.set(chunks, key, {
+					built: Option.some(message),
+					group: attach(message),
+					revision: message.revision % EPOCH,
+					wanted: loaded.wanted
+				})
+				paintGround(message.cx, message.cz)
+			}
+		})
+	}
+	Array.forEach(builders, (builder, index) => {
+		builder.worker.addEventListener(
+			'message',
+			(event: MessageEvent<(Built & {revision: number}) | Inspected | Stale>) => received(index, event.data)
+		)
+	})
+	const resize = new ResizeObserver(drawing.invalidate)
+	resize.observe(canvas)
+	function visible() {
+		if (document.visibilityState === 'visible') drawing.invalidate()
+	}
+	document.addEventListener('visibilitychange', visible)
+	canvas.addEventListener('webglcontextrestored', drawing.invalidate)
+	drawing.invalidate()
 
 	// Points the camera at a subject: a new key glides there from where the camera is, or cuts when it is far; the same key moves with it.
 	function aim(next: Aim) {
+		if (next.key === glide.aim.key && next.x === glide.aim.x && next.y === glide.aim.y && next.z === glide.aim.z) return
 		if (next.key !== glide.aim.key) {
 			glide.from.copy(view.target)
 			glide.offset.set(0, 0, 0)
@@ -1071,9 +1162,9 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			if (glide.aim.key === '' || Math.hypot(next.x - view.target.x, next.z - view.target.z) > GLIDE.cut) {
 				glide.progress = 1
 			}
-			glide.zoom.framed = 1
 		}
 		glide.aim = next
+		drawing.invalidate()
 	}
 
 	return {
@@ -1090,6 +1181,7 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			glide.from.copy(view.target)
 			glide.progress = 0
 			glide.offset.set(0, 0, 0)
+			drawing.invalidate()
 		},
 		// Marks the chunks a tile change shows in for a rebuild, and passes the change to the builders.
 		changes(changes: Frame['changes']) {
@@ -1101,23 +1193,37 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 					stale(at.cx, at.cz)
 				}
 			}
+			drawing.invalidate()
 		},
 		// Props the colonies cleared: the builders drop them and name the chunks to build again.
 		cleared(ids: Frame['cleared']) {
-			if (Array.isReadonlyArrayNonEmpty(ids)) tell({_tag: 'Cleared', ids})
+			if (Array.isReadonlyArrayNonEmpty(ids)) {
+				tell({_tag: 'Cleared', ids})
+				drawing.invalidate()
+			}
+		},
+		clock(tick: number, speed: number) {
+			if (simulation.tick === tick && simulation.speed === speed) return
+			simulation.tick = tick
+			simulation.speed = speed
+			drawing.invalidate()
 		},
 		daylight(level: number) {
 			sun.intensity = 0.15 + 2.35 * level
 			sky.intensity = 0.25 + 1.1 * level
 			atmosphere.fog.value = Boolean.match(level < 0.4, {onFalse: () => 0, onTrue: () => 1})
+			drawing.invalidate()
 		},
 		detach() {
-			glide.zoom.follow = view.zoom
+			glide.zoom = view.zoom
 			return {x: view.target.x, z: view.target.z}
 		},
 		dispose() {
-			// oxlint-disable-next-line unicorn/no-null -- three's setAnimationLoop stops only on null.
-			renderer.setAnimationLoop(null)
+			view.closed = true
+			drawing.dispose()
+			resize.disconnect()
+			document.removeEventListener('visibilitychange', visible)
+			canvas.removeEventListener('webglcontextrestored', drawing.invalidate)
 			for (const builder of builders) builder.worker.terminate()
 			MutableHashMap.forEach(chunks, loaded => disposeGroup(loaded.group))
 			composer.dispose()
@@ -1132,37 +1238,33 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			if (Array.isReadonlyArrayNonEmpty(seen)) {
 				reach(exploredData, knownData, fogDistance, fogIndices)
 				knownTexture.needsUpdate = true
-			}
-		},
-		// The place and half-height that frame a set of points on screen, with a margin, as the camera faces now: always farther out than the player zooms, at most the overview's.
-		fit(points: {x: number; z: number}[]) {
-			const right = {x: Math.cos(view.azimuth), z: -Math.sin(view.azimuth)}
-			const ahead = {x: -Math.sin(view.azimuth), z: -Math.cos(view.azimuth)}
-			const across = Array.map(points, point => point.x * right.x + point.z * right.z)
-			const along = Array.map(points, point => point.x * ahead.x + point.z * ahead.z)
-			const middle = {across: (lowest(across) + highest(across)) / 2, along: (lowest(along) + highest(along)) / 2}
-			return {
-				x: middle.across * right.x + middle.along * ahead.x,
-				z: middle.across * right.z + middle.along * ahead.z,
-				zoom: Number.clamp(
-					Number.max(
-						((highest(along) - lowest(along)) / 2) * Math.sin(ELEVATION) + 4,
-						((highest(across) - lowest(across)) / 2 + 5) / (view.size.width / Number.max(1, view.size.height))
-					),
-					{maximum: ZOOM.overview, minimum: ZOOM.farthest}
-				)
+				drawing.invalidate()
 			}
 		},
 		// The followed unit's model, edged in its team's colour.
 		focus(object: Option.Option<THREE.Object3D>, color: string) {
+			if (
+				outline.selectedObjects[0] === Option.getOrUndefined(object) &&
+				outline.visibleEdgeColor.equals(new THREE.Color(color))
+			) {
+				return
+			}
 			outline.visibleEdgeColor.set(color)
 			outline.selectedObjects = Option.toArray(object)
 			outline.enabled = Option.isSome(object)
+			drawing.invalidate()
 		},
-		// The fog over the unexplored, or none and the teams' zones instead.
-		fog(on: boolean) {
-			fogOn.value = 0
-			if (on) fogOn.value = 1
+		footprints(sites: NonNullable<Frame['buildings']>) {
+			const key = JSON.stringify(Array.map(sites, site => [site.x, site.z, site.w, site.d]))
+			if (footprints.key === key) return
+			footprints.key = key
+			tell({_tag: 'Footprints', sites: Array.map(sites, site => ({d: site.d, w: site.w, x: site.x, z: site.z}))})
+		},
+		// Frame a followed entity in the unobstructed map, not behind its inspector.
+		frameAt(x: number, y: number) {
+			if (view.framing.x === x && view.framing.y === y) return
+			view.framing = {x, y}
+			drawing.invalidate()
 		},
 		ground(x: number, z: number) {
 			return Option.getOrElse(
@@ -1173,7 +1275,10 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		heightAt,
 		// Asks what lies on the tile under the pointer; the answer reaches `onInspected`, unless a newer ask overtakes it.
 		inspect(clientX: number, clientY: number) {
-			const hit = groundUnder(clientX, clientY)
+			const hit = Boolean.match(view.detail, {
+				onFalse: () => Option.none(),
+				onTrue: () => groundUnder(clientX, clientY)
+			})
 			inspection.ask += 1
 			Option.match(hit, {
 				onNone: () => undefined,
@@ -1184,6 +1289,7 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			})
 			return hit
 		},
+		invalidate: drawing.invalidate,
 		// The ground the view's middle looks at.
 		looking() {
 			return {x: view.target.x, z: view.target.z}
@@ -1212,6 +1318,7 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			const forward = new THREE.Vector3(-direction.x, 0, -direction.z).normalize()
 			glide.offset.addScaledVector(right, -dx * perPixel)
 			glide.offset.addScaledVector(forward, (dy * perPixel) / Math.sin(ELEVATION))
+			drawing.invalidate()
 		},
 		// Whether the view is dragged off its subject.
 		panned() {
@@ -1223,6 +1330,8 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		},
 		// The world as generated again, for a stream that starts over: no chunk, explored tile, change or cleared prop kept.
 		reset() {
+			footprints.key = ''
+			zoneState.zones = []
 			atmosphere.samples = []
 			paintEnvironment()
 			view.epoch += 1
@@ -1237,8 +1346,15 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			groundTexture.needsUpdate = true
 			zoneData.set(new Uint8Array(zoneData.length))
 			zoneTexture.needsUpdate = true
+			drawing.invalidate()
 		},
 		scene,
+		showChunks(shown: boolean) {
+			const value = Boolean.match(shown, {onFalse: () => 0, onTrue: () => 1})
+			if (coverage.uCoverageOn.value === value) return
+			coverage.uCoverageOn.value = value
+			drawing.invalidate()
+		},
 		// The discs that are in sight now, in tiles: Home's and each unit's; past the shader's limit, the ones nearest the view.
 		sight(discs: {radius: number; x: number; z: number}[]) {
 			const shown = Array.take(
@@ -1264,45 +1380,20 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		traces(samples: NonNullable<Frame['traces']>) {
 			atmosphere.samples = [...samples]
 			paintEnvironment()
-		},
-		turn(quarters: number) {
-			view.quarter += quarters
+			drawing.invalidate()
 		},
 		// Each chunk a team stood in, in the colours of the teams that did.
 		zones(zones: NonNullable<Frame['zones']>, colors: string[]) {
-			zoneData.set(new Uint8Array(zoneData.length))
-			const color = new THREE.Color()
-			for (const zone of zones) {
-				const x = zone.cx + ZONES / 2
-				const z = zone.cz + ZONES / 2
-				const mixed = Array.filter(colors, (_, team) => ((zone.teams >> team) & 1) === 1)
-				if (x >= 0 && z >= 0 && x < ZONES && z < ZONES && Array.isArrayNonEmpty(mixed)) {
-					const sum = Array.reduce(mixed, {b: 0, g: 0, r: 0}, (total, entry) => {
-						color.set(entry)
-						return {b: total.b + color.b, g: total.g + color.g, r: total.r + color.r}
-					})
-					color.setRGB(sum.r / mixed.length, sum.g / mixed.length, sum.b / mixed.length)
-					zoneData.set(
-						[Number.round(color.r * 255, 0), Number.round(color.g * 255, 0), Number.round(color.b * 255, 0), 255],
-						(z * ZONES + x) * 4
-					)
-				}
-			}
-			zoneTexture.needsUpdate = true
+			zoneState.zones = [...zones]
+			coverage.uTeamCount.value = Number.min(colors.length, 32)
+			Array.forEach(colors, (color, index) => coverage.uTeamColors.value[index]?.set(color))
+			paintZones()
+			drawing.invalidate()
 		},
-		// Zooms the view by a factor: the zoom the player keeps, or a framed subject's for as long as it is framed.
+		// Zooms the real world without changing its subject.
 		zoomBy(factor: number) {
-			Option.match(glide.aim.zoom, {
-				onNone: () => {
-					glide.zoom.follow = Number.clamp(glide.zoom.follow * factor, {maximum: ZOOM.farthest, minimum: ZOOM.nearest})
-				},
-				onSome: framed => {
-					glide.zoom.framed = Number.clamp(glide.zoom.framed * factor, {
-						maximum: ZOOM.overview / framed,
-						minimum: ZOOM.nearest / framed
-					})
-				}
-			})
+			glide.zoom = Number.clamp(glide.zoom * factor, {maximum: ZOOM.farthest, minimum: ZOOM.nearest})
+			drawing.invalidate()
 		}
 	}
 }

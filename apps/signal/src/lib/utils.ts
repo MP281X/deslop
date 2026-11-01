@@ -5,12 +5,83 @@ import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
+import {readFeed} from '#services/game/lib/page.ts'
+import {TEAMS} from '#services/game/lib/utils.ts'
 import type {Frame} from '#services/game/schema.ts'
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/signal/lib/utils/RpcClient', {
 	group: RpcContracts,
 	protocol: WebRuntime.layer('@deslop/signal')
 }) {}
+
+function requestFeed(at: number) {
+	return Effect.flatMap(RpcClient, client =>
+		readFeed(
+			{
+				history: (before, tick) =>
+					client('signal.history', {
+						actor: 'all',
+						...Option.match(before, {onNone: () => ({}), onSome: cursor => ({before: cursor})}),
+						...Option.match(
+							Option.liftPredicate(tick, value => value >= 0),
+							{onNone: () => ({}), onSome: value => ({at: value})}
+						)
+					}),
+				thread: (team, before) =>
+					client('signal.thread', {
+						team,
+						...Option.match(before, {onNone: () => ({}), onSome: cursor => ({before: cursor})})
+					})
+			},
+			Array.map(TEAMS, (_team, team) => team),
+			at
+		)
+	)
+}
+
+export const feedAtom = Atom.family((at: number) => RpcClient.runtime.atom(requestFeed(at)))
+// The authoritative run state is independent of the spectator's live or historical view.
+export const runStateAtom = Atom.keepAlive(
+	RpcClient.runtime.atom(
+		pipe(
+			RpcClient,
+			Effect.map(client => client('signal.status', undefined)),
+			Stream.unwrap,
+			Stream.retry($ =>
+				pipe(
+					$(Schedule.spaced('1 second')),
+					Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
+				)
+			)
+		)
+	)
+)
+
+export const usageAtom = Atom.setIdleTTL(
+	RpcClient.runtime.atom(
+		pipe(
+			Stream.tick('30 seconds'),
+			Stream.mapEffect(() => Effect.flatMap(RpcClient, client => client('signal.usage', undefined)))
+		)
+	),
+	0
+)
+
+export const configurationAtom = Atom.make(get =>
+	Option.match(AsyncResult.value(get(runStateAtom)), {
+		onNone: () => [],
+		onSome: state => [
+			...Boolean.match(state.coreConfigured, {
+				onFalse: () => ['Model key missing · Agent decisions unavailable'],
+				onTrue: () => []
+			}),
+			...Boolean.match(state.localDecisions, {
+				onFalse: () => ['Local decisions off · Individuals cannot request model decisions'],
+				onTrue: () => []
+			})
+		]
+	})
+)
 
 // What the client knows: the latest frame, every chunk explored and prop cleared so far, the buildings, teams and zones as last sent, and the world's seed from the stream's first frame. `count` starts over with each stream, so its first frame tells the world view to start over too.
 export type View = {
@@ -40,6 +111,15 @@ export const EMPTY: View = {
 	traces: {},
 	world: Option.none(),
 	zones: []
+}
+
+function presentedView<E>(current: AsyncResult.AsyncResult<View, E>, previous?: AsyncResult.AsyncResult<View, E>) {
+	if (previous === undefined || !Option.exists(AsyncResult.value(previous), view => view.count > 0)) return current
+	if (AsyncResult.isInitial(current) || (AsyncResult.isSuccess(current) && current.value.count === 0)) {
+		return AsyncResult.waiting(previous)
+	}
+	if (AsyncResult.isFailure(current)) return AsyncResult.replacePrevious(current, Option.some(previous))
+	return current
 }
 
 // A frame's newly explored chunks over the ones known; most frames bring none.
@@ -112,11 +192,17 @@ export const viewAtom = Atom.keepAlive(
 	)
 )
 
+export const loadingAtom = Atom.make(get => {
+	const result = get(viewAtom)
+	return AsyncResult.isInitial(result) || (AsyncResult.isSuccess(result) && result.value.count === 0)
+})
+
 // Text and controls refresh twice a second; the renderer still consumes every frame.
 export const hudAtom = Atom.keepAlive(
 	Atom.make(get => {
-		const current = get(viewAtom)
-		const previous = Option.getOrUndefined(get.self<typeof current>())
+		const incoming = get(viewAtom)
+		const previous = Option.getOrUndefined(get.self<typeof incoming>())
+		const current = presentedView(incoming, previous)
 		if (
 			previous !== undefined &&
 			AsyncResult.isSuccess(previous) &&
@@ -134,9 +220,8 @@ export const hudAtom = Atom.keepAlive(
 )
 
 export const historyAtom = Atom.family((key: string) => {
-	const [actor = 'all', encodedBefore = '0', encodedAt = '-1'] = String.split(':')(key)
+	const [actor = 'all', encodedBefore = '0'] = String.split(':')(key)
 	const before = Option.getOrElse(Number.parse(encodedBefore), () => 0)
-	const at = Option.getOrElse(Number.parse(encodedAt), () => -1)
 	const request = Effect.flatMap(RpcClient, client =>
 		client('signal.history', {
 			actor: Boolean.match(actor === 'all', {
@@ -144,16 +229,12 @@ export const historyAtom = Atom.family((key: string) => {
 				onTrue: () => 'all' as const
 			}),
 			...Option.match(
-				Option.filter(Option.some(at), value => value >= 0),
-				{onNone: () => ({}), onSome: tick => ({at: tick})}
-			),
-			...Option.match(
 				Option.filter(Option.some(before), value => value > 0),
 				{onNone: () => ({}), onSome: cursor => ({before: cursor})}
 			)
 		})
 	)
-	if (before > 0 || at >= 0) return RpcClient.runtime.atom(request)
+	if (before > 0) return RpcClient.runtime.atom(request)
 	return Atom.setIdleTTL(
 		RpcClient.runtime.atom(
 			pipe(
@@ -164,16 +245,6 @@ export const historyAtom = Atom.family((key: string) => {
 		0
 	)
 })
-
-export const usageAtom = Atom.setIdleTTL(
-	RpcClient.runtime.atom(
-		pipe(
-			Stream.tick('30 seconds'),
-			Stream.mapEffect(() => Effect.flatMap(RpcClient, client => client('signal.usage', undefined)))
-		)
-	),
-	0
-)
 
 // The world's seed, kept while the view's stream starts over, as a replay begins or ends.
 export const seedAtom = Atom.keepAlive(
@@ -188,44 +259,43 @@ export const seedAtom = Atom.keepAlive(
 	)
 )
 
-// The run's marks and span, kept fresh.
-export const timelineAtom = Atom.keepAlive(
+export const cursorAtom = Atom.make(get => {
+	const view = Option.getOrElse(AsyncResult.value(get(hudAtom)), () => EMPTY)
+	const loading = get(loadingAtom)
+	return Option.match(get(sourceAtom), {
+		onNone: () => {
+			if (!loading) return view.frame.tick
+			return view.frame.live ?? view.frame.tick
+		},
+		onSome: replay => {
+			if (loading) return replay.from
+			return Number.max(replay.from, view.frame.tick)
+		}
+	})
+})
+
+// Event navigation freezes the spectator, not the live log or its paging cursors.
+export const threadFeedAtom = Atom.setIdleTTL(
 	RpcClient.runtime.atom(
 		pipe(
-			Stream.tick('10 seconds'),
-			Stream.mapEffect(() => Effect.flatMap(RpcClient, client => client('signal.timeline', undefined)))
+			Stream.tick('5 seconds'),
+			Stream.mapEffect(() => requestFeed(-1))
 		)
-	)
+	),
+	0
 )
-
-// A team's latest rounds, kept fresh.
-export const liveThreadAtom = Atom.family((team: number) =>
-	Atom.setIdleTTL(
-		RpcClient.runtime.atom(
-			pipe(
-				Stream.tick('5 seconds'),
-				Stream.mapEffect(() => Effect.flatMap(RpcClient, client => client('signal.thread', {team})))
-			)
-		),
-		0
-	)
-)
-
-// A team's rounds before a replay's, by `team:round`.
-export const pastThreadAtom = Atom.family((key: string) => {
-	const [team = 0, before = 0] = Array.map(String.split(':')(key), part =>
-		Option.getOrElse(Number.parse(part), () => 0)
-	)
-	return RpcClient.runtime.atom(Effect.flatMap(RpcClient, client => client('signal.thread', {before, team})))
-})
 
 // What the pointer is over, published by the world view for the hover card.
 type Hover = {id: string; x: number; y: number}
 export const hoverAtom = Atom.keepAlive(Atom.make(Option.none<Hover>()))
 
-// What the camera follows: a unit, or a place the player left it at; the overview zooms out over the team with the fog off.
-export type Follow = {free: Option.Option<{x: number; z: number}>; id: Option.Option<number>; overview: boolean}
-export const followAtom = Atom.keepAlive(Atom.make<Follow>({free: Option.none(), id: Option.none(), overview: false}))
+// What the camera follows: a unit or a place.
+export type Follow = {
+	free: Option.Option<{x: number; z: number}>
+	id: Option.Option<number>
+	fallback?: {x: number; z: number}
+}
+export const followAtom = Atom.keepAlive(Atom.make<Follow>({free: Option.none(), id: Option.none()}))
 
 // The team whose thread and units the sidebar shows.
-export const teamAtom = Atom.keepAlive(Atom.make(0))
+export const teamAtom = Atom.keepAlive(Atom.make(-1))

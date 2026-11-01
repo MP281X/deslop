@@ -2,8 +2,10 @@ import {assert, it} from '@effect/vitest'
 
 import {
 	Array,
+	Boolean,
 	ConfigProvider,
 	Context,
+	Deferred,
 	Effect,
 	Exit,
 	Fiber,
@@ -20,12 +22,315 @@ import {
 import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
+import type {Thought} from '#services/core/schema.ts'
 import {Core} from '#services/core/service.ts'
 import {makeSim, SIMULATION} from '#services/game/lib/sim.ts'
-import {ActivityPage, Frame, GameError, HistoryIndex, HistoryPage, Journal, Saved} from '#services/game/schema.ts'
+import {
+	ActivityPage,
+	Entry,
+	Frame,
+	GameError,
+	HistoryIndex,
+	HistoryPage,
+	Journal,
+	RunState,
+	Saved,
+	Timeline
+} from '#services/game/schema.ts'
+import type {LocalDecision} from '#services/game/schema.ts'
 import {Game} from '#services/game/service.ts'
 
 it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvider.fromUnknown({}))))(test => {
+	test.effect(
+		'includes unexplored wildlife in live and frozen spectator frames without revealing it to agents',
+		Effect.fnUntraced(function* () {
+			const kv = yield* KeyValueStore.KeyValueStore
+			yield* kv.clear
+			const sim = yield* makeSim(Option.none(), 42)
+			const anchor = yield* sim.snapshot
+			yield* sim.run(40)
+			const saved = yield* sim.snapshot
+			const wild = Option.getOrThrow(
+				Array.findFirst(saved.mobs, mob =>
+					Array.every(saved.units, unit => Math.hypot(mob.x - unit.x, mob.z - unit.z) > 30)
+				)
+			)
+			const before = sim.individual(2).facts
+			assert.isFalse(Array.some(before, fact => fact.id === wild.id))
+			assert.notInclude(sim.observe(0).text, `#${wild.id}`)
+			const stores = KeyValueStore.toSchemaStore(kv, Saved)
+			yield* stores.set('world', saved)
+			yield* stores.set(`checkpoint/${SIMULATION}/000000000`, anchor)
+			yield* KeyValueStore.toSchemaStore(kv, Timeline).set('timeline', {live: 40, marks: [], start: 0})
+			const game = Context.get(
+				yield* Layer.build(
+					pipe(
+						Game.layer,
+						Layer.provide(
+							Layer.succeed(
+								Core,
+								Core.of({
+									choose: () => Effect.die('No model calls allowed'),
+									decide: () => Effect.die('No model calls allowed'),
+									recall: () => Effect.succeed(''),
+									usage: Effect.succeed({groups: {}})
+								})
+							)
+						)
+					)
+				),
+				Game
+			)
+			assert.isTrue(Array.some(Option.getOrThrow(yield* Stream.runHead(game.join)).units, unit => unit.id === wild.id))
+			const past = Option.getOrThrow(yield* Stream.runHead(game.replay(20, 0)))
+			assert.strictEqual(past.tick, 20)
+			assert.isTrue(Array.some(past.units, unit => unit.id === wild.id))
+			assert.isTrue(Array.every(yield* game.history(wild.id, Option.none()), entry => entry.actor === wild.id))
+			assert.isTrue(Array.some(yield* game.history(wild.id, Option.none()), entry => entry.kind === 'born'))
+			assert.deepStrictEqual(sim.individual(2).facts, before)
+			assert.strictEqual(Option.getOrThrow(yield* stores.get('world')).tick, 40)
+		})
+	)
+	test.effect(
+		'keeps applied Core decisions when a later unfinished decision is paused, resumed and restored',
+		Effect.fnUntraced(function* () {
+			const kv = yield* KeyValueStore.KeyValueStore
+			yield* kv.clear
+			const calls = MutableList.make<number>()
+			const late = yield* Deferred.make<Thought>()
+			const strategy = Layer.succeed(
+				Core,
+				Core.of({
+					choose: () => Effect.never,
+					decide: Effect.fnUntraced(function* (_seed: number, team: number) {
+						if (Array.contains(MutableList.toArray(calls), team)) return yield* Deferred.await(late)
+						MutableList.append(calls, team)
+						return {
+							commands: [{_tag: 'Catalog' as const, section: 'units' as const}],
+							invalid: [],
+							text: 'A completed decision.'
+						}
+					}),
+					recall: () => Effect.succeed(''),
+					usage: Effect.succeed({groups: {}})
+				})
+			)
+			const layer = pipe(
+				Game.layer,
+				Layer.provide(strategy),
+				Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({SIGNAL_LOCAL_DECISIONS_PER_SECOND: '0'})))
+			)
+			const entries = KeyValueStore.toSchemaStore(kv, Entry)
+			const completed = yield* Effect.scoped(
+				Effect.gen(function* () {
+					const game = Context.get(yield* Layer.build(layer), Game)
+					yield* game.control(true)
+					yield* Effect.repeat(TestClock.adjust('1 second'), {times: 60})
+					const before = Option.getOrThrow(yield* entries.get('thread/0/000000002'))
+					assert.strictEqual(before.status, 'done')
+					yield* game.control(false)
+					assert.deepStrictEqual(Option.getOrThrow(yield* entries.get('thread/0/000000002')), before)
+					const cancelled = Option.getOrThrow(yield* entries.get('thread/0/000000003'))
+					assert.include(cancelled.text, 'unfinished decision cancelled')
+					assert.strictEqual(cancelled.observed, 1200)
+					yield* Deferred.succeed(late, {commands: [], invalid: [], text: 'A response after cancellation.'})
+					yield* TestClock.adjust('200 millis')
+					assert.deepStrictEqual(Option.getOrThrow(yield* entries.get('thread/0/000000002')), before)
+					assert.deepStrictEqual(Option.getOrThrow(yield* entries.get('thread/0/000000003')), cancelled)
+					yield* game.control(true)
+					yield* TestClock.adjust('200 millis')
+					yield* game.control(false)
+					return before
+				})
+			)
+			const restored = Context.get(yield* Layer.build(layer), Game)
+			assert.deepStrictEqual(
+				Array.findFirst(yield* restored.thread(0, Option.some(4)), entry => entry.round === 2),
+				Option.some(completed)
+			)
+			assert.strictEqual(Option.getOrThrow(yield* entries.get('thread/0/000000003')).status, 'failed')
+		})
+	)
+
+	test.effect(
+		'preserves the earlier replay anchor when a paused world is restarted mid-round',
+		Effect.fnUntraced(function* () {
+			const kv = yield* KeyValueStore.KeyValueStore
+			yield* kv.clear
+			const layer = pipe(
+				Game.layer,
+				Layer.provide(
+					Layer.succeed(
+						Core,
+						Core.of({
+							choose: () => Effect.never,
+							decide: () => Effect.never,
+							recall: () => Effect.succeed(''),
+							usage: Effect.succeed({groups: {}})
+						})
+					)
+				),
+				Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({SIGNAL_LOCAL_DECISIONS_PER_SECOND: '0'})))
+			)
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const game = Context.get(yield* Layer.build(layer), Game)
+					yield* game.control(true)
+					yield* TestClock.adjust('200 millis')
+					yield* game.control(false)
+				})
+			)
+			const worlds = KeyValueStore.toSchemaStore(kv, Saved)
+			assert.isAbove(Option.getOrThrow(yield* worlds.get('world')).tick, 0)
+			const anchor = Option.getOrThrow(yield* worlds.get(`checkpoint/${SIMULATION}/000000000`))
+			assert.strictEqual(anchor.tick, 0)
+			const game = Context.get(yield* Layer.build(layer), Game)
+			yield* game.control(true)
+			yield* game.control(false)
+			assert.deepStrictEqual(Option.getOrThrow(yield* worlds.get(`checkpoint/${SIMULATION}/000000000`)), anchor)
+			assert.strictEqual(Option.getOrThrow(yield* Stream.runHead(game.replay(0, 0))).tick, 0)
+		})
+	)
+
+	test.effect(
+		'runs and pauses from controls without replay changing the world or catching up paused time',
+		Effect.fnUntraced(function* () {
+			const kv = yield* KeyValueStore.KeyValueStore
+			yield* kv.clear
+			const calls = MutableList.make<number>()
+			const cancelled = MutableList.make<number>()
+			const game = Context.get(
+				yield* Layer.build(
+					pipe(
+						Game.layer,
+						Layer.provide(
+							Layer.succeed(
+								Core,
+								Core.of({
+									choose: Effect.fnUntraced(function* (seed: number, request: LocalDecision) {
+										MutableList.append(calls, request.actor)
+										return yield* pipe(
+											Effect.never,
+											Effect.ensuring(Effect.sync(() => MutableList.append(cancelled, seed)))
+										)
+									}),
+									decide: () => Effect.succeed({commands: [], invalid: [], text: ''}),
+									recall: () => Effect.succeed(''),
+									usage: Effect.succeed({groups: {}})
+								})
+							)
+						)
+					)
+				),
+				Game
+			)
+			const states = MutableList.make<boolean>()
+			const status = yield* Effect.forkScoped(
+				Stream.runForEach(game.status, state =>
+					pipe(
+						Schema.encodeEffect(Schema.toCodecJson(RunState))(state),
+						Effect.andThen(Effect.sync(() => MutableList.append(states, state.running)))
+					)
+				)
+			)
+			yield* TestClock.adjust('100 millis')
+			assert.strictEqual((yield* game.control(true)).running, true)
+			assert.strictEqual((yield* game.control(true)).running, true)
+			yield* Effect.repeat(TestClock.adjust('1 second'), {times: 2})
+			assert.isAbove(calls.length, 0)
+			const historicalFrames = MutableList.make<Frame>()
+			const frozen = yield* Effect.forkScoped(
+				Stream.runForEach(game.replay(0, 0), frame => Effect.sync(() => MutableList.append(historicalFrames, frame)))
+			)
+			yield* TestClock.adjust('200 millis')
+			const whileInspecting = Option.getOrThrow(yield* Stream.runHead(game.join))
+			yield* TestClock.adjust('1 second')
+			assert.isAbove(Option.getOrThrow(yield* Stream.runHead(game.join)).tick, whileInspecting.tick)
+			assert.isTrue(Array.isReadonlyArrayNonEmpty(MutableList.toArray(historicalFrames)))
+			assert.isTrue(Array.every(MutableList.toArray(historicalFrames), frame => frame.tick === 0))
+			assert.strictEqual(cancelled.length, 0)
+			yield* Fiber.interrupt(frozen)
+			assert.strictEqual((yield* game.control(false)).running, false)
+			const stopped = Option.getOrThrow(yield* Stream.runHead(game.join))
+			const beforePause = MutableList.toArray(calls)
+			assert.strictEqual(cancelled.length, beforePause.length)
+			assert.strictEqual(
+				Option.getOrThrow(yield* KeyValueStore.toSchemaStore(kv, Saved).get('world')).tick,
+				stopped.tick
+			)
+			yield* TestClock.adjust('1 hour')
+			assert.strictEqual(Option.getOrThrow(yield* Stream.runHead(game.join)).tick, stopped.tick)
+			assert.deepStrictEqual(MutableList.toArray(calls), beforePause)
+			assert.strictEqual(Option.getOrThrow(yield* Stream.runHead(game.replay(0, 0))).tick, 0)
+			assert.strictEqual((yield* game.control(false)).running, false)
+			assert.strictEqual((yield* game.control(true)).running, true)
+			yield* TestClock.adjust('200 millis')
+			const resumed = Option.getOrThrow(yield* Stream.runHead(game.join))
+			assert.isAbove(resumed.tick, stopped.tick)
+			assert.isBelow(resumed.tick - stopped.tick, 10)
+			assert.strictEqual((yield* game.control(false)).running, false)
+			yield* TestClock.adjust('100 millis')
+			yield* Fiber.interrupt(status)
+			assert.deepStrictEqual(MutableList.toArray(states), [false, true, false, true, false])
+		})
+	)
+
+	test.effect(
+		'refuses frontend starts after a failed initial save without inference or overwriting the failure',
+		Effect.fnUntraced(function* () {
+			const kv = yield* KeyValueStore.KeyValueStore
+			yield* kv.clear
+			const calls = MutableList.make<number>()
+			const game = Context.get(
+				yield* Layer.build(
+					pipe(
+						Game.layer,
+						Layer.provide(
+							Layer.succeed(
+								Core,
+								Core.of({
+									choose: () => Effect.die('No inference before the initial save'),
+									decide: seed =>
+										Effect.sync(() => {
+											MutableList.append(calls, seed)
+											return {commands: [], invalid: [], text: ''}
+										}),
+									recall: () => Effect.succeed(''),
+									usage: Effect.succeed({groups: {}})
+								})
+							)
+						),
+						Layer.provide(
+							Layer.succeed(
+								KeyValueStore.KeyValueStore,
+								KeyValueStore.make({
+									...kv,
+									set: (key, value) => {
+										if (key === 'world') {
+											return Effect.fail(
+												new KeyValueStore.KeyValueStoreError({key, message: 'Disk unavailable', method: 'set'})
+											)
+										}
+										return kv.set(key, value)
+									}
+								})
+							)
+						)
+					)
+				),
+				Game
+			)
+			assert.isTrue(Exit.hasFails(yield* Effect.exit(game.control(true))))
+			assert.isTrue(Exit.hasFails(yield* Effect.exit(game.control(true))))
+			yield* TestClock.adjust('1 hour')
+			const state = Option.getOrThrow(yield* Stream.runHead(game.status))
+			assert.strictEqual(state.running, false)
+			assert.include(state.problem ?? '', 'world could not be saved')
+			assert.strictEqual(calls.length, 0)
+			assert.deepStrictEqual(yield* kv.keys, [])
+		})
+	)
+
 	test.effect(
 		'starts stopped without model calls or writes and refuses to replace an unreadable world',
 		Effect.fnUntraced(function* () {
@@ -158,7 +463,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 	)
 
 	test.effect(
-		'pages canonical individual and world history without duplicating a restored pending tail',
+		'reads previous-release archived receipts and pages history without duplicating a restored pending tail',
 		Effect.fnUntraced(function* () {
 			const kv = yield* KeyValueStore.KeyValueStore
 			yield* kv.clear
@@ -168,7 +473,14 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 				sequence =>
 					({
 						actor: 2,
-						actorKind: 'worker',
+						...Boolean.match(sequence === 1, {onFalse: () => ({actorKind: 'worker'}), onTrue: () => ({})}),
+						...Boolean.match(sequence === 1, {
+							onFalse: () => ({}),
+							onTrue: () => ({
+								context: 'Archived request from the previous release.',
+								tokens: {cost: 0.001, input: 23, output: 4}
+							})
+						}),
 						id: 1000 + sequence,
 						kind: 'action',
 						text: `Gathered stone ${sequence}.`,
@@ -181,6 +493,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 				...saved,
 				life: {...Option.getOrThrow(Option.fromUndefinedOr(saved.life)), sequence: 1120},
 				pendingExperiences: Array.takeRight(rows, 11),
+				rules: SIMULATION - 1,
 				tick: 2420
 			})
 			for (const chunk of Array.map(Array.chunksOf(rows, 100), (entries, page) => ({entries, page}))) {
@@ -189,12 +502,15 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 					chunk.entries
 				)
 			}
-			const references = Array.map(rows, (entry, index) => ({
-				actor: entry.actor,
-				id: entry.id,
-				page: Math.floor(index / 100),
-				tick: entry.tick
-			}))
+			const references = Array.filter(
+				Array.map(rows, (entry, index) => ({
+					actor: entry.actor,
+					id: entry.id,
+					page: Math.floor(index / 100),
+					tick: entry.tick
+				})),
+				entry => entry.id !== 1001
+			)
 			for (const chunk of Array.map(Array.chunksOf(references, 100), (entries, page) => ({entries, page}))) {
 				yield* KeyValueStore.toSchemaStore(kv, ActivityPage).set(
 					`activity/${String.padStart(9, '0')(`${chunk.page}`)}`,
@@ -203,7 +519,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 			}
 			yield* KeyValueStore.toSchemaStore(kv, HistoryIndex).set('history/index', {
 				'@activity': references.length,
-				'@rules': SIMULATION,
+				'@rules': SIMULATION - 1,
 				'@through': 1120,
 				'@tick': 2420,
 				'2': rows.length
@@ -228,6 +544,16 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 				Game
 			)
 			for (const actor of [2, 'all'] as const) {
+				const original = Option.getOrThrow(Array.get(rows, 1))
+				assert.deepStrictEqual(
+					Option.getOrThrow(Array.findFirst(yield* game.history(actor, Option.some(1002)), entry => entry.id === 1001)),
+					original
+				)
+				assert.strictEqual(
+					Option.getOrThrow(Array.findFirst(yield* game.history(actor, Option.some(1002)), entry => entry.id === 1001))
+						.tokens?.input,
+					23
+				)
 				assert.deepStrictEqual(
 					Array.map(yield* game.history(actor, Option.none()), entry => entry.id),
 					Array.range(1021, 1120)
@@ -241,6 +567,11 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 					Array.range(1000, 1050)
 				)
 			}
+			assert.isTrue(Exit.hasFails(yield* Effect.exit(Stream.runHead(game.replay(0, 0)))))
+			assert.strictEqual(
+				Option.getOrThrow(yield* KeyValueStore.toSchemaStore(kv, Saved).get('world')).rules,
+				SIMULATION - 1
+			)
 		})
 	)
 

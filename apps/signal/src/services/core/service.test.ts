@@ -119,6 +119,7 @@ it.layer(KeyValueStore.layerMemory)(test => {
 				tick: 52
 			})
 			const paged = Option.getOrThrow(yield* conversations.get(key))
+			assert.strictEqual(paged.experiencedThrough, 24)
 			assert.isTrue(Array.some(paged.turns, turn => String.includes('END-12')(turn.content)))
 			assert.deepStrictEqual(paged.archive, {before: 12, offset: 0})
 			yield* conversations.set('conversation/91/individual-2/active', ORIGINAL)
@@ -189,6 +190,15 @@ it.layer(KeyValueStore.layerMemory)(test => {
 			assert.strictEqual(answer.tokens?.cached, 800)
 			const checkpoint = Option.getOrThrow(yield* conversations.get('conversation/11/0/active'))
 			assert.include(checkpoint.summary, 'still unverified')
+			const compaction = yield* Schema.encodeEffect(Schema.fromJsonString(ChatRequest))(
+				Option.getOrThrow(Array.head(MutableList.toArray(calls)))
+			)
+			assert.include(compaction, 'END-8')
+			assert.notInclude(compaction, 'END-9')
+			assert.notInclude(compaction, 'END-12')
+			assert.notInclude(compaction, 'Nothing new observed.')
+			assert.include(checkpoint.summary, 'Summarized through turn 8.')
+			assert.deepStrictEqual(Array.take(checkpoint.turns, 4), Array.takeRight(ORIGINAL.turns, 4))
 			assert.strictEqual(checkpoint.turns.length, 6)
 			assert.deepStrictEqual(
 				Option.getOrThrow(yield* turns.get('conversation/11/0/turn/000000001')),
@@ -196,7 +206,12 @@ it.layer(KeyValueStore.layerMemory)(test => {
 			)
 			assert.notInclude(yield* core.recall(11, 0, 2), 'END-1')
 			assert.include(yield* core.recall(11, 0, 2, 6000), 'END-1')
-			yield* core.decide(11, 0, `${String.repeat(12_000)('x')} END-OBS`, false)
+			assert.include(yield* core.recall(11, 0, 14), 'Nothing new observed.')
+			const restarted = Context.get(
+				yield* Layer.build(pipe(Core.layer, Layer.provide(Layer.succeed(HttpClient.HttpClient, client)))),
+				Core
+			)
+			yield* restarted.decide(11, 0, `${String.repeat(12_000)('x')} END-OBS`, false)
 			assert.include(Option.getOrThrow(yield* turns.get('conversation/11/0/turn/000000015')).content, 'END-OBS')
 			assert.isBelow(
 				Option.getOrThrow(
@@ -218,9 +233,42 @@ it.layer(KeyValueStore.layerMemory)(test => {
 			const requests = MutableList.toArray(calls)
 			const previous = Option.getOrThrow(Array.get(requests, 1))
 			const next = Option.getOrThrow(Array.get(requests, 2))
+			assert.deepStrictEqual(
+				Array.takeRight(previous.messages, 5),
+				Array.map(Array.take(checkpoint.turns, 5), turn => ({content: turn.content, role: turn.role}))
+			)
 			assert.strictEqual(previous.session_id, next.session_id)
 			assert.deepStrictEqual(Array.take(next.messages, previous.messages.length), previous.messages)
 			assert.notInclude(yield* Schema.encodeEffect(Schema.fromJsonString(ChatRequest))(previous), '"name":"Message"')
+		})
+	)
+	test.effect(
+		'skips Core compaction when every active turn will be retained verbatim',
+		Effect.fnUntraced(function* () {
+			const kv = yield* KeyValueStore.KeyValueStore
+			yield* kv.clear
+			const conversations = KeyValueStore.toSchemaStore(kv, Conversation)
+			const original = {...ORIGINAL, sequence: 4, turns: Array.take(ORIGINAL.turns, 4)}
+			yield* conversations.set('conversation/13/0/active', original)
+			const calls = MutableList.make<string>()
+			const client = HttpClient.make(request =>
+				Effect.sync(() => {
+					if (request.body._tag !== 'Uint8Array') return assert.fail('Expected JSON request.')
+					MutableList.append(calls, new TextDecoder().decode(request.body.body))
+					return HttpClientResponse.fromWeb(request, Response.json(completion('Continue investigating.')))
+				})
+			)
+			const core = Context.get(
+				yield* Layer.build(pipe(Core.layer, Layer.provide(Layer.succeed(HttpClient.HttpClient, client)))),
+				Core
+			)
+			const answer = yield* core.decide(13, 0, 'A fresh uncertain report.', false)
+			assert.strictEqual(calls.length, 1)
+			assert.isUndefined(answer.tokens?.compaction)
+			const active = Option.getOrThrow(yield* conversations.get('conversation/13/0/active'))
+			assert.strictEqual(active.summary, original.summary)
+			assert.deepStrictEqual(Array.take(active.turns, 4), original.turns)
+			assert.include(Option.getOrThrow(Array.head(MutableList.toArray(calls))), 'A fresh uncertain report.')
 		})
 	)
 

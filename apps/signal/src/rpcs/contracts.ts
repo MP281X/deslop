@@ -4,9 +4,11 @@ import {Rpc, RpcGroup} from 'effect/rpc'
 
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 
-import {Entry, Frame, GameError, HistoryPage, Timeline, UsageLedger} from '#services/game/schema.ts'
+import {Entry, Frame, GameError, HistoryPage, RunState, Timeline, UsageLedger} from '#services/game/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
+	Rpc.make('signal.control', {error: GameError, payload: Schema.Struct({running: Schema.Boolean}), success: RunState}),
+	Rpc.make('signal.status', {stream: true, success: RunState}),
 	Rpc.make('signal.history', {
 		error: GameError,
 		payload: Schema.Struct({

@@ -21,7 +21,7 @@ import {
 	pipe
 } from 'effect'
 
-import {Decision} from 'effect/ai'
+import {AiError, Decision} from 'effect/ai'
 import {toCodecOpenAI} from 'effect/ai/OpenAiStructuredOutput'
 import {KeyValueStore} from 'effect/persistence'
 
@@ -151,6 +151,25 @@ export class Core extends Context.Service<
 					)
 				})
 
+				const representedThrough = Effect.fnUntraced(function* (seed: number, owner: string, previous: Conversation) {
+					if (previous.experiencedThrough !== undefined) return previous.experiencedThrough
+					const cursor = {sequence: previous.sequence}
+					while (cursor.sequence > 0) {
+						const turn = Option.getOrUndefined(yield* turns.get(turnKey(seed, owner, cursor.sequence)))
+						if (turn === undefined) return 0
+						if (turn.role === 'user') {
+							const original = Option.getOrUndefined(
+								Schema.decodeOption(Schema.fromJsonString(LocalDecision))(turn.content)
+							)
+							if (original !== undefined && Array.isReadonlyArrayNonEmpty(original.experience ?? [])) {
+								return Array.reduce(original.experience ?? [], 0, (highest, entry) => Number.max(highest, entry.id))
+							}
+						}
+						cursor.sequence -= 1
+					}
+					return 0
+				})
+
 				const compact = Effect.fn('Core.compact')(function* (
 					key: string,
 					model: string,
@@ -160,11 +179,18 @@ export class Core extends Context.Service<
 					owner = 'Core'
 				) {
 					const active = {...previous}
+					const retained = Array.takeRight(
+						active.turns,
+						Boolean.match(owner === 'Core', {onFalse: () => 0, onTrue: () => 5})
+					)
+					const retiring = Array.take(active.turns, active.turns.length - retained.length)
+					const through = Option.getOrUndefined(Array.last(retiring))
+					if (through === undefined) return {conversation: active, usage: undefined}
 					const prefix = [
 						...Array.filter([{content: `Previous checkpoint: ${active.summary}`, role: 'user' as const}], () =>
 							String.isNonEmpty(active.summary)
 						),
-						...Array.map(active.turns, turn => ({content: turn.content, role: turn.role}))
+						...Array.map(retiring, turn => ({content: turn.content, role: turn.role}))
 					]
 					yield* account('compaction', model)
 					const [compacted] = yield* pipe(
@@ -205,11 +231,8 @@ export class Core extends Context.Service<
 					) {
 						return yield* GameError.make({message: 'Compaction did not finish; original history was kept.'})
 					}
-					active.summary = `Archived through turn ${active.sequence}. Use Recall with before to retrieve older originals.\n${summary.message.content}`
-					active.turns = Array.takeRight(
-						active.turns,
-						Boolean.match(owner === 'Core', {onFalse: () => 0, onTrue: () => 5})
-					)
+					active.summary = `Summarized through turn ${through.sequence}. Later turns follow verbatim and may update earlier claims. Use Recall with before to retrieve older originals.\n${summary.message.content}`
+					active.turns = retained
 					active.archive = active.archive ?? {before: active.sequence + 1, offset: 0}
 					active.archived = active.sequence
 					active.measured = 0
@@ -230,11 +253,13 @@ export class Core extends Context.Service<
 									turns: []
 								}))
 							}
+							const through = yield* representedThrough(seed, owner, previous)
+							const experience = Array.filter(request.experience ?? [], entry => entry.id > through)
 							const original = yield* Schema.encodeEffect(Schema.fromJsonString(LocalDecision))(request)
 							const input: Turn = {
 								content: `Tick ${request.tick}. Private experiences:\n${Array.join(
 									Array.map(
-										request.experience ?? [],
+										experience,
 										entry => `[${entry.id}; tick ${entry.tick}; ${entry.kind}; (${entry.x}, ${entry.z})] ${entry.text}`
 									),
 									'\n'
@@ -243,7 +268,14 @@ export class Core extends Context.Service<
 								sequence: previous.sequence + 1
 							}
 							yield* turns.set(turnKey(seed, owner, input.sequence), {...input, content: original})
-							const incoming = {...previous, sequence: input.sequence, turns: [...previous.turns, input]}
+							const incoming = {
+								...previous,
+								experiencedThrough: Array.reduce(experience, through, (highest, entry) =>
+									Number.max(highest, entry.id)
+								),
+								sequence: input.sequence,
+								turns: [...previous.turns, input]
+							}
 							yield* conversations.set(key, incoming)
 							const system =
 								'You are one independent individual. Use only your own perceptions, experiences and received claims. Preserve instructions, commitments, entity references, provenance and uncertainty. Guidance is not forced obedience. No silence or radio ping proves death. Never invent another individual’s knowledge.'
@@ -288,6 +320,21 @@ export class Core extends Context.Service<
 								),
 								Effect.timeout('10 seconds')
 							)
+							yield* Effect.annotateCurrentSpan({
+								actor: request.actor,
+								cost: response.metadata.openrouter?.cost,
+								input: response.usage.inputTokens,
+								kind: 'local',
+								mode,
+								model: response.modelId ?? 'typesafe/jev-1.14',
+								output: response.usage.outputTokens,
+								seed
+							})
+							yield* account('local', 'typesafe/jev-1.14', {
+								cost: response.metadata.openrouter?.cost,
+								input: response.usage.inputTokens,
+								output: response.usage.outputTokens
+							})
 							const recalled = yield* Option.match(
 								Option.filter(
 									Option.fromUndefinedOr(continuation.conversation.archive),
@@ -329,21 +376,6 @@ export class Core extends Context.Service<
 								sequence: output.sequence,
 								...Option.match(recalled, {onNone: () => ({}), onSome: value => ({archive: value.archive})}),
 								turns: [...continuation.conversation.turns, output]
-							})
-							yield* Effect.annotateCurrentSpan({
-								actor: request.actor,
-								cost: response.metadata.openrouter?.cost,
-								input: response.usage.inputTokens,
-								kind: 'local',
-								mode,
-								model: response.modelId ?? 'typesafe/jev-1.14',
-								output: response.usage.outputTokens,
-								seed
-							})
-							yield* account('local', 'typesafe/jev-1.14', {
-								cost: response.metadata.openrouter?.cost,
-								input: response.usage.inputTokens,
-								output: response.usage.outputTokens
 							})
 							return {
 								actor: request.actor,
@@ -513,7 +545,14 @@ export class Core extends Context.Service<
 						},
 						Effect.timeout('85 seconds'),
 						Effect.mapError(cause =>
-							GameError.make({cause, message: 'The Core decision or durable conversation could not complete.'})
+							GameError.make({
+								cause,
+								message: Boolean.match(AiError.isAiError(cause) && cause.reason._tag === 'AuthenticationError', {
+									onFalse: () => 'The Core decision or durable conversation could not complete.',
+									onTrue: () =>
+										'Model authentication failed. Check the server OpenRouter credentials; no Core decision was produced.'
+								})
+							})
 						)
 					),
 					recall: Effect.fn('Core.recall')(

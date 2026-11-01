@@ -192,7 +192,7 @@ Geist on the web, SF Pro on iOS at Dynamic Type sizes through the `text` tokens 
 - **Rows, not cards.** Hairline rows: a leading mark, a title, one muted line, a trailing status or action.
 - **One column** up to `page`, forms up to `form`; list-and-detail tools split into two panes. 8px inside a group, 16px between groups, 24–32px between sections.
 - **iOS.** Inline titles, plain lists, bottom search.
-- **App bars.** The app icon and name lead on web and iOS; detail screens keep their native back navigation.
+- **App bars.** The app icon and name lead on web and iOS; detail screens keep their native back navigation. Signal's spectator world uses map controls instead of an app bar.
 - **Row alignment.** Center leading marks and trailing actions against the whole row, including wrapped details. Stash reserves a 64pt media square even without a preview, using the source mark as its fallback.
 - **List endings.** A closing hairline marks the last row; installed web apps keep 16px plus the home-indicator inset below it.
 
@@ -212,6 +212,7 @@ One vocabulary on both platforms: a row is an `Item`, a blank state an `Empty`, 
 - **iOS.** `packages/components-mobile/src/ui/` carries the same names and parts over `@expo/ui` SwiftUI (`Item`, `ItemMedia`, `ItemContent`, `ItemTitle`, `ItemDescription`, `ItemActions`, `ItemGroup`, `Empty…`, `ToggleGroup`, `Spinner`), taking `modifiers` where the web takes `className`. System controls stay native.
 - **Tokens only.** shadcn's lint keeps web classes on the theme; `swiftui-theme-values` does the same for SwiftUI: spacing from `space`, type from `text` or a Dynamic Type style, colours from `colors`.
 - **Favicons** are the source's own, on the `icon-tile`, never a letter tile.
+- **Signal controls.** Quiet popover buttons carry provider-coloured marks, matching their world coverage. One top model filter scopes the thread; the inspector header has a bottom hairline. Entity details and the thread remain visible together.
 - **Loading.** The shell (app bar, headings, filters) renders at once, and data that is on its way shows as a skeleton shaped like it: `ItemListSkeleton` on the web, `ItemGroupSkeleton` (SwiftUI's placeholder redaction) on iOS. A skeleton is a Suspense fallback (`useAtomSuspense` with `includeFailure`), never an `onInitial` branch: React keeps a shown fallback at least 300ms, so it never blinks. Local work, like reading the saved session, shows the empty shell and no skeleton. A refresh keeps the current data, dimmed. A spinner only sits inside a control the user pressed, never alone on a page; no client-side caches to hide loading.
 - **Copy.** Headings, labels and errors only; no subtitle restating what the page already shows.
 
@@ -255,4 +256,4 @@ Every web app installs as its own app: `ServerRuntime.layerManifest` serves a st
 ## Do's and Don'ts
 
 - Don't add a card per section, a colored side stripe or a color per item.
-- Don't use a hue beyond the app's primary, warning and error; the portfolio's visitor cursors are the one exception.
+- Don't use a hue beyond the app's primary, warning and error; exceptions are portfolio visitor cursors and Signal's semantic team identities on the world, authors and event labels. Team colour does not fill whole message cards.

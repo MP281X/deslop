@@ -5,7 +5,10 @@ import type {GLTF} from 'three/addons/loaders/GLTFLoader.js'
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js'
 import {clone} from 'three/addons/utils/SkeletonUtils.js'
 
+import {pickActor} from './-pick.ts'
+import {seatPose, spatialBlend} from './-pose.ts'
 import type {Renderer} from './-renderer.ts'
+import {disposeSurveyCore, surveyCore} from './-survey-core.ts'
 
 import {FRAME_HZ, HOME_SIGHT, ORE_ITEM, TEAMS} from '#services/game/lib/utils.ts'
 import type {Act, BuildingView, Frame, ItemId, UnitView} from '#services/game/schema.ts'
@@ -37,8 +40,6 @@ const BOX_SKIN = new THREE.MeshStandardMaterial({color: '#e9e2d5'})
 
 // The paint buildings are made of: walls, roofs, metal, the dark of belts and machinery, timber, and the pale ghost of a site not yet built.
 const PAINT = {
-	alloy: new THREE.MeshStandardMaterial({color: '#253440', metalness: 0.6, roughness: 0.4}),
-	circuit: new THREE.MeshBasicMaterial({color: '#a4eced', toneMapped: false}),
 	dark: new THREE.MeshStandardMaterial({color: '#4f4b47', roughness: 0.7}),
 	ghost: new THREE.MeshStandardMaterial({
 		color: '#ffffff',
@@ -56,7 +57,7 @@ const PAINT = {
 // What a building is made of, in tiles from its footprint's north-west corner: boxes and cylinders of a paint, `x`, `z` their middle, `y` their foot.
 type Part = {
 	h: number
-	paint: 'alloy' | 'circuit' | 'dark' | 'ghost' | 'metal' | 'road' | 'roof' | 'team' | 'timber' | 'wall'
+	paint: 'dark' | 'ghost' | 'metal' | 'road' | 'roof' | 'team' | 'timber' | 'wall'
 	round?: boolean
 	w: number
 	d: number
@@ -199,7 +200,7 @@ function release(actor: Actor) {
 }
 
 // A model's portrait: its idle pose lit like the world and seen from the game camera's 30°, framed to what shows, on a clear ground.
-function portraitOf(gltf: GLTF, painter: THREE.WebGLRenderer) {
+function portraitOf(gltf: Pick<GLTF, 'animations' | 'scene'>, painter: THREE.WebGLRenderer) {
 	const object = clone(gltf.scene)
 	const ground = object.getObjectByName('ground')
 	if (ground !== undefined) ground.visible = false
@@ -415,48 +416,7 @@ const SHAPES = {
 	fabricator: machine,
 	foundry: kiln,
 	furnace: kiln,
-	home: (w: number, d: number) =>
-		[
-			{d: d - 0.25, h: 0.16, paint: 'alloy', w: w - 0.25, x: w / 2, y: 0, z: d / 2},
-			{d: 1.5, h: 0.35, paint: 'metal', w: 1.5, x: w / 2, y: 0.16, z: d / 2},
-			{d: 0.95, h: 2.65, paint: 'alloy', w: 0.95, x: w / 2, y: 0.51, z: d / 2},
-			{d: 1.12, h: 0.14, paint: 'metal', w: 1.12, x: w / 2, y: 3.16, z: d / 2},
-			{d: 0.06, h: 0.65, paint: 'metal', w: 0.06, x: w / 2, y: 3.3, z: d / 2},
-			...Array.flatMap(
-				[-1, 1],
-				side =>
-					[
-						{d: 0.2, h: 2.05, paint: 'alloy', w: 0.18, x: w / 2 + side * 0.75, y: 0.51, z: d / 2},
-						{d: 0.08, h: 1.7, paint: 'circuit', w: 0.035, x: w / 2 + side * 0.85, y: 0.7, z: d / 2},
-						{d: 0.3, h: 0.12, paint: 'metal', w: 0.4, x: w / 2 + side * 0.6, y: 0.7, z: d / 2},
-						...Array.flatMap(
-							[-1, 1],
-							face =>
-								[
-									{d: 0.025, h: 2.2, paint: 'team', w: 0.09, x: w / 2 + side * 0.32, y: 0.7, z: d / 2 + face * 0.49},
-									{
-										d: 0.025,
-										h: 0.045,
-										paint: 'circuit',
-										w: 0.18,
-										x: w / 2 + side * 0.18,
-										y: 1.5,
-										z: d / 2 + face * 0.49
-									},
-									{
-										d: 0.025,
-										h: 0.045,
-										paint: 'circuit',
-										w: 0.18,
-										x: w / 2 + side * 0.18,
-										y: 1.7,
-										z: d / 2 + face * 0.49
-									}
-								] satisfies Part[]
-						)
-					] satisfies Part[]
-			)
-		] satisfies Part[],
+	home: () => [],
 	junction: hub,
 	lift: belt,
 	manufacturer: machine,
@@ -513,8 +473,11 @@ function paintOf(part: Part, ghost: boolean, team: THREE.Material) {
 
 // A building's mesh: its parts in their paint, its team's flag; a site still waiting for items is a pale ghost, one under construction rises with its progress.
 function buildingObject(view: BuildingView, team: THREE.Material) {
-	const group = new THREE.Group()
 	const ghost = view.built < 0.5
+	const group = Boolean.match(view.kind === 'home', {
+		onFalse: () => new THREE.Group(),
+		onTrue: () => surveyCore(team, PAINT.ghost, ghost)
+	})
 	for (const part of SHAPES[view.kind](view.w, view.d)) {
 		const mesh = new THREE.Mesh(geometryOf(part), paintOf(part, ghost, team))
 		mesh.position.set(part.x - view.w / 2, part.y + part.h / 2, part.z - view.d / 2)
@@ -526,6 +489,7 @@ function buildingObject(view: BuildingView, team: THREE.Material) {
 
 // A building's own geometry goes with it; a model's stays for the next clone.
 function disposeObject(object: THREE.Object3D) {
+	disposeSurveyCore(object)
 	for (const mesh of Array.filter(meshesOf(object), entry => entry.userData['shared'] !== true)) {
 		mesh.geometry.dispose()
 	}
@@ -569,6 +533,16 @@ export function createCast(view: Renderer) {
 	painter.outputColorSpace = THREE.SRGBColorSpace
 	painter.toneMapping = THREE.NeutralToneMapping
 	painter.setClearColor(0x00_00_00, 0)
+	Array.forEach(TEAMS, (team, index) => {
+		const portraitPaint = new THREE.MeshStandardMaterial({color: team.color})
+		const corePortrait = surveyCore(portraitPaint, portraitPaint, false)
+		MutableHashMap.set(portraits.painted, `home:${index}`, portraitOf({animations: [], scene: corePortrait}, painter))
+		corePortrait.traverse(object => {
+			if (object instanceof THREE.Mesh) object.geometry.dispose()
+		})
+		disposeSurveyCore(corePortrait)
+		portraitPaint.dispose()
+	})
 	const requested = MutableHashMap.empty<string, boolean>()
 	function loadModel(name: string) {
 		if (MutableHashMap.has(requested, name)) return
@@ -583,6 +557,7 @@ export function createCast(view: Renderer) {
 						MutableHashMap.set(models, name, gltf)
 						MutableHashMap.set(portraits.painted, name, portraitOf(gltf, painter))
 						for (const listener of portraits.listeners) listener()
+						view.invalidate()
 					},
 					undefined,
 					() => undefined
@@ -649,6 +624,8 @@ export function createCast(view: Renderer) {
 
 	function spawn(unit: UnitView) {
 		const object = placeholder()
+		object.position.set(unit.x, view.ground(unit.x, unit.z), unit.z)
+		object.visible = false
 		view.scene.add(object)
 		MutableHashMap.set(actors, unit.id, {
 			actions: MutableHashMap.empty<string, THREE.AnimationAction>(),
@@ -713,30 +690,17 @@ export function createCast(view: Renderer) {
 	function seat(id: number, delta: number) {
 		const actor = actorOf(id)
 		if (actor === undefined) return
-		const ahead = {x: Math.sin(actor.yaw) * 0.3, z: Math.cos(actor.yaw) * 0.3}
-		const pitch = Math.atan2(
-			heightOf(actor, actor.x - ahead.x, actor.z - ahead.z) - heightOf(actor, actor.x + ahead.x, actor.z + ahead.z),
-			0.6
+		actor.fallen = seatPose(
+			{
+				...actor,
+				down: actor.target.act === 'die',
+				level: Array.contains(FLIERS, actor.kind) || Array.contains(UPRIGHT, actor.kind)
+			},
+			delta,
+			(x, z) => heightOf(actor, x, z)
 		)
-		const roll = Math.atan2(
-			heightOf(actor, actor.x + ahead.z, actor.z - ahead.x) - heightOf(actor, actor.x - ahead.z, actor.z + ahead.x),
-			0.6
-		)
-		const y = heightOf(actor, actor.x, actor.z)
-		if (actor.target.act === 'die') actor.fallen = Number.min(1, actor.fallen + delta * 3)
-		if (actor.target.act !== 'die') actor.fallen = Number.max(0, actor.fallen - delta * 3)
-		actor.object.position.set(
-			actor.x,
-			actor.object.position.y + (y - actor.object.position.y) * (1 - Math.exp(-delta * 12)),
-			actor.z
-		)
-		actor.object.rotation.set(0, 0, 0)
-		actor.object.rotateY(actor.yaw)
 		const perch = Option.getOrUndefined(Option.filter(actor.ground, () => actor.kind !== 'fish'))
 		if (perch !== undefined) perch.visible = actor.target.act === 'idle'
-		if (Array.contains(FLIERS, actor.kind) || Array.contains(UPRIGHT, actor.kind)) return
-		actor.object.rotateX(pitch * 0.8)
-		actor.object.rotateZ(roll * 0.8 + actor.fallen * 1.2)
 	}
 
 	// The cargo a unit carries shows as full as it is, and a sentry's turret turns to its aim.
@@ -787,6 +751,7 @@ export function createCast(view: Renderer) {
 	}
 
 	function frame(next: Frame) {
+		view.invalidate()
 		state.count += 1
 		state.daylight = next.environment?.daylight ?? 1
 		measure()
@@ -839,6 +804,7 @@ export function createCast(view: Renderer) {
 
 	// The buildings as last sent: each one redrawn only when what it shows changed, Home's where every Home's sight is.
 	function places(list: NonNullable<Frame['buildings']>) {
+		view.invalidate()
 		state.homes = Array.map(
 			Array.filter(list, building => building.kind === 'home'),
 			home => ({x: home.x + home.w / 2, z: home.z + home.d / 2})
@@ -878,30 +844,13 @@ export function createCast(view: Renderer) {
 
 	// The unit under a pixel: the nearest middle within a few dozen pixels.
 	function pick(x: number, y: number) {
-		return Option.map(
-			Array.head(
-				Array.sort(
-					Array.filter(
-						Array.map(Array.fromIterable(MutableHashMap.values(actors)), actor => {
-							const point = view.project(
-								actor.object.position.x,
-								actor.object.position.y + 0.3,
-								actor.object.position.z
-							)
-							return {distance: Math.hypot(point.x - x, point.y - y), id: actor.id}
-						}),
-						entry => entry.distance < 36
-					),
-					(a: {distance: number}, b: {distance: number}) => Number.sign(a.distance - b.distance)
-				)
-			),
-			entry => entry.id
-		)
+		return pickActor(Array.fromIterable(MutableHashMap.values(actors)), view.project, x, y)
 	}
 
 	function screenOf(id: number) {
-		return Option.map(MutableHashMap.get(actors, id), actor =>
-			view.project(actor.object.position.x, actor.object.position.y + 0.9, actor.object.position.z)
+		return Option.map(
+			Option.filter(MutableHashMap.get(actors, id), actor => actor.object.visible),
+			actor => view.project(actor.object.position.x, actor.object.position.y + 0.9, actor.object.position.z)
 		)
 	}
 
@@ -917,13 +866,16 @@ export function createCast(view: Renderer) {
 			if (entry.at <= seconds && entry.action.getEffectiveWeight() < 0.01) entry.action.stop()
 		}
 		state.fading = Array.filter(state.fading, entry => entry.at > seconds)
-		const ease = 1 - Math.exp(-delta * 10)
+		const ease = spatialBlend(delta, 10)
 		for (const actor of MutableHashMap.values(actors)) {
 			// An even pace across the frame reads as walking, not a lurch and a stop; past 6 tiles it is a timeline jump, so it cuts.
-			const walk = Boolean.match(Math.hypot(actor.target.x - actor.from.x, actor.target.z - actor.from.z) > 6, {
-				onFalse: () => Number.clamp((seconds - actor.arrived) / state.interval, {maximum: 1, minimum: 0}),
-				onTrue: () => 1
-			})
+			const walk = Boolean.match(
+				delta === 0 || Math.hypot(actor.target.x - actor.from.x, actor.target.z - actor.from.z) > 6,
+				{
+					onFalse: () => Number.clamp((seconds - actor.arrived) / state.interval, {maximum: 1, minimum: 0}),
+					onTrue: () => 1
+				}
+			)
 			actor.x = actor.from.x + (actor.target.x - actor.from.x) * walk
 			actor.z = actor.from.z + (actor.target.z - actor.from.z) * walk
 			actor.yaw += shortestTurn(actor.yaw, actor.target.yaw) * ease
@@ -963,21 +915,45 @@ export function createCast(view: Renderer) {
 		}
 	}
 
+	function reset() {
+		for (const actor of MutableHashMap.values(actors)) {
+			view.scene.remove(actor.object)
+			release(actor)
+		}
+		MutableHashMap.clear(actors)
+		for (const entry of MutableHashMap.values(drawn)) disposeObject(entry.object)
+		MutableHashMap.clear(drawn)
+		for (const tracer of state.tracers) {
+			tracer.mesh.removeFromParent()
+			tracer.mesh.geometry.dispose()
+		}
+		state.tracers = []
+		state.fading = []
+		state.homes = []
+	}
+
 	view.onFrame(animate)
 
 	return {
 		dispose() {
 			state.closed = true
+			reset()
+			for (const paint of teamPaints) paint.dispose()
+			for (const paint of MutableHashMap.values(itemPaints)) paint.dispose()
 			painter.dispose()
 		},
 		frame,
-		// A unit's model as drawn, for its outline.
+		// A followed unit or building as drawn, for its outline.
 		objectOf(id: number) {
-			return Option.map(MutableHashMap.get(actors, id), actor => actor.object)
+			return Option.orElse(
+				Option.map(MutableHashMap.get(actors, id), actor => actor.object),
+				() => Option.map(MutableHashMap.get(drawn, id), entry => entry.object)
+			)
 		},
 		// Runs each time a model's portrait is painted.
 		onPortrait(listener: () => void) {
 			portraits.listeners = [...portraits.listeners, listener]
+			listener()
 		},
 		pick,
 		places,
@@ -985,17 +961,9 @@ export function createCast(view: Renderer) {
 			return Record.fromEntries(Array.fromIterable(portraits.painted))
 		},
 		positionOf,
+		requestPortrait: loadModel,
 		// Every unit and building gone, for a stream that starts over.
-		reset() {
-			for (const actor of MutableHashMap.values(actors)) {
-				view.scene.remove(actor.object)
-				release(actor)
-			}
-			MutableHashMap.clear(actors)
-			for (const entry of MutableHashMap.values(drawn)) disposeObject(entry.object)
-			MutableHashMap.clear(drawn)
-			state.homes = []
-		},
+		reset,
 		screenOf
 	}
 }

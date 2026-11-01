@@ -24,13 +24,14 @@ import {
 	pipe
 } from 'effect'
 
+import {Machine} from '@typeonce/effect-machine'
 import {KeyValueStore} from 'effect/persistence'
 
 import type {Thought, LocalChoice} from '#services/core/schema.ts'
 import {Core} from '#services/core/service.ts'
 import {makeSim, SIMULATION} from '#services/game/lib/sim.ts'
 import {FRAME_HZ, ROUND, TICK, TICK_HZ} from '#services/game/lib/utils.ts'
-import type {Experience, Frame, UsageLedger} from '#services/game/schema.ts'
+import type {Experience, Frame, RunState, UsageLedger} from '#services/game/schema.ts'
 import {
 	ActivityPage,
 	Command,
@@ -51,6 +52,8 @@ const PAGE = 20
 // A replay starts from the latest checkpoint before it, one every few rounds.
 const CHECKPOINT = 4
 
+const RunStates = Machine.state({states: {Failed: {fields: {message: Schema.String}}, Paused: {}, Running: {}}})
+
 function padded(round: number) {
 	return String.padStart(9, '0')(`${round}`)
 }
@@ -64,7 +67,7 @@ function keyOf(team: number, round: number) {
 }
 
 function notable(entry: Experience) {
-	if (entry.context !== undefined) return false
+	if (entry.context !== undefined) return true
 	const unit = Schema.is(UnitKind)(entry.actorKind)
 	if (entry.kind === 'born') return unit
 	if (entry.kind === 'decision') {
@@ -83,9 +86,39 @@ function notable(entry: Experience) {
 	return true
 }
 
+const upgradeActivity = Effect.fn('Game.upgradeActivity')(function* <E>(
+	index: HistoryIndex,
+	read: (actor: string, page: number) => Effect.Effect<readonly Experience[], E>
+) {
+	if (index['@receipts'] === 1 || Record.size(index) === 0) return index
+	const kv = yield* KeyValueStore.KeyValueStore
+	const references = MutableList.make<ActivityPage[number]>()
+	for (const actor of Array.filter(
+		Record.toEntries(index),
+		entry => !String.startsWith('@')(entry[0]) && entry[1] > 0
+	)) {
+		for (const page of Array.range(0, Math.ceil(actor[1] / 100) - 1)) {
+			for (const entry of yield* read(actor[0], page)) {
+				if (notable(entry)) MutableList.append(references, {actor: entry.actor, id: entry.id, page, tick: entry.tick})
+			}
+		}
+	}
+	const sorted = Array.sortWith(MutableList.toArray(references), entry => entry.id, Number.Order)
+	const activity = KeyValueStore.toSchemaStore(kv, ActivityPage)
+	for (const chunk of Array.map(Array.chunksOf(sorted, 100), (rows, page) => ({page, rows}))) {
+		yield* activity.set(`activity/${padded(chunk.page)}`, chunk.rows)
+	}
+	const updated = {...index, '@activity': sorted.length, '@receipts': 1}
+	// Commit the receipt-index marker last so an interrupted upgrade retries before serving readers.
+	yield* KeyValueStore.toSchemaStore(kv, HistoryIndex).set('history/index', updated)
+	return updated
+})
+
 export class Game extends Context.Service<
 	Game,
 	{
+		readonly status: Stream.Stream<RunState>
+		readonly control: (running: boolean) => Effect.Effect<RunState, GameError>
 		readonly join: Stream.Stream<Frame>
 		// The world as it was from a tick on, played at a multiple of real time (0 holds still), up to the live tick.
 		readonly replay: (from: number, speed: number) => Stream.Stream<Frame, GameError>
@@ -103,7 +136,7 @@ export class Game extends Context.Service<
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
-			const running = (yield* pipe(Config.String('SIGNAL_RUN'), Config.withDefault('paused'))) === 'running'
+			const initiallyRunning = (yield* pipe(Config.String('SIGNAL_RUN'), Config.withDefault('paused'))) === 'running'
 			const kv = yield* KeyValueStore.KeyValueStore
 			const worlds = KeyValueStore.toSchemaStore(kv, Saved)
 			const entries = KeyValueStore.toSchemaStore(kv, Entry)
@@ -126,9 +159,6 @@ export class Game extends Context.Service<
 					GameError.make({cause, message: 'Signal refused to replace an unreadable saved world.'})
 				)
 			)
-			if (Option.isNone(restored) && running) {
-				yield* Effect.ignore(kv.clear, {log: 'Warn', message: 'Signal could not clear the old world'})
-			}
 			const sim = yield* Option.match(restored, {onNone: () => makeSim(Option.none(), fresh), onSome: Effect.succeed})
 			const historyIndex = MutableRef.make(
 				Option.getOrElse(yield* indexes.get('history/index'), () => Record.empty<string, number>())
@@ -214,6 +244,7 @@ export class Game extends Context.Service<
 				Math.floor(yield* pipe(Config.Number('SIGNAL_LOCAL_DECISIONS_PER_SECOND'), Config.withDefault(2))),
 				{maximum: 4, minimum: 0}
 			)
+			const coreConfigured = Option.isSome(yield* Config.option(Config.Redacted('OPENROUTER_API_KEY')))
 
 			const clock = yield* Semaphore.make(1)
 			const save = pipe(
@@ -230,6 +261,13 @@ export class Game extends Context.Service<
 				}
 				return Array.take(entriesInPage, expected)
 			})
+
+			MutableRef.set(
+				historyIndex,
+				yield* upgradeActivity(MutableRef.get(historyIndex), (actor, page) =>
+					actorPage(actor, page, MutableRef.get(historyIndex))
+				)
+			)
 
 			const appendHistory = Effect.fn('Game.appendHistory')(function* (
 				actor: string,
@@ -299,6 +337,7 @@ export class Game extends Context.Service<
 					const index = {
 						...Record.fromEntries(updated),
 						'@activity': count + novel.length,
+						'@receipts': 1,
 						'@rules': SIMULATION,
 						'@through': Option.getOrElse(
 							Option.map(Array.last(pending), entry => entry.id),
@@ -589,7 +628,7 @@ export class Game extends Context.Service<
 					for (const pending of MutableHashMap.values(thinking)) yield* Fiber.interrupt(pending.fiber)
 					MutableHashMap.clear(local)
 					MutableHashMap.clear(thinking)
-					return
+					return yield* Option.getOrThrow(MutableRef.get(fault))
 				}
 				const now = yield* Clock.currentTimeMillis
 				const from = MutableRef.get(started)
@@ -601,25 +640,136 @@ export class Game extends Context.Service<
 				MutableRef.update(timeline, before => ({...before, live: sim.tick()}))
 			})
 
-			// A fresh world keeps its first moment, so the timeline starts there.
-			if (running) {
-				if (Option.isNone(restored)) yield* save
-				yield* Effect.addFinalizer(() => Effect.ignore(save, {log: 'Error', message: 'Final Signal save failed'}))
-				yield* checkpoint(Math.floor(sim.tick() / ROUND))
-				yield* Effect.forkScoped(
-					Effect.repeat(
-						Effect.catch(advance, error =>
-							Effect.gen(function* () {
-								MutableRef.set(fault, Option.some(error))
-								for (const pending of MutableHashMap.values(local)) yield* Fiber.interrupt(pending.fiber)
-								for (const pending of MutableHashMap.values(thinking)) yield* Fiber.interrupt(pending.fiber)
-								yield* Effect.logError('Simulation stopped after a persistence or simulation failure', error)
-							})
-						),
-						Schedule.spaced(`${TICK * 1000} millis`)
-					)
+			const lifecycle = yield* Semaphore.make(1)
+			const advancement = yield* Semaphore.make(1)
+			const prepared = MutableRef.make(false)
+			yield* Effect.addFinalizer(() =>
+				Effect.ignore(
+					Effect.suspend(() => {
+						if (MutableRef.get(prepared)) return advancement.withPermit(save)
+						return Effect.void
+					}),
+					{log: 'Error', message: 'Final Signal save failed'}
 				)
-			}
+			)
+			const stopOnError = Effect.fnUntraced(function* (error: GameError) {
+				MutableRef.set(fault, Option.some(error))
+				for (const pending of MutableHashMap.values(local)) yield* Fiber.interrupt(pending.fiber)
+				for (const pending of MutableHashMap.values(thinking)) yield* Fiber.interrupt(pending.fiber)
+				yield* Effect.logError('Simulation stopped after a persistence or simulation failure', error)
+			})
+			const process = yield* Machine.start(
+				Machine.make({
+					effects: {
+						advance: pipe(
+							Effect.repeat(
+								advancement.withPermit(Effect.uninterruptible(advance)),
+								Schedule.spaced(`${TICK * 1000} millis`)
+							),
+							Effect.mapError(cause => {
+								if (Schema.is(GameError)(cause)) return cause
+								return GameError.make({cause, message: 'Simulation stopped: world advancement failed.'})
+							}),
+							Effect.tapError(stopOnError)
+						)
+					},
+					events: Machine.events({Failed: {message: Schema.String}, Pause: {}, Run: {}}),
+					root: RunStates
+				}).handle({
+					initial: {target: 'Paused'},
+					on: {Failed: {data: transition => ({message: transition.event.message}), target: 'Failed'}},
+					states: {
+						Failed: {},
+						Paused: {on: {Run: {target: 'Running'}}},
+						Running: {
+							invoke: {
+								onDone: {none: true},
+								onFailure: {data: transition => ({message: transition.error.message}), target: 'Failed'},
+								src: 'advance'
+							},
+							on: {Pause: {target: 'Paused'}}
+						}
+					}
+				})
+			)
+			const state = Effect.map(process.snapshot, snapshot => ({
+				coreConfigured,
+				localDecisions: localBudget > 0,
+				problem: Option.getOrUndefined(Option.map(MutableRef.get(fault), error => error.message)),
+				running: RunStates.matches(snapshot.state, 'Running') && Option.isNone(MutableRef.get(fault))
+			}))
+			const pause = advancement.withPermit(
+				Effect.gen(function* () {
+					for (const pending of Array.filter(
+						Array.fromIterable(thinking),
+						entry => entry[1].fiber.pollUnsafe() === undefined
+					)) {
+						yield* Fiber.interrupt(pending[1].fiber)
+						MutableHashMap.remove(thinking, pending[0])
+						sim.setStatus(pending[0], 'waiting')
+						yield* record({
+							...pending[1].entry,
+							// The current boundary can already hold the preceding completed answer.
+							round: Math.floor(sim.tick() / ROUND) + 1,
+							text: 'World paused; unfinished decision cancelled.',
+							tick: sim.tick()
+						})
+					}
+					// Completed answers stay pending; cancelled local calls become recorded failures on resume.
+					for (const pending of MutableHashMap.values(local)) yield* Fiber.interrupt(pending.fiber)
+					yield* save
+					yield* keepHistory()
+					yield* timelines.set('timeline', MutableRef.get(timeline))
+				})
+			)
+			const control = Effect.fn('Game.control')(
+				(requested: boolean) =>
+					lifecycle.withPermit(
+						Effect.gen(function* () {
+							if (requested && Option.isSome(MutableRef.get(fault))) {
+								return yield* Option.getOrThrow(MutableRef.get(fault))
+							}
+							if (requested === (yield* state).running) return yield* state
+							if (requested) {
+								if (!MutableRef.get(prepared)) {
+									if (Option.isNone(restored)) {
+										yield* kv.clear
+										MutableRef.set(historyIndex, {})
+										MutableRef.set(threadKeys, [])
+										MutableHashMap.clear(recent)
+										MutableRef.set(timeline, {live: sim.tick(), marks: [], start: sim.tick()})
+									}
+									// Keep tick zero before allowing either physics or inference to advance.
+									yield* save
+									const anchor = Math.floor(sim.tick() / ROUND / CHECKPOINT) * CHECKPOINT
+									if (Option.isNone(yield* worlds.get(replayKey('checkpoint', anchor)))) yield* checkpoint(anchor)
+									MutableRef.set(prepared, true)
+								}
+								MutableRef.set(started, {at: yield* Clock.currentTimeMillis, tick: sim.tick()})
+								yield* process.send({_tag: 'Run'})
+							} else {
+								yield* process.send({_tag: 'Pause'})
+								yield* pause
+							}
+							return yield* state
+						})
+					),
+				Effect.mapError(cause => {
+					if (Schema.is(GameError)(cause)) return cause
+					return GameError.make({cause, message: 'The world control could not be saved.'})
+				}),
+				Effect.tapError(error =>
+					Effect.andThen(
+						stopOnError(error),
+						Effect.ignore(process.send({_tag: 'Failed', message: error.message}), {
+							log: 'Warn',
+							message: 'World control closed before its failure was published'
+						})
+					)
+				),
+				Effect.uninterruptible
+			)
+			if (initiallyRunning) yield* control(true)
 
 			// The latest checkpoint at or before a round, searching back on the checkpoint rounds.
 			const checkpointBefore = Effect.fnUntraced(function* (from: number) {
@@ -672,6 +822,7 @@ export class Game extends Context.Service<
 			)
 
 			return Game.of({
+				control,
 				history: Effect.fn('Game.history')(
 					function* (actor: number | 'all', before: Option.Option<number>, at = 9_007_199_254_740_991) {
 						const index = MutableRef.get(historyIndex)
@@ -764,17 +915,18 @@ export class Game extends Context.Service<
 							Stream.tick(`${1000 / FRAME_HZ} millis`),
 							Stream.mapEffect(() =>
 								clock.withPermit(
-									Effect.suspend(() => {
-										const version = `${sim.tick()}:${Option.getOrElse(
+									Effect.gen(function* () {
+										const current = yield* state
+										const version = `${sim.tick()}:${current.running}:${Option.getOrElse(
 											Option.map(MutableRef.get(fault), error => error.message),
 											() => ''
 										)}`
-										if (Option.contains(MutableRef.get(sent), version)) return Effect.succeedNone
+										if (Option.contains(MutableRef.get(sent), version)) return Option.none<Frame>()
 										MutableRef.set(sent, Option.some(version))
-										return Effect.map(Clock.currentTimeMillis, now =>
+										return yield* Effect.map(Clock.currentTimeMillis, now =>
 											Option.map(sim.frame(id, now), frame => ({
 												...frame,
-												paused: !running || Option.isSome(MutableRef.get(fault)),
+												paused: !current.running,
 												problem: Option.getOrUndefined(Option.map(MutableRef.get(fault), error => error.message))
 											}))
 										)
@@ -817,6 +969,11 @@ export class Game extends Context.Service<
 							)
 						})
 					),
+				status: pipe(
+					process.changes,
+					Stream.mapEffect(() => state),
+					Stream.changesWith((before, after) => before.running === after.running && before.problem === after.problem)
+				),
 				thread: Effect.fn('Game.thread')(
 					function* (team: number, before: Option.Option<number>) {
 						const last = Option.getOrElse(before, () => Math.floor(sim.tick() / ROUND) + 1)
