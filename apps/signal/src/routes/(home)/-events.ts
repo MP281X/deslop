@@ -1,7 +1,7 @@
-import {Array, Option, Record, Schema, String} from 'effect'
+import {Array, MutableList, Option, Record, Schema, String} from 'effect'
 
 import type {Experience} from '#services/game/schema.ts'
-import {LocalDecision} from '#services/game/schema.ts'
+import {LocalDecision, Point} from '#services/game/schema.ts'
 
 function decisionKey(entry: Experience) {
 	if (entry.kind !== 'decision') return Option.none<string>()
@@ -31,18 +31,64 @@ export function decisionDetails(context: string) {
 	return Schema.decodeOption(Schema.fromJsonString(LocalDecision))(context)
 }
 
-function jsonValue(text: string) {
-	return Schema.decodeOption(Schema.fromJsonString(Schema.Json))(text)
+function jsonEnd(text: string, start: number) {
+	const state = {depth: 0}
+	// Quoted JSON strings are whole tokens, so their braces and escaped quotes never affect nesting.
+	for (const token of String.matchAll(/"(?:\\[\s\S]|[^"\\])*"|[{}[\]]/gu)(String.slice(start)(text))) {
+		if (token[0] === '{' || token[0] === '[') {
+			state.depth += 1
+		} else if (token[0] === '}' || token[0] === ']') {
+			state.depth -= 1
+			if (state.depth === 0) return Option.map(Option.fromUndefinedOr(token.index), index => start + index + 1)
+		}
+	}
+	return Option.none<number>()
 }
 
-export function jsonParts(text: string) {
-	return Option.orElse(
-		Option.map(jsonValue(text), value => ({before: '', value})),
-		() =>
-			Option.flatMap(String.match(/^(.*?)(\{.*\}|\[.*\])\.?$/u)(text), found =>
-				Option.map(jsonValue(found[2] ?? ''), value => ({before: found[1] ?? '', value}))
+type TextPart = {kind: 'text'; text: string} | {kind: 'data'; value: Schema.Json}
+
+export function textParts(text: string) {
+	const parts = MutableList.make<TextPart>()
+	const cursor = {start: 0, through: 0}
+	while (cursor.start < text.length) {
+		if (text[cursor.start] === '{' || text[cursor.start] === '[') {
+			const end = Option.getOrUndefined(jsonEnd(text, cursor.start))
+			const value = Option.getOrUndefined(
+				Option.flatMap(Option.fromUndefinedOr(end), to =>
+					Schema.decodeOption(Schema.fromJsonString(Schema.Json))(String.slice(cursor.start, to)(text))
+				)
 			)
+			if (end !== undefined && value !== undefined) {
+				if (cursor.start > cursor.through) {
+					MutableList.append(parts, {kind: 'text', text: String.slice(cursor.through, cursor.start)(text)})
+				}
+				MutableList.append(parts, {kind: 'data', value})
+				cursor.start = end - 1
+				cursor.through = end
+			}
+		}
+		cursor.start += 1
+	}
+	if (cursor.through < text.length) MutableList.append(parts, {kind: 'text', text: String.slice(cursor.through)(text)})
+	return MutableList.toArray(parts)
+}
+
+export function recordData(value: Record<string, unknown>, tick: number) {
+	const at = Option.map(
+		Schema.decodeUnknownOption(Schema.Struct({...Point.fields, tick: Schema.optionalKey(Schema.Int)}))(value),
+		point => ({...point, tick: point.tick ?? tick})
 	)
+	return {
+		anchor: Option.getOrUndefined(Array.findFirst(['text', '_tag', 'kind', 'name'], field => Record.has(value, field))),
+		at,
+		fields: Record.toEntries(
+			Record.filter(value, (field, key) => field !== undefined && (Option.isNone(at) || (key !== 'x' && key !== 'z')))
+		)
+	}
+}
+
+export function entityField(field: string) {
+	return Array.contains(['actor', 'building', 'unit', 'target', 'from', 'to', 'subject', 'source'], field)
 }
 
 export function fieldName(name: string) {
@@ -59,11 +105,11 @@ export function actorName(kind: string, id: number) {
 	return `${fieldName(kind)} #${id}`
 }
 
-export function eventModel(entry: Experience, models: Record<string, string>) {
+export function eventModel(entry: Experience, models: readonly string[]) {
 	return Option.getOrElse(
 		Option.filter(
 			Option.flatMap(String.match(/^(\w+) #-?\d+:/u)(entry.text), found => Option.fromUndefinedOr(found[1])),
-			name => Record.has(models, name)
+			name => Array.contains(models, name)
 		),
 		() => entry.actorKind ?? 'unknown'
 	)

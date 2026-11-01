@@ -33,6 +33,9 @@ const URLS = import.meta.glob<string>(['./-models/*.glb', '!**/home.glb', '!**/l
 	import: 'default',
 	query: '?url'
 })
+export const MODEL_KINDS = Array.map(Record.keys(URLS), key =>
+	String.replace(/\.glb$/u, '')(String.replace('./-models/', '')(key))
+)
 const TRACER = new THREE.MeshBasicMaterial({color: '#ffd98a', toneMapped: false})
 const BOX = new THREE.BoxGeometry(0.4, 0.3, 0.5)
 const BOX_SKIN = new THREE.MeshStandardMaterial({color: '#e9e2d5'})

@@ -20,10 +20,20 @@ import {Spinner} from '@deslop/components-web/ui/spinner'
 import {cn} from '@deslop/components-web/utils'
 import {signInUrl} from '@deslop/runtime/auth/utils'
 
-import {createCast} from './-cast.ts'
+import {createCast, MODEL_KINDS} from './-cast.ts'
 import type {Cast} from './-cast.ts'
 import type {Inspected} from './-chunks.worker.ts'
-import {actorName, decisionDetails, displayEvents, eventModel, eventText, fieldName, jsonParts} from './-events.ts'
+import {
+	actorName,
+	decisionDetails,
+	displayEvents,
+	entityField,
+	eventModel,
+	eventText,
+	fieldName,
+	recordData,
+	textParts
+} from './-events.ts'
 import {createRenderer} from './-renderer.ts'
 import type {Renderer} from './-renderer.ts'
 
@@ -351,42 +361,71 @@ function DataValue(props: {field?: string; tick: number; value: unknown}) {
 			<ul className="space-y-1">
 				{Array.map(props.value, (value, index) => (
 					<li key={index}>
-						<DataValue value={value} tick={props.tick} field={props.field} />
+						<DataValue
+							value={value}
+							tick={props.tick}
+							field={Boolean.match(props.field === 'units' || props.field === 'facts', {
+								onFalse: () => props.field,
+								onTrue: () => 'target'
+							})}
+						/>
 					</li>
 				))}
 			</ul>
 		)
 	}
 	if (Schema.is(DataRecord)(props.value)) {
+		const data = recordData(props.value, props.tick)
 		return (
-			<dl className="grid grid-cols-3 gap-x-3 gap-y-1">
-				{Array.map(
-					Record.toEntries(
-						Record.filter(props.value, (value, key) => value !== undefined && key !== 'x' && key !== 'z')
-					),
-					field => (
+			<>
+				{data.anchor === undefined &&
+					Option.getOrUndefined(Option.map(data.at, at => <References text={`(${at.x}, ${at.z})`} tick={at.tick} />))}
+				<dl className="grid grid-cols-3 gap-x-3 gap-y-1">
+					{Array.map(data.fields, field => (
 						<div key={field[0]} className="contents">
 							<dt className={cn('text-muted-foreground', Predicate.isObject(field[1]) && 'col-span-3')}>
 								{fieldName(field[0])}
 							</dt>
 							<dd className={cn('col-span-2 min-w-0 break-words', Predicate.isObject(field[1]) && 'col-span-3')}>
-								<DataValue field={field[0]} value={field[1]} tick={props.tick} />
+								<DataValue
+									field={field[0]}
+									value={field[1]}
+									tick={Option.getOrElse(
+										Option.map(data.at, at => at.tick),
+										() => props.tick
+									)}
+								/>
+								{field[0] === data.anchor &&
+									Option.getOrUndefined(
+										Option.map(data.at, at => (
+											<span>
+												{' '}
+												at <References text={`(${at.x}, ${at.z})`} tick={at.tick} />
+											</span>
+										))
+									)}
 							</dd>
 						</div>
-					)
-				)}
-			</dl>
+					))}
+				</dl>
+			</>
 		)
 	}
-	if (Predicate.isString(props.value)) return <References text={props.value} tick={props.tick} />
+	if (Predicate.isString(props.value)) {
+		return Array.map(textParts(props.value), (part, index) => {
+			if (part.kind === 'text') {
+				return (
+					<span key={index} className="whitespace-pre-wrap">
+						<References text={part.text} tick={props.tick} />
+					</span>
+				)
+			}
+			return <DataValue key={index} value={part.value} tick={props.tick} />
+		})
+	}
 	if (Predicate.isNumber(props.value)) {
 		if (props.field === 'cost') return <span>${props.value.toLocaleString('en', {maximumFractionDigits: 8})}</span>
-		if (
-			Array.contains(
-				['actor', 'building', 'unit', 'target', 'from', 'to', 'units', 'facts', 'id', 'source'],
-				props.field ?? ''
-			)
-		) {
+		if (entityField(props.field ?? '')) {
 			return <References text={`#${props.value}`} tick={props.tick} />
 		}
 		return <span>{props.value.toLocaleString('en')}</span>
@@ -399,44 +438,48 @@ function StructuredText(props: {text: string; tick: number}) {
 		<div className="space-y-2">
 			{Array.map(Array.filter(String.split('\n')(props.text), String.isNonEmpty), (line, index) => (
 				<div key={index}>
-					{Option.match(jsonParts(line), {
-						onNone: () => <References text={line} tick={props.tick} />,
-						onSome: part => (
-							<>
-								<References text={part.before} tick={props.tick} />
-								<DataValue value={part.value} tick={props.tick} />
-							</>
-						)
-					})}
+					<DataValue value={line} tick={props.tick} />
 				</div>
 			))}
 		</div>
 	)
 }
 
+function RecordDetails(props: {children: ReactNode; title: string}) {
+	const [open, setOpen] = useState(false)
+	return (
+		<details className="relative mt-1 text-xs" onToggle={event => setOpen(event.currentTarget.open)}>
+			<summary className="text-muted-foreground cursor-pointer">{props.title}</summary>
+			{open && <div className="space-y-3 py-2">{props.children}</div>}
+		</details>
+	)
+}
+
+function OriginalRequest(props: {text: string; tick: number}) {
+	return Option.match(decisionDetails(props.text), {
+		onNone: () => (
+			<div>
+				<p className="text-muted-foreground">Original text · older request format</p>
+				<StructuredText text={props.text} tick={props.tick} />
+			</div>
+		),
+		onSome: request => <DataValue value={request} tick={request.tick} />
+	})
+}
+
 function RequestDetails(props: {entry: Experience}) {
 	if (props.entry.context === undefined && props.entry.tokens === undefined) return null
 	return (
-		<details className="relative mt-1 text-xs">
-			<summary className="text-muted-foreground cursor-pointer">Request details</summary>
-			<div className="space-y-3 py-2">
-				{props.entry.tokens !== undefined && <DataValue value={props.entry.tokens} tick={props.entry.tick} />}
-				{Option.getOrUndefined(
-					Option.map(Option.flatMap(Option.fromUndefinedOr(props.entry.context), decisionDetails), request => (
-						<>
-							<details>
-								<summary className="text-muted-foreground cursor-pointer">Available choices</summary>
-								<DataValue value={request.choices} tick={request.tick} />
-							</details>
-							<details>
-								<summary className="text-muted-foreground cursor-pointer">Private knowledge at request</summary>
-								<StructuredText text={request.state} tick={request.tick} />
-							</details>
-						</>
-					))
-				)}
-			</div>
-		</details>
+		<RecordDetails title="Request details">
+			{props.entry.tokens !== undefined && <DataValue value={props.entry.tokens} tick={props.entry.tick} />}
+			{Option.getOrUndefined(
+				Option.map(Option.fromUndefinedOr(props.entry.context), context => (
+					<RecordDetails title="Original request">
+						<OriginalRequest text={context} tick={props.entry.tick} />
+					</RecordDetails>
+				))
+			)}
+		</RecordDetails>
 	)
 }
 
@@ -565,7 +608,6 @@ function EventRecord(props: {entry: Experience}) {
 	const navigate = useContext(Navigation)
 	const members = useContext(Membership)
 	const team = historyTeam(props.entry, members)
-	const portraits = useContext(Portraits)
 	const kind = props.entry.actorKind ?? members[props.entry.actor]?.kind ?? 'individual'
 	return (
 		<li className="border-t py-2">
@@ -580,7 +622,7 @@ function EventRecord(props: {entry: Experience}) {
 				</Button>
 				<Portrait
 					kind={Boolean.match(kind === 'home' && team !== undefined, {
-						onFalse: () => eventModel({...props.entry, actorKind: kind}, portraits.images),
+						onFalse: () => eventModel({...props.entry, actorKind: kind}, MODEL_KINDS),
 						onTrue: () => `home:${team}`
 					})}
 					className="pointer-events-none relative size-16"
@@ -782,20 +824,19 @@ function HistoryGroup(props: {entries: readonly Experience[]}) {
 
 function HistoryPage(props: {
 	actor: number | 'all'
-	at?: number
 	before?: number
 	compact?: boolean
 	onEarlier: () => void
 	onLatest: () => void
 	onRead: () => void
 }) {
-	const [expanded, setExpanded] = useState(() => Option.none<{at?: number; before: number; upper: number}>())
+	const [expanded, setExpanded] = useState(() => Option.none<{before: number; upper: number}>())
 	const result = useAtomValue(
 		historyAtom(
 			`${props.actor}:${Option.getOrElse(
 				Option.map(expanded, page => page.upper),
 				() => props.before ?? 0
-			)}:${Option.match(expanded, {onNone: () => props.at ?? -1, onSome: page => page.at ?? -1})}`
+			)}`
 		)
 	)
 	const entries = Option.getOrElse(AsyncResult.value(result), () => [])
@@ -828,11 +869,7 @@ function HistoryPage(props: {
 											onClick={() => {
 												props.onEarlier()
 												setExpanded(
-													Option.some({
-														at: props.at,
-														before: first.id,
-														upper: Option.getOrThrow(Array.last(entries)).id + 1
-													})
+													Option.some({before: first.id, upper: Option.getOrThrow(Array.last(entries)).id + 1})
 												)
 											}}
 										>
@@ -859,7 +896,6 @@ function HistoryPage(props: {
 							)}
 							<HistoryPage
 								actor={props.actor}
-								at={page.at}
 								before={page.before}
 								onEarlier={props.onEarlier}
 								onLatest={props.onLatest}
@@ -884,7 +920,7 @@ function HistoryPage(props: {
 	)
 }
 
-function Chronicle(props: {actor: number | 'all'; at?: number}) {
+function Chronicle(props: {actor: number | 'all'}) {
 	const list = useRef<HTMLDivElement>(null)
 	const pinned = useRef(true)
 	const [full, setFull] = useState(() => props.actor === 'all')
@@ -905,7 +941,6 @@ function Chronicle(props: {actor: number | 'all'; at?: number}) {
 				<HistoryPage
 					key={`${full}`}
 					actor={props.actor}
-					at={props.at}
 					compact={!full}
 					onEarlier={() => {
 						pinned.current = false
@@ -943,7 +978,6 @@ function Followed(props: {unit: UnitView}) {
 }
 
 function Sidebar(props: {close: () => void; selection: Inspection; source: Source; view: View}) {
-	const tick = useAtomValue(cursorAtom)
 	const [filter, setFilter] = useState(-1)
 	const picked = Array.findFirst(
 		props.view.teams,
@@ -1001,17 +1035,8 @@ function Sidebar(props: {close: () => void; selection: Inspection; source: Sourc
 							)
 						)}
 						<Chronicle
-							key={`${Option.getOrElse(props.selection.actor, () => 'all')}:${Option.getOrElse(
-								Option.map(props.source, replay => replay.from),
-								() => 'live'
-							)}`}
+							key={Option.getOrElse(props.selection.actor, () => 'all')}
 							actor={Option.getOrElse(props.selection.actor, () => 'all' as const)}
-							at={Option.getOrUndefined(
-								Option.map(props.source, replay => {
-									if (replay.speed === 0) return tick
-									return Number.max(replay.from, Math.floor(tick / (5 * TICK_HZ)) * 5 * TICK_HZ)
-								})
-							)}
 						/>
 					</>
 				)}

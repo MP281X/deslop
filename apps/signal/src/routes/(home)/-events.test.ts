@@ -1,8 +1,18 @@
 import {assert, it} from '@effect/vitest'
 
-import {Option} from 'effect'
+import {Array, Option} from 'effect'
 
-import {actorName, decisionDetails, displayEvents, eventModel, eventText, fieldName, jsonParts} from './-events.ts'
+import {
+	actorName,
+	decisionDetails,
+	displayEvents,
+	entityField,
+	eventModel,
+	eventText,
+	fieldName,
+	recordData,
+	textParts
+} from './-events.ts'
 
 import type {Experience} from '#services/game/schema.ts'
 
@@ -49,16 +59,68 @@ it('keeps failures, multiple responses, other ticks/actors and unmatched receipt
 })
 
 it('uses real model identities and parses request records without treating malformed JSON as structured data', () => {
-	assert.strictEqual(eventModel({...CHOICE, text: 'grazer #42: idle'}, {grazer: 'portrait'}), 'grazer')
-	assert.strictEqual(eventModel(CHOICE, {}), 'worker')
+	assert.strictEqual(eventModel({...CHOICE, text: 'grazer #42: idle'}, ['grazer']), 'grazer')
+	assert.strictEqual(eventModel(CHOICE, []), 'worker')
 	assert.strictEqual(actorName('worker', 2), 'Builder #2')
 	assert.strictEqual(actorName('home', 1), 'Core')
 	assert.strictEqual(fieldName('messagesWaiting'), 'Messages waiting')
 	assert.isTrue(Option.isNone(decisionDetails('{}')))
-	assert.isTrue(Option.isNone(jsonParts('Unverified report.')))
-	assert.deepStrictEqual(Option.getOrThrow(jsonParts('{"claim":"uncertain"}')).value, {claim: 'uncertain'})
-	assert.deepStrictEqual(Option.getOrThrow(jsonParts('Home production queues: {"bench":[],"line":[]}.')), {
-		before: 'Home production queues: ',
-		value: {bench: [], line: []}
-	})
+	assert.deepStrictEqual(textParts('Unverified report.'), [{kind: 'text', text: 'Unverified report.'}])
+	assert.deepStrictEqual(textParts('{"claim":"uncertain"}'), [{kind: 'data', value: {claim: 'uncertain'}}])
+})
+
+it('extracts every labelled value from a real read-message shape without erasing claim provenance', () => {
+	const parts = textParts(
+		`Read #1: Visit the ridge.\nProposed objective: ${JSON.stringify({_tag: 'Go', x: 0, z: 20})}. Disclosed addresses: [1,3]. Received claims, not direct observations: ${JSON.stringify([{id: 42, kind: 'storage', source: 1, text: 'Uncertain } [ " claim', tick: 2, via: [{from: 1, tick: 5}], x: 5, z: 6}])}.`
+	)
+	assert.strictEqual(
+		Array.countBy(parts, part => part.kind === 'data'),
+		3
+	)
+	assert.include(
+		Array.join(
+			Array.map(
+				Array.filter(parts, part => part.kind === 'text'),
+				part => part.text
+			),
+			''
+		),
+		'Received claims, not direct observations:'
+	)
+	assert.deepStrictEqual(textParts('Home production queues: {"bench":[],"line":[]}.'), [
+		{kind: 'text', text: 'Home production queues: '},
+		{kind: 'data', value: {bench: [], line: []}},
+		{kind: 'text', text: '.'}
+	])
+})
+
+it('retains recorded coordinates as link targets at their own tick and never treats event sequence IDs as entities', () => {
+	const shown = recordData({actor: 2, id: 1001, text: 'A remembered claim.', tick: 40, x: 0, z: 20}, 900)
+	assert.deepStrictEqual(Option.getOrThrow(shown.at), {tick: 40, x: 0, z: 20})
+	assert.strictEqual(shown.anchor, 'text')
+	assert.isFalse(entityField('id'))
+	assert.isFalse(entityField('units'))
+	assert.isTrue(entityField('actor'))
+	assert.isTrue(entityField('subject'))
+	assert.deepStrictEqual(Option.getOrThrow(recordData({_tag: 'Go', x: 3, z: 4}, 900).at), {tick: 900, x: 3, z: 4})
+	assert.deepStrictEqual(recordData({x: 'unknown', z: 4}, 900).fields, [
+		['x', 'unknown'],
+		['z', 4]
+	])
+})
+
+it('retains complete recorded requests and leaves older plain-text requests available for display', () => {
+	const original = {
+		actor: 2,
+		choices: {rest: 'Rest.'},
+		experience: [CHOICE],
+		instructions: 'Do not treat the claim as fact.',
+		state: 'Private perception.',
+		tick: 100
+	}
+	assert.deepStrictEqual(Option.getOrThrow(decisionDetails(JSON.stringify(original))), original)
+	assert.isTrue(Option.isNone(decisionDetails('Earlier private continuation.')))
+	assert.deepStrictEqual(textParts('Earlier private continuation.'), [
+		{kind: 'text', text: 'Earlier private continuation.'}
+	])
 })
