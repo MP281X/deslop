@@ -5,6 +5,8 @@ import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
+import {readFeed} from '#services/game/lib/page.ts'
+import {TEAMS} from '#services/game/lib/utils.ts'
 import type {Frame} from '#services/game/schema.ts'
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/signal/lib/utils/RpcClient', {
@@ -13,6 +15,41 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/signal/lib/utils/R
 }) {}
 
 export const controlAtom = RpcClient.mutation('signal.control')
+
+export const feedAtom = Atom.family((at: number) => {
+	const request = Effect.flatMap(RpcClient, client =>
+		readFeed(
+			{
+				history: (before, tick) =>
+					client('signal.history', {
+						actor: 'all',
+						...Option.match(before, {onNone: () => ({}), onSome: cursor => ({before: cursor})}),
+						...Option.match(
+							Option.liftPredicate(tick, value => value >= 0),
+							{onNone: () => ({}), onSome: value => ({at: value})}
+						)
+					}),
+				thread: (team, before) =>
+					client('signal.thread', {
+						team,
+						...Option.match(before, {onNone: () => ({}), onSome: cursor => ({before: cursor})})
+					})
+			},
+			Array.map(TEAMS, (_team, team) => team),
+			at
+		)
+	)
+	if (at >= 0) return RpcClient.runtime.atom(request)
+	return Atom.setIdleTTL(
+		RpcClient.runtime.atom(
+			pipe(
+				Stream.tick('5 seconds'),
+				Stream.mapEffect(() => request)
+			)
+		),
+		0
+	)
+})
 // The authoritative run state is independent of the spectator's live or historical view.
 export const runStateAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(
@@ -183,16 +220,6 @@ export const historyAtom = Atom.family((key: string) => {
 	)
 })
 
-export const usageAtom = Atom.setIdleTTL(
-	RpcClient.runtime.atom(
-		pipe(
-			Stream.tick('30 seconds'),
-			Stream.mapEffect(() => Effect.flatMap(RpcClient, client => client('signal.usage', undefined)))
-		)
-	),
-	0
-)
-
 // The world's seed, kept while the view's stream starts over, as a replay begins or ends.
 export const seedAtom = Atom.keepAlive(
 	Atom.make(get =>
@@ -215,27 +242,6 @@ export const timelineAtom = Atom.keepAlive(
 		)
 	)
 )
-
-// A team's latest rounds, kept fresh.
-export const liveThreadAtom = Atom.family((team: number) =>
-	Atom.setIdleTTL(
-		RpcClient.runtime.atom(
-			pipe(
-				Stream.tick('5 seconds'),
-				Stream.mapEffect(() => Effect.flatMap(RpcClient, client => client('signal.thread', {team})))
-			)
-		),
-		0
-	)
-)
-
-// A team's rounds before a replay's, by `team:round`.
-export const pastThreadAtom = Atom.family((key: string) => {
-	const [team = 0, before = 0] = Array.map(String.split(':')(key), part =>
-		Option.getOrElse(Number.parse(part), () => 0)
-	)
-	return RpcClient.runtime.atom(Effect.flatMap(RpcClient, client => client('signal.thread', {before, team})))
-})
 
 // What the pointer is over, published by the world view for the hover card.
 type Hover = {id: string; x: number; y: number}

@@ -255,4 +255,4 @@ Every web app installs as its own app: `ServerRuntime.layerManifest` serves a st
 ## Do's and Don'ts
 
 - Don't add a card per section, a colored side stripe or a color per item.
-- Don't use a hue beyond the app's primary, warning and error; the portfolio's visitor cursors are the one exception.
+- Don't use a hue beyond the app's primary, warning and error; exceptions are portfolio visitor cursors and Signal's semantic team identities on the world, authors and event labels. Team colour does not fill whole message cards.

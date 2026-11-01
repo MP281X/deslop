@@ -23,14 +23,15 @@ import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js'
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js'
 
 import type {Inspected, Stale} from './-chunks.worker.ts'
+import {animationTime} from './-clock.ts'
 import type {Built} from './-mesh.ts'
 
 import type {Frame} from '#services/game/schema.ts'
 import {CHUNK, LEVEL, ORES, chunkOf, highest, lowest} from '#services/world/lib/utils.ts'
 
 // Half the view's height in tiles: nearest, farthest the player zooms, the overview's and at the start.
-const ZOOM = {farthest: 40, nearest: 3.5, overview: 90, start: 12}
-// The zone map's side in chunks, centred on the world's origin.
+const ZOOM = {farthest: 400, nearest: 3.5, overview: 400, start: 12}
+// The zone texture's side in chunks; its window follows the camera.
 const ZONES = 128
 // A chunk's revision as sent to a builder: the world's epoch times this, plus its own.
 const EPOCH = 1_000_000
@@ -66,6 +67,7 @@ float wearAt(vec2 xz){ vec2 uv = (xz - uWindow.xy) / uWindow.z; return texture2D
 // The atmosphere, drawn over the finished frame from its depth. A ray from the camera to each pixel's surface marches through two volumes: fog over the unexplored, thin at the explored edge and thickening into a cloud bank the farther it lies from it, and smog where the colony has worked. Explored ground out of sight is greyed; Home's and the units' sight is clear.
 const ATMOSPHERE = `
 uniform sampler2D tDiffuse, tDepth, uKnown, uEnv, uGround, uZones; uniform mat4 uInv; uniform vec3 uDir, uWindow; uniform float uT, uFogOn;
+uniform vec3 uTeamColors[32]; uniform int uTeamCount, uCoverageTeam; uniform vec2 uZoneOrigin; uniform bool uCoverageOn;
 uniform vec4 uSights[${SIGHTS}]; uniform int uSightCount, uFogStyle, uSmogStyle;
 varying vec2 vUv;
 float n3(vec3 p){ float i = floor(p.y), f = fract(p.y); f = f * f * (3. - 2. * f); return mix(vn(p.xz + i * vec2(17.13, 31.71)), vn(p.xz + (i + 1.) * vec2(17.13, 31.71)), f); }
@@ -84,6 +86,36 @@ float seenAt(vec2 xz){
 	return seen;
 }
 float smogAt(vec2 xz){ vec2 uv = windowUv(xz); return texture2D(uEnv, uv).r * step(0., uv.x) * step(uv.x, 1.) * step(0., uv.y) * step(uv.y, 1.); }
+float member(vec2 uv, int team){
+	if (uv.x < 0. || uv.y < 0. || uv.x >= 1. || uv.y >= 1.) return 0.;
+	vec4 bytes = floor(texture2D(uZones, uv) * 255. + .5);
+	int byteIndex = team / 8;
+	float value = bytes[byteIndex];
+	return mod(floor(value / pow(2., float(team - byteIndex * 8))), 2.);
+}
+vec3 coverage(vec3 base, vec3 surface){
+	if(!uCoverageOn) return base;
+	vec2 xz = surface.xz, guv = windowUv(xz);
+	float inWindow = step(0.,guv.x)*step(guv.x,1.)*step(0.,guv.y)*step(guv.y,1.);
+	if(inWindow>0. && surface.y>texture2D(uGround,guv).r+.15) return base;
+	vec2 cell = xz / ${CHUNK.toFixed(1)}, f = fract(cell), uv = (floor(cell) - uZoneOrigin + .5) / ${ZONES.toFixed(1)};
+	float count = 0.;
+	for (int t=0;t<32;t++){if(t>=uTeamCount) break;if(uCoverageTeam<0 || t==uCoverageTeam) count += member(uv,t);}
+	if(count<1.) return base;
+	float stripe = mod(floor((xz.x + xz.y) * 1.5), count), index = 0.;
+	for(int t=0;t<32;t++){
+		if(t>=uTeamCount) break;
+		if((uCoverageTeam<0 || t==uCoverageTeam) && member(uv,t)>0.){
+			if(index==stripe){
+				vec2 d=vec2(1. / ${ZONES.toFixed(1)},0.);
+				float edge=max(max((1.-member(uv-d.xy,t))*(1.-smoothstep(0.,.025,f.x)),(1.-member(uv+d.xy,t))*(1.-smoothstep(0.,.025,1.-f.x))),max((1.-member(uv-d.yx,t))*(1.-smoothstep(0.,.025,f.y)),(1.-member(uv+d.yx,t))*(1.-smoothstep(0.,.025,1.-f.y))));
+				return mix(base,uTeamColors[t],.12+.6*edge);
+			}
+			index+=1.;
+		}
+	}
+	return base;
+}
 void main(){
 	vec4 c = texture2D(tDiffuse, vUv);
 	float d = texture2D(tDepth, vUv).x, sky = step(.9999, d);
@@ -97,10 +129,7 @@ void main(){
 	// Explored ground looks the same in sight or out of it: only the unexplored lies under fog.
 	vec3 base = c.rgb;
 	// With the fog off, each chunk a team has stood in takes a light wash of its colour, a little stronger at the chunk's edge.
-	vec2 zc = surface.xz / ${CHUNK.toFixed(1)}, zf = fract(zc), zuv = (floor(zc) + ${(ZONES / 2).toFixed(1)} + .5) / ${ZONES.toFixed(1)};
-	vec4 zone = texture2D(uZones, zuv) * step(0., zuv.x) * step(zuv.x, 1.) * step(0., zuv.y) * step(zuv.y, 1.);
-	float zedge = 1. - smoothstep(.0, .025, min(min(zf.x, zf.y), min(1. - zf.x, 1. - zf.y)));
-	base = mix(base, zone.rgb, zone.a * (.14 + .3 * zedge) * (1. - uFogOn) * (1. - sky));
+	if(sky<1.) base = coverage(base,surface);
 	if (uSmogStyle == 0 && (uFogOn == 0. || seen >= 1.)) { gl_FragColor = vec4(base, c.a); return; }
 	float smogHere = smogAt(surface.xz);
 	if (uSmogStyle == 2) base = mix(base, vec3(dot(base, vec3(.3, .55, .15))) * vec3(1., .82, .52) * .85, smoothstep(.08, .55, smogHere) * .85);
@@ -609,12 +638,19 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 	outline.edgeThickness = 1
 	outline.edgeGlow = 0
 	composer.addPass(outline)
-	// The zones teams have stood in, a texel a chunk: their colours mixed, and how much shows.
+	// Four bytes retain the simulation's full team bitmask, without averaging team colours.
 	const zoneData = new Uint8Array(ZONES * ZONES * 4)
 	const zoneTexture = new THREE.DataTexture(zoneData, ZONES, ZONES, THREE.RGBAFormat, THREE.UnsignedByteType)
-	zoneTexture.colorSpace = THREE.SRGBColorSpace
 	zoneTexture.needsUpdate = true
-	const fogOn = {value: 1}
+	const coverage = {
+		uCoverageOn: {value: false},
+		uCoverageTeam: {value: -1},
+		uTeamColors: {value: Array.makeBy(32, () => new THREE.Color())},
+		uTeamCount: {value: 0},
+		uZoneOrigin: {value: new THREE.Vector2(-ZONES / 2, -ZONES / 2)}
+	}
+	const zoneState = {zones: Array.empty<NonNullable<Frame['zones']>[number]>()}
+	const fogOn = {value: 0}
 	const inverse = new THREE.Matrix4()
 	const facing = new THREE.Vector3(0, -1, 0)
 	composer.addPass(
@@ -623,6 +659,7 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 				fragmentShader: `${NOISE}${ATMOSPHERE}`,
 				uniforms: {
 					...env,
+					...coverage,
 					...sights,
 					tDepth: {value: occlusion.depthTexture},
 					tDiffuse: {value: undefined},
@@ -654,9 +691,9 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 	const chunks = MutableHashMap.empty<number, Loaded>()
 	const view = {
 		azimuth: Math.PI / 4,
+		detail: true,
 		// How many times the world started over; a chunk's revision carries the one it was asked in.
 		epoch: 0,
-		quarter: 0,
 		size: {height: 1, width: 1},
 		target: new THREE.Vector3(0, 0, 0),
 		zoom: ZOOM.start
@@ -673,6 +710,8 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 	// The fog window's corner in tiles; it moves when the camera nears its edge.
 	const fogCorner = {x: -FOG_SIZE / 2, z: -FOG_SIZE / 2}
 	const clock = new THREE.Clock()
+	const simulation = {previous: 0, speed: 0, tick: 0}
+	const footprints = {key: ''}
 	const listeners = {all: Array.empty<(seconds: number, delta: number) => void>(), drawn: Array.empty<() => void>()}
 	const raycaster = new THREE.Raycaster()
 	const direction = new THREE.Vector3()
@@ -916,7 +955,7 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		})
 		builder.busy += 1
 		// oxlint-disable-next-line unicorn/require-post-message-target-origin -- a Worker's postMessage takes no target origin.
-		builder.worker.postMessage({_tag: 'Build', cx, cz, revision: view.epoch * EPOCH + wanted})
+		builder.worker.postMessage({_tag: 'Build', cx, cz, detail: view.detail, revision: view.epoch * EPOCH + wanted})
 	}
 
 	// Drops a chunk that lies two chunks or more outside the view.
@@ -936,6 +975,13 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 
 	const streamed = {key: '', wanted: Array.empty<{cx: number; cz: number}>()}
 	function stream() {
+		const detail = view.zoom < 48
+		if (detail !== view.detail) {
+			view.detail = detail
+			view.epoch += 1
+			MutableHashMap.forEach(chunks, loaded => disposeGroup(loaded.group))
+			MutableHashMap.clear(chunks)
+		}
 		const near = visibleChunks(0)
 		const keep = visibleChunks(2)
 		const key = `${view.epoch}:${near.cx0}:${near.cx1}:${near.cz0}:${near.cz1}:${keep.cx0}:${keep.cx1}:${keep.cz0}:${keep.cz1}`
@@ -964,7 +1010,8 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			Math.sin(ELEVATION),
 			Math.cos(view.azimuth) * Math.cos(ELEVATION)
 		)
-		camera.position.copy(view.target).addScaledVector(direction, 200)
+		camera.position.copy(view.target).addScaledVector(direction, Number.max(200, view.zoom * 5))
+		camera.far = Number.max(600, view.zoom * 10)
 		camera.up.set(0, 1, 0)
 		camera.lookAt(view.target)
 		const aspect = view.size.width / Number.max(1, view.size.height)
@@ -1043,15 +1090,39 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		view.zoom += (zoom - view.zoom) * (1 - Math.exp(-delta * 9))
 	}
 
+	function paintZones() {
+		zoneData.set(new Uint8Array(zoneData.length))
+		for (const zone of zoneState.zones) {
+			const x = zone.cx - coverage.uZoneOrigin.value.x
+			const z = zone.cz - coverage.uZoneOrigin.value.y
+			if (x >= 0 && z >= 0 && x < ZONES && z < ZONES) {
+				zoneData.set(
+					[zone.teams & 255, (zone.teams >>> 8) & 255, (zone.teams >>> 16) & 255, (zone.teams >>> 24) & 255],
+					(z * ZONES + x) * 4
+				)
+			}
+		}
+		zoneTexture.needsUpdate = true
+	}
+
+	function recentreZones() {
+		const x = Math.floor(view.target.x / CHUNK / 16) * 16 - ZONES / 2
+		const z = Math.floor(view.target.z / CHUNK / 16) * 16 - ZONES / 2
+		if (coverage.uZoneOrigin.value.x === x && coverage.uZoneOrigin.value.y === z) return
+		coverage.uZoneOrigin.value.set(x, z)
+		paintZones()
+	}
+
 	function frame() {
 		const delta = Number.min(clock.getDelta(), 0.1)
-		const goal = Math.PI / 4 + (view.quarter * Math.PI) / 2
-		view.azimuth += (goal - view.azimuth) * (1 - Math.exp(-delta * 12))
-		if (Math.abs(goal - view.azimuth) < 1e-4) view.azimuth = goal
-		time.value = clock.elapsedTime
-		for (const listener of listeners.all) listener(clock.elapsedTime, delta)
+		time.value = animationTime(time.value, simulation.tick, simulation.speed, delta)
+		const elapsed = Number.clamp(time.value - simulation.previous, {maximum: 0.1, minimum: 0})
+		simulation.previous = time.value
+		for (const listener of listeners.all) listener(time.value, elapsed)
 		steer(delta)
 		place()
+		recentreZones()
+		coverage.uCoverageOn.value = view.zoom >= 32 || coverage.uCoverageTeam.value >= 0
 		recentre()
 		for (const listener of listeners.drawn) listener()
 		stream()
@@ -1106,6 +1177,13 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		cleared(ids: Frame['cleared']) {
 			if (Array.isReadonlyArrayNonEmpty(ids)) tell({_tag: 'Cleared', ids})
 		},
+		clock(tick: number, speed: number) {
+			simulation.tick = tick
+			simulation.speed = speed
+		},
+		coverage(team: number) {
+			coverage.uCoverageTeam.value = team
+		},
 		daylight(level: number) {
 			sun.intensity = 0.15 + 2.35 * level
 			sky.intensity = 0.25 + 1.1 * level
@@ -1149,7 +1227,7 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 						((highest(along) - lowest(along)) / 2) * Math.sin(ELEVATION) + 4,
 						((highest(across) - lowest(across)) / 2 + 5) / (view.size.width / Number.max(1, view.size.height))
 					),
-					{maximum: ZOOM.overview, minimum: ZOOM.farthest}
+					{maximum: ZOOM.overview, minimum: 48}
 				)
 			}
 		},
@@ -1159,10 +1237,11 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			outline.selectedObjects = Option.toArray(object)
 			outline.enabled = Option.isSome(object)
 		},
-		// The fog over the unexplored, or none and the teams' zones instead.
-		fog(on: boolean) {
-			fogOn.value = 0
-			if (on) fogOn.value = 1
+		footprints(sites: NonNullable<Frame['buildings']>) {
+			const key = JSON.stringify(Array.map(sites, site => [site.x, site.z, site.w, site.d]))
+			if (footprints.key === key) return
+			footprints.key = key
+			tell({_tag: 'Footprints', sites: Array.map(sites, site => ({d: site.d, w: site.w, x: site.x, z: site.z}))})
 		},
 		ground(x: number, z: number) {
 			return Option.getOrElse(
@@ -1173,7 +1252,10 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		heightAt,
 		// Asks what lies on the tile under the pointer; the answer reaches `onInspected`, unless a newer ask overtakes it.
 		inspect(clientX: number, clientY: number) {
-			const hit = groundUnder(clientX, clientY)
+			const hit = Boolean.match(view.detail, {
+				onFalse: () => Option.none(),
+				onTrue: () => groundUnder(clientX, clientY)
+			})
 			inspection.ask += 1
 			Option.match(hit, {
 				onNone: () => undefined,
@@ -1223,6 +1305,8 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		},
 		// The world as generated again, for a stream that starts over: no chunk, explored tile, change or cleared prop kept.
 		reset() {
+			footprints.key = ''
+			zoneState.zones = []
 			atmosphere.samples = []
 			paintEnvironment()
 			view.epoch += 1
@@ -1265,30 +1349,12 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			atmosphere.samples = [...samples]
 			paintEnvironment()
 		},
-		turn(quarters: number) {
-			view.quarter += quarters
-		},
 		// Each chunk a team stood in, in the colours of the teams that did.
 		zones(zones: NonNullable<Frame['zones']>, colors: string[]) {
-			zoneData.set(new Uint8Array(zoneData.length))
-			const color = new THREE.Color()
-			for (const zone of zones) {
-				const x = zone.cx + ZONES / 2
-				const z = zone.cz + ZONES / 2
-				const mixed = Array.filter(colors, (_, team) => ((zone.teams >> team) & 1) === 1)
-				if (x >= 0 && z >= 0 && x < ZONES && z < ZONES && Array.isArrayNonEmpty(mixed)) {
-					const sum = Array.reduce(mixed, {b: 0, g: 0, r: 0}, (total, entry) => {
-						color.set(entry)
-						return {b: total.b + color.b, g: total.g + color.g, r: total.r + color.r}
-					})
-					color.setRGB(sum.r / mixed.length, sum.g / mixed.length, sum.b / mixed.length)
-					zoneData.set(
-						[Number.round(color.r * 255, 0), Number.round(color.g * 255, 0), Number.round(color.b * 255, 0), 255],
-						(z * ZONES + x) * 4
-					)
-				}
-			}
-			zoneTexture.needsUpdate = true
+			zoneState.zones = [...zones]
+			coverage.uTeamCount.value = Number.min(colors.length, 32)
+			Array.forEach(colors, (color, index) => coverage.uTeamColors.value[index]?.set(color))
+			paintZones()
 		},
 		// Zooms the view by a factor: the zoom the player keeps, or a framed subject's for as long as it is framed.
 		zoomBy(factor: number) {

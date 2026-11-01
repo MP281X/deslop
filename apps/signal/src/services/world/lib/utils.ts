@@ -519,7 +519,7 @@ const SPARSE = [
 	{base: 0.1, below: 0.036, biome: TUNDRA, kind: 'rock', spread: 0.1}
 ]
 // The biome each ground kind belongs to, so props change species across a border with the colours.
-const GROUND_BIOME = Array.map(GROUND_KINDS, kind =>
+export const GROUND_BIOME = Array.map(GROUND_KINDS, kind =>
 	Option.getOrElse(
 		Array.findFirstIndex(BIOME_SHAPE, shape => Array.some(shape.grounds, name => name === kind.name)),
 		() => -1

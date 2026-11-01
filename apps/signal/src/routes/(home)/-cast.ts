@@ -6,6 +6,7 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js'
 import {clone} from 'three/addons/utils/SkeletonUtils.js'
 
 import type {Renderer} from './-renderer.ts'
+import {disposeSurveyCore, surveyCore} from './-survey-core.ts'
 
 import {FRAME_HZ, HOME_SIGHT, ORE_ITEM, TEAMS} from '#services/game/lib/utils.ts'
 import type {Act, BuildingView, Frame, ItemId, UnitView} from '#services/game/schema.ts'
@@ -37,8 +38,6 @@ const BOX_SKIN = new THREE.MeshStandardMaterial({color: '#e9e2d5'})
 
 // The paint buildings are made of: walls, roofs, metal, the dark of belts and machinery, timber, and the pale ghost of a site not yet built.
 const PAINT = {
-	alloy: new THREE.MeshStandardMaterial({color: '#253440', metalness: 0.6, roughness: 0.4}),
-	circuit: new THREE.MeshBasicMaterial({color: '#a4eced', toneMapped: false}),
 	dark: new THREE.MeshStandardMaterial({color: '#4f4b47', roughness: 0.7}),
 	ghost: new THREE.MeshStandardMaterial({
 		color: '#ffffff',
@@ -56,7 +55,7 @@ const PAINT = {
 // What a building is made of, in tiles from its footprint's north-west corner: boxes and cylinders of a paint, `x`, `z` their middle, `y` their foot.
 type Part = {
 	h: number
-	paint: 'alloy' | 'circuit' | 'dark' | 'ghost' | 'metal' | 'road' | 'roof' | 'team' | 'timber' | 'wall'
+	paint: 'dark' | 'ghost' | 'metal' | 'road' | 'roof' | 'team' | 'timber' | 'wall'
 	round?: boolean
 	w: number
 	d: number
@@ -415,48 +414,7 @@ const SHAPES = {
 	fabricator: machine,
 	foundry: kiln,
 	furnace: kiln,
-	home: (w: number, d: number) =>
-		[
-			{d: d - 0.25, h: 0.16, paint: 'alloy', w: w - 0.25, x: w / 2, y: 0, z: d / 2},
-			{d: 1.5, h: 0.35, paint: 'metal', w: 1.5, x: w / 2, y: 0.16, z: d / 2},
-			{d: 0.95, h: 2.65, paint: 'alloy', w: 0.95, x: w / 2, y: 0.51, z: d / 2},
-			{d: 1.12, h: 0.14, paint: 'metal', w: 1.12, x: w / 2, y: 3.16, z: d / 2},
-			{d: 0.06, h: 0.65, paint: 'metal', w: 0.06, x: w / 2, y: 3.3, z: d / 2},
-			...Array.flatMap(
-				[-1, 1],
-				side =>
-					[
-						{d: 0.2, h: 2.05, paint: 'alloy', w: 0.18, x: w / 2 + side * 0.75, y: 0.51, z: d / 2},
-						{d: 0.08, h: 1.7, paint: 'circuit', w: 0.035, x: w / 2 + side * 0.85, y: 0.7, z: d / 2},
-						{d: 0.3, h: 0.12, paint: 'metal', w: 0.4, x: w / 2 + side * 0.6, y: 0.7, z: d / 2},
-						...Array.flatMap(
-							[-1, 1],
-							face =>
-								[
-									{d: 0.025, h: 2.2, paint: 'team', w: 0.09, x: w / 2 + side * 0.32, y: 0.7, z: d / 2 + face * 0.49},
-									{
-										d: 0.025,
-										h: 0.045,
-										paint: 'circuit',
-										w: 0.18,
-										x: w / 2 + side * 0.18,
-										y: 1.5,
-										z: d / 2 + face * 0.49
-									},
-									{
-										d: 0.025,
-										h: 0.045,
-										paint: 'circuit',
-										w: 0.18,
-										x: w / 2 + side * 0.18,
-										y: 1.7,
-										z: d / 2 + face * 0.49
-									}
-								] satisfies Part[]
-						)
-					] satisfies Part[]
-			)
-		] satisfies Part[],
+	home: () => [],
 	junction: hub,
 	lift: belt,
 	manufacturer: machine,
@@ -513,8 +471,11 @@ function paintOf(part: Part, ghost: boolean, team: THREE.Material) {
 
 // A building's mesh: its parts in their paint, its team's flag; a site still waiting for items is a pale ghost, one under construction rises with its progress.
 function buildingObject(view: BuildingView, team: THREE.Material) {
-	const group = new THREE.Group()
 	const ghost = view.built < 0.5
+	const group = Boolean.match(view.kind === 'home', {
+		onFalse: () => new THREE.Group(),
+		onTrue: () => surveyCore(team, PAINT.ghost, ghost)
+	})
 	for (const part of SHAPES[view.kind](view.w, view.d)) {
 		const mesh = new THREE.Mesh(geometryOf(part), paintOf(part, ghost, team))
 		mesh.position.set(part.x - view.w / 2, part.y + part.h / 2, part.z - view.d / 2)
@@ -526,6 +487,7 @@ function buildingObject(view: BuildingView, team: THREE.Material) {
 
 // A building's own geometry goes with it; a model's stays for the next clone.
 function disposeObject(object: THREE.Object3D) {
+	disposeSurveyCore(object)
 	for (const mesh of Array.filter(meshesOf(object), entry => entry.userData['shared'] !== true)) {
 		mesh.geometry.dispose()
 	}
@@ -963,11 +925,31 @@ export function createCast(view: Renderer) {
 		}
 	}
 
+	function reset() {
+		for (const actor of MutableHashMap.values(actors)) {
+			view.scene.remove(actor.object)
+			release(actor)
+		}
+		MutableHashMap.clear(actors)
+		for (const entry of MutableHashMap.values(drawn)) disposeObject(entry.object)
+		MutableHashMap.clear(drawn)
+		for (const tracer of state.tracers) {
+			tracer.mesh.removeFromParent()
+			tracer.mesh.geometry.dispose()
+		}
+		state.tracers = []
+		state.fading = []
+		state.homes = []
+	}
+
 	view.onFrame(animate)
 
 	return {
 		dispose() {
 			state.closed = true
+			reset()
+			for (const paint of teamPaints) paint.dispose()
+			for (const paint of MutableHashMap.values(itemPaints)) paint.dispose()
 			painter.dispose()
 		},
 		frame,
@@ -986,16 +968,7 @@ export function createCast(view: Renderer) {
 		},
 		positionOf,
 		// Every unit and building gone, for a stream that starts over.
-		reset() {
-			for (const actor of MutableHashMap.values(actors)) {
-				view.scene.remove(actor.object)
-				release(actor)
-			}
-			MutableHashMap.clear(actors)
-			for (const entry of MutableHashMap.values(drawn)) disposeObject(entry.object)
-			MutableHashMap.clear(drawn)
-			state.homes = []
-		},
+		reset,
 		screenOf
 	}
 }

@@ -216,6 +216,7 @@ export class Game extends Context.Service<
 				Math.floor(yield* pipe(Config.Number('SIGNAL_LOCAL_DECISIONS_PER_SECOND'), Config.withDefault(2))),
 				{maximum: 4, minimum: 0}
 			)
+			const coreConfigured = Option.isSome(yield* Config.option(Config.Redacted('OPENROUTER_API_KEY')))
 
 			const clock = yield* Semaphore.make(1)
 			const save = pipe(
@@ -656,6 +657,8 @@ export class Game extends Context.Service<
 				})
 			)
 			const state = Effect.map(process.snapshot, snapshot => ({
+				coreConfigured,
+				localDecisions: localBudget > 0,
 				problem: Option.getOrUndefined(Option.map(MutableRef.get(fault), error => error.message)),
 				running: RunStates.matches(snapshot.state, 'Running') && Option.isNone(MutableRef.get(fault))
 			}))

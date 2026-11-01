@@ -1,6 +1,7 @@
-import {Array, MutableHashMap, MutableHashSet, Option, Schema} from 'effect'
+import {Array, Boolean, MutableHashMap, MutableHashSet, Option, Schema} from 'effect'
 
-import {buildChunk} from './-mesh.ts'
+import {buildChunk, visibleProps} from './-mesh.ts'
+import {overviewChunk} from './-overview.ts'
 
 import {CHUNK, makeWorld, tileKey} from '#services/world/lib/utils.ts'
 import type {Chunk, World} from '#services/world/lib/utils.ts'
@@ -9,10 +10,13 @@ import {TileChange} from '#services/world/schema.ts'
 type Request = typeof Request.Type
 // What the page asks: the world's seed once, tile changes as they stream in, chunks to build, and what lies on a tile under the pointer.
 const Request = Schema.TaggedUnion({
-	Build: {cx: Schema.Int, cz: Schema.Int, revision: Schema.Int},
+	Build: {cx: Schema.Int, cz: Schema.Int, detail: Schema.Boolean, revision: Schema.Int},
 	Changes: {changes: Schema.Array(TileChange)},
 	// Props the colonies cleared: the chunks this worker built with them are stale.
 	Cleared: {ids: Schema.Array(Schema.Int)},
+	Footprints: {
+		sites: Schema.Array(Schema.Struct({d: Schema.Finite, w: Schema.Finite, x: Schema.Finite, z: Schema.Finite}))
+	},
 	// Where the pointer's ray meets the ground, and the way back along it toward the camera, over the ground.
 	Inspect: {
 		ask: Schema.Int,
@@ -41,7 +45,8 @@ const state = {
 	overlay: {
 		amounts: MutableHashMap.empty<number, number>(),
 		cleared: MutableHashSet.empty<number>(),
-		edits: MutableHashMap.empty<number, TileChange['edit'] & {}>()
+		edits: MutableHashMap.empty<number, TileChange['edit'] & {}>(),
+		sites: Array.empty<{x: number; z: number; w: number; d: number}>()
 	},
 	world: Option.none<World>()
 }
@@ -90,10 +95,14 @@ function reset() {
 	MutableHashMap.clear(state.overlay.amounts)
 	MutableHashMap.clear(state.overlay.edits)
 	MutableHashSet.clear(state.overlay.cleared)
+	state.overlay.sites = []
 }
 
-function build(world: World, cx: number, cz: number, revision: number) {
-	const built = buildChunk(chunkAt(world), state.overlay, cx, cz)
+function build(world: World, cx: number, cz: number, revision: number, detail: boolean) {
+	const built = Boolean.match(detail, {
+		onFalse: () => overviewChunk(world, cx, cz),
+		onTrue: () => buildChunk(chunkAt(world), state.overlay, cx, cz)
+	})
 	const buffers = [
 		built.corners.buffer,
 		built.liquid.buffer,
@@ -138,7 +147,7 @@ function inspect(world: World, request: Extract<Request, {_tag: 'Inspect'}>) {
 	)
 	// A tree or rock stands in front of the ground the ray meets: the first prop back along the ray, up to three tiles.
 	const near = Array.flatMap(Array.range(-1, 1), dz =>
-		Array.flatMap(Array.range(-1, 1), dx => chunkAt(world)(cx + dx, cz + dz).props)
+		Array.flatMap(Array.range(-1, 1), dx => visibleProps(chunkAt(world)(cx + dx, cz + dz).props, state.overlay))
 	)
 	const prop = Array.findFirst(Array.range(0, 15), step => {
 		const at = {x: request.x + request.back.x * step * 0.2, z: request.z + request.back.z * step * 0.2}
@@ -160,10 +169,17 @@ self.addEventListener('message', (event: MessageEvent) => {
 			if (request._tag === 'Changes') apply(request)
 			if (request._tag === 'Cleared') clear(request)
 			if (request._tag === 'Reset') reset()
+			if (request._tag === 'Footprints') {
+				state.overlay.sites = [...request.sites]
+				reply({
+					_tag: 'Stale',
+					chunks: Array.map(Array.fromIterable(state.cache), entry => ({cx: entry[1].cx, cz: entry[1].cz}))
+				})
+			}
 			if (request._tag === 'Build') {
 				Option.match(state.world, {
 					onNone: () => undefined,
-					onSome: world => build(world, request.cx, request.cz, request.revision)
+					onSome: world => build(world, request.cx, request.cz, request.revision, request.detail)
 				})
 			}
 			if (request._tag === 'Inspect') {

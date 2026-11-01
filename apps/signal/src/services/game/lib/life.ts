@@ -101,6 +101,7 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 		const entry: Experience = {
 			actor: body.id,
 			actorKind: body.kind,
+			...Option.match(Option.fromUndefinedOr(body.team), {onNone: () => ({}), onSome: team => ({team})}),
 			id: state.sequence,
 			kind,
 			text,
@@ -112,7 +113,7 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 		}
 		const own = person(body.id, tick)
 		if (detail?.context === undefined) {
-			const experience = Struct.omit(entry, ['actorKind', 'context', 'tokens'])
+			const experience = Struct.omit(entry, ['actorKind', 'context', 'tokens', 'team'])
 			own.recent = Array.takeRight([...own.recent, experience], 16)
 			own.unrecorded = [...(own.unrecorded ?? []), experience]
 		}

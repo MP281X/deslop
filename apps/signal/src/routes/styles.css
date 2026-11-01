@@ -20,17 +20,17 @@
 .signal-time::-webkit-slider-thumb {
 	appearance: none;
 	width: 8px;
-	height: 16px;
-	margin-top: -7px;
-	border: 1px solid var(--foreground);
-	border-radius: 0;
+	height: 8px;
+	margin-top: -3px;
+	border: 0;
+	border-radius: 50%;
 	background: var(--primary);
 }
 .signal-time::-moz-range-thumb {
 	width: 8px;
-	height: 16px;
-	border: 1px solid var(--foreground);
-	border-radius: 0;
+	height: 8px;
+	border: 0;
+	border-radius: 50%;
 	background: var(--primary);
 }
 .signal-time:focus-visible {
@@ -43,8 +43,7 @@
 		min-width: 44px;
 	}
 	button:not([data-slot='button']),
-	summary,
-	input[type='range'] {
+	summary {
 		min-height: 44px;
 	}
 }

@@ -117,6 +117,7 @@ export type Overlay = {
 	amounts: MutableHashMap.MutableHashMap<number, number>
 	cleared: MutableHashSet.MutableHashSet<number>
 	edits: MutableHashMap.MutableHashMap<number, Edit>
+	sites: {x: number; z: number; w: number; d: number}[]
 }
 
 export type Built = ReturnType<typeof buildChunk>
@@ -276,6 +277,19 @@ function take(name: Sink) {
 
 /* ───────── the area: the chunk and a ring of its neighbours, edits and ore left applied ───────── */
 
+export function visibleProps(props: Chunk['props'], overlay: Overlay) {
+	return Array.filter(
+		props,
+		prop =>
+			!MutableHashSet.has(overlay.cleared, prop.id) &&
+			!Array.some(
+				overlay.sites,
+				site =>
+					prop.x > site.x - 1 && prop.x < site.x + site.w + 1 && prop.z > site.z - 1 && prop.z < site.z + site.d + 1
+			)
+	)
+}
+
 function loadArea(chunkAt: (cx: number, cz: number) => Chunk, overlay: Overlay, cx: number, cz: number) {
 	const area = {
 		amount: new Float32Array(CELLS),
@@ -285,7 +299,7 @@ function loadArea(chunkAt: (cx: number, cz: number) => Chunk, overlay: Overlay, 
 		ground: new Uint8Array(CELLS),
 		liquid: new Uint8Array(CELLS),
 		ore: new Uint8Array(CELLS),
-		props: Array.filter(chunkAt(cx, cz).props, prop => !MutableHashSet.has(overlay.cleared, prop.id)),
+		props: visibleProps(chunkAt(cx, cz).props, overlay),
 		surface: new Float32Array(CELLS),
 		wear: new Float32Array(CELLS),
 		x0: cx * CHUNK - PAD,

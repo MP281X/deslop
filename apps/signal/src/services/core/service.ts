@@ -21,7 +21,7 @@ import {
 	pipe
 } from 'effect'
 
-import {Decision} from 'effect/ai'
+import {AiError, Decision} from 'effect/ai'
 import {toCodecOpenAI} from 'effect/ai/OpenAiStructuredOutput'
 import {KeyValueStore} from 'effect/persistence'
 
@@ -513,7 +513,14 @@ export class Core extends Context.Service<
 						},
 						Effect.timeout('85 seconds'),
 						Effect.mapError(cause =>
-							GameError.make({cause, message: 'The Core decision or durable conversation could not complete.'})
+							GameError.make({
+								cause,
+								message: Boolean.match(AiError.isAiError(cause) && cause.reason._tag === 'AuthenticationError', {
+									onFalse: () => 'The Core decision or durable conversation could not complete.',
+									onTrue: () =>
+										'Model authentication failed. Check the server OpenRouter credentials; no Core decision was produced.'
+								})
+							})
 						)
 					),
 					recall: Effect.fn('Core.recall')(
