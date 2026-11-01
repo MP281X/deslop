@@ -21,7 +21,8 @@ native apps from a simulator, taken after a condition holds rather than a delay.
 ## Merge danger
 
 <!--
-Delete when a revert undoes everything and nothing runs by hand. Otherwise:
-what cannot be undone (data, a published package, an app release, an external
-effect), who it reaches, and the manual steps as a numbered list.
+Delete when a revert undoes everything and nothing runs by hand. Otherwise a
+WARNING alert holding what cannot be undone (data, a published package, an app
+release, an external effect), who it reaches, and the manual steps as a
+numbered list.
 -->
