@@ -97,6 +97,15 @@ export const EMPTY: View = {
 	zones: []
 }
 
+function presentedView<E>(current: AsyncResult.AsyncResult<View, E>, previous?: AsyncResult.AsyncResult<View, E>) {
+	if (previous === undefined || !Option.exists(AsyncResult.value(previous), view => view.count > 0)) return current
+	if (AsyncResult.isInitial(current) || (AsyncResult.isSuccess(current) && current.value.count === 0)) {
+		return AsyncResult.waiting(previous)
+	}
+	if (AsyncResult.isFailure(current)) return AsyncResult.replacePrevious(current, Option.some(previous))
+	return current
+}
+
 // A frame's newly explored chunks over the ones known; most frames bring none.
 function merged(known: View['explored'], chunks: Frame['explored']) {
 	if (Array.isReadonlyArrayEmpty(chunks)) return known
@@ -167,11 +176,17 @@ export const viewAtom = Atom.keepAlive(
 	)
 )
 
+export const loadingAtom = Atom.make(get => {
+	const result = get(viewAtom)
+	return AsyncResult.isInitial(result) || (AsyncResult.isSuccess(result) && result.value.count === 0)
+})
+
 // Text and controls refresh twice a second; the renderer still consumes every frame.
 export const hudAtom = Atom.keepAlive(
 	Atom.make(get => {
-		const current = get(viewAtom)
-		const previous = Option.getOrUndefined(get.self<typeof current>())
+		const incoming = get(viewAtom)
+		const previous = Option.getOrUndefined(get.self<typeof incoming>())
+		const current = presentedView(incoming, previous)
 		if (
 			previous !== undefined &&
 			AsyncResult.isSuccess(previous) &&
@@ -247,7 +262,7 @@ export const timelineAtom = Atom.keepAlive(
 type Hover = {id: string; x: number; y: number}
 export const hoverAtom = Atom.keepAlive(Atom.make(Option.none<Hover>()))
 
-// What the camera follows: a unit, or a place the player left it at; the overview zooms out over the team with the fog off.
+// What the camera follows: a unit or a place; the overview frames all teams.
 export type Follow = {free: Option.Option<{x: number; z: number}>; id: Option.Option<number>; overview: boolean}
 export const followAtom = Atom.keepAlive(Atom.make<Follow>({free: Option.none(), id: Option.none(), overview: false}))
 

@@ -34,6 +34,7 @@ import {
 	hoverAtom,
 	historyAtom,
 	hudAtom,
+	loadingAtom,
 	runStateAtom,
 	seedAtom,
 	sourceAtom,
@@ -1571,6 +1572,13 @@ function placeTeamLabels(renderer: Renderer, teams: View['teams'], root?: HTMLEl
 	}
 }
 
+function ReplayLoading() {
+	const loading = useAtomValue(loadingAtom)
+	const source = useAtomValue(sourceAtom)
+	if (!loading) return null
+	return <Status>{Option.match(source, {onNone: () => 'Rejoining live', onSome: () => 'Loading history'})}</Status>
+}
+
 function World(props: {seed: number; view: View}) {
 	const registry = useContext(RegistryContext)
 	const canvas = useRef<HTMLCanvasElement>(null)
@@ -1857,7 +1865,7 @@ function World(props: {seed: number; view: View}) {
 								onInspect={inspection => setPanel(Option.some(inspection))}
 								view={props.view}
 							/>
-							{props.view.count === 0 && <Status>Loading the replay</Status>}
+							<ReplayLoading />
 							{Option.getOrUndefined(
 								Option.map(panel, pickedPanel => (
 									<Sidebar

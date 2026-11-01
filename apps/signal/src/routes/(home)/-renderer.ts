@@ -170,7 +170,7 @@ void main(){
 	gl_FragColor = vec4(base * T + acc, c.a);
 }`
 
-// The camera looks down 30° and turns only in the quarter turns the player asks for.
+// The spectator camera keeps its 30° elevation and fixed isometric orientation.
 const ELEVATION = (30 * Math.PI) / 180
 const SUN = new THREE.Vector3(-0.35, 0.8, 0.45).normalize()
 const UP = new THREE.Vector3(0, 1, 0)
