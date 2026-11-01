@@ -57,6 +57,22 @@ export const runStateAtom = Atom.keepAlive(
 	)
 )
 
+export const configurationAtom = Atom.make(get =>
+	Option.match(AsyncResult.value(get(runStateAtom)), {
+		onNone: () => [],
+		onSome: state => [
+			...Boolean.match(state.coreConfigured, {
+				onFalse: () => ['Model key missing · Agent decisions unavailable'],
+				onTrue: () => []
+			}),
+			...Boolean.match(state.localDecisions, {
+				onFalse: () => ['Local decisions off · Individuals cannot request model decisions'],
+				onTrue: () => []
+			})
+		]
+	})
+)
+
 // What the client knows: the latest frame, every chunk explored and prop cleared so far, the buildings, teams and zones as last sent, and the world's seed from the stream's first frame. `count` starts over with each stream, so its first frame tells the world view to start over too.
 export type View = {
 	buildings: NonNullable<Frame['buildings']>

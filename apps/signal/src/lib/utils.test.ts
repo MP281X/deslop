@@ -4,10 +4,50 @@ import {Option} from 'effect'
 
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 
-import {EMPTY, cursorAtom, hudAtom, loadingAtom, sourceAtom, viewAtom} from '#lib/utils.ts'
+import {
+	EMPTY,
+	configurationAtom,
+	cursorAtom,
+	hudAtom,
+	loadingAtom,
+	runStateAtom,
+	sourceAtom,
+	viewAtom
+} from '#lib/utils.ts'
 import {GameError} from '#services/game/schema.ts'
 
 const LOADED = {...EMPTY, count: 1, frame: {...EMPTY.frame, tick: 7743}}
+
+it('keeps disabled local inference visible in a running physics world and clears notices only when configured', () => {
+	const registry = AtomRegistry.make({
+		initialValues: [
+			[
+				runStateAtom,
+				AsyncResult.success({coreConfigured: true, localDecisions: false, running: true}),
+				{skipInitialRun: true}
+			]
+		]
+	})
+	try {
+		registry.mount(configurationAtom)
+		assert.deepStrictEqual(registry.get(configurationAtom), [
+			'Local decisions off · Individuals cannot request model decisions'
+		])
+		registry
+			.ensureNode(runStateAtom)
+			.setInitialValue(AsyncResult.success({coreConfigured: false, localDecisions: false, running: false}))
+		assert.deepStrictEqual(registry.get(configurationAtom), [
+			'Model key missing · Agent decisions unavailable',
+			'Local decisions off · Individuals cannot request model decisions'
+		])
+		registry
+			.ensureNode(runStateAtom)
+			.setInitialValue(AsyncResult.success({coreConfigured: true, localDecisions: true, running: false}))
+		assert.deepStrictEqual(registry.get(configurationAtom), [])
+	} finally {
+		registry.dispose()
+	}
+})
 
 it('retains the displayed world while a historical source connects', () => {
 	const registry = AtomRegistry.make({initialValues: [[viewAtom, AsyncResult.success(LOADED), {skipInitialRun: true}]]})

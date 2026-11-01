@@ -57,6 +57,7 @@ import type {Renderer} from './-renderer.ts'
 
 import {
 	EMPTY,
+	configurationAtom,
 	feedAtom,
 	cursorAtom,
 	followAtom,
@@ -863,12 +864,13 @@ function ThreadPage(props: {
 }
 
 function WorldConfiguration() {
-	const state = Option.getOrUndefined(AsyncResult.value(useAtomValue(runStateAtom)))
-	if (state === undefined || (state.coreConfigured && state.localDecisions)) return null
+	const notices = useAtomValue(configurationAtom)
+	if (Array.isReadonlyArrayEmpty(notices)) return null
 	return (
 		<div role="status" className="text-warning px-3 pb-2 text-xs">
-			{!state.coreConfigured && <p>Model key missing · Agent decisions unavailable</p>}
-			{!state.localDecisions && <p>Local decisions off · Individuals cannot request model decisions</p>}
+			{Array.map(notices, notice => (
+				<p key={notice}>{notice}</p>
+			))}
 		</div>
 	)
 }
@@ -1089,7 +1091,7 @@ function Sidebar(props: {close: () => void; selection: Inspection; source: Sourc
 				aria-label="Inspector"
 				className="bg-popover text-popover-foreground pointer-events-auto flex max-h-1/2 min-h-0 w-full flex-col md:max-h-full md:w-80"
 			>
-				<header className="flex min-h-11 flex-none items-center gap-2 px-3">
+				<header className="border-border flex min-h-11 flex-none items-center gap-2 border-b px-3">
 					{props.selection.kind === 'thread' && <Teams teams={props.view.teams} picked={filter} onPick={setFilter} />}
 					{props.selection.kind === 'history' && (
 						<span>
@@ -1562,7 +1564,7 @@ function MapControls(props: {view: View; onTeam: (team: number) => void}) {
 						title={entry.name}
 						variant="secondary"
 						size="sm"
-						className="min-h-11 shrink-0 px-2 text-(--team)"
+						className="min-h-11 shrink-0 bg-(--team) px-2 text-black hover:bg-(--team)/90"
 						style={{'--team': entry.color}}
 						onClick={() => props.onTeam(entry.id)}
 					>
@@ -1598,7 +1600,8 @@ function World(props: {seed: number; view: View}) {
 	const latest = useRef({view: props.view})
 	useEffect(() => {
 		latest.current = {view: props.view}
-	}, [props.view])
+		Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.invalidate()})
+	}, [props.view, world])
 
 	useEffect(() => {
 		const target = canvas.current
@@ -1667,6 +1670,13 @@ function World(props: {seed: number; view: View}) {
 			},
 			{immediate: true}
 		)
+		const chunksChanged = registry.subscribe(chunksAtom, renderer.invalidate)
+		const followChanged = registry.subscribe(followAtom, renderer.invalidate)
+		const teamChanged = registry.subscribe(teamAtom, renderer.invalidate)
+		const runChanged = registry.subscribe(runStateAtom, renderer.invalidate)
+		const sourceChanged = registry.subscribe(sourceAtom, renderer.invalidate)
+		const hoverChanged = registry.subscribe(hoverAtom, renderer.invalidate)
+		const groundChanged = registry.subscribe(groundAtom, renderer.invalidate)
 		// Each frame, before the camera moves: it aims at its subject, and the followed unit is edged.
 		renderer.onFrame(() => {
 			renderer.showChunks(registry.get(chunksAtom))
@@ -1762,6 +1772,13 @@ function World(props: {seed: number; view: View}) {
 			target.removeEventListener('wheel', preventMapWheel)
 			removeEventListener('keydown', keys)
 			frames()
+			chunksChanged()
+			followChanged()
+			teamChanged()
+			runChanged()
+			sourceChanged()
+			hoverChanged()
+			groundChanged()
 			cast.dispose()
 			renderer.dispose()
 		}

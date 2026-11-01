@@ -559,6 +559,7 @@ export function createCast(view: Renderer) {
 						MutableHashMap.set(models, name, gltf)
 						MutableHashMap.set(portraits.painted, name, portraitOf(gltf, painter))
 						for (const listener of portraits.listeners) listener()
+						view.invalidate()
 					},
 					undefined,
 					() => undefined
@@ -750,6 +751,7 @@ export function createCast(view: Renderer) {
 	}
 
 	function frame(next: Frame) {
+		view.invalidate()
 		state.count += 1
 		state.daylight = next.environment?.daylight ?? 1
 		measure()
@@ -802,6 +804,7 @@ export function createCast(view: Renderer) {
 
 	// The buildings as last sent: each one redrawn only when what it shows changed, Home's where every Home's sight is.
 	function places(list: NonNullable<Frame['buildings']>) {
+		view.invalidate()
 		state.homes = Array.map(
 			Array.filter(list, building => building.kind === 'home'),
 			home => ({x: home.x + home.w / 2, z: home.z + home.d / 2})

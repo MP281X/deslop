@@ -5,6 +5,7 @@ import {
 	Boolean,
 	ConfigProvider,
 	Context,
+	Deferred,
 	Effect,
 	Exit,
 	Fiber,
@@ -21,6 +22,7 @@ import {
 import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
+import type {Thought} from '#services/core/schema.ts'
 import {Core} from '#services/core/service.ts'
 import {makeSim, SIMULATION} from '#services/game/lib/sim.ts'
 import {
@@ -44,12 +46,13 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 			const kv = yield* KeyValueStore.KeyValueStore
 			yield* kv.clear
 			const calls = MutableList.make<number>()
+			const late = yield* Deferred.make<Thought>()
 			const strategy = Layer.succeed(
 				Core,
 				Core.of({
 					choose: () => Effect.never,
 					decide: Effect.fnUntraced(function* (_seed: number, team: number) {
-						if (Array.contains(MutableList.toArray(calls), team)) return yield* Effect.never
+						if (Array.contains(MutableList.toArray(calls), team)) return yield* Deferred.await(late)
 						MutableList.append(calls, team)
 						return {
 							commands: [{_tag: 'Catalog' as const, section: 'units' as const}],
@@ -79,6 +82,10 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 					const cancelled = Option.getOrThrow(yield* entries.get('thread/0/000000003'))
 					assert.include(cancelled.text, 'unfinished decision cancelled')
 					assert.strictEqual(cancelled.observed, 1200)
+					yield* Deferred.succeed(late, {commands: [], invalid: [], text: 'A response after cancellation.'})
+					yield* TestClock.adjust('200 millis')
+					assert.deepStrictEqual(Option.getOrThrow(yield* entries.get('thread/0/000000002')), before)
+					assert.deepStrictEqual(Option.getOrThrow(yield* entries.get('thread/0/000000003')), cancelled)
 					yield* game.control(true)
 					yield* TestClock.adjust('200 millis')
 					yield* game.control(false)
@@ -405,7 +412,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 	)
 
 	test.effect(
-		'reindexes archived receipts and pages history without duplicating a restored pending tail',
+		'reads previous-release archived receipts and pages history without duplicating a restored pending tail',
 		Effect.fnUntraced(function* () {
 			const kv = yield* KeyValueStore.KeyValueStore
 			yield* kv.clear
@@ -415,7 +422,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 				sequence =>
 					({
 						actor: 2,
-						actorKind: 'worker',
+						...Boolean.match(sequence === 1, {onFalse: () => ({actorKind: 'worker'}), onTrue: () => ({})}),
 						...Boolean.match(sequence === 1, {
 							onFalse: () => ({}),
 							onTrue: () => ({
@@ -435,6 +442,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 				...saved,
 				life: {...Option.getOrThrow(Option.fromUndefinedOr(saved.life)), sequence: 1120},
 				pendingExperiences: Array.takeRight(rows, 11),
+				rules: SIMULATION - 1,
 				tick: 2420
 			})
 			for (const chunk of Array.map(Array.chunksOf(rows, 100), (entries, page) => ({entries, page}))) {
@@ -460,7 +468,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 			}
 			yield* KeyValueStore.toSchemaStore(kv, HistoryIndex).set('history/index', {
 				'@activity': references.length,
-				'@rules': SIMULATION,
+				'@rules': SIMULATION - 1,
 				'@through': 1120,
 				'@tick': 2420,
 				'2': rows.length
@@ -485,6 +493,11 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 				Game
 			)
 			for (const actor of [2, 'all'] as const) {
+				const original = Option.getOrThrow(Array.get(rows, 1))
+				assert.deepStrictEqual(
+					Option.getOrThrow(Array.findFirst(yield* game.history(actor, Option.some(1002)), entry => entry.id === 1001)),
+					original
+				)
 				assert.strictEqual(
 					Option.getOrThrow(Array.findFirst(yield* game.history(actor, Option.some(1002)), entry => entry.id === 1001))
 						.tokens?.input,
@@ -503,6 +516,11 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 					Array.range(1000, 1050)
 				)
 			}
+			assert.isTrue(Exit.hasFails(yield* Effect.exit(Stream.runHead(game.replay(0, 0)))))
+			assert.strictEqual(
+				Option.getOrThrow(yield* KeyValueStore.toSchemaStore(kv, Saved).get('world')).rules,
+				SIMULATION - 1
+			)
 		})
 	)
 
