@@ -9,11 +9,11 @@ import {Skeleton} from '#components/ui/skeleton.tsx'
 // DESIGN.md's rows: Items with a hairline between each and no gap, as shadcn's ItemGroup and ItemSeparator compose them.
 export function ItemList(props: {children: ReactElement[]; label: string}) {
 	return (
-		<ItemGroup aria-label={props.label} className="gap-0">
+		<ItemGroup aria-label={props.label} className="gap-0 has-data-[size=sm]:gap-0 has-data-[size=xs]:gap-0">
 			{Array.map(props.children, (child, index) => (
 				<Fragment key={child.key ?? index}>
-					{index > 0 && <ItemSeparator className="my-0" />}
 					{child}
+					<ItemSeparator className="my-0" />
 				</Fragment>
 			))}
 		</ItemGroup>

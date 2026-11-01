@@ -174,9 +174,7 @@ export function HomeRoute(props: {bookings: BookingList; onOpen: (id: string) =>
 		return daysUntil(startOf(booking), now, zoneOf(booking))
 	}
 	return (
-		<Toolbar
-			modifiers={[navigationTitle('Trips'), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
-		>
+		<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}>
 			{Array.isReadonlyArrayEmpty(props.bookings) && (
 				<Empty>
 					<EmptyHeader>
@@ -237,7 +235,7 @@ export function HomeRoute(props: {bookings: BookingList; onOpen: (id: string) =>
 				</ItemGroup>
 			)}
 			<Toolbar.Content>
-				<ToolbarItem placement="principal">
+				<ToolbarItem placement="topBarLeading">
 					<PasteSheet />
 				</ToolbarItem>
 				<MachineState machine={clipboardAtom} path="Answering">

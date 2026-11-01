@@ -7,6 +7,7 @@ import {
 	Effect,
 	Function,
 	HashMap,
+	MutableList,
 	Number,
 	Option,
 	Predicate,
@@ -198,68 +199,49 @@ function Panel(input: {className?: string; children: React.ReactNode}) {
 	return <div className={cn('bg-background', input.className)}>{input.children}</div>
 }
 
-function TrailCanvas(input: {trails: PortfolioVisitors; viewport: {width: number; height: number}}) {
-	const canvasRef = useRef<HTMLCanvasElement>(null)
+function TrailGrid(input: {trails: PortfolioVisitors; viewport: {width: number; height: number}}) {
+	const cells = MutableList.make<{color: string; x: number; y: number}>()
+	Array.reduce(
+		input.trails,
+		HashMap.empty<string, {trail: PortfolioVisitor; col: number; row: number}>(),
+		(previousByVisitor, trail) => {
+			const current = {
+				col: Math.floor((trail.x * input.viewport.width) / 26),
+				row: Math.floor((trail.y * input.viewport.height) / 26),
+				trail
+			}
+			const previous = pipe(previousByVisitor, HashMap.get(trail.id), Option.getOrUndefined)
 
-	useEffect(() => {
-		if (canvasRef.current === null || input.viewport.width <= 0 || input.viewport.height <= 0) return
-
-		const canvasWidth = Number.max(1, Number.round(input.viewport.width * window.devicePixelRatio, 0))
-		const canvasHeight = Number.max(1, Number.round(input.viewport.height * window.devicePixelRatio, 0))
-
-		if (canvasRef.current.width !== canvasWidth || canvasRef.current.height !== canvasHeight) {
-			canvasRef.current.width = canvasWidth
-			canvasRef.current.height = canvasHeight
-			canvasRef.current.style.width = `${input.viewport.width}px`
-			canvasRef.current.style.height = `${input.viewport.height}px`
-		}
-
-		const context = canvasRef.current.getContext('2d')
-		if (context === null) return
-
-		context.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0)
-		context.clearRect(0, 0, input.viewport.width, input.viewport.height)
-		context.globalAlpha = 0.22
-
-		Array.reduce(
-			input.trails,
-			HashMap.empty<string, {trail: PortfolioVisitor; col: number; row: number}>(),
-			(previousByVisitor, trail) => {
-				const current = {
-					col: Math.floor((trail.x * input.viewport.width) / 26),
-					row: Math.floor((trail.y * input.viewport.height) / 26),
-					trail
-				}
-				const previous = pipe(previousByVisitor, HashMap.get(trail.id), Option.getOrUndefined)
-
-				if (Predicate.isUndefined(previous)) {
-					context.fillStyle = current.trail.color
-					context.fillRect(current.col * 26 + 1, current.row * 26 + 1, 24, 24)
-					return HashMap.set(previousByVisitor, trail.id, current)
-				}
-
-				const stepCount = Number.max(Math.abs(current.col - previous.col), Math.abs(current.row - previous.row))
-
-				for (const step of Array.makeBy(stepCount + 1, Function.identity)) {
-					const progress = Boolean.match(stepCount === 0, {onFalse: () => step / stepCount, onTrue: () => 1})
-					const col = Number.round(previous.col + (current.col - previous.col) * progress, 0)
-					const row = Number.round(previous.row + (current.row - previous.row) * progress, 0)
-
-					context.fillStyle = Boolean.match(progress < 1, {
-						onFalse: () => current.trail.color,
-						onTrue: () => previous.trail.color
-					})
-					context.fillRect(col * 26 + 1, row * 26 + 1, 24, 24)
-				}
-
+			if (Predicate.isUndefined(previous)) {
+				MutableList.append(cells, {color: current.trail.color, x: current.col * 26 + 1, y: current.row * 26 + 1})
 				return HashMap.set(previousByVisitor, trail.id, current)
 			}
-		)
 
-		context.globalAlpha = 1
-	}, [input.trails, input.viewport])
+			const stepCount = Number.max(Math.abs(current.col - previous.col), Math.abs(current.row - previous.row))
 
-	return <canvas ref={canvasRef} aria-hidden className="pointer-events-none fixed inset-0 z-1" />
+			for (const step of Array.makeBy(stepCount + 1, Function.identity)) {
+				const progress = Boolean.match(stepCount === 0, {onFalse: () => step / stepCount, onTrue: () => 1})
+				const col = Number.round(previous.col + (current.col - previous.col) * progress, 0)
+				const row = Number.round(previous.row + (current.row - previous.row) * progress, 0)
+
+				const color = Boolean.match(progress < 1, {
+					onFalse: () => current.trail.color,
+					onTrue: () => previous.trail.color
+				})
+				MutableList.append(cells, {color, x: col * 26 + 1, y: row * 26 + 1})
+			}
+
+			return HashMap.set(previousByVisitor, trail.id, current)
+		}
+	)
+
+	return (
+		<svg aria-hidden className="pointer-events-none fixed inset-0 z-1 size-full" shapeRendering="crispEdges">
+			{Array.map(MutableList.toArray(cells), (cell, index) => (
+				<rect key={index} x={cell.x} y={cell.y} width={24} height={24} fill={cell.color} fillOpacity={0.22} />
+			))}
+		</svg>
+	)
 }
 
 function CursorLabel(input: {label: string}) {
@@ -550,10 +532,16 @@ function RealtimeLayer(input: {viewport: {width: number; height: number}}) {
 	return (
 		<>
 			<div className="trail-grid pointer-events-none fixed inset-0 z-1" />
-			<TrailCanvas trails={portfolio.value.trails} viewport={input.viewport} />
+			<TrailGrid trails={portfolio.value.trails} viewport={input.viewport} />
 
 			{Array.map(portfolio.value.visitors, cursor => {
-				if (cursor.id === identity.id) return <OwnCursor key={cursor.id} cursor={cursor} viewport={input.viewport} />
+				if (cursor.id === identity.id) {
+					return (
+						<div key={cursor.id} className="own-cursor">
+							<OwnCursor cursor={cursor} viewport={input.viewport} />
+						</div>
+					)
+				}
 				return <VisitorCursor key={cursor.id} cursor={cursor} viewport={input.viewport} />
 			})}
 
@@ -642,6 +630,8 @@ function PortfolioRoute() {
 	}
 
 	function updatePointer(event: React.PointerEvent<HTMLDivElement>) {
+		// A swipe scrolls the page; only a hovering pointer paints a trail.
+		if (event.pointerType === 'touch') return
 		event.currentTarget.style.setProperty('--pointer-x', `${event.clientX}px`)
 		event.currentTarget.style.setProperty('--pointer-y', `${event.clientY}px`)
 		if (viewport.width === 0 || viewport.height === 0) return
@@ -688,7 +678,7 @@ function PortfolioRoute() {
 	return (
 		<div
 			ref={containerRef}
-			className="relative min-h-0 flex-1 cursor-none overflow-x-hidden overflow-y-scroll"
+			className="portfolio-scroll relative min-h-0 flex-1 overflow-x-hidden overflow-y-scroll"
 			onPointerMove={updatePointer}
 			onScroll={event => {
 				const viewportMiddle = event.currentTarget.scrollTop + event.currentTarget.clientHeight / 2

@@ -198,9 +198,9 @@ function AppRow(props: {
 		Record.values,
 		Array.sort(Order.flip(Order.mapInput(Order.Number, newest)))
 	)
-	// The icon lines up with the name, and the chips wrap below it.
+	// The icon and trailing action stay centered as client chips wrap.
 	return (
-		<Item role="listitem" size="sm" className="items-start">
+		<Item role="listitem" size="sm">
 			<ItemMedia>
 				<AppIcon id={props.id} />
 			</ItemMedia>

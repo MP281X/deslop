@@ -13,6 +13,7 @@ import {
 	Picker,
 	SwipeActions,
 	Toggle,
+	ZStack,
 	Toolbar,
 	ToolbarItem
 } from '@expo/ui/swift-ui'
@@ -48,7 +49,7 @@ import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 import {Linking} from 'react-native'
 
-import {BrandIcon} from '@deslop/components-mobile/icons'
+import {BrandIcon, BrandLogo} from '@deslop/components-mobile/icons'
 import {ClipboardSheet} from '@deslop/components-mobile/sheet'
 import {colors, space, text} from '@deslop/components-mobile/theme'
 import {AppTitle} from '@deslop/components-mobile/title'
@@ -136,6 +137,30 @@ function Thumbnail(props: {id: Note['id']}) {
 	)
 }
 
+// A source mark reserves the same square while a preview loads, fails or is absent.
+function NoteMedia(props: {note: NoteItem}) {
+	const kind = kindOf(props.note)
+	return (
+		<ZStack
+			modifiers={[
+				frame({height: 64, width: 64}),
+				background(colors.card),
+				clipShape('roundedRectangle', 10),
+				accessibilityHidden(true)
+			]}
+		>
+			{pipe(
+				Match.value(kind),
+				Match.when(Schema.is(Brand), brand => <BrandLogo brand={kinds[brand].logo} size={24} />),
+				Match.orElse(other => (
+					<Image systemName={kinds[other].symbol} size={24} modifiers={[foregroundStyle(colors.mutedForeground)]} />
+				))
+			)}
+			{props.note.image !== undefined && <Thumbnail id={props.note.id} />}
+		</ZStack>
+	)
+}
+
 function DeleteButton(props: {onPress: () => void}) {
 	return (
 		<Button
@@ -163,11 +188,9 @@ function NoteRow(props: {
 						onPress={() => props.onOpen(props.note.id)}
 						modifiers={[alignmentGuide('listRowSeparatorLeading', 0), onAppear(props.onAppear)]}
 					>
-						{props.note.image !== undefined && (
-							<ItemMedia>
-								<Thumbnail id={props.note.id} />
-							</ItemMedia>
-						)}
+						<ItemMedia>
+							<NoteMedia note={props.note} />
+						</ItemMedia>
 						<Lines note={props.note} />
 					</Item>
 				</ContextMenu.Trigger>
@@ -291,9 +314,7 @@ export function HomeRoute(props: {
 	const filtered = String.isNonEmpty(query) || props.tag !== undefined || props.kind !== undefined
 
 	return (
-		<Toolbar
-			modifiers={[navigationTitle('stash'), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
-		>
+		<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}>
 			{/* SwiftUI shows the outermost toolbar's items first: the filter, the search field, then write. */}
 			<Toolbar modifiers={[searchable(props.query, {onChange: props.onSearch, prompt: 'Search'}), bottomBarSearch]}>
 				{Array.match(items, {
@@ -384,7 +405,7 @@ export function HomeRoute(props: {
 				</Toolbar.Content>
 			</Toolbar>
 			<Toolbar.Content>
-				<ToolbarItem placement="principal">
+				<ToolbarItem placement="topBarLeading">
 					<PasteSheet />
 				</ToolbarItem>
 				<ToolbarItem placement="bottomBar">
