@@ -1,7 +1,20 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, ConfigProvider, Context, Effect, Layer, Match, Sink, Stream, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	ConfigProvider,
+	Context,
+	Effect,
+	FileSystem,
+	Layer,
+	Match,
+	Sink,
+	Stream,
+	String,
+	pipe
+} from 'effect'
 
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
@@ -38,6 +51,14 @@ it.layer(NodeServices.layer)('Inventory', test => {
 											'tcp LISTEN 0 4096 127.0.0.1:5173 0.0.0.0:* users:(("node",pid=42,fd=3))\nudp UNCONN 0 0 [::]:5353 [::]:*'
 									),
 									Match.when('systemctl', () => '[]'),
+									Match.when('tailscale', () =>
+										Boolean.match(command.args[0] === 'serve', {
+											onFalse: () =>
+												'{"Self":{"DNSName":"dev.tailnet.ts.net.","HostName":"dev","OS":"linux","Online":true,"TailscaleIPs":["100.1.2.3"]}}',
+											onTrue: () =>
+												'{"AllowFunnel":{"dev.tailnet.ts.net:5173":true},"Web":{"dev.tailnet.ts.net:5173":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:5173"},"/files":{}}}}}'
+										})
+									),
 									Match.orElse(() => '{}')
 								)
 							)
@@ -51,6 +72,7 @@ it.layer(NodeServices.layer)('Inventory', test => {
 					pipe(
 						Inventory.layer,
 						Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)),
+						Layer.provide(FileSystem.layerNoop({readLink: () => Effect.succeed('/worktree/apps/fixture')})),
 						Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({HOSTNAME: 'dev'})))
 					)
 				),
@@ -69,6 +91,37 @@ it.layer(NodeServices.layer)('Inventory', test => {
 			)
 			assert.isTrue(Array.some(snapshot.sources, source => source.name === 'Docker' && source.error !== ''))
 			assert.isTrue(Array.some(snapshot.sources, source => source.name === 'User services' && source.error === ''))
+			assert.deepStrictEqual(
+				Array.map(
+					Array.filter(snapshot.items, item => item.kind === 'port'),
+					item => [item.port, item.protocol, item.process]
+				),
+				[
+					[5173, 'tcp', 'fixture'],
+					[5353, 'udp', '']
+				]
+			)
+			assert.isTrue(Array.some(snapshot.items, item => item.self === true && item.hostname === 'dev.tailnet.ts.net'))
+			assert.isTrue(
+				Array.some(
+					snapshot.items,
+					item =>
+						item.kind === 'exposure' &&
+						item.port === 5173 &&
+						item.url === 'https://dev.tailnet.ts.net:5173/' &&
+						item.owned === false
+				)
+			)
+			assert.isTrue(Array.some(snapshot.items, item => String.endsWith('/files')(item.url) && item.port === undefined))
+			assert.isTrue(
+				Array.some(
+					snapshot.items,
+					item =>
+						item.kind === 'exposure' &&
+						item.publicAccess === true &&
+						String.startsWith('Funnel permitted (public)')(item.detail)
+				)
+			)
 		})
 	)
 })

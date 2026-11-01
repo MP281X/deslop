@@ -16,7 +16,7 @@ import * as ServerRuntime from '@deslop/runtime/server'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {Exposures} from '#services/exposures/service.ts'
 import {Fleet} from '#services/fleet/service.ts'
-import {DeployError, Item, Snapshot, Worker} from '#services/inventory/schema.ts'
+import {DeployError, InventoryItem, Snapshot, Worker} from '#services/inventory/schema.ts'
 import {Inventory} from '#services/inventory/service.ts'
 
 it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch))('Worker RPC', test => {
@@ -24,7 +24,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch))('Worker 
 		Effect.scoped(
 			Effect.gen(function* () {
 				const unavailable = yield* Ref.make(false)
-				const item = Item.make({
+				const item = InventoryItem.make({
 					detail: 'fixture',
 					id: 'worker:user:scope.service',
 					kind: 'service',

@@ -117,6 +117,22 @@ it.layer(NodeServices.layer)('Owned exposures', test => {
 			assert.include(configuration, 'admin 127.0.0.1:20219')
 			assert.include(configuration, 'preview.example.com {\n\treverse_proxy 127.0.0.1:5173')
 			assert.notInclude(configuration, row.hostname)
+			yield* exposures.expose({
+				...row,
+				hostname: 'second.example.com',
+				kind: 'public',
+				name: 'public:second.example.com',
+				publicAccess: true
+			})
+			assert.include(
+				yield* fs.readFileString(`${home}/deploy/Caddyfile`),
+				'second.example.com {\n\treverse_proxy 127.0.0.1:5173'
+			)
+			assert.include(
+				yield* fs.readFileString(`${home}/deploy/Caddyfile`),
+				'preview.example.com {\n\treverse_proxy 127.0.0.1:5173'
+			)
+			yield* exposures.hide('public:second.example.com')
 			yield* exposures.hide(row.name)
 		})
 	)

@@ -5,7 +5,7 @@ import {Atom, AtomRpc} from 'effect/reactivity'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import type {ExposeRequest, HideRequest} from '#services/inventory/schema.ts'
+import type {ExposeRequest} from '#services/inventory/schema.ts'
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/deploy/lib/utils/RpcClient', {
 	group: RpcContracts,
@@ -31,6 +31,8 @@ export const inventoryAtom = Atom.keepAlive(
 export const exposeAtom = RpcClient.runtime.fn((input: ExposeRequest) =>
 	Effect.flatMap(RpcClient, client => client('deploy.expose', input))
 )
-export const hideAtom = RpcClient.runtime.fn((input: HideRequest) =>
-	Effect.flatMap(RpcClient, client => client('deploy.hide', input))
+export const hideAtom = Atom.family((target: string) =>
+	Atom.family((name: string) =>
+		RpcClient.runtime.fn(() => Effect.flatMap(RpcClient, client => client('deploy.hide', {name, target})))
+	)
 )

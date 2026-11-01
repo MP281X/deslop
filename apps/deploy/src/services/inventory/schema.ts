@@ -7,12 +7,21 @@ export class DeployError extends Schema.TaggedError<DeployError>()('DeployError'
 	message: Schema.String
 }) {}
 
-export type Item = typeof Item.Type
-export const Item = Schema.Struct({
+export type InventoryItem = typeof InventoryItem.Type
+export const InventoryItem = Schema.Struct({
+	address: Schema.optionalKey(Schema.String),
 	detail: Schema.String,
+	hostname: Schema.optionalKey(Schema.String),
 	id: Schema.String,
 	kind: Schema.Literals(['service', 'container', 'port', 'exposure', 'peer']),
 	name: Schema.String,
+	owned: Schema.optionalKey(Schema.Boolean),
+	port: Schema.optionalKey(Schema.Int),
+	process: Schema.optionalKey(Schema.String),
+	protocol: Schema.optionalKey(Schema.Literals(['tcp', 'udp'])),
+	publicAccess: Schema.optionalKey(Schema.Boolean),
+	scope: Schema.optionalKey(Schema.Literals(['user', 'system'])),
+	self: Schema.optionalKey(Schema.Boolean),
 	state: Schema.String,
 	url: Schema.String,
 	worker: Schema.String
@@ -20,7 +29,7 @@ export const Item = Schema.Struct({
 
 export type Snapshot = typeof Snapshot.Type
 export const Snapshot = Schema.Struct({
-	items: Schema.Array(Item),
+	items: Schema.Array(InventoryItem),
 	sources: Schema.Array(Schema.Struct({error: Schema.String, name: Schema.String})),
 	time: Schema.Finite
 })
@@ -58,10 +67,11 @@ export const Serve = Schema.Struct({
 export type Exposure = typeof Exposure.Type
 export const Exposure = Schema.Struct({
 	hostname: Schema.String.check(
+		Schema.isMaxLength(253),
 		Schema.isPattern(/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u)
 	),
 	kind: Schema.Literals(['tailnet', 'public']),
-	name: Schema.NonEmptyString.check(Schema.isMaxLength(100)),
+	name: Schema.NonEmptyString.check(Schema.isMaxLength(260)),
 	port: Schema.Int.check(Schema.isBetween({maximum: 65_535, minimum: 1024})),
 	publicAccess: Schema.Boolean
 })

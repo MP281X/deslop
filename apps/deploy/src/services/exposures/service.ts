@@ -23,7 +23,7 @@ import {nativeTool} from '@deslop/runtime/native'
 import {layerKeyValueStore} from '@deslop/runtime/server'
 import {execute, service} from '@deslop/runtime/service'
 
-import {DeployError, Exposure, Item, Serve, Tailnet} from '#services/inventory/schema.ts'
+import {DeployError, Exposure, InventoryItem, Serve, Tailnet} from '#services/inventory/schema.ts'
 
 function caddyConfig(rows: Exposure[], storage: string) {
 	return `{\n\tadmin 127.0.0.1:20219\n\tpersist_config off\n\tstorage file_system {\n\t\troot ${Schema.encodeSync(Schema.fromJsonString(Schema.String))(storage)}\n\t}\n}\n\n${Array.join(
@@ -62,7 +62,7 @@ export class Exposures extends Context.Service<
 	{
 		readonly expose: (input: Exposure) => Effect.Effect<string, DeployError>
 		readonly hide: (name: string) => Effect.Effect<void, DeployError>
-		readonly items: Effect.Effect<Item[]>
+		readonly items: Effect.Effect<InventoryItem[]>
 	}
 >()('@deslop/deploy/services/exposures/service/Exposures') {
 	static readonly layer = Layer.unwrap(
@@ -237,11 +237,14 @@ export class Exposures extends Context.Service<
 							),
 							items: Effect.map(SubscriptionRef.get(state), rows =>
 								Array.map(Record.values(rows), row =>
-									Item.make({
+									InventoryItem.make({
 										detail: `${row.kind} → 127.0.0.1:${row.port}`,
 										id: `${worker}:exposure:${row.name}`,
 										kind: 'exposure',
 										name: row.name,
+										owned: true,
+										port: row.port,
+										publicAccess: row.kind === 'public',
 										state: 'configured; check backend',
 										url: exposureUrl(row),
 										worker

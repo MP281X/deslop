@@ -20,7 +20,9 @@ DEPLOY_WORKERS=[{"name":"desktop","url":"https://desktop.tailnet-8c4c.ts.net:520
 
 Worker URLs use HTTPS except loopback tests. Sign the control-plane CLI in to each protected worker with `deploy login --url <worker origin> --auth <issuer>`; it reuses those resource-bound credentials. Each worker snapshot is local only, so a control-plane/worker cycle cannot recursively duplicate the fleet. RPC is schema-binary over WebSocket. Failed workers retain their last successful rows marked stale, with a source error instead of a healthy empty list.
 
-Select a port to prefill an exposure on that port's worker. The worker appears only where placement matters, not as a dashboard hierarchy. Changes go through the configured worker's authenticated RPC; arbitrary request-supplied worker URLs are not accepted.
+The exposure controls stay at the top. Pick an observed TCP listener by port/process/worker; tailnet DNS is derived from that worker, and only public exposure asks for a hostname and explicit confirmation. The picker excludes stale, UDP, privileged and non-IPv4-loopback-reachable listeners because both proxies target `127.0.0.1`. It deduplicates a port per worker without merging identical numbers across workers. This publishes HTTP backends, not arbitrary TCP protocols.
+
+The default Apps view keeps app/user services, running/problem containers, application listeners and owned exposures; failed services remain visible. OS plumbing, inactive background services, tunnel listeners and observed tailnet mappings stay in Ports, Tailnet and Everything. Search filters the chosen view. Rows show their useful information immediately, with no selection or detached details panel; only placement-specific controls name a worker. Changes go through that configured worker's authenticated RPC, never a request-supplied worker URL.
 
 ## HTTPS exposure
 
