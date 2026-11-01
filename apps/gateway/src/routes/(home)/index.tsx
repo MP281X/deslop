@@ -349,7 +349,7 @@ function Servers() {
 // The first load suspends to a skeleton; React keeps a shown fallback at least 300ms, so it never blinks.
 function Home() {
 	return (
-		<main className="flex flex-1 justify-center overflow-y-auto px-4 py-8 md:py-16">
+		<main className="pb-safe flex flex-1 justify-center overflow-y-auto px-4 pt-8 md:pt-16">
 			<div className="flex w-full max-w-3xl flex-col gap-5">
 				<h1 className="text-xl font-semibold tracking-tight">Servers</h1>
 				<Suspense fallback={<ItemListSkeleton label="MCP servers" media rows={4} />}>

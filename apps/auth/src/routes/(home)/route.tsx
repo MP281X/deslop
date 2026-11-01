@@ -248,7 +248,7 @@ function Shell() {
 					)
 				})}
 			</AppBar>
-			<main className="flex flex-1 justify-center overflow-y-auto px-4 py-8 md:py-16">
+			<main className="pb-safe flex flex-1 justify-center overflow-y-auto px-4 pt-8 md:pt-16">
 				<div className="flex w-full max-w-xl flex-col gap-6">
 					{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting account={account} id={id} />})}
 					{Option.match(account, {
@@ -273,7 +273,7 @@ function HomeLayout() {
 			fallback={
 				<>
 					<AppBar icon={icon} name="auth" />
-					<main className="flex flex-1 justify-center overflow-y-auto px-4 py-8 md:py-16">
+					<main className="pb-safe flex flex-1 justify-center overflow-y-auto px-4 pt-8 md:pt-16">
 						<div className="flex w-full max-w-xl flex-col gap-6">
 							<Skeleton className="h-7 w-48" />
 							<ItemListSkeleton label="Apps" media rows={APPS.length} />

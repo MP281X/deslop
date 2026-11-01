@@ -168,9 +168,14 @@
 	text-align: start;
 }
 
-/* An installed web app draws under the iPhone's status bar and home indicator, so its root keeps clear of them. */
+/* An installed web app draws under the iPhone's status bar, so its root keeps clear of it and the side notches. */
 @utility safe-area {
-	padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+	padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+}
+
+/* A scrolling page runs under the home indicator, as native lists do, and its end scrolls clear of it. */
+@utility pb-safe {
+	padding-bottom: calc(env(safe-area-inset-bottom) + 2rem);
 }
 
 /* Pixel art keeps its hard edges when scaled. */

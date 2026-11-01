@@ -314,7 +314,7 @@ function Panes(props: {children: ReactNode; waiting: boolean}) {
 		<div className="flex min-h-0 flex-1 flex-col md:flex-row">
 			<nav
 				className={cn(
-					'border-border min-h-0 flex-1 overflow-y-auto md:w-80 md:flex-none md:border-r',
+					'border-border pb-safe min-h-0 flex-1 overflow-y-auto md:w-80 md:flex-none md:border-r',
 					Option.isSome(selected) && 'hidden md:block'
 				)}
 				aria-label="Traces"
@@ -326,7 +326,10 @@ function Panes(props: {children: ReactNode; waiting: boolean}) {
 				{props.children}
 			</nav>
 			<main
-				className={cn('min-h-0 flex-1 overflow-y-auto px-4 py-4 md:block md:px-6', Option.isNone(selected) && 'hidden')}
+				className={cn(
+					'pb-safe min-h-0 flex-1 overflow-y-auto px-4 pt-4 md:block md:px-6',
+					Option.isNone(selected) && 'hidden'
+				)}
 			>
 				<Detail />
 			</main>
