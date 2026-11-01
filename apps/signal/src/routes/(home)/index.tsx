@@ -95,6 +95,10 @@ function wheelRate(pinch: boolean) {
 	return 0.0015
 }
 
+function preventMapWheel(event: Event) {
+	event.preventDefault()
+}
+
 function letterKey(code: string, repeat: boolean) {
 	if (repeat) return Option.none<Key>()
 	if (code === 'KeyQ') return Option.some<Key>('overview')
@@ -907,7 +911,7 @@ function Sidebar(props: {close: () => void; selection: Inspection; source: Sourc
 		team => team.id === filter || (filter === -1 && team.status === 'thinking')
 	)
 	return (
-		<div className="pointer-events-none absolute inset-0 z-20 flex items-end p-2 md:p-4">
+		<div className="pointer-events-none absolute inset-x-0 top-16 bottom-0 z-20 flex items-end p-2 md:top-20 md:p-4">
 			<aside
 				aria-label="Inspector"
 				className="bg-popover text-popover-foreground pointer-events-auto flex max-h-1/2 min-h-0 w-full flex-col md:max-h-full md:w-80"
@@ -1587,8 +1591,10 @@ function World(props: {seed: number; view: View}) {
 	}, [source, props.view])
 
 	useEffect(() => {
-		if (canvas.current === null) return
-		const renderer = createRenderer(canvas.current, props.seed)
+		const target = canvas.current
+		if (target === null) return
+		target.addEventListener('wheel', preventMapWheel, {passive: false})
+		const renderer = createRenderer(target, props.seed)
 		const cast = createCast(renderer)
 		const active = {cast, renderer}
 		cast.onPortrait(() => setPortraits(cast.portraits()))
@@ -1754,6 +1760,7 @@ function World(props: {seed: number; view: View}) {
 		addEventListener('keydown', keys)
 		setWorld(Option.some(active))
 		return () => {
+			target.removeEventListener('wheel', preventMapWheel)
 			removeEventListener('keydown', keys)
 			frames()
 			cast.dispose()
