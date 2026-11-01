@@ -1,10 +1,10 @@
 import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, Option, String} from 'effect'
+import {Array, Boolean, Cause, Match, Option, String, pipe} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {ArrowUpRight, Plus, X} from 'lucide-react'
+import {Box, Cog, Globe, Network, Plus, Radio, X} from 'lucide-react'
 import {Suspense, useState} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
@@ -30,17 +30,17 @@ import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-gro
 import {signInUrl} from '@deslop/runtime/auth/utils'
 
 import {exposeAtom, hideAtom, inventoryAtom} from '#lib/utils.ts'
+import {ResourceHistory} from '#routes/(home)/-metrics.tsx'
 import icon from '#routes/icon-dark.svg'
-import {important, portLabel, ports} from '#services/inventory/lib/utils.ts'
+import {portLabel, ports, workloads} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem} from '#services/inventory/schema.ts'
 
-function Expose(props: {items: readonly InventoryItem[]}) {
+function Expose(props: {items: readonly InventoryItem[]; choices: readonly InventoryItem[]}) {
 	const [result, expose] = useAtom(exposeAtom)
 	const [kind, setKind] = useState<'tailnet' | 'public'>('tailnet')
 	const [selectedId, setSelectedId] = useState('')
 	const [hostname, setHostname] = useState('')
-	const choices = ports(props.items)
-	const selectedItem = Option.getOrUndefined(Array.findFirst(choices, item => item.id === selectedId))
+	const selectedItem = Option.getOrUndefined(Array.findFirst(props.choices, item => item.id === selectedId))
 	const tailnetHost = Option.getOrElse(
 		Option.map(
 			Array.findFirst(props.items, item => item.self === true && item.worker === selectedItem?.worker),
@@ -72,7 +72,7 @@ function Expose(props: {items: readonly InventoryItem[]}) {
 						onTrue: () => `public:${hostname}`
 					}),
 					port: selectedItem.port,
-					publicAccess: new FormData(event.currentTarget).get('public') === 'on',
+					publicAccess: kind === 'public',
 					target: Boolean.match(String.startsWith('remote:')(selectedItem.id), {
 						onFalse: () => '',
 						onTrue: () => selectedItem.worker
@@ -96,9 +96,9 @@ function Expose(props: {items: readonly InventoryItem[]}) {
 			</div>
 			<div className="flex items-end gap-2">
 				<Field className="min-w-0 flex-1">
-					<FieldLabel htmlFor="expose-port">HTTP app port</FieldLabel>
+					<FieldLabel htmlFor="expose-port">App</FieldLabel>
 					<Combobox
-						items={choices}
+						items={props.choices}
 						value={selectedItem ?? null}
 						itemToStringLabel={portLabel}
 						isItemEqualToValue={(a, b) => a.id === b.id}
@@ -108,12 +108,12 @@ function Expose(props: {items: readonly InventoryItem[]}) {
 						<ComboboxInput
 							id="expose-port"
 							aria-label="Listening port"
-							placeholder="Find a port or process…"
+							placeholder="Choose an app…"
 							className="w-full"
 							showClear
 						/>
 						<ComboboxContent>
-							<ComboboxEmpty>No matching TCP listeners.</ComboboxEmpty>
+							<ComboboxEmpty>No matching app listeners.</ComboboxEmpty>
 							<ComboboxList>
 								{(item: InventoryItem) => (
 									<ComboboxItem key={item.id} value={item}>
@@ -138,32 +138,19 @@ function Expose(props: {items: readonly InventoryItem[]}) {
 				</Button>
 			</div>
 			{kind === 'public' && (
-				<>
-					<Field>
-						<FieldLabel htmlFor="expose-hostname">Public hostname</FieldLabel>
-						<Input
-							id="expose-hostname"
-							required
-							placeholder="preview.example.com"
-							autoCapitalize="none"
-							spellCheck={false}
-							value={hostname}
-							disabled={pending}
-							onChange={event => setHostname(String.toLowerCase(event.target.value))}
-						/>
-					</Field>
-					<label className="flex items-center gap-2 text-xs">
-						<input
-							key={`${selectedId}:${hostname}`}
-							type="checkbox"
-							name="public"
-							required
-							disabled={pending}
-							className="accent-primary"
-						/>
-						Allow public internet access. Backend authentication is unchanged.
-					</label>
-				</>
+				<Field>
+					<FieldLabel htmlFor="expose-hostname">Public hostname</FieldLabel>
+					<Input
+						id="expose-hostname"
+						required
+						placeholder="preview.example.com"
+						autoCapitalize="none"
+						spellCheck={false}
+						value={hostname}
+						disabled={pending}
+						onChange={event => setHostname(String.toLowerCase(event.target.value))}
+					/>
+				</Field>
 			)}
 			{kind === 'tailnet' && selectedItem !== undefined && (
 				<p className="text-muted-foreground text-xs wrap-anywhere">
@@ -206,8 +193,8 @@ function status(item: InventoryItem) {
 }
 
 function dot(item: InventoryItem, state: string) {
-	if (Option.isSome(String.match(/failed|unhealthy/u)(item.state + item.detail))) return 'error'
-	if (state === 'stale' || state === 'public permission') return 'warning'
+	if (Option.isSome(String.match(/failed|unhealthy|Exited \([1-9]/u)(item.state + item.detail))) return 'error'
+	if (state === 'stale' || state === 'public permission' || state === 'restarting') return 'warning'
 	if (Option.isSome(String.match(/running|online|listening/u)(state))) return 'live'
 	return 'quiet'
 }
@@ -226,63 +213,92 @@ function title(item: InventoryItem) {
 	return String.replace(/\.service$/u, '')(item.name)
 }
 
-function InventoryRow(props: {item: InventoryItem; multipleWorkers: boolean}) {
+function ExposureLink(props: {item: InventoryItem}) {
 	const [result, hide] = useAtom(
 		hideAtom(
 			Boolean.match(String.startsWith('remote:')(props.item.id), {onFalse: () => '', onTrue: () => props.item.worker})
 		)(props.item.name)
 	)
-	const item = props.item
-	const state = status(item)
 	return (
-		<Item role="listitem" size="sm">
-			<ItemMedia>
-				<StatusDot status={dot(item, state)} />
-			</ItemMedia>
-			<ItemContent className="min-w-0">
-				<ItemTitle className="wrap-anywhere">{title(item)}</ItemTitle>
-				<ItemDescription className="line-clamp-none wrap-anywhere">
-					{props.multipleWorkers && `${item.worker} · `}
-					{item.kind} ·{' '}
-					{Boolean.match(String.startsWith('preview-')(item.name), {
-						onFalse: () =>
-							Boolean.match(item.kind === 'port', {
-								onFalse: () => item.detail,
-								onTrue: () => `${item.protocol} · ${item.address}`
-							}),
-						onTrue: () => 'App preview'
+		<div className="flex flex-col gap-1">
+			<div className="flex items-center gap-1">
+				<a
+					className="text-muted-foreground flex min-w-0 items-center gap-1 text-xs wrap-anywhere"
+					href={props.item.url}
+					target="_blank"
+					rel="noreferrer"
+				>
+					{Boolean.match(props.item.publicAccess === true, {
+						onFalse: () => <Network className="size-3 shrink-0" aria-label="Tailnet" />,
+						onTrue: () => <Globe className="size-3 shrink-0" aria-label="Public" />
 					})}
-				</ItemDescription>
-				{item.url !== '' && (
-					<a
-						className="text-muted-foreground font-mono text-xs wrap-anywhere"
-						href={item.url}
-						target="_blank"
-						rel="noreferrer"
-					>
-						{item.url}
-					</a>
-				)}
-				<ResultError result={result} />
-			</ItemContent>
-			<ItemActions className="max-w-full">
-				<span className="text-muted-foreground text-xs">{state}</span>
-				{item.url !== '' && (
-					<a href={item.url} aria-label={`Open ${item.name}`} target="_blank" rel="noreferrer">
-						<ArrowUpRight className="size-4" />
-					</a>
-				)}
-				{item.owned === true && (
+					<span className="min-w-0 font-mono wrap-anywhere">{String.replace(/^https:\/\//u, '')(props.item.url)}</span>
+				</a>
+				{props.item.owned === true && (
 					<Button
 						size="icon-sm"
 						variant="ghost"
 						disabled={AsyncResult.isWaiting(result)}
-						aria-label={`Remove ${item.name} exposure`}
+						aria-label={`Remove ${props.item.name} exposure`}
 						onClick={() => hide()}
 					>
 						<X />
 					</Button>
 				)}
+			</div>
+			<ResultError result={result} />
+		</div>
+	)
+}
+
+function InventoryRow(props: {row: ReturnType<typeof workloads>[number]}) {
+	const state = status(props.row.item)
+	return (
+		<Item role="listitem" size="sm">
+			<ItemMedia>
+				<span title={props.row.item.kind} aria-label={props.row.item.kind} role="img">
+					{pipe(
+						Match.value(props.row.item.kind),
+						Match.when('container', () => <Box className="size-4" />),
+						Match.when('service', () => <Cog className="size-4" />),
+						Match.when('exposure', () => <Globe className="size-4" />),
+						Match.orElse(() => <Radio className="size-4" />)
+					)}
+				</span>
+			</ItemMedia>
+			<ItemContent className="min-w-0">
+				<ItemTitle className="wrap-anywhere">
+					{title(props.row.item)}{' '}
+					<span className="text-muted-foreground font-mono text-xs font-normal">{props.row.item.worker}</span>
+				</ItemTitle>
+				{Array.isArrayNonEmpty(props.row.listeners) && (
+					<ItemDescription className="line-clamp-none font-mono text-xs wrap-anywhere">
+						{Array.join(
+							Array.dedupe(
+								Array.map(
+									props.row.listeners,
+									listener =>
+										`${listener.protocol} :${listener.port}${Boolean.match(listener.address === 'container', {onFalse: () => '', onTrue: () => ' (route)'})}`
+								)
+							),
+							' · '
+						)}
+					</ItemDescription>
+				)}
+				{(state === 'stale' ||
+					state === 'unhealthy' ||
+					String.includes('failed')(state) ||
+					String.includes('exited')(state)) && (
+					<ItemDescription className="line-clamp-none wrap-anywhere">{props.row.item.detail}</ItemDescription>
+				)}
+				{Array.map(props.row.exposures, exposure => (
+					<ExposureLink key={exposure.id} item={exposure} />
+				))}
+			</ItemContent>
+			<ItemActions className="max-w-full">
+				<span title={state} aria-label={state} role="img">
+					<StatusDot status={dot(props.row.item, state)} />
+				</span>
 			</ItemActions>
 		</Item>
 	)
@@ -292,29 +308,50 @@ function Services() {
 	const result = useAtomSuspense(inventoryAtom, {includeFailure: true})
 	const [query, setQuery] = useState('')
 	const [view, setView] = useState('apps')
+	const [machine, setMachine] = useState('')
 	if (AsyncResult.isFailure(result)) {
 		if (Option.exists(Cause.findErrorOption(result.cause), error => error._tag === 'AuthError')) {
 			return <SignIn href={signInUrl(location.href)} />
 		}
 		return <Error error={Cause.squash(result.cause)} reset={() => location.reload()} />
 	}
-	const rows = Array.filter(result.value.items, item => {
-		if (
-			!String.includes(String.toLowerCase(query))(
-				String.toLowerCase(`${item.worker} ${item.name} ${item.detail} ${item.state} ${item.url}`)
+	const items = Array.filter(result.value.items, item => machine === '' || item.worker === machine)
+	const rows = Array.filter(workloads(items, view === 'all'), row =>
+		String.includes(String.toLowerCase(query))(
+			String.toLowerCase(
+				`${row.item.worker} ${row.item.name} ${row.item.detail} ${Array.join(
+					Array.map(row.listeners, listener => `${listener.port}`),
+					' '
+				)} ${Array.join(
+					Array.map(row.exposures, exposure => exposure.url),
+					' '
+				)}`
 			)
-		) {
-			return false
-		}
-		if (view === 'apps') return important(item)
-		if (view === 'ports') return item.kind === 'port'
-		if (view === 'tailnet') return item.kind === 'peer' || (item.kind === 'exposure' && item.owned !== true)
-		return true
-	})
-	const multipleWorkers = Array.dedupe(Array.map(result.value.items, item => item.worker)).length > 1
+		)
+	)
+	const choices = ports(
+		Array.flatMap(workloads(items, false), row =>
+			Array.map(
+				Array.filter(
+					row.listeners,
+					listener => !Array.some(row.listeners, candidate => candidate.ui === true) || listener.ui === true
+				),
+				listener => ({...listener, process: title(row.item)})
+			)
+		)
+	)
 	return (
 		<div className="flex flex-col gap-4">
-			<Expose items={result.value.items} />
+			<ToggleGroup aria-label="Machine" value={[machine]} onValueChange={values => setMachine(values[0] ?? '')}>
+				<ToggleGroupItem value="">All machines</ToggleGroupItem>
+				{Array.map(result.value.workers ?? Array.dedupe(Array.map(result.value.items, item => item.worker)), name => (
+					<ToggleGroupItem key={name} value={name}>
+						{name}
+					</ToggleGroupItem>
+				))}
+			</ToggleGroup>
+			<Expose key={machine} items={items} choices={choices} />
+			<ResourceHistory machine={machine} />
 			<div className="flex flex-col gap-2">
 				<div className="flex flex-wrap items-center justify-between gap-2">
 					<ToggleGroup
@@ -323,13 +360,9 @@ function Services() {
 						onValueChange={values => setView(values[0] ?? 'apps')}
 					>
 						<ToggleGroupItem value="apps">Apps</ToggleGroupItem>
-						<ToggleGroupItem value="ports">Ports</ToggleGroupItem>
-						<ToggleGroupItem value="tailnet">Tailnet</ToggleGroupItem>
-						<ToggleGroupItem value="all">Everything</ToggleGroupItem>
+						<ToggleGroupItem value="all">System</ToggleGroupItem>
 					</ToggleGroup>
-					<span className="text-muted-foreground font-mono text-xs">
-						{rows.length} / {result.value.items.length}
-					</span>
+					<span className="text-muted-foreground font-mono text-xs">{rows.length}</span>
 				</div>
 				<Input
 					aria-label="Find a service or port"
@@ -347,13 +380,13 @@ function Services() {
 				)
 			)}
 			<ItemList label="Services and ports">
-				{Array.map(rows, item => (
-					<InventoryRow key={item.id} item={item} multipleWorkers={multipleWorkers} />
+				{Array.map(rows, row => (
+					<InventoryRow key={row.item.id} row={row} />
 				))}
 			</ItemList>
 			{Array.isArrayEmpty(rows) && (
 				<p className="text-muted-foreground text-sm">
-					No matching items. Everything includes system services and background listeners.
+					No matching apps. System includes background services and unmatched listeners.
 				</p>
 			)}
 		</div>

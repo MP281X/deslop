@@ -10,10 +10,15 @@ export class DeployError extends Schema.TaggedError<DeployError>()('DeployError'
 export type InventoryItem = typeof InventoryItem.Type
 export const InventoryItem = Schema.Struct({
 	address: Schema.optionalKey(Schema.String),
+	bindings: Schema.optionalKey(
+		Schema.Array(Schema.Struct({address: Schema.String, port: Schema.Int, protocol: Schema.Literals(['tcp', 'udp'])}))
+	),
 	detail: Schema.String,
 	hostname: Schema.optionalKey(Schema.String),
+	http: Schema.optionalKey(Schema.Boolean),
 	id: Schema.String,
 	kind: Schema.Literals(['service', 'container', 'port', 'exposure', 'peer']),
+	links: Schema.optionalKey(Schema.Array(Schema.String)),
 	name: Schema.String,
 	owned: Schema.optionalKey(Schema.Boolean),
 	port: Schema.optionalKey(Schema.Int),
@@ -23,6 +28,8 @@ export const InventoryItem = Schema.Struct({
 	scope: Schema.optionalKey(Schema.Literals(['user', 'system'])),
 	self: Schema.optionalKey(Schema.Boolean),
 	state: Schema.String,
+	ui: Schema.optionalKey(Schema.Boolean),
+	unit: Schema.optionalKey(Schema.String),
 	url: Schema.String,
 	worker: Schema.String
 })
@@ -31,7 +38,8 @@ export type Snapshot = typeof Snapshot.Type
 export const Snapshot = Schema.Struct({
 	items: Schema.Array(InventoryItem),
 	sources: Schema.Array(Schema.Struct({error: Schema.String, name: Schema.String})),
-	time: Schema.Finite
+	time: Schema.Finite,
+	workers: Schema.optionalKey(Schema.Array(Schema.String))
 })
 
 export type Worker = typeof Worker.Type
@@ -93,7 +101,7 @@ export const Unit = Schema.Struct({
 export type Container = typeof Container.Type
 export const Container = Schema.Struct({
 	ID: Schema.String,
-	Image: Schema.String,
+	Labels: Schema.optionalKey(Schema.String),
 	Names: Schema.String,
 	Ports: Schema.String,
 	State: Schema.String,

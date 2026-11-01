@@ -18,6 +18,7 @@ import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Exposures} from '#services/exposures/service.ts'
 import {Fleet} from '#services/fleet/service.ts'
 import {Inventory} from '#services/inventory/service.ts'
+import {Metrics} from '#services/metrics/service.ts'
 import {Tools} from '#tools/contracts.ts'
 import {ToolHandlers} from '#tools/handlers.ts'
 
@@ -47,7 +48,9 @@ CliRuntime.runApp(
 			),
 			{disableLogger: true, middleware: ServerRuntime.localGuard}
 		),
-		Layer.provide(pipe(Fleet.layer, Layer.provideMerge(Layer.mergeAll(Inventory.layer, Exposures.layer)))),
+		Layer.provide(
+			pipe(Fleet.layer, Layer.provideMerge(Layer.mergeAll(Inventory.layer, Exposures.layer, Metrics.layer)))
+		),
 		Layer.provide(NodeServices.layer),
 		Layer.provide(ServerRuntime.layer('@deslop/deploy')),
 		Layer.provide(NodeHttpClient.layerFetch),

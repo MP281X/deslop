@@ -16,6 +16,7 @@ import {
 	pipe
 } from 'effect'
 
+import {HttpClient, HttpClientResponse} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
 import {Inventory} from '#services/inventory/service.ts'
@@ -71,8 +72,33 @@ it.layer(NodeServices.layer)('Inventory', test => {
 				yield* Layer.build(
 					pipe(
 						Inventory.layer,
+						Layer.provide(
+							Layer.succeed(
+								HttpClient.HttpClient,
+								HttpClient.make(request =>
+									Effect.succeed(
+										HttpClientResponse.fromWeb(
+											request,
+											new Response(undefined, {headers: {'content-type': 'text/html'}})
+										)
+									)
+								)
+							)
+						),
 						Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)),
-						Layer.provide(FileSystem.layerNoop({readLink: () => Effect.succeed('/worktree/apps/fixture')})),
+						Layer.provide(
+							FileSystem.layerNoop({
+								readFileString: name =>
+									Effect.succeed(
+										Boolean.match(name === '/proc/sys/kernel/hostname', {
+											onFalse: () =>
+												'0::/user.slice/user-1000.slice/user@1000.service/app.slice/preview-fixture.service',
+											onTrue: () => 'dev\n'
+										})
+									),
+								readLink: () => Effect.succeed('/worktree/apps/fixture')
+							})
+						),
 						Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({HOSTNAME: 'dev'})))
 					)
 				),

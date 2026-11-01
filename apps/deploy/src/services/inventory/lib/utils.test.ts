@@ -1,21 +1,26 @@
 import {assert, it} from '@effect/vitest'
 
-import {important, ports} from '#services/inventory/lib/utils.ts'
+import {ports, workloads} from '#services/inventory/lib/utils.ts'
 import {InventoryItem} from '#services/inventory/schema.ts'
 
 const listener = InventoryItem.make({
 	address: '127.0.0.1:5173',
 	detail: '127.0.0.1:5173 · node',
+	http: true,
 	id: 'dev:port:5173',
 	kind: 'port',
 	name: '127.0.0.1:5173',
 	port: 5173,
-	process: 'node',
+	process: 'fixture',
 	protocol: 'tcp',
 	state: 'LISTEN',
 	url: '',
 	worker: 'dev'
 })
+
+function important(item: InventoryItem) {
+	return workloads([item], false).length === 1
+}
 
 it('keeps application listeners but excludes non-loopback, UDP, stale and privileged targets from publishing', () => {
 	assert.lengthOf(ports([listener]), 1)
@@ -70,4 +75,77 @@ it('deduplicates listening ports per worker without losing identical port number
 		]).length,
 		2
 	)
+})
+
+it('puts service listeners and their tailnet URLs on one workload without mixing machines', () => {
+	const service = {
+		...listener,
+		id: 'dev:user:app',
+		kind: 'service' as const,
+		name: 'deslop-fixture.service',
+		scope: 'user' as const,
+		state: 'active · running'
+	}
+	const exposure = {
+		...listener,
+		id: 'dev:exposure',
+		kind: 'exposure' as const,
+		owned: true,
+		url: 'https://dev.tailnet.ts.net:5173/'
+	}
+	const rows = workloads(
+		[service, {...listener, unit: service.name}, exposure, {...listener, id: 'desktop:port:5173', worker: 'desktop'}],
+		false
+	)
+	assert.lengthOf(rows, 2)
+	assert.strictEqual(rows[0]?.item.id, service.id)
+	assert.lengthOf(rows[0]?.listeners ?? [], 1)
+	assert.deepStrictEqual(rows[0]?.exposures, [exposure])
+	assert.isEmpty(rows[1]?.exposures ?? [])
+})
+
+it('keeps internal container namespaces, different host addresses and UDP separate from a host HTTP endpoint', () => {
+	const host = {...listener, address: '127.0.0.1:5000', id: 'host', port: 5000}
+	const exposure = {
+		...host,
+		id: 'owned',
+		kind: 'exposure' as const,
+		owned: true,
+		url: 'https://dev.tailnet.ts.net:5000/'
+	}
+	for (const binding of [
+		{address: 'container', port: 5000, protocol: 'tcp' as const},
+		{address: '100.68.201.107:5000', port: 5000, protocol: 'tcp' as const},
+		{address: '127.0.0.1:5000', port: 5000, protocol: 'udp' as const}
+	]) {
+		const container = {
+			...listener,
+			bindings: [binding],
+			id: 'container',
+			kind: 'container' as const,
+			name: 'web',
+			state: 'running'
+		}
+		const rows = workloads([container, host, exposure], true)
+		assert.lengthOf(rows, 2)
+		assert.isEmpty(rows[0]?.exposures ?? [])
+		assert.deepStrictEqual(rows[1]?.exposures, [exposure])
+	}
+	const mapped = workloads(
+		[
+			{
+				...listener,
+				bindings: [{address: '0.0.0.0:5000', port: 5000, protocol: 'tcp'}],
+				id: 'container',
+				kind: 'container',
+				name: 'web',
+				state: 'running'
+			},
+			host,
+			exposure
+		],
+		true
+	)
+	assert.lengthOf(mapped, 1)
+	assert.deepStrictEqual(mapped[0]?.exposures, [exposure])
 })

@@ -8,6 +8,7 @@ import {ConfigProvider, Context, Effect, Layer, Ref, Schema, pipe} from 'effect'
 
 import {HttpRouter, HttpServer} from 'effect/http'
 import {RpcServer} from 'effect/rpc'
+import {TestClock} from 'effect/testing'
 
 import {Auth} from '@deslop/runtime/auth/service'
 import {DEVELOPER} from '@deslop/runtime/auth/utils'
@@ -18,6 +19,8 @@ import {Exposures} from '#services/exposures/service.ts'
 import {Fleet} from '#services/fleet/service.ts'
 import {DeployError, InventoryItem, Snapshot, Worker} from '#services/inventory/schema.ts'
 import {Inventory} from '#services/inventory/service.ts'
+import {MachineHistory, Sample} from '#services/metrics/schema.ts'
+import {Metrics} from '#services/metrics/service.ts'
 
 it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch))('Worker RPC', test => {
 	test.effect('merges one service view, keeps remote identity stable and marks failed snapshots stale', () =>
@@ -34,7 +37,14 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch))('Worker 
 					worker: 'worker'
 				})
 				const snapshot = Snapshot.make({items: [item], sources: [], time: 123})
-				const group = RpcContracts.omit('deploy.inventory', 'deploy.expose', 'deploy.hide')
+				const history = MachineHistory.make({
+					error: '',
+					samples: [Sample.make({disks: [], memoryTotal: 1024, memoryUsed: 512, swapTotal: 0, swapUsed: 0, time: 0})],
+					stale: false,
+					time: 0,
+					worker: 'worker'
+				})
+				const group = RpcContracts.omit('deploy.inventory', 'deploy.metrics', 'deploy.expose', 'deploy.hide')
 				const server = yield* Layer.build(
 					pipe(
 						HttpRouter.serve(
@@ -42,6 +52,11 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch))('Worker 
 								RpcServer.layerHttp({group, path: '/api/rpc', protocol: 'websocket'}),
 								Layer.provide(
 									group.toLayer({
+										'deploy.history': () =>
+											Effect.flatMap(Ref.get(unavailable), failed => {
+												if (failed) return Effect.fail(DeployError.make({message: 'worker unavailable'}))
+												return Effect.succeed(history)
+											}),
 										'deploy.snapshot': () =>
 											Effect.flatMap(Ref.get(unavailable), failed => {
 												if (failed) return Effect.fail(DeployError.make({message: 'worker unavailable'}))
@@ -67,6 +82,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch))('Worker 
 					yield* Layer.build(
 						pipe(
 							Fleet.layer,
+							Layer.provide(Layer.succeed(Metrics, {read: () => Effect.succeed(history)})),
 							Layer.provide(
 								Layer.succeed(Inventory, {snapshot: Effect.succeed(Snapshot.make({items: [], sources: [], time: 0}))})
 							),
@@ -93,7 +109,15 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch))('Worker 
 				const current = yield* fleet.snapshot
 				assert.strictEqual(current.items[0]?.id, 'remote:desktop:worker:user:scope.service')
 				assert.strictEqual(current.items[0]?.worker, 'desktop')
+				const currentMetrics = yield* fleet.metrics({hours: 1})
+				assert.strictEqual(currentMetrics[1]?.worker, 'desktop')
 				yield* Ref.set(unavailable, true)
+				const staleMetrics = yield* fleet.metrics({hours: 1})
+				assert.isTrue(staleMetrics[1]?.stale)
+				assert.lengthOf(staleMetrics[1]?.samples ?? [], 1)
+				assert.include(staleMetrics[1]?.error ?? '', 'worker unavailable')
+				yield* TestClock.adjust('2 hours')
+				assert.isEmpty((yield* fleet.metrics({hours: 1}))[1]?.samples ?? [])
 				const stale = yield* fleet.snapshot
 				assert.strictEqual(stale.items[0]?.id, current.items[0]?.id)
 				assert.strictEqual(stale.items[0]?.state, 'stale · active')

@@ -28,6 +28,9 @@ import {Exposures} from '#services/exposures/service.ts'
 import {DeployError, Snapshot, Worker} from '#services/inventory/schema.ts'
 import type {ExposeRequest, HideRequest} from '#services/inventory/schema.ts'
 import {Inventory} from '#services/inventory/service.ts'
+import {history} from '#services/metrics/lib/utils.ts'
+import type {HistoryQuery, MachineHistory} from '#services/metrics/schema.ts'
+import {Metrics} from '#services/metrics/service.ts'
 
 const makeRemoteClient = RpcClient.make(RpcContracts, {flatten: true})
 type RemoteClient = Effect.Success<typeof makeRemoteClient>
@@ -45,6 +48,8 @@ export class Fleet extends Context.Service<
 		readonly expose: (input: ExposeRequest) => Effect.Effect<string, DeployError>
 		readonly hide: (input: HideRequest) => Effect.Effect<void, DeployError>
 		readonly local: Effect.Effect<Snapshot>
+		readonly history: (query: HistoryQuery) => Effect.Effect<MachineHistory>
+		readonly metrics: (query: HistoryQuery) => Effect.Effect<MachineHistory[]>
 		readonly snapshot: Effect.Effect<Snapshot>
 	}
 >()('@deslop/deploy/services/fleet/service/Fleet') {
@@ -52,6 +57,8 @@ export class Fleet extends Context.Service<
 		this,
 		Effect.gen(function* () {
 			const inventory = yield* Inventory
+			const metrics = yield* Metrics
+			const lastMetrics = yield* Ref.make<Record<string, MachineHistory>>({})
 			const exposures = yield* Exposures
 			const fs = yield* FileSystem.FileSystem
 			const path = yield* Path.Path
@@ -121,7 +128,37 @@ export class Fleet extends Context.Service<
 						client('deploy.hide', {name: input.name}, {headers})
 					)
 				}, changeFailed),
+				history: metrics.read,
 				local,
+				metrics: Effect.fnUntraced(function* (query) {
+					const own = yield* metrics.read(query)
+					const others = yield* Effect.forEach(
+						workers,
+						worker =>
+							pipe(
+								remote(worker, (client, headers) => client('deploy.history', query, {headers})),
+								Effect.map(value => ({...value, worker: worker.name})),
+								Effect.tap(value =>
+									Ref.update(lastMetrics, all => Record.set(all, `${worker.name}:${query.hours}`, value))
+								),
+								Effect.catch(
+									Effect.fnUntraced(function* (cause) {
+										const time = yield* Clock.currentTimeMillis
+										const all = yield* Ref.get(lastMetrics)
+										return {
+											error: `${cause}`,
+											samples: history(all[`${worker.name}:${query.hours}`]?.samples ?? [], query.hours, time),
+											stale: true,
+											time,
+											worker: worker.name
+										}
+									})
+								)
+							),
+						{concurrency: 'unbounded'}
+					)
+					return [own, ...others]
+				}),
 				snapshot: Effect.gen(function* () {
 					const own = yield* local
 					const others = yield* Effect.forEach(
@@ -165,7 +202,11 @@ export class Fleet extends Context.Service<
 					return Snapshot.make({
 						items: [...own.items, ...Array.flatMap(others, value => value.items)],
 						sources: [...own.sources, ...Array.flatMap(others, value => value.sources)],
-						time: yield* Clock.currentTimeMillis
+						time: yield* Clock.currentTimeMillis,
+						workers: [
+							...(own.workers ?? Array.dedupe(Array.map(own.items, item => item.worker))),
+							...Array.map(workers, worker => worker.name)
+						]
 					})
 				})
 			})

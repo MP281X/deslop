@@ -85,7 +85,7 @@ export class Exposures extends Context.Service<
 						const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('exposures'), () => ({})))
 						const lock = yield* Semaphore.make(1)
 						const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
-						const worker = yield* pipe(Config.String('HOSTNAME'), Config.withDefault('local'))
+						const worker = String.trim(yield* fs.readFileString('/proc/sys/kernel/hostname'))
 						const caddy = yield* pipe(Config.String('CADDY_BINARY'), Config.withDefault(yield* nativeTool('caddy')))
 						const configFile = path.join(directory, 'Caddyfile')
 						function run(program: string, args: string[]) {

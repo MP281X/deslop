@@ -21,7 +21,7 @@ function appPort(item: InventoryItem) {
 	)
 }
 
-export function important(item: InventoryItem) {
+function important(item: InventoryItem) {
 	if (String.includes('failed')(item.state) || String.includes('unhealthy')(item.detail)) return true
 	if (item.kind === 'exposure') return item.owned === true || item.publicAccess === true
 	if (item.kind === 'container') {
@@ -36,14 +36,16 @@ export function important(item: InventoryItem) {
 	return (
 		item.scope === 'user' &&
 		Option.isSome(String.match(/(?:^| · )active · /u)(item.state)) &&
-		Option.isNone(String.match(/^(?:dbus|dirmngr|gpg-|keyboxd|gcr-|gnome-|ssh-agent|openvpn3-)/u)(item.name))
+		Option.isNone(
+			String.match(/^(?:dbus|dirmngr|gpg-|keyboxd|gcr-|gnome-|secret-service|ssh-agent|openvpn3-)/u)(item.name)
+		)
 	)
 }
 
 export function ports(items: readonly InventoryItem[]) {
 	return pipe(
 		items,
-		Array.filter(item => loopbackPort(item) && !String.startsWith('stale')(item.state)),
+		Array.filter(item => appPort(item) && item.http === true && !String.startsWith('stale')(item.state)),
 		Array.sort(
 			Order.mapInput(
 				Order.String,
@@ -57,4 +59,125 @@ export function ports(items: readonly InventoryItem[]) {
 
 export function portLabel(item: InventoryItem) {
 	return `${item.process || 'TCP'} · :${item.port} · ${item.worker}`
+}
+
+function sameSocket(listener: InventoryItem, binding: {address: string; port: number; protocol: 'tcp' | 'udp'}) {
+	if (listener.address === 'container' || binding.address === 'container') return false
+	if (listener.port !== binding.port || listener.protocol !== binding.protocol) return false
+	if (listener.address === binding.address) return true
+	return (
+		Option.isSome(String.match(/^(?:127\.0\.0\.1|0\.0\.0\.0):/u)(listener.address ?? '')) &&
+		Option.isSome(String.match(/^(?:127\.0\.0\.1|0\.0\.0\.0):/u)(binding.address))
+	)
+}
+
+export function workloads(items: readonly InventoryItem[], all: boolean) {
+	const listeners = Array.filter(items, item => item.kind === 'port')
+	const grouped = Array.map(
+		Array.filter(items, item => item.kind === 'service' || item.kind === 'container'),
+		item => {
+			const attached = Array.filter(
+				listeners,
+				listener => listener.worker === item.worker && listener.unit === item.name
+			)
+			const bindings = Array.map(item.bindings ?? [], binding => ({
+				...item,
+				...Option.getOrElse(
+					Array.findFirst(listeners, listener => listener.worker === item.worker && sameSocket(listener, binding)),
+					() => ({})
+				),
+				...binding,
+				bindings: [],
+				id: `${item.id}:port:${binding.address}`,
+				kind: 'port' as const,
+				process: item.name,
+				unit: item.name,
+				url: ''
+			}))
+			return {item, listeners: [...attached, ...bindings]}
+		}
+	)
+	const loose = Array.filter(
+		listeners,
+		listener =>
+			!Array.some(
+				grouped,
+				row =>
+					row.item.worker === listener.worker &&
+					((row.item.kind === 'service' && row.item.name === listener.unit) ||
+						Array.some(row.listeners, binding =>
+							sameSocket(listener, {
+								address: binding.address ?? '',
+								port: binding.port ?? 0,
+								protocol: binding.protocol ?? 'tcp'
+							})
+						))
+			)
+	)
+	const rows = [...grouped, ...Array.map(loose, item => ({item, listeners: [item]}))]
+	const exposures = [
+		...Array.filter(items, item => item.kind === 'exposure' && item.owned === true),
+		...Array.filter(items, item => item.kind === 'exposure' && item.owned !== true)
+	]
+	const linked = Array.map(rows, row => ({
+		...row,
+		exposures: Array.dedupeWith(
+			[
+				...Array.map(row.item.links ?? [], url => ({
+					...row.item,
+					id: `${row.item.id}:url:${url}`,
+					kind: 'exposure' as const,
+					owned: false,
+					publicAccess: true,
+					url
+				})),
+				...Array.filter(
+					exposures,
+					item =>
+						item.worker === row.item.worker &&
+						Array.some(row.listeners, listener =>
+							sameSocket(listener, {address: `127.0.0.1:${item.port}`, port: item.port ?? 0, protocol: 'tcp'})
+						)
+				)
+			],
+			(a: InventoryItem, b: InventoryItem) => a.url === b.url
+		)
+	}))
+	const remaining = Array.map(
+		Array.filter(
+			exposures,
+			item =>
+				!Array.some(linked, row =>
+					Array.some(
+						row.exposures,
+						exposure => exposure.id === item.id || (exposure.url === item.url && exposure.worker === item.worker)
+					)
+				)
+		),
+		item => ({exposures: [item], item, listeners: []})
+	)
+	return Array.map(
+		Array.filter(
+			[...linked, ...remaining],
+			row =>
+				all ||
+				(important(row.item) &&
+					(row.item.kind !== 'port' ||
+						(row.item.http === true && row.item.process !== '' && row.item.process !== 'node')))
+		),
+		row => {
+			if (all || row.item.kind === 'container') return row
+			const candidates = ports(row.listeners)
+			return {
+				...row,
+				listeners: Array.filter(
+					candidates,
+					listener =>
+						!Array.some(candidates, candidate => candidate.ui === true) ||
+						listener.ui === true ||
+						Array.some(row.exposures, exposure => exposure.port === listener.port)
+				)
+			}
+		}
+	)
 }

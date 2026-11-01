@@ -1,6 +1,6 @@
 # Deploy
 
-One service view across the workers: systemd services, Docker containers, TCP/UDP listeners, tailnet peers and HTTPS exposure. Scope remains the Effect trace/log application; this initial Deploy core is live inventory and owned proxies, not historical CPU/memory/storage metrics, Alchemy deployments, maintenance-agent spawning or tailnet membership administration.
+System monitoring and application endpoints across the workers. Scope remains the Effect trace/log application. Alchemy deployments, maintenance-agent spawning and tailnet membership administration are separate, not implemented capabilities.
 
 ```bash
 vp install -g @deslop/deploy
@@ -20,9 +20,15 @@ DEPLOY_WORKERS=[{"name":"desktop","url":"https://desktop.tailnet-8c4c.ts.net:520
 
 Worker URLs use HTTPS except loopback tests. Sign the control-plane CLI in to each protected worker with `deploy login --url <worker origin> --auth <issuer>`; it reuses those resource-bound credentials. Each worker snapshot is local only, so a control-plane/worker cycle cannot recursively duplicate the fleet. RPC is schema-binary over WebSocket. Failed workers retain their last successful rows marked stale, with a source error instead of a healthy empty list.
 
-The exposure controls stay at the top. Pick an observed TCP listener by port/process/worker; tailnet DNS is derived from that worker, and only public exposure asks for a hostname and explicit confirmation. The picker excludes stale, UDP, privileged and non-IPv4-loopback-reachable listeners because both proxies target `127.0.0.1`. It deduplicates a port per worker without merging identical numbers across workers. This publishes HTTP backends, not arbitrary TCP protocols.
+The exposure controls stay at the top. Pick an HTTP listener belonging to a visible app, not an OS daemon; a bounded loopback HEAD request identifies HTTP and prefers the app's HTML endpoint over internal tool/debug ports. Probes never follow redirects or send credentials. Tailnet DNS is derived from that worker. Selecting Public and submitting confirms public access without a second checkbox. The HTTP MCP still requires `publicAccess=true` for machine callers. Stale, UDP, privileged and non-IPv4-loopback-reachable listeners are excluded because both proxies target `127.0.0.1`. This publishes HTTP backends, not arbitrary TCP protocols.
 
-The default Apps view keeps app/user services, running/problem containers, application listeners and owned exposures; failed services remain visible. OS plumbing, inactive background services, tunnel listeners and observed tailnet mappings stay in Ports, Tailnet and Everything. Search filters the chosen view. Rows show their useful information immediately, with no selection or detached details panel; only placement-specific controls name a worker. Changes go through that configured worker's authenticated RPC, never a request-supplied worker URL.
+Each application row shows its machine, type icon, status dot, listening ports and linked HTTPS endpoints. Listeners join their systemd unit through `/proc/<pid>/cgroup`; Docker's published host bindings join containers to endpoints. Traefik Host rules are observed links, not Deploy-owned routes; its configured internal backend ports are marked `(route)`, not asserted as listening host sockets. Unmatched listeners remain separate rather than guessing ownership. Image tags, peer records and raw source output are not application details. System includes background services and unmatched endpoints; Apps keeps app/user services, running/problem containers and failures. The machine filter scopes both charts and app selection. Changes go through the configured worker's authenticated RPC, never a request-supplied worker URL.
+
+## Resource history
+
+The native agent samples every 30 seconds, independently of open browsers. CPU utilization, available-memory-based RAM usage, swap, mounted-filesystem capacity, physical-interface receive/send rates and whole-disk read/write rates persist in hourly Effect KeyValueStore buckets for seven days. No database or monitoring daemon dependency. `DEPLOY_DATA` isolates history along with proxy configuration. Browser ranges are 1h, 24h and 7d; responses retain the last real sample per time bucket, bounded to 481 points per machine, not invented backfill or averages. CPU/rates are absent on startup, a counter reset or a sampling gap above 90 seconds; offline workers retain last-known data clearly marked stale.
+
+Network totals include Linux `eth*`, `en*` and `wl*` interfaces, excluding loopback, VPN and Docker bridges to avoid double counting. Disk I/O includes whole `sd*`, `vd*`, `hd*` and NVMe disks, not partitions. Storage's chart is `/`; capacity values include other disk-backed mounts. History starts when the native agent runs on that machine; installing only the control plane cannot collect a remote machine's CPU or memory.
 
 ## HTTPS exposure
 
