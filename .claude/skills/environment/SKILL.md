@@ -38,7 +38,7 @@ Two headless Debian workers in one tailnet, same user, paths and agent configura
   ```
 
 - **Share** only after the URL loads sign-in, assets and API calls.
-- **Keep** a started preview on the latest code at the end of every turn.
+- **Keep** it running: a turn that touched an app ends with that app's preview up on the latest code, started if it wasn't.
 - **Webhooks.** Funnel exposes a whole port: pick a free one of 443, 8443, 10000 and run `sudo tailscale funnel --bg --https=<port> --set-path <path> http://127.0.0.1:<api port><path>`; remove it with `... --set-path <path> off`.
 
 ## Diagnostics
