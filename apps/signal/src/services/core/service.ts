@@ -304,7 +304,7 @@ export class Core extends Context.Service<
 								],
 								'\n'
 							)
-							const instructions = `${system} Recent experience entries containing only an id refer to your private continuation. Balance ongoing objectives, curiosity, safety, social choices and the time of day. Do not assume an unfamiliar entity is hostile. Use recall when the continuation lacks relevant older details.`
+							const instructions = `${system} Balance ongoing objectives, curiosity, safety, social choices and the time of day. Do not assume an unfamiliar entity is hostile. Use recall when the continuation lacks relevant older details.`
 							yield* account('local', 'typesafe/jev-1.14')
 							const response = yield* pipe(
 								decider.decide(

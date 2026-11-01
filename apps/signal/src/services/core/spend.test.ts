@@ -7,6 +7,7 @@ import {KeyValueStore} from 'effect/persistence'
 
 import {Conversation, Turn} from '#services/core/schema.ts'
 import {Core} from '#services/core/service.ts'
+import {makeLife} from '#services/game/lib/life.ts'
 import {LocalDecision} from '#services/game/schema.ts'
 
 function request(tick: number, ids: number[]) {
@@ -36,6 +37,89 @@ function answer() {
 }
 
 it.layer(KeyValueStore.layerMemory)(test => {
+	test.effect(
+		'keeps fresh recent evidence in the decision request when compaction omits it',
+		Effect.fnUntraced(function* () {
+			const kv = yield* KeyValueStore.KeyValueStore
+			yield* kv.clear
+			const body = {
+				act: 'idle' as const,
+				doing: '',
+				health: 1,
+				id: 2,
+				kind: 'worker' as const,
+				team: 0,
+				x: 17,
+				yaw: 0,
+				z: 23
+			}
+			const life = makeLife()
+			life.event(body, 41, 'observe', 'Fresh uncertain observation: violet tracks at (17, 23).')
+			const input = life.local(body, 42, true)
+			yield* KeyValueStore.toSchemaStore(kv, Conversation).set('conversation/11/individual-2/active', {
+				experiencedThrough: 0,
+				measured: 0,
+				sequence: 1,
+				summary: '',
+				turns: [{content: String.repeat(12_001)('x'), role: 'user', sequence: 1}]
+			})
+			const decisions = MutableList.make<string>()
+			const client = HttpClient.make(req =>
+				Effect.sync(() => {
+					if (String.includes('/decisions')(req.url)) {
+						if (req.body._tag !== 'Uint8Array') return assert.fail('Expected JSON request.')
+						MutableList.append(decisions, new TextDecoder().decode(req.body.body))
+						return HttpClientResponse.fromWeb(
+							req,
+							Response.json({
+								...answer(),
+								answers: {
+									action: {
+										choice: 'continue',
+										probabilities: Record.fromEntries(
+											Array.map([...Record.keys(input.choices), 'recall', 'recall-latest'], key => [
+												key,
+												Boolean.match(key === 'continue', {onFalse: () => 0, onTrue: () => 1})
+											])
+										),
+										type: 'choice'
+									}
+								}
+							})
+						)
+					}
+					return HttpClientResponse.fromWeb(
+						req,
+						Response.json({
+							choices: [
+								{finish_reason: 'stop', index: 0, message: {content: 'Goals: continue observing.', role: 'assistant'}}
+							],
+							created: 0,
+							id: 'offline-compaction',
+							model: 'fixture',
+							object: 'chat.completion',
+							system_fingerprint: 'fixture'
+						})
+					)
+				})
+			)
+			const core = Context.get(
+				yield* Layer.build(pipe(Core.layer, Layer.provide(Layer.succeed(HttpClient.HttpClient, client)))),
+				Core
+			)
+			yield* core.choose(11, input)
+			assert.strictEqual(decisions.length, 1)
+			assert.include(
+				Option.getOrThrow(Array.head(MutableList.toArray(decisions))),
+				'Fresh uncertain observation: violet tracks at (17, 23).'
+			)
+			const active = Option.getOrThrow(
+				yield* KeyValueStore.toSchemaStore(kv, Conversation).get('conversation/11/individual-2/active')
+			)
+			assert.notInclude(active.summary, 'violet tracks')
+			assert.strictEqual(active.archived, 2)
+		})
+	)
 	test.effect(
 		'initializes deduplication from the previous release’s archived individual requests',
 		Effect.fnUntraced(function* () {

@@ -100,6 +100,7 @@ Keep production Signal stopped until the user explicitly asks to resume it. Docu
 
 ## Still open
 
+- The next control/thread cleanup is at prototype stage: keep all-team chunk coverage on by default with one toggle; consider moving Run/Pause into a simpler bottom bar. Compare grouped activity with a compact log before implementing the thread layout. Both must replace raw JSON and duplicated information with meaningful structured records.
 - Whether there is any ending or explicit victory condition. An indefinitely evolving simulation is the current leaning; adding teams over time is desirable, not a settled spawning or balancing policy.
 - What long-term factory/technology progression and increasing challenge should look like. The existing endless Signal-cycle delivery counter is not an agreed endgame, and removing it has not yet been decided.
 - The exact allocation of strategic and local decisions between team models, decision models and state machines; establish cost and behaviour with evidence rather than assume a model fits every choice.
