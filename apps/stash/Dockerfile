@@ -11,11 +11,12 @@ RUN ONNXRUNTIME_NODE_INSTALL=skip npm install --no-save onnxruntime-node sharp &
     rm -rf node_modules/onnxruntime-node/bin/napi-v6/darwin node_modules/onnxruntime-node/bin/napi-v6/win32 && \
     find node_modules/onnxruntime-node/bin/napi-v6/linux -mindepth 1 -maxdepth 1 ! -name "$(node -p 'process.arch')" -exec rm -rf {} +
 
-# Keep the native media tools' shared libraries, not apt, npm, or their build environment.
+# Keep native dependencies but leave distroless's glibc and its matching loader together.
 RUN mkdir /runtime-libs && \
+    dpkg-query -L libc6 | sed 's@^/lib/@/usr/lib/@' > /tmp/libc-files && \
     { ldd /usr/bin/ffmpeg /usr/bin/ffprobe /usr/local/bin/yt-dlp; find node_modules -type f \( -name '*.node' -o -name '*.so*' \) -exec ldd {} \;; } | \
     awk '/=> \/(lib|usr\/lib)/ {print $3} /^\/(lib|usr\/lib)/ {print $1}' | \
-    sed 's@^/lib/@/usr/lib/@' | sort -u | xargs -r -I '{}' cp --parents --dereference '{}' /runtime-libs
+    sed 's@^/lib/@/usr/lib/@' | grep -Fvx -f /tmp/libc-files | sort -u | xargs -r -I '{}' cp --parents --dereference '{}' /runtime-libs
 
 FROM gcr.io/distroless/nodejs26-debian13:nonroot@sha256:9b945e92c1b5463a4b75f11e8417515e4bea7355f6adfd79ec220fbbe905dda8
 
@@ -23,6 +24,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV HOME=/home/node
+ENV XDG_CACHE_HOME=/tmp
+# yt-dlp's JavaScript challenges resolve node through PATH.
 ENV PATH=/nodejs/bin:/usr/local/bin:/usr/bin:/bin
 
 COPY --from=native /runtime-libs/ /

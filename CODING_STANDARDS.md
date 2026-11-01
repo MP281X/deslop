@@ -50,7 +50,7 @@ The user's choices; add a row when they pick, reject or correct one not covered 
 
 ## Deploy
 
-One `tools/compose.yaml`: configs inlined, direct ports, third-party images on `latest`, app images tagged by the deploying commit.
+One `tools/compose.yaml`: configs inlined, direct ports, third-party service images on `latest`, app images tagged by the deploying commit. App runtime bases pinned by digest.
 
 ## Dependencies and tooling
 
