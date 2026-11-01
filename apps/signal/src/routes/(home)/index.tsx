@@ -4,6 +4,7 @@ import {Array, Boolean, Match, Number, Option, Predicate, Record, Schema, String
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult, Atom} from 'effect/reactivity'
+import {ArrowUpRight, ChevronDown, Eye, Layers3, MessageCircle, Pause, Radio, Users, WifiOff, X} from 'lucide-react'
 import type {PointerEvent, ReactNode, WheelEvent} from 'react'
 import {createContext, useContext, useEffect, useRef, useState} from 'react'
 
@@ -29,11 +30,15 @@ import {
 	displayEvents,
 	entityField,
 	eventModel,
+	eventSubject,
+	eventSummary,
 	eventText,
 	fieldName,
 	recordData,
-	textParts
+	textParts,
+	sameObservationGroup
 } from './-events.ts'
+import {TeamIcon} from './-icons.tsx'
 import {createRenderer} from './-renderer.ts'
 import type {Renderer} from './-renderer.ts'
 
@@ -136,9 +141,10 @@ const Membership = createContext<Record<string, {kind: string; team?: number}>>(
 
 const Navigation = createContext<{
 	core: (team: number, tick: number) => void
+	event: (entry: Experience) => void
 	entity: (id: number, tick: number) => void
 	place: (x: number, z: number, tick: number) => void
-}>({core: () => undefined, entity: () => undefined, place: () => undefined})
+}>({core: () => undefined, entity: () => undefined, event: () => undefined, place: () => undefined})
 
 function References(props: {text: string; tick: number}) {
 	const navigate = useContext(Navigation)
@@ -285,9 +291,12 @@ function Teams(props: {onPick: (team: number) => void; picked: number; teams: Vi
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger className="flex min-h-11 items-center gap-2" aria-label="Choose team">
-				<Swatch team={props.picked} />
+				{Boolean.match(props.picked === -1, {
+					onFalse: () => <TeamIcon team={props.picked} className="size-4" />,
+					onTrue: () => <Users className="size-4" />
+				})}
 				{teamName(props.picked)}
-				<span className="text-muted-foreground">▾</span>
+				<ChevronDown className="text-muted-foreground size-3" />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent className="min-w-48">
 				<DropdownMenuItem className="min-h-11" onClick={() => props.onPick(-1)}>
@@ -295,7 +304,7 @@ function Teams(props: {onPick: (team: number) => void; picked: number; teams: Vi
 				</DropdownMenuItem>
 				{Array.map(props.teams, team => (
 					<DropdownMenuItem key={team.id} className="min-h-11" onClick={() => props.onPick(team.id)}>
-						<Swatch team={team.id} />
+						<TeamIcon team={team.id} className="size-4" />
 						{team.name}
 						<span className="ml-auto">
 							<TeamStatus status={team.status} />
@@ -445,11 +454,30 @@ function StructuredText(props: {text: string; tick: number}) {
 	)
 }
 
-function RecordDetails(props: {children: ReactNode; title: string}) {
+function RecordDetails(props: {children: ReactNode; title: ReactNode; compact?: boolean}) {
 	const [open, setOpen] = useState(false)
 	return (
-		<details className="relative mt-1 text-xs" onToggle={event => setOpen(event.currentTarget.open)}>
-			<summary className="text-muted-foreground cursor-pointer">{props.title}</summary>
+		<details
+			className={cn('text-xs', props.compact !== true && 'relative mt-1')}
+			onToggle={event => setOpen(event.currentTarget.open)}
+		>
+			<summary
+				className={cn(
+					'text-muted-foreground cursor-pointer',
+					props.compact &&
+						'absolute top-0 right-0 z-10 flex size-11 list-none items-center justify-center [&::-webkit-details-marker]:hidden'
+				)}
+			>
+				{Boolean.match(props.compact === true, {
+					onFalse: () => props.title,
+					onTrue: () => (
+						<>
+							<ChevronDown className={cn('size-4', open && 'rotate-180')} />
+							<span className="sr-only">{props.title}</span>
+						</>
+					)
+				})}
+			</summary>
 			{open && <div className="space-y-3 py-2">{props.children}</div>}
 		</details>
 	)
@@ -470,7 +498,7 @@ function OriginalRequest(props: {text: string; tick: number}) {
 function RequestDetails(props: {entry: Experience}) {
 	if (props.entry.context === undefined && props.entry.tokens === undefined) return null
 	return (
-		<RecordDetails title="Request details">
+		<div className="space-y-2">
 			{props.entry.tokens !== undefined && <DataValue value={props.entry.tokens} tick={props.entry.tick} />}
 			{Option.getOrUndefined(
 				Option.map(Option.fromUndefinedOr(props.entry.context), context => (
@@ -479,7 +507,7 @@ function RequestDetails(props: {entry: Experience}) {
 					</RecordDetails>
 				))
 			)}
-		</RecordDetails>
+		</div>
 	)
 }
 
@@ -516,8 +544,8 @@ function Outcome(props: {outcome: Entry['commands'][number]; tick: number}) {
 function Round(props: {entry: Entry}) {
 	const navigate = useContext(Navigation)
 	return (
-		<li className="flex flex-col gap-2 border-t py-2">
-			<div className="relative flex items-center gap-3">
+		<li className="relative border-t py-2">
+			<div className="relative flex items-start gap-2 pr-10">
 				<Button
 					variant="ghost"
 					className="absolute inset-0 h-full w-full"
@@ -526,7 +554,7 @@ function Round(props: {entry: Entry}) {
 				>
 					<span className="sr-only">View this message in the world</span>
 				</Button>
-				<Portrait kind={`home:${props.entry.team}`} className="pointer-events-none relative size-16" />
+				<Portrait kind={`home:${props.entry.team}`} className="pointer-events-none relative size-9" />
 				<div className="pointer-events-none relative min-w-0 flex-1">
 					<header className="flex items-baseline justify-between gap-2 text-xs">
 						<span className="text-(--team)" style={{'--team': teamColor(props.entry.team)}}>
@@ -536,66 +564,69 @@ function Round(props: {entry: Entry}) {
 					</header>
 					{props.entry.status !== 'done' && <span className="text-destructive text-xs">{props.entry.status}</span>}
 					{String.isNonEmpty(String.trim(props.entry.text)) && (
-						<div className="leading-relaxed">
-							<StructuredText text={String.trim(props.entry.text)} tick={props.entry.tick} />
+						<div className="line-clamp-2 leading-relaxed">
+							<References text={String.trim(props.entry.text)} tick={props.entry.tick} />
 						</div>
 					)}
 				</div>
 			</div>
-			{Array.isReadonlyArrayNonEmpty(props.entry.notices) && (
-				<details>
-					<summary className="text-muted-foreground cursor-pointer text-xs">Received updates</summary>
-					<ul className="flex flex-col gap-1 py-2">
-						{Array.map(props.entry.notices, (notice, index) => (
-							<Notice key={index} text={notice} tick={props.entry.observed ?? props.entry.tick} />
-						))}
-					</ul>
-				</details>
-			)}
-			{Option.getOrUndefined(
-				Option.map(Option.filter(Option.fromUndefinedOr(props.entry.reasoning), String.isNonEmpty), reasoning => (
+			<RecordDetails compact title="Core details">
+				<StructuredText text={props.entry.text} tick={props.entry.tick} />
+				{Array.isReadonlyArrayNonEmpty(props.entry.notices) && (
 					<details>
-						<summary className="text-muted-foreground cursor-pointer">Reasoning</summary>
-						<p className="text-muted-foreground mt-2 leading-relaxed whitespace-pre-wrap">
-							<References text={String.trim(reasoning)} tick={props.entry.tick} />
-						</p>
-					</details>
-				))
-			)}
-			{Array.isReadonlyArrayNonEmpty(props.entry.commands) && (
-				<ul className="flex flex-col gap-1">
-					{Array.map(props.entry.commands, (outcome, index) => (
-						<Outcome key={index} outcome={outcome} tick={props.entry.tick} />
-					))}
-				</ul>
-			)}
-			<details>
-				<summary className="text-muted-foreground cursor-pointer">
-					Original observation · active request may be abbreviated
-				</summary>
-				<div className="mt-2 text-xs">
-					<StructuredText text={props.entry.observation} tick={props.entry.observed ?? props.entry.tick} />
-				</div>
-			</details>
-			{props.entry.tokens !== undefined &&
-				Array.some(
-					[
-						props.entry.tokens.cached,
-						props.entry.tokens.cost,
-						props.entry.tokens.input,
-						props.entry.tokens.output,
-						props.entry.tokens.written,
-						props.entry.tokens.compaction
-					],
-					value => value !== undefined
-				) && (
-					<details>
-						<summary className="text-muted-foreground cursor-pointer text-xs">Request details</summary>
-						<div className="py-2 text-xs">
-							<DataValue value={props.entry.tokens} tick={props.entry.tick} />
-						</div>
+						<summary className="text-muted-foreground cursor-pointer text-xs">Received updates</summary>
+						<ul className="flex flex-col gap-1 py-2">
+							{Array.map(props.entry.notices, (notice, index) => (
+								<Notice key={index} text={notice} tick={props.entry.observed ?? props.entry.tick} />
+							))}
+						</ul>
 					</details>
 				)}
+				{Option.getOrUndefined(
+					Option.map(Option.filter(Option.fromUndefinedOr(props.entry.reasoning), String.isNonEmpty), reasoning => (
+						<details>
+							<summary className="text-muted-foreground cursor-pointer">Reasoning</summary>
+							<p className="text-muted-foreground mt-2 leading-relaxed whitespace-pre-wrap">
+								<References text={String.trim(reasoning)} tick={props.entry.tick} />
+							</p>
+						</details>
+					))
+				)}
+				{Array.isReadonlyArrayNonEmpty(props.entry.commands) && (
+					<ul className="flex flex-col gap-1">
+						{Array.map(props.entry.commands, (outcome, index) => (
+							<Outcome key={index} outcome={outcome} tick={props.entry.tick} />
+						))}
+					</ul>
+				)}
+				<details>
+					<summary className="text-muted-foreground cursor-pointer">
+						Original observation · active request may be abbreviated
+					</summary>
+					<div className="mt-2 text-xs">
+						<StructuredText text={props.entry.observation} tick={props.entry.observed ?? props.entry.tick} />
+					</div>
+				</details>
+				{props.entry.tokens !== undefined &&
+					Array.some(
+						[
+							props.entry.tokens.cached,
+							props.entry.tokens.cost,
+							props.entry.tokens.input,
+							props.entry.tokens.output,
+							props.entry.tokens.written,
+							props.entry.tokens.compaction
+						],
+						value => value !== undefined
+					) && (
+						<details>
+							<summary className="text-muted-foreground cursor-pointer text-xs">Request details</summary>
+							<div className="py-2 text-xs">
+								<DataValue value={props.entry.tokens} tick={props.entry.tick} />
+							</div>
+						</details>
+					)}
+			</RecordDetails>
 		</li>
 	)
 }
@@ -610,13 +641,13 @@ function EventRecord(props: {entry: Experience}) {
 	const team = historyTeam(props.entry, members)
 	const kind = props.entry.actorKind ?? members[props.entry.actor]?.kind ?? 'individual'
 	return (
-		<li className="border-t py-2">
-			<div className="relative flex items-center gap-3">
+		<li className="relative border-t py-2">
+			<div className="relative flex items-start gap-2 pr-10">
 				<Button
 					variant="ghost"
 					className="absolute inset-0 h-full w-full"
 					aria-label={`${actorName(kind, props.entry.actor)} · ${props.entry.kind} at ${clockOf(props.entry.tick)}`}
-					onClick={() => navigate.place(props.entry.x, props.entry.z, props.entry.tick)}
+					onClick={() => navigate.event(props.entry)}
 				>
 					<span className="sr-only">View this event in the world</span>
 				</Button>
@@ -625,7 +656,7 @@ function EventRecord(props: {entry: Experience}) {
 						onFalse: () => eventModel({...props.entry, actorKind: kind}, MODEL_KINDS),
 						onTrue: () => `home:${team}`
 					})}
-					className="pointer-events-none relative size-16"
+					className="pointer-events-none relative size-9"
 				/>
 				<div className="pointer-events-none relative min-w-0 flex-1">
 					<header className="flex items-baseline justify-between gap-2 text-xs">
@@ -634,12 +665,36 @@ function EventRecord(props: {entry: Experience}) {
 						</span>
 						<time className="text-muted-foreground shrink-0 font-mono">{clockOf(props.entry.tick)}</time>
 					</header>
-					<div className="leading-relaxed break-words">
-						<StructuredText text={eventText(props.entry)} tick={props.entry.tick} />
+					<div className="line-clamp-2 leading-relaxed break-words">
+						<References text={eventSummary(props.entry)} tick={props.entry.tick} />
 					</div>
 				</div>
 			</div>
-			<RequestDetails entry={props.entry} />
+			<RecordDetails compact title="Event details">
+				<StructuredText text={eventText(props.entry)} tick={props.entry.tick} />
+				<RequestDetails entry={props.entry} />
+			</RecordDetails>
+		</li>
+	)
+}
+
+function Observations(props: {entries: readonly Experience[]}) {
+	return (
+		<li className="border-t py-2">
+			<RecordDetails
+				title={
+					<span className="inline-flex items-center gap-2">
+						<Eye className="size-3" />
+						{props.entries.length} observations<time className="font-mono">{clockOf(props.entries[0]?.tick ?? 0)}</time>
+					</span>
+				}
+			>
+				<ul>
+					{Array.map(props.entries, entry => (
+						<EventRecord key={entry.id} entry={entry} />
+					))}
+				</ul>
+			</RecordDetails>
 		</li>
 	)
 }
@@ -676,6 +731,23 @@ function ThreadPage(props: {
 			),
 			entry => [`${entry.id}`, entry] as const
 		)
+	)
+	const groups = Array.match(
+		Array.filter(entries, entry => {
+			if (entry.kind === 'event' && !Record.has(events, `${entry.value.id}`)) return false
+			if (props.team === -1) return true
+			if (entry.kind === 'core') return entry.value.team === props.team
+			return historyTeam(entry.value, members) === props.team
+		}),
+		{
+			onEmpty: () => [],
+			onNonEmpty: shown =>
+				Array.groupWith(
+					shown,
+					(left, right) =>
+						left.kind === 'event' && right.kind === 'event' && sameObservationGroup(left.value, right.value)
+				)
+		}
 	)
 	useEffect(() => {
 		if (props.before === undefined) props.onRead()
@@ -741,23 +813,30 @@ function ThreadPage(props: {
 					})}
 				</li>
 			)}
-			{Array.map(
-				Array.filter(entries, entry => {
-					if (props.team === -1) return true
-					if (entry.kind === 'core') return entry.value.team === props.team
-					return historyTeam(entry.value, members) === props.team
-				}),
-				entry => {
-					if (entry.kind === 'core') {
-						return <Round key={`core:${entry.value.team}:${entry.value.round}`} entry={entry.value} />
-					}
-					return Option.getOrUndefined(
-						Option.map(Record.get(events, `${entry.value.id}`), event => (
-							<EventRecord key={`event:${event.id}`} entry={event} />
-						))
+			{Array.map(groups, group => {
+				const entry = Option.getOrThrow(Array.head(group))
+				if (entry.kind === 'core') {
+					return <Round key={`core:${entry.value.team}:${entry.value.round}`} entry={entry.value} />
+				}
+				if (group.length > 1) {
+					return (
+						<Observations
+							key={`observations:${entry.value.id}`}
+							entries={Array.getSomes(
+								Array.map(group, item => {
+									if (item.kind === 'event') return Record.get(events, `${item.value.id}`)
+									return Option.none()
+								})
+							)}
+						/>
 					)
 				}
-			)}
+				return Option.getOrUndefined(
+					Option.map(Record.get(events, `${entry.value.id}`), event => (
+						<EventRecord key={`event:${event.id}`} entry={event} />
+					))
+				)
+			})}
 		</>
 	)
 }
@@ -786,7 +865,7 @@ function Thread(props: {status?: TeamView['status']; team: number}) {
 				pinned.current =
 					event.currentTarget.scrollHeight - event.currentTarget.scrollTop - event.currentTarget.clientHeight < 24
 			}}
-			className="flex min-h-0 flex-col gap-2 overflow-y-auto overscroll-contain px-3 pb-3 select-text"
+			className="flex min-h-0 flex-col overflow-y-auto overscroll-contain px-3 pb-3 select-text"
 		>
 			<ThreadPage
 				team={props.team}
@@ -1006,7 +1085,7 @@ function Sidebar(props: {close: () => void; selection: Inspection; source: Sourc
 						variant="ghost"
 						onClick={props.close}
 					>
-						×
+						<X className="size-4" />
 					</Button>
 				</header>
 				{props.selection.kind === 'thread' && (
@@ -1065,10 +1144,16 @@ function SpectatorControls(props: {source: Source; tick: number; onLive: () => v
 					title={Boolean.match(chunks, {onFalse: () => 'Show team chunks', onTrue: () => 'Hide team chunks'})}
 					onClick={() => setChunks(shown => !shown)}
 				>
-					Chunks
+					<Layers3 className="size-4" />
 				</Button>
-				<Button variant="ghost" size="sm" className="min-h-11 px-2" onClick={props.onThreads}>
-					Threads
+				<Button
+					variant="ghost"
+					size="icon"
+					className="min-h-11 min-w-11"
+					aria-label="Threads"
+					onClick={props.onThreads}
+				>
+					<MessageCircle className="size-4" />
 				</Button>
 			</div>
 			<Button
@@ -1084,12 +1169,34 @@ function SpectatorControls(props: {source: Source; tick: number; onLive: () => v
 				)}
 				<span className={cn('text-primary', live && run?.running !== true && 'text-muted-foreground')}>
 					{Boolean.match(live, {
-						onFalse: () => 'Return to live ↗',
+						onFalse: () => (
+							<span className="inline-flex items-center gap-1">
+								<Radio className="size-4" />
+								Live
+								<ArrowUpRight className="size-3" />
+							</span>
+						),
 						onTrue: () =>
 							Boolean.match(AsyncResult.isFailure(status), {
-								onFalse: () =>
-									Boolean.match(run?.running === true, {onFalse: () => '○ World paused', onTrue: () => '● Live'}),
-								onTrue: () => 'Disconnected'
+								onFalse: () => (
+									<span className="inline-flex items-center gap-1.5">
+										{Boolean.match(run?.running === true, {
+											onFalse: () => (
+												<>
+													<Pause className="size-4" />
+													Paused
+												</>
+											),
+											onTrue: () => (
+												<>
+													<Radio className="size-4" />
+													Live
+												</>
+											)
+										})}
+									</span>
+								),
+								onTrue: () => <WifiOff className="size-4" aria-label="Disconnected" />
 							})
 					})}
 				</span>
@@ -1220,7 +1327,18 @@ function aimOf(follow: Follow, team: number, view: View, world: {cast: Cast; ren
 					)
 				),
 				{
-					onNone: () => ({key: `home:${team}`, x: home.x, y: world.renderer.ground(home.x, home.z), z: home.z}),
+					onNone: () => {
+						const at = follow.fallback ?? home
+						return {
+							key: `missing:${Option.getOrElse(
+								Option.map(follow.id, id => `${id}`),
+								() => `home:${team}`
+							)}`,
+							x: at.x,
+							y: world.renderer.ground(at.x, at.z),
+							z: at.z
+						}
+					},
 					onSome: followed => ({key: `unit:${followed.id}`, ...followed.at})
 				}
 			),
@@ -1419,13 +1537,15 @@ function MapControls(props: {view: View; onTeam: (team: number) => void}) {
 				{Array.map(props.view.teams, entry => (
 					<Button
 						key={entry.id}
+						aria-label={entry.name}
+						title={entry.name}
 						variant="secondary"
 						size="sm"
 						className="min-h-11 shrink-0 px-2 text-(--team)"
 						style={{'--team': entry.color}}
 						onClick={() => props.onTeam(entry.id)}
 					>
-						{entry.name}
+						<TeamIcon team={entry.id} className="size-5" />
 					</Button>
 				))}
 			</div>
@@ -1647,11 +1767,40 @@ function World(props: {seed: number; view: View}) {
 		world
 	})
 
-	function locateEntity(id: number, tick: number) {
+	useEffect(() => {
+		const target = canvas.current
+		const active = Option.getOrUndefined(world)
+		if (target === null || active === undefined) return
+		const inspector = Option.getOrUndefined(Option.map(panel, () => target.parentElement?.querySelector('aside')))
+		function measure() {
+			const frame = target?.getBoundingClientRect()
+			if (frame === undefined || frame.width === 0 || frame.height === 0) return
+			const bounds = inspector?.getBoundingClientRect()
+			const available = {bottom: frame.height - 64, left: 0, right: frame.width, top: 64}
+			if (bounds !== undefined) {
+				if (frame.width >= 768) available.left = bounds.right - frame.left + 12
+				else available.bottom = bounds.top - frame.top - 12
+			}
+			active?.renderer.frameAt(
+				(available.left + available.right) / frame.width / 2,
+				(available.top + available.bottom) / frame.height / 2
+			)
+		}
+		const observer = new ResizeObserver(measure)
+		observer.observe(target)
+		if (Predicate.isNotNullish(inspector)) observer.observe(inspector)
+		measure()
+		return () => {
+			observer.disconnect()
+			active.renderer.frameAt(0.5, 0.5)
+		}
+	}, [world, panel])
+
+	function locateEntity(id: number, tick: number, fallback?: {x: number; z: number}) {
 		if (id < 0) {
 			setFollow({free: Option.some(tileOf(-1 - id)), id: Option.none()})
 		} else {
-			setFollow({free: Option.none(), id: Option.some(id)})
+			setFollow({fallback, free: Option.none(), id: Option.some(id)})
 		}
 		setSource(Option.some({from: tick, speed: 0}))
 		Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.centre()})
@@ -1669,6 +1818,7 @@ function World(props: {seed: number; view: View}) {
 					Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.centre()})
 				},
 				entity: locateEntity,
+				event: entry => locateEntity(eventSubject(entry), entry.tick, {x: entry.x, z: entry.z}),
 				place: (x, z, tick) => {
 					setFollow({free: Option.some({x, z}), id: Option.none()})
 					setSource(Option.some({from: tick, speed: 0}))

@@ -695,6 +695,7 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		detail: true,
 		// How many times the world started over; a chunk's revision carries the one it was asked in.
 		epoch: 0,
+		framing: {x: 0.5, y: 0.5},
 		size: {height: 1, width: 1},
 		target: new THREE.Vector3(0, 0, 0),
 		zoom: ZOOM.start
@@ -1015,10 +1016,10 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		camera.up.set(0, 1, 0)
 		camera.lookAt(view.target)
 		const aspect = view.size.width / Number.max(1, view.size.height)
-		camera.top = view.zoom
-		camera.bottom = -view.zoom
-		camera.left = -view.zoom * aspect
-		camera.right = view.zoom * aspect
+		camera.top = view.zoom * 2 * view.framing.y
+		camera.bottom = -view.zoom * 2 * (1 - view.framing.y)
+		camera.left = -view.zoom * aspect * 2 * view.framing.x
+		camera.right = view.zoom * aspect * 2 * (1 - view.framing.x)
 		camera.updateProjectionMatrix()
 		camera.updateMatrixWorld()
 		// The sun's shadow covers the view and follows it.
@@ -1214,6 +1215,10 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			if (footprints.key === key) return
 			footprints.key = key
 			tell({_tag: 'Footprints', sites: Array.map(sites, site => ({d: site.d, w: site.w, x: site.x, z: site.z}))})
+		},
+		// Frame a followed entity in the unobstructed map, not behind its inspector.
+		frameAt(x: number, y: number) {
+			view.framing = {x, y}
 		},
 		ground(x: number, z: number) {
 			return Option.getOrElse(

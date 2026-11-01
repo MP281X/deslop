@@ -264,7 +264,11 @@ type Hover = {id: string; x: number; y: number}
 export const hoverAtom = Atom.keepAlive(Atom.make(Option.none<Hover>()))
 
 // What the camera follows: a unit or a place.
-export type Follow = {free: Option.Option<{x: number; z: number}>; id: Option.Option<number>}
+export type Follow = {
+	free: Option.Option<{x: number; z: number}>
+	id: Option.Option<number>
+	fallback?: {x: number; z: number}
+}
 export const followAtom = Atom.keepAlive(Atom.make<Follow>({free: Option.none(), id: Option.none()}))
 
 // The team whose thread and units the sidebar shows.

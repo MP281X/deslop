@@ -957,9 +957,12 @@ export function createCast(view: Renderer) {
 			painter.dispose()
 		},
 		frame,
-		// A unit's model as drawn, for its outline.
+		// A followed unit or building as drawn, for its outline.
 		objectOf(id: number) {
-			return Option.map(MutableHashMap.get(actors, id), actor => actor.object)
+			return Option.orElse(
+				Option.map(MutableHashMap.get(actors, id), actor => actor.object),
+				() => Option.map(MutableHashMap.get(drawn, id), entry => entry.object)
+			)
 		},
 		// Runs each time a model's portrait is painted.
 		onPortrait(listener: () => void) {

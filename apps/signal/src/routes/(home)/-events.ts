@@ -1,4 +1,4 @@
-import {Array, MutableList, Option, Record, Schema, String} from 'effect'
+import {Array, MutableList, Number, Option, Record, Schema, String} from 'effect'
 
 import type {Experience} from '#services/game/schema.ts'
 import {LocalDecision, Point} from '#services/game/schema.ts'
@@ -130,4 +130,46 @@ export function eventText(entry: Experience) {
 		)}`
 	}
 	return String.replace(/^Chose [^\s:]+(?::-?\d+)?: /u, 'Selected: ')(entry.text)
+}
+
+// Explicit subject metadata wins. Older decision records encode their target in the selected choice.
+export function eventSubject(entry: Experience) {
+	return (
+		entry.subject ??
+		Option.getOrElse(
+			Option.flatMap(
+				Option.flatMap(
+					String.match(/^(?:Chose |Model returned )(?:approach|inspect|take|report):(-?\d+)(?::|;)/u)(entry.text),
+					match => Option.fromUndefinedOr(match[1])
+				),
+				Number.parse
+			),
+			() => entry.actor
+		)
+	)
+}
+
+export function eventSummary(entry: Experience) {
+	return (
+		String.trim(
+			Array.join(
+				Array.flatMap(textParts(Option.getOrElse(Array.head(String.split('\n')(eventText(entry))), () => '')), part => {
+					if (part.kind === 'text') return [part.text]
+					return []
+				}),
+				' '
+			)
+		) || fieldName(entry.kind)
+	)
+}
+
+function routineObservation(entry: Experience) {
+	if (entry.kind === 'born') return true
+	if (entry.kind !== 'observe') return false
+	return Option.isSome(String.match(/^(?:\w+ #-?\d+: idle$|An uninspected |\w+ field at \()/u)(entry.text))
+}
+
+// Only routine observations are bundled; inspections, changed storage, construction and failures stay visible.
+export function sameObservationGroup(left: Experience, right: Experience) {
+	return left.tick === right.tick && routineObservation(left) && routineObservation(right)
 }

@@ -8,10 +8,13 @@ import {
 	displayEvents,
 	entityField,
 	eventModel,
+	eventSubject,
+	eventSummary,
 	eventText,
 	fieldName,
 	recordData,
-	textParts
+	textParts,
+	sameObservationGroup
 } from './-events.ts'
 
 import type {Experience} from '#services/game/schema.ts'
@@ -123,4 +126,43 @@ it('retains complete recorded requests and leaves older plain-text requests avai
 	assert.deepStrictEqual(textParts('Earlier private continuation.'), [
 		{kind: 'text', text: 'Earlier private continuation.'}
 	])
+})
+
+it('focuses explicit subjects and targeted legacy choices, never an arbitrary reference or event sequence id', () => {
+	assert.strictEqual(eventSubject({...CHOICE, subject: 1_000_000_042}), 1_000_000_042)
+	assert.strictEqual(eventSubject(CHOICE), 1)
+	assert.strictEqual(
+		eventSubject({...RECEIPT, text: 'Model returned approach:42; a response does not prove execution.'}),
+		42
+	)
+	assert.strictEqual(eventSubject({...CHOICE, text: 'Discussed #99 with #4.'}), 2)
+	assert.strictEqual(eventSubject({...CHOICE, subject: -7}), -7)
+	assert.strictEqual(eventSubject({...CHOICE, text: 'Chose rest: Rest.'}), 2)
+})
+
+it('bundles only adjacent same-tick routine observations, preserving actionable events and chronological boundaries', () => {
+	const first = {...CHOICE, id: 3, kind: 'observe' as const, text: 'grazer #42: idle'}
+	const second = {...first, actor: 4, id: 4}
+	const entries: Array.NonEmptyArray<Experience> = [
+		first,
+		second,
+		CHOICE,
+		{...second, id: 5},
+		{...second, id: 6, tick: 121}
+	]
+	const groups = Array.groupWith(entries, sameObservationGroup)
+	assert.deepStrictEqual(
+		Array.map(groups, group => Array.map(group, entry => entry.id)),
+		[[3, 4], [1], [5], [6]]
+	)
+	assert.deepStrictEqual(Array.flatten(groups), entries)
+	assert.isFalse(sameObservationGroup(first, {...first, text: '#1 home inspected: stock nothing; output nothing.'}))
+	assert.isFalse(
+		sameObservationGroup(first, {...first, text: 'Visited the remembered location of #1; no container remains.'})
+	)
+	assert.isFalse(sameObservationGroup(first, {...first, text: 'Staked storage; initially empty construction stock.'}))
+	assert.strictEqual(
+		eventSummary({...CHOICE, text: 'Read #1: Visit the ridge.\nProposed objective: {"_tag":"Go","x":0,"z":20}.'}),
+		'Read #1: Visit the ridge.'
+	)
 })
