@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Option} from 'effect'
+import {Array, Option, Schema} from 'effect'
 
 import {makeLife} from '#services/game/lib/life.ts'
 import type {Body} from '#services/game/lib/life.ts'
@@ -16,6 +16,35 @@ const UNIT: Body = {
 	yaw: 0,
 	z: 0
 }
+
+it('references recent experiences already sent in full and preserves recent events outside the pending batch', () => {
+	const life = makeLife()
+	life.event(UNIT, 1, 'observe', 'A private claim remains unverified.')
+	life.event(UNIT, 2, 'observe', 'A second private observation.')
+	const first = life.local(UNIT, 3, true)
+	const state = Schema.fromJsonString(
+		Schema.Struct({recent: Schema.Array(Schema.Struct({id: Schema.Int, text: Schema.optionalKey(Schema.String)}))})
+	)
+	assert.isTrue(
+		Array.every(Option.getOrThrow(Schema.decodeOption(state)(first.state)).recent, entry => entry.text === undefined)
+	)
+	assert.deepStrictEqual(
+		Array.map(Option.getOrThrow(Schema.decodeOption(state)(first.state)).recent, entry => entry.id),
+		Array.map(first.experience ?? [], entry => entry.id)
+	)
+	assert.strictEqual(first.experience?.[0]?.text, 'A private claim remains unverified.')
+	for (const tick of Array.range(3, 42)) life.event(UNIT, tick, 'observe', `Private observation ${tick}.`)
+	const backlog = life.local(UNIT, 43, true)
+	const recent = Option.getOrThrow(Schema.decodeOption(state)(backlog.state)).recent
+	assert.strictEqual(backlog.experience?.length, 24)
+	assert.strictEqual(recent.length, 8)
+	assert.isTrue(
+		Array.every(
+			recent,
+			entry => entry.text !== undefined && !Array.some(backlog.experience ?? [], pending => pending.id === entry.id)
+		)
+	)
+})
 
 it('keeps encounters and inventories private until the individual chooses what to report', () => {
 	const life = makeLife()

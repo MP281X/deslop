@@ -366,10 +366,11 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 				choices['addresses'] = 'Report the communication addresses you have learned.'
 			}
 		}
+		const experience = Array.take(own.unrecorded ?? own.recent, 24)
 		return {
 			actor: body.id,
 			choices,
-			experience: Array.take(own.unrecorded ?? own.recent, 24),
+			experience,
 			state: JSON.stringify({
 				connected,
 				daylight: daylightAt(tick),
@@ -384,7 +385,12 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 				facts: relevant,
 				guidance: own.guidance,
 				messagesWaiting: own.inbox.length,
-				recent: Array.takeRight(own.recent, 8),
+				recent: Array.map(Array.takeRight(own.recent, 8), entry =>
+					Boolean.match(
+						Array.some(experience, incoming => incoming.id === entry.id),
+						{onFalse: () => entry, onTrue: () => ({id: entry.id})}
+					)
+				),
 				self: {
 					capacity: body.capacity,
 					cargo: body.cargo,

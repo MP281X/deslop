@@ -119,6 +119,7 @@ it.layer(KeyValueStore.layerMemory)(test => {
 				tick: 52
 			})
 			const paged = Option.getOrThrow(yield* conversations.get(key))
+			assert.strictEqual(paged.experiencedThrough, 24)
 			assert.isTrue(Array.some(paged.turns, turn => String.includes('END-12')(turn.content)))
 			assert.deepStrictEqual(paged.archive, {before: 12, offset: 0})
 			yield* conversations.set('conversation/91/individual-2/active', ORIGINAL)
