@@ -1,7 +1,7 @@
 import {Array, Boolean, Equal, MutableList, Number, Option, Record, Schema, String} from 'effect'
 
-import type {Entry, Experience} from '#services/game/schema.ts'
-import {LocalDecision, Point} from '#services/game/schema.ts'
+import type {Entry} from '#services/game/schema.ts'
+import {Experience, LocalDecision, Point} from '#services/game/schema.ts'
 
 function decisionKey(entry: Experience) {
 	if (entry.kind !== 'decision') return Option.none<string>()
@@ -161,7 +161,11 @@ export function textParts(text: string) {
 }
 
 export function recordData(value: Record<string, unknown>, tick: number) {
-	const entity = Schema.decodeUnknownOption(RecordedMember)(value)
+	const experience = Schema.decodeUnknownOption(Experience)(value)
+	const entity = Option.match(experience, {
+		onNone: () => Schema.decodeUnknownOption(RecordedMember)(value),
+		onSome: () => Option.none<RecordedMember>()
+	})
 	const at = Option.map(
 		Schema.decodeUnknownOption(Schema.Struct({...Point.fields, tick: Schema.optionalKey(Schema.Int)}))(value),
 		point => ({...point, tick: point.tick ?? tick})
@@ -174,7 +178,6 @@ export function recordData(value: Record<string, unknown>, tick: number) {
 			)
 		),
 		at,
-		entity,
 		fields: Record.toEntries(
 			Record.filter(
 				value,
@@ -182,9 +185,25 @@ export function recordData(value: Record<string, unknown>, tick: number) {
 					field !== undefined &&
 					key !== 'id' &&
 					key !== 'tokens' &&
+					(Option.isNone(experience) || key !== 'actor') &&
 					(Option.isNone(entity) || key !== 'kind') &&
 					(Option.isNone(at) || (key !== 'x' && key !== 'z'))
 			)
+		),
+		identity: Option.map(
+			Option.orElse(
+				Option.map(experience, entry => ({id: entry.actor, kind: entry.actorKind})),
+				() => entity
+			),
+			member => ({
+				fallback: Option.getOrUndefined(at),
+				id: member.id,
+				kind: member.kind,
+				tick: Option.getOrElse(
+					Option.map(at, point => point.tick),
+					() => tick
+				)
+			})
 		),
 		reference: Record.keys(value).length === 1 && Record.has(value, 'id')
 	}

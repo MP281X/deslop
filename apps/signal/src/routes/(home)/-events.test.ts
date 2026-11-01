@@ -170,9 +170,29 @@ it('retains recorded coordinates as link targets at their own tick and never tre
 	const identity = recordData({id: 42, kind: 'lizard', tokens: {cost: 0.1}, x: 3, z: 4}, 900)
 	assert.isUndefined(identity.anchor)
 	assert.deepStrictEqual(Option.getOrThrow(identity.at), {tick: 900, x: 3, z: 4})
-	assert.strictEqual(Option.getOrThrow(identity.entity).kind, 'lizard')
+	assert.deepStrictEqual(Option.getOrThrow(identity.identity), {
+		fallback: {tick: 900, x: 3, z: 4},
+		id: 42,
+		kind: 'lizard',
+		tick: 900
+	})
 	assert.deepStrictEqual(identity.fields, [])
 	assert.strictEqual(recordData({doing: 'Walking', x: 3, z: 4}, 900).anchor, 'doing')
+	const experience = recordData({...CHOICE, id: 20}, 900)
+	assert.deepStrictEqual(Option.getOrThrow(experience.identity), {
+		fallback: {tick: 120, x: 10, z: 20},
+		id: 2,
+		kind: 'worker',
+		tick: 120
+	})
+	assert.deepStrictEqual(Option.getOrThrow(recordData({id: 42, kind: 'lizard', tick: 2, x: 5, z: 6}, 900).identity), {
+		fallback: {tick: 2, x: 5, z: 6},
+		id: 42,
+		kind: 'lizard',
+		tick: 2
+	})
+	assert.isTrue(Array.some(experience.fields, field => field[0] === 'kind' && field[1] === 'decision'))
+	assert.isFalse(Array.some(experience.fields, field => field[0] === 'actor' || field[0] === 'id'))
 	assert.deepStrictEqual(Option.getOrThrow(recordData({_tag: 'Go', x: 3, z: 4}, 900).at), {tick: 900, x: 3, z: 4})
 	assert.deepStrictEqual(recordData({x: 'unknown', z: 4}, 900).fields, [
 		['x', 'unknown'],

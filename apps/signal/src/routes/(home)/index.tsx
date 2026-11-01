@@ -178,7 +178,7 @@ function Portrait(props: {className?: string; kind: string}) {
 	})
 }
 
-function EntityReference(props: {id: number; tick: number; kind?: string}) {
+function EntityReference(props: {id: number; tick: number; kind?: string; fallback?: {x: number; z: number}}) {
 	const navigate = useContext(Navigation)
 
 	const member = useContext(Membership)[props.id]
@@ -195,9 +195,10 @@ function EntityReference(props: {id: number; tick: number; kind?: string}) {
 				navigate.entity(
 					props.id,
 					props.tick,
-					Option.getOrUndefined(
-						Option.all({x: Option.fromUndefinedOr(member?.x), z: Option.fromUndefinedOr(member?.z)})
-					)
+					props.fallback ??
+						Option.getOrUndefined(
+							Option.all({x: Option.fromUndefinedOr(member?.x), z: Option.fromUndefinedOr(member?.z)})
+						)
 				)
 			}
 		>
@@ -354,22 +355,11 @@ function commandPlace(command: Entry['commands'][number]['command']) {
 type DataRecord = typeof DataRecord.Type
 const DataRecord = Schema.Record(Schema.String, Schema.Unknown)
 
-function RecordIdentity(props: {data: ReturnType<typeof recordData>; tick: number}) {
+function RecordIdentity(props: {data: ReturnType<typeof recordData>}) {
 	if (props.data.reference) return <span className="text-muted-foreground">Earlier recorded experience</span>
 	return (
 		<>
-			{Option.getOrUndefined(
-				Option.map(props.data.entity, member => (
-					<EntityReference
-						id={member.id}
-						kind={member.kind}
-						tick={Option.getOrElse(
-							Option.map(props.data.at, at => at.tick),
-							() => props.tick
-						)}
-					/>
-				))
-			)}
+			{Option.getOrUndefined(Option.map(props.data.identity, identity => <EntityReference {...identity} />))}
 			{props.data.anchor === undefined &&
 				Option.getOrUndefined(
 					Option.map(props.data.at, at => <References text={`(${at.x}, ${at.z})`} tick={at.tick} />)
@@ -403,7 +393,7 @@ function DataValue(props: {field?: string; tick: number; value: unknown}) {
 		const data = recordData(props.value, props.tick)
 		return (
 			<>
-				<RecordIdentity data={data} tick={props.tick} />
+				<RecordIdentity data={data} />
 				<dl className="grid grid-cols-3 gap-x-3 gap-y-1">
 					{Array.map(data.fields, field => (
 						<div key={field[0]} className="contents">
@@ -589,10 +579,11 @@ function OriginalRequest(props: {text: string; tick: number}) {
 
 function RequestDetails(props: {entry: Experience}) {
 	if (props.entry.context === undefined) {
-		if (eventText(props.entry) !== eventSummary(props.entry)) {
-			return <StructuredText text={eventText(props.entry)} tick={props.entry.tick} />
-		}
-		return <p className="text-muted-foreground">No model request was recorded for this event.</p>
+		return (
+			<RecordDetails title="Complete event">
+				<StructuredText text={eventText(props.entry)} tick={props.entry.tick} />
+			</RecordDetails>
+		)
 	}
 	return <OriginalRequest text={props.entry.context} tick={props.entry.tick} />
 }
