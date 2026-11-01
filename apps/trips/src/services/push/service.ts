@@ -25,7 +25,7 @@ import {
 
 import {KeyFormat, Signature} from 'effect/crypto'
 import {Base64, Base64Url} from 'effect/encoding'
-import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
+import {HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
 import {
@@ -131,22 +131,12 @@ export class Push extends Context.Service<
 			const keyId = yield* Config.option(Config.String('APNS_KEY_ID'))
 			const teamId = yield* Config.option(Config.String('APNS_TEAM_ID'))
 			const privateKey = yield* Config.option(Config.Redacted('APNS_KEY'))
-			// APNs speaks only HTTP/2, which Node's fetch does not; the server bundle keeps only Undici's default export, so the agent comes from it.
-			const client = Context.get(
-				yield* Layer.build(
-					Layer.provide(
-						NodeHttpClient.layerUndiciNoDispatcher,
-						Layer.effect(
-							NodeHttpClient.Dispatcher,
-							Effect.acquireRelease(
-								Effect.sync(() => new Undici.Agent({allowH2: true})),
-								agent => Effect.promise(() => agent.destroy())
-							)
-						)
-					)
-				),
-				HttpClient.HttpClient
+			// APNs requires HTTP/2; the bundle exposes Undici's default export, not the named Agent used by layerUndiciOptions.
+			const dispatcher = yield* Effect.acquireRelease(
+				Effect.sync(() => new Undici.Agent({allowH2: true})),
+				agent => Effect.promise(() => agent.destroy())
 			)
+			const client = yield* Effect.provideService(NodeHttpClient.makeUndici, NodeHttpClient.Dispatcher, dispatcher)
 			const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, PushState)
 			const state = yield* SubscriptionRef.make<PushState>(
 				Option.getOrElse(yield* failed('The push state could not be read.')(store.get('push')), () => ({

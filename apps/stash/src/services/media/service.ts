@@ -1,6 +1,9 @@
+import {OpenRouterClient} from '@effect/ai-openrouter'
+
 import {
 	Array,
 	Boolean,
+	Config,
 	Context,
 	Effect,
 	FileSystem,
@@ -10,7 +13,7 @@ import {
 	Order,
 	Path,
 	Random,
-	Record,
+	Redacted,
 	Schema,
 	Semaphore,
 	Stream,
@@ -18,14 +21,13 @@ import {
 	pipe
 } from 'effect'
 
-import type {AutomaticSpeechRecognitionPipeline} from '@huggingface/transformers'
-import {Tensor, env, pipeline} from '@huggingface/transformers'
+import {Base64} from 'effect/encoding'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
 import {sourceProxy, sticky} from '#services/media/lib/proxy.ts'
-import {captionTranscript, clock, isBlocked, speechOnly} from '#services/media/lib/utils.ts'
+import {captionTracks, captionTranscript, clock, isBlocked, speechOnly} from '#services/media/lib/utils.ts'
 import type {Comment, Still} from '#services/media/schema.ts'
-import {MediaError, Metadata, Transcription} from '#services/media/schema.ts'
+import {CreatorCaptions, MediaError, Metadata, Probe} from '#services/media/schema.ts'
 
 const MAX_WHISPER_SECONDS = 2 * 60 * 60
 
@@ -50,35 +52,6 @@ function commentLine(comment: Comment) {
 	)
 }
 
-// transformers.js assumes English when no language is given; Whisper's first token after <|startoftranscript|> (50258) names the spoken one.
-const detectLanguage = Effect.fnUntraced(function* (
-	recognize: AutomaticSpeechRecognitionPipeline,
-	samples: Float32Array
-) {
-	const features = yield* pipe(
-		Effect.tryPromise(() => recognize.processor(samples.subarray(0, 30 * 16_000))),
-		Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({input_features: Schema.instanceOf(Tensor)})))
-	)
-	const first = yield* pipe(
-		Effect.tryPromise(() =>
-			recognize.model.generate({
-				decoder_input_ids: [50_258],
-				input_features: features.input_features,
-				max_new_tokens: 1
-			})
-		),
-		Effect.flatMap(Schema.decodeUnknownEffect(Schema.instanceOf(Tensor)))
-	)
-	const found = pipe(
-		recognize.tokenizer.batch_decode(first, {skip_special_tokens: false}),
-		Array.head,
-		Option.flatMap(String.match(/<\|([a-z]{2,3})\|>$/u)),
-		Option.flatMap(match => Array.get(match, 1))
-	)
-	yield* Effect.logInfo(`Whisper hears ${Option.getOrElse(found, () => 'an unknown language')}`)
-	return found
-})
-
 const run = Effect.fnUntraced(function* (command: string, args: string[]) {
 	const handle = yield* ChildProcess.make(command, args, {stderr: 'pipe', stdout: 'pipe'})
 	return yield* Effect.all(
@@ -98,7 +71,8 @@ export class Media extends Context.Service<
 		readonly fileTranscript: (file: string) => Effect.Effect<Option.Option<string>, MediaError>
 		readonly frames: (link: string) => Effect.Effect<Still[], MediaError>
 		readonly read: (
-			link: string
+			link: string,
+			fallback?: string
 		) => Effect.Effect<{info: string; transcript: Effect.Effect<Option.Option<string>, MediaError>}, MediaError>
 	}
 >()('@deslop/stash/services/media/service/Media') {
@@ -109,6 +83,8 @@ export class Media extends Context.Service<
 			const path = yield* Path.Path
 			const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
 			const whisper = yield* Semaphore.make(1)
+			const key = yield* Config.option(Config.Redacted('OPENROUTER_API_KEY'))
+			const openRouter = yield* OpenRouterClient.make({apiKey: Option.getOrUndefined(key)})
 			const ytDlpArgs = ['--js-runtimes', 'node', '--no-progress', '--no-warnings', '--no-playlist']
 			const exit = yield* sourceProxy
 
@@ -142,141 +118,202 @@ export class Media extends Context.Service<
 				)
 			}
 
-			const listen = Effect.fnUntraced(function* (input: {
-				file: string
-				language: Option.Option<string>
-				// A TikTok's audio track can be the whole song behind a 12-second clip.
-				seconds: Option.Option<number>
-			}) {
-				const pcm = yield* run('ffmpeg', [
+			const probe = Effect.fnUntraced(function* (file: string) {
+				const result = yield* run('ffprobe', [
+					'-v',
+					'error',
+					'-show_entries',
+					'format=duration:stream=index,codec_type',
+					'-of',
+					'json',
+					file
+				])
+				if (result.exitCode !== 0) {
+					return yield* MediaError.make({message: `ffprobe cannot inspect the media: ${result.stderr}`})
+				}
+				return yield* Schema.decodeEffect(Schema.fromJsonString(Probe))(new TextDecoder().decode(result.stdout))
+			})
+
+			const lengthOf = Effect.fnUntraced(function* (file: string) {
+				return Option.flatMap(Option.fromUndefinedOr((yield* probe(file)).format?.duration), Number.parse)
+			})
+
+			const listen = Effect.fnUntraced(function* (input: {file: string; seconds: Option.Option<number>}) {
+				const media = yield* probe(input.file)
+				for (const track of Array.filter(media.streams, stream => stream.codec_type === 'subtitle')) {
+					const converted = yield* run('ffmpeg', [
+						'-v',
+						'error',
+						'-i',
+						input.file,
+						'-map',
+						`0:${track.index}`,
+						'-f',
+						'webvtt',
+						'-'
+					])
+					if (converted.exitCode === 0) {
+						const transcript = captionTranscript({authored: true, vtt: new TextDecoder().decode(converted.stdout)})
+						if (String.isNonEmpty(String.trim(transcript))) return Option.some(transcript)
+					}
+				}
+				if (!Array.some(media.streams, stream => stream.codec_type === 'audio')) return Option.none()
+				const seconds = Option.orElse(input.seconds, () =>
+					Option.flatMap(Option.fromUndefinedOr(media.format?.duration), Number.parse)
+				)
+				if (!Option.exists(seconds, value => value >= 1 && value <= MAX_WHISPER_SECONDS)) return Option.none()
+				if (Option.isNone(key)) {
+					return yield* MediaError.make({
+						message: 'No captions, and OPENROUTER_API_KEY is not configured for transcription.'
+					})
+				}
+				const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-speech-'})
+				// Five-minute lossless chunks stay below upload limits and the provider's one-minute processing timeout.
+				const extracted = yield* run('ffmpeg', [
 					'-v',
 					'error',
 					'-i',
 					input.file,
-					...Option.match(input.seconds, {onNone: () => [], onSome: seconds => ['-t', `${seconds + 1}`]}),
-					'-f',
-					's16le',
+					// A TikTok audio track may be the whole song behind a short clip.
+					'-t',
+					`${Option.getOrThrow(seconds) + 1}`,
+					'-vn',
+					'-map',
+					'0:a:0',
 					'-ac',
 					'1',
 					'-ar',
 					'16000',
-					'-'
+					'-sample_fmt',
+					's16',
+					'-c:a',
+					'flac',
+					'-f',
+					'segment',
+					'-segment_time',
+					'300',
+					'-reset_timestamps',
+					'1',
+					path.join(work, 'part-%03d.flac')
 				])
-				if (pcm.exitCode !== 0) {
-					return yield* MediaError.make({message: `ffmpeg cannot decode the audio: ${pcm.stderr}`})
+				if (extracted.exitCode !== 0) {
+					return yield* MediaError.make({message: `ffmpeg cannot decode the audio: ${extracted.stderr}`})
 				}
-				const samples = Float32Array.from(
-					new Int16Array(pcm.stdout.buffer, pcm.stdout.byteOffset, pcm.stdout.byteLength / 2),
-					sample => sample / 32_768
-				)
-				if (samples.length / 16_000 > MAX_WHISPER_SECONDS) {
-					yield* Effect.logInfo(`${clock(samples.length / 16_000)} of audio is too long for Whisper`)
-					return Option.none()
-				}
-				if (samples.length < 16_000) return Option.none()
-				env.cacheDir = '/tmp/deslop/stash/models'
-				const spoken = Option.map(input.language, language => pipe(language, String.split('-'), Array.headNonEmpty))
-				const english = Option.contains(spoken, 'en')
-				const model = Boolean.match(english, {
-					onFalse: () => 'onnx-community/whisper-small',
-					onTrue: () => 'onnx-community/whisper-small.en'
-				})
-				const transcription = yield* whisper.withPermit(
-					Effect.scoped(
-						Effect.gen(function* () {
-							yield* Effect.logInfo(`Transcribing ${clock(samples.length / 16_000)} of audio with ${model}`)
-							const recognize = yield* Effect.acquireRelease(
-								Effect.tryPromise(() => pipeline('automatic-speech-recognition', model, {device: 'cpu', dtype: 'q8'})),
-								loaded => Effect.promise(() => loaded.dispose())
+				return yield* whisper.withPermit(
+					Effect.gen(function* () {
+						const files = Array.sort(
+							Array.filter(yield* fs.readDirectory(work), String.endsWith('.flac')),
+							Order.String
+						)
+						return speechOnly(
+							pipe(
+								yield* Effect.forEach(
+									files,
+									Effect.fnUntraced(function* (file) {
+										const duration = Option.getOrThrow(yield* lengthOf(path.join(work, file)))
+										const response = yield* pipe(
+											openRouter.client.createAudioTranscriptions({
+												payload: {
+													input_audio: {data: Base64.encode(yield* fs.readFile(path.join(work, file))), format: 'flac'},
+													model: 'openai/whisper-large-v3-turbo',
+													response_format: 'verbose_json',
+													timestamp_granularities: ['segment']
+												}
+											}),
+											Effect.timeout('1 minute'),
+											Effect.mapError(cause =>
+												MediaError.make({cause: Redacted.make(cause), message: 'Whisper Turbo transcription failed.'})
+											),
+											Effect.withSpan('Media.transcribeAudio')
+										)
+										if (response.segments !== undefined && Array.isReadonlyArrayNonEmpty(response.segments)) {
+											return {duration, segments: response.segments}
+										}
+										return {duration, segments: [{start: 0, text: response.text}]}
+									}),
+									{concurrency: 1}
+								),
+								// Codec frame boundaries need not be exactly 300 seconds apart.
+								Array.mapAccum(0, (offset, chunk) => [
+									offset + chunk.duration,
+									Array.map(
+										chunk.segments,
+										segment => `[${clock(offset + segment.start)}] ${String.trim(segment.text)}\n`
+									)
+								]),
+								result => Array.flatten(result[1]),
+								Array.join('')
 							)
-							const heard = yield* Option.match(spoken, {
-								onNone: () => detectLanguage(recognize, samples),
-								onSome: Effect.succeedSome
-							})
-							return yield* Schema.decodeUnknownEffect(Transcription)(
-								yield* Effect.tryPromise(() =>
-									recognize(samples, {
-										chunk_length_s: 30,
-										language: Boolean.match(english, {
-											onFalse: () => Option.getOrUndefined(heard),
-											onTrue: () => undefined
-										}),
-										return_timestamps: true,
-										stride_length_s: 5
-									})
-								)
-							)
-						})
-					)
-				)
-				return speechOnly(
-					Array.join(
-						Array.map(transcription.chunks, chunk => `[${clock(chunk.timestamp[0])}] ${String.trim(chunk.text)}\n`),
-						''
-					)
+						)
+					})
 				)
 			})
 
-			// Captions in the spoken language beat Whisper; without a known language Whisper detects it rather than assuming English.
-			const captionsFor = Effect.fnUntraced(function* (link: string, media: Metadata, language: string, work: string) {
-				yield* fetch([
+			const captionsFor = Effect.fnUntraced(function* (link: string, track: {authored: boolean; language: string}) {
+				const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-captions-'})
+				const result = yield* fetch([
 					...ytDlpArgs,
 					'--skip-download',
-					'--write-subs',
-					'--write-auto-subs',
+					'--no-simulate',
+					...Boolean.match(track.authored, {
+						onFalse: () => ['--write-auto-subs', '--no-write-subs'],
+						onTrue: () => ['--write-subs', '--no-write-auto-subs']
+					}),
 					'--sub-langs',
-					language,
+					`^${RegExp.escape(track.language)}$`,
 					'--sub-format',
-					'vtt',
+					'vtt/srt/best',
 					'--convert-subs',
 					'vtt',
 					'-o',
 					path.join(work, 'captions'),
 					link
 				])
-				const captions = `captions.${language}.vtt`
-				if (!Array.contains(yield* fs.readDirectory(work), captions)) return Option.none<string>()
-				return Option.some(
-					captionTranscript({
-						authored: Option.exists(Option.fromNullishOr(media.subtitles), subtitles =>
-							Record.has(subtitles, language)
-						),
-						vtt: yield* fs.readFileString(path.join(work, captions))
-					})
-				)
+				if (result.exitCode !== 0) return {blocked: isBlocked(result.stderr), transcript: Option.none<string>()}
+				for (const file of yield* fs.readDirectory(work)) {
+					if (String.endsWith('.vtt')(file)) {
+						const text = captionTranscript({
+							authored: track.authored,
+							vtt: yield* fs.readFileString(path.join(work, file))
+						})
+						if (String.isNonEmpty(String.trim(text))) return {blocked: false, transcript: Option.some(text)}
+					} else if (String.endsWith('.json')(file)) {
+						const captions = yield* Schema.decodeEffect(Schema.fromJsonString(CreatorCaptions))(
+							yield* fs.readFileString(path.join(work, file))
+						)
+						const text = Array.join(
+							Array.map(captions.utterances, cue => {
+								if (String.isNonEmpty(String.trim(cue.text))) {
+									return `[${clock(cue.start_time / 1000)}] ${String.trim(cue.text)}\n`
+								}
+								return ''
+							}),
+							''
+						)
+						if (String.isNonEmpty(String.trim(text))) return {blocked: false, transcript: Option.some(text)}
+					}
+				}
+				return {blocked: false, transcript: Option.none<string>()}
 			})
 
-			const lengthOf = Effect.fnUntraced(function* (file: string) {
-				const probe = yield* run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file])
-				return pipe(
-					String.trim(new TextDecoder().decode(probe.stdout)),
-					Number.parse,
-					Option.filter(value => value > 0)
-				)
-			})
-
-			const transcribe = Effect.fnUntraced(function* (link: string, media: Metadata) {
+			const transcribe = Effect.fnUntraced(function* (link: string, media: Metadata, fallback?: string) {
 				const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-media-'})
-				const language = pipe(
-					Option.fromNullishOr(media.automatic_captions),
-					Option.flatMap(captions => Array.findFirst(Record.keys(captions), String.endsWith('-orig'))),
-					Option.map(String.replace(/-orig$/u, '')),
-					Option.orElse(() => Option.fromNullishOr(media.language)),
-					Option.orElse(() =>
-						Option.flatMap(Option.fromNullishOr(media.subtitles), subtitles => Array.head(Record.keys(subtitles)))
+				for (const track of captionTracks(media)) {
+					// A broken authored track must not hide a working automatic or alternate-language track.
+					const captioned = yield* pipe(
+						captionsFor(link, track),
+						Effect.scoped,
+						Effect.orElseSucceed(() => ({blocked: false, transcript: Option.none<string>()}))
 					)
-				)
-				const captioned = yield* Option.match(language, {
-					onNone: () => Effect.succeedNone,
-					onSome: spoken => captionsFor(link, media, spoken, work)
-				})
-				if (Option.isSome(captioned)) return captioned
+					if (Option.isSome(captioned.transcript)) return captioned.transcript
+					if (captioned.blocked) break
+				}
 				if (Option.exists(Option.fromNullishOr(media.duration), seconds => seconds > MAX_WHISPER_SECONDS)) {
 					yield* Effect.logInfo('No captions, and the audio is too long for Whisper')
 					return Option.none()
 				}
 
-				const download = yield* fetch([
+				const args = [
 					...ytDlpArgs,
 					'-f',
 					'bestaudio/best',
@@ -284,16 +321,26 @@ export class Media extends Context.Service<
 					'--max-filesize',
 					'500M',
 					'-o',
-					path.join(work, 'audio.%(ext)s'),
-					link
-				])
+					path.join(work, 'audio.%(ext)s')
+				]
+				const download = yield* pipe(
+					fetch([...args, fallback ?? link]),
+					Effect.filterOrElse(
+						result => result.exitCode === 0 || fallback === undefined || fallback === link,
+						() => fetch([...args, link])
+					)
+				)
 				if (download.exitCode !== 0) {
 					return yield* MediaError.make({message: `yt-dlp cannot download the audio: ${download.stderr}`})
 				}
 				const audio = path.join(
 					work,
 					yield* pipe(
-						Array.findFirst(yield* fs.readDirectory(work), String.startsWith('audio.')),
+						Array.findFirst(
+							yield* fs.readDirectory(work),
+							file =>
+								String.startsWith('audio.')(file) && !String.endsWith('.part')(file) && !String.endsWith('.ytdl')(file)
+						),
 						Effect.fromOption,
 						Effect.mapError(cause => MediaError.make({cause, message: 'yt-dlp downloaded no audio'}))
 					)
@@ -306,7 +353,7 @@ export class Media extends Context.Service<
 					yield* Effect.logInfo('No captions, and the audio is too long or of unknown length for Whisper')
 					return Option.none()
 				}
-				return yield* listen({file: audio, language, seconds})
+				return yield* listen({file: audio, seconds})
 			})
 
 			const sample = Effect.fnUntraced(function* (video: string, work: string) {
@@ -347,7 +394,7 @@ export class Media extends Context.Service<
 				),
 				fileTranscript: Effect.fn('Media.fileTranscript')(
 					function* (file) {
-						return yield* listen({file, language: Option.none(), seconds: Option.none()})
+						return yield* listen({file, seconds: Option.none()})
 					},
 					Effect.scoped,
 					withProcesses
@@ -383,56 +430,67 @@ export class Media extends Context.Service<
 					withProcesses
 				),
 				read: Effect.fn('Media.read')(
-					function* (link) {
-						const dump = yield* fetch([
-							...ytDlpArgs,
-							'--dump-single-json',
-							'--flat-playlist',
-							'--skip-download',
-							// The top comments hold corrections, answers and pushback; only YouTube can cap how many load.
-							...Boolean.match(Option.isSome(String.match(YOUTUBE)(link)), {
-								onFalse: () => [],
-								onTrue: () => [
-									'--write-comments',
-									'--extractor-args',
-									'youtube:comment_sort=top;max_comments=60,60,0,0'
-								]
-							}),
-							link
-						])
-						if (dump.exitCode !== 0) {
-							return yield* MediaError.make({
-								message: `yt-dlp cannot read the video: ${String.replaceAll(/https?:\/\/\S+/gu, '<link>')(dump.stderr)}`
-							})
-						}
-						const media = yield* Schema.decodeEffect(Schema.fromJsonString(Metadata))(
-							new TextDecoder().decode(dump.stdout)
-						)
-						if (media._type === 'playlist') {
-							return yield* MediaError.make({message: 'The link holds several videos.'})
-						}
+					function* (link, fallback) {
+						const inspect = Effect.fnUntraced(function* (url: string) {
+							const dump = yield* fetch([
+								...ytDlpArgs,
+								'--dump-single-json',
+								'--flat-playlist',
+								'--skip-download',
+								// Some extractors only expose subtitle metadata when subtitle extraction is requested.
+								'--write-subs',
+								'--write-auto-subs',
+								'--simulate',
+								// The top comments hold corrections, answers and pushback; only YouTube can cap how many load.
+								...Boolean.match(Option.isSome(String.match(YOUTUBE)(link)), {
+									onFalse: () => [],
+									onTrue: () => [
+										'--write-comments',
+										'--extractor-args',
+										'youtube:comment_sort=top;max_comments=60,60,0,0'
+									]
+								}),
+								url
+							])
+							if (dump.exitCode !== 0) {
+								return yield* MediaError.make({
+									message: `yt-dlp cannot read the video: ${String.replaceAll(/https?:\/\/\S+/gu, '<link>')(dump.stderr)}`
+								})
+							}
+							const media = yield* Schema.decodeEffect(Schema.fromJsonString(Metadata))(
+								new TextDecoder().decode(dump.stdout)
+							)
+							if (media._type === 'playlist') {
+								return yield* MediaError.make({message: 'The link holds several videos.'})
+							}
+							return {media, url}
+						})
+						const found = yield* Effect.catch(inspect(link), error => {
+							if (fallback !== undefined && fallback !== link) return inspect(fallback)
+							return Effect.fail(error)
+						})
 						const details = pipe(
 							[
-								Option.fromNullishOr(media.uploader),
+								Option.fromNullishOr(found.media.uploader),
 								Option.map(
-									Option.fromNullishOr(media.upload_date),
+									Option.fromNullishOr(found.media.upload_date),
 									String.replace(/^(\d{4})(\d{2})(\d{2})$/u, '$1-$2-$3')
 								),
-								Option.map(Option.fromNullishOr(media.duration), clock)
+								Option.map(Option.fromNullishOr(found.media.duration), clock)
 							],
 							Array.getSomes,
 							Array.filter(String.isNonEmpty)
 						)
 						const info = Array.join(
 							Array.getSomes([
-								Option.some(`# ${media.title}\n\n${Array.join(details, ', ')}\n${link}`),
+								Option.some(`# ${found.media.title}\n\n${Array.join(details, ', ')}\n${link}`),
 								pipe(
-									Option.fromNullishOr(media.description),
+									Option.fromNullishOr(found.media.description),
 									Option.filter(String.isNonEmpty),
 									Option.map(description => `## Description\n\n${description}`)
 								),
 								Option.map(
-									Option.fromNullishOr(media.chapters),
+									Option.fromNullishOr(found.media.chapters),
 									chapters =>
 										`## Chapters\n\n${Array.join(
 											Array.map(chapters, chapter => `- [${clock(chapter.start_time)}] ${chapter.title}`),
@@ -440,7 +498,7 @@ export class Media extends Context.Service<
 										)}`
 								),
 								pipe(
-									Option.fromNullishOr(media.comments),
+									Option.fromNullishOr(found.media.comments),
 									Option.map(Array.filter(comment => (comment.parent ?? 'root') === 'root')),
 									Option.filter(comments => Array.isReadonlyArrayNonEmpty(comments)),
 									Option.map(
@@ -451,7 +509,7 @@ export class Media extends Context.Service<
 							]),
 							'\n\n'
 						)
-						return {info, transcript: withProcesses(Effect.scoped(transcribe(link, media)))}
+						return {info, transcript: withProcesses(Effect.scoped(transcribe(found.url, found.media, fallback)))}
 					},
 					Effect.scoped,
 					withProcesses

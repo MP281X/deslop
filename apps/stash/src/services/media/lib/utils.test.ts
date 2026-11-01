@@ -2,7 +2,24 @@ import {assert, describe, it} from '@effect/vitest'
 
 import {Option} from 'effect'
 
-import {captionTranscript, clock, isBlocked, speechOnly} from '#services/media/lib/utils.ts'
+import {captionTracks, captionTranscript, clock, isBlocked, speechOnly} from '#services/media/lib/utils.ts'
+
+describe('captionTracks', () => {
+	it('keeps authored alternatives but not automatic translations when the original language is known', () => {
+		assert.deepStrictEqual(
+			captionTracks({
+				automatic_captions: {af: [{}], en: [{}], 'en-orig': [{}], it: [{}]},
+				subtitles: {it: [{}]},
+				title: 'A talk'
+			}),
+			[
+				{authored: false, language: 'en'},
+				{authored: false, language: 'en-orig'},
+				{authored: true, language: 'it'}
+			]
+		)
+	})
+})
 
 describe('captionTranscript', () => {
 	it('reads cue settings, markup and escapes', () => {

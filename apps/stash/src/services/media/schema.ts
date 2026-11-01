@@ -15,11 +15,11 @@ export const Comment = Schema.Struct({
 	text: Schema.String
 })
 
-// What yt-dlp prints for a link.
+// Caption records are opaque to Stash; yt-dlp downloads their supported formats.
 export type Metadata = typeof Metadata.Type
 export const Metadata = Schema.Struct({
 	_type: Schema.optionalKey(Schema.String),
-	automatic_captions: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown))),
+	automatic_captions: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.Array(Schema.JsonObject)))),
 	chapters: Schema.optionalKey(
 		Schema.NullOr(Schema.Array(Schema.Struct({start_time: Schema.Finite, title: Schema.String})))
 	),
@@ -27,7 +27,7 @@ export const Metadata = Schema.Struct({
 	description: Schema.optionalKey(Schema.NullOr(Schema.String)),
 	duration: Schema.optionalKey(Schema.NullOr(Schema.Finite)),
 	language: Schema.optionalKey(Schema.NullOr(Schema.String)),
-	subtitles: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown))),
+	subtitles: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.Array(Schema.JsonObject)))),
 	title: Schema.String,
 	upload_date: Schema.optionalKey(Schema.NullOr(Schema.String)),
 	uploader: Schema.optionalKey(Schema.NullOr(Schema.String))
@@ -37,10 +37,15 @@ export const Metadata = Schema.Struct({
 export type Still = typeof Still.Type
 export const Still = Schema.Struct({bytes: Schema.Uint8Array, seconds: Schema.Finite})
 
-// What Whisper returns for a recording.
-export type Transcription = typeof Transcription.Type
-export const Transcription = Schema.Struct({
-	chunks: Schema.Array(
-		Schema.Struct({text: Schema.String, timestamp: Schema.Tuple([Schema.Finite, Schema.NullOr(Schema.Finite)])})
-	)
+export type Probe = typeof Probe.Type
+// ffprobe describes subtitle tracks before any speech is sent to a provider.
+export const Probe = Schema.Struct({
+	format: Schema.optionalKey(Schema.Struct({duration: Schema.optionalKey(Schema.String)})),
+	streams: Schema.Array(Schema.Struct({codec_type: Schema.String, index: Schema.Int}))
+})
+
+export type CreatorCaptions = typeof CreatorCaptions.Type
+// TikTok's creator-caption JSON is not convertible by FFmpeg.
+export const CreatorCaptions = Schema.Struct({
+	utterances: Schema.Array(Schema.Struct({start_time: Schema.Finite, text: Schema.String}))
 })

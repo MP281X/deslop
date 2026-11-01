@@ -43,7 +43,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Each image reuses the unchanged layers of the last one, such as Stash's ffmpeg and ONNX Runtime.
+      # Inline cache reuses final-image layers; Stash's native build stage runs again on a fresh runner.
       - name: Images
         run: |
           for app in auth gateway portfolio scope stash opm trips signal; do

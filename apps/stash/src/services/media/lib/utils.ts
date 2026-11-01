@@ -1,7 +1,53 @@
-import {Array, Duration, Number, Option, String, pipe} from 'effect'
+import {Array, Boolean, Duration, Number, Option, Order, Record, String, pipe} from 'effect'
+
+import type {Metadata} from '#services/media/schema.ts'
 
 const BLOCKED =
 	/not a bot|requir(?:es|ing) login|login required|CONNECT tunnel failed|unable to connect to proxy|tunnel connection failed|ProxyError|HTTP Error (?:403|429|5\d\d)|Requested format is not available|timed out/iu
+
+export function captionTracks(media: Metadata) {
+	const automatic = Record.keys(media.automatic_captions ?? {})
+	const original =
+		media.language ??
+		pipe(
+			Array.findFirst(automatic, String.endsWith('-orig')),
+			Option.map(String.replace(/-orig$/u, '')),
+			Option.getOrUndefined
+		)
+	const base = Option.map(Option.fromUndefinedOr(original), value => Array.headNonEmpty(String.split(value, '-')))
+	function preferred(language: string) {
+		const spoken = String.replace(/-orig$/u, '')(language)
+		return (
+			String.endsWith('-orig')(language) ||
+			(original !== undefined &&
+				(spoken === original || Option.contains(base, Array.headNonEmpty(String.split(spoken, '-')))))
+		)
+	}
+	return pipe(
+		[
+			...Array.map(Record.keys(media.subtitles ?? {}), language => ({authored: true, language})),
+			...Array.map(automatic, language => ({authored: false, language}))
+		],
+		Array.filter(
+			track =>
+				track.language !== 'live_chat' &&
+				(track.authored || original === undefined || preferred(track.language)) &&
+				Array.isReadonlyArrayNonEmpty(
+					Boolean.match(track.authored, {onFalse: () => media.automatic_captions, onTrue: () => media.subtitles})?.[
+						track.language
+					] ?? []
+				)
+		),
+		Array.sort(
+			Order.mapInput(Order.Number, (track: {authored: boolean; language: string}) => {
+				if (preferred(track.language) && track.authored) return 0
+				if (preferred(track.language)) return 1
+				if (track.authored) return 2
+				return 3
+			})
+		)
+	)
+}
 
 // yt-dlp's stderr when the residential exit is offline, flagged or throttled, so another exit may answer.
 export function isBlocked(stderr: string) {

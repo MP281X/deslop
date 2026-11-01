@@ -88,9 +88,7 @@ export function isYouTube(url: string) {
 export function hasVideo(url: string) {
 	const link = new URL(url)
 	if (sourceFor(url) === 'TikTok') return !String.includes('/photo/')(link.pathname)
-	return (
-		sourceFor(url) === 'X' || isYouTube(url) || Option.isSome(String.match(/(?:^|\.)instagram\.com$/u)(link.hostname))
-	)
+	return sourceFor(url) === 'X' || isYouTube(url)
 }
 
 export function plainText(text: string) {
