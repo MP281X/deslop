@@ -17,8 +17,8 @@ description: 'Load before the first commit of a task, before changing code to fi
 
 1. **Push** a draft once Verify passes. A round of fixes is one push per affected PR, since each push cancels the previous pipeline.
 2. **Describe** with the repository's template (`.github/pull_request_template.md`, `.gitlab/merge_request_templates/Default.md`); its comments say what each section holds. Show, don't narrate:
-   - **Captures side by side**: a `| Before | After |` table of images with a caption row; a video alone in its paragraph under its claim. Only real captures of the app, never a screenshot of a rendered page.
-   - **Formats over sentences**: diff or code block for the shape, table for comparisons and numbers, Mermaid for a flow, `<details>` for long output, a `> [!IMPORTANT]` alert for what a reviewer must know that the diff doesn't show, an unchecked task list item for what stays unverified.
+   - **Before/after side by side**: a `| Before | After |` table of images with a caption row. Only real captures of the app, never a screenshot of a rendered page.
+   - **Formats over sentences**: diff or code block for the shape, table for comparisons and numbers, Mermaid for a flow, `<details>` for long output, at most one `> [!IMPORTANT]` alert for the thing a reviewer must not miss (the marker alone on its line, each following line prefixed `> `), an unchecked task-list item under its Evidence claim for what stays unverified.
    - **Bullets are fragments**, only what a reviewer must know: `**No double lint**: vp check --fix fails on leftovers`.
    - **Cut** what the diff or the PR page already shows: history, inventory, walkthrough, test lists, Verify, check and review results.
 3. **Watch** the final head's pipeline; a failure, a review comment or a conflict gets a fix, Verify and one push.
