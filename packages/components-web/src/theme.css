@@ -156,6 +156,13 @@
 	min-width: 0;
 }
 
+/* Leading marks stay centered with the whole row, including wrapped details. */
+[data-slot='item-media'] {
+	align-self: center;
+	transform: none;
+	translate: none;
+}
+
 /* A page's list rows start where its heading and fields do; a row that is a button keeps its inset for its highlight. */
 [data-slot='item-group'] > [data-slot='item'] {
 	padding-inline: 0;
@@ -175,7 +182,7 @@
 
 /* A scrolling page runs under the home indicator, as native lists do, and its end scrolls clear of it. */
 @utility pb-safe {
-	padding-bottom: calc(env(safe-area-inset-bottom) + 2rem);
+	padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);
 }
 
 /* Pixel art keeps its hard edges when scaled. */

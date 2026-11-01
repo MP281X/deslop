@@ -135,10 +135,10 @@ function RemoveDialog(props: {onOpenChange: (open: boolean) => void; open: boole
 function FirstImage(props: {sources: string[]}) {
 	const [failed, setFailed] = useState(0)
 	return Option.match(Array.get(props.sources, failed), {
-		onNone: () => <Server className="text-muted-foreground size-5" />,
+		onNone: () => <Server className="text-muted-foreground size-6" />,
 		onSome: src => (
-			<span className="bg-icon-tile flex size-6 items-center justify-center overflow-hidden rounded-md">
-				<img src={src} alt="" className="size-4" onError={() => setFailed(failed + 1)} />
+			<span className="bg-icon-tile flex size-8 items-center justify-center overflow-hidden rounded-md">
+				<img src={src} alt="" className="size-6" onError={() => setFailed(failed + 1)} />
 			</span>
 		)
 	})
@@ -349,7 +349,7 @@ function Servers() {
 // The first load suspends to a skeleton; React keeps a shown fallback at least 300ms, so it never blinks.
 function Home() {
 	return (
-		<main className="pb-safe flex flex-1 justify-center overflow-y-auto px-4 pt-8 md:pt-16">
+		<main className="pb-safe flex min-h-0 flex-1 justify-center overflow-y-auto px-4 pt-8 md:pt-16">
 			<div className="flex w-full max-w-3xl flex-col gap-5">
 				<h1 className="text-xl font-semibold tracking-tight">Servers</h1>
 				<Suspense fallback={<ItemListSkeleton label="MCP servers" media rows={4} />}>

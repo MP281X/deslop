@@ -2,6 +2,19 @@
 @import '@fontsource-variable/ibm-plex-sans';
 @source '../../../../packages/components-web/src/**/*.tsx';
 
+.own-cursor {
+	display: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+	.portfolio-scroll {
+		cursor: none;
+	}
+	.own-cursor {
+		display: contents;
+	}
+}
+
 /* The CV reads in a proportional face; the app's monospace stays for its labels, dates and header. */
 @theme {
 	--font-document: 'IBM Plex Sans Variable', ui-sans-serif, system-ui, sans-serif;

@@ -12,8 +12,8 @@ export function ItemList(props: {children: ReactElement[]; label: string}) {
 		<ItemGroup aria-label={props.label} className="gap-0">
 			{Array.map(props.children, (child, index) => (
 				<Fragment key={child.key ?? index}>
-					{index > 0 && <ItemSeparator className="my-0" />}
 					{child}
+					<ItemSeparator className="my-0" />
 				</Fragment>
 			))}
 		</ItemGroup>

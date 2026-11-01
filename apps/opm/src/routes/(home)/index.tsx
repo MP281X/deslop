@@ -166,9 +166,7 @@ export function ChaptersRoute(props: {
 		)
 	)
 	return (
-		<Toolbar
-			modifiers={[navigationTitle('opm'), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
-		>
+		<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}>
 			{/* Search and its explicit bottom-bar item share the same SwiftUI owner. */}
 			<Toolbar
 				modifiers={[
@@ -225,7 +223,7 @@ export function ChaptersRoute(props: {
 				</Toolbar.Content>
 			</Toolbar>
 			<Toolbar.Content>
-				<ToolbarItem placement="principal">
+				<ToolbarItem placement="topBarLeading">
 					<AppTitle logo={icon} name="opm" />
 				</ToolbarItem>
 				<ToolbarItem placement="bottomBar">
