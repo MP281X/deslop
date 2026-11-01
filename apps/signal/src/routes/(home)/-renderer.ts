@@ -67,7 +67,7 @@ float wearAt(vec2 xz){ vec2 uv = (xz - uWindow.xy) / uWindow.z; return texture2D
 // The atmosphere, drawn over the finished frame from its depth. A ray from the camera to each pixel's surface marches through two volumes: fog over the unexplored, thin at the explored edge and thickening into a cloud bank the farther it lies from it, and smog where the colony has worked. Explored ground out of sight is greyed; Home's and the units' sight is clear.
 const ATMOSPHERE = `
 uniform sampler2D tDiffuse, tDepth, uKnown, uEnv, uGround, uZones; uniform mat4 uInv; uniform vec3 uDir, uWindow; uniform float uT, uFogOn;
-uniform vec3 uTeamColors[32]; uniform int uTeamCount; uniform vec2 uZoneOrigin;
+uniform vec3 uTeamColors[32]; uniform int uTeamCount; uniform vec2 uZoneOrigin; uniform float uCoverageOn;
 uniform vec4 uSights[${SIGHTS}]; uniform int uSightCount, uFogStyle, uSmogStyle;
 varying vec2 vUv;
 float n3(vec3 p){ float i = floor(p.y), f = fract(p.y); f = f * f * (3. - 2. * f); return mix(vn(p.xz + i * vec2(17.13, 31.71)), vn(p.xz + (i + 1.) * vec2(17.13, 31.71)), f); }
@@ -130,7 +130,7 @@ void main(){
 	// Explored ground looks the same in sight or out of it: only the unexplored lies under fog.
 	vec3 base = c.rgb;
 	// With the fog off, each chunk a team has stood in takes a light wash of its colour, a little stronger at the chunk's edge.
-	if(sky<1.) base = coverage(base,surface);
+	if(sky<1. && uCoverageOn>0.) base = coverage(base,surface);
 	if (uSmogStyle == 0 && (uFogOn == 0. || seen >= 1.)) { gl_FragColor = vec4(base, c.a); return; }
 	float smogHere = smogAt(surface.xz);
 	if (uSmogStyle == 2) base = mix(base, vec3(dot(base, vec3(.3, .55, .15))) * vec3(1., .82, .52) * .85, smoothstep(.08, .55, smogHere) * .85);
@@ -645,6 +645,7 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 	const zoneTexture = new THREE.DataTexture(zoneData, ZONES, ZONES, THREE.RGBAFormat, THREE.UnsignedByteType)
 	zoneTexture.needsUpdate = true
 	const coverage = {
+		uCoverageOn: {value: 1},
 		uTeamColors: {value: Array.makeBy(32, () => new THREE.Color())},
 		uTeamCount: {value: 0},
 		uZoneOrigin: {value: new THREE.Vector2(-ZONES / 2, -ZONES / 2)}
@@ -1294,6 +1295,9 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			zoneTexture.needsUpdate = true
 		},
 		scene,
+		showChunks(shown: boolean) {
+			coverage.uCoverageOn.value = Boolean.match(shown, {onFalse: () => 0, onTrue: () => 1})
+		},
 		// The discs that are in sight now, in tiles: Home's and each unit's; past the shader's limit, the ones nearest the view.
 		sight(discs: {radius: number; x: number; z: number}[]) {
 			const shown = Array.take(

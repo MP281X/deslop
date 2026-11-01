@@ -51,9 +51,8 @@ import {UnitKind} from '#services/game/schema.ts'
 import {tileOf} from '#services/world/lib/utils.ts'
 
 const ZOOM_STEP = 1.25
-// The replay speeds, in multiples of real time.
-const SPEEDS = [1, 10, 30]
 const groundAtom = Atom.make({at: Option.none<{x: number; z: number}>(), info: Option.none<Inspected>(), x: 0, y: 0})
+const chunksAtom = Atom.make(true)
 
 type Key = 'in' | 'leave' | 'next' | 'out' | 'play' | 'previous'
 type Inspection = {kind: 'thread'} | {actor: Option.Option<number>; kind: 'history'}
@@ -1052,7 +1051,55 @@ function MarkGlyph(props: {mark: Mark; span: Timeline}) {
 	)
 }
 
-// The run from its first moment to now: its marks, where the screen is, play and pause, the replay's speed and the way back to live.
+function WorldControl() {
+	const status = useAtomValue(runStateAtom)
+	const [result, control] = useAtom(controlAtom)
+	const current = Option.getOrUndefined(AsyncResult.value(status))
+	const problem =
+		current?.problem ?? Option.getOrUndefined(Option.map(AsyncResult.error(result), error => error.message))
+	return (
+		<div className="relative shrink-0">
+			<Button
+				variant="secondary"
+				className="min-h-11 px-2"
+				disabled={
+					!AsyncResult.isSuccess(status) ||
+					result.waiting ||
+					current?.problem !== undefined ||
+					(current?.running !== true && current?.coreConfigured !== true)
+				}
+				title={Boolean.match(current?.coreConfigured === false, {
+					onFalse: () => '',
+					onTrue: () => 'Model key missing: configure the server before running the world.'
+				})}
+				onClick={() => control({payload: {running: current?.running !== true}})}
+			>
+				{result.waiting && <Spinner />}
+				{!result.waiting && (
+					<span className="text-primary" aria-hidden="true">
+						{Boolean.match(current?.running === true, {onFalse: () => '▶', onTrue: () => 'Ⅱ'})}
+					</span>
+				)}
+				{Option.match(Option.fromUndefinedOr(current), {
+					onNone: () => 'Connecting',
+					onSome: state => Boolean.match(state.running, {onFalse: () => 'Run world', onTrue: () => 'Pause world'})
+				})}
+			</Button>
+			{problem !== undefined && (
+				<p role="alert" className="bg-popover text-destructive absolute bottom-full left-0 mb-1 w-64 p-2">
+					{problem}
+				</p>
+			)}
+			{AsyncResult.isFailure(status) && (
+				<p role="alert" className="bg-popover text-destructive absolute bottom-full left-0 mb-1 w-64 p-2">
+					World control disconnected.
+				</p>
+			)}
+		</div>
+	)
+}
+
+// The timeline stays visible; world control and historical playback remain separate actions.
 function TimelineBar(props: {
 	source: Source
 	tick: number
@@ -1060,6 +1107,7 @@ function TimelineBar(props: {
 	onSource: (source: Source) => void
 	onThreads: () => void
 }) {
+	const [chunks, setChunks] = useAtom(chunksAtom)
 	const live = Option.isNone(props.source)
 	const span = {...props.timeline, live: Number.max(props.timeline.live, props.tick)}
 	const length = Number.max(1, span.live - span.start)
@@ -1068,81 +1116,62 @@ function TimelineBar(props: {
 		() => 1
 	)
 	return (
-		<section aria-label="Timeline" className="bg-popover flex flex-none flex-col px-2">
-			<div className="relative h-8 w-full">
-				<div className="bg-border pointer-events-none absolute inset-x-1 top-1/2 h-0.5">
-					<div
-						className="bg-primary h-full w-(--fill)"
-						style={{'--fill': percent((props.tick - span.start) / length)}}
+		<section aria-label="Timeline" className="bg-popover flex flex-none flex-col px-1">
+			<div className="flex h-6 items-center gap-2 px-1">
+				<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums" aria-live="off">
+					{String.replace(/^0:/u, '')(clockOf(props.tick))}
+				</span>
+				<div className="relative h-6 min-w-0 flex-1">
+					<div className="bg-border pointer-events-none absolute inset-x-1 top-1/2 h-0.5">
+						<div
+							className="bg-primary h-full w-(--fill)"
+							style={{'--fill': percent((props.tick - span.start) / length)}}
+						/>
+					</div>
+					<div className="pointer-events-none absolute inset-x-1 top-1">
+						{Array.map(props.timeline.marks, (mark, index) => (
+							<MarkGlyph key={index} mark={mark} span={span} />
+						))}
+					</div>
+					<input
+						className="signal-time absolute inset-0 m-0 h-6 w-full cursor-ew-resize"
+						aria-label="Replay time"
+						aria-valuetext={`${clockOf(props.tick)} of ${clockOf(span.live)}`}
+						type="range"
+						min={span.start}
+						max={span.live}
+						value={props.tick}
+						onChange={event => props.onSource(Option.some({from: event.currentTarget.valueAsNumber, speed: 0}))}
 					/>
 				</div>
-				<div className="pointer-events-none absolute inset-x-1 top-1">
-					{Array.map(props.timeline.marks, (mark, index) => (
-						<MarkGlyph key={index} mark={mark} span={span} />
-					))}
-				</div>
-				<input
-					className="signal-time absolute inset-0 m-0 h-8 w-full cursor-ew-resize"
-					aria-label="Replay time"
-					aria-valuetext={`${clockOf(props.tick)} of ${clockOf(span.live)}`}
-					type="range"
-					min={span.start}
-					max={span.live}
-					value={props.tick}
-					onChange={event => props.onSource(Option.some({from: event.currentTarget.valueAsNumber, speed: 0}))}
-				/>
 			</div>
-			<div className="flex min-w-0 items-center gap-1">
+			<div className="flex min-w-0 items-center justify-between">
+				<WorldControl />
+				{!live && (
+					<Button
+						variant="ghost"
+						size="icon"
+						className="min-h-11 min-w-11"
+						aria-label={Boolean.match(speed > 0, {onFalse: () => 'Play replay', onTrue: () => 'Pause replay'})}
+						title={Boolean.match(speed > 0, {onFalse: () => 'Play replay', onTrue: () => 'Pause replay'})}
+						onClick={() => props.onSource(toggled(props.source, props.tick))}
+					>
+						{Boolean.match(!live && speed > 0, {onFalse: () => '▶', onTrue: () => '❚❚'})}
+					</Button>
+				)}
 				<Button
 					variant="ghost"
 					size="icon"
 					className="min-h-11 min-w-11"
-					aria-label={Boolean.match(live, {
-						onFalse: () => Boolean.match(speed > 0, {onFalse: () => 'Play replay', onTrue: () => 'Pause replay'}),
-						onTrue: () => 'Replay from beginning'
-					})}
-					onClick={() =>
-						props.onSource(
-							Boolean.match(live, {
-								onFalse: () => toggled(props.source, props.tick),
-								onTrue: () => Option.some({from: span.start, speed: 1})
-							})
-						)
-					}
+					aria-label="Team chunks"
+					aria-pressed={chunks}
+					title={Boolean.match(chunks, {onFalse: () => 'Show team chunks', onTrue: () => 'Hide team chunks'})}
+					onClick={() => setChunks(shown => !shown)}
 				>
-					{Boolean.match(!live && speed > 0, {onFalse: () => '▶', onTrue: () => '❚❚'})}
+					<span aria-hidden="true" className={cn('text-base', chunks && 'text-primary')}>
+						▦
+					</span>
 				</Button>
-
-				<span
-					className="text-muted-foreground flex min-w-0 flex-1 gap-x-2 overflow-hidden font-mono text-xs tabular-nums"
-					aria-live="off"
-				>
-					<span>{String.replace(/^0:/u, '')(clockOf(props.tick))}</span>
-					{!live && (
-						<span title="Behind live">
-							−{String.replace(/^0:/u, '')(clockOf(Number.max(0, span.live - props.tick)))}
-						</span>
-					)}
-				</span>
-
-				{!live && (
-					<DropdownMenu>
-						<DropdownMenuTrigger aria-label="Replay speed" className="text-muted-foreground min-h-11 min-w-11">
-							{Number.max(1, speed)}×
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end">
-							{Array.map(SPEEDS, entry => (
-								<DropdownMenuItem
-									key={entry}
-									className="min-h-11"
-									onClick={() => props.onSource(Option.some({from: props.tick, speed: entry}))}
-								>
-									{entry}×
-								</DropdownMenuItem>
-							))}
-						</DropdownMenuContent>
-					</DropdownMenu>
-				)}
 				<Button variant="ghost" size="sm" className="min-h-11 px-2" onClick={props.onThreads}>
 					Threads
 				</Button>
@@ -1152,8 +1181,9 @@ function TimelineBar(props: {
 					className="text-primary min-h-11 px-2"
 					onClick={() => props.onSource(Option.none())}
 					aria-label="Back to latest"
+					title={Boolean.match(live, {onFalse: () => 'Go live', onTrue: () => 'Latest world view'})}
 				>
-					{Boolean.match(live, {onFalse: () => '○ Go live', onTrue: () => '● Live'})}
+					{Boolean.match(live, {onFalse: () => '○ Live', onTrue: () => '● Live'})}
 				</Button>
 			</div>
 		</section>
@@ -1470,54 +1500,6 @@ function useMapGestures(props: {
 	}
 }
 
-function WorldControl() {
-	const status = useAtomValue(runStateAtom)
-	const [result, control] = useAtom(controlAtom)
-	const current = Option.getOrUndefined(AsyncResult.value(status))
-	const problem =
-		current?.problem ?? Option.getOrUndefined(Option.map(AsyncResult.error(result), error => error.message))
-	return (
-		<div className="relative">
-			<Button
-				variant="secondary"
-				className="min-h-11 px-3"
-				disabled={
-					!AsyncResult.isSuccess(status) ||
-					result.waiting ||
-					current?.problem !== undefined ||
-					(current?.running !== true && current?.coreConfigured !== true)
-				}
-				title={Boolean.match(current?.coreConfigured === false, {
-					onFalse: () => '',
-					onTrue: () => 'Model key missing: configure the server before running the world.'
-				})}
-				onClick={() => control({payload: {running: current?.running !== true}})}
-			>
-				{result.waiting && <Spinner />}
-				{!result.waiting && (
-					<span className="text-primary" aria-hidden="true">
-						{Boolean.match(current?.running === true, {onFalse: () => '▶', onTrue: () => 'Ⅱ'})}
-					</span>
-				)}
-				{Option.match(Option.fromUndefinedOr(current), {
-					onNone: () => 'Connecting',
-					onSome: state => Boolean.match(state.running, {onFalse: () => 'Run world', onTrue: () => 'Pause world'})
-				})}
-			</Button>
-			{problem !== undefined && (
-				<p role="alert" className="bg-popover text-destructive absolute top-full right-0 mt-1 w-64 p-2">
-					{problem}
-				</p>
-			)}
-			{AsyncResult.isFailure(status) && (
-				<p role="alert" className="bg-popover text-destructive absolute top-full right-0 mt-1 w-64 p-2">
-					World control disconnected.
-				</p>
-			)}
-		</div>
-	)
-}
-
 // The world view and everything over it: the canvas belongs to the renderer, and frames reach it through the registry, not React.
 function MapControls(props: {view: View; onTeam: (team: number) => void}) {
 	return (
@@ -1539,7 +1521,6 @@ function MapControls(props: {view: View; onTeam: (team: number) => void}) {
 					</Button>
 				))}
 			</div>
-			<WorldControl />
 		</nav>
 	)
 }
@@ -1640,6 +1621,7 @@ function World(props: {seed: number; view: View}) {
 		)
 		// Each frame, before the camera moves: it aims at its subject, and the followed unit is edged.
 		renderer.onFrame(() => {
+			renderer.showChunks(registry.get(chunksAtom))
 			const current = registry.get(followAtom)
 			const run = Option.getOrUndefined(AsyncResult.value(registry.get(runStateAtom)))
 			renderer.clock(
@@ -1831,17 +1813,13 @@ function World(props: {seed: number; view: View}) {
 								))
 							)}
 						</div>
-						{Option.getOrUndefined(
-							Option.map(AsyncResult.value(timeline), entry => (
-								<TimelineBar
-									timeline={entry}
-									tick={cursor}
-									source={source}
-									onSource={setSource}
-									onThreads={() => setPanel(Option.some({kind: 'thread'}))}
-								/>
-							))
-						)}
+						<TimelineBar
+							timeline={Option.getOrElse(AsyncResult.value(timeline), () => ({live: cursor, marks: [], start: 0}))}
+							tick={cursor}
+							source={source}
+							onSource={setSource}
+							onThreads={() => setPanel(Option.some({kind: 'thread'}))}
+						/>
 					</div>
 				</Membership>
 			</Portraits>

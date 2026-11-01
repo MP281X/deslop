@@ -179,11 +179,18 @@ export class Core extends Context.Service<
 					owner = 'Core'
 				) {
 					const active = {...previous}
+					const retained = Array.takeRight(
+						active.turns,
+						Boolean.match(owner === 'Core', {onFalse: () => 0, onTrue: () => 5})
+					)
+					const retiring = Array.take(active.turns, active.turns.length - retained.length)
+					const through = Option.getOrUndefined(Array.last(retiring))
+					if (through === undefined) return {conversation: active, usage: undefined}
 					const prefix = [
 						...Array.filter([{content: `Previous checkpoint: ${active.summary}`, role: 'user' as const}], () =>
 							String.isNonEmpty(active.summary)
 						),
-						...Array.map(active.turns, turn => ({content: turn.content, role: turn.role}))
+						...Array.map(retiring, turn => ({content: turn.content, role: turn.role}))
 					]
 					yield* account('compaction', model)
 					const [compacted] = yield* pipe(
@@ -224,11 +231,8 @@ export class Core extends Context.Service<
 					) {
 						return yield* GameError.make({message: 'Compaction did not finish; original history was kept.'})
 					}
-					active.summary = `Archived through turn ${active.sequence}. Use Recall with before to retrieve older originals.\n${summary.message.content}`
-					active.turns = Array.takeRight(
-						active.turns,
-						Boolean.match(owner === 'Core', {onFalse: () => 0, onTrue: () => 5})
-					)
+					active.summary = `Summarized through turn ${through.sequence}. Later turns follow verbatim and may update earlier claims. Use Recall with before to retrieve older originals.\n${summary.message.content}`
+					active.turns = retained
 					active.archive = active.archive ?? {before: active.sequence + 1, offset: 0}
 					active.archived = active.sequence
 					active.measured = 0
