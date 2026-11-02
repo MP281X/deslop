@@ -3,11 +3,11 @@
 	"version": "0.1.0",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/MP281X/deslop",
+		"url": "git+https://github.com/MP281X/deslop.git",
 		"directory": "tools/coding-standards"
 	},
 	"bin": {
-		"deslop-coding-standards": "./dist/install.js"
+		"deslop-coding-standards": "dist/install.js"
 	},
 	"files": [
 		"dist",

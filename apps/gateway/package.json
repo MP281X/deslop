@@ -3,11 +3,11 @@
 	"version": "0.1.0",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/MP281X/deslop",
+		"url": "git+https://github.com/MP281X/deslop.git",
 		"directory": "apps/gateway"
 	},
 	"bin": {
-		"gateway": "./dist/server.js"
+		"gateway": "dist/server.js"
 	},
 	"files": [
 		"dist",
