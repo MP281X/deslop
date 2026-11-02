@@ -1,6 +1,6 @@
-import {Array, Number, Option, Record, Schema, String, pipe} from 'effect'
+import {Array, Number, Option, Order, Record, Schema, String, pipe} from 'effect'
 
-import type {Counters, Sample} from '#services/metrics/schema.ts'
+import type {Counters, MachineHistory, Sample} from '#services/metrics/schema.ts'
 
 export function counters(stat: string, network: string, disk: string, uptime: string, time: number) {
 	const cpu = pipe(
@@ -138,6 +138,7 @@ export function sample(current: Counters, memory: string, disk: string, previous
 		memoryAvailable: values['MemAvailable:'] ?? 0,
 		memoryBuffers: values['Buffers:'] ?? 0,
 		memoryCached: (values['Cached:'] ?? 0) + (values['SReclaimable:'] ?? 0),
+		memoryFree: values['MemFree:'],
 		memoryTotal: values['MemTotal:'] ?? 0,
 		memoryUsed: (values['MemTotal:'] ?? 0) - (values['MemAvailable:'] ?? 0),
 		networkReceive: rate(current.networkReceive, seconds, old?.networkReceive),
@@ -153,24 +154,69 @@ export function chartWindow(hours: number, now: number) {
 	return {end: now, start: now - hours * 3_600_000}
 }
 
-export function history(samples: readonly Sample[], hours: number, now: number) {
-	const selected = Array.filter(samples, value => value.time >= now - hours * 3_600_000 && value.time <= now)
-	const window = {
-		end: now,
-		start: Number.max(now - hours * 3_600_000, Number.min(selected[0]?.time ?? now, now - 120_000))
-	}
-	return Array.dedupeWith(
-		[
-			...Array.take(selected, 1),
-			...pipe(
-				selected,
-				Array.groupBy(
-					value => `${Math.floor((value.time - window.start) / Number.max(1, (window.end - window.start) / 479))}`
-				),
-				Record.values,
-				Array.map(bucket => Option.getOrThrow(Array.last(bucket)))
-			)
-		],
-		(a, b) => a.time === b.time
+export function resolution(hours: number) {
+	if (hours === 1) return 60_000
+	if (hours === 24) return 900_000
+	return 3_600_000
+}
+
+function lastInBucket(bucket: readonly Sample[]) {
+	return {...Option.getOrThrow(Array.last(bucket)), since: bucket[0]?.since ?? bucket[0]?.time}
+}
+
+export function compact(samples: readonly Sample[], now: number) {
+	return pipe(
+		samples,
+		Array.filter(value => value.time >= now - 168 * 3_600_000),
+		Array.groupBy(value => {
+			const age = (now - value.time) / 3_600_000
+			if (age <= 1) return `minute:${Math.floor(value.time / resolution(1))}`
+			if (age <= 24) return `quarter:${Math.floor(value.time / resolution(24))}`
+			return `hour:${Math.floor(value.time / resolution(168))}`
+		}),
+		Record.values,
+		Array.map(lastInBucket),
+		Array.sort(Order.mapInput(Order.Number, (value: Sample) => value.time))
 	)
+}
+
+export function history(samples: readonly Sample[], hours: number, now: number) {
+	return pipe(
+		Array.filter(samples, value => value.time >= now - hours * 3_600_000 && value.time <= now),
+		Array.groupBy(value => `${Math.floor(value.time / resolution(hours))}`),
+		Record.values,
+		Array.map(lastInBucket)
+	)
+}
+
+export function compactHistory(machine: MachineHistory, hours: number) {
+	return {
+		cpuModel: machine.cpuModel,
+		current: Option.getOrUndefined(Array.last(machine.samples)),
+		error: machine.error,
+		intervalSeconds: resolution(hours) / 1000,
+		recordedSince: machine.samples[0]?.since ?? machine.samples[0]?.time,
+		series: {
+			cpu: Array.map(machine.samples, value => Option.map(Option.fromUndefinedOr(value.cpu), Number.round(1))),
+			diskRead: Array.map(machine.samples, value =>
+				Option.map(Option.fromUndefinedOr(value.diskRead), Number.round(0))
+			),
+			diskWrite: Array.map(machine.samples, value =>
+				Option.map(Option.fromUndefinedOr(value.diskWrite), Number.round(0))
+			),
+			memoryUsed: Array.map(machine.samples, value => value.memoryUsed),
+			networkReceive: Array.map(machine.samples, value =>
+				Option.map(Option.fromUndefinedOr(value.networkReceive), Number.round(0))
+			),
+			networkSend: Array.map(machine.samples, value =>
+				Option.map(Option.fromUndefinedOr(value.networkSend), Number.round(0))
+			),
+			storageUsed: Array.map(machine.samples, value => Array.reduce(value.disks, 0, (sum, disk) => sum + disk.used)),
+			swapUsed: Array.map(machine.samples, value => value.swapUsed),
+			time: Array.map(machine.samples, value => value.time)
+		},
+		stale: machine.stale,
+		time: machine.time,
+		worker: machine.worker
+	}
 }

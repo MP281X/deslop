@@ -9,6 +9,7 @@ import {
 	Number,
 	Option,
 	Record,
+	Ref,
 	Schema,
 	Stream,
 	String,
@@ -18,7 +19,7 @@ import {
 import {FetchHttpClient, HttpClient} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
-import {attachProcesses, processes} from '#services/inventory/lib/processes.ts'
+import {attachProcesses, processUsage, processes} from '#services/inventory/lib/processes.ts'
 import {Container, DeployError, InventoryItem, Serve, Snapshot, Tailnet, Unit} from '#services/inventory/schema.ts'
 
 const execute = Effect.fnUntraced(function* (name: string, args: string[]) {
@@ -140,6 +141,7 @@ export class Inventory extends Context.Service<Inventory, {readonly snapshot: Ef
 				return Effect.provideService(execute(name, args), ChildProcessSpawner.ChildProcessSpawner, spawner)
 			}
 			const worker = String.trim(yield* fs.readFileString('/proc/sys/kernel/hostname'))
+			const previousProcesses = yield* Ref.make(Option.none<Effect.Success<typeof processes>>())
 			function units(system: boolean) {
 				const scope = Boolean.match(system, {onFalse: () => 'user' as const, onTrue: () => 'system' as const})
 				return pipe(
@@ -299,6 +301,11 @@ export class Inventory extends Context.Service<Inventory, {readonly snapshot: Ef
 						const collected = yield* pipe(
 							processes,
 							Effect.provideService(FileSystem.FileSystem, fs),
+							Effect.flatMap(current =>
+								Effect.map(Ref.getAndSet(previousProcesses, Option.some(current)), previous =>
+									processUsage(current, Option.getOrUndefined(previous))
+								)
+							),
 							Effect.timeout('3 seconds'),
 							Effect.match({
 								onFailure: cause => ({error: `${cause}`, records: []}),

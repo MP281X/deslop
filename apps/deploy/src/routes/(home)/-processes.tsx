@@ -1,120 +1,77 @@
-import {Array, Boolean, HashSet, String} from 'effect'
+import {Array, Boolean} from 'effect'
 
-import {Box, ChevronRight, Database, SquareTerminal} from 'lucide-react'
 import {useState} from 'react'
 
-import type {InventoryItem} from '#services/inventory/schema.ts'
+import {Button} from '@deslop/components-web/ui/button'
 
-export function ApplicationIcon(props: {name: string}) {
-	const [failed, setFailed] = useState(false)
-	const app = String.split(props.name, ' ')[0] ?? ''
-	return (
-		<span className="bg-icon-tile text-icon-shadow flex size-5 shrink-0 items-center justify-center rounded-sm">
-			{Boolean.match(
-				!failed &&
-					Array.contains(['deploy', 'auth', 'gateway', 'scope', 'stash', 'trips', 'opm', 'portfolio', 'signal'], app),
-				{
-					onFalse: () => {
-						if (String.includes('postgres')(app) || String.includes('redis')(app)) {
-							return <Database className="size-3.5" />
-						}
-						if (String.includes('docker')(app)) return <Box className="size-3.5" />
-						return <SquareTerminal className="size-3.5" />
-					},
-					onTrue: () => (
-						<img
-							src={Boolean.match(app === 'deploy', {
-								onFalse: () => `https://${app}.mp281x.xyz/icon`,
-								onTrue: () => '/icon'
-							})}
-							alt=""
-							className="pixelated size-full rounded-sm"
-							onError={() => setFailed(true)}
-						/>
-					)
-				}
-			)}
-		</span>
-	)
-}
+import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
+import type {processTree} from '#routes/(home)/-process-tree.ts'
+import {processUsage} from '#routes/(home)/-process-tree.ts'
 
-function ProcessRow(props: {row: NonNullable<InventoryItem['processes']>[number]; expanded?: boolean}) {
+export function ProcessUsage(props: {cpu?: number; memory?: number}) {
+	const mib = (props.memory ?? 0) / 1024 ** 2
 	return (
-		<div className="flex min-w-48 items-center gap-2 py-1.5">
-			<ChevronRight
-				className={`text-muted-foreground size-3 shrink-0 ${Boolean.match(props.expanded === undefined, {onFalse: () => Boolean.match(props.expanded === true, {onFalse: () => '', onTrue: () => 'rotate-90'}), onTrue: () => 'invisible'})}`}
-			/>
-			<span className="min-w-0 flex-1">
-				<span className="block truncate" title={props.row.name}>
-					{String.replace(/-MainThread$|\.native$/u, '')(props.row.name)}
-				</span>
-				<span
-					className="text-muted-foreground block font-mono text-xs"
-					aria-label={`PID ${props.row.pid}, parent ${props.row.parent}`}
-				>
-					{props.row.pid} ← {props.row.parent}
-				</span>
+		<>
+			<span
+				className="text-muted-foreground text-right font-mono text-xs whitespace-nowrap tabular-nums"
+				title="CPU · share of machine capacity"
+			>
+				{Boolean.match(props.cpu === undefined, {
+					onFalse: () =>
+						`${new Intl.NumberFormat(undefined, {maximumFractionDigits: Boolean.match((props.cpu ?? 0) < 10, {onFalse: () => 0, onTrue: () => 1})}).format(props.cpu ?? 0)}%`,
+					onTrue: () => ''
+				})}
 			</span>
-			<span className="text-muted-foreground shrink-0 font-mono tabular-nums">
-				{new Intl.NumberFormat(undefined, {maximumFractionDigits: 1}).format(props.row.memory / 1024 ** 2)} MiB
+			<span
+				className="text-muted-foreground text-right font-mono text-xs whitespace-nowrap tabular-nums"
+				title="Resident memory"
+			>
+				{Boolean.match(props.memory === undefined, {
+					onFalse: () =>
+						`${new Intl.NumberFormat(undefined, {maximumFractionDigits: Boolean.match(mib >= 1000 || mib < 10, {onFalse: () => 0, onTrue: () => 1})}).format(Boolean.match(mib >= 1000, {onFalse: () => mib, onTrue: () => mib / 1024}))} ${Boolean.match(mib >= 1000, {onFalse: () => 'MiB', onTrue: () => 'GiB'})}`,
+					onTrue: () => ''
+				})}
 			</span>
-		</div>
+		</>
 	)
 }
 
-function Branch(props: {
-	row: NonNullable<InventoryItem['processes']>[number]
-	descendants: Record<string, NonNullable<InventoryItem['processes']>>
-}) {
-	const [open, setOpen] = useState(false)
-	const children = props.descendants[props.row.pid] ?? []
-	if (Array.isReadonlyArrayEmpty(children)) {
-		return (
-			<li>
-				<ProcessRow row={props.row} />
-			</li>
-		)
-	}
+export function Processes(props: {rows: ReturnType<typeof processTree>; showMachine: boolean}) {
+	const [all, setAll] = useState(false)
 	return (
-		<li>
-			<details onToggle={event => setOpen(event.currentTarget.open)}>
-				<summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-					<ProcessRow row={props.row} expanded={open} />
-				</summary>
-				{open && (
-					<ul className="ml-1.5 border-l pl-3">
-						{Array.map(children, row => (
-							<Branch key={row.pid} row={row} descendants={props.descendants} />
-						))}
-					</ul>
-				)}
-			</details>
-		</li>
-	)
-}
-
-function Tree(props: {rows: NonNullable<InventoryItem['processes']>}) {
-	const pids = HashSet.fromIterable(Array.map(props.rows, row => row.pid))
-	const children = Array.groupBy(props.rows, row => `${row.parent}`)
-	return (
-		<ul>
+		<div className="pb-2">
 			{Array.map(
-				Array.filter(props.rows, row => !HashSet.has(pids, row.parent)),
-				row => (
-					<Branch key={row.pid} row={row} descendants={children} />
+				Boolean.match(all, {onFalse: () => Array.take(props.rows, 8), onTrue: () => props.rows}),
+				(row, index) => (
+					<div
+						key={row.members[0]?.pid ?? index}
+						className="deploy-process-grid h-7"
+						data-show-machine={props.showMachine}
+					>
+						<span className="bg-border w-px self-stretch justify-self-center" />
+						<span
+							className={`flex min-w-0 items-center gap-2 ${Boolean.match(row.depth === 2, {onFalse: () => '', onTrue: () => 'pl-4'})}`}
+							title={row.path}
+						>
+							<ApplicationIcon name={row.name} small />
+							<span className="truncate text-xs">
+								{row.name}
+								{row.main && <span className="text-muted-foreground ml-1">main</span>}
+							</span>
+						</span>
+						<ProcessUsage {...processUsage(row.members)} />
+					</div>
 				)
 			)}
-		</ul>
-	)
-}
-
-export function Processes(props: {rows: NonNullable<InventoryItem['processes']>}) {
-	const [open, setOpen] = useState(false)
-	if (Array.isReadonlyArrayEmpty(props.rows)) return null
-	return (
-		<details className="min-w-0 overflow-x-auto text-xs" onToggle={event => setOpen(event.currentTarget.open)}>
-			<summary className="text-muted-foreground cursor-pointer py-1">Processes</summary>
-			{open && <Tree rows={props.rows} />}
-		</details>
+			{!all && props.rows.length > 8 && (
+				<div className="deploy-process-grid h-7" data-show-machine={props.showMachine}>
+					<span />
+					<Button variant="ghost" size="sm" onClick={() => setAll(true)}>
+						{props.rows.length - 8} more
+					</Button>
+					<ProcessUsage {...processUsage(Array.flatMap(Array.drop(props.rows, 8), row => row.members))} />
+				</div>
+			)}
+		</div>
 	)
 }

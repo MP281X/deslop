@@ -4,3 +4,34 @@
 :root {
 	--primary: var(--blue);
 }
+
+.deploy-chart-grid {
+	grid-template-columns: calc(var(--spacing) * 10) minmax(0, 1fr);
+}
+.deploy-capacity-grid {
+	grid-template-columns: calc(var(--spacing) * 2) minmax(0, 1fr) auto calc(var(--spacing) * 10);
+}
+.deploy-core-grid {
+	grid-template-columns: calc(var(--spacing) * 9) minmax(0, 1fr) calc(var(--spacing) * 11);
+}
+
+.deploy-process-grid {
+	display: grid;
+	grid-template-columns: calc(var(--spacing) * 5) minmax(0, 1fr) calc(var(--spacing) * 9) calc(
+			var(--spacing) * 16
+		) calc(var(--spacing) * 4) calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+	column-gap: calc(var(--spacing) * 1.5);
+	align-items: center;
+}
+
+.deploy-process-grid[data-show-machine='false'] {
+	grid-template-columns: calc(var(--spacing) * 5) minmax(0, 1fr) calc(var(--spacing) * 9) calc(
+			var(--spacing) * 16
+		) calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+}
+
+@media (width >= 40rem) {
+	.deploy-process-grid {
+		column-gap: calc(var(--spacing) * 3);
+	}
+}

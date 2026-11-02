@@ -7,6 +7,15 @@ export class DeployError extends Schema.TaggedError<DeployError>()('DeployError'
 	message: Schema.String
 }) {}
 
+export type Process = typeof Process.Type
+export const Process = Schema.Struct({
+	cpu: Schema.optional(Schema.Finite),
+	memory: Schema.Finite,
+	name: Schema.String,
+	parent: Schema.Int,
+	pid: Schema.Int
+})
+
 export type InventoryItem = typeof InventoryItem.Type
 export const InventoryItem = Schema.Struct({
 	address: Schema.optionalKey(Schema.String),
@@ -23,9 +32,7 @@ export const InventoryItem = Schema.Struct({
 	owned: Schema.optionalKey(Schema.Boolean),
 	port: Schema.optionalKey(Schema.Int),
 	process: Schema.optionalKey(Schema.String),
-	processes: Schema.optionalKey(
-		Schema.Array(Schema.Struct({memory: Schema.Finite, name: Schema.String, parent: Schema.Int, pid: Schema.Int}))
-	),
+	processes: Schema.optionalKey(Schema.Array(Process)),
 	protocol: Schema.optionalKey(Schema.Literals(['tcp', 'udp'])),
 	publicAccess: Schema.optionalKey(Schema.Boolean),
 	scope: Schema.optionalKey(Schema.Literals(['user', 'system'])),

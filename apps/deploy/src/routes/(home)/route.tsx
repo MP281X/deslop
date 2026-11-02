@@ -1,6 +1,6 @@
 import {useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, Option, Schema} from 'effect'
+import {Array, Boolean, Cause, Option, Schema, String} from 'effect'
 
 import {Link, Outlet, createFileRoute, useMatchRoute, useNavigate, useSearch} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
@@ -48,26 +48,34 @@ function Fleet() {
 			<ToggleGroupItem value="all" aria-label="All machines">
 				All
 			</ToggleGroupItem>
-			{Array.map(result.value.workers ?? Array.dedupe(Array.map(result.value.items, item => item.worker)), worker => (
-				<ToggleGroupItem key={worker} value={worker} className="gap-1.5">
-					<MachineIcon worker={worker} />
-					{machineName(worker)}
-					<span
-						role="img"
-						aria-label={Boolean.match(
-							Array.some(result.value.sources, source => source.name === worker && source.error !== ''),
-							{onFalse: () => 'Available', onTrue: () => 'Unavailable'}
-						)}
-					>
-						<StatusDot
-							status={Boolean.match(
-								Array.some(result.value.sources, source => source.name === worker && source.error !== ''),
-								{onFalse: () => 'live', onTrue: () => 'off'}
-							)}
-						/>
-					</span>
-				</ToggleGroupItem>
-			))}
+			{Array.map(
+				result.value.workers ?? Array.dedupe(Array.map(result.value.items, item => item.worker)),
+				(worker, index) => {
+					const failed = Array.some(result.value.sources, source => source.name === worker && source.error !== '')
+					const checking =
+						index !== 0 &&
+						!failed &&
+						!Array.some(result.value.sources, source => String.startsWith(`${worker} · `)(source.name))
+					return (
+						<ToggleGroupItem key={worker} value={worker} className="gap-1.5">
+							<MachineIcon worker={worker} />
+							{machineName(worker)}
+							<span
+								role="img"
+								aria-label={Boolean.match(checking, {
+									onFalse: () => Boolean.match(failed, {onFalse: () => 'Available', onTrue: () => 'Unavailable'}),
+									onTrue: () => 'Checking'
+								})}
+							>
+								<StatusDot
+									status={Boolean.match(failed || checking, {onFalse: () => 'live', onTrue: () => 'off'})}
+									waiting={checking}
+								/>
+							</span>
+						</ToggleGroupItem>
+					)
+				}
+			)}
 		</ToggleGroup>
 	)
 }

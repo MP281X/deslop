@@ -1,8 +1,8 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Option} from 'effect'
+import {Array, HashSet, Option} from 'effect'
 
-import {chartWindow, counters, history, sample} from '#services/metrics/lib/utils.ts'
+import {chartWindow, compact, compactHistory, counters, history, sample} from '#services/metrics/lib/utils.ts'
 
 const MEMORY = 'MemTotal: 1024 kB\nMemAvailable: 256 kB\nSwapTotal: 512 kB\nSwapFree: 128 kB'
 const STORAGE = 'Mounted on 1B-blocks Used\n/ 1000000 750000'
@@ -48,11 +48,26 @@ it('bounds history by the chosen time window and response size without synthesiz
 	const samples = Array.makeBy(20_161, index => ({...value, time: index * 30_000}))
 	const now = 168 * 3_600_000
 	const selected = history(samples, 1, now)
-	assert.lengthOf(selected, 121)
-	assert.isAtMost(history(samples, 168, now).length, 481)
+	assert.lengthOf(selected, 61)
+	assert.lengthOf(history(samples, 24, now), 97)
+	assert.lengthOf(history(samples, 168, now), 169)
 	assert.strictEqual(Option.getOrThrow(Array.last(selected)).time, now)
-	assert.strictEqual(history(samples, 168, now)[0]?.time, 0)
+	assert.strictEqual(history(samples, 168, now)[0]?.since, 0)
 	assert.isEmpty(history(samples, 1, now + 2 * 3_600_000))
+	const retained = compact(samples, now)
+	assert.isBelow(retained.length, 400)
+	const times = HashSet.fromIterable(Array.map(samples, point => point.time))
+	assert.isTrue(Array.every(retained, point => HashSet.has(times, point.time)))
+	assert.deepStrictEqual(compact(retained, now), retained)
+	const report = compactHistory(
+		{cpuModel: 'fixture', error: '', samples: history(retained, 168, now), stale: false, time: now, worker: 'dev'},
+		168
+	)
+	assert.strictEqual(report.intervalSeconds, 3600)
+	assert.strictEqual(report.series.time.length, report.series.cpu.length)
+	assert.strictEqual(report.recordedSince, 0)
+	assert.isTrue(Option.isNone(report.series.cpu[0] ?? Option.none()))
+	assert.isBelow(JSON.stringify(report).length, JSON.stringify({samples}).length / 10)
 })
 
 it('measures individual logical cores, memory detail, load and uptime without bridging resets', () => {
@@ -87,10 +102,22 @@ it('measures individual logical cores, memory detail, load and uptime without br
 	)
 })
 
+it('sends one current snapshot and compact aligned MCP columns with unknown rates preserved', () => {
+	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '', '', '100 0', 0), MEMORY, STORAGE)
+	const samples = [value, {...value, cpu: 12.3456, networkReceive: 1234.5678, time: 60_000}]
+	const result = compactHistory({error: '', samples, stale: false, time: 60_000, worker: 'dev'}, 1)
+	assert.strictEqual(result.current, samples[1])
+	assert.deepStrictEqual(result.series.cpu, [Option.none(), Option.some(12.3)])
+	assert.deepStrictEqual(result.series.networkReceive, [Option.none(), Option.some(1235)])
+	assert.deepStrictEqual(result.series.time, [0, 60_000])
+})
+
 it('retains new-agent samples while displaying the entire requested window without fabricating recordings', () => {
 	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '', '', '100 0', 0), MEMORY, STORAGE)
 	const fresh = Array.makeBy(21, index => ({...value, time: index * 30_000}))
-	assert.deepStrictEqual(history(fresh, 168, 600_000), fresh)
+	assert.lengthOf(history(fresh, 168, 600_000), 1)
+	assert.strictEqual(history(fresh, 168, 600_000)[0]?.time, 600_000)
+	assert.strictEqual(history(fresh, 168, 600_000)[0]?.since, 0)
 	assert.deepStrictEqual(chartWindow(168, 600_000), {end: 600_000, start: 600_000 - 168 * 3_600_000})
 	assert.deepStrictEqual(chartWindow(1, 3_600_000), {end: 3_600_000, start: 0})
 	assert.deepStrictEqual(chartWindow(1, 7_200_000), {end: 7_200_000, start: 3_600_000})

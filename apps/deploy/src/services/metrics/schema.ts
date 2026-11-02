@@ -27,10 +27,12 @@ export const Sample = Schema.Struct({
 	memoryAvailable: Schema.optional(Schema.Finite),
 	memoryBuffers: Schema.optional(Schema.Finite),
 	memoryCached: Schema.optional(Schema.Finite),
+	memoryFree: Schema.optional(Schema.Finite),
 	memoryTotal: Schema.Finite,
 	memoryUsed: Schema.Finite,
 	networkReceive: Schema.optional(Schema.Finite),
 	networkSend: Schema.optional(Schema.Finite),
+	since: Schema.optional(Schema.Finite),
 	swapTotal: Schema.Finite,
 	swapUsed: Schema.Finite,
 	time: Schema.Finite,
@@ -42,6 +44,29 @@ export const MachineHistory = Schema.Struct({
 	cpuModel: Schema.optional(Schema.String),
 	error: Schema.String,
 	samples: Schema.Array(Sample),
+	stale: Schema.Boolean,
+	time: Schema.Finite,
+	worker: Schema.String
+})
+
+export type MachineSummary = typeof MachineSummary.Type
+export const MachineSummary = Schema.Struct({
+	cpuModel: Schema.optional(Schema.String),
+	current: Schema.optional(Sample),
+	error: Schema.String,
+	intervalSeconds: Schema.Finite,
+	recordedSince: Schema.optional(Schema.Finite),
+	series: Schema.Struct({
+		cpu: Schema.Array(Schema.OptionFromNullOr(Schema.Finite)),
+		diskRead: Schema.Array(Schema.OptionFromNullOr(Schema.Finite)),
+		diskWrite: Schema.Array(Schema.OptionFromNullOr(Schema.Finite)),
+		memoryUsed: Schema.Array(Schema.Finite),
+		networkReceive: Schema.Array(Schema.OptionFromNullOr(Schema.Finite)),
+		networkSend: Schema.Array(Schema.OptionFromNullOr(Schema.Finite)),
+		storageUsed: Schema.Array(Schema.Finite),
+		swapUsed: Schema.Array(Schema.Finite),
+		time: Schema.Array(Schema.Finite)
+	}),
 	stale: Schema.Boolean,
 	time: Schema.Finite,
 	worker: Schema.String

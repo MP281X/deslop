@@ -4,10 +4,9 @@ import {Array, Boolean, Option, String} from 'effect'
 
 import {createFileRoute, useSearch} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Globe, Network, Plus, X} from 'lucide-react'
+import {ChevronRight, Globe, Network, Plus, X} from 'lucide-react'
 import {useState} from 'react'
 
-import {ItemList} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Badge} from '@deslop/components-web/ui/badge'
@@ -21,13 +20,14 @@ import {
 	ComboboxList
 } from '@deslop/components-web/ui/combobox'
 import {Input} from '@deslop/components-web/ui/input'
-import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
 
 import {MachineIcon} from '#lib/components.tsx'
 import {exposeAtom, hideAtom, inventoryAtom} from '#lib/utils.ts'
-import {ApplicationIcon, Processes} from '#routes/(home)/-processes.tsx'
+import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
+import {processTree, processUsage} from '#routes/(home)/-process-tree.ts'
+import {ProcessUsage, Processes} from '#routes/(home)/-processes.tsx'
 import {availablePorts, portLabel, workloadName, workloads} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem} from '#services/inventory/schema.ts'
 
@@ -105,7 +105,7 @@ function Expose(props: {items: readonly InventoryItem[]; choices: readonly Inven
 								{(item: InventoryItem) => (
 									<ComboboxItem key={item.id} value={item} className="pr-7">
 										<MachineIcon worker={item.worker} />
-										<span className="min-w-0 flex-1 truncate" title={item.process}>
+										<span className="min-w-0 flex-1 truncate" title={item.unit || item.process}>
 											{item.process}
 										</span>
 										<Badge variant="secondary" className="font-mono">
@@ -227,79 +227,101 @@ function ExposureLink(props: {item: InventoryItem}) {
 	)
 }
 
-function InventoryRow(props: {row: ReturnType<typeof workloads>[number]}) {
+function WorkloadRow(props: {row: ReturnType<typeof workloads>[number]; showMachine: boolean; expanded?: boolean}) {
 	const state = status(props.row.item)
+	const processes = props.row.item.processes ?? []
 	return (
-		<Item role="listitem" size="sm" className="min-h-16 flex-nowrap items-start gap-3 px-1">
-			<ItemMedia data-align="start" className="group-has-data-[slot=item-description]/item:translate-y-0">
-				<span
-					className="flex size-5 shrink-0 items-center justify-center"
-					title={props.row.item.kind}
-					aria-label={props.row.item.kind}
-					role="img"
-				>
-					<ApplicationIcon name={workloadName(props.row.item)} />
-				</span>
-			</ItemMedia>
-			<ItemContent className="min-w-0">
-				<ItemTitle className="line-clamp-none block w-full wrap-anywhere whitespace-normal" title={props.row.item.name}>
-					{workloadName(props.row.item)}
-				</ItemTitle>
-				<div className="flex min-w-0 flex-wrap items-center gap-1">
-					{Array.map(
-						Array.dedupe(
-							Array.map(
-								Array.filter(
-									props.row.listeners,
-									listener =>
-										listener.address !== 'container' &&
-										!Array.some(props.row.exposures, exposure => exposure.port === listener.port)
-								),
-								listener => listener.port
-							)
-						),
-						port => (
-							<Badge key={port} variant="secondary" className="font-mono">
-								:{port}
-							</Badge>
+		<div className="deploy-process-grid min-w-0 gap-y-1" data-show-machine={props.showMachine}>
+			<ApplicationIcon
+				name={workloadName(props.row.item)}
+				process={processTree(processes)[0]?.name}
+				container={props.row.item.kind === 'container'}
+			/>
+			<span className="min-w-0 truncate text-sm font-medium" title={props.row.item.name}>
+				{workloadName(props.row.item)}
+			</span>
+			<ProcessUsage {...processUsage(processes)} />
+			{props.showMachine && <MachineIcon worker={props.row.item.worker} />}
+			<span title={state} aria-label={state} role="img">
+				<StatusDot status={dot(props.row.item, state)} />
+			</span>
+			<ChevronRight
+				className={`text-muted-foreground size-3 ${Boolean.match(props.expanded === undefined, {onFalse: () => Boolean.match(props.expanded === true, {onFalse: () => '', onTrue: () => 'rotate-90'}), onTrue: () => 'invisible'})}`}
+			/>
+			<div className="col-start-2 col-end-5 flex min-w-0 flex-wrap items-center gap-1 empty:hidden">
+				{Array.map(
+					Array.dedupe(
+						Array.map(
+							Array.filter(
+								props.row.listeners,
+								listener =>
+									listener.address !== 'container' &&
+									!Array.some(props.row.exposures, exposure => exposure.port === listener.port)
+							),
+							listener => listener.port
 						)
-					)}
-					{Array.map(props.row.exposures, exposure => (
-						<ExposureLink key={exposure.id} item={exposure} />
-					))}
-				</div>
-				{(state === 'stale' ||
-					state === 'unhealthy' ||
-					String.includes('failed')(state) ||
-					String.includes('exited')(state)) && (
-					<ItemDescription className="line-clamp-none wrap-anywhere">{props.row.item.detail}</ItemDescription>
+					),
+					port => (
+						<Badge key={port} variant="secondary" className="font-mono">
+							:{port}
+						</Badge>
+					)
 				)}
-				<Processes rows={props.row.item.processes ?? []} />
-			</ItemContent>
-			<ItemActions className="gap-3">
-				<MachineIcon worker={props.row.item.worker} />
-				<span title={state} aria-label={state} role="img">
-					<StatusDot status={dot(props.row.item, state)} />
-				</span>
-			</ItemActions>
-		</Item>
+				{Array.map(props.row.exposures, exposure => (
+					<ExposureLink key={exposure.id} item={exposure} />
+				))}
+			</div>
+			{(state === 'stale' ||
+				state === 'unhealthy' ||
+				String.includes('failed')(state) ||
+				String.includes('exited')(state)) && (
+				<p className="text-muted-foreground col-start-2 col-end-5 text-xs wrap-anywhere">{props.row.item.detail}</p>
+			)}
+		</div>
+	)
+}
+
+function InventoryRow(props: {row: ReturnType<typeof workloads>[number]; showMachine: boolean; processMatch: boolean}) {
+	const [open, setOpen] = useState(false)
+	const processes = processTree(props.row.item.processes ?? [])
+	if (processes.length < 2 && !props.processMatch) {
+		return (
+			<div role="listitem" className="border-b py-2.5">
+				<WorkloadRow row={props.row} showMachine={props.showMachine} />
+			</div>
+		)
+	}
+	return (
+		<details
+			role="listitem"
+			className="border-b"
+			open={open || props.processMatch}
+			onToggle={event => setOpen(event.currentTarget.open)}
+		>
+			<summary className="cursor-pointer list-none py-2.5 [&::-webkit-details-marker]:hidden">
+				<WorkloadRow row={props.row} expanded={open || props.processMatch} showMachine={props.showMachine} />
+			</summary>
+			{(open || props.processMatch) && <Processes rows={processes} showMachine={props.showMachine} />}
+		</details>
 	)
 }
 
 function Services() {
 	const result = useAtomSuspense(inventoryAtom, {includeFailure: true})
 	const [query, setQuery] = useState('')
-	const [view, setView] = useState('apps')
 	const search = useSearch({from: '/(home)'})
 	if (AsyncResult.isFailure(result)) return <ResultError result={result} />
 	const items = Array.filter(
 		result.value.items,
 		item => search.machine === undefined || search.machine === 'all' || item.worker === search.machine
 	)
-	const rows = Array.filter(workloads(items, view === 'all'), row =>
+	const rows = Array.filter(workloads(items), row =>
 		String.includes(String.toLowerCase(query))(
 			String.toLowerCase(
-				`${row.item.worker} ${row.item.name} ${row.item.detail} ${Array.join(
+				`${row.item.worker} ${row.item.name} ${Array.join(
+					Array.map(row.item.processes ?? [], process => process.name),
+					' '
+				)} ${Array.join(
 					Array.map(row.listeners, listener => `${listener.port}`),
 					' '
 				)} ${Array.join(
@@ -313,26 +335,9 @@ function Services() {
 		<div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-4 self-center">
 			<Expose key={search.machine ?? 'all'} items={items} choices={availablePorts(items)} />
 			<div className="flex flex-col gap-2">
-				<div className="flex flex-wrap items-center justify-between gap-2">
-					<ToggleGroup
-						aria-label="Inventory view"
-						value={[view]}
-						onValueChange={values => setView(values[0] ?? 'apps')}
-					>
-						<ToggleGroupItem value="apps">Apps</ToggleGroupItem>
-						<ToggleGroupItem value="all">All services</ToggleGroupItem>
-					</ToggleGroup>
-					<span
-						className="text-muted-foreground font-mono text-xs"
-						title="Top-level apps and services"
-						aria-label={`${rows.length} top-level apps and services`}
-					>
-						{rows.length}
-					</span>
-				</div>
 				<Input
 					aria-label="Find a service or port"
-					placeholder="Filter by app, port or worker…"
+					placeholder="Filter apps, ports, processes…"
 					value={query}
 					onChange={event => setQuery(event.target.value)}
 				/>
@@ -348,17 +353,40 @@ function Services() {
 					</p>
 				)
 			)}
-			<div className="pb-safe min-h-0 flex-1 overflow-y-auto">
-				<ItemList label="Services and ports">
+			<div className="pb-safe min-h-0 flex-1 overflow-y-auto pr-3">
+				<div
+					className="deploy-process-grid bg-background text-muted-foreground sticky top-0 z-10 pb-2 text-xs"
+					data-show-machine={search.machine === undefined || search.machine === 'all'}
+				>
+					<span />
+					<span>{rows.length} apps</span>
+					<span className="text-right">CPU</span>
+					<span className="text-right">Memory</span>
+				</div>
+				<div role="list" aria-label="Apps">
 					{Array.map(rows, row => (
-						<InventoryRow key={row.item.id} row={row} />
+						<InventoryRow
+							key={`${row.item.id}:${query !== ''}`}
+							row={row}
+							showMachine={search.machine === undefined || search.machine === 'all'}
+							processMatch={
+								query !== '' &&
+								!String.includes(String.toLowerCase(query))(
+									String.toLowerCase(
+										`${row.item.worker} ${row.item.name} ${Array.join(
+											Array.map(row.listeners, listener => `${listener.port}`),
+											' '
+										)} ${Array.join(
+											Array.map(row.exposures, exposure => exposure.url),
+											' '
+										)}`
+									)
+								)
+							}
+						/>
 					))}
-				</ItemList>
-				{Array.isArrayEmpty(rows) && (
-					<p className="text-muted-foreground text-sm">
-						No matching apps. All services includes background services and unmatched listeners.
-					</p>
-				)}
+				</div>
+				{Array.isArrayEmpty(rows) && <p className="text-muted-foreground text-sm">No matching apps.</p>}
 			</div>
 		</div>
 	)

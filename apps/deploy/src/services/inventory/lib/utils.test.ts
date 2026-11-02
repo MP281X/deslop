@@ -21,7 +21,7 @@ const listener = InventoryItem.make({
 })
 
 function important(item: InventoryItem) {
-	return workloads([item], false).length === 1
+	return workloads([item]).length === 1
 }
 
 it('uses concise display names without changing service/container identifiers', () => {
@@ -37,6 +37,10 @@ it('uses concise display names without changing service/container identifiers', 
 		'long-meaningful-application'
 	)
 	assert.strictEqual(workloadName({...listener, kind: 'service', name: 'preview-t3-123.service'}), 'Preview t3-123')
+	assert.strictEqual(
+		workloadName({...listener, kind: 'service', name: 'preview-t3-16dbb9fe.service'}),
+		'Preview t3-16dbb9f'
+	)
 	assert.strictEqual(
 		workloadName({...listener, detail: '@deslop/deploy', kind: 'service', name: 'preview-t3-123.service'}),
 		'deploy preview'
@@ -57,8 +61,10 @@ it('keeps application listeners but excludes non-loopback, UDP, stale and privil
 	assert.lengthOf(availablePorts([{...listener, address: '0.0.0.0:5173'}]), 1)
 })
 
-it('defaults to app activity and failures without hiding the complete inventory from other views', () => {
+it('keeps app activity and failures without nameless listeners or ordinary system daemons', () => {
 	assert.isTrue(important(listener))
+	assert.isFalse(important({...listener, process: ''}))
+	assert.isFalse(important({...listener, process: undefined}))
 	assert.isTrue(important({...listener, state: 'stale · LISTEN'}))
 	assert.isFalse(important({...listener, process: 'ssh'}))
 	assert.isFalse(important({...listener, process: 'cloudflared'}))
@@ -143,10 +149,12 @@ it('puts service listeners and their tailnet URLs on one workload without mixing
 		owned: true,
 		url: 'https://dev.tailnet.ts.net:5173/'
 	}
-	const rows = workloads(
-		[service, {...listener, unit: service.name}, exposure, {...listener, id: 'desktop:port:5173', worker: 'desktop'}],
-		false
-	)
+	const rows = workloads([
+		service,
+		{...listener, unit: service.name},
+		exposure,
+		{...listener, id: 'desktop:port:5173', worker: 'desktop'}
+	])
 	assert.lengthOf(rows, 2)
 	assert.strictEqual(rows[0]?.item.id, service.id)
 	assert.lengthOf(rows[0]?.listeners ?? [], 1)
@@ -176,26 +184,23 @@ it('keeps internal container namespaces, different host addresses and UDP separa
 			name: 'web',
 			state: 'running'
 		}
-		const rows = workloads([container, host, exposure], true)
+		const rows = workloads([container, host, exposure])
 		assert.lengthOf(rows, 2)
 		assert.isEmpty(rows[0]?.exposures ?? [])
 		assert.deepStrictEqual(rows[1]?.exposures, [exposure])
 	}
-	const mapped = workloads(
-		[
-			{
-				...listener,
-				bindings: [{address: '0.0.0.0:5000', port: 5000, protocol: 'tcp'}],
-				id: 'container',
-				kind: 'container',
-				name: 'web',
-				state: 'running'
-			},
-			host,
-			exposure
-		],
-		true
-	)
+	const mapped = workloads([
+		{
+			...listener,
+			bindings: [{address: '0.0.0.0:5000', port: 5000, protocol: 'tcp'}],
+			id: 'container',
+			kind: 'container',
+			name: 'web',
+			state: 'running'
+		},
+		host,
+		exposure
+	])
 	assert.lengthOf(mapped, 1)
 	assert.deepStrictEqual(mapped[0]?.exposures, [exposure])
 })

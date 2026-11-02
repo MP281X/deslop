@@ -169,6 +169,10 @@
 	align-self: flex-start;
 }
 
+[data-slot='input-group-control'][role='combobox'] {
+	text-overflow: ellipsis;
+}
+
 /* A page's list rows start where its heading and fields do; a row that is a button keeps its inset for its highlight. */
 [data-slot='item-group'] > [data-slot='item'] {
 	padding-inline: 0;

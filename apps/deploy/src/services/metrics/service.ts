@@ -5,6 +5,7 @@ import {
 	Context,
 	Effect,
 	FileSystem,
+	HashSet,
 	Layer,
 	Number,
 	Option,
@@ -22,7 +23,7 @@ import {KeyValueStore} from 'effect/persistence'
 import {layerKeyValueStore} from '@deslop/runtime/server'
 import {execute} from '@deslop/runtime/service'
 
-import {counters, history, sample} from '#services/metrics/lib/utils.ts'
+import {compact, counters, history, sample} from '#services/metrics/lib/utils.ts'
 import {Counters, MachineHistory, Sample} from '#services/metrics/schema.ts'
 import type {HistoryQuery} from '#services/metrics/schema.ts'
 
@@ -113,14 +114,24 @@ export class Metrics extends Context.Service<
 									Effect.flatMap(Schema.decodeEffect(Sample))
 								)
 								yield* Ref.set(previous, Option.some(current))
-								const samples = yield* Ref.updateAndGet(state, all => [
-									...Array.filter(all, entry => entry.time >= time - 168 * 3_600_000),
-									value
-								])
+								const before = yield* Ref.get(state)
+								const samples = compact([...before, value], time)
+								yield* Ref.set(state, samples)
+								const retained = HashSet.fromIterable(Array.map(samples, entry => entry.time))
 								const hour = Math.floor(time / 3_600_000)
 								yield* Effect.forEach(
 									yield* Ref.updateAndGet(dirty, buckets =>
-										Array.dedupe([...Array.filter(buckets, bucket => bucket >= hour - 168), hour])
+										Array.dedupe([
+											...Array.filter(buckets, bucket => bucket >= hour - 168),
+											hour,
+											...Array.map(
+												Array.filter(
+													before,
+													entry => !HashSet.has(retained, entry.time) && entry.time >= time - 168 * 3_600_000
+												),
+												entry => Math.floor(entry.time / 3_600_000)
+											)
+										])
 									),
 									bucket =>
 										pipe(

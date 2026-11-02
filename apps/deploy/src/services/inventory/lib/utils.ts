@@ -16,6 +16,8 @@ function loopbackPort(item: InventoryItem) {
 function appPort(item: InventoryItem) {
 	return (
 		loopbackPort(item) &&
+		item.process !== undefined &&
+		item.process !== '' &&
 		!Array.contains([5353, 5355], item.port ?? 0) &&
 		Option.isNone(String.match(/^(?:ssh|cloudflared|tailscaled|caddy)$/u)(item.process ?? ''))
 	)
@@ -58,11 +60,11 @@ function ports(items: readonly InventoryItem[]) {
 }
 
 export function portLabel(item: InventoryItem) {
-	return `${item.process || 'App'} · :${item.port}`
+	return `${item.process ?? item.name} · :${item.port}`
 }
 
 function fullName(item: InventoryItem) {
-	if (item.kind === 'port') return item.process || 'App'
+	if (item.kind === 'port') return item.process || item.name
 	if (item.kind === 'container' && String.startsWith('deslop-')(item.name)) {
 		return String.replace(/-[0-9]+$/u, '')(String.slice(7)(item.name))
 	}
@@ -76,7 +78,11 @@ function fullName(item: InventoryItem) {
 }
 
 export function workloadName(item: InventoryItem) {
-	return String.replaceAll(/\b(?=[a-z0-9]{10,}\b)(?=[a-z0-9]*[0-9])([a-z0-9]{7})[a-z0-9]+\b/giu, '$1')(fullName(item))
+	return pipe(
+		fullName(item),
+		String.replaceAll(/\b([a-f0-9]{7})[a-f0-9]+\b/giu, '$1'),
+		String.replaceAll(/\b(?=[a-z0-9]{10,}\b)(?=[a-z0-9]*[0-9])([a-z0-9]{7})[a-z0-9]+\b/giu, '$1')
+	)
 }
 
 function sameSocket(listener: InventoryItem, binding: {address: string; port: number; protocol: 'tcp' | 'udp'}) {
@@ -89,7 +95,7 @@ function sameSocket(listener: InventoryItem, binding: {address: string; port: nu
 	)
 }
 
-export function workloads(items: readonly InventoryItem[], all: boolean) {
+export function workloads(items: readonly InventoryItem[]) {
 	const listeners = Array.filter(items, item => item.kind === 'port')
 	const grouped = Array.map(
 		Array.filter(items, item => item.kind === 'service' || item.kind === 'container'),
@@ -178,13 +184,11 @@ export function workloads(items: readonly InventoryItem[], all: boolean) {
 		Array.filter(
 			[...linked, ...remaining],
 			row =>
-				all ||
-				(important(row.item) &&
-					(row.item.kind !== 'port' ||
-						(row.item.http === true && row.item.process !== '' && row.item.process !== 'node')))
+				important(row.item) &&
+				(row.item.kind !== 'port' || (row.item.http === true && row.item.process !== '' && row.item.process !== 'node'))
 		),
 		row => {
-			if (all || row.item.kind === 'container') return row
+			if (row.item.kind === 'container') return row
 			const candidates = ports(row.listeners)
 			return {
 				...row,
@@ -202,7 +206,7 @@ export function workloads(items: readonly InventoryItem[], all: boolean) {
 
 export function availablePorts(items: readonly InventoryItem[]) {
 	return ports(
-		Array.flatMap(workloads(items, false), row =>
+		Array.flatMap(workloads(items), row =>
 			Array.map(
 				Array.filter(
 					row.listeners,

@@ -32,7 +32,7 @@ it.layer(NodeServices.layer)('Resource history', test => {
 			assert.isAbove(first.samples[0]?.cores?.length ?? 0, 0)
 			assert.lengthOf(first.samples[0]?.load ?? [], 3)
 			assert.isAbove(first.samples[0]?.uptime ?? 0, 0)
-			yield* TestClock.adjust('30 seconds')
+			yield* TestClock.adjust('90 seconds')
 			const second = yield* Effect.scoped(
 				Effect.gen(function* () {
 					const metrics = Context.get(yield* Layer.build(Layer.fresh(layer)), Metrics)
