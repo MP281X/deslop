@@ -8,12 +8,15 @@ import {
 	FileSystem,
 	HashMap,
 	Layer,
+	Number,
 	Option,
 	Path,
 	Record,
 	Ref,
 	Schedule,
+	Stream,
 	String,
+	SubscriptionRef,
 	SynchronizedRef,
 	pipe
 } from 'effect'
@@ -30,6 +33,7 @@ import {
 	logMessage,
 	logTime,
 	orderEntries,
+	overview,
 	serviceName,
 	serviceStatuses,
 	summary,
@@ -65,6 +69,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				),
 			{concurrency: 8}
 		)
+		// Bumped when traces arrive or expire, so the live page recomputes only when its rows can change.
+		const version = yield* SubscriptionRef.make(0)
 		const state = yield* SynchronizedRef.make(
 			HashMap.fromIterable(Array.map(Array.getSomes(saved), entry => [entry.id, entry] as const))
 		)
@@ -78,6 +84,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					Array.reduce(expired, current, (all, entry) => HashMap.remove(all, entry.id))
 				)
 			})
+			yield* SubscriptionRef.update(version, Number.increment)
 		})
 		yield* prune
 		yield* pipe(
@@ -102,6 +109,21 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				)
 			)
 		}, failed)
+		// One recompute for every open page: the latest change is kept while one runs, and a second passes between them.
+		const live = yield* SubscriptionRef.make(overview(yield* read, 20, yield* Clock.currentTimeMillis))
+		yield* pipe(
+			SubscriptionRef.changes(version),
+			Stream.buffer({capacity: 1, strategy: 'sliding'}),
+			Stream.mapEffect(() =>
+				pipe(
+					Effect.all({entries: read, now: Clock.currentTimeMillis}, {concurrency: 'unbounded'}),
+					Effect.flatMap(current => SubscriptionRef.set(live, overview(current.entries, 20, current.now))),
+					Effect.andThen(Effect.sleep('1 second'))
+				)
+			),
+			Stream.runDrain,
+			Effect.forkScoped
+		)
 		const page = Effect.fnUntraced(function* (query: Query, signal: Entry['signal']) {
 			const entries = orderEntries(filterEntries(yield* selected(query.runs), query, signal), query.sort)
 			return {entries: Array.take(Array.drop(entries, query.offset), query.limit), total: entries.length}
@@ -160,10 +182,13 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 						)
 					)
 				)
+				yield* SubscriptionRef.update(version, Number.increment)
 			}),
 			logs: Effect.fn('Telemetry.logs')(function* (query: Query) {
 				return yield* page(query, 'log')
 			}),
+			// The live page's operations: the current ones at once, then each recompute.
+			overview: SubscriptionRef.changes(live),
 			reject: Effect.fnUntraced(function* (input: Pick<Rejection, 'credential' | 'route' | 'status'>) {
 				const now = yield* Clock.currentTimeMillis
 				const key = `${input.route}:${input.status}:${input.credential}`

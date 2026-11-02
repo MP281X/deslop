@@ -1,7 +1,7 @@
 import {NodeCrypto, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Context, Effect, Exit, FileSystem, Layer, String, pipe} from 'effect'
+import {Array, Context, Effect, Exit, FileSystem, Layer, Option, Stream, String, pipe} from 'effect'
 
 import {TestClock} from 'effect/testing'
 
@@ -365,6 +365,94 @@ it.layer(layer)(test => {
 				[['attached']]
 			)
 			assert.strictEqual(trace.logs.length, 1)
+		})
+	)
+})
+
+it.layer(layer)(test => {
+	test.effect(
+		'groups traces by app and operation, failures first, naming the span that broke',
+		Effect.fnUntraced(function* () {
+			const telemetry = yield* Telemetry
+			yield* telemetry.ingestTraces(
+				TracesRequest.make({
+					resourceSpans: [
+						{
+							resource: {attributes: [{key: 'service.name', value: {stringValue: '@deslop/stash-server'}}]},
+							scopeSpans: [
+								{
+									spans: [
+										// Effect marks the root failed too, so the row must still name the child where it broke.
+										{
+											endTimeUnixNano: '1781870000100000000',
+											name: 'share',
+											spanId: '1111111111111111',
+											startTimeUnixNano: '1781870000000000000',
+											status: {code: 2, message: 'upstream returned 502'},
+											traceId: 'dddddddddddddddddddddddddddddddd'
+										},
+										{
+											endTimeUnixNano: '1781870000050000000',
+											name: 'http.get',
+											parentSpanId: '1111111111111111',
+											spanId: '2222222222222222',
+											startTimeUnixNano: '1781870000010000000',
+											status: {code: 2, message: 'upstream returned 502'},
+											traceId: 'dddddddddddddddddddddddddddddddd'
+										},
+										{
+											endTimeUnixNano: '1781870001020000000',
+											name: 'share',
+											spanId: '3333333333333333',
+											startTimeUnixNano: '1781870001000000000',
+											traceId: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+										},
+										// A child whose root hasn't arrived yet is not a row of its own.
+										{
+											endTimeUnixNano: '1781870002005000000',
+											name: 'http.get',
+											parentSpanId: '9999999999999999',
+											spanId: '5555555555555555',
+											startTimeUnixNano: '1781870002001000000',
+											traceId: '99999999999999999999999999999999'
+										},
+										{
+											endTimeUnixNano: '1781870002010000000',
+											name: 'list',
+											spanId: '4444444444444444',
+											startTimeUnixNano: '1781870002000000000',
+											traceId: 'ffffffffffffffffffffffffffffffff'
+										}
+									]
+								}
+							]
+						}
+					]
+				})
+			)
+			// The page's overview recomputes at most once a second, so the clock moves past that pause.
+			yield* TestClock.adjust('2 seconds')
+			const stash = Option.getOrThrow(
+				Array.findFirst(
+					Option.getOrThrow(yield* Stream.runHead(telemetry.overview)).services,
+					service => service.name === '@deslop/stash-server'
+				)
+			)
+			assert.deepStrictEqual(
+				Array.map(stash.operations, operation => [operation.name, operation.count, operation.failures]),
+				[
+					['share', 2, 1],
+					['list', 1, 0]
+				]
+			)
+			// Slowest first, and only the root's operation lists the trace: its failing child is not a row.
+			assert.deepStrictEqual(
+				Array.map(stash.operations[0]?.traces ?? [], trace => [trace.id, trace.failure]),
+				[
+					['dddddddddddddddddddddddddddddddd', {message: 'upstream returned 502', span: 'http.get'}],
+					['eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', undefined]
+				]
+			)
 		})
 	)
 })

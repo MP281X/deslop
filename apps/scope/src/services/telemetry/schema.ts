@@ -220,6 +220,31 @@ export const TraceSummary = Schema.Struct({
 export type TracesPage = typeof TracesPage.Type
 export const TracesPage = Schema.Struct({entries: Schema.Array(TraceSummary), total: Schema.Int})
 
+// The live page: each app's operations with how often, how slow and how often they failed, and their newest traces.
+export type OperationTrace = typeof OperationTrace.Type
+export const OperationTrace = Schema.Struct({
+	durationMs: Schema.Finite,
+	// The first span that failed and its message, when one did.
+	failure: Schema.optional(Schema.Struct({message: Schema.String, span: Schema.String})),
+	id: TraceId,
+	time: Nano
+})
+
+export type Operation = typeof Operation.Type
+export const Operation = Schema.Struct({
+	count: Schema.Int,
+	failures: Schema.Int,
+	name: Schema.String,
+	p50Ms: Schema.Finite,
+	p95Ms: Schema.Finite,
+	traces: Schema.Array(OperationTrace)
+})
+
+export type Overview = typeof Overview.Type
+export const Overview = Schema.Struct({
+	services: Schema.Array(Schema.Struct({name: Schema.String, operations: Schema.Array(Operation)}))
+})
+
 export type Stats = typeof Stats.Type
 export const Stats = Schema.Struct({
 	count: Schema.Int,

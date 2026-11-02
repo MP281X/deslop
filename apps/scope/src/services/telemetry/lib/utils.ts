@@ -16,7 +16,17 @@ import {
 } from 'effect'
 
 import {Nano, Runtime} from '#services/telemetry/schema.ts'
-import type {Entry, Filters, Query, Resource, Stats, Trace} from '#services/telemetry/schema.ts'
+import type {
+	Entry,
+	Filters,
+	Operation,
+	OperationTrace,
+	Overview,
+	Query,
+	Resource,
+	Stats,
+	Trace
+} from '#services/telemetry/schema.ts'
 
 // Filters as a query over the window ending now; stats ignores the page and order these defaults fill.
 export function queryOf(filters: Filters & Partial<Pick<Query, 'limit' | 'offset' | 'sort'>>, now: number) {
@@ -270,4 +280,167 @@ export function traceView(entries: Entry[], id: string) {
 		),
 		spans: tree
 	} satisfies Trace
+}
+
+// The span a trace starts from: one whose parent the trace doesn't hold, the earliest if a skewed clock leaves several.
+function rootOf(spans: Array.NonEmptyReadonlyArray<Entry>) {
+	const ids = HashSet.fromIterable(Array.map(spans, span => span.spanId))
+	return Array.headNonEmpty(
+		Array.sort(
+			Array.match(
+				Array.filter(spans, span => !HashSet.has(ids, parentId(span))),
+				{onEmpty: () => spans, onNonEmpty: Function.identity}
+			),
+			Order.mapInput(Order.BigInt, (span: Entry) => BigInt(span.time))
+		)
+	)
+}
+
+// A kept trace as the operation it ran and the app that ran it.
+type Traced = {name: string; service: string; trace: OperationTrace}
+
+function failureCount(group: readonly Traced[]) {
+	return Array.countBy(group, item => item.trace.failure !== undefined)
+}
+
+// Effect marks every span a failure passed through as failed, so where it broke is the failed span with no failed child.
+function brokeAt(spans: readonly Entry[]) {
+	const failed = Array.filter(spans, span => span.status === 2)
+	const parents = HashSet.fromIterable(Array.map(failed, parentId))
+	return Array.head(
+		Array.sort(
+			Array.filter(failed, span => !HashSet.has(parents, span.spanId)),
+			Order.mapInput(Order.BigInt, (span: Entry) => BigInt(span.time))
+		)
+	)
+}
+
+// A trace is a row once its root has arrived, since children export first; one whose root never comes shows after a minute.
+function traced(records: readonly Entry[], now: number) {
+	return Option.flatMap(
+		Array.match(
+			Array.filter(records, entry => entry.signal === 'trace'),
+			{onEmpty: () => Option.none(), onNonEmpty: Option.some}
+		),
+		spans => {
+			const timing = traceTiming([...records])
+			const settled =
+				Array.some(spans, span => parentId(span) === '') ||
+				now -
+					pipe(
+						Number.parse(`${BigInt(timing.time) / 1_000_000n}`),
+						Option.getOrElse(() => now)
+					) >
+					60_000
+			if (!settled) return Option.none()
+			const root = rootOf(spans)
+			return Option.some({
+				name: root.name,
+				service: root.service,
+				trace: {
+					durationMs: timing.durationMs,
+					...Option.match(brokeAt(spans), {
+						onNone: () => ({}),
+						onSome: span => ({
+							failure: {
+								message: pipe(
+									Option.fromNullishOr(span.payload['status']),
+									Option.filter(Predicate.isObject),
+									Option.flatMap(status => Option.fromNullishOr(Struct.get(status, 'message'))),
+									Option.filter(String.isString),
+									Option.getOrElse(() => '')
+								),
+								span: span.name
+							}
+						})
+					}),
+					id: root.traceId,
+					time: timing.time
+				}
+			} satisfies Traced)
+		}
+	)
+}
+
+// One app's operations: how often, how slow and how often they failed, with the newest `keep` traces; failures lead, then the busiest.
+function operationsOf(group: readonly Traced[], keep: number) {
+	return Array.sort(
+		Array.map(Record.toEntries(Array.groupBy(group, item => item.name)), entry => {
+			const times = Array.sort(
+				Array.map(entry[1], item => item.trace.durationMs),
+				Order.Number
+			)
+			function percentile(ratio: number) {
+				return Option.getOrElse(Array.get(times, Number.max(0, Math.ceil(times.length * ratio) - 1)), () => 0)
+			}
+			return {
+				count: entry[1].length,
+				failures: failureCount(entry[1]),
+				name: entry[0],
+				p50Ms: percentile(0.5),
+				p95Ms: percentile(0.95),
+				// The slowest first, with the newest failures always among them, since those are the traces worth opening.
+				traces: Array.map(
+					Array.sort(
+						Array.take(
+							Array.dedupeWith(
+								[
+									...Array.take(
+										Array.sort(
+											Array.filter(entry[1], item => item.trace.failure !== undefined),
+											Order.mapInput(Order.flip(Order.BigInt), (item: Traced) => BigInt(item.trace.time))
+										),
+										keep / 2
+									),
+									...Array.sort(
+										entry[1],
+										Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.durationMs)
+									)
+								],
+								(first: Traced, second: Traced) => first.trace.id === second.trace.id
+							),
+							keep
+						),
+						Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.durationMs)
+					),
+					item => item.trace
+				)
+			} satisfies Operation
+		}),
+		Order.combine(
+			Order.mapInput(Order.flip(Order.Number), (operation: Operation) => operation.failures),
+			Order.mapInput(Order.flip(Order.Number), (operation: Operation) => operation.count)
+		)
+	)
+}
+
+// Every kept trace grouped by app and operation; apps with failures lead, then the busiest.
+export function overview(entries: readonly Entry[], keep: number, now: number) {
+	return {
+		services: Array.map(
+			Array.sort(
+				Record.toEntries(
+					Array.groupBy(
+						Array.getSomes(
+							Array.map(
+								Record.values(
+									Array.groupBy(
+										Array.filter(entries, entry => entry.traceId !== ''),
+										entry => entry.traceId
+									)
+								),
+								records => traced(records, now)
+							)
+						),
+						item => item.service
+					)
+				),
+				Order.combine(
+					Order.mapInput(Order.flip(Order.Number), (entry: readonly [string, Traced[]]) => failureCount(entry[1])),
+					Order.mapInput(Order.flip(Order.Number), (entry: readonly [string, Traced[]]) => entry[1].length)
+				)
+			),
+			entry => ({name: entry[0], operations: operationsOf(entry[1], keep)})
+		)
+	} satisfies Overview
 }
