@@ -1,4 +1,5 @@
 import {OctagonAlert} from 'lucide-react'
+import {useEffect} from 'react'
 
 import {GitHubIcon} from '#components/icons.tsx'
 import {Alert, AlertDescription, AlertTitle} from '#components/ui/alert.tsx'
@@ -23,12 +24,15 @@ export function NotFound() {
 
 // A signed-out visitor's one way in; `href` is the app's sign-in link, which returns here.
 export function SignIn(props: {href: string}) {
+	useEffect(() => {
+		location.replace(props.href)
+	}, [props.href])
 	return (
 		<Empty>
 			<EmptyContent>
 				<a className={buttonVariants({size: 'lg'})} href={props.href}>
 					<GitHubIcon />
-					Sign in with GitHub
+					Continue to sign in
 				</a>
 			</EmptyContent>
 		</Empty>

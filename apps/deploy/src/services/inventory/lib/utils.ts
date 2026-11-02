@@ -68,11 +68,11 @@ export function workloadName(item: InventoryItem) {
 	}
 	if (String.startsWith('preview-')(item.name)) {
 		return Option.match(String.match(/@deslop\/([a-z0-9-]+)/u)(item.detail), {
-			onNone: () => item.name,
+			onNone: () => `Preview ${String.replace(/\.service$/u, '')(String.slice(8)(item.name))}`,
 			onSome: app => `${app[1]} preview`
 		})
 	}
-	return String.replace(/\.service$/u, '')(item.name)
+	return String.replaceAll(/^deslop-|\.service$/gu, '')(item.name)
 }
 
 function sameSocket(listener: InventoryItem, binding: {address: string; port: number; protocol: 'tcp' | 'udp'}) {

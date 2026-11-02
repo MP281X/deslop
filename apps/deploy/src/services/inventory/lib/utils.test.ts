@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array} from 'effect'
 
-import {availablePorts, workloads} from '#services/inventory/lib/utils.ts'
+import {availablePorts, workloadName, workloads} from '#services/inventory/lib/utils.ts'
 import {InventoryItem} from '#services/inventory/schema.ts'
 
 const listener = InventoryItem.make({
@@ -23,6 +23,17 @@ const listener = InventoryItem.make({
 function important(item: InventoryItem) {
 	return workloads([item], false).length === 1
 }
+
+it('uses concise display names without changing service/container identifiers', () => {
+	assert.strictEqual(workloadName({...listener, kind: 'service', name: 'deslop-scope.service'}), 'scope')
+	assert.strictEqual(workloadName({...listener, kind: 'service', name: 't3code.service'}), 't3code')
+	assert.strictEqual(workloadName({...listener, kind: 'container', name: 'deslop-stash-1'}), 'stash')
+	assert.strictEqual(workloadName({...listener, kind: 'service', name: 'preview-t3-123.service'}), 'Preview t3-123')
+	assert.strictEqual(
+		workloadName({...listener, detail: '@deslop/deploy', kind: 'service', name: 'preview-t3-123.service'}),
+		'deploy preview'
+	)
+})
 
 it('keeps application listeners but excludes non-loopback, UDP, stale and privileged targets from publishing', () => {
 	assert.lengthOf(availablePorts([listener]), 1)

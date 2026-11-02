@@ -6,6 +6,32 @@ import {HttpRouter, HttpServerResponse} from 'effect/http'
 
 import {localGuard} from '#server.ts'
 
+it.effect('does not redirect back into a sign-in loop when no issuer is configured', () =>
+	Effect.scoped(
+		Effect.gen(function* () {
+			const web = yield* Effect.acquireRelease(
+				Effect.sync(() =>
+					HttpRouter.toWebHandler(
+						pipe(
+							HttpRouter.add('GET', '/', HttpServerResponse.empty()),
+							Layer.provideMerge(
+								ConfigProvider.layer(ConfigProvider.fromUnknown({APP_URL: 'https://app.example.com', AUTH_URL: ''}))
+							)
+						),
+						{disableLogger: true, middleware: localGuard}
+					)
+				),
+				value => Effect.promise(() => value.dispose())
+			)
+			const response = yield* Effect.tryPromise(() =>
+				web.handler(new Request('https://app.example.com/auth/sign-in', {headers: {host: 'app.example.com'}}))
+			)
+			assert.strictEqual(response.status, 503)
+			assert.isNull(response.headers.get('location'))
+		})
+	)
+)
+
 it.effect('guards localhost hosts/origins and preserves a same-app sign-in destination', () =>
 	Effect.scoped(
 		Effect.gen(function* () {

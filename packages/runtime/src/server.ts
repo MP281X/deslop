@@ -70,7 +70,7 @@ export function localGuardWithHosts(aliases: string[]) {
 			}
 			if (url.pathname === '/auth/sign-in' && request.method === 'GET') {
 				const issuer = yield* pipe(Config.String('AUTH_URL'), Config.withDefault(''))
-				if (issuer === '') return HttpServerResponse.redirect('/')
+				if (issuer === '') return HttpServerResponse.text('Sign-in is not configured for this app', {status: 503})
 				const next = yield* Effect.try({
 					catch: () => HttpServerResponse.empty({status: 400}),
 					try: () => new URL(url.searchParams.get('next') ?? canonical, canonical)

@@ -1,10 +1,10 @@
 import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Option, String, pipe} from 'effect'
+import {Array, Boolean, Option, String} from 'effect'
 
 import {createFileRoute, useSearch} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Box, Cog, Globe, Network, Plus, Radio, X} from 'lucide-react'
+import {Globe, Network, Plus, X} from 'lucide-react'
 import {useState} from 'react'
 
 import {ItemList} from '@deslop/components-web/item-list'
@@ -27,6 +27,7 @@ import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-gro
 
 import {MachineIcon} from '#lib/components.tsx'
 import {exposeAtom, hideAtom, inventoryAtom} from '#lib/utils.ts'
+import {ApplicationIcon, Processes} from '#routes/(home)/-processes.tsx'
 import {availablePorts, portLabel, workloadName, workloads} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem} from '#services/inventory/schema.ts'
 
@@ -229,14 +230,13 @@ function InventoryRow(props: {row: ReturnType<typeof workloads>[number]}) {
 	return (
 		<Item role="listitem" size="sm" className="min-h-16 flex-nowrap gap-3 px-1">
 			<ItemMedia className="group-has-data-[slot=item-description]/item:translate-y-0 group-has-data-[slot=item-description]/item:self-center">
-				<span title={props.row.item.kind} aria-label={props.row.item.kind} role="img">
-					{pipe(
-						Match.value(props.row.item.kind),
-						Match.when('container', () => <Box className="size-4" />),
-						Match.when('service', () => <Cog className="size-4" />),
-						Match.when('exposure', () => <Globe className="size-4" />),
-						Match.orElse(() => <Radio className="size-4" />)
-					)}
+				<span
+					className="flex size-5 shrink-0 items-center justify-center"
+					title={props.row.item.kind}
+					aria-label={props.row.item.kind}
+					role="img"
+				>
+					<ApplicationIcon name={workloadName(props.row.item)} />
 				</span>
 			</ItemMedia>
 			<ItemContent className="min-w-0">
@@ -275,6 +275,7 @@ function InventoryRow(props: {row: ReturnType<typeof workloads>[number]}) {
 					String.includes('exited')(state)) && (
 					<ItemDescription className="line-clamp-none wrap-anywhere">{props.row.item.detail}</ItemDescription>
 				)}
+				<Processes rows={props.row.item.processes ?? []} />
 			</ItemContent>
 			<ItemActions className="gap-3">
 				<MachineIcon worker={props.row.item.worker} />
@@ -310,7 +311,7 @@ function Services() {
 		)
 	)
 	return (
-		<div className="flex w-full max-w-3xl flex-col gap-4 self-center">
+		<div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-4 self-center">
 			<Expose key={search.machine ?? 'all'} items={items} choices={availablePorts(items)} />
 			<div className="flex flex-col gap-2">
 				<div className="flex flex-wrap items-center justify-between gap-2">
@@ -332,27 +333,28 @@ function Services() {
 				/>
 			</div>
 			{Array.map(
-				Array.filter(result.value.sources, source => source.error !== ''),
+				Array.filter(
+					result.value.sources,
+					source => source.error !== '' && !Array.contains(result.value.workers ?? [], source.name)
+				),
 				source => (
 					<p key={source.name} className="text-warning text-xs wrap-anywhere" role="status" title={source.error}>
-						{source.name}:{' '}
-						{Boolean.match(Array.contains(result.value.workers ?? [], source.name), {
-							onFalse: () => source.error,
-							onTrue: () => 'Machine unavailable · other machines continue updating'
-						})}
+						{source.name}: {source.error}
 					</p>
 				)
 			)}
-			<ItemList label="Services and ports">
-				{Array.map(rows, row => (
-					<InventoryRow key={row.item.id} row={row} />
-				))}
-			</ItemList>
-			{Array.isArrayEmpty(rows) && (
-				<p className="text-muted-foreground text-sm">
-					No matching apps. All services includes background services and unmatched listeners.
-				</p>
-			)}
+			<div className="pb-safe min-h-0 flex-1 overflow-y-auto">
+				<ItemList label="Services and ports">
+					{Array.map(rows, row => (
+						<InventoryRow key={row.item.id} row={row} />
+					))}
+				</ItemList>
+				{Array.isArrayEmpty(rows) && (
+					<p className="text-muted-foreground text-sm">
+						No matching apps. All services includes background services and unmatched listeners.
+					</p>
+				)}
+			</div>
 		</div>
 	)
 }

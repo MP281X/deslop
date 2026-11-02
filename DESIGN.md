@@ -167,14 +167,14 @@ Fast tools, not consumer or enterprise apps: Linear, Vercel, Executor, T3 Code. 
 - **Neutrals.** `background` is the page. `card` and `popover` only for what floats or groups a few controls; `secondary`, `muted` and `accent` fill chips, inputs and hover; `border` draws hairlines, `input` strokes fields.
 - **One hue per app**, from the table below: the one action per view, focus, selection and anything live. The web points `--primary` at it in the app's `styles.css`; iOS exports `primary` from `lib/utils.ts`. A new app takes an unused hue, or orange.
 - **Status.** Live is the primary. Warning is yellow and error red, each with a word or icon. Off is muted: a hollow dot when switched off, a filled one for quiet states. White on light yellow only for large or bold labels.
-- **Deploy machine identity.** Stable device icons and chart lines distinguish workers: dev uses cyan, desktop purple; other workers use the app's green. Names or accessible labels accompany color. This is an identity encoding, not a decorative color per item.
+- **Deploy machine identity.** Neutral device icons and short names identify workers; availability sits in the machine selector. Charts use the app's blue, not a color per machine.
 
 | App       | Hue     |
 | --------- | ------- |
 | portfolio | orange  |
 | opm       | orange  |
 | auth      | orange  |
-| deploy    | green   |
+| deploy    | blue    |
 | gateway   | purple  |
 | scope     | cyan    |
 | signal    | magenta |
@@ -260,4 +260,4 @@ Every web app installs as its own app: `ServerRuntime.layerManifest` serves a st
 ## Do's and Don'ts
 
 - Don't add a card per section, a colored side stripe or a color per item.
-- Don't use a hue beyond the app's primary, warning and error; exceptions are portfolio visitor cursors, Deploy's stable machine identities, and Signal's semantic team identities on the world, authors and event labels. Team colour does not fill whole message cards.
+- Don't use a hue beyond the app's primary, warning and error; exceptions are portfolio visitor cursors and Signal's semantic team identities on the world, authors and event labels. Team colour does not fill whole message cards.

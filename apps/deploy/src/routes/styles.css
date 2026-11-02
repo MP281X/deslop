@@ -2,5 +2,5 @@
 @source '../../../../packages/components-web/src/**/*.tsx';
 
 :root {
-	--primary: var(--green);
+	--primary: var(--blue);
 }

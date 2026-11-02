@@ -44,11 +44,16 @@ function Fleet() {
 				}
 			}}
 		>
-			<ToggleGroupItem value="all">All machines</ToggleGroupItem>
+			<ToggleGroupItem value="all" aria-label="All machines">
+				All
+			</ToggleGroupItem>
 			{Array.map(result.value.workers ?? Array.dedupe(Array.map(result.value.items, item => item.worker)), worker => (
 				<ToggleGroupItem key={worker} value={worker} className="gap-1.5">
 					<MachineIcon worker={worker} />
 					{machineName(worker)}
+					{Array.some(result.value.sources, source => source.name === worker && source.error !== '') && (
+						<span className="text-muted-foreground text-xs">Offline</span>
+					)}
 				</ToggleGroupItem>
 			))}
 		</ToggleGroup>
@@ -87,11 +92,13 @@ function Shell() {
 				</nav>
 			</AppBar>
 			<main
-				className={`pb-safe mx-auto flex min-h-0 w-full flex-1 flex-col gap-4 overflow-y-auto px-4 py-6 ${Boolean.match(matchRoute({to: '/monitor'}) !== false, {onFalse: () => 'max-w-3xl', onTrue: () => 'max-w-5xl'})}`}
+				className={`mx-auto flex min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden px-4 py-4 ${Boolean.match(matchRoute({to: '/monitor'}) !== false, {onFalse: () => 'max-w-3xl', onTrue: () => 'max-w-5xl'})}`}
 			>
-				<Suspense fallback={<Skeleton className="h-7 w-full" />}>
-					<Fleet />
-				</Suspense>
+				<div className="bg-background sticky top-0 z-20 border-b pb-3">
+					<Suspense fallback={<Skeleton className="h-7 w-full" />}>
+						<Fleet />
+					</Suspense>
+				</div>
 				<Suspense fallback={<Skeleton className="h-64 w-full" />}>
 					<Outlet />
 				</Suspense>

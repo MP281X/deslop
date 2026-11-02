@@ -18,6 +18,7 @@ import {
 import {FetchHttpClient, HttpClient} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
+import {attachProcesses, processes} from '#services/inventory/lib/processes.ts'
 import {Container, DeployError, InventoryItem, Serve, Snapshot, Tailnet, Unit} from '#services/inventory/schema.ts'
 
 const execute = Effect.fnUntraced(function* (name: string, args: string[]) {
@@ -295,9 +296,21 @@ export class Inventory extends Context.Service<Inventory, {readonly snapshot: Ef
 							],
 							{concurrency: 'unbounded'}
 						)
+						const collected = yield* pipe(
+							processes,
+							Effect.provideService(FileSystem.FileSystem, fs),
+							Effect.timeout('3 seconds'),
+							Effect.match({
+								onFailure: cause => ({error: `${cause}`, records: []}),
+								onSuccess: records => ({error: '', records})
+							})
+						)
 						return Snapshot.make({
-							items: Array.flatMap(sources, source => source.items),
-							sources: Array.map(sources, source => source.source),
+							items: attachProcesses(
+								Array.flatMap(sources, source => source.items),
+								collected.records
+							),
+							sources: [...Array.map(sources, source => source.source), {error: collected.error, name: 'Processes'}],
 							time: yield* Clock.currentTimeMillis,
 							workers: [worker]
 						})

@@ -23,6 +23,9 @@ export const InventoryItem = Schema.Struct({
 	owned: Schema.optionalKey(Schema.Boolean),
 	port: Schema.optionalKey(Schema.Int),
 	process: Schema.optionalKey(Schema.String),
+	processes: Schema.optionalKey(
+		Schema.Array(Schema.Struct({memory: Schema.Finite, name: Schema.String, parent: Schema.Int, pid: Schema.Int}))
+	),
 	protocol: Schema.optionalKey(Schema.Literals(['tcp', 'udp'])),
 	publicAccess: Schema.optionalKey(Schema.Boolean),
 	scope: Schema.optionalKey(Schema.Literals(['user', 'system'])),

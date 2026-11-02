@@ -1361,6 +1361,9 @@ function Status(props: {children: ReactNode}) {
 }
 
 function SignIn() {
+	useEffect(() => {
+		location.replace(signInUrl(location.href))
+	}, [])
 	return (
 		<Panel label="Sign in" className="top-1/2 left-1/2 w-80 -translate-1/2">
 			<p className="p-3 font-medium">Signal</p>
