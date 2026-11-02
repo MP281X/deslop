@@ -168,7 +168,7 @@ Fast tools, not consumer or enterprise apps: Linear, Vercel, Executor, T3 Code. 
 - **Neutrals.** `background` is the page. `card` and `popover` only for what floats or groups a few controls; `secondary`, `muted` and `accent` fill chips, inputs and hover; `border` draws hairlines, `input` strokes fields.
 - **One hue per app**, from the table below: the one action per view, focus, selection and anything live. The web points `--primary` at it in the app's `styles.css`; iOS exports `primary` from `lib/utils.ts`. A new app takes an unused hue, or orange.
 - **Status.** Live is the primary. Warning is yellow and error red, each with a word or icon. Off is muted: a hollow dot when switched off, a filled one for quiet states. White on light yellow only for large or bold labels.
-- **Deploy machine identity.** Neutral device icons and short names identify workers; availability sits in the machine selector. Charts use the app's blue, not a color per machine.
+- **Deploy machine identity.** Dev uses blue, desktop purple, consistently in device icons and measurements; availability sits in the machine selector. Selection supplies context without repeated page/machine headings.
 
 | App       | Hue     |
 | --------- | ------- |
@@ -244,9 +244,9 @@ Motion marks a change the user caused or should notice, and never holds content 
 
 ## Icons
 
-Each app is one real object in isometric pixel art: 64 cells, 2:1 pixel lines, three tones per material (Flexoki 300, 400 and 600 of the app's hue, steel, near-black), light catching the top front edges, a footprint shadow and an `icon-shadow` outline, with one lit part. A lock (auth), a torii (gateway), a monitor with a trace waterfall (scope), a sawtooth factory (signal), a book with a ribbon (stash), a suitcase (trips), a manga volume standing up with Saitama's face as its cover and its page block between the covers (opm). Exception: the portfolio bolt stays flat, its loose pixels in the other apps' hues.
+Each app is one real object in isometric pixel art: 64 cells, 2:1 pixel lines, three tones per material (Flexoki 300, 400 and 600 of the app's hue, steel, near-black), light catching the top front edges, a footprint shadow and an `icon-shadow` outline, with one lit part. A lock (auth), a torii (gateway), a monitor with a trace waterfall (scope), a sawtooth factory (signal), a book with a ribbon (stash), a suitcase (trips), a manga volume standing up with Saitama's face as its cover and its page block between the covers (opm), a steel server appliance with one blue status light (deploy). Exception: the portfolio bolt stays flat, its loose pixels in the other apps' hues.
 
-Construct icons on an explicit 64×64 grid: 2:1 diagonals are stepped cells, not smooth polygons with `crispEdges`. Encode the approved grid as equal-color, axis-aligned SVG cell runs; derive tiled, transparent and required raster variants from that same artwork. Deploy's object is a steel server appliance with one blue status light. A raster stays only where a consumer needs one, at the smallest size and format it accepts.
+Construct icons on an explicit 64×64 grid: 2:1 diagonals are stepped cells, not smooth polygons with `crispEdges`. Encode the approved grid as equal-color, axis-aligned SVG cell runs; derive tiled, transparent and required raster variants from that same artwork. A raster stays only where a consumer needs one, at the smallest size and format it accepts.
 
 | File                                     | Format                                                                                                      | Used as                                                                                                             |
 | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |

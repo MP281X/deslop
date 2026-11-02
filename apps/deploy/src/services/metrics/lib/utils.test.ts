@@ -48,9 +48,9 @@ it('bounds history by the chosen time window and response size without synthesiz
 	const samples = Array.makeBy(20_161, index => ({...value, time: index * 30_000}))
 	const now = 168 * 3_600_000
 	const selected = history(samples, 1, now)
-	assert.lengthOf(selected, 61)
-	assert.lengthOf(history(samples, 24, now), 97)
-	assert.lengthOf(history(samples, 168, now), 169)
+	assert.lengthOf(selected, 60)
+	assert.lengthOf(history(samples, 24, now), 60)
+	assert.lengthOf(history(samples, 168, now), 60)
 	assert.strictEqual(Option.getOrThrow(Array.last(selected)).time, now)
 	assert.strictEqual(history(samples, 168, now)[0]?.since, 0)
 	assert.isEmpty(history(samples, 1, now + 2 * 3_600_000))
@@ -63,7 +63,7 @@ it('bounds history by the chosen time window and response size without synthesiz
 		{cpuModel: 'fixture', error: '', samples: history(retained, 168, now), stale: false, time: now, worker: 'dev'},
 		168
 	)
-	assert.strictEqual(report.intervalSeconds, 3600)
+	assert.strictEqual(report.intervalSeconds, 10_080)
 	assert.strictEqual(report.series.time.length, report.series.cpu.length)
 	assert.strictEqual(report.recordedSince, 0)
 	assert.isTrue(Option.isNone(report.series.cpu[0] ?? Option.none()))
@@ -110,6 +110,13 @@ it('sends one current snapshot and compact aligned MCP columns with unknown rate
 	assert.deepStrictEqual(result.series.cpu, [Option.none(), Option.some(12.3)])
 	assert.deepStrictEqual(result.series.networkReceive, [Option.none(), Option.some(1235)])
 	assert.deepStrictEqual(result.series.time, [0, 60_000])
+	const selected = history(samples, 1, 60_000)
+	assert.isEmpty(selected[0]?.disks ?? [])
+	assert.deepStrictEqual(selected[1]?.disks, value.disks)
+	assert.deepStrictEqual(
+		compactHistory({error: '', samples: selected, stale: false, time: 60_000, worker: 'dev'}, 1).series.storageUsed,
+		[750_000, 750_000]
+	)
 })
 
 it('retains new-agent samples while displaying the entire requested window without fabricating recordings', () => {

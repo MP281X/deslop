@@ -5,6 +5,13 @@
 	--primary: var(--blue);
 }
 
+.deploy-machine[data-machine='dev'] {
+	--primary: var(--blue);
+}
+.deploy-machine[data-machine='desktop'] {
+	--primary: var(--purple);
+}
+
 .deploy-chart-grid {
 	grid-template-columns: calc(var(--spacing) * 10) minmax(0, 1fr);
 }

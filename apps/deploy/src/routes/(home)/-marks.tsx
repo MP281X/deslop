@@ -48,6 +48,7 @@ export function ApplicationIcon(props: {name: string; process?: string; containe
 	function mark() {
 		if (own !== undefined) return <img src={own} alt="" className="pixelated size-full object-contain" />
 		if (brand !== undefined) {
+			if (brand.light === brand.dark) return <brand.light className="size-full" />
 			return (
 				<>
 					<brand.light className="size-full dark:hidden" />

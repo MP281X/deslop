@@ -8,7 +8,7 @@ import {HistoryQuery, MachineSummary} from '#services/metrics/schema.ts'
 export const Tools = Toolkit.make(
 	Tool.make('resource_history', {
 		description:
-			'Compact resource history for every worker: current detail once plus aligned numeric series, sampled at 1 minute / 15 minutes / 1 hour for 1h / 24h / 7d. Null rates mean no baseline or a sampling gap, never zero. No invented recordings for unavailable workers.',
+			'Compact resource history for every worker: current detail once plus at most 60 aligned numeric points for any selected range. intervalSeconds gives the bucket width. Null rates mean no baseline or a sampling gap, never zero. No invented recordings for unavailable workers.',
 		failure: DeployError,
 		parameters: HistoryQuery,
 		success: Schema.Array(MachineSummary)

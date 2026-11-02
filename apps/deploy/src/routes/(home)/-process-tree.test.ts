@@ -30,7 +30,7 @@ it('collapses wrapper chains, groups leaf siblings and preserves every process e
 		),
 		Array.map(rows, row => row.pid)
 	)
-	assert.deepStrictEqual(processUsage(Array.flatMap(tree, row => row.members)), {cpu: 20, memory: 210})
+	assert.deepStrictEqual(processUsage(Array.flatMap(tree, row => row.members)), {cpu: 20, memory: 210, partial: false})
 })
 
 it('bounds indentation, keeps unknown CPU unknown and terminates cyclic source relationships', () => {
@@ -43,4 +43,9 @@ it('bounds indentation, keeps unknown CPU unknown and terminates cyclic source r
 	assert.strictEqual(processUsage(tree[0]?.members ?? []).cpu, undefined)
 	assert.isTrue(Array.every(tree, row => row.depth <= 2))
 	assert.strictEqual(processUsage(rows).memory, 3)
+	assert.deepStrictEqual(processUsage([...rows, {...rows[0], cpu: 5, memory: 1, name: 'bun', parent: 0, pid: 3}]), {
+		cpu: 5,
+		memory: 4,
+		partial: true
+	})
 })

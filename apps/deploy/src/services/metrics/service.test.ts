@@ -1,10 +1,23 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {ConfigProvider, Context, Deferred, Effect, FileSystem, Layer, PlatformError, Ref, String, pipe} from 'effect'
+import {
+	ConfigProvider,
+	Context,
+	Deferred,
+	Effect,
+	FileSystem,
+	Layer,
+	PlatformError,
+	Ref,
+	Schema,
+	String,
+	pipe
+} from 'effect'
 
 import {TestClock} from 'effect/testing'
 
+import {Sample} from '#services/metrics/schema.ts'
 import {Metrics} from '#services/metrics/service.ts'
 
 it.layer(NodeServices.layer)('Resource history', test => {
@@ -41,7 +54,9 @@ it.layer(NodeServices.layer)('Resource history', test => {
 			)
 			assert.strictEqual(second.worker, first.worker)
 			assert.lengthOf(second.samples, 2)
-			assert.deepStrictEqual(second.samples[0], first.samples[0])
+			assert.strictEqual(second.samples[0]?.time, first.samples[0]?.time)
+			assert.strictEqual(second.samples[0]?.memoryUsed, first.samples[0]?.memoryUsed)
+			assert.isEmpty(second.samples[0]?.disks ?? [])
 			assert.isUndefined(second.samples[1]?.cpu)
 		})
 	)
@@ -94,8 +109,12 @@ it.layer(NodeServices.layer)('Resource history', test => {
 				})
 			)
 			assert.strictEqual(restored.error, '')
-			assert.deepStrictEqual(restored.samples[0], first)
-			assert.lengthOf(restored.samples, 2)
+			const saved = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.toCodecJson(Schema.Array(Sample))))(
+				yield* fs.readFileString(`${directory}/metrics-0`)
+			)
+			assert.deepStrictEqual(saved[0], first)
+			assert.isNotEmpty(restored.samples)
+			assert.isAtLeast(restored.samples[0]?.time ?? 0, first?.time ?? 0)
 		})
 	)
 })

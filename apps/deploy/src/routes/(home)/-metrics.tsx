@@ -9,7 +9,7 @@ import {ResultError} from '@deslop/components-web/result-error'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
 
-import {MachineIcon, machineName} from '#lib/components.tsx'
+import {machineName} from '#lib/components.tsx'
 import {metricsAtom} from '#lib/utils.ts'
 import {chartBucket, chartTicks, rateScale} from '#routes/(home)/-chart.ts'
 import {chartWindow, resolution} from '#services/metrics/lib/utils.ts'
@@ -171,7 +171,7 @@ function Chart(props: {
 
 function Capacity(props: {
 	label: string
-	tracks: {capacity: number; parts: {label: string; value: number; opacity: number; reading?: string}[]}[]
+	tracks: {capacity: number; parts: {label: string; value: number; opacity: number}[]}[]
 }) {
 	const total = Number.max(
 		1,
@@ -219,14 +219,16 @@ function Capacity(props: {
 			<div className="deploy-capacity-grid mt-2 grid items-center gap-x-2 gap-y-1 text-xs">
 				{Array.flatMap(props.tracks, track =>
 					Array.map(track.parts, part => (
-						<div key={part.label} className="contents">
+						<div
+							key={part.label}
+							className="contents"
+							title={`${part.label}: ${size(part.value)} of ${size(track.capacity)}`}
+						>
 							<svg viewBox="0 0 8 8" className="size-2">
 								<rect width="8" height="8" fill="var(--primary)" opacity={part.opacity} />
 							</svg>
 							<span className="text-muted-foreground">{part.label}</span>
-							<span className="text-right font-mono whitespace-nowrap tabular-nums">
-								{part.reading ?? size(part.value)}
-							</span>
+							<span className="text-right font-mono whitespace-nowrap tabular-nums">{size(part.value)}</span>
 							<span className="text-muted-foreground text-right font-mono tabular-nums">
 								{Number.round((part.value / Number.max(1, track.capacity)) * 100, 0)}%
 							</span>
@@ -281,8 +283,10 @@ function Rates(props: {title: string; receive?: number; send?: number}) {
 function Machine(props: {history: MachineHistory; hours: HistoryQuery['hours']}) {
 	const latest = Option.getOrUndefined(Array.last(props.history.samples))
 	if (latest === undefined) return null
-	const available = Number.max(0, latest.memoryTotal - latest.memoryUsed)
-	const cached = Number.clamp(latest.memoryCached ?? 0, {maximum: available, minimum: 0})
+	const cached = Number.clamp(latest.memoryCached ?? 0, {
+		maximum: Number.max(0, latest.memoryTotal - latest.memoryUsed),
+		minimum: 0
+	})
 	const first = props.history.samples[0]
 	const started = first?.since ?? first?.time ?? latest.time
 	const storage = {
@@ -292,24 +296,9 @@ function Machine(props: {history: MachineHistory; hours: HistoryQuery['hours']})
 	return (
 		<section
 			aria-label={`${props.history.worker} resource history`}
-			className={`min-w-0 border-b pb-5 ${Boolean.match(props.history.stale, {onFalse: () => '', onTrue: () => 'opacity-50'})}`}
+			className={`deploy-machine min-w-0 border-b pb-5 ${Boolean.match(props.history.stale, {onFalse: () => '', onTrue: () => 'opacity-50'})}`}
+			data-machine={machineName(props.history.worker)}
 		>
-			<header className="mb-4 flex items-center justify-between gap-2">
-				<h2 className="flex items-center gap-2 text-sm font-semibold">
-					<MachineIcon worker={props.history.worker} />
-					{machineName(props.history.worker)}
-				</h2>
-				<span className="text-muted-foreground text-xs">
-					{Boolean.match(props.history.stale, {
-						onFalse: () =>
-							Boolean.match(started > chartWindow(props.hours, props.history.time).start + resolution(props.hours), {
-								onFalse: () => '',
-								onTrue: () => `since ${stamp.format(started)}`
-							}),
-						onTrue: () => `last seen ${stamp.format(latest.time)}`
-					})}
-				</span>
-			</header>
 			<div className="grid min-w-0 grid-cols-1 items-start gap-x-8 gap-y-6 sm:grid-cols-2">
 				<section className="min-w-0">
 					<div className="flex h-5 items-center justify-between gap-2">
@@ -331,9 +320,7 @@ function Machine(props: {history: MachineHistory; hours: HistoryQuery['hours']})
 				<section className="min-w-0">
 					<div className="flex h-5 items-center justify-between gap-2">
 						<h3 className="text-sm font-medium">Memory</h3>
-						<span className="font-mono text-xs whitespace-nowrap tabular-nums">
-							{numbers.format(latest.memoryUsed / 1024 ** 3)} / {size(latest.memoryTotal)}
-						</span>
+						<span className="font-mono text-xs whitespace-nowrap tabular-nums">{size(latest.memoryTotal)} RAM</span>
 					</div>
 					<Chart
 						history={props.history}
@@ -348,24 +335,13 @@ function Machine(props: {history: MachineHistory; hours: HistoryQuery['hours']})
 								capacity: latest.memoryTotal,
 								parts: [
 									{label: 'Used', opacity: 1, value: latest.memoryUsed},
-									{label: 'Cache', opacity: 0.45, value: cached},
-									{label: 'Other available', opacity: 0.15, value: available - cached}
+									{label: 'Cache', opacity: 0.45, value: cached}
 								]
 							},
 							...Boolean.match(latest.swapTotal > 0, {
 								onFalse: () => [],
 								onTrue: () => [
-									{
-										capacity: latest.swapTotal,
-										parts: [
-											{
-												label: 'Swap',
-												opacity: 1,
-												reading: `${size(latest.swapUsed)} / ${size(latest.swapTotal)}`,
-												value: latest.swapUsed
-											}
-										]
-									}
+									{capacity: latest.swapTotal, parts: [{label: 'Swap', opacity: 1, value: latest.swapUsed}]}
 								]
 							})
 						]}
@@ -390,21 +366,26 @@ function Machine(props: {history: MachineHistory; hours: HistoryQuery['hours']})
 						value={sample => sample.diskRead}
 						second={sample => sample.diskWrite}
 					/>
-					<h3 className="mt-3 text-xs font-medium">Storage</h3>
+					<div className="mt-3 flex items-center justify-between gap-2 text-xs">
+						<h3 className="font-medium">Storage</h3>
+						<span className="text-muted-foreground font-mono tabular-nums">{size(storage.total)} total</span>
+					</div>
 					<Capacity
 						label="Storage capacity"
-						tracks={[
-							{
-								capacity: storage.total,
-								parts: [
-									{label: 'Used', opacity: 1, value: storage.used},
-									{label: 'Free', opacity: 0.15, value: storage.total - storage.used}
-								]
-							}
-						]}
+						tracks={[{capacity: storage.total, parts: [{label: 'Used', opacity: 1, value: storage.used}]}]}
 					/>
 				</section>
 			</div>
+			<p className="text-muted-foreground mt-3 text-right text-xs empty:hidden">
+				{Boolean.match(props.history.stale, {
+					onFalse: () =>
+						Boolean.match(started > chartWindow(props.hours, props.history.time).start + resolution(props.hours), {
+							onFalse: () => '',
+							onTrue: () => `since ${stamp.format(started)}`
+						}),
+					onTrue: () => `last seen ${stamp.format(latest.time)}`
+				})}
+			</p>
 		</section>
 	)
 }
@@ -434,8 +415,7 @@ export function ResourceHistory(props: {machine: string}) {
 	const [pending, transition] = useTransition()
 	return (
 		<section className="flex min-h-0 flex-1 flex-col gap-4" aria-busy={pending}>
-			<div className="flex shrink-0 items-center justify-between gap-2">
-				<h1 className="text-sm font-semibold">Monitor</h1>
+			<div className="flex shrink-0 items-center justify-end gap-2">
 				<ToggleGroup
 					aria-label="History range"
 					disabled={pending}

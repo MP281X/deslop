@@ -138,7 +138,6 @@ export function sample(current: Counters, memory: string, disk: string, previous
 		memoryAvailable: values['MemAvailable:'] ?? 0,
 		memoryBuffers: values['Buffers:'] ?? 0,
 		memoryCached: (values['Cached:'] ?? 0) + (values['SReclaimable:'] ?? 0),
-		memoryFree: values['MemFree:'],
 		memoryTotal: values['MemTotal:'] ?? 0,
 		memoryUsed: (values['MemTotal:'] ?? 0) - (values['MemAvailable:'] ?? 0),
 		networkReceive: rate(current.networkReceive, seconds, old?.networkReceive),
@@ -155,9 +154,7 @@ export function chartWindow(hours: number, now: number) {
 }
 
 export function resolution(hours: number) {
-	if (hours === 1) return 60_000
-	if (hours === 24) return 900_000
-	return 3_600_000
+	return hours * 60_000
 }
 
 function lastInBucket(bucket: readonly Sample[]) {
@@ -171,8 +168,8 @@ export function compact(samples: readonly Sample[], now: number) {
 		Array.groupBy(value => {
 			const age = (now - value.time) / 3_600_000
 			if (age <= 1) return `minute:${Math.floor(value.time / resolution(1))}`
-			if (age <= 24) return `quarter:${Math.floor(value.time / resolution(24))}`
-			return `hour:${Math.floor(value.time / resolution(168))}`
+			if (age <= 24) return `quarter:${Math.floor(value.time / 900_000)}`
+			return `hour:${Math.floor(value.time / 3_600_000)}`
 		}),
 		Record.values,
 		Array.map(lastInBucket),
@@ -181,12 +178,26 @@ export function compact(samples: readonly Sample[], now: number) {
 }
 
 export function history(samples: readonly Sample[], hours: number, now: number) {
-	return pipe(
+	const selected = pipe(
 		Array.filter(samples, value => value.time >= now - hours * 3_600_000 && value.time <= now),
-		Array.groupBy(value => `${Math.floor(value.time / resolution(hours))}`),
+		Array.groupBy(
+			value =>
+				`${Number.clamp(Math.ceil((value.time - chartWindow(hours, now).start) / resolution(hours)) - 1, {maximum: 59, minimum: 0})}`
+		),
 		Record.values,
 		Array.map(lastInBucket)
 	)
+	return Array.map(selected, (value, index) => {
+		if (index === selected.length - 1) return value
+		return {
+			...value,
+			cores: undefined,
+			disks: [],
+			load: undefined,
+			storageUsed: value.storageUsed ?? Array.reduce(value.disks, 0, (sum, disk) => sum + disk.used),
+			uptime: undefined
+		}
+	})
 }
 
 export function compactHistory(machine: MachineHistory, hours: number) {
@@ -211,7 +222,10 @@ export function compactHistory(machine: MachineHistory, hours: number) {
 			networkSend: Array.map(machine.samples, value =>
 				Option.map(Option.fromUndefinedOr(value.networkSend), Number.round(0))
 			),
-			storageUsed: Array.map(machine.samples, value => Array.reduce(value.disks, 0, (sum, disk) => sum + disk.used)),
+			storageUsed: Array.map(
+				machine.samples,
+				value => value.storageUsed ?? Array.reduce(value.disks, 0, (sum, disk) => sum + disk.used)
+			),
 			swapUsed: Array.map(machine.samples, value => value.swapUsed),
 			time: Array.map(machine.samples, value => value.time)
 		},

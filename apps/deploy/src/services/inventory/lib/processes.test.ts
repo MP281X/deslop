@@ -62,6 +62,7 @@ it('measures CPU as a share of machine capacity without reusing a PID or bridgin
 	}
 	assert.strictEqual(processUsage(current, previous)[0]?.process.cpu, 25)
 	assert.isUndefined(processUsage(current)[0]?.process.cpu)
+	assert.isUndefined(processUsage({...current, time: 100}, previous)[0]?.process.cpu)
 	assert.isUndefined(processUsage({...current, time: 31_000}, previous)[0]?.process.cpu)
 	assert.isUndefined(processUsage({...current, total: 100}, previous)[0]?.process.cpu)
 	assert.isUndefined(

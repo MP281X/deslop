@@ -6,14 +6,15 @@ const processName = String.replace(/-MainThread$|\.native$/u, '')
 
 export function processUsage(rows: readonly Process[]) {
 	return {
-		cpu: Boolean.match(Array.isReadonlyArrayNonEmpty(rows) && Array.every(rows, row => row.cpu !== undefined), {
-			onFalse: () => undefined,
-			onTrue: () => Array.reduce(rows, 0, (sum, row) => sum + (row.cpu ?? 0))
-		}),
+		cpu: Boolean.match(
+			Array.some(rows, row => row.cpu !== undefined),
+			{onFalse: () => undefined, onTrue: () => Array.reduce(rows, 0, (sum, row) => sum + (row.cpu ?? 0))}
+		),
 		memory: Boolean.match(Array.isReadonlyArrayNonEmpty(rows), {
 			onFalse: () => undefined,
 			onTrue: () => Array.reduce(rows, 0, (sum, row) => sum + row.memory)
-		})
+		}),
+		partial: Array.some(rows, row => row.cpu === undefined)
 	}
 }
 

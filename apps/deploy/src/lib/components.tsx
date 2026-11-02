@@ -12,7 +12,7 @@ export function MachineIcon(props: {worker: string}) {
 			title={props.worker}
 			aria-label={props.worker}
 			role="img"
-			className="text-muted-foreground inline-flex shrink-0"
+			className={`inline-flex shrink-0 items-center justify-center ${Boolean.match(machineName(props.worker) === 'desktop', {onFalse: () => 'text-blue', onTrue: () => 'text-purple'})}`}
 		>
 			{Boolean.match(machineName(props.worker) === 'desktop', {
 				onFalse: () => <Server className="size-4" />,

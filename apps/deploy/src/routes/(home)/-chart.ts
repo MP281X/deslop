@@ -31,16 +31,15 @@ export function chartTicks(hours: number, now: number) {
 }
 
 export function chartBucket(hours: number, now: number, at: number) {
-	const window = chartWindow(hours, now)
-	const step = resolution(hours)
-	const start = Number.max(window.start, Math.floor(at / step) * step)
 	return {
-		width:
-			Number.max(
-				0,
-				((Number.min(window.end, Math.floor(at / step) * step + step) - start) / (window.end - window.start)) * 100
-			) * 0.8,
-		x: ((start - window.start) / (window.end - window.start)) * 100
+		width: 80 / 60,
+		x:
+			(Number.clamp(Math.ceil((at - chartWindow(hours, now).start) / resolution(hours)) - 1, {
+				maximum: 59,
+				minimum: 0
+			}) /
+				60) *
+			100
 	}
 }
 

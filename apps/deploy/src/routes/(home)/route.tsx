@@ -62,6 +62,7 @@ function Fleet() {
 							{machineName(worker)}
 							<span
 								role="img"
+								className="flex items-center justify-center"
 								aria-label={Boolean.match(checking, {
 									onFalse: () => Boolean.match(failed, {onFalse: () => 'Available', onTrue: () => 'Unavailable'}),
 									onTrue: () => 'Checking'

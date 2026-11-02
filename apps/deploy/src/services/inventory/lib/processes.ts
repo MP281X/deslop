@@ -75,7 +75,7 @@ export function processUsage(current: Effect.Success<typeof processes>, previous
 								value.start === record.start &&
 								elapsed > 0 &&
 								record.ticks >= value.ticks &&
-								current.time > (previous?.time ?? current.time) &&
+								current.time - (previous?.time ?? current.time) >= 2000 &&
 								current.time - (previous?.time ?? 0) <= 30_000
 						),
 						value => Number.clamp(((record.ticks - value.ticks) / elapsed) * 100, {maximum: 100, minimum: 0})

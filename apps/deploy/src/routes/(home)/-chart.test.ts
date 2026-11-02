@@ -12,6 +12,7 @@ it('puts ticks at real clock times and clips edge buckets to the requested range
 		assert.isTrue(Array.every(ticks, tick => DateTime.toParts(DateTime.makeZonedUnsafe(tick.at)).minute % 15 === 0))
 		assert.isAtMost(chartBucket(hours, now, now).x + chartBucket(hours, now, now).width, 100)
 		assert.isAtLeast(chartBucket(hours, now, now - hours * 3_600_000).x, 0)
+		assert.strictEqual(chartBucket(hours, now, now).width, 80 / 60)
 	}
 	assert.isTrue(
 		Array.every(chartTicks(168, now), tick => DateTime.toParts(DateTime.makeZonedUnsafe(tick.at)).hour === 0)

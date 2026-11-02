@@ -242,7 +242,7 @@ function WorkloadRow(props: {row: ReturnType<typeof workloads>[number]; showMach
 			</span>
 			<ProcessUsage {...processUsage(processes)} />
 			{props.showMachine && <MachineIcon worker={props.row.item.worker} />}
-			<span title={state} aria-label={state} role="img">
+			<span title={state} aria-label={state} role="img" className="flex items-center justify-center">
 				<StatusDot status={dot(props.row.item, state)} />
 			</span>
 			<ChevronRight
@@ -275,7 +275,11 @@ function WorkloadRow(props: {row: ReturnType<typeof workloads>[number]; showMach
 				state === 'unhealthy' ||
 				String.includes('failed')(state) ||
 				String.includes('exited')(state)) && (
-				<p className="text-muted-foreground col-start-2 col-end-5 text-xs wrap-anywhere">{props.row.item.detail}</p>
+				<p
+					className={`col-start-2 col-end-5 text-xs wrap-anywhere ${Boolean.match(dot(props.row.item, state) === 'error', {onFalse: () => Boolean.match(dot(props.row.item, state) === 'warning', {onFalse: () => 'text-muted-foreground', onTrue: () => 'text-warning'}), onTrue: () => 'text-destructive'})}`}
+				>
+					{props.row.item.detail}
+				</p>
 			)}
 		</div>
 	)
@@ -334,13 +338,14 @@ function Services() {
 	return (
 		<div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-4 self-center">
 			<Expose key={search.machine ?? 'all'} items={items} choices={availablePorts(items)} />
-			<div className="flex flex-col gap-2">
+			<div className="flex items-center gap-3">
 				<Input
 					aria-label="Find a service or port"
 					placeholder="Filter apps, ports, processes…"
 					value={query}
 					onChange={event => setQuery(event.target.value)}
 				/>
+				<span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">{rows.length} apps</span>
 			</div>
 			{Array.map(
 				Array.filter(
@@ -348,21 +353,12 @@ function Services() {
 					source => source.error !== '' && !Array.contains(result.value.workers ?? [], source.name)
 				),
 				source => (
-					<p key={source.name} className="text-warning text-xs wrap-anywhere" role="status" title={source.error}>
+					<p key={source.name} className="text-destructive text-xs wrap-anywhere" role="alert" title={source.error}>
 						{source.name}: {source.error}
 					</p>
 				)
 			)}
 			<div className="pb-safe min-h-0 flex-1 overflow-y-auto pr-3">
-				<div
-					className="deploy-process-grid bg-background text-muted-foreground sticky top-0 z-10 pb-2 text-xs"
-					data-show-machine={search.machine === undefined || search.machine === 'all'}
-				>
-					<span />
-					<span>{rows.length} apps</span>
-					<span className="text-right">CPU</span>
-					<span className="text-right">Memory</span>
-				</div>
 				<div role="list" aria-label="Apps">
 					{Array.map(rows, row => (
 						<InventoryRow

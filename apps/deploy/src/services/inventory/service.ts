@@ -302,9 +302,16 @@ export class Inventory extends Context.Service<Inventory, {readonly snapshot: Ef
 							processes,
 							Effect.provideService(FileSystem.FileSystem, fs),
 							Effect.flatMap(current =>
-								Effect.map(Ref.getAndSet(previousProcesses, Option.some(current)), previous =>
-									processUsage(current, Option.getOrUndefined(previous))
-								)
+								Ref.modify(previousProcesses, previous => {
+									const old = Option.getOrUndefined(previous)
+									return [
+										processUsage(current, old),
+										Boolean.match(old !== undefined && current.time - old.time < 2000, {
+											onFalse: () => Option.some(current),
+											onTrue: () => previous
+										})
+									]
+								})
 							),
 							Effect.timeout('3 seconds'),
 							Effect.match({
