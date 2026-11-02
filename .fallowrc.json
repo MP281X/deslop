@@ -71,7 +71,8 @@
 	"duplicates": {"minTokens": 100, "minLines": 10},
 	"health": {
 		// No production coverage exists: estimated CRAP must not masquerade as measured risk.
-		"maxCrap": 0
+		"maxCrap": 0,
+		"ignore": ["packages/components-web/src/ui/**"]
 	},
 	"ignoreDependencies": [
 		// The runtime's session and keychain import these two; each app keeps them so autolinking builds their native modules.
@@ -85,7 +86,14 @@
 		{"exports": ["*"], "file": "apps/*/fingerprint.config.js"},
 		{"exports": ["module.exports"], "file": "apps/*/targets/*/expo-target.config.js"},
 		{"exports": ["*"], "file": "apps/*/src/services/*/schema.ts"},
-		{"exports": ["*"], "file": "packages/components-web/src/ui/**/*.tsx"}
+		{"exports": ["*"], "file": "packages/components-web/src/ui/**/*.{ts,tsx}"}
+	],
+	"overrides": [
+		{
+			// shadcn's CLI owns these files and their exported prop types.
+			"files": ["packages/components-web/src/ui/**"],
+			"rules": {"private-type-leaks": "off"}
+		}
 	],
 	"rules": {
 		"policy-violation": "off",

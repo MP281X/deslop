@@ -212,7 +212,7 @@ A tonal step and a hairline, never a shadow, gradient or glow. On iOS, Liquid Gl
 
 One vocabulary on both platforms: a row is an `Item`, a blank state an `Empty`, a filter a `ToggleGroup`, a status a `StatusDot`.
 
-- **Web.** shadcn `base-mira` in `packages/components-web/src/ui/`, exactly as the CLI writes it; house rules such as the press scale live in `theme.css`. Beside it: `StatusDot`, `ItemList` (hairline rows), `SignIn` and `ResultError`. Apps compose these before writing their own markup.
+- **Web.** Every shadcn `base-mira` component in `packages/components-web/src/ui/`, as the CLI writes it apart from the fixes `AGENTS.md` names; house rules such as the press scale live in `theme.css`. Beside it: `StatusDot`, `ItemList` (hairline rows), `SignIn` and `ResultError`. Apps compose these before writing their own markup.
 - **iOS.** `packages/components-mobile/src/ui/` carries the same names and parts over `@expo/ui` SwiftUI (`Item`, `ItemMedia`, `ItemContent`, `ItemTitle`, `ItemDescription`, `ItemActions`, `ItemGroup`, `Empty…`, `ToggleGroup`, `Spinner`), taking `modifiers` where the web takes `className`. System controls stay native.
 - **Tokens only.** shadcn's lint keeps web classes on the theme; `swiftui-theme-values` does the same for SwiftUI: spacing from `space`, type from `text` or a Dynamic Type style, colours from `colors`.
 - **App and process marks** are transparent, never tiles or letter placeholders. Use canonical Deslop artwork and software marks installed through SVGL's shadcn registry; tiles belong only to installed icons and favicon consumers that need them.
