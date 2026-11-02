@@ -56,7 +56,13 @@ export type AppVersion = typeof AppVersion.Type
 export const AppVersion = Schema.String.check(Schema.isPattern(/^0\.1\.\d+$/u))
 
 export type RuntimeConfig = typeof RuntimeConfig.Type
-export const RuntimeConfig = Schema.Struct({traces: Schema.String, version: AppVersion})
+// What `/api/runtime` tells clients and Auth: the app's name, the Auth it signs in through, where it exports traces and its release.
+export const RuntimeConfig = Schema.Struct({
+	auth: Schema.optionalKey(Schema.String),
+	name: Schema.String,
+	traces: Schema.String,
+	version: AppVersion
+})
 
 // Who the app bar's account menu shows; `signOut` is false without an issuer, where everyone is the developer.
 export type Account = typeof Account.Type

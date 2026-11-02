@@ -5,6 +5,7 @@ import {Rpc, RpcGroup} from 'effect/rpc'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 
+import {Catalog} from '#services/apps/schema.ts'
 import {Account, AdmitParams, Person, PersonParams} from '#services/people/schema.ts'
 import {
 	AnswerParams,
@@ -27,6 +28,7 @@ export class RpcContracts extends RpcGroup.make(
 	Rpc.make('auth.admit', {error: AuthError, payload: AdmitParams, success: Person}),
 	Rpc.make('auth.remove', {error: AuthError, payload: PersonParams, success: Person}),
 	Rpc.make('auth.apps', {error: AuthError, stream: true, success: Schema.Array(SignedInApp)}),
+	Rpc.make('auth.catalog', {error: AuthError, stream: true, success: Catalog}),
 	Rpc.make('auth.disconnect', {error: AuthError, payload: FamilyParams})
 )
 	.middleware(RpcAuth)
