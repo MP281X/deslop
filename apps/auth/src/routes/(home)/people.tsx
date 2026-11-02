@@ -8,82 +8,113 @@ import {Suspense} from 'react'
 import type {ReactNode} from 'react'
 
 import {useCommandQuery} from '@deslop/components-web/app-bar'
-import {ItemList, ItemListSkeleton} from '@deslop/components-web/item-list'
+import {ItemListSkeleton} from '@deslop/components-web/item-list'
+import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
+import {
+	ContextMenu,
+	ContextMenuContent,
+	ContextMenuItem,
+	ContextMenuTrigger
+} from '@deslop/components-web/ui/context-menu'
 import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {FieldError} from '@deslop/components-web/ui/field'
-import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 
 import {AccountAvatar} from '#lib/components.tsx'
 import {accountAtom, admitAtom, dayLabel, peopleAtom, removeAtom} from '#lib/utils.ts'
 import type {Person} from '#services/people/schema.ts'
 
-function PersonItem(props: {actions?: ReactNode; detail: ReactNode; person: Person}) {
+// Picture, name, then the GitHub handle, which stays since anyone can set the name before it.
+function Identity(props: {person: Person}) {
 	return (
-		<Item role="listitem">
-			<ItemMedia>
-				<AccountAvatar id={props.person.id} name={props.person.name} />
-			</ItemMedia>
-			<ItemContent>
-				<ItemTitle>{props.person.fullName ?? props.person.name}</ItemTitle>
-				<ItemDescription>{props.detail}</ItemDescription>
-			</ItemContent>
-			<ItemActions>{props.actions}</ItemActions>
-		</Item>
+		<>
+			<AccountAvatar id={props.person.id} name={props.person.name} />
+			<span className="min-w-0 truncate font-medium">{props.person.fullName ?? props.person.name}</span>
+			<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
+				{props.person.fullName !== undefined && `@${props.person.name}`}
+			</span>
+		</>
 	)
 }
 
-// Someone asking for access leads the list; their GitHub handle stays, since anyone can set the name above it.
-function AskingItem(props: {person: Person}) {
+function PersonRow(props: {children: ReactNode; person: Person}) {
+	return (
+		<div role="listitem" className="flex h-10 min-w-0 items-center gap-3 border-b px-1 text-sm">
+			<Identity person={props.person} />
+			{props.children}
+		</div>
+	)
+}
+
+// Someone asking for access leads the list, with the answer on the row.
+function AskingRow(props: {person: Person}) {
 	const [admit, answer] = useAtom(admitAtom)
 	return (
-		<PersonItem
-			person={props.person}
-			detail={
-				<span className="text-primary font-mono">
-					@{props.person.name} · asking since {dayLabel(props.person.since)}
-				</span>
-			}
-			actions={
-				<>
-					<Button disabled={AsyncResult.isWaiting(admit)} onClick={() => answer({allow: true, id: props.person.id})}>
-						Allow
-					</Button>
-					<Button
-						variant="outline"
-						disabled={AsyncResult.isWaiting(admit)}
-						onClick={() => answer({allow: false, id: props.person.id})}
-					>
-						Decline
-					</Button>
-				</>
-			}
-		/>
+		<PersonRow person={props.person}>
+			<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden">
+				{dayLabel(props.person.since)}
+			</span>
+			<Button
+				size="sm"
+				className="shrink-0"
+				disabled={AsyncResult.isWaiting(admit)}
+				onClick={() => answer({allow: true, id: props.person.id})}
+			>
+				Allow
+			</Button>
+			<Button
+				size="sm"
+				variant="outline"
+				className="shrink-0"
+				disabled={AsyncResult.isWaiting(admit)}
+				onClick={() => answer({allow: false, id: props.person.id})}
+			>
+				Decline
+			</Button>
+		</PersonRow>
 	)
 }
 
-function MemberItem(props: {person: Person}) {
+// An admin is marked as one; a member shows since when, and right-click or long-press removes them.
+function MemberRow(props: {person: Person}) {
 	const [removal, remove] = useAtom(removeAtom)
+	if (props.person.role === 'Admin') {
+		return (
+			<PersonRow person={props.person}>
+				<Badge variant="outline" className="shrink-0">
+					admin
+				</Badge>
+			</PersonRow>
+		)
+	}
 	return (
-		<PersonItem
-			person={props.person}
-			detail={
-				<span className="font-mono">
-					@{props.person.name} ·{' '}
-					{Boolean.match(props.person.role === 'Admin', {
-						onFalse: () => `since ${dayLabel(props.person.since)}`,
-						onTrue: () => 'admin'
-					})}
-				</span>
-			}
-			actions={
-				props.person.role === 'Member' && (
-					<Button variant="outline" disabled={AsyncResult.isWaiting(removal)} onClick={() => remove(props.person.id)}>
-						Remove
-					</Button>
-				)
-			}
-		/>
+		<ContextMenu>
+			<div role="listitem">
+				<ContextMenuTrigger
+					render={
+						<div
+							role="button"
+							tabIndex={0}
+							aria-haspopup="menu"
+							aria-label={`${props.person.fullName ?? props.person.name}, member since ${dayLabel(props.person.since)}`}
+							className="hover:bg-muted/50 flex h-10 min-w-0 items-center gap-3 border-b px-1 text-sm"
+						/>
+					}
+				>
+					<Identity person={props.person} />
+					<span className="text-muted-foreground shrink-0 font-mono text-xs">{dayLabel(props.person.since)}</span>
+				</ContextMenuTrigger>
+			</div>
+			<ContextMenuContent className="w-auto min-w-36">
+				<ContextMenuItem
+					variant="destructive"
+					disabled={AsyncResult.isWaiting(removal)}
+					onClick={() => remove(props.person.id)}
+				>
+					Remove
+				</ContextMenuItem>
+			</ContextMenuContent>
+		</ContextMenu>
 	)
 }
 
@@ -110,14 +141,14 @@ function Directory() {
 					</Empty>
 				),
 				onNonEmpty: rows => (
-					<ItemList label="People">
+					<div role="list" aria-label="People">
 						{Array.map(rows, person =>
 							Boolean.match(person.role === 'Waiting', {
-								onFalse: () => <MemberItem key={person.id} person={person} />,
-								onTrue: () => <AskingItem key={person.id} person={person} />
+								onFalse: () => <MemberRow key={person.id} person={person} />,
+								onTrue: () => <AskingRow key={person.id} person={person} />
 							})
 						)}
-					</ItemList>
+					</div>
 				)
 			})}
 			<FieldError>

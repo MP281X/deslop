@@ -40,6 +40,8 @@ export function clientLabel(name: string) {
 function platform(userAgent: string) {
 	if (String.includes('iPhone')(userAgent)) return Option.some('iPhone')
 	if (String.includes('iPad')(userAgent)) return Option.some('iPad')
+	// The iOS apps call in through CFNetwork, whose User-Agent names neither device.
+	if (String.includes('CFNetwork/')(userAgent)) return Option.some('iPhone')
 	if (String.includes('Android')(userAgent)) return Option.some('Android')
 	if (String.includes('Macintosh')(userAgent)) return Option.some('Mac')
 	if (String.includes('Windows')(userAgent)) return Option.some('Windows')

@@ -153,7 +153,7 @@ export const appsAtom = Atom.keepAlive(
 	)
 )
 
-// One app chip can hold the sign-ins of a client on several machines; signing out of it ends them all.
+// One column holds every sign-in of a client on one device; signing it out ends them all.
 export const disconnectAtom = RpcClient.runtime.fn((families: string[]) =>
 	Effect.flatMap(RpcClient, client =>
 		Effect.forEach(families, family => client('auth.disconnect', {family}), {concurrency: 'unbounded', discard: true})

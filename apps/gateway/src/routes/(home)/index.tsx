@@ -11,6 +11,7 @@ import {Suspense, useState} from 'react'
 
 import {AppBar, AppBarAction, useCommandQuery} from '@deslop/components-web/app-bar'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
+import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
@@ -33,7 +34,6 @@ import {
 import {Empty, EmptyDescription, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Field, FieldError, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
-import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {cn} from '@deslop/components-web/utils'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
@@ -225,20 +225,6 @@ function ServerRow(props: {server: ConnectionInfo}) {
 	)
 }
 
-// Shaped like the server rows: a mark and a name on one line.
-function ServersSkeleton() {
-	return (
-		<div aria-busy="true" aria-label="MCP servers" role="status">
-			{Array.map(Array.range(1, 4), row => (
-				<div key={row} aria-hidden className="flex h-10 items-center gap-3 border-b px-1">
-					<Skeleton className="size-5" />
-					<Skeleton className="h-4 w-1/3" />
-				</div>
-			))}
-		</div>
-	)
-}
-
 function AddForm(props: {url: string; error: string; adding: boolean}) {
 	const send = useAtomSet(addAtom.send)
 	return (
@@ -378,7 +364,7 @@ function Home() {
 				}
 			/>
 			<Page>
-				<Suspense fallback={<ServersSkeleton />}>
+				<Suspense fallback={<ItemListSkeleton label="MCP servers" media rows={4} />}>
 					<Servers />
 				</Suspense>
 			</Page>

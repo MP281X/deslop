@@ -2,21 +2,27 @@ import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
 import {Array, Boolean, Match, Option, Order, Record, String, pipe} from 'effect'
 
-import type {NonEmptyReadonlyArray} from 'effect/Array'
 import {AsyncResult} from 'effect/reactivity'
-import {AppWindow, ArrowUpRight, Globe, Network, Server, X} from 'lucide-react'
+import {AppWindow, Globe, Network, Server} from 'lucide-react'
 import {useState} from 'react'
 import {toQR} from 'toqr'
 
 import {useCommandQuery} from '@deslop/components-web/app-bar'
-import {ItemList} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
+import {StatusDot} from '@deslop/components-web/status-dot'
 import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
-import {Badge} from '@deslop/components-web/ui/badge'
-import {Button, buttonVariants} from '@deslop/components-web/ui/button'
+import {Button} from '@deslop/components-web/ui/button'
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuGroup,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuTrigger
+} from '@deslop/components-web/ui/dropdown-menu'
+import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {FieldDescription} from '@deslop/components-web/ui/field'
-import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
-import {Tooltip, TooltipContent, TooltipTrigger} from '@deslop/components-web/ui/tooltip'
+import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@deslop/components-web/ui/table'
 import {cn} from '@deslop/components-web/utils'
 
 import android from '#lib/brands/android.svg'
@@ -79,6 +85,30 @@ export function AccountAvatar(props: {id: string; name: string}) {
 	)
 }
 
+// A glyph until the app's own icon loads, so a missing icon never draws the browser's broken image; no tile behind either.
+function AppIcon(props: {origin: string; small?: boolean}) {
+	const [state, setState] = useState<'failed' | 'loaded' | 'loading'>('loading')
+	return (
+		<span
+			className={cn(
+				'text-muted-foreground relative flex shrink-0 items-center justify-center',
+				Boolean.match(props.small === true, {onFalse: () => 'size-5', onTrue: () => 'size-4'})
+			)}
+		>
+			{state !== 'loaded' && <AppWindow className="size-4" />}
+			{state !== 'failed' && (
+				<img
+					src={`${props.origin}/icon`}
+					alt=""
+					className={cn('pixelated absolute inset-0 size-full', state === 'loading' && 'invisible')}
+					onLoad={() => setState('loaded')}
+					onError={() => setState('failed')}
+				/>
+			)}
+		</span>
+	)
+}
+
 const BROWSERS: Record<string, string> = {Chrome: chrome, Edge: edge, Firefox: firefox, Safari: safari}
 
 // A browser, harness or app platform's logo; `mono` marks a black one that turns white on the dark page.
@@ -93,10 +123,11 @@ function brandOf(client: Client) {
 	return Option.none()
 }
 
-type Client = {device: string; kind: 'App' | 'Browser'; name: string}
+// `app` is the origin of the Deslop app the client is, such as Stash on an iPhone, whose own icon marks it.
+type Client = {app: Option.Option<string>; device: string; kind: 'App' | 'Browser'; name: string}
 
-// The kind of client: its brand when it has one, else a glyph for the gateway, a browser or the machine it runs on.
-function ClientIcon(props: {client: Client}) {
+// A brand's logo when the client has one, else a glyph for the gateway, a browser or the machine it runs on.
+function Brand(props: {client: Client}) {
 	return Option.match(brandOf(props.client), {
 		onNone: () =>
 			pipe(
@@ -112,149 +143,130 @@ function ClientIcon(props: {client: Client}) {
 	})
 }
 
-// A first tap arms the chip, a second signs that client out; leaving the chip disarms it. Its full name shows on hover.
-function ClientChip(props: {app: string; now: number; signIns: NonEmptyReadonlyArray<SignedInApp>}) {
+// The kind of client: a Deslop app's own icon, else its brand or a glyph.
+function ClientIcon(props: {client: Client}) {
+	return Option.match(props.client.app, {
+		onNone: () => <Brand client={props.client} />,
+		onSome: origin => <AppIcon origin={origin} small />
+	})
+}
+
+// One row of the grid: an app, opened from its name when it has a site or a URL scheme.
+type Row = {name: string; open: Option.Option<string>; origin: string; web: boolean}
+
+// One column of the grid: a client signed in on one device, all its sign-ins together, or the sign-in waiting for an answer.
+type Column = {
+	client: Client
+	families: string[]
+	key: string
+	label: string
+	lastActive: number
+	// Shown under the mark when another column has the same one, such as Safari on a Mac and on an iPhone.
+	labelled: boolean
+	pending: boolean
+	resources: readonly PendingAuthorization['resources'][]
+}
+
+// A client's mark heads its column, over a line kept by every head once any is labelled; a click opens its sign-out.
+function ColumnHead(props: {column: Column; labels: boolean; now: number}) {
 	const [disconnection, disconnect] = useAtom(disconnectAtom)
-	const [armed, setArmed] = useState(false)
-	const first = props.signIns[0]
-	const label = signInLabel(first.client, first.device)
-	const minutes = minutesSince(newest(props.signIns), props.now)
+	const name = Boolean.match(props.column.pending, {
+		onFalse: () => {
+			const minutes = minutesSince(props.column.lastActive, props.now)
+			return `${props.column.label}, active ${Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})}`
+		},
+		onTrue: () => `${props.column.label}, waiting for an answer`
+	})
 	return (
-		<Tooltip>
-			<TooltipTrigger
-				render={
-					<Button
-						size="sm"
-						variant={Boolean.match(armed, {onFalse: () => 'outline' as const, onTrue: () => 'destructive' as const})}
-						aria-label={Boolean.match(armed, {
-							onFalse: () =>
-								`${label} in ${props.app}, active ${Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})}; tap twice to sign out`,
-							onTrue: () => `Sign ${label} out`
-						})}
-						disabled={AsyncResult.isWaiting(disconnection)}
-						onBlur={() => setArmed(false)}
-						onClick={() => {
-							if (armed) disconnect(Array.map(props.signIns, signIn => signIn.family))
-							setArmed(!armed)
-						}}
-					/>
-				}
-			>
-				{Boolean.match(armed, {
+		<TableHead className="px-0.5">
+			<span className="flex flex-col items-center gap-0.5">
+				{Boolean.match(props.column.pending, {
 					onFalse: () => (
-						<>
-							<ClientIcon client={{device: first.device, kind: first.kind, name: first.client}} />
-							<span className="text-muted-foreground font-mono">{ageLabel(minutes)}</span>
-						</>
+						<DropdownMenu>
+							<DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" title={name} aria-label={name} />}>
+								<ClientIcon client={props.column.client} />
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end" className="w-auto min-w-48">
+								<DropdownMenuGroup>
+									<DropdownMenuLabel>{name}</DropdownMenuLabel>
+								</DropdownMenuGroup>
+								<DropdownMenuItem
+									variant="destructive"
+									disabled={AsyncResult.isWaiting(disconnection)}
+									onClick={() => disconnect(props.column.families)}
+								>
+									Sign out
+								</DropdownMenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
 					),
 					onTrue: () => (
-						<>
-							<X />
-							Sign out
-						</>
+						<span
+							title={name}
+							aria-label={name}
+							role="img"
+							className="ring-primary flex size-7 items-center justify-center rounded-sm ring-1"
+						>
+							<ClientIcon client={props.column.client} />
+						</span>
 					)
 				})}
-			</TooltipTrigger>
-			<TooltipContent>{label}</TooltipContent>
-		</Tooltip>
+				{props.labels &&
+					Boolean.match(props.column.labelled, {
+						onFalse: () => <span aria-hidden className="h-3" />,
+						onTrue: () => (
+							<span aria-hidden className="text-muted-foreground text-xs leading-none font-normal">
+								{props.column.client.device}
+							</span>
+						)
+					})}
+			</span>
+		</TableHead>
 	)
 }
 
-// A glyph until the app's own icon loads, so a missing icon never draws the browser's broken image; no tile behind either.
-function AppIcon(props: {origin: string}) {
-	const [state, setState] = useState<'failed' | 'loaded' | 'loading'>('loading')
+// A browser session reaches every web app, so it counts under each one with a site.
+function reaches(resources: PendingAuthorization['resources'], origin: string, web: boolean) {
+	const origins = appOrigins(resources)
+	return Array.contains(origins, origin) || (Array.contains(origins, 'browser') && web)
+}
+
+function holds(column: Column, row: Row) {
+	return Array.some(column.resources, resources => reaches(resources, row.origin, row.web))
+}
+
+// Where a column's client holds the app, a dot in Auth's hue; where the waiting sign-in asks for it, the same dot breathing.
+function Cell(props: {column: Column; row: Row}) {
+	const held = holds(props.column, props.row)
 	return (
-		<span className="text-muted-foreground relative flex size-8 items-center justify-center">
-			{state !== 'loaded' &&
-				pipe(
-					Match.value(props.origin),
-					Match.when('browser', () => <Globe className="size-4" />),
-					Match.orElse(() => <AppWindow className="size-4" />)
-				)}
-			{state !== 'failed' && props.origin !== 'browser' && (
-				<img
-					src={`${props.origin}/icon`}
-					alt=""
-					className={cn('pixelated absolute inset-0 size-full', state === 'loading' && 'invisible')}
-					onLoad={() => setState('loaded')}
-					onError={() => setState('failed')}
-				/>
-			)}
-		</span>
+		<TableCell className="w-7 px-0">
+			<span className="flex justify-center">
+				{Boolean.match(held, {
+					onFalse: () => <StatusDot status="off" />,
+					onTrue: () => <StatusDot waiting={props.column.pending} />
+				})}
+				<span className="sr-only">
+					{pipe(
+						Match.value({held, pending: props.column.pending}),
+						Match.when({held: false}, () => 'not signed in'),
+						Match.when({pending: true}, () => 'asked for'),
+						Match.orElse(() => 'signed in')
+					)}
+				</span>
+			</span>
+		</TableCell>
 	)
 }
 
-// One app: its icon, name and a link to open it, then a chip per client signed in to it, the waiting one first.
-function AppRow(props: {
-	origin: string
-	name: string
-	now: number
-	pending: Option.Option<PendingAuthorization>
-	signIns: SignedInApp[]
-	url: Option.Option<string>
-}) {
-	const clients = pipe(
-		Array.groupBy(props.signIns, signIn => signInLabel(signIn.client, signIn.device)),
-		Record.values,
-		Array.sort(Order.flip(Order.mapInput(Order.Number, newest)))
-	)
-	// The icon and trailing action stay centered as client chips wrap.
-	return (
-		<Item role="listitem" size="sm">
-			<ItemMedia>
-				<AppIcon origin={props.origin} />
-			</ItemMedia>
-			<ItemContent>
-				<ItemTitle className="min-h-8">{props.name}</ItemTitle>
-				{(Option.isSome(props.pending) || Array.isArrayNonEmpty(clients)) && (
-					<div className="flex flex-wrap gap-1">
-						{Option.match(props.pending, {
-							onNone: () => null,
-							onSome: request => (
-								<Badge
-									variant="outline"
-									className="text-primary h-6"
-									aria-label={`${signInLabel(request.clientName, request.device)} asks for ${props.name}`}
-								>
-									<ClientIcon client={{device: request.device, kind: request.kind, name: request.clientName}} />
-									<span className="font-mono">new</span>
-								</Badge>
-							)
-						})}
-						{Array.map(Array.filter(clients, Array.isReadonlyArrayNonEmpty), signIns => (
-							<ClientChip key={signIns[0].family} app={props.name} now={props.now} signIns={signIns} />
-						))}
-					</div>
-				)}
-			</ItemContent>
-			{Option.match(props.url, {
-				onNone: () => null,
-				onSome: url => (
-					<ItemActions className="h-8">
-						<a
-							href={url}
-							target="_blank"
-							rel="noreferrer"
-							aria-label={`Open ${props.name}`}
-							className={buttonVariants({size: 'icon-sm', variant: 'ghost'})}
-						>
-							<ArrowUpRight />
-						</a>
-					</ItemActions>
-				)
-			})}
-		</Item>
-	)
-}
-
-// A failed answer stays above the list to retry. Where the sign-in started tells a stranger's code from one's own.
+// A failed answer stays above the grid to retry. Where the sign-in started tells a stranger's code from one's own.
 function Answer(props: {request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
 	return (
 		<>
 			<FieldDescription>
 				{Boolean.match(props.request.kind === 'Browser', {
-					onFalse: () => `${signInLabel(props.request.clientName, props.request.device)} asks for the apps marked new`,
+					onFalse: () =>
+						`${signInLabel(props.request.clientName, props.request.device)} asks for the apps its column marks`,
 					onTrue: () =>
 						`Signs in ${signInLabel(props.request.clientName, props.request.device)} as you to every mp281x.xyz app for 30 days, including approving sign-ins`
 				})}
@@ -287,21 +299,73 @@ function Answer(props: {request: PendingAuthorization}) {
 	)
 }
 
-// A browser session reaches every web app, so it counts under each one with a site.
-function reaches(resources: PendingAuthorization['resources'], origin: string, web: boolean) {
-	const origins = appOrigins(resources)
-	return Array.contains(origins, origin) || (Array.contains(origins, 'browser') && web)
+// The mark a column shows, so two columns that would look alike get their device written under it.
+function markOf(client: Client) {
+	return Option.getOrElse(client.app, () =>
+		Option.match(brandOf(client), {
+			onNone: () => `${client.kind}:${Option.isSome(String.match(/gateway/iu)(client.name))}`,
+			onSome: brand => brand.src
+		})
+	)
 }
 
-function holding(signIns: readonly SignedInApp[], origin: string, web: boolean) {
-	return Array.filter(signIns, signIn => reaches(signIn.resources, origin, web))
+// The waiting sign-in leads, then one column per client and device, the most recently active first.
+function columnsOf(
+	pending: Option.Option<PendingAuthorization>,
+	signIns: readonly SignedInApp[],
+	catalog: readonly {name: string; origin: string}[]
+) {
+	function clientOf(name: string, device: string, kind: 'App' | 'Browser') {
+		return {
+			app: Option.map(
+				Array.findFirst(catalog, app => kind === 'App' && String.toLowerCase(app.name) === String.toLowerCase(name)),
+				app => app.origin
+			),
+			device,
+			kind,
+			name
+		}
+	}
+	const columns = [
+		...Option.match(pending, {
+			onNone: () => [],
+			onSome: request => [
+				{
+					client: clientOf(request.clientName, request.device, request.kind),
+					families: [],
+					key: 'pending',
+					label: signInLabel(request.clientName, request.device),
+					labelled: false,
+					lastActive: 0,
+					pending: true,
+					resources: [request.resources]
+				}
+			]
+		}),
+		...pipe(
+			Array.groupBy(signIns, signIn => signInLabel(signIn.client, signIn.device)),
+			Record.values,
+			Array.filter(Array.isReadonlyArrayNonEmpty),
+			Array.sort(Order.flip(Order.mapInput(Order.Number, newest))),
+			Array.map(group => ({
+				client: clientOf(group[0].client, group[0].device, group[0].kind),
+				families: Array.map(group, signIn => signIn.family),
+				key: signInLabel(group[0].client, group[0].device),
+				label: signInLabel(group[0].client, group[0].device),
+				labelled: false,
+				lastActive: newest(group),
+				pending: false,
+				resources: Array.map(group, signIn => signIn.resources)
+			}))
+		)
+	]
+	return Array.map(columns, column => ({
+		...column,
+		labelled: Array.countBy(columns, other => markOf(other.client) === markOf(column.client)) > 1
+	}))
 }
 
-function asking(pending: Option.Option<PendingAuthorization>, origin: string, web: boolean) {
-	return Option.filter(pending, request => reaches(request.resources, origin, web))
-}
-
-// Every app that announced itself, then any other a sign-in holds; a waiting sign-in shows on the apps it asks for.
+// Apps down, signed-in clients across: a dot where one holds the other. Every app that announced itself, then any other a sign-in holds.
 export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 	const catalog = useAtomSuspense(catalogAtom).value
 	const signIns = useAtomSuspense(appsAtom).value
@@ -311,14 +375,38 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 	function shown(name: string) {
 		return String.includes(query)(String.toLowerCase(name))
 	}
-	const extra = pipe(
-		[
-			...Array.flatMap(signIns, signIn => appOrigins(signIn.resources)),
-			...Option.match(props.pending, {onNone: () => [], onSome: request => appOrigins(request.resources)})
-		],
-		Array.dedupe,
-		Array.filter(origin => origin !== 'browser' && !Array.some(catalog, app => app.origin === origin) && shown(origin)),
-		Array.sort(String.Order)
+	const rows: Row[] = [
+		...Array.map(
+			Array.filter(catalog, app => shown(app.name)),
+			app => ({
+				name: app.name,
+				open: Option.some(app.open),
+				origin: app.origin,
+				web: String.startsWith('https://')(app.open)
+			})
+		),
+		...pipe(
+			[
+				...Array.flatMap(signIns, signIn => appOrigins(signIn.resources)),
+				...Option.match(props.pending, {onNone: () => [], onSome: request => appOrigins(request.resources)})
+			],
+			Array.dedupe,
+			Array.filter(
+				origin => origin !== 'browser' && !Array.some(catalog, app => app.origin === origin) && shown(origin)
+			),
+			Array.sort(String.Order),
+			Array.map(origin => ({
+				name: Option.getOrElse(Array.head(String.split(new URL(origin).hostname, '.')), () => origin),
+				open: Option.none<string>(),
+				origin,
+				web: false
+			}))
+		)
+	]
+	// Narrowing the apps narrows the clients to those holding one, so no column stands empty.
+	const columns = Array.filter(
+		columnsOf(props.pending, signIns, catalog),
+		column => column.pending || Array.some(rows, row => holds(column, row))
 	)
 	return (
 		<section className="flex flex-col gap-3" aria-label="Apps">
@@ -332,35 +420,65 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 					</>
 				)
 			})}
-			<ItemList label="Apps">
-				{[
-					...Array.map(
-						Array.filter(catalog, app => shown(app.name)),
-						app => (
-							<AppRow
-								key={app.origin}
-								origin={app.origin}
-								name={app.name}
-								now={now}
-								pending={asking(props.pending, app.origin, String.startsWith('https://')(app.open))}
-								signIns={holding(signIns, app.origin, String.startsWith('https://')(app.open))}
-								url={Option.some(app.open)}
-							/>
-						)
-					),
-					...Array.map(extra, origin => (
-						<AppRow
-							key={origin}
-							origin={origin}
-							name={Option.getOrElse(Array.head(String.split(new URL(origin).hostname, '.')), () => origin)}
-							now={now}
-							pending={asking(props.pending, origin, false)}
-							signIns={holding(signIns, origin, false)}
-							url={Option.none()}
-						/>
-					))
-				]}
-			</ItemList>
+			{Array.match(rows, {
+				onEmpty: () => (
+					<Empty>
+						<EmptyHeader>
+							<EmptyTitle>No app matches</EmptyTitle>
+						</EmptyHeader>
+					</Empty>
+				),
+				onNonEmpty: () => (
+					<Table aria-label="Apps and the clients signed in to them">
+						<TableHeader>
+							<TableRow>
+								<TableHead>
+									<span className="sr-only">App</span>
+								</TableHead>
+								{Array.map(columns, column => (
+									<ColumnHead
+										key={column.key}
+										column={column}
+										labels={Array.some(columns, other => other.labelled)}
+										now={now}
+									/>
+								))}
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{Array.map(rows, row => (
+								<TableRow key={row.origin}>
+									<TableHead scope="row">
+										{Option.match(row.open, {
+											onNone: () => (
+												<span className="flex items-center gap-2 text-sm font-medium">
+													<AppIcon origin={row.origin} />
+													{row.name}
+												</span>
+											),
+											onSome: url => (
+												<a
+													href={url}
+													target="_blank"
+													rel="noreferrer"
+													title={`Open ${row.name}`}
+													className="flex items-center gap-2 text-sm font-medium"
+												>
+													<AppIcon origin={row.origin} />
+													{row.name}
+												</a>
+											)
+										})}
+									</TableHead>
+									{Array.map(columns, column => (
+										<Cell key={column.key} column={column} row={row} />
+									))}
+								</TableRow>
+							))}
+						</TableBody>
+					</Table>
+				)
+			})}
 			<ResultError result={disconnection} />
 		</section>
 	)
