@@ -6,7 +6,7 @@ import type {UserConfig} from 'vite-plus'
 export const pack = {
 	banner: '#!/usr/bin/env -S node --max-old-space-size=16384 --heapsnapshot-near-heap-limit=3 --report-on-fatalerror',
 	clean: false,
-	deps: {alwaysBundle: [/./u]},
+	deps: {alwaysBundle: [/./u], onlyBundle: false},
 	entry: ['src/main.server.ts'],
 	format: 'esm',
 	// The icon a server serves at /icon, as its SVG markup.
@@ -22,7 +22,19 @@ export const config = {
 		chunkSizeWarningLimit: 750,
 		modulePreload: {polyfill: false},
 		outDir: 'dist/client',
-		rolldownOptions: {experimental: {lazyBarrel: true}},
+		rolldownOptions: {
+			experimental: {lazyBarrel: true},
+			// The largest libraries get their own chunks, which stay cached across releases that only change the app.
+			output: {
+				codeSplitting: {
+					groups: [
+						{name: 'effect', test: /node_modules[\\/]effect[\\/]/u},
+						{name: 'react', test: /node_modules[\\/](?:react|react-dom|scheduler)[\\/]/u},
+						{name: 'three', test: /node_modules[\\/]three[\\/]/u}
+					]
+				}
+			}
+		},
 		target: 'esnext'
 	},
 	future: 'warn',
