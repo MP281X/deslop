@@ -28,6 +28,14 @@ it('uses concise display names without changing service/container identifiers', 
 	assert.strictEqual(workloadName({...listener, kind: 'service', name: 'deslop-scope.service'}), 'scope')
 	assert.strictEqual(workloadName({...listener, kind: 'service', name: 't3code.service'}), 't3code')
 	assert.strictEqual(workloadName({...listener, kind: 'container', name: 'deslop-stash-1'}), 'stash')
+	assert.strictEqual(
+		workloadName({...listener, kind: 'container', name: 'dual-postgres-wt-cc52031fa2a8-i4gwwaeao22pymmk'}),
+		'dual-postgres-wt-cc52031-i4gwwae'
+	)
+	assert.strictEqual(
+		workloadName({...listener, kind: 'container', name: 'long-meaningful-application'}),
+		'long-meaningful-application'
+	)
 	assert.strictEqual(workloadName({...listener, kind: 'service', name: 'preview-t3-123.service'}), 'Preview t3-123')
 	assert.strictEqual(
 		workloadName({...listener, detail: '@deslop/deploy', kind: 'service', name: 'preview-t3-123.service'}),

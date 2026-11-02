@@ -24,7 +24,7 @@ import {GitHubIcon} from '@deslop/components-web/icons'
 import {Button} from '@deslop/components-web/ui/button'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {cn} from '@deslop/components-web/utils'
-import {signInUrl} from '@deslop/runtime/auth/utils'
+import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
 import {createCast} from './-cast.ts'
 import type {Cast} from './-cast.ts'
@@ -2129,7 +2129,7 @@ function Signal() {
 						{
 							onNone: () => <Status>Connecting</Status>,
 							onSome: error =>
-								Boolean.match(error._tag === 'AuthError', {
+								Boolean.match(needsSignIn(error), {
 									onFalse: () => <Status>Reconnecting</Status>,
 									onTrue: () => <SignIn />
 								})

@@ -1,9 +1,9 @@
 # Deploy intent
 
-- One fleet with every worker in the machine filter. Neutral device icons and short names identify machines; offline state belongs in that selector, not a warning paragraph.
+- One fleet with every worker in the machine filter. Neutral device icons and short names identify machines; availability uses dots there, not online/offline text or a warning paragraph.
 - Apps and monitoring have separate pages. Apps puts exposure first, with app-centric rows: type icon, name, endpoint pills and status dot. No raw peer list, protocol labels, image tags or detached details panel.
-- Exposure controls keep their height when switching Tailnet/Public; Tailnet has no hostname input, and Public's hostname shares the input row. The picker spans the phone width and wraps names. Already exposed backends are absent. Use the shared Auth control and badge vocabulary.
+- Exposure controls keep their height when switching Tailnet/Public; Tailnet has no hostname input, and Public's hostname shares the input row. Picker names stay on one line with ellipsis, including Public's narrower picker. Shorten long unique identifier fragments, not meaningful names. Already exposed backends are absent. Use the shared Auth control and badge vocabulary.
 - A sleeping worker must not delay local monitoring or the page shell. Show cached history immediately, then refresh workers with bounded deadlines and explicit offline states.
-- Monitor defaults to four compact trends: CPU, memory, storage and network. One current reading per metric, no repeated percentages/bars/axes. Per-core and secondary memory/I/O records live in Details.
-- Context controls stay above the scrolling results. Processes nest under their real service/container, with application icons when known, PID, parent and RSS; no command lines or environment contents.
+- Monitor defaults to four compact trends: CPU, memory, storage and network. One current reading per metric, no repeated percentages/bars/axes. The selected interval stays fixed even before recording began; mark unrecorded time, never stretch samples to fill it. Details stays closed by default and makes per-core/memory/storage capacity visual, with a secondary I/O trend.
+- Context controls stay above the scrolling results. Processes nest under their real service/container, with application icons when known, PID, parent and RSS; no command lines or environment contents. Main-row icons stay aligned to its title when children open. Descendant branches expand progressively, and the page count includes top-level workloads only. All application marks share the same icon tile.
 - Consistent control heights, row columns and chart baselines on phone and desktop. Meaningful information is visible without expanding records.

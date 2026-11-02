@@ -149,13 +149,16 @@ export function sample(current: Counters, memory: string, disk: string, previous
 	} satisfies Sample
 }
 
-export function chartWindow(samples: readonly Sample[], hours: number, now: number) {
-	return {end: now, start: Number.max(now - hours * 3_600_000, Number.min(samples[0]?.time ?? now, now - 120_000))}
+export function chartWindow(hours: number, now: number) {
+	return {end: now, start: now - hours * 3_600_000}
 }
 
 export function history(samples: readonly Sample[], hours: number, now: number) {
 	const selected = Array.filter(samples, value => value.time >= now - hours * 3_600_000 && value.time <= now)
-	const window = chartWindow(selected, hours, now)
+	const window = {
+		end: now,
+		start: Number.max(now - hours * 3_600_000, Number.min(selected[0]?.time ?? now, now - 120_000))
+	}
 	return Array.dedupeWith(
 		[
 			...Array.take(selected, 1),

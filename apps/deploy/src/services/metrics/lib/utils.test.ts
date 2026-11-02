@@ -87,12 +87,11 @@ it('measures individual logical cores, memory detail, load and uptime without br
 	)
 })
 
-it('uses actual recording coverage for a new agent without hiding a full selected window or fabricating timestamps', () => {
+it('retains new-agent samples while displaying the entire requested window without fabricating recordings', () => {
 	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '', '', '100 0', 0), MEMORY, STORAGE)
 	const fresh = Array.makeBy(21, index => ({...value, time: index * 30_000}))
 	assert.deepStrictEqual(history(fresh, 168, 600_000), fresh)
-	assert.deepStrictEqual(chartWindow(history(fresh, 168, 600_000), 168, 600_000), {end: 600_000, start: 0})
-	assert.deepStrictEqual(chartWindow([{...value, time: 3_000_000}], 1, 3_600_000), {end: 3_600_000, start: 3_000_000})
-	assert.deepStrictEqual(chartWindow([{...value, time: 0}], 1, 7_200_000), {end: 7_200_000, start: 3_600_000})
-	assert.deepStrictEqual(chartWindow([], 1, 3_600_000), {end: 3_600_000, start: 3_480_000})
+	assert.deepStrictEqual(chartWindow(168, 600_000), {end: 600_000, start: 600_000 - 168 * 3_600_000})
+	assert.deepStrictEqual(chartWindow(1, 3_600_000), {end: 3_600_000, start: 0})
+	assert.deepStrictEqual(chartWindow(1, 7_200_000), {end: 7_200_000, start: 3_600_000})
 })

@@ -47,7 +47,7 @@ it('attaches only the exact service cgroup in the right scope, or the actual Doc
 		worker: 'dev'
 	})
 	const process = {memory: 1024, name: 'node', parent: 7, pid: 42}
-	const rows = [{cgroup: '0::/user.slice/user-1000.slice/app.slice/scope.service\n', process}]
+	const rows = [{cgroup: '0::/user.slice/user-1000.slice/user@1000.service/app.slice/scope.service\n', process}]
 	assert.deepStrictEqual(attachProcesses([item], rows)[0]?.processes, [process])
 	assert.isEmpty(attachProcesses([{...item, scope: 'system'}], rows)[0]?.processes ?? [])
 	assert.isEmpty(
@@ -60,4 +60,12 @@ it('attaches only the exact service cgroup in the right scope, or the actual Doc
 		)[0]?.processes,
 		[process]
 	)
+	assert.deepStrictEqual(
+		attachProcesses(
+			[{...item, name: 'user@1000.service', scope: 'system'}],
+			[{cgroup: '0::/user.slice/user-1000.slice/user@1000.service/init.scope\n', process}]
+		)[0]?.processes,
+		[process]
+	)
+	assert.isEmpty(attachProcesses([{...item, name: 'user@1000.service', scope: 'system'}], rows)[0]?.processes ?? [])
 })

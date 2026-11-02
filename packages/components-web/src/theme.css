@@ -27,6 +27,7 @@
 	--border: #e5e5e5;
 	--input: #d9d9d9;
 	--icon-tile: #fafafa;
+	--icon-shadow: #0a0a0a;
 
 	--primary: var(--orange);
 	--destructive: var(--red);
@@ -91,6 +92,7 @@
 	--color-destructive: var(--destructive);
 	--color-warning: var(--warning);
 	--color-icon-tile: var(--icon-tile);
+	--color-icon-shadow: var(--icon-shadow);
 	--color-accent-foreground: var(--accent-foreground);
 	--color-accent: var(--accent);
 	--color-muted-foreground: var(--muted-foreground);
@@ -161,6 +163,10 @@
 	align-self: center;
 	transform: none;
 	translate: none;
+}
+
+[data-slot='item-media'][data-align='start'] {
+	align-self: flex-start;
 }
 
 /* A page's list rows start where its heading and fields do; a row that is a button keeps its inset for its highlight. */

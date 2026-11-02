@@ -8,10 +8,11 @@ import {Suspense} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
+import {StatusDot} from '@deslop/components-web/status-dot'
 import {buttonVariants} from '@deslop/components-web/ui/button'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
-import {signInUrl} from '@deslop/runtime/auth/utils'
+import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
 import {MachineIcon, machineName} from '#lib/components.tsx'
 import {inventoryAtom} from '#lib/utils.ts'
@@ -23,7 +24,7 @@ function Fleet() {
 	const navigate = useNavigate({from: '/'})
 	const matchRoute = useMatchRoute()
 	if (AsyncResult.isFailure(result)) {
-		if (Option.exists(Cause.findErrorOption(result.cause), error => error._tag === 'AuthError')) {
+		if (Option.exists(Cause.findErrorOption(result.cause), needsSignIn)) {
 			return <SignIn href={signInUrl(location.href)} />
 		}
 		return <Error error={Cause.squash(result.cause)} reset={() => location.reload()} />
@@ -51,9 +52,20 @@ function Fleet() {
 				<ToggleGroupItem key={worker} value={worker} className="gap-1.5">
 					<MachineIcon worker={worker} />
 					{machineName(worker)}
-					{Array.some(result.value.sources, source => source.name === worker && source.error !== '') && (
-						<span className="text-muted-foreground text-xs">Offline</span>
-					)}
+					<span
+						role="img"
+						aria-label={Boolean.match(
+							Array.some(result.value.sources, source => source.name === worker && source.error !== ''),
+							{onFalse: () => 'Available', onTrue: () => 'Unavailable'}
+						)}
+					>
+						<StatusDot
+							status={Boolean.match(
+								Array.some(result.value.sources, source => source.name === worker && source.error !== ''),
+								{onFalse: () => 'live', onTrue: () => 'off'}
+							)}
+						/>
+					</span>
 				</ToggleGroupItem>
 			))}
 		</ToggleGroup>

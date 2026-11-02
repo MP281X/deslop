@@ -17,6 +17,7 @@ import type {HistoryQuery, MachineHistory, Sample} from '#services/metrics/schem
 const numbers = new Intl.NumberFormat(undefined, {maximumFractionDigits: 1})
 const time = new Intl.DateTimeFormat(undefined, {hour: '2-digit', minute: '2-digit'})
 const date = new Intl.DateTimeFormat(undefined, {day: 'numeric', month: 'short'})
+const stamp = new Intl.DateTimeFormat(undefined, {day: 'numeric', hour: '2-digit', minute: '2-digit', month: 'short'})
 
 function size(value?: number) {
 	if (value === undefined) return '—'
@@ -30,6 +31,31 @@ function rate(value?: number) {
 	return `${size(value)}/s`
 }
 
+function Meter(props: {label: string; value?: number; maximum?: number}) {
+	if (props.value === undefined || props.maximum === undefined || props.maximum <= 0) {
+		return <div className="bg-muted h-1" aria-hidden />
+	}
+	return (
+		<svg
+			className="h-1 w-full"
+			viewBox="0 0 100 4"
+			preserveAspectRatio="none"
+			role="meter"
+			aria-label={props.label}
+			aria-valuemin={0}
+			aria-valuemax={Number.max(props.maximum, 1)}
+			aria-valuenow={props.value}
+		>
+			<rect width="100" height="4" fill="var(--muted)" />
+			<rect
+				width={Number.clamp((props.value / Number.max(props.maximum, 1)) * 100, {maximum: 100, minimum: 0})}
+				height="4"
+				fill="var(--primary)"
+			/>
+		</svg>
+	)
+}
+
 function Sparkline(props: {
 	history: MachineHistory
 	hours: number
@@ -38,7 +64,7 @@ function Sparkline(props: {
 	second?: (sample: Sample) => Sample['cpu']
 	maximum?: number
 }) {
-	const window = chartWindow(props.history.samples, props.hours, props.history.time)
+	const window = chartWindow(props.hours, props.history.time)
 	const maximum = Array.reduce(props.history.samples, props.maximum ?? 1, (max, sample) =>
 		Number.max(max, Number.max(props.value(sample) ?? 0, props.second?.(sample) ?? 0))
 	)
@@ -69,6 +95,29 @@ function Sparkline(props: {
 			preserveAspectRatio="none"
 			className="mt-2 h-14 w-full"
 		>
+			<rect
+				x="0"
+				y="0"
+				width={Number.clamp(
+					(((props.history.samples[0]?.time ?? window.end) - window.start) / (window.end - window.start)) * 300,
+					{maximum: 300, minimum: 0}
+				)}
+				height="46"
+				fill="var(--muted)"
+			/>
+			{window.end - (Option.getOrUndefined(Array.last(props.history.samples))?.time ?? window.end) > 90_000 && (
+				<rect
+					x={
+						(((Option.getOrUndefined(Array.last(props.history.samples))?.time ?? window.end) - window.start) /
+							(window.end - window.start)) *
+						300
+					}
+					y="0"
+					width="300"
+					height="46"
+					fill="var(--muted)"
+				/>
+			)}
 			<path d="M0 42H300" stroke="var(--border)" fill="none" />
 			<path d={path(false)} stroke="var(--primary)" fill="none" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
 			{props.second !== undefined && (
@@ -100,15 +149,21 @@ function Machine(props: {history: MachineHistory; hours: HistoryQuery['hours']})
 					{machineName(props.history.worker)}
 				</h2>
 				<span className="text-muted-foreground font-mono">
-					{Boolean.match(props.history.stale, {onFalse: () => '', onTrue: () => 'Last recorded · '})}
 					{Boolean.match(props.hours === 1, {
-						onFalse: () =>
-							date.formatRange(chartWindow(props.history.samples, props.hours, props.history.time).start, latest.time),
-						onTrue: () =>
-							time.formatRange(chartWindow(props.history.samples, props.hours, props.history.time).start, latest.time)
+						onFalse: () => date.formatRange(chartWindow(props.hours, props.history.time).start, props.history.time),
+						onTrue: () => time.formatRange(chartWindow(props.hours, props.history.time).start, props.history.time)
 					})}
 				</span>
 			</header>
+			{(props.history.samples[0]?.time ?? 0) > chartWindow(props.hours, props.history.time).start + 90_000 && (
+				<p className="text-muted-foreground mb-3 text-xs">
+					<span className="bg-muted mr-1.5 inline-block size-2" />
+					No recordings before {stamp.format(props.history.samples[0]?.time)}
+				</p>
+			)}
+			{props.history.stale && (
+				<p className="text-muted-foreground mb-3 text-xs">Last recording {stamp.format(latest.time)}</p>
+			)}
 			<div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
 				<div>
 					<h3 className="text-muted-foreground text-xs">CPU</h3>
@@ -179,9 +234,12 @@ function Machine(props: {history: MachineHistory; hours: HistoryQuery['hours']})
 				</summary>
 				<div className="grid grid-cols-2 gap-x-6 gap-y-2 py-3 sm:grid-cols-4">
 					{Array.map(latest.cores ?? [], core => (
-						<div key={core.id} className="flex justify-between gap-2 font-mono">
+						<div key={core.id} className="flex items-center gap-2 font-mono">
 							<span className="text-muted-foreground">{core.id}</span>
-							<span>
+							<div className="min-w-0 flex-1">
+								<Meter label={core.id} value={core.usage} maximum={100} />
+							</div>
+							<span className="w-12 text-right">
 								{Option.match(Option.fromUndefinedOr(core.usage), {
 									onNone: () => '—',
 									onSome: usage => `${numbers.format(usage)}%`
@@ -190,31 +248,45 @@ function Machine(props: {history: MachineHistory; hours: HistoryQuery['hours']})
 						</div>
 					))}
 				</div>
-				<dl className="[&_dt]:text-muted-foreground grid grid-cols-2 gap-2 [&_dd]:text-right [&_dd]:font-mono">
-					<dt>Swap</dt>
-					<dd>
-						{size(latest.swapUsed)} / {size(latest.swapTotal)}
-					</dd>
-					<dt>Available memory</dt>
-					<dd>{size(latest.memoryAvailable)}</dd>
-					<dt>Cached memory</dt>
-					<dd>{size(latest.memoryCached)}</dd>
-					<dt>Disk read / write</dt>
-					<dd>
-						{rate(latest.diskRead)} · {rate(latest.diskWrite)}
-					</dd>
+				<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 					{Array.map(
-						Array.filter(latest.disks, disk => disk.mount !== '/'),
-						disk => (
-							<div key={disk.mount} className="col-span-2 flex justify-between gap-2">
-								<dt>{disk.mount}</dt>
-								<dd>
-									{size(disk.used)} / {size(disk.total)}
-								</dd>
+						[
+							{label: 'Swap', maximum: latest.swapTotal, value: latest.swapUsed},
+							{label: 'Available memory', maximum: latest.memoryTotal, value: latest.memoryAvailable},
+							{label: 'Cached memory', maximum: latest.memoryTotal, value: latest.memoryCached},
+							...Array.map(
+								Array.filter(latest.disks, disk => disk.mount !== '/'),
+								disk => ({label: disk.mount, maximum: disk.total, value: disk.used})
+							)
+						],
+						reading => (
+							<div key={reading.label} className="space-y-2">
+								<div className="flex justify-between gap-2">
+									<span className="text-muted-foreground">{reading.label}</span>
+									<span className="font-mono">
+										{size(reading.value)} / {size(reading.maximum)}
+									</span>
+								</div>
+								<Meter label={reading.label} value={reading.value} maximum={reading.maximum} />
 							</div>
 						)
 					)}
-				</dl>
+					<div className="sm:col-span-2">
+						<div className="flex justify-between gap-2">
+							<span className="text-muted-foreground">Disk read / write</span>
+							<span className="font-mono">
+								↓ {rate(latest.diskRead)} · ↑ {rate(latest.diskWrite)}
+							</span>
+						</div>
+						<Sparkline
+							history={props.history}
+							hours={props.hours}
+							title="Disk I/O"
+							value={sample => sample.diskRead}
+							second={sample => sample.diskWrite}
+						/>
+					</div>
+				</div>
 				<p className="text-muted-foreground mt-2">{props.history.cpuModel}</p>
 			</details>
 		</section>

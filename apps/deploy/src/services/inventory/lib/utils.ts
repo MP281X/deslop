@@ -61,7 +61,7 @@ export function portLabel(item: InventoryItem) {
 	return `${item.process || 'App'} · :${item.port}`
 }
 
-export function workloadName(item: InventoryItem) {
+function fullName(item: InventoryItem) {
 	if (item.kind === 'port') return item.process || 'App'
 	if (item.kind === 'container' && String.startsWith('deslop-')(item.name)) {
 		return String.replace(/-[0-9]+$/u, '')(String.slice(7)(item.name))
@@ -73,6 +73,10 @@ export function workloadName(item: InventoryItem) {
 		})
 	}
 	return String.replaceAll(/^deslop-|\.service$/gu, '')(item.name)
+}
+
+export function workloadName(item: InventoryItem) {
+	return String.replaceAll(/\b(?=[a-z0-9]{10,}\b)(?=[a-z0-9]*[0-9])([a-z0-9]{7})[a-z0-9]+\b/giu, '$1')(fullName(item))
 }
 
 function sameSocket(listener: InventoryItem, binding: {address: string; port: number; protocol: 'tcp' | 'udp'}) {

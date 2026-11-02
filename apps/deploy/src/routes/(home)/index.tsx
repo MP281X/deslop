@@ -103,9 +103,11 @@ function Expose(props: {items: readonly InventoryItem[]; choices: readonly Inven
 							<ComboboxEmpty>No matching app listeners.</ComboboxEmpty>
 							<ComboboxList>
 								{(item: InventoryItem) => (
-									<ComboboxItem key={item.id} value={item} className="items-start pr-7">
+									<ComboboxItem key={item.id} value={item} className="pr-7">
 										<MachineIcon worker={item.worker} />
-										<span className="min-w-0 flex-1 wrap-anywhere whitespace-normal">{item.process}</span>
+										<span className="min-w-0 flex-1 truncate" title={item.process}>
+											{item.process}
+										</span>
 										<Badge variant="secondary" className="font-mono">
 											:{item.port}
 										</Badge>
@@ -228,8 +230,8 @@ function ExposureLink(props: {item: InventoryItem}) {
 function InventoryRow(props: {row: ReturnType<typeof workloads>[number]}) {
 	const state = status(props.row.item)
 	return (
-		<Item role="listitem" size="sm" className="min-h-16 flex-nowrap gap-3 px-1">
-			<ItemMedia className="group-has-data-[slot=item-description]/item:translate-y-0 group-has-data-[slot=item-description]/item:self-center">
+		<Item role="listitem" size="sm" className="min-h-16 flex-nowrap items-start gap-3 px-1">
+			<ItemMedia data-align="start" className="group-has-data-[slot=item-description]/item:translate-y-0">
 				<span
 					className="flex size-5 shrink-0 items-center justify-center"
 					title={props.row.item.kind}
@@ -240,10 +242,7 @@ function InventoryRow(props: {row: ReturnType<typeof workloads>[number]}) {
 				</span>
 			</ItemMedia>
 			<ItemContent className="min-w-0">
-				<ItemTitle
-					className="line-clamp-none block w-full wrap-anywhere whitespace-normal"
-					title={workloadName(props.row.item)}
-				>
+				<ItemTitle className="line-clamp-none block w-full wrap-anywhere whitespace-normal" title={props.row.item.name}>
 					{workloadName(props.row.item)}
 				</ItemTitle>
 				<div className="flex min-w-0 flex-wrap items-center gap-1">
@@ -323,7 +322,13 @@ function Services() {
 						<ToggleGroupItem value="apps">Apps</ToggleGroupItem>
 						<ToggleGroupItem value="all">All services</ToggleGroupItem>
 					</ToggleGroup>
-					<span className="text-muted-foreground font-mono text-xs">{rows.length}</span>
+					<span
+						className="text-muted-foreground font-mono text-xs"
+						title="Top-level apps and services"
+						aria-label={`${rows.length} top-level apps and services`}
+					>
+						{rows.length}
+					</span>
 				</div>
 				<Input
 					aria-label="Find a service or port"

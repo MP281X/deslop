@@ -55,6 +55,7 @@ colors:
   icon-tile: '#fafafa'
   icon-shadow: '#0a0a0a'
   light-icon-tile: '#fafafa'
+  light-icon-shadow: '#0a0a0a'
 typography:
   title:
     fontFamily: Geist
@@ -196,7 +197,7 @@ Geist on the web, SF Pro on iOS at Dynamic Type sizes through the `text` tokens 
 - **Deploy monitor** uses a dense multi-column canvas up to 1024px; its Apps page stays at `page`, with machine filters, controls and rows sharing the same edges.
 - **iOS.** Inline titles, plain lists, bottom search.
 - **App bars.** The app icon and name lead on web and iOS; detail screens keep their native back navigation. Signal's spectator world uses map controls instead of an app bar.
-- **Row alignment.** Center leading marks and trailing actions against the whole row, including wrapped details. Stash reserves a 64pt media square even without a preview, using the source mark as its fallback.
+- **Row alignment.** Center leading marks and trailing actions against the whole row, including wrapped details. Rows with inline process trees align both marks to the parent title; `ItemMedia` opts into `data-align="start"`. Stash reserves a 64pt media square even without a preview, using the source mark as its fallback.
 - **List endings.** A closing hairline marks the last row; installed web apps keep 16px plus the home-indicator inset below it.
 
 ## Elevation & Depth
