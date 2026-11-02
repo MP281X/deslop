@@ -5,6 +5,7 @@ import {
 	Context,
 	Effect,
 	FileSystem,
+	HashMap,
 	Layer,
 	Number,
 	Option,
@@ -20,7 +21,16 @@ import {FetchHttpClient, HttpClient} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
 import {attachProcesses, processReadings, processes} from '#services/inventory/lib/processes.ts'
-import {Container, DeployError, InventoryItem, Serve, Snapshot, Tailnet, Unit} from '#services/inventory/schema.ts'
+import {
+	Container,
+	DeployError,
+	InventoryItem,
+	Serve,
+	Snapshot,
+	Tailnet,
+	Timer,
+	Unit
+} from '#services/inventory/schema.ts'
 
 const execute = Effect.fnUntraced(function* (name: string, args: string[]) {
 	const handle = yield* ChildProcess.make(name, args, {stderr: 'pipe', stdout: 'pipe'})
@@ -142,17 +152,27 @@ export class Inventory extends Context.Service<Inventory, {readonly snapshot: Ef
 			}
 			const worker = String.trim(yield* fs.readFileString('/proc/sys/kernel/hostname'))
 			const processState = yield* Ref.make(Option.none<ReturnType<typeof processReadings>>())
-			function units(system: boolean) {
+			const units = Effect.fnUntraced(function* (system: boolean) {
 				const scope = Boolean.match(system, {onFalse: () => 'user' as const, onTrue: () => 'system' as const})
-				return pipe(
-					command('systemctl', [
-						...Boolean.match(system, {onFalse: () => ['--user'], onTrue: () => []}),
-						'list-units',
-						'--all',
-						'--type=service',
-						'--output=json',
-						'--no-pager'
-					]),
+				const manager = Boolean.match(system, {onFalse: () => ['--user'], onTrue: () => []})
+				// Each timer-started service, with its next start when one is due.
+				const scheduled = HashMap.fromIterable(
+					Array.getSomes(
+						Array.map(
+							yield* pipe(
+								command('systemctl', [...manager, 'list-timers', '--all', '--output=json', '--no-pager']),
+								Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Timer))))
+							),
+							timer =>
+								Option.map(
+									Option.fromNullishOr(timer.activates),
+									unit => [unit, Option.map(Option.fromNullishOr(timer.next), next => Math.floor(next / 1000))] as const
+								)
+						)
+					)
+				)
+				return yield* pipe(
+					command('systemctl', [...manager, 'list-units', '--all', '--type=service', '--output=json', '--no-pager']),
 					Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Unit)))),
 					Effect.map(rows =>
 						Array.map(rows, row =>
@@ -161,6 +181,14 @@ export class Inventory extends Context.Service<Inventory, {readonly snapshot: Ef
 								id: `${worker}:${scope}:${row.unit}`,
 								kind: 'service',
 								name: row.unit,
+								...Option.match(HashMap.get(scheduled, row.unit), {
+									onNone: () => ({}),
+									onSome: next =>
+										Option.match(next, {
+											onNone: () => ({scheduled: true}),
+											onSome: time => ({next: time, scheduled: true})
+										})
+								}),
 								scope,
 								state: `${row.active} · ${row.sub}`,
 								url: '',
@@ -169,7 +197,7 @@ export class Inventory extends Context.Service<Inventory, {readonly snapshot: Ef
 						)
 					)
 				)
-			}
+			})
 			return Inventory.of({
 				snapshot: Effect.scoped(
 					Effect.gen(function* () {

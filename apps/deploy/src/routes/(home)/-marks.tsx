@@ -15,18 +15,24 @@ import {TurborepoIconDark} from '@deslop/components-web/ui/svgs/turborepoIconDar
 import {TurborepoIconLight} from '@deslop/components-web/ui/svgs/turborepoIconLight'
 import {Vite} from '@deslop/components-web/ui/svgs/vite'
 
-const apps = Record.fromEntries(
-	Array.map(
-		Record.toEntries(
-			import.meta.glob<string>('../../../../*/src/routes/icon-dark.svg', {
-				eager: true,
-				import: 'default',
-				query: '?url'
-			})
-		),
-		entry => [String.split(entry[0], '/')[4] ?? '', entry[1]]
-	)
-)
+import icon from '#routes/icon-dark.svg'
+
+// Every app's mark by its folder; Vite names Deploy's own as a path inside this app, so it joins by name.
+const apps: Record<string, string> = {
+	...Record.fromEntries(
+		Array.map(
+			Record.toEntries(
+				import.meta.glob<string>('../../../../*/src/routes/icon-dark.svg', {
+					eager: true,
+					import: 'default',
+					query: '?url'
+				})
+			),
+			entry => [String.split(entry[0], '/')[4] ?? '', entry[1]]
+		)
+	),
+	deploy: icon
+}
 const brands = [
 	{dark: T3Light, light: T3Dark, pattern: /\bt3code\b/u},
 	{dark: Nodejs, light: Nodejs, pattern: /\b(?:node|nodejs)(?:-MainThread)?\b/iu},
@@ -41,7 +47,8 @@ const brands = [
 ]
 
 export function ApplicationIcon(props: {name: string; process?: string; container?: boolean; small?: boolean}) {
-	const own = apps[String.split(props.name, ' ')[0] ?? '']
+	// An app's own mark, also on what is named after it, such as `stash preview` or `stash-update`.
+	const own = apps[String.split(props.name, /[ -]/u)[0] ?? '']
 	const brand = Option.getOrUndefined(
 		Array.findFirst(brands, candidate => candidate.pattern.test(`${props.name} ${props.process ?? ''}`))
 	)
