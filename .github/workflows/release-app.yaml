@@ -16,6 +16,7 @@ jobs:
     name: Update
     runs-on: ubuntu-26.04
     outputs:
+      artifact: ${{ steps.fingerprint.outputs.artifact }}
       native: ${{ steps.fingerprint.outputs.native }}
     defaults:
       run:
@@ -36,16 +37,18 @@ jobs:
           if [[ -n $commit ]] && git cat-file -e "$commit^{commit}" && git diff --quiet "$commit" -- . ../../packages ../../pnpm-lock.yaml; then changed=false; fi
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
 
-      # An update exists for a fingerprint only once its build has shipped, so a failed build is tried again next release.
+      # A shipped build leaves an artifact named for its fingerprint that expires after 80 days, ten before TestFlight drops the build, so the next release builds it again; a failed build leaves none and is tried again.
       - name: Check for a native change
         id: fingerprint
-        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          hash=$(eas fingerprint:generate --platform ios --build-profile production --json --non-interactive | jq -r .hash)
-          echo "native=$(eas update:list --branch production --runtime-version "$hash" --limit 1 --json --non-interactive | jq '.currentPage | length == 0')" >> "$GITHUB_OUTPUT"
+          artifact="${{ inputs.app }}-app-store-$(eas fingerprint:generate --platform ios --build-profile production --json --non-interactive | jq -r .hash)"
+          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
+          echo "native=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not)] | length == 0')" >> "$GITHUB_OUTPUT"
 
       - name: Publish the EAS Update
-        if: steps.fingerprint.outputs.native == 'false'
+        if: steps.changes.outputs.changed == 'true' && steps.fingerprint.outputs.native == 'false'
         run: eas update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"
 
   app-store:
@@ -71,3 +74,9 @@ jobs:
         run: eas submit --profile production --platform ios --non-interactive --no-wait --path "$RUNNER_TEMP/app.ipa"
       - name: Publish the EAS Update for the new build
         run: eas update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"
+      - name: Record the shipped build
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ needs.update.outputs.artifact }}
+          path: ${{ runner.temp }}/app.ipa
+          retention-days: 80
