@@ -3,7 +3,6 @@ import {
 	Boolean,
 	ByteSize,
 	Cause,
-	Config,
 	Context,
 	DateTime,
 	Effect,
@@ -26,7 +25,7 @@ import {
 	pipe
 } from 'effect'
 
-import {listEvents} from '@deslop/runtime/server'
+import {dataDirectory, listEvents} from '@deslop/runtime/server'
 
 import {clock} from '#services/media/lib/utils.ts'
 import type {Still} from '#services/media/schema.ts'
@@ -587,15 +586,12 @@ export class Notes extends Context.Service<
 }
 
 // One shared notes folder.
-const notesFolder = pipe(
-	Effect.gen(function* () {
-		const fs = yield* FileSystem.FileSystem
-		const path = yield* Path.Path
-		const directory = path.join(yield* Config.String('HOME'), '.deslop', 'stash')
-		yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
-		return directory
-	}),
-	Effect.mapError(cause => NotesError.make({cause, message: 'The notes folder could not be read.'}))
+export const layerNotes = Layer.unwrap(
+	pipe(
+		dataDirectory,
+		Effect.mapBoth({
+			onFailure: cause => NotesError.make({cause, message: 'The notes folder could not be read.'}),
+			onSuccess: Notes.layer
+		})
+	)
 )
-
-export const layerNotes = Layer.unwrap(Effect.map(notesFolder, directory => Notes.layer(directory)))

@@ -20,7 +20,7 @@ import {
 import type {PointerEvent, ReactNode, WheelEvent} from 'react'
 import {createContext, useContext, useEffect, useRef, useState} from 'react'
 
-import {GitHubIcon} from '@deslop/components-web/icons'
+import {SignIn} from '@deslop/components-web/fallbacks'
 import {Button} from '@deslop/components-web/ui/button'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {cn} from '@deslop/components-web/utils'
@@ -1360,31 +1360,6 @@ function Status(props: {children: ReactNode}) {
 	)
 }
 
-function SignIn() {
-	useEffect(() => {
-		location.replace(signInUrl(location.href))
-	}, [])
-	return (
-		<Panel label="Sign in" className="top-1/2 left-1/2 w-80 -translate-1/2">
-			<p className="p-3 font-medium">Signal</p>
-			<p className="text-muted-foreground px-3 pb-3 leading-relaxed">
-				Independent AI teams build, explore and encounter one another in an evolving world. You watch.
-			</p>
-			<div className="border-t p-3">
-				<Button
-					className="w-full"
-					size="lg"
-					nativeButton={false}
-					render={<a aria-label="Sign in with GitHub" href={signInUrl(location.href)} />}
-				>
-					<GitHubIcon />
-					Sign in with GitHub
-				</Button>
-			</div>
-		</Panel>
-	)
-}
-
 // The building whose footprint covers a tile.
 function buildingAt(buildings: View['buildings'], at: {x: number; z: number}) {
 	return Array.findFirst(
@@ -2131,7 +2106,7 @@ function Signal() {
 							onSome: error =>
 								Boolean.match(needsSignIn(error), {
 									onFalse: () => <Status>Reconnecting</Status>,
-									onTrue: () => <SignIn />
+									onTrue: () => <SignIn href={signInUrl(location.href)} />
 								})
 						}
 					),

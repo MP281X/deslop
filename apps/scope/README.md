@@ -1,10 +1,10 @@
 # Scope
 
-An Effect development debugger: a private OTLP/HTTP JSON receiver on port 4318, queried by agents through an OAuth-protected MCP endpoint on port 5000, reached through the [gateway](../gateway/README.md), and read by people at `https://scope.mp281x.xyz`.
+An Effect development debugger: a public OTLP/HTTP JSON receiver, queried by agents through an OAuth-protected MCP endpoint reached through the [gateway](../gateway/README.md), and read by people at `https://scope.mp281x.xyz`.
 
-- **Runs** on dev from `tools/compose.yaml`; data in `~/.deslop/scope`, entries under `entries/` for three days by exporter time.
-- **Trusted exporters**: `http://127.0.0.1:4318/v1/traces` and `/v1/logs`, `content-type: application/json`. Never publish 4318 to the internet.
-- **Public port**: MCP, authenticated ingestion and the web page, through Deslop [Auth](../auth/README.md); no API keys. `HOST` sets the bind address, `PORT` the public port.
+- **Runs** on dev as a service; entries under `entries/` in its data directory for three days by exporter time, at most 10 MB per export.
+- **Exporters**: `https://scope.mp281x.xyz/v1/traces` and `/v1/logs`, `content-type: application/json`, from any origin without credentials; apps pass `--traces https://scope.mp281x.xyz`, phones export there directly.
+- **MCP and the web page** need a Deslop sign-in through [Auth](../auth/README.md); no API keys.
 - **Web page**: the traces of the last three days by service, each opened as a waterfall with its spans' attributes and logs; its RPCs (`scope.services`, `scope.traces`, `scope.trace`) answer what `list_services`, `find` and `read_trace` do.
 
 | Tool              | Returns                                                                                                    |
@@ -20,5 +20,5 @@ Start with `list_services`.
 
 - **Times**: `lastEventAt` and `runStartedAt` are exporter-clock Unix nanoseconds; a zero run marker means no valid run start was exported.
 - **`entries`** counts the latest run only; a missing service has no retained telemetry, which proves nothing about its health.
-- **Rejections** per ingestion port, route, status and credential header (`authorization`, `cookie`, `none`); they can't name the app, and anonymous visitors cause 401s too. No credentials or bodies kept. `since` and `lastAt` are receiver-clock Unix milliseconds; counters reset on restart.
+- **Rejections** per route, status and credential header (`authorization`, `cookie`, `none`); they can't name the app. No credentials or bodies kept. `since` and `lastAt` are receiver-clock Unix milliseconds; counters reset on restart.
 - **No self-export**: Scope's own diagnostic traffic stays out of it.

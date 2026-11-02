@@ -2,7 +2,6 @@ import {Boolean, DateTime, Duration, Effect, Layer, Option, Schema, String, pipe
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
-import type {HttpClient} from 'effect/http'
 import {Atom} from 'effect/reactivity'
 import {RpcClient, RpcSerialization} from 'effect/rpc'
 import {Socket} from 'effect/socket'
@@ -12,19 +11,12 @@ import {AppState} from 'react-native'
 
 import {layerOtlp} from '#telemetry.ts'
 
-import type {AuthError} from '#auth/schema.ts'
-
-// The public receiver; Scope's private port is out of a phone's reach.
-export const TELEMETRY = 'https://otel.mp281x.xyz'
-
 export const extra = Schema.decodeUnknownSync(Schema.Struct({scheme: Schema.String}))(Constants.expoConfig?.extra)
 
 // Telemetry starts once; the socket is built per server. JSON frames, because binary ones failed to reopen a cancelled watch on iOS.
-export function layer(
-	applicationName: string,
-	authorization?: Effect.Effect<string, AuthError, HttpClient.HttpClient>
-) {
-	Atom.runtime.addGlobalLayer(layerOtlp(`${applicationName}-ios`, TELEMETRY, 'mobile', authorization))
+export function layer(applicationName: string) {
+	// Scope's public receiver takes traces and logs from anywhere.
+	Atom.runtime.addGlobalLayer(layerOtlp(`${applicationName}-ios`, 'https://scope.mp281x.xyz', 'mobile'))
 	return (server: string) =>
 		pipe(
 			// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.

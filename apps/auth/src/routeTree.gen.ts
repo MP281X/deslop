@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as homeRouteRouteImport } from './routes/(home)/route'
 import { Route as homeIndexRouteImport } from './routes/(home)/index'
 import { Route as homePeopleRouteImport } from './routes/(home)/people'
-import { Route as homeResourcesRouteImport } from './routes/(home)/resources'
 
 const homeRouteRoute = homeRouteRouteImport.update({
   id: '/(home)',
@@ -28,36 +27,27 @@ const homePeopleRoute = homePeopleRouteImport.update({
   path: '/people',
   getParentRoute: () => homeRouteRoute,
 } as any)
-const homeResourcesRoute = homeResourcesRouteImport.update({
-  id: '/resources',
-  path: '/resources',
-  getParentRoute: () => homeRouteRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/people': typeof homePeopleRoute
-  '/resources': typeof homeResourcesRoute
   '/': typeof homeIndexRoute
 }
 export interface FileRoutesByTo {
   '/people': typeof homePeopleRoute
-  '/resources': typeof homeResourcesRoute
   '/': typeof homeIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/(home)': typeof homeRouteRouteWithChildren
   '/(home)/people': typeof homePeopleRoute
-  '/(home)/resources': typeof homeResourcesRoute
   '/(home)/': typeof homeIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/people' | '/resources' | '/'
+  fullPaths: '/people' | '/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/people' | '/resources' | '/'
-  id:
-    '__root__' | '/(home)' | '/(home)/people' | '/(home)/resources' | '/(home)/'
+  to: '/people' | '/'
+  id: '__root__' | '/(home)' | '/(home)/people' | '/(home)/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -87,25 +77,16 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof homePeopleRouteImport
       parentRoute: typeof homeRouteRoute
     }
-    '/(home)/resources': {
-      id: '/(home)/resources'
-      path: '/resources'
-      fullPath: '/resources'
-      preLoaderRoute: typeof homeResourcesRouteImport
-      parentRoute: typeof homeRouteRoute
-    }
   }
 }
 
 interface homeRouteRouteChildren {
   homePeopleRoute: typeof homePeopleRoute
-  homeResourcesRoute: typeof homeResourcesRoute
   homeIndexRoute: typeof homeIndexRoute
 }
 
 const homeRouteRouteChildren: homeRouteRouteChildren = {
   homePeopleRoute: homePeopleRoute,
-  homeResourcesRoute: homeResourcesRoute,
   homeIndexRoute: homeIndexRoute,
 }
 

@@ -280,8 +280,7 @@ private struct Upload {
     form.queryItems = [URLQueryItem(name: "client_id", value: credentials.clientId),
       URLQueryItem(name: "grant_type", value: "refresh_token"),
       URLQueryItem(name: "refresh_token", value: credentials.refreshToken),
-      URLQueryItem(name: "resource", value: "https://stash.mp281x.xyz"),
-      URLQueryItem(name: "resource", value: "https://otel.mp281x.xyz")]
+      URLQueryItem(name: "resource", value: "https://stash.mp281x.xyz")]
     guard let endpoint = URL(string: "https://auth.mp281x.xyz/api/auth/oauth2/token") else {
       throw CocoaError(.featureUnsupported)
     }

@@ -26,7 +26,7 @@ import {
 import {Base64} from 'effect/encoding'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
-import {nativeTool} from '@deslop/runtime/native'
+import {tool} from '@deslop/runtime/server'
 
 import {sourceProxy, sticky} from '#services/media/lib/proxy.ts'
 import {captionTracks, captionTranscript, clock, isBlocked, speechOnly} from '#services/media/lib/utils.ts'
@@ -57,7 +57,7 @@ function commentLine(comment: Comment) {
 }
 
 const run = Effect.fnUntraced(function* (command: string, args: string[]) {
-	const handle = yield* ChildProcess.make(yield* nativeTool(command), args, {stderr: 'pipe', stdout: 'pipe'})
+	const handle = yield* ChildProcess.make(yield* tool(command), args, {stderr: 'pipe', stdout: 'pipe'})
 	return yield* Effect.all(
 		{
 			exitCode: handle.exitCode,
@@ -93,7 +93,7 @@ export class Media extends Context.Service<
 				'--js-runtimes',
 				`node:${execPath}`,
 				'--ffmpeg-location',
-				yield* nativeTool('ffmpeg'),
+				yield* tool('ffmpeg'),
 				'--no-progress',
 				'--no-warnings',
 				'--no-playlist'

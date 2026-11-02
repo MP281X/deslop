@@ -12,7 +12,7 @@ import {signInUrl} from '@deslop/runtime/auth/utils'
 
 import {RpcClient} from '#lib/utils.ts'
 
-// Every RPC requires a Deslop sign-in; GitHub returns here once it is done.
+// Every RPC requires a user: a signed-out visitor goes to Auth, which returns here.
 function Name() {
 	const name = useAtomSuspense(RpcClient.query('app.name', undefined), {includeFailure: true})
 	if (AsyncResult.isSuccess(name)) return name.value

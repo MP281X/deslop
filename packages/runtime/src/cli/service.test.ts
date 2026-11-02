@@ -5,45 +5,22 @@ import {Array, ConfigProvider, Effect, FileSystem, Ref, Sink, Stream, pipe} from
 
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
-import {packageRoot, packageVersion} from '#cli/package.ts'
-import {service, systemdArgument} from '#cli/service.ts'
-import {managedEntry} from '#cli/update.ts'
+import {install, installUpdates, status, uninstall} from '#cli/service.ts'
 
 it.layer(NodeServices.layer)('Service lifecycle', test => {
 	test.effect(
-		'resolves an npm bin symlink before locating metadata, native tools and managed code',
+		'installs a restarting unit and its update timer, then uninstalls both while retaining app data',
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const home = yield* fs.makeTempDirectoryScoped()
-			const source = `${home}/node_modules/@deslop/fixture`
-			const entry = `${home}/node_modules/.bin/fixture`
-			yield* fs.makeDirectory(`${source}/dist`, {recursive: true})
-			yield* fs.makeDirectory(`${source}/bin`)
-			yield* fs.makeDirectory(`${home}/node_modules/.bin`)
-			yield* fs.writeFileString(`${source}/dist/server.js`, 'fixture-code')
-			yield* fs.writeFileString(`${source}/bin/tool`, 'fixture-native')
-			yield* fs.writeFileString(`${source}/package.json`, '{"version":"0.1.1"}')
-			yield* fs.symlink(`${source}/dist/server.js`, entry)
-			assert.strictEqual(yield* packageRoot(entry), source)
-			assert.strictEqual(yield* packageVersion(entry), '0.1.1')
-			const installed = yield* pipe(
-				managedEntry('fixture', entry),
-				Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({HOME: home}))
-			)
-			assert.strictEqual(yield* fs.readFileString(installed), 'fixture-code')
-			assert.strictEqual(yield* fs.readFileString(`${home}/.deslop/fixture/current/bin/tool`), 'fixture-native')
-		})
-	)
-	test.effect(
-		'installs, restarts changed settings and uninstalls only its unit while retaining app data',
-		Effect.fnUntraced(function* () {
-			const fs = yield* FileSystem.FileSystem
-			const home = yield* fs.makeTempDirectoryScoped()
-			const commands = yield* Ref.make<string[][]>([])
+			const commands = yield* Ref.make<string[]>([])
 			const spawner = ChildProcessSpawner.make(command =>
 				Effect.gen(function* () {
 					if (!ChildProcess.isStandardCommand(command)) return yield* Effect.die('Unexpected pipeline')
-					yield* Ref.update(commands, rows => [...rows, [command.command, ...Array.map(command.args, arg => `${arg}`)]])
+					yield* Ref.update(commands, rows => [
+						...rows,
+						Array.join([command.command, ...Array.map(command.args, arg => `${arg}`)], ' ')
+					])
 					return ChildProcessSpawner.makeHandle({
 						all: Stream.empty,
 						exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
@@ -59,38 +36,32 @@ it.layer(NodeServices.layer)('Service lifecycle', test => {
 					})
 				})
 			)
-			function change(action: 'install' | 'status' | 'uninstall') {
+			function run<A, E, R>(effect: Effect.Effect<A, E, R>) {
 				return pipe(
-					service('fixture', action, '/node', '/path with spaces/server.js', [
-						'--traces',
-						'https://example.com/%u$HOME'
-					]),
+					effect,
 					Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-					Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({HOME: home})),
-					Effect.scoped
+					Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({HOME: home}))
 				)
 			}
-			yield* change('install')
-			const unit = yield* fs.readFileString(`${home}/.config/systemd/user/deslop-fixture.service`)
-			assert.include(unit, '"/path with spaces/server.js" "--traces" "https://example.com/%%u$$HOME"')
-			assert.include(unit, 'Environment=NODE_ENV=production')
-			assert.include(unit, 'UMask=0077')
-			assert.isTrue(
-				Array.some(
-					yield* Ref.get(commands),
-					args => Array.join(args, ' ') === 'systemctl --user restart deslop-fixture.service'
-				)
-			)
-			assert.include(yield* change('status'), 'ActiveState=active')
+			const entry = `${home}/.deslop/fixture/current/dist/server.js`
+			yield* run(install('fixture', ['/node', entry, '--traces', 'https://example.com/%u$HOME"\n[Service]']))
+			yield* run(installUpdates('fixture', ['/node', entry, 'service', 'update']))
+			const units = `${home}/.config/systemd/user`
+			const unit = yield* fs.readFileString(`${units}/deslop-fixture.service`)
+			assert.include(unit, `ExecStart="/node" "${entry}" "--traces" "https://example.com/%%u$$HOME\\"\\n[Service]"`)
+			assert.include(unit, `EnvironmentFile=-"${home}/.deslop/fixture.env"`)
+			assert.include(yield* fs.readFileString(`${units}/deslop-fixture-update.service`), '"service" "update"')
+			assert.include(yield* fs.readFileString(`${units}/deslop-fixture-update.timer`), 'OnUnitInactiveSec=15min')
+			assert.includeMembers(yield* Ref.get(commands), [
+				'systemctl --user restart deslop-fixture.service',
+				'systemctl --user enable --now deslop-fixture-update.timer'
+			])
+			assert.include(yield* run(status('fixture')), 'ActiveState=active')
 			yield* fs.makeDirectory(`${home}/.deslop/fixture`, {recursive: true})
 			yield* fs.writeFileString(`${home}/.deslop/fixture/data`, 'keep')
-			yield* change('uninstall')
-			assert.isFalse(yield* fs.exists(`${home}/.config/systemd/user/deslop-fixture.service`))
+			yield* run(uninstall('fixture'))
+			assert.deepStrictEqual(yield* fs.readDirectory(units), [])
 			assert.strictEqual(yield* fs.readFileString(`${home}/.deslop/fixture/data`), 'keep')
 		})
 	)
-})
-
-it('quotes systemd specifiers, dollar expansion and injected lines as literal argument data', () => {
-	assert.strictEqual(systemdArgument('a b%u$HOME"c\\d\n[Service]'), '"a b%%u$$HOME\\"c\\\\d\\n[Service]"')
 })

@@ -49,6 +49,7 @@ import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 import {Linking} from 'react-native'
 
+import {AccountMenu} from '@deslop/components-mobile/account'
 import {BrandIcon, BrandLogo} from '@deslop/components-mobile/icons'
 import {ClipboardSheet} from '@deslop/components-mobile/sheet'
 import {colors, space, text} from '@deslop/components-mobile/theme'
@@ -80,7 +81,8 @@ import {
 	queryAtom,
 	regenerateAtom,
 	removeAtom,
-	searchAtom
+	searchAtom,
+	session
 } from '#lib/utils.ts'
 import logo from '#routes/icon.png'
 import {tagCounts} from '#services/notes/lib/utils.ts'
@@ -407,6 +409,9 @@ export function HomeRoute(props: {
 			<Toolbar.Content>
 				<ToolbarItem placement="topBarLeading">
 					<PasteSheet />
+				</ToolbarItem>
+				<ToolbarItem placement="topBarTrailing">
+					<AccountMenu session={session.machine} />
 				</ToolbarItem>
 				<ToolbarItem placement="bottomBar">
 					<FilterMenu kind={props.kind} onKind={props.onKind} />

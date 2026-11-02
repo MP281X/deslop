@@ -1,7 +1,6 @@
 import {OctagonAlert} from 'lucide-react'
 import {useEffect} from 'react'
 
-import {GitHubIcon} from '#components/icons.tsx'
 import {Alert, AlertDescription, AlertTitle} from '#components/ui/alert.tsx'
 import {Button, buttonVariants} from '#components/ui/button.tsx'
 import {Empty, EmptyContent, EmptyHeader, EmptyTitle} from '#components/ui/empty.tsx'
@@ -22,21 +21,12 @@ export function NotFound() {
 	)
 }
 
-// A signed-out visitor's one way in; `href` is the app's sign-in link, which returns here.
+// A signed-out visitor goes straight to Auth through `href`, the app's sign-in link, which returns here; apps have no sign-in screen of their own.
 export function SignIn(props: {href: string}) {
 	useEffect(() => {
 		location.replace(props.href)
 	}, [props.href])
-	return (
-		<Empty>
-			<EmptyContent>
-				<a className={buttonVariants({size: 'lg'})} href={props.href}>
-					<GitHubIcon />
-					Continue to sign in
-				</a>
-			</EmptyContent>
-		</Empty>
-	)
+	return null
 }
 
 export function Error(props: {error: unknown; reset: () => void}) {

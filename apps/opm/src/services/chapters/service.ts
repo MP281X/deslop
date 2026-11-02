@@ -8,14 +8,12 @@ import {
 	Context,
 	DateTime,
 	Effect,
-	FileSystem,
 	HashMap,
 	HashSet,
 	Layer,
 	Number,
 	Option,
 	Order,
-	Path,
 	Random,
 	Record,
 	Result,
@@ -29,6 +27,8 @@ import {
 
 import * as cheerio from 'cheerio'
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
+
+import * as ServerRuntime from '@deslop/runtime/server'
 
 import {openStore} from '#services/chapters/lib/store.ts'
 import {byNumber, keyOf, nameOf, pagesOf, postFrom, seriesOf, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
@@ -440,15 +440,6 @@ export class Chapters extends Context.Service<
 		)
 }
 
-const dataFolder = pipe(
-	Effect.gen(function* () {
-		const fs = yield* FileSystem.FileSystem
-		const path = yield* Path.Path
-		const directory = path.join(yield* Config.String('HOME'), '.deslop', 'opm')
-		yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
-		return directory
-	}),
-	failed('The chapters folder could not be read.')
+export const layerChapters = Layer.unwrap(
+	pipe(ServerRuntime.dataDirectory, failed('The chapters folder could not be read.'), Effect.map(Chapters.layer))
 )
-
-export const layerChapters = Layer.unwrap(Effect.map(dataFolder, directory => Chapters.layer(directory)))

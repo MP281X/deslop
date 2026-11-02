@@ -1,52 +1,13 @@
-import {Boolean, Clock, Effect, Layer, pipe} from 'effect'
+import {Clock, Effect, Layer, pipe} from 'effect'
 
-import {FetchHttpClient, HttpClient, HttpClientError, HttpClientRequest} from 'effect/http'
+import {FetchHttpClient} from 'effect/http'
 import {OtlpLogger, OtlpSerialization, OtlpTracer} from 'effect/observability'
 
-import type {AuthError} from '#auth/schema.ts'
-
-export function layerOtlp(
-	serviceName: string,
-	url: URL | string,
-	runtime: 'web' | 'mobile' | 'server',
-	authorization?: Effect.Effect<string, AuthError, HttpClient.HttpClient>
-) {
+// Scope's receiver is public, so exporters send no credentials.
+export function layerOtlp(serviceName: string, url: string, runtime: 'web' | 'mobile' | 'server') {
 	return Layer.unwrap(
 		Effect.gen(function* () {
 			const start = `${yield* Clock.currentTimeNanos}`
-			const client = pipe(
-				Layer.effect(
-					HttpClient.HttpClient,
-					Effect.map(HttpClient.HttpClient, raw =>
-						HttpClient.mapRequestEffect(
-							HttpClient.transform(raw, effect =>
-								Effect.provideService(effect, FetchHttpClient.RequestInit, {
-									credentials: Boolean.match(new URL(url).origin === 'https://otel.mp281x.xyz', {
-										onFalse: () => 'omit' as const,
-										onTrue: () => 'include' as const
-									})
-								})
-							),
-							request => {
-								if (authorization === undefined) return Effect.succeed(request)
-								return pipe(
-									authorization,
-									Effect.provideService(HttpClient.HttpClient, raw),
-									Effect.mapBoth({
-										// oxlint-disable-next-line @deslop/coding-standards/preserve-error-cause -- HttpClientError carries its original cause in reason.cause, not a top-level field.
-										onFailure: cause =>
-											new HttpClientError.HttpClientError({
-												reason: new HttpClientError.TransportError({cause, request})
-											}),
-										onSuccess: token => HttpClientRequest.bearerToken(request, token)
-									})
-								)
-							}
-						)
-					)
-				),
-				Layer.provide(FetchHttpClient.layer)
-			)
 			const resource = {
 				attributes: {'scope.run.started_unix_nano': start, 'scope.runtime': runtime, 'service.instance.id': start},
 				serviceName
@@ -56,7 +17,7 @@ export function layerOtlp(
 					OtlpTracer.layer({exportInterval: '250 millis', resource, url: new URL('/v1/traces', url).href}),
 					OtlpLogger.layer({exportInterval: '250 millis', resource, url: new URL('/v1/logs', url).href})
 				),
-				Layer.provide([OtlpSerialization.layerJson, client])
+				Layer.provide([OtlpSerialization.layerJson, FetchHttpClient.layer])
 			)
 		})
 	)

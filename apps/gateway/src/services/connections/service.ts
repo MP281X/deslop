@@ -6,11 +6,9 @@ import {
 	Config,
 	Context,
 	Effect,
-	FileSystem,
 	Layer,
 	Match,
 	Option,
-	Path,
 	PubSub,
 	Record,
 	Schema,
@@ -36,7 +34,6 @@ import {KeyValueStore} from 'effect/persistence'
 import type {User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {localAuth} from '@deslop/runtime/auth/utils'
-import {layerKeyValueStore} from '@deslop/runtime/server'
 
 import {
 	clientMetadata,
@@ -52,9 +49,10 @@ import type {
 	Discovery,
 	OAuth,
 	ServerId,
-	ToolVisibility
+	ToolVisibility,
+	Connection
 } from '#services/connections/schema.ts'
-import {Connection, ConnectionStore, Metadata, Registration, ServerUrl, Token} from '#services/connections/schema.ts'
+import {ConnectionStore, Metadata, Registration, ServerUrl, Token} from '#services/connections/schema.ts'
 
 // A provider sign-in in progress, for ten minutes and in memory: a restart asks to connect again.
 type Pending = {client: OAuth['client']; generation: string; id: ServerId; userId: string; verifier: string}
@@ -104,21 +102,6 @@ export class Connections extends Context.Service<
 		const callback = `${origin}/oauth/callback`
 		const clientInfo = clientMetadata(origin)
 		const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, ConnectionStore)
-		const fs = yield* FileSystem.FileSystem
-		// The previous release kept the servers in Auth and called the owner's apps with delegated tokens: the others move here once, those are dropped, to be added again and connected by OAuth.
-		const previous = (yield* Path.Path).join(yield* Config.String('HOME'), '.deslop', 'auth', 'mcp', 'servers')
-		if ((yield* fs.exists(previous)) && Option.isNone(yield* store.get('servers'))) {
-			yield* store.set(
-				'servers',
-				Record.filter(
-					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)))(
-						yield* fs.readFileString(previous)
-					),
-					Schema.is(Connection)
-				)
-			)
-		}
-		if (yield* fs.exists(previous)) yield* fs.remove(previous)
 		const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('servers'), () => ({})))
 		// Local no-issuer installs have one trusted developer, independent of production admin settings.
 		const listed = Config.Array(Schema.String, 'GITHUB_ADMINS')
@@ -584,18 +567,5 @@ export class Connections extends Context.Service<
 				)
 		})
 	})
-	static readonly layer = pipe(
-		Layer.effect(Connections)(Connections.make),
-		Layer.provide(
-			Layer.unwrap(
-				Effect.gen(function* () {
-					const fs = yield* FileSystem.FileSystem
-					const path = yield* Path.Path
-					const directory = path.join(yield* Config.String('HOME'), '.deslop', 'gateway')
-					yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
-					return layerKeyValueStore(directory)
-				})
-			)
-		)
-	)
+	static readonly layer = Layer.effect(Connections)(Connections.make)
 }

@@ -16,18 +16,16 @@
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
-		"#package.*": "./package.*",
 		"#lib/*": "./src/lib/*",
 		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
-		"#services/*": "./src/services/*",
-		"#tools/*": "./src/tools/*"
+		"#services/*": "./src/services/*"
 	},
 	"publishConfig": {
 		"access": "public"
 	},
 	"scripts": {
-		"build": "rm -rf dist && vp build && vp pack && node ../../packages/runtime/src/package.ts signal",
+		"build": "vp build && vp pack",
 		"preview": "NODE_ENV=development vp run build && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js",
 		"test": "vp test --config ../../vite.config.ts",
 		"typecheck": "tsrs --checkerAssignment go --pretty false"
@@ -37,7 +35,6 @@
 		"@deslop/runtime": "workspace:*",
 		"@effect/ai-openrouter": "latest",
 		"@effect/atom-react": "latest",
-		"@effect/platform-node": "latest",
 		"@tanstack/react-router": "latest",
 		"@typeonce/effect-machine": "latest",
 		"@types/three": "latest",
@@ -46,6 +43,9 @@
 		"react": "latest",
 		"react-dom": "latest",
 		"three": "latest"
+	},
+	"config": {
+		"port": 5107
 	},
 	"engines": {
 		"node": ">=26"

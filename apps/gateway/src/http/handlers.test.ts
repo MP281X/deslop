@@ -37,14 +37,15 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import type {User} from '@deslop/runtime/auth/schema'
 import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
 import {AUTH_URL, CurrentUser} from '@deslop/runtime/auth/utils'
+import * as ServerRuntime from '@deslop/runtime/server'
 
 import {HttpHandlers} from '#http/handlers.ts'
-import {GATEWAY_URL} from '#services/connections/lib/utils.ts'
 import {AddServer, ConnectionInfo, ServerParams, ToolVisibility} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway} from '#services/gateway/service.ts'
 import {layerMcp} from '#tools/handlers.ts'
 
+const GATEWAY_URL = 'https://gateway.mp281x.xyz'
 const ACCOUNTS: Record<string, User> = {
 	dev: {id: 'github:0', name: 'dev'},
 	octocat: {id: 'github:42', name: 'octocat'},
@@ -466,6 +467,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin = GATEWAY_URL
 					),
 					Layer.provideMerge(Gateway.layer),
 					Layer.provideMerge(Connections.layer),
+					Layer.provide(ServerRuntime.layerKeyValueStore(directory)),
 					Layer.provide(
 						Layer.mergeAll(
 							NodeCrypto.layer,
@@ -474,11 +476,8 @@ const servers = Effect.fnUntraced(function* (home?: string, origin = GATEWAY_URL
 							Layer.succeed(FetchHttpClient.Fetch, fetchUpstream),
 							ConfigProvider.layer(
 								ConfigProvider.fromUnknown({
-									...Boolean.match(local, {onFalse: () => ({GITHUB_ADMINS: '42'}), onTrue: () => ({})}),
-									APP_URL: origin,
-									DESLOP_LOCAL: local,
-									HOME: directory,
-									NODE_ENV: 'production'
+									...Boolean.match(local, {onFalse: () => ({AUTH_URL, GITHUB_ADMINS: '42'}), onTrue: () => ({})}),
+									APP_URL: origin
 								})
 							)
 						)
@@ -1076,57 +1075,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				Array.map(MutableList.toArray(gateway.grants), grant => `${grant.grant}:${grant.client}`),
 				['authorization_code:client-2', 'refresh_token:client-2']
 			)
-		})
-	)
-	test.effect(
-		'moves the previous release’s servers out of Auth, without its delegated Deslop ones',
-		Effect.fnUntraced(function* () {
-			const fs = yield* FileSystem.FileSystem
-			const home = yield* fs.makeTempDirectoryScoped()
-			const previous = `${home}/.deslop/auth/mcp/servers`
-			const row = {generation: 'previous', hidden: [], link: {_tag: 'Connected'}, name: 'Example', tools: ['search']}
-			yield* fs.makeDirectory(`${home}/.deslop/auth/mcp`, {recursive: true})
-			yield* fs.writeFileString(
-				previous,
-				yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
-					mobbin: {
-						...row,
-						id: 'mobbin',
-						link: {
-							_tag: 'Authorized',
-							expiresAt: 0,
-							token: {access_token: 'saved-access', refresh_token: 'saved-refresh', token_type: 'Bearer'}
-						},
-						mode: 'oauth',
-						oauth: {
-							client: {_tag: 'Registered', clientId: 'auth-client'},
-							metadata: {
-								authorization_endpoint: `${PROVIDERS.mobbin.issuer}/oauth/authorize`,
-								issuer: PROVIDERS.mobbin.issuer,
-								token_endpoint: `${PROVIDERS.mobbin.issuer}/oauth/token`
-							},
-							scope: ''
-						},
-						url: PROVIDERS.mobbin.url
-					},
-					public: {...row, id: 'public', mode: 'public', url: 'https://public.example.com/mcp'},
-					stash: {...row, id: 'stash', mode: 'deslop', url: 'https://stash.mp281x.xyz/mcp'}
-				})
-			)
-			const gateway = yield* servers(home)
-			assert.deepStrictEqual(
-				Array.map(yield* listServers(gateway.web), server => `${server.id}:${server.status}`),
-				['mobbin:Connected', 'public:Connected']
-			)
-			assert.isFalse(yield* fs.exists(previous))
-			const kept = yield* fs.readFileString(`${home}/.deslop/gateway/servers`)
-			assert.isFalse(String.includes('deslop')(kept))
-			assert.isTrue(String.includes('saved-refresh')(kept))
-			// The moved tokens refresh with the client Auth registered for them.
-			yield* modern(gateway.web, TOKEN, 'tools/list')
-			assert.deepStrictEqual(MutableList.toArray(gateway.grants), [
-				{client: 'auth-client', grant: 'refresh_token', refresh: 'saved-refresh', resource: PROVIDERS.mobbin.url}
-			])
 		})
 	)
 	test.effect(

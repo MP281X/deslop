@@ -11,7 +11,7 @@ url = "https://gateway.mp281x.xyz/mcp"
 
 - **Add** a public HTTPS MCP URL on [the gateway's page](https://gateway.mp281x.xyz); an OAuth server opens its sign-in in the browser.
 - **Names**: a stable namespace from the hostname, a suffix on collision; tools are `<server>__<tool>`.
-- **Who**: only `GITHUB_ADMINS` (Auth's setting) manage servers; every allowed account, machine and harness shares the upstream grants.
+- **Who**: only the `--admins` (Auth's setting) manage servers; every allowed account, machine and harness shares the upstream grants.
 - **Disconnect** deletes local provider tokens, keeps the URL; **Remove** deletes the definition too; neither revokes the provider's grant.
 - **Tools** menu: uncheck tools agents should neither see nor call.
 - **Failures**: a row shows why its last connection or discovery failed, as `list_mcp_connections` does.
@@ -21,7 +21,7 @@ url = "https://gateway.mp281x.xyz/mcp"
 - **Discovery** from the server's standard metadata.
 - **Registration**: public-client Dynamic Client Registration with the server's own callback, `/oauth/callback/<id>`, on each connection; otherwise its Client ID Metadata Document, only with a provider naming itself in its answers (RFC 9207 `iss`). Any other provider is refused; never pre-registered clients.
 - **Deslop servers**, Auth's own included, connect the same way with Auth as provider; the gateway's sign-ins show among the admin's signed-in apps.
-- **Credentials** in `~/.deslop/gateway/`.
+- **Credentials** in its data directory.
 
 ## MCP
 

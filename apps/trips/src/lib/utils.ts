@@ -79,7 +79,7 @@ export const session = MobileSession.make('Trips', SERVER, keychain)
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/trips/lib/utils/RpcClient', {
 	group: RpcContracts,
 	protocol: pipe(
-		MobileRuntime.layer('@deslop/trips', session.accessToken)(SERVER),
+		MobileRuntime.layer('@deslop/trips')(SERVER),
 		Layer.provideMerge(RpcAuth.layerClient(session.accessToken)),
 		Layer.provide(FetchHttpClient.layer)
 	)

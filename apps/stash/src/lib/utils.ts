@@ -43,7 +43,7 @@ export const session = MobileSession.make('Stash', SERVER, {
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/stash/lib/utils/RpcClient', {
 	group: RpcContracts,
 	protocol: pipe(
-		MobileRuntime.layer('@deslop/stash', session.accessToken)(SERVER),
+		MobileRuntime.layer('@deslop/stash')(SERVER),
 		Layer.provideMerge(RpcAuth.layerClient(session.accessToken)),
 		Layer.provide(FetchHttpClient.layer)
 	)

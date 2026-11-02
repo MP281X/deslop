@@ -1,28 +1,28 @@
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- A real scoped loopback server proves the worker RPC transport.
 import {createServer} from 'node:http'
 
-import {NodeHttpClient, NodeHttpServer, NodeServices} from '@effect/platform-node'
+import {NodeCrypto, NodeHttpClient, NodeHttpServer, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, ConfigProvider, Context, Deferred, Effect, Fiber, Layer, Option, Ref, Schema, pipe} from 'effect'
+import {Array, ConfigProvider, Context, Deferred, Effect, Fiber, Layer, Option, Ref, pipe} from 'effect'
 
 import {HttpRouter, HttpServer} from 'effect/http'
 import {RpcServer} from 'effect/rpc'
 import {TestClock} from 'effect/testing'
 
+import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
-import {DEVELOPER} from '@deslop/runtime/auth/utils'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {Exposures} from '#services/exposures/service.ts'
-import {Fleet} from '#services/fleet/service.ts'
-import {DeployError, InventoryItem, Snapshot, Worker} from '#services/inventory/schema.ts'
+import {Fleet, layerPeerAuth} from '#services/fleet/service.ts'
+import {DeployError, InventoryItem, Snapshot} from '#services/inventory/schema.ts'
 import {Inventory} from '#services/inventory/service.ts'
 import {MachineHistory, Sample} from '#services/metrics/schema.ts'
 import {Metrics} from '#services/metrics/service.ts'
 
-it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch))('Worker RPC', test => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypto.layer))('Worker RPC', test => {
 	test.effect('merges one service view, keeps remote identity stable and marks failed snapshots stale', () =>
 		Effect.scoped(
 			Effect.gen(function* () {
@@ -70,48 +70,51 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch))('Worker 
 											})
 									})
 								),
+								// No person is signed in: only a worker holding the shared key gets through.
+								Layer.provide(layerPeerAuth),
 								Layer.provide(
 									Layer.succeedContext(
 										Auth.makeContext(
-											Auth.of({access: () => Effect.succeed(DEVELOPER), user: () => Effect.succeed(DEVELOPER)})
+											Auth.of({
+												access: () => Effect.fail(AuthError.make({message: 'Sign in first'})),
+												user: () => Effect.fail(AuthError.make({message: 'Sign in first'}))
+											})
 										)
 									)
-								)
+								),
+								Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({DEPLOY_KEY: 'shared-key'})))
 							)
 						),
-						Layer.provide(ServerRuntime.layer('fixture')),
+						Layer.provide(ServerRuntime.layerProtocol),
 						Layer.provideMerge(NodeHttpServer.layer(createServer, {host: '127.0.0.1', port: 0}))
 					)
 				)
 				const url = HttpServer.formatAddress(Context.get(server, HttpServer.HttpServer).address)
-				const fleet = Context.get(
-					yield* Layer.build(
-						pipe(
-							Fleet.layer,
-							Layer.provide(Layer.succeed(Metrics, {read: () => Effect.succeed(history)})),
-							Layer.provide(
-								Layer.succeed(Inventory, {snapshot: Effect.succeed(Snapshot.make({items: [], sources: [], time: 0}))})
-							),
-							Layer.provide(
-								Layer.succeed(Exposures, {
-									expose: () => Effect.fail(DeployError.make({message: 'read only'})),
-									hide: () => Effect.fail(DeployError.make({message: 'read only'})),
-									items: Effect.succeed([])
-								})
-							),
-							Layer.provide(
-								ConfigProvider.layer(
-									ConfigProvider.fromUnknown({
-										DEPLOY_WORKERS: yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Array(Worker)))([
-											{auth: '', name: 'desktop', url}
-										])
+				const fleetWith = Effect.fnUntraced(function* (key: string) {
+					return Context.get(
+						yield* Layer.build(
+							pipe(
+								Fleet.layer,
+								Layer.provide(Layer.succeed(Metrics, {read: () => Effect.succeed(history)})),
+								Layer.provide(
+									Layer.succeed(Inventory, {snapshot: Effect.succeed(Snapshot.make({items: [], sources: [], time: 0}))})
+								),
+								Layer.provide(
+									Layer.succeed(Exposures, {
+										expose: () => Effect.fail(DeployError.make({message: 'read only'})),
+										hide: () => Effect.fail(DeployError.make({message: 'read only'})),
+										items: Effect.succeed([])
 									})
+								),
+								Layer.provide(
+									ConfigProvider.layer(ConfigProvider.fromUnknown({DEPLOY_KEY: key, DEPLOY_WORKERS: `desktop=${url}`}))
 								)
 							)
-						)
-					),
-					Fleet
-				)
+						),
+						Fleet
+					)
+				})
+				const fleet = yield* fleetWith('shared-key')
 				const current = yield* fleet.snapshot
 				assert.deepStrictEqual(current.workers, ['desktop'])
 				assert.strictEqual(current.items[0]?.id, 'remote:desktop:worker:user:scope.service')
@@ -141,6 +144,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch))('Worker 
 				assert.include(staleMetrics[1]?.error ?? '', 'worker unavailable')
 				yield* TestClock.adjust('2 hours')
 				assert.isEmpty((yield* fleet.metrics({hours: 1}))[1]?.samples ?? [])
+				assert.include((yield* (yield* fleetWith('another-key')).snapshot).sources[0]?.error ?? '', 'Sign in first')
 				const stale = yield* fleet.snapshot
 				assert.strictEqual(stale.items[0]?.id, current.items[0]?.id)
 				assert.strictEqual(stale.items[0]?.state, 'stale · active')

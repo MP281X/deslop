@@ -7,45 +7,30 @@ Shared server CLI, service lifecycle, HTTP/MCP authorization, telemetry and web/
 Replace `scope` with the app's executable:
 
 ```bash
-scope                                      # foreground, 127.0.0.1:5000
-scope --port 5100                           # a second app needs a distinct port
-scope service install --port 5100           # user systemd service
+scope                                                 # foreground on 127.0.0.1 and the package's config.port
+scope --port 5200                                     # another port
+scope service install --url https://scope.example.com --auth https://auth.mp281x.xyz
 scope service status
-scope service update                        # update its managed service from npm
-scope service uninstall                     # remove the unit, retain app data
+scope service update                                  # npm's latest release now, as the 15-minute timer does
+scope service uninstall                               # remove the units, keep the app's data
 ```
 
-Server entrypoints use `CliRuntime.runApp(packageJson, effect)`; the executable name and version come from that package's metadata. One shared schema validates CLI/environment settings and saved service settings before enrollment or startup.
+A server entry is `CliRuntime.runApp({icon, routes})`: its RPC, HTTP routes and `ServerRuntime.layerMcp` tools, with its services provided. The runtime adds sign-in, the origin guard, `/icon`, the web manifest and pages, telemetry and the HTTP server, and reads the name, version and default port from the `package.json` beside the bundle.
 
-`--host`, `--port`, `--url`, `--auth` and `--traces` override `HOST`, `PORT`, `APP_URL`, `AUTH_URL` and `OTEL_URL`. `--url` is the canonical HTTP(S) origin, including a nonstandard port. Set it to the HTTPS hostname before proxying an app: unknown Host headers and cross-origin unauthenticated requests are rejected. Binding beyond localhost is an explicit `--host` choice, not a second `--public` flag. Without Auth, every request uses the same trusted mock user as local development—even when listening on a network address. A proxy is not authentication.
+Every flag falls back to its environment variable, and app code reads either through `Config`: `--host` `HOST`, `--port` `PORT`, `--url` `APP_URL`, `--auth` `AUTH_URL`, `--traces` `OTEL_URL`, plus each app's own, listed by `--help`. Non-secret settings are flags, so they show in the unit file; secrets stay in `~/.deslop/<app>.env`, which the unit loads.
 
-No issuer or telemetry endpoint is required locally. `--traces <OTLP/HTTP endpoint>` enables server and web-client export at runtime; Effect serves browser configuration from `/api/runtime`, with no Vite prefix or rebuild. Mobile exporters keep their own app configuration. Containers can use `SERVER_OTEL_URL` for a private server-to-Scope endpoint while the browser uses the public `OTEL_URL`.
+## Sign-in
 
-Services keep immutable code under `~/.deslop/<app>/releases/` and an atomic `current` link. Unit files are under `~/.config/systemd/user/`; optional `~/.deslop/<app>.env` supplies app-specific environment/secrets. Service settings and CLI credentials stay under the app's data directory. Installing again restarts the unit with the new settings. Enable user lingering on the worker if it must survive logout. Containers run the same npm artifact in the foreground, never systemd.
+Pages and assets are public; RPC and MCP need a user. Without `--auth` every request is the trusted developer, and only loopback, IP addresses and the `--url` host are served, so a rebound DNS name cannot reach the app. With `--auth` the user comes from Auth's shared session cookie or a bearer for the app's `--url`, and any host name a proxy adds keeps working. Either way a browser's `Origin` must match the host it reached, except on Scope's OTLP receiver. A signed-out page goes straight to Auth through `/auth/sign-in`; the app bar's account menu signs out through `/auth/sign-out`.
 
-## Optional Auth
+MCP is HTTP-only at the app's `/mcp`, advertising [RFC 9728 resource metadata](https://www.rfc-editor.org/rfc/rfc9728.html) when Auth is on; the MCP client owns its OAuth sign-in.
 
-```bash
-scope --auth https://auth.mp281x.xyz --url https://scope.example.com
-scope login --auth https://auth.mp281x.xyz --url https://scope.example.com
-```
+## Services and data
 
-The server first requests protected-resource enrollment. A signed-in admin approves or denies the exact resource origin in Auth → Resources. A pending/denied resource cannot receive usable OAuth grants. Disabling it rejects existing tokens too. Previously deployed Deslop resource identifiers remain approved until explicitly disabled. Pending requests expire after ten minutes; the bounded inbox evicts its oldest pending request when full. Approvals and admin denials are durable and do not consume pending capacity; denying a request clears that pending slot without permitting re-enrollment to bypass the decision.
+`service install` writes a user systemd unit that runs the package `~/.deslop/<app>/current` links to, and an update timer. Every 15 minutes it compares npm's latest release with the running one; on a newer one it installs it beside the current, switches the link and restarts the unit, so two versions never run at once, then deletes releases older than the previous. There is no rollback: Verify gates releases, and data changes cannot be undone. Enable user lingering on a worker that must keep services after logout.
 
-Enrollment is a **Deslop issuer-specific provisioning extension**, not OAuth client registration or a device grant: neither RFC 7591 nor RFC 8628 registers a protected resource. HTTP MCP advertises [RFC 9728 resource metadata](https://www.rfc-editor.org/rfc/rfc9728.html); client registration uses [RFC 7591](https://www.rfc-editor.org/rfc/rfc7591.html), and CLI sign-in uses authorization code + S256 PKCE, state and issuer checks, then refresh-token rotation. `--auth` currently expects the Deslop issuer's verification/session API, not an arbitrary OIDC provider; browser sign-in retains Deslop's shared-domain cookie model. Local installs need none of this infrastructure.
+An installed app keeps its data in `~/.deslop/<app>`; one run from a checkout, such as a preview, in the checkout's `.deslop/<app>`.
 
-`login` prints a URL and listens on an ephemeral loopback callback ([RFC 8252](https://www.rfc-editor.org/rfc/rfc8252.html)). Open it on the CLI's machine, or forward that callback port over SSH for a headless worker. Credentials are mode 0600, separated by issuer and resource origin. Logging in to a remote worker never changes the installed service's settings or updater probe target; repeat its URL/Auth flags when attaching directly. Refreshes are serialized across CLI processes; after an interrupted/crashed refresh, the error names the lock to remove only once no owner is running. Never pass bearer/refresh tokens as command-line flags.
+## Native tools
 
-MCP is HTTP-only at the running app's `/mcp` endpoint. Point the harness's HTTP MCP client there; it owns its OAuth sign-in. There is no stdio adapter or second app/data writer. The CLI's `login` command remains for Deploy's authenticated worker RPC connections, not as an MCP bridge.
-
-## Deploy updates
-
-`deploy service install` also enables a separate user systemd timer. Every 15 minutes, with jitter, its oneshot checks npm's latest linear `0.1.<release>` version, stages an exact install with lifecycle scripts disabled, validates the CLI, atomically switches `current`, restarts Deploy and probes the expected runtime version. A failed restart/probe restores the previous code. Downtime is intentional. Other apps update only through their own `service update` command or a new installation; Deploy does not deploy their application code.
-
-The updater is separate from the process it restarts; it does not overwrite a running bundle or a Vite+/npm global install. A rejected release is quarantined in `failed-version` rather than retried every 15 minutes; a newer release can proceed. Successful activation keeps only current and immediately previous code releases. Node/npm, registry access and a working user systemd manager are prerequisites. A machine power loss during activation may require restoring the saved `previous` link manually; application data is not rolled back. A stale lifecycle lock is never stolen automatically.
-
-## Packaging
-
-Builds emit `release/`: the server bundle, client assets where present, native tools where needed and dependency-free npm metadata. Pack **that directory**, not an Expo/workspace manifest. The exact tarball is both published to npm and unpacked by its Docker image. Release workflow bootstrap and publication approvals live in [RELEASING.md](https://github.com/MP281X/deslop/blob/main/RELEASING.md).
-
-Linux x64 packages currently match the two workers. Stash bundles FFmpeg/ffprobe and a yt-dlp PyInstaller executable (Python included); Deploy bundles Caddy. Their exact archives, checksums, licenses and source references are checked into [`tools/native`](https://github.com/MP281X/deslop/tree/main/tools/native); builds extract them without downloads. That directory's README owns deliberate updates. These are executables, not WASM, and still rely on the host's normal Linux/glibc, libgcc and zlib baseline. Release preparation uses `tar` with xz support; runtime media processing does not require apt, pip or a separately installed Python/FFmpeg/Caddy. Native licenses and source references travel in `bin/`.
+An app's native executables ship zstd-compressed in its `bin/` with their licenses; `ServerRuntime.tool` unpacks one into the data directory on first use and again only for a new release. Updates follow RELEASING.md's **Native tools**. They are Linux x64 executables and rely on the host's normal glibc baseline.

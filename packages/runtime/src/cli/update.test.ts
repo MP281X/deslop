@@ -1,55 +1,51 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, ConfigProvider, Effect, FileSystem, Ref, Sink, Stream, pipe} from 'effect'
+import {Array, ConfigProvider, Effect, FileSystem, Ref, Sink, Stream, pipe} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
 import {update} from '#cli/update.ts'
 
-it.layer(NodeServices.layer)('Managed update', test => {
+it.layer(NodeServices.layer)('Service update', test => {
 	test.effect(
-		'stages the exact package and restores the previous code after failed activation without retrying a bad release',
+		'installs the latest release beside the running one, restarts once, keeps only the previous release, then leaves it running',
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const home = yield* fs.makeTempDirectoryScoped()
 			const root = `${home}/.deslop/fixture`
-			const previous = `${root}/releases/0.1.10/node_modules/@deslop/fixture`
-			const target = `${root}/releases/0.1.11/node_modules/@deslop/fixture`
-			yield* fs.makeDirectory(`${previous}/dist`, {recursive: true})
-			yield* fs.writeFileString(`${previous}/dist/server.js`, 'fixture-code')
-			yield* fs.writeFileString(`${previous}/package.json`, '{"version":"0.1.10"}')
-			yield* fs.symlink(previous, `${root}/current`)
-			const restarts = yield* Ref.make<string[]>([])
+			function release(version: string) {
+				return `${root}/releases/${version}/node_modules/@deslop/fixture`
+			}
+			const publish = Effect.fnUntraced(function* (version: string) {
+				yield* fs.makeDirectory(release(version), {recursive: true})
+				yield* fs.writeFileString(`${release(version)}/package.json`, `{"version":"${version}"}`)
+			})
+			yield* Effect.forEach(['0.1.9', '0.1.10'], publish, {concurrency: 1})
+			yield* fs.symlink(release('0.1.10'), `${root}/current`)
+			const commands = yield* Ref.make<string[]>([])
 			const spawner = ChildProcessSpawner.make(command =>
 				Effect.gen(function* () {
 					if (!ChildProcess.isStandardCommand(command)) return yield* Effect.die('Unexpected pipeline')
-					if (Array.contains(command.args, 'install')) {
-						assert.isTrue(Array.contains(command.args, '--ignore-scripts'))
-						assert.isTrue(Array.contains(command.args, '@deslop/fixture@0.1.11'))
-						yield* fs.makeDirectory(`${target}/dist`, {recursive: true})
-						yield* fs.writeFileString(`${target}/dist/server.js`, 'fixture-code')
-						yield* fs.writeFileString(`${target}/package.json`, '{"version":"0.1.11"}')
-					}
+					if (Array.contains(command.args, 'install')) yield* publish('0.1.11')
 					const linked = yield* fs.readLink(`${root}/current`)
-					if (Array.contains(command.args, 'restart')) yield* Ref.update(restarts, rows => [...rows, linked])
+					yield* Ref.update(commands, rows => [
+						...rows,
+						`${Array.join(
+							Array.map(command.args, arg => `${arg}`),
+							' '
+						)} → ${linked}`
+					])
 					return ChildProcessSpawner.makeHandle({
 						all: Stream.empty,
-						exitCode: Effect.succeed(
-							ChildProcessSpawner.ExitCode(
-								Boolean.match(Array.contains(command.args, 'restart') && linked === target, {
-									onFalse: () => 0,
-									onTrue: () => 1
-								})
-							)
-						),
+						exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
 						getInputFd: () => Sink.drain,
 						getOutputFd: () => Stream.empty,
 						isRunning: Effect.succeed(false),
 						kill: () => Effect.void,
 						pid: ChildProcessSpawner.ProcessId(1),
-						stderr: Stream.make(new TextEncoder().encode('fixture activation failed')),
+						stderr: Stream.empty,
 						stdin: Sink.drain,
 						stdout: Stream.empty,
 						unref: Effect.succeed(Effect.void)
@@ -58,8 +54,7 @@ it.layer(NodeServices.layer)('Managed update', test => {
 			)
 			function attempt() {
 				return pipe(
-					update('fixture', {auth: '', host: '127.0.0.1', port: 5200, traces: '', url: 'http://127.0.0.1:5200'}),
-					Effect.scoped,
+					update('fixture'),
 					Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({HOME: home})),
 					Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
 					Effect.provideService(
@@ -70,13 +65,15 @@ it.layer(NodeServices.layer)('Managed update', test => {
 					)
 				)
 			}
-			assert.isTrue((yield* Effect.result(attempt()))._tag === 'Failure')
-			assert.strictEqual(yield* fs.readLink(`${root}/current`), previous)
-			assert.strictEqual(yield* fs.readLink(`${root}/previous`), previous)
-			assert.strictEqual(Array.length(yield* Ref.get(restarts)), 2)
-			assert.deepStrictEqual(yield* Ref.get(restarts), [target, previous])
-			assert.include(yield* attempt(), 'previously failed')
-			assert.strictEqual(Array.length(yield* Ref.get(restarts)), 2)
+			yield* attempt()
+			// The service now runs the latest release, whichever older executable asks again.
+			assert.include(yield* attempt(), 'is current')
+			const [installed, restarted, ...rest] = yield* Ref.get(commands)
+			assert.include(installed, '--ignore-scripts')
+			assert.include(installed, `@deslop/fixture@0.1.11 → ${release('0.1.10')}`)
+			assert.strictEqual(restarted, `--user restart deslop-fixture.service → ${release('0.1.11')}`)
+			assert.isEmpty(rest)
+			assert.sameMembers(yield* fs.readDirectory(`${root}/releases`), ['0.1.10', '0.1.11'])
 		})
 	)
 })

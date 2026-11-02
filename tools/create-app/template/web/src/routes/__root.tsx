@@ -2,12 +2,17 @@ import './styles.css'
 
 import {HeadContent, Scripts, createRootRoute} from '@tanstack/react-router'
 
+import {AppBar} from '@deslop/components-web/app-bar'
+
+import icon from './icon-dark.svg'
+
 export const Route = createRootRoute({
 	shellComponent: props => (
 		<div className="bg-background text-foreground safe-area flex h-dvh w-dvw flex-col">
 			<HeadContent />
 			<Scripts />
 
+			<AppBar icon={icon} name="template-app" />
 			{props.children}
 		</div>
 	)

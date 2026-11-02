@@ -2,7 +2,7 @@
 
 import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {Effect, Option, Path, Schema, String, flow, pipe} from 'effect'
+import {Array, Effect, FileSystem, Number, Option, Path, Schema, String, flow, pipe} from 'effect'
 
 import {Generator, getConfig} from '@tanstack/router-generator'
 import {Command, Flag} from 'effect/cli'
@@ -10,6 +10,9 @@ import {Command, Flag} from 'effect/cli'
 import {copyTemplate} from '@deslop/create-package'
 
 import packageJson from '#package.json' with {type: 'json'}
+
+type AppPackage = typeof AppPackage.Type
+const AppPackage = Schema.Struct({config: Schema.Struct({port: Schema.Int})})
 
 const create = Command.make(
 	'create-app',
@@ -31,13 +34,28 @@ const create = Command.make(
 		)
 	},
 	Effect.fnUntraced(function* (input) {
+		const fs = yield* FileSystem.FileSystem
 		const path = yield* Path.Path
-		const root = Option.getOrElse(input.directory, () => path.join(import.meta.dirname, '../../../apps', input.name))
+		const apps = path.join(import.meta.dirname, '../../../apps')
+		const root = Option.getOrElse(input.directory, () => path.join(apps, input.name))
+		// Each app listens on its own default port, so any two run side by side: the next after the highest taken.
+		const ports = yield* Effect.forEach(
+			yield* fs.readDirectory(apps),
+			app =>
+				pipe(
+					fs.readFileString(path.join(apps, app, 'package.json')),
+					Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(AppPackage))),
+					Effect.map(found => found.config.port),
+					Effect.orElseSucceed(() => 5100)
+				),
+			{concurrency: 'unbounded'}
+		)
 		yield* copyTemplate({
 			from: path.join(import.meta.dirname, '../template', input.kind),
 			rewrite: flow(
 				String.replaceAll('@deslop/template-app', `@deslop/${input.name}`),
-				String.replaceAll('template-app', input.name)
+				String.replaceAll('template-app', input.name),
+				String.replaceAll('"port": 5100', `"port": ${Array.reduce(ports, 5100, Number.max) + 1}`)
 			),
 			to: root
 		})

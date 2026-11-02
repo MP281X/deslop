@@ -88,9 +88,9 @@ it.layer(NodeServices.layer)('Owned exposures', test => {
 			const exposures = Context.get(
 				yield* Layer.build(
 					pipe(
-						Exposures.layer,
+						Exposures.layer(`${home}/deploy`),
 						Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)),
-						Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({DEPLOY_DATA: `${home}/deploy`, HOME: home})))
+						Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({HOME: home})))
 					)
 				),
 				Exposures

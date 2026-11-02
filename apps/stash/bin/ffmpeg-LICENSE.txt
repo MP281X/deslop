@@ -1,3 +1,7 @@
+FFmpeg 9.0.2 (revision d7643a0fe3), a GPL build by BtbN/FFmpeg-Builds autobuild-2026-11-01-12-49.
+Source: https://github.com/FFmpeg/FFmpeg/tree/d7643a0fe3
+Build recipes and the sources of its components: https://github.com/BtbN/FFmpeg-Builds/tree/autobuild-2026-11-01-12-49
+
                     GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
 

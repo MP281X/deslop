@@ -3,12 +3,11 @@
 **/.env.*
 !**/.env.example
 
+# development data of apps run from this checkout
+/.deslop
+
 # build output & cache
 **/dist
-# Extracted build output; canonical native archives are tracked in tools/native.
-apps/*/bin
-apps/*/package.tgz
-apps/*/release
 **/*.tsbuildinfo
 **/*.sqlite
 **/*.sqlite-shm

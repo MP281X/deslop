@@ -19,6 +19,7 @@ import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 
+import {AccountMenu} from '@deslop/components-mobile/account'
 import {ClipboardSheet} from '@deslop/components-mobile/sheet'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
@@ -44,6 +45,7 @@ import {
 	primary,
 	removeAtom,
 	restoreAtom,
+	session,
 	statusOf,
 	timeAt,
 	tones,
@@ -237,6 +239,9 @@ export function HomeRoute(props: {bookings: BookingList; onOpen: (id: string) =>
 			<Toolbar.Content>
 				<ToolbarItem placement="topBarLeading">
 					<PasteSheet />
+				</ToolbarItem>
+				<ToolbarItem placement="topBarTrailing">
+					<AccountMenu session={session.machine} />
 				</ToolbarItem>
 				<MachineState machine={clipboardAtom} path="Answering">
 					{answering =>

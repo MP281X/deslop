@@ -6,8 +6,7 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 
 import type {Connection, ConnectionInfo, ServerIcon} from '#services/connections/schema.ts'
 
-export const GATEWAY_URL = 'https://gateway.mp281x.xyz'
-export const gatewayUrl = pipe(Config.String('APP_URL'), Config.withDefault(GATEWAY_URL))
+export const gatewayUrl = Config.String('APP_URL')
 
 export function clientMetadata(url: string) {
 	return {

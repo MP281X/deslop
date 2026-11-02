@@ -1,19 +1,7 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {
-	ConfigProvider,
-	Context,
-	Deferred,
-	Effect,
-	FileSystem,
-	Layer,
-	PlatformError,
-	Ref,
-	Schema,
-	String,
-	pipe
-} from 'effect'
+import {Context, Deferred, Effect, FileSystem, Layer, PlatformError, Ref, Schema, String, pipe} from 'effect'
 
 import {TestClock} from 'effect/testing'
 
@@ -25,12 +13,7 @@ it.layer(NodeServices.layer)('Resource history', test => {
 		'collects without a browser and restores real samples after a service restart',
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
-			const layer = pipe(
-				Metrics.layer,
-				Layer.provide(
-					ConfigProvider.layer(ConfigProvider.fromUnknown({DEPLOY_DATA: yield* fs.makeTempDirectoryScoped()}))
-				)
-			)
+			const layer = Metrics.layer(yield* fs.makeTempDirectoryScoped())
 			const first = yield* Effect.scoped(
 				Effect.gen(function* () {
 					const metrics = Context.get(yield* Layer.build(Layer.fresh(layer)), Metrics)
@@ -68,8 +51,7 @@ it.layer(NodeServices.layer)('Resource history', test => {
 			const failed = yield* Ref.make(false)
 			const persisted = yield* Deferred.make<void>()
 			const layer = pipe(
-				Metrics.layer,
-				Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({DEPLOY_DATA: directory}))),
+				Metrics.layer(directory),
 				Layer.provide(
 					Layer.succeed(
 						FileSystem.FileSystem,

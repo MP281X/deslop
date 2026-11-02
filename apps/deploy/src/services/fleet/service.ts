@@ -2,26 +2,27 @@ import {NodeSocket} from '@effect/platform-node'
 
 import {
 	Array,
-	Boolean,
 	Clock,
 	Config,
 	Context,
 	Effect,
-	FileSystem,
 	Layer,
-	Path,
+	Option,
 	Record,
+	Redacted,
 	Ref,
 	Schema,
+	String,
 	Struct,
 	pipe
 } from 'effect'
 
-import {HttpClient} from 'effect/http'
+import {Digest} from 'effect/crypto'
 import type {Headers} from 'effect/http'
 import {RpcClient, RpcSerialization} from 'effect/rpc'
 
-import {oauth} from '@deslop/runtime/oauth'
+import type {User} from '@deslop/runtime/auth/schema'
+import {Auth} from '@deslop/runtime/auth/service'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {Exposures} from '#services/exposures/service.ts'
@@ -32,7 +33,33 @@ import {history} from '#services/metrics/lib/utils.ts'
 import type {HistoryQuery, MachineHistory} from '#services/metrics/schema.ts'
 import {Metrics} from '#services/metrics/service.ts'
 
+// Who another worker's Deploy acts as: its bearer is the shared key, never a person's sign-in.
+const PEER = {id: 'deploy:peer', name: 'deploy'} satisfies User
+
 const makeRemoteClient = RpcClient.make(RpcContracts, {flatten: true})
+
+// Workers authorize each other with the DEPLOY_KEY their env files share, compared by digest; people sign in as on every app.
+export const layerPeerAuth = Layer.effectContext(
+	Effect.gen(function* () {
+		const auth = yield* Auth
+		const digest = yield* Digest.Digest
+		function hash(text: string) {
+			return digest.digestHex(Digest.sha256, new TextEncoder().encode(text))
+		}
+		const expected = yield* Effect.transposeOption(
+			Option.map(yield* Config.option(Config.Redacted('DEPLOY_KEY')), key => hash(`Bearer ${Redacted.value(key)}`))
+		)
+		return Auth.makeContext(
+			Auth.of({
+				access: auth.access,
+				user: Effect.fnUntraced(function* (headers: Headers.Headers) {
+					if (Option.contains(expected, yield* hash(headers['authorization'] ?? ''))) return PEER
+					return yield* auth.user(headers)
+				})
+			})
+		)
+	})
+)
 type RemoteClient = Effect.Success<typeof makeRemoteClient>
 
 function changeFailed<A, E>(effect: Effect.Effect<A, E>) {
@@ -61,14 +88,19 @@ export class Fleet extends Context.Service<
 			const metrics = yield* Metrics
 			const lastMetrics = yield* Ref.make<Record<string, MachineHistory>>({})
 			const exposures = yield* Exposures
-			const fs = yield* FileSystem.FileSystem
-			const path = yield* Path.Path
-			const http = yield* HttpClient.HttpClient
-			const workers = yield* pipe(
-				Config.String('DEPLOY_WORKERS'),
-				Config.withDefault('[]'),
-				Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Schema.Array(Worker))))
+			const workers = yield* Effect.forEach(
+				yield* pipe(Config.Array(Schema.String, 'DEPLOY_WORKERS'), Config.withDefault([])),
+				entry => {
+					const [name, url] = String.split(entry, '=')
+					return Schema.decodeUnknownEffect(Worker)({name, url})
+				},
+				{concurrency: 1}
 			)
+			// Each worker's Deploy accepts the others by the key all their env files hold, on any network.
+			const peerHeaders = Option.match(yield* Config.option(Config.Redacted('DEPLOY_KEY')), {
+				onNone: () => ({}),
+				onSome: key => ({authorization: `Bearer ${Redacted.value(key)}`})
+			})
 			const previous = yield* Ref.make<Record<string, Snapshot>>({})
 			const local = Effect.gen(function* () {
 				const snapshot = yield* inventory.snapshot
@@ -86,17 +118,8 @@ export class Fleet extends Context.Service<
 					const url = new URL('/api/rpc', worker.url)
 					url.protocol = 'wss:'
 					if (new URL(worker.url).protocol === 'http:') url.protocol = 'ws:'
-					const headers = yield* Boolean.match(worker.auth === '', {
-						onFalse: () =>
-							pipe(
-								oauth('deploy', new URL(worker.url).origin, worker.auth),
-								Effect.flatMap(session => session.token),
-								Effect.map(token => ({authorization: `Bearer ${token}`}))
-							),
-						onTrue: () => Effect.succeed({})
-					})
 					return yield* pipe(
-						Effect.flatMap(makeRemoteClient, client => use(client, headers)),
+						Effect.flatMap(makeRemoteClient, client => use(client, peerHeaders)),
 						// @effect-diagnostics-next-line strictEffectProvide:off -- Each remote poll owns its RPC socket and closes it on success, error or timeout.
 						Effect.provide(
 							pipe(
@@ -108,10 +131,7 @@ export class Fleet extends Context.Service<
 					)
 				},
 				Effect.scoped,
-				Effect.timeout('15 seconds'),
-				Effect.provideService(FileSystem.FileSystem, fs),
-				Effect.provideService(Path.Path, path),
-				Effect.provideService(HttpClient.HttpClient, http)
+				Effect.timeout('15 seconds')
 			)
 			function selectedWorker(target: string) {
 				return pipe(

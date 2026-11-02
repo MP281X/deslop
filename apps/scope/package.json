@@ -17,7 +17,6 @@
 	"sideEffects": false,
 	"imports": {
 		"#lib/*": "./src/lib/*",
-		"#package.*": "./package.*",
 		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
 		"#services/*": "./src/services/*",
@@ -27,7 +26,7 @@
 		"access": "public"
 	},
 	"scripts": {
-		"build": "rm -rf dist && vp build && vp pack && node ../../packages/runtime/src/package.ts scope",
+		"build": "vp build && vp pack",
 		"preview": "vp run build && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js",
 		"test": "vp test --config ../../vite.config.ts",
 		"typecheck": "tsrs --checkerAssignment go --pretty false"
@@ -42,6 +41,9 @@
 		"lucide-react": "latest",
 		"react": "latest",
 		"react-dom": "latest"
+	},
+	"config": {
+		"port": 5106
 	},
 	"engines": {
 		"node": ">=26"

@@ -1,6 +1,6 @@
 import {Schema} from 'effect'
 
-import {OptionalAuth, SecureOrigin} from '@deslop/runtime/schema'
+import {SecureOrigin} from '@deslop/runtime/schema'
 
 export class DeployError extends Schema.TaggedError<DeployError>()('DeployError', {
 	cause: Schema.optional(Schema.Defect()),
@@ -53,7 +53,13 @@ export const Snapshot = Schema.Struct({
 })
 
 export type Worker = typeof Worker.Type
-export const Worker = Schema.Struct({auth: OptionalAuth, name: Schema.NonEmptyString, url: SecureOrigin})
+export const Worker = Schema.Struct({name: Schema.NonEmptyString, url: SecureOrigin})
+
+export type WorkerList = typeof WorkerList.Type
+// `--workers desktop=https://desktop.example.ts.net:5102,…`: the other workers' Deploy origins, by name.
+export const WorkerList = Schema.String.check(
+	Schema.isPattern(/^[\w-]+=https?:\/\/[^,=\s]+(?:,[\w-]+=https?:\/\/[^,=\s]+)*$/u)
+)
 
 export type Peer = typeof Peer.Type
 export const Peer = Schema.Struct({

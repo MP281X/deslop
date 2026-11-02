@@ -79,7 +79,7 @@
 		"expo-secure-store",
 		"expo-updates"
 	],
-	"ignorePatterns": ["**/*.gen.ts", "tools/*/template/**", "apps/*/release/**"],
+	"ignorePatterns": ["**/*.gen.ts", "tools/*/template/**"],
 	"ignoreExports": [
 		{"exports": ["default"], "file": "apps/*/app.config.ts"},
 		{"exports": ["*"], "file": "apps/*/fingerprint.config.js"},
