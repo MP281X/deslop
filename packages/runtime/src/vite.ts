@@ -28,7 +28,8 @@ export const config = {
 	future: 'warn',
 	pack,
 	plugins: [
-		tanstackRouter({autoCodeSplitting: true, target: 'react'}),
+		// Its scratch files stay out of the checkout, as the app generator's do.
+		tanstackRouter({autoCodeSplitting: true, target: 'react', tmpDir: 'node_modules/.cache/tanstack'}),
 		react({compiler: true}),
 		tailwindcss({optimize: true})
 	]
