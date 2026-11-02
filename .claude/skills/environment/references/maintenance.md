@@ -6,19 +6,19 @@ Setup, upkeep and rebuild of the machines.
 
 `dev` and `desktop`: latest Debian stable, text mode, same setup, `mp281x` with passwordless sudo (`/etc/sudoers.d/99-mp281x-nopasswd`, mode 0440). Sign-ins and machine configuration are never copied between machines; only [T3 settings](#t3-settings) are shared.
 
-| Fact     | `dev`                                                     | `desktop`                                              |
-| -------- | --------------------------------------------------------- | ------------------------------------------------------ |
-| Hardware | VPS, 8 cores, 23 GB, 15 GB swap                           | Ryzen 9 9900X, 30 GB, 31 GB swap, 1 TB NVMe            |
-| Network  | Always on, public `77.237.236.132`; ufw allows 80 and 443 | On demand, home LAN on `eno1`; ufw denies all incoming |
-| GitLab   | Through the VPN; advertises the route to the tailnet      | Through dev's route (`--accept-routes`)                |
-| GPU      | None                                                      | NVIDIA GeForce RTX 5070, 12 GB; [setup](#desktop-gpu)  |
+| Fact     | `dev`                                                              | `desktop`                                              |
+| -------- | ------------------------------------------------------------------ | ------------------------------------------------------ |
+| Hardware | VPS, 8 cores, 23 GB, 15 GB swap                                    | Ryzen 9 9900X, 30 GB, 31 GB swap, 1 TB NVMe            |
+| Network  | Always on, public `77.237.236.132`; ufw allows 80, 443 and UDP 443 | On demand, home LAN on `eno1`; ufw denies all incoming |
+| GitLab   | Through the VPN; advertises the route to the tailnet               | Through dev's route (`--accept-routes`)                |
+| GPU      | None                                                               | NVIDIA GeForce RTX 5070, 12 GB; [setup](#desktop-gpu)  |
 
 - **Toolchain.** Docker with Compose and Buildx, `gh` with `github/gh-stack`, `glab`, git, build tools, rsync, ripgrep, jq, sqlite3, lsof, btop (never htop), ffmpeg, ImageMagick, `dig`, `psql`. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code in `~/.local/bin`. `~/.bashrc`'s first lines, above its interactive guard, put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`.
 - **Sign-ins**, per worker, link shown to the user: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login`, `codex login --device-auth`, [MCP](#mcp-sign-in).
 - **Repositories.** `~/dual`: credential helper `!glab auth git-credential` for `https://git.datapizza.tech`; GitHub: `gh auth setup-git`; [Git identity](#git-identity).
 - **Updates.** `unattended-upgrades` daily. desktop has only local IPv6: `/etc/apt/apt.conf.d/99force-ipv4` holds `Acquire::ForceIPv4 "true";`.
 - **Git defaults:** `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled`, `diff.algorithm histogram`, `merge.conflictStyle zdiff3`, `init.defaultBranch main`.
-- **Firewall.** Tailscale's `ts-input` accepts tailnet traffic before ufw; Docker publishes Traefik's ports, UDP 443 included, past ufw. dev: `/etc/sysctl.d/90-quiet-console.conf` keeps `[UFW BLOCK]` off the console.
+- **Firewall.** Tailscale's `ts-input` accepts tailnet traffic before ufw; ufw allows dev's 80, 443 and UDP 443 for Deploy's Caddy, which runs as a user service. dev: `/etc/sysctl.d/90-quiet-console.conf` keeps `[UFW BLOCK]` off the console.
 - **TCP on dev.** `/etc/sysctl.d/90-tcp.conf`: `fq`, `bbr`, `tcp_slow_start_after_idle = 0`, for lossy phones and idle keep-alive or WebSocket connections.
 - **Access.** One ED25519 pair as `~/.ssh/id_ed25519` everywhere; `authorized_keys` holds only its public key; no `~/.ssh/config`; `known_hosts` from `ssh-keyscan -H dev desktop macbook-pro`. Disable a login method only after the other worked from another machine.
 - **Hostname** T3 shows: `sudo hostnamectl set-hostname --pretty <name>`, then restart T3.
@@ -116,9 +116,9 @@ Close with `dpkg --audit`, held/upgradable packages after refreshing apt, runnin
 Remove rebuildable data and settled work; keep what a working or unsettled thread uses.
 
 - **Owners** of a worktree: threads in `orchestration_v2_projection_threads.payload_json` (`worktreePath`, `settledAt`) with `archived_at` and `deleted_at`, delegated children judged by their root thread; a process whose `/proc/<pid>/cwd` is inside it.
-- **Keep** stopped containers of unknown owners, unattached volumes and the production `deslop` project.
+- **Keep** unattached volumes, the production `deslop-*` user services and their inactive `-update` oneshots, which run every 15 minutes.
 
-1. **Orphans.** Compose projects whose `com.docker.compose.project.working_dir` is gone; processes with a deleted working directory; Serve mappings meeting the **Deep pass** ownership/obsolescence rule (`tailscale serve status --json`, then `sudo tailscale serve --https=<port> off`); `preview-*` units of removed worktrees; a `~/.deslop/<name>` whose worktree is gone, unless `deploy` or a `tools/compose.yaml` service's data directory or env file.
+1. **Orphans.** Compose projects whose `com.docker.compose.project.working_dir` is gone; containers exited for more than three days, a scratch run's leftovers, since a container that matters runs or restarts; processes with a deleted working directory; Serve mappings meeting the **Deep pass** ownership/obsolescence rule (`tailscale serve status --json`, then `sudo tailscale serve --https=<port> off`); `preview-*` units of removed worktrees; a `~/.deslop/<name>` whose worktree is gone, unless a `deslop-<name>` service's data directory or env file.
 2. **Settled worktrees.** All user threads sharing it (roots and side chats) settled, archived or deleted, and no running process: remove it, uncommitted changes included. Run its settle script, remove a remaining Compose project, `git worktree remove --force --force <path>`, `git worktree prune`. No owner: remove when its branch's PR merged, otherwise list it.
 3. **Branches.** In `~/deslop` and `~/dual`: delete unused local branches whose PR merged; list those without an open or merged PR.
 

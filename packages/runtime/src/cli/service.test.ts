@@ -49,7 +49,7 @@ it.layer(NodeServices.layer)('Service lifecycle', test => {
 			const units = `${home}/.config/systemd/user`
 			const unit = yield* fs.readFileString(`${units}/deslop-fixture.service`)
 			assert.include(unit, `ExecStart="/node" "${entry}" "--traces" "https://example.com/%%u$$HOME\\"\\n[Service]"`)
-			assert.include(unit, `EnvironmentFile=-"${home}/.deslop/fixture.env"`)
+			assert.include(unit, `EnvironmentFile=-${home}/.deslop/fixture.env\n`)
 			assert.include(yield* fs.readFileString(`${units}/deslop-fixture-update.service`), '"service" "update"')
 			assert.include(yield* fs.readFileString(`${units}/deslop-fixture-update.timer`), 'OnUnitInactiveSec=15min')
 			assert.includeMembers(yield* Ref.get(commands), [

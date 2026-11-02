@@ -23,8 +23,9 @@ import {execute, install} from '@deslop/runtime/service'
 
 import {DeployError, Exposure, InventoryItem, Serve, Tailnet} from '#services/inventory/schema.ts'
 
+// A stop waits at most ten seconds for open connections such as WebSockets, never forever.
 function caddyConfig(rows: Exposure[], storage: string) {
-	return `{\n\tadmin 127.0.0.1:20219\n\tpersist_config off\n\tstorage file_system {\n\t\troot ${Schema.encodeSync(Schema.fromJsonString(Schema.String))(storage)}\n\t}\n}\n\n${Array.join(
+	return `{\n\tadmin 127.0.0.1:20219\n\tgrace_period 10s\n\tpersist_config off\n\tstorage file_system {\n\t\troot ${Schema.encodeSync(Schema.fromJsonString(Schema.String))(storage)}\n\t}\n}\n\n${Array.join(
 		Array.map(
 			Array.filter(rows, row => row.kind === 'public'),
 			row => `${row.hostname} {\n\treverse_proxy 127.0.0.1:${row.port}\n}\n`
@@ -129,7 +130,9 @@ export class Exposures extends Context.Service<
 						yield* run(binary, ['validate', '--config', `${configFile}.next`, '--adapter', 'caddyfile'])
 						yield* fs.rename(`${configFile}.next`, configFile)
 						yield* pipe(
-							install('deploy-caddy', [binary, 'run', '--config', configFile, '--adapter', 'caddyfile']),
+							install('deploy-caddy', [binary, 'run', '--config', configFile, '--adapter', 'caddyfile'], {
+								restart: false
+							}),
 							Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
 							Effect.provideService(FileSystem.FileSystem, fs),
 							Effect.provideService(Path.Path, path)

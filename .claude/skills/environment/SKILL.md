@@ -7,12 +7,12 @@ description: Load before worker operations, previews, devices, tracing, deployme
 
 Two headless Debian workers in one tailnet, same user, paths and agent configuration.
 
-| Name          | Address          | Role                                                                                        |
-| ------------- | ---------------- | ------------------------------------------------------------------------------------------- |
-| `desktop`     | `100.97.120.3`   | Home worker for most development, on only when the user turns it on                         |
-| `dev`         | `100.68.201.107` | Always on, public address: Traefik for `*.mp281x.xyz`, Datapizza VPN, Scope, overnight work |
-| `macbook-pro` | `100.115.207.60` | The user's control plane and the iOS Simulator host, on demand                              |
-| `iphone`      | `100.117.217.10` | T3 client only                                                                              |
+| Name          | Address          | Role                                                                                          |
+| ------------- | ---------------- | --------------------------------------------------------------------------------------------- |
+| `desktop`     | `100.97.120.3`   | Home worker for most development, on only when the user turns it on                           |
+| `dev`         | `100.68.201.107` | Always on, public address: every Deslop app for `*.mp281x.xyz`, Datapizza VPN, overnight work |
+| `macbook-pro` | `100.115.207.60` | The user's control plane and the iOS Simulator host, on demand                                |
+| `iphone`      | `100.117.217.10` | T3 client only                                                                                |
 
 - **Names.** MagicDNS short names; `<name>.tailnet-8c4c.ts.net` has HTTPS certificates. SSH as `mp281x@dev`, `mp281x@desktop`, `matteopaludgnach@macbook-pro`.
 - **Tools.** `vp` and `vpx` (Vite+) on `PATH` everywhere, also over SSH; systemd units need `~/.vite-plus/bin`. Passwordless sudo on the workers; `gh`, `glab` and the MCP gateway signed in.
