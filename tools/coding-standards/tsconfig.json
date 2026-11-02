@@ -172,9 +172,16 @@
 					},
 					{
 						// shadcn's components stay exactly what its CLI writes, so Effect's style checks do not apply to them.
-						"include": ["/**/components-web/src/ui/*.tsx", "/**/.*/**/components-web/src/ui/*.tsx"],
+						"include": [
+							"/**/components-web/src/ui/**/*.ts",
+							"/**/components-web/src/ui/**/*.tsx",
+							"/**/.*/**/components-web/src/ui/**/*.ts",
+							"/**/.*/**/components-web/src/ui/**/*.tsx"
+						],
 						"options": {
 							"diagnosticSeverity": {
+								"globalRandom": "off",
+								"globalTimers": "off",
 								"preferEffectArray": "off",
 								"preferEffectRecord": "off",
 								"preferEffectString": "off",
