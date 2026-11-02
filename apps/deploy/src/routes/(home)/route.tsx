@@ -25,7 +25,7 @@ import {MachineIcon, machineName} from '#lib/components.tsx'
 import {exposeAtom, exposeOpenAtom, inventoryAtom} from '#lib/utils.ts'
 import {PageError} from '#routes/(home)/-error.tsx'
 import {ExposeDialog} from '#routes/(home)/-expose.tsx'
-import icon from '#routes/icon-dark.svg'
+import icon from '#routes/icon.svg'
 
 function Fleet() {
 	const result = useAtomSuspense(inventoryAtom, {includeFailure: true})

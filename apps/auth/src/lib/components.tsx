@@ -160,11 +160,11 @@ function ClientChip(props: {app: string; now: number; signIns: NonEmptyReadonlyA
 	)
 }
 
-// A glyph tile until the app's own icon loads, so a missing icon never draws the browser's broken image.
+// A glyph until the app's own icon loads, so a missing icon never draws the browser's broken image; no tile behind either.
 function AppIcon(props: {origin: string}) {
 	const [state, setState] = useState<'failed' | 'loaded' | 'loading'>('loading')
 	return (
-		<span className="bg-secondary text-muted-foreground relative flex size-8 items-center justify-center overflow-hidden rounded-md">
+		<span className="text-muted-foreground relative flex size-8 items-center justify-center">
 			{state !== 'loaded' &&
 				pipe(
 					Match.value(props.origin),
@@ -175,7 +175,7 @@ function AppIcon(props: {origin: string}) {
 				<img
 					src={`${props.origin}/icon`}
 					alt=""
-					className={cn('absolute inset-0 size-full', state === 'loading' && 'invisible')}
+					className={cn('pixelated absolute inset-0 size-full', state === 'loading' && 'invisible')}
 					onLoad={() => setState('loaded')}
 					onError={() => setState('failed')}
 				/>

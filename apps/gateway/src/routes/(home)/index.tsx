@@ -41,7 +41,7 @@ import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} f
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
 import {addAtom, connectUrl, copyEndpointAtom, hideAtom, lastCallAtom, removeAtom, serversAtom} from '#lib/utils.ts'
-import icon from '#routes/icon-dark.svg'
+import icon from '#routes/icon.svg'
 import type {ConnectionInfo} from '#services/connections/schema.ts'
 
 // What needs the user first: an expired sign-in or a failure, then a server never connected, then the live ones.
@@ -98,27 +98,27 @@ function RemoveDialog(props: {onOpenChange: (open: boolean) => void; open: boole
 	)
 }
 
-// Each source in turn until one loads; the tile keeps a black favicon visible on the dark page.
+// Each source in turn until one loads, drawn as the server ships it, without a tile behind it.
 function FirstImage(props: {sources: string[]}) {
 	const [failed, setFailed] = useState(0)
-	return Option.match(Array.get(props.sources, failed), {
-		onNone: () => <Server className="text-muted-foreground size-6" />,
-		onSome: src => (
-			<span className="bg-icon-tile flex size-8 items-center justify-center overflow-hidden rounded-md">
-				<img src={src} alt="" className="size-6" onError={() => setFailed(failed + 1)} />
-			</span>
-		)
-	})
+	return (
+		<span className="flex size-8 items-center justify-center">
+			{Option.match(Array.get(props.sources, failed), {
+				onNone: () => <Server className="text-muted-foreground size-6" />,
+				onSome: src => <img src={src} alt="" className="size-6 object-contain" onError={() => setFailed(failed + 1)} />
+			})}
+		</span>
+	)
 }
 
-// Keyed by its sources, so icons a later discovery finds get their turn.
+// Keyed by its sources, so icons a later discovery finds get their turn. Without a tile behind it, an icon drawn for dark backgrounds goes first.
 function ServerIcon(props: {server: ConnectionInfo}) {
 	const host = new URL(props.server.url).hostname
 	const sources = Array.dedupe([
 		...Array.map(
 			Array.sort(
 				props.server.icons,
-				Order.mapInput(Order.Boolean, (entry: ConnectionInfo['icons'][number]) => entry.theme === 'dark')
+				Order.mapInput(Order.Boolean, (entry: ConnectionInfo['icons'][number]) => entry.theme !== 'dark')
 			),
 			entry => entry.src
 		),

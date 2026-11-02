@@ -42,7 +42,7 @@ import {
 	signingOut,
 	timeLabel
 } from '#lib/utils.ts'
-import icon from '#routes/icon-dark.svg'
+import icon from '#routes/icon.svg'
 import type {Account} from '#services/people/schema.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 
