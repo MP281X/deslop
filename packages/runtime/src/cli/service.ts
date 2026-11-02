@@ -1,4 +1,4 @@
-import {Array, Config, Effect, FileSystem, Path, Stream, String, pipe} from 'effect'
+import {Array, Boolean, Config, Effect, FileSystem, Path, Stream, String, pipe} from 'effect'
 
 import {ChildProcess} from 'effect/process'
 
@@ -31,8 +31,8 @@ const unitDirectory = Effect.gen(function* () {
 	return (yield* Path.Path).join(yield* Config.String('HOME'), '.config', 'systemd', 'user')
 })
 
-// A user unit that runs `command` with the app's secrets from ~/.deslop/<name>.env and restarts it after a crash.
-export const install = Effect.fnUntraced(function* (name: string, command: string[]) {
+// A user unit that runs `command` with the app's secrets from ~/.deslop/<name>.env, whose path systemd takes unquoted, and restarts it after a crash. `restart: false` leaves a running process alone, for one that reloads its own configuration.
+export const install = Effect.fnUntraced(function* (name: string, command: string[], options?: {restart: false}) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const home = yield* Config.String('HOME')
@@ -41,12 +41,12 @@ export const install = Effect.fnUntraced(function* (name: string, command: strin
 	yield* fs.makeDirectory(directory, {recursive: true})
 	yield* fs.writeFileString(
 		path.join(directory, unit),
-		`[Unit]\nDescription=Deslop ${name}\nAfter=network-online.target\n\n[Service]\nType=simple\nEnvironment=NODE_ENV=production\nEnvironment=${systemdArgument(`PATH=${home}/.vite-plus/bin:/usr/local/bin:/usr/bin:/bin`)}\nEnvironmentFile=-${systemdArgument(`${home}/.deslop/${name}.env`)}\nExecStart=${Array.join(Array.map(command, systemdArgument), ' ')}\nRestart=on-failure\nRestartSec=3\nUMask=0077\n\n[Install]\nWantedBy=default.target\n`,
+		`[Unit]\nDescription=Deslop ${name}\nAfter=network-online.target\n\n[Service]\nType=simple\nEnvironment=NODE_ENV=production\nEnvironment=${systemdArgument(`PATH=${home}/.vite-plus/bin:/usr/local/bin:/usr/bin:/bin`)}\nEnvironmentFile=-${String.replaceAll('%', '%%')(`${home}/.deslop/${name}.env`)}\nExecStart=${Array.join(Array.map(command, systemdArgument), ' ')}\nRestart=on-failure\nRestartSec=3\nUMask=0077\n\n[Install]\nWantedBy=default.target\n`,
 		{mode: 0o600}
 	)
 	yield* systemctl('daemon-reload')
 	yield* systemctl('enable', unit)
-	yield* systemctl('restart', unit)
+	yield* systemctl(Boolean.match(options?.restart === false, {onFalse: () => 'restart', onTrue: () => 'start'}), unit)
 	return `${unit} installed\n`
 })
 
