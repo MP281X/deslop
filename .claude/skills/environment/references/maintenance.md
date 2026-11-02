@@ -216,7 +216,7 @@ T3's desktop app and the iOS Simulator; builds nothing, the Simulator app comes 
 
 ## MCP sign-in
 
-- **One server** per harness: the gateway (`apps/gateway/README.md`), whose upstreams are Auth, Scope, Stash, Trips, Dual and Mobbin.
+- **One server** per harness: the gateway (`apps/gateway/README.md`), whose upstreams are Auth, Scope, Stash, Dual and Mobbin.
 - **Codex** reads `gateway` from the installed configuration; OAuth sign-ins live in the Secret Service keyring, which D-Bus must start through its unit: Debian's default activation starts a locked daemon whose headless unlock prompt hangs every Codex start.
 - **Claude** keeps local MCP servers in `~/.claude.json`: register the gateway per worker.
 
