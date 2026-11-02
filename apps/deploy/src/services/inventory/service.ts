@@ -17,7 +17,7 @@ import {
 	pipe
 } from 'effect'
 
-import {FetchHttpClient, HttpClient} from 'effect/http'
+import {FetchHttpClient, HttpClient, HttpTraceContext} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
 import {attachProcesses, processReadings, processes} from '#services/inventory/lib/processes.ts'
@@ -88,12 +88,18 @@ function portItems(text: string, worker: string, fs: FileSystem.FileSystem, http
 				fields[0] === 'tcp' &&
 					port >= 1024 &&
 					Option.isSome(String.match(/^(?:127\.0\.0\.1|0\.0\.0\.0):/u)(address)) &&
-					Option.isNone(String.match(/^(?:postgres|redis|ssh|cloudflared|tailscaled)$/u)(process)),
+					Option.isNone(String.match(/^(?:postgres|redis|ssh|cloudflared|tailscaled|caddy)$/u)(process)),
 				{
 					onFalse: () => Effect.succeed(Option.none<{http: boolean; ui: boolean}>()),
 					onTrue: Effect.fnUntraced(function* () {
+						// The probed app still traces its side under this inventory, so its HEAD spans stay out of its own operations.
 						return yield* pipe(
-							http.head(`http://127.0.0.1:${port}/`),
+							Effect.option(Effect.currentSpan),
+							Effect.flatMap(parent =>
+								http.head(`http://127.0.0.1:${port}/`, {
+									headers: Option.match(parent, {onNone: () => ({}), onSome: HttpTraceContext.toHeaders})
+								})
+							),
 							Effect.map(value => ({
 								http: true,
 								ui:
@@ -102,6 +108,8 @@ function portItems(text: string, worker: string, fs: FileSystem.FileSystem, http
 									String.includes('text/html')(value.headers['content-type'] ?? '')
 							})),
 							Effect.provideService(FetchHttpClient.RequestInit, {redirect: 'manual'}),
+							// A probe expects refusals and 4xx from ports that aren't web pages, so it records no span.
+							Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
 							Effect.timeout('700 millis'),
 							Effect.option
 						)
