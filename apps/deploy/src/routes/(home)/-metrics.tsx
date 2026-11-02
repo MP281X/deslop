@@ -2,10 +2,8 @@ import {useAtomSuspense} from '@effect/atom-react'
 
 import {Array, Boolean, Number, Option} from 'effect'
 
-import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState, useTransition} from 'react'
 
-import {ResultError} from '@deslop/components-web/result-error'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
 
@@ -391,10 +389,8 @@ function Machine(props: {history: MachineHistory; hours: HistoryQuery['hours']})
 }
 
 function History(props: {machine: string; hours: HistoryQuery['hours']}) {
-	const result = useAtomSuspense(metricsAtom(props.hours), {includeFailure: true})
-	if (AsyncResult.isFailure(result)) return <ResultError result={result} />
 	const machines = Array.filter(
-		result.value,
+		useAtomSuspense(metricsAtom(props.hours)).value,
 		machine =>
 			(props.machine === 'all' || props.machine === machine.worker) && Array.isReadonlyArrayNonEmpty(machine.samples)
 	)

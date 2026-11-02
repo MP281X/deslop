@@ -25,6 +25,7 @@ import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-gro
 
 import {MachineIcon} from '#lib/components.tsx'
 import {exposeAtom, hideAtom, inventoryAtom} from '#lib/utils.ts'
+import {PageError} from '#routes/(home)/-error.tsx'
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import {processTree, processUsage} from '#routes/(home)/-process-tree.ts'
 import {ProcessUsage, Processes} from '#routes/(home)/-processes.tsx'
@@ -311,10 +312,9 @@ function InventoryRow(props: {row: ReturnType<typeof workloads>[number]; showMac
 }
 
 function Services() {
-	const result = useAtomSuspense(inventoryAtom, {includeFailure: true})
+	const result = useAtomSuspense(inventoryAtom)
 	const [query, setQuery] = useState('')
 	const search = useSearch({from: '/(home)'})
-	if (AsyncResult.isFailure(result)) return <ResultError result={result} />
 	const items = Array.filter(
 		result.value.items,
 		item => search.machine === undefined || search.machine === 'all' || item.worker === search.machine
@@ -388,4 +388,4 @@ function Services() {
 	)
 }
 
-export const Route = createFileRoute('/(home)/')({component: Services})
+export const Route = createFileRoute('/(home)/')({component: Services, errorComponent: PageError})

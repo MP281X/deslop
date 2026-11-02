@@ -1,34 +1,34 @@
 import {useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, Option, Schema, String} from 'effect'
+import {Array, Boolean, Schema, String} from 'effect'
 
-import {Link, Outlet, createFileRoute, useMatchRoute, useNavigate, useSearch} from '@tanstack/react-router'
-import {AsyncResult} from 'effect/reactivity'
+import {
+	CatchBoundary,
+	Link,
+	Outlet,
+	createFileRoute,
+	useMatchRoute,
+	useNavigate,
+	useSearch
+} from '@tanstack/react-router'
 import {Suspense} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
-import {Error, SignIn} from '@deslop/components-web/fallbacks'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {buttonVariants} from '@deslop/components-web/ui/button'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
-import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
 import {MachineIcon, machineName} from '#lib/components.tsx'
 import {inventoryAtom} from '#lib/utils.ts'
+import {PageError} from '#routes/(home)/-error.tsx'
 import icon from '#routes/icon-dark.svg'
 
 function Fleet() {
-	const result = useAtomSuspense(inventoryAtom, {includeFailure: true})
+	const result = useAtomSuspense(inventoryAtom)
 	const search = useSearch({from: '/(home)'})
 	const navigate = useNavigate({from: '/'})
 	const matchRoute = useMatchRoute()
-	if (AsyncResult.isFailure(result)) {
-		if (Option.exists(Cause.findErrorOption(result.cause), needsSignIn)) {
-			return <SignIn href={signInUrl(location.href)} />
-		}
-		return <Error error={Cause.squash(result.cause)} reset={() => location.reload()} />
-	}
 	return (
 		<ToggleGroup
 			aria-label="Machine"
@@ -115,14 +115,16 @@ function Shell() {
 			<main
 				className={`mx-auto flex min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden px-4 py-4 ${Boolean.match(matchRoute({to: '/monitor'}) !== false, {onFalse: () => 'max-w-3xl', onTrue: () => 'max-w-5xl'})}`}
 			>
-				<div className="bg-background sticky top-0 z-20 border-b pb-3">
-					<Suspense fallback={<Skeleton className="h-7 w-full" />}>
-						<Fleet />
+				<CatchBoundary getResetKey={() => location.href} errorComponent={PageError}>
+					<div className="bg-background sticky top-0 z-20 border-b pb-3">
+						<Suspense fallback={<Skeleton className="h-7 w-full" />}>
+							<Fleet />
+						</Suspense>
+					</div>
+					<Suspense fallback={<Skeleton className="h-64 w-full" />}>
+						<Outlet />
 					</Suspense>
-				</div>
-				<Suspense fallback={<Skeleton className="h-64 w-full" />}>
-					<Outlet />
-				</Suspense>
+				</CatchBoundary>
 			</main>
 		</>
 	)

@@ -248,6 +248,8 @@ Each app is one real object in isometric pixel art: 64 cells, 2:1 pixel lines, t
 
 Construct icons on an explicit 64×64 grid: 2:1 diagonals are stepped cells, not smooth polygons with `crispEdges`. Encode the approved grid as equal-color, axis-aligned SVG cell runs; derive tiled, transparent and required raster variants from that same artwork. A raster stays only where a consumer needs one, at the smallest size and format it accepts.
 
+Deploy preserves its approved bitmap verbatim inside its SVG variants; its 512px installed icon scales that source directly. Never derive it from a palette-reduced replacement grid: its source is not a native 64-cell image.
+
 | File                                     | Format                                                                                                      | Used as                                                                                                             |
 | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `icon.svg`                               | SVG on `icon-tile`                                                                                          | favicon; the server's `/icon` for Auth's app list and MCP clients                                                   |
