@@ -325,7 +325,7 @@ export const layerAnnounce = Layer.effectDiscard(
 	})
 )
 
-// The app's tiled icon at a stable URL for Auth's app list and MCP clients, and at /favicon.ico for clients that guess; the pack loader passes its SVG markup.
+// The app's transparent icon at a stable URL for Auth's app list and MCP clients, and at /favicon.ico for clients that guess; the pack loader passes its SVG markup.
 export function layerIcon(icon: string) {
 	const response = Effect.succeed(
 		HttpServerResponse.text(icon, {contentType: 'image/svg+xml', headers: {'cache-control': 'public, max-age=86400'}})
@@ -350,10 +350,8 @@ export const layerWeb = Layer.unwrap(
 						{
 							background_color: '#0a0a0a',
 							display: 'standalone',
-							icons: [
-								{sizes: 'any', src: '/icon', type: 'image/svg+xml'},
-								{purpose: 'any', sizes: '512x512', src: '/apple-touch-icon.png', type: 'image/png'}
-							],
+							// Only the tiled raster: an installed icon must be opaque, and /icon is transparent.
+							icons: [{purpose: 'any', sizes: '512x512', src: '/apple-touch-icon.png', type: 'image/png'}],
 							id: '/',
 							name,
 							scope: '/',

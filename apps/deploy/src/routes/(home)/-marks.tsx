@@ -15,18 +15,14 @@ import {TurborepoIconDark} from '@deslop/components-web/ui/svgs/turborepoIconDar
 import {TurborepoIconLight} from '@deslop/components-web/ui/svgs/turborepoIconLight'
 import {Vite} from '@deslop/components-web/ui/svgs/vite'
 
-import icon from '#routes/icon-dark.svg'
+import icon from '#routes/icon.svg'
 
 // Every app's mark by its folder; Vite names Deploy's own as a path inside this app, so it joins by name.
 const apps: Record<string, string> = {
 	...Record.fromEntries(
 		Array.map(
 			Record.toEntries(
-				import.meta.glob<string>('../../../../*/src/routes/icon-dark.svg', {
-					eager: true,
-					import: 'default',
-					query: '?url'
-				})
+				import.meta.glob<string>('../../../../*/src/routes/icon.svg', {eager: true, import: 'default', query: '?url'})
 			),
 			entry => [String.split(entry[0], '/')[4] ?? '', entry[1]]
 		)
