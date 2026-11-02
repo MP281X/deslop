@@ -6,24 +6,20 @@ import {createFileRoute} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
-import {Copy, Plus, Server} from 'lucide-react'
+import {ChevronRight, Copy, Plus, Server} from 'lucide-react'
 import {Suspense, useState} from 'react'
 
 import {AppBar, AppBarAction, useCommandQuery} from '@deslop/components-web/app-bar'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
-import {ItemList, ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
+import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/components-web/ui/collapsible'
 import {
 	ContextMenu,
-	ContextMenuCheckboxItem,
 	ContextMenuContent,
 	ContextMenuItem,
-	ContextMenuSub,
-	ContextMenuSubContent,
-	ContextMenuSubTrigger,
 	ContextMenuTrigger
 } from '@deslop/components-web/ui/context-menu'
 import {
@@ -37,10 +33,11 @@ import {
 import {Empty, EmptyDescription, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Field, FieldError, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
-import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
+import {Skeleton} from '@deslop/components-web/ui/skeleton'
+import {cn} from '@deslop/components-web/utils'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
-import {addAtom, connectUrl, copyEndpointAtom, hideAtom, lastCallAtom, removeAtom, serversAtom} from '#lib/utils.ts'
+import {addAtom, connectUrl, copyEndpointAtom, lastCallAtom, removeAtom, serversAtom} from '#lib/utils.ts'
 import icon from '#routes/icon.svg'
 import type {ConnectionInfo} from '#services/connections/schema.ts'
 
@@ -102,10 +99,10 @@ function RemoveDialog(props: {onOpenChange: (open: boolean) => void; open: boole
 function FirstImage(props: {sources: string[]}) {
 	const [failed, setFailed] = useState(0)
 	return (
-		<span className="flex size-8 items-center justify-center">
+		<span className="flex size-5 shrink-0 items-center justify-center">
 			{Option.match(Array.get(props.sources, failed), {
-				onNone: () => <Server className="text-muted-foreground size-6" />,
-				onSome: src => <img src={src} alt="" className="size-6 object-contain" onError={() => setFailed(failed + 1)} />
+				onNone: () => <Server className="text-muted-foreground size-4" />,
+				onSome: src => <img src={src} alt="" className="size-5 object-contain" onError={() => setFailed(failed + 1)} />
 			})}
 		</span>
 	)
@@ -128,54 +125,59 @@ function ServerIcon(props: {server: ConnectionInfo}) {
 	return <FirstImage key={Array.join(sources, ' ')} sources={sources} />
 }
 
-// Why a server needs the user, in place of its host: the failure it last reported, else its state.
-function Reason(props: {failure: Option.Option<string>; server: ConnectionInfo}) {
-	return Option.match(props.failure, {
-		onNone: () =>
-			pipe(
-				Match.value(props.server.status),
-				Match.when('Expired', () => <ItemDescription className="text-destructive">Sign-in expired</ItemDescription>),
-				Match.when('Not connected', () => <ItemDescription>Not connected</ItemDescription>),
-				Match.orElse(() => (
-					<ItemDescription className="font-mono">{new URL(props.server.url).hostname}</ItemDescription>
-				))
-			),
-		onSome: message => <ItemDescription className="text-destructive break-words">{message}</ItemDescription>
-	})
+// A state that needs the user takes the host's place; a reported failure shows in full beneath the row.
+function Reason(props: {server: ConnectionInfo}) {
+	return pipe(
+		Match.value(props.server.status),
+		Match.when('Expired', () => <span className="text-destructive truncate">Sign-in expired</span>),
+		Match.when('Not connected', () => <span className="text-muted-foreground truncate">Not connected</span>),
+		Match.orElse(() => (
+			<span className="text-muted-foreground truncate font-mono text-xs">{new URL(props.server.url).hostname}</span>
+		))
+	)
 }
 
-// One row: favicon, name and host or the reason it needs the user, its fix when it has one, and its light. Right-click or long-press for its tools and Remove.
+// One line per server: its icon, name, host or why it needs the user, its fix, its light; the whole line opens on its tools. Its context menu removes it, reached by the menu key even with nothing inside to focus.
 function ServerRow(props: {server: ConnectionInfo}) {
 	const [removing] = useAtom(removeAtom(props.server.id))
-	const [hiding, hide] = useAtom(hideAtom(props.server.id))
 	const [confirm, setConfirm] = useState(false)
-	const busy = AsyncResult.isWaiting(removing) || AsyncResult.isWaiting(hiding)
+	const [open, setOpen] = useState(false)
+	const tools = Array.isReadonlyArrayNonEmpty(props.server.tools)
 	return (
 		<>
 			<RemoveDialog open={confirm} onOpenChange={setConfirm} server={props.server} />
-			<ContextMenu>
-				{/* The row keeps the Item slot, which the list's hairline layout targets, over the trigger's own. */}
-				{/* Focusable, so the keyboard's menu key or Shift+F10 opens the same menu. */}
-				<ContextMenuTrigger render={trigger => <Item {...trigger} role="listitem" tabIndex={0} data-slot="item" />}>
-					<ItemMedia>
+			<Collapsible role="listitem" open={open && tools} onOpenChange={setOpen} className="border-b">
+				<ContextMenu>
+					<ContextMenuTrigger
+						render={
+							<div
+								tabIndex={Boolean.match(tools, {onFalse: () => 0, onTrue: () => undefined})}
+								className="hover:bg-muted/50 relative flex h-10 min-w-0 items-center gap-3 px-1 text-sm"
+							/>
+						}
+					>
+						{tools && (
+							<CollapsibleTrigger
+								aria-label={`Tools of ${props.server.name}`}
+								className="absolute inset-0 cursor-pointer"
+							/>
+						)}
 						<ServerIcon server={props.server} />
-					</ItemMedia>
-					<ItemContent>
-						<ItemTitle>{props.server.name}</ItemTitle>
-						<Reason
-							failure={pipe(
-								Option.fromUndefinedOr(props.server.error),
-								Option.orElse(() => Option.map(AsyncResult.error(hiding), error => error.message))
-							)}
-							server={props.server}
-						/>
-					</ItemContent>
-					<ItemActions>
+						<span className="min-w-0 truncate font-medium">{props.server.name}</span>
+						<span className="flex min-w-0 flex-1">
+							<Reason server={props.server} />
+						</span>
+						{tools && (
+							<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden">
+								{props.server.tools.length} tools
+							</span>
+						)}
 						{(props.server.status !== 'Connected' || props.server.error !== undefined) && (
 							<Button
 								size="sm"
 								variant="outline"
-								disabled={busy}
+								className="relative shrink-0"
+								disabled={AsyncResult.isWaiting(removing)}
 								onClick={() => location.assign(connectUrl(props.server.id))}
 							>
 								{Boolean.match(props.server.status === 'Not connected', {
@@ -184,33 +186,56 @@ function ServerRow(props: {server: ConnectionInfo}) {
 								})}
 							</Button>
 						)}
-						<Status server={props.server} />
-					</ItemActions>
-				</ContextMenuTrigger>
-				<ContextMenuContent className="w-auto min-w-36">
-					{/* Agents see only the checked tools. */}
-					{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
-						<ContextMenuSub>
-							<ContextMenuSubTrigger>Tools</ContextMenuSubTrigger>
-							<ContextMenuSubContent>
-								{Array.map(props.server.tools, tool => (
-									<ContextMenuCheckboxItem
-										key={tool}
-										checked={!Array.contains(props.server.hidden, tool)}
-										onCheckedChange={visible => hide({hidden: !visible, tool})}
-									>
-										<span className="font-mono">{tool}</span>
-									</ContextMenuCheckboxItem>
-								))}
-							</ContextMenuSubContent>
-						</ContextMenuSub>
-					)}
-					<ContextMenuItem variant="destructive" disabled={busy} onClick={() => setConfirm(true)}>
-						Remove
-					</ContextMenuItem>
-				</ContextMenuContent>
-			</ContextMenu>
+						<span
+							role="img"
+							title={props.server.status}
+							aria-label={props.server.status}
+							className="flex size-3 shrink-0 items-center justify-center"
+						>
+							<Status server={props.server} />
+						</span>
+						<span className="text-muted-foreground flex size-3.5 shrink-0 items-center justify-center">
+							{tools && <ChevronRight className={cn('size-3.5 transition-transform', open && 'rotate-90')} />}
+						</span>
+					</ContextMenuTrigger>
+					<ContextMenuContent className="w-auto min-w-36">
+						<ContextMenuItem
+							variant="destructive"
+							disabled={AsyncResult.isWaiting(removing)}
+							onClick={() => setConfirm(true)}
+						>
+							Remove
+						</ContextMenuItem>
+					</ContextMenuContent>
+				</ContextMenu>
+				{props.server.error !== undefined && (
+					<p className="text-destructive pr-1 pb-2 pl-9 text-xs wrap-anywhere">{props.server.error}</p>
+				)}
+				<CollapsibleContent>
+					<ul aria-label={`Tools of ${props.server.name}`} className="pb-1">
+						{Array.map(props.server.tools, tool => (
+							<li key={tool} className="flex h-8 items-center pr-1 pl-9 font-mono text-xs select-text">
+								{tool}
+							</li>
+						))}
+					</ul>
+				</CollapsibleContent>
+			</Collapsible>
 		</>
+	)
+}
+
+// Shaped like the server rows: a mark and a name on one line.
+function ServersSkeleton() {
+	return (
+		<div aria-busy="true" aria-label="MCP servers" role="status">
+			{Array.map(Array.range(1, 4), row => (
+				<div key={row} aria-hidden className="flex h-10 items-center gap-3 border-b px-1">
+					<Skeleton className="size-5" />
+					<Skeleton className="h-4 w-1/3" />
+				</div>
+			))}
+		</div>
 	)
 }
 
@@ -293,11 +318,11 @@ function Directory(props: {servers: readonly ConnectionInfo[]}) {
 				</Empty>
 			),
 			onNonEmpty: rows => (
-				<ItemList label="MCP servers">
+				<div role="list" aria-label="MCP servers">
 					{Array.map(rows, server => (
 						<ServerRow key={server.id} server={server} />
 					))}
-				</ItemList>
+				</div>
 			)
 		}
 	)
@@ -341,14 +366,19 @@ function Home() {
 				commands={Array.filter(
 					[
 						{icon: <Plus />, label: 'Add server', run: () => send({_tag: 'Open'})},
-						{icon: <Copy />, label: 'Copy endpoint', run: () => copy()}
+						{icon: <Copy />, label: 'Copy MCP URL', run: () => copy()}
 					],
-					command => ready || command.label === 'Copy endpoint'
+					command => ready || command.label === 'Copy MCP URL'
 				)}
-				action={ready && <AppBarAction icon={<Plus />} label="Add server" onClick={() => send({_tag: 'Open'})} />}
+				action={
+					<>
+						<AppBarAction icon={<Copy />} label="Copy MCP URL" variant="outline" onClick={() => copy()} />
+						{ready && <AppBarAction icon={<Plus />} label="Add server" onClick={() => send({_tag: 'Open'})} />}
+					</>
+				}
 			/>
 			<Page>
-				<Suspense fallback={<ItemListSkeleton label="MCP servers" media rows={4} />}>
+				<Suspense fallback={<ServersSkeleton />}>
 					<Servers />
 				</Suspense>
 			</Page>

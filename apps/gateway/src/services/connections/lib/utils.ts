@@ -35,7 +35,7 @@ export function connectionStatus(connection: Connection, now: number) {
 export function connectionInfo(connection: Connection, now: number) {
 	return {
 		...Option.match(Option.fromUndefinedOr(connection.error), {onNone: () => ({}), onSome: error => ({error})}),
-		...Struct.pick(connection, ['hidden', 'id', 'name', 'tools', 'url']),
+		...Struct.pick(connection, ['id', 'name', 'tools', 'url']),
 		icons: connection.icons ?? [],
 		status: connectionStatus(connection, now)
 	} satisfies ConnectionInfo

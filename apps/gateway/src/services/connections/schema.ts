@@ -20,9 +20,6 @@ export type AddServer = typeof AddServer.Type
 export const AddServer = Schema.Struct({url: ServerUrl})
 export type ServerParams = typeof ServerParams.Type
 export const ServerParams = Schema.Struct({id: ServerId})
-// One tool's visibility, so two quick toggles each change only their own tool.
-export type ToolVisibility = typeof ToolVisibility.Type
-export const ToolVisibility = Schema.Struct({hidden: Schema.Boolean, id: ServerId, tool: Schema.NonEmptyString})
 
 export type Metadata = typeof Metadata.Type
 export const Metadata = Schema.Struct({
@@ -72,7 +69,6 @@ export const Connection = Schema.Struct({
 	// Why the last connection or discovery failed, until one succeeds.
 	error: Schema.optionalKey(Schema.String),
 	generation: Schema.NonEmptyString,
-	hidden: Schema.Array(Schema.String),
 	icons: Schema.optionalKey(Schema.Array(ServerIcon)),
 	id: ServerId,
 	// The server's own instructions from its last discovery: the first sentence is its line in the gateway's instructions.
@@ -91,7 +87,6 @@ export const ConnectionStore = Schema.Record(Schema.String, Connection)
 export type ConnectionInfo = typeof ConnectionInfo.Type
 export const ConnectionInfo = Schema.Struct({
 	error: Schema.optionalKey(Schema.String),
-	hidden: Schema.Array(Schema.String),
 	icons: Schema.Array(ServerIcon),
 	id: ServerId,
 	name: Schema.NonEmptyString,

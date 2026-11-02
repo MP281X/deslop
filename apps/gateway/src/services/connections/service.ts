@@ -43,15 +43,7 @@ import {
 	serverIcons,
 	serverName
 } from '#services/connections/lib/utils.ts'
-import type {
-	Callback,
-	ConnectionInfo,
-	Discovery,
-	OAuth,
-	ServerId,
-	ToolVisibility,
-	Connection
-} from '#services/connections/schema.ts'
+import type {Callback, ConnectionInfo, Discovery, OAuth, ServerId, Connection} from '#services/connections/schema.ts'
 import {ConnectionStore, Metadata, Registration, ServerUrl, Token} from '#services/connections/schema.ts'
 
 // A provider sign-in in progress, for ten minutes and in memory: a restart asks to connect again.
@@ -88,7 +80,6 @@ export class Connections extends Context.Service<
 		readonly complete: (params: Callback, route: Option.Option<string>, user: User) => Effect.Effect<void, AuthError>
 		readonly definitions: Effect.Effect<Connection[]>
 		readonly get: (id: ServerId) => Effect.Effect<Connection, AuthError>
-		readonly hide: (visibility: ToolVisibility, user: User) => Effect.Effect<void, AuthError>
 		readonly list: Effect.Effect<ConnectionInfo[]>
 		readonly remove: (id: ServerId, user: User) => Effect.Effect<void, AuthError>
 		readonly report: (id: ServerId, generation: string, outcome: Discovery) => Effect.Effect<void>
@@ -417,7 +408,6 @@ export class Connections extends Context.Service<
 					const id = Option.match(Record.get(current, base), {onNone: () => base, onSome: () => `${base}_${suffix}`})
 					const connection = yield* discover({
 						generation: yield* nonce,
-						hidden: [],
 						id,
 						name: String.capitalize(base),
 						tools: [],
@@ -522,16 +512,6 @@ export class Connections extends Context.Service<
 			}, failed('Cannot finish the connection')),
 			definitions: Effect.map(SubscriptionRef.get(state), Record.values),
 			get,
-			hide: (visibility, user) =>
-				manage(visibility.id, user, found =>
-					Option.some({
-						...found,
-						hidden: [
-							...Array.filter(found.hidden, tool => tool !== visibility.tool),
-							...Array.filter([visibility.tool], () => visibility.hidden)
-						]
-					})
-				),
 			list,
 			remove: (id, user) => manage(id, user, () => Option.none()),
 			// A discovery's outcome: its tools and instructions clear an earlier failure, a failure keeps the last ones.

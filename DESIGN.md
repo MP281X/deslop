@@ -192,12 +192,12 @@ Geist on the web, SF Pro on iOS at Dynamic Type sizes through the `text` tokens 
 
 ## Layout
 
-- **Rows, not cards.** Hairline rows: a leading mark, a title, one muted line, a trailing status or action.
-- **What needs you leads.** Rows that need the user sort first, their reason replacing the second line in the state's colour; no label, divider or gap sets them apart. A row shows a button only for a fix the user can make; its other actions sit in its context menu (right-click, long press), never behind a ⋯ button.
+- **Rows, not cards.** One-line hairline rows: a leading mark, a title, its muted detail, then trailing figures, status and action in shared columns. A row with more to show opens beneath itself: the whole row opens it, its chevron at the right.
+- **What needs you leads.** Rows that need the user sort first, their reason taking the muted detail's place in the state's colour, a longer error on its own line beneath; no label, divider or gap sets them apart. A row shows a button only for a fix the user can make; its other actions sit in its context menu (right-click, long press), never behind a ⋯ button.
 - **One column** up to `page`, forms up to `form`; list-and-detail tools split into two panes. 8px inside a group, 16px between groups, 24–32px between sections.
 - **iOS.** Inline titles, plain lists, bottom search.
 - **App bars.** The app icon and name lead on the web and take the title's place, centered and without a glass button, on iOS; detail screens keep their native back navigation. Signal's spectator world uses map controls instead of an app bar.
-- **The web app bar is the page header**: name, section tabs, the command field, the page's one action, the account; no heading below it. The command field narrows the page's rows and lists the actions that match, ⌘K focuses it, and on a phone it opens from a search button over the bar. Each app stays its own; no bar links to another app.
+- **The web app bar is the page header**: name, section tabs, the command field, the page's action (at most one quieter outline action beside it), the account; no heading below it. The command field narrows the page's rows and lists the actions that match, ⌘K focuses it, and on a phone it opens from a search button over the bar. Each app stays its own; no bar links to another app.
 - **Row alignment.** Center leading marks and trailing actions against the whole row, including wrapped details. Rows with inline process trees align both marks to the parent title; `ItemMedia` opts into `data-align="start"`. Stash reserves a 64pt media square even without a preview, using the source mark as its fallback.
 - **List endings.** A closing hairline marks the last row; installed web apps keep 16px plus the home-indicator inset below it.
 
@@ -211,7 +211,7 @@ A tonal step and a hairline, never a shadow, gradient or glow. On iOS, Liquid Gl
 
 ## Components
 
-One vocabulary on both platforms: a row is an `Item`, a blank state an `Empty`, a filter a `ToggleGroup`, a status a `StatusDot`.
+One vocabulary on both platforms: a row is an `Item` on iOS and a one-line hairline row on the web, a blank state an `Empty`, a filter a `ToggleGroup`, a status a `StatusDot`.
 
 - **Web.** Every shadcn `base-mira` component in `packages/components-web/src/ui/`, as the CLI writes it apart from the fixes `AGENTS.md` names; house rules such as the press scale live in `theme.css`. Beside it: `StatusDot`, `ItemList` (hairline rows), `SignIn` and `ResultError`. Apps compose these before writing their own markup.
 - **iOS.** `packages/components-mobile/src/ui/` carries the same names and parts over `@expo/ui` SwiftUI (`Item`, `ItemMedia`, `ItemContent`, `ItemTitle`, `ItemDescription`, `ItemActions`, `ItemGroup`, `Empty…`, `ToggleGroup`, `Spinner`), taking `modifiers` where the web takes `className`. System controls stay native.

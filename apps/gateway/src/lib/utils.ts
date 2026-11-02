@@ -60,14 +60,6 @@ export const lastCallAtom = Atom.family((id: string) =>
 	})
 )
 
-export const hideAtom = Atom.family((id: string) =>
-	// Concurrent, so a second toggle while the first is in flight does not interrupt it.
-	RpcClient.runtime.fn(
-		(change: {hidden: boolean; tool: string}) =>
-			Effect.flatMap(RpcClient, client => client('gateway.hide', {...change, id})),
-		{concurrent: true}
-	)
-)
 export const removeAtom = Atom.family((id: string) =>
 	RpcClient.runtime.fn(() => Effect.flatMap(RpcClient, client => client('gateway.remove', {id})))
 )
@@ -123,13 +115,13 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 	})
 )
 
-// Copied from the command field, so a toast says whether it worked.
+// Copied from the bar's button or command field, so a toast says whether it worked.
 export const copyEndpointAtom = Atom.fn(() =>
 	Effect.match(
 		Effect.tryPromise(() => navigator.clipboard.writeText(ENDPOINT)),
 		{
-			onFailure: () => toast.add({description: ENDPOINT, title: 'Cannot copy the endpoint', type: 'error'}),
-			onSuccess: () => toast.add({title: 'Endpoint copied'})
+			onFailure: () => toast.add({description: ENDPOINT, title: 'Cannot copy the MCP URL', type: 'error'}),
+			onSuccess: () => toast.add({title: 'MCP URL copied'})
 		}
 	)
 )
