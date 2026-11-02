@@ -47,6 +47,11 @@ export const activationsAtom = Atom.make(get => {
 	return 0
 })
 
+class UpdateError extends Schema.TaggedError<UpdateError>()('UpdateError', {
+	cause: Schema.Defect(),
+	message: Schema.String
+}) {}
+
 // A reload looks like a crash to someone switching apps for a moment, so a downloaded update starts on the next launch or on a return after ten minutes away.
 const updates = AtomMachine.make(
 	Machine.make({
@@ -54,13 +59,26 @@ const updates = AtomMachine.make(
 		effects: {
 			fetch: pipe(
 				Effect.gen(function* () {
-					if (!(yield* Effect.tryPromise(() => Updates.checkForUpdateAsync())).isAvailable) return false
-					return (yield* Effect.tryPromise(() => Updates.fetchUpdateAsync())).isNew
+					if (
+						!(yield* Effect.tryPromise({
+							catch: cause => UpdateError.make({cause, message: 'The update server was not reached'}),
+							try: () => Updates.checkForUpdateAsync()
+						})).isAvailable
+					) {
+						return false
+					}
+					return (yield* Effect.tryPromise({
+						catch: cause => UpdateError.make({cause, message: 'The update did not download'}),
+						try: () => Updates.fetchUpdateAsync()
+					})).isNew
 				}),
 				Effect.tapError(error => Effect.logWarning('The app update check failed', error))
 			),
 			reload: Effect.ignore(
-				Effect.tryPromise(() => Updates.reloadAsync()),
+				Effect.tryPromise({
+					catch: cause => UpdateError.make({cause, message: 'The app did not reload'}),
+					try: () => Updates.reloadAsync()
+				}),
 				{log: 'Warn', message: 'The app update did not start'}
 			)
 		},

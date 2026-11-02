@@ -44,7 +44,7 @@ import {
 	serverName
 } from '#services/connections/lib/utils.ts'
 import type {Callback, ConnectionInfo, Discovery, OAuth, ServerId, Connection} from '#services/connections/schema.ts'
-import {ConnectionStore, Metadata, Registration, ServerUrl, Token} from '#services/connections/schema.ts'
+import {ConnectionStore, Metadata, Registration, ServerUrl, Token, UpstreamError} from '#services/connections/schema.ts'
 
 // A provider sign-in in progress, for ten minutes and in memory: a restart asks to connect again.
 type Pending = {client: OAuth['client']; generation: string; id: ServerId; userId: string; verifier: string}
@@ -283,35 +283,39 @@ export class Connections extends Context.Service<
 				method: 'tools/list',
 				params: {}
 			})
-			const response = yield* Effect.tryPromise(signal =>
-				fetch(initial.url, {
-					body: probe,
-					headers: {
-						accept: 'application/json, text/event-stream',
-						'content-type': 'application/json',
-						'mcp-protocol-version': '2025-06-18'
-					},
-					method: 'POST',
-					signal
-				})
-			)
+			const response = yield* Effect.tryPromise({
+				catch: cause => UpstreamError.make({cause}),
+				try: signal =>
+					fetch(initial.url, {
+						body: probe,
+						headers: {
+							accept: 'application/json, text/event-stream',
+							'content-type': 'application/json',
+							'mcp-protocol-version': '2025-06-18'
+						},
+						method: 'POST',
+						signal
+					})
+			})
 			const challenge = extractWWWAuthenticateParams(response)
 			yield* Option.match(Option.fromNullishOr(response.body), {
 				onNone: () => Effect.void,
 				onSome: Effect.fnUntraced(function* (body) {
-					yield* Effect.tryPromise(() => body.cancel())
+					yield* Effect.tryPromise({catch: cause => UpstreamError.make({cause}), try: () => body.cancel()})
 				})
 			})
-			const discovery = yield* Effect.tryPromise(signal =>
-				discoverOAuthServerInfo(initial.url, {
-					fetchFn: (target, init) =>
-						fetch(target, {
-							...init,
-							signal: AbortSignal.any([signal, ...Option.toArray(Option.fromNullishOr(init?.signal))])
-						}),
-					resourceMetadataUrl: challenge.resourceMetadataUrl
-				})
-			)
+			const discovery = yield* Effect.tryPromise({
+				catch: cause => UpstreamError.make({cause}),
+				try: signal =>
+					discoverOAuthServerInfo(initial.url, {
+						fetchFn: (target, init) =>
+							fetch(target, {
+								...init,
+								signal: AbortSignal.any([signal, ...Option.toArray(Option.fromNullishOr(init?.signal))])
+							}),
+						resourceMetadataUrl: challenge.resourceMetadataUrl
+					})
+			})
 			if (discovery.resourceMetadata !== undefined && discovery.resourceMetadata.resource !== initial.url) {
 				return yield* AuthError.make({message: 'The MCP metadata names a different resource URL.'})
 			}
@@ -326,14 +330,20 @@ export class Connections extends Context.Service<
 					),
 					acquired =>
 						pipe(
-							Effect.tryPromise(() => transport.terminateSession()),
+							Effect.tryPromise({catch: cause => UpstreamError.make({cause}), try: () => transport.terminateSession()}),
 							Effect.timeout('3 seconds'),
 							Effect.ignore({log: 'Warn', message: 'Cannot terminate the anonymous MCP session'}),
 							Effect.andThen(Effect.promise(() => acquired.close()))
 						)
 				)
-				yield* Effect.tryPromise(signal => anonymous.connect(transport, {signal}))
-				const tools = yield* Effect.tryPromise(signal => anonymous.listTools(undefined, {signal}))
+				yield* Effect.tryPromise({
+					catch: cause => UpstreamError.make({cause}),
+					try: signal => anonymous.connect(transport, {signal})
+				})
+				const tools = yield* Effect.tryPromise({
+					catch: cause => UpstreamError.make({cause}),
+					try: signal => anonymous.listTools(undefined, {signal})
+				})
 				return {
 					...initial,
 					...Option.match(Option.fromUndefinedOr(anonymous.getInstructions()), {

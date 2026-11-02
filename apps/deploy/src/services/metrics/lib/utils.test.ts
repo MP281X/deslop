@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, HashSet, Option} from 'effect'
+import {Array, Formatter, HashSet, Option} from 'effect'
 
 import {
 	chartWindow,
@@ -75,7 +75,7 @@ it('bounds history by the chosen time window and response size without synthesiz
 	assert.strictEqual(report.series.time.length, report.series.cpu.length)
 	assert.strictEqual(report.recordedSince, 0)
 	assert.isTrue(Option.isNone(report.series.cpu[0] ?? Option.none()))
-	assert.isBelow(JSON.stringify(report).length, JSON.stringify({samples}).length / 10)
+	assert.isBelow(Formatter.formatJson(report).length, Formatter.formatJson({samples}).length / 10)
 })
 
 it('measures individual logical cores, memory detail, load and uptime without bridging resets', () => {

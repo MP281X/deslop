@@ -169,10 +169,10 @@ export class Gateway extends Context.Service<
 							),
 							acquired =>
 								pipe(
-									Effect.tryPromise(() => transport.terminateSession()),
+									Effect.tryPromise({catch: rejected(server), try: () => transport.terminateSession()}),
 									Effect.timeout('3 seconds'),
 									Effect.ignore({log: 'Warn', message: 'Cannot terminate the upstream MCP session'}),
-									Effect.andThen(Effect.tryPromise(() => acquired.close())),
+									Effect.andThen(Effect.tryPromise({catch: rejected(server), try: () => acquired.close()})),
 									Effect.ignore({log: 'Warn', message: 'Cannot close the upstream MCP client'})
 								)
 						)

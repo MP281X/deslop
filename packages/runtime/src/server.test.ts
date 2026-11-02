@@ -44,7 +44,7 @@ const send = Effect.fnUntraced(function* (
 ) {
 	const method = Boolean.match(String.includes('/auth/')(url), {onFalse: () => 'POST', onTrue: () => 'GET'})
 	const context = yield* Effect.context<FileSystem.FileSystem | Path.Path>()
-	return yield* Effect.tryPromise(() => web.handler(new Request(url, {headers, method}), context))
+	return yield* Effect.promise(() => web.handler(new Request(url, {headers, method}), context))
 })
 
 it.layer(NodeServices.layer)('Server guard', test => {

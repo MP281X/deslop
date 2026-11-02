@@ -1,6 +1,7 @@
 import {
 	Array,
 	Boolean,
+	Formatter,
 	MutableHashMap,
 	MutableList,
 	Number,
@@ -222,7 +223,7 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 				body,
 				tick,
 				'action',
-				`Read #${message.from}: ${message.text}\nProposed objective: ${JSON.stringify(message.order)}. Disclosed addresses: ${JSON.stringify(message.ids)}. Received claims, not direct observations: ${JSON.stringify(message.facts ?? [])}.`
+				`Read #${message.from}: ${message.text}\nProposed objective: ${Formatter.formatJson(message.order)}. Disclosed addresses: ${Formatter.formatJson(message.ids)}. Received claims, not direct observations: ${Formatter.formatJson(message.facts ?? [])}.`
 			)
 		}
 	}
@@ -355,7 +356,7 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 
 		if (Array.isReadonlyArrayNonEmpty(own.inbox)) choices['read'] = 'Read delivered messages. Reading is not obedience.'
 		if (own.pending !== undefined) {
-			choices['accept'] = `Accept the previously read objective: ${JSON.stringify(own.pending)}.`
+			choices['accept'] = `Accept the previously read objective: ${Formatter.formatJson(own.pending)}.`
 		}
 		if (connected && body.team !== undefined) {
 			choices['survey'] =
@@ -370,7 +371,7 @@ export function makeLife(saved?: Life, unarchived: readonly Experience[] = []) {
 			actor: body.id,
 			choices,
 			experience: Array.take(own.unrecorded ?? own.recent, 24),
-			state: JSON.stringify({
+			state: Formatter.formatJson({
 				connected,
 				daylight: daylightAt(tick),
 				environment: {

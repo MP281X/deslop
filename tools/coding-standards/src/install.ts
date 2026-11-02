@@ -133,11 +133,5 @@ const cli = pipe(
 )
 
 NodeRuntime.runMain(
-	pipe(
-		cli,
-		Command.run({version: packageJson.version}),
-		Effect.scoped,
-		// @effect-diagnostics-next-line strictEffectProvide:off -- This CLI entrypoint owns the single platform Layer and its resource lifetime.
-		Effect.provide(NodeServices.layer)
-	)
+	pipe(cli, Command.run({version: packageJson.version}), Effect.scoped, Effect.provide(NodeServices.layer))
 )

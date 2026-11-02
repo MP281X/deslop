@@ -219,7 +219,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'const ref = useRef<HTMLElement | null>(null)',
 							'const namespaceRef = React.useRef<HTMLElement | null>(null)',
 							'const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))(source)',
-							'const directDecoded = Schema.decodeUnknownSync(Schema.UnknownFromJsonString)(source)',
 							'function forward(value: string) { return consume(value) }',
 							'function ready() { return source.length > 0 }',
 							'const noValues = values.length === 0',
@@ -280,7 +279,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'// oxlint-disable-next-line sort-keys -- this input keeps its order',
 							'const unsortedKeys = {b: 1, a: 2}',
 							'// @effect-diagnostics-next-line floatingEffect:off',
-							'export {AssertString, Clock, clockLayers, Codecs, NonEmpty, PipedNonEmpty, PipedTrimmed, absent, Fallback, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, asyncConstant, callbacks, decode, decoded, decoders, directDecoded, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, greet, handlers, input, isRecord, isText, makeBox, labelled, logName, loose, kind, mappedValues, measured, keyed, lazy, described, namesA, namesB, namespaceRef, noValues, present, slotLength, slotPair, notFound, operations, ready, recipients, ref, run, stateNamespace, succeed, unsortedKeys, unwrapped, withHead, wrapped}'
+							'export {AssertString, Clock, clockLayers, Codecs, NonEmpty, PipedNonEmpty, PipedTrimmed, absent, Fallback, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, asyncConstant, callbacks, decode, decoded, decoders, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, greet, handlers, input, isRecord, isText, makeBox, labelled, logName, loose, kind, mappedValues, measured, keyed, lazy, described, namesA, namesB, namespaceRef, noValues, present, slotLength, slotPair, notFound, operations, ready, recipients, ref, run, stateNamespace, succeed, unsortedKeys, unwrapped, withHead, wrapped}'
 						],
 						Array.join('\n')
 					)
@@ -352,8 +351,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'@deslop/coding-standards(no-unexplained-disable)',
 							'@deslop/coding-standards(no-unexplained-disable)',
 							'@deslop/coding-standards(no-unvalidated-json-decode)',
-							'@deslop/coding-standards(no-unvalidated-json-decode)',
-							'@deslop/coding-standards(schema-type-pair)',
 							'@deslop/coding-standards(schema-type-pair)',
 							'@deslop/coding-standards(schema-type-pair)',
 							'@deslop/coding-standards(schema-type-pair)',
@@ -436,8 +433,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'@deslop/coding-standards(no-trivial-indirection)',
 					'@deslop/coding-standards(no-trivial-indirection)',
 					'@deslop/coding-standards(no-trivial-indirection)',
-					'@deslop/coding-standards(no-trivial-indirection)',
-					'@deslop/coding-standards(schema-type-pair)'
+					'@deslop/coding-standards(no-trivial-indirection)'
 				])
 			})
 		)
@@ -977,8 +973,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'@deslop/coding-standards(no-ternary)',
 					'@deslop/coding-standards(no-trivial-indirection)',
 					'@deslop/coding-standards(no-trivial-indirection)',
-					'@deslop/coding-standards(preserve-error-cause)',
-					'@deslop/coding-standards(schema-type-pair)'
+					'@deslop/coding-standards(preserve-error-cause)'
 				])
 			})
 		)
@@ -1619,8 +1614,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'@deslop/coding-standards(no-type-from-value)',
 					'@deslop/coding-standards(no-type-from-value)',
 					'@deslop/coding-standards(no-type-from-value)',
-					'@deslop/coding-standards(no-type-from-value)',
-					'@deslop/coding-standards(schema-type-pair)'
+					'@deslop/coding-standards(no-type-from-value)'
 				])
 			})
 		)
@@ -1972,7 +1966,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'export const goodEncoding = Schema.encodeSync(Json)({message})',
 					'export const goodRequestEncoding = HttpClientRequest.schemaBodyJson(Schema.Unknown)',
 					'export const goodStaged = Schema.decodeUnknownSync(Schema.String)(Schema.decodeUnknownSync(Json)(source))',
-					'export const goodSyncPiped = pipe(Schema.decodeUnknownSync(Schema.UnknownFromJsonString)(source), Schema.decodeUnknownSync(Schema.String))',
+					'export const goodSyncPiped = pipe(Schema.decodeUnknownSync(Json)(source),Schema.decodeUnknownSync(Schema.String))',
 					'export const goodEffectStaged = pipe(HttpClientResponse.schemaBodyJson(Schema.Unknown)(response), Effect.flatMap(Schema.decodeUnknownEffect(Schema.String)))',
 					'const token = () => Notifications.getExpoPushTokenAsync()',
 					'function remove() { return Notifications.setBadgeCountAsync(0) }',
@@ -2068,7 +2062,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							"it.effect('runs', () => Effect.void)",
 							"it.layer(Layer.empty)(test => { test.effect.only('runs alone in its layer', () => Effect.void) }) // reported",
 							"it.layer(Layer.empty)(check => { check.skip('never runs in its layer', () => Effect.void) }) // reported",
-							"it.layer(Layer.empty)(test => { test.skip('left to the native rule', () => Effect.void) })",
+							"it.layer(Layer.empty)(test => { test.skip('never runs in its layer either', () => Effect.void) }) // reported",
 							"it.skipIf(ci)('skips on CI', () => {}) // reported",
 							"it.effect.runIf(ci)('runs only on CI', () => Effect.void) // reported",
 							"it.fails('passes by failing', () => {}) // reported",

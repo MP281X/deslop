@@ -61,7 +61,10 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			yield* fs.readDirectory(directory),
 			file =>
 				pipe(
-					Effect.try(() => decodeURIComponent(file)),
+					Effect.try({
+						catch: cause => TelemetryError.make({cause, message: `${file} has no readable name.`}),
+						try: () => decodeURIComponent(file)
+					}),
 					Effect.filterOrFail(key => !String.endsWith('.tmp')(key)),
 					Effect.flatMap(key => store.get(key)),
 					// A write cut short or an entry of an older shape is dropped rather than keeping Scope from starting.

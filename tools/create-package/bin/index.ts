@@ -44,7 +44,6 @@ NodeRuntime.runMain(
 		create,
 		Command.withDescription('Create a standard Deslop package.'),
 		Command.run({version: packageJson.version}),
-		// @effect-diagnostics-next-line strictEffectProvide:off -- This CLI entrypoint owns the single platform Layer.
 		Effect.provide(NodeServices.layer)
 	)
 )

@@ -293,11 +293,21 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 			if (!session.signedIn(get)) return
 			const target = yield* apns
 			const client = yield* RpcClient
-			if ((yield* Effect.tryPromise(() => Notifications.requestPermissionsAsync())).granted) {
+			if (
+				(yield* Effect.tryPromise({
+					catch: cause => BookingsError.make({cause, message: 'The notification permission could not be asked.'}),
+					try: () => Notifications.requestPermissionsAsync()
+				})).granted
+			) {
 				yield* client('devices.register', {
 					...target,
 					kind: 'alert',
-					token: `${(yield* Effect.tryPromise(() => Notifications.getDevicePushTokenAsync())).data}`
+					token: `${
+						(yield* Effect.tryPromise({
+							catch: cause => BookingsError.make({cause, message: 'The push token could not be read.'}),
+							try: () => Notifications.getDevicePushTokenAsync()
+						})).data
+					}`
 				})
 			}
 			// iOS hands out the push-to-start token and its rotations whenever it likes, for as long as the app runs.
@@ -343,7 +353,10 @@ function savedIndex() {
 
 function writeIndex(index: ActivityIndexJson) {
 	return Effect.flatMap(Schema.encodeEffect(ActivityIndexJson)(index), json =>
-		Effect.try(() => writeAtomically(activitiesFile, json))
+		Effect.try({
+			catch: cause => BookingsError.make({cause, message: 'The Live Activities could not be kept on this iPhone.'}),
+			try: () => writeAtomically(activitiesFile, json)
+		})
 	)
 }
 
@@ -383,8 +396,14 @@ export const activitiesAtom = RpcClient.runtime.atom(get =>
 				// iOS hands a new activity its token shortly after it starts.
 				const token = yield* pipe(
 					Stream.merge(
-						Stream.filterMap(Stream.fromEffect(Effect.tryPromise(() => activity.getPushToken())), found =>
-							Result.fromNullishOr(found, () => undefined)
+						Stream.filterMap(
+							Stream.fromEffect(
+								Effect.tryPromise({
+									catch: cause => BookingsError.make({cause, message: 'The Live Activity token could not be read.'}),
+									try: () => activity.getPushToken()
+								})
+							),
+							found => Result.fromNullishOr(found, () => undefined)
 						),
 						Stream.callback<string>(queue =>
 							Effect.acquireRelease(
@@ -406,8 +425,14 @@ export const activitiesAtom = RpcClient.runtime.atom(get =>
 
 			// A running island's rotated token reaches the server on the next refresh.
 			const refresh = Effect.fnUntraced(function* (mine: Running, props: ActivityProps) {
-				yield* Effect.tryPromise(() => mine.activity.update(props))
-				const token = yield* Effect.tryPromise(() => mine.activity.getPushToken())
+				yield* Effect.tryPromise({
+					catch: cause => BookingsError.make({cause, message: 'The Live Activity could not be updated.'}),
+					try: () => mine.activity.update(props)
+				})
+				const token = yield* Effect.tryPromise({
+					catch: cause => BookingsError.make({cause, message: 'The Live Activity token could not be read.'}),
+					try: () => mine.activity.getPushToken()
+				})
 				if (token === null || token === mine.token) return Option.none<Started>()
 				yield* client('activities.register', {...target, bookingId: mine.bookingId, leg: mine.leg, token})
 				return Option.some<Started>([mine.activity.getId(), entryOf(mine.bookingId, mine.leg, Option.some(token))])
@@ -444,7 +469,11 @@ export const activitiesAtom = RpcClient.runtime.atom(get =>
 								Option.exists(activeWindow(booking, now), window => window.leg === item.leg)
 						)
 				),
-				item => Effect.tryPromise(() => item.activity.end('default')),
+				item =>
+					Effect.tryPromise({
+						catch: cause => BookingsError.make({cause, message: 'The Live Activity could not be ended.'}),
+						try: () => item.activity.end('default')
+					}),
 				{concurrency: 1, discard: true}
 			)
 			// The index keeps the activities still on screen and the ones just started.
@@ -512,35 +541,50 @@ export const calendarAtom = Atom.make(get =>
 		Effect.gen(function* () {
 			const loaded = get(bookingsAtom)
 			if (!AsyncResult.isSuccess(loaded)) return
-			if (!(yield* Effect.tryPromise(() => Calendar.requestCalendarPermissions())).granted) return
+			if (
+				!(yield* Effect.tryPromise({
+					catch: cause => BookingsError.make({cause, message: 'The calendar permission could not be asked.'}),
+					try: () => Calendar.requestCalendarPermissions()
+				})).granted
+			) {
+				return
+			}
 			const calendar = yield* Option.match(
 				Array.findFirst(
-					yield* Effect.tryPromise(() => Calendar.getCalendars(Calendar.EntityTypes.EVENT)),
+					yield* Effect.tryPromise({
+						catch: cause => BookingsError.make({cause, message: 'The calendars could not be listed.'}),
+						try: () => Calendar.getCalendars(Calendar.EntityTypes.EVENT)
+					}),
 					found => found.title === CALENDAR
 				),
 				{
 					onNone: () =>
-						Effect.tryPromise(() => {
-							const source = Calendar.getDefaultCalendarSync().source
-							return Calendar.createCalendar({
-								color: '#4385be',
-								entityType: Calendar.EntityTypes.EVENT,
-								name: CALENDAR,
-								source,
-								sourceId: source.id,
-								title: CALENDAR
-							})
+						Effect.tryPromise({
+							catch: cause => BookingsError.make({cause, message: 'The Trips calendar could not be created.'}),
+							try: () => {
+								const source = Calendar.getDefaultCalendarSync().source
+								return Calendar.createCalendar({
+									color: '#4385be',
+									entityType: Calendar.EntityTypes.EVENT,
+									name: CALENDAR,
+									source,
+									sourceId: source.id,
+									title: CALENDAR
+								})
+							}
 						}),
 					onSome: Effect.succeed
 				}
 			)
 			const now = DateTime.toEpochMillis(DateTime.nowUnsafe())
-			const events = yield* Effect.tryPromise(() =>
-				calendar.listEvents(
-					DateTime.toDateUtc(DateTime.makeUnsafe(now - 60 * 24 * HOUR)),
-					DateTime.toDateUtc(DateTime.makeUnsafe(now + 400 * 24 * HOUR))
-				)
-			)
+			const events = yield* Effect.tryPromise({
+				catch: cause => BookingsError.make({cause, message: 'The calendar events could not be listed.'}),
+				try: () =>
+					calendar.listEvents(
+						DateTime.toDateUtc(DateTime.makeUnsafe(now - 60 * 24 * HOUR)),
+						DateTime.toDateUtc(DateTime.makeUnsafe(now + 400 * 24 * HOUR))
+					)
+			})
 			const bookings = Array.filter(
 				loaded.value,
 				booking => booking.status === 'confirmed' && endOf(booking) > now - 24 * HOUR
@@ -552,7 +596,12 @@ export const calendarAtom = Atom.make(get =>
 					return Option.match(
 						Array.findFirst(events, event => event.url === linkOf(booking.id)),
 						{
-							onNone: () => Effect.tryPromise(() => calendar.createEvent({...details, url: linkOf(booking.id)})),
+							onNone: () =>
+								Effect.tryPromise({
+									catch: cause =>
+										BookingsError.make({cause, message: `${details.title} could not be added to the calendar.`}),
+									try: () => calendar.createEvent({...details, url: linkOf(booking.id)})
+								}),
 							onSome: event => {
 								if (
 									sameTime(event.startDate, details.startDate) &&
@@ -563,7 +612,11 @@ export const calendarAtom = Atom.make(get =>
 								) {
 									return Effect.void
 								}
-								return Effect.tryPromise(() => event.update(details))
+								return Effect.tryPromise({
+									catch: cause =>
+										BookingsError.make({cause, message: `${details.title} could not be updated in the calendar.`}),
+									try: () => event.update(details)
+								})
 							}
 						}
 					)
@@ -577,7 +630,12 @@ export const calendarAtom = Atom.make(get =>
 					events,
 					event => event.url !== undefined && String.startsWith(linkOf(''))(event.url) && !HashSet.has(kept, event.url)
 				),
-				event => Effect.tryPromise(() => event.delete()),
+				event =>
+					Effect.tryPromise({
+						catch: cause =>
+							BookingsError.make({cause, message: `${event.title} could not be removed from the calendar.`}),
+						try: () => event.delete()
+					}),
 				{concurrency: 1, discard: true}
 			)
 		}),
@@ -595,7 +653,12 @@ const coordinatesOf = Effect.fnUntraced(function* (place: Place) {
 		return Option.some<Coordinates>({latitude: place.latitude, longitude: place.longitude})
 	}
 	return Option.map(
-		Array.head(yield* Effect.tryPromise(() => Location.geocodeAsync(placeLine(place)))),
+		Array.head(
+			yield* Effect.tryPromise({
+				catch: cause => BookingsError.make({cause, message: `${place.name} could not be found on the map.`}),
+				try: () => Location.geocodeAsync(placeLine(place))
+			})
+		),
 		match => ({latitude: match.latitude, longitude: match.longitude}) satisfies Coordinates
 	)
 })
@@ -622,16 +685,17 @@ export const mapsAtom = Atom.fn((ride: Ride) =>
 	pipe(
 		coordinatesOf(ride.place),
 		Effect.flatMap(coordinates =>
-			Effect.tryPromise(() =>
-				Linking.openURL(
-					Option.match(coordinates, {
-						onNone: () => `maps://?daddr=${encodeURIComponent(placeLine(ride.place))}`,
-						onSome: found => `maps://?daddr=${found.latitude},${found.longitude}&q=${encodeURIComponent(ride.label)}`
-					})
-				)
-			)
+			Effect.tryPromise({
+				catch: cause => BookingsError.make({cause, message: 'Maps could not be opened.'}),
+				try: () =>
+					Linking.openURL(
+						Option.match(coordinates, {
+							onNone: () => `maps://?daddr=${encodeURIComponent(placeLine(ride.place))}`,
+							onSome: found => `maps://?daddr=${found.latitude},${found.longitude}&q=${encodeURIComponent(ride.label)}`
+						})
+					)
+			})
 		),
-		Effect.mapError(cause => BookingsError.make({cause, message: 'Maps could not be opened.'})),
 		alert('No Directions')
 	)
 )
@@ -639,15 +703,20 @@ export const mapsAtom = Atom.fn((ride: Ride) =>
 export const uberAtom = Atom.fn((ride: Ride) =>
 	pipe(
 		coordinatesOf(ride.place),
-		Effect.flatMap(Effect.fromOption),
-		Effect.flatMap(found =>
-			Effect.tryPromise(() =>
-				Linking.openURL(
-					`https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff[latitude]=${found.latitude}&dropoff[longitude]=${found.longitude}&dropoff[nickname]=${encodeURIComponent(ride.label)}&dropoff[formatted_address]=${encodeURIComponent(placeLine(ride.place))}`
-				)
+		Effect.flatMap(coordinates =>
+			Effect.mapError(Effect.fromOption(coordinates), cause =>
+				BookingsError.make({cause, message: 'The place could not be found for Uber.'})
 			)
 		),
-		Effect.mapError(cause => BookingsError.make({cause, message: 'The place could not be found for Uber.'})),
+		Effect.flatMap(found =>
+			Effect.tryPromise({
+				catch: cause => BookingsError.make({cause, message: 'Uber could not be opened.'}),
+				try: () =>
+					Linking.openURL(
+						`https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff[latitude]=${found.latitude}&dropoff[longitude]=${found.longitude}&dropoff[nickname]=${encodeURIComponent(ride.label)}&dropoff[formatted_address]=${encodeURIComponent(placeLine(ride.place))}`
+					)
+			})
+		),
 		alert('No Uber')
 	)
 )

@@ -198,7 +198,7 @@ function reportSchemaVariable(input: {
 					Array.head,
 					Option.getOrElse(() => input.statement)
 				).range[0]
-				// The file's other `typeof Name.Type` queries read the new alias in the same edit, so no pass leaves a query for it to flag.
+				// The file's other `typeof Name.Type` queries read the new alias in the same edit, which the compiler's unnecessaryTypeofType would otherwise ask for by hand.
 				return [
 					fixer.insertTextBeforeRange(
 						[start, start],
@@ -249,29 +249,6 @@ export const schemaTypePair = defineRule({
 							reportSchemaVariable({context, cycleNames, program, queries: collected, statement, variable})
 						}
 					}
-				}
-				// A query is rewritten on its own only once the file already declares the alias.
-				const aliased = Array.flatMap(program.body, statement => {
-					const named = statementDeclaration(statement)
-					if (
-						named?.type !== 'TSTypeAliasDeclaration' ||
-						!isInferredType({name: named.id.name, node: named.typeAnnotation})
-					) {
-						return []
-					}
-					return [named.id.name]
-				})
-				for (const query of collected) {
-					Option.map(queriedSchema(query), name =>
-						context.report({
-							fix: fixer => {
-								if (!Array.contains(aliased, name) || !readsModuleBinding(context, query, name)) return []
-								return fixer.replaceText(query, name)
-							},
-							message: `Read the type ${name}, declared as \`type ${name} = typeof ${name}.Type\` beside its Schema.`,
-							node: query
-						})
-					)
 				}
 			},
 			TSTypeQuery: node => {

@@ -76,10 +76,19 @@ it.effect(
 			'https://198.51.100.1',
 			'http://example.com'
 		]) {
-			assert.isTrue(Result.isFailure(yield* Effect.result(Effect.tryPromise(() => fetch(url)))))
+			assert.isTrue(
+				Result.isFailure(
+					yield* Effect.result(
+						Effect.tryPromise({catch: cause => AuthError.make({cause, message: 'Fetch failed'}), try: () => fetch(url)})
+					)
+				)
+			)
 		}
 		assert.strictEqual(requests.length, 0)
-		yield* Effect.tryPromise(() => fetch('https://example.com/mcp', {redirect: 'follow'}))
+		yield* Effect.tryPromise({
+			catch: cause => AuthError.make({cause, message: 'Fetch failed'}),
+			try: () => fetch('https://example.com/mcp', {redirect: 'follow'})
+		})
 		assert.strictEqual(requests.length, 1)
 		assert.strictEqual(MutableList.toArray(requests)[0]?.init?.redirect, 'error')
 	})

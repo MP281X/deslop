@@ -76,7 +76,7 @@ export const noFalliblePromise = defineRule({
 			if (Predicate.isNullish(returned) || !containsRejection(context, returned)) return
 			context.report({
 				message:
-					'This API can reject. Use Effect.tryPromise so expected I/O failures reach typed recovery, not the defect channel.',
+					'This API can reject. Use Effect.tryPromise({try, catch}) so expected I/O failures reach typed recovery, not the defect channel.',
 				node
 			})
 		}
