@@ -76,13 +76,13 @@ const audioSpawner = Effect.fnUntraced(function* () {
 				Schema.decodeUnknownEffect(Schema.String)(pipe(Array.last(command.args), Option.getOrThrow)),
 				Effect.orDie
 			)
-			if (command.command === 'ffprobe') {
+			if (String.endsWith('/ffprobe')(command.command)) {
 				if (String.endsWith('part-000.flac')(file)) {
 					return handle('{"format":{"duration":"300.25"},"streams":[{"index":0,"codec_type":"audio"}]}')
 				}
 				return handle('{"format":{"duration":"20"},"streams":[{"index":0,"codec_type":"audio"}]}')
 			}
-			if (command.command === 'ffmpeg' && Array.contains(command.args, 'segment')) {
+			if (String.endsWith('/ffmpeg')(command.command) && Array.contains(command.args, 'segment')) {
 				yield* fs.writeFile(String.replace('%03d', '000')(file), new Uint8Array([1]))
 				yield* fs.writeFile(String.replace('%03d', '001')(file), new Uint8Array([2]))
 				return handle('')
@@ -220,12 +220,12 @@ it.layer(NodeServices.layer)('Media fallback', test => {
 			const spawner = ChildProcessSpawner.make(command =>
 				Effect.gen(function* () {
 					if (!ChildProcess.isStandardCommand(command)) return yield* Effect.die('Unexpected pipeline')
-					if (command.command === 'ffprobe') {
+					if (String.endsWith('/ffprobe')(command.command)) {
 						return handle(
 							'{"format":{"duration":"5"},"streams":[{"index":0,"codec_type":"audio"},{"index":1,"codec_type":"subtitle"},{"index":2,"codec_type":"subtitle"}]}'
 						)
 					}
-					if (command.command === 'ffmpeg' && Array.contains(command.args, 'webvtt')) {
+					if (String.endsWith('/ffmpeg')(command.command) && Array.contains(command.args, 'webvtt')) {
 						if (argument(command, '-map') === '0:1') return handle('', 1)
 						return handle(CAPTIONS)
 					}

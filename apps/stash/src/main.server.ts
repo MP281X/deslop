@@ -1,15 +1,14 @@
-import {NodeCrypto, NodeDns, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
+import {NodeDns} from '@effect/platform-node'
 
-import {Array, Effect, Layer, Option, Schema, String, pipe} from 'effect'
+import {Array, Effect, Layer, Schema, String, pipe} from 'effect'
 
 import {McpServer} from 'effect/ai'
-import {HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
+import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 import {RpcSerialization, RpcServer} from 'effect/rpc'
 
-import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
+import {HttpAuth} from '@deslop/runtime/auth/service'
+import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
-
-import packageJson from '#package.json' with {type: 'json'}
 
 import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -64,23 +63,6 @@ const routes = HttpRouter.use(router =>
 	})
 )
 
-// Cookie-authenticated browsers must use the server's own origin.
-const sameOrigin = HttpMiddleware.make(app =>
-	Effect.gen(function* () {
-		const request = yield* HttpServerRequest.HttpServerRequest
-		// The app's socket sends the server's own origin; agents and the share extension send none.
-		const origin = Option.fromNullishOr(request.headers['origin'])
-		const own = Option.exists(
-			Option.flatMap(origin, value => Option.liftThrowable(() => new URL(value).host)()),
-			value => value === request.headers['host']
-		)
-		if (Option.isSome(origin) && !own) {
-			return HttpServerResponse.empty({status: 403})
-		}
-		return yield* app
-	})
-)
-
 // Binary frames failed to reopen a cancelled watch.
 const rpc = pipe(
 	RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
@@ -88,27 +70,19 @@ const rpc = pipe(
 	Layer.provide(RpcSerialization.layerJson)
 )
 
-const mcp = ServerRuntime.layerMcp({
-	instructions: 'Stash is the reading list of articles, videos and posts the user saved or asks to keep.',
-	name: 'stash',
-	registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers)),
-	version: packageJson.version
-})
-
-NodeRuntime.runMain(
-	pipe(
-		HttpRouter.serve(
-			pipe(
-				Layer.mergeAll(rpc, pipe(routes, Layer.provide(HttpAuth.layer)), mcp, ServerRuntime.layerIcon(icon)),
-				Layer.provide(Auth.layer('https://stash.mp281x.xyz'))
-			),
-			{disableLogger: true, middleware: sameOrigin}
+CliRuntime.runApp({
+	icon,
+	routes: pipe(
+		Layer.mergeAll(
+			rpc,
+			pipe(routes, Layer.provide(HttpAuth.layer)),
+			ServerRuntime.layerMcp({
+				instructions: 'Stash is the reading list of articles, videos and posts the user saved or asks to keep.',
+				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
+			})
 		),
 		Layer.provide(layerNotes),
 		Layer.provide(Layer.mergeAll(Sources.layer, Media.layer, Organizer.layer)),
-		Layer.provide(Layer.mergeAll(NodeCrypto.layer, NodeDns.layer, NodeHttpClient.layerFetch, NodeServices.layer)),
-		Layer.provide(ServerRuntime.layer('@deslop/stash')),
-		Layer.provide(ServerRuntime.layerNodeHttpServer),
-		Layer.launch
+		Layer.provide(NodeDns.layer)
 	)
-)
+})

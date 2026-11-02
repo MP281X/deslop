@@ -4,8 +4,6 @@ import {McpServer} from 'effect/ai'
 
 import * as ServerRuntime from '@deslop/runtime/server'
 
-import packageJson from '#package.json' with {type: 'json'}
-
 import {connectionStatus, summary} from '#services/connections/lib/utils.ts'
 import {Connections} from '#services/connections/service.ts'
 import {GatewayDiscovery} from '#services/gateway/service.ts'
@@ -53,9 +51,7 @@ export const layerMcp = Layer.unwrap(
 					],
 					'\n'
 				),
-				name: 'gateway',
-				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers)),
-				version: packageJson.version
+				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
 			}),
 			Layer.provide(GatewayDiscovery.layer),
 			Layer.provide(McpServer.McpServer.layer)

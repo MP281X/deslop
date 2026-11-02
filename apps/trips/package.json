@@ -1,19 +1,33 @@
 {
 	"name": "@deslop/trips",
 	"version": "0.1.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/MP281X/deslop",
+		"directory": "apps/trips"
+	},
+	"bin": {
+		"trips": "./dist/server.js"
+	},
+	"files": [
+		"dist",
+		"bin"
+	],
 	"type": "module",
 	"sideEffects": false,
 	"main": "src/main.client.tsx",
 	"imports": {
 		"#lib/*": "./src/lib/*",
-		"#package.*": "./package.*",
 		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
 		"#services/*": "./src/services/*",
 		"#tools/*": "./src/tools/*"
 	},
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
-		"build": "rm -rf dist && vp pack",
+		"build": "vp pack",
 		"preview": "vp run build && node --env-file-if-exists=.env ./dist/server.js",
 		"test": "vp test --config ../../vite.config.ts",
 		"typecheck": "tsrs --checkerAssignment go --pretty false"
@@ -44,5 +58,11 @@
 		"expo-updates": "^58.0",
 		"expo-web-browser": "^58.0",
 		"expo-widgets": "^58.0"
+	},
+	"config": {
+		"port": 5109
+	},
+	"engines": {
+		"node": ">=26"
 	}
 }

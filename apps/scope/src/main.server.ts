@@ -1,26 +1,12 @@
-// @effect-diagnostics-next-line nodeBuiltinImport:off -- NodeHttpServer requires the native server constructor at the application boundary.
-import {createServer} from 'node:http'
-
-import {NodeCrypto, NodeHttpClient, NodeHttpServer, NodeRuntime, NodeServices} from '@effect/platform-node'
-
 import type {Schema} from 'effect'
-import {Array, ByteSize, Config, Effect, FileSystem, Layer, Path, String, pipe} from 'effect'
+import {Effect, Layer, String, pipe} from 'effect'
 
 import {McpServer} from 'effect/ai'
-import {
-	HttpIncomingMessage,
-	HttpMiddleware,
-	HttpRouter,
-	HttpServerError,
-	HttpServerRequest,
-	HttpServerResponse
-} from 'effect/http'
-import {RpcSerialization, RpcServer} from 'effect/rpc'
+import {HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
+import {RpcServer} from 'effect/rpc'
 
-import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
+import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
-
-import packageJson from '#package.json' with {type: 'json'}
 
 import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -31,9 +17,12 @@ import {Telemetry} from '#services/telemetry/service.ts'
 import {Tools} from '#tools/contracts.ts'
 import {ToolHandlers} from '#tools/handlers.ts'
 
+// Any page, server or phone may export without signing in, as OTLP receivers take it.
+const cors = HttpMiddleware.cors({allowedHeaders: ['content-type'], allowedMethods: ['POST']})
+
 // OTLP/HTTP JSON: the status codes and `code` values are the protocol's own.
-function ingest<A, I>(schema: Schema.Codec<A, I>, save: (payload: A) => Effect.Effect<void, TelemetryError>) {
-	return (request: HttpServerRequest.HttpServerRequest) => {
+function answer<A, I>(schema: Schema.Codec<A, I>, save: (payload: A) => Effect.Effect<void, TelemetryError>) {
+	return Effect.flatMap(HttpServerRequest.HttpServerRequest, request => {
 		if (!String.startsWith('application/json')(request.headers['content-type'] ?? '')) {
 			return Effect.succeed(HttpServerResponse.empty({status: 415}))
 		}
@@ -52,106 +41,56 @@ function ingest<A, I>(schema: Schema.Codec<A, I>, save: (payload: A) => Effect.E
 					)
 			})
 		)
-	}
+	})
 }
 
 const receiver = HttpRouter.use(router =>
 	Effect.gen(function* () {
 		const telemetry = yield* Telemetry
-		yield* router.add('POST', '/v1/traces', ingest(TracesRequest, telemetry.ingestTraces))
-		yield* router.add('POST', '/v1/logs', ingest(LogsRequest, telemetry.ingestLogs))
-		yield* router.add('GET', '/health', HttpServerResponse.text('ready'))
-	})
-)
-
-// Count rejected exports, not normal MCP OAuth challenges. Headers and bodies are never recorded.
-const observe = HttpMiddleware.make(app =>
-	pipe(
-		app,
-		Effect.onExit(exit =>
-			Effect.gen(function* () {
-				const request = yield* HttpServerRequest.HttpServerRequest
-				const route = Array.headNonEmpty(String.split(request.url, '?'))
-				const status = HttpServerError.exitResponse(exit).status
-				if ((route !== '/v1/traces' && route !== '/v1/logs') || status < 400) return
+		// Rejected exports are counted; headers and bodies are never recorded.
+		const ingest = Effect.fnUntraced(function* <A, I>(
+			route: '/v1/traces' | '/v1/logs',
+			schema: Schema.Codec<A, I>,
+			save: (payload: A) => Effect.Effect<void, TelemetryError>
+		) {
+			const request = yield* HttpServerRequest.HttpServerRequest
+			const response = yield* answer(schema, save)
+			if (response.status >= 400) {
 				function credential() {
 					if (request.headers['authorization'] !== undefined) return 'authorization' as const
 					if (request.headers['cookie'] !== undefined) return 'cookie' as const
 					return 'none' as const
 				}
-				yield* (yield* Telemetry).reject({credential: credential(), route, status})
-			})
-		)
-	)
-)
-
-// Public MCP clients authorize through the shared auth app.
-const mcp = ServerRuntime.layerMcp({
-	instructions: "Scope is the debugger for the user's Effect apps: their traces, spans and logs.",
-	name: 'scope',
-	registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers)),
-	version: packageJson.version
-})
-
-const telemetry = Layer.unwrap(
-	Effect.gen(function* () {
-		const fs = yield* FileSystem.FileSystem
-		const path = yield* Path.Path
-		const directory = path.join(yield* Config.String('HOME'), '.deslop', 'scope')
-		yield* fs.makeDirectory(directory, {recursive: true})
-		return Telemetry.layer(path.join(directory, 'entries'))
+				yield* telemetry.reject({credential: credential(), route, status: response.status})
+			}
+			return response
+		})
+		yield* router.add('POST', '/v1/traces', cors(ingest('/v1/traces', TracesRequest, telemetry.ingestTraces)))
+		yield* router.add('POST', '/v1/logs', cors(ingest('/v1/logs', LogsRequest, telemetry.ingestLogs)))
+		// A browser asks before posting JSON across origins.
+		yield* router.add('OPTIONS', '/v1/*', cors(Effect.succeed(HttpServerResponse.empty())))
+		yield* router.add('GET', '/health', HttpServerResponse.text('ready'))
 	})
 )
 
 // The receiver never exports its own spans or query traffic back into itself.
-NodeRuntime.runMain(
-	pipe(
-		Layer.merge(
+CliRuntime.runApp({
+	icon,
+	routes: pipe(
+		Layer.mergeAll(
+			receiver,
 			pipe(
-				HttpRouter.serve(
-					pipe(
-						Layer.mergeAll(
-							pipe(Layer.fresh(receiver), Layer.provide(HttpAuth.layer)),
-							mcp,
-							pipe(
-								RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
-								Layer.provide(RpcHandlers),
-								Layer.provide(RpcSerialization.layerSchemaBinary())
-							),
-							ServerRuntime.layerIcon(icon),
-							ServerRuntime.layerManifest('Scope'),
-							ServerRuntime.layerStaticFiles,
-							HttpRouter.cors({
-								allowedHeaders: ['authorization', 'content-type'],
-								allowedMethods: ['POST', 'OPTIONS'],
-								allowedOrigins: ['https://portfolio.mp281x.xyz', 'https://auth.mp281x.xyz', 'https://stash.mp281x.xyz'],
-								credentials: true
-							})
-						),
-						Layer.provide(Auth.layer('https://otel.mp281x.xyz'))
-					),
-					{disableLogger: true, middleware: observe}
-				),
-				Layer.provide(ServerRuntime.layerNodeHttpServer)
+				RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
+				Layer.provide(RpcHandlers)
 			),
-			// Exporters inside the private Docker network and tailnet keep their standard OTLP port.
-			pipe(
-				HttpRouter.serve(Layer.merge(Layer.fresh(receiver), HttpRouter.cors({allowedHeaders: ['content-type']})), {
-					disableLogger: true,
-					middleware: observe
-				}),
-				Layer.provide(
-					NodeHttpServer.layerConfig(createServer, {
-						host: pipe(Config.String('HOST'), Config.withDefault('127.0.0.1')),
-						port: Config.succeed(4318)
-					})
-				)
-			)
+			ServerRuntime.layerMcp({
+				instructions: "Scope is the debugger for the user's Effect apps: their traces, spans and logs.",
+				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
+			})
 		),
-		Layer.provide(NodeHttpClient.layerFetch),
-		Layer.provide(telemetry),
-		Layer.provide(Layer.merge(NodeCrypto.layer, NodeServices.layer)),
-		Layer.provide(Layer.succeed(HttpIncomingMessage.MaxBodySize)(ByteSize.mebibytes(10))),
-		Layer.launch
-	)
-)
+		Layer.provide(
+			Layer.unwrap(Effect.map(ServerRuntime.dataDirectory, directory => Telemetry.layer(`${directory}/entries`)))
+		)
+	),
+	telemetry: false
+})

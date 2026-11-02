@@ -29,7 +29,7 @@ import {Field, FieldError, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
 import {InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput} from '@deslop/components-web/ui/input-group'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
-import {signInUrl} from '@deslop/runtime/auth/utils'
+import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
 import {
 	ENDPOINT,
@@ -341,6 +341,7 @@ function Servers() {
 					</Empty>
 				)
 			}
+			if (!needsSignIn(error)) return <Error error={error} reset={() => location.reload()} />
 			return <SignIn href={signInUrl(location.href)} />
 		}
 	})

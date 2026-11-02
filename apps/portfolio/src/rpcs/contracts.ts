@@ -4,6 +4,7 @@ import {Rpc, RpcGroup} from 'effect/rpc'
 
 import {PortfolioVisitor, PortfolioVisitors} from '#services/presence/schema.ts'
 
+// Visitors are guests, so the room needs no sign-in, unlike every other app's RPC.
 export class RpcContracts extends RpcGroup.make(
 	// Every visitor whenever one moves; each page draws the trails itself.
 	Rpc.make('portfolio.join', {

@@ -23,7 +23,7 @@ import {KeyValueStore} from 'effect/persistence'
 import type {User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
-import {development} from '@deslop/runtime/auth/utils'
+import {localAuth} from '@deslop/runtime/auth/utils'
 
 import {GitHub} from '#services/github/service.ts'
 import type {AdmitParams, GitHubUser, MemberRow, Role} from '#services/people/schema.ts'
@@ -67,9 +67,9 @@ export class People extends Context.Service<
 			const state = yield* SubscriptionRef.make<Members>(Option.getOrElse(yield* store.get('members'), () => []))
 			const tokens = yield* Tokens
 			const github = yield* GitHub
-			// A preview's developer account, `github:0`, is its admin unless GITHUB_ADMINS names others.
+			// Without an issuer the developer account, `github:0`, is the admin unless GITHUB_ADMINS names others.
 			const listed = Config.Array(Schema.String, 'GITHUB_ADMINS')
-			const admins = yield* Boolean.match(yield* development, {
+			const admins = yield* Boolean.match(yield* localAuth, {
 				onFalse: () => listed,
 				onTrue: () => Config.withDefault(listed, ['0'])
 			})

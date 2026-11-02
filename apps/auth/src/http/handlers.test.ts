@@ -28,6 +28,7 @@ import type {Resource} from '@deslop/runtime/auth/schema'
 import {AuthError, ClientRegistration, TokenResponse, User} from '@deslop/runtime/auth/schema'
 import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
 import {AUTH_URL, CurrentUser} from '@deslop/runtime/auth/utils'
+import * as ServerRuntime from '@deslop/runtime/server'
 
 import {HttpHandlers} from '#http/handlers.ts'
 import {GitHub} from '#services/github/service.ts'
@@ -42,7 +43,7 @@ import {
 } from '#services/sign-ins/schema.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
 import {FamilyParams, Registration, SignedInApp} from '#services/tokens/schema.ts'
-import {Tokens, layerStore} from '#services/tokens/service.ts'
+import {Tokens} from '#services/tokens/service.ts'
 import {layerMcp} from '#tools/handlers.ts'
 
 const API = 'https://stash.mp281x.xyz'
@@ -64,8 +65,8 @@ function refused<E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerRespo
 	)
 }
 
-const servers = Effect.fnUntraced(function* (home?: string) {
-	const directory = home ?? (yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped())
+const servers = Effect.fnUntraced(function* (saved?: string) {
+	const directory = saved ?? (yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped())
 	const digest = yield* Digest.Digest
 	const clock = yield* Clock.Clock
 	const ready = yield* Queue.make<true>()
@@ -237,7 +238,7 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 					Layer.provideMerge(Layer.mergeAll(SignIns.layer, RateLimiter.layer)),
 					Layer.provideMerge(People.layer),
 					Layer.provideMerge(Layer.mergeAll(Tokens.layer, GitHub.layer, RateLimiter.layerStoreMemory)),
-					Layer.provide(layerStore),
+					Layer.provide(ServerRuntime.layerKeyValueStore(directory)),
 					Layer.provide(
 						Layer.mergeAll(
 							NodeCrypto.layer,
@@ -245,11 +246,11 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 							Layer.succeed(HttpClient.HttpClient, github),
 							ConfigProvider.layer(
 								ConfigProvider.fromUnknown({
+									APP_URL: AUTH_URL,
+									AUTH_URL,
 									GITHUB_ADMINS: '42',
 									GITHUB_CLIENT_ID: 'example',
-									GITHUB_CLIENT_SECRET: 'example',
-									HOME: directory,
-									NODE_ENV: 'production'
+									GITHUB_CLIENT_SECRET: 'example'
 								})
 							)
 						)
@@ -266,7 +267,7 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 			HttpRouter.toWebHandler(
 				pipe(
 					me,
-					Layer.provide(Auth.layer(API)),
+					Layer.provide(Auth.layer),
 					Layer.provide(
 						Layer.merge(
 							Layer.succeed(
@@ -284,7 +285,7 @@ const servers = Effect.fnUntraced(function* (home?: string) {
 									)
 								)
 							),
-							ConfigProvider.layer(ConfigProvider.fromUnknown({NODE_ENV: 'production'}))
+							ConfigProvider.layer(ConfigProvider.fromUnknown({APP_URL: API, AUTH_URL}))
 						)
 					)
 				),
@@ -566,20 +567,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 	)
 
 	test.effect(
-		'starts over the previous release’s storage and deletes it',
-		Effect.fnUntraced(function* () {
-			const fs = yield* FileSystem.FileSystem
-			const home = yield* fs.makeTempDirectoryScoped()
-			const directory = `${home}/.deslop/auth`
-			yield* fs.makeDirectory(directory, {recursive: true})
-			// The shape an earlier release saved, which this one cannot read.
-			yield* fs.writeFileString(`${directory}/state`, '{"members":[],"tokens":{}}')
-			assert.strictEqual((yield* signIn((yield* servers(home)).issuer, 'octocat')).status, 302)
-			assert.isFalse(yield* fs.exists(`${directory}/state`))
-		})
-	)
-
-	test.effect(
 		'approves from a separate session while only the originating browser receives the callback',
 		Effect.fnUntraced(function* () {
 			const web = yield* servers()
@@ -797,15 +784,14 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				200
 			)
 			assert.strictEqual(
-				(yield* send(web.app, '/me', {headers: {cookie: session, origin: 'https://evil.test'}})).status,
-				401
-			)
-			assert.strictEqual(
 				(yield* send(web.issuer, '/auth/session', {headers: {cookie: cookie(yield* signIn(web.issuer, 'stranger'))}}))
 					.status,
 				401
 			)
-			const request = yield* authorize(web.issuer, session, 'stash://auth/callback', [API, 'https://otel.mp281x.xyz'])
+			const request = yield* authorize(web.issuer, session, 'stash://auth/callback', [
+				API,
+				'https://scope.mp281x.xyz/mcp'
+			])
 			assert.strictEqual((yield* send(web.issuer, `/auth/request?request=${request.id}`)).status, 400)
 			const callback = yield* consent(web.issuer, request, true)
 			assert.strictEqual(callback.searchParams.get('iss'), `${AUTH_URL}/api/auth`)
@@ -839,7 +825,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				200
 			)
 			assert.strictEqual(
-				(yield* send(web.issuer, '/auth/verify?resource=https://scope.mp281x.xyz/mcp', {
+				(yield* send(web.issuer, '/auth/verify?resource=https://gateway.mp281x.xyz/mcp', {
 					headers: {authorization: `Bearer ${token.access_token}`}
 				})).status,
 				401
@@ -1243,13 +1229,13 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const token = yield* agentToken(web.issuer, cookie(yield* signIn(web.issuer, 'octocat')))
 			const simulator = yield* authorize(web.issuer, '', 'opm-dev://auth/callback', [
 				'https://opm.mp281x.xyz',
-				'https://otel.mp281x.xyz'
+				'https://scope.mp281x.xyz/mcp'
 			])
 			const desktop = yield* authorize(web.issuer, '', 'http://127.0.0.1:34570/callback', [
 				'https://scope.mp281x.xyz/mcp',
 				APPROVALS
 			])
-			const release = yield* authorize(web.issuer, '', 'stash://auth/callback', [API, 'https://otel.mp281x.xyz'])
+			const release = yield* authorize(web.issuer, '', 'stash://auth/callback', [API, 'https://scope.mp281x.xyz/mcp'])
 			assert.strictEqual(
 				(yield* callTool(web.issuer, '', 'answer_request', {accept: true, request: simulator.id})).status,
 				401

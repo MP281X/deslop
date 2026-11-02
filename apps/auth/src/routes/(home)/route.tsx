@@ -4,7 +4,7 @@ import {Array, Boolean, Match, Option, String, pipe} from 'effect'
 
 import {Link, Outlet, createFileRoute, useMatchRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense} from 'react'
+import {Suspense, useEffect} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
 import {GitHubIcon} from '@deslop/components-web/icons'
@@ -38,6 +38,7 @@ import {
 	signInAtom,
 	signInLabel,
 	signOutAtom,
+	signingOut,
 	timeLabel
 } from '#lib/utils.ts'
 import icon from '#routes/icon-dark.svg'
@@ -229,30 +230,38 @@ function Failures() {
 	)
 }
 
+// Arriving from another app's Sign out ends the session every app shares, then returns there.
+function SigningOut() {
+	const [signOut, endSession] = useAtom(signOutAtom)
+	useEffect(() => endSession(), [endSession])
+	return (
+		<p className="text-muted-foreground text-sm" role="status">
+			{Boolean.match(AsyncResult.isFailure(signOut), {onFalse: () => 'Signing out…', onTrue: () => 'Sign-out failed.'})}
+		</p>
+	)
+}
+
 function Shell() {
 	const account = useAtomSuspense(accountAtom).value
 	return (
 		<>
-			<AppBar icon={icon} name="auth">
-				{Option.match(account, {
-					onNone: () => null,
-					onSome: signed => (
-						<div className="flex items-center gap-3">
-							{signed.role === 'Admin' && (
-								<Suspense fallback={null}>
-									<Tabs />
-								</Suspense>
-							)}
-							<AccountMenu account={signed} />
-						</div>
-					)
-				})}
+			<AppBar
+				icon={icon}
+				name="auth"
+				account={Option.match(account, {onNone: () => false, onSome: signed => <AccountMenu account={signed} />})}
+			>
+				{Option.exists(account, signed => signed.role === 'Admin') && (
+					<Suspense fallback={null}>
+						<Tabs />
+					</Suspense>
+				)}
 			</AppBar>
 			<main className="pb-safe flex min-h-0 flex-1 justify-center overflow-y-auto px-4 pt-8 md:pt-16">
 				<div className="flex w-full max-w-xl flex-col gap-6 self-start">
+					{signingOut && <SigningOut />}
 					{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting account={account} id={id} />})}
 					{Option.match(account, {
-						onNone: () => Option.isNone(requestId) && <SignIn />,
+						onNone: () => Option.isNone(requestId) && !signingOut && <SignIn />,
 						onSome: signed =>
 							Boolean.match(Option.isSome(requestId) && signed.role !== 'Waiting', {
 								onFalse: () => <Signed account={signed} />,
@@ -272,7 +281,7 @@ function HomeLayout() {
 		<Suspense
 			fallback={
 				<>
-					<AppBar icon={icon} name="auth" />
+					<AppBar icon={icon} name="auth" account={false} />
 					<main className="pb-safe flex min-h-0 flex-1 justify-center overflow-y-auto px-4 pt-8 md:pt-16">
 						<div className="flex w-full max-w-xl flex-col gap-6 self-start">
 							<Skeleton className="h-7 w-48" />

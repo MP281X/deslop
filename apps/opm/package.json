@@ -1,5 +1,18 @@
 {
 	"name": "@deslop/opm",
+	"version": "0.1.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/MP281X/deslop",
+		"directory": "apps/opm"
+	},
+	"bin": {
+		"opm": "./dist/server.js"
+	},
+	"files": [
+		"dist",
+		"bin"
+	],
 	"type": "module",
 	"sideEffects": false,
 	"main": "src/main.client.tsx",
@@ -10,8 +23,11 @@
 		"#rpcs/*": "./src/rpcs/*",
 		"#services/*": "./src/services/*"
 	},
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
-		"build": "rm -rf dist && vp pack",
+		"build": "vp pack",
 		"preview": "vp run build && node --env-file-if-exists=.env ./dist/server.js",
 		"test": "vp test --config ../../vite.config.ts",
 		"typecheck": "tsrs --checkerAssignment go --pretty false"
@@ -36,5 +52,11 @@
 		"expo-secure-store": "^58.0",
 		"expo-updates": "^58.0",
 		"expo-web-browser": "^58.0"
+	},
+	"config": {
+		"port": 5104
+	},
+	"engines": {
+		"node": ">=26"
 	}
 }

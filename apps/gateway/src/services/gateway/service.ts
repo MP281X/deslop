@@ -28,7 +28,7 @@ import {FetchHttpClient, HttpRouter, HttpServerRequest} from 'effect/http'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 
-import {GATEWAY_URL, connectionStatus, describe, serverIcons} from '#services/connections/lib/utils.ts'
+import {connectionStatus, describe, gatewayUrl, serverIcons} from '#services/connections/lib/utils.ts'
 import type {Connection} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
 import {compact} from '#services/gateway/lib/utils.ts'
@@ -51,6 +51,7 @@ export class Gateway extends Context.Service<
 	static readonly layer = Layer.effect(Gateway)(
 		Effect.gen(function* () {
 			const auth = yield* Auth
+			const url = yield* gatewayUrl
 			const connections = yield* Connections
 			const fetch = yield* FetchHttpClient.Fetch
 			const digest = yield* Digest.Digest
@@ -137,7 +138,7 @@ export class Gateway extends Context.Service<
 					current.generation !== server.generation ||
 					connectionStatus(current, yield* Clock.currentTimeMillis) !== 'Connected'
 				) {
-					return yield* AuthError.make({message: `${server.name} is not connected; connect it on ${GATEWAY_URL}`})
+					return yield* AuthError.make({message: `${server.name} is not connected; connect it on ${url}`})
 				}
 				if (current.mode === 'public') return {token: undefined, url: current.url}
 				return {token: yield* connections.token(server.id, server.generation), url: current.url}
@@ -194,7 +195,7 @@ export class Gateway extends Context.Service<
 						Effect.serviceOption(HttpServerRequest.HttpServerRequest),
 						Effect.fromOption
 					)
-					yield* auth.access(request.headers, `${GATEWAY_URL}/mcp`)
+					yield* auth.access(request.headers, `${url}/mcp`)
 					yield* connections.called(server.id)
 					const args = yield* Schema.decodeUnknownEffect(ToolArguments)(input ?? {})
 					return yield* withClient(server, client =>
@@ -217,7 +218,7 @@ export class Gateway extends Context.Service<
 								McpSchema.CallToolResult.make({
 									content: [
 										{
-											text: `${rejected(server)(cause).message}. list_mcp_connections shows its state; reconnect it at ${GATEWAY_URL}.`,
+											text: `${rejected(server)(cause).message}. list_mcp_connections shows its state; reconnect it at ${url}.`,
 											type: 'text'
 										}
 									],
@@ -339,6 +340,7 @@ export const GatewayDiscovery = HttpRouter.middleware()(
 	Effect.gen(function* () {
 		const gateway = yield* Gateway
 		const auth = yield* Auth
+		const url = yield* gatewayUrl
 		const registry = yield* McpServer.McpServer
 		return app =>
 			Effect.gen(function* () {
@@ -353,7 +355,7 @@ export const GatewayDiscovery = HttpRouter.middleware()(
 					request.method === 'POST' &&
 					request.url === '/mcp' &&
 					request.headers['origin'] === undefined &&
-					Result.isSuccess(yield* Effect.result(auth.access(request.headers, `${GATEWAY_URL}/mcp`)))
+					Result.isSuccess(yield* Effect.result(auth.access(request.headers, `${url}/mcp`)))
 				) {
 					const body = yield* Effect.result(request.json)
 					if (Result.isSuccess(body) && Schema.is(ToolRequest)(body.success)) {

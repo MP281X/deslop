@@ -27,6 +27,7 @@
 	--border: #e5e5e5;
 	--input: #d9d9d9;
 	--icon-tile: #fafafa;
+	--icon-shadow: #0a0a0a;
 
 	--primary: var(--orange);
 	--destructive: var(--red);
@@ -91,6 +92,7 @@
 	--color-destructive: var(--destructive);
 	--color-warning: var(--warning);
 	--color-icon-tile: var(--icon-tile);
+	--color-icon-shadow: var(--icon-shadow);
 	--color-accent-foreground: var(--accent-foreground);
 	--color-accent: var(--accent);
 	--color-muted-foreground: var(--muted-foreground);
@@ -163,6 +165,14 @@
 	translate: none;
 }
 
+[data-slot='item-media'][data-align='start'] {
+	align-self: flex-start;
+}
+
+[data-slot='input-group-control'][role='combobox'] {
+	text-overflow: ellipsis;
+}
+
 /* A page's list rows start where its heading and fields do; a row that is a button keeps its inset for its highlight. */
 [data-slot='item-group'] > [data-slot='item'] {
 	padding-inline: 0;
@@ -198,6 +208,7 @@
 	html {
 		@apply bg-background text-foreground font-sans antialiased select-none;
 		overscroll-behavior: none;
+		touch-action: pan-x pan-y;
 	}
 
 	body {
@@ -206,6 +217,15 @@
 
 	::selection {
 		background-color: color-mix(in srgb, var(--primary) 30%, transparent);
+	}
+}
+
+/* iOS focuses small form controls by zooming the page. Keep mobile input text at its non-zooming size. */
+@media (pointer: coarse) {
+	input,
+	textarea,
+	select {
+		font-size: 1rem;
 	}
 }
 

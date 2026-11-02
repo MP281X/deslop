@@ -1,4 +1,4 @@
-import {Array, Config, Context, Effect, Layer, Option, Result, Schema, pipe} from 'effect'
+import {Config, Context, Effect, Layer, Option, Result, Schema, pipe} from 'effect'
 
 import {
 	Headers,
@@ -10,8 +10,8 @@ import {
 	HttpServerResponse
 } from 'effect/http'
 
-import {AUTH_URL, CurrentUser, DEVELOPER, RpcAuth, development} from '#auth/lib/utils.ts'
-import {AuthError, Resource, User} from '#auth/schema.ts'
+import {CurrentUser, DEVELOPER, RpcAuth, localAuth} from '#auth/lib/utils.ts'
+import {AuthError, User} from '#auth/schema.ts'
 
 function rejected(message: string) {
 	return Effect.mapError(cause => {
@@ -71,46 +71,38 @@ export class Auth extends Context.Service<
 			)
 		)
 
-	static readonly layer = (resource: string) =>
-		Layer.effectContext(
-			Effect.gen(function* () {
-				if (yield* development) return Auth.makeContext(Auth.of({access: developer, user: developer}))
-				// Where this server reaches the auth app: inside the deploy, its container address.
-				const url = yield* pipe(Config.String('AUTH_URL'), Config.withDefault(AUTH_URL))
-				const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
-				const origins = [
-					AUTH_URL,
-					'https://portfolio.mp281x.xyz',
-					...Array.map(Resource.literals, identifier => new URL(identifier).origin)
-				]
-				const access = Effect.fn('Auth.access')(function* (headers: Headers.Headers, audience: string) {
-					return yield* pipe(
-						client.get(`${url}/auth/verify`, {
-							headers: {authorization: headers['authorization'] ?? ''},
-							urlParams: {resource: audience}
-						}),
-						Effect.flatMap(HttpClientResponse.schemaBodyJson(User)),
-						Effect.timeout('10 seconds')
-					)
-				}, rejected('Sign in first'))
-				return Auth.makeContext(
-					Auth.of({
-						access,
-						user: Effect.fn('Auth.user')(function* (headers: Headers.Headers) {
-							if (Option.isSome(Headers.get(headers, 'authorization'))) return yield* access(headers, resource)
-							if (Option.exists(Headers.get(headers, 'origin'), origin => !Array.contains(origins, origin))) {
-								return yield* AuthError.make({message: 'The request comes from another origin'})
-							}
-							return yield* pipe(
-								client.get(`${url}/auth/session`, {headers: {cookie: headers['cookie'] ?? ''}}),
-								Effect.flatMap(HttpClientResponse.schemaBodyJson(User)),
-								Effect.timeout('10 seconds')
-							)
-						}, rejected('Sign in first'))
-					})
+	// Signed-in requests verify with the issuer: a bearer for this app's canonical origin, else the shared session cookie.
+	static readonly layer = Layer.effectContext(
+		Effect.gen(function* () {
+			if (yield* localAuth) return Auth.makeContext(Auth.of({access: developer, user: developer}))
+			const issuer = yield* Config.String('AUTH_URL')
+			const canonical = new URL(yield* Config.String('APP_URL')).origin
+			const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
+			const access = Effect.fn('Auth.access')(function* (headers: Headers.Headers, audience: string) {
+				return yield* pipe(
+					client.get(new URL('/auth/verify', issuer).href, {
+						headers: {authorization: headers['authorization'] ?? ''},
+						urlParams: {resource: audience}
+					}),
+					Effect.flatMap(HttpClientResponse.schemaBodyJson(User)),
+					Effect.timeout('10 seconds')
 				)
-			})
-		)
+			}, rejected('Sign in first'))
+			return Auth.makeContext(
+				Auth.of({
+					access,
+					user: Effect.fn('Auth.user')(function* (headers: Headers.Headers) {
+						if (Option.isSome(Headers.get(headers, 'authorization'))) return yield* access(headers, canonical)
+						return yield* pipe(
+							client.get(new URL('/auth/session', issuer).href, {headers: {cookie: headers['cookie'] ?? ''}}),
+							Effect.flatMap(HttpClientResponse.schemaBodyJson(User)),
+							Effect.timeout('10 seconds')
+						)
+					}, rejected('Sign in first'))
+				})
+			)
+		})
+	)
 }
 
 export const HttpAuth = HttpRouter.middleware<{provides: CurrentUser}>()(
@@ -132,8 +124,8 @@ export function layerMcpAuth(resource: string) {
 	return HttpRouter.middleware<{provides: CurrentUser}>()(
 		Effect.gen(function* () {
 			const auth = yield* Auth
-			// A preview's MCP endpoint answers without OAuth, as its pages do.
-			if (yield* development) return app => Effect.provideService(app, CurrentUser, DEVELOPER)
+			// Without an issuer the MCP endpoint answers without OAuth, as its pages do.
+			if (yield* localAuth) return app => Effect.provideService(app, CurrentUser, DEVELOPER)
 			return app =>
 				Effect.gen(function* () {
 					const headers = (yield* HttpServerRequest.HttpServerRequest).headers

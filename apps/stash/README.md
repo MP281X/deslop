@@ -1,13 +1,14 @@
 # Stash
 
-A personal inbox for links and notes: the server reads each link, transcribes its video and tags it; agents use it through the [gateway](../gateway/README.md), the iOS app saves to it.
+A reading list: it reads each saved link, transcribes its video and tags it. The iOS app and agents save to it.
 
-- **Runs** from `tools/compose.yaml`; the image carries ffmpeg and yt-dlp. Captions come first; speech without usable captions goes to OpenRouter Whisper Turbo (`OPENROUTER_API_KEY`).
-- **API and MCP** need a Deslop sign-in, per [Auth](../auth/README.md#mcp).
-- **`STASH_PROXY`** routes video downloads through a proxy.
+```bash
+npm install --global @deslop/stash
+stash service install --url https://stash.mp281x.xyz --auth https://auth.mp281x.xyz
+```
 
-| Tool           | Does                                                                                      |
-| -------------- | ----------------------------------------------------------------------------------------- |
-| `search_notes` | Notes holding every word of the query, a `#word` being a tag; without a query, the newest |
-| `read_note`    | One note whole, with its source text and its transcript in `[mm:ss]` sections             |
-| `save_note`    | Saves a link or text, or retries one that failed; done once its status is `ready`         |
+- **Secrets** in `~/.deslop/stash.env`: `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, optional `STASH_PROXY` for video downloads.
+- **Bundled**: ffmpeg, ffprobe and yt-dlp, with their licenses in `bin/`.
+- **MCP** at `/mcp`: `search_notes`, `read_note`, `save_note`.
+
+Common flags and service commands: [Deslop app runtime](https://github.com/MP281X/deslop/blob/main/packages/runtime/README.md).

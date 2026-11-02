@@ -55,6 +55,7 @@ colors:
   icon-tile: '#fafafa'
   icon-shadow: '#0a0a0a'
   light-icon-tile: '#fafafa'
+  light-icon-shadow: '#0a0a0a'
 typography:
   title:
     fontFamily: Geist
@@ -167,12 +168,14 @@ Fast tools, not consumer or enterprise apps: Linear, Vercel, Executor, T3 Code. 
 - **Neutrals.** `background` is the page. `card` and `popover` only for what floats or groups a few controls; `secondary`, `muted` and `accent` fill chips, inputs and hover; `border` draws hairlines, `input` strokes fields.
 - **One hue per app**, from the table below: the one action per view, focus, selection and anything live. The web points `--primary` at it in the app's `styles.css`; iOS exports `primary` from `lib/utils.ts`. A new app takes an unused hue, or orange.
 - **Status.** Live is the primary. Warning is yellow and error red, each with a word or icon. Off is muted: a hollow dot when switched off, a filled one for quiet states. White on light yellow only for large or bold labels.
+- **Deploy machine identity.** Dev uses blue, desktop purple, consistently in device icons and measurements; availability sits in the machine selector. Selection supplies context without repeated page/machine headings.
 
 | App       | Hue     |
 | --------- | ------- |
 | portfolio | orange  |
 | opm       | orange  |
 | auth      | orange  |
+| deploy    | blue    |
 | gateway   | purple  |
 | scope     | cyan    |
 | signal    | magenta |
@@ -191,9 +194,10 @@ Geist on the web, SF Pro on iOS at Dynamic Type sizes through the `text` tokens 
 
 - **Rows, not cards.** Hairline rows: a leading mark, a title, one muted line, a trailing status or action.
 - **One column** up to `page`, forms up to `form`; list-and-detail tools split into two panes. 8px inside a group, 16px between groups, 24–32px between sections.
+- **Deploy monitor** uses a dense multi-column canvas up to 1024px; its Apps page stays at `page`, with machine filters, controls and rows sharing the same edges.
 - **iOS.** Inline titles, plain lists, bottom search.
 - **App bars.** The app icon and name lead on web and iOS; detail screens keep their native back navigation. Signal's spectator world uses map controls instead of an app bar.
-- **Row alignment.** Center leading marks and trailing actions against the whole row, including wrapped details. Stash reserves a 64pt media square even without a preview, using the source mark as its fallback.
+- **Row alignment.** Center leading marks and trailing actions against the whole row, including wrapped details. Rows with inline process trees align both marks to the parent title; `ItemMedia` opts into `data-align="start"`. Stash reserves a 64pt media square even without a preview, using the source mark as its fallback.
 - **List endings.** A closing hairline marks the last row; installed web apps keep 16px plus the home-indicator inset below it.
 
 ## Elevation & Depth
@@ -211,10 +215,11 @@ One vocabulary on both platforms: a row is an `Item`, a blank state an `Empty`, 
 - **Web.** shadcn `base-mira` in `packages/components-web/src/ui/`, exactly as the CLI writes it; house rules such as the press scale live in `theme.css`. Beside it: `StatusDot`, `ItemList` (hairline rows), `SignIn` and `ResultError`. Apps compose these before writing their own markup.
 - **iOS.** `packages/components-mobile/src/ui/` carries the same names and parts over `@expo/ui` SwiftUI (`Item`, `ItemMedia`, `ItemContent`, `ItemTitle`, `ItemDescription`, `ItemActions`, `ItemGroup`, `Empty…`, `ToggleGroup`, `Spinner`), taking `modifiers` where the web takes `className`. System controls stay native.
 - **Tokens only.** shadcn's lint keeps web classes on the theme; `swiftui-theme-values` does the same for SwiftUI: spacing from `space`, type from `text` or a Dynamic Type style, colours from `colors`.
-- **Favicons** are the source's own, on the `icon-tile`, never a letter tile.
+- **App and process marks** are transparent, never tiles or letter placeholders. Use canonical Deslop artwork and software marks installed through SVGL's shadcn registry; tiles belong only to installed icons and favicon consumers that need them.
 - **Signal controls.** Quiet popover buttons carry provider-coloured marks, matching their world coverage. One top model filter scopes the thread; the inspector header has a bottom hairline. Entity details and the thread remain visible together.
 - **Loading.** The shell (app bar, headings, filters) renders at once, and data that is on its way shows as a skeleton shaped like it: `ItemListSkeleton` on the web, `ItemGroupSkeleton` (SwiftUI's placeholder redaction) on iOS. A skeleton is a Suspense fallback (`useAtomSuspense` with `includeFailure`), never an `onInitial` branch: React keeps a shown fallback at least 300ms, so it never blinks. Local work, like reading the saved session, shows the empty shell and no skeleton. A refresh keeps the current data, dimmed. A spinner only sits inside a control the user pressed, never alone on a page; no client-side caches to hide loading.
 - **Copy.** Headings, labels and errors only; no subtitle restating what the page already shows.
+- **Mobile gestures.** Apps pan instead of zooming; viewport metadata caps scale and shared controls use 16px text on coarse pointers to prevent focus zoom. Browsers may override zoom restrictions for accessibility.
 
 ## Motion
 
@@ -239,9 +244,11 @@ Motion marks a change the user caused or should notice, and never holds content 
 
 ## Icons
 
-Each app is one real object in isometric pixel art: 64 cells, 2:1 pixel lines, three tones per material (Flexoki 300, 400 and 600 of the app's hue, steel, near-black), light catching the top front edges, a footprint shadow and an `icon-shadow` outline, with one lit part. A lock (auth), a torii (gateway), a monitor with a trace waterfall (scope), a sawtooth factory (signal), a book with a ribbon (stash), a suitcase (trips), a manga volume standing up with Saitama's face as its cover and its page block between the covers (opm). Exception: the portfolio bolt stays flat, its loose pixels in the other apps' hues.
+Each app is one real object in isometric pixel art: 64 cells, 2:1 pixel lines, three tones per material (Flexoki 300, 400 and 600 of the app's hue, steel, near-black), light catching the top front edges, a footprint shadow and an `icon-shadow` outline, with one lit part. A lock (auth), a torii (gateway), a monitor with a trace waterfall (scope), a sawtooth factory (signal), a book with a ribbon (stash), a suitcase (trips), a manga volume standing up with Saitama's face as its cover and its page block between the covers (opm), a two-port steel appliance with a diamond inset, side vents and a blue status strip (deploy). Exceptions: the portfolio bolt stays flat, its loose pixels in the other apps' hues; Deploy keeps its approved bitmap's original pixel geometry.
 
-Pixel art ships as SVG, one cell per unit with `crispEdges`, so it stays sharp at any size in a fraction of a PNG's bytes. A raster stays only where a consumer needs one, at the smallest size and format it accepts.
+Construct icons on an explicit 64×64 grid: 2:1 diagonals are stepped cells, not smooth polygons with `crispEdges`. Encode the approved grid as equal-color, axis-aligned SVG cell runs; derive tiled, transparent and required raster variants from that same artwork. A raster stays only where a consumer needs one, at the smallest size and format it accepts.
+
+Deploy embeds its approved bitmap verbatim in both SVG variants and scales that source directly for its 512px installed icon.
 
 | File                                     | Format                                                                                                      | Used as                                                                                                             |
 | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |

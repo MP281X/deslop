@@ -1,7 +1,5 @@
 import {Schema} from 'effect'
 
-import {GATEWAY_URL} from '#services/connections/lib/utils.ts'
-
 export type ServerId = typeof ServerId.Type
 export const ServerId = Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9_-]{0,23}$/u))
 
@@ -12,15 +10,9 @@ export const ServerUrl = Schema.NonEmptyString.check(
 		(value: string) => {
 			if (!URL.canParse(value)) return false
 			const url = new URL(value)
-			return (
-				url.protocol === 'https:' &&
-				url.username === '' &&
-				url.password === '' &&
-				url.hash === '' &&
-				url.origin !== GATEWAY_URL
-			)
+			return url.protocol === 'https:' && url.username === '' && url.password === '' && url.hash === ''
 		},
-		{expected: 'a public HTTPS URL without credentials or a fragment, outside the gateway itself'}
+		{expected: 'a public HTTPS URL without credentials or a fragment'}
 	)
 )
 

@@ -2,7 +2,6 @@ import {Array, Effect, Option, Record, Result, Schema, String, pipe} from 'effec
 
 import {Base64Url} from 'effect/encoding'
 import {Url} from 'effect/http'
-import type {Headers} from 'effect/http'
 import ipaddr from 'ipaddr.js'
 
 import {AuthError, Resource} from '@deslop/runtime/auth/schema'
@@ -70,12 +69,6 @@ export function deviceLabel(origin: Origin) {
 		Option.orElse(() => Option.flatMap(Option.fromUndefinedOr(origin.userAgent), platform)),
 		Option.getOrElse(() => origin.address ?? 'unknown')
 	)
-}
-
-// Auth's own pages send its origin: AUTH_URL, or in development whichever host serves the preview.
-export function fromAuth(headers: Headers.Headers, development: boolean) {
-	if (!development) return headers['origin'] === AUTH_URL
-	return Option.exists(Result.getSuccess(Url.fromString(headers['origin'] ?? '')), url => url.host === headers['host'])
 }
 
 function loopback(redirect: string) {

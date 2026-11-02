@@ -2,17 +2,14 @@ import {
 	Array,
 	Boolean,
 	Clock,
-	Config,
 	Context,
 	Effect,
-	FileSystem,
 	HashMap,
 	Layer,
 	Match,
 	Number,
 	Option,
 	Order,
-	Path,
 	Record,
 	Ref,
 	Schema,
@@ -30,7 +27,6 @@ import {KeyValueStore} from 'effect/persistence'
 
 import type {Resource, User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
-import {layerKeyValueStore} from '@deslop/runtime/server'
 
 import {browserLabel, clientLabel, clientOf, deviceLabel, given, matchingRedirect} from '#services/tokens/lib/utils.ts'
 import type {
@@ -92,16 +88,6 @@ function live(grants: Grants, now: number) {
 }
 
 // Signed-in apps and browsers live under ~/.deslop/auth; codes and sign-ins in progress stay in memory.
-export const layerStore = Layer.unwrap(
-	Effect.gen(function* () {
-		const fs = yield* FileSystem.FileSystem
-		const path = yield* Path.Path
-		const directory = path.join(yield* Config.String('HOME'), '.deslop', 'auth')
-		yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
-		return layerKeyValueStore(directory)
-	})
-)
-
 export class Tokens extends Context.Service<
 	Tokens,
 	{
@@ -132,10 +118,7 @@ export class Tokens extends Context.Service<
 	static readonly layer = Layer.effect(
 		Tokens,
 		Effect.gen(function* () {
-			const kv = yield* KeyValueStore.KeyValueStore
-			// The previous release kept people and tokens in `state`; this one starts over, so it is deleted.
-			yield* kv.remove('state')
-			const store = KeyValueStore.toSchemaStore(kv, Grants)
+			const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Grants)
 			const grants = yield* SubscriptionRef.make<Grants>(Option.getOrElse(yield* store.get('grants'), () => ({})))
 			const codes = yield* Ref.make(HashMap.empty<string, Code>())
 			const random = yield* SecureRandom.SecureRandom

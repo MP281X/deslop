@@ -66,8 +66,13 @@ it.effect(
 								Layer.provide(layerMcpAuth('https://scope.mp281x.xyz/mcp'))
 							)
 						),
-						Layer.provide(Auth.layer('https://otel.mp281x.xyz')),
-						Layer.provide(Layer.succeed(HttpClient.HttpClient, client))
+						Layer.provide(Auth.layer),
+						Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
+						Layer.provide(
+							ConfigProvider.layer(
+								ConfigProvider.fromUnknown({APP_URL: 'https://scope.mp281x.xyz', AUTH_URL: 'https://auth.mp281x.xyz'})
+							)
+						)
 					),
 					{disableLogger: true}
 				)
@@ -112,7 +117,7 @@ it.effect(
 )
 
 it.effect(
-	'signs every development request in as the developer without reaching the issuer',
+	'signs every request in as the developer without an issuer, never reaching one',
 	Effect.fnUntraced(function* () {
 		const calls = yield* Ref.make(0)
 		const client = HttpClient.make(request =>
@@ -143,9 +148,9 @@ it.effect(
 								Layer.provide(layerMcpAuth('https://scope.mp281x.xyz/mcp'))
 							)
 						),
-						Layer.provide(Auth.layer('https://otel.mp281x.xyz')),
+						Layer.provide(Auth.layer),
 						Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
-						Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({NODE_ENV: 'development'})))
+						Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({})))
 					),
 					{disableLogger: true}
 				)

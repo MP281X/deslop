@@ -1,19 +1,33 @@
 {
 	"name": "@deslop/auth",
 	"version": "0.1.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/MP281X/deslop",
+		"directory": "apps/auth"
+	},
+	"bin": {
+		"auth": "./dist/server.js"
+	},
+	"files": [
+		"dist",
+		"bin"
+	],
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
 		"#http/*": "./src/http/*",
 		"#lib/*": "./src/lib/*",
-		"#package.*": "./package.*",
 		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
 		"#services/*": "./src/services/*",
 		"#tools/*": "./src/tools/*"
 	},
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
-		"build": "rm -rf dist && vp build && vp pack",
+		"build": "vp build && vp pack",
 		"preview": "vp run build && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js",
 		"test": "vp test --config ../../vite.config.ts",
 		"typecheck": "tsrs --checkerAssignment go --pretty false"
@@ -32,5 +46,11 @@
 		"react": "latest",
 		"react-dom": "latest",
 		"toqr": "latest"
+	},
+	"config": {
+		"port": 5101
+	},
+	"engines": {
+		"node": ">=26"
 	}
 }

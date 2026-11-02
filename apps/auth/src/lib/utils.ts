@@ -20,12 +20,14 @@ import {FetchHttpClient, HttpClient} from 'effect/http'
 import {Atom, AtomRpc} from 'effect/reactivity'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
+import {AUTH_URL} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import type {Account, AdmitParams} from '#services/people/schema.ts'
 import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
 import {PendingAuthorization} from '#services/sign-ins/schema.ts'
+import {returnable} from '#services/tokens/lib/utils.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
 
 const authRuntime = Atom.runtime(FetchHttpClient.layer)
@@ -211,10 +213,10 @@ export const APPS = [
 	{id: 'trips', name: 'Trips', url: 'trips://'}
 ] as const
 
-// The apps a sign-in reaches, by id; tracing rides along with every app, so it shows only alone, and a browser session names no app.
+// The apps a sign-in reaches, by id; a browser session names no app. Sign-ins from the release before Scope's public receiver also hold the retired otel resource.
 export function appIds(resources: PendingAuthorization['resources']) {
 	if (Array.isReadonlyArrayEmpty(resources)) return ['browser']
-	const ids = Array.dedupe(
+	return Array.dedupe(
 		Array.map(
 			Array.filter(resources, resource => resource !== 'https://otel.mp281x.xyz'),
 			resource =>
@@ -226,8 +228,6 @@ export function appIds(resources: PendingAuthorization['resources']) {
 				)
 		)
 	)
-	if (Array.isReadonlyArrayEmpty(ids)) return ['tracing']
-	return ids
 }
 
 export function timeLabel(time: number) {
@@ -302,10 +302,19 @@ export const codeSignInAtom = Atom.fn(() =>
 	})
 )
 
+// Another app's account menu signs out here, where the shared session lives, then returns to that app.
+export const signingOut = new URLSearchParams(location.search).has('sign-out')
+
+const afterSignOut = pipe(
+	Option.fromNullishOr(new URLSearchParams(location.search).get('next')),
+	Option.filter(page => returnable(page, AUTH_URL)),
+	Option.getOrElse(() => location.pathname)
+)
+
 export const signOutAtom = authRuntime.fn(() =>
 	pipe(
 		HttpClient.HttpClient.use(client => HttpClient.filterStatusOk(client).post('/auth/sign-out')),
-		Effect.andThen(Effect.sync(() => location.reload())),
+		Effect.andThen(Effect.sync(() => location.replace(afterSignOut))),
 		Effect.mapError(cause => AuthError.make({cause, message: 'Cannot sign out'}))
 	)
 )

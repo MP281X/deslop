@@ -23,6 +23,7 @@ import {
 } from '@expo/ui/swift-ui/modifiers'
 import {useState} from 'react'
 
+import {AccountMenu} from '@deslop/components-mobile/account'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
 import {AppTitle} from '@deslop/components-mobile/title'
@@ -39,7 +40,7 @@ import {
 } from '@deslop/components-mobile/ui/item'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
-import {primary, readAtom} from '#lib/utils.ts'
+import {primary, readAtom, session} from '#lib/utils.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
 import icon from '#routes/icon.png'
 import {byNumber, resumeOf, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
@@ -225,6 +226,9 @@ export function ChaptersRoute(props: {
 			<Toolbar.Content>
 				<ToolbarItem placement="topBarLeading">
 					<AppTitle logo={icon} name="opm" />
+				</ToolbarItem>
+				<ToolbarItem placement="topBarTrailing">
+					<AccountMenu session={session.machine} />
 				</ToolbarItem>
 				<ToolbarItem placement="bottomBar">
 					<Menu

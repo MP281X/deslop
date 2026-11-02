@@ -3,6 +3,9 @@
 **/.env.*
 !**/.env.example
 
+# development data of apps run from this checkout
+/.deslop
+
 # build output & cache
 **/dist
 **/*.tsbuildinfo

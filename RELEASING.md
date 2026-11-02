@@ -18,17 +18,21 @@ opm and trips build the same way, with bundle `xyz.mp281x.<app>.dev`. To sign a 
 
 ## Deploy
 
-Every push to `main` runs Release (`deploy.yaml`): Verify, then side by side the app images with `@deslop/coding-standards`, and each mobile app's EAS Update, or its App Store build for a native fingerprint without one.
+Every push to `main` runs Release (`deploy.yaml`): Verify, then side by side the app packages with `@deslop/coding-standards`, and each mobile app's EAS Update, or its App Store build for a native fingerprint without one. Each app publishes its own folder (`dist` and `bin`) as `@deslop/<app>` only when the fingerprint of what it ships differs from its latest release's; the task cache replays unchanged builds. An app that has never been published is skipped with a warning until its first publish (**Publish a package**).
 
-1. **Apply.** The `deploy` service in `tools/compose.yaml` applies main's commit each minute (its comment there). Start the project, or apply a change to the `deploy` entry, from a checkout on published main: `docker compose --project-name deslop --file tools/compose.yaml up -d`.
-2. **Check.** https://portfolio.mp281x.xyz and the host's http://127.0.0.1:4318/health return 200. Unauthenticated public OTLP and MCP requests return 401; each MCP challenge names its `/.well-known/oauth-protected-resource/mcp` metadata. After browser authorization, every app serving `ServerRuntime.layerMcp` answers its tools on its public `/mcp` URL. An OPTIONS preflight to otel with `Origin: https://portfolio.mp281x.xyz` allows credentialed requests; verify an actual span too.
+1. **Apply.** Each worker runs its apps as user services: `npm install --global @deslop/<app>`, then `<app> service install` with its flags (`--url`, `--auth`, `--traces`, `--port` and the app's own, listed by `<app> --help`); secrets go in `~/.deslop/<app>.env`. Every service checks npm every 15 minutes and restarts on a newer release; `<app> service update` does it at once. Deploy's Caddy serves the public hostnames on 80 and 443.
+2. **Check.** Each app answers its `/api/runtime` with the new version and its MCP challenge names its `/.well-known/oauth-protected-resource/mcp` metadata; Scope's `/health` returns 200 and a span from a phone or another app arrives in Scope.
+
+## Native tools
+
+Stash ships FFmpeg 9.0.2 (revision d7643a0fe3, BtbN autobuild-2026-11-01-12-49), ffprobe and yt-dlp 2026.10.26; Deploy ships Caddy 2.11.7. Each lives zstd-compressed in its app's `bin/` beside its license, and a service unpacks it on first use. To update one, take the upstream Linux x64 release, replace its license file and its version here and in `ffmpeg-LICENSE.txt`'s source lines, then `zstd -19 --long=27 <tool> -o apps/<app>/bin/<tool>.zst`; an archive stays below GitHub's 100 MB file limit.
 
 ## Publish a package
 
-Release publishes each package its Build and Package steps name as `0.1.<run>` with npm trusted publishing, which npm accepts only for a package that already exists.
+Release publishes `@deslop/coding-standards` and every app as `0.1.<run>` with npm trusted publishing, which npm accepts only for a package that already exists.
 
 1. **Shape.** Copy `tools/coding-standards/package.json`'s publish fields (`version` `0.1.0`, `files`, `publishConfig.access: public`, a `bin`, the `vp pack` build, `repository.url` unchanged since provenance checks it) and its `vite.config.ts`'s `pack.deps.alwaysBundle`: bundle everything except native-binary packages, packages sharing a module instance with them, and packages resolved by name at run time, such as lint plugins, which go in `dependencies`.
-2. **Prove** the packed tarball, never the source: `PACK=$(mktemp -d) && vp -C tools/<name> run build && vp -C tools/<name> pm pack --pack-destination "$PACK" && vpx --package "$PACK"/deslop-<name>-0.1.0.tgz <bin> --help`.
+2. **Prove** the packed tarball, never the source: `PACK=$(mktemp -d) && vp -C tools/<name> run build && vp -C tools/<name> pm pack --pack-destination "$PACK" && vpx --package "$PACK"/deslop-<name>-0.1.0.tgz <bin> --help`. An app instead builds `apps/<name>`, drops what the bundle replaced with `npm pkg delete dependencies devDependencies scripts main`, packs with `npm pack --pack-destination "$PACK"` and restores its `package.json` afterwards.
 3. **First publish** by hand from the branch that adds it. Each command needs a terminal, so `script` gives it one, and prints an npmjs.com URL for the npm account owner to approve within about five minutes: run it in the background and post the URL. The registry answers 404 for a minute or two afterwards.
 
    ```bash
@@ -37,13 +41,13 @@ Release publishes each package its Build and Package steps name as `0.1.<run>` w
    script -qfc 'npm trust github @deslop/<name> --file deploy.yaml --repo MP281X/deslop --allow-publish --yes' /dev/null
    ```
 
-4. Version and pack `tools/<name>` beside `tools/coding-standards` in Release's Build and Package steps.
+4. A tool: version and pack `tools/<name>` beside `tools/coding-standards` in Release's Build and Package steps. An app: add it to Release's Apps loop.
 
 ## Publish an iOS app
 
 The Simulator is for iteration, TestFlight for distribution.
 
-1. **Register before pushing.** After the mobile generator, check `npx --yes eas-cli@latest whoami`; if needed, use `login --device` and share its URL, not a worker-local callback. The generated all-zero project ID counts as already linked: temporarily replace `app.config.ts` with a default export of only its generated `name`, `owner` and `slug`, without the runtime helper, project ID or updates URL. Run `init` in `apps/<name>`, then restore the generated config with the real UUID it prints before the first CI push. If init cannot write the dynamic config, apply its printed ID yourself, not another project creation. Add the app's service to `tools/compose.yaml`, the app to the image loop and the app matrix in `deploy.yaml`, and to the app matrix and trigger paths in `simulator.yaml`. Add `<name>://auth/callback` and `<name>-dev://auth/callback` to `allowedRedirect` in `apps/auth/src/services/tokens/lib/utils.ts`.
+1. **Register before pushing.** After the mobile generator, check `npx --yes eas-cli@latest whoami`; if needed, use `login --device` and share its URL, not a worker-local callback. The generated all-zero project ID counts as already linked: temporarily replace `app.config.ts` with a default export of only its generated `name`, `owner` and `slug`, without the runtime helper, project ID or updates URL. Run `init` in `apps/<name>`, then restore the generated config with the real UUID it prints before the first CI push. If init cannot write the dynamic config, apply its printed ID yourself, not another project creation. Add the app to the Apps loop and the app matrix in `deploy.yaml`, and to the app matrix and trigger paths in `simulator.yaml`. Add `<name>://auth/callback` and `<name>-dev://auth/callback` to `allowedRedirect` in `apps/auth/src/services/tokens/lib/utils.ts`.
 2. **Prove the app.** Install the branch's Simulator build per Simulator builds, sign in through both callback schemes, then complete a real app action.
 3. **Resolve production first.** Set `APP_VARIANT=production` on every standalone build, credentials, submission or metadata command; a submit profile does not inherit the build profile's environment. Set `RELEASE_NUMBER` to the intended unused release number, not the default zero. Inspect the resolved name, bundle identifier, scheme, project and version before creating Apple records:
 

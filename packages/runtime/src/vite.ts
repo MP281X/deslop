@@ -6,6 +6,7 @@ import type {UserConfig} from 'vite-plus'
 export const pack = {
 	banner: '#!/usr/bin/env -S node --max-old-space-size=16384 --heapsnapshot-near-heap-limit=3 --report-on-fatalerror',
 	clean: false,
+	deps: {alwaysBundle: [/./u]},
 	entry: ['src/main.server.ts'],
 	format: 'esm',
 	// The icon a server serves at /icon, as its SVG markup.
@@ -27,7 +28,8 @@ export const config = {
 	future: 'warn',
 	pack,
 	plugins: [
-		tanstackRouter({autoCodeSplitting: true, target: 'react'}),
+		// Its scratch files stay out of the checkout, as the app generator's do.
+		tanstackRouter({autoCodeSplitting: true, target: 'react', tmpDir: 'node_modules/.cache/tanstack'}),
 		react({compiler: true}),
 		tailwindcss({optimize: true})
 	]

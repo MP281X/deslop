@@ -19,44 +19,43 @@ jobs:
     uses: ./.github/workflows/verify.yaml
 
   publish:
-    name: Images and package
+    name: Packages
     needs: verify
     runs-on: ubuntu-26.04
     permissions:
       contents: read
-      packages: write
       id-token: write
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
+      # An app's bundle carries no version, so its build replays from the task cache until its code changes.
       - name: Build
-        env:
-          VITE_OTEL_URL: https://otel.mp281x.xyz
         run: |
           vp -C tools/coding-standards pm version "0.1.${{ github.run_number }}" -- --no-git-tag-version --no-git-checks
           vp run build
-
-      - uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Inline cache reuses final-image layers; Stash's native build stage runs again on a fresh runner.
-      - name: Images
-        run: |
-          for app in auth gateway portfolio scope stash opm trips signal; do
-            image="ghcr.io/${GITHUB_REPOSITORY,,}-$app"
-            docker build "apps/$app" --cache-from "$image:latest" --build-arg BUILDKIT_INLINE_CACHE=1 --tag "$image:latest" --tag "$image:$GITHUB_SHA"
-            docker push --all-tags "$image"
-          done
 
       # pnpm applies publishConfig while packing; npm uploads the README metadata that pnpm omits.
       - name: Package
         run: |
           vp -C tools/coding-standards pm pack --pack-destination "$RUNNER_TEMP/package"
           npm publish "$RUNNER_TEMP"/package/*.tgz
+
+      # An app publishes its own folder only when its fingerprint, a hash of what it ships, differs from its latest release's; the version moves after the build. Everything is bundled, so the published manifest drops every dependency, the scripts and the Expo entry.
+      - name: Apps
+        run: |
+          for app in auth deploy gateway portfolio scope stash opm trips signal; do
+            cd "apps/$app"
+            fingerprint=$({ find dist bin README.md -type f 2>/dev/null | LC_ALL=C sort | xargs sha256sum; jq -S 'del(.version)' package.json; } | sha256sum | cut -c1-64)
+            if ! npm view "@deslop/$app" version >/dev/null 2>&1; then
+              echo "::warning::@deslop/$app needs its first publish and trusted-publisher setup; see RELEASING.md"
+            elif [ "$(npm view "@deslop/$app" fingerprint)" != "$fingerprint" ]; then
+              npm pkg set "version=0.1.${{ github.run_number }}" "fingerprint=$fingerprint"
+              npm pkg delete dependencies devDependencies scripts main
+              npm publish
+            fi
+            cd ../..
+          done
 
   app:
     name: App

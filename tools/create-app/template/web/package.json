@@ -1,17 +1,31 @@
 {
 	"name": "@deslop/template-app",
 	"version": "0.1.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/MP281X/deslop",
+		"directory": "apps/template-app"
+	},
+	"bin": {
+		"template-app": "./dist/server.js"
+	},
+	"files": [
+		"dist",
+		"bin"
+	],
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
 		"#lib/*": "./src/lib/*",
-		"#package.*": "./package.*",
 		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
 		"#tools/*": "./src/tools/*"
 	},
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
-		"build": "rm -rf dist && vp build && vp pack",
+		"build": "vp build && vp pack",
 		"preview": "vp run build && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js",
 		"test": "vp test --config ../../vite.config.ts",
 		"typecheck": "tsrs --checkerAssignment go --pretty false"
@@ -25,5 +39,11 @@
 		"effect": "latest",
 		"react": "latest",
 		"react-dom": "latest"
+	},
+	"config": {
+		"port": 5100
+	},
+	"engines": {
+		"node": ">=26"
 	}
 }

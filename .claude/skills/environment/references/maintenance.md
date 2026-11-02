@@ -95,6 +95,16 @@ settle: u=preview-${PWD##*/}; p=$(journalctl --user -u $u -o cat | grep -oP 'Pre
 
 "Maintenance" runs Update, Clean and Check on dev, desktop (when on) and the Mac, without asking. Reply: each machine's disk before and after, what Clean removed, failures, what still needs the user.
 
+### Deep pass
+
+Cache pruning alone is not maintenance. Capture `df -B1` and `df -i` per disk-backed mount before and after; use `du -xhd1` to attribute the largest directories under the home, `/var/lib`, `/var/cache`, `/var/log` and `/tmp`. Docker's containerd snapshot store can exceed `/var/lib/docker`; measure both. Compare `du` with `df` and `sudo lsof +L1 -nP` for deleted-but-open disk files; Chromium memfd/shared-memory files are not disk leaks.
+
+Build the ownership inventory from the local SQLite projection, not the first page of T3's thread list. Join every worktree's owners to `lineage.rootThreadId`, inspect user side chats separately, and cross-check `/proc/*/cwd` before removal. A settled parent does not authorize deleting an unsettled side chat's checkout. Re-read ownership immediately before destructive cleanup. Preserve unknown ownership, history, credentials, production data and running jobs; report them separately from verified garbage.
+
+For each listener and Serve handler, identify its unit/container and backend. A bounded HTTP response, including a deliberate 401/404, proves a responding server, not application health; use the app's real health route when one exists. Remove a mapping only after its backend and owner are both proven obsolete. For Alchemy previews, run that settled worktree's `preview:destroy` before removing it; an orphaned bind path plus matching stage/container/volume names can establish ownership after its checkout disappeared. Remove those exact resources, never all stopped containers or unattached volumes.
+
+Close with `dpkg --audit`, held/upgradable packages after refreshing apt, running versus installed kernel/driver, both failed-unit lists, boot kernel errors, firewall and Docker bind policy, service health, agent links, and clean/current main checkouts. Check caches only after builds/installs finish; protect executable versions still in `/proc/*/exe`, each Node major's newest patch, the active T3 service version and any staged update. Never erase T3/Codex/Claude conversation databases or sessions as cache. Report denied cleanup without retrying through another utility; do not call a machine pristine while a fault, unknown owner or deferred reboot/update remains.
+
 ## Update
 
 1. **Packages.** `sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get autoremove -y && sudo apt-get clean`, `vp upgrade`, `gh extension upgrade --all` (`gh-stack` lags per worker). glab: when `curl -fsSL https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, `dpkg -i` `https://gitlab.com/gitlab-org/cli/-/releases/<tag>/downloads/glab_<version>_linux_amd64.deb`.
@@ -108,8 +118,8 @@ Remove rebuildable data and settled work; keep what a working or unsettled threa
 - **Owners** of a worktree: threads in `orchestration_v2_projection_threads.payload_json` (`worktreePath`, `settledAt`) with `archived_at` and `deleted_at`, delegated children judged by their root thread; a process whose `/proc/<pid>/cwd` is inside it.
 - **Keep** stopped containers of unknown owners, unattached volumes and the production `deslop` project.
 
-1. **Orphans.** Compose projects whose `com.docker.compose.project.working_dir` is gone; processes with a deleted working directory; Serve mappings whose backend no longer answers (`tailscale serve status --json`, then `sudo tailscale serve --https=<port> off`); `preview-*` units of removed worktrees; a `~/.deslop/<name>` whose worktree is gone, unless `deploy` or a `tools/compose.yaml` service's data directory or env file.
-2. **Settled worktrees.** All root threads settled, archived or deleted: remove it, uncommitted changes included. Run its settle script, remove a remaining Compose project, `git worktree remove --force --force <path>`, `git worktree prune`. No owner: remove when its branch's PR merged, otherwise list it.
+1. **Orphans.** Compose projects whose `com.docker.compose.project.working_dir` is gone; processes with a deleted working directory; Serve mappings meeting the **Deep pass** ownership/obsolescence rule (`tailscale serve status --json`, then `sudo tailscale serve --https=<port> off`); `preview-*` units of removed worktrees; a `~/.deslop/<name>` whose worktree is gone, unless `deploy` or a `tools/compose.yaml` service's data directory or env file.
+2. **Settled worktrees.** All user threads sharing it (roots and side chats) settled, archived or deleted, and no running process: remove it, uncommitted changes included. Run its settle script, remove a remaining Compose project, `git worktree remove --force --force <path>`, `git worktree prune`. No owner: remove when its branch's PR merged, otherwise list it.
 3. **Branches.** In `~/deslop` and `~/dual`: delete unused local branches whose PR merged; list those without an open or merged PR.
 
    ```bash

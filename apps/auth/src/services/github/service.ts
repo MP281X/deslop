@@ -5,7 +5,7 @@ import {Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientRequest, HttpClientResponse, UrlParams} from 'effect/http'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
-import {AUTH_URL, DEVELOPER, development} from '@deslop/runtime/auth/utils'
+import {AUTH_URL, DEVELOPER, localAuth} from '@deslop/runtime/auth/utils'
 
 import {GitHubToken} from '#services/github/schema.ts'
 import type {SignInParams} from '#services/github/schema.ts'
@@ -13,7 +13,7 @@ import {GitHubUser} from '#services/people/schema.ts'
 
 const HEADERS = {accept: 'application/vnd.github+json', 'user-agent': '@deslop/auth'}
 const CALLBACK = `${AUTH_URL}/auth/github/callback`
-// The account every app's preview signs in as, `github:0`.
+// The account every app signs in as without an issuer, `github:0`.
 const DEVELOPER_PROFILE = GitHubUser.make({id: 0, login: DEVELOPER.name})
 
 function failed(message: string) {
@@ -52,8 +52,8 @@ export class GitHub extends Context.Service<
 				yield* Cache.invalidate(flows, state)
 				return flow
 			})
-			// A preview has no GitHub app: its GitHub step returns at once as the developer, an admin there.
-			if (yield* development) {
+			// Without an issuer there is no GitHub app: the GitHub step returns at once as the developer, an admin there.
+			if (yield* localAuth) {
 				return GitHub.of({
 					cancel: state => Effect.map(take(state), flow => Struct.omit(flow, ['verifier'])),
 					finish: Effect.fn('GitHub.finish')(function* (_code: string, state: string) {

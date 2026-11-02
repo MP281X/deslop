@@ -4,7 +4,7 @@ import {Array, Boolean, Match, Option, Order, Record, String, pipe} from 'effect
 
 import type {NonEmptyReadonlyArray} from 'effect/Array'
 import {AsyncResult} from 'effect/reactivity'
-import {Activity, AppWindow, ArrowUpRight, Globe, Network, Server, X} from 'lucide-react'
+import {AppWindow, ArrowUpRight, Globe, Network, Server, X} from 'lucide-react'
 import {useState} from 'react'
 import {toQR} from 'toqr'
 
@@ -168,7 +168,6 @@ function AppIcon(props: {id: string}) {
 				pipe(
 					Match.value(props.id),
 					Match.when('browser', () => <Globe className="size-4" />),
-					Match.when('tracing', () => <Activity className="size-4" />),
 					Match.orElse(() => <AppWindow className="size-4" />)
 				)}
 			{state !== 'failed' && Array.some(APPS, app => app.id === props.id) && (
@@ -302,7 +301,7 @@ function asking(pending: Option.Option<PendingAuthorization>, id: string) {
 	return Option.filter(pending, request => reaches(request.resources, id))
 }
 
-// Every app, then tracing when something holds it alone; a waiting sign-in shows on the apps it asks for.
+// Every app, then any other a sign-in holds; a waiting sign-in shows on the apps it asks for.
 export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 	const signIns = useAtomSuspense(appsAtom).value
 	const now = useAtomSuspense(minuteAtom).value

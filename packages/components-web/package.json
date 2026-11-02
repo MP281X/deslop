@@ -23,6 +23,7 @@
 	},
 	"dependencies": {
 		"@base-ui/react": "latest",
+		"@effect/atom-react": "latest",
 		"@fontsource-variable/geist": "latest",
 		"@fontsource-variable/geist-mono": "latest",
 		"class-variance-authority": "latest",

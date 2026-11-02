@@ -1,12 +1,12 @@
-import {NodeCrypto, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
+import {NodeHttpClient} from '@effect/platform-node'
 
-import {Effect, Layer, pipe} from 'effect'
+import {Effect, Layer, Schema, pipe} from 'effect'
 
-import {HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
+import {HttpServerResponse} from 'effect/http'
 import {RateLimiter} from 'effect/persistence'
 import {RpcServer} from 'effect/rpc'
 
-import {development} from '@deslop/runtime/auth/utils'
+import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import {HttpHandlers} from '#http/handlers.ts'
@@ -16,60 +16,39 @@ import {RpcHandlers} from '#rpcs/handlers.ts'
 import {GitHub} from '#services/github/service.ts'
 import {People} from '#services/people/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
-import {fromAuth} from '#services/tokens/lib/utils.ts'
-import {Tokens, layerStore} from '#services/tokens/service.ts'
+import {Tokens} from '#services/tokens/service.ts'
 import {layerMcp} from '#tools/handlers.ts'
-
-const RpcOrigin = HttpRouter.middleware()(
-	Effect.map(
-		development,
-		preview => app =>
-			Effect.gen(function* () {
-				if (!fromAuth((yield* HttpServerRequest.HttpServerRequest).headers, preview)) {
-					return HttpServerResponse.text('The request comes from another origin', {status: 403})
-				}
-				return yield* app
-			})
-	)
-)
-
-// No other site may frame Auth's pages, so its Approve button cannot be clicked through a disguise.
-const frameAncestors = HttpMiddleware.make(app =>
-	Effect.map(app, HttpServerResponse.setHeader('content-security-policy', "frame-ancestors 'none'"))
-)
 
 // Each service builds on the ones below it: tokens, then people (who may use them), then sign-ins.
 const layerServices = pipe(
 	Layer.mergeAll(SignIns.layer, RateLimiter.layer),
 	Layer.provideMerge(People.layer),
 	Layer.provideMerge(Layer.mergeAll(Tokens.layer, GitHub.layer, RateLimiter.layerStoreMemory)),
-	Layer.provide(layerStore)
+	Layer.provide(ServerRuntime.layerDataStore),
+	Layer.provide(Layer.succeed(NodeHttpClient.RequestInit, {redirect: 'error'}))
 )
 
-NodeRuntime.runMain(
-	pipe(
-		HttpRouter.serve(
+CliRuntime.runApp({
+	icon,
+	// No other site may frame Auth's pages, so its Approve button cannot be clicked through a disguise.
+	middleware: app => Effect.map(app, HttpServerResponse.setHeader('content-security-policy', "frame-ancestors 'none'")),
+	routes: pipe(
+		Layer.mergeAll(
+			HttpHandlers,
 			pipe(
-				Layer.mergeAll(
-					HttpHandlers,
-					pipe(
-						RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
-						Layer.provide(RpcHandlers),
-						Layer.provide(RpcOrigin.layer)
-					),
-					layerMcp,
-					ServerRuntime.layerIcon(icon),
-					ServerRuntime.layerManifest('Auth'),
-					ServerRuntime.layerStaticFiles
-				),
-				Layer.provide(layerServices)
+				RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
+				Layer.provide(RpcHandlers)
 			),
-			{disableLogger: true, middleware: frameAncestors}
+			layerMcp
 		),
-		Layer.provide(Layer.mergeAll(NodeCrypto.layer, NodeHttpClient.layerFetch, NodeServices.layer)),
-		Layer.provide(Layer.succeed(NodeHttpClient.RequestInit, {redirect: 'error'})),
-		Layer.provide(ServerRuntime.layer('@deslop/auth')),
-		Layer.provide(ServerRuntime.layerNodeHttpServer),
-		Layer.launch
-	)
-)
+		Layer.provide(layerServices)
+	),
+	settings: {
+		GITHUB_ADMINS: CliRuntime.ADMINS,
+		GITHUB_CLIENT_ID: {
+			description: "The GitHub app's client id",
+			flag: 'github-client-id',
+			schema: Schema.NonEmptyString
+		}
+	}
+})

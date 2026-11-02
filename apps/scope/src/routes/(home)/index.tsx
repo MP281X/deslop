@@ -20,7 +20,7 @@ import {Toggle} from '@deslop/components-web/ui/toggle'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
 import {Tooltip, TooltipContent, TooltipTrigger} from '@deslop/components-web/ui/tooltip'
 import {cn} from '@deslop/components-web/utils'
-import {signInUrl} from '@deslop/runtime/auth/utils'
+import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
 import {
 	ageOf,
@@ -49,7 +49,7 @@ function Failure(props: {cause: Cause.Cause<unknown>}) {
 	return Option.match(Cause.findErrorOption(props.cause), {
 		onNone: () => <Error error={Cause.squash(props.cause)} reset={() => location.reload()} />,
 		onSome: error => {
-			if (!Predicate.isTagged(error, 'AuthError')) return <Error error={error} reset={() => location.reload()} />
+			if (!needsSignIn(error)) return <Error error={error} reset={() => location.reload()} />
 			return <SignIn href={signInUrl(location.href)} />
 		}
 	})

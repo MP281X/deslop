@@ -1,13 +1,15 @@
-import {Config, ConfigProvider, Effect, Layer, Predicate, pipe} from 'effect'
+import {Effect, Layer, Predicate, pipe} from 'effect'
 
 import {createRouter} from '@tanstack/react-router'
 import type {AnyContext, AnyRoute, RouterOptions} from '@tanstack/react-router'
+import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
 import {Atom} from 'effect/reactivity'
 import * as Rpc from 'effect/rpc'
 import {Socket} from 'effect/socket'
 
 import {Error, NotFound} from '@deslop/components-web/fallbacks'
 
+import {RuntimeConfig} from '#schema.ts'
 import {layerOtlp} from '#telemetry.ts'
 
 export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext: AnyContext}}>(
@@ -48,11 +50,14 @@ export function layer(applicationName: string) {
 	Atom.runtime.addGlobalLayer(
 		pipe(
 			Layer.unwrap(
-				Effect.map(pipe(Config.URL('VITE_OTEL_URL'), Config.withDefault(new URL('http://localhost:4318'))), url =>
-					layerOtlp(`${applicationName}-client`, url, 'web')
-				)
+				Effect.gen(function* () {
+					const response = yield* (yield* HttpClient.HttpClient).get('/api/runtime')
+					const config = yield* HttpClientResponse.schemaBodyJson(RuntimeConfig)(response)
+					if (config.traces === '') return Layer.empty
+					return layerOtlp(`${applicationName}-client`, config.traces, 'web')
+				})
 			),
-			Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(import.meta.env)))
+			Layer.provide(FetchHttpClient.layer)
 		)
 	)
 	return layerProtocol

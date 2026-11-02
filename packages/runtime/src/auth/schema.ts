@@ -25,20 +25,8 @@ export type User = typeof User.Type
 export const User = Schema.Struct({id: Schema.NonEmptyString, name: Schema.NonEmptyString})
 
 export type Resource = typeof Resource.Type
-export const Resource = Schema.Literals([
-	'https://gateway.mp281x.xyz',
-	'https://gateway.mp281x.xyz/mcp',
-	'https://stash.mp281x.xyz',
-	'https://stash.mp281x.xyz/mcp',
-	'https://opm.mp281x.xyz',
-	'https://scope.mp281x.xyz/mcp',
-	'https://signal.mp281x.xyz',
-	'https://signal.mp281x.xyz/mcp',
-	'https://otel.mp281x.xyz',
-	'https://auth.mp281x.xyz/mcp',
-	'https://trips.mp281x.xyz',
-	'https://trips.mp281x.xyz/mcp'
-])
+// An app or its MCP endpoint on the domain the shared sign-in cookie covers.
+export const Resource = Schema.String.check(Schema.isPattern(/^https:\/\/[a-z\d-]+\.mp281x\.xyz(?:\/mcp)?$/u))
 
 export type Credentials = typeof Credentials.Type
 export const Credentials = Schema.Struct({

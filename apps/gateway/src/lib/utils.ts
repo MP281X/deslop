@@ -8,10 +8,9 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import {GATEWAY_URL} from '#services/connections/lib/utils.ts'
 import {ServerUrl} from '#services/connections/schema.ts'
 
-export const ENDPOINT = `${GATEWAY_URL}/mcp`
+export const ENDPOINT = `${window.location.origin}/mcp`
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/gateway/lib/utils/RpcClient', {
 	group: RpcContracts,

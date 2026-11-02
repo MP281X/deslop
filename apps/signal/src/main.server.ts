@@ -1,11 +1,8 @@
-import {NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
+import {Layer, Schema, pipe} from 'effect'
 
-import {Boolean, Config, Effect, Layer, Path, pipe} from 'effect'
-
-import {HttpRouter} from 'effect/http'
 import {RpcServer} from 'effect/rpc'
 
-import {Auth} from '@deslop/runtime/auth/service'
+import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import icon from '#routes/icon.svg'
@@ -14,49 +11,33 @@ import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Core} from '#services/core/service.ts'
 import {Game} from '#services/game/service.ts'
 
-NodeRuntime.runMain(
-	pipe(
-		HttpRouter.serve(
-			pipe(
-				Layer.mergeAll(
-					pipe(
-						RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
-						Layer.provide(RpcHandlers)
-					),
-					ServerRuntime.layerIcon(icon),
-					ServerRuntime.layerManifest('Signal'),
-					ServerRuntime.layerStaticFiles
-				),
-				Layer.provide(Auth.layer('https://signal.mp281x.xyz'))
-			),
-			{disableLogger: true}
-		),
-		Layer.provide(ServerRuntime.layer('@deslop/signal')),
+type Count = typeof Count.Type
+const Count = Schema.String.check(Schema.isPattern(/^\d+$/u))
+
+CliRuntime.runApp({
+	icon,
+	routes: pipe(
+		RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
+		Layer.provide(RpcHandlers),
 		Layer.provide(Game.layer),
 		Layer.provide(Core.layer),
-		Layer.provide(
-			Layer.unwrap(
-				Effect.gen(function* () {
-					const path = yield* Path.Path
-					const production =
-						(yield* pipe(Config.String('NODE_ENV'), Config.withDefault('development'))) === 'production'
-					return ServerRuntime.layerKeyValueStore(
-						yield* pipe(
-							Config.String('SIGNAL_DATA'),
-							Config.withDefault(
-								path.join(
-									yield* Config.String('HOME'),
-									'.deslop',
-									Boolean.match(production, {onFalse: () => 'signal-development', onTrue: () => 'signal'})
-								)
-							)
-						)
-					)
-				})
-			)
-		),
-		Layer.provide(Layer.mergeAll(NodeHttpClient.layerFetch, NodeServices.layer)),
-		Layer.provide(ServerRuntime.layerNodeHttpServer),
-		Layer.launch
-	)
-)
+		Layer.provide(ServerRuntime.layerDataStore)
+	),
+	settings: {
+		SIGNAL_CONTEXT_TOKENS: {
+			description: "Tokens of a team model's decision context, 8000 to 64000; defaults to 16000",
+			flag: 'context-tokens',
+			schema: Count
+		},
+		SIGNAL_LOCAL_DECISIONS_PER_SECOND: {
+			description: 'Local decisions per second, 0 to 4; defaults to 2',
+			flag: 'local-decisions',
+			schema: Count
+		},
+		SIGNAL_RUN: {
+			description: 'Whether the world starts running or paused; defaults to paused',
+			flag: 'run',
+			schema: Schema.Literals(['running', 'paused'])
+		}
+	}
+})

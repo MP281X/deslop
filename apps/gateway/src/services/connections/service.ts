@@ -6,11 +6,9 @@ import {
 	Config,
 	Context,
 	Effect,
-	FileSystem,
 	Layer,
 	Match,
 	Option,
-	Path,
 	PubSub,
 	Record,
 	Schema,
@@ -35,14 +33,13 @@ import {KeyValueStore} from 'effect/persistence'
 
 import type {User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
-import {development} from '@deslop/runtime/auth/utils'
-import {layerKeyValueStore} from '@deslop/runtime/server'
+import {localAuth} from '@deslop/runtime/auth/utils'
 
 import {
-	CALLBACK,
-	GATEWAY_URL,
+	clientMetadata,
 	connectionInfo,
 	describe,
+	gatewayUrl,
 	serverIcons,
 	serverName
 } from '#services/connections/lib/utils.ts'
@@ -52,21 +49,10 @@ import type {
 	Discovery,
 	OAuth,
 	ServerId,
-	ToolVisibility
+	ToolVisibility,
+	Connection
 } from '#services/connections/schema.ts'
-import {Connection, ConnectionStore, Metadata, Registration, ServerUrl, Token} from '#services/connections/schema.ts'
-
-const CLIENT_METADATA = `${GATEWAY_URL}/oauth/client.json`
-
-// The gateway's client metadata document, for providers that accept one instead of a registration.
-export const CLIENT = {
-	client_id: CLIENT_METADATA,
-	client_name: 'Deslop MCP gateway',
-	grant_types: ['authorization_code', 'refresh_token'],
-	redirect_uris: [CALLBACK],
-	response_types: ['code'],
-	token_endpoint_auth_method: 'none'
-}
+import {ConnectionStore, Metadata, Registration, ServerUrl, Token} from '#services/connections/schema.ts'
 
 // A provider sign-in in progress, for ten minutes and in memory: a restart asks to connect again.
 type Pending = {client: OAuth['client']; generation: string; id: ServerId; userId: string; verifier: string}
@@ -112,29 +98,14 @@ export class Connections extends Context.Service<
 	}
 >()('@deslop/gateway/services/connections/service/Connections') {
 	static readonly make = Effect.gen(function* () {
+		const origin = yield* gatewayUrl
+		const callback = `${origin}/oauth/callback`
+		const clientInfo = clientMetadata(origin)
 		const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, ConnectionStore)
-		const fs = yield* FileSystem.FileSystem
-		// The previous release kept the servers in Auth and called the owner's apps with delegated tokens: the others move here once, those are dropped, to be added again and connected by OAuth.
-		const previous = (yield* Path.Path).join(yield* Config.String('HOME'), '.deslop', 'auth', 'mcp', 'servers')
-		if ((yield* fs.exists(previous)) && Option.isNone(yield* store.get('servers'))) {
-			yield* store.set(
-				'servers',
-				Record.filter(
-					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)))(
-						yield* fs.readFileString(previous)
-					),
-					Schema.is(Connection)
-				)
-			)
-		}
-		if (yield* fs.exists(previous)) yield* fs.remove(previous)
 		const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('servers'), () => ({})))
-		// A preview's developer account, `github:0`, is its admin unless GITHUB_ADMINS names others.
+		// Local no-issuer installs have one trusted developer, independent of production admin settings.
 		const listed = Config.Array(Schema.String, 'GITHUB_ADMINS')
-		const admins = yield* Boolean.match(yield* development, {
-			onFalse: () => listed,
-			onTrue: () => Config.withDefault(listed, ['0'])
-		})
+		const admins = yield* Boolean.match(yield* localAuth, {onFalse: () => listed, onTrue: () => Effect.succeed(['0'])})
 		// Only the latest calls matter to a light, so a slow page drops the oldest.
 		const traffic = yield* PubSub.sliding<ServerId>(64)
 		// Auth's admins, named by the same setting: only they manage the servers everyone with access shares.
@@ -195,8 +166,8 @@ export class Connections extends Context.Service<
 			if (metadata.registration_endpoint !== undefined) {
 				return yield* pipe(
 					HttpClientRequest.bodyJson(HttpClientRequest.post(metadata.registration_endpoint), {
-						...Struct.omit(CLIENT, ['client_id']),
-						redirect_uris: [`${CALLBACK}/${id}`]
+						...Struct.omit(clientInfo, ['client_id']),
+						redirect_uris: [`${callback}/${id}`]
 					}),
 					Effect.flatMap(request => client.execute(request)),
 					Effect.flatMap(HttpClientResponse.schemaBodyJson(Registration)),
@@ -237,7 +208,7 @@ export class Connections extends Context.Service<
 				HttpClientRequest.bodyUrlParams({
 					...params,
 					client_id: Match.valueTags(oauth.client, {
-						Document: () => CLIENT_METADATA,
+						Document: () => clientInfo.client_id,
 						Registered: found => found.clientId
 					}),
 					resource: connection.url
@@ -286,7 +257,7 @@ export class Connections extends Context.Service<
 							return yield* AuthError.make({message: 'This MCP connection was replaced.'})
 						}
 						const now = yield* Clock.currentTimeMillis
-						const notConnected = AuthError.make({message: `Connect ${connection.name} on ${GATEWAY_URL}`})
+						const notConnected = AuthError.make({message: `Connect ${connection.name} on ${origin}`})
 						const oauth = yield* Effect.mapError(
 							Effect.fromOption(Option.fromUndefinedOr(connection.oauth)),
 							() => notConnected
@@ -435,6 +406,9 @@ export class Connections extends Context.Service<
 				function* (input: string, user: User) {
 					yield* admin(user)
 					const url = new URL(yield* Schema.decodeEffect(ServerUrl)(input)).href
+					if (new URL(url).origin === origin) {
+						return yield* AuthError.make({message: 'The gateway cannot connect to itself'})
+					}
 					const current = yield* SubscriptionRef.get(state)
 					if (Array.some(Record.values(current), row => row.url === url)) {
 						return yield* AuthError.make({message: 'This MCP has already been added.'})
@@ -487,12 +461,12 @@ export class Connections extends Context.Service<
 				const url = new URL(connection.oauth.metadata.authorization_endpoint)
 				url.search = new URLSearchParams({
 					client_id: Match.valueTags(registered, {
-						Document: () => CLIENT_METADATA,
+						Document: () => clientInfo.client_id,
 						Registered: found => found.clientId
 					}),
 					code_challenge: Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(verifier))),
 					code_challenge_method: 'S256',
-					redirect_uri: Match.valueTags(registered, {Document: () => CALLBACK, Registered: () => `${CALLBACK}/${id}`}),
+					redirect_uri: Match.valueTags(registered, {Document: () => callback, Registered: () => `${callback}/${id}`}),
 					resource: connection.url,
 					response_type: 'code',
 					scope: connection.oauth.scope,
@@ -538,8 +512,8 @@ export class Connections extends Context.Service<
 							code_verifier: flow.verifier,
 							grant_type: 'authorization_code',
 							redirect_uri: Match.valueTags(oauth.client, {
-								Document: () => CALLBACK,
-								Registered: () => `${CALLBACK}/${connection.id}`
+								Document: () => callback,
+								Registered: () => `${callback}/${connection.id}`
 							})
 						})
 					}),
@@ -593,18 +567,5 @@ export class Connections extends Context.Service<
 				)
 		})
 	})
-	static readonly layer = pipe(
-		Layer.effect(Connections)(Connections.make),
-		Layer.provide(
-			Layer.unwrap(
-				Effect.gen(function* () {
-					const fs = yield* FileSystem.FileSystem
-					const path = yield* Path.Path
-					const directory = path.join(yield* Config.String('HOME'), '.deslop', 'gateway')
-					yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
-					return layerKeyValueStore(directory)
-				})
-			)
-		)
-	)
+	static readonly layer = Layer.effect(Connections)(Connections.make)
 }

@@ -1,11 +1,14 @@
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- NodeHttpServer requires the native server constructor at the application boundary.
 import {createServer} from 'node:http'
+import {cwd} from 'node:process'
 import {fileURLToPath} from 'node:url'
+import {createZstdDecompress} from 'node:zlib'
 
-import {NodeHttpServer} from '@effect/platform-node'
+import {NodeHttpServer, NodeStream} from '@effect/platform-node'
 
 import {
 	Array,
+	Boolean,
 	ByteSize,
 	Config,
 	Effect,
@@ -16,21 +19,140 @@ import {
 	Option,
 	Path,
 	Predicate,
+	Result,
+	Schema,
 	Semaphore,
 	Stream,
+	String,
 	Struct,
 	pipe
 } from 'effect'
 
 import {McpProtocol, McpServer} from 'effect/ai'
-import {HttpIncomingMessage, HttpRouter, HttpServerResponse, HttpStaticServer} from 'effect/http'
+import {
+	HttpIncomingMessage,
+	HttpMiddleware,
+	HttpRouter,
+	HttpServerRequest,
+	HttpServerResponse,
+	HttpStaticServer
+} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 import {RpcSerialization} from 'effect/rpc'
 
+import {Account, PackageMetadata, RuntimeConfig} from '#schema.ts'
 import {layerOtlp} from '#telemetry.ts'
 
-import {AUTH_URL} from '#auth/lib/utils.ts'
-import {layerMcpAuth} from '#auth/service.ts'
+import {localAuth} from '#auth/lib/utils.ts'
+import {Auth, layerMcpAuth} from '#auth/service.ts'
+
+const LOOPBACK = /^(?:localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[\da-f:.]+\])$/iu
+const OTLP = ['/v1/traces', '/v1/logs']
+
+// The bundle is `dist/server.js`, so its package sits one directory up, wherever npm installed it; unbundled, as in tests, it is the package being run.
+export const packageRoot = Boolean.match(String.endsWith('.ts')(import.meta.url), {
+	onFalse: () => fileURLToPath(new URL('..', import.meta.url)),
+	onTrue: cwd
+})
+
+export const packageMetadata = Effect.gen(function* () {
+	const file = (yield* Path.Path).join(packageRoot, 'package.json')
+	return yield* Schema.decodeEffect(Schema.fromJsonString(PackageMetadata))(
+		yield* (yield* FileSystem.FileSystem).readFileString(file)
+	)
+})
+
+export const appName = Effect.map(packageMetadata, metadata => String.replace('@deslop/', '')(metadata.name))
+
+// A checkout holds `pnpm-workspace.yaml` at its root; an npm installation has none above it.
+const checkoutRoot = Effect.fnUntraced(function* (
+	directory: string
+): Effect.fn.Return<Option.Option<string>, never, FileSystem.FileSystem | Path.Path> {
+	const path = yield* Path.Path
+	if (
+		yield* Effect.orElseSucceed(
+			(yield* FileSystem.FileSystem).exists(path.join(directory, 'pnpm-workspace.yaml')),
+			() => false
+		)
+	) {
+		return Option.some(directory)
+	}
+	if (path.dirname(directory) === directory) return Option.none()
+	return yield* checkoutRoot(path.dirname(directory))
+})
+
+// An installed app keeps its data in ~/.deslop/<app>; one run from a checkout, such as a preview, in that checkout's .deslop/<app>.
+export const dataDirectory = Effect.gen(function* () {
+	const path = yield* Path.Path
+	const name = yield* appName
+	const directory = yield* Option.match(yield* checkoutRoot(packageRoot), {
+		onNone: () => Effect.map(Config.String('HOME'), home => path.join(home, '.deslop', name)),
+		onSome: root => Effect.succeed(path.join(root, '.deslop', name))
+	})
+	yield* (yield* FileSystem.FileSystem).makeDirectory(directory, {mode: 0o700, recursive: true})
+	return directory
+})
+
+// The app's native tools ship zstd-compressed in its `bin/`; the first use of a release unpacks one into the data directory.
+export const tool = Effect.fnUntraced(function* (name: string) {
+	const fs = yield* FileSystem.FileSystem
+	const path = yield* Path.Path
+	const version = (yield* packageMetadata).version
+	const tools = path.join(yield* dataDirectory, 'tools')
+	const target = path.join(tools, version, name)
+	if (yield* fs.exists(target)) return target
+	yield* fs.makeDirectory(path.dirname(target), {recursive: true})
+	yield* Effect.scoped(
+		Effect.gen(function* () {
+			const temporary = path.join(yield* fs.makeTempDirectoryScoped({directory: path.dirname(target)}), name)
+			yield* pipe(
+				fs.stream(path.join(packageRoot, 'bin', `${name}.zst`)),
+				NodeStream.pipeThroughSimple(() => createZstdDecompress()),
+				Stream.run(fs.sink(temporary))
+			)
+			yield* fs.chmod(temporary, 0o755)
+			yield* fs.rename(temporary, target)
+		})
+	)
+	yield* Effect.forEach(
+		Array.filter(yield* fs.readDirectory(tools), entry => entry !== version),
+		entry => fs.remove(path.join(tools, entry), {recursive: true}),
+		{concurrency: 1}
+	)
+	return target
+})
+
+// One cross-site check for every app. A browser's Origin must name the host it reached, except for the OTLP receiver any page may export to. Without an issuer, where every request is the developer, only loopback, IP and the canonical host names are served, so a rebound DNS name cannot reach the app.
+export const guard = HttpMiddleware.make(app =>
+	Effect.gen(function* () {
+		const request = yield* HttpServerRequest.HttpServerRequest
+		const host = request.headers['host'] ?? ''
+		const origin = Option.fromNullishOr(request.headers['origin'])
+		if (yield* localAuth) {
+			const canonical = new URL(yield* Config.String('APP_URL')).hostname
+			if (
+				!Option.exists(
+					Option.liftThrowable(() => new URL(`http://${host}`))(),
+					url => url.hostname === canonical || Option.isSome(String.match(LOOPBACK)(url.hostname))
+				)
+			) {
+				return HttpServerResponse.empty({status: 403})
+			}
+		}
+		const foreign = Option.exists(
+			origin,
+			value => !Option.exists(Option.liftThrowable(() => new URL(value).host)(), originHost => originHost === host)
+		)
+		if (
+			foreign &&
+			request.headers['sec-fetch-site'] !== 'same-origin' &&
+			!Array.contains(OTLP, Array.headNonEmpty(String.split(request.url, '?')))
+		) {
+			return HttpServerResponse.empty({status: 403})
+		}
+		return yield* app
+	})
+)
 
 // Schema stores share Effect's filesystem implementation, but replace values atomically instead of truncating them in place.
 export function layerKeyValueStore(directory: string) {
@@ -72,6 +194,9 @@ export function layerKeyValueStore(directory: string) {
 	)
 }
 
+// The app's KeyValueStore, in its data directory.
+export const layerDataStore = Layer.unwrap(Effect.map(dataDirectory, layerKeyValueStore))
+
 // A live list as the events its clients apply: the whole list once, then the items each update added or replaced by identity and the ids it removed.
 export function listEvents<A extends {id: string}, E, R>(lists: Stream.Stream<readonly A[], E, R>) {
 	return Stream.mapAccum(
@@ -100,18 +225,74 @@ export function listEvents<A extends {id: string}, E, R>(lists: Stream.Stream<re
 	)
 }
 
-export function layer(applicationName: string) {
-	return Layer.mergeAll(
-		Layer.unwrap(
-			Effect.map(pipe(Config.URL('VITE_OTEL_URL'), Config.withDefault(new URL('http://localhost:4318'))), url =>
-				layerOtlp(`${applicationName}-server`, url, 'server')
+// Binary RPC frames unless an app picks JSON; public endpoints such as client registration read their body before any sign-in, and streamed uploads keep their own limit.
+export const layerProtocol = Layer.mergeAll(
+	RpcSerialization.layerSchemaBinary(),
+	Layer.succeed(HttpIncomingMessage.MaxBodySize)(ByteSize.mebibytes(10))
+)
+
+// Traces and logs go to Scope when `--traces` names it.
+export const layerTelemetry = Layer.unwrap(
+	Effect.gen(function* () {
+		const name = yield* appName
+		return Option.match(yield* Config.option(Config.String('OTEL_URL')), {
+			onNone: () => Layer.empty,
+			onSome: url => layerOtlp(`${name}-server`, url, 'server')
+		})
+	})
+)
+
+// Pages and assets are public; the account menu, the runtime settings and the way to Auth and back.
+export const layerRoutes = HttpRouter.use(router =>
+	Effect.gen(function* () {
+		const auth = yield* Auth
+		const canonical = new URL(yield* Config.String('APP_URL')).origin
+		const issuer = yield* Config.option(Config.String('AUTH_URL'))
+		const traces = yield* pipe(Config.String('OTEL_URL'), Config.withDefault(''))
+		// A destination on this app only, so the round trip through Auth cannot be turned into an open redirect.
+		const toIssuer = Effect.fnUntraced(function* (search: Record<string, string>) {
+			const request = yield* HttpServerRequest.HttpServerRequest
+			const next = Option.filter(
+				Option.liftThrowable(
+					() => new URL(new URL(request.url, canonical).searchParams.get('next') ?? canonical, canonical)
+				)(),
+				url => url.origin === canonical
 			)
-		),
-		RpcSerialization.layerSchemaBinary(),
-		// Public endpoints such as client registration read their body before any sign-in; streamed uploads keep their own limit.
-		Layer.succeed(HttpIncomingMessage.MaxBodySize)(ByteSize.mebibytes(10))
-	)
-}
+			return Option.match(issuer, {
+				onNone: () => HttpServerResponse.text('Sign-in is not configured for this app', {status: 503}),
+				onSome: origin =>
+					Option.match(next, {
+						onNone: () => HttpServerResponse.empty({status: 400}),
+						onSome: url =>
+							HttpServerResponse.redirect(
+								`${new URL('/', origin).href}?${new URLSearchParams({...search, next: url.href})}`
+							)
+					})
+			})
+		})
+		yield* router.add(
+			'GET',
+			'/api/runtime',
+			Effect.flatMap(packageMetadata, metadata =>
+				HttpServerResponse.schemaJson(RuntimeConfig)({traces, version: metadata.version})
+			)
+		)
+		yield* router.add('GET', '/auth/sign-in', toIssuer({}))
+		yield* router.add('GET', '/auth/sign-out', toIssuer({'sign-out': ''}))
+		yield* router.add(
+			'GET',
+			'/auth/user',
+			Effect.gen(function* () {
+				const user = yield* Effect.result(auth.user((yield* HttpServerRequest.HttpServerRequest).headers))
+				if (Result.isFailure(user)) return HttpServerResponse.empty({status: 401})
+				return yield* HttpServerResponse.schemaJson(Account)(
+					{...user.success, signOut: Option.isSome(issuer)},
+					{headers: {'cache-control': 'no-store'}}
+				)
+			})
+		)
+	})
+)
 
 // The app's tiled icon at a stable URL for Auth's app list and MCP clients; the pack loader passes its SVG markup.
 export function layerIcon(icon: string) {
@@ -124,84 +305,93 @@ export function layerIcon(icon: string) {
 	)
 }
 
-// A web app's manifest, so a phone or desktop installs it as its own app: standalone, dark, its tiled icon.
-export function layerManifest(name: string) {
-	return HttpRouter.add(
-		'GET',
-		'/manifest.webmanifest',
-		Effect.succeed(
-			HttpServerResponse.jsonUnsafe(
-				{
-					background_color: '#0a0a0a',
-					display: 'standalone',
-					icons: [
-						{sizes: 'any', src: '/icon', type: 'image/svg+xml'},
-						{purpose: 'any', sizes: '512x512', src: '/apple-touch-icon.png', type: 'image/png'}
-					],
-					id: '/',
-					name,
-					scope: '/',
-					short_name: name,
-					start_url: '/',
-					theme_color: '#0a0a0a'
-				},
-				{contentType: 'application/manifest+json', headers: {'cache-control': 'no-cache'}}
-			)
-		)
-	)
-}
-
-// Codex speaks MCP's stateless 2026-07-28 revision; Claude still opens a session, which it ends with DELETE.
-export function layerMcp<RA, RE, RR>(options: {
-	instructions: string
-	name: string
-	registrations: Layer.Layer<RA, RE, RR>
-	version: string
-}) {
-	const resource = `https://${options.name}.mp281x.xyz/mcp`
-	return Layer.mergeAll(
-		pipe(
-			McpServer.layerHttp({
-				...options,
-				allowSessionTermination: true,
-				icons: [{src: `https://${options.name}.mp281x.xyz/icon`}],
-				path: '/mcp',
-				protocols: [McpProtocol.v2026_07_28, McpProtocol.v2025_11_25, McpProtocol.v2025_06_18]
+// A web app's pages, with assets kept until a deploy changes index.html, and its manifest, so a phone installs it as its own app.
+export const layerWeb = Layer.unwrap(
+	Effect.gen(function* () {
+		const client = fileURLToPath(new URL('./client', import.meta.url))
+		if (!(yield* (yield* FileSystem.FileSystem).exists((yield* Path.Path).join(client, 'index.html')))) {
+			return Layer.empty
+		}
+		const name = String.capitalize(yield* appName)
+		return Layer.mergeAll(
+			HttpRouter.add(
+				'GET',
+				'/manifest.webmanifest',
+				Effect.succeed(
+					HttpServerResponse.jsonUnsafe(
+						{
+							background_color: '#0a0a0a',
+							display: 'standalone',
+							icons: [
+								{sizes: 'any', src: '/icon', type: 'image/svg+xml'},
+								{purpose: 'any', sizes: '512x512', src: '/apple-touch-icon.png', type: 'image/png'}
+							],
+							id: '/',
+							name,
+							scope: '/',
+							short_name: name,
+							start_url: '/',
+							theme_color: '#0a0a0a'
+						},
+						{contentType: 'application/manifest+json', headers: {'cache-control': 'no-cache'}}
+					)
+				)
+			),
+			HttpStaticServer.layer({
+				cacheControl: 'public, max-age=31536000, immutable',
+				prefix: '/assets',
+				root: `${client}/assets`
 			}),
-			Layer.provide(layerMcpAuth(resource))
-		),
-		HttpRouter.add(
-			'GET',
-			'/.well-known/oauth-protected-resource/mcp',
-			Effect.succeed(
-				HttpServerResponse.jsonUnsafe({
-					authorization_servers: [`${AUTH_URL}/api/auth`],
-					bearer_methods_supported: ['header'],
-					resource,
-					scopes_supported: ['deslop']
-				})
-			)
+			HttpStaticServer.layer({cacheControl: 'no-cache', index: 'index.html', root: client, spa: true})
 		)
-	)
-}
-
-// Vite names every asset by its content hash, so a browser keeps it until a deploy changes index.html, which it always revalidates.
-export const layerStaticFiles = Layer.mergeAll(
-	HttpStaticServer.layer({
-		cacheControl: 'public, max-age=31536000, immutable',
-		prefix: '/assets',
-		root: fileURLToPath(new URL('./client/assets', import.meta.url))
-	}),
-	HttpStaticServer.layer({
-		cacheControl: 'no-cache',
-		index: 'index.html',
-		root: fileURLToPath(new URL('./client', import.meta.url)),
-		spa: true
 	})
 )
 
+// Codex speaks MCP's stateless 2026-07-28 revision; Claude still opens a session, which it ends with DELETE.
+export function layerMcp<RA, RE, RR>(options: {instructions: string; registrations: Layer.Layer<RA, RE, RR>}) {
+	return Layer.unwrap(
+		Effect.gen(function* () {
+			const metadata = yield* packageMetadata
+			const canonical = yield* Config.String('APP_URL')
+			const issuer = yield* Config.option(Config.String('AUTH_URL'))
+			const resource = new URL('/mcp', canonical).href
+			const endpoint = pipe(
+				McpServer.layerHttp({
+					...options,
+					allowSessionTermination: true,
+					icons: [{src: new URL('/icon', canonical).href}],
+					name: yield* appName,
+					path: '/mcp',
+					protocols: [McpProtocol.v2026_07_28, McpProtocol.v2025_11_25, McpProtocol.v2025_06_18],
+					version: metadata.version
+				}),
+				Layer.provide(layerMcpAuth(resource))
+			)
+			return Option.match(issuer, {
+				onNone: () => endpoint,
+				onSome: origin =>
+					Layer.mergeAll(
+						endpoint,
+						HttpRouter.add(
+							'GET',
+							'/.well-known/oauth-protected-resource/mcp',
+							Effect.succeed(
+								HttpServerResponse.jsonUnsafe({
+									authorization_servers: [new URL('/api/auth', origin).href],
+									bearer_methods_supported: ['header'],
+									resource,
+									scopes_supported: ['deslop']
+								})
+							)
+						)
+					)
+			})
+		})
+	)
+}
+
 export const layerNodeHttpServer = NodeHttpServer.layerConfig(createServer, {
 	gracefulShutdownTimeout: Config.succeed('1500 millis'),
-	host: pipe(Config.String('HOST'), Config.withDefault('0.0.0.0')),
-	port: pipe(Config.Port('PORT'), Config.withDefault(5000))
+	host: Config.String('HOST'),
+	port: Config.Port('PORT')
 })

@@ -10,7 +10,7 @@ import {Alert} from 'react-native'
 
 import {AUTH_URL} from '#auth/lib/utils.ts'
 import {AuthError, ClientRegistration, Credentials, TokenResponse} from '#auth/schema.ts'
-import {TELEMETRY, activationsAtom, extra} from '#mobile/client.ts'
+import {activationsAtom, extra} from '#mobile/client.ts'
 
 const DISCOVERY = {
 	authorizationEndpoint: `${AUTH_URL}/api/auth/oauth2/authorize`,
@@ -28,7 +28,7 @@ export type Storage = {
 	write: (text: string) => Effect.Effect<void, Cause.UnknownError>
 }
 
-// The OAuth session of one iOS app against the auth server, with its access token for `server` and the telemetry.
+// The OAuth session of one iOS app against the auth server, with its access token for `server`.
 export function make(name: string, server: string, storage: Storage) {
 	const runtime = Atom.runtime(FetchHttpClient.layer)
 	const refreshing = Semaphore.makeUnsafe(1)
@@ -56,7 +56,7 @@ export function make(name: string, server: string, storage: Storage) {
 			(yield* HttpClient.HttpClient).execute(
 				pipe(
 					HttpClientRequest.post(DISCOVERY.tokenEndpoint),
-					HttpClientRequest.bodyUrlParams({...params, client_id: clientId, resource: [server, TELEMETRY]})
+					HttpClientRequest.bodyUrlParams({...params, client_id: clientId, resource: server})
 				)
 			),
 			Effect.timeout('10 seconds')
@@ -135,9 +135,7 @@ export function make(name: string, server: string, storage: Storage) {
 				redirectUri,
 				scopes: ['deslop', 'offline_access']
 			})
-			const url = new URL(yield* Effect.tryPromise(() => request.makeAuthUrlAsync(DISCOVERY)))
-			url.searchParams.append('resource', TELEMETRY)
-			const result = yield* Effect.tryPromise(() => request.promptAsync(DISCOVERY, {url: url.href}))
+			const result = yield* Effect.tryPromise(() => request.promptAsync(DISCOVERY))
 			if (result.type !== 'success') return yield* AuthError.make({message: 'Sign-in was not completed'})
 			if (result.params['iss'] !== `${AUTH_URL}/api/auth`) {
 				return yield* AuthError.make({message: 'The sign-in issuer did not match'})
@@ -155,6 +153,22 @@ export function make(name: string, server: string, storage: Storage) {
 		Effect.tapError(error => Effect.sync(() => Alert.alert('Not Signed In', error.message)))
 	)
 
+	// Ends this app's sign-in at Auth too, so its refresh token stops working; a failed revocation still signs the app out.
+	const signOut = exclusive(
+		Effect.gen(function* () {
+			for (const credentials of Option.toArray(yield* read)) {
+				yield* pipe(
+					HttpClientRequest.post(`${AUTH_URL}/api/auth/oauth2/revoke`),
+					HttpClientRequest.bodyUrlParams({client_id: credentials.clientId, token: credentials.refreshToken}),
+					request => Effect.flatMap(HttpClient.HttpClient, client => client.execute(request)),
+					Effect.timeout('10 seconds'),
+					Effect.ignore({log: 'Warn', message: 'Auth did not revoke the sign-in'})
+				)
+			}
+			yield* storage.clear
+		})
+	)
+
 	// The Keychain stays the truth, shared with a share extension; the machine knows only whether it holds a session.
 	const machine = AtomMachine.bind(runtime).make(
 		Machine.make({
@@ -162,11 +176,18 @@ export function make(name: string, server: string, storage: Storage) {
 			effects: {
 				// A locked Keychain is read again each second instead of reaching React as an error.
 				read: Effect.retry(read, Schedule.spaced('1 second')),
-				signIn
+				signIn,
+				signOut
 			},
-			events: Machine.events({Changed: {}, SignIn: {}}),
+			events: Machine.events({Changed: {}, SignIn: {}, SignOut: {}}),
 			root: Machine.state({
-				states: {Reading: {}, SignedIn: {states: {Checking: {}, Idle: {}}}, SignedOut: {}, SigningIn: {}}
+				states: {
+					Reading: {},
+					SignedIn: {states: {Checking: {}, Idle: {}}},
+					SignedOut: {},
+					SigningIn: {},
+					SigningOut: {}
+				}
 			})
 		}).handle({
 			initial: {target: 'Reading'},
@@ -188,7 +209,7 @@ export function make(name: string, server: string, storage: Storage) {
 				// A check keeps the app on screen while it reads the Keychain again.
 				SignedIn: {
 					initial: {target: 'SignedIn.Idle'},
-					on: {Changed: {target: 'SignedIn.Checking'}},
+					on: {Changed: {target: 'SignedIn.Checking'}, SignOut: {target: 'SigningOut'}},
 					states: {
 						Checking: {
 							invoke: {
@@ -208,7 +229,8 @@ export function make(name: string, server: string, storage: Storage) {
 					}
 				},
 				SignedOut: {on: {SignIn: {target: 'SigningIn'}}},
-				SigningIn: {invoke: {onDone: {target: 'SignedIn'}, onFailure: {target: 'SignedOut'}, src: 'signIn'}}
+				SigningIn: {invoke: {onDone: {target: 'SignedIn'}, onFailure: {target: 'SignedOut'}, src: 'signIn'}},
+				SigningOut: {invoke: {onDone: {target: 'SignedOut'}, onFailure: {target: 'SignedIn'}, src: 'signOut'}}
 			}
 		})
 	)
