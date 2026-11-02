@@ -28,21 +28,23 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
+        with: {tasks: 'true'}
 
       # An app's bundle carries no version, so its build replays from the task cache until its code changes.
-      - name: Build
+      - name: Build every package
         run: |
           vp -C tools/coding-standards pm version "0.1.${{ github.run_number }}" -- --no-git-tag-version --no-git-checks
           vp run build
 
       # pnpm applies publishConfig while packing; npm uploads the README metadata that pnpm omits.
-      - name: Package
+      - name: Publish @deslop/coding-standards
         run: |
           vp -C tools/coding-standards pm pack --pack-destination "$RUNNER_TEMP/package"
-          npm publish "$RUNNER_TEMP"/package/*.tgz
+          npm publish --loglevel=warn "$RUNNER_TEMP"/package/*.tgz
+          echo "- @deslop/coding-standards 0.1.${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"
 
       # An app publishes its own folder only when its fingerprint, a hash of what it ships, differs from its latest release's; the version moves after the build. Everything is bundled, so the published manifest drops every dependency, the scripts and the Expo entry.
-      - name: Apps
+      - name: Publish changed apps
         run: |
           for app in auth deploy gateway portfolio scope stash opm trips signal; do
             cd "apps/$app"
@@ -52,7 +54,10 @@ jobs:
             elif [ "$(npm view "@deslop/$app" fingerprint)" != "$fingerprint" ]; then
               npm pkg set "version=0.1.${{ github.run_number }}" "fingerprint=$fingerprint"
               npm pkg delete dependencies devDependencies scripts main
-              npm publish
+              npm publish --loglevel=warn
+              echo "- @deslop/$app 0.1.${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "- @deslop/$app unchanged" >> "$GITHUB_STEP_SUMMARY"
             fi
             cd ../..
           done

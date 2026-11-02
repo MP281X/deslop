@@ -22,7 +22,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      - run: vp check && vp run check
+        with: {tasks: 'true'}
+      - name: Format, lint, types and dead code
+        run: vp check && vp run check
 
   test:
     name: Test
@@ -30,4 +32,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      - run: vp run test
+        with: {tasks: 'true'}
+      - name: Tests
+        run: vp run test

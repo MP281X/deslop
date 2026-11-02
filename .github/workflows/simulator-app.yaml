@@ -22,7 +22,8 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with: {eas: 'true'}
-      - id: fingerprint
+      - name: Find a build for this fingerprint
+        id: fingerprint
         working-directory: apps/${{ inputs.app }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -45,9 +46,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with: {eas: 'true', ios: 'true'}
-      - working-directory: apps/${{ inputs.app }}
+      - name: Build the Simulator app
+        working-directory: apps/${{ inputs.app }}
         run: eas build --local --profile simulator --platform ios --non-interactive --output "$RUNNER_TEMP/simulator.tar.gz"
-      - uses: actions/upload-artifact@v7
+      - name: Upload the Simulator app
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ needs.fingerprint.outputs.artifact }}
           path: ${{ runner.temp }}/simulator.tar.gz
