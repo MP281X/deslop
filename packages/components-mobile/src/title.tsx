@@ -8,7 +8,7 @@ import {colors, space, text} from './theme.ts'
 
 import {assetAtom} from '#lib/utils.ts'
 
-// The app's icon and lowercase name, leading in the navigation bar like the web app bar.
+// The app's icon and lowercase name in the navigation bar's title, where iOS draws no glass button around it.
 export function AppTitle(props: {logo: number | string; name: string}) {
 	const uri = useAtomValue(assetAtom(props.logo))
 	return (
