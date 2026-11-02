@@ -35,6 +35,8 @@ export const InventoryItem = Schema.Struct({
 	processes: Schema.optionalKey(Schema.Array(Process)),
 	protocol: Schema.optionalKey(Schema.Literals(['tcp', 'udp'])),
 	publicAccess: Schema.optionalKey(Schema.Boolean),
+	// A service a systemd timer starts, such as an updater or a backup: a job, not an app.
+	scheduled: Schema.optionalKey(Schema.Boolean),
 	scope: Schema.optionalKey(Schema.Literals(['user', 'system'])),
 	self: Schema.optionalKey(Schema.Boolean),
 	state: Schema.String,
@@ -105,6 +107,9 @@ export const ExposeRequest = Schema.Struct({...Exposure.fields, target: Schema.o
 
 export type HideRequest = typeof HideRequest.Type
 export const HideRequest = Schema.Struct({name: Schema.String, target: Schema.optionalKey(Schema.String)})
+
+export type Timer = typeof Timer.Type
+export const Timer = Schema.Struct({activates: Schema.NullOr(Schema.String)})
 
 export type Unit = typeof Unit.Type
 export const Unit = Schema.Struct({

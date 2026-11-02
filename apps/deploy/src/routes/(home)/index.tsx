@@ -335,6 +335,8 @@ function Services() {
 			)
 		)
 	)
+	const apps = Array.filter(rows, row => row.item.scheduled !== true)
+	const jobs = Array.filter(rows, row => row.item.scheduled === true)
 	return (
 		<div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-4 self-center">
 			<Expose key={search.machine ?? 'all'} items={items} choices={availablePorts(items)} />
@@ -345,7 +347,7 @@ function Services() {
 					value={query}
 					onChange={event => setQuery(event.target.value)}
 				/>
-				<span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">{rows.length} apps</span>
+				<span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">{apps.length} apps</span>
 			</div>
 			{Array.map(
 				Array.filter(
@@ -359,29 +361,42 @@ function Services() {
 				)
 			)}
 			<div className="pb-safe min-h-0 flex-1 overflow-y-auto pr-3">
-				<div role="list" aria-label="Apps">
-					{Array.map(rows, row => (
-						<InventoryRow
-							key={`${row.item.id}:${query !== ''}`}
-							row={row}
-							showMachine={search.machine === undefined || search.machine === 'all'}
-							processMatch={
-								query !== '' &&
-								!String.includes(String.toLowerCase(query))(
-									String.toLowerCase(
-										`${row.item.worker} ${row.item.name} ${Array.join(
-											Array.map(row.listeners, listener => `${listener.port}`),
-											' '
-										)} ${Array.join(
-											Array.map(row.exposures, exposure => exposure.url),
-											' '
-										)}`
-									)
-								)
-							}
-						/>
-					))}
-				</div>
+				{Array.map(
+					[
+						{label: 'Apps', rows: apps},
+						// What a timer starts, such as an updater, after the apps it serves.
+						{label: 'Scheduled', rows: jobs}
+					],
+					group =>
+						!Array.isArrayEmpty(group.rows) && (
+							<section key={group.label} aria-label={group.label} className="not-first:mt-6">
+								{group.label === 'Scheduled' && <h2 className="text-muted-foreground mb-1 text-xs">Scheduled</h2>}
+								<div role="list">
+									{Array.map(group.rows, row => (
+										<InventoryRow
+											key={`${row.item.id}:${query !== ''}`}
+											row={row}
+											showMachine={search.machine === undefined || search.machine === 'all'}
+											processMatch={
+												query !== '' &&
+												!String.includes(String.toLowerCase(query))(
+													String.toLowerCase(
+														`${row.item.worker} ${row.item.name} ${Array.join(
+															Array.map(row.listeners, listener => `${listener.port}`),
+															' '
+														)} ${Array.join(
+															Array.map(row.exposures, exposure => exposure.url),
+															' '
+														)}`
+													)
+												)
+											}
+										/>
+									))}
+								</div>
+							</section>
+						)
+				)}
 				{Array.isArrayEmpty(rows) && <p className="text-muted-foreground text-sm">No matching apps.</p>}
 			</div>
 		</div>
