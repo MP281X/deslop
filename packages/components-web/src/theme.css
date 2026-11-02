@@ -169,6 +169,17 @@
 	align-self: flex-start;
 }
 
+/* DESIGN.md, Components: badges are square like the controls around them, not pills. */
+[data-slot='badge'] {
+	border-radius: var(--radius-sm);
+}
+
+/* DESIGN.md, Shapes: a dialog rounds like the menus and popovers it sits beside, not more. */
+[data-slot='dialog-content'],
+[data-slot='alert-dialog-content'] {
+	border-radius: var(--radius-lg);
+}
+
 [data-slot='input-group-control'][role='combobox'] {
 	text-overflow: ellipsis;
 }

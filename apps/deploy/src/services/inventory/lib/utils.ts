@@ -59,8 +59,27 @@ function ports(items: readonly InventoryItem[]) {
 	)
 }
 
-export function portLabel(item: InventoryItem) {
-	return `${item.process ?? item.name} · :${item.port}`
+// The service or container a process belongs to, by its cgroup: `service:<scope>:<unit>` or `container:<short id>`.
+export function processOwner(cgroup: string) {
+	const container = Option.getOrUndefined(
+		String.match(/\/(?:docker-|docker\/)([a-f0-9]{12,64})(?:\.scope)?(?:\/|\n|$)/u)(cgroup)
+	)?.[1]
+	if (container !== undefined) return `container:${String.slice(0, 12)(container)}`
+	const segments = String.split(cgroup, /[/\n]/u)
+	const service = Option.getOrElse(Array.findLastIndex(segments, String.endsWith('.service')), () => -1)
+	const manager = Option.getOrElse(
+		Array.findFirstIndex(segments, segment => Option.isSome(String.match(/^user@[0-9]+\.service$/u)(segment))),
+		() => Infinity
+	)
+	return `service:${Boolean.match(service > manager, {onFalse: () => 'system', onTrue: () => 'user'})}:${segments[service] ?? ''}`
+}
+
+// The owner key a service or container's processes carry, so history recorded by owner finds its row.
+export function itemOwner(item: InventoryItem) {
+	if (item.kind === 'container') {
+		return `container:${String.slice(0, 12)(Option.getOrElse(Array.last(String.split(item.id, ':docker:')), () => ''))}`
+	}
+	return `service:${item.scope ?? 'system'}:${item.name}`
 }
 
 function fullName(item: InventoryItem) {

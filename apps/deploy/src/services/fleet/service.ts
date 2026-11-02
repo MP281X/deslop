@@ -27,7 +27,7 @@ import {Auth} from '@deslop/runtime/auth/service'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {Exposures} from '#services/exposures/service.ts'
 import {DeployError, Snapshot, Worker} from '#services/inventory/schema.ts'
-import type {ExposeRequest, HideRequest} from '#services/inventory/schema.ts'
+import type {ExposeRequest, HideRequest, RunRequest} from '#services/inventory/schema.ts'
 import {Inventory} from '#services/inventory/service.ts'
 import {history} from '#services/metrics/lib/utils.ts'
 import type {HistoryQuery, MachineHistory} from '#services/metrics/schema.ts'
@@ -74,6 +74,7 @@ export class Fleet extends Context.Service<
 	{
 		readonly expose: (input: ExposeRequest) => Effect.Effect<string, DeployError>
 		readonly hide: (input: HideRequest) => Effect.Effect<void, DeployError>
+		readonly run: (input: RunRequest) => Effect.Effect<void, DeployError>
 		readonly local: Effect.Effect<Snapshot>
 		readonly history: (query: HistoryQuery) => Effect.Effect<MachineHistory>
 		readonly current: (query: HistoryQuery) => Effect.Effect<MachineHistory[]>
@@ -208,6 +209,20 @@ export class Fleet extends Context.Service<
 					)
 					return [own, ...others]
 				}),
+				run: Effect.fnUntraced(
+					function* (input) {
+						if (input.target === undefined || input.target === '') {
+							return yield* inventory.run(Struct.omit(input, ['target']))
+						}
+						return yield* remote(yield* selectedWorker(input.target), (client, headers) =>
+							client('deploy.run', Struct.omit(input, ['target']), {headers})
+						)
+					},
+					Effect.mapError(cause => {
+						if (Schema.is(DeployError)(cause)) return cause
+						return DeployError.make({cause, message: 'Worker could not start the job'})
+					})
+				),
 				snapshot: Effect.gen(function* () {
 					const own = yield* local
 					const others = yield* Effect.forEach(

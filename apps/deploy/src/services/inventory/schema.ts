@@ -9,6 +9,8 @@ export class DeployError extends Schema.TaggedError<DeployError>()('DeployError'
 
 export type Process = typeof Process.Type
 export const Process = Schema.Struct({
+	// Its arguments, the executable first, with anything that looks like a secret masked.
+	command: Schema.optional(Schema.Array(Schema.String)),
 	cpu: Schema.optional(Schema.Finite),
 	memory: Schema.Finite,
 	name: Schema.String,
@@ -109,6 +111,14 @@ export const ExposeRequest = Schema.Struct({...Exposure.fields, target: Schema.o
 
 export type HideRequest = typeof HideRequest.Type
 export const HideRequest = Schema.Struct({name: Schema.String, target: Schema.optionalKey(Schema.String)})
+
+// A timer-started service to start now, outside its schedule.
+export type RunRequest = typeof RunRequest.Type
+export const RunRequest = Schema.Struct({
+	name: Schema.String,
+	scope: Schema.Literals(['system', 'user']),
+	target: Schema.optionalKey(Schema.String)
+})
 
 export type Timer = typeof Timer.Type
 // `next` is in epoch microseconds.

@@ -19,6 +19,7 @@ import {
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
+import {DeployError} from '#services/inventory/schema.ts'
 import {Inventory} from '#services/inventory/service.ts'
 
 it.layer(NodeServices.layer)('Inventory', test => {
@@ -148,6 +149,8 @@ it.layer(NodeServices.layer)('Inventory', test => {
 						String.startsWith('Funnel permitted (public)')(item.detail)
 				)
 			)
+			// Run now starts only what a timer starts, never an arbitrary unit.
+			assert.instanceOf(yield* Effect.flip(inventory.run({name: 'sshd.service', scope: 'system'})), DeployError)
 		})
 	)
 })

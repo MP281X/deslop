@@ -1,8 +1,10 @@
-import {Array, Boolean, Clock, Effect, FileSystem, Match, Number, Option, Record, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Clock, Effect, FileSystem, Number, Option, Record, Schema, String, pipe} from 'effect'
 
+import {itemOwner, processOwner} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem, Process} from '#services/inventory/schema.ts'
 
 const PROCESS_INTERVAL = 2000
+const SECRET = /(?:token|secret|passw(?:or)?d|key|auth|credential|cookie|session)/iu
 
 function processStatus(status: string) {
 	function field(name: string) {
@@ -16,6 +18,19 @@ function processStatus(status: string) {
 		parent: Schema.decodeSync(Schema.FiniteFromString.check(Schema.isInt()))(field('PPid')),
 		pid: Schema.decodeSync(Schema.FiniteFromString.check(Schema.isInt()))(field('Pid'))
 	}
+}
+
+// What a process was started with, as its arguments: flags and variables named like secrets, the value after such a flag, long opaque strings and URL credentials are masked, and each argument and their number are capped.
+function commandArgs(cmdline: string) {
+	const args = Array.take(Array.filter(String.split(cmdline, '\0'), String.isNonEmpty), 40)
+	return Array.map(args, (arg, index) => {
+		if (Option.isSome(String.match(/^-{0,2}[\w.-]+=/u)(arg)) && SECRET.test(String.split(arg, '=')[0] ?? '')) {
+			return `${String.split(arg, '=')[0]}=…`
+		}
+		if (index > 0 && SECRET.test(args[index - 1] ?? '') && String.startsWith('-')(args[index - 1] ?? '')) return '…'
+		if (!String.startsWith('/')(arg) && Option.isSome(String.match(/^[\w+/=-]{32,}$/u)(arg))) return '…'
+		return String.slice(0, 200)(String.replaceAll(/:\/\/[^/@\s]+@/gu, '://…@')(arg))
+	})
 }
 
 export const processes = Effect.gen(function* () {
@@ -44,7 +59,14 @@ export const processes = Effect.gen(function* () {
 						)
 						return {
 							cgroup: yield* fs.readFileString(`/proc/${pid}/cgroup`),
-							process: yield* Effect.try(() => processStatus(status)),
+							process: {
+								...(yield* Effect.try(() => processStatus(status))),
+								// A process whose arguments can't be read still counts, without its preview.
+								...Option.match(yield* Effect.option(fs.readFileString(`/proc/${pid}/cmdline`)), {
+									onNone: () => ({}),
+									onSome: cmdline => ({command: commandArgs(cmdline)})
+								})
+							},
 							start: yield* Schema.decodeEffect(Schema.FiniteFromString)(fields[19] ?? ''),
 							ticks:
 								(yield* Schema.decodeEffect(Schema.FiniteFromString)(fields[11] ?? '')) +
@@ -78,7 +100,7 @@ function processUsage(current: Effect.Success<typeof processes>, previous?: Effe
 								elapsed > 0 &&
 								record.ticks >= value.ticks &&
 								current.time - (previous?.time ?? current.time) >= PROCESS_INTERVAL &&
-								current.time - (previous?.time ?? 0) <= 30_000
+								current.time - (previous?.time ?? 0) <= 90_000
 						),
 						value => Number.clamp(((record.ticks - value.ticks) / elapsed) * 100, {maximum: 100, minimum: 0})
 					)
@@ -121,32 +143,45 @@ export function attachProcesses(
 	items: readonly InventoryItem[],
 	records: readonly {cgroup: string; process: NonNullable<InventoryItem['processes']>[number]}[]
 ) {
-	const owners = Array.groupBy(records, record => {
-		const container = Option.getOrUndefined(
-			String.match(/\/(?:docker-|docker\/)([a-f0-9]{12,64})(?:\.scope)?(?:\/|\n|$)/u)(record.cgroup)
-		)?.[1]
-		if (container !== undefined) return `container:${String.slice(0, 12)(container)}`
-		const segments = String.split(record.cgroup, /[/\n]/u)
-		const service = Option.getOrElse(Array.findLastIndex(segments, String.endsWith('.service')), () => -1)
-		const manager = Option.getOrElse(
-			Array.findFirstIndex(segments, segment => Option.isSome(String.match(/^user@[0-9]+\.service$/u)(segment))),
-			() => Infinity
-		)
-		return `service:${Boolean.match(service > manager, {onFalse: () => 'system', onTrue: () => 'user'})}:${segments[service] ?? ''}`
-	})
+	const owners = Array.groupBy(records, record => processOwner(record.cgroup))
 	return Array.map(items, item => ({
 		...item,
 		processes: Array.map(
-			pipe(
-				Match.value(item.kind),
-				Match.when('service', () => owners[`service:${item.scope}:${item.name}`] ?? []),
-				Match.when(
-					'container',
-					() => owners[`container:${String.slice(0, 12)(String.split(item.id, ':docker:')[1] ?? '')}`] ?? []
-				),
-				Match.orElse(() => [])
-			),
+			Boolean.match(item.kind === 'service' || item.kind === 'container', {
+				onFalse: () => [],
+				onTrue: () => owners[itemOwner(item)] ?? []
+			}),
 			record => record.process
 		)
 	}))
+}
+
+// Each owner's memory and CPU, summed over its processes, for the metrics history.
+export function ownerUsage(records: readonly {cgroup: string; process: Process}[]) {
+	return Array.map(
+		// Only owners an app row can name, and that hold at least 1 MiB, ride along with every sample.
+		Array.filter(
+			Record.toEntries(Array.groupBy(records, record => processOwner(record.cgroup))),
+			entry =>
+				!String.endsWith(':')(entry[0]) &&
+				Array.reduce(entry[1], 0, (sum, record) => sum + record.process.memory) >= 1024 ** 2
+		),
+		entry => {
+			const [id, group] = entry
+			const cpus = Array.getSomes(Array.map(group, record => Option.fromUndefinedOr(record.process.cpu)))
+			return {
+				...Boolean.match(Array.isReadonlyArrayNonEmpty(cpus), {
+					onFalse: () => ({}),
+					onTrue: () => ({
+						cpu: Number.round(
+							Array.reduce(cpus, 0, (sum, cpu) => sum + cpu),
+							2
+						)
+					})
+				}),
+				id,
+				memory: Number.round(Array.reduce(group, 0, (sum, record) => sum + record.process.memory) / 1024, 0) * 1024
+			}
+		}
+	)
 }

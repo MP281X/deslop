@@ -18,6 +18,10 @@ export const Counters = Schema.Struct({
 
 export type Sample = typeof Sample.Type
 export const Sample = Schema.Struct({
+	// Each service or container's memory and its CPU as a share of the whole machine, keyed like `itemOwner`.
+	apps: Schema.optional(
+		Schema.Array(Schema.Struct({cpu: Schema.optional(Schema.Finite), id: Schema.String, memory: Schema.Finite}))
+	),
 	cores: Schema.optional(Schema.Array(Schema.Struct({id: Schema.String, usage: Schema.optional(Schema.Finite)}))),
 	cpu: Schema.optional(Schema.Finite),
 	diskRead: Schema.optional(Schema.Finite),

@@ -47,7 +47,13 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 					time: 0,
 					worker: 'worker'
 				})
-				const group = RpcContracts.omit('deploy.inventory', 'deploy.metrics', 'deploy.expose', 'deploy.hide')
+				const group = RpcContracts.omit(
+					'deploy.inventory',
+					'deploy.metrics',
+					'deploy.expose',
+					'deploy.hide',
+					'deploy.run'
+				)
 				const server = yield* Layer.build(
 					pipe(
 						HttpRouter.serve(
@@ -97,7 +103,10 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 								Fleet.layer,
 								Layer.provide(Layer.succeed(Metrics, {read: () => Effect.succeed(history)})),
 								Layer.provide(
-									Layer.succeed(Inventory, {snapshot: Effect.succeed(Snapshot.make({items: [], sources: [], time: 0}))})
+									Layer.succeed(Inventory, {
+										run: () => Effect.fail(DeployError.make({message: 'read only'})),
+										snapshot: Effect.succeed(Snapshot.make({items: [], sources: [], time: 0}))
+									})
 								),
 								Layer.provide(
 									Layer.succeed(Exposures, {

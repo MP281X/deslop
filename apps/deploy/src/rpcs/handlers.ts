@@ -20,6 +20,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 					Stream.fromEffect(fleet.current(query)),
 					Stream.fromEffectSchedule(fleet.metrics(query), Schedule.spaced('30 seconds'))
 				),
+			'deploy.run': fleet.run,
 			'deploy.snapshot': () => fleet.local
 		})
 	})

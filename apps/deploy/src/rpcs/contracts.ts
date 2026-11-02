@@ -5,7 +5,7 @@ import {Rpc, RpcGroup} from 'effect/rpc'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 
-import {DeployError, ExposeRequest, HideRequest, Snapshot} from '#services/inventory/schema.ts'
+import {DeployError, ExposeRequest, HideRequest, RunRequest, Snapshot} from '#services/inventory/schema.ts'
 import {HistoryQuery, MachineHistory} from '#services/metrics/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
@@ -27,5 +27,6 @@ export class RpcContracts extends RpcGroup.make(
 		payload: ExposeRequest,
 		success: Schema.String
 	}),
-	Rpc.make('deploy.hide', {error: Schema.Union([AuthError, DeployError]), payload: HideRequest})
+	Rpc.make('deploy.hide', {error: Schema.Union([AuthError, DeployError]), payload: HideRequest}),
+	Rpc.make('deploy.run', {error: Schema.Union([AuthError, DeployError]), payload: RunRequest})
 ).middleware(RpcAuth) {}

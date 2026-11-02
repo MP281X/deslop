@@ -1,6 +1,6 @@
-import {Array, Boolean, DateTime, Number, Option} from 'effect'
+import {Array, DateTime} from 'effect'
 
-import {chartWindow, resolution} from '#services/metrics/lib/utils.ts'
+import {chartWindow} from '#services/metrics/lib/utils.ts'
 
 export function chartTicks(hours: number, now: number) {
 	const window = chartWindow(hours, now)
@@ -28,31 +28,4 @@ export function chartTicks(hours: number, now: number) {
 		}),
 		tick => tick.at <= now
 	)
-}
-
-export function chartBucket(hours: number, now: number, at: number) {
-	const window = chartWindow(hours, now)
-	const step = resolution(hours)
-	const slot = Number.clamp(Math.ceil((at - window.start) / step) - 1, {maximum: 59, minimum: 0})
-	return {
-		width: (Number.clamp((now - window.start - slot * step) / step, {maximum: 1, minimum: 0}) * 80) / 60,
-		x: (slot / 60) * 100
-	}
-}
-
-export function rateScale(value: number) {
-	const unit = 1024 ** Number.clamp(Math.floor(Math.log2(Number.max(1, value)) / 10), {maximum: 3, minimum: 0})
-	const magnitude = 10 ** Math.floor(Math.log10(Number.max(1, value / unit)))
-	const normalized = value / unit / magnitude
-	const maximum =
-		Option.getOrElse(
-			Array.findFirst([1, 2, 5, 10], candidate => candidate >= normalized),
-			() => 10
-		) *
-		magnitude *
-		unit
-	return {
-		label: `${Number.round(maximum / unit, 0)}${Boolean.match(unit === 1, {onFalse: () => Boolean.match(unit === 1024, {onFalse: () => Boolean.match(unit === 1024 ** 2, {onFalse: () => 'G', onTrue: () => 'M'}), onTrue: () => 'K'}), onTrue: () => ''})}`,
-		maximum
-	}
 }

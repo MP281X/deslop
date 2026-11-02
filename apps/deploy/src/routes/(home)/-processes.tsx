@@ -1,62 +1,93 @@
-import {Array, Boolean} from 'effect'
+import {Array, Boolean, Number, Option, String} from 'effect'
+
+import {ChevronRight} from 'lucide-react'
+import {useState} from 'react'
+
+import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/components-web/ui/collapsible'
+import {cn} from '@deslop/components-web/utils'
 
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
-import type {processTree} from '#routes/(home)/-process-tree.ts'
-import {processUsage} from '#routes/(home)/-process-tree.ts'
+import type {ProcessNode} from '#routes/(home)/-process-tree.ts'
 
-export function ProcessUsage(props: {cpu?: number; memory?: number; partial?: boolean}) {
-	const mib = (props.memory ?? 0) / 1024 ** 2
+const mib = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
+
+// One process: its mark, name and what it holds of the app's memory as a bar; small ones read muted.
+function Line(props: {appMemory: number; depth: number; node: ProcessNode; open?: boolean}) {
 	return (
-		<>
+		<span
+			className={cn(
+				'flex h-7 min-w-0 items-center gap-2 pl-(--indent) text-xs',
+				props.node.small && 'text-muted-foreground'
+			)}
+			style={{'--indent': `calc(var(--spacing) * ${props.depth * 4})`}}
+			title={`${mib.format(props.node.memory / 1024 ** 2)} MiB${Boolean.match(props.node.cpu === undefined, {onFalse: () => ` · ${props.node.cpu?.toFixed(1)}% CPU`, onTrue: () => ''})}`}
+		>
+			{Boolean.match(Array.isArrayNonEmpty(props.node.children), {
+				onFalse: () => <span className="size-3.5 shrink-0" />,
+				onTrue: () => (
+					<ChevronRight
+						className={cn(
+							'text-muted-foreground size-3.5 shrink-0 transition-transform',
+							props.open === true && 'rotate-90'
+						)}
+					/>
+				)
+			})}
+			<ApplicationIcon name={props.node.name} small />
+			<span className="max-w-1/2 shrink-0 truncate font-mono">{props.node.name}</span>
+			{Array.isArrayNonEmpty(props.node.children) && (
+				<span className="text-muted-foreground shrink-0 font-mono">{props.node.children.length}</span>
+			)}
 			<span
-				className="text-muted-foreground text-right font-mono text-xs whitespace-nowrap tabular-nums"
-				title={Boolean.match(props.partial === true, {
-					onFalse: () => 'CPU · share of machine capacity',
-					onTrue: () => 'CPU · lower bound; some processes have no baseline'
-				})}
+				className="text-muted-foreground min-w-0 flex-1 truncate font-mono"
+				title={Array.join(props.node.command ?? [], ' ')}
 			>
-				{Boolean.match(props.cpu === undefined, {
-					onFalse: () =>
-						`${Boolean.match(props.partial === true, {onFalse: () => '', onTrue: () => '≥'})}${new Intl.NumberFormat(undefined, {maximumFractionDigits: Boolean.match((props.cpu ?? 0) < 10, {onFalse: () => 0, onTrue: () => 1})}).format(props.cpu ?? 0)}%`,
-					onTrue: () => ''
-				})}
+				{/* The arguments that tell a process apart: no executable, no variable assignments, and paths cut to their last part; hovering shows them whole. */}
+				{Array.join(
+					Array.map(
+						Array.filter(Array.drop(props.node.command ?? [], 1), arg =>
+							Option.isNone(String.match(/^[A-Z_][A-Z0-9_]*=/u)(arg))
+						),
+						String.replaceAll(/(^|=)(?:\/[^/\s=]+)+\/([^/\s]+)/gu, '$1$2')
+					),
+					' '
+				)}
 			</span>
-			<span
-				className="text-muted-foreground text-right font-mono text-xs whitespace-nowrap tabular-nums"
-				title="Resident memory"
-			>
-				{Boolean.match(props.memory === undefined, {
-					onFalse: () =>
-						`${new Intl.NumberFormat(undefined, {maximumFractionDigits: Boolean.match(mib >= 1000 || mib < 10, {onFalse: () => 0, onTrue: () => 1})}).format(Boolean.match(mib >= 1000, {onFalse: () => mib, onTrue: () => mib / 1024}))} ${Boolean.match(mib >= 1000, {onFalse: () => 'MiB', onTrue: () => 'GiB'})}`,
-					onTrue: () => ''
-				})}
+			<span className="bg-muted h-1 w-20 shrink-0 overflow-hidden rounded-full max-sm:w-12">
+				<span
+					className={cn('block h-full w-(--share) rounded-full bg-(--machine)', props.node.small && 'opacity-40')}
+					style={{'--share': `${Number.max(2, (props.node.memory / Number.max(props.appMemory, 1)) * 100)}%`}}
+				/>
 			</span>
-		</>
+		</span>
 	)
 }
 
-export function Processes(props: {rows: ReturnType<typeof processTree>; showMachine: boolean}) {
+// A parent opens on its own, as a small accordion; the first level starts open, deeper ones closed.
+function Node(props: {appMemory: number; depth: number; node: ProcessNode}) {
+	const [open, setOpen] = useState(props.depth === 0 && !props.node.small)
+	if (Array.isArrayEmpty(props.node.children)) {
+		return <Line appMemory={props.appMemory} depth={props.depth} node={props.node} />
+	}
 	return (
-		<div className="pb-2">
-			{Array.map(props.rows, (row, index) => (
-				<div
-					key={row.members[0]?.pid ?? index}
-					className="deploy-process-grid h-7"
-					data-show-machine={props.showMachine}
-				>
-					<span className="bg-border w-px self-stretch justify-self-center" />
-					<span
-						className={`flex min-w-0 items-center gap-2 ${Boolean.match(row.depth === 2, {onFalse: () => '', onTrue: () => 'pl-4'})}`}
-						title={row.path}
-					>
-						<ApplicationIcon name={row.name} small />
-						<span className="truncate text-xs">
-							{row.name}
-							{row.main && <span className="text-muted-foreground ml-1">main</span>}
-						</span>
-					</span>
-					<ProcessUsage {...processUsage(row.members)} />
-				</div>
+		<Collapsible open={open} onOpenChange={setOpen}>
+			<CollapsibleTrigger className="w-full cursor-pointer text-left" aria-label={`${props.node.name} processes`}>
+				<Line appMemory={props.appMemory} depth={props.depth} node={props.node} open={open} />
+			</CollapsibleTrigger>
+			<CollapsibleContent>
+				{Array.map(props.node.children, child => (
+					<Node key={`${child.pid}:${child.name}`} appMemory={props.appMemory} depth={props.depth + 1} node={child} />
+				))}
+			</CollapsibleContent>
+		</Collapsible>
+	)
+}
+
+export function Processes(props: {appMemory: number; tree: readonly ProcessNode[]}) {
+	return (
+		<div className="pb-2 pl-7">
+			{Array.map(props.tree, node => (
+				<Node key={`${node.pid}:${node.name}`} appMemory={props.appMemory} depth={0} node={node} />
 			))}
 		</div>
 	)

@@ -1,42 +1,40 @@
-import {useAtom, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Option, String} from 'effect'
 
-import {useSearch} from '@tanstack/react-router'
-import {AsyncResult} from 'effect/reactivity'
-import {Plus} from 'lucide-react'
+import {AsyncResult, Atom} from 'effect/reactivity'
 import {useState} from 'react'
 
 import {ResultError} from '@deslop/components-web/result-error'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
-import {
-	Combobox,
-	ComboboxContent,
-	ComboboxEmpty,
-	ComboboxInput,
-	ComboboxItem,
-	ComboboxList
-} from '@deslop/components-web/ui/combobox'
-import {Dialog, DialogContent, DialogTitle} from '@deslop/components-web/ui/dialog'
+import {Dialog, DialogClose, DialogContent, DialogFooter, DialogTitle} from '@deslop/components-web/ui/dialog'
+import {Field, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
-import {Spinner} from '@deslop/components-web/ui/spinner'
-import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
+import {Tabs, TabsContent, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'
 
-import {MachineIcon} from '#lib/components.tsx'
-import {exposeAtom, exposeOpenAtom, inventoryAtom} from '#lib/utils.ts'
-import {availablePorts, portLabel} from '#services/inventory/lib/utils.ts'
+import {exposeAtom, exposeTargetAtom, inventoryAtom} from '#lib/utils.ts'
+import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import type {InventoryItem} from '#services/inventory/schema.ts'
 
-function Expose(props: {items: readonly InventoryItem[]; choices: readonly InventoryItem[]}) {
+// Opens the Expose dialog on a port, with no answer left from an earlier one.
+export function useExpose() {
+	const setTarget = useAtomSet(exposeTargetAtom)
+	const reset = useAtomSet(exposeAtom)
+	return (port: InventoryItem) => {
+		reset(Atom.Reset)
+		setTarget(Option.some(port))
+	}
+}
+
+// The port is chosen by its badge, so the dialog only asks who reaches it and, for the public, at which hostname.
+function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 	const [result, expose] = useAtom(exposeAtom)
 	const [kind, setKind] = useState<'tailnet' | 'public'>('tailnet')
-	const [selectedId, setSelectedId] = useState('')
 	const [hostname, setHostname] = useState('')
-	const selectedItem = Option.getOrUndefined(Array.findFirst(props.choices, item => item.id === selectedId))
 	const tailnetHost = Option.getOrElse(
 		Option.map(
-			Array.findFirst(props.items, item => item.self === true && item.worker === selectedItem?.worker),
+			Array.findFirst(props.items, item => item.self === true && item.worker === props.port.worker),
 			item => item.hostname ?? ''
 		),
 		() => ''
@@ -44,80 +42,68 @@ function Expose(props: {items: readonly InventoryItem[]; choices: readonly Inven
 	const pending = AsyncResult.isWaiting(result)
 	return (
 		<form
-			aria-label="Expose a port"
-			className="flex flex-col gap-3"
+			className="flex flex-col gap-4"
 			onSubmit={event => {
 				event.preventDefault()
-				if (selectedItem?.port === undefined) return
 				expose({
 					hostname: Boolean.match(kind === 'public', {onFalse: () => tailnetHost, onTrue: () => hostname}),
 					kind,
 					name: Boolean.match(kind === 'public', {
-						onFalse: () => `tailnet:${selectedItem.port}`,
+						onFalse: () => `tailnet:${props.port.port}`,
 						onTrue: () => `public:${hostname}`
 					}),
-					port: selectedItem.port,
+					port: props.port.port ?? 0,
 					publicAccess: kind === 'public',
-					target: Boolean.match(String.startsWith('remote:')(selectedItem.id), {
+					target: Boolean.match(String.startsWith('remote:')(props.port.id), {
 						onFalse: () => '',
-						onTrue: () => selectedItem.worker
+						onTrue: () => props.port.worker
 					})
 				})
 			}}
 		>
-			<DialogTitle>Expose a port</DialogTitle>
-			<ToggleGroup
-				aria-label="Exposure visibility"
-				value={[kind]}
-				disabled={pending}
-				onValueChange={values => {
-					if (values[0] === 'public' || values[0] === 'tailnet') setKind(values[0])
+			<DialogTitle className="flex items-center gap-2">
+				<ApplicationIcon name={props.port.process ?? props.port.name} small />
+				Expose {props.port.process}
+				<Badge variant="outline" className="font-mono">
+					:{props.port.port}
+				</Badge>
+			</DialogTitle>
+			{/* Who reaches it, as tabs over the address: the tailnet's is fixed, a public one is typed. */}
+			<Tabs
+				value={kind}
+				onValueChange={value => {
+					if (value === 'public' || value === 'tailnet') setKind(value)
 				}}
 			>
-				<ToggleGroupItem value="tailnet">Tailnet</ToggleGroupItem>
-				<ToggleGroupItem value="public">Public</ToggleGroupItem>
-			</ToggleGroup>
-			<div className="flex items-center gap-2">
-				<div className="min-w-0 flex-1">
-					<Combobox
-						items={props.choices}
-						value={selectedItem ?? null}
-						itemToStringLabel={portLabel}
-						isItemEqualToValue={(a, b) => a.id === b.id}
-						onValueChange={item => setSelectedId(item?.id ?? '')}
-						disabled={pending}
-					>
-						<ComboboxInput
-							id="expose-port"
-							aria-label="Listening port"
-							placeholder="Choose an app…"
-							className="w-full"
-							showClear
-						/>
-						<ComboboxContent className="w-(--available-width) max-w-sm sm:w-(--anchor-width)">
-							<ComboboxEmpty>No matching app listeners.</ComboboxEmpty>
-							<ComboboxList>
-								{(item: InventoryItem) => (
-									<ComboboxItem key={item.id} value={item} className="pr-7">
-										<MachineIcon worker={item.worker} />
-										<span className="min-w-0 flex-1 truncate" title={item.unit || item.process}>
-											{item.process}
-										</span>
-										<Badge variant="secondary" className="font-mono">
-											:{item.port}
-										</Badge>
-									</ComboboxItem>
-								)}
-							</ComboboxList>
-						</ComboboxContent>
-					</Combobox>
-				</div>
-				{kind === 'public' && (
-					<div className="min-w-0 flex-1">
+				<TabsList className="w-full">
+					<TabsTrigger value="tailnet" disabled={pending}>
+						Tailnet
+					</TabsTrigger>
+					<TabsTrigger value="public" disabled={pending}>
+						Public
+					</TabsTrigger>
+				</TabsList>
+				<TabsContent value="tailnet">
+					<Field>
+						<FieldLabel htmlFor="expose-tailnet">Address</FieldLabel>
 						<Input
-							id="expose-hostname"
-							aria-label="Public hostname"
-							required
+							id="expose-tailnet"
+							readOnly
+							className="font-mono"
+							value={Boolean.match(tailnetHost === '', {
+								onFalse: () => `https://${tailnetHost}:${props.port.port}`,
+								onTrue: () => ''
+							})}
+						/>
+					</Field>
+				</TabsContent>
+				<TabsContent value="public">
+					<Field>
+						<FieldLabel htmlFor="expose-public">Hostname</FieldLabel>
+						<Input
+							id="expose-public"
+							required={kind === 'public'}
+							className="font-mono"
 							placeholder="app.example.com"
 							autoCapitalize="none"
 							spellCheck={false}
@@ -125,50 +111,39 @@ function Expose(props: {items: readonly InventoryItem[]; choices: readonly Inven
 							disabled={pending}
 							onChange={event => setHostname(String.toLowerCase(event.target.value))}
 						/>
-					</div>
-				)}
+					</Field>
+				</TabsContent>
+			</Tabs>
+			<ResultError result={result} />
+			<DialogFooter>
+				<DialogClose render={<Button variant="ghost" type="button" disabled={pending} />}>Cancel</DialogClose>
 				<Button
 					type="submit"
-					size="icon"
-					aria-label="Expose port"
-					disabled={
-						pending ||
-						selectedItem === undefined ||
-						(kind === 'tailnet' && tailnetHost === '') ||
-						(kind === 'public' && hostname === '')
-					}
+					disabled={pending || (kind === 'tailnet' && tailnetHost === '') || (kind === 'public' && hostname === '')}
 				>
-					{Boolean.match(pending, {onFalse: () => <Plus />, onTrue: () => <Spinner />})}
+					{Boolean.match(pending, {onFalse: () => 'Expose', onTrue: () => 'Exposing…'})}
 				</Button>
-			</div>
-			{selectedId !== '' && selectedItem === undefined && (
-				<p className="text-warning text-xs" role="status">
-					The selected listener is no longer available. Pick another port.
-				</p>
-			)}
-			<ResultError result={result} />
+			</DialogFooter>
 		</form>
 	)
 }
 
-// Opened from the app bar once the inventory has loaded; it closes on success, the new endpoint showing on its app's row.
+// Open while a port is chosen; it closes on success, the new endpoint replacing the port's badge.
 export function ExposeDialog() {
-	const [open, setOpen] = useAtom(exposeOpenAtom)
-	const search = useSearch({from: '/(home)'})
-	return Option.match(AsyncResult.value(useAtomValue(inventoryAtom)), {
+	const [target, setTarget] = useAtom(exposeTargetAtom)
+	return Option.match(Option.all({port: target, snapshot: AsyncResult.value(useAtomValue(inventoryAtom))}), {
 		onNone: () => null,
-		onSome: snapshot => {
-			const items = Array.filter(
-				snapshot.items,
-				item => search.machine === undefined || search.machine === 'all' || item.worker === search.machine
-			)
-			return (
-				<Dialog open={open} onOpenChange={setOpen}>
-					<DialogContent>
-						<Expose key={search.machine ?? 'all'} items={items} choices={availablePorts(items)} />
-					</DialogContent>
-				</Dialog>
-			)
-		}
+		onSome: open => (
+			<Dialog
+				open
+				onOpenChange={next => {
+					if (!next) setTarget(Option.none())
+				}}
+			>
+				<DialogContent>
+					<Expose key={open.port.id} items={open.snapshot.items} port={open.port} />
+				</DialogContent>
+			</Dialog>
+		)
 	})
 }
