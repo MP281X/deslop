@@ -193,10 +193,12 @@ Geist on the web, SF Pro on iOS at Dynamic Type sizes through the `text` tokens 
 ## Layout
 
 - **Rows, not cards.** Hairline rows: a leading mark, a title, one muted line, a trailing status or action.
+- **What needs you leads.** Rows that need the user sort first, their reason replacing the second line in the state's colour; no label, divider or gap sets them apart. A row shows a button only for a fix the user can make; its other actions sit in its context menu (right-click, long press), never behind a ⋯ button.
 - **One column** up to `page`, forms up to `form`; list-and-detail tools split into two panes. 8px inside a group, 16px between groups, 24–32px between sections.
 - **Deploy monitor** uses a dense multi-column canvas up to 1024px; its Apps page stays at `page`, with machine filters, controls and rows sharing the same edges.
 - **iOS.** Inline titles, plain lists, bottom search.
 - **App bars.** The app icon and name lead on the web and take the title's place, centered and without a glass button, on iOS; detail screens keep their native back navigation. Signal's spectator world uses map controls instead of an app bar.
+- **The web app bar is the page header**: name, section tabs, the command field, the page's one action, the account; no heading below it. The command field narrows the page's rows and lists the actions that match, ⌘K focuses it, and on a phone it opens from a search button over the bar. Each app stays its own; no bar links to another app.
 - **Row alignment.** Center leading marks and trailing actions against the whole row, including wrapped details. Rows with inline process trees align both marks to the parent title; `ItemMedia` opts into `data-align="start"`. Stash reserves a 64pt media square even without a preview, using the source mark as its fallback.
 - **List endings.** A closing hairline marks the last row; installed web apps keep 16px plus the home-indicator inset below it.
 

@@ -29,8 +29,15 @@ export const inventoryAtom = Atom.keepAlive(
 	)
 )
 
-export const exposeAtom = RpcClient.runtime.fn((input: ExposeRequest) =>
-	Effect.flatMap(RpcClient, client => client('deploy.expose', input))
+// The Expose dialog, opened from the app bar's button or command field.
+export const exposeOpenAtom = Atom.make(false)
+
+// A port exposed closes the dialog: its endpoint shows on the app's row.
+export const exposeAtom = RpcClient.runtime.fn((input: ExposeRequest, get) =>
+	pipe(
+		Effect.flatMap(RpcClient, client => client('deploy.expose', input)),
+		Effect.tap(() => Effect.sync(() => get.set(exposeOpenAtom, false)))
+	)
 )
 export const hideAtom = Atom.family((target: string) =>
 	Atom.family((name: string) =>

@@ -1,166 +1,30 @@
 import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Number, Option, String} from 'effect'
+import {Array, Boolean, Match, Number, Option, Order, String, pipe} from 'effect'
 
 import {createFileRoute, useSearch} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {ChevronRight, Globe, Network, Plus, X} from 'lucide-react'
+import {ChevronRight, Globe, Network, X} from 'lucide-react'
 import {useState} from 'react'
+import type {ReactNode} from 'react'
 
+import {useCommandQuery} from '@deslop/components-web/app-bar'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
+import {Alert, AlertDescription, AlertTitle} from '@deslop/components-web/ui/alert'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
-import {
-	Combobox,
-	ComboboxContent,
-	ComboboxEmpty,
-	ComboboxInput,
-	ComboboxItem,
-	ComboboxList
-} from '@deslop/components-web/ui/combobox'
-import {Input} from '@deslop/components-web/ui/input'
-import {Spinner} from '@deslop/components-web/ui/spinner'
-import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
+import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/components-web/ui/collapsible'
+import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 
 import {MachineIcon} from '#lib/components.tsx'
-import {exposeAtom, hideAtom, inventoryAtom} from '#lib/utils.ts'
+import {hideAtom, inventoryAtom} from '#lib/utils.ts'
 import {PageError} from '#routes/(home)/-error.tsx'
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import {processTree, processUsage} from '#routes/(home)/-process-tree.ts'
 import {ProcessUsage, Processes} from '#routes/(home)/-processes.tsx'
-import {availablePorts, portLabel, workloadName, workloads} from '#services/inventory/lib/utils.ts'
+import {workloadName, workloads} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem} from '#services/inventory/schema.ts'
-
-function Expose(props: {items: readonly InventoryItem[]; choices: readonly InventoryItem[]}) {
-	const [result, expose] = useAtom(exposeAtom)
-	const [kind, setKind] = useState<'tailnet' | 'public'>('tailnet')
-	const [selectedId, setSelectedId] = useState('')
-	const [hostname, setHostname] = useState('')
-	const selectedItem = Option.getOrUndefined(Array.findFirst(props.choices, item => item.id === selectedId))
-	const tailnetHost = Option.getOrElse(
-		Option.map(
-			Array.findFirst(props.items, item => item.self === true && item.worker === selectedItem?.worker),
-			item => item.hostname ?? ''
-		),
-		() => ''
-	)
-	const pending = AsyncResult.isWaiting(result)
-	return (
-		<form
-			aria-label="Expose a port"
-			className="flex flex-col gap-2 border-b pb-4"
-			onSubmit={event => {
-				event.preventDefault()
-				if (selectedItem?.port === undefined) return
-				expose({
-					hostname: Boolean.match(kind === 'public', {onFalse: () => tailnetHost, onTrue: () => hostname}),
-					kind,
-					name: Boolean.match(kind === 'public', {
-						onFalse: () => `tailnet:${selectedItem.port}`,
-						onTrue: () => `public:${hostname}`
-					}),
-					port: selectedItem.port,
-					publicAccess: kind === 'public',
-					target: Boolean.match(String.startsWith('remote:')(selectedItem.id), {
-						onFalse: () => '',
-						onTrue: () => selectedItem.worker
-					})
-				})
-			}}
-		>
-			<div className="flex items-center justify-between gap-2">
-				<h1 className="text-sm font-semibold">Expose a port</h1>
-				<ToggleGroup
-					aria-label="Exposure visibility"
-					value={[kind]}
-					disabled={pending}
-					onValueChange={values => {
-						if (values[0] === 'public' || values[0] === 'tailnet') setKind(values[0])
-					}}
-				>
-					<ToggleGroupItem value="tailnet">Tailnet</ToggleGroupItem>
-					<ToggleGroupItem value="public">Public</ToggleGroupItem>
-				</ToggleGroup>
-			</div>
-			<div className="flex items-center gap-2">
-				<div className="min-w-0 flex-1">
-					<Combobox
-						items={props.choices}
-						value={selectedItem ?? null}
-						itemToStringLabel={portLabel}
-						isItemEqualToValue={(a, b) => a.id === b.id}
-						onValueChange={item => setSelectedId(item?.id ?? '')}
-						disabled={pending}
-					>
-						<ComboboxInput
-							id="expose-port"
-							aria-label="Listening port"
-							placeholder="Choose an app…"
-							className="w-full"
-							showClear
-						/>
-						<ComboboxContent className="w-(--available-width) max-w-sm sm:w-(--anchor-width)">
-							<ComboboxEmpty>No matching app listeners.</ComboboxEmpty>
-							<ComboboxList>
-								{(item: InventoryItem) => (
-									<ComboboxItem key={item.id} value={item} className="pr-7">
-										<MachineIcon worker={item.worker} />
-										<span className="min-w-0 flex-1 truncate" title={item.unit || item.process}>
-											{item.process}
-										</span>
-										<Badge variant="secondary" className="font-mono">
-											:{item.port}
-										</Badge>
-									</ComboboxItem>
-								)}
-							</ComboboxList>
-						</ComboboxContent>
-					</Combobox>
-				</div>
-				{kind === 'public' && (
-					<div className="min-w-0 flex-1">
-						<Input
-							id="expose-hostname"
-							aria-label="Public hostname"
-							required
-							placeholder="app.example.com"
-							autoCapitalize="none"
-							spellCheck={false}
-							value={hostname}
-							disabled={pending}
-							onChange={event => setHostname(String.toLowerCase(event.target.value))}
-						/>
-					</div>
-				)}
-				<Button
-					type="submit"
-					size="icon"
-					aria-label="Expose port"
-					disabled={
-						pending ||
-						selectedItem === undefined ||
-						(kind === 'tailnet' && tailnetHost === '') ||
-						(kind === 'public' && hostname === '')
-					}
-				>
-					{Boolean.match(pending, {onFalse: () => <Plus />, onTrue: () => <Spinner />})}
-				</Button>
-			</div>
-			{selectedId !== '' && selectedItem === undefined && !AsyncResult.isSuccess(result) && (
-				<p className="text-warning text-xs" role="status">
-					The selected listener is no longer available. Pick another port.
-				</p>
-			)}
-			{AsyncResult.isSuccess(result) && (
-				<a className="text-primary text-xs wrap-anywhere" href={result.value} target="_blank" rel="noreferrer">
-					{result.value}
-				</a>
-			)}
-			<ResultError result={result} />
-		</form>
-	)
-}
 
 function status(item: InventoryItem) {
 	if (String.startsWith('stale')(item.state)) return 'stale'
@@ -241,7 +105,7 @@ function WorkloadRow(props: {
 	row: ReturnType<typeof workloads>[number]
 	now: number
 	showMachine: boolean
-	expanded?: boolean
+	toggle?: ReactNode
 }) {
 	const state = status(props.row.item)
 	const processes = props.row.item.processes ?? []
@@ -260,9 +124,7 @@ function WorkloadRow(props: {
 			<span title={state} aria-label={state} role="img" className="flex items-center justify-center">
 				<StatusDot status={dot(props.row.item, state)} />
 			</span>
-			<ChevronRight
-				className={`text-muted-foreground size-3 ${Boolean.match(props.expanded === undefined, {onFalse: () => Boolean.match(props.expanded === true, {onFalse: () => '', onTrue: () => 'rotate-90'}), onTrue: () => 'invisible'})}`}
-			/>
+			{props.toggle ?? <span />}
 			<div className="col-start-2 col-end-5 flex min-w-0 flex-wrap items-center gap-1 empty:hidden">
 				{Array.map(
 					Array.dedupe(
@@ -321,28 +183,43 @@ function InventoryRow(props: {
 		)
 	}
 	return (
-		<details
-			role="listitem"
-			className="border-b"
-			open={open || props.processMatch}
-			onToggle={event => setOpen(event.currentTarget.open)}
-		>
-			<summary className="cursor-pointer list-none py-2.5 [&::-webkit-details-marker]:hidden">
-				<WorkloadRow
-					row={props.row}
-					now={props.now}
-					expanded={open || props.processMatch}
-					showMachine={props.showMachine}
-				/>
-			</summary>
-			{(open || props.processMatch) && <Processes rows={processes} showMachine={props.showMachine} />}
-		</details>
+		<Collapsible role="listitem" className="border-b py-2.5" open={open || props.processMatch} onOpenChange={setOpen}>
+			{/* Only the chevron toggles, so the row's endpoint links and their remove buttons stay their own controls. */}
+			<WorkloadRow
+				row={props.row}
+				now={props.now}
+				showMachine={props.showMachine}
+				toggle={
+					<CollapsibleTrigger
+						aria-label={`Processes of ${workloadName(props.row.item)}`}
+						className="text-muted-foreground flex cursor-pointer items-center justify-center"
+					>
+						<ChevronRight
+							className={`size-3 ${Boolean.match(open || props.processMatch, {onFalse: () => '', onTrue: () => 'rotate-90'})}`}
+						/>
+					</CollapsibleTrigger>
+				}
+			/>
+			<CollapsibleContent>
+				<Processes rows={processes} showMachine={props.showMachine} />
+			</CollapsibleContent>
+		</Collapsible>
 	)
 }
 
+// An app in trouble leads: failed first, then one that needs a look, then the rest in their usual order.
+const urgency = Order.mapInput(Order.Number, (row: ReturnType<typeof workloads>[number]) =>
+	pipe(
+		Match.value(dot(row.item, status(row.item))),
+		Match.when('error', () => 0),
+		Match.when('warning', () => 1),
+		Match.orElse(() => 2)
+	)
+)
+
 function Services() {
 	const result = useAtomSuspense(inventoryAtom)
-	const [query, setQuery] = useState('')
+	const query = useCommandQuery()
 	const search = useSearch({from: '/(home)'})
 	const items = Array.filter(
 		result.value.items,
@@ -364,29 +241,26 @@ function Services() {
 			)
 		)
 	)
-	const apps = Array.filter(rows, row => row.item.scheduled !== true)
-	const jobs = Array.filter(rows, row => row.item.scheduled === true)
+	const apps = Array.sort(
+		Array.filter(rows, row => row.item.scheduled !== true),
+		urgency
+	)
+	const jobs = Array.sort(
+		Array.filter(rows, row => row.item.scheduled === true),
+		urgency
+	)
 	return (
 		<div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-4 self-center">
-			<Expose key={search.machine ?? 'all'} items={items} choices={availablePorts(items)} />
-			<div className="flex items-center gap-3">
-				<Input
-					aria-label="Find a service or port"
-					placeholder="Filter apps, ports, processes…"
-					value={query}
-					onChange={event => setQuery(event.target.value)}
-				/>
-				<span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">{apps.length} apps</span>
-			</div>
 			{Array.map(
 				Array.filter(
 					result.value.sources,
 					source => source.error !== '' && !Array.contains(result.value.workers ?? [], source.name)
 				),
 				source => (
-					<p key={source.name} className="text-destructive text-xs wrap-anywhere" role="alert" title={source.error}>
-						{source.name}: {source.error}
-					</p>
+					<Alert key={source.name} variant="destructive">
+						<AlertTitle>{source.name} is unreachable</AlertTitle>
+						<AlertDescription className="wrap-anywhere">{source.error}</AlertDescription>
+					</Alert>
 				)
 			)}
 			<div className="pb-safe min-h-0 flex-1 overflow-y-auto pr-3">
@@ -427,7 +301,13 @@ function Services() {
 							</section>
 						)
 				)}
-				{Array.isArrayEmpty(rows) && <p className="text-muted-foreground text-sm">No matching apps.</p>}
+				{Array.isArrayEmpty(rows) && (
+					<Empty>
+						<EmptyHeader>
+							<EmptyTitle>No app matches</EmptyTitle>
+						</EmptyHeader>
+					</Empty>
+				)}
 			</div>
 		</div>
 	)

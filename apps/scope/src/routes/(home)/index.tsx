@@ -1,24 +1,22 @@
 import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, DateTime, Number, Option, Predicate, Record, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Cause, DateTime, Number, Option, Order, Predicate, Record, Schema, String, pipe} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {ChevronLeft, RotateCw} from 'lucide-react'
+import {ChevronLeft, OctagonAlert, RotateCw, Server, X} from 'lucide-react'
 import {Suspense, useState} from 'react'
 import type {ReactNode} from 'react'
 
-import {AppBar} from '@deslop/components-web/app-bar'
+import {AppBar, useCommandQuery} from '@deslop/components-web/app-bar'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
 import {ItemList, ItemListSkeleton} from '@deslop/components-web/item-list'
 import {StatusDot} from '@deslop/components-web/status-dot'
+import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
 import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Item, ItemContent, ItemDescription, ItemTitle} from '@deslop/components-web/ui/item'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {Toggle} from '@deslop/components-web/ui/toggle'
-import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
-import {Tooltip, TooltipContent, TooltipTrigger} from '@deslop/components-web/ui/tooltip'
 import {cn} from '@deslop/components-web/utils'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
@@ -55,48 +53,72 @@ function Failure(props: {cause: Cause.Cause<unknown>}) {
 	})
 }
 
-// One service that sent telemetry or every one, and only failed traces.
-function ServiceFilter() {
+// The filters the command field set, each a chip that clears it; nothing while every trace shows.
+function ActiveFilters() {
 	const [filters, setFilters] = useAtom(filtersAtom)
+	if (filters.service === '' && !filters.errors) return null
+	return (
+		<div className="border-border flex flex-wrap items-center gap-1 border-b px-2 py-1.5">
+			{filters.service !== '' && (
+				<Badge
+					variant="secondary"
+					render={
+						<button
+							type="button"
+							aria-label={`Show every service, not only ${serviceLabel(filters.service)}`}
+							onClick={() => setFilters({...filters, service: ''})}
+						/>
+					}
+				>
+					{serviceLabel(filters.service)}
+					<X data-icon="inline-end" />
+				</Badge>
+			)}
+			{filters.errors && (
+				<Badge
+					variant="secondary"
+					render={
+						<button
+							type="button"
+							aria-label="Show every trace, not only failures"
+							onClick={() => setFilters({...filters, errors: false})}
+						/>
+					}
+				>
+					Failures only
+					<X data-icon="inline-end" />
+				</Badge>
+			)}
+		</div>
+	)
+}
+
+// Refresh, failures only, and one service at a time, all from the command field.
+function useCommands() {
+	const [filters, setFilters] = useAtom(filtersAtom)
+	const refresh = useAtomRefresh(useAtomValue(tracesQueryAtom))
 	const services = AsyncResult.getOrElse(
 		AsyncResult.map(useAtomValue(servicesAtom), status =>
 			Array.dedupe(Array.map(status.services, service => service.name))
 		),
 		Array.empty<string>
 	)
-	return (
-		<div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-			<ToggleGroup
-				size="sm"
-				value={[Boolean.match(filters.service === '', {onFalse: () => filters.service, onTrue: () => 'all'})]}
-				onValueChange={(values: string[]) =>
-					Option.match(Array.last(values), {
-						onNone: () => undefined,
-						onSome: value =>
-							setFilters({
-								...filters,
-								service: Boolean.match(value === 'all', {onFalse: () => value, onTrue: () => ''})
-							})
-					})
-				}
-			>
-				<ToggleGroupItem value="all">all</ToggleGroupItem>
-				{Array.map(services, service => (
-					<ToggleGroupItem key={service} value={service}>
-						{serviceLabel(service)}
-					</ToggleGroupItem>
-				))}
-			</ToggleGroup>
-			<Toggle
-				size="sm"
-				pressed={filters.errors}
-				onPressedChange={errors => setFilters({...filters, errors})}
-				aria-label="Only failed traces"
-			>
-				errors
-			</Toggle>
-		</div>
-	)
+	return [
+		{icon: <RotateCw />, label: 'Refresh traces', run: refresh},
+		{
+			icon: <OctagonAlert />,
+			label: Boolean.match(filters.errors, {onFalse: () => 'Only failures', onTrue: () => 'All traces'}),
+			run: () => setFilters({...filters, errors: !filters.errors})
+		},
+		...Array.map(
+			Array.filter(services, service => service !== filters.service),
+			service => ({
+				icon: <Server />,
+				label: `Only ${serviceLabel(service)}`,
+				run: () => setFilters({...filters, service})
+			})
+		)
+	]
 }
 
 function TraceRow(props: {
@@ -122,8 +144,9 @@ function TraceRow(props: {
 			>
 				<ItemContent>
 					<ItemTitle>{props.trace.operation}</ItemTitle>
-					<ItemDescription className="flex items-center gap-1.5 font-mono">
-						{props.trace.errors > 0 && <StatusDot status="error" />}
+					{/* A failed trace says so in its second line, in the error's colour. */}
+					<ItemDescription className={cn('font-mono', props.trace.errors > 0 && 'text-destructive')}>
+						{Boolean.match(props.trace.errors > 0, {onFalse: () => '', onTrue: () => 'Failed · '})}
 						{serviceLabel(props.trace.service)}
 					</ItemDescription>
 				</ItemContent>
@@ -214,18 +237,6 @@ function Waterfall(props: {trace: Trace}) {
 	)
 	return (
 		<div className="flex flex-col gap-4">
-			<div className="flex flex-col gap-0.5">
-				<div className="flex items-baseline justify-between gap-3">
-					<h2 className="truncate text-base font-semibold">
-						{Option.match(Array.head(props.trace.spans), {onNone: () => props.trace.id, onSome: span => span.name})}
-					</h2>
-					<span className="text-muted-foreground font-mono text-xs">{durationOf(props.trace.durationMs)}</span>
-				</div>
-				<p className="text-muted-foreground font-mono text-xs">
-					trace {pipe(props.trace.id, String.slice(0, 8))} · {props.trace.spans.length} spans ·{' '}
-					{Array.countBy(props.trace.spans, span => span.status === 2)} errors
-				</p>
-			</div>
 			<ol className="trace-axis flex flex-col" style={{'--trace-total': `${Number.max(props.trace.durationMs, 1)}`}}>
 				{Array.map(props.trace.spans, span => (
 					<li key={span.spanId}>
@@ -256,12 +267,10 @@ function Waterfall(props: {trace: Trace}) {
 	)
 }
 
-// A trace's title, its summary line and span rows of label and bar, while the trace loads.
+// A trace's span rows of label and bar, while the trace loads.
 function WaterfallSkeleton() {
 	return (
 		<div aria-busy="true" aria-label="Trace" role="status" className="flex flex-col gap-3">
-			<Skeleton className="h-6 w-2/3" />
-			<Skeleton className="h-4 w-1/3" />
 			{Array.map(Array.range(1, 5), row => (
 				<div key={row} className="flex items-center gap-3">
 					<Skeleton className="h-4 w-32" />
@@ -318,12 +327,11 @@ function Panes(props: {children: ReactNode; waiting: boolean}) {
 					Option.isSome(selected) && 'hidden md:block'
 				)}
 				aria-label="Traces"
+				aria-busy={props.waiting}
 			>
-				<div className="border-border bg-background sticky top-0 z-10 flex items-center gap-2 border-b px-2 py-1.5">
-					<ServiceFilter />
-					{props.waiting && <StatusDot waiting />}
-				</div>
-				{props.children}
+				<ActiveFilters />
+				{/* The list a refresh or filter replaces stays dimmed until its answer arrives. */}
+				<div className={cn('transition-opacity duration-150', props.waiting && 'opacity-50')}>{props.children}</div>
 			</nav>
 			<main
 				className={cn(
@@ -341,64 +349,52 @@ function Traces() {
 	const [selected, setSelected] = useAtom(selectedAtom)
 	const arrived = useAtomValue(arrivalsAtom).arrived
 	const now = DateTime.toEpochMillis(DateTime.nowUnsafe())
+	const query = useCommandQuery()
 	const page = useAtomSuspense(tracesAtom, {includeFailure: true})
 	if (AsyncResult.isFailure(page)) return <Failure cause={page.cause} />
 	return (
 		<Panes waiting={page.waiting}>
-			{Array.match(page.value.entries, {
-				onEmpty: () => (
-					<Empty>
-						<EmptyHeader>
-							<EmptyTitle>No traces match</EmptyTitle>
-						</EmptyHeader>
-					</Empty>
+			{Array.match(
+				Array.filter(
+					// A failed trace leads; the rest keep their newest-first order.
+					Array.sort(
+						page.value.entries,
+						Order.mapInput(Order.Boolean, (trace: TraceSummary) => trace.errors === 0)
+					),
+					trace => String.includes(query)(String.toLowerCase(`${trace.operation} ${trace.service}`))
 				),
-				onNonEmpty: entries => (
-					<ItemList label="Recent traces">
-						{Array.map(entries, trace => (
-							<TraceRow
-								key={trace.id}
-								arrived={Array.contains(arrived, trace.id)}
-								now={now}
-								onSelect={() => setSelected(Option.some(trace.id))}
-								selected={Option.contains(selected, trace.id)}
-								trace={trace}
-							/>
-						))}
-					</ItemList>
-				)
-			})}
-		</Panes>
-	)
-}
-
-// Asks the server again for the traces under the current filters.
-function Refresh() {
-	return (
-		<Tooltip>
-			<TooltipTrigger
-				render={
-					<Button
-						variant="ghost"
-						size="icon-sm"
-						aria-label="Refresh traces"
-						onClick={useAtomRefresh(useAtomValue(tracesQueryAtom))}
-					/>
+				{
+					onEmpty: () => (
+						<Empty>
+							<EmptyHeader>
+								<EmptyTitle>No traces match</EmptyTitle>
+							</EmptyHeader>
+						</Empty>
+					),
+					onNonEmpty: entries => (
+						<ItemList label="Recent traces">
+							{Array.map(entries, trace => (
+								<TraceRow
+									key={trace.id}
+									arrived={Array.contains(arrived, trace.id)}
+									now={now}
+									onSelect={() => setSelected(Option.some(trace.id))}
+									selected={Option.contains(selected, trace.id)}
+									trace={trace}
+								/>
+							))}
+						</ItemList>
+					)
 				}
-			>
-				<RotateCw />
-			</TooltipTrigger>
-			<TooltipContent>Refresh traces</TooltipContent>
-		</Tooltip>
+			)}
+		</Panes>
 	)
 }
 
 function Home() {
 	return (
 		<>
-			<AppBar icon={icon} name="scope">
-				<Refresh />
-			</AppBar>
+			<AppBar icon={icon} name="scope" commands={useCommands()} />
 			{/* The first load suspends to the panes with skeleton rows; React keeps a shown fallback at least 300ms. */}
 			<Suspense
 				fallback={
