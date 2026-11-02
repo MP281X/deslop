@@ -66,23 +66,18 @@ export class Gateway extends Context.Service<
 				return `${String.slice(0, 41)(String.replaceAll(/[^a-zA-Z0-9_-]/gu, '_')(fullName))}__encoded_${String.slice(0, 12)(Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(fullName))))}`
 			})
 			const visible = yield* Ref.make(HashSet.empty<string>())
-			const installed = yield* Ref.make<
-				Record<string, {fingerprint: string; generation: string; id: string; tool: string}>
-			>({})
-			// A server's tool counts while the server is connected and the owner has not hidden it.
-			const usable = Effect.fnUntraced(function* (id: string, generation: string, tool: string) {
+			const installed = yield* Ref.make<Record<string, {fingerprint: string; generation: string; id: string}>>({})
+			// A server's tool counts while the server is connected.
+			const usable = Effect.fnUntraced(function* (id: string, generation: string) {
 				const now = yield* Clock.currentTimeMillis
 				return Option.exists(
 					yield* Effect.option(connections.get(id)),
-					found =>
-						found.generation === generation &&
-						connectionStatus(found, now) === 'Connected' &&
-						!Array.contains(found.hidden, tool)
+					found => found.generation === generation && connectionStatus(found, now) === 'Connected'
 				)
 			})
 			const refreshes = yield* Semaphore.make(1)
 			const scope = yield* Effect.scope
-			// McpServer has no removal: a removed tool stays registered, and the visibility check hides it from lists and calls.
+			// McpServer has no removal: a removed tool stays registered, and the usability check hides it from lists and calls.
 			const remove = Effect.fnUntraced(function* (name: string, registry: typeof McpServer.McpServer.Service) {
 				yield* Ref.update(installed, Record.remove(name))
 				yield* Ref.update(visible, HashSet.remove(name))
@@ -97,8 +92,7 @@ export class Gateway extends Context.Service<
 							server =>
 								server.id === entry[1].id &&
 								server.generation === entry[1].generation &&
-								server.link._tag !== 'Disconnected' &&
-								!Array.contains(server.hidden, entry[1].tool)
+								server.link._tag !== 'Disconnected'
 						)
 					) {
 						yield* remove(entry[0], registry)
@@ -128,7 +122,7 @@ export class Gateway extends Context.Service<
 						if (!HashSet.has(yield* Ref.get(visible), options.target)) return false
 						const entry = (yield* Ref.get(installed))[options.target]
 						if (entry === undefined) return false
-						return yield* usable(entry.id, entry.generation, entry.tool)
+						return yield* usable(entry.id, entry.generation)
 					})
 				).layer
 			)
@@ -258,7 +252,7 @@ export class Gateway extends Context.Service<
 				}
 				const reference = Struct.pick(server, ['id', 'generation', 'name', 'mode'])
 				const names = MutableList.make<string>()
-				for (const tool of Array.filter(found.tools, candidate => !Array.contains(latest.hidden, candidate.name))) {
+				for (const tool of found.tools) {
 					const upstreamName = tool.name
 					const name = yield* namespaced(`${server.id}__${tool.name}`)
 					const fingerprint = yield* Schema.encodeEffect(Schema.fromJsonString(McpSchema.Tool))(tool)
@@ -278,12 +272,7 @@ export class Gateway extends Context.Service<
 						})
 						yield* Ref.update(installed, current => ({
 							...current,
-							[name]: {
-								fingerprint: `${server.generation}:${fingerprint}`,
-								generation: server.generation,
-								id: server.id,
-								tool: upstreamName
-							}
+							[name]: {fingerprint: `${server.generation}:${fingerprint}`, generation: server.generation, id: server.id}
 						}))
 					}
 					MutableList.append(names, name)

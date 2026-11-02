@@ -23,7 +23,7 @@ const ToolHandlers = Tools.toLayer(
 							{onNone: () => ({}), onSome: instructions => ({instructions})}
 						),
 						status: connectionStatus(server, now),
-						tools: Array.length(Array.filter(server.tools, tool => !Array.contains(server.hidden, tool)))
+						tools: Array.length(server.tools)
 					}))
 				}
 			})

@@ -211,10 +211,16 @@ export function AppBarTab(props: {active: boolean; children: ReactNode; render: 
 	})
 }
 
-// The page's one main action, its label folding away on a phone.
-export function AppBarAction(props: {disabled?: boolean; icon: ReactNode; label: string; onClick: () => void}) {
+// A page action in the bar, its label folding away on a phone.
+export function AppBarAction(props: {
+	disabled?: boolean
+	icon: ReactNode
+	label: string
+	onClick: () => void
+	variant?: 'default' | 'outline'
+}) {
 	return (
-		<Button aria-label={props.label} disabled={props.disabled} onClick={props.onClick}>
+		<Button aria-label={props.label} variant={props.variant} disabled={props.disabled} onClick={props.onClick}>
 			{props.icon}
 			<span className="max-sm:hidden">{props.label}</span>
 		</Button>

@@ -40,7 +40,7 @@ import {AUTH_URL, CurrentUser} from '@deslop/runtime/auth/utils'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import {HttpHandlers} from '#http/handlers.ts'
-import {AddServer, ConnectionInfo, ServerParams, ToolVisibility} from '#services/connections/schema.ts'
+import {AddServer, ConnectionInfo, ServerParams} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway} from '#services/gateway/service.ts'
 import {layerMcp} from '#tools/handlers.ts'
@@ -411,18 +411,6 @@ const servers = Effect.fnUntraced(function* (home?: string, origin = GATEWAY_URL
 								),
 								HttpRouter.add(
 									'POST',
-									'/servers/hide',
-									pipe(
-										Effect.gen(function* () {
-											const input = yield* HttpServerRequest.schemaBodyJson(ToolVisibility)
-											yield* (yield* Connections).hide(input, yield* CurrentUser)
-											return HttpServerResponse.empty()
-										}),
-										refused
-									)
-								),
-								HttpRouter.add(
-									'POST',
 									'/servers',
 									pipe(
 										Effect.gen(function* () {
@@ -721,63 +709,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* post(gateway.web, '/servers/remove', SESSION, {id: added.id})
 			yield* modern(gateway.web, TOKEN, 'tools/list')
 			assert.deepStrictEqual(yield* listed(), [])
-		})
-	)
-	test.effect(
-		'keeps the tools an admin unchecks out of agents’ lists and calls',
-		Effect.fnUntraced(function* () {
-			const gateway = yield* servers()
-			yield* Ref.set(gateway.toolNames, ['search', 'delete'])
-			const added = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
-			assert.deepStrictEqual(added.tools, ['search', 'delete'])
-			// Each toggle changes only its own tool, so a quick second one keeps the first.
-			yield* Effect.forEach(
-				[
-					{hidden: true, tool: 'delete'},
-					{hidden: true, tool: 'search'},
-					{hidden: false, tool: 'search'}
-				],
-				change =>
-					Effect.map(post(gateway.web, '/servers/hide', SESSION, {...change, id: added.id}), response =>
-						assert.strictEqual(response.status, 204)
-					),
-				{concurrency: 1, discard: true}
-			)
-			const listed = yield* modern(gateway.web, TOKEN, 'tools/list')
-			const names = yield* Effect.promise(() => listed.text())
-			assert.isTrue(String.includes(`${added.id}__search`)(names))
-			assert.isFalse(String.includes(`${added.id}__delete`)(names))
-			const called = yield* modern(gateway.web, TOKEN, 'tools/call', {
-				arguments: {query: 'hidden'},
-				name: `${added.id}__delete`
-			})
-			assert.isTrue(String.includes('error')(yield* Effect.promise(() => called.text())))
-			assert.isFalse(
-				Array.some(MutableList.toArray(gateway.upstreamRequests), request =>
-					Schema.is(
-						Schema.Struct({
-							method: Schema.Literal('tools/call'),
-							params: Schema.Struct({name: Schema.Literal('delete')})
-						})
-					)(request.body)
-				)
-			)
-			// An agent reads only how many tools it can call.
-			const connections = yield* callTool(gateway.web, TOKEN, 'list_mcp_connections', {})
-			assert.deepStrictEqual(
-				(yield* Schema.decodeEffect(
-					Schema.fromJsonString(
-						Schema.Struct({
-							result: Schema.Struct({
-								structuredContent: Schema.Struct({
-									servers: Schema.Array(Schema.Struct({id: Schema.String, tools: Schema.Int}))
-								})
-							})
-						})
-					)
-				)(yield* Effect.promise(() => connections.text()))).result.structuredContent.servers,
-				[{id: added.id, tools: 1}]
-			)
 		})
 	)
 	test.effect(
