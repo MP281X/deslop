@@ -44,27 +44,40 @@ jobs:
           echo "- @deslop/coding-standards 0.1.${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"
 
       # An app publishes its own folder only when its fingerprint, a hash of what it ships, differs from its latest release's; the version moves after the build. Everything is bundled, so the published manifest drops every dependency, the scripts and the Expo entry.
+      # The apps publish side by side, each taking about ten seconds; the summary keeps their order.
       - name: Publish changed apps
         run: |
-          for app in auth deploy gateway portfolio scope stash opm trips signal; do
-            cd "apps/$app"
+          apps=(auth deploy gateway portfolio scope stash opm trips signal)
+          publish() {
+            cd "apps/$1"
             fingerprint=$({ find dist bin README.md -type f 2>/dev/null | LC_ALL=C sort | xargs sha256sum; jq -S 'del(.version)' package.json; } | sha256sum | cut -c1-64)
-            if ! npm view "@deslop/$app" version >/dev/null 2>&1; then
-              echo "::warning::@deslop/$app needs its first publish and trusted-publisher setup; see RELEASING.md"
-            elif [ "$(npm view "@deslop/$app" fingerprint)" != "$fingerprint" ]; then
+            if ! published=$(npm view "@deslop/$1" fingerprint 2> "$RUNNER_TEMP/view-$1"); then
+              # Only a missing package is a first publish; any other failure, such as the registry being down, fails the app.
+              grep -q E404 "$RUNNER_TEMP/view-$1" || { cat "$RUNNER_TEMP/view-$1" >&2; return 1; }
+              echo "::warning::@deslop/$1 needs its first publish and trusted-publisher setup; see RELEASING.md"
+              echo "- @deslop/$1 unpublished" > "$RUNNER_TEMP/summary-$1"
+            elif [ "$published" != "$fingerprint" ]; then
               npm pkg set "version=0.1.${{ github.run_number }}" "fingerprint=$fingerprint"
               npm pkg delete dependencies devDependencies scripts main
               npm publish --loglevel=warn
-              echo "- @deslop/$app 0.1.${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"
+              echo "- @deslop/$1 0.1.${{ github.run_number }}" > "$RUNNER_TEMP/summary-$1"
             else
-              echo "- @deslop/$app unchanged" >> "$GITHUB_STEP_SUMMARY"
+              echo "- @deslop/$1 unchanged" > "$RUNNER_TEMP/summary-$1"
             fi
-            cd ../..
-          done
+          }
+          pids=()
+          for app in "${apps[@]}"; do publish "$app" & pids+=($!); done
+          failed=0
+          for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+          for app in "${apps[@]}"; do cat "$RUNNER_TEMP/summary-$app" 2>/dev/null >> "$GITHUB_STEP_SUMMARY" || echo "- @deslop/$app failed" >> "$GITHUB_STEP_SUMMARY"; done
+          exit "$failed"
 
   app:
     name: App
     needs: verify
+    permissions:
+      contents: read
+      actions: read
     # One app's failed release leaves the others to ship.
     strategy:
       fail-fast: false

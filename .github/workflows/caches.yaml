@@ -1,0 +1,20 @@
+name: Caches
+
+# A merged branch is deleted, but its caches, which only that branch could read, count against the repository's 10 GB until they age out.
+on: delete
+
+permissions:
+  actions: write
+
+jobs:
+  delete:
+    name: Delete the branch's caches
+    if: github.event.ref_type == 'branch'
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Delete the branch's caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.ref }}
+        run: gh cache delete --all --succeed-on-no-caches --ref "refs/heads/$BRANCH"
