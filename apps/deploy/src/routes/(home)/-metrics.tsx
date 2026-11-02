@@ -216,7 +216,7 @@ function Machine(props: {history: MachineHistory; hours: HistoryQuery['hours']})
 					{machineName(props.history.worker)}
 				</h2>
 				<span className="text-muted-foreground font-mono text-xs">
-					{Boolean.match(props.history.stale, {onFalse: () => 'Updated', onTrue: () => 'Offline · last sample'})}{' '}
+					{Boolean.match(props.history.stale, {onFalse: () => 'Updated', onTrue: () => 'Unavailable · last sample'})}{' '}
 					{Option.match(Option.fromUndefinedOr(latest), {
 						onNone: () => '—',
 						onSome: sample => sampleAge(sample.time, props.history.time)
@@ -224,11 +224,21 @@ function Machine(props: {history: MachineHistory; hours: HistoryQuery['hours']})
 				</span>
 			</div>
 			{props.history.error !== '' && (
-				<p className="text-warning text-xs wrap-anywhere" role="status">
-					{props.history.error}
+				<p className="text-warning text-xs wrap-anywhere" role="status" title={props.history.error}>
+					{Boolean.match(props.history.stale, {
+						onFalse: () => props.history.error,
+						onTrue: () => 'This machine is not reachable. Other machines continue updating.'
+					})}
 				</p>
 			)}
-			{latest === undefined && <p className="text-muted-foreground text-xs">No recorded samples in this range.</p>}
+			{latest === undefined && (
+				<p className="text-muted-foreground text-xs">
+					{Boolean.match(props.history.stale, {
+						onFalse: () => 'No recorded samples in this range.',
+						onTrue: () => 'No cached history for this machine. History becomes available when it reconnects.'
+					})}
+				</p>
+			)}
 			{latest !== undefined && (
 				<div
 					className={`grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 ${Boolean.match(props.history.stale, {onFalse: () => '', onTrue: () => 'opacity-50'})}`}

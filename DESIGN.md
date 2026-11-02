@@ -218,6 +218,7 @@ One vocabulary on both platforms: a row is an `Item`, a blank state an `Empty`, 
 - **Signal controls.** Quiet popover buttons carry provider-coloured marks, matching their world coverage. One top model filter scopes the thread; the inspector header has a bottom hairline. Entity details and the thread remain visible together.
 - **Loading.** The shell (app bar, headings, filters) renders at once, and data that is on its way shows as a skeleton shaped like it: `ItemListSkeleton` on the web, `ItemGroupSkeleton` (SwiftUI's placeholder redaction) on iOS. A skeleton is a Suspense fallback (`useAtomSuspense` with `includeFailure`), never an `onInitial` branch: React keeps a shown fallback at least 300ms, so it never blinks. Local work, like reading the saved session, shows the empty shell and no skeleton. A refresh keeps the current data, dimmed. A spinner only sits inside a control the user pressed, never alone on a page; no client-side caches to hide loading.
 - **Copy.** Headings, labels and errors only; no subtitle restating what the page already shows.
+- **Mobile gestures.** Apps pan instead of zooming; viewport metadata caps scale and shared controls use 16px text on coarse pointers to prevent focus zoom. Browsers may override zoom restrictions for accessibility.
 
 ## Motion
 

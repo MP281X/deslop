@@ -49,6 +49,7 @@ export class Fleet extends Context.Service<
 		readonly hide: (input: HideRequest) => Effect.Effect<void, DeployError>
 		readonly local: Effect.Effect<Snapshot>
 		readonly history: (query: HistoryQuery) => Effect.Effect<MachineHistory>
+		readonly current: (query: HistoryQuery) => Effect.Effect<MachineHistory[]>
 		readonly metrics: (query: HistoryQuery) => Effect.Effect<MachineHistory[]>
 		readonly snapshot: Effect.Effect<Snapshot>
 	}
@@ -71,7 +72,14 @@ export class Fleet extends Context.Service<
 			const previous = yield* Ref.make<Record<string, Snapshot>>({})
 			const local = Effect.gen(function* () {
 				const snapshot = yield* inventory.snapshot
-				return Snapshot.make({...snapshot, items: [...snapshot.items, ...(yield* exposures.items)]})
+				return Snapshot.make({
+					...snapshot,
+					items: [...snapshot.items, ...(yield* exposures.items)],
+					workers: Array.dedupe([
+						...(snapshot.workers ?? Array.map(snapshot.items, item => item.worker)),
+						...Array.map(workers, worker => worker.name)
+					])
+				})
 			})
 			const remote = Effect.fnUntraced(
 				function* <A, E>(worker: Worker, use: (client: RemoteClient, headers: Headers.Input) => Effect.Effect<A, E>) {
@@ -114,6 +122,25 @@ export class Fleet extends Context.Service<
 				)
 			}
 			return Fleet.of({
+				current: Effect.fnUntraced(function* (query) {
+					const own = yield* metrics.read(query)
+					const time = yield* Clock.currentTimeMillis
+					const cached = yield* Ref.get(lastMetrics)
+					return [
+						own,
+						...Array.map(workers, worker => {
+							const saved = cached[`${worker.name}:${query.hours}`]
+							return {
+								cpuModel: saved?.cpuModel,
+								error: saved?.error ?? 'Waiting for worker',
+								samples: history(saved?.samples ?? [], query.hours, time),
+								stale: saved === undefined || saved.stale || time - saved.time > 90_000,
+								time,
+								worker: worker.name
+							}
+						})
+					]
+				}),
 				expose: Effect.fnUntraced(function* (input) {
 					if (input.target === undefined || input.target === '') {
 						return yield* exposures.expose(Struct.omit(input, ['target']))
@@ -137,10 +164,8 @@ export class Fleet extends Context.Service<
 						worker =>
 							pipe(
 								remote(worker, (client, headers) => client('deploy.history', query, {headers})),
+								Effect.timeout('2 seconds'),
 								Effect.map(value => ({...value, worker: worker.name})),
-								Effect.tap(value =>
-									Ref.update(lastMetrics, all => Record.set(all, `${worker.name}:${query.hours}`, value))
-								),
 								Effect.catch(
 									Effect.fnUntraced(function* (cause) {
 										const time = yield* Clock.currentTimeMillis
@@ -154,6 +179,9 @@ export class Fleet extends Context.Service<
 											worker: worker.name
 										}
 									})
+								),
+								Effect.tap(value =>
+									Ref.update(lastMetrics, all => Record.set(all, `${worker.name}:${query.hours}`, value))
 								)
 							),
 						{concurrency: 'unbounded'}
@@ -167,6 +195,7 @@ export class Fleet extends Context.Service<
 						worker =>
 							pipe(
 								remote(worker, (client, headers) => client('deploy.snapshot', undefined, {headers})),
+								Effect.timeout('2 seconds'),
 								Effect.map(snapshot =>
 									Snapshot.make({
 										...snapshot,
@@ -204,10 +233,10 @@ export class Fleet extends Context.Service<
 						items: [...own.items, ...Array.flatMap(others, value => value.items)],
 						sources: [...own.sources, ...Array.flatMap(others, value => value.sources)],
 						time: yield* Clock.currentTimeMillis,
-						workers: [
+						workers: Array.dedupe([
 							...(own.workers ?? Array.dedupe(Array.map(own.items, item => item.worker))),
 							...Array.map(workers, worker => worker.name)
-						]
+						])
 					})
 				})
 			})

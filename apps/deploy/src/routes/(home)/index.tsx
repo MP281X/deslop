@@ -98,13 +98,13 @@ function Expose(props: {items: readonly InventoryItem[]; choices: readonly Inven
 							className="w-full"
 							showClear
 						/>
-						<ComboboxContent>
+						<ComboboxContent className="w-(--available-width) max-w-sm sm:w-(--anchor-width)">
 							<ComboboxEmpty>No matching app listeners.</ComboboxEmpty>
 							<ComboboxList>
 								{(item: InventoryItem) => (
-									<ComboboxItem key={item.id} value={item}>
+									<ComboboxItem key={item.id} value={item} className="items-start pr-7">
 										<MachineIcon worker={item.worker} />
-										<span className="min-w-0 flex-1 truncate">{item.process}</span>
+										<span className="min-w-0 flex-1 wrap-anywhere whitespace-normal">{item.process}</span>
 										<Badge variant="secondary" className="font-mono">
 											:{item.port}
 										</Badge>
@@ -114,26 +114,21 @@ function Expose(props: {items: readonly InventoryItem[]; choices: readonly Inven
 						</ComboboxContent>
 					</Combobox>
 				</div>
-				<div className="min-w-0 flex-1">
-					<Input
-						id="expose-hostname"
-						aria-label={Boolean.match(kind === 'public', {
-							onFalse: () => 'Tailnet hostname',
-							onTrue: () => 'Public hostname'
-						})}
-						required={kind === 'public'}
-						readOnly={kind === 'tailnet'}
-						placeholder={Boolean.match(kind === 'public', {
-							onFalse: () => 'Automatic HTTPS',
-							onTrue: () => 'app.example.com'
-						})}
-						autoCapitalize="none"
-						spellCheck={false}
-						value={Boolean.match(kind === 'public', {onFalse: () => tailnetHost, onTrue: () => hostname})}
-						disabled={pending}
-						onChange={event => setHostname(String.toLowerCase(event.target.value))}
-					/>
-				</div>
+				{kind === 'public' && (
+					<div className="min-w-0 flex-1">
+						<Input
+							id="expose-hostname"
+							aria-label="Public hostname"
+							required
+							placeholder="app.example.com"
+							autoCapitalize="none"
+							spellCheck={false}
+							value={hostname}
+							disabled={pending}
+							onChange={event => setHostname(String.toLowerCase(event.target.value))}
+						/>
+					</div>
+				)}
 				<Button
 					type="submit"
 					size="icon"
@@ -245,7 +240,10 @@ function InventoryRow(props: {row: ReturnType<typeof workloads>[number]}) {
 				</span>
 			</ItemMedia>
 			<ItemContent className="min-w-0">
-				<ItemTitle className="line-clamp-none block w-full truncate" title={workloadName(props.row.item)}>
+				<ItemTitle
+					className="line-clamp-none block w-full wrap-anywhere whitespace-normal"
+					title={workloadName(props.row.item)}
+				>
 					{workloadName(props.row.item)}
 				</ItemTitle>
 				<div className="flex min-w-0 flex-wrap items-center gap-1">
@@ -336,8 +334,12 @@ function Services() {
 			{Array.map(
 				Array.filter(result.value.sources, source => source.error !== ''),
 				source => (
-					<p key={source.name} className="text-warning text-xs wrap-anywhere" role="status">
-						{source.name}: {source.error}
+					<p key={source.name} className="text-warning text-xs wrap-anywhere" role="status" title={source.error}>
+						{source.name}:{' '}
+						{Boolean.match(Array.contains(result.value.workers ?? [], source.name), {
+							onFalse: () => source.error,
+							onTrue: () => 'Machine unavailable · other machines continue updating'
+						})}
 					</p>
 				)
 			)}

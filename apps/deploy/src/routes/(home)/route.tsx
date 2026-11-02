@@ -29,32 +29,29 @@ function Fleet() {
 		return <Error error={Cause.squash(result.cause)} reset={() => location.reload()} />
 	}
 	return (
-		<>
-			<ToggleGroup
-				aria-label="Machine"
-				value={[search.machine ?? 'all']}
-				onValueChange={values => {
-					if (values[0] !== undefined) {
-						navigate({
-							search: {machine: values[0]},
-							to: Boolean.match(matchRoute({to: '/monitor'}) !== false, {
-								onFalse: () => '/' as const,
-								onTrue: () => '/monitor' as const
-							})
+		<ToggleGroup
+			aria-label="Machine"
+			value={[search.machine ?? 'all']}
+			onValueChange={values => {
+				if (values[0] !== undefined) {
+					navigate({
+						search: {machine: values[0]},
+						to: Boolean.match(matchRoute({to: '/monitor'}) !== false, {
+							onFalse: () => '/' as const,
+							onTrue: () => '/monitor' as const
 						})
-					}
-				}}
-			>
-				<ToggleGroupItem value="all">All machines</ToggleGroupItem>
-				{Array.map(result.value.workers ?? Array.dedupe(Array.map(result.value.items, item => item.worker)), worker => (
-					<ToggleGroupItem key={worker} value={worker} className="gap-1.5">
-						<MachineIcon worker={worker} />
-						{machineName(worker)}
-					</ToggleGroupItem>
-				))}
-			</ToggleGroup>
-			<Outlet />
-		</>
+					})
+				}
+			}}
+		>
+			<ToggleGroupItem value="all">All machines</ToggleGroupItem>
+			{Array.map(result.value.workers ?? Array.dedupe(Array.map(result.value.items, item => item.worker)), worker => (
+				<ToggleGroupItem key={worker} value={worker} className="gap-1.5">
+					<MachineIcon worker={worker} />
+					{machineName(worker)}
+				</ToggleGroupItem>
+			))}
+		</ToggleGroup>
 	)
 }
 
@@ -94,6 +91,9 @@ function Shell() {
 			>
 				<Suspense fallback={<Skeleton className="h-7 w-full" />}>
 					<Fleet />
+				</Suspense>
+				<Suspense fallback={<Skeleton className="h-64 w-full" />}>
+					<Outlet />
 				</Suspense>
 			</main>
 		</>

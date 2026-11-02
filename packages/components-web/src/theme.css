@@ -198,6 +198,7 @@
 	html {
 		@apply bg-background text-foreground font-sans antialiased select-none;
 		overscroll-behavior: none;
+		touch-action: pan-x pan-y;
 	}
 
 	body {
@@ -206,6 +207,15 @@
 
 	::selection {
 		background-color: color-mix(in srgb, var(--primary) 30%, transparent);
+	}
+}
+
+/* iOS focuses small form controls by zooming the page. Keep mobile input text at its non-zooming size. */
+@media (pointer: coarse) {
+	input,
+	textarea,
+	select {
+		font-size: 1rem;
 	}
 }
 

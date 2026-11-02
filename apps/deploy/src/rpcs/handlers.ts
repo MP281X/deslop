@@ -10,8 +10,16 @@ export const RpcHandlers = RpcContracts.toLayer(
 			'deploy.expose': fleet.expose,
 			'deploy.hide': fleet.hide,
 			'deploy.history': fleet.history,
-			'deploy.inventory': () => Stream.fromEffectSchedule(fleet.snapshot, Schedule.spaced('5 seconds')),
-			'deploy.metrics': query => Stream.fromEffectSchedule(fleet.metrics(query), Schedule.spaced('30 seconds')),
+			'deploy.inventory': () =>
+				Stream.concat(
+					Stream.fromEffect(fleet.local),
+					Stream.fromEffectSchedule(fleet.snapshot, Schedule.spaced('5 seconds'))
+				),
+			'deploy.metrics': query =>
+				Stream.concat(
+					Stream.fromEffect(fleet.current(query)),
+					Stream.fromEffectSchedule(fleet.metrics(query), Schedule.spaced('30 seconds'))
+				),
 			'deploy.snapshot': () => fleet.local
 		})
 	})

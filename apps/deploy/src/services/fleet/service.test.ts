@@ -4,7 +4,7 @@ import {createServer} from 'node:http'
 import {NodeHttpClient, NodeHttpServer, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {ConfigProvider, Context, Effect, Layer, Ref, Schema, pipe} from 'effect'
+import {Array, ConfigProvider, Context, Deferred, Effect, Fiber, Layer, Option, Ref, Schema, pipe} from 'effect'
 
 import {HttpRouter, HttpServer} from 'effect/http'
 import {RpcServer} from 'effect/rpc'
@@ -27,6 +27,8 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch))('Worker 
 		Effect.scoped(
 			Effect.gen(function* () {
 				const unavailable = yield* Ref.make(false)
+				const hanging = yield* Ref.make(false)
+				const entered = yield* Deferred.make<void>()
 				const item = InventoryItem.make({
 					detail: 'fixture',
 					id: 'worker:user:scope.service',
@@ -53,11 +55,14 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch))('Worker 
 								RpcServer.layerHttp({group, path: '/api/rpc', protocol: 'websocket'}),
 								Layer.provide(
 									group.toLayer({
-										'deploy.history': () =>
-											Effect.flatMap(Ref.get(unavailable), failed => {
-												if (failed) return Effect.fail(DeployError.make({message: 'worker unavailable'}))
-												return Effect.succeed(history)
-											}),
+										'deploy.history': Effect.fnUntraced(function* () {
+											if (yield* Ref.get(hanging)) {
+												yield* Deferred.succeed(entered, undefined)
+												return yield* Effect.never
+											}
+											if (yield* Ref.get(unavailable)) return yield* DeployError.make({message: 'worker unavailable'})
+											return history
+										}),
 										'deploy.snapshot': () =>
 											Effect.flatMap(Ref.get(unavailable), failed => {
 												if (failed) return Effect.fail(DeployError.make({message: 'worker unavailable'}))
@@ -108,11 +113,26 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch))('Worker 
 					Fleet
 				)
 				const current = yield* fleet.snapshot
+				assert.deepStrictEqual(current.workers, ['desktop'])
 				assert.strictEqual(current.items[0]?.id, 'remote:desktop:worker:user:scope.service')
 				assert.strictEqual(current.items[0]?.worker, 'desktop')
+				const cold = yield* fleet.current({hours: 1})
+				assert.isTrue(Option.getOrThrow(Array.get(cold, 1)).stale)
+				assert.isEmpty(Option.getOrThrow(Array.get(cold, 1)).samples)
 				const currentMetrics = yield* fleet.metrics({hours: 1})
+				const immediate = yield* fleet.current({hours: 1})
+				assert.strictEqual(Option.getOrThrow(Array.get(immediate, 1)).worker, 'desktop')
+				assert.strictEqual(Option.getOrThrow(Array.get(immediate, 1)).cpuModel, 'Fixture CPU')
 				assert.strictEqual(currentMetrics[1]?.worker, 'desktop')
 				assert.strictEqual(currentMetrics[1]?.cpuModel, 'Fixture CPU')
+				yield* Ref.set(hanging, true)
+				const pending = yield* Effect.forkScoped(fleet.metrics({hours: 1}))
+				yield* Deferred.await(entered)
+				yield* TestClock.adjust('2 seconds')
+				const timedOut = yield* Fiber.join(pending)
+				assert.isTrue(Option.getOrThrow(Array.get(timedOut, 1)).stale)
+				assert.strictEqual(Option.getOrThrow(Array.get(timedOut, 1)).cpuModel, 'Fixture CPU')
+				yield* Ref.set(hanging, false)
 				yield* Ref.set(unavailable, true)
 				const staleMetrics = yield* fleet.metrics({hours: 1})
 				assert.isTrue(staleMetrics[1]?.stale)
