@@ -349,6 +349,8 @@ export class Tokens extends Context.Service<
 										replaced: credential.hash,
 										...minted.refresh
 									},
+									// Recomputed, so a sign-in labelled by an older rule takes the current one on its next refresh.
+									device: deviceLabel(origin),
 									lastActive: now,
 									origin
 								}
