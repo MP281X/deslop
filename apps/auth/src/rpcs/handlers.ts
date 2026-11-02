@@ -3,12 +3,14 @@ import {Effect, Stream} from 'effect'
 import {CurrentUser} from '@deslop/runtime/auth/utils'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
+import {Apps} from '#services/apps/service.ts'
 import {People} from '#services/people/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
 export const RpcHandlers = RpcContracts.toLayer(
 	Effect.gen(function* () {
+		const apps = yield* Apps
 		const people = yield* People
 		const signIns = yield* SignIns
 		const tokens = yield* Tokens
@@ -22,6 +24,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 				yield* signIns.answer(input, yield* CurrentUser, 'Session')
 			}),
 			'auth.apps': () => Stream.unwrap(Effect.map(CurrentUser, tokens.apps)),
+			'auth.catalog': () => apps.catalog,
 			'auth.disconnect': Effect.fnUntraced(function* (input) {
 				return yield* tokens.disconnect(input.family, yield* CurrentUser)
 			}),

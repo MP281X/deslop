@@ -7,6 +7,8 @@ import {AuthError, User} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 import {AUTH_URL, localAuth} from '@deslop/runtime/auth/utils'
 
+import {App, AppParams} from '#services/apps/schema.ts'
+import {Apps} from '#services/apps/service.ts'
 import {CallbackParams, LoginState, SignInParams} from '#services/github/schema.ts'
 import {GitHub} from '#services/github/service.ts'
 import {People} from '#services/people/service.ts'
@@ -136,6 +138,7 @@ function returnTo(flow: SignInParams) {
 
 export const HttpHandlers = HttpRouter.use(router =>
 	Effect.gen(function* () {
+		const apps = yield* Apps
 		const auth = yield* Auth
 		const github = yield* GitHub
 		const people = yield* People
@@ -175,6 +178,25 @@ export const HttpHandlers = HttpRouter.use(router =>
 			})
 		}
 
+		// Each app's server announces itself here at start; see `ServerRuntime.layerAnnounce`.
+		yield* router.add(
+			'POST',
+			'/api/apps',
+			limited(
+				'apps',
+				10
+			)(
+				pipe(
+					Effect.gen(function* () {
+						const params = yield* pipe(HttpServerRequest.schemaBodyJson(AppParams), rejected('Send the app’s origin'))
+						return yield* HttpServerResponse.schemaJson(App)(yield* apps.register(params.origin))
+					}),
+					Effect.catchIf(Schema.is(AuthError), failure =>
+						Effect.succeed(HttpServerResponse.text(failure.message, {status: 403}))
+					)
+				)
+			)
+		)
 		yield* router.add(
 			'GET',
 			'/.well-known/oauth-authorization-server/api/auth',

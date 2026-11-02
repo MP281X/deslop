@@ -31,6 +31,7 @@ import {AUTH_URL, CurrentUser} from '@deslop/runtime/auth/utils'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import {HttpHandlers} from '#http/handlers.ts'
+import {Apps} from '#services/apps/service.ts'
 import {GitHub} from '#services/github/service.ts'
 import {AdmitParams, Person, PersonParams} from '#services/people/schema.ts'
 import {People} from '#services/people/service.ts'
@@ -237,7 +238,7 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 					),
 					Layer.provideMerge(Layer.mergeAll(SignIns.layer, RateLimiter.layer)),
 					Layer.provideMerge(People.layer),
-					Layer.provideMerge(Layer.mergeAll(Tokens.layer, GitHub.layer, RateLimiter.layerStoreMemory)),
+					Layer.provideMerge(Layer.mergeAll(Tokens.layer, GitHub.layer, Apps.layer, RateLimiter.layerStoreMemory)),
 					Layer.provide(ServerRuntime.layerKeyValueStore(directory)),
 					Layer.provide(
 						Layer.mergeAll(

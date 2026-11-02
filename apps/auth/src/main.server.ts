@@ -13,6 +13,7 @@ import {HttpHandlers} from '#http/handlers.ts'
 import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
+import {Apps} from '#services/apps/service.ts'
 import {GitHub} from '#services/github/service.ts'
 import {People} from '#services/people/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
@@ -23,7 +24,7 @@ import {layerMcp} from '#tools/handlers.ts'
 const layerServices = pipe(
 	Layer.mergeAll(SignIns.layer, RateLimiter.layer),
 	Layer.provideMerge(People.layer),
-	Layer.provideMerge(Layer.mergeAll(Tokens.layer, GitHub.layer, RateLimiter.layerStoreMemory)),
+	Layer.provideMerge(Layer.mergeAll(Tokens.layer, GitHub.layer, Apps.layer, RateLimiter.layerStoreMemory)),
 	Layer.provide(ServerRuntime.layerDataStore),
 	Layer.provide(Layer.succeed(NodeHttpClient.RequestInit, {redirect: 'error'}))
 )

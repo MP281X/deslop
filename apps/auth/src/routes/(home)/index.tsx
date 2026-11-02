@@ -13,7 +13,7 @@ import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/
 import {cn} from '@deslop/components-web/utils'
 
 import {AppList} from '#lib/components.tsx'
-import {APPS, codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/utils.ts'
+import {APP_ROWS, codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/utils.ts'
 import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 
@@ -108,7 +108,7 @@ function Page(props: {
 	return (
 		<>
 			<Enter answered={props.answered} onType={props.onType} state={props.state} typed={props.typed} />
-			<Suspense fallback={<ItemListSkeleton label="Apps" media rows={APPS.length} />}>
+			<Suspense fallback={<ItemListSkeleton label="Apps" media rows={APP_ROWS} />}>
 				<AppList pending={props.pending} />
 			</Suspense>
 		</>

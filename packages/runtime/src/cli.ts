@@ -27,6 +27,7 @@ import {Origin, Port, SecureOrigin} from '#schema.ts'
 import {
 	appName,
 	guard,
+	layerAnnounce,
 	layerIcon,
 	layerNodeHttpServer,
 	layerProtocol,
@@ -128,7 +129,10 @@ export type App<A, E> = {
 function server<A, E>(app: App<A, E>) {
 	return pipe(
 		HttpRouter.serve(
-			pipe(Layer.mergeAll(app.routes, layerRoutes, layerIcon(app.icon), layerWeb), Layer.provide(Auth.layer)),
+			pipe(
+				Layer.mergeAll(app.routes, layerRoutes, layerIcon(app.icon), layerWeb, layerAnnounce),
+				Layer.provide(Auth.layer)
+			),
 			{disableLogger: true, middleware: http => guard(app.middleware?.(http) ?? http)}
 		),
 		Layer.provide(

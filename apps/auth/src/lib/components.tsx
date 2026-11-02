@@ -27,11 +27,11 @@ import edge from '#lib/brands/edge.svg'
 import firefox from '#lib/brands/firefox.svg'
 import safari from '#lib/brands/safari.svg'
 import {
-	APPS,
 	ageLabel,
-	appIds,
+	appOrigins,
 	appsAtom,
 	avatarUrl,
+	catalogAtom,
 	consentAtom,
 	disconnectAtom,
 	minuteAtom,
@@ -160,19 +160,19 @@ function ClientChip(props: {app: string; now: number; signIns: NonEmptyReadonlyA
 }
 
 // A glyph tile until the app's own icon loads, so a missing icon never draws the browser's broken image.
-function AppIcon(props: {id: string}) {
+function AppIcon(props: {origin: string}) {
 	const [state, setState] = useState<'failed' | 'loaded' | 'loading'>('loading')
 	return (
 		<span className="bg-secondary text-muted-foreground relative flex size-8 items-center justify-center overflow-hidden rounded-md">
 			{state !== 'loaded' &&
 				pipe(
-					Match.value(props.id),
+					Match.value(props.origin),
 					Match.when('browser', () => <Globe className="size-4" />),
 					Match.orElse(() => <AppWindow className="size-4" />)
 				)}
-			{state !== 'failed' && Array.some(APPS, app => app.id === props.id) && (
+			{state !== 'failed' && props.origin !== 'browser' && (
 				<img
-					src={`https://${props.id}.mp281x.xyz/icon`}
+					src={`${props.origin}/icon`}
 					alt=""
 					className={cn('absolute inset-0 size-full', state === 'loading' && 'invisible')}
 					onLoad={() => setState('loaded')}
@@ -185,7 +185,7 @@ function AppIcon(props: {id: string}) {
 
 // One app: its icon, name and a link to open it, then a chip per client signed in to it, the waiting one first.
 function AppRow(props: {
-	id: string
+	origin: string
 	name: string
 	now: number
 	pending: Option.Option<PendingAuthorization>
@@ -201,7 +201,7 @@ function AppRow(props: {
 	return (
 		<Item role="listitem" size="sm">
 			<ItemMedia>
-				<AppIcon id={props.id} />
+				<AppIcon origin={props.origin} />
 			</ItemMedia>
 			<ItemContent>
 				<ItemTitle className="min-h-8">{props.name}</ItemTitle>
@@ -285,34 +285,32 @@ function Answer(props: {request: PendingAuthorization}) {
 }
 
 // A browser session reaches every web app, so it counts under each one with a site.
-function reaches(resources: PendingAuthorization['resources'], id: string) {
-	const ids = appIds(resources)
-	return (
-		Array.contains(ids, id) ||
-		(Array.contains(ids, 'browser') && Array.some(APPS, app => app.id === id && String.startsWith('https://')(app.url)))
-	)
+function reaches(resources: PendingAuthorization['resources'], origin: string, web: boolean) {
+	const origins = appOrigins(resources)
+	return Array.contains(origins, origin) || (Array.contains(origins, 'browser') && web)
 }
 
-function holding(signIns: readonly SignedInApp[], id: string) {
-	return Array.filter(signIns, signIn => reaches(signIn.resources, id))
+function holding(signIns: readonly SignedInApp[], origin: string, web: boolean) {
+	return Array.filter(signIns, signIn => reaches(signIn.resources, origin, web))
 }
 
-function asking(pending: Option.Option<PendingAuthorization>, id: string) {
-	return Option.filter(pending, request => reaches(request.resources, id))
+function asking(pending: Option.Option<PendingAuthorization>, origin: string, web: boolean) {
+	return Option.filter(pending, request => reaches(request.resources, origin, web))
 }
 
-// Every app, then any other a sign-in holds; a waiting sign-in shows on the apps it asks for.
+// Every app that announced itself, then any other a sign-in holds; a waiting sign-in shows on the apps it asks for.
 export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
+	const catalog = useAtomSuspense(catalogAtom).value
 	const signIns = useAtomSuspense(appsAtom).value
 	const now = useAtomSuspense(minuteAtom).value
 	const [disconnection] = useAtom(disconnectAtom)
 	const extra = pipe(
 		[
-			...Array.flatMap(signIns, signIn => appIds(signIn.resources)),
-			...Option.match(props.pending, {onNone: () => [], onSome: request => appIds(request.resources)})
+			...Array.flatMap(signIns, signIn => appOrigins(signIn.resources)),
+			...Option.match(props.pending, {onNone: () => [], onSome: request => appOrigins(request.resources)})
 		],
 		Array.dedupe,
-		Array.filter(id => id !== 'browser' && !Array.some(APPS, app => app.id === id)),
+		Array.filter(origin => origin !== 'browser' && !Array.some(catalog, app => app.origin === origin)),
 		Array.sort(String.Order)
 	)
 	return (
@@ -329,25 +327,25 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 			})}
 			<ItemList label="Apps">
 				{[
-					...Array.map(APPS, app => (
+					...Array.map(catalog, app => (
 						<AppRow
-							key={app.id}
-							id={app.id}
+							key={app.origin}
+							origin={app.origin}
 							name={app.name}
 							now={now}
-							pending={asking(props.pending, app.id)}
-							signIns={holding(signIns, app.id)}
-							url={Option.some(app.url)}
+							pending={asking(props.pending, app.origin, String.startsWith('https://')(app.open))}
+							signIns={holding(signIns, app.origin, String.startsWith('https://')(app.open))}
+							url={Option.some(app.open)}
 						/>
 					)),
-					...Array.map(extra, id => (
+					...Array.map(extra, origin => (
 						<AppRow
-							key={id}
-							id={id}
-							name={String.capitalize(id)}
+							key={origin}
+							origin={origin}
+							name={Option.getOrElse(Array.head(String.split(new URL(origin).hostname, '.')), () => origin)}
 							now={now}
-							pending={asking(props.pending, id)}
-							signIns={holding(signIns, id)}
+							pending={asking(props.pending, origin, false)}
+							signIns={holding(signIns, origin, false)}
 							url={Option.none()}
 						/>
 					))

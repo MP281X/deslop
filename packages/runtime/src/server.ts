@@ -20,6 +20,7 @@ import {
 	Path,
 	Predicate,
 	Result,
+	Schedule,
 	Schema,
 	Semaphore,
 	Stream,
@@ -30,6 +31,8 @@ import {
 
 import {McpProtocol, McpServer} from 'effect/ai'
 import {
+	HttpClient,
+	HttpClientRequest,
 	HttpIncomingMessage,
 	HttpMiddleware,
 	HttpRouter,
@@ -273,9 +276,14 @@ export const layerRoutes = HttpRouter.use(router =>
 		yield* router.add(
 			'GET',
 			'/api/runtime',
-			Effect.flatMap(packageMetadata, metadata =>
-				HttpServerResponse.schemaJson(RuntimeConfig)({traces, version: metadata.version})
-			)
+			Effect.gen(function* () {
+				return yield* HttpServerResponse.schemaJson(RuntimeConfig)({
+					...Option.match(issuer, {onNone: () => ({}), onSome: origin => ({auth: origin})}),
+					name: yield* appName,
+					traces,
+					version: (yield* packageMetadata).version
+				})
+			})
 		)
 		yield* router.add('GET', '/auth/sign-in', toIssuer({}))
 		yield* router.add('GET', '/auth/sign-out', toIssuer({'sign-out': ''}))
@@ -291,6 +299,29 @@ export const layerRoutes = HttpRouter.use(router =>
 				)
 			})
 		)
+	})
+)
+
+// An app signed in through Auth tells Auth where it runs once it listens, so Auth's app list needs no list of its own; Auth checks the claim against this app's `/api/runtime`.
+export const layerAnnounce = Layer.effectDiscard(
+	Effect.gen(function* () {
+		const origin = new URL(yield* Config.String('APP_URL')).origin
+		const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
+		yield* Option.match(yield* Config.option(Config.String('AUTH_URL')), {
+			onNone: () => Effect.void,
+			onSome: Effect.fnUntraced(function* (issuer) {
+				yield* pipe(
+					HttpClientRequest.post(new URL('/api/apps', issuer).href),
+					HttpClientRequest.bodyJsonUnsafe({origin}),
+					client.execute,
+					Effect.delay('2 seconds'),
+					// While Auth restarts too, as after a release; an hour of refusals means it never will list this app.
+					Effect.retry({schedule: Schedule.spaced('1 minute'), times: 60}),
+					Effect.ignore({log: 'Warn', message: 'Auth did not list this app'}),
+					Effect.forkScoped
+				)
+			})
+		})
 	})
 )
 

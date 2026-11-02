@@ -27,7 +27,7 @@ import {Spinner} from '@deslop/components-web/ui/spinner'
 
 import {AccountAvatar, AppList, QrCode} from '#lib/components.tsx'
 import {
-	APPS,
+	APP_ROWS,
 	accountAtom,
 	approveLink,
 	codeSignInAtom,
@@ -99,7 +99,7 @@ function Waiting(props: {account: Option.Option<Account>; id: string}) {
 					{
 						onNone: () => <CodeCard request={value.request} />,
 						onSome: () => (
-							<Suspense fallback={<ItemListSkeleton label="Apps" media rows={APPS.length} />}>
+							<Suspense fallback={<ItemListSkeleton label="Apps" media rows={APP_ROWS} />}>
 								<AppList pending={Option.some(value.request)} />
 							</Suspense>
 						)
@@ -285,7 +285,7 @@ function HomeLayout() {
 					<main className="pb-safe flex min-h-0 flex-1 justify-center overflow-y-auto px-4 pt-8 md:pt-16">
 						<div className="flex w-full max-w-xl flex-col gap-6 self-start">
 							<Skeleton className="h-7 w-48" />
-							<ItemListSkeleton label="Apps" media rows={APPS.length} />
+							<ItemListSkeleton label="Apps" media rows={APP_ROWS} />
 						</div>
 					</main>
 				</>

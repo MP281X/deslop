@@ -201,33 +201,25 @@ export function approveLink(id: string) {
 	return `${location.origin}/?code=${id}`
 }
 
-// Each app's server serves its icon at /icon; an iOS app opens through its URL scheme.
-export const APPS = [
-	{id: 'auth', name: 'Auth', url: 'https://auth.mp281x.xyz'},
-	{id: 'gateway', name: 'Gateway', url: 'https://gateway.mp281x.xyz'},
-	{id: 'opm', name: 'opm', url: 'opm://'},
-	{id: 'portfolio', name: 'Portfolio', url: 'https://portfolio.mp281x.xyz'},
-	{id: 'scope', name: 'Scope', url: 'https://scope.mp281x.xyz'},
-	{id: 'signal', name: 'Signal', url: 'https://signal.mp281x.xyz'},
-	{id: 'stash', name: 'Stash', url: 'stash://'},
-	{id: 'trips', name: 'Trips', url: 'trips://'}
-] as const
-
-// The apps a sign-in reaches, by id; a browser session names no app. Sign-ins from the release before Scope's public receiver also hold the retired otel resource.
-export function appIds(resources: PendingAuthorization['resources']) {
-	if (Array.isReadonlyArrayEmpty(resources)) return ['browser']
-	return Array.dedupe(
-		Array.map(
-			Array.filter(resources, resource => resource !== 'https://otel.mp281x.xyz'),
-			resource =>
-				pipe(
-					new URL(resource).hostname,
-					String.split('.'),
-					Array.head,
-					Option.getOrElse(() => '')
-				)
+// Live, so an app shows once its server announces itself to Auth.
+export const catalogAtom = Atom.keepAlive(
+	RpcClient.runtime.atom(
+		pipe(
+			RpcClient,
+			Effect.map(client => client('auth.catalog', undefined)),
+			Stream.unwrap,
+			reconnecting
 		)
 	)
+)
+
+// The rows the app list's skeleton draws while it loads, about as many as it lists.
+export const APP_ROWS = 9
+
+// The apps a sign-in reaches, by origin; a browser session names no app.
+export function appOrigins(resources: PendingAuthorization['resources']) {
+	if (Array.isReadonlyArrayEmpty(resources)) return ['browser']
+	return Array.dedupe(Array.map(resources, resource => new URL(resource).origin))
 }
 
 export function timeLabel(time: number) {
