@@ -1,4 +1,4 @@
-import {Array, Duration, Number, Option, String, pipe} from 'effect'
+import {Array, Clock, Effect, Number, Option, Schedule, Stream, String, pipe} from 'effect'
 
 import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
 
@@ -11,71 +11,44 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/scope/lib/utils/Rp
 	protocol: WebRuntime.layerProtocol
 }) {}
 
-// What the trace list shows: one service or every one, and only failed traces when asked.
-export const filtersAtom = Atom.make({errors: false, service: ''})
-
-// The query for the newest hundred traces of the last three days under the filters; refreshing it asks the server again.
-export const tracesQueryAtom = Atom.make(get =>
-	RpcClient.query('scope.traces', {
-		...get(filtersAtom),
-		limit: 100,
-		offset: 0,
-		operation: '',
-		runs: 'all',
-		since: Duration.days(3),
-		sort: 'recent',
-		text: '',
-		traceId: ''
-	})
+// Every app's operations and their newest traces, pushed again whenever a trace arrives.
+export const overviewAtom = Atom.keepAlive(
+	RpcClient.runtime.atom(
+		pipe(
+			RpcClient,
+			Effect.map(client => client('scope.overview', undefined)),
+			Stream.unwrap,
+			Stream.retry($ =>
+				pipe(
+					$(Schedule.spaced('2 seconds')),
+					Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
+				)
+			)
+		)
+	)
 )
 
-// A new filter's first answer keeps the previous page on screen, marked waiting, instead of blanking it.
-export const tracesAtom = Atom.make(get => {
-	const result = get(get(tracesQueryAtom))
-	if (!AsyncResult.isInitial(result)) return result
-	return Option.match(get.self<typeof result>(), {
-		onNone: () => result,
-		onSome: previous => AsyncResult.waiting(previous)
-	})
-})
-
-// The traces a refresh added under the same filters, so only they grow in; the first page and a new filter show at once.
+// The traces the latest push added, so only they grow in; the first push shows at once.
 export const arrivalsAtom = Atom.make(get => {
-	const filters = get(filtersAtom)
-	const result = get(tracesAtom)
-	// The last settled page and its filters; a waiting or failed answer keeps it and adds nothing.
-	const baseline = Option.flatMap(
-		get.self<{arrived: string[]; baseline: Option.Option<{filters: typeof filters; ids: string[]}>}>(),
-		before => before.baseline
+	const result = get(overviewAtom)
+	const before = Option.flatMap(get.self<{arrived: string[]; seen: Option.Option<string[]>}>(), last => last.seen)
+	if (!AsyncResult.isSuccess(result)) return {arrived: Array.empty<string>(), seen: before}
+	const ids = Array.flatMap(result.value.services, service =>
+		Array.flatMap(service.operations, operation => Array.map(operation.traces, trace => trace.id))
 	)
-	if (!AsyncResult.isSuccess(result) || result.waiting) return {arrived: Array.empty<string>(), baseline}
-	const ids = Array.map(result.value.entries, trace => trace.id)
 	return {
-		arrived: Option.match(
-			Option.filter(baseline, last => last.filters === filters),
-			{onNone: () => Array.empty<string>(), onSome: last => Array.difference(ids, last.ids)}
-		),
-		baseline: Option.some({filters, ids})
+		arrived: Option.match(before, {onNone: () => Array.empty<string>(), onSome: seen => Array.difference(ids, seen)}),
+		seen: Option.some(ids)
 	}
 })
 
-export const servicesAtom = RpcClient.query('scope.services', undefined)
-
-const traceAtom = Atom.family((id: string) => RpcClient.query('scope.trace', {id}))
-
-export const selectedAtom = Atom.make(Option.none<string>())
-
-// The picked trace; while the next one loads the previous stays on screen, marked waiting, so the axis can ease between them.
-export const selectedTraceAtom = Atom.make(get =>
-	Option.map(get(selectedAtom), id => {
-		const result = get(traceAtom(id))
-		if (!AsyncResult.isInitial(result)) return result
-		return Option.match(Option.flatten(get.self<Option.Option<typeof result>>()), {
-			onNone: () => result,
-			onSome: previous => AsyncResult.waiting(previous)
-		})
-	})
+// One trace, keyed by its id and length, so a trace that grows while open is read again.
+export const traceAtom = Atom.family((key: string) =>
+	RpcClient.query('scope.trace', {id: Option.getOrElse(Array.head(String.split(key, ':')), () => key)})
 )
+
+// The page's clock, so ages keep counting on a quiet page.
+export const nowAtom = Atom.make(Stream.mapEffect(Stream.tick('30 seconds'), () => Clock.currentTimeMillis))
 
 // "now", "40s", "12m", "3h" or "2d" since a nanosecond timestamp.
 export function ageOf(time: string, now: number) {

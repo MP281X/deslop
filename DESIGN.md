@@ -237,7 +237,7 @@ Motion marks a change the user caused or should notice, and never holds content 
 | App     | Motion                                                                         |
 | ------- | ------------------------------------------------------------------------------ |
 | Trips   | a changed gate, platform or time flips in like a departures board              |
-| Scope   | the waterfall eases to a new trace's scale; traces a refresh adds grow in      |
+| Scope   | a trace that arrives grows into its open operation                             |
 | Auth    | an answer settles out of a blur; a code no sign-in has shakes once             |
 | Gateway | a server's dot dims for a moment on each tool call, like a switch port's light |
 | Stash   | the share sheet's tick draws itself in, with one success haptic                |
