@@ -4,13 +4,14 @@ import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
 
+import {toast} from '@deslop/components-web/ui/toast'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {ServerUrl} from '#services/connections/schema.ts'
 
-export const ENDPOINT = `${window.location.origin}/mcp`
+const ENDPOINT = `${window.location.origin}/mcp`
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/gateway/lib/utils/RpcClient', {
 	group: RpcContracts,
@@ -59,9 +60,6 @@ export const lastCallAtom = Atom.family((id: string) =>
 	})
 )
 
-export const disconnectAtom = Atom.family((id: string) =>
-	RpcClient.runtime.fn(() => Effect.flatMap(RpcClient, client => client('gateway.disconnect', {id})))
-)
 export const hideAtom = Atom.family((id: string) =>
 	// Concurrent, so a second toggle while the first is in flight does not interrupt it.
 	RpcClient.runtime.fn(
@@ -125,10 +123,13 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 	})
 )
 
+// Copied from the command field, so a toast says whether it worked.
 export const copyEndpointAtom = Atom.fn(() =>
-	Effect.tryPromise({
-		catch: cause =>
-			AuthError.make({cause, message: 'Cannot copy the gateway endpoint. Select and copy its URL instead.'}),
-		try: () => navigator.clipboard.writeText(ENDPOINT)
-	})
+	Effect.match(
+		Effect.tryPromise(() => navigator.clipboard.writeText(ENDPOINT)),
+		{
+			onFailure: () => toast.add({description: ENDPOINT, title: 'Cannot copy the endpoint', type: 'error'}),
+			onSuccess: () => toast.add({title: 'Endpoint copied'})
+		}
+	)
 )

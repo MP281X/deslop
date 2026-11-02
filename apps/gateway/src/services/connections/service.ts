@@ -87,7 +87,6 @@ export class Connections extends Context.Service<
 		// `route` is the server id a registered client's callback carries; the metadata document's callback carries none.
 		readonly complete: (params: Callback, route: Option.Option<string>, user: User) => Effect.Effect<void, AuthError>
 		readonly definitions: Effect.Effect<Connection[]>
-		readonly disconnect: (id: ServerId, user: User) => Effect.Effect<void, AuthError>
 		readonly get: (id: ServerId) => Effect.Effect<Connection, AuthError>
 		readonly hide: (visibility: ToolVisibility, user: User) => Effect.Effect<void, AuthError>
 		readonly list: Effect.Effect<ConnectionInfo[]>
@@ -522,10 +521,6 @@ export class Connections extends Context.Service<
 				)
 			}, failed('Cannot finish the connection')),
 			definitions: Effect.map(SubscriptionRef.get(state), Record.values),
-			disconnect: (id, user) =>
-				manage(id, user, found =>
-					Option.some({...Struct.omit(found, ['error']), link: {_tag: 'Disconnected' as const}, tools: []})
-				),
 			get,
 			hide: (visibility, user) =>
 				manage(visibility.id, user, found =>

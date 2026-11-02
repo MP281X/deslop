@@ -8,6 +8,7 @@ import {AppWindow, ArrowUpRight, Globe, Network, Server, X} from 'lucide-react'
 import {useState} from 'react'
 import {toQR} from 'toqr'
 
+import {useCommandQuery} from '@deslop/components-web/app-bar'
 import {ItemList} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
 import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
@@ -306,13 +307,17 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 	const signIns = useAtomSuspense(appsAtom).value
 	const now = useAtomSuspense(minuteAtom).value
 	const [disconnection] = useAtom(disconnectAtom)
+	const query = useCommandQuery()
+	function shown(name: string) {
+		return String.includes(query)(String.toLowerCase(name))
+	}
 	const extra = pipe(
 		[
 			...Array.flatMap(signIns, signIn => appOrigins(signIn.resources)),
 			...Option.match(props.pending, {onNone: () => [], onSome: request => appOrigins(request.resources)})
 		],
 		Array.dedupe,
-		Array.filter(origin => origin !== 'browser' && !Array.some(catalog, app => app.origin === origin)),
+		Array.filter(origin => origin !== 'browser' && !Array.some(catalog, app => app.origin === origin) && shown(origin)),
 		Array.sort(String.Order)
 	)
 	return (
@@ -329,17 +334,20 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 			})}
 			<ItemList label="Apps">
 				{[
-					...Array.map(catalog, app => (
-						<AppRow
-							key={app.origin}
-							origin={app.origin}
-							name={app.name}
-							now={now}
-							pending={asking(props.pending, app.origin, String.startsWith('https://')(app.open))}
-							signIns={holding(signIns, app.origin, String.startsWith('https://')(app.open))}
-							url={Option.some(app.open)}
-						/>
-					)),
+					...Array.map(
+						Array.filter(catalog, app => shown(app.name)),
+						app => (
+							<AppRow
+								key={app.origin}
+								origin={app.origin}
+								name={app.name}
+								now={now}
+								pending={asking(props.pending, app.origin, String.startsWith('https://')(app.open))}
+								signIns={holding(signIns, app.origin, String.startsWith('https://')(app.open))}
+								url={Option.some(app.open)}
+							/>
+						)
+					),
 					...Array.map(extra, origin => (
 						<AppRow
 							key={origin}

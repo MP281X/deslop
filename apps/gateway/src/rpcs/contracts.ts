@@ -11,7 +11,6 @@ export class RpcContracts extends RpcGroup.make(
 	Rpc.make('gateway.servers', {error: AuthError, stream: true, success: Schema.Array(ConnectionInfo)}),
 	Rpc.make('gateway.calls', {error: AuthError, stream: true, success: ServerId}),
 	Rpc.make('gateway.add', {error: AuthError, payload: AddServer, success: ConnectionInfo}),
-	Rpc.make('gateway.disconnect', {error: AuthError, payload: ServerParams}),
 	Rpc.make('gateway.remove', {error: AuthError, payload: ServerParams}),
 	Rpc.make('gateway.hide', {error: AuthError, payload: ToolVisibility})
 ).middleware(RpcAuth) {}

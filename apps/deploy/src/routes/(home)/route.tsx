@@ -1,4 +1,4 @@
-import {useAtomSuspense} from '@effect/atom-react'
+import {useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Cause, Option, Schema, String} from 'effect'
 
@@ -11,19 +11,20 @@ import {
 	useNavigate,
 	useSearch
 } from '@tanstack/react-router'
-import {AsyncResult} from 'effect/reactivity'
+import {AsyncResult, Atom} from 'effect/reactivity'
+import {Plus} from 'lucide-react'
 import {Suspense} from 'react'
 
-import {AppBar} from '@deslop/components-web/app-bar'
+import {AppBar, AppBarAction, AppBarTab} from '@deslop/components-web/app-bar'
 import {StatusDot} from '@deslop/components-web/status-dot'
-import {buttonVariants} from '@deslop/components-web/ui/button'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
 import {AuthError} from '@deslop/runtime/auth/schema'
 
 import {MachineIcon, machineName} from '#lib/components.tsx'
-import {inventoryAtom} from '#lib/utils.ts'
+import {exposeAtom, exposeOpenAtom, inventoryAtom} from '#lib/utils.ts'
 import {PageError} from '#routes/(home)/-error.tsx'
+import {ExposeDialog} from '#routes/(home)/-expose.tsx'
 import icon from '#routes/icon-dark.svg'
 
 function Fleet() {
@@ -90,39 +91,47 @@ function Fleet() {
 	)
 }
 
+// Apps filter from the bar's field and, once the inventory is in, expose a port from its button; Monitor keeps the bar without either.
 function Shell() {
 	const matchRoute = useMatchRoute()
 	const search = useSearch({from: '/(home)'})
+	const setExposing = useAtomSet(exposeOpenAtom)
+	const resetExpose = useAtomSet(exposeAtom)
+	const loaded = AsyncResult.isSuccess(useAtomValue(inventoryAtom))
+	const exposing = matchRoute({to: '/monitor'}) === false && loaded
+	function expose() {
+		resetExpose(Atom.Reset)
+		setExposing(true)
+	}
 	return (
 		<>
-			<AppBar name="deploy" icon={icon}>
-				<nav aria-label="Sections" className="flex items-center gap-1">
-					{Array.map(
-						[
-							{label: 'Apps', to: '/'},
-							{label: 'Monitor', to: '/monitor'}
-						] as const,
-						tab => (
-							<Link
-								key={tab.to}
-								to={tab.to}
-								search={search}
-								activeOptions={{exact: true}}
-								className={buttonVariants({
-									variant: Boolean.match(matchRoute({to: tab.to}) !== false, {
-										onFalse: () => 'ghost' as const,
-										onTrue: () => 'secondary' as const
-									})
-								})}
-							>
-								{tab.label}
-							</Link>
-						)
-					)}
-				</nav>
-			</AppBar>
+			<AppBar
+				name="deploy"
+				icon={icon}
+				tabs={Array.map(
+					[
+						{label: 'Apps', to: '/'},
+						{label: 'Monitor', to: '/monitor'}
+					] as const,
+					tab => (
+						<AppBarTab
+							key={tab.to}
+							active={matchRoute({to: tab.to}) !== false}
+							render={<Link to={tab.to} search={search} activeOptions={{exact: true}} />}
+						>
+							{tab.label}
+						</AppBarTab>
+					)
+				)}
+				commands={Boolean.match(matchRoute({to: '/monitor'}) !== false, {
+					onFalse: () => Array.filter([{icon: <Plus />, label: 'Expose a port', run: expose}], () => exposing),
+					onTrue: () => undefined
+				})}
+				action={exposing && <AppBarAction icon={<Plus />} label="Expose" onClick={expose} />}
+			/>
+			<ExposeDialog />
 			<main
-				className={`mx-auto flex min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden px-4 py-4 ${Boolean.match(matchRoute({to: '/monitor'}) !== false, {onFalse: () => 'max-w-3xl', onTrue: () => 'max-w-5xl'})}`}
+				className={`mx-auto flex min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden px-4 pt-3 ${Boolean.match(matchRoute({to: '/monitor'}) !== false, {onFalse: () => 'max-w-3xl', onTrue: () => 'max-w-5xl'})}`}
 			>
 				<CatchBoundary getResetKey={() => location.href} errorComponent={PageError}>
 					<div className="bg-background sticky top-0 z-20 border-b pb-3">

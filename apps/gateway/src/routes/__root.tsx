@@ -2,9 +2,7 @@ import './styles.css'
 
 import {HeadContent, Scripts, createRootRoute} from '@tanstack/react-router'
 
-import {AppBar} from '@deslop/components-web/app-bar'
-
-import icon from './icon-dark.svg'
+import {Toaster} from '@deslop/components-web/ui/toast'
 
 export const Route = createRootRoute({
 	shellComponent: props => (
@@ -12,8 +10,7 @@ export const Route = createRootRoute({
 			<HeadContent />
 			<Scripts />
 
-			<AppBar icon={icon} name="gateway" />
-			{props.children}
+			<Toaster>{props.children}</Toaster>
 		</div>
 	)
 })

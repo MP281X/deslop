@@ -1,14 +1,16 @@
 import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Option} from 'effect'
+import {Array, Boolean, Option, Order, String} from 'effect'
 
 import {Navigate, createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
-import type {ReactElement, ReactNode} from 'react'
+import type {ReactNode} from 'react'
 
+import {useCommandQuery} from '@deslop/components-web/app-bar'
 import {ItemList, ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Button} from '@deslop/components-web/ui/button'
+import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {FieldError} from '@deslop/components-web/ui/field'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 
@@ -16,7 +18,7 @@ import {AccountAvatar} from '#lib/components.tsx'
 import {accountAtom, admitAtom, dayLabel, peopleAtom, removeAtom} from '#lib/utils.ts'
 import type {Person} from '#services/people/schema.ts'
 
-function PersonItem(props: {actions?: ReactNode; detail: string; person: Person}) {
+function PersonItem(props: {actions?: ReactNode; detail: ReactNode; person: Person}) {
 	return (
 		<Item role="listitem">
 			<ItemMedia>
@@ -24,21 +26,24 @@ function PersonItem(props: {actions?: ReactNode; detail: string; person: Person}
 			</ItemMedia>
 			<ItemContent>
 				<ItemTitle>{props.person.fullName ?? props.person.name}</ItemTitle>
-				<ItemDescription className="font-mono">
-					@{props.person.name} · {props.detail}
-				</ItemDescription>
+				<ItemDescription>{props.detail}</ItemDescription>
 			</ItemContent>
 			<ItemActions>{props.actions}</ItemActions>
 		</Item>
 	)
 }
 
+// Someone asking for access leads the list; their GitHub handle stays, since anyone can set the name above it.
 function AskingItem(props: {person: Person}) {
 	const [admit, answer] = useAtom(admitAtom)
 	return (
 		<PersonItem
 			person={props.person}
-			detail={dayLabel(props.person.since)}
+			detail={
+				<span className="text-primary font-mono">
+					@{props.person.name} · asking since {dayLabel(props.person.since)}
+				</span>
+			}
 			actions={
 				<>
 					<Button disabled={AsyncResult.isWaiting(admit)} onClick={() => answer({allow: true, id: props.person.id})}>
@@ -62,10 +67,15 @@ function MemberItem(props: {person: Person}) {
 	return (
 		<PersonItem
 			person={props.person}
-			detail={Boolean.match(props.person.role === 'Admin', {
-				onFalse: () => `since ${dayLabel(props.person.since)}`,
-				onTrue: () => 'admin'
-			})}
+			detail={
+				<span className="font-mono">
+					@{props.person.name} ·{' '}
+					{Boolean.match(props.person.role === 'Admin', {
+						onFalse: () => `since ${dayLabel(props.person.since)}`,
+						onTrue: () => 'admin'
+					})}
+				</span>
+			}
 			actions={
 				props.person.role === 'Member' && (
 					<Button variant="outline" disabled={AsyncResult.isWaiting(removal)} onClick={() => remove(props.person.id)}>
@@ -77,38 +87,47 @@ function MemberItem(props: {person: Person}) {
 	)
 }
 
-function People(props: {children: ReactElement[]; label: string; title: string}) {
-	return (
-		<section className="flex flex-col gap-2">
-			<h2 className="text-muted-foreground font-mono text-xs">{props.title}</h2>
-			<ItemList label={props.label}>{props.children}</ItemList>
-		</section>
-	)
-}
-
+// One list: whoever is asking for access first, then everyone with it.
 function Directory() {
-	const people = useAtomSuspense(peopleAtom).value
-	const asking = Array.filter(people, person => person.role === 'Waiting')
-	const members = Array.filter(people, person => person.role !== 'Waiting')
+	const query = useCommandQuery()
+	const people = Array.filter(
+		Array.sort(
+			useAtomSuspense(peopleAtom).value,
+			Order.mapInput(Order.Boolean, (person: Person) => person.role !== 'Waiting')
+		),
+		person => String.includes(query)(String.toLowerCase(`${person.fullName ?? ''} ${person.name}`))
+	)
 	const [admit] = useAtom(admitAtom)
 	const [removal] = useAtom(removeAtom)
-	const error = Option.orElse(AsyncResult.error(admit), () => AsyncResult.error(removal))
 	return (
 		<>
-			<h1 className="text-xl font-semibold tracking-tight">People</h1>
-			{Array.isArrayNonEmpty(asking) && (
-				<People label="Asking for access" title={`${asking.length} asking`}>
-					{Array.map(asking, person => (
-						<AskingItem key={person.id} person={person} />
-					))}
-				</People>
-			)}
-			<People label="With access" title={`${members.length} with access`}>
-				{Array.map(members, person => (
-					<MemberItem key={person.id} person={person} />
-				))}
-			</People>
-			<FieldError>{Option.getOrUndefined(Option.map(error, failure => failure.message))}</FieldError>
+			{Array.match(people, {
+				onEmpty: () => (
+					<Empty>
+						<EmptyHeader>
+							<EmptyTitle>No one matches</EmptyTitle>
+						</EmptyHeader>
+					</Empty>
+				),
+				onNonEmpty: rows => (
+					<ItemList label="People">
+						{Array.map(rows, person =>
+							Boolean.match(person.role === 'Waiting', {
+								onFalse: () => <MemberItem key={person.id} person={person} />,
+								onTrue: () => <AskingItem key={person.id} person={person} />
+							})
+						)}
+					</ItemList>
+				)
+			})}
+			<FieldError>
+				{Option.getOrUndefined(
+					Option.map(
+						Option.orElse(AsyncResult.error(admit), () => AsyncResult.error(removal)),
+						failure => failure.message
+					)
+				)}
+			</FieldError>
 		</>
 	)
 }
@@ -117,14 +136,7 @@ function Directory() {
 function PeopleRoute() {
 	if (!Option.exists(useAtomSuspense(accountAtom).value, signed => signed.role === 'Admin')) return <Navigate to="/" />
 	return (
-		<Suspense
-			fallback={
-				<>
-					<h1 className="text-xl font-semibold tracking-tight">People</h1>
-					<ItemListSkeleton label="People" media rows={3} />
-				</>
-			}
-		>
+		<Suspense fallback={<ItemListSkeleton label="People" media rows={3} />}>
 			<Directory />
 		</Suspense>
 	)

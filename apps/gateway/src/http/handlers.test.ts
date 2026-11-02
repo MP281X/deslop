@@ -411,18 +411,6 @@ const servers = Effect.fnUntraced(function* (home?: string, origin = GATEWAY_URL
 								),
 								HttpRouter.add(
 									'POST',
-									'/servers/disconnect',
-									pipe(
-										Effect.gen(function* () {
-											const input = yield* HttpServerRequest.schemaBodyJson(ServerParams)
-											yield* (yield* Connections).disconnect(input.id, yield* CurrentUser)
-											return HttpServerResponse.empty()
-										}),
-										refused
-									)
-								),
-								HttpRouter.add(
-									'POST',
 									'/servers/hide',
 									pipe(
 										Effect.gen(function* () {
@@ -975,7 +963,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.isTrue(String.includes('list_mcp_connections')(partialText))
 			assert.isTrue(String.includes('public__search')(partialText))
 			assert.strictEqual((yield* modern(gateway.web, TOKEN, 'tools/list')).status, 200)
-			assert.strictEqual((yield* post(gateway.web, '/servers/disconnect', SESSION, {id: 'mobbin'})).status, 204)
+			assert.strictEqual((yield* post(gateway.web, '/servers/remove', SESSION, {id: 'mobbin'})).status, 204)
 			const disconnected = yield* modern(gateway.web, TOKEN, 'tools/call', {
 				arguments: {query: 'blocked'},
 				name: 'mobbin__search'
@@ -1174,10 +1162,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			// A provider cannot redirect metadata discovery to a different issuer.
 			assert.strictEqual((yield* post(gateway.web, '/servers', SESSION, {url: PROVIDERS.dual.url})).status, 400)
 			// Only an admin manages the servers everyone shares.
-			assert.strictEqual(
-				(yield* post(gateway.web, '/servers/disconnect', 'session=stranger', {id: 'mobbin'})).status,
-				400
-			)
+			assert.strictEqual((yield* post(gateway.web, '/servers/remove', 'session=stranger', {id: 'mobbin'})).status, 400)
 		})
 	)
 })

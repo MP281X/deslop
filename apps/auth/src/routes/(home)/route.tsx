@@ -6,12 +6,13 @@ import {Link, Outlet, createFileRoute, useMatchRoute} from '@tanstack/react-rout
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useEffect} from 'react'
 
-import {AppBar} from '@deslop/components-web/app-bar'
+import {AppBar, AppBarTab} from '@deslop/components-web/app-bar'
 import {GitHubIcon} from '@deslop/components-web/icons'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
+import {Page} from '@deslop/components-web/page'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Badge} from '@deslop/components-web/ui/badge'
-import {Button, buttonVariants} from '@deslop/components-web/ui/button'
+import {Button} from '@deslop/components-web/ui/button'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -21,8 +22,8 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
+import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {FieldError} from '@deslop/components-web/ui/field'
-import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 
 import {AccountAvatar, AppList, QrCode} from '#lib/components.tsx'
@@ -112,35 +113,21 @@ function Waiting(props: {account: Option.Option<Account>; id: string}) {
 // Admins switch between sign-ins and people in the app bar; people waiting for access show as a count.
 function Tabs() {
 	const matchRoute = useMatchRoute()
-	return (
-		<nav className="flex items-center gap-1" aria-label="Sections">
-			{Array.map(
-				[
-					{count: 0, label: 'Sign-ins', to: '/'},
-					{
-						count: Array.countBy(useAtomSuspense(peopleAtom).value, person => person.role === 'Waiting'),
-						label: 'People',
-						to: '/people'
-					}
-				] as const,
-				tab => (
-					<Link
-						key={tab.to}
-						to={tab.to}
-						activeOptions={{exact: true}}
-						className={buttonVariants({
-							variant: Boolean.match(matchRoute({to: tab.to}) !== false, {
-								onFalse: () => 'ghost' as const,
-								onTrue: () => 'secondary' as const
-							})
-						})}
-					>
-						{tab.label}
-						{tab.count > 0 && <Badge>{tab.count}</Badge>}
-					</Link>
-				)
-			)}
-		</nav>
+	return Array.map(
+		[
+			{count: 0, label: 'Sign-ins', to: '/'},
+			{
+				count: Array.countBy(useAtomSuspense(peopleAtom).value, person => person.role === 'Waiting'),
+				label: 'People',
+				to: '/people'
+			}
+		] as const,
+		tab => (
+			<AppBarTab key={tab.to} active={matchRoute({to: tab.to}) !== false} render={<Link to={tab.to} />}>
+				{tab.label}
+				{tab.count > 0 && <Badge>{tab.count}</Badge>}
+			</AppBarTab>
+		)
 	)
 }
 
@@ -148,12 +135,14 @@ function Signed(props: {account: Account}) {
 	return pipe(
 		Match.value(props.account.role),
 		Match.when('Waiting', () => (
-			<section className="flex flex-col gap-1" role="status">
-				<h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
-					<StatusDot waiting />
-					Waiting for an admin
-				</h1>
-			</section>
+			<Empty role="status">
+				<EmptyHeader>
+					<EmptyMedia>
+						<StatusDot waiting />
+					</EmptyMedia>
+					<EmptyTitle>Waiting for an admin</EmptyTitle>
+				</EmptyHeader>
+			</Empty>
 		)),
 		Match.orElse(() => <Outlet />)
 	)
@@ -191,22 +180,19 @@ function SignIn() {
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [codeSignIn, startCodeSignIn] = useAtom(codeSignInAtom)
 	return (
-		<section className="flex flex-col gap-4">
-			<h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
-			<div className="flex flex-col gap-2">
-				<Button size="lg" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
-					{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
-					Sign in with GitHub
-				</Button>
-				<Button
-					size="lg"
-					variant="outline"
-					disabled={AsyncResult.isWaiting(codeSignIn)}
-					onClick={() => startCodeSignIn()}
-				>
-					Sign in with a code
-				</Button>
-			</div>
+		<section className="flex flex-col gap-2" aria-label="Sign in">
+			<Button size="lg" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
+				{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
+				Sign in with GitHub
+			</Button>
+			<Button
+				size="lg"
+				variant="outline"
+				disabled={AsyncResult.isWaiting(codeSignIn)}
+				onClick={() => startCodeSignIn()}
+			>
+				Sign in with a code
+			</Button>
 		</section>
 	)
 }
@@ -241,6 +227,7 @@ function SigningOut() {
 	)
 }
 
+// A signed-in account narrows its apps or people from the bar, where admins also switch between the two.
 function Shell() {
 	const account = useAtomSuspense(accountAtom).value
 	return (
@@ -249,28 +236,31 @@ function Shell() {
 				icon={icon}
 				name="auth"
 				account={Option.match(account, {onNone: () => false, onSome: signed => <AccountMenu account={signed} />})}
-			>
-				{Option.exists(account, signed => signed.role === 'Admin') && (
-					<Suspense fallback={null}>
-						<Tabs />
-					</Suspense>
+				tabs={
+					Option.exists(account, signed => signed.role === 'Admin') && (
+						<Suspense fallback={null}>
+							<Tabs />
+						</Suspense>
+					)
+				}
+				commands={Option.match(
+					Option.filter(account, signed => signed.role !== 'Waiting'),
+					{onNone: () => undefined, onSome: () => []}
 				)}
-			</AppBar>
-			<main className="pb-safe flex min-h-0 flex-1 justify-center overflow-y-auto px-4 pt-8 md:pt-16">
-				<div className="flex w-full max-w-xl flex-col gap-6 self-start">
-					{signingOut && <SigningOut />}
-					{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting account={account} id={id} />})}
-					{Option.match(account, {
-						onNone: () => Option.isNone(requestId) && !signingOut && <SignIn />,
-						onSome: signed =>
-							Boolean.match(Option.isSome(requestId) && signed.role !== 'Waiting', {
-								onFalse: () => <Signed account={signed} />,
-								onTrue: () => null
-							})
-					})}
-					<Failures />
-				</div>
-			</main>
+			/>
+			<Page className="max-w-xl">
+				{signingOut && <SigningOut />}
+				{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting account={account} id={id} />})}
+				{Option.match(account, {
+					onNone: () => Option.isNone(requestId) && !signingOut && <SignIn />,
+					onSome: signed =>
+						Boolean.match(Option.isSome(requestId) && signed.role !== 'Waiting', {
+							onFalse: () => <Signed account={signed} />,
+							onTrue: () => null
+						})
+				})}
+				<Failures />
+			</Page>
 		</>
 	)
 }
@@ -282,12 +272,9 @@ function HomeLayout() {
 			fallback={
 				<>
 					<AppBar icon={icon} name="auth" account={false} />
-					<main className="pb-safe flex min-h-0 flex-1 justify-center overflow-y-auto px-4 pt-8 md:pt-16">
-						<div className="flex w-full max-w-xl flex-col gap-6 self-start">
-							<Skeleton className="h-7 w-48" />
-							<ItemListSkeleton label="Apps" media rows={APP_ROWS} />
-						</div>
-					</main>
+					<Page className="max-w-xl">
+						<ItemListSkeleton label="Apps" media rows={APP_ROWS} />
+					</Page>
 				</>
 			}
 		>
