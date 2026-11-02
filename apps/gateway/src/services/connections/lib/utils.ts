@@ -4,6 +4,7 @@ import {HttpClientError} from 'effect/http'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
 
+import {UpstreamError} from '#services/connections/schema.ts'
 import type {Connection, ConnectionInfo, ServerIcon} from '#services/connections/schema.ts'
 
 export const gatewayUrl = Config.String('APP_URL')
@@ -73,13 +74,7 @@ export function describe(cause: unknown): string {
 	if (HttpClientError.isHttpClientError(cause) && cause.reason._tag === 'StatusCodeError') {
 		return `It answered HTTP ${cause.reason.response.status}`
 	}
-	if (
-		Predicate.hasProperty(cause, 'cause') &&
-		Predicate.isNotUndefined(cause.cause) &&
-		Predicate.isTagged(cause, 'UnknownError')
-	) {
-		return describe(cause.cause)
-	}
+	if (Schema.is(UpstreamError)(cause)) return describe(cause.cause)
 	if (Predicate.hasProperty(cause, 'message') && Predicate.isString(cause.message)) {
 		return String.slice(0, 300)(cause.message)
 	}

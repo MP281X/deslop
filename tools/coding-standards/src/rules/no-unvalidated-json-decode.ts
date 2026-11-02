@@ -15,9 +15,6 @@ function unknownSchema(context: Context, node: ESTree.Node) {
 
 function unknownJsonSchema(context: Context, node: ESTree.Node) {
 	const schema = resolveBinding(context, node)
-	if (schema.type === 'MemberExpression') {
-		return importedMember({context, importedName: 'Schema', node: schema, propertyName: 'UnknownFromJsonString'})
-	}
 	return (
 		schema.type === 'CallExpression' &&
 		schema.callee.type !== 'Super' &&
@@ -97,7 +94,7 @@ function httpDecoder(context: Context, callee: ESTree.Node) {
 
 export const noUnvalidatedJsonDecode = defineRule({
 	create: context => {
-		// Every reported schema is Schema.Unknown or Schema.UnknownFromJsonString, written in this file.
+		// Every reported schema is Schema.Unknown, written in this file.
 		if (!pipe(context.sourceCode.text, String.includes('Unknown'))) return {}
 		return {
 			CallExpression: node => {

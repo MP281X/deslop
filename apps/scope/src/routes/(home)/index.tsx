@@ -1,6 +1,19 @@
 import {useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, DateTime, Number, Option, Predicate, Record, Schema, String, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Cause,
+	DateTime,
+	Formatter,
+	Number,
+	Option,
+	Predicate,
+	Record,
+	Schema,
+	String,
+	pipe
+} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
@@ -70,7 +83,7 @@ function valueOf(value: Schema.Json) {
 		Schema.decodeUnknownOption(Wrapped)(value),
 		Option.flatMap(wrapped => Array.head(Record.values(wrapped))),
 		Option.filter(inner => Predicate.isString(inner) || Predicate.isNumber(inner) || Predicate.isBoolean(inner)),
-		Option.match({onNone: () => JSON.stringify(value), onSome: inner => `${inner}`})
+		Option.match({onNone: () => Formatter.formatJson(value), onSome: inner => `${inner}`})
 	)
 }
 

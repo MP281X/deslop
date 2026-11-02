@@ -9,6 +9,7 @@ import {
 	Predicate,
 	Record,
 	String,
+	Struct,
 	Tuple,
 	pipe
 } from 'effect'
@@ -177,6 +178,10 @@ const SUN = new THREE.Vector3(-0.35, 0.8, 0.45).normalize()
 const UP = new THREE.Vector3(0, 1, 0)
 // The ground height map's mark for ground no chunk has built yet.
 const UNBUILT = THREE.DataUtils.toHalfFloat(-1000)
+// Compared on every view, so the builder redraws footprints only when one moved or resized.
+const SAME_FOOTPRINTS = Array.makeEquivalence(
+	Struct.makeEquivalence({d: Number.Equivalence, w: Number.Equivalence, x: Number.Equivalence, z: Number.Equivalence})
+)
 
 type Loaded = {built: Option.Option<Built>; group: THREE.Group; revision: number; wanted: number}
 type Clock = {value: number}
@@ -718,7 +723,7 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 	// The fog window's corner in tiles; it moves when the camera nears its edge.
 	const fogCorner = {x: -FOG_SIZE / 2, z: -FOG_SIZE / 2}
 	const simulation = {previous: 0, speed: 0, tick: 0}
-	const footprints = {key: ''}
+	const footprints = {sent: Option.none<{d: number; w: number; x: number; z: number}[]>()}
 	const listeners = {all: Array.empty<(seconds: number, delta: number) => void>(), drawn: Array.empty<() => void>()}
 	const raycaster = new THREE.Raycaster()
 	const direction = new THREE.Vector3()
@@ -1255,10 +1260,10 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			drawing.invalidate()
 		},
 		footprints(sites: NonNullable<Frame['buildings']>) {
-			const key = JSON.stringify(Array.map(sites, site => [site.x, site.z, site.w, site.d]))
-			if (footprints.key === key) return
-			footprints.key = key
-			tell({_tag: 'Footprints', sites: Array.map(sites, site => ({d: site.d, w: site.w, x: site.x, z: site.z}))})
+			const shapes = Array.map(sites, site => ({d: site.d, w: site.w, x: site.x, z: site.z}))
+			if (Option.exists(footprints.sent, sent => SAME_FOOTPRINTS(sent, shapes))) return
+			footprints.sent = Option.some(shapes)
+			tell({_tag: 'Footprints', sites: shapes})
 		},
 		// Frame a followed entity in the unobstructed map, not behind its inspector.
 		frameAt(x: number, y: number) {
@@ -1330,7 +1335,7 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		},
 		// The world as generated again, for a stream that starts over: no chunk, explored tile, change or cleared prop kept.
 		reset() {
-			footprints.key = ''
+			footprints.sent = Option.none()
 			zoneState.zones = []
 			atmosphere.samples = []
 			paintEnvironment()

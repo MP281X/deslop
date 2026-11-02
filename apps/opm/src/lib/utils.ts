@@ -17,7 +17,7 @@ import {OpmNative} from '#modules/native/index.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {byNumber, keyOf, notificationOf} from '#services/chapters/lib/utils.ts'
 import type {ChaptersEvent, ChapterList, ReadingUpdate} from '#services/chapters/schema.ts'
-import {ChapterItem} from '#services/chapters/schema.ts'
+import {ChapterItem, ChaptersError} from '#services/chapters/schema.ts'
 
 const SERVER = 'https://opm.mp281x.xyz'
 
@@ -104,14 +104,25 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 	pipe(
 		Effect.gen(function* () {
 			if (!session.signedIn(get)) return
-			yield* Effect.tryPromise(() => Notifications.setBadgeCountAsync(0))
-			if (!(yield* Effect.tryPromise(() => Notifications.requestPermissionsAsync())).granted) return
+			yield* Effect.tryPromise({
+				catch: cause => ChaptersError.make({cause, message: 'The badge could not be cleared.'}),
+				try: () => Notifications.setBadgeCountAsync(0)
+			})
+			if (
+				!(yield* Effect.tryPromise({
+					catch: cause => ChaptersError.make({cause, message: 'The notification permission could not be asked.'}),
+					try: () => Notifications.requestPermissionsAsync()
+				})).granted
+			) {
+				return
+			}
 			const extra = yield* Schema.decodeUnknownEffect(Schema.Struct({eas: Schema.Struct({projectId: Schema.String})}))(
 				Constants.expoConfig?.extra
 			)
-			const token = yield* Effect.tryPromise(() =>
-				Notifications.getExpoPushTokenAsync({projectId: extra.eas.projectId})
-			)
+			const token = yield* Effect.tryPromise({
+				catch: cause => ChaptersError.make({cause, message: 'The push token could not be read.'}),
+				try: () => Notifications.getExpoPushTokenAsync({projectId: extra.eas.projectId})
+			})
 			yield* Effect.flatMap(RpcClient, client => client('devices.register', {token: token.data}))
 		}),
 		Effect.ignore({log: 'Warn', message: 'Notifications are not set up on this iPhone'})
@@ -147,7 +158,10 @@ export const diagnosticsAtom = RpcClient.runtime.atom(get =>
 				crashFile.delete()
 			}
 			yield* Effect.forEach(
-				yield* Effect.try(() => OpmNative.takeDiagnostics()),
+				yield* Effect.try({
+					catch: cause => ChaptersError.make({cause, message: 'The crash reports could not be read.'}),
+					try: () => OpmNative.takeDiagnostics()
+				}),
 				report => Effect.logError('iOS reported a crash or hang on an earlier run', report),
 				{concurrency: 1, discard: true}
 			)

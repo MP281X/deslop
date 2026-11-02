@@ -3,7 +3,7 @@ import {Array, Option} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {hasEffectMember, isFunction, optionKeys, testChain} from '#rules/shared.ts'
+import {TEST_RUNNERS, hasEffectMember, isFunction, isImportBinding, optionKeys, testChain} from '#rules/shared.ts'
 
 const MESSAGE = 'Run every test: remove this .only, .skip, .skipIf, .runIf or .fails before committing.'
 
@@ -12,10 +12,12 @@ function skips(context: Context, node: ESTree.MemberExpression) {
 	return Option.exists(testChain(context, node), chain =>
 		Option.exists(Array.last(chain.members), last => {
 			if (Array.contains(['fails', 'runIf', 'skipIf'], last)) return true
-			// The native rules read any root named it, test or describe, a layer's parameter included, but no @effect/vitest member.
+			// The native rules read only an imported it, test or describe, never a layer's parameter or an @effect/vitest member.
 			return (
 				Array.contains(['only', 'skip'], last) &&
-				(!Array.contains(['describe', 'it', 'suite', 'test'], chain.root.name) || hasEffectMember(chain.members))
+				(!isImportBinding({context, node: chain.root, source: TEST_RUNNERS}) ||
+					!Array.contains(['describe', 'it', 'suite', 'test'], chain.root.name) ||
+					hasEffectMember(chain.members))
 			)
 		})
 	)

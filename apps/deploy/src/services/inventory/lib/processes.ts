@@ -1,6 +1,7 @@
 import {Array, Boolean, Clock, Effect, FileSystem, Number, Option, Record, Schema, String, pipe} from 'effect'
 
 import {itemOwner, processOwner} from '#services/inventory/lib/utils.ts'
+import {DeployError} from '#services/inventory/schema.ts'
 import type {InventoryItem, Process} from '#services/inventory/schema.ts'
 
 const PROCESS_INTERVAL = 2000
@@ -60,7 +61,10 @@ export const processes = Effect.gen(function* () {
 						return {
 							cgroup: yield* fs.readFileString(`/proc/${pid}/cgroup`),
 							process: {
-								...(yield* Effect.try(() => processStatus(status))),
+								...(yield* Effect.try({
+									catch: cause => DeployError.make({cause, message: `Process ${pid} has an unreadable status.`}),
+									try: () => processStatus(status)
+								})),
 								// A process whose arguments can't be read still counts, without its preview.
 								...Option.match(yield* Effect.option(fs.readFileString(`/proc/${pid}/cmdline`)), {
 									onNone: () => ({}),

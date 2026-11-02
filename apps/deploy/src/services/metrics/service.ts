@@ -22,6 +22,7 @@ import {layerKeyValueStore} from '@deslop/runtime/server'
 import {execute} from '@deslop/runtime/service'
 
 import {ownerUsage, processReadings, processes} from '#services/inventory/lib/processes.ts'
+import {DeployError} from '#services/inventory/schema.ts'
 import {compact, counters, history, sample} from '#services/metrics/lib/utils.ts'
 import {Counters, MachineHistory, Sample} from '#services/metrics/schema.ts'
 import type {HistoryQuery} from '#services/metrics/schema.ts'
@@ -97,7 +98,10 @@ export class Metrics extends Context.Service<
 								{concurrency: 'unbounded'}
 							)
 							const current = yield* pipe(
-								Effect.try(() => counters(files.stat, files.network, files.disk, files.uptime, time)),
+								Effect.try({
+									catch: cause => DeployError.make({cause, message: 'The machine counters are unreadable.'}),
+									try: () => counters(files.stat, files.network, files.disk, files.uptime, time)
+								}),
 								Effect.flatMap(Schema.decodeEffect(Counters))
 							)
 							const old = Option.getOrUndefined(yield* Ref.get(previous))
@@ -116,10 +120,13 @@ export class Metrics extends Context.Service<
 								Effect.option
 							)
 							const value = yield* pipe(
-								Effect.try(() => ({
-									...sample(current, files.memory, files.storage, old, files.load),
-									...Option.match(apps, {onNone: () => ({}), onSome: usage => ({apps: usage})})
-								})),
+								Effect.try({
+									catch: cause => DeployError.make({cause, message: 'The machine sample is unreadable.'}),
+									try: () => ({
+										...sample(current, files.memory, files.storage, old, files.load),
+										...Option.match(apps, {onNone: () => ({}), onSome: usage => ({apps: usage})})
+									})
+								}),
 								Effect.flatMap(Schema.decodeEffect(Sample))
 							)
 							yield* Ref.set(previous, Option.some(current))

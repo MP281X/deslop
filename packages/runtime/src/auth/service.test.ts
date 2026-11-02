@@ -79,14 +79,14 @@ it.effect(
 			),
 			value => Effect.promise(() => value.dispose())
 		)
-		const discovery = yield* Effect.tryPromise(() => web.handler(new Request('https://scope.mp281x.xyz/mcp')))
+		const discovery = yield* Effect.promise(() => web.handler(new Request('https://scope.mp281x.xyz/mcp')))
 		assert.strictEqual(discovery.status, 401)
 		assert.include(discovery.headers.get('www-authenticate') ?? '', 'resource_metadata=')
 		assert.notInclude(discovery.headers.get('www-authenticate') ?? '', 'invalid_token')
 		assert.strictEqual(yield* Ref.get(calls), 0)
 
 		const request = Effect.fnUntraced(function* (path: string) {
-			return yield* Effect.tryPromise(() =>
+			return yield* Effect.promise(() =>
 				web.handler(
 					new Request(`https://scope.mp281x.xyz${path}`, {
 						headers: {authorization: 'Bearer rejected-or-valid-probe'},
@@ -158,7 +158,7 @@ it.effect(
 			value => Effect.promise(() => value.dispose())
 		)
 		for (const path of ['/me', '/mcp']) {
-			const response = yield* Effect.tryPromise(() =>
+			const response = yield* Effect.promise(() =>
 				web.handler(new Request(`https://desktop.tailnet-8c4c.ts.net:23475${path}`))
 			)
 			assert.strictEqual(response.status, 200)

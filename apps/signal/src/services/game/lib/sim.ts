@@ -2,6 +2,7 @@ import {
 	Array,
 	Boolean,
 	Effect,
+	Formatter,
 	MutableHashMap,
 	MutableHashSet,
 	Match,
@@ -53,7 +54,7 @@ import {
 	yieldOf
 } from '#services/game/lib/utils.ts'
 import type {Items} from '#services/game/lib/utils.ts'
-import {BuildingKind, GameError, GateId, ItemId, StructureKind} from '#services/game/schema.ts'
+import {BuildingKind, GameError, GateId, ItemId, StructureKind, TeamView} from '#services/game/schema.ts'
 import type {
 	BuildingView,
 	Command,
@@ -77,7 +78,6 @@ import type {
 	SavedTeam,
 	SavedUnit,
 	Standing,
-	TeamView,
 	UnitClass,
 	UnitView,
 	Zone
@@ -153,6 +153,8 @@ const SWIMMABLE = [LIQUID.water, LIQUID.lagoon, LIQUID.spring]
 // A chunk's explored tiles, a bit each.
 const CHUNK_BYTES = (CHUNK * CHUNK) / 8
 export const SIMULATION = 2
+// Compared each frame, so a spectator gets the teams again only when one changed.
+const SAME_TEAMS = Schema.toEquivalence(Schema.Array(TeamView))
 
 // A unit and a building as the world runs them: their step and construction as machine snapshots, encoded only in a save.
 type Unit = Types.Mutable<Omit<SavedUnit, 'task'>> & {task: Task}
@@ -3766,7 +3768,7 @@ export const makeSim = Effect.fnUntraced(
 						structures: STRUCTURES,
 						units: UNITS
 					}
-					return outcome(command, true, JSON.stringify(catalog[command.section]))
+					return outcome(command, true, Formatter.formatJson(catalog[command.section]))
 				},
 				Craft: command => commandCraft(teamId, command),
 				Inspect: command => {
@@ -3973,7 +3975,7 @@ export const makeSim = Effect.fnUntraced(
 				text: Array.join(
 					[
 						`Tick ${state.tick}. Your Core is #${team.home} at ${place2(at)}. Daylight ${Number.round(daylightAt(state.tick) * 100, 0)}%.`,
-						`Next: ${milestone}. Home production queues: ${JSON.stringify({bench: team.bench, line: team.line})}.`,
+						`Next: ${milestone}. Home production queues: ${Formatter.formatJson({bench: team.bench, line: team.line})}.`,
 						...Array.filter(
 							[
 								`Known communication addresses: ${Array.join(
@@ -4150,7 +4152,7 @@ export const makeSim = Effect.fnUntraced(
 				explored: MutableHashMap.MutableHashMap<number, number>
 				props: number
 				sent: boolean
-				teams: string
+				teams: TeamView[]
 				tracesAt: number
 				traces: MutableHashMap.MutableHashMap<number, string>
 				tiles: number
@@ -4212,7 +4214,6 @@ export const makeSim = Effect.fnUntraced(
 				return [{bits: Uint8Array.from(entry[1].bits), ...chunkFrom(entry[0])} satisfies Explored]
 			})
 			const teamViews = Array.map(allTeams(), teamView)
-			const teamsText = JSON.stringify(teamViews)
 			// Belts change every tick their items move: buildings go out when they change, and at least twice a second while belts run.
 			const beltsRun = Array.some(
 				allBuildings(),
@@ -4230,7 +4231,7 @@ export const makeSim = Effect.fnUntraced(
 				environment: life.environment(state.tick),
 				explored: newChunks,
 				shots: MutableList.toArray(shots),
-				teams: Boolean.match(first || connection.teams !== teamsText, {
+				teams: Boolean.match(first || !SAME_TEAMS(connection.teams, teamViews), {
 					onFalse: () => undefined,
 					onTrue: () => teamViews
 				}),
@@ -4252,7 +4253,7 @@ export const makeSim = Effect.fnUntraced(
 			connection.tiles = revision.tiles
 			connection.props = revision.props
 			connection.buildings = revision.buildings
-			connection.teams = teamsText
+			connection.teams = teamViews
 			connection.tracesAt = Math.floor(state.tick / TICK_HZ)
 			connection.zones = revision.zones
 			return Option.some(result)
@@ -4433,7 +4434,7 @@ export const makeSim = Effect.fnUntraced(
 					explored: MutableHashMap.empty(),
 					props: 0,
 					sent: false,
-					teams: '',
+					teams: Array.empty<TeamView>(),
 					tiles: 0,
 					traces: MutableHashMap.empty(),
 					tracesAt: -1,

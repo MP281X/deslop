@@ -20,7 +20,7 @@ overrides:
 # Vite+ exposes Vite 8 under its own package version; accept it only for these inspected Vite 8 consumers.
 peerDependencyRules:
   allowedVersions:
-    '@tailwindcss/vite@4.3.3>vite': 1.4.0
+    '@tailwindcss/vite@4.3.4>vite': 1.4.0
     '@tanstack/router-plugin@1.168.48>vite': 1.4.0
     '@vitejs/plugin-react@6.2.1>vite': 1.4.0
     '@vitest/mocker@5.0.5>vite': 1.4.0

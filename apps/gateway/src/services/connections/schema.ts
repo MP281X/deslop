@@ -1,5 +1,8 @@
 import {Schema} from 'effect'
 
+// A browser, fetch or MCP SDK call that threw; the MCP page shows its cause.
+export class UpstreamError extends Schema.TaggedError<UpstreamError>()('UpstreamError', {cause: Schema.Defect()}) {}
+
 export type ServerId = typeof ServerId.Type
 export const ServerId = Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9_-]{0,23}$/u))
 

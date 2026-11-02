@@ -13,6 +13,7 @@ import type {ClipboardKind} from '@deslop/components-mobile/clipboard'
 import {brands} from '@deslop/components-mobile/icons'
 import {hues} from '@deslop/components-mobile/theme'
 import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
+import {AuthError} from '@deslop/runtime/auth/schema'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 import * as MobileSession from '@deslop/runtime/mobile/session'
@@ -31,13 +32,26 @@ const listFile = new File(Paths.document, 'list.json')
 
 // The share extension refreshes the same Keychain credentials, so a refresh holds the lock both processes take.
 export const session = MobileSession.make('Stash', SERVER, {
-	clear: Effect.try(() => native.clearSession()),
+	clear: Effect.try({
+		catch: cause => AuthError.make({cause, message: 'The Keychain could not remove the session'}),
+		try: () => native.clearSession()
+	}),
 	lock: Effect.acquireRelease(
-		Effect.tryPromise(() => native.lockSession()),
+		Effect.tryPromise({
+			catch: cause => AuthError.make({cause, message: 'The session lock could not be taken'}),
+			try: () => native.lockSession()
+		}),
 		lock => Effect.promise(() => native.unlockSession(lock))
 	),
-	read: Effect.try(() => native.getSession()),
-	write: text => Effect.try(() => native.setSession(text))
+	read: Effect.try({
+		catch: cause => AuthError.make({cause, message: 'The Keychain could not read the session'}),
+		try: () => native.getSession()
+	}),
+	write: text =>
+		Effect.try({
+			catch: cause => AuthError.make({cause, message: 'The Keychain could not save the session'}),
+			try: () => native.setSession(text)
+		})
 })
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/stash/lib/utils/RpcClient', {
@@ -151,11 +165,13 @@ export const imageAtom = Atom.family((id: Note['id']) =>
 			if (file.exists) return file.uri
 			images.create({idempotent: true, intermediates: true})
 			const token = yield* session.accessToken
-			const downloaded = yield* Effect.tryPromise(() =>
-				File.downloadFileAsync(new URL(`/api/images/${id}`, SERVER).href, file, {
-					headers: {authorization: `Bearer ${token}`}
-				})
-			)
+			const downloaded = yield* Effect.tryPromise({
+				catch: cause => NotesError.make({cause, message: 'The note image could not be downloaded.'}),
+				try: () =>
+					File.downloadFileAsync(new URL(`/api/images/${id}`, SERVER).href, file, {
+						headers: {authorization: `Bearer ${token}`}
+					})
+			})
 			return downloaded.uri
 		})
 	})

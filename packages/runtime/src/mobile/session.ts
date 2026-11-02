@@ -1,4 +1,4 @@
-import type {Cause, Scope} from 'effect'
+import type {Scope} from 'effect'
 import {Clock, Effect, Fiber, Option, Schedule, Schema, Semaphore, Stream, String, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
@@ -21,11 +21,11 @@ const CredentialsJson = Schema.fromJsonString(Credentials)
 
 // Where an app keeps its credentials as JSON; an empty text means signed out.
 export type Storage = {
-	clear: Effect.Effect<void, Cause.UnknownError>
+	clear: Effect.Effect<void, AuthError>
 	// Held across a refresh by every process that shares the credentials, such as a share extension.
-	lock?: Effect.Effect<void, Cause.UnknownError, Scope.Scope>
-	read: Effect.Effect<string, Cause.UnknownError>
-	write: (text: string) => Effect.Effect<void, Cause.UnknownError>
+	lock?: Effect.Effect<void, AuthError, Scope.Scope>
+	read: Effect.Effect<string, AuthError>
+	write: (text: string) => Effect.Effect<void, AuthError>
 }
 
 // The OAuth session of one iOS app against the auth server, with its access token for `server`.
@@ -135,7 +135,10 @@ export function make(name: string, server: string, storage: Storage) {
 				redirectUri,
 				scopes: ['deslop', 'offline_access']
 			})
-			const result = yield* Effect.tryPromise(() => request.promptAsync(DISCOVERY))
+			const result = yield* Effect.tryPromise({
+				catch: cause => AuthError.make({cause, message: 'The sign-in sheet could not open'}),
+				try: () => request.promptAsync(DISCOVERY)
+			})
 			if (result.type !== 'success') return yield* AuthError.make({message: 'Sign-in was not completed'})
 			if (result.params['iss'] !== `${AUTH_URL}/api/auth`) {
 				return yield* AuthError.make({message: 'The sign-in issuer did not match'})

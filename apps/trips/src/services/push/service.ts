@@ -167,9 +167,8 @@ export class Push extends Context.Service<
 				Effect.gen(function* () {
 					const found = yield* Effect.fromOption(signer)
 					// The .p8 file's body, with or without its PEM lines.
-					const der = yield* Result.match(
-						Base64.decode(String.replaceAll(/-----[^-]+-----|\\n|\s/gu, '')(Redacted.value(found.privateKey))),
-						{onFailure: Effect.fail, onSuccess: Effect.succeed}
+					const der = yield* Effect.fromResult(
+						Base64.decode(String.replaceAll(/-----[^-]+-----|\\n|\s/gu, '')(Redacted.value(found.privateKey)))
 					)
 					return yield* KeyFormat.decodePrivate(KeyFormat.pkcs8, Signature.ecdsaP256, der)
 				})

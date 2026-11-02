@@ -319,11 +319,6 @@ export const lint: OxlintConfig = {
 		],
 		'eslint/no-restricted-properties': [
 			'error',
-			{
-				message: 'Decode JSON through Schema.fromJsonString with the protocol schema.',
-				object: 'JSON',
-				property: 'parse'
-			},
 			// The Effect compiler's preferEffectRecord diagnostic owns keys, values, entries, fromEntries, hasOwn and hasOwnProperty.
 			{
 				allowProperties: ['entries', 'fromEntries', 'hasOwn', 'keys', 'values'],

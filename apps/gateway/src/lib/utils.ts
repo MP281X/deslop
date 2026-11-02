@@ -9,7 +9,7 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import {ServerUrl} from '#services/connections/schema.ts'
+import {ServerUrl, UpstreamError} from '#services/connections/schema.ts'
 
 const ENDPOINT = `${window.location.origin}/mcp`
 
@@ -118,7 +118,10 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 // Copied from the bar's button or command field, so a toast says whether it worked.
 export const copyEndpointAtom = Atom.fn(() =>
 	Effect.match(
-		Effect.tryPromise(() => navigator.clipboard.writeText(ENDPOINT)),
+		Effect.tryPromise({
+			catch: cause => UpstreamError.make({cause}),
+			try: () => navigator.clipboard.writeText(ENDPOINT)
+		}),
 		{
 			onFailure: () => toast.add({description: ENDPOINT, title: 'Cannot copy the MCP URL', type: 'error'}),
 			onSuccess: () => toast.add({title: 'MCP URL copied'})

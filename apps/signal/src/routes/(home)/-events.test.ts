@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Option} from 'effect'
+import {Array, Formatter, Option} from 'effect'
 
 import {
 	actorName,
@@ -90,12 +90,12 @@ it('keeps an observing author distinct from its subject and resolves recorded mo
 	const request = {
 		actor: 7,
 		choices: {'approach:42': 'Approach #42.'},
-		state: JSON.stringify({facts: [{id: 42, kind: 'lizard', x: 5, z: 6}], self: {id: 7, kind: 'skimmer'}}),
+		state: Formatter.formatJson({facts: [{id: 42, kind: 'lizard', x: 5, z: 6}], self: {id: 7, kind: 'skimmer'}}),
 		tick: 100
 	}
 	assert.deepStrictEqual(requestMembers(request)['42'], {kind: 'lizard', x: 5, z: 6})
 	assert.strictEqual(
-		actorKind({...RECEIPT, actor: 7, actorKind: undefined, context: JSON.stringify(request)}, {}),
+		actorKind({...RECEIPT, actor: 7, actorKind: undefined, context: Formatter.formatJson(request)}, {}),
 		'skimmer'
 	)
 })
@@ -106,7 +106,7 @@ it('hides duplicate request memory without dropping fresh evidence or unresolved
 		actor: 2,
 		choices: {},
 		experience: [CHOICE],
-		state: JSON.stringify({recent: [CHOICE, {id: CHOICE.id}, fresh, {id: 99}]}),
+		state: Formatter.formatJson({recent: [CHOICE, {id: CHOICE.id}, fresh, {id: 99}]}),
 		tick: 100
 	}
 	assert.deepStrictEqual(requestMemory(request), [fresh, {id: 99}])
@@ -119,16 +119,16 @@ it('extracts state from a real continuation receipt and retains older conversati
 		actor: 2,
 		choices: {},
 		experience: [CHOICE],
-		state: `Earlier unverified memory.\nTick 120. Private experiences:\n[1; tick 120; decision; (10, 20)] ${CHOICE.text}\n${JSON.stringify(state)}`,
+		state: `Earlier unverified memory.\nTick 120. Private experiences:\n[1; tick 120; decision; (10, 20)] ${CHOICE.text}\n${Formatter.formatJson(state)}`,
 		tick: 120
 	}
 	assert.deepStrictEqual(Option.getOrThrow(requestState(request)), state)
 	assert.strictEqual(requestMembers(request)['2']?.kind, 'worker')
 	assert.deepStrictEqual(requestMemory(request), [])
 	assert.strictEqual(requestContinuation(request), 'Earlier unverified memory.')
-	assert.strictEqual(requestContinuation({...request, state: JSON.stringify(state, undefined, 2)}), '')
+	assert.strictEqual(requestContinuation({...request, state: Formatter.formatJson(state, {space: 2})}), '')
 	assert.deepStrictEqual(
-		Option.getOrThrow(requestState({...request, state: JSON.stringify(state, undefined, 2)})),
+		Option.getOrThrow(requestState({...request, state: Formatter.formatJson(state, {space: 2})})),
 		state
 	)
 	assert.include(request.state, CHOICE.text)
@@ -136,7 +136,7 @@ it('extracts state from a real continuation receipt and retains older conversati
 
 it('extracts every labelled value from a real read-message shape without erasing claim provenance', () => {
 	const parts = textParts(
-		`Read #1: Visit the ridge.\nProposed objective: ${JSON.stringify({_tag: 'Go', x: 0, z: 20})}. Disclosed addresses: [1,3]. Received claims, not direct observations: ${JSON.stringify([{id: 42, kind: 'storage', source: 1, text: 'Uncertain } [ " claim', tick: 2, via: [{from: 1, tick: 5}], x: 5, z: 6}])}.`
+		`Read #1: Visit the ridge.\nProposed objective: ${Formatter.formatJson({_tag: 'Go', x: 0, z: 20})}. Disclosed addresses: [1,3]. Received claims, not direct observations: ${Formatter.formatJson([{id: 42, kind: 'storage', source: 1, text: 'Uncertain } [ " claim', tick: 2, via: [{from: 1, tick: 5}], x: 5, z: 6}])}.`
 	)
 	assert.strictEqual(
 		Array.countBy(parts, part => part.kind === 'data'),
@@ -209,7 +209,7 @@ it('retains complete recorded requests and leaves older plain-text requests avai
 		state: 'Private perception.',
 		tick: 100
 	}
-	assert.deepStrictEqual(Option.getOrThrow(decisionDetails(JSON.stringify(original))), original)
+	assert.deepStrictEqual(Option.getOrThrow(decisionDetails(Formatter.formatJson(original))), original)
 	assert.isTrue(Option.isNone(decisionDetails('Earlier private continuation.')))
 	assert.deepStrictEqual(textParts('Earlier private continuation.'), [
 		{kind: 'text', text: 'Earlier private continuation.'}
