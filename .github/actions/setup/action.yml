@@ -1,7 +1,10 @@
 name: Set up
-description: Node, Vite+, the workspace's dependencies and the job's last task cache; on request the EAS CLI and an iOS build's downloads.
+description: Node, Vite+ and the workspace's dependencies; on request the job's last task cache, the EAS CLI and an iOS build's downloads.
 
 inputs:
+  tasks:
+    description: Restore and save the Vite+ task cache, for jobs that run `vp run`.
+    default: 'false'
   eas:
     description: Install the EAS CLI as `eas`.
     default: 'false'
@@ -12,28 +15,34 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: voidzero-dev/setup-vp@v1
+    - name: Install Node, Vite+ and dependencies
+      uses: voidzero-dev/setup-vp@v1
       with: {node-version: '26', cache: true, run-install: true}
 
     # After the install, which recreates node_modules. Each job restores its own newest results and saves the next once it succeeds; entries are immutable, so the key rolls with each run.
-    - uses: actions/cache@v6
+    - name: Restore the task cache
+      if: inputs.tasks == 'true'
+      uses: actions/cache@v6
       with:
         path: node_modules/.vite/task-cache
         key: vite-task-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
         restore-keys: vite-task-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-
 
     # With npm, because pnpm applies the workspace's strict peer checks to the EAS CLI's own dependencies.
-    - if: inputs.eas == 'true'
+    - name: Install the EAS CLI
+      if: inputs.eas == 'true'
       shell: bash
-      run: npm install --global eas-cli@latest
+      run: npm install --global --silent eas-cli@latest
 
     # CocoaPods and the Hermes tarball download with curl to files: a reset or a stalled transfer retries instead of failing the build or hanging for minutes. After setup-vp, whose installer streams into bash, where a retry would append a second script.
-    - if: inputs.ios == 'true'
+    - name: Retry stalled downloads
+      if: inputs.ios == 'true'
       shell: bash
       run: printf '%s\n' 'retry = 5' 'retry-all-errors' 'connect-timeout = 15' 'speed-limit = 10000' 'speed-time = 30' > ~/.curlrc
 
     # One cache for every app: their pods come from the same lockfile, and the Hermes tarball's mirror often stalls.
-    - if: inputs.ios == 'true'
+    - name: Restore the CocoaPods cache
+      if: inputs.ios == 'true'
       uses: actions/cache@v6
       with:
         path: |

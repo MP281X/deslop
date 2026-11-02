@@ -27,7 +27,8 @@ jobs:
         with: {eas: 'true'}
 
       # Nothing ships when neither the app nor what it builds from changed since its last update.
-      - id: changes
+      - name: Check for changes since the last update
+        id: changes
         run: |
           group=$(eas update:list --branch production --limit 1 --json --non-interactive | jq -r '.currentPage[0].group // empty')
           commit=$([[ -n $group ]] && eas update:view "$group" --json | jq -r '.[0].gitCommitHash' || true)
@@ -36,13 +37,15 @@ jobs:
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
 
       # An update exists for a fingerprint only once its build has shipped, so a failed build is tried again next release.
-      - id: fingerprint
+      - name: Check for a native change
+        id: fingerprint
         if: steps.changes.outputs.changed == 'true'
         run: |
           hash=$(eas fingerprint:generate --platform ios --build-profile production --json --non-interactive | jq -r .hash)
           echo "native=$(eas update:list --branch production --runtime-version "$hash" --limit 1 --json --non-interactive | jq '.currentPage | length == 0')" >> "$GITHUB_OUTPUT"
 
-      - if: steps.fingerprint.outputs.native == 'false'
+      - name: Publish the EAS Update
+        if: steps.fingerprint.outputs.native == 'false'
         run: eas update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"
 
   app-store:
@@ -61,7 +64,10 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with: {eas: 'true', ios: 'true'}
-      - run: eas build --local --profile production --platform ios --non-interactive --output "$RUNNER_TEMP/app.ipa"
+      - name: Build the App Store app
+        run: eas build --local --profile production --platform ios --non-interactive --output "$RUNNER_TEMP/app.ipa"
       # EAS hands the build to Apple on its own servers; waiting for that kept the Mac idle for about 14 minutes.
-      - run: eas submit --profile production --platform ios --non-interactive --no-wait --path "$RUNNER_TEMP/app.ipa"
-      - run: eas update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"
+      - name: Submit to the App Store
+        run: eas submit --profile production --platform ios --non-interactive --no-wait --path "$RUNNER_TEMP/app.ipa"
+      - name: Publish the EAS Update for the new build
+        run: eas update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"
