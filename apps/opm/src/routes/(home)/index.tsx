@@ -224,7 +224,7 @@ export function ChaptersRoute(props: {
 				</Toolbar.Content>
 			</Toolbar>
 			<Toolbar.Content>
-				<ToolbarItem placement="topBarLeading">
+				<ToolbarItem placement="principal">
 					<AppTitle logo={icon} name="opm" />
 				</ToolbarItem>
 				<ToolbarItem placement="topBarTrailing">

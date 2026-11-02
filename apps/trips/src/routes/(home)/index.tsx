@@ -237,7 +237,7 @@ export function HomeRoute(props: {bookings: BookingList; onOpen: (id: string) =>
 				</ItemGroup>
 			)}
 			<Toolbar.Content>
-				<ToolbarItem placement="topBarLeading">
+				<ToolbarItem placement="principal">
 					<PasteSheet />
 				</ToolbarItem>
 				<ToolbarItem placement="topBarTrailing">

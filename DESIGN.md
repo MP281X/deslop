@@ -196,7 +196,7 @@ Geist on the web, SF Pro on iOS at Dynamic Type sizes through the `text` tokens 
 - **One column** up to `page`, forms up to `form`; list-and-detail tools split into two panes. 8px inside a group, 16px between groups, 24–32px between sections.
 - **Deploy monitor** uses a dense multi-column canvas up to 1024px; its Apps page stays at `page`, with machine filters, controls and rows sharing the same edges.
 - **iOS.** Inline titles, plain lists, bottom search.
-- **App bars.** The app icon and name lead on web and iOS; detail screens keep their native back navigation. Signal's spectator world uses map controls instead of an app bar.
+- **App bars.** The app icon and name lead on the web and take the title's place, centered and without a glass button, on iOS; detail screens keep their native back navigation. Signal's spectator world uses map controls instead of an app bar.
 - **Row alignment.** Center leading marks and trailing actions against the whole row, including wrapped details. Rows with inline process trees align both marks to the parent title; `ItemMedia` opts into `data-align="start"`. Stash reserves a 64pt media square even without a preview, using the source mark as its fallback.
 - **List endings.** A closing hairline marks the last row; installed web apps keep 16px plus the home-indicator inset below it.
 

@@ -407,7 +407,7 @@ export function HomeRoute(props: {
 				</Toolbar.Content>
 			</Toolbar>
 			<Toolbar.Content>
-				<ToolbarItem placement="topBarLeading">
+				<ToolbarItem placement="principal">
 					<PasteSheet />
 				</ToolbarItem>
 				<ToolbarItem placement="topBarTrailing">
