@@ -1,28 +1,13 @@
 # Deslop Auth
 
-The shared sign-in server: an OAuth 2.1 authorization server for every Deslop app and MCP server, with GitHub and code sign-ins.
+The sign-in for every Deslop app: GitHub, or a code approved from a browser, phone or agent.
 
-## Sign-ins
+```bash
+npm install --global @deslop/auth
+auth service install --url https://auth.mp281x.xyz --auth https://auth.mp281x.xyz --admins <github-id> --github-client-id <id>
+```
 
-Every sign-in is one waiting code, approved from a signed-in browser, a phone or an agent's `answer_request`, and delivered once at `/auth/continue` to the browser or command holding its cookie.
+- **Secret**: `GITHUB_CLIENT_SECRET` in `~/.deslop/auth.env`.
+- **MCP** at `/mcp`: `answer_request` approves a sign-in by its code.
 
-| Signs in                        | Gets                             | Approved by                        |
-| ------------------------------- | -------------------------------- | ---------------------------------- |
-| App or harness                  | OAuth code at its callback       | Browser, phone or `answer_request` |
-| **Sign in with a code** browser | 30-day session, back to its page | A signed-in browser only           |
-| GitHub                          | One-year session                 | GitHub                             |
-
-- **Waiting page** shows a QR code and the code; leave it open in the client's browser, which completes the localhost callback, never on the phone.
-- **Lifetime**: 10 minutes, in memory; a restart ends the waiting ones. Workers' harness steps: environment skill, Maintenance.
-- **Clients**: the id is the encoded registration, so registering stores nothing. The signed-in list shows `Client · Device`: a known worker, the User-Agent's platform, or the address.
-- **Without `--auth`**, as in a preview, **Sign in with GitHub** returns at once as `dev` (`github:0`), an admin unless `--admins` says otherwise; the session stays on the preview's host. Every other app without `--auth` needs no sign-in.
-- **Sign out** from any app's account menu arrives at `/?sign-out`, which ends the shared session and returns to that app.
-- **Settings**: `--admins` and `--github-client-id` flags; `GITHUB_CLIENT_SECRET` in `~/.deslop/auth.env`.
-- **Storage**: signed-in apps and browsers in its data directory; authorization codes in memory.
-- **Rate limit**: registration, authorization, token, revocation, GitHub and code sign-in requests have a per-minute budget per address (IPv6 /64), 429 past it.
-
-## MCP
-
-- **Discovery**: each Deslop MCP server's `/.well-known/oauth-protected-resource/mcp` names Auth; no credentials → 401 challenge; rejected bearer → `error="invalid_token"`; Auth down → 503 with `Retry-After`.
-- **Stored credentials prove nothing**: check the client's MCP status and tool discovery. `OAuth authorization required` at startup, or after an auth-store reset: sign the client in to the gateway again.
-- **`answer_request`**: `https://auth.mp281x.xyz/mcp`'s one tool, reached through the [gateway](../gateway/README.md) as `auth__answer_request`.
+Common flags and service commands: [Deslop app runtime](https://github.com/MP281X/deslop/blob/main/packages/runtime/README.md).

@@ -46,7 +46,7 @@ jobs:
         run: |
           for app in auth deploy gateway portfolio scope stash opm trips signal; do
             cd "apps/$app"
-            fingerprint=$({ find dist bin -type f 2>/dev/null | LC_ALL=C sort | xargs sha256sum; jq -S 'del(.version)' package.json; } | sha256sum | cut -c1-64)
+            fingerprint=$({ find dist bin README.md -type f 2>/dev/null | LC_ALL=C sort | xargs sha256sum; jq -S 'del(.version)' package.json; } | sha256sum | cut -c1-64)
             if ! npm view "@deslop/$app" version >/dev/null 2>&1; then
               echo "::warning::@deslop/$app needs its first publish and trusted-publisher setup; see RELEASING.md"
             elif [ "$(npm view "@deslop/$app" fingerprint)" != "$fingerprint" ]; then
