@@ -325,15 +325,12 @@ export const layerAnnounce = Layer.effectDiscard(
 	})
 )
 
-// The app's tiled icon at a stable URL for Auth's app list and MCP clients; the pack loader passes its SVG markup.
+// The app's tiled icon at a stable URL for Auth's app list and MCP clients, and at /favicon.ico for clients that guess; the pack loader passes its SVG markup.
 export function layerIcon(icon: string) {
-	return HttpRouter.add(
-		'GET',
-		'/icon',
-		Effect.succeed(
-			HttpServerResponse.text(icon, {contentType: 'image/svg+xml', headers: {'cache-control': 'public, max-age=86400'}})
-		)
+	const response = Effect.succeed(
+		HttpServerResponse.text(icon, {contentType: 'image/svg+xml', headers: {'cache-control': 'public, max-age=86400'}})
 	)
+	return Layer.mergeAll(HttpRouter.add('GET', '/icon', response), HttpRouter.add('GET', '/favicon.ico', response))
 }
 
 // A web app's pages, with assets kept until a deploy changes index.html, and its manifest, so a phone installs it as its own app.

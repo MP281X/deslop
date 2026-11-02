@@ -232,6 +232,8 @@ function AppRow(props: {
 					<ItemActions className="h-8">
 						<a
 							href={url}
+							target="_blank"
+							rel="noreferrer"
 							aria-label={`Open ${props.name}`}
 							className={buttonVariants({size: 'icon-sm', variant: 'ghost'})}
 						>
