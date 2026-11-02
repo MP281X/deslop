@@ -168,7 +168,7 @@ Fast tools, not consumer or enterprise apps: Linear, Vercel, Executor, T3 Code. 
 - **Neutrals.** `background` is the page. `card` and `popover` only for what floats or groups a few controls; `secondary`, `muted` and `accent` fill chips, inputs and hover; `border` draws hairlines, `input` strokes fields.
 - **One hue per app**, from the table below: the one action per view, focus, selection and anything live. The web points `--primary` at it in the app's `styles.css`; iOS exports `primary` from `lib/utils.ts`. A new app takes an unused hue, or orange.
 - **Status.** Live is the primary. Warning is yellow and error red, each with a word or icon. Off is muted: a hollow dot when switched off, a filled one for quiet states. White on light yellow only for large or bold labels.
-- **Deploy machine identity.** Dev uses blue, desktop purple, consistently in device icons and measurements; availability sits in the machine selector. Selection supplies context without repeated page/machine headings.
+- **Deploy machine identity.** Dev uses blue, desktop purple, consistently in device icons, charts, swatches and live dots. Its stacked charts are the one place a hue steps by opacity: the heaviest app strongest, fading by size.
 
 | App       | Hue     |
 | --------- | ------- |
@@ -195,7 +195,6 @@ Geist on the web, SF Pro on iOS at Dynamic Type sizes through the `text` tokens 
 - **Rows, not cards.** Hairline rows: a leading mark, a title, one muted line, a trailing status or action.
 - **What needs you leads.** Rows that need the user sort first, their reason replacing the second line in the state's colour; no label, divider or gap sets them apart. A row shows a button only for a fix the user can make; its other actions sit in its context menu (right-click, long press), never behind a ⋯ button.
 - **One column** up to `page`, forms up to `form`; list-and-detail tools split into two panes. 8px inside a group, 16px between groups, 24–32px between sections.
-- **Deploy monitor** uses a dense multi-column canvas up to 1024px; its Apps page stays at `page`, with machine filters, controls and rows sharing the same edges.
 - **iOS.** Inline titles, plain lists, bottom search.
 - **App bars.** The app icon and name lead on the web and take the title's place, centered and without a glass button, on iOS; detail screens keep their native back navigation. Signal's spectator world uses map controls instead of an app bar.
 - **The web app bar is the page header**: name, section tabs, the command field, the page's one action, the account; no heading below it. The command field narrows the page's rows and lists the actions that match, ⌘K focuses it, and on a phone it opens from a search button over the bar. Each app stays its own; no bar links to another app.
@@ -208,7 +207,7 @@ A tonal step and a hairline, never a shadow, gradient or glow. On iOS, Liquid Gl
 
 ## Shapes
 
-4px controls, 6px surfaces, 10px overlays, full circles for dots and avatars. iOS keeps the system's shapes.
+4px controls, 2px badges, 6px surfaces, menus, popovers and dialogs, full circles for dots and avatars; no pills. iOS keeps the system's shapes.
 
 ## Components
 

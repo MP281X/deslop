@@ -188,11 +188,11 @@ export function history(samples: readonly Sample[], hours: number, now: number) 
 		Record.values,
 		Array.map(lastInBucket)
 	)
+	// Every point keeps its cores and apps, which the charts split by; mounts and load stay on the latest only.
 	return Array.map(selected, (value, index) => {
 		if (index === selected.length - 1) return value
 		return {
 			...value,
-			cores: undefined,
 			disks: [],
 			load: undefined,
 			storageUsed: value.storageUsed ?? Array.reduce(value.disks, 0, (sum, disk) => sum + disk.used),

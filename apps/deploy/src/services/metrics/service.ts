@@ -21,6 +21,7 @@ import {KeyValueStore} from 'effect/persistence'
 import {layerKeyValueStore} from '@deslop/runtime/server'
 import {execute} from '@deslop/runtime/service'
 
+import {ownerUsage, processReadings, processes} from '#services/inventory/lib/processes.ts'
 import {compact, counters, history, sample} from '#services/metrics/lib/utils.ts'
 import {Counters, MachineHistory, Sample} from '#services/metrics/schema.ts'
 import type {HistoryQuery} from '#services/metrics/schema.ts'
@@ -62,6 +63,7 @@ export class Metrics extends Context.Service<
 						)
 					)
 					const previous = yield* Ref.make(Option.none<Counters>())
+					const processState = yield* Ref.make(Option.none<ReturnType<typeof processReadings>>())
 					const dirty = yield* Ref.make(Array.empty<number>())
 					const error = yield* Ref.make('')
 					const collect = pipe(
@@ -99,8 +101,25 @@ export class Metrics extends Context.Service<
 								Effect.flatMap(Schema.decodeEffect(Counters))
 							)
 							const old = Option.getOrUndefined(yield* Ref.get(previous))
+							// Apps' usage rides along, so the history can split memory and CPU by app; a slow /proc read only drops it.
+							const apps = yield* pipe(
+								processes,
+								Effect.provideService(FileSystem.FileSystem, fs),
+								Effect.flatMap(readings =>
+									Ref.modify(processState, last => {
+										const next = processReadings(readings, Option.getOrUndefined(last))
+										return [next.readings, Option.some(next)]
+									})
+								),
+								Effect.timeout('3 seconds'),
+								Effect.map(ownerUsage),
+								Effect.option
+							)
 							const value = yield* pipe(
-								Effect.try(() => sample(current, files.memory, files.storage, old, files.load)),
+								Effect.try(() => ({
+									...sample(current, files.memory, files.storage, old, files.load),
+									...Option.match(apps, {onNone: () => ({}), onSome: usage => ({apps: usage})})
+								})),
 								Effect.flatMap(Schema.decodeEffect(Sample))
 							)
 							yield* Ref.set(previous, Option.some(current))

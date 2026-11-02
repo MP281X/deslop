@@ -31,6 +31,7 @@ import {
 	Timer,
 	Unit
 } from '#services/inventory/schema.ts'
+import type {RunRequest} from '#services/inventory/schema.ts'
 
 const execute = Effect.fnUntraced(function* (name: string, args: string[]) {
 	const handle = yield* ChildProcess.make(name, args, {stderr: 'pipe', stdout: 'pipe'})
@@ -138,9 +139,13 @@ function collect<E, R>(name: string, effect: Effect.Effect<InventoryItem[], E, R
 	)
 }
 
-export class Inventory extends Context.Service<Inventory, {readonly snapshot: Effect.Effect<Snapshot>}>()(
-	'@deslop/deploy/services/inventory/service/Inventory'
-) {
+export class Inventory extends Context.Service<
+	Inventory,
+	{
+		readonly run: (input: Omit<RunRequest, 'target'>) => Effect.Effect<void, DeployError>
+		readonly snapshot: Effect.Effect<Snapshot>
+	}
+>()('@deslop/deploy/services/inventory/service/Inventory') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
@@ -199,6 +204,33 @@ export class Inventory extends Context.Service<Inventory, {readonly snapshot: Ef
 				)
 			})
 			return Inventory.of({
+				// Only a service a timer starts, so the page can't start arbitrary units; system ones go through the workers' passwordless sudo.
+				run: Effect.fnUntraced(
+					function* (input) {
+						const timers = yield* pipe(
+							command('systemctl', [
+								...Boolean.match(input.scope === 'system', {onFalse: () => ['--user'], onTrue: () => []}),
+								'list-timers',
+								'--all',
+								'--output=json',
+								'--no-pager'
+							]),
+							Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Timer))))
+						)
+						if (!Array.some(timers, timer => timer.activates === input.name)) {
+							return yield* DeployError.make({message: `${input.name} is not started by a timer`})
+						}
+						yield* Boolean.match(input.scope === 'system', {
+							onFalse: () => command('systemctl', ['--user', 'start', '--no-block', input.name]),
+							onTrue: () => command('sudo', ['-n', 'systemctl', 'start', '--no-block', input.name])
+						})
+					},
+					Effect.scoped,
+					Effect.mapError(cause => {
+						if (Schema.is(DeployError)(cause)) return cause
+						return DeployError.make({cause, message: 'Cannot start the job'})
+					})
+				),
 				snapshot: Effect.scoped(
 					Effect.gen(function* () {
 						const sources = yield* Effect.all(

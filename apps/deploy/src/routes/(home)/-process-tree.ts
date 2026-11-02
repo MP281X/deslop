@@ -1,81 +1,101 @@
-import {Array, Boolean, HashSet, MutableHashSet, MutableList, Number, Order, Record, String} from 'effect'
+import {Array, Boolean, Function, MutableHashSet, Number, Option, Order, String, pipe} from 'effect'
 
 import type {Process} from '#services/inventory/schema.ts'
 
 const processName = String.replace(/-MainThread$|\.native$/u, '')
 
-export function processUsage(rows: readonly Process[]) {
+// A process with everything below it: `memory`, `cpu` and `count` cover the subtree; `cpu` stays unknown while no member reports one.
+export type ProcessNode = {
+	children: ProcessNode[]
+	command?: readonly string[]
+	count: number
+	cpu?: number
+	memory: number
+	name: string
+	pid: number
+	small: boolean
+}
+
+function usage(nodes: readonly ProcessNode[]) {
+	const cpus = Array.getSomes(Array.map(nodes, node => Option.fromUndefinedOr(node.cpu)))
 	return {
-		cpu: Boolean.match(
-			Array.some(rows, row => row.cpu !== undefined),
-			{onFalse: () => undefined, onTrue: () => Array.reduce(rows, 0, (sum, row) => sum + (row.cpu ?? 0))}
-		),
-		memory: Boolean.match(Array.isReadonlyArrayNonEmpty(rows), {
-			onFalse: () => undefined,
-			onTrue: () => Array.reduce(rows, 0, (sum, row) => sum + row.memory)
+		...Boolean.match(Array.isReadonlyArrayNonEmpty(cpus), {
+			onFalse: () => ({}),
+			onTrue: () => ({cpu: Array.reduce(cpus, 0, (sum, cpu) => sum + cpu)})
 		}),
-		partial: Array.some(rows, row => row.cpu !== undefined) && Array.some(rows, row => row.cpu === undefined)
+		count: Array.reduce(nodes, 0, (sum, node) => sum + node.count),
+		memory: Array.reduce(nodes, 0, (sum, node) => sum + node.memory)
 	}
 }
 
-// Each group owns disjoint members; wrappers never inflate the totals.
+const byUsage = Order.combine(
+	Order.mapInput(Order.flip(Order.Number), (node: ProcessNode) => node.memory),
+	Order.mapInput(Order.flip(Order.Number), (node: ProcessNode) => node.cpu ?? 0)
+)
+
+// Children heaviest first; below 2% of the app's memory and half a percent of the machine's CPU a process barely moves the usage, so it reads muted.
+function settle(children: readonly ProcessNode[], appMemory: number) {
+	return Array.map(Array.sort(children, byUsage), node => ({
+		...node,
+		small: node.memory < appMemory * 0.02 && (node.cpu ?? 0) < 0.5
+	}))
+}
+
+// The app's processes as a tree: a parent that only wraps one parent shows as `parent › child`, and each process appears once.
 export function processTree(rows: readonly Process[]) {
-	const ids = HashSet.fromIterable(Array.map(rows, row => row.pid))
+	const pids = MutableHashSet.fromIterable(Array.map(rows, row => row.pid))
 	const children = Array.groupBy(rows, row => `${row.parent}`)
 	const visited = MutableHashSet.empty<number>()
-	const groups = MutableList.make<{depth: number; main: boolean; members: Process[]; name: string; path: string}>()
-	function chain(row: Process, members: MutableList.MutableList<Process>): Process {
+	function build(row: Process): ProcessNode {
 		MutableHashSet.add(visited, row.pid)
-		MutableList.append(members, row)
-		const next = children[`${row.pid}`] ?? []
-		if (next.length === 1 && next[0] !== undefined && !MutableHashSet.has(visited, next[0].pid)) {
-			return chain(next[0], members)
-		}
-		return row
-	}
-	function visit(first: Process, depth: number, main: boolean) {
-		if (MutableHashSet.has(visited, first.pid)) return
-		const collected = MutableList.make<Process>()
-		const last = chain(first, collected)
-		const members = MutableList.toArray(collected)
-		const heaviest = Array.sortWith(members, row => row.memory, Order.flip(Order.Number))[0] ?? first
-		MutableList.append(groups, {
-			depth: Number.min(depth, 2),
-			main,
-			members,
-			name: processName(heaviest.name),
-			path: Array.join(
-				Array.map(members, row => processName(row.name)),
-				' › '
-			)
-		})
-		const descendants = Array.filter(children[`${last.pid}`] ?? [], row => !MutableHashSet.has(visited, row.pid))
-		const leaves = Array.groupBy(
-			Array.filter(descendants, row => Array.isReadonlyArrayEmpty(children[`${row.pid}`] ?? [])),
-			row => processName(row.name)
+		const below = Array.map(
+			Array.filter(children[`${row.pid}`] ?? [], child => !MutableHashSet.has(visited, child.pid)),
+			build
 		)
-		for (const siblings of Record.values(leaves)) {
-			const leaf = siblings[0]
-			if (leaf !== undefined) {
-				for (const sibling of siblings) MutableHashSet.add(visited, sibling.pid)
-				MutableList.append(groups, {
-					depth: Number.min(depth + 1, 2),
-					main: false,
-					members: siblings,
-					name: `${processName(leaf.name)}${Boolean.match(siblings.length > 1, {onFalse: () => '', onTrue: () => ` ×${siblings.length}`})}`,
-					path: processName(leaf.name)
-				})
-			}
+		const self: ProcessNode = {
+			children: [],
+			count: 1,
+			...Option.match(Option.fromUndefinedOr(row.command), {onNone: () => ({}), onSome: command => ({command})}),
+			...Option.match(Option.fromUndefinedOr(row.cpu), {onNone: () => ({}), onSome: cpu => ({cpu})}),
+			memory: row.memory,
+			name: processName(row.name),
+			pid: row.pid,
+			small: false
 		}
-		for (const child of descendants) visit(child, depth + 1, false)
+		const total = usage([self, ...below])
+		const only = below[0]
+		if (below.length === 1 && only !== undefined && Array.isArrayNonEmpty(only.children)) {
+			return {...only, ...total, name: `${self.name} › ${only.name}`}
+		}
+		return {...self, ...total, children: below}
 	}
-	const roots = Array.sortWith(
-		Array.filter(rows, row => !HashSet.has(ids, row.parent)),
-		(row: Process) => row.memory,
-		Order.flip(Order.Number)
+	const roots = pipe(
+		Array.filter(rows, row => !MutableHashSet.has(pids, row.parent)),
+		// A malformed source whose parents form a cycle has no root, so its first process starts the tree.
+		Array.match({onEmpty: () => Array.take(rows, 1), onNonEmpty: Function.identity}),
+		Array.map(build)
 	)
-	for (const root of roots) visit(root, 1, roots.length === 1)
-	// A malformed source must not hide processes or recurse forever.
-	for (const row of rows) visit(row, 1, false)
-	return MutableList.toArray(groups)
+	const appMemory = usage(roots).memory
+	function place(node: ProcessNode): ProcessNode {
+		return {...node, children: settle(Array.map(node.children, place), appMemory)}
+	}
+	return settle(Array.map(roots, place), appMemory)
+}
+
+// An app's current memory and CPU over its processes; CPU stays unknown while none reports one.
+export function appUsage(rows: readonly Process[]) {
+	return {
+		cpu: Boolean.match(
+			Array.some(rows, row => row.cpu !== undefined),
+			{
+				onFalse: () => undefined,
+				onTrue: () =>
+					Number.round(
+						Array.reduce(rows, 0, (sum, row) => sum + (row.cpu ?? 0)),
+						2
+					)
+			}
+		),
+		memory: Array.reduce(rows, 0, (sum, row) => sum + row.memory)
+	}
 }
