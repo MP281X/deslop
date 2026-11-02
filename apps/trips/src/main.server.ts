@@ -1,6 +1,5 @@
 import {Layer, Schema, pipe} from 'effect'
 
-import {McpServer} from 'effect/ai'
 import {RpcSerialization, RpcServer} from 'effect/rpc'
 
 import * as CliRuntime from '@deslop/runtime/cli'
@@ -14,23 +13,13 @@ import {Places} from '#services/bookings/lib/places.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {Push} from '#services/push/service.ts'
 import {Tracker} from '#services/tracking/service.ts'
-import {Tools} from '#tools/contracts.ts'
-import {ToolHandlers} from '#tools/handlers.ts'
 
 CliRuntime.runApp({
 	icon,
 	routes: pipe(
-		Layer.mergeAll(
-			pipe(
-				RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
-				Layer.provide(RpcHandlers),
-				Layer.provide(RpcSerialization.layerJson)
-			),
-			ServerRuntime.layerMcp({
-				instructions: "Trips tracks the user's flights, trains and stays with live gates, delays and platforms.",
-				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
-			})
-		),
+		RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
+		Layer.provide(RpcHandlers),
+		Layer.provide(RpcSerialization.layerJson),
 		Layer.provide(Layer.mergeAll(Push.layer, Tracker.layer)),
 		Layer.provide(Bookings.layer),
 		Layer.provide(Layer.mergeAll(Places.layer, Extractor.layer)),
