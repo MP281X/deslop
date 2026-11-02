@@ -3,6 +3,7 @@ import {assert, it} from '@effect/vitest'
 import {Array, DateTime} from 'effect'
 
 import {chartBucket, chartTicks, rateScale} from '#routes/(home)/-chart.ts'
+import {chartWindow, resolution} from '#services/metrics/lib/utils.ts'
 
 it('puts ticks at real clock times and clips edge buckets to the requested range', () => {
 	const now = DateTime.toEpochMillis(DateTime.makeUnsafe('2026-11-02T11:09:00Z'))
@@ -12,7 +13,8 @@ it('puts ticks at real clock times and clips edge buckets to the requested range
 		assert.isTrue(Array.every(ticks, tick => DateTime.toParts(DateTime.makeZonedUnsafe(tick.at)).minute % 15 === 0))
 		assert.isAtMost(chartBucket(hours, now, now).x + chartBucket(hours, now, now).width, 100)
 		assert.isAtLeast(chartBucket(hours, now, now - hours * 3_600_000).x, 0)
-		assert.strictEqual(chartBucket(hours, now, now).width, 80 / 60)
+		assert.strictEqual(chartBucket(hours, now, chartWindow(hours, now).start + resolution(hours)).width, 80 / 60)
+		assert.isTrue(Array.every(ticks, tick => tick.at <= now))
 	}
 	assert.isTrue(
 		Array.every(chartTicks(168, now), tick => DateTime.toParts(DateTime.makeZonedUnsafe(tick.at)).hour === 0)

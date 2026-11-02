@@ -1,6 +1,8 @@
 import {Array, Boolean, Clock, Effect, FileSystem, Match, Number, Option, Record, Schema, String, pipe} from 'effect'
 
-import type {InventoryItem} from '#services/inventory/schema.ts'
+import type {InventoryItem, Process} from '#services/inventory/schema.ts'
+
+const PROCESS_INTERVAL = 2000
 
 function processStatus(status: string) {
 	function field(name: string) {
@@ -58,7 +60,7 @@ export const processes = Effect.gen(function* () {
 	return {records, time: yield* Clock.currentTimeMillis, total}
 })
 
-export function processUsage(current: Effect.Success<typeof processes>, previous?: Effect.Success<typeof processes>) {
+function processUsage(current: Effect.Success<typeof processes>, previous?: Effect.Success<typeof processes>) {
 	const known = Record.fromEntries(Array.map(previous?.records ?? [], record => [`${record.process.pid}`, record]))
 	return Array.map(current.records, record => {
 		const old = known[record.process.pid]
@@ -75,7 +77,7 @@ export function processUsage(current: Effect.Success<typeof processes>, previous
 								value.start === record.start &&
 								elapsed > 0 &&
 								record.ticks >= value.ticks &&
-								current.time - (previous?.time ?? current.time) >= 2000 &&
+								current.time - (previous?.time ?? current.time) >= PROCESS_INTERVAL &&
 								current.time - (previous?.time ?? 0) <= 30_000
 						),
 						value => Number.clamp(((record.ticks - value.ticks) / elapsed) * 100, {maximum: 100, minimum: 0})
@@ -84,6 +86,35 @@ export function processUsage(current: Effect.Success<typeof processes>, previous
 			}
 		}
 	})
+}
+
+export function processReadings(
+	current: Effect.Success<typeof processes>,
+	previous?: {baseline: Effect.Success<typeof processes>; readings: readonly {start: number; process: Process}[]}
+) {
+	if (
+		previous !== undefined &&
+		current.time >= previous.baseline.time &&
+		current.time - previous.baseline.time < PROCESS_INTERVAL
+	) {
+		const known = Record.fromEntries(Array.map(previous.readings, record => [`${record.process.pid}`, record]))
+		return {
+			baseline: previous.baseline,
+			readings: Array.map(current.records, record => ({
+				...record,
+				process: {
+					...record.process,
+					cpu: Option.getOrUndefined(
+						Option.map(
+							Option.filter(Option.fromUndefinedOr(known[record.process.pid]), value => value.start === record.start),
+							value => value.process.cpu
+						)
+					)
+				}
+			}))
+		}
+	}
+	return {baseline: current, readings: processUsage(current, previous?.baseline)}
 }
 
 export function attachProcesses(

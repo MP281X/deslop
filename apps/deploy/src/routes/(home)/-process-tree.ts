@@ -14,7 +14,7 @@ export function processUsage(rows: readonly Process[]) {
 			onFalse: () => undefined,
 			onTrue: () => Array.reduce(rows, 0, (sum, row) => sum + row.memory)
 		}),
-		partial: Array.some(rows, row => row.cpu === undefined)
+		partial: Array.some(rows, row => row.cpu !== undefined) && Array.some(rows, row => row.cpu === undefined)
 	}
 }
 

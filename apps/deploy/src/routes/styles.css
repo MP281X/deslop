@@ -12,6 +12,13 @@
 	--primary: var(--purple);
 }
 
+.deploy-machine-icon[data-machine='dev'] {
+	color: var(--blue);
+}
+.deploy-machine-icon[data-machine='desktop'] {
+	color: var(--purple);
+}
+
 .deploy-chart-grid {
 	grid-template-columns: calc(var(--spacing) * 10) minmax(0, 1fr);
 }

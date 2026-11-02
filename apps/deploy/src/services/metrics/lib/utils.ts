@@ -149,12 +149,13 @@ export function sample(current: Counters, memory: string, disk: string, previous
 	} satisfies Sample
 }
 
-export function chartWindow(hours: number, now: number) {
-	return {end: now, start: now - hours * 3_600_000}
-}
-
 export function resolution(hours: number) {
 	return hours * 60_000
+}
+
+export function chartWindow(hours: number, now: number) {
+	const end = Math.ceil(now / resolution(hours)) * resolution(hours)
+	return {end, start: end - hours * 3_600_000}
 }
 
 function lastInBucket(bucket: readonly Sample[]) {
@@ -179,7 +180,7 @@ export function compact(samples: readonly Sample[], now: number) {
 
 export function history(samples: readonly Sample[], hours: number, now: number) {
 	const selected = pipe(
-		Array.filter(samples, value => value.time >= now - hours * 3_600_000 && value.time <= now),
+		Array.filter(samples, value => value.time > chartWindow(hours, now).start && value.time <= now),
 		Array.groupBy(
 			value =>
 				`${Number.clamp(Math.ceil((value.time - chartWindow(hours, now).start) / resolution(hours)) - 1, {maximum: 59, minimum: 0})}`

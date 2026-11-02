@@ -26,20 +26,17 @@ export function chartTicks(hours: number, now: number) {
 			const at = DateTime.toEpochMillis(advance())
 			return {at, label: hours !== 168 || index % 2 === 0, x: ((at - window.start) / (window.end - window.start)) * 100}
 		}),
-		tick => tick.at <= window.end
+		tick => tick.at <= now
 	)
 }
 
 export function chartBucket(hours: number, now: number, at: number) {
+	const window = chartWindow(hours, now)
+	const step = resolution(hours)
+	const slot = Number.clamp(Math.ceil((at - window.start) / step) - 1, {maximum: 59, minimum: 0})
 	return {
-		width: 80 / 60,
-		x:
-			(Number.clamp(Math.ceil((at - chartWindow(hours, now).start) / resolution(hours)) - 1, {
-				maximum: 59,
-				minimum: 0
-			}) /
-				60) *
-			100
+		width: (Number.clamp((now - window.start - slot * step) / step, {maximum: 1, minimum: 0}) * 80) / 60,
+		x: (slot / 60) * 100
 	}
 }
 

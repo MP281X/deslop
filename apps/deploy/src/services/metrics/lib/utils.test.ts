@@ -2,7 +2,15 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, HashSet, Option} from 'effect'
 
-import {chartWindow, compact, compactHistory, counters, history, sample} from '#services/metrics/lib/utils.ts'
+import {
+	chartWindow,
+	compact,
+	compactHistory,
+	counters,
+	history,
+	resolution,
+	sample
+} from '#services/metrics/lib/utils.ts'
 
 const MEMORY = 'MemTotal: 1024 kB\nMemAvailable: 256 kB\nSwapTotal: 512 kB\nSwapFree: 128 kB'
 const STORAGE = 'Mounted on 1B-blocks Used\n/ 1000000 750000'
@@ -52,7 +60,7 @@ it('bounds history by the chosen time window and response size without synthesiz
 	assert.lengthOf(history(samples, 24, now), 60)
 	assert.lengthOf(history(samples, 168, now), 60)
 	assert.strictEqual(Option.getOrThrow(Array.last(selected)).time, now)
-	assert.strictEqual(history(samples, 168, now)[0]?.since, 0)
+	assert.strictEqual(history(samples, 168, now)[0]?.since, 30_000)
 	assert.isEmpty(history(samples, 1, now + 2 * 3_600_000))
 	const retained = compact(samples, now)
 	assert.isBelow(retained.length, 400)
@@ -122,10 +130,30 @@ it('sends one current snapshot and compact aligned MCP columns with unknown rate
 it('retains new-agent samples while displaying the entire requested window without fabricating recordings', () => {
 	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '', '', '100 0', 0), MEMORY, STORAGE)
 	const fresh = Array.makeBy(21, index => ({...value, time: index * 30_000}))
-	assert.lengthOf(history(fresh, 168, 600_000), 1)
-	assert.strictEqual(history(fresh, 168, 600_000)[0]?.time, 600_000)
+	assert.lengthOf(history(fresh, 168, 600_000), 2)
+	assert.strictEqual(Option.getOrThrow(Array.last(history(fresh, 168, 600_000))).time, 600_000)
 	assert.strictEqual(history(fresh, 168, 600_000)[0]?.since, 0)
-	assert.deepStrictEqual(chartWindow(168, 600_000), {end: 600_000, start: 600_000 - 168 * 3_600_000})
+	assert.deepStrictEqual(chartWindow(168, 600_000), {end: 10_080_000, start: 10_080_000 - 168 * 3_600_000})
 	assert.deepStrictEqual(chartWindow(1, 3_600_000), {end: 3_600_000, start: 0})
 	assert.deepStrictEqual(chartWindow(1, 7_200_000), {end: 7_200_000, start: 3_600_000})
+})
+
+it('does not introduce interior gaps when sleeping-worker history is read again on a later clock-aligned grid', () => {
+	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '', '', '100 0', 0), MEMORY, STORAGE)
+	const now = 168 * 3_600_000
+	const retained = compact(
+		Array.makeBy(20_161, index => ({...value, time: index * 30_000})),
+		now
+	)
+	for (const hours of [24, 168]) {
+		const cached = history(retained, hours, now)
+		for (const minutes of [5, 10, 17, 23, 100, 140]) {
+			const later = now + minutes * 60_000
+			const slots = Array.map(
+				history(cached, hours, later),
+				point => Math.ceil((point.time - chartWindow(hours, later).start) / resolution(hours)) - 1
+			)
+			assert.isTrue(Array.every(slots, (slot, index) => index === 0 || slot === (slots[index - 1] ?? 0) + 1))
+		}
+	}
 })

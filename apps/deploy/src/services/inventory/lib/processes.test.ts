@@ -2,15 +2,23 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Effect, FileSystem, PlatformError, String, pipe} from 'effect'
 
-import {attachProcesses, processUsage, processes} from '#services/inventory/lib/processes.ts'
+import {attachProcesses, processReadings, processes} from '#services/inventory/lib/processes.ts'
 import {InventoryItem} from '#services/inventory/schema.ts'
+
+function reading(time: number) {
+	return {
+		records: [{cgroup: '', process: {memory: time, name: 'node', parent: 1, pid: 42}, start: 100, ticks: time / 4}],
+		time,
+		total: time + 800
+	}
+}
 
 it.effect('collects names with spaces, parent/RSS and tolerates an exited process without reading command lines', () =>
 	pipe(
 		Effect.gen(function* () {
-			const reading = yield* processes
-			assert.strictEqual(reading.total, 800)
-			assert.deepStrictEqual(reading.records, [
+			const collected = yield* processes
+			assert.strictEqual(collected.total, 800)
+			assert.deepStrictEqual(collected.records, [
 				{
 					cgroup: '0::/user.slice/scope.service\n',
 					process: {memory: 1_048_576, name: 'Web Content', parent: 7, pid: 42},
@@ -60,15 +68,36 @@ it('measures CPU as a share of machine capacity without reusing a PID or bridgin
 		time: 10_000,
 		total: 1000
 	}
-	assert.strictEqual(processUsage(current, previous)[0]?.process.cpu, 25)
-	assert.isUndefined(processUsage(current)[0]?.process.cpu)
-	assert.isUndefined(processUsage({...current, time: 100}, previous)[0]?.process.cpu)
-	assert.isUndefined(processUsage({...current, time: 31_000}, previous)[0]?.process.cpu)
-	assert.isUndefined(processUsage({...current, total: 100}, previous)[0]?.process.cpu)
+	const baseline = processReadings(previous)
+	assert.strictEqual(processReadings(current, baseline).readings[0]?.process.cpu, 25)
+	assert.isUndefined(processReadings(current).readings[0]?.process.cpu)
+	assert.isUndefined(processReadings({...current, time: 100}, baseline).readings[0]?.process.cpu)
+	assert.isUndefined(processReadings({...current, time: 31_000}, baseline).readings[0]?.process.cpu)
+	assert.isUndefined(processReadings({...current, total: 100}, baseline).readings[0]?.process.cpu)
 	assert.isUndefined(
-		processUsage({...current, records: Array.map(current.records, record => ({...record, start: 101}))}, previous)[0]
-			?.process.cpu
+		processReadings({...current, records: Array.map(current.records, record => ({...record, start: 101}))}, baseline)
+			.readings[0]?.process.cpu
 	)
+})
+
+it('shares meaningful CPU deltas between staggered viewers without returning stale memory or reused-PID CPU', () => {
+	const first = processReadings(reading(0))
+	const early = processReadings(reading(1000), first)
+	assert.isUndefined(early.readings[0]?.process.cpu)
+	assert.strictEqual(early.baseline.time, 0)
+	const viewerA = processReadings(reading(5000), early)
+	const viewerB = processReadings(reading(6000), viewerA)
+	assert.strictEqual(viewerA.readings[0]?.process.cpu, 25)
+	assert.strictEqual(viewerB.readings[0]?.process.cpu, 25)
+	assert.strictEqual(viewerB.readings[0]?.process.memory, 6000)
+	assert.strictEqual(viewerB.baseline.time, 5000)
+	assert.isUndefined(
+		processReadings(
+			{...reading(6500), records: Array.map(reading(6500).records, record => ({...record, start: 101}))},
+			viewerB
+		).readings[0]?.process.cpu
+	)
+	assert.strictEqual(processReadings(reading(10_000), viewerB).readings[0]?.process.cpu, 25)
 })
 
 it('attaches only the exact service cgroup in the right scope, or the actual Docker container', () => {
