@@ -10,3 +10,4 @@
 - Consistent control heights, row columns and chart baselines on phone and desktop. Meaningful information is visible without expanding records.
 - No CPU/Memory column headers: fixed number columns and unit-bearing readings suffice. Keep the count beside search. Center icon and dot boxes on the same row axis; error detail uses the same destructive color as its dot and failed actions.
 - Page failures replace the affected content panel, not the machine-filter row. Keep app navigation available; do not leave detached range controls beneath an error. Action failures stay beside their controls.
+- Keep a last-known machine selector after inventory failure, with unavailable dots, so healthy Monitor data remains visible. Without a prior snapshot, or on an Auth failure, show the content-area error/sign-in state.

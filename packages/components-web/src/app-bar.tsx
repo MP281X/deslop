@@ -1,6 +1,6 @@
 import type {ReactNode} from 'react'
 
-// At 32px the icon's 64 cells land on whole device pixels of a 2x screen.
+// At 32px a 64-cell mark lands on whole device pixels of a 2x screen.
 export function AppBar(props: {children?: ReactNode; icon: string; name: string}) {
 	return (
 		<header className="bg-background border-border sticky top-0 z-30 flex h-12 shrink-0 items-center justify-between gap-4 border-b px-4">

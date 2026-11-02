@@ -1,6 +1,6 @@
 import {useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Schema, String} from 'effect'
+import {Array, Boolean, Cause, Option, Schema, String} from 'effect'
 
 import {
 	CatchBoundary,
@@ -11,6 +11,7 @@ import {
 	useNavigate,
 	useSearch
 } from '@tanstack/react-router'
+import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
@@ -18,6 +19,7 @@ import {StatusDot} from '@deslop/components-web/status-dot'
 import {buttonVariants} from '@deslop/components-web/ui/button'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
+import {AuthError} from '@deslop/runtime/auth/schema'
 
 import {MachineIcon, machineName} from '#lib/components.tsx'
 import {inventoryAtom} from '#lib/utils.ts'
@@ -25,10 +27,18 @@ import {PageError} from '#routes/(home)/-error.tsx'
 import icon from '#routes/icon-dark.svg'
 
 function Fleet() {
-	const result = useAtomSuspense(inventoryAtom)
+	const result = useAtomSuspense(inventoryAtom, {includeFailure: true})
 	const search = useSearch({from: '/(home)'})
 	const navigate = useNavigate({from: '/'})
 	const matchRoute = useMatchRoute()
+	const available = AsyncResult.value(result)
+	if (
+		AsyncResult.isFailure(result) &&
+		(Option.isNone(available) || Option.exists(Cause.findErrorOption(result.cause), Schema.is(AuthError)))
+	) {
+		throw Cause.squash(result.cause)
+	}
+	const snapshot = Option.getOrThrow(available)
 	return (
 		<ToggleGroup
 			aria-label="Machine"
@@ -48,35 +58,34 @@ function Fleet() {
 			<ToggleGroupItem value="all" aria-label="All machines">
 				All
 			</ToggleGroupItem>
-			{Array.map(
-				result.value.workers ?? Array.dedupe(Array.map(result.value.items, item => item.worker)),
-				(worker, index) => {
-					const failed = Array.some(result.value.sources, source => source.name === worker && source.error !== '')
-					const checking =
-						index !== 0 &&
-						!failed &&
-						!Array.some(result.value.sources, source => String.startsWith(`${worker} · `)(source.name))
-					return (
-						<ToggleGroupItem key={worker} value={worker} className="gap-1.5">
-							<MachineIcon worker={worker} />
-							{machineName(worker)}
-							<span
-								role="img"
-								className="flex items-center justify-center"
-								aria-label={Boolean.match(checking, {
-									onFalse: () => Boolean.match(failed, {onFalse: () => 'Available', onTrue: () => 'Unavailable'}),
-									onTrue: () => 'Checking'
-								})}
-							>
-								<StatusDot
-									status={Boolean.match(failed || checking, {onFalse: () => 'live', onTrue: () => 'off'})}
-									waiting={checking}
-								/>
-							</span>
-						</ToggleGroupItem>
-					)
-				}
-			)}
+			{Array.map(snapshot.workers ?? Array.dedupe(Array.map(snapshot.items, item => item.worker)), (worker, index) => {
+				const failed =
+					AsyncResult.isFailure(result) ||
+					Array.some(snapshot.sources, source => source.name === worker && source.error !== '')
+				const checking =
+					index !== 0 &&
+					!failed &&
+					!Array.some(snapshot.sources, source => String.startsWith(`${worker} · `)(source.name))
+				return (
+					<ToggleGroupItem key={worker} value={worker} className="gap-1.5">
+						<MachineIcon worker={worker} />
+						{machineName(worker)}
+						<span
+							role="img"
+							className="flex items-center justify-center"
+							aria-label={Boolean.match(checking, {
+								onFalse: () => Boolean.match(failed, {onFalse: () => 'Available', onTrue: () => 'Unavailable'}),
+								onTrue: () => 'Checking'
+							})}
+						>
+							<StatusDot
+								status={Boolean.match(failed || checking, {onFalse: () => 'live', onTrue: () => 'off'})}
+								waiting={checking}
+							/>
+						</span>
+					</ToggleGroupItem>
+				)
+			})}
 		</ToggleGroup>
 	)
 }
