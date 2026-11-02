@@ -1,6 +1,6 @@
 import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Option, String} from 'effect'
+import {Array, Boolean, Number, Option, String} from 'effect'
 
 import {createFileRoute, useSearch} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
@@ -228,7 +228,21 @@ function ExposureLink(props: {item: InventoryItem}) {
 	)
 }
 
-function WorkloadRow(props: {row: ReturnType<typeof workloads>[number]; showMachine: boolean; expanded?: boolean}) {
+const untilNext = new Intl.RelativeTimeFormat('en', {numeric: 'auto', style: 'narrow'})
+
+// When a timer next starts the job, against the snapshot's clock: minutes within the hour, then hours.
+function nextRun(next: number, now: number) {
+	const minutes = Number.max(0, Number.round((next - now) / 60_000, 0))
+	if (minutes < 60) return untilNext.format(minutes, 'minute')
+	return untilNext.format(Number.round(minutes / 60, 0), 'hour')
+}
+
+function WorkloadRow(props: {
+	row: ReturnType<typeof workloads>[number]
+	now: number
+	showMachine: boolean
+	expanded?: boolean
+}) {
 	const state = status(props.row.item)
 	const processes = props.row.item.processes ?? []
 	return (
@@ -271,6 +285,11 @@ function WorkloadRow(props: {row: ReturnType<typeof workloads>[number]; showMach
 				{Array.map(props.row.exposures, exposure => (
 					<ExposureLink key={exposure.id} item={exposure} />
 				))}
+				{props.row.item.next !== undefined && (
+					<span className="text-muted-foreground text-xs tabular-nums">
+						next {nextRun(props.row.item.next, props.now)}
+					</span>
+				)}
 			</div>
 			{(state === 'stale' ||
 				state === 'unhealthy' ||
@@ -286,13 +305,18 @@ function WorkloadRow(props: {row: ReturnType<typeof workloads>[number]; showMach
 	)
 }
 
-function InventoryRow(props: {row: ReturnType<typeof workloads>[number]; showMachine: boolean; processMatch: boolean}) {
+function InventoryRow(props: {
+	row: ReturnType<typeof workloads>[number]
+	now: number
+	showMachine: boolean
+	processMatch: boolean
+}) {
 	const [open, setOpen] = useState(false)
 	const processes = processTree(props.row.item.processes ?? [])
 	if (processes.length < 2 && !props.processMatch) {
 		return (
 			<div role="listitem" className="border-b py-2.5">
-				<WorkloadRow row={props.row} showMachine={props.showMachine} />
+				<WorkloadRow row={props.row} now={props.now} showMachine={props.showMachine} />
 			</div>
 		)
 	}
@@ -304,7 +328,12 @@ function InventoryRow(props: {row: ReturnType<typeof workloads>[number]; showMac
 			onToggle={event => setOpen(event.currentTarget.open)}
 		>
 			<summary className="cursor-pointer list-none py-2.5 [&::-webkit-details-marker]:hidden">
-				<WorkloadRow row={props.row} expanded={open || props.processMatch} showMachine={props.showMachine} />
+				<WorkloadRow
+					row={props.row}
+					now={props.now}
+					expanded={open || props.processMatch}
+					showMachine={props.showMachine}
+				/>
 			</summary>
 			{(open || props.processMatch) && <Processes rows={processes} showMachine={props.showMachine} />}
 		</details>
@@ -376,6 +405,7 @@ function Services() {
 										<InventoryRow
 											key={`${row.item.id}:${query !== ''}`}
 											row={row}
+											now={result.value.time}
 											showMachine={search.machine === undefined || search.machine === 'all'}
 											processMatch={
 												query !== '' &&

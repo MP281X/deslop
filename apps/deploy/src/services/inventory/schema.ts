@@ -29,6 +29,8 @@ export const InventoryItem = Schema.Struct({
 	kind: Schema.Literals(['service', 'container', 'port', 'exposure', 'peer']),
 	links: Schema.optionalKey(Schema.Array(Schema.String)),
 	name: Schema.String,
+	// When its timer next starts a scheduled service, in epoch milliseconds.
+	next: Schema.optionalKey(Schema.Finite),
 	owned: Schema.optionalKey(Schema.Boolean),
 	port: Schema.optionalKey(Schema.Int),
 	process: Schema.optionalKey(Schema.String),
@@ -109,7 +111,8 @@ export type HideRequest = typeof HideRequest.Type
 export const HideRequest = Schema.Struct({name: Schema.String, target: Schema.optionalKey(Schema.String)})
 
 export type Timer = typeof Timer.Type
-export const Timer = Schema.Struct({activates: Schema.NullOr(Schema.String)})
+// `next` is in epoch microseconds.
+export const Timer = Schema.Struct({activates: Schema.NullOr(Schema.String), next: Schema.NullOr(Schema.Finite)})
 
 export type Unit = typeof Unit.Type
 export const Unit = Schema.Struct({

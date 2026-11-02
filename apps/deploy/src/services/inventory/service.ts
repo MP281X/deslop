@@ -5,7 +5,7 @@ import {
 	Context,
 	Effect,
 	FileSystem,
-	HashSet,
+	HashMap,
 	Layer,
 	Number,
 	Option,
@@ -155,14 +155,19 @@ export class Inventory extends Context.Service<Inventory, {readonly snapshot: Ef
 			const units = Effect.fnUntraced(function* (system: boolean) {
 				const scope = Boolean.match(system, {onFalse: () => 'user' as const, onTrue: () => 'system' as const})
 				const manager = Boolean.match(system, {onFalse: () => ['--user'], onTrue: () => []})
-				const scheduled = HashSet.fromIterable(
+				// Each timer-started service, with its next start when one is due.
+				const scheduled = HashMap.fromIterable(
 					Array.getSomes(
 						Array.map(
 							yield* pipe(
 								command('systemctl', [...manager, 'list-timers', '--all', '--output=json', '--no-pager']),
 								Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Timer))))
 							),
-							timer => Option.fromNullishOr(timer.activates)
+							timer =>
+								Option.map(
+									Option.fromNullishOr(timer.activates),
+									unit => [unit, Option.map(Option.fromNullishOr(timer.next), next => Math.floor(next / 1000))] as const
+								)
 						)
 					)
 				)
@@ -176,9 +181,13 @@ export class Inventory extends Context.Service<Inventory, {readonly snapshot: Ef
 								id: `${worker}:${scope}:${row.unit}`,
 								kind: 'service',
 								name: row.unit,
-								...Boolean.match(HashSet.has(scheduled, row.unit), {
-									onFalse: () => ({}),
-									onTrue: () => ({scheduled: true})
+								...Option.match(HashMap.get(scheduled, row.unit), {
+									onNone: () => ({}),
+									onSome: next =>
+										Option.match(next, {
+											onNone: () => ({scheduled: true}),
+											onSome: time => ({next: time, scheduled: true})
+										})
 								}),
 								scope,
 								state: `${row.active} · ${row.sub}`,
