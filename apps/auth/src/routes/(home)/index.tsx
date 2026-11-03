@@ -1,6 +1,6 @@
 import {useAtomMount, useAtomSet} from '@effect/atom-react'
 
-import {Array, Boolean, Option} from 'effect'
+import {Array, Boolean, Option, Predicate} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
 import {MachineState} from '@typeonce/effect-machine-react'
@@ -23,9 +23,10 @@ type Answer = {accept: boolean; request: PendingAuthorization}
 function Enter(props: {
 	answered: Option.Option<Answer>
 	onType: (code: string) => void
-	state: 'Checking' | 'Found' | 'Missing' | 'Typing'
+	state: 'Checking' | 'Found' | 'Missing' | 'Typing' | {failed: string}
 	typed: string
 }) {
+	const invalid = props.state === 'Missing' || Predicate.isObject(props.state)
 	return (
 		<section className="flex flex-col gap-4">
 			<InputOTP
@@ -43,33 +44,24 @@ function Enter(props: {
 				autoComplete="off"
 				autoCapitalize="characters"
 				disabled={props.state === 'Checking'}
-				aria-invalid={props.state === 'Missing'}
+				aria-invalid={invalid}
 				aria-describedby="code-error"
 				containerClassName={cn('gap-2', props.state === 'Missing' && 'refuse')}
 			>
 				<InputOTPGroup className="flex-1">
 					{Array.map(Array.range(0, 3), index => (
-						<InputOTPSlot
-							key={index}
-							index={index}
-							aria-invalid={props.state === 'Missing'}
-							className="h-11 flex-1 font-mono text-lg"
-						/>
+						<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-11 flex-1 font-mono text-lg" />
 					))}
 				</InputOTPGroup>
 				<InputOTPSeparator />
 				<InputOTPGroup className="flex-1">
 					{Array.map(Array.range(4, 7), index => (
-						<InputOTPSlot
-							key={index}
-							index={index}
-							aria-invalid={props.state === 'Missing'}
-							className="h-11 flex-1 font-mono text-lg"
-						/>
+						<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-11 flex-1 font-mono text-lg" />
 					))}
 				</InputOTPGroup>
 			</InputOTP>
 			{props.state === 'Missing' && <FieldError id="code-error">No waiting sign-in has this code.</FieldError>}
+			{Predicate.isObject(props.state) && <FieldError id="code-error">{props.state.failed}</FieldError>}
 			{Option.match(props.answered, {
 				onNone: () => null,
 				onSome: answer => (
@@ -100,7 +92,7 @@ function Page(props: {
 	answered: Option.Option<Answer>
 	onType: (code: string) => void
 	pending: Option.Option<PendingAuthorization>
-	state: 'Checking' | 'Found' | 'Missing' | 'Typing'
+	state: 'Checking' | 'Found' | 'Missing' | 'Typing' | {failed: string}
 	typed: string
 }) {
 	return (
@@ -155,6 +147,17 @@ function SignIns() {
 									onType={type}
 									pending={Option.some(found.value.request)}
 									state="Found"
+									typed={code.value.code}
+								/>
+							)}
+						</MachineState>
+						<MachineState machine={codeAtom} path="Code.Failed">
+							{failed => (
+								<Page
+									answered={Option.none()}
+									onType={type}
+									pending={Option.none()}
+									state={{failed: failed.value.message}}
 									typed={code.value.code}
 								/>
 							)}

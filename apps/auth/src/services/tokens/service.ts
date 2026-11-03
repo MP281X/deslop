@@ -107,6 +107,8 @@ export class Tokens extends Context.Service<
 		readonly revoke: (params: RevokeParams) => Effect.Effect<void, AuthError>
 		readonly session: (headers: Headers.Headers) => Effect.Effect<User, AuthError>
 		readonly sessionVia: (headers: Headers.Headers) => Effect.Effect<SessionVia, AuthError>
+		// The session's account and how it signed in, read once.
+		readonly browserSession: (headers: Headers.Headers) => Effect.Effect<{user: User; via: SessionVia}, AuthError>
 		readonly startSession: (
 			user: User,
 			origin: Origin,
@@ -402,6 +404,7 @@ export class Tokens extends Context.Service<
 						Stream.merge(SubscriptionRef.changes(grants), Stream.drop(Stream.tick('1 minute'), 1)),
 						Stream.mapEffect(() => listApps(user))
 					),
+				browserSession: browser,
 				changes: Stream.map(SubscriptionRef.changes(grants), () => undefined),
 				client: Effect.fn('Tokens.client')(function* (asked: AuthorizeClient) {
 					const client = yield* pipe(

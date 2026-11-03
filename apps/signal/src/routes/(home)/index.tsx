@@ -21,7 +21,10 @@ import type {PointerEvent, ReactNode, WheelEvent} from 'react'
 import {createContext, useContext, useEffect, useRef, useState} from 'react'
 
 import {SignIn} from '@deslop/components-web/fallbacks'
+import {ItemListSkeleton} from '@deslop/components-web/item-list'
+import {Alert, AlertTitle} from '@deslop/components-web/ui/alert'
 import {Button} from '@deslop/components-web/ui/button'
+import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {cn} from '@deslop/components-web/utils'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
@@ -773,6 +776,42 @@ function Observations(props: {entries: readonly Experience[]}) {
 	)
 }
 
+// A thread panel's lone states (DESIGN.md, Errors and Lone states): a failed read keeps what loaded under an alert, loading is a skeleton, nothing is an Empty.
+function PanelState(props: {
+	empty: boolean
+	failed: string
+	label: string
+	nothing: string
+	result: AsyncResult.AsyncResult<unknown, unknown>
+}) {
+	if (AsyncResult.isFailure(props.result)) {
+		return (
+			<li>
+				<Alert variant="destructive">
+					<AlertTitle>{props.failed}</AlertTitle>
+				</Alert>
+			</li>
+		)
+	}
+	if (!props.empty) return null
+	if (AsyncResult.isInitial(props.result)) {
+		return (
+			<li>
+				<ItemListSkeleton label={props.label} rows={3} />
+			</li>
+		)
+	}
+	return (
+		<li>
+			<Empty className="py-6">
+				<EmptyHeader>
+					<EmptyTitle>{props.nothing}</EmptyTitle>
+				</EmptyHeader>
+			</Empty>
+		</li>
+	)
+}
+
 // Opening older pages freezes this page's upper cursor so incoming records cannot create a gap.
 function ThreadPage(props: {
 	before?: number
@@ -878,15 +917,13 @@ function ThreadPage(props: {
 					</>
 				)
 			})}
-			{AsyncResult.isFailure(result) && <li role="alert">Decisions could not be read.</li>}
-			{Array.isReadonlyArrayEmpty(entries) && !AsyncResult.isFailure(result) && (
-				<li className="text-muted-foreground py-3">
-					{Boolean.match(AsyncResult.isInitial(result), {
-						onFalse: () => 'No decisions in this part of the recording.',
-						onTrue: () => 'Loading…'
-					})}
-				</li>
-			)}
+			<PanelState
+				result={result}
+				empty={Array.isReadonlyArrayEmpty(entries)}
+				failed="Decisions could not be read"
+				label="Decisions"
+				nothing="No decisions in this part of the recording"
+			/>
 			{Array.map(groups, group => {
 				const entry = Option.getOrThrow(Array.head(group))
 				if (entry.kind === 'core') {
@@ -1044,15 +1081,13 @@ function HistoryPage(props: {
 					</>
 				)
 			})}
-			{AsyncResult.isFailure(result) && <li role="alert">History could not be read.</li>}
-			{Array.isReadonlyArrayEmpty(entries) && !AsyncResult.isFailure(result) && (
-				<li className="text-muted-foreground py-3">
-					{Boolean.match(AsyncResult.isInitial(result), {
-						onFalse: () => 'No recording here yet.',
-						onTrue: () => 'Loading history…'
-					})}
-				</li>
-			)}
+			<PanelState
+				result={result}
+				empty={Array.isReadonlyArrayEmpty(entries)}
+				failed="History could not be read"
+				label="History"
+				nothing="No recording here yet"
+			/>
 			{Array.map(Record.values(Array.groupBy(entries, entry => `${entry.actor}:${entry.tick}`)), entriesInTick => (
 				<HistoryGroup key={Option.getOrThrow(Array.head(entriesInTick)).id} entries={entriesInTick} />
 			))}

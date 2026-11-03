@@ -361,7 +361,6 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 	const catalog = useAtomSuspense(catalogAtom).value
 	const signIns = useAtomSuspense(appsAtom).value
 	const now = useAtomSuspense(minuteAtom).value
-	const [disconnection] = useAtom(disconnectAtom)
 	const query = useCommandQuery()
 	function shown(name: string) {
 		return String.includes(query)(String.toLowerCase(name))
@@ -470,7 +469,6 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 					</Table>
 				)
 			})}
-			<ResultError result={disconnection} />
 		</section>
 	)
 }

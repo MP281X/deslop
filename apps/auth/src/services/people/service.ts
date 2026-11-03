@@ -165,11 +165,15 @@ export class People extends Context.Service<
 						Stream.mapEffect(() =>
 							pipe(
 								Effect.gen(function* () {
-									const user = yield* tokens.session(headers)
-									const via = yield* tokens.sessionVia(headers)
-									return Option.match(member(user.id, yield* SubscriptionRef.get(state)), {
-										onNone: () => SignedAccount.make({...user, role: roleOf(user.id, Option.none()), via}),
-										onSome: row => SignedAccount.make({...Struct.omit(personOf(row), ['since']), via})
+									const session = yield* tokens.browserSession(headers)
+									return Option.match(member(session.user.id, yield* SubscriptionRef.get(state)), {
+										onNone: () =>
+											SignedAccount.make({
+												...session.user,
+												role: roleOf(session.user.id, Option.none()),
+												via: session.via
+											}),
+										onSome: row => SignedAccount.make({...Struct.omit(personOf(row), ['since']), via: session.via})
 									})
 								}),
 								rejected('Cannot read the account')

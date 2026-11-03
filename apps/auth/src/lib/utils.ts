@@ -28,7 +28,7 @@ import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {PasskeySignIn, Registration, RequestOptions} from '#services/passkeys/schema.ts'
-import type {AdmitParams, SignedAccount} from '#services/people/schema.ts'
+import type {SignedAccount} from '#services/people/schema.ts'
 import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
 import {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import {returnable} from '#services/tokens/lib/utils.ts'
@@ -77,7 +77,13 @@ export const codeAtom = AtomMachine.bind(RpcClient.runtime).make(
 				// A full code reads its sign-in live, so a request answered elsewhere or expired leaves the list.
 				Code: {
 					fields: {code: Schema.String},
-					states: {Found: {fields: {request: PendingAuthorization}}, Looking: {}, Missing: {}}
+					states: {
+						// The lookup itself failed, which says nothing about the code.
+						Failed: {fields: {message: Schema.String}},
+						Found: {fields: {request: PendingAuthorization}},
+						Looking: {},
+						Missing: {}
+					}
 				},
 				// The last answer stays as one line under an empty code, ready for the next sign-in.
 				Typing: {fields: {answered: Schema.optionalKey(Schema.Struct(Answered)), typed: Schema.String}}
@@ -113,10 +119,10 @@ export const codeAtom = AtomMachine.bind(RpcClient.runtime).make(
 								onSome: request => transition.select.found({data: {request}})
 							})
 					},
-					onFailure: {target: 'Code.Missing'},
+					onFailure: {data: transition => ({message: transition.error.message}), target: 'Code.Failed'},
 					src: 'lookup'
 				},
-				states: {Found: {}, Looking: {}, Missing: {}}
+				states: {Failed: {}, Found: {}, Looking: {}, Missing: {}}
 			},
 			Typing: {
 				always: {
@@ -157,19 +163,31 @@ export const appsAtom = Atom.keepAlive(
 	)
 )
 
+// An action from the account menu or a column's menu has no row to answer under, so it says how it failed in a toast (DESIGN.md, Errors).
+function failedWith(title: string) {
+	return <A, E extends {message: string}, R>(effect: Effect.Effect<A, E, R>) =>
+		Effect.tapError(effect, failure =>
+			Effect.sync(() => toast.add({description: failure.message, title, type: 'error'}))
+		)
+}
+
 // One column holds every sign-in of a client on one device; signing it out ends them all.
 export const disconnectAtom = RpcClient.runtime.fn((families: string[]) =>
-	Effect.flatMap(RpcClient, client =>
-		Effect.forEach(families, family => client('auth.disconnect', {family}), {concurrency: 'unbounded', discard: true})
+	pipe(
+		Effect.flatMap(RpcClient, client =>
+			Effect.forEach(families, family => client('auth.disconnect', {family}), {concurrency: 'unbounded', discard: true})
+		),
+		failedWith('Cannot sign out')
 	)
 )
 
-export const admitAtom = RpcClient.runtime.fn((input: AdmitParams) =>
-	Effect.flatMap(RpcClient, client => client('auth.admit', input))
+// One per person, so a failed answer or removal shows beneath that person's row.
+export const admitAtom = Atom.family((id: string) =>
+	RpcClient.runtime.fn((allow: boolean) => Effect.flatMap(RpcClient, client => client('auth.admit', {allow, id})))
 )
 
-export const removeAtom = RpcClient.runtime.fn((id: string) =>
-	Effect.flatMap(RpcClient, client => client('auth.remove', {id}))
+export const removeAtom = Atom.family((id: string) =>
+	RpcClient.runtime.fn(() => Effect.flatMap(RpcClient, client => client('auth.remove', {id})))
 )
 
 export const requestId = Option.fromNullishOr(new URLSearchParams(location.search).get('request'))
@@ -299,14 +317,6 @@ export const consentAtom = RpcClient.runtime.fn((input: {accept: boolean; reques
 		Effect.andThen(Effect.sync(() => get.set(codeAtom.send, {_tag: 'Answered', ...input})))
 	)
 )
-
-// An action from a menu, which closes as it runs, says how it failed in a toast rather than in a line far from it.
-function failedWith(title: string) {
-	return <A, E extends {message: string}, R>(effect: Effect.Effect<A, E, R>) =>
-		Effect.tapError(effect, failure =>
-			Effect.sync(() => toast.add({description: failure.message, title, type: 'error'}))
-		)
-}
 
 // The page an app sent this browser to sign in from, carried through either way of signing in.
 const next = Option.fromNullishOr(new URLSearchParams(location.search).get('next'))
@@ -439,11 +449,15 @@ const afterSignOut = pipe(
 	Option.getOrElse(() => location.pathname)
 )
 
-export const signOutAtom = authRuntime.fn(() =>
-	pipe(
-		HttpClient.HttpClient.use(client => HttpClient.filterStatusOk(client).post('/auth/sign-out')),
-		Effect.andThen(Effect.sync(() => location.replace(afterSignOut))),
-		Effect.mapError(cause => AuthError.make({cause, message: 'Cannot sign out'})),
-		failedWith('Cannot sign out')
-	)
+// Ends the session every app shares, keeping the reason it could not.
+const signOut = pipe(
+	HttpClient.HttpClient.use(client => HttpClient.filterStatusOk(client).post('/auth/sign-out')),
+	Effect.andThen(Effect.sync(() => location.replace(afterSignOut))),
+	Effect.mapError(cause => AuthError.make({cause, message: `Cannot sign out: ${cause.message}`}))
 )
+
+// From another app's Sign out, whose page says how it failed.
+export const signOutAtom = authRuntime.fn(() => signOut)
+
+// From the account menu, which closes as it runs, so a failure is a toast.
+export const menuSignOutAtom = authRuntime.fn(() => failedWith('Cannot sign out')(signOut))

@@ -209,7 +209,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 					</ContextMenuContent>
 				</ContextMenu>
 				{props.server.error !== undefined && (
-					<p className="text-destructive pr-1 pb-2 pl-9 text-xs wrap-anywhere">{props.server.error}</p>
+					<FieldError className="mr-1 mb-2 ml-9 wrap-anywhere">{props.server.error}</FieldError>
 				)}
 				<CollapsibleContent>
 					<ul aria-label={`Tools of ${props.server.name}`} className="pb-1">

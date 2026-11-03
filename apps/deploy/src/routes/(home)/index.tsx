@@ -9,6 +9,7 @@ import {useState, useTransition} from 'react'
 import type {ReactNode} from 'react'
 
 import {useCommandQuery} from '@deslop/components-web/app-bar'
+import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Alert, AlertDescription, AlertTitle} from '@deslop/components-web/ui/alert'
 import {Badge} from '@deslop/components-web/ui/badge'
@@ -120,10 +121,7 @@ function RunNow(props: {busy: boolean; item: InventoryItem; onRun: () => void}) 
 }
 
 function RunFailure(props: {item: InventoryItem}) {
-	return Option.match(AsyncResult.error(useAtomValue(runAtom(props.item.id))), {
-		onNone: () => null,
-		onSome: error => <p className="text-destructive text-xs wrap-anywhere">{error.message}</p>
-	})
+	return <ResultError result={useAtomValue(runAtom(props.item.id))} className="wrap-anywhere" />
 }
 
 // The row's menu item for one exposure this app made; its failure shows on the row.
@@ -137,10 +135,9 @@ function RemoveExposure(props: {item: InventoryItem}) {
 }
 
 function RemoveFailure(props: {item: InventoryItem}) {
-	return Option.match(AsyncResult.error(useAtomValue(hideAtom(hideTarget(props.item))(props.item.name))), {
-		onNone: () => null,
-		onSome: error => <p className="text-destructive text-xs wrap-anywhere">{error.message}</p>
-	})
+	return (
+		<ResultError result={useAtomValue(hideAtom(hideTarget(props.item))(props.item.name))} className="wrap-anywhere" />
+	)
 }
 
 const untilNext = new Intl.RelativeTimeFormat('en', {numeric: 'auto', style: 'narrow'})
