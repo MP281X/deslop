@@ -1020,20 +1020,12 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.deepStrictEqual(
 				[
 					yield* landing({next: 'https://signal.mp281x.xyz/?invite=abc'}),
-					yield* landing({next: 'https://auth.mp281x.xyz/?add-passkey'}),
 					yield* landing({next: 'https://evil.test/'}),
 					yield* landing({next: 'http://signal.mp281x.xyz/'}),
 					yield* landing({code: 'WDJB-MJHT', next: 'https://signal.mp281x.xyz/'}),
 					yield* landing({})
 				],
-				[
-					'https://signal.mp281x.xyz/?invite=abc',
-					'https://auth.mp281x.xyz/?add-passkey',
-					'/',
-					'/',
-					'/?code=WDJB-MJHT',
-					'/'
-				]
+				['https://signal.mp281x.xyz/?invite=abc', '/', '/', '/?code=WDJB-MJHT', '/']
 			)
 		})
 	)

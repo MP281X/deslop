@@ -415,11 +415,17 @@ export const addPasskeyAtom = Atom.keepAlive(
 	)
 )
 
-// A code may have been approved for someone else's browser, so a code session confirms with GitHub first and returns here to add it.
+// The tab remembers the passkey it went to GitHub for, so the page it lands on adds it.
+export const ADDING_PASSKEY = 'adding-passkey'
+
+// A code may have been approved for someone else's browser, so a code session signs in with GitHub first.
 export const confirmForPasskeyAtom = Atom.fn(() =>
 	Effect.try({
 		catch: cause => AuthError.make({cause, message: 'Cannot start GitHub sign-in'}),
-		try: () => location.assign(`/auth/github?${new URLSearchParams({next: `${location.origin}/?add-passkey`})}`)
+		try: () => {
+			sessionStorage.setItem(ADDING_PASSKEY, 'true')
+			location.assign('/auth/github')
+		}
 	})
 )
 

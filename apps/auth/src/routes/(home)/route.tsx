@@ -37,10 +37,10 @@ import {
 } from '@deslop/components-web/ui/empty'
 import {FieldError} from '@deslop/components-web/ui/field'
 import {Spinner} from '@deslop/components-web/ui/spinner'
-import {toast} from '@deslop/components-web/ui/toast'
 
 import {AccountAvatar, AppList, QrCode} from '#lib/components.tsx'
 import {
+	ADDING_PASSKEY,
 	APP_ROWS,
 	accountAtom,
 	approveLink,
@@ -285,24 +285,14 @@ function PasskeyItems(props: {via: SessionVia}) {
 					</DropdownMenuSubContent>
 				</DropdownMenuSub>
 			))}
-			{/* A code may have been approved for someone else's browser, so a code session confirms with GitHub before it adds a year-long passkey. */}
-			{Boolean.match(props.via === 'Code', {
-				onFalse: () => (
-					<DropdownMenuItem disabled={AsyncResult.isWaiting(adding)} onClick={() => add()}>
-						<Plus />
-						Add a passkey
-					</DropdownMenuItem>
-				),
-				onTrue: () => (
-					<DropdownMenuItem disabled={AsyncResult.isWaiting(confirming)} onClick={() => confirm()}>
-						<Plus />
-						<span className="flex flex-col">
-							Add a passkey
-							<span className="text-muted-foreground text-xs">Confirm with GitHub first</span>
-						</span>
-					</DropdownMenuItem>
-				)
-			})}
+			{/* A code may have been approved for someone else's browser, so a code session passes through GitHub before it adds a year-long passkey. */}
+			<DropdownMenuItem
+				disabled={AsyncResult.isWaiting(adding) || AsyncResult.isWaiting(confirming)}
+				onClick={() => Boolean.match(props.via === 'Code', {onFalse: () => add(), onTrue: () => confirm()})}
+			>
+				<Plus />
+				Add a passkey
+			</DropdownMenuItem>
 		</DropdownMenuGroup>
 	)
 }
@@ -311,23 +301,11 @@ function PasskeyItems(props: {via: SessionVia}) {
 function AccountMenu(props: {account: SignedAccount}) {
 	const [signOut, endSession] = useAtom(menuSignOutAtom)
 	const add = useAtomSet(addPasskeyAtom)
-	// Back from confirming with GitHub, adding is one tap on a toast, since the browser makes a passkey only from a tap; the address drops the mark so a reload asks nothing.
+	// Back from GitHub, the passkey it went for starts at once, and only once.
 	useEffect(() => {
-		if (!new URLSearchParams(location.search).has('add-passkey') || props.account.via === 'Code') return
-		history.replaceState(null, '', location.pathname)
-		toast.add({
-			actionProps: {
-				children: 'Add a passkey',
-				onClick: () => {
-					toast.close('add-passkey')
-					add()
-				}
-			},
-			description: 'Your passkey signs you in for a year.',
-			id: 'add-passkey',
-			timeout: 0,
-			title: 'Confirmed with GitHub'
-		})
+		if (sessionStorage.getItem(ADDING_PASSKEY) === null) return
+		sessionStorage.removeItem(ADDING_PASSKEY)
+		if (props.account.via !== 'Code') add()
 	}, [add, props.account.via])
 	return (
 		<DropdownMenu>
