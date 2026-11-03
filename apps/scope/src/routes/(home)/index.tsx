@@ -401,7 +401,14 @@ function Apps(props: {overview: Overview}) {
 		Array.map(props.overview.apps, app => ({
 			...app,
 			operations: Array.filter(app.operations, operation =>
-				String.includes(query)(String.toLowerCase(`${app.name} ${SIDES[operation.runtime]} ${operation.name}`))
+				String.includes(query)(
+					String.toLowerCase(
+						`${app.name} ${Array.join(
+							Array.map(app.versions, release => release.version),
+							' '
+						)} ${SIDES[operation.runtime]} ${operation.name}`
+					)
+				)
 			)
 		})),
 		app => Array.isReadonlyArrayNonEmpty(app.operations)
@@ -425,6 +432,28 @@ function Apps(props: {overview: Overview}) {
 					onSome: mark => <img src={mark} alt="" className="pixelated size-5" />
 				})}
 				{app.name}
+				{/* The newest release the app runs; hovering names each side's, since an iOS app ships apart from its server. */}
+				{Option.match(Array.head(app.versions), {
+					onNone: () => null,
+					onSome: newest => (
+						<span
+							className="text-muted-foreground font-mono text-xs font-normal tabular-nums"
+							title={Array.join(
+								Array.map(
+									app.versions,
+									release =>
+										`${Array.join(
+											Array.map(release.runtimes, runtime => SIDES[runtime]),
+											', '
+										)} ${release.version}`
+								),
+								'\n'
+							)}
+						>
+							{newest.version}
+						</span>
+					)
+				})}
 			</h2>
 			<div role="list">
 				{Array.map(app.operations, operation => (

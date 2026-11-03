@@ -237,10 +237,10 @@ export const layerProtocol = Layer.mergeAll(
 // Traces and logs go to Scope when `--traces` names it, under the package name its web and iOS clients also use.
 export const layerTelemetry = Layer.unwrap(
 	Effect.gen(function* () {
-		const name = (yield* packageMetadata).name
+		const metadata = yield* packageMetadata
 		return Option.match(yield* Config.option(Config.String('OTEL_URL')), {
 			onNone: () => Layer.empty,
-			onSome: url => layerOtlp(`${name}-server`, url, 'server')
+			onSome: url => layerOtlp(`${metadata.name}-server`, url, 'server', metadata.version)
 		})
 	})
 )

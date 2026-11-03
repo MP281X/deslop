@@ -185,7 +185,9 @@ export const ServiceStatus = Schema.Struct({
 	...Service.fields,
 	entries: Schema.Natural,
 	lastEventAt: Nano,
-	runStartedAt: Nano
+	runStartedAt: Nano,
+	// The release its latest run sent; empty for a local build. Scope keeps only each service's newest release.
+	version: Schema.String
 })
 
 export type Rejection = typeof Rejection.Type
@@ -241,10 +243,16 @@ export const Operation = Schema.Struct({
 	traces: Schema.Array(OperationTrace)
 })
 
-// Each app with its server, web and iOS operations together, named as `appName` reads a service.
+// Each app with its server, web and iOS operations together, named as `appName` reads a service, and the release each side runs.
 export type Overview = typeof Overview.Type
 export const Overview = Schema.Struct({
-	apps: Schema.Array(Schema.Struct({name: Schema.String, operations: Schema.Array(Operation)}))
+	apps: Schema.Array(
+		Schema.Struct({
+			name: Schema.String,
+			operations: Schema.Array(Operation),
+			versions: Schema.Array(Schema.Struct({runtimes: Schema.Array(Runtime), version: Schema.String}))
+		})
+	)
 })
 
 export type Stats = typeof Stats.Type

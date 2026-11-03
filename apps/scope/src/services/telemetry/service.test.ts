@@ -1,7 +1,7 @@
 import {NodeCrypto, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Context, Effect, Exit, FileSystem, Layer, Option, Stream, String, pipe} from 'effect'
+import {Array, Context, Effect, Exit, FileSystem, Layer, Option, Order, Stream, String, pipe} from 'effect'
 
 import {TestClock} from 'effect/testing'
 
@@ -79,6 +79,94 @@ const query = Query.make({
 	text: '',
 	to: 2_000_000_000_000,
 	traceId: ''
+})
+
+// One span of `@deslop/stash-server` from a release, or a local build when the version is empty.
+function release(version: string, id: string) {
+	return TracesRequest.make({
+		resourceSpans: [
+			{
+				resource: {
+					attributes: [
+						{key: 'service.name', value: {stringValue: '@deslop/stash-server'}},
+						...Array.map(Array.filter([version], String.isNonEmpty), value => ({
+							key: 'service.version',
+							value: {stringValue: value}
+						}))
+					]
+				},
+				scopeSpans: [
+					{
+						spans: [
+							{
+								endTimeUnixNano: '1781870000010000000',
+								name: 'share',
+								spanId: String.repeat(16)(id),
+								startTimeUnixNano: '1781870000000000000',
+								traceId: String.repeat(32)(id)
+							}
+						]
+					}
+				]
+			}
+		]
+	})
+}
+
+// The first letter of each kept trace of that service, which names it.
+const kept = Effect.fnUntraced(function* (telemetry: Telemetry['Service']) {
+	return Array.sort(
+		Array.map(
+			(yield* telemetry.traces({...query, limit: 10, runs: 'all', service: '@deslop/stash-server'})).entries,
+			entry => String.slice(0, 1)(entry.id)
+		),
+		Order.String
+	)
+})
+
+it.layer(platform)(test => {
+	test.effect(
+		"keeps only each service's newest release, across restarts, and never drops a local build's entries",
+		Effect.fnUntraced(function* () {
+			const fs = yield* FileSystem.FileSystem
+			const directory = yield* fs.makeTempDirectoryScoped()
+			yield* TestClock.setTime(1_781_870_010_000)
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+					yield* telemetry.ingestTraces(release('0.1.999', 'a'))
+					yield* telemetry.ingestTraces(release('', 'b'))
+					// A tab still on the release before sends after the server moved on: it never shows.
+					yield* telemetry.ingestTraces(release('0.1.998', 'c'))
+					assert.deepStrictEqual(yield* kept(telemetry), ['a', 'b'])
+					// Parts compare as numbers: 0.1.1000 is newer than 0.1.999, whose trace goes; the local build's stays.
+					yield* telemetry.ingestTraces(release('0.1.1000', 'd'))
+					assert.deepStrictEqual(yield* kept(telemetry), ['b', 'd'])
+					assert.containsSubset((yield* telemetry.services()).services, [{version: '0.1.1000'}])
+					// OTel's version is free text: one that isn't dot-separated numbers, such as a commit, has no order and is kept.
+					yield* telemetry.ingestTraces(release('a3f9c21', 'e'))
+					assert.deepStrictEqual(yield* kept(telemetry), ['b', 'd', 'e'])
+					yield* TestClock.adjust('2 seconds')
+					assert.deepStrictEqual(
+						Option.map(Array.head(Option.getOrThrow(yield* Stream.runHead(telemetry.overview)).apps), app =>
+							Array.map(app.versions, running => running.version)
+						),
+						Option.some(['0.1.1000', 'a3f9c21'])
+					)
+				})
+			)
+			assert.deepStrictEqual(yield* kept(Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)), [
+				'b',
+				'd',
+				'e'
+			])
+			assert.deepStrictEqual(Array.sort(yield* fs.readDirectory(directory), Order.String), [
+				'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb%3Abbbbbbbbbbbbbbbb',
+				'dddddddddddddddddddddddddddddddd%3Adddddddddddddddd',
+				'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee%3Aeeeeeeeeeeeeeeee'
+			])
+		})
+	)
 })
 
 it.layer(layer)(test => {
