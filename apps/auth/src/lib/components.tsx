@@ -156,30 +156,38 @@ type Row = {name: string; open: Option.Option<string>; origin: string; web: bool
 
 // One column of the grid: a client signed in on one device, all its sign-ins together, or the sign-in waiting for an answer.
 type Column = {
+	// The address it last called from.
+	address: Option.Option<string>
 	client: Client
 	families: string[]
 	key: string
 	label: string
 	lastActive: number
-	// Shown under the mark when another column has the same one, such as Safari on a Mac and on an iPhone.
-	labelled: boolean
 	pending: boolean
 	resources: readonly PendingAuthorization['resources'][]
 }
 
-// A client's mark heads its column, over a line kept by every head once any is labelled; a click opens its sign-out.
-function ColumnHead(props: {column: Column; labels: boolean; now: number}) {
+// A client's mark alone heads its column; hovering names it, its address and when it was active, and a click opens its sign-out.
+function ColumnHead(props: {column: Column; now: number}) {
 	const [disconnection, disconnect] = useAtom(disconnectAtom)
-	const name = Boolean.match(props.column.pending, {
-		onFalse: () => {
-			const minutes = minutesSince(props.column.lastActive, props.now)
-			return `${props.column.label}, active ${Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})}`
-		},
-		onTrue: () => `${props.column.label}, waiting for an answer`
-	})
+	const detail = Array.join(
+		[
+			Boolean.match(props.column.pending, {
+				onFalse: () => {
+					const minutes = minutesSince(props.column.lastActive, props.now)
+					return `active ${Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})}`
+				},
+				onTrue: () => 'waiting for an answer'
+			}),
+			// A client whose platform is unknown is already named by its address.
+			...Option.toArray(Option.filter(props.column.address, address => address !== props.column.client.device))
+		],
+		' · '
+	)
+	const name = `${props.column.label}, ${detail}`
 	return (
 		<TableHead className="px-0.5">
-			<span className="flex flex-col items-center gap-0.5">
+			<span className="flex justify-center">
 				{Boolean.match(props.column.pending, {
 					onFalse: () => (
 						<DropdownMenu>
@@ -188,7 +196,10 @@ function ColumnHead(props: {column: Column; labels: boolean; now: number}) {
 							</DropdownMenuTrigger>
 							<DropdownMenuContent align="end" className="w-auto min-w-48">
 								<DropdownMenuGroup>
-									<DropdownMenuLabel>{name}</DropdownMenuLabel>
+									<DropdownMenuLabel>
+										<span className="text-foreground block text-sm">{props.column.label}</span>
+										<span className="font-mono tabular-nums">{detail}</span>
+									</DropdownMenuLabel>
 								</DropdownMenuGroup>
 								<DropdownMenuItem
 									variant="destructive"
@@ -211,15 +222,6 @@ function ColumnHead(props: {column: Column; labels: boolean; now: number}) {
 						</span>
 					)
 				})}
-				{props.labels &&
-					Boolean.match(props.column.labelled, {
-						onFalse: () => <span aria-hidden className="h-3" />,
-						onTrue: () => (
-							<span aria-hidden className="text-muted-foreground text-xs leading-none font-normal">
-								{props.column.client.device}
-							</span>
-						)
-					})}
 			</span>
 		</TableHead>
 	)
@@ -299,16 +301,6 @@ function Answer(props: {request: PendingAuthorization}) {
 	)
 }
 
-// The mark a column shows, so two columns that would look alike get their device written under it.
-function markOf(client: Client) {
-	return Option.getOrElse(client.app, () =>
-		Option.match(brandOf(client), {
-			onNone: () => `${client.kind}:${Option.isSome(String.match(/gateway/iu)(client.name))}`,
-			onSome: brand => brand.src
-		})
-	)
-}
-
 // The waiting sign-in leads, then one column per client and device, the most recently active first.
 function columnsOf(
 	pending: Option.Option<PendingAuthorization>,
@@ -326,16 +318,16 @@ function columnsOf(
 			name
 		}
 	}
-	const columns = [
+	return [
 		...Option.match(pending, {
 			onNone: () => [],
 			onSome: request => [
 				{
+					address: Option.fromUndefinedOr(request.address),
 					client: clientOf(request.clientName, request.device, request.kind),
 					families: [],
 					key: 'pending',
 					label: signInLabel(request.clientName, request.device),
-					labelled: false,
 					lastActive: 0,
 					pending: true,
 					resources: [request.resources]
@@ -348,21 +340,20 @@ function columnsOf(
 			Array.filter(Array.isReadonlyArrayNonEmpty),
 			Array.sort(Order.flip(Order.mapInput(Order.Number, newest))),
 			Array.map(group => ({
+				address: pipe(
+					Array.findFirst(group, signIn => signIn.lastActive === newest(group)),
+					Option.flatMap(signIn => Option.fromUndefinedOr(signIn.address))
+				),
 				client: clientOf(group[0].client, group[0].device, group[0].kind),
 				families: Array.map(group, signIn => signIn.family),
 				key: signInLabel(group[0].client, group[0].device),
 				label: signInLabel(group[0].client, group[0].device),
-				labelled: false,
 				lastActive: newest(group),
 				pending: false,
 				resources: Array.map(group, signIn => signIn.resources)
 			}))
 		)
 	]
-	return Array.map(columns, column => ({
-		...column,
-		labelled: Array.countBy(columns, other => markOf(other.client) === markOf(column.client)) > 1
-	}))
 }
 
 // Apps down, signed-in clients across: a dot where one holds the other. Every app that announced itself, then any other a sign-in holds.
@@ -436,12 +427,7 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 									<span className="sr-only">App</span>
 								</TableHead>
 								{Array.map(columns, column => (
-									<ColumnHead
-										key={column.key}
-										column={column}
-										labels={Array.some(columns, other => other.labelled)}
-										now={now}
-									/>
+									<ColumnHead key={column.key} column={column} now={now} />
 								))}
 							</TableRow>
 						</TableHeader>
