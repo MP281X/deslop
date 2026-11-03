@@ -9,6 +9,7 @@ import {signInUrl} from '@deslop/runtime/auth/utils'
 import {clientMetadata, gatewayUrl} from '#services/connections/lib/utils.ts'
 import {Callback, ServerParams} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
+import {Gateway} from '#services/gateway/service.ts'
 
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 
@@ -17,6 +18,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 	Effect.gen(function* () {
 		const auth = yield* Auth
 		const connections = yield* Connections
+		const gateway = yield* Gateway
 		const url = yield* gatewayUrl
 		yield* router.add('GET', '/oauth/client.json', HttpServerResponse.jsonUnsafe(clientMetadata(url)))
 		yield* router.add(
@@ -57,6 +59,8 @@ export const HttpHandlers = HttpRouter.use(router =>
 					return yield* AuthError.make({message: 'The connection belongs to another browser'})
 				}
 				yield* connections.complete(params, route, user)
+				// Its tools are read now, not at an agent's next tools/list.
+				yield* gateway.connected
 				return HttpServerResponse.expireCookieUnsafe(
 					HttpServerResponse.redirect('/'),
 					`__Host-mcp-${params.state}`,
