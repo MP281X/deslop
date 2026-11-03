@@ -1,6 +1,20 @@
 import {useAtom, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, Function, Match, Number, Option, Order, Record, Schema, String, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Cause,
+	Function,
+	HashSet,
+	Match,
+	Number,
+	Option,
+	Order,
+	Record,
+	Schema,
+	String,
+	pipe
+} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
@@ -40,6 +54,7 @@ import {bands} from '#routes/(home)/-usage.ts'
 import type {Band} from '#routes/(home)/-usage.ts'
 import {availablePorts, itemOwner, workloadName, workloads} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem, Process} from '#services/inventory/schema.ts'
+import {chartWindow} from '#services/metrics/lib/utils.ts'
 import type {HistoryQuery, MachineHistory} from '#services/metrics/schema.ts'
 
 function status(item: InventoryItem) {
@@ -179,7 +194,7 @@ function rowBand(row: ReturnType<typeof workloads>[number], all: readonly Band[]
 	)
 }
 
-// One line per app: mark, name, endpoints, its colour in the charts and its light; the reason it needs a look replaces nothing and sits below.
+// One line per app: mark, name, endpoints, why it needs a look, its colour in the charts and its light.
 function AppRow(props: {
 	band?: Band
 	free: readonly InventoryItem[]
@@ -202,6 +217,14 @@ function AppRow(props: {
 		Option.isSome(String.match(/^(?:activating|deactivating|active · running)/u)(props.row.item.state)) ||
 		Option.exists(requested, at => props.now - at < 10_000)
 	const expanded = open || props.processMatch
+	const reason = Option.match(Option.fromUndefinedOr(props.row.item.failure), {
+		onNone: () => props.row.item.detail,
+		onSome: stop =>
+			Option.match(Option.fromUndefinedOr(stop.at), {
+				onNone: () => stop.reason,
+				onSome: at => `${stop.reason} · ${since(at, props.now)}`
+			})
+	})
 	return (
 		<Collapsible role="listitem" className="border-b" open={expanded} onOpenChange={setOpen}>
 			<ContextMenu disabled={Array.isArrayEmpty(owned)}>
@@ -291,6 +314,18 @@ function AppRow(props: {
 							<Endpoint key={exposure.id} item={exposure} />
 						))}
 					</span>
+					{/* Why it needs a look sits on its line, in place of a state, so a failing app takes no more room than the others. */}
+					{(light === 'error' || light === 'warning') && (
+						<span
+							className={cn(
+								'max-w-3/5 min-w-0 truncate text-xs',
+								Boolean.match(light === 'error', {onFalse: () => 'text-warning', onTrue: () => 'text-destructive'})
+							)}
+							title={reason}
+						>
+							{reason}
+						</span>
+					)}
 					{(props.row.item.next !== undefined || running) && (
 						<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">
 							{Boolean.match(running, {
@@ -343,23 +378,6 @@ function AppRow(props: {
 				</ContextMenuContent>
 			</ContextMenu>
 			<div className="pl-8 empty:hidden">
-				{(light === 'error' || light === 'warning') && (
-					<p
-						className={cn(
-							'pb-2 text-xs wrap-anywhere',
-							Boolean.match(light === 'error', {onFalse: () => 'text-warning', onTrue: () => 'text-destructive'})
-						)}
-					>
-						{Option.match(Option.fromUndefinedOr(props.row.item.failure), {
-							onNone: () => props.row.item.detail,
-							onSome: stop =>
-								Option.match(Option.fromUndefinedOr(stop.at), {
-									onNone: () => stop.reason,
-									onSome: at => `${stop.reason} · ${since(at, props.now)}`
-								})
-						})}
-					</p>
-				)}
 				{props.row.item.scheduled === true && <RunFailure item={props.row.item} />}
 				{Array.map(owned, exposure => (
 					<RemoveFailure key={exposure.id} item={exposure} />
@@ -449,6 +467,24 @@ function Range(props: {
 	)
 }
 
+// The range's apps: a service or container that neither ran nor failed in it has no row. A job keeps its row to run it now, and a machine without history shows every app.
+function ranged(rows: readonly ReturnType<typeof workloads>[number][], minutes: number, history?: MachineHistory) {
+	if (history === undefined) return rows
+	const recorded = HashSet.fromIterable(
+		Array.flatMap(history.samples, sample => Array.map(sample.apps ?? [], app => app.id))
+	)
+	const start = chartWindow(minutes, history.time).start
+	return Array.filter(
+		rows,
+		row =>
+			row.item.scheduled === true ||
+			Option.match(owner(row), {
+				onNone: Function.constTrue,
+				onSome: id => HashSet.has(recorded, id) || (row.item.failure?.at ?? 0) >= start
+			})
+	)
+}
+
 // A machine: what it is, how its memory, CPU and cores were used over the range, then its apps; hovering an app lights its band and back.
 function Machine(props: {
 	available: 'checking' | 'live' | 'off'
@@ -485,7 +521,13 @@ function Machine(props: {
 		total: Array.reduce(latest?.disks ?? [], 0, (sum, disk) => sum + disk.total),
 		used: Array.reduce(latest?.disks ?? [], 0, (sum, disk) => sum + disk.used)
 	}
-	const matching = Array.filter(props.rows, row => matches(row, props.query))
+	const matching = Array.filter(
+		Boolean.match(props.query === '', {
+			onFalse: () => props.rows,
+			onTrue: () => ranged(props.rows, props.minutes, props.history)
+		}),
+		row => matches(row, props.query)
+	)
 	if (props.query !== '' && Array.isArrayEmpty(matching)) return null
 	const sorted = Array.sort(matching, order)
 	function rowProps(row: ReturnType<typeof workloads>[number]) {
