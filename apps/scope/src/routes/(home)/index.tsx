@@ -17,7 +17,7 @@ import {
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {ChevronRight, Globe, Server, Smartphone} from 'lucide-react'
+import {ChevronRight, Globe, Server, Smartphone, Workflow} from 'lucide-react'
 import {Suspense, useState} from 'react'
 import type {ReactElement} from 'react'
 
@@ -28,6 +28,8 @@ import {Badge} from '@deslop/components-web/ui/badge'
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/components-web/ui/collapsible'
 import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
+import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
+import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
 import {cn} from '@deslop/components-web/utils'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
@@ -37,10 +39,11 @@ import {appName} from '#services/telemetry/lib/utils.ts'
 import type {Operation, OperationTrace, Overview, Runtime, Trace} from '#services/telemetry/schema.ts'
 
 // The side an operation starts on, in words, so the bar's field can narrow to it.
-const SIDES: Record<Runtime, string> = {mobile: 'iOS', server: 'server', unknown: '', web: 'web'}
+const SIDES: Record<Runtime, string> = {ci: 'ci', mobile: 'iOS', server: 'server', unknown: '', web: 'web'}
 
-// The device an operation starts on, as Auth marks a sign-in's, in its side's hue: a browser, a phone or a server.
+// The device an operation starts on, as Auth marks a sign-in's, in its side's hue: a browser, a phone, a server or CI.
 const DEVICES: Record<Runtime, ReactElement> = {
+	ci: <Workflow role="img" aria-label="ci" data-side="ci" className="size-3.5 shrink-0 text-(--side)" />,
 	mobile: <Smartphone role="img" aria-label="iOS" data-side="mobile" className="size-3.5 shrink-0 text-(--side)" />,
 	server: <Server role="img" aria-label="server" data-side="server" className="size-3.5 shrink-0 text-(--side)" />,
 	unknown: <Server aria-hidden data-side="unknown" className="size-3.5 shrink-0 text-(--side)" />,
@@ -144,7 +147,15 @@ function SpanDetail(props: {span: Trace['spans'][number]}) {
 					>
 						<dt className="text-muted-foreground shrink-0">{line.key}</dt>
 						<dd className={cn('min-w-0 flex-1 text-right break-all select-text', line.failed && 'text-destructive')}>
-							{line.value}
+							{/* A request's or a CI step's address opens it, such as the step's log on GitHub. */}
+							{Boolean.match(line.key === 'url.full' && String.startsWith('https://')(line.value), {
+								onFalse: () => line.value,
+								onTrue: () => (
+									<a href={line.value} target="_blank" rel="noreferrer" className="text-primary">
+										{line.value}
+									</a>
+								)
+							})}
 						</dd>
 						<span className="size-3.5 shrink-0" />
 					</div>
@@ -428,7 +439,20 @@ function Apps(props: {overview: Overview}) {
 		<section key={app.name} aria-label={app.name} className="flex flex-col">
 			<h2 className="flex h-9 items-center gap-2 px-1 text-sm font-semibold">
 				{Option.match(Option.fromUndefinedOr(marks[app.name]), {
-					onNone: () => <Server className="text-muted-foreground size-4" />,
+					// A repository whose workflows only GitHub Actions runs, else a service Scope has no mark for.
+					onNone: () =>
+						Boolean.match(
+							Array.every(app.operations, operation => operation.runtime === 'ci'),
+							{
+								onFalse: () => <Server className="text-muted-foreground size-4" />,
+								onTrue: () => (
+									<>
+										<GithubLight className="size-4 dark:hidden" />
+										<GithubDark className="hidden size-4 dark:block" />
+									</>
+								)
+							}
+						),
 					onSome: mark => <img src={mark} alt="" className="pixelated size-5" />
 				})}
 				{app.name}
