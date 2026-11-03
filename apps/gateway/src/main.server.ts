@@ -1,5 +1,6 @@
 import {Layer, pipe} from 'effect'
 
+import {McpServer} from 'effect/ai'
 import {RpcServer} from 'effect/rpc'
 
 import * as CliRuntime from '@deslop/runtime/cli'
@@ -14,9 +15,10 @@ import {Gateway} from '#services/gateway/service.ts'
 import {layerUpstream} from '#services/network/service.ts'
 import {layerMcp} from '#tools/handlers.ts'
 
-// Upstream servers and their providers are reached only at public HTTPS addresses.
+// Upstream servers and their providers are reached only at public HTTPS addresses. The registry is the memoized one layerMcp serves.
 const layerServices = pipe(
 	Gateway.layer,
+	Layer.provide(McpServer.McpServer.layer),
 	Layer.provideMerge(Connections.layer),
 	Layer.provide(Layer.mergeAll(ServerRuntime.layerDataStore, layerUpstream))
 )

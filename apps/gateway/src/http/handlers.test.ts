@@ -21,7 +21,7 @@ import {
 	pipe
 } from 'effect'
 
-import {McpSchema} from 'effect/ai'
+import {McpSchema, McpServer} from 'effect/ai'
 import {
 	Cookies,
 	FetchHttpClient,
@@ -422,6 +422,26 @@ const servers = Effect.fnUntraced(function* (home?: string, origin = GATEWAY_URL
 										refused
 									)
 								),
+								// The servers once every connected one has reported its tools.
+								HttpRouter.add(
+									'GET',
+									'/servers/discovered',
+									Effect.gen(function* () {
+										return yield* HttpServerResponse.schemaJson(Schema.Array(ConnectionInfo))(
+											yield* Effect.flatMap(
+												Stream.runHead(
+													Stream.filter((yield* Connections).watch(yield* CurrentUser), rows =>
+														Array.every(
+															rows,
+															row => row.status !== 'Connected' || Array.isReadonlyArrayNonEmpty(row.tools)
+														)
+													)
+												),
+												Effect.fromOption
+											)
+										)
+									})
+								),
 								HttpRouter.add(
 									'GET',
 									'/servers',
@@ -441,7 +461,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin = GATEWAY_URL
 							Layer.provide(HttpAuth.layer)
 						)
 					),
-					Layer.provideMerge(Gateway.layer),
+					Layer.provideMerge(Layer.provide(Gateway.layer, McpServer.McpServer.layer)),
 					Layer.provideMerge(Connections.layer),
 					Layer.provide(ServerRuntime.layerKeyValueStore(directory)),
 					Layer.provide(
@@ -657,7 +677,13 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.strictEqual((yield* answerWith({})).headers.get('location'), '/')
 			assert.strictEqual(gateway.grants.length, 0)
 			assert.strictEqual((yield* answerWith({iss: 'https://identity.example.com'})).headers.get('location'), '/')
-			assert.strictEqual(gateway.grants.length, 1)
+			assert.deepStrictEqual(
+				Array.map(
+					Array.filter(MutableList.toArray(gateway.grants), grant => grant.grant === 'authorization_code'),
+					grant => grant.resource
+				),
+				['https://challenge.example.com/mcp']
+			)
 			assert.strictEqual(
 				(yield* post(gateway.web, '/servers', SESSION, {url: 'https://silent.example.com/mcp'})).status,
 				400
@@ -971,6 +997,43 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					server => server.icons
 				),
 				[[{src: 'https://example.com/icon.png', theme: 'dark'}]]
+			)
+		})
+	)
+	test.effect(
+		'reads a newly connected server’s tools at once, even while an agent’s read is still running',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
+			yield* connect(gateway.web, 'mobbin', {code: 'approved', iss: PROVIDERS.mobbin.issuer})
+			assert.deepStrictEqual(
+				Array.map(yield* listServers(gateway.web), server => [server.status, server.tools]),
+				[['Connected', ['search']]]
+			)
+			// An agent's read hangs on Mobbin, having listed the servers before Stash connects.
+			yield* Ref.set(gateway.stall, true)
+			const agent = yield* Effect.forkScoped(modern(gateway.web, TOKEN, 'tools/list'))
+			yield* Queue.take(gateway.stallReady)
+			const stash = yield* addMcp(gateway.web, 'https://stash.mp281x.xyz/mcp')
+			const connecting = yield* Effect.forkScoped(
+				connect(gateway.web, stash.id, {code: 'approved', iss: `${AUTH_URL}/api/auth`})
+			)
+			yield* Ref.set(gateway.stall, false)
+			yield* TestClock.adjust('21 seconds')
+			yield* Fiber.join(connecting)
+			yield* Fiber.join(agent)
+			const discovered = yield* send(gateway.web, '/servers/discovered', {headers: {cookie: SESSION}})
+			assert.deepStrictEqual(
+				Array.map(
+					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(ConnectionInfo)))(
+						yield* Effect.promise(() => discovered.text())
+					),
+					server => [server.id, server.tools]
+				),
+				[
+					['mobbin', ['search']],
+					[stash.id, ['search']]
+				]
 			)
 		})
 	)

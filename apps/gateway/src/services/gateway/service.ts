@@ -46,10 +46,16 @@ function rejected(server: Pick<Connection, 'name'>) {
 
 export class Gateway extends Context.Service<
 	Gateway,
-	{readonly refresh: (registry: typeof McpServer.McpServer.Service) => Effect.Effect<void>}
+	{
+		// A provider that just connected: its tools are read even while another read runs, which listed the servers before it.
+		readonly connected: Effect.Effect<void>
+		// An agent's tools/list: a read already running reads the same servers, so it is not repeated.
+		readonly refresh: Effect.Effect<void>
+	}
 >()('@deslop/gateway/services/gateway/service/Gateway') {
 	static readonly layer = Layer.effect(Gateway)(
 		Effect.gen(function* () {
+			const registry = yield* McpServer.McpServer
 			const auth = yield* Auth
 			const url = yield* gatewayUrl
 			const connections = yield* Connections
@@ -78,12 +84,12 @@ export class Gateway extends Context.Service<
 			const refreshes = yield* Semaphore.make(1)
 			const scope = yield* Effect.scope
 			// McpServer has no removal: a removed tool stays registered, and the usability check hides it from lists and calls.
-			const remove = Effect.fnUntraced(function* (name: string, registry: typeof McpServer.McpServer.Service) {
+			const remove = Effect.fnUntraced(function* (name: string) {
 				yield* Ref.update(installed, Record.remove(name))
 				yield* Ref.update(visible, HashSet.remove(name))
 				yield* registry.notifications['notifications/tools/list_changed']({})
 			})
-			const prune = Effect.fnUntraced(function* (registry: typeof McpServer.McpServer.Service) {
+			const prune = Effect.gen(function* () {
 				const definitions = yield* connections.definitions
 				for (const entry of Record.toEntries(yield* Ref.get(installed))) {
 					if (
@@ -95,15 +101,11 @@ export class Gateway extends Context.Service<
 								server.link._tag !== 'Disconnected'
 						)
 					) {
-						yield* remove(entry[0], registry)
+						yield* remove(entry[0])
 					}
 				}
 			})
-			const updateVisible = Effect.fnUntraced(function* (
-				server: Connection,
-				names: HashSet.HashSet<string>,
-				registry: typeof McpServer.McpServer.Service
-			) {
+			const updateVisible = Effect.fnUntraced(function* (server: Connection, names: HashSet.HashSet<string>) {
 				const changed = yield* Ref.modify(visible, current => {
 					const next = HashSet.union(
 						HashSet.filter(current, name => !String.startsWith(`${server.id}__`)(name)),
@@ -113,7 +115,7 @@ export class Gateway extends Context.Service<
 				})
 				if (changed) yield* registry.notifications['notifications/tools/list_changed']({})
 				for (const entry of Record.toEntries(yield* Ref.get(installed))) {
-					if (entry[1].id === server.id && !HashSet.has(names, entry[0])) yield* remove(entry[0], registry)
+					if (entry[1].id === server.id && !HashSet.has(names, entry[0])) yield* remove(entry[0])
 				}
 			})
 			const services = yield* Layer.build(
@@ -221,9 +223,9 @@ export class Gateway extends Context.Service<
 							)
 					)
 			)
-			const discover = Effect.fnUntraced(function* (server: Connection, registry: typeof McpServer.McpServer.Service) {
+			const discover = Effect.fnUntraced(function* (server: Connection) {
 				if (connectionStatus(server, yield* Clock.currentTimeMillis) !== 'Connected') {
-					return yield* updateVisible(server, HashSet.empty(), registry)
+					return yield* updateVisible(server, HashSet.empty())
 				}
 				const found = yield* pipe(
 					withClient(server, client =>
@@ -277,7 +279,7 @@ export class Gateway extends Context.Service<
 					}
 					MutableList.append(names, name)
 				}
-				yield* updateVisible(server, HashSet.fromIterable(MutableList.toArray(names)), registry)
+				yield* updateVisible(server, HashSet.fromIterable(MutableList.toArray(names)))
 				yield* connections.report(server.id, server.generation, {
 					_tag: 'Discovered',
 					icons: found.icons,
@@ -288,58 +290,53 @@ export class Gateway extends Context.Service<
 					tools: Array.map(found.tools, tool => tool.name)
 				})
 			})
-			return Gateway.of({
-				refresh: Effect.fn('Gateway.refresh')(function* (registry: typeof McpServer.McpServer.Service) {
-					const worker = yield* Effect.forkIn(
-						refreshes.withPermitsIfAvailable(1)(
+			const read = pipe(
+				prune,
+				Effect.andThen(connections.definitions),
+				Effect.flatMap(definitions =>
+					Effect.forEach(
+						definitions,
+						server =>
 							pipe(
-								prune(registry),
-								Effect.andThen(connections.definitions),
-								Effect.flatMap(definitions =>
-									Effect.forEach(
-										definitions,
-										server =>
-											pipe(
-												discover(server, registry),
-												Effect.tapCause(cause => Effect.logWarning(`${server.name} discovery failed`, cause)),
-												Effect.catch(cause =>
-													connections.report(server.id, server.generation, {
-														_tag: 'Failed',
-														error: rejected(server)(cause).message
-													})
-												)
-											),
-										{concurrency: 6, discard: true}
-									)
-								),
-								Effect.andThen(prune(registry))
-							)
-						),
-						scope
+								discover(server),
+								Effect.tapCause(cause => Effect.logWarning(`${server.name} discovery failed`, cause)),
+								Effect.catch(cause =>
+									connections.report(server.id, server.generation, {
+										_tag: 'Failed',
+										error: rejected(server)(cause).message
+									})
+								)
+							),
+						{concurrency: 6, discard: true}
 					)
-					yield* pipe(Fiber.join(worker), Effect.timeoutOption('2 seconds'))
-				})
+				),
+				Effect.andThen(prune)
+			)
+			// The caller waits up to 2 seconds; a slow read finishes in the gateway's scope, and its defect never fails the caller.
+			const settle = Effect.fnUntraced(function* (work: Effect.Effect<unknown>) {
+				yield* pipe(
+					Fiber.join(yield* Effect.forkIn(work, scope)),
+					Effect.timeoutOption('2 seconds'),
+					Effect.catchCause(cause => Effect.logWarning('Reading the servers’ tools failed', cause))
+				)
+			})
+			return Gateway.of({
+				connected: Effect.withSpan(settle(refreshes.withPermits(1)(read)), 'Gateway.connected'),
+				refresh: Effect.withSpan(settle(refreshes.withPermitsIfAvailable(1)(read)), 'Gateway.refresh')
 			})
 		})
 	)
 }
 
-// This memoized registry is also provided to layerMcp. Slow refreshes outlive the request, not the server.
+// Slow refreshes outlive the request, not the server.
 export const GatewayDiscovery = HttpRouter.middleware()(
 	Effect.gen(function* () {
 		const gateway = yield* Gateway
 		const auth = yield* Auth
 		const url = yield* gatewayUrl
-		const registry = yield* McpServer.McpServer
 		return app =>
 			Effect.gen(function* () {
 				const request = yield* HttpServerRequest.HttpServerRequest
-				// A newly authorized server shows its tools and icon without waiting for an agent's tools/list.
-				if (request.method === 'GET' && String.startsWith('/oauth/callback')(request.url)) {
-					const response = yield* app
-					yield* Effect.forkDetach(gateway.refresh(registry))
-					return response
-				}
 				if (
 					request.method === 'POST' &&
 					request.url === '/mcp' &&
@@ -348,7 +345,7 @@ export const GatewayDiscovery = HttpRouter.middleware()(
 				) {
 					const body = yield* Effect.result(request.json)
 					if (Result.isSuccess(body) && Schema.is(ToolRequest)(body.success)) {
-						yield* gateway.refresh(registry)
+						yield* gateway.refresh
 					}
 				}
 				return yield* app
