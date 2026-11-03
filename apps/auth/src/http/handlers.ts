@@ -394,6 +394,8 @@ export const HttpHandlers = HttpRouter.use(router =>
 					const finished = yield* github.finish(params.code, params.state)
 					return yield* pipe(
 						people.register(finished.profile),
+						// A browser already signed in, as a code session confirming with GitHub to add a passkey, swaps its session rather than keeping two.
+						Effect.tap(() => tokens.endSession(request.headers)),
 						Effect.flatMap(user => tokens.startSession(user, originOf(request), 'GitHub')),
 						Effect.map(started =>
 							pipe(

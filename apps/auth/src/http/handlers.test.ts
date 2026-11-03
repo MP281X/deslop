@@ -1031,6 +1031,35 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 	)
 
 	test.effect(
+		'swaps a signed-in browser’s session when it signs in with GitHub again',
+		Effect.fnUntraced(function* () {
+			const web = yield* servers()
+			const before = cookie(yield* signIn(web.issuer, 'octocat'))
+			const start = yield* send(web.issuer, '/auth/github')
+			const target = new URL(start.headers.get('location') ?? '')
+			const after = cookie(
+				yield* send(
+					web.issuer,
+					`/auth/github/callback?${UrlParams.toString(
+						UrlParams.fromInput({
+							code: `octocat.${target.searchParams.get('code_challenge') ?? ''}`,
+							state: target.searchParams.get('state') ?? ''
+						})
+					)}`,
+					{headers: {cookie: `${cookie(start)}; ${before}`}}
+				)
+			)
+			assert.deepStrictEqual(
+				[
+					(yield* send(web.issuer, '/me', {headers: {cookie: before}})).status,
+					(yield* send(web.issuer, '/me', {headers: {cookie: after}})).status
+				],
+				[401, 200]
+			)
+		})
+	)
+
+	test.effect(
 		'returns a cancelled GitHub step to the sign-in it started from',
 		Effect.fnUntraced(function* () {
 			const web = yield* servers()

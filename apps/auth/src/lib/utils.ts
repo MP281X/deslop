@@ -395,28 +395,46 @@ export const passkeysAtom = Atom.keepAlive(
 	)
 )
 
-// The browser offers every kind it can make: this device's, a password manager's, a security key, or a phone's over a QR code.
-export const addPasskeyAtom = RpcClient.runtime.fn(
-	Effect.fnUntraced(function* () {
-		const client = yield* RpcClient
-		const options = yield* client('auth.passkeyOptions', undefined)
-		const response = yield* pipe(
-			Effect.tryPromise({
-				catch: cause => AuthError.make({cause, message: 'No passkey was added'}),
-				try: () => startRegistration({optionsJSON: options})
-			}),
-			Effect.catchIf(cancelled, () => Effect.interrupt),
-			Effect.flatMap(Schema.decodeUnknownEffect(Registration))
-		)
-		yield* client('auth.addPasskey', {response})
-		toast.add({title: 'Passkey added'})
-	}, failedWith('Cannot add a passkey'))
+// Kept alive, since the menu that starts it closes at once and would drop the passkey the browser then makes.
+export const addPasskeyAtom = Atom.keepAlive(
+	RpcClient.runtime.fn(
+		Effect.fnUntraced(function* () {
+			const client = yield* RpcClient
+			const options = yield* client('auth.passkeyOptions', undefined)
+			const response = yield* pipe(
+				Effect.tryPromise({
+					catch: cause => AuthError.make({cause, message: 'No passkey was added'}),
+					try: () => startRegistration({optionsJSON: options})
+				}),
+				Effect.catchIf(cancelled, () => Effect.interrupt),
+				Effect.flatMap(Schema.decodeUnknownEffect(Registration))
+			)
+			yield* client('auth.addPasskey', {response})
+			toast.add({title: 'Passkey added'})
+		}, failedWith('Cannot add a passkey'))
+	)
 )
 
-export const removePasskeyAtom = RpcClient.runtime.fn((id: string) =>
-	pipe(
-		Effect.flatMap(RpcClient, client => client('auth.removePasskey', {id})),
-		failedWith('Cannot remove the passkey')
+// The tab remembers the passkey it went to GitHub for, so the page it lands on adds it.
+export const ADDING_PASSKEY = 'adding-passkey'
+
+// A code may have been approved for someone else's browser, so a code session signs in with GitHub first.
+export const confirmForPasskeyAtom = Atom.fn(() =>
+	Effect.try({
+		catch: cause => AuthError.make({cause, message: 'Cannot start GitHub sign-in'}),
+		try: () => {
+			sessionStorage.setItem(ADDING_PASSKEY, 'true')
+			location.assign('/auth/github')
+		}
+	})
+)
+
+export const removePasskeyAtom = Atom.keepAlive(
+	RpcClient.runtime.fn((id: string) =>
+		pipe(
+			Effect.flatMap(RpcClient, client => client('auth.removePasskey', {id})),
+			failedWith('Cannot remove the passkey')
+		)
 	)
 )
 

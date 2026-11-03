@@ -1,4 +1,4 @@
-import {useAtom, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Match, Option, String, pipe} from 'effect'
 
@@ -40,11 +40,13 @@ import {Spinner} from '@deslop/components-web/ui/spinner'
 
 import {AccountAvatar, AppList, QrCode} from '#lib/components.tsx'
 import {
+	ADDING_PASSKEY,
 	APP_ROWS,
 	accountAtom,
 	approveLink,
 	addPasskeyAtom,
 	codeSignInAtom,
+	confirmForPasskeyAtom,
 	passkeySignInAtom,
 	passkeysAtom,
 	removePasskeyAtom,
@@ -250,6 +252,7 @@ function PasskeyItems(props: {via: SessionVia}) {
 	const passkeys = AsyncResult.getOrElse(read, () => [])
 	const [adding, add] = useAtom(addPasskeyAtom)
 	const [removing, remove] = useAtom(removePasskeyAtom)
+	const [confirming, confirm] = useAtom(confirmForPasskeyAtom)
 	return (
 		<DropdownMenuGroup>
 			<DropdownMenuLabel>Passkeys</DropdownMenuLabel>
@@ -282,15 +285,13 @@ function PasskeyItems(props: {via: SessionVia}) {
 					</DropdownMenuSubContent>
 				</DropdownMenuSub>
 			))}
-			{/* A code may have been approved for someone else's browser, so only a GitHub or passkey sign-in adds a year-long passkey. */}
-			<DropdownMenuItem disabled={props.via === 'Code' || AsyncResult.isWaiting(adding)} onClick={() => add()}>
+			{/* A code may have been approved for someone else's browser, so a code session passes through GitHub before it adds a year-long passkey. */}
+			<DropdownMenuItem
+				disabled={AsyncResult.isWaiting(adding) || AsyncResult.isWaiting(confirming)}
+				onClick={() => Boolean.match(props.via === 'Code', {onFalse: () => add(), onTrue: () => confirm()})}
+			>
 				<Plus />
-				<span className="flex flex-col">
-					Add a passkey
-					{props.via === 'Code' && (
-						<span className="text-muted-foreground text-xs">Needs a GitHub or passkey sign-in on this browser</span>
-					)}
-				</span>
+				Add a passkey
 			</DropdownMenuItem>
 		</DropdownMenuGroup>
 	)
@@ -299,6 +300,13 @@ function PasskeyItems(props: {via: SessionVia}) {
 // The account's avatar opens who is signed in, its passkeys and the sign-out.
 function AccountMenu(props: {account: SignedAccount}) {
 	const [signOut, endSession] = useAtom(menuSignOutAtom)
+	const add = useAtomSet(addPasskeyAtom)
+	// Back from GitHub, the passkey it went for starts at once, and only once.
+	useEffect(() => {
+		if (sessionStorage.getItem(ADDING_PASSKEY) === null) return
+		sessionStorage.removeItem(ADDING_PASSKEY)
+		if (props.account.via !== 'Code') add()
+	}, [add, props.account.via])
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
