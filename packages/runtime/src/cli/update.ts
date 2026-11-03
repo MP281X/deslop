@@ -54,6 +54,8 @@ export const update = Effect.fnUntraced(function* (name: string) {
 			'--no-audit',
 			'--no-fund',
 			'--omit=dev',
+			// npm's cached package metadata can predate the release /latest just named, which fails as "No matching version".
+			'--prefer-online',
 			'--registry=https://registry.npmjs.org',
 			`@deslop/${name}@${latest}`
 		]),
