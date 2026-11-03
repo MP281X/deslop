@@ -1020,12 +1020,49 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.deepStrictEqual(
 				[
 					yield* landing({next: 'https://signal.mp281x.xyz/?invite=abc'}),
+					yield* landing({next: 'https://auth.mp281x.xyz/?add-passkey'}),
 					yield* landing({next: 'https://evil.test/'}),
 					yield* landing({next: 'http://signal.mp281x.xyz/'}),
 					yield* landing({code: 'WDJB-MJHT', next: 'https://signal.mp281x.xyz/'}),
 					yield* landing({})
 				],
-				['https://signal.mp281x.xyz/?invite=abc', '/', '/', '/?code=WDJB-MJHT', '/']
+				[
+					'https://signal.mp281x.xyz/?invite=abc',
+					'https://auth.mp281x.xyz/?add-passkey',
+					'/',
+					'/',
+					'/?code=WDJB-MJHT',
+					'/'
+				]
+			)
+		})
+	)
+
+	test.effect(
+		'swaps a signed-in browser’s session when it signs in with GitHub again',
+		Effect.fnUntraced(function* () {
+			const web = yield* servers()
+			const before = cookie(yield* signIn(web.issuer, 'octocat'))
+			const start = yield* send(web.issuer, '/auth/github')
+			const target = new URL(start.headers.get('location') ?? '')
+			const after = cookie(
+				yield* send(
+					web.issuer,
+					`/auth/github/callback?${UrlParams.toString(
+						UrlParams.fromInput({
+							code: `octocat.${target.searchParams.get('code_challenge') ?? ''}`,
+							state: target.searchParams.get('state') ?? ''
+						})
+					)}`,
+					{headers: {cookie: `${cookie(start)}; ${before}`}}
+				)
+			)
+			assert.deepStrictEqual(
+				[
+					(yield* send(web.issuer, '/me', {headers: {cookie: before}})).status,
+					(yield* send(web.issuer, '/me', {headers: {cookie: after}})).status
+				],
+				[401, 200]
 			)
 		})
 	)

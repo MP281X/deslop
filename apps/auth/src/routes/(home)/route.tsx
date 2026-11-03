@@ -1,4 +1,4 @@
-import {useAtom, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Match, Option, String, pipe} from 'effect'
 
@@ -37,6 +37,7 @@ import {
 } from '@deslop/components-web/ui/empty'
 import {FieldError} from '@deslop/components-web/ui/field'
 import {Spinner} from '@deslop/components-web/ui/spinner'
+import {toast} from '@deslop/components-web/ui/toast'
 
 import {AccountAvatar, AppList, QrCode} from '#lib/components.tsx'
 import {
@@ -45,6 +46,7 @@ import {
 	approveLink,
 	addPasskeyAtom,
 	codeSignInAtom,
+	confirmForPasskeyAtom,
 	passkeySignInAtom,
 	passkeysAtom,
 	removePasskeyAtom,
@@ -250,6 +252,7 @@ function PasskeyItems(props: {via: SessionVia}) {
 	const passkeys = AsyncResult.getOrElse(read, () => [])
 	const [adding, add] = useAtom(addPasskeyAtom)
 	const [removing, remove] = useAtom(removePasskeyAtom)
+	const [confirming, confirm] = useAtom(confirmForPasskeyAtom)
 	return (
 		<DropdownMenuGroup>
 			<DropdownMenuLabel>Passkeys</DropdownMenuLabel>
@@ -282,16 +285,24 @@ function PasskeyItems(props: {via: SessionVia}) {
 					</DropdownMenuSubContent>
 				</DropdownMenuSub>
 			))}
-			{/* A code may have been approved for someone else's browser, so only a GitHub or passkey sign-in adds a year-long passkey. */}
-			<DropdownMenuItem disabled={props.via === 'Code' || AsyncResult.isWaiting(adding)} onClick={() => add()}>
-				<Plus />
-				<span className="flex flex-col">
-					Add a passkey
-					{props.via === 'Code' && (
-						<span className="text-muted-foreground text-xs">Needs a GitHub or passkey sign-in on this browser</span>
-					)}
-				</span>
-			</DropdownMenuItem>
+			{/* A code may have been approved for someone else's browser, so a code session confirms with GitHub before it adds a year-long passkey. */}
+			{Boolean.match(props.via === 'Code', {
+				onFalse: () => (
+					<DropdownMenuItem disabled={AsyncResult.isWaiting(adding)} onClick={() => add()}>
+						<Plus />
+						Add a passkey
+					</DropdownMenuItem>
+				),
+				onTrue: () => (
+					<DropdownMenuItem disabled={AsyncResult.isWaiting(confirming)} onClick={() => confirm()}>
+						<Plus />
+						<span className="flex flex-col">
+							Add a passkey
+							<span className="text-muted-foreground text-xs">Confirm with GitHub first</span>
+						</span>
+					</DropdownMenuItem>
+				)
+			})}
 		</DropdownMenuGroup>
 	)
 }
@@ -299,6 +310,25 @@ function PasskeyItems(props: {via: SessionVia}) {
 // The account's avatar opens who is signed in, its passkeys and the sign-out.
 function AccountMenu(props: {account: SignedAccount}) {
 	const [signOut, endSession] = useAtom(menuSignOutAtom)
+	const add = useAtomSet(addPasskeyAtom)
+	// Back from confirming with GitHub, adding is one tap on a toast, since the browser makes a passkey only from a tap; the address drops the mark so a reload asks nothing.
+	useEffect(() => {
+		if (!new URLSearchParams(location.search).has('add-passkey') || props.account.via === 'Code') return
+		history.replaceState(null, '', location.pathname)
+		toast.add({
+			actionProps: {
+				children: 'Add a passkey',
+				onClick: () => {
+					toast.close('add-passkey')
+					add()
+				}
+			},
+			description: 'Your passkey signs you in for a year.',
+			id: 'add-passkey',
+			timeout: 0,
+			title: 'Confirmed with GitHub'
+		})
+	}, [add, props.account.via])
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
