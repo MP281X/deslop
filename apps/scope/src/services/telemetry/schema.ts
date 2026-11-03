@@ -48,7 +48,7 @@ const SpanDetails = Schema.Struct({
 	)
 })
 
-type Span = typeof Span.Type
+export type Span = typeof Span.Type
 const Span = Schema.StructWithRest(
 	Schema.Struct({
 		...SpanDetails.fields,
@@ -175,7 +175,8 @@ export type Page = typeof Page.Type
 export const Page = Schema.Struct({entries: Schema.Array(EntryItem), total: Schema.Int})
 
 export type Runtime = typeof Runtime.Type
-export const Runtime = Schema.Literals(['web', 'mobile', 'server', 'unknown'])
+// Where a service runs: a page, a phone, a server, or CI such as GitHub Actions.
+export const Runtime = Schema.Literals(['web', 'mobile', 'server', 'ci', 'unknown'])
 
 export type Service = typeof Service.Type
 export const Service = Schema.Struct({name: Schema.String, runtime: Runtime})

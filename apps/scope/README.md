@@ -8,6 +8,7 @@ scope service install --url https://scope.mp281x.xyz --auth https://auth.mp281x.
 ```
 
 - **Send** telemetry by starting other apps with `--traces https://scope.mp281x.xyz`; it accepts OTLP/HTTP JSON from anywhere and keeps three days of each service's newest release (`service.version`).
+- **GitHub Actions**: a repository webhook to `/v1/github` (content type JSON, events _Workflow runs_ and _Workflow jobs_) sends each run as a trace of its jobs and steps; Scope serves the route once `GITHUB_WEBHOOK_SECRET` in `~/.deslop/scope.env` holds the webhook's secret.
 - **MCP** at `/mcp`: `list_services`, `find`, `read_trace`, `measure_latency`.
 
 Common flags and service commands: [Deslop app runtime](https://github.com/MP281X/deslop/blob/main/packages/runtime/README.md).

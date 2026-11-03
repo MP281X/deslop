@@ -15,6 +15,9 @@
 [data-side='mobile'] {
 	--side: var(--green);
 }
+[data-side='ci'] {
+	--side: var(--purple);
+}
 [data-side='unknown'] {
 	--side: var(--muted-foreground);
 }
