@@ -89,7 +89,7 @@ it('measures CPU as a share of machine capacity without reusing a PID or bridgin
 	assert.strictEqual(processReadings(current, baseline).readings[0]?.process.cpu, 25)
 	assert.isUndefined(processReadings(current).readings[0]?.process.cpu)
 	assert.isUndefined(processReadings({...current, time: 100}, baseline).readings[0]?.process.cpu)
-	// The metrics' 30-second samples still measure; a gap past three of them does not.
+	// A reading 30 seconds on still measures; one past 90 seconds does not.
 	assert.strictEqual(processReadings({...current, time: 30_000}, baseline).readings[0]?.process.cpu, 25)
 	assert.isUndefined(processReadings({...current, time: 91_000}, baseline).readings[0]?.process.cpu)
 	assert.isUndefined(processReadings({...current, total: 100}, baseline).readings[0]?.process.cpu)

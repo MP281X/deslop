@@ -14,17 +14,14 @@ function total(group: readonly {cpu: number[]; memory: number[]}[], index: numbe
 	return Array.reduce(group, 0, (sum, app) => sum + (app[key][index] ?? 0))
 }
 
-// The apps `known` names that the history recorded, heaviest first, then the small ones as one band and the rest of the machine's use as another.
-export function bands(history: MachineHistory, known: readonly string[]) {
+// Every app the range recorded, stopped ones too, heaviest first, then the small ones as one band and the rest of the machine's use as another.
+export function bands(history: MachineHistory) {
 	// One lookup per sample, so each app's series reads its entry directly.
 	const indexed = Array.map(history.samples, sample =>
 		Record.fromEntries(Array.map(sample.apps ?? [], app => [app.id, app]))
 	)
-	const ids = Array.filter(
-		Array.dedupe(Array.flatMap(history.samples, sample => Array.map(sample.apps ?? [], app => app.id))),
-		id => Array.contains(known, id)
-	)
-	// Resident memory counts pages processes share, so the apps together can exceed what the machine uses; they shrink to fit inside it.
+	const ids = Array.dedupe(Array.flatMap(history.samples, sample => Array.map(sample.apps ?? [], app => app.id)))
+	// Apps' memory and the machine's used memory are measured apart, so together they can disagree by a little; the apps shrink to fit inside it.
 	const fit = Array.map(history.samples, (sample, index) =>
 		Number.min(
 			1,
@@ -83,15 +80,15 @@ export function bands(history: MachineHistory, known: readonly string[]) {
 	] satisfies Band[]
 }
 
-// Each sample's place on the range's 0–100 time axis, split where the recording has a gap or a sample lacks the reading, so a gap stays blank.
-export function runs(history: MachineHistory, hours: number, recorded: (sample: Sample) => boolean) {
-	const window = chartWindow(hours, history.time)
+// Each sample's place on the range's 0–100 time axis, split where the recording misses a slot, give or take a second of sampling, or a sample lacks the reading, so a gap stays blank.
+export function runs(history: MachineHistory, minutes: number, recorded: (sample: Sample) => boolean) {
+	const window = chartWindow(minutes, history.time)
 	return Array.match(
 		Array.filter(
 			Array.mapAccum(history.samples, {run: 0, time: -Infinity}, (last, sample, index) => {
 				const run =
 					last.run +
-					Boolean.match(sample.time - last.time > resolution(hours) * 1.5 || !recorded(sample), {
+					Boolean.match(sample.time - last.time > resolution(minutes) * 1.5 + 1000 || !recorded(sample), {
 						onFalse: () => 0,
 						onTrue: () => 1
 					})

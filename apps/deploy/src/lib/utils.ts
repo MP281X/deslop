@@ -50,11 +50,11 @@ export const runAtom = Atom.family((_id: string) =>
 	RpcClient.runtime.fn((input: RunRequest) => Effect.flatMap(RpcClient, client => client('deploy.run', input)))
 )
 
-export const metricsAtom = Atom.family((hours: HistoryQuery['hours']) =>
+export const metricsAtom = Atom.family((minutes: HistoryQuery['minutes']) =>
 	RpcClient.runtime.atom(
 		pipe(
 			RpcClient,
-			Effect.map(client => client('deploy.metrics', {hours})),
+			Effect.map(client => client('deploy.metrics', {minutes})),
 			Stream.unwrap,
 			Stream.retry($ =>
 				pipe(

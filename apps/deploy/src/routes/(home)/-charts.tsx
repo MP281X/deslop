@@ -1,4 +1,4 @@
-import {Array, Boolean, Number, Option, String} from 'effect'
+import {Array, Boolean, Match, Number, Option, String, pipe} from 'effect'
 
 import {chartTicks} from '#routes/(home)/-chart.ts'
 import {runs} from '#routes/(home)/-usage.ts'
@@ -22,16 +22,16 @@ function y(percent: number, height: number) {
 // The machine's share each band holds over time, stacked on the whole machine's 0–100% so the height alone says how loaded it is.
 export function UsageChart(props: {
 	history: MachineHistory
-	hours: number
+	minutes: number
 	hovered?: string
 	label: string
 	layers: readonly {id: string; kind: Band['kind']; opacity: number; values: readonly number[]}[]
-	names: Record<string, string>
+	names: (id: string) => string
 	onHover: (id?: string) => void
 	recorded: (sample: Sample) => boolean
 }) {
 	return (
-		<figure className="flex flex-col" aria-label={`${props.label}, ${props.hours} hours`}>
+		<figure className="flex flex-col" aria-label={props.label}>
 			<figcaption className="text-muted-foreground mb-1 text-xs">{props.label}</figcaption>
 			<svg
 				viewBox={`0 0 100 ${HEIGHT}`}
@@ -61,7 +61,7 @@ export function UsageChart(props: {
 					)[1],
 					layer => {
 						const lit = props.hovered === undefined || props.hovered === layer.band.id
-						return Array.map(Array.map(runs(props.history, props.hours, props.recorded), widen), run => (
+						return Array.map(Array.map(runs(props.history, props.minutes, props.recorded), widen), run => (
 							<polygon
 								key={`${layer.band.id}:${run[0]?.x}`}
 								points={Array.join(
@@ -89,7 +89,7 @@ export function UsageChart(props: {
 								onPointerEnter={() => props.onHover(layer.band.id)}
 								onPointerLeave={() => props.onHover()}
 							>
-								<title>{props.names[layer.band.id] ?? layer.band.id}</title>
+								<title>{props.names(layer.band.id)}</title>
 							</polygon>
 						))
 					}
@@ -100,13 +100,17 @@ export function UsageChart(props: {
 	)
 }
 
-// Each core's own use over time, 0–100%, as a line per core.
-export function Cores(props: {history: MachineHistory; hours: number}) {
+// Each core's own use over time, 0–100%, as a line per core across the machine's width: four to a row on a phone, all in one row from there up to 16.
+export function Cores(props: {history: MachineHistory; minutes: number}) {
+	const cores = Option.getOrUndefined(Array.last(props.history.samples))?.cores ?? []
 	return (
 		<figure className="flex flex-col" aria-label="Cores">
 			<figcaption className="text-muted-foreground mb-1 text-xs">Cores</figcaption>
-			<div className="grid grid-cols-6 gap-x-1.5 gap-y-1 sm:grid-cols-12">
-				{Array.map(Option.getOrUndefined(Array.last(props.history.samples))?.cores ?? [], core => (
+			<div
+				className="grid grid-cols-4 gap-1.5 sm:grid-cols-(--cores)"
+				style={{'--cores': `repeat(${Number.min(16, Number.max(1, cores.length))}, minmax(0, 1fr))`}}
+			>
+				{Array.map(cores, core => (
 					<div key={core.id} className="min-w-0">
 						<svg
 							viewBox="0 0 100 24"
@@ -116,7 +120,7 @@ export function Cores(props: {history: MachineHistory; hours: number}) {
 							aria-label={`${core.id} use over time`}
 						>
 							{Array.map(
-								runs(props.history, props.hours, sample =>
+								runs(props.history, props.minutes, sample =>
 									Array.some(sample.cores ?? [], entry => entry.id === core.id && entry.usage !== undefined)
 								),
 								run => (
@@ -146,9 +150,6 @@ export function Cores(props: {history: MachineHistory; hours: number}) {
 								)
 							)}
 						</svg>
-						<span className="text-muted-foreground font-mono text-xs tabular-nums">
-							{String.replace(/^cpu/u, '')(core.id)}
-						</span>
 					</div>
 				))}
 			</div>
@@ -156,13 +157,13 @@ export function Cores(props: {history: MachineHistory; hours: number}) {
 	)
 }
 
-// Clock-aligned times under the charts, shared by every chart of the machine.
-export function TimeAxis(props: {history: MachineHistory; hours: number}) {
+// Clock-aligned times under the machine's time charts, shared by each of them.
+export function TimeAxis(props: {history: MachineHistory; minutes: number}) {
 	return (
 		<div aria-hidden="true">
 			<svg width="100%" height="16" className="text-muted-foreground overflow-visible font-mono text-xs tabular-nums">
 				{Array.map(
-					Array.filter(chartTicks(props.hours, props.history.time), tick => tick.label),
+					Array.filter(chartTicks(props.minutes, props.history.time), tick => tick.label),
 					tick => (
 						<text
 							key={tick.at}
@@ -174,10 +175,18 @@ export function TimeAxis(props: {history: MachineHistory; hours: number}) {
 							})}
 							fill="currentColor"
 						>
-							{Boolean.match(props.hours === 168, {
-								onFalse: () => time.format(tick.at),
-								onTrue: () => date.format(tick.at)
-							})}
+							{pipe(
+								Match.value(props.minutes),
+								// A minute reads as the minute, then its quarters as seconds, so four labels fit a phone.
+								Match.when(1, () =>
+									Boolean.match(tick.at % 60_000 === 0, {
+										onFalse: () => `:${String.padStart(2, '0')(`${(tick.at % 60_000) / 1000}`)}`,
+										onTrue: () => time.format(tick.at)
+									})
+								),
+								Match.when(10_080, () => date.format(tick.at)),
+								Match.orElse(() => time.format(tick.at))
+							)}
 						</text>
 					)
 				)}

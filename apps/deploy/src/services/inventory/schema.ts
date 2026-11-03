@@ -25,6 +25,8 @@ export const InventoryItem = Schema.Struct({
 		Schema.Array(Schema.Struct({address: Schema.String, port: Schema.Int, protocol: Schema.Literals(['tcp', 'udp'])}))
 	),
 	detail: Schema.String,
+	// Why a failed service stopped, and when, in epoch milliseconds.
+	failure: Schema.optionalKey(Schema.Struct({at: Schema.optionalKey(Schema.Finite), reason: Schema.String})),
 	hostname: Schema.optionalKey(Schema.String),
 	http: Schema.optionalKey(Schema.Boolean),
 	id: Schema.String,
