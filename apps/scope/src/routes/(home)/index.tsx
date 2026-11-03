@@ -17,8 +17,9 @@ import {
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {ChevronRight, Server} from 'lucide-react'
+import {ChevronRight, Globe, Server, Smartphone} from 'lucide-react'
 import {Suspense, useState} from 'react'
+import type {ReactElement} from 'react'
 
 import {AppBar, useCommandQuery} from '@deslop/components-web/app-bar'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
@@ -30,21 +31,20 @@ import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {cn} from '@deslop/components-web/utils'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
-import {ageOf, arrivalsAtom, durationOf, nowAtom, overviewAtom, serviceLabel, traceAtom} from '#lib/utils.ts'
+import {ageOf, arrivalsAtom, durationOf, nowAtom, overviewAtom, traceAtom} from '#lib/utils.ts'
 import icon from '#routes/icon.svg'
-import type {Operation, OperationTrace, Overview, Trace} from '#services/telemetry/schema.ts'
+import {appName} from '#services/telemetry/lib/utils.ts'
+import type {Operation, OperationTrace, Overview, Runtime, Trace} from '#services/telemetry/schema.ts'
 
-// Each app's hue from DESIGN.md, so its bars read as its own.
-const HUES: Record<string, string> = {
-	auth: 'var(--orange)',
-	deploy: 'var(--blue)',
-	gateway: 'var(--purple)',
-	opm: 'var(--orange)',
-	portfolio: 'var(--orange)',
-	scope: 'var(--cyan)',
-	signal: 'var(--magenta)',
-	stash: 'var(--yellow)',
-	trips: 'var(--blue)'
+// The side an operation starts on, in words, so the bar's field can narrow to it.
+const SIDES: Record<Runtime, string> = {mobile: 'iOS', server: 'server', unknown: '', web: 'web'}
+
+// The device an operation starts on, as Auth marks a sign-in's, in its side's hue: a browser, a phone or a server.
+const DEVICES: Record<Runtime, ReactElement> = {
+	mobile: <Smartphone role="img" aria-label="iOS" data-side="mobile" className="size-3.5 shrink-0 text-(--side)" />,
+	server: <Server role="img" aria-label="server" data-side="server" className="size-3.5 shrink-0 text-(--side)" />,
+	unknown: <Server aria-hidden data-side="unknown" className="size-3.5 shrink-0 text-(--side)" />,
+	web: <Globe role="img" aria-label="web" data-side="web" className="size-3.5 shrink-0 text-(--side)" />
 }
 
 type Attributes = typeof Attributes.Type
@@ -61,10 +61,6 @@ const marks: Record<string, string> = Record.fromEntries(
 		entry => [String.split(entry[0], '/')[4] ?? '', entry[1]]
 	)
 )
-
-function appOf(service: string) {
-	return String.split(serviceLabel(service), ' ')[0] ?? ''
-}
 
 // A failure the page can't show as data: sign-in, then anything else as an error with a reload.
 function Failure(props: {cause: Cause.Cause<unknown>}) {
@@ -87,24 +83,18 @@ function valueOf(value: Schema.Json) {
 	)
 }
 
-// What a span says beyond its row: attributes, without the app the section names or anything that only repeats its name, such as code.function.
-function attributesOf(span: Trace['spans'][number], service: string) {
-	return [
-		...Boolean.match(span.service === service, {
-			onFalse: () => [{key: 'service', value: serviceLabel(span.service)}],
-			onTrue: () => []
-		}),
-		...Array.filter(
-			Array.map(
-				Array.filter(
-					Option.getOrElse(Schema.decodeUnknownOption(Attributes)(span.payload['attributes']), () => []),
-					attribute => attribute.key !== 'service.name'
-				),
-				attribute => ({key: attribute.key, value: valueOf(attribute.value)})
+// What a span says beyond its row: attributes, without anything that only repeats its name, such as code.function.
+function attributesOf(span: Trace['spans'][number]) {
+	return Array.filter(
+		Array.map(
+			Array.filter(
+				Option.getOrElse(Schema.decodeUnknownOption(Attributes)(span.payload['attributes']), () => []),
+				attribute => attribute.key !== 'service.name'
 			),
-			attribute => attribute.value !== span.name
-		)
-	]
+			attribute => ({key: attribute.key, value: valueOf(attribute.value)})
+		),
+		attribute => attribute.value !== span.name
+	)
 }
 
 // A failed span's own error message, which its details lead with.
@@ -120,10 +110,10 @@ function errorOf(span: Trace['spans'][number]) {
 }
 
 // A span opens only when it has something its row doesn't already show.
-function hasDetail(span: Trace['spans'][number], service: string) {
+function hasDetail(span: Trace['spans'][number]) {
 	return (
 		Option.isSome(errorOf(span)) ||
-		Array.isReadonlyArrayNonEmpty(attributesOf(span, service)) ||
+		Array.isReadonlyArrayNonEmpty(attributesOf(span)) ||
 		Array.isReadonlyArrayNonEmpty(span.logs)
 	)
 }
@@ -134,7 +124,7 @@ function indentOf(span: Trace['spans'][number]) {
 }
 
 // The picked span's error, attributes and logs, each a line on the same columns as the rows: key under the name, value ending under the duration.
-function SpanDetail(props: {service: string; span: Trace['spans'][number]}) {
+function SpanDetail(props: {span: Trace['spans'][number]}) {
 	return (
 		<dl className="flex flex-col pb-1 font-mono text-xs">
 			{Array.map(
@@ -143,7 +133,7 @@ function SpanDetail(props: {service: string; span: Trace['spans'][number]}) {
 						onNone: () => [],
 						onSome: message => [{failed: true, key: 'error', value: message}]
 					}),
-					...Array.map(attributesOf(props.span, props.service), attribute => ({...attribute, failed: false})),
+					...Array.map(attributesOf(props.span), attribute => ({...attribute, failed: false})),
 					...Array.map(props.span.logs, log => ({failed: log.status === 2, key: 'log', value: log.name}))
 				],
 				(line, index) => (
@@ -164,21 +154,26 @@ function SpanDetail(props: {service: string; span: Trace['spans'][number]}) {
 	)
 }
 
-// A span on the trace rows' columns: its name, its bar on the trace's time scale, its duration and, when it opens, a chevron.
-function SpanLine(props: {open?: boolean; span: Trace['spans'][number]}) {
+// A span on the trace rows' columns: its name, another app's mark where it entered one, its bar in its side's hue on the trace's time scale, its duration and, when it opens, a chevron.
+function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Trace['spans'][number]}) {
 	return (
 		<>
 			<span
-				className="w-36 shrink-0 truncate pl-(--indent) text-left sm:w-56"
+				className="flex w-36 shrink-0 items-center gap-1.5 pl-(--indent) text-left sm:w-56"
 				style={{'--indent': indentOf(props.span)}}
 			>
-				{props.span.name}
+				{Option.match(props.mark, {
+					onNone: () => null,
+					onSome: mark => <img src={mark} alt={appName(props.span.service)} className="pixelated size-3.5 shrink-0" />
+				})}
+				<span className="truncate">{props.span.name}</span>
 			</span>
 			<span className="relative h-2 flex-1">
 				<span
+					data-side={props.span.runtime}
 					className={cn(
 						'absolute top-0 left-(--offset) h-2 w-(--length) min-w-0.5',
-						Boolean.match(props.span.status === 2, {onFalse: () => 'bg-(--app)', onTrue: () => 'bg-destructive'})
+						Boolean.match(props.span.status === 2, {onFalse: () => 'bg-(--side)', onTrue: () => 'bg-destructive'})
 					)}
 					style={{
 						'--length': `calc(${props.span.durationMs} / var(--trace-total) * 100%)`,
@@ -186,7 +181,7 @@ function SpanLine(props: {open?: boolean; span: Trace['spans'][number]}) {
 					}}
 				/>
 			</span>
-			<span className="text-muted-foreground w-14 shrink-0 text-right font-mono">
+			<span className="text-muted-foreground w-14 shrink-0 text-right font-mono whitespace-nowrap tabular-nums">
 				{durationOf(props.span.durationMs)}
 			</span>
 			{Option.match(Option.fromUndefinedOr(props.open), {
@@ -211,13 +206,24 @@ function brokeAt(spans: Trace['spans']) {
 }
 
 // A trace's spans under its root, each on the trace's time scale; where it broke starts picked, else the root's own details show.
-function Spans(props: {id: string; service: string; size: number}) {
+function Spans(props: {id: string; size: number}) {
 	const result = useAtomSuspense(traceAtom(`${props.id}:${props.size}`), {includeFailure: true})
 	const [picked, setPicked] = useState<string>()
 	if (AsyncResult.isFailure(result)) return <Failure cause={result.cause} />
 	const trace = result.value
 	const root = Array.findFirst(trace.spans, span => span.depth === 0)
 	const below = Array.filter(trace.spans, span => !Option.exists(root, top => top.spanId === span.spanId))
+	const services = Record.fromEntries(Array.map(trace.spans, span => [span.spanId, span.service] as const))
+	// Where a trace enters another app its span shows that app's mark; the bar's hue already tells the side.
+	function mark(span: Trace['spans'][number]) {
+		// A parent that never arrived, such as a page's still-open call, reads as the root.
+		const parent =
+			services[span.parentSpanId] ?? Option.match(root, {onNone: () => span.service, onSome: top => top.service})
+		return Option.filter(
+			Option.fromUndefinedOr(marks[appName(span.service)]),
+			() => appName(span.service) !== appName(parent)
+		)
+	}
 	// Nothing picked yet starts on where it broke, else the root; closing a span leaves none open.
 	const focus = Option.filter(
 		Boolean.match(picked === undefined, {
@@ -228,25 +234,19 @@ function Spans(props: {id: string; service: string; size: number}) {
 					Option.orElse(() => root)
 				)
 		}),
-		span => hasDetail(span, props.service)
+		hasDetail
 	)
 	return (
-		<div
-			className="flex flex-col pb-2"
-			style={{
-				'--app': HUES[appOf(props.service)] ?? 'var(--primary)',
-				'--trace-total': `${Number.max(trace.durationMs, 1)}`
-			}}
-		>
+		<div className="flex flex-col pb-2" style={{'--trace-total': `${Number.max(trace.durationMs, 1)}`}}>
 			{Option.match(
 				Option.filter(focus, span => Option.exists(root, top => top.spanId === span.spanId)),
-				{onNone: () => null, onSome: span => <SpanDetail service={props.service} span={span} />}
+				{onNone: () => null, onSome: span => <SpanDetail span={span} />}
 			)}
 			{Array.map(below, span =>
-				Boolean.match(hasDetail(span, props.service), {
+				Boolean.match(hasDetail(span), {
 					onFalse: () => (
 						<div key={span.spanId} className="flex h-8 w-full items-center gap-3 pr-1 text-xs">
-							<SpanLine span={span} />
+							<SpanLine mark={mark(span)} span={span} />
 						</div>
 					),
 					// A span with more to show opens like any row; its details sit inside the same shaded block, under its name.
@@ -258,10 +258,14 @@ function Spans(props: {id: string; service: string; size: number}) {
 							className="data-open:bg-muted/60"
 						>
 							<CollapsibleTrigger className="hover:bg-muted/50 flex h-8 w-full cursor-pointer items-center gap-3 pr-1 text-left text-xs">
-								<SpanLine span={span} open={Option.exists(focus, current => current.spanId === span.spanId)} />
+								<SpanLine
+									mark={mark(span)}
+									span={span}
+									open={Option.exists(focus, current => current.spanId === span.spanId)}
+								/>
 							</CollapsibleTrigger>
 							<CollapsibleContent>
-								<SpanDetail service={props.service} span={span} />
+								<SpanDetail span={span} />
 							</CollapsibleContent>
 						</Collapsible>
 					)
@@ -289,7 +293,6 @@ function TraceRow(props: {
 	arrived: boolean
 	now: number
 	onOpenChange: (open: boolean) => void
-	service: string
 	trace: OperationTrace
 }) {
 	const [open, setOpen] = useState(false)
@@ -316,14 +319,16 @@ function TraceRow(props: {
 							<span className="truncate">{props.trace.failure.span}</span>
 						</Badge>
 					)}
-					<span className="w-14 shrink-0 text-right font-mono">{durationOf(props.trace.durationMs)}</span>
+					<span className="w-14 shrink-0 text-right font-mono whitespace-nowrap tabular-nums">
+						{durationOf(props.trace.durationMs)}
+					</span>
 					<ChevronRight
 						className={cn('text-muted-foreground size-3.5 shrink-0 transition-transform', open && 'rotate-90')}
 					/>
 				</CollapsibleTrigger>
 				<CollapsibleContent>
 					<Suspense fallback={<SpansSkeleton />}>
-						<Spans id={props.trace.id} service={props.service} size={props.trace.durationMs} />
+						<Spans id={props.trace.id} size={props.trace.durationMs} />
 					</Suspense>
 				</CollapsibleContent>
 			</Collapsible>
@@ -331,10 +336,10 @@ function TraceRow(props: {
 	)
 }
 
-// An operation: how often it ran, its typical and slowest durations and its failures, opening on its newest traces.
-function OperationRow(props: {arrived: readonly string[]; now: number; operation: Operation; service: string}) {
+// An operation: its failures, how often it ran and how long it typically takes, opening on its slowest traces.
+function OperationRow(props: {arrived: readonly string[]; now: number; operation: Operation}) {
 	const [open, setOpen] = useState(false)
-	// A trace kept open stays even after newer ones push it out of the newest twenty.
+	// A trace kept open stays even after others push it out of the slowest twenty.
 	const [pinned, setPinned] = useState(Record.empty<string, OperationTrace>)
 	const rows = [
 		...props.operation.traces,
@@ -343,6 +348,7 @@ function OperationRow(props: {arrived: readonly string[]; now: number; operation
 	return (
 		<Collapsible role="listitem" open={open} onOpenChange={setOpen} className="border-b">
 			<CollapsibleTrigger className="hover:bg-muted/50 flex h-10 w-full cursor-pointer items-center gap-3 px-1 text-left text-sm">
+				{DEVICES[props.operation.runtime]}
 				<span className="min-w-0 flex-1 truncate">{props.operation.name}</span>
 				{props.operation.failures > 0 && (
 					<Badge variant="destructive" className="shrink-0 font-mono" title="Failed">
@@ -350,19 +356,15 @@ function OperationRow(props: {arrived: readonly string[]; now: number; operation
 						<span className="sr-only"> failed</span>
 					</Badge>
 				)}
-				<span className="text-muted-foreground w-10 shrink-0 text-right font-mono text-xs max-sm:hidden" title="Runs">
+				<span
+					className="text-muted-foreground w-12 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums max-sm:hidden"
+					title="Runs"
+				>
 					{props.operation.count}×<span className="sr-only"> runs</span>
 				</span>
-				<span
-					className="text-muted-foreground w-14 shrink-0 text-right font-mono text-xs max-sm:hidden"
-					title="Typical"
-				>
+				<span className="w-14 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums" title="Typical">
 					<span className="sr-only">typical </span>
 					{durationOf(props.operation.p50Ms)}
-				</span>
-				<span className="w-14 shrink-0 text-right font-mono text-xs" title="Slowest 5%">
-					<span className="sr-only">slowest 5% </span>
-					{durationOf(props.operation.p95Ms)}
 				</span>
 				<ChevronRight
 					className={cn('text-muted-foreground size-3.5 shrink-0 transition-transform', open && 'rotate-90')}
@@ -382,7 +384,6 @@ function OperationRow(props: {arrived: readonly string[]; now: number; operation
 								})
 							)
 						}
-						service={props.service}
 						trace={trace}
 					/>
 				))}
@@ -391,21 +392,21 @@ function OperationRow(props: {arrived: readonly string[]; now: number; operation
 	)
 }
 
-// The apps that sent traces, those with failures first, each with its operations; the bar's field narrows both.
+// The apps that started traces, server, web and iOS together, those with failures first, each with its operations; the bar's field narrows both.
 function Apps(props: {overview: Overview}) {
 	const query = String.toLowerCase(useCommandQuery())
 	const arrived = useAtomValue(arrivalsAtom).arrived
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
-	const services = Array.filter(
-		Array.map(props.overview.services, service => ({
-			...service,
-			operations: Array.filter(service.operations, operation =>
-				String.includes(query)(String.toLowerCase(`${serviceLabel(service.name)} ${operation.name}`))
+	const apps = Array.filter(
+		Array.map(props.overview.apps, app => ({
+			...app,
+			operations: Array.filter(app.operations, operation =>
+				String.includes(query)(String.toLowerCase(`${app.name} ${SIDES[operation.runtime]} ${operation.name}`))
 			)
 		})),
-		service => Array.isReadonlyArrayNonEmpty(service.operations)
+		app => Array.isReadonlyArrayNonEmpty(app.operations)
 	)
-	if (Array.isArrayEmpty(services)) {
+	if (Array.isArrayEmpty(apps)) {
 		return (
 			<Empty>
 				<EmptyHeader>
@@ -416,23 +417,23 @@ function Apps(props: {overview: Overview}) {
 			</Empty>
 		)
 	}
-	return Array.map(services, service => (
-		<section
-			key={service.name}
-			aria-label={serviceLabel(service.name)}
-			className="flex flex-col"
-			style={{'--app': HUES[appOf(service.name)] ?? 'var(--primary)'}}
-		>
+	return Array.map(apps, app => (
+		<section key={app.name} aria-label={app.name} className="flex flex-col">
 			<h2 className="flex h-9 items-center gap-2 px-1 text-sm font-semibold">
-				{Option.match(Option.fromUndefinedOr(marks[appOf(service.name)]), {
+				{Option.match(Option.fromUndefinedOr(marks[app.name]), {
 					onNone: () => <Server className="text-muted-foreground size-4" />,
 					onSome: mark => <img src={mark} alt="" className="pixelated size-5" />
 				})}
-				{serviceLabel(service.name)}
+				{app.name}
 			</h2>
 			<div role="list">
-				{Array.map(service.operations, operation => (
-					<OperationRow key={operation.name} arrived={arrived} now={now} operation={operation} service={service.name} />
+				{Array.map(app.operations, operation => (
+					<OperationRow
+						key={`${operation.runtime} ${operation.name}`}
+						arrived={arrived}
+						now={now}
+						operation={operation}
+					/>
 				))}
 			</div>
 		</section>

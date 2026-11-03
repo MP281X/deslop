@@ -422,6 +422,67 @@ it.layer(layer)(test => {
 											spanId: '4444444444444444',
 											startTimeUnixNano: '1781870002000000000',
 											traceId: 'ffffffffffffffffffffffffffffffff'
+										},
+										// Effect names an HTTP span by its method alone: a server's route, or a client's path, says which request it was.
+										{
+											attributes: [
+												{key: 'http.request.method', value: {stringValue: 'POST'}},
+												{key: 'http.route', value: {stringValue: '/api/notes'}},
+												{key: 'url.path', value: {stringValue: '/api/notes'}}
+											],
+											endTimeUnixNano: '1781870003010000000',
+											kind: 2,
+											name: 'POST',
+											spanId: '6666666666666666',
+											startTimeUnixNano: '1781870003000000000',
+											traceId: '66666666666666666666666666666666'
+										},
+										{
+											attributes: [
+												{key: 'http.request.method', value: {stringValue: 'POST'}},
+												{key: 'url.path', value: {stringValue: '/api/apps'}}
+											],
+											endTimeUnixNano: '1781870003010000000',
+											kind: 3,
+											name: 'POST',
+											spanId: '8888888888888888',
+											startTimeUnixNano: '1781870003000000000',
+											traceId: '88888888888888888888888888888888'
+										},
+										// Scanners probing for files would otherwise make an operation per path.
+										...Array.map(['/.env', '/wp-login.php'], (path, index) => ({
+											attributes: [
+												{key: 'http.request.method', value: {stringValue: 'GET'}},
+												{key: 'url.path', value: {stringValue: path}}
+											],
+											endTimeUnixNano: '1781870003010000000',
+											kind: 2,
+											name: 'GET',
+											spanId: `a${index}aaaaaaaaaaaaaa`,
+											startTimeUnixNano: '1781870003000000000',
+											traceId: `a${index}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`
+										}))
+									]
+								}
+							]
+						},
+						// The app's web client starts its own traces; they list under the same app as its server's.
+						{
+							resource: {
+								attributes: [
+									{key: 'service.name', value: {stringValue: '@deslop/stash-client'}},
+									{key: 'scope.runtime', value: {stringValue: 'web'}}
+								]
+							},
+							scopeSpans: [
+								{
+									spans: [
+										{
+											endTimeUnixNano: '1781870004010000000',
+											name: 'notes.watch',
+											spanId: '7777777777777777',
+											startTimeUnixNano: '1781870004000000000',
+											traceId: '77777777777777777777777777777777'
 										}
 									]
 								}
@@ -432,17 +493,31 @@ it.layer(layer)(test => {
 			)
 			// The page's overview recomputes at most once a second, so the clock moves past that pause.
 			yield* TestClock.adjust('2 seconds')
-			const stash = Option.getOrThrow(
-				Array.findFirst(
-					Option.getOrThrow(yield* Stream.runHead(telemetry.overview)).services,
-					service => service.name === '@deslop/stash-server'
-				)
-			)
+			const apps = Option.getOrThrow(yield* Stream.runHead(telemetry.overview)).apps
 			assert.deepStrictEqual(
-				Array.map(stash.operations, operation => [operation.name, operation.count, operation.failures]),
+				Array.map(apps, app => app.name),
+				['stash']
+			)
+			const stash = Option.getOrThrow(Array.head(apps))
+			// Failures lead, then the busiest; operations that ran as often keep no particular order.
+			assert.deepStrictEqual(
+				Array.map(Array.take(stash.operations, 2), operation => operation.name),
+				['share', 'GET (no route)']
+			)
+			assert.sameDeepMembers(
+				Array.map(stash.operations, operation => [
+					operation.runtime,
+					operation.name,
+					operation.count,
+					operation.failures
+				]),
 				[
-					['share', 2, 1],
-					['list', 1, 0]
+					['unknown', 'share', 2, 1],
+					['unknown', 'list', 1, 0],
+					['unknown', 'GET (no route)', 2, 0],
+					['unknown', 'POST /api/notes', 1, 0],
+					['unknown', 'POST /api/apps', 1, 0],
+					['web', 'notes.watch', 1, 0]
 				]
 			)
 			// Slowest first, and only the root's operation lists the trace: its failing child is not a row.

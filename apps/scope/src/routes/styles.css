@@ -5,6 +5,20 @@
 	--primary: var(--cyan);
 }
 
+/* DESIGN.md's Scope side identity: where a span ran, in its operation's device icon and its bar. */
+[data-side='server'] {
+	--side: var(--blue);
+}
+[data-side='web'] {
+	--side: var(--magenta);
+}
+[data-side='mobile'] {
+	--side: var(--green);
+}
+[data-side='unknown'] {
+	--side: var(--muted-foreground);
+}
+
 /* A trace that arrives grows from no height and fades in; the first push shows at once. */
 @utility grow-in {
 	display: grid;
