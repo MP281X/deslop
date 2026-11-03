@@ -1,6 +1,15 @@
-import {Array, Boolean, Option, Order, String, pipe} from 'effect'
+import {Array, Boolean, Match, Number, Option, Order, Record, String, pipe} from 'effect'
 
 import type {InventoryItem} from '#services/inventory/schema.ts'
+
+const SIGNALS: Record<number, string> = {
+	1: 'SIGHUP',
+	2: 'SIGINT',
+	6: 'SIGABRT',
+	9: 'SIGKILL',
+	11: 'SIGSEGV',
+	15: 'SIGTERM'
+}
 
 // A loopback proxy can only reach these TCP listeners, not a tailnet-interface-only socket or UDP.
 function loopbackPort(item: InventoryItem) {
@@ -59,7 +68,54 @@ function ports(items: readonly InventoryItem[]) {
 	)
 }
 
-// The service or container a process belongs to, by its cgroup: `service:<scope>:<unit>` or `container:<short id>`.
+function failureReason(result: string, status: number) {
+	const signal = SIGNALS[status] ?? `signal ${status}`
+	return pipe(
+		Match.value(result),
+		Match.when('exit-code', () =>
+			Option.match(Option.fromUndefinedOr(SIGNALS[status - 128]), {
+				onNone: () => `Exited with code ${status}`,
+				onSome: name => `Exited with code ${status} (${name})`
+			})
+		),
+		Match.when('signal', () => `Killed by ${signal}`),
+		Match.when('core-dump', () => `Crashed with ${signal}`),
+		Match.when('oom-kill', () => 'Killed for running out of memory'),
+		Match.when('timeout', () => 'Timed out'),
+		Match.when('watchdog', () => 'Stopped answering its watchdog'),
+		Match.when('start-limit-hit', () => 'Restarted too often'),
+		Match.orElse(() => `Failed: ${result}`)
+	)
+}
+
+// Why each failed unit stopped and when, by unit, from `systemctl show -p Id,Result,ExecMainStatus,StateChangeTimestamp --timestamp=unix`.
+export function unitFailures(text: string) {
+	return Record.fromEntries(
+		Array.map(Array.filter(String.split(String.trim(text), /\n\s*\n/u), String.isNonEmpty), block => {
+			const fields = Record.fromEntries(
+				Array.map(Array.filter(String.split(block, '\n'), String.includes('=')), line => {
+					const [key = '', ...value] = String.split(line, '=')
+					return [key, Array.join(value, '=')] as const
+				})
+			)
+			return [
+				fields['Id'] ?? '',
+				{
+					...Option.match(Number.parse(String.replace(/^@/u, '')(fields['StateChangeTimestamp'] ?? '')), {
+						onNone: () => ({}),
+						onSome: seconds => ({at: seconds * 1000})
+					}),
+					reason: failureReason(
+						fields['Result'] ?? '',
+						Option.getOrElse(Number.parse(fields['ExecMainStatus'] ?? ''), () => 0)
+					)
+				}
+			] as const
+		})
+	)
+}
+
+// The service or container a process or cgroup belongs to: `service:<scope>:<unit>` or `container:<short id>`. Under a user manager, `app-<name>.slice` holds what `<name>.service` started outside its own cgroup, like T3 Code's agents.
 export function processOwner(cgroup: string) {
 	const container = Option.getOrUndefined(
 		String.match(/\/(?:docker-|docker\/)([a-f0-9]{12,64})(?:\.scope)?(?:\/|\n|$)/u)(cgroup)
@@ -71,7 +127,17 @@ export function processOwner(cgroup: string) {
 		Array.findFirstIndex(segments, segment => Option.isSome(String.match(/^user@[0-9]+\.service$/u)(segment))),
 		() => Infinity
 	)
-	return `service:${Boolean.match(service > manager, {onFalse: () => 'system', onTrue: () => 'user'})}:${segments[service] ?? ''}`
+	return Option.match(
+		Option.flatMap(
+			Option.liftPredicate(Array.drop(segments, manager + 1), () => service <= manager),
+			below => Array.findFirst(below, segment => String.match(/^app-(.+)\.slice$/u)(segment))
+		),
+		{
+			onNone: () =>
+				`service:${Boolean.match(service > manager, {onFalse: () => 'system', onTrue: () => 'user'})}:${segments[service] ?? ''}`,
+			onSome: match => `service:user:${match[1]}.service`
+		}
+	)
 }
 
 // The owner key a service or container's processes carry, so history recorded by owner finds its row.

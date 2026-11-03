@@ -159,33 +159,3 @@ export function attachProcesses(
 		)
 	}))
 }
-
-// Each owner's memory and CPU, summed over its processes, for the metrics history.
-export function ownerUsage(records: readonly {cgroup: string; process: Process}[]) {
-	return Array.map(
-		// Only owners an app row can name, and that hold at least 1 MiB, ride along with every sample.
-		Array.filter(
-			Record.toEntries(Array.groupBy(records, record => processOwner(record.cgroup))),
-			entry =>
-				!String.endsWith(':')(entry[0]) &&
-				Array.reduce(entry[1], 0, (sum, record) => sum + record.process.memory) >= 1024 ** 2
-		),
-		entry => {
-			const [id, group] = entry
-			const cpus = Array.getSomes(Array.map(group, record => Option.fromUndefinedOr(record.process.cpu)))
-			return {
-				...Boolean.match(Array.isReadonlyArrayNonEmpty(cpus), {
-					onFalse: () => ({}),
-					onTrue: () => ({
-						cpu: Number.round(
-							Array.reduce(cpus, 0, (sum, cpu) => sum + cpu),
-							2
-						)
-					})
-				}),
-				id,
-				memory: Number.round(Array.reduce(group, 0, (sum, record) => sum + record.process.memory) / 1024, 0) * 1024
-			}
-		}
-	)
-}

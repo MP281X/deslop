@@ -1,7 +1,8 @@
 import {Schema} from 'effect'
 
 export type HistoryQuery = typeof HistoryQuery.Type
-export const HistoryQuery = Schema.Struct({hours: Schema.Literals([1, 24, 168])})
+// The range back from now, in minutes: a minute, ten, an hour, a day or a week.
+export const HistoryQuery = Schema.Struct({minutes: Schema.Literals([1, 10, 60, 1440, 10_080])})
 
 export type Counters = typeof Counters.Type
 export const Counters = Schema.Struct({
@@ -18,7 +19,7 @@ export const Counters = Schema.Struct({
 
 export type Sample = typeof Sample.Type
 export const Sample = Schema.Struct({
-	// Each service or container's memory and its CPU as a share of the whole machine, keyed like `itemOwner`.
+	// Each service or container's memory and its CPU as a share of the whole machine, from its cgroup, keyed like `itemOwner`.
 	apps: Schema.optional(
 		Schema.Array(Schema.Struct({cpu: Schema.optional(Schema.Finite), id: Schema.String, memory: Schema.Finite}))
 	),

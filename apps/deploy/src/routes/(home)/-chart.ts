@@ -1,31 +1,46 @@
 import {Array, DateTime} from 'effect'
 
 import {chartWindow} from '#services/metrics/lib/utils.ts'
+import type {HistoryQuery} from '#services/metrics/schema.ts'
 
-export function chartTicks(hours: number, now: number) {
-	const window = chartWindow(hours, now)
+// Within an hour, ticks every 15 seconds, 2 minutes or 15 minutes, which every time zone's offset divides.
+const STEPS: Record<number, number> = {1: 15_000, 10: 120_000, 60: 900_000}
+
+// The page's ranges, shortest first.
+export const RANGES = [
+	{label: '1m', minutes: 1},
+	{label: '10m', minutes: 10},
+	{label: '1h', minutes: 60},
+	{label: '24h', minutes: 1440},
+	{label: '7d', minutes: 10_080}
+] as const satisfies readonly {label: string; minutes: HistoryQuery['minutes']}[]
+
+export function chartTicks(minutes: number, now: number) {
+	const window = chartWindow(minutes, now)
 	const start = DateTime.makeZonedUnsafe(window.start, {timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone})
-	const parts = DateTime.toParts(start)
-	function firstTick() {
-		if (hours === 1) {
-			return DateTime.setParts(start, {millisecond: 0, minute: Math.floor(parts.minute / 15) * 15 + 15, second: 0})
+	const step = STEPS[minutes]
+	function tick(index: number) {
+		if (step !== undefined) return (Math.floor(window.start / step) + 1 + index) * step
+		if (minutes === 1440) {
+			const first = DateTime.setParts(start, {
+				hour: Math.floor(DateTime.toParts(start).hour / 6) * 6 + 6,
+				millisecond: 0,
+				minute: 0,
+				second: 0
+			})
+			return DateTime.toEpochMillis(DateTime.setParts(first, {hour: DateTime.toParts(first).hour + index * 6}))
 		}
-		if (hours === 24) {
-			return DateTime.setParts(start, {hour: Math.floor(parts.hour / 6) * 6 + 6, millisecond: 0, minute: 0, second: 0})
-		}
-		return DateTime.add(DateTime.startOf(start, 'day'), {days: 1})
+		return DateTime.toEpochMillis(DateTime.add(DateTime.startOf(start, 'day'), {days: index + 1}))
 	}
-	const first = firstTick()
 	return Array.filter(
 		Array.makeBy(8, index => {
-			function advance() {
-				if (hours === 1) return DateTime.add(first, {minutes: index * 15})
-				if (hours === 24) return DateTime.setParts(first, {hour: DateTime.toParts(first).hour + index * 6})
-				return DateTime.add(first, {days: index})
+			const at = tick(index)
+			return {
+				at,
+				label: minutes !== 10_080 || index % 2 === 0,
+				x: ((at - window.start) / (window.end - window.start)) * 100
 			}
-			const at = DateTime.toEpochMillis(advance())
-			return {at, label: hours !== 168 || index % 2 === 0, x: ((at - window.start) / (window.end - window.start)) * 100}
 		}),
-		tick => tick.at <= now
+		value => value.at <= now
 	)
 }

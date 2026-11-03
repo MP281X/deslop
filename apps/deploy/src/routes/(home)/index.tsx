@@ -29,6 +29,7 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 
 import {MachineIcon, machineName} from '#lib/components.tsx'
 import {hideAtom, inventoryAtom, metricsAtom, runAtom} from '#lib/utils.ts'
+import {RANGES} from '#routes/(home)/-chart.ts'
 import {Cores, TimeAxis, UsageChart} from '#routes/(home)/-charts.tsx'
 import {PageError} from '#routes/(home)/-error.tsx'
 import {useExpose} from '#routes/(home)/-expose.tsx'
@@ -147,6 +148,14 @@ function nextRun(next: number, now: number) {
 	const minutes = Number.max(0, Number.round((next - now) / 60_000, 0))
 	if (minutes < 60) return untilNext.format(minutes, 'minute')
 	return untilNext.format(Number.round(minutes / 60, 0), 'hour')
+}
+
+// How long ago a service stopped: minutes within the hour, hours within two days, then days.
+function since(at: number, now: number) {
+	const minutes = Number.max(0, Number.round((now - at) / 60_000, 0))
+	if (minutes < 60) return untilNext.format(-minutes, 'minute')
+	if (minutes < 2880) return untilNext.format(-Number.round(minutes / 60, 0), 'hour')
+	return untilNext.format(-Number.round(minutes / 1440, 0), 'day')
 }
 
 // The key a service or container's usage history is recorded under; loose ports have none.
@@ -341,7 +350,14 @@ function AppRow(props: {
 							Boolean.match(light === 'error', {onFalse: () => 'text-warning', onTrue: () => 'text-destructive'})
 						)}
 					>
-						{props.row.item.detail}
+						{Option.match(Option.fromUndefinedOr(props.row.item.failure), {
+							onNone: () => props.row.item.detail,
+							onSome: stop =>
+								Option.match(Option.fromUndefinedOr(stop.at), {
+									onNone: () => stop.reason,
+									onSome: at => `${stop.reason} · ${since(at, props.now)}`
+								})
+						})}
 					</p>
 				)}
 				{props.row.item.scheduled === true && <RunFailure item={props.row.item} />}
@@ -407,25 +423,28 @@ function bytes(value: number) {
 }
 
 function Range(props: {
-	hours: HistoryQuery['hours']
+	minutes: HistoryQuery['minutes']
 	pending: boolean
-	onChange: (hours: HistoryQuery['hours']) => void
+	onChange: (minutes: HistoryQuery['minutes']) => void
 }) {
 	return (
 		<ToggleGroup
 			aria-label="History range"
 			className="ml-auto"
 			disabled={props.pending}
-			value={[`${props.hours}`]}
-			onValueChange={values => {
-				if (values[0] === '24') props.onChange(24)
-				else if (values[0] === '168') props.onChange(168)
-				else if (values[0] === '1') props.onChange(1)
-			}}
+			value={[`${props.minutes}`]}
+			onValueChange={values =>
+				Option.map(
+					Array.findFirst(RANGES, range => `${range.minutes}` === values[0]),
+					range => props.onChange(range.minutes)
+				)
+			}
 		>
-			<ToggleGroupItem value="1">1h</ToggleGroupItem>
-			<ToggleGroupItem value="24">24h</ToggleGroupItem>
-			<ToggleGroupItem value="168">7d</ToggleGroupItem>
+			{Array.map(RANGES, range => (
+				<ToggleGroupItem key={range.minutes} value={`${range.minutes}`}>
+					{range.label}
+				</ToggleGroupItem>
+			))}
 		</ToggleGroup>
 	)
 }
@@ -434,7 +453,7 @@ function Range(props: {
 function Machine(props: {
 	available: 'checking' | 'live' | 'off'
 	history?: MachineHistory
-	hours: HistoryQuery['hours']
+	minutes: HistoryQuery['minutes']
 	now: number
 	query: string
 	free: readonly InventoryItem[]
@@ -444,10 +463,7 @@ function Machine(props: {
 }) {
 	const [hovered, setHovered] = useState<string>()
 	const latest = Option.getOrUndefined(Array.last(props.history?.samples ?? []))
-	const all = Option.match(Option.fromUndefinedOr(props.history), {
-		onNone: () => [],
-		onSome: history => bands(history, Array.getSomes(Array.map(props.rows, owner)))
-	})
+	const all = Option.match(Option.fromUndefinedOr(props.history), {onNone: () => [], onSome: bands})
 	const names = Record.fromEntries([
 		...Array.getSomes(
 			Array.map(props.rows, row => Option.map(owner(row), id => [id, workloadName(row.item)] as const))
@@ -455,6 +471,16 @@ function Machine(props: {
 		['other', 'Small apps'] as const,
 		['system', 'System'] as const
 	])
+	// A stopped app keeps its band with no row to name it, so it reads as its unit or container.
+	function bandName(id: string) {
+		return (
+			names[id] ??
+			String.replaceAll(
+				/^service:[a-z]+:(?:deslop-)?|\.service$/gu,
+				''
+			)(String.replace(/^container:/u, 'container ')(id))
+		)
+	}
 	const storage = {
 		total: Array.reduce(latest?.disks ?? [], 0, (sum, disk) => sum + disk.total),
 		used: Array.reduce(latest?.disks ?? [], 0, (sum, disk) => sum + disk.used)
@@ -515,28 +541,28 @@ function Machine(props: {
 				<div className={cn('flex flex-col gap-3', props.history.stale && 'opacity-50')}>
 					<UsageChart
 						history={props.history}
-						hours={props.hours}
+						minutes={props.minutes}
 						hovered={hovered}
 						label="Memory"
 						layers={Array.map(all, band => ({...band, values: band.memory}))}
-						names={names}
+						names={bandName}
 						onHover={setHovered}
 						recorded={Function.constTrue}
 					/>
 					<UsageChart
 						history={props.history}
-						hours={props.hours}
+						minutes={props.minutes}
 						hovered={hovered}
 						label="CPU"
 						layers={Array.map(all, band => ({...band, values: band.cpu}))}
-						names={names}
+						names={bandName}
 						onHover={setHovered}
 						recorded={sample => sample.cpu !== undefined}
 					/>
 					{storage.total > 0 && (
 						<UsageChart
 							history={props.history}
-							hours={props.hours}
+							minutes={props.minutes}
 							label="Disk"
 							layers={[
 								{
@@ -553,13 +579,13 @@ function Machine(props: {
 									)
 								}
 							]}
-							names={{disk: `${bytes(storage.used)} of ${bytes(storage.total)} used`}}
+							names={() => `${bytes(storage.used)} of ${bytes(storage.total)} used`}
 							onHover={Function.constVoid}
 							recorded={Function.constTrue}
 						/>
 					)}
-					<Cores history={props.history} hours={props.hours} />
-					<TimeAxis history={props.history} hours={props.hours} />
+					<TimeAxis history={props.history} minutes={props.minutes} />
+					<Cores history={props.history} minutes={props.minutes} />
 				</div>
 			)}
 			<div role="list">
@@ -580,7 +606,7 @@ function failure(cause: Cause.Cause<{message: string}>) {
 }
 
 function Fleet() {
-	const [hours, setHours] = useState<HistoryQuery['hours']>(1)
+	const [minutes, setMinutes] = useState<HistoryQuery['minutes']>(60)
 	const [pending, transition] = useTransition()
 	const query = useCommandQuery()
 	const inventory = useAtomSuspense(inventoryAtom, {includeFailure: true})
@@ -592,7 +618,7 @@ function Fleet() {
 		throw Cause.squash(inventory.cause)
 	}
 	const value = Option.getOrThrow(snapshot)
-	const recorded = useAtomSuspense(metricsAtom(hours), {includeFailure: true})
+	const recorded = useAtomSuspense(metricsAtom(minutes), {includeFailure: true})
 	const metrics = Option.getOrElse(AsyncResult.value(recorded), () => [])
 	const rows = workloads(value.items)
 	const workers = Array.dedupe([
@@ -649,13 +675,13 @@ function Fleet() {
 						)}
 						free={availablePorts(value.items)}
 						history={history}
-						hours={hours}
+						minutes={minutes}
 						now={value.time}
 						query={query}
 						rows={Array.filter(rows, row => row.item.worker === worker)}
 						range={
 							index === 0 && (
-								<Range hours={hours} pending={pending} onChange={next => transition(() => setHours(next))} />
+								<Range minutes={minutes} pending={pending} onChange={next => transition(() => setMinutes(next))} />
 							)
 						}
 					/>

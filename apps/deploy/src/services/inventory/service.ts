@@ -21,6 +21,7 @@ import {FetchHttpClient, HttpClient, HttpTraceContext} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
 import {attachProcesses, processReadings, processes} from '#services/inventory/lib/processes.ts'
+import {unitFailures} from '#services/inventory/lib/utils.ts'
 import {
 	Container,
 	DeployError,
@@ -184,31 +185,53 @@ export class Inventory extends Context.Service<
 						)
 					)
 				)
-				return yield* pipe(
+				const rows = yield* pipe(
 					command('systemctl', [...manager, 'list-units', '--all', '--type=service', '--output=json', '--no-pager']),
-					Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Unit)))),
-					Effect.map(rows =>
-						Array.map(rows, row =>
-							InventoryItem.make({
-								detail: `${scope} · ${row.description}`,
-								id: `${worker}:${scope}:${row.unit}`,
-								kind: 'service',
-								name: row.unit,
-								...Option.match(HashMap.get(scheduled, row.unit), {
-									onNone: () => ({}),
-									onSome: next =>
-										Option.match(next, {
-											onNone: () => ({scheduled: true}),
-											onSome: time => ({next: time, scheduled: true})
-										})
-								}),
-								scope,
-								state: `${row.active} · ${row.sub}`,
-								url: '',
-								worker
-							})
+					Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Unit))))
+				)
+				const failed = Array.map(
+					Array.filter(rows, row => row.active === 'failed'),
+					row => row.unit
+				)
+				// Why each failed one stopped, in place of its description, which only repeats its command; an unreadable reason leaves the description.
+				const failures = Option.getOrElse(
+					Option.flatten(
+						yield* pipe(
+							command('systemctl', [
+								...manager,
+								'show',
+								...failed,
+								'-p',
+								'Id,Result,ExecMainStatus,StateChangeTimestamp',
+								'--timestamp=unix'
+							]),
+							Effect.map(unitFailures),
+							Effect.option,
+							Effect.when(Effect.succeed(Array.isReadonlyArrayNonEmpty(failed)))
 						)
-					)
+					),
+					() => unitFailures('')
+				)
+				return Array.map(rows, row =>
+					InventoryItem.make({
+						detail: `${scope} · ${row.description}`,
+						...Option.match(Option.fromUndefinedOr(failures[row.unit]), {
+							onNone: () => ({}),
+							onSome: failure => ({failure})
+						}),
+						id: `${worker}:${scope}:${row.unit}`,
+						kind: 'service',
+						name: row.unit,
+						...Option.match(HashMap.get(scheduled, row.unit), {
+							onNone: () => ({}),
+							onSome: next =>
+								Option.match(next, {onNone: () => ({scheduled: true}), onSome: time => ({next: time, scheduled: true})})
+						}),
+						scope,
+						state: `${row.active} · ${row.sub}`,
+						url: '',
+						worker
+					})
 				)
 			})
 			return Inventory.of({

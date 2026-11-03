@@ -12,7 +12,7 @@ export const ToolHandlers = Tools.toLayer(
 			hide_exposure: fleet.hide,
 			inventory: () => fleet.snapshot,
 			resource_history: Effect.fnUntraced(function* (query: HistoryQuery) {
-				return Array.map(yield* fleet.metrics(query), machine => compactHistory(machine, query.hours))
+				return Array.map(yield* fleet.metrics(query), machine => compactHistory(machine, query.minutes))
 			})
 		})
 	)

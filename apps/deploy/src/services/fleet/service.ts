@@ -150,11 +150,11 @@ export class Fleet extends Context.Service<
 					return [
 						own,
 						...Array.map(workers, worker => {
-							const saved = cached[`${worker.name}:${query.hours}`]
+							const saved = cached[`${worker.name}:${query.minutes}`]
 							return {
 								cpuModel: saved?.cpuModel,
 								error: saved?.error ?? 'Waiting for worker',
-								samples: history(saved?.samples ?? [], query.hours, time),
+								samples: history(saved?.samples ?? [], query.minutes, time),
 								stale: saved === undefined || saved.stale || time - saved.time > 90_000,
 								time,
 								worker: worker.name
@@ -192,9 +192,9 @@ export class Fleet extends Context.Service<
 										const time = yield* Clock.currentTimeMillis
 										const all = yield* Ref.get(lastMetrics)
 										return {
-											cpuModel: all[`${worker.name}:${query.hours}`]?.cpuModel,
+											cpuModel: all[`${worker.name}:${query.minutes}`]?.cpuModel,
 											error: `${cause}`,
-											samples: history(all[`${worker.name}:${query.hours}`]?.samples ?? [], query.hours, time),
+											samples: history(all[`${worker.name}:${query.minutes}`]?.samples ?? [], query.minutes, time),
 											stale: true,
 											time,
 											worker: worker.name
@@ -202,7 +202,7 @@ export class Fleet extends Context.Service<
 									})
 								),
 								Effect.tap(value =>
-									Ref.update(lastMetrics, all => Record.set(all, `${worker.name}:${query.hours}`, value))
+									Ref.update(lastMetrics, all => Record.set(all, `${worker.name}:${query.minutes}`, value))
 								)
 							),
 						{concurrency: 'unbounded'}

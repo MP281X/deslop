@@ -9,6 +9,7 @@ import {
 	Number,
 	Option,
 	Order,
+	Record,
 	Ref,
 	Schedule,
 	Schema,
@@ -21,11 +22,14 @@ import {KeyValueStore} from 'effect/persistence'
 import {layerKeyValueStore} from '@deslop/runtime/server'
 import {execute} from '@deslop/runtime/service'
 
-import {ownerUsage, processReadings, processes} from '#services/inventory/lib/processes.ts'
+import {processOwner} from '#services/inventory/lib/utils.ts'
 import {DeployError} from '#services/inventory/schema.ts'
-import {compact, counters, history, sample} from '#services/metrics/lib/utils.ts'
+import {appCgroup, appShares, cgroupUsage, compact, counters, history, sample} from '#services/metrics/lib/utils.ts'
+import type {AppReading} from '#services/metrics/lib/utils.ts'
 import {Counters, MachineHistory, Sample} from '#services/metrics/schema.ts'
 import type {HistoryQuery} from '#services/metrics/schema.ts'
+
+const CGROUP = '/sys/fs/cgroup'
 
 export class Metrics extends Context.Service<
 	Metrics,
@@ -64,9 +68,97 @@ export class Metrics extends Context.Service<
 						)
 					)
 					const previous = yield* Ref.make(Option.none<Counters>())
-					const processState = yield* Ref.make(Option.none<ReturnType<typeof processReadings>>())
+					const lastApps = yield* Ref.make(Option.none<AppReading>())
+					const storage = yield* Ref.make('')
 					const dirty = yield* Ref.make(Array.empty<number>())
-					const error = yield* Ref.make('')
+					const collectError = yield* Ref.make('')
+					const persistError = yield* Ref.make('')
+					// The cgroups that are each one app, opened level by level through slices and user managers without entering an app; a cgroup gone mid-walk has no children.
+					const appCgroups = Effect.gen(function* () {
+						const walk = yield* Ref.make({found: Array.empty<string>(), pending: ['']})
+						const done = yield* Effect.repeat(
+							Effect.gen(function* () {
+								const level = yield* Ref.get(walk)
+								const children = Array.flatten(
+									Array.getSomes(
+										yield* Effect.forEach(
+											level.pending,
+											path =>
+												Effect.option(
+													Effect.map(fs.readDirectory(`${CGROUP}${path}`), names =>
+														Array.map(
+															Array.filter(names, name =>
+																Option.isSome(String.match(/\.(?:slice|scope|service)$/u)(name))
+															),
+															name => `${path}/${name}`
+														)
+													)
+												),
+											{concurrency: 'unbounded'}
+										)
+									)
+								)
+								const next = {
+									found: [...level.found, ...Array.filter(children, appCgroup)],
+									pending: Array.filter(
+										children,
+										child =>
+											!appCgroup(child) && Option.isSome(String.match(/(?:\.slice|\/user@[0-9]+\.service)$/u)(child))
+									)
+								}
+								yield* Ref.set(walk, next)
+								return next
+							}),
+							{until: next => Array.isReadonlyArrayEmpty(next.pending)}
+						)
+						return done.found
+					})
+					// Each app's memory and CPU time from its cgroups, which count processes that came and went between samples.
+					const apps = Effect.gen(function* () {
+						const readings = yield* Effect.forEach(
+							yield* appCgroups,
+							path =>
+								pipe(
+									Effect.all(
+										{
+											cpu: fs.readFileString(`${CGROUP}${path}/cpu.stat`),
+											memory: fs.readFileString(`${CGROUP}${path}/memory.stat`)
+										},
+										{concurrency: 'unbounded'}
+									),
+									Effect.map(stats => ({id: processOwner(path), ...cgroupUsage(stats.cpu, stats.memory)})),
+									Effect.option
+								),
+							{concurrency: 8}
+						)
+						return Record.map(
+							Array.groupBy(Array.getSomes(readings), reading => reading.id),
+							group => ({
+								memory: Array.reduce(group, 0, (sum, reading) => sum + reading.memory),
+								usage: Array.reduce(group, 0, (sum, reading) => sum + reading.usage)
+							})
+						)
+					})
+					const refreshStorage = pipe(
+						Effect.scoped(
+							execute('df', [
+								'-B1',
+								'--output=target,size,used',
+								'-x',
+								'tmpfs',
+								'-x',
+								'devtmpfs',
+								'-x',
+								'overlay',
+								'-x',
+								'squashfs',
+								'-x',
+								'efivarfs'
+							])
+						),
+						Effect.flatMap(text => Ref.set(storage, text)),
+						Effect.ignore({log: 'Warn', message: 'The disk sizes were not read'})
+					)
 					const collect = pipe(
 						Effect.gen(function* () {
 							const time = yield* Clock.currentTimeMillis
@@ -77,22 +169,6 @@ export class Metrics extends Context.Service<
 									memory: fs.readFileString('/proc/meminfo'),
 									network: fs.readFileString('/proc/net/dev'),
 									stat: fs.readFileString('/proc/stat'),
-									storage: Effect.scoped(
-										execute('df', [
-											'-B1',
-											'--output=target,size,used',
-											'-x',
-											'tmpfs',
-											'-x',
-											'devtmpfs',
-											'-x',
-											'overlay',
-											'-x',
-											'squashfs',
-											'-x',
-											'efivarfs'
-										])
-									),
 									uptime: fs.readFileString('/proc/uptime')
 								},
 								{concurrency: 'unbounded'}
@@ -105,26 +181,25 @@ export class Metrics extends Context.Service<
 								Effect.flatMap(Schema.decodeEffect(Counters))
 							)
 							const old = Option.getOrUndefined(yield* Ref.get(previous))
-							// Apps' usage rides along, so the history can split memory and CPU by app; a slow /proc read only drops it.
-							const apps = yield* pipe(
-								processes,
-								Effect.provideService(FileSystem.FileSystem, fs),
-								Effect.flatMap(readings =>
-									Ref.modify(processState, last => {
-										const next = processReadings(readings, Option.getOrUndefined(last))
-										return [next.readings, Option.some(next)]
+							// Apps' usage rides along, so the history can split memory and CPU by app; a slow read only drops it.
+							const shares = yield* pipe(
+								apps,
+								Effect.timeout('1 second'),
+								Effect.flatMap(usage =>
+									Ref.modify(lastApps, last => {
+										const reading = {time, total: current.cpuTotal, usage}
+										return [appShares(reading, Option.getOrUndefined(last)), Option.some(reading)]
 									})
 								),
-								Effect.timeout('3 seconds'),
-								Effect.map(ownerUsage),
 								Effect.option
 							)
+							const disks = yield* Ref.get(storage)
 							const value = yield* pipe(
 								Effect.try({
 									catch: cause => DeployError.make({cause, message: 'The machine sample is unreadable.'}),
 									try: () => ({
-										...sample(current, files.memory, files.storage, old, files.load),
-										...Option.match(apps, {onNone: () => ({}), onSome: usage => ({apps: usage})})
+										...sample(current, files.memory, disks, old, files.load),
+										...Option.match(shares, {onNone: () => ({}), onSome: usage => ({apps: usage})})
 									})
 								}),
 								Effect.flatMap(Schema.decodeEffect(Sample))
@@ -135,20 +210,30 @@ export class Metrics extends Context.Service<
 							yield* Ref.set(state, samples)
 							const retained = HashSet.fromIterable(Array.map(samples, entry => entry.time))
 							const hour = Math.floor(time / 3_600_000)
+							// Each hour's file is rewritten on the next save: this one, and those whose samples merged or aged out.
+							yield* Ref.update(dirty, buckets =>
+								Array.dedupe([
+									...Array.filter(buckets, bucket => bucket >= hour - 168),
+									hour,
+									...Array.map(
+										Array.filter(
+											before,
+											entry => !HashSet.has(retained, entry.time) && entry.time >= time - 168 * 3_600_000
+										),
+										entry => Math.floor(entry.time / 3_600_000)
+									)
+								])
+							)
+							yield* Ref.set(collectError, '')
+						}),
+						Effect.catch(cause => Ref.set(collectError, `${cause}`))
+					)
+					const persist = pipe(
+						Effect.gen(function* () {
+							const time = yield* Clock.currentTimeMillis
+							const samples = yield* Ref.get(state)
 							yield* Effect.forEach(
-								yield* Ref.updateAndGet(dirty, buckets =>
-									Array.dedupe([
-										...Array.filter(buckets, bucket => bucket >= hour - 168),
-										hour,
-										...Array.map(
-											Array.filter(
-												before,
-												entry => !HashSet.has(retained, entry.time) && entry.time >= time - 168 * 3_600_000
-											),
-											entry => Math.floor(entry.time / 3_600_000)
-										)
-									])
-								),
+								yield* Ref.get(dirty),
 								bucket =>
 									pipe(
 										store.set(
@@ -165,25 +250,40 @@ export class Metrics extends Context.Service<
 									key =>
 										String.startsWith('metrics-')(key) &&
 										(String.endsWith('.tmp')(key) ||
-											Option.exists(Number.parse(String.slice(8)(key)), bucket => bucket < hour - 168))
+											Option.exists(
+												Number.parse(String.slice(8)(key)),
+												bucket => bucket < Math.floor(time / 3_600_000) - 168
+											))
 								),
 								key => base.remove(key),
 								{concurrency: 1, discard: true}
 							)
-							yield* Ref.set(error, '')
+							yield* Ref.set(persistError, '')
 						}),
-						Effect.catch(cause => Ref.set(error, `${cause}`))
+						Effect.catch(cause => Ref.set(persistError, `${cause}`))
 					)
+					yield* refreshStorage
 					yield* collect
-					yield* pipe(collect, Effect.schedule(Schedule.spaced('30 seconds')), Effect.forkScoped)
+					yield* persist
+					// Samples land every second and reach disk every 30 seconds and on shutdown, so a restart loses at most the seconds since.
+					yield* Effect.addFinalizer(() => persist)
+					yield* pipe(collect, Effect.schedule(Schedule.fixed('1 second')), Effect.forkScoped)
+					yield* pipe(
+						Effect.andThen(refreshStorage, persist),
+						Effect.schedule(Schedule.spaced('30 seconds')),
+						Effect.forkScoped
+					)
 					return Metrics.of({
 						read: Effect.fnUntraced(function* (query) {
 							const samples = yield* Ref.get(state)
 							const time = yield* Clock.currentTimeMillis
 							return MachineHistory.make({
 								cpuModel,
-								error: yield* Ref.get(error),
-								samples: history(samples, query.hours, time),
+								error: Array.join(
+									Array.filter([yield* Ref.get(collectError), yield* Ref.get(persistError)], String.isNonEmpty),
+									'\n'
+								),
+								samples: history(samples, query.minutes, time),
 								stale:
 									time -
 										Option.getOrElse(

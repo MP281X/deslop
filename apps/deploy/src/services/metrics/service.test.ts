@@ -1,7 +1,7 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Context, Deferred, Effect, FileSystem, Layer, PlatformError, Ref, Schema, String, pipe} from 'effect'
+import {Context, Effect, FileSystem, Layer, PlatformError, Ref, Schema, String, pipe} from 'effect'
 
 import {TestClock} from 'effect/testing'
 
@@ -17,7 +17,7 @@ it.layer(NodeServices.layer)('Resource history', test => {
 			const first = yield* Effect.scoped(
 				Effect.gen(function* () {
 					const metrics = Context.get(yield* Layer.build(Layer.fresh(layer)), Metrics)
-					return yield* metrics.read({hours: 1})
+					return yield* metrics.read({minutes: 60})
 				})
 			)
 			assert.strictEqual(first.error, '')
@@ -32,7 +32,7 @@ it.layer(NodeServices.layer)('Resource history', test => {
 			const second = yield* Effect.scoped(
 				Effect.gen(function* () {
 					const metrics = Context.get(yield* Layer.build(Layer.fresh(layer)), Metrics)
-					return yield* metrics.read({hours: 1})
+					return yield* metrics.read({minutes: 60})
 				})
 			)
 			assert.strictEqual(second.worker, first.worker)
@@ -49,7 +49,6 @@ it.layer(NodeServices.layer)('Resource history', test => {
 			const fs = yield* FileSystem.FileSystem
 			const directory = yield* fs.makeTempDirectoryScoped()
 			const failed = yield* Ref.make(false)
-			const persisted = yield* Deferred.make<void>()
 			const layer = pipe(
 				Metrics.layer(directory),
 				Layer.provide(
@@ -67,27 +66,26 @@ it.layer(NodeServices.layer)('Resource history', test => {
 									})
 								}
 								yield* fs.rename(from, to)
-								if (String.endsWith('/metrics-1')(to)) yield* Deferred.succeed(persisted, undefined)
 							})
 						})
 					)
 				)
 			)
 			yield* TestClock.setTime(3_590_000)
+			// The failed save is reported; seconds keep landing across the hour, and shutdown saves the bucket again.
 			const first = yield* Effect.scoped(
 				Effect.gen(function* () {
 					const metrics = Context.get(yield* Layer.build(Layer.fresh(layer)), Metrics)
-					const value = yield* metrics.read({hours: 1})
+					const value = yield* metrics.read({minutes: 60})
 					assert.isNotEmpty(value.error)
 					yield* TestClock.adjust('30 seconds')
-					yield* Deferred.await(persisted)
 					return value.samples[0]
 				})
 			)
 			const restored = yield* Effect.scoped(
 				Effect.gen(function* () {
 					const metrics = Context.get(yield* Layer.build(Layer.fresh(layer)), Metrics)
-					return yield* metrics.read({hours: 1})
+					return yield* metrics.read({minutes: 60})
 				})
 			)
 			assert.strictEqual(restored.error, '')
