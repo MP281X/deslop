@@ -36,6 +36,7 @@ import {
 	overview,
 	serviceName,
 	serviceStatuses,
+	spanName,
 	summary,
 	traceTiming,
 	traceView
@@ -74,8 +75,14 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		)
 		// Bumped when traces arrive or expire, so the live page recomputes only when its rows can change.
 		const version = yield* SubscriptionRef.make(0)
+		// Spans kept from an older release are named as new ones are, so an operation never splits across a release.
 		const state = yield* SynchronizedRef.make(
-			HashMap.fromIterable(Array.map(Array.getSomes(saved), entry => [entry.id, entry] as const))
+			HashMap.fromIterable(
+				Array.map(Array.getSomes(saved), entry => {
+					if (entry.signal === 'log') return [entry.id, entry] as const
+					return [entry.id, {...entry, name: spanName(entry.payload)}] as const
+				})
+			)
 		)
 		// A development debugger needs recent runs; older entries would only slow every start and query.
 		const prune = Effect.gen(function* () {
@@ -169,7 +176,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 							Array.map(scope.spans ?? [], span => ({
 								durationMs: durationMs(span.startTimeUnixNano, span.endTimeUnixNano ?? '0'),
 								id: `${String.toLowerCase(span.traceId)}:${String.toLowerCase(span.spanId)}`,
-								name: span.name ?? '',
+								name: spanName(span),
 								payload: span,
 								resource: group.resource ?? {},
 								resourceSchemaUrl: group.schemaUrl ?? '',

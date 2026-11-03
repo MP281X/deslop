@@ -11,7 +11,7 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/scope/lib/utils/Rp
 	protocol: WebRuntime.layerProtocol
 }) {}
 
-// Every app's operations and their newest traces, pushed again whenever a trace arrives.
+// Every app's operations and their slowest traces, pushed again whenever a trace arrives.
 export const overviewAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(
 		pipe(
@@ -33,8 +33,8 @@ export const arrivalsAtom = Atom.make(get => {
 	const result = get(overviewAtom)
 	const before = Option.flatMap(get.self<{arrived: string[]; seen: Option.Option<string[]>}>(), last => last.seen)
 	if (!AsyncResult.isSuccess(result)) return {arrived: Array.empty<string>(), seen: before}
-	const ids = Array.flatMap(result.value.services, service =>
-		Array.flatMap(service.operations, operation => Array.map(operation.traces, trace => trace.id))
+	const ids = Array.flatMap(result.value.apps, app =>
+		Array.flatMap(app.operations, operation => Array.map(operation.traces, trace => trace.id))
 	)
 	return {
 		arrived: Option.match(before, {onNone: () => Array.empty<string>(), onSome: seen => Array.difference(ids, seen)}),
@@ -63,19 +63,12 @@ export function ageOf(time: string, now: number) {
 	return `${Number.round(seconds / 86_400, 0)}d`
 }
 
-// "@deslop/stash-server" reads "stash", "@deslop/auth-client" "auth web", "@deslop/trips-ios" "trips iOS".
-export function serviceLabel(service: string) {
-	return pipe(
-		service,
-		String.replace(/^@deslop\//u, ''),
-		String.replace(/-server$/u, ''),
-		String.replace(/-client$/u, ' web'),
-		String.replace(/-ios$/u, ' iOS')
-	)
-}
-
-// "412 ms" or "2.8 s".
+// "412 ms", "2.8 s", "28 s", "48 min" or "1.2 h": short enough to keep to its column.
 export function durationOf(ms: number) {
-	if (ms < 1000) return `${Number.round(ms, 0)} ms`
-	return `${Number.round(ms / 1000, 1)} s`
+	// Each bound sits where rounding would reach the next unit, so 59.6 s reads 1 min, not 60 s.
+	if (ms < 999.5) return `${Number.round(ms, 0)} ms`
+	if (ms < 9950) return `${Number.round(ms / 1000, 1)} s`
+	if (ms < 59_500) return `${Number.round(ms / 1000, 0)} s`
+	if (ms < 3_570_000) return `${Number.round(ms / 60_000, 0)} min`
+	return `${Number.round(ms / 3_600_000, 1)} h`
 }

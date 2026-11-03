@@ -14,8 +14,8 @@ const SpanId = pipe(Schema.String, Schema.check(Schema.isPattern(/^[a-fA-F0-9]{1
 export type Nano = typeof Nano.Type
 export const Nano = pipe(Schema.String, Schema.check(Schema.isPattern(/^\d{1,20}$/u)))
 
-type Attribute = typeof Attribute.Type
-const Attribute = Schema.Struct({key: Schema.String, value: Schema.JsonObject})
+export type Attribute = typeof Attribute.Type
+export const Attribute = Schema.Struct({key: Schema.String, value: Schema.JsonObject})
 
 export type Resource = typeof Resource.Type
 export const Resource = Schema.StructWithRest(
@@ -220,7 +220,7 @@ export const TraceSummary = Schema.Struct({
 export type TracesPage = typeof TracesPage.Type
 export const TracesPage = Schema.Struct({entries: Schema.Array(TraceSummary), total: Schema.Int})
 
-// The live page: each app's operations with how often, how slow and how often they failed, and their newest traces.
+// The live page: each app's operations with how often they ran, how long they typically take and how often they failed, and their slowest traces.
 export type OperationTrace = typeof OperationTrace.Type
 export const OperationTrace = Schema.Struct({
 	durationMs: Schema.Finite,
@@ -230,19 +230,21 @@ export const OperationTrace = Schema.Struct({
 	time: Nano
 })
 
+// One operation as one side of the app started it: the same name from its web client and its server are two.
 export type Operation = typeof Operation.Type
 export const Operation = Schema.Struct({
 	count: Schema.Int,
 	failures: Schema.Int,
 	name: Schema.String,
 	p50Ms: Schema.Finite,
-	p95Ms: Schema.Finite,
+	runtime: Runtime,
 	traces: Schema.Array(OperationTrace)
 })
 
+// Each app with its server, web and iOS operations together, named as `appName` reads a service.
 export type Overview = typeof Overview.Type
 export const Overview = Schema.Struct({
-	services: Schema.Array(Schema.Struct({name: Schema.String, operations: Schema.Array(Operation)}))
+	apps: Schema.Array(Schema.Struct({name: Schema.String, operations: Schema.Array(Operation)}))
 })
 
 export type Stats = typeof Stats.Type

@@ -15,7 +15,7 @@ import {
 	pipe
 } from 'effect'
 
-import {Nano, Runtime} from '#services/telemetry/schema.ts'
+import {Attribute, Nano, Runtime} from '#services/telemetry/schema.ts'
 import type {
 	Entry,
 	Filters,
@@ -50,13 +50,35 @@ export function logTime(log: {observedTimeUnixNano?: string; timeUnixNano?: stri
 	)
 }
 
-function resourceString(resource: Resource, key: string) {
+function resourceString(resource: {readonly attributes?: readonly Attribute[]}, key: string) {
 	return pipe(
 		resource.attributes ?? [],
 		Array.findFirst(attribute => attribute.key === key),
 		Option.flatMap(attribute => Option.liftPredicate(attribute.value['stringValue'], String.isString)),
 		Option.getOrElse(() => '')
 	)
+}
+
+// Effect names an HTTP span by its method alone: its route, or a client's path, says which request it was; unrouted server hits, mostly scanners, share one name.
+export function spanName(span: Schema.JsonObject) {
+	const name = Option.getOrElse(Option.liftPredicate(span['name'], String.isString), () => '')
+	const attributes = {
+		attributes: Option.getOrElse(Schema.decodeUnknownOption(Schema.Array(Attribute))(span['attributes']), () => [])
+	}
+	if (name === '' || name !== resourceString(attributes, 'http.request.method')) return name
+	const route = resourceString(attributes, 'http.route')
+	if (String.isNonEmpty(route)) return `${name} ${route}`
+	// OTLP's SpanKind 2 is a server answering a request.
+	if (span['kind'] === 2) return `${name} (no route)`
+	return pipe(
+		Option.liftPredicate(resourceString(attributes, 'url.path'), String.isNonEmpty),
+		Option.match({onNone: () => name, onSome: path => `${name} ${path}`})
+	)
+}
+
+// The app a service belongs to: "@deslop/stash-server", "@deslop/stash-client" and "@deslop/stash-ios" are all "stash".
+export function appName(service: string) {
+	return pipe(service, String.replace(/^@deslop\//u, ''), String.replace(/-(?:server|client|ios)$/u, ''))
 }
 
 function runtime(resource: Resource) {
@@ -296,8 +318,8 @@ function rootOf(spans: Array.NonEmptyReadonlyArray<Entry>) {
 	)
 }
 
-// A kept trace as the operation it ran and the app that ran it.
-type Traced = {name: string; service: string; trace: OperationTrace}
+// A kept trace as the operation it ran, and the app and side (server, web or iOS) that started it.
+type Traced = {app: string; name: string; runtime: Runtime; trace: OperationTrace}
 
 function failureCount(group: readonly Traced[]) {
 	return Array.countBy(group, item => item.trace.failure !== undefined)
@@ -335,8 +357,9 @@ function traced(records: readonly Entry[], now: number) {
 			if (!settled) return Option.none()
 			const root = rootOf(spans)
 			return Option.some({
+				app: appName(root.service),
 				name: root.name,
-				service: root.service,
+				runtime: runtime(root.resource),
 				trace: {
 					durationMs: timing.durationMs,
 					...Option.match(brokeAt(spans), {
@@ -362,23 +385,20 @@ function traced(records: readonly Entry[], now: number) {
 	)
 }
 
-// One app's operations: how often, how slow and how often they failed, with the newest `keep` traces; failures lead, then the busiest.
+// One app's operations, each from one side: how often, how long they typically take and how often they failed, with the slowest `keep` traces; failures lead, then the busiest.
 function operationsOf(group: readonly Traced[], keep: number) {
 	return Array.sort(
-		Array.map(Record.toEntries(Array.groupBy(group, item => item.name)), entry => {
+		Array.map(Record.toEntries(Array.groupBy(group, item => `${item.runtime} ${item.name}`)), entry => {
 			const times = Array.sort(
 				Array.map(entry[1], item => item.trace.durationMs),
 				Order.Number
 			)
-			function percentile(ratio: number) {
-				return Option.getOrElse(Array.get(times, Number.max(0, Math.ceil(times.length * ratio) - 1)), () => 0)
-			}
 			return {
 				count: entry[1].length,
 				failures: failureCount(entry[1]),
-				name: entry[0],
-				p50Ms: percentile(0.5),
-				p95Ms: percentile(0.95),
+				name: Array.headNonEmpty(entry[1]).name,
+				p50Ms: Option.getOrElse(Array.get(times, Number.max(0, Math.ceil(times.length / 2) - 1)), () => 0),
+				runtime: Array.headNonEmpty(entry[1]).runtime,
 				// The slowest first, with the newest failures always among them, since those are the traces worth opening.
 				traces: Array.map(
 					Array.sort(
@@ -414,10 +434,10 @@ function operationsOf(group: readonly Traced[], keep: number) {
 	)
 }
 
-// Every kept trace grouped by app and operation; apps with failures lead, then the busiest.
+// Every kept trace grouped by the app that started it and its operation; apps with failures lead, then the busiest.
 export function overview(entries: readonly Entry[], keep: number, now: number) {
 	return {
-		services: Array.map(
+		apps: Array.map(
 			Array.sort(
 				Record.toEntries(
 					Array.groupBy(
@@ -432,7 +452,7 @@ export function overview(entries: readonly Entry[], keep: number, now: number) {
 								records => traced(records, now)
 							)
 						),
-						item => item.service
+						item => item.app
 					)
 				),
 				Order.combine(
