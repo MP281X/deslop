@@ -202,7 +202,7 @@ export class Inventory extends Context.Service<
 								'show',
 								...failed,
 								'-p',
-								'Id,Result,ExecMainStatus,StateChangeTimestamp',
+								'Id,Result,ExecMainCode,ExecMainStatus,StateChangeTimestamp',
 								'--timestamp=unix'
 							]),
 							Effect.map(unitFailures),

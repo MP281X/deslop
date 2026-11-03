@@ -202,16 +202,32 @@ it('averages a merged bucket so a short spike still counts, and merges each buck
 	assert.strictEqual(history(seconds, 60, 19_000)[0]?.cpu, 14)
 })
 
+it('weights each sample by the time it covers, across a clock jump and a slot where spacings meet', () => {
+	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '', '', '100 0', 0), MEMORY, STORAGE)
+	// Ten idle seconds, then ten busy ones already merged into one sample, all in one minute that a sleep left behind.
+	const mixed = [
+		...Array.makeBy(10, index => ({...value, cpu: 0, time: (index + 1) * 1000})),
+		{...value, cpu: 100, since: 11_000, time: 20_000}
+	]
+	assert.strictEqual(compact(mixed, 700_000)[0]?.cpu, 50)
+	assert.strictEqual(history(mixed, 60, 20_000)[0]?.cpu, 50)
+})
+
 it("reads apps from their own cgroups: services, containers and the slice a user's service starts its children in", () => {
 	const manager = '/user.slice/user-1000.slice/user@1000.service'
-	assert.isTrue(appCgroup(`${manager}/app.slice/t3code.service`))
-	assert.isTrue(appCgroup(`${manager}/app.slice/app-t3code.slice`))
-	assert.isTrue(appCgroup('/system.slice/docker-abcdef123456789.scope'))
-	assert.isTrue(appCgroup('/system.slice/tailscaled.service'))
-	assert.isFalse(appCgroup(manager))
-	assert.isFalse(appCgroup(`${manager}/app.slice/app-t3code.slice/app-t3code-agents.slice`))
-	assert.isFalse(appCgroup(`${manager}/app.slice/app-org.chromium.Chromium-1.scope`))
-	assert.isFalse(appCgroup('/system.slice/app-other.slice'))
+	const apps = ['app-t3code.slice', 't3code.service', 'app-foo.slice', 'foo@1.service']
+	assert.isTrue(appCgroup(`${manager}/app.slice/t3code.service`, apps))
+	assert.isTrue(appCgroup(`${manager}/app.slice/app-t3code.slice`, apps))
+	assert.isTrue(appCgroup('/system.slice/docker-abcdef123456789.scope', []))
+	assert.isTrue(appCgroup('/system.slice/tailscaled.service', []))
+	assert.isFalse(appCgroup(manager, []))
+	// A template's instances share `app-foo.slice` with no `foo.service` beside it, so the walk goes on into it.
+	assert.isFalse(appCgroup(`${manager}/app.slice/app-foo.slice`, apps))
+	assert.isFalse(
+		appCgroup(`${manager}/app.slice/app-t3code.slice/app-t3code-agents.slice`, ['app-t3code-agents.slice'])
+	)
+	assert.isFalse(appCgroup(`${manager}/app.slice/app-org.chromium.Chromium-1.scope`, apps))
+	assert.isFalse(appCgroup('/system.slice/app-other.slice', ['other.service']))
 	assert.deepStrictEqual(
 		cgroupUsage(
 			'usage_usec 5000000\nuser_usec 4000000\n',
@@ -221,19 +237,38 @@ it("reads apps from their own cgroups: services, containers and the slice a user
 	)
 })
 
-it("measures an app's CPU from its cgroup's time as a share of the machine, and leaves restarts and gaps unmeasured", () => {
-	const previous = {time: 0, total: 1000, usage: {'service:user:a.service': {memory: 2 * 1024 ** 2, usage: 1_000_000}}}
+it("measures an app's CPU from its cgroups' time as a share of the machine, each cgroup apart, and leaves gaps unmeasured", () => {
+	const service = '/app.slice/a.service'
+	const slice = '/app.slice/app-a.slice'
+	const previous = {
+		cgroups: {
+			[service]: {id: 'service:user:a.service', memory: 1024 ** 2, usage: 1_000_000},
+			[slice]: {id: 'service:user:a.service', memory: 1024 ** 2, usage: 500_000}
+		},
+		time: 0,
+		total: 1000
+	}
 	const current = {
+		cgroups: {
+			[service]: {id: 'service:user:a.service', memory: 1024 ** 2 + 100, usage: 2_000_000},
+			[slice]: {id: 'service:user:a.service', memory: 1024 ** 2, usage: 1_500_000}
+		},
 		time: 1000,
-		total: 1800,
-		usage: {'service:user:a.service': {memory: 2 * 1024 ** 2 + 100, usage: 3_000_000}}
+		total: 1800
 	}
 	// Two seconds of CPU time over the machine's eight seconds of ticks is a quarter of it.
 	assert.deepStrictEqual(appShares(current, previous), [{cpu: 25, id: 'service:user:a.service', memory: 2 * 1024 ** 2}])
 	assert.deepStrictEqual(appShares(current), [{id: 'service:user:a.service', memory: 2 * 1024 ** 2}])
 	assert.isUndefined(appShares({...current, time: 100_000}, previous)[0]?.cpu)
-	assert.isUndefined(
-		appShares({...current, usage: {'service:user:a.service': {memory: 2 * 1024 ** 2, usage: 10}}}, previous)[0]?.cpu
+	// The service restarted, so its counter began again: the slice still measures.
+	assert.strictEqual(
+		appShares(
+			{...current, cgroups: {...current.cgroups, [service]: {...current.cgroups[service], usage: 10}}},
+			previous
+		)[0]?.cpu,
+		12.5
 	)
-	assert.isEmpty(appShares({...current, usage: {'service:user:tiny.service': {memory: 1024, usage: 0}}}, previous))
+	assert.isEmpty(
+		appShares({...current, cgroups: {[service]: {id: 'service:user:tiny.service', memory: 1024, usage: 0}}}, previous)
+	)
 })

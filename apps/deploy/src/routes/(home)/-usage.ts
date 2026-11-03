@@ -80,7 +80,7 @@ export function bands(history: MachineHistory) {
 	] satisfies Band[]
 }
 
-// Each sample's place on the range's 0–100 time axis, split where the recording misses more than one slot or a sample lacks the reading, so a gap stays blank; one slot a sample's timing skipped doesn't break the line.
+// Each sample's place on the range's 0–100 time axis, split where the recording misses a slot, give or take a second of sampling, or a sample lacks the reading, so a gap stays blank.
 export function runs(history: MachineHistory, minutes: number, recorded: (sample: Sample) => boolean) {
 	const window = chartWindow(minutes, history.time)
 	return Array.match(
@@ -88,7 +88,7 @@ export function runs(history: MachineHistory, minutes: number, recorded: (sample
 			Array.mapAccum(history.samples, {run: 0, time: -Infinity}, (last, sample, index) => {
 				const run =
 					last.run +
-					Boolean.match(sample.time - last.time > resolution(minutes) * 2.5 || !recorded(sample), {
+					Boolean.match(sample.time - last.time > resolution(minutes) * 1.5 + 1000 || !recorded(sample), {
 						onFalse: () => 0,
 						onTrue: () => 1
 					})

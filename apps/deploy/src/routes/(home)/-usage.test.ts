@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Option} from 'effect'
+import {Array, Function, Option} from 'effect'
 
 import {bands, runs} from '#routes/(home)/-usage.ts'
 import type {MachineHistory, Sample} from '#services/metrics/schema.ts'
@@ -61,14 +61,13 @@ it('stacks every recorded app heaviest first, stopped ones too, then the small o
 	assert.strictEqual(result[4]?.cpu[0], 5)
 })
 
-it('breaks the time axis where the recording misses slots or a sample lacks the reading', () => {
+it('breaks the time axis where the recording misses a slot or a sample lacks the reading', () => {
 	const hour = 3_600_000
 	const result = runs(
 		machine([
-			sample(hour - 480_000, []),
-			sample(hour - 420_000, []),
-			// One slot a sample's timing skipped keeps the line; three missed slots break it.
 			sample(hour - 300_000, []),
+			sample(hour - 240_000, []),
+			// Two minutes apart is a missed minute on the hour's chart.
 			sample(hour - 120_000, []),
 			{...sample(hour - 60_000, []), cpu: undefined},
 			sample(hour, [])
@@ -78,7 +77,9 @@ it('breaks the time axis where the recording misses slots or a sample lacks the 
 	)
 	assert.deepStrictEqual(
 		Array.map(result, run => Array.map(run, point => point.index)),
-		[[0, 1, 2], [3], [5]]
+		[[0, 1], [2], [4]]
 	)
 	assert.isTrue(Array.every(Array.flatten(result), point => point.x >= 0 && point.x <= 100))
+	// A second sample that lands late by its sampling skips no slot on the minute's chart.
+	assert.lengthOf(runs(machine([sample(57_000, []), sample(58_000, []), sample(59_900, [])]), 1, Function.constTrue), 1)
 })

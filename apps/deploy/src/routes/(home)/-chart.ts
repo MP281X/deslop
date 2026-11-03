@@ -3,7 +3,7 @@ import {Array, DateTime} from 'effect'
 import {chartWindow} from '#services/metrics/lib/utils.ts'
 import type {HistoryQuery} from '#services/metrics/schema.ts'
 
-// Within an hour, ticks every 15 seconds, 2 minutes or 15 minutes, which every time zone's offset divides.
+// Within an hour, ticks every 15 seconds, 2 minutes or 15 minutes from the epoch, which land on round local times wherever the step divides the zone's offset: everywhere but 2 minutes in zones 45 minutes off the hour.
 const STEPS: Record<number, number> = {1: 15_000, 10: 120_000, 60: 900_000}
 
 // The page's ranges, shortest first.

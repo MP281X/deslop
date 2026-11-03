@@ -68,7 +68,8 @@ function ports(items: readonly InventoryItem[]) {
 	)
 }
 
-function failureReason(result: string, status: number) {
+function failureReason(result: string, status: number, ran: boolean) {
+	if (result === 'exit-code' && !ran) return 'Failed before starting'
 	const signal = SIGNALS[status] ?? `signal ${status}`
 	return pipe(
 		Match.value(result),
@@ -88,7 +89,7 @@ function failureReason(result: string, status: number) {
 	)
 }
 
-// Why each failed unit stopped and when, by unit, from `systemctl show -p Id,Result,ExecMainStatus,StateChangeTimestamp --timestamp=unix`.
+// Why each failed unit stopped and when, by unit, from `systemctl show -p Id,Result,ExecMainCode,ExecMainStatus,StateChangeTimestamp --timestamp=unix`.
 export function unitFailures(text: string) {
 	return Record.fromEntries(
 		Array.map(Array.filter(String.split(String.trim(text), /\n\s*\n/u), String.isNonEmpty), block => {
@@ -105,9 +106,11 @@ export function unitFailures(text: string) {
 						onNone: () => ({}),
 						onSome: seconds => ({at: seconds * 1000})
 					}),
+					// A unit whose start step failed never ran its main process, which leaves its code 0.
 					reason: failureReason(
 						fields['Result'] ?? '',
-						Option.getOrElse(Number.parse(fields['ExecMainStatus'] ?? ''), () => 0)
+						Option.getOrElse(Number.parse(fields['ExecMainStatus'] ?? ''), () => 0),
+						fields['ExecMainCode'] !== '0'
 					)
 				}
 			] as const

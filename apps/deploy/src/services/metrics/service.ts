@@ -4,6 +4,7 @@ import {
 	Context,
 	Effect,
 	FileSystem,
+	Function,
 	HashSet,
 	Layer,
 	Number,
@@ -79,7 +80,8 @@ export class Metrics extends Context.Service<
 						const done = yield* Effect.repeat(
 							Effect.gen(function* () {
 								const level = yield* Ref.get(walk)
-								const children = Array.flatten(
+								// Each opened cgroup's children, judged beside their siblings.
+								const children = Array.flatMap(
 									Array.getSomes(
 										yield* Effect.forEach(
 											level.pending,
@@ -90,20 +92,30 @@ export class Metrics extends Context.Service<
 															Array.filter(names, name =>
 																Option.isSome(String.match(/\.(?:slice|scope|service)$/u)(name))
 															),
-															name => `${path}/${name}`
+															name => ({app: appCgroup(`${path}/${name}`, names), path: `${path}/${name}`})
 														)
 													)
 												),
 											{concurrency: 'unbounded'}
 										)
-									)
+									),
+									Function.identity
 								)
 								const next = {
-									found: [...level.found, ...Array.filter(children, appCgroup)],
-									pending: Array.filter(
-										children,
-										child =>
-											!appCgroup(child) && Option.isSome(String.match(/(?:\.slice|\/user@[0-9]+\.service)$/u)(child))
+									found: [
+										...level.found,
+										...Array.map(
+											Array.filter(children, child => child.app),
+											child => child.path
+										)
+									],
+									pending: Array.map(
+										Array.filter(
+											children,
+											child =>
+												!child.app && Option.isSome(String.match(/(?:\.slice|\/user@[0-9]+\.service)$/u)(child.path))
+										),
+										child => child.path
 									)
 								}
 								yield* Ref.set(walk, next)
@@ -113,7 +125,7 @@ export class Metrics extends Context.Service<
 						)
 						return done.found
 					})
-					// Each app's memory and CPU time from its cgroups, which count processes that came and went between samples.
+					// Each app cgroup's memory and CPU time, which count processes that came and went between samples.
 					const apps = Effect.gen(function* () {
 						const readings = yield* Effect.forEach(
 							yield* appCgroups,
@@ -126,18 +138,14 @@ export class Metrics extends Context.Service<
 										},
 										{concurrency: 'unbounded'}
 									),
-									Effect.map(stats => ({id: processOwner(path), ...cgroupUsage(stats.cpu, stats.memory)})),
+									Effect.map(
+										stats => [path, {id: processOwner(path), ...cgroupUsage(stats.cpu, stats.memory)}] as const
+									),
 									Effect.option
 								),
 							{concurrency: 8}
 						)
-						return Record.map(
-							Array.groupBy(Array.getSomes(readings), reading => reading.id),
-							group => ({
-								memory: Array.reduce(group, 0, (sum, reading) => sum + reading.memory),
-								usage: Array.reduce(group, 0, (sum, reading) => sum + reading.usage)
-							})
-						)
+						return Record.fromEntries(Array.getSomes(readings))
 					})
 					const refreshStorage = pipe(
 						Effect.scoped(
@@ -187,7 +195,7 @@ export class Metrics extends Context.Service<
 								Effect.timeout('1 second'),
 								Effect.flatMap(usage =>
 									Ref.modify(lastApps, last => {
-										const reading = {time, total: current.cpuTotal, usage}
+										const reading = {cgroups: usage, time, total: current.cpuTotal}
 										return [appShares(reading, Option.getOrUndefined(last)), Option.some(reading)]
 									})
 								),
@@ -231,18 +239,20 @@ export class Metrics extends Context.Service<
 					const persist = pipe(
 						Effect.gen(function* () {
 							const time = yield* Clock.currentTimeMillis
+							// The hours to write are taken before the samples, so one a merge dirties meanwhile waits for the next save; a failed or interrupted save puts them back.
+							const buckets = yield* Ref.getAndSet(dirty, [])
 							const samples = yield* Ref.get(state)
-							yield* Effect.forEach(
-								yield* Ref.get(dirty),
-								bucket =>
-									pipe(
+							yield* pipe(
+								Effect.forEach(
+									buckets,
+									bucket =>
 										store.set(
 											`metrics-${bucket}`,
 											Array.filter(samples, entry => Math.floor(entry.time / 3_600_000) === bucket)
 										),
-										Effect.andThen(Ref.update(dirty, buckets => Array.filter(buckets, pending => pending !== bucket)))
-									),
-								{concurrency: 1, discard: true}
+									{concurrency: 1, discard: true}
+								),
+								Effect.onError(() => Ref.update(dirty, pending => Array.dedupe([...pending, ...buckets])))
 							)
 							yield* Effect.forEach(
 								Array.filter(

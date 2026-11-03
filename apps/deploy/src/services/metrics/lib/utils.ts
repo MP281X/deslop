@@ -168,50 +168,61 @@ export function chartWindow(minutes: number, now: number) {
 	return {end, start: end - minutes * 60_000}
 }
 
-// The average of the readings a bucket has, skipping its missing ones.
-function mean(values: readonly unknown[]) {
-	const known = Array.filter(values, Predicate.isNumber)
+// The readings of a bucket's samples averaged over the time each covers, skipping missing ones: a merged point counts for its span, a second point for its second.
+function mean(bucket: readonly Sample[], read: (point: Sample) => unknown) {
+	const known = Array.getSomes(
+		Array.map(bucket, point =>
+			Option.map(Option.liftPredicate(read(point), Predicate.isNumber), value => ({
+				value,
+				weight: point.time - (point.since ?? point.time) + 1000
+			}))
+		)
+	)
 	if (Array.isReadonlyArrayEmpty(known)) return
-	return Array.reduce(known, 0, (sum, value) => sum + value) / known.length
+	return (
+		Array.reduce(known, 0, (sum, entry) => sum + entry.value * entry.weight) /
+		Array.reduce(known, 0, (sum, entry) => sum + entry.weight)
+	)
+}
+
+function appEntry(point: Sample, id: string) {
+	return Array.findFirst(point.apps ?? [], app => app.id === id)
 }
 
 // A bucket's samples as one point: its use averaged over the bucket, so a short spike still counts; sizes, totals and disks from the latest.
 function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 	if (bucket.length === 1) return bucket[0]
 	const reported = Array.filter(bucket, value => value.apps !== undefined)
-	const entries = Array.map(reported, value => Record.fromEntries(Array.map(value.apps ?? [], app => [app.id, app])))
 	const last = Array.lastNonEmpty(bucket)
 	return {
 		...last,
-		// An app missing from a sample that reported apps used nothing then; one just started has no CPU reading yet.
+		// An app missing from a point that reported apps used nothing then; one just started has no CPU reading yet.
 		apps: Array.match(reported, {
 			onEmpty: () => undefined,
 			onNonEmpty: () =>
 				Array.map(Array.dedupe(Array.flatMap(reported, value => Array.map(value.apps ?? [], app => app.id))), id => ({
-					cpu: mean(
-						Array.map(entries, apps =>
-							Option.match(Option.fromUndefinedOr(apps[id]), {onNone: () => 0, onSome: app => app.cpu})
-						)
-					),
+					cpu: mean(reported, point => Option.match(appEntry(point, id), {onNone: () => 0, onSome: app => app.cpu})),
 					id,
-					memory: Number.round(mean(Array.map(entries, apps => apps[id]?.memory ?? 0)) ?? 0, 0)
+					memory: Number.round(
+						mean(reported, point => Option.match(appEntry(point, id), {onNone: () => 0, onSome: app => app.memory})) ??
+							0,
+						0
+					)
 				}))
 		}),
 		cores: Array.map(last.cores ?? [], core => ({
 			id: core.id,
 			usage: mean(
-				Array.map(
-					bucket,
-					value => Option.getOrUndefined(Array.findFirst(value.cores ?? [], entry => entry.id === core.id))?.usage
-				)
+				bucket,
+				point => Option.getOrUndefined(Array.findFirst(point.cores ?? [], entry => entry.id === core.id))?.usage
 			)
 		})),
-		cpu: mean(Array.map(bucket, value => value.cpu)),
-		diskRead: mean(Array.map(bucket, value => value.diskRead)),
-		diskWrite: mean(Array.map(bucket, value => value.diskWrite)),
-		memoryUsed: mean(Array.map(bucket, value => value.memoryUsed)) ?? last.memoryUsed,
-		networkReceive: mean(Array.map(bucket, value => value.networkReceive)),
-		networkSend: mean(Array.map(bucket, value => value.networkSend)),
+		cpu: mean(bucket, point => point.cpu),
+		diskRead: mean(bucket, point => point.diskRead),
+		diskWrite: mean(bucket, point => point.diskWrite),
+		memoryUsed: mean(bucket, point => point.memoryUsed) ?? last.memoryUsed,
+		networkReceive: mean(bucket, point => point.networkReceive),
+		networkSend: mean(bucket, point => point.networkSend),
 		since: bucket[0].since ?? bucket[0].time
 	} satisfies Sample
 }
@@ -221,7 +232,7 @@ export function compact(samples: readonly Sample[], now: number) {
 		samples,
 		Array.filter(value => value.time >= now - 168 * 3_600_000),
 		Array.groupBy(value => {
-			// The coarsest spacing whose whole bucket is past what the finer one keeps, so a bucket merges once, complete, and never reweights.
+			// The coarsest spacing whose whole bucket is past what the finer one keeps, so a bucket merges once it's complete.
 			const tier = Option.getOrElse(
 				Array.findLast(
 					TIERS,
@@ -296,12 +307,14 @@ export function compactHistory(machine: MachineHistory, minutes: number) {
 	}
 }
 
-// A cgroup whose whole subtree is one app: a service other than a user manager, a Docker container's scope, or a slice a user manager names `app-<service>.slice` for that service's children, like T3 Code's agents.
-export function appCgroup(path: string) {
+// A cgroup whose whole subtree is one app: a service other than a user manager, a Docker container's scope, or the slice a user manager names `app-<name>.slice` for what its sibling `<name>.service` starts, like T3 Code's agents; a template's instances share such a slice without that sibling, so it's walked into.
+export function appCgroup(path: string, siblings: readonly string[]) {
 	const name = Option.getOrElse(Array.last(String.split(path, '/')), () => '')
 	if (Option.isSome(String.match(/^docker-[a-f0-9]{12,64}\.scope$/u)(name))) return true
 	if (String.endsWith('.service')(name)) return Option.isNone(String.match(/^user@[0-9]+\.service$/u)(name))
-	return Option.isSome(String.match(/\/user@[0-9]+\.service\/app\.slice\/app-[^/]+\.slice$/u)(path))
+	return Option.exists(String.match(/\/user@[0-9]+\.service\/app\.slice\/app-([^/]+)\.slice$/u)(path), match =>
+		Array.contains(siblings, `${match[1]}.service`)
+	)
 }
 
 function statField(text: string, name: string) {
@@ -322,30 +335,49 @@ export function cgroupUsage(cpuStat: string, memoryStat: string) {
 	}
 }
 
-export type AppReading = {time: number; total: number; usage: Record<string, {memory: number; usage: number}>}
+export type AppReading = {
+	cgroups: Record<string, {id: string; memory: number; usage: number}>
+	time: number
+	total: number
+}
 
-// Each app holding at least 1 MiB, with its CPU since the previous reading as a share of the whole machine; `total` counts the machine's CPU time in /proc/stat's 10 ms ticks.
+// Each app holding at least 1 MiB, with its CPU since the previous reading as a share of the whole machine, measured per cgroup so one that restarted or appeared doesn't hide the others; `total` counts the machine's CPU time in /proc/stat's 10 ms ticks.
 export function appShares(current: AppReading, previous?: AppReading) {
 	const elapsed = current.total - (previous?.total ?? current.total)
+	const measured = elapsed > 0 && current.time - (previous?.time ?? 0) <= 90_000
 	return Array.map(
-		Array.filter(Record.toEntries(current.usage), entry => entry[1].memory >= 1024 ** 2),
+		Array.filter(
+			Record.toEntries(Array.groupBy(Record.toEntries(current.cgroups), entry => entry[1].id)),
+			entry => Array.reduce(entry[1], 0, (sum, cgroup) => sum + cgroup[1].memory) >= 1024 ** 2
+		),
 		entry => {
-			const [id, value] = entry
-			const cpu = Option.map(
-				Option.filter(
-					Option.fromUndefinedOr(previous?.usage[id]),
-					old => elapsed > 0 && value.usage >= old.usage && current.time - (previous?.time ?? 0) <= 90_000
-				),
-				old =>
-					Number.round(
-						Number.clamp(((value.usage - old.usage) / 10_000 / elapsed) * 100, {maximum: 100, minimum: 0}),
-						2
+			const [id, cgroups] = entry
+			const deltas = Array.getSomes(
+				Array.map(cgroups, cgroup =>
+					Option.map(
+						Option.filter(
+							Option.fromUndefinedOr(previous?.cgroups[cgroup[0]]),
+							old => measured && cgroup[1].usage >= old.usage
+						),
+						old => cgroup[1].usage - old.usage
 					)
+				)
 			)
 			return {
-				...Option.match(cpu, {onNone: () => ({}), onSome: share => ({cpu: share})}),
+				...Array.match(deltas, {
+					onEmpty: () => ({}),
+					onNonEmpty: () => ({
+						cpu: Number.round(
+							Number.clamp((Array.reduce(deltas, 0, (sum, delta) => sum + delta) / 10_000 / elapsed) * 100, {
+								maximum: 100,
+								minimum: 0
+							}),
+							2
+						)
+					})
+				}),
 				id,
-				memory: Number.round(value.memory / 1024, 0) * 1024
+				memory: Number.round(Array.reduce(cgroups, 0, (sum, cgroup) => sum + cgroup[1].memory) / 1024, 0) * 1024
 			}
 		}
 	)
