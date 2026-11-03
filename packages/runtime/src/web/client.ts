@@ -54,7 +54,7 @@ export function layer(applicationName: string) {
 					const response = yield* (yield* HttpClient.HttpClient).get('/api/runtime')
 					const config = yield* HttpClientResponse.schemaBodyJson(RuntimeConfig)(response)
 					if (config.traces === '') return Layer.empty
-					return layerOtlp(`${applicationName}-client`, config.traces, 'web')
+					return layerOtlp(`${applicationName}-client`, config.traces, 'web', config.version)
 				})
 			),
 			Layer.provide(FetchHttpClient.layer)

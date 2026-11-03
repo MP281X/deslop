@@ -28,6 +28,11 @@ import type {
 	Trace
 } from '#services/telemetry/schema.ts'
 
+// Releases compare part by part as numbers, so 0.1.1235 is newer than 0.1.999.
+const byRelease = Order.mapInput(Order.Array(Order.Number), (version: string) =>
+	Array.map(String.split(version, '.'), part => Option.getOrElse(Number.parse(part), () => 0))
+)
+
 // Filters as a query over the window ending now; stats ignores the page and order these defaults fill.
 export function queryOf(filters: Filters & Partial<Pick<Query, 'limit' | 'offset' | 'sort'>>, now: number) {
 	return {
@@ -73,6 +78,48 @@ export function spanName(span: Schema.JsonObject) {
 	return pipe(
 		Option.liftPredicate(resourceString(attributes, 'url.path'), String.isNonEmpty),
 		Option.match({onNone: () => name, onSome: path => `${name} ${path}`})
+	)
+}
+
+// The release that sent an entry, such as "0.1.1235"; empty for a local build or an app that names none.
+function versionOf(entry: Entry) {
+	return resourceString(entry.resource, 'service.version')
+}
+
+// A version Scope can order, numbers joined by dots such as "0.1.1235"; OTel leaves `service.version` free text, so "1.2.0-rc.1" or a commit hash is never older than anything.
+function releaseOf(entry: Entry) {
+	return Option.getOrElse(
+		Option.liftPredicate(versionOf(entry), version => Option.isSome(String.match(/^\d+(?:\.\d+)*$/u)(version))),
+		() => ''
+	)
+}
+
+// Each service's newest release among the entries and those already known.
+export function newestVersions(entries: readonly Entry[], known: Record<string, string>) {
+	const versioned = Array.filter(
+		Array.map(entries, entry => ({service: entry.service, version: releaseOf(entry)})),
+		item => item.version !== ''
+	)
+	return Record.union(
+		known,
+		Record.map(
+			Array.groupBy(versioned, item => item.service),
+			group =>
+				Array.max(
+					Array.map(group, item => item.version),
+					byRelease
+				)
+		),
+		Order.max(byRelease)
+	)
+}
+
+// An entry an older release of its service sent; one that names no release is never older.
+export function superseded(entry: Entry, newest: Record<string, string>) {
+	const version = releaseOf(entry)
+	return (
+		version !== '' &&
+		Option.exists(Record.get(newest, entry.service), latest => Order.isLessThan(byRelease)(version, latest))
 	)
 }
 
@@ -225,7 +272,8 @@ export function serviceStatuses(entries: Entry[]) {
 				}),
 				name,
 				runStartedAt: `${run}`,
-				runtime: runtime(latest.resource)
+				runtime: runtime(latest.resource),
+				version: versionOf(latest)
 			}
 		}
 	)
@@ -318,8 +366,8 @@ function rootOf(spans: Array.NonEmptyReadonlyArray<Entry>) {
 	)
 }
 
-// A kept trace as the operation it ran, and the app and side (server, web or iOS) that started it.
-type Traced = {app: string; name: string; runtime: Runtime; trace: OperationTrace}
+// A kept trace as the operation it ran, and the app, side (server, web or iOS) and release that started it.
+type Traced = {app: string; name: string; runtime: Runtime; trace: OperationTrace; version: string}
 
 function failureCount(group: readonly Traced[]) {
 	return Array.countBy(group, item => item.trace.failure !== undefined)
@@ -379,7 +427,8 @@ function traced(records: readonly Entry[], now: number) {
 					}),
 					id: root.traceId,
 					time: timing.time
-				}
+				},
+				version: versionOf(root)
 			} satisfies Traced)
 		}
 	)
@@ -434,12 +483,12 @@ function operationsOf(group: readonly Traced[], keep: number) {
 	)
 }
 
-// Every kept trace grouped by the app that started it and its operation; apps with failures lead, then the busiest.
+// Every kept trace grouped by the app that started it and its operation, with the release each side runs; apps with failures lead, then the busiest.
 export function overview(entries: readonly Entry[], keep: number, now: number) {
 	return {
 		apps: Array.map(
 			Array.sort(
-				Record.toEntries(
+				Record.values(
 					Array.groupBy(
 						Array.getSomes(
 							Array.map(
@@ -456,11 +505,27 @@ export function overview(entries: readonly Entry[], keep: number, now: number) {
 					)
 				),
 				Order.combine(
-					Order.mapInput(Order.flip(Order.Number), (entry: readonly [string, Traced[]]) => failureCount(entry[1])),
-					Order.mapInput(Order.flip(Order.Number), (entry: readonly [string, Traced[]]) => entry[1].length)
+					Order.mapInput(Order.flip(Order.Number), (group: readonly Traced[]) => failureCount(group)),
+					Order.mapInput(Order.flip(Order.Number), (group: readonly Traced[]) => group.length)
 				)
 			),
-			entry => ({name: entry[0], operations: operationsOf(entry[1], keep)})
+			group => ({
+				name: Array.headNonEmpty(group).app,
+				operations: operationsOf(group, keep),
+				// Server and web ship together, an iOS app on its own, so an app can run more than one release at once.
+				versions: Array.sort(
+					Array.map(
+						Record.toEntries(
+							Array.groupBy(
+								Array.filter(group, item => item.version !== ''),
+								item => item.version
+							)
+						),
+						entry => ({runtimes: Array.dedupe(Array.map(entry[1], item => item.runtime)), version: entry[0]})
+					),
+					Order.mapInput(Order.flip(byRelease), (release: {version: string}) => release.version)
+				)
+			})
 		)
 	} satisfies Overview
 }

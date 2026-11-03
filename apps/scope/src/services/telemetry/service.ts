@@ -32,12 +32,14 @@ import {
 	filterEntries,
 	logMessage,
 	logTime,
+	newestVersions,
 	orderEntries,
 	overview,
 	serviceName,
 	serviceStatuses,
 	spanName,
 	summary,
+	superseded,
 	traceTiming,
 	traceView
 } from '#services/telemetry/lib/utils.ts'
@@ -75,6 +77,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		)
 		// Bumped when traces arrive or expire, so the live page recomputes only when its rows can change.
 		const version = yield* SubscriptionRef.make(0)
+		// Each service's newest release seen: what an older one sent may describe a bug since fixed, so it goes.
+		const releases = yield* Ref.make(newestVersions(Array.getSomes(saved), Record.empty()))
 		// Spans kept from an older release are named as new ones are, so an operation never splits across a release.
 		const state = yield* SynchronizedRef.make(
 			HashMap.fromIterable(
@@ -84,11 +88,15 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				})
 			)
 		)
-		// A development debugger needs recent runs; older entries would only slow every start and query.
+		// A development debugger needs recent runs of the current release; older entries would only slow every start and query.
 		const prune = Effect.gen(function* () {
 			const cutoff = BigInt((yield* Clock.currentTimeMillis) - Duration.toMillis(RETENTION)) * 1_000_000n
+			const newest = yield* Ref.get(releases)
 			yield* SynchronizedRef.updateEffect(state, current => {
-				const expired = Array.filter(Array.fromIterable(HashMap.values(current)), entry => BigInt(entry.time) < cutoff)
+				const expired = Array.filter(
+					Array.fromIterable(HashMap.values(current)),
+					entry => BigInt(entry.time) < cutoff || superseded(entry, newest)
+				)
 				return Effect.as(
 					Effect.forEach(expired, entry => store.remove(entry.id), {concurrency: 1, discard: true}),
 					Array.reduce(expired, current, (all, entry) => HashMap.remove(all, entry.id))
@@ -109,13 +117,32 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			if (runs === 'all') return entries
 			return currentEntries(entries)
 		})
+		// What an older release sends is dropped; a newer release's first entries delete everything its service's older ones sent.
 		const save = Effect.fnUntraced(function* (entries: Entry[]) {
 			yield* Effect.uninterruptible(
-				SynchronizedRef.updateEffect(state, current =>
-					Effect.as(
-						Effect.forEach(entries, entry => store.set(entry.id, entry), {concurrency: 1, discard: true}),
-						Array.reduce(entries, current, (all, entry) => HashMap.set(all, entry.id, entry))
-					)
+				SynchronizedRef.updateEffect(
+					state,
+					Effect.fnUntraced(function* (current) {
+						const known = yield* Ref.get(releases)
+						const newest = newestVersions(entries, known)
+						const kept = Array.filter(entries, entry => !superseded(entry, newest))
+						// Only a release's first arrival scans what is kept.
+						const replaced = Array.filter(
+							Boolean.match(Record.isEmptyRecord(Record.filter(newest, (latest, name) => known[name] !== latest)), {
+								onFalse: () => Array.fromIterable(HashMap.values(current)),
+								onTrue: () => []
+							}),
+							entry => superseded(entry, newest)
+						)
+						yield* Effect.forEach(replaced, entry => store.remove(entry.id), {concurrency: 1, discard: true})
+						yield* Effect.forEach(kept, entry => store.set(entry.id, entry), {concurrency: 1, discard: true})
+						yield* Ref.set(releases, newest)
+						return Array.reduce(
+							kept,
+							Array.reduce(replaced, current, (all, entry) => HashMap.remove(all, entry.id)),
+							(all, entry) => HashMap.set(all, entry.id, entry)
+						)
+					})
 				)
 			)
 		}, failed)

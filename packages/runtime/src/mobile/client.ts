@@ -15,8 +15,10 @@ export const extra = Schema.decodeUnknownSync(Schema.Struct({scheme: Schema.Stri
 
 // Telemetry starts once; the socket is built per server. JSON frames, because binary ones failed to reopen a cancelled watch on iOS.
 export function layer(applicationName: string) {
-	// Scope's public receiver takes traces and logs from anywhere.
-	Atom.runtime.addGlobalLayer(layerOtlp(`${applicationName}-ios`, 'https://scope.mp281x.xyz', 'mobile'))
+	// Scope's public receiver takes traces and logs from anywhere; the version is the release running, a build's or an over-the-air update's.
+	Atom.runtime.addGlobalLayer(
+		layerOtlp(`${applicationName}-ios`, 'https://scope.mp281x.xyz', 'mobile', Constants.expoConfig?.version ?? '0.1.0')
+	)
 	return (server: string) =>
 		pipe(
 			// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.

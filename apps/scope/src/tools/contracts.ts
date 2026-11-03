@@ -17,7 +17,7 @@ import {
 export const Tools = Toolkit.make(
 	Tool.make('list_services', {
 		description:
-			'Start here: each service with its latest run, last event and entry count, plus rejected exports. A service missing here sent nothing in the last three days.',
+			"Start here: each service with its latest run, release, last event and entry count, plus rejected exports. Only each service's newest release is kept, so nothing here predates it. A service missing here sent nothing in the last three days.",
 		failure: TelemetryError,
 		success: IngestionStatus
 	}).annotate(Tool.Readonly, true),
