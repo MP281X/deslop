@@ -7,6 +7,7 @@ import {
 	Match,
 	Number,
 	Option,
+	Predicate,
 	Schedule,
 	Schema,
 	Stream,
@@ -14,17 +15,20 @@ import {
 	pipe
 } from 'effect'
 
+import {startAuthentication, startRegistration} from '@simplewebauthn/browser'
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
-import {FetchHttpClient, HttpClient} from 'effect/http'
+import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Atom, AtomRpc} from 'effect/reactivity'
 
+import {toast} from '@deslop/components-web/ui/toast'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {AUTH_URL} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import type {Account, AdmitParams} from '#services/people/schema.ts'
+import {PasskeySignIn, Registration, RequestOptions} from '#services/passkeys/schema.ts'
+import type {AdmitParams, SignedAccount} from '#services/people/schema.ts'
 import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
 import {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import {returnable} from '#services/tokens/lib/utils.ts'
@@ -56,7 +60,7 @@ export const accountAtom = Atom.keepAlive(
 			Stream.unwrap,
 			reconnecting,
 			Stream.map(Option.some),
-			Stream.catchTag('AuthError', () => Stream.make(Option.none<Account>()))
+			Stream.catchTag('AuthError', () => Stream.make(Option.none<SignedAccount>()))
 		)
 	)
 )
@@ -296,8 +300,115 @@ export const consentAtom = RpcClient.runtime.fn((input: {accept: boolean; reques
 	)
 )
 
+// An action from a menu, which closes as it runs, says how it failed in a toast rather than in a line far from it.
+function failedWith(title: string) {
+	return <A, E extends {message: string}, R>(effect: Effect.Effect<A, E, R>) =>
+		Effect.tapError(effect, failure =>
+			Effect.sync(() => toast.add({description: failure.message, title, type: 'error'}))
+		)
+}
+
 // The page an app sent this browser to sign in from, carried through either way of signing in.
 const next = Option.fromNullishOr(new URLSearchParams(location.search).get('next'))
+
+// Closing the browser's passkey dialog is a normal choice, so it ends the attempt quietly instead of as an error.
+function cancelled(failure: AuthError) {
+	return Predicate.hasProperty(failure.cause, 'name') && failure.cause.name === 'NotAllowedError'
+}
+
+// Auth answers a refused passkey with its reason, as its OAuth endpoints do; a rate limit asks to wait.
+const refused = Effect.fnUntraced(function* (response: HttpClientResponse.HttpClientResponse) {
+	if (response.status === 429) {
+		return yield* AuthError.make({message: 'Too many tries; wait a minute and try again'})
+	}
+	return yield* AuthError.make({
+		message: (yield* HttpClientResponse.schemaBodyJson(Schema.Struct({error_description: Schema.String}))(response))
+			.error_description
+	})
+})
+
+// The browser asks for any passkey of this site, whichever device or key holds it, then lands signed in where the page asked.
+export const passkeySignInAtom = authRuntime.fn(() =>
+	pipe(
+		Effect.gen(function* () {
+			const client = yield* HttpClient.HttpClient
+			const offered = yield* client.get('/auth/passkey')
+			if (offered.status !== 200) return yield* refused(offered)
+			const options = yield* HttpClientResponse.schemaBodyJson(RequestOptions)(offered)
+			const response = yield* Effect.catchIf(
+				Effect.tryPromise({
+					catch: cause => AuthError.make({cause, message: 'No passkey was used'}),
+					try: () => startAuthentication({optionsJSON: options})
+				}),
+				cancelled,
+				() => Effect.interrupt
+			)
+			const answer = yield* pipe(
+				HttpClientRequest.post('/auth/passkey'),
+				HttpClientRequest.schemaBodyJson(PasskeySignIn)({
+					...Option.match(next, {onNone: () => ({}), onSome: page => ({next: page})}),
+					response
+				}),
+				Effect.flatMap(request => client.execute(request)),
+				Effect.flatMap(
+					Effect.fnUntraced(function* (signedIn) {
+						if (signedIn.status !== 200) return yield* refused(signedIn)
+						return yield* HttpClientResponse.schemaBodyJson(Schema.Struct({next: Schema.optionalKey(Schema.String)}))(
+							signedIn
+						)
+					})
+				)
+			)
+			yield* Effect.sync(() =>
+				Option.match(Option.fromUndefinedOr(answer.next), {
+					onNone: () => location.reload(),
+					onSome: page => location.assign(page)
+				})
+			)
+		}),
+		Effect.mapError(cause => {
+			if (Schema.is(AuthError)(cause)) return cause
+			return AuthError.make({cause, message: 'Cannot sign in with a passkey'})
+		})
+	)
+)
+
+// The passkeys this account can sign in with, live, for the account menu.
+export const passkeysAtom = Atom.keepAlive(
+	RpcClient.runtime.atom(
+		pipe(
+			RpcClient,
+			Effect.map(client => client('auth.passkeys', undefined)),
+			Stream.unwrap,
+			reconnecting
+		)
+	)
+)
+
+// The browser offers every kind it can make: this device's, a password manager's, a security key, or a phone's over a QR code.
+export const addPasskeyAtom = RpcClient.runtime.fn(
+	Effect.fnUntraced(function* () {
+		const client = yield* RpcClient
+		const options = yield* client('auth.passkeyOptions', undefined)
+		const response = yield* pipe(
+			Effect.tryPromise({
+				catch: cause => AuthError.make({cause, message: 'No passkey was added'}),
+				try: () => startRegistration({optionsJSON: options})
+			}),
+			Effect.catchIf(cancelled, () => Effect.interrupt),
+			Effect.flatMap(Schema.decodeUnknownEffect(Registration))
+		)
+		yield* client('auth.addPasskey', {response})
+		toast.add({title: 'Passkey added'})
+	}, failedWith('Cannot add a passkey'))
+)
+
+export const removePasskeyAtom = RpcClient.runtime.fn((id: string) =>
+	pipe(
+		Effect.flatMap(RpcClient, client => client('auth.removePasskey', {id})),
+		failedWith('Cannot remove the passkey')
+	)
+)
 
 export const signInAtom = Atom.fn(() =>
 	Effect.try({
@@ -332,6 +443,7 @@ export const signOutAtom = authRuntime.fn(() =>
 	pipe(
 		HttpClient.HttpClient.use(client => HttpClient.filterStatusOk(client).post('/auth/sign-out')),
 		Effect.andThen(Effect.sync(() => location.replace(afterSignOut))),
-		Effect.mapError(cause => AuthError.make({cause, message: 'Cannot sign out'}))
+		Effect.mapError(cause => AuthError.make({cause, message: 'Cannot sign out'})),
+		failedWith('Cannot sign out')
 	)
 )

@@ -37,6 +37,8 @@
 		"@deslop/runtime": "workspace:*",
 		"@effect/atom-react": "latest",
 		"@effect/platform-node": "latest",
+		"@simplewebauthn/browser": "latest",
+		"@simplewebauthn/server": "latest",
 		"@tanstack/react-router": "latest",
 		"@typeonce/effect-machine": "latest",
 		"@typeonce/effect-machine-react": "latest",

@@ -1,7 +1,7 @@
 import {Array, Effect, Option, Record, Result, Schema, String, pipe} from 'effect'
 
 import {Base64Url} from 'effect/encoding'
-import {Url} from 'effect/http'
+import {Headers, Url} from 'effect/http'
 import ipaddr from 'ipaddr.js'
 
 import {AuthError, Resource} from '@deslop/runtime/auth/schema'
@@ -25,6 +25,28 @@ export function addressGroup(address: string) {
 	const parsed = ipaddr.process(address)
 	if (parsed.kind() === 'ipv4') return parsed.toString()
 	return Array.join(Array.take(String.split(parsed.toNormalizedString(), ':'), 4), ':')
+}
+
+// The address the client connects from: Traefik appends it as the last X-Forwarded-For entry, earlier ones are the client's word.
+export function clientAddress(headers: Headers.Headers, remote: Option.Option<string>) {
+	return pipe(
+		Headers.get(headers, 'x-forwarded-for'),
+		Option.flatMap(forwarded => Array.last(String.split(',')(forwarded))),
+		Option.map(String.trim),
+		Option.filter(String.isNonEmpty),
+		Option.orElse(() => remote)
+	)
+}
+
+// Where a request comes from, as the signed-in list names it.
+export function originFrom(headers: Headers.Headers, remote: Option.Option<string>) {
+	return {
+		...Option.match(clientAddress(headers, remote), {onNone: () => ({}), onSome: address => ({address})}),
+		...Option.match(Headers.get(headers, 'user-agent'), {
+			onNone: () => ({}),
+			onSome: agent => ({userAgent: String.slice(0, 200)(agent)})
+		})
+	}
 }
 
 // A client id is its registration, encoded: anyone may register, and the callbacks are checked again at authorize.
