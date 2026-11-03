@@ -9,6 +9,7 @@ import type {ReactNode} from 'react'
 
 import {useCommandQuery} from '@deslop/components-web/app-bar'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
+import {ResultError} from '@deslop/components-web/result-error'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
 import {
@@ -18,7 +19,6 @@ import {
 	ContextMenuTrigger
 } from '@deslop/components-web/ui/context-menu'
 import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
-import {FieldError} from '@deslop/components-web/ui/field'
 
 import {AccountAvatar} from '#lib/components.tsx'
 import {accountAtom, admitAtom, dayLabel, peopleAtom, removeAtom} from '#lib/utils.ts'
@@ -37,29 +37,28 @@ function Identity(props: {person: Person}) {
 	)
 }
 
-function PersonRow(props: {children: ReactNode; person: Person}) {
+// The row's own line, then its failed answer or removal beneath it.
+function PersonRow(props: {children: ReactNode; failure?: ReactNode; person: Person}) {
 	return (
-		<div role="listitem" className="flex h-10 min-w-0 items-center gap-3 border-b px-1 text-sm">
-			<Identity person={props.person} />
-			{props.children}
+		<div role="listitem" className="border-b">
+			<div className="flex h-10 min-w-0 items-center gap-3 px-1 text-sm">
+				<Identity person={props.person} />
+				{props.children}
+			</div>
+			{props.failure}
 		</div>
 	)
 }
 
 // Someone asking for access leads the list, with the answer on the row.
 function AskingRow(props: {person: Person}) {
-	const [admit, answer] = useAtom(admitAtom)
+	const [admit, answer] = useAtom(admitAtom(props.person.id))
 	return (
-		<PersonRow person={props.person}>
+		<PersonRow person={props.person} failure={<ResultError result={admit} className="mr-1 mb-2 ml-10 wrap-anywhere" />}>
 			<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden">
 				{dayLabel(props.person.since)}
 			</span>
-			<Button
-				size="sm"
-				className="shrink-0"
-				disabled={AsyncResult.isWaiting(admit)}
-				onClick={() => answer({allow: true, id: props.person.id})}
-			>
+			<Button size="sm" className="shrink-0" disabled={AsyncResult.isWaiting(admit)} onClick={() => answer(true)}>
 				Allow
 			</Button>
 			<Button
@@ -67,7 +66,7 @@ function AskingRow(props: {person: Person}) {
 				variant="outline"
 				className="shrink-0"
 				disabled={AsyncResult.isWaiting(admit)}
-				onClick={() => answer({allow: false, id: props.person.id})}
+				onClick={() => answer(false)}
 			>
 				Decline
 			</Button>
@@ -77,7 +76,7 @@ function AskingRow(props: {person: Person}) {
 
 // An admin is marked as one; a member shows since when, and right-click or long-press removes them.
 function MemberRow(props: {person: Person}) {
-	const [removal, remove] = useAtom(removeAtom)
+	const [removal, remove] = useAtom(removeAtom(props.person.id))
 	if (props.person.role === 'Admin') {
 		return (
 			<PersonRow person={props.person}>
@@ -89,7 +88,7 @@ function MemberRow(props: {person: Person}) {
 	}
 	return (
 		<ContextMenu>
-			<div role="listitem">
+			<div role="listitem" className="border-b">
 				<ContextMenuTrigger
 					render={
 						<div
@@ -97,20 +96,17 @@ function MemberRow(props: {person: Person}) {
 							tabIndex={0}
 							aria-haspopup="menu"
 							aria-label={`${props.person.fullName ?? props.person.name}, member since ${dayLabel(props.person.since)}`}
-							className="hover:bg-muted/50 flex h-10 min-w-0 items-center gap-3 border-b px-1 text-sm"
+							className="hover:bg-muted/50 flex h-10 min-w-0 items-center gap-3 px-1 text-sm"
 						/>
 					}
 				>
 					<Identity person={props.person} />
 					<span className="text-muted-foreground shrink-0 font-mono text-xs">{dayLabel(props.person.since)}</span>
 				</ContextMenuTrigger>
+				<ResultError result={removal} className="mr-1 mb-2 ml-10 wrap-anywhere" />
 			</div>
 			<ContextMenuContent className="w-auto min-w-36">
-				<ContextMenuItem
-					variant="destructive"
-					disabled={AsyncResult.isWaiting(removal)}
-					onClick={() => remove(props.person.id)}
-				>
+				<ContextMenuItem variant="destructive" disabled={AsyncResult.isWaiting(removal)} onClick={() => remove()}>
 					Remove
 				</ContextMenuItem>
 			</ContextMenuContent>
@@ -121,45 +117,33 @@ function MemberRow(props: {person: Person}) {
 // One list: whoever is asking for access first, then everyone with it.
 function Directory() {
 	const query = useCommandQuery()
-	const people = Array.filter(
-		Array.sort(
-			useAtomSuspense(peopleAtom).value,
-			Order.mapInput(Order.Boolean, (person: Person) => person.role !== 'Waiting')
+	return Array.match(
+		Array.filter(
+			Array.sort(
+				useAtomSuspense(peopleAtom).value,
+				Order.mapInput(Order.Boolean, (person: Person) => person.role !== 'Waiting')
+			),
+			person => String.includes(query)(String.toLowerCase(`${person.fullName ?? ''} ${person.name}`))
 		),
-		person => String.includes(query)(String.toLowerCase(`${person.fullName ?? ''} ${person.name}`))
-	)
-	const [admit] = useAtom(admitAtom)
-	const [removal] = useAtom(removeAtom)
-	return (
-		<>
-			{Array.match(people, {
-				onEmpty: () => (
-					<Empty>
-						<EmptyHeader>
-							<EmptyTitle>No one matches</EmptyTitle>
-						</EmptyHeader>
-					</Empty>
-				),
-				onNonEmpty: rows => (
-					<div role="list" aria-label="People">
-						{Array.map(rows, person =>
-							Boolean.match(person.role === 'Waiting', {
-								onFalse: () => <MemberRow key={person.id} person={person} />,
-								onTrue: () => <AskingRow key={person.id} person={person} />
-							})
-						)}
-					</div>
-				)
-			})}
-			<FieldError>
-				{Option.getOrUndefined(
-					Option.map(
-						Option.orElse(AsyncResult.error(admit), () => AsyncResult.error(removal)),
-						failure => failure.message
-					)
-				)}
-			</FieldError>
-		</>
+		{
+			onEmpty: () => (
+				<Empty>
+					<EmptyHeader>
+						<EmptyTitle>No one matches</EmptyTitle>
+					</EmptyHeader>
+				</Empty>
+			),
+			onNonEmpty: rows => (
+				<div role="list" aria-label="People">
+					{Array.map(rows, person =>
+						Boolean.match(person.role === 'Waiting', {
+							onFalse: () => <MemberRow key={person.id} person={person} />,
+							onTrue: () => <AskingRow key={person.id} person={person} />
+						})
+					)}
+				</div>
+			)
+		}
 	)
 }
 

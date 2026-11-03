@@ -56,6 +56,7 @@ import {
 	requestId,
 	secondAtom,
 	signInAtom,
+	menuSignOutAtom,
 	signOutAtom,
 	signingOut
 } from '#lib/utils.ts'
@@ -169,9 +170,11 @@ function Waiting(props: {account: Option.Option<SignedAccount>; id: string}) {
 		Match.value,
 		Match.tagsExhaustive({
 			Decided: () => (
-				<p className="text-muted-foreground text-sm" role="status">
-					Continuing…
-				</p>
+				<Empty role="status">
+					<EmptyHeader>
+						<EmptyTitle>Continuing…</EmptyTitle>
+					</EmptyHeader>
+				</Empty>
 			),
 			// The link stays expired on every reload, so the way out drops it: Auth's own sign-in, or its sign-ins when signed in.
 			Expired: () => (
@@ -243,12 +246,22 @@ function Signed(props: {account: SignedAccount}) {
 
 // This account's passkeys, each removed from its own submenu; adding one lets the browser offer any kind it can make.
 function PasskeyItems(props: {via: SessionVia}) {
-	const passkeys = AsyncResult.getOrElse(useAtomValue(passkeysAtom), () => [])
+	const read = useAtomValue(passkeysAtom)
+	const passkeys = AsyncResult.getOrElse(read, () => [])
 	const [adding, add] = useAtom(addPasskeyAtom)
 	const [removing, remove] = useAtom(removePasskeyAtom)
 	return (
 		<DropdownMenuGroup>
 			<DropdownMenuLabel>Passkeys</DropdownMenuLabel>
+			{/* A failed read says so, rather than looking like an account without passkeys. */}
+			{Option.match(AsyncResult.error(read), {
+				onNone: () => null,
+				onSome: failure => (
+					<DropdownMenuItem disabled>
+						<span className="text-destructive text-xs">Passkeys unavailable · {failure.message}</span>
+					</DropdownMenuItem>
+				)
+			})}
 			{Array.map(passkeys, passkey => (
 				<DropdownMenuSub key={passkey.id}>
 					<DropdownMenuSubTrigger>
@@ -275,7 +288,7 @@ function PasskeyItems(props: {via: SessionVia}) {
 				<span className="flex flex-col">
 					Add a passkey
 					{props.via === 'Code' && (
-						<span className="text-muted-foreground text-xs">Sign in with GitHub on this browser first</span>
+						<span className="text-muted-foreground text-xs">Needs a GitHub or passkey sign-in on this browser</span>
 					)}
 				</span>
 			</DropdownMenuItem>
@@ -285,7 +298,7 @@ function PasskeyItems(props: {via: SessionVia}) {
 
 // The account's avatar opens who is signed in, its passkeys and the sign-out.
 function AccountMenu(props: {account: SignedAccount}) {
-	const [signOut, endSession] = useAtom(signOutAtom)
+	const [signOut, endSession] = useAtom(menuSignOutAtom)
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
@@ -348,21 +361,33 @@ function SignIn() {
 function SigningOut() {
 	const [signOut, endSession] = useAtom(signOutAtom)
 	useEffect(() => endSession(), [endSession])
-	return (
-		<p className="text-muted-foreground text-sm" role="status">
-			{Boolean.match(AsyncResult.isFailure(signOut), {onFalse: () => 'Signing out…', onTrue: () => 'Sign-out failed.'})}
-		</p>
-	)
+	return Option.match(AsyncResult.error(signOut), {
+		onNone: () => (
+			<Empty role="status">
+				<EmptyHeader>
+					<EmptyTitle>Signing out…</EmptyTitle>
+				</EmptyHeader>
+			</Empty>
+		),
+		onSome: failure => (
+			<Empty role="alert">
+				<EmptyHeader>
+					<EmptyTitle>Sign-out failed</EmptyTitle>
+					<EmptyDescription>{failure.message}</EmptyDescription>
+				</EmptyHeader>
+				<EmptyContent>
+					<Button variant="outline" onClick={() => endSession()}>
+						Try again
+					</Button>
+				</EmptyContent>
+			</Empty>
+		)
+	})
 }
 
 // A signed-in account narrows its apps or people from the bar, where admins also switch between the two.
 function Shell() {
 	const account = useAtomSuspense(accountAtom).value
-	// The sign-in buttons and a waiting sign-in sit centred with their own failures beneath them, rather than at the page's foot.
-	const centred = Boolean.match(Option.isSome(requestId), {
-		onFalse: () => Option.isNone(account) && !signingOut,
-		onTrue: () => !Option.exists(account, signed => signed.role !== 'Waiting')
-	})
 	return (
 		<>
 			<AppBar
@@ -392,7 +417,6 @@ function Shell() {
 							onTrue: () => null
 						})
 				})}
-				{!centred && <Failures />}
 			</Page>
 		</>
 	)
