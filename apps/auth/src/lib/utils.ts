@@ -234,6 +234,31 @@ export const minuteAtom = Atom.make(
 	)
 )
 
+// The time each second, for a waiting sign-in's countdown.
+export const secondAtom = Atom.make(
+	pipe(
+		Stream.tick('1 second'),
+		Stream.mapEffect(() => Clock.currentTimeMillis)
+	)
+)
+
+// What is left until `until`, as m:ss.
+export function leftLabel(until: number, now: number) {
+	const seconds = Number.max(0, Math.ceil((until - now) / 1000))
+	return `${Math.floor(seconds / 60)}:${String.padStart(2, '0')(`${seconds % 60}`)}`
+}
+
+// Copies the code; the result waits a moment after, while the code shows it was copied.
+export const copyCodeAtom = Atom.fn((code: string) =>
+	pipe(
+		Effect.tryPromise({
+			catch: cause => AuthError.make({cause, message: 'Cannot copy the code; type it in instead'}),
+			try: () => navigator.clipboard.writeText(code)
+		}),
+		Effect.andThen(Effect.sleep('1200 millis'))
+	)
+)
+
 export function minutesSince(time: number, now: number) {
 	return Math.floor(Duration.toMinutes(DateTime.distance(DateTime.makeUnsafe(time), DateTime.makeUnsafe(now))))
 }

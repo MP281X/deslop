@@ -4,12 +4,14 @@ import {Array, Boolean, Match, Option, String, pipe} from 'effect'
 
 import {Link, Outlet, createFileRoute, useMatchRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
+import {Check, Copy} from 'lucide-react'
 import {Suspense, useEffect} from 'react'
 
 import {AppBar, AppBarTab} from '@deslop/components-web/app-bar'
 import {GitHubIcon} from '@deslop/components-web/icons'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
+import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
@@ -22,7 +24,14 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
-import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
+import {
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle
+} from '@deslop/components-web/ui/empty'
 import {FieldError} from '@deslop/components-web/ui/field'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 
@@ -32,52 +41,107 @@ import {
 	accountAtom,
 	approveLink,
 	codeSignInAtom,
+	copyCodeAtom,
+	leftLabel,
 	peopleAtom,
 	requestAtom,
 	requestCode,
 	requestId,
+	secondAtom,
 	signInAtom,
-	signInLabel,
 	signOutAtom,
-	signingOut,
-	timeLabel
+	signingOut
 } from '#lib/utils.ts'
 import icon from '#routes/icon.svg'
 import type {Account} from '#services/people/schema.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 
-// A device that is not signed in: the QR opens the approve page with the code filled in on a phone that is.
+function Failures() {
+	const [signIn] = useAtom(signInAtom)
+	const [codeSignIn] = useAtom(codeSignInAtom)
+	const [signOut] = useAtom(signOutAtom)
+	return (
+		<>
+			{Option.match(
+				pipe(
+					AsyncResult.error(signIn),
+					Option.orElse(() => AsyncResult.error(codeSignIn)),
+					Option.orElse(() => AsyncResult.error(signOut))
+				),
+				{onNone: () => null, onSome: failure => <FieldError>{failure.message}</FieldError>}
+			)}
+			{new URLSearchParams(location.search).has('error') && <FieldError>GitHub sign-in failed. Try again.</FieldError>}
+		</>
+	)
+}
+
+// The code copies on click; its icon turns into a tick for a moment, in the same place so nothing moves. A failed copy says so beneath.
+function Code(props: {id: string}) {
+	const [copy, copyCode] = useAtom(copyCodeAtom)
+	const copied = AsyncResult.isWaiting(copy)
+	return (
+		<>
+			<Button
+				variant="ghost"
+				aria-label={`Copy the code ${requestCode(props.id)}`}
+				className="font-mono text-base font-semibold"
+				onClick={() => copyCode(requestCode(props.id))}
+			>
+				{requestCode(props.id)}
+				{Boolean.match(copied, {
+					onFalse: () => <Copy className="text-muted-foreground" />,
+					onTrue: () => <Check className="text-primary" />
+				})}
+				<span role="status" className="sr-only">
+					{copied && 'Copied'}
+				</span>
+			</Button>
+			<ResultError result={copy} />
+		</>
+	)
+}
+
+// Its own component, so only the time re-renders each second; the dot alone turns yellow in the last minute, so the time stays legible.
+function Countdown(props: {expiresAt: number}) {
+	const now = useAtomSuspense(secondAtom).value
+	return (
+		<span role="timer" className="text-muted-foreground flex items-center gap-1.5 text-xs">
+			<StatusDot
+				waiting
+				status={Boolean.match(props.expiresAt - now < 60_000, {onFalse: () => 'live', onTrue: () => 'warning'})}
+			/>
+			<span>
+				<span className="font-mono tabular-nums">{leftLabel(props.expiresAt, now)}</span> left
+			</span>
+		</span>
+	)
+}
+
+// A device that is not signed in, centred and sparse: who asks, a QR a signed-in phone scans, its code to copy, its time running down.
 function CodeCard(props: {request: PendingAuthorization}) {
 	const [signIn, startSignIn] = useAtom(signInAtom)
+	const title = `Sign in ${props.request.clientName} on ${props.request.device}`
 	return (
-		<section className="flex flex-1 flex-col items-center gap-6 pt-6 text-center" aria-label="Waiting sign-in">
-			<h2 className="text-xl font-semibold wrap-anywhere">
-				{Boolean.match(props.request.kind === 'Browser', {
-					onFalse: () => signInLabel(props.request.clientName, props.request.device),
-					onTrue: () => 'Sign in this browser'
-				})}
-			</h2>
-			<a
-				href={approveLink(props.request.id)}
-				aria-label="Approve this sign-in"
-				className="bg-foreground rounded-lg p-3"
-			>
-				<QrCode text={approveLink(props.request.id)} className="text-background size-44" />
-			</a>
-			<div className="flex flex-col gap-1">
-				<p className="font-mono text-3xl font-semibold tracking-widest">{requestCode(props.request.id)}</p>
-				<p className="text-muted-foreground font-mono text-xs">{location.host}</p>
-			</div>
-			<p className="text-muted-foreground mt-auto flex items-center gap-2 font-mono text-xs" role="status">
-				<StatusDot waiting />
-				Waiting · until {timeLabel(props.request.expiresAt)}
+		<section
+			className="flex flex-1 flex-col items-center justify-center gap-3 pb-12 text-center"
+			aria-labelledby="waiting-title"
+		>
+			<p id="waiting-title" title={title} className="max-w-full truncate text-base font-semibold">
+				{title}
 			</p>
+			{/* The theme's own colours, so the dark theme shows light modules on a dark tile. */}
+			<span className="bg-card text-foreground rounded-md border p-1.5">
+				<QrCode text={approveLink(props.request.id)} className="size-40" />
+			</span>
+			<Code id={props.request.id} />
+			<Countdown expiresAt={props.request.expiresAt} />
 			{props.request.kind === 'App' && (
 				<Button variant="ghost" size="sm" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
 					<GitHubIcon />
 					Approve here with GitHub
 				</Button>
 			)}
+			<Failures />
 		</section>
 	)
 }
@@ -93,7 +157,20 @@ function Waiting(props: {account: Option.Option<Account>; id: string}) {
 					Continuing…
 				</p>
 			),
-			Expired: () => <FieldError>This request expired. Start sign-in again in the app.</FieldError>,
+			// The link stays expired on every reload, so the way out drops it: Auth's own sign-in, or its sign-ins when signed in.
+			Expired: () => (
+				<Empty role="status">
+					<EmptyHeader>
+						<EmptyTitle>This sign-in expired</EmptyTitle>
+						<EmptyDescription>Start it again in the app or agent that asked.</EmptyDescription>
+					</EmptyHeader>
+					<EmptyContent>
+						<Button variant="outline" onClick={() => location.assign('/')}>
+							Back to Auth
+						</Button>
+					</EmptyContent>
+				</Empty>
+			),
 			Waiting: value =>
 				Option.match(
 					Option.filter(props.account, signed => signed.role !== 'Waiting'),
@@ -180,7 +257,7 @@ function SignIn() {
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [codeSignIn, startCodeSignIn] = useAtom(codeSignInAtom)
 	return (
-		<section className="flex flex-col gap-2" aria-label="Sign in">
+		<section className="flex flex-1 flex-col justify-center gap-2 pb-12" aria-label="Sign in">
 			<Button size="lg" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
 				{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
 				Sign in with GitHub
@@ -193,26 +270,8 @@ function SignIn() {
 			>
 				Sign in with a code
 			</Button>
+			<Failures />
 		</section>
-	)
-}
-
-function Failures() {
-	const [signIn] = useAtom(signInAtom)
-	const [codeSignIn] = useAtom(codeSignInAtom)
-	const [signOut] = useAtom(signOutAtom)
-	return (
-		<>
-			{Option.match(
-				pipe(
-					AsyncResult.error(signIn),
-					Option.orElse(() => AsyncResult.error(codeSignIn)),
-					Option.orElse(() => AsyncResult.error(signOut))
-				),
-				{onNone: () => null, onSome: failure => <FieldError>{failure.message}</FieldError>}
-			)}
-			{new URLSearchParams(location.search).has('error') && <FieldError>GitHub sign-in failed. Try again.</FieldError>}
-		</>
 	)
 }
 
@@ -230,6 +289,11 @@ function SigningOut() {
 // A signed-in account narrows its apps or people from the bar, where admins also switch between the two.
 function Shell() {
 	const account = useAtomSuspense(accountAtom).value
+	// The sign-in buttons and a waiting sign-in sit centred with their own failures beneath them, rather than at the page's foot.
+	const centred = Boolean.match(Option.isSome(requestId), {
+		onFalse: () => Option.isNone(account) && !signingOut,
+		onTrue: () => !Option.exists(account, signed => signed.role !== 'Waiting')
+	})
 	return (
 		<>
 			<AppBar
@@ -259,7 +323,7 @@ function Shell() {
 							onTrue: () => null
 						})
 				})}
-				<Failures />
+				{!centred && <Failures />}
 			</Page>
 		</>
 	)
