@@ -93,6 +93,10 @@ export const Origin = Schema.Struct({
 export type Access = typeof Access.Type
 export const Access = Schema.Struct({expiresAt: Schema.Finite, hash: Schema.String, resources: Schema.Array(Resource)})
 
+// How a browser signed in: GitHub and a passkey prove the owner's browser; a code may have been approved for someone else's.
+export type SessionVia = typeof SessionVia.Type
+export const SessionVia = Schema.Literals(['Code', 'GitHub', 'Passkey'])
+
 // One signed-in app or browser, keyed by its family: what the signed-in list shows and what signing it out removes.
 export type Grant = typeof Grant.Type
 export const Grant = Schema.Struct({
@@ -109,7 +113,8 @@ export const Grant = Schema.Struct({
 			replaced: Schema.optionalKey(Schema.String),
 			resources: Schema.Array(Resource)
 		},
-		Browser: {expiresAt: Schema.Finite, hash: Schema.String}
+		// A session from before it was recorded reads as a code's, the least trusted.
+		Browser: {expiresAt: Schema.Finite, hash: Schema.String, via: Schema.optionalKey(SessionVia)}
 	}),
 	device: Schema.String,
 	lastActive: Schema.Finite,

@@ -1,6 +1,6 @@
 import {Array, Duration, Effect, Match, Option, Schema, String, pipe} from 'effect'
 
-import {Headers, HttpRouter, HttpServerRequest, HttpServerResponse, UrlParams} from 'effect/http'
+import {HttpRouter, HttpServerRequest, HttpServerResponse, UrlParams} from 'effect/http'
 import {RateLimiter} from 'effect/persistence'
 
 import {AuthError, User} from '@deslop/runtime/auth/schema'
@@ -11,6 +11,8 @@ import {App, AppParams} from '#services/apps/schema.ts'
 import {Apps} from '#services/apps/service.ts'
 import {CallbackParams, LoginState, SignInParams} from '#services/github/schema.ts'
 import {GitHub} from '#services/github/service.ts'
+import {PasskeySignIn} from '#services/passkeys/schema.ts'
+import {Passkeys} from '#services/passkeys/service.ts'
 import {People} from '#services/people/service.ts'
 import {typedCode} from '#services/sign-ins/lib/utils.ts'
 import {BrowserParams, RequestParams} from '#services/sign-ins/schema.ts'
@@ -19,9 +21,11 @@ import {
 	addressGroup,
 	allowedRedirect,
 	callbackUrl,
+	clientAddress,
 	clientIdOf,
 	clientRequest,
 	cookieDomain,
+	originFrom,
 	returnable
 } from '#services/tokens/lib/utils.ts'
 import {
@@ -68,26 +72,8 @@ function oauth<E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerRespons
 	)
 }
 
-// The address the client connects from: Traefik appends it as the last X-Forwarded-For entry, earlier ones are the client's word.
-function clientAddress(request: HttpServerRequest.HttpServerRequest) {
-	return pipe(
-		Headers.get(request.headers, 'x-forwarded-for'),
-		Option.flatMap(forwarded => Array.last(String.split(',')(forwarded))),
-		Option.map(String.trim),
-		Option.filter(String.isNonEmpty),
-		Option.orElse(() => request.remoteAddress)
-	)
-}
-
-// Where a request comes from, as the signed-in list names it.
 function originOf(request: HttpServerRequest.HttpServerRequest) {
-	return {
-		...Option.match(clientAddress(request), {onNone: () => ({}), onSome: address => ({address})}),
-		...Option.match(Headers.get(request.headers, 'user-agent'), {
-			onNone: () => ({}),
-			onSome: agent => ({userAgent: String.slice(0, 200)(agent)})
-		})
-	}
+	return originFrom(request.headers, request.remoteAddress)
 }
 
 // A started sign-in shows its code at /?request=; the cookie binds its answer to this browser or command.
@@ -141,6 +127,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		const apps = yield* Apps
 		const auth = yield* Auth
 		const github = yield* GitHub
+		const passkeys = yield* Passkeys
 		const people = yield* People
 		const signIns = yield* SignIns
 		const tokens = yield* Tokens
@@ -152,8 +139,9 @@ export const HttpHandlers = HttpRouter.use(router =>
 		// Anyone may call these, so each address (an IPv6 /64) gets a budget per minute; past it, 429. No shared budget, which one sender could spend for everyone.
 		function limited(route: string, perAddress: number) {
 			return Effect.fnUntraced(function* <E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
+				const request = yield* HttpServerRequest.HttpServerRequest
 				const address = pipe(
-					clientAddress(yield* HttpServerRequest.HttpServerRequest),
+					clientAddress(request.headers, request.remoteAddress),
 					Option.map(addressGroup),
 					Option.getOrElse(() => 'unknown')
 				)
@@ -454,6 +442,47 @@ export const HttpHandlers = HttpRouter.use(router =>
 								},
 								originOf(yield* HttpServerRequest.HttpServerRequest)
 							)
+						)
+					})
+				)
+			)
+		)
+		// A passkey signs this browser in at once. Its options name no account, since each passkey holds its own.
+		yield* router.add(
+			'GET',
+			'/auth/passkey',
+			limited('passkey', 20)(oauth(Effect.map(passkeys.request, options => HttpServerResponse.jsonUnsafe(options))))
+		)
+		// The answer returns where the page asked, when that is on this domain; otherwise the page stays and reloads signed in.
+		yield* router.add(
+			'POST',
+			'/auth/passkey',
+			limited(
+				'passkey',
+				20
+			)(
+				oauth(
+					Effect.gen(function* () {
+						const request = yield* HttpServerRequest.HttpServerRequest
+						const input = yield* pipe(
+							HttpServerRequest.schemaBodyJson(PasskeySignIn),
+							rejected('Send the passkey’s answer')
+						)
+						const started = yield* tokens.startSession(
+							yield* people.allowed(yield* passkeys.signIn(input.response)),
+							originOf(request),
+							'Passkey'
+						)
+						return HttpServerResponse.setCookieUnsafe(
+							HttpServerResponse.jsonUnsafe(
+								Option.match(
+									Option.filter(Option.fromUndefinedOr(input.next), page => returnable(page, AUTH_URL)),
+									{onNone: () => ({}), onSome: next => ({next})}
+								)
+							),
+							SESSION_COOKIE,
+							started.token,
+							session(started.seconds)
 						)
 					})
 				)

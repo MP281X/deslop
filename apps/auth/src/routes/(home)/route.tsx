@@ -1,10 +1,10 @@
-import {useAtom, useAtomSuspense} from '@effect/atom-react'
+import {useAtom, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Match, Option, String, pipe} from 'effect'
 
 import {Link, Outlet, createFileRoute, useMatchRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Check, Copy} from 'lucide-react'
+import {Check, Copy, KeyRound, Plus} from 'lucide-react'
 import {Suspense, useEffect} from 'react'
 
 import {AppBar, AppBarTab} from '@deslop/components-web/app-bar'
@@ -21,6 +21,9 @@ import {
 	DropdownMenuGroup,
 	DropdownMenuItem,
 	DropdownMenuLabel,
+	DropdownMenuSub,
+	DropdownMenuSubContent,
+	DropdownMenuSubTrigger,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
@@ -40,7 +43,11 @@ import {
 	APP_ROWS,
 	accountAtom,
 	approveLink,
+	addPasskeyAtom,
 	codeSignInAtom,
+	passkeySignInAtom,
+	passkeysAtom,
+	removePasskeyAtom,
 	copyCodeAtom,
 	leftLabel,
 	peopleAtom,
@@ -53,20 +60,21 @@ import {
 	signingOut
 } from '#lib/utils.ts'
 import icon from '#routes/icon.svg'
-import type {Account} from '#services/people/schema.ts'
+import type {SignedAccount} from '#services/people/schema.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
+import type {SessionVia} from '#services/tokens/schema.ts'
 
 function Failures() {
 	const [signIn] = useAtom(signInAtom)
 	const [codeSignIn] = useAtom(codeSignInAtom)
-	const [signOut] = useAtom(signOutAtom)
+	const [passkey] = useAtom(passkeySignInAtom)
 	return (
 		<>
 			{Option.match(
 				pipe(
 					AsyncResult.error(signIn),
 					Option.orElse(() => AsyncResult.error(codeSignIn)),
-					Option.orElse(() => AsyncResult.error(signOut))
+					Option.orElse(() => AsyncResult.error(passkey))
 				),
 				{onNone: () => null, onSome: failure => <FieldError>{failure.message}</FieldError>}
 			)}
@@ -120,6 +128,7 @@ function Countdown(props: {expiresAt: number}) {
 // A device that is not signed in, centred and sparse: who asks, a QR a signed-in phone scans, its code to copy, its time running down.
 function CodeCard(props: {request: PendingAuthorization}) {
 	const [signIn, startSignIn] = useAtom(signInAtom)
+	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
 	const title = `Sign in ${props.request.clientName} on ${props.request.device}`
 	return (
 		<section
@@ -135,11 +144,18 @@ function CodeCard(props: {request: PendingAuthorization}) {
 			</span>
 			<Code id={props.request.id} />
 			<Countdown expiresAt={props.request.expiresAt} />
+			{/* Signing this browser in turns the page into the approver's, where the sign-in waits to be approved. */}
 			{props.request.kind === 'App' && (
-				<Button variant="ghost" size="sm" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
-					<GitHubIcon />
-					Approve here with GitHub
-				</Button>
+				<span className="flex flex-wrap justify-center gap-1">
+					<Button variant="ghost" size="sm" disabled={AsyncResult.isWaiting(passkey)} onClick={() => startPasskey()}>
+						<KeyRound />
+						Approve here with a passkey
+					</Button>
+					<Button variant="ghost" size="sm" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
+						<GitHubIcon />
+						Approve here with GitHub
+					</Button>
+				</span>
 			)}
 			<Failures />
 		</section>
@@ -147,7 +163,7 @@ function CodeCard(props: {request: PendingAuthorization}) {
 }
 
 // This browser started the sign-in, so a signed-in account answers it here without a code.
-function Waiting(props: {account: Option.Option<Account>; id: string}) {
+function Waiting(props: {account: Option.Option<SignedAccount>; id: string}) {
 	return pipe(
 		useAtomSuspense(requestAtom(props.id)).value,
 		Match.value,
@@ -208,7 +224,7 @@ function Tabs() {
 	)
 }
 
-function Signed(props: {account: Account}) {
+function Signed(props: {account: SignedAccount}) {
 	return pipe(
 		Match.value(props.account.role),
 		Match.when('Waiting', () => (
@@ -225,8 +241,50 @@ function Signed(props: {account: Account}) {
 	)
 }
 
-// The account's avatar opens who is signed in and the sign-out.
-function AccountMenu(props: {account: Account}) {
+// This account's passkeys, each removed from its own submenu; adding one lets the browser offer any kind it can make.
+function PasskeyItems(props: {via: SessionVia}) {
+	const passkeys = AsyncResult.getOrElse(useAtomValue(passkeysAtom), () => [])
+	const [adding, add] = useAtom(addPasskeyAtom)
+	const [removing, remove] = useAtom(removePasskeyAtom)
+	return (
+		<DropdownMenuGroup>
+			<DropdownMenuLabel>Passkeys</DropdownMenuLabel>
+			{Array.map(passkeys, passkey => (
+				<DropdownMenuSub key={passkey.id}>
+					<DropdownMenuSubTrigger>
+						<KeyRound />
+						<span className="truncate">{passkey.addedFrom}</span>
+						<span className="text-muted-foreground ml-auto pl-3 text-xs">
+							{Boolean.match(passkey.synced, {onFalse: () => 'One device', onTrue: () => 'Synced'})}
+						</span>
+					</DropdownMenuSubTrigger>
+					<DropdownMenuSubContent>
+						<DropdownMenuItem
+							variant="destructive"
+							disabled={AsyncResult.isWaiting(removing)}
+							onClick={() => remove(passkey.id)}
+						>
+							Remove
+						</DropdownMenuItem>
+					</DropdownMenuSubContent>
+				</DropdownMenuSub>
+			))}
+			{/* A code may have been approved for someone else's browser, so only a GitHub or passkey sign-in adds a year-long passkey. */}
+			<DropdownMenuItem disabled={props.via === 'Code' || AsyncResult.isWaiting(adding)} onClick={() => add()}>
+				<Plus />
+				<span className="flex flex-col">
+					Add a passkey
+					{props.via === 'Code' && (
+						<span className="text-muted-foreground text-xs">Sign in with GitHub on this browser first</span>
+					)}
+				</span>
+			</DropdownMenuItem>
+		</DropdownMenuGroup>
+	)
+}
+
+// The account's avatar opens who is signed in, its passkeys and the sign-out.
+function AccountMenu(props: {account: SignedAccount}) {
 	const [signOut, endSession] = useAtom(signOutAtom)
 	return (
 		<DropdownMenu>
@@ -244,6 +302,12 @@ function AccountMenu(props: {account: Account}) {
 					</DropdownMenuLabel>
 				</DropdownMenuGroup>
 				<DropdownMenuSeparator />
+				{props.account.role !== 'Waiting' && (
+					<>
+						<PasskeyItems via={props.account.via} />
+						<DropdownMenuSeparator />
+					</>
+				)}
 				<DropdownMenuItem variant="destructive" disabled={AsyncResult.isWaiting(signOut)} onClick={() => endSession()}>
 					Sign out
 				</DropdownMenuItem>
@@ -256,11 +320,16 @@ function AccountMenu(props: {account: Account}) {
 function SignIn() {
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [codeSignIn, startCodeSignIn] = useAtom(codeSignInAtom)
+	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
 	return (
 		<section className="flex flex-1 flex-col justify-center gap-2 pb-12" aria-label="Sign in">
 			<Button size="lg" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
 				{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
 				Sign in with GitHub
+			</Button>
+			<Button size="lg" variant="outline" disabled={AsyncResult.isWaiting(passkey)} onClick={() => startPasskey()}>
+				{Boolean.match(AsyncResult.isWaiting(passkey), {onFalse: () => <KeyRound />, onTrue: () => <Spinner />})}
+				Sign in with a passkey
 			</Button>
 			<Button
 				size="lg"

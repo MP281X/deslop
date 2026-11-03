@@ -35,15 +35,13 @@ import type {
 	Grant,
 	Origin,
 	RevokeParams,
+	SessionVia,
 	SignedInApp,
 	TokenParams
 } from '#services/tokens/schema.ts'
 import {Exchange, Grants} from '#services/tokens/schema.ts'
 
 export const SESSION_COOKIE = '__Secure-session'
-
-// A GitHub sign-in is the owner's own browser; a code may have been approved for someone else's, so it ends sooner.
-type SessionVia = 'Code' | 'GitHub'
 
 // An authorization code lives 60 seconds in memory; once redeemed it names the family it gave, so a replay ends it.
 type Code = {
@@ -108,6 +106,7 @@ export class Tokens extends Context.Service<
 		readonly issue: (request: ClientRequest, user: User) => Effect.Effect<string, AuthError>
 		readonly revoke: (params: RevokeParams) => Effect.Effect<void, AuthError>
 		readonly session: (headers: Headers.Headers) => Effect.Effect<User, AuthError>
+		readonly sessionVia: (headers: Headers.Headers) => Effect.Effect<SessionVia, AuthError>
 		readonly startSession: (
 			user: User,
 			origin: Origin,
@@ -152,13 +151,19 @@ export class Tokens extends Context.Service<
 					now
 				}
 			})
-			const session = Effect.fn('Tokens.session')(function* (headers: Headers.Headers) {
+			const browser = Effect.fnUntraced(function* (headers: Headers.Headers) {
 				const found = yield* grantOf(Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE] ?? '')
 				if (found.grant.credential._tag !== 'Browser' || found.grant.credential.hash !== found.hash) {
 					return yield* AuthError.make({message: 'Sign in first'})
 				}
-				return found.grant.user
+				return {user: found.grant.user, via: found.grant.credential.via ?? ('Code' as const)}
 			}, rejected('Sign in first'))
+			const session = Effect.fn('Tokens.session')(function* (headers: Headers.Headers) {
+				return (yield* browser(headers)).user
+			})
+			const sessionVia = Effect.fn('Tokens.sessionVia')(function* (headers: Headers.Headers) {
+				return (yield* browser(headers)).via
+			})
 			const access = Effect.fn('Tokens.access')(function* (headers: Headers.Headers, resource: string) {
 				// RFC 9110 auth schemes are case-insensitive and may be followed by more than one space.
 				const token = yield* Effect.fromOption(
@@ -497,6 +502,7 @@ export class Tokens extends Context.Service<
 					})
 				}, rejected('Cannot revoke the token')),
 				session,
+				sessionVia,
 				startSession: Effect.fn('Tokens.startSession')(function* (user: User, origin: Origin, via: SessionVia) {
 					const family = yield* secret(16)
 					const sessionSecret = yield* secret(32)
@@ -504,6 +510,7 @@ export class Tokens extends Context.Service<
 						Match.value(via),
 						Match.when('Code', () => 30 * 86_400),
 						Match.when('GitHub', () => 365 * 86_400),
+						Match.when('Passkey', () => 365 * 86_400),
 						Match.exhaustive
 					)
 					const sessionHash = yield* hash(sessionSecret)
@@ -515,7 +522,7 @@ export class Tokens extends Context.Service<
 								[family]: {
 									client: browserLabel(origin),
 									createdAt: now,
-									credential: {_tag: 'Browser' as const, expiresAt: now + seconds * 1000, hash: sessionHash},
+									credential: {_tag: 'Browser' as const, expiresAt: now + seconds * 1000, hash: sessionHash, via},
 									device: deviceLabel(origin),
 									lastActive: now,
 									origin,

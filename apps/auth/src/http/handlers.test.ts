@@ -3,6 +3,7 @@ import {assert, it} from '@effect/vitest'
 
 import {
 	Array,
+	Boolean,
 	Clock,
 	ConfigProvider,
 	Effect,
@@ -18,7 +19,7 @@ import {
 	pipe
 } from 'effect'
 
-import {Digest} from 'effect/crypto'
+import {Digest, SecureRandom, Signature} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientResponse, HttpRouter, HttpServerRequest, HttpServerResponse, UrlParams} from 'effect/http'
 import {RateLimiter} from 'effect/persistence'
@@ -33,6 +34,15 @@ import * as ServerRuntime from '@deslop/runtime/server'
 import {HttpHandlers} from '#http/handlers.ts'
 import {Apps} from '#services/apps/service.ts'
 import {GitHub} from '#services/github/service.ts'
+import {
+	AddPasskeyParams,
+	CreationOptions,
+	Passkey,
+	PasskeyParams,
+	PasskeySignIn,
+	RequestOptions
+} from '#services/passkeys/schema.ts'
+import {Passkeys} from '#services/passkeys/service.ts'
 import {AdmitParams, Person, PersonParams} from '#services/people/schema.ts'
 import {People} from '#services/people/service.ts'
 import {
@@ -185,6 +195,62 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 										Effect.catchTag('AuthError', () => Effect.succeed(HttpServerResponse.empty({status: 400})))
 									)
 								),
+								// The account menu's passkey RPCs.
+								HttpRouter.add(
+									'GET',
+									'/passkey-options',
+									pipe(
+										Effect.gen(function* () {
+											return yield* HttpServerResponse.schemaJson(CreationOptions)(
+												yield* (yield* Passkeys).registration(
+													yield* CurrentUser,
+													yield* (yield* Tokens).sessionVia((yield* HttpServerRequest.HttpServerRequest).headers)
+												)
+											)
+										}),
+										refused
+									)
+								),
+								HttpRouter.add(
+									'POST',
+									'/add-passkey',
+									pipe(
+										Effect.gen(function* () {
+											const input = yield* HttpServerRequest.schemaBodyJson(AddPasskeyParams)
+											yield* (yield* Passkeys).add(input.response, {
+												from: {userAgent: IPHONE_SAFARI},
+												user: yield* CurrentUser,
+												via: yield* (yield* Tokens).sessionVia((yield* HttpServerRequest.HttpServerRequest).headers)
+											})
+											return HttpServerResponse.empty()
+										}),
+										refused
+									)
+								),
+								HttpRouter.add(
+									'GET',
+									'/passkeys',
+									Effect.gen(function* () {
+										return yield* HttpServerResponse.schemaJson(Schema.Array(Passkey))(
+											yield* Effect.flatMap(
+												Stream.runHead((yield* Passkeys).list(yield* CurrentUser)),
+												Effect.fromOption
+											)
+										)
+									})
+								),
+								HttpRouter.add(
+									'POST',
+									'/remove-passkey',
+									pipe(
+										Effect.gen(function* () {
+											const input = yield* HttpServerRequest.schemaBodyJson(PasskeyParams)
+											yield* (yield* Passkeys).remove(input.id, yield* CurrentUser)
+											return HttpServerResponse.empty()
+										}),
+										refused
+									)
+								),
 								// The page's `auth.answer` RPC.
 								HttpRouter.add(
 									'POST',
@@ -238,7 +304,9 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 					),
 					Layer.provideMerge(Layer.mergeAll(SignIns.layer, RateLimiter.layer)),
 					Layer.provideMerge(People.layer),
-					Layer.provideMerge(Layer.mergeAll(Tokens.layer, GitHub.layer, Apps.layer, RateLimiter.layerStoreMemory)),
+					Layer.provideMerge(
+						Layer.mergeAll(Tokens.layer, Passkeys.layer, GitHub.layer, Apps.layer, RateLimiter.layerStoreMemory)
+					),
 					Layer.provide(ServerRuntime.layerKeyValueStore(directory)),
 					Layer.provide(
 						Layer.mergeAll(
@@ -518,7 +586,229 @@ const people = Effect.fnUntraced(function* (
 	)
 })
 
+// An unsigned big-endian number as a DER INTEGER: leading zeros dropped, one put back where the top bit would read as a sign.
+function derInteger(half: readonly number[]) {
+	const trimmed = Array.dropWhile(half, byte => byte === 0)
+	const value = Boolean.match(
+		Option.exists(Array.head(trimmed), byte => byte >= 0x80),
+		{onFalse: () => trimmed, onTrue: () => [0, ...trimmed]}
+	)
+	return [0x02, value.length, ...value]
+}
+
+// Signature signs ECDSA as r‖s; WebAuthn carries the DER form.
+function der(raw: Uint8Array) {
+	const bytes = Array.fromIterable(raw)
+	const body = [...derInteger(Array.take(bytes, 32)), ...derInteger(Array.drop(bytes, 32))]
+	return Uint8Array.of(0x30, body.length, ...body)
+}
+
+// A CBOR byte string of 24 to 255 bytes, as every one here is: its head, its length, then its bytes.
+function cborBytes(bytes: Uint8Array) {
+	return Uint8Array.of(0x58, bytes.length, ...bytes)
+}
+
+// A short CBOR text string.
+function cborText(text: string) {
+	const bytes = new TextEncoder().encode(text)
+	return Uint8Array.of(0x60 + bytes.length, ...bytes)
+}
+
+function clientData(type: string, challenge: string) {
+	return new TextEncoder().encode(
+		Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))({challenge, crossOrigin: false, origin: AUTH_URL, type})
+	)
+}
+
+// A passkey in software, answering as a phone or a security key does: ES256, the user verified, attestation "none".
+const authenticator = Effect.fnUntraced(function* () {
+	const signature = yield* Signature.Signature
+	const digest = yield* Digest.Digest
+	const keys = yield* signature.generateKeyPair(Signature.ecdsaP256)
+	// The uncompressed point: 0x04, then x and y.
+	const point = Array.fromIterable(yield* Signature.toBytes(keys.publicKey))
+	const credential = yield* (yield* SecureRandom.SecureRandom).randomBytes(16)
+	const id = Base64Url.encode(credential)
+	// The relying party's hash, then flags (user present 0x01, verified 0x04, attested credential 0x40), a zero counter, then any attested credential.
+	const authData = Effect.fnUntraced(function* (rpId: string, flags: number, attested: readonly number[]) {
+		return Uint8Array.of(
+			...(yield* digest.digest(Digest.sha256, new TextEncoder().encode(rpId))),
+			flags,
+			0,
+			0,
+			0,
+			0,
+			...attested
+		)
+	})
+	return {
+		answer: Effect.fnUntraced(function* (options: RequestOptions) {
+			const data = clientData('webauthn.get', options.challenge)
+			const authenticatorData = yield* authData(options.rpId ?? '', 0x05, [])
+			const signed = yield* signature.sign(
+				keys.privateKey,
+				Uint8Array.of(...authenticatorData, ...(yield* digest.digest(Digest.sha256, data)))
+			)
+			return {
+				clientExtensionResults: {},
+				id,
+				rawId: id,
+				response: {
+					authenticatorData: Base64Url.encode(authenticatorData),
+					clientDataJSON: Base64Url.encode(data),
+					signature: Base64Url.encode(der(signed))
+				},
+				type: 'public-key'
+			} satisfies PasskeySignIn['response']
+		}),
+		register: Effect.fnUntraced(function* (options: CreationOptions) {
+			// COSE EC2 key, ES256 on P-256: {1: 2, 3: -7, -1: 1, -2: x, -3: y}.
+			const key = [
+				0xa5,
+				0x01,
+				0x02,
+				0x03,
+				0x26,
+				0x20,
+				0x01,
+				0x21,
+				...cborBytes(Uint8Array.from(Array.take(Array.drop(point, 1), 32))),
+				0x22,
+				...cborBytes(Uint8Array.from(Array.drop(point, 33)))
+			]
+			// A zero AAGUID, the credential id's length and the id, then its public key.
+			const attested = [...Array.replicate(0, 16), 0, credential.length, ...credential, ...key]
+			return {
+				clientExtensionResults: {},
+				id,
+				rawId: id,
+				response: {
+					attestationObject: Base64Url.encode(
+						Uint8Array.of(
+							0xa3,
+							...cborText('fmt'),
+							...cborText('none'),
+							...cborText('attStmt'),
+							0xa0,
+							...cborText('authData'),
+							...cborBytes(yield* authData(options.rp.id ?? '', 0x45, attested))
+						)
+					),
+					clientDataJSON: Base64Url.encode(clientData('webauthn.create', options.challenge)),
+					transports: ['usb']
+				},
+				type: 'public-key'
+			} satisfies AddPasskeyParams['response']
+		})
+	}
+})
+
 it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
+	test.effect(
+		'adds a passkey of any kind while signed in, then signs a browser in with it alone, once per challenge',
+		Effect.fnUntraced(function* () {
+			const web = yield* servers()
+			const session = cookie(yield* signIn(web.issuer, 'octocat'))
+			const key = yield* authenticator()
+			const json = {'content-type': 'application/json'}
+			const options = yield* Schema.decodeEffect(Schema.fromJsonString(CreationOptions))(
+				yield* Effect.flatMap(send(web.issuer, '/passkey-options', {headers: {cookie: session}}), response =>
+					Effect.promise(() => response.text())
+				)
+			)
+			// Discoverable and verified, with no attachment named, so a phone, a password manager and a security key all qualify.
+			assert.deepStrictEqual(options.authenticatorSelection, {
+				requireResidentKey: true,
+				residentKey: 'required',
+				userVerification: 'required'
+			})
+			assert.strictEqual(options.rp.id, 'mp281x.xyz')
+			const added = yield* send(web.issuer, '/add-passkey', {
+				body: yield* Schema.encodeEffect(Schema.fromJsonString(AddPasskeyParams))({
+					response: yield* key.register(options)
+				}),
+				headers: {...json, cookie: session},
+				method: 'POST'
+			})
+			assert.strictEqual(added.status, 204)
+			const listed = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(Passkey)))(
+				yield* Effect.flatMap(send(web.issuer, '/passkeys', {headers: {cookie: session}}), response =>
+					Effect.promise(() => response.text())
+				)
+			)
+			assert.deepStrictEqual(
+				Array.map(listed, passkey => [passkey.addedFrom, passkey.synced]),
+				[['Safari · iPhone', false]]
+			)
+			// A browser with no session: the options name no account, and the passkey alone signs it in.
+			const challenge = yield* Schema.decodeEffect(Schema.fromJsonString(RequestOptions))(
+				yield* Effect.flatMap(send(web.issuer, '/auth/passkey'), response => Effect.promise(() => response.text()))
+			)
+			assert.isUndefined(challenge.allowCredentials)
+			const assertion = yield* key.answer(challenge)
+			const body = yield* Schema.encodeEffect(Schema.fromJsonString(PasskeySignIn))({
+				next: `${API}/notes`,
+				response: assertion
+			})
+			const signedIn = yield* send(web.issuer, '/auth/passkey', {body, headers: json, method: 'POST'})
+			assert.strictEqual(signedIn.status, 200)
+			assert.deepStrictEqual(yield* Effect.promise(() => signedIn.json()), {next: `${API}/notes`})
+			assert.deepStrictEqual(
+				yield* Effect.flatMap(send(web.issuer, '/me', {headers: {cookie: cookie(signedIn)}}), response =>
+					Effect.promise(() => response.json())
+				),
+				{id: 'github:42', name: 'octocat'}
+			)
+			// The same answer again finds its challenge spent.
+			assert.strictEqual((yield* send(web.issuer, '/auth/passkey', {body, headers: json, method: 'POST'})).status, 400)
+			// A passkey's session may add another, but never one whose id is already registered.
+			const passkeySession = cookie(signedIn)
+			const repeat = yield* Schema.decodeEffect(Schema.fromJsonString(CreationOptions))(
+				yield* Effect.flatMap(send(web.issuer, '/passkey-options', {headers: {cookie: passkeySession}}), response =>
+					Effect.promise(() => response.text())
+				)
+			)
+			const duplicate = yield* send(web.issuer, '/add-passkey', {
+				body: yield* Schema.encodeEffect(Schema.fromJsonString(AddPasskeyParams))({
+					response: yield* key.register(repeat)
+				}),
+				headers: {...json, cookie: passkeySession},
+				method: 'POST'
+			})
+			assert.strictEqual(yield* Effect.promise(() => duplicate.text()), 'This passkey is already added')
+			// A code-approved session may be someone else's browser, so it cannot mint a year-long passkey.
+			const started = yield* send(web.issuer, '/auth/code')
+			const request = new URL(started.headers.get('location') ?? '', AUTH_URL).searchParams.get('request') ?? ''
+			yield* answer(web.issuer, session, request, true)
+			const byCode = cookie(
+				yield* send(web.issuer, `/auth/continue?request=${request}`, {headers: {cookie: cookie(started)}})
+			)
+			assert.strictEqual(
+				yield* Effect.flatMap(send(web.issuer, '/passkey-options', {headers: {cookie: byCode}}), response =>
+					Effect.promise(() => response.text())
+				),
+				'Sign in with GitHub or a passkey on this browser to add a passkey'
+			)
+			// A removed passkey signs no one in.
+			yield* send(web.issuer, '/remove-passkey', {
+				body: yield* Schema.encodeEffect(Schema.fromJsonString(PasskeyParams))({id: assertion.id}),
+				headers: {...json, cookie: session},
+				method: 'POST'
+			})
+			const again = yield* Schema.decodeEffect(Schema.fromJsonString(RequestOptions))(
+				yield* Effect.flatMap(send(web.issuer, '/auth/passkey'), response => Effect.promise(() => response.text()))
+			)
+			assert.strictEqual(
+				(yield* send(web.issuer, '/auth/passkey', {
+					body: yield* Schema.encodeEffect(Schema.fromJsonString(PasskeySignIn))({response: yield* key.answer(again)}),
+					headers: json,
+					method: 'POST'
+				})).status,
+				400
+			)
+		})
+	)
+
 	test.effect(
 		'keeps sessions, rotated tokens and revocations across restarts',
 		Effect.fnUntraced(function* () {

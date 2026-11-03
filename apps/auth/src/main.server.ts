@@ -15,16 +15,19 @@ import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Apps} from '#services/apps/service.ts'
 import {GitHub} from '#services/github/service.ts'
+import {Passkeys} from '#services/passkeys/service.ts'
 import {People} from '#services/people/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
 import {Tokens} from '#services/tokens/service.ts'
 import {layerMcp} from '#tools/handlers.ts'
 
-// Each service builds on the ones below it: tokens, then people (who may use them), then sign-ins.
+// Each service builds on the ones below it: tokens and passkeys, then people (who may use them), then sign-ins.
 const layerServices = pipe(
 	Layer.mergeAll(SignIns.layer, RateLimiter.layer),
 	Layer.provideMerge(People.layer),
-	Layer.provideMerge(Layer.mergeAll(Tokens.layer, GitHub.layer, Apps.layer, RateLimiter.layerStoreMemory)),
+	Layer.provideMerge(
+		Layer.mergeAll(Tokens.layer, Passkeys.layer, GitHub.layer, Apps.layer, RateLimiter.layerStoreMemory)
+	),
 	Layer.provide(ServerRuntime.layerDataStore),
 	Layer.provide(Layer.succeed(NodeHttpClient.RequestInit, {redirect: 'error'}))
 )

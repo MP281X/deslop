@@ -6,7 +6,8 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 
 import {Catalog} from '#services/apps/schema.ts'
-import {Account, AdmitParams, Person, PersonParams} from '#services/people/schema.ts'
+import {AddPasskeyParams, CreationOptions, Passkey, PasskeyParams} from '#services/passkeys/schema.ts'
+import {AdmitParams, Person, PersonParams, SignedAccount} from '#services/people/schema.ts'
 import {
 	AnswerParams,
 	AuthorizationStatus,
@@ -29,13 +30,17 @@ export class RpcContracts extends RpcGroup.make(
 	Rpc.make('auth.remove', {error: AuthError, payload: PersonParams, success: Person}),
 	Rpc.make('auth.apps', {error: AuthError, stream: true, success: Schema.Array(SignedInApp)}),
 	Rpc.make('auth.catalog', {error: AuthError, stream: true, success: Catalog}),
-	Rpc.make('auth.disconnect', {error: AuthError, payload: FamilyParams})
+	Rpc.make('auth.disconnect', {error: AuthError, payload: FamilyParams}),
+	Rpc.make('auth.passkeys', {error: AuthError, stream: true, success: Schema.Array(Passkey)}),
+	Rpc.make('auth.passkeyOptions', {error: AuthError, success: CreationOptions}),
+	Rpc.make('auth.addPasskey', {error: AuthError, payload: AddPasskeyParams}),
+	Rpc.make('auth.removePasskey', {error: AuthError, payload: PasskeyParams})
 )
 	.middleware(RpcAuth)
 	.merge(
 		// A GitHub account an admin has not allowed yet still reads its own state, and a waiting sign-in has no account at all.
 		RpcGroup.make(
-			Rpc.make('auth.account', {error: AuthError, stream: true, success: Account}),
+			Rpc.make('auth.account', {error: AuthError, stream: true, success: SignedAccount}),
 			Rpc.make('auth.wait', {error: AuthError, payload: RequestParams, stream: true, success: AuthorizationStatus})
 		)
 	) {}

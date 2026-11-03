@@ -26,8 +26,9 @@ import {Auth} from '@deslop/runtime/auth/service'
 import {localAuth} from '@deslop/runtime/auth/utils'
 
 import {GitHub} from '#services/github/service.ts'
+import {Passkeys} from '#services/passkeys/service.ts'
 import type {AdmitParams, GitHubUser, MemberRow, Role} from '#services/people/schema.ts'
-import {Account, Members, Person} from '#services/people/schema.ts'
+import {Members, Person, SignedAccount} from '#services/people/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
 const ROLE_ORDER = {Admin: 0, Member: 2, Waiting: 1} satisfies Record<Role, number>
@@ -50,7 +51,7 @@ function member(id: string, current: Members) {
 export class People extends Context.Service<
 	People,
 	{
-		readonly account: (headers: Headers.Headers) => Stream.Stream<Account, AuthError>
+		readonly account: (headers: Headers.Headers) => Stream.Stream<SignedAccount, AuthError>
 		readonly admin: (user: User) => Effect.Effect<void, AuthError>
 		readonly admit: (params: AdmitParams, user: User) => Effect.Effect<Person, AuthError>
 		readonly allowed: (user: User) => Effect.Effect<User, AuthError>
@@ -66,6 +67,7 @@ export class People extends Context.Service<
 			const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Members)
 			const state = yield* SubscriptionRef.make<Members>(Option.getOrElse(yield* store.get('members'), () => []))
 			const tokens = yield* Tokens
+			const passkeys = yield* Passkeys
 			const github = yield* GitHub
 			// Without an issuer the developer account, `github:0`, is the admin unless GITHUB_ADMINS names others.
 			const listed = Config.Array(Schema.String, 'GITHUB_ADMINS')
@@ -164,9 +166,10 @@ export class People extends Context.Service<
 							pipe(
 								Effect.gen(function* () {
 									const user = yield* tokens.session(headers)
+									const via = yield* tokens.sessionVia(headers)
 									return Option.match(member(user.id, yield* SubscriptionRef.get(state)), {
-										onNone: () => Account.make({...user, role: roleOf(user.id, Option.none())}),
-										onSome: row => Account.make(Struct.omit(personOf(row), ['since']))
+										onNone: () => SignedAccount.make({...user, role: roleOf(user.id, Option.none()), via}),
+										onSome: row => SignedAccount.make({...Struct.omit(personOf(row), ['since']), via})
 									})
 								}),
 								rejected('Cannot read the account')
@@ -194,8 +197,11 @@ export class People extends Context.Service<
 							] as const
 						})
 					)
-					// A declined account is signed out, so it can sign in again to ask again.
-					if (!params.allow) yield* tokens.forget(params.id)
+					// A declined account is signed out and loses its passkeys, so it can sign in again to ask again.
+					if (!params.allow) {
+						yield* tokens.forget(params.id)
+						yield* passkeys.forget(params.id)
+					}
 					return person
 				}, rejected('Cannot answer the access request')),
 				allowed: Effect.fn('People.allowed')(allowed),
@@ -232,9 +238,10 @@ export class People extends Context.Service<
 						return yield* AuthError.make({message: 'Admins come from GITHUB_ADMINS, so they cannot be removed here'})
 					}
 					const found = personOf(yield* Effect.fromOption(member(id, yield* SubscriptionRef.get(state))))
-					// Access ends first, so no token or sign-in can be issued to the account between the two steps.
+					// Access ends first, so no token or sign-in can be issued to the account between the steps; a later re-admission revives no old passkey.
 					yield* transact(current => Effect.succeed([undefined, Array.filter(current, row => row.id !== id)] as const))
 					yield* tokens.forget(id)
+					yield* passkeys.forget(id)
 					return found
 				}, rejected('Cannot remove this account'))
 			})
