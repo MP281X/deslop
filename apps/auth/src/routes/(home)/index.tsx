@@ -8,7 +8,7 @@ import {Check, X} from 'lucide-react'
 import {Suspense} from 'react'
 
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
-import {FieldError, FieldLabel} from '@deslop/components-web/ui/field'
+import {FieldError} from '@deslop/components-web/ui/field'
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
 import {cn} from '@deslop/components-web/utils'
 
@@ -28,9 +28,9 @@ function Enter(props: {
 }) {
 	return (
 		<section className="flex flex-col gap-4">
-			<FieldLabel htmlFor="code">Approve a sign-in</FieldLabel>
 			<InputOTP
 				id="code"
+				aria-label="Code of a sign-in to approve"
 				maxLength={CODE_LENGTH}
 				value={props.typed}
 				onChange={value => {
