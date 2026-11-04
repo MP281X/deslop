@@ -8,6 +8,7 @@ import {Generator, getConfig} from '@tanstack/router-generator'
 import {Command, Flag} from 'effect/cli'
 
 import {copyTemplate} from '@deslop/create-package'
+import {generatorProgram, nameFlag} from '@deslop/create-package/cli'
 
 import packageJson from '#package.json' with {type: 'json'}
 
@@ -23,15 +24,7 @@ const create = Command.make(
 			Flag.withDescription('A web app, or an iOS app with an Expo client'),
 			Flag.withDefault('web')
 		),
-		name: pipe(
-			Flag.String('name'),
-			Flag.withSchema(
-				Schema.String.check(
-					Schema.isPattern(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u, {message: 'Use an unscoped kebab-case package name.'})
-				)
-			),
-			Flag.withDescription('Unscoped application name')
-		)
+		name: nameFlag('Unscoped application name')
 	},
 	Effect.fnUntraced(function* (input) {
 		const fs = yield* FileSystem.FileSystem
@@ -73,10 +66,12 @@ const create = Command.make(
 )
 
 NodeRuntime.runMain(
-	pipe(
-		create,
-		Command.withDescription('Create a full-stack Deslop application.'),
-		Command.run({version: packageJson.version}),
-		Effect.provide(NodeServices.layer)
+	Effect.provide(
+		generatorProgram({
+			command: create,
+			description: 'Create a full-stack Deslop application.',
+			version: packageJson.version
+		}),
+		NodeServices.layer
 	)
 )
