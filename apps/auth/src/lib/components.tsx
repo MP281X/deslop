@@ -7,7 +7,6 @@ import {AppWindow, Globe, Network, Server} from 'lucide-react'
 import {useState} from 'react'
 import {toQR} from 'toqr'
 
-import {useCommandQuery} from '@deslop/components-web/app-bar'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
@@ -86,7 +85,7 @@ export function AccountAvatar(props: {id: string; name: string}) {
 }
 
 // A glyph until the app's own icon loads, so a missing icon never draws the browser's broken image; no tile behind either.
-function AppIcon(props: {origin: string; small?: boolean}) {
+export function AppIcon(props: {origin: string; small?: boolean}) {
 	const [state, setState] = useState<'failed' | 'loaded' | 'loading'>('loading')
 	return (
 		<span
@@ -361,29 +360,20 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 	const catalog = useAtomSuspense(catalogAtom).value
 	const signIns = useAtomSuspense(appsAtom).value
 	const now = useAtomSuspense(minuteAtom).value
-	const query = useCommandQuery()
-	function shown(name: string) {
-		return String.includes(query)(String.toLowerCase(name))
-	}
 	const rows: Row[] = [
-		...Array.map(
-			Array.filter(catalog, app => shown(app.name)),
-			app => ({
-				name: app.name,
-				open: Option.some(app.open),
-				origin: app.origin,
-				web: String.startsWith('https://')(app.open)
-			})
-		),
+		...Array.map(catalog, app => ({
+			name: app.name,
+			open: Option.some(app.open),
+			origin: app.origin,
+			web: String.startsWith('https://')(app.open)
+		})),
 		...pipe(
 			[
 				...Array.flatMap(signIns, signIn => appOrigins(signIn.resources)),
 				...Option.match(props.pending, {onNone: () => [], onSome: request => appOrigins(request.resources)})
 			],
 			Array.dedupe,
-			Array.filter(
-				origin => origin !== 'browser' && !Array.some(catalog, app => app.origin === origin) && shown(origin)
-			),
+			Array.filter(origin => origin !== 'browser' && !Array.some(catalog, app => app.origin === origin)),
 			Array.sort(String.Order),
 			Array.map(origin => ({
 				name: Option.getOrElse(Array.head(String.split(new URL(origin).hostname, '.')), () => origin),
@@ -394,9 +384,8 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 		)
 	]
 	// Narrowing the apps narrows the clients to those holding one, so no column stands empty.
-	const columns = Array.filter(
-		columnsOf(props.pending, signIns, catalog),
-		column => column.pending || Array.some(rows, row => holds(column, row))
+	const columns = Array.filter(columnsOf(props.pending, signIns, catalog), column =>
+		Array.some(rows, row => holds(column, row))
 	)
 	return (
 		<section className="flex flex-1 flex-col gap-3" aria-label="Apps">
@@ -414,12 +403,7 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 				onEmpty: () => (
 					<Empty>
 						<EmptyHeader>
-							<EmptyTitle>
-								{Boolean.match(String.isEmpty(query), {
-									onFalse: () => `No app matches “${query}”`,
-									onTrue: () => 'No apps yet'
-								})}
-							</EmptyTitle>
+							<EmptyTitle>No apps yet</EmptyTitle>
 						</EmptyHeader>
 					</Empty>
 				),

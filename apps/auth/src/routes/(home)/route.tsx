@@ -8,6 +8,7 @@ import {Check, Copy, KeyRound, Plus} from 'lucide-react'
 import {Suspense, useEffect} from 'react'
 
 import {AppBar, AppBarTab} from '@deslop/components-web/app-bar'
+import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {GitHubIcon} from '@deslop/components-web/icons'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
@@ -38,13 +39,14 @@ import {
 import {FieldError} from '@deslop/components-web/ui/field'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 
-import {AccountAvatar, AppList, QrCode} from '#lib/components.tsx'
+import {AccountAvatar, AppIcon, AppList, QrCode} from '#lib/components.tsx'
 import {
 	ADDING_PASSKEY,
 	APP_ROWS,
 	accountAtom,
 	approveLink,
 	addPasskeyAtom,
+	catalogAtom,
 	codeSignInAtom,
 	confirmForPasskeyAtom,
 	passkeySignInAtom,
@@ -396,12 +398,55 @@ function SigningOut() {
 // A signed-in account narrows its apps or people from the bar, where admins also switch between the two.
 function Shell() {
 	const account = useAtomSuspense(accountAtom).value
+	const catalog = AsyncResult.getOrElse(useAtomValue(catalogAtom), () => [])
+	const people = AsyncResult.getOrElse(useAtomValue(peopleAtom), () => [])
+	const endSession = useAtomSet(menuSignOutAtom)
+	const admin = Option.exists(account, signed => signed.role === 'Admin')
+	const waiting = Array.countBy(people, person => person.role === 'Waiting')
+	const groups: PaletteGroup[] = [
+		{
+			items: Array.map(catalog, app => ({
+				detail: new URL(app.origin).hostname,
+				icon: <AppIcon origin={app.origin} small />,
+				keywords: app.name,
+				label: app.name,
+				run: () => {
+					location.assign(app.open)
+				}
+			})),
+			label: 'Apps'
+		},
+		{
+			items: [
+				{label: 'Sign-ins', run: () => location.assign('/')},
+				...Boolean.match(admin, {
+					onFalse: () => [],
+					onTrue: () => [
+						{
+							detail: Boolean.match(waiting > 0, {onFalse: () => undefined, onTrue: () => `${waiting} waiting`}),
+							label: 'People',
+							run: () => location.assign('/people')
+						}
+					]
+				})
+			],
+			label: 'Go to'
+		},
+		{
+			items: Option.match(account, {
+				onNone: () => [],
+				onSome: () => [{label: 'Sign out of every app', run: () => endSession()}]
+			}),
+			label: 'Account'
+		}
+	]
 	return (
 		<>
 			<AppBar
 				icon={icon}
 				name="auth"
 				account={Option.match(account, {onNone: () => false, onSome: signed => <AccountMenu account={signed} />})}
+				palette={groups}
 				tabs={
 					Option.exists(account, signed => signed.role === 'Admin') && (
 						<Suspense fallback={null}>
@@ -409,10 +454,6 @@ function Shell() {
 						</Suspense>
 					)
 				}
-				commands={Option.match(
-					Option.filter(account, signed => signed.role !== 'Waiting'),
-					{onNone: () => undefined, onSome: () => []}
-				)}
 			/>
 			<Page className="max-w-xl">
 				{signingOut && <SigningOut />}
