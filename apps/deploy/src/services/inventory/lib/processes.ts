@@ -45,7 +45,7 @@ export const processes = Effect.gen(function* () {
 			8
 		)
 	)
-	const total = Array.reduce(counts, 0, (sum, value) => sum + value)
+	const total = Number.sumAll(counts)
 	const records = yield* pipe(
 		Effect.forEach(
 			Array.filter(yield* fs.readDirectory('/proc'), name => Option.isSome(String.match(/^[0-9]+$/u)(name))),

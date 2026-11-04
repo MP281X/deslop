@@ -1,4 +1,6 @@
-import {Schema} from 'effect'
+import {Option, Result, Schema} from 'effect'
+
+import {Url} from 'effect/http'
 
 // A browser, fetch or MCP SDK call that threw; the MCP page shows its cause.
 export class UpstreamError extends Schema.TaggedError<UpstreamError>()('UpstreamError', {cause: Schema.Defect()}) {}
@@ -10,11 +12,11 @@ export type ServerUrl = typeof ServerUrl.Type
 export const ServerUrl = Schema.NonEmptyString.check(
 	Schema.isMaxLength(2048),
 	Schema.makeFilter(
-		(value: string) => {
-			if (!URL.canParse(value)) return false
-			const url = new URL(value)
-			return url.protocol === 'https:' && url.username === '' && url.password === '' && url.hash === ''
-		},
+		(value: string) =>
+			Option.exists(
+				Result.getSuccess(Url.fromString(value)),
+				url => url.protocol === 'https:' && url.username === '' && url.password === '' && url.hash === ''
+			),
 		{expected: 'a public HTTPS URL without credentials or a fragment'}
 	)
 )

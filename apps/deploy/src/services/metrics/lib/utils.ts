@@ -45,15 +45,11 @@ export function counters(stat: string, network: string, disk: string, uptime: st
 				const counts = Schema.decodeSync(Schema.Array(Schema.FiniteFromString).check(Schema.isMinLength(5)))(
 					Array.take(Array.drop(fields, 1), 8)
 				)
-				return {
-					id: fields[0] ?? '',
-					idle: (counts[3] ?? 0) + (counts[4] ?? 0),
-					total: Array.reduce(counts, 0, (sum, value) => sum + value)
-				}
+				return {id: fields[0] ?? '', idle: (counts[3] ?? 0) + (counts[4] ?? 0), total: Number.sumAll(counts)}
 			})
 		),
 		cpuIdle: (values[3] ?? 0) + (values[4] ?? 0),
-		cpuTotal: Array.reduce(values, 0, (total, value) => total + value),
+		cpuTotal: Number.sumAll(values),
 		diskRead: Array.reduce(
 			devices,
 			0,

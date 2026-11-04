@@ -1,22 +1,23 @@
 // fallow-ignore-file unused-type -- Paired schema types are available to runtime consumers.
-import {Array, HashSet, Number, Option, Schema} from 'effect'
+import {Array, HashSet, Number, Option, Result, Schema} from 'effect'
 import type {Order} from 'effect'
+
+import {Url} from 'effect/http'
 
 import {User} from '#auth/schema.ts'
 
 type HttpUrl = typeof HttpUrl.Type
 const HttpUrl = Schema.String.check(
 	Schema.makeFilter(
-		(value: string) => {
-			if (!URL.canParse(value)) return false
-			const url = new URL(value)
-			return (
-				Array.contains(['http:', 'https:'], url.protocol) &&
-				url.username === '' &&
-				url.password === '' &&
-				url.hash === ''
-			)
-		},
+		(value: string) =>
+			Option.exists(
+				Result.getSuccess(Url.fromString(value)),
+				url =>
+					Array.contains(['http:', 'https:'], url.protocol) &&
+					url.username === '' &&
+					url.password === '' &&
+					url.hash === ''
+			),
 		{expected: 'an HTTP(S) URL without credentials or a fragment'}
 	)
 )
@@ -24,11 +25,8 @@ const HttpUrl = Schema.String.check(
 export type Origin = typeof Origin.Type
 export const Origin = HttpUrl.check(
 	Schema.makeFilter(
-		(value: string) => {
-			if (!URL.canParse(value)) return false
-			const url = new URL(value)
-			return url.pathname === '/' && url.search === ''
-		},
+		(value: string) =>
+			Option.exists(Result.getSuccess(Url.fromString(value)), url => url.pathname === '/' && url.search === ''),
 		{expected: 'an HTTP(S) origin without a path or query'}
 	)
 )
@@ -36,11 +34,11 @@ export const Origin = HttpUrl.check(
 export type SecureOrigin = typeof SecureOrigin.Type
 export const SecureOrigin = Origin.check(
 	Schema.makeFilter(
-		(value: string) => {
-			if (!URL.canParse(value)) return false
-			const url = new URL(value)
-			return url.protocol === 'https:' || Array.contains(['localhost', '127.0.0.1', '[::1]'], url.hostname)
-		},
+		(value: string) =>
+			Option.exists(
+				Result.getSuccess(Url.fromString(value)),
+				url => url.protocol === 'https:' || Array.contains(['localhost', '127.0.0.1', '[::1]'], url.hostname)
+			),
 		{expected: 'HTTPS outside loopback'}
 	)
 )

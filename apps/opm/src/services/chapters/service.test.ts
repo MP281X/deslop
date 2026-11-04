@@ -3,6 +3,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Boolean, Context, Effect, FileSystem, Layer, Option, Ref, Stream, String, pipe} from 'effect'
 
+import {Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {TestClock} from 'effect/testing'
 
@@ -74,7 +75,9 @@ it.layer(NodeServices.layer)(test => {
 										release_date: {english: 123},
 										title: 'Chapter 001'
 									},
-									'003': {groups: {english: [`https://services.f-ck.me/v1/image/${btoa('Invalid uploader')}`]}}
+									'003': {
+										groups: {english: [`https://services.f-ck.me/v1/image/${Base64Url.encode('Invalid uploader')}`]}
+									}
 								}
 							})
 						)

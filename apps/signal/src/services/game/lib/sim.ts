@@ -3009,7 +3009,7 @@ export const makeSim = Effect.fnUntraced(
 						const joined = Array.filter(found, group =>
 							Array.some(group, other => distance(other, pole) <= Number.max(reachOf(other).link, reachOf(pole).link))
 						)
-						return [...Array.filter(found, group => !Array.contains(joined, group)), [pole, ...Array.flatten(joined)]]
+						return [...Array.difference(found, joined), [pole, ...Array.flatten(joined)]]
 					}
 				)
 				const powered = Array.filter(
@@ -3250,7 +3250,7 @@ export const makeSim = Effect.fnUntraced(
 					const joined = Array.filter(found, group =>
 						Array.some(group, other => Math.abs(other.x - conduit.x) + Math.abs(other.z - conduit.z) === 1)
 					)
-					return [...Array.filter(found, group => !Array.contains(joined, group)), [conduit, ...Array.flatten(joined)]]
+					return [...Array.difference(found, joined), [conduit, ...Array.flatten(joined)]]
 				}
 			)
 			const previous = pipes.nets

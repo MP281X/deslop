@@ -2,7 +2,7 @@
 
 import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {Array, Effect, Option, Path, String, flow, pipe} from 'effect'
+import {Effect, Option, Path, String, flow, pipe} from 'effect'
 
 import {Command, Flag} from 'effect/cli'
 
@@ -21,10 +21,7 @@ const create = Command.make(
 		yield* copyTemplate({
 			from: path.join(import.meta.dirname, '../template'),
 			rewrite: flow(
-				String.replaceAll(
-					'TemplatePackage',
-					pipe(input.name, String.split('-'), Array.map(String.capitalize), Array.join(''))
-				),
+				String.replaceAll('TemplatePackage', String.pascalCase(input.name)),
 				String.replaceAll('@deslop/template-package', `@deslop/${input.name}`)
 			),
 			to: Option.getOrElse(input.directory, () => path.join(import.meta.dirname, '../../../packages', input.name))

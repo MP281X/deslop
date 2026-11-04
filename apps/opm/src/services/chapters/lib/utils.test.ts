@@ -2,6 +2,8 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Option} from 'effect'
 
+import {Base64Url} from 'effect/encoding'
+
 import {nameOf, notificationOf, pagesOf, postFrom, resumeOf, seriesOf} from '#services/chapters/lib/utils.ts'
 import type {Reading} from '#services/chapters/schema.ts'
 import {ChapterItem} from '#services/chapters/schema.ts'
@@ -60,8 +62,8 @@ it('unwraps pages of the dead image proxy and drops its error texts', () => {
 	assert.deepStrictEqual(
 		Array.map(
 			[
-				`https://services.f-ck.me/v1/image/${btoa('https://files.example.org/a.png')}`,
-				`https://services.f-ck.me/v1/image/${btoa('Invalid uploader')}`,
+				`https://services.f-ck.me/v1/image/${Base64Url.encode('https://files.example.org/a.png')}`,
+				`https://services.f-ck.me/v1/image/${Base64Url.encode('Invalid uploader')}`,
 				{src: 'https://i.example.org/b.png'}
 			],
 			page => pagesOf({chapters: {'1': {groups: {english: [page]}}}}, '1')
