@@ -537,7 +537,7 @@ function RealtimeLayer(input: {viewport: {width: number; height: number}}) {
 			{Array.map(portfolio.value.visitors, cursor => {
 				if (cursor.id === identity.id) {
 					return (
-						<div key={cursor.id} className="own-cursor">
+						<div key={cursor.id} className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
 							<OwnCursor cursor={cursor} viewport={input.viewport} />
 						</div>
 					)
@@ -678,7 +678,7 @@ function PortfolioRoute() {
 	return (
 		<div
 			ref={containerRef}
-			className="portfolio-scroll relative min-h-0 flex-1 overflow-x-hidden overflow-y-scroll"
+			className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-scroll [@media(hover:hover)_and_(pointer:fine)]:cursor-none"
 			onPointerMove={updatePointer}
 			onScroll={event => {
 				const viewportMiddle = event.currentTarget.scrollTop + event.currentTarget.clientHeight / 2

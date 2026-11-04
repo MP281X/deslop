@@ -12,7 +12,10 @@ export function MachineIcon(props: {worker: string}) {
 			title={props.worker}
 			aria-label={props.worker}
 			role="img"
-			className="deploy-machine-icon inline-flex shrink-0 items-center justify-center"
+			className={`inline-flex shrink-0 items-center justify-center ${Boolean.match(
+				machineName(props.worker) === 'desktop',
+				{onFalse: () => 'text-machine-dev', onTrue: () => 'text-machine-desktop'}
+			)}`}
 			data-machine={machineName(props.worker)}
 		>
 			{Boolean.match(machineName(props.worker) === 'desktop', {

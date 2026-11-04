@@ -127,6 +127,14 @@
 	--radius-2xl: calc(var(--radius) + 8px);
 	--radius-3xl: calc(var(--radius) + 12px);
 	--radius-4xl: calc(var(--radius) + 16px);
+	/* The installed app's insets. The bottom is the home indicator's own inset, with nothing added. */
+	--spacing-safe-top: env(safe-area-inset-top);
+	--spacing-safe-right: env(safe-area-inset-right);
+	--spacing-safe-bottom: env(safe-area-inset-bottom);
+	--spacing-safe-left: env(safe-area-inset-left);
+	/* Deploy's machine identity, used by machine labels and icons. */
+	--color-machine-dev: var(--blue);
+	--color-machine-desktop: var(--purple);
 	/* DESIGN.md, Motion: the stock curves are too weak, so `ease-out` and `ease-in-out` take these. */
 	--ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 	--ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
@@ -194,16 +202,6 @@
 	max-width: 100%;
 	overflow-wrap: anywhere;
 	text-align: start;
-}
-
-/* An installed web app draws under the iPhone's status bar, so its root keeps clear of it and the side notches. */
-@utility safe-area {
-	padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
-}
-
-/* A scrolling page runs under the home indicator, as native lists do, and its end scrolls clear of it. */
-@utility pb-safe {
-	padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);
 }
 
 /* Pixel art keeps its hard edges when scaled. */

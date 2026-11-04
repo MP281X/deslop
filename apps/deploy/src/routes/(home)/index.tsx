@@ -544,7 +544,7 @@ function Machine(props: {
 	return (
 		<section
 			aria-label={machineName(props.worker)}
-			className="deploy-machine flex min-w-0 flex-col gap-3"
+			className="machine flex min-w-0 flex-col gap-3"
 			data-machine={machineName(props.worker)}
 		>
 			<div className="flex h-7 min-w-0 items-center gap-2">
@@ -668,7 +668,7 @@ function Fleet() {
 		...Array.map(metrics, machine => machine.worker)
 	])
 	return (
-		<div className="pb-safe flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto pr-3" aria-busy={pending}>
+		<div className="pb-safe-bottom flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto pr-3" aria-busy={pending}>
 			{AsyncResult.isFailure(inventory) && (
 				<Alert variant="destructive">
 					<AlertTitle>Apps may be out of date</AlertTitle>

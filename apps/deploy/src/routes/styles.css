@@ -3,22 +3,15 @@
 
 :root {
 	--primary: var(--blue);
-	--machine: var(--blue);
 }
 
 /* Each machine's section draws its charts, swatches and live dots in its own hue. */
-.deploy-machine[data-machine='dev'] {
-	--primary: var(--blue);
+@utility machine {
 	--machine: var(--blue);
-}
-.deploy-machine[data-machine='desktop'] {
-	--primary: var(--purple);
-	--machine: var(--purple);
-}
+	--primary: var(--blue);
 
-.deploy-machine-icon[data-machine='dev'] {
-	color: var(--blue);
-}
-.deploy-machine-icon[data-machine='desktop'] {
-	color: var(--purple);
+	&[data-machine='desktop'] {
+		--machine: var(--purple);
+		--primary: var(--purple);
+	}
 }

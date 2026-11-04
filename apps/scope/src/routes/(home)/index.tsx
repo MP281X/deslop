@@ -304,7 +304,12 @@ function TraceRow(props: {
 }) {
 	const [open, setOpen] = useState(false)
 	return (
-		<div className={cn(props.arrived && 'grow-in')}>
+		<div
+			className={cn(
+				props.arrived &&
+					'animate-grow-in grid-rows-single grid motion-reduce:animate-none [&>*]:min-h-0 [&>*]:overflow-clip'
+			)}
+		>
 			<Collapsible
 				open={open}
 				onOpenChange={next => {

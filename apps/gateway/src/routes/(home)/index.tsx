@@ -61,7 +61,7 @@ function Status(props: {server: ConnectionInfo}) {
 	return (
 		<StatusDot
 			key={call}
-			className={Boolean.match(call >= 0, {onFalse: () => undefined, onTrue: () => 'port-blink'})}
+			className={Boolean.match(call >= 0, {onFalse: () => undefined, onTrue: () => 'animate-port-blink'})}
 			status={pipe(
 				Match.value(props.server.status),
 				Match.when('Connected', () => 'live' as const),

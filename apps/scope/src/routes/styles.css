@@ -23,24 +23,14 @@
 }
 
 /* A trace that arrives grows from no height and fades in; the first push shows at once. */
-@utility grow-in {
-	display: grid;
-	grid-template-rows: 1fr;
-	transition:
-		grid-template-rows 250ms cubic-bezier(0.23, 1, 0.32, 1),
-		opacity 250ms cubic-bezier(0.23, 1, 0.32, 1);
+@theme {
+	--animate-grow-in: grow-in 250ms cubic-bezier(0.23, 1, 0.32, 1);
+	--grid-template-rows-single: 1fr;
 
-	@starting-style {
-		grid-template-rows: 0fr;
-		opacity: 0;
-	}
-
-	& > * {
-		min-height: 0;
-		overflow: clip;
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		transition: opacity 150ms ease;
+	@keyframes grow-in {
+		from {
+			grid-template-rows: 0fr;
+			opacity: 0;
+		}
 	}
 }
