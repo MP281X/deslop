@@ -1,4 +1,4 @@
-import {Array, Boolean, MutableHashMap, MutableHashSet, Option, Schema} from 'effect'
+import {Array, Boolean, MutableHashMap, MutableHashSet, Number, Option, Schema} from 'effect'
 
 import {buildChunk} from './-mesh.ts'
 import {overviewChunk} from './-overview.ts'
@@ -131,12 +131,7 @@ function inspect(world: World, request: Extract<Request, {_tag: 'Inspect'}>) {
 					() => found.amts[i] ?? 0
 				)
 			)
-			return {
-				left: Array.reduce(amounts, 0, (sum, amount) => sum + amount),
-				material: found.material,
-				tiles: found.tiles,
-				total: found.total
-			}
+			return {left: Number.sumAll(amounts), material: found.material, tiles: found.tiles, total: found.total}
 		}
 	)
 	reply({_tag: 'Inspected', ask: request.ask, ...Option.getOrUndefined(Option.map(field, found => ({field: found})))})

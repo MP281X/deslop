@@ -40,10 +40,12 @@ import {AUTH_URL, CurrentUser} from '@deslop/runtime/auth/utils'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import {HttpHandlers} from '#http/handlers.ts'
+import {connectionStatus, summary} from '#services/connections/lib/utils.ts'
 import {AddServer, ConnectionInfo, ServerParams} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
-import {Gateway} from '#services/gateway/service.ts'
-import {layerMcp} from '#tools/handlers.ts'
+import {Gateway, GatewayDiscovery} from '#services/gateway/service.ts'
+import {Tools} from '#tools/contracts.ts'
+import {ToolHandlers} from '#tools/handlers.ts'
 
 const GATEWAY_URL = 'https://gateway.mp281x.xyz'
 const ACCOUNTS: Record<string, User> = {
@@ -66,6 +68,34 @@ const PROVIDERS = {
 // A session cookie or agent token names its account; Auth itself is tested in its own app.
 const SESSION = 'session=octocat'
 const TOKEN = 'agent-octocat'
+
+const mcp = Layer.unwrap(
+	Effect.gen(function* () {
+		const now = yield* Clock.currentTimeMillis
+		return pipe(
+			ServerRuntime.layerMcp({
+				handlers: ToolHandlers,
+				instructions: Array.join(
+					[
+						"Gateway to the user's MCP servers; tools are named <server>__<tool>.",
+						...Array.map(
+							Array.filter(
+								yield* (yield* Connections).definitions,
+								server => connectionStatus(server, now) === 'Connected'
+							),
+							server => `${server.id}: ${summary(server)}`
+						),
+						'If a tool is missing or failing, list_mcp_connections says why.'
+					],
+					'\n'
+				),
+				tools: Tools
+			}),
+			Layer.provide(GatewayDiscovery.layer),
+			Layer.provide(McpServer.McpServer.layer)
+		)
+	})
+)
 
 function discoveryResponse(url: string) {
 	if (url === 'https://challenge.example.com/resource-info') {
@@ -373,7 +403,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin = GATEWAY_URL
 				pipe(
 					Layer.mergeAll(
 						HttpHandlers,
-						layerMcp,
+						mcp,
 						// The servers page's RPCs.
 						pipe(
 							Layer.mergeAll(

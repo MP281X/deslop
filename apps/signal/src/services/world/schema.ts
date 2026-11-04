@@ -53,8 +53,8 @@ export const Edit = Schema.TaggedUnion({
 // One tile's change for the client: its edit, or the ore left on it.
 export type TileChange = typeof TileChange.Type
 export const TileChange = Schema.Struct({
-	amount: Schema.optional(Schema.Finite),
-	edit: Schema.optional(Edit),
+	amount: Schema.optionalKey(Schema.Finite),
+	edit: Schema.optionalKey(Edit),
 	x: Schema.Int,
 	z: Schema.Int
 })

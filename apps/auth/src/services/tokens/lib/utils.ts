@@ -2,7 +2,7 @@ import {Array, Effect, Option, Record, Result, Schema, String, pipe} from 'effec
 
 import {Base64Url} from 'effect/encoding'
 import {Headers, Url} from 'effect/http'
-import ipaddr from 'ipaddr.js'
+import {NetAddress} from 'effect/net'
 
 import {AuthError, Resource} from '@deslop/runtime/auth/schema'
 import {AUTH_URL} from '@deslop/runtime/auth/utils'
@@ -17,14 +17,36 @@ const WORKERS: Record<string, string> = {
 	'100.97.120.3': 'desktop',
 	'100.115.207.60': 'macbook-pro'
 }
-const LOCAL_RANGES = ['linkLocal', 'loopback', 'private', 'uniqueLocal']
+
+// The address as its own family, an IPv4-mapped IPv6 address read as that IPv4 address.
+function parsedAddress(address: string) {
+	return pipe(
+		Result.getSuccess(NetAddress.ipFromString(address)),
+		Option.map(ip => {
+			if (NetAddress.isIpv6Address(ip)) return Option.getOrElse(NetAddress.fromIpv4Mapped(ip), () => ip)
+			return ip
+		})
+	)
+}
+
+// A private IPv4 or a unique-local IPv6 address, the ranges only one family has.
+function isPrivate(ip: NetAddress.IpAddress) {
+	if (NetAddress.isIpv4Address(ip)) return NetAddress.isPrivate(ip)
+	return NetAddress.isUniqueLocal(ip)
+}
 
 // Whoever holds an IPv6 address holds its whole /64, so limits count the /64.
 export function addressGroup(address: string) {
-	if (!ipaddr.isValid(address)) return address
-	const parsed = ipaddr.process(address)
-	if (parsed.kind() === 'ipv4') return parsed.toString()
-	return Array.join(Array.take(String.split(parsed.toNormalizedString(), ':'), 4), ':')
+	return Option.match(parsedAddress(address), {
+		onNone: () => address,
+		onSome: ip => {
+			if (NetAddress.isIpv4Address(ip)) return NetAddress.formatIp(ip)
+			return Array.join(
+				Array.map(Array.take(NetAddress.ipv6ToSegments(ip), 4), segment => segment.toString(16)),
+				':'
+			)
+		}
+	})
 }
 
 // The address the client connects from: Traefik appends it as the last X-Forwarded-For entry, earlier ones are the client's word.
@@ -85,7 +107,12 @@ export function browserLabel(origin: Origin) {
 export function deviceLabel(origin: Origin) {
 	return pipe(
 		Option.flatMap(Option.fromUndefinedOr(origin.address), address => {
-			if (ipaddr.isValid(address) && Array.contains(LOCAL_RANGES, ipaddr.process(address).range())) {
+			if (
+				Option.exists(
+					parsedAddress(address),
+					ip => NetAddress.isLinkLocal(ip) || NetAddress.isLoopback(ip) || isPrivate(ip)
+				)
+			) {
 				return Option.some('dev')
 			}
 			return Record.get(WORKERS, address)

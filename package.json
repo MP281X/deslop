@@ -14,7 +14,7 @@
 		"@types/react-dom": "latest",
 		"effect": "latest",
 		"fallow": "latest",
-		"tsrs": "latest",
+		"tsrs": "0.20.1-ts7.1.0-beta",
 		"vite": "catalog:",
 		"vite-plus": "catalog:",
 		"vitest": "5.0.5"

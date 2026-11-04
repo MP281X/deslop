@@ -66,7 +66,7 @@ export const update = Effect.fnUntraced(function* (name: string) {
 	yield* restart(name)
 	const kept = [latest, ...Option.toArray(Option.map(previous, link => path.basename(path.resolve(link, '../../..'))))]
 	yield* Effect.forEach(
-		Array.filter(yield* fs.readDirectory(path.join(root, 'releases')), entry => !Array.contains(kept, entry)),
+		Array.difference(yield* fs.readDirectory(path.join(root, 'releases')), kept),
 		entry => fs.remove(path.join(root, 'releases', entry), {recursive: true}),
 		{concurrency: 1}
 	)

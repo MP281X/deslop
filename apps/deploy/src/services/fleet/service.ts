@@ -23,6 +23,7 @@ import {RpcClient, RpcSerialization} from 'effect/rpc'
 
 import type {User} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
+import {RPC_PATH} from '@deslop/runtime/schema'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {Exposures} from '#services/exposures/service.ts'
@@ -116,7 +117,7 @@ export class Fleet extends Context.Service<
 			})
 			const remote = Effect.fnUntraced(
 				function* <A, E>(worker: Worker, use: (client: RemoteClient, headers: Headers.Input) => Effect.Effect<A, E>) {
-					const url = new URL('/api/rpc', worker.url)
+					const url = new URL(RPC_PATH, worker.url)
 					url.protocol = 'wss:'
 					if (new URL(worker.url).protocol === 'http:') url.protocol = 'ws:'
 					return yield* pipe(

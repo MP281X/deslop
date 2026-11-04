@@ -1,4 +1,4 @@
-import {Array, Boolean, Effect, Number, Option, Record, Schedule, Stream, String, Tuple, pipe} from 'effect'
+import {Array, Boolean, Effect, Number, Option, Record, Stream, String, Tuple, pipe} from 'effect'
 
 import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
 
@@ -47,12 +47,7 @@ export const runStateAtom = Atom.keepAlive(
 			RpcClient,
 			Effect.map(client => client('signal.status', undefined)),
 			Stream.unwrap,
-			Stream.retry($ =>
-				pipe(
-					$(Schedule.spaced('1 second')),
-					Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
-				)
-			)
+			WebRuntime.reconnecting
 		)
 	)
 )
@@ -182,12 +177,7 @@ export const viewAtom = Atom.keepAlive(
 			),
 			Stream.unwrap,
 			Stream.scan(() => EMPTY, fold),
-			Stream.retry($ =>
-				pipe(
-					$(Schedule.spaced('1 second')),
-					Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
-				)
-			)
+			WebRuntime.reconnecting
 		)
 	)
 )

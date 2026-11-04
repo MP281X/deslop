@@ -8,7 +8,8 @@
 		"#package.*": "./package.*"
 	},
 	"exports": {
-		".": "./src/copy-template.ts"
+		".": "./src/copy-template.ts",
+		"./cli": "./src/cli.ts"
 	},
 	"scripts": {
 		"test": "vp test --config ../../vite.config.ts",

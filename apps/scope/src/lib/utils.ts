@@ -1,4 +1,4 @@
-import {Array, Clock, Effect, Number, Option, Schedule, Stream, String, pipe} from 'effect'
+import {Array, Clock, Effect, Number, Option, Stream, String, pipe} from 'effect'
 
 import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
 
@@ -18,12 +18,7 @@ export const overviewAtom = Atom.keepAlive(
 			RpcClient,
 			Effect.map(client => client('scope.overview', undefined)),
 			Stream.unwrap,
-			Stream.retry($ =>
-				pipe(
-					$(Schedule.spaced('2 seconds')),
-					Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
-				)
-			)
+			WebRuntime.reconnecting
 		)
 	)
 )

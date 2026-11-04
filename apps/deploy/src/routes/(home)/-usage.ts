@@ -45,7 +45,7 @@ export function bands(history: MachineHistory) {
 	// Never above 5% of the machine's memory or CPU an app is barely visible at the chart's height, so it joins the one band of small apps.
 	const small = Array.filter(apps, app => peak(app.memory) < 5 && peak(app.cpu) < 5)
 	const large = Array.sort(
-		Array.filter(apps, app => !Array.contains(small, app)),
+		Array.difference(apps, small),
 		Order.mapInput(Order.flip(Order.Number), (app: {memory: number[]}) => peak(app.memory))
 	)
 	const ranked = Array.map(

@@ -45,7 +45,7 @@ export const processes = Effect.gen(function* () {
 			8
 		)
 	)
-	const total = Array.reduce(counts, 0, (sum, value) => sum + value)
+	const total = Number.sumAll(counts)
 	const records = yield* pipe(
 		Effect.forEach(
 			Array.filter(yield* fs.readDirectory('/proc'), name => Option.isSome(String.match(/^[0-9]+$/u)(name))),
@@ -91,26 +91,24 @@ function processUsage(current: Effect.Success<typeof processes>, previous?: Effe
 	return Array.map(current.records, record => {
 		const old = known[record.process.pid]
 		const elapsed = current.total - (previous?.total ?? current.total)
-		return {
-			...record,
-			process: {
-				...record.process,
-				cpu: Option.getOrUndefined(
-					Option.map(
-						Option.filter(
-							Option.fromUndefinedOr(old),
-							value =>
-								value.start === record.start &&
-								elapsed > 0 &&
-								record.ticks >= value.ticks &&
-								current.time - (previous?.time ?? current.time) >= PROCESS_INTERVAL &&
-								current.time - (previous?.time ?? 0) <= 90_000
-						),
-						value => Number.clamp(((record.ticks - value.ticks) / elapsed) * 100, {maximum: 100, minimum: 0})
-					)
+		const process: Process = {
+			...record.process,
+			...Record.getSomes({
+				cpu: Option.map(
+					Option.filter(
+						Option.fromUndefinedOr(old),
+						value =>
+							value.start === record.start &&
+							elapsed > 0 &&
+							record.ticks >= value.ticks &&
+							current.time - (previous?.time ?? current.time) >= PROCESS_INTERVAL &&
+							current.time - (previous?.time ?? 0) <= 90_000
+					),
+					value => Number.clamp(((record.ticks - value.ticks) / elapsed) * 100, {maximum: 100, minimum: 0})
 				)
-			}
+			})
 		}
+		return {...record, process}
 	})
 }
 
@@ -126,18 +124,18 @@ export function processReadings(
 		const known = Record.fromEntries(Array.map(previous.readings, record => [`${record.process.pid}`, record]))
 		return {
 			baseline: previous.baseline,
-			readings: Array.map(current.records, record => ({
-				...record,
-				process: {
+			readings: Array.map(current.records, record => {
+				const process: Process = {
 					...record.process,
-					cpu: Option.getOrUndefined(
-						Option.map(
+					...Record.getSomes({
+						cpu: Option.map(
 							Option.filter(Option.fromUndefinedOr(known[record.process.pid]), value => value.start === record.start),
 							value => value.process.cpu
 						)
-					)
+					})
 				}
-			}))
+				return {...record, process}
+			})
 		}
 	}
 	return {baseline: current, readings: processUsage(current, previous?.baseline)}

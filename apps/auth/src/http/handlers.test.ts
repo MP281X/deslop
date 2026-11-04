@@ -55,7 +55,8 @@ import {
 import {SignIns} from '#services/sign-ins/service.ts'
 import {FamilyParams, Registration, SignedInApp} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
-import {layerMcp} from '#tools/handlers.ts'
+import {Tools} from '#tools/contracts.ts'
+import {ToolHandlers} from '#tools/handlers.ts'
 
 const API = 'https://stash.mp281x.xyz'
 const APPROVALS = 'https://auth.mp281x.xyz/mcp'
@@ -68,6 +69,12 @@ const me = pipe(
 	HttpRouter.add('GET', '/me', Effect.flatMap(CurrentUser, HttpServerResponse.schemaJson(User))),
 	Layer.provide(HttpAuth.layer)
 )
+
+const mcp = ServerRuntime.layerMcp({
+	handlers: ToolHandlers,
+	instructions: 'Approve a sign-in you started with answer_request.',
+	tools: Tools
+})
 
 // A test route answers a refusal with its message, as the page shows it.
 function refused<E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
@@ -115,7 +122,7 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 					Layer.mergeAll(
 						me,
 						HttpHandlers,
-						layerMcp,
+						mcp,
 						// What the waiting page's watch reads first.
 						HttpRouter.add(
 							'GET',

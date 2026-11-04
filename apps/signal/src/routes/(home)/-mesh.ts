@@ -14,6 +14,11 @@ import {
 	ORE_REF,
 	STRATA,
 	chunkOf,
+	clamp,
+	highest,
+	lowest,
+	mix,
+	smoothstep,
 	tileGround,
 	tileKey
 } from '#services/world/lib/utils.ts'
@@ -159,27 +164,6 @@ const QUATERNION = new THREE.Quaternion()
 function flag(value: boolean) {
 	if (value) return 1
 	return 0
-}
-
-function mix(from: number, to: number, t: number) {
-	return from + (to - from) * t
-}
-
-function clamp(value: number, low: number, high: number) {
-	return Number.min(Number.max(value, low), high)
-}
-
-function highest(values: number[]) {
-	return Array.reduce(values, -Infinity, (best, value) => Number.max(best, value))
-}
-
-function lowest(values: number[]) {
-	return Array.reduce(values, Infinity, (best, value) => Number.min(best, value))
-}
-
-function smoothstep(from: number, to: number, x: number) {
-	const t = clamp((x - from) / (to - from), 0, 1)
-	return t * t * (3 - 2 * t)
 }
 
 function blend(from: Rgb, to: Rgb, t: number) {
@@ -1746,38 +1730,55 @@ function groundCover(area: Area, stain: Stain, lists: Lists, k: number) {
 	})
 }
 
-function columns(lists: Lists, at: {bottom: number; i: number; j: number; side: Side; top: number}) {
-	for (const q of [0, 1, 2]) {
+// Three props stand along a wall's side, evenly spaced and a little proud of it.
+function along(at: {i: number; j: number; side: Side}) {
+	return Array.map([0, 1, 2], q => {
 		const s = (q + 0.5) / 3
-		const x = mix(at.i + at.side.ax, at.i + at.side.bx, s) + at.side.dx * 0.04
-		const z = mix(at.j + at.side.az, at.j + at.side.bz, s) + at.side.dz * 0.04
+		return {
+			x: mix(at.i + at.side.ax, at.i + at.side.bx, s) + at.side.dx * 0.04,
+			z: mix(at.j + at.side.az, at.j + at.side.bz, s) + at.side.dz * 0.04
+		}
+	})
+}
+
+function columns(lists: Lists, at: {bottom: number; i: number; j: number; side: Side; top: number}) {
+	for (const spot of along(at)) {
 		// Columns stand the wall's full height, some a little proud of the rim and some broken short.
 		const height =
-			(at.top - at.bottom) * LEVEL * (0.86 + dither(x, z) * 0.22) + flag(dither(x * 1.7, z * 2.3) > 0.8) * 0.05
-		const width = 0.95 + 0.2 * dither(z * 3.1, x)
+			(at.top - at.bottom) * LEVEL * (0.86 + dither(spot.x, spot.z) * 0.22) +
+			flag(dither(spot.x * 1.7, spot.z * 2.3) > 0.8) * 0.05
+		const width = 0.95 + 0.2 * dither(spot.z * 3.1, spot.x)
 		add(lists, 'basalt', [
-			x,
+			spot.x,
 			at.bottom * LEVEL,
-			z,
+			spot.z,
 			0,
-			dither(z, x) * 3,
+			dither(spot.z, spot.x) * 3,
 			0,
 			width,
 			height,
 			width,
-			0.8 + dither(x * 5.3, z * 1.9) * 0.35
+			0.8 + dither(spot.x * 5.3, spot.z * 1.9) * 0.35
 		])
 	}
 }
 
 function icicles(lists: Lists, at: {i: number; j: number; side: Side; top: number}) {
-	for (const q of [0, 1, 2]) {
-		const s = (q + 0.5) / 3
-		const x = mix(at.i + at.side.ax, at.i + at.side.bx, s) + at.side.dx * 0.04
-		const z = mix(at.j + at.side.az, at.j + at.side.bz, s) + at.side.dz * 0.04
-		const size = 0.7 + dither(x, z) * 0.8
-		if (dither(x * 2.1, z * 3.3) > 0.3) {
-			add(lists, 'icicle', [x, at.top * LEVEL - 0.02, z, 0, dither(z, x) * 3, 0, size, size, size, 1])
+	for (const spot of along(at)) {
+		const size = 0.7 + dither(spot.x, spot.z) * 0.8
+		if (dither(spot.x * 2.1, spot.z * 3.3) > 0.3) {
+			add(lists, 'icicle', [
+				spot.x,
+				at.top * LEVEL - 0.02,
+				spot.z,
+				0,
+				dither(spot.z, spot.x) * 3,
+				0,
+				size,
+				size,
+				size,
+				1
+			])
 		}
 	}
 }

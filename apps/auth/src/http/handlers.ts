@@ -5,7 +5,16 @@ import {RateLimiter} from 'effect/persistence'
 
 import {AuthError, User} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
-import {AUTH_URL, localAuth} from '@deslop/runtime/auth/utils'
+import {
+	APPS_PATH,
+	AUTH_URL,
+	ISSUER,
+	ISSUER_PATH,
+	SESSION_PATH,
+	VERIFY_PATH,
+	localAuth,
+	rejected
+} from '@deslop/runtime/auth/utils'
 
 import {App, AppParams} from '#services/apps/schema.ts'
 import {Apps} from '#services/apps/service.ts'
@@ -41,19 +50,11 @@ import {SESSION_COOKIE, Tokens} from '#services/tokens/service.ts'
 
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 const LOGIN_COOKIE = '__Host-login'
-const ISSUER = `${AUTH_URL}/api/auth`
 
 // The shared session reaches every app on the parent domain, for as long as its grant lasts; without an issuer it stays on its own host.
 function sessionCookie(local: boolean) {
 	if (local) return {...COOKIE, domain: undefined}
 	return {...COOKIE, domain: cookieDomain(AUTH_URL)}
-}
-
-function rejected(message: string) {
-	return Effect.mapError(cause => {
-		if (Schema.is(AuthError)(cause)) return cause
-		return AuthError.make({cause, message})
-	})
 }
 
 // OAuth endpoints answer failures as RFC 6749 JSON and are never cached.
@@ -74,6 +75,15 @@ function oauth<E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerRespons
 
 function originOf(request: HttpServerRequest.HttpServerRequest) {
 	return originFrom(request.headers, request.remoteAddress)
+}
+
+// The session and bearer endpoints answer the user as no-store JSON, or 401 once the request is refused.
+function answered<E, R>(answer: Effect.Effect<User, E, R>) {
+	return pipe(
+		answer,
+		Effect.flatMap(user => HttpServerResponse.schemaJson(User)(user, {headers: {'cache-control': 'no-store'}})),
+		Effect.orElseSucceed(() => HttpServerResponse.empty({status: 401}))
+	)
 }
 
 // A started sign-in shows its code at /?request=; the cookie binds its answer to this browser or command.
@@ -169,7 +179,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		// Each app's server announces itself here at start; see `ServerRuntime.layerAnnounce`.
 		yield* router.add(
 			'POST',
-			'/api/apps',
+			APPS_PATH,
 			limited(
 				'apps',
 				10
@@ -187,7 +197,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		)
 		yield* router.add(
 			'GET',
-			'/.well-known/oauth-authorization-server/api/auth',
+			`/.well-known/oauth-authorization-server${ISSUER_PATH}`,
 			HttpServerResponse.jsonUnsafe({
 				authorization_endpoint: `${ISSUER}/oauth2/authorize`,
 				authorization_response_iss_parameter_supported: true,
@@ -204,7 +214,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		)
 		yield* router.add(
 			'POST',
-			'/api/auth/oauth2/register',
+			`${ISSUER_PATH}/oauth2/register`,
 			limited(
 				'register',
 				10
@@ -246,7 +256,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		// An app's sign-in becomes a waiting sign-in under a fresh code, answered by an approval and delivered at /auth/continue.
 		yield* router.add(
 			'GET',
-			'/api/auth/oauth2/authorize',
+			`${ISSUER_PATH}/oauth2/authorize`,
 			limited(
 				'authorize',
 				20
@@ -283,7 +293,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		)
 		yield* router.add(
 			'POST',
-			'/api/auth/oauth2/token',
+			`${ISSUER_PATH}/oauth2/token`,
 			limited(
 				'token',
 				60
@@ -319,7 +329,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		)
 		yield* router.add(
 			'POST',
-			'/api/auth/oauth2/revoke',
+			`${ISSUER_PATH}/oauth2/revoke`,
 			limited(
 				'revoke',
 				60
@@ -337,23 +347,17 @@ export const HttpHandlers = HttpRouter.use(router =>
 		// Apps read the session cookie and verify bearers here, through `Auth.layer`.
 		yield* router.add(
 			'GET',
-			'/auth/session',
-			pipe(
-				Effect.flatMap(HttpServerRequest.HttpServerRequest, request => auth.user(request.headers)),
-				Effect.flatMap(user => HttpServerResponse.schemaJson(User)(user, {headers: {'cache-control': 'no-store'}})),
-				Effect.orElseSucceed(() => HttpServerResponse.empty({status: 401}))
-			)
+			SESSION_PATH,
+			answered(Effect.flatMap(HttpServerRequest.HttpServerRequest, request => auth.user(request.headers)))
 		)
 		yield* router.add(
 			'GET',
-			'/auth/verify',
-			pipe(
+			VERIFY_PATH,
+			answered(
 				Effect.gen(function* () {
 					const params = yield* HttpServerRequest.schemaSearchParams(VerificationParams)
 					return yield* auth.access((yield* HttpServerRequest.HttpServerRequest).headers, params.resource)
-				}),
-				Effect.flatMap(user => HttpServerResponse.schemaJson(User)(user, {headers: {'cache-control': 'no-store'}})),
-				Effect.orElseSucceed(() => HttpServerResponse.empty({status: 401}))
+				})
 			)
 		)
 		yield* router.add(

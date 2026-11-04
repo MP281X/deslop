@@ -21,7 +21,7 @@ function usage(nodes: readonly ProcessNode[]) {
 	return {
 		...Boolean.match(Array.isReadonlyArrayNonEmpty(cpus), {
 			onFalse: () => ({}),
-			onTrue: () => ({cpu: Array.reduce(cpus, 0, (sum, cpu) => sum + cpu)})
+			onTrue: () => ({cpu: Number.sumAll(cpus)})
 		}),
 		count: Array.reduce(nodes, 0, (sum, node) => sum + node.count),
 		memory: Array.reduce(nodes, 0, (sum, node) => sum + node.memory)

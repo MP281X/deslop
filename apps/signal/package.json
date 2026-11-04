@@ -26,7 +26,7 @@
 	},
 	"scripts": {
 		"build": "vp build && vp pack",
-		"preview": "NODE_ENV=development vp run build && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js",
+		"preview": "vp run build && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js",
 		"test": "vp test --config ../../vite.config.ts",
 		"typecheck": "tsrs --checkerAssignment go --pretty false"
 	},

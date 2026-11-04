@@ -18,7 +18,6 @@ import {
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
-import {FetchHttpClient} from 'effect/http'
 import {AsyncResult, AtomRpc, Atom} from 'effect/reactivity'
 import * as Application from 'expo-application'
 import * as Calendar from 'expo-calendar'
@@ -34,10 +33,10 @@ import {ClipboardOffer, clipboardMachine} from '@deslop/components-mobile/clipbo
 import type {ClipboardKind} from '@deslop/components-mobile/clipboard'
 import {colors, hues} from '@deslop/components-mobile/theme'
 import {alert, cachedList, clipboardChangeCount, writeAtomically} from '@deslop/components-mobile/utils'
-import {RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 import {keychain} from '@deslop/runtime/mobile/keychain'
 import * as MobileSession from '@deslop/runtime/mobile/session'
+import {listReducer} from '@deslop/runtime/schema'
 
 import {JourneyActivity} from '#lib/activities.tsx'
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -57,7 +56,6 @@ import {
 } from '#services/bookings/lib/utils.ts'
 import type {
 	ActivityProps,
-	BookingsEvent,
 	Flight,
 	Place,
 	Stay,
@@ -78,11 +76,7 @@ export const session = MobileSession.make('Trips', SERVER, keychain)
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/trips/lib/utils/RpcClient', {
 	group: RpcContracts,
-	protocol: pipe(
-		MobileRuntime.layer('@deslop/trips')(SERVER),
-		Layer.provideMerge(RpcAuth.layerClient(session.accessToken)),
-		Layer.provide(FetchHttpClient.layer)
-	)
+	protocol: MobileRuntime.layerSignedIn('@deslop/trips', session.accessToken)(SERVER)
 }) {}
 
 // Actions read the client once rather than rerunning their last write when it reconnects.
@@ -99,14 +93,7 @@ function linkOf(bookingId: string) {
 
 const bookingsFile = new File(Paths.document, 'bookings.json')
 
-function apply(bookings: BookingList, event: BookingsEvent) {
-	if (event.reset) return Array.sort(event.upserted, byStart)
-	const replaced = HashSet.fromIterable([...event.removed, ...Array.map(event.upserted, booking => booking.id)])
-	return Array.sort(
-		[...Array.filter(bookings, booking => !HashSet.has(replaced, booking.id)), ...event.upserted],
-		byStart
-	)
-}
+const apply = listReducer(byStart)
 
 // The copy on the iPhone opens the trip at the gate even without a network.
 export const bookingsAtom = Atom.keepAlive(

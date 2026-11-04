@@ -3,7 +3,14 @@ import {Array, Option, Predicate, String, pipe} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {importedMember, isImportBinding, memberName, resolveBinding, returnedExpression} from '#rules/shared.ts'
+import {
+	effectMethod,
+	importedMember,
+	isImportBinding,
+	memberName,
+	resolveBinding,
+	returnedExpression
+} from '#rules/shared.ts'
 
 function calleeOf(node: ESTree.Node) {
 	if (node.type === 'CallExpression' && node.callee.type !== 'Super') return node.callee
@@ -56,14 +63,8 @@ function recoversEmpty(context: Context, name: string, node?: ESTree.Expression 
 export const noEmptyRecovery = defineRule({
 	create: context => ({
 		CallExpression: node => {
-			if (
-				node.callee.type !== 'MemberExpression' ||
-				!importedMember({context, importedName: 'Effect', node: node.callee})
-			) {
-				return
-			}
 			const name = pipe(
-				memberName(node.callee),
+				effectMethod({context, node}),
 				Option.getOrElse(() => '')
 			)
 			if (!pipe(name, String.startsWith('catch')) && !pipe(name, String.startsWith('orElse'))) return

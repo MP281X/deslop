@@ -1,33 +1,14 @@
 import type {Stream} from 'effect'
-import {
-	Array,
-	Boolean,
-	Config,
-	Context,
-	Effect,
-	Layer,
-	Option,
-	Order,
-	Schema,
-	String,
-	SubscriptionRef,
-	pipe
-} from 'effect'
+import {Array, Boolean, Config, Context, Effect, Layer, Option, Order, String, SubscriptionRef, pipe} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
-import {RuntimeConfig} from '@deslop/runtime/schema'
+import {rejected} from '@deslop/runtime/auth/utils'
+import {MANIFEST_PATH, RUNTIME_PATH, RuntimeConfig} from '@deslop/runtime/schema'
 
 import {App, Catalog} from '#services/apps/schema.ts'
-
-function rejected(message: string) {
-	return Effect.mapError(cause => {
-		if (Schema.is(AuthError)(cause)) return cause
-		return AuthError.make({cause, message})
-	})
-}
 
 export class Apps extends Context.Service<
 	Apps,
@@ -49,17 +30,17 @@ export class Apps extends Context.Service<
 						return yield* AuthError.make({error: 'access_denied', message: `Only apps on ${domain} are listed`})
 					}
 					const runtime = yield* pipe(
-						client.get(new URL('/api/runtime', origin).href),
+						client.get(new URL(RUNTIME_PATH, origin).href),
 						Effect.flatMap(HttpClientResponse.schemaBodyJson(RuntimeConfig)),
 						Effect.timeout('10 seconds'),
-						rejected(`${origin} did not answer /api/runtime`)
+						rejected(`${origin} did not answer ${RUNTIME_PATH}`)
 					)
 					if (!Option.exists(Option.fromUndefinedOr(runtime.auth), auth => new URL(auth).origin === self.origin)) {
 						return yield* AuthError.make({error: 'access_denied', message: `${origin} signs in elsewhere`})
 					}
 					// A web app serves its manifest; an iOS app's server has no pages and opens through the app's scheme.
 					const web = yield* pipe(
-						client.get(new URL('/manifest.webmanifest', origin).href),
+						client.get(new URL(MANIFEST_PATH, origin).href),
 						Effect.timeout('10 seconds'),
 						Effect.as(true),
 						Effect.orElseSucceed(() => false)

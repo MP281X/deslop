@@ -43,7 +43,6 @@
 		"@typeonce/effect-machine": "latest",
 		"@typeonce/effect-machine-react": "latest",
 		"effect": "latest",
-		"ipaddr.js": "latest",
 		"lucide-react": "latest",
 		"react": "latest",
 		"react-dom": "latest",

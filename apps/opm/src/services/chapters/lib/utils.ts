@@ -1,4 +1,6 @@
-import {Array, DateTime, Number, Option, Order, Predicate, Record, Schema, String, pipe} from 'effect'
+import {Array, DateTime, Number, Option, Order, Predicate, Record, Result, Schema, String, pipe} from 'effect'
+
+import {Base64Url} from 'effect/encoding'
 
 import type {ChapterItem, ChapterList, CubariSeries, Post} from '#services/chapters/schema.ts'
 import {ChapterNotification} from '#services/chapters/schema.ts'
@@ -66,10 +68,7 @@ function unwrapped(link: string) {
 	return Option.match(Option.fromNullishOr(WRAPPED.exec(link)?.groups?.['encoded']), {
 		onNone: () => Option.some(link),
 		onSome: encoded =>
-			pipe(
-				Option.liftThrowable(atob)(String.replaceAll('_', '/')(String.replaceAll('-', '+')(encoded))),
-				Option.filter(String.startsWith('https://'))
-			)
+			pipe(Result.getSuccess(Base64Url.decodeString(encoded)), Option.filter(String.startsWith('https://')))
 	})
 }
 

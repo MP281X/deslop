@@ -2,10 +2,11 @@
 
 import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {Array, Effect, Option, Path, Schema, String, flow, pipe} from 'effect'
+import {Effect, Option, Path, String, flow, pipe} from 'effect'
 
 import {Command, Flag} from 'effect/cli'
 
+import {generatorProgram, nameFlag} from '#cli.ts'
 import {copyTemplate} from '#copy-template.ts'
 import packageJson from '#package.json' with {type: 'json'}
 
@@ -13,25 +14,14 @@ const create = Command.make(
 	'create-package',
 	{
 		directory: pipe(Flag.String('directory'), Flag.withDescription('Defaults to packages/<name>'), Flag.optional),
-		name: pipe(
-			Flag.String('name'),
-			Flag.withSchema(
-				Schema.String.check(
-					Schema.isPattern(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u, {message: 'Use an unscoped kebab-case package name.'})
-				)
-			),
-			Flag.withDescription('Unscoped package name')
-		)
+		name: nameFlag('Unscoped package name')
 	},
 	Effect.fnUntraced(function* (input) {
 		const path = yield* Path.Path
 		yield* copyTemplate({
 			from: path.join(import.meta.dirname, '../template'),
 			rewrite: flow(
-				String.replaceAll(
-					'TemplatePackage',
-					pipe(input.name, String.split('-'), Array.map(String.capitalize), Array.join(''))
-				),
+				String.replaceAll('TemplatePackage', String.pascalCase(input.name)),
 				String.replaceAll('@deslop/template-package', `@deslop/${input.name}`)
 			),
 			to: Option.getOrElse(input.directory, () => path.join(import.meta.dirname, '../../../packages', input.name))
@@ -40,10 +30,8 @@ const create = Command.make(
 )
 
 NodeRuntime.runMain(
-	pipe(
-		create,
-		Command.withDescription('Create a standard Deslop package.'),
-		Command.run({version: packageJson.version}),
-		Effect.provide(NodeServices.layer)
+	Effect.provide(
+		generatorProgram({command: create, description: 'Create a standard Deslop package.', version: packageJson.version}),
+		NodeServices.layer
 	)
 )

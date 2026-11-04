@@ -1,15 +1,17 @@
-import {Effect, Layer, Predicate, pipe} from 'effect'
+import {Array, Effect, Layer, Predicate, Record, Schedule, Stream, String, pipe} from 'effect'
 
-import {createRouter} from '@tanstack/react-router'
-import type {AnyContext, AnyRoute, RouterOptions} from '@tanstack/react-router'
+import {RouterProvider, createRouter} from '@tanstack/react-router'
+import type {AnyContext, AnyRoute, AnyRouter, RouterOptions} from '@tanstack/react-router'
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
 import {Atom} from 'effect/reactivity'
 import * as Rpc from 'effect/rpc'
 import {Socket} from 'effect/socket'
+import {StrictMode} from 'react'
+import {createRoot} from 'react-dom/client'
 
 import {Error, NotFound} from '@deslop/components-web/fallbacks'
 
-import {RuntimeConfig} from '#schema.ts'
+import {RPC_PATH, RUNTIME_PATH, RuntimeConfig} from '#schema.ts'
 import {layerOtlp} from '#telemetry.ts'
 
 export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext: AnyContext}}>(
@@ -33,13 +35,39 @@ export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext:
 	}
 }
 
+// The page's router under StrictMode, mounted where makeRouter found #root.
+export function mount(app: {root: Element; router: AnyRouter}) {
+	createRoot(app.root).render(
+		<StrictMode>
+			<RouterProvider router={app.router} />
+		</StrictMode>
+	)
+}
+
+// Every app's icon by its folder, from the icon glob a page runs four levels above its own routes.
+export function appIcons(icons: Record<string, string>) {
+	return Record.fromEntries(
+		Array.map(Record.toEntries(icons), entry => [String.split(entry[0], '/')[4] ?? '', entry[1]] as const)
+	)
+}
+
+// A live stream opens again after the socket drops; its other failures reach the screen.
+export function reconnecting<A, E extends {_tag: string}, R>(stream: Stream.Stream<A, E, R>) {
+	return Stream.retry(stream, $ =>
+		pipe(
+			$(Schedule.spaced('1 second')),
+			Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
+		)
+	)
+}
+
 // The RPC socket alone, without the page's telemetry, so Scope's page never traces itself.
 export const layerProtocol = pipe(
 	// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
 	Rpc.RpcClient.layerProtocolSocket({pingTimeout: '15 seconds', retryTransientErrors: true}),
 	Layer.provide(
 		pipe(
-			Socket.layerWebSocket(Effect.sync(() => `${location.origin}/api/rpc`)),
+			Socket.layerWebSocket(Effect.sync(() => `${location.origin}${RPC_PATH}`)),
 			Layer.provide(Socket.layerWebSocketConstructorGlobal)
 		)
 	),
@@ -51,7 +79,7 @@ export function layer(applicationName: string) {
 		pipe(
 			Layer.unwrap(
 				Effect.gen(function* () {
-					const response = yield* (yield* HttpClient.HttpClient).get('/api/runtime')
+					const response = yield* (yield* HttpClient.HttpClient).get(RUNTIME_PATH)
 					const config = yield* HttpClientResponse.schemaBodyJson(RuntimeConfig)(response)
 					if (config.traces === '') return Layer.empty
 					return layerOtlp(`${applicationName}-client`, config.traces, 'web', config.version)

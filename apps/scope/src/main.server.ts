@@ -1,9 +1,7 @@
 import {Array, Config, Effect, Layer, Option, Predicate, Redacted, Schema, SchemaGetter, String, pipe} from 'effect'
 
-import {McpServer} from 'effect/ai'
 import {Mac} from 'effect/crypto'
 import {HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
-import {RpcServer} from 'effect/rpc'
 
 import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
@@ -157,13 +155,11 @@ CliRuntime.runApp({
 		Layer.mergeAll(
 			receiver,
 			github,
-			pipe(
-				RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
-				Layer.provide(RpcHandlers)
-			),
+			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			ServerRuntime.layerMcp({
+				handlers: ToolHandlers,
 				instructions: "Scope is the debugger for the user's Effect apps: their traces, spans and logs.",
-				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
+				tools: Tools
 			})
 		),
 		Layer.provide(

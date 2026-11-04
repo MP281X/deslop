@@ -5,6 +5,7 @@ import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
 
 import {
 	childNodes,
+	effectMethod,
 	importedMember,
 	memberName,
 	resolveBinding,
@@ -241,13 +242,7 @@ function reportOption(context: Context, key: string, bare: boolean, options?: ES
 export const preserveErrorCause = defineRule({
 	create: context => ({
 		CallExpression: node => {
-			if (
-				node.callee.type !== 'MemberExpression' ||
-				!importedMember({context, importedName: 'Effect', node: node.callee})
-			) {
-				return
-			}
-			const name = memberName(node.callee)
+			const name = effectMethod({context, node})
 			if (Option.contains(name, 'mapError')) {
 				const bare = detailedFailure(context, node)
 				Array.forEach(

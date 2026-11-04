@@ -3,7 +3,7 @@ import {Array, Boolean, Option} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {importedMember, memberName, variableFromScope} from '#rules/shared.ts'
+import {effectMethod, importedMember, variableFromScope} from '#rules/shared.ts'
 
 // Options passed through a variable or spread are unknown here, so only a literal without concurrency is reported.
 function statesConcurrency(node?: ESTree.Node) {
@@ -54,14 +54,8 @@ function isFunction(context: Context, node?: ESTree.Node) {
 export const explicitEffectConcurrency = defineRule({
 	create: context => ({
 		CallExpression: node => {
-			if (node.callee.type !== 'MemberExpression') return
-			const name = memberName(node.callee)
-			if (
-				!Option.exists(name, method => method === 'all' || method === 'forEach') ||
-				!importedMember({context, importedName: 'Effect', node: node.callee})
-			) {
-				return
-			}
+			const name = effectMethod({context, node})
+			if (!Option.exists(name, method => method === 'all' || method === 'forEach')) return
 			// Effect.all(effects, options), Effect.forEach(items, f, options), or a data-last forEach(f, options) with an inline f or literal options.
 			const index = Boolean.match(
 				Option.contains(name, 'all') ||

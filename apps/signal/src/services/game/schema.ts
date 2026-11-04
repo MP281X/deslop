@@ -330,7 +330,7 @@ export const UnitView = Schema.Struct({
 	// A guard's turret points this way.
 	aim: Schema.optionalKey(Schema.Finite),
 	// What it carries most of; `load` is how full it is, 0 to 1.
-	cargo: Schema.optional(ItemId),
+	cargo: Schema.optionalKey(ItemId),
 	// What it is doing, in plain words, for its hover card.
 	doing: Schema.String,
 	health: Schema.Finite,
@@ -351,9 +351,9 @@ export const BuildingView = Schema.Struct({
 	dir: Direction,
 	id: Schema.Int,
 	// What a belt carries on this tile.
-	item: Schema.optional(ItemId),
+	item: Schema.optionalKey(ItemId),
 	kind: Schema.Union([BuildingKind, StructureKind]),
-	recipe: Schema.optional(RecipeId),
+	recipe: Schema.optionalKey(RecipeId),
 	status: Schema.String,
 	team: Schema.Int,
 	w: Schema.Int,
@@ -390,7 +390,7 @@ export type RunState = typeof RunState.Type
 export const RunState = Schema.Struct({
 	coreConfigured: Schema.Boolean,
 	localDecisions: Schema.Boolean,
-	problem: Schema.optional(Schema.String),
+	problem: Schema.optionalKey(Schema.String),
 	running: Schema.Boolean
 })
 
@@ -398,7 +398,7 @@ export const RunState = Schema.Struct({
 export type Frame = typeof Frame.Type
 export const Frame = Schema.Struct({
 	at: Schema.Finite,
-	buildings: Schema.optional(Schema.Array(BuildingView)),
+	buildings: Schema.optionalKey(Schema.Array(BuildingView)),
 	changes: Schema.Array(TileChange),
 	cleared: Schema.Array(Schema.Int),
 	environment: Schema.optionalKey(Schema.Struct({day: Schema.Int, daylight: Schema.Finite})),
@@ -406,11 +406,11 @@ export const Frame = Schema.Struct({
 	// In a replay, the live world's tick.
 	live: Schema.optionalKey(Schema.Int),
 	paused: Schema.optionalKey(Schema.Boolean),
-	problem: Schema.optional(Schema.String),
+	problem: Schema.optionalKey(Schema.String),
 	shots: Schema.Array(Schema.Struct({from: Schema.Int, to: Schema.Int})),
-	teams: Schema.optional(Schema.Array(TeamView)),
+	teams: Schema.optionalKey(Schema.Array(TeamView)),
 	tick: Schema.Int,
-	traces: Schema.optional(
+	traces: Schema.optionalKey(
 		Schema.Array(
 			Schema.Struct({
 				fresh: Schema.Finite,
@@ -424,8 +424,8 @@ export const Frame = Schema.Struct({
 		)
 	),
 	units: Schema.Array(UnitView),
-	world: Schema.optional(Schema.Struct({generator: Schema.Int, seed: Schema.Int})),
-	zones: Schema.optional(Schema.Array(Zone))
+	world: Schema.optionalKey(Schema.Struct({generator: Schema.Int, seed: Schema.Int})),
+	zones: Schema.optionalKey(Schema.Array(Zone))
 })
 
 // A moment the timeline marks: a milestone paid, two teams meeting, a message between them, a unit down.

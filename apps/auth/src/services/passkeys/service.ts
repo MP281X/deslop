@@ -27,7 +27,7 @@ import {KeyValueStore} from 'effect/persistence'
 
 import type {User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
-import {localAuth} from '@deslop/runtime/auth/utils'
+import {localAuth, rejected} from '@deslop/runtime/auth/utils'
 
 import type {Assertion, Passkey, Registration} from '#services/passkeys/schema.ts'
 import {ClientData, CreationOptions, RequestOptions, StoredPasskeys, Transport} from '#services/passkeys/schema.ts'
@@ -36,13 +36,6 @@ import type {Origin, SessionVia} from '#services/tokens/schema.ts'
 
 // How long a challenge stays answerable.
 const LIFETIME = 5 * 60_000
-
-function rejected(message: string) {
-	return Effect.mapError((cause: unknown) => {
-		if (Schema.is(AuthError)(cause)) return cause
-		return AuthError.make({cause, message})
-	})
-}
 
 // The WebAuthn library rejects a response it cannot verify, such as one for another site or with a bad signature.
 function invalid(cause: unknown) {

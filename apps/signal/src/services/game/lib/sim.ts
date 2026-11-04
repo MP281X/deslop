@@ -210,6 +210,16 @@ function covers(have: Items, need: Items) {
 	return Array.every(itemsIn(need), item => countOf(have, item) >= countOf(need, item))
 }
 
+// What a storage holds now: its input stock and its output counted together.
+function contentsOf(building: Building) {
+	return Record.fromEntries(
+		Array.map(Array.dedupe([...itemsIn(building.stock), ...itemsIn(building.output)]), item => [
+			item,
+			countOf(building.stock, item) + countOf(building.output, item)
+		])
+	)
+}
+
 // What a pipe network inherits from the networks before it: each old network's fluid shared out by how many of its pipes it keeps, so a split divides the fluid and a join adds it; the most-held fluid stays.
 function inherited(previous: {fluid: Option.Option<ItemId>; pipes: number[]; stock: number}[], ids: number[]) {
 	const shares = Array.getSomes(
@@ -942,12 +952,7 @@ export const makeSim = Effect.fnUntraced(
 					kind: 'storage',
 					stage: building.site.state.path,
 					...centreOf(building),
-					items: Record.fromEntries(
-						Array.map(Array.dedupe([...itemsIn(building.stock), ...itemsIn(building.output)]), item => [
-							item,
-							countOf(building.stock, item) + countOf(building.output, item)
-						])
-					),
+					items: contentsOf(building),
 					text: `#${building.id} ${building.kind} inspected: stock ${itemsText(building.stock)}; output ${itemsText(building.output)}.`
 				},
 				state.tick
@@ -3004,7 +3009,7 @@ export const makeSim = Effect.fnUntraced(
 						const joined = Array.filter(found, group =>
 							Array.some(group, other => distance(other, pole) <= Number.max(reachOf(other).link, reachOf(pole).link))
 						)
-						return [...Array.filter(found, group => !Array.contains(joined, group)), [pole, ...Array.flatten(joined)]]
+						return [...Array.difference(found, joined), [pole, ...Array.flatten(joined)]]
 					}
 				)
 				const powered = Array.filter(
@@ -3245,7 +3250,7 @@ export const makeSim = Effect.fnUntraced(
 					const joined = Array.filter(found, group =>
 						Array.some(group, other => Math.abs(other.x - conduit.x) + Math.abs(other.z - conduit.z) === 1)
 					)
-					return [...Array.filter(found, group => !Array.contains(joined, group)), [conduit, ...Array.flatten(joined)]]
+					return [...Array.difference(found, joined), [conduit, ...Array.flatten(joined)]]
 				}
 			)
 			const previous = pipes.nets
@@ -3784,12 +3789,7 @@ export const makeSim = Effect.fnUntraced(
 						id: building.id,
 						kind: 'storage',
 						...centreOf(building),
-						items: Record.fromEntries(
-							Array.map(Array.dedupe([...itemsIn(building.stock), ...itemsIn(building.output)]), item => [
-								item,
-								countOf(building.stock, item) + countOf(building.output, item)
-							])
-						),
+						items: contentsOf(building),
 						source: team.home,
 						text: `Inspected #${building.id}: stock ${itemsText(building.stock)}; output ${itemsText(building.output)}.`,
 						tick: state.tick
@@ -4010,10 +4010,10 @@ export const makeSim = Effect.fnUntraced(
 		/* ───────── views: frames for spectators ───────── */
 
 		function unitView(unit: Unit) {
-			return {
+			const view: UnitView = {
 				act: unit.act,
 				aim: unit.aim,
-				cargo: Option.getOrUndefined(Array.head(itemsIn(unit.cargo))),
+				...Record.getSomes({cargo: Array.head(itemsIn(unit.cargo))}),
 				doing: unit.doing,
 				health: unit.health / markOf(unit).health,
 				id: unit.id,
@@ -4023,7 +4023,8 @@ export const makeSim = Effect.fnUntraced(
 				x: unit.x,
 				yaw: unit.yaw,
 				z: unit.z
-			} satisfies UnitView
+			}
+			return view
 		}
 
 		function mobView(mob: Mob) {
@@ -4056,23 +4057,24 @@ export const makeSim = Effect.fnUntraced(
 
 		function buildingView(building: Building) {
 			const size = sizeOf(building.kind)
-			return {
+			const view: BuildingView = {
 				built: builtOf(building),
 				d: size.d,
 				dir: building.dir,
 				id: building.id,
 				// A structure shows the item riding on it.
-				item: Option.getOrUndefined(
-					Array.head(Array.filter(itemsIn(building.stock), () => Schema.is(StructureKind)(building.kind)))
-				),
+				...Record.getSomes({
+					item: Array.head(Array.filter(itemsIn(building.stock), () => Schema.is(StructureKind)(building.kind)))
+				}),
 				kind: building.kind,
-				recipe: building.recipe,
+				...Record.getSomes({recipe: Option.fromUndefinedOr(building.recipe)}),
 				status: buildingLine(building),
 				team: building.team,
 				w: size.w,
 				x: building.x,
 				z: building.z
-			} satisfies BuildingView
+			}
+			return view
 		}
 
 		function teamView(team: Team) {
@@ -4109,7 +4111,7 @@ export const makeSim = Effect.fnUntraced(
 			traces: MutableHashMap.MutableHashMap<number, string>
 		}) {
 			const at = Math.floor(state.tick / TICK_HZ)
-			if (connection.sent && connection.tracesAt === at) return undefined
+			if (connection.sent && connection.tracesAt === at) return {}
 			if (traceCache.at !== at) {
 				traceCache.at = at
 				traceCache.values = Array.filter(
@@ -4141,7 +4143,7 @@ export const makeSim = Effect.fnUntraced(
 					MutableList.append(changes, {...tileOf(key), fresh: 0, smog: 0, wear: 0, yaw: 0})
 				}
 			}
-			return MutableList.toArray(changes)
+			return {traces: MutableList.toArray(changes)}
 		}
 
 		// A spectator: the revisions of the tiles, props, buildings, teams and zones it has, and the version of each explored chunk it was sent.
@@ -4163,12 +4165,13 @@ export const makeSim = Effect.fnUntraced(
 
 		function overlayChange(key: number) {
 			const tile = tileOf(key)
-			return {
-				amount: Option.getOrUndefined(MutableHashMap.get(amounts, key)),
-				edit: Option.getOrUndefined(MutableHashMap.get(edits, key)),
+			const change: TileChange = {
+				...Record.getSomes({amount: MutableHashMap.get(amounts, key)}),
+				...Record.getSomes({edit: MutableHashMap.get(edits, key)}),
 				x: tile.x,
 				z: tile.z
-			} satisfies TileChange
+			}
+			return change
 		}
 
 		function frame(id: number, at: number) {
@@ -4220,33 +4223,37 @@ export const makeSim = Effect.fnUntraced(
 				building => Schema.is(StructureKind)(building.kind) && Array.contains(BELTS, building.kind)
 			)
 
-			const result = {
+			const result: Frame = {
 				at,
-				buildings: Boolean.match(
-					first || connection.buildings !== revision.buildings || (beltsRun && state.tick % 10 === 0),
-					{onFalse: () => undefined, onTrue: () => Array.map(allBuildings(), buildingView)}
-				),
+				...Boolean.match(first || connection.buildings !== revision.buildings || (beltsRun && state.tick % 10 === 0), {
+					onFalse: () => ({}),
+					onTrue: () => ({buildings: Array.map(allBuildings(), buildingView)})
+				}),
 				changes,
 				cleared: props,
 				environment: life.environment(state.tick),
 				explored: newChunks,
 				shots: MutableList.toArray(shots),
-				teams: Boolean.match(first || !SAME_TEAMS(connection.teams, teamViews), {
-					onFalse: () => undefined,
-					onTrue: () => teamViews
+				...Boolean.match(first || !SAME_TEAMS(connection.teams, teamViews), {
+					onFalse: () => ({}),
+					onTrue: () => ({teams: teamViews})
 				}),
 				tick: state.tick,
-				traces: traceFrame(connection),
+				...traceFrame(connection),
 				units: [
 					...Array.map(allUnits(), unitView),
 					...Array.map(allEnemies(), enemyView),
 					...Array.map(Array.fromIterable(MutableHashMap.values(mobs)), mobView)
 				],
-				world: Boolean.match(first, {onFalse: () => undefined, onTrue: () => ({generator: GENERATOR, seed})}),
-				zones: Boolean.match(first || connection.zones !== revision.zones, {
-					onFalse: () => undefined,
-					onTrue: () =>
-						Array.map(Array.fromIterable(visited), entry => ({...chunkFrom(entry[0]), teams: entry[1]}) satisfies Zone)
+				...Boolean.match(first, {onFalse: () => ({}), onTrue: () => ({world: {generator: GENERATOR, seed}})}),
+				...Boolean.match(first || connection.zones !== revision.zones, {
+					onFalse: () => ({}),
+					onTrue: () => ({
+						zones: Array.map(
+							Array.fromIterable(visited),
+							entry => ({...chunkFrom(entry[0]), teams: entry[1]}) satisfies Zone
+						)
+					})
 				})
 			}
 			connection.sent = true

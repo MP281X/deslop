@@ -30,6 +30,7 @@ import {
 } from 'effect'
 
 import {McpProtocol, McpServer} from 'effect/ai'
+import type {Tool, Toolkit} from 'effect/ai'
 import {
 	HttpClient,
 	HttpClientRequest,
@@ -41,12 +42,22 @@ import {
 	HttpStaticServer
 } from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
-import {RpcSerialization} from 'effect/rpc'
+import {RpcSerialization, RpcServer} from 'effect/rpc'
+import type {Rpc, RpcGroup} from 'effect/rpc'
 
-import {Account, PackageMetadata, RuntimeConfig} from '#schema.ts'
+import {
+	Account,
+	MANIFEST_PATH,
+	MCP_METADATA_PATH,
+	MCP_PATH,
+	PackageMetadata,
+	RPC_PATH,
+	RUNTIME_PATH,
+	RuntimeConfig
+} from '#schema.ts'
 import {layerOtlp} from '#telemetry.ts'
 
-import {localAuth} from '#auth/lib/utils.ts'
+import {APPS_PATH, ISSUER_PATH, localAuth} from '#auth/lib/utils.ts'
 import {Auth, layerMcpAuth} from '#auth/service.ts'
 
 const LOOPBACK = /^(?:localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[\da-f:.]+\])$/iu
@@ -275,7 +286,7 @@ export const layerRoutes = HttpRouter.use(router =>
 		})
 		yield* router.add(
 			'GET',
-			'/api/runtime',
+			RUNTIME_PATH,
 			Effect.gen(function* () {
 				return yield* HttpServerResponse.schemaJson(RuntimeConfig)({
 					...Option.match(issuer, {onNone: () => ({}), onSome: origin => ({auth: origin})}),
@@ -311,7 +322,7 @@ export const layerAnnounce = Layer.effectDiscard(
 			onNone: () => Effect.void,
 			onSome: Effect.fnUntraced(function* (issuer) {
 				yield* pipe(
-					HttpClientRequest.post(new URL('/api/apps', issuer).href),
+					HttpClientRequest.post(new URL(APPS_PATH, issuer).href),
 					HttpClientRequest.bodyJsonUnsafe({origin}),
 					client.execute,
 					Effect.delay('2 seconds'),
@@ -344,7 +355,7 @@ export const layerWeb = Layer.unwrap(
 		return Layer.mergeAll(
 			HttpRouter.add(
 				'GET',
-				'/manifest.webmanifest',
+				MANIFEST_PATH,
 				Effect.succeed(
 					HttpServerResponse.jsonUnsafe(
 						{
@@ -373,22 +384,45 @@ export const layerWeb = Layer.unwrap(
 	})
 )
 
+// An app's RPC socket: one path and protocol, which its web, iOS and peer-worker clients also open.
+export function layerRpc<Rpcs extends Rpc.Any, E, R>(options: {
+	disableTracing?: boolean
+	group: RpcGroup.RpcGroup<Rpcs>
+	handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
+}) {
+	return pipe(
+		RpcServer.layerHttp({
+			disableTracing: options.disableTracing,
+			group: options.group,
+			path: RPC_PATH,
+			protocol: 'websocket'
+		}),
+		Layer.provide(options.handlers)
+	)
+}
+
 // Codex speaks MCP's stateless 2026-07-28 revision; Claude still opens a session, which it ends with DELETE.
-export function layerMcp<RA, RE, RR>(options: {instructions: string; registrations: Layer.Layer<RA, RE, RR>}) {
+export function layerMcp<Tools extends Record<string, Tool.Any>, E, R>(options: {
+	handlers: Layer.Layer<Tool.HandlersFor<Tools>, E, R>
+	instructions: string
+	tools: Toolkit.Toolkit<Tools>
+}) {
 	return Layer.unwrap(
 		Effect.gen(function* () {
 			const metadata = yield* packageMetadata
 			const canonical = yield* Config.String('APP_URL')
 			const issuer = yield* Config.option(Config.String('AUTH_URL'))
-			const resource = new URL('/mcp', canonical).href
+			const resource = new URL(MCP_PATH, canonical).href
 			const endpoint = pipe(
 				McpServer.layerHttp({
-					...options,
 					allowSessionTermination: true,
 					icons: [{src: new URL('/icon', canonical).href}],
+					instructions: options.instructions,
 					name: yield* appName,
-					path: '/mcp',
+					path: MCP_PATH,
 					protocols: [McpProtocol.v2026_07_28, McpProtocol.v2025_11_25, McpProtocol.v2025_06_18],
+					// An app declares its tools once; its services supply the handlers they run.
+					registrations: pipe(McpServer.toolkit(options.tools), Layer.provide(options.handlers)),
 					version: metadata.version
 				}),
 				Layer.provide(layerMcpAuth(resource))
@@ -400,10 +434,10 @@ export function layerMcp<RA, RE, RR>(options: {instructions: string; registratio
 						endpoint,
 						HttpRouter.add(
 							'GET',
-							'/.well-known/oauth-protected-resource/mcp',
+							MCP_METADATA_PATH,
 							Effect.succeed(
 								HttpServerResponse.jsonUnsafe({
-									authorization_servers: [new URL('/api/auth', origin).href],
+									authorization_servers: [new URL(ISSUER_PATH, origin).href],
 									bearer_methods_supported: ['header'],
 									resource,
 									scopes_supported: ['deslop']

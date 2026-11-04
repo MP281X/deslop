@@ -10,7 +10,9 @@ import {
 	HttpServerResponse
 } from 'effect/http'
 
-import {CurrentUser, DEVELOPER, RpcAuth, localAuth} from '#auth/lib/utils.ts'
+import {MCP_METADATA_PATH} from '#schema.ts'
+
+import {CurrentUser, DEVELOPER, RpcAuth, SESSION_PATH, VERIFY_PATH, localAuth} from '#auth/lib/utils.ts'
 import {AuthError, User} from '#auth/schema.ts'
 
 function rejected(message: string) {
@@ -80,7 +82,7 @@ export class Auth extends Context.Service<
 			const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 			const access = Effect.fn('Auth.access')(function* (headers: Headers.Headers, audience: string) {
 				return yield* pipe(
-					client.get(new URL('/auth/verify', issuer).href, {
+					client.get(new URL(VERIFY_PATH, issuer).href, {
 						headers: {authorization: headers['authorization'] ?? ''},
 						urlParams: {resource: audience}
 					}),
@@ -94,7 +96,7 @@ export class Auth extends Context.Service<
 					user: Effect.fn('Auth.user')(function* (headers: Headers.Headers) {
 						if (Option.isSome(Headers.get(headers, 'authorization'))) return yield* access(headers, canonical)
 						return yield* pipe(
-							client.get(new URL('/auth/session', issuer).href, {headers: {cookie: headers['cookie'] ?? ''}}),
+							client.get(new URL(SESSION_PATH, issuer).href, {headers: {cookie: headers['cookie'] ?? ''}}),
 							Effect.flatMap(HttpClientResponse.schemaBodyJson(User)),
 							Effect.timeout('10 seconds')
 						)
@@ -129,7 +131,7 @@ export function layerMcpAuth(resource: string) {
 			return app =>
 				Effect.gen(function* () {
 					const headers = (yield* HttpServerRequest.HttpServerRequest).headers
-					const challenge = `Bearer resource_metadata="${new URL('/.well-known/oauth-protected-resource/mcp', resource).href}", scope="deslop"`
+					const challenge = `Bearer resource_metadata="${new URL(MCP_METADATA_PATH, resource).href}", scope="deslop"`
 					if (Option.isNone(Headers.get(headers, 'authorization'))) {
 						return HttpServerResponse.text('OAuth authorization required; sign in with your MCP client', {
 							headers: {'www-authenticate': challenge},

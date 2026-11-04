@@ -1,7 +1,6 @@
-import {Layer, pipe} from 'effect'
+import {Array, Clock, Effect, Layer, pipe} from 'effect'
 
 import {McpServer} from 'effect/ai'
-import {RpcServer} from 'effect/rpc'
 
 import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
@@ -10,10 +9,12 @@ import {HttpHandlers} from '#http/handlers.ts'
 import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
+import {connectionStatus, summary} from '#services/connections/lib/utils.ts'
 import {Connections} from '#services/connections/service.ts'
-import {Gateway} from '#services/gateway/service.ts'
+import {Gateway, GatewayDiscovery} from '#services/gateway/service.ts'
 import {layerUpstream} from '#services/network/service.ts'
-import {layerMcp} from '#tools/handlers.ts'
+import {Tools} from '#tools/contracts.ts'
+import {ToolHandlers} from '#tools/handlers.ts'
 
 // Upstream servers and their providers are reached only at public HTTPS addresses. The registry is the memoized one layerMcp serves.
 const layerServices = pipe(
@@ -28,11 +29,35 @@ CliRuntime.runApp({
 	routes: pipe(
 		Layer.mergeAll(
 			HttpHandlers,
-			pipe(
-				RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
-				Layer.provide(RpcHandlers)
-			),
-			layerMcp
+			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
+			// The instructions name each connected server by the first sentence of its own, read when the gateway starts.
+			Layer.unwrap(
+				Effect.gen(function* () {
+					const now = yield* Clock.currentTimeMillis
+					return pipe(
+						ServerRuntime.layerMcp({
+							handlers: ToolHandlers,
+							instructions: Array.join(
+								[
+									"Gateway to the user's MCP servers; tools are named <server>__<tool>.",
+									...Array.map(
+										Array.filter(
+											yield* (yield* Connections).definitions,
+											server => connectionStatus(server, now) === 'Connected'
+										),
+										server => `${server.id}: ${summary(server)}`
+									),
+									'If a tool is missing or failing, list_mcp_connections says why.'
+								],
+								'\n'
+							),
+							tools: Tools
+						}),
+						Layer.provide(GatewayDiscovery.layer),
+						Layer.provide(McpServer.McpServer.layer)
+					)
+				})
+			)
 		),
 		Layer.provide(layerServices)
 	),

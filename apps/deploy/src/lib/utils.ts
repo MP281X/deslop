@@ -1,4 +1,4 @@
-import {Effect, Option, Schedule, Stream, pipe} from 'effect'
+import {Effect, Option, Stream, pipe} from 'effect'
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
@@ -19,12 +19,7 @@ export const inventoryAtom = Atom.keepAlive(
 			RpcClient,
 			Effect.map(client => client('deploy.inventory', undefined)),
 			Stream.unwrap,
-			Stream.retry($ =>
-				pipe(
-					$(Schedule.spaced('2 seconds')),
-					Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
-				)
-			)
+			WebRuntime.reconnecting
 		)
 	)
 )
@@ -56,12 +51,7 @@ export const metricsAtom = Atom.family((minutes: HistoryQuery['minutes']) =>
 			RpcClient,
 			Effect.map(client => client('deploy.metrics', {minutes})),
 			Stream.unwrap,
-			Stream.retry($ =>
-				pipe(
-					$(Schedule.spaced('2 seconds')),
-					Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
-				)
-			)
+			WebRuntime.reconnecting
 		)
 	)
 )

@@ -1,11 +1,11 @@
-import {Cache, Config, Context, Effect, Layer, Redacted, Schema, Struct, pipe} from 'effect'
+import {Cache, Config, Context, Effect, Layer, Redacted, Struct, pipe} from 'effect'
 
 import {Digest, SecureRandom} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientRequest, HttpClientResponse, UrlParams} from 'effect/http'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
-import {AUTH_URL, DEVELOPER, localAuth} from '@deslop/runtime/auth/utils'
+import {AUTH_URL, DEVELOPER, localAuth, rejected} from '@deslop/runtime/auth/utils'
 
 import {GitHubToken} from '#services/github/schema.ts'
 import type {SignInParams} from '#services/github/schema.ts'
@@ -15,13 +15,6 @@ const HEADERS = {accept: 'application/vnd.github+json', 'user-agent': '@deslop/a
 const CALLBACK = `${AUTH_URL}/auth/github/callback`
 // The account every app signs in as without an issuer, `github:0`.
 const DEVELOPER_PROFILE = GitHubUser.make({id: 0, login: DEVELOPER.name})
-
-function failed(message: string) {
-	return Effect.mapError(cause => {
-		if (Schema.is(AuthError)(cause)) return cause
-		return AuthError.make({cause, message})
-	})
-}
 
 // GitHub proves who someone is; the step in between lives here for ten minutes, and an Auth restart cancels it.
 export class GitHub extends Context.Service<
@@ -102,10 +95,10 @@ export class GitHub extends Context.Service<
 						HttpClientRequest.bearerToken(HttpClientRequest.get('https://api.github.com/user'), token.access_token)
 					)
 					return {flow, profile}
-				}, failed('GitHub sign-in failed')),
+				}, rejected('GitHub sign-in failed')),
 				profile: Effect.fn('GitHub.profile')(function* (id: string) {
 					return yield* user(HttpClientRequest.get(`https://api.github.com/user/${id}`))
-				}, failed('Cannot read the GitHub profile')),
+				}, rejected('Cannot read the GitHub profile')),
 				start: Effect.fn('GitHub.start')(function* (flow: SignInParams) {
 					const state = yield* nonce
 					const verifier = yield* nonce
@@ -121,7 +114,7 @@ export class GitHub extends Context.Service<
 						})
 					)
 					return {state, url: url.href}
-				}, failed('Cannot start GitHub sign-in'))
+				}, rejected('Cannot start GitHub sign-in'))
 			})
 		})
 	)

@@ -23,7 +23,7 @@ import {Cookies} from 'effect/http'
 import type {Headers} from 'effect/http'
 
 import {AuthError, User} from '@deslop/runtime/auth/schema'
-import {AUTH_URL} from '@deslop/runtime/auth/utils'
+import {AUTH_URL, rejected} from '@deslop/runtime/auth/utils'
 
 import {People} from '#services/people/service.ts'
 import {CODE_LENGTH, codeFrom, typedCode} from '#services/sign-ins/lib/utils.ts'
@@ -34,13 +34,6 @@ import type {Origin} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
 export const REQUEST_COOKIE = '__Host-request-'
-
-function rejected(message: string) {
-	return Effect.mapError(cause => {
-		if (Schema.is(AuthError)(cause)) return cause
-		return AuthError.make({cause, message})
-	})
-}
 
 const expired = AuthError.make({message: 'This sign-in expired. Start it again in the app.'})
 const notWaiting = AuthError.make({

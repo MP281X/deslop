@@ -246,11 +246,17 @@ export function filterEntries(entries: Entry[], query: Query, signal: Entry['sig
 	})
 }
 
+// OTLP timestamps are nanoseconds since the epoch, so they compare exactly as BigInts.
+const byTime = Order.mapInput(Order.BigInt, (time: string) => BigInt(time))
+
+// Entries and traces ordered by when they started, earliest first.
+const byStart = Order.mapInput(byTime, (entry: {time: string}) => entry.time)
+
 export function orderEntries<A extends {durationMs: number; time: string}>(entries: A[], sort: Query['sort']) {
 	return Array.sort(
 		entries,
 		Boolean.match(sort === 'slowest', {
-			onFalse: () => Order.flip(Order.mapInput(Order.BigInt, (entry: A) => BigInt(entry.time))),
+			onFalse: () => Order.flip(byStart),
 			onTrue: () => Order.flip(Order.mapInput(Order.Number, (entry: A) => entry.durationMs))
 		})
 	)
@@ -287,7 +293,7 @@ export function traceTiming(records: Entry[]) {
 		onNonEmpty: timed =>
 			Array.min(
 				Array.map(timed, entry => entry.time),
-				Order.mapInput(Order.BigInt, (time: string) => BigInt(time))
+				byTime
 			)
 	})
 	return {
@@ -361,7 +367,7 @@ function rootOf(spans: Array.NonEmptyReadonlyArray<Entry>) {
 				Array.filter(spans, span => !HashSet.has(ids, parentId(span))),
 				{onEmpty: () => spans, onNonEmpty: Function.identity}
 			),
-			Order.mapInput(Order.BigInt, (span: Entry) => BigInt(span.time))
+			byStart
 		)
 	)
 }
@@ -380,7 +386,7 @@ function brokeAt(spans: readonly Entry[]) {
 	return Array.head(
 		Array.sort(
 			Array.filter(failed, span => !HashSet.has(parents, span.spanId)),
-			Order.mapInput(Order.BigInt, (span: Entry) => BigInt(span.time))
+			byStart
 		)
 	)
 }
@@ -457,7 +463,7 @@ function operationsOf(group: readonly Traced[], keep: number) {
 									...Array.take(
 										Array.sort(
 											Array.filter(entry[1], item => item.trace.failure !== undefined),
-											Order.mapInput(Order.flip(Order.BigInt), (item: Traced) => BigInt(item.trace.time))
+											Order.flip(Order.mapInput(byTime, (item: Traced) => item.trace.time))
 										),
 										keep / 2
 									),

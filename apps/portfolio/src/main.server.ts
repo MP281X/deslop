@@ -1,8 +1,7 @@
 import {Layer, pipe} from 'effect'
 
-import {RpcServer} from 'effect/rpc'
-
 import * as CliRuntime from '@deslop/runtime/cli'
+import * as ServerRuntime from '@deslop/runtime/server'
 
 import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -13,8 +12,7 @@ CliRuntime.runApp({
 	icon,
 	routes: pipe(
 		// Every visitor sends a move each 50 ms; a span per move would bury Scope.
-		RpcServer.layerHttp({disableTracing: true, group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
-		Layer.provide(RpcHandlers),
+		ServerRuntime.layerRpc({disableTracing: true, group: RpcContracts, handlers: RpcHandlers}),
 		Layer.provide(Presence.layer)
 	)
 })

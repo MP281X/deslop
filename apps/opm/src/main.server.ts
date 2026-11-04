@@ -1,8 +1,9 @@
 import {Layer, pipe} from 'effect'
 
-import {RpcSerialization, RpcServer} from 'effect/rpc'
+import {RpcSerialization} from 'effect/rpc'
 
 import * as CliRuntime from '@deslop/runtime/cli'
+import * as ServerRuntime from '@deslop/runtime/server'
 
 import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -12,8 +13,7 @@ import {layerChapters} from '#services/chapters/service.ts'
 CliRuntime.runApp({
 	icon,
 	routes: pipe(
-		RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
-		Layer.provide(RpcHandlers),
+		ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 		Layer.provide(RpcSerialization.layerJson),
 		Layer.provide(layerChapters)
 	)

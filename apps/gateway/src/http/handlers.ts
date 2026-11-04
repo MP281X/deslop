@@ -13,7 +13,15 @@ import {Gateway} from '#services/gateway/service.ts'
 
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 
-// Connecting a provider returns to the servers page, whose row shows why a step failed.
+// A step's answer is never cached, and a failure returns to the servers page, whose row shows why the step failed.
+function returning<E, R>(step: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
+	return pipe(
+		step,
+		Effect.orElseSucceed(() => HttpServerResponse.redirect('/')),
+		Effect.map(HttpServerResponse.setHeader('cache-control', 'no-store'))
+	)
+}
+
 export const HttpHandlers = HttpRouter.use(router =>
 	Effect.gen(function* () {
 		const auth = yield* Auth
@@ -24,7 +32,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		yield* router.add(
 			'GET',
 			'/oauth/connect',
-			pipe(
+			returning(
 				Effect.gen(function* () {
 					const request = yield* HttpServerRequest.HttpServerRequest
 					const params = yield* HttpServerRequest.schemaSearchParams(ServerParams)
@@ -44,32 +52,26 @@ export const HttpHandlers = HttpRouter.use(router =>
 								})
 							)
 					})
-				}),
-				Effect.orElseSucceed(() => HttpServerResponse.redirect('/')),
-				Effect.map(HttpServerResponse.setHeader('cache-control', 'no-store'))
+				})
 			)
 		)
 		// A provider the gateway registered with answers at its server's own callback; one using the metadata document at the shared one.
-		const callback = Effect.fnUntraced(
-			function* (route: Option.Option<string>) {
-				const request = yield* HttpServerRequest.HttpServerRequest
-				const user = yield* auth.user(request.headers)
-				const params = yield* HttpServerRequest.schemaSearchParams(Callback)
-				if (request.cookies[`__Host-mcp-${params.state}`] !== params.state) {
-					return yield* AuthError.make({message: 'The connection belongs to another browser'})
-				}
-				yield* connections.complete(params, route, user)
-				// Its tools are read now, not at an agent's next tools/list.
-				yield* gateway.connected
-				return HttpServerResponse.expireCookieUnsafe(
-					HttpServerResponse.redirect('/'),
-					`__Host-mcp-${params.state}`,
-					COOKIE
-				)
-			},
-			Effect.orElseSucceed(() => HttpServerResponse.redirect('/')),
-			Effect.map(HttpServerResponse.setHeader('cache-control', 'no-store'))
-		)
+		const callback = Effect.fnUntraced(function* (route: Option.Option<string>) {
+			const request = yield* HttpServerRequest.HttpServerRequest
+			const user = yield* auth.user(request.headers)
+			const params = yield* HttpServerRequest.schemaSearchParams(Callback)
+			if (request.cookies[`__Host-mcp-${params.state}`] !== params.state) {
+				return yield* AuthError.make({message: 'The connection belongs to another browser'})
+			}
+			yield* connections.complete(params, route, user)
+			// Its tools are read now, not at an agent's next tools/list.
+			yield* gateway.connected
+			return HttpServerResponse.expireCookieUnsafe(
+				HttpServerResponse.redirect('/'),
+				`__Host-mcp-${params.state}`,
+				COOKIE
+			)
+		}, returning)
 		yield* router.add('GET', '/oauth/callback', callback(Option.none()))
 		yield* router.add(
 			'GET',

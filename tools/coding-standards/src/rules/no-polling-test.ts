@@ -5,6 +5,7 @@ import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
 import {
 	containsNode,
+	effectMethod,
 	importedMember,
 	isClockWait,
 	isTestFile,
@@ -141,16 +142,13 @@ export const noPollingTest = defineRule({
 		}
 		return {
 			CallExpression: node => {
-				if (node.callee.type !== 'MemberExpression') return
-				const callee = node.callee
-				if (importedMember({context, importedName: 'Effect', node: callee, propertyName: 'eventually'})) {
+				const method = effectMethod({context, node})
+				if (Option.contains(method, 'eventually')) {
 					context.report({message: MESSAGE, node})
 					return
 				}
 				if (
-					Array.some(['repeat', 'repeatOrElse', 'retry', 'retryOrElse'], propertyName =>
-						importedMember({context, importedName: 'Effect', node: callee, propertyName})
-					) &&
+					Option.exists(method, name => Array.contains(['repeat', 'repeatOrElse', 'retry', 'retryOrElse'], name)) &&
 					(containsNode({
 						context,
 						matches: child => isWait(context, child),

@@ -1,21 +1,23 @@
 // fallow-ignore-file unused-type -- Paired schema types are available to runtime consumers.
-import {Array, Number, Option, Schema} from 'effect'
+import {Array, HashSet, Number, Option, Result, Schema} from 'effect'
+import type {Order} from 'effect'
+
+import {Url} from 'effect/http'
 
 import {User} from '#auth/schema.ts'
 
 type HttpUrl = typeof HttpUrl.Type
 const HttpUrl = Schema.String.check(
 	Schema.makeFilter(
-		(value: string) => {
-			if (!URL.canParse(value)) return false
-			const url = new URL(value)
-			return (
-				Array.contains(['http:', 'https:'], url.protocol) &&
-				url.username === '' &&
-				url.password === '' &&
-				url.hash === ''
-			)
-		},
+		(value: string) =>
+			Option.exists(
+				Result.getSuccess(Url.fromString(value)),
+				url =>
+					Array.contains(['http:', 'https:'], url.protocol) &&
+					url.username === '' &&
+					url.password === '' &&
+					url.hash === ''
+			),
 		{expected: 'an HTTP(S) URL without credentials or a fragment'}
 	)
 )
@@ -23,11 +25,8 @@ const HttpUrl = Schema.String.check(
 export type Origin = typeof Origin.Type
 export const Origin = HttpUrl.check(
 	Schema.makeFilter(
-		(value: string) => {
-			if (!URL.canParse(value)) return false
-			const url = new URL(value)
-			return url.pathname === '/' && url.search === ''
-		},
+		(value: string) =>
+			Option.exists(Result.getSuccess(Url.fromString(value)), url => url.pathname === '/' && url.search === ''),
 		{expected: 'an HTTP(S) origin without a path or query'}
 	)
 )
@@ -35,11 +34,11 @@ export const Origin = HttpUrl.check(
 export type SecureOrigin = typeof SecureOrigin.Type
 export const SecureOrigin = Origin.check(
 	Schema.makeFilter(
-		(value: string) => {
-			if (!URL.canParse(value)) return false
-			const url = new URL(value)
-			return url.protocol === 'https:' || Array.contains(['localhost', '127.0.0.1', '[::1]'], url.hostname)
-		},
+		(value: string) =>
+			Option.exists(
+				Result.getSuccess(Url.fromString(value)),
+				url => url.protocol === 'https:' || Array.contains(['localhost', '127.0.0.1', '[::1]'], url.hostname)
+			),
 		{expected: 'HTTPS outside loopback'}
 	)
 )
@@ -55,14 +54,29 @@ export const Port = Schema.String.check(
 export type AppVersion = typeof AppVersion.Type
 export const AppVersion = Schema.String.check(Schema.isPattern(/^0\.1\.\d+$/u))
 
+// The path every app answers about itself at, which its clients and Auth read.
+export const RUNTIME_PATH = '/api/runtime'
+
 export type RuntimeConfig = typeof RuntimeConfig.Type
-// What `/api/runtime` tells clients and Auth: the app's name, the Auth it signs in through, where it exports traces and its release.
+// What it tells them: the app's name, the Auth it signs in through, where it exports traces and its release.
 export const RuntimeConfig = Schema.Struct({
 	auth: Schema.optionalKey(Schema.String),
 	name: Schema.String,
 	traces: Schema.String,
 	version: AppVersion
 })
+
+// The socket every app serves its contracts on and every client opens: web, iOS and a peer worker.
+export const RPC_PATH = '/api/rpc'
+
+// The MCP endpoint every app serves, which agents and Gateway open.
+export const MCP_PATH = '/mcp'
+
+// The protected-resource metadata that tells an MCP client which issuer its bearer must come from.
+export const MCP_METADATA_PATH = '/.well-known/oauth-protected-resource/mcp'
+
+// The manifest a web app serves, which Auth probes to tell a browser app from an iOS one.
+export const MANIFEST_PATH = '/manifest.webmanifest'
 
 // Who the app bar's account menu shows; `signOut` is false without an issuer, where everyone is the developer.
 export type Account = typeof Account.Type
@@ -75,3 +89,19 @@ export const PackageMetadata = Schema.Struct({
 	name: Schema.String,
 	version: AppVersion
 })
+
+// One update to a list a client keeps: the whole list once, then the items it added or replaced and the ids it removed.
+export type ListEvent<A extends {id: string}> = {
+	readonly removed: readonly A['id'][]
+	readonly reset: boolean
+	readonly upserted: readonly A[]
+}
+
+// The list `ServerRuntime.listEvents` builds on a client, in `order`: a reset replaces it whole, and each update swaps the items it names.
+export function listReducer<A extends {id: string}>(order: Order.Order<A>) {
+	return (items: readonly A[], event: ListEvent<A>) => {
+		if (event.reset) return Array.sort(event.upserted, order)
+		const replaced = HashSet.fromIterable([...event.removed, ...Array.map(event.upserted, item => item.id)])
+		return Array.sort([...Array.filter(items, item => !HashSet.has(replaced, item.id)), ...event.upserted], order)
+	}
+}

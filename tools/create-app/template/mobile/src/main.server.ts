@@ -1,7 +1,6 @@
 import {Layer, pipe} from 'effect'
 
-import {McpServer} from 'effect/ai'
-import {RpcSerialization, RpcServer} from 'effect/rpc'
+import {RpcSerialization} from 'effect/rpc'
 
 import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
@@ -16,13 +15,9 @@ CliRuntime.runApp({
 	icon,
 	routes: Layer.mergeAll(
 		pipe(
-			RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
-			Layer.provide(RpcHandlers),
+			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			Layer.provide(RpcSerialization.layerJson)
 		),
-		ServerRuntime.layerMcp({
-			instructions: "Read the app's name with name.",
-			registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
-		})
+		ServerRuntime.layerMcp({handlers: ToolHandlers, instructions: "Read the app's name with name.", tools: Tools})
 	)
 })

@@ -3,7 +3,7 @@ import {Array, Option} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {childNodes, importedMember, memberName} from '#rules/shared.ts'
+import {childNodes, effectMethod, memberName} from '#rules/shared.ts'
 
 function isMessage(node: ESTree.Node, name: string) {
 	return (
@@ -46,18 +46,13 @@ function inspectPredicate(context: Context, node?: ESTree.Node) {
 export const noErrorMessageControlFlow = defineRule({
 	create: context => ({
 		CallExpression: node => {
-			if (
-				node.callee.type !== 'MemberExpression' ||
-				!importedMember({context, importedName: 'Effect', node: node.callee})
-			) {
-				return
-			}
-			if (Option.contains(memberName(node.callee), 'catchIf')) {
+			const method = effectMethod({context, node})
+			if (Option.contains(method, 'catchIf')) {
 				if (node.arguments.length === 3) inspectPredicate(context, node.arguments[1])
 				if (node.arguments.length === 2) inspectPredicate(context, node.arguments[0])
 				return
 			}
-			if (!Option.contains(memberName(node.callee), 'retry')) return
+			if (!Option.contains(method, 'retry')) return
 			for (const property of Array.flatMap(node.arguments, argument => {
 				if (argument.type === 'ObjectExpression') return argument.properties
 				return []

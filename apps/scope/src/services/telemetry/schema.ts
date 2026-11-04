@@ -228,7 +228,7 @@ export type OperationTrace = typeof OperationTrace.Type
 export const OperationTrace = Schema.Struct({
 	durationMs: Schema.Finite,
 	// The first span that failed and its message, when one did.
-	failure: Schema.optional(Schema.Struct({message: Schema.String, span: Schema.String})),
+	failure: Schema.optionalKey(Schema.Struct({message: Schema.String, span: Schema.String})),
 	id: TraceId,
 	time: Nano
 })
