@@ -10,7 +10,7 @@ export class DeployError extends Schema.TaggedError<DeployError>()('DeployError'
 export type Process = typeof Process.Type
 export const Process = Schema.Struct({
 	// Its arguments, the executable first, with anything that looks like a secret masked.
-	command: Schema.optional(Schema.Array(Schema.String)),
+	command: Schema.optionalKey(Schema.Array(Schema.String)),
 	cpu: Schema.optional(Schema.Finite),
 	memory: Schema.Finite,
 	name: Schema.String,
