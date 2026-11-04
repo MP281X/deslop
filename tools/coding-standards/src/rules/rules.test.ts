@@ -36,7 +36,7 @@ const lintSource = Effect.fnUntraced(function* (input: Record<string, string>, f
 	const read = Effect.forEach(files, file => fs.readFileString(file), {concurrency: 'unbounded'})
 	const lint = Effect.scoped(
 		Effect.flatMap(
-			ChildProcess.make('vp', ['lint', ...files, '--format=json', ...flags], {
+			ChildProcess.make('vp', ['lint', ...files, '--format=json', '--type-aware', '--type-check', ...flags], {
 				cwd: root,
 				stderr: 'pipe',
 				stdout: 'pipe'

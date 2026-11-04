@@ -61,7 +61,7 @@ Each app is an npm package run as a user service on its worker, at its own defau
 - **Lint policy** in `@deslop/coding-standards`:
   - **Once**: each policy defined once; tests only for custom rules; native rules picked by name with every category off, so a tool upgrade opts into nothing; a declined rule is left out.
   - **No overlap**: each check in the one tool covering it best, proven with the custom rule's failing cases; the compiler and the Effect Oxlint rules own theirs; no rule for a form the preset already bans.
-  - **One gate**: `check`, and `fix` in Verify, run Oxfmt, then Oxlint on tsrs with the Effect rules and TypeScript diagnostics, then Fallow; no package keeps a typecheck script, and the templates, which install nothing, stay outside it.
+  - **One gate**: `check`, and `fix` in Verify, run Oxfmt, the typed Oxlint pass on tsrs with the Effect rules and TypeScript diagnostics, a syntax-only pass over the templates, then Fallow; no package keeps a typecheck script.
   - **Reach**: only checks that can fire here, preventive ones included for patterns t3code and Dual already hit; `exactOptionalPropertyTypes` off.
   - **Custom rules** earn their place with coverage or a safe fix no native rule offers.
   - **Combined gate**: intended forms stay accepted, fixes converge.

@@ -188,7 +188,7 @@ export const lint: OxlintConfig = {
 		{name: 'shadcn', specifier: import.meta.resolve('@shadcn/lint')},
 		{name: 'vite-plus', specifier: import.meta.resolve('vite-plus/oxlint-plugin')}
 	],
-	options: {denyWarnings: true, reportUnusedDisableDirectives: 'deny', typeAware: true, typeCheck: true},
+	options: {denyWarnings: true, reportUnusedDisableDirectives: 'deny', typeAware: false, typeCheck: false},
 	overrides: [
 		{files: ['**/*.config.ts', '**/app.plugin.js'], rules: {'import/no-default-export': 'off'}},
 		// Expo resolves a config plugin only from the package's app.plugin.js, which re-exports the plugin.

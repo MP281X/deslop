@@ -12,7 +12,7 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 ## Commands
 
 - **Verify**: `vp run fix && vp run test`.
-  - `fix`: Oxfmt, then Oxlint on tsrs with the Effect rules and TypeScript diagnostics, writing fixes and failing on leftovers, then Fallow. CI runs `check`, the same without `--fix`.
+  - `fix`: Oxfmt, the typed Oxlint pass on tsrs with the Effect rules and TypeScript diagnostics, a syntax-only pass over the templates, then Fallow, writing fixes and failing on leftovers. CI runs `check`, the same without `--fix`.
   - `check`: the gate and Fallow. `test`: each package's tests.
   - **Task cache**: same `test` scripts in every `package.json`, root caches scripts; per worktree, since `vp test` and `vp check` keys hold the absolute path.
 - **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. Before the first mobile push: `RELEASING.md`, **Publish an iOS app**.

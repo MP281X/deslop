@@ -56,12 +56,11 @@ export default defineConfig({
 	lint: {
 		env: {browser: true, builtin: true, node: true},
 		extends: [lint],
-		// Templates install no dependencies, so the typed gate cannot resolve them; a generated app is checked after creation.
-		ignorePatterns: ['**/*.gen.ts', 'tools/*/template/**', 'packages/components-web/src/ui/**'],
+		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/ui/**'],
 		overrides: [
 			{
 				// React Native styles are objects with no Tailwind classes to check.
-				files: ['apps/{opm,stash,trips}/**', 'packages/components-mobile/**'],
+				files: ['apps/{opm,stash,trips}/**', 'packages/components-mobile/**', 'tools/create-app/template/mobile/**'],
 				rules: {
 					'shadcn/no-arbitrary-values': 'off',
 					'shadcn/no-inline-styles': 'off',
@@ -70,6 +69,11 @@ export default defineConfig({
 					'shadcn/no-unknown-classes': 'off',
 					'shadcn/require-static-classes': 'off'
 				}
+			},
+			{
+				// The web template is no workspace package, so its stylesheet cannot resolve the theme's own utilities.
+				files: ['tools/create-app/template/web/**'],
+				rules: {'shadcn/no-unknown-classes': 'off'}
 			}
 		]
 	},
@@ -77,8 +81,13 @@ export default defineConfig({
 		// Each package's test script replays from the cache while its inputs are unchanged; a stopped preview server exits 130, so it is never cached.
 		cache: true,
 		tasks: {
-			// Oxfmt, then Oxlint on tsrs with the Effect rules and TypeScript diagnostics; `fix` writes the fixes instead of only reporting them.
-			check: ['effect-tsgo --tsrs-lint vp check', 'vp run fallow'],
+			// Oxfmt, the typed lint pass on tsrs (Effect rules and TypeScript diagnostics), a syntax-only pass for the templates, then Fallow. `fix` writes the fixes instead of only reporting them.
+			check: [
+				'vp fmt --list-different',
+				'effect-tsgo --tsrs-lint vp lint --type-aware --type-check --ignore-pattern "tools/*/template/**"',
+				'vp lint tools/create-app/template tools/create-package/template --report-unused-disable-directives-severity=off',
+				'vp run fallow'
+			],
 			// Fallow judges exports and dependencies across packages, so it reads the whole workspace whichever package it reports on.
 			fallow: {
 				cache: {input: [{auto: true}, '!.fallow/**'], output: []},
@@ -89,7 +98,15 @@ export default defineConfig({
 					'fallow health --complexity --format human --quiet'
 				]
 			},
-			fix: {cache: false, command: ['effect-tsgo --tsrs-lint vp check --fix', 'vp run fallow']},
+			fix: {
+				cache: false,
+				command: [
+					'vp fmt',
+					'effect-tsgo --tsrs-lint vp lint --fix --type-aware --type-check --ignore-pattern "tools/*/template/**"',
+					'vp lint tools/create-app/template tools/create-package/template --fix --report-unused-disable-directives-severity=off',
+					'vp run fallow'
+				]
+			},
 			test: 'vp run -r --parallel test'
 		}
 	},
