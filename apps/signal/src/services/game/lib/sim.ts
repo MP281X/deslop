@@ -4165,12 +4165,13 @@ export const makeSim = Effect.fnUntraced(
 
 		function overlayChange(key: number) {
 			const tile = tileOf(key)
-			return {
-				amount: Option.getOrUndefined(MutableHashMap.get(amounts, key)),
-				edit: Option.getOrUndefined(MutableHashMap.get(edits, key)),
+			const change: TileChange = {
+				...Record.getSomes({amount: MutableHashMap.get(amounts, key)}),
+				...Record.getSomes({edit: MutableHashMap.get(edits, key)}),
 				x: tile.x,
 				z: tile.z
-			} satisfies TileChange
+			}
+			return change
 		}
 
 		function frame(id: number, at: number) {

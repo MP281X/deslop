@@ -11,7 +11,7 @@ export type Process = typeof Process.Type
 export const Process = Schema.Struct({
 	// Its arguments, the executable first, with anything that looks like a secret masked.
 	command: Schema.optionalKey(Schema.Array(Schema.String)),
-	cpu: Schema.optional(Schema.Finite),
+	cpu: Schema.optionalKey(Schema.Finite),
 	memory: Schema.Finite,
 	name: Schema.String,
 	parent: Schema.Int,
