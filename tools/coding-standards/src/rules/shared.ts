@@ -425,6 +425,17 @@ export function importedMember(input: {
 	)
 }
 
+// The method an `Effect.<method>(...)` call names, such as `map` in `Effect.map(...)`; none for any other call.
+export function effectMethod(input: {context: Context; node: ESTree.CallExpression}) {
+	if (
+		input.node.callee.type !== 'MemberExpression' ||
+		!importedMember({context: input.context, importedName: 'Effect', node: input.node.callee})
+	) {
+		return Option.none<string>()
+	}
+	return memberName(input.node.callee)
+}
+
 function isWriteTarget(node: ESTree.Node) {
 	if (node.parent === null) return false
 	return (
