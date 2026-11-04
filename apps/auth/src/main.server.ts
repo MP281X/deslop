@@ -2,7 +2,6 @@ import {NodeHttpClient} from '@effect/platform-node'
 
 import {Effect, Layer, Schema, pipe} from 'effect'
 
-import {McpServer} from 'effect/ai'
 import {HttpServerResponse} from 'effect/http'
 import {RateLimiter} from 'effect/persistence'
 
@@ -42,8 +41,9 @@ CliRuntime.runApp({
 			HttpHandlers,
 			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			ServerRuntime.layerMcp({
+				handlers: ToolHandlers,
 				instructions: 'Approve a sign-in you started with answer_request.',
-				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
+				tools: Tools
 			})
 		),
 		Layer.provide(layerServices)

@@ -30,6 +30,7 @@ import {
 } from 'effect'
 
 import {McpProtocol, McpServer} from 'effect/ai'
+import type {Tool, Toolkit} from 'effect/ai'
 import {
 	HttpClient,
 	HttpClientRequest,
@@ -401,7 +402,11 @@ export function layerRpc<Rpcs extends Rpc.Any, E, R>(options: {
 }
 
 // Codex speaks MCP's stateless 2026-07-28 revision; Claude still opens a session, which it ends with DELETE.
-export function layerMcp<RA, RE, RR>(options: {instructions: string; registrations: Layer.Layer<RA, RE, RR>}) {
+export function layerMcp<Tools extends Record<string, Tool.Any>, E, R>(options: {
+	handlers: Layer.Layer<Tool.HandlersFor<Tools>, E, R>
+	instructions: string
+	tools: Toolkit.Toolkit<Tools>
+}) {
 	return Layer.unwrap(
 		Effect.gen(function* () {
 			const metadata = yield* packageMetadata
@@ -410,12 +415,14 @@ export function layerMcp<RA, RE, RR>(options: {instructions: string; registratio
 			const resource = new URL(MCP_PATH, canonical).href
 			const endpoint = pipe(
 				McpServer.layerHttp({
-					...options,
 					allowSessionTermination: true,
 					icons: [{src: new URL('/icon', canonical).href}],
+					instructions: options.instructions,
 					name: yield* appName,
 					path: MCP_PATH,
 					protocols: [McpProtocol.v2026_07_28, McpProtocol.v2025_11_25, McpProtocol.v2025_06_18],
+					// An app declares its tools once; its services supply the handlers they run.
+					registrations: pipe(McpServer.toolkit(options.tools), Layer.provide(options.handlers)),
 					version: metadata.version
 				}),
 				Layer.provide(layerMcpAuth(resource))

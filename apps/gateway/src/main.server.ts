@@ -36,6 +36,7 @@ CliRuntime.runApp({
 					const now = yield* Clock.currentTimeMillis
 					return pipe(
 						ServerRuntime.layerMcp({
+							handlers: ToolHandlers,
 							instructions: Array.join(
 								[
 									"Gateway to the user's MCP servers; tools are named <server>__<tool>.",
@@ -50,7 +51,7 @@ CliRuntime.runApp({
 								],
 								'\n'
 							),
-							registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
+							tools: Tools
 						}),
 						Layer.provide(GatewayDiscovery.layer),
 						Layer.provide(McpServer.McpServer.layer)

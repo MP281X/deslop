@@ -1,6 +1,5 @@
 import {Array, Config, Effect, Layer, Option, Predicate, Redacted, Schema, SchemaGetter, String, pipe} from 'effect'
 
-import {McpServer} from 'effect/ai'
 import {Mac} from 'effect/crypto'
 import {HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 
@@ -158,8 +157,9 @@ CliRuntime.runApp({
 			github,
 			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			ServerRuntime.layerMcp({
+				handlers: ToolHandlers,
 				instructions: "Scope is the debugger for the user's Effect apps: their traces, spans and logs.",
-				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
+				tools: Tools
 			})
 		),
 		Layer.provide(
