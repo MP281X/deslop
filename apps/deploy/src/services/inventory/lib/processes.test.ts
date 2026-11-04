@@ -103,6 +103,8 @@ it('shares meaningful CPU deltas between staggered viewers without returning sta
 	const first = processReadings(reading(0))
 	const early = processReadings(reading(1000), first)
 	assert.isUndefined(early.readings[0]?.process.cpu)
+	// A process the cached read can't measure carries no cpu key, so the snapshot it lands in still validates.
+	assert.deepStrictEqual(early.readings[0]?.process, {memory: 1000, name: 'node', parent: 1, pid: 42})
 	assert.strictEqual(early.baseline.time, 0)
 	const viewerA = processReadings(reading(5000), early)
 	const viewerB = processReadings(reading(6000), viewerA)

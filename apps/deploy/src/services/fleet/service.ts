@@ -153,7 +153,7 @@ export class Fleet extends Context.Service<
 						...Array.map(workers, worker => {
 							const saved = cached[`${worker.name}:${query.minutes}`]
 							return {
-								cpuModel: saved?.cpuModel,
+								...Record.getSomes({cpuModel: Option.fromUndefinedOr(saved?.cpuModel)}),
 								error: saved?.error ?? 'Waiting for worker',
 								samples: history(saved?.samples ?? [], query.minutes, time),
 								stale: saved === undefined || saved.stale || time - saved.time > 90_000,
@@ -193,7 +193,9 @@ export class Fleet extends Context.Service<
 										const time = yield* Clock.currentTimeMillis
 										const all = yield* Ref.get(lastMetrics)
 										return {
-											cpuModel: all[`${worker.name}:${query.minutes}`]?.cpuModel,
+											...Record.getSomes({
+												cpuModel: Option.fromUndefinedOr(all[`${worker.name}:${query.minutes}`]?.cpuModel)
+											}),
 											error: cause.message,
 											samples: history(all[`${worker.name}:${query.minutes}`]?.samples ?? [], query.minutes, time),
 											stale: true,
