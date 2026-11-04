@@ -32,6 +32,9 @@ import type {HistoryQuery} from '#services/metrics/schema.ts'
 
 const CGROUP = '/sys/fs/cgroup'
 
+// The samples of each hour are saved in a file named for that hour.
+const SAVED = 'metrics-'
+
 export class Metrics extends Context.Service<
 	Metrics,
 	{readonly read: (query: HistoryQuery) => Effect.Effect<MachineHistory>}
@@ -54,7 +57,7 @@ export class Metrics extends Context.Service<
 					const store = KeyValueStore.toSchemaStore(base, Schema.Array(Sample))
 					const now = yield* Clock.currentTimeMillis
 					const saved = yield* Effect.forEach(
-						Array.filter(yield* base.keys, key => String.startsWith('metrics-')(key) && !String.endsWith('.tmp')(key)),
+						Array.filter(yield* base.keys, key => String.startsWith(SAVED)(key) && !String.endsWith('.tmp')(key)),
 						key =>
 							pipe(
 								store.get(key),
@@ -247,7 +250,7 @@ export class Metrics extends Context.Service<
 									buckets,
 									bucket =>
 										store.set(
-											`metrics-${bucket}`,
+											`${SAVED}${bucket}`,
 											Array.filter(samples, entry => Math.floor(entry.time / 3_600_000) === bucket)
 										),
 									{concurrency: 1, discard: true}
@@ -258,10 +261,10 @@ export class Metrics extends Context.Service<
 								Array.filter(
 									yield* base.keys,
 									key =>
-										String.startsWith('metrics-')(key) &&
+										String.startsWith(SAVED)(key) &&
 										(String.endsWith('.tmp')(key) ||
 											Option.exists(
-												Number.parse(String.slice(8)(key)),
+												Number.parse(String.slice(SAVED.length)(key)),
 												bucket => bucket < Math.floor(time / 3_600_000) - 168
 											))
 								),
