@@ -1,5 +1,6 @@
 // fallow-ignore-file unused-type -- Paired schema types are available to runtime consumers.
-import {Array, Number, Option, Schema} from 'effect'
+import {Array, HashSet, Number, Option, Schema} from 'effect'
+import type {Order} from 'effect'
 
 import {User} from '#auth/schema.ts'
 
@@ -90,3 +91,19 @@ export const PackageMetadata = Schema.Struct({
 	name: Schema.String,
 	version: AppVersion
 })
+
+// One update to a list a client keeps: the whole list once, then the items it added or replaced and the ids it removed.
+export type ListEvent<A extends {id: string}> = {
+	readonly removed: readonly A['id'][]
+	readonly reset: boolean
+	readonly upserted: readonly A[]
+}
+
+// The list `ServerRuntime.listEvents` builds on a client, in `order`: a reset replaces it whole, and each update swaps the items it names.
+export function listReducer<A extends {id: string}>(order: Order.Order<A>) {
+	return (items: readonly A[], event: ListEvent<A>) => {
+		if (event.reset) return Array.sort(event.upserted, order)
+		const replaced = HashSet.fromIterable([...event.removed, ...Array.map(event.upserted, item => item.id)])
+		return Array.sort([...Array.filter(items, item => !HashSet.has(replaced, item.id)), ...event.upserted], order)
+	}
+}

@@ -36,6 +36,7 @@ import {alert, cachedList, clipboardChangeCount, writeAtomically} from '@deslop/
 import * as MobileRuntime from '@deslop/runtime/mobile'
 import {keychain} from '@deslop/runtime/mobile/keychain'
 import * as MobileSession from '@deslop/runtime/mobile/session'
+import {listReducer} from '@deslop/runtime/schema'
 
 import {JourneyActivity} from '#lib/activities.tsx'
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -55,7 +56,6 @@ import {
 } from '#services/bookings/lib/utils.ts'
 import type {
 	ActivityProps,
-	BookingsEvent,
 	Flight,
 	Place,
 	Stay,
@@ -93,14 +93,7 @@ function linkOf(bookingId: string) {
 
 const bookingsFile = new File(Paths.document, 'bookings.json')
 
-function apply(bookings: BookingList, event: BookingsEvent) {
-	if (event.reset) return Array.sort(event.upserted, byStart)
-	const replaced = HashSet.fromIterable([...event.removed, ...Array.map(event.upserted, booking => booking.id)])
-	return Array.sort(
-		[...Array.filter(bookings, booking => !HashSet.has(replaced, booking.id)), ...event.upserted],
-		byStart
-	)
-}
+const apply = listReducer(byStart)
 
 // The copy on the iPhone opens the trip at the gate even without a network.
 export const bookingsAtom = Atom.keepAlive(

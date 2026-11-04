@@ -16,11 +16,12 @@ import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/util
 import {AuthError} from '@deslop/runtime/auth/schema'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 import * as MobileSession from '@deslop/runtime/mobile/session'
+import {listReducer} from '@deslop/runtime/schema'
 
 import {native} from '#modules/native/index.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {captureUrl, isYouTube} from '#services/notes/lib/utils.ts'
-import type {Kind, Note, NotesEvent} from '#services/notes/schema.ts'
+import type {Kind, Note} from '#services/notes/schema.ts'
 import {Brand, NoteItem, NotesError} from '#services/notes/schema.ts'
 
 const SERVER = 'https://stash.mp281x.xyz'
@@ -107,11 +108,7 @@ export function appOf(note: NoteItem) {
 
 const newestFirst = Order.flip(Order.mapInput(Order.Number, (item: NoteItem) => item.createdAt))
 
-function apply(items: NoteItem[], event: NotesEvent) {
-	if (event.reset) return Array.sort(event.upserted, newestFirst)
-	const replaced = HashSet.fromIterable([...event.removed, ...Array.map(event.upserted, item => item.id)])
-	return Array.sort([...Array.filter(items, item => !HashSet.has(replaced, item.id)), ...event.upserted], newestFirst)
-}
+const apply = listReducer(newestFirst)
 
 // The copy on the iPhone shows the list while the server is out of reach.
 export const notesAtom = Atom.keepAlive(
