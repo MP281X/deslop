@@ -77,6 +77,15 @@ function originOf(request: HttpServerRequest.HttpServerRequest) {
 	return originFrom(request.headers, request.remoteAddress)
 }
 
+// The session and bearer endpoints answer the user as no-store JSON, or 401 once the request is refused.
+function answered<E, R>(answer: Effect.Effect<User, E, R>) {
+	return pipe(
+		answer,
+		Effect.flatMap(user => HttpServerResponse.schemaJson(User)(user, {headers: {'cache-control': 'no-store'}})),
+		Effect.orElseSucceed(() => HttpServerResponse.empty({status: 401}))
+	)
+}
+
 // A started sign-in shows its code at /?request=; the cookie binds its answer to this browser or command.
 function waitingAt(started: {code: string; receiver: string}) {
 	return HttpServerResponse.setCookieUnsafe(
@@ -339,22 +348,16 @@ export const HttpHandlers = HttpRouter.use(router =>
 		yield* router.add(
 			'GET',
 			SESSION_PATH,
-			pipe(
-				Effect.flatMap(HttpServerRequest.HttpServerRequest, request => auth.user(request.headers)),
-				Effect.flatMap(user => HttpServerResponse.schemaJson(User)(user, {headers: {'cache-control': 'no-store'}})),
-				Effect.orElseSucceed(() => HttpServerResponse.empty({status: 401}))
-			)
+			answered(Effect.flatMap(HttpServerRequest.HttpServerRequest, request => auth.user(request.headers)))
 		)
 		yield* router.add(
 			'GET',
 			VERIFY_PATH,
-			pipe(
+			answered(
 				Effect.gen(function* () {
 					const params = yield* HttpServerRequest.schemaSearchParams(VerificationParams)
 					return yield* auth.access((yield* HttpServerRequest.HttpServerRequest).headers, params.resource)
-				}),
-				Effect.flatMap(user => HttpServerResponse.schemaJson(User)(user, {headers: {'cache-control': 'no-store'}})),
-				Effect.orElseSucceed(() => HttpServerResponse.empty({status: 401}))
+				})
 			)
 		)
 		yield* router.add(
