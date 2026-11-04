@@ -28,6 +28,8 @@ import {HttpClient} from 'effect/http'
 import type {HttpClientResponse} from 'effect/http'
 import {Dns, NetAddress} from 'effect/net'
 
+import {isPublicIp} from '@deslop/runtime/net'
+
 import {sourceProxy, sticky} from '#services/media/lib/proxy.ts'
 import {pageText} from '#services/notes/lib/page.ts'
 import {captureUrl, isYouTube, plainText, sourceFor} from '#services/notes/lib/utils.ts'
@@ -61,24 +63,6 @@ const Exit = Context.Reference<Option.Option<string>>('@deslop/stash/services/no
 
 function timeLimit(duration: Duration.Input, message: string, reason?: NotesError['reason']) {
 	return Effect.timeoutOrElse({duration, orElse: () => Effect.fail(NotesError.make({message, reason}))})
-}
-
-// fallow-ignore-next-line complexity -- the public IPv4 exclusions stay together for security review.
-function isPublic(address: NetAddress.Ipv4Address) {
-	const octets = NetAddress.ipv4ToOctets(address)
-	return (
-		NetAddress.isUnicast(address) &&
-		!NetAddress.isPrivate(address) &&
-		!NetAddress.isLoopback(address) &&
-		!NetAddress.isLinkLocal(address) &&
-		octets[0] !== 0 &&
-		octets[0] < 224 &&
-		!(octets[0] === 100 && octets[1] >= 64 && octets[1] < 128) &&
-		!(octets[0] === 192 && octets[1] === 0 && (octets[2] === 0 || octets[2] === 2)) &&
-		!(octets[0] === 198 && (octets[1] === 18 || octets[1] === 19)) &&
-		!(octets[0] === 198 && octets[1] === 51 && octets[2] === 100) &&
-		!(octets[0] === 203 && octets[1] === 0 && octets[2] === 113)
-	)
 }
 
 function readText(characters: number) {
@@ -127,7 +111,7 @@ const load = Effect.fnUntraced(function* <A, E>(
 		(yield* Dns.Dns).lookup(url.hostname, {family: 'IPv4'}),
 		Effect.mapError(cause => NotesError.make({cause, message: 'The link host could not be found.'}))
 	)
-	if (!Array.every(addresses, isPublic)) {
+	if (!Array.every(addresses, isPublicIp)) {
 		return yield* NotesError.make({message: 'The link points to a private network.'})
 	}
 	const address = NetAddress.formatIp(Array.headNonEmpty(addresses))

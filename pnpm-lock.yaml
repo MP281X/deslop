@@ -320,9 +320,6 @@ importers:
       effect:
         specifier: latest
         version: 4.1.2
-      ipaddr.js:
-        specifier: latest
-        version: 2.5.0
       lucide-react:
         specifier: latest
         version: 1.68.0(@types/react@19.3.0)(react@19.3.1)
@@ -4535,10 +4532,6 @@ packages:
   ip-address@10.7.6:
     resolution: {integrity: sha512-00LYkM6byILa9eQIx6qoaXCM40xTLd56AZ4vyaPW3YTyb49VZYPo5xsiAq4tuQ54GH4R7gVdYScJ1B7B77PuTg==}
     engines: {node: '>= 12'}
-
-  ipaddr.js@2.5.0:
-    resolution: {integrity: sha512-aq+t5NAc+cS6rZQQVWC2x98CPqGtKKTMDd4Gaodv0wShnItdKg/51djkGJ1hqH+Oy0ivDftCbSLCQob8zso01w==}
-    engines: {node: '>= 10'}
 
   is-alphabetical@2.0.1:
     resolution: {integrity: sha512-FWyyY60MeTNyeSRpkM2Iry0G9hpr7/9kD40mD/cGQEuilcZYS4okz8SN2Q6rLCJ8gbCt6fN+rC+6tMGS99LaxQ==}
@@ -10040,8 +10033,6 @@ snapshots:
       loose-envify: 1.4.0
 
   ip-address@10.7.6: {}
-
-  ipaddr.js@2.5.0: {}
 
   is-alphabetical@2.0.1: {}
 

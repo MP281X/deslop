@@ -16,6 +16,7 @@
 		"./mobile/session": "./src/mobile/session.ts",
 		"./mobile/keychain": "./src/mobile/keychain.ts",
 		"./mobile/expo": "./src/mobile/expo.ts",
+		"./net": "./src/net.ts",
 		"./server": "./src/server.ts",
 		"./vite": "./src/vite.ts",
 		"./web": "./src/web/client.tsx"

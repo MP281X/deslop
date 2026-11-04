@@ -6,17 +6,13 @@ import {Agent} from '@effect/platform-node/Undici'
 import {Array, Effect, Layer, String, pipe} from 'effect'
 
 import {FetchHttpClient} from 'effect/http'
-import ipaddr from 'ipaddr.js'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
+import {isIpAddress, isPublicAddress} from '@deslop/runtime/net'
 
 function requestUrl(input: RequestInfo | URL) {
 	if (input instanceof Request) return new URL(input.url)
 	return new URL(input.toString())
-}
-
-function publicAddress(address: string) {
-	return ipaddr.isValid(address) && ipaddr.process(address).range() === 'unicast'
 }
 
 // Validate at socket lookup, not in a separate DNS preflight: a rebinding must never select a private address.
@@ -33,7 +29,7 @@ const layerPublicFetch = Layer.effect(FetchHttpClient.Fetch)(
 									if (
 										error !== null ||
 										Array.isArrayEmpty(addresses) ||
-										!Array.every(addresses, entry => publicAddress(entry.address))
+										!Array.every(addresses, entry => isPublicAddress(entry.address))
 									) {
 										callback(
 											error ?? AuthError.make({message: 'MCP endpoints must resolve to public addresses'}),
@@ -59,7 +55,7 @@ const layerPublicFetch = Layer.effect(FetchHttpClient.Fetch)(
 				url.username !== '' ||
 				url.password !== '' ||
 				url.hash !== '' ||
-				(ipaddr.isValid(hostname) && !publicAddress(hostname))
+				(isIpAddress(hostname) && !isPublicAddress(hostname))
 			) {
 				// oxlint-disable-next-line no-restricted-properties -- FetchHttpClient.Fetch is a Promise-returning transport boundary.
 				return Effect.runPromise(Effect.fail(AuthError.make({message: 'MCP endpoints must use public HTTPS URLs'})))
