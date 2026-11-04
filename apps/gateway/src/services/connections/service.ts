@@ -21,7 +21,6 @@ import {
 } from 'effect'
 
 import {
-	Client,
 	StreamableHTTPClientTransport,
 	discoverOAuthServerInfo,
 	extractWWWAuthenticateParams
@@ -39,7 +38,9 @@ import {
 	clientMetadata,
 	connectionInfo,
 	describe,
+	endSession,
 	gatewayUrl,
+	mcpClient,
 	serverIcons,
 	serverName
 } from '#services/connections/lib/utils.ts'
@@ -324,17 +325,8 @@ export class Connections extends Context.Service<
 					fetch,
 					requestInit: {redirect: 'error'}
 				})
-				const anonymous = yield* Effect.acquireRelease(
-					Effect.sync(
-						() => new Client({name: 'Deslop MCP gateway', version: '0.1.0'}, {versionNegotiation: {mode: 'auto'}})
-					),
-					acquired =>
-						pipe(
-							Effect.tryPromise({catch: cause => UpstreamError.make({cause}), try: () => transport.terminateSession()}),
-							Effect.timeout('3 seconds'),
-							Effect.ignore({log: 'Warn', message: 'Cannot terminate the anonymous MCP session'}),
-							Effect.andThen(Effect.promise(() => acquired.close()))
-						)
+				const anonymous = yield* Effect.acquireRelease(Effect.sync(mcpClient), acquired =>
+					endSession(transport, acquired, cause => UpstreamError.make({cause}), 'anonymous')
 				)
 				yield* Effect.tryPromise({
 					catch: cause => UpstreamError.make({cause}),

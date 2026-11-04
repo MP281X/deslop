@@ -19,7 +19,8 @@ import {
 	pipe
 } from 'effect'
 
-import {Client, StreamableHTTPClientTransport} from '@modelcontextprotocol/client'
+import type {Client} from '@modelcontextprotocol/client'
+import {StreamableHTTPClientTransport} from '@modelcontextprotocol/client'
 import {McpSchema, McpServer} from 'effect/ai'
 import {Digest} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
@@ -28,7 +29,14 @@ import {FetchHttpClient, HttpRouter, HttpServerRequest} from 'effect/http'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 
-import {connectionStatus, describe, gatewayUrl, serverIcons} from '#services/connections/lib/utils.ts'
+import {
+	connectionStatus,
+	describe,
+	endSession,
+	gatewayUrl,
+	mcpClient,
+	serverIcons
+} from '#services/connections/lib/utils.ts'
 import type {Connection} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
 import {compact} from '#services/gateway/lib/utils.ts'
@@ -165,18 +173,8 @@ export class Gateway extends Context.Service<
 							fetch,
 							requestInit: {redirect: 'error'}
 						})
-						const client = yield* Effect.acquireRelease(
-							Effect.sync(
-								() => new Client({name: 'Deslop MCP gateway', version: '0.1.0'}, {versionNegotiation: {mode: 'auto'}})
-							),
-							acquired =>
-								pipe(
-									Effect.tryPromise({catch: rejected(server), try: () => transport.terminateSession()}),
-									Effect.timeout('3 seconds'),
-									Effect.ignore({log: 'Warn', message: 'Cannot terminate the upstream MCP session'}),
-									Effect.andThen(Effect.tryPromise({catch: rejected(server), try: () => acquired.close()})),
-									Effect.ignore({log: 'Warn', message: 'Cannot close the upstream MCP client'})
-								)
+						const client = yield* Effect.acquireRelease(Effect.sync(mcpClient), acquired =>
+							endSession(transport, acquired, rejected(server), 'upstream')
 						)
 						yield* Effect.tryPromise({catch: rejected(server), try: signal => client.connect(transport, {signal})})
 						return yield* run(client)
