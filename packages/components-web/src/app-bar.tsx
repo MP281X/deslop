@@ -11,6 +11,8 @@ import {useEffect, useRef, useState} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 import {flushSync} from 'react-dom'
 
+import {CommandIcon, CommandPalette, CommandTrigger} from '#components/command-palette.tsx'
+import type {PaletteGroup} from '#components/command-palette.tsx'
 import {Avatar, AvatarFallback, AvatarImage} from '#components/ui/avatar.tsx'
 import {Button, buttonVariants} from '#components/ui/button.tsx'
 import {ComboboxContent, ComboboxInput, ComboboxItem, ComboboxList} from '#components/ui/combobox.tsx'
@@ -235,54 +237,85 @@ export function AppBar(props: {
 	commands?: BarCommand[]
 	icon: string
 	name: string
+	palette?: readonly PaletteGroup[]
 	tabs?: ReactNode
 	title?: string
 }) {
+	const [paletteOpen, setPaletteOpen] = useState(false)
+	useEffect(() => {
+		if (props.palette === undefined) return
+		function open(event: KeyboardEvent) {
+			if (event.key !== 'k' || !(event.metaKey || event.ctrlKey)) return
+			event.preventDefault()
+			setPaletteOpen(true)
+		}
+		addEventListener('keydown', open)
+		return () => removeEventListener('keydown', open)
+	}, [props.palette])
 	return (
-		<header className="bg-background border-border sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 border-b px-4">
-			{Option.match(Option.fromUndefinedOr(props.title), {
-				onNone: () => (
-					<a href="/" className="-ml-1 flex shrink-0 items-center gap-1.5">
-						<img src={props.icon} alt="" className="pixelated size-8" />
-						<span className="font-mono text-sm font-medium">{props.name}</span>
-					</a>
-				),
-				// The leading slot keeps its width on every pane, so the title and the right controls never move.
-				onSome: title => (
-					<div className="-ml-1 flex shrink-0 items-center gap-1.5">
-						{Option.match(Option.fromUndefinedOr(props.back), {
-							onNone: () => (
-								<a href="/" aria-label={props.name} className="flex size-8 items-center justify-center">
-									<img src={props.icon} alt="" className="pixelated size-8" />
-								</a>
-							),
-							onSome: back => (
-								<Button
-									variant="ghost"
-									size="icon-sm"
-									aria-label={back.label}
-									onClick={back.onClick}
-									className="size-8"
-								>
-									<ChevronLeft className="size-5" />
-								</Button>
-							)
-						})}
-						<span className="max-w-40 truncate font-mono text-sm font-medium">{title}</span>
-					</div>
+		<>
+			<header className="bg-background border-border sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 border-b px-4">
+				{Option.match(Option.fromUndefinedOr(props.title), {
+					onNone: () => (
+						<a href="/" className="-ml-1 flex shrink-0 items-center gap-1.5">
+							<img src={props.icon} alt="" className="pixelated size-8" />
+							<span className="font-mono text-sm font-medium">{props.name}</span>
+						</a>
+					),
+					// The leading slot keeps its width on every pane, so the title and the right controls never move.
+					onSome: title => (
+						<div className="-ml-1 flex shrink-0 items-center gap-1.5">
+							{Option.match(Option.fromUndefinedOr(props.back), {
+								onNone: () => (
+									<a href="/" aria-label={props.name} className="flex size-8 items-center justify-center">
+										<img src={props.icon} alt="" className="pixelated size-8" />
+									</a>
+								),
+								onSome: back => (
+									<Button
+										variant="ghost"
+										size="icon-sm"
+										aria-label={back.label}
+										onClick={back.onClick}
+										className="size-8"
+									>
+										<ChevronLeft className="size-5" />
+									</Button>
+								)
+							})}
+							<span className="max-w-40 truncate font-mono text-sm font-medium">{title}</span>
+						</div>
+					)
+				})}
+				{props.tabs !== undefined && (
+					<nav aria-label="Sections" className="ml-2 flex items-center gap-1">
+						{props.tabs}
+					</nav>
+				)}
+				{Option.match(Option.fromUndefinedOr(props.palette), {
+					onNone: () =>
+						Option.match(Option.fromUndefinedOr(props.commands), {
+							onNone: () => <span className="flex-1" />,
+							onSome: commands => <CommandField commands={commands} label={`Search ${props.name}`} />
+						}),
+					onSome: () => (
+						<>
+							<CommandTrigger label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
+							<CommandIcon label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
+						</>
+					)
+				})}
+				<div className="flex shrink-0 items-center gap-2 lg:ml-auto">
+					{props.action}
+					{props.account ?? <AccountMenu />}
+				</div>
+			</header>
+			{Option.match(Option.fromUndefinedOr(props.palette), {
+				onNone: () => null,
+				onSome: groups => (
+					<CommandPalette current={props.name} groups={groups} open={paletteOpen} onOpenChange={setPaletteOpen} />
 				)
 			})}
-			{props.tabs !== undefined && (
-				<nav aria-label="Sections" className="ml-2 flex items-center gap-1">
-					{props.tabs}
-				</nav>
-			)}
-			{props.commands === undefined && <span className="flex-1" />}
-			{props.commands !== undefined && <CommandField commands={props.commands} label={`Search ${props.name}`} />}
-			<div className="flex shrink-0 items-center gap-2 lg:ml-auto">
-				{props.action}
-				{props.account ?? <AccountMenu />}
-			</div>
-		</header>
+		</>
 	)
 }

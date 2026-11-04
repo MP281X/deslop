@@ -7,7 +7,7 @@ import {AsyncResult} from 'effect/reactivity'
 import {ChevronRight, Monitor, Play, Server} from 'lucide-react'
 import {useState, useTransition} from 'react'
 
-import {AppBar, AppBarAction, useCommandQuery} from '@deslop/components-web/app-bar'
+import {AppBar, AppBarAction} from '@deslop/components-web/app-bar'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
@@ -133,17 +133,6 @@ function text(row: ReturnType<typeof workloads>[number]) {
 		)} ${Array.join(
 			Array.map(row.exposures, exposure => exposure.url),
 			' '
-		)}`
-	)
-}
-
-function matches(row: ReturnType<typeof workloads>[number], query: string) {
-	return String.includes(String.toLowerCase(query))(
-		`${text(row)} ${String.toLowerCase(
-			Array.join(
-				Array.map(row.item.processes ?? [], process => process.name),
-				' '
-			)
 		)}`
 	)
 }
@@ -406,7 +395,6 @@ function AppsPane(props: {
 	free: readonly InventoryItem[]
 	now: number
 	onSelect: (row: ReturnType<typeof workloads>[number]) => void
-	query: string
 	rows: readonly ReturnType<typeof workloads>[number][]
 	selectedId?: string
 }) {
@@ -426,12 +414,7 @@ function AppsPane(props: {
 				onEmpty: () => (
 					<Empty>
 						<EmptyHeader>
-							<EmptyTitle>
-								{Boolean.match(props.query === '', {
-									onFalse: () => 'No app matches',
-									onTrue: () => 'No apps in this range'
-								})}
-							</EmptyTitle>
+							<EmptyTitle>No apps in this range</EmptyTitle>
 						</EmptyHeader>
 					</Empty>
 				),
@@ -819,7 +802,6 @@ function Home() {
 	const [selection, setSelection] = useState<Selection>()
 	const [pane, setPane] = useState<Pane>('apps')
 	const [machineBack, setMachineBack] = useState<Pane>('apps')
-	const query = useCommandQuery()
 	const inventory = useAtomValue(inventoryAtom)
 	const metrics = useAtomValue(metricsAtom(minutes))
 	const snapshot = AsyncResult.value(inventory)
@@ -856,16 +838,13 @@ function Home() {
 		() => 0
 	)
 	const sorted = Array.sort(
-		Array.filter(
-			ranged(
-				Option.match(Option.fromUndefinedOr(active), {
-					onNone: () => [],
-					onSome: current => Array.filter(rows, row => row.item.worker === current)
-				}),
-				minutes,
-				Option.getOrUndefined(history)
-			),
-			row => matches(row, query)
+		ranged(
+			Option.match(Option.fromUndefinedOr(active), {
+				onNone: () => [],
+				onSome: current => Array.filter(rows, row => row.item.worker === current)
+			}),
+			minutes,
+			Option.getOrUndefined(history)
 		),
 		order
 	)
@@ -932,17 +911,64 @@ function Home() {
 							setPane(Boolean.match(pane === 'machine', {onFalse: () => 'apps' as const, onTrue: () => machineBack}))
 					})
 				})}
-				commands={[
-					...Boolean.match(isMobile, {
-						onFalse: () => [],
-						onTrue: () => [{icon: <Monitor />, label: 'Machine', run: showMachine}]
-					}),
-					...Option.match(Option.fromUndefinedOr(selectedRow), {
-						onNone: () => [],
-						onSome: row => [
-							{icon: <Server />, label: `Processes of ${workloadName(row.item)}`, run: () => setPane('process')}
-						]
-					})
+				palette={[
+					{
+						items: Array.map(
+							Array.filter(sorted, row => {
+								const light = dot(row.item, status(row.item))
+								return light === 'error' || light === 'warning'
+							}),
+							row => ({
+								detail: reasonOf(row, now),
+								icon: <ApplicationIcon name={workloadName(row.item)} container={row.item.kind === 'container'} />,
+								keywords: text(row),
+								label: workloadName(row.item),
+								run: () => selectRow(row)
+							})
+						),
+						label: 'Needs you'
+					},
+					{
+						items: Array.map(
+							Array.filter(sorted, row => row.item.scheduled !== true),
+							row => ({
+								detail: `${machineName(row.item.worker)} · ${bytes(appUsage(row.item.processes ?? []).memory)}`,
+								icon: <ApplicationIcon name={workloadName(row.item)} container={row.item.kind === 'container'} />,
+								keywords: text(row),
+								label: workloadName(row.item),
+								run: () => selectRow(row)
+							})
+						),
+						label: 'Apps'
+					},
+					{
+						items: Array.map(
+							Array.filter(sorted, row => row.item.scheduled === true),
+							row => ({
+								detail: nextRun(row.item.next ?? now, now),
+								icon: <ApplicationIcon name={workloadName(row.item)} container={row.item.kind === 'container'} />,
+								keywords: text(row),
+								label: workloadName(row.item),
+								run: () => selectRow(row)
+							})
+						),
+						label: 'Scheduled'
+					},
+					{
+						items: [
+							...Option.match(Option.fromUndefinedOr(active), {
+								onNone: () => [],
+								onSome: current => [{icon: <Monitor />, label: `Open ${machineName(current)}`, run: showMachine}]
+							}),
+							...Option.match(Option.fromUndefinedOr(selectedRow), {
+								onNone: () => [],
+								onSome: row => [
+									{icon: <Server />, label: `Processes of ${workloadName(row.item)}`, run: () => selectRow(row)}
+								]
+							})
+						],
+						label: 'Actions'
+					}
 				]}
 				action={
 					<>
@@ -1030,7 +1056,6 @@ function Home() {
 											free={free}
 											now={now}
 											onSelect={selectRow}
-											query={query}
 											rows={sorted}
 											selectedId={selectedRow?.item.id}
 										/>
@@ -1055,7 +1080,6 @@ function Home() {
 													free={free}
 													now={now}
 													onSelect={selectRow}
-													query={query}
 													rows={sorted}
 													selectedId={selectedRow?.item.id}
 												/>
