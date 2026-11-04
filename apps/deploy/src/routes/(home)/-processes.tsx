@@ -59,6 +59,13 @@ function Line(props: {appMemory: number; depth: number; node: ProcessNode; open?
 					style={{'--share': `${Number.max(2, (props.node.memory / Number.max(props.appMemory, 1)) * 100)}%`}}
 				/>
 			</span>
+			<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">
+				{mib.format(props.node.memory / 1024 ** 2)} MiB
+				{Boolean.match(props.node.cpu === undefined, {
+					onFalse: () => ` · ${props.node.cpu?.toFixed(1)}%`,
+					onTrue: () => ''
+				})}
+			</span>
 		</span>
 	)
 }

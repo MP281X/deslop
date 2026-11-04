@@ -1,12 +1,12 @@
 import {useAtom, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Effect, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Effect, Option, Schema, String, pipe} from 'effect'
 
 import {Autocomplete} from '@base-ui/react/autocomplete'
 import {useRender} from '@base-ui/react/use-render'
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {Search} from 'lucide-react'
+import {ChevronLeft, Search} from 'lucide-react'
 import {useEffect, useRef, useState} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 import {flushSync} from 'react-dom'
@@ -231,17 +231,47 @@ export function AppBarAction(props: {
 export function AppBar(props: {
 	account?: ReactNode
 	action?: ReactNode
+	back?: {label: string; onClick: () => void}
 	commands?: BarCommand[]
 	icon: string
 	name: string
 	tabs?: ReactNode
+	title?: string
 }) {
 	return (
 		<header className="bg-background border-border sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 border-b px-4">
-			<a href="/" className="-ml-1 flex shrink-0 items-center gap-1.5">
-				<img src={props.icon} alt="" className="pixelated size-8" />
-				<span className="font-mono text-sm font-medium">{props.name}</span>
-			</a>
+			{Option.match(Option.fromUndefinedOr(props.title), {
+				onNone: () => (
+					<a href="/" className="-ml-1 flex shrink-0 items-center gap-1.5">
+						<img src={props.icon} alt="" className="pixelated size-8" />
+						<span className="font-mono text-sm font-medium">{props.name}</span>
+					</a>
+				),
+				// The leading slot keeps its width on every pane, so the title and the right controls never move.
+				onSome: title => (
+					<div className="-ml-1 flex shrink-0 items-center gap-1.5">
+						{Option.match(Option.fromUndefinedOr(props.back), {
+							onNone: () => (
+								<a href="/" aria-label={props.name} className="flex size-8 items-center justify-center">
+									<img src={props.icon} alt="" className="pixelated size-8" />
+								</a>
+							),
+							onSome: back => (
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									aria-label={back.label}
+									onClick={back.onClick}
+									className="size-8"
+								>
+									<ChevronLeft className="size-5" />
+								</Button>
+							)
+						})}
+						<span className="max-w-40 truncate font-mono text-sm font-medium">{title}</span>
+					</div>
+				)
+			})}
 			{props.tabs !== undefined && (
 				<nav aria-label="Sections" className="ml-2 flex items-center gap-1">
 					{props.tabs}
