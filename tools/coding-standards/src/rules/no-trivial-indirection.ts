@@ -8,6 +8,7 @@ import {
 	matches,
 	memberName,
 	readable,
+	readsOf,
 	returnedExpression,
 	rootName,
 	singleUseThunk,
@@ -179,8 +180,7 @@ function singleUseFunction(input: {context: Context; node: ESTree.Function | EST
 	const oneLine = !pipe(input.context.sourceCode.getText(returned), String.includes('\n'))
 	return pipe(
 		unexportedBindingName(input.node),
-		Option.flatMap(name => variableFromScope({name, scope: input.context.sourceCode.getScope(input.node)})),
-		Option.map(variable => Array.filter(variable.references, reference => reference.isRead())),
+		Option.flatMap(name => readsOf({context: input.context, name, node: input.node})),
 		Option.filter(reads => reads.length === 1),
 		Option.flatMap(Array.head),
 		Option.map(reference => reference.identifier),
@@ -224,8 +224,8 @@ export function redundantConstAlias(input: {context: Context; node: ESTree.Varia
 		return false
 	}
 	return pipe(
-		variableFromScope({name: input.node.id.name, scope: input.context.sourceCode.getScope(input.node)}),
-		Option.exists(alias => Array.countBy(alias.references, reference => reference.isRead()) === 1)
+		readsOf({context: input.context, name: input.node.id.name, node: input.node}),
+		Option.exists(reads => reads.length === 1)
 	)
 }
 
@@ -271,8 +271,7 @@ function singleUseLiteral(input: {context: Context; node: ESTree.VariableDeclara
 		return false
 	}
 	return pipe(
-		variableFromScope({name: input.node.id.name, scope: input.context.sourceCode.getScope(input.node)}),
-		Option.map(variable => Array.filter(variable.references, reference => reference.isRead())),
+		readsOf({context: input.context, name: input.node.id.name, node: input.node}),
 		Option.exists(reads => reads.length === 1 && reads[0]?.identifier.parent.type !== 'ExportSpecifier')
 	)
 }
@@ -296,8 +295,7 @@ function singleUseLayerPart(input: {context: Context; node: ESTree.VariableDecla
 		return false
 	}
 	return pipe(
-		variableFromScope({name: input.node.id.name, scope: input.context.sourceCode.getScope(input.node)}),
-		Option.map(variable => Array.filter(variable.references, reference => reference.isRead())),
+		readsOf({context: input.context, name: input.node.id.name, node: input.node}),
 		Option.exists(reads => {
 			const consumer = reads[0]?.identifier.parent
 			if (reads.length !== 1 || consumer?.type !== 'CallExpression') return false

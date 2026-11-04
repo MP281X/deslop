@@ -37,6 +37,14 @@ export function boundVariable(input: {name: string; scope: Scope | null}) {
 	)
 }
 
+// The reads of a binding by name, found in the scope of the node that introduces it.
+export function readsOf(input: {context: Context; name: string; node: ESTree.Node}) {
+	return pipe(
+		variableFromScope({name: input.name, scope: input.context.sourceCode.getScope(input.node)}),
+		Option.map(variable => Array.filter(variable.references, reference => reference.isRead()))
+	)
+}
+
 export function variableFor(context: Context, node: ESTree.IdentifierReference) {
 	return variableFromScope({name: node.name, scope: context.sourceCode.getScope(node)})
 }
@@ -825,6 +833,14 @@ export function bindingName(node: ESTree.Function | ESTree.ArrowFunctionExpressi
 	return Option.none()
 }
 
+// The reads of the name a function is bound to, when it has one.
+export function boundReads(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
+	return pipe(
+		bindingName(input.node),
+		Option.flatMap(name => readsOf({context: input.context, name, node: input.node}))
+	)
+}
+
 export function singleUseThunk(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
 	if (
 		Array.isReadonlyArrayNonEmpty(input.node.params) ||
@@ -833,9 +849,5 @@ export function singleUseThunk(input: {context: Context; node: ESTree.Function |
 	) {
 		return false
 	}
-	return pipe(
-		bindingName(input.node),
-		Option.flatMap(name => variableFromScope({name, scope: input.context.sourceCode.getScope(input.node)})),
-		Option.exists(variable => Array.countBy(variable.references, reference => reference.isRead()) === 1)
-	)
+	return Option.exists(boundReads(input), reads => reads.length === 1)
 }

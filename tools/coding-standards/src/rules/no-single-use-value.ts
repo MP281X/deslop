@@ -10,10 +10,10 @@ import {
 	isSchemaOperationCall,
 	outermost,
 	readable,
+	readsOf,
 	rootName,
 	suspends,
-	typeWrapped,
-	variableFromScope
+	typeWrapped
 } from '#rules/shared.ts'
 
 const REPEATING = [
@@ -162,8 +162,7 @@ function report(input: {context: Context; effects: ESTree.Node[]; node: ESTree.V
 		Option.flatMap(index => Array.get(statements, index + 1)),
 		Option.flatMap(next =>
 			pipe(
-				variableFromScope({name, scope: input.context.sourceCode.getScope(input.node)}),
-				Option.map(variable => Array.filter(variable.references, reference => reference.isRead())),
+				readsOf({context: input.context, name, node: input.node}),
 				Option.filter(reads => reads.length === 1),
 				Option.flatMap(Array.head),
 				Option.map(reference => reference.identifier),

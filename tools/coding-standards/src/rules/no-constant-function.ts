@@ -1,9 +1,9 @@
-import {Array, Option, Predicate, pipe} from 'effect'
+import {Array, Option, Predicate} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {bindingName, returnedExpression, singleUseThunk, variableFromScope} from '#rules/shared.ts'
+import {boundReads, returnedExpression, singleUseThunk} from '#rules/shared.ts'
 
 function isConstantFunction(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
 	if (
@@ -20,16 +20,12 @@ function isConstantFunction(input: {context: Context; node: ESTree.Function | ES
 		Predicate.isNotNullish(returned) &&
 		((returned.type === 'Literal' && !Predicate.hasProperty(returned, 'regex')) ||
 			(returned.type === 'TemplateLiteral' && Array.isArrayEmpty(returned.expressions))) &&
-		pipe(
-			bindingName(input.node),
-			Option.flatMap(name => variableFromScope({name, scope: input.context.sourceCode.getScope(input.node)})),
-			Option.exists(variable =>
-				Array.every(
-					Array.filter(variable.references, reference => reference.isRead()),
-					reference =>
-						reference.identifier.parent.type === 'CallExpression' &&
-						reference.identifier.parent.callee === reference.identifier
-				)
+		Option.exists(boundReads(input), reads =>
+			Array.every(
+				reads,
+				reference =>
+					reference.identifier.parent.type === 'CallExpression' &&
+					reference.identifier.parent.callee === reference.identifier
 			)
 		)
 	)
