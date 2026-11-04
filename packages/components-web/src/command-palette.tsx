@@ -124,7 +124,7 @@ export function CommandPalette(props: {
 								</CommandGroup>
 							)
 						)}
-						<CommandGroup heading="Deslop">
+						<CommandGroup heading="Other apps">
 							{Array.map(APPS, app => {
 								const item = {
 									detail: `${new URL(app.url).hostname}${Boolean.match(app.name === props.current, {

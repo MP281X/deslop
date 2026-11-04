@@ -25,6 +25,7 @@
 /* A trace that arrives grows from no height and fades in; the first push shows at once. */
 @theme {
 	--animate-grow-in: grow-in 250ms cubic-bezier(0.23, 1, 0.32, 1);
+	--grid-template-columns-scope: 35% 35% 30%;
 	--grid-template-rows-single: 1fr;
 
 	@keyframes grow-in {

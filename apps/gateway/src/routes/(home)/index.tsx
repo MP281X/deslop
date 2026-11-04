@@ -530,15 +530,15 @@ function Home() {
 							<div className="flex min-h-0 flex-1">
 								{Boolean.match(isMobile, {
 									onFalse: () => (
-										<>
+										<div className="grid min-h-0 flex-1 grid-cols-2">
 											<ServersPane
 												activeId={Option.getOrUndefined(active)?.id}
-												className="w-72 shrink-0 border-r"
+												className="min-w-0 border-r"
 												onSelect={selectServer}
 												servers={sorted}
 											/>
-											<ServerPane className="min-w-0 flex-1" server={Option.getOrUndefined(active)} />
-										</>
+											<ServerPane className="min-w-0" server={Option.getOrUndefined(active)} />
+										</div>
 									),
 									onTrue: () =>
 										pipe(

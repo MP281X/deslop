@@ -457,7 +457,9 @@ function TraceListRow(props: {
 					aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 					onClick={props.onSelect}
 				>
-					<span className="text-muted-foreground w-8 shrink-0 font-mono">{ageOf(props.trace.time, props.now)}</span>
+					<span className="text-muted-foreground w-8 shrink-0 font-mono text-xs">
+						{ageOf(props.trace.time, props.now)}
+					</span>
 					<span className="flex-1" />
 					{props.trace.failure !== undefined && (
 						<Badge
@@ -554,7 +556,7 @@ function TracePane(props: {className?: string; now: number; trace?: OperationTra
 				className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
 			>
 				<header className="bg-background sticky top-0 z-20 flex shrink-0 items-center gap-2 border-b px-3 py-2">
-					<span className="text-muted-foreground w-8 shrink-0 font-mono">{ageOf(trace.time, props.now)}</span>
+					<span className="text-muted-foreground w-8 shrink-0 font-mono text-xs">{ageOf(trace.time, props.now)}</span>
 					<span className="min-w-0 flex-1 truncate font-mono text-xs">{trace.id}</span>
 					{trace.failure !== undefined && (
 						<Badge
@@ -726,23 +728,23 @@ function Home() {
 							<div className="flex min-h-0 flex-1">
 								{Boolean.match(isMobile, {
 									onFalse: () => (
-										<>
+										<div className="grid-cols-scope grid min-h-0 flex-1">
 											<OperationsPane
 												activeKey={Option.getOrUndefined(activeKey)}
-												className="w-60 shrink-0 border-r xl:w-72"
+												className="min-w-0 border-r"
 												onSelect={selectOperation}
 												overview={current}
 											/>
 											<TracesPane
 												active={Option.getOrUndefined(activeOperation)}
 												arrived={arrived}
-												className="w-60 shrink-0 border-r xl:w-72"
+												className="min-w-0 border-r"
 												now={now}
 												onSelect={selectTrace}
 												selectedTrace={Option.getOrUndefined(activeTrace)}
 											/>
-											<TracePane className="min-w-0 flex-1" now={now} trace={Option.getOrUndefined(activeTrace)} />
-										</>
+											<TracePane className="min-w-0" now={now} trace={Option.getOrUndefined(activeTrace)} />
+										</div>
 									),
 									onTrue: () => (
 										<>
