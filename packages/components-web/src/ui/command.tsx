@@ -36,14 +36,12 @@ function CommandDialog({
   description = "Search for a command to run...",
   children,
   className,
-  fullscreenMobile = false,
   showCloseButton = false,
   ...props
 }: Omit<React.ComponentProps<typeof Dialog>, "children"> & {
   title?: string
   description?: string
   className?: string
-  fullscreenMobile?: boolean
   showCloseButton?: boolean
   children: React.ReactNode
 }) {
@@ -54,15 +52,7 @@ function CommandDialog({
         <DialogDescription>{description}</DialogDescription>
       </DialogHeader>
       <DialogContent
-        className={cn(
-          "top-1/3 translate-y-0 overflow-hidden rounded-xl! p-0",
-          fullscreenMobile &&
-            "max-sm:top-0 max-sm:h-dvh max-sm:max-w-none max-sm:translate-y-0 max-sm:rounded-none! max-sm:pt-safe-top",
-          className
-        )}
-        closeButtonClassName={cn(
-          fullscreenMobile && "max-sm:top-safe-top max-sm:right-safe-right max-sm:mt-2 max-sm:mr-2"
-        )}
+        className={cn("top-1/3 translate-y-0 overflow-hidden rounded-xl! p-0", className)}
         showCloseButton={showCloseButton}
       >
         {children}

@@ -642,7 +642,7 @@ function MachinePane(props: {
 							aria-label={machineName(worker)}
 							className={cn('pb-safe-bottom flex min-h-0 flex-col gap-3 overflow-y-auto', props.className)}
 						>
-							<header className="bg-background sticky top-0 z-20 flex shrink-0 items-center gap-2 border-b px-3 py-2">
+							<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
 								{Boolean.match(props.showName === false, {
 									onFalse: () => (
 										<>

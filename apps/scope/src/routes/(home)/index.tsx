@@ -355,6 +355,7 @@ function OperationRow(props: {active: boolean; onSelect: () => void; operation: 
 	return (
 		<div className="border-b">
 			<Button
+				size="lg"
 				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
 				className="w-full justify-start text-left"
 				aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
@@ -452,6 +453,7 @@ function TraceListRow(props: {
 		>
 			<div className="border-b">
 				<Button
+					size="lg"
 					variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
 					className="w-full justify-start text-left"
 					aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}

@@ -1,13 +1,12 @@
 import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Option, Order, String} from 'effect'
+import {Array, Boolean, Option, Order} from 'effect'
 
 import {Navigate, createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 import type {ReactNode} from 'react'
 
-import {useCommandQuery} from '@deslop/components-web/app-bar'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
 import {Badge} from '@deslop/components-web/ui/badge'
@@ -40,8 +39,8 @@ function Identity(props: {person: Person}) {
 // The row's own line, then its failed answer or removal beneath it.
 function PersonRow(props: {children: ReactNode; failure?: ReactNode; person: Person}) {
 	return (
-		<div role="listitem" className="border-b">
-			<div className="flex h-10 min-w-0 items-center gap-3 px-1 text-sm">
+		<div role="listitem" id={`person-${props.person.id}`} className="border-b">
+			<div className="flex h-8 min-w-0 items-center gap-3 px-1 text-sm">
 				<Identity person={props.person} />
 				{props.children}
 			</div>
@@ -88,7 +87,7 @@ function MemberRow(props: {person: Person}) {
 	}
 	return (
 		<ContextMenu>
-			<div role="listitem" className="border-b">
+			<div role="listitem" id={`person-${props.person.id}`} className="border-b">
 				<ContextMenuTrigger
 					render={
 						<div
@@ -96,7 +95,7 @@ function MemberRow(props: {person: Person}) {
 							tabIndex={0}
 							aria-haspopup="menu"
 							aria-label={`${props.person.fullName ?? props.person.name}, member since ${dayLabel(props.person.since)}`}
-							className="hover:bg-muted/50 flex h-10 min-w-0 items-center gap-3 px-1 text-sm"
+							className="hover:bg-muted/50 flex h-8 min-w-0 items-center gap-3 px-1 text-sm"
 						/>
 					}
 				>
@@ -116,20 +115,16 @@ function MemberRow(props: {person: Person}) {
 
 // One list: whoever is asking for access first, then everyone with it.
 function Directory() {
-	const query = useCommandQuery()
 	return Array.match(
-		Array.filter(
-			Array.sort(
-				useAtomSuspense(peopleAtom).value,
-				Order.mapInput(Order.Boolean, (person: Person) => person.role !== 'Waiting')
-			),
-			person => String.includes(query)(String.toLowerCase(`${person.fullName ?? ''} ${person.name}`))
+		Array.sort(
+			useAtomSuspense(peopleAtom).value,
+			Order.mapInput(Order.Boolean, (person: Person) => person.role !== 'Waiting')
 		),
 		{
 			onEmpty: () => (
 				<Empty>
 					<EmptyHeader>
-						<EmptyTitle>No one matches</EmptyTitle>
+						<EmptyTitle>No one yet</EmptyTitle>
 					</EmptyHeader>
 				</Empty>
 			),

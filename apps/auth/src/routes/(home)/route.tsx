@@ -418,6 +418,23 @@ function Shell() {
 			label: 'Apps'
 		},
 		{
+			items: Boolean.match(admin, {
+				onFalse: () => [],
+				onTrue: () =>
+					Array.map(people, person => ({
+						detail: `@${person.name} · ${person.role}`,
+						icon: <AccountAvatar id={person.id} name={person.name} />,
+						id: person.id,
+						keywords: `${person.fullName ?? ''} ${person.name}`,
+						label: person.fullName ?? person.name,
+						run: () => {
+							location.assign(`/people#person-${person.id}`)
+						}
+					}))
+			}),
+			label: 'People'
+		},
+		{
 			items: [
 				{label: 'Sign-ins', run: () => location.assign('/')},
 				...Boolean.match(admin, {

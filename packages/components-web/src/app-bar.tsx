@@ -1,21 +1,18 @@
-import {useAtom, useAtomValue} from '@effect/atom-react'
+import {useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Effect, Option, Schema, String, pipe} from 'effect'
+import {Boolean, Effect, Option, Schema, String, pipe} from 'effect'
 
-import {Autocomplete} from '@base-ui/react/autocomplete'
 import {useRender} from '@base-ui/react/use-render'
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {ChevronLeft, Search} from 'lucide-react'
-import {useEffect, useRef, useState} from 'react'
+import {ChevronLeft} from 'lucide-react'
+import {useEffect, useState} from 'react'
 import type {ReactElement, ReactNode} from 'react'
-import {flushSync} from 'react-dom'
 
 import {CommandIcon, CommandPalette, CommandTrigger} from '#components/command-palette.tsx'
 import type {PaletteGroup} from '#components/command-palette.tsx'
 import {Avatar, AvatarFallback, AvatarImage} from '#components/ui/avatar.tsx'
 import {Button, buttonVariants} from '#components/ui/button.tsx'
-import {ComboboxContent, ComboboxInput, ComboboxItem, ComboboxList} from '#components/ui/combobox.tsx'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -25,9 +22,6 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger
 } from '#components/ui/dropdown-menu.tsx'
-import {InputGroupAddon} from '#components/ui/input-group.tsx'
-import {Kbd} from '#components/ui/kbd.tsx'
-import {cn} from '#lib/utils.ts'
 
 type Account = typeof Account.Type
 // The signed-in account every Deslop server answers at /auth/user; without an issuer it is the developer, who cannot sign out.
@@ -40,15 +34,6 @@ const accountAtom = Atom.runtime(FetchHttpClient.layer).atom(
 		Effect.flatMap(HttpClientResponse.schemaBodyJson(Account))
 	)
 )
-
-// What the bar's command field holds: the page narrows its rows to it while the field lists the matching actions.
-const commandQueryAtom = Atom.keepAlive(Atom.make(''))
-
-export function useCommandQuery() {
-	return String.toLowerCase(String.trim(useAtomValue(commandQueryAtom)))
-}
-
-export type BarCommand = {icon: ReactNode; label: string; run: () => unknown}
 
 // GitHub's avatar for the account; signing out goes through Auth, which ends the session every app shares.
 function AccountMenu() {
@@ -79,123 +64,6 @@ function AccountMenu() {
 				</DropdownMenuItem>
 			</DropdownMenuContent>
 		</DropdownMenu>
-	)
-}
-
-// Typing narrows the page's rows and lists the matching actions; ⌘K focuses it. A phone opens it from a button, over the bar.
-function CommandField(props: {commands: BarCommand[]; label: string}) {
-	const [query, setQuery] = useAtom(commandQueryAtom)
-	const [open, setOpen] = useState(false)
-	// A filter still applied when the page comes back keeps its field in view.
-	const [searching, setSearching] = useState(() => query !== '')
-	const input = useRef<HTMLInputElement>(null)
-	const field = useRef<HTMLDivElement>(null)
-	useEffect(() => {
-		function focus(event: KeyboardEvent) {
-			if (event.key !== 'k' || !(event.metaKey || event.ctrlKey)) return
-			event.preventDefault()
-			setSearching(true)
-			input.current?.focus()
-		}
-		addEventListener('keydown', focus)
-		return () => removeEventListener('keydown', focus)
-	}, [])
-	const matching = Array.filter(props.commands, command =>
-		String.includes(String.toLowerCase(String.trim(query)))(String.toLowerCase(command.label))
-	)
-	return (
-		<>
-			<Button
-				variant="ghost"
-				size="icon-sm"
-				aria-label={props.label}
-				className="ml-auto sm:hidden"
-				onClick={() => {
-					// iOS raises the keyboard only for a focus inside the tap, so the field renders before this handler ends.
-					flushSync(() => setSearching(true))
-					input.current?.focus()
-				}}
-			>
-				<Search />
-			</Button>
-			{/* Centered on the page, not in the space the name and actions leave; the list of actions hangs from the whole field. */}
-			<div
-				ref={field}
-				className={cn(
-					'mx-auto hidden w-full max-w-sm sm:flex lg:absolute lg:left-1/2 lg:-translate-x-1/2',
-					searching &&
-						'max-sm:bg-background max-sm:absolute max-sm:inset-0 max-sm:z-10 max-sm:flex max-sm:max-w-none max-sm:items-center max-sm:gap-2 max-sm:px-3'
-				)}
-			>
-				<Autocomplete.Root
-					items={matching}
-					filter={null}
-					itemToStringValue={(command: BarCommand) => command.label}
-					value={query}
-					onValueChange={(value, details) => {
-						if (details.reason !== 'item-press') setQuery(value)
-					}}
-					open={open && Array.isArrayNonEmpty(matching)}
-					onOpenChange={setOpen}
-					autoHighlight
-				>
-					<ComboboxInput
-						ref={input}
-						aria-label={props.label}
-						placeholder="Search or run a command"
-						showTrigger={false}
-						showClear={query !== ''}
-						className="w-full"
-						onFocus={() => setOpen(true)}
-						// The first Escape closes the list of actions; the next clears the field and leaves it.
-						onKeyDown={event => {
-							if (event.key !== 'Escape' || (open && Array.isArrayNonEmpty(matching))) return
-							setQuery('')
-							setSearching(false)
-							event.currentTarget.blur()
-						}}
-					>
-						<InputGroupAddon>
-							<Search />
-						</InputGroupAddon>
-						{query === '' && (
-							<InputGroupAddon align="inline-end" className="max-sm:hidden">
-								<Kbd>⌘K</Kbd>
-							</InputGroupAddon>
-						)}
-					</ComboboxInput>
-					<ComboboxContent anchor={field}>
-						<ComboboxList>
-							{(command: BarCommand) => (
-								<ComboboxItem
-									key={command.label}
-									value={command}
-									onClick={() => {
-										setQuery('')
-										setSearching(false)
-										command.run()
-									}}
-								>
-									{command.icon}
-									{command.label}
-								</ComboboxItem>
-							)}
-						</ComboboxList>
-					</ComboboxContent>
-				</Autocomplete.Root>
-				<Button
-					variant="ghost"
-					size="sm"
-					className="sm:hidden"
-					onClick={() => {
-						setQuery('')
-						setSearching(false)
-					}}
-				>
-					Cancel
-				</Button>
-			</div>
-		</>
 	)
 }
 
@@ -234,7 +102,6 @@ export function AppBar(props: {
 	account?: ReactNode
 	action?: ReactNode
 	back?: {label: string; onClick: () => void}
-	commands?: BarCommand[]
 	icon: string
 	name: string
 	palette?: readonly PaletteGroup[]
@@ -293,11 +160,7 @@ export function AppBar(props: {
 					</nav>
 				)}
 				{Option.match(Option.fromUndefinedOr(props.palette), {
-					onNone: () =>
-						Option.match(Option.fromUndefinedOr(props.commands), {
-							onNone: () => <span className="flex-1" />,
-							onSome: commands => <CommandField commands={commands} label={`Search ${props.name}`} />
-						}),
+					onNone: () => <span className="flex-1" />,
 					onSome: () => (
 						<>
 							<CommandTrigger label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
