@@ -432,6 +432,7 @@ function Home() {
 	const servers = useAtomValue(serversAtom)
 	const value = AsyncResult.value(servers)
 	const error = AsyncResult.error(servers)
+	const authFailure = Option.filter(error, Schema.is(AuthError))
 	const sorted = Array.sort(
 		Option.getOrElse(value, () => Array.empty<ConnectionInfo>()),
 		urgency
@@ -453,6 +454,7 @@ function Home() {
 			server => ({
 				detail: reasonText(server),
 				icon: <ServerIcon server={server} />,
+				id: server.id,
 				keywords: `${server.name} ${server.url}`,
 				label: server.name,
 				run: () => selectServer(server)
@@ -507,48 +509,52 @@ function Home() {
 					</>
 				}
 			/>
-			{Option.match(value, {
+			{Option.match(authFailure, {
 				onNone: () =>
-					Option.match(error, {
-						onNone: () => (
-							<div className="p-4">
-								<ItemListSkeleton label="MCP servers" media rows={4} />
+					Option.match(value, {
+						onNone: () =>
+							Option.match(error, {
+								onNone: () => (
+									<div className="p-4">
+										<ItemListSkeleton label="MCP servers" media rows={4} />
+									</div>
+								),
+								onSome: cause => <FailureContent error={cause} />
+							}),
+						onSome: () => (
+							<div className="flex min-h-0 flex-1">
+								{Boolean.match(isMobile, {
+									onFalse: () => (
+										<>
+											<ServersPane
+												activeId={Option.getOrUndefined(active)?.id}
+												className="w-72 shrink-0 border-r"
+												onSelect={selectServer}
+												servers={sorted}
+											/>
+											<ServerPane className="min-w-0 flex-1" server={Option.getOrUndefined(active)} />
+										</>
+									),
+									onTrue: () =>
+										pipe(
+											Match.value(pane),
+											Match.when('server', () => (
+												<ServerPane className="min-h-0 flex-1" server={Option.getOrUndefined(active)} />
+											)),
+											Match.orElse(() => (
+												<ServersPane
+													activeId={Option.getOrUndefined(active)?.id}
+													className="min-h-0 flex-1"
+													onSelect={selectServer}
+													servers={sorted}
+												/>
+											))
+										)
+								})}
 							</div>
-						),
-						onSome: cause => <FailureContent error={cause} />
+						)
 					}),
-				onSome: () => (
-					<div className="flex min-h-0 flex-1">
-						{Boolean.match(isMobile, {
-							onFalse: () => (
-								<>
-									<ServersPane
-										activeId={Option.getOrUndefined(active)?.id}
-										className="w-72 shrink-0 border-r"
-										onSelect={selectServer}
-										servers={sorted}
-									/>
-									<ServerPane className="min-w-0 flex-1" server={Option.getOrUndefined(active)} />
-								</>
-							),
-							onTrue: () =>
-								pipe(
-									Match.value(pane),
-									Match.when('server', () => (
-										<ServerPane className="min-h-0 flex-1" server={Option.getOrUndefined(active)} />
-									)),
-									Match.orElse(() => (
-										<ServersPane
-											activeId={Option.getOrUndefined(active)?.id}
-											className="min-h-0 flex-1"
-											onSelect={selectServer}
-											servers={sorted}
-										/>
-									))
-								)
-						})}
-					</div>
-				)
+				onSome: cause => <FailureContent error={cause} />
 			})}
 			<AddDialog />
 		</div>

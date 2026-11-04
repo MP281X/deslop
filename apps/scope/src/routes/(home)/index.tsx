@@ -34,6 +34,7 @@ import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
 import {cn} from '@deslop/components-web/utils'
+import {AuthError} from '@deslop/runtime/auth/schema'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
@@ -578,16 +579,6 @@ function TracePane(props: {className?: string; now: number; trace?: OperationTra
 	})
 }
 
-// The first operation of the first app, so a fresh page has a trace in view.
-function firstOperation(overview: Overview) {
-	return Option.flatMap(Array.head(overview.apps), app =>
-		Option.map(
-			Array.head(app.operations),
-			operation => ({app: app.name, name: operation.name, runtime: operation.runtime}) as const
-		)
-	)
-}
-
 // The operation the key names, with the app that owns it.
 function findOperation(overview: Overview, key: OperationKey) {
 	return Option.flatMap(
@@ -608,16 +599,37 @@ function Home() {
 	const overview = useAtomValue(overviewAtom)
 	const value = AsyncResult.value(overview)
 	const overviewError = AsyncResult.error(overview)
+	const authFailure = Option.filter(overviewError, Schema.is(AuthError))
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
 	const arrived = useAtomValue(arrivalsAtom).arrived
 
-	const activeKey = Option.orElse(Option.fromUndefinedOr(selection), () => Option.flatMap(value, firstOperation))
-	const activeOperation = Option.flatMap(activeKey, key =>
-		Option.flatMap(value, current => findOperation(current, key))
+	const activeOperation = Option.orElse(
+		Option.flatMap(Option.fromUndefinedOr(selection), key =>
+			Option.flatMap(value, current => findOperation(current, key))
+		),
+		() =>
+			Option.flatMap(value, current =>
+				Option.flatMap(
+					Option.flatMap(Array.head(current.apps), app =>
+						Option.map(
+							Array.head(app.operations),
+							operation => ({app: app.name, name: operation.name, runtime: operation.runtime}) as const
+						)
+					),
+					key => findOperation(current, key)
+				)
+			)
 	)
+	const activeKey = Option.map(activeOperation, active => ({
+		app: active.app.name,
+		name: active.operation.name,
+		runtime: active.operation.runtime
+	}))
 	const activeTrace = Option.flatMap(activeOperation, active =>
 		Option.orElse(
-			Option.filter(Option.fromUndefinedOr(selectedTrace), () => Option.isSome(Option.fromUndefinedOr(selection))),
+			Option.flatMap(Option.fromUndefinedOr(selectedTrace), selected =>
+				Array.findFirst(active.operation.traces, trace => trace.id === selected.id)
+			),
 			() => Array.head(active.operation.traces)
 		)
 	)
@@ -641,6 +653,7 @@ function Home() {
 					Array.map(app.operations, operation => ({
 						detail: `${operation.failures} failed · ${durationOf(operation.p50Ms)} typical`,
 						icon: DEVICES[operation.runtime],
+						id: `${app.name}:${operation.runtime}:${operation.name}`,
 						keywords: `${app.name} ${operation.name} ${SIDES[operation.runtime]}`,
 						label: `${app.name} · ${operation.name}`,
 						run: () => selectOperation(app.name, operation)
@@ -659,6 +672,7 @@ function Home() {
 						onSome: failure => `failed at ${failure.span}`
 					}),
 					icon: DEVICES[active.operation.runtime],
+					id: trace.id,
 					keywords: trace.id,
 					label: `${ageOf(trace.time, now)} · ${durationOf(trace.durationMs)}`,
 					run: () => selectTrace(trace)
@@ -696,69 +710,73 @@ function Home() {
 				})}
 				palette={[traces, operations]}
 			/>
-			{Option.match(value, {
+			{Option.match(authFailure, {
 				onNone: () =>
-					Option.match(overviewError, {
-						onNone: () => (
-							<div className="p-4">
-								<Skeleton className="h-64 w-full" />
-							</div>
-						),
-						onSome: error => <FailureContent error={error} />
-					}),
-				onSome: current => (
-					<div className="flex min-h-0 flex-1">
-						{Boolean.match(isMobile, {
-							onFalse: () => (
-								<>
-									<OperationsPane
-										activeKey={Option.getOrUndefined(activeKey)}
-										className="w-60 shrink-0 border-r xl:w-72"
-										onSelect={selectOperation}
-										overview={current}
-									/>
-									<TracesPane
-										active={Option.getOrUndefined(activeOperation)}
-										arrived={arrived}
-										className="w-60 shrink-0 border-r xl:w-72"
-										now={now}
-										onSelect={selectTrace}
-										selectedTrace={Option.getOrUndefined(activeTrace)}
-									/>
-									<TracePane className="min-w-0 flex-1" now={now} trace={Option.getOrUndefined(activeTrace)} />
-								</>
-							),
-							onTrue: () => (
-								<>
-									{pipe(
-										Match.value(pane),
-										Match.when('operations', () => (
+					Option.match(value, {
+						onNone: () =>
+							Option.match(overviewError, {
+								onNone: () => (
+									<div className="p-4">
+										<Skeleton className="h-64 w-full" />
+									</div>
+								),
+								onSome: error => <FailureContent error={error} />
+							}),
+						onSome: current => (
+							<div className="flex min-h-0 flex-1">
+								{Boolean.match(isMobile, {
+									onFalse: () => (
+										<>
 											<OperationsPane
 												activeKey={Option.getOrUndefined(activeKey)}
-												className="min-h-0 flex-1"
+												className="w-60 shrink-0 border-r xl:w-72"
 												onSelect={selectOperation}
 												overview={current}
 											/>
-										)),
-										Match.when('traces', () => (
 											<TracesPane
 												active={Option.getOrUndefined(activeOperation)}
 												arrived={arrived}
-												className="min-h-0 flex-1"
+												className="w-60 shrink-0 border-r xl:w-72"
 												now={now}
 												onSelect={selectTrace}
 												selectedTrace={Option.getOrUndefined(activeTrace)}
 											/>
-										)),
-										Match.orElse(() => (
-											<TracePane className="min-h-0 flex-1" now={now} trace={Option.getOrUndefined(activeTrace)} />
-										))
-									)}
-								</>
-							)
-						})}
-					</div>
-				)
+											<TracePane className="min-w-0 flex-1" now={now} trace={Option.getOrUndefined(activeTrace)} />
+										</>
+									),
+									onTrue: () => (
+										<>
+											{pipe(
+												Match.value(pane),
+												Match.when('operations', () => (
+													<OperationsPane
+														activeKey={Option.getOrUndefined(activeKey)}
+														className="min-h-0 flex-1"
+														onSelect={selectOperation}
+														overview={current}
+													/>
+												)),
+												Match.when('traces', () => (
+													<TracesPane
+														active={Option.getOrUndefined(activeOperation)}
+														arrived={arrived}
+														className="min-h-0 flex-1"
+														now={now}
+														onSelect={selectTrace}
+														selectedTrace={Option.getOrUndefined(activeTrace)}
+													/>
+												)),
+												Match.orElse(() => (
+													<TracePane className="min-h-0 flex-1" now={now} trace={Option.getOrUndefined(activeTrace)} />
+												))
+											)}
+										</>
+									)
+								})}
+							</div>
+						)
+					}),
+				onSome: error => <FailureContent error={error} />
 			})}
 		</div>
 	)

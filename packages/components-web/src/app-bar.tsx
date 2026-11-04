@@ -264,10 +264,10 @@ export function AppBar(props: {
 					),
 					// The leading slot keeps its width on every pane, so the title and the right controls never move.
 					onSome: title => (
-						<div className="-ml-1 flex shrink-0 items-center gap-1.5">
+						<div className="-ml-1 flex min-w-0 shrink items-center gap-1.5">
 							{Option.match(Option.fromUndefinedOr(props.back), {
 								onNone: () => (
-									<a href="/" aria-label={props.name} className="flex size-8 items-center justify-center">
+									<a href="/" aria-label={props.name} className="flex size-8 shrink-0 items-center justify-center">
 										<img src={props.icon} alt="" className="pixelated size-8" />
 									</a>
 								),
@@ -277,13 +277,13 @@ export function AppBar(props: {
 										size="icon-sm"
 										aria-label={back.label}
 										onClick={back.onClick}
-										className="size-8"
+										className="size-8 shrink-0"
 									>
 										<ChevronLeft className="size-5" />
 									</Button>
 								)
 							})}
-							<span className="max-w-40 truncate font-mono text-sm font-medium">{title}</span>
+							<span className="max-w-40 min-w-0 truncate font-mono text-sm font-medium">{title}</span>
 						</div>
 					)
 				})}

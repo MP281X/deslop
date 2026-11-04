@@ -25,7 +25,15 @@ const APPS = [
 	{abbr: 'PF', hue: '#da702c', name: 'portfolio', url: 'https://mp281x.xyz'}
 ] as const
 
-export type PaletteItem = {detail?: string; icon?: ReactNode; keywords?: string; label: string; run: () => void}
+// `id` is the record's stable identity: cmdk selects by `value`, so it must not change when a label or detail updates.
+export type PaletteItem = {
+	detail?: string
+	icon?: ReactNode
+	id?: string
+	keywords?: string
+	label: string
+	run: () => void
+}
 
 export type PaletteGroup = {items: readonly PaletteItem[]; label: string}
 
@@ -45,7 +53,8 @@ function AppMark(props: {abbr: string; hue: string}) {
 function Item(props: {item: PaletteItem; onSelect: () => void}) {
 	return (
 		<CommandItem
-			value={`${props.item.label} ${props.item.detail ?? ''} ${props.item.keywords ?? ''}`}
+			value={props.item.id ?? props.item.label}
+			keywords={[props.item.label, props.item.detail ?? '', props.item.keywords ?? '']}
 			onSelect={props.onSelect}
 		>
 			{props.item.icon}
@@ -88,7 +97,7 @@ export function CommandPalette(props: {
 							group => (
 								<CommandGroup key={group.label} heading={group.label}>
 									{Array.map(group.items, item => (
-										<Item key={`${group.label}:${item.label}`} item={item} onSelect={() => run(item)} />
+										<Item key={`${group.label}:${item.id ?? item.label}`} item={item} onSelect={() => run(item)} />
 									))}
 								</CommandGroup>
 							)

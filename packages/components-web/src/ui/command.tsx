@@ -57,9 +57,10 @@ function CommandDialog({
         className={cn(
           "top-1/3 translate-y-0 overflow-hidden rounded-xl! p-0",
           fullscreenMobile &&
-            "max-sm:top-0 max-sm:h-dvh max-sm:max-w-none max-sm:translate-y-0 max-sm:rounded-none!",
+            "max-sm:top-0 max-sm:h-dvh max-sm:max-w-none max-sm:translate-y-0 max-sm:rounded-none! max-sm:pt-safe-top",
           className
         )}
+        closeButtonClassName={cn(fullscreenMobile && "max-sm:top-safe-top max-sm:right-safe-right")}
         showCloseButton={showCloseButton}
       >
         {children}

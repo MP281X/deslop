@@ -408,6 +408,7 @@ function Shell() {
 			items: Array.map(catalog, app => ({
 				detail: new URL(app.origin).hostname,
 				icon: <AppIcon origin={app.origin} small />,
+				id: app.origin,
 				keywords: app.name,
 				label: app.name,
 				run: () => {

@@ -41,10 +41,12 @@ function DialogOverlay({
 
 function DialogContent({
   className,
+  closeButtonClassName,
   children,
   showCloseButton = true,
   ...props
 }: DialogPrimitive.Popup.Props & {
+  closeButtonClassName?: string
   showCloseButton?: boolean
 }) {
   return (
@@ -65,7 +67,7 @@ function DialogContent({
             render={
               <Button
                 variant="ghost"
-                className="absolute top-2 right-2"
+                className={cn("absolute top-2 right-2", closeButtonClassName)}
                 size="icon-sm"
               />
             }
