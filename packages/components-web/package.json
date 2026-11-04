@@ -20,8 +20,7 @@
 		"./theme.css": "./src/theme.css"
 	},
 	"scripts": {
-		"test": "vp test --config ../../vite.config.ts",
-		"typecheck": "tsrs --checkerAssignment go --pretty false"
+		"test": "vp test --config ../../vite.config.ts"
 	},
 	"dependencies": {
 		"@base-ui/react": "latest",

@@ -145,7 +145,7 @@ export const noPipeMethod = defineRule({
 			}
 			// The outermost call of a chain rewrites the whole chain; the inner ones go with it.
 			if (
-				call.parent?.type === 'MemberExpression' &&
+				call.parent.type === 'MemberExpression' &&
 				Predicate.isNotNullish(call.parent.parent) &&
 				pipeCall(call.parent.parent)
 			) {

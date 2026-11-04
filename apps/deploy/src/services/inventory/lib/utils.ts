@@ -95,7 +95,7 @@ export function unitFailures(text: string) {
 		Array.map(Array.filter(String.split(String.trim(text), /\n\s*\n/u), String.isNonEmpty), block => {
 			const fields = Record.fromEntries(
 				Array.map(Array.filter(String.split(block, '\n'), String.includes('=')), line => {
-					const [key = '', ...value] = String.split(line, '=')
+					const [key, ...value] = String.split(line, '=')
 					return [key, Array.join(value, '=')] as const
 				})
 			)
@@ -152,7 +152,7 @@ export function itemOwner(item: InventoryItem) {
 }
 
 function fullName(item: InventoryItem) {
-	if (item.kind === 'port') return item.process || item.name
+	if (item.kind === 'port') return item.process ?? item.name
 	if (item.kind === 'container' && String.startsWith('deslop-')(item.name)) {
 		return String.replace(/-[0-9]+$/u, '')(String.slice(7)(item.name))
 	}

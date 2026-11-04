@@ -152,7 +152,7 @@ export class Gateway extends Context.Service<
 				return pipe(
 					Effect.gen(function* () {
 						const upstream = yield* upstreamFor(server)
-						const context = yield* Effect.context<never>()
+						const context = yield* Effect.context()
 						const transport = new StreamableHTTPClientTransport(new URL(upstream.url), {
 							authProvider: {
 								onUnauthorized: () =>

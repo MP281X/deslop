@@ -33,8 +33,7 @@
 	},
 	"scripts": {
 		"preview": "vp run build && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js",
-		"test": "vp test --config ../../vite.config.ts",
-		"typecheck": "tsrs --checkerAssignment go --pretty false"
+		"test": "vp test --config ../../vite.config.ts"
 	},
 	"devDependencies": {
 		"@deslop/components-web": "workspace:*",

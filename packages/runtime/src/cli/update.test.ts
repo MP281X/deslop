@@ -1,7 +1,7 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, ConfigProvider, Effect, FileSystem, Ref, Sink, Stream, pipe} from 'effect'
+import {Array, ConfigProvider, Effect, FileSystem, Option, Predicate, Ref, Sink, Stream, pipe} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
@@ -33,7 +33,9 @@ it.layer(NodeServices.layer)('Service update', test => {
 					yield* Ref.update(commands, rows => [
 						...rows,
 						`${Array.join(
-							Array.map(command.args, arg => `${arg}`),
+							Array.map(command.args, arg =>
+								Option.getOrElse(Option.liftPredicate(arg, Predicate.isString), () => '<redacted>')
+							),
 							' '
 						)} → ${linked}`
 					])

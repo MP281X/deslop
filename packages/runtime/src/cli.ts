@@ -200,7 +200,7 @@ export function runApp<A, E>(app: App<A, E>) {
 		pipe(
 			program,
 			Effect.scoped,
-			// @effect-diagnostics-next-line strictEffectProvide:off -- This shared CLI owns the application entry point and platform lifetime.
+			// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This shared CLI owns the application entry point and platform lifetime.
 			Effect.provide(layerPlatform),
 			Effect.provideService(Logger.LogToStderr, true)
 		)

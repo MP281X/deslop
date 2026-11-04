@@ -134,7 +134,7 @@ const load = Effect.fnUntraced(function* <A, E>(
 			}))
 		),
 		Effect.scoped,
-		// @effect-diagnostics-next-line strictEffectProvide:off -- Each request owns an agent pinned to its checked address or its proxy.
+		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- Each request owns an agent pinned to its checked address or its proxy.
 		Effect.provide(
 			pipe(
 				NodeHttpClient.layerNodeHttpNoAgent,

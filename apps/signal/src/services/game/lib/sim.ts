@@ -1952,7 +1952,7 @@ export const makeSim = Effect.fnUntraced(
 				state.tick +
 				TICK_HZ * Boolean.match(choice === 'rest' || choice === 'continue', {onFalse: () => 20, onTrue: () => 120})
 			life.event(body, state.tick, 'decision', `Chose ${choice}: ${offered.choices[choice] ?? ''}`)
-			const action = String.split(':')(choice)[0] ?? ''
+			const action = String.split(':')(choice)[0]
 			const target = Array.findFirst(own.facts, fact => choice === `${action}:${fact.id}`)
 			return pipe(
 				Match.value(action),
@@ -2516,7 +2516,10 @@ export const makeSim = Effect.fnUntraced(
 			const unit = unitOf(id)
 			if (unit === undefined) return
 			const container = buildingOf(step.building)
-			if (container === undefined) return missingStorage(unit.id, step.building)
+			if (container === undefined) {
+				missingStorage(unit.id, step.building)
+				return
+			}
 			if (gapTo(container, unit) > 1.5) return
 			const got = take(step.building, step.item, Number.min(step.count, spaceOf(unit)))
 			unit.cargo = withItem(unit.cargo, step.item, got)
@@ -2533,7 +2536,10 @@ export const makeSim = Effect.fnUntraced(
 			const unit = unitOf(id)
 			const container = buildingOf(building)
 			if (unit === undefined) return
-			if (container === undefined) return missingStorage(unit.id, building)
+			if (container === undefined) {
+				missingStorage(unit.id, building)
+				return
+			}
 			if (gapTo(container, unit) > 1.5) return
 			const requested = Option.getOrUndefined(Option.filter(Option.some(unit.order), order => order._tag === 'Haul'))
 			const delivered = Array.reduce(itemsIn(unit.cargo), 0, (sum, item) => {
@@ -2541,18 +2547,15 @@ export const makeSim = Effect.fnUntraced(
 				unit.cargo = withItem(unit.cargo, item, -given)
 				return (
 					sum +
-					Boolean.match(
-						requested === undefined ||
-							requested._tag !== 'Haul' ||
-							requested.item === undefined ||
-							requested.item === item,
-						{onFalse: () => 0, onTrue: () => given}
-					)
+					Boolean.match(requested === undefined || requested.item === undefined || requested.item === item, {
+						onFalse: () => 0,
+						onTrue: () => given
+					})
 				)
 			})
 			inspectStorage(living(unit), container)
 			life.event(living(unit), state.tick, 'action', `Delivered ${delivered} items into #${building}.`, building)
-			if (unit.claim !== undefined && unit.claim.site === building) {
+			if (unit.claim?.site === building) {
 				unit.claim = undefined
 			}
 			if (unit.order._tag === 'Haul' && unit.order.count !== undefined) {
@@ -3837,7 +3840,7 @@ export const makeSim = Effect.fnUntraced(
 					}
 					for (const id of command.units) {
 						const unit = unitOf(id)
-						if (unit !== undefined && unit.team === teamId && connected(unit)) {
+						if (unit?.team === teamId && connected(unit)) {
 							life.send(
 								living(unit),
 								team.home,
@@ -4284,15 +4287,27 @@ export const makeSim = Effect.fnUntraced(
 			state.nextId = previous.nextId
 			state.tick = previous.tick
 			state.wildId = previous.wildId
-			Array.forEach(previous.amounts, entry => MutableHashMap.set(amounts, tileKey(entry[0], entry[1]), entry[2]))
-			Array.forEach(previous.edits, entry => MutableHashMap.set(edits, tileKey(entry.x, entry.z), entry.edit))
-			Array.forEach(previous.cleared, id => MutableHashSet.add(cleared, id))
-			Array.forEach(previous.jams, entry => MutableHashMap.set(jams, entry[0], entry[1]))
-			Array.forEach(previous.sides, entry => MutableHashMap.set(sides, entry[0], {side: entry[1], way: entry[2]}))
-			Array.forEach(previous.stalls, entry =>
+			Array.forEach(previous.amounts, entry => {
+				MutableHashMap.set(amounts, tileKey(entry[0], entry[1]), entry[2])
+			})
+			Array.forEach(previous.edits, entry => {
+				MutableHashMap.set(edits, tileKey(entry.x, entry.z), entry.edit)
+			})
+			Array.forEach(previous.cleared, id => {
+				MutableHashSet.add(cleared, id)
+			})
+			Array.forEach(previous.jams, entry => {
+				MutableHashMap.set(jams, entry[0], entry[1])
+			})
+			Array.forEach(previous.sides, entry => {
+				MutableHashMap.set(sides, entry[0], {side: entry[1], way: entry[2]})
+			})
+			Array.forEach(previous.stalls, entry => {
 				MutableHashMap.set(stalls, entry[0], {best: entry[1], since: entry[2], to: entry[3]})
-			)
-			Array.forEach(previous.patches, entry => MutableHashMap.set(patches, entry[0], [...entry[1]]))
+			})
+			Array.forEach(previous.patches, entry => {
+				MutableHashMap.set(patches, entry[0], [...entry[1]])
+			})
 			// Each saved network as one of its pipes: the first replumb hands its fluid to the network that pipe is in.
 			pipes.nets = Array.map(previous.pipes, entry => ({
 				fluid: Option.some(entry[1]),
@@ -4301,7 +4316,9 @@ export const makeSim = Effect.fnUntraced(
 				room: 0,
 				stock: entry[2]
 			}))
-			Array.forEach(previous.visited, entry => MutableHashMap.set(visited, entry[0], entry[1]))
+			Array.forEach(previous.visited, entry => {
+				MutableHashMap.set(visited, entry[0], entry[1])
+			})
 			for (const unit of previous.units) {
 				MutableHashMap.set(units, unit.id, {
 					...unit,
@@ -4365,14 +4382,14 @@ export const makeSim = Effect.fnUntraced(
 				restoreSight(team.id, team.explored)
 			}
 			if (previous.life === undefined) {
-				Array.forEach(entities(), body =>
+				Array.forEach(entities(), body => {
 					life.event(
 						body,
 						state.tick,
 						'observe',
 						'Individual recording begins from the previous release. Earlier individual decisions were not recorded; this is not a birth event.'
 					)
-				)
+				})
 			}
 			Array.forEach(previous.life?.individuals ?? [], individual =>
 				restoreSight(-individual.id, individual.explored ?? [])
@@ -4421,9 +4438,9 @@ export const makeSim = Effect.fnUntraced(
 			}
 		)
 
-		Array.forEach([...allEnemies(), ...Array.fromIterable(MutableHashMap.values(mobs))], body =>
+		Array.forEach([...allEnemies(), ...Array.fromIterable(MutableHashMap.values(mobs))], body => {
 			MutableHashSet.add(dirtyWild, body.id)
-		)
+		})
 
 		return {
 			acknowledge: (through: number) => life.acknowledge(through),

@@ -1,4 +1,4 @@
-// @effect-diagnostics-next-line nodeBuiltinImport:off -- NodeHttpServer requires the native server constructor at the application boundary.
+// oxlint-disable-next-line effecttsgo/node-builtin-import -- NodeHttpServer requires the native server constructor at the application boundary.
 import {createServer} from 'node:http'
 import {cwd} from 'node:process'
 import {fileURLToPath} from 'node:url'

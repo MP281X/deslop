@@ -36,7 +36,7 @@ const lintSource = Effect.fnUntraced(function* (input: Record<string, string>, f
 	const read = Effect.forEach(files, file => fs.readFileString(file), {concurrency: 'unbounded'})
 	const lint = Effect.scoped(
 		Effect.flatMap(
-			ChildProcess.make('vp', ['lint', ...files, '--format=json', ...flags], {
+			ChildProcess.make('vp', ['lint', ...files, '--format=json', '--type-aware', '--type-check', ...flags], {
 				cwd: root,
 				stderr: 'pipe',
 				stdout: 'pipe'
@@ -1250,7 +1250,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'}',
 							'export function asserted() {',
 							'	const method = obj.method',
-							'	return method!()',
+							'	return method()',
 							'}',
 							'export function pattern() {',
 							'	obj.first()',
@@ -2056,6 +2056,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'',
 							"import {Effect, Layer} from 'effect'",
 							'',
+							"import {it as plainIt} from 'vite-plus/test'",
+							'',
 							'declare const ci: boolean',
 							"it.effect.only('runs alone', () => Effect.void) // reported",
 							"it.scoped.skip('never runs', () => Effect.void) // reported",
@@ -2067,6 +2069,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							"it.effect.runIf(ci)('runs only on CI', () => Effect.void) // reported",
 							"it.fails('passes by failing', () => {}) // reported",
 							"it('skips through options', {skip: true}, () => {}) // reported",
+							"plainIt.skip('a runner import belongs to the native rule', () => {})",
 							"describe('runs together', {concurrent: true}, () => { it('runs', () => {}) })"
 						],
 						'\n'

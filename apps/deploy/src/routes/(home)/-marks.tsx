@@ -40,7 +40,7 @@ const brands = [
 
 export function ApplicationIcon(props: {name: string; process?: string; container?: boolean; small?: boolean}) {
 	// An app's own mark, also on what is named after it, such as `stash preview` or `stash-update`.
-	const own = apps[String.split(props.name, /[ -]/u)[0] ?? '']
+	const own = apps[String.split(props.name, /[ -]/u)[0]]
 	const brand = Option.getOrUndefined(
 		Array.findFirst(brands, candidate => candidate.pattern.test(`${props.name} ${props.process ?? ''}`))
 	)

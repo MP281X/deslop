@@ -28,6 +28,7 @@ import {animationTime} from './-clock.ts'
 import {createDrawLoop, pixelRatio} from './-draw.ts'
 import type {Built} from './-mesh.ts'
 
+import {isMesh} from '#lib/three.ts'
 import type {Frame} from '#services/game/schema.ts'
 import {CHUNK, LEVEL, ORES, chunkOf, highest, lowest} from '#services/world/lib/utils.ts'
 
@@ -461,7 +462,7 @@ function footing(bed: number, deck: number) {
 function disposeGroup(group: THREE.Group) {
 	group.traverse(object => {
 		if (object instanceof THREE.InstancedMesh) object.dispose()
-		else if (object instanceof THREE.Mesh) object.geometry.dispose()
+		else if (isMesh(object)) object.geometry.dispose()
 	})
 	group.removeFromParent()
 }
@@ -1145,7 +1146,9 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 	Array.forEach(builders, (builder, index) => {
 		builder.worker.addEventListener(
 			'message',
-			(event: MessageEvent<(Built & {revision: number}) | Inspected | Stale>) => received(index, event.data)
+			(event: MessageEvent<(Built & {revision: number}) | Inspected | Stale>) => {
+				received(index, event.data)
+			}
 		)
 	})
 	const resize = new ResizeObserver(drawing.invalidate)
@@ -1289,7 +1292,7 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 				onNone: () => undefined,
 				onSome: at => {
 					// oxlint-disable-next-line unicorn/require-post-message-target-origin -- a Worker's postMessage takes no target origin.
-					builders[0]?.worker.postMessage({_tag: 'Inspect', ask: inspection.ask, ...at})
+					builders[0].worker.postMessage({_tag: 'Inspect', ask: inspection.ask, ...at})
 				}
 			})
 			return hit
@@ -1391,7 +1394,9 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		zones(zones: NonNullable<Frame['zones']>, colors: string[]) {
 			zoneState.zones = [...zones]
 			coverage.uTeamCount.value = Number.min(colors.length, 32)
-			Array.forEach(colors, (color, index) => coverage.uTeamColors.value[index]?.set(color))
+			Array.forEach(colors, (color, index) => {
+				coverage.uTeamColors.value[index]?.set(color)
+			})
 			paintZones()
 			drawing.invalidate()
 		},

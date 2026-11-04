@@ -78,11 +78,16 @@ export default defineConfig({
 		]
 	},
 	run: {
-		// Each package's typecheck and test scripts replay from the cache while their inputs are unchanged; a stopped preview server exits 130, so it is never cached.
+		// Each package's test script replays from the cache while its inputs are unchanged; a stopped preview server exits 130, so it is never cached.
 		cache: true,
 		tasks: {
-			// Format and lint run before it as `vp check`, or `vp check --fix` in Verify, so nothing is checked twice. A package's typecheck and tests read its dependencies' sources, never their output, so every package starts at once.
-			check: ['vp run -r --parallel typecheck', 'vp run fallow'],
+			// Oxfmt, the typed lint pass on tsrs (Effect rules and TypeScript diagnostics), a syntax-only pass for the templates, then Fallow. `fix` writes the fixes instead of only reporting them.
+			check: [
+				'vp fmt --list-different',
+				'effect-tsgo --tsrs-lint vp lint --type-aware --type-check --ignore-pattern "tools/*/template/**"',
+				'vp lint tools/create-app/template tools/create-package/template --report-unused-disable-directives-severity=off',
+				'vp run fallow'
+			],
 			// Fallow judges exports and dependencies across packages, so it reads the whole workspace whichever package it reports on.
 			fallow: {
 				cache: {input: [{auto: true}, '!.fallow/**'], output: []},
@@ -91,6 +96,15 @@ export default defineConfig({
 					'fallow dead-code --production --format compact --fail-on-issues --quiet',
 					'fallow dupes --format compact --fail-on-issues --quiet',
 					'fallow health --complexity --format human --quiet'
+				]
+			},
+			fix: {
+				cache: false,
+				command: [
+					'vp fmt',
+					'effect-tsgo --tsrs-lint vp lint --fix --type-aware --type-check --ignore-pattern "tools/*/template/**"',
+					'vp lint tools/create-app/template tools/create-package/template --fix --report-unused-disable-directives-severity=off',
+					'vp run fallow'
 				]
 			},
 			test: 'vp run -r --parallel test'

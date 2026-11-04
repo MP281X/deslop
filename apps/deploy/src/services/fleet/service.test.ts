@@ -1,4 +1,4 @@
-// @effect-diagnostics-next-line nodeBuiltinImport:off -- A real scoped loopback server proves the worker RPC transport.
+// oxlint-disable-next-line effecttsgo/node-builtin-import -- A real scoped loopback server proves the worker RPC transport.
 import {createServer} from 'node:http'
 
 import {NodeCrypto, NodeHttpClient, NodeHttpServer, NodeServices} from '@effect/platform-node'
@@ -147,9 +147,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 				yield* Ref.set(unavailable, true)
 				const staleMetrics = yield* fleet.metrics({minutes: 60})
 				assert.isTrue(staleMetrics[1]?.stale)
-				assert.strictEqual(staleMetrics[1]?.cpuModel, 'Fixture CPU')
-				assert.lengthOf(staleMetrics[1]?.samples ?? [], 1)
-				assert.include(staleMetrics[1]?.error ?? '', 'worker unavailable')
+				assert.strictEqual(staleMetrics[1].cpuModel, 'Fixture CPU')
+				assert.lengthOf(staleMetrics[1].samples, 1)
+				assert.include(staleMetrics[1].error, 'worker unavailable')
 				yield* TestClock.adjust('2 hours')
 				assert.isEmpty((yield* fleet.metrics({minutes: 60}))[1]?.samples ?? [])
 				assert.include((yield* (yield* fleetWith('another-key')).snapshot).sources[0]?.error ?? '', 'Sign in first')

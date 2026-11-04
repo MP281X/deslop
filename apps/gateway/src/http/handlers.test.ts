@@ -227,7 +227,7 @@ function layerAuth(origin: string) {
 	)
 }
 
-const servers = Effect.fnUntraced(function* (home?: string, origin = GATEWAY_URL, local = false) {
+const servers = Effect.fnUntraced(function* (home?: string, origin: string = GATEWAY_URL, local: boolean = false) {
 	const directory = home ?? (yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped())
 	const clock = yield* Clock.Clock
 	const ready = yield* Queue.make<true>()
@@ -260,16 +260,17 @@ const servers = Effect.fnUntraced(function* (home?: string, origin = GATEWAY_URL
 					MutableHashMap.remove(sessions, request.headers.get('mcp-session-id') ?? '')
 					return new Response(undefined, {status: 204})
 				}
-				const body = yield* Effect.promise(() => request.json())
-				const message = yield* Schema.decodeUnknownEffect(
-					Schema.Struct({
-						id: Schema.optionalKey(Schema.Union([Schema.Finite, Schema.String])),
-						method: Schema.String,
-						params: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown))
-					})
-				)(body)
+				const message = yield* Schema.decodeEffect(
+					Schema.fromJsonString(
+						Schema.Struct({
+							id: Schema.optionalKey(Schema.Union([Schema.Finite, Schema.String])),
+							method: Schema.String,
+							params: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown))
+						})
+					)
+				)(yield* Effect.promise(() => request.text()))
 				const authorization = request.headers.get('authorization') ?? ''
-				MutableList.append(upstreamRequests, {authorization, body, method: message.method, url: request.url})
+				MutableList.append(upstreamRequests, {authorization, body: message, method: message.method, url: request.url})
 				if (new URL(request.url).hostname === 'api.mobbin.com' && (yield* Ref.get(stall))) {
 					yield* Queue.offer(stallReady, true)
 					return yield* Effect.never
@@ -663,7 +664,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const origin = 'https://gateway.example.com'
 			const gateway = yield* servers(undefined, origin)
 			const metadata = yield* send(gateway.web, '/oauth/client.json')
-			const document = yield* Effect.promise(() => metadata.json())
+			const document = yield* Schema.decodeEffect(
+				Schema.fromJsonString(Schema.Struct({client_id: Schema.String, redirect_uris: Schema.Array(Schema.String)}))
+			)(yield* Effect.promise(() => metadata.text()))
 			assert.strictEqual(document.client_id, `${origin}/oauth/client.json`)
 			assert.deepStrictEqual(document.redirect_uris, [`${origin}/oauth/callback`])
 			const added = yield* addMcp(gateway.web, PROVIDERS.mobbin.url)

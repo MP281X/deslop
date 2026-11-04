@@ -45,7 +45,7 @@ export function counters(stat: string, network: string, disk: string, uptime: st
 				const counts = Schema.decodeSync(Schema.Array(Schema.FiniteFromString).check(Schema.isMinLength(5)))(
 					Array.take(Array.drop(fields, 1), 8)
 				)
-				return {id: fields[0] ?? '', idle: (counts[3] ?? 0) + (counts[4] ?? 0), total: Number.sumAll(counts)}
+				return {id: fields[0], idle: (counts[3] ?? 0) + (counts[4] ?? 0), total: Number.sumAll(counts)}
 			})
 		),
 		cpuIdle: (values[3] ?? 0) + (values[4] ?? 0),
@@ -71,7 +71,7 @@ export function counters(stat: string, network: string, disk: string, uptime: st
 			(total, fields) => total + Schema.decodeSync(Schema.FiniteFromString)(fields[9] ?? '')
 		),
 		time,
-		uptime: Schema.decodeSync(Schema.FiniteFromString)(String.split(uptime, ' ')[0] ?? '')
+		uptime: Schema.decodeSync(Schema.FiniteFromString)(String.split(uptime, ' ')[0])
 	}
 }
 
@@ -102,7 +102,7 @@ export function sample(current: Counters, memory: string, disk: string, previous
 	const values = Record.fromEntries(
 		Array.map(String.split(String.trim(memory), '\n'), line => {
 			const fields = String.split(line, /\s+/u)
-			return [fields[0] ?? '', Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024] as const
+			return [fields[0], Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024] as const
 		})
 	)
 	const seconds = (current.time - (previous?.time ?? current.time)) / 1000
@@ -139,7 +139,7 @@ export function sample(current: Counters, memory: string, disk: string, previous
 			Array.map(line => {
 				const fields = String.split(String.trim(line), /\s+/u)
 				return {
-					mount: fields[0] ?? '/',
+					mount: fields[0],
 					total: Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? ''),
 					used: Schema.decodeSync(Schema.FiniteFromString)(fields[2] ?? '')
 				}

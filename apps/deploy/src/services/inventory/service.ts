@@ -137,12 +137,12 @@ function portItems(text: string, worker: string, fs: FileSystem.FileSystem, http
 	)
 }
 
-function collect<E, R>(name: string, effect: Effect.Effect<InventoryItem[], E, R>) {
+function collect<E extends {readonly message: string}, R>(name: string, effect: Effect.Effect<InventoryItem[], E, R>) {
 	return pipe(
 		effect,
 		Effect.timeout('10 seconds'),
 		Effect.match({
-			onFailure: cause => ({items: Array.empty<InventoryItem>(), source: {error: `${cause}`, name}}),
+			onFailure: cause => ({items: Array.empty<InventoryItem>(), source: {error: cause.message, name}}),
 			onSuccess: items => ({items, source: {error: '', name}})
 		})
 	)
@@ -400,7 +400,7 @@ export class Inventory extends Context.Service<
 							),
 							Effect.timeout('3 seconds'),
 							Effect.match({
-								onFailure: cause => ({error: `${cause}`, records: []}),
+								onFailure: cause => ({error: cause.message, records: []}),
 								onSuccess: records => ({error: '', records})
 							})
 						)

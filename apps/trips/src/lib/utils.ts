@@ -302,7 +302,9 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 				Stream.callback<string>(queue =>
 					Effect.acquireRelease(
 						Effect.sync(() =>
-							addPushToStartTokenListener(event => Queue.offerUnsafe(queue, event.activityPushToStartToken))
+							addPushToStartTokenListener(event => {
+								Queue.offerUnsafe(queue, event.activityPushToStartToken)
+							})
 						),
 						subscription => Effect.sync(() => subscription.remove())
 					)
@@ -394,7 +396,11 @@ export const activitiesAtom = RpcClient.runtime.atom(get =>
 						),
 						Stream.callback<string>(queue =>
 							Effect.acquireRelease(
-								Effect.sync(() => activity.addPushTokenListener(event => Queue.offerUnsafe(queue, event.pushToken))),
+								Effect.sync(() =>
+									activity.addPushTokenListener(event => {
+										Queue.offerUnsafe(queue, event.pushToken)
+									})
+								),
 								subscription => Effect.sync(() => subscription.remove())
 							)
 						)
@@ -879,9 +885,9 @@ export const openedAtom = Atom.keepAlive(
 						)
 						yield* Effect.acquireRelease(
 							Effect.sync(() =>
-								Notifications.addNotificationResponseReceivedListener(response =>
+								Notifications.addNotificationResponseReceivedListener(response => {
 									Queue.offerUnsafe(queue, tapped(response))
-								)
+								})
 							),
 							subscription => Effect.sync(() => subscription.remove())
 						)

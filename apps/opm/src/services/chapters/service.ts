@@ -228,7 +228,7 @@ export class Chapters extends Context.Service<
 										Effect.flatMap(HttpClientResponse.filterStatusOk),
 										Effect.flatMap(response => response.text),
 										Effect.timeout('20 seconds'),
-										// @effect-diagnostics-next-line strictEffectProvide:off -- Each try owns an agent pinned to one proxy session.
+										// oxlint-disable-next-line effecttsgo/strict-effect-provide -- Each try owns an agent pinned to one proxy session.
 										Effect.provide(
 											Option.match(exit, {
 												onNone: () => Layer.succeed(HttpClient.HttpClient, client),

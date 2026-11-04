@@ -248,7 +248,7 @@ export function make(name: string, server: string, storage: Storage) {
 						Effect.gen(function* () {
 							if (Schema.is(AuthError)(error)) {
 								yield* Effect.ignore(
-									// @effect-diagnostics-next-line strictEffectProvide:off -- An app's RPC runtime exposes only its client, so the renewal brings its own fetch.
+									// oxlint-disable-next-line effecttsgo/strict-effect-provide -- An app's RPC runtime exposes only its client, so the renewal brings its own fetch.
 									Effect.provide(sessionToken(true), FetchHttpClient.layer),
 									{log: 'Warn', message: 'The session could not be renewed'}
 								)

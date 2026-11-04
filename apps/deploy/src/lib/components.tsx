@@ -3,7 +3,7 @@ import {Boolean, String} from 'effect'
 import {Monitor, Server} from 'lucide-react'
 
 export function machineName(worker: string) {
-	return String.split(worker, '.')[0] ?? worker
+	return String.split(worker, '.')[0]
 }
 
 export function MachineIcon(props: {worker: string}) {
