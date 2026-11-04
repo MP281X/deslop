@@ -708,7 +708,7 @@ function Home() {
 							)
 					})
 				})}
-				palette={[traces, operations]}
+				palette={Boolean.match(Option.isSome(authFailure), {onFalse: () => [traces, operations], onTrue: () => []})}
 			/>
 			{Option.match(authFailure, {
 				onNone: () =>

@@ -441,7 +441,7 @@ function Home() {
 		Option.flatMap(Option.fromUndefinedOr(selection), id => Array.findFirst(sorted, server => server.id === id)),
 		() => Array.head(sorted)
 	)
-	const ready = Option.isSome(value)
+	const ready = Option.isNone(authFailure) && Option.isSome(value)
 
 	function selectServer(server: ConnectionInfo) {
 		setSelection(server.id)
@@ -466,6 +466,7 @@ function Home() {
 		items: Array.map(sorted, server => ({
 			detail: new URL(server.url).hostname,
 			icon: <ServerIcon server={server} />,
+			id: server.id,
 			keywords: `${server.name} ${server.url} ${Array.join(server.tools, ' ')}`,
 			label: server.name,
 			run: () => selectServer(server)
@@ -501,7 +502,7 @@ function Home() {
 					onFalse: () => undefined,
 					onTrue: () => ({label: 'Servers', onClick: () => setPane('servers')})
 				})}
-				palette={[needsYou, all, actions]}
+				palette={Boolean.match(Option.isSome(authFailure), {onFalse: () => [needsYou, all, actions], onTrue: () => []})}
 				action={
 					<>
 						<AppBarAction icon={<Copy />} label="Copy MCP URL" variant="outline" onClick={() => copy()} />

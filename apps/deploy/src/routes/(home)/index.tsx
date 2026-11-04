@@ -962,68 +962,71 @@ function Home() {
 							setPane(Boolean.match(pane === 'machine', {onFalse: () => 'apps' as const, onTrue: () => machineBack}))
 					})
 				})}
-				palette={[
-					{
-						items: Array.map(
-							Array.filter(searchable, row => {
-								const light = dot(row.item, status(row.item))
-								return light === 'error' || light === 'warning'
-							}),
-							row => ({
-								detail: reasonOf(row, now),
-								icon: <ApplicationIcon name={workloadName(row.item)} container={row.item.kind === 'container'} />,
-								id: row.item.id,
-								keywords: text(row),
-								label: workloadName(row.item),
-								run: () => selectRow(row)
-							})
-						),
-						label: 'Needs you'
-					},
-					{
-						items: Array.map(
-							Array.filter(searchable, row => row.item.scheduled !== true),
-							row => ({
-								detail: `${machineName(row.item.worker)} · ${bytes(appUsage(row.item.processes ?? []).memory)}`,
-								icon: <ApplicationIcon name={workloadName(row.item)} container={row.item.kind === 'container'} />,
-								id: row.item.id,
-								keywords: text(row),
-								label: workloadName(row.item),
-								run: () => selectRow(row)
-							})
-						),
-						label: 'Apps'
-					},
-					{
-						items: Array.map(
-							Array.filter(searchable, row => row.item.scheduled === true),
-							row => ({
-								detail: nextRun(row.item.next ?? now, now),
-								icon: <ApplicationIcon name={workloadName(row.item)} container={row.item.kind === 'container'} />,
-								id: row.item.id,
-								keywords: text(row),
-								label: workloadName(row.item),
-								run: () => selectRow(row)
-							})
-						),
-						label: 'Scheduled'
-					},
-					{
-						items: [
-							...Option.match(Option.fromUndefinedOr(active), {
-								onNone: () => [],
-								onSome: current => [{icon: <Monitor />, label: `Open ${machineName(current)}`, run: showMachine}]
-							}),
-							...Option.match(Option.fromUndefinedOr(selectedRow), {
-								onNone: () => [],
-								onSome: row => [
-									{icon: <Server />, label: `Processes of ${workloadName(row.item)}`, run: () => selectRow(row)}
-								]
-							})
-						],
-						label: 'Actions'
-					}
-				]}
+				palette={Boolean.match(Option.isSome(authFailure), {
+					onFalse: () => [
+						{
+							items: Array.map(
+								Array.filter(searchable, row => {
+									const light = dot(row.item, status(row.item))
+									return light === 'error' || light === 'warning'
+								}),
+								row => ({
+									detail: reasonOf(row, now),
+									icon: <ApplicationIcon name={workloadName(row.item)} container={row.item.kind === 'container'} />,
+									id: row.item.id,
+									keywords: text(row),
+									label: workloadName(row.item),
+									run: () => selectRow(row)
+								})
+							),
+							label: 'Needs you'
+						},
+						{
+							items: Array.map(
+								Array.filter(searchable, row => row.item.scheduled !== true),
+								row => ({
+									detail: `${machineName(row.item.worker)} · ${bytes(appUsage(row.item.processes ?? []).memory)}`,
+									icon: <ApplicationIcon name={workloadName(row.item)} container={row.item.kind === 'container'} />,
+									id: row.item.id,
+									keywords: text(row),
+									label: workloadName(row.item),
+									run: () => selectRow(row)
+								})
+							),
+							label: 'Apps'
+						},
+						{
+							items: Array.map(
+								Array.filter(searchable, row => row.item.scheduled === true),
+								row => ({
+									detail: nextRun(row.item.next ?? now, now),
+									icon: <ApplicationIcon name={workloadName(row.item)} container={row.item.kind === 'container'} />,
+									id: row.item.id,
+									keywords: text(row),
+									label: workloadName(row.item),
+									run: () => selectRow(row)
+								})
+							),
+							label: 'Scheduled'
+						},
+						{
+							items: [
+								...Option.match(Option.fromUndefinedOr(active), {
+									onNone: () => [],
+									onSome: current => [{icon: <Monitor />, label: `Open ${machineName(current)}`, run: showMachine}]
+								}),
+								...Option.match(Option.fromUndefinedOr(selectedRow), {
+									onNone: () => [],
+									onSome: row => [
+										{icon: <Server />, label: `Processes of ${workloadName(row.item)}`, run: () => selectRow(row)}
+									]
+								})
+							],
+							label: 'Actions'
+						}
+					],
+					onTrue: () => []
+				})}
 				action={
 					<>
 						<RangeMenu minutes={minutes} pending={pending} onChange={next => transition(() => setMinutes(next))} />

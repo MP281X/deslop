@@ -1,5 +1,6 @@
-import {Array, Boolean} from 'effect'
+import {Array, Boolean, Option, Record} from 'effect'
 
+import {defaultFilter} from 'cmdk'
 import {Search} from 'lucide-react'
 import type {ReactNode} from 'react'
 
@@ -50,13 +51,9 @@ function AppMark(props: {abbr: string; hue: string}) {
 	)
 }
 
-function Item(props: {item: PaletteItem; onSelect: () => void}) {
+function Item(props: {group: string; item: PaletteItem; onSelect: () => void}) {
 	return (
-		<CommandItem
-			value={props.item.id ?? props.item.label}
-			keywords={[props.item.label, props.item.detail ?? '', props.item.keywords ?? '']}
-			onSelect={props.onSelect}
-		>
+		<CommandItem value={`${props.group}:${props.item.id ?? props.item.label}`} onSelect={props.onSelect}>
 			{props.item.icon}
 			<span className="min-w-0 shrink truncate">{props.item.label}</span>
 			{props.item.detail !== undefined && (
@@ -77,6 +74,20 @@ export function CommandPalette(props: {
 		props.onOpenChange(false)
 		item.run()
 	}
+	// cmdk keeps an item's first keywords, so the filter reads this render's text instead: stable value, current search.
+	const searchable: Record<string, string> = Record.fromEntries([
+		...Array.flatMap(props.groups, group =>
+			Array.map(
+				group.items,
+				item =>
+					[
+						`${group.label}:${item.id ?? item.label}`,
+						`${item.label} ${item.detail ?? ''} ${item.keywords ?? ''}`
+					] as const
+			)
+		),
+		...Array.map(APPS, app => [`Deslop:${app.name}`, `${app.name} ${app.abbr} ${new URL(app.url).hostname}`] as const)
+	])
 	return (
 		<CommandDialog
 			open={props.open}
@@ -87,7 +98,14 @@ export function CommandPalette(props: {
 			fullscreenMobile
 			className="sm:max-w-xl"
 		>
-			<Command>
+			<Command
+				filter={(value, search) =>
+					defaultFilter(
+						Option.getOrElse(Record.get(searchable, value), () => value),
+						search
+					)
+				}
+			>
 				<CommandInput autoFocus placeholder="Search or run a command…" />
 				<div className="pb-safe-bottom flex min-h-0 flex-1 flex-col">
 					<CommandList className="max-h-80 max-sm:max-h-none max-sm:flex-1">
@@ -97,7 +115,12 @@ export function CommandPalette(props: {
 							group => (
 								<CommandGroup key={group.label} heading={group.label}>
 									{Array.map(group.items, item => (
-										<Item key={`${group.label}:${item.id ?? item.label}`} item={item} onSelect={() => run(item)} />
+										<Item
+											key={`${group.label}:${item.id ?? item.label}`}
+											group={group.label}
+											item={item}
+											onSelect={() => run(item)}
+										/>
 									))}
 								</CommandGroup>
 							)
@@ -116,7 +139,7 @@ export function CommandPalette(props: {
 										location.assign(app.url)
 									}
 								}
-								return <Item key={app.name} item={item} onSelect={() => run(item)} />
+								return <Item key={app.name} group="Deslop" item={item} onSelect={() => run(item)} />
 							})}
 						</CommandGroup>
 					</CommandList>
