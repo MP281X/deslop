@@ -1,4 +1,4 @@
-import {Array, Boolean, Number, Option, String} from 'effect'
+import {Array, Boolean, Option, String} from 'effect'
 
 import {ChevronRight} from 'lucide-react'
 import {useState} from 'react'
@@ -12,7 +12,7 @@ import type {ProcessNode} from '#routes/(home)/-process-tree.ts'
 const mib = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
 
 // One process: its mark, name and what it holds of the app's memory as a bar; small ones read muted.
-function Line(props: {appMemory: number; depth: number; node: ProcessNode; open?: boolean}) {
+function Line(props: {depth: number; node: ProcessNode; open?: boolean}) {
 	return (
 		<span
 			className={cn(
@@ -34,7 +34,7 @@ function Line(props: {appMemory: number; depth: number; node: ProcessNode; open?
 				)
 			})}
 			<ApplicationIcon name={props.node.name} small />
-			<span className="max-w-1/2 shrink-0 truncate font-mono">{props.node.name}</span>
+			<span className="max-w-1/3 shrink-0 truncate font-mono">{props.node.name}</span>
 			{Array.isArrayNonEmpty(props.node.children) && (
 				<span className="text-muted-foreground shrink-0 font-mono">{props.node.children.length}</span>
 			)}
@@ -53,48 +53,38 @@ function Line(props: {appMemory: number; depth: number; node: ProcessNode; open?
 					' '
 				)}
 			</span>
-			<span className="bg-muted h-1 w-20 shrink-0 overflow-hidden rounded-full max-sm:w-12">
-				<span
-					className={cn('block h-full w-(--share) rounded-full bg-(--machine)', props.node.small && 'opacity-40')}
-					style={{'--share': `${Number.max(2, (props.node.memory / Number.max(props.appMemory, 1)) * 100)}%`}}
-				/>
-			</span>
 			<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">
 				{mib.format(props.node.memory / 1024 ** 2)} MiB
-				{Boolean.match(props.node.cpu === undefined, {
-					onFalse: () => ` · ${props.node.cpu?.toFixed(1)}%`,
-					onTrue: () => ''
-				})}
 			</span>
 		</span>
 	)
 }
 
 // A parent opens on its own, as a small accordion; the first level starts open, deeper ones closed.
-function Node(props: {appMemory: number; depth: number; node: ProcessNode}) {
+function Node(props: {depth: number; node: ProcessNode}) {
 	const [open, setOpen] = useState(props.depth === 0 && !props.node.small)
 	if (Array.isArrayEmpty(props.node.children)) {
-		return <Line appMemory={props.appMemory} depth={props.depth} node={props.node} />
+		return <Line depth={props.depth} node={props.node} />
 	}
 	return (
 		<Collapsible open={open} onOpenChange={setOpen}>
 			<CollapsibleTrigger className="w-full cursor-pointer text-left" aria-label={`${props.node.name} processes`}>
-				<Line appMemory={props.appMemory} depth={props.depth} node={props.node} open={open} />
+				<Line depth={props.depth} node={props.node} open={open} />
 			</CollapsibleTrigger>
 			<CollapsibleContent>
 				{Array.map(props.node.children, child => (
-					<Node key={`${child.pid}:${child.name}`} appMemory={props.appMemory} depth={props.depth + 1} node={child} />
+					<Node key={`${child.pid}:${child.name}`} depth={props.depth + 1} node={child} />
 				))}
 			</CollapsibleContent>
 		</Collapsible>
 	)
 }
 
-export function Processes(props: {appMemory: number; tree: readonly ProcessNode[]}) {
+export function Processes(props: {tree: readonly ProcessNode[]}) {
 	return (
 		<div className="pb-2 pl-7">
 			{Array.map(props.tree, node => (
-				<Node key={`${node.pid}:${node.name}`} appMemory={props.appMemory} depth={0} node={node} />
+				<Node key={`${node.pid}:${node.name}`} depth={0} node={node} />
 			))}
 		</div>
 	)

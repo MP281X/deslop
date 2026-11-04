@@ -31,12 +31,12 @@ export function UsageChart(props: {
 	recorded: (sample: Sample) => boolean
 }) {
 	return (
-		<figure className="flex flex-col" aria-label={props.label}>
+		<figure className="flex min-h-0 flex-1 flex-col" aria-label={props.label}>
 			<figcaption className="text-muted-foreground mb-1 text-xs">{props.label}</figcaption>
 			<svg
 				viewBox={`0 0 100 ${HEIGHT}`}
 				preserveAspectRatio="none"
-				className="h-16 w-full overflow-visible"
+				className="min-h-0 w-full flex-1 overflow-visible"
 				role="img"
 				aria-label={`${props.label} over time; blank time is unrecorded`}
 			>

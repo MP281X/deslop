@@ -215,6 +215,10 @@ function ServersPane(props: {
 			aria-label="MCP servers"
 			className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
 		>
+			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
+				<span className="text-sm font-medium">Servers</span>
+				<span className="text-muted-foreground font-mono text-xs">{props.servers.length}</span>
+			</header>
 			{Array.match(props.servers, {
 				onEmpty: () => (
 					<Empty>

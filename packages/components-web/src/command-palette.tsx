@@ -95,7 +95,6 @@ export function CommandPalette(props: {
 			title="Search or run a command"
 			description="Jump to a record, run an action, or open another Deslop tool."
 			showCloseButton
-			fullscreenMobile
 			className="sm:max-w-xl"
 		>
 			<Command
@@ -107,8 +106,8 @@ export function CommandPalette(props: {
 				}
 			>
 				<CommandInput autoFocus placeholder="Search or run a command…" />
-				<div className="pb-safe-bottom flex min-h-0 flex-1 flex-col">
-					<CommandList className="max-h-80 max-sm:max-h-none max-sm:flex-1">
+				<div className="flex min-h-0 flex-1 flex-col">
+					<CommandList className="max-h-80">
 						<CommandEmpty>No match.</CommandEmpty>
 						{Array.map(
 							Array.filter(props.groups, group => Array.isReadonlyArrayNonEmpty(group.items)),

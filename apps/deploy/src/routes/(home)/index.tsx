@@ -350,7 +350,7 @@ function AppListRow(props: {
 						<div
 							role="listitem"
 							className={cn(
-								'hover:bg-muted/50 relative flex h-10 min-w-0 items-center gap-2 overflow-hidden border-b px-3',
+								'hover:bg-muted/50 relative flex h-8 min-w-0 items-center gap-2 overflow-hidden border-b px-3',
 								props.selected && 'bg-muted/60'
 							)}
 						/>
@@ -492,7 +492,6 @@ function AppsPane(props: {
 // The selected app's processes, or a job's, with what the row cannot show: its state, ports and memory.
 function ProcessPane(props: {
 	className?: string
-	free: readonly InventoryItem[]
 	now: number
 	row?: ReturnType<typeof workloads>[number]
 	showName?: boolean
@@ -519,7 +518,7 @@ function ProcessPane(props: {
 					aria-label={workloadName(row.item)}
 					className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
 				>
-					<header className="bg-background sticky top-0 z-20 flex shrink-0 flex-col gap-2 border-b px-4 py-3">
+					<header className="bg-background sticky top-0 z-20 flex shrink-0 flex-col gap-2 border-b px-3 py-2">
 						<div className="flex min-w-0 items-center gap-2">
 							{Boolean.match(props.showName === false, {
 								onFalse: () => (
@@ -538,7 +537,6 @@ function ProcessPane(props: {
 							>
 								<StatusDot status={light} />
 							</span>
-							<span className="text-muted-foreground min-w-0 truncate text-xs">{reasonOf(row, props.now)}</span>
 							<span className="flex-1" />
 							{scheduled && <RunNow busy={false} item={row.item} onRun={() => undefined} />}
 						</div>
@@ -560,19 +558,16 @@ function ProcessPane(props: {
 									onTrue: () => `next ${nextRun(row.item.next ?? props.now, props.now)}`
 								})}
 							</span>
-							<span className="flex min-w-0 flex-wrap items-center gap-1">
-								<Endpoints free={props.free} row={row} />
-							</span>
 						</div>
 						{scheduled && <RunFailure item={row.item} />}
 					</header>
-					<div className="flex items-center gap-2 px-4 pt-3 text-xs">
+					<div className="flex items-center gap-2 px-3 pt-2 text-xs">
 						<span className="font-medium">Processes</span>
 						<span className="text-muted-foreground font-mono text-xs">{processes.length}</span>
 					</div>
 					{Array.match(processes, {
 						onEmpty: () => <p className="text-muted-foreground px-4 py-3 text-xs">No processes right now.</p>,
-						onNonEmpty: () => <Processes appMemory={usage.memory} tree={tree} />
+						onNonEmpty: () => <Processes tree={tree} />
 					})}
 				</section>
 			)
@@ -685,7 +680,7 @@ function MachinePane(props: {
 									)}
 								</span>
 							</header>
-							<div className="flex flex-col gap-3 px-3">
+							<div className="flex min-h-0 flex-1 flex-col gap-3 px-3 pb-3">
 								<UsageChart
 									history={history}
 									minutes={props.minutes}
@@ -1108,20 +1103,20 @@ function Home() {
 									</div>
 									{Boolean.match(isMobile, {
 										onFalse: () => (
-											<div className="flex min-h-0 flex-1">
+											<div className="grid-cols-split grid min-h-0 flex-1">
 												<AppsPane
 													active={active}
-													className="w-72 shrink-0 border-r"
+													className="min-w-0 border-r"
 													free={free}
 													now={now}
 													onSelect={selectRow}
 													rows={sorted}
 													selectedId={selectedRow?.item.id}
 												/>
-												<ProcessPane className="min-w-0 flex-1" free={free} now={now} row={selectedRow} />
+												<ProcessPane className="min-w-0 border-r" now={now} row={selectedRow} />
 												<MachinePane
 													available={activeAvailable}
-													className="w-72 shrink-0 border-l"
+													className="min-w-0"
 													history={Option.getOrUndefined(history)}
 													minutes={minutes}
 													worker={active}
@@ -1144,13 +1139,7 @@ function Home() {
 														/>
 													)),
 													Match.when('process', () => (
-														<ProcessPane
-															className="min-h-0 flex-1"
-															free={free}
-															now={now}
-															row={selectedRow}
-															showName={false}
-														/>
+														<ProcessPane className="min-h-0 flex-1" now={now} row={selectedRow} showName={false} />
 													)),
 													Match.orElse(() => (
 														<MachinePane

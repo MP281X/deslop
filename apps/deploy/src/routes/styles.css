@@ -1,6 +1,11 @@
 @import '@deslop/components-web/theme.css';
 @source '../../../../packages/components-web/src/**/*.tsx';
 
+@theme {
+	/* The two sidebars hold equal width; the processes between them are the narrower, secondary pane. */
+	--grid-template-columns-split: 35% 30% 35%;
+}
+
 :root {
 	--primary: var(--blue);
 }
