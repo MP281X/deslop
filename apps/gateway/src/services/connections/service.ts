@@ -1,9 +1,7 @@
 import {
 	Array,
-	Boolean,
 	Cache,
 	Clock,
-	Config,
 	Context,
 	Effect,
 	Layer,
@@ -32,7 +30,7 @@ import {KeyValueStore} from 'effect/persistence'
 
 import type {User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
-import {localAuth} from '@deslop/runtime/auth/utils'
+import {adminIds, isAdmin} from '@deslop/runtime/auth/utils'
 
 import {
 	clientMetadata,
@@ -94,14 +92,12 @@ export class Connections extends Context.Service<
 		const clientInfo = clientMetadata(origin)
 		const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, ConnectionStore)
 		const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('servers'), () => ({})))
-		// Local no-issuer installs have one trusted developer, independent of production admin settings.
-		const listed = Config.Array(Schema.String, 'GITHUB_ADMINS')
-		const admins = yield* Boolean.match(yield* localAuth, {onFalse: () => listed, onTrue: () => Effect.succeed(['0'])})
+		// Auth's admins, named by the same setting: only they manage the servers everyone with access shares.
+		const admins = yield* adminIds
 		// Only the latest calls matter to a light, so a slow page drops the oldest.
 		const traffic = yield* PubSub.sliding<ServerId>(64)
-		// Auth's admins, named by the same setting: only they manage the servers everyone with access shares.
 		const admin = Effect.fnUntraced(function* (user: User) {
-			if (!Array.contains(admins, String.replace('github:', '')(user.id))) {
+			if (!isAdmin(admins, user.id)) {
 				return yield* AuthError.make({error: 'access_denied', message: 'Only an admin can manage MCP servers'})
 			}
 		})

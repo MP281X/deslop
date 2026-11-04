@@ -2,14 +2,12 @@ import {
 	Array,
 	Boolean,
 	Clock,
-	Config,
 	Context,
 	Effect,
 	Layer,
 	Number,
 	Option,
 	Order,
-	Schema,
 	Stream,
 	String,
 	Struct,
@@ -23,7 +21,7 @@ import {KeyValueStore} from 'effect/persistence'
 import type {User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
-import {localAuth, rejected} from '@deslop/runtime/auth/utils'
+import {adminIds, isAdmin, rejected} from '@deslop/runtime/auth/utils'
 
 import {GitHub} from '#services/github/service.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
@@ -62,12 +60,7 @@ export class People extends Context.Service<
 			const tokens = yield* Tokens
 			const passkeys = yield* Passkeys
 			const github = yield* GitHub
-			// Without an issuer the developer account, `github:0`, is the admin unless GITHUB_ADMINS names others.
-			const listed = Config.Array(Schema.String, 'GITHUB_ADMINS')
-			const admins = yield* Boolean.match(yield* localAuth, {
-				onFalse: () => listed,
-				onTrue: () => Config.withDefault(listed, ['0'])
-			})
+			const admins = yield* adminIds
 			// Every change saves the next members before memory and the live views see them.
 			const transact = Effect.fnUntraced(function* <A, E>(
 				change: (current: Members) => Effect.Effect<readonly [A, Members], E>
@@ -77,7 +70,7 @@ export class People extends Context.Service<
 				)
 			}, Effect.uninterruptible)
 			function roleOf(id: string, row: Option.Option<MemberRow>) {
-				if (Array.contains(admins, String.replace('github:', '')(id))) return 'Admin' as const
+				if (isAdmin(admins, id)) return 'Admin' as const
 				if (Option.exists(row, found => found.status === 'Allowed')) return 'Member' as const
 				return 'Waiting' as const
 			}
@@ -101,7 +94,7 @@ export class People extends Context.Service<
 				return user
 			})
 			const admin = Effect.fnUntraced(function* (user: User) {
-				if (roleOf(user.id, Option.none()) !== 'Admin') {
+				if (!isAdmin(admins, user.id)) {
 					return yield* AuthError.make({error: 'access_denied', message: 'Only an admin can manage people'})
 				}
 			})

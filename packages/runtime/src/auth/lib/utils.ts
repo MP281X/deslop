@@ -1,4 +1,4 @@
-import {Config, Context, Effect, Option, Schema} from 'effect'
+import {Array, Config, Context, Effect, Option, Schema, String} from 'effect'
 
 import {Headers} from 'effect/http'
 import {RpcMiddleware} from 'effect/rpc'
@@ -13,6 +13,18 @@ export const DEVELOPER = {id: 'github:0', name: 'dev'} satisfies User
 
 // Without an issuer (`--auth`) there is no sign-in: every request is this trusted developer, and Auth's GitHub step signs it in at once.
 export const localAuth = Config.map(Config.option(Config.String('AUTH_URL')), Option.isNone)
+
+// Admins come from GITHUB_ADMINS; a local install with no issuer falls back to the developer account when none are named.
+export const adminIds = Effect.gen(function* () {
+	const listed = Config.Array(Schema.String, 'GITHUB_ADMINS')
+	if (yield* localAuth) return yield* Config.withDefault(listed, ['0'])
+	return yield* listed
+})
+
+// GITHUB_ADMINS lists bare GitHub ids; a user's id carries its provider as a prefix.
+export function isAdmin(admins: readonly string[], id: string) {
+	return Array.contains(admins, String.replace('github:', '')(id))
+}
 
 // Auth offers GitHub or a code another device approves, then returns to `next` on any mp281x.xyz app.
 export function signInUrl(next: string) {
