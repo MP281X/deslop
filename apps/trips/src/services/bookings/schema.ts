@@ -36,25 +36,25 @@ export const ReservationStatus = Schema.Literals(['confirmed', 'cancelled'])
 // What the flight provider reports; every field is absent until the provider knows it, and each check replaces the whole record.
 export type FlightTracking = typeof FlightTracking.Type
 export const FlightTracking = Schema.Struct({
-	aircraft: Schema.optional(Schema.String),
-	arrivalActual: Schema.optional(Schema.Finite),
-	arrivalEstimated: Schema.optional(Schema.Finite),
-	arrivalGate: Schema.optional(Schema.String),
-	arrivalTerminal: Schema.optional(Schema.String),
-	belt: Schema.optional(Schema.String),
+	aircraft: Schema.optionalKey(Schema.String),
+	arrivalActual: Schema.optionalKey(Schema.Finite),
+	arrivalEstimated: Schema.optionalKey(Schema.Finite),
+	arrivalGate: Schema.optionalKey(Schema.String),
+	arrivalTerminal: Schema.optionalKey(Schema.String),
+	belt: Schema.optionalKey(Schema.String),
 	checkedAt: Schema.Finite,
-	departureActual: Schema.optional(Schema.Finite),
-	departureEstimated: Schema.optional(Schema.Finite),
-	departureGate: Schema.optional(Schema.String),
-	departureTerminal: Schema.optional(Schema.String),
-	landingActual: Schema.optional(Schema.Finite),
+	departureActual: Schema.optionalKey(Schema.Finite),
+	departureEstimated: Schema.optionalKey(Schema.Finite),
+	departureGate: Schema.optionalKey(Schema.String),
+	departureTerminal: Schema.optionalKey(Schema.String),
+	landingActual: Schema.optionalKey(Schema.Finite),
 	// The gate the flight had before the current one, kept to show the change.
-	previousGate: Schema.optional(Schema.String),
-	progress: Schema.optional(Schema.Finite),
+	previousGate: Schema.optionalKey(Schema.String),
+	progress: Schema.optionalKey(Schema.Finite),
 	// The provider's own id for this operation, such as FlightAware's fa_flight_id.
-	providerId: Schema.optional(Schema.String),
+	providerId: Schema.optionalKey(Schema.String),
 	state: Schema.Literals(['scheduled', 'departed', 'airborne', 'landed', 'arrived', 'cancelled', 'diverted']),
-	takeoffActual: Schema.optional(Schema.Finite)
+	takeoffActual: Schema.optionalKey(Schema.Finite)
 })
 
 export type Flight = typeof Flight.Type
@@ -83,16 +83,16 @@ export const TrainOperator = Schema.Literals(['trenitalia', 'italo', 'other'])
 
 export type TrainTracking = typeof TrainTracking.Type
 export const TrainTracking = Schema.Struct({
-	arrivalPlatform: Schema.optional(Schema.String),
+	arrivalPlatform: Schema.optionalKey(Schema.String),
 	checkedAt: Schema.Finite,
 	// The train's delay now, which its arrival carries.
 	delayMinutes: Schema.Finite,
 	// The delay it left the booked station with.
-	departureDelay: Schema.optional(Schema.Finite),
-	departurePlatform: Schema.optional(Schema.String),
+	departureDelay: Schema.optionalKey(Schema.Finite),
+	departurePlatform: Schema.optionalKey(Schema.String),
 	// The timetable's platform, kept to show a change.
-	departurePlatformPlanned: Schema.optional(Schema.String),
-	lastSeen: Schema.optional(Schema.Struct({at: Schema.Finite, station: Schema.String})),
+	departurePlatformPlanned: Schema.optionalKey(Schema.String),
+	lastSeen: Schema.optionalKey(Schema.Struct({at: Schema.Finite, station: Schema.String})),
 	state: Schema.Literals(['scheduled', 'running', 'departed', 'arrived'])
 })
 

@@ -1,4 +1,4 @@
-import {Array, DateTime, Option, Order, Predicate, Result, String, pipe} from 'effect'
+import {Array, DateTime, Option, Order, Predicate, Record, Result, String, pipe} from 'effect'
 
 import {HOUR} from '#services/bookings/lib/utils.ts'
 import type {Flight, FlightTracking, Place, Train, TrainTracking} from '#services/bookings/schema.ts'
@@ -48,33 +48,36 @@ function flightState(answer: FaFlight) {
 
 export function flightTracking(answer: FaFlight, checkedAt: number, previous?: FlightTracking) {
 	const gate = text(answer.gate_origin)
-	return {
-		aircraft: Option.getOrUndefined(text(answer.aircraft_type)),
-		arrivalActual: Option.getOrUndefined(instant(answer.actual_in)),
-		arrivalEstimated: Option.getOrUndefined(instant(answer.estimated_in)),
-		arrivalGate: Option.getOrUndefined(text(answer.gate_destination)),
-		arrivalTerminal: Option.getOrUndefined(text(answer.terminal_destination)),
-		belt: Option.getOrUndefined(text(answer.baggage_claim)),
-		checkedAt,
-		departureActual: Option.getOrUndefined(instant(answer.actual_out)),
-		departureEstimated: Option.getOrUndefined(instant(answer.estimated_out)),
-		departureGate: Option.getOrUndefined(gate),
-		departureTerminal: Option.getOrUndefined(text(answer.terminal_origin)),
-		landingActual: Option.getOrUndefined(instant(answer.actual_on)),
-		// A gate that replaces another keeps the old one to show the change; the same gate keeps any earlier change.
-		previousGate: Option.getOrUndefined(
-			Option.flatMap(gate, current =>
+	const tracking: FlightTracking = {
+		...Record.getSomes({
+			aircraft: text(answer.aircraft_type),
+			arrivalGate: text(answer.gate_destination),
+			arrivalTerminal: text(answer.terminal_destination),
+			belt: text(answer.baggage_claim),
+			departureGate: gate,
+			departureTerminal: text(answer.terminal_origin),
+			// A gate that replaces another keeps the old one to show the change; the same gate keeps any earlier change.
+			previousGate: Option.flatMap(gate, current =>
 				Option.orElse(
 					Option.filter(Option.fromUndefinedOr(previous?.departureGate), before => before !== current),
 					() => Option.filter(Option.fromUndefinedOr(previous?.previousGate), () => previous?.departureGate === current)
 				)
-			)
-		),
-		progress: Option.getOrUndefined(Option.fromNullishOr(answer.progress_percent)),
-		providerId: answer.fa_flight_id,
-		state: flightState(answer),
-		takeoffActual: Option.getOrUndefined(instant(answer.actual_off))
-	} satisfies FlightTracking
+			),
+			providerId: Option.fromNullishOr(answer.fa_flight_id)
+		}),
+		checkedAt,
+		...Record.getSomes({
+			arrivalActual: instant(answer.actual_in),
+			arrivalEstimated: instant(answer.estimated_in),
+			departureActual: instant(answer.actual_out),
+			departureEstimated: instant(answer.estimated_out),
+			landingActual: instant(answer.actual_on),
+			progress: Option.fromNullishOr(answer.progress_percent),
+			takeoffActual: instant(answer.actual_off)
+		}),
+		state: flightState(answer)
+	}
+	return tracking
 }
 
 // ViaggiaTreno abbreviates: "BOLOGNA C.LE/AV" is the ticket's "Bologna Centrale", "FIRENZE S.M.N." its "Firenze Santa Maria Novella".
@@ -127,14 +130,20 @@ export function trainTracking(answer: VtStatus, train: Train, checkedAt: number)
 	) {
 		return Option.none<TrainTracking>()
 	}
-	return Option.some<TrainTracking>({
-		arrivalPlatform: Option.getOrUndefined(
-			Option.flatMap(to, stop =>
+	const tracking: TrainTracking = {
+		...Record.getSomes({
+			arrivalPlatform: Option.flatMap(to, stop =>
 				Option.orElse(text(stop.binarioEffettivoArrivoDescrizione), () =>
 					text(stop.binarioProgrammatoArrivoDescrizione)
 				)
-			)
-		),
+			),
+			departurePlatform: Option.flatMap(from, stop =>
+				Option.orElse(text(stop.binarioEffettivoPartenzaDescrizione), () =>
+					text(stop.binarioProgrammatoPartenzaDescrizione)
+				)
+			),
+			departurePlatformPlanned: Option.flatMap(from, stop => text(stop.binarioProgrammatoPartenzaDescrizione))
+		}),
 		checkedAt,
 		// The delay it arrived with, else the train's running delay.
 		delayMinutes: Option.getOrElse(
@@ -147,28 +156,19 @@ export function trainTracking(answer: VtStatus, train: Train, checkedAt: number)
 			),
 			() => 0
 		),
-		departureDelay: Option.getOrUndefined(
-			Option.flatMap(Option.filter(from, left), stop => Option.fromNullishOr(stop.ritardo))
-		),
-		departurePlatform: Option.getOrUndefined(
-			Option.flatMap(from, stop =>
-				Option.orElse(text(stop.binarioEffettivoPartenzaDescrizione), () =>
-					text(stop.binarioProgrammatoPartenzaDescrizione)
-				)
-			)
-		),
-		departurePlatformPlanned: Option.getOrUndefined(
-			Option.flatMap(from, stop => text(stop.binarioProgrammatoPartenzaDescrizione))
-		),
-		lastSeen: Option.getOrUndefined(
-			Option.filter(
+		...Record.getSomes({
+			departureDelay: Option.flatMap(Option.filter(from, left), stop => Option.fromNullishOr(stop.ritardo))
+		}),
+		...Record.getSomes({
+			lastSeen: Option.filter(
 				Option.all({
 					at: Option.fromNullishOr(answer.oraUltimoRilevamento),
 					station: text(answer.stazioneUltimoRilevamento)
 				}),
 				seen => seen.station !== '--'
 			)
-		),
+		}),
 		state: trainState(from, to)
-	})
+	}
+	return Option.some(tracking)
 }
