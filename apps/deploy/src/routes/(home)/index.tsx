@@ -540,7 +540,12 @@ function ProcessPane(props: {
 							<span className="flex-1" />
 							{scheduled && <RunNow busy={false} item={row.item} onRun={() => undefined} />}
 						</div>
-						<div className="text-muted-foreground flex flex-wrap items-center gap-2 font-mono text-xs">
+						<div
+							className={cn(
+								'text-muted-foreground flex flex-wrap items-center gap-2 font-mono text-xs',
+								Boolean.match(props.showName === false, {onFalse: () => 'pl-7', onTrue: () => ''})
+							)}
+						>
 							<span>{bytes(usage.memory)}</span>
 							{Option.match(Option.fromUndefinedOr(usage.cpu), {
 								onNone: () => null,
