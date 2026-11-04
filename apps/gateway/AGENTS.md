@@ -1,6 +1,5 @@
 # Gateway intent
 
-- One page of servers, one line each: mark, name, host or why it needs the user, its tool count (from wider screens), its fix (Connect or Reconnect) only when one exists, its light. A reported failure shows in full in red beneath the line. Remove sits in the row's context menu.
-- A server with tools opens under its row on their names, aligned with its name; the whole row opens and the chevron sits at the right, as in Deploy and Scope.
-- Every connected tool is offered to agents: no per-tool switches.
-- The bar holds Copy MCP URL beside Add server, so the one URL a harness needs is a click away.
+- One page: on a wide screen, the servers and the chosen server's tools; on a phone, the server list pushes the server, with the bar's back control and no bottom navigation. Each row is one line: mark, name, host or why it needs the user, its tool count from wider screens, its light; a reported failure shows in full in red beneath the line. The row selects the server; Remove sits in its context menu, and on the chosen server's header. The same leading slot keeps its width on both panes.
+- The chosen server shows its mark, name, URL, status, Connect or Reconnect only when one exists, its full error, and every tool it offers. No per-tool switches: every connected tool is offered to agents. No visible actions menu beside the tools.
+- The bar holds Copy MCP URL beside Add server, so the one URL a harness needs is a click away. Its palette lists the servers that need the user, every server, and the bar's actions; typing filters them. Searching is how the page moves; there is no page filter.

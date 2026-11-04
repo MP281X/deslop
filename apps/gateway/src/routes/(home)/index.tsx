@@ -1,22 +1,21 @@
-import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, Match, Option, Order, String, pipe} from 'effect'
+import {Array, Boolean, Match, Option, Order, Schema, String, pipe} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
-import {ChevronRight, Copy, Plus, Server} from 'lucide-react'
-import {Suspense, useState} from 'react'
+import {Copy, Plus, Server} from 'lucide-react'
+import {useState} from 'react'
 
-import {AppBar, AppBarAction, useCommandQuery} from '@deslop/components-web/app-bar'
+import {AppBar, AppBarAction} from '@deslop/components-web/app-bar'
+import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
-import {Page} from '@deslop/components-web/page'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
-import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/components-web/ui/collapsible'
 import {
 	ContextMenu,
 	ContextMenuContent,
@@ -33,8 +32,10 @@ import {
 } from '@deslop/components-web/ui/dialog'
 import {Empty, EmptyDescription, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Field, FieldError, FieldLabel} from '@deslop/components-web/ui/field'
+import {useIsMobile} from '@deslop/components-web/ui/hooks/use-mobile'
 import {Input} from '@deslop/components-web/ui/input'
 import {cn} from '@deslop/components-web/utils'
+import {AuthError} from '@deslop/runtime/auth/schema'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
 import {addAtom, connectUrl, copyEndpointAtom, lastCallAtom, removeAtom, serversAtom} from '#lib/utils.ts'
@@ -69,6 +70,16 @@ function Status(props: {server: ConnectionInfo}) {
 				Match.orElse(() => 'off' as const)
 			)}
 		/>
+	)
+}
+
+// A server's own words for why it needs the user, or its host when it is fine.
+function reasonText(server: ConnectionInfo) {
+	return pipe(
+		Match.value(server.status),
+		Match.when('Expired', () => 'Sign-in expired'),
+		Match.when('Not connected', () => 'Not connected'),
+		Match.orElse(() => new URL(server.url).hostname)
 	)
 }
 
@@ -137,92 +148,200 @@ function Reason(props: {server: ConnectionInfo}) {
 	)
 }
 
-// One line per server: its icon, name, host or why it needs the user, its fix, its light; the whole line opens on its tools. Its context menu removes it, reached by the menu key even with nothing inside to focus.
-function ServerRow(props: {server: ConnectionInfo}) {
-	const [removing] = useAtom(removeAtom(props.server.id))
+// One line per server: its icon, name, host or why it needs the user, its tool count and its light; the row selects it, its context menu removes it.
+function ServerRow(props: {active: boolean; onSelect: () => void; server: ConnectionInfo}) {
 	const [confirm, setConfirm] = useState(false)
-	const [open, setOpen] = useState(false)
-	const tools = Array.isReadonlyArrayNonEmpty(props.server.tools)
 	return (
-		<>
+		<div className="border-b">
 			<RemoveDialog open={confirm} onOpenChange={setConfirm} server={props.server} />
-			<Collapsible role="listitem" open={open && tools} onOpenChange={setOpen} className="border-b">
+			<ContextMenu>
+				<ContextMenuTrigger
+					render={
+						<Button
+							size="lg"
+							variant={Boolean.match(props.active, {
+								onFalse: () => 'ghost' as const,
+								onTrue: () => 'secondary' as const
+							})}
+							className="w-full justify-start text-left"
+							aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
+							onClick={props.onSelect}
+						>
+							<ServerIcon server={props.server} />
+							<span className="min-w-0 shrink-0 truncate font-medium">{props.server.name}</span>
+							<span className="flex min-w-0 flex-1">
+								<Reason server={props.server} />
+							</span>
+							{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
+								<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden" title="Tools">
+									{Boolean.match(props.server.tools.length === 1, {
+										onFalse: () => `${props.server.tools.length} tools`,
+										onTrue: () => '1 tool'
+									})}
+								</span>
+							)}
+							<span
+								role="img"
+								title={props.server.status}
+								aria-label={props.server.status}
+								className="flex size-3 shrink-0 items-center justify-center"
+							>
+								<Status server={props.server} />
+							</span>
+						</Button>
+					}
+				/>
+				<ContextMenuContent className="w-auto min-w-36">
+					<ContextMenuItem variant="destructive" onClick={() => setConfirm(true)}>
+						Remove
+					</ContextMenuItem>
+				</ContextMenuContent>
+			</ContextMenu>
+			{props.server.error !== undefined && (
+				<FieldError className="mr-1 mb-2 ml-9 wrap-anywhere">{props.server.error}</FieldError>
+			)}
+		</div>
+	)
+}
+
+function ServersPane(props: {
+	activeId?: string
+	className?: string
+	onSelect: (server: ConnectionInfo) => void
+	servers: readonly ConnectionInfo[]
+}) {
+	return (
+		<section
+			aria-label="MCP servers"
+			className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
+		>
+			{Array.match(props.servers, {
+				onEmpty: () => (
+					<Empty>
+						<EmptyHeader>
+							<EmptyTitle>No servers yet</EmptyTitle>
+							<EmptyDescription>Add one from the bar to offer its tools.</EmptyDescription>
+						</EmptyHeader>
+					</Empty>
+				),
+				onNonEmpty: servers => (
+					<div role="list" aria-label="MCP servers">
+						{Array.map(servers, server => (
+							<ServerRow
+								key={server.id}
+								active={props.activeId === server.id}
+								onSelect={() => props.onSelect(server)}
+								server={server}
+							/>
+						))}
+					</div>
+				)
+			})}
+		</section>
+	)
+}
+
+// The chosen server: where it lives, its light and fix, its full error, and every tool it offers.
+function ServerPane(props: {className?: string; server?: ConnectionInfo}) {
+	const [confirm, setConfirm] = useState(false)
+	return Option.match(Option.fromUndefinedOr(props.server), {
+		onNone: () => (
+			<section aria-label="Server" className={cn('flex min-h-0 flex-col', props.className)}>
+				<Empty>
+					<EmptyHeader>
+						<EmptyTitle>Select a server</EmptyTitle>
+					</EmptyHeader>
+				</Empty>
+			</section>
+		),
+		onSome: server => (
+			<section
+				aria-label={server.name}
+				className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
+			>
+				<RemoveDialog open={confirm} onOpenChange={setConfirm} server={server} />
 				<ContextMenu>
 					<ContextMenuTrigger
-						render={
-							<div
-								tabIndex={Boolean.match(tools, {onFalse: () => 0, onTrue: () => undefined})}
-								className="hover:bg-muted/50 relative flex h-10 min-w-0 items-center gap-3 px-1 text-sm"
-							/>
-						}
+						render={<header className="bg-background sticky top-0 z-20 flex shrink-0 flex-col gap-2 border-b p-3" />}
 					>
-						{tools && (
-							<CollapsibleTrigger
-								aria-label={`Tools of ${props.server.name}`}
-								className="absolute inset-0 cursor-pointer"
-							/>
-						)}
-						<ServerIcon server={props.server} />
-						<span className="min-w-0 truncate font-medium">{props.server.name}</span>
-						<span className="flex min-w-0 flex-1">
-							<Reason server={props.server} />
-						</span>
-						{tools && (
-							<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden">
-								{props.server.tools.length} tools
-							</span>
-						)}
-						{(props.server.status !== 'Connected' || props.server.error !== undefined) && (
-							<Button
-								size="sm"
-								variant="outline"
-								className="relative shrink-0"
-								disabled={AsyncResult.isWaiting(removing)}
-								onClick={() => location.assign(connectUrl(props.server.id))}
+						<div className="flex min-w-0 items-start gap-3">
+							<ServerIcon server={server} />
+							<div className="min-w-0 flex-1">
+								<h2 className="truncate text-sm font-semibold">{server.name}</h2>
+								<a
+									href={server.url}
+									target="_blank"
+									rel="noreferrer"
+									className="text-muted-foreground block truncate font-mono text-xs hover:underline"
+									title={server.url}
+								>
+									{new URL(server.url).hostname}
+								</a>
+							</div>
+							<span
+								role="img"
+								title={server.status}
+								aria-label={server.status}
+								className="flex size-3 shrink-0 items-center justify-center"
 							>
-								{Boolean.match(props.server.status === 'Not connected', {
-									onFalse: () => 'Reconnect',
-									onTrue: () => 'Connect'
-								})}
-							</Button>
-						)}
-						<span
-							role="img"
-							title={props.server.status}
-							aria-label={props.server.status}
-							className="flex size-3 shrink-0 items-center justify-center"
-						>
-							<Status server={props.server} />
-						</span>
-						<span className="text-muted-foreground flex size-3.5 shrink-0 items-center justify-center">
-							{tools && <ChevronRight className={cn('size-3.5 transition-transform', open && 'rotate-90')} />}
-						</span>
+								<Status server={server} />
+							</span>
+						</div>
+						<div className="flex flex-wrap items-center gap-2">
+							{(server.status !== 'Connected' || server.error !== undefined) && (
+								<Button size="sm" onClick={() => location.assign(connectUrl(server.id))}>
+									{Boolean.match(server.status === 'Not connected', {
+										onFalse: () => 'Reconnect',
+										onTrue: () => 'Connect'
+									})}
+								</Button>
+							)}
+							<span className="text-muted-foreground text-xs">{server.status}</span>
+							{Array.isReadonlyArrayNonEmpty(server.tools) && (
+								<span className="text-muted-foreground text-xs">
+									· {server.tools.length} tool
+									{Boolean.match(server.tools.length === 1, {onFalse: () => 's', onTrue: () => ''})}
+								</span>
+							)}
+						</div>
+						{server.error !== undefined && <FieldError className="wrap-anywhere">{server.error}</FieldError>}
 					</ContextMenuTrigger>
 					<ContextMenuContent className="w-auto min-w-36">
-						<ContextMenuItem
-							variant="destructive"
-							disabled={AsyncResult.isWaiting(removing)}
-							onClick={() => setConfirm(true)}
-						>
+						<ContextMenuItem variant="destructive" onClick={() => setConfirm(true)}>
 							Remove
 						</ContextMenuItem>
 					</ContextMenuContent>
 				</ContextMenu>
-				{props.server.error !== undefined && (
-					<FieldError className="mr-1 mb-2 ml-9 wrap-anywhere">{props.server.error}</FieldError>
-				)}
-				<CollapsibleContent>
-					<ul aria-label={`Tools of ${props.server.name}`} className="pb-1">
-						{Array.map(props.server.tools, tool => (
-							<li key={tool} className="flex h-8 items-center pr-1 pl-9 font-mono text-xs select-text">
-								{tool}
-							</li>
-						))}
-					</ul>
-				</CollapsibleContent>
-			</Collapsible>
-		</>
-	)
+				<section aria-label="Tools" className="flex min-h-0 flex-col gap-1 p-3">
+					<h3 className="text-muted-foreground text-xs font-medium">Tools</h3>
+					{Array.match(server.tools, {
+						onEmpty: () => (
+							<Empty>
+								<EmptyHeader>
+									<EmptyTitle>No tools yet</EmptyTitle>
+									<EmptyDescription>
+										{Boolean.match(server.status === 'Connected', {
+											onFalse: () => 'Connect the server to discover its tools.',
+											onTrue: () => 'This server reports no tools.'
+										})}
+									</EmptyDescription>
+								</EmptyHeader>
+							</Empty>
+						),
+						onNonEmpty: tools => (
+							<ul aria-label={`Tools of ${server.name}`}>
+								{Array.map(tools, tool => (
+									<li key={tool} className="border-b py-2 font-mono text-xs select-text">
+										{tool}
+									</li>
+								))}
+							</ul>
+						)
+					})}
+				</section>
+			</section>
+		)
+	})
 }
 
 function AddForm(props: {url: string; error: string; adding: boolean}) {
@@ -287,75 +406,100 @@ function AddDialog() {
 	)
 }
 
-function Directory(props: {servers: readonly ConnectionInfo[]}) {
-	const query = useCommandQuery()
-	return Array.match(
-		Array.filter(Array.sort(props.servers, urgency), server =>
-			String.includes(query)(String.toLowerCase(`${server.name} ${server.url}`))
-		),
-		{
-			onEmpty: () => (
-				<Empty>
-					<EmptyHeader>
-						<EmptyTitle>
-							{Boolean.match(query === '', {onFalse: () => 'No server matches', onTrue: () => 'No servers yet'})}
-						</EmptyTitle>
-					</EmptyHeader>
-				</Empty>
-			),
-			onNonEmpty: rows => (
-				<div role="list" aria-label="MCP servers">
-					{Array.map(rows, server => (
-						<ServerRow key={server.id} server={server} />
-					))}
-				</div>
-			)
-		}
-	)
+// A failure the page can't show as data: an admin's refusal, a sign-in, then anything else.
+function FailureContent(props: {error: unknown}) {
+	if (!Schema.is(AuthError)(props.error)) return <Error error={props.error} reset={() => location.reload()} />
+	if (props.error.error === 'access_denied') {
+		return (
+			<Empty>
+				<EmptyHeader>
+					<EmptyTitle>Admins only</EmptyTitle>
+					<EmptyDescription>{props.error.message}</EmptyDescription>
+				</EmptyHeader>
+			</Empty>
+		)
+	}
+	if (!needsSignIn(props.error)) return <Error error={props.error} reset={() => location.reload()} />
+	return <SignIn href={signInUrl(location.href)} />
 }
 
-// The servers need a Deslop sign-in by an admin; GitHub returns here once it is done.
-function Servers() {
-	const servers = useAtomSuspense(serversAtom, {includeFailure: true})
-	if (AsyncResult.isSuccess(servers)) return <Directory servers={servers.value} />
-	return Option.match(Cause.findErrorOption(servers.cause), {
-		onNone: () => <Error error={Cause.squash(servers.cause)} reset={() => location.reload()} />,
-		onSome: error => {
-			if (error._tag !== 'AuthError') return <Error error={error} reset={() => location.reload()} />
-			if (error.error === 'access_denied') {
-				return (
-					<Empty>
-						<EmptyHeader>
-							<EmptyTitle>Admins only</EmptyTitle>
-							<EmptyDescription>{error.message}</EmptyDescription>
-						</EmptyHeader>
-					</Empty>
-				)
-			}
-			if (!needsSignIn(error)) return <Error error={error} reset={() => location.reload()} />
-			return <SignIn href={signInUrl(location.href)} />
-		}
-	})
-}
-
-// The first load suspends to a skeleton; React keeps a shown fallback at least 300ms, so it never blinks.
 function Home() {
 	const send = useAtomSet(addAtom.send)
 	const copy = useAtomSet(copyEndpointAtom)
-	// Adding a server needs the admin's list, so the bar offers it only once that list has loaded.
-	const ready = AsyncResult.isSuccess(useAtomValue(serversAtom))
+	const isMobile = useIsMobile()
+	const [pane, setPane] = useState<'server' | 'servers'>('servers')
+	const [selection, setSelection] = useState<string>()
+	const servers = useAtomValue(serversAtom)
+	const value = AsyncResult.value(servers)
+	const error = AsyncResult.error(servers)
+	const sorted = Array.sort(
+		Option.getOrElse(value, () => Array.empty<ConnectionInfo>()),
+		urgency
+	)
+	const active = Option.orElse(
+		Option.flatMap(Option.fromUndefinedOr(selection), id => Array.findFirst(sorted, server => server.id === id)),
+		() => Array.head(sorted)
+	)
+	const ready = Option.isSome(value)
+
+	function selectServer(server: ConnectionInfo) {
+		setSelection(server.id)
+		setPane('server')
+	}
+
+	const needsYou: PaletteGroup = {
+		items: Array.map(
+			Array.filter(sorted, server => server.status !== 'Connected' || server.error !== undefined),
+			server => ({
+				detail: reasonText(server),
+				icon: <ServerIcon server={server} />,
+				keywords: `${server.name} ${server.url}`,
+				label: server.name,
+				run: () => selectServer(server)
+			})
+		),
+		label: 'Needs you'
+	}
+	const all: PaletteGroup = {
+		items: Array.map(sorted, server => ({
+			detail: new URL(server.url).hostname,
+			icon: <ServerIcon server={server} />,
+			keywords: `${server.name} ${server.url} ${Array.join(server.tools, ' ')}`,
+			label: server.name,
+			run: () => selectServer(server)
+		})),
+		label: 'Servers'
+	}
+	const actions: PaletteGroup = {
+		items: [
+			...Boolean.match(ready, {
+				onFalse: () => [],
+				onTrue: () => [{icon: <Plus />, label: 'Add server', run: () => send({_tag: 'Open' as const})}]
+			}),
+			{icon: <Copy />, label: 'Copy MCP URL', run: () => copy()}
+		],
+		label: 'Actions'
+	}
+
 	return (
-		<>
+		<div className="flex min-h-0 flex-1 flex-col">
 			<AppBar
 				icon={icon}
 				name="gateway"
-				commands={Array.filter(
-					[
-						{icon: <Plus />, label: 'Add server', run: () => send({_tag: 'Open'})},
-						{icon: <Copy />, label: 'Copy MCP URL', run: () => copy()}
-					],
-					command => ready || command.label === 'Copy MCP URL'
-				)}
+				title={Boolean.match(isMobile, {
+					onFalse: () => undefined,
+					onTrue: () =>
+						pipe(
+							Match.value(pane),
+							Match.when('server', () => Option.match(active, {onNone: () => 'Server', onSome: server => server.name})),
+							Match.orElse(() => 'gateway')
+						)
+				})}
+				back={Boolean.match(isMobile && pane === 'server', {
+					onFalse: () => undefined,
+					onTrue: () => ({label: 'Servers', onClick: () => setPane('servers')})
+				})}
+				palette={[needsYou, all, actions]}
 				action={
 					<>
 						<AppBarAction icon={<Copy />} label="Copy MCP URL" variant="outline" onClick={() => copy()} />
@@ -363,13 +507,51 @@ function Home() {
 					</>
 				}
 			/>
-			<Page>
-				<Suspense fallback={<ItemListSkeleton label="MCP servers" media rows={4} />}>
-					<Servers />
-				</Suspense>
-			</Page>
+			{Option.match(value, {
+				onNone: () =>
+					Option.match(error, {
+						onNone: () => (
+							<div className="p-4">
+								<ItemListSkeleton label="MCP servers" media rows={4} />
+							</div>
+						),
+						onSome: cause => <FailureContent error={cause} />
+					}),
+				onSome: () => (
+					<div className="flex min-h-0 flex-1">
+						{Boolean.match(isMobile, {
+							onFalse: () => (
+								<>
+									<ServersPane
+										activeId={Option.getOrUndefined(active)?.id}
+										className="w-72 shrink-0 border-r"
+										onSelect={selectServer}
+										servers={sorted}
+									/>
+									<ServerPane className="min-w-0 flex-1" server={Option.getOrUndefined(active)} />
+								</>
+							),
+							onTrue: () =>
+								pipe(
+									Match.value(pane),
+									Match.when('server', () => (
+										<ServerPane className="min-h-0 flex-1" server={Option.getOrUndefined(active)} />
+									)),
+									Match.orElse(() => (
+										<ServersPane
+											activeId={Option.getOrUndefined(active)?.id}
+											className="min-h-0 flex-1"
+											onSelect={selectServer}
+											servers={sorted}
+										/>
+									))
+								)
+						})}
+					</div>
+				)
+			})}
 			<AddDialog />
-		</>
+		</div>
 	)
 }
 
