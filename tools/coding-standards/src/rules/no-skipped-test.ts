@@ -12,12 +12,10 @@ function skips(context: Context, node: ESTree.MemberExpression) {
 	return Option.exists(testChain(context, node), chain =>
 		Option.exists(Array.last(chain.members), last => {
 			if (Array.contains(['fails', 'runIf', 'skipIf'], last)) return true
-			// The native rules read only an imported it, test or describe, never a layer's parameter or an @effect/vitest member.
+			// A runner import's plain .skip and .only are the native rules' even when renamed; everything else is this rule's.
 			return (
 				Array.contains(['only', 'skip'], last) &&
-				(!isImportBinding({context, node: chain.root, source: TEST_RUNNERS}) ||
-					!Array.contains(['describe', 'it', 'suite', 'test'], chain.root.name) ||
-					hasEffectMember(chain.members))
+				(!isImportBinding({context, node: chain.root, source: TEST_RUNNERS}) || hasEffectMember(chain.members))
 			)
 		})
 	)

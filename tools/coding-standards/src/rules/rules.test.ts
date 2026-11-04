@@ -2056,6 +2056,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'',
 							"import {Effect, Layer} from 'effect'",
 							'',
+							"import {it as plainIt} from 'vite-plus/test'",
+							'',
 							'declare const ci: boolean',
 							"it.effect.only('runs alone', () => Effect.void) // reported",
 							"it.scoped.skip('never runs', () => Effect.void) // reported",
@@ -2067,6 +2069,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							"it.effect.runIf(ci)('runs only on CI', () => Effect.void) // reported",
 							"it.fails('passes by failing', () => {}) // reported",
 							"it('skips through options', {skip: true}, () => {}) // reported",
+							"plainIt.skip('a runner import belongs to the native rule', () => {})",
 							"describe('runs together', {concurrent: true}, () => { it('runs', () => {}) })"
 						],
 						'\n'
