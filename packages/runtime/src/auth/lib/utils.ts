@@ -9,6 +9,10 @@ import {AuthError} from '#auth/schema.ts'
 // Native apps and MCP clients sign in here; backends verify their bearer here.
 export const AUTH_URL = 'https://auth.mp281x.xyz'
 
+// Auth serves and advertises its OAuth endpoints under this path, which its clients call.
+export const ISSUER_PATH = '/api/auth'
+export const ISSUER = `${AUTH_URL}${ISSUER_PATH}`
+
 export const DEVELOPER = {id: 'github:0', name: 'dev'} satisfies User
 
 // Without an issuer (`--auth`) there is no sign-in: every request is this trusted developer, and Auth's GitHub step signs it in at once.

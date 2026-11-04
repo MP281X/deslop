@@ -5,7 +5,7 @@ import {RateLimiter} from 'effect/persistence'
 
 import {AuthError, User} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
-import {AUTH_URL, localAuth, rejected} from '@deslop/runtime/auth/utils'
+import {AUTH_URL, ISSUER, ISSUER_PATH, localAuth, rejected} from '@deslop/runtime/auth/utils'
 
 import {App, AppParams} from '#services/apps/schema.ts'
 import {Apps} from '#services/apps/service.ts'
@@ -41,7 +41,6 @@ import {SESSION_COOKIE, Tokens} from '#services/tokens/service.ts'
 
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 const LOGIN_COOKIE = '__Host-login'
-const ISSUER = `${AUTH_URL}/api/auth`
 
 // The shared session reaches every app on the parent domain, for as long as its grant lasts; without an issuer it stays on its own host.
 function sessionCookie(local: boolean) {
@@ -180,7 +179,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		)
 		yield* router.add(
 			'GET',
-			'/.well-known/oauth-authorization-server/api/auth',
+			`/.well-known/oauth-authorization-server${ISSUER_PATH}`,
 			HttpServerResponse.jsonUnsafe({
 				authorization_endpoint: `${ISSUER}/oauth2/authorize`,
 				authorization_response_iss_parameter_supported: true,
@@ -197,7 +196,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		)
 		yield* router.add(
 			'POST',
-			'/api/auth/oauth2/register',
+			`${ISSUER_PATH}/oauth2/register`,
 			limited(
 				'register',
 				10
@@ -239,7 +238,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		// An app's sign-in becomes a waiting sign-in under a fresh code, answered by an approval and delivered at /auth/continue.
 		yield* router.add(
 			'GET',
-			'/api/auth/oauth2/authorize',
+			`${ISSUER_PATH}/oauth2/authorize`,
 			limited(
 				'authorize',
 				20
@@ -276,7 +275,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		)
 		yield* router.add(
 			'POST',
-			'/api/auth/oauth2/token',
+			`${ISSUER_PATH}/oauth2/token`,
 			limited(
 				'token',
 				60
@@ -312,7 +311,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		)
 		yield* router.add(
 			'POST',
-			'/api/auth/oauth2/revoke',
+			`${ISSUER_PATH}/oauth2/revoke`,
 			limited(
 				'revoke',
 				60

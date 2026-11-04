@@ -8,14 +8,11 @@ import {AsyncResult, Atom} from 'effect/reactivity'
 import {AuthRequest, makeRedirectUri} from 'expo-auth-session'
 import {Alert} from 'react-native'
 
-import {AUTH_URL} from '#auth/lib/utils.ts'
+import {ISSUER} from '#auth/lib/utils.ts'
 import {AuthError, ClientRegistration, Credentials, TokenResponse} from '#auth/schema.ts'
 import {activationsAtom, extra} from '#mobile/client.ts'
 
-const DISCOVERY = {
-	authorizationEndpoint: `${AUTH_URL}/api/auth/oauth2/authorize`,
-	tokenEndpoint: `${AUTH_URL}/api/auth/oauth2/token`
-}
+const DISCOVERY = {authorizationEndpoint: `${ISSUER}/oauth2/authorize`, tokenEndpoint: `${ISSUER}/oauth2/token`}
 type CredentialsJson = typeof CredentialsJson.Type
 const CredentialsJson = Schema.fromJsonString(Credentials)
 
@@ -117,7 +114,7 @@ export function make(name: string, server: string, storage: Storage) {
 			const redirectUri = makeRedirectUri({path: 'auth/callback', scheme: extra.scheme})
 			const client = yield* HttpClient.HttpClient
 			const registration = yield* pipe(
-				HttpClientRequest.post(`${AUTH_URL}/api/auth/oauth2/register`),
+				HttpClientRequest.post(`${ISSUER}/oauth2/register`),
 				HttpClientRequest.bodyJson({
 					application_type: 'native',
 					client_name: name,
@@ -140,7 +137,7 @@ export function make(name: string, server: string, storage: Storage) {
 				try: () => request.promptAsync(DISCOVERY)
 			})
 			if (result.type !== 'success') return yield* AuthError.make({message: 'Sign-in was not completed'})
-			if (result.params['iss'] !== `${AUTH_URL}/api/auth`) {
+			if (result.params['iss'] !== ISSUER) {
 				return yield* AuthError.make({message: 'The sign-in issuer did not match'})
 			}
 			yield* exclusive(
@@ -161,7 +158,7 @@ export function make(name: string, server: string, storage: Storage) {
 		Effect.gen(function* () {
 			for (const credentials of Option.toArray(yield* read)) {
 				yield* pipe(
-					HttpClientRequest.post(`${AUTH_URL}/api/auth/oauth2/revoke`),
+					HttpClientRequest.post(`${ISSUER}/oauth2/revoke`),
 					HttpClientRequest.bodyUrlParams({client_id: credentials.clientId, token: credentials.refreshToken}),
 					request => Effect.flatMap(HttpClient.HttpClient, client => client.execute(request)),
 					Effect.timeout('10 seconds'),

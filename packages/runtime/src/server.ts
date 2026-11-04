@@ -47,7 +47,7 @@ import type {Rpc, RpcGroup} from 'effect/rpc'
 import {Account, PackageMetadata, RPC_PATH, RuntimeConfig} from '#schema.ts'
 import {layerOtlp} from '#telemetry.ts'
 
-import {localAuth} from '#auth/lib/utils.ts'
+import {ISSUER_PATH, localAuth} from '#auth/lib/utils.ts'
 import {Auth, layerMcpAuth} from '#auth/service.ts'
 
 const LOOPBACK = /^(?:localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[\da-f:.]+\])$/iu
@@ -421,7 +421,7 @@ export function layerMcp<RA, RE, RR>(options: {instructions: string; registratio
 							'/.well-known/oauth-protected-resource/mcp',
 							Effect.succeed(
 								HttpServerResponse.jsonUnsafe({
-									authorization_servers: [new URL('/api/auth', origin).href],
+									authorization_servers: [new URL(ISSUER_PATH, origin).href],
 									bearer_methods_supported: ['header'],
 									resource,
 									scopes_supported: ['deslop']
