@@ -28,6 +28,7 @@ import {FetchHttpClient, HttpRouter, HttpServerRequest} from 'effect/http'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
+import {MCP_PATH} from '@deslop/runtime/schema'
 
 import {
 	connectionStatus,
@@ -337,9 +338,9 @@ export const GatewayDiscovery = HttpRouter.middleware()(
 				const request = yield* HttpServerRequest.HttpServerRequest
 				if (
 					request.method === 'POST' &&
-					request.url === '/mcp' &&
+					request.url === MCP_PATH &&
 					request.headers['origin'] === undefined &&
-					Result.isSuccess(yield* Effect.result(auth.access(request.headers, `${url}/mcp`)))
+					Result.isSuccess(yield* Effect.result(auth.access(request.headers, `${url}${MCP_PATH}`)))
 				) {
 					const body = yield* Effect.result(request.json)
 					if (Result.isSuccess(body) && Schema.is(ToolRequest)(body.success)) {

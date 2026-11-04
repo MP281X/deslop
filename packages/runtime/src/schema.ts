@@ -55,8 +55,11 @@ export const Port = Schema.String.check(
 export type AppVersion = typeof AppVersion.Type
 export const AppVersion = Schema.String.check(Schema.isPattern(/^0\.1\.\d+$/u))
 
+// The path every app answers about itself at, which its clients and Auth read.
+export const RUNTIME_PATH = '/api/runtime'
+
 export type RuntimeConfig = typeof RuntimeConfig.Type
-// What `/api/runtime` tells clients and Auth: the app's name, the Auth it signs in through, where it exports traces and its release.
+// What it tells them: the app's name, the Auth it signs in through, where it exports traces and its release.
 export const RuntimeConfig = Schema.Struct({
 	auth: Schema.optionalKey(Schema.String),
 	name: Schema.String,
@@ -66,6 +69,15 @@ export const RuntimeConfig = Schema.Struct({
 
 // The socket every app serves its contracts on and every client opens: web, iOS and a peer worker.
 export const RPC_PATH = '/api/rpc'
+
+// The MCP endpoint every app serves, which agents and Gateway open.
+export const MCP_PATH = '/mcp'
+
+// The protected-resource metadata that tells an MCP client which issuer its bearer must come from.
+export const MCP_METADATA_PATH = '/.well-known/oauth-protected-resource/mcp'
+
+// The manifest a web app serves, which Auth probes to tell a browser app from an iOS one.
+export const MANIFEST_PATH = '/manifest.webmanifest'
 
 // Who the app bar's account menu shows; `signOut` is false without an issuer, where everyone is the developer.
 export type Account = typeof Account.Type

@@ -44,10 +44,19 @@ import {KeyValueStore} from 'effect/persistence'
 import {RpcSerialization, RpcServer} from 'effect/rpc'
 import type {Rpc, RpcGroup} from 'effect/rpc'
 
-import {Account, PackageMetadata, RPC_PATH, RuntimeConfig} from '#schema.ts'
+import {
+	Account,
+	MANIFEST_PATH,
+	MCP_METADATA_PATH,
+	MCP_PATH,
+	PackageMetadata,
+	RPC_PATH,
+	RUNTIME_PATH,
+	RuntimeConfig
+} from '#schema.ts'
 import {layerOtlp} from '#telemetry.ts'
 
-import {ISSUER_PATH, localAuth} from '#auth/lib/utils.ts'
+import {APPS_PATH, ISSUER_PATH, localAuth} from '#auth/lib/utils.ts'
 import {Auth, layerMcpAuth} from '#auth/service.ts'
 
 const LOOPBACK = /^(?:localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[\da-f:.]+\])$/iu
@@ -276,7 +285,7 @@ export const layerRoutes = HttpRouter.use(router =>
 		})
 		yield* router.add(
 			'GET',
-			'/api/runtime',
+			RUNTIME_PATH,
 			Effect.gen(function* () {
 				return yield* HttpServerResponse.schemaJson(RuntimeConfig)({
 					...Option.match(issuer, {onNone: () => ({}), onSome: origin => ({auth: origin})}),
@@ -312,7 +321,7 @@ export const layerAnnounce = Layer.effectDiscard(
 			onNone: () => Effect.void,
 			onSome: Effect.fnUntraced(function* (issuer) {
 				yield* pipe(
-					HttpClientRequest.post(new URL('/api/apps', issuer).href),
+					HttpClientRequest.post(new URL(APPS_PATH, issuer).href),
 					HttpClientRequest.bodyJsonUnsafe({origin}),
 					client.execute,
 					Effect.delay('2 seconds'),
@@ -345,7 +354,7 @@ export const layerWeb = Layer.unwrap(
 		return Layer.mergeAll(
 			HttpRouter.add(
 				'GET',
-				'/manifest.webmanifest',
+				MANIFEST_PATH,
 				Effect.succeed(
 					HttpServerResponse.jsonUnsafe(
 						{
@@ -398,14 +407,14 @@ export function layerMcp<RA, RE, RR>(options: {instructions: string; registratio
 			const metadata = yield* packageMetadata
 			const canonical = yield* Config.String('APP_URL')
 			const issuer = yield* Config.option(Config.String('AUTH_URL'))
-			const resource = new URL('/mcp', canonical).href
+			const resource = new URL(MCP_PATH, canonical).href
 			const endpoint = pipe(
 				McpServer.layerHttp({
 					...options,
 					allowSessionTermination: true,
 					icons: [{src: new URL('/icon', canonical).href}],
 					name: yield* appName,
-					path: '/mcp',
+					path: MCP_PATH,
 					protocols: [McpProtocol.v2026_07_28, McpProtocol.v2025_11_25, McpProtocol.v2025_06_18],
 					version: metadata.version
 				}),
@@ -418,7 +427,7 @@ export function layerMcp<RA, RE, RR>(options: {instructions: string; registratio
 						endpoint,
 						HttpRouter.add(
 							'GET',
-							'/.well-known/oauth-protected-resource/mcp',
+							MCP_METADATA_PATH,
 							Effect.succeed(
 								HttpServerResponse.jsonUnsafe({
 									authorization_servers: [new URL(ISSUER_PATH, origin).href],

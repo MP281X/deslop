@@ -9,7 +9,7 @@ import {Socket} from 'effect/socket'
 
 import {Error, NotFound} from '@deslop/components-web/fallbacks'
 
-import {RPC_PATH, RuntimeConfig} from '#schema.ts'
+import {RPC_PATH, RUNTIME_PATH, RuntimeConfig} from '#schema.ts'
 import {layerOtlp} from '#telemetry.ts'
 
 export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext: AnyContext}}>(
@@ -61,7 +61,7 @@ export function layer(applicationName: string) {
 		pipe(
 			Layer.unwrap(
 				Effect.gen(function* () {
-					const response = yield* (yield* HttpClient.HttpClient).get('/api/runtime')
+					const response = yield* (yield* HttpClient.HttpClient).get(RUNTIME_PATH)
 					const config = yield* HttpClientResponse.schemaBodyJson(RuntimeConfig)(response)
 					if (config.traces === '') return Layer.empty
 					return layerOtlp(`${applicationName}-client`, config.traces, 'web', config.version)

@@ -13,6 +13,11 @@ export const AUTH_URL = 'https://auth.mp281x.xyz'
 export const ISSUER_PATH = '/api/auth'
 export const ISSUER = `${AUTH_URL}${ISSUER_PATH}`
 
+// An app's server asks Auth about a bearer at `VERIFY_PATH` and about its session cookie at `SESSION_PATH`; at start it announces itself at `APPS_PATH`.
+export const APPS_PATH = '/api/apps'
+export const SESSION_PATH = '/auth/session'
+export const VERIFY_PATH = '/auth/verify'
+
 export const DEVELOPER = {id: 'github:0', name: 'dev'} satisfies User
 
 // Without an issuer (`--auth`) there is no sign-in: every request is this trusted developer, and Auth's GitHub step signs it in at once.

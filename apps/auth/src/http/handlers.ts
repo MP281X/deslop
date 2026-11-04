@@ -5,7 +5,16 @@ import {RateLimiter} from 'effect/persistence'
 
 import {AuthError, User} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
-import {AUTH_URL, ISSUER, ISSUER_PATH, localAuth, rejected} from '@deslop/runtime/auth/utils'
+import {
+	APPS_PATH,
+	AUTH_URL,
+	ISSUER,
+	ISSUER_PATH,
+	SESSION_PATH,
+	VERIFY_PATH,
+	localAuth,
+	rejected
+} from '@deslop/runtime/auth/utils'
 
 import {App, AppParams} from '#services/apps/schema.ts'
 import {Apps} from '#services/apps/service.ts'
@@ -161,7 +170,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		// Each app's server announces itself here at start; see `ServerRuntime.layerAnnounce`.
 		yield* router.add(
 			'POST',
-			'/api/apps',
+			APPS_PATH,
 			limited(
 				'apps',
 				10
@@ -329,7 +338,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		// Apps read the session cookie and verify bearers here, through `Auth.layer`.
 		yield* router.add(
 			'GET',
-			'/auth/session',
+			SESSION_PATH,
 			pipe(
 				Effect.flatMap(HttpServerRequest.HttpServerRequest, request => auth.user(request.headers)),
 				Effect.flatMap(user => HttpServerResponse.schemaJson(User)(user, {headers: {'cache-control': 'no-store'}})),
@@ -338,7 +347,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		)
 		yield* router.add(
 			'GET',
-			'/auth/verify',
+			VERIFY_PATH,
 			pipe(
 				Effect.gen(function* () {
 					const params = yield* HttpServerRequest.schemaSearchParams(VerificationParams)
