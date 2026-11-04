@@ -1,11 +1,13 @@
 import {Array, Effect, Layer, Predicate, Record, Schedule, Stream, String, pipe} from 'effect'
 
-import {createRouter} from '@tanstack/react-router'
-import type {AnyContext, AnyRoute, RouterOptions} from '@tanstack/react-router'
+import {RouterProvider, createRouter} from '@tanstack/react-router'
+import type {AnyContext, AnyRoute, AnyRouter, RouterOptions} from '@tanstack/react-router'
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
 import {Atom} from 'effect/reactivity'
 import * as Rpc from 'effect/rpc'
 import {Socket} from 'effect/socket'
+import {StrictMode} from 'react'
+import {createRoot} from 'react-dom/client'
 
 import {Error, NotFound} from '@deslop/components-web/fallbacks'
 
@@ -31,6 +33,15 @@ export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext:
 			scrollRestoration: true
 		})
 	}
+}
+
+// The page's router under StrictMode, mounted where makeRouter found #root.
+export function mount(app: {root: Element; router: AnyRouter}) {
+	createRoot(app.root).render(
+		<StrictMode>
+			<RouterProvider router={app.router} />
+		</StrictMode>
+	)
 }
 
 // Every app's icon by its folder, from the icon glob a page runs four levels above its own routes.

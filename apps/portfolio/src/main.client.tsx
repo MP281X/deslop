@@ -1,7 +1,3 @@
-import {RouterProvider} from '@tanstack/react-router'
-import {StrictMode} from 'react'
-import {createRoot} from 'react-dom/client'
-
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {routeTree} from './routeTree.gen.ts'
@@ -15,8 +11,4 @@ declare module '@tanstack/react-router' {
 	}
 }
 
-createRoot(app.root).render(
-	<StrictMode>
-		<RouterProvider router={app.router} />
-	</StrictMode>
-)
+WebRuntime.mount(app)
